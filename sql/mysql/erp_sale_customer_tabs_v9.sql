@@ -1,0 +1,95 @@
+-- ERP 销售管理 - 客户详情多 Tab 基础表
+-- 执行时机：erp_sale_quote_cart_v8.sql 之后
+
+CREATE TABLE IF NOT EXISTS `erp_customer_contact` (
+    `id` bigint NOT NULL AUTO_INCREMENT COMMENT '编号',
+    `customer_id` bigint NOT NULL COMMENT '客户编号',
+    `name` varchar(64) NOT NULL COMMENT '联系人姓名',
+    `mobile` varchar(32) DEFAULT NULL COMMENT '手机号',
+    `telephone` varchar(32) DEFAULT NULL COMMENT '联系电话',
+    `email` varchar(128) DEFAULT NULL COMMENT '邮箱',
+    `position` varchar(64) DEFAULT NULL COMMENT '职务',
+    `wechat` varchar(64) DEFAULT NULL COMMENT '微信',
+    `qq` varchar(32) DEFAULT NULL COMMENT 'QQ',
+    `address` varchar(255) DEFAULT NULL COMMENT '地址',
+    `primary_contact` bit(1) DEFAULT b'0' COMMENT '主联系人',
+    `receiver_contact` bit(1) DEFAULT b'0' COMMENT '收货联系人',
+    `settle_contact` bit(1) DEFAULT b'0' COMMENT '结算联系人',
+    `message_contact` bit(1) DEFAULT b'0' COMMENT '消息联系人',
+    `business_card_front_url` varchar(512) DEFAULT NULL COMMENT '名片正面',
+    `business_card_back_url` varchar(512) DEFAULT NULL COMMENT '名片反面',
+    `status` tinyint DEFAULT 0 COMMENT '状态',
+    `remark` varchar(500) DEFAULT NULL COMMENT '备注',
+    `creator` varchar(64) DEFAULT '' COMMENT '创建者',
+    `create_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    `updater` varchar(64) DEFAULT '' COMMENT '更新者',
+    `update_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    `deleted` bit(1) NOT NULL DEFAULT b'0' COMMENT '是否删除',
+    `tenant_id` bigint NOT NULL DEFAULT 0 COMMENT '租户编号',
+    PRIMARY KEY (`id`),
+    KEY `idx_customer_contact_customer_id` (`customer_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='ERP 客户联系人';
+
+CREATE TABLE IF NOT EXISTS `erp_customer_contract` (
+    `id` bigint NOT NULL AUTO_INCREMENT COMMENT '编号',
+    `customer_id` bigint NOT NULL COMMENT '客户编号',
+    `contract_no` varchar(64) DEFAULT NULL COMMENT '合同编号',
+    `contract_date` datetime DEFAULT NULL COMMENT '合同日期',
+    `contract_type` varchar(64) DEFAULT NULL COMMENT '合同类型',
+    `start_time` datetime DEFAULT NULL COMMENT '生效时间',
+    `end_time` datetime DEFAULT NULL COMMENT '终止时间',
+    `settle_method` varchar(64) DEFAULT NULL COMMENT '结算方式',
+    `transport_method` varchar(64) DEFAULT NULL COMMENT '运输方式',
+    `base_amount` decimal(24,6) DEFAULT NULL COMMENT '铺底金额',
+    `task_amount` decimal(24,6) DEFAULT NULL COMMENT '任务量',
+    `attachment_url` varchar(512) DEFAULT NULL COMMENT '附件',
+    `status` tinyint DEFAULT 0 COMMENT '状态',
+    `remark` varchar(500) DEFAULT NULL COMMENT '备注',
+    `creator` varchar(64) DEFAULT '' COMMENT '创建者',
+    `create_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    `updater` varchar(64) DEFAULT '' COMMENT '更新者',
+    `update_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    `deleted` bit(1) NOT NULL DEFAULT b'0' COMMENT '是否删除',
+    `tenant_id` bigint NOT NULL DEFAULT 0 COMMENT '租户编号',
+    PRIMARY KEY (`id`),
+    KEY `idx_customer_contract_customer_id` (`customer_id`),
+    KEY `idx_customer_contract_no` (`contract_no`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='ERP 客户合同';
+
+CREATE TABLE IF NOT EXISTS `erp_customer_image` (
+    `id` bigint NOT NULL AUTO_INCREMENT COMMENT '编号',
+    `customer_id` bigint NOT NULL COMMENT '客户编号',
+    `image_type` varchar(64) DEFAULT NULL COMMENT '图片类型',
+    `image_name` varchar(128) DEFAULT NULL COMMENT '图片名称',
+    `image_url` varchar(512) NOT NULL COMMENT '图片地址',
+    `defaulted` bit(1) DEFAULT b'0' COMMENT '默认图',
+    `sort` int DEFAULT 0 COMMENT '排序',
+    `remark` varchar(500) DEFAULT NULL COMMENT '备注',
+    `creator` varchar(64) DEFAULT '' COMMENT '创建者',
+    `create_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    `updater` varchar(64) DEFAULT '' COMMENT '更新者',
+    `update_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    `deleted` bit(1) NOT NULL DEFAULT b'0' COMMENT '是否删除',
+    `tenant_id` bigint NOT NULL DEFAULT 0 COMMENT '租户编号',
+    PRIMARY KEY (`id`),
+    KEY `idx_customer_image_customer_id` (`customer_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='ERP 客户图片';
+
+CREATE TABLE IF NOT EXISTS `erp_customer_task` (
+    `id` bigint NOT NULL AUTO_INCREMENT COMMENT '编号',
+    `customer_id` bigint NOT NULL COMMENT '客户编号',
+    `year` int NOT NULL COMMENT '年份',
+    `month` int DEFAULT NULL COMMENT '月份',
+    `task_level` varchar(64) DEFAULT NULL COMMENT '任务级别',
+    `task_amount` decimal(24,6) DEFAULT NULL COMMENT '任务量',
+    `remark` varchar(500) DEFAULT NULL COMMENT '备注',
+    `creator` varchar(64) DEFAULT '' COMMENT '创建者',
+    `create_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    `updater` varchar(64) DEFAULT '' COMMENT '更新者',
+    `update_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    `deleted` bit(1) NOT NULL DEFAULT b'0' COMMENT '是否删除',
+    `tenant_id` bigint NOT NULL DEFAULT 0 COMMENT '租户编号',
+    PRIMARY KEY (`id`),
+    KEY `idx_customer_task_customer_id` (`customer_id`),
+    KEY `idx_customer_task_period` (`year`, `month`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='ERP 客户任务量';

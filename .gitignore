@@ -1,0 +1,86 @@
+######################################################################
+# Build Tools
+
+.gradle
+/build/
+!gradle/wrapper/gradle-wrapper.jar
+
+target/
+!.mvn/wrapper/maven-wrapper.jar
+
+.flattened-pom.xml
+
+######################################################################
+# IDE
+
+### STS ###
+.apt_generated
+.classpath
+.factorypath
+.project
+.settings
+.springBeans
+
+### IntelliJ IDEA ###
+.idea
+*.iws
+*.iml
+*.ipr
+
+### NetBeans ###
+nbproject/private/
+build/*
+nbbuild/
+dist/
+nbdist/
+.nb-gradle/
+
+######################################################################
+# Others
+*.log
+*.xml.versionsBackup
+*.swp
+
+!*/build/*.java
+!*/build/*.html
+!*/build/*.xml
+
+### JRebel ###
+rebel.xml
+
+application-my.yaml
+
+/yudao-ui-app/unpackage/
+**/.DS_Store
+
+######################################################################
+# 本地个人文件 & 工具（不纳入版本控制）
+
+# Claude Code 本地配置与会话
+.claude/
+
+# Windows bash 误生成的 nul 文件
+nul
+
+# 一次性脚本
+do_replace.ps1
+do_replace2.ps1
+replace_author.ps1
+
+# 个人笔记/需求整理（根目录 md，仅保留 README/CLAUDE/AGENTS 等项目文档）
+/0428-*.md
+/供货商字段.md
+/配件信息更改明细.md
+/采购库存问题.md
+/采购库存问题v2.md
+/采购模块字段.md
+/采购订单字段.md
+/采购订单问题*.md
+/采购调价字段.md
+/采购退货.md
+/客户.md
+/销售模块.md
+/采购模块-需要继续改进的地方.md
+
+# 个人工作目录
+/刘/
