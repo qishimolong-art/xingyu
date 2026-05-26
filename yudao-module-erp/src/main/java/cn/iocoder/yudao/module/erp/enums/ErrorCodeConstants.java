@@ -27,6 +27,8 @@ ErrorCode PURCHASE_ORDER_ITEM_RETURN_FAIL_IN_EXCEED = new ErrorCode(1_030_101_00
     ErrorCode PURCHASE_ORDER_PROCESS_FAIL_EXISTS_RETURN = new ErrorCode(1_030_101_010, "反审核失败，已存在对应的采购退货单");
     ErrorCode PURCHASE_ORDER_ITEM_GIFT_MODIFY_FAIL_HAS_IN = new ErrorCode(1_030_101_011, "采购订单项({})已有入库记录，不允许修改赠品标记");
     ErrorCode PURCHASE_ORDER_IN_EXCEED_INABLE = new ErrorCode(1_030_101_012, "入库数量超过可入库数量，商品[{}] 可入[{}] 实入[{}]");
+    ErrorCode PURCHASE_ORDER_ITEM_COUNT_POSITIVE = new ErrorCode(1_030_101_013, "订货数量不得小于等于 0");
+    ErrorCode PURCHASE_ORDER_ITEM_PRICE_POSITIVE = new ErrorCode(1_030_101_014, "订货价格不得小于等于 0");
 
     // ========== ERP 采购入库（1-030-102-000） ==========
     ErrorCode PURCHASE_IN_NOT_EXISTS = new ErrorCode(1_030_102_000, "采购入库单不存在");
@@ -38,6 +40,8 @@ ErrorCode PURCHASE_ORDER_ITEM_RETURN_FAIL_IN_EXCEED = new ErrorCode(1_030_101_00
     ErrorCode PURCHASE_IN_NOT_APPROVE = new ErrorCode(1_030_102_006, "采购入库单未审核，无法操作");
     ErrorCode PURCHASE_IN_FAIL_PAYMENT_PRICE_EXCEED = new ErrorCode(1_030_102_007, "付款金额({})超过采购入库单总金额({})");
     ErrorCode PURCHASE_IN_PROCESS_FAIL_EXISTS_PAYMENT = new ErrorCode(1_030_102_008, "反审核失败，已存在对应的付款单");
+    ErrorCode PURCHASE_IN_ITEM_COUNT_POSITIVE = new ErrorCode(1_030_102_015, "入库数量不得小于等于 0");
+    ErrorCode PURCHASE_IN_ITEM_PRICE_POSITIVE = new ErrorCode(1_030_102_016, "入库价格不得小于 0");
 
     // ========== ERP 采购退货（1-030-103-000） ==========
     ErrorCode PURCHASE_RETURN_NOT_EXISTS = new ErrorCode(1_030_103_000, "采购退货单不存在");
@@ -54,6 +58,9 @@ ErrorCode PURCHASE_ORDER_ITEM_RETURN_FAIL_IN_EXCEED = new ErrorCode(1_030_101_00
     ErrorCode PURCHASE_RETURN_SOURCE_IN_ITEM_NOT_EXISTS = new ErrorCode(1_030_103_011, "原采购入库项不存在");
     ErrorCode PURCHASE_RETURN_EXCEED_RETURNABLE = new ErrorCode(1_030_103_012, "退货数量超过可退数量，入库项[{}] 可退[{}] 但尝试退[{}]");
     ErrorCode PURCHASE_RETURN_COUNT_POSITIVE = new ErrorCode(1_030_103_013, "退货数量必须大于 0");
+    ErrorCode PURCHASE_RETURN_SUPPLIER_REQUIRED = new ErrorCode(1_030_103_014, "供应商不能为空");
+    ErrorCode PURCHASE_RETURN_ITEM_COUNT_POSITIVE = new ErrorCode(1_030_103_015, "退货数量不得小于等于 0");
+    ErrorCode PURCHASE_RETURN_ITEM_PRICE_POSITIVE = new ErrorCode(1_030_103_016, "退货价格不得小于等于 0");
 
     // ========== ERP 客户（1-030-200-000）==========
     ErrorCode CUSTOMER_NOT_EXISTS = new ErrorCode(1_020_200_000, "客户不存在");
@@ -147,13 +154,18 @@ ErrorCode PURCHASE_ORDER_ITEM_RETURN_FAIL_IN_EXCEED = new ErrorCode(1_030_101_00
     ErrorCode STOCK_COUNT_NEGATIVE = new ErrorCode(1_030_404_000, "操作失败，产品({})所在仓库({})的库存：{}，小于变更数量：{}");
     ErrorCode STOCK_COUNT_NEGATIVE2 = new ErrorCode(1_030_404_001, "操作失败，产品({})所在仓库({})的库存不足");
 
-    // ========== ERP 采购调价单 1-030-104-000 ==========
-    ErrorCode PURCHASE_PRICE_ADJUST_NOT_EXISTS = new ErrorCode(1_030_104_000, "采购调价单不存在");
-    ErrorCode PURCHASE_PRICE_ADJUST_DELETE_FAIL_APPROVE = new ErrorCode(1_030_104_001, "采购调价单()已审核，无法删除");
-    ErrorCode PURCHASE_PRICE_ADJUST_PROCESS_FAIL = new ErrorCode(1_030_104_002, "反审核失败，只有已审核的调价单才能反审核");
-    ErrorCode PURCHASE_PRICE_ADJUST_APPROVE_FAIL = new ErrorCode(1_030_104_003, "审核失败，只有未审核的调价单才能审核");
-    ErrorCode PURCHASE_PRICE_ADJUST_NO_EXISTS = new ErrorCode(1_030_104_004, "生成调价单号失败，请重新提交");
-    ErrorCode PURCHASE_PRICE_ADJUST_UPDATE_FAIL_APPROVE = new ErrorCode(1_030_104_005, "采购调价单()已审核，无法修改");
+    // ========== ERP 采购调价单 1-030-506-000 ==========
+    ErrorCode PURCHASE_PRICE_ADJUST_NOT_EXISTS = new ErrorCode(1_030_506_000, "采购调价单不存在");
+    ErrorCode PURCHASE_PRICE_ADJUST_DELETE_FAIL_APPROVE = new ErrorCode(1_030_506_001, "采购调价单已审批，无法删除");
+    ErrorCode PURCHASE_PRICE_ADJUST_UPDATE_FAIL_APPROVE = new ErrorCode(1_030_506_002, "采购调价单已审批，无法修改");
+    ErrorCode PURCHASE_PRICE_ADJUST_APPROVE_FAIL = new ErrorCode(1_030_506_003, "采购调价单已审批，不可重复审批");
+    ErrorCode PURCHASE_PRICE_ADJUST_PROCESS_FAIL = new ErrorCode(1_030_506_004, "采购调价单未审批，无法反审批");
+    ErrorCode PURCHASE_PRICE_ADJUST_ITEM_NOT_EXISTS = new ErrorCode(1_030_506_005, "采购调价明细不存在");
+    ErrorCode PURCHASE_PRICE_ADJUST_TYPE_INVALID = new ErrorCode(1_030_506_006, "采购调价类型不正确");
+    ErrorCode PURCHASE_PRICE_ADJUST_ITEM_EMPTY = new ErrorCode(1_030_506_007, "采购调价明细不能为空");
+    ErrorCode PURCHASE_PRICE_ADJUST_ITEM_ADJUSTED = new ErrorCode(1_030_506_008, "该入库明细已被调价，不可再次调价（添加明细方式）");
+    ErrorCode PURCHASE_PRICE_ADJUST_NEW_PRICE_NEGATIVE = new ErrorCode(1_030_506_009, "调价后单价不能为负");
+    ErrorCode PURCHASE_PRICE_ADJUST_NO_EXISTS = new ErrorCode(1_030_506_010, "生成调价单号失败，请重新提交");
 
     // ========== ERP 库存占用 1-030-405-000 ==========
     ErrorCode STOCK_LOCK_NOT_EXISTS = new ErrorCode(1_030_405_000, "库存占用记录不存在");
@@ -183,6 +195,8 @@ ErrorCode PURCHASE_ORDER_ITEM_RETURN_FAIL_IN_EXCEED = new ErrorCode(1_030_101_00
     ErrorCode SALE_QUOTE_CONVERT_COUNT_EXCEED = new ErrorCode(1_030_205_006, "报价订单项({})本次转换数量({})超过可转数量({})");
     ErrorCode SALE_QUOTE_CONVERT_COUNT_POSITIVE = new ErrorCode(1_030_205_007, "报价订单项({})本次转换数量必须大于 0");
     ErrorCode SALE_QUOTE_ITEM_NOT_EXISTS = new ErrorCode(1_030_205_008, "报价订单项不存在：{}");
+    ErrorCode SALE_QUOTE_UPDATE_FAIL_NOT_DRAFT = new ErrorCode(1_030_205_009, "报价订单({})不是草稿状态，不允许编辑");
+    ErrorCode SALE_QUOTE_ITEM_PRODUCT_PRICE_NOT_NULL = new ErrorCode(1_030_205_010, "报价订单项({})单价不能为空");
 
     // ========== ERP 销售手推车 1-030-206-000 ==========
     ErrorCode SALE_CART_NOT_EXISTS = new ErrorCode(1_030_206_000, "销售手推车不存在");
@@ -192,6 +206,30 @@ ErrorCode PURCHASE_ORDER_ITEM_RETURN_FAIL_IN_EXCEED = new ErrorCode(1_030_101_00
     ErrorCode SALE_CART_FINAL_APPROVE_FAIL = new ErrorCode(1_030_206_004, "终审失败，只有初审通过的销售手推车才能终审");
     ErrorCode SALE_CART_UPDATE_FAIL_GENERATED = new ErrorCode(1_030_206_005, "销售手推车({})已生成销售单，无法修改");
     ErrorCode SALE_CART_CONVERT_QUOTE_FAIL = new ErrorCode(1_030_206_006, "销售手推车转报价订单失败，只有草稿状态才能转换");
+    ErrorCode SALE_CART_DELETE_FAIL_FINAL_APPROVED = new ErrorCode(1_030_206_007, "销售手推车({})已终审生成销售单，无法删除");
+    ErrorCode SALE_CART_DELETE_FAIL_CONVERTED = new ErrorCode(1_030_206_008, "销售手推车({})已转为报价订单，无法删除");
+    ErrorCode SALE_CART_UPDATE_FAIL_NOT_PROCESS = new ErrorCode(1_030_206_009, "销售手推车({})不是草稿状态，无法修改");
+    ErrorCode SALE_CART_REJECT_FAIL = new ErrorCode(1_030_206_010, "驳回失败，只有已提交或初审通过的销售手推车才能驳回");
+    ErrorCode SALE_CART_ITEM_COUNT_POSITIVE = new ErrorCode(1_030_206_011, "产品数量必须大于 0");
+    ErrorCode SALE_CART_ITEM_PRICE_POSITIVE = new ErrorCode(1_030_206_012, "产品单价必须大于 0");
+    ErrorCode SALE_CART_CONVERT_QUOTE_ITEMS_EMPTY = new ErrorCode(1_030_206_013, "转出商品列表为空");
+
+    // ========== ERP 销售配置 1-030-207-000 ==========
+    ErrorCode SALE_CONFIG_NOT_EXISTS = new ErrorCode(1_030_207_000, "销售配置不存在");
+    ErrorCode SALE_CONFIG_CODE_DUPLICATE = new ErrorCode(1_030_207_001, "销售配置类型【{}】下已存在编码【{}】");
+
+    // ========== ERP 供应商基础表 1-030-110-000 ==========
+    ErrorCode SUPPLIER_CONTACT_NOT_EXISTS = new ErrorCode(1_030_110_000, "供应商联系人不存在");
+    ErrorCode SUPPLIER_CONTRACT_NOT_EXISTS = new ErrorCode(1_030_110_001, "供应商合同不存在");
+    ErrorCode SUPPLIER_EXTEND_INFO_NOT_EXISTS = new ErrorCode(1_030_110_002, "供应商拓展信息不存在");
+    ErrorCode SUPPLIER_EXTEND_NOT_EXISTS = new ErrorCode(1_030_110_003, "供应商动态拓展字段不存在");
+    ErrorCode SUPPLIER_IMAGE_NOT_EXISTS = new ErrorCode(1_030_110_004, "供应商图片不存在");
+    ErrorCode SUPPLIER_ACCOUNT_NOT_EXISTS = new ErrorCode(1_030_110_005, "供应商账户不存在");
+    ErrorCode SUPPLIER_BILL_NOT_EXISTS = new ErrorCode(1_030_110_006, "供应商票据不存在");
+    ErrorCode SUPPLIER_TASK_NOT_EXISTS = new ErrorCode(1_030_110_007, "供应商任务量不存在");
+    ErrorCode SUPPLIER_BUSINESS_INFO_NOT_EXISTS = new ErrorCode(1_030_110_008, "供应商工商信息不存在");
+    ErrorCode SUPPLIER_TASK_MONTH_INVALID = new ErrorCode(1_030_110_009, "供应商任务月份必须在 1 到 12 之间");
+    ErrorCode SUPPLIER_TASK_DUPLICATE = new ErrorCode(1_030_110_010, "同一供应商同一年月同一级别任务量已存在");
 
     // ========== ERP 车型适配 1-030-800-000 ==========
     ErrorCode VEHICLE_BRAND_NOT_EXISTS = new ErrorCode(1_030_800_000, "车型品牌不存在");
@@ -215,6 +253,7 @@ ErrorCode PURCHASE_ORDER_ITEM_RETURN_FAIL_IN_EXCEED = new ErrorCode(1_030_101_00
     ErrorCode PRODUCT_WAREHOUSE_NOT_EXISTS = new ErrorCode(1_030_500_005, "默认仓库不存在");
     ErrorCode PRODUCT_UNIVERSAL_CODE_INVALID = new ErrorCode(1_030_500_006, "通用件编码({})不存在");
     ErrorCode PRODUCT_UNIVERSAL_CODE_SELF = new ErrorCode(1_030_500_007, "通用件编码不能是自身");
+    ErrorCode PRODUCT_WAREHOUSE_REQUIRED = new ErrorCode(1_030_500_008, "默认仓库不能为空");
 
     // ========== ERP 产品分类 1-030-501-000 ==========
     ErrorCode PRODUCT_CATEGORY_NOT_EXISTS = new ErrorCode(1_030_501_000, "产品分类不存在");
@@ -263,5 +302,94 @@ ErrorCode PURCHASE_ORDER_ITEM_RETURN_FAIL_IN_EXCEED = new ErrorCode(1_030_101_00
     ErrorCode FINANCE_RECEIPT_APPROVE_FAIL = new ErrorCode(1_030_602_003, "审核失败，只有未审核的收款单才能审核");
     ErrorCode FINANCE_RECEIPT_NO_EXISTS = new ErrorCode(1_030_602_004, "生成收款单号失败，请重新提交");
     ErrorCode FINANCE_RECEIPT_UPDATE_FAIL_APPROVE = new ErrorCode(1_030_602_005, "收款单({})已审核，无法修改");
+
+    // ========== ERP 会计科目 1-030-610-000 ==========
+    ErrorCode ACCOUNTING_SUBJECT_NOT_EXISTS = new ErrorCode(1_030_610_000, "会计科目不存在");
+    ErrorCode ACCOUNTING_SUBJECT_CODE_DUPLICATE = new ErrorCode(1_030_610_001, "科目编码({})已存在");
+    ErrorCode ACCOUNTING_SUBJECT_NOT_LEAF = new ErrorCode(1_030_610_002, "凭证只能使用末级科目");
+    ErrorCode ACCOUNTING_SUBJECT_HAS_CHILDREN = new ErrorCode(1_030_610_003, "科目({})存在下级子科目，请先删除子科目");
+    ErrorCode ACCOUNTING_SUBJECT_USED_BY_VOUCHER = new ErrorCode(1_030_610_004, "科目({})已被凭证引用，无法删除");
+    ErrorCode ACCOUNTING_SUBJECT_IMPORT_CODE_DUPLICATE = new ErrorCode(1_030_610_005, "Excel 中存在重复的科目编码：{}");
+    ErrorCode ACCOUNTING_SUBJECT_CATEGORY_INVALID = new ErrorCode(1_030_610_006, "科目大类不合法，当前值：{}");
+
+    // ========== ERP 系统开账 1-030-611-000 ==========
+    ErrorCode BOOK_OPEN_NOT_EXISTS = new ErrorCode(1_030_611_000, "系统开账记录不存在");
+    ErrorCode BOOK_OPEN_DUPLICATE = new ErrorCode(1_030_611_001, "该期间已开账，请勿重复操作");
+    ErrorCode BOOK_OPEN_NO_EXISTS = new ErrorCode(1_030_611_002, "生成开账编号失败");
+    ErrorCode BOOK_OPEN_PERIOD_INVALID = new ErrorCode(1_030_611_005, "开账期间不合法：会计年应在 1900~9999 之间，会计期应在 1~12 之间");
+
+    // ========== ERP 凭证 1-030-612-000 ==========
+    ErrorCode VOUCHER_NOT_EXISTS = new ErrorCode(1_030_612_000, "凭证不存在");
+    ErrorCode VOUCHER_NO_EXISTS = new ErrorCode(1_030_612_001, "生成凭证编号失败");
+    ErrorCode VOUCHER_DEBIT_CREDIT_NOT_BALANCE = new ErrorCode(1_030_612_002, "借贷不平衡：借方({}) 贷方({})");
+    ErrorCode VOUCHER_AUDIT_FAIL = new ErrorCode(1_030_612_003, "审核失败，只有未审核的凭证才能审核");
+    ErrorCode VOUCHER_PROCESS_FAIL = new ErrorCode(1_030_612_004, "反审核失败，只有已审核的凭证才能反审核");
+    ErrorCode VOUCHER_ITEM_EMPTY = new ErrorCode(1_030_612_005, "凭证分录不能为空");
+    ErrorCode VOUCHER_AUTO_GENERATE_FAIL = new ErrorCode(1_030_612_010, "自动生成凭证失败：{}");
+    ErrorCode VOUCHER_SUBJECT_CODE_MISSING = new ErrorCode(1_030_612_011, "缺少必备会计科目：{}");
+    ErrorCode BIZ_PROCESS_FAIL_VOUCHER_APPROVED = new ErrorCode(1_030_612_012, "凭证({})已审核，请先反审核凭证再反审单据");
+    ErrorCode VOUCHER_BIZ_APPROVED_EXISTS = new ErrorCode(1_030_612_013, "业务单据({})已存在已审核凭证，请先反审核后再重新生成");
+
+    // ========== ERP 凭证归属 1-030-613-000 ==========
+    ErrorCode VOUCHER_ATTRIBUTION_NOT_EXISTS = new ErrorCode(1_030_613_000, "归属记录不存在");
+    ErrorCode VOUCHER_ATTRIBUTION_MONTH_INVALID = new ErrorCode(1_030_613_001, "归属月份不能晚于实际制单月份");
+    ErrorCode VOUCHER_ATTRIBUTION_ALREADY_GENERATED = new ErrorCode(1_030_613_002, "已生成凭证的单据不可再次归属");
+    ErrorCode VOUCHER_ATTRIBUTION_MONTH_BEFORE_BIZ = new ErrorCode(1_030_613_003, "归属月份不能早于业务发生月份");
+    ErrorCode VOUCHER_ATTRIBUTION_BOOK_NOT_OPEN = new ErrorCode(1_030_613_004, "该期间未开账或未启用对应凭证类型");
+
+    // ========== ERP 凭证字 1-030-614-000 ==========
+    ErrorCode VOUCHER_WORD_NOT_EXISTS = new ErrorCode(1_030_614_000, "凭证字不存在");
+
+    // ========== ERP 报表模板 1-030-615-000 ==========
+    ErrorCode REPORT_TEMPLATE_NOT_EXISTS = new ErrorCode(1_030_615_000, "报表项目不存在");
+
+    // ========== ERP 科目辅助核算 1-030-616-000 ==========
+    ErrorCode SUBJECT_AUXILIARY_NOT_EXISTS = new ErrorCode(1_030_616_000, "科目辅助核算不存在");
+    ErrorCode SUBJECT_AUXILIARY_DUPLICATE = new ErrorCode(1_030_616_001, "科目({})已绑定该辅助核算类型");
+
+    // ========== ERP 其他应收单 1-030-617-000 ==========
+    ErrorCode OTHER_RECEIVABLE_NOT_EXISTS = new ErrorCode(1_030_617_000, "其他应收单不存在");
+    ErrorCode OTHER_RECEIVABLE_DELETE_FAIL_APPROVE = new ErrorCode(1_030_617_001, "其他应收单({})已审核，无法删除");
+    ErrorCode OTHER_RECEIVABLE_PROCESS_FAIL = new ErrorCode(1_030_617_002, "反审核失败，只有已审核的其他应收单才能反审核");
+    ErrorCode OTHER_RECEIVABLE_APPROVE_FAIL = new ErrorCode(1_030_617_003, "审核失败，只有未审核的其他应收单才能审核");
+    ErrorCode OTHER_RECEIVABLE_NO_EXISTS = new ErrorCode(1_030_617_004, "生成其他应收单号失败，请重新提交");
+    ErrorCode OTHER_RECEIVABLE_UPDATE_FAIL_APPROVE = new ErrorCode(1_030_617_005, "其他应收单({})已审核，无法修改");
+    ErrorCode OTHER_RECEIVABLE_UPDATE_FAIL_STATUS_CHANGED = new ErrorCode(1_030_617_006, "其他应收单状态已变更，请刷新后重试");
+
+    // ========== ERP 预收款单 1-030-618-000 ==========
+    ErrorCode PRE_RECEIPT_NOT_EXISTS = new ErrorCode(1_030_618_000, "预收款单不存在");
+    ErrorCode PRE_RECEIPT_DELETE_FAIL_APPROVE = new ErrorCode(1_030_618_001, "预收款单({})已审核，无法删除");
+    ErrorCode PRE_RECEIPT_PROCESS_FAIL = new ErrorCode(1_030_618_002, "反审核失败，只有已审核的预收款单才能反审核");
+    ErrorCode PRE_RECEIPT_APPROVE_FAIL = new ErrorCode(1_030_618_003, "审核失败，只有未审核的预收款单才能审核");
+    ErrorCode PRE_RECEIPT_NO_EXISTS = new ErrorCode(1_030_618_004, "生成预收款单号失败，请重新提交");
+    ErrorCode PRE_RECEIPT_UPDATE_FAIL_APPROVE = new ErrorCode(1_030_618_005, "预收款单({})已审核，无法修改");
+    ErrorCode PRE_RECEIPT_UPDATE_FAIL_STATUS_CHANGED = new ErrorCode(1_030_618_006, "预收款单状态已变更，请刷新后重试");
+
+    // ========== ERP 预付款单 1-030-620-000 ==========
+    ErrorCode PRE_PAYMENT_NOT_EXISTS = new ErrorCode(1_030_620_000, "预付款单不存在");
+    ErrorCode PRE_PAYMENT_DELETE_FAIL_APPROVE = new ErrorCode(1_030_620_001, "预付款单({})已审核，无法删除");
+    ErrorCode PRE_PAYMENT_PROCESS_FAIL = new ErrorCode(1_030_620_002, "反审核失败，只有已审核的预付款单才能反审核");
+    ErrorCode PRE_PAYMENT_APPROVE_FAIL = new ErrorCode(1_030_620_003, "审核失败，只有未审核的预付款单才能审核");
+    ErrorCode PRE_PAYMENT_NO_EXISTS = new ErrorCode(1_030_620_004, "生成预付款单号失败，请重新提交");
+    ErrorCode PRE_PAYMENT_UPDATE_FAIL_APPROVE = new ErrorCode(1_030_620_005, "预付款单({})已审核，无法修改");
+    ErrorCode PRE_PAYMENT_UPDATE_FAIL_STATUS_CHANGED = new ErrorCode(1_030_620_006, "预付款单状态已变更，请刷新后重试");
+
+    // ========== ERP 其他应付单 1-030-621-000 ==========
+    ErrorCode OTHER_PAYABLE_NOT_EXISTS = new ErrorCode(1_030_621_000, "其他应付单不存在");
+    ErrorCode OTHER_PAYABLE_DELETE_FAIL_APPROVE = new ErrorCode(1_030_621_001, "其他应付单({})已审核，无法删除");
+    ErrorCode OTHER_PAYABLE_PROCESS_FAIL = new ErrorCode(1_030_621_002, "反审核失败，只有已审核的其他应付单才能反审核");
+    ErrorCode OTHER_PAYABLE_APPROVE_FAIL = new ErrorCode(1_030_621_003, "审核失败，只有未审核的其他应付单才能审核");
+    ErrorCode OTHER_PAYABLE_NO_EXISTS = new ErrorCode(1_030_621_004, "生成其他应付单号失败，请重新提交");
+    ErrorCode OTHER_PAYABLE_UPDATE_FAIL_APPROVE = new ErrorCode(1_030_621_005, "其他应付单({})已审核，无法修改");
+    ErrorCode OTHER_PAYABLE_UPDATE_FAIL_STATUS_CHANGED = new ErrorCode(1_030_621_006, "其他应付单状态已变更，请刷新后重试");
+
+    // ========== ERP 预收账款单 1-030-622-000 ==========
+    ErrorCode PRE_RECEIVABLE_NOT_EXISTS = new ErrorCode(1_030_622_000, "预收账款单不存在");
+    ErrorCode PRE_RECEIVABLE_DELETE_FAIL_APPROVE = new ErrorCode(1_030_622_001, "预收账款单({})已审核，无法删除");
+    ErrorCode PRE_RECEIVABLE_PROCESS_FAIL = new ErrorCode(1_030_622_002, "反审核失败，只有已审核的预收账款单才能反审核");
+    ErrorCode PRE_RECEIVABLE_APPROVE_FAIL = new ErrorCode(1_030_622_003, "审核失败，只有未审核的预收账款单才能审核");
+    ErrorCode PRE_RECEIVABLE_NO_EXISTS = new ErrorCode(1_030_622_004, "生成预收账款单号失败，请重新提交");
+    ErrorCode PRE_RECEIVABLE_UPDATE_FAIL_APPROVE = new ErrorCode(1_030_622_005, "预收账款单({})已审核，无法修改");
+    ErrorCode PRE_RECEIVABLE_UPDATE_FAIL_STATUS_CHANGED = new ErrorCode(1_030_622_006, "预收账款单状态已变更，请刷新后重试");
 
 }

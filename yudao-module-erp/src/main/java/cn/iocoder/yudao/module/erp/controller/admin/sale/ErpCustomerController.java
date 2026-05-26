@@ -7,27 +7,36 @@ import cn.iocoder.yudao.framework.common.pojo.PageParam;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
 import cn.iocoder.yudao.framework.excel.core.util.ExcelUtils;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.customer.ErpCustomerBatchUpdateReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.customer.ErpCustomerImportExcelVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.customer.ErpCustomerPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.customer.ErpCustomerRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.customer.ErpCustomerSaveReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpCustomerDO;
+import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpSaleOutMapper;
 import cn.iocoder.yudao.module.erp.service.sale.ErpCustomerService;
+import cn.iocoder.yudao.module.erp.service.sale.bo.ErpCustomerSaleStatsBO;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 import javax.annotation.Resource;
 import javax.servlet.http.HttpServletResponse;
 import javax.validation.Valid;
 import java.io.IOException;
+import java.util.Collections;
 import java.util.List;
 
 import static cn.iocoder.yudao.framework.apilog.core.enums.OperateTypeEnum.EXPORT;
 import static cn.iocoder.yudao.framework.common.pojo.CommonResult.success;
 import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.convertList;
+import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.convertMap;
+
+import cn.hutool.core.collection.CollUtil;
 
 @Tag(name = "管理后台 - ERP 客户")
 @RestController
@@ -37,6 +46,9 @@ public class ErpCustomerController {
 
     @Resource
     private ErpCustomerService customerService;
+
+    @Resource
+    private ErpSaleOutMapper saleOutMapper;
 
     @PostMapping("/create")
     @Operation(summary = "创建客户")
@@ -76,14 +88,33 @@ public class ErpCustomerController {
     @PreAuthorize("@ss.hasPermission('erp:customer:query')")
     public CommonResult<PageResult<ErpCustomerRespVO>> getCustomerPage(@Valid ErpCustomerPageReqVO pageReqVO) {
         PageResult<ErpCustomerDO> pageResult = customerService.getCustomerPage(pageReqVO);
-        return success(BeanUtils.toBean(pageResult, ErpCustomerRespVO.class));
+        PageResult<ErpCustomerRespVO> respResult = BeanUtils.toBean(pageResult, ErpCustomerRespVO.class);
+        // 批量聚合销售统计（最近销售日期 / 累计销售额 / 应收余额）
+        if (CollUtil.isNotEmpty(respResult.getList())) {
+            java.util.Collection<Long> customerIds = convertList(respResult.getList(), ErpCustomerRespVO::getId);
+            java.util.Map<Long, ErpCustomerSaleStatsBO> statsMap = convertMap(
+                    saleOutMapper.selectSaleStatsByCustomerIds(customerIds),
+                    ErpCustomerSaleStatsBO::getCustomerId);
+            respResult.getList().forEach(vo -> {
+                ErpCustomerSaleStatsBO stats = statsMap.get(vo.getId());
+                if (stats != null) {
+                    if (stats.getLastSaleTime() != null) {
+                        vo.setLastSaleDate(stats.getLastSaleTime().toLocalDate());
+                    }
+                    vo.setTotalSaleAmount(stats.getTotalSaleAmount());
+                    vo.setReceivableBalance(stats.getReceivableBalance());
+                }
+            });
+        }
+        return success(respResult);
     }
 
     @GetMapping("/simple-list")
     @Operation(summary = "获得客户精简列表", description = "只包含被开启的客户，主要用于前端的下拉选项")
     public CommonResult<List<ErpCustomerRespVO>> getCustomerSimpleList() {
         List<ErpCustomerDO> list = customerService.getCustomerListByStatus(CommonStatusEnum.ENABLE.getStatus());
-        return success(convertList(list, customer -> new ErpCustomerRespVO().setId(customer.getId()).setName(customer.getName())));
+        return success(convertList(list, customer -> new ErpCustomerRespVO().setId(customer.getId())
+                .setName(customer.getName()).setContact(customer.getContact()).setMobile(customer.getMobile())));
     }
 
     @GetMapping("/export-excel")
@@ -97,6 +128,31 @@ public class ErpCustomerController {
         // 导出 Excel
         ExcelUtils.write(response, "客户.xls", "数据", ErpCustomerRespVO.class,
                         BeanUtils.toBean(list, ErpCustomerRespVO.class));
+    }
+
+    @GetMapping("/get-import-template")
+    @Operation(summary = "获得客户导入模板")
+    @PreAuthorize("@ss.hasPermission('erp:customer:import')")
+    public void importTemplate(HttpServletResponse response) throws IOException {
+        List<ErpCustomerImportExcelVO> list = Collections.singletonList(new ErpCustomerImportExcelVO());
+        ExcelUtils.write(response, "客户导入模板.xls", "客户", ErpCustomerImportExcelVO.class, list);
+    }
+
+    @PostMapping("/import")
+    @Operation(summary = "导入客户")
+    @PreAuthorize("@ss.hasPermission('erp:customer:import')")
+    public CommonResult<Boolean> importCustomer(@RequestParam("file") MultipartFile file) throws Exception {
+        List<ErpCustomerImportExcelVO> list = ExcelUtils.read(file, ErpCustomerImportExcelVO.class);
+        customerService.importCustomerList(list);
+        return success(true);
+    }
+
+    @PutMapping("/batch-update")
+    @Operation(summary = "批量编辑客户")
+    @PreAuthorize("@ss.hasPermission('erp:customer:update')")
+    public CommonResult<Boolean> batchUpdateCustomer(@Valid @RequestBody ErpCustomerBatchUpdateReqVO reqVO) {
+        customerService.batchUpdateCustomer(reqVO);
+        return success(true);
     }
 
 }

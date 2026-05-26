@@ -27,6 +27,7 @@ public class ErpCustomerSaveReqVO {
     @Schema(description = "外文名")
     private String foreignName;
     @Schema(description = "往来类别")
+    @Min(value = 1, message = "往来类别必须为正数")
     private Integer relationType;
     @Schema(description = "区域编号")
     private Long areaId;
@@ -76,8 +77,7 @@ public class ErpCustomerSaveReqVO {
     @NotNull(message = "开启状态不能为空")
     private Integer status;
 
-    @Schema(description = "排序", requiredMode = Schema.RequiredMode.REQUIRED, example = "10")
-    @NotNull(message = "排序不能为空")
+    @Schema(description = "排序", example = "10")
     private Integer sort;
 
     @Schema(description = "纳税人识别号", example = "91130803MA098BY05W")
@@ -86,6 +86,7 @@ public class ErpCustomerSaveReqVO {
     @Schema(description = "账户")
     private String accountName;
     @Schema(description = "结算方式")
+    @Min(value = 1, message = "结算方式必须为正数")
     private Integer settleMethod;
     @Schema(description = "结算锁定")
     private Boolean settleLocked;
@@ -154,5 +155,14 @@ public class ErpCustomerSaveReqVO {
     private String memberCode;
     @Schema(description = "平台唯一码")
     private String platformCode;
+
+    @Schema(description = "客户标签（逗号分隔）")
+    private String customerTag;
+    @Schema(description = "微信客服账号/姓名")
+    private String wechatService;
+    @Schema(description = "白条授信额度")
+    private BigDecimal creditLimit;
+    @Schema(description = "数据中心审核状态 0未审核 1已审核 2驳回")
+    private Integer dataCenterAuditStatus;
 
 }

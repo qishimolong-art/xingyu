@@ -96,6 +96,29 @@ public interface ErpStockMapper extends BaseMapperX<ErpStockDO> {
         return update(null, updateWrapper);
     }
 
+    /**
+     * 仅更新库存的 costAmount / costPrice（数量不变），采购调价专用。
+     *
+     * <p>以 count + costAmount 双条件作为乐观锁；并发修改将导致返回 0，上层需重试。</p>
+     *
+     * @param id                 库存主键
+     * @param expectedCount      期望的当前库存数量（版本校验）
+     * @param expectedCostAmount 期望的当前成本金额（版本校验）
+     * @param newCostAmount      新成本金额
+     * @param newCostPrice       新成本均价
+     * @return 更新行数
+     */
+    default int updateCostAmountAndPrice(Long id, BigDecimal expectedCount, BigDecimal expectedCostAmount,
+                                         BigDecimal newCostAmount, BigDecimal newCostPrice) {
+        LambdaUpdateWrapper<ErpStockDO> updateWrapper = new LambdaUpdateWrapper<ErpStockDO>()
+                .eq(ErpStockDO::getId, id)
+                .eq(ErpStockDO::getCount, expectedCount)
+                .eq(ErpStockDO::getCostAmount, expectedCostAmount)
+                .set(ErpStockDO::getCostAmount, newCostAmount)
+                .set(ErpStockDO::getCostPrice, newCostPrice);
+        return update(null, updateWrapper);
+    }
+
     default BigDecimal selectSumByProductId(Long productId) {
         // SQL sum 查询
         List<Map<String, Object>> result = selectMaps(new QueryWrapper<ErpStockDO>()

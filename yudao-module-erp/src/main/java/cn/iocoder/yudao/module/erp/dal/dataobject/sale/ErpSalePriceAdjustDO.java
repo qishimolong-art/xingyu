@@ -43,17 +43,17 @@ public class ErpSalePriceAdjustDO extends BaseDO {
      */
     private Long customerId;
     /**
-     * 部门
+     * 部门ID
      */
-    private String dept;
+    private Long deptId;
     /**
-     * 调价人
+     * 调价人ID
      */
-    private String adjustUser;
+    private Long adjustUserId;
     /**
      * 调价类型
      */
-    private String adjustType;
+    private Integer adjustType;
     /**
      * 备注
      */
@@ -62,5 +62,34 @@ public class ErpSalePriceAdjustDO extends BaseDO {
      * 调价总金额
      */
     private BigDecimal totalAdjustPrice;
+
+    /**
+     * 原销售单编号
+     */
+    private Long originalSaleOutId;
+    /**
+     * 原销售单号
+     */
+    private String originalSaleOutNo;
+    /**
+     * 调价后新销售单编号
+     */
+    private Long newSaleOutId;
+    /**
+     * 调价后新销售单号
+     */
+    private String newSaleOutNo;
+    /**
+     * 结算方式
+     */
+    private String settleMethod;
+    /**
+     * 送货方式
+     */
+    private String deliveryMethod;
+    /**
+     * 物流公司
+     */
+    private String logisticsCompany;
 
 }

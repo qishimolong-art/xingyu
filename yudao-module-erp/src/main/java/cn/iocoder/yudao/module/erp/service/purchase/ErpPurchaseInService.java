@@ -1,6 +1,10 @@
 package cn.iocoder.yudao.module.erp.service.purchase;
 
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.in.ErpPurchaseInImportExcelVO;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.in.ErpPurchaseInImportRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.in.ErpPurchaseInForAdjustRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.in.ErpPurchaseInItemForAdjustRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.in.ErpPurchaseInPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.in.ErpPurchaseInSaveReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.order.ErpPurchaseInFromOrderReqVO;
@@ -114,5 +118,32 @@ public interface ErpPurchaseInService {
      * @return 入库单编号
      */
     Long createPurchaseInFromOrder(ErpPurchaseInFromOrderReqVO reqVO);
+
+    // ==================== 采购调价 专用查询 ====================
+
+    /**
+     * 查询指定供应商下所有已审批的入库单，用于采购调价「按入库单」方式
+     *
+     * @param supplierId 供应商编号（必填）
+     * @return 已审批入库单列表
+     */
+    List<ErpPurchaseInForAdjustRespVO> getApprovedPurchaseInsBySupplier(Long supplierId);
+
+    /**
+     * 查询指定供应商下所有已审批入库单的明细行，用于采购调价「添加明细」方式
+     *
+     * @param supplierId       供应商编号（必填）
+     * @param excludeAdjusted  是否过滤掉已调价过的行（true = 过滤）
+     * @return 已审批入库单的明细行
+     */
+    List<ErpPurchaseInItemForAdjustRespVO> getApprovedPurchaseInItemsBySupplier(Long supplierId, Boolean excludeAdjusted);
+
+    /**
+     * 解析采购入库导入明细
+     *
+     * @param list Excel 行数据
+     * @return 导入结果
+     */
+    ErpPurchaseInImportRespVO importPurchaseInItems(List<ErpPurchaseInImportExcelVO> list);
 
 }

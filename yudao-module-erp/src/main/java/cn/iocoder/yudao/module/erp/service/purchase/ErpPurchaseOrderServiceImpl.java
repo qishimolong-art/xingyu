@@ -195,6 +195,21 @@ public class ErpPurchaseOrderServiceImpl implements ErpPurchaseOrderService {
     }
 
     private List<ErpPurchaseOrderItemDO> validatePurchaseOrderItems(List<ErpPurchaseOrderSaveReqVO.Item> list) {
+        // 0. 校验每项的数量和单价必须大于 0（赠品行仅校验数量，单价强制为 0）
+        if (CollUtil.isNotEmpty(list)) {
+            for (ErpPurchaseOrderSaveReqVO.Item item : list) {
+                if (item.getCount() == null || item.getCount().compareTo(BigDecimal.ZERO) <= 0) {
+                    throw exception(PURCHASE_ORDER_ITEM_COUNT_POSITIVE);
+                }
+                // 赠品行单价会被强制为 0，跳过单价校验
+                if (Boolean.TRUE.equals(item.getGift())) {
+                    continue;
+                }
+                if (item.getProductPrice() == null || item.getProductPrice().compareTo(BigDecimal.ZERO) <= 0) {
+                    throw exception(PURCHASE_ORDER_ITEM_PRICE_POSITIVE);
+                }
+            }
+        }
         // 1. 校验产品存在
         List<ErpProductDO> productList = productService.validProductList(
                 convertSet(list, ErpPurchaseOrderSaveReqVO.Item::getProductId));

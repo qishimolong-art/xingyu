@@ -7,6 +7,7 @@ import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.*;
 
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
 
 /**
  * ERP 供应商 DO
@@ -164,6 +165,10 @@ public class ErpSupplierDO extends BaseDO {
      * 淘汰
      */
     private Boolean obsolete;
+    /**
+     * 淘汰日期（当 obsolete=true 时使用）
+     */
+    private LocalDateTime obsoleteDate;
     /**
      * 开票类型
      */

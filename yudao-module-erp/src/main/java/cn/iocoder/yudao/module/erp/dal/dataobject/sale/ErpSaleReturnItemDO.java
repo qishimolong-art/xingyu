@@ -96,4 +96,13 @@ public class ErpSaleReturnItemDO extends BaseDO {
      */
     private String remark;
 
+    /**
+     * 退货原因
+     */
+    private String returnReason;
+    /**
+     * 货位/仓位
+     */
+    private String warehousePosition;
+
 }

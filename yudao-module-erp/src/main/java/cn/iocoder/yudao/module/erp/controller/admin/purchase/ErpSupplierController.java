@@ -53,6 +53,17 @@ public class ErpSupplierController {
         return success(true);
     }
 
+    @PutMapping("/update-status")
+    @Operation(summary = "更新供应商开启状态（停用/启用）")
+    @Parameter(name = "id", description = "编号", required = true, example = "1024")
+    @Parameter(name = "status", description = "状态（0=开启，1=停用）", required = true, example = "1")
+    @PreAuthorize("@ss.hasPermission('erp:supplier:update')")
+    public CommonResult<Boolean> updateSupplierStatus(@RequestParam("id") Long id,
+                                                      @RequestParam("status") Integer status) {
+        supplierService.updateSupplierStatus(id, status);
+        return success(true);
+    }
+
     @DeleteMapping("/delete")
     @Operation(summary = "删除供应商")
     @Parameter(name = "id", description = "编号", required = true)

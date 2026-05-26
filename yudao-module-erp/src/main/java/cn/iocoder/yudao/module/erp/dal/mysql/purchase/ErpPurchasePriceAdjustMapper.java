@@ -5,6 +5,7 @@ import cn.iocoder.yudao.framework.mybatis.core.mapper.BaseMapperX;
 import cn.iocoder.yudao.framework.mybatis.core.query.LambdaQueryWrapperX;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.priceadjust.ErpPurchasePriceAdjustPageReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchasePriceAdjustDO;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import org.apache.ibatis.annotations.Mapper;
 
 /**
@@ -18,10 +19,33 @@ public interface ErpPurchasePriceAdjustMapper extends BaseMapperX<ErpPurchasePri
     default PageResult<ErpPurchasePriceAdjustDO> selectPage(ErpPurchasePriceAdjustPageReqVO reqVO) {
         return selectPage(reqVO, new LambdaQueryWrapperX<ErpPurchasePriceAdjustDO>()
                 .likeIfPresent(ErpPurchasePriceAdjustDO::getNo, reqVO.getNo())
-                .eqIfPresent(ErpPurchasePriceAdjustDO::getSupplierId, reqVO.getSupplierId())
                 .eqIfPresent(ErpPurchasePriceAdjustDO::getStatus, reqVO.getStatus())
-                .betweenIfPresent(ErpPurchasePriceAdjustDO::getAdjustDate, reqVO.getAdjustDate())
+                .eqIfPresent(ErpPurchasePriceAdjustDO::getAdjustType, reqVO.getAdjustType())
+                .eqIfPresent(ErpPurchasePriceAdjustDO::getSupplierId, reqVO.getSupplierId())
+                .betweenIfPresent(ErpPurchasePriceAdjustDO::getAdjustTime, reqVO.getAdjustTime())
+                .likeIfPresent(ErpPurchasePriceAdjustDO::getRemark, reqVO.getRemark())
+                .eqIfPresent(ErpPurchasePriceAdjustDO::getCreator, reqVO.getCreator())
+                .eqIfPresent(ErpPurchasePriceAdjustDO::getDeptId, reqVO.getDeptId())
+                .eqIfPresent(ErpPurchasePriceAdjustDO::getAdjuster, reqVO.getAdjuster())
                 .orderByDesc(ErpPurchasePriceAdjustDO::getId));
+    }
+
+    default ErpPurchasePriceAdjustDO selectByNo(String no) {
+        return selectOne(ErpPurchasePriceAdjustDO::getNo, no);
+    }
+
+    /**
+     * 基于 id + 原状态的乐观锁更新，避免并发审批 / 反审批
+     *
+     * @param id        调价单 id
+     * @param status    期望的原状态（作为乐观锁 where 条件）
+     * @param updateObj 更新内容
+     * @return 实际影响行数
+     */
+    default int updateByIdAndStatus(Long id, Integer status, ErpPurchasePriceAdjustDO updateObj) {
+        return update(updateObj, new LambdaUpdateWrapper<ErpPurchasePriceAdjustDO>()
+                .eq(ErpPurchasePriceAdjustDO::getId, id)
+                .eq(ErpPurchasePriceAdjustDO::getStatus, status));
     }
 
 }

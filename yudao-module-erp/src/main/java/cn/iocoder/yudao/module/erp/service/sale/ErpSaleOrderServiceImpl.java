@@ -5,11 +5,16 @@ import cn.hutool.core.util.ObjectUtil;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.common.util.number.MoneyUtils;
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
+import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpProductRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.order.ErpSaleOrderImportExcelVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.order.ErpSaleOrderImportRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.order.ErpSaleOrderPageReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.order.ErpSaleOrderRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.order.ErpSaleOrderSaveReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.product.ErpProductDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleOrderDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleOrderItemDO;
+import cn.iocoder.yudao.module.erp.dal.mysql.product.ErpProductMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpSaleOrderItemMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpSaleOrderMapper;
 import cn.iocoder.yudao.module.erp.dal.redis.no.ErpNoRedisDAO;
@@ -25,6 +30,7 @@ import javax.annotation.Resource;
 import java.math.BigDecimal;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 
@@ -47,6 +53,8 @@ public class ErpSaleOrderServiceImpl implements ErpSaleOrderService {
     private ErpSaleOrderMapper saleOrderMapper;
     @Resource
     private ErpSaleOrderItemMapper saleOrderItemMapper;
+    @Resource
+    private ErpProductMapper productMapper;
 
     @Resource
     private ErpNoRedisDAO noRedisDAO;
@@ -302,6 +310,55 @@ public class ErpSaleOrderServiceImpl implements ErpSaleOrderService {
             return Collections.emptyList();
         }
         return saleOrderItemMapper.selectListByOrderIds(orderIds);
+    }
+
+    @Override
+    public ErpSaleOrderImportRespVO parseImportData(List<ErpSaleOrderImportExcelVO> list) {
+        ErpSaleOrderImportRespVO respVO = new ErpSaleOrderImportRespVO();
+        if (CollUtil.isEmpty(list)) {
+            return respVO;
+        }
+        LinkedHashSet<String> productCodes = new LinkedHashSet<>();
+        list.forEach(row -> {
+            if (row.getProductCode() != null && !row.getProductCode().isEmpty()) {
+                productCodes.add(row.getProductCode());
+            }
+        });
+        Map<String, ErpProductDO> productMap = convertMap(productMapper.selectListByCodes(productCodes), ErpProductDO::getCode);
+        Map<Long, ErpProductRespVO> productVOMap = productService.getProductVOMap(convertList(productMap.values(), ErpProductDO::getId));
+        for (int i = 0; i < list.size(); i++) {
+            ErpSaleOrderImportExcelVO row = list.get(i);
+            int rowNo = i + 2;
+            if (row.getProductCode() == null || row.getProductCode().isEmpty()) {
+                respVO.getFailureDetails().add(new ErpSaleOrderImportRespVO.FailureItem(rowNo, null, "产品编码不能为空"));
+                respVO.setFailureCount(respVO.getFailureCount() + 1);
+                continue;
+            }
+            ErpProductDO product = productMap.get(row.getProductCode());
+            if (product == null) {
+                respVO.getFailureDetails().add(new ErpSaleOrderImportRespVO.FailureItem(rowNo, row.getProductCode(), "产品不存在"));
+                respVO.setFailureCount(respVO.getFailureCount() + 1);
+                continue;
+            }
+            if (row.getCount() == null || row.getCount().compareTo(BigDecimal.ZERO) <= 0) {
+                respVO.getFailureDetails().add(new ErpSaleOrderImportRespVO.FailureItem(rowNo, row.getProductCode(), "数量必须大于 0"));
+                respVO.setFailureCount(respVO.getFailureCount() + 1);
+                continue;
+            }
+            ErpSaleOrderRespVO.Item item = new ErpSaleOrderRespVO.Item();
+            item.setProductId(product.getId());
+            item.setProductCode(product.getCode());
+            item.setProductName(product.getName());
+            item.setProductUnitId(product.getUnitId());
+            item.setProductUnitName(productVOMap.get(product.getId()) == null ? null : productVOMap.get(product.getId()).getUnitName());
+            item.setProductPrice(row.getProductPrice() != null ? row.getProductPrice() : product.getSalePrice());
+            item.setCount(row.getCount());
+            item.setTaxPercent(row.getTaxPercent());
+            item.setRemark(row.getRemark());
+            respVO.getItems().add(item);
+            respVO.setSuccessCount(respVO.getSuccessCount() + 1);
+        }
+        return respVO;
     }
 
 }

@@ -48,6 +48,11 @@ public class ErpPurchaseReturnableItemRespVO {
     private String businessEntity;
 
     // ========== 冗余展示字段（前端可选用）==========
+    @Schema(description = "产品名称", example = "刹车片")
+    private String productName;
+    @Schema(description = "产品编码", example = "P001")
+    private String productCode;
+
     @Schema(description = "备注")
     private String remark;
 

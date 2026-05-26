@@ -81,5 +81,17 @@ public class ErpSalePriceAdjustItemDO extends BaseDO {
      * 关联销售出库项ID
      */
     private Long saleOutItemId;
+    /**
+     * 关联销售单ID
+     */
+    private Long saleOutId;
+    /**
+     * 调价原因
+     */
+    private String adjustReason;
+    /**
+     * 备注
+     */
+    private String itemRemark;
 
 }

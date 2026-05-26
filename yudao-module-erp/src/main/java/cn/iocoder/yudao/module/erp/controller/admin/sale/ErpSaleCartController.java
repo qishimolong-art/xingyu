@@ -1,33 +1,48 @@
 package cn.iocoder.yudao.module.erp.controller.admin.sale;
 
 import cn.hutool.core.collection.CollUtil;
+import cn.iocoder.yudao.framework.apilog.core.annotation.ApiAccessLog;
 import cn.iocoder.yudao.framework.common.pojo.CommonResult;
+import cn.iocoder.yudao.framework.common.pojo.PageParam;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.common.util.collection.MapUtils;
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
+import cn.iocoder.yudao.framework.excel.core.util.ExcelUtils;
 import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpProductRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartConvertQuoteReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartExportRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartImportExcelVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartImportRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartSaveReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpCustomerDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleCartDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleCartItemDO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpWarehouseDO;
 import cn.iocoder.yudao.module.erp.service.product.ErpProductService;
 import cn.iocoder.yudao.module.erp.service.sale.ErpCustomerService;
 import cn.iocoder.yudao.module.erp.service.sale.ErpSaleCartService;
+import cn.iocoder.yudao.module.erp.service.stock.ErpWarehouseService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 import javax.annotation.Resource;
+import javax.servlet.http.HttpServletResponse;
 import javax.validation.Valid;
+import java.io.IOException;
+import java.math.BigDecimal;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 
+import static cn.iocoder.yudao.framework.apilog.core.enums.OperateTypeEnum.EXPORT;
 import static cn.iocoder.yudao.framework.common.pojo.CommonResult.success;
 import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.*;
 
@@ -43,6 +58,8 @@ public class ErpSaleCartController {
     private ErpCustomerService customerService;
     @Resource
     private ErpProductService productService;
+    @Resource
+    private ErpWarehouseService warehouseService;
 
     @PostMapping("/create")
     @Operation(summary = "创建销售手推车")
@@ -78,15 +95,32 @@ public class ErpSaleCartController {
     @PutMapping("/final-approve")
     @Operation(summary = "终审销售手推车，并自动生成销售单")
     @PreAuthorize("@ss.hasPermission('erp:sale-cart:final-approve')")
-    public CommonResult<Long> finalApproveSaleCart(@RequestParam("id") Long id) {
+    public CommonResult<List<Long>> finalApproveSaleCart(@RequestParam("id") Long id) {
         return success(saleCartService.finalApproveSaleCart(id));
     }
 
+    @PutMapping("/reject")
+    @Operation(summary = "驳回销售手推车")
+    @PreAuthorize("@ss.hasPermission('erp:sale-cart:reject')")
+    public CommonResult<Boolean> rejectSaleCart(@RequestParam("id") Long id) {
+        saleCartService.rejectSaleCart(id);
+        return success(true);
+    }
+
     @PostMapping("/convert-quote")
-    @Operation(summary = "销售手推车转报价订单")
+    @Operation(summary = "销售手推车部分商品转报价订单")
     @PreAuthorize("@ss.hasPermission('erp:sale-cart:convert-quote')")
-    public CommonResult<Long> convertSaleCartToQuote(@RequestParam("id") Long id) {
-        return success(saleCartService.convertToQuote(id));
+    public CommonResult<Long> convertSaleCartToQuote(@Valid @RequestBody ErpSaleCartConvertQuoteReqVO reqVO) {
+        return success(saleCartService.convertToQuote(reqVO));
+    }
+
+    @DeleteMapping("/delete")
+    @Operation(summary = "删除销售手推车")
+    @Parameter(name = "ids", description = "编号数组", required = true)
+    @PreAuthorize("@ss.hasPermission('erp:sale-cart:delete')")
+    public CommonResult<Boolean> deleteSaleCart(@RequestParam("ids") List<Long> ids) {
+        saleCartService.deleteSaleCart(ids);
+        return success(true);
     }
 
     @GetMapping("/get")
@@ -105,14 +139,53 @@ public class ErpSaleCartController {
     @PreAuthorize("@ss.hasPermission('erp:sale-cart:query')")
     public CommonResult<PageResult<ErpSaleCartRespVO>> getSaleCartPage(@Valid ErpSaleCartPageReqVO pageReqVO) {
         PageResult<ErpSaleCartDO> pageResult = saleCartService.getSaleCartPage(pageReqVO);
+        return success(buildSaleCartVOPageResult(pageResult));
+    }
+
+    @GetMapping("/export-excel")
+    @Operation(summary = "导出销售手推车 Excel")
+    @PreAuthorize("@ss.hasPermission('erp:sale-cart:export')")
+    @ApiAccessLog(operateType = EXPORT)
+    public void exportSaleCartExcel(@Valid ErpSaleCartPageReqVO pageReqVO,
+                                    HttpServletResponse response) throws IOException {
+        pageReqVO.setPageSize(PageParam.PAGE_SIZE_NONE);
+        List<ErpSaleCartRespVO> list = buildSaleCartVOPageResult(
+                saleCartService.getSaleCartPage(pageReqVO)).getList();
+        ExcelUtils.write(response, "销售手推车.xls", "数据", ErpSaleCartExportRespVO.class, buildSaleCartExportList(list));
+    }
+
+    @GetMapping("/export-import-template")
+    @Operation(summary = "获得销售手推车导入模板")
+    public void exportImportTemplate(HttpServletResponse response) throws IOException {
+        ErpSaleCartImportExcelVO example = new ErpSaleCartImportExcelVO();
+        example.setProductCode("P0001");
+        example.setWarehouseName("默认仓");
+        example.setCount(BigDecimal.ONE);
+        example.setProductPrice(new BigDecimal("100.00"));
+        example.setBrand("品牌");
+        example.setVehicleModel("车型");
+        example.setStandard("规格");
+        example.setRemark("备注");
+        ExcelUtils.write(response, "销售手推车导入模板.xls", "销售手推车", ErpSaleCartImportExcelVO.class, Collections.singletonList(example));
+    }
+
+    @PostMapping("/import")
+    @Operation(summary = "导入销售手推车明细")
+    @PreAuthorize("@ss.hasPermission('erp:sale-cart:create')")
+    public CommonResult<ErpSaleCartImportRespVO> importSaleCart(@RequestParam("file") MultipartFile file) throws Exception {
+        List<ErpSaleCartImportExcelVO> list = ExcelUtils.read(file, ErpSaleCartImportExcelVO.class);
+        return success(saleCartService.parseImportData(list));
+    }
+
+    private PageResult<ErpSaleCartRespVO> buildSaleCartVOPageResult(PageResult<ErpSaleCartDO> pageResult) {
         if (CollUtil.isEmpty(pageResult.getList())) {
-            return success(PageResult.empty(pageResult.getTotal()));
+            return PageResult.empty(pageResult.getTotal());
         }
         List<ErpSaleCartItemDO> itemList = saleCartService.getSaleCartItemListByCartIds(
                 convertSet(pageResult.getList(), ErpSaleCartDO::getId));
         Map<Long, List<ErpSaleCartItemDO>> itemMap = convertMultiMap(itemList, ErpSaleCartItemDO::getCartId);
-        return success(BeanUtils.toBean(pageResult, ErpSaleCartRespVO.class,
-                cart -> fillRelation(cart, itemMap.get(cart.getId()))));
+        return BeanUtils.toBean(pageResult, ErpSaleCartRespVO.class,
+                cart -> fillRelation(cart, itemMap.get(cart.getId())));
     }
 
     private ErpSaleCartRespVO buildSaleCartRespVO(ErpSaleCartDO cart, List<ErpSaleCartItemDO> items) {
@@ -121,12 +194,45 @@ public class ErpSaleCartController {
 
     private void fillRelation(ErpSaleCartRespVO vo, List<ErpSaleCartItemDO> items) {
         Map<Long, ErpProductRespVO> productMap = productService.getProductVOMap(convertSet(items, ErpSaleCartItemDO::getProductId));
+        Map<Long, ErpWarehouseDO> warehouseMap = warehouseService.getWarehouseMap(convertSet(items, ErpSaleCartItemDO::getWarehouseId));
         vo.setItems(BeanUtils.toBean(items, ErpSaleCartRespVO.Item.class,
                 item -> MapUtils.findAndThen(productMap, item.getProductId(), product -> item.setProductName(product.getName())
-                        .setProductBarCode(product.getBarCode()).setProductUnitName(product.getUnitName()))));
+                        .setProductBarCode(product.getBarCode()).setProductUnitName(product.getUnitName())
+                        .setProductCode(product.getCode()).setLockCount(product.getLockCount()))));
+        vo.getItems().forEach(item ->
+                MapUtils.findAndThen(warehouseMap, item.getWarehouseId(), warehouse -> item.setWarehouseName(warehouse.getName())));
         vo.setProductNames(CollUtil.join(vo.getItems(), "，", ErpSaleCartRespVO.Item::getProductName));
         Map<Long, ErpCustomerDO> customerMap = customerService.getCustomerMap(convertSet(Collections.singletonList(vo), ErpSaleCartRespVO::getCustomerId));
         MapUtils.findAndThen(customerMap, vo.getCustomerId(), customer -> vo.setCustomerName(customer.getName()));
+    }
+
+    private List<ErpSaleCartExportRespVO> buildSaleCartExportList(List<ErpSaleCartRespVO> list) {
+        List<ErpSaleCartExportRespVO> rows = new ArrayList<>();
+        for (ErpSaleCartRespVO cart : list) {
+            if (CollUtil.isEmpty(cart.getItems())) {
+                rows.add(BeanUtils.toBean(cart, ErpSaleCartExportRespVO.class));
+                continue;
+            }
+            for (ErpSaleCartRespVO.Item item : cart.getItems()) {
+                rows.add(BeanUtils.toBean(cart, ErpSaleCartExportRespVO.class, row -> {
+                    row.setProductCode(item.getProductCode());
+                    row.setProductName(item.getProductName());
+                    row.setProductUnitName(item.getProductUnitName());
+                    row.setWarehouseName(item.getWarehouseName());
+                    row.setLockCount(item.getLockCount());
+                    row.setItemCount(item.getCount());
+                    row.setProductPrice(item.getProductPrice());
+                    row.setItemTotalPrice(item.getTotalPrice());
+                    row.setBrand(item.getBrand());
+                    row.setVehicleModel(item.getVehicleModel());
+                    row.setStandard(item.getStandard());
+                    row.setOriginPlace(item.getOriginPlace());
+                    row.setWarehousePosition(item.getWarehousePosition());
+                    row.setItemRemark(item.getRemark());
+                }));
+            }
+        }
+        return rows;
     }
 
 }

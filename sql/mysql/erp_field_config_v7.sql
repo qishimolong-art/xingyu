@@ -120,13 +120,7 @@ INSERT INTO `erp_field_config` (`module_key`, `field_name`, `field_label`, `requ
 ('purchase_return', 'priority',         '优先级',     b'0', 180, 0),
 ('purchase_return', 'orderMethod',      '开单方式',   b'0', 190, 0),
 ('purchase_return', 'remark',           '备注',       b'0', 200, 0),
-('purchase_return', 'fileUrl',          '附件',       b'0', 210, 0),
-('purchase_return', 'discountPercent',  '优惠率(%)',  b'0', 220, 0),
-('purchase_return', 'discountPrice',    '退款优惠',   b'0', 230, 0),
-('purchase_return', 'discountedPrice',  '优惠后金额', b'0', 240, 0),
-('purchase_return', 'otherPrice',       '其他费用',   b'0', 250, 0),
-('purchase_return', 'accountId',        '结算账户',   b'0', 260, 0),
-('purchase_return', 'totalPrice',       '应退金额',   b'0', 270, 0);
+('purchase_return', 'fileUrl',          '附件',       b'0', 210, 0);
 
 -- ====== 供应商（supplier）======
 -- 基础信息 + 分类与采购 + 结算与物流 + 地址信息 + 开票信息 + 财务信息

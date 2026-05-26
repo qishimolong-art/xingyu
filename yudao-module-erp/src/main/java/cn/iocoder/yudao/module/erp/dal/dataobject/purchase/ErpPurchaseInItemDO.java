@@ -146,4 +146,22 @@ public class ErpPurchaseInItemDO extends BaseDO {
      */
     private String businessEntity;
 
+    // ========== 调价相关 ==========
+    /**
+     * 原价快照（首次调价时写入，后续不变）
+     *
+     * 方便追溯历次调价前的最初进价
+     */
+    private BigDecimal originalProductPrice;
+    /**
+     * 是否被调价过
+     */
+    private Boolean adjusted;
+    /**
+     * 最后一次调价单编号
+     *
+     * 关联 {@link ErpPurchasePriceAdjustDO#getId()}
+     */
+    private Long adjustId;
+
 }

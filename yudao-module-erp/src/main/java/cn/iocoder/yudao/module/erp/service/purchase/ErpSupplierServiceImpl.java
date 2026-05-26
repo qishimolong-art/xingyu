@@ -33,6 +33,13 @@ public class ErpSupplierServiceImpl implements ErpSupplierService {
     @Override
     public Long createSupplier(ErpSupplierSaveReqVO createReqVO) {
         ErpSupplierDO supplier = BeanUtils.toBean(createReqVO, ErpSupplierDO.class);
+        // 兜底默认值
+        if (supplier.getSort() == null) {
+            supplier.setSort(0);
+        }
+        if (supplier.getStatus() == null) {
+            supplier.setStatus(CommonStatusEnum.ENABLE.getStatus());
+        }
         // 自动生成编码
         supplier.setCode(generateSupplierCode());
         supplierMapper.insert(supplier);
@@ -102,8 +109,27 @@ public class ErpSupplierServiceImpl implements ErpSupplierService {
     }
 
     @Override
+    public void updateSupplierStatus(Long id, Integer status) {
+        // 校验存在
+        validateSupplierExists(id);
+        // 更新状态
+        ErpSupplierDO updateObj = new ErpSupplierDO();
+        updateObj.setId(id);
+        updateObj.setStatus(status);
+        supplierMapper.updateById(updateObj);
+    }
+
+    @Override
     public List<ErpSupplierDO> getSupplierListByStatus(Integer status) {
         return supplierMapper.selectListByStatus(status);
+    }
+
+    @Override
+    public List<ErpSupplierDO> getSupplierListByNameLike(String name) {
+        if (name == null || name.isEmpty()) {
+            return java.util.Collections.emptyList();
+        }
+        return supplierMapper.selectListByNameLike(name);
     }
 
 }

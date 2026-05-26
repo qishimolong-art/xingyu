@@ -46,6 +46,78 @@ public class ErpSaleQuoteSaveReqVO {
     @Schema(description = "备注")
     private String remark;
 
+    @Schema(description = "订单类型")
+    private String orderType;
+
+    @Schema(description = "结算方式")
+    private String settleMethod;
+
+    @Schema(description = "先款后货")
+    private Boolean prepayment;
+
+    @Schema(description = "优先级")
+    private String priority;
+
+    @Schema(description = "送货方式")
+    private String deliveryMethod;
+
+    @Schema(description = "代客户发货")
+    private Boolean proxyDelivery;
+
+    @Schema(description = "收货地址")
+    private String deliveryAddress;
+
+    @Schema(description = "折让金额")
+    private BigDecimal allowancePrice;
+
+    @Schema(description = "票据号")
+    private String ticketNo;
+
+    @Schema(description = "开票类型")
+    private String invoiceType;
+
+    @Schema(description = "运费类型")
+    private String freightType;
+
+    @Schema(description = "费用金额")
+    private BigDecimal freightAmount;
+
+    @Schema(description = "物流公司")
+    private String logisticsCompany;
+
+    @Schema(description = "收货人")
+    private String receiverName;
+
+    @Schema(description = "收货电话")
+    private String receiverPhone;
+
+    @Schema(description = "价格类型")
+    private String priceType;
+
+    @Schema(description = "分店发货")
+    private String branchDelivery;
+
+    @Schema(description = "预计发货时间")
+    private LocalDateTime expectedDeliveryTime;
+
+    @Schema(description = "开单方式")
+    private String billingMethod;
+
+    @Schema(description = "车牌号")
+    private String vehiclePlateNo;
+
+    @Schema(description = "业务类型")
+    private String businessType;
+
+    @Schema(description = "开发员编号")
+    private Long developerUserId;
+
+    @Schema(description = "VIN车架号")
+    private String vin;
+
+    @Schema(description = "内部说明")
+    private String internalRemark;
+
     @Valid
     @NotEmpty(message = "报价明细不能为空")
     @Schema(description = "报价清单列表")

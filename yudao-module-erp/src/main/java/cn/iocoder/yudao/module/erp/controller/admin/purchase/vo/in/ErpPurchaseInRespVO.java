@@ -196,6 +196,9 @@ public class ErpPurchaseInRespVO {
     @ExcelProperty("所属经营")
     private String businessEntity;
 
+    @Schema(description = "是否被调过价", example = "true")
+    private Boolean adjusted;
+
     @Schema(description = "创建人", example = "芋道")
     private String creator;
     @Schema(description = "创建人名称", example = "芋道")
@@ -232,6 +235,15 @@ public class ErpPurchaseInRespVO {
 
         @Schema(description = "产品单价", example = "100.00")
         private BigDecimal productPrice;
+
+        @Schema(description = "调价前原价快照（首次调价前为 null）", example = "80.00")
+        private BigDecimal originalProductPrice;
+
+        @Schema(description = "本明细是否被调过价", example = "true")
+        private Boolean adjusted;
+
+        @Schema(description = "最近一次调价单 ID", example = "1024")
+        private Long adjustId;
 
         @Schema(description = "产品数量", requiredMode = Schema.RequiredMode.REQUIRED, example = "100.00")
         @NotNull(message = "产品数量不能为空")
@@ -281,6 +293,7 @@ public class ErpPurchaseInRespVO {
 
         @Schema(description = "产品名称", requiredMode = Schema.RequiredMode.REQUIRED, example = "巧克力")
         private String productName;
+        private String productCode;
         @Schema(description = "产品条码", requiredMode = Schema.RequiredMode.REQUIRED, example = "A9985")
         private String productBarCode;
         @Schema(description = "产品单位名称", requiredMode = Schema.RequiredMode.REQUIRED, example = "盒")

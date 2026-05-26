@@ -1,0 +1,192 @@
+{
+  "main": {
+    "id": "11aa92c998181545",
+    "type": "split",
+    "children": [
+      {
+        "id": "d8a5b5fd855ac91e",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "787af2e2f2d12de3",
+            "type": "leaf",
+            "state": {
+              "type": "markdown",
+              "state": {
+                "file": "财务核算-测试与review/01-Code-Review-报告.md",
+                "mode": "source",
+                "source": false
+              },
+              "icon": "lucide-file",
+              "title": "01-Code-Review-报告"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "vertical"
+  },
+  "left": {
+    "id": "8ecb189842eab8db",
+    "type": "split",
+    "children": [
+      {
+        "id": "3878e07c853e96e6",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "dd6981f10bd914fb",
+            "type": "leaf",
+            "state": {
+              "type": "file-explorer",
+              "state": {
+                "sortOrder": "alphabetical",
+                "autoReveal": false
+              },
+              "icon": "lucide-folder-closed",
+              "title": "文件列表"
+            }
+          },
+          {
+            "id": "8d1109272f5cbce0",
+            "type": "leaf",
+            "state": {
+              "type": "search",
+              "state": {
+                "query": "",
+                "matchingCase": false,
+                "explainSearch": false,
+                "collapseAll": false,
+                "extraContext": false,
+                "sortOrder": "alphabetical"
+              },
+              "icon": "lucide-search",
+              "title": "搜索"
+            }
+          },
+          {
+            "id": "221337c8e2436823",
+            "type": "leaf",
+            "state": {
+              "type": "bookmarks",
+              "state": {},
+              "icon": "lucide-bookmark",
+              "title": "书签"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "horizontal",
+    "width": 300
+  },
+  "right": {
+    "id": "63e260ad0cd9b684",
+    "type": "split",
+    "children": [
+      {
+        "id": "315a755a6c23326c",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "3d0db6cc54b86154",
+            "type": "leaf",
+            "state": {
+              "type": "backlink",
+              "state": {
+                "file": "财务核算-测试与review/01-Code-Review-报告.md",
+                "collapseAll": false,
+                "extraContext": false,
+                "sortOrder": "alphabetical",
+                "showSearch": false,
+                "searchQuery": "",
+                "backlinkCollapsed": false,
+                "unlinkedCollapsed": true
+              },
+              "icon": "links-coming-in",
+              "title": "01-Code-Review-报告 的反向链接列表"
+            }
+          },
+          {
+            "id": "cb4217d9d10f960c",
+            "type": "leaf",
+            "state": {
+              "type": "outgoing-link",
+              "state": {
+                "file": "财务核算-测试与review/01-Code-Review-报告.md",
+                "linksCollapsed": false,
+                "unlinkedCollapsed": true
+              },
+              "icon": "links-going-out",
+              "title": "01-Code-Review-报告 的出链列表"
+            }
+          },
+          {
+            "id": "88a93a35d79c946a",
+            "type": "leaf",
+            "state": {
+              "type": "tag",
+              "state": {
+                "sortOrder": "frequency",
+                "useHierarchy": true,
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-tags",
+              "title": "标签"
+            }
+          },
+          {
+            "id": "8a00e8e6f41abd77",
+            "type": "leaf",
+            "state": {
+              "type": "all-properties",
+              "state": {
+                "sortOrder": "frequency",
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-archive",
+              "title": "添加笔记属性"
+            }
+          },
+          {
+            "id": "47bf1bf4a8a23597",
+            "type": "leaf",
+            "state": {
+              "type": "outline",
+              "state": {
+                "file": "财务核算-测试与review/01-Code-Review-报告.md",
+                "followCursor": false,
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-list",
+              "title": "01-Code-Review-报告 的大纲"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "horizontal",
+    "width": 300,
+    "collapsed": true
+  },
+  "left-ribbon": {
+    "hiddenItems": {
+      "switcher:打开快速切换": false,
+      "graph:查看关系图谱": false,
+      "canvas:新建白板": false,
+      "daily-notes:打开/创建今天的日记": false,
+      "templates:插入模板": false,
+      "command-palette:打开命令面板": false,
+      "bases:新建数据库": false
+    }
+  },
+  "active": "787af2e2f2d12de3",
+  "lastOpenFiles": [
+    "财务核算-测试与review/02-单元测试计划.md",
+    "财务核算-测试与review/03-测试执行报告.md",
+    "财务核算-测试与review/01-Code-Review-报告.md"
+  ]
+}

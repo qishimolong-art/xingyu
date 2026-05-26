@@ -52,6 +52,57 @@ public class ErpSaleReturnSaveReqVO {
     @Schema(description = "备注", example = "你猜")
     private String remark;
 
+    @Schema(description = "部门编号", example = "1")
+    private Long deptId;
+
+    @Schema(description = "优先级别", example = "正常件")
+    private String priority;
+
+    @Schema(description = "开票类型", example = "收据")
+    private String invoiceType;
+
+    @Schema(description = "票据号", example = "PJ20260513001")
+    private String billNo;
+
+    @Schema(description = "退货方式", example = "客户自提")
+    private String deliveryMethod;
+
+    @Schema(description = "减收金额", example = "0")
+    private BigDecimal reductionAmount;
+
+    @Schema(description = "运费类型", example = "我方自付")
+    private String freightType;
+
+    @Schema(description = "运费金额", example = "0")
+    private BigDecimal freightAmount;
+
+    @Schema(description = "结算方式", example = "挂账")
+    private String settleMethod;
+
+    @Schema(description = "物流公司", example = "顺丰")
+    private String logisticsCompany;
+
+    @Schema(description = "车牌号", example = "粤B12345")
+    private String vehicleNo;
+
+    @Schema(description = "货到分店", example = "总店")
+    private String branchStore;
+
+    @Schema(description = "货到分店启用", example = "false")
+    private Boolean branchStoreEnabled;
+
+    @Schema(description = "进货区", example = "进货A区")
+    private String purchaseArea;
+
+    @Schema(description = "业务类型", example = "普通销售")
+    private String businessType;
+
+    @Schema(description = "开单方式", example = "正常单")
+    private String orderMethod;
+
+    @Schema(description = "开发员编号", example = "1")
+    private Long developerUserId;
+
     @Schema(description = "退货清单列表")
     private List<Item> items;
 
@@ -91,6 +142,12 @@ public class ErpSaleReturnSaveReqVO {
 
         @Schema(description = "备注", example = "随便")
         private String remark;
+
+        @Schema(description = "退货原因", example = "质量问题")
+        private String returnReason;
+
+        @Schema(description = "货位/仓位", example = "A-01-02")
+        private String warehousePosition;
 
     }
 

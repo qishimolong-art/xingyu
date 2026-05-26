@@ -19,41 +19,65 @@ public interface ErpPurchasePriceAdjustService {
 
     /**
      * 创建采购调价单
+     *
+     * @param reqVO 创建请求
+     * @return 调价单 ID
      */
-    Long createPurchasePriceAdjust(@Valid ErpPurchasePriceAdjustSaveReqVO createReqVO);
+    Long createPurchasePriceAdjust(@Valid ErpPurchasePriceAdjustSaveReqVO reqVO);
 
     /**
-     * 更新采购调价单
+     * 更新采购调价单（未审核状态下）
+     *
+     * @param reqVO 更新请求
      */
-    void updatePurchasePriceAdjust(@Valid ErpPurchasePriceAdjustSaveReqVO updateReqVO);
+    void updatePurchasePriceAdjust(@Valid ErpPurchasePriceAdjustSaveReqVO reqVO);
 
     /**
-     * 更新采购调价单状态（审核/反审核）
+     * 更新采购调价单状态（审核通过 / 反审核）
+     *
+     * <p>注意：本期审批通过后不支持反审核，status=PROCESS 将直接抛出异常。</p>
+     *
+     * @param id     调价单 ID
+     * @param status 目标状态
      */
     void updatePurchasePriceAdjustStatus(Long id, Integer status);
 
     /**
-     * 删除采购调价单
+     * 删除采购调价单（未审核状态下）
+     *
+     * @param ids 调价单 ID 集合
      */
     void deletePurchasePriceAdjust(List<Long> ids);
 
     /**
-     * 获得采购调价单
+     * 获取采购调价单
+     *
+     * @param id 调价单 ID
+     * @return 调价单 DO
      */
     ErpPurchasePriceAdjustDO getPurchasePriceAdjust(Long id);
 
     /**
-     * 获得采购调价单分页
+     * 分页查询采购调价单
+     *
+     * @param pageReqVO 分页参数
+     * @return 分页结果
      */
     PageResult<ErpPurchasePriceAdjustDO> getPurchasePriceAdjustPage(ErpPurchasePriceAdjustPageReqVO pageReqVO);
 
     /**
-     * 获得采购调价单项列表
+     * 查询某调价单的全部子项
+     *
+     * @param adjustId 调价单 ID
+     * @return 子项列表
      */
     List<ErpPurchasePriceAdjustItemDO> getPurchasePriceAdjustItemListByAdjustId(Long adjustId);
 
     /**
-     * 获得采购调价单项列表（批量）
+     * 批量查询多个调价单的子项
+     *
+     * @param adjustIds 调价单 ID 集合
+     * @return 子项列表
      */
     List<ErpPurchasePriceAdjustItemDO> getPurchasePriceAdjustItemListByAdjustIds(Collection<Long> adjustIds);
 

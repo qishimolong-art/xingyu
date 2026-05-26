@@ -15,6 +15,12 @@ import java.util.List;
 import static cn.iocoder.yudao.framework.common.exception.util.ServiceExceptionUtil.exception;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.CUSTOMER_BUSINESS_INFO_NOT_EXISTS;
 
+/**
+ * ERP 客户工商信息 ServiceImpl
+ *
+ * 说明：当前阶段不接第三方工商 API（如天眼查、企查查），仅维护本地人工录入字段。
+ * 后续如需接入，在此类扩展 fetchFromThirdParty 方法即可。
+ */
 @Service
 @Validated
 public class ErpCustomerBusinessInfoServiceImpl implements ErpCustomerBusinessInfoService {

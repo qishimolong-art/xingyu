@@ -270,5 +270,21 @@ public class ErpCustomerDO extends BaseDO {
      * 平台唯一码
      */
     private String platformCode;
+    /**
+     * 客户标签（逗号分隔）
+     */
+    private String customerTag;
+    /**
+     * 微信客服账号/姓名
+     */
+    private String wechatService;
+    /**
+     * 白条授信额度
+     */
+    private BigDecimal creditLimit;
+    /**
+     * 数据中心审核状态 0未审核 1已审核 2驳回
+     */
+    private Integer dataCenterAuditStatus;
 
 }

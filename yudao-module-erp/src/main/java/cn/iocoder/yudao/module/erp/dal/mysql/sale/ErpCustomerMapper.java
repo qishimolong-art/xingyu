@@ -35,4 +35,9 @@ public interface ErpCustomerMapper extends BaseMapperX<ErpCustomerDO> {
         return selectList(ErpCustomerDO::getStatus, status);
     }
 
+    default List<ErpCustomerDO> selectListByNameLike(String name) {
+        return selectList(new LambdaQueryWrapperX<ErpCustomerDO>()
+                .like(ErpCustomerDO::getName, name));
+    }
+
 }

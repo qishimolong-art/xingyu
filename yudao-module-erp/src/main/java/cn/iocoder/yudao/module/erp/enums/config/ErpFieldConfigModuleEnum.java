@@ -17,7 +17,11 @@ public enum ErpFieldConfigModuleEnum {
     PURCHASE_ORDER("purchase_order", "采购订单"),
     PURCHASE_IN("purchase_in", "采购入库"),
     PURCHASE_RETURN("purchase_return", "采购退货"),
-    SUPPLIER("supplier", "供应商");
+    PURCHASE_PRICE_ADJUST("purchase_price_adjust", "采购调价"),
+    SUPPLIER("supplier", "供应商"),
+    SALE_QUOTE("sale_quote", "报价订单"),
+    SALE_CART("sale_cart", "销售手推车"),
+    SALE_RETURN("sale_return", "销售退货");
 
     private final String key;
     private final String name;

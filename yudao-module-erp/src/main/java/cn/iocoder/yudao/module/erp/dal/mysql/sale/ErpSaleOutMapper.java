@@ -34,6 +34,7 @@ public interface ErpSaleOutMapper extends BaseMapperX<ErpSaleOutDO> {
                 .likeIfPresent(ErpSaleOutDO::getOrderNo, reqVO.getOrderNo())
                 .eqIfPresent(ErpSaleOutDO::getSourceType, reqVO.getSourceType())
                 .likeIfPresent(ErpSaleOutDO::getSourceNo, reqVO.getSourceNo())
+                .eqIfPresent(ErpSaleOutDO::getSaleUserId, reqVO.getSaleUserId())
                 .orderByDesc(ErpSaleOutDO::getId);
         // 收款状态。为什么需要 t. 的原因，是因为联表查询时，需要指定表名，不然会报字段不存在的错误
         if (Objects.equals(reqVO.getReceiptStatus(), ErpSaleOutPageReqVO.RECEIPT_STATUS_NONE)) {
@@ -68,5 +69,28 @@ public interface ErpSaleOutMapper extends BaseMapperX<ErpSaleOutDO> {
     default List<ErpSaleOutDO> selectListByOrderId(Long orderId) {
         return selectList(ErpSaleOutDO::getOrderId, orderId);
     }
+
+    default ErpSaleOutDO selectBySourceTypeAndSourceId(Integer sourceType, Long sourceId) {
+        return selectOne(new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<ErpSaleOutDO>()
+                .eq(ErpSaleOutDO::getSourceType, sourceType)
+                .eq(ErpSaleOutDO::getSourceId, sourceId)
+                .last("LIMIT 1"));
+    }
+
+    @org.apache.ibatis.annotations.Select({
+        "<script>",
+        "SELECT customer_id AS customerId,",
+        "       MAX(out_time) AS lastSaleTime,",
+        "       SUM(total_price) AS totalSaleAmount,",
+        "       SUM(total_price - IFNULL(receipt_price, 0)) AS receivableBalance",
+        "  FROM erp_sale_out",
+        " WHERE deleted = 0 AND status = 20",
+        "   AND customer_id IN",
+        "   <foreach collection='customerIds' item='id' open='(' separator=',' close=')'>#{id}</foreach>",
+        " GROUP BY customer_id",
+        "</script>"
+    })
+    java.util.List<cn.iocoder.yudao.module.erp.service.sale.bo.ErpCustomerSaleStatsBO> selectSaleStatsByCustomerIds(
+            @org.apache.ibatis.annotations.Param("customerIds") java.util.Collection<Long> customerIds);
 
 }

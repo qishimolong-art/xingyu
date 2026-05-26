@@ -29,20 +29,35 @@ public class ErpSalePriceAdjustRespVO {
     @Schema(description = "客户名称")
     private String customerName;
 
-    @Schema(description = "部门")
-    private String dept;
+    @Schema(description = "部门ID")
+    private Long deptId;
 
-    @Schema(description = "调价人")
-    private String adjustUser;
+    @Schema(description = "部门名称")
+    private String deptName;
+
+    @Schema(description = "调价人ID")
+    private Long adjustUserId;
+
+    @Schema(description = "调价人名称")
+    private String adjustUserName;
 
     @Schema(description = "调价类型")
-    private String adjustType;
+    private Integer adjustType;
 
     @Schema(description = "备注")
     private String remark;
 
     @Schema(description = "调价总金额")
     private BigDecimal totalAdjustPrice;
+
+    @Schema(description = "结算方式")
+    private String settleMethod;
+
+    @Schema(description = "送货方式")
+    private String deliveryMethod;
+
+    @Schema(description = "物流公司")
+    private String logisticsCompany;
 
     @Schema(description = "创建人")
     private String creator;
@@ -100,6 +115,15 @@ public class ErpSalePriceAdjustRespVO {
 
         @Schema(description = "关联销售出库项ID")
         private Long saleOutItemId;
+
+        @Schema(description = "关联销售单ID")
+        private Long saleOutId;
+
+        @Schema(description = "调价原因")
+        private String adjustReason;
+
+        @Schema(description = "备注")
+        private String itemRemark;
 
     }
 

@@ -8,21 +8,35 @@ import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.out.ErpSaleOutPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.out.ErpSaleReturnableItemRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.out.ErpSaleOutSaveReqVO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.finance.accounting.ErpVoucherDO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.finance.accounting.ErpVoucherItemDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.product.ErpProductDO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpCustomerDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleOrderDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleOutDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleOutItemDO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockDO;
+import cn.iocoder.yudao.module.erp.dal.mysql.finance.accounting.ErpVoucherItemMapper;
+import cn.iocoder.yudao.module.erp.dal.mysql.finance.accounting.ErpVoucherMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpSaleOutItemMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpSaleOutMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpSaleReturnItemMapper;
 import cn.iocoder.yudao.module.erp.dal.redis.no.ErpNoRedisDAO;
 import cn.iocoder.yudao.module.erp.enums.ErpAuditStatus;
+import cn.iocoder.yudao.module.erp.enums.finance.accounting.ErpVoucherAuditStatusEnum;
+import cn.iocoder.yudao.module.erp.enums.finance.accounting.ErpVoucherTypeEnum;
+import cn.iocoder.yudao.module.erp.enums.finance.accounting.ErpVoucherSourceBizTypeEnum;
 import cn.iocoder.yudao.module.erp.enums.stock.ErpStockRecordBizTypeEnum;
 import cn.iocoder.yudao.module.erp.service.finance.ErpAccountService;
+import cn.iocoder.yudao.module.erp.service.finance.accounting.ErpAutoVoucherBuilder;
+import cn.iocoder.yudao.module.erp.service.finance.accounting.ErpBookOpenService;
+import cn.iocoder.yudao.module.erp.service.finance.accounting.ErpVoucherService;
 import cn.iocoder.yudao.module.erp.service.product.ErpProductService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpStockRecordService;
+import cn.iocoder.yudao.module.erp.service.stock.ErpStockService;
 import cn.iocoder.yudao.module.erp.service.stock.bo.ErpStockRecordCreateReqBO;
 import cn.iocoder.yudao.module.system.api.user.AdminUserApi;
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -72,9 +86,22 @@ public class ErpSaleOutServiceImpl implements ErpSaleOutService {
     private ErpAccountService accountService;
     @Resource
     private ErpStockRecordService stockRecordService;
+    @Resource
+    private ErpStockService stockService;
 
     @Resource
     private AdminUserApi adminUserApi;
+
+    @Resource
+    private ErpAutoVoucherBuilder autoVoucherBuilder;
+    @Resource
+    private ErpVoucherService voucherService;
+    @Resource
+    private ErpBookOpenService bookOpenService;
+    @Resource
+    private ErpVoucherMapper voucherMapper;
+    @Resource
+    private ErpVoucherItemMapper voucherItemMapper;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -218,6 +245,19 @@ public class ErpSaleOutServiceImpl implements ErpSaleOutService {
         if (!approve && saleOut.getReceiptPrice().compareTo(BigDecimal.ZERO) > 0) {
             throw exception(SALE_OUT_PROCESS_FAIL_EXISTS_RECEIPT);
         }
+        // 1.4 反审：先校验关联凭证状态，未审核才允许删除
+        if (!approve) {
+            List<ErpVoucherDO> related = voucherMapper.selectListByBiz(
+                    ErpVoucherSourceBizTypeEnum.SALE_OUT.getType(), id);
+            for (ErpVoucherDO v : related) {
+                if (ErpVoucherAuditStatusEnum.APPROVE.getStatus().equals(v.getAuditStatus())) {
+                    throw exception(BIZ_PROCESS_FAIL_VOUCHER_APPROVED, v.getVoucherNo());
+                }
+                voucherMapper.deleteById(v.getId());
+                voucherItemMapper.delete(new LambdaQueryWrapper<ErpVoucherItemDO>()
+                        .eq(ErpVoucherItemDO::getVoucherId, v.getId()));
+            }
+        }
 
         // 2. 更新状态
         int updateCount = saleOutMapper.updateByIdAndStatus(id, saleOut.getStatus(),
@@ -230,6 +270,21 @@ public class ErpSaleOutServiceImpl implements ErpSaleOutService {
         List<ErpSaleOutItemDO> saleOutItems = saleOutItemMapper.selectListByOutId(id);
         Integer bizType = approve ? ErpStockRecordBizTypeEnum.SALE_OUT.getType()
                 : ErpStockRecordBizTypeEnum.SALE_OUT_CANCEL.getType();
+
+        // 3.1 审批通过且销售凭证已开账时，先快照成本（必须前置于扣库存）
+        boolean enableVoucher = approve && bookOpenService.isVoucherTypeEnabled(
+                saleOut.getOutTime().toLocalDate(), ErpVoucherTypeEnum.SALE.getType());
+        BigDecimal sumCost = BigDecimal.ZERO;
+        if (enableVoucher) {
+            for (ErpSaleOutItemDO item : saleOutItems) {
+                ErpStockDO stock = stockService.getStock(item.getProductId(), item.getWarehouseId());
+                BigDecimal cost = (stock != null && stock.getCostPrice() != null)
+                        ? stock.getCostPrice() : BigDecimal.ZERO;
+                sumCost = sumCost.add(cost.multiply(item.getCount()));
+            }
+        }
+
+        // 3.2 扣库存
         saleOutItems.forEach(saleOutItem -> {
             BigDecimal count = approve ? saleOutItem.getCount().negate() : saleOutItem.getCount();
             stockRecordService.createStockRecord(new ErpStockRecordCreateReqBO(
@@ -237,6 +292,22 @@ public class ErpSaleOutServiceImpl implements ErpSaleOutService {
                     bizType, saleOutItem.getOutId(), saleOutItem.getId(), saleOut.getNo(),
                     null, saleOut.getOutTime()));
         });
+
+        // 4. 审批通过且已开账：生成销售凭证
+        if (enableVoucher) {
+            ErpCustomerDO customer = customerService.getCustomer(saleOut.getCustomerId());
+            String customerName = customer != null ? customer.getName() : "";
+            List<ErpVoucherItemDO> voucherItems = autoVoucherBuilder.buildSaleOutItems(
+                    saleOut, customerName, sumCost);
+            voucherService.createVoucherFromBiz(
+                    ErpVoucherSourceBizTypeEnum.SALE_OUT.getType(),
+                    saleOut.getId(),
+                    saleOut.getNo(),
+                    saleOut.getTotalPrice(),
+                    saleOut.getOutTime().toLocalDate(),
+                    "销售出库 - " + customerName,
+                    voucherItems);
+        }
     }
 
     @Override

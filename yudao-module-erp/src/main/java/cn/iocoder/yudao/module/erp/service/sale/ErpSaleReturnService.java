@@ -1,6 +1,8 @@
 package cn.iocoder.yudao.module.erp.service.sale;
 
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnImportExcelVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnImportRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnSaveReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleReturnDO;
@@ -97,5 +99,7 @@ public interface ErpSaleReturnService {
      * @return 销售退货项 List
      */
     List<ErpSaleReturnItemDO> getSaleReturnItemListByReturnIds(Collection<Long> returnIds);
+
+    ErpSaleReturnImportRespVO parseImportData(List<ErpSaleReturnImportExcelVO> list);
 
 }

@@ -3,6 +3,7 @@ package cn.iocoder.yudao.module.erp.controller.admin.sale.vo.customer;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.*;
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import cn.idev.excel.annotation.*;
 import cn.iocoder.yudao.framework.excel.core.annotations.DictFormat;
@@ -151,6 +152,22 @@ public class ErpCustomerRespVO {
     private String pinyinCode;
     private String memberCode;
     private String platformCode;
+
+    @Schema(description = "客户标签（逗号分隔）")
+    private String customerTag;
+    @Schema(description = "微信客服账号/姓名")
+    private String wechatService;
+    @Schema(description = "白条授信额度")
+    private BigDecimal creditLimit;
+    @Schema(description = "数据中心审核状态 0未审核 1已审核 2驳回")
+    private Integer dataCenterAuditStatus;
+
+    @Schema(description = "最近销售日期")
+    private LocalDate lastSaleDate;
+    @Schema(description = "累计销售额")
+    private BigDecimal totalSaleAmount;
+    @Schema(description = "应收余额")
+    private BigDecimal receivableBalance;
 
     @Schema(description = "创建时间", requiredMode = Schema.RequiredMode.REQUIRED)
     @ExcelProperty("创建时间")

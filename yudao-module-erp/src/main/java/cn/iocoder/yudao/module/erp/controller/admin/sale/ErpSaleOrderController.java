@@ -9,6 +9,9 @@ import cn.iocoder.yudao.framework.common.util.collection.MapUtils;
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
 import cn.iocoder.yudao.framework.excel.core.util.ExcelUtils;
 import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpProductRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.order.ErpSaleOrderExportRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.order.ErpSaleOrderImportExcelVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.order.ErpSaleOrderImportRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.order.ErpSaleOrderPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.order.ErpSaleOrderRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.order.ErpSaleOrderSaveReqVO;
@@ -27,12 +30,15 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 import javax.annotation.Resource;
 import javax.servlet.http.HttpServletResponse;
 import javax.validation.Valid;
 import java.io.IOException;
 import java.math.BigDecimal;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 
@@ -109,7 +115,8 @@ public class ErpSaleOrderController {
                     BigDecimal stockCount = stockService.getStockCount(item.getProductId());
                     item.setStockCount(stockCount != null ? stockCount : BigDecimal.ZERO);
                     MapUtils.findAndThen(productMap, item.getProductId(), product -> item.setProductName(product.getName())
-                            .setProductBarCode(product.getBarCode()).setProductUnitName(product.getUnitName()));
+                            .setProductBarCode(product.getBarCode()).setProductUnitName(product.getUnitName())
+                            .setProductCode(product.getCode()));
                 }))));
     }
 
@@ -129,8 +136,27 @@ public class ErpSaleOrderController {
                                     HttpServletResponse response) throws IOException {
         pageReqVO.setPageSize(PageParam.PAGE_SIZE_NONE);
         List<ErpSaleOrderRespVO> list = buildSaleOrderVOPageResult(saleOrderService.getSaleOrderPage(pageReqVO)).getList();
-        // 导出 Excel
-        ExcelUtils.write(response, "销售订单.xls", "数据", ErpSaleOrderRespVO.class, list);
+        ExcelUtils.write(response, "销售订单.xls", "数据", ErpSaleOrderExportRespVO.class, buildSaleOrderExportList(list));
+    }
+
+    @GetMapping("/export-import-template")
+    @Operation(summary = "获得销售订单导入模板")
+    public void exportImportTemplate(HttpServletResponse response) throws IOException {
+        ErpSaleOrderImportExcelVO example = new ErpSaleOrderImportExcelVO();
+        example.setProductCode("P0001");
+        example.setCount(BigDecimal.ONE);
+        example.setProductPrice(new BigDecimal("100.00"));
+        example.setTaxPercent(BigDecimal.ZERO);
+        example.setRemark("备注");
+        ExcelUtils.write(response, "销售订单导入模板.xls", "销售订单", ErpSaleOrderImportExcelVO.class, Collections.singletonList(example));
+    }
+
+    @PostMapping("/import")
+    @Operation(summary = "导入销售订单明细")
+    @PreAuthorize("@ss.hasPermission('erp:sale-out:create')")
+    public CommonResult<ErpSaleOrderImportRespVO> importSaleOrder(@RequestParam("file") MultipartFile file) throws Exception {
+        List<ErpSaleOrderImportExcelVO> list = ExcelUtils.read(file, ErpSaleOrderImportExcelVO.class);
+        return success(saleOrderService.parseImportData(list));
     }
 
     private PageResult<ErpSaleOrderRespVO> buildSaleOrderVOPageResult(PageResult<ErpSaleOrderDO> pageResult) {
@@ -154,11 +180,36 @@ public class ErpSaleOrderController {
         return BeanUtils.toBean(pageResult, ErpSaleOrderRespVO.class, saleOrder -> {
             saleOrder.setItems(BeanUtils.toBean(saleOrderItemMap.get(saleOrder.getId()), ErpSaleOrderRespVO.Item.class,
                     item -> MapUtils.findAndThen(productMap, item.getProductId(), product -> item.setProductName(product.getName())
-                            .setProductBarCode(product.getBarCode()).setProductUnitName(product.getUnitName()))));
+                            .setProductBarCode(product.getBarCode()).setProductUnitName(product.getUnitName())
+                            .setProductCode(product.getCode()))));
             saleOrder.setProductNames(CollUtil.join(saleOrder.getItems(), "，", ErpSaleOrderRespVO.Item::getProductName));
             MapUtils.findAndThen(customerMap, saleOrder.getCustomerId(), supplier -> saleOrder.setCustomerName(supplier.getName()));
             MapUtils.findAndThen(userMap, Long.parseLong(saleOrder.getCreator()), user -> saleOrder.setCreatorName(user.getNickname()));
         });
+    }
+
+    private List<ErpSaleOrderExportRespVO> buildSaleOrderExportList(List<ErpSaleOrderRespVO> list) {
+        List<ErpSaleOrderExportRespVO> rows = new ArrayList<>();
+        for (ErpSaleOrderRespVO saleOrder : list) {
+            if (CollUtil.isEmpty(saleOrder.getItems())) {
+                rows.add(BeanUtils.toBean(saleOrder, ErpSaleOrderExportRespVO.class));
+                continue;
+            }
+            for (ErpSaleOrderRespVO.Item item : saleOrder.getItems()) {
+                rows.add(BeanUtils.toBean(saleOrder, ErpSaleOrderExportRespVO.class, row -> {
+                    row.setProductCode(item.getProductCode());
+                    row.setProductName(item.getProductName());
+                    row.setProductUnitName(item.getProductUnitName());
+                    row.setItemCount(item.getCount());
+                    row.setProductPrice(item.getProductPrice());
+                    row.setItemTotalPrice(item.getTotalPrice());
+                    row.setItemTaxPercent(item.getTaxPercent());
+                    row.setItemTaxPrice(item.getTaxPrice());
+                    row.setItemRemark(item.getRemark());
+                }));
+            }
+        }
+        return rows;
     }
 
 }

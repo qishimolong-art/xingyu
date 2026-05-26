@@ -103,6 +103,34 @@ public class ErpSaleOrderRespVO {
     @Data
     public static class Item {
 
+        @ExcelProperty("产品编码")
+        private String productCode;
+
+        @ExcelProperty("产品名称")
+        private String productName;
+
+        @ExcelProperty("产品单位")
+        private String productUnitName;
+
+        @ExcelProperty("数量")
+        @NotNull(message = "产品数量不能为空")
+        private BigDecimal count;
+
+        @ExcelProperty("单价")
+        private BigDecimal productPrice;
+
+        @ExcelProperty("金额")
+        private BigDecimal totalPrice;
+
+        @ExcelProperty("税率")
+        private BigDecimal taxPercent;
+
+        @ExcelProperty("税额")
+        private BigDecimal taxPrice;
+
+        @ExcelProperty("备注")
+        private String remark;
+
         @Schema(description = "订单项编号", example = "11756")
         private Long id;
 
@@ -111,22 +139,6 @@ public class ErpSaleOrderRespVO {
 
         @Schema(description = "产品单位单位", requiredMode = Schema.RequiredMode.REQUIRED, example = "3113")
         private Long productUnitId;
-
-        @Schema(description = "产品单价", example = "100.00")
-        private BigDecimal productPrice;
-
-        @Schema(description = "产品数量", requiredMode = Schema.RequiredMode.REQUIRED, example = "100.00")
-        @NotNull(message = "产品数量不能为空")
-        private BigDecimal count;
-
-        @Schema(description = "税率，百分比", example = "99.88")
-        private BigDecimal taxPercent;
-
-        @Schema(description = "税额，单位：元", example = "100.00")
-        private BigDecimal taxPrice;
-
-        @Schema(description = "备注", example = "随便")
-        private String remark;
 
         // ========== 销售出库 ==========
 
@@ -140,12 +152,8 @@ public class ErpSaleOrderRespVO {
 
         // ========== 关联字段 ==========
 
-        @Schema(description = "产品名称", requiredMode = Schema.RequiredMode.REQUIRED, example = "巧克力")
-        private String productName;
         @Schema(description = "产品条码", requiredMode = Schema.RequiredMode.REQUIRED, example = "A9985")
         private String productBarCode;
-        @Schema(description = "产品单位名称", requiredMode = Schema.RequiredMode.REQUIRED, example = "盒")
-        private String productUnitName;
 
         @Schema(description = "库存数量", requiredMode = Schema.RequiredMode.REQUIRED, example = "100.00")
         private BigDecimal stockCount; // 该字段仅仅在“详情”和“编辑”时使用

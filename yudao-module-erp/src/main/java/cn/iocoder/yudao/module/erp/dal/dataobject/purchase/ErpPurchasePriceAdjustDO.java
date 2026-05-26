@@ -30,42 +30,50 @@ public class ErpPurchasePriceAdjustDO extends BaseDO {
     @TableId
     private Long id;
     /**
-     * 调价单号(CGTJ前缀)
+     * 调价单号（CGTJ 前缀）
      */
     private String no;
     /**
-     * 状态
+     * 状态：10=待审批（未审核）20=已通过（已审核）30=已拒绝
      *
      * 枚举 {@link cn.iocoder.yudao.module.erp.enums.ErpAuditStatus}
      */
     private Integer status;
     /**
-     * 日期
+     * 调价日期
      */
-    private LocalDateTime adjustDate;
+    private LocalDateTime adjustTime;
     /**
      * 供应商编号
+     *
+     * 关联 {@link ErpSupplierDO#getId()}
      */
     private Long supplierId;
     /**
-     * 部门
+     * 部门 ID
      */
-    private String dept;
+    private Long deptId;
     /**
-     * 调价人
+     * 调价人（系统用户 ID）
      */
-    private String adjustUser;
+    private Long adjuster;
     /**
-     * 调价类型(按入库单调价等)
+     * 调价类型
+     *
+     * 枚举 {@link cn.iocoder.yudao.module.erp.enums.purchase.ErpPurchasePriceAdjustTypeEnum}
      */
-    private String adjustType;
+    private Integer adjustType;
     /**
      * 备注
      */
     private String remark;
     /**
-     * 调价总金额(正加负减)
+     * 调价总金额（可正可负）
      */
     private BigDecimal totalAdjustPrice;
+    /**
+     * 审批通过时间
+     */
+    private LocalDateTime approveTime;
 
 }

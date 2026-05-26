@@ -9,6 +9,9 @@ import cn.iocoder.yudao.framework.common.util.collection.MapUtils;
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
 import cn.iocoder.yudao.framework.excel.core.util.ExcelUtils;
 import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpProductRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnExportRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnImportExcelVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnImportRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnSaveReqVO;
@@ -16,10 +19,12 @@ import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpCustomerDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleReturnDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleReturnItemDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockDO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpWarehouseDO;
 import cn.iocoder.yudao.module.erp.service.product.ErpProductService;
 import cn.iocoder.yudao.module.erp.service.sale.ErpCustomerService;
 import cn.iocoder.yudao.module.erp.service.sale.ErpSaleReturnService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpStockService;
+import cn.iocoder.yudao.module.erp.service.stock.ErpWarehouseService;
 import cn.iocoder.yudao.module.system.api.user.AdminUserApi;
 import cn.iocoder.yudao.module.system.api.user.dto.AdminUserRespDTO;
 import io.swagger.v3.oas.annotations.Operation;
@@ -28,12 +33,15 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 import javax.annotation.Resource;
 import javax.servlet.http.HttpServletResponse;
 import javax.validation.Valid;
 import java.io.IOException;
 import java.math.BigDecimal;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 
@@ -56,6 +64,8 @@ public class ErpSaleReturnController {
     private ErpProductService productService;
     @Resource
     private ErpCustomerService customerService;
+    @Resource
+    private ErpWarehouseService warehouseService;
 
     @Resource
     private AdminUserApi adminUserApi;
@@ -110,7 +120,8 @@ public class ErpSaleReturnController {
                     ErpStockDO stock = stockService.getStock(item.getProductId(), item.getWarehouseId());
                     item.setStockCount(stock != null ? stock.getCount() : BigDecimal.ZERO);
                     MapUtils.findAndThen(productMap, item.getProductId(), product -> item.setProductName(product.getName())
-                            .setProductBarCode(product.getBarCode()).setProductUnitName(product.getUnitName()));
+                            .setProductBarCode(product.getBarCode()).setProductUnitName(product.getUnitName())
+                            .setProductCode(product.getCode()));
                 }))));
     }
 
@@ -130,8 +141,28 @@ public class ErpSaleReturnController {
                                     HttpServletResponse response) throws IOException {
         pageReqVO.setPageSize(PageParam.PAGE_SIZE_NONE);
         List<ErpSaleReturnRespVO> list = buildSaleReturnVOPageResult(saleReturnService.getSaleReturnPage(pageReqVO)).getList();
-        // 导出 Excel
-        ExcelUtils.write(response, "销售退货.xls", "数据", ErpSaleReturnRespVO.class, list);
+        ExcelUtils.write(response, "销售退货.xls", "数据", ErpSaleReturnExportRespVO.class, buildSaleReturnExportList(list));
+    }
+
+    @GetMapping("/export-import-template")
+    @Operation(summary = "获得销售退货导入模板")
+    public void exportImportTemplate(HttpServletResponse response) throws IOException {
+        ErpSaleReturnImportExcelVO example = new ErpSaleReturnImportExcelVO();
+        example.setProductCode("P0001");
+        example.setCount(BigDecimal.ONE);
+        example.setProductPrice(new BigDecimal("100.00"));
+        example.setWarehouseName("默认仓");
+        example.setReturnReason("质量问题");
+        example.setRemark("备注");
+        ExcelUtils.write(response, "销售退货导入模板.xls", "销售退货", ErpSaleReturnImportExcelVO.class, Collections.singletonList(example));
+    }
+
+    @PostMapping("/import")
+    @Operation(summary = "导入销售退货明细")
+    @PreAuthorize("@ss.hasPermission('erp:sale-return:create')")
+    public CommonResult<ErpSaleReturnImportRespVO> importSaleReturn(@RequestParam("file") MultipartFile file) throws Exception {
+        List<ErpSaleReturnImportExcelVO> list = ExcelUtils.read(file, ErpSaleReturnImportExcelVO.class);
+        return success(saleReturnService.parseImportData(list));
     }
 
     private PageResult<ErpSaleReturnRespVO> buildSaleReturnVOPageResult(PageResult<ErpSaleReturnDO> pageResult) {
@@ -145,6 +176,8 @@ public class ErpSaleReturnController {
         // 1.2 产品信息
         Map<Long, ErpProductRespVO> productMap = productService.getProductVOMap(
                 convertSet(saleReturnItemList, ErpSaleReturnItemDO::getProductId));
+        Map<Long, ErpWarehouseDO> warehouseMap = warehouseService.getWarehouseMap(
+                convertSet(saleReturnItemList, ErpSaleReturnItemDO::getWarehouseId));
         // 1.3 客户信息
         Map<Long, ErpCustomerDO> customerMap = customerService.getCustomerMap(
                 convertSet(pageResult.getList(), ErpSaleReturnDO::getCustomerId));
@@ -155,11 +188,38 @@ public class ErpSaleReturnController {
         return BeanUtils.toBean(pageResult, ErpSaleReturnRespVO.class, saleReturn -> {
             saleReturn.setItems(BeanUtils.toBean(saleReturnItemMap.get(saleReturn.getId()), ErpSaleReturnRespVO.Item.class,
                     item -> MapUtils.findAndThen(productMap, item.getProductId(), product -> item.setProductName(product.getName())
-                            .setProductBarCode(product.getBarCode()).setProductUnitName(product.getUnitName()))));
+                            .setProductBarCode(product.getBarCode()).setProductUnitName(product.getUnitName())
+                            .setProductCode(product.getCode()))));
             saleReturn.setProductNames(CollUtil.join(saleReturn.getItems(), "，", ErpSaleReturnRespVO.Item::getProductName));
             MapUtils.findAndThen(customerMap, saleReturn.getCustomerId(), supplier -> saleReturn.setCustomerName(supplier.getName()));
             MapUtils.findAndThen(userMap, Long.parseLong(saleReturn.getCreator()), user -> saleReturn.setCreatorName(user.getNickname()));
+            saleReturn.getItems().forEach(item ->
+                    MapUtils.findAndThen(warehouseMap, item.getWarehouseId(), warehouse -> item.setWarehouseName(warehouse.getName())));
         });
+    }
+
+    private List<ErpSaleReturnExportRespVO> buildSaleReturnExportList(List<ErpSaleReturnRespVO> list) {
+        List<ErpSaleReturnExportRespVO> rows = new ArrayList<>();
+        for (ErpSaleReturnRespVO saleReturn : list) {
+            if (CollUtil.isEmpty(saleReturn.getItems())) {
+                rows.add(BeanUtils.toBean(saleReturn, ErpSaleReturnExportRespVO.class));
+                continue;
+            }
+            for (ErpSaleReturnRespVO.Item item : saleReturn.getItems()) {
+                rows.add(BeanUtils.toBean(saleReturn, ErpSaleReturnExportRespVO.class, row -> {
+                    row.setProductCode(item.getProductCode());
+                    row.setProductName(item.getProductName());
+                    row.setProductUnitName(item.getProductUnitName());
+                    row.setWarehouseName(item.getWarehouseName());
+                    row.setItemCount(item.getCount());
+                    row.setProductPrice(item.getProductPrice());
+                    row.setReturnReason(item.getReturnReason());
+                    row.setWarehousePosition(item.getWarehousePosition());
+                    row.setItemRemark(item.getRemark());
+                }));
+            }
+        }
+        return rows;
     }
 
 }

@@ -93,4 +93,75 @@ public class ErpSaleOutItemDO extends BaseDO {
      */
     private String remark;
 
+    // ========== 产品扩展字段 ==========
+
+    /**
+     * 车型
+     */
+    private String vehicleModel;
+    /**
+     * 规格
+     */
+    private String standard;
+    /**
+     * 特征码
+     */
+    private String featureCode;
+    /**
+     * 品牌
+     */
+    private String brand;
+    /**
+     * 图号
+     */
+    private String drawingNo;
+    /**
+     * 批次
+     */
+    private String batchNo;
+    /**
+     * 仓位
+     */
+    private String warehousePosition;
+    /**
+     * 单重
+     */
+    private BigDecimal unitWeight;
+    /**
+     * 总重
+     */
+    private BigDecimal totalWeight;
+    /**
+     * 减后价
+     */
+    private BigDecimal afterReductionPrice;
+    /**
+     * 减后金额
+     */
+    private BigDecimal afterReductionAmount;
+    /**
+     * 实际销售金额
+     */
+    private BigDecimal actualSaleAmount;
+    /**
+     * 产地
+     */
+    private String originPlace;
+    /**
+     * 供应商名称
+     */
+    private String supplierName;
+    /**
+     * 浮动前价格（调价前原价）
+     */
+    private BigDecimal originalProductPrice;
+    /**
+     * 是否被调价
+     */
+    private Boolean adjusted;
+    /**
+     * 关联调价单编号
+     */
+    private Long adjustId;
+
 }

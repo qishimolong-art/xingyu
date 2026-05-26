@@ -48,4 +48,10 @@ public interface ErpStockRecordMapper extends BaseMapperX<ErpStockRecordDO> {
         return selectPageWithProductFilter(reqVO, null);
     }
 
+    default java.util.List<ErpStockRecordDO> selectListByBiz(Integer bizType, Long bizId) {
+        return selectList(new LambdaQueryWrapperX<ErpStockRecordDO>()
+                .eq(ErpStockRecordDO::getBizType, bizType)
+                .eq(ErpStockRecordDO::getBizId, bizId));
+    }
+
 }

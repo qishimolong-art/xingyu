@@ -37,4 +37,9 @@ public interface ErpSupplierMapper extends BaseMapperX<ErpSupplierDO> {
         return supplier != null ? supplier.getCode() : null;
     }
 
+    default List<ErpSupplierDO> selectListByNameLike(String name) {
+        return selectList(new LambdaQueryWrapperX<ErpSupplierDO>()
+                .like(ErpSupplierDO::getName, name));
+    }
+
 }

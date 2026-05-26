@@ -629,3 +629,74 @@ pnpm build:antd
 - 列表页：`index.vue` 行操作新增"入库处理"按钮（条件：已审批 + 未全部入库）
 
 **验证**：`mvn compile -pl yudao-module-erp -am -DskipTests` → BUILD SUCCESS
+
+---
+
+## 销售管理模块开发进度（2026-05-10）
+
+> 客户最新规划文档：`D:\10186\桌面\客户v2(1).md`
+> 开发策略：渐进改造 + 并行推进；保留旧销售订单/销售出库/销售退货入口，新流程以“销售单”语义复用现有销售出库扣库存能力。
+
+### 已完成范围
+
+**阶段 1：客户基础信息 + 销售主链路 MVP**
+- 客户主表扩展基础信息字段，并新增客户详情页基础 Tab。
+- 新增报价订单 `/erp/sale-quote`：不占库存、不校验库存，审核后可生成销售单。
+- 新增销售手推车 `/erp/sale-cart`：提交/审批校验库存，终审后自动生成销售单。
+- 销售出库扩展为新“销售单”承载层，新增 `sourceType / sourceId / sourceNo` 来源字段。
+- 新流程生成销售单继续写 `SALE_OUT` 库存流水，沿用移动加权成本体系。
+
+**阶段 2：客户档案多 Tab**
+- 新增客户联系人、合同、企业地区、企业图片、拓展信息、任务量、工商信息占位等后端接口与前端 Tab。
+- 客户新增后进入详情页，详情页按 Tab 呈现已实现资料模块。
+
+**阶段 3：报价订单与销售手推车互转**
+- 支持报价订单整单/分批转销售手推车，校验本次转换数量不超过剩余可转数量。
+- 支持销售手推车转报价订单，并记录转换关系。
+- 报价订单直接审核生成销售单时做最终库存校验。
+
+**阶段 4：销售退货双模式**
+- 新增退货模式：按销售单退货、按库存退货，并保留旧销售订单退货兼容模式。
+- 按销售单退货支持查询可退明细，校验退货数量不超过 `原销售数量 - 已退数量`。
+- 按库存退货不强制关联原销售单，审批后增加库存并写 `SALE_RETURN` 流水。
+- 前端新增销售单选择弹窗，使用数据列表弹窗规范：`!w-[85vw]`、表格 `70vh`、横向滚动。
+
+**阶段 5：销售调价重做**
+- 调价单审核后不重复扣库存。
+- 原销售单标记调价追溯字段，系统自动生成一张新销售单承载新价格。
+- 新销售单来源为 `PRICE_ADJUST`，保留原销售单、新销售单、调价单三方关系。
+
+**阶段 6：配置表、菜单、权限**
+- 新增通用销售配置表 `/erp/sale-config`，覆盖合同类型、线路、运费说明、内部账户、连锁/集团、总经销、任务级别等配置类型。
+- 新增销售配置前端页面：`views/erp/sale/config`。
+- 新增菜单 SQL，补齐报价订单、销售手推车、销售调价、销售配置等菜单与权限点。
+- 报价订单、销售手推车已补齐 Excel 导出接口、前端导出按钮和菜单权限点。
+
+**阶段 7：前端体验收尾（部分完成）**
+- 报价订单、销售手推车、销售退货、旧销售订单、销售单子表均已接入“字段编辑不 reload、增删行才 reload”的横向滚动保护。
+- 修复销售退货子表 `emitItemsUpdate` 递归调用问题，避免删除行时栈溢出。
+
+### 数据库迁移脚本
+
+按顺序执行：
+1. `sql/mysql/erp_sale_quote_cart_v8.sql`
+2. `sql/mysql/erp_sale_customer_tabs_v9.sql`
+3. `sql/mysql/erp_sale_customer_extend_v10.sql`
+4. `sql/mysql/erp_sale_return_v11.sql`
+5. `sql/mysql/erp_sale_price_adjust_v12.sql`
+6. `sql/mysql/erp_sale_config_v13.sql`
+7. `sql/mysql/erp_sale_menu_v14.sql`
+
+### 验证记录
+
+- 后端编译：`mvn compile -pl yudao-module-erp -am -DskipTests` → BUILD SUCCESS
+- 销售相关测试：`mvn test -pl yudao-module-erp "-Dtest=ErpSaleConfigServiceImplTest,ErpSaleReturnServiceImplTest,ErpSaleQuoteServiceImplTest,ErpSaleCartServiceImplTest"` → Tests run: 8, Failures: 0, Errors: 0
+- 前端类型检查：`pnpm -F @vben/web-antd run typecheck` 当前仍受项目既有 AI/BPM/库存等无关类型错误影响失败；已过滤确认本次新增/修改的 `src/views/erp/sale/**`、`src/api/erp/sale/**` 不再报新增类型错误。
+- 测试编译时发现并修复采购退货 `ErpPurchaseReturnServiceImpl` 缺少 `ErpAccountService` 注入的问题。
+
+### 后续待办
+
+1. 客户导入、导出、批量编辑。
+2. 销售单据打印入口完善。
+3. 前端全量 typecheck 仍需另行清理项目既有 AI/BPM/库存等无关类型错误。
+4. 部署后执行菜单缓存刷新：后台“系统管理 → 菜单管理 → 刷新缓存”，或重启后端并重新登录。

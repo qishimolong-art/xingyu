@@ -1,0 +1,254 @@
+package cn.iocoder.yudao.module.erp.controller.admin.sale;
+
+import cn.iocoder.yudao.framework.common.pojo.CommonResult;
+import cn.iocoder.yudao.framework.common.pojo.PageResult;
+import cn.iocoder.yudao.framework.test.core.ut.BaseMockitoUnitTest;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.priceadjust.ErpSaleOutItemForAdjustRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.priceadjust.ErpSalePriceAdjustPageReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.priceadjust.ErpSalePriceAdjustRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.priceadjust.ErpSalePriceAdjustSaveReqVO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSalePriceAdjustDO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSalePriceAdjustItemDO;
+import cn.iocoder.yudao.module.erp.service.sale.ErpCustomerService;
+import cn.iocoder.yudao.module.erp.service.sale.ErpSalePriceAdjustService;
+import cn.iocoder.yudao.module.system.api.dept.DeptApi;
+import cn.iocoder.yudao.module.system.api.user.AdminUserApi;
+import org.junit.jupiter.api.Test;
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
+import org.springframework.security.access.prepost.PreAuthorize;
+
+import java.lang.reflect.Method;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.List;
+
+import static java.util.Collections.singletonList;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
+/**
+ * {@link ErpSalePriceAdjustController} 的单元测试
+ */
+public class ErpSalePriceAdjustControllerTest extends BaseMockitoUnitTest {
+
+    @InjectMocks
+    private ErpSalePriceAdjustController controller;
+
+    @Mock
+    private ErpSalePriceAdjustService salePriceAdjustService;
+    @Mock
+    private ErpCustomerService customerService;
+    @Mock
+    private DeptApi deptApi;
+    @Mock
+    private AdminUserApi adminUserApi;
+
+    // ==================== createSalePriceAdjust ====================
+
+    @Test
+    public void testCreateSalePriceAdjust_paramPassThrough() {
+        ErpSalePriceAdjustSaveReqVO reqVO = new ErpSalePriceAdjustSaveReqVO();
+        reqVO.setCustomerId(1L);
+        when(salePriceAdjustService.createSalePriceAdjust(any())).thenReturn(200L);
+
+        CommonResult<Long> result = controller.createSalePriceAdjust(reqVO);
+
+        assertEquals(0, result.getCode());
+        assertEquals(200L, result.getData());
+        verify(salePriceAdjustService).createSalePriceAdjust(eq(reqVO));
+    }
+
+    @Test
+    public void testCreateSalePriceAdjust_hasPreAuthorize() throws NoSuchMethodException {
+        Method method = ErpSalePriceAdjustController.class.getMethod("createSalePriceAdjust", ErpSalePriceAdjustSaveReqVO.class);
+        PreAuthorize anno = method.getAnnotation(PreAuthorize.class);
+        assertNotNull(anno);
+        assertTrue(anno.value().contains("erp:sale-price-adjust:create"));
+    }
+
+    // ==================== updateSalePriceAdjust ====================
+
+    @Test
+    public void testUpdateSalePriceAdjust_paramPassThrough() {
+        ErpSalePriceAdjustSaveReqVO reqVO = new ErpSalePriceAdjustSaveReqVO();
+        reqVO.setId(10L);
+
+        CommonResult<Boolean> result = controller.updateSalePriceAdjust(reqVO);
+
+        assertEquals(0, result.getCode());
+        assertEquals(Boolean.TRUE, result.getData());
+        verify(salePriceAdjustService).updateSalePriceAdjust(eq(reqVO));
+    }
+
+    @Test
+    public void testUpdateSalePriceAdjust_hasPreAuthorize() throws NoSuchMethodException {
+        Method method = ErpSalePriceAdjustController.class.getMethod("updateSalePriceAdjust", ErpSalePriceAdjustSaveReqVO.class);
+        PreAuthorize anno = method.getAnnotation(PreAuthorize.class);
+        assertNotNull(anno);
+        assertTrue(anno.value().contains("erp:sale-price-adjust:update"));
+    }
+
+    // ==================== updateSalePriceAdjustStatus ====================
+
+    @Test
+    public void testUpdateSalePriceAdjustStatus_paramPassThrough() {
+        CommonResult<Boolean> result = controller.updateSalePriceAdjustStatus(15L, 20);
+
+        assertEquals(0, result.getCode());
+        assertEquals(Boolean.TRUE, result.getData());
+        verify(salePriceAdjustService).updateSalePriceAdjustStatus(eq(15L), eq(20));
+    }
+
+    @Test
+    public void testUpdateSalePriceAdjustStatus_hasPreAuthorize() throws NoSuchMethodException {
+        Method method = ErpSalePriceAdjustController.class.getMethod("updateSalePriceAdjustStatus", Long.class, Integer.class);
+        PreAuthorize anno = method.getAnnotation(PreAuthorize.class);
+        assertNotNull(anno);
+        assertTrue(anno.value().contains("erp:sale-price-adjust:update-status"));
+    }
+
+    // ==================== deleteSalePriceAdjust ====================
+
+    @Test
+    public void testDeleteSalePriceAdjust_paramPassThrough() {
+        List<Long> ids = Arrays.asList(5L, 6L);
+
+        CommonResult<Boolean> result = controller.deleteSalePriceAdjust(ids);
+
+        assertEquals(0, result.getCode());
+        assertEquals(Boolean.TRUE, result.getData());
+        verify(salePriceAdjustService).deleteSalePriceAdjust(eq(ids));
+    }
+
+    @Test
+    public void testDeleteSalePriceAdjust_hasPreAuthorize() throws NoSuchMethodException {
+        Method method = ErpSalePriceAdjustController.class.getMethod("deleteSalePriceAdjust", List.class);
+        PreAuthorize anno = method.getAnnotation(PreAuthorize.class);
+        assertNotNull(anno);
+        assertTrue(anno.value().contains("erp:sale-price-adjust:delete"));
+    }
+
+    // ==================== getSalePriceAdjust ====================
+
+    @Test
+    public void testGetSalePriceAdjust_adjustNull_returnsNullData() {
+        when(salePriceAdjustService.getSalePriceAdjust(eq(100L))).thenReturn(null);
+
+        CommonResult<ErpSalePriceAdjustRespVO> result = controller.getSalePriceAdjust(100L);
+
+        assertEquals(0, result.getCode());
+        assertNull(result.getData());
+        verify(salePriceAdjustService).getSalePriceAdjust(eq(100L));
+    }
+
+    @Test
+    public void testGetSalePriceAdjust_adjustExists_returnsRespVO() {
+        ErpSalePriceAdjustDO adjust = new ErpSalePriceAdjustDO();
+        adjust.setId(100L);
+        adjust.setCustomerId(null);
+        adjust.setDeptId(null);
+        adjust.setAdjustUserId(null);
+        adjust.setCreator(null);
+        when(salePriceAdjustService.getSalePriceAdjust(eq(100L))).thenReturn(adjust);
+        when(salePriceAdjustService.getSalePriceAdjustItemListByAdjustId(eq(100L))).thenReturn(Collections.emptyList());
+
+        CommonResult<ErpSalePriceAdjustRespVO> result = controller.getSalePriceAdjust(100L);
+
+        assertEquals(0, result.getCode());
+        assertNotNull(result.getData());
+        assertEquals(100L, result.getData().getId());
+    }
+
+    @Test
+    public void testGetSalePriceAdjust_hasPreAuthorize() throws NoSuchMethodException {
+        Method method = ErpSalePriceAdjustController.class.getMethod("getSalePriceAdjust", Long.class);
+        PreAuthorize anno = method.getAnnotation(PreAuthorize.class);
+        assertNotNull(anno);
+        assertTrue(anno.value().contains("erp:sale-price-adjust:query"));
+    }
+
+    // ==================== getSalePriceAdjustPage ====================
+
+    @Test
+    public void testGetSalePriceAdjustPage_emptyResult() {
+        ErpSalePriceAdjustPageReqVO pageReqVO = new ErpSalePriceAdjustPageReqVO();
+        when(salePriceAdjustService.getSalePriceAdjustPage(eq(pageReqVO)))
+                .thenReturn(PageResult.empty(0L));
+
+        CommonResult<PageResult<ErpSalePriceAdjustRespVO>> result = controller.getSalePriceAdjustPage(pageReqVO);
+
+        assertEquals(0, result.getCode());
+        assertEquals(0L, result.getData().getTotal());
+        verify(salePriceAdjustService).getSalePriceAdjustPage(eq(pageReqVO));
+    }
+
+    @Test
+    public void testGetSalePriceAdjustPage_withData() {
+        ErpSalePriceAdjustPageReqVO pageReqVO = new ErpSalePriceAdjustPageReqVO();
+        ErpSalePriceAdjustDO adjust = new ErpSalePriceAdjustDO();
+        adjust.setId(300L);
+        adjust.setCustomerId(301L);
+        adjust.setDeptId(null);
+        adjust.setAdjustUserId(null);
+        adjust.setCreator(null);
+        PageResult<ErpSalePriceAdjustDO> pageResult = new PageResult<>(singletonList(adjust), 1L);
+        when(salePriceAdjustService.getSalePriceAdjustPage(eq(pageReqVO))).thenReturn(pageResult);
+        when(salePriceAdjustService.getSalePriceAdjustItemListByAdjustIds(any())).thenReturn(Collections.emptyList());
+        when(customerService.getCustomerMap(any())).thenReturn(Collections.emptyMap());
+
+        CommonResult<PageResult<ErpSalePriceAdjustRespVO>> result = controller.getSalePriceAdjustPage(pageReqVO);
+
+        assertEquals(0, result.getCode());
+        assertEquals(1L, result.getData().getTotal());
+        assertEquals(300L, result.getData().getList().get(0).getId());
+    }
+
+    @Test
+    public void testGetSalePriceAdjustPage_hasPreAuthorize() throws NoSuchMethodException {
+        Method method = ErpSalePriceAdjustController.class.getMethod("getSalePriceAdjustPage", ErpSalePriceAdjustPageReqVO.class);
+        PreAuthorize anno = method.getAnnotation(PreAuthorize.class);
+        assertNotNull(anno);
+        assertTrue(anno.value().contains("erp:sale-price-adjust:query"));
+    }
+
+    // ==================== getAdjustableItemsByCustomerId ====================
+
+    @Test
+    public void testGetAdjustableItemsByCustomerId_paramPassThrough() {
+        List<ErpSaleOutItemForAdjustRespVO> items = Collections.emptyList();
+        when(salePriceAdjustService.getAdjustableItemsByCustomerId(eq(500L), eq(600L))).thenReturn(items);
+
+        CommonResult<List<ErpSaleOutItemForAdjustRespVO>> result = controller.getAdjustableItemsByCustomerId(500L, 600L);
+
+        assertEquals(0, result.getCode());
+        assertNotNull(result.getData());
+        verify(salePriceAdjustService).getAdjustableItemsByCustomerId(eq(500L), eq(600L));
+    }
+
+    @Test
+    public void testGetAdjustableItemsByCustomerId_saleOutIdNull() {
+        List<ErpSaleOutItemForAdjustRespVO> items = Collections.emptyList();
+        when(salePriceAdjustService.getAdjustableItemsByCustomerId(eq(500L), eq(null))).thenReturn(items);
+
+        CommonResult<List<ErpSaleOutItemForAdjustRespVO>> result = controller.getAdjustableItemsByCustomerId(500L, null);
+
+        assertEquals(0, result.getCode());
+        verify(salePriceAdjustService).getAdjustableItemsByCustomerId(eq(500L), eq(null));
+    }
+
+    @Test
+    public void testGetAdjustableItemsByCustomerId_hasPreAuthorize() throws NoSuchMethodException {
+        Method method = ErpSalePriceAdjustController.class.getMethod("getAdjustableItemsByCustomerId", Long.class, Long.class);
+        PreAuthorize anno = method.getAnnotation(PreAuthorize.class);
+        assertNotNull(anno);
+        assertTrue(anno.value().contains("erp:sale-price-adjust:query"));
+    }
+
+}

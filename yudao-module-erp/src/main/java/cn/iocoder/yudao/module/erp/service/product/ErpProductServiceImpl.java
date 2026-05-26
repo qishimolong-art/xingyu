@@ -1,10 +1,20 @@
 package cn.iocoder.yudao.module.erp.service.product;
 
 import cn.hutool.core.collection.CollUtil;
+import cn.hutool.core.text.csv.CsvData;
+import cn.hutool.core.text.csv.CsvReadConfig;
+import cn.hutool.core.text.csv.CsvReader;
+import cn.hutool.core.text.csv.CsvRow;
+import cn.hutool.core.text.csv.CsvUtil;
+import cn.hutool.core.util.StrUtil;
 import cn.iocoder.yudao.framework.common.enums.CommonStatusEnum;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.common.util.collection.MapUtils;
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
+import cn.iocoder.yudao.framework.common.util.validation.ValidationUtils;
+import cn.iocoder.yudao.module.erp.controller.admin.product.vo.category.ErpProductCategoryListReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpProductImportExcelVO;
+import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpProductImportRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpProductPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpProductRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ProductSaveReqVO;
@@ -12,23 +22,31 @@ import cn.iocoder.yudao.module.erp.dal.dataobject.product.ErpProductCategoryDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.product.ErpProductDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.product.ErpProductUnitDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.product.ErpProductUniversalDO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockLockDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpWarehouseDO;
 import cn.iocoder.yudao.module.erp.dal.mysql.product.ErpProductMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.product.ErpProductUniversalMapper;
+import cn.iocoder.yudao.module.erp.dal.mysql.stock.ErpStockLockMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.stock.ErpStockMapper;
 import cn.iocoder.yudao.module.erp.dal.redis.no.ErpNoRedisDAO;
+import cn.iocoder.yudao.module.infra.api.config.ConfigApi;
 import cn.iocoder.yudao.module.erp.service.stock.ErpWarehouseService;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
 import org.springframework.validation.annotation.Validated;
 
 import javax.annotation.Resource;
+import javax.validation.ConstraintViolationException;
+import java.io.Reader;
 import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -46,6 +64,7 @@ import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PRODUCT_NOT_E
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PRODUCT_UNIVERSAL_CODE_INVALID;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PRODUCT_UNIVERSAL_CODE_SELF;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PRODUCT_WAREHOUSE_NOT_EXISTS;
+import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PRODUCT_WAREHOUSE_REQUIRED;
 
 /**
  * ERP 产品 Service 实现类
@@ -55,6 +74,16 @@ import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PRODUCT_WAREH
 @Service
 @Validated
 public class ErpProductServiceImpl implements ErpProductService {
+
+    public static final String PRODUCT_CODE_MODE_CONFIG_KEY = "erp.product.code-mode";
+    private static final String PRODUCT_CODE_MODE_AUTO = "AUTO";
+    private static final String PRODUCT_CODE_MODE_MANUAL = "MANUAL";
+
+    static boolean isLowStockWarning(BigDecimal currentStock, Integer stockMin) {
+        BigDecimal current = currentStock == null ? BigDecimal.ZERO : currentStock;
+        return current.compareTo(BigDecimal.ZERO) <= 0
+                || (stockMin != null && current.compareTo(BigDecimal.valueOf(stockMin)) <= 0);
+    }
 
     /**
      * 生成配件编码的最大重试次数，用于并发下 uk_code 冲突兜底
@@ -67,6 +96,8 @@ public class ErpProductServiceImpl implements ErpProductService {
     private ErpProductUniversalMapper productUniversalMapper;
     @Resource
     private ErpStockMapper stockMapper;
+    @Resource
+    private ErpStockLockMapper stockLockMapper;
 
     @Resource
     private ErpProductCategoryService productCategoryService;
@@ -78,12 +109,15 @@ public class ErpProductServiceImpl implements ErpProductService {
     @Resource
     private ErpNoRedisDAO noRedisDAO;
 
+    @Resource
+    private ConfigApi configApi;
+
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Long createProduct(ProductSaveReqVO createReqVO) {
         // 1. 校验仓库存在
-        if (createReqVO.getDefaultWarehouseId() != null
-                && warehouseService.getWarehouse(createReqVO.getDefaultWarehouseId()) == null) {
+        validateDefaultWarehouse(createReqVO.getDefaultWarehouseId());
+        if (warehouseService.getWarehouse(createReqVO.getDefaultWarehouseId()) == null) {
             throw exception(PRODUCT_WAREHOUSE_NOT_EXISTS);
         }
 
@@ -95,7 +129,8 @@ public class ErpProductServiceImpl implements ErpProductService {
         if (product.getPackageQty() == null) {
             product.setPackageQty(1);
         }
-        insertWithGeneratedCode(product);
+        prepareProductCode(product, createReqVO.getCode(), null);
+        insertProduct(product);
 
         // 3. 校验并插入通用件子表
         validateUniversalCodes(product.getId(), createReqVO.getUniversals());
@@ -128,23 +163,81 @@ public class ErpProductServiceImpl implements ErpProductService {
             throw exception(PRODUCT_MERGED, existing.getName());
         }
         // 2. 校验仓库
-        if (updateReqVO.getDefaultWarehouseId() != null
-                && warehouseService.getWarehouse(updateReqVO.getDefaultWarehouseId()) == null) {
+        validateDefaultWarehouse(updateReqVO.getDefaultWarehouseId());
+        if (warehouseService.getWarehouse(updateReqVO.getDefaultWarehouseId()) == null) {
             throw exception(PRODUCT_WAREHOUSE_NOT_EXISTS);
         }
 
         // 3. 更新主表（code/mergedFlag/mergedTargetId/lastPurchasePrice 不允许通过此接口修改，保留原值）
         ErpProductDO updateObj = BeanUtils.toBean(updateReqVO, ErpProductDO.class);
-        updateObj.setCode(null);
+        prepareProductCode(updateObj, updateReqVO.getCode(), existing.getId());
         updateObj.setMergedFlag(null);
         updateObj.setMergedTargetId(null);
         updateObj.setLastPurchasePrice(null);
-        productMapper.updateById(updateObj);
+        try {
+            productMapper.updateById(updateObj);
+        } catch (DuplicateKeyException ex) {
+            throw exception(PRODUCT_CODE_DUPLICATE, updateReqVO.getCode());
+        }
 
         // 4. 子表：先删后插
         validateUniversalCodes(updateReqVO.getId(), updateReqVO.getUniversals());
         productUniversalMapper.deleteByProductId(updateReqVO.getId());
         saveUniversals(updateReqVO.getId(), updateReqVO.getUniversals());
+    }
+
+    private void validateDefaultWarehouse(Long defaultWarehouseId) {
+        if (defaultWarehouseId == null) {
+            throw exception(PRODUCT_WAREHOUSE_REQUIRED);
+        }
+    }
+
+    private void prepareProductCode(ErpProductDO product, String inputCode, Long excludeId) {
+        String code = trimToNull(inputCode);
+        if (PRODUCT_CODE_MODE_MANUAL.equals(getProductCodeMode())) {
+            if (!StringUtils.hasText(code)) {
+                throw exception(PRODUCT_CODE_GENERATE_FAIL);
+            }
+            validateProductCodeUnique(code, excludeId);
+            product.setCode(code);
+            return;
+        }
+        if (StringUtils.hasText(code)) {
+            validateProductCodeUnique(code, excludeId);
+            product.setCode(code);
+            return;
+        }
+        product.setCode(null);
+    }
+
+    private String getProductCodeMode() {
+        String mode = configApi.getConfigValueByKey(PRODUCT_CODE_MODE_CONFIG_KEY);
+        if (PRODUCT_CODE_MODE_MANUAL.equalsIgnoreCase(mode)) {
+            return PRODUCT_CODE_MODE_MANUAL;
+        }
+        return PRODUCT_CODE_MODE_AUTO;
+    }
+
+    private void validateProductCodeUnique(String code, Long excludeId) {
+        if (!StringUtils.hasText(code)) {
+            return;
+        }
+        ErpProductDO existing = productMapper.selectByCodeExcludeId(code, excludeId);
+        if (existing != null) {
+            throw exception(PRODUCT_CODE_DUPLICATE, code);
+        }
+    }
+
+    private void insertProduct(ErpProductDO product) {
+        if (!StringUtils.hasText(product.getCode())) {
+            insertWithGeneratedCode(product);
+            return;
+        }
+        try {
+            productMapper.insert(product);
+        } catch (DuplicateKeyException ex) {
+            throw exception(PRODUCT_CODE_DUPLICATE, product.getCode());
+        }
     }
 
     @Override
@@ -286,6 +379,15 @@ public class ErpProductServiceImpl implements ErpProductService {
                 ? Collections.emptyMap()
                 : warehouseService.getWarehouseMap(warehouseIds);
         Map<Long, BigDecimal> stockMap = stockMapper.selectSumMapByProductIds(productIds);
+        Map<Long, BigDecimal> lockCountMap = stockLockMapper.selectList(
+                new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<ErpStockLockDO>()
+                        .in(ErpStockLockDO::getProductId, productIds)
+                        .eq(ErpStockLockDO::getStatus, 1))
+                .stream()
+                .collect(Collectors.groupingBy(ErpStockLockDO::getProductId,
+                        Collectors.reducing(BigDecimal.ZERO,
+                                item -> item.getLockCount() != null ? item.getLockCount() : BigDecimal.ZERO,
+                                BigDecimal::add)));
         List<ErpProductUniversalDO> universalList = productUniversalMapper.selectListByProductIds(productIds);
         Map<Long, List<ErpProductUniversalDO>> universalByProduct = universalList.stream()
                 .collect(Collectors.groupingBy(ErpProductUniversalDO::getProductId));
@@ -298,13 +400,14 @@ public class ErpProductServiceImpl implements ErpProductService {
                     u -> vo.setUnitName(u.getName()));
             MapUtils.findAndThen(warehouseMap, vo.getDefaultWarehouseId(),
                     w -> vo.setDefaultWarehouseName(w.getName()));
-            // 库存：currentStock 实时聚合；inTransit=0；available=current（按需求 Q4 共识）
+            // 库存：currentStock 实时聚合；lockCount 为占用数量；available=current-lock
             BigDecimal current = stockMap.getOrDefault(vo.getId(), BigDecimal.ZERO);
+            BigDecimal lockCount = lockCountMap.getOrDefault(vo.getId(), BigDecimal.ZERO);
             vo.setCurrentStock(current);
+            vo.setLockCount(lockCount);
             vo.setInTransitStock(BigDecimal.ZERO);
-            vo.setAvailableStock(current);
-            vo.setLowStockWarning(vo.getStockMin() != null
-                    && current.compareTo(BigDecimal.valueOf(vo.getStockMin())) <= 0);
+            vo.setAvailableStock(current.subtract(lockCount));
+            vo.setLowStockWarning(isLowStockWarning(current, vo.getStockMin()));
             // 通用件子列表
             List<ErpProductUniversalDO> universals = universalByProduct.get(vo.getId());
             vo.setUniversals(universals == null ? Collections.emptyList()
@@ -354,6 +457,226 @@ public class ErpProductServiceImpl implements ErpProductService {
     @Override
     public List<Long> findEmptyShelfProductIds() {
         return productMapper.selectIdsByEmptyShelf();
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public ErpProductImportRespVO importProductList(List<ErpProductImportExcelVO> list) {
+        ErpProductImportRespVO respVO = new ErpProductImportRespVO();
+        if (CollUtil.isEmpty(list)) {
+            return respVO;
+        }
+
+        Map<String, ErpProductCategoryDO> categoryMap = buildCategoryNameMap();
+        Map<String, ErpProductUnitDO> unitMap = buildUnitNameMap();
+        Map<String, ErpWarehouseDO> warehouseMap = buildWarehouseNameMap();
+        Map<String, ErpProductDO> existedMap = buildExistedProductMap(list);
+
+        for (int i = 0; i < list.size(); i++) {
+            ErpProductImportExcelVO row = list.get(i);
+            if (isEmptyRow(row)) {
+                continue;
+            }
+            Integer rowNo = i + 2;
+            String code = trimToNull(row.getCode());
+            try {
+                ProductSaveReqVO saveReqVO = buildSaveReqVO(row, categoryMap, unitMap, warehouseMap);
+                if (StringUtils.hasText(code) && existedMap.containsKey(code)) {
+                    saveReqVO.setId(existedMap.get(code).getId());
+                    updateProduct(saveReqVO);
+                    respVO.setUpdateCount(respVO.getUpdateCount() + 1);
+                } else {
+                    createProduct(saveReqVO);
+                    respVO.setCreateCount(respVO.getCreateCount() + 1);
+                }
+            } catch (Exception ex) {
+                respVO.getFailureDetails().add(new ErpProductImportRespVO.FailureItem(
+                        rowNo, code, getImportFailureReason(ex)));
+            }
+        }
+
+        respVO.setSuccessCount(respVO.getCreateCount() + respVO.getUpdateCount());
+        respVO.setFailureCount(respVO.getFailureDetails().size());
+        return respVO;
+    }
+
+    public List<ErpProductImportExcelVO> parseCsvImport(Reader reader) {
+        CsvReadConfig config = CsvReadConfig.defaultConfig().setContainsHeader(true);
+        CsvReader csvReader = CsvUtil.getReader(config);
+        CsvData csvData = csvReader.read(reader);
+        List<ErpProductImportExcelVO> result = new ArrayList<>();
+        for (CsvRow row : csvData.getRows()) {
+            ErpProductImportExcelVO item = new ErpProductImportExcelVO();
+            item.setCode(trimToNull(readCsvValue(row, "配件编码", "产品编码")));
+            item.setName(trimToNull(readCsvValue(row, "产品名称")));
+            item.setBarCode(trimToNull(readCsvValue(row, "产品条码")));
+            item.setCategoryName(trimToNull(readCsvValue(row, "产品分类", "分类")));
+            item.setUnitName(trimToNull(readCsvValue(row, "单位")));
+            item.setStatus(parseInteger(readCsvValue(row, "状态")));
+            item.setDefaultWarehouseName(trimToNull(readCsvValue(row, "默认仓库")));
+            item.setVehicleModel(trimToNull(readCsvValue(row, "适用车型")));
+            item.setFactoryCode(trimToNull(readCsvValue(row, "厂家编码")));
+            item.setPurchasePrice(parseBigDecimal(readCsvValue(row, "采购价格")));
+            item.setSalePrice(parseBigDecimal(readCsvValue(row, "销售价格")));
+            item.setMinPrice(parseBigDecimal(readCsvValue(row, "最低价格")));
+            item.setStandard(trimToNull(readCsvValue(row, "规格")));
+            item.setRemark(trimToNull(readCsvValue(row, "备注")));
+            item.setExpiryDay(parseInteger(readCsvValue(row, "保质期天数")));
+            item.setWeight(parseBigDecimal(readCsvValue(row, "重量")));
+            item.setReferencePrice(parseBigDecimal(readCsvValue(row, "参考价")));
+            item.setRetailPrice(parseBigDecimal(readCsvValue(row, "零售价")));
+            item.setLastPurchasePrice(parseBigDecimal(readCsvValue(row, "最后一次采购入库价")));
+            item.setGrossProfitRate(parseInteger(readCsvValue(row, "毛利率")));
+            item.setBackupPrice1(parseBigDecimal(readCsvValue(row, "备用价1")));
+            item.setWholesalePrice(parseBigDecimal(readCsvValue(row, "批发价")));
+            item.setStockMax(parseInteger(readCsvValue(row, "库存上限")));
+            item.setStockMin(parseInteger(readCsvValue(row, "库存下限")));
+            item.setStockStandard(parseInteger(readCsvValue(row, "标准库存")));
+            item.setPackageQty(parseInteger(readCsvValue(row, "包装数")));
+            item.setMainImage(trimToNull(readCsvValue(row, "主图URL")));
+            item.setDetailContent(trimToNull(readCsvValue(row, "详情内容")));
+            result.add(item);
+        }
+        return result;
+    }
+
+    private Map<String, ErpProductCategoryDO> buildCategoryNameMap() {
+        return productCategoryService.getProductCategoryList(new ErpProductCategoryListReqVO()).stream()
+                .filter(item -> StringUtils.hasText(item.getName()))
+                .collect(Collectors.toMap(ErpProductCategoryDO::getName, item -> item, (a, b) -> a, LinkedHashMap::new));
+    }
+
+    private Map<String, ErpProductUnitDO> buildUnitNameMap() {
+        return productUnitService.getProductUnitListByStatus(CommonStatusEnum.ENABLE.getStatus()).stream()
+                .filter(item -> StringUtils.hasText(item.getName()))
+                .collect(Collectors.toMap(ErpProductUnitDO::getName, item -> item, (a, b) -> a, LinkedHashMap::new));
+    }
+
+    private Map<String, ErpWarehouseDO> buildWarehouseNameMap() {
+        return warehouseService.getWarehouseListByStatus(CommonStatusEnum.ENABLE.getStatus()).stream()
+                .filter(item -> StringUtils.hasText(item.getName()))
+                .collect(Collectors.toMap(ErpWarehouseDO::getName, item -> item, (a, b) -> a, LinkedHashMap::new));
+    }
+
+    private Map<String, ErpProductDO> buildExistedProductMap(List<ErpProductImportExcelVO> list) {
+        List<String> codes = list.stream()
+                .map(ErpProductImportExcelVO::getCode)
+                .map(this::trimToNull)
+                .filter(StringUtils::hasText)
+                .distinct()
+                .collect(Collectors.toList());
+        if (CollUtil.isEmpty(codes)) {
+            return new HashMap<>();
+        }
+        return productMapper.selectListByCodes(codes).stream()
+                .collect(Collectors.toMap(ErpProductDO::getCode, item -> item, (a, b) -> a, LinkedHashMap::new));
+    }
+
+    private ProductSaveReqVO buildSaveReqVO(ErpProductImportExcelVO row,
+                                            Map<String, ErpProductCategoryDO> categoryMap,
+                                            Map<String, ErpProductUnitDO> unitMap,
+                                            Map<String, ErpWarehouseDO> warehouseMap) {
+        ProductSaveReqVO reqVO = new ProductSaveReqVO();
+        reqVO.setCode(trimToNull(row.getCode()));
+        reqVO.setName(trimToNull(row.getName()));
+        reqVO.setBarCode(trimToNull(row.getBarCode()));
+        reqVO.setCategoryId(resolveCategoryId(row.getCategoryName(), categoryMap));
+        reqVO.setUnitId(resolveUnitId(row.getUnitName(), unitMap));
+        reqVO.setDefaultWarehouseId(resolveWarehouseId(row.getDefaultWarehouseName(), warehouseMap));
+        reqVO.setStatus(row.getStatus() == null ? CommonStatusEnum.ENABLE.getStatus() : row.getStatus());
+        reqVO.setVehicleModel(trimToNull(row.getVehicleModel()));
+        reqVO.setFactoryCode(trimToNull(row.getFactoryCode()));
+        reqVO.setPurchasePrice(row.getPurchasePrice());
+        reqVO.setSalePrice(row.getSalePrice());
+        reqVO.setMinPrice(row.getMinPrice());
+        reqVO.setStandard(trimToNull(row.getStandard()));
+        reqVO.setRemark(trimToNull(row.getRemark()));
+        reqVO.setExpiryDay(row.getExpiryDay());
+        reqVO.setWeight(row.getWeight());
+        reqVO.setReferencePrice(row.getReferencePrice());
+        reqVO.setRetailPrice(row.getRetailPrice());
+        reqVO.setGrossProfitRate(row.getGrossProfitRate());
+        reqVO.setBackupPrice1(row.getBackupPrice1());
+        reqVO.setWholesalePrice(row.getWholesalePrice());
+        reqVO.setStockMax(row.getStockMax());
+        reqVO.setStockMin(row.getStockMin());
+        reqVO.setStockStandard(row.getStockStandard());
+        reqVO.setPackageQty(row.getPackageQty());
+        reqVO.setMainImage(trimToNull(row.getMainImage()));
+        reqVO.setDetailContent(trimToNull(row.getDetailContent()));
+        ValidationUtils.validate(reqVO);
+        return reqVO;
+    }
+
+    private Long resolveCategoryId(String categoryName, Map<String, ErpProductCategoryDO> categoryMap) {
+        ErpProductCategoryDO category = categoryMap.get(trimToNull(categoryName));
+        if (category == null) {
+            throw new IllegalArgumentException("产品分类不存在：" + categoryName);
+        }
+        return category.getId();
+    }
+
+    private Long resolveUnitId(String unitName, Map<String, ErpProductUnitDO> unitMap) {
+        ErpProductUnitDO unit = unitMap.get(trimToNull(unitName));
+        if (unit == null) {
+            throw new IllegalArgumentException("单位不存在：" + unitName);
+        }
+        return unit.getId();
+    }
+
+    private Long resolveWarehouseId(String warehouseName, Map<String, ErpWarehouseDO> warehouseMap) {
+        ErpWarehouseDO warehouse = warehouseMap.get(trimToNull(warehouseName));
+        if (warehouse == null) {
+            throw new IllegalArgumentException("默认仓库不存在：" + warehouseName);
+        }
+        return warehouse.getId();
+    }
+
+    private String getImportFailureReason(Exception ex) {
+        if (ex instanceof ConstraintViolationException) {
+            return ex.getMessage();
+        }
+        return ex.getMessage() != null ? ex.getMessage() : ex.getClass().getSimpleName();
+    }
+
+    private boolean isEmptyRow(ErpProductImportExcelVO row) {
+        return row == null
+                || (!StringUtils.hasText(trimToNull(row.getCode()))
+                && !StringUtils.hasText(trimToNull(row.getName()))
+                && !StringUtils.hasText(trimToNull(row.getBarCode())));
+    }
+
+    private String getCsvValue(CsvRow row, int index) {
+        return row.size() > index ? row.get(index) : null;
+    }
+
+    private String readCsvValue(CsvRow row, String header) {
+        return row.getByName(header);
+    }
+
+    private String readCsvValue(CsvRow row, String header, String fallbackHeader) {
+        String value = readCsvValue(row, header);
+        return value != null ? value : readCsvValue(row, fallbackHeader);
+    }
+
+    private String trimToNull(String value) {
+        return StrUtil.emptyToNull(StrUtil.trim(value));
+    }
+
+    private Integer parseInteger(String value) {
+        String trim = trimToNull(value);
+        if (trim == null) {
+            return null;
+        }
+        return Integer.valueOf(trim);
+    }
+
+    private BigDecimal parseBigDecimal(String value) {
+        String trim = trimToNull(value);
+        if (trim == null) {
+            return null;
+        }
+        return new BigDecimal(trim);
     }
 
 }

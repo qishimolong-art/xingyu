@@ -9,6 +9,7 @@ import cn.iocoder.yudao.framework.common.util.collection.MapUtils;
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
 import cn.iocoder.yudao.framework.excel.core.util.ExcelUtils;
 import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpProductRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.order.ErpPurchaseOrderExportRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.order.ErpPurchaseOrderImportExcelVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.order.ErpPurchaseOrderImportRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.order.ErpPurchaseOrderInableItemRespVO;
@@ -29,7 +30,14 @@ import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.validation.annotation.Validated;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 
 import javax.annotation.Resource;
@@ -37,6 +45,7 @@ import javax.servlet.http.HttpServletResponse;
 import javax.validation.Valid;
 import java.io.IOException;
 import java.math.BigDecimal;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
@@ -60,7 +69,6 @@ public class ErpPurchaseOrderController {
     private ErpProductService productService;
     @Resource
     private ErpSupplierService supplierService;
-
     @Resource
     private AdminUserApi adminUserApi;
 
@@ -80,10 +88,10 @@ public class ErpPurchaseOrderController {
     }
 
     @PutMapping("/update-status")
-    @Operation(summary = "更新采购订单的状态")
+    @Operation(summary = "更新采购订单状态")
     @PreAuthorize("@ss.hasPermission('erp:purchase-order:update-status')")
     public CommonResult<Boolean> updatePurchaseOrderStatus(@RequestParam("id") Long id,
-                                                      @RequestParam("status") Integer status) {
+                                                           @RequestParam("status") Integer status) {
         purchaseOrderService.updatePurchaseOrderStatus(id, status);
         return success(true);
     }
@@ -111,8 +119,8 @@ public class ErpPurchaseOrderController {
                 convertSet(purchaseOrderItemList, ErpPurchaseOrderItemDO::getProductId));
         return success(BeanUtils.toBean(purchaseOrder, ErpPurchaseOrderRespVO.class, purchaseOrderVO ->
                 purchaseOrderVO.setItems(BeanUtils.toBean(purchaseOrderItemList, ErpPurchaseOrderRespVO.Item.class, item -> {
-                    BigDecimal purchaseCount = stockService.getStockCount(item.getProductId());
-                    item.setStockCount(purchaseCount != null ? purchaseCount : BigDecimal.ZERO);
+                    BigDecimal stockCount = stockService.getStockCount(item.getProductId());
+                    item.setStockCount(stockCount != null ? stockCount : BigDecimal.ZERO);
                     MapUtils.findAndThen(productMap, item.getProductId(), product -> item.setProductName(product.getName())
                             .setProductBarCode(product.getBarCode()).setProductUnitName(product.getUnitName())
                             .setProductCode(product.getCode()));
@@ -123,8 +131,7 @@ public class ErpPurchaseOrderController {
     @Operation(summary = "获得采购订单分页")
     @PreAuthorize("@ss.hasPermission('erp:purchase-order:query')")
     public CommonResult<PageResult<ErpPurchaseOrderRespVO>> getPurchaseOrderPage(@Valid ErpPurchaseOrderPageReqVO pageReqVO) {
-        PageResult<ErpPurchaseOrderDO> pageResult = purchaseOrderService.getPurchaseOrderPage(pageReqVO);
-        return success(buildPurchaseOrderVOPageResult(pageResult));
+        return success(buildPurchaseOrderVOPageResult(purchaseOrderService.getPurchaseOrderPage(pageReqVO)));
     }
 
     @GetMapping("/export-excel")
@@ -132,17 +139,17 @@ public class ErpPurchaseOrderController {
     @PreAuthorize("@ss.hasPermission('erp:purchase-order:export')")
     @ApiAccessLog(operateType = EXPORT)
     public void exportPurchaseOrderExcel(@Valid ErpPurchaseOrderPageReqVO pageReqVO,
-                                    HttpServletResponse response) throws IOException {
+                                         HttpServletResponse response) throws IOException {
         pageReqVO.setPageSize(PageParam.PAGE_SIZE_NONE);
-        List<ErpPurchaseOrderRespVO> list = buildPurchaseOrderVOPageResult(purchaseOrderService.getPurchaseOrderPage(pageReqVO)).getList();
-        // 导出 Excel
-        ExcelUtils.write(response, "采购订单.xls", "数据", ErpPurchaseOrderRespVO.class, list);
+        List<ErpPurchaseOrderRespVO> list = buildPurchaseOrderVOPageResult(
+                purchaseOrderService.getPurchaseOrderPage(pageReqVO)).getList();
+        ExcelUtils.write(response, "采购订单.xls", "数据", ErpPurchaseOrderExportRespVO.class,
+                buildPurchaseOrderExportList(list));
     }
 
     @GetMapping("/get-import-template")
     @Operation(summary = "获得采购订单导入模板")
     public void getImportTemplate(HttpServletResponse response) throws IOException {
-        // 创建示例数据
         ErpPurchaseOrderImportExcelVO example = new ErpPurchaseOrderImportExcelVO();
         example.setSupplierName("示例供应商");
         example.setPurchaserName("张三");
@@ -152,20 +159,18 @@ public class ErpPurchaseOrderController {
         example.setSettleMethod("月结");
         example.setInvoiceType("增值税专用发票");
         example.setRemark("备注信息");
-        List<ErpPurchaseOrderImportExcelVO> list = Arrays.asList(example);
-        ExcelUtils.write(response, "采购订单导入模板.xls", "采购订单", ErpPurchaseOrderImportExcelVO.class, list);
+        ExcelUtils.write(response, "采购订单导入模板.xls", "采购订单",
+                ErpPurchaseOrderImportExcelVO.class, Arrays.asList(example));
     }
 
     @PostMapping("/parse-import-excel")
-    @Operation(summary = "解析采购订单导入Excel")
+    @Operation(summary = "解析采购订单导入 Excel")
     @PreAuthorize("@ss.hasPermission('erp:purchase-order:create')")
-    public CommonResult<ErpPurchaseOrderImportRespVO> parseImportExcel(
-            @RequestParam("file") MultipartFile file) throws Exception {
+    public CommonResult<ErpPurchaseOrderImportRespVO> parseImportExcel(@RequestParam("file") MultipartFile file) throws Exception {
         List<ErpPurchaseOrderImportExcelVO> list = ExcelUtils.read(file, ErpPurchaseOrderImportExcelVO.class);
         if (CollUtil.isEmpty(list)) {
             return success(new ErpPurchaseOrderImportRespVO());
         }
-        // 取第一行数据，将名称转换为ID
         return success(purchaseOrderService.parseImportData(list.get(0)));
     }
 
@@ -181,29 +186,69 @@ public class ErpPurchaseOrderController {
         if (CollUtil.isEmpty(pageResult.getList())) {
             return PageResult.empty(pageResult.getTotal());
         }
-        // 1.1 订单项
         List<ErpPurchaseOrderItemDO> purchaseOrderItemList = purchaseOrderService.getPurchaseOrderItemListByOrderIds(
                 convertSet(pageResult.getList(), ErpPurchaseOrderDO::getId));
-        Map<Long, List<ErpPurchaseOrderItemDO>> purchaseOrderItemMap = convertMultiMap(purchaseOrderItemList, ErpPurchaseOrderItemDO::getOrderId);
-        // 1.2 产品信息
+        Map<Long, List<ErpPurchaseOrderItemDO>> purchaseOrderItemMap = convertMultiMap(
+                purchaseOrderItemList, ErpPurchaseOrderItemDO::getOrderId);
         Map<Long, ErpProductRespVO> productMap = productService.getProductVOMap(
                 convertSet(purchaseOrderItemList, ErpPurchaseOrderItemDO::getProductId));
-        // 1.3 供应商信息
         Map<Long, ErpSupplierDO> supplierMap = supplierService.getSupplierMap(
                 convertSet(pageResult.getList(), ErpPurchaseOrderDO::getSupplierId));
-        // 1.4 管理员信息
         Map<Long, AdminUserRespDTO> userMap = adminUserApi.getUserMap(
                 convertSet(pageResult.getList(), purchaseOrder -> Long.parseLong(purchaseOrder.getCreator())));
-        // 2. 开始拼接
         return BeanUtils.toBean(pageResult, ErpPurchaseOrderRespVO.class, purchaseOrder -> {
-            purchaseOrder.setItems(BeanUtils.toBean(purchaseOrderItemMap.get(purchaseOrder.getId()), ErpPurchaseOrderRespVO.Item.class,
-                    item -> MapUtils.findAndThen(productMap, item.getProductId(), product -> item.setProductName(product.getName())
-                            .setProductBarCode(product.getBarCode()).setProductUnitName(product.getUnitName())
-                            .setProductCode(product.getCode()))));
-            purchaseOrder.setProductNames(CollUtil.join(purchaseOrder.getItems(), "，", ErpPurchaseOrderRespVO.Item::getProductName));
-            MapUtils.findAndThen(supplierMap, purchaseOrder.getSupplierId(), supplier -> purchaseOrder.setSupplierName(supplier.getName()));
-            MapUtils.findAndThen(userMap, Long.parseLong(purchaseOrder.getCreator()), user -> purchaseOrder.setCreatorName(user.getNickname()));
+            purchaseOrder.setItems(BeanUtils.toBean(purchaseOrderItemMap.get(purchaseOrder.getId()),
+                    ErpPurchaseOrderRespVO.Item.class, item ->
+                            MapUtils.findAndThen(productMap, item.getProductId(), product -> item.setProductName(product.getName())
+                                    .setProductBarCode(product.getBarCode()).setProductUnitName(product.getUnitName())
+                                    .setProductCode(product.getCode()))));
+            purchaseOrder.setProductNames(CollUtil.join(purchaseOrder.getItems(), "，",
+                    ErpPurchaseOrderRespVO.Item::getProductName));
+            MapUtils.findAndThen(supplierMap, purchaseOrder.getSupplierId(),
+                    supplier -> purchaseOrder.setSupplierName(supplier.getName()));
+            MapUtils.findAndThen(userMap, Long.parseLong(purchaseOrder.getCreator()),
+                    user -> purchaseOrder.setCreatorName(user.getNickname()));
+            purchaseOrder.setInStatus(calcStatus(purchaseOrder.getInCount(), purchaseOrder.getTotalCount()));
+            purchaseOrder.setReturnStatus(calcStatus(purchaseOrder.getReturnCount(), purchaseOrder.getTotalCount()));
         });
+    }
+
+    private List<ErpPurchaseOrderExportRespVO> buildPurchaseOrderExportList(List<ErpPurchaseOrderRespVO> list) {
+        List<ErpPurchaseOrderExportRespVO> rows = new ArrayList<>();
+        for (ErpPurchaseOrderRespVO purchaseOrder : list) {
+            if (CollUtil.isEmpty(purchaseOrder.getItems())) {
+                rows.add(BeanUtils.toBean(purchaseOrder, ErpPurchaseOrderExportRespVO.class));
+                continue;
+            }
+            for (ErpPurchaseOrderRespVO.Item item : purchaseOrder.getItems()) {
+                rows.add(BeanUtils.toBean(purchaseOrder, ErpPurchaseOrderExportRespVO.class, row -> {
+                    row.setProductCode(item.getProductCode());
+                    row.setProductName(item.getProductName());
+                    row.setProductUnitName(item.getProductUnitName());
+                    row.setItemCount(item.getCount());
+                    row.setProductPrice(item.getProductPrice());
+                    row.setItemTotalPrice(item.getProductPrice() == null || item.getCount() == null
+                            ? null : item.getProductPrice().multiply(item.getCount()));
+                    row.setItemTaxPercent(item.getTaxPercent());
+                    row.setItemTaxPrice(item.getTaxPrice());
+                    row.setItemRemark(item.getRemark());
+                }));
+            }
+        }
+        return rows;
+    }
+
+    private Integer calcStatus(BigDecimal doneCount, BigDecimal totalCount) {
+        if (doneCount == null || doneCount.compareTo(BigDecimal.ZERO) <= 0) {
+            return 0;
+        }
+        if (totalCount == null || totalCount.compareTo(BigDecimal.ZERO) <= 0) {
+            return 0;
+        }
+        if (doneCount.compareTo(totalCount) >= 0) {
+            return 2;
+        }
+        return 1;
     }
 
 }

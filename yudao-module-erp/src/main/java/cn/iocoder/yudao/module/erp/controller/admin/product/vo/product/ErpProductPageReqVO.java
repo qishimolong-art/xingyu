@@ -29,6 +29,9 @@ public class ErpProductPageReqVO extends PageParam {
     @Schema(description = "厂家编码", example = "FCT-001")
     private String factoryCode;
 
+    @Schema(description = "仓库编号", example = "1")
+    private Long warehouseId;
+
     @Schema(description = "创建时间")
     @DateTimeFormat(pattern = FORMAT_YEAR_MONTH_DAY_HOUR_MINUTE_SECOND)
     private LocalDateTime[] createTime;

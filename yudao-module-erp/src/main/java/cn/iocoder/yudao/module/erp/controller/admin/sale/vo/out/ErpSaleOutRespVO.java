@@ -93,6 +93,18 @@ public class ErpSaleOutRespVO {
     @Schema(description = "创建人名称", example = "芋道")
     private String creatorName;
 
+    @Schema(description = "是否已被调价")
+    private Boolean adjusted;
+
+    @Schema(description = "调价源销售单编号")
+    private Long adjustSourceOutId;
+
+    @Schema(description = "调价生成的新销售单编号")
+    private Long adjustNewOutId;
+
+    @Schema(description = "关联调价单编号")
+    private Long adjustPriceAdjustId;
+
     @Schema(description = "创建时间", requiredMode = Schema.RequiredMode.REQUIRED)
     @ExcelProperty("创建时间")
     private LocalDateTime createTime;
@@ -103,6 +115,151 @@ public class ErpSaleOutRespVO {
     @Schema(description = "产品信息", requiredMode = Schema.RequiredMode.REQUIRED)
     @ExcelProperty("产品信息")
     private String productNames;
+
+    // ========== 业务扩展字段 ==========
+
+    @Schema(description = "结算状态")
+    private Integer settleStatus;
+
+    @Schema(description = "订单类型")
+    private String orderType;
+
+    @Schema(description = "额外费用")
+    private BigDecimal extraFee;
+
+    @Schema(description = "优先级")
+    private String priority;
+
+    @Schema(description = "客户签收状态")
+    private Integer signStatus;
+
+    @Schema(description = "签收图片")
+    private String signImageUrl;
+
+    // ========== 物流信息 ==========
+
+    @Schema(description = "送货方式")
+    private String deliveryMethod;
+
+    @Schema(description = "发货方")
+    private String shipper;
+
+    @Schema(description = "收货人")
+    private String receiverName;
+
+    @Schema(description = "收货电话")
+    private String receiverPhone;
+
+    @Schema(description = "配送单号")
+    private String deliveryNo;
+
+    @Schema(description = "物流单号")
+    private String logisticsNo;
+
+    @Schema(description = "物流公司")
+    private String logisticsCompany;
+
+    @Schema(description = "发货人")
+    private String senderName;
+
+    @Schema(description = "保险公司")
+    private String insuranceCompany;
+
+    @Schema(description = "第三方单号")
+    private String thirdPartyNo;
+
+    @Schema(description = "第三方上游单号")
+    private String thirdPartyUpstreamNo;
+
+    // ========== 财务信息 ==========
+
+    @Schema(description = "结算方式")
+    private String settleMethod;
+
+    @Schema(description = "开票金额")
+    private BigDecimal invoiceAmount;
+
+    @Schema(description = "减收金额")
+    private BigDecimal reductionAmount;
+
+    @Schema(description = "减后金额")
+    private BigDecimal afterReductionAmount;
+
+    @Schema(description = "票据金额")
+    private BigDecimal billAmount;
+
+    @Schema(description = "运费")
+    private BigDecimal freight;
+
+    @Schema(description = "票据类型")
+    private String billType;
+
+    @Schema(description = "票据号")
+    private String billNo;
+
+    // ========== 取消信息 ==========
+
+    @Schema(description = "取消数量")
+    private BigDecimal cancelCount;
+
+    @Schema(description = "取消金额")
+    private BigDecimal cancelAmount;
+
+    @Schema(description = "取消后金额")
+    private BigDecimal afterCancelAmount;
+
+    // ========== 人员/部门 ==========
+
+    @Schema(description = "审核人编号")
+    private Long auditorId;
+
+    @Schema(description = "审核人名称")
+    private String auditorName;
+
+    @Schema(description = "业务员名称")
+    private String saleUserName;
+
+    @Schema(description = "部门编号")
+    private Long deptId;
+
+    @Schema(description = "部门名称")
+    private String deptName;
+
+    @Schema(description = "客户编码")
+    private String customerCode;
+
+    // ========== 时间 ==========
+
+    @Schema(description = "总重")
+    private BigDecimal totalWeight;
+
+    @Schema(description = "审核时间")
+    private LocalDateTime approveTime;
+
+    @Schema(description = "打印时间")
+    private LocalDateTime printTime;
+
+    @Schema(description = "确认时间")
+    private LocalDateTime confirmTime;
+
+    @Schema(description = "来源单制单日期")
+    private LocalDateTime sourceCreateTime;
+
+    // ========== 其他 ==========
+
+    @Schema(description = "内部说明")
+    private String internalNote;
+
+    @Schema(description = "VIN")
+    private String vin;
+
+    @Schema(description = "打印次数")
+    private Integer printCount;
+
+    // ========== 退货状态（计算字段） ==========
+
+    @Schema(description = "退货状态：0=未退, 1=部分退, 2=整退")
+    private Integer returnStatus;
 
     @Data
     public static class Item {
@@ -148,7 +305,66 @@ public class ErpSaleOutRespVO {
         private String productUnitName;
 
         @Schema(description = "库存数量", requiredMode = Schema.RequiredMode.REQUIRED, example = "100.00")
-        private BigDecimal stockCount; // 该字段仅仅在“详情”和“编辑”时使用
+        private BigDecimal stockCount; // 该字段仅仅在"详情"和"编辑"时使用
+
+        // ========== 产品扩展字段 ==========
+
+        @Schema(description = "产品编码")
+        private String productCode;
+
+        @Schema(description = "仓库名称")
+        private String warehouseName;
+
+        @Schema(description = "车型")
+        private String vehicleModel;
+
+        @Schema(description = "规格")
+        private String standard;
+
+        @Schema(description = "特征码")
+        private String featureCode;
+
+        @Schema(description = "品牌")
+        private String brand;
+
+        @Schema(description = "图号")
+        private String drawingNo;
+
+        @Schema(description = "批次")
+        private String batchNo;
+
+        @Schema(description = "仓位")
+        private String warehousePosition;
+
+        @Schema(description = "单重")
+        private BigDecimal unitWeight;
+
+        @Schema(description = "总重")
+        private BigDecimal totalWeight;
+
+        @Schema(description = "减后价")
+        private BigDecimal afterReductionPrice;
+
+        @Schema(description = "减后金额")
+        private BigDecimal afterReductionAmount;
+
+        @Schema(description = "实际销售金额")
+        private BigDecimal actualSaleAmount;
+
+        @Schema(description = "产地")
+        private String originPlace;
+
+        @Schema(description = "供应商名称")
+        private String supplierName;
+
+        @Schema(description = "浮动前价格（调价前原价）")
+        private BigDecimal originalProductPrice;
+
+        @Schema(description = "产品金额")
+        private BigDecimal totalProductPrice;
+
+        @Schema(description = "已退数量")
+        private BigDecimal returnedCount;
 
     }
 

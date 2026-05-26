@@ -32,6 +32,10 @@ public class ErpCustomerContractDO extends BaseDO {
     private BigDecimal baseAmount;
     private BigDecimal taskAmount;
     private String attachmentUrl;
+    private Boolean mainContract;
+    private Boolean rebateEnabled;
+    private Integer freightSettleMethod;
+    private String summary;
     private Integer status;
     private String remark;
 

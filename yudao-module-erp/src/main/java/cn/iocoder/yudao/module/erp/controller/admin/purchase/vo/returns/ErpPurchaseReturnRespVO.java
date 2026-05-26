@@ -98,6 +98,17 @@ public class ErpPurchaseReturnRespVO {
     @ExcelProperty("产品信息")
     private String productNames;
 
+    // ========== 八期：扩展字段 ==========
+
+    @Schema(description = "税率", example = "13.00")
+    private BigDecimal taxRate;
+
+    @Schema(description = "部门ID", example = "100")
+    private Long deptId;
+
+    @Schema(description = "经办人/制单人（用户ID）", example = "1")
+    private Long handler;
+
     @Data
     public static class Item {
 
@@ -180,13 +191,20 @@ public class ErpPurchaseReturnRespVO {
 
         @Schema(description = "产品名称", requiredMode = Schema.RequiredMode.REQUIRED, example = "巧克力")
         private String productName;
+        private String productCode;
         @Schema(description = "产品条码", requiredMode = Schema.RequiredMode.REQUIRED, example = "A9985")
         private String productBarCode;
         @Schema(description = "产品单位名称", requiredMode = Schema.RequiredMode.REQUIRED, example = "盒")
         private String productUnitName;
 
         @Schema(description = "库存数量", requiredMode = Schema.RequiredMode.REQUIRED, example = "100.00")
-        private BigDecimal stockCount; // 该字段仅仅在“详情”和“编辑”时使用
+        private BigDecimal stockCount;
+
+        @Schema(description = "原入库数量(按单退货时回显)", example = "100.00")
+        private BigDecimal inCount;
+
+        @Schema(description = "可退数量(按单退货时回显)", example = "80.00")
+        private BigDecimal returnableCount;
 
     }
 

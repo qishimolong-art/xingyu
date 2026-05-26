@@ -26,6 +26,14 @@ public class ErpCustomerContractSaveReqVO {
     private BigDecimal baseAmount;
     private BigDecimal taskAmount;
     private String attachmentUrl;
+    @Schema(description = "是否主要合同")
+    private Boolean mainContract;
+    @Schema(description = "返点证集（是否启用返点）")
+    private Boolean rebateEnabled;
+    @Schema(description = "运费结算方式 1=我方承担 2=客户承担 3=双方平摊 4=月结")
+    private Integer freightSettleMethod;
+    @Schema(description = "合同摘要")
+    private String summary;
     private Integer status;
     private String remark;
 

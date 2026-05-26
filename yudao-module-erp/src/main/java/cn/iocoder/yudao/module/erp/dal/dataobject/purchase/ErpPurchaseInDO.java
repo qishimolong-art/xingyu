@@ -241,4 +241,12 @@ public class ErpPurchaseInDO extends BaseDO {
      */
     private String businessEntity;
 
+    // ========== 调价相关 ==========
+    /**
+     * 是否被调价过
+     *
+     * 首次审核通过的采购调价单关联到本入库单时，置为 true；作为前端列表"（调）"标识依据
+     */
+    private Boolean adjusted;
+
 }

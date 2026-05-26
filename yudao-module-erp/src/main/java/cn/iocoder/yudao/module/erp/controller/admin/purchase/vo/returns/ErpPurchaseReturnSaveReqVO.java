@@ -25,6 +25,9 @@ public class ErpPurchaseReturnSaveReqVO {
     @Schema(description = "采购订单编号", example = "17386")
     private Long orderId;
 
+    @Schema(description = "供应商编号（按库存退货时前端必传；按单退货可从原入库单带出）", example = "17386")
+    private Long supplierId;
+
     @Schema(description = "退货模式", requiredMode = Schema.RequiredMode.REQUIRED, example = "10")
     @NotNull(message = "退货模式不能为空")
     private Integer returnMode;
@@ -43,6 +46,17 @@ public class ErpPurchaseReturnSaveReqVO {
 
     @Schema(description = "退货清单列表")
     private List<Item> items;
+
+    // ========== 八期：扩展字段 ==========
+
+    @Schema(description = "税率", example = "13.00")
+    private BigDecimal taxRate;
+
+    @Schema(description = "部门ID", example = "100")
+    private Long deptId;
+
+    @Schema(description = "经办人/制单人（用户ID）", example = "1")
+    private Long handler;
 
     @Data
     public static class Item {
@@ -68,9 +82,18 @@ public class ErpPurchaseReturnSaveReqVO {
         @NotNull(message = "产品编号不能为空")
         private Long productId;
 
+        @Schema(description = "产品编码", example = "P0001")
+        private String productCode;
+
+        @Schema(description = "产品名称", example = "刹车片")
+        private String productName;
+
         @Schema(description = "产品单位单位", requiredMode = Schema.RequiredMode.REQUIRED, example = "3113")
         @NotNull(message = "产品单位单位不能为空")
         private Long productUnitId;
+
+        @Schema(description = "产品单位名称", example = "件")
+        private String productUnitName;
 
         @Schema(description = "产品单价", example = "100.00")
         private BigDecimal productPrice;
@@ -118,6 +141,9 @@ public class ErpPurchaseReturnSaveReqVO {
 
         @Schema(description = "品牌", example = "博世")
         private String brand;
+
+        @Schema(description = "仓库名称", example = "主仓")
+        private String warehouseName;
 
         @Schema(description = "所属经营", example = "汽配业务")
         private String businessEntity;

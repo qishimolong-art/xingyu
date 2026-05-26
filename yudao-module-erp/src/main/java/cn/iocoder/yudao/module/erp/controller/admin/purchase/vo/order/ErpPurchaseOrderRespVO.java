@@ -92,10 +92,16 @@ public class ErpPurchaseOrderRespVO {
     @Schema(description = "采购入库数量", requiredMode = Schema.RequiredMode.REQUIRED, example = "100.00")
     private BigDecimal inCount;
 
+    @Schema(description = "入库状态：0=未入库 1=部分入库 2=全部入库")
+    private Integer inStatus;
+
     // ========== 采购退货（出库）） ==========
 
     @Schema(description = "采购退货数量", requiredMode = Schema.RequiredMode.REQUIRED, example = "100.00")
     private BigDecimal returnCount;
+
+    @Schema(description = "退货状态：0=未退货 1=部分退货 2=全部退货")
+    private Integer returnStatus;
 
     // ========== 汽配扩展字段 ==========
 
@@ -154,6 +160,14 @@ public class ErpPurchaseOrderRespVO {
 
     @Schema(description = "税率(%)", example = "13.00")
     private BigDecimal taxPercent;
+
+    // ========== 八期：单据类型 + 最近订货日期 ==========
+
+    @Schema(description = "单据类型", example = "正常采购单")
+    private String documentType;
+
+    @Schema(description = "最近订货日期（只读）")
+    private LocalDateTime latestOrderDate;
 
     @Data
     public static class Item {

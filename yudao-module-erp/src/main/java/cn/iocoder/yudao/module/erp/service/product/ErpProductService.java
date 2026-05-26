@@ -1,12 +1,15 @@
 package cn.iocoder.yudao.module.erp.service.product;
 
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
+import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpProductImportExcelVO;
+import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpProductImportRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpProductPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpProductRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ProductSaveReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.product.ErpProductDO;
 
 import javax.validation.Valid;
+import java.io.Reader;
 import java.math.BigDecimal;
 import java.util.Collection;
 import java.util.List;
@@ -28,6 +31,16 @@ public interface ErpProductService {
      * @return 编号
      */
     Long createProduct(@Valid ProductSaveReqVO createReqVO);
+
+    /**
+     * 导入产品
+     */
+    ErpProductImportRespVO importProductList(List<ErpProductImportExcelVO> list);
+
+    /**
+     * 解析 CSV 导入文件
+     */
+    List<ErpProductImportExcelVO> parseCsvImport(Reader reader);
 
     /**
      * 更新产品

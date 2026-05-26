@@ -2,8 +2,13 @@ package cn.iocoder.yudao.module.erp.service.sale;
 
 import cn.hutool.core.collection.CollUtil;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
+import cn.iocoder.yudao.framework.common.enums.CommonStatusEnum;
 import cn.iocoder.yudao.framework.common.util.number.MoneyUtils;
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
+import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpProductRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.quote.ErpSaleQuoteImportExcelVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.quote.ErpSaleQuoteImportRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.quote.ErpSaleQuoteRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.out.ErpSaleOutSaveReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.quote.ErpSaleQuoteConvertCartReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.quote.ErpSaleQuotePageReqVO;
@@ -19,6 +24,7 @@ import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpSaleCartMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpSaleConvertRecordMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpSaleQuoteItemMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpSaleQuoteMapper;
+import cn.iocoder.yudao.module.erp.dal.mysql.product.ErpProductMapper;
 import cn.iocoder.yudao.module.erp.dal.redis.no.ErpNoRedisDAO;
 import cn.iocoder.yudao.module.erp.enums.sale.ErpSaleBizSourceTypeEnum;
 import cn.iocoder.yudao.module.erp.enums.sale.ErpSaleCartStatusEnum;
@@ -26,6 +32,8 @@ import cn.iocoder.yudao.module.erp.enums.sale.ErpSaleConvertTypeEnum;
 import cn.iocoder.yudao.module.erp.enums.sale.ErpSaleQuoteStatusEnum;
 import cn.iocoder.yudao.module.erp.service.finance.ErpAccountService;
 import cn.iocoder.yudao.module.erp.service.product.ErpProductService;
+import cn.iocoder.yudao.module.erp.service.stock.ErpStockService;
+import cn.iocoder.yudao.module.erp.service.stock.ErpWarehouseService;
 import cn.iocoder.yudao.module.system.api.user.AdminUserApi;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -35,6 +43,8 @@ import javax.annotation.Resource;
 import java.math.BigDecimal;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.LinkedHashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -60,6 +70,8 @@ public class ErpSaleQuoteServiceImpl implements ErpSaleQuoteService {
     @Resource
     private ErpSaleConvertRecordMapper saleConvertRecordMapper;
     @Resource
+    private ErpProductMapper productMapper;
+    @Resource
     private ErpNoRedisDAO noRedisDAO;
     @Resource
     private ErpCustomerService customerService;
@@ -67,6 +79,10 @@ public class ErpSaleQuoteServiceImpl implements ErpSaleQuoteService {
     private ErpProductService productService;
     @Resource
     private ErpAccountService accountService;
+    @Resource
+    private ErpStockService stockService;
+    @Resource
+    private ErpWarehouseService warehouseService;
     @Resource
     private ErpSaleOutService saleOutService;
     @Resource
@@ -103,6 +119,10 @@ public class ErpSaleQuoteServiceImpl implements ErpSaleQuoteService {
         ErpSaleQuoteDO quote = validateSaleQuoteExists(updateReqVO.getId());
         if (ErpSaleQuoteStatusEnum.GENERATED_SALE_OUT.getStatus().equals(quote.getStatus())) {
             throw exception(SALE_QUOTE_UPDATE_FAIL_GENERATED, quote.getNo());
+        }
+        if (!ErpSaleQuoteStatusEnum.PROCESS.getStatus().equals(quote.getStatus())
+                && !ErpSaleQuoteStatusEnum.CANCEL.getStatus().equals(quote.getStatus())) {
+            throw exception(SALE_QUOTE_UPDATE_FAIL_NOT_DRAFT, quote.getNo());
         }
         List<ErpSaleQuoteItemDO> items = validateSaleQuoteItems(updateReqVO.getItems());
         customerService.validateCustomer(updateReqVO.getCustomerId());
@@ -157,8 +177,9 @@ public class ErpSaleQuoteServiceImpl implements ErpSaleQuoteService {
         ErpSaleQuoteDO quote = validateSaleQuoteExists(reqVO.getQuoteId());
         List<ErpSaleQuoteItemDO> quoteItems = saleQuoteItemMapper.selectListByQuoteId(reqVO.getQuoteId());
         Map<Long, ErpSaleQuoteItemDO> quoteItemMap = convertMap(quoteItems, ErpSaleQuoteItemDO::getId);
-        Map<Long, BigDecimal> convertCountMap = convertMap(reqVO.getItems(), ErpSaleQuoteConvertCartReqVO.Item::getQuoteItemId,
-                ErpSaleQuoteConvertCartReqVO.Item::getCount);
+        Map<Long, BigDecimal> convertCountMap = new LinkedHashMap<>();
+        reqVO.getItems().forEach(reqItem -> convertCountMap.merge(reqItem.getQuoteItemId(),
+                reqItem.getCount(), BigDecimal::add));
         validateConvertCartCount(quoteItemMap, convertCountMap);
 
         String no = noRedisDAO.generate(ErpNoRedisDAO.SALE_CART_NO_PREFIX);
@@ -170,22 +191,35 @@ public class ErpSaleQuoteServiceImpl implements ErpSaleQuoteService {
                 .setCartTime(quote.getQuoteTime())
                 .setSourceType(ErpSaleBizSourceTypeEnum.QUOTE.getType())
                 .setSourceId(quote.getId()).setSourceNo(quote.getNo()));
-        List<ErpSaleCartItemDO> cartItems = convertList(reqVO.getItems(), reqItem -> {
-            ErpSaleQuoteItemDO quoteItem = quoteItemMap.get(reqItem.getQuoteItemId());
+        List<ErpSaleCartItemDO> cartItems = convertList(convertCountMap.entrySet(), entry -> {
+            ErpSaleQuoteItemDO quoteItem = quoteItemMap.get(entry.getKey());
             return BeanUtils.toBean(quoteItem, ErpSaleCartItemDO.class, item -> item
-                    .setId(null).setCartId(null).setCount(reqItem.getCount())
-                    .setTotalPrice(MoneyUtils.priceMultiply(item.getProductPrice(), item.getCount())));
+                    .setId(null).setCartId(null)
+                    .setProductPrice(quoteItem.getProductPrice())
+                    .setTaxPercent(quoteItem.getTaxPercent())
+                    .setRemark(quoteItem.getRemark())
+                    .setWarehouseId(quoteItem.getWarehouseId())
+                    .setProductUnitId(quoteItem.getProductUnitId())
+                    .setCount(entry.getValue())
+                    .setTotalPrice(MoneyUtils.priceMultiply(quoteItem.getProductPrice(), entry.getValue()))
+                    .setTaxPrice(MoneyUtils.priceMultiplyPercent(
+                            MoneyUtils.priceMultiply(quoteItem.getProductPrice(), entry.getValue()),
+                            quoteItem.getTaxPercent())));
         });
         calculateCartTotalPrice(cart, cartItems);
         saleCartMapper.insert(cart);
         cartItems.forEach(item -> item.setCartId(cart.getId()));
+        // 批量查询库存并填充 stockCount
+        List<Long> productIds = convertList(cartItems, ErpSaleCartItemDO::getProductId);
+        Map<Long, BigDecimal> stockCountMap = stockService.getStockCountMap(productIds);
+        cartItems.forEach(item -> item.setStockCount(stockCountMap.getOrDefault(item.getProductId(), BigDecimal.ZERO)));
         saleCartItemMapper.insertBatch(cartItems);
 
-        reqVO.getItems().forEach(reqItem -> {
-            ErpSaleQuoteItemDO quoteItem = quoteItemMap.get(reqItem.getQuoteItemId());
+        convertCountMap.forEach((quoteItemId, count) -> {
+            ErpSaleQuoteItemDO quoteItem = quoteItemMap.get(quoteItemId);
             BigDecimal oldConvertedCount = quoteItem.getConvertedCount() != null ? quoteItem.getConvertedCount() : BigDecimal.ZERO;
             saleQuoteItemMapper.updateById(new ErpSaleQuoteItemDO().setId(quoteItem.getId())
-                    .setConvertedCount(oldConvertedCount.add(reqItem.getCount())));
+                    .setConvertedCount(oldConvertedCount.add(count)));
         });
         Integer nextStatus = isAllConverted(quoteItems, convertCountMap) ? ErpSaleQuoteStatusEnum.CONVERTED_CART.getStatus()
                 : ErpSaleQuoteStatusEnum.PART_CONVERTED_CART.getStatus();
@@ -194,7 +228,7 @@ public class ErpSaleQuoteServiceImpl implements ErpSaleQuoteService {
         if (updateCount == 0) {
             throw exception(SALE_QUOTE_CONVERT_CART_FAIL);
         }
-        saleConvertRecordMapper.insertBatch(buildQuoteToCartRecords(quote, quoteItemMap, cart, cartItems, reqVO));
+        saleConvertRecordMapper.insertBatch(buildQuoteToCartRecords(quote, quoteItemMap, cart, cartItems, convertCountMap));
         return cart.getId();
     }
 
@@ -206,6 +240,9 @@ public class ErpSaleQuoteServiceImpl implements ErpSaleQuoteService {
             }
             if (count == null || count.compareTo(BigDecimal.ZERO) <= 0) {
                 throw exception(SALE_QUOTE_CONVERT_COUNT_POSITIVE, quoteItemId);
+            }
+            if (item.getProductPrice() == null) {
+                throw exception(SALE_QUOTE_ITEM_PRODUCT_PRICE_NOT_NULL, quoteItemId);
             }
             BigDecimal convertedCount = item.getConvertedCount() != null ? item.getConvertedCount() : BigDecimal.ZERO;
             BigDecimal convertibleCount = item.getCount().subtract(convertedCount);
@@ -225,13 +262,13 @@ public class ErpSaleQuoteServiceImpl implements ErpSaleQuoteService {
 
     private List<ErpSaleConvertRecordDO> buildQuoteToCartRecords(ErpSaleQuoteDO quote, Map<Long, ErpSaleQuoteItemDO> quoteItemMap,
                                                                  ErpSaleCartDO cart, List<ErpSaleCartItemDO> cartItems,
-                                                                 ErpSaleQuoteConvertCartReqVO reqVO) {
-        return convertList(reqVO.getItems(), reqItem -> {
-            ErpSaleQuoteItemDO sourceItem = quoteItemMap.get(reqItem.getQuoteItemId());
+                                                                 Map<Long, BigDecimal> convertCountMap) {
+        return convertList(convertCountMap.entrySet(), entry -> {
+            ErpSaleQuoteItemDO sourceItem = quoteItemMap.get(entry.getKey());
             ErpSaleCartItemDO targetItem = cartItems.stream()
                     .filter(item -> sourceItem.getProductId().equals(item.getProductId())
                             && sourceItem.getWarehouseId().equals(item.getWarehouseId())
-                            && reqItem.getCount().compareTo(item.getCount()) == 0)
+                            && entry.getValue().compareTo(item.getCount()) == 0)
                     .findFirst().orElse(null);
             return new ErpSaleConvertRecordDO()
                     .setConvertType(ErpSaleConvertTypeEnum.QUOTE_TO_CART.getType())
@@ -239,7 +276,7 @@ public class ErpSaleQuoteServiceImpl implements ErpSaleQuoteService {
                     .setSourceId(quote.getId()).setSourceNo(quote.getNo()).setSourceItemId(sourceItem.getId())
                     .setTargetType(ErpSaleBizSourceTypeEnum.CART.getType())
                     .setTargetId(cart.getId()).setTargetNo(cart.getNo()).setTargetItemId(targetItem != null ? targetItem.getId() : null)
-                    .setProductId(sourceItem.getProductId()).setWarehouseId(sourceItem.getWarehouseId()).setCount(reqItem.getCount());
+                    .setProductId(sourceItem.getProductId()).setWarehouseId(sourceItem.getWarehouseId()).setCount(entry.getValue());
         });
     }
 
@@ -287,6 +324,7 @@ public class ErpSaleQuoteServiceImpl implements ErpSaleQuoteService {
                 convertSet(list, ErpSaleQuoteSaveReqVO.Item::getProductId));
         Map<Long, ErpProductDO> productMap = convertMap(productList, ErpProductDO::getId);
         return convertList(list, o -> BeanUtils.toBean(o, ErpSaleQuoteItemDO.class, item -> {
+            item.setId(null); // 清除前端传回的旧 id，避免 insertBatch 时主键冲突
             item.setProductUnitId(productMap.get(item.getProductId()).getUnitId());
             item.setConvertedCount(BigDecimal.ZERO);
             item.setTotalPrice(MoneyUtils.priceMultiply(item.getProductPrice(), item.getCount()));
@@ -340,6 +378,60 @@ public class ErpSaleQuoteServiceImpl implements ErpSaleQuoteService {
             return Collections.emptyList();
         }
         return saleQuoteItemMapper.selectListByQuoteIds(quoteIds);
+    }
+
+    @Override
+    public ErpSaleQuoteImportRespVO parseImportData(List<ErpSaleQuoteImportExcelVO> list) {
+        ErpSaleQuoteImportRespVO respVO = new ErpSaleQuoteImportRespVO();
+        if (CollUtil.isEmpty(list)) {
+            return respVO;
+        }
+        LinkedHashSet<String> productCodes = new LinkedHashSet<>();
+        list.forEach(row -> {
+            if (row.getProductCode() != null && !row.getProductCode().isEmpty()) {
+                productCodes.add(row.getProductCode());
+            }
+        });
+        Map<String, ErpProductDO> productMap = convertMap(productMapper.selectListByCodes(productCodes), ErpProductDO::getCode);
+        Map<Long, ErpProductRespVO> productVOMap = productService.getProductVOMap(convertList(productMap.values(), ErpProductDO::getId));
+        list.forEach((row) -> {
+            int rowNo = respVO.getSuccessCount() + respVO.getFailureCount() + 2;
+            if (row.getProductCode() == null || row.getProductCode().isEmpty()) {
+                respVO.getFailureDetails().add(new ErpSaleQuoteImportRespVO.FailureItem(rowNo, null, "产品编码不能为空"));
+                respVO.setFailureCount(respVO.getFailureCount() + 1);
+                return;
+            }
+            ErpProductDO product = productMap.get(row.getProductCode());
+            if (product == null) {
+                respVO.getFailureDetails().add(new ErpSaleQuoteImportRespVO.FailureItem(rowNo, row.getProductCode(), "产品不存在"));
+                respVO.setFailureCount(respVO.getFailureCount() + 1);
+                return;
+            }
+            if (product.getDefaultWarehouseId() == null) {
+                respVO.getFailureDetails().add(new ErpSaleQuoteImportRespVO.FailureItem(rowNo, row.getProductCode(), "浜у搧榛樿浠撳簱涓嶈兘涓虹┖"));
+                respVO.setFailureCount(respVO.getFailureCount() + 1);
+                return;
+            }
+            BigDecimal count = row.getCount() == null ? BigDecimal.ZERO : row.getCount();
+            if (count.compareTo(BigDecimal.ZERO) <= 0) {
+                respVO.getFailureDetails().add(new ErpSaleQuoteImportRespVO.FailureItem(rowNo, row.getProductCode(), "数量必须大于 0"));
+                respVO.setFailureCount(respVO.getFailureCount() + 1);
+                return;
+            }
+            ErpSaleQuoteRespVO.Item item = new ErpSaleQuoteRespVO.Item();
+            item.setProductId(product.getId());
+            item.setProductCode(product.getCode());
+            item.setProductUnitId(product.getUnitId());
+            item.setProductUnitName(productVOMap.get(product.getId()) == null ? null : productVOMap.get(product.getId()).getUnitName());
+            item.setWarehouseId(product.getDefaultWarehouseId());
+            item.setProductPrice(row.getProductPrice() != null ? row.getProductPrice() : product.getSalePrice());
+            item.setCount(count);
+            item.setTaxPercent(row.getTaxPercent());
+            item.setRemark(row.getRemark());
+            respVO.getItems().add(item);
+            respVO.setSuccessCount(respVO.getSuccessCount() + 1);
+        });
+        return respVO;
     }
 
 }

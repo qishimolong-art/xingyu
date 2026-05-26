@@ -99,6 +99,14 @@ public class ErpPurchaseOrderSaveReqVO {
     @Schema(description = "税率(%)", example = "13.00")
     private BigDecimal taxPercent;
 
+    // ========== 八期：单据类型 + 最近订货日期 ==========
+
+    @Schema(description = "单据类型", example = "正常采购单")
+    private String documentType;
+
+    @Schema(description = "最近订货日期（只读）")
+    private LocalDateTime latestOrderDate;
+
     @Data
     public static class Item {
 

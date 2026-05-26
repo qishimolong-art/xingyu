@@ -188,4 +188,14 @@ public class ErpPurchaseOrderDO extends BaseDO {
      */
     private BigDecimal taxPercent;
 
+    // ========== 八期：单据类型 + 最近订货日期 ==========
+    /**
+     * 单据类型
+     */
+    private String documentType;
+    /**
+     * 最近订货日期（只读，由系统记录最后一次订货时间）
+     */
+    private LocalDateTime latestOrderDate;
+
 }

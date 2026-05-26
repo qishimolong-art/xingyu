@@ -33,6 +33,7 @@ public interface ErpProductMapper extends BaseMapperX<ErpProductDO> {
                 .likeIfPresent(ErpProductDO::getVehicleModel, reqVO.getVehicleModel())
                 .likeIfPresent(ErpProductDO::getFactoryCode, reqVO.getFactoryCode())
                 .eqIfPresent(ErpProductDO::getCategoryId, reqVO.getCategoryId())
+                .eqIfPresent(ErpProductDO::getDefaultWarehouseId, reqVO.getWarehouseId())
                 .betweenIfPresent(ErpProductDO::getCreateTime, reqVO.getCreateTime())
                 // 默认过滤掉已合并的配件
                 .ne(ErpProductDO::getMergedFlag, Boolean.TRUE)
@@ -55,6 +56,12 @@ public interface ErpProductMapper extends BaseMapperX<ErpProductDO> {
 
     default ErpProductDO selectByCode(String code) {
         return selectOne(ErpProductDO::getCode, code);
+    }
+
+    default ErpProductDO selectByCodeExcludeId(String code, Long excludeId) {
+        return selectOne(new LambdaQueryWrapperX<ErpProductDO>()
+                .eq(ErpProductDO::getCode, code)
+                .neIfPresent(ErpProductDO::getId, excludeId));
     }
 
     default List<ErpProductDO> selectListByCodes(Collection<String> codes) {

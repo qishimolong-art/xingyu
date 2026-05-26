@@ -137,4 +137,73 @@ public class ErpSaleReturnDO extends BaseDO {
      */
     private String remark;
 
+    /**
+     * 部门编号
+     */
+    private Long deptId;
+    /**
+     * 优先级别
+     */
+    private String priority;
+    /**
+     * 开票类型
+     */
+    private String invoiceType;
+    /**
+     * 票据号
+     */
+    private String billNo;
+    /**
+     * 退货方式
+     */
+    private String deliveryMethod;
+    /**
+     * 减收金额
+     */
+    private BigDecimal reductionAmount;
+    /**
+     * 运费类型
+     */
+    private String freightType;
+    /**
+     * 运费金额
+     */
+    private BigDecimal freightAmount;
+    /**
+     * 结算方式
+     */
+    private String settleMethod;
+    /**
+     * 物流公司
+     */
+    private String logisticsCompany;
+    /**
+     * 车牌号
+     */
+    private String vehicleNo;
+    /**
+     * 货到分店
+     */
+    private String branchStore;
+    /**
+     * 货到分店启用
+     */
+    private Boolean branchStoreEnabled;
+    /**
+     * 进货区
+     */
+    private String purchaseArea;
+    /**
+     * 业务类型
+     */
+    private String businessType;
+    /**
+     * 开单方式
+     */
+    private String orderMethod;
+    /**
+     * 开发员编号
+     */
+    private Long developerUserId;
+
 }

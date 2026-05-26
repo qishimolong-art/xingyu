@@ -1,5 +1,6 @@
 package cn.iocoder.yudao.module.erp.service.finance;
 
+import cn.hutool.core.collection.CollUtil;
 import cn.iocoder.yudao.framework.common.enums.CommonStatusEnum;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
@@ -12,6 +13,7 @@ import org.springframework.validation.annotation.Validated;
 
 import javax.annotation.Resource;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.List;
 
 import static cn.iocoder.yudao.framework.common.exception.util.ServiceExceptionUtil.exception;
@@ -102,6 +104,9 @@ public class ErpAccountServiceImpl implements ErpAccountService {
 
     @Override
     public List<ErpAccountDO> getAccountList(Collection<Long> ids) {
+        if (CollUtil.isEmpty(ids)) {
+            return Collections.emptyList();
+        }
         return accountMapper.selectByIds(ids);
     }
 

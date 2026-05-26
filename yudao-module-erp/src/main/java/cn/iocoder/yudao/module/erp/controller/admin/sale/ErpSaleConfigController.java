@@ -1,0 +1,79 @@
+package cn.iocoder.yudao.module.erp.controller.admin.sale;
+
+import cn.iocoder.yudao.framework.common.pojo.CommonResult;
+import cn.iocoder.yudao.framework.common.pojo.PageResult;
+import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.config.ErpSaleConfigPageReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.config.ErpSaleConfigRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.config.ErpSaleConfigSaveReqVO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleConfigDO;
+import cn.iocoder.yudao.module.erp.service.sale.ErpSaleConfigService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.validation.annotation.Validated;
+import org.springframework.web.bind.annotation.*;
+
+import javax.annotation.Resource;
+import javax.validation.Valid;
+import java.util.List;
+
+import static cn.iocoder.yudao.framework.common.pojo.CommonResult.success;
+
+@Tag(name = "管理后台 - ERP 销售配置")
+@RestController
+@RequestMapping("/erp/sale-config")
+@Validated
+public class ErpSaleConfigController {
+
+    @Resource
+    private ErpSaleConfigService saleConfigService;
+
+    @PostMapping("/create")
+    @Operation(summary = "创建销售配置")
+    @PreAuthorize("@ss.hasPermission('erp:sale-config:create')")
+    public CommonResult<Long> createSaleConfig(@Valid @RequestBody ErpSaleConfigSaveReqVO createReqVO) {
+        return success(saleConfigService.createSaleConfig(createReqVO));
+    }
+
+    @PutMapping("/update")
+    @Operation(summary = "更新销售配置")
+    @PreAuthorize("@ss.hasPermission('erp:sale-config:update')")
+    public CommonResult<Boolean> updateSaleConfig(@Valid @RequestBody ErpSaleConfigSaveReqVO updateReqVO) {
+        saleConfigService.updateSaleConfig(updateReqVO);
+        return success(true);
+    }
+
+    @DeleteMapping("/delete")
+    @Operation(summary = "删除销售配置")
+    @Parameter(name = "ids", description = "编号数组", required = true)
+    @PreAuthorize("@ss.hasPermission('erp:sale-config:delete')")
+    public CommonResult<Boolean> deleteSaleConfig(@RequestParam("ids") List<Long> ids) {
+        saleConfigService.deleteSaleConfig(ids);
+        return success(true);
+    }
+
+    @GetMapping("/get")
+    @Operation(summary = "获得销售配置")
+    @PreAuthorize("@ss.hasPermission('erp:sale-config:query')")
+    public CommonResult<ErpSaleConfigRespVO> getSaleConfig(@RequestParam("id") Long id) {
+        return success(BeanUtils.toBean(saleConfigService.getSaleConfig(id), ErpSaleConfigRespVO.class));
+    }
+
+    @GetMapping("/page")
+    @Operation(summary = "获得销售配置分页")
+    @PreAuthorize("@ss.hasPermission('erp:sale-config:query')")
+    public CommonResult<PageResult<ErpSaleConfigRespVO>> getSaleConfigPage(@Valid ErpSaleConfigPageReqVO pageReqVO) {
+        return success(BeanUtils.toBean(saleConfigService.getSaleConfigPage(pageReqVO), ErpSaleConfigRespVO.class));
+    }
+
+    @GetMapping("/simple-list")
+    @Operation(summary = "获得销售配置精简列表")
+    @PreAuthorize("@ss.hasPermission('erp:sale-config:query')")
+    public CommonResult<List<ErpSaleConfigDO>> getSaleConfigSimpleList(@RequestParam("configType") String configType,
+                                                                        @RequestParam(value = "status", required = false) Integer status) {
+        return success(saleConfigService.getSaleConfigSimpleList(configType, status));
+    }
+
+}

@@ -6,8 +6,8 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Data;
 
 import javax.validation.constraints.NotEmpty;
-import javax.validation.constraints.NotNull;
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
 
 @Schema(description = "管理后台 - ERP 供应商新增/修改 Request VO")
 @Data
@@ -38,13 +38,11 @@ public class ErpSupplierSaveReqVO {
     @Schema(description = "备注", example = "你猜")
     private String remark;
 
-    @Schema(description = "开启状态", requiredMode = Schema.RequiredMode.REQUIRED, example = "1")
-    @NotNull(message = "开启状态不能为空")
+    @Schema(description = "开启状态", example = "1")
     @InEnum(value = CommonStatusEnum.class)
     private Integer status;
 
-    @Schema(description = "排序", requiredMode = Schema.RequiredMode.REQUIRED, example = "10")
-    @NotNull(message = "排序不能为空")
+    @Schema(description = "排序", example = "10")
     private Integer sort;
 
     @Schema(description = "纳税人识别号", example = "91130803MA098BY05W")
@@ -120,6 +118,9 @@ public class ErpSupplierSaveReqVO {
 
     @Schema(description = "淘汰", example = "false")
     private Boolean obsolete;
+
+    @Schema(description = "淘汰日期")
+    private LocalDateTime obsoleteDate;
 
     @Schema(description = "开票类型", example = "增值税专用发票")
     private String invoiceType;

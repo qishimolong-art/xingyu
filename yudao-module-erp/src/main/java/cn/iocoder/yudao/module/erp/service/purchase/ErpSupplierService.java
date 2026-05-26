@@ -84,11 +84,27 @@ public interface ErpSupplierService {
     PageResult<ErpSupplierDO> getSupplierPage(ErpSupplierPageReqVO pageReqVO);
 
     /**
+     * 更新供应商开启状态
+     *
+     * @param id     编号
+     * @param status 状态
+     */
+    void updateSupplierStatus(Long id, Integer status);
+
+    /**
      * 获得指定状态的供应商列表
      *
      * @param status 状态
      * @return 供应商列表
      */
     List<ErpSupplierDO> getSupplierListByStatus(Integer status);
+
+    /**
+     * 按名称模糊匹配供应商列表
+     *
+     * @param name 名称片段
+     * @return 供应商列表
+     */
+    List<ErpSupplierDO> getSupplierListByNameLike(String name);
 
 }

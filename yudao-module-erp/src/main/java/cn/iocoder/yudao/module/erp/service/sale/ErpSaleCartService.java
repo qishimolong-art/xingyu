@@ -1,6 +1,9 @@
 package cn.iocoder.yudao.module.erp.service.sale;
 
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartConvertQuoteReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartImportExcelVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartImportRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartSaveReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleCartDO;
@@ -23,9 +26,13 @@ public interface ErpSaleCartService {
 
     void firstApproveSaleCart(Long id);
 
-    Long finalApproveSaleCart(Long id);
+    List<Long> finalApproveSaleCart(Long id);
 
-    Long convertToQuote(Long id);
+    void rejectSaleCart(Long id);
+
+    Long convertToQuote(ErpSaleCartConvertQuoteReqVO reqVO);
+
+    void deleteSaleCart(List<Long> ids);
 
     ErpSaleCartDO getSaleCart(Long id);
 
@@ -34,5 +41,7 @@ public interface ErpSaleCartService {
     List<ErpSaleCartItemDO> getSaleCartItemListByCartId(Long cartId);
 
     List<ErpSaleCartItemDO> getSaleCartItemListByCartIds(Collection<Long> cartIds);
+
+    ErpSaleCartImportRespVO parseImportData(List<ErpSaleCartImportExcelVO> list);
 
 }

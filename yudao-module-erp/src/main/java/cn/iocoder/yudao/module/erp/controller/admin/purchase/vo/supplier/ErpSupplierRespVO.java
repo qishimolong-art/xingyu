@@ -155,6 +155,10 @@ public class ErpSupplierRespVO {
     @ExcelProperty("淘汰")
     private Boolean obsolete;
 
+    @Schema(description = "淘汰日期")
+    @ExcelProperty("淘汰日期")
+    private LocalDateTime obsoleteDate;
+
     @Schema(description = "开票类型", example = "增值税专用发票")
     @ExcelProperty("开票类型")
     private String invoiceType;

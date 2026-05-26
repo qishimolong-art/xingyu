@@ -3,11 +3,17 @@ package cn.iocoder.yudao.module.erp.service.sale;
 import cn.iocoder.yudao.framework.common.enums.CommonStatusEnum;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.customer.ErpCustomerBatchUpdateReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.customer.ErpCustomerImportExcelVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.customer.ErpCustomerPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.customer.ErpCustomerSaveReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpCustomerDO;
 import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpCustomerMapper;
+import cn.iocoder.yudao.module.erp.dal.redis.no.ErpNoRedisDAO;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
 import org.springframework.validation.annotation.Validated;
 
 import javax.annotation.Resource;
@@ -30,10 +36,27 @@ public class ErpCustomerServiceImpl implements ErpCustomerService {
     @Resource
     private ErpCustomerMapper customerMapper;
 
+    @Resource
+    private ErpNoRedisDAO noRedisDAO;
+
     @Override
     public Long createCustomer(ErpCustomerSaveReqVO createReqVO) {
         // 插入
         ErpCustomerDO customer = BeanUtils.toBean(createReqVO, ErpCustomerDO.class);
+        // 自动生成编码
+        if (!StringUtils.hasText(customer.getCode())) {
+            customer.setCode(noRedisDAO.generate(ErpNoRedisDAO.CUSTOMER_NO_PREFIX));
+        }
+        if (!StringUtils.hasText(customer.getMemberCode())) {
+            customer.setMemberCode(noRedisDAO.generate(ErpNoRedisDAO.MEMBER_NO_PREFIX));
+        }
+        if (!StringUtils.hasText(customer.getPlatformCode())) {
+            customer.setPlatformCode(noRedisDAO.generate(ErpNoRedisDAO.PLATFORM_NO_PREFIX));
+        }
+        // sort 默认值
+        if (customer.getSort() == null) {
+            customer.setSort(0);
+        }
         customerMapper.insert(customer);
         // 返回
         return customer.getId();
@@ -92,6 +115,79 @@ public class ErpCustomerServiceImpl implements ErpCustomerService {
     @Override
     public List<ErpCustomerDO> getCustomerListByStatus(Integer status) {
         return customerMapper.selectListByStatus(status);
+    }
+
+    @Override
+    public List<ErpCustomerDO> getCustomerListByNameLike(String name) {
+        if (name == null || name.isEmpty()) {
+            return java.util.Collections.emptyList();
+        }
+        return customerMapper.selectListByNameLike(name);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void importCustomerList(List<ErpCustomerImportExcelVO> list) {
+        if (list == null || list.isEmpty()) {
+            return;
+        }
+        for (ErpCustomerImportExcelVO importVO : list) {
+            if (importVO == null || !StringUtils.hasText(importVO.getName())) {
+                continue;
+            }
+            ErpCustomerDO customer = BeanUtils.toBean(importVO, ErpCustomerDO.class);
+            if (customer.getStatus() == null) {
+                customer.setStatus(CommonStatusEnum.ENABLE.getStatus());
+            }
+            if (customer.getSort() == null) {
+                customer.setSort(0);
+            }
+            customerMapper.insert(customer);
+        }
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void batchUpdateCustomer(ErpCustomerBatchUpdateReqVO reqVO) {
+        LambdaUpdateWrapper<ErpCustomerDO> wrapper = new LambdaUpdateWrapper<ErpCustomerDO>()
+                .in(ErpCustomerDO::getId, reqVO.getIds());
+        boolean hasUpdate = false;
+        if (reqVO.getSaleUserId() != null) {
+            wrapper.set(ErpCustomerDO::getSaleUserId, reqVO.getSaleUserId());
+            hasUpdate = true;
+        }
+        if (reqVO.getDeveloperUserId() != null) {
+            wrapper.set(ErpCustomerDO::getDeveloperUserId, reqVO.getDeveloperUserId());
+            hasUpdate = true;
+        }
+        if (reqVO.getDeptId() != null) {
+            wrapper.set(ErpCustomerDO::getDeptId, reqVO.getDeptId());
+            hasUpdate = true;
+        }
+        if (reqVO.getStatus() != null) {
+            wrapper.set(ErpCustomerDO::getStatus, reqVO.getStatus());
+            hasUpdate = true;
+        }
+        if (reqVO.getPriceLevel() != null) {
+            wrapper.set(ErpCustomerDO::getPriceLevel, reqVO.getPriceLevel());
+            hasUpdate = true;
+        }
+        if (reqVO.getRouteId() != null) {
+            wrapper.set(ErpCustomerDO::getRouteId, reqVO.getRouteId());
+            hasUpdate = true;
+        }
+        if (reqVO.getFreightExplainId() != null) {
+            wrapper.set(ErpCustomerDO::getFreightExplainId, reqVO.getFreightExplainId());
+            hasUpdate = true;
+        }
+        if (reqVO.getRemark() != null) {
+            wrapper.set(ErpCustomerDO::getRemark, reqVO.getRemark());
+            hasUpdate = true;
+        }
+        if (!hasUpdate) {
+            return;
+        }
+        customerMapper.update(null, wrapper);
     }
 
 }

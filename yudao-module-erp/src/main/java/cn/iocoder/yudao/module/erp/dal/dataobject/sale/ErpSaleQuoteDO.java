@@ -55,4 +55,29 @@ public class ErpSaleQuoteDO extends BaseDO {
     private String fileUrl;
     private String remark;
 
+    private String orderType;
+    private String settleMethod;
+    private Boolean prepayment;
+    private String priority;
+    private String deliveryMethod;
+    private Boolean proxyDelivery;
+    private String deliveryAddress;
+    private BigDecimal allowancePrice;
+    private String ticketNo;
+    private String invoiceType;
+    private String freightType;
+    private BigDecimal freightAmount;
+    private String logisticsCompany;
+    private String receiverName;
+    private String receiverPhone;
+    private String priceType;
+    private String branchDelivery;
+    private LocalDateTime expectedDeliveryTime;
+    private String billingMethod;
+    private String vehiclePlateNo;
+    private String businessType;
+    private Long developerUserId;
+    private String vin;
+    private String internalRemark;
+
 }

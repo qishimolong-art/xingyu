@@ -147,9 +147,18 @@ public class ErpPurchaseInSaveReqVO {
         @NotNull(message = "产品编号不能为空")
         private Long productId;
 
+        @Schema(description = "产品编码", example = "P0001")
+        private String productCode;
+
+        @Schema(description = "产品名称", example = "刹车片")
+        private String productName;
+
         @Schema(description = "产品单位单位", requiredMode = Schema.RequiredMode.REQUIRED, example = "3113")
         @NotNull(message = "产品单位单位不能为空")
         private Long productUnitId;
+
+        @Schema(description = "产品单位名称", example = "件")
+        private String productUnitName;
 
         @Schema(description = "产品单价", example = "100.00")
         private BigDecimal productPrice;
@@ -193,6 +202,9 @@ public class ErpPurchaseInSaveReqVO {
 
         @Schema(description = "所属经营", example = "汽配业务")
         private String businessEntity;
+
+        @Schema(description = "仓库名称", example = "主仓")
+        private String warehouseName;
 
     }
 

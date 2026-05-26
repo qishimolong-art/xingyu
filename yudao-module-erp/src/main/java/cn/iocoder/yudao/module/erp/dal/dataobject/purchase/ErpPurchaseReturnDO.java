@@ -201,4 +201,18 @@ public class ErpPurchaseReturnDO extends BaseDO {
      */
     private Integer returnMode;
 
+    // ========== 八期：扩展字段 ==========
+    /**
+     * 税率
+     */
+    private BigDecimal taxRate;
+    /**
+     * 部门ID
+     */
+    private Long deptId;
+    /**
+     * 经办人（制单人，用户 ID）
+     */
+    private Long handler;
+
 }

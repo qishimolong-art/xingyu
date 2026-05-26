@@ -1,6 +1,8 @@
 package cn.iocoder.yudao.module.erp.service.purchase;
 
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.returns.ErpPurchaseReturnImportExcelVO;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.returns.ErpPurchaseReturnImportRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.returns.ErpPurchaseReturnPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.returns.ErpPurchaseReturnSaveReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseReturnDO;
@@ -97,5 +99,13 @@ public interface ErpPurchaseReturnService {
      * @return 采购退货项 List
      */
     List<ErpPurchaseReturnItemDO> getPurchaseReturnItemListByReturnIds(Collection<Long> returnIds);
+
+    /**
+     * 解析采购退货导入明细
+     *
+     * @param list Excel 行数据
+     * @return 导入结果
+     */
+    ErpPurchaseReturnImportRespVO importPurchaseReturnItems(List<ErpPurchaseReturnImportExcelVO> list);
 
 }

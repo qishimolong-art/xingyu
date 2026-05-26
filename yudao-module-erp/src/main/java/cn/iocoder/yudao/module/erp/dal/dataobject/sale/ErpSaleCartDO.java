@@ -59,4 +59,28 @@ public class ErpSaleCartDO extends BaseDO {
     private String fileUrl;
     private String remark;
 
+    // ========== 扩展字段 ==========
+    private String businessType;
+    private String orderType;
+    private String billingMethod;
+    private String settleMethod;
+    private String invoiceType;
+    private String deliveryMethod;
+    private String freightType;
+    private String priority;
+    private String priceType;
+    private String logisticsCompany;
+    private Long developerUserId;
+    private String contactPerson;
+    private String contactPhone;
+    private String deliveryAddress;
+    private LocalDateTime deliveryDate;
+    private BigDecimal taxRate;
+    private BigDecimal totalFreight;
+    private LocalDateTime paymentDate;
+    private String businessEntity;
+    private String orderMethod;
+    private String sourceType2;
+    private String remark2;
+
 }

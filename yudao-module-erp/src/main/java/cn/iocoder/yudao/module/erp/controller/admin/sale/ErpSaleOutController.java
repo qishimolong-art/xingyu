@@ -17,10 +17,15 @@ import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpCustomerDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleOutDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleOutItemDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockDO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpWarehouseDO;
+import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpSaleReturnItemMapper;
 import cn.iocoder.yudao.module.erp.service.product.ErpProductService;
 import cn.iocoder.yudao.module.erp.service.sale.ErpCustomerService;
 import cn.iocoder.yudao.module.erp.service.sale.ErpSaleOutService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpStockService;
+import cn.iocoder.yudao.module.erp.service.stock.ErpWarehouseService;
+import cn.iocoder.yudao.module.system.api.dept.DeptApi;
+import cn.iocoder.yudao.module.system.api.dept.dto.DeptRespDTO;
 import cn.iocoder.yudao.module.system.api.user.AdminUserApi;
 import cn.iocoder.yudao.module.system.api.user.dto.AdminUserRespDTO;
 import io.swagger.v3.oas.annotations.Operation;
@@ -35,8 +40,7 @@ import javax.servlet.http.HttpServletResponse;
 import javax.validation.Valid;
 import java.io.IOException;
 import java.math.BigDecimal;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
 import static cn.iocoder.yudao.framework.apilog.core.enums.OperateTypeEnum.EXPORT;
 import static cn.iocoder.yudao.framework.common.pojo.CommonResult.success;
@@ -57,9 +61,15 @@ public class ErpSaleOutController {
     private ErpProductService productService;
     @Resource
     private ErpCustomerService customerService;
+    @Resource
+    private ErpWarehouseService warehouseService;
+    @Resource
+    private ErpSaleReturnItemMapper saleReturnItemMapper;
 
     @Resource
     private AdminUserApi adminUserApi;
+    @Resource
+    private DeptApi deptApi;
 
     @PostMapping("/create")
     @Operation(summary = "创建销售出库")
@@ -106,13 +116,88 @@ public class ErpSaleOutController {
         List<ErpSaleOutItemDO> saleOutItemList = saleOutService.getSaleOutItemListByOutId(id);
         Map<Long, ErpProductRespVO> productMap = productService.getProductVOMap(
                 convertSet(saleOutItemList, ErpSaleOutItemDO::getProductId));
-        return success(BeanUtils.toBean(saleOut, ErpSaleOutRespVO.class, saleOutVO ->
+        // 仓库信息
+        Map<Long, ErpWarehouseDO> warehouseMap = warehouseService.getWarehouseMap(
+                convertSet(saleOutItemList, ErpSaleOutItemDO::getWarehouseId));
+        // 退货状态
+        Set<Long> outItemIds = convertSet(saleOutItemList, ErpSaleOutItemDO::getId);
+        Map<Long, BigDecimal> returnedCountMap = saleReturnItemMapper.selectReturnedCountMapBySourceOutItemIds(outItemIds);
+
+        ErpSaleOutRespVO respVO = BeanUtils.toBean(saleOut, ErpSaleOutRespVO.class, saleOutVO ->
                 saleOutVO.setItems(BeanUtils.toBean(saleOutItemList, ErpSaleOutRespVO.Item.class, item -> {
                     ErpStockDO stock = stockService.getStock(item.getProductId(), item.getWarehouseId());
                     item.setStockCount(stock != null ? stock.getCount() : BigDecimal.ZERO);
-                    MapUtils.findAndThen(productMap, item.getProductId(), product -> item.setProductName(product.getName())
-                            .setProductBarCode(product.getBarCode()).setProductUnitName(product.getUnitName()));
-                }))));
+                    MapUtils.findAndThen(productMap, item.getProductId(), product -> {
+                        item.setProductName(product.getName())
+                                .setProductBarCode(product.getBarCode()).setProductUnitName(product.getUnitName());
+                        item.setProductCode(product.getCode());
+                        item.setVehicleModel(product.getVehicleModel());
+                        item.setStandard(product.getStandard());
+                        item.setFeatureCode(product.getFeatureCode());
+                        item.setBrand(product.getBrand());
+                        item.setDrawingNo(product.getDrawingNo());
+                        item.setOriginPlace(product.getOriginPlace());
+                    });
+                    MapUtils.findAndThen(warehouseMap, item.getWarehouseId(),
+                            warehouse -> item.setWarehouseName(warehouse.getName()));
+                    // 计算产品金额
+                    if (item.getProductPrice() != null && item.getCount() != null) {
+                        item.setTotalProductPrice(item.getProductPrice().multiply(item.getCount()));
+                    }
+                    // 已退数量
+                    item.setReturnedCount(returnedCountMap.get(item.getId()));
+                })));
+        // 填充主表关联字段
+        fillSaleOutRelationFields(respVO, saleOut);
+        // 退货状态
+        respVO.setReturnStatus(calculateReturnStatus(saleOutItemList, returnedCountMap));
+        return success(respVO);
+    }
+
+    /**
+     * 填充销售单主表的关联字段（客户编码、审核人、业务员、部门）
+     */
+    private void fillSaleOutRelationFields(ErpSaleOutRespVO respVO, ErpSaleOutDO saleOut) {
+        // 客户
+        if (saleOut.getCustomerId() != null) {
+            ErpCustomerDO customer = customerService.getCustomer(saleOut.getCustomerId());
+            if (customer != null) {
+                respVO.setCustomerName(customer.getName());
+                respVO.setCustomerCode(customer.getCode());
+            }
+        }
+        // 用户信息（创建人、业务员、审核人）
+        Set<Long> userIds = new HashSet<>();
+        if (saleOut.getCreator() != null) {
+            try { userIds.add(Long.parseLong(saleOut.getCreator())); } catch (NumberFormatException ignored) {}
+        }
+        if (saleOut.getSaleUserId() != null) {
+            userIds.add(saleOut.getSaleUserId());
+        }
+        if (saleOut.getAuditorId() != null) {
+            userIds.add(saleOut.getAuditorId());
+        }
+        if (!userIds.isEmpty()) {
+            Map<Long, AdminUserRespDTO> userMap = adminUserApi.getUserMap(userIds);
+            if (saleOut.getCreator() != null) {
+                try {
+                    MapUtils.findAndThen(userMap, Long.parseLong(saleOut.getCreator()), user -> respVO.setCreatorName(user.getNickname()));
+                } catch (NumberFormatException ignored) {}
+            }
+            if (saleOut.getSaleUserId() != null) {
+                MapUtils.findAndThen(userMap, saleOut.getSaleUserId(), user -> respVO.setSaleUserName(user.getNickname()));
+            }
+            if (saleOut.getAuditorId() != null) {
+                MapUtils.findAndThen(userMap, saleOut.getAuditorId(), user -> respVO.setAuditorName(user.getNickname()));
+            }
+        }
+        // 部门
+        if (saleOut.getDeptId() != null) {
+            DeptRespDTO dept = deptApi.getDept(saleOut.getDeptId());
+            if (dept != null) {
+                respVO.setDeptName(dept.getName());
+            }
+        }
     }
 
     @GetMapping("/page")
@@ -157,18 +242,68 @@ public class ErpSaleOutController {
         // 1.3 客户信息
         Map<Long, ErpCustomerDO> customerMap = customerService.getCustomerMap(
                 convertSet(pageResult.getList(), ErpSaleOutDO::getCustomerId));
-        // 1.4 管理员信息
-        Map<Long, AdminUserRespDTO> userMap = adminUserApi.getUserMap(
-                convertSet(pageResult.getList(), stockOut -> Long.parseLong(stockOut.getCreator())));
+        // 1.4 管理员信息（创建人 + 业务员）
+        Set<Long> userIds = new HashSet<>();
+        pageResult.getList().forEach(out -> {
+            if (out.getCreator() != null) {
+                try { userIds.add(Long.parseLong(out.getCreator())); } catch (NumberFormatException ignored) {}
+            }
+            if (out.getSaleUserId() != null) {
+                userIds.add(out.getSaleUserId());
+            }
+        });
+        Map<Long, AdminUserRespDTO> userMap = adminUserApi.getUserMap(userIds);
+        // 1.5 退货状态：按 sourceOutItemId 聚合已退数量
+        Set<Long> allOutItemIds = convertSet(saleOutItemList, ErpSaleOutItemDO::getId);
+        Map<Long, BigDecimal> returnedCountMap = saleReturnItemMapper.selectReturnedCountMapBySourceOutItemIds(allOutItemIds);
         // 2. 开始拼接
         return BeanUtils.toBean(pageResult, ErpSaleOutRespVO.class, saleOut -> {
             saleOut.setItems(BeanUtils.toBean(saleOutItemMap.get(saleOut.getId()), ErpSaleOutRespVO.Item.class,
                     item -> MapUtils.findAndThen(productMap, item.getProductId(), product -> item.setProductName(product.getName())
                             .setProductBarCode(product.getBarCode()).setProductUnitName(product.getUnitName()))));
             saleOut.setProductNames(CollUtil.join(saleOut.getItems(), "，", ErpSaleOutRespVO.Item::getProductName));
-            MapUtils.findAndThen(customerMap, saleOut.getCustomerId(), supplier -> saleOut.setCustomerName(supplier.getName()));
-            MapUtils.findAndThen(userMap, Long.parseLong(saleOut.getCreator()), user -> saleOut.setCreatorName(user.getNickname()));
+            MapUtils.findAndThen(customerMap, saleOut.getCustomerId(), customer -> {
+                saleOut.setCustomerName(customer.getName());
+                saleOut.setCustomerCode(customer.getCode());
+            });
+            if (saleOut.getCreator() != null) {
+                try {
+                    MapUtils.findAndThen(userMap, Long.parseLong(saleOut.getCreator()), user -> saleOut.setCreatorName(user.getNickname()));
+                } catch (NumberFormatException ignored) {}
+            }
+            // 业务员名称
+            if (saleOut.getSaleUserId() != null) {
+                MapUtils.findAndThen(userMap, saleOut.getSaleUserId(), user -> saleOut.setSaleUserName(user.getNickname()));
+            }
+            // 退货状态计算
+            saleOut.setReturnStatus(calculateReturnStatus(saleOutItemMap.get(saleOut.getId()), returnedCountMap));
         });
+    }
+
+    /**
+     * 计算退货状态：0=未退, 1=部分退, 2=整退
+     */
+    private Integer calculateReturnStatus(List<ErpSaleOutItemDO> items, Map<Long, BigDecimal> returnedCountMap) {
+        if (CollUtil.isEmpty(items) || returnedCountMap.isEmpty()) {
+            return 0;
+        }
+        boolean hasReturn = false;
+        boolean allReturned = true;
+        for (ErpSaleOutItemDO item : items) {
+            BigDecimal returned = returnedCountMap.get(item.getId());
+            if (returned != null && returned.compareTo(BigDecimal.ZERO) > 0) {
+                hasReturn = true;
+                if (returned.compareTo(item.getCount()) < 0) {
+                    allReturned = false;
+                }
+            } else {
+                allReturned = false;
+            }
+        }
+        if (!hasReturn) {
+            return 0;
+        }
+        return allReturned ? 2 : 1;
     }
 
 }

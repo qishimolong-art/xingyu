@@ -90,6 +90,57 @@ public class ErpSaleReturnRespVO {
     @ExcelProperty("备注")
     private String remark;
 
+    @Schema(description = "部门编号", example = "1")
+    private Long deptId;
+
+    @Schema(description = "优先级别", example = "正常件")
+    private String priority;
+
+    @Schema(description = "开票类型", example = "收据")
+    private String invoiceType;
+
+    @Schema(description = "票据号", example = "PJ20260513001")
+    private String billNo;
+
+    @Schema(description = "退货方式", example = "客户自提")
+    private String deliveryMethod;
+
+    @Schema(description = "减收金额", example = "0")
+    private BigDecimal reductionAmount;
+
+    @Schema(description = "运费类型", example = "我方自付")
+    private String freightType;
+
+    @Schema(description = "运费金额", example = "0")
+    private BigDecimal freightAmount;
+
+    @Schema(description = "结算方式", example = "挂账")
+    private String settleMethod;
+
+    @Schema(description = "物流公司", example = "顺丰")
+    private String logisticsCompany;
+
+    @Schema(description = "车牌号", example = "粤B12345")
+    private String vehicleNo;
+
+    @Schema(description = "货到分店", example = "总店")
+    private String branchStore;
+
+    @Schema(description = "货到分店启用", example = "false")
+    private Boolean branchStoreEnabled;
+
+    @Schema(description = "进货区", example = "进货A区")
+    private String purchaseArea;
+
+    @Schema(description = "业务类型", example = "普通销售")
+    private String businessType;
+
+    @Schema(description = "开单方式", example = "正常单")
+    private String orderMethod;
+
+    @Schema(description = "开发员编号", example = "1")
+    private Long developerUserId;
+
     @Schema(description = "创建人", example = "芋道")
     private String creator;
     @Schema(description = "创建人名称", example = "芋道")
@@ -109,6 +160,36 @@ public class ErpSaleReturnRespVO {
     @Data
     public static class Item {
 
+        @ExcelProperty("产品编码")
+        private String productCode;
+
+        @ExcelProperty("产品名称")
+        private String productName;
+
+        @ExcelProperty("产品单位")
+        private String productUnitName;
+
+        private String warehouseName;
+
+        @ExcelProperty("仓库编号")
+        private Long warehouseId;
+
+        @ExcelProperty("退货数量")
+        @NotNull(message = "产品数量不能为空")
+        private BigDecimal count;
+
+        @ExcelProperty("退货单价")
+        private BigDecimal productPrice;
+
+        @ExcelProperty("退货原因")
+        private String returnReason;
+
+        @ExcelProperty("仓位")
+        private String warehousePosition;
+
+        @ExcelProperty("备注")
+        private String remark;
+
         @Schema(description = "退货项编号", example = "11756")
         private Long id;
 
@@ -118,21 +199,11 @@ public class ErpSaleReturnRespVO {
         @Schema(description = "来源销售单项编号")
         private Long sourceOutItemId;
 
-        @Schema(description = "仓库编号", requiredMode = Schema.RequiredMode.REQUIRED, example = "3113")
-        private Long warehouseId;
-
         @Schema(description = "产品编号", requiredMode = Schema.RequiredMode.REQUIRED, example = "3113")
         private Long productId;
 
         @Schema(description = "产品单位单位", requiredMode = Schema.RequiredMode.REQUIRED, example = "3113")
         private Long productUnitId;
-
-        @Schema(description = "产品单价", example = "100.00")
-        private BigDecimal productPrice;
-
-        @Schema(description = "产品数量", requiredMode = Schema.RequiredMode.REQUIRED, example = "100.00")
-        @NotNull(message = "产品数量不能为空")
-        private BigDecimal count;
 
         @Schema(description = "税率，百分比", example = "99.88")
         private BigDecimal taxPercent;
@@ -140,20 +211,13 @@ public class ErpSaleReturnRespVO {
         @Schema(description = "税额，单位：元", example = "100.00")
         private BigDecimal taxPrice;
 
-        @Schema(description = "备注", example = "随便")
-        private String remark;
-
         // ========== 关联字段 ==========
 
-        @Schema(description = "产品名称", requiredMode = Schema.RequiredMode.REQUIRED, example = "巧克力")
-        private String productName;
         @Schema(description = "产品条码", requiredMode = Schema.RequiredMode.REQUIRED, example = "A9985")
         private String productBarCode;
-        @Schema(description = "产品单位名称", requiredMode = Schema.RequiredMode.REQUIRED, example = "盒")
-        private String productUnitName;
 
         @Schema(description = "库存数量", requiredMode = Schema.RequiredMode.REQUIRED, example = "100.00")
-        private BigDecimal stockCount; // 该字段仅仅在“详情”和“编辑”时使用
+        private BigDecimal stockCount; // 该字段仅仅在"详情"和"编辑"时使用
 
     }
 

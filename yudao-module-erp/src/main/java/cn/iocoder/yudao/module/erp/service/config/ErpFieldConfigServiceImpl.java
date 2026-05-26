@@ -55,11 +55,12 @@ public class ErpFieldConfigServiceImpl implements ErpFieldConfigService {
                 }
             }
         }
-        // 3. 查询当前模块下所有记录，逻辑删除
+        // 3. 查询当前模块下所有记录，物理删除（避免唯一索引冲突）
         List<ErpFieldConfigDO> existList = fieldConfigMapper.selectListByModuleKey(moduleKey);
         if (existList != null && !existList.isEmpty()) {
             List<Long> ids = CollectionUtils.convertList(existList, ErpFieldConfigDO::getId);
-            fieldConfigMapper.deleteByIds(ids);
+            // 使用自定义物理删除（原生 DELETE FROM），绕过 MyBatis-Plus 逻辑删除机制
+            fieldConfigMapper.physicalDeleteByIds(ids);
         }
         // 4. 把 items 转成 DO 批量插入
         if (reqVO.getItems() == null || reqVO.getItems().isEmpty()) {
@@ -86,7 +87,8 @@ public class ErpFieldConfigServiceImpl implements ErpFieldConfigService {
             return;
         }
         List<Long> ids = CollectionUtils.convertList(existList, ErpFieldConfigDO::getId);
-        fieldConfigMapper.deleteByIds(ids);
+        // 使用自定义物理删除（原生 DELETE FROM），绕过 MyBatis-Plus 逻辑删除机制
+        fieldConfigMapper.physicalDeleteByIds(ids);
     }
 
     @Override

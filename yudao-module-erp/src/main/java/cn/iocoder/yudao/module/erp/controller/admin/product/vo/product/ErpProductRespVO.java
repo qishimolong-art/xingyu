@@ -22,6 +22,10 @@ public class ErpProductRespVO {
     @ExcelProperty("配件编码")
     private String code;
 
+    @Schema(description = "产品编码", example = "P000001")
+    @ExcelProperty("产品编码")
+    private String productCode;
+
     @Schema(description = "产品名称", requiredMode = Schema.RequiredMode.REQUIRED, example = "李四")
     @ExcelProperty("产品名称")
     private String name;
@@ -139,6 +143,9 @@ public class ErpProductRespVO {
     @Schema(description = "当前库存（实时聚合）", example = "120")
     @ExcelProperty("当前库存")
     private BigDecimal currentStock;
+    @Schema(description = "占用数量", example = "12")
+    @ExcelProperty("占用数量")
+    private BigDecimal lockCount;
     @Schema(description = "在途库存（预留，暂为 0）", example = "0")
     private BigDecimal inTransitStock;
     @Schema(description = "可用库存（暂等于当前库存）", example = "120")

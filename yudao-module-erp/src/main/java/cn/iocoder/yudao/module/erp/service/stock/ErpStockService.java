@@ -6,6 +6,9 @@ import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.stock.ErpStockPageR
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockDO;
 
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
+import java.util.Collection;
+import java.util.Map;
 
 /**
  * ERP 产品库存 Service 接口
@@ -40,6 +43,22 @@ public interface ErpStockService {
      * @return 产品库存数量
      */
     BigDecimal getStockCount(Long productId);
+
+    /**
+     * 批量获得产品库存数量（所有仓库合计）
+     *
+     * @param productIds 产品编号集合
+     * @return Map&lt;productId, sum(count)&gt;
+     */
+    Map<Long, BigDecimal> getStockCountMap(Collection<Long> productIds);
+
+    /**
+     * 批量获取产品占用数量
+     *
+     * @param productIds 产品编号集合
+     * @return Map<productId, sum(lockCount)>
+     */
+    Map<Long, BigDecimal> getStockLockCountMap(Collection<Long> productIds);
 
     /**
      * 获得产品库存分页
@@ -84,6 +103,26 @@ public interface ErpStockService {
      * @return 调整后的库存量
      */
     BigDecimal adjustStock(ErpStockAdjustReqVO reqVO);
+
+    /**
+     * 调整库存成本金额（采购调价专用）
+     *
+     * <p>语义：不改库存数量，只补差 cost_amount。当前在库量 &lt; 原入库量时按比例摊分，
+     * 即只摊到仍在库的那部分。当前在库超过原入库也不放大（比例上限为 1）。</p>
+     *
+     * <p>乐观锁重试最多 5 次；同时写入一条 PURCHASE_PRICE_ADJUST 流水。</p>
+     *
+     * @param productId           产品编号
+     * @param warehouseId         仓库编号
+     * @param deltaCostAmountFull 完整差额 Σ (newPrice - oldPrice) × count
+     * @param sumInCount          本次调价涉及的入库总数量
+     * @param bizId               调价单 ID
+     * @param bizNo               调价单号
+     * @param bizDate             调价时间
+     */
+    void adjustStockCostAmount(Long productId, Long warehouseId,
+                               BigDecimal deltaCostAmountFull, BigDecimal sumInCount,
+                               Long bizId, String bizNo, LocalDateTime bizDate);
 
     /**
      * 库存更新结果

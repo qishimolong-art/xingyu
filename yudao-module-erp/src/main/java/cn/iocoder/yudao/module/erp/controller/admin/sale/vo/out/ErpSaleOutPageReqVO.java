@@ -64,4 +64,7 @@ public class ErpSaleOutPageReqVO extends PageParam {
     @Schema(description = "来源单据号", example = "XSBJ20260509000001")
     private String sourceNo;
 
+    @Schema(description = "业务员编号")
+    private Long saleUserId;
+
 }

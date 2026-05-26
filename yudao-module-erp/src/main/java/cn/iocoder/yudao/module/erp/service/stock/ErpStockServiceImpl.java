@@ -6,11 +6,16 @@ import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.stock.ErpStockAdjus
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.stock.ErpStockPageReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.product.ErpProductDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockDO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockLockDO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockRecordDO;
 import cn.iocoder.yudao.module.erp.dal.mysql.product.ErpProductMapper;
+import cn.iocoder.yudao.module.erp.dal.mysql.stock.ErpStockLockMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.stock.ErpStockMapper;
+import cn.iocoder.yudao.module.erp.dal.mysql.stock.ErpStockRecordMapper;
 import cn.iocoder.yudao.module.erp.enums.stock.ErpStockRecordBizTypeEnum;
 import cn.iocoder.yudao.module.erp.service.product.ErpProductService;
 import cn.iocoder.yudao.module.erp.service.stock.bo.ErpStockRecordCreateReqBO;
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -23,6 +28,8 @@ import java.time.LocalDateTime;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 import static cn.iocoder.yudao.framework.common.exception.util.ServiceExceptionUtil.exception;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.STOCK_COUNT_NEGATIVE;
@@ -62,7 +69,11 @@ public class ErpStockServiceImpl implements ErpStockService {
     @Resource
     private ErpStockMapper stockMapper;
     @Resource
+    private ErpStockLockMapper stockLockMapper;
+    @Resource
     private ErpProductMapper productMapper;
+    @Resource
+    private ErpStockRecordMapper stockRecordMapper;
 
     /**
      * 库存流水 Service。
@@ -88,6 +99,29 @@ public class ErpStockServiceImpl implements ErpStockService {
     public BigDecimal getStockCount(Long productId) {
         BigDecimal count = stockMapper.selectSumByProductId(productId);
         return count != null ? count : BigDecimal.ZERO;
+    }
+
+    @Override
+    public Map<Long, BigDecimal> getStockCountMap(Collection<Long> productIds) {
+        if (productIds == null || productIds.isEmpty()) {
+            return Collections.emptyMap();
+        }
+        return stockMapper.selectSumMapByProductIds(productIds);
+    }
+
+    @Override
+    public Map<Long, BigDecimal> getStockLockCountMap(Collection<Long> productIds) {
+        if (productIds == null || productIds.isEmpty()) {
+            return Collections.emptyMap();
+        }
+        return stockLockMapper.selectList(new LambdaQueryWrapper<ErpStockLockDO>()
+                        .in(ErpStockLockDO::getProductId, productIds)
+                        .eq(ErpStockLockDO::getStatus, 1))
+                .stream()
+                .collect(Collectors.groupingBy(ErpStockLockDO::getProductId,
+                        Collectors.reducing(BigDecimal.ZERO,
+                                item -> item.getLockCount() != null ? item.getLockCount() : BigDecimal.ZERO,
+                                BigDecimal::add)));
     }
 
     @Override
@@ -285,6 +319,98 @@ public class ErpStockServiceImpl implements ErpStockService {
 
         // 6. 返回调整后库存
         return targetCount;
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void adjustStockCostAmount(Long productId, Long warehouseId,
+                                      BigDecimal deltaCostAmountFull, BigDecimal sumInCount,
+                                      Long bizId, String bizNo, LocalDateTime bizDate) {
+        // 0. 空差额直接短路
+        if (deltaCostAmountFull == null || deltaCostAmountFull.compareTo(BigDecimal.ZERO) == 0) {
+            return;
+        }
+
+        // 1. 查库存；不存在则初始化（当前无库存也可以先写流水痕迹，但差额无处摊）
+        ErpStockDO stock = stockMapper.selectByProductIdAndWarehouseId(productId, warehouseId);
+        if (stock == null) {
+            stock = new ErpStockDO().setProductId(productId).setWarehouseId(warehouseId)
+                    .setCount(BigDecimal.ZERO)
+                    .setCostPrice(BigDecimal.ZERO)
+                    .setCostAmount(BigDecimal.ZERO);
+            stockMapper.insert(stock);
+        }
+
+        BigDecimal effectiveDelta = BigDecimal.ZERO;
+        BigDecimal newCostAmount;
+        BigDecimal newCostPrice = BigDecimal.ZERO;
+
+        // 2. 乐观锁循环重试：更新 cost_amount / cost_price（count 不变，作为乐观锁 where 条件）
+        boolean success = false;
+        for (int i = 0; i < MAX_RETRY_TIMES; i++) {
+            BigDecimal currentCount = stock.getCount() != null ? stock.getCount() : BigDecimal.ZERO;
+            BigDecimal currentAmount = stock.getCostAmount() != null ? stock.getCostAmount() : BigDecimal.ZERO;
+
+            // 2.1 计算摊分比例（Q1=A 方案）：ratio = min(currentCount / sumInCount, 1)
+            BigDecimal ratio;
+            if (sumInCount == null || sumInCount.signum() == 0 || currentCount.signum() <= 0) {
+                ratio = BigDecimal.ZERO;
+            } else {
+                ratio = currentCount.divide(sumInCount, COST_PRICE_SCALE, RoundingMode.HALF_UP);
+                if (ratio.compareTo(BigDecimal.ONE) > 0) {
+                    ratio = BigDecimal.ONE;
+                }
+            }
+
+            // 2.2 有效差额（保留 2 位）
+            effectiveDelta = deltaCostAmountFull.multiply(ratio).setScale(2, RoundingMode.HALF_UP);
+
+            // 2.3 新成本金额与均价
+            newCostAmount = currentAmount.add(effectiveDelta);
+            if (currentCount.signum() > 0) {
+                newCostPrice = newCostAmount.divide(currentCount, COST_PRICE_SCALE, RoundingMode.HALF_UP);
+            } else {
+                newCostPrice = BigDecimal.ZERO;
+            }
+
+            // 2.4 乐观锁更新：count / cost_amount 作为版本校验条件
+            int affected = stockMapper.updateCostAmountAndPrice(stock.getId(), currentCount, currentAmount,
+                    newCostAmount, newCostPrice);
+            if (affected == 1) {
+                success = true;
+                break;
+            }
+            // 2.5 冲突：重读再算
+            ErpStockDO latest = stockMapper.selectByProductIdAndWarehouseId(productId, warehouseId);
+            if (latest != null) {
+                stock = latest;
+            }
+        }
+        if (!success) {
+            // 理论上极少达到；此处复用 STOCK_COUNT_NEGATIVE2 语义（并发冲突无法完成）
+            throw exception(STOCK_COUNT_NEGATIVE2, productService.getProduct(productId).getName(),
+                    warehouseService.getWarehouse(warehouseId).getName());
+        }
+
+        // 3. 手工写流水（ErpStockRecordServiceImpl.createStockRecord 内部会调用 updateStockCountAndCost，
+        //    但我们既不能让它改数量，也不想它重算成本均价，因此直接插入流水 DO）
+        ErpStockRecordDO record = new ErpStockRecordDO()
+                .setProductId(productId)
+                .setWarehouseId(warehouseId)
+                .setCount(BigDecimal.ZERO)
+                .setTotalCount(stock.getCount() != null ? stock.getCount() : BigDecimal.ZERO)
+                .setBizType(ErpStockRecordBizTypeEnum.PURCHASE_PRICE_ADJUST.getType())
+                .setBizId(bizId)
+                .setBizItemId(0L)
+                .setBizNo(bizNo)
+                .setUnitPrice(null)
+                .setTotalPrice(effectiveDelta)
+                .setCostPrice(newCostPrice)
+                .setCostAmount(stock.getCostAmount() != null
+                        ? stock.getCostAmount().add(effectiveDelta)
+                        : effectiveDelta)
+                .setBizDate(bizDate != null ? bizDate : LocalDateTime.now());
+        stockRecordMapper.insert(record);
     }
 
 }

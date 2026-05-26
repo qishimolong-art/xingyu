@@ -2,9 +2,16 @@ package cn.iocoder.yudao.module.erp.service.sale;
 
 import cn.hutool.core.collection.CollUtil;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
+import cn.iocoder.yudao.framework.common.enums.CommonStatusEnum;
 import cn.iocoder.yudao.framework.common.util.number.MoneyUtils;
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
+import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpProductRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartImportExcelVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartImportRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartRespVO;
+import cn.iocoder.yudao.framework.security.core.util.SecurityFrameworkUtils;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartPageReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartConvertQuoteReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartSaveReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.out.ErpSaleOutSaveReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.product.ErpProductDO;
@@ -14,6 +21,8 @@ import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleConvertRecordDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleQuoteDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleQuoteItemDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockDO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpWarehouseDO;
+import cn.iocoder.yudao.module.erp.dal.mysql.product.ErpProductMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpSaleCartItemMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpSaleCartMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpSaleConvertRecordMapper;
@@ -27,6 +36,7 @@ import cn.iocoder.yudao.module.erp.enums.sale.ErpSaleQuoteStatusEnum;
 import cn.iocoder.yudao.module.erp.service.finance.ErpAccountService;
 import cn.iocoder.yudao.module.erp.service.product.ErpProductService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpStockService;
+import cn.iocoder.yudao.module.erp.service.stock.ErpWarehouseService;
 import cn.iocoder.yudao.module.system.api.user.AdminUserApi;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -37,8 +47,14 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.ArrayList;
+import java.util.LinkedHashSet;
+import java.util.LinkedHashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 import static cn.iocoder.yudao.framework.common.exception.util.ServiceExceptionUtil.exception;
 import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.*;
@@ -62,6 +78,8 @@ public class ErpSaleCartServiceImpl implements ErpSaleCartService {
     @Resource
     private ErpSaleConvertRecordMapper saleConvertRecordMapper;
     @Resource
+    private ErpProductMapper productMapper;
+    @Resource
     private ErpNoRedisDAO noRedisDAO;
     @Resource
     private ErpCustomerService customerService;
@@ -71,6 +89,8 @@ public class ErpSaleCartServiceImpl implements ErpSaleCartService {
     private ErpAccountService accountService;
     @Resource
     private ErpStockService stockService;
+    @Resource
+    private ErpWarehouseService warehouseService;
     @Resource
     private ErpSaleOutService saleOutService;
     @Resource
@@ -106,8 +126,8 @@ public class ErpSaleCartServiceImpl implements ErpSaleCartService {
     @Transactional(rollbackFor = Exception.class)
     public void updateSaleCart(ErpSaleCartSaveReqVO updateReqVO) {
         ErpSaleCartDO cart = validateSaleCartExists(updateReqVO.getId());
-        if (ErpSaleCartStatusEnum.GENERATED_SALE_OUT.getStatus().equals(cart.getStatus())) {
-            throw exception(SALE_CART_UPDATE_FAIL_GENERATED, cart.getNo());
+        if (!ErpSaleCartStatusEnum.PROCESS.getStatus().equals(cart.getStatus())) {
+            throw exception(SALE_CART_UPDATE_FAIL_NOT_PROCESS, cart.getNo());
         }
         List<ErpSaleCartItemDO> items = validateSaleCartItems(updateReqVO.getItems());
         validateStockEnough(items);
@@ -122,7 +142,10 @@ public class ErpSaleCartServiceImpl implements ErpSaleCartService {
         calculateTotalPrice(updateObj, items);
         saleCartMapper.updateById(updateObj);
         saleCartItemMapper.deleteByCartId(updateReqVO.getId());
-        items.forEach(item -> item.setCartId(updateReqVO.getId()));
+        items.forEach(item -> {
+            item.setId(null);
+            item.setCartId(updateReqVO.getId());
+        });
         saleCartItemMapper.insertBatch(items);
     }
 
@@ -140,56 +163,108 @@ public class ErpSaleCartServiceImpl implements ErpSaleCartService {
 
     @Override
     @Transactional(rollbackFor = Exception.class)
-    public Long finalApproveSaleCart(Long id) {
+    public List<Long> finalApproveSaleCart(Long id) {
         ErpSaleCartDO cart = validateSaleCartExists(id);
         List<ErpSaleCartItemDO> items = saleCartItemMapper.selectListByCartId(id);
-        Long saleOutId = saleOutService.createGeneratedSaleOut(buildSaleOutReqVO(cart, items),
-                ErpSaleBizSourceTypeEnum.CART.getType(), cart.getId(), cart.getNo());
+        // 终审时实时校验库存（不依赖缓存的 stockCount）
+        validateStockEnoughRealtime(items);
+        Map<Long, List<ErpSaleCartItemDO>> itemsByWarehouse = items.stream()
+                .collect(Collectors.groupingBy(ErpSaleCartItemDO::getWarehouseId, LinkedHashMap::new, Collectors.toList()));
+        List<Long> saleOutIds = new ArrayList<>();
+        for (Map.Entry<Long, List<ErpSaleCartItemDO>> entry : itemsByWarehouse.entrySet()) {
+            Long saleOutId = saleOutService.createGeneratedSaleOut(buildSaleOutReqVO(cart, entry.getValue()),
+                    ErpSaleBizSourceTypeEnum.CART.getType(), cart.getId(), cart.getNo());
+            saleOutIds.add(saleOutId);
+        }
         int updateCount = saleCartMapper.updateByIdAndStatus(id, ErpSaleCartStatusEnum.FIRST_APPROVE.getStatus(),
                 new ErpSaleCartDO().setStatus(ErpSaleCartStatusEnum.GENERATED_SALE_OUT.getStatus())
-                        .setFinalAuditTime(LocalDateTime.now()));
+                        .setFinalAuditTime(LocalDateTime.now())
+                        .setFinalAuditUserId(SecurityFrameworkUtils.getLoginUserId()));
         if (updateCount == 0) {
             throw exception(SALE_CART_FINAL_APPROVE_FAIL);
         }
-        return saleOutId;
+        return saleOutIds;
+    }
+
+    @Override
+    public void rejectSaleCart(Long id) {
+        ErpSaleCartDO cart = validateSaleCartExists(id);
+        if (!ErpSaleCartStatusEnum.SUBMITTED.getStatus().equals(cart.getStatus())
+                && !ErpSaleCartStatusEnum.FIRST_APPROVE.getStatus().equals(cart.getStatus())) {
+            throw exception(SALE_CART_REJECT_FAIL);
+        }
+        saleCartMapper.updateByIdAndStatus(id, cart.getStatus(),
+                new ErpSaleCartDO().setStatus(ErpSaleCartStatusEnum.PROCESS.getStatus()));
     }
 
     @Override
     @Transactional(rollbackFor = Exception.class)
-    public Long convertToQuote(Long id) {
-        ErpSaleCartDO cart = validateSaleCartExists(id);
-        List<ErpSaleCartItemDO> cartItems = saleCartItemMapper.selectListByCartId(id);
+    public Long convertToQuote(ErpSaleCartConvertQuoteReqVO reqVO) {
+        ErpSaleCartDO cart = validateSaleCartExists(reqVO.getCartId());
+        if (!ErpSaleCartStatusEnum.PROCESS.getStatus().equals(cart.getStatus())) {
+            throw exception(SALE_CART_CONVERT_QUOTE_FAIL);
+        }
+
+        // 1. 查询所有子表行（整单转换）
+        List<ErpSaleCartItemDO> allItems = saleCartItemMapper.selectListByCartId(cart.getId());
+        if (allItems.isEmpty()) {
+            throw exception(SALE_CART_CONVERT_QUOTE_ITEMS_EMPTY);
+        }
+
+        // 2. 生成报价订单
         String no = noRedisDAO.generate(ErpNoRedisDAO.SALE_QUOTE_NO_PREFIX);
         if (saleQuoteMapper.selectByNo(no) != null) {
             throw exception(SALE_QUOTE_NO_EXISTS);
         }
-
         ErpSaleQuoteDO quote = BeanUtils.toBean(cart, ErpSaleQuoteDO.class, in -> in
                 .setId(null).setNo(no).setStatus(ErpSaleQuoteStatusEnum.PROCESS.getStatus())
                 .setQuoteTime(cart.getCartTime())
                 .setSourceType(ErpSaleBizSourceTypeEnum.CART.getType())
                 .setSourceId(cart.getId()).setSourceNo(cart.getNo()));
-        List<ErpSaleQuoteItemDO> quoteItems = convertList(cartItems, cartItem -> BeanUtils.toBean(cartItem,
-                ErpSaleQuoteItemDO.class, item -> item.setId(null).setQuoteId(null).setConvertedCount(BigDecimal.ZERO)));
+        List<ErpSaleQuoteItemDO> quoteItems = convertList(allItems, cartItem ->
+                BeanUtils.toBean(cartItem, ErpSaleQuoteItemDO.class, item ->
+                        item.setId(null).setQuoteId(null).setConvertedCount(BigDecimal.ZERO)));
         calculateQuoteTotalPrice(quote, quoteItems);
         saleQuoteMapper.insert(quote);
         quoteItems.forEach(item -> item.setQuoteId(quote.getId()));
         saleQuoteItemMapper.insertBatch(quoteItems);
 
-        int updateCount = saleCartMapper.updateByIdAndStatus(id, ErpSaleCartStatusEnum.PROCESS.getStatus(),
-                new ErpSaleCartDO().setStatus(ErpSaleCartStatusEnum.CONVERTED_QUOTE.getStatus()));
-        if (updateCount == 0) {
-            throw exception(SALE_CART_CONVERT_QUOTE_FAIL);
-        }
-        saleConvertRecordMapper.insertBatch(buildCartToQuoteRecords(cart, cartItems, quote, quoteItems));
+        // 3. 记录转换关系（先记录，再删除原手推车）
+        saleConvertRecordMapper.insertBatch(buildCartToQuoteRecords(cart, allItems, quote, quoteItems));
+
+        // 4. 删除原手推车主表 + 子表
+        saleCartItemMapper.deleteByCartId(cart.getId());
+        saleCartMapper.deleteById(cart.getId());
+
         return quote.getId();
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void deleteSaleCart(List<Long> ids) {
+        if (CollUtil.isEmpty(ids)) {
+            return;
+        }
+        List<ErpSaleCartDO> carts = saleCartMapper.selectBatchIds(ids);
+        carts.forEach(cart -> {
+            if (ErpSaleCartStatusEnum.GENERATED_SALE_OUT.getStatus().equals(cart.getStatus())) {
+                throw exception(SALE_CART_DELETE_FAIL_FINAL_APPROVED, cart.getNo());
+            }
+            if (ErpSaleCartStatusEnum.CONVERTED_QUOTE.getStatus().equals(cart.getStatus())) {
+                throw exception(SALE_CART_DELETE_FAIL_CONVERTED, cart.getNo());
+            }
+        });
+        saleCartMapper.deleteBatchIds(ids);
+        ids.forEach(saleCartItemMapper::deleteByCartId);
     }
 
     private void updateStatus(Long id, Integer oldStatus, Integer newStatus, cn.iocoder.yudao.framework.common.exception.ErrorCode errorCode) {
         validateSaleCartExists(id);
+        boolean isFirstApprove = ErpSaleCartStatusEnum.FIRST_APPROVE.getStatus().equals(newStatus);
         int updateCount = saleCartMapper.updateByIdAndStatus(id, oldStatus,
                 new ErpSaleCartDO().setStatus(newStatus)
-                        .setFirstAuditTime(ErpSaleCartStatusEnum.FIRST_APPROVE.getStatus().equals(newStatus) ? LocalDateTime.now() : null));
+                        .setFirstAuditTime(isFirstApprove ? LocalDateTime.now() : null)
+                        .setFirstAuditUserId(isFirstApprove ? SecurityFrameworkUtils.getLoginUserId() : null));
         if (updateCount == 0) {
             throw exception(errorCode);
         }
@@ -223,6 +298,15 @@ public class ErpSaleCartServiceImpl implements ErpSaleCartService {
         List<ErpProductDO> productList = productService.validProductList(
                 convertSet(list, ErpSaleCartSaveReqVO.Item::getProductId));
         Map<Long, ErpProductDO> productMap = convertMap(productList, ErpProductDO::getId);
+        // 校验数量和价格
+        list.forEach(item -> {
+            if (item.getCount() == null || item.getCount().compareTo(BigDecimal.ZERO) <= 0) {
+                throw exception(SALE_CART_ITEM_COUNT_POSITIVE);
+            }
+            if (item.getProductPrice() == null || item.getProductPrice().compareTo(BigDecimal.ZERO) <= 0) {
+                throw exception(SALE_CART_ITEM_PRICE_POSITIVE);
+            }
+        });
         return convertList(list, o -> BeanUtils.toBean(o, ErpSaleCartItemDO.class, item -> {
             item.setProductUnitId(productMap.get(item.getProductId()).getUnitId());
             item.setTotalPrice(MoneyUtils.priceMultiply(item.getProductPrice(), item.getCount()));
@@ -237,6 +321,16 @@ public class ErpSaleCartServiceImpl implements ErpSaleCartService {
     private void validateStockEnough(List<ErpSaleCartItemDO> items) {
         items.forEach(item -> {
             BigDecimal stockCount = item.getStockCount() != null ? item.getStockCount() : BigDecimal.ZERO;
+            if (stockCount.compareTo(item.getCount()) < 0) {
+                throw exception(STOCK_COUNT_NEGATIVE2, item.getProductId(), item.getWarehouseId());
+            }
+        });
+    }
+
+    private void validateStockEnoughRealtime(List<ErpSaleCartItemDO> items) {
+        items.forEach(item -> {
+            ErpStockDO stock = stockService.getStock(item.getProductId(), item.getWarehouseId());
+            BigDecimal stockCount = stock != null ? stock.getCount() : BigDecimal.ZERO;
             if (stockCount.compareTo(item.getCount()) < 0) {
                 throw exception(STOCK_COUNT_NEGATIVE2, item.getProductId(), item.getWarehouseId());
             }
@@ -320,6 +414,67 @@ public class ErpSaleCartServiceImpl implements ErpSaleCartService {
             return Collections.emptyList();
         }
         return saleCartItemMapper.selectListByCartIds(cartIds);
+    }
+
+    @Override
+    public ErpSaleCartImportRespVO parseImportData(List<ErpSaleCartImportExcelVO> list) {
+        ErpSaleCartImportRespVO respVO = new ErpSaleCartImportRespVO();
+        if (CollUtil.isEmpty(list)) {
+            return respVO;
+        }
+        LinkedHashSet<String> productCodes = new LinkedHashSet<>();
+        list.forEach(row -> {
+            if (row.getProductCode() != null && !row.getProductCode().isEmpty()) {
+                productCodes.add(row.getProductCode());
+            }
+        });
+        Map<String, ErpProductDO> productMap = convertMap(productMapper.selectListByCodes(productCodes), ErpProductDO::getCode);
+        Map<Long, ErpProductRespVO> productVOMap = productService.getProductVOMap(convertList(productMap.values(), ErpProductDO::getId));
+        Map<String, ErpWarehouseDO> warehouseMap = convertMap(
+                warehouseService.getWarehouseListByStatus(CommonStatusEnum.ENABLE.getStatus()), ErpWarehouseDO::getName);
+        for (int i = 0; i < list.size(); i++) {
+            ErpSaleCartImportExcelVO row = list.get(i);
+            int rowNo = i + 2;
+            if (row.getProductCode() == null || row.getProductCode().isEmpty()) {
+                respVO.getFailureDetails().add(new ErpSaleCartImportRespVO.FailureItem(rowNo, null, "产品编码不能为空"));
+                respVO.setFailureCount(respVO.getFailureCount() + 1);
+                continue;
+            }
+            ErpProductDO product = productMap.get(row.getProductCode());
+            if (product == null) {
+                respVO.getFailureDetails().add(new ErpSaleCartImportRespVO.FailureItem(rowNo, row.getProductCode(), "产品不存在"));
+                respVO.setFailureCount(respVO.getFailureCount() + 1);
+                continue;
+            }
+            ErpWarehouseDO warehouse = warehouseMap.get(row.getWarehouseName());
+            if (warehouse == null) {
+                respVO.getFailureDetails().add(new ErpSaleCartImportRespVO.FailureItem(rowNo, row.getProductCode(), "仓库不存在"));
+                respVO.setFailureCount(respVO.getFailureCount() + 1);
+                continue;
+            }
+            if (row.getCount() == null || row.getCount().compareTo(BigDecimal.ZERO) <= 0) {
+                respVO.getFailureDetails().add(new ErpSaleCartImportRespVO.FailureItem(rowNo, row.getProductCode(), "数量必须大于 0"));
+                respVO.setFailureCount(respVO.getFailureCount() + 1);
+                continue;
+            }
+            ErpSaleCartRespVO.Item item = new ErpSaleCartRespVO.Item();
+            item.setProductId(product.getId());
+            item.setProductCode(product.getCode());
+            item.setProductName(product.getName());
+            item.setProductUnitId(product.getUnitId());
+            item.setProductUnitName(productVOMap.get(product.getId()) == null ? null : productVOMap.get(product.getId()).getUnitName());
+            item.setWarehouseId(warehouse.getId());
+            item.setWarehouseName(warehouse.getName());
+            item.setProductPrice(row.getProductPrice() != null ? row.getProductPrice() : product.getSalePrice());
+            item.setCount(row.getCount());
+            item.setBrand(row.getBrand());
+            item.setVehicleModel(row.getVehicleModel());
+            item.setStandard(row.getStandard());
+            item.setRemark(row.getRemark());
+            respVO.getItems().add(item);
+            respVO.setSuccessCount(respVO.getSuccessCount() + 1);
+        }
+        return respVO;
     }
 
 }

@@ -1,6 +1,8 @@
 package cn.iocoder.yudao.module.erp.service.sale;
 
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.customer.ErpCustomerBatchUpdateReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.customer.ErpCustomerImportExcelVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.customer.ErpCustomerPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.customer.ErpCustomerSaveReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpCustomerDO;
@@ -90,5 +92,27 @@ public interface ErpCustomerService {
      * @return 客户列表
      */
     List<ErpCustomerDO> getCustomerListByStatus(Integer status);
+
+    /**
+     * 按名称模糊匹配客户列表
+     *
+     * @param name 名称片段
+     * @return 客户列表
+     */
+    List<ErpCustomerDO> getCustomerListByNameLike(String name);
+
+    /**
+     * 导入客户列表
+     *
+     * @param list 导入的客户列表
+     */
+    void importCustomerList(@Valid List<ErpCustomerImportExcelVO> list);
+
+    /**
+     * 批量编辑客户
+     *
+     * @param reqVO 批量编辑参数
+     */
+    void batchUpdateCustomer(@Valid ErpCustomerBatchUpdateReqVO reqVO);
 
 }
