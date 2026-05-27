@@ -143,8 +143,6 @@ public class ErpSaleQuoteController {
         example.setProductCode("P0001");
         example.setCount(BigDecimal.ONE);
         example.setProductPrice(new BigDecimal("100.00"));
-        example.setTaxPercent(BigDecimal.ZERO);
-        example.setRemark("备注");
         ExcelUtils.write(response, "报价订单导入模板.xls", "报价订单", ErpSaleQuoteImportExcelVO.class, Collections.singletonList(example));
     }
 
@@ -200,30 +198,41 @@ public class ErpSaleQuoteController {
         List<ErpSaleQuoteExportRespVO> rows = new ArrayList<>();
         for (ErpSaleQuoteRespVO quote : list) {
             if (CollUtil.isEmpty(quote.getItems())) {
-                rows.add(BeanUtils.toBean(quote, ErpSaleQuoteExportRespVO.class));
+                rows.add(buildSaleQuoteExportRow(quote, null, true));
                 continue;
             }
-            for (ErpSaleQuoteRespVO.Item item : quote.getItems()) {
-                rows.add(BeanUtils.toBean(quote, ErpSaleQuoteExportRespVO.class, row -> {
-                    row.setProductCode(item.getProductCode());
-                    row.setProductName(item.getProductName());
-                    row.setProductUnitName(item.getProductUnitName());
-                    row.setItemCount(item.getCount());
-                    row.setConvertedCount(item.getConvertedCount());
-                    row.setProductPrice(item.getProductPrice());
-                    row.setItemTotalPrice(item.getTotalPrice());
-                    row.setItemTaxPercent(item.getTaxPercent());
-                    row.setItemTaxPrice(item.getTaxPrice());
-                    row.setBrand(item.getBrand());
-                    row.setVehicleModel(item.getVehicleModel());
-                    row.setStandard(item.getStandard());
-                    row.setOriginPlace(item.getOriginPlace());
-                    row.setWarehousePosition(item.getWarehousePosition());
-                    row.setItemRemark(item.getRemark());
-                }));
+            for (int i = 0; i < quote.getItems().size(); i++) {
+                rows.add(buildSaleQuoteExportRow(quote, quote.getItems().get(i), i == 0));
             }
         }
         return rows;
+    }
+
+    private ErpSaleQuoteExportRespVO buildSaleQuoteExportRow(ErpSaleQuoteRespVO quote,
+                                                             ErpSaleQuoteRespVO.Item item,
+                                                             boolean fillQuoteFields) {
+        ErpSaleQuoteExportRespVO row = fillQuoteFields
+                ? BeanUtils.toBean(quote, ErpSaleQuoteExportRespVO.class)
+                : new ErpSaleQuoteExportRespVO();
+        if (item == null) {
+            return row;
+        }
+        row.setProductCode(item.getProductCode());
+        row.setProductName(item.getProductName());
+        row.setProductUnitName(item.getProductUnitName());
+        row.setItemCount(item.getCount());
+        row.setConvertedCount(item.getConvertedCount());
+        row.setProductPrice(item.getProductPrice());
+        row.setItemTotalPrice(item.getTotalPrice());
+        row.setItemTaxPercent(item.getTaxPercent());
+        row.setItemTaxPrice(item.getTaxPrice());
+        row.setBrand(item.getBrand());
+        row.setVehicleModel(item.getVehicleModel());
+        row.setStandard(item.getStandard());
+        row.setOriginPlace(item.getOriginPlace());
+        row.setWarehousePosition(item.getWarehousePosition());
+        row.setItemRemark(item.getRemark());
+        return row;
     }
 
 }

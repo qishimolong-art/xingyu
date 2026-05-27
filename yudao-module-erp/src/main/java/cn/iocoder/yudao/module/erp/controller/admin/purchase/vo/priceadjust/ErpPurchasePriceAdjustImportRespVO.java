@@ -1,4 +1,4 @@
-package cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.order;
+package cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.priceadjust;
 
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Data;
@@ -6,9 +6,9 @@ import lombok.Data;
 import java.util.ArrayList;
 import java.util.List;
 
-@Schema(description = "管理后台 - ERP 采购订单导入解析 Response VO")
+@Schema(description = "管理后台 - ERP 采购调价导入解析 Response VO")
 @Data
-public class ErpPurchaseOrderImportRespVO {
+public class ErpPurchasePriceAdjustImportRespVO {
 
     @Schema(description = "成功条数")
     private Integer successCount = 0;
@@ -17,7 +17,7 @@ public class ErpPurchaseOrderImportRespVO {
     private Integer failureCount = 0;
 
     @Schema(description = "导入明细")
-    private List<ErpPurchaseOrderSaveReqVO.Item> items = new ArrayList<>();
+    private List<ErpPurchasePriceAdjustSaveReqVO.Item> items = new ArrayList<>();
 
     @Schema(description = "失败明细")
     private List<FailureItem> failureDetails = new ArrayList<>();

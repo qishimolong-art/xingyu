@@ -1,4 +1,4 @@
-package cn.iocoder.yudao.module.erp.controller.admin.sale.vo.quote;
+package cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.priceadjust;
 
 import cn.idev.excel.annotation.ExcelProperty;
 import lombok.Data;
@@ -6,7 +6,7 @@ import lombok.Data;
 import java.math.BigDecimal;
 
 @Data
-public class ErpSaleQuoteImportExcelVO {
+public class ErpPurchasePriceAdjustImportExcelVO {
 
     @ExcelProperty("产品编码")
     private String productCode;
@@ -14,6 +14,6 @@ public class ErpSaleQuoteImportExcelVO {
     @ExcelProperty("数量")
     private BigDecimal count;
 
-    @ExcelProperty("单价")
-    private BigDecimal productPrice;
+    @ExcelProperty("调价后单价")
+    private BigDecimal newPrice;
 }

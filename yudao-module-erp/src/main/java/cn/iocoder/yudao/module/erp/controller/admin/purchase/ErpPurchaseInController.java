@@ -51,6 +51,7 @@ import javax.validation.Valid;
 import java.io.IOException;
 import java.math.BigDecimal;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 
@@ -59,7 +60,7 @@ import static cn.iocoder.yudao.framework.common.pojo.CommonResult.success;
 import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.convertMultiMap;
 import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.convertSet;
 
-@Tag(name = "管理后台 - ERP 采购入库")
+@Tag(name = "Admin - ERP Purchase In")
 @RestController
 @RequestMapping("/erp/purchase-in")
 @Validated
@@ -75,19 +76,18 @@ public class ErpPurchaseInController {
     private ErpSupplierService supplierService;
     @Resource
     private ErpWarehouseService warehouseService;
-
     @Resource
     private AdminUserApi adminUserApi;
 
     @PostMapping("/create")
-    @Operation(summary = "创建采购入库")
+    @Operation(summary = "Create purchase in")
     @PreAuthorize("@ss.hasPermission('erp:purchase-in:create')")
     public CommonResult<Long> createPurchaseIn(@Valid @RequestBody ErpPurchaseInSaveReqVO createReqVO) {
         return success(purchaseInService.createPurchaseIn(createReqVO));
     }
 
     @PutMapping("/update")
-    @Operation(summary = "更新采购入库")
+    @Operation(summary = "Update purchase in")
     @PreAuthorize("@ss.hasPermission('erp:purchase-in:update')")
     public CommonResult<Boolean> updatePurchaseIn(@Valid @RequestBody ErpPurchaseInSaveReqVO updateReqVO) {
         purchaseInService.updatePurchaseIn(updateReqVO);
@@ -95,7 +95,7 @@ public class ErpPurchaseInController {
     }
 
     @PutMapping("/update-status")
-    @Operation(summary = "更新采购入库的状态")
+    @Operation(summary = "Update purchase in status")
     @PreAuthorize("@ss.hasPermission('erp:purchase-in:update-status')")
     public CommonResult<Boolean> updatePurchaseInStatus(@RequestParam("id") Long id,
                                                         @RequestParam("status") Integer status) {
@@ -104,7 +104,7 @@ public class ErpPurchaseInController {
     }
 
     @PostMapping("/import")
-    @Operation(summary = "解析采购入库导入 Excel")
+    @Operation(summary = "Import purchase in from Excel")
     @PreAuthorize("@ss.hasPermission('erp:purchase-in:create')")
     public CommonResult<ErpPurchaseInImportRespVO> importPurchaseIn(@RequestParam("file") MultipartFile file) throws Exception {
         List<ErpPurchaseInImportExcelVO> list = ExcelUtils.read(file, ErpPurchaseInImportExcelVO.class);
@@ -112,25 +112,25 @@ public class ErpPurchaseInController {
     }
 
     @GetMapping("/get-import-template")
-    @Operation(summary = "获得采购入库导入模板")
+    @Operation(summary = "Get purchase in import template")
     @PreAuthorize("@ss.hasPermission('erp:purchase-in:create')")
     public void getImportTemplate(HttpServletResponse response) throws IOException {
         ErpPurchaseInImportExcelVO example = new ErpPurchaseInImportExcelVO();
         example.setProductCode("P000001");
-        example.setWarehouseName("主仓");
+        example.setWarehouseName("Main Warehouse");
         example.setCount(BigDecimal.ONE);
         example.setProductPrice(new BigDecimal("10.00"));
         example.setWholeQty(1);
         example.setWarehousePosition("A-01-01");
         example.setBatchNo("B20260526");
-        example.setRemark("示例");
-        ExcelUtils.write(response, "采购入库导入模板.xls", "采购入库", ErpPurchaseInImportExcelVO.class,
-                java.util.Collections.singletonList(example));
+        example.setRemark("Example");
+        ExcelUtils.write(response, "purchase-in-import-template.xls", "purchase-in",
+                ErpPurchaseInImportExcelVO.class, Collections.singletonList(example));
     }
 
     @GetMapping("/get")
-    @Operation(summary = "获得采购入库")
-    @Parameter(name = "id", description = "编号", required = true, example = "1024")
+    @Operation(summary = "Get purchase in")
+    @Parameter(name = "id", description = "ID", required = true, example = "1024")
     @PreAuthorize("@ss.hasPermission('erp:purchase-in:query')")
     public CommonResult<ErpPurchaseInRespVO> getPurchaseIn(@RequestParam("id") Long id) {
         ErpPurchaseInDO purchaseIn = purchaseInService.getPurchaseIn(id);
@@ -151,7 +151,7 @@ public class ErpPurchaseInController {
     }
 
     @GetMapping("/page")
-    @Operation(summary = "获得采购入库分页")
+    @Operation(summary = "Get purchase in page")
     @PreAuthorize("@ss.hasPermission('erp:purchase-in:query')")
     public CommonResult<PageResult<ErpPurchaseInRespVO>> getPurchaseInPage(@Valid ErpPurchaseInPageReqVO pageReqVO) {
         PageResult<ErpPurchaseInDO> pageResult = purchaseInService.getPurchaseInPage(pageReqVO);
@@ -159,23 +159,23 @@ public class ErpPurchaseInController {
     }
 
     @GetMapping("/returnable-items")
-    @Operation(summary = "获得采购入库单的可退明细（按单退货使用）")
-    @Parameter(name = "inId", description = "采购入库单 ID", required = true, example = "17386")
+    @Operation(summary = "Get returnable items by purchase in")
+    @Parameter(name = "inId", description = "Purchase in ID", required = true, example = "17386")
     @PreAuthorize("@ss.hasPermission('erp:purchase-return:create')")
     public CommonResult<List<ErpPurchaseReturnableItemRespVO>> getReturnableItems(@RequestParam("inId") Long inId) {
         return success(purchaseInService.getReturnableItemsByInId(inId));
     }
 
     @PostMapping("/create-from-order")
-    @Operation(summary = "从采购订单分批入库（自动审批生效）")
+    @Operation(summary = "Create purchase in from order")
     @PreAuthorize("@ss.hasPermission('erp:purchase-in:create')")
     public CommonResult<Long> createPurchaseInFromOrder(@Valid @RequestBody ErpPurchaseInFromOrderReqVO reqVO) {
         return success(purchaseInService.createPurchaseInFromOrder(reqVO));
     }
 
     @GetMapping("/list-approved-for-adjust")
-    @Operation(summary = "获得指定供应商下已审批的入库单（供采购调价选择）")
-    @Parameter(name = "supplierId", description = "供应商编号", required = true, example = "1024")
+    @Operation(summary = "Get approved purchase ins by supplier")
+    @Parameter(name = "supplierId", description = "Supplier ID", required = true, example = "1024")
     @PreAuthorize("@ss.hasPermission('erp:purchase-price-adjust:query')")
     public CommonResult<List<ErpPurchaseInForAdjustRespVO>> getApprovedPurchaseInsBySupplier(
             @RequestParam("supplierId") Long supplierId) {
@@ -183,9 +183,9 @@ public class ErpPurchaseInController {
     }
 
     @GetMapping("/list-items-for-adjust")
-    @Operation(summary = "获得指定供应商下已审批入库单的明细（供采购调价选择）")
-    @Parameter(name = "supplierId", description = "供应商编号", required = true, example = "1024")
-    @Parameter(name = "excludeAdjusted", description = "是否过滤已调价明细", example = "true")
+    @Operation(summary = "Get approved purchase in items by supplier")
+    @Parameter(name = "supplierId", description = "Supplier ID", required = true, example = "1024")
+    @Parameter(name = "excludeAdjusted", description = "Whether to exclude adjusted items", example = "true")
     @PreAuthorize("@ss.hasPermission('erp:purchase-price-adjust:query')")
     public CommonResult<List<ErpPurchaseInItemForAdjustRespVO>> getApprovedPurchaseInItemsBySupplier(
             @RequestParam("supplierId") Long supplierId,
@@ -194,15 +194,27 @@ public class ErpPurchaseInController {
     }
 
     @GetMapping("/export-excel")
-    @Operation(summary = "导出采购入库 Excel")
+    @Operation(summary = "Export purchase in Excel")
     @PreAuthorize("@ss.hasPermission('erp:purchase-in:export')")
     @ApiAccessLog(operateType = EXPORT)
     public void exportPurchaseInExcel(@Valid ErpPurchaseInPageReqVO pageReqVO,
                                       HttpServletResponse response) throws IOException {
         pageReqVO.setPageSize(PageParam.PAGE_SIZE_NONE);
-        List<ErpPurchaseInRespVO> list = buildPurchaseInVOPageResult(purchaseInService.getPurchaseInPage(pageReqVO)).getList();
-        ExcelUtils.write(response, "采购入库.xls", "数据", ErpPurchaseInExportRespVO.class,
-                buildPurchaseInExportList(list));
+        PageResult<ErpPurchaseInDO> pageResult = purchaseInService.getPurchaseInPage(pageReqVO);
+        List<ErpPurchaseInItemDO> purchaseInItemList = purchaseInService.getPurchaseInItemListByInIds(
+                convertSet(pageResult.getList(), ErpPurchaseInDO::getId));
+        Map<Long, List<ErpPurchaseInItemDO>> purchaseInItemMap = convertMultiMap(
+                purchaseInItemList, ErpPurchaseInItemDO::getInId);
+        Map<Long, ErpProductRespVO> productMap = productService.getProductVOMap(
+                convertSet(purchaseInItemList, ErpPurchaseInItemDO::getProductId));
+        Map<Long, ErpSupplierDO> supplierMap = supplierService.getSupplierMap(
+                convertSet(pageResult.getList(), ErpPurchaseInDO::getSupplierId));
+        Map<Long, AdminUserRespDTO> userMap = adminUserApi.getUserMap(
+                convertSet(pageResult.getList(), purchaseIn -> Long.parseLong(purchaseIn.getCreator())));
+        Map<Long, ErpWarehouseDO> warehouseMap = cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.convertMap(
+                warehouseService.getWarehouseListByStatus(0), ErpWarehouseDO::getId);
+        ExcelUtils.write(response, "purchase-in.xls", "data", ErpPurchaseInExportRespVO.class,
+                buildPurchaseInExportList(pageResult.getList(), purchaseInItemMap, productMap, supplierMap, userMap, warehouseMap));
     }
 
     private PageResult<ErpPurchaseInRespVO> buildPurchaseInVOPageResult(PageResult<ErpPurchaseInDO> pageResult) {
@@ -211,7 +223,8 @@ public class ErpPurchaseInController {
         }
         List<ErpPurchaseInItemDO> purchaseInItemList = purchaseInService.getPurchaseInItemListByInIds(
                 convertSet(pageResult.getList(), ErpPurchaseInDO::getId));
-        Map<Long, List<ErpPurchaseInItemDO>> purchaseInItemMap = convertMultiMap(purchaseInItemList, ErpPurchaseInItemDO::getInId);
+        Map<Long, List<ErpPurchaseInItemDO>> purchaseInItemMap = convertMultiMap(
+                purchaseInItemList, ErpPurchaseInItemDO::getInId);
         Map<Long, ErpProductRespVO> productMap = productService.getProductVOMap(
                 convertSet(purchaseInItemList, ErpPurchaseInItemDO::getProductId));
         Map<Long, ErpSupplierDO> supplierMap = supplierService.getSupplierMap(
@@ -223,41 +236,73 @@ public class ErpPurchaseInController {
                     item -> MapUtils.findAndThen(productMap, item.getProductId(), product -> item.setProductName(product.getName())
                             .setProductBarCode(product.getBarCode()).setProductUnitName(product.getUnitName())
                             .setProductCode(product.getCode()))));
-            purchaseIn.setProductNames(CollUtil.join(purchaseIn.getItems(), "，", ErpPurchaseInRespVO.Item::getProductName));
-            MapUtils.findAndThen(supplierMap, purchaseIn.getSupplierId(), supplier -> purchaseIn.setSupplierName(supplier.getName()));
-            MapUtils.findAndThen(userMap, Long.parseLong(purchaseIn.getCreator()), user -> purchaseIn.setCreatorName(user.getNickname()));
+            purchaseIn.setProductNames(CollUtil.join(purchaseIn.getItems(), ", ",
+                    ErpPurchaseInRespVO.Item::getProductName));
+            MapUtils.findAndThen(supplierMap, purchaseIn.getSupplierId(),
+                    supplier -> purchaseIn.setSupplierName(supplier.getName()));
+            MapUtils.findAndThen(userMap, Long.parseLong(purchaseIn.getCreator()),
+                    user -> purchaseIn.setCreatorName(user.getNickname()));
         });
     }
 
-    private List<ErpPurchaseInExportRespVO> buildPurchaseInExportList(List<ErpPurchaseInRespVO> list) {
-        List<ErpWarehouseDO> warehouses = warehouseService.getWarehouseListByStatus(0);
-        Map<Long, ErpWarehouseDO> warehouseMap = cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.convertMap(
-                warehouses, ErpWarehouseDO::getId);
+    private List<ErpPurchaseInExportRespVO> buildPurchaseInExportList(List<ErpPurchaseInDO> list,
+                                                                      Map<Long, List<ErpPurchaseInItemDO>> purchaseInItemMap,
+                                                                      Map<Long, ErpProductRespVO> productMap,
+                                                                      Map<Long, ErpSupplierDO> supplierMap,
+                                                                      Map<Long, AdminUserRespDTO> userMap,
+                                                                      Map<Long, ErpWarehouseDO> warehouseMap) {
         List<ErpPurchaseInExportRespVO> rows = new ArrayList<>();
-        for (ErpPurchaseInRespVO purchaseIn : list) {
-            if (CollUtil.isEmpty(purchaseIn.getItems())) {
-                rows.add(BeanUtils.toBean(purchaseIn, ErpPurchaseInExportRespVO.class));
+        for (ErpPurchaseInDO purchaseIn : list) {
+            List<ErpPurchaseInItemDO> items = purchaseInItemMap.getOrDefault(purchaseIn.getId(), Collections.emptyList());
+            if (CollUtil.isEmpty(items)) {
+                rows.add(buildPurchaseInExportRow(purchaseIn,
+                        supplierMap.get(purchaseIn.getSupplierId()),
+                        userMap.get(Long.parseLong(purchaseIn.getCreator())),
+                        null, null, true, warehouseMap));
                 continue;
             }
-            for (ErpPurchaseInRespVO.Item item : purchaseIn.getItems()) {
-                rows.add(BeanUtils.toBean(purchaseIn, ErpPurchaseInExportRespVO.class, row -> {
-                    row.setProductCode(item.getProductCode());
-                    row.setProductName(item.getProductName());
-                    row.setProductUnitName(item.getProductUnitName());
-                    row.setPackageQty(item.getPackageQty());
-                    row.setWholeQty(item.getWholeQty());
-                    row.setItemCount(item.getCount());
-                    row.setProductPrice(item.getProductPrice());
-                    row.setWarehousePosition(item.getWarehousePosition());
-                    row.setBatchNo(item.getBatchNo());
-                    row.setDrawingNo(item.getDrawingNo());
-                    row.setBrand(item.getBrand());
-                    row.setItemRemark(item.getRemark());
-                    MapUtils.findAndThen(warehouseMap, item.getWarehouseId(), warehouse -> row.setWarehouseName(warehouse.getName()));
-                }));
+            for (int i = 0; i < items.size(); i++) {
+                ErpPurchaseInItemDO item = items.get(i);
+                rows.add(buildPurchaseInExportRow(purchaseIn,
+                        supplierMap.get(purchaseIn.getSupplierId()),
+                        userMap.get(Long.parseLong(purchaseIn.getCreator())),
+                        item, productMap.get(item.getProductId()), i == 0, warehouseMap));
             }
         }
         return rows;
     }
 
+    private ErpPurchaseInExportRespVO buildPurchaseInExportRow(ErpPurchaseInDO purchaseIn,
+                                                               ErpSupplierDO supplier,
+                                                               AdminUserRespDTO creator,
+                                                               ErpPurchaseInItemDO item,
+                                                               ErpProductRespVO product,
+                                                               boolean fillMainFields,
+                                                               Map<Long, ErpWarehouseDO> warehouseMap) {
+        ErpPurchaseInExportRespVO row = fillMainFields
+                ? BeanUtils.toBean(purchaseIn, ErpPurchaseInExportRespVO.class)
+                : new ErpPurchaseInExportRespVO();
+        row.setSupplierName(fillMainFields && supplier != null ? supplier.getName() : null);
+        row.setCreatorName(fillMainFields && creator != null ? creator.getNickname() : null);
+        if (item == null) {
+            return row;
+        }
+        row.setProductCode(product != null ? product.getCode() : null);
+        row.setProductName(product != null ? product.getName() : null);
+        row.setProductUnitName(product != null ? product.getUnitName() : null);
+        row.setPackageQty(item.getPackageQty());
+        row.setWholeQty(item.getWholeQty());
+        row.setItemCount(item.getCount());
+        row.setProductPrice(item.getProductPrice());
+        row.setItemTotalPrice(item.getProductPrice() == null || item.getCount() == null
+                ? null : item.getProductPrice().multiply(item.getCount()));
+        row.setWarehousePosition(item.getWarehousePosition());
+        row.setBatchNo(item.getBatchNo());
+        row.setDrawingNo(item.getDrawingNo());
+        row.setBrand(item.getBrand());
+        row.setItemRemark(item.getRemark());
+        MapUtils.findAndThen(warehouseMap, item.getWarehouseId(),
+                warehouse -> row.setWarehouseName(warehouse.getName()));
+        return row;
+    }
 }

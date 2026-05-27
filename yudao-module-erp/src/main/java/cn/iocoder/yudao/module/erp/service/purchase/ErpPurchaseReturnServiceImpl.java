@@ -307,6 +307,16 @@ public class ErpPurchaseReturnServiceImpl implements ErpPurchaseReturnService {
                 }
             }
         }
+        // 0.5 校验同一明细中产品不重复
+        Set<String> productCodeSet = new LinkedHashSet<>();
+        if (CollUtil.isNotEmpty(list)) {
+            for (ErpPurchaseReturnSaveReqVO.Item item : list) {
+                String productCode = StrUtil.blankToDefault(item.getProductCode(), String.valueOf(item.getProductId()));
+                if (!productCodeSet.add(productCode)) {
+                    throw exception(PURCHASE_RETURN_ITEM_DUPLICATE, productCode);
+                }
+            }
+        }
         // 1. 校验产品存在
         List<ErpProductDO> productList = productService.validProductList(
                 convertSet(list, ErpPurchaseReturnSaveReqVO.Item::getProductId));

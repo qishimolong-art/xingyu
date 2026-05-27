@@ -4,6 +4,7 @@ import cn.iocoder.yudao.framework.common.pojo.CommonResult;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.test.core.ut.BaseMockitoUnitTest;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.quote.ErpSaleQuoteConvertCartReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.quote.ErpSaleQuoteExportRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.quote.ErpSaleQuotePageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.quote.ErpSaleQuoteRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.quote.ErpSaleQuoteSaveReqVO;
@@ -256,6 +257,41 @@ public class ErpSaleQuoteControllerTest extends BaseMockitoUnitTest {
         PreAuthorize anno = method.getAnnotation(PreAuthorize.class);
         assertNotNull(anno);
         assertTrue(anno.value().contains("erp:sale-quote:export"));
+    }
+
+    @Test
+    public void testBuildSaleQuoteExportList_masterDetailStyle() throws Exception {
+        ErpSaleQuoteRespVO quote = new ErpSaleQuoteRespVO();
+        quote.setNo("Q-001");
+        quote.setCustomerName("客户A");
+        quote.setStatus(10);
+        quote.setRemark("备注");
+
+        ErpSaleQuoteRespVO.Item item1 = new ErpSaleQuoteRespVO.Item();
+        item1.setProductCode("P1");
+        item1.setProductName("商品1");
+        item1.setCount(java.math.BigDecimal.ONE);
+        item1.setProductPrice(new java.math.BigDecimal("10.00"));
+
+        ErpSaleQuoteRespVO.Item item2 = new ErpSaleQuoteRespVO.Item();
+        item2.setProductCode("P2");
+        item2.setProductName("商品2");
+        item2.setCount(new java.math.BigDecimal("2"));
+        item2.setProductPrice(new java.math.BigDecimal("20.00"));
+
+        quote.setItems(Arrays.asList(item1, item2));
+
+        Method method = ErpSaleQuoteController.class.getDeclaredMethod("buildSaleQuoteExportList", List.class);
+        method.setAccessible(true);
+        @SuppressWarnings("unchecked")
+        List<ErpSaleQuoteExportRespVO> rows =
+                (List<ErpSaleQuoteExportRespVO>) method.invoke(controller, Collections.singletonList(quote));
+
+        assertEquals(2, rows.size());
+        assertEquals("Q-001", rows.get(0).getNo());
+        assertEquals("P1", rows.get(0).getProductCode());
+        assertNull(rows.get(1).getNo());
+        assertEquals("P2", rows.get(1).getProductCode());
     }
 
 }

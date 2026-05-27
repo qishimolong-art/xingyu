@@ -218,26 +218,51 @@ public class ErpPurchaseReturnController {
         List<ErpPurchaseReturnExportRespVO> rows = new ArrayList<>();
         for (ErpPurchaseReturnRespVO purchaseReturn : list) {
             if (CollUtil.isEmpty(purchaseReturn.getItems())) {
-                rows.add(BeanUtils.toBean(purchaseReturn, ErpPurchaseReturnExportRespVO.class));
+                rows.add(buildPurchaseReturnExportRow(purchaseReturn, null, null, true));
                 continue;
             }
-            for (ErpPurchaseReturnRespVO.Item item : purchaseReturn.getItems()) {
-                rows.add(BeanUtils.toBean(purchaseReturn, ErpPurchaseReturnExportRespVO.class, row -> {
-                    row.setProductCode(item.getProductCode());
-                    row.setProductName(item.getProductName());
-                    row.setProductUnitName(item.getProductUnitName());
-                    row.setSourceInNo(item.getSourceInNo());
-                    row.setItemCount(item.getCount());
-                    row.setProductPrice(item.getProductPrice());
-                    row.setWarehousePosition(item.getWarehousePosition());
-                    row.setBatchNo(item.getBatchNo());
-                    row.setBrand(item.getBrand());
-                    row.setItemRemark(item.getRemark());
-                    MapUtils.findAndThen(warehouseMap, item.getWarehouseId(), warehouse -> row.setWarehouseName(warehouse.getName()));
-                }));
+            for (int i = 0; i < purchaseReturn.getItems().size(); i++) {
+                ErpPurchaseReturnRespVO.Item item = purchaseReturn.getItems().get(i);
+                rows.add(buildPurchaseReturnExportRow(purchaseReturn,
+                        item,
+                        warehouseMap.get(item.getWarehouseId()),
+                        i == 0));
             }
         }
         return rows;
+    }
+
+    private ErpPurchaseReturnExportRespVO buildPurchaseReturnExportRow(ErpPurchaseReturnRespVO purchaseReturn,
+                                                                       ErpPurchaseReturnRespVO.Item item,
+                                                                       ErpWarehouseDO warehouse,
+                                                                       boolean fillOrderFields) {
+        ErpPurchaseReturnExportRespVO row = fillOrderFields
+                ? BeanUtils.toBean(purchaseReturn, ErpPurchaseReturnExportRespVO.class)
+                : new ErpPurchaseReturnExportRespVO();
+        if (fillOrderFields) {
+            row.setSupplierName(purchaseReturn.getSupplierName());
+            row.setReturnTime(purchaseReturn.getReturnTime());
+            row.setStatus(purchaseReturn.getStatus());
+            row.setCreatorName(purchaseReturn.getCreatorName());
+            row.setRemark(purchaseReturn.getRemark());
+        }
+        if (item == null) {
+            return row;
+        }
+        row.setProductCode(item.getProductCode());
+        row.setProductName(item.getProductName());
+        row.setProductUnitName(item.getProductUnitName());
+        row.setItemCount(item.getCount());
+        row.setProductPrice(item.getProductPrice());
+        row.setItemTotalPrice(item.getProductPrice() == null || item.getCount() == null
+                ? null : item.getProductPrice().multiply(item.getCount()));
+        row.setSourceInNo(item.getSourceInNo());
+        row.setWarehouseName(warehouse != null ? warehouse.getName() : null);
+        row.setWarehousePosition(item.getWarehousePosition());
+        row.setBatchNo(item.getBatchNo());
+        row.setBrand(item.getBrand());
+        row.setItemRemark(item.getRemark());
+        return row;
     }
 
 }

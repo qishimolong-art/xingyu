@@ -6,18 +6,19 @@ import cn.hutool.core.util.StrUtil;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.common.util.number.MoneyUtils;
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
+import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpProductRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.order.ErpPurchaseOrderImportExcelVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.order.ErpPurchaseOrderImportRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.order.ErpPurchaseOrderInableItemRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.order.ErpPurchaseOrderPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.order.ErpPurchaseOrderSaveReqVO;
-import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpProductRespVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.product.ErpProductDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseOrderDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseOrderItemDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpSupplierDO;
 import cn.iocoder.yudao.module.erp.dal.mysql.purchase.ErpPurchaseOrderItemMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.purchase.ErpPurchaseOrderMapper;
+import cn.iocoder.yudao.module.erp.dal.mysql.product.ErpProductMapper;
 import cn.iocoder.yudao.module.erp.dal.redis.no.ErpNoRedisDAO;
 import cn.iocoder.yudao.module.erp.enums.ErpAuditStatus;
 import cn.iocoder.yudao.module.erp.service.finance.ErpAccountService;
@@ -32,10 +33,12 @@ import org.springframework.validation.annotation.Validated;
 
 import javax.annotation.Resource;
 import java.math.BigDecimal;
+import java.util.LinkedHashSet;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 import static cn.iocoder.yudao.framework.common.exception.util.ServiceExceptionUtil.exception;
 import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.*;
@@ -56,6 +59,8 @@ public class ErpPurchaseOrderServiceImpl implements ErpPurchaseOrderService {
     private ErpPurchaseOrderMapper purchaseOrderMapper;
     @Resource
     private ErpPurchaseOrderItemMapper purchaseOrderItemMapper;
+    @Resource
+    private ErpProductMapper productMapper;
 
     @Resource
     private ErpNoRedisDAO noRedisDAO;
@@ -359,49 +364,55 @@ public class ErpPurchaseOrderServiceImpl implements ErpPurchaseOrderService {
     }
 
     @Override
-    public ErpPurchaseOrderImportRespVO parseImportData(ErpPurchaseOrderImportExcelVO importVO) {
+    public ErpPurchaseOrderImportRespVO parseImportData(List<ErpPurchaseOrderImportExcelVO> list) {
         ErpPurchaseOrderImportRespVO respVO = new ErpPurchaseOrderImportRespVO();
-        // 1. 根据供应商名称查找 supplierId
-        if (StrUtil.isNotBlank(importVO.getSupplierName())) {
-            List<ErpSupplierDO> suppliers = supplierService.getSupplierListByStatus(0); // 0=开启
-            suppliers.stream()
-                    .filter(s -> s.getName().equals(importVO.getSupplierName()))
-                    .findFirst()
-                    .ifPresent(s -> respVO.setSupplierId(s.getId()));
+        if (CollUtil.isEmpty(list)) {
+            return respVO;
         }
-        // 2. 根据采购员名称查找 userId
-        if (StrUtil.isNotBlank(importVO.getPurchaserName())) {
-            List<AdminUserRespDTO> users = adminUserApi.getUserList(Collections.emptyList());
-            if (CollUtil.isNotEmpty(users)) {
-                users.stream()
-                        .filter(u -> u.getNickname().equals(importVO.getPurchaserName()))
-                        .findFirst()
-                        .ifPresent(u -> respVO.setPurchaser(u.getId()));
+
+        LinkedHashSet<String> productCodes = new LinkedHashSet<>();
+        list.forEach(row -> {
+            if (StrUtil.isNotBlank(row.getProductCode())) {
+                productCodes.add(row.getProductCode());
             }
-        }
-        // 3. 根据部门名称查找 deptId
-        if (StrUtil.isNotBlank(importVO.getDeptName())) {
-            List<DeptRespDTO> depts = deptApi.getDeptList(Collections.emptyList());
-            if (CollUtil.isNotEmpty(depts)) {
-                depts.stream()
-                        .filter(d -> d.getName().equals(importVO.getDeptName()))
-                        .findFirst()
-                        .ifPresent(d -> respVO.setDeptId(d.getId()));
+        });
+        Map<String, ErpProductDO> productMap = productMapper.selectListByCodes(productCodes).stream()
+                .collect(Collectors.toMap(ErpProductDO::getCode, product -> product, (a, b) -> a));
+        Map<Long, ErpProductRespVO> productVOMap = productService.getProductVOMap(
+                convertSet(productMap.values(), ErpProductDO::getId));
+
+        for (int i = 0; i < list.size(); i++) {
+            ErpPurchaseOrderImportExcelVO row = list.get(i);
+            int rowNo = i + 2;
+            if (StrUtil.isBlank(row.getProductCode())) {
+                respVO.getFailureDetails().add(new ErpPurchaseOrderImportRespVO.FailureItem(rowNo, null, "产品编码不能为空"));
+                respVO.setFailureCount(respVO.getFailureCount() + 1);
+                continue;
             }
+            ErpProductDO product = productMap.get(row.getProductCode());
+            if (product == null) {
+                respVO.getFailureDetails().add(new ErpPurchaseOrderImportRespVO.FailureItem(rowNo, row.getProductCode(), "产品不存在"));
+                respVO.setFailureCount(respVO.getFailureCount() + 1);
+                continue;
+            }
+            if (row.getCount() == null || row.getCount().compareTo(BigDecimal.ZERO) <= 0) {
+                respVO.getFailureDetails().add(new ErpPurchaseOrderImportRespVO.FailureItem(rowNo, row.getProductCode(), "数量必须大于 0"));
+                respVO.setFailureCount(respVO.getFailureCount() + 1);
+                continue;
+            }
+            ErpPurchaseOrderSaveReqVO.Item item = new ErpPurchaseOrderSaveReqVO.Item();
+            item.setProductId(product.getId());
+            item.setProductCode(product.getCode());
+            item.setProductUnitId(product.getUnitId());
+            item.setProductUnitName(productVOMap.get(product.getId()) == null ? null : productVOMap.get(product.getId()).getUnitName());
+            item.setWarehouseId(product.getDefaultWarehouseId());
+            item.setProductPrice(row.getProductPrice() != null ? row.getProductPrice() : product.getPurchasePrice());
+            item.setCount(row.getCount());
+            item.setTaxPercent(BigDecimal.ZERO);
+            item.setRemark(null);
+            respVO.getItems().add(item);
+            respVO.setSuccessCount(respVO.getSuccessCount() + 1);
         }
-        // 4. 其他字段直接映射
-        respVO.setTaxPercent(importVO.getTaxPercent());
-        respVO.setOrderDate(importVO.getOrderDate());
-        respVO.setPurchaseCycle(importVO.getPurchaseCycle());
-        respVO.setArrivalDate(importVO.getArrivalDate());
-        respVO.setDeliveryMethod(importVO.getDeliveryMethod());
-        respVO.setPurchaseType(importVO.getPurchaseType());
-        respVO.setSettleMethod(importVO.getSettleMethod());
-        respVO.setInvoiceType(importVO.getInvoiceType());
-        respVO.setFactoryOrderNo(importVO.getFactoryOrderNo());
-        respVO.setReceiveAddress(importVO.getReceiveAddress());
-        respVO.setOrderCompany(importVO.getOrderCompany());
-        respVO.setRemark(importVO.getRemark());
         return respVO;
     }
 

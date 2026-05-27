@@ -49,15 +49,13 @@ public class ErpPurchasePriceAdjustSaveReqVO {
         @Schema(description = "调价项编号", example = "1")
         private Long id;
 
-        @Schema(description = "采购入库单编号", requiredMode = Schema.RequiredMode.REQUIRED, example = "1")
-        @NotNull(message = "采购入库单编号不能为空")
+        @Schema(description = "采购入库单编号", example = "1")
         private Long inId;
 
         @Schema(description = "采购入库单号", example = "CGRK20260508000001")
         private String inNo;
 
-        @Schema(description = "采购入库项编号", requiredMode = Schema.RequiredMode.REQUIRED, example = "1")
-        @NotNull(message = "采购入库项编号不能为空")
+        @Schema(description = "采购入库项编号", example = "1")
         private Long inItemId;
 
         @Schema(description = "产品编号", requiredMode = Schema.RequiredMode.REQUIRED, example = "1")

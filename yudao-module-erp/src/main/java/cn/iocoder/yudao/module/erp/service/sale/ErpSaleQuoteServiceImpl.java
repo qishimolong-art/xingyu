@@ -426,8 +426,6 @@ public class ErpSaleQuoteServiceImpl implements ErpSaleQuoteService {
             item.setWarehouseId(product.getDefaultWarehouseId());
             item.setProductPrice(row.getProductPrice() != null ? row.getProductPrice() : product.getSalePrice());
             item.setCount(count);
-            item.setTaxPercent(row.getTaxPercent());
-            item.setRemark(row.getRemark());
             respVO.getItems().add(item);
             respVO.setSuccessCount(respVO.getSuccessCount() + 1);
         });

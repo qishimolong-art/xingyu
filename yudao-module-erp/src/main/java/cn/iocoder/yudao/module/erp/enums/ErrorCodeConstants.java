@@ -61,6 +61,7 @@ ErrorCode PURCHASE_ORDER_ITEM_RETURN_FAIL_IN_EXCEED = new ErrorCode(1_030_101_00
     ErrorCode PURCHASE_RETURN_SUPPLIER_REQUIRED = new ErrorCode(1_030_103_014, "供应商不能为空");
     ErrorCode PURCHASE_RETURN_ITEM_COUNT_POSITIVE = new ErrorCode(1_030_103_015, "退货数量不得小于等于 0");
     ErrorCode PURCHASE_RETURN_ITEM_PRICE_POSITIVE = new ErrorCode(1_030_103_016, "退货价格不得小于等于 0");
+    ErrorCode PURCHASE_RETURN_ITEM_DUPLICATE = new ErrorCode(1_030_103_017, "同一采购退货明细中产品编码重复：{}");
 
     // ========== ERP 客户（1-030-200-000）==========
     ErrorCode CUSTOMER_NOT_EXISTS = new ErrorCode(1_020_200_000, "客户不存在");

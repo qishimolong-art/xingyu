@@ -59,6 +59,9 @@ public class ErpPurchaseInExportRespVO {
     @ExcelProperty("单价")
     private BigDecimal productPrice;
 
+    @ExcelProperty("金额")
+    private BigDecimal itemTotalPrice;
+
     @ExcelProperty("仓库")
     private String warehouseName;
 

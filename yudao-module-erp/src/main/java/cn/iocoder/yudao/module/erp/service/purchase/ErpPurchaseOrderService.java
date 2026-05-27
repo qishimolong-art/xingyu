@@ -116,7 +116,7 @@ public interface ErpPurchaseOrderService {
      * @param importVO 导入的 Excel 数据
      * @return 解析后的响应数据（名称已转换为ID）
      */
-    ErpPurchaseOrderImportRespVO parseImportData(ErpPurchaseOrderImportExcelVO importVO);
+    ErpPurchaseOrderImportRespVO parseImportData(List<ErpPurchaseOrderImportExcelVO> list);
 
     /**
      * 获取采购订单的可入库明细

@@ -20,24 +20,6 @@ public class ErpPurchaseReturnExportRespVO {
     @ExcelProperty("退货时间")
     private LocalDateTime returnTime;
 
-    @ExcelProperty("退货模式")
-    private Integer returnMode;
-
-    @ExcelProperty("单据状态")
-    private Integer status;
-
-    @ExcelProperty("创建人")
-    private String creatorName;
-
-    @ExcelProperty("总数量")
-    private BigDecimal totalCount;
-
-    @ExcelProperty("总金额")
-    private BigDecimal totalPrice;
-
-    @ExcelProperty("备注")
-    private String remark;
-
     @ExcelProperty("产品编码")
     private String productCode;
 
@@ -56,6 +38,9 @@ public class ErpPurchaseReturnExportRespVO {
     @ExcelProperty("单价")
     private BigDecimal productPrice;
 
+    @ExcelProperty("金额")
+    private BigDecimal itemTotalPrice;
+
     @ExcelProperty("仓库")
     private String warehouseName;
 
@@ -68,6 +53,15 @@ public class ErpPurchaseReturnExportRespVO {
     @ExcelProperty("品牌")
     private String brand;
 
+    @ExcelProperty("单据状态")
+    private Integer status;
+
+    @ExcelProperty("创建人")
+    private String creatorName;
+
     @ExcelProperty("明细备注")
     private String itemRemark;
+
+    @ExcelProperty("备注")
+    private String remark;
 }

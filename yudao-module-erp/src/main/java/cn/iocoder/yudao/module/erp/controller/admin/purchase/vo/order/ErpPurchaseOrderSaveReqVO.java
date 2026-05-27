@@ -113,6 +113,12 @@ public class ErpPurchaseOrderSaveReqVO {
         @Schema(description = "订单项编号", example = "11756")
         private Long id;
 
+        @Schema(description = "产品编码", example = "P0001")
+        private String productCode;
+
+        @Schema(description = "产品单位名称", example = "件")
+        private String productUnitName;
+
         @Schema(description = "产品编号", requiredMode = Schema.RequiredMode.REQUIRED, example = "3113")
         @NotNull(message = "产品编号不能为空")
         private Long productId;

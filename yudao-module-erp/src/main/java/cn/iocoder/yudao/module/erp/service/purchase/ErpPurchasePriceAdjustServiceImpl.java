@@ -1,10 +1,13 @@
 package cn.iocoder.yudao.module.erp.service.purchase;
 
 import cn.hutool.core.collection.CollUtil;
+import cn.hutool.core.util.StrUtil;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.common.util.number.MoneyUtils;
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
 import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpProductRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.priceadjust.ErpPurchasePriceAdjustImportExcelVO;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.priceadjust.ErpPurchasePriceAdjustImportRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.priceadjust.ErpPurchasePriceAdjustPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.priceadjust.ErpPurchasePriceAdjustSaveReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseInDO;
@@ -15,10 +18,12 @@ import cn.iocoder.yudao.module.erp.dal.mysql.purchase.ErpPurchaseInItemMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.purchase.ErpPurchaseInMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.purchase.ErpPurchasePriceAdjustItemMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.purchase.ErpPurchasePriceAdjustMapper;
+import cn.iocoder.yudao.module.erp.dal.mysql.product.ErpProductMapper;
 import cn.iocoder.yudao.module.erp.dal.redis.no.ErpNoRedisDAO;
 import cn.iocoder.yudao.module.erp.enums.ErpAuditStatus;
 import cn.iocoder.yudao.module.erp.enums.purchase.ErpPurchasePriceAdjustTypeEnum;
 import cn.iocoder.yudao.module.erp.service.product.ErpProductService;
+import cn.iocoder.yudao.module.erp.service.price.ErpPriceHistoryService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpStockService;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
@@ -67,6 +72,8 @@ public class ErpPurchasePriceAdjustServiceImpl implements ErpPurchasePriceAdjust
     private ErpPurchaseInMapper purchaseInMapper;
     @Resource
     private ErpPurchaseInItemMapper purchaseInItemMapper;
+    @Resource
+    private ErpProductMapper productMapper;
 
     @Resource
     private ErpNoRedisDAO noRedisDAO;
@@ -75,6 +82,8 @@ public class ErpPurchasePriceAdjustServiceImpl implements ErpPurchasePriceAdjust
     private ErpSupplierService supplierService;
     @Resource
     private ErpProductService productService;
+    @Resource
+    private ErpPriceHistoryService priceHistoryService;
 
     @Resource
     @Lazy
@@ -205,6 +214,72 @@ public class ErpPurchasePriceAdjustServiceImpl implements ErpPurchasePriceAdjust
         return priceAdjustItemMapper.selectListByAdjustIds(adjustIds);
     }
 
+    @Override
+    public ErpPurchasePriceAdjustImportRespVO importPurchasePriceAdjustItems(List<ErpPurchasePriceAdjustImportExcelVO> list) {
+        ErpPurchasePriceAdjustImportRespVO respVO = new ErpPurchasePriceAdjustImportRespVO();
+        if (CollUtil.isEmpty(list)) {
+            return respVO;
+        }
+        Set<String> productCodes = list.stream()
+                .map(ErpPurchasePriceAdjustImportExcelVO::getProductCode)
+                .map(this::trimToNull)
+                .filter(StrUtil::isNotBlank)
+                .collect(Collectors.toSet());
+        Map<String, ErpProductRespVO> productVOMap = new HashMap<>();
+        Map<String, Long> productIdMap = new HashMap<>();
+        if (!productCodes.isEmpty()) {
+            productMapper.selectListByCodes(productCodes).forEach(product -> productIdMap.put(product.getCode(), product.getId()));
+            productVOMap = productService.getProductVOList(productIdMap.values()).stream()
+                    .collect(Collectors.toMap(ErpProductRespVO::getCode, item -> item, (a, b) -> a));
+        }
+        for (int i = 0; i < list.size(); i++) {
+            ErpPurchasePriceAdjustImportExcelVO row = list.get(i);
+            if (row == null || isEmptyImportRow(row)) {
+                continue;
+            }
+            try {
+                String productCode = trimToNull(row.getProductCode());
+                if (productCode == null) {
+                    throw new IllegalArgumentException("产品编码不能为空");
+                }
+                ErpProductRespVO product = productVOMap.get(productCode);
+                if (product == null) {
+                    throw new IllegalArgumentException("产品不存在：" + productCode);
+                }
+                BigDecimal count = requirePositiveCount(row.getCount(), "数量不能为空且必须大于0");
+                BigDecimal newPrice = row.getNewPrice();
+                if (newPrice == null || newPrice.compareTo(BigDecimal.ZERO) < 0) {
+                    throw new IllegalArgumentException("调价后单价不能小于0");
+                }
+                BigDecimal oldPrice = product.getLastPurchasePrice() != null
+                        ? product.getLastPurchasePrice()
+                        : (product.getPurchasePrice() != null ? product.getPurchasePrice() : BigDecimal.ZERO);
+                BigDecimal adjustPrice = newPrice.subtract(oldPrice).multiply(count).setScale(2, RoundingMode.HALF_UP);
+                ErpPurchasePriceAdjustSaveReqVO.Item item = new ErpPurchasePriceAdjustSaveReqVO.Item();
+                item.setProductId(product.getId());
+                item.setProductCode(product.getCode());
+                item.setProductName(product.getName());
+                item.setProductUnitName(product.getUnitName());
+                item.setVehicleModel(product.getVehicleModel());
+                item.setStandard(product.getStandard());
+                item.setFeatureCode(product.getFeatureCode());
+                item.setOriginPlace(product.getOriginPlace());
+                item.setBrand(product.getBrand());
+                item.setDrawingNo(product.getDrawingNo());
+                item.setCount(count);
+                item.setOldPrice(oldPrice);
+                item.setNewPrice(newPrice);
+                respVO.getItems().add(item);
+                respVO.setSuccessCount(respVO.getSuccessCount() + 1);
+            } catch (Exception ex) {
+                respVO.getFailureDetails().add(new ErpPurchasePriceAdjustImportRespVO.FailureItem(
+                        i + 2, row != null ? row.getProductCode() : null, ex.getMessage()));
+                respVO.setFailureCount(respVO.getFailureCount() + 1);
+            }
+        }
+        return respVO;
+    }
+
     // ========== 私有辅助方法 ==========
 
     private ErpPurchasePriceAdjustDO validateExists(Long id) {
@@ -250,6 +325,43 @@ public class ErpPurchasePriceAdjustServiceImpl implements ErpPurchasePriceAdjust
                 .filter(java.util.Objects::nonNull).collect(Collectors.toSet());
         Map<Long, ErpProductRespVO> productMap = productIds.isEmpty() ? new HashMap<>()
                 : productService.getProductVOMap(productIds);
+
+        if (ErpPurchasePriceAdjustTypeEnum.isByItem(adjustType)) {
+            List<ErpPurchasePriceAdjustItemDO> result = new ArrayList<>(reqVO.getItems().size());
+            for (ErpPurchasePriceAdjustSaveReqVO.Item voItem : reqVO.getItems()) {
+                ErpProductRespVO product = productMap.get(voItem.getProductId());
+                if (product == null) {
+                    throw exception(PRODUCT_NOT_EXISTS);
+                }
+                if (voItem.getCount() == null || voItem.getCount().compareTo(BigDecimal.ZERO) <= 0) {
+                    throw exception(PURCHASE_PRICE_ADJUST_ITEM_EMPTY);
+                }
+                BigDecimal oldPrice = product.getLastPurchasePrice() != null
+                        ? product.getLastPurchasePrice()
+                        : (product.getPurchasePrice() != null ? product.getPurchasePrice() : BigDecimal.ZERO);
+                BigDecimal count = voItem.getCount();
+                BigDecimal adjustPrice = voItem.getNewPrice().subtract(oldPrice).multiply(count)
+                        .setScale(2, RoundingMode.HALF_UP);
+
+                ErpPurchasePriceAdjustItemDO item = BeanUtils.toBean(voItem, ErpPurchasePriceAdjustItemDO.class);
+                item.setId(null);
+                item.setInId(null);
+                item.setInItemId(null);
+                item.setInNo(null);
+                item.setOldPrice(oldPrice);
+                item.setCount(count);
+                item.setAdjustPrice(adjustPrice);
+                if (item.getWarehouseId() == null) {
+                    item.setWarehouseId(product.getDefaultWarehouseId());
+                }
+                fillProductSnapshot(item, product);
+                if (item.getWarehousePosition() == null) {
+                    item.setWarehousePosition(product.getShelf());
+                }
+                result.add(item);
+            }
+            return result;
+        }
 
         for (ErpPurchasePriceAdjustSaveReqVO.Item voItem : reqVO.getItems()) {
             // 校验入库项存在 + 入库单一致
@@ -321,6 +433,35 @@ public class ErpPurchasePriceAdjustServiceImpl implements ErpPurchasePriceAdjust
         return total;
     }
 
+    private void fillProductSnapshot(ErpPurchasePriceAdjustItemDO item, ErpProductRespVO product) {
+        if (item.getProductCode() == null) item.setProductCode(product.getCode());
+        if (item.getProductName() == null) item.setProductName(product.getName());
+        if (item.getProductUnitName() == null) item.setProductUnitName(product.getUnitName());
+        if (item.getVehicleModel() == null) item.setVehicleModel(product.getVehicleModel());
+        if (item.getStandard() == null) item.setStandard(product.getStandard());
+        if (item.getFeatureCode() == null) item.setFeatureCode(product.getFeatureCode());
+        if (item.getOriginPlace() == null) item.setOriginPlace(product.getOriginPlace());
+        if (item.getBrand() == null) item.setBrand(product.getBrand());
+        if (item.getDrawingNo() == null) item.setDrawingNo(product.getDrawingNo());
+    }
+
+    private boolean isEmptyImportRow(ErpPurchasePriceAdjustImportExcelVO row) {
+        return row == null || StrUtil.isAllBlank(row.getProductCode())
+                && row.getCount() == null && row.getNewPrice() == null;
+    }
+
+    private BigDecimal requirePositiveCount(BigDecimal count, String message) {
+        if (count == null || count.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new IllegalArgumentException(message);
+        }
+        return count;
+    }
+
+    private String trimToNull(String value) {
+        String trimmed = StrUtil.trim(value);
+        return StrUtil.isEmpty(trimmed) ? null : trimmed;
+    }
+
     // ========== 审批核心算法 ==========
 
     private void approveAdjust(ErpPurchasePriceAdjustDO adjustDO) {
@@ -354,6 +495,26 @@ public class ErpPurchasePriceAdjustServiceImpl implements ErpPurchasePriceAdjust
         Map<String, BigDecimal> stockCountMap = new HashMap<>();
         Map<String, Long> stockProductIdMap = new HashMap<>();
         Map<String, Long> stockWarehouseIdMap = new HashMap<>();
+
+        if (ErpPurchasePriceAdjustTypeEnum.isByItem(adjustDO.getAdjustType())) {
+            for (ErpPurchasePriceAdjustItemDO item : items) {
+                Long productId = item.getProductId();
+                BigDecimal newPrice = item.getNewPrice();
+                if (productId != null && newPrice != null) {
+                    priceHistoryService.createPriceHistory(productId, 1, adjustDO.getSupplierId(),
+                            newPrice, item.getCount(), 3, adjustDO.getId(), adjustDO.getNo(),
+                            adjustDO.getAdjustTime() != null ? adjustDO.getAdjustTime() : now);
+                    productLatestPrice.put(productId, newPrice);
+                }
+            }
+            List<Map.Entry<Long, BigDecimal>> sortedEntries = productLatestPrice.entrySet().stream()
+                    .sorted(Comparator.comparing(Map.Entry::getKey))
+                    .collect(Collectors.toList());
+            for (Map.Entry<Long, BigDecimal> entry : sortedEntries) {
+                productService.updateProductLastPurchasePrice(entry.getKey(), entry.getValue());
+            }
+            return;
+        }
 
         for (ErpPurchasePriceAdjustItemDO item : items) {
             // 3.1 读原入库项

@@ -47,6 +47,7 @@ import java.io.IOException;
 import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 
@@ -141,24 +142,17 @@ public class ErpPurchaseOrderController {
     public void exportPurchaseOrderExcel(@Valid ErpPurchaseOrderPageReqVO pageReqVO,
                                          HttpServletResponse response) throws IOException {
         pageReqVO.setPageSize(PageParam.PAGE_SIZE_NONE);
-        List<ErpPurchaseOrderRespVO> list = buildPurchaseOrderVOPageResult(
-                purchaseOrderService.getPurchaseOrderPage(pageReqVO)).getList();
         ExcelUtils.write(response, "采购订单.xls", "数据", ErpPurchaseOrderExportRespVO.class,
-                buildPurchaseOrderExportList(list));
+                buildPurchaseOrderExportList(purchaseOrderService.getPurchaseOrderPage(pageReqVO)));
     }
 
     @GetMapping("/get-import-template")
     @Operation(summary = "获得采购订单导入模板")
     public void getImportTemplate(HttpServletResponse response) throws IOException {
         ErpPurchaseOrderImportExcelVO example = new ErpPurchaseOrderImportExcelVO();
-        example.setSupplierName("示例供应商");
-        example.setPurchaserName("张三");
-        example.setDeptName("采购部");
-        example.setDeliveryMethod("快递");
-        example.setPurchaseType("常规采购");
-        example.setSettleMethod("月结");
-        example.setInvoiceType("增值税专用发票");
-        example.setRemark("备注信息");
+        example.setProductCode("P0001");
+        example.setCount(BigDecimal.ONE);
+        example.setProductPrice(new BigDecimal("100.00"));
         ExcelUtils.write(response, "采购订单导入模板.xls", "采购订单",
                 ErpPurchaseOrderImportExcelVO.class, Arrays.asList(example));
     }
@@ -171,7 +165,7 @@ public class ErpPurchaseOrderController {
         if (CollUtil.isEmpty(list)) {
             return success(new ErpPurchaseOrderImportRespVO());
         }
-        return success(purchaseOrderService.parseImportData(list.get(0)));
+        return success(purchaseOrderService.parseImportData(list));
     }
 
     @GetMapping("/inable-items")
@@ -213,29 +207,65 @@ public class ErpPurchaseOrderController {
         });
     }
 
-    private List<ErpPurchaseOrderExportRespVO> buildPurchaseOrderExportList(List<ErpPurchaseOrderRespVO> list) {
+    private List<ErpPurchaseOrderExportRespVO> buildPurchaseOrderExportList(PageResult<ErpPurchaseOrderDO> pageResult) {
+        if (CollUtil.isEmpty(pageResult.getList())) {
+            return Collections.emptyList();
+        }
+        List<ErpPurchaseOrderItemDO> purchaseOrderItemList = purchaseOrderService.getPurchaseOrderItemListByOrderIds(
+                convertSet(pageResult.getList(), ErpPurchaseOrderDO::getId));
+        Map<Long, List<ErpPurchaseOrderItemDO>> purchaseOrderItemMap = convertMultiMap(
+                purchaseOrderItemList, ErpPurchaseOrderItemDO::getOrderId);
+        Map<Long, ErpProductRespVO> productMap = productService.getProductVOMap(
+                convertSet(purchaseOrderItemList, ErpPurchaseOrderItemDO::getProductId));
+        Map<Long, ErpSupplierDO> supplierMap = supplierService.getSupplierMap(
+                convertSet(pageResult.getList(), ErpPurchaseOrderDO::getSupplierId));
+        Map<Long, AdminUserRespDTO> userMap = adminUserApi.getUserMap(
+                convertSet(pageResult.getList(), purchaseOrder -> Long.parseLong(purchaseOrder.getCreator())));
         List<ErpPurchaseOrderExportRespVO> rows = new ArrayList<>();
-        for (ErpPurchaseOrderRespVO purchaseOrder : list) {
-            if (CollUtil.isEmpty(purchaseOrder.getItems())) {
-                rows.add(BeanUtils.toBean(purchaseOrder, ErpPurchaseOrderExportRespVO.class));
+        for (ErpPurchaseOrderDO purchaseOrder : pageResult.getList()) {
+            List<ErpPurchaseOrderItemDO> items = purchaseOrderItemMap.get(purchaseOrder.getId());
+            if (CollUtil.isEmpty(items)) {
+                rows.add(buildPurchaseOrderExportRow(purchaseOrder,
+                        supplierMap.get(purchaseOrder.getSupplierId()),
+                        userMap.get(Long.parseLong(purchaseOrder.getCreator())), null, null, true));
                 continue;
             }
-            for (ErpPurchaseOrderRespVO.Item item : purchaseOrder.getItems()) {
-                rows.add(BeanUtils.toBean(purchaseOrder, ErpPurchaseOrderExportRespVO.class, row -> {
-                    row.setProductCode(item.getProductCode());
-                    row.setProductName(item.getProductName());
-                    row.setProductUnitName(item.getProductUnitName());
-                    row.setItemCount(item.getCount());
-                    row.setProductPrice(item.getProductPrice());
-                    row.setItemTotalPrice(item.getProductPrice() == null || item.getCount() == null
-                            ? null : item.getProductPrice().multiply(item.getCount()));
-                    row.setItemTaxPercent(item.getTaxPercent());
-                    row.setItemTaxPrice(item.getTaxPrice());
-                    row.setItemRemark(item.getRemark());
-                }));
+            for (int i = 0; i < items.size(); i++) {
+                ErpPurchaseOrderItemDO item = items.get(i);
+                rows.add(buildPurchaseOrderExportRow(purchaseOrder,
+                        supplierMap.get(purchaseOrder.getSupplierId()),
+                        userMap.get(Long.parseLong(purchaseOrder.getCreator())),
+                        item, productMap.get(item.getProductId()), i == 0));
             }
         }
         return rows;
+    }
+
+    private ErpPurchaseOrderExportRespVO buildPurchaseOrderExportRow(ErpPurchaseOrderDO purchaseOrder,
+                                                                     ErpSupplierDO supplier,
+                                                                     AdminUserRespDTO creator,
+                                                                     ErpPurchaseOrderItemDO item,
+                                                                     ErpProductRespVO product,
+                                                                     boolean fillOrderFields) {
+        ErpPurchaseOrderExportRespVO row = fillOrderFields
+                ? BeanUtils.toBean(purchaseOrder, ErpPurchaseOrderExportRespVO.class)
+                : new ErpPurchaseOrderExportRespVO();
+        row.setSupplierName(fillOrderFields && supplier != null ? supplier.getName() : null);
+        row.setCreatorName(fillOrderFields && creator != null ? creator.getNickname() : null);
+        if (item == null) {
+            return row;
+        }
+        row.setProductCode(product != null ? product.getCode() : null);
+        row.setProductName(product != null ? product.getName() : null);
+        row.setProductUnitName(product != null ? product.getUnitName() : null);
+        row.setItemCount(item.getCount());
+        row.setProductPrice(item.getProductPrice());
+        row.setItemTotalPrice(item.getProductPrice() == null || item.getCount() == null
+                ? null : item.getProductPrice().multiply(item.getCount()));
+        row.setItemTaxPercent(item.getTaxPercent());
+        row.setItemTaxPrice(item.getTaxPrice());
+        row.setItemRemark(item.getRemark());
+        return row;
     }
 
     private Integer calcStatus(BigDecimal doneCount, BigDecimal totalCount) {

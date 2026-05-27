@@ -9,6 +9,8 @@ import cn.iocoder.yudao.framework.common.util.collection.MapUtils;
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
 import cn.iocoder.yudao.framework.excel.core.util.ExcelUtils;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.priceadjust.ErpPurchasePriceAdjustExportRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.priceadjust.ErpPurchasePriceAdjustImportExcelVO;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.priceadjust.ErpPurchasePriceAdjustImportRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.priceadjust.ErpPurchasePriceAdjustPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.priceadjust.ErpPurchasePriceAdjustRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.priceadjust.ErpPurchasePriceAdjustSaveReqVO;
@@ -36,12 +38,15 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.multipart.MultipartFile;
 
 import javax.annotation.Resource;
 import javax.servlet.http.HttpServletResponse;
 import javax.validation.Valid;
 import java.io.IOException;
+import java.math.BigDecimal;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -83,6 +88,27 @@ public class ErpPurchasePriceAdjustController {
     public CommonResult<Boolean> updatePurchasePriceAdjust(@Valid @RequestBody ErpPurchasePriceAdjustSaveReqVO reqVO) {
         priceAdjustService.updatePurchasePriceAdjust(reqVO);
         return success(true);
+    }
+
+    @PostMapping("/import")
+    @Operation(summary = "导入采购调价明细")
+    @PreAuthorize("@ss.hasPermission('erp:purchase-price-adjust:create')")
+    public CommonResult<ErpPurchasePriceAdjustImportRespVO> importPurchasePriceAdjust(@RequestParam("file") MultipartFile file)
+            throws Exception {
+        List<ErpPurchasePriceAdjustImportExcelVO> list = ExcelUtils.read(file, ErpPurchasePriceAdjustImportExcelVO.class);
+        return success(priceAdjustService.importPurchasePriceAdjustItems(list));
+    }
+
+    @GetMapping("/get-import-template")
+    @Operation(summary = "获取采购调价导入模板")
+    @PreAuthorize("@ss.hasPermission('erp:purchase-price-adjust:create')")
+    public void getImportTemplate(HttpServletResponse response) throws IOException {
+        ErpPurchasePriceAdjustImportExcelVO example = new ErpPurchasePriceAdjustImportExcelVO();
+        example.setProductCode("P000001");
+        example.setCount(BigDecimal.ONE);
+        example.setNewPrice(new BigDecimal("10.00"));
+        ExcelUtils.write(response, "purchase-price-adjust-import-template.xls", "purchase-price-adjust",
+                ErpPurchasePriceAdjustImportExcelVO.class, Collections.singletonList(example));
     }
 
     @PutMapping("/update-status")
@@ -219,23 +245,46 @@ public class ErpPurchasePriceAdjustController {
         List<ErpPurchasePriceAdjustExportRespVO> rows = new ArrayList<>();
         for (ErpPurchasePriceAdjustRespVO adjust : list) {
             if (CollUtil.isEmpty(adjust.getItems())) {
-                rows.add(BeanUtils.toBean(adjust, ErpPurchasePriceAdjustExportRespVO.class));
+                rows.add(buildExportRow(adjust, null, true, warehouseMap));
                 continue;
             }
-            for (ErpPurchasePriceAdjustRespVO.Item item : adjust.getItems()) {
-                rows.add(BeanUtils.toBean(adjust, ErpPurchasePriceAdjustExportRespVO.class, row -> {
-                    row.setProductCode(item.getProductCode());
-                    row.setProductName(item.getProductName());
-                    row.setInNo(item.getInNo());
-                    row.setOldPrice(item.getOldPrice());
-                    row.setNewPrice(item.getNewPrice());
-                    row.setCount(item.getCount());
-                    row.setAdjustPrice(item.getAdjustPrice());
-                    MapUtils.findAndThen(warehouseMap, item.getWarehouseId(), warehouse -> row.setWarehouseName(warehouse.getName()));
-                }));
+            for (int i = 0; i < adjust.getItems().size(); i++) {
+                rows.add(buildExportRow(adjust, adjust.getItems().get(i), i == 0, warehouseMap));
             }
         }
         return rows;
+    }
+
+    private ErpPurchasePriceAdjustExportRespVO buildExportRow(ErpPurchasePriceAdjustRespVO adjust,
+                                                              ErpPurchasePriceAdjustRespVO.Item item,
+                                                              boolean fillMainFields,
+                                                              Map<Long, ErpWarehouseDO> warehouseMap) {
+        ErpPurchasePriceAdjustExportRespVO row = fillMainFields
+                ? BeanUtils.toBean(adjust, ErpPurchasePriceAdjustExportRespVO.class)
+                : new ErpPurchasePriceAdjustExportRespVO();
+        if (!fillMainFields) {
+            row.setNo(null);
+            row.setSupplierName(null);
+            row.setAdjustTime(null);
+            row.setAdjustType(null);
+            row.setStatus(null);
+            row.setAdjusterName(null);
+            row.setTotalAdjustPrice(null);
+            row.setRemark(null);
+        }
+        if (item == null) {
+            return row;
+        }
+        row.setProductCode(item.getProductCode());
+        row.setProductName(item.getProductName());
+        row.setWarehouseName(null);
+        MapUtils.findAndThen(warehouseMap, item.getWarehouseId(), warehouse -> row.setWarehouseName(warehouse.getName()));
+        row.setInNo(item.getInNo());
+        row.setOldPrice(item.getOldPrice());
+        row.setNewPrice(item.getNewPrice());
+        row.setCount(item.getCount());
+        row.setAdjustPrice(item.getAdjustPrice());
+        return row;
     }
 
 }
