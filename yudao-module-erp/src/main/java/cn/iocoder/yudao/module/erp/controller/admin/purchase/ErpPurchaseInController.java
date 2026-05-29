@@ -21,11 +21,13 @@ import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.order.ErpPurchas
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.returns.ErpPurchaseReturnableItemRespVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseInDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseInItemDO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseInvoiceItemDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpSupplierDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpWarehouseDO;
 import cn.iocoder.yudao.module.erp.service.product.ErpProductService;
 import cn.iocoder.yudao.module.erp.service.purchase.ErpPurchaseInService;
+import cn.iocoder.yudao.module.erp.service.purchase.ErpPurchaseInvoiceService;
 import cn.iocoder.yudao.module.erp.service.purchase.ErpSupplierService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpStockService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpWarehouseService;
@@ -52,8 +54,10 @@ import java.io.IOException;
 import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import static cn.iocoder.yudao.framework.apilog.core.enums.OperateTypeEnum.EXPORT;
 import static cn.iocoder.yudao.framework.common.pojo.CommonResult.success;
@@ -68,6 +72,8 @@ public class ErpPurchaseInController {
 
     @Resource
     private ErpPurchaseInService purchaseInService;
+    @Resource
+    private ErpPurchaseInvoiceService purchaseInvoiceService;
     @Resource
     private ErpStockService stockService;
     @Resource
@@ -140,14 +146,40 @@ public class ErpPurchaseInController {
         List<ErpPurchaseInItemDO> purchaseInItemList = purchaseInService.getPurchaseInItemListByInId(id);
         Map<Long, ErpProductRespVO> productMap = productService.getProductVOMap(
                 convertSet(purchaseInItemList, ErpPurchaseInItemDO::getProductId));
-        return success(BeanUtils.toBean(purchaseIn, ErpPurchaseInRespVO.class, purchaseInVO ->
-                purchaseInVO.setItems(BeanUtils.toBean(purchaseInItemList, ErpPurchaseInRespVO.Item.class, item -> {
-                    ErpStockDO stock = stockService.getStock(item.getProductId(), item.getWarehouseId());
-                    item.setStockCount(stock != null ? stock.getCount() : BigDecimal.ZERO);
-                    MapUtils.findAndThen(productMap, item.getProductId(), product -> item.setProductName(product.getName())
-                            .setProductBarCode(product.getBarCode()).setProductUnitName(product.getUnitName())
-                            .setProductCode(product.getCode()));
-                }))));
+        Set<Long> userIds = new HashSet<>();
+        addUserId(userIds, purchaseIn.getCreator());
+        addUserId(userIds, purchaseIn.getUpdater());
+        Map<Long, AdminUserRespDTO> userMap = adminUserApi.getUserMap(userIds);
+        return success(BeanUtils.toBean(purchaseIn, ErpPurchaseInRespVO.class, purchaseInVO -> {
+            purchaseInVO.setItems(BeanUtils.toBean(purchaseInItemList, ErpPurchaseInRespVO.Item.class, item -> {
+                ErpStockDO stock = stockService.getStock(item.getProductId(), item.getWarehouseId());
+                item.setStockCount(stock != null ? stock.getCount() : BigDecimal.ZERO);
+                MapUtils.findAndThen(productMap, item.getProductId(), product -> item.setProductName(product.getName())
+                        .setProductBarCode(product.getBarCode()).setProductUnitName(product.getUnitName())
+                        .setProductCode(product.getCode()));
+            }));
+            fillUserNames(purchaseInVO, userMap);
+        }));
+    }
+
+    @GetMapping("/list-items")
+    @Operation(summary = "Get purchase in items")
+    @Parameter(name = "inId", description = "Purchase in ID", required = true, example = "1024")
+    @PreAuthorize("@ss.hasPermission('erp:purchase-in:query')")
+    public CommonResult<List<ErpPurchaseInRespVO.Item>> getPurchaseInItems(@RequestParam("inId") Long inId) {
+        List<ErpPurchaseInItemDO> purchaseInItemList = purchaseInService.getPurchaseInItemListByInId(inId);
+        Map<Long, ErpProductRespVO> productMap = productService.getProductVOMap(
+                convertSet(purchaseInItemList, ErpPurchaseInItemDO::getProductId));
+        List<ErpPurchaseInRespVO.Item> items = BeanUtils.toBean(purchaseInItemList, ErpPurchaseInRespVO.Item.class);
+        if (items == null) {
+            return success(Collections.emptyList());
+        }
+        items.forEach(item -> MapUtils.findAndThen(productMap, item.getProductId(),
+                product -> item.setProductName(product.getName())
+                        .setProductBarCode(product.getBarCode())
+                        .setProductUnitName(product.getUnitName())
+                        .setProductCode(product.getCode())));
+        return success(items);
     }
 
     @GetMapping("/page")
@@ -203,6 +235,7 @@ public class ErpPurchaseInController {
         PageResult<ErpPurchaseInDO> pageResult = purchaseInService.getPurchaseInPage(pageReqVO);
         List<ErpPurchaseInItemDO> purchaseInItemList = purchaseInService.getPurchaseInItemListByInIds(
                 convertSet(pageResult.getList(), ErpPurchaseInDO::getId));
+        markHasInvoice(pageResult.getList());
         Map<Long, List<ErpPurchaseInItemDO>> purchaseInItemMap = convertMultiMap(
                 purchaseInItemList, ErpPurchaseInItemDO::getInId);
         Map<Long, ErpProductRespVO> productMap = productService.getProductVOMap(
@@ -229,8 +262,12 @@ public class ErpPurchaseInController {
                 convertSet(purchaseInItemList, ErpPurchaseInItemDO::getProductId));
         Map<Long, ErpSupplierDO> supplierMap = supplierService.getSupplierMap(
                 convertSet(pageResult.getList(), ErpPurchaseInDO::getSupplierId));
-        Map<Long, AdminUserRespDTO> userMap = adminUserApi.getUserMap(
-                convertSet(pageResult.getList(), purchaseIn -> Long.parseLong(purchaseIn.getCreator())));
+        Set<Long> userIds = new HashSet<>();
+        pageResult.getList().forEach(purchaseIn -> {
+            addUserId(userIds, purchaseIn.getCreator());
+            addUserId(userIds, purchaseIn.getUpdater());
+        });
+        Map<Long, AdminUserRespDTO> userMap = adminUserApi.getUserMap(userIds);
         return BeanUtils.toBean(pageResult, ErpPurchaseInRespVO.class, purchaseIn -> {
             purchaseIn.setItems(BeanUtils.toBean(purchaseInItemMap.get(purchaseIn.getId()), ErpPurchaseInRespVO.Item.class,
                     item -> MapUtils.findAndThen(productMap, item.getProductId(), product -> item.setProductName(product.getName())
@@ -240,9 +277,56 @@ public class ErpPurchaseInController {
                     ErpPurchaseInRespVO.Item::getProductName));
             MapUtils.findAndThen(supplierMap, purchaseIn.getSupplierId(),
                     supplier -> purchaseIn.setSupplierName(supplier.getName()));
-            MapUtils.findAndThen(userMap, Long.parseLong(purchaseIn.getCreator()),
-                    user -> purchaseIn.setCreatorName(user.getNickname()));
+            fillUserNames(purchaseIn, userMap);
         });
+    }
+
+    private void markHasInvoice(List<ErpPurchaseInDO> purchaseIns) {
+        if (CollUtil.isEmpty(purchaseIns)) {
+            return;
+        }
+        Set<Long> sourceInIds = convertSet(
+                purchaseInvoiceService.getPurchaseInvoiceItemListBySourceInIds(
+                        convertSet(purchaseIns, ErpPurchaseInDO::getId)),
+                ErpPurchaseInvoiceItemDO::getSourceInId);
+        sourceInIds.remove(null);
+        if (CollUtil.isEmpty(sourceInIds)) {
+            return;
+        }
+        purchaseIns.forEach(purchaseIn -> {
+            if (sourceInIds.contains(purchaseIn.getId())) {
+                purchaseIn.setHasInvoice(true);
+            }
+        });
+    }
+
+    private void fillUserNames(ErpPurchaseInRespVO purchaseIn, Map<Long, AdminUserRespDTO> userMap) {
+        Long creatorId = parseUserId(purchaseIn.getCreator());
+        if (creatorId != null) {
+            MapUtils.findAndThen(userMap, creatorId, user -> purchaseIn.setCreatorName(user.getNickname()));
+        }
+        Long updaterId = parseUserId(purchaseIn.getUpdater());
+        if (updaterId != null) {
+            MapUtils.findAndThen(userMap, updaterId, user -> purchaseIn.setUpdaterName(user.getNickname()));
+        }
+    }
+
+    private void addUserId(Set<Long> userIds, String userId) {
+        Long parsed = parseUserId(userId);
+        if (parsed != null) {
+            userIds.add(parsed);
+        }
+    }
+
+    private Long parseUserId(String userId) {
+        if (userId == null || userId.isEmpty()) {
+            return null;
+        }
+        try {
+            return Long.parseLong(userId);
+        } catch (NumberFormatException ignored) {
+            return null;
+        }
     }
 
     private List<ErpPurchaseInExportRespVO> buildPurchaseInExportList(List<ErpPurchaseInDO> list,

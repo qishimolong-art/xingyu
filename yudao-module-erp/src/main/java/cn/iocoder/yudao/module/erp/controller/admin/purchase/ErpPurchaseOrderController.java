@@ -48,8 +48,10 @@ import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import static cn.iocoder.yudao.framework.apilog.core.enums.OperateTypeEnum.EXPORT;
 import static cn.iocoder.yudao.framework.common.pojo.CommonResult.success;
@@ -118,14 +120,20 @@ public class ErpPurchaseOrderController {
         List<ErpPurchaseOrderItemDO> purchaseOrderItemList = purchaseOrderService.getPurchaseOrderItemListByOrderId(id);
         Map<Long, ErpProductRespVO> productMap = productService.getProductVOMap(
                 convertSet(purchaseOrderItemList, ErpPurchaseOrderItemDO::getProductId));
-        return success(BeanUtils.toBean(purchaseOrder, ErpPurchaseOrderRespVO.class, purchaseOrderVO ->
-                purchaseOrderVO.setItems(BeanUtils.toBean(purchaseOrderItemList, ErpPurchaseOrderRespVO.Item.class, item -> {
-                    BigDecimal stockCount = stockService.getStockCount(item.getProductId());
-                    item.setStockCount(stockCount != null ? stockCount : BigDecimal.ZERO);
-                    MapUtils.findAndThen(productMap, item.getProductId(), product -> item.setProductName(product.getName())
-                            .setProductBarCode(product.getBarCode()).setProductUnitName(product.getUnitName())
-                            .setProductCode(product.getCode()));
-                }))));
+        Set<Long> userIds = new HashSet<>();
+        addUserId(userIds, purchaseOrder.getCreator());
+        addUserId(userIds, purchaseOrder.getUpdater());
+        Map<Long, AdminUserRespDTO> userMap = adminUserApi.getUserMap(userIds);
+        return success(BeanUtils.toBean(purchaseOrder, ErpPurchaseOrderRespVO.class, purchaseOrderVO -> {
+            purchaseOrderVO.setItems(BeanUtils.toBean(purchaseOrderItemList, ErpPurchaseOrderRespVO.Item.class, item -> {
+                BigDecimal stockCount = stockService.getStockCount(item.getProductId());
+                item.setStockCount(stockCount != null ? stockCount : BigDecimal.ZERO);
+                MapUtils.findAndThen(productMap, item.getProductId(), product -> item.setProductName(product.getName())
+                        .setProductBarCode(product.getBarCode()).setProductUnitName(product.getUnitName())
+                        .setProductCode(product.getCode()));
+            }));
+            fillUserNames(purchaseOrderVO, userMap);
+        }));
     }
 
     @GetMapping("/page")
@@ -188,8 +196,12 @@ public class ErpPurchaseOrderController {
                 convertSet(purchaseOrderItemList, ErpPurchaseOrderItemDO::getProductId));
         Map<Long, ErpSupplierDO> supplierMap = supplierService.getSupplierMap(
                 convertSet(pageResult.getList(), ErpPurchaseOrderDO::getSupplierId));
-        Map<Long, AdminUserRespDTO> userMap = adminUserApi.getUserMap(
-                convertSet(pageResult.getList(), purchaseOrder -> Long.parseLong(purchaseOrder.getCreator())));
+        Set<Long> userIds = new HashSet<>();
+        pageResult.getList().forEach(purchaseOrder -> {
+            addUserId(userIds, purchaseOrder.getCreator());
+            addUserId(userIds, purchaseOrder.getUpdater());
+        });
+        Map<Long, AdminUserRespDTO> userMap = adminUserApi.getUserMap(userIds);
         return BeanUtils.toBean(pageResult, ErpPurchaseOrderRespVO.class, purchaseOrder -> {
             purchaseOrder.setItems(BeanUtils.toBean(purchaseOrderItemMap.get(purchaseOrder.getId()),
                     ErpPurchaseOrderRespVO.Item.class, item ->
@@ -200,8 +212,7 @@ public class ErpPurchaseOrderController {
                     ErpPurchaseOrderRespVO.Item::getProductName));
             MapUtils.findAndThen(supplierMap, purchaseOrder.getSupplierId(),
                     supplier -> purchaseOrder.setSupplierName(supplier.getName()));
-            MapUtils.findAndThen(userMap, Long.parseLong(purchaseOrder.getCreator()),
-                    user -> purchaseOrder.setCreatorName(user.getNickname()));
+            fillUserNames(purchaseOrder, userMap);
             purchaseOrder.setInStatus(calcStatus(purchaseOrder.getInCount(), purchaseOrder.getTotalCount()));
             purchaseOrder.setReturnStatus(calcStatus(purchaseOrder.getReturnCount(), purchaseOrder.getTotalCount()));
         });
@@ -279,6 +290,35 @@ public class ErpPurchaseOrderController {
             return 2;
         }
         return 1;
+    }
+
+    private void fillUserNames(ErpPurchaseOrderRespVO purchaseOrder, Map<Long, AdminUserRespDTO> userMap) {
+        Long creatorId = parseUserId(purchaseOrder.getCreator());
+        if (creatorId != null) {
+            MapUtils.findAndThen(userMap, creatorId, user -> purchaseOrder.setCreatorName(user.getNickname()));
+        }
+        Long updaterId = parseUserId(purchaseOrder.getUpdater());
+        if (updaterId != null) {
+            MapUtils.findAndThen(userMap, updaterId, user -> purchaseOrder.setUpdaterName(user.getNickname()));
+        }
+    }
+
+    private void addUserId(Set<Long> userIds, String userId) {
+        Long parsed = parseUserId(userId);
+        if (parsed != null) {
+            userIds.add(parsed);
+        }
+    }
+
+    private Long parseUserId(String userId) {
+        if (userId == null || userId.isEmpty()) {
+            return null;
+        }
+        try {
+            return Long.parseLong(userId);
+        } catch (NumberFormatException ignored) {
+            return null;
+        }
     }
 
 }

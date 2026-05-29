@@ -30,8 +30,7 @@ public class ErpSaleQuoteSaveReqVO {
     @Schema(description = "部门编号", example = "100")
     private Long deptId;
 
-    @Schema(description = "报价时间", requiredMode = Schema.RequiredMode.REQUIRED)
-    @NotNull(message = "报价时间不能为空")
+    @Schema(description = "报价时间")
     private LocalDateTime quoteTime;
 
     @Schema(description = "优惠率，百分比")

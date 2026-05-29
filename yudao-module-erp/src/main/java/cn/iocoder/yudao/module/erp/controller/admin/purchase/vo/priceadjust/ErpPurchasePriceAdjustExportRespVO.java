@@ -32,6 +32,18 @@ public class ErpPurchasePriceAdjustExportRespVO {
     @ExcelProperty("调价总额")
     private BigDecimal totalAdjustPrice;
 
+    @ExcelProperty("创建人")
+    private String creatorName;
+
+    @ExcelProperty("创建时间")
+    private LocalDateTime createTime;
+
+    @ExcelProperty("修改人")
+    private String updaterName;
+
+    @ExcelProperty("修改时间")
+    private LocalDateTime updateTime;
+
     @ExcelProperty("备注")
     private String remark;
 

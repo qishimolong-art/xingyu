@@ -3,7 +3,6 @@ package cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.returns;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Data;
 
-import javax.validation.constraints.NotNull;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -18,8 +17,7 @@ public class ErpPurchaseReturnSaveReqVO {
     @Schema(description = "结算账户编号", example = "31189")
     private Long accountId;
 
-    @Schema(description = "退货时间", requiredMode = Schema.RequiredMode.REQUIRED)
-    @NotNull(message = "退货时间不能为空")
+    @Schema(description = "退货时间")
     private LocalDateTime returnTime;
 
     @Schema(description = "采购订单编号", example = "17386")
@@ -29,7 +27,7 @@ public class ErpPurchaseReturnSaveReqVO {
     private Long supplierId;
 
     @Schema(description = "退货模式", requiredMode = Schema.RequiredMode.REQUIRED, example = "10")
-    @NotNull(message = "退货模式不能为空")
+    @javax.validation.constraints.NotNull(message = "退货模式不能为空")
     private Integer returnMode;
 
     @Schema(description = "优惠率，百分比", requiredMode = Schema.RequiredMode.REQUIRED, example = "99.88")
@@ -75,11 +73,11 @@ public class ErpPurchaseReturnSaveReqVO {
         private String sourceInNo;
 
         @Schema(description = "仓库编号", requiredMode = Schema.RequiredMode.REQUIRED, example = "3113")
-        @NotNull(message = "仓库编号不能为空")
+        @javax.validation.constraints.NotNull(message = "仓库编号不能为空")
         private Long warehouseId;
 
         @Schema(description = "产品编号", requiredMode = Schema.RequiredMode.REQUIRED, example = "3113")
-        @NotNull(message = "产品编号不能为空")
+        @javax.validation.constraints.NotNull(message = "产品编号不能为空")
         private Long productId;
 
         @Schema(description = "产品编码", example = "P0001")
@@ -89,7 +87,7 @@ public class ErpPurchaseReturnSaveReqVO {
         private String productName;
 
         @Schema(description = "产品单位单位", requiredMode = Schema.RequiredMode.REQUIRED, example = "3113")
-        @NotNull(message = "产品单位单位不能为空")
+        @javax.validation.constraints.NotNull(message = "产品单位单位不能为空")
         private Long productUnitId;
 
         @Schema(description = "产品单位名称", example = "件")
@@ -99,7 +97,7 @@ public class ErpPurchaseReturnSaveReqVO {
         private BigDecimal productPrice;
 
         @Schema(description = "产品数量", requiredMode = Schema.RequiredMode.REQUIRED, example = "100.00")
-        @NotNull(message = "产品数量不能为空")
+        @javax.validation.constraints.NotNull(message = "产品数量不能为空")
         private BigDecimal count;
 
         @Schema(description = "税率，百分比", example = "99.88")

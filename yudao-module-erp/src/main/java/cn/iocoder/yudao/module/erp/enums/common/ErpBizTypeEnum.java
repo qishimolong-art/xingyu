@@ -18,6 +18,7 @@ public enum ErpBizTypeEnum implements ArrayValuable<Integer> {
     PURCHASE_ORDER(10, "采购订单"),
     PURCHASE_IN(11, "采购入库"),
     PURCHASE_RETURN(12, "采购退货"),
+    PURCHASE_PRICE_ADJUST(13, "采购调价"),
 
     SALE_ORDER(20, "销售订单"),
     SALE_OUT(21, "销售出库"),

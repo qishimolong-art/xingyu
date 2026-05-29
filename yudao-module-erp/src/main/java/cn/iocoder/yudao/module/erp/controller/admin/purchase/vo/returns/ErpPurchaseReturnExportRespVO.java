@@ -59,6 +59,12 @@ public class ErpPurchaseReturnExportRespVO {
     @ExcelProperty("创建人")
     private String creatorName;
 
+    @ExcelProperty("修改人")
+    private String updaterName;
+
+    @ExcelProperty("修改时间")
+    private LocalDateTime updateTime;
+
     @ExcelProperty("明细备注")
     private String itemRemark;
 

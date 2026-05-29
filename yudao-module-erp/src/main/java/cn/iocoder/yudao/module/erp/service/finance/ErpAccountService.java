@@ -4,6 +4,7 @@ import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.account.ErpAccountPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.account.ErpAccountSaveReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.ErpAccountDO;
+import cn.iocoder.yudao.module.erp.service.finance.bo.ErpAccountBalanceBO;
 
 import javax.validation.Valid;
 import java.util.Collection;
@@ -89,6 +90,24 @@ public interface ErpAccountService {
      */
     default Map<Long, ErpAccountDO> getAccountMap(Collection<Long> ids) {
         return convertMap(getAccountList(ids), ErpAccountDO::getId);
+    }
+
+    /**
+     * 获得结算账户余额列表
+     *
+     * @param ids 编号数组
+     * @return 账户余额列表
+     */
+    List<ErpAccountBalanceBO> getAccountBalanceList(Collection<Long> ids);
+
+    /**
+     * 获得结算账户余额 Map
+     *
+     * @param ids 编号数组
+     * @return 账户余额 Map
+     */
+    default Map<Long, ErpAccountBalanceBO> getAccountBalanceMap(Collection<Long> ids) {
+        return convertMap(getAccountBalanceList(ids), ErpAccountBalanceBO::getAccountId);
     }
 
     /**

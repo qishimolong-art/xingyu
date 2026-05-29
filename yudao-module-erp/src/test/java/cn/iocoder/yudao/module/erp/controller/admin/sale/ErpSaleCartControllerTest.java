@@ -11,6 +11,7 @@ import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleCartDO;
 import cn.iocoder.yudao.module.erp.service.product.ErpProductService;
 import cn.iocoder.yudao.module.erp.service.sale.ErpCustomerService;
 import cn.iocoder.yudao.module.erp.service.sale.ErpSaleCartService;
+import cn.iocoder.yudao.module.erp.service.stock.ErpWarehouseService;
 import org.junit.jupiter.api.Test;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
@@ -45,6 +46,8 @@ public class ErpSaleCartControllerTest extends BaseMockitoUnitTest {
     private ErpCustomerService customerService;
     @Mock
     private ErpProductService productService;
+    @Mock
+    private ErpWarehouseService warehouseService;
 
     // ==================== createSaleCart ====================
 
@@ -233,6 +236,7 @@ public class ErpSaleCartControllerTest extends BaseMockitoUnitTest {
         when(saleCartService.getSaleCart(eq(80L))).thenReturn(cart);
         when(saleCartService.getSaleCartItemListByCartId(eq(80L))).thenReturn(Collections.emptyList());
         when(productService.getProductVOMap(any())).thenReturn(Collections.emptyMap());
+        when(warehouseService.getWarehouseMap(any())).thenReturn(Collections.emptyMap());
         when(customerService.getCustomerMap(any())).thenReturn(Collections.emptyMap());
 
         CommonResult<ErpSaleCartRespVO> result = controller.getSaleCart(80L);
@@ -275,6 +279,7 @@ public class ErpSaleCartControllerTest extends BaseMockitoUnitTest {
         when(saleCartService.getSaleCartPage(eq(pageReqVO))).thenReturn(pageResult);
         when(saleCartService.getSaleCartItemListByCartIds(any())).thenReturn(Collections.emptyList());
         when(productService.getProductVOMap(any())).thenReturn(Collections.emptyMap());
+        when(warehouseService.getWarehouseMap(any())).thenReturn(Collections.emptyMap());
         when(customerService.getCustomerMap(any())).thenReturn(Collections.emptyMap());
 
         CommonResult<PageResult<ErpSaleCartRespVO>> result = controller.getSaleCartPage(pageReqVO);
@@ -282,6 +287,27 @@ public class ErpSaleCartControllerTest extends BaseMockitoUnitTest {
         assertEquals(0, result.getCode());
         assertEquals(1L, result.getData().getTotal());
         assertEquals(90L, result.getData().getList().get(0).getId());
+    }
+
+    @Test
+    public void testGetSaleCartPage_withoutItems_returnsEmptyItems() {
+        ErpSaleCartPageReqVO pageReqVO = new ErpSaleCartPageReqVO();
+        ErpSaleCartDO cart = new ErpSaleCartDO();
+        cart.setId(91L);
+        cart.setCustomerId(92L);
+        PageResult<ErpSaleCartDO> pageResult = new PageResult<>(singletonList(cart), 1L);
+        when(saleCartService.getSaleCartPage(eq(pageReqVO))).thenReturn(pageResult);
+        when(saleCartService.getSaleCartItemListByCartIds(any())).thenReturn(Collections.emptyList());
+        when(productService.getProductVOMap(any())).thenReturn(Collections.emptyMap());
+        when(warehouseService.getWarehouseMap(any())).thenReturn(Collections.emptyMap());
+        when(customerService.getCustomerMap(any())).thenReturn(Collections.emptyMap());
+
+        CommonResult<PageResult<ErpSaleCartRespVO>> result = controller.getSaleCartPage(pageReqVO);
+
+        assertEquals(0, result.getCode());
+        assertNotNull(result.getData());
+        assertNotNull(result.getData().getList().get(0).getItems());
+        assertTrue(result.getData().getList().get(0).getItems().isEmpty());
     }
 
     @Test

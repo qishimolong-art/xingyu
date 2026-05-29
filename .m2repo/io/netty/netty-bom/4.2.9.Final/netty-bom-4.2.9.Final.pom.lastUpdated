@@ -1,0 +1,9 @@
+#NOTE: This is a Maven Resolver internal implementation file, its format can be changed without prior notice.
+#Thu May 28 11:18:57 CST 2026
+@default-alimaven-http\://maven.aliyun.com/nexus/content/groups/public/.lastUpdated=1779935270180
+@default-spring-milestones-https\://repo.spring.io/milestone/.lastUpdated=1779935270165
+http\://maven.aliyun.com/nexus/content/groups/public/.error=Could not transfer artifact io.netty\:netty-bom\:pom\:4.2.9.Final from/to alimaven (http\://maven.aliyun.com/nexus/content/groups/public/)\: transfer failed for http\://maven.aliyun.com/nexus/content/groups/public/io/netty/netty-bom/4.2.9.Final/netty-bom-4.2.9.Final.pom
+https\://repo.spring.io/milestone/.error=Could not transfer artifact io.netty\:netty-bom\:pom\:4.2.9.Final from/to spring-milestones (https\://repo.spring.io/milestone)\: transfer failed for https\://repo.spring.io/milestone/io/netty/netty-bom/4.2.9.Final/netty-bom-4.2.9.Final.pom
+@default-aliyunmaven-https\://maven.aliyun.com/repository/public/.lastUpdated=1779935270144
+https\://maven.aliyun.com/repository/public/.error=Could not transfer artifact io.netty\:netty-bom\:pom\:4.2.9.Final from/to aliyunmaven (https\://maven.aliyun.com/repository/public)\: transfer failed for https\://maven.aliyun.com/repository/public/io/netty/netty-bom/4.2.9.Final/netty-bom-4.2.9.Final.pom
+https\://mirrors.huaweicloud.com/repository/maven/.lastUpdated=1779938337121

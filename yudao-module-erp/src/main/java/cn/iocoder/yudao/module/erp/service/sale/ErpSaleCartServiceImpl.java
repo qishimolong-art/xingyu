@@ -13,6 +13,7 @@ import cn.iocoder.yudao.framework.security.core.util.SecurityFrameworkUtils;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartConvertQuoteReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartSaveReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartUpdateFileReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.out.ErpSaleOutSaveReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.product.ErpProductDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleCartDO;
@@ -114,7 +115,8 @@ public class ErpSaleCartServiceImpl implements ErpSaleCartService {
         }
 
         ErpSaleCartDO cart = BeanUtils.toBean(createReqVO, ErpSaleCartDO.class,
-                in -> in.setNo(no).setStatus(ErpSaleCartStatusEnum.PROCESS.getStatus()));
+                in -> in.setNo(no).setStatus(ErpSaleCartStatusEnum.PROCESS.getStatus())
+                        .setCartTime(LocalDateTime.now()));
         calculateTotalPrice(cart, items);
         saleCartMapper.insert(cart);
         items.forEach(item -> item.setCartId(cart.getId()));
@@ -139,6 +141,7 @@ public class ErpSaleCartServiceImpl implements ErpSaleCartService {
             adminUserApi.validateUser(updateReqVO.getSaleUserId());
         }
         ErpSaleCartDO updateObj = BeanUtils.toBean(updateReqVO, ErpSaleCartDO.class);
+        updateObj.setCartTime(LocalDateTime.now());
         calculateTotalPrice(updateObj, items);
         saleCartMapper.updateById(updateObj);
         saleCartItemMapper.deleteByCartId(updateReqVO.getId());
@@ -147,6 +150,12 @@ public class ErpSaleCartServiceImpl implements ErpSaleCartService {
             item.setCartId(updateReqVO.getId());
         });
         saleCartItemMapper.insertBatch(items);
+    }
+
+    @Override
+    public void updateSaleCartFile(ErpSaleCartUpdateFileReqVO updateReqVO) {
+        ErpSaleCartDO cart = validateSaleCartExists(updateReqVO.getId());
+        saleCartMapper.updateById(new ErpSaleCartDO().setId(cart.getId()).setFileUrl(updateReqVO.getFileUrl()));
     }
 
     @Override

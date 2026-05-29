@@ -44,9 +44,11 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import static cn.iocoder.yudao.framework.apilog.core.enums.OperateTypeEnum.EXPORT;
 import static cn.iocoder.yudao.framework.common.pojo.CommonResult.success;
+import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.convertSetByFlatMap;
 import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.convertMultiMap;
 import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.convertSet;
 
@@ -115,14 +117,18 @@ public class ErpSaleReturnController {
         List<ErpSaleReturnItemDO> saleReturnItemList = saleReturnService.getSaleReturnItemListByReturnId(id);
         Map<Long, ErpProductRespVO> productMap = productService.getProductVOMap(
                 convertSet(saleReturnItemList, ErpSaleReturnItemDO::getProductId));
-        return success(BeanUtils.toBean(saleReturn, ErpSaleReturnRespVO.class, saleReturnVO ->
-                saleReturnVO.setItems(BeanUtils.toBean(saleReturnItemList, ErpSaleReturnRespVO.Item.class, item -> {
-                    ErpStockDO stock = stockService.getStock(item.getProductId(), item.getWarehouseId());
-                    item.setStockCount(stock != null ? stock.getCount() : BigDecimal.ZERO);
-                    MapUtils.findAndThen(productMap, item.getProductId(), product -> item.setProductName(product.getName())
-                            .setProductBarCode(product.getBarCode()).setProductUnitName(product.getUnitName())
-                            .setProductCode(product.getCode()));
-                }))));
+        Set<Long> userIds = convertUserIds(Collections.singletonList(saleReturn));
+        Map<Long, AdminUserRespDTO> userMap = userIds.isEmpty() ? Collections.emptyMap() : adminUserApi.getUserMap(userIds);
+        return success(BeanUtils.toBean(saleReturn, ErpSaleReturnRespVO.class, saleReturnVO -> {
+            fillUserNames(saleReturnVO, userMap);
+            saleReturnVO.setItems(BeanUtils.toBean(saleReturnItemList, ErpSaleReturnRespVO.Item.class, item -> {
+                ErpStockDO stock = stockService.getStock(item.getProductId(), item.getWarehouseId());
+                item.setStockCount(stock != null ? stock.getCount() : BigDecimal.ZERO);
+                MapUtils.findAndThen(productMap, item.getProductId(), product -> item.setProductName(product.getName())
+                        .setProductBarCode(product.getBarCode()).setProductUnitName(product.getUnitName())
+                        .setProductCode(product.getCode()));
+            }));
+        }));
     }
 
     @GetMapping("/page")
@@ -182,8 +188,8 @@ public class ErpSaleReturnController {
         Map<Long, ErpCustomerDO> customerMap = customerService.getCustomerMap(
                 convertSet(pageResult.getList(), ErpSaleReturnDO::getCustomerId));
         // 1.4 管理员信息
-        Map<Long, AdminUserRespDTO> userMap = adminUserApi.getUserMap(
-                convertSet(pageResult.getList(), saleReturn -> Long.parseLong(saleReturn.getCreator())));
+        Set<Long> userIds = convertUserIds(pageResult.getList());
+        Map<Long, AdminUserRespDTO> userMap = userIds.isEmpty() ? Collections.emptyMap() : adminUserApi.getUserMap(userIds);
         // 2. 开始拼接
         return BeanUtils.toBean(pageResult, ErpSaleReturnRespVO.class, saleReturn -> {
             saleReturn.setItems(BeanUtils.toBean(saleReturnItemMap.get(saleReturn.getId()), ErpSaleReturnRespVO.Item.class,
@@ -192,7 +198,7 @@ public class ErpSaleReturnController {
                             .setProductCode(product.getCode()))));
             saleReturn.setProductNames(CollUtil.join(saleReturn.getItems(), "，", ErpSaleReturnRespVO.Item::getProductName));
             MapUtils.findAndThen(customerMap, saleReturn.getCustomerId(), supplier -> saleReturn.setCustomerName(supplier.getName()));
-            MapUtils.findAndThen(userMap, Long.parseLong(saleReturn.getCreator()), user -> saleReturn.setCreatorName(user.getNickname()));
+            fillUserNames(saleReturn, userMap);
             saleReturn.getItems().forEach(item ->
                     MapUtils.findAndThen(warehouseMap, item.getWarehouseId(), warehouse -> item.setWarehouseName(warehouse.getName())));
         });
@@ -202,24 +208,75 @@ public class ErpSaleReturnController {
         List<ErpSaleReturnExportRespVO> rows = new ArrayList<>();
         for (ErpSaleReturnRespVO saleReturn : list) {
             if (CollUtil.isEmpty(saleReturn.getItems())) {
-                rows.add(BeanUtils.toBean(saleReturn, ErpSaleReturnExportRespVO.class));
+                rows.add(buildSaleReturnExportRow(saleReturn, null, true));
                 continue;
             }
-            for (ErpSaleReturnRespVO.Item item : saleReturn.getItems()) {
-                rows.add(BeanUtils.toBean(saleReturn, ErpSaleReturnExportRespVO.class, row -> {
-                    row.setProductCode(item.getProductCode());
-                    row.setProductName(item.getProductName());
-                    row.setProductUnitName(item.getProductUnitName());
-                    row.setWarehouseName(item.getWarehouseName());
-                    row.setItemCount(item.getCount());
-                    row.setProductPrice(item.getProductPrice());
-                    row.setReturnReason(item.getReturnReason());
-                    row.setWarehousePosition(item.getWarehousePosition());
-                    row.setItemRemark(item.getRemark());
-                }));
+            for (int i = 0; i < saleReturn.getItems().size(); i++) {
+                rows.add(buildSaleReturnExportRow(saleReturn, saleReturn.getItems().get(i), i == 0));
             }
         }
         return rows;
+    }
+
+    private ErpSaleReturnExportRespVO buildSaleReturnExportRow(ErpSaleReturnRespVO saleReturn,
+                                                               ErpSaleReturnRespVO.Item item,
+                                                               boolean fillMainFields) {
+        ErpSaleReturnExportRespVO row = fillMainFields
+                ? BeanUtils.toBean(saleReturn, ErpSaleReturnExportRespVO.class)
+                : new ErpSaleReturnExportRespVO();
+        if (item == null) {
+            return row;
+        }
+        row.setProductCode(item.getProductCode());
+        row.setProductName(item.getProductName());
+        row.setProductUnitName(item.getProductUnitName());
+        row.setWarehouseName(item.getWarehouseName());
+        row.setItemCount(item.getCount());
+        row.setProductPrice(item.getProductPrice());
+        row.setReturnReason(item.getReturnReason());
+        row.setWarehousePosition(item.getWarehousePosition());
+        row.setItemRemark(item.getRemark());
+        return row;
+    }
+
+    private Set<Long> convertUserIds(List<ErpSaleReturnDO> saleReturns) {
+        Set<Long> userIds = convertSetByFlatMap(saleReturns, saleReturn -> {
+            List<Long> ids = new ArrayList<>(2);
+            parseUserId(saleReturn.getCreator(), ids);
+            parseUserId(saleReturn.getUpdater(), ids);
+            return ids.stream();
+        });
+        userIds.remove(null);
+        return userIds;
+    }
+
+    private void fillUserNames(ErpSaleReturnRespVO saleReturn, Map<Long, AdminUserRespDTO> userMap) {
+        Long creatorId = parseUserId(saleReturn.getCreator());
+        if (creatorId != null) {
+            MapUtils.findAndThen(userMap, creatorId, user -> saleReturn.setCreatorName(user.getNickname()));
+        }
+        Long updaterId = parseUserId(saleReturn.getUpdater());
+        if (updaterId != null) {
+            MapUtils.findAndThen(userMap, updaterId, user -> saleReturn.setUpdaterName(user.getNickname()));
+        }
+    }
+
+    private Long parseUserId(String userId) {
+        if (userId == null) {
+            return null;
+        }
+        try {
+            return Long.parseLong(userId);
+        } catch (NumberFormatException ignored) {
+            return null;
+        }
+    }
+
+    private void parseUserId(String userId, List<Long> userIds) {
+        Long parsedUserId = parseUserId(userId);
+        if (parsedUserId != null) {
+            userIds.add(parsedUserId);
+        }
     }
 
 }

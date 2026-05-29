@@ -81,6 +81,10 @@ public class ErpSaleQuoteRespVO {
     private String creatorName;
     @ExcelProperty("创建时间")
     private LocalDateTime createTime;
+    private String updater;
+    private String updaterName;
+    @ExcelProperty("修改时间")
+    private LocalDateTime updateTime;
     private List<Item> items;
     @ExcelProperty("产品信息")
     private String productNames;

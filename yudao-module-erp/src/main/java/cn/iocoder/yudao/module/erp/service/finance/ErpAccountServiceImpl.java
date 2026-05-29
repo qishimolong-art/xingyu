@@ -1,6 +1,7 @@
 package cn.iocoder.yudao.module.erp.service.finance;
 
 import cn.hutool.core.collection.CollUtil;
+import cn.hutool.core.util.StrUtil;
 import cn.iocoder.yudao.framework.common.enums.CommonStatusEnum;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
@@ -8,10 +9,12 @@ import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.account.ErpAccoun
 import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.account.ErpAccountSaveReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.ErpAccountDO;
 import cn.iocoder.yudao.module.erp.dal.mysql.finance.ErpAccountMapper;
+import cn.iocoder.yudao.module.erp.service.finance.bo.ErpAccountBalanceBO;
 import org.springframework.stereotype.Service;
 import org.springframework.validation.annotation.Validated;
 
 import javax.annotation.Resource;
+import java.math.BigDecimal;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
@@ -22,55 +25,47 @@ import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.ACCOUNT_NOT_E
 
 /**
  * ERP 结算账户 Service 实现类
- *
- * @author 芋道源码
  */
 @Service
 @Validated
 public class ErpAccountServiceImpl implements ErpAccountService {
+
+    private static final Integer BANK_ACCOUNT_TYPE = 1;
 
     @Resource
     private ErpAccountMapper accountMapper;
 
     @Override
     public Long createAccount(ErpAccountSaveReqVO createReqVO) {
-        // 插入
         ErpAccountDO account = BeanUtils.toBean(createReqVO, ErpAccountDO.class);
+        normalizeAccount(account);
         accountMapper.insert(account);
-        // 返回
         return account.getId();
     }
 
     @Override
     public void updateAccount(ErpAccountSaveReqVO updateReqVO) {
-        // 校验存在
         validateAccountExists(updateReqVO.getId());
-        // 更新
         ErpAccountDO updateObj = BeanUtils.toBean(updateReqVO, ErpAccountDO.class);
+        normalizeAccount(updateObj);
         accountMapper.updateById(updateObj);
     }
 
     @Override
     public void updateAccountDefaultStatus(Long id, Boolean defaultStatus) {
-        // 1. 校验存在
         validateAccountExists(id);
-
-        // 2.1 如果开启，则需要关闭所有其它的默认
-        if (defaultStatus) {
+        if (Boolean.TRUE.equals(defaultStatus)) {
             ErpAccountDO account = accountMapper.selectByDefaultStatus();
             if (account != null) {
                 accountMapper.updateById(new ErpAccountDO().setId(account.getId()).setDefaultStatus(false));
             }
         }
-        // 2.2 更新对应的默认状态
         accountMapper.updateById(new ErpAccountDO().setId(id).setDefaultStatus(defaultStatus));
     }
 
     @Override
     public void deleteAccount(Long id) {
-        // 校验存在
         validateAccountExists(id);
-        // 删除
         accountMapper.deleteById(id);
     }
 
@@ -111,8 +106,38 @@ public class ErpAccountServiceImpl implements ErpAccountService {
     }
 
     @Override
+    public List<ErpAccountBalanceBO> getAccountBalanceList(Collection<Long> ids) {
+        if (CollUtil.isEmpty(ids)) {
+            return Collections.emptyList();
+        }
+        List<ErpAccountBalanceBO> balances = accountMapper.selectAccountBalanceList(ids);
+        ids.forEach(id -> {
+            if (balances.stream().noneMatch(item -> id.equals(item.getAccountId()))) {
+                ErpAccountBalanceBO balance = new ErpAccountBalanceBO();
+                balance.setAccountId(id);
+                balance.setCurrentBalance(BigDecimal.ZERO);
+                balances.add(balance);
+            }
+        });
+        return balances;
+    }
+
+    @Override
     public PageResult<ErpAccountDO> getAccountPage(ErpAccountPageReqVO pageReqVO) {
         return accountMapper.selectPage(pageReqVO);
+    }
+
+    private void normalizeAccount(ErpAccountDO account) {
+        account.setName(StrUtil.trim(account.getName()));
+        account.setNo(StrUtil.emptyToNull(StrUtil.trim(account.getNo())));
+        account.setRemark(StrUtil.emptyToNull(StrUtil.trim(account.getRemark())));
+        if (BANK_ACCOUNT_TYPE.equals(account.getAccountType())) {
+            account.setBankName(StrUtil.emptyToNull(StrUtil.trim(account.getBankName())));
+            account.setBankAccount(StrUtil.emptyToNull(StrUtil.trim(account.getBankAccount())));
+            return;
+        }
+        account.setBankName(null);
+        account.setBankAccount(null);
     }
 
 }

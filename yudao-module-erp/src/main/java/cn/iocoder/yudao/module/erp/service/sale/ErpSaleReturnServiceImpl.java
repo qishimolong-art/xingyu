@@ -54,6 +54,7 @@ import org.springframework.validation.annotation.Validated;
 
 import javax.annotation.Resource;
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.Collection;
 import java.util.Collections;
@@ -143,6 +144,7 @@ public class ErpSaleReturnServiceImpl implements ErpSaleReturnService {
 
         ErpSaleReturnDO saleReturn = BeanUtils.toBean(createReqVO, ErpSaleReturnDO.class, in -> in
                 .setNo(no).setStatus(ErpAuditStatus.PROCESS.getStatus()).setReturnMode(returnMode));
+        saleReturn.setReturnTime(LocalDateTime.now());
         fillSourceInfo(saleReturn, saleOrder, saleOut);
         calculateTotalPrice(saleReturn, saleReturnItems);
         saleReturnMapper.insert(saleReturn);
@@ -184,6 +186,7 @@ public class ErpSaleReturnServiceImpl implements ErpSaleReturnService {
 
         ErpSaleReturnDO updateObj = BeanUtils.toBean(updateReqVO, ErpSaleReturnDO.class)
                 .setReturnMode(returnMode);
+        updateObj.setReturnTime(LocalDateTime.now());
         fillSourceInfo(updateObj, saleOrder, saleOut);
         calculateTotalPrice(updateObj, saleReturnItems);
         saleReturnMapper.updateById(updateObj);

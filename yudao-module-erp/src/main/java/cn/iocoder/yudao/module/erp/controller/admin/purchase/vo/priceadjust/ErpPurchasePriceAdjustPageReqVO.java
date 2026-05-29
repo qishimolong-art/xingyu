@@ -17,6 +17,10 @@ import static cn.iocoder.yudao.framework.common.util.date.DateUtils.FORMAT_YEAR_
 @ToString(callSuper = true)
 public class ErpPurchasePriceAdjustPageReqVO extends PageParam {
 
+    public static final Integer PAYMENT_STATUS_NONE = 0;
+    public static final Integer PAYMENT_STATUS_PART = 1;
+    public static final Integer PAYMENT_STATUS_ALL = 2;
+
     @Schema(description = "调价单号", example = "CGTJ2026050801")
     private String no;
 
@@ -35,6 +39,12 @@ public class ErpPurchasePriceAdjustPageReqVO extends PageParam {
 
     @Schema(description = "备注", example = "单价填错纠正")
     private String remark;
+
+    @Schema(description = "付款状态", example = "1")
+    private Integer paymentStatus;
+
+    @Schema(description = "是否可付款", example = "true")
+    private Boolean paymentEnable;
 
     @Schema(description = "创建人")
     private String creator;

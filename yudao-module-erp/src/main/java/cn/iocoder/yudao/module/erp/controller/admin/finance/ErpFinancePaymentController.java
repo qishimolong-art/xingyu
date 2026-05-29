@@ -72,11 +72,10 @@ public class ErpFinancePaymentController {
     }
 
     @PutMapping("/update-status")
-    @Operation(summary = "更新付款单的状态")
+    @Operation(summary = "审核付款单")
     @PreAuthorize("@ss.hasPermission('erp:finance-payment:update-status')")
-    public CommonResult<Boolean> updateFinancePaymentStatus(@RequestParam("id") Long id,
-                                                           @RequestParam("status") Integer status) {
-        financePaymentService.updateFinancePaymentStatus(id, status);
+    public CommonResult<Boolean> approveFinancePayment(@RequestParam("id") Long id) {
+        financePaymentService.approveFinancePayment(id);
         return success(true);
     }
 

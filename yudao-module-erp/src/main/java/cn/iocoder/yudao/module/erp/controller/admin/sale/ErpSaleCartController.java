@@ -16,6 +16,7 @@ import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartImpo
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartSaveReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartUpdateFileReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpCustomerDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleCartDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleCartItemDO;
@@ -24,6 +25,8 @@ import cn.iocoder.yudao.module.erp.service.product.ErpProductService;
 import cn.iocoder.yudao.module.erp.service.sale.ErpCustomerService;
 import cn.iocoder.yudao.module.erp.service.sale.ErpSaleCartService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpWarehouseService;
+import cn.iocoder.yudao.module.system.api.user.AdminUserApi;
+import cn.iocoder.yudao.module.system.api.user.dto.AdminUserRespDTO;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -60,6 +63,8 @@ public class ErpSaleCartController {
     private ErpProductService productService;
     @Resource
     private ErpWarehouseService warehouseService;
+    @Resource
+    private AdminUserApi adminUserApi;
 
     @PostMapping("/create")
     @Operation(summary = "创建销售手推车")
@@ -73,6 +78,14 @@ public class ErpSaleCartController {
     @PreAuthorize("@ss.hasPermission('erp:sale-cart:update')")
     public CommonResult<Boolean> updateSaleCart(@Valid @RequestBody ErpSaleCartSaveReqVO updateReqVO) {
         saleCartService.updateSaleCart(updateReqVO);
+        return success(true);
+    }
+
+    @PutMapping("/update-file")
+    @Operation(summary = "更新销售手推车快递单")
+    @PreAuthorize("@ss.hasPermission('erp:sale-cart:update')")
+    public CommonResult<Boolean> updateSaleCartFile(@Valid @RequestBody ErpSaleCartUpdateFileReqVO updateReqVO) {
+        saleCartService.updateSaleCartFile(updateReqVO);
         return success(true);
     }
 
@@ -193,46 +206,85 @@ public class ErpSaleCartController {
     }
 
     private void fillRelation(ErpSaleCartRespVO vo, List<ErpSaleCartItemDO> items) {
-        Map<Long, ErpProductRespVO> productMap = productService.getProductVOMap(convertSet(items, ErpSaleCartItemDO::getProductId));
-        Map<Long, ErpWarehouseDO> warehouseMap = warehouseService.getWarehouseMap(convertSet(items, ErpSaleCartItemDO::getWarehouseId));
-        vo.setItems(BeanUtils.toBean(items, ErpSaleCartRespVO.Item.class,
+        List<ErpSaleCartItemDO> safeItems = CollUtil.isEmpty(items) ? Collections.emptyList() : items;
+        Map<Long, ErpProductRespVO> productMap = productService.getProductVOMap(convertSet(safeItems, ErpSaleCartItemDO::getProductId));
+        Map<Long, ErpWarehouseDO> warehouseMap = warehouseService.getWarehouseMap(convertSet(safeItems, ErpSaleCartItemDO::getWarehouseId));
+        List<ErpSaleCartRespVO.Item> respItems = BeanUtils.toBean(safeItems, ErpSaleCartRespVO.Item.class,
                 item -> MapUtils.findAndThen(productMap, item.getProductId(), product -> item.setProductName(product.getName())
                         .setProductBarCode(product.getBarCode()).setProductUnitName(product.getUnitName())
-                        .setProductCode(product.getCode()).setLockCount(product.getLockCount()))));
+                        .setProductCode(product.getCode()).setLockCount(product.getLockCount())));
+        vo.setItems(respItems == null ? Collections.emptyList() : respItems);
         vo.getItems().forEach(item ->
                 MapUtils.findAndThen(warehouseMap, item.getWarehouseId(), warehouse -> item.setWarehouseName(warehouse.getName())));
         vo.setProductNames(CollUtil.join(vo.getItems(), "，", ErpSaleCartRespVO.Item::getProductName));
         Map<Long, ErpCustomerDO> customerMap = customerService.getCustomerMap(convertSet(Collections.singletonList(vo), ErpSaleCartRespVO::getCustomerId));
         MapUtils.findAndThen(customerMap, vo.getCustomerId(), customer -> vo.setCustomerName(customer.getName()));
+        if (vo.getCreator() != null) {
+            try {
+                AdminUserRespDTO creator = adminUserApi.getUser(Long.parseLong(vo.getCreator()));
+                if (creator != null) {
+                    vo.setCreatorName(creator.getNickname());
+                }
+            } catch (NumberFormatException ignored) {
+                // ignore invalid creator value
+            }
+        }
+        if (vo.getUpdater() != null) {
+            try {
+                AdminUserRespDTO updater = adminUserApi.getUser(Long.parseLong(vo.getUpdater()));
+                if (updater != null) {
+                    vo.setUpdaterName(updater.getNickname());
+                }
+            } catch (NumberFormatException ignored) {
+                // ignore invalid updater value
+            }
+        }
+        if (vo.getSaleUserId() != null) {
+            AdminUserRespDTO user = adminUserApi.getUser(vo.getSaleUserId());
+            if (user != null) {
+                vo.setSaleUserName(user.getNickname());
+            }
+        }
     }
 
     private List<ErpSaleCartExportRespVO> buildSaleCartExportList(List<ErpSaleCartRespVO> list) {
         List<ErpSaleCartExportRespVO> rows = new ArrayList<>();
         for (ErpSaleCartRespVO cart : list) {
             if (CollUtil.isEmpty(cart.getItems())) {
-                rows.add(BeanUtils.toBean(cart, ErpSaleCartExportRespVO.class));
+                rows.add(buildSaleCartExportRow(cart, null, true));
                 continue;
             }
-            for (ErpSaleCartRespVO.Item item : cart.getItems()) {
-                rows.add(BeanUtils.toBean(cart, ErpSaleCartExportRespVO.class, row -> {
-                    row.setProductCode(item.getProductCode());
-                    row.setProductName(item.getProductName());
-                    row.setProductUnitName(item.getProductUnitName());
-                    row.setWarehouseName(item.getWarehouseName());
-                    row.setLockCount(item.getLockCount());
-                    row.setItemCount(item.getCount());
-                    row.setProductPrice(item.getProductPrice());
-                    row.setItemTotalPrice(item.getTotalPrice());
-                    row.setBrand(item.getBrand());
-                    row.setVehicleModel(item.getVehicleModel());
-                    row.setStandard(item.getStandard());
-                    row.setOriginPlace(item.getOriginPlace());
-                    row.setWarehousePosition(item.getWarehousePosition());
-                    row.setItemRemark(item.getRemark());
-                }));
+            for (int i = 0; i < cart.getItems().size(); i++) {
+                rows.add(buildSaleCartExportRow(cart, cart.getItems().get(i), i == 0));
             }
         }
         return rows;
+    }
+
+    private ErpSaleCartExportRespVO buildSaleCartExportRow(ErpSaleCartRespVO cart,
+                                                           ErpSaleCartRespVO.Item item,
+                                                           boolean fillMainFields) {
+        ErpSaleCartExportRespVO row = fillMainFields
+                ? BeanUtils.toBean(cart, ErpSaleCartExportRespVO.class)
+                : new ErpSaleCartExportRespVO();
+        if (item == null) {
+            return row;
+        }
+        row.setProductCode(item.getProductCode());
+        row.setProductName(item.getProductName());
+        row.setProductUnitName(item.getProductUnitName());
+        row.setWarehouseName(item.getWarehouseName());
+        row.setLockCount(item.getLockCount());
+        row.setItemCount(item.getCount());
+        row.setProductPrice(item.getProductPrice());
+        row.setItemTotalPrice(item.getTotalPrice());
+        row.setBrand(item.getBrand());
+        row.setVehicleModel(item.getVehicleModel());
+        row.setStandard(item.getStandard());
+        row.setOriginPlace(item.getOriginPlace());
+        row.setWarehousePosition(item.getWarehousePosition());
+        row.setItemRemark(item.getRemark());
+        return row;
     }
 
 }

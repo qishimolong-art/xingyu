@@ -75,10 +75,16 @@ public class ErpPurchaseOrderRespVO {
     private String creator;
     @Schema(description = "创建人名称", example = "芋道")
     private String creatorName;
+    @Schema(description = "修改人", example = "芋道")
+    private String updater;
+    @Schema(description = "修改人名称", example = "芋道")
+    private String updaterName;
 
     @Schema(description = "创建时间", requiredMode = Schema.RequiredMode.REQUIRED)
     @ExcelProperty("创建时间")
     private LocalDateTime createTime;
+    @Schema(description = "修改时间")
+    private LocalDateTime updateTime;
 
     @Schema(description = "订单项列表", requiredMode = Schema.RequiredMode.REQUIRED)
     private List<Item> items;

@@ -51,8 +51,10 @@ import javax.validation.Valid;
 import java.io.IOException;
 import java.math.BigDecimal;
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import static cn.iocoder.yudao.framework.apilog.core.enums.OperateTypeEnum.EXPORT;
 import static cn.iocoder.yudao.framework.common.pojo.CommonResult.success;
@@ -152,7 +154,8 @@ public class ErpPurchaseReturnController {
         }
         Map<Long, ErpPurchaseInItemDO> finalInItemMap = inItemMap;
         Map<Long, BigDecimal> finalReturnedMap = returnedMap;
-        return success(BeanUtils.toBean(purchaseReturn, ErpPurchaseReturnRespVO.class, purchaseReturnVO ->
+        Map<Long, AdminUserRespDTO> userMap = adminUserApi.getUserMap(collectUserIds(java.util.Collections.singletonList(purchaseReturn)));
+        return success(BeanUtils.toBean(purchaseReturn, ErpPurchaseReturnRespVO.class, purchaseReturnVO -> {
                 purchaseReturnVO.setItems(BeanUtils.toBean(purchaseReturnItemList, ErpPurchaseReturnRespVO.Item.class, item -> {
                     ErpStockDO stock = stockService.getStock(item.getProductId(), item.getWarehouseId());
                     item.setStockCount(stock != null ? stock.getCount() : BigDecimal.ZERO);
@@ -166,7 +169,9 @@ public class ErpPurchaseReturnController {
                             item.setReturnableCount(inItem.getCount().subtract(otherReturned));
                         }
                     }
-                }))));
+                }));
+                fillUserNames(purchaseReturnVO, userMap);
+        }));
     }
 
     @GetMapping("/page")
@@ -200,15 +205,14 @@ public class ErpPurchaseReturnController {
                 convertSet(purchaseReturnItemList, ErpPurchaseReturnItemDO::getProductId));
         Map<Long, ErpSupplierDO> supplierMap = supplierService.getSupplierMap(
                 convertSet(pageResult.getList(), ErpPurchaseReturnDO::getSupplierId));
-        Map<Long, AdminUserRespDTO> userMap = adminUserApi.getUserMap(
-                convertSet(pageResult.getList(), purchaseReturn -> Long.parseLong(purchaseReturn.getCreator())));
+        Map<Long, AdminUserRespDTO> userMap = adminUserApi.getUserMap(collectUserIds(pageResult.getList()));
         return BeanUtils.toBean(pageResult, ErpPurchaseReturnRespVO.class, purchaseReturn -> {
             purchaseReturn.setItems(BeanUtils.toBean(purchaseReturnItemMap.get(purchaseReturn.getId()), ErpPurchaseReturnRespVO.Item.class,
                     item -> MapUtils.findAndThen(productMap, item.getProductId(), product -> item.setProductName(product.getName())
                             .setProductBarCode(product.getBarCode()).setProductUnitName(product.getUnitName()))));
             purchaseReturn.setProductNames(CollUtil.join(purchaseReturn.getItems(), "，", ErpPurchaseReturnRespVO.Item::getProductName));
             MapUtils.findAndThen(supplierMap, purchaseReturn.getSupplierId(), supplier -> purchaseReturn.setSupplierName(supplier.getName()));
-            MapUtils.findAndThen(userMap, Long.parseLong(purchaseReturn.getCreator()), user -> purchaseReturn.setCreatorName(user.getNickname()));
+            fillUserNames(purchaseReturn, userMap);
         });
     }
 
@@ -244,6 +248,8 @@ public class ErpPurchaseReturnController {
             row.setReturnTime(purchaseReturn.getReturnTime());
             row.setStatus(purchaseReturn.getStatus());
             row.setCreatorName(purchaseReturn.getCreatorName());
+            row.setUpdaterName(purchaseReturn.getUpdaterName());
+            row.setUpdateTime(purchaseReturn.getUpdateTime());
             row.setRemark(purchaseReturn.getRemark());
         }
         if (item == null) {
@@ -263,6 +269,44 @@ public class ErpPurchaseReturnController {
         row.setBrand(item.getBrand());
         row.setItemRemark(item.getRemark());
         return row;
+    }
+
+    private Set<Long> collectUserIds(List<ErpPurchaseReturnDO> list) {
+        Set<Long> userIds = new LinkedHashSet<>();
+        list.forEach(purchaseReturn -> {
+            addUserId(userIds, purchaseReturn.getCreator());
+            addUserId(userIds, purchaseReturn.getUpdater());
+        });
+        return userIds;
+    }
+
+    private void fillUserNames(ErpPurchaseReturnRespVO purchaseReturn, Map<Long, AdminUserRespDTO> userMap) {
+        Long creatorId = parseUserId(purchaseReturn.getCreator());
+        if (creatorId != null) {
+            MapUtils.findAndThen(userMap, creatorId, user -> purchaseReturn.setCreatorName(user.getNickname()));
+        }
+        Long updaterId = parseUserId(purchaseReturn.getUpdater());
+        if (updaterId != null) {
+            MapUtils.findAndThen(userMap, updaterId, user -> purchaseReturn.setUpdaterName(user.getNickname()));
+        }
+    }
+
+    private void addUserId(Set<Long> userIds, String userId) {
+        Long parsed = parseUserId(userId);
+        if (parsed != null) {
+            userIds.add(parsed);
+        }
+    }
+
+    private Long parseUserId(String userId) {
+        if (userId == null || userId.trim().isEmpty()) {
+            return null;
+        }
+        try {
+            return Long.parseLong(userId);
+        } catch (NumberFormatException ex) {
+            return null;
+        }
     }
 
 }

@@ -65,8 +65,26 @@ public class ErpSalePriceAdjustRespVO {
     @Schema(description = "创建人名称")
     private String creatorName;
 
+    @Schema(description = "修改人")
+    private String updater;
+
     @Schema(description = "创建时间")
     private LocalDateTime createTime;
+
+    @Schema(description = "修改人名称")
+    private String updaterName;
+
+    @Schema(description = "修改时间")
+    private LocalDateTime updateTime;
+
+    @Schema(description = "关联销售单号")
+    private String sourceNo;
+
+    @Schema(description = "调价前金额")
+    private BigDecimal totalOriginalPrice;
+
+    @Schema(description = "调价后金额")
+    private BigDecimal totalAdjustedPrice;
 
     @Schema(description = "调价明细列表")
     private List<Item> items;

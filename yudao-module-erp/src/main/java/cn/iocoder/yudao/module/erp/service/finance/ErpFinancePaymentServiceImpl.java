@@ -11,6 +11,7 @@ import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.payment.ErpFinanc
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.ErpFinancePaymentDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.ErpFinancePaymentItemDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseInDO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchasePriceAdjustDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseReturnDO;
 import cn.iocoder.yudao.module.erp.dal.mysql.finance.ErpFinancePaymentItemMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.finance.ErpFinancePaymentMapper;
@@ -18,6 +19,7 @@ import cn.iocoder.yudao.module.erp.dal.redis.no.ErpNoRedisDAO;
 import cn.iocoder.yudao.module.erp.enums.ErpAuditStatus;
 import cn.iocoder.yudao.module.erp.enums.common.ErpBizTypeEnum;
 import cn.iocoder.yudao.module.erp.service.purchase.ErpPurchaseInService;
+import cn.iocoder.yudao.module.erp.service.purchase.ErpPurchasePriceAdjustService;
 import cn.iocoder.yudao.module.erp.service.purchase.ErpPurchaseReturnService;
 import cn.iocoder.yudao.module.erp.service.purchase.ErpSupplierService;
 import cn.iocoder.yudao.module.system.api.user.AdminUserApi;
@@ -62,6 +64,8 @@ public class ErpFinancePaymentServiceImpl implements ErpFinancePaymentService {
     private ErpPurchaseInService purchaseInService;
     @Resource
     private ErpPurchaseReturnService purchaseReturnService;
+    @Resource
+    private ErpPurchasePriceAdjustService purchasePriceAdjustService;
 
     @Resource
     private AdminUserApi adminUserApi;
@@ -139,20 +143,15 @@ public class ErpFinancePaymentServiceImpl implements ErpFinancePaymentService {
 
     @Override
     @Transactional(rollbackFor = Exception.class)
-    public void updateFinancePaymentStatus(Long id, Integer status) {
-        boolean approve = ErpAuditStatus.APPROVE.getStatus().equals(status);
-        // 1.1 校验存在
+    public void approveFinancePayment(Long id) {
         ErpFinancePaymentDO payment = validateFinancePaymentExists(id);
-        // 1.2 校验状态
-        if (payment.getStatus().equals(status)) {
-            throw exception(approve ? FINANCE_PAYMENT_APPROVE_FAIL : FINANCE_PAYMENT_PROCESS_FAIL);
+        if (ErpAuditStatus.APPROVE.getStatus().equals(payment.getStatus())) {
+            throw exception(FINANCE_PAYMENT_APPROVE_FAIL);
         }
-
-        // 2. 更新状态
         int updateCount = financePaymentMapper.updateByIdAndStatus(id, payment.getStatus(),
-                new ErpFinancePaymentDO().setStatus(status));
+                new ErpFinancePaymentDO().setStatus(ErpAuditStatus.APPROVE.getStatus()));
         if (updateCount == 0) {
-            throw exception(approve ? FINANCE_PAYMENT_APPROVE_FAIL : FINANCE_PAYMENT_PROCESS_FAIL);
+            throw exception(FINANCE_PAYMENT_APPROVE_FAIL);
         }
     }
 
@@ -168,6 +167,10 @@ public class ErpFinancePaymentServiceImpl implements ErpFinancePaymentService {
                 ErpPurchaseReturnDO purchaseReturn = purchaseReturnService.validatePurchaseReturn(item.getBizId());
                 Assert.equals(purchaseReturn.getSupplierId(), supplierId, "供应商必须相同");
                 item.setTotalPrice(purchaseReturn.getTotalPrice().negate()).setBizNo(purchaseReturn.getNo());
+            } else if (ObjectUtil.equal(item.getBizType(), ErpBizTypeEnum.PURCHASE_PRICE_ADJUST.getType())) {
+                ErpPurchasePriceAdjustDO purchasePriceAdjust = purchasePriceAdjustService.validatePurchasePriceAdjust(item.getBizId());
+                Assert.equals(purchasePriceAdjust.getSupplierId(), supplierId, "供应商必须相同");
+                item.setTotalPrice(purchasePriceAdjust.getTotalAdjustPrice()).setBizNo(purchasePriceAdjust.getNo());
             } else {
                 throw new IllegalArgumentException("业务类型不正确：" + item.getBizType());
             }
@@ -204,6 +207,8 @@ public class ErpFinancePaymentServiceImpl implements ErpFinancePaymentService {
                 purchaseInService.updatePurchaseInPaymentPrice(paymentItem.getBizId(), totalPaymentPrice);
             } else if (ErpBizTypeEnum.PURCHASE_RETURN.getType().equals(paymentItem.getBizType())) {
                 purchaseReturnService.updatePurchaseReturnRefundPrice(paymentItem.getBizId(), totalPaymentPrice.negate());
+            } else if (ErpBizTypeEnum.PURCHASE_PRICE_ADJUST.getType().equals(paymentItem.getBizType())) {
+                purchasePriceAdjustService.updatePurchasePriceAdjustPaymentPrice(paymentItem.getBizId(), totalPaymentPrice);
             } else {
                 throw new IllegalArgumentException("业务类型不正确：" + paymentItem.getBizType());
             }

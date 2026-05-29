@@ -1,16 +1,21 @@
 package cn.iocoder.yudao.module.erp.service.sale;
 
 import cn.hutool.core.collection.CollUtil;
+import cn.hutool.core.util.StrUtil;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
 import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpProductRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.priceadjust.ErpSaleOutItemForAdjustRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.priceadjust.ErpSalePriceAdjustImportExcelVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.priceadjust.ErpSalePriceAdjustImportRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.priceadjust.ErpSalePriceAdjustPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.priceadjust.ErpSalePriceAdjustSaveReqVO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.product.ErpProductDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSalePriceAdjustDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSalePriceAdjustItemDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleOutDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleOutItemDO;
+import cn.iocoder.yudao.module.erp.dal.mysql.product.ErpProductMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpSalePriceAdjustItemMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpSalePriceAdjustMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpSaleOutItemMapper;
@@ -25,6 +30,7 @@ import org.springframework.validation.annotation.Validated;
 
 import javax.annotation.Resource;
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -53,6 +59,8 @@ public class ErpSalePriceAdjustServiceImpl implements ErpSalePriceAdjustService 
     private ErpNoRedisDAO noRedisDAO;
     @Resource
     private ErpProductService productService;
+    @Resource
+    private ErpProductMapper productMapper;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -63,6 +71,7 @@ public class ErpSalePriceAdjustServiceImpl implements ErpSalePriceAdjustService 
         ErpSalePriceAdjustDO adjustDO = BeanUtils.toBean(createReqVO, ErpSalePriceAdjustDO.class);
         adjustDO.setNo(no);
         adjustDO.setStatus(ErpAuditStatus.PROCESS.getStatus());
+        adjustDO.setAdjustDate(LocalDateTime.now());
         // 计算调价总金额
         BigDecimal totalAdjustPrice = BigDecimal.ZERO;
         List<ErpSalePriceAdjustItemDO> items = BeanUtils.toBean(createReqVO.getItems(), ErpSalePriceAdjustItemDO.class);
@@ -91,6 +100,7 @@ public class ErpSalePriceAdjustServiceImpl implements ErpSalePriceAdjustService 
         }
         // 2. 更新调价单
         ErpSalePriceAdjustDO updateDO = BeanUtils.toBean(updateReqVO, ErpSalePriceAdjustDO.class);
+        updateDO.setAdjustDate(existDO.getAdjustDate());
         BigDecimal totalAdjustPrice = BigDecimal.ZERO;
         List<ErpSalePriceAdjustItemDO> items = BeanUtils.toBean(updateReqVO.getItems(), ErpSalePriceAdjustItemDO.class);
         for (ErpSalePriceAdjustItemDO item : items) {
@@ -216,6 +226,116 @@ public class ErpSalePriceAdjustServiceImpl implements ErpSalePriceAdjustService 
         return result;
     }
 
+    @Override
+    public ErpSalePriceAdjustImportRespVO importSalePriceAdjustItems(List<ErpSalePriceAdjustImportExcelVO> list) {
+        ErpSalePriceAdjustImportRespVO respVO = new ErpSalePriceAdjustImportRespVO();
+        if (CollUtil.isEmpty(list)) {
+            return respVO;
+        }
+
+        Set<String> productCodes = list.stream()
+                .map(ErpSalePriceAdjustImportExcelVO::getProductCode)
+                .map(this::trimToNull)
+                .filter(StrUtil::isNotBlank)
+                .collect(Collectors.toSet());
+        Map<String, ErpProductDO> productMap = productCodes.isEmpty()
+                ? new HashMap<>()
+                : productMapper.selectListByCodes(productCodes).stream()
+                .collect(Collectors.toMap(ErpProductDO::getCode, item -> item, (a, b) -> a));
+        Map<Long, ErpProductRespVO> productVOMap = productMap.isEmpty()
+                ? new HashMap<>()
+                : productService.getProductVOMap(productMap.values().stream()
+                .map(ErpProductDO::getId).collect(Collectors.toSet()));
+
+        Long importCustomerId = null;
+        Set<String> usedKeys = new HashSet<>();
+        for (int i = 0; i < list.size(); i++) {
+            ErpSalePriceAdjustImportExcelVO row = list.get(i);
+            int rowNo = i + 2;
+            try {
+                if (row == null || isEmptyImportRow(row)) {
+                    continue;
+                }
+                Long customerId = row.getCustomerId();
+                if (customerId == null) {
+                    throw new IllegalArgumentException("客户编号不能为空");
+                }
+                if (importCustomerId == null) {
+                    importCustomerId = customerId;
+                    respVO.setCustomerId(customerId);
+                } else if (!importCustomerId.equals(customerId)) {
+                    throw new IllegalArgumentException("导入文件中客户编号必须保持一致");
+                }
+                String saleOutNo = trimToNull(row.getSaleOutNo());
+                if (saleOutNo == null) {
+                    throw new IllegalArgumentException("销售单号不能为空");
+                }
+                String productCode = trimToNull(row.getProductCode());
+                if (productCode == null) {
+                    throw new IllegalArgumentException("产品编码不能为空");
+                }
+                if (row.getNewPrice() == null || row.getNewPrice().compareTo(BigDecimal.ZERO) < 0) {
+                    throw new IllegalArgumentException("调后价不能小于 0");
+                }
+
+                ErpSaleOutDO saleOut = saleOutMapper.selectByNo(saleOutNo);
+                if (saleOut == null) {
+                    throw new IllegalArgumentException("销售单不存在");
+                }
+                if (!customerId.equals(saleOut.getCustomerId())) {
+                    throw new IllegalArgumentException("销售单与客户编号不匹配");
+                }
+                ErpProductDO product = productMap.get(productCode);
+                if (product == null) {
+                    throw new IllegalArgumentException("产品不存在");
+                }
+
+                List<ErpSaleOutItemDO> matchedItems = saleOutItemMapper.selectListByOutId(saleOut.getId()).stream()
+                        .filter(item -> product.getId().equals(item.getProductId()))
+                        .collect(Collectors.toList());
+                if (matchedItems.isEmpty()) {
+                    throw new IllegalArgumentException("销售单中不存在该产品");
+                }
+                if (matchedItems.size() > 1) {
+                    throw new IllegalArgumentException("销售单中该产品存在多条明细，暂不支持导入，请手动选择");
+                }
+
+                ErpSaleOutItemDO outItem = matchedItems.get(0);
+                String uniqueKey = saleOut.getId() + "_" + outItem.getId();
+                if (!usedKeys.add(uniqueKey)) {
+                    throw new IllegalArgumentException("存在重复导入的销售明细");
+                }
+
+                ErpProductRespVO productVO = productVOMap.get(product.getId());
+                ErpSalePriceAdjustSaveReqVO.Item item = new ErpSalePriceAdjustSaveReqVO.Item();
+                item.setSaleOutId(saleOut.getId());
+                item.setSaleOutItemId(outItem.getId());
+                item.setSaleOutNo(saleOut.getNo());
+                item.setProductId(product.getId());
+                item.setPartCode(product.getCode());
+                item.setPartName(product.getName());
+                item.setUnit(productVO != null ? productVO.getUnitName() : null);
+                item.setBrand(outItem.getBrand());
+                item.setVehicleModel(outItem.getVehicleModel());
+                item.setOriginPlace(outItem.getOriginPlace());
+                item.setOutCount(outItem.getCount());
+                item.setOldPrice(outItem.getProductPrice());
+                item.setNewPrice(row.getNewPrice());
+                item.setAdjustReason(trimToNull(row.getAdjustReason()));
+                item.setItemRemark(trimToNull(row.getItemRemark()));
+                respVO.getItems().add(item);
+                respVO.setSuccessCount(respVO.getSuccessCount() + 1);
+            } catch (Exception ex) {
+                respVO.getFailureDetails().add(new ErpSalePriceAdjustImportRespVO.FailureItem(
+                        rowNo,
+                        row != null ? row.getProductCode() : null,
+                        ex.getMessage()));
+                respVO.setFailureCount(respVO.getFailureCount() + 1);
+            }
+        }
+        return respVO;
+    }
+
     private void approveAndModifySaleOut(ErpSalePriceAdjustDO adjustDO) {
         List<ErpSalePriceAdjustItemDO> adjustItems = salePriceAdjustItemMapper.selectListByAdjustId(adjustDO.getId());
         if (CollUtil.isEmpty(adjustItems)) {
@@ -309,6 +429,18 @@ public class ErpSalePriceAdjustServiceImpl implements ErpSalePriceAdjustService 
             return BigDecimal.ZERO;
         }
         return item.getNewPrice().subtract(item.getOldPrice()).multiply(item.getOutCount());
+    }
+
+    private boolean isEmptyImportRow(ErpSalePriceAdjustImportExcelVO row) {
+        return row == null
+                || row.getCustomerId() == null
+                && StrUtil.isAllBlank(row.getSaleOutNo(), row.getProductCode(), row.getAdjustReason(), row.getItemRemark())
+                && row.getNewPrice() == null;
+    }
+
+    private String trimToNull(String value) {
+        String trimmed = StrUtil.trim(value);
+        return StrUtil.isEmpty(trimmed) ? null : trimmed;
     }
 
     private void recalculateSaleOutItem(ErpSaleOutItemDO item) {

@@ -1,0 +1,9 @@
+#NOTE: This is a Maven Resolver internal implementation file, its format can be changed without prior notice.
+#Thu May 28 11:18:57 CST 2026
+@default-alimaven-http\://maven.aliyun.com/nexus/content/groups/public/.lastUpdated=1779935270346
+@default-spring-milestones-https\://repo.spring.io/milestone/.lastUpdated=1779935270333
+http\://maven.aliyun.com/nexus/content/groups/public/.error=Could not transfer artifact org.springframework.boot\:spring-boot-dependencies\:pom\:2.7.18 from/to alimaven (http\://maven.aliyun.com/nexus/content/groups/public/)\: transfer failed for http\://maven.aliyun.com/nexus/content/groups/public/org/springframework/boot/spring-boot-dependencies/2.7.18/spring-boot-dependencies-2.7.18.pom
+https\://repo.spring.io/milestone/.error=Could not transfer artifact org.springframework.boot\:spring-boot-dependencies\:pom\:2.7.18 from/to spring-milestones (https\://repo.spring.io/milestone)\: transfer failed for https\://repo.spring.io/milestone/org/springframework/boot/spring-boot-dependencies/2.7.18/spring-boot-dependencies-2.7.18.pom
+@default-aliyunmaven-https\://maven.aliyun.com/repository/public/.lastUpdated=1779935270323
+https\://maven.aliyun.com/repository/public/.error=Could not transfer artifact org.springframework.boot\:spring-boot-dependencies\:pom\:2.7.18 from/to aliyunmaven (https\://maven.aliyun.com/repository/public)\: transfer failed for https\://maven.aliyun.com/repository/public/org/springframework/boot/spring-boot-dependencies/2.7.18/spring-boot-dependencies-2.7.18.pom
+https\://mirrors.huaweicloud.com/repository/maven/.lastUpdated=1779938337688

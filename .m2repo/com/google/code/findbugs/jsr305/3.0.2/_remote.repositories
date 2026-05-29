@@ -1,0 +1,4 @@
+#NOTE: This is a Maven Resolver internal implementation file, its format can be changed without prior notice.
+#Thu May 28 11:28:22 CST 2026
+jsr305-3.0.2.jar>huaweicloud=
+jsr305-3.0.2.pom>huaweicloud=

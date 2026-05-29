@@ -17,8 +17,7 @@ public class ErpPurchasePriceAdjustSaveReqVO {
     @Schema(description = "编号", example = "1")
     private Long id;
 
-    @Schema(description = "调价日期", requiredMode = Schema.RequiredMode.REQUIRED)
-    @NotNull(message = "调价日期不能为空")
+    @Schema(description = "调价日期")
     private LocalDateTime adjustTime;
 
     @Schema(description = "供应商编号", requiredMode = Schema.RequiredMode.REQUIRED, example = "1")

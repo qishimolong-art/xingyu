@@ -10,5 +10,6 @@ public class ErpCustomerSaleStatsBO {
     private Long customerId;
     private LocalDateTime lastSaleTime;
     private BigDecimal totalSaleAmount;
+    private BigDecimal otherReceivableAmount;
     private BigDecimal receivableBalance;
 }

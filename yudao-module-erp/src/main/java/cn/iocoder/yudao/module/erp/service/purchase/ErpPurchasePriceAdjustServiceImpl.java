@@ -14,6 +14,7 @@ import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseInDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseInItemDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchasePriceAdjustDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchasePriceAdjustItemDO;
+import cn.iocoder.yudao.module.erp.dal.mysql.finance.ErpFinancePaymentItemMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.purchase.ErpPurchaseInItemMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.purchase.ErpPurchaseInMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.purchase.ErpPurchasePriceAdjustItemMapper;
@@ -21,6 +22,7 @@ import cn.iocoder.yudao.module.erp.dal.mysql.purchase.ErpPurchasePriceAdjustMapp
 import cn.iocoder.yudao.module.erp.dal.mysql.product.ErpProductMapper;
 import cn.iocoder.yudao.module.erp.dal.redis.no.ErpNoRedisDAO;
 import cn.iocoder.yudao.module.erp.enums.ErpAuditStatus;
+import cn.iocoder.yudao.module.erp.enums.common.ErpBizTypeEnum;
 import cn.iocoder.yudao.module.erp.enums.purchase.ErpPurchasePriceAdjustTypeEnum;
 import cn.iocoder.yudao.module.erp.service.product.ErpProductService;
 import cn.iocoder.yudao.module.erp.service.price.ErpPriceHistoryService;
@@ -74,6 +76,8 @@ public class ErpPurchasePriceAdjustServiceImpl implements ErpPurchasePriceAdjust
     private ErpPurchaseInItemMapper purchaseInItemMapper;
     @Resource
     private ErpProductMapper productMapper;
+    @Resource
+    private ErpFinancePaymentItemMapper financePaymentItemMapper;
 
     @Resource
     private ErpNoRedisDAO noRedisDAO;
@@ -110,6 +114,7 @@ public class ErpPurchasePriceAdjustServiceImpl implements ErpPurchasePriceAdjust
         adjustDO.setId(null);
         adjustDO.setNo(no);
         adjustDO.setStatus(ErpAuditStatus.PROCESS.getStatus());
+        adjustDO.setAdjustTime(LocalDateTime.now());
         adjustDO.setTotalAdjustPrice(totalAdjustPrice);
         priceAdjustMapper.insert(adjustDO);
 
@@ -140,6 +145,7 @@ public class ErpPurchasePriceAdjustServiceImpl implements ErpPurchasePriceAdjust
         ErpPurchasePriceAdjustDO updateDO = BeanUtils.toBean(reqVO, ErpPurchasePriceAdjustDO.class);
         updateDO.setNo(existDO.getNo()); // 保持单号不变
         updateDO.setStatus(existDO.getStatus());
+        updateDO.setAdjustTime(LocalDateTime.now());
         updateDO.setTotalAdjustPrice(totalAdjustPrice);
         priceAdjustMapper.updateById(updateDO);
 
@@ -193,12 +199,23 @@ public class ErpPurchasePriceAdjustServiceImpl implements ErpPurchasePriceAdjust
 
     @Override
     public ErpPurchasePriceAdjustDO getPurchasePriceAdjust(Long id) {
-        return priceAdjustMapper.selectById(id);
+        ErpPurchasePriceAdjustDO adjust = priceAdjustMapper.selectById(id);
+        fillPaymentPrice(adjust);
+        return adjust;
+    }
+
+    @Override
+    public ErpPurchasePriceAdjustDO validatePurchasePriceAdjust(Long id) {
+        ErpPurchasePriceAdjustDO adjust = validateExists(id);
+        fillPaymentPrice(adjust);
+        return adjust;
     }
 
     @Override
     public PageResult<ErpPurchasePriceAdjustDO> getPurchasePriceAdjustPage(ErpPurchasePriceAdjustPageReqVO pageReqVO) {
-        return priceAdjustMapper.selectPage(pageReqVO);
+        PageResult<ErpPurchasePriceAdjustDO> pageResult = priceAdjustMapper.selectPage(pageReqVO);
+        fillPaymentPrice(pageResult.getList());
+        return pageResult;
     }
 
     @Override
@@ -280,7 +297,35 @@ public class ErpPurchasePriceAdjustServiceImpl implements ErpPurchasePriceAdjust
         return respVO;
     }
 
+    @Override
+    public void updatePurchasePriceAdjustPaymentPrice(Long id, BigDecimal paymentPrice) {
+        ErpPurchasePriceAdjustDO adjust = validateExists(id);
+        BigDecimal settledPrice = paymentPrice == null ? BigDecimal.ZERO : paymentPrice;
+        BigDecimal totalAdjustPrice = adjust.getTotalAdjustPrice() == null ? BigDecimal.ZERO : adjust.getTotalAdjustPrice();
+        if (settledPrice.abs().compareTo(totalAdjustPrice.abs()) > 0) {
+            throw exception(PURCHASE_PRICE_ADJUST_FAIL_PAYMENT_PRICE_EXCEED, settledPrice, totalAdjustPrice);
+        }
+    }
+
     // ========== 私有辅助方法 ==========
+
+    private void fillPaymentPrice(ErpPurchasePriceAdjustDO adjust) {
+        if (adjust == null) {
+            return;
+        }
+        adjust.setPaymentPrice(financePaymentItemMapper.selectPaymentPriceSumByBizIdAndBizType(
+                adjust.getId(), ErpBizTypeEnum.PURCHASE_PRICE_ADJUST.getType()));
+    }
+
+    private void fillPaymentPrice(List<ErpPurchasePriceAdjustDO> adjusts) {
+        if (CollUtil.isEmpty(adjusts)) {
+            return;
+        }
+        Map<Long, BigDecimal> paymentPriceMap = financePaymentItemMapper.selectPaymentPriceSumMapByBizIdsAndBizType(
+                adjusts.stream().map(ErpPurchasePriceAdjustDO::getId).collect(Collectors.toSet()),
+                ErpBizTypeEnum.PURCHASE_PRICE_ADJUST.getType());
+        adjusts.forEach(adjust -> adjust.setPaymentPrice(paymentPriceMap.getOrDefault(adjust.getId(), BigDecimal.ZERO)));
+    }
 
     private ErpPurchasePriceAdjustDO validateExists(Long id) {
         ErpPurchasePriceAdjustDO adjustDO = priceAdjustMapper.selectById(id);

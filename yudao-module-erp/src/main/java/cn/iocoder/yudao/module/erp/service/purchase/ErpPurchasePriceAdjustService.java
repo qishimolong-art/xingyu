@@ -9,6 +9,7 @@ import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchasePriceAdjus
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchasePriceAdjustItemDO;
 
 import javax.validation.Valid;
+import java.math.BigDecimal;
 import java.util.Collection;
 import java.util.List;
 
@@ -60,6 +61,14 @@ public interface ErpPurchasePriceAdjustService {
     ErpPurchasePriceAdjustDO getPurchasePriceAdjust(Long id);
 
     /**
+     * 校验采购调价单存在
+     *
+     * @param id 调价单 ID
+     * @return 调价单 DO
+     */
+    ErpPurchasePriceAdjustDO validatePurchasePriceAdjust(Long id);
+
+    /**
      * 分页查询采购调价单
      *
      * @param pageReqVO 分页参数
@@ -84,5 +93,13 @@ public interface ErpPurchasePriceAdjustService {
     List<ErpPurchasePriceAdjustItemDO> getPurchasePriceAdjustItemListByAdjustIds(Collection<Long> adjustIds);
 
     ErpPurchasePriceAdjustImportRespVO importPurchasePriceAdjustItems(List<ErpPurchasePriceAdjustImportExcelVO> list);
+
+    /**
+     * 更新采购调价单已结算金额
+     *
+     * @param id           调价单 ID
+     * @param paymentPrice 已结算金额
+     */
+    void updatePurchasePriceAdjustPaymentPrice(Long id, BigDecimal paymentPrice);
 
 }

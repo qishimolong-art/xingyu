@@ -41,6 +41,7 @@ import org.springframework.validation.annotation.Validated;
 
 import javax.annotation.Resource;
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.LinkedHashSet;
@@ -105,7 +106,9 @@ public class ErpSaleQuoteServiceImpl implements ErpSaleQuoteService {
         }
 
         ErpSaleQuoteDO quote = BeanUtils.toBean(createReqVO, ErpSaleQuoteDO.class,
-                in -> in.setNo(no).setStatus(ErpSaleQuoteStatusEnum.PROCESS.getStatus()));
+                in -> in.setNo(no)
+                        .setStatus(ErpSaleQuoteStatusEnum.PROCESS.getStatus())
+                        .setQuoteTime(LocalDateTime.now()));
         calculateTotalPrice(quote, items);
         saleQuoteMapper.insert(quote);
         items.forEach(item -> item.setQuoteId(quote.getId()));
@@ -132,7 +135,8 @@ public class ErpSaleQuoteServiceImpl implements ErpSaleQuoteService {
         if (updateReqVO.getSaleUserId() != null) {
             adminUserApi.validateUser(updateReqVO.getSaleUserId());
         }
-        ErpSaleQuoteDO updateObj = BeanUtils.toBean(updateReqVO, ErpSaleQuoteDO.class);
+        ErpSaleQuoteDO updateObj = BeanUtils.toBean(updateReqVO, ErpSaleQuoteDO.class,
+                in -> in.setQuoteTime(LocalDateTime.now()));
         calculateTotalPrice(updateObj, items);
         saleQuoteMapper.updateById(updateObj);
         saleQuoteItemMapper.deleteByQuoteId(updateReqVO.getId());

@@ -33,12 +33,11 @@ public interface ErpFinanceReceiptService {
     void updateFinanceReceipt(@Valid ErpFinanceReceiptSaveReqVO updateReqVO);
 
     /**
-     * 更新收款单的状态
+     * 审核收款单
      *
      * @param id 编号
-     * @param status 状态
      */
-    void updateFinanceReceiptStatus(Long id, Integer status);
+    void approveFinanceReceipt(Long id);
 
     /**
      * 删除收款单

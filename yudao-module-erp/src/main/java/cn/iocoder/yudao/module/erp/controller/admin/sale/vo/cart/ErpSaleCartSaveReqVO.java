@@ -15,16 +15,25 @@ import java.util.List;
 public class ErpSaleCartSaveReqVO {
 
     private Long id;
+
     @NotNull(message = "客户编号不能为空")
     private Long customerId;
+
     private Long accountId;
+
     private Long saleUserId;
+
     private Long deptId;
-    @NotNull(message = "开单时间不能为空")
+
+    @Schema(description = "开单时间，由系统自动生成")
     private LocalDateTime cartTime;
+
     private BigDecimal discountPercent;
+
     private BigDecimal otherPrice;
+
     private String fileUrl;
+
     private String remark;
 
     // ========== 扩展字段 ==========
@@ -57,15 +66,22 @@ public class ErpSaleCartSaveReqVO {
 
     @Data
     public static class Item {
+
         private Long id;
+
         @NotNull(message = "仓库编号不能为空")
         private Long warehouseId;
+
         @NotNull(message = "产品编号不能为空")
         private Long productId;
+
         private BigDecimal productPrice;
+
         @NotNull(message = "产品数量不能为空")
         private BigDecimal count;
+
         private BigDecimal taxPercent;
+
         private String warehousePosition;
         private String drawingNo;
         private String batchNo;

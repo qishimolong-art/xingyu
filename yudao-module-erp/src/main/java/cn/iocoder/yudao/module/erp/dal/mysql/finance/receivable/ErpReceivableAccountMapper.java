@@ -1,0 +1,175 @@
+package cn.iocoder.yudao.module.erp.dal.mysql.finance.receivable;
+
+import cn.iocoder.yudao.framework.common.pojo.PageResult;
+import cn.iocoder.yudao.framework.mybatis.core.mapper.BaseMapperX;
+import cn.iocoder.yudao.module.erp.controller.admin.finance.receivable.vo.account.ErpReceivableAccountPageReqVO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.finance.receivable.ErpReceivableAccountDO;
+import org.apache.ibatis.annotations.Mapper;
+import org.apache.ibatis.annotations.Param;
+import org.apache.ibatis.annotations.Select;
+
+import java.time.LocalDateTime;
+import java.util.List;
+
+@Mapper
+public interface ErpReceivableAccountMapper extends BaseMapperX<ErpReceivableAccountDO> {
+
+    @Select({
+            "<script>",
+            "SELECT c.id AS customerId,",
+            "       c.name AS customerName,",
+            "       c.contact AS contact,",
+            "       c.mobile AS mobile,",
+            "       c.customer_type AS customerType,",
+            "       c.sale_user_id AS saleUserId,",
+            "       u.nickname AS saleUserName,",
+            "       c.dept_id AS deptId,",
+            "       d.name AS deptName,",
+            "       IFNULL(so.saleOutAmount, 0) AS saleOutAmount,",
+            "       IFNULL(sr.saleReturnAmount, 0) AS saleReturnAmount,",
+            "       IFNULL(pa.priceAdjustAmount, 0) AS priceAdjustAmount,",
+            "       IFNULL(rc.receiptAmount, 0) AS receiptAmount,",
+            "       IFNULL(ro.otherReceivableAmount, 0) AS otherReceivableAmount,",
+            "       IFNULL(ext.advance_amount, 0) AS preAdvanceAmount,",
+            "       IFNULL(so.saleOutAmount, 0) + IFNULL(pa.priceAdjustAmount, 0) + IFNULL(ro.otherReceivableAmount, 0) - IFNULL(sr.saleReturnAmount, 0) - IFNULL(rc.receiptAmount, 0) AS receivableBalance,",
+            "       IFNULL(so.saleOutAmount, 0) + IFNULL(pa.priceAdjustAmount, 0) + IFNULL(ro.otherReceivableAmount, 0) - IFNULL(sr.saleReturnAmount, 0) - IFNULL(rc.receiptAmount, 0) + IFNULL(ext.advance_amount, 0) AS totalReceivable,",
+            "       lastBiz.lastBizTime AS lastBizTime",
+            "  FROM erp_customer c",
+            "  LEFT JOIN system_users u ON u.id = c.sale_user_id",
+            "  LEFT JOIN system_dept d ON d.id = c.dept_id",
+            "  LEFT JOIN erp_customer_extend_info ext ON ext.customer_id = c.id",
+            "  LEFT JOIN (",
+            "       SELECT customer_id, SUM(total_price) AS saleOutAmount, MAX(out_time) AS lastBizTime",
+            "         FROM erp_sale_out",
+            "        WHERE deleted = 0 AND status = 20",
+            "          <if test='reqVO.startTime != null and reqVO.endTime != null'>",
+            "          AND out_time BETWEEN #{reqVO.startTime} AND #{reqVO.endTime}",
+            "          </if>",
+            "        GROUP BY customer_id",
+            "  ) so ON so.customer_id = c.id",
+            "  LEFT JOIN (",
+            "       SELECT customer_id, SUM(total_price) AS saleReturnAmount",
+            "         FROM erp_sale_return",
+            "        WHERE deleted = 0 AND status = 20",
+            "          <if test='reqVO.startTime != null and reqVO.endTime != null'>",
+            "          AND return_time BETWEEN #{reqVO.startTime} AND #{reqVO.endTime}",
+            "          </if>",
+            "        GROUP BY customer_id",
+            "  ) sr ON sr.customer_id = c.id",
+            "  LEFT JOIN (",
+            "       SELECT customer_id, SUM(total_adjust_price) AS priceAdjustAmount, MAX(adjust_date) AS lastBizTime",
+            "         FROM erp_sale_price_adjust",
+            "        WHERE deleted = 0 AND status = 20",
+            "          <if test='reqVO.startTime != null and reqVO.endTime != null'>",
+            "          AND adjust_date BETWEEN #{reqVO.startTime} AND #{reqVO.endTime}",
+            "          </if>",
+            "        GROUP BY customer_id",
+            "  ) pa ON pa.customer_id = c.id",
+            "  LEFT JOIN (",
+            "       SELECT customer_id, SUM(receipt_price) AS receiptAmount, MAX(receipt_time) AS lastBizTime",
+            "         FROM erp_finance_receipt",
+            "        WHERE deleted = 0 AND status = 20",
+            "          <if test='reqVO.startTime != null and reqVO.endTime != null'>",
+            "          AND receipt_time BETWEEN #{reqVO.startTime} AND #{reqVO.endTime}",
+            "          </if>",
+            "        GROUP BY customer_id",
+            "  ) rc ON rc.customer_id = c.id",
+            "  LEFT JOIN (",
+            "       SELECT customer_id, SUM(receivable_amount) AS otherReceivableAmount, MAX(biz_time) AS lastBizTime",
+            "         FROM erp_receivable_other",
+            "        WHERE deleted = 0 AND status = 20",
+            "          <if test='reqVO.startTime != null and reqVO.endTime != null'>",
+            "          AND biz_time BETWEEN #{reqVO.startTime} AND #{reqVO.endTime}",
+            "          </if>",
+            "        GROUP BY customer_id",
+            "  ) ro ON ro.customer_id = c.id",
+            "  LEFT JOIN (",
+            "       SELECT customer_id, MAX(last_biz_time) AS lastBizTime",
+            "         FROM (",
+            "               SELECT customer_id, MAX(out_time) AS last_biz_time FROM erp_sale_out WHERE deleted = 0 AND status = 20 GROUP BY customer_id",
+            "               UNION ALL",
+            "               SELECT customer_id, MAX(return_time) AS last_biz_time FROM erp_sale_return WHERE deleted = 0 AND status = 20 GROUP BY customer_id",
+            "               UNION ALL",
+            "               SELECT customer_id, MAX(adjust_date) AS last_biz_time FROM erp_sale_price_adjust WHERE deleted = 0 AND status = 20 GROUP BY customer_id",
+            "               UNION ALL",
+            "               SELECT customer_id, MAX(receipt_time) AS last_biz_time FROM erp_finance_receipt WHERE deleted = 0 AND status = 20 GROUP BY customer_id",
+            "               UNION ALL",
+            "               SELECT customer_id, MAX(biz_time) AS last_biz_time FROM erp_receivable_other WHERE deleted = 0 AND status = 20 GROUP BY customer_id",
+            "         ) t",
+            "        GROUP BY customer_id",
+            "  ) lastBiz ON lastBiz.customer_id = c.id",
+            " WHERE c.deleted = 0",
+            "   <if test='reqVO.showZeroBalance == null or !reqVO.showZeroBalance'>",
+            "   AND (IFNULL(so.saleOutAmount, 0) + IFNULL(pa.priceAdjustAmount, 0) + IFNULL(ro.otherReceivableAmount, 0) - IFNULL(sr.saleReturnAmount, 0) - IFNULL(rc.receiptAmount, 0)) &lt;&gt; 0",
+            "   </if>",
+            "   <if test='reqVO.customerId != null'> AND c.id = #{reqVO.customerId} </if>",
+            "   <if test='reqVO.customerName != null and reqVO.customerName != \"\"'> AND c.name LIKE CONCAT('%', #{reqVO.customerName}, '%') </if>",
+            "   <if test='reqVO.customerType != null'> AND c.customer_type = #{reqVO.customerType} </if>",
+            "   <if test='reqVO.saleUserId != null'> AND c.sale_user_id = #{reqVO.saleUserId} </if>",
+            "   <if test='reqVO.deptId != null'> AND c.dept_id = #{reqVO.deptId} </if>",
+            " ORDER BY receivableBalance DESC, c.id DESC",
+            "</script>"
+    })
+    List<ErpReceivableAccountDO> selectList(@Param("reqVO") ErpReceivableAccountPageReqVO reqVO);
+
+    default PageResult<ErpReceivableAccountDO> selectPage(ErpReceivableAccountPageReqVO reqVO) {
+        List<ErpReceivableAccountDO> list = selectList(reqVO);
+        long total = list.size();
+        int fromIndex = Math.max(0, (reqVO.getPageNo() - 1) * reqVO.getPageSize());
+        int toIndex = Math.min(list.size(), fromIndex + reqVO.getPageSize());
+        if (fromIndex >= list.size()) {
+            return PageResult.empty((long) total);
+        }
+        return new PageResult<>(list.subList(fromIndex, toIndex), (long) total);
+    }
+
+    @Select({
+            "<script>",
+            "SELECT c.id AS customerId,",
+            "       c.name AS customerName,",
+            "       c.contact AS contact,",
+            "       c.mobile AS mobile,",
+            "       c.customer_type AS customerType,",
+            "       c.sale_user_id AS saleUserId,",
+            "       u.nickname AS saleUserName,",
+            "       c.dept_id AS deptId,",
+            "       d.name AS deptName,",
+            "       IFNULL(so.saleOutAmount, 0) AS saleOutAmount,",
+            "       IFNULL(sr.saleReturnAmount, 0) AS saleReturnAmount,",
+            "       IFNULL(pa.priceAdjustAmount, 0) AS priceAdjustAmount,",
+            "       IFNULL(rc.receiptAmount, 0) AS receiptAmount,",
+            "       IFNULL(ro.otherReceivableAmount, 0) AS otherReceivableAmount,",
+            "       IFNULL(ext.advance_amount, 0) AS preAdvanceAmount,",
+            "       IFNULL(so.saleOutAmount, 0) + IFNULL(pa.priceAdjustAmount, 0) + IFNULL(ro.otherReceivableAmount, 0) - IFNULL(sr.saleReturnAmount, 0) - IFNULL(rc.receiptAmount, 0) AS receivableBalance,",
+            "       IFNULL(so.saleOutAmount, 0) + IFNULL(pa.priceAdjustAmount, 0) + IFNULL(ro.otherReceivableAmount, 0) - IFNULL(sr.saleReturnAmount, 0) - IFNULL(rc.receiptAmount, 0) + IFNULL(ext.advance_amount, 0) AS totalReceivable,",
+            "       lastBiz.lastBizTime AS lastBizTime",
+            "  FROM erp_customer c",
+            "  LEFT JOIN system_users u ON u.id = c.sale_user_id",
+            "  LEFT JOIN system_dept d ON d.id = c.dept_id",
+            "  LEFT JOIN erp_customer_extend_info ext ON ext.customer_id = c.id",
+            "  LEFT JOIN (SELECT customer_id, SUM(total_price) AS saleOutAmount, MAX(out_time) AS lastBizTime FROM erp_sale_out WHERE deleted = 0 AND status = 20 AND customer_id = #{customerId} GROUP BY customer_id) so ON so.customer_id = c.id",
+            "  LEFT JOIN (SELECT customer_id, SUM(total_price) AS saleReturnAmount FROM erp_sale_return WHERE deleted = 0 AND status = 20 AND customer_id = #{customerId} GROUP BY customer_id) sr ON sr.customer_id = c.id",
+            "  LEFT JOIN (SELECT customer_id, SUM(total_adjust_price) AS priceAdjustAmount FROM erp_sale_price_adjust WHERE deleted = 0 AND status = 20 AND customer_id = #{customerId} GROUP BY customer_id) pa ON pa.customer_id = c.id",
+            "  LEFT JOIN (SELECT customer_id, SUM(receipt_price) AS receiptAmount FROM erp_finance_receipt WHERE deleted = 0 AND status = 20 AND customer_id = #{customerId} GROUP BY customer_id) rc ON rc.customer_id = c.id",
+            "  LEFT JOIN (SELECT customer_id, SUM(receivable_amount) AS otherReceivableAmount FROM erp_receivable_other WHERE deleted = 0 AND status = 20 AND customer_id = #{customerId} GROUP BY customer_id) ro ON ro.customer_id = c.id",
+            "  LEFT JOIN (",
+            "       SELECT customer_id, MAX(last_biz_time) AS lastBizTime",
+            "         FROM (",
+            "               SELECT customer_id, MAX(out_time) AS last_biz_time FROM erp_sale_out WHERE deleted = 0 AND status = 20 AND customer_id = #{customerId} GROUP BY customer_id",
+            "               UNION ALL",
+            "               SELECT customer_id, MAX(return_time) AS last_biz_time FROM erp_sale_return WHERE deleted = 0 AND status = 20 AND customer_id = #{customerId} GROUP BY customer_id",
+            "               UNION ALL",
+            "               SELECT customer_id, MAX(adjust_date) AS last_biz_time FROM erp_sale_price_adjust WHERE deleted = 0 AND status = 20 AND customer_id = #{customerId} GROUP BY customer_id",
+            "               UNION ALL",
+            "               SELECT customer_id, MAX(receipt_time) AS last_biz_time FROM erp_finance_receipt WHERE deleted = 0 AND status = 20 AND customer_id = #{customerId} GROUP BY customer_id",
+            "               UNION ALL",
+            "               SELECT customer_id, MAX(biz_time) AS last_biz_time FROM erp_receivable_other WHERE deleted = 0 AND status = 20 AND customer_id = #{customerId} GROUP BY customer_id",
+            "         ) t",
+            "        GROUP BY customer_id",
+            "  ) lastBiz ON lastBiz.customer_id = c.id",
+            " WHERE c.deleted = 0 AND c.id = #{customerId}",
+            "</script>"
+    })
+    ErpReceivableAccountDO selectByCustomerId(@Param("customerId") Long customerId);
+
+}

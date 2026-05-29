@@ -4,15 +4,18 @@ import cn.iocoder.yudao.framework.mybatis.core.dataobject.BaseDO;
 import com.baomidou.mybatisplus.annotation.KeySequence;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
-import lombok.*;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.EqualsAndHashCode;
+import lombok.NoArgsConstructor;
+import lombok.ToString;
 
 /**
  * ERP 结算账户 DO
- *
- * @author 芋道源码
  */
 @TableName("erp_account")
-@KeySequence("erp_account_seq") // 用于 Oracle、PostgreSQL、Kingbase、DB2、H2 数据库的主键自增。如果是 MySQL 等数据库，可不写。
+@KeySequence("erp_account_seq")
 @Data
 @EqualsAndHashCode(callSuper = true)
 @ToString(callSuper = true)
@@ -21,33 +24,49 @@ import lombok.*;
 @AllArgsConstructor
 public class ErpAccountDO extends BaseDO {
 
-    /**
-     * 结算账户编号
-     */
     @TableId
     private Long id;
+
     /**
      * 账户名称
      */
     private String name;
+
+    /**
+     * 账户类型：1-银行账户 2-现金账户 3-其他账户
+     */
+    private Integer accountType;
+
+    /**
+     * 开户行
+     */
+    private String bankName;
+
+    /**
+     * 银行账号
+     */
+    private String bankAccount;
+
     /**
      * 账户编码
      */
     private String no;
+
     /**
      * 备注
      */
     private String remark;
+
     /**
-     * 开启状态
-     *
-     * 枚举 {@link cn.iocoder.yudao.framework.common.enums.CommonStatusEnum}
+     * 状态
      */
     private Integer status;
+
     /**
      * 排序
      */
     private Integer sort;
+
     /**
      * 是否默认
      */

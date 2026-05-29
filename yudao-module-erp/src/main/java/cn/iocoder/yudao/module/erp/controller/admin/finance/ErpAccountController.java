@@ -12,23 +12,34 @@ import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.account.ErpAccoun
 import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.account.ErpAccountSaveReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.ErpAccountDO;
 import cn.iocoder.yudao.module.erp.service.finance.ErpAccountService;
+import cn.iocoder.yudao.module.erp.service.finance.bo.ErpAccountBalanceBO;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.Parameters;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.validation.annotation.Validated;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
 
 import javax.annotation.Resource;
 import javax.servlet.http.HttpServletResponse;
 import javax.validation.Valid;
 import java.io.IOException;
+import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 
 import static cn.iocoder.yudao.framework.apilog.core.enums.OperateTypeEnum.EXPORT;
 import static cn.iocoder.yudao.framework.common.pojo.CommonResult.success;
 import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.convertList;
+import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.convertSet;
 
 @Tag(name = "管理后台 - ERP 结算账户")
 @RestController
@@ -58,10 +69,10 @@ public class ErpAccountController {
     @Operation(summary = "更新结算账户默认状态")
     @Parameters({
             @Parameter(name = "id", description = "编号", required = true),
-            @Parameter(name = "status", description = "状态", required = true)
+            @Parameter(name = "defaultStatus", description = "默认状态", required = true)
     })
     public CommonResult<Boolean> updateAccountDefaultStatus(@RequestParam("id") Long id,
-                                                              @RequestParam("defaultStatus") Boolean defaultStatus) {
+                                                            @RequestParam("defaultStatus") Boolean defaultStatus) {
         accountService.updateAccountDefaultStatus(id, defaultStatus);
         return success(true);
     }
@@ -81,15 +92,31 @@ public class ErpAccountController {
     @PreAuthorize("@ss.hasPermission('erp:account:query')")
     public CommonResult<ErpAccountRespVO> getAccount(@RequestParam("id") Long id) {
         ErpAccountDO account = accountService.getAccount(id);
-        return success(BeanUtils.toBean(account, ErpAccountRespVO.class));
+        ErpAccountRespVO respVO = BeanUtils.toBean(account, ErpAccountRespVO.class);
+        Map<Long, ErpAccountBalanceBO> balanceMap = accountService.getAccountBalanceMap(Collections.singletonList(id));
+        ErpAccountBalanceBO balance = balanceMap.get(id);
+        if (balance != null) {
+            respVO.setCurrentBalance(balance.getCurrentBalance());
+        }
+        return success(respVO);
     }
 
     @GetMapping("/simple-list")
-    @Operation(summary = "获得结算账户精简列表", description = "只包含被开启的结算账户，主要用于前端的下拉选项")
-    public CommonResult<List<ErpAccountRespVO>> getWarehouseSimpleList() {
+    @Operation(summary = "获得结算账户精简列表", description = "只包含已启用的结算账户，主要用于前端下拉选择")
+    public CommonResult<List<ErpAccountRespVO>> getAccountSimpleList() {
         List<ErpAccountDO> list = accountService.getAccountListByStatus(CommonStatusEnum.ENABLE.getStatus());
-        return success(convertList(list, account -> new ErpAccountRespVO().setId(account.getId())
-                .setName(account.getName()).setDefaultStatus(account.getDefaultStatus())));
+        Map<Long, ErpAccountBalanceBO> balanceMap = accountService.getAccountBalanceMap(
+                convertSet(list, ErpAccountDO::getId));
+        return success(convertList(list, account -> new ErpAccountRespVO()
+                .setId(account.getId())
+                .setName(account.getName())
+                .setAccountType(account.getAccountType())
+                .setBankName(account.getBankName())
+                .setBankAccount(account.getBankAccount())
+                .setDefaultStatus(account.getDefaultStatus())
+                .setCurrentBalance(balanceMap.containsKey(account.getId())
+                        ? balanceMap.get(account.getId()).getCurrentBalance()
+                        : null)));
     }
 
     @GetMapping("/page")
@@ -97,7 +124,12 @@ public class ErpAccountController {
     @PreAuthorize("@ss.hasPermission('erp:account:query')")
     public CommonResult<PageResult<ErpAccountRespVO>> getAccountPage(@Valid ErpAccountPageReqVO pageReqVO) {
         PageResult<ErpAccountDO> pageResult = accountService.getAccountPage(pageReqVO);
-        return success(BeanUtils.toBean(pageResult, ErpAccountRespVO.class));
+        Map<Long, ErpAccountBalanceBO> balanceMap = accountService.getAccountBalanceMap(
+                convertSet(pageResult.getList(), ErpAccountDO::getId));
+        return success(BeanUtils.toBean(pageResult, ErpAccountRespVO.class, account ->
+                account.setCurrentBalance(balanceMap.containsKey(account.getId())
+                        ? balanceMap.get(account.getId()).getCurrentBalance()
+                        : null)));
     }
 
     @GetMapping("/export-excel")
@@ -105,12 +137,11 @@ public class ErpAccountController {
     @PreAuthorize("@ss.hasPermission('erp:account:export')")
     @ApiAccessLog(operateType = EXPORT)
     public void exportAccountExcel(@Valid ErpAccountPageReqVO pageReqVO,
-              HttpServletResponse response) throws IOException {
+                                   HttpServletResponse response) throws IOException {
         pageReqVO.setPageSize(PageParam.PAGE_SIZE_NONE);
         List<ErpAccountDO> list = accountService.getAccountPage(pageReqVO).getList();
-        // 导出 Excel
         ExcelUtils.write(response, "结算账户.xls", "数据", ErpAccountRespVO.class,
-                        BeanUtils.toBean(list, ErpAccountRespVO.class));
+                BeanUtils.toBean(list, ErpAccountRespVO.class));
     }
 
 }

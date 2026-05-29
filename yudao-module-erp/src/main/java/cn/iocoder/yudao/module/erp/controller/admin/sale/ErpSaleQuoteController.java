@@ -45,6 +45,7 @@ import java.util.Collections;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import static cn.iocoder.yudao.framework.apilog.core.enums.OperateTypeEnum.EXPORT;
 import static cn.iocoder.yudao.framework.common.pojo.CommonResult.success;
@@ -161,15 +162,32 @@ public class ErpSaleQuoteController {
         List<ErpSaleQuoteItemDO> itemList = saleQuoteService.getSaleQuoteItemListByQuoteIds(
                 convertSet(pageResult.getList(), ErpSaleQuoteDO::getId));
         Map<Long, List<ErpSaleQuoteItemDO>> itemMap = convertMultiMap(itemList, ErpSaleQuoteItemDO::getQuoteId);
+        Set<Long> userIds = convertSet(pageResult.getList(), quote -> parseLongSafely(quote.getCreator()));
+        userIds.addAll(convertSet(pageResult.getList(), quote -> parseLongSafely(quote.getUpdater())));
+        userIds.remove(null);
+        Map<Long, AdminUserRespDTO> userMap = CollUtil.isNotEmpty(userIds)
+                ? adminUserApi.getUserMap(userIds) : Collections.emptyMap();
         return BeanUtils.toBean(pageResult, ErpSaleQuoteRespVO.class,
-                quote -> fillRelation(quote, itemMap.get(quote.getId())));
+                quote -> fillRelation(quote, itemMap.get(quote.getId()), userMap));
     }
 
     private ErpSaleQuoteRespVO buildSaleQuoteRespVO(ErpSaleQuoteDO quote, List<ErpSaleQuoteItemDO> items) {
-        return BeanUtils.toBean(quote, ErpSaleQuoteRespVO.class, vo -> fillRelation(vo, items));
+        Long creatorId = parseLongSafely(quote.getCreator());
+        Long updaterId = parseLongSafely(quote.getUpdater());
+        List<Long> userIds = new ArrayList<>();
+        if (creatorId != null) {
+            userIds.add(creatorId);
+        }
+        if (updaterId != null && !updaterId.equals(creatorId)) {
+            userIds.add(updaterId);
+        }
+        Map<Long, AdminUserRespDTO> userMap = CollUtil.isNotEmpty(userIds)
+                ? adminUserApi.getUserMap(userIds) : Collections.emptyMap();
+        return BeanUtils.toBean(quote, ErpSaleQuoteRespVO.class, vo -> fillRelation(vo, items, userMap));
     }
 
-    private void fillRelation(ErpSaleQuoteRespVO vo, List<ErpSaleQuoteItemDO> items) {
+    private void fillRelation(ErpSaleQuoteRespVO vo, List<ErpSaleQuoteItemDO> items,
+                              Map<Long, AdminUserRespDTO> userMap) {
         Map<Long, ErpProductRespVO> productMap = productService.getProductVOMap(convertSet(items, ErpSaleQuoteItemDO::getProductId));
         vo.setItems(BeanUtils.toBean(items, ErpSaleQuoteRespVO.Item.class,
                 item -> MapUtils.findAndThen(productMap, item.getProductId(), product -> item.setProductName(product.getName())
@@ -177,6 +195,14 @@ public class ErpSaleQuoteController {
         vo.setProductNames(CollUtil.join(vo.getItems(), "，", ErpSaleQuoteRespVO.Item::getProductName));
         Map<Long, ErpCustomerDO> customerMap = customerService.getCustomerMap(convertSet(Collections.singletonList(vo), ErpSaleQuoteRespVO::getCustomerId));
         MapUtils.findAndThen(customerMap, vo.getCustomerId(), customer -> vo.setCustomerName(customer.getName()));
+        Long creatorId = parseLongSafely(vo.getCreator());
+        if (creatorId != null) {
+            MapUtils.findAndThen(userMap, creatorId, user -> vo.setCreatorName(user.getNickname()));
+        }
+        Long updaterId = parseLongSafely(vo.getUpdater());
+        if (updaterId != null) {
+            MapUtils.findAndThen(userMap, updaterId, user -> vo.setUpdaterName(user.getNickname()));
+        }
         // 填充业务员名称
         if (vo.getSaleUserId() != null) {
             AdminUserRespDTO user = adminUserApi.getUser(vo.getSaleUserId());
@@ -191,6 +217,17 @@ public class ErpSaleQuoteController {
             if (saleOut != null) {
                 vo.setGeneratedSaleOutNo(saleOut.getNo());
             }
+        }
+    }
+
+    private static Long parseLongSafely(String value) {
+        if (value == null || value.isEmpty()) {
+            return null;
+        }
+        try {
+            return Long.parseLong(value);
+        } catch (NumberFormatException ex) {
+            return null;
         }
     }
 

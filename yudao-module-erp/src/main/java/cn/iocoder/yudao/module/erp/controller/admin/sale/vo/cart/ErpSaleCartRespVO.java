@@ -23,6 +23,7 @@ public class ErpSaleCartRespVO {
     private String customerName;
     private Long accountId;
     private Long saleUserId;
+    private String saleUserName;
     private Long deptId;
     @ExcelProperty("开单时间")
     private LocalDateTime cartTime;
@@ -42,10 +43,15 @@ public class ErpSaleCartRespVO {
     private Integer sourceType;
     private Long sourceId;
     private String sourceNo;
+    private String creator;
+    private String updater;
     private String fileUrl;
     @ExcelProperty("备注")
     private String remark;
+    private String creatorName;
+    private String updaterName;
     private LocalDateTime createTime;
+    private LocalDateTime updateTime;
 
     // ========== 扩展字段 ==========
     private String businessType;

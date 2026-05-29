@@ -33,12 +33,11 @@ public interface ErpFinancePaymentService {
     void updateFinancePayment(@Valid ErpFinancePaymentSaveReqVO updateReqVO);
 
     /**
-     * 更新付款单的状态
+     * 审核付款单
      *
      * @param id 编号
-     * @param status 状态
      */
-    void updateFinancePaymentStatus(Long id, Integer status);
+    void approveFinancePayment(Long id);
 
     /**
      * 删除付款单

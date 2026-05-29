@@ -163,6 +163,12 @@ public class ErpPurchasePriceAdjustController {
             } catch (NumberFormatException ignored) {
             }
         }
+        if (adjust.getUpdater() != null) {
+            try {
+                userIds.add(Long.parseLong(adjust.getUpdater()));
+            } catch (NumberFormatException ignored) {
+            }
+        }
         Map<Long, AdminUserRespDTO> userMap = adminUserApi.getUserMap(userIds);
         if (adjust.getAdjuster() != null) {
             MapUtils.findAndThen(userMap, adjust.getAdjuster(), u -> respVO.setAdjusterName(u.getNickname()));
@@ -171,6 +177,13 @@ public class ErpPurchasePriceAdjustController {
             try {
                 long creatorId = Long.parseLong(adjust.getCreator());
                 MapUtils.findAndThen(userMap, creatorId, u -> respVO.setCreatorName(u.getNickname()));
+            } catch (NumberFormatException ignored) {
+            }
+        }
+        if (adjust.getUpdater() != null) {
+            try {
+                long updaterId = Long.parseLong(adjust.getUpdater());
+                MapUtils.findAndThen(userMap, updaterId, u -> respVO.setUpdaterName(u.getNickname()));
             } catch (NumberFormatException ignored) {
             }
         }
@@ -218,6 +231,12 @@ public class ErpPurchasePriceAdjustController {
                 } catch (NumberFormatException ignored) {
                 }
             }
+            if (adjust.getUpdater() != null) {
+                try {
+                    userIds.add(Long.parseLong(adjust.getUpdater()));
+                } catch (NumberFormatException ignored) {
+                }
+            }
         }
         Map<Long, AdminUserRespDTO> userMap = adminUserApi.getUserMap(userIds);
         Set<Long> deptIds = convertSet(pageResult.getList(), ErpPurchasePriceAdjustDO::getDeptId);
@@ -233,6 +252,13 @@ public class ErpPurchasePriceAdjustController {
                 try {
                     long creatorId = Long.parseLong(respVO.getCreator());
                     MapUtils.findAndThen(userMap, creatorId, u -> respVO.setCreatorName(u.getNickname()));
+                } catch (NumberFormatException ignored) {
+                }
+            }
+            if (respVO.getUpdater() != null) {
+                try {
+                    long updaterId = Long.parseLong(respVO.getUpdater());
+                    MapUtils.findAndThen(userMap, updaterId, u -> respVO.setUpdaterName(u.getNickname()));
                 } catch (NumberFormatException ignored) {
                 }
             }
@@ -270,6 +296,10 @@ public class ErpPurchasePriceAdjustController {
             row.setStatus(null);
             row.setAdjusterName(null);
             row.setTotalAdjustPrice(null);
+            row.setCreatorName(null);
+            row.setCreateTime(null);
+            row.setUpdaterName(null);
+            row.setUpdateTime(null);
             row.setRemark(null);
         }
         if (item == null) {

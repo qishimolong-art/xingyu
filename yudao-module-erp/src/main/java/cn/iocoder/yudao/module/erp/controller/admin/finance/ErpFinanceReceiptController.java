@@ -72,11 +72,10 @@ public class ErpFinanceReceiptController {
     }
 
     @PutMapping("/update-status")
-    @Operation(summary = "更新收款单的状态")
+    @Operation(summary = "审核收款单")
     @PreAuthorize("@ss.hasPermission('erp:finance-receipt:update-status')")
-    public CommonResult<Boolean> updateFinanceReceiptStatus(@RequestParam("id") Long id,
-                                                           @RequestParam("status") Integer status) {
-        financeReceiptService.updateFinanceReceiptStatus(id, status);
+    public CommonResult<Boolean> approveFinanceReceipt(@RequestParam("id") Long id) {
+        financeReceiptService.approveFinanceReceipt(id);
         return success(true);
     }
 

@@ -9,6 +9,7 @@ import org.apache.ibatis.annotations.Mapper;
 
 import java.math.BigDecimal;
 import java.util.Collection;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -39,6 +40,39 @@ public interface ErpFinancePaymentItemMapper extends BaseMapperX<ErpFinancePayme
             return BigDecimal.ZERO;
         }
         return BigDecimal.valueOf(MapUtil.getDouble(result.get(0), "payment_price_sum", 0D));
+    }
+
+    default Map<Long, BigDecimal> selectPaymentPriceSumMapByBizIdsAndBizType(Collection<Long> bizIds, Integer bizType) {
+        if (CollUtil.isEmpty(bizIds)) {
+            return new HashMap<>();
+        }
+        List<Map<String, Object>> result = selectMaps(new QueryWrapper<ErpFinancePaymentItemDO>()
+                .select("biz_id, SUM(payment_price) AS payment_price_sum")
+                .eq("biz_type", bizType)
+                .in("biz_id", bizIds)
+                .groupBy("biz_id"));
+        Map<Long, BigDecimal> resultMap = new HashMap<>();
+        for (Map<String, Object> row : result) {
+            Number bizId = (Number) row.get("biz_id");
+            if (bizId == null) {
+                continue;
+            }
+            resultMap.put(bizId.longValue(), toBigDecimal(row.get("payment_price_sum")));
+        }
+        return resultMap;
+    }
+
+    static BigDecimal toBigDecimal(Object value) {
+        if (value == null) {
+            return BigDecimal.ZERO;
+        }
+        if (value instanceof BigDecimal) {
+            return (BigDecimal) value;
+        }
+        if (value instanceof Number) {
+            return BigDecimal.valueOf(((Number) value).doubleValue());
+        }
+        return new BigDecimal(value.toString());
     }
 
 }

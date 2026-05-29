@@ -2,6 +2,7 @@ package cn.iocoder.yudao.module.erp.dal.dataobject.purchase;
 
 import cn.iocoder.yudao.framework.mybatis.core.dataobject.BaseDO;
 import com.baomidou.mybatisplus.annotation.KeySequence;
+import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.*;
@@ -71,6 +72,11 @@ public class ErpPurchasePriceAdjustDO extends BaseDO {
      * 调价总金额（可正可负）
      */
     private BigDecimal totalAdjustPrice;
+    /**
+     * 已结算金额
+     */
+    @TableField(exist = false)
+    private BigDecimal paymentPrice;
     /**
      * 审批通过时间
      */

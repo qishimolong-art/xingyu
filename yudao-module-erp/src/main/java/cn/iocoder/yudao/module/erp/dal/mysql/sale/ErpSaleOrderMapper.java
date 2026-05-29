@@ -23,11 +23,11 @@ public interface ErpSaleOrderMapper extends BaseMapperX<ErpSaleOrderDO> {
 
     default PageResult<ErpSaleOrderDO> selectPage(ErpSaleOrderPageReqVO reqVO) {
         MPJLambdaWrapperX<ErpSaleOrderDO> query = new MPJLambdaWrapperX<ErpSaleOrderDO>()
-                .likeIfPresent(ErpSaleOrderDO::getNo, reqVO.getNo())
+                .likeIfPresent(ErpSaleOrderDO::getNo, normalizeLikeValue(reqVO.getNo()))
                 .eqIfPresent(ErpSaleOrderDO::getCustomerId, reqVO.getCustomerId())
                 .betweenIfPresent(ErpSaleOrderDO::getOrderTime, reqVO.getOrderTime())
                 .eqIfPresent(ErpSaleOrderDO::getStatus, reqVO.getStatus())
-                .likeIfPresent(ErpSaleOrderDO::getRemark, reqVO.getRemark())
+                .likeIfPresent(ErpSaleOrderDO::getRemark, normalizeLikeValue(reqVO.getRemark()))
                 .eqIfPresent(ErpSaleOrderDO::getCreator, reqVO.getCreator())
                 .orderByDesc(ErpSaleOrderDO::getId);
         // 入库状态。为什么需要 t. 的原因，是因为联表查询时，需要指定表名，不然会报 out_count 错误
@@ -71,6 +71,14 @@ public interface ErpSaleOrderMapper extends BaseMapperX<ErpSaleOrderDO> {
 
     default ErpSaleOrderDO selectByNo(String no) {
         return selectOne(ErpSaleOrderDO::getNo, no);
+    }
+
+    static String normalizeLikeValue(String value) {
+        if (value == null) {
+            return null;
+        }
+        String normalized = value.trim().replaceAll("\\s+", "%");
+        return normalized.isEmpty() ? null : normalized;
     }
 
 }

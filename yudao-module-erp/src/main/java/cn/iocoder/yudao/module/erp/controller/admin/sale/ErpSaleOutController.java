@@ -9,6 +9,7 @@ import cn.iocoder.yudao.framework.common.util.collection.MapUtils;
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
 import cn.iocoder.yudao.framework.excel.core.util.ExcelUtils;
 import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpProductRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.out.ErpSaleOutExportRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.out.ErpSaleOutPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.out.ErpSaleOutRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.out.ErpSaleReturnableItemRespVO;
@@ -221,11 +222,33 @@ public class ErpSaleOutController {
     @PreAuthorize("@ss.hasPermission('erp:sale-out:export')")
     @ApiAccessLog(operateType = EXPORT)
     public void exportSaleOutExcel(@Valid ErpSaleOutPageReqVO pageReqVO,
-                                    HttpServletResponse response) throws IOException {
+                                   HttpServletResponse response) throws IOException {
         pageReqVO.setPageSize(PageParam.PAGE_SIZE_NONE);
-        List<ErpSaleOutRespVO> list = buildSaleOutVOPageResult(saleOutService.getSaleOutPage(pageReqVO)).getList();
-        // 导出 Excel
-        ExcelUtils.write(response, "销售出库.xls", "数据", ErpSaleOutRespVO.class, list);
+        PageResult<ErpSaleOutDO> pageResult = saleOutService.getSaleOutPage(pageReqVO);
+        List<ErpSaleOutItemDO> saleOutItemList = saleOutService.getSaleOutItemListByOutIds(
+                convertSet(pageResult.getList(), ErpSaleOutDO::getId));
+        Map<Long, List<ErpSaleOutItemDO>> saleOutItemMap = convertMultiMap(saleOutItemList, ErpSaleOutItemDO::getOutId);
+        Map<Long, ErpProductRespVO> productMap = productService.getProductVOMap(
+                convertSet(saleOutItemList, ErpSaleOutItemDO::getProductId));
+        Map<Long, ErpCustomerDO> customerMap = customerService.getCustomerMap(
+                convertSet(pageResult.getList(), ErpSaleOutDO::getCustomerId));
+        Set<Long> userIds = new HashSet<>();
+        pageResult.getList().forEach(out -> {
+            if (out.getCreator() != null) {
+                try {
+                    userIds.add(Long.parseLong(out.getCreator()));
+                } catch (NumberFormatException ignored) {
+                }
+            }
+            if (out.getSaleUserId() != null) {
+                userIds.add(out.getSaleUserId());
+            }
+        });
+        Map<Long, AdminUserRespDTO> userMap = userIds.isEmpty() ? new HashMap<>() : adminUserApi.getUserMap(userIds);
+        Map<Long, ErpWarehouseDO> warehouseMap = warehouseService.getWarehouseMap(
+                convertSet(saleOutItemList, ErpSaleOutItemDO::getWarehouseId));
+        ExcelUtils.write(response, "销售单.xls", "数据", ErpSaleOutExportRespVO.class,
+                buildSaleOutExportList(pageResult.getList(), saleOutItemMap, productMap, customerMap, userMap, warehouseMap));
     }
 
     private PageResult<ErpSaleOutRespVO> buildSaleOutVOPageResult(PageResult<ErpSaleOutDO> pageResult) {
@@ -304,6 +327,77 @@ public class ErpSaleOutController {
             return 0;
         }
         return allReturned ? 2 : 1;
+    }
+
+    private List<ErpSaleOutExportRespVO> buildSaleOutExportList(List<ErpSaleOutDO> list,
+                                                                Map<Long, List<ErpSaleOutItemDO>> saleOutItemMap,
+                                                                Map<Long, ErpProductRespVO> productMap,
+                                                                Map<Long, ErpCustomerDO> customerMap,
+                                                                Map<Long, AdminUserRespDTO> userMap,
+                                                                Map<Long, ErpWarehouseDO> warehouseMap) {
+        List<ErpSaleOutExportRespVO> rows = new ArrayList<>();
+        for (ErpSaleOutDO saleOut : list) {
+            List<ErpSaleOutItemDO> items = saleOutItemMap.getOrDefault(saleOut.getId(), Collections.emptyList());
+            if (CollUtil.isEmpty(items)) {
+                rows.add(buildSaleOutExportRow(saleOut, customerMap.get(saleOut.getCustomerId()),
+                        getCreator(userMap, saleOut.getCreator()), userMap.get(saleOut.getSaleUserId()),
+                        null, null, null, true));
+                continue;
+            }
+            for (int i = 0; i < items.size(); i++) {
+                ErpSaleOutItemDO item = items.get(i);
+                rows.add(buildSaleOutExportRow(saleOut, customerMap.get(saleOut.getCustomerId()),
+                        getCreator(userMap, saleOut.getCreator()), userMap.get(saleOut.getSaleUserId()),
+                        item, productMap.get(item.getProductId()), warehouseMap.get(item.getWarehouseId()), i == 0));
+            }
+        }
+        return rows;
+    }
+
+    private ErpSaleOutExportRespVO buildSaleOutExportRow(ErpSaleOutDO saleOut,
+                                                         ErpCustomerDO customer,
+                                                         AdminUserRespDTO creator,
+                                                         AdminUserRespDTO saleUser,
+                                                         ErpSaleOutItemDO item,
+                                                         ErpProductRespVO product,
+                                                         ErpWarehouseDO warehouse,
+                                                         boolean fillMainFields) {
+        ErpSaleOutExportRespVO row = fillMainFields
+                ? BeanUtils.toBean(saleOut, ErpSaleOutExportRespVO.class)
+                : new ErpSaleOutExportRespVO();
+        row.setCustomerName(fillMainFields && customer != null ? customer.getName() : null);
+        row.setCreatorName(fillMainFields && creator != null ? creator.getNickname() : null);
+        row.setSaleUserName(fillMainFields && saleUser != null ? saleUser.getNickname() : null);
+        if (item == null) {
+            return row;
+        }
+        row.setProductCode(product != null ? product.getCode() : null);
+        row.setProductName(product != null ? product.getName() : null);
+        row.setProductUnitName(product != null ? product.getUnitName() : null);
+        row.setWarehouseName(warehouse != null ? warehouse.getName() : null);
+        row.setItemCount(item.getCount());
+        row.setProductPrice(item.getProductPrice());
+        row.setItemTotalPrice(item.getTotalPrice());
+        row.setItemTaxPercent(item.getTaxPercent());
+        row.setItemTaxPrice(item.getTaxPrice());
+        row.setBrand(item.getBrand());
+        row.setVehicleModel(item.getVehicleModel());
+        row.setStandard(item.getStandard());
+        row.setOriginPlace(item.getOriginPlace());
+        row.setWarehousePosition(item.getWarehousePosition());
+        row.setItemRemark(item.getRemark());
+        return row;
+    }
+
+    private AdminUserRespDTO getCreator(Map<Long, AdminUserRespDTO> userMap, String creator) {
+        if (creator == null) {
+            return null;
+        }
+        try {
+            return userMap.get(Long.parseLong(creator));
+        } catch (NumberFormatException ignored) {
+            return null;
+        }
     }
 
 }

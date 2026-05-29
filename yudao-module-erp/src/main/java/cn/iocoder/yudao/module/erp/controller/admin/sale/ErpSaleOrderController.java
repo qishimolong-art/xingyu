@@ -192,24 +192,35 @@ public class ErpSaleOrderController {
         List<ErpSaleOrderExportRespVO> rows = new ArrayList<>();
         for (ErpSaleOrderRespVO saleOrder : list) {
             if (CollUtil.isEmpty(saleOrder.getItems())) {
-                rows.add(BeanUtils.toBean(saleOrder, ErpSaleOrderExportRespVO.class));
+                rows.add(buildSaleOrderExportRow(saleOrder, null, true));
                 continue;
             }
-            for (ErpSaleOrderRespVO.Item item : saleOrder.getItems()) {
-                rows.add(BeanUtils.toBean(saleOrder, ErpSaleOrderExportRespVO.class, row -> {
-                    row.setProductCode(item.getProductCode());
-                    row.setProductName(item.getProductName());
-                    row.setProductUnitName(item.getProductUnitName());
-                    row.setItemCount(item.getCount());
-                    row.setProductPrice(item.getProductPrice());
-                    row.setItemTotalPrice(item.getTotalPrice());
-                    row.setItemTaxPercent(item.getTaxPercent());
-                    row.setItemTaxPrice(item.getTaxPrice());
-                    row.setItemRemark(item.getRemark());
-                }));
+            for (int i = 0; i < saleOrder.getItems().size(); i++) {
+                rows.add(buildSaleOrderExportRow(saleOrder, saleOrder.getItems().get(i), i == 0));
             }
         }
         return rows;
+    }
+
+    private ErpSaleOrderExportRespVO buildSaleOrderExportRow(ErpSaleOrderRespVO saleOrder,
+                                                             ErpSaleOrderRespVO.Item item,
+                                                             boolean fillMainFields) {
+        ErpSaleOrderExportRespVO row = fillMainFields
+                ? BeanUtils.toBean(saleOrder, ErpSaleOrderExportRespVO.class)
+                : new ErpSaleOrderExportRespVO();
+        if (item == null) {
+            return row;
+        }
+        row.setProductCode(item.getProductCode());
+        row.setProductName(item.getProductName());
+        row.setProductUnitName(item.getProductUnitName());
+        row.setItemCount(item.getCount());
+        row.setProductPrice(item.getProductPrice());
+        row.setItemTotalPrice(item.getTotalPrice());
+        row.setItemTaxPercent(item.getTaxPercent());
+        row.setItemTaxPrice(item.getTaxPrice());
+        row.setItemRemark(item.getRemark());
+        return row;
     }
 
 }
