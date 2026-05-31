@@ -2,10 +2,13 @@ package cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.priceadjust;
 
 import cn.idev.excel.annotation.ExcelIgnoreUnannotated;
 import cn.idev.excel.annotation.ExcelProperty;
+import cn.iocoder.yudao.framework.excel.core.annotations.DictFormat;
 import lombok.Data;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+
+import static cn.iocoder.yudao.module.erp.enums.DictTypeConstants.AUDIT_STATUS;
 
 @Data
 @ExcelIgnoreUnannotated
@@ -17,13 +20,17 @@ public class ErpPurchasePriceAdjustExportRespVO {
     @ExcelProperty("供应商")
     private String supplierName;
 
+    @ExcelProperty("部门")
+    private String deptName;
+
     @ExcelProperty("调价日期")
     private LocalDateTime adjustTime;
 
     @ExcelProperty("调价方式")
-    private Integer adjustType;
+    private String adjustTypeName;
 
     @ExcelProperty("状态")
+    @DictFormat(AUDIT_STATUS)
     private Integer status;
 
     @ExcelProperty("调价人")
@@ -31,6 +38,12 @@ public class ErpPurchasePriceAdjustExportRespVO {
 
     @ExcelProperty("调价总额")
     private BigDecimal totalAdjustPrice;
+
+    @ExcelProperty("已结算金额")
+    private BigDecimal paymentPrice;
+
+    @ExcelProperty("审批通过时间")
+    private LocalDateTime approveTime;
 
     @ExcelProperty("创建人")
     private String creatorName;
@@ -53,21 +66,48 @@ public class ErpPurchasePriceAdjustExportRespVO {
     @ExcelProperty("产品名称")
     private String productName;
 
+    @ExcelProperty("单位")
+    private String productUnitName;
+
+    @ExcelProperty("车型")
+    private String vehicleModel;
+
+    @ExcelProperty("规格")
+    private String standard;
+
+    @ExcelProperty("特征码")
+    private String featureCode;
+
+    @ExcelProperty("产地")
+    private String originPlace;
+
+    @ExcelProperty("品牌")
+    private String brand;
+
+    @ExcelProperty("图号")
+    private String drawingNo;
+
     @ExcelProperty("仓库")
     private String warehouseName;
+
+    @ExcelProperty("货架位")
+    private String warehousePosition;
 
     @ExcelProperty("入库单号")
     private String inNo;
 
-    @ExcelProperty("原价")
+    @ExcelProperty("原单价")
     private BigDecimal oldPrice;
 
-    @ExcelProperty("新价")
+    @ExcelProperty("调价后单价")
     private BigDecimal newPrice;
 
-    @ExcelProperty("调价数量")
+    @ExcelProperty("数量")
     private BigDecimal count;
 
-    @ExcelProperty("调价金额")
+    @ExcelProperty("调价比率(%)")
+    private BigDecimal adjustRatio;
+
+    @ExcelProperty("调价差额")
     private BigDecimal adjustPrice;
 }

@@ -71,6 +71,14 @@ public interface ErpVoucherService {
     PageResult<ErpVoucherDO> getVoucherPage(ErpVoucherPageReqVO pageReqVO);
 
     /**
+     * 按编号集合查询凭证列表
+     *
+     * @param ids 编号集合
+     * @return 凭证列表
+     */
+    List<ErpVoucherDO> getVoucherList(List<Long> ids);
+
+    /**
      * 获得凭证分录列表
      *
      * @param voucherId 凭证编号

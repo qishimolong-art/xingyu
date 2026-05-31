@@ -9,6 +9,7 @@ import cn.iocoder.yudao.framework.common.util.collection.MapUtils;
 import cn.iocoder.yudao.framework.common.util.number.NumberUtils;
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
 import cn.iocoder.yudao.framework.excel.core.util.ExcelUtils;
+import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.payment.ErpFinancePaymentExportRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.payment.ErpFinancePaymentPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.payment.ErpFinancePaymentRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.payment.ErpFinancePaymentSaveReqVO;
@@ -16,6 +17,7 @@ import cn.iocoder.yudao.module.erp.dal.dataobject.finance.ErpAccountDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.ErpFinancePaymentDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.ErpFinancePaymentItemDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpSupplierDO;
+import cn.iocoder.yudao.module.erp.enums.common.ErpBizTypeEnum;
 import cn.iocoder.yudao.module.erp.service.finance.ErpAccountService;
 import cn.iocoder.yudao.module.erp.service.finance.ErpFinancePaymentService;
 import cn.iocoder.yudao.module.erp.service.purchase.ErpSupplierService;
@@ -32,6 +34,8 @@ import javax.annotation.Resource;
 import javax.servlet.http.HttpServletResponse;
 import javax.validation.Valid;
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Stream;
@@ -52,7 +56,6 @@ public class ErpFinancePaymentController {
     private ErpSupplierService supplierService;
     @Resource
     private ErpAccountService accountService;
-
     @Resource
     private AdminUserApi adminUserApi;
 
@@ -98,8 +101,9 @@ public class ErpFinancePaymentController {
             return success(null);
         }
         List<ErpFinancePaymentItemDO> paymentItemList = financePaymentService.getFinancePaymentItemListByPaymentId(id);
-        return success(BeanUtils.toBean(payment, ErpFinancePaymentRespVO.class, financePaymentVO ->
-                financePaymentVO.setItems(BeanUtils.toBean(paymentItemList, ErpFinancePaymentRespVO.Item.class))));
+        return success(BeanUtils.toBean(payment, ErpFinancePaymentRespVO.class,
+                financePaymentVO -> financePaymentVO.setItems(
+                        BeanUtils.toBean(paymentItemList, ErpFinancePaymentRespVO.Item.class))));
     }
 
     @GetMapping("/page")
@@ -115,38 +119,120 @@ public class ErpFinancePaymentController {
     @PreAuthorize("@ss.hasPermission('erp:finance-payment:export')")
     @ApiAccessLog(operateType = EXPORT)
     public void exportFinancePaymentExcel(@Valid ErpFinancePaymentPageReqVO pageReqVO,
-                                         HttpServletResponse response) throws IOException {
-        pageReqVO.setPageSize(PageParam.PAGE_SIZE_NONE);
-        List<ErpFinancePaymentRespVO> list = buildFinancePaymentVOPageResult(financePaymentService.getFinancePaymentPage(pageReqVO)).getList();
-        // 导出 Excel
-        ExcelUtils.write(response, "付款单.xls", "数据", ErpFinancePaymentRespVO.class, list);
+                                          HttpServletResponse response) throws IOException {
+        List<ErpFinancePaymentDO> exportList = getFinancePaymentExportList(pageReqVO);
+        List<ErpFinancePaymentItemDO> paymentItemList = financePaymentService.getFinancePaymentItemListByPaymentIds(
+                convertSet(exportList, ErpFinancePaymentDO::getId));
+        Map<Long, List<ErpFinancePaymentItemDO>> financePaymentItemMap = convertMultiMap(paymentItemList,
+                ErpFinancePaymentItemDO::getPaymentId);
+        Map<Long, ErpSupplierDO> supplierMap = supplierService.getSupplierMap(
+                convertSet(exportList, ErpFinancePaymentDO::getSupplierId));
+        Map<Long, ErpAccountDO> accountMap = accountService.getAccountMap(
+                convertSet(exportList, ErpFinancePaymentDO::getAccountId));
+        Map<Long, AdminUserRespDTO> userMap = adminUserApi.getUserMap(convertListByFlatMap(exportList,
+                payment -> Stream.of(NumberUtils.parseLong(payment.getCreator()), payment.getFinanceUserId())));
+        ExcelUtils.write(response, "付款单.xls", "数据", ErpFinancePaymentExportRespVO.class,
+                buildFinancePaymentExportList(exportList, financePaymentItemMap, supplierMap, accountMap, userMap));
     }
 
     private PageResult<ErpFinancePaymentRespVO> buildFinancePaymentVOPageResult(PageResult<ErpFinancePaymentDO> pageResult) {
         if (CollUtil.isEmpty(pageResult.getList())) {
             return PageResult.empty(pageResult.getTotal());
         }
-        // 1.1 付款项
         List<ErpFinancePaymentItemDO> paymentItemList = financePaymentService.getFinancePaymentItemListByPaymentIds(
                 convertSet(pageResult.getList(), ErpFinancePaymentDO::getId));
-        Map<Long, List<ErpFinancePaymentItemDO>> financePaymentItemMap = convertMultiMap(paymentItemList, ErpFinancePaymentItemDO::getPaymentId);
-        // 1.2 供应商信息
+        Map<Long, List<ErpFinancePaymentItemDO>> financePaymentItemMap = convertMultiMap(paymentItemList,
+                ErpFinancePaymentItemDO::getPaymentId);
         Map<Long, ErpSupplierDO> supplierMap = supplierService.getSupplierMap(
                 convertSet(pageResult.getList(), ErpFinancePaymentDO::getSupplierId));
-        // 1.3 结算账户信息
         Map<Long, ErpAccountDO> accountMap = accountService.getAccountMap(
                 convertSet(pageResult.getList(), ErpFinancePaymentDO::getAccountId));
-        // 1.4 管理员信息
         Map<Long, AdminUserRespDTO> userMap = adminUserApi.getUserMap(convertListByFlatMap(pageResult.getList(),
-                contact -> Stream.of(NumberUtils.parseLong(contact.getCreator()), contact.getFinanceUserId())));
-        // 2. 开始拼接
+                payment -> Stream.of(NumberUtils.parseLong(payment.getCreator()), payment.getFinanceUserId())));
         return BeanUtils.toBean(pageResult, ErpFinancePaymentRespVO.class, payment -> {
             payment.setItems(BeanUtils.toBean(financePaymentItemMap.get(payment.getId()), ErpFinancePaymentRespVO.Item.class));
             MapUtils.findAndThen(supplierMap, payment.getSupplierId(), supplier -> payment.setSupplierName(supplier.getName()));
             MapUtils.findAndThen(accountMap, payment.getAccountId(), account -> payment.setAccountName(account.getName()));
-            MapUtils.findAndThen(userMap, Long.parseLong(payment.getCreator()), user -> payment.setCreatorName(user.getNickname()));
+            MapUtils.findAndThen(userMap, parseUserId(payment.getCreator()), user -> payment.setCreatorName(user.getNickname()));
             MapUtils.findAndThen(userMap, payment.getFinanceUserId(), user -> payment.setFinanceUserName(user.getNickname()));
         });
+    }
+
+    private List<ErpFinancePaymentDO> getFinancePaymentExportList(ErpFinancePaymentPageReqVO pageReqVO) {
+        if (CollUtil.isNotEmpty(pageReqVO.getIds())) {
+            return financePaymentService.getFinancePaymentList(pageReqVO.getIds());
+        }
+        pageReqVO.setPageSize(PageParam.PAGE_SIZE_NONE);
+        return financePaymentService.getFinancePaymentPage(pageReqVO).getList();
+    }
+
+    private List<ErpFinancePaymentExportRespVO> buildFinancePaymentExportList(List<ErpFinancePaymentDO> list,
+                                                                              Map<Long, List<ErpFinancePaymentItemDO>> financePaymentItemMap,
+                                                                              Map<Long, ErpSupplierDO> supplierMap,
+                                                                              Map<Long, ErpAccountDO> accountMap,
+                                                                              Map<Long, AdminUserRespDTO> userMap) {
+        List<ErpFinancePaymentExportRespVO> rows = new ArrayList<>();
+        for (ErpFinancePaymentDO payment : list) {
+            List<ErpFinancePaymentItemDO> items = financePaymentItemMap.getOrDefault(payment.getId(), Collections.emptyList());
+            if (CollUtil.isEmpty(items)) {
+                rows.add(buildFinancePaymentExportRow(payment, null, true, supplierMap, accountMap, userMap));
+                continue;
+            }
+            for (int i = 0; i < items.size(); i++) {
+                rows.add(buildFinancePaymentExportRow(payment, items.get(i), i == 0, supplierMap, accountMap, userMap));
+            }
+        }
+        return rows;
+    }
+
+    private ErpFinancePaymentExportRespVO buildFinancePaymentExportRow(ErpFinancePaymentDO payment,
+                                                                       ErpFinancePaymentItemDO item,
+                                                                       boolean fillMainFields,
+                                                                       Map<Long, ErpSupplierDO> supplierMap,
+                                                                       Map<Long, ErpAccountDO> accountMap,
+                                                                       Map<Long, AdminUserRespDTO> userMap) {
+        ErpFinancePaymentExportRespVO row = fillMainFields
+                ? BeanUtils.toBean(payment, ErpFinancePaymentExportRespVO.class)
+                : new ErpFinancePaymentExportRespVO();
+        if (fillMainFields) {
+            MapUtils.findAndThen(supplierMap, payment.getSupplierId(), supplier -> row.setSupplierName(supplier.getName()));
+            MapUtils.findAndThen(accountMap, payment.getAccountId(), account -> row.setAccountName(account.getName()));
+            MapUtils.findAndThen(userMap, payment.getFinanceUserId(), user -> row.setFinanceUserName(user.getNickname()));
+            MapUtils.findAndThen(userMap, parseUserId(payment.getCreator()), user -> row.setCreatorName(user.getNickname()));
+        }
+        if (item == null) {
+            return row;
+        }
+        row.setBizTypeName(getBizTypeName(item.getBizType()));
+        row.setBizNo(item.getBizNo());
+        row.setItemTotalPrice(item.getTotalPrice());
+        row.setItemPaidPrice(item.getPaidPrice());
+        row.setItemPaymentPrice(item.getPaymentPrice());
+        row.setItemRemark(item.getRemark());
+        return row;
+    }
+
+    private String getBizTypeName(Integer bizType) {
+        if (bizType == null) {
+            return null;
+        }
+        for (ErpBizTypeEnum value : ErpBizTypeEnum.values()) {
+            if (value.getType().equals(bizType)) {
+                return value.getName();
+            }
+        }
+        return String.valueOf(bizType);
+    }
+
+    private Long parseUserId(String userId) {
+        if (userId == null || userId.isEmpty()) {
+            return null;
+        }
+        try {
+            return Long.parseLong(userId);
+        } catch (NumberFormatException ignored) {
+            return null;
+        }
     }
 
 }

@@ -8,6 +8,7 @@ import lombok.ToString;
 import org.springframework.format.annotation.DateTimeFormat;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 import static cn.iocoder.yudao.framework.common.util.date.DateUtils.FORMAT_YEAR_MONTH_DAY_HOUR_MINUTE_SECOND;
 
@@ -16,6 +17,9 @@ import static cn.iocoder.yudao.framework.common.util.date.DateUtils.FORMAT_YEAR_
 @EqualsAndHashCode(callSuper = true)
 @ToString(callSuper = true)
 public class ErpFinanceTransferPageReqVO extends PageParam {
+
+    @Schema(description = "勾选导出的转账编号数组", example = "[1,2,3]")
+    private List<Long> ids;
 
     @Schema(description = "Transfer number", example = "YHZZ202605000001")
     private String no;

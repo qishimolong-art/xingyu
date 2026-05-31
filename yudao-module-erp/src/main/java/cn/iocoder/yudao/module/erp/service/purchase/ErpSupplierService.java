@@ -1,6 +1,7 @@
 package cn.iocoder.yudao.module.erp.service.purchase;
 
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.supplier.ErpSupplierImportExcelVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.supplier.ErpSupplierPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.supplier.ErpSupplierSaveReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpSupplierDO;
@@ -106,5 +107,12 @@ public interface ErpSupplierService {
      * @return 供应商列表
      */
     List<ErpSupplierDO> getSupplierListByNameLike(String name);
+
+    /**
+     * 导入供应商列表
+     *
+     * @param list 导入的供应商列表
+     */
+    void importSupplierList(@Valid List<ErpSupplierImportExcelVO> list);
 
 }

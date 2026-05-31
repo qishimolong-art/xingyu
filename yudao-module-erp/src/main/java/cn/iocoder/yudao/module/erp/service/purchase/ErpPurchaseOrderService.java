@@ -92,6 +92,14 @@ public interface ErpPurchaseOrderService {
      */
     PageResult<ErpPurchaseOrderDO> getPurchaseOrderPage(ErpPurchaseOrderPageReqVO pageReqVO);
 
+    /**
+     * 获得采购订单列表
+     *
+     * @param ids 编号数组
+     * @return 采购订单列表
+     */
+    List<ErpPurchaseOrderDO> getPurchaseOrderList(Collection<Long> ids);
+
     // ==================== 采购订单项 ====================
 
     /**

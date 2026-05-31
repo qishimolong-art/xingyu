@@ -54,6 +54,8 @@ public interface ErpFinanceReceiptService {
      */
     ErpFinanceReceiptDO getFinanceReceipt(Long id);
 
+    List<ErpFinanceReceiptDO> getFinanceReceiptList(Collection<Long> ids);
+
     /**
      * 获得收款单分页
      *

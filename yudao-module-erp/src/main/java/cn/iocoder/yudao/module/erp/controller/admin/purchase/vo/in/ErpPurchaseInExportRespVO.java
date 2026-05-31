@@ -23,11 +23,29 @@ public class ErpPurchaseInExportRespVO {
     @ExcelProperty("关联订单")
     private String orderNo;
 
+    @ExcelProperty("结算账户")
+    private String accountName;
+
+    @ExcelProperty("厂家单号")
+    private String factoryOrderNo;
+
     @ExcelProperty("单据状态")
     private Integer status;
 
     @ExcelProperty("创建人")
     private String creatorName;
+
+    @ExcelProperty("采购员")
+    private String purchaserName;
+
+    @ExcelProperty("记账员")
+    private String accountantName;
+
+    @ExcelProperty("经办人")
+    private String handlerName;
+
+    @ExcelProperty("部门")
+    private String deptName;
 
     @ExcelProperty("总数量")
     private BigDecimal totalCount;

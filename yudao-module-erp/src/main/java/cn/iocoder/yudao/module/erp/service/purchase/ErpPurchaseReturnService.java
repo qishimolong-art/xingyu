@@ -82,6 +82,8 @@ public interface ErpPurchaseReturnService {
      */
     PageResult<ErpPurchaseReturnDO> getPurchaseReturnPage(ErpPurchaseReturnPageReqVO pageReqVO);
 
+    List<ErpPurchaseReturnDO> getPurchaseReturnList(Collection<Long> ids);
+
     // ==================== 采购退货项 ====================
 
     /**

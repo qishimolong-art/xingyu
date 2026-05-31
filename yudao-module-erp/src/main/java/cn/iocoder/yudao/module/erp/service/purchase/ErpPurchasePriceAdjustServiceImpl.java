@@ -219,6 +219,14 @@ public class ErpPurchasePriceAdjustServiceImpl implements ErpPurchasePriceAdjust
     }
 
     @Override
+    public List<ErpPurchasePriceAdjustDO> getPurchasePriceAdjustList(Collection<Long> ids) {
+        if (CollUtil.isEmpty(ids)) {
+            return new ArrayList<>();
+        }
+        return priceAdjustMapper.selectByIds(ids);
+    }
+
+    @Override
     public List<ErpPurchasePriceAdjustItemDO> getPurchasePriceAdjustItemListByAdjustId(Long adjustId) {
         return priceAdjustItemMapper.selectListByAdjustId(adjustId);
     }

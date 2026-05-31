@@ -9,6 +9,7 @@ import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseOrderItemD
 import cn.iocoder.yudao.module.erp.enums.ErpAuditStatus;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import org.apache.ibatis.annotations.Mapper;
+import org.springframework.util.StringUtils;
 
 import java.util.Objects;
 
@@ -22,11 +23,12 @@ public interface ErpPurchaseOrderMapper extends BaseMapperX<ErpPurchaseOrderDO> 
 
     default PageResult<ErpPurchaseOrderDO> selectPage(ErpPurchaseOrderPageReqVO reqVO) {
         MPJLambdaWrapperX<ErpPurchaseOrderDO> query = new MPJLambdaWrapperX<ErpPurchaseOrderDO>()
-                .likeIfPresent(ErpPurchaseOrderDO::getNo, reqVO.getNo())
+                .likeIfPresent(ErpPurchaseOrderDO::getNo, normalizeLikeValue(reqVO.getNo()))
+                .likeIfPresent(ErpPurchaseOrderDO::getFactoryOrderNo, normalizeLikeValue(reqVO.getFactoryOrderNo()))
                 .eqIfPresent(ErpPurchaseOrderDO::getSupplierId, reqVO.getSupplierId())
                 .betweenIfPresent(ErpPurchaseOrderDO::getOrderTime, reqVO.getOrderTime())
                 .eqIfPresent(ErpPurchaseOrderDO::getStatus, reqVO.getStatus())
-                .likeIfPresent(ErpPurchaseOrderDO::getRemark, reqVO.getRemark())
+                .likeIfPresent(ErpPurchaseOrderDO::getRemark, normalizeLikeValue(reqVO.getRemark()))
                 .eqIfPresent(ErpPurchaseOrderDO::getCreator, reqVO.getCreator())
                 .orderByDesc(ErpPurchaseOrderDO::getId);
         // 入库状态。为什么需要 t. 的原因，是因为联表查询时，需要指定表名，不然会报 in_count 错误
@@ -70,6 +72,13 @@ public interface ErpPurchaseOrderMapper extends BaseMapperX<ErpPurchaseOrderDO> 
 
     default ErpPurchaseOrderDO selectByNo(String no) {
         return selectOne(ErpPurchaseOrderDO::getNo, no);
+    }
+
+    static String normalizeLikeValue(String value) {
+        if (!StringUtils.hasText(value)) {
+            return null;
+        }
+        return value.trim().replaceAll("\\s+", "%");
     }
 
 }

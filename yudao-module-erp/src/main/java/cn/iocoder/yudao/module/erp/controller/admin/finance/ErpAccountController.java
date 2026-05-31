@@ -1,5 +1,6 @@
 package cn.iocoder.yudao.module.erp.controller.admin.finance;
 
+import cn.hutool.core.collection.CollUtil;
 import cn.iocoder.yudao.framework.apilog.core.annotation.ApiAccessLog;
 import cn.iocoder.yudao.framework.common.enums.CommonStatusEnum;
 import cn.iocoder.yudao.framework.common.pojo.CommonResult;
@@ -138,8 +139,13 @@ public class ErpAccountController {
     @ApiAccessLog(operateType = EXPORT)
     public void exportAccountExcel(@Valid ErpAccountPageReqVO pageReqVO,
                                    HttpServletResponse response) throws IOException {
-        pageReqVO.setPageSize(PageParam.PAGE_SIZE_NONE);
-        List<ErpAccountDO> list = accountService.getAccountPage(pageReqVO).getList();
+        List<ErpAccountDO> list;
+        if (CollUtil.isNotEmpty(pageReqVO.getIds())) {
+            list = accountService.getAccountList(pageReqVO.getIds());
+        } else {
+            pageReqVO.setPageSize(PageParam.PAGE_SIZE_NONE);
+            list = accountService.getAccountPage(pageReqVO).getList();
+        }
         ExcelUtils.write(response, "结算账户.xls", "数据", ErpAccountRespVO.class,
                 BeanUtils.toBean(list, ErpAccountRespVO.class));
     }

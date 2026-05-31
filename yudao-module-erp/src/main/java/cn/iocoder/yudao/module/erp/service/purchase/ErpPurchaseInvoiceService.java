@@ -26,6 +26,8 @@ public interface ErpPurchaseInvoiceService {
 
     PageResult<ErpPurchaseInvoiceDO> getPurchaseInvoicePage(ErpPurchaseInvoicePageReqVO pageReqVO);
 
+    List<ErpPurchaseInvoiceDO> getPurchaseInvoiceList(Collection<Long> ids);
+
     List<ErpPurchaseInvoiceItemDO> getPurchaseInvoiceItemListByInvoiceId(Long invoiceId);
 
     List<ErpPurchaseInvoiceItemDO> getPurchaseInvoiceItemListByInvoiceIds(Collection<Long> invoiceIds);

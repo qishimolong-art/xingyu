@@ -1,12 +1,14 @@
 package cn.iocoder.yudao.module.erp.controller.admin.purchase;
 
 import cn.iocoder.yudao.framework.apilog.core.annotation.ApiAccessLog;
+import cn.hutool.core.collection.CollUtil;
 import cn.iocoder.yudao.framework.common.enums.CommonStatusEnum;
 import cn.iocoder.yudao.framework.common.pojo.CommonResult;
 import cn.iocoder.yudao.framework.common.pojo.PageParam;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
 import cn.iocoder.yudao.framework.excel.core.util.ExcelUtils;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.supplier.ErpSupplierImportExcelVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.supplier.ErpSupplierPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.supplier.ErpSupplierRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.supplier.ErpSupplierSaveReqVO;
@@ -18,11 +20,13 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 import javax.annotation.Resource;
 import javax.servlet.http.HttpServletResponse;
 import javax.validation.Valid;
 import java.io.IOException;
+import java.util.Collections;
 import java.util.List;
 
 import static cn.iocoder.yudao.framework.apilog.core.enums.OperateTypeEnum.EXPORT;
@@ -103,11 +107,33 @@ public class ErpSupplierController {
     @ApiAccessLog(operateType = EXPORT)
     public void exportSupplierExcel(@Valid ErpSupplierPageReqVO pageReqVO,
               HttpServletResponse response) throws IOException {
-        pageReqVO.setPageSize(PageParam.PAGE_SIZE_NONE);
-        List<ErpSupplierDO> list = supplierService.getSupplierPage(pageReqVO).getList();
+        List<ErpSupplierDO> list;
+        if (CollUtil.isNotEmpty(pageReqVO.getIds())) {
+            list = supplierService.getSupplierList(pageReqVO.getIds());
+        } else {
+            pageReqVO.setPageSize(PageParam.PAGE_SIZE_NONE);
+            list = supplierService.getSupplierPage(pageReqVO).getList();
+        }
         // 导出 Excel
         ExcelUtils.write(response, "供应商.xls", "数据", ErpSupplierRespVO.class,
                         BeanUtils.toBean(list, ErpSupplierRespVO.class));
+    }
+
+    @GetMapping("/get-import-template")
+    @Operation(summary = "获得供应商导入模板")
+    @PreAuthorize("@ss.hasPermission('erp:supplier:import')")
+    public void getImportTemplate(HttpServletResponse response) throws IOException {
+        ExcelUtils.write(response, "供应商导入模板.xls", "供应商", ErpSupplierImportExcelVO.class,
+                Collections.singletonList(new ErpSupplierImportExcelVO()));
+    }
+
+    @PostMapping("/import")
+    @Operation(summary = "导入供应商")
+    @PreAuthorize("@ss.hasPermission('erp:supplier:import')")
+    public CommonResult<Boolean> importSupplier(@RequestParam("file") MultipartFile file) throws Exception {
+        List<ErpSupplierImportExcelVO> list = ExcelUtils.read(file, ErpSupplierImportExcelVO.class);
+        supplierService.importSupplierList(list);
+        return success(true);
     }
 
 }

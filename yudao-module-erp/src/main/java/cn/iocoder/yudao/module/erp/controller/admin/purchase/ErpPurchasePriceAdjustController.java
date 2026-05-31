@@ -18,6 +18,7 @@ import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchasePriceAdjus
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchasePriceAdjustItemDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpSupplierDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpWarehouseDO;
+import cn.iocoder.yudao.module.erp.enums.purchase.ErpPurchasePriceAdjustTypeEnum;
 import cn.iocoder.yudao.module.erp.service.purchase.ErpPurchasePriceAdjustService;
 import cn.iocoder.yudao.module.erp.service.purchase.ErpSupplierService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpWarehouseService;
@@ -205,8 +206,15 @@ public class ErpPurchasePriceAdjustController {
     @ApiAccessLog(operateType = EXPORT)
     public void exportPurchasePriceAdjustExcel(@Valid ErpPurchasePriceAdjustPageReqVO pageReqVO,
                                                HttpServletResponse response) throws IOException {
-        pageReqVO.setPageSize(PageParam.PAGE_SIZE_NONE);
-        List<ErpPurchasePriceAdjustRespVO> list = buildVOPageResult(priceAdjustService.getPurchasePriceAdjustPage(pageReqVO)).getList();
+        List<ErpPurchasePriceAdjustRespVO> list;
+        if (CollUtil.isNotEmpty(pageReqVO.getIds())) {
+            list = buildVOPageResult(new PageResult<>(
+                    priceAdjustService.getPurchasePriceAdjustList(pageReqVO.getIds()),
+                    (long) pageReqVO.getIds().size())).getList();
+        } else {
+            pageReqVO.setPageSize(PageParam.PAGE_SIZE_NONE);
+            list = buildVOPageResult(priceAdjustService.getPurchasePriceAdjustPage(pageReqVO)).getList();
+        }
         ExcelUtils.write(response, "采购调价单.xls", "数据", ErpPurchasePriceAdjustExportRespVO.class,
                 buildExportList(list));
     }
@@ -291,28 +299,47 @@ public class ErpPurchasePriceAdjustController {
         if (!fillMainFields) {
             row.setNo(null);
             row.setSupplierName(null);
+            row.setDeptName(null);
             row.setAdjustTime(null);
-            row.setAdjustType(null);
+            row.setAdjustTypeName(null);
             row.setStatus(null);
             row.setAdjusterName(null);
             row.setTotalAdjustPrice(null);
+            row.setPaymentPrice(null);
+            row.setApproveTime(null);
             row.setCreatorName(null);
             row.setCreateTime(null);
             row.setUpdaterName(null);
             row.setUpdateTime(null);
             row.setRemark(null);
         }
+        if (fillMainFields) {
+            if (adjust.getAdjustType() != null) {
+                row.setAdjustTypeName(ErpPurchasePriceAdjustTypeEnum.BY_IN_ORDER.getType().equals(adjust.getAdjustType())
+                        ? ErpPurchasePriceAdjustTypeEnum.BY_IN_ORDER.getName()
+                        : ErpPurchasePriceAdjustTypeEnum.BY_ITEM.getName());
+            }
+        }
         if (item == null) {
             return row;
         }
         row.setProductCode(item.getProductCode());
         row.setProductName(item.getProductName());
+        row.setProductUnitName(item.getProductUnitName());
+        row.setVehicleModel(item.getVehicleModel());
+        row.setStandard(item.getStandard());
+        row.setFeatureCode(item.getFeatureCode());
+        row.setOriginPlace(item.getOriginPlace());
+        row.setBrand(item.getBrand());
+        row.setDrawingNo(item.getDrawingNo());
         row.setWarehouseName(null);
+        row.setWarehousePosition(item.getWarehousePosition());
         MapUtils.findAndThen(warehouseMap, item.getWarehouseId(), warehouse -> row.setWarehouseName(warehouse.getName()));
         row.setInNo(item.getInNo());
         row.setOldPrice(item.getOldPrice());
         row.setNewPrice(item.getNewPrice());
         row.setCount(item.getCount());
+        row.setAdjustRatio(item.getAdjustRatio());
         row.setAdjustPrice(item.getAdjustPrice());
         return row;
     }

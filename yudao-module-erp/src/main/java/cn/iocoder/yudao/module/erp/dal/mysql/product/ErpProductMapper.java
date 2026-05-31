@@ -11,6 +11,7 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import org.apache.ibatis.annotations.Mapper;
+import org.springframework.util.StringUtils;
 
 import java.util.Collection;
 import java.util.Collections;
@@ -28,16 +29,23 @@ public interface ErpProductMapper extends BaseMapperX<ErpProductDO> {
 
     default PageResult<ErpProductDO> selectPage(ErpProductPageReqVO reqVO) {
         return selectPage(reqVO, new LambdaQueryWrapperX<ErpProductDO>()
-                .likeIfPresent(ErpProductDO::getName, reqVO.getName())
-                .likeIfPresent(ErpProductDO::getCode, reqVO.getCode())
-                .likeIfPresent(ErpProductDO::getVehicleModel, reqVO.getVehicleModel())
-                .likeIfPresent(ErpProductDO::getFactoryCode, reqVO.getFactoryCode())
+                .likeIfPresent(ErpProductDO::getName, fuzzyKeyword(reqVO.getName()))
+                .likeIfPresent(ErpProductDO::getCode, fuzzyKeyword(reqVO.getCode()))
+                .likeIfPresent(ErpProductDO::getVehicleModel, fuzzyKeyword(reqVO.getVehicleModel()))
+                .likeIfPresent(ErpProductDO::getFactoryCode, fuzzyKeyword(reqVO.getFactoryCode()))
                 .eqIfPresent(ErpProductDO::getCategoryId, reqVO.getCategoryId())
                 .eqIfPresent(ErpProductDO::getDefaultWarehouseId, reqVO.getWarehouseId())
                 .betweenIfPresent(ErpProductDO::getCreateTime, reqVO.getCreateTime())
                 // 默认过滤掉已合并的配件
                 .ne(ErpProductDO::getMergedFlag, Boolean.TRUE)
                 .orderByDesc(ErpProductDO::getId));
+    }
+
+    static String fuzzyKeyword(String keyword) {
+        if (!StringUtils.hasText(keyword)) {
+            return null;
+        }
+        return keyword.trim().replaceAll("\\s+", "%");
     }
 
     default Long selectCountByCategoryId(Long categoryId) {

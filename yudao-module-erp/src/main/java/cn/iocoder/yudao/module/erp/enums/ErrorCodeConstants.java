@@ -271,6 +271,7 @@ ErrorCode PURCHASE_ORDER_ITEM_RETURN_FAIL_IN_EXCEED = new ErrorCode(1_030_101_00
     ErrorCode PRODUCT_UNIVERSAL_CODE_INVALID = new ErrorCode(1_030_500_006, "通用件编码({})不存在");
     ErrorCode PRODUCT_UNIVERSAL_CODE_SELF = new ErrorCode(1_030_500_007, "通用件编码不能是自身");
     ErrorCode PRODUCT_WAREHOUSE_REQUIRED = new ErrorCode(1_030_500_008, "默认仓库不能为空");
+    ErrorCode PRODUCT_DELETE_FAIL_STOCK_EXISTS = new ErrorCode(1_030_500_009, "产品({})已有库存或库存历史记录，不允许删除，请停用或先清理后再操作");
 
     // ========== ERP 产品分类 1-030-501-000 ==========
     ErrorCode PRODUCT_CATEGORY_NOT_EXISTS = new ErrorCode(1_030_501_000, "产品分类不存在");

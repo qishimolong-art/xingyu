@@ -351,6 +351,14 @@ public class ErpPurchaseOrderServiceImpl implements ErpPurchaseOrderService {
         return purchaseOrderMapper.selectPage(pageReqVO);
     }
 
+    @Override
+    public List<ErpPurchaseOrderDO> getPurchaseOrderList(Collection<Long> ids) {
+        if (CollUtil.isEmpty(ids)) {
+            return Collections.emptyList();
+        }
+        return purchaseOrderMapper.selectByIds(ids);
+    }
+
     // ==================== 订单项 ====================
 
     @Override

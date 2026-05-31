@@ -14,6 +14,9 @@ public class ErpPurchaseOrderExportRespVO {
     @ExcelProperty("采购单号")
     private String no;
 
+    @ExcelProperty("厂家单号")
+    private String factoryOrderNo;
+
     @ExcelProperty("供应商")
     private String supplierName;
 

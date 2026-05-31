@@ -149,9 +149,11 @@ public class ErpPurchaseOrderController {
     @ApiAccessLog(operateType = EXPORT)
     public void exportPurchaseOrderExcel(@Valid ErpPurchaseOrderPageReqVO pageReqVO,
                                          HttpServletResponse response) throws IOException {
-        pageReqVO.setPageSize(PageParam.PAGE_SIZE_NONE);
+        PageResult<ErpPurchaseOrderDO> pageResult = CollUtil.isNotEmpty(pageReqVO.getIds())
+                ? new PageResult<>(purchaseOrderService.getPurchaseOrderList(pageReqVO.getIds()), (long) pageReqVO.getIds().size())
+                : getPurchaseOrderExportPage(pageReqVO);
         ExcelUtils.write(response, "采购订单.xls", "数据", ErpPurchaseOrderExportRespVO.class,
-                buildPurchaseOrderExportList(purchaseOrderService.getPurchaseOrderPage(pageReqVO)));
+                buildPurchaseOrderExportList(pageResult));
     }
 
     @GetMapping("/get-import-template")
@@ -231,25 +233,31 @@ public class ErpPurchaseOrderController {
         Map<Long, ErpSupplierDO> supplierMap = supplierService.getSupplierMap(
                 convertSet(pageResult.getList(), ErpPurchaseOrderDO::getSupplierId));
         Map<Long, AdminUserRespDTO> userMap = adminUserApi.getUserMap(
-                convertSet(pageResult.getList(), purchaseOrder -> Long.parseLong(purchaseOrder.getCreator())));
+                convertSet(pageResult.getList(), purchaseOrder -> parseUserId(purchaseOrder.getCreator())));
         List<ErpPurchaseOrderExportRespVO> rows = new ArrayList<>();
         for (ErpPurchaseOrderDO purchaseOrder : pageResult.getList()) {
             List<ErpPurchaseOrderItemDO> items = purchaseOrderItemMap.get(purchaseOrder.getId());
+            Long creatorId = parseUserId(purchaseOrder.getCreator());
             if (CollUtil.isEmpty(items)) {
                 rows.add(buildPurchaseOrderExportRow(purchaseOrder,
                         supplierMap.get(purchaseOrder.getSupplierId()),
-                        userMap.get(Long.parseLong(purchaseOrder.getCreator())), null, null, true));
+                        creatorId == null ? null : userMap.get(creatorId), null, null, true));
                 continue;
             }
             for (int i = 0; i < items.size(); i++) {
                 ErpPurchaseOrderItemDO item = items.get(i);
                 rows.add(buildPurchaseOrderExportRow(purchaseOrder,
                         supplierMap.get(purchaseOrder.getSupplierId()),
-                        userMap.get(Long.parseLong(purchaseOrder.getCreator())),
+                        creatorId == null ? null : userMap.get(creatorId),
                         item, productMap.get(item.getProductId()), i == 0));
             }
         }
         return rows;
+    }
+
+    private PageResult<ErpPurchaseOrderDO> getPurchaseOrderExportPage(ErpPurchaseOrderPageReqVO pageReqVO) {
+        pageReqVO.setPageSize(PageParam.PAGE_SIZE_NONE);
+        return purchaseOrderService.getPurchaseOrderPage(pageReqVO);
     }
 
     private ErpPurchaseOrderExportRespVO buildPurchaseOrderExportRow(ErpPurchaseOrderDO purchaseOrder,
@@ -261,6 +269,9 @@ public class ErpPurchaseOrderController {
         ErpPurchaseOrderExportRespVO row = fillOrderFields
                 ? BeanUtils.toBean(purchaseOrder, ErpPurchaseOrderExportRespVO.class)
                 : new ErpPurchaseOrderExportRespVO();
+        if (fillOrderFields) {
+            row.setFactoryOrderNo(purchaseOrder.getFactoryOrderNo());
+        }
         row.setSupplierName(fillOrderFields && supplier != null ? supplier.getName() : null);
         row.setCreatorName(fillOrderFields && creator != null ? creator.getNickname() : null);
         if (item == null) {
@@ -277,6 +288,17 @@ public class ErpPurchaseOrderController {
         row.setItemTaxPrice(item.getTaxPrice());
         row.setItemRemark(item.getRemark());
         return row;
+    }
+
+    private Long parseUserId(String userId) {
+        if (userId == null || userId.trim().isEmpty()) {
+            return null;
+        }
+        try {
+            return Long.parseLong(userId);
+        } catch (NumberFormatException ignored) {
+            return null;
+        }
     }
 
     private Integer calcStatus(BigDecimal doneCount, BigDecimal totalCount) {
@@ -307,17 +329,6 @@ public class ErpPurchaseOrderController {
         Long parsed = parseUserId(userId);
         if (parsed != null) {
             userIds.add(parsed);
-        }
-    }
-
-    private Long parseUserId(String userId) {
-        if (userId == null || userId.isEmpty()) {
-            return null;
-        }
-        try {
-            return Long.parseLong(userId);
-        } catch (NumberFormatException ignored) {
-            return null;
         }
     }
 

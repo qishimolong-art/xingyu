@@ -117,9 +117,16 @@ public class ErpFinanceTransferController {
     @ApiAccessLog(operateType = EXPORT)
     public void exportFinanceTransferExcel(@Valid ErpFinanceTransferPageReqVO pageReqVO,
                                            HttpServletResponse response) throws IOException {
-        pageReqVO.setPageSize(PageParam.PAGE_SIZE_NONE);
-        List<ErpFinanceTransferRespVO> list = buildFinanceTransferVOPageResult(
-                financeTransferService.getFinanceTransferPage(pageReqVO)).getList();
+        List<ErpFinanceTransferRespVO> list;
+        if (CollUtil.isNotEmpty(pageReqVO.getIds())) {
+            list = buildFinanceTransferVOPageResult(
+                    new PageResult<>(financeTransferService.getFinanceTransferList(pageReqVO.getIds()),
+                            (long) pageReqVO.getIds().size())).getList();
+        } else {
+            pageReqVO.setPageSize(PageParam.PAGE_SIZE_NONE);
+            list = buildFinanceTransferVOPageResult(
+                    financeTransferService.getFinanceTransferPage(pageReqVO)).getList();
+        }
         ExcelUtils.write(response, "银行转账.xls", "数据", ErpFinanceTransferRespVO.class, list);
     }
 

@@ -6,16 +6,21 @@ import lombok.Data;
 import lombok.EqualsAndHashCode;
 import lombok.ToString;
 
+import java.util.List;
+
 @Schema(description = "管理后台 - ERP 结算账户分页 Request VO")
 @Data
 @EqualsAndHashCode(callSuper = true)
 @ToString(callSuper = true)
 public class ErpAccountPageReqVO extends PageParam {
 
+    @Schema(description = "勾选导出的账户编号数组", example = "[1,2,3]")
+    private List<Long> ids;
+
     @Schema(description = "账户编码", example = "A88")
     private String no;
 
-    @Schema(description = "账户名称", example = "基本户")
+    @Schema(description = "账户名称", example = "基本账户")
     private String name;
 
     @Schema(description = "账户类型", example = "1")

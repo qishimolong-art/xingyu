@@ -188,8 +188,15 @@ public class ErpPurchaseReturnController {
     @ApiAccessLog(operateType = EXPORT)
     public void exportPurchaseReturnExcel(@Valid ErpPurchaseReturnPageReqVO pageReqVO,
                                           HttpServletResponse response) throws IOException {
-        pageReqVO.setPageSize(PageParam.PAGE_SIZE_NONE);
-        List<ErpPurchaseReturnRespVO> list = buildPurchaseReturnVOPageResult(purchaseReturnService.getPurchaseReturnPage(pageReqVO)).getList();
+        List<ErpPurchaseReturnRespVO> list;
+        if (CollUtil.isNotEmpty(pageReqVO.getIds())) {
+            list = buildPurchaseReturnVOPageResult(new PageResult<>(
+                    purchaseReturnService.getPurchaseReturnList(pageReqVO.getIds()),
+                    (long) pageReqVO.getIds().size())).getList();
+        } else {
+            pageReqVO.setPageSize(PageParam.PAGE_SIZE_NONE);
+            list = buildPurchaseReturnVOPageResult(purchaseReturnService.getPurchaseReturnPage(pageReqVO)).getList();
+        }
         ExcelUtils.write(response, "采购退货.xls", "数据", ErpPurchaseReturnExportRespVO.class,
                 buildPurchaseReturnExportList(list));
     }

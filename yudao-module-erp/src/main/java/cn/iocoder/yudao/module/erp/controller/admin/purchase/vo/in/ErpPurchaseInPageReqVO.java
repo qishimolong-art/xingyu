@@ -8,6 +8,7 @@ import lombok.ToString;
 import org.springframework.format.annotation.DateTimeFormat;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 import static cn.iocoder.yudao.framework.common.util.date.DateUtils.FORMAT_YEAR_MONTH_DAY_HOUR_MINUTE_SECOND;
 
@@ -57,5 +58,8 @@ public class ErpPurchaseInPageReqVO extends PageParam {
 
     @Schema(description = "采购单号", example = "1")
     private String orderNo;
+
+    @Schema(description = "勾选导出的采购入库编号数组", example = "[1,2,3]")
+    private List<Long> ids;
 
 }

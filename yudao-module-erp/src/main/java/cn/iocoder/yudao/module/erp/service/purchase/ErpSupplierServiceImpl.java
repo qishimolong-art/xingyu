@@ -3,11 +3,14 @@ package cn.iocoder.yudao.module.erp.service.purchase;
 import cn.iocoder.yudao.framework.common.enums.CommonStatusEnum;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.supplier.ErpSupplierImportExcelVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.supplier.ErpSupplierPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.supplier.ErpSupplierSaveReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpSupplierDO;
 import cn.iocoder.yudao.module.erp.dal.mysql.purchase.ErpSupplierMapper;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
 import org.springframework.validation.annotation.Validated;
 
 import javax.annotation.Resource;
@@ -130,6 +133,30 @@ public class ErpSupplierServiceImpl implements ErpSupplierService {
             return java.util.Collections.emptyList();
         }
         return supplierMapper.selectListByNameLike(name);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void importSupplierList(List<ErpSupplierImportExcelVO> list) {
+        if (list == null || list.isEmpty()) {
+            return;
+        }
+        for (ErpSupplierImportExcelVO importVO : list) {
+            if (importVO == null || !StringUtils.hasText(importVO.getName())) {
+                continue;
+            }
+            ErpSupplierDO supplier = BeanUtils.toBean(importVO, ErpSupplierDO.class);
+            if (!StringUtils.hasText(supplier.getCode())) {
+                supplier.setCode(generateSupplierCode());
+            }
+            if (supplier.getStatus() == null) {
+                supplier.setStatus(CommonStatusEnum.ENABLE.getStatus());
+            }
+            if (supplier.getSort() == null) {
+                supplier.setSort(0);
+            }
+            supplierMapper.insert(supplier);
+        }
     }
 
 }

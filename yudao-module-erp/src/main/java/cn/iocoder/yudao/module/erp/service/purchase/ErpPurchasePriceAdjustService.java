@@ -76,6 +76,8 @@ public interface ErpPurchasePriceAdjustService {
      */
     PageResult<ErpPurchasePriceAdjustDO> getPurchasePriceAdjustPage(ErpPurchasePriceAdjustPageReqVO pageReqVO);
 
+    List<ErpPurchasePriceAdjustDO> getPurchasePriceAdjustList(Collection<Long> ids);
+
     /**
      * 查询某调价单的全部子项
      *

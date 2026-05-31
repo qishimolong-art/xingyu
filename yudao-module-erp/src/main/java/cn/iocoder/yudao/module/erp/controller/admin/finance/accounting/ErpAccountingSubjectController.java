@@ -1,9 +1,11 @@
 package cn.iocoder.yudao.module.erp.controller.admin.finance.accounting;
 
+import cn.hutool.core.collection.CollUtil;
 import cn.iocoder.yudao.framework.apilog.core.annotation.ApiAccessLog;
 import cn.iocoder.yudao.framework.common.pojo.CommonResult;
 import cn.iocoder.yudao.framework.common.pojo.PageParam;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
+import cn.iocoder.yudao.framework.common.util.collection.CollectionUtils;
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
 import cn.iocoder.yudao.framework.excel.core.util.ExcelUtils;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.accounting.vo.subject.ErpAccountingSubjectImportExcelVO;
@@ -190,8 +192,13 @@ public class ErpAccountingSubjectController {
     @ApiAccessLog(operateType = EXPORT)
     public void exportSubjectExcel(@Valid ErpAccountingSubjectPageReqVO pageReqVO,
                                    HttpServletResponse response) throws IOException {
-        pageReqVO.setPageSize(PageParam.PAGE_SIZE_NONE);
-        List<ErpAccountingSubjectDO> list = subjectService.getSubjectPage(pageReqVO).getList();
+        List<ErpAccountingSubjectDO> list;
+        if (CollUtil.isNotEmpty(pageReqVO.getIds())) {
+            list = subjectService.getSubjectList(pageReqVO.getIds());
+        } else {
+            pageReqVO.setPageSize(PageParam.PAGE_SIZE_NONE);
+            list = subjectService.getSubjectPage(pageReqVO).getList();
+        }
         ExcelUtils.write(response, "会计科目.xls", "数据", ErpAccountingSubjectRespVO.class,
                 BeanUtils.toBean(list, ErpAccountingSubjectRespVO.class));
     }

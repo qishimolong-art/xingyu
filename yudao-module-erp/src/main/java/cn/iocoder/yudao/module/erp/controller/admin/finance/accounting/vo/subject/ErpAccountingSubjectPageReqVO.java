@@ -6,11 +6,16 @@ import lombok.Data;
 import lombok.EqualsAndHashCode;
 import lombok.ToString;
 
+import java.util.List;
+
 @Schema(description = "管理后台 - ERP 会计科目分页 Request VO")
 @Data
 @EqualsAndHashCode(callSuper = true)
 @ToString(callSuper = true)
 public class ErpAccountingSubjectPageReqVO extends PageParam {
+
+    @Schema(description = "勾选导出的科目编号数组", example = "[1,2,3]")
+    private List<Long> ids;
 
     @Schema(description = "科目编码", example = "1001")
     private String subjectCode;

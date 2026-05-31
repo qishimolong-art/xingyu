@@ -160,6 +160,14 @@ public class ErpPurchaseInvoiceServiceImpl implements ErpPurchaseInvoiceService 
     }
 
     @Override
+    public List<ErpPurchaseInvoiceDO> getPurchaseInvoiceList(Collection<Long> ids) {
+        if (CollUtil.isEmpty(ids)) {
+            return Collections.emptyList();
+        }
+        return purchaseInvoiceMapper.selectByIds(ids);
+    }
+
+    @Override
     public List<ErpPurchaseInvoiceItemDO> getPurchaseInvoiceItemListByInvoiceId(Long invoiceId) {
         return purchaseInvoiceItemMapper.selectListByInvoiceId(invoiceId);
     }

@@ -85,6 +85,8 @@ public interface ErpPurchaseInService {
      */
     PageResult<ErpPurchaseInDO> getPurchaseInPage(ErpPurchaseInPageReqVO pageReqVO);
 
+    List<ErpPurchaseInDO> getPurchaseInList(Collection<Long> ids);
+
     // ==================== 采购入库项 ====================
 
     /**

@@ -8,12 +8,16 @@ import lombok.ToString;
 import org.springframework.format.annotation.DateTimeFormat;
 
 import java.time.LocalDate;
+import java.util.List;
 
 @Schema(description = "管理后台 - ERP 凭证分页 Request VO")
 @Data
 @EqualsAndHashCode(callSuper = true)
 @ToString(callSuper = true)
 public class ErpVoucherPageReqVO extends PageParam {
+
+    @Schema(description = "勾选导出的凭证编号数组", example = "[1,2,3]")
+    private List<Long> ids;
 
     @Schema(description = "凭证编号", example = "记-202605-000001")
     private String voucherNo;

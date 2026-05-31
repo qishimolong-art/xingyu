@@ -48,6 +48,8 @@ import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.*;
 @Validated
 public class ErpVoucherServiceImpl implements ErpVoucherService {
 
+    private static final int VOUCHER_NO_GENERATE_MAX_RETRY = 10;
+
     @Resource
     private ErpVoucherMapper voucherMapper;
     @Resource
@@ -70,10 +72,7 @@ public class ErpVoucherServiceImpl implements ErpVoucherService {
         String voucherWord = ObjectUtil.defaultIfNull(createReqVO.getVoucherWord(), ErpNoRedisDAO.VOUCHER_WORD_DEFAULT);
         YearMonth voucherYM = YearMonth.from(
                 createReqVO.getVoucherDate() != null ? createReqVO.getVoucherDate() : LocalDate.now());
-        String voucherNo = noRedisDAO.generateMonthly(voucherWord, voucherYM);
-        if (voucherMapper.selectByVoucherNo(voucherNo) != null) {
-            throw exception(VOUCHER_NO_EXISTS);
-        }
+        String voucherNo = generateAvailableVoucherNo(voucherWord, voucherYM);
 
         // 3. 组装并插入主表
         ErpVoucherDO voucher = BeanUtils.toBean(createReqVO, ErpVoucherDO.class);
@@ -205,6 +204,11 @@ public class ErpVoucherServiceImpl implements ErpVoucherService {
     }
 
     @Override
+    public List<ErpVoucherDO> getVoucherList(List<Long> ids) {
+        return voucherMapper.selectBatchIds(ids);
+    }
+
+    @Override
     public List<ErpVoucherItemDO> getVoucherItemListByVoucherId(Long voucherId) {
         return voucherItemMapper.selectListByVoucherId(voucherId);
     }
@@ -235,10 +239,7 @@ public class ErpVoucherServiceImpl implements ErpVoucherService {
         // 2. 生成凭证编号（S3 修复：用业务凭证日期决定月份，避免跨月凭证号穿越）
         String voucherWord = ErpNoRedisDAO.VOUCHER_WORD_DEFAULT;
         YearMonth voucherYM = YearMonth.from(voucherDate != null ? voucherDate : LocalDate.now());
-        String voucherNo = noRedisDAO.generateMonthly(voucherWord, voucherYM);
-        if (voucherMapper.selectByVoucherNo(voucherNo) != null) {
-            throw exception(VOUCHER_NO_EXISTS);
-        }
+        String voucherNo = generateAvailableVoucherNo(voucherWord, voucherYM);
 
         // 3. 组装并插入主表
         ErpVoucherDO voucher = new ErpVoucherDO()
@@ -284,6 +285,16 @@ public class ErpVoucherServiceImpl implements ErpVoucherService {
     }
 
     // ==================== 私有辅助 ====================
+
+    private String generateAvailableVoucherNo(String voucherWord, YearMonth voucherYM) {
+        for (int i = 0; i < VOUCHER_NO_GENERATE_MAX_RETRY; i++) {
+            String voucherNo = noRedisDAO.generateMonthly(voucherWord, voucherYM);
+            if (voucherMapper.selectByVoucherNo(voucherNo) == null) {
+                return voucherNo;
+            }
+        }
+        throw exception(VOUCHER_NO_EXISTS);
+    }
 
     private ErpVoucherDO validateVoucherExists(Long id) {
         if (id == null) {

@@ -16,6 +16,8 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.validation.annotation.Validated;
 
 import javax.annotation.Resource;
+import java.util.Collection;
+import java.util.Collections;
 import java.util.List;
 
 import static cn.iocoder.yudao.framework.common.exception.util.ServiceExceptionUtil.exception;
@@ -107,6 +109,14 @@ public class ErpFinanceTransferServiceImpl implements ErpFinanceTransferService 
     @Override
     public ErpFinanceTransferDO getFinanceTransfer(Long id) {
         return financeTransferMapper.selectById(id);
+    }
+
+    @Override
+    public List<ErpFinanceTransferDO> getFinanceTransferList(Collection<Long> ids) {
+        if (CollUtil.isEmpty(ids)) {
+            return Collections.emptyList();
+        }
+        return financeTransferMapper.selectByIds(ids);
     }
 
     @Override

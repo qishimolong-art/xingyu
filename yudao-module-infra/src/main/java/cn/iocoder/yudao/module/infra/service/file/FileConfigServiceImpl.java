@@ -10,9 +10,12 @@ import cn.iocoder.yudao.module.infra.controller.admin.file.vo.config.FileConfigS
 import cn.iocoder.yudao.module.infra.convert.file.FileConfigConvert;
 import cn.iocoder.yudao.module.infra.dal.dataobject.file.FileConfigDO;
 import cn.iocoder.yudao.module.infra.dal.mysql.file.FileConfigMapper;
+import cn.iocoder.yudao.module.infra.framework.file.config.FileProperties;
 import cn.iocoder.yudao.module.infra.framework.file.core.client.FileClient;
 import cn.iocoder.yudao.module.infra.framework.file.core.client.FileClientConfig;
 import cn.iocoder.yudao.module.infra.framework.file.core.client.FileClientFactory;
+import cn.iocoder.yudao.module.infra.framework.file.core.client.local.LocalFileClient;
+import cn.iocoder.yudao.module.infra.framework.file.core.client.local.LocalFileClientConfig;
 import cn.iocoder.yudao.module.infra.framework.file.core.enums.FileStorageEnum;
 import com.google.common.cache.CacheLoader;
 import com.google.common.cache.LoadingCache;
@@ -20,6 +23,7 @@ import javax.annotation.Resource;
 import javax.validation.Validator;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.validation.annotation.Validated;
@@ -45,6 +49,7 @@ import static cn.iocoder.yudao.module.infra.enums.ErrorCodeConstants.FILE_CONFIG
 public class FileConfigServiceImpl implements FileConfigService {
 
     private static final Long CACHE_MASTER_ID = 0L;
+    private static final Long LOCAL_MASTER_ID = -1L;
 
     /**
      * {@link FileClient} 缓存，通过它异步刷新 fileClientFactory
@@ -55,6 +60,9 @@ public class FileConfigServiceImpl implements FileConfigService {
 
                 @Override
                 public FileClient load(Long id) {
+                    if (Objects.equals(LOCAL_MASTER_ID, id)) {
+                        return createLocalFileClient();
+                    }
                     FileConfigDO config = Objects.equals(CACHE_MASTER_ID, id) ?
                             fileConfigMapper.selectByMaster() : fileConfigMapper.selectById(id);
                     if (config != null) {
@@ -67,6 +75,9 @@ public class FileConfigServiceImpl implements FileConfigService {
 
     @Resource
     private FileClientFactory fileClientFactory;
+
+    @Autowired(required = false)
+    private FileProperties fileProperties;
 
     @Resource
     private FileConfigMapper fileConfigMapper;
@@ -196,12 +207,31 @@ public class FileConfigServiceImpl implements FileConfigService {
 
     @Override
     public FileClient getFileClient(Long id) {
+        if (Objects.equals(LOCAL_MASTER_ID, id)) {
+            return clientCache.getUnchecked(LOCAL_MASTER_ID);
+        }
         return clientCache.getUnchecked(id);
     }
 
     @Override
     public FileClient getMasterFileClient() {
+        if (isLocalFileEnabled()) {
+            return clientCache.getUnchecked(LOCAL_MASTER_ID);
+        }
         return clientCache.getUnchecked(CACHE_MASTER_ID);
+    }
+
+    private FileClient createLocalFileClient() {
+        FileProperties.Local local = fileProperties.getLocal();
+        LocalFileClient client = new LocalFileClient(LOCAL_MASTER_ID, new LocalFileClientConfig()
+                .setBasePath(local.getBasePath())
+                .setDomain(local.getDomain()));
+        client.init();
+        return client;
+    }
+
+    private boolean isLocalFileEnabled() {
+        return fileProperties != null && Boolean.TRUE.equals(fileProperties.getLocal().getEnabled());
     }
 
 }

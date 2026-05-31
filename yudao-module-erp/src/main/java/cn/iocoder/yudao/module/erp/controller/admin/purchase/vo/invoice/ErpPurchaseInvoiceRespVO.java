@@ -65,8 +65,14 @@ public class ErpPurchaseInvoiceRespVO {
     @Schema(description = "部门编号", example = "10")
     private Long deptId;
 
+    @Schema(description = "部门名称", example = "财务部")
+    private String deptName;
+
     @Schema(description = "经手人用户编号", example = "1")
     private Long handlerId;
+
+    @Schema(description = "经手人名称", example = "管理员")
+    private String handlerName;
 
     @Schema(description = "备注", example = "首批采购发票")
     @ExcelProperty("备注")

@@ -72,7 +72,11 @@ public abstract class AbstractFileClient<Config extends FileClientConfig> implem
      * @return URL 访问地址
      */
     protected String formatFileUrl(String domain, String path) {
-        return StrUtil.format("{}/admin-api/infra/file/{}/get/{}", domain, getId(), path);
+        String fileUrl = StrUtil.format("/admin-api/infra/file/{}/get/{}", getId(), path);
+        if (StrUtil.isBlank(domain)) {
+            return fileUrl;
+        }
+        return StrUtil.format("{}/{}", StrUtil.removeSuffix(domain, "/"), StrUtil.removePrefix(fileUrl, "/"));
     }
 
 }

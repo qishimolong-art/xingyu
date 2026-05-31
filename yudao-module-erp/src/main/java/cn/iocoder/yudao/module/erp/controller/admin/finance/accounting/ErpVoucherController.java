@@ -112,10 +112,17 @@ public class ErpVoucherController {
     @ApiAccessLog(operateType = EXPORT)
     public void exportVoucherExcel(@Valid ErpVoucherPageReqVO pageReqVO,
                                     HttpServletResponse response) throws IOException {
+        List<ErpVoucherDO> exportList = getVoucherExportList(pageReqVO);
+        ExcelUtils.write(response, "凭证.xls", "数据", ErpVoucherRespVO.class,
+                BeanUtils.toBean(exportList, ErpVoucherRespVO.class));
+    }
+
+    private List<ErpVoucherDO> getVoucherExportList(ErpVoucherPageReqVO pageReqVO) {
+        if (CollUtil.isNotEmpty(pageReqVO.getIds())) {
+            return voucherService.getVoucherList(pageReqVO.getIds());
+        }
         pageReqVO.setPageSize(PageParam.PAGE_SIZE_NONE);
-        PageResult<ErpVoucherDO> pageResult = voucherService.getVoucherPage(pageReqVO);
-        List<ErpVoucherRespVO> list = BeanUtils.toBean(pageResult.getList(), ErpVoucherRespVO.class);
-        ExcelUtils.write(response, "凭证.xls", "数据", ErpVoucherRespVO.class, list);
+        return voucherService.getVoucherPage(pageReqVO).getList();
     }
 
 }

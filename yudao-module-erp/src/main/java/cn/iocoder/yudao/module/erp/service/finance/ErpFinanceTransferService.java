@@ -6,6 +6,7 @@ import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.transfer.ErpFinan
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.ErpFinanceTransferDO;
 
 import javax.validation.Valid;
+import java.util.Collection;
 import java.util.List;
 
 /**
@@ -22,6 +23,8 @@ public interface ErpFinanceTransferService {
     void deleteFinanceTransfer(List<Long> ids);
 
     ErpFinanceTransferDO getFinanceTransfer(Long id);
+
+    List<ErpFinanceTransferDO> getFinanceTransferList(Collection<Long> ids);
 
     PageResult<ErpFinanceTransferDO> getFinanceTransferPage(ErpFinanceTransferPageReqVO pageReqVO);
 

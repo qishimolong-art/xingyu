@@ -8,6 +8,7 @@ import lombok.ToString;
 import org.springframework.format.annotation.DateTimeFormat;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 import static cn.iocoder.yudao.framework.common.util.date.DateUtils.FORMAT_YEAR_MONTH_DAY_HOUR_MINUTE_SECOND;
 
@@ -54,5 +55,8 @@ public class ErpPurchasePriceAdjustPageReqVO extends PageParam {
 
     @Schema(description = "调价人（系统用户 ID）")
     private Long adjuster;
+
+    @Schema(description = "勾选导出的采购调价单编号数组", example = "[1,2,3]")
+    private List<Long> ids;
 
 }

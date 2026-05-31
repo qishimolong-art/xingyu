@@ -422,6 +422,14 @@ public class ErpPurchaseInServiceImpl implements ErpPurchaseInService {
         return purchaseInMapper.selectPage(pageReqVO);
     }
 
+    @Override
+    public List<ErpPurchaseInDO> getPurchaseInList(Collection<Long> ids) {
+        if (CollUtil.isEmpty(ids)) {
+            return Collections.emptyList();
+        }
+        return purchaseInMapper.selectByIds(ids);
+    }
+
     // ==================== 采购入库项 ====================
 
     @Override
@@ -541,8 +549,6 @@ public class ErpPurchaseInServiceImpl implements ErpPurchaseInService {
         saveReqVO.setItems(inItems);
         // 5. 创建入库单
         Long inId = createPurchaseIn(saveReqVO);
-        // 6. 自动审批生效
-        updatePurchaseInStatus(inId, ErpAuditStatus.APPROVE.getStatus());
         return inId;
     }
 

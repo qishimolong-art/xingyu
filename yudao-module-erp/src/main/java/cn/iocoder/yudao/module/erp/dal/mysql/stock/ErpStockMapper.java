@@ -53,7 +53,8 @@ public interface ErpStockMapper extends BaseMapperX<ErpStockDO> {
         if (Boolean.TRUE.equals(reqVO.getPositiveCountOnly())) {
             wrapper.gt(ErpStockDO::getCount, BigDecimal.ZERO);
         }
-        wrapper.orderByDesc(ErpStockDO::getId);
+        wrapper.orderByAsc(ErpStockDO::getWarehouseId)
+                .orderByDesc(ErpStockDO::getId);
         return selectPage(reqVO, wrapper);
     }
 

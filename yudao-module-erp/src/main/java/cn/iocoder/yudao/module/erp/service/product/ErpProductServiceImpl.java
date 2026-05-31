@@ -22,15 +22,19 @@ import cn.iocoder.yudao.module.erp.dal.dataobject.product.ErpProductCategoryDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.product.ErpProductDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.product.ErpProductUnitDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.product.ErpProductUniversalDO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockLockDO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockRecordDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpWarehouseDO;
 import cn.iocoder.yudao.module.erp.dal.mysql.product.ErpProductMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.product.ErpProductUniversalMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.stock.ErpStockLockMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.stock.ErpStockMapper;
+import cn.iocoder.yudao.module.erp.dal.mysql.stock.ErpStockRecordMapper;
 import cn.iocoder.yudao.module.erp.dal.redis.no.ErpNoRedisDAO;
 import cn.iocoder.yudao.module.infra.api.config.ConfigApi;
 import cn.iocoder.yudao.module.erp.service.stock.ErpWarehouseService;
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -58,6 +62,7 @@ import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.
 import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.convertSet;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PRODUCT_CODE_DUPLICATE;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PRODUCT_CODE_GENERATE_FAIL;
+import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PRODUCT_DELETE_FAIL_STOCK_EXISTS;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PRODUCT_MERGED;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PRODUCT_NOT_ENABLE;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PRODUCT_NOT_EXISTS;
@@ -98,6 +103,8 @@ public class ErpProductServiceImpl implements ErpProductService {
     private ErpStockMapper stockMapper;
     @Resource
     private ErpStockLockMapper stockLockMapper;
+    @Resource
+    private ErpStockRecordMapper stockRecordMapper;
 
     @Resource
     private ErpProductCategoryService productCategoryService;
@@ -105,6 +112,8 @@ public class ErpProductServiceImpl implements ErpProductService {
     private ErpProductUnitService productUnitService;
     @Resource
     private ErpWarehouseService warehouseService;
+    @Resource
+    private ErpProductPriceSystemService productPriceSystemService;
 
     @Resource
     private ErpNoRedisDAO noRedisDAO;
@@ -131,6 +140,7 @@ public class ErpProductServiceImpl implements ErpProductService {
         }
         prepareProductCode(product, createReqVO.getCode(), null);
         insertProduct(product);
+        initProductStock(product.getId(), createReqVO.getDefaultWarehouseId());
 
         // 3. 校验并插入通用件子表
         validateUniversalCodes(product.getId(), createReqVO.getUniversals());
@@ -243,8 +253,11 @@ public class ErpProductServiceImpl implements ErpProductService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void deleteProduct(Long id) {
-        validateProductExists(id);
+        ErpProductDO product = validateProductExists(id);
+        validateProductCanDelete(product);
+        stockMapper.delete(ErpStockDO::getProductId, id);
         productUniversalMapper.deleteByProductId(id);
+        productPriceSystemService.deleteByProductId(id);
         productMapper.deleteById(id);
     }
 
@@ -276,6 +289,50 @@ public class ErpProductServiceImpl implements ErpProductService {
             throw exception(PRODUCT_NOT_EXISTS);
         }
         return product;
+    }
+
+    private void initProductStock(Long productId, Long warehouseId) {
+        if (productId == null || warehouseId == null) {
+            return;
+        }
+        if (stockMapper.selectByProductIdAndWarehouseId(productId, warehouseId) != null) {
+            return;
+        }
+        stockMapper.insert(new ErpStockDO()
+                .setProductId(productId)
+                .setWarehouseId(warehouseId)
+                .setCount(BigDecimal.ZERO)
+                .setLockCount(BigDecimal.ZERO)
+                .setCostPrice(BigDecimal.ZERO)
+                .setCostAmount(BigDecimal.ZERO));
+    }
+
+    private void validateProductCanDelete(ErpProductDO product) {
+        Long productId = product.getId();
+        if (stockRecordMapper.selectCount(ErpStockRecordDO::getProductId, productId) > 0) {
+            throw exception(PRODUCT_DELETE_FAIL_STOCK_EXISTS, product.getName());
+        }
+        if (stockLockMapper.selectCount(new LambdaQueryWrapper<ErpStockLockDO>()
+                .eq(ErpStockLockDO::getProductId, productId)
+                .eq(ErpStockLockDO::getStatus, 1)) > 0) {
+            throw exception(PRODUCT_DELETE_FAIL_STOCK_EXISTS, product.getName());
+        }
+        List<ErpStockDO> stocks = stockMapper.selectList(ErpStockDO::getProductId, productId);
+        boolean hasStockTrace = stocks.stream().anyMatch(this::hasStockTrace);
+        if (hasStockTrace) {
+            throw exception(PRODUCT_DELETE_FAIL_STOCK_EXISTS, product.getName());
+        }
+    }
+
+    private boolean hasStockTrace(ErpStockDO stock) {
+        return isNonZero(stock.getCount())
+                || isNonZero(stock.getLockCount())
+                || isNonZero(stock.getCostAmount())
+                || isNonZero(stock.getCostPrice());
+    }
+
+    private boolean isNonZero(BigDecimal value) {
+        return value != null && value.compareTo(BigDecimal.ZERO) != 0;
     }
 
     /**

@@ -256,6 +256,14 @@ public class ErpFinancePaymentServiceImpl implements ErpFinancePaymentService {
     }
 
     @Override
+    public List<ErpFinancePaymentDO> getFinancePaymentList(Collection<Long> ids) {
+        if (CollUtil.isEmpty(ids)) {
+            return Collections.emptyList();
+        }
+        return financePaymentMapper.selectByIds(ids);
+    }
+
+    @Override
     public PageResult<ErpFinancePaymentDO> getFinancePaymentPage(ErpFinancePaymentPageReqVO pageReqVO) {
         return financePaymentMapper.selectPage(pageReqVO);
     }

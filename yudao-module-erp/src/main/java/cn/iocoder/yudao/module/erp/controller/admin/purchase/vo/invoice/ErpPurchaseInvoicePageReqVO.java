@@ -8,6 +8,7 @@ import lombok.ToString;
 import org.springframework.format.annotation.DateTimeFormat;
 
 import java.time.LocalDate;
+import java.util.List;
 
 @Schema(description = "管理后台 - ERP 采购票据分页 Request VO")
 @Data
@@ -45,5 +46,8 @@ public class ErpPurchaseInvoicePageReqVO extends PageParam {
 
     @Schema(description = "来源入库单号", example = "CGRK202605270001")
     private String sourceInNo;
+
+    @Schema(description = "勾选导出的采购票据编号数组", example = "[1,2,3]")
+    private List<Long> ids;
 
 }

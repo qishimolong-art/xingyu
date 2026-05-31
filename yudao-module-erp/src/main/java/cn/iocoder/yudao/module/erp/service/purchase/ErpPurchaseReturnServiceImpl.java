@@ -464,6 +464,14 @@ public class ErpPurchaseReturnServiceImpl implements ErpPurchaseReturnService {
         return purchaseReturnMapper.selectPage(pageReqVO);
     }
 
+    @Override
+    public List<ErpPurchaseReturnDO> getPurchaseReturnList(Collection<Long> ids) {
+        if (CollUtil.isEmpty(ids)) {
+            return Collections.emptyList();
+        }
+        return purchaseReturnMapper.selectByIds(ids);
+    }
+
     // ==================== 采购退货项 ====================
 
     @Override

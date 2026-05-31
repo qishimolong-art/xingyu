@@ -57,13 +57,35 @@ public class ErpWarehouseServiceImpl implements ErpWarehouseService {
     @Transactional(rollbackFor = Exception.class)
     public void updateWarehouse(ErpWarehouseSaveReqVO updateReqVO) {
         // 校验存在
-        validateWarehouseExists(updateReqVO.getId());
-        // 更新仓库
+        ErpWarehouseDO warehouse = validateWarehouseExists(updateReqVO.getId());
+        // 更新仓库：只覆盖本次表单提交的字段，避免把历史扩展字段清空
         ErpWarehouseDO updateObj = BeanUtils.toBean(updateReqVO, ErpWarehouseDO.class);
+        updateObj.setId(warehouse.getId());
+        updateObj.setAddress(warehouse.getAddress());
+        updateObj.setPrincipal(warehouse.getPrincipal());
+        updateObj.setWarehousePrice(warehouse.getWarehousePrice());
+        updateObj.setTruckagePrice(warehouse.getTruckagePrice());
+        updateObj.setDefaultStatus(warehouse.getDefaultStatus());
+        updateObj.setStorageCenterId(warehouse.getStorageCenterId());
+        updateObj.setStorageWarehouseId(warehouse.getStorageWarehouseId());
+        updateObj.setEcommerceEnabled(warehouse.getEcommerceEnabled());
+        updateObj.setSaleBillControl(warehouse.getSaleBillControl());
+        updateObj.setZeroStockHide(warehouse.getZeroStockHide());
+        updateObj.setGoodsToBranch(warehouse.getGoodsToBranch());
+        updateObj.setDept(warehouse.getDept());
+        updateObj.setWarehouseLocation(warehouse.getWarehouseLocation());
+        updateObj.setOutPacking(warehouse.getOutPacking());
+        updateObj.setAutoOrder(warehouse.getAutoOrder());
+        updateObj.setMaxPickCount(warehouse.getMaxPickCount());
+        updateObj.setStockGroupType(warehouse.getStockGroupType());
+        updateObj.setCreditControl(warehouse.getCreditControl());
+        updateObj.setRegionId(warehouse.getRegionId());
         warehouseMapper.updateById(updateObj);
-        // 更新分店关联：先删后插
-        warehouseBranchMapper.deleteByWarehouseId(updateReqVO.getId());
-        createWarehouseBranches(updateReqVO.getId(), updateReqVO.getBranchTenantIds());
+        // 精简表单不再提交分店时，保留原有分店关联
+        if (updateReqVO.getBranchTenantIds() != null) {
+            warehouseBranchMapper.deleteByWarehouseId(updateReqVO.getId());
+            createWarehouseBranches(updateReqVO.getId(), updateReqVO.getBranchTenantIds());
+        }
     }
 
     @Override
@@ -94,10 +116,12 @@ public class ErpWarehouseServiceImpl implements ErpWarehouseService {
         warehouseBranchMapper.deleteByWarehouseId(id);
     }
 
-    private void validateWarehouseExists(Long id) {
-        if (warehouseMapper.selectById(id) == null) {
+    private ErpWarehouseDO validateWarehouseExists(Long id) {
+        ErpWarehouseDO warehouse = warehouseMapper.selectById(id);
+        if (warehouse == null) {
             throw exception(WAREHOUSE_NOT_EXISTS);
         }
+        return warehouse;
     }
 
     @Override

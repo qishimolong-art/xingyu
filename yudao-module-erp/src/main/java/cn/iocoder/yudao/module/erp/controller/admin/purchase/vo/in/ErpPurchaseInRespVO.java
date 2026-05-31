@@ -84,6 +84,8 @@ public class ErpPurchaseInRespVO {
     @Schema(description = "采购员", example = "张三")
     @ExcelProperty("采购员")
     private String purchaser;
+    @Schema(description = "采购员名称", example = "张三")
+    private String purchaserName;
 
     @Schema(description = "开票类型", example = "普票")
     @ExcelProperty("开票类型")
@@ -104,6 +106,8 @@ public class ErpPurchaseInRespVO {
     @Schema(description = "记账员", example = "李四")
     @ExcelProperty("记账员")
     private String accountant;
+    @Schema(description = "记账员名称", example = "李四")
+    private String accountantName;
 
     @Schema(description = "浮动率", example = "1.00")
     @ExcelProperty("浮动率")
@@ -146,6 +150,8 @@ public class ErpPurchaseInRespVO {
     @Schema(description = "经办人", example = "王五")
     @ExcelProperty("经办人")
     private String handler;
+    @Schema(description = "经办人名称", example = "王五")
+    private String handlerName;
 
     @Schema(description = "税率", example = "13.00")
     @ExcelProperty("税率")
@@ -154,6 +160,8 @@ public class ErpPurchaseInRespVO {
     @Schema(description = "部门", example = "100")
     @ExcelProperty("部门")
     private Long deptId;
+    @Schema(description = "部门名称", example = "采购部")
+    private String deptName;
 
     @Schema(description = "采购折让", example = "0.00")
     @ExcelProperty("采购折让")

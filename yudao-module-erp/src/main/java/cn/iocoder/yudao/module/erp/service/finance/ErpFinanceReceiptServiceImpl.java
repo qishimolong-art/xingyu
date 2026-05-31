@@ -250,6 +250,14 @@ public class ErpFinanceReceiptServiceImpl implements ErpFinanceReceiptService {
     }
 
     @Override
+    public List<ErpFinanceReceiptDO> getFinanceReceiptList(Collection<Long> ids) {
+        if (CollUtil.isEmpty(ids)) {
+            return Collections.emptyList();
+        }
+        return financeReceiptMapper.selectByIds(ids);
+    }
+
+    @Override
     public PageResult<ErpFinanceReceiptDO> getFinanceReceiptPage(ErpFinanceReceiptPageReqVO pageReqVO) {
         return financeReceiptMapper.selectPage(pageReqVO);
     }

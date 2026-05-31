@@ -54,6 +54,8 @@ public interface ErpFinancePaymentService {
      */
     ErpFinancePaymentDO getFinancePayment(Long id);
 
+    List<ErpFinancePaymentDO> getFinancePaymentList(Collection<Long> ids);
+
     /**
      * 获得付款单分页
      *

@@ -19,6 +19,8 @@ import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpSupplierDO;
 import cn.iocoder.yudao.module.erp.service.product.ErpProductService;
 import cn.iocoder.yudao.module.erp.service.purchase.ErpPurchaseInvoiceService;
 import cn.iocoder.yudao.module.erp.service.purchase.ErpSupplierService;
+import cn.iocoder.yudao.module.system.api.dept.DeptApi;
+import cn.iocoder.yudao.module.system.api.dept.dto.DeptRespDTO;
 import cn.iocoder.yudao.module.system.api.user.AdminUserApi;
 import cn.iocoder.yudao.module.system.api.user.dto.AdminUserRespDTO;
 import io.swagger.v3.oas.annotations.Operation;
@@ -41,9 +43,9 @@ import javax.validation.Valid;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.LinkedHashSet;
 import java.util.Set;
 
 import static cn.iocoder.yudao.framework.apilog.core.enums.OperateTypeEnum.EXPORT;
@@ -65,6 +67,8 @@ public class ErpPurchaseInvoiceController {
     private ErpProductService productService;
     @Resource
     private ErpSupplierService supplierService;
+    @Resource
+    private DeptApi deptApi;
     @Resource
     private AdminUserApi adminUserApi;
 
@@ -117,12 +121,16 @@ public class ErpPurchaseInvoiceController {
                 convertSet(itemList, ErpPurchaseInvoiceItemDO::getProductId));
         Map<Long, ErpSupplierDO> supplierMap = supplierService.getSupplierMap(
                 Collections.singleton(purchaseInvoice.getSupplierId()));
+        DeptRespDTO dept = purchaseInvoice.getDeptId() == null ? null : deptApi.getDept(purchaseInvoice.getDeptId());
         Map<Long, AdminUserRespDTO> userMap = adminUserApi.getUserMap(
                 collectUserIds(Collections.singletonList(purchaseInvoice)));
 
         ErpPurchaseInvoiceRespVO respVO = BeanUtils.toBean(purchaseInvoice, ErpPurchaseInvoiceRespVO.class);
         fillInvoiceRespItems(respVO, itemList, productMap);
         MapUtils.findAndThen(supplierMap, respVO.getSupplierId(), supplier -> respVO.setSupplierName(supplier.getName()));
+        if (dept != null) {
+            respVO.setDeptName(dept.getName());
+        }
         fillUserNames(respVO, userMap);
         return success(respVO);
     }
@@ -141,9 +149,16 @@ public class ErpPurchaseInvoiceController {
     @ApiAccessLog(operateType = EXPORT)
     public void exportPurchaseInvoiceExcel(@Valid ErpPurchaseInvoicePageReqVO pageReqVO,
                                            HttpServletResponse response) throws IOException {
-        pageReqVO.setPageSize(PageParam.PAGE_SIZE_NONE);
-        List<ErpPurchaseInvoiceRespVO> list = buildPurchaseInvoiceVOPageResult(
-                purchaseInvoiceService.getPurchaseInvoicePage(pageReqVO)).getList();
+        List<ErpPurchaseInvoiceRespVO> list;
+        if (CollUtil.isNotEmpty(pageReqVO.getIds())) {
+            list = buildPurchaseInvoiceVOPageResult(new PageResult<>(
+                    purchaseInvoiceService.getPurchaseInvoiceList(pageReqVO.getIds()),
+                    (long) pageReqVO.getIds().size())).getList();
+        } else {
+            pageReqVO.setPageSize(PageParam.PAGE_SIZE_NONE);
+            list = buildPurchaseInvoiceVOPageResult(
+                    purchaseInvoiceService.getPurchaseInvoicePage(pageReqVO)).getList();
+        }
         ExcelUtils.write(response, "采购票据.xls", "数据", ErpPurchaseInvoiceExportRespVO.class,
                 buildPurchaseInvoiceExportList(list));
     }
@@ -159,12 +174,14 @@ public class ErpPurchaseInvoiceController {
                 convertSet(itemList, ErpPurchaseInvoiceItemDO::getProductId));
         Map<Long, ErpSupplierDO> supplierMap = supplierService.getSupplierMap(
                 convertSet(pageResult.getList(), ErpPurchaseInvoiceDO::getSupplierId));
+        Map<Long, DeptRespDTO> deptMap = deptApi.getDeptMap(convertSet(pageResult.getList(), ErpPurchaseInvoiceDO::getDeptId));
         Map<Long, AdminUserRespDTO> userMap = adminUserApi.getUserMap(collectUserIds(pageResult.getList()));
 
         PageResult<ErpPurchaseInvoiceRespVO> respPage = BeanUtils.toBean(pageResult, ErpPurchaseInvoiceRespVO.class);
         respPage.getList().forEach(invoice -> {
             fillInvoiceRespItems(invoice, itemMap.get(invoice.getId()), productMap);
             MapUtils.findAndThen(supplierMap, invoice.getSupplierId(), supplier -> invoice.setSupplierName(supplier.getName()));
+            MapUtils.findAndThen(deptMap, invoice.getDeptId(), dept -> invoice.setDeptName(dept.getName()));
             fillUserNames(invoice, userMap);
         });
         return respPage;
@@ -216,15 +233,20 @@ public class ErpPurchaseInvoiceController {
                 : new ErpPurchaseInvoiceExportRespVO();
         if (fillMainFields) {
             row.setSupplierName(invoice.getSupplierName());
+            row.setDeptName(invoice.getDeptName());
+            row.setHandlerName(invoice.getHandlerName());
             row.setCreatorName(invoice.getCreatorName());
+            row.setUpdaterName(invoice.getUpdaterName());
             row.setRemark(invoice.getRemark());
         }
         if (item == null) {
             return row;
         }
         row.setSourceInNo(item.getSourceInNo());
+        row.setSourceInItemId(item.getSourceInItemId());
         row.setProductCode(item.getProductCode());
         row.setProductName(item.getProductName());
+        row.setProductBarCode(item.getProductBarCode());
         row.setProductUnitName(item.getProductUnitName());
         row.setCount(item.getCount());
         row.setProductPrice(item.getProductPrice());
@@ -241,6 +263,7 @@ public class ErpPurchaseInvoiceController {
         list.forEach(invoice -> {
             addUserId(userIds, invoice.getCreator());
             addUserId(userIds, invoice.getUpdater());
+            addLongUserId(userIds, invoice.getHandlerId());
         });
         return userIds;
     }
@@ -254,12 +277,21 @@ public class ErpPurchaseInvoiceController {
         if (updaterId != null) {
             MapUtils.findAndThen(userMap, updaterId, user -> invoice.setUpdaterName(user.getNickname()));
         }
+        if (invoice.getHandlerId() != null) {
+            MapUtils.findAndThen(userMap, invoice.getHandlerId(), user -> invoice.setHandlerName(user.getNickname()));
+        }
     }
 
     private void addUserId(Set<Long> userIds, String userId) {
         Long parsed = parseUserId(userId);
         if (parsed != null) {
             userIds.add(parsed);
+        }
+    }
+
+    private void addLongUserId(Set<Long> userIds, Long userId) {
+        if (userId != null) {
+            userIds.add(userId);
         }
     }
 
