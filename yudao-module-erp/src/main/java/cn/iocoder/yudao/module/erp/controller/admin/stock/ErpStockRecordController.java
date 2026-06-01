@@ -158,17 +158,18 @@ public class ErpStockRecordController {
             if (warehouse != null) {
                 vo.setWarehouseName(warehouse.getName());
             }
-            // 入出分列
             BigDecimal count = r.getCount() != null ? r.getCount() : BigDecimal.ZERO;
+            BigDecimal unitPrice = r.getUnitPrice() != null ? r.getUnitPrice() : BigDecimal.ZERO;
+            BigDecimal totalPrice = r.getTotalPrice() != null ? r.getTotalPrice() : BigDecimal.ZERO;
             int sign = count.compareTo(BigDecimal.ZERO);
             if (sign > 0) {
                 vo.setInCount(count);
-                vo.setInUnitPrice(r.getUnitPrice());
-                vo.setInAmount(r.getTotalPrice());
+                vo.setInUnitPrice(unitPrice);
+                vo.setInAmount(totalPrice);
             } else if (sign < 0) {
                 vo.setOutCount(count.abs());
-                vo.setOutUnitPrice(r.getUnitPrice());
-                vo.setOutAmount(r.getTotalPrice() != null ? r.getTotalPrice().abs() : null);
+                vo.setOutUnitPrice(unitPrice);
+                vo.setOutAmount(totalPrice.abs());
             }
             return vo;
         }).collect(Collectors.toList());

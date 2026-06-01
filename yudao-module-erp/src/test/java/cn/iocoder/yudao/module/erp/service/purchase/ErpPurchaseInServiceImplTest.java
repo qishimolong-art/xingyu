@@ -28,6 +28,7 @@ import cn.iocoder.yudao.module.erp.enums.ErpAuditStatus;
 import cn.iocoder.yudao.module.erp.enums.finance.accounting.ErpVoucherAuditStatusEnum;
 import cn.iocoder.yudao.module.erp.enums.finance.accounting.ErpVoucherSourceBizTypeEnum;
 import cn.iocoder.yudao.module.erp.enums.finance.accounting.ErpVoucherTypeEnum;
+import cn.iocoder.yudao.module.erp.enums.stock.ErpStockRecordBizTypeEnum;
 import cn.iocoder.yudao.module.erp.service.finance.accounting.ErpAutoVoucherBuilder;
 import cn.iocoder.yudao.module.erp.service.finance.accounting.ErpBookOpenService;
 import cn.iocoder.yudao.module.erp.service.finance.accounting.ErpVoucherService;
@@ -69,6 +70,7 @@ import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PURCHASE_ORDE
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PURCHASE_ORDER_NOT_EXISTS;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -140,6 +142,7 @@ public class ErpPurchaseInServiceImplTest extends BaseMockitoUnitTest {
 
     private ErpPurchaseInSaveReqVO buildBaseReqVO(ErpPurchaseInSaveReqVO.Item... items) {
         ErpPurchaseInSaveReqVO vo = new ErpPurchaseInSaveReqVO();
+        vo.setSupplierId(99L);
         vo.setInTime(LocalDateTime.of(2026, 5, 20, 10, 0, 0));
         vo.setItems(Arrays.asList(items));
         return vo;
@@ -164,11 +167,17 @@ public class ErpPurchaseInServiceImplTest extends BaseMockitoUnitTest {
         ErpPurchaseInDO inserted = captor.getValue();
         assertEquals(ErpAuditStatus.PROCESS.getStatus(), inserted.getStatus());
         assertEquals("CGRK20260520000001", inserted.getNo());
+        assertEquals(Long.valueOf(99L), inserted.getSupplierId());
+        assertEquals("", inserted.getOrderNo());
         assertEquals(0, inserted.getTotalCount().compareTo(new BigDecimal("10")));
         // totalProductPrice = 50；taxPrice = 0；totalPrice = 50 - 0 + 0 = 50
         assertEquals(0, inserted.getTotalPrice().compareTo(new BigDecimal("50.00")));
-        verify(purchaseInItemMapper).insertBatch(anyList());
+        ArgumentCaptor<List<ErpPurchaseInItemDO>> itemsCaptor = ArgumentCaptor.forClass(List.class);
+        verify(purchaseInItemMapper).insertBatch(itemsCaptor.capture());
+        assertNull(itemsCaptor.getValue().get(0).getOrderItemId());
         // orderId 为空，不应调用订单更新
+        assertEquals(null, inserted.getOrderId());
+        verify(supplierService).validateSupplier(eq(99L));
         verify(purchaseOrderService, never()).updatePurchaseOrderInCount(anyLong(), any());
     }
 
@@ -331,7 +340,10 @@ public class ErpPurchaseInServiceImplTest extends BaseMockitoUnitTest {
         ArgumentCaptor<ErpStockRecordCreateReqBO> recordCaptor =
                 ArgumentCaptor.forClass(ErpStockRecordCreateReqBO.class);
         verify(stockRecordService).createStockRecord(recordCaptor.capture());
+        assertEquals(ErpStockRecordBizTypeEnum.PURCHASE_IN.getType(), recordCaptor.getValue().getBizType());
         assertEquals(0, recordCaptor.getValue().getCount().compareTo(new BigDecimal("5")));
+        assertEquals(0, recordCaptor.getValue().getUnitPrice().compareTo(new BigDecimal("10")));
+        assertEquals(LocalDateTime.of(2026, 5, 20, 10, 0, 0), recordCaptor.getValue().getBizDate());
         // 回写 lastPurchasePrice
         verify(productService).updateProductLastPurchasePrice(eq(200L), eq(new BigDecimal("10")));
         // 凭证生成
@@ -373,7 +385,7 @@ public class ErpPurchaseInServiceImplTest extends BaseMockitoUnitTest {
         ErpVoucherDO approvedVoucher = new ErpVoucherDO()
                 .setId(500L).setVoucherNo("记-202605-000001")
                 .setAuditStatus(ErpVoucherAuditStatusEnum.APPROVE.getStatus());
-        when(voucherMapper.selectListByBiz(eq(ErpVoucherTypeEnum.PURCHASE.getType()), eq(10L)))
+        when(voucherMapper.selectListByBiz(eq(ErpVoucherSourceBizTypeEnum.PURCHASE_IN.getType()), eq(10L)))
                 .thenReturn(Collections.singletonList(approvedVoucher));
 
         assertServiceException(() -> purchaseInService.updatePurchaseInStatus(10L,
@@ -394,7 +406,7 @@ public class ErpPurchaseInServiceImplTest extends BaseMockitoUnitTest {
         ErpVoucherDO unauditedVoucher = new ErpVoucherDO()
                 .setId(500L).setVoucherNo("记-202605-000001")
                 .setAuditStatus(ErpVoucherAuditStatusEnum.PROCESS.getStatus());
-        when(voucherMapper.selectListByBiz(eq(ErpVoucherTypeEnum.PURCHASE.getType()), eq(10L)))
+        when(voucherMapper.selectListByBiz(eq(ErpVoucherSourceBizTypeEnum.PURCHASE_IN.getType()), eq(10L)))
                 .thenReturn(Collections.singletonList(unauditedVoucher));
         when(purchaseInMapper.updateByIdAndStatus(eq(10L),
                 eq(ErpAuditStatus.APPROVE.getStatus()), any(ErpPurchaseInDO.class))).thenReturn(1);
@@ -679,17 +691,6 @@ public class ErpPurchaseInServiceImplTest extends BaseMockitoUnitTest {
 
         // 自动审批后会再次 selectById（updatePurchaseInStatus 内部调用）
         // 让插入后的 selectById 也能拿到记录
-        when(purchaseInMapper.selectById(any())).thenReturn(new ErpPurchaseInDO()
-                .setId(1L).setNo("CGRK20260520000001").setSupplierId(999L)
-                .setInTime(LocalDateTime.of(2026, 5, 20, 10, 0, 0))
-                .setStatus(ErpAuditStatus.PROCESS.getStatus())
-                .setPaymentPrice(BigDecimal.ZERO));
-        when(purchaseInMapper.updateByIdAndStatus(any(),
-                eq(ErpAuditStatus.PROCESS.getStatus()), any(ErpPurchaseInDO.class))).thenReturn(1);
-        when(purchaseInItemMapper.selectListByInId(any())).thenReturn(Collections.emptyList());
-        when(bookOpenService.isVoucherTypeEnabled(any(), eq(ErpVoucherTypeEnum.PURCHASE.getType())))
-                .thenReturn(false);
-
         ErpPurchaseInFromOrderReqVO reqVO = new ErpPurchaseInFromOrderReqVO();
         reqVO.setOrderId(50L);
         reqVO.setInTime(LocalDateTime.of(2026, 5, 20, 10, 0, 0));
@@ -703,9 +704,6 @@ public class ErpPurchaseInServiceImplTest extends BaseMockitoUnitTest {
 
         // 入库单插入
         verify(purchaseInMapper).insert(any(ErpPurchaseInDO.class));
-        // 自动审批 → updateByIdAndStatus 被调用
-        verify(purchaseInMapper).updateByIdAndStatus(any(),
-                eq(ErpAuditStatus.PROCESS.getStatus()), any(ErpPurchaseInDO.class));
     }
 
     @Test
@@ -770,17 +768,6 @@ public class ErpPurchaseInServiceImplTest extends BaseMockitoUnitTest {
         when(purchaseInMapper.selectListByOrderId(eq(50L))).thenReturn(Collections.emptyList());
         when(purchaseInItemMapper.selectOrderItemCountSumMapByInIds(any())).thenReturn(Collections.emptyMap());
         // 后续 updatePurchaseInStatus 链路
-        when(purchaseInMapper.selectById(any())).thenReturn(new ErpPurchaseInDO()
-                .setId(1L).setNo("CGRK20260520000001").setSupplierId(999L)
-                .setInTime(LocalDateTime.of(2026, 5, 20, 10, 0, 0))
-                .setStatus(ErpAuditStatus.PROCESS.getStatus())
-                .setPaymentPrice(BigDecimal.ZERO));
-        when(purchaseInMapper.updateByIdAndStatus(any(),
-                eq(ErpAuditStatus.PROCESS.getStatus()), any(ErpPurchaseInDO.class))).thenReturn(1);
-        when(purchaseInItemMapper.selectListByInId(any())).thenReturn(Collections.emptyList());
-        when(bookOpenService.isVoucherTypeEnabled(any(), eq(ErpVoucherTypeEnum.PURCHASE.getType())))
-                .thenReturn(false);
-
         ErpPurchaseInFromOrderReqVO reqVO = new ErpPurchaseInFromOrderReqVO();
         reqVO.setOrderId(50L);
         reqVO.setInTime(LocalDateTime.of(2026, 5, 20, 10, 0, 0));

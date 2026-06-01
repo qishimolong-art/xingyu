@@ -290,7 +290,7 @@ public class ErpSaleOutServiceImpl implements ErpSaleOutService {
             stockRecordService.createStockRecord(new ErpStockRecordCreateReqBO(
                     saleOutItem.getProductId(), saleOutItem.getWarehouseId(), count,
                     bizType, saleOutItem.getOutId(), saleOutItem.getId(), saleOut.getNo(),
-                    null, saleOut.getOutTime()));
+                    saleOutItem.getProductPrice(), saleOut.getOutTime()));
         });
 
         // 4. 审批通过且已开账：生成销售凭证

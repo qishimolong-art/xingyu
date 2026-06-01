@@ -124,6 +124,8 @@ public class ErpPurchaseInServiceImpl implements ErpPurchaseInService {
         ErpPurchaseOrderDO purchaseOrder = null;
         if (createReqVO.getOrderId() != null) {
             purchaseOrder = purchaseOrderService.validatePurchaseOrder(createReqVO.getOrderId());
+        } else {
+            supplierService.validateSupplier(createReqVO.getSupplierId());
         }
         // 1.2 校验入库项的有效性
         List<ErpPurchaseInItemDO> purchaseInItems = validatePurchaseInItems(createReqVO.getItems());
@@ -139,6 +141,8 @@ public class ErpPurchaseInServiceImpl implements ErpPurchaseInService {
         purchaseIn.setInTime(LocalDateTime.now());
         if (purchaseOrder != null) {
             purchaseIn.setOrderNo(purchaseOrder.getNo()).setSupplierId(purchaseOrder.getSupplierId());
+        } else {
+            purchaseIn.setSupplierId(createReqVO.getSupplierId()).setOrderNo(StrUtil.EMPTY);
         }
         // （当 orderId 为空时，supplierId 由 createReqVO 传进来；若未传，则在主表 supplierId 为 null，业务允许）
         calculateTotalPrice(purchaseIn, purchaseInItems);
@@ -166,6 +170,8 @@ public class ErpPurchaseInServiceImpl implements ErpPurchaseInService {
         ErpPurchaseOrderDO purchaseOrder = null;
         if (updateReqVO.getOrderId() != null) {
             purchaseOrder = purchaseOrderService.validatePurchaseOrder(updateReqVO.getOrderId());
+        } else {
+            supplierService.validateSupplier(updateReqVO.getSupplierId());
         }
         // 1.3 校验订单项的有效性
         List<ErpPurchaseInItemDO> purchaseInItems = validatePurchaseInItems(updateReqVO.getItems());
@@ -175,6 +181,8 @@ public class ErpPurchaseInServiceImpl implements ErpPurchaseInService {
         updateObj.setInTime(LocalDateTime.now());
         if (purchaseOrder != null) {
             updateObj.setOrderNo(purchaseOrder.getNo()).setSupplierId(purchaseOrder.getSupplierId());
+        } else {
+            updateObj.setSupplierId(updateReqVO.getSupplierId()).setOrderNo(StrUtil.EMPTY);
         }
         calculateTotalPrice(updateObj, purchaseInItems);
         purchaseInMapper.updateById(updateObj);

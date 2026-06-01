@@ -349,7 +349,8 @@ public class ErpSaleOutServiceImplTest extends BaseMockitoUnitTest {
         verify(stockRecordService).createStockRecord(argThat((ErpStockRecordCreateReqBO bo) ->
                 bo.getProductId().equals(300L) && bo.getWarehouseId().equals(400L)
                         // 销售出库的扣减是 count.negate()
-                        && bo.getCount().compareTo(new BigDecimal("-5")) == 0));
+                        && bo.getCount().compareTo(new BigDecimal("-5")) == 0
+                        && bo.getUnitPrice().compareTo(new BigDecimal("10")) == 0));
         // 未开账不应建凭证
         verify(voucherService, never()).createVoucherFromBiz(anyInt(), anyLong(), anyString(), any(), any(), anyString(), any());
     }
@@ -384,7 +385,8 @@ public class ErpSaleOutServiceImplTest extends BaseMockitoUnitTest {
         verify(voucherItemMapper).delete(any(LambdaQueryWrapper.class));
         // 反审核的库存流水：count 为正（出库取消）
         verify(stockRecordService).createStockRecord(argThat((ErpStockRecordCreateReqBO bo) ->
-                bo.getCount().compareTo(new BigDecimal("5")) == 0));
+                bo.getCount().compareTo(new BigDecimal("5")) == 0
+                        && bo.getUnitPrice().compareTo(new BigDecimal("10")) == 0));
     }
 
     @Test

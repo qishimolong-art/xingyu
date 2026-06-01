@@ -18,6 +18,10 @@ public class ErpPurchaseInSaveReqVO {
     @Schema(description = "结算账户编号", example = "31189")
     private Long accountId;
 
+    @Schema(description = "供应商编号", requiredMode = Schema.RequiredMode.REQUIRED, example = "1724")
+    @NotNull(message = "供应商不能为空")
+    private Long supplierId;
+
     @Schema(description = "入库时间", requiredMode = Schema.RequiredMode.REQUIRED)
     @NotNull(message = "入库时间不能为空")
     private LocalDateTime inTime;
