@@ -13,6 +13,7 @@ public interface ErpReceivableOtherMapper extends BaseMapperX<ErpReceivableOther
 
     default PageResult<ErpReceivableOtherDO> selectPage(ErpReceivableOtherPageReqVO reqVO) {
         return selectPage(reqVO, new LambdaQueryWrapperX<ErpReceivableOtherDO>()
+                .inIfPresent(ErpReceivableOtherDO::getId, reqVO.getIds())
                 .likeIfPresent(ErpReceivableOtherDO::getNo, reqVO.getNo())
                 .betweenIfPresent(ErpReceivableOtherDO::getBizTime, reqVO.getBizTime())
                 .eqIfPresent(ErpReceivableOtherDO::getCustomerId, reqVO.getCustomerId())

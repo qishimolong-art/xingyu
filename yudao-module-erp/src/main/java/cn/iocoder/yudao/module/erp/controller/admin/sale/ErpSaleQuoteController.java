@@ -188,13 +188,19 @@ public class ErpSaleQuoteController {
 
     private void fillRelation(ErpSaleQuoteRespVO vo, List<ErpSaleQuoteItemDO> items,
                               Map<Long, AdminUserRespDTO> userMap) {
-        Map<Long, ErpProductRespVO> productMap = productService.getProductVOMap(convertSet(items, ErpSaleQuoteItemDO::getProductId));
-        vo.setItems(BeanUtils.toBean(items, ErpSaleQuoteRespVO.Item.class,
+        List<ErpSaleQuoteItemDO> safeItems = CollUtil.isEmpty(items) ? Collections.emptyList() : items;
+        Map<Long, ErpProductRespVO> productMap = CollUtil.isEmpty(safeItems)
+                ? Collections.emptyMap()
+                : productService.getProductVOMap(convertSet(safeItems, ErpSaleQuoteItemDO::getProductId));
+        List<ErpSaleQuoteRespVO.Item> respItems = BeanUtils.toBean(safeItems, ErpSaleQuoteRespVO.Item.class,
                 item -> MapUtils.findAndThen(productMap, item.getProductId(), product -> item.setProductName(product.getName())
-                        .setProductBarCode(product.getBarCode()).setProductUnitName(product.getUnitName()))));
+                        .setProductBarCode(product.getBarCode()).setProductUnitName(product.getUnitName())));
+        vo.setItems(respItems == null ? Collections.emptyList() : respItems);
         vo.setProductNames(CollUtil.join(vo.getItems(), "，", ErpSaleQuoteRespVO.Item::getProductName));
-        Map<Long, ErpCustomerDO> customerMap = customerService.getCustomerMap(convertSet(Collections.singletonList(vo), ErpSaleQuoteRespVO::getCustomerId));
-        MapUtils.findAndThen(customerMap, vo.getCustomerId(), customer -> vo.setCustomerName(customer.getName()));
+        if (vo.getCustomerId() != null) {
+            Map<Long, ErpCustomerDO> customerMap = customerService.getCustomerMap(Collections.singleton(vo.getCustomerId()));
+            MapUtils.findAndThen(customerMap, vo.getCustomerId(), customer -> vo.setCustomerName(customer.getName()));
+        }
         Long creatorId = parseLongSafely(vo.getCreator());
         if (creatorId != null) {
             MapUtils.findAndThen(userMap, creatorId, user -> vo.setCreatorName(user.getNickname()));

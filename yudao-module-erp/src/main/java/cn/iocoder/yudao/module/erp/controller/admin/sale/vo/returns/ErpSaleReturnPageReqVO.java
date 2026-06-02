@@ -8,6 +8,7 @@ import lombok.ToString;
 import org.springframework.format.annotation.DateTimeFormat;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 import static cn.iocoder.yudao.framework.common.util.date.DateUtils.FORMAT_YEAR_MONTH_DAY_HOUR_MINUTE_SECOND;
 
@@ -57,5 +58,8 @@ public class ErpSaleReturnPageReqVO extends PageParam {
 
     @Schema(description = "是否可退款", example = "true")
     private Boolean refundEnable; // 对应 refundStatus = [0, 1]
+
+    @Schema(description = "销售退货编号数组")
+    private List<Long> ids;
 
 }

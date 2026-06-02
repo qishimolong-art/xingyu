@@ -13,6 +13,7 @@ public interface ErpPayableExpenseMapper extends BaseMapperX<ErpPayableExpenseDO
 
     default PageResult<ErpPayableExpenseDO> selectPage(ErpPayableExpensePageReqVO reqVO) {
         return selectPage(reqVO, new LambdaQueryWrapperX<ErpPayableExpenseDO>()
+                .inIfPresent(ErpPayableExpenseDO::getId, reqVO.getIds())
                 .likeIfPresent(ErpPayableExpenseDO::getNo, reqVO.getNo())
                 .betweenIfPresent(ErpPayableExpenseDO::getBizTime, reqVO.getBizTime())
                 .likeIfPresent(ErpPayableExpenseDO::getSettleMethod, reqVO.getSettleMethod())

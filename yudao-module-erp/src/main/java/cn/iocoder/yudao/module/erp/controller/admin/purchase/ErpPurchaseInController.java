@@ -151,6 +151,7 @@ public class ErpPurchaseInController {
         if (purchaseIn == null) {
             return success(null);
         }
+        markHasInvoice(purchaseIn);
         List<ErpPurchaseInItemDO> purchaseInItemList = purchaseInService.getPurchaseInItemListByInId(id);
         Map<Long, ErpProductRespVO> productMap = productService.getProductVOMap(
                 convertSet(purchaseInItemList, ErpPurchaseInItemDO::getProductId));
@@ -277,6 +278,7 @@ public class ErpPurchaseInController {
         if (CollUtil.isEmpty(pageResult.getList())) {
             return PageResult.empty(pageResult.getTotal());
         }
+        markHasInvoice(pageResult.getList());
         List<ErpPurchaseInItemDO> purchaseInItemList = purchaseInService.getPurchaseInItemListByInIds(
                 convertSet(pageResult.getList(), ErpPurchaseInDO::getId));
         Map<Long, List<ErpPurchaseInItemDO>> purchaseInItemMap = convertMultiMap(
@@ -321,6 +323,13 @@ public class ErpPurchaseInController {
                 purchaseIn.setHasInvoice(true);
             }
         });
+    }
+
+    private void markHasInvoice(ErpPurchaseInDO purchaseIn) {
+        if (purchaseIn == null) {
+            return;
+        }
+        markHasInvoice(Collections.singletonList(purchaseIn));
     }
 
     private void fillUserNames(ErpPurchaseInRespVO purchaseIn, Map<Long, AdminUserRespDTO> userMap) {

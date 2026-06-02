@@ -33,6 +33,7 @@ public interface ErpSaleReturnMapper extends BaseMapperX<ErpSaleReturnDO> {
                 .eqIfPresent(ErpSaleReturnDO::getCreator, reqVO.getCreator())
                 .eqIfPresent(ErpSaleReturnDO::getAccountId, reqVO.getAccountId())
                 .likeIfPresent(ErpSaleReturnDO::getOrderNo, reqVO.getOrderNo())
+                .inIfPresent(ErpSaleReturnDO::getId, reqVO.getIds())
                 .orderByDesc(ErpSaleReturnDO::getId);
         // 退款状态。为什么需要 t. 的原因，是因为联表查询时，需要指定表名，不然会报字段不存在的错误
         if (Objects.equals(reqVO.getRefundStatus(), ErpSaleReturnPageReqVO.REFUND_STATUS_NONE)) {

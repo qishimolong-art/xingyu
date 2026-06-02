@@ -207,8 +207,12 @@ public class ErpSaleCartController {
 
     private void fillRelation(ErpSaleCartRespVO vo, List<ErpSaleCartItemDO> items) {
         List<ErpSaleCartItemDO> safeItems = CollUtil.isEmpty(items) ? Collections.emptyList() : items;
-        Map<Long, ErpProductRespVO> productMap = productService.getProductVOMap(convertSet(safeItems, ErpSaleCartItemDO::getProductId));
-        Map<Long, ErpWarehouseDO> warehouseMap = warehouseService.getWarehouseMap(convertSet(safeItems, ErpSaleCartItemDO::getWarehouseId));
+        Map<Long, ErpProductRespVO> productMap = CollUtil.isEmpty(safeItems)
+                ? Collections.emptyMap()
+                : productService.getProductVOMap(convertSet(safeItems, ErpSaleCartItemDO::getProductId));
+        Map<Long, ErpWarehouseDO> warehouseMap = CollUtil.isEmpty(safeItems)
+                ? Collections.emptyMap()
+                : warehouseService.getWarehouseMap(convertSet(safeItems, ErpSaleCartItemDO::getWarehouseId));
         List<ErpSaleCartRespVO.Item> respItems = BeanUtils.toBean(safeItems, ErpSaleCartRespVO.Item.class,
                 item -> MapUtils.findAndThen(productMap, item.getProductId(), product -> item.setProductName(product.getName())
                         .setProductBarCode(product.getBarCode()).setProductUnitName(product.getUnitName())
@@ -217,8 +221,10 @@ public class ErpSaleCartController {
         vo.getItems().forEach(item ->
                 MapUtils.findAndThen(warehouseMap, item.getWarehouseId(), warehouse -> item.setWarehouseName(warehouse.getName())));
         vo.setProductNames(CollUtil.join(vo.getItems(), "，", ErpSaleCartRespVO.Item::getProductName));
-        Map<Long, ErpCustomerDO> customerMap = customerService.getCustomerMap(convertSet(Collections.singletonList(vo), ErpSaleCartRespVO::getCustomerId));
-        MapUtils.findAndThen(customerMap, vo.getCustomerId(), customer -> vo.setCustomerName(customer.getName()));
+        if (vo.getCustomerId() != null) {
+            Map<Long, ErpCustomerDO> customerMap = customerService.getCustomerMap(Collections.singleton(vo.getCustomerId()));
+            MapUtils.findAndThen(customerMap, vo.getCustomerId(), customer -> vo.setCustomerName(customer.getName()));
+        }
         if (vo.getCreator() != null) {
             try {
                 AdminUserRespDTO creator = adminUserApi.getUser(Long.parseLong(vo.getCreator()));

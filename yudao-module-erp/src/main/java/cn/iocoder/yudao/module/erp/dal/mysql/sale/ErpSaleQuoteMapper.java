@@ -22,6 +22,7 @@ public interface ErpSaleQuoteMapper extends BaseMapperX<ErpSaleQuoteDO> {
                 .betweenIfPresent(ErpSaleQuoteDO::getQuoteTime, reqVO.getQuoteTime())
                 .eqIfPresent(ErpSaleQuoteDO::getStatus, reqVO.getStatus())
                 .likeIfPresent(ErpSaleQuoteDO::getRemark, reqVO.getRemark())
+                .inIfPresent(ErpSaleQuoteDO::getId, reqVO.getIds())
                 .orderByDesc(ErpSaleQuoteDO::getId));
     }
 

@@ -1,11 +1,15 @@
 package cn.iocoder.yudao.module.erp.controller.admin.finance.receivable;
 
 import cn.hutool.core.collection.CollUtil;
+import cn.iocoder.yudao.framework.apilog.core.annotation.ApiAccessLog;
 import cn.iocoder.yudao.framework.common.pojo.CommonResult;
+import cn.iocoder.yudao.framework.common.pojo.PageParam;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.common.util.collection.MapUtils;
 import cn.iocoder.yudao.framework.common.util.number.NumberUtils;
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
+import cn.iocoder.yudao.framework.excel.core.util.ExcelUtils;
+import cn.iocoder.yudao.module.erp.controller.admin.finance.receivable.vo.otherreceivable.ErpReceivableOtherExportRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.receivable.vo.otherreceivable.ErpReceivableOtherPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.receivable.vo.otherreceivable.ErpReceivableOtherRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.receivable.vo.otherreceivable.ErpReceivableOtherSaveReqVO;
@@ -32,10 +36,14 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import javax.annotation.Resource;
+import javax.servlet.http.HttpServletResponse;
 import javax.validation.Valid;
+import java.io.IOException;
+import java.util.List;
 import java.util.Map;
 import java.util.stream.Stream;
 
+import static cn.iocoder.yudao.framework.apilog.core.enums.OperateTypeEnum.EXPORT;
 import static cn.iocoder.yudao.framework.common.pojo.CommonResult.success;
 import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.convertListByFlatMap;
 import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.convertSet;
@@ -126,6 +134,19 @@ public class ErpReceivableOtherController {
         }));
     }
 
+    @GetMapping("/export-excel")
+    @Operation(summary = "导出其他应收 Excel")
+    @PreAuthorize("@ss.hasPermission('erp:receivable-other:export')")
+    @ApiAccessLog(operateType = EXPORT)
+    public void exportExcel(@Valid ErpReceivableOtherPageReqVO reqVO,
+                            HttpServletResponse response) throws IOException {
+        reqVO.setPageSize(PageParam.PAGE_SIZE_NONE);
+        PageResult<ErpReceivableOtherDO> pageResult = receivableOtherService.getReceivableOtherPage(reqVO);
+        PageResult<ErpReceivableOtherRespVO> voPage = buildPageResult(pageResult);
+        ExcelUtils.write(response, "其他应收.xls", "数据", ErpReceivableOtherExportRespVO.class,
+                BeanUtils.toBean(voPage.getList(), ErpReceivableOtherExportRespVO.class));
+    }
+
     private void fillExtend(ErpReceivableOtherRespVO vo) {
         if (vo.getCustomerId() != null) {
             ErpCustomerDO customer = customerService.getCustomer(vo.getCustomerId());
@@ -156,5 +177,26 @@ public class ErpReceivableOtherController {
                 vo.setDeptName(dept.getName());
             }
         }
+    }
+
+    private PageResult<ErpReceivableOtherRespVO> buildPageResult(PageResult<ErpReceivableOtherDO> pageResult) {
+        if (CollUtil.isEmpty(pageResult.getList())) {
+            return PageResult.empty(pageResult.getTotal());
+        }
+        Map<Long, ErpCustomerDO> customerMap = customerService.getCustomerMap(
+                convertSet(pageResult.getList(), ErpReceivableOtherDO::getCustomerId));
+        Map<Long, AdminUserRespDTO> userMap = adminUserApi.getUserMap(convertListByFlatMap(pageResult.getList(),
+                item -> Stream.of(item.getHandlerId(), NumberUtils.parseLong(item.getCreator()))));
+        Map<Long, DeptRespDTO> deptMap = deptApi.getDeptMap(convertSet(pageResult.getList(), ErpReceivableOtherDO::getDeptId));
+        return BeanUtils.toBean(pageResult, ErpReceivableOtherRespVO.class, vo -> {
+            MapUtils.findAndThen(customerMap, vo.getCustomerId(), customer -> {
+                vo.setCustomerName(customer.getName());
+                vo.setCustomerContact(customer.getContact());
+                vo.setCustomerMobile(customer.getMobile());
+            });
+            MapUtils.findAndThen(userMap, vo.getHandlerId(), user -> vo.setHandlerName(user.getNickname()));
+            MapUtils.findAndThen(userMap, NumberUtils.parseLong(vo.getCreator()), user -> vo.setCreatorName(user.getNickname()));
+            MapUtils.findAndThen(deptMap, vo.getDeptId(), dept -> vo.setDeptName(dept.getName()));
+        });
     }
 }

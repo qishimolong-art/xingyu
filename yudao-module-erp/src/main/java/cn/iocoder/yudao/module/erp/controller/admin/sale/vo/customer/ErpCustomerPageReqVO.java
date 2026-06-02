@@ -43,4 +43,7 @@ public class ErpCustomerPageReqVO extends PageParam {
     @Schema(description = "所属业务员")
     private Long saleUserId;
 
+    @Schema(description = "客户编号数组")
+    private List<Long> ids;
+
 }

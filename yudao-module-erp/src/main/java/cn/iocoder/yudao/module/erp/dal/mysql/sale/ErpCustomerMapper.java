@@ -28,6 +28,7 @@ public interface ErpCustomerMapper extends BaseMapperX<ErpCustomerDO> {
                 .eqIfPresent(ErpCustomerDO::getAreaId, reqVO.getAreaId())
                 .eqIfPresent(ErpCustomerDO::getRouteId, reqVO.getRouteId())
                 .eqIfPresent(ErpCustomerDO::getSaleUserId, reqVO.getSaleUserId())
+                .inIfPresent(ErpCustomerDO::getId, reqVO.getIds())
                 .orderByDesc(ErpCustomerDO::getId));
     }
 

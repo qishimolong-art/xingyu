@@ -72,6 +72,18 @@ public interface ErpProductMapper extends BaseMapperX<ErpProductDO> {
                 .neIfPresent(ErpProductDO::getId, excludeId));
     }
 
+    default List<String> selectCodesByPrefix(String prefix) {
+        if (!StringUtils.hasText(prefix)) {
+            return Collections.emptyList();
+        }
+        QueryWrapper<ErpProductDO> wrapper = new QueryWrapper<ErpProductDO>()
+                .select("code")
+                .likeRight("code", prefix);
+        return selectList(wrapper).stream()
+                .map(ErpProductDO::getCode)
+                .collect(Collectors.toList());
+    }
+
     default List<ErpProductDO> selectListByCodes(Collection<String> codes) {
         if (CollUtil.isEmpty(codes)) {
             return Collections.emptyList();

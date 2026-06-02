@@ -8,6 +8,7 @@ import lombok.ToString;
 import org.springframework.format.annotation.DateTimeFormat;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 import static cn.iocoder.yudao.framework.common.util.date.DateUtils.FORMAT_YEAR_MONTH_DAY_HOUR_MINUTE_SECOND;
 
@@ -66,5 +67,8 @@ public class ErpSaleOutPageReqVO extends PageParam {
 
     @Schema(description = "业务员编号")
     private Long saleUserId;
+
+    @Schema(description = "销售单编号数组")
+    private List<Long> ids;
 
 }

@@ -21,6 +21,7 @@ public interface ErpSalePriceAdjustMapper extends BaseMapperX<ErpSalePriceAdjust
                 .eqIfPresent(ErpSalePriceAdjustDO::getStatus, reqVO.getStatus())
                 .eqIfPresent(ErpSalePriceAdjustDO::getCustomerId, reqVO.getCustomerId())
                 .betweenIfPresent(ErpSalePriceAdjustDO::getAdjustDate, reqVO.getAdjustDate())
+                .inIfPresent(ErpSalePriceAdjustDO::getId, reqVO.getIds())
                 .orderByDesc(ErpSalePriceAdjustDO::getId));
     }
 

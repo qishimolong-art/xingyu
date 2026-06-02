@@ -1,12 +1,16 @@
 package cn.iocoder.yudao.module.erp.controller.admin.finance.payable;
 
 import cn.hutool.core.collection.CollUtil;
+import cn.iocoder.yudao.framework.apilog.core.annotation.ApiAccessLog;
 import cn.iocoder.yudao.framework.common.pojo.CommonResult;
+import cn.iocoder.yudao.framework.common.pojo.PageParam;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.common.util.collection.CollectionUtils;
 import cn.iocoder.yudao.framework.common.util.collection.MapUtils;
 import cn.iocoder.yudao.framework.common.util.number.NumberUtils;
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
+import cn.iocoder.yudao.framework.excel.core.util.ExcelUtils;
+import cn.iocoder.yudao.module.erp.controller.admin.finance.payable.vo.expense.ErpPayableExpenseExportRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.payable.vo.expense.ErpPayableExpensePageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.payable.vo.expense.ErpPayableExpenseRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.payable.vo.expense.ErpPayableExpenseSaveReqVO;
@@ -34,15 +38,21 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import javax.annotation.Resource;
+import javax.servlet.http.HttpServletResponse;
 import javax.validation.Valid;
+import java.io.IOException;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.stream.Stream;
 
+import static cn.iocoder.yudao.framework.apilog.core.enums.OperateTypeEnum.EXPORT;
 import static cn.iocoder.yudao.framework.common.pojo.CommonResult.success;
 import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.convertListByFlatMap;
+import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.convertMultiMap;
+import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.convertSet;
 
 @Tag(name = "ERP 费用支付")
 @RestController
@@ -112,14 +122,40 @@ public class ErpPayableExpenseController {
     @PreAuthorize("@ss.hasPermission('erp:payable-expense:query')")
     public CommonResult<PageResult<ErpPayableExpenseRespVO>> page(@Valid ErpPayableExpensePageReqVO reqVO) {
         PageResult<ErpPayableExpenseDO> pageResult = payableExpenseService.getPayableExpensePage(reqVO);
+        return success(buildPageResult(pageResult));
+    }
+
+    @GetMapping("/export-excel")
+    @Operation(summary = "导出费用支付 Excel")
+    @PreAuthorize("@ss.hasPermission('erp:payable-expense:export')")
+    @ApiAccessLog(operateType = EXPORT)
+    public void exportExcel(@Valid ErpPayableExpensePageReqVO reqVO,
+                            HttpServletResponse response) throws IOException {
+        reqVO.setPageSize(PageParam.PAGE_SIZE_NONE);
+        PageResult<ErpPayableExpenseRespVO> voPage = buildPageResult(payableExpenseService.getPayableExpensePage(reqVO));
+        List<ErpPayableExpenseExportRespVO> rows = new ArrayList<>();
+        for (ErpPayableExpenseRespVO expense : voPage.getList()) {
+            List<ErpPayableExpenseRespVO.Item> items = expense.getItems() == null ? Collections.emptyList() : expense.getItems();
+            if (CollUtil.isEmpty(items)) {
+                rows.add(buildExportRow(expense, null, true));
+                continue;
+            }
+            for (int i = 0; i < items.size(); i++) {
+                rows.add(buildExportRow(expense, items.get(i), i == 0));
+            }
+        }
+        ExcelUtils.write(response, "费用支付.xls", "数据", ErpPayableExpenseExportRespVO.class, rows);
+    }
+
+    private PageResult<ErpPayableExpenseRespVO> buildPageResult(PageResult<ErpPayableExpenseDO> pageResult) {
         if (CollUtil.isEmpty(pageResult.getList())) {
-            return success(PageResult.empty(pageResult.getTotal()));
+            return PageResult.empty(pageResult.getTotal());
         }
         List<ErpPayableExpenseItemDO> itemList = payableExpenseService.getPayableExpenseItemListByExpenseIds(
-                CollectionUtils.convertSet(pageResult.getList(), ErpPayableExpenseDO::getId));
-        Map<Long, List<ErpPayableExpenseItemDO>> itemMap = CollectionUtils.convertMultiMap(itemList,
+                convertSet(pageResult.getList(), ErpPayableExpenseDO::getId));
+        Map<Long, List<ErpPayableExpenseItemDO>> itemMap = convertMultiMap(itemList,
                 ErpPayableExpenseItemDO::getExpenseId);
-        Set<Long> accountIds = CollectionUtils.convertSet(pageResult.getList(), ErpPayableExpenseDO::getAccountId);
+        Set<Long> accountIds = convertSet(pageResult.getList(), ErpPayableExpenseDO::getAccountId);
         accountIds.remove(null);
         Map<Long, ErpAccountDO> accountMap = accountIds.isEmpty()
                 ? Collections.emptyMap() : accountService.getAccountMap(accountIds);
@@ -127,14 +163,36 @@ public class ErpPayableExpenseController {
                 item -> Stream.of(item.getHandlerId(), NumberUtils.parseLong(item.getCreator()))));
         Map<Long, DeptRespDTO> deptMap = deptApi.getDeptMap(CollectionUtils.convertSet(pageResult.getList(),
                 ErpPayableExpenseDO::getDeptId));
-        return success(BeanUtils.toBean(pageResult, ErpPayableExpenseRespVO.class, vo -> {
+        return BeanUtils.toBean(pageResult, ErpPayableExpenseRespVO.class, vo -> {
             vo.setItems(BeanUtils.toBean(itemMap.get(vo.getId()), ErpPayableExpenseRespVO.Item.class));
             MapUtils.findAndThen(accountMap, vo.getAccountId(), account -> vo.setAccountName(account.getName()));
             MapUtils.findAndThen(userMap, vo.getHandlerId(), user -> vo.setHandlerName(user.getNickname()));
             MapUtils.findAndThen(userMap, NumberUtils.parseLong(vo.getCreator()), user -> vo.setCreatorName(user.getNickname()));
             MapUtils.findAndThen(deptMap, vo.getDeptId(), dept -> vo.setDeptName(dept.getName()));
             fillItemExtend(vo);
-        }));
+        });
+    }
+
+    private ErpPayableExpenseExportRespVO buildExportRow(ErpPayableExpenseRespVO expense,
+                                                         ErpPayableExpenseRespVO.Item item,
+                                                         boolean fillMainFields) {
+        ErpPayableExpenseExportRespVO row = fillMainFields
+                ? BeanUtils.toBean(expense, ErpPayableExpenseExportRespVO.class)
+                : new ErpPayableExpenseExportRespVO();
+        if (item == null) {
+            return row;
+        }
+        row.setItemName(item.getItemName());
+        row.setItemAmount(item.getAmount());
+        row.setItemInvoiceNo(item.getInvoiceNo());
+        row.setItemParty(item.getParty());
+        row.setItemDeptName(item.getDeptName());
+        row.setItemBizDate(item.getBizDate());
+        row.setItemHandlerName(item.getHandlerName());
+        row.setItemQty(item.getQty());
+        row.setItemExpenseCategory(item.getExpenseCategory());
+        row.setItemRemark(item.getRemark());
+        return row;
     }
 
     private void fillExtend(ErpPayableExpenseRespVO vo) {

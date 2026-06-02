@@ -9,8 +9,10 @@ import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpProduc
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.invoice.ErpPurchaseInvoicePageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.invoice.ErpPurchaseInvoiceSaveReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.product.ErpProductDO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseInDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseInvoiceDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseInvoiceItemDO;
+import cn.iocoder.yudao.module.erp.dal.mysql.purchase.ErpPurchaseInMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.purchase.ErpPurchaseInvoiceItemMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.purchase.ErpPurchaseInvoiceMapper;
 import cn.iocoder.yudao.module.erp.dal.redis.no.ErpNoRedisDAO;
@@ -63,6 +65,8 @@ public class ErpPurchaseInvoiceServiceImpl implements ErpPurchaseInvoiceService 
     private ErpSupplierService supplierService;
     @Resource
     private ErpProductService productService;
+    @Resource
+    private ErpPurchaseInMapper purchaseInMapper;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -116,6 +120,9 @@ public class ErpPurchaseInvoiceServiceImpl implements ErpPurchaseInvoiceService 
         int updateCount = purchaseInvoiceMapper.updateByIdAndStatus(id, purchaseInvoice.getStatus(), updateObj);
         if (updateCount == 0) {
             throw exception(approve ? PURCHASE_INVOICE_APPROVE_FAIL : PURCHASE_INVOICE_PROCESS_FAIL);
+        }
+        if (approve) {
+            markPurchaseInHasInvoice(id);
         }
     }
 
@@ -193,6 +200,21 @@ public class ErpPurchaseInvoiceServiceImpl implements ErpPurchaseInvoiceService 
             throw exception(PURCHASE_INVOICE_SUPPLIER_REQUIRED);
         }
         supplierService.validateSupplier(supplierId);
+    }
+
+    private void markPurchaseInHasInvoice(Long invoiceId) {
+        List<ErpPurchaseInvoiceItemDO> invoiceItems = purchaseInvoiceItemMapper.selectListByInvoiceId(invoiceId);
+        if (CollUtil.isEmpty(invoiceItems)) {
+            return;
+        }
+        Set<Long> sourceInIds = convertSet(invoiceItems, ErpPurchaseInvoiceItemDO::getSourceInId);
+        sourceInIds.remove(null);
+        if (CollUtil.isEmpty(sourceInIds)) {
+            return;
+        }
+        List<ErpPurchaseInDO> purchaseIns = purchaseInMapper.selectBatchIds(sourceInIds);
+        purchaseIns.forEach(purchaseIn -> purchaseInMapper.updateById(
+                new ErpPurchaseInDO().setId(purchaseIn.getId()).setHasInvoice(true)));
     }
 
     private ErpPurchaseInvoiceDO validatePurchaseInvoiceExists(Long id) {

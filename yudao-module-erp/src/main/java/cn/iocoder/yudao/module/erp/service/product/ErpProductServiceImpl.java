@@ -151,7 +151,7 @@ public class ErpProductServiceImpl implements ErpProductService {
 
     private void insertWithGeneratedCode(ErpProductDO product) {
         for (int i = 0; i < CODE_GENERATE_MAX_RETRY; i++) {
-            String code = noRedisDAO.generatePlain(ErpNoRedisDAO.PRODUCT_CODE_PREFIX);
+            String code = generateProductCode(i);
             product.setCode(code);
             try {
                 productMapper.insert(product);
@@ -162,6 +162,43 @@ public class ErpProductServiceImpl implements ErpProductService {
             }
         }
         throw exception(PRODUCT_CODE_GENERATE_FAIL);
+    }
+
+    private String generateProductCode(int retryIndex) {
+        try {
+            String code = noRedisDAO.generatePlain(ErpNoRedisDAO.PRODUCT_CODE_PREFIX);
+            if (StringUtils.hasText(code)) {
+                return code;
+            }
+        } catch (RuntimeException ignored) {
+            // Redis 不可用时回退到数据库最大编码续号，避免新增配件直接失败。
+        }
+        long nextNumber = getNextProductCodeNumber() + retryIndex;
+        return ErpNoRedisDAO.PRODUCT_CODE_PREFIX + String.format("%06d", nextNumber);
+    }
+
+    private long getNextProductCodeNumber() {
+        String prefix = ErpNoRedisDAO.PRODUCT_CODE_PREFIX;
+        return productMapper.selectCodesByPrefix(prefix).stream()
+                .map(code -> parseProductCodeNumber(code, prefix))
+                .filter(Objects::nonNull)
+                .max(Long::compareTo)
+                .orElse(0L) + 1L;
+    }
+
+    private Long parseProductCodeNumber(String code, String prefix) {
+        if (!StringUtils.hasText(code) || !code.startsWith(prefix)) {
+            return null;
+        }
+        String numberPart = code.substring(prefix.length());
+        if (!numberPart.matches("\\d+")) {
+            return null;
+        }
+        try {
+            return Long.parseLong(numberPart);
+        } catch (NumberFormatException ignored) {
+            return null;
+        }
     }
 
     @Override

@@ -1,11 +1,15 @@
 package cn.iocoder.yudao.module.erp.controller.admin.finance.payable;
 
 import cn.hutool.core.collection.CollUtil;
+import cn.iocoder.yudao.framework.apilog.core.annotation.ApiAccessLog;
 import cn.iocoder.yudao.framework.common.pojo.CommonResult;
+import cn.iocoder.yudao.framework.common.pojo.PageParam;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.common.util.collection.MapUtils;
 import cn.iocoder.yudao.framework.common.util.number.NumberUtils;
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
+import cn.iocoder.yudao.framework.excel.core.util.ExcelUtils;
+import cn.iocoder.yudao.module.erp.controller.admin.finance.payable.vo.other.ErpPayableOtherExportRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.payable.vo.other.ErpPayableOtherPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.payable.vo.other.ErpPayableOtherRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.payable.vo.other.ErpPayableOtherSaveReqVO;
@@ -32,10 +36,13 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import javax.annotation.Resource;
+import javax.servlet.http.HttpServletResponse;
 import javax.validation.Valid;
+import java.io.IOException;
 import java.util.Map;
 import java.util.stream.Stream;
 
+import static cn.iocoder.yudao.framework.apilog.core.enums.OperateTypeEnum.EXPORT;
 import static cn.iocoder.yudao.framework.common.pojo.CommonResult.success;
 import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.convertListByFlatMap;
 import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.convertSet;
@@ -106,15 +113,31 @@ public class ErpPayableOtherController {
     @PreAuthorize("@ss.hasPermission('erp:payable-other:query')")
     public CommonResult<PageResult<ErpPayableOtherRespVO>> page(@Valid ErpPayableOtherPageReqVO reqVO) {
         PageResult<ErpPayableOtherDO> pageResult = payableOtherService.getPayableOtherPage(reqVO);
+        return success(buildPageResult(pageResult));
+    }
+
+    @GetMapping("/export-excel")
+    @Operation(summary = "导出其他应付 Excel")
+    @PreAuthorize("@ss.hasPermission('erp:payable-other:export')")
+    @ApiAccessLog(operateType = EXPORT)
+    public void exportExcel(@Valid ErpPayableOtherPageReqVO reqVO,
+                            HttpServletResponse response) throws IOException {
+        reqVO.setPageSize(PageParam.PAGE_SIZE_NONE);
+        PageResult<ErpPayableOtherRespVO> voPage = buildPageResult(payableOtherService.getPayableOtherPage(reqVO));
+        ExcelUtils.write(response, "其他应付.xls", "数据", ErpPayableOtherExportRespVO.class,
+                BeanUtils.toBean(voPage.getList(), ErpPayableOtherExportRespVO.class));
+    }
+
+    private PageResult<ErpPayableOtherRespVO> buildPageResult(PageResult<ErpPayableOtherDO> pageResult) {
         if (CollUtil.isEmpty(pageResult.getList())) {
-            return success(PageResult.empty(pageResult.getTotal()));
+            return PageResult.empty(pageResult.getTotal());
         }
         Map<Long, ErpSupplierDO> supplierMap = supplierService.getSupplierMap(
                 convertSet(pageResult.getList(), ErpPayableOtherDO::getSupplierId));
         Map<Long, AdminUserRespDTO> userMap = adminUserApi.getUserMap(convertListByFlatMap(pageResult.getList(),
                 item -> Stream.of(item.getHandlerId(), NumberUtils.parseLong(item.getCreator()))));
         Map<Long, DeptRespDTO> deptMap = deptApi.getDeptMap(convertSet(pageResult.getList(), ErpPayableOtherDO::getDeptId));
-        return success(BeanUtils.toBean(pageResult, ErpPayableOtherRespVO.class, vo -> {
+        return BeanUtils.toBean(pageResult, ErpPayableOtherRespVO.class, vo -> {
             MapUtils.findAndThen(supplierMap, vo.getSupplierId(), supplier -> {
                 vo.setSupplierName(supplier.getName());
                 vo.setSupplierContact(supplier.getContact());
@@ -123,7 +146,7 @@ public class ErpPayableOtherController {
             MapUtils.findAndThen(userMap, vo.getHandlerId(), user -> vo.setHandlerName(user.getNickname()));
             MapUtils.findAndThen(userMap, NumberUtils.parseLong(vo.getCreator()), user -> vo.setCreatorName(user.getNickname()));
             MapUtils.findAndThen(deptMap, vo.getDeptId(), dept -> vo.setDeptName(dept.getName()));
-        }));
+        });
     }
 
     private void fillExtend(ErpPayableOtherRespVO vo) {

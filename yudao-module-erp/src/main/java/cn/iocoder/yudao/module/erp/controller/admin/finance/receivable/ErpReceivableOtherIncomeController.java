@@ -1,13 +1,17 @@
 package cn.iocoder.yudao.module.erp.controller.admin.finance.receivable;
 
 import cn.hutool.core.collection.CollUtil;
+import cn.iocoder.yudao.framework.apilog.core.annotation.ApiAccessLog;
 import cn.iocoder.yudao.framework.common.pojo.CommonResult;
+import cn.iocoder.yudao.framework.common.pojo.PageParam;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.common.util.collection.CollectionUtils;
 import cn.iocoder.yudao.framework.common.util.collection.MapUtils;
 import cn.iocoder.yudao.framework.common.util.number.NumberUtils;
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
+import cn.iocoder.yudao.framework.excel.core.util.ExcelUtils;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.receivable.vo.otherincome.ErpReceivableOtherIncomePageReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.finance.receivable.vo.otherincome.ErpReceivableOtherIncomeExportRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.receivable.vo.otherincome.ErpReceivableOtherIncomeRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.receivable.vo.otherincome.ErpReceivableOtherIncomeSaveReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.ErpAccountDO;
@@ -34,12 +38,20 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import javax.annotation.Resource;
+import javax.servlet.http.HttpServletResponse;
 import javax.validation.Valid;
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Map;
+import java.util.List;
 import java.util.stream.Stream;
 
+import static cn.iocoder.yudao.framework.apilog.core.enums.OperateTypeEnum.EXPORT;
 import static cn.iocoder.yudao.framework.common.pojo.CommonResult.success;
+import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.convertMultiMap;
 import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.convertListByFlatMap;
+import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.convertSet;
 
 @Tag(name = "ERP 其他收入")
 @RestController
@@ -134,6 +146,75 @@ public class ErpReceivableOtherIncomeController {
             MapUtils.findAndThen(userMap, NumberUtils.parseLong(vo.getCreator()), user -> vo.setCreatorName(user.getNickname()));
             MapUtils.findAndThen(deptMap, vo.getDeptId(), dept -> vo.setDeptName(dept.getName()));
         }));
+    }
+
+    @GetMapping("/export-excel")
+    @Operation(summary = "导出其他收入 Excel")
+    @PreAuthorize("@ss.hasPermission('erp:receivable-other-income:export')")
+    @ApiAccessLog(operateType = EXPORT)
+    public void exportExcel(@Valid ErpReceivableOtherIncomePageReqVO pageReqVO,
+                            HttpServletResponse response) throws IOException {
+        List<ErpReceivableOtherIncomeDO> exportList = getExportList(pageReqVO);
+        List<ErpReceivableOtherIncomeItemDO> itemList = otherIncomeService.getOtherIncomeItemListByIncomeIds(
+                convertSet(exportList, ErpReceivableOtherIncomeDO::getId));
+        Map<Long, List<ErpReceivableOtherIncomeItemDO>> itemMap = convertMultiMap(itemList,
+                ErpReceivableOtherIncomeItemDO::getIncomeId);
+        Map<Long, ErpAccountDO> accountMap = accountService.getAccountMap(
+                convertSet(exportList, ErpReceivableOtherIncomeDO::getAccountId));
+        Map<Long, AdminUserRespDTO> userMap = adminUserApi.getUserMap(convertListByFlatMap(exportList,
+                item -> Stream.of(item.getHandlerId(), NumberUtils.parseLong(item.getCreator()))));
+        Map<Long, DeptRespDTO> deptMap = deptApi.getDeptMap(convertSet(exportList, ErpReceivableOtherIncomeDO::getDeptId));
+        List<ErpReceivableOtherIncomeExportRespVO> rows = new ArrayList<>();
+        for (ErpReceivableOtherIncomeDO income : exportList) {
+            List<ErpReceivableOtherIncomeItemDO> items = itemMap.getOrDefault(income.getId(), Collections.emptyList());
+            if (CollUtil.isEmpty(items)) {
+                rows.add(buildExportRow(income, null, true, accountMap, userMap, deptMap));
+                continue;
+            }
+            for (int i = 0; i < items.size(); i++) {
+                rows.add(buildExportRow(income, items.get(i), i == 0, accountMap, userMap, deptMap));
+            }
+        }
+        ExcelUtils.write(response, "其他收入.xls", "数据", ErpReceivableOtherIncomeExportRespVO.class, rows);
+    }
+
+    private List<ErpReceivableOtherIncomeDO> getExportList(ErpReceivableOtherIncomePageReqVO pageReqVO) {
+        if (CollUtil.isNotEmpty(pageReqVO.getIds())) {
+            return otherIncomeService.getOtherIncomePage(pageReqVO).getList();
+        }
+        pageReqVO.setPageSize(PageParam.PAGE_SIZE_NONE);
+        return otherIncomeService.getOtherIncomePage(pageReqVO).getList();
+    }
+
+    private ErpReceivableOtherIncomeExportRespVO buildExportRow(ErpReceivableOtherIncomeDO income,
+                                                                ErpReceivableOtherIncomeItemDO item,
+                                                                boolean fillMainFields,
+                                                                Map<Long, ErpAccountDO> accountMap,
+                                                                Map<Long, AdminUserRespDTO> userMap,
+                                                                Map<Long, DeptRespDTO> deptMap) {
+        ErpReceivableOtherIncomeExportRespVO row = fillMainFields
+                ? BeanUtils.toBean(income, ErpReceivableOtherIncomeExportRespVO.class)
+                : new ErpReceivableOtherIncomeExportRespVO();
+        if (fillMainFields) {
+            MapUtils.findAndThen(accountMap, income.getAccountId(), account -> row.setAccountName(account.getName()));
+            MapUtils.findAndThen(userMap, income.getHandlerId(), user -> row.setHandlerName(user.getNickname()));
+            MapUtils.findAndThen(userMap, NumberUtils.parseLong(income.getCreator()), user -> row.setCreatorName(user.getNickname()));
+            MapUtils.findAndThen(deptMap, income.getDeptId(), dept -> row.setDeptName(dept.getName()));
+        }
+        if (item == null) {
+            return row;
+        }
+        row.setItemName(item.getItemName());
+        row.setItemAmount(item.getAmount());
+        row.setItemInvoiceNo(item.getInvoiceNo());
+        row.setItemParty(item.getParty());
+        MapUtils.findAndThen(deptMap, item.getDeptId(), dept -> row.setItemDeptName(dept.getName()));
+        row.setItemBizDate(item.getBizDate());
+        MapUtils.findAndThen(userMap, item.getHandlerId(), user -> row.setItemHandlerName(user.getNickname()));
+        row.setItemQty(item.getQty());
+        row.setItemFreightType(item.getFreightType());
+        row.setItemRemark(item.getRemark());
+        return row;
     }
 
     private void fillExtend(ErpReceivableOtherIncomeRespVO vo) {

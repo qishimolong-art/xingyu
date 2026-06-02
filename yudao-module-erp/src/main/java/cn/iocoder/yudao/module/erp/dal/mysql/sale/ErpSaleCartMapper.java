@@ -22,6 +22,7 @@ public interface ErpSaleCartMapper extends BaseMapperX<ErpSaleCartDO> {
                 .betweenIfPresent(ErpSaleCartDO::getCartTime, reqVO.getCartTime())
                 .eqIfPresent(ErpSaleCartDO::getStatus, reqVO.getStatus())
                 .likeIfPresent(ErpSaleCartDO::getRemark, reqVO.getRemark())
+                .inIfPresent(ErpSaleCartDO::getId, reqVO.getIds())
                 .orderByDesc(ErpSaleCartDO::getId));
     }
 

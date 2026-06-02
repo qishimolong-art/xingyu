@@ -35,6 +35,7 @@ public interface ErpSaleOutMapper extends BaseMapperX<ErpSaleOutDO> {
                 .eqIfPresent(ErpSaleOutDO::getSourceType, reqVO.getSourceType())
                 .likeIfPresent(ErpSaleOutDO::getSourceNo, reqVO.getSourceNo())
                 .eqIfPresent(ErpSaleOutDO::getSaleUserId, reqVO.getSaleUserId())
+                .inIfPresent(ErpSaleOutDO::getId, reqVO.getIds())
                 .orderByDesc(ErpSaleOutDO::getId);
         // 收款状态。为什么需要 t. 的原因，是因为联表查询时，需要指定表名，不然会报字段不存在的错误
         if (Objects.equals(reqVO.getReceiptStatus(), ErpSaleOutPageReqVO.RECEIPT_STATUS_NONE)) {

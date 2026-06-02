@@ -13,6 +13,7 @@ public interface ErpPayableOtherMapper extends BaseMapperX<ErpPayableOtherDO> {
 
     default PageResult<ErpPayableOtherDO> selectPage(ErpPayableOtherPageReqVO reqVO) {
         return selectPage(reqVO, new LambdaQueryWrapperX<ErpPayableOtherDO>()
+                .inIfPresent(ErpPayableOtherDO::getId, reqVO.getIds())
                 .likeIfPresent(ErpPayableOtherDO::getNo, reqVO.getNo())
                 .betweenIfPresent(ErpPayableOtherDO::getBizTime, reqVO.getBizTime())
                 .eqIfPresent(ErpPayableOtherDO::getSupplierId, reqVO.getSupplierId())
