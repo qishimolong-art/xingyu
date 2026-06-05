@@ -22,6 +22,7 @@ import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpWarehouseDO;
 import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpSaleReturnItemMapper;
 import cn.iocoder.yudao.module.erp.service.product.ErpProductService;
 import cn.iocoder.yudao.module.erp.service.sale.ErpCustomerService;
+import cn.iocoder.yudao.module.erp.service.sale.ErpSaleFieldPermissionMasker;
 import cn.iocoder.yudao.module.erp.service.sale.ErpSaleOutService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpStockService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpWarehouseService;
@@ -54,6 +55,8 @@ import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.
 @Validated
 public class ErpSaleOutController {
 
+    private static final String FIELD_PERMISSION_MODULE = "erp_sale_out";
+
     @Resource
     private ErpSaleOutService saleOutService;
     @Resource
@@ -66,6 +69,8 @@ public class ErpSaleOutController {
     private ErpWarehouseService warehouseService;
     @Resource
     private ErpSaleReturnItemMapper saleReturnItemMapper;
+    @Resource
+    private ErpSaleFieldPermissionMasker fieldPermissionMasker;
 
     @Resource
     private AdminUserApi adminUserApi;
@@ -152,6 +157,7 @@ public class ErpSaleOutController {
         fillSaleOutRelationFields(respVO, saleOut);
         // 退货状态
         respVO.setReturnStatus(calculateReturnStatus(saleOutItemList, returnedCountMap));
+        fieldPermissionMasker.maskFormWithItems(FIELD_PERMISSION_MODULE, respVO);
         return success(respVO);
     }
 
@@ -206,7 +212,9 @@ public class ErpSaleOutController {
     @PreAuthorize("@ss.hasPermission('erp:sale-out:query')")
     public CommonResult<PageResult<ErpSaleOutRespVO>> getSaleOutPage(@Valid ErpSaleOutPageReqVO pageReqVO) {
         PageResult<ErpSaleOutDO> pageResult = saleOutService.getSaleOutPage(pageReqVO);
-        return success(buildSaleOutVOPageResult(pageResult));
+        PageResult<ErpSaleOutRespVO> respResult = buildSaleOutVOPageResult(pageResult);
+        fieldPermissionMasker.maskFormsWithItems(FIELD_PERMISSION_MODULE, respResult.getList());
+        return success(respResult);
     }
 
     @GetMapping("/returnable-items")
@@ -214,7 +222,9 @@ public class ErpSaleOutController {
     @Parameter(name = "outId", description = "销售单 ID", required = true, example = "17386")
     @PreAuthorize("@ss.hasPermission('erp:sale-return:create')")
     public CommonResult<List<ErpSaleReturnableItemRespVO>> getReturnableItems(@RequestParam("outId") Long outId) {
-        return success(saleOutService.getReturnableItemsByOutId(outId));
+        List<ErpSaleReturnableItemRespVO> list = saleOutService.getReturnableItemsByOutId(outId);
+        fieldPermissionMasker.maskExportRows(FIELD_PERMISSION_MODULE, list);
+        return success(list);
     }
 
     @GetMapping("/export-excel")
@@ -247,8 +257,10 @@ public class ErpSaleOutController {
         Map<Long, AdminUserRespDTO> userMap = userIds.isEmpty() ? new HashMap<>() : adminUserApi.getUserMap(userIds);
         Map<Long, ErpWarehouseDO> warehouseMap = warehouseService.getWarehouseMap(
                 convertSet(saleOutItemList, ErpSaleOutItemDO::getWarehouseId));
-        ExcelUtils.write(response, "销售单.xls", "数据", ErpSaleOutExportRespVO.class,
-                buildSaleOutExportList(pageResult.getList(), saleOutItemMap, productMap, customerMap, userMap, warehouseMap));
+        List<ErpSaleOutExportRespVO> rows = buildSaleOutExportList(
+                pageResult.getList(), saleOutItemMap, productMap, customerMap, userMap, warehouseMap);
+        fieldPermissionMasker.maskExportRows(FIELD_PERMISSION_MODULE, rows);
+        ExcelUtils.write(response, "销售单.xls", "数据", ErpSaleOutExportRespVO.class, rows);
     }
 
     private PageResult<ErpSaleOutRespVO> buildSaleOutVOPageResult(PageResult<ErpSaleOutDO> pageResult) {

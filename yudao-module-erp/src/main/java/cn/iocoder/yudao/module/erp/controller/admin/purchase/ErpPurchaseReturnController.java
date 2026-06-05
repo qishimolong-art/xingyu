@@ -24,6 +24,7 @@ import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpWarehouseDO;
 import cn.iocoder.yudao.module.erp.dal.mysql.purchase.ErpPurchaseInItemMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.purchase.ErpPurchaseReturnItemMapper;
 import cn.iocoder.yudao.module.erp.service.product.ErpProductService;
+import cn.iocoder.yudao.module.erp.service.purchase.ErpPurchaseFieldPermissionMasker;
 import cn.iocoder.yudao.module.erp.service.purchase.ErpPurchaseReturnService;
 import cn.iocoder.yudao.module.erp.service.purchase.ErpSupplierService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpStockService;
@@ -84,6 +85,8 @@ public class ErpPurchaseReturnController {
 
     @Resource
     private AdminUserApi adminUserApi;
+    @Resource
+    private ErpPurchaseFieldPermissionMasker fieldPermissionMasker;
 
     @PostMapping("/create")
     @Operation(summary = "创建采购退货")
@@ -155,7 +158,7 @@ public class ErpPurchaseReturnController {
         Map<Long, ErpPurchaseInItemDO> finalInItemMap = inItemMap;
         Map<Long, BigDecimal> finalReturnedMap = returnedMap;
         Map<Long, AdminUserRespDTO> userMap = adminUserApi.getUserMap(collectUserIds(java.util.Collections.singletonList(purchaseReturn)));
-        return success(BeanUtils.toBean(purchaseReturn, ErpPurchaseReturnRespVO.class, purchaseReturnVO -> {
+        ErpPurchaseReturnRespVO respVO = BeanUtils.toBean(purchaseReturn, ErpPurchaseReturnRespVO.class, purchaseReturnVO -> {
                 purchaseReturnVO.setItems(BeanUtils.toBean(purchaseReturnItemList, ErpPurchaseReturnRespVO.Item.class, item -> {
                     ErpStockDO stock = stockService.getStock(item.getProductId(), item.getWarehouseId());
                     item.setStockCount(stock != null ? stock.getCount() : BigDecimal.ZERO);
@@ -171,7 +174,9 @@ public class ErpPurchaseReturnController {
                     }
                 }));
                 fillUserNames(purchaseReturnVO, userMap);
-        }));
+        });
+        fieldPermissionMasker.mask("erp_purchase_return", respVO);
+        return success(respVO);
     }
 
     @GetMapping("/page")

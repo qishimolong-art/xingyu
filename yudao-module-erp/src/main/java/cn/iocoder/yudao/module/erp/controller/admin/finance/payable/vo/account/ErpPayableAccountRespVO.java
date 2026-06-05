@@ -43,6 +43,9 @@ public class ErpPayableAccountRespVO {
     @Schema(description = "采购调价金额")
     private BigDecimal priceAdjustAmount;
 
+    @Schema(description = "其他应付金额")
+    private BigDecimal otherPayableAmount;
+
     @Schema(description = "付款金额")
     private BigDecimal paymentAmount;
 

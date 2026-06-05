@@ -47,6 +47,8 @@ import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.*;
 @Validated
 public class ErpSalePriceAdjustServiceImpl implements ErpSalePriceAdjustService {
 
+    private static final String FIELD_PERMISSION_MODULE = "erp_sale_price_adjust";
+
     @Resource
     private ErpSalePriceAdjustMapper salePriceAdjustMapper;
     @Resource
@@ -61,10 +63,14 @@ public class ErpSalePriceAdjustServiceImpl implements ErpSalePriceAdjustService 
     private ErpProductService productService;
     @Resource
     private ErpProductMapper productMapper;
+    @Resource
+    private ErpSaleFieldPermissionMasker fieldPermissionMasker;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Long createSalePriceAdjust(ErpSalePriceAdjustSaveReqVO createReqVO) {
+        fieldPermissionMasker.clearHiddenFields(FIELD_PERMISSION_MODULE, createReqVO);
+        fieldPermissionMasker.clearHiddenItemFields(FIELD_PERMISSION_MODULE, createReqVO.getItems());
         // 1. 生成调价单号
         String no = noRedisDAO.generate(ErpNoRedisDAO.SALE_PRICE_ADJUST_NO_PREFIX);
         // 2. 插入调价单
@@ -98,6 +104,9 @@ public class ErpSalePriceAdjustServiceImpl implements ErpSalePriceAdjustService 
         if (ErpAuditStatus.APPROVE.getStatus().equals(existDO.getStatus())) {
             throw exception(SALE_PRICE_ADJUST_UPDATE_FAIL_APPROVE);
         }
+        fieldPermissionMasker.preserveHiddenFields(FIELD_PERMISSION_MODULE, updateReqVO, existDO);
+        fieldPermissionMasker.preserveHiddenItemFields(FIELD_PERMISSION_MODULE, updateReqVO.getItems(),
+                salePriceAdjustItemMapper.selectListByAdjustId(updateReqVO.getId()));
         // 2. 更新调价单
         ErpSalePriceAdjustDO updateDO = BeanUtils.toBean(updateReqVO, ErpSalePriceAdjustDO.class);
         updateDO.setAdjustDate(existDO.getAdjustDate());
@@ -162,6 +171,20 @@ public class ErpSalePriceAdjustServiceImpl implements ErpSalePriceAdjustService 
     @Override
     public ErpSalePriceAdjustDO getSalePriceAdjust(Long id) {
         return salePriceAdjustMapper.selectById(id);
+    }
+
+    @Override
+    public ErpSalePriceAdjustDO validateSalePriceAdjust(Long id) {
+        ErpSalePriceAdjustDO adjust = validateSalePriceAdjustExists(id);
+        if (!ErpAuditStatus.APPROVE.getStatus().equals(adjust.getStatus())) {
+            throw exception(SALE_PRICE_ADJUST_APPROVE_FAIL);
+        }
+        return adjust;
+    }
+
+    @Override
+    public void updateSalePriceAdjustReceiptPrice(Long id, BigDecimal receiptPrice) {
+        // 销售调价单当前没有独立已收字段，收款单明细本身记录汇总结果。
     }
 
     @Override

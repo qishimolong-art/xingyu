@@ -17,6 +17,7 @@ import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseInvoiceDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseInvoiceItemDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpSupplierDO;
 import cn.iocoder.yudao.module.erp.service.product.ErpProductService;
+import cn.iocoder.yudao.module.erp.service.purchase.ErpPurchaseFieldPermissionMasker;
 import cn.iocoder.yudao.module.erp.service.purchase.ErpPurchaseInvoiceService;
 import cn.iocoder.yudao.module.erp.service.purchase.ErpSupplierService;
 import cn.iocoder.yudao.module.system.api.dept.DeptApi;
@@ -71,6 +72,8 @@ public class ErpPurchaseInvoiceController {
     private DeptApi deptApi;
     @Resource
     private AdminUserApi adminUserApi;
+    @Resource
+    private ErpPurchaseFieldPermissionMasker fieldPermissionMasker;
 
     @PostMapping("/create")
     @Operation(summary = "创建采购票据")
@@ -132,6 +135,7 @@ public class ErpPurchaseInvoiceController {
             respVO.setDeptName(dept.getName());
         }
         fillUserNames(respVO, userMap);
+        fieldPermissionMasker.mask("erp_purchase_invoice", respVO);
         return success(respVO);
     }
 

@@ -1,18 +1,23 @@
 package cn.iocoder.yudao.module.erp.service.product;
 
+import cn.hutool.core.collection.CollUtil;
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
+import cn.iocoder.yudao.framework.common.util.validation.ValidationUtils;
 import cn.iocoder.yudao.module.erp.controller.admin.product.vo.category.ErpProductCategoryListReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.product.vo.category.ErpProductCategorySaveReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.product.ErpProductCategoryDO;
 import cn.iocoder.yudao.module.erp.dal.mysql.product.ErpProductCategoryMapper;
+import cn.iocoder.yudao.module.system.api.permission.PermissionApi;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 import org.springframework.validation.annotation.Validated;
 
 import javax.annotation.Resource;
 import java.util.Collection;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
+import java.util.Set;
 
 import static cn.iocoder.yudao.framework.common.exception.util.ServiceExceptionUtil.exception;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.*;
@@ -26,8 +31,12 @@ import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.*;
 @Validated
 public class ErpProductCategoryServiceImpl implements ErpProductCategoryService {
 
+    private static final String FIELD_PERMISSION_MODULE = "erp_product_category";
+
     @Resource
     private ErpProductCategoryMapper erpProductCategoryMapper;
+    @Resource
+    private PermissionApi permissionApi;
 
     @Resource
     @Lazy // 延迟加载，避免循环依赖
@@ -50,7 +59,9 @@ public class ErpProductCategoryServiceImpl implements ErpProductCategoryService 
     @Override
     public void updateProductCategory(ErpProductCategorySaveReqVO updateReqVO) {
         // 校验存在
-        validateProductCategoryExists(updateReqVO.getId());
+        ErpProductCategoryDO existing = validateProductCategoryExists(updateReqVO.getId());
+        applyProductCategorySaveFieldPermissions(updateReqVO, existing);
+        ValidationUtils.validate(updateReqVO);
         // 校验父分类编号的有效性
         validateParentProductCategory(updateReqVO.getId(), updateReqVO.getParentId());
         // 校验分类名称的唯一性
@@ -77,10 +88,12 @@ public class ErpProductCategoryServiceImpl implements ErpProductCategoryService 
         erpProductCategoryMapper.deleteById(id);
     }
 
-    private void validateProductCategoryExists(Long id) {
-        if (erpProductCategoryMapper.selectById(id) == null) {
+    private ErpProductCategoryDO validateProductCategoryExists(Long id) {
+        ErpProductCategoryDO category = erpProductCategoryMapper.selectById(id);
+        if (category == null) {
             throw exception(PRODUCT_CATEGORY_NOT_EXISTS);
         }
+        return category;
     }
 
     private void validateParentProductCategory(Long id, Long parentId) {
@@ -133,7 +146,7 @@ public class ErpProductCategoryServiceImpl implements ErpProductCategoryService 
 
     @Override
     public ErpProductCategoryDO getProductCategory(Long id) {
-        return erpProductCategoryMapper.selectById(id);
+        return applyProductCategoryFieldPermissions(erpProductCategoryMapper.selectById(id));
     }
 
     @Override
@@ -144,6 +157,62 @@ public class ErpProductCategoryServiceImpl implements ErpProductCategoryService 
     @Override
     public List<ErpProductCategoryDO> getProductCategoryList(Collection<Long> ids) {
         return erpProductCategoryMapper.selectByIds(ids);
+    }
+
+    private ErpProductCategoryDO applyProductCategoryFieldPermissions(ErpProductCategoryDO category) {
+        if (category == null) {
+            return null;
+        }
+        List<String> hiddenFields = permissionApi.getCurrentUserHiddenFields(FIELD_PERMISSION_MODULE);
+        if (CollUtil.isEmpty(hiddenFields)) {
+            return category;
+        }
+        ErpProductCategoryDO result = BeanUtils.toBean(category, ErpProductCategoryDO.class);
+        Set<String> hiddenFieldSet = new HashSet<>(hiddenFields);
+        if (isFieldHidden(hiddenFieldSet, "parentId")) {
+            result.setParentId(null);
+        }
+        if (isFieldHidden(hiddenFieldSet, "name")) {
+            result.setName(null);
+        }
+        if (isFieldHidden(hiddenFieldSet, "code")) {
+            result.setCode(null);
+        }
+        if (isFieldHidden(hiddenFieldSet, "sort")) {
+            result.setSort(null);
+        }
+        if (isFieldHidden(hiddenFieldSet, "status")) {
+            result.setStatus(null);
+        }
+        return result;
+    }
+
+    private void applyProductCategorySaveFieldPermissions(ErpProductCategorySaveReqVO reqVO,
+                                                          ErpProductCategoryDO existing) {
+        List<String> hiddenFields = permissionApi.getCurrentUserHiddenFields(FIELD_PERMISSION_MODULE);
+        if (CollUtil.isEmpty(hiddenFields)) {
+            return;
+        }
+        Set<String> hiddenFieldSet = new HashSet<>(hiddenFields);
+        if (isFieldHidden(hiddenFieldSet, "parentId")) {
+            reqVO.setParentId(existing.getParentId());
+        }
+        if (isFieldHidden(hiddenFieldSet, "name")) {
+            reqVO.setName(existing.getName());
+        }
+        if (isFieldHidden(hiddenFieldSet, "code")) {
+            reqVO.setCode(existing.getCode());
+        }
+        if (isFieldHidden(hiddenFieldSet, "sort")) {
+            reqVO.setSort(existing.getSort());
+        }
+        if (isFieldHidden(hiddenFieldSet, "status")) {
+            reqVO.setStatus(existing.getStatus());
+        }
+    }
+
+    private boolean isFieldHidden(Set<String> hiddenFields, String fieldKey) {
+        return hiddenFields.contains(fieldKey);
     }
 
 }

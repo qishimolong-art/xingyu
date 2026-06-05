@@ -6,6 +6,7 @@ import org.springframework.stereotype.Service;
 
 import javax.annotation.Resource;
 import java.util.Collection;
+import java.util.List;
 import java.util.Set;
 
 /**
@@ -22,6 +23,11 @@ public class PermissionApiImpl implements PermissionApi {
     @Override
     public Set<Long> getUserRoleIdListByRoleIds(Collection<Long> roleIds) {
         return permissionService.getUserRoleIdListByRoleId(roleIds);
+    }
+
+    @Override
+    public List<String> getCurrentUserHiddenFields(String module) {
+        return permissionService.getCurrentUserHiddenFields(module);
     }
 
     @Override

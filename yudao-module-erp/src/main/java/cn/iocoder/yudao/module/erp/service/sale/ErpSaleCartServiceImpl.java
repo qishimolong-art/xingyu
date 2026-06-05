@@ -68,6 +68,8 @@ import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.*;
 @Validated
 public class ErpSaleCartServiceImpl implements ErpSaleCartService {
 
+    private static final String FIELD_PERMISSION_MODULE = "erp_sale_cart";
+
     @Resource
     private ErpSaleCartMapper saleCartMapper;
     @Resource
@@ -95,11 +97,15 @@ public class ErpSaleCartServiceImpl implements ErpSaleCartService {
     @Resource
     private ErpSaleOutService saleOutService;
     @Resource
+    private ErpSaleFieldPermissionMasker fieldPermissionMasker;
+    @Resource
     private AdminUserApi adminUserApi;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Long createSaleCart(ErpSaleCartSaveReqVO createReqVO) {
+        fieldPermissionMasker.clearHiddenFields(FIELD_PERMISSION_MODULE, createReqVO);
+        fieldPermissionMasker.clearHiddenItemFields(FIELD_PERMISSION_MODULE, createReqVO.getItems());
         List<ErpSaleCartItemDO> items = validateSaleCartItems(createReqVO.getItems());
         validateStockEnough(items);
         customerService.validateCustomer(createReqVO.getCustomerId());
@@ -131,6 +137,9 @@ public class ErpSaleCartServiceImpl implements ErpSaleCartService {
         if (!ErpSaleCartStatusEnum.PROCESS.getStatus().equals(cart.getStatus())) {
             throw exception(SALE_CART_UPDATE_FAIL_NOT_PROCESS, cart.getNo());
         }
+        fieldPermissionMasker.preserveHiddenFields(FIELD_PERMISSION_MODULE, updateReqVO, cart);
+        fieldPermissionMasker.preserveHiddenItemFields(FIELD_PERMISSION_MODULE, updateReqVO.getItems(),
+                saleCartItemMapper.selectListByCartId(updateReqVO.getId()));
         List<ErpSaleCartItemDO> items = validateSaleCartItems(updateReqVO.getItems());
         validateStockEnough(items);
         customerService.validateCustomer(updateReqVO.getCustomerId());

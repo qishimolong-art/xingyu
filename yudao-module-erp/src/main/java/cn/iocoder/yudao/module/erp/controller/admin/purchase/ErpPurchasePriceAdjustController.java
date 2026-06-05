@@ -19,6 +19,7 @@ import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchasePriceAdjus
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpSupplierDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpWarehouseDO;
 import cn.iocoder.yudao.module.erp.enums.purchase.ErpPurchasePriceAdjustTypeEnum;
+import cn.iocoder.yudao.module.erp.service.purchase.ErpPurchaseFieldPermissionMasker;
 import cn.iocoder.yudao.module.erp.service.purchase.ErpPurchasePriceAdjustService;
 import cn.iocoder.yudao.module.erp.service.purchase.ErpSupplierService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpWarehouseService;
@@ -75,6 +76,8 @@ public class ErpPurchasePriceAdjustController {
     private AdminUserApi adminUserApi;
     @Resource
     private DeptApi deptApi;
+    @Resource
+    private ErpPurchaseFieldPermissionMasker fieldPermissionMasker;
 
     @PostMapping("/create")
     @Operation(summary = "创建采购调价单")
@@ -188,6 +191,7 @@ public class ErpPurchasePriceAdjustController {
             } catch (NumberFormatException ignored) {
             }
         }
+        fieldPermissionMasker.mask("erp_purchase_price_adjust", respVO);
         return success(respVO);
     }
 

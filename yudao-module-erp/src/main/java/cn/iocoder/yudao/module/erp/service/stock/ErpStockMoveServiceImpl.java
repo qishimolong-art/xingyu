@@ -44,10 +44,14 @@ import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.*;
 @Validated
 public class ErpStockMoveServiceImpl implements ErpStockMoveService {
 
+    private static final String FIELD_PERMISSION_MODULE = "erp_stock_move";
+
     @Resource
     private ErpStockMoveMapper stockMoveMapper;
     @Resource
     private ErpStockMoveItemMapper stockMoveItemMapper;
+    @Resource
+    private ErpStockFieldPermissionMasker fieldPermissionMasker;
 
     @Resource
     private ErpNoRedisDAO noRedisDAO;
@@ -92,6 +96,9 @@ public class ErpStockMoveServiceImpl implements ErpStockMoveService {
         if (ErpAuditStatus.APPROVE.getStatus().equals(stockMove.getStatus())) {
             throw exception(STOCK_MOVE_UPDATE_FAIL_APPROVE, stockMove.getNo());
         }
+        fieldPermissionMasker.preserveHiddenFields(FIELD_PERMISSION_MODULE, updateReqVO, stockMove);
+        fieldPermissionMasker.preserveHiddenItemFields(FIELD_PERMISSION_MODULE, updateReqVO.getItems(),
+                stockMoveItemMapper.selectListByMoveId(updateReqVO.getId()));
         // 1.2 校验出库项的有效性
         List<ErpStockMoveItemDO> stockMoveItems = validateStockMoveItems(updateReqVO.getItems());
 

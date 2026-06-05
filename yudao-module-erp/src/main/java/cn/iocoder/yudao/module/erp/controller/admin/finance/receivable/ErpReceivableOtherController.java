@@ -15,6 +15,7 @@ import cn.iocoder.yudao.module.erp.controller.admin.finance.receivable.vo.otherr
 import cn.iocoder.yudao.module.erp.controller.admin.finance.receivable.vo.otherreceivable.ErpReceivableOtherSaveReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.receivable.ErpReceivableOtherDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpCustomerDO;
+import cn.iocoder.yudao.module.erp.service.finance.ErpFinanceFieldPermissionMasker;
 import cn.iocoder.yudao.module.erp.service.finance.receivable.ErpReceivableOtherService;
 import cn.iocoder.yudao.module.erp.service.sale.ErpCustomerService;
 import cn.iocoder.yudao.module.system.api.dept.DeptApi;
@@ -54,6 +55,8 @@ import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.
 @Validated
 public class ErpReceivableOtherController {
 
+    private static final String FIELD_PERMISSION_MODULE = "erp_finance_receivable_other";
+
     @Resource
     private ErpReceivableOtherService receivableOtherService;
     @Resource
@@ -62,6 +65,8 @@ public class ErpReceivableOtherController {
     private AdminUserApi adminUserApi;
     @Resource
     private DeptApi deptApi;
+    @Resource
+    private ErpFinanceFieldPermissionMasker fieldPermissionMasker;
 
     @PostMapping("/create")
     @Operation(summary = "创建其他应收")
@@ -106,6 +111,7 @@ public class ErpReceivableOtherController {
         }
         ErpReceivableOtherRespVO vo = BeanUtils.toBean(db, ErpReceivableOtherRespVO.class);
         fillExtend(vo);
+        fieldPermissionMasker.maskForm(FIELD_PERMISSION_MODULE, vo);
         return success(vo);
     }
 
@@ -122,16 +128,9 @@ public class ErpReceivableOtherController {
         Map<Long, AdminUserRespDTO> userMap = adminUserApi.getUserMap(convertListByFlatMap(pageResult.getList(),
                 item -> Stream.of(item.getHandlerId(), NumberUtils.parseLong(item.getCreator()))));
         Map<Long, DeptRespDTO> deptMap = deptApi.getDeptMap(convertSet(pageResult.getList(), ErpReceivableOtherDO::getDeptId));
-        return success(BeanUtils.toBean(pageResult, ErpReceivableOtherRespVO.class, vo -> {
-            MapUtils.findAndThen(customerMap, vo.getCustomerId(), customer -> {
-                vo.setCustomerName(customer.getName());
-                vo.setCustomerContact(customer.getContact());
-                vo.setCustomerMobile(customer.getMobile());
-            });
-            MapUtils.findAndThen(userMap, vo.getHandlerId(), user -> vo.setHandlerName(user.getNickname()));
-            MapUtils.findAndThen(userMap, NumberUtils.parseLong(vo.getCreator()), user -> vo.setCreatorName(user.getNickname()));
-            MapUtils.findAndThen(deptMap, vo.getDeptId(), dept -> vo.setDeptName(dept.getName()));
-        }));
+        return success(maskPageResult(BeanUtils.toBean(pageResult, ErpReceivableOtherRespVO.class, vo -> {
+            fillExtend(vo, customerMap, userMap, deptMap);
+        })));
     }
 
     @GetMapping("/export-excel")
@@ -188,15 +187,25 @@ public class ErpReceivableOtherController {
         Map<Long, AdminUserRespDTO> userMap = adminUserApi.getUserMap(convertListByFlatMap(pageResult.getList(),
                 item -> Stream.of(item.getHandlerId(), NumberUtils.parseLong(item.getCreator()))));
         Map<Long, DeptRespDTO> deptMap = deptApi.getDeptMap(convertSet(pageResult.getList(), ErpReceivableOtherDO::getDeptId));
-        return BeanUtils.toBean(pageResult, ErpReceivableOtherRespVO.class, vo -> {
-            MapUtils.findAndThen(customerMap, vo.getCustomerId(), customer -> {
-                vo.setCustomerName(customer.getName());
-                vo.setCustomerContact(customer.getContact());
-                vo.setCustomerMobile(customer.getMobile());
-            });
-            MapUtils.findAndThen(userMap, vo.getHandlerId(), user -> vo.setHandlerName(user.getNickname()));
-            MapUtils.findAndThen(userMap, NumberUtils.parseLong(vo.getCreator()), user -> vo.setCreatorName(user.getNickname()));
-            MapUtils.findAndThen(deptMap, vo.getDeptId(), dept -> vo.setDeptName(dept.getName()));
+        return maskPageResult(BeanUtils.toBean(pageResult, ErpReceivableOtherRespVO.class, vo -> {
+            fillExtend(vo, customerMap, userMap, deptMap);
+        }));
+    }
+
+    private PageResult<ErpReceivableOtherRespVO> maskPageResult(PageResult<ErpReceivableOtherRespVO> pageResult) {
+        pageResult.getList().forEach(item -> fieldPermissionMasker.maskForm(FIELD_PERMISSION_MODULE, item));
+        return pageResult;
+    }
+
+    private void fillExtend(ErpReceivableOtherRespVO vo, Map<Long, ErpCustomerDO> customerMap,
+                            Map<Long, AdminUserRespDTO> userMap, Map<Long, DeptRespDTO> deptMap) {
+        MapUtils.findAndThen(customerMap, vo.getCustomerId(), customer -> {
+            vo.setCustomerName(customer.getName());
+            vo.setCustomerContact(customer.getContact());
+            vo.setCustomerMobile(customer.getMobile());
         });
+        MapUtils.findAndThen(userMap, vo.getHandlerId(), user -> vo.setHandlerName(user.getNickname()));
+        MapUtils.findAndThen(userMap, NumberUtils.parseLong(vo.getCreator()), user -> vo.setCreatorName(user.getNickname()));
+        MapUtils.findAndThen(deptMap, vo.getDeptId(), dept -> vo.setDeptName(dept.getName()));
     }
 }

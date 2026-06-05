@@ -20,11 +20,16 @@ import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.SALE_CONFIG_N
 @Validated
 public class ErpSaleConfigServiceImpl implements ErpSaleConfigService {
 
+    private static final String FIELD_PERMISSION_MODULE = "erp_sale_config";
+
     @Resource
     private ErpSaleConfigMapper saleConfigMapper;
+    @Resource
+    private ErpSaleFieldPermissionMasker fieldPermissionMasker;
 
     @Override
     public Long createSaleConfig(ErpSaleConfigSaveReqVO createReqVO) {
+        fieldPermissionMasker.clearHiddenFields(FIELD_PERMISSION_MODULE, createReqVO);
         validateCodeUnique(null, createReqVO.getConfigType(), createReqVO.getCode());
         ErpSaleConfigDO config = BeanUtils.toBean(createReqVO, ErpSaleConfigDO.class);
         saleConfigMapper.insert(config);
@@ -33,7 +38,8 @@ public class ErpSaleConfigServiceImpl implements ErpSaleConfigService {
 
     @Override
     public void updateSaleConfig(ErpSaleConfigSaveReqVO updateReqVO) {
-        validateSaleConfigExists(updateReqVO.getId());
+        ErpSaleConfigDO existing = validateSaleConfigExists(updateReqVO.getId());
+        fieldPermissionMasker.preserveHiddenFields(FIELD_PERMISSION_MODULE, updateReqVO, existing);
         validateCodeUnique(updateReqVO.getId(), updateReqVO.getConfigType(), updateReqVO.getCode());
         saleConfigMapper.updateById(BeanUtils.toBean(updateReqVO, ErpSaleConfigDO.class));
     }

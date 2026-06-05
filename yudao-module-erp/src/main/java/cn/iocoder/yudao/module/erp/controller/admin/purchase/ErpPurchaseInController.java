@@ -26,11 +26,12 @@ import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpSupplierDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.ErpAccountDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpWarehouseDO;
+import cn.iocoder.yudao.module.erp.service.finance.ErpAccountService;
 import cn.iocoder.yudao.module.erp.service.product.ErpProductService;
+import cn.iocoder.yudao.module.erp.service.purchase.ErpPurchaseFieldPermissionMasker;
 import cn.iocoder.yudao.module.erp.service.purchase.ErpPurchaseInService;
 import cn.iocoder.yudao.module.erp.service.purchase.ErpPurchaseInvoiceService;
 import cn.iocoder.yudao.module.erp.service.purchase.ErpSupplierService;
-import cn.iocoder.yudao.module.erp.service.finance.ErpAccountService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpStockService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpWarehouseService;
 import cn.iocoder.yudao.module.system.api.dept.DeptApi;
@@ -92,6 +93,8 @@ public class ErpPurchaseInController {
     private DeptApi deptApi;
     @Resource
     private AdminUserApi adminUserApi;
+    @Resource
+    private ErpPurchaseFieldPermissionMasker fieldPermissionMasker;
 
     @PostMapping("/create")
     @Operation(summary = "Create purchase in")
@@ -159,7 +162,7 @@ public class ErpPurchaseInController {
         collectUserIds(userIds, purchaseIn);
         Map<Long, AdminUserRespDTO> userMap = adminUserApi.getUserMap(userIds);
         DeptRespDTO dept = purchaseIn.getDeptId() == null ? null : deptApi.getDept(purchaseIn.getDeptId());
-        return success(BeanUtils.toBean(purchaseIn, ErpPurchaseInRespVO.class, purchaseInVO -> {
+        ErpPurchaseInRespVO respVO = BeanUtils.toBean(purchaseIn, ErpPurchaseInRespVO.class, purchaseInVO -> {
             purchaseInVO.setItems(BeanUtils.toBean(purchaseInItemList, ErpPurchaseInRespVO.Item.class, item -> {
                 ErpStockDO stock = stockService.getStock(item.getProductId(), item.getWarehouseId());
                 item.setStockCount(stock != null ? stock.getCount() : BigDecimal.ZERO);
@@ -171,7 +174,9 @@ public class ErpPurchaseInController {
             if (dept != null) {
                 purchaseInVO.setDeptName(dept.getName());
             }
-        }));
+        });
+        fieldPermissionMasker.mask("erp_purchase_in", respVO);
+        return success(respVO);
     }
 
     @GetMapping("/list-items")

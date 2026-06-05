@@ -11,6 +11,7 @@ import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.warehouse.ErpWareho
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.warehouse.ErpWarehouseRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.warehouse.ErpWarehouseSaveReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpWarehouseDO;
+import cn.iocoder.yudao.module.erp.service.stock.ErpStockFieldPermissionMasker;
 import cn.iocoder.yudao.module.erp.service.stock.ErpWarehouseService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -36,8 +37,12 @@ import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.
 @Validated
 public class ErpWarehouseController {
 
+    private static final String FIELD_PERMISSION_MODULE = "erp_warehouse";
+
     @Resource
     private ErpWarehouseService warehouseService;
+    @Resource
+    private ErpStockFieldPermissionMasker fieldPermissionMasker;
 
     @PostMapping("/create")
     @Operation(summary = "创建仓库")
@@ -85,6 +90,7 @@ public class ErpWarehouseController {
         if (respVO != null) {
             // 填充分店关联
             respVO.setBranchTenantIds(warehouseService.getWarehouseBranchTenantIds(id));
+            fieldPermissionMasker.maskForm(FIELD_PERMISSION_MODULE, respVO);
         }
         return success(respVO);
     }

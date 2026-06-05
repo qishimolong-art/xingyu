@@ -46,7 +46,7 @@ public class ErpProductCategoryController {
     @PutMapping("/update")
     @Operation(summary = "更新产品分类")
     @PreAuthorize("@ss.hasPermission('erp:product-category:update')")
-    public CommonResult<Boolean> updateProductCategory(@Valid @RequestBody ErpProductCategorySaveReqVO updateReqVO) {
+    public CommonResult<Boolean> updateProductCategory(@RequestBody ErpProductCategorySaveReqVO updateReqVO) {
         productCategoryService.updateProductCategory(updateReqVO);
         return success(true);
     }

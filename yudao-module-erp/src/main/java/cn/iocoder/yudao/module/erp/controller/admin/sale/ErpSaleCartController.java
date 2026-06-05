@@ -24,6 +24,7 @@ import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpWarehouseDO;
 import cn.iocoder.yudao.module.erp.service.product.ErpProductService;
 import cn.iocoder.yudao.module.erp.service.sale.ErpCustomerService;
 import cn.iocoder.yudao.module.erp.service.sale.ErpSaleCartService;
+import cn.iocoder.yudao.module.erp.service.sale.ErpSaleFieldPermissionMasker;
 import cn.iocoder.yudao.module.erp.service.stock.ErpWarehouseService;
 import cn.iocoder.yudao.module.system.api.user.AdminUserApi;
 import cn.iocoder.yudao.module.system.api.user.dto.AdminUserRespDTO;
@@ -55,6 +56,8 @@ import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.
 @Validated
 public class ErpSaleCartController {
 
+    private static final String FIELD_PERMISSION_MODULE = "erp_sale_cart";
+
     @Resource
     private ErpSaleCartService saleCartService;
     @Resource
@@ -63,6 +66,8 @@ public class ErpSaleCartController {
     private ErpProductService productService;
     @Resource
     private ErpWarehouseService warehouseService;
+    @Resource
+    private ErpSaleFieldPermissionMasker fieldPermissionMasker;
     @Resource
     private AdminUserApi adminUserApi;
 
@@ -144,7 +149,9 @@ public class ErpSaleCartController {
         if (cart == null) {
             return success(null);
         }
-        return success(buildSaleCartRespVO(cart, saleCartService.getSaleCartItemListByCartId(id)));
+        ErpSaleCartRespVO respVO = buildSaleCartRespVO(cart, saleCartService.getSaleCartItemListByCartId(id));
+        fieldPermissionMasker.maskFormWithItems(FIELD_PERMISSION_MODULE, respVO);
+        return success(respVO);
     }
 
     @GetMapping("/page")
@@ -152,7 +159,9 @@ public class ErpSaleCartController {
     @PreAuthorize("@ss.hasPermission('erp:sale-cart:query')")
     public CommonResult<PageResult<ErpSaleCartRespVO>> getSaleCartPage(@Valid ErpSaleCartPageReqVO pageReqVO) {
         PageResult<ErpSaleCartDO> pageResult = saleCartService.getSaleCartPage(pageReqVO);
-        return success(buildSaleCartVOPageResult(pageResult));
+        PageResult<ErpSaleCartRespVO> respResult = buildSaleCartVOPageResult(pageResult);
+        fieldPermissionMasker.maskFormsWithItems(FIELD_PERMISSION_MODULE, respResult.getList());
+        return success(respResult);
     }
 
     @GetMapping("/export-excel")
@@ -164,7 +173,10 @@ public class ErpSaleCartController {
         pageReqVO.setPageSize(PageParam.PAGE_SIZE_NONE);
         List<ErpSaleCartRespVO> list = buildSaleCartVOPageResult(
                 saleCartService.getSaleCartPage(pageReqVO)).getList();
-        ExcelUtils.write(response, "销售手推车.xls", "数据", ErpSaleCartExportRespVO.class, buildSaleCartExportList(list));
+        fieldPermissionMasker.maskFormsWithItems(FIELD_PERMISSION_MODULE, list);
+        List<ErpSaleCartExportRespVO> rows = buildSaleCartExportList(list);
+        fieldPermissionMasker.maskExportRows(FIELD_PERMISSION_MODULE, rows);
+        ExcelUtils.write(response, "销售手推车.xls", "数据", ErpSaleCartExportRespVO.class, rows);
     }
 
     @GetMapping("/export-import-template")

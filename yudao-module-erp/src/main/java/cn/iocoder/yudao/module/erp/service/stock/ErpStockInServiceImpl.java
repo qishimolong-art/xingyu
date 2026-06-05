@@ -54,10 +54,14 @@ import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.*;
 @Validated
 public class ErpStockInServiceImpl implements ErpStockInService {
 
+    private static final String FIELD_PERMISSION_MODULE = "erp_stock_in";
+
     @Resource
     private ErpStockInMapper stockInMapper;
     @Resource
     private ErpStockInItemMapper stockInItemMapper;
+    @Resource
+    private ErpStockFieldPermissionMasker fieldPermissionMasker;
 
     @Resource
     private ErpNoRedisDAO noRedisDAO;
@@ -115,6 +119,9 @@ public class ErpStockInServiceImpl implements ErpStockInService {
         if (ErpAuditStatus.APPROVE.getStatus().equals(stockIn.getStatus())) {
             throw exception(STOCK_IN_UPDATE_FAIL_APPROVE, stockIn.getNo());
         }
+        fieldPermissionMasker.preserveHiddenFields(FIELD_PERMISSION_MODULE, updateReqVO, stockIn);
+        fieldPermissionMasker.preserveHiddenItemFields(FIELD_PERMISSION_MODULE, updateReqVO.getItems(),
+                stockInItemMapper.selectListByInId(updateReqVO.getId()));
         // 1.2 校验供应商
         supplierService.validateSupplier(updateReqVO.getSupplierId());
         // 1.3 校验入库项的有效性

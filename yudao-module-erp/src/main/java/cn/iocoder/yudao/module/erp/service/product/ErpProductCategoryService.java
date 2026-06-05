@@ -31,7 +31,7 @@ public interface ErpProductCategoryService {
      *
      * @param updateReqVO 更新信息
      */
-    void updateProductCategory(@Valid ErpProductCategorySaveReqVO updateReqVO);
+    void updateProductCategory(ErpProductCategorySaveReqVO updateReqVO);
 
     /**
      * 删除产品分类

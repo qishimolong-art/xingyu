@@ -48,7 +48,7 @@ public class ErpProductUnitController {
     @PutMapping("/update")
     @Operation(summary = "更新产品单位")
     @PreAuthorize("@ss.hasPermission('erp:product-unit:update')")
-    public CommonResult<Boolean> updateProductUnit(@Valid @RequestBody ErpProductUnitSaveReqVO updateReqVO) {
+    public CommonResult<Boolean> updateProductUnit(@RequestBody ErpProductUnitSaveReqVO updateReqVO) {
         productUnitService.updateProductUnit(updateReqVO);
         return success(true);
     }

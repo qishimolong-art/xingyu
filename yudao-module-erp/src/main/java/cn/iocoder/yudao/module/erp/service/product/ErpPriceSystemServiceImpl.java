@@ -1,7 +1,9 @@
 package cn.iocoder.yudao.module.erp.service.product;
 
+import cn.hutool.core.collection.CollUtil;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
+import cn.iocoder.yudao.framework.common.util.validation.ValidationUtils;
 import cn.iocoder.yudao.framework.mybatis.core.query.LambdaQueryWrapperX;
 import cn.iocoder.yudao.module.erp.controller.admin.product.vo.pricesystem.ErpPriceSystemPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.product.vo.pricesystem.ErpPriceSystemSaveReqVO;
@@ -9,13 +11,16 @@ import cn.iocoder.yudao.module.erp.dal.dataobject.product.ErpPriceSystemDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.product.ErpProductPriceSystemDO;
 import cn.iocoder.yudao.module.erp.dal.mysql.product.ErpPriceSystemMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.product.ErpProductPriceSystemMapper;
+import cn.iocoder.yudao.module.system.api.permission.PermissionApi;
 import org.springframework.stereotype.Service;
 import org.springframework.validation.annotation.Validated;
 
 import javax.annotation.Resource;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 import static cn.iocoder.yudao.framework.common.exception.util.ServiceExceptionUtil.exception;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.*;
@@ -29,11 +34,15 @@ import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.*;
 @Validated
 public class ErpPriceSystemServiceImpl implements ErpPriceSystemService {
 
+    private static final String FIELD_PERMISSION_MODULE = "erp_price_system";
+
     @Resource
     private ErpPriceSystemMapper priceSystemMapper;
 
     @Resource
     private ErpProductPriceSystemMapper productPriceSystemMapper;
+    @Resource
+    private PermissionApi permissionApi;
 
     @Override
     public Long createPriceSystem(ErpPriceSystemSaveReqVO createReqVO) {
@@ -48,7 +57,9 @@ public class ErpPriceSystemServiceImpl implements ErpPriceSystemService {
     @Override
     public void updatePriceSystem(ErpPriceSystemSaveReqVO updateReqVO) {
         // 1.1 校验存在
-        validatePriceSystem(updateReqVO.getId());
+        ErpPriceSystemDO existing = validatePriceSystem(updateReqVO.getId());
+        applyPriceSystemSaveFieldPermissions(updateReqVO, existing);
+        ValidationUtils.validate(updateReqVO);
         // 1.2 校验 code 唯一
         validatePriceSystemCodeUnique(updateReqVO.getId(), updateReqVO.getCode());
         // 2. 更新
@@ -93,7 +104,7 @@ public class ErpPriceSystemServiceImpl implements ErpPriceSystemService {
 
     @Override
     public ErpPriceSystemDO getPriceSystem(Long id) {
-        return priceSystemMapper.selectById(id);
+        return applyPriceSystemFieldPermissions(priceSystemMapper.selectById(id));
     }
 
     @Override
@@ -129,6 +140,61 @@ public class ErpPriceSystemServiceImpl implements ErpPriceSystemService {
                 new LambdaQueryWrapperX<ErpPriceSystemDO>()
                         .eqIfPresent(ErpPriceSystemDO::getStatus, status)
                         .orderByAsc(ErpPriceSystemDO::getSort));
+    }
+
+    private ErpPriceSystemDO applyPriceSystemFieldPermissions(ErpPriceSystemDO priceSystem) {
+        if (priceSystem == null) {
+            return null;
+        }
+        List<String> hiddenFields = permissionApi.getCurrentUserHiddenFields(FIELD_PERMISSION_MODULE);
+        if (CollUtil.isEmpty(hiddenFields)) {
+            return priceSystem;
+        }
+        ErpPriceSystemDO result = BeanUtils.toBean(priceSystem, ErpPriceSystemDO.class);
+        Set<String> hiddenFieldSet = new HashSet<>(hiddenFields);
+        if (isFieldHidden(hiddenFieldSet, "code")) {
+            result.setCode(null);
+        }
+        if (isFieldHidden(hiddenFieldSet, "name")) {
+            result.setName(null);
+        }
+        if (isFieldHidden(hiddenFieldSet, "status")) {
+            result.setStatus(null);
+        }
+        if (isFieldHidden(hiddenFieldSet, "sort")) {
+            result.setSort(null);
+        }
+        if (isFieldHidden(hiddenFieldSet, "remark")) {
+            result.setRemark(null);
+        }
+        return result;
+    }
+
+    private void applyPriceSystemSaveFieldPermissions(ErpPriceSystemSaveReqVO reqVO, ErpPriceSystemDO existing) {
+        List<String> hiddenFields = permissionApi.getCurrentUserHiddenFields(FIELD_PERMISSION_MODULE);
+        if (CollUtil.isEmpty(hiddenFields)) {
+            return;
+        }
+        Set<String> hiddenFieldSet = new HashSet<>(hiddenFields);
+        if (isFieldHidden(hiddenFieldSet, "code")) {
+            reqVO.setCode(existing.getCode());
+        }
+        if (isFieldHidden(hiddenFieldSet, "name")) {
+            reqVO.setName(existing.getName());
+        }
+        if (isFieldHidden(hiddenFieldSet, "status")) {
+            reqVO.setStatus(existing.getStatus());
+        }
+        if (isFieldHidden(hiddenFieldSet, "sort")) {
+            reqVO.setSort(existing.getSort());
+        }
+        if (isFieldHidden(hiddenFieldSet, "remark")) {
+            reqVO.setRemark(existing.getRemark());
+        }
+    }
+
+    private boolean isFieldHidden(Set<String> hiddenFields, String fieldKey) {
+        return hiddenFields.contains(fieldKey);
     }
 
 }

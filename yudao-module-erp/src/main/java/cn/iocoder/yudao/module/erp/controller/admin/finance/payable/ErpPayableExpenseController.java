@@ -18,6 +18,7 @@ import cn.iocoder.yudao.module.erp.dal.dataobject.finance.ErpAccountDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.payable.ErpPayableExpenseDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.payable.ErpPayableExpenseItemDO;
 import cn.iocoder.yudao.module.erp.service.finance.ErpAccountService;
+import cn.iocoder.yudao.module.erp.service.finance.ErpFinanceFieldPermissionMasker;
 import cn.iocoder.yudao.module.erp.service.finance.payable.ErpPayableExpenseService;
 import cn.iocoder.yudao.module.system.api.dept.DeptApi;
 import cn.iocoder.yudao.module.system.api.dept.dto.DeptRespDTO;
@@ -60,6 +61,8 @@ import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.
 @Validated
 public class ErpPayableExpenseController {
 
+    private static final String FIELD_PERMISSION_MODULE = "erp_finance_payable_expense";
+
     @Resource
     private ErpPayableExpenseService payableExpenseService;
     @Resource
@@ -68,6 +71,8 @@ public class ErpPayableExpenseController {
     private AdminUserApi adminUserApi;
     @Resource
     private DeptApi deptApi;
+    @Resource
+    private ErpFinanceFieldPermissionMasker fieldPermissionMasker;
 
     @PostMapping("/create")
     @Operation(summary = "创建费用支付")
@@ -114,6 +119,7 @@ public class ErpPayableExpenseController {
         vo.setItems(BeanUtils.toBean(payableExpenseService.getPayableExpenseItemListByExpenseId(id),
                 ErpPayableExpenseRespVO.Item.class));
         fillExtend(vo);
+        fieldPermissionMasker.maskFormWithItems(FIELD_PERMISSION_MODULE, vo);
         return success(vo);
     }
 
@@ -122,7 +128,7 @@ public class ErpPayableExpenseController {
     @PreAuthorize("@ss.hasPermission('erp:payable-expense:query')")
     public CommonResult<PageResult<ErpPayableExpenseRespVO>> page(@Valid ErpPayableExpensePageReqVO reqVO) {
         PageResult<ErpPayableExpenseDO> pageResult = payableExpenseService.getPayableExpensePage(reqVO);
-        return success(buildPageResult(pageResult));
+        return success(maskPageResult(buildPageResult(pageResult)));
     }
 
     @GetMapping("/export-excel")
@@ -132,7 +138,8 @@ public class ErpPayableExpenseController {
     public void exportExcel(@Valid ErpPayableExpensePageReqVO reqVO,
                             HttpServletResponse response) throws IOException {
         reqVO.setPageSize(PageParam.PAGE_SIZE_NONE);
-        PageResult<ErpPayableExpenseRespVO> voPage = buildPageResult(payableExpenseService.getPayableExpensePage(reqVO));
+        PageResult<ErpPayableExpenseRespVO> voPage = maskPageResult(
+                buildPageResult(payableExpenseService.getPayableExpensePage(reqVO)));
         List<ErpPayableExpenseExportRespVO> rows = new ArrayList<>();
         for (ErpPayableExpenseRespVO expense : voPage.getList()) {
             List<ErpPayableExpenseRespVO.Item> items = expense.getItems() == null ? Collections.emptyList() : expense.getItems();
@@ -171,6 +178,11 @@ public class ErpPayableExpenseController {
             MapUtils.findAndThen(deptMap, vo.getDeptId(), dept -> vo.setDeptName(dept.getName()));
             fillItemExtend(vo);
         });
+    }
+
+    private PageResult<ErpPayableExpenseRespVO> maskPageResult(PageResult<ErpPayableExpenseRespVO> pageResult) {
+        pageResult.getList().forEach(item -> fieldPermissionMasker.maskFormWithItems(FIELD_PERMISSION_MODULE, item));
+        return pageResult;
     }
 
     private ErpPayableExpenseExportRespVO buildExportRow(ErpPayableExpenseRespVO expense,

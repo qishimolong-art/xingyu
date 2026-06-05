@@ -32,7 +32,7 @@ public interface ErpProductUnitService {
      *
      * @param updateReqVO 更新信息
      */
-    void updateProductUnit(@Valid ErpProductUnitSaveReqVO updateReqVO);
+    void updateProductUnit(ErpProductUnitSaveReqVO updateReqVO);
 
     /**
      * 删除产品单位

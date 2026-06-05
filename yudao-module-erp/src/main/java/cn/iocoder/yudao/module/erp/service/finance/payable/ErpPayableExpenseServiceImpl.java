@@ -13,6 +13,7 @@ import cn.iocoder.yudao.module.erp.dal.mysql.finance.payable.ErpPayableExpenseMa
 import cn.iocoder.yudao.module.erp.dal.redis.no.ErpNoRedisDAO;
 import cn.iocoder.yudao.module.erp.enums.ErpAuditStatus;
 import cn.iocoder.yudao.module.erp.service.finance.ErpAccountService;
+import cn.iocoder.yudao.module.erp.service.finance.ErpFinanceFieldPermissionMasker;
 import cn.iocoder.yudao.module.system.api.dept.DeptApi;
 import cn.iocoder.yudao.module.system.api.user.AdminUserApi;
 import org.springframework.stereotype.Service;
@@ -40,6 +41,8 @@ import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PAYABLE_EXPEN
 @Validated
 public class ErpPayableExpenseServiceImpl implements ErpPayableExpenseService {
 
+    private static final String FIELD_PERMISSION_MODULE = "erp_finance_payable_expense";
+
     @Resource
     private ErpPayableExpenseMapper payableExpenseMapper;
     @Resource
@@ -52,6 +55,8 @@ public class ErpPayableExpenseServiceImpl implements ErpPayableExpenseService {
     private AdminUserApi adminUserApi;
     @Resource
     private DeptApi deptApi;
+    @Resource
+    private ErpFinanceFieldPermissionMasker fieldPermissionMasker;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -66,13 +71,17 @@ public class ErpPayableExpenseServiceImpl implements ErpPayableExpenseService {
                 .setNo(no)
                 .setStatus(ErpAuditStatus.PROCESS.getStatus()));
         normalizeMain(db);
+        fieldPermissionMasker.clearHiddenFields(FIELD_PERMISSION_MODULE, db);
         db.setTotalAmount(sumAmount(createReqVO.getItems()));
         payableExpenseMapper.insert(db);
-        payableExpenseItemMapper.insertBatch(BeanUtils.toBean(createReqVO.getItems(),
+        List<ErpPayableExpenseItemDO> expenseItems = BeanUtils.toBean(createReqVO.getItems(),
                 ErpPayableExpenseItemDO.class, item -> {
+                    item.setId(null);
                     item.setExpenseId(db.getId());
                     normalizeItem(item);
-                }));
+                });
+        fieldPermissionMasker.clearHiddenItemFields(FIELD_PERMISSION_MODULE, expenseItems);
+        payableExpenseItemMapper.insertBatch(expenseItems);
         return db.getId();
     }
 
@@ -83,6 +92,13 @@ public class ErpPayableExpenseServiceImpl implements ErpPayableExpenseService {
         if (ErpAuditStatus.APPROVE.getStatus().equals(db.getStatus())) {
             throw exception(PAYABLE_EXPENSE_UPDATE_FAIL_APPROVE, db.getNo());
         }
+        List<ErpPayableExpenseItemDO> oldItems = payableExpenseItemMapper.selectListByExpenseId(updateReqVO.getId());
+        fieldPermissionMasker.preserveHiddenFields(FIELD_PERMISSION_MODULE, updateReqVO, db);
+        if (fieldPermissionMasker.isFieldHidden(FIELD_PERMISSION_MODULE, "items")) {
+            updateReqVO.setItems(BeanUtils.toBean(oldItems, ErpPayableExpenseSaveReqVO.Item.class));
+        } else {
+            fieldPermissionMasker.preserveOrClearHiddenItemFields(FIELD_PERMISSION_MODULE, updateReqVO.getItems(), oldItems);
+        }
         validateRefs(updateReqVO.getAccountId(), updateReqVO.getHandlerId(), updateReqVO.getDeptId());
         validateItemRefs(updateReqVO.getItems());
         ErpPayableExpenseDO updateObj = BeanUtils.toBean(updateReqVO, ErpPayableExpenseDO.class);
@@ -92,10 +108,10 @@ public class ErpPayableExpenseServiceImpl implements ErpPayableExpenseService {
                 ErpAuditStatus.PROCESS.getStatus(), updateObj) == 0) {
             throw exception(PAYABLE_EXPENSE_UPDATE_FAIL_STATUS_CHANGED);
         }
-        List<ErpPayableExpenseItemDO> oldItems = payableExpenseItemMapper.selectListByExpenseId(updateReqVO.getId());
         payableExpenseItemMapper.deleteByIds(convertList(oldItems, ErpPayableExpenseItemDO::getId));
         payableExpenseItemMapper.insertBatch(BeanUtils.toBean(updateReqVO.getItems(),
                 ErpPayableExpenseItemDO.class, item -> {
+                    item.setId(null);
                     item.setExpenseId(updateReqVO.getId());
                     normalizeItem(item);
                 }));

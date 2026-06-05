@@ -34,6 +34,7 @@ import cn.iocoder.yudao.module.erp.dal.mysql.stock.ErpStockRecordMapper;
 import cn.iocoder.yudao.module.erp.dal.redis.no.ErpNoRedisDAO;
 import cn.iocoder.yudao.module.infra.api.config.ConfigApi;
 import cn.iocoder.yudao.module.erp.service.stock.ErpWarehouseService;
+import cn.iocoder.yudao.module.system.api.permission.PermissionApi;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
@@ -81,6 +82,7 @@ import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PRODUCT_WAREH
 public class ErpProductServiceImpl implements ErpProductService {
 
     public static final String PRODUCT_CODE_MODE_CONFIG_KEY = "erp.product.code-mode";
+    private static final String FIELD_PERMISSION_MODULE = "erp_product";
     private static final String PRODUCT_CODE_MODE_AUTO = "AUTO";
     private static final String PRODUCT_CODE_MODE_MANUAL = "MANUAL";
 
@@ -120,6 +122,8 @@ public class ErpProductServiceImpl implements ErpProductService {
 
     @Resource
     private ConfigApi configApi;
+    @Resource
+    private PermissionApi permissionApi;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -129,6 +133,7 @@ public class ErpProductServiceImpl implements ErpProductService {
         if (warehouseService.getWarehouse(createReqVO.getDefaultWarehouseId()) == null) {
             throw exception(PRODUCT_WAREHOUSE_NOT_EXISTS);
         }
+        applyProductSaveFieldPermissions(createReqVO, null);
 
         // 2. 生成配件编码（带重试，防并发）并插入主表
         ErpProductDO product = BeanUtils.toBean(createReqVO, ErpProductDO.class);
@@ -209,6 +214,9 @@ public class ErpProductServiceImpl implements ErpProductService {
         if (Boolean.TRUE.equals(existing.getMergedFlag())) {
             throw exception(PRODUCT_MERGED, existing.getName());
         }
+        applyProductSaveFieldPermissions(updateReqVO, existing);
+        ValidationUtils.validate(updateReqVO);
+
         // 2. 校验仓库
         validateDefaultWarehouse(updateReqVO.getDefaultWarehouseId());
         if (warehouseService.getWarehouse(updateReqVO.getDefaultWarehouseId()) == null) {
@@ -429,7 +437,12 @@ public class ErpProductServiceImpl implements ErpProductService {
             return null;
         }
         List<ErpProductRespVO> list = buildProductVOList(Collections.singletonList(product));
-        return CollUtil.isEmpty(list) ? null : list.get(0);
+        if (CollUtil.isEmpty(list)) {
+            return null;
+        }
+        ErpProductRespVO result = list.get(0);
+        applyProductFieldPermissions(Collections.singletonList(result));
+        return result;
     }
 
     @Override
@@ -487,7 +500,7 @@ public class ErpProductServiceImpl implements ErpProductService {
                 .collect(Collectors.groupingBy(ErpProductUniversalDO::getProductId));
 
         // 2. 组装
-        return BeanUtils.toBean(list, ErpProductRespVO.class, vo -> {
+        List<ErpProductRespVO> result = BeanUtils.toBean(list, ErpProductRespVO.class, vo -> {
             MapUtils.findAndThen(categoryMap, vo.getCategoryId(),
                     c -> vo.setCategoryName(c.getName()));
             MapUtils.findAndThen(unitMap, vo.getUnitId(),
@@ -507,6 +520,198 @@ public class ErpProductServiceImpl implements ErpProductService {
             vo.setUniversals(universals == null ? Collections.emptyList()
                     : BeanUtils.toBean(universals, ErpProductRespVO.Universal.class));
         });
+        return result;
+    }
+
+    private void applyProductFieldPermissions(List<ErpProductRespVO> list) {
+        List<String> hiddenFields = permissionApi.getCurrentUserHiddenFields(FIELD_PERMISSION_MODULE);
+        if (CollUtil.isEmpty(hiddenFields)) {
+            return;
+        }
+        Set<String> hiddenFieldSet = new HashSet<>(hiddenFields);
+        for (ErpProductRespVO vo : list) {
+            if (isFieldHidden(hiddenFieldSet, "code")) {
+                vo.setCode(null);
+                vo.setProductCode(null);
+            }
+            if (isFieldHidden(hiddenFieldSet, "name")) {
+                vo.setName(null);
+            }
+            if (isFieldHidden(hiddenFieldSet, "unitId")) {
+                vo.setUnitId(null);
+                vo.setUnitName(null);
+            }
+            if (isFieldHidden(hiddenFieldSet, "defaultWarehouseId")) {
+                vo.setDefaultWarehouseId(null);
+                vo.setDefaultWarehouseName(null);
+            }
+            if (isFieldHidden(hiddenFieldSet, "vehicleModel")) {
+                vo.setVehicleModel(null);
+            }
+            if (isFieldHidden(hiddenFieldSet, "standard")) {
+                vo.setStandard(null);
+            }
+            if (isFieldHidden(hiddenFieldSet, "categoryId")) {
+                vo.setCategoryId(null);
+                vo.setCategoryName(null);
+            }
+            if (isFieldHidden(hiddenFieldSet, "barCode")) {
+                vo.setBarCode(null);
+            }
+            if (isFieldHidden(hiddenFieldSet, "factoryCode")) {
+                vo.setFactoryCode(null);
+            }
+            if (isFieldHidden(hiddenFieldSet, "status")) {
+                vo.setStatus(null);
+            }
+            if (isFieldHidden(hiddenFieldSet, "remark")) {
+                vo.setRemark(null);
+            }
+            if (isFieldHidden(hiddenFieldSet, "brand")) {
+                vo.setBrand(null);
+            }
+            if (isFieldHidden(hiddenFieldSet, "oeNumber")) {
+                vo.setOeNumber(null);
+            }
+            if (isFieldHidden(hiddenFieldSet, "originPlace")) {
+                vo.setOriginPlace(null);
+            }
+            if (isFieldHidden(hiddenFieldSet, "purchasePrice")) {
+                vo.setPurchasePrice(null);
+            }
+            if (isFieldHidden(hiddenFieldSet, "salePrice")) {
+                vo.setSalePrice(null);
+            }
+            if (isFieldHidden(hiddenFieldSet, "minPrice")) {
+                vo.setMinPrice(null);
+            }
+            if (isFieldHidden(hiddenFieldSet, "referencePrice")) {
+                vo.setReferencePrice(null);
+            }
+            if (isFieldHidden(hiddenFieldSet, "retailPrice")) {
+                vo.setRetailPrice(null);
+            }
+            if (isFieldHidden(hiddenFieldSet, "lastPurchasePrice")) {
+                vo.setLastPurchasePrice(null);
+            }
+            if (isFieldHidden(hiddenFieldSet, "grossProfitRate")) {
+                vo.setGrossProfitRate(null);
+            }
+            if (isFieldHidden(hiddenFieldSet, "backupPrice1")) {
+                vo.setBackupPrice1(null);
+            }
+            if (isFieldHidden(hiddenFieldSet, "wholesalePrice")) {
+                vo.setWholesalePrice(null);
+            }
+            if (isFieldHidden(hiddenFieldSet, "weight")) {
+                vo.setWeight(null);
+            }
+            if (isFieldHidden(hiddenFieldSet, "stockMax")) {
+                vo.setStockMax(null);
+            }
+            if (isFieldHidden(hiddenFieldSet, "stockMin")) {
+                vo.setStockMin(null);
+            }
+            if (isFieldHidden(hiddenFieldSet, "stockStandard")) {
+                vo.setStockStandard(null);
+            }
+            if (isFieldHidden(hiddenFieldSet, "packageQty")) {
+                vo.setPackageQty(null);
+            }
+            if (isFieldHidden(hiddenFieldSet, "currentStock")) {
+                vo.setCurrentStock(null);
+            }
+            if (isFieldHidden(hiddenFieldSet, "inTransitStock")) {
+                vo.setInTransitStock(null);
+            }
+            if (isFieldHidden(hiddenFieldSet, "availableStock")) {
+                vo.setAvailableStock(null);
+            }
+        }
+    }
+
+    private boolean isFieldHidden(Set<String> hiddenFields, String fieldKey) {
+        return hiddenFields.contains(fieldKey) || hiddenFields.contains("col_" + fieldKey);
+    }
+
+    private void applyProductSaveFieldPermissions(ProductSaveReqVO reqVO, ErpProductDO existing) {
+        List<String> hiddenFields = permissionApi.getCurrentUserHiddenFields(FIELD_PERMISSION_MODULE);
+        if (CollUtil.isEmpty(hiddenFields)) {
+            return;
+        }
+        Set<String> hiddenFieldSet = new HashSet<>(hiddenFields);
+        if (isFieldHidden(hiddenFieldSet, "code")) {
+            reqVO.setCode(existing == null ? null : existing.getCode());
+        }
+        if (isFieldHidden(hiddenFieldSet, "name")) {
+            reqVO.setName(existing == null ? null : existing.getName());
+        }
+        if (isFieldHidden(hiddenFieldSet, "unitId")) {
+            reqVO.setUnitId(existing == null ? null : existing.getUnitId());
+        }
+        if (isFieldHidden(hiddenFieldSet, "defaultWarehouseId")) {
+            reqVO.setDefaultWarehouseId(existing == null ? null : existing.getDefaultWarehouseId());
+        }
+        if (isFieldHidden(hiddenFieldSet, "vehicleModel")) {
+            reqVO.setVehicleModel(existing == null ? null : existing.getVehicleModel());
+        }
+        if (isFieldHidden(hiddenFieldSet, "standard")) {
+            reqVO.setStandard(existing == null ? null : existing.getStandard());
+        }
+        if (isFieldHidden(hiddenFieldSet, "categoryId")) {
+            reqVO.setCategoryId(existing == null ? null : existing.getCategoryId());
+        }
+        if (isFieldHidden(hiddenFieldSet, "barCode")) {
+            reqVO.setBarCode(existing == null ? null : existing.getBarCode());
+        }
+        if (isFieldHidden(hiddenFieldSet, "factoryCode")) {
+            reqVO.setFactoryCode(existing == null ? null : existing.getFactoryCode());
+        }
+        if (isFieldHidden(hiddenFieldSet, "status")) {
+            reqVO.setStatus(existing == null ? null : existing.getStatus());
+        }
+        if (isFieldHidden(hiddenFieldSet, "remark")) {
+            reqVO.setRemark(existing == null ? null : existing.getRemark());
+        }
+        if (isFieldHidden(hiddenFieldSet, "purchasePrice")) {
+            reqVO.setPurchasePrice(existing == null ? null : existing.getPurchasePrice());
+        }
+        if (isFieldHidden(hiddenFieldSet, "salePrice")) {
+            reqVO.setSalePrice(existing == null ? null : existing.getSalePrice());
+        }
+        if (isFieldHidden(hiddenFieldSet, "minPrice")) {
+            reqVO.setMinPrice(existing == null ? null : existing.getMinPrice());
+        }
+        if (isFieldHidden(hiddenFieldSet, "referencePrice")) {
+            reqVO.setReferencePrice(existing == null ? null : existing.getReferencePrice());
+        }
+        if (isFieldHidden(hiddenFieldSet, "retailPrice")) {
+            reqVO.setRetailPrice(existing == null ? null : existing.getRetailPrice());
+        }
+        if (isFieldHidden(hiddenFieldSet, "grossProfitRate")) {
+            reqVO.setGrossProfitRate(existing == null ? null : existing.getGrossProfitRate());
+        }
+        if (isFieldHidden(hiddenFieldSet, "backupPrice1")) {
+            reqVO.setBackupPrice1(existing == null ? null : existing.getBackupPrice1());
+        }
+        if (isFieldHidden(hiddenFieldSet, "wholesalePrice")) {
+            reqVO.setWholesalePrice(existing == null ? null : existing.getWholesalePrice());
+        }
+        if (isFieldHidden(hiddenFieldSet, "weight")) {
+            reqVO.setWeight(existing == null ? null : existing.getWeight());
+        }
+        if (isFieldHidden(hiddenFieldSet, "stockMax")) {
+            reqVO.setStockMax(existing == null ? null : existing.getStockMax());
+        }
+        if (isFieldHidden(hiddenFieldSet, "stockMin")) {
+            reqVO.setStockMin(existing == null ? null : existing.getStockMin());
+        }
+        if (isFieldHidden(hiddenFieldSet, "stockStandard")) {
+            reqVO.setStockStandard(existing == null ? null : existing.getStockStandard());
+        }
+        if (isFieldHidden(hiddenFieldSet, "packageQty")) {
+            reqVO.setPackageQty(existing == null ? null : existing.getPackageQty());
+        }
     }
 
     @Override

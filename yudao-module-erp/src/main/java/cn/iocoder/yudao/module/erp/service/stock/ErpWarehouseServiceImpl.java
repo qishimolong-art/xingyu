@@ -35,11 +35,15 @@ import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.WAREHOUSE_NOT
 @Validated
 public class ErpWarehouseServiceImpl implements ErpWarehouseService {
 
+    private static final String FIELD_PERMISSION_MODULE = "erp_warehouse";
+
     @Resource
     private ErpWarehouseMapper warehouseMapper;
 
     @Resource
     private ErpWarehouseBranchMapper warehouseBranchMapper;
+    @Resource
+    private ErpStockFieldPermissionMasker fieldPermissionMasker;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -58,6 +62,7 @@ public class ErpWarehouseServiceImpl implements ErpWarehouseService {
     public void updateWarehouse(ErpWarehouseSaveReqVO updateReqVO) {
         // 校验存在
         ErpWarehouseDO warehouse = validateWarehouseExists(updateReqVO.getId());
+        fieldPermissionMasker.preserveHiddenFields(FIELD_PERMISSION_MODULE, updateReqVO, warehouse);
         // 更新仓库：只覆盖本次表单提交的字段，避免把历史扩展字段清空
         ErpWarehouseDO updateObj = BeanUtils.toBean(updateReqVO, ErpWarehouseDO.class);
         updateObj.setId(warehouse.getId());

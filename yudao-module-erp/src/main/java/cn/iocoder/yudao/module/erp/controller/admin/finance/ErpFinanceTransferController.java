@@ -15,6 +15,7 @@ import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.transfer.ErpFinan
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.ErpAccountDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.ErpFinanceTransferDO;
 import cn.iocoder.yudao.module.erp.service.finance.ErpAccountService;
+import cn.iocoder.yudao.module.erp.service.finance.ErpFinanceFieldPermissionMasker;
 import cn.iocoder.yudao.module.erp.service.finance.ErpFinanceTransferService;
 import cn.iocoder.yudao.module.system.api.user.AdminUserApi;
 import cn.iocoder.yudao.module.system.api.user.dto.AdminUserRespDTO;
@@ -57,6 +58,8 @@ public class ErpFinanceTransferController {
     private ErpAccountService accountService;
     @Resource
     private AdminUserApi adminUserApi;
+    @Resource
+    private ErpFinanceFieldPermissionMasker fieldPermissionMasker;
 
     @PostMapping("/create")
     @Operation(summary = "创建银行转账单")
@@ -100,7 +103,9 @@ public class ErpFinanceTransferController {
         if (transfer == null) {
             return success(null);
         }
-        return success(buildFinanceTransferRespVO(transfer));
+        ErpFinanceTransferRespVO respVO = buildFinanceTransferRespVO(transfer);
+        fieldPermissionMasker.maskForm("erp_finance_transfer", respVO);
+        return success(respVO);
     }
 
     @GetMapping("/page")

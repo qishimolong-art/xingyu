@@ -56,10 +56,14 @@ import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.*;
 @Validated
 public class ErpStockOutServiceImpl implements ErpStockOutService {
 
+    private static final String FIELD_PERMISSION_MODULE = "erp_stock_out";
+
     @Resource
     private ErpStockOutMapper stockOutMapper;
     @Resource
     private ErpStockOutItemMapper stockOutItemMapper;
+    @Resource
+    private ErpStockFieldPermissionMasker fieldPermissionMasker;
 
     @Resource
     private ErpNoRedisDAO noRedisDAO;
@@ -119,6 +123,9 @@ public class ErpStockOutServiceImpl implements ErpStockOutService {
         if (ErpAuditStatus.APPROVE.getStatus().equals(stockOut.getStatus())) {
             throw exception(STOCK_OUT_UPDATE_FAIL_APPROVE, stockOut.getNo());
         }
+        fieldPermissionMasker.preserveHiddenFields(FIELD_PERMISSION_MODULE, updateReqVO, stockOut);
+        fieldPermissionMasker.preserveHiddenItemFields(FIELD_PERMISSION_MODULE, updateReqVO.getItems(),
+                stockOutItemMapper.selectListByOutId(updateReqVO.getId()));
         // 1.2 校验客户
         customerService.validateCustomer(updateReqVO.getCustomerId());
         // 1.3 校验出库项的有效性

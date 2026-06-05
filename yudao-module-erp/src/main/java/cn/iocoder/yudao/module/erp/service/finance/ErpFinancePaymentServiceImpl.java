@@ -48,6 +48,8 @@ import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.*;
 @Validated
 public class ErpFinancePaymentServiceImpl implements ErpFinancePaymentService {
 
+    private static final String FIELD_PERMISSION_MODULE = "erp_finance_payment";
+
     @Resource
     private ErpFinancePaymentMapper financePaymentMapper;
     @Resource
@@ -69,6 +71,8 @@ public class ErpFinancePaymentServiceImpl implements ErpFinancePaymentService {
 
     @Resource
     private AdminUserApi adminUserApi;
+    @Resource
+    private ErpFinanceFieldPermissionMasker fieldPermissionMasker;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -113,6 +117,13 @@ public class ErpFinancePaymentServiceImpl implements ErpFinancePaymentService {
         ErpFinancePaymentDO payment = validateFinancePaymentExists(updateReqVO.getId());
         if (ErpAuditStatus.APPROVE.getStatus().equals(payment.getStatus())) {
             throw exception(FINANCE_PAYMENT_UPDATE_FAIL_APPROVE, payment.getNo());
+        }
+        List<ErpFinancePaymentItemDO> oldPaymentItems = financePaymentItemMapper.selectListByPaymentId(updateReqVO.getId());
+        fieldPermissionMasker.preserveHiddenFields(FIELD_PERMISSION_MODULE, updateReqVO, payment);
+        if (fieldPermissionMasker.isFieldHidden(FIELD_PERMISSION_MODULE, "items")) {
+            updateReqVO.setItems(BeanUtils.toBean(oldPaymentItems, ErpFinancePaymentSaveReqVO.Item.class));
+        } else {
+            fieldPermissionMasker.preserveHiddenItemFields(FIELD_PERMISSION_MODULE, updateReqVO.getItems(), oldPaymentItems);
         }
         // 1.2 校验供应商
         supplierService.validateSupplier(updateReqVO.getSupplierId());

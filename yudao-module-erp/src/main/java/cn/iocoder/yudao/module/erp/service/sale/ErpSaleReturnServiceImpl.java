@@ -71,6 +71,8 @@ import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.*;
 @Validated
 public class ErpSaleReturnServiceImpl implements ErpSaleReturnService {
 
+    private static final String FIELD_PERMISSION_MODULE = "erp_sale_return";
+
     @Resource
     private ErpSaleReturnMapper saleReturnMapper;
     @Resource
@@ -113,10 +115,14 @@ public class ErpSaleReturnServiceImpl implements ErpSaleReturnService {
     private ErpStockService stockService;
     @Resource
     private ErpWarehouseService warehouseService;
+    @Resource
+    private ErpSaleFieldPermissionMasker fieldPermissionMasker;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Long createSaleReturn(ErpSaleReturnSaveReqVO createReqVO) {
+        fieldPermissionMasker.clearHiddenFields(FIELD_PERMISSION_MODULE, createReqVO);
+        fieldPermissionMasker.clearHiddenItemFields(FIELD_PERMISSION_MODULE, createReqVO.getItems());
         Integer returnMode = normalizeReturnMode(createReqVO);
         ErpSaleOrderDO saleOrder = null;
         ErpSaleOutDO saleOut = null;
@@ -162,6 +168,9 @@ public class ErpSaleReturnServiceImpl implements ErpSaleReturnService {
         if (ErpAuditStatus.APPROVE.getStatus().equals(oldSaleReturn.getStatus())) {
             throw exception(SALE_RETURN_UPDATE_FAIL_APPROVE, oldSaleReturn.getNo());
         }
+        fieldPermissionMasker.preserveHiddenFields(FIELD_PERMISSION_MODULE, updateReqVO, oldSaleReturn);
+        fieldPermissionMasker.preserveHiddenItemFields(FIELD_PERMISSION_MODULE, updateReqVO.getItems(),
+                saleReturnItemMapper.selectListByReturnId(updateReqVO.getId()));
 
         Integer returnMode = normalizeReturnMode(updateReqVO);
         ErpSaleOrderDO saleOrder = null;

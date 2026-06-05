@@ -13,6 +13,7 @@ import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.account.ErpAccoun
 import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.account.ErpAccountSaveReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.ErpAccountDO;
 import cn.iocoder.yudao.module.erp.service.finance.ErpAccountService;
+import cn.iocoder.yudao.module.erp.service.finance.ErpFinanceFieldPermissionMasker;
 import cn.iocoder.yudao.module.erp.service.finance.bo.ErpAccountBalanceBO;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -50,6 +51,8 @@ public class ErpAccountController {
 
     @Resource
     private ErpAccountService accountService;
+    @Resource
+    private ErpFinanceFieldPermissionMasker fieldPermissionMasker;
 
     @PostMapping("/create")
     @Operation(summary = "创建结算账户")
@@ -99,6 +102,7 @@ public class ErpAccountController {
         if (balance != null) {
             respVO.setCurrentBalance(balance.getCurrentBalance());
         }
+        fieldPermissionMasker.maskForm("erp_account", respVO);
         return success(respVO);
     }
 

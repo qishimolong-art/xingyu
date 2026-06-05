@@ -11,6 +11,7 @@ import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.receipt.ErpFinanc
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.ErpFinanceReceiptDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.ErpFinanceReceiptItemDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleOutDO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSalePriceAdjustDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleReturnDO;
 import cn.iocoder.yudao.module.erp.dal.mysql.finance.ErpFinanceReceiptItemMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.finance.ErpFinanceReceiptMapper;
@@ -19,6 +20,7 @@ import cn.iocoder.yudao.module.erp.enums.ErpAuditStatus;
 import cn.iocoder.yudao.module.erp.enums.common.ErpBizTypeEnum;
 import cn.iocoder.yudao.module.erp.service.sale.ErpCustomerService;
 import cn.iocoder.yudao.module.erp.service.sale.ErpSaleOutService;
+import cn.iocoder.yudao.module.erp.service.sale.ErpSalePriceAdjustService;
 import cn.iocoder.yudao.module.erp.service.sale.ErpSaleReturnService;
 import cn.iocoder.yudao.module.system.api.user.AdminUserApi;
 import org.springframework.stereotype.Service;
@@ -46,6 +48,8 @@ import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.*;
 @Validated
 public class ErpFinanceReceiptServiceImpl implements ErpFinanceReceiptService {
 
+    private static final String FIELD_PERMISSION_MODULE = "erp_finance_receipt";
+
     @Resource
     private ErpFinanceReceiptMapper financeReceiptMapper;
     @Resource
@@ -62,9 +66,13 @@ public class ErpFinanceReceiptServiceImpl implements ErpFinanceReceiptService {
     private ErpSaleOutService saleOutService;
     @Resource
     private ErpSaleReturnService saleReturnService;
+    @Resource
+    private ErpSalePriceAdjustService salePriceAdjustService;
 
     @Resource
     private AdminUserApi adminUserApi;
+    @Resource
+    private ErpFinanceFieldPermissionMasker fieldPermissionMasker;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -109,6 +117,13 @@ public class ErpFinanceReceiptServiceImpl implements ErpFinanceReceiptService {
         ErpFinanceReceiptDO receipt = validateFinanceReceiptExists(updateReqVO.getId());
         if (ErpAuditStatus.APPROVE.getStatus().equals(receipt.getStatus())) {
             throw exception(FINANCE_RECEIPT_UPDATE_FAIL_APPROVE, receipt.getNo());
+        }
+        List<ErpFinanceReceiptItemDO> oldReceiptItems = financeReceiptItemMapper.selectListByReceiptId(updateReqVO.getId());
+        fieldPermissionMasker.preserveHiddenFields(FIELD_PERMISSION_MODULE, updateReqVO, receipt);
+        if (fieldPermissionMasker.isFieldHidden(FIELD_PERMISSION_MODULE, "items")) {
+            updateReqVO.setItems(BeanUtils.toBean(oldReceiptItems, ErpFinanceReceiptSaveReqVO.Item.class));
+        } else {
+            fieldPermissionMasker.preserveHiddenItemFields(FIELD_PERMISSION_MODULE, updateReqVO.getItems(), oldReceiptItems);
         }
         // 1.2 校验客户
         customerService.validateCustomer(updateReqVO.getCustomerId());
@@ -167,6 +182,10 @@ public class ErpFinanceReceiptServiceImpl implements ErpFinanceReceiptService {
                 ErpSaleReturnDO saleReturn = saleReturnService.validateSaleReturn(item.getBizId());
                 Assert.equals(saleReturn.getCustomerId(), customerId, "客户必须相同");
                 item.setTotalPrice(saleReturn.getTotalPrice().negate()).setBizNo(saleReturn.getNo());
+            } else if (ObjectUtil.equal(item.getBizType(), ErpBizTypeEnum.SALE_PRICE_ADJUST.getType())) {
+                ErpSalePriceAdjustDO salePriceAdjust = salePriceAdjustService.validateSalePriceAdjust(item.getBizId());
+                Assert.equals(salePriceAdjust.getCustomerId(), customerId, "客户必须相同");
+                item.setTotalPrice(salePriceAdjust.getTotalAdjustPrice()).setBizNo(salePriceAdjust.getNo());
             } else {
                 throw new IllegalArgumentException("业务类型不正确：" + item.getBizType());
             }
@@ -203,6 +222,8 @@ public class ErpFinanceReceiptServiceImpl implements ErpFinanceReceiptService {
                 saleOutService.updateSaleInReceiptPrice(receiptItem.getBizId(), totalReceiptPrice);
             } else if (ErpBizTypeEnum.SALE_RETURN.getType().equals(receiptItem.getBizType())) {
                 saleReturnService.updateSaleReturnRefundPrice(receiptItem.getBizId(), totalReceiptPrice.negate());
+            } else if (ErpBizTypeEnum.SALE_PRICE_ADJUST.getType().equals(receiptItem.getBizType())) {
+                salePriceAdjustService.updateSalePriceAdjustReceiptPrice(receiptItem.getBizId(), totalReceiptPrice);
             } else {
                 throw new IllegalArgumentException("业务类型不正确：" + receiptItem.getBizType());
             }

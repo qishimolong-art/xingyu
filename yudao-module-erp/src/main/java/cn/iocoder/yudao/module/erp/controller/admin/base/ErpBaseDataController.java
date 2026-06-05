@@ -8,6 +8,7 @@ import cn.iocoder.yudao.module.erp.controller.admin.base.vo.ErpBaseDataRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.base.vo.ErpBaseDataSaveReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.base.ErpBaseDataDO;
 import cn.iocoder.yudao.module.erp.service.base.ErpBaseDataService;
+import cn.iocoder.yudao.module.erp.service.finance.ErpFinanceFieldPermissionMasker;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -28,8 +29,12 @@ import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.
 @Validated
 public class ErpBaseDataController {
 
+    private static final String FIELD_PERMISSION_MODULE = "erp_base_data";
+
     @Resource
     private ErpBaseDataService baseDataService;
+    @Resource
+    private ErpFinanceFieldPermissionMasker fieldPermissionMasker;
 
     @PostMapping("/create")
     @Operation(summary = "创建基础数据")
@@ -61,7 +66,9 @@ public class ErpBaseDataController {
     @PreAuthorize("@ss.hasPermission('erp:base-data:query')")
     public CommonResult<ErpBaseDataRespVO> getBaseData(@RequestParam("id") Long id) {
         ErpBaseDataDO baseData = baseDataService.getBaseData(id);
-        return success(BeanUtils.toBean(baseData, ErpBaseDataRespVO.class));
+        ErpBaseDataRespVO vo = BeanUtils.toBean(baseData, ErpBaseDataRespVO.class);
+        fieldPermissionMasker.maskForm(FIELD_PERMISSION_MODULE, vo);
+        return success(vo);
     }
 
     @GetMapping("/page")
@@ -69,7 +76,9 @@ public class ErpBaseDataController {
     @PreAuthorize("@ss.hasPermission('erp:base-data:query')")
     public CommonResult<PageResult<ErpBaseDataRespVO>> getBaseDataPage(@Valid ErpBaseDataPageReqVO pageReqVO) {
         PageResult<ErpBaseDataDO> pageResult = baseDataService.getBaseDataPage(pageReqVO);
-        return success(BeanUtils.toBean(pageResult, ErpBaseDataRespVO.class));
+        PageResult<ErpBaseDataRespVO> result = BeanUtils.toBean(pageResult, ErpBaseDataRespVO.class);
+        result.getList().forEach(item -> fieldPermissionMasker.maskForm(FIELD_PERMISSION_MODULE, item));
+        return success(result);
     }
 
     @GetMapping("/simple-list")
@@ -77,8 +86,10 @@ public class ErpBaseDataController {
     @Parameter(name = "type", description = "数据类型", required = true, example = "region")
     public CommonResult<List<ErpBaseDataRespVO>> getBaseDataSimpleList(@RequestParam("type") String type) {
         List<ErpBaseDataDO> list = baseDataService.getBaseDataSimpleListByType(type);
-        return success(convertList(list, data -> new ErpBaseDataRespVO()
-                .setId(data.getId()).setName(data.getName())));
+        List<ErpBaseDataRespVO> result = convertList(list, data -> new ErpBaseDataRespVO()
+                .setId(data.getId()).setName(data.getName()));
+        result.forEach(item -> fieldPermissionMasker.maskForm(FIELD_PERMISSION_MODULE, item));
+        return success(result);
     }
 
 }

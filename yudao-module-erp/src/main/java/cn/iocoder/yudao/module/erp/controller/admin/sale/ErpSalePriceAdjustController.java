@@ -19,6 +19,7 @@ import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpCustomerDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSalePriceAdjustDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSalePriceAdjustItemDO;
 import cn.iocoder.yudao.module.erp.service.sale.ErpCustomerService;
+import cn.iocoder.yudao.module.erp.service.sale.ErpSaleFieldPermissionMasker;
 import cn.iocoder.yudao.module.erp.service.sale.ErpSalePriceAdjustService;
 import cn.iocoder.yudao.module.system.api.dept.DeptApi;
 import cn.iocoder.yudao.module.system.api.dept.dto.DeptRespDTO;
@@ -56,12 +57,16 @@ import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.
 @Validated
 public class ErpSalePriceAdjustController {
 
+    private static final String FIELD_PERMISSION_MODULE = "erp_sale_price_adjust";
+
     @Resource
     private ErpSalePriceAdjustService salePriceAdjustService;
     @Resource
     private ErpCustomerService customerService;
     @Resource
     private DeptApi deptApi;
+    @Resource
+    private ErpSaleFieldPermissionMasker fieldPermissionMasker;
     @Resource
     private AdminUserApi adminUserApi;
 
@@ -187,6 +192,7 @@ public class ErpSalePriceAdjustController {
             }
         }
         fillAdjustSummary(respVO, respVO.getItems());
+        fieldPermissionMasker.maskFormWithItems(FIELD_PERMISSION_MODULE, respVO);
         return success(respVO);
     }
 
@@ -195,7 +201,9 @@ public class ErpSalePriceAdjustController {
     @PreAuthorize("@ss.hasPermission('erp:sale-price-adjust:query')")
     public CommonResult<PageResult<ErpSalePriceAdjustRespVO>> getSalePriceAdjustPage(@Valid ErpSalePriceAdjustPageReqVO pageReqVO) {
         PageResult<ErpSalePriceAdjustDO> pageResult = salePriceAdjustService.getSalePriceAdjustPage(pageReqVO);
-        return success(buildSalePriceAdjustVOPageResult(pageResult));
+        PageResult<ErpSalePriceAdjustRespVO> respResult = buildSalePriceAdjustVOPageResult(pageResult);
+        fieldPermissionMasker.maskFormsWithItems(FIELD_PERMISSION_MODULE, respResult.getList());
+        return success(respResult);
     }
 
     @GetMapping("/export-excel")
@@ -207,8 +215,10 @@ public class ErpSalePriceAdjustController {
         pageReqVO.setPageSize(PageParam.PAGE_SIZE_NONE);
         List<ErpSalePriceAdjustRespVO> list = buildSalePriceAdjustVOPageResult(
                 salePriceAdjustService.getSalePriceAdjustPage(pageReqVO)).getList();
-        ExcelUtils.write(response, "销售调价单.xls", "数据",
-                ErpSalePriceAdjustExportRespVO.class, buildSalePriceAdjustExportList(list));
+        fieldPermissionMasker.maskFormsWithItems(FIELD_PERMISSION_MODULE, list);
+        List<ErpSalePriceAdjustExportRespVO> rows = buildSalePriceAdjustExportList(list);
+        fieldPermissionMasker.maskExportRows(FIELD_PERMISSION_MODULE, rows);
+        ExcelUtils.write(response, "销售调价单.xls", "数据", ErpSalePriceAdjustExportRespVO.class, rows);
     }
 
     @GetMapping("/adjustable-items")
@@ -217,7 +227,9 @@ public class ErpSalePriceAdjustController {
     public CommonResult<List<ErpSaleOutItemForAdjustRespVO>> getAdjustableItemsByCustomerId(
             @RequestParam("customerId") Long customerId,
             @RequestParam(value = "saleOutId", required = false) Long saleOutId) {
-        return success(salePriceAdjustService.getAdjustableItemsByCustomerId(customerId, saleOutId));
+        List<ErpSaleOutItemForAdjustRespVO> list = salePriceAdjustService.getAdjustableItemsByCustomerId(customerId, saleOutId);
+        fieldPermissionMasker.maskSelectRows(FIELD_PERMISSION_MODULE, list);
+        return success(list);
     }
 
     private PageResult<ErpSalePriceAdjustRespVO> buildSalePriceAdjustVOPageResult(PageResult<ErpSalePriceAdjustDO> pageResult) {

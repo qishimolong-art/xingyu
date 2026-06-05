@@ -15,6 +15,7 @@ import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.customer.ErpCustomer
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpCustomerDO;
 import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpSaleOutMapper;
 import cn.iocoder.yudao.module.erp.service.sale.ErpCustomerService;
+import cn.iocoder.yudao.module.erp.service.sale.ErpSaleFieldPermissionMasker;
 import cn.iocoder.yudao.module.erp.service.sale.bo.ErpCustomerSaleStatsBO;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -44,11 +45,15 @@ import cn.hutool.core.collection.CollUtil;
 @Validated
 public class ErpCustomerController {
 
+    private static final String FIELD_PERMISSION_MODULE = "erp_customer";
+
     @Resource
     private ErpCustomerService customerService;
 
     @Resource
     private ErpSaleOutMapper saleOutMapper;
+    @Resource
+    private ErpSaleFieldPermissionMasker fieldPermissionMasker;
 
     @PostMapping("/create")
     @Operation(summary = "创建客户")
@@ -80,7 +85,9 @@ public class ErpCustomerController {
     @PreAuthorize("@ss.hasPermission('erp:customer:query')")
     public CommonResult<ErpCustomerRespVO> getCustomer(@RequestParam("id") Long id) {
         ErpCustomerDO customer = customerService.getCustomer(id);
-        return success(BeanUtils.toBean(customer, ErpCustomerRespVO.class));
+        ErpCustomerRespVO respVO = BeanUtils.toBean(customer, ErpCustomerRespVO.class);
+        fieldPermissionMasker.maskForm(FIELD_PERMISSION_MODULE, respVO);
+        return success(respVO);
     }
 
     @GetMapping("/page")
@@ -106,6 +113,7 @@ public class ErpCustomerController {
                 }
             });
         }
+        fieldPermissionMasker.maskForms(FIELD_PERMISSION_MODULE, respResult.getList());
         return success(respResult);
     }
 
@@ -113,8 +121,10 @@ public class ErpCustomerController {
     @Operation(summary = "获得客户精简列表", description = "只包含被开启的客户，主要用于前端的下拉选项")
     public CommonResult<List<ErpCustomerRespVO>> getCustomerSimpleList() {
         List<ErpCustomerDO> list = customerService.getCustomerListByStatus(CommonStatusEnum.ENABLE.getStatus());
-        return success(convertList(list, customer -> new ErpCustomerRespVO().setId(customer.getId())
-                .setName(customer.getName()).setContact(customer.getContact()).setMobile(customer.getMobile())));
+        List<ErpCustomerRespVO> respList = convertList(list, customer -> new ErpCustomerRespVO().setId(customer.getId())
+                .setName(customer.getName()).setContact(customer.getContact()).setMobile(customer.getMobile()));
+        fieldPermissionMasker.maskForms(FIELD_PERMISSION_MODULE, respList);
+        return success(respList);
     }
 
     @GetMapping("/export-excel")
@@ -125,9 +135,10 @@ public class ErpCustomerController {
               HttpServletResponse response) throws IOException {
         pageReqVO.setPageSize(PageParam.PAGE_SIZE_NONE);
         List<ErpCustomerDO> list = customerService.getCustomerPage(pageReqVO).getList();
+        List<ErpCustomerRespVO> rows = BeanUtils.toBean(list, ErpCustomerRespVO.class);
+        fieldPermissionMasker.maskForms(FIELD_PERMISSION_MODULE, rows);
         // 导出 Excel
-        ExcelUtils.write(response, "客户.xls", "数据", ErpCustomerRespVO.class,
-                        BeanUtils.toBean(list, ErpCustomerRespVO.class));
+        ExcelUtils.write(response, "客户.xls", "数据", ErpCustomerRespVO.class, rows);
     }
 
     @GetMapping("/get-import-template")

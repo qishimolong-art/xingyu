@@ -15,6 +15,7 @@ import cn.iocoder.yudao.module.erp.controller.admin.finance.payable.vo.other.Erp
 import cn.iocoder.yudao.module.erp.controller.admin.finance.payable.vo.other.ErpPayableOtherSaveReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.payable.ErpPayableOtherDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpSupplierDO;
+import cn.iocoder.yudao.module.erp.service.finance.ErpFinanceFieldPermissionMasker;
 import cn.iocoder.yudao.module.erp.service.finance.payable.ErpPayableOtherService;
 import cn.iocoder.yudao.module.erp.service.purchase.ErpSupplierService;
 import cn.iocoder.yudao.module.system.api.dept.DeptApi;
@@ -53,6 +54,8 @@ import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.
 @Validated
 public class ErpPayableOtherController {
 
+    private static final String FIELD_PERMISSION_MODULE = "erp_finance_payable_other";
+
     @Resource
     private ErpPayableOtherService payableOtherService;
     @Resource
@@ -61,6 +64,8 @@ public class ErpPayableOtherController {
     private AdminUserApi adminUserApi;
     @Resource
     private DeptApi deptApi;
+    @Resource
+    private ErpFinanceFieldPermissionMasker fieldPermissionMasker;
 
     @PostMapping("/create")
     @Operation(summary = "创建其他应付")
@@ -105,6 +110,7 @@ public class ErpPayableOtherController {
         }
         ErpPayableOtherRespVO vo = BeanUtils.toBean(db, ErpPayableOtherRespVO.class);
         fillExtend(vo);
+        fieldPermissionMasker.maskForm(FIELD_PERMISSION_MODULE, vo);
         return success(vo);
     }
 
@@ -113,7 +119,7 @@ public class ErpPayableOtherController {
     @PreAuthorize("@ss.hasPermission('erp:payable-other:query')")
     public CommonResult<PageResult<ErpPayableOtherRespVO>> page(@Valid ErpPayableOtherPageReqVO reqVO) {
         PageResult<ErpPayableOtherDO> pageResult = payableOtherService.getPayableOtherPage(reqVO);
-        return success(buildPageResult(pageResult));
+        return success(maskPageResult(buildPageResult(pageResult)));
     }
 
     @GetMapping("/export-excel")
@@ -123,7 +129,7 @@ public class ErpPayableOtherController {
     public void exportExcel(@Valid ErpPayableOtherPageReqVO reqVO,
                             HttpServletResponse response) throws IOException {
         reqVO.setPageSize(PageParam.PAGE_SIZE_NONE);
-        PageResult<ErpPayableOtherRespVO> voPage = buildPageResult(payableOtherService.getPayableOtherPage(reqVO));
+        PageResult<ErpPayableOtherRespVO> voPage = maskPageResult(buildPageResult(payableOtherService.getPayableOtherPage(reqVO)));
         ExcelUtils.write(response, "其他应付.xls", "数据", ErpPayableOtherExportRespVO.class,
                 BeanUtils.toBean(voPage.getList(), ErpPayableOtherExportRespVO.class));
     }
@@ -147,6 +153,11 @@ public class ErpPayableOtherController {
             MapUtils.findAndThen(userMap, NumberUtils.parseLong(vo.getCreator()), user -> vo.setCreatorName(user.getNickname()));
             MapUtils.findAndThen(deptMap, vo.getDeptId(), dept -> vo.setDeptName(dept.getName()));
         });
+    }
+
+    private PageResult<ErpPayableOtherRespVO> maskPageResult(PageResult<ErpPayableOtherRespVO> pageResult) {
+        pageResult.getList().forEach(item -> fieldPermissionMasker.maskForm(FIELD_PERMISSION_MODULE, item));
+        return pageResult;
     }
 
     private void fillExtend(ErpPayableOtherRespVO vo) {

@@ -9,6 +9,7 @@ import cn.iocoder.yudao.module.erp.dal.dataobject.finance.receivable.ErpReceivab
 import cn.iocoder.yudao.module.erp.dal.mysql.finance.receivable.ErpReceivableOtherMapper;
 import cn.iocoder.yudao.module.erp.dal.redis.no.ErpNoRedisDAO;
 import cn.iocoder.yudao.module.erp.enums.ErpAuditStatus;
+import cn.iocoder.yudao.module.erp.service.finance.ErpFinanceFieldPermissionMasker;
 import cn.iocoder.yudao.module.erp.service.sale.ErpCustomerService;
 import cn.iocoder.yudao.module.system.api.dept.DeptApi;
 import cn.iocoder.yudao.module.system.api.user.AdminUserApi;
@@ -32,6 +33,8 @@ import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.OTHER_RECEIVA
 @Validated
 public class ErpReceivableOtherServiceImpl implements ErpReceivableOtherService {
 
+    private static final String FIELD_PERMISSION_MODULE = "erp_finance_receivable_other";
+
     @Resource
     private ErpReceivableOtherMapper receivableOtherMapper;
     @Resource
@@ -42,6 +45,8 @@ public class ErpReceivableOtherServiceImpl implements ErpReceivableOtherService 
     private AdminUserApi adminUserApi;
     @Resource
     private DeptApi deptApi;
+    @Resource
+    private ErpFinanceFieldPermissionMasker fieldPermissionMasker;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -57,6 +62,7 @@ public class ErpReceivableOtherServiceImpl implements ErpReceivableOtherService 
                 .setStatus(ErpAuditStatus.PROCESS.getStatus())
                 .setSourceType(StrUtil.blankToDefault(createReqVO.getSourceType(), "调账")));
         normalize(doObj);
+        fieldPermissionMasker.clearHiddenFields(FIELD_PERMISSION_MODULE, doObj);
         receivableOtherMapper.insert(doObj);
         return doObj.getId();
     }
@@ -68,6 +74,7 @@ public class ErpReceivableOtherServiceImpl implements ErpReceivableOtherService 
         if (ErpAuditStatus.APPROVE.getStatus().equals(db.getStatus())) {
             throw exception(OTHER_RECEIVABLE_UPDATE_FAIL_APPROVE, db.getNo());
         }
+        fieldPermissionMasker.preserveHiddenFields(FIELD_PERMISSION_MODULE, updateReqVO, db);
         customerService.validateCustomer(updateReqVO.getCustomerId());
         validateRefs(updateReqVO.getHandlerId(), updateReqVO.getDeptId());
         ErpReceivableOtherDO updateObj = BeanUtils.toBean(updateReqVO, ErpReceivableOtherDO.class, obj -> {

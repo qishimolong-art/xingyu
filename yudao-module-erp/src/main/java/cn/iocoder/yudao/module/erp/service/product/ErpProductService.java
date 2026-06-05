@@ -47,7 +47,7 @@ public interface ErpProductService {
      *
      * @param updateReqVO 更新信息
      */
-    void updateProduct(@Valid ProductSaveReqVO updateReqVO);
+    void updateProduct(ProductSaveReqVO updateReqVO);
 
     /**
      * 删除产品

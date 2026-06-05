@@ -22,6 +22,7 @@ import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpWarehouseDO;
 import cn.iocoder.yudao.module.erp.service.product.ErpProductService;
 import cn.iocoder.yudao.module.erp.service.sale.ErpCustomerService;
+import cn.iocoder.yudao.module.erp.service.sale.ErpSaleFieldPermissionMasker;
 import cn.iocoder.yudao.module.erp.service.sale.ErpSaleReturnService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpStockService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpWarehouseService;
@@ -58,6 +59,8 @@ import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.
 @Validated
 public class ErpSaleReturnController {
 
+    private static final String FIELD_PERMISSION_MODULE = "erp_sale_return";
+
     @Resource
     private ErpSaleReturnService saleReturnService;
     @Resource
@@ -68,6 +71,8 @@ public class ErpSaleReturnController {
     private ErpCustomerService customerService;
     @Resource
     private ErpWarehouseService warehouseService;
+    @Resource
+    private ErpSaleFieldPermissionMasker fieldPermissionMasker;
 
     @Resource
     private AdminUserApi adminUserApi;
@@ -119,7 +124,7 @@ public class ErpSaleReturnController {
                 convertSet(saleReturnItemList, ErpSaleReturnItemDO::getProductId));
         Set<Long> userIds = convertUserIds(Collections.singletonList(saleReturn));
         Map<Long, AdminUserRespDTO> userMap = userIds.isEmpty() ? Collections.emptyMap() : adminUserApi.getUserMap(userIds);
-        return success(BeanUtils.toBean(saleReturn, ErpSaleReturnRespVO.class, saleReturnVO -> {
+        ErpSaleReturnRespVO respVO = BeanUtils.toBean(saleReturn, ErpSaleReturnRespVO.class, saleReturnVO -> {
             fillUserNames(saleReturnVO, userMap);
             saleReturnVO.setItems(BeanUtils.toBean(saleReturnItemList, ErpSaleReturnRespVO.Item.class, item -> {
                 ErpStockDO stock = stockService.getStock(item.getProductId(), item.getWarehouseId());
@@ -128,7 +133,9 @@ public class ErpSaleReturnController {
                         .setProductBarCode(product.getBarCode()).setProductUnitName(product.getUnitName())
                         .setProductCode(product.getCode()));
             }));
-        }));
+        });
+        fieldPermissionMasker.maskFormWithItems(FIELD_PERMISSION_MODULE, respVO);
+        return success(respVO);
     }
 
     @GetMapping("/page")
@@ -136,7 +143,9 @@ public class ErpSaleReturnController {
     @PreAuthorize("@ss.hasPermission('erp:sale-return:query')")
     public CommonResult<PageResult<ErpSaleReturnRespVO>> getSaleReturnPage(@Valid ErpSaleReturnPageReqVO pageReqVO) {
         PageResult<ErpSaleReturnDO> pageResult = saleReturnService.getSaleReturnPage(pageReqVO);
-        return success(buildSaleReturnVOPageResult(pageResult));
+        PageResult<ErpSaleReturnRespVO> respResult = buildSaleReturnVOPageResult(pageResult);
+        fieldPermissionMasker.maskFormsWithItems(FIELD_PERMISSION_MODULE, respResult.getList());
+        return success(respResult);
     }
 
     @GetMapping("/export-excel")
@@ -147,7 +156,10 @@ public class ErpSaleReturnController {
                                     HttpServletResponse response) throws IOException {
         pageReqVO.setPageSize(PageParam.PAGE_SIZE_NONE);
         List<ErpSaleReturnRespVO> list = buildSaleReturnVOPageResult(saleReturnService.getSaleReturnPage(pageReqVO)).getList();
-        ExcelUtils.write(response, "销售退货.xls", "数据", ErpSaleReturnExportRespVO.class, buildSaleReturnExportList(list));
+        fieldPermissionMasker.maskFormsWithItems(FIELD_PERMISSION_MODULE, list);
+        List<ErpSaleReturnExportRespVO> rows = buildSaleReturnExportList(list);
+        fieldPermissionMasker.maskExportRows(FIELD_PERMISSION_MODULE, rows);
+        ExcelUtils.write(response, "销售退货.xls", "数据", ErpSaleReturnExportRespVO.class, rows);
     }
 
     @GetMapping("/export-import-template")

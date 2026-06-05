@@ -8,6 +8,7 @@ import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.config.ErpSaleConfig
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.config.ErpSaleConfigSaveReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleConfigDO;
 import cn.iocoder.yudao.module.erp.service.sale.ErpSaleConfigService;
+import cn.iocoder.yudao.module.erp.service.sale.ErpSaleFieldPermissionMasker;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -27,8 +28,12 @@ import static cn.iocoder.yudao.framework.common.pojo.CommonResult.success;
 @Validated
 public class ErpSaleConfigController {
 
+    private static final String FIELD_PERMISSION_MODULE = "erp_sale_config";
+
     @Resource
     private ErpSaleConfigService saleConfigService;
+    @Resource
+    private ErpSaleFieldPermissionMasker fieldPermissionMasker;
 
     @PostMapping("/create")
     @Operation(summary = "创建销售配置")
@@ -58,14 +63,19 @@ public class ErpSaleConfigController {
     @Operation(summary = "获得销售配置")
     @PreAuthorize("@ss.hasPermission('erp:sale-config:query')")
     public CommonResult<ErpSaleConfigRespVO> getSaleConfig(@RequestParam("id") Long id) {
-        return success(BeanUtils.toBean(saleConfigService.getSaleConfig(id), ErpSaleConfigRespVO.class));
+        ErpSaleConfigRespVO respVO = BeanUtils.toBean(saleConfigService.getSaleConfig(id), ErpSaleConfigRespVO.class);
+        fieldPermissionMasker.maskForm(FIELD_PERMISSION_MODULE, respVO);
+        return success(respVO);
     }
 
     @GetMapping("/page")
     @Operation(summary = "获得销售配置分页")
     @PreAuthorize("@ss.hasPermission('erp:sale-config:query')")
     public CommonResult<PageResult<ErpSaleConfigRespVO>> getSaleConfigPage(@Valid ErpSaleConfigPageReqVO pageReqVO) {
-        return success(BeanUtils.toBean(saleConfigService.getSaleConfigPage(pageReqVO), ErpSaleConfigRespVO.class));
+        PageResult<ErpSaleConfigRespVO> respResult = BeanUtils.toBean(saleConfigService.getSaleConfigPage(pageReqVO),
+                ErpSaleConfigRespVO.class);
+        fieldPermissionMasker.maskForms(FIELD_PERMISSION_MODULE, respResult.getList());
+        return success(respResult);
     }
 
     @GetMapping("/simple-list")
@@ -73,7 +83,9 @@ public class ErpSaleConfigController {
     @PreAuthorize("@ss.hasPermission('erp:sale-config:query')")
     public CommonResult<List<ErpSaleConfigDO>> getSaleConfigSimpleList(@RequestParam("configType") String configType,
                                                                         @RequestParam(value = "status", required = false) Integer status) {
-        return success(saleConfigService.getSaleConfigSimpleList(configType, status));
+        List<ErpSaleConfigDO> list = saleConfigService.getSaleConfigSimpleList(configType, status);
+        fieldPermissionMasker.maskForms(FIELD_PERMISSION_MODULE, list);
+        return success(list);
     }
 
 }

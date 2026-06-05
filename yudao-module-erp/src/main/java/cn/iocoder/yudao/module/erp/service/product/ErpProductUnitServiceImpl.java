@@ -1,11 +1,14 @@
 package cn.iocoder.yudao.module.erp.service.product;
 
+import cn.hutool.core.collection.CollUtil;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
+import cn.iocoder.yudao.framework.common.util.validation.ValidationUtils;
 import cn.iocoder.yudao.module.erp.controller.admin.product.vo.unit.ErpProductUnitPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.product.vo.unit.ErpProductUnitSaveReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.product.ErpProductUnitDO;
 import cn.iocoder.yudao.module.erp.dal.mysql.product.ErpProductUnitMapper;
+import cn.iocoder.yudao.module.system.api.permission.PermissionApi;
 import com.google.common.annotations.VisibleForTesting;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
@@ -13,7 +16,9 @@ import org.springframework.validation.annotation.Validated;
 
 import javax.annotation.Resource;
 import java.util.Collection;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 import static cn.iocoder.yudao.framework.common.exception.util.ServiceExceptionUtil.exception;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.*;
@@ -27,8 +32,12 @@ import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.*;
 @Validated
 public class ErpProductUnitServiceImpl implements ErpProductUnitService {
 
+    private static final String FIELD_PERMISSION_MODULE = "erp_product_unit";
+
     @Resource
     private ErpProductUnitMapper productUnitMapper;
+    @Resource
+    private PermissionApi permissionApi;
 
     @Resource
     @Lazy // 延迟加载，避免循环依赖
@@ -47,7 +56,9 @@ public class ErpProductUnitServiceImpl implements ErpProductUnitService {
     @Override
     public void updateProductUnit(ErpProductUnitSaveReqVO updateReqVO) {
         // 1.1 校验存在
-        validateProductUnitExists(updateReqVO.getId());
+        ErpProductUnitDO existing = validateProductUnitExists(updateReqVO.getId());
+        applyProductUnitSaveFieldPermissions(updateReqVO, existing);
+        ValidationUtils.validate(updateReqVO);
         // 1.2 校验名字唯一
         validateProductUnitNameUnique(updateReqVO.getId(), updateReqVO.getName());
         // 2. 更新
@@ -82,15 +93,17 @@ public class ErpProductUnitServiceImpl implements ErpProductUnitService {
         productUnitMapper.deleteById(id);
     }
 
-    private void validateProductUnitExists(Long id) {
-        if (productUnitMapper.selectById(id) == null) {
+    private ErpProductUnitDO validateProductUnitExists(Long id) {
+        ErpProductUnitDO unit = productUnitMapper.selectById(id);
+        if (unit == null) {
             throw exception(PRODUCT_UNIT_NOT_EXISTS);
         }
+        return unit;
     }
 
     @Override
     public ErpProductUnitDO getProductUnit(Long id) {
-        return productUnitMapper.selectById(id);
+        return applyProductUnitFieldPermissions(productUnitMapper.selectById(id));
     }
 
     @Override
@@ -106,6 +119,43 @@ public class ErpProductUnitServiceImpl implements ErpProductUnitService {
     @Override
     public List<ErpProductUnitDO> getProductUnitList(Collection<Long> ids) {
          return productUnitMapper.selectByIds(ids);
+    }
+
+    private ErpProductUnitDO applyProductUnitFieldPermissions(ErpProductUnitDO unit) {
+        if (unit == null) {
+            return null;
+        }
+        List<String> hiddenFields = permissionApi.getCurrentUserHiddenFields(FIELD_PERMISSION_MODULE);
+        if (CollUtil.isEmpty(hiddenFields)) {
+            return unit;
+        }
+        ErpProductUnitDO result = BeanUtils.toBean(unit, ErpProductUnitDO.class);
+        Set<String> hiddenFieldSet = new HashSet<>(hiddenFields);
+        if (isFieldHidden(hiddenFieldSet, "name")) {
+            result.setName(null);
+        }
+        if (isFieldHidden(hiddenFieldSet, "status")) {
+            result.setStatus(null);
+        }
+        return result;
+    }
+
+    private void applyProductUnitSaveFieldPermissions(ErpProductUnitSaveReqVO reqVO, ErpProductUnitDO existing) {
+        List<String> hiddenFields = permissionApi.getCurrentUserHiddenFields(FIELD_PERMISSION_MODULE);
+        if (CollUtil.isEmpty(hiddenFields)) {
+            return;
+        }
+        Set<String> hiddenFieldSet = new HashSet<>(hiddenFields);
+        if (isFieldHidden(hiddenFieldSet, "name")) {
+            reqVO.setName(existing.getName());
+        }
+        if (isFieldHidden(hiddenFieldSet, "status")) {
+            reqVO.setStatus(existing.getStatus());
+        }
+    }
+
+    private boolean isFieldHidden(Set<String> hiddenFields, String fieldKey) {
+        return hiddenFields.contains(fieldKey);
     }
 
 }

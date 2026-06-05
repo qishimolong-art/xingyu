@@ -10,6 +10,7 @@ import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSalePriceAdjustDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSalePriceAdjustItemDO;
 
 import javax.validation.Valid;
+import java.math.BigDecimal;
 import java.util.Collection;
 import java.util.List;
 
@@ -29,6 +30,10 @@ public interface ErpSalePriceAdjustService {
     void deleteSalePriceAdjust(List<Long> ids);
 
     ErpSalePriceAdjustDO getSalePriceAdjust(Long id);
+
+    ErpSalePriceAdjustDO validateSalePriceAdjust(Long id);
+
+    void updateSalePriceAdjustReceiptPrice(Long id, BigDecimal receiptPrice);
 
     PageResult<ErpSalePriceAdjustDO> getSalePriceAdjustPage(ErpSalePriceAdjustPageReqVO pageReqVO);
 

@@ -60,6 +60,8 @@ import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.*;
 @Validated
 public class ErpSaleQuoteServiceImpl implements ErpSaleQuoteService {
 
+    private static final String FIELD_PERMISSION_MODULE = "erp_sale_quote";
+
     @Resource
     private ErpSaleQuoteMapper saleQuoteMapper;
     @Resource
@@ -87,11 +89,15 @@ public class ErpSaleQuoteServiceImpl implements ErpSaleQuoteService {
     @Resource
     private ErpSaleOutService saleOutService;
     @Resource
+    private ErpSaleFieldPermissionMasker fieldPermissionMasker;
+    @Resource
     private AdminUserApi adminUserApi;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Long createSaleQuote(ErpSaleQuoteSaveReqVO createReqVO) {
+        fieldPermissionMasker.clearHiddenFields(FIELD_PERMISSION_MODULE, createReqVO);
+        fieldPermissionMasker.clearHiddenItemFields(FIELD_PERMISSION_MODULE, createReqVO.getItems());
         List<ErpSaleQuoteItemDO> items = validateSaleQuoteItems(createReqVO.getItems());
         customerService.validateCustomer(createReqVO.getCustomerId());
         if (createReqVO.getAccountId() != null) {
@@ -127,6 +133,9 @@ public class ErpSaleQuoteServiceImpl implements ErpSaleQuoteService {
                 && !ErpSaleQuoteStatusEnum.CANCEL.getStatus().equals(quote.getStatus())) {
             throw exception(SALE_QUOTE_UPDATE_FAIL_NOT_DRAFT, quote.getNo());
         }
+        fieldPermissionMasker.preserveHiddenFields(FIELD_PERMISSION_MODULE, updateReqVO, quote);
+        fieldPermissionMasker.preserveHiddenItemFields(FIELD_PERMISSION_MODULE, updateReqVO.getItems(),
+                saleQuoteItemMapper.selectListByQuoteId(updateReqVO.getId()));
         List<ErpSaleQuoteItemDO> items = validateSaleQuoteItems(updateReqVO.getItems());
         customerService.validateCustomer(updateReqVO.getCustomerId());
         if (updateReqVO.getAccountId() != null) {

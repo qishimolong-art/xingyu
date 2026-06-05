@@ -20,6 +20,7 @@ import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleOrderDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleOrderItemDO;
 import cn.iocoder.yudao.module.erp.service.product.ErpProductService;
 import cn.iocoder.yudao.module.erp.service.sale.ErpCustomerService;
+import cn.iocoder.yudao.module.erp.service.sale.ErpSaleFieldPermissionMasker;
 import cn.iocoder.yudao.module.erp.service.sale.ErpSaleOrderService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpStockService;
 import cn.iocoder.yudao.module.system.api.user.AdminUserApi;
@@ -53,6 +54,8 @@ import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.
 @Validated
 public class ErpSaleOrderController {
 
+    private static final String FIELD_PERMISSION_MODULE = "erp_sale_order";
+
     @Resource
     private ErpSaleOrderService saleOrderService;
     @Resource
@@ -61,6 +64,8 @@ public class ErpSaleOrderController {
     private ErpProductService productService;
     @Resource
     private ErpCustomerService customerService;
+    @Resource
+    private ErpSaleFieldPermissionMasker fieldPermissionMasker;
 
     @Resource
     private AdminUserApi adminUserApi;
@@ -110,14 +115,16 @@ public class ErpSaleOrderController {
         List<ErpSaleOrderItemDO> saleOrderItemList = saleOrderService.getSaleOrderItemListByOrderId(id);
         Map<Long, ErpProductRespVO> productMap = productService.getProductVOMap(
                 convertSet(saleOrderItemList, ErpSaleOrderItemDO::getProductId));
-        return success(BeanUtils.toBean(saleOrder, ErpSaleOrderRespVO.class, saleOrderVO ->
+        ErpSaleOrderRespVO respVO = BeanUtils.toBean(saleOrder, ErpSaleOrderRespVO.class, saleOrderVO ->
                 saleOrderVO.setItems(BeanUtils.toBean(saleOrderItemList, ErpSaleOrderRespVO.Item.class, item -> {
                     BigDecimal stockCount = stockService.getStockCount(item.getProductId());
                     item.setStockCount(stockCount != null ? stockCount : BigDecimal.ZERO);
                     MapUtils.findAndThen(productMap, item.getProductId(), product -> item.setProductName(product.getName())
                             .setProductBarCode(product.getBarCode()).setProductUnitName(product.getUnitName())
                             .setProductCode(product.getCode()));
-                }))));
+                })));
+        fieldPermissionMasker.maskFormWithItems(FIELD_PERMISSION_MODULE, respVO);
+        return success(respVO);
     }
 
     @GetMapping("/page")
@@ -125,7 +132,9 @@ public class ErpSaleOrderController {
     @PreAuthorize("@ss.hasPermission('erp:sale-out:query')")
     public CommonResult<PageResult<ErpSaleOrderRespVO>> getSaleOrderPage(@Valid ErpSaleOrderPageReqVO pageReqVO) {
         PageResult<ErpSaleOrderDO> pageResult = saleOrderService.getSaleOrderPage(pageReqVO);
-        return success(buildSaleOrderVOPageResult(pageResult));
+        PageResult<ErpSaleOrderRespVO> respResult = buildSaleOrderVOPageResult(pageResult);
+        fieldPermissionMasker.maskFormsWithItems(FIELD_PERMISSION_MODULE, respResult.getList());
+        return success(respResult);
     }
 
     @GetMapping("/export-excel")
@@ -136,7 +145,10 @@ public class ErpSaleOrderController {
                                     HttpServletResponse response) throws IOException {
         pageReqVO.setPageSize(PageParam.PAGE_SIZE_NONE);
         List<ErpSaleOrderRespVO> list = buildSaleOrderVOPageResult(saleOrderService.getSaleOrderPage(pageReqVO)).getList();
-        ExcelUtils.write(response, "销售订单.xls", "数据", ErpSaleOrderExportRespVO.class, buildSaleOrderExportList(list));
+        fieldPermissionMasker.maskFormsWithItems(FIELD_PERMISSION_MODULE, list);
+        List<ErpSaleOrderExportRespVO> rows = buildSaleOrderExportList(list);
+        fieldPermissionMasker.maskExportRows(FIELD_PERMISSION_MODULE, rows);
+        ExcelUtils.write(response, "销售订单.xls", "数据", ErpSaleOrderExportRespVO.class, rows);
     }
 
     @GetMapping("/export-import-template")

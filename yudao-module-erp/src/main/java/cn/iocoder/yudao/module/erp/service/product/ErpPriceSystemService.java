@@ -32,7 +32,7 @@ public interface ErpPriceSystemService {
      *
      * @param updateReqVO 更新信息
      */
-    void updatePriceSystem(@Valid ErpPriceSystemSaveReqVO updateReqVO);
+    void updatePriceSystem(ErpPriceSystemSaveReqVO updateReqVO);
 
     /**
      * 批量删除价格体系

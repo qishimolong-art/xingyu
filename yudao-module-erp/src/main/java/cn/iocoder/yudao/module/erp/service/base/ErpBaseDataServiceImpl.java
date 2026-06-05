@@ -7,6 +7,7 @@ import cn.iocoder.yudao.module.erp.controller.admin.base.vo.ErpBaseDataPageReqVO
 import cn.iocoder.yudao.module.erp.controller.admin.base.vo.ErpBaseDataSaveReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.base.ErpBaseDataDO;
 import cn.iocoder.yudao.module.erp.dal.mysql.base.ErpBaseDataMapper;
+import cn.iocoder.yudao.module.erp.service.finance.ErpFinanceFieldPermissionMasker;
 import org.springframework.stereotype.Service;
 import org.springframework.validation.annotation.Validated;
 
@@ -25,8 +26,12 @@ import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.*;
 @Validated
 public class ErpBaseDataServiceImpl implements ErpBaseDataService {
 
+    private static final String FIELD_PERMISSION_MODULE = "erp_base_data";
+
     @Resource
     private ErpBaseDataMapper baseDataMapper;
+    @Resource
+    private ErpFinanceFieldPermissionMasker fieldPermissionMasker;
 
     @Override
     public Long createBaseData(ErpBaseDataSaveReqVO createReqVO) {
@@ -34,6 +39,7 @@ public class ErpBaseDataServiceImpl implements ErpBaseDataService {
         validateBaseDataNameUnique(null, createReqVO.getType(), createReqVO.getName());
         // 2. 插入
         ErpBaseDataDO baseData = BeanUtils.toBean(createReqVO, ErpBaseDataDO.class);
+        fieldPermissionMasker.clearHiddenFields(FIELD_PERMISSION_MODULE, baseData);
         baseDataMapper.insert(baseData);
         return baseData.getId();
     }
@@ -41,7 +47,8 @@ public class ErpBaseDataServiceImpl implements ErpBaseDataService {
     @Override
     public void updateBaseData(ErpBaseDataSaveReqVO updateReqVO) {
         // 1.1 校验存在
-        validateBaseDataExists(updateReqVO.getId());
+        ErpBaseDataDO db = validateBaseDataExists(updateReqVO.getId());
+        fieldPermissionMasker.preserveHiddenFields(FIELD_PERMISSION_MODULE, updateReqVO, db);
         // 1.2 校验同类型下名字唯一
         validateBaseDataNameUnique(updateReqVO.getId(), updateReqVO.getType(), updateReqVO.getName());
         // 2. 更新
@@ -57,10 +64,12 @@ public class ErpBaseDataServiceImpl implements ErpBaseDataService {
         baseDataMapper.deleteById(id);
     }
 
-    private void validateBaseDataExists(Long id) {
-        if (baseDataMapper.selectById(id) == null) {
+    private ErpBaseDataDO validateBaseDataExists(Long id) {
+        ErpBaseDataDO baseData = baseDataMapper.selectById(id);
+        if (baseData == null) {
             throw exception(BASE_DATA_NOT_EXISTS);
         }
+        return baseData;
     }
 
     private void validateBaseDataNameUnique(Long id, String type, String name) {

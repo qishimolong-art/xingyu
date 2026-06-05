@@ -25,6 +25,7 @@ import cn.iocoder.yudao.module.erp.enums.sale.ErpSaleBizSourceTypeEnum;
 import cn.iocoder.yudao.module.erp.enums.sale.ErpSaleQuoteStatusEnum;
 import cn.iocoder.yudao.module.erp.service.product.ErpProductService;
 import cn.iocoder.yudao.module.erp.service.sale.ErpCustomerService;
+import cn.iocoder.yudao.module.erp.service.sale.ErpSaleFieldPermissionMasker;
 import cn.iocoder.yudao.module.erp.service.sale.ErpSaleQuoteService;
 import cn.iocoder.yudao.module.system.api.user.AdminUserApi;
 import cn.iocoder.yudao.module.system.api.user.dto.AdminUserRespDTO;
@@ -57,6 +58,8 @@ import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.
 @Validated
 public class ErpSaleQuoteController {
 
+    private static final String FIELD_PERMISSION_MODULE = "erp_sale_quote";
+
     @Resource
     private ErpSaleQuoteService saleQuoteService;
     @Resource
@@ -65,6 +68,8 @@ public class ErpSaleQuoteController {
     private ErpProductService productService;
     @Resource
     private ErpSaleOutMapper saleOutMapper;
+    @Resource
+    private ErpSaleFieldPermissionMasker fieldPermissionMasker;
     @Resource
     private AdminUserApi adminUserApi;
 
@@ -114,7 +119,9 @@ public class ErpSaleQuoteController {
         if (quote == null) {
             return success(null);
         }
-        return success(buildSaleQuoteRespVO(quote, saleQuoteService.getSaleQuoteItemListByQuoteId(id)));
+        ErpSaleQuoteRespVO respVO = buildSaleQuoteRespVO(quote, saleQuoteService.getSaleQuoteItemListByQuoteId(id));
+        fieldPermissionMasker.maskFormWithItems(FIELD_PERMISSION_MODULE, respVO);
+        return success(respVO);
     }
 
     @GetMapping("/page")
@@ -122,7 +129,9 @@ public class ErpSaleQuoteController {
     @PreAuthorize("@ss.hasPermission('erp:sale-quote:query')")
     public CommonResult<PageResult<ErpSaleQuoteRespVO>> getSaleQuotePage(@Valid ErpSaleQuotePageReqVO pageReqVO) {
         PageResult<ErpSaleQuoteDO> pageResult = saleQuoteService.getSaleQuotePage(pageReqVO);
-        return success(buildSaleQuoteVOPageResult(pageResult));
+        PageResult<ErpSaleQuoteRespVO> respResult = buildSaleQuoteVOPageResult(pageResult);
+        fieldPermissionMasker.maskFormsWithItems(FIELD_PERMISSION_MODULE, respResult.getList());
+        return success(respResult);
     }
 
     @GetMapping("/export-excel")
@@ -134,7 +143,10 @@ public class ErpSaleQuoteController {
         pageReqVO.setPageSize(PageParam.PAGE_SIZE_NONE);
         List<ErpSaleQuoteRespVO> list = buildSaleQuoteVOPageResult(
                 saleQuoteService.getSaleQuotePage(pageReqVO)).getList();
-        ExcelUtils.write(response, "报价订单.xls", "数据", ErpSaleQuoteExportRespVO.class, buildSaleQuoteExportList(list));
+        fieldPermissionMasker.maskFormsWithItems(FIELD_PERMISSION_MODULE, list);
+        List<ErpSaleQuoteExportRespVO> rows = buildSaleQuoteExportList(list);
+        fieldPermissionMasker.maskExportRows(FIELD_PERMISSION_MODULE, rows);
+        ExcelUtils.write(response, "报价订单.xls", "数据", ErpSaleQuoteExportRespVO.class, rows);
     }
 
     @GetMapping("/export-import-template")

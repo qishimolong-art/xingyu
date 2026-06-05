@@ -1,8 +1,10 @@
 package cn.iocoder.yudao.module.system.service.permission;
 
 import cn.iocoder.yudao.framework.common.biz.system.permission.dto.DeptDataPermissionRespDTO;
+import cn.iocoder.yudao.module.system.dal.dataobject.permission.FieldDefinitionDO;
 
 import java.util.Collection;
+import java.util.List;
 import java.util.Set;
 
 import static java.util.Collections.singleton;
@@ -74,6 +76,18 @@ public interface PermissionService {
      * @return 菜单编号集合
      */
     Set<Long> getRoleMenuListByRoleId(Collection<Long> roleIds);
+
+    // ========== 角色-字段权限的相关方法 ==========
+
+    List<FieldDefinitionDO> getFieldDefinitions(String module);
+
+    List<String> getRoleHiddenFields(Long roleId, String module);
+
+    List<Long> getRoleHiddenFieldIds(Long roleId, String module);
+
+    List<String> getCurrentUserHiddenFields(String module);
+
+    void assignRoleFieldPermission(Long roleId, String module, List<Long> hiddenFieldIds);
 
     /**
      * 获得拥有指定菜单的角色编号数组，从缓存中获取

@@ -19,6 +19,7 @@ import cn.iocoder.yudao.module.erp.dal.dataobject.finance.ErpFinancePaymentItemD
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpSupplierDO;
 import cn.iocoder.yudao.module.erp.enums.common.ErpBizTypeEnum;
 import cn.iocoder.yudao.module.erp.service.finance.ErpAccountService;
+import cn.iocoder.yudao.module.erp.service.finance.ErpFinanceFieldPermissionMasker;
 import cn.iocoder.yudao.module.erp.service.finance.ErpFinancePaymentService;
 import cn.iocoder.yudao.module.erp.service.purchase.ErpSupplierService;
 import cn.iocoder.yudao.module.system.api.user.AdminUserApi;
@@ -58,6 +59,8 @@ public class ErpFinancePaymentController {
     private ErpAccountService accountService;
     @Resource
     private AdminUserApi adminUserApi;
+    @Resource
+    private ErpFinanceFieldPermissionMasker fieldPermissionMasker;
 
     @PostMapping("/create")
     @Operation(summary = "创建付款单")
@@ -101,9 +104,11 @@ public class ErpFinancePaymentController {
             return success(null);
         }
         List<ErpFinancePaymentItemDO> paymentItemList = financePaymentService.getFinancePaymentItemListByPaymentId(id);
-        return success(BeanUtils.toBean(payment, ErpFinancePaymentRespVO.class,
+        ErpFinancePaymentRespVO respVO = BeanUtils.toBean(payment, ErpFinancePaymentRespVO.class,
                 financePaymentVO -> financePaymentVO.setItems(
-                        BeanUtils.toBean(paymentItemList, ErpFinancePaymentRespVO.Item.class))));
+                        BeanUtils.toBean(paymentItemList, ErpFinancePaymentRespVO.Item.class)));
+        fieldPermissionMasker.maskFormWithItems("erp_finance_payment", respVO);
+        return success(respVO);
     }
 
     @GetMapping("/page")

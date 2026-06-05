@@ -12,6 +12,7 @@ import cn.iocoder.yudao.module.erp.dal.mysql.finance.receivable.ErpReceivableOth
 import cn.iocoder.yudao.module.erp.dal.redis.no.ErpNoRedisDAO;
 import cn.iocoder.yudao.module.erp.enums.ErpAuditStatus;
 import cn.iocoder.yudao.module.erp.service.finance.ErpAccountService;
+import cn.iocoder.yudao.module.erp.service.finance.ErpFinanceFieldPermissionMasker;
 import cn.iocoder.yudao.module.system.api.dept.DeptApi;
 import cn.iocoder.yudao.module.system.api.user.AdminUserApi;
 import org.springframework.stereotype.Service;
@@ -38,6 +39,8 @@ import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.OTHER_RECEIVA
 @Validated
 public class ErpReceivableOtherIncomeServiceImpl implements ErpReceivableOtherIncomeService {
 
+    private static final String FIELD_PERMISSION_MODULE = "erp_finance_receivable_other_income";
+
     @Resource
     private ErpReceivableOtherIncomeMapper otherIncomeMapper;
     @Resource
@@ -50,6 +53,8 @@ public class ErpReceivableOtherIncomeServiceImpl implements ErpReceivableOtherIn
     private AdminUserApi adminUserApi;
     @Resource
     private DeptApi deptApi;
+    @Resource
+    private ErpFinanceFieldPermissionMasker fieldPermissionMasker;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -60,10 +65,13 @@ public class ErpReceivableOtherIncomeServiceImpl implements ErpReceivableOtherIn
         String no = noRedisDAO.generate(ErpNoRedisDAO.OTHER_INCOME_NO_PREFIX);
         ErpReceivableOtherIncomeDO db = BeanUtils.toBean(createReqVO, ErpReceivableOtherIncomeDO.class,
                 obj -> obj.setNo(no).setStatus(ErpAuditStatus.PROCESS.getStatus()));
+        fieldPermissionMasker.clearHiddenFields(FIELD_PERMISSION_MODULE, db);
         db.setTotalAmount(sumAmount(createReqVO.getItems()));
         otherIncomeMapper.insert(db);
-        otherIncomeItemMapper.insertBatch(BeanUtils.toBean(createReqVO.getItems(),
-                ErpReceivableOtherIncomeItemDO.class, item -> item.setIncomeId(db.getId())));
+        List<ErpReceivableOtherIncomeItemDO> incomeItems = BeanUtils.toBean(createReqVO.getItems(),
+                ErpReceivableOtherIncomeItemDO.class, item -> item.setId(null).setIncomeId(db.getId()));
+        fieldPermissionMasker.clearHiddenItemFields(FIELD_PERMISSION_MODULE, incomeItems);
+        otherIncomeItemMapper.insertBatch(incomeItems);
         return db.getId();
     }
 
@@ -74,6 +82,13 @@ public class ErpReceivableOtherIncomeServiceImpl implements ErpReceivableOtherIn
         if (ErpAuditStatus.APPROVE.getStatus().equals(db.getStatus())) {
             throw exception(OTHER_RECEIVABLE_UPDATE_FAIL_APPROVE, db.getNo());
         }
+        List<ErpReceivableOtherIncomeItemDO> oldItems = otherIncomeItemMapper.selectListByIncomeId(updateReqVO.getId());
+        fieldPermissionMasker.preserveHiddenFields(FIELD_PERMISSION_MODULE, updateReqVO, db);
+        if (fieldPermissionMasker.isFieldHidden(FIELD_PERMISSION_MODULE, "items")) {
+            updateReqVO.setItems(BeanUtils.toBean(oldItems, ErpReceivableOtherIncomeSaveReqVO.Item.class));
+        } else {
+            fieldPermissionMasker.preserveOrClearHiddenItemFields(FIELD_PERMISSION_MODULE, updateReqVO.getItems(), oldItems);
+        }
         validateRefs(updateReqVO.getAccountId(), updateReqVO.getHandlerId(), updateReqVO.getDeptId());
         updateReqVO.getItems().forEach(item -> validateRefs(null, item.getHandlerId(), item.getDeptId()));
 
@@ -83,12 +98,11 @@ public class ErpReceivableOtherIncomeServiceImpl implements ErpReceivableOtherIn
             throw exception(OTHER_RECEIVABLE_UPDATE_FAIL_STATUS_CHANGED);
         }
 
-        List<ErpReceivableOtherIncomeItemDO> oldItems = otherIncomeItemMapper.selectListByIncomeId(updateReqVO.getId());
         if (CollUtil.isNotEmpty(oldItems)) {
             otherIncomeItemMapper.deleteByIds(convertList(oldItems, ErpReceivableOtherIncomeItemDO::getId));
         }
         otherIncomeItemMapper.insertBatch(BeanUtils.toBean(updateReqVO.getItems(),
-                ErpReceivableOtherIncomeItemDO.class, item -> item.setIncomeId(updateReqVO.getId())));
+                ErpReceivableOtherIncomeItemDO.class, item -> item.setId(null).setIncomeId(updateReqVO.getId())));
     }
 
     @Override

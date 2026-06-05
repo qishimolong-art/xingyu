@@ -49,6 +49,8 @@ import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.*;
 @Validated
 public class ErpSaleOrderServiceImpl implements ErpSaleOrderService {
 
+    private static final String FIELD_PERMISSION_MODULE = "erp_sale_order";
+
     @Resource
     private ErpSaleOrderMapper saleOrderMapper;
     @Resource
@@ -65,6 +67,8 @@ public class ErpSaleOrderServiceImpl implements ErpSaleOrderService {
     private ErpCustomerService customerService;
     @Resource
     private ErpAccountService accountService;
+    @Resource
+    private ErpSaleFieldPermissionMasker fieldPermissionMasker;
 
     @Resource
     private AdminUserApi adminUserApi;
@@ -72,6 +76,8 @@ public class ErpSaleOrderServiceImpl implements ErpSaleOrderService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Long createSaleOrder(ErpSaleOrderSaveReqVO createReqVO) {
+        fieldPermissionMasker.clearHiddenFields(FIELD_PERMISSION_MODULE, createReqVO);
+        fieldPermissionMasker.clearHiddenItemFields(FIELD_PERMISSION_MODULE, createReqVO.getItems());
         // 1.1 校验订单项的有效性
         List<ErpSaleOrderItemDO> saleOrderItems = validateSaleOrderItems(createReqVO.getItems());
         // 1.2 校验客户
@@ -109,6 +115,9 @@ public class ErpSaleOrderServiceImpl implements ErpSaleOrderService {
         if (ErpAuditStatus.APPROVE.getStatus().equals(saleOrder.getStatus())) {
             throw exception(SALE_ORDER_UPDATE_FAIL_APPROVE, saleOrder.getNo());
         }
+        fieldPermissionMasker.preserveHiddenFields(FIELD_PERMISSION_MODULE, updateReqVO, saleOrder);
+        fieldPermissionMasker.preserveHiddenItemFields(FIELD_PERMISSION_MODULE, updateReqVO.getItems(),
+                saleOrderItemMapper.selectListByOrderId(updateReqVO.getId()));
         // 1.2 校验客户
         customerService.validateCustomer(updateReqVO.getCustomerId());
         // 1.3 校验结算账户

@@ -33,14 +33,19 @@ import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.CUSTOMER_NOT_
 @Validated
 public class ErpCustomerServiceImpl implements ErpCustomerService {
 
+    private static final String FIELD_PERMISSION_MODULE = "erp_customer";
+
     @Resource
     private ErpCustomerMapper customerMapper;
 
     @Resource
     private ErpNoRedisDAO noRedisDAO;
+    @Resource
+    private ErpSaleFieldPermissionMasker fieldPermissionMasker;
 
     @Override
     public Long createCustomer(ErpCustomerSaveReqVO createReqVO) {
+        fieldPermissionMasker.clearHiddenFields(FIELD_PERMISSION_MODULE, createReqVO);
         // 插入
         ErpCustomerDO customer = BeanUtils.toBean(createReqVO, ErpCustomerDO.class);
         // 自动生成编码
@@ -65,7 +70,8 @@ public class ErpCustomerServiceImpl implements ErpCustomerService {
     @Override
     public void updateCustomer(ErpCustomerSaveReqVO updateReqVO) {
         // 校验存在
-        validateCustomerExists(updateReqVO.getId());
+        ErpCustomerDO existing = validateCustomerExists(updateReqVO.getId());
+        fieldPermissionMasker.preserveHiddenFields(FIELD_PERMISSION_MODULE, updateReqVO, existing);
         // 更新
         ErpCustomerDO updateObj = BeanUtils.toBean(updateReqVO, ErpCustomerDO.class);
         customerMapper.updateById(updateObj);
@@ -79,10 +85,12 @@ public class ErpCustomerServiceImpl implements ErpCustomerService {
         customerMapper.deleteById(id);
     }
 
-    private void validateCustomerExists(Long id) {
-        if (customerMapper.selectById(id) == null) {
+    private ErpCustomerDO validateCustomerExists(Long id) {
+        ErpCustomerDO customer = customerMapper.selectById(id);
+        if (customer == null) {
             throw exception(CUSTOMER_NOT_EXISTS);
         }
+        return customer;
     }
 
     @Override
@@ -142,6 +150,7 @@ public class ErpCustomerServiceImpl implements ErpCustomerService {
             if (customer.getSort() == null) {
                 customer.setSort(0);
             }
+            fieldPermissionMasker.clearHiddenFields(FIELD_PERMISSION_MODULE, customer);
             customerMapper.insert(customer);
         }
     }
@@ -152,35 +161,35 @@ public class ErpCustomerServiceImpl implements ErpCustomerService {
         LambdaUpdateWrapper<ErpCustomerDO> wrapper = new LambdaUpdateWrapper<ErpCustomerDO>()
                 .in(ErpCustomerDO::getId, reqVO.getIds());
         boolean hasUpdate = false;
-        if (reqVO.getSaleUserId() != null) {
+        if (reqVO.getSaleUserId() != null && !fieldPermissionMasker.isFieldHidden(FIELD_PERMISSION_MODULE, "saleUserId")) {
             wrapper.set(ErpCustomerDO::getSaleUserId, reqVO.getSaleUserId());
             hasUpdate = true;
         }
-        if (reqVO.getDeveloperUserId() != null) {
+        if (reqVO.getDeveloperUserId() != null && !fieldPermissionMasker.isFieldHidden(FIELD_PERMISSION_MODULE, "developerUserId")) {
             wrapper.set(ErpCustomerDO::getDeveloperUserId, reqVO.getDeveloperUserId());
             hasUpdate = true;
         }
-        if (reqVO.getDeptId() != null) {
+        if (reqVO.getDeptId() != null && !fieldPermissionMasker.isFieldHidden(FIELD_PERMISSION_MODULE, "deptId")) {
             wrapper.set(ErpCustomerDO::getDeptId, reqVO.getDeptId());
             hasUpdate = true;
         }
-        if (reqVO.getStatus() != null) {
+        if (reqVO.getStatus() != null && !fieldPermissionMasker.isFieldHidden(FIELD_PERMISSION_MODULE, "status")) {
             wrapper.set(ErpCustomerDO::getStatus, reqVO.getStatus());
             hasUpdate = true;
         }
-        if (reqVO.getPriceLevel() != null) {
+        if (reqVO.getPriceLevel() != null && !fieldPermissionMasker.isFieldHidden(FIELD_PERMISSION_MODULE, "priceLevel")) {
             wrapper.set(ErpCustomerDO::getPriceLevel, reqVO.getPriceLevel());
             hasUpdate = true;
         }
-        if (reqVO.getRouteId() != null) {
+        if (reqVO.getRouteId() != null && !fieldPermissionMasker.isFieldHidden(FIELD_PERMISSION_MODULE, "routeId")) {
             wrapper.set(ErpCustomerDO::getRouteId, reqVO.getRouteId());
             hasUpdate = true;
         }
-        if (reqVO.getFreightExplainId() != null) {
+        if (reqVO.getFreightExplainId() != null && !fieldPermissionMasker.isFieldHidden(FIELD_PERMISSION_MODULE, "freightExplainId")) {
             wrapper.set(ErpCustomerDO::getFreightExplainId, reqVO.getFreightExplainId());
             hasUpdate = true;
         }
-        if (reqVO.getRemark() != null) {
+        if (reqVO.getRemark() != null && !fieldPermissionMasker.isFieldHidden(FIELD_PERMISSION_MODULE, "remark")) {
             wrapper.set(ErpCustomerDO::getRemark, reqVO.getRemark());
             hasUpdate = true;
         }

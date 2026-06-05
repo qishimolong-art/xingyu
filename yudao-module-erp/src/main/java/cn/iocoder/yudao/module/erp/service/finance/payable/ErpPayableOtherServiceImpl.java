@@ -9,6 +9,7 @@ import cn.iocoder.yudao.module.erp.dal.dataobject.finance.payable.ErpPayableOthe
 import cn.iocoder.yudao.module.erp.dal.mysql.finance.payable.ErpPayableOtherMapper;
 import cn.iocoder.yudao.module.erp.dal.redis.no.ErpNoRedisDAO;
 import cn.iocoder.yudao.module.erp.enums.ErpAuditStatus;
+import cn.iocoder.yudao.module.erp.service.finance.ErpFinanceFieldPermissionMasker;
 import cn.iocoder.yudao.module.erp.service.purchase.ErpSupplierService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -30,12 +31,16 @@ import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.OTHER_PAYABLE
 @Validated
 public class ErpPayableOtherServiceImpl implements ErpPayableOtherService {
 
+    private static final String FIELD_PERMISSION_MODULE = "erp_finance_payable_other";
+
     @Resource
     private ErpPayableOtherMapper payableOtherMapper;
     @Resource
     private ErpNoRedisDAO noRedisDAO;
     @Resource
     private ErpSupplierService supplierService;
+    @Resource
+    private ErpFinanceFieldPermissionMasker fieldPermissionMasker;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -50,6 +55,7 @@ public class ErpPayableOtherServiceImpl implements ErpPayableOtherService {
                 .setStatus(ErpAuditStatus.PROCESS.getStatus())
                 .setSourceType(StrUtil.isBlank(createReqVO.getSourceType()) ? "调账" : createReqVO.getSourceType()));
         normalize(doObj);
+        fieldPermissionMasker.clearHiddenFields(FIELD_PERMISSION_MODULE, doObj);
         payableOtherMapper.insert(doObj);
         return doObj.getId();
     }
@@ -61,6 +67,7 @@ public class ErpPayableOtherServiceImpl implements ErpPayableOtherService {
         if (ErpAuditStatus.APPROVE.getStatus().equals(db.getStatus())) {
             throw exception(OTHER_PAYABLE_UPDATE_FAIL_APPROVE, db.getNo());
         }
+        fieldPermissionMasker.preserveHiddenFields(FIELD_PERMISSION_MODULE, updateReqVO, db);
         supplierService.validateSupplier(updateReqVO.getSupplierId());
         ErpPayableOtherDO updateObj = BeanUtils.toBean(updateReqVO, ErpPayableOtherDO.class, obj -> {
             if (StrUtil.isBlank(obj.getSourceType())) {

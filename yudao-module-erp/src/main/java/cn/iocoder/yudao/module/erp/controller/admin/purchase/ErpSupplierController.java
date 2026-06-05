@@ -13,6 +13,7 @@ import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.supplier.ErpSupp
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.supplier.ErpSupplierRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.supplier.ErpSupplierSaveReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpSupplierDO;
+import cn.iocoder.yudao.module.erp.service.purchase.ErpPurchaseFieldPermissionMasker;
 import cn.iocoder.yudao.module.erp.service.purchase.ErpSupplierService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -41,6 +42,8 @@ public class ErpSupplierController {
 
     @Resource
     private ErpSupplierService supplierService;
+    @Resource
+    private ErpPurchaseFieldPermissionMasker fieldPermissionMasker;
 
     @PostMapping("/create")
     @Operation(summary = "创建供应商")
@@ -83,7 +86,9 @@ public class ErpSupplierController {
     @PreAuthorize("@ss.hasPermission('erp:supplier:query')")
     public CommonResult<ErpSupplierRespVO> getSupplier(@RequestParam("id") Long id) {
         ErpSupplierDO supplier = supplierService.getSupplier(id);
-        return success(BeanUtils.toBean(supplier, ErpSupplierRespVO.class));
+        ErpSupplierRespVO respVO = BeanUtils.toBean(supplier, ErpSupplierRespVO.class);
+        fieldPermissionMasker.mask("erp_supplier", respVO);
+        return success(respVO);
     }
 
     @GetMapping("/page")

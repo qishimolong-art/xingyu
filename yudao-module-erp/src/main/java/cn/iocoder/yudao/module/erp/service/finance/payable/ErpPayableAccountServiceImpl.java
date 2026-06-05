@@ -7,6 +7,8 @@ import cn.iocoder.yudao.module.erp.controller.admin.finance.payable.vo.account.E
 import cn.iocoder.yudao.module.erp.controller.admin.finance.payable.vo.account.ErpPayableDetailRespVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.ErpFinancePaymentDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.payable.ErpPayableAccountDO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.finance.payable.ErpPayableOtherDO;
+import cn.iocoder.yudao.module.erp.dal.mysql.finance.payable.ErpPayableOtherMapper;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseInDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchasePriceAdjustDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseReturnDO;
@@ -40,6 +42,8 @@ public class ErpPayableAccountServiceImpl implements ErpPayableAccountService {
     private ErpPurchasePriceAdjustMapper purchasePriceAdjustMapper;
     @Resource
     private ErpFinancePaymentMapper financePaymentMapper;
+    @Resource
+    private ErpPayableOtherMapper payableOtherMapper;
 
     @Override
     public PageResult<ErpPayableAccountDO> getPayableAccountPage(ErpPayableAccountPageReqVO reqVO) {
@@ -113,6 +117,14 @@ public class ErpPayableAccountServiceImpl implements ErpPayableAccountService {
                 .geIfPresent(ErpFinancePaymentDO::getPaymentTime, reqVO.getStartTime())
                 .ltIfPresent(ErpFinancePaymentDO::getPaymentTime, reqVO.getEndTime()))
                 .forEach(item -> rows.add(new Row("付款单", item.getPaymentTime(), item.getNo(), negateAmount(item.getPaymentPrice()))));
+
+        payableOtherMapper.selectList(new LambdaQueryWrapperX<ErpPayableOtherDO>()
+                .eq(ErpPayableOtherDO::getSupplierId, reqVO.getSupplierId())
+                .eq(ErpPayableOtherDO::getStatus, ErpAuditStatus.APPROVE.getStatus())
+                .geIfPresent(ErpPayableOtherDO::getBizTime, reqVO.getStartTime() == null ? null : reqVO.getStartTime().toLocalDate())
+                .leIfPresent(ErpPayableOtherDO::getBizTime, reqVO.getEndTime() == null ? null : reqVO.getEndTime().toLocalDate()))
+                .forEach(item -> rows.add(new Row("其他应付", item.getBizTime() == null ? null : item.getBizTime().atStartOfDay(),
+                        item.getNo(), item.getPayableAmount())));
 
         rows.sort(Comparator.comparing(Row::getDocDate, Comparator.nullsLast(Comparator.naturalOrder()))
                 .thenComparing(Row::getDocType)

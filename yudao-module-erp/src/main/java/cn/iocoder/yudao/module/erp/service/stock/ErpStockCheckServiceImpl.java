@@ -42,10 +42,14 @@ import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.*;
 @Validated
 public class ErpStockCheckServiceImpl implements ErpStockCheckService {
 
+    private static final String FIELD_PERMISSION_MODULE = "erp_stock_check";
+
     @Resource
     private ErpStockCheckMapper stockCheckMapper;
     @Resource
     private ErpStockCheckItemMapper stockCheckItemMapper;
+    @Resource
+    private ErpStockFieldPermissionMasker fieldPermissionMasker;
 
     @Resource
     private ErpNoRedisDAO noRedisDAO;
@@ -88,6 +92,9 @@ public class ErpStockCheckServiceImpl implements ErpStockCheckService {
         if (ErpAuditStatus.APPROVE.getStatus().equals(stockCheck.getStatus())) {
             throw exception(STOCK_CHECK_UPDATE_FAIL_APPROVE, stockCheck.getNo());
         }
+        fieldPermissionMasker.preserveHiddenFields(FIELD_PERMISSION_MODULE, updateReqVO, stockCheck);
+        fieldPermissionMasker.preserveHiddenItemFields(FIELD_PERMISSION_MODULE, updateReqVO.getItems(),
+                stockCheckItemMapper.selectListByCheckId(updateReqVO.getId()));
         // 1.2 校验盘点项的有效性
         List<ErpStockCheckItemDO> stockCheckItems = validateStockCheckItems(updateReqVO.getItems());
 

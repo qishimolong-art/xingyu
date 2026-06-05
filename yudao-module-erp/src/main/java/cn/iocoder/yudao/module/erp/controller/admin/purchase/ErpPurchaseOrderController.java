@@ -20,6 +20,7 @@ import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseOrderDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseOrderItemDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpSupplierDO;
 import cn.iocoder.yudao.module.erp.service.product.ErpProductService;
+import cn.iocoder.yudao.module.erp.service.purchase.ErpPurchaseFieldPermissionMasker;
 import cn.iocoder.yudao.module.erp.service.purchase.ErpPurchaseOrderService;
 import cn.iocoder.yudao.module.erp.service.purchase.ErpSupplierService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpStockService;
@@ -74,6 +75,8 @@ public class ErpPurchaseOrderController {
     private ErpSupplierService supplierService;
     @Resource
     private AdminUserApi adminUserApi;
+    @Resource
+    private ErpPurchaseFieldPermissionMasker fieldPermissionMasker;
 
     @PostMapping("/create")
     @Operation(summary = "创建采购订单")
@@ -124,7 +127,7 @@ public class ErpPurchaseOrderController {
         addUserId(userIds, purchaseOrder.getCreator());
         addUserId(userIds, purchaseOrder.getUpdater());
         Map<Long, AdminUserRespDTO> userMap = adminUserApi.getUserMap(userIds);
-        return success(BeanUtils.toBean(purchaseOrder, ErpPurchaseOrderRespVO.class, purchaseOrderVO -> {
+        ErpPurchaseOrderRespVO respVO = BeanUtils.toBean(purchaseOrder, ErpPurchaseOrderRespVO.class, purchaseOrderVO -> {
             purchaseOrderVO.setItems(BeanUtils.toBean(purchaseOrderItemList, ErpPurchaseOrderRespVO.Item.class, item -> {
                 BigDecimal stockCount = stockService.getStockCount(item.getProductId());
                 item.setStockCount(stockCount != null ? stockCount : BigDecimal.ZERO);
@@ -133,7 +136,9 @@ public class ErpPurchaseOrderController {
                         .setProductCode(product.getCode()));
             }));
             fillUserNames(purchaseOrderVO, userMap);
-        }));
+        });
+        fieldPermissionMasker.mask("erp_purchase_order", respVO);
+        return success(respVO);
     }
 
     @GetMapping("/page")

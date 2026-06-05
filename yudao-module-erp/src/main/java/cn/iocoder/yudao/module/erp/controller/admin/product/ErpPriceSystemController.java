@@ -40,7 +40,7 @@ public class ErpPriceSystemController {
     @PutMapping("/update")
     @Operation(summary = "更新价格体系")
     @PreAuthorize("@ss.hasPermission('erp:price-system:update')")
-    public CommonResult<Boolean> updatePriceSystem(@Valid @RequestBody ErpPriceSystemSaveReqVO updateReqVO) {
+    public CommonResult<Boolean> updatePriceSystem(@RequestBody ErpPriceSystemSaveReqVO updateReqVO) {
         priceSystemService.updatePriceSystem(updateReqVO);
         return success(true);
     }

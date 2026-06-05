@@ -65,6 +65,8 @@ import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.*;
 @Validated
 public class ErpSaleOutServiceImpl implements ErpSaleOutService {
 
+    private static final String FIELD_PERMISSION_MODULE = "erp_sale_out";
+
     @Resource
     private ErpSaleOutMapper saleOutMapper;
     @Resource
@@ -88,6 +90,8 @@ public class ErpSaleOutServiceImpl implements ErpSaleOutService {
     private ErpStockRecordService stockRecordService;
     @Resource
     private ErpStockService stockService;
+    @Resource
+    private ErpSaleFieldPermissionMasker fieldPermissionMasker;
 
     @Resource
     private AdminUserApi adminUserApi;
@@ -106,6 +110,8 @@ public class ErpSaleOutServiceImpl implements ErpSaleOutService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Long createSaleOut(ErpSaleOutSaveReqVO createReqVO) {
+        fieldPermissionMasker.clearHiddenFields(FIELD_PERMISSION_MODULE, createReqVO);
+        fieldPermissionMasker.clearHiddenItemFields(FIELD_PERMISSION_MODULE, createReqVO.getItems());
         // 1.1 校验销售订单已审核
         ErpSaleOrderDO saleOrder = saleOrderService.validateSaleOrder(createReqVO.getOrderId());
         // 1.2 校验出库项的有效性
@@ -140,6 +146,8 @@ public class ErpSaleOutServiceImpl implements ErpSaleOutService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Long createGeneratedSaleOut(ErpSaleOutSaveReqVO createReqVO, Integer sourceType, Long sourceId, String sourceNo) {
+        fieldPermissionMasker.clearHiddenFields(FIELD_PERMISSION_MODULE, createReqVO);
+        fieldPermissionMasker.clearHiddenItemFields(FIELD_PERMISSION_MODULE, createReqVO.getItems());
         // 1. 校验基础资料。新销售流程不再强制依赖旧销售订单。
         customerService.validateCustomer(createReqVO.getCustomerId());
         List<ErpSaleOutItemDO> saleOutItems = validateSaleOutItems(createReqVO.getItems());
@@ -177,6 +185,9 @@ public class ErpSaleOutServiceImpl implements ErpSaleOutService {
         if (ErpAuditStatus.APPROVE.getStatus().equals(saleOut.getStatus())) {
             throw exception(SALE_OUT_UPDATE_FAIL_APPROVE, saleOut.getNo());
         }
+        fieldPermissionMasker.preserveHiddenFields(FIELD_PERMISSION_MODULE, updateReqVO, saleOut);
+        fieldPermissionMasker.preserveHiddenItemFields(FIELD_PERMISSION_MODULE, updateReqVO.getItems(),
+                saleOutItemMapper.selectListByOutId(updateReqVO.getId()));
         // 1.2 校验销售订单已审核
         ErpSaleOrderDO saleOrder = saleOrderService.validateSaleOrder(updateReqVO.getOrderId());
         // 1.3 校验结算账户

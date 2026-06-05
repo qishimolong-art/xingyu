@@ -30,14 +30,18 @@ import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.ACCOUNT_NOT_E
 @Validated
 public class ErpAccountServiceImpl implements ErpAccountService {
 
+    private static final String FIELD_PERMISSION_MODULE = "erp_account";
     private static final Integer BANK_ACCOUNT_TYPE = 1;
 
     @Resource
     private ErpAccountMapper accountMapper;
+    @Resource
+    private ErpFinanceFieldPermissionMasker fieldPermissionMasker;
 
     @Override
     public Long createAccount(ErpAccountSaveReqVO createReqVO) {
         ErpAccountDO account = BeanUtils.toBean(createReqVO, ErpAccountDO.class);
+        fieldPermissionMasker.clearHiddenFields(FIELD_PERMISSION_MODULE, account);
         normalizeAccount(account);
         accountMapper.insert(account);
         return account.getId();
@@ -45,8 +49,12 @@ public class ErpAccountServiceImpl implements ErpAccountService {
 
     @Override
     public void updateAccount(ErpAccountSaveReqVO updateReqVO) {
-        validateAccountExists(updateReqVO.getId());
+        ErpAccountDO account = accountMapper.selectById(updateReqVO.getId());
+        if (account == null) {
+            throw exception(ACCOUNT_NOT_EXISTS);
+        }
         ErpAccountDO updateObj = BeanUtils.toBean(updateReqVO, ErpAccountDO.class);
+        fieldPermissionMasker.preserveHiddenFields(FIELD_PERMISSION_MODULE, updateObj, account);
         normalizeAccount(updateObj);
         accountMapper.updateById(updateObj);
     }

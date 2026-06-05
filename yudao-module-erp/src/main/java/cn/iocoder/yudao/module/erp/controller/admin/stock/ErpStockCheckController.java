@@ -16,6 +16,7 @@ import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockCheckDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockCheckItemDO;
 import cn.iocoder.yudao.module.erp.service.product.ErpProductService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpStockCheckService;
+import cn.iocoder.yudao.module.erp.service.stock.ErpStockFieldPermissionMasker;
 import cn.iocoder.yudao.module.system.api.user.AdminUserApi;
 import cn.iocoder.yudao.module.system.api.user.dto.AdminUserRespDTO;
 import io.swagger.v3.oas.annotations.Operation;
@@ -43,10 +44,14 @@ import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.
 @Validated
 public class ErpStockCheckController {
 
+    private static final String FIELD_PERMISSION_MODULE = "erp_stock_check";
+
     @Resource
     private ErpStockCheckService stockCheckService;
     @Resource
     private ErpProductService productService;
+    @Resource
+    private ErpStockFieldPermissionMasker fieldPermissionMasker;
 
     @Resource
     private AdminUserApi adminUserApi;
@@ -96,10 +101,12 @@ public class ErpStockCheckController {
         List<ErpStockCheckItemDO> stockCheckItemList = stockCheckService.getStockCheckItemListByCheckId(id);
         Map<Long, ErpProductRespVO> productMap = productService.getProductVOMap(
                 convertSet(stockCheckItemList, ErpStockCheckItemDO::getProductId));
-        return success(BeanUtils.toBean(stockCheck, ErpStockCheckRespVO.class, stockCheckVO ->
+        ErpStockCheckRespVO respVO = BeanUtils.toBean(stockCheck, ErpStockCheckRespVO.class, stockCheckVO ->
                 stockCheckVO.setItems(BeanUtils.toBean(stockCheckItemList, ErpStockCheckRespVO.Item.class, item ->
                         MapUtils.findAndThen(productMap, item.getProductId(), product -> item.setProductName(product.getName())
-                                .setProductBarCode(product.getBarCode()).setProductUnitName(product.getUnitName()))))));
+                                .setProductBarCode(product.getBarCode()).setProductUnitName(product.getUnitName())))));
+        fieldPermissionMasker.maskFormWithItems(FIELD_PERMISSION_MODULE, respVO);
+        return success(respVO);
     }
 
     @GetMapping("/page")

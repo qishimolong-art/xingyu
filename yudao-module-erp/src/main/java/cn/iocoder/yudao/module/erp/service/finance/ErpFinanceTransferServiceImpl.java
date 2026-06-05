@@ -35,6 +35,8 @@ import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.FINANCE_TRANS
 @Validated
 public class ErpFinanceTransferServiceImpl implements ErpFinanceTransferService {
 
+    private static final String FIELD_PERMISSION_MODULE = "erp_finance_transfer";
+
     @Resource
     private ErpFinanceTransferMapper financeTransferMapper;
     @Resource
@@ -43,6 +45,8 @@ public class ErpFinanceTransferServiceImpl implements ErpFinanceTransferService 
     private ErpAccountService accountService;
     @Resource
     private AdminUserApi adminUserApi;
+    @Resource
+    private ErpFinanceFieldPermissionMasker fieldPermissionMasker;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -67,6 +71,7 @@ public class ErpFinanceTransferServiceImpl implements ErpFinanceTransferService 
         if (ErpAuditStatus.APPROVE.getStatus().equals(transfer.getStatus())) {
             throw exception(FINANCE_TRANSFER_UPDATE_FAIL_APPROVE, transfer.getNo());
         }
+        fieldPermissionMasker.preserveHiddenFields(FIELD_PERMISSION_MODULE, updateReqVO, transfer);
         validateTransferAccounts(updateReqVO.getOutAccountId(), updateReqVO.getInAccountId());
         validateFinanceUser(updateReqVO.getFinanceUserId());
         financeTransferMapper.updateById(BeanUtils.toBean(updateReqVO, ErpFinanceTransferDO.class));

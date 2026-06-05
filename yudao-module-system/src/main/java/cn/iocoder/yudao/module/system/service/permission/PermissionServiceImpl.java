@@ -8,10 +8,16 @@ import cn.iocoder.yudao.framework.common.enums.CommonStatusEnum;
 import cn.iocoder.yudao.framework.common.util.collection.CollectionUtils;
 import cn.iocoder.yudao.framework.datapermission.core.annotation.DataPermission;
 import cn.iocoder.yudao.framework.common.biz.system.permission.dto.DeptDataPermissionRespDTO;
+import cn.iocoder.yudao.framework.security.core.util.SecurityFrameworkUtils;
+import cn.iocoder.yudao.framework.tenant.core.context.TenantContextHolder;
+import cn.iocoder.yudao.module.system.dal.dataobject.permission.FieldDefinitionDO;
 import cn.iocoder.yudao.module.system.dal.dataobject.permission.MenuDO;
 import cn.iocoder.yudao.module.system.dal.dataobject.permission.RoleDO;
+import cn.iocoder.yudao.module.system.dal.dataobject.permission.RoleFieldPermissionDO;
 import cn.iocoder.yudao.module.system.dal.dataobject.permission.RoleMenuDO;
 import cn.iocoder.yudao.module.system.dal.dataobject.permission.UserRoleDO;
+import cn.iocoder.yudao.module.system.dal.mysql.permission.FieldDefinitionMapper;
+import cn.iocoder.yudao.module.system.dal.mysql.permission.RoleFieldPermissionMapper;
 import cn.iocoder.yudao.module.system.dal.mysql.permission.RoleMenuMapper;
 import cn.iocoder.yudao.module.system.dal.mysql.permission.UserRoleMapper;
 import cn.iocoder.yudao.module.system.dal.redis.RedisKeyConstants;
@@ -23,6 +29,7 @@ import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Suppliers;
 import com.google.common.collect.Sets;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.cache.annotation.Caching;
@@ -32,6 +39,7 @@ import org.springframework.transaction.annotation.Transactional;
 import javax.annotation.Resource;
 import java.util.*;
 import java.util.function.Supplier;
+import java.util.stream.Collectors;
 
 import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.convertSet;
 import static cn.iocoder.yudao.framework.common.util.json.JsonUtils.toJsonString;
@@ -49,6 +57,10 @@ public class PermissionServiceImpl implements PermissionService {
     private RoleMenuMapper roleMenuMapper;
     @Resource
     private UserRoleMapper userRoleMapper;
+    @Resource
+    private FieldDefinitionMapper fieldDefinitionMapper;
+    @Resource
+    private RoleFieldPermissionMapper roleFieldPermissionMapper;
 
     @Resource
     private RoleService roleService;
@@ -172,6 +184,7 @@ public class PermissionServiceImpl implements PermissionService {
         userRoleMapper.deleteListByRoleId(roleId);
         // 标记删除 RoleMenu
         roleMenuMapper.deleteListByRoleId(roleId);
+        roleFieldPermissionMapper.deleteListByRoleId(roleId, TenantContextHolder.getRequiredTenantId());
     }
 
     @Override
@@ -192,6 +205,99 @@ public class PermissionServiceImpl implements PermissionService {
         }
         // 如果是非管理员的情况下，获得拥有的菜单编号
         return convertSet(roleMenuMapper.selectListByRoleId(roleIds), RoleMenuDO::getMenuId);
+    }
+
+    // ========== 角色-字段权限的相关方法 ==========
+
+    @Override
+    public List<FieldDefinitionDO> getFieldDefinitions(String module) {
+        return fieldDefinitionMapper.selectListByModule(module);
+    }
+
+    @Override
+    public List<String> getRoleHiddenFields(Long roleId, String module) {
+        List<FieldDefinitionDO> definitions = fieldDefinitionMapper.selectListByModule(module);
+        if (CollUtil.isEmpty(definitions)) {
+            return Collections.emptyList();
+        }
+        Map<Long, String> fieldKeyMap = definitions.stream()
+                .collect(Collectors.toMap(FieldDefinitionDO::getId, FieldDefinitionDO::getFieldKey));
+        return roleFieldPermissionMapper.selectListByRoleId(roleId).stream()
+                .filter(permission -> Boolean.TRUE.equals(permission.getHidden()))
+                .map(permission -> fieldKeyMap.get(permission.getFieldId()))
+                .filter(Objects::nonNull)
+                .distinct()
+                .collect(Collectors.toList());
+    }
+
+    @Override
+    public List<Long> getRoleHiddenFieldIds(Long roleId, String module) {
+        List<FieldDefinitionDO> definitions = fieldDefinitionMapper.selectListByModule(module);
+        if (CollUtil.isEmpty(definitions)) {
+            return Collections.emptyList();
+        }
+        Set<Long> moduleFieldIds = convertSet(definitions, FieldDefinitionDO::getId);
+        return roleFieldPermissionMapper.selectListByRoleId(roleId).stream()
+                .filter(permission -> Boolean.TRUE.equals(permission.getHidden()))
+                .map(RoleFieldPermissionDO::getFieldId)
+                .filter(moduleFieldIds::contains)
+                .distinct()
+                .collect(Collectors.toList());
+    }
+
+    @Override
+    public List<String> getCurrentUserHiddenFields(String module) {
+        Long userId = SecurityFrameworkUtils.getLoginUserId();
+        if (userId == null) {
+            return Collections.emptyList();
+        }
+        Set<Long> roleIds = convertSet(getEnableUserRoleListByUserIdFromCache(userId), RoleDO::getId);
+        if (CollUtil.isEmpty(roleIds)) {
+            return Collections.emptyList();
+        }
+        List<FieldDefinitionDO> definitions = fieldDefinitionMapper.selectListByModule(module);
+        if (CollUtil.isEmpty(definitions)) {
+            return Collections.emptyList();
+        }
+        Map<Long, String> fieldKeyMap = definitions.stream()
+                .collect(Collectors.toMap(FieldDefinitionDO::getId, FieldDefinitionDO::getFieldKey));
+        return roleFieldPermissionMapper.selectListByRoleIds(roleIds).stream()
+                .filter(permission -> Boolean.TRUE.equals(permission.getHidden()))
+                .map(permission -> fieldKeyMap.get(permission.getFieldId()))
+                .filter(Objects::nonNull)
+                .distinct()
+                .collect(Collectors.toList());
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void assignRoleFieldPermission(Long roleId, String module, List<Long> hiddenFieldIds) {
+        List<FieldDefinitionDO> definitions = fieldDefinitionMapper.selectListByModule(module);
+        if (CollUtil.isEmpty(definitions)) {
+            return;
+        }
+        Set<Long> moduleFieldIds = convertSet(definitions, FieldDefinitionDO::getId);
+        roleFieldPermissionMapper.deleteListByRoleIdAndFieldIds(roleId, TenantContextHolder.getRequiredTenantId(), moduleFieldIds);
+
+        Set<Long> hiddenFieldIdSet = CollUtil.emptyIfNull(hiddenFieldIds).stream()
+                .filter(moduleFieldIds::contains)
+                .collect(Collectors.toSet());
+        if (CollUtil.isEmpty(hiddenFieldIdSet)) {
+            return;
+        }
+        for (RoleFieldPermissionDO entity : CollectionUtils.convertList(hiddenFieldIdSet, fieldId -> {
+            RoleFieldPermissionDO entity = new RoleFieldPermissionDO();
+            entity.setRoleId(roleId);
+            entity.setFieldId(fieldId);
+            entity.setHidden(true);
+            return entity;
+        })) {
+            try {
+                roleFieldPermissionMapper.insert(entity);
+            } catch (DuplicateKeyException ignored) {
+                // 历史重复数据或并发保存时，黑名单记录已经存在，保存结果仍然是“隐藏”。
+            }
+        }
     }
 
     @Override

@@ -19,6 +19,7 @@ import cn.iocoder.yudao.module.erp.dal.dataobject.finance.ErpFinanceReceiptItemD
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpCustomerDO;
 import cn.iocoder.yudao.module.erp.enums.common.ErpBizTypeEnum;
 import cn.iocoder.yudao.module.erp.service.finance.ErpAccountService;
+import cn.iocoder.yudao.module.erp.service.finance.ErpFinanceFieldPermissionMasker;
 import cn.iocoder.yudao.module.erp.service.finance.ErpFinanceReceiptService;
 import cn.iocoder.yudao.module.erp.service.sale.ErpCustomerService;
 import cn.iocoder.yudao.module.system.api.user.AdminUserApi;
@@ -58,6 +59,8 @@ public class ErpFinanceReceiptController {
     private ErpAccountService accountService;
     @Resource
     private AdminUserApi adminUserApi;
+    @Resource
+    private ErpFinanceFieldPermissionMasker fieldPermissionMasker;
 
     @PostMapping("/create")
     @Operation(summary = "创建收款单")
@@ -101,9 +104,11 @@ public class ErpFinanceReceiptController {
             return success(null);
         }
         List<ErpFinanceReceiptItemDO> receiptItemList = financeReceiptService.getFinanceReceiptItemListByReceiptId(id);
-        return success(BeanUtils.toBean(receipt, ErpFinanceReceiptRespVO.class,
+        ErpFinanceReceiptRespVO respVO = BeanUtils.toBean(receipt, ErpFinanceReceiptRespVO.class,
                 financeReceiptVO -> financeReceiptVO.setItems(
-                        BeanUtils.toBean(receiptItemList, ErpFinanceReceiptRespVO.Item.class))));
+                        BeanUtils.toBean(receiptItemList, ErpFinanceReceiptRespVO.Item.class)));
+        fieldPermissionMasker.maskFormWithItems("erp_finance_receipt", respVO);
+        return success(respVO);
     }
 
     @GetMapping("/page")
