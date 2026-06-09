@@ -141,7 +141,8 @@ public class ErpPayableOtherController {
         Map<Long, ErpSupplierDO> supplierMap = supplierService.getSupplierMap(
                 convertSet(pageResult.getList(), ErpPayableOtherDO::getSupplierId));
         Map<Long, AdminUserRespDTO> userMap = adminUserApi.getUserMap(convertListByFlatMap(pageResult.getList(),
-                item -> Stream.of(item.getHandlerId(), NumberUtils.parseLong(item.getCreator()))));
+                item -> Stream.of(item.getHandlerId(), NumberUtils.parseLong(item.getCreator()),
+                        NumberUtils.parseLong(item.getUpdater()))));
         Map<Long, DeptRespDTO> deptMap = deptApi.getDeptMap(convertSet(pageResult.getList(), ErpPayableOtherDO::getDeptId));
         return BeanUtils.toBean(pageResult, ErpPayableOtherRespVO.class, vo -> {
             MapUtils.findAndThen(supplierMap, vo.getSupplierId(), supplier -> {
@@ -151,6 +152,7 @@ public class ErpPayableOtherController {
             });
             MapUtils.findAndThen(userMap, vo.getHandlerId(), user -> vo.setHandlerName(user.getNickname()));
             MapUtils.findAndThen(userMap, NumberUtils.parseLong(vo.getCreator()), user -> vo.setCreatorName(user.getNickname()));
+            MapUtils.findAndThen(userMap, NumberUtils.parseLong(vo.getUpdater()), user -> vo.setUpdaterName(user.getNickname()));
             MapUtils.findAndThen(deptMap, vo.getDeptId(), dept -> vo.setDeptName(dept.getName()));
         });
     }
@@ -180,6 +182,15 @@ public class ErpPayableOtherController {
                 AdminUserRespDTO user = adminUserApi.getUser(Long.parseLong(vo.getCreator()));
                 if (user != null) {
                     vo.setCreatorName(user.getNickname());
+                }
+            } catch (Exception ignored) {
+            }
+        }
+        if (vo.getUpdater() != null) {
+            try {
+                AdminUserRespDTO user = adminUserApi.getUser(Long.parseLong(vo.getUpdater()));
+                if (user != null) {
+                    vo.setUpdaterName(user.getNickname());
                 }
             } catch (Exception ignored) {
             }

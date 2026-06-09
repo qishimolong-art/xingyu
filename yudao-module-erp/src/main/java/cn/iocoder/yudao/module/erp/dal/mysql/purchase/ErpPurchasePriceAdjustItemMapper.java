@@ -27,6 +27,10 @@ public interface ErpPurchasePriceAdjustItemMapper extends BaseMapperX<ErpPurchas
         delete(ErpPurchasePriceAdjustItemDO::getAdjustId, adjustId);
     }
 
+    default Long selectCountByWarehouseId(Long warehouseId) {
+        return selectCount(ErpPurchasePriceAdjustItemDO::getWarehouseId, warehouseId);
+    }
+
     /**
      * 查询指定入库项是否已被调过价（M2 审批流程用于校验"添加明细"方式）
      */

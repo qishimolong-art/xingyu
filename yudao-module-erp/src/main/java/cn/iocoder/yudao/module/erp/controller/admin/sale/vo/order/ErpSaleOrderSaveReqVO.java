@@ -26,11 +26,16 @@ public class ErpSaleOrderSaveReqVO {
     @Schema(description = "销售员编号", example = "1888")
     private Long saleUserId;
 
+    private Long deptId;
+
     @Schema(description = "结算账户编号", example = "31189")
     private Long accountId;
 
     @Schema(description = "优惠率，百分比", requiredMode = Schema.RequiredMode.REQUIRED, example = "99.88")
     private BigDecimal discountPercent;
+
+    @Schema(description = "费用金额，单位：元", example = "7127")
+    private BigDecimal feeAmount;
 
     @Schema(description = "定金金额，单位：元", example = "7127")
     private BigDecimal depositPrice;
@@ -70,6 +75,9 @@ public class ErpSaleOrderSaveReqVO {
 
         @Schema(description = "备注", example = "随便")
         private String remark;
+
+        @Schema(description = "是否赠品", example = "true")
+        private Boolean giftFlag;
 
     }
 

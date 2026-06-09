@@ -53,6 +53,9 @@ public class ErpPurchaseOrderPageReqVO extends PageParam {
     @Schema(description = "供应商编号", example = "1724")
     private Long supplierId;
 
+    @Schema(description = "deptId", example = "100")
+    private Long deptId;
+
     @Schema(description = "采购时间")
     @DateTimeFormat(pattern = FORMAT_YEAR_MONTH_DAY_HOUR_MINUTE_SECOND)
     private LocalDateTime[] orderTime;

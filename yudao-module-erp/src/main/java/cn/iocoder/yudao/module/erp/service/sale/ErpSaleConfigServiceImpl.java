@@ -29,7 +29,7 @@ public class ErpSaleConfigServiceImpl implements ErpSaleConfigService {
 
     @Override
     public Long createSaleConfig(ErpSaleConfigSaveReqVO createReqVO) {
-        fieldPermissionMasker.clearHiddenFields(FIELD_PERMISSION_MODULE, createReqVO);
+        clearHiddenFields(createReqVO);
         validateCodeUnique(null, createReqVO.getConfigType(), createReqVO.getCode());
         ErpSaleConfigDO config = BeanUtils.toBean(createReqVO, ErpSaleConfigDO.class);
         saleConfigMapper.insert(config);
@@ -39,7 +39,7 @@ public class ErpSaleConfigServiceImpl implements ErpSaleConfigService {
     @Override
     public void updateSaleConfig(ErpSaleConfigSaveReqVO updateReqVO) {
         ErpSaleConfigDO existing = validateSaleConfigExists(updateReqVO.getId());
-        fieldPermissionMasker.preserveHiddenFields(FIELD_PERMISSION_MODULE, updateReqVO, existing);
+        preserveHiddenFields(updateReqVO, existing);
         validateCodeUnique(updateReqVO.getId(), updateReqVO.getConfigType(), updateReqVO.getCode());
         saleConfigMapper.updateById(BeanUtils.toBean(updateReqVO, ErpSaleConfigDO.class));
     }
@@ -83,6 +83,18 @@ public class ErpSaleConfigServiceImpl implements ErpSaleConfigService {
         }
         if (id == null || !config.getId().equals(id)) {
             throw exception(SALE_CONFIG_CODE_DUPLICATE, configType, code);
+        }
+    }
+
+    private void clearHiddenFields(Object target) {
+        if (fieldPermissionMasker != null) {
+            fieldPermissionMasker.clearHiddenFields(FIELD_PERMISSION_MODULE, target);
+        }
+    }
+
+    private void preserveHiddenFields(Object target, Object existing) {
+        if (fieldPermissionMasker != null) {
+            fieldPermissionMasker.preserveHiddenFields(FIELD_PERMISSION_MODULE, target, existing);
         }
     }
 

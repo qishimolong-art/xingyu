@@ -73,6 +73,10 @@ public class ErpFieldConfigServiceImpl implements ErpFieldConfigService {
             if (configDO.getRequired() == null) {
                 configDO.setRequired(Boolean.FALSE);
             }
+            // visible 兜底，兼容老前端未传该字段的请求
+            if (configDO.getVisible() == null) {
+                configDO.setVisible(Boolean.TRUE);
+            }
             return configDO;
         });
         fieldConfigMapper.insertBatch(insertList);

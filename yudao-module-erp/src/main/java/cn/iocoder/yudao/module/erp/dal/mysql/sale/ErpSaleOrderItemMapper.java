@@ -33,6 +33,10 @@ public interface ErpSaleOrderItemMapper extends BaseMapperX<ErpSaleOrderItemDO> 
         return delete(ErpSaleOrderItemDO::getOrderId, orderId);
     }
 
+    default Long selectCountByProductId(Long productId) {
+        return selectCount(ErpSaleOrderItemDO::getProductId, productId);
+    }
+
     /**
      * 统计每个产品的"占用数"（= SUM(count - outCount)），按 product_id 分组
      */

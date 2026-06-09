@@ -54,4 +54,8 @@ public interface ErpStockRecordMapper extends BaseMapperX<ErpStockRecordDO> {
                 .eq(ErpStockRecordDO::getBizId, bizId));
     }
 
+    default Long selectCountByWarehouseId(Long warehouseId) {
+        return selectCount(ErpStockRecordDO::getWarehouseId, warehouseId);
+    }
+
 }

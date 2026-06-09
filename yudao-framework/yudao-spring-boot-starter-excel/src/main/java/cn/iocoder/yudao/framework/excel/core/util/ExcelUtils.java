@@ -1,16 +1,32 @@
 package cn.iocoder.yudao.framework.excel.core.util;
 
 import cn.idev.excel.FastExcelFactory;
+import cn.idev.excel.annotation.ExcelProperty;
 import cn.idev.excel.converters.longconverter.LongStringConverter;
 import cn.iocoder.yudao.framework.common.util.http.HttpUtils;
 import cn.iocoder.yudao.framework.excel.core.handler.ColumnWidthMatchStyleStrategy;
+import cn.iocoder.yudao.framework.excel.core.handler.RequiredHeaderStyleWriteHandler;
 import cn.iocoder.yudao.framework.excel.core.handler.SelectSheetWriteHandler;
+import org.apache.poi.ss.usermodel.Cell;
+import org.apache.poi.ss.usermodel.CellType;
+import org.apache.poi.ss.usermodel.Row;
+import org.apache.poi.ss.usermodel.Sheet;
+import org.apache.poi.ss.usermodel.Workbook;
+import org.apache.poi.ss.usermodel.WorkbookFactory;
 import org.springframework.web.multipart.MultipartFile;
 
 import javax.servlet.http.HttpServletResponse;
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.lang.reflect.Field;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.regex.Pattern;
 
 /**
  * Excel 工具类
@@ -18,6 +34,9 @@ import java.util.List;
  * @author 芋道源码
  */
 public class ExcelUtils {
+
+    private static final Pattern REQUIRED_HEADER_PREFIX_PATTERN = Pattern.compile("^\\s*[*\\uff0a]\\s*");
+    private static final Map<String, String> HEADER_ALIASES = buildHeaderAliases();
 
     /**
      * 将列表以 Excel 响应给前端
@@ -44,13 +63,123 @@ public class ExcelUtils {
         response.setContentType("application/vnd.ms-excel;charset=UTF-8");
     }
 
+    public static <T> void write(HttpServletResponse response, String filename, String sheetName,
+                                 Class<T> head, List<T> data, Set<String> includeColumnFieldNames) throws IOException {
+        if (includeColumnFieldNames == null || includeColumnFieldNames.isEmpty()) {
+            write(response, filename, sheetName, head, data);
+            return;
+        }
+        FastExcelFactory.write(response.getOutputStream(), head)
+                .autoCloseStream(false)
+                .registerWriteHandler(new ColumnWidthMatchStyleStrategy())
+                .registerWriteHandler(new SelectSheetWriteHandler(head))
+                .registerConverter(new LongStringConverter())
+                .includeColumnFieldNames(includeColumnFieldNames)
+                .sheet(sheetName).doWrite(data);
+        response.addHeader("Content-Disposition", "attachment;filename=" + HttpUtils.encodeUtf8(filename));
+        response.setContentType("application/vnd.ms-excel;charset=UTF-8");
+    }
+
+    /**
+     * 将导入模板以 Excel 响应给前端，并对 {@code @ExcelRequired} 字段的表头做必填标注。
+     */
+    public static <T> void writeImportTemplate(HttpServletResponse response, String filename, String sheetName,
+                                               Class<T> head, List<T> data) throws IOException {
+        writeImportTemplate(response, filename, sheetName, head, data, null, null);
+    }
+
+    public static <T> void writeImportTemplate(HttpServletResponse response, String filename, String sheetName,
+                                               Class<T> head, List<T> data, Set<String> includeColumnFieldNames) throws IOException {
+        writeImportTemplate(response, filename, sheetName, head, data, includeColumnFieldNames, null);
+    }
+
+    public static <T> void writeImportTemplate(HttpServletResponse response, String filename, String sheetName,
+                                               Class<T> head, List<T> data, Set<String> includeColumnFieldNames,
+                                               Set<String> requiredColumnFieldNames) throws IOException {
+        cn.idev.excel.write.builder.ExcelWriterBuilder builder = FastExcelFactory.write(response.getOutputStream(), head)
+                .autoCloseStream(false)
+                .registerWriteHandler(new ColumnWidthMatchStyleStrategy())
+                .registerWriteHandler(new SelectSheetWriteHandler(head))
+                .registerWriteHandler(new RequiredHeaderStyleWriteHandler(requiredColumnFieldNames))
+                .registerConverter(new LongStringConverter());
+        if (includeColumnFieldNames != null && !includeColumnFieldNames.isEmpty()) {
+            builder.includeColumnFieldNames(includeColumnFieldNames);
+        }
+        builder.sheet(sheetName).doWrite(data);
+        response.addHeader("Content-Disposition", "attachment;filename=" + HttpUtils.encodeUtf8(filename));
+        response.setContentType("application/vnd.ms-excel;charset=UTF-8");
+    }
+
     public static <T> List<T> read(MultipartFile file, Class<T> head) throws IOException {
         // 参考 https://t.zsxq.com/zM77F 帖子，增加 try 处理，兼容 windows 场景
-        try (InputStream inputStream = file.getInputStream()) {
-            return FastExcelFactory.read(inputStream, head, null)
+        try (InputStream inputStream = file.getInputStream();
+             InputStream normalizedInputStream = normalizeRequiredHeaders(inputStream, head)) {
+            return FastExcelFactory.read(normalizedInputStream, head, null)
                     .autoCloseStream(false) // 不要自动关闭，交给 Servlet 自己处理
                     .doReadAllSync();
         }
+    }
+
+    private static <T> InputStream normalizeRequiredHeaders(InputStream inputStream, Class<T> head) throws IOException {
+        Set<String> expectedHeaders = getExcelHeaderNames(head);
+        if (expectedHeaders.isEmpty()) {
+            return inputStream;
+        }
+        try (Workbook workbook = WorkbookFactory.create(inputStream);
+             ByteArrayOutputStream outputStream = new ByteArrayOutputStream()) {
+            if (workbook.getNumberOfSheets() > 0) {
+                Sheet sheet = workbook.getSheetAt(0);
+                Row row = sheet.getRow(0);
+                if (row != null) {
+                    for (Cell cell : row) {
+                        normalizeRequiredHeaderCell(cell, expectedHeaders);
+                    }
+                }
+            }
+            workbook.write(outputStream);
+            return new ByteArrayInputStream(outputStream.toByteArray());
+        }
+    }
+
+    private static void normalizeRequiredHeaderCell(Cell cell, Set<String> expectedHeaders) {
+        if (cell == null || cell.getCellType() != CellType.STRING) {
+            return;
+        }
+        String value = cell.getStringCellValue();
+        if (value == null) {
+            return;
+        }
+        String normalizedValue = REQUIRED_HEADER_PREFIX_PATTERN.matcher(value).replaceFirst("");
+        if (expectedHeaders.contains(normalizedValue)) {
+            cell.setCellValue(normalizedValue);
+            return;
+        }
+        String alias = HEADER_ALIASES.get(normalizedValue);
+        if (alias != null && expectedHeaders.contains(alias)) {
+            cell.setCellValue(alias);
+        }
+    }
+
+    private static Set<String> getExcelHeaderNames(Class<?> head) {
+        Set<String> headers = new HashSet<>();
+        for (Field field : head.getDeclaredFields()) {
+            ExcelProperty excelProperty = field.getAnnotation(ExcelProperty.class);
+            if (excelProperty == null) {
+                continue;
+            }
+            for (String value : excelProperty.value()) {
+                if (value != null && !value.isEmpty()) {
+                    headers.add(value);
+                }
+            }
+        }
+        return headers;
+    }
+
+    private static Map<String, String> buildHeaderAliases() {
+        Map<String, String> aliases = new HashMap<>();
+        aliases.put("供应商名称", "供应商");
+        return aliases;
     }
 
 }

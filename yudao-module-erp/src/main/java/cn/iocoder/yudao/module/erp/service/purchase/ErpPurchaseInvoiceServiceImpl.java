@@ -17,6 +17,7 @@ import cn.iocoder.yudao.module.erp.dal.mysql.purchase.ErpPurchaseInvoiceItemMapp
 import cn.iocoder.yudao.module.erp.dal.mysql.purchase.ErpPurchaseInvoiceMapper;
 import cn.iocoder.yudao.module.erp.dal.redis.no.ErpNoRedisDAO;
 import cn.iocoder.yudao.module.erp.enums.ErpAuditStatus;
+import cn.iocoder.yudao.module.erp.service.common.ErpOperateLogService;
 import cn.iocoder.yudao.module.erp.service.product.ErpProductService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -50,6 +51,7 @@ import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PURCHASE_INVO
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PURCHASE_INVOICE_SOURCE_IN_INVOICED;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PURCHASE_INVOICE_SUPPLIER_REQUIRED;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PURCHASE_INVOICE_UPDATE_FAIL_APPROVE;
+import static cn.iocoder.yudao.module.erp.enums.LogRecordConstants.ERP_PURCHASE_INVOICE_TYPE;
 
 @Service
 @Validated
@@ -67,6 +69,10 @@ public class ErpPurchaseInvoiceServiceImpl implements ErpPurchaseInvoiceService 
     private ErpProductService productService;
     @Resource
     private ErpPurchaseInMapper purchaseInMapper;
+    @Resource
+    private ErpPurchaseDocumentDefaultService purchaseDocumentDefaultService;
+    @Resource
+    private ErpOperateLogService operateLogService;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -80,11 +86,16 @@ public class ErpPurchaseInvoiceServiceImpl implements ErpPurchaseInvoiceService 
         ErpPurchaseInvoiceDO purchaseInvoice = BeanUtils.toBean(createReqVO, ErpPurchaseInvoiceDO.class);
         purchaseInvoice.setNo(no);
         purchaseInvoice.setStatus(ErpAuditStatus.PROCESS.getStatus());
+        fillDeptIdFromSourceIn(purchaseInvoice, items);
+        purchaseDocumentDefaultService.fillCreateDefaults(purchaseInvoice);
         normalizeInvoiceCount(purchaseInvoice);
         calculateTotalPrice(purchaseInvoice, items);
+        purchaseDocumentDefaultService.fillCreateAuditDefaults(purchaseInvoice);
         purchaseInvoiceMapper.insert(purchaseInvoice);
         items.forEach(item -> item.setInvoiceId(purchaseInvoice.getId()));
+        purchaseDocumentDefaultService.fillCreateAuditDefaults(items);
         purchaseInvoiceItemMapper.insertBatch(items);
+        operateLogService.recordCreate(ERP_PURCHASE_INVOICE_TYPE, purchaseInvoice.getId(), purchaseInvoice.getNo());
         return purchaseInvoice.getId();
     }
 
@@ -98,10 +109,19 @@ public class ErpPurchaseInvoiceServiceImpl implements ErpPurchaseInvoiceService 
         validateSupplierExists(updateReqVO.getSupplierId());
         List<ErpPurchaseInvoiceItemDO> items = validatePurchaseInvoiceItems(updateReqVO.getItems(), updateReqVO.getId());
         ErpPurchaseInvoiceDO updateObj = BeanUtils.toBean(updateReqVO, ErpPurchaseInvoiceDO.class);
+        fillDeptIdFromSourceIn(updateObj, items);
+        if (updateObj.getHandlerId() == null) {
+            updateObj.setHandlerId(purchaseInvoice.getHandlerId());
+        }
+        if (updateObj.getDeptId() == null) {
+            updateObj.setDeptId(purchaseInvoice.getDeptId());
+        }
+        purchaseDocumentDefaultService.fillCreateDefaults(updateObj);
         normalizeInvoiceCount(updateObj);
         calculateTotalPrice(updateObj, items);
         purchaseInvoiceMapper.updateById(updateObj);
         updatePurchaseInvoiceItemList(updateReqVO.getId(), items);
+        operateLogService.recordUpdate(ERP_PURCHASE_INVOICE_TYPE, updateReqVO.getId(), purchaseInvoice.getNo());
     }
 
     @Override
@@ -115,6 +135,10 @@ public class ErpPurchaseInvoiceServiceImpl implements ErpPurchaseInvoiceService 
         if (ObjectUtil.equal(purchaseInvoice.getStatus(), status)) {
             throw exception(approve ? PURCHASE_INVOICE_APPROVE_FAIL : PURCHASE_INVOICE_PROCESS_FAIL);
         }
+        if (approve) {
+            List<ErpPurchaseInvoiceItemDO> invoiceItems = purchaseInvoiceItemMapper.selectListByInvoiceId(id);
+            validateApprovedSourceInNotInvoiced(invoiceItems, id);
+        }
         ErpPurchaseInvoiceDO updateObj = new ErpPurchaseInvoiceDO();
         updateObj.setStatus(status);
         int updateCount = purchaseInvoiceMapper.updateByIdAndStatus(id, purchaseInvoice.getStatus(), updateObj);
@@ -124,6 +148,7 @@ public class ErpPurchaseInvoiceServiceImpl implements ErpPurchaseInvoiceService 
         if (approve) {
             markPurchaseInHasInvoice(id);
         }
+        operateLogService.recordStatus(ERP_PURCHASE_INVOICE_TYPE, id, purchaseInvoice.getNo(), approve);
     }
 
     @Override
@@ -141,6 +166,7 @@ public class ErpPurchaseInvoiceServiceImpl implements ErpPurchaseInvoiceService 
         invoices.forEach(invoice -> {
             purchaseInvoiceMapper.deleteById(invoice.getId());
             purchaseInvoiceItemMapper.deleteByInvoiceId(invoice.getId());
+            operateLogService.recordDelete(ERP_PURCHASE_INVOICE_TYPE, invoice.getId(), invoice.getNo());
         });
     }
 
@@ -192,7 +218,7 @@ public class ErpPurchaseInvoiceServiceImpl implements ErpPurchaseInvoiceService 
         if (CollUtil.isEmpty(sourceInIds)) {
             return Collections.emptyList();
         }
-        return purchaseInvoiceItemMapper.selectListBySourceInIds(sourceInIds);
+        return purchaseInvoiceItemMapper.selectApprovedListBySourceInIds(sourceInIds);
     }
 
     private void validateSupplierExists(Long supplierId) {
@@ -223,6 +249,22 @@ public class ErpPurchaseInvoiceServiceImpl implements ErpPurchaseInvoiceService 
             throw exception(PURCHASE_INVOICE_NOT_EXISTS);
         }
         return purchaseInvoice;
+    }
+
+    private void fillDeptIdFromSourceIn(ErpPurchaseInvoiceDO purchaseInvoice, List<ErpPurchaseInvoiceItemDO> items) {
+        if (purchaseInvoice.getDeptId() != null || CollUtil.isEmpty(items)) {
+            return;
+        }
+        Set<Long> sourceInIds = convertSet(items, ErpPurchaseInvoiceItemDO::getSourceInId);
+        sourceInIds.remove(null);
+        if (CollUtil.isEmpty(sourceInIds)) {
+            return;
+        }
+        CollUtil.emptyIfNull(purchaseInMapper.selectBatchIds(sourceInIds)).stream()
+                .map(ErpPurchaseInDO::getDeptId)
+                .filter(deptId -> deptId != null)
+                .findFirst()
+                .ifPresent(purchaseInvoice::setDeptId);
     }
 
     private List<ErpPurchaseInvoiceItemDO> validatePurchaseInvoiceItems(List<ErpPurchaseInvoiceSaveReqVO.Item> list,
@@ -272,7 +314,37 @@ public class ErpPurchaseInvoiceServiceImpl implements ErpPurchaseInvoiceService 
         if (CollUtil.isEmpty(sourceInIds)) {
             return;
         }
-        List<ErpPurchaseInvoiceItemDO> existedItems = purchaseInvoiceItemMapper.selectListBySourceInIds(sourceInIds);
+        List<ErpPurchaseInvoiceItemDO> existedItems = purchaseInvoiceItemMapper.selectApprovedListBySourceInIds(sourceInIds);
+        if (CollUtil.isEmpty(existedItems)) {
+            return;
+        }
+        Map<Long, String> sourceInNoMap = new HashMap<>();
+        existedItems.forEach(item -> {
+            if (item.getSourceInId() == null) {
+                return;
+            }
+            if (currentInvoiceId != null && currentInvoiceId.equals(item.getInvoiceId())) {
+                return;
+            }
+            sourceInNoMap.putIfAbsent(item.getSourceInId(), item.getSourceInNo());
+        });
+        if (!sourceInNoMap.isEmpty()) {
+            Long conflictSourceInId = sourceInNoMap.keySet().iterator().next();
+            throw exception(PURCHASE_INVOICE_SOURCE_IN_INVOICED,
+                    sourceInNoMap.getOrDefault(conflictSourceInId, String.valueOf(conflictSourceInId)));
+        }
+    }
+
+    private void validateApprovedSourceInNotInvoiced(List<ErpPurchaseInvoiceItemDO> list, Long currentInvoiceId) {
+        if (CollUtil.isEmpty(list)) {
+            return;
+        }
+        Set<Long> sourceInIds = convertSet(list, ErpPurchaseInvoiceItemDO::getSourceInId);
+        sourceInIds.remove(null);
+        if (CollUtil.isEmpty(sourceInIds)) {
+            return;
+        }
+        List<ErpPurchaseInvoiceItemDO> existedItems = purchaseInvoiceItemMapper.selectApprovedListBySourceInIds(sourceInIds);
         if (CollUtil.isEmpty(existedItems)) {
             return;
         }
@@ -299,6 +371,7 @@ public class ErpPurchaseInvoiceServiceImpl implements ErpPurchaseInvoiceService 
                 (oldVal, newVal) -> oldVal.getId().equals(newVal.getId()));
         if (CollUtil.isNotEmpty(diffList.get(0))) {
             diffList.get(0).forEach(item -> item.setInvoiceId(id));
+            purchaseDocumentDefaultService.fillCreateAuditDefaults(diffList.get(0));
             purchaseInvoiceItemMapper.insertBatch(diffList.get(0));
         }
         if (CollUtil.isNotEmpty(diffList.get(1))) {

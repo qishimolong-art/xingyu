@@ -24,12 +24,15 @@ import org.springframework.test.util.ReflectionTestUtils;
 
 import java.util.Arrays;
 import java.util.Collections;
-import java.util.List;import static cn.iocoder.yudao.framework.test.core.util.AssertUtils.assertServiceException;
+import java.util.List;
+
+import static cn.iocoder.yudao.framework.test.core.util.AssertUtils.assertServiceException;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.CUSTOMER_NOT_ENABLE;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.CUSTOMER_NOT_EXISTS;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
@@ -256,6 +259,14 @@ public class ErpCustomerServiceImplTest extends BaseMockitoUnitTest {
 
         assertEquals(2, result.size());
         assertSame(list, result);
+    }
+
+    @Test
+    public void testGetCustomerList_emptyIds_skipMapper() {
+        assertTrue(customerService.getCustomerList(null).isEmpty());
+        assertTrue(customerService.getCustomerList(Collections.emptyList()).isEmpty());
+
+        verify(customerMapper, never()).selectByIds(any());
     }
 
     @Test

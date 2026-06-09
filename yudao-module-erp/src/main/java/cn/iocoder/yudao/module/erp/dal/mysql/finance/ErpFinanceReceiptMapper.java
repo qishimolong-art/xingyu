@@ -24,6 +24,7 @@ public interface ErpFinanceReceiptMapper extends BaseMapperX<ErpFinanceReceiptDO
                 .eqIfPresent(ErpFinanceReceiptDO::getCustomerId, reqVO.getCustomerId())
                 .eqIfPresent(ErpFinanceReceiptDO::getCreator, reqVO.getCreator())
                 .eqIfPresent(ErpFinanceReceiptDO::getFinanceUserId, reqVO.getFinanceUserId())
+                .eqIfPresent(ErpFinanceReceiptDO::getDeptId, reqVO.getDeptId())
                 .eqIfPresent(ErpFinanceReceiptDO::getAccountId, reqVO.getAccountId())
                 .eqIfPresent(ErpFinanceReceiptDO::getStatus, reqVO.getStatus())
                 .likeIfPresent(ErpFinanceReceiptDO::getRemark, reqVO.getRemark())
@@ -43,6 +44,10 @@ public interface ErpFinanceReceiptMapper extends BaseMapperX<ErpFinanceReceiptDO
 
     default ErpFinanceReceiptDO selectByNo(String no) {
         return selectOne(ErpFinanceReceiptDO::getNo, no);
+    }
+
+    default Long selectCountByCustomerId(Long customerId) {
+        return selectCount(ErpFinanceReceiptDO::getCustomerId, customerId);
     }
 
 }

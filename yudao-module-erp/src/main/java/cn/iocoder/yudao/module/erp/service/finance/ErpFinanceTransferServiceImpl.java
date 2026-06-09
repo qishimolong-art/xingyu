@@ -10,7 +10,9 @@ import cn.iocoder.yudao.module.erp.dal.dataobject.finance.ErpFinanceTransferDO;
 import cn.iocoder.yudao.module.erp.dal.mysql.finance.ErpFinanceTransferMapper;
 import cn.iocoder.yudao.module.erp.dal.redis.no.ErpNoRedisDAO;
 import cn.iocoder.yudao.module.erp.enums.ErpAuditStatus;
+import cn.iocoder.yudao.module.erp.service.common.ErpOperateLogService;
 import cn.iocoder.yudao.module.system.api.user.AdminUserApi;
+import cn.iocoder.yudao.module.system.api.user.dto.AdminUserRespDTO;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.validation.annotation.Validated;
@@ -21,12 +23,16 @@ import java.util.Collections;
 import java.util.List;
 
 import static cn.iocoder.yudao.framework.common.exception.util.ServiceExceptionUtil.exception;
+import static cn.iocoder.yudao.framework.security.core.util.SecurityFrameworkUtils.getLoginUserId;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.FINANCE_TRANSFER_ACCOUNTS_SAME;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.FINANCE_TRANSFER_APPROVE_FAIL;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.FINANCE_TRANSFER_DELETE_FAIL_APPROVE;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.FINANCE_TRANSFER_NOT_EXISTS;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.FINANCE_TRANSFER_NO_EXISTS;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.FINANCE_TRANSFER_UPDATE_FAIL_APPROVE;
+import static cn.iocoder.yudao.module.erp.enums.LogRecordConstants.ERP_DELETE_SUB_TYPE;
+import static cn.iocoder.yudao.module.erp.enums.LogRecordConstants.ERP_FINANCE_TRANSFER_TYPE;
+import static cn.iocoder.yudao.module.erp.enums.LogRecordConstants.ERP_UPDATE_SUB_TYPE;
 
 /**
  * ERP 银行转账单 Service 实现类
@@ -47,6 +53,8 @@ public class ErpFinanceTransferServiceImpl implements ErpFinanceTransferService 
     private AdminUserApi adminUserApi;
     @Resource
     private ErpFinanceFieldPermissionMasker fieldPermissionMasker;
+    @Resource
+    private ErpOperateLogService operateLogService;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -60,7 +68,9 @@ public class ErpFinanceTransferServiceImpl implements ErpFinanceTransferService 
         ErpFinanceTransferDO transfer = BeanUtils.toBean(createReqVO, ErpFinanceTransferDO.class, in -> in
                 .setNo(no)
                 .setStatus(ErpAuditStatus.PROCESS.getStatus()));
+        fillCreateDeptId(transfer);
         financeTransferMapper.insert(transfer);
+        recordCreate(transfer);
         return transfer.getId();
     }
 
@@ -74,7 +84,12 @@ public class ErpFinanceTransferServiceImpl implements ErpFinanceTransferService 
         fieldPermissionMasker.preserveHiddenFields(FIELD_PERMISSION_MODULE, updateReqVO, transfer);
         validateTransferAccounts(updateReqVO.getOutAccountId(), updateReqVO.getInAccountId());
         validateFinanceUser(updateReqVO.getFinanceUserId());
-        financeTransferMapper.updateById(BeanUtils.toBean(updateReqVO, ErpFinanceTransferDO.class));
+        ErpFinanceTransferDO updateObj = BeanUtils.toBean(updateReqVO, ErpFinanceTransferDO.class);
+        if (updateObj.getDeptId() == null) {
+            updateObj.setDeptId(transfer.getDeptId());
+        }
+        financeTransferMapper.updateById(updateObj);
+        recordUpdate(transfer, updateObj);
     }
 
     @Override
@@ -94,6 +109,7 @@ public class ErpFinanceTransferServiceImpl implements ErpFinanceTransferService 
         if (updateCount == 0) {
             throw exception(FINANCE_TRANSFER_APPROVE_FAIL);
         }
+        operateLogService.recordStatus(ERP_FINANCE_TRANSFER_TYPE, id, transfer.getNo(), true);
     }
 
     @Override
@@ -108,7 +124,11 @@ public class ErpFinanceTransferServiceImpl implements ErpFinanceTransferService 
                 throw exception(FINANCE_TRANSFER_DELETE_FAIL_APPROVE, transfer.getNo());
             }
         });
-        financeTransferMapper.deleteByIds(ids);
+        transfers.forEach(transfer -> {
+            financeTransferMapper.deleteById(transfer.getId());
+            operateLogService.record(ERP_FINANCE_TRANSFER_TYPE, ERP_DELETE_SUB_TYPE, transfer.getId(),
+                    buildAction("删除银行转账单", transfer), transfer.getNo());
+        });
     }
 
     @Override
@@ -149,6 +169,45 @@ public class ErpFinanceTransferServiceImpl implements ErpFinanceTransferService 
         if (financeUserId != null) {
             adminUserApi.validateUser(financeUserId);
         }
+    }
+
+    private void fillCreateDeptId(ErpFinanceTransferDO transfer) {
+        if (transfer.getDeptId() != null) {
+            return;
+        }
+        Long loginUserId = getLoginUserId();
+        if (loginUserId == null) {
+            return;
+        }
+        AdminUserRespDTO user = adminUserApi.getUser(loginUserId);
+        transfer.setDeptId(user == null ? null : user.getDeptId());
+    }
+
+    private void recordCreate(ErpFinanceTransferDO transfer) {
+        operateLogService.record(ERP_FINANCE_TRANSFER_TYPE, cn.iocoder.yudao.module.erp.enums.LogRecordConstants.ERP_CREATE_SUB_TYPE,
+                transfer.getId(), buildAction("创建银行转账单", transfer), transfer.getNo());
+    }
+
+    private void recordUpdate(ErpFinanceTransferDO oldTransfer, ErpFinanceTransferDO newTransfer) {
+        operateLogService.record(ERP_FINANCE_TRANSFER_TYPE, ERP_UPDATE_SUB_TYPE, newTransfer.getId(),
+                buildAction("更新银行转账单", oldTransfer)
+                        + "，转账金额：" + oldTransfer.getTransferPrice() + " -> " + newTransfer.getTransferPrice(),
+                oldTransfer.getNo());
+    }
+
+    private String buildAction(String operation, ErpFinanceTransferDO transfer) {
+        return operation + "，单据编号：" + transfer.getNo()
+                + "，类型：银行转账"
+                + "，金额：" + transfer.getTransferPrice()
+                + "，财务人员：" + getUserName(transfer.getFinanceUserId());
+    }
+
+    private String getUserName(Long userId) {
+        if (userId == null) {
+            return "";
+        }
+        AdminUserRespDTO user = adminUserApi.getUser(userId);
+        return user == null ? String.valueOf(userId) : user.getNickname();
     }
 
 }

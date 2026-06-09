@@ -83,6 +83,9 @@ public class ErpSaleReturnRespVO {
     @Schema(description = "优惠金额", requiredMode = Schema.RequiredMode.REQUIRED, example = "7127")
     private BigDecimal discountPrice;
 
+    @Schema(description = "费用金额", example = "7127")
+    private BigDecimal feeAmount;
+
     @Schema(description = "其他金额", requiredMode = Schema.RequiredMode.REQUIRED, example = "7127")
     private BigDecimal otherPrice;
 

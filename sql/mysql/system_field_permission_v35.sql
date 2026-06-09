@@ -39,6 +39,7 @@ INSERT INTO `system_field_definition`
 (`module`, `field_key`, `field_label`, `field_group`, `sort`, `creator`, `create_time`, `updater`, `update_time`, `deleted`, `tenant_id`)
 VALUES
 ('erp_product', 'code', '配件编码', 'base_info', 5, '1', NOW(), '1', NOW(), b'0', 1),
+('erp_product', 'deptId', '所属部门', 'base_info', 8, '1', NOW(), '1', NOW(), b'0', 1),
 ('erp_product', 'name', '零件名称', 'base_info', 10, '1', NOW(), '1', NOW(), b'0', 1),
 ('erp_product', 'unitId', '单位', 'base_info', 20, '1', NOW(), '1', NOW(), b'0', 1),
 ('erp_product', 'defaultWarehouseId', '默认仓库', 'base_info', 30, '1', NOW(), '1', NOW(), b'0', 1),
@@ -75,11 +76,15 @@ VALUES
 ('erp_product', 'col_barCode', '列表-条形码', 'list_col', 70, '1', NOW(), '1', NOW(), b'0', 1),
 ('erp_product', 'col_factoryCode', '列表-厂家编码', 'list_col', 80, '1', NOW(), '1', NOW(), b'0', 1),
 ('erp_product', 'col_defaultWarehouseName', '列表-默认仓库', 'list_col', 90, '1', NOW(), '1', NOW(), b'0', 1),
+('erp_product', 'col_deptName', '列表-所属部门', 'list_col', 95, '1', NOW(), '1', NOW(), b'0', 1),
 ('erp_product', 'col_retailPrice', '列表-零售价', 'list_col', 100, '1', NOW(), '1', NOW(), b'0', 1),
 ('erp_product', 'col_referencePrice', '列表-参考价', 'list_col', 110, '1', NOW(), '1', NOW(), b'0', 1),
 ('erp_product', 'col_currentStock', '列表-当前库存', 'list_col', 120, '1', NOW(), '1', NOW(), b'0', 1),
 ('erp_product', 'col_status', '列表-状态', 'list_col', 130, '1', NOW(), '1', NOW(), b'0', 1),
 ('erp_product', 'col_createTime', '列表-创建时间', 'list_col', 140, '1', NOW(), '1', NOW(), b'0', 1),
+('erp_product', 'col_creatorName', '列表-创建人', 'list_col', 145, '1', NOW(), '1', NOW(), b'0', 1),
+('erp_product', 'col_updateTime', '列表-修改时间', 'list_col', 146, '1', NOW(), '1', NOW(), b'0', 1),
+('erp_product', 'col_updaterName', '列表-修改人', 'list_col', 147, '1', NOW(), '1', NOW(), b'0', 1),
 ('erp_product', 'col_lockCount', '列表-占用数量', 'list_col', 150, '1', NOW(), '1', NOW(), b'0', 1),
 ('erp_product', 'col_purchasePrice', '列表-采购价', 'list_col', 160, '1', NOW(), '1', NOW(), b'0', 1),
 ('erp_product', 'col_remark', '列表-零件备注', 'list_col', 170, '1', NOW(), '1', NOW(), b'0', 1),

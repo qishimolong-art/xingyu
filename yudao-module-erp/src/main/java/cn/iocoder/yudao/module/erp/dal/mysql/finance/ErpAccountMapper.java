@@ -23,6 +23,7 @@ public interface ErpAccountMapper extends BaseMapperX<ErpAccountDO> {
                 .likeIfPresent(ErpAccountDO::getName, reqVO.getName())
                 .likeIfPresent(ErpAccountDO::getNo, reqVO.getNo())
                 .eqIfPresent(ErpAccountDO::getAccountType, reqVO.getAccountType())
+                .eqIfPresent(ErpAccountDO::getDeptId, reqVO.getDeptId())
                 .eqIfPresent(ErpAccountDO::getStatus, reqVO.getStatus())
                 .likeIfPresent(ErpAccountDO::getRemark, reqVO.getRemark())
                 .orderByDesc(ErpAccountDO::getId));

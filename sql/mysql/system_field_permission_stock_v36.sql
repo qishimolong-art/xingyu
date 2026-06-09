@@ -124,3 +124,43 @@ INSERT IGNORE INTO `system_role_menu`
 (`role_id`, `menu_id`, `creator`, `create_time`, `updater`, `update_time`, `deleted`, `tenant_id`)
 VALUES
 (1, 31137, '1', NOW(), '1', NOW(), b'0', 1);
+
+INSERT INTO `system_field_definition`
+(`module`, `field_key`, `field_label`, `field_group`, `sort`, `creator`, `create_time`, `updater`, `update_time`, `deleted`, `tenant_id`)
+VALUES
+('erp_stock_in', 'deptId', '所属部门', 'main_form', 5, '1', NOW(), '1', NOW(), b'0', 1),
+('erp_stock_in', 'item_productCode', '产品编码', 'detail_item', 205, '1', NOW(), '1', NOW(), b'0', 1),
+('erp_stock_in', 'creatorName', '创建人', 'system_info', 900, '1', NOW(), '1', NOW(), b'0', 1),
+('erp_stock_in', 'createTime', '创建时间', 'system_info', 910, '1', NOW(), '1', NOW(), b'0', 1),
+('erp_stock_in', 'updaterName', '修改人', 'system_info', 920, '1', NOW(), '1', NOW(), b'0', 1),
+('erp_stock_in', 'updateTime', '修改时间', 'system_info', 930, '1', NOW(), '1', NOW(), b'0', 1),
+('erp_stock_out', 'deptId', '所属部门', 'main_form', 5, '1', NOW(), '1', NOW(), b'0', 1),
+('erp_stock_out', 'item_productCode', '产品编码', 'detail_item', 205, '1', NOW(), '1', NOW(), b'0', 1),
+('erp_stock_out', 'creatorName', '创建人', 'system_info', 900, '1', NOW(), '1', NOW(), b'0', 1),
+('erp_stock_out', 'createTime', '创建时间', 'system_info', 910, '1', NOW(), '1', NOW(), b'0', 1),
+('erp_stock_out', 'updaterName', '修改人', 'system_info', 920, '1', NOW(), '1', NOW(), b'0', 1),
+('erp_stock_out', 'updateTime', '修改时间', 'system_info', 930, '1', NOW(), '1', NOW(), b'0', 1),
+('erp_stock_move', 'deptId', '所属部门', 'main_form', 5, '1', NOW(), '1', NOW(), b'0', 1),
+('erp_stock_move', 'item_productCode', '产品编码', 'detail_item', 215, '1', NOW(), '1', NOW(), b'0', 1),
+('erp_stock_move', 'creatorName', '创建人', 'system_info', 900, '1', NOW(), '1', NOW(), b'0', 1),
+('erp_stock_move', 'createTime', '创建时间', 'system_info', 910, '1', NOW(), '1', NOW(), b'0', 1),
+('erp_stock_move', 'updaterName', '修改人', 'system_info', 920, '1', NOW(), '1', NOW(), b'0', 1),
+('erp_stock_move', 'updateTime', '修改时间', 'system_info', 930, '1', NOW(), '1', NOW(), b'0', 1),
+('erp_stock_check', 'deptId', '所属部门', 'main_form', 5, '1', NOW(), '1', NOW(), b'0', 1),
+('erp_stock_check', 'item_productCode', '产品编码', 'detail_item', 205, '1', NOW(), '1', NOW(), b'0', 1),
+('erp_stock_check', 'creatorName', '创建人', 'system_info', 900, '1', NOW(), '1', NOW(), b'0', 1),
+('erp_stock_check', 'createTime', '创建时间', 'system_info', 910, '1', NOW(), '1', NOW(), b'0', 1),
+('erp_stock_check', 'updaterName', '修改人', 'system_info', 920, '1', NOW(), '1', NOW(), b'0', 1),
+('erp_stock_check', 'updateTime', '修改时间', 'system_info', 930, '1', NOW(), '1', NOW(), b'0', 1),
+('erp_warehouse', 'deptId', '所属部门', 'base_info', 5, '1', NOW(), '1', NOW(), b'0', 1),
+('erp_warehouse', 'creatorName', '创建人', 'system_info', 900, '1', NOW(), '1', NOW(), b'0', 1),
+('erp_warehouse', 'createTime', '创建时间', 'system_info', 910, '1', NOW(), '1', NOW(), b'0', 1),
+('erp_warehouse', 'updaterName', '修改人', 'system_info', 920, '1', NOW(), '1', NOW(), b'0', 1),
+('erp_warehouse', 'updateTime', '修改时间', 'system_info', 930, '1', NOW(), '1', NOW(), b'0', 1)
+ON DUPLICATE KEY UPDATE
+  `field_label` = VALUES(`field_label`),
+  `field_group` = VALUES(`field_group`),
+  `sort` = VALUES(`sort`),
+  `updater` = '1',
+  `update_time` = NOW(),
+  `deleted` = b'0';

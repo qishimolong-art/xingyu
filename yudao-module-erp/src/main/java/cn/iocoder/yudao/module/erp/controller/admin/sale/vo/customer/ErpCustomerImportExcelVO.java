@@ -1,6 +1,7 @@
 package cn.iocoder.yudao.module.erp.controller.admin.sale.vo.customer;
 
 import cn.idev.excel.annotation.ExcelProperty;
+import cn.iocoder.yudao.framework.excel.core.annotations.ExcelRequired;
 import lombok.Data;
 
 /**
@@ -9,6 +10,7 @@ import lombok.Data;
 @Data
 public class ErpCustomerImportExcelVO {
 
+    @ExcelRequired
     @ExcelProperty("客户名称")
     private String name;
 

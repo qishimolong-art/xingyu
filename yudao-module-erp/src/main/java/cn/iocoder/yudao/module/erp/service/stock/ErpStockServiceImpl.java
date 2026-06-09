@@ -8,6 +8,7 @@ import cn.iocoder.yudao.module.erp.dal.dataobject.product.ErpProductDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockLockDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockRecordDO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpWarehouseDO;
 import cn.iocoder.yudao.module.erp.dal.mysql.product.ErpProductMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.stock.ErpStockLockMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.stock.ErpStockMapper;
@@ -102,6 +103,12 @@ public class ErpStockServiceImpl implements ErpStockService {
     }
 
     @Override
+    public BigDecimal getStockCount(Long productId, Long warehouseId) {
+        ErpStockDO stock = stockMapper.selectByProductIdAndWarehouseId(productId, warehouseId);
+        return stock != null && stock.getCount() != null ? stock.getCount() : BigDecimal.ZERO;
+    }
+
+    @Override
     public Map<Long, BigDecimal> getStockCountMap(Collection<Long> productIds) {
         if (productIds == null || productIds.isEmpty()) {
             return Collections.emptyMap();
@@ -145,7 +152,13 @@ public class ErpStockServiceImpl implements ErpStockService {
         }
 
         // 3. 查库存
-        return stockMapper.selectPage(pageReqVO, productIdFilter);
+        Collection<Long> warehouseIdFilter = null;
+        if (pageReqVO.getDeptId() != null) {
+            warehouseIdFilter = warehouseService.getWarehouseListByDeptId(pageReqVO.getDeptId()).stream()
+                    .map(ErpWarehouseDO::getId)
+                    .collect(Collectors.toList());
+        }
+        return stockMapper.selectPage(pageReqVO, productIdFilter, warehouseIdFilter);
     }
 
     private boolean hasProductCondition(ErpStockPageReqVO v) {

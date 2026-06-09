@@ -8,6 +8,7 @@ import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.common.util.collection.MapUtils;
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
 import cn.iocoder.yudao.framework.excel.core.util.ExcelUtils;
+import cn.iocoder.yudao.module.erp.controller.admin.common.vo.ErpExportFieldRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpProductRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartConvertQuoteReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartExportRespVO;
@@ -16,11 +17,16 @@ import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartImpo
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartSaveReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartUpdateBasicReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartUpdateFileReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpCustomerDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleCartDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleCartItemDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpWarehouseDO;
+import cn.iocoder.yudao.module.erp.enums.config.ErpFieldConfigModuleEnum;
+import cn.iocoder.yudao.module.erp.framework.excel.ErpExportFieldUtils;
+import cn.iocoder.yudao.module.erp.framework.excel.ErpImportTemplateRequiredFieldUtils;
+import cn.iocoder.yudao.module.erp.service.config.ErpFieldConfigService;
 import cn.iocoder.yudao.module.erp.service.product.ErpProductService;
 import cn.iocoder.yudao.module.erp.service.sale.ErpCustomerService;
 import cn.iocoder.yudao.module.erp.service.sale.ErpSaleCartService;
@@ -43,8 +49,10 @@ import java.io.IOException;
 import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import static cn.iocoder.yudao.framework.apilog.core.enums.OperateTypeEnum.EXPORT;
 import static cn.iocoder.yudao.framework.common.pojo.CommonResult.success;
@@ -57,6 +65,17 @@ import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.
 public class ErpSaleCartController {
 
     private static final String FIELD_PERMISSION_MODULE = "erp_sale_cart";
+    private static final Map<String, String> EXPORT_FIELD_GROUP_MAP = buildExportFieldGroupMap();
+    private static final Map<String, String> EXPORT_FIELD_PERMISSION_MAP = buildExportFieldPermissionMap();
+    private static final Map<String, String> DETAIL_IMPORT_FIELD_ALIAS_MAP = ErpImportTemplateRequiredFieldUtils.aliasMap(
+            "productId", "productCode",
+            "productCode", "productCode",
+            "warehouseId", "warehouseName",
+            "warehouseName", "warehouseName",
+            "count", "count",
+            "itemCount", "count",
+            "productPrice", "productPrice",
+            "remark", "remark");
 
     @Resource
     private ErpSaleCartService saleCartService;
@@ -70,6 +89,8 @@ public class ErpSaleCartController {
     private ErpSaleFieldPermissionMasker fieldPermissionMasker;
     @Resource
     private AdminUserApi adminUserApi;
+    @Resource
+    private ErpFieldConfigService fieldConfigService;
 
     @PostMapping("/create")
     @Operation(summary = "创建销售手推车")
@@ -83,6 +104,14 @@ public class ErpSaleCartController {
     @PreAuthorize("@ss.hasPermission('erp:sale-cart:update')")
     public CommonResult<Boolean> updateSaleCart(@Valid @RequestBody ErpSaleCartSaveReqVO updateReqVO) {
         saleCartService.updateSaleCart(updateReqVO);
+        return success(true);
+    }
+
+    @PutMapping("/update-basic")
+    @Operation(summary = "更新销售手推车基础信息")
+    @PreAuthorize("@ss.hasPermission('erp:sale-cart:update')")
+    public CommonResult<Boolean> updateSaleCartBasic(@Valid @RequestBody ErpSaleCartUpdateBasicReqVO updateReqVO) {
+        saleCartService.updateSaleCartBasic(updateReqVO);
         return success(true);
     }
 
@@ -169,6 +198,7 @@ public class ErpSaleCartController {
     @PreAuthorize("@ss.hasPermission('erp:sale-cart:export')")
     @ApiAccessLog(operateType = EXPORT)
     public void exportSaleCartExcel(@Valid ErpSaleCartPageReqVO pageReqVO,
+                                    @RequestParam(value = "fields", required = false) String fields,
                                     HttpServletResponse response) throws IOException {
         pageReqVO.setPageSize(PageParam.PAGE_SIZE_NONE);
         List<ErpSaleCartRespVO> list = buildSaleCartVOPageResult(
@@ -176,7 +206,18 @@ public class ErpSaleCartController {
         fieldPermissionMasker.maskFormsWithItems(FIELD_PERMISSION_MODULE, list);
         List<ErpSaleCartExportRespVO> rows = buildSaleCartExportList(list);
         fieldPermissionMasker.maskExportRows(FIELD_PERMISSION_MODULE, rows);
-        ExcelUtils.write(response, "销售手推车.xls", "数据", ErpSaleCartExportRespVO.class, rows);
+        Set<String> includeFields = ErpExportFieldUtils.resolveIncludeFields(ErpSaleCartExportRespVO.class,
+                ErpExportFieldUtils.parseFieldParam(fields),
+                fieldPermissionMasker.getHiddenFieldSet(FIELD_PERMISSION_MODULE), EXPORT_FIELD_PERMISSION_MAP);
+        ExcelUtils.write(response, "销售手推车.xls", "数据", ErpSaleCartExportRespVO.class, rows, includeFields);
+    }
+
+    @GetMapping("/export-fields")
+    @Operation(summary = "Get sale cart export fields")
+    @PreAuthorize("@ss.hasPermission('erp:sale-cart:export')")
+    public CommonResult<List<ErpExportFieldRespVO>> getSaleCartExportFields() {
+        return success(ErpExportFieldUtils.listFields(ErpSaleCartExportRespVO.class, EXPORT_FIELD_GROUP_MAP,
+                fieldPermissionMasker.getHiddenFieldSet(FIELD_PERMISSION_MODULE), EXPORT_FIELD_PERMISSION_MAP));
     }
 
     @GetMapping("/export-import-template")
@@ -191,7 +232,11 @@ public class ErpSaleCartController {
         example.setVehicleModel("车型");
         example.setStandard("规格");
         example.setRemark("备注");
-        ExcelUtils.write(response, "销售手推车导入模板.xls", "销售手推车", ErpSaleCartImportExcelVO.class, Collections.singletonList(example));
+        ExcelUtils.writeImportTemplate(response, "销售手推车导入模板.xls", "销售手推车",
+                ErpSaleCartImportExcelVO.class, Collections.singletonList(example), null,
+                ErpImportTemplateRequiredFieldUtils.getRequiredFields(fieldConfigService,
+                        ErpFieldConfigModuleEnum.SALE_CART, ErpSaleCartImportExcelVO.class,
+                        DETAIL_IMPORT_FIELD_ALIAS_MAP));
     }
 
     @PostMapping("/import")
@@ -206,25 +251,54 @@ public class ErpSaleCartController {
         if (CollUtil.isEmpty(pageResult.getList())) {
             return PageResult.empty(pageResult.getTotal());
         }
+        Set<Long> cartIds = convertSet(pageResult.getList(), ErpSaleCartDO::getId);
         List<ErpSaleCartItemDO> itemList = saleCartService.getSaleCartItemListByCartIds(
-                convertSet(pageResult.getList(), ErpSaleCartDO::getId));
+                cartIds);
         Map<Long, List<ErpSaleCartItemDO>> itemMap = convertMultiMap(itemList, ErpSaleCartItemDO::getCartId);
+        Map<Long, ErpProductRespVO> productMap = CollUtil.isEmpty(itemList)
+                ? Collections.emptyMap()
+                : productService.getProductVOMap(convertSet(itemList, ErpSaleCartItemDO::getProductId));
+        Map<Long, ErpWarehouseDO> warehouseMap = CollUtil.isEmpty(itemList)
+                ? Collections.emptyMap()
+                : warehouseService.getWarehouseMap(convertSet(itemList, ErpSaleCartItemDO::getWarehouseId));
+        Map<Long, ErpCustomerDO> customerMap = customerService.getCustomerMap(
+                convertSet(pageResult.getList(), ErpSaleCartDO::getCustomerId));
+        Set<Long> userIds = convertSet(pageResult.getList(), cart -> parseLongSafely(cart.getCreator()));
+        userIds.addAll(convertSet(pageResult.getList(), cart -> parseLongSafely(cart.getUpdater())));
+        userIds.addAll(convertSet(pageResult.getList(), ErpSaleCartDO::getSaleUserId));
+        userIds.remove(null);
+        Map<Long, AdminUserRespDTO> userMap = CollUtil.isNotEmpty(userIds)
+                ? adminUserApi.getUserMap(userIds) : Collections.emptyMap();
         return BeanUtils.toBean(pageResult, ErpSaleCartRespVO.class,
-                cart -> fillRelation(cart, itemMap.get(cart.getId())));
+                cart -> fillRelation(cart, itemMap.get(cart.getId()), productMap, warehouseMap, customerMap, userMap));
     }
 
     private ErpSaleCartRespVO buildSaleCartRespVO(ErpSaleCartDO cart, List<ErpSaleCartItemDO> items) {
-        return BeanUtils.toBean(cart, ErpSaleCartRespVO.class, vo -> fillRelation(vo, items));
+        Map<Long, ErpProductRespVO> productMap = CollUtil.isEmpty(items)
+                ? Collections.emptyMap()
+                : productService.getProductVOMap(convertSet(items, ErpSaleCartItemDO::getProductId));
+        Map<Long, ErpWarehouseDO> warehouseMap = CollUtil.isEmpty(items)
+                ? Collections.emptyMap()
+                : warehouseService.getWarehouseMap(convertSet(items, ErpSaleCartItemDO::getWarehouseId));
+        Map<Long, ErpCustomerDO> customerMap = cart.getCustomerId() == null
+                ? Collections.emptyMap()
+                : customerService.getCustomerMap(Collections.singleton(cart.getCustomerId()));
+        Set<Long> userIds = convertSet(Collections.singletonList(cart), item -> parseLongSafely(item.getCreator()));
+        userIds.addAll(convertSet(Collections.singletonList(cart), item -> parseLongSafely(item.getUpdater())));
+        userIds.add(cart.getSaleUserId());
+        userIds.remove(null);
+        Map<Long, AdminUserRespDTO> userMap = CollUtil.isNotEmpty(userIds)
+                ? adminUserApi.getUserMap(userIds) : Collections.emptyMap();
+        return BeanUtils.toBean(cart, ErpSaleCartRespVO.class,
+                vo -> fillRelation(vo, items, productMap, warehouseMap, customerMap, userMap));
     }
 
-    private void fillRelation(ErpSaleCartRespVO vo, List<ErpSaleCartItemDO> items) {
+    private void fillRelation(ErpSaleCartRespVO vo, List<ErpSaleCartItemDO> items,
+                              Map<Long, ErpProductRespVO> productMap,
+                              Map<Long, ErpWarehouseDO> warehouseMap,
+                              Map<Long, ErpCustomerDO> customerMap,
+                              Map<Long, AdminUserRespDTO> userMap) {
         List<ErpSaleCartItemDO> safeItems = CollUtil.isEmpty(items) ? Collections.emptyList() : items;
-        Map<Long, ErpProductRespVO> productMap = CollUtil.isEmpty(safeItems)
-                ? Collections.emptyMap()
-                : productService.getProductVOMap(convertSet(safeItems, ErpSaleCartItemDO::getProductId));
-        Map<Long, ErpWarehouseDO> warehouseMap = CollUtil.isEmpty(safeItems)
-                ? Collections.emptyMap()
-                : warehouseService.getWarehouseMap(convertSet(safeItems, ErpSaleCartItemDO::getWarehouseId));
         List<ErpSaleCartRespVO.Item> respItems = BeanUtils.toBean(safeItems, ErpSaleCartRespVO.Item.class,
                 item -> MapUtils.findAndThen(productMap, item.getProductId(), product -> item.setProductName(product.getName())
                         .setProductBarCode(product.getBarCode()).setProductUnitName(product.getUnitName())
@@ -234,34 +308,27 @@ public class ErpSaleCartController {
                 MapUtils.findAndThen(warehouseMap, item.getWarehouseId(), warehouse -> item.setWarehouseName(warehouse.getName())));
         vo.setProductNames(CollUtil.join(vo.getItems(), "，", ErpSaleCartRespVO.Item::getProductName));
         if (vo.getCustomerId() != null) {
-            Map<Long, ErpCustomerDO> customerMap = customerService.getCustomerMap(Collections.singleton(vo.getCustomerId()));
             MapUtils.findAndThen(customerMap, vo.getCustomerId(), customer -> vo.setCustomerName(customer.getName()));
         }
         if (vo.getCreator() != null) {
-            try {
-                AdminUserRespDTO creator = adminUserApi.getUser(Long.parseLong(vo.getCreator()));
-                if (creator != null) {
-                    vo.setCreatorName(creator.getNickname());
-                }
-            } catch (NumberFormatException ignored) {
-                // ignore invalid creator value
-            }
+            MapUtils.findAndThen(userMap, parseLongSafely(vo.getCreator()), user -> vo.setCreatorName(user.getNickname()));
         }
         if (vo.getUpdater() != null) {
-            try {
-                AdminUserRespDTO updater = adminUserApi.getUser(Long.parseLong(vo.getUpdater()));
-                if (updater != null) {
-                    vo.setUpdaterName(updater.getNickname());
-                }
-            } catch (NumberFormatException ignored) {
-                // ignore invalid updater value
-            }
+            MapUtils.findAndThen(userMap, parseLongSafely(vo.getUpdater()), user -> vo.setUpdaterName(user.getNickname()));
         }
         if (vo.getSaleUserId() != null) {
-            AdminUserRespDTO user = adminUserApi.getUser(vo.getSaleUserId());
-            if (user != null) {
-                vo.setSaleUserName(user.getNickname());
-            }
+            MapUtils.findAndThen(userMap, vo.getSaleUserId(), user -> vo.setSaleUserName(user.getNickname()));
+        }
+    }
+
+    private static Long parseLongSafely(String value) {
+        if (value == null || value.isEmpty()) {
+            return null;
+        }
+        try {
+            return Long.parseLong(value);
+        } catch (NumberFormatException ex) {
+            return null;
         }
     }
 
@@ -303,6 +370,54 @@ public class ErpSaleCartController {
         row.setWarehousePosition(item.getWarehousePosition());
         row.setItemRemark(item.getRemark());
         return row;
+    }
+
+    private static Map<String, String> buildExportFieldGroupMap() {
+        Map<String, String> map = new LinkedHashMap<>();
+        map.put("no", "main");
+        map.put("customerName", "main");
+        map.put("status", "main");
+        map.put("cartTime", "main");
+        map.put("totalCount", "main");
+        map.put("totalPrice", "main");
+        map.put("feeAmount", "main");
+        map.put("remark", "main");
+        map.put("fileUrl", "main");
+        map.put("productCode", "detail");
+        map.put("productName", "detail");
+        map.put("productUnitName", "detail");
+        map.put("warehouseName", "detail");
+        map.put("lockCount", "detail");
+        map.put("itemCount", "detail");
+        map.put("productPrice", "detail");
+        map.put("itemTotalPrice", "detail");
+        map.put("brand", "detail");
+        map.put("vehicleModel", "detail");
+        map.put("standard", "detail");
+        map.put("originPlace", "detail");
+        map.put("warehousePosition", "detail");
+        map.put("itemRemark", "detail");
+        return map;
+    }
+
+    private static Map<String, String> buildExportFieldPermissionMap() {
+        Map<String, String> map = new LinkedHashMap<>();
+        map.put("customerName", "customerId");
+        map.put("productCode", "item_productCode");
+        map.put("productName", "item_productId");
+        map.put("productUnitName", "item_productUnitName");
+        map.put("warehouseName", "item_warehouseId");
+        map.put("lockCount", "item_lockCount");
+        map.put("itemCount", "item_count");
+        map.put("productPrice", "item_productPrice");
+        map.put("itemTotalPrice", "item_totalPrice");
+        map.put("brand", "item_brand");
+        map.put("vehicleModel", "item_vehicleModel");
+        map.put("standard", "item_standard");
+        map.put("originPlace", "item_originPlace");
+        map.put("warehousePosition", "item_warehousePosition");
+        map.put("itemRemark", "item_remark");
+        return map;
     }
 
 }

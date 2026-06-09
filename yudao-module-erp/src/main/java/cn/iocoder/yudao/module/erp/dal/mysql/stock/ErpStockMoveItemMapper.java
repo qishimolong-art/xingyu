@@ -27,4 +27,24 @@ public interface ErpStockMoveItemMapper extends BaseMapperX<ErpStockMoveItemDO> 
         return delete(ErpStockMoveItemDO::getMoveId, moveId);
     }
 
+    default Long selectCountByProductId(Long productId) {
+        return selectCount(ErpStockMoveItemDO::getProductId, productId);
+    }
+
+    default Long selectCountByFromWarehouseId(Long warehouseId) {
+        return selectCount(ErpStockMoveItemDO::getFromWarehouseId, warehouseId);
+    }
+
+    default Long selectCountByToWarehouseId(Long warehouseId) {
+        return selectCount(ErpStockMoveItemDO::getToWarehouseId, warehouseId);
+    }
+
+    default ErpStockMoveItemDO selectFirstByFromWarehouseId(Long warehouseId) {
+        return selectFirstOne(ErpStockMoveItemDO::getFromWarehouseId, warehouseId);
+    }
+
+    default ErpStockMoveItemDO selectFirstByToWarehouseId(Long warehouseId) {
+        return selectFirstOne(ErpStockMoveItemDO::getToWarehouseId, warehouseId);
+    }
+
 }

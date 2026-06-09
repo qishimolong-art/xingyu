@@ -11,6 +11,8 @@ import cn.iocoder.yudao.module.erp.enums.ErpAuditStatus;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import org.apache.ibatis.annotations.Mapper;
 
+import java.util.Collection;
+import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
 
@@ -26,6 +28,7 @@ public interface ErpSaleOutMapper extends BaseMapperX<ErpSaleOutDO> {
         MPJLambdaWrapperX<ErpSaleOutDO> query = new MPJLambdaWrapperX<ErpSaleOutDO>()
                 .likeIfPresent(ErpSaleOutDO::getNo, reqVO.getNo())
                 .eqIfPresent(ErpSaleOutDO::getCustomerId, reqVO.getCustomerId())
+                .eqIfPresent(ErpSaleOutDO::getDeptId, reqVO.getDeptId())
                 .betweenIfPresent(ErpSaleOutDO::getOutTime, reqVO.getOutTime())
                 .eqIfPresent(ErpSaleOutDO::getStatus, reqVO.getStatus())
                 .likeIfPresent(ErpSaleOutDO::getRemark, reqVO.getRemark())
@@ -67,6 +70,10 @@ public interface ErpSaleOutMapper extends BaseMapperX<ErpSaleOutDO> {
         return selectOne(ErpSaleOutDO::getNo, no);
     }
 
+    default Long selectCountByCustomerId(Long customerId) {
+        return selectCount(ErpSaleOutDO::getCustomerId, customerId);
+    }
+
     default List<ErpSaleOutDO> selectListByOrderId(Long orderId) {
         return selectList(ErpSaleOutDO::getOrderId, orderId);
     }
@@ -76,6 +83,16 @@ public interface ErpSaleOutMapper extends BaseMapperX<ErpSaleOutDO> {
                 .eq(ErpSaleOutDO::getSourceType, sourceType)
                 .eq(ErpSaleOutDO::getSourceId, sourceId)
                 .last("LIMIT 1"));
+    }
+
+    default List<ErpSaleOutDO> selectListBySourceTypeAndSourceIds(Integer sourceType, Collection<Long> sourceIds) {
+        if (sourceIds == null || sourceIds.isEmpty()) {
+            return Collections.emptyList();
+        }
+        return selectList(new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<ErpSaleOutDO>()
+                .eq(ErpSaleOutDO::getSourceType, sourceType)
+                .in(ErpSaleOutDO::getSourceId, sourceIds)
+                .orderByDesc(ErpSaleOutDO::getId));
     }
 
     @org.apache.ibatis.annotations.Select({

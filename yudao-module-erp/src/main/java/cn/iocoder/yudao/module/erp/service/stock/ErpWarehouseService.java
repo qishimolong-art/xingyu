@@ -82,6 +82,14 @@ public interface ErpWarehouseService {
     List<ErpWarehouseDO> getWarehouseList(Collection<Long> ids);
 
     /**
+     * 鑾峰緱閮ㄩ棬涓嬬殑浠撳簱鍒楄〃
+     *
+     * @param deptId 閮ㄩ棬缂栧彿
+     * @return 浠撳簱鍒楄〃
+     */
+    List<ErpWarehouseDO> getWarehouseListByDeptId(Long deptId);
+
+    /**
      * 获得仓库 Map
      *
      * @param ids 编号数组

@@ -23,6 +23,10 @@ public interface ErpSalePriceAdjustItemMapper extends BaseMapperX<ErpSalePriceAd
         return selectList(ErpSalePriceAdjustItemDO::getAdjustId, adjustIds);
     }
 
+    default List<ErpSalePriceAdjustItemDO> selectListBySaleOutItemIds(Collection<Long> saleOutItemIds) {
+        return selectList(ErpSalePriceAdjustItemDO::getSaleOutItemId, saleOutItemIds);
+    }
+
     default void deleteByAdjustId(Long adjustId) {
         delete(ErpSalePriceAdjustItemDO::getAdjustId, adjustId);
     }

@@ -17,6 +17,7 @@ import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * 后台用户 Service 接口
@@ -133,6 +134,14 @@ public interface AdminUserService {
      * @return 用户对象信息
      */
     AdminUserDO getUser(Long id);
+
+    /**
+     * 获得用户关联的部门编号数组
+     *
+     * @param userId 用户编号
+     * @return 部门编号数组
+     */
+    Set<Long> getUserDeptIdListByUserId(Long userId);
 
     /**
      * 获得指定部门的用户数组

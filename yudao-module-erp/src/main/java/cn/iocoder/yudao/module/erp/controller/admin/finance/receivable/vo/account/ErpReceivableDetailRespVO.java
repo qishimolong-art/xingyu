@@ -16,6 +16,10 @@ public class ErpReceivableDetailRespVO {
     @ExcelProperty("单据类型")
     private String docType;
 
+    private Integer bizType;
+
+    private Long bizId;
+
     @ExcelProperty("单据日期")
     private LocalDateTime docDate;
 
@@ -30,6 +34,9 @@ public class ErpReceivableDetailRespVO {
 
     @ExcelProperty("收款金额")
     private BigDecimal receiptAmount;
+
+    @ExcelProperty("核销金额")
+    private BigDecimal writeOffAmount;
 
     @ExcelProperty("余额")
     private BigDecimal balance;

@@ -42,4 +42,7 @@ public class ErpStockMovePageReqVO extends PageParam {
     @Schema(description = "调出仓库编号", example = "1")
     private Long fromWarehouseId;
 
+    @Schema(description = "所属部门", example = "100")
+    private Long deptId;
+
 }

@@ -67,6 +67,9 @@ public class ErpPurchaseInRespVO {
     @Schema(description = "优惠金额，单位：元", requiredMode = Schema.RequiredMode.REQUIRED, example = "7127")
     private BigDecimal discountPrice;
 
+    @Schema(description = "费用金额，单位：元", example = "7127")
+    private BigDecimal feeAmount;
+
     @Schema(description = "定金金额，单位：元", requiredMode = Schema.RequiredMode.REQUIRED, example = "7127")
     private BigDecimal otherPrice;
 
@@ -207,6 +210,12 @@ public class ErpPurchaseInRespVO {
     @Schema(description = "是否被调过价", example = "true")
     private Boolean adjusted;
 
+    @Schema(description = "退货数量", example = "10")
+    private BigDecimal returnCount;
+
+    @Schema(description = "退货状态：0=未退货，1=部分退货，2=全部退货", example = "1")
+    private Integer returnStatus;
+
     @Schema(description = "创建人", example = "芋道")
     private String creator;
     @Schema(description = "创建人名称", example = "芋道")
@@ -315,6 +324,12 @@ public class ErpPurchaseInRespVO {
 
         @Schema(description = "库存数量", requiredMode = Schema.RequiredMode.REQUIRED, example = "100.00")
         private BigDecimal stockCount; // 该字段仅仅在“详情”和“编辑”时使用
+
+        @Schema(description = "退货数量", example = "10")
+        private BigDecimal returnCount;
+
+        @Schema(description = "退货状态：0=未退货，1=部分退货，2=全部退货", example = "1")
+        private Integer returnStatus;
 
     }
 

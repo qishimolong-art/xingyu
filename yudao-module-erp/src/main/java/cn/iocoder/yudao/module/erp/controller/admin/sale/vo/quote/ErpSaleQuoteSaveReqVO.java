@@ -36,6 +36,9 @@ public class ErpSaleQuoteSaveReqVO {
     @Schema(description = "优惠率，百分比")
     private BigDecimal discountPercent;
 
+    @Schema(description = "费用金额，单位：元")
+    private BigDecimal feeAmount;
+
     @Schema(description = "其它金额，单位：元")
     private BigDecimal otherPrice;
 
@@ -128,7 +131,7 @@ public class ErpSaleQuoteSaveReqVO {
         @Schema(description = "报价项编号")
         private Long id;
 
-        @Schema(description = "仓库编号", requiredMode = Schema.RequiredMode.REQUIRED)
+        @Schema(description = "仓库编号")
         @NotNull(message = "仓库编号不能为空")
         private Long warehouseId;
 
@@ -142,6 +145,9 @@ public class ErpSaleQuoteSaveReqVO {
         @Schema(description = "产品数量", requiredMode = Schema.RequiredMode.REQUIRED)
         @NotNull(message = "产品数量不能为空")
         private BigDecimal count;
+
+        @Schema(description = "是否赠品", example = "false")
+        private Boolean giftFlag;
 
         @Schema(description = "税率，百分比")
         private BigDecimal taxPercent;

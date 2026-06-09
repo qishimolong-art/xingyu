@@ -32,4 +32,8 @@ public interface ErpReceivableOtherMapper extends BaseMapperX<ErpReceivableOther
     default ErpReceivableOtherDO selectByNo(String no) {
         return selectOne(ErpReceivableOtherDO::getNo, no);
     }
+
+    default Long selectCountByCustomerId(Long customerId) {
+        return selectCount(ErpReceivableOtherDO::getCustomerId, customerId);
+    }
 }

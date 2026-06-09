@@ -29,6 +29,12 @@ public class ErpPurchaseInvoicePageReqVO extends PageParam {
     @Schema(description = "单据状态", example = "10")
     private Integer status;
 
+    @Schema(description = "开票完成状态：0-未完成，1-已完成", example = "0")
+    private Integer invoiceStatus;
+
+    @Schema(description = "部门编号", example = "10")
+    private Long deptId;
+
     @Schema(description = "发票号", example = "033001900111")
     private String invoiceNo;
 

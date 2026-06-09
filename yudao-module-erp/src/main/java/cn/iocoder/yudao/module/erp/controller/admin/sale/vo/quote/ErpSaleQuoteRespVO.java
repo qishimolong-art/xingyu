@@ -44,6 +44,7 @@ public class ErpSaleQuoteRespVO {
     private BigDecimal totalTaxPrice;
     private BigDecimal discountPercent;
     private BigDecimal discountPrice;
+    private BigDecimal feeAmount;
     private BigDecimal otherPrice;
     private Integer sourceType;
     private Long sourceId;
@@ -99,6 +100,8 @@ public class ErpSaleQuoteRespVO {
         private String productUnitName;
         @ExcelProperty("数量")
         private BigDecimal count;
+        @ExcelProperty("是否为赠品")
+        private Boolean giftFlag;
         @ExcelProperty("已转数量")
         private BigDecimal convertedCount;
         @ExcelProperty("单价")

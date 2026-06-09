@@ -30,8 +30,20 @@ public interface ErpSaleOutItemMapper extends BaseMapperX<ErpSaleOutItemDO> {
         return selectList(ErpSaleOutItemDO::getOutId, outIds);
     }
 
+    default List<ErpSaleOutItemDO> selectListByIds(Collection<Long> ids) {
+        return selectList(ErpSaleOutItemDO::getId, ids);
+    }
+
     default int deleteByOutId(Long outId) {
         return delete(ErpSaleOutItemDO::getOutId, outId);
+    }
+
+    default Long selectCountByProductId(Long productId) {
+        return selectCount(ErpSaleOutItemDO::getProductId, productId);
+    }
+
+    default Long selectCountByWarehouseId(Long warehouseId) {
+        return selectCount(ErpSaleOutItemDO::getWarehouseId, warehouseId);
     }
 
     /**

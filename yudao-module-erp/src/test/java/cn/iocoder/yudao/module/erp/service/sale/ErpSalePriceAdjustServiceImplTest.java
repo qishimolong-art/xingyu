@@ -34,6 +34,8 @@ import java.util.Map;
 import static cn.iocoder.yudao.framework.test.core.util.AssertUtils.assertServiceException;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.SALE_PRICE_ADJUST_APPROVE_FAIL;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.SALE_PRICE_ADJUST_DELETE_FAIL_APPROVE;
+import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.SALE_PRICE_ADJUST_ITEM_ADJUSTED;
+import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.SALE_PRICE_ADJUST_ITEM_DUPLICATE;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.SALE_PRICE_ADJUST_PROCESS_FAIL;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.SALE_PRICE_ADJUST_UPDATE_FAIL_APPROVE;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -70,6 +72,8 @@ public class ErpSalePriceAdjustServiceImplTest extends BaseMockitoUnitTest {
     private ErpSaleOutItemMapper saleOutItemMapper;
     @Mock
     private ErpProductService productService;
+    @Mock
+    private ErpSaleFieldPermissionMasker fieldPermissionMasker;
 
     @BeforeEach
     public void setUp() {
@@ -447,7 +451,7 @@ public class ErpSalePriceAdjustServiceImplTest extends BaseMockitoUnitTest {
                 .thenReturn(productMap);
 
         List<ErpSaleOutItemForAdjustRespVO> result =
-                salePriceAdjustService.getAdjustableItemsByCustomerId(customerId, null);
+                salePriceAdjustService.getAdjustableItemsByCustomerId(customerId, null, null);
 
         assertNotNull(result);
         assertEquals(1, result.size());
@@ -468,6 +472,56 @@ public class ErpSalePriceAdjustServiceImplTest extends BaseMockitoUnitTest {
 
         // 验证 selectList 被调用了一次（说明走到了"按客户查已审核销售单"的查询路径）
         verify(saleOutMapper, times(1)).selectList(any(LambdaQueryWrapper.class));
+    }
+
+    @Test
+    public void testGetAdjustableItemsByCustomerId_excludeAdjustedDefault() {
+        Long customerId = 902L;
+        Long saleOutId = 1002L;
+
+        ErpSaleOutDO approvedOut = new ErpSaleOutDO()
+                .setId(saleOutId).setNo("XSCK902")
+                .setStatus(ErpAuditStatus.APPROVE.getStatus());
+        when(saleOutMapper.selectList(any(LambdaQueryWrapper.class)))
+                .thenReturn(Collections.singletonList(approvedOut));
+        when(saleOutItemMapper.selectListByOutIds(eq(Collections.singletonList(saleOutId))))
+                .thenReturn(Collections.singletonList(new ErpSaleOutItemDO()
+                        .setId(1202L).setOutId(saleOutId).setProductId(1102L)
+                        .setAdjusted(Boolean.TRUE)));
+
+        List<ErpSaleOutItemForAdjustRespVO> result =
+                salePriceAdjustService.getAdjustableItemsByCustomerId(customerId, null, null);
+
+        assertNotNull(result);
+        assertTrue(result.isEmpty());
+    }
+
+    @Test
+    public void testCreateSalePriceAdjust_duplicateSaleOutItem_throwException() {
+        ErpSalePriceAdjustSaveReqVO reqVO = buildBaseSaveReqVO();
+        reqVO.setItems(Arrays.asList(
+                buildItem("XSCK901", new BigDecimal("1"), new BigDecimal("10.00"), new BigDecimal("11.00")),
+                buildItem("XSCK901", new BigDecimal("1"), new BigDecimal("10.00"), new BigDecimal("12.00"))));
+
+        assertServiceException(() -> salePriceAdjustService.createSalePriceAdjust(reqVO),
+                SALE_PRICE_ADJUST_ITEM_DUPLICATE, 500L);
+
+        verify(salePriceAdjustMapper, never()).insert(any(ErpSalePriceAdjustDO.class));
+    }
+
+    @Test
+    public void testCreateSalePriceAdjust_adjustedSaleOutItem_throwException() {
+        ErpSalePriceAdjustSaveReqVO reqVO = buildBaseSaveReqVO();
+        reqVO.setItems(Collections.singletonList(buildItem("XSCK902",
+                new BigDecimal("1"), new BigDecimal("10.00"), new BigDecimal("11.00"))));
+        when(saleOutItemMapper.selectListByIds(eq(Collections.singleton(500L))))
+                .thenReturn(Collections.singletonList(new ErpSaleOutItemDO()
+                        .setId(500L).setAdjusted(Boolean.TRUE).setAdjustId(900L)));
+
+        assertServiceException(() -> salePriceAdjustService.createSalePriceAdjust(reqVO),
+                SALE_PRICE_ADJUST_ITEM_ADJUSTED, 500L);
+
+        verify(salePriceAdjustMapper, never()).insert(any(ErpSalePriceAdjustDO.class));
     }
 
     // ============================================================

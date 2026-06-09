@@ -34,6 +34,9 @@ public class ErpFinanceTransferSaveReqVO {
     @Schema(description = "财务人员编号", example = "100")
     private Long financeUserId;
 
+    @Schema(description = "所属部门编号", example = "100")
+    private Long deptId;
+
     @Schema(description = "备注", example = "同行转账")
     @Size(max = 512, message = "备注长度不能超过 512 个字符")
     private String remark;

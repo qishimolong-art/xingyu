@@ -29,6 +29,10 @@ public class ErpProductCategoryDO extends BaseDO {
     @TableId
     private Long id;
     /**
+     * Department id.
+     */
+    private Long deptId;
+    /**
      * 父分类编号
      */
     private Long parentId;

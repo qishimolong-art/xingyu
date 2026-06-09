@@ -8,10 +8,13 @@ import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.common.util.collection.MapUtils;
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
 import cn.iocoder.yudao.framework.excel.core.util.ExcelUtils;
+import cn.iocoder.yudao.module.erp.controller.admin.common.vo.ErpExportFieldRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpProductRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.imports.ErpPurchaseImportResultRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.returns.ErpPurchaseReturnExportRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.returns.ErpPurchaseReturnImportExcelVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.returns.ErpPurchaseReturnImportRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.returns.ErpPurchaseReturnOrderImportExcelVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.returns.ErpPurchaseReturnPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.returns.ErpPurchaseReturnRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.returns.ErpPurchaseReturnSaveReqVO;
@@ -23,12 +26,18 @@ import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpWarehouseDO;
 import cn.iocoder.yudao.module.erp.dal.mysql.purchase.ErpPurchaseInItemMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.purchase.ErpPurchaseReturnItemMapper;
+import cn.iocoder.yudao.module.erp.enums.config.ErpFieldConfigModuleEnum;
+import cn.iocoder.yudao.module.erp.framework.excel.ErpExportFieldUtils;
+import cn.iocoder.yudao.module.erp.framework.excel.ErpImportTemplateRequiredFieldUtils;
+import cn.iocoder.yudao.module.erp.service.config.ErpFieldConfigService;
 import cn.iocoder.yudao.module.erp.service.product.ErpProductService;
 import cn.iocoder.yudao.module.erp.service.purchase.ErpPurchaseFieldPermissionMasker;
 import cn.iocoder.yudao.module.erp.service.purchase.ErpPurchaseReturnService;
 import cn.iocoder.yudao.module.erp.service.purchase.ErpSupplierService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpStockService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpWarehouseService;
+import cn.iocoder.yudao.module.system.api.dept.DeptApi;
+import cn.iocoder.yudao.module.system.api.dept.dto.DeptRespDTO;
 import cn.iocoder.yudao.module.system.api.user.AdminUserApi;
 import cn.iocoder.yudao.module.system.api.user.dto.AdminUserRespDTO;
 import io.swagger.v3.oas.annotations.Operation;
@@ -52,6 +61,7 @@ import javax.validation.Valid;
 import java.io.IOException;
 import java.math.BigDecimal;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -67,6 +77,32 @@ import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.
 @RequestMapping("/erp/purchase-return")
 @Validated
 public class ErpPurchaseReturnController {
+
+    private static final String FIELD_PERMISSION_MODULE = "erp_purchase_return";
+    private static final Map<String, String> EXPORT_FIELD_GROUP_MAP = buildExportFieldGroupMap();
+    private static final Map<String, String> EXPORT_FIELD_PERMISSION_MAP = buildExportFieldPermissionMap();
+    private static final Map<String, String> DETAIL_IMPORT_FIELD_ALIAS_MAP = ErpImportTemplateRequiredFieldUtils.aliasMap(
+            "productId", "productCode",
+            "warehouseId", "warehouseName",
+            "count", "count",
+            "item_count", "count",
+            "itemCount", "count",
+            "productPrice", "productPrice",
+            "item_remark", "remark",
+            "itemRemark", "remark");
+    private static final Map<String, String> ORDER_IMPORT_FIELD_ALIAS_MAP = ErpImportTemplateRequiredFieldUtils.aliasMap(
+            "supplierId", "supplierName",
+            "supplierName", "supplierName",
+            "returnTime", "returnTime",
+            "remark", "remark",
+            "productId", "productCode",
+            "warehouseId", "warehouseName",
+            "count", "itemCount",
+            "item_count", "itemCount",
+            "itemCount", "itemCount",
+            "productPrice", "productPrice",
+            "item_remark", "itemRemark",
+            "itemRemark", "itemRemark");
 
     @Resource
     private ErpPurchaseReturnService purchaseReturnService;
@@ -84,9 +120,13 @@ public class ErpPurchaseReturnController {
     private ErpPurchaseReturnItemMapper purchaseReturnItemMapper;
 
     @Resource
+    private DeptApi deptApi;
+    @Resource
     private AdminUserApi adminUserApi;
     @Resource
     private ErpPurchaseFieldPermissionMasker fieldPermissionMasker;
+    @Resource
+    private ErpFieldConfigService fieldConfigService;
 
     @PostMapping("/create")
     @Operation(summary = "创建采购退货")
@@ -120,8 +160,16 @@ public class ErpPurchaseReturnController {
         return success(purchaseReturnService.importPurchaseReturnItems(list));
     }
 
+    @PostMapping("/import-order")
+    @Operation(summary = "Import purchase return order")
+    @PreAuthorize("@ss.hasPermission('erp:purchase-return:create')")
+    public CommonResult<ErpPurchaseImportResultRespVO> importPurchaseReturnOrder(@RequestParam("file") MultipartFile file) throws Exception {
+        List<ErpPurchaseReturnOrderImportExcelVO> list = ExcelUtils.read(file, ErpPurchaseReturnOrderImportExcelVO.class);
+        return success(purchaseReturnService.importPurchaseReturnOrderList(list));
+    }
+
     @GetMapping("/get-import-template")
-    @Operation(summary = "获得采购退货导入模板")
+    @Operation(summary = "获得采购退货明细导入模板")
     @PreAuthorize("@ss.hasPermission('erp:purchase-return:create')")
     public void getImportTemplate(HttpServletResponse response) throws IOException {
         ErpPurchaseReturnImportExcelVO example = new ErpPurchaseReturnImportExcelVO();
@@ -130,8 +178,39 @@ public class ErpPurchaseReturnController {
         example.setProductPrice(new BigDecimal("10.00"));
         example.setWarehouseName("主仓");
         example.setRemark("示例");
-        ExcelUtils.write(response, "采购退货导入模板.xls", "采购退货", ErpPurchaseReturnImportExcelVO.class,
-                java.util.Collections.singletonList(example));
+        ExcelUtils.writeImportTemplate(response, "采购退货明细导入模板.xls", "采购退货明细", ErpPurchaseReturnImportExcelVO.class,
+                java.util.Collections.singletonList(example), null,
+                ErpImportTemplateRequiredFieldUtils.getRequiredFields(fieldConfigService,
+                        ErpFieldConfigModuleEnum.PURCHASE_RETURN, ErpPurchaseReturnImportExcelVO.class,
+                        DETAIL_IMPORT_FIELD_ALIAS_MAP));
+    }
+
+    @GetMapping("/get-order-import-template")
+    @Operation(summary = "Get purchase return order import template")
+    @PreAuthorize("@ss.hasPermission('erp:purchase-return:create')")
+    public void getOrderImportTemplate(HttpServletResponse response) throws IOException {
+        ErpPurchaseReturnOrderImportExcelVO example = new ErpPurchaseReturnOrderImportExcelVO();
+        example.setNo("TH-IMPORT-001");
+        example.setSupplierName("Example Supplier");
+        example.setReturnTime("2026-06-05 09:00:00");
+        example.setRemark("Order remark");
+        example.setProductCode("P000001");
+        example.setWarehouseName("Main Warehouse");
+        example.setItemCount(BigDecimal.ONE);
+        example.setProductPrice(new BigDecimal("10.00"));
+        example.setItemRemark("Item remark");
+
+        ErpPurchaseReturnOrderImportExcelVO secondItem = new ErpPurchaseReturnOrderImportExcelVO();
+        secondItem.setProductCode("P000002");
+        secondItem.setWarehouseName("Main Warehouse");
+        secondItem.setItemCount(new BigDecimal("2"));
+        secondItem.setProductPrice(new BigDecimal("20.00"));
+
+        ExcelUtils.writeImportTemplate(response, "采购退货导入模板.xls", "采购退货",
+                ErpPurchaseReturnOrderImportExcelVO.class, java.util.Arrays.asList(example, secondItem), null,
+                ErpImportTemplateRequiredFieldUtils.getRequiredFields(fieldConfigService,
+                        ErpFieldConfigModuleEnum.PURCHASE_RETURN, ErpPurchaseReturnOrderImportExcelVO.class,
+                        ORDER_IMPORT_FIELD_ALIAS_MAP));
     }
 
     @GetMapping("/get")
@@ -158,6 +237,7 @@ public class ErpPurchaseReturnController {
         Map<Long, ErpPurchaseInItemDO> finalInItemMap = inItemMap;
         Map<Long, BigDecimal> finalReturnedMap = returnedMap;
         Map<Long, AdminUserRespDTO> userMap = adminUserApi.getUserMap(collectUserIds(java.util.Collections.singletonList(purchaseReturn)));
+        DeptRespDTO dept = purchaseReturn.getDeptId() == null ? null : deptApi.getDept(purchaseReturn.getDeptId());
         ErpPurchaseReturnRespVO respVO = BeanUtils.toBean(purchaseReturn, ErpPurchaseReturnRespVO.class, purchaseReturnVO -> {
                 purchaseReturnVO.setItems(BeanUtils.toBean(purchaseReturnItemList, ErpPurchaseReturnRespVO.Item.class, item -> {
                     ErpStockDO stock = stockService.getStock(item.getProductId(), item.getWarehouseId());
@@ -173,6 +253,9 @@ public class ErpPurchaseReturnController {
                         }
                     }
                 }));
+                if (dept != null) {
+                    purchaseReturnVO.setDeptName(dept.getName());
+                }
                 fillUserNames(purchaseReturnVO, userMap);
         });
         fieldPermissionMasker.mask("erp_purchase_return", respVO);
@@ -192,6 +275,7 @@ public class ErpPurchaseReturnController {
     @PreAuthorize("@ss.hasPermission('erp:purchase-return:export')")
     @ApiAccessLog(operateType = EXPORT)
     public void exportPurchaseReturnExcel(@Valid ErpPurchaseReturnPageReqVO pageReqVO,
+                                          @RequestParam(value = "fields", required = false) String fields,
                                           HttpServletResponse response) throws IOException {
         List<ErpPurchaseReturnRespVO> list;
         if (CollUtil.isNotEmpty(pageReqVO.getIds())) {
@@ -202,8 +286,19 @@ public class ErpPurchaseReturnController {
             pageReqVO.setPageSize(PageParam.PAGE_SIZE_NONE);
             list = buildPurchaseReturnVOPageResult(purchaseReturnService.getPurchaseReturnPage(pageReqVO)).getList();
         }
+        Set<String> includeFields = ErpExportFieldUtils.resolveIncludeFields(ErpPurchaseReturnExportRespVO.class,
+                ErpExportFieldUtils.parseFieldParam(fields),
+                fieldPermissionMasker.getHiddenFieldSet(FIELD_PERMISSION_MODULE), EXPORT_FIELD_PERMISSION_MAP);
         ExcelUtils.write(response, "采购退货.xls", "数据", ErpPurchaseReturnExportRespVO.class,
-                buildPurchaseReturnExportList(list));
+                buildPurchaseReturnExportList(list), includeFields);
+    }
+
+    @GetMapping("/export-fields")
+    @Operation(summary = "获得采购退货导出字段")
+    @PreAuthorize("@ss.hasPermission('erp:purchase-return:export')")
+    public CommonResult<List<ErpExportFieldRespVO>> getPurchaseReturnExportFields() {
+        return success(ErpExportFieldUtils.listFields(ErpPurchaseReturnExportRespVO.class, EXPORT_FIELD_GROUP_MAP,
+                fieldPermissionMasker.getHiddenFieldSet(FIELD_PERMISSION_MODULE), EXPORT_FIELD_PERMISSION_MAP));
     }
 
     private PageResult<ErpPurchaseReturnRespVO> buildPurchaseReturnVOPageResult(PageResult<ErpPurchaseReturnDO> pageResult) {
@@ -217,6 +312,8 @@ public class ErpPurchaseReturnController {
                 convertSet(purchaseReturnItemList, ErpPurchaseReturnItemDO::getProductId));
         Map<Long, ErpSupplierDO> supplierMap = supplierService.getSupplierMap(
                 convertSet(pageResult.getList(), ErpPurchaseReturnDO::getSupplierId));
+        Map<Long, DeptRespDTO> deptMap = deptApi.getDeptMap(
+                convertSet(pageResult.getList(), ErpPurchaseReturnDO::getDeptId));
         Map<Long, AdminUserRespDTO> userMap = adminUserApi.getUserMap(collectUserIds(pageResult.getList()));
         return BeanUtils.toBean(pageResult, ErpPurchaseReturnRespVO.class, purchaseReturn -> {
             purchaseReturn.setItems(BeanUtils.toBean(purchaseReturnItemMap.get(purchaseReturn.getId()), ErpPurchaseReturnRespVO.Item.class,
@@ -224,6 +321,7 @@ public class ErpPurchaseReturnController {
                             .setProductBarCode(product.getBarCode()).setProductUnitName(product.getUnitName()))));
             purchaseReturn.setProductNames(CollUtil.join(purchaseReturn.getItems(), "，", ErpPurchaseReturnRespVO.Item::getProductName));
             MapUtils.findAndThen(supplierMap, purchaseReturn.getSupplierId(), supplier -> purchaseReturn.setSupplierName(supplier.getName()));
+            MapUtils.findAndThen(deptMap, purchaseReturn.getDeptId(), dept -> purchaseReturn.setDeptName(dept.getName()));
             fillUserNames(purchaseReturn, userMap);
         });
     }
@@ -319,6 +417,51 @@ public class ErpPurchaseReturnController {
         } catch (NumberFormatException ex) {
             return null;
         }
+    }
+
+    private static Map<String, String> buildExportFieldGroupMap() {
+        Map<String, String> map = new LinkedHashMap<>();
+        map.put("no", "main");
+        map.put("supplierName", "main");
+        map.put("deptName", "main");
+        map.put("returnTime", "main");
+        map.put("status", "main");
+        map.put("creatorName", "system");
+        map.put("updaterName", "system");
+        map.put("updateTime", "system");
+        map.put("feeAmount", "main");
+        map.put("remark", "main");
+        map.put("productCode", "detail");
+        map.put("productName", "detail");
+        map.put("productUnitName", "detail");
+        map.put("sourceInNo", "detail");
+        map.put("itemCount", "detail");
+        map.put("productPrice", "detail");
+        map.put("itemTotalPrice", "detail");
+        map.put("warehouseName", "detail");
+        map.put("warehousePosition", "detail");
+        map.put("batchNo", "detail");
+        map.put("brand", "detail");
+        map.put("itemRemark", "detail");
+        return map;
+    }
+
+    private static Map<String, String> buildExportFieldPermissionMap() {
+        Map<String, String> map = new LinkedHashMap<>();
+        map.put("supplierName", "supplierId");
+        map.put("deptName", "deptId");
+        map.put("productCode", "item_productCode");
+        map.put("productName", "item_productId");
+        map.put("productUnitName", "item_productUnitName");
+        map.put("itemCount", "item_count");
+        map.put("productPrice", "item_productPrice");
+        map.put("itemTotalPrice", "item_totalProductPrice");
+        map.put("warehouseName", "item_warehouseId");
+        map.put("warehousePosition", "item_warehousePosition");
+        map.put("batchNo", "item_batchNo");
+        map.put("brand", "item_brand");
+        map.put("itemRemark", "item_remark");
+        return map;
     }
 
 }

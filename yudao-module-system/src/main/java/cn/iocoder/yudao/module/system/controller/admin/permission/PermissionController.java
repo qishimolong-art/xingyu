@@ -4,8 +4,10 @@ import cn.hutool.core.collection.CollUtil;
 import cn.iocoder.yudao.framework.common.pojo.CommonResult;
 import cn.iocoder.yudao.module.system.controller.admin.permission.vo.permission.PermissionAssignRoleDataScopeReqVO;
 import cn.iocoder.yudao.module.system.controller.admin.permission.vo.permission.PermissionAssignRoleFieldReqVO;
+import cn.iocoder.yudao.module.system.controller.admin.permission.vo.permission.PermissionAssignRoleFormDataScopeReqVO;
 import cn.iocoder.yudao.module.system.controller.admin.permission.vo.permission.PermissionAssignRoleMenuReqVO;
 import cn.iocoder.yudao.module.system.controller.admin.permission.vo.permission.PermissionAssignUserRoleReqVO;
+import cn.iocoder.yudao.module.system.controller.admin.permission.vo.permission.RoleFormDataScopeRespVO;
 import cn.iocoder.yudao.module.system.dal.dataobject.permission.FieldDefinitionDO;
 import cn.iocoder.yudao.module.system.service.permission.PermissionService;
 import cn.iocoder.yudao.module.system.service.tenant.TenantService;
@@ -107,6 +109,23 @@ public class PermissionController {
     @PreAuthorize("@ss.hasPermission('system:permission:assign-user-role')")
     public CommonResult<Boolean> assignUserRole(@Validated @RequestBody PermissionAssignUserRoleReqVO reqVO) {
         permissionService.assignUserRole(reqVO.getUserId(), reqVO.getRoleIds());
+        return success(true);
+    }
+
+    @GetMapping("/list-role-form-data-scopes")
+    @Operation(summary = "获得角色的表单级数据权限列表")
+    @PreAuthorize("@ss.hasPermission('system:permission:assign-role-data-scope')")
+    public CommonResult<List<RoleFormDataScopeRespVO>> getRoleFormDataScopeList(
+            @RequestParam("roleId") Long roleId) {
+        return success(permissionService.getRoleFormDataScopeList(roleId));
+    }
+
+    @PostMapping("/assign-role-form-data-scope")
+    @Operation(summary = "设置角色的表单级数据权限")
+    @PreAuthorize("@ss.hasPermission('system:permission:assign-role-data-scope')")
+    public CommonResult<Boolean> assignRoleFormDataScope(
+            @Valid @RequestBody PermissionAssignRoleFormDataScopeReqVO reqVO) {
+        permissionService.assignRoleFormDataScope(reqVO.getRoleId(), reqVO.getItems());
         return success(true);
     }
 

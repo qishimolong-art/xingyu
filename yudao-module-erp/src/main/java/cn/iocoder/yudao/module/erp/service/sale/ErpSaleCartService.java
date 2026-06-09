@@ -6,6 +6,7 @@ import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartImpo
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartImportRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartSaveReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartUpdateBasicReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartUpdateFileReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleCartDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleCartItemDO;
@@ -22,6 +23,8 @@ public interface ErpSaleCartService {
     Long createSaleCart(@Valid ErpSaleCartSaveReqVO createReqVO);
 
     void updateSaleCart(@Valid ErpSaleCartSaveReqVO updateReqVO);
+
+    void updateSaleCartBasic(@Valid ErpSaleCartUpdateBasicReqVO updateReqVO);
 
     void updateSaleCartFile(@Valid ErpSaleCartUpdateFileReqVO updateReqVO);
 

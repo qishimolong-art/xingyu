@@ -25,6 +25,7 @@ import cn.iocoder.yudao.module.erp.enums.stock.ErpStockRecordBizTypeEnum;
 import cn.iocoder.yudao.module.erp.service.finance.accounting.ErpAutoVoucherBuilder;
 import cn.iocoder.yudao.module.erp.service.finance.accounting.ErpBookOpenService;
 import cn.iocoder.yudao.module.erp.service.finance.accounting.ErpVoucherService;
+import cn.iocoder.yudao.module.erp.service.common.ErpOperateLogService;
 import cn.iocoder.yudao.module.erp.service.product.ErpProductService;
 import cn.iocoder.yudao.module.erp.service.sale.ErpCustomerService;
 import cn.iocoder.yudao.module.erp.service.stock.bo.ErpStockRecordCreateReqBO;
@@ -37,12 +38,15 @@ import javax.annotation.Resource;
 import java.math.BigDecimal;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 
 import static cn.iocoder.yudao.framework.common.exception.util.ServiceExceptionUtil.exception;
 import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.*;
+import static cn.iocoder.yudao.module.erp.enums.LogRecordConstants.ERP_STOCK_OUT_TYPE;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.*;
 
 // TODO 芋艿：记录操作日志
@@ -78,6 +82,8 @@ public class ErpStockOutServiceImpl implements ErpStockOutService {
     private ErpStockRecordService stockRecordService;
     @Resource
     private ErpStockService stockService;
+    @Resource
+    private ErpOperateLogService operateLogService;
 
     @Resource
     private ErpAutoVoucherBuilder autoVoucherBuilder;
@@ -112,6 +118,7 @@ public class ErpStockOutServiceImpl implements ErpStockOutService {
         // 2.2 插入出库单项
         stockOutItems.forEach(o -> o.setOutId(stockOut.getId()));
         stockOutItemMapper.insertBatch(stockOutItems);
+        operateLogService.recordCreate(ERP_STOCK_OUT_TYPE, stockOut.getId(), stockOut.getNo());
         return stockOut.getId();
     }
 
@@ -135,9 +142,13 @@ public class ErpStockOutServiceImpl implements ErpStockOutService {
         ErpStockOutDO updateObj = BeanUtils.toBean(updateReqVO, ErpStockOutDO.class, in -> in
                 .setTotalCount(getSumValue(stockOutItems, ErpStockOutItemDO::getCount, BigDecimal::add))
                 .setTotalPrice(getSumValue(stockOutItems, ErpStockOutItemDO::getTotalPrice, BigDecimal::add)));
+        if (updateObj.getDeptId() == null) {
+            updateObj.setDeptId(stockOut.getDeptId());
+        }
         stockOutMapper.updateById(updateObj);
         // 2.2 更新出库单项
         updateStockOutItemList(updateReqVO.getId(), stockOutItems);
+        operateLogService.recordUpdate(ERP_STOCK_OUT_TYPE, stockOut.getId(), stockOut.getNo());
     }
 
     @Override
@@ -171,6 +182,7 @@ public class ErpStockOutServiceImpl implements ErpStockOutService {
         if (updateCount == 0) {
             throw exception(approve ? STOCK_OUT_APPROVE_FAIL : STOCK_OUT_PROCESS_FAIL);
         }
+        operateLogService.recordStatus(ERP_STOCK_OUT_TYPE, stockOut.getId(), stockOut.getNo(), approve);
 
         // 3. 取出库项
         List<ErpStockOutItemDO> stockOutItems = stockOutItemMapper.selectListByOutId(id);
@@ -215,6 +227,7 @@ public class ErpStockOutServiceImpl implements ErpStockOutService {
     }
 
     private List<ErpStockOutItemDO> validateStockOutItems(List<ErpStockOutSaveReqVO.Item> list) {
+        validateDuplicateStockOutItems(list);
         // 1.1 校验产品存在
         List<ErpProductDO> productList = productService.validProductList(
                 convertSet(list, ErpStockOutSaveReqVO.Item::getProductId));
@@ -225,6 +238,16 @@ public class ErpStockOutServiceImpl implements ErpStockOutService {
         return convertList(list, o -> BeanUtils.toBean(o, ErpStockOutItemDO.class, item -> item
                 .setProductUnitId(productMap.get(item.getProductId()).getUnitId())
                 .setTotalPrice(MoneyUtils.priceMultiply(item.getProductPrice(), item.getCount()))));
+    }
+
+    private void validateDuplicateStockOutItems(List<ErpStockOutSaveReqVO.Item> list) {
+        Set<String> keys = new HashSet<>();
+        for (ErpStockOutSaveReqVO.Item item : list) {
+            String key = item.getProductId() + "-" + item.getWarehouseId();
+            if (!keys.add(key)) {
+                throw exception(STOCK_OUT_ITEM_DUPLICATE, key);
+            }
+        }
     }
 
     private void updateStockOutItemList(Long id, List<ErpStockOutItemDO> newList) {
@@ -266,6 +289,7 @@ public class ErpStockOutServiceImpl implements ErpStockOutService {
             stockOutMapper.deleteById(stockOut.getId());
             // 2.2 删除出库单项
             stockOutItemMapper.deleteByOutId(stockOut.getId());
+            operateLogService.recordDelete(ERP_STOCK_OUT_TYPE, stockOut.getId(), stockOut.getNo());
         });
     }
 

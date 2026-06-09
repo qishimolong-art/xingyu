@@ -19,6 +19,8 @@ import cn.iocoder.yudao.module.erp.service.product.ErpProductService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpStockFieldPermissionMasker;
 import cn.iocoder.yudao.module.erp.service.stock.ErpStockMoveService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpStockService;
+import cn.iocoder.yudao.module.system.api.dept.DeptApi;
+import cn.iocoder.yudao.module.system.api.dept.dto.DeptRespDTO;
 import cn.iocoder.yudao.module.system.api.user.AdminUserApi;
 import cn.iocoder.yudao.module.system.api.user.dto.AdminUserRespDTO;
 import io.swagger.v3.oas.annotations.Operation;
@@ -26,22 +28,31 @@ import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.validation.annotation.Validated;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
 
 import javax.annotation.Resource;
 import javax.servlet.http.HttpServletResponse;
 import javax.validation.Valid;
 import java.io.IOException;
 import java.math.BigDecimal;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import static cn.iocoder.yudao.framework.apilog.core.enums.OperateTypeEnum.EXPORT;
 import static cn.iocoder.yudao.framework.common.pojo.CommonResult.success;
 import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.convertMultiMap;
 import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.convertSet;
 
-@Tag(name = "管理后台 - ERP 库存调拨单")
+@Tag(name = "Admin - ERP stock move")
 @RestController
 @RequestMapping("/erp/stock-move")
 @Validated
@@ -57,19 +68,20 @@ public class ErpStockMoveController {
     private ErpProductService productService;
     @Resource
     private ErpStockFieldPermissionMasker fieldPermissionMasker;
-
+    @Resource
+    private DeptApi deptApi;
     @Resource
     private AdminUserApi adminUserApi;
 
     @PostMapping("/create")
-    @Operation(summary = "创建库存调拨单")
+    @Operation(summary = "Create stock move")
     @PreAuthorize("@ss.hasPermission('erp:stock-move:create')")
     public CommonResult<Long> createStockMove(@Valid @RequestBody ErpStockMoveSaveReqVO createReqVO) {
         return success(stockMoveService.createStockMove(createReqVO));
     }
 
     @PutMapping("/update")
-    @Operation(summary = "更新库存调拨单")
+    @Operation(summary = "Update stock move")
     @PreAuthorize("@ss.hasPermission('erp:stock-move:update')")
     public CommonResult<Boolean> updateStockMove(@Valid @RequestBody ErpStockMoveSaveReqVO updateReqVO) {
         stockMoveService.updateStockMove(updateReqVO);
@@ -77,17 +89,17 @@ public class ErpStockMoveController {
     }
 
     @PutMapping("/update-status")
-    @Operation(summary = "更新库存调拨单的状态")
+    @Operation(summary = "Update stock move status")
     @PreAuthorize("@ss.hasPermission('erp:stock-move:update-status')")
     public CommonResult<Boolean> updateStockMoveStatus(@RequestParam("id") Long id,
-                                                     @RequestParam("status") Integer status) {
+                                                       @RequestParam("status") Integer status) {
         stockMoveService.updateStockMoveStatus(id, status);
         return success(true);
     }
 
     @DeleteMapping("/delete")
-    @Operation(summary = "删除库存调拨单")
-    @Parameter(name = "ids", description = "编号数组", required = true)
+    @Operation(summary = "Delete stock move")
+    @Parameter(name = "ids", description = "ids", required = true)
     @PreAuthorize("@ss.hasPermission('erp:stock-move:delete')")
     public CommonResult<Boolean> deleteStockMove(@RequestParam("ids") List<Long> ids) {
         stockMoveService.deleteStockMove(ids);
@@ -95,73 +107,123 @@ public class ErpStockMoveController {
     }
 
     @GetMapping("/get")
-    @Operation(summary = "获得库存调拨单")
-    @Parameter(name = "id", description = "编号", required = true, example = "1024")
+    @Operation(summary = "Get stock move")
+    @Parameter(name = "id", description = "id", required = true, example = "1024")
     @PreAuthorize("@ss.hasPermission('erp:stock-move:query')")
     public CommonResult<ErpStockMoveRespVO> getStockMove(@RequestParam("id") Long id) {
         ErpStockMoveDO stockMove = stockMoveService.getStockMove(id);
         if (stockMove == null) {
             return success(null);
         }
-        List<ErpStockMoveItemDO> stockMoveItemList = stockMoveService.getStockMoveItemListByMoveId(id);
+        List<ErpStockMoveItemDO> itemList = stockMoveService.getStockMoveItemListByMoveId(id);
         Map<Long, ErpProductRespVO> productMap = productService.getProductVOMap(
-                convertSet(stockMoveItemList, ErpStockMoveItemDO::getProductId));
-        ErpStockMoveRespVO respVO = BeanUtils.toBean(stockMove, ErpStockMoveRespVO.class, stockMoveVO ->
-                stockMoveVO.setItems(BeanUtils.toBean(stockMoveItemList, ErpStockMoveRespVO.Item.class, item -> {
-                    ErpStockDO stock = stockService.getStock(item.getProductId(), item.getFromWarehouseId());
-                    item.setStockCount(stock != null ? stock.getCount() : BigDecimal.ZERO);
-                    MapUtils.findAndThen(productMap, item.getProductId(), product -> item.setProductName(product.getName())
-                            .setProductBarCode(product.getBarCode()).setProductUnitName(product.getUnitName()));
-                })));
+                convertSet(itemList, ErpStockMoveItemDO::getProductId));
+        Set<Long> userIds = new HashSet<>();
+        addUserId(userIds, stockMove.getCreator());
+        addUserId(userIds, stockMove.getUpdater());
+        Map<Long, AdminUserRespDTO> userMap = adminUserApi.getUserMap(userIds);
+        DeptRespDTO dept = stockMove.getDeptId() == null ? null : deptApi.getDept(stockMove.getDeptId());
+
+        ErpStockMoveRespVO respVO = BeanUtils.toBean(stockMove, ErpStockMoveRespVO.class, vo -> {
+            vo.setItems(BeanUtils.toBean(itemList, ErpStockMoveRespVO.Item.class, item -> {
+                ErpStockDO stock = stockService.getStock(item.getProductId(), item.getFromWarehouseId());
+                item.setStockCount(stock != null ? stock.getCount() : BigDecimal.ZERO);
+                fillProduct(item, productMap.get(item.getProductId()));
+            }));
+            vo.setProductNames(CollUtil.join(vo.getItems(), ", ", ErpStockMoveRespVO.Item::getProductName));
+            vo.setProductCodes(CollUtil.join(vo.getItems(), ", ", ErpStockMoveRespVO.Item::getProductCode));
+            if (dept != null) {
+                vo.setDeptName(dept.getName());
+            }
+            fillUserNames(vo, userMap);
+        });
         fieldPermissionMasker.maskFormWithItems(FIELD_PERMISSION_MODULE, respVO);
         return success(respVO);
     }
 
     @GetMapping("/page")
-    @Operation(summary = "获得库存调拨单分页")
+    @Operation(summary = "Get stock move page")
     @PreAuthorize("@ss.hasPermission('erp:stock-move:query')")
     public CommonResult<PageResult<ErpStockMoveRespVO>> getStockMovePage(@Valid ErpStockMovePageReqVO pageReqVO) {
-        PageResult<ErpStockMoveDO> pageResult = stockMoveService.getStockMovePage(pageReqVO);
-        return success(buildStockMoveVOPageResult(pageResult));
+        return success(buildStockMoveVOPageResult(stockMoveService.getStockMovePage(pageReqVO)));
     }
 
     @GetMapping("/export-excel")
-    @Operation(summary = "导出库存调拨单 Excel")
+    @Operation(summary = "Export stock move")
     @PreAuthorize("@ss.hasPermission('erp:stock-move:export')")
     @ApiAccessLog(operateType = EXPORT)
     public void exportStockMoveExcel(@Valid ErpStockMovePageReqVO pageReqVO,
-              HttpServletResponse response) throws IOException {
+                                     HttpServletResponse response) throws IOException {
         pageReqVO.setPageSize(PageParam.PAGE_SIZE_NONE);
-        List<ErpStockMoveRespVO> list = buildStockMoveVOPageResult(stockMoveService.getStockMovePage(pageReqVO)).getList();
-        // 导出 Excel
-        ExcelUtils.write(response, "库存调拨单.xls", "数据", ErpStockMoveRespVO.class, list);
+        List<ErpStockMoveRespVO> list = buildStockMoveVOPageResult(
+                stockMoveService.getStockMovePage(pageReqVO)).getList();
+        ExcelUtils.write(response, "stock-move.xls", "data", ErpStockMoveRespVO.class, list);
     }
 
     private PageResult<ErpStockMoveRespVO> buildStockMoveVOPageResult(PageResult<ErpStockMoveDO> pageResult) {
         if (CollUtil.isEmpty(pageResult.getList())) {
             return PageResult.empty(pageResult.getTotal());
         }
-        // 1.1 调拨项
-        List<ErpStockMoveItemDO> stockMoveItemList = stockMoveService.getStockMoveItemListByMoveIds(
+        List<ErpStockMoveItemDO> itemList = stockMoveService.getStockMoveItemListByMoveIds(
                 convertSet(pageResult.getList(), ErpStockMoveDO::getId));
-        Map<Long, List<ErpStockMoveItemDO>> stockMoveItemMap = convertMultiMap(stockMoveItemList, ErpStockMoveItemDO::getMoveId);
-        // 1.2 产品信息
+        Map<Long, List<ErpStockMoveItemDO>> itemMap = convertMultiMap(itemList, ErpStockMoveItemDO::getMoveId);
         Map<Long, ErpProductRespVO> productMap = productService.getProductVOMap(
-                convertSet(stockMoveItemList, ErpStockMoveItemDO::getProductId));
-        // 1.3 TODO 芋艿：搞仓库信息
-        // 1.4 管理员信息
-        Map<Long, AdminUserRespDTO> userMap = adminUserApi.getUserMap(
-                convertSet(pageResult.getList(), stockMove -> Long.parseLong(stockMove.getCreator())));
-        // 2. 开始拼接
-        return BeanUtils.toBean(pageResult, ErpStockMoveRespVO.class, stockMove -> {
-            stockMove.setItems(BeanUtils.toBean(stockMoveItemMap.get(stockMove.getId()), ErpStockMoveRespVO.Item.class,
-                    item -> MapUtils.findAndThen(productMap, item.getProductId(), product -> item.setProductName(product.getName())
-                            .setProductBarCode(product.getBarCode()).setProductUnitName(product.getUnitName()))));
-            stockMove.setProductNames(CollUtil.join(stockMove.getItems(), "，", ErpStockMoveRespVO.Item::getProductName));
-            // TODO 芋艿：
-//            MapUtils.findAndThen(customerMap, stockMove.getCustomerId(), supplier -> stockMove.setCustomerName(supplier.getName()));
-            MapUtils.findAndThen(userMap, Long.parseLong(stockMove.getCreator()), user -> stockMove.setCreatorName(user.getNickname()));
+                convertSet(itemList, ErpStockMoveItemDO::getProductId));
+        Map<Long, DeptRespDTO> deptMap = deptApi.getDeptMap(convertSet(pageResult.getList(), ErpStockMoveDO::getDeptId));
+        Set<Long> userIds = new HashSet<>();
+        pageResult.getList().forEach(stockMove -> {
+            addUserId(userIds, stockMove.getCreator());
+            addUserId(userIds, stockMove.getUpdater());
         });
+        Map<Long, AdminUserRespDTO> userMap = adminUserApi.getUserMap(userIds);
+
+        return BeanUtils.toBean(pageResult, ErpStockMoveRespVO.class, vo -> {
+            vo.setItems(BeanUtils.toBean(itemMap.get(vo.getId()), ErpStockMoveRespVO.Item.class,
+                    item -> fillProduct(item, productMap.get(item.getProductId()))));
+            vo.setProductNames(CollUtil.join(vo.getItems(), ", ", ErpStockMoveRespVO.Item::getProductName));
+            vo.setProductCodes(CollUtil.join(vo.getItems(), ", ", ErpStockMoveRespVO.Item::getProductCode));
+            MapUtils.findAndThen(deptMap, vo.getDeptId(), dept -> vo.setDeptName(dept.getName()));
+            fillUserNames(vo, userMap);
+        });
+    }
+
+    private void fillProduct(ErpStockMoveRespVO.Item item, ErpProductRespVO product) {
+        if (product == null) {
+            return;
+        }
+        item.setProductName(product.getName())
+                .setProductCode(product.getCode())
+                .setProductBarCode(product.getBarCode())
+                .setProductUnitName(product.getUnitName());
+    }
+
+    private void fillUserNames(ErpStockMoveRespVO stockMove, Map<Long, AdminUserRespDTO> userMap) {
+        Long creatorId = parseUserId(stockMove.getCreator());
+        if (creatorId != null) {
+            MapUtils.findAndThen(userMap, creatorId, user -> stockMove.setCreatorName(user.getNickname()));
+        }
+        Long updaterId = parseUserId(stockMove.getUpdater());
+        if (updaterId != null) {
+            MapUtils.findAndThen(userMap, updaterId, user -> stockMove.setUpdaterName(user.getNickname()));
+        }
+    }
+
+    private void addUserId(Set<Long> userIds, String userId) {
+        Long parsed = parseUserId(userId);
+        if (parsed != null) {
+            userIds.add(parsed);
+        }
+    }
+
+    private Long parseUserId(String userId) {
+        if (userId == null || userId.trim().isEmpty()) {
+            return null;
+        }
+        try {
+            return Long.parseLong(userId);
+        } catch (NumberFormatException ignored) {
+            return null;
+        }
     }
 
 }

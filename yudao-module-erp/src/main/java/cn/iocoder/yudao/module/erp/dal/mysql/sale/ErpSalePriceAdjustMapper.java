@@ -20,9 +20,14 @@ public interface ErpSalePriceAdjustMapper extends BaseMapperX<ErpSalePriceAdjust
                 .likeIfPresent(ErpSalePriceAdjustDO::getNo, reqVO.getNo())
                 .eqIfPresent(ErpSalePriceAdjustDO::getStatus, reqVO.getStatus())
                 .eqIfPresent(ErpSalePriceAdjustDO::getCustomerId, reqVO.getCustomerId())
+                .eqIfPresent(ErpSalePriceAdjustDO::getDeptId, reqVO.getDeptId())
                 .betweenIfPresent(ErpSalePriceAdjustDO::getAdjustDate, reqVO.getAdjustDate())
                 .inIfPresent(ErpSalePriceAdjustDO::getId, reqVO.getIds())
                 .orderByDesc(ErpSalePriceAdjustDO::getId));
+    }
+
+    default Long selectCountByCustomerId(Long customerId) {
+        return selectCount(ErpSalePriceAdjustDO::getCustomerId, customerId);
     }
 
 }

@@ -23,6 +23,7 @@ public interface ErpStockOutMapper extends BaseMapperX<ErpStockOutDO> {
                 .eqIfPresent(ErpStockOutDO::getCustomerId, reqVO.getCustomerId())
                 .betweenIfPresent(ErpStockOutDO::getOutTime, reqVO.getOutTime())
                 .eqIfPresent(ErpStockOutDO::getStatus, reqVO.getStatus())
+                .eqIfPresent(ErpStockOutDO::getDeptId, reqVO.getDeptId())
                 .likeIfPresent(ErpStockOutDO::getRemark, reqVO.getRemark())
                 .eqIfPresent(ErpStockOutDO::getCreator, reqVO.getCreator())
                 .orderByDesc(ErpStockOutDO::getId);

@@ -7,6 +7,7 @@ import cn.iocoder.yudao.framework.common.pojo.PageParam;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
 import cn.iocoder.yudao.framework.excel.core.util.ExcelUtils;
+import cn.iocoder.yudao.module.erp.controller.admin.common.vo.ErpExportFieldRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.customer.ErpCustomerBatchUpdateReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.customer.ErpCustomerImportExcelVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.customer.ErpCustomerPageReqVO;
@@ -14,6 +15,11 @@ import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.customer.ErpCustomer
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.customer.ErpCustomerSaveReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpCustomerDO;
 import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpSaleOutMapper;
+import cn.iocoder.yudao.module.erp.enums.config.ErpFieldConfigModuleEnum;
+import cn.iocoder.yudao.module.erp.framework.excel.ErpExportFieldUtils;
+import cn.iocoder.yudao.module.erp.framework.excel.ErpImportTemplateRequiredFieldUtils;
+import cn.iocoder.yudao.module.erp.service.common.ErpExportCaptchaService;
+import cn.iocoder.yudao.module.erp.service.config.ErpFieldConfigService;
 import cn.iocoder.yudao.module.erp.service.sale.ErpCustomerService;
 import cn.iocoder.yudao.module.erp.service.sale.ErpSaleFieldPermissionMasker;
 import cn.iocoder.yudao.module.erp.service.sale.bo.ErpCustomerSaleStatsBO;
@@ -30,7 +36,10 @@ import javax.servlet.http.HttpServletResponse;
 import javax.validation.Valid;
 import java.io.IOException;
 import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 import static cn.iocoder.yudao.framework.apilog.core.enums.OperateTypeEnum.EXPORT;
 import static cn.iocoder.yudao.framework.common.pojo.CommonResult.success;
@@ -46,6 +55,8 @@ import cn.hutool.core.collection.CollUtil;
 public class ErpCustomerController {
 
     private static final String FIELD_PERMISSION_MODULE = "erp_customer";
+    private static final Map<String, String> EXPORT_FIELD_GROUP_MAP = buildExportFieldGroupMap();
+    private static final Map<String, String> EXPORT_FIELD_PERMISSION_MAP = buildExportFieldPermissionMap();
 
     @Resource
     private ErpCustomerService customerService;
@@ -54,6 +65,10 @@ public class ErpCustomerController {
     private ErpSaleOutMapper saleOutMapper;
     @Resource
     private ErpSaleFieldPermissionMasker fieldPermissionMasker;
+    @Resource
+    private ErpFieldConfigService fieldConfigService;
+    @Resource
+    private ErpExportCaptchaService exportCaptchaService;
 
     @PostMapping("/create")
     @Operation(summary = "创建客户")
@@ -132,13 +147,28 @@ public class ErpCustomerController {
     @PreAuthorize("@ss.hasPermission('erp:customer:export')")
     @ApiAccessLog(operateType = EXPORT)
     public void exportCustomerExcel(@Valid ErpCustomerPageReqVO pageReqVO,
+              @RequestParam(value = "captchaCode", required = false) String captchaCode,
+              @RequestParam(value = "verifyCode", required = false) String verifyCode,
+              @RequestParam(value = "fields", required = false) String fields,
               HttpServletResponse response) throws IOException {
+        exportCaptchaService.validate(captchaCode, verifyCode);
         pageReqVO.setPageSize(PageParam.PAGE_SIZE_NONE);
         List<ErpCustomerDO> list = customerService.getCustomerPage(pageReqVO).getList();
         List<ErpCustomerRespVO> rows = BeanUtils.toBean(list, ErpCustomerRespVO.class);
         fieldPermissionMasker.maskForms(FIELD_PERMISSION_MODULE, rows);
+        Set<String> includeFields = ErpExportFieldUtils.resolveIncludeFields(ErpCustomerRespVO.class,
+                ErpExportFieldUtils.parseFieldParam(fields),
+                fieldPermissionMasker.getHiddenFieldSet(FIELD_PERMISSION_MODULE), EXPORT_FIELD_PERMISSION_MAP);
         // 导出 Excel
-        ExcelUtils.write(response, "客户.xls", "数据", ErpCustomerRespVO.class, rows);
+        ExcelUtils.write(response, "客户.xls", "数据", ErpCustomerRespVO.class, rows, includeFields);
+    }
+
+    @GetMapping("/export-fields")
+    @Operation(summary = "Get customer export fields")
+    @PreAuthorize("@ss.hasPermission('erp:customer:export')")
+    public CommonResult<List<ErpExportFieldRespVO>> getCustomerExportFields() {
+        return success(ErpExportFieldUtils.listFields(ErpCustomerRespVO.class, EXPORT_FIELD_GROUP_MAP,
+                fieldPermissionMasker.getHiddenFieldSet(FIELD_PERMISSION_MODULE), EXPORT_FIELD_PERMISSION_MAP));
     }
 
     @GetMapping("/get-import-template")
@@ -146,7 +176,16 @@ public class ErpCustomerController {
     @PreAuthorize("@ss.hasPermission('erp:customer:import')")
     public void importTemplate(HttpServletResponse response) throws IOException {
         List<ErpCustomerImportExcelVO> list = Collections.singletonList(new ErpCustomerImportExcelVO());
-        ExcelUtils.write(response, "客户导入模板.xls", "客户", ErpCustomerImportExcelVO.class, list);
+        ExcelUtils.writeImportTemplate(response, "客户导入模板.xls", "客户", ErpCustomerImportExcelVO.class, list, null,
+                ErpImportTemplateRequiredFieldUtils.getRequiredFields(fieldConfigService,
+                        ErpFieldConfigModuleEnum.CUSTOMER, ErpCustomerImportExcelVO.class,
+                        ErpImportTemplateRequiredFieldUtils.aliasMap(
+                                "name", "name",
+                                "code", "code",
+                                "contact", "contact",
+                                "mobile", "mobile",
+                                "telephone", "telephone",
+                                "address", "address")));
     }
 
     @PostMapping("/import")
@@ -164,6 +203,40 @@ public class ErpCustomerController {
     public CommonResult<Boolean> batchUpdateCustomer(@Valid @RequestBody ErpCustomerBatchUpdateReqVO reqVO) {
         customerService.batchUpdateCustomer(reqVO);
         return success(true);
+    }
+
+    private static Map<String, String> buildExportFieldGroupMap() {
+        Map<String, String> map = new LinkedHashMap<>();
+        map.put("id", "main");
+        map.put("code", "main");
+        map.put("name", "main");
+        map.put("shortName", "main");
+        map.put("customerType", "main");
+        map.put("enterpriseMatchStatus", "main");
+        map.put("contact", "main");
+        map.put("mobile", "main");
+        map.put("telephone", "main");
+        map.put("email", "main");
+        map.put("fax", "main");
+        map.put("address", "main");
+        map.put("remark", "main");
+        map.put("status", "main");
+        map.put("sort", "main");
+        map.put("taxNo", "finance_info");
+        map.put("settleMethod", "finance_info");
+        map.put("taxPercent", "finance_info");
+        map.put("bankName", "finance_info");
+        map.put("bankAccount", "finance_info");
+        map.put("bankAddress", "finance_info");
+        map.put("saleUserId", "main");
+        map.put("priceLevel", "main");
+        map.put("routeId", "main");
+        map.put("createTime", "system");
+        return map;
+    }
+
+    private static Map<String, String> buildExportFieldPermissionMap() {
+        return new LinkedHashMap<>();
     }
 
 }

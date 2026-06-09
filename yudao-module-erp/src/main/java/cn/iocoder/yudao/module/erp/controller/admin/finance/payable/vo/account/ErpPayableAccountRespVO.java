@@ -49,6 +49,9 @@ public class ErpPayableAccountRespVO {
     @Schema(description = "付款金额")
     private BigDecimal paymentAmount;
 
+    @Schema(description = "核销金额")
+    private BigDecimal writeOffAmount;
+
     @Schema(description = "应付余额")
     private BigDecimal balance;
 

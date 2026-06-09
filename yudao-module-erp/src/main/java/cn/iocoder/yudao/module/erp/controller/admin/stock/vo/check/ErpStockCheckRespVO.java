@@ -27,6 +27,14 @@ public class ErpStockCheckRespVO {
     @ExcelProperty("盘点单号")
     private String no;
 
+    @Schema(description = "所属部门", example = "100")
+    @ExcelProperty("所属部门ID")
+    private Long deptId;
+
+    @Schema(description = "所属部门名称")
+    @ExcelProperty("所属部门")
+    private String deptName;
+
     @Schema(description = "盘点时间", requiredMode = Schema.RequiredMode.REQUIRED)
     @ExcelProperty("盘点时间")
     private LocalDateTime checkTime;
@@ -56,9 +64,17 @@ public class ErpStockCheckRespVO {
     @Schema(description = "创建人名称", example = "芋道")
     private String creatorName;
 
+    private String updater;
+
     @Schema(description = "创建时间", requiredMode = Schema.RequiredMode.REQUIRED)
     @ExcelProperty("创建时间")
     private LocalDateTime createTime;
+
+    @Schema(description = "修改人名称")
+    private String updaterName;
+
+    @Schema(description = "修改时间")
+    private LocalDateTime updateTime;
 
     @Schema(description = "盘点项列表", requiredMode = Schema.RequiredMode.REQUIRED)
     private List<Item> items;
@@ -66,6 +82,10 @@ public class ErpStockCheckRespVO {
     @Schema(description = "产品信息", requiredMode = Schema.RequiredMode.REQUIRED)
     @ExcelProperty("产品信息")
     private String productNames;
+
+    @Schema(description = "产品编码")
+    @ExcelProperty("产品编码")
+    private String productCodes;
 
     @Data
     public static class Item {
@@ -101,6 +121,8 @@ public class ErpStockCheckRespVO {
 
         @Schema(description = "产品名称", requiredMode = Schema.RequiredMode.REQUIRED, example = "巧克力")
         private String productName;
+        @Schema(description = "产品编码")
+        private String productCode;
         @Schema(description = "产品条码", requiredMode = Schema.RequiredMode.REQUIRED, example = "A9985")
         private String productBarCode;
         @Schema(description = "产品单位名称", requiredMode = Schema.RequiredMode.REQUIRED, example = "盒")

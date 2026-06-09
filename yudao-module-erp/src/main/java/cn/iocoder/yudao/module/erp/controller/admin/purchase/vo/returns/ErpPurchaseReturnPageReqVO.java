@@ -28,6 +28,9 @@ public class ErpPurchaseReturnPageReqVO extends PageParam {
     @Schema(description = "供应商编号", example = "1724")
     private Long supplierId;
 
+    @Schema(description = "deptId", example = "100")
+    private Long deptId;
+
     @Schema(description = "退货时间")
     @DateTimeFormat(pattern = FORMAT_YEAR_MONTH_DAY_HOUR_MINUTE_SECOND)
     private LocalDateTime[] returnTime;

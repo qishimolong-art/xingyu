@@ -3,8 +3,11 @@ package cn.iocoder.yudao.module.erp.dal.mysql.purchase;
 import cn.hutool.core.collection.CollUtil;
 import cn.iocoder.yudao.framework.mybatis.core.mapper.BaseMapperX;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseReturnItemDO;
+import cn.iocoder.yudao.module.erp.enums.ErpAuditStatus;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import org.apache.ibatis.annotations.Mapper;
+import org.apache.ibatis.annotations.Param;
+import org.apache.ibatis.annotations.Select;
 
 import java.math.BigDecimal;
 import java.util.Collection;
@@ -32,6 +35,14 @@ public interface ErpPurchaseReturnItemMapper extends BaseMapperX<ErpPurchaseRetu
 
     default int deleteByReturnId(Long returnId) {
         return delete(ErpPurchaseReturnItemDO::getReturnId, returnId);
+    }
+
+    default Long selectCountByProductId(Long productId) {
+        return selectCount(ErpPurchaseReturnItemDO::getProductId, productId);
+    }
+
+    default Long selectCountByWarehouseId(Long warehouseId) {
+        return selectCount(ErpPurchaseReturnItemDO::getWarehouseId, warehouseId);
     }
 
     /**
@@ -63,10 +74,8 @@ public interface ErpPurchaseReturnItemMapper extends BaseMapperX<ErpPurchaseRetu
         if (CollUtil.isEmpty(sourceInItemIds)) {
             return Collections.emptyMap();
         }
-        List<Map<String, Object>> result = selectMaps(new QueryWrapper<ErpPurchaseReturnItemDO>()
-                .select("source_in_item_id, SUM(count) AS sum_count")
-                .groupBy("source_in_item_id")
-                .in("source_in_item_id", sourceInItemIds));
+        List<Map<String, Object>> result = selectApprovedReturnedCountListBySourceInItemIds(
+                sourceInItemIds, null, ErpAuditStatus.APPROVE.getStatus());
         return convertMap(result,
                 obj -> (Long) obj.get("source_in_item_id"),
                 obj -> (BigDecimal) obj.get("sum_count"));
@@ -84,17 +93,33 @@ public interface ErpPurchaseReturnItemMapper extends BaseMapperX<ErpPurchaseRetu
         if (CollUtil.isEmpty(sourceInItemIds)) {
             return Collections.emptyMap();
         }
-        QueryWrapper<ErpPurchaseReturnItemDO> wrapper = new QueryWrapper<ErpPurchaseReturnItemDO>()
-                .select("source_in_item_id, SUM(count) AS sum_count")
-                .groupBy("source_in_item_id")
-                .in("source_in_item_id", sourceInItemIds);
-        if (excludeReturnId != null) {
-            wrapper.ne("return_id", excludeReturnId);
-        }
-        List<Map<String, Object>> result = selectMaps(wrapper);
+        List<Map<String, Object>> result = selectApprovedReturnedCountListBySourceInItemIds(
+                sourceInItemIds, excludeReturnId, ErpAuditStatus.APPROVE.getStatus());
         return convertMap(result,
                 obj -> (Long) obj.get("source_in_item_id"),
                 obj -> (BigDecimal) obj.get("sum_count"));
     }
+
+    @Select({
+            "<script>",
+            "SELECT pri.source_in_item_id, SUM(pri.count) AS sum_count",
+            "  FROM erp_purchase_return_items pri",
+            " INNER JOIN erp_purchase_return pr ON pr.id = pri.return_id",
+            "   AND pr.deleted = 0 AND pr.status = #{status}",
+            " WHERE pri.deleted = 0",
+            "   AND pri.source_in_item_id IN",
+            " <foreach collection='sourceInItemIds' item='sourceInItemId' open='(' separator=',' close=')'>",
+            "   #{sourceInItemId}",
+            " </foreach>",
+            " <if test='excludeReturnId != null'>",
+            "   AND pri.return_id != #{excludeReturnId}",
+            " </if>",
+            " GROUP BY pri.source_in_item_id",
+            "</script>"
+    })
+    List<Map<String, Object>> selectApprovedReturnedCountListBySourceInItemIds(
+            @Param("sourceInItemIds") Collection<Long> sourceInItemIds,
+            @Param("excludeReturnId") Long excludeReturnId,
+            @Param("status") Integer status);
 
 }

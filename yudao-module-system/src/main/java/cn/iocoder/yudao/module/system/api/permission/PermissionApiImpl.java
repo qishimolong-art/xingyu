@@ -1,7 +1,10 @@
 package cn.iocoder.yudao.module.system.api.permission;
 
 import cn.iocoder.yudao.framework.common.biz.system.permission.dto.DeptDataPermissionRespDTO;
+import cn.iocoder.yudao.framework.common.util.collection.CollectionUtils;
+import cn.iocoder.yudao.module.system.dal.dataobject.user.AdminUserDO;
 import cn.iocoder.yudao.module.system.service.permission.PermissionService;
+import cn.iocoder.yudao.module.system.service.user.AdminUserService;
 import org.springframework.stereotype.Service;
 
 import javax.annotation.Resource;
@@ -19,6 +22,8 @@ public class PermissionApiImpl implements PermissionApi {
 
     @Resource
     private PermissionService permissionService;
+    @Resource
+    private AdminUserService adminUserService;
 
     @Override
     public Set<Long> getUserRoleIdListByRoleIds(Collection<Long> roleIds) {
@@ -43,6 +48,21 @@ public class PermissionApiImpl implements PermissionApi {
     @Override
     public DeptDataPermissionRespDTO getDeptDataPermission(Long userId) {
         return permissionService.getDeptDataPermission(userId);
+    }
+
+    @Override
+    public DeptDataPermissionRespDTO getDeptDataPermission(Long userId, String formKey) {
+        return permissionService.getDeptDataPermission(userId, formKey);
+    }
+
+    @Override
+    public Set<Long> getDeptIdsByUserId(Long userId) {
+        return adminUserService.getUserDeptIdListByUserId(userId);
+    }
+
+    @Override
+    public Set<Long> getUserIdsByDeptIds(Collection<Long> deptIds) {
+        return CollectionUtils.convertSet(adminUserService.getUserListByDeptIds(deptIds), AdminUserDO::getId);
     }
 
 }

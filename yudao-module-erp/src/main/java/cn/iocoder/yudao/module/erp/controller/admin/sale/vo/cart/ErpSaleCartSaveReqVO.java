@@ -30,6 +30,8 @@ public class ErpSaleCartSaveReqVO {
 
     private BigDecimal discountPercent;
 
+    private BigDecimal feeAmount;
+
     private BigDecimal otherPrice;
 
     private String fileUrl;
@@ -79,6 +81,9 @@ public class ErpSaleCartSaveReqVO {
 
         @NotNull(message = "产品数量不能为空")
         private BigDecimal count;
+
+        @Schema(description = "是否赠品", example = "false")
+        private Boolean giftFlag;
 
         private BigDecimal taxPercent;
 

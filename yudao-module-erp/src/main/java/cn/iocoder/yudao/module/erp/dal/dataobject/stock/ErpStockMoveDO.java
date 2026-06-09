@@ -34,6 +34,10 @@ public class ErpStockMoveDO extends BaseDO {
      */
     private String no;
     /**
+     * Department id.
+     */
+    private Long deptId;
+    /**
      * 调拨时间
      */
     private LocalDateTime moveTime;

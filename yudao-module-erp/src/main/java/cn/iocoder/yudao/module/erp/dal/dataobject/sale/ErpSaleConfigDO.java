@@ -48,6 +48,11 @@ public class ErpSaleConfigDO extends BaseDO {
     private Integer status;
 
     /**
+     * 部门 ID
+     */
+    private Long deptId;
+
+    /**
      * 排序
      */
     private Integer sort;

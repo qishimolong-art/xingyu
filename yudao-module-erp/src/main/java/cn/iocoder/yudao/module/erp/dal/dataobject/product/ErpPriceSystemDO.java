@@ -24,6 +24,10 @@ public class ErpPriceSystemDO extends BaseDO {
     /** 价格体系编号 */
     @TableId
     private Long id;
+    /**
+     * Department id.
+     */
+    private Long deptId;
     /** 编码（唯一，如 "PS001"） */
     private String code;
     /** 名称（如 "批发价"、"零售价"） */

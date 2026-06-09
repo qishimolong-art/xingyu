@@ -32,6 +32,9 @@ public class ErpSaleConfigSaveReqVO {
     @NotNull(message = "状态不能为空")
     private Integer status;
 
+    @Schema(description = "部门编号", example = "1")
+    private Long deptId;
+
     @Schema(description = "排序", example = "1")
     private Integer sort;
 

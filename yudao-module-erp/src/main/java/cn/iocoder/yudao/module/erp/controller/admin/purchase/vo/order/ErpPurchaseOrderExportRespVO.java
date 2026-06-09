@@ -41,6 +41,9 @@ public class ErpPurchaseOrderExportRespVO {
     @ExcelProperty("总金额")
     private BigDecimal totalPrice;
 
+    @ExcelProperty("费用金额")
+    private BigDecimal feeAmount;
+
     @ExcelProperty("备注")
     private String remark;
 
@@ -58,6 +61,9 @@ public class ErpPurchaseOrderExportRespVO {
 
     @ExcelProperty("单价")
     private BigDecimal productPrice;
+
+    @ExcelProperty("赠品")
+    private String gift;
 
     @ExcelProperty("金额")
     private BigDecimal itemTotalPrice;

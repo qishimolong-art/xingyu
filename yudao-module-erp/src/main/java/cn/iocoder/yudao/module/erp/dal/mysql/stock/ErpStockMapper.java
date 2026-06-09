@@ -30,6 +30,11 @@ public interface ErpStockMapper extends BaseMapperX<ErpStockDO> {
     }
 
     default PageResult<ErpStockDO> selectPage(ErpStockPageReqVO reqVO, Collection<Long> productIdFilter) {
+        return selectPage(reqVO, productIdFilter, null);
+    }
+
+    default PageResult<ErpStockDO> selectPage(ErpStockPageReqVO reqVO, Collection<Long> productIdFilter,
+                                             Collection<Long> warehouseIdFilter) {
         LambdaQueryWrapperX<ErpStockDO> wrapper = new LambdaQueryWrapperX<ErpStockDO>()
                 .eqIfPresent(ErpStockDO::getProductId, reqVO.getProductId())
                 .eqIfPresent(ErpStockDO::getWarehouseId, reqVO.getWarehouseId())
@@ -41,6 +46,12 @@ public interface ErpStockMapper extends BaseMapperX<ErpStockDO> {
                 return PageResult.empty(0L);
             }
             wrapper.in(ErpStockDO::getProductId, productIdFilter);
+        }
+        if (warehouseIdFilter != null) {
+            if (warehouseIdFilter.isEmpty()) {
+                return PageResult.empty(0L);
+            }
+            wrapper.in(ErpStockDO::getWarehouseId, warehouseIdFilter);
         }
         // 库存数筛选
         if (reqVO.getCountFilter() != null) {
@@ -61,6 +72,10 @@ public interface ErpStockMapper extends BaseMapperX<ErpStockDO> {
     default ErpStockDO selectByProductIdAndWarehouseId(Long productId, Long warehouseId) {
         return selectOne(ErpStockDO::getProductId, productId,
                 ErpStockDO::getWarehouseId, warehouseId);
+    }
+
+    default Long selectCountByWarehouseId(Long warehouseId) {
+        return selectCount(ErpStockDO::getWarehouseId, warehouseId);
     }
 
     default int updateCountIncrement(Long id, BigDecimal count, boolean negativeEnable) {

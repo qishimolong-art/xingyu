@@ -24,6 +24,7 @@ public interface ErpFinancePaymentMapper extends BaseMapperX<ErpFinancePaymentDO
                 .eqIfPresent(ErpFinancePaymentDO::getSupplierId, reqVO.getSupplierId())
                 .eqIfPresent(ErpFinancePaymentDO::getCreator, reqVO.getCreator())
                 .eqIfPresent(ErpFinancePaymentDO::getFinanceUserId, reqVO.getFinanceUserId())
+                .eqIfPresent(ErpFinancePaymentDO::getDeptId, reqVO.getDeptId())
                 .eqIfPresent(ErpFinancePaymentDO::getAccountId, reqVO.getAccountId())
                 .eqIfPresent(ErpFinancePaymentDO::getStatus, reqVO.getStatus())
                 .likeIfPresent(ErpFinancePaymentDO::getRemark, reqVO.getRemark())

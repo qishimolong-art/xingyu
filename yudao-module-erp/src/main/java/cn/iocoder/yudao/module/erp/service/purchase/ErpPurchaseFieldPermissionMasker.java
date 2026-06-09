@@ -7,6 +7,7 @@ import org.springframework.stereotype.Component;
 import javax.annotation.Resource;
 import java.lang.reflect.Field;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -20,15 +21,22 @@ public class ErpPurchaseFieldPermissionMasker {
     @Resource
     private PermissionApi permissionApi;
 
+    public Set<String> getHiddenFieldSet(String module) {
+        List<String> hiddenFields = permissionApi.getCurrentUserHiddenFields(module);
+        if (CollUtil.isEmpty(hiddenFields)) {
+            return Collections.emptySet();
+        }
+        return new HashSet<>(hiddenFields);
+    }
+
     public void mask(String module, Object vo) {
         if (vo == null) {
             return;
         }
-        List<String> hiddenFields = permissionApi.getCurrentUserHiddenFields(module);
-        if (CollUtil.isEmpty(hiddenFields)) {
+        Set<String> hiddenFieldSet = getHiddenFieldSet(module);
+        if (CollUtil.isEmpty(hiddenFieldSet)) {
             return;
         }
-        Set<String> hiddenFieldSet = new HashSet<>(hiddenFields);
         maskBean(vo, hiddenFieldSet, "");
         Object items = getFieldValue(vo, "items");
         if (!(items instanceof Collection<?>)) {

@@ -9,8 +9,12 @@ import cn.iocoder.yudao.module.erp.dal.dataobject.finance.payable.ErpPayableOthe
 import cn.iocoder.yudao.module.erp.dal.mysql.finance.payable.ErpPayableOtherMapper;
 import cn.iocoder.yudao.module.erp.dal.redis.no.ErpNoRedisDAO;
 import cn.iocoder.yudao.module.erp.enums.ErpAuditStatus;
+import cn.iocoder.yudao.module.erp.service.common.ErpOperateLogService;
 import cn.iocoder.yudao.module.erp.service.finance.ErpFinanceFieldPermissionMasker;
 import cn.iocoder.yudao.module.erp.service.purchase.ErpSupplierService;
+import cn.iocoder.yudao.module.system.api.dept.DeptApi;
+import cn.iocoder.yudao.module.system.api.user.AdminUserApi;
+import cn.iocoder.yudao.module.system.api.user.dto.AdminUserRespDTO;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.validation.annotation.Validated;
@@ -19,6 +23,7 @@ import javax.annotation.Resource;
 import java.math.BigDecimal;
 
 import static cn.iocoder.yudao.framework.common.exception.util.ServiceExceptionUtil.exception;
+import static cn.iocoder.yudao.framework.security.core.util.SecurityFrameworkUtils.getLoginUserId;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.OTHER_PAYABLE_APPROVE_FAIL;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.OTHER_PAYABLE_DELETE_FAIL_APPROVE;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.OTHER_PAYABLE_NOT_EXISTS;
@@ -26,6 +31,7 @@ import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.OTHER_PAYABLE
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.OTHER_PAYABLE_PROCESS_FAIL;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.OTHER_PAYABLE_UPDATE_FAIL_APPROVE;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.OTHER_PAYABLE_UPDATE_FAIL_STATUS_CHANGED;
+import static cn.iocoder.yudao.module.erp.enums.LogRecordConstants.ERP_PAYABLE_OTHER_TYPE;
 
 @Service
 @Validated
@@ -41,6 +47,12 @@ public class ErpPayableOtherServiceImpl implements ErpPayableOtherService {
     private ErpSupplierService supplierService;
     @Resource
     private ErpFinanceFieldPermissionMasker fieldPermissionMasker;
+    @Resource
+    private AdminUserApi adminUserApi;
+    @Resource
+    private DeptApi deptApi;
+    @Resource
+    private ErpOperateLogService operateLogService;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -54,9 +66,12 @@ public class ErpPayableOtherServiceImpl implements ErpPayableOtherService {
                 .setNo(no)
                 .setStatus(ErpAuditStatus.PROCESS.getStatus())
                 .setSourceType(StrUtil.isBlank(createReqVO.getSourceType()) ? "调账" : createReqVO.getSourceType()));
+        fillCreateDeptId(doObj);
+        validateRefs(createReqVO.getHandlerId(), doObj.getDeptId());
         normalize(doObj);
         fieldPermissionMasker.clearHiddenFields(FIELD_PERMISSION_MODULE, doObj);
         payableOtherMapper.insert(doObj);
+        operateLogService.recordCreate(ERP_PAYABLE_OTHER_TYPE, doObj.getId(), doObj.getNo());
         return doObj.getId();
     }
 
@@ -74,11 +89,16 @@ public class ErpPayableOtherServiceImpl implements ErpPayableOtherService {
                 obj.setSourceType("调账");
             }
         });
+        if (updateObj.getDeptId() == null) {
+            updateObj.setDeptId(db.getDeptId());
+        }
+        validateRefs(updateReqVO.getHandlerId(), updateObj.getDeptId());
         normalize(updateObj);
         int affected = payableOtherMapper.updateByIdAndStatus(updateReqVO.getId(), ErpAuditStatus.PROCESS.getStatus(), updateObj);
         if (affected == 0) {
             throw exception(OTHER_PAYABLE_UPDATE_FAIL_STATUS_CHANGED);
         }
+        operateLogService.recordUpdate(ERP_PAYABLE_OTHER_TYPE, db.getId(), db.getNo());
     }
 
     @Override
@@ -94,6 +114,7 @@ public class ErpPayableOtherServiceImpl implements ErpPayableOtherService {
         if (affected == 0) {
             throw exception(approve ? OTHER_PAYABLE_APPROVE_FAIL : OTHER_PAYABLE_PROCESS_FAIL);
         }
+        operateLogService.recordStatus(ERP_PAYABLE_OTHER_TYPE, id, db.getNo(), approve);
     }
 
     @Override
@@ -104,6 +125,7 @@ public class ErpPayableOtherServiceImpl implements ErpPayableOtherService {
             throw exception(OTHER_PAYABLE_DELETE_FAIL_APPROVE, db.getNo());
         }
         payableOtherMapper.deleteById(id);
+        operateLogService.recordDelete(ERP_PAYABLE_OTHER_TYPE, db.getId(), db.getNo());
     }
 
     @Override
@@ -122,6 +144,27 @@ public class ErpPayableOtherServiceImpl implements ErpPayableOtherService {
             throw exception(OTHER_PAYABLE_NOT_EXISTS);
         }
         return db;
+    }
+
+    private void validateRefs(Long handlerId, Long deptId) {
+        if (handlerId != null) {
+            adminUserApi.validateUser(handlerId);
+        }
+        if (deptId != null && deptApi.getDept(deptId) == null) {
+            throw exception(OTHER_PAYABLE_NOT_EXISTS);
+        }
+    }
+
+    private void fillCreateDeptId(ErpPayableOtherDO doObj) {
+        if (doObj.getDeptId() != null) {
+            return;
+        }
+        Long loginUserId = getLoginUserId();
+        if (loginUserId == null) {
+            return;
+        }
+        AdminUserRespDTO user = adminUserApi.getUser(loginUserId);
+        doObj.setDeptId(user == null ? null : user.getDeptId());
     }
 
     private void normalize(ErpPayableOtherDO doObj) {

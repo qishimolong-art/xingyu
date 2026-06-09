@@ -48,6 +48,10 @@ public class ErpChainOrderDO extends BaseDO {
      */
     private Long branchTenantId;
     /**
+     * Department id.
+     */
+    private Long deptId;
+    /**
      * 终端客户ID(无仓分公司)
      */
     private Long customerId;

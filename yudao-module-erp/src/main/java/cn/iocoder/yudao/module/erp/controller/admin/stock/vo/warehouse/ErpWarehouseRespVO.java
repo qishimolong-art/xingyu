@@ -25,6 +25,14 @@ public class ErpWarehouseRespVO {
     @ExcelProperty("仓库名称")
     private String name;
 
+    @Schema(description = "所属部门", example = "100")
+    @ExcelProperty("所属部门ID")
+    private Long deptId;
+
+    @Schema(description = "所属部门名称")
+    @ExcelProperty("所属部门")
+    private String deptName;
+
     @Schema(description = "仓库地址", example = "上海陆家嘴")
     @ExcelProperty("仓库地址")
     private String address;
@@ -61,6 +69,19 @@ public class ErpWarehouseRespVO {
     @Schema(description = "创建时间", requiredMode = Schema.RequiredMode.REQUIRED)
     @ExcelProperty("创建时间")
     private LocalDateTime createTime;
+
+    @Schema(description = "创建人名称")
+    private String creator;
+
+    private String updater;
+
+    private String creatorName;
+
+    @Schema(description = "修改人名称")
+    private String updaterName;
+
+    @Schema(description = "修改时间")
+    private LocalDateTime updateTime;
 
     // ========== 扩展字段 ==========
 

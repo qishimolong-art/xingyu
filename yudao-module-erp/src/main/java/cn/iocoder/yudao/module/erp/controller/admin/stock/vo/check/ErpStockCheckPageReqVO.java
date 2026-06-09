@@ -25,6 +25,9 @@ public class ErpStockCheckPageReqVO extends PageParam {
     @Schema(description = "仓库编号", example = "3113")
     private Long warehouseId;
 
+    @Schema(description = "所属部门", example = "100")
+    private Long deptId;
+
     @Schema(description = "盘点时间")
     @DateTimeFormat(pattern = FORMAT_YEAR_MONTH_DAY_HOUR_MINUTE_SECOND)
     private LocalDateTime[] checkTime;

@@ -23,6 +23,9 @@ public class ErpSupplierPageReqVO extends PageParam {
     @Schema(description = "联系电话", example = "18818288888")
     private String telephone;
 
+    @Schema(description = "所属部门")
+    private Long deptId;
+
     @Schema(description = "勾选导出的供应商编号数组", example = "[1,2,3]")
     private List<Long> ids;
 

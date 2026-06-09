@@ -3,6 +3,7 @@ package cn.iocoder.yudao.module.system.service.dept;
 import cn.iocoder.yudao.framework.common.util.collection.CollectionUtils;
 import cn.iocoder.yudao.module.system.controller.admin.dept.vo.dept.DeptListReqVO;
 import cn.iocoder.yudao.module.system.controller.admin.dept.vo.dept.DeptSaveReqVO;
+import cn.iocoder.yudao.module.system.controller.admin.dept.vo.dept.DeptUpdateSortReqVO;
 import cn.iocoder.yudao.module.system.dal.dataobject.dept.DeptDO;
 
 import java.util.*;
@@ -28,6 +29,13 @@ public interface DeptService {
      * @param updateReqVO 部门信息
      */
     void updateDept(DeptSaveReqVO updateReqVO);
+
+    /**
+     * 批量更新部门排序
+     *
+     * @param reqVO 排序信息
+     */
+    void updateDeptSort(DeptUpdateSortReqVO reqVO);
 
     /**
      * 删除部门

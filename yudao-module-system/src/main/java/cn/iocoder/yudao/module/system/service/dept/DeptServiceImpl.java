@@ -7,6 +7,7 @@ import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
 import cn.iocoder.yudao.framework.datapermission.core.annotation.DataPermission;
 import cn.iocoder.yudao.module.system.controller.admin.dept.vo.dept.DeptListReqVO;
 import cn.iocoder.yudao.module.system.controller.admin.dept.vo.dept.DeptSaveReqVO;
+import cn.iocoder.yudao.module.system.controller.admin.dept.vo.dept.DeptUpdateSortReqVO;
 import cn.iocoder.yudao.module.system.dal.dataobject.dept.DeptDO;
 import cn.iocoder.yudao.module.system.dal.mysql.dept.DeptMapper;
 import cn.iocoder.yudao.module.system.dal.redis.RedisKeyConstants;
@@ -15,6 +16,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.validation.annotation.Validated;
 
 import javax.annotation.Resource;
@@ -72,6 +74,29 @@ public class DeptServiceImpl implements DeptService {
         // 更新部门
         DeptDO updateObj = BeanUtils.toBean(updateReqVO, DeptDO.class);
         deptMapper.updateById(updateObj);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    @CacheEvict(cacheNames = RedisKeyConstants.DEPT_CHILDREN_ID_LIST, allEntries = true)
+    public void updateDeptSort(DeptUpdateSortReqVO reqVO) {
+        Long parentId = null;
+        boolean parentIdInitialized = false;
+        for (DeptUpdateSortReqVO.Item item : reqVO.getItems()) {
+            DeptDO dept = deptMapper.selectById(item.getId());
+            if (dept == null) {
+                throw exception(DEPT_NOT_FOUND);
+            }
+            if (!parentIdInitialized) {
+                parentId = dept.getParentId();
+                parentIdInitialized = true;
+            } else if (!Objects.equals(parentId, dept.getParentId())) {
+                throw exception(DEPT_SORT_PARENT_NOT_SAME);
+            }
+        }
+        for (DeptUpdateSortReqVO.Item item : reqVO.getItems()) {
+            deptMapper.updateById(new DeptDO().setId(item.getId()).setSort(item.getSort()));
+        }
     }
 
     @Override
@@ -180,8 +205,53 @@ public class DeptServiceImpl implements DeptService {
     @Override
     public List<DeptDO> getDeptList(DeptListReqVO reqVO) {
         List<DeptDO> list = deptMapper.selectList(reqVO);
-        list.sort(Comparator.comparing(DeptDO::getSort));
+        sortDeptList(list);
         return list;
+    }
+
+    private void sortDeptList(List<DeptDO> list) {
+        list.sort((dept1, dept2) -> {
+            int parentCompare = compareNullableLong(dept1.getParentId(), dept2.getParentId());
+            if (parentCompare != 0) {
+                return parentCompare;
+            }
+            int sortCompare = Integer.compare(Optional.ofNullable(dept1.getSort()).orElse(0),
+                    Optional.ofNullable(dept2.getSort()).orElse(0));
+            if (sortCompare != 0) {
+                return sortCompare;
+            }
+            int nameCompare = compareNullableString(dept1.getName(), dept2.getName());
+            if (nameCompare != 0) {
+                return nameCompare;
+            }
+            return compareNullableLong(dept1.getId(), dept2.getId());
+        });
+    }
+
+    private int compareNullableLong(Long value1, Long value2) {
+        if (Objects.equals(value1, value2)) {
+            return 0;
+        }
+        if (value1 == null) {
+            return -1;
+        }
+        if (value2 == null) {
+            return 1;
+        }
+        return Long.compare(value1, value2);
+    }
+
+    private int compareNullableString(String value1, String value2) {
+        if (Objects.equals(value1, value2)) {
+            return 0;
+        }
+        if (value1 == null) {
+            return -1;
+        }
+        if (value2 == null) {
+            return 1;
+        }
+        return value1.trim().compareToIgnoreCase(value2.trim());
     }
 
     @Override

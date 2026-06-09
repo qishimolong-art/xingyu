@@ -157,7 +157,7 @@ public class ErpSaleFieldPermissionMasker {
         return hiddenFieldSet.contains(fieldKey) || hiddenFieldSet.contains("col_" + fieldKey);
     }
 
-    private Set<String> getHiddenFieldSet(String module) {
+    public Set<String> getHiddenFieldSet(String module) {
         List<String> hiddenFields = permissionApi.getCurrentUserHiddenFields(module);
         if (CollUtil.isEmpty(hiddenFields)) {
             return Collections.emptySet();

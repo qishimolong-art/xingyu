@@ -20,6 +20,9 @@ public class ErpStockInSaveReqVO {
     @Schema(description = "供应商编号", example = "3113")
     private Long supplierId;
 
+    @Schema(description = "所属部门", example = "100")
+    private Long deptId;
+
     @Schema(description = "入库时间", requiredMode = Schema.RequiredMode.REQUIRED)
     @NotNull(message = "入库时间不能为空")
     private LocalDateTime inTime;

@@ -44,6 +44,8 @@ public interface ErpStockService {
      */
     BigDecimal getStockCount(Long productId);
 
+    BigDecimal getStockCount(Long productId, Long warehouseId);
+
     /**
      * 批量获得产品库存数量（所有仓库合计）
      *

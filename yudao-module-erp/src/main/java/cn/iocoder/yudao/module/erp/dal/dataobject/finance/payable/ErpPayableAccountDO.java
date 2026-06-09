@@ -21,6 +21,7 @@ public class ErpPayableAccountDO {
     private BigDecimal priceAdjustAmount;
     private BigDecimal otherPayableAmount;
     private BigDecimal paymentAmount;
+    private BigDecimal writeOffAmount;
     private BigDecimal balance;
     private BigDecimal unclearedPrepayment;
     private LocalDateTime lastBizTime;

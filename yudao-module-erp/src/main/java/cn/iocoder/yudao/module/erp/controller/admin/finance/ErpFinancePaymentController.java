@@ -22,6 +22,8 @@ import cn.iocoder.yudao.module.erp.service.finance.ErpAccountService;
 import cn.iocoder.yudao.module.erp.service.finance.ErpFinanceFieldPermissionMasker;
 import cn.iocoder.yudao.module.erp.service.finance.ErpFinancePaymentService;
 import cn.iocoder.yudao.module.erp.service.purchase.ErpSupplierService;
+import cn.iocoder.yudao.module.system.api.dept.DeptApi;
+import cn.iocoder.yudao.module.system.api.dept.dto.DeptRespDTO;
 import cn.iocoder.yudao.module.system.api.user.AdminUserApi;
 import cn.iocoder.yudao.module.system.api.user.dto.AdminUserRespDTO;
 import io.swagger.v3.oas.annotations.Operation;
@@ -59,6 +61,8 @@ public class ErpFinancePaymentController {
     private ErpAccountService accountService;
     @Resource
     private AdminUserApi adminUserApi;
+    @Resource
+    private DeptApi deptApi;
     @Resource
     private ErpFinanceFieldPermissionMasker fieldPermissionMasker;
 
@@ -107,6 +111,7 @@ public class ErpFinancePaymentController {
         ErpFinancePaymentRespVO respVO = BeanUtils.toBean(payment, ErpFinancePaymentRespVO.class,
                 financePaymentVO -> financePaymentVO.setItems(
                         BeanUtils.toBean(paymentItemList, ErpFinancePaymentRespVO.Item.class)));
+        fillFinancePaymentNames(Collections.singletonList(respVO));
         fieldPermissionMasker.maskFormWithItems("erp_finance_payment", respVO);
         return success(respVO);
     }
@@ -152,15 +157,40 @@ public class ErpFinancePaymentController {
                 convertSet(pageResult.getList(), ErpFinancePaymentDO::getSupplierId));
         Map<Long, ErpAccountDO> accountMap = accountService.getAccountMap(
                 convertSet(pageResult.getList(), ErpFinancePaymentDO::getAccountId));
+        Map<Long, DeptRespDTO> deptMap = deptApi.getDeptMap(convertSet(pageResult.getList(), ErpFinancePaymentDO::getDeptId));
         Map<Long, AdminUserRespDTO> userMap = adminUserApi.getUserMap(convertListByFlatMap(pageResult.getList(),
-                payment -> Stream.of(NumberUtils.parseLong(payment.getCreator()), payment.getFinanceUserId())));
+                payment -> Stream.of(NumberUtils.parseLong(payment.getCreator()),
+                        NumberUtils.parseLong(payment.getUpdater()), payment.getFinanceUserId())));
         return BeanUtils.toBean(pageResult, ErpFinancePaymentRespVO.class, payment -> {
             payment.setItems(BeanUtils.toBean(financePaymentItemMap.get(payment.getId()), ErpFinancePaymentRespVO.Item.class));
             MapUtils.findAndThen(supplierMap, payment.getSupplierId(), supplier -> payment.setSupplierName(supplier.getName()));
             MapUtils.findAndThen(accountMap, payment.getAccountId(), account -> payment.setAccountName(account.getName()));
+            MapUtils.findAndThen(deptMap, payment.getDeptId(), dept -> payment.setDeptName(dept.getName()));
             MapUtils.findAndThen(userMap, parseUserId(payment.getCreator()), user -> payment.setCreatorName(user.getNickname()));
+            MapUtils.findAndThen(userMap, parseUserId(payment.getUpdater()), user -> payment.setUpdaterName(user.getNickname()));
             MapUtils.findAndThen(userMap, payment.getFinanceUserId(), user -> payment.setFinanceUserName(user.getNickname()));
         });
+    }
+
+    private void fillFinancePaymentNames(List<ErpFinancePaymentRespVO> rows) {
+        if (CollUtil.isEmpty(rows)) {
+            return;
+        }
+        Map<Long, ErpSupplierDO> supplierMap = supplierService.getSupplierMap(
+                convertSet(rows, ErpFinancePaymentRespVO::getSupplierId));
+        Map<Long, ErpAccountDO> accountMap = accountService.getAccountMap(
+                convertSet(rows, ErpFinancePaymentRespVO::getAccountId));
+        Map<Long, DeptRespDTO> deptMap = deptApi.getDeptMap(convertSet(rows, ErpFinancePaymentRespVO::getDeptId));
+        Map<Long, AdminUserRespDTO> userMap = adminUserApi.getUserMap(convertListByFlatMap(rows,
+                row -> Stream.of(parseUserId(row.getCreator()), parseUserId(row.getUpdater()), row.getFinanceUserId())));
+        for (ErpFinancePaymentRespVO row : rows) {
+            MapUtils.findAndThen(supplierMap, row.getSupplierId(), supplier -> row.setSupplierName(supplier.getName()));
+            MapUtils.findAndThen(accountMap, row.getAccountId(), account -> row.setAccountName(account.getName()));
+            MapUtils.findAndThen(deptMap, row.getDeptId(), dept -> row.setDeptName(dept.getName()));
+            MapUtils.findAndThen(userMap, parseUserId(row.getCreator()), user -> row.setCreatorName(user.getNickname()));
+            MapUtils.findAndThen(userMap, parseUserId(row.getUpdater()), user -> row.setUpdaterName(user.getNickname()));
+            MapUtils.findAndThen(userMap, row.getFinanceUserId(), user -> row.setFinanceUserName(user.getNickname()));
+        }
     }
 
     private List<ErpFinancePaymentDO> getFinancePaymentExportList(ErpFinancePaymentPageReqVO pageReqVO) {

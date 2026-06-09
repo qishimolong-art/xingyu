@@ -7,6 +7,7 @@ import cn.iocoder.yudao.module.system.controller.admin.dept.vo.dept.DeptListReqV
 import cn.iocoder.yudao.module.system.controller.admin.dept.vo.dept.DeptRespVO;
 import cn.iocoder.yudao.module.system.controller.admin.dept.vo.dept.DeptSaveReqVO;
 import cn.iocoder.yudao.module.system.controller.admin.dept.vo.dept.DeptSimpleRespVO;
+import cn.iocoder.yudao.module.system.controller.admin.dept.vo.dept.DeptUpdateSortReqVO;
 import cn.iocoder.yudao.module.system.dal.dataobject.dept.DeptDO;
 import cn.iocoder.yudao.module.system.service.dept.DeptService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -44,6 +45,14 @@ public class DeptController {
     @PreAuthorize("@ss.hasPermission('system:dept:update')")
     public CommonResult<Boolean> updateDept(@Valid @RequestBody DeptSaveReqVO updateReqVO) {
         deptService.updateDept(updateReqVO);
+        return success(true);
+    }
+
+    @PutMapping("/update-sort")
+    @Operation(summary = "批量更新部门排序")
+    @PreAuthorize("@ss.hasPermission('system:dept:update')")
+    public CommonResult<Boolean> updateDeptSort(@Valid @RequestBody DeptUpdateSortReqVO reqVO) {
+        deptService.updateDeptSort(reqVO);
         return success(true);
     }
 

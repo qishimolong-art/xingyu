@@ -1,11 +1,16 @@
 package cn.iocoder.yudao.framework.mybatis.core.handler;
 
+import cn.hutool.core.collection.CollUtil;
+import cn.iocoder.yudao.framework.common.biz.system.permission.PermissionCommonApi;
 import cn.iocoder.yudao.framework.mybatis.core.dataobject.BaseDO;
 import cn.iocoder.yudao.framework.security.core.util.SecurityFrameworkUtils;
 import com.baomidou.mybatisplus.core.handlers.MetaObjectHandler;
+import lombok.RequiredArgsConstructor;
 import org.apache.ibatis.reflection.MetaObject;
+import org.springframework.beans.factory.ObjectProvider;
 
 import java.time.LocalDateTime;
+import java.util.Comparator;
 import java.util.Objects;
 
 /**
@@ -15,7 +20,10 @@ import java.util.Objects;
  *
  * @author hexiaowu
  */
+@RequiredArgsConstructor
 public class DefaultDBFieldHandler implements MetaObjectHandler {
+
+    private final ObjectProvider<PermissionCommonApi> permissionApi;
 
     @Override
     @SuppressWarnings("PatternVariableCanBeUsed")
@@ -42,6 +50,14 @@ public class DefaultDBFieldHandler implements MetaObjectHandler {
             if (Objects.nonNull(userId) && Objects.isNull(baseDO.getUpdater())) {
                 baseDO.setUpdater(userId.toString());
             }
+
+            if (metaObject.hasGetter("deptId") && metaObject.hasSetter("deptId")
+                    && Objects.isNull(getFieldValByName("deptId", metaObject))) {
+                Long deptId = getInsertDeptId(userId, baseDO);
+                if (Objects.nonNull(deptId)) {
+                    setFieldValByName("deptId", deptId, metaObject);
+                }
+            }
         }
     }
 
@@ -59,5 +75,20 @@ public class DefaultDBFieldHandler implements MetaObjectHandler {
         if (Objects.nonNull(userId) && Objects.isNull(modifier)) {
             setFieldValByName("updater", userId.toString(), metaObject);
         }
+    }
+
+    private Long getInsertDeptId(Long userId, BaseDO baseDO) {
+        Long loginDeptId = SecurityFrameworkUtils.getLoginUserDeptId();
+        if (loginDeptId != null || userId == null) {
+            return loginDeptId;
+        }
+        PermissionCommonApi permissionCommonApi = permissionApi.getIfAvailable();
+        if (permissionCommonApi == null) {
+            return null;
+        }
+        return CollUtil.emptyIfNull(permissionCommonApi.getDeptIdsByUserId(userId)).stream()
+                .filter(Objects::nonNull)
+                .min(Comparator.naturalOrder())
+                .orElse(null);
     }
 }

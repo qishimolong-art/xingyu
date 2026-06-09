@@ -40,6 +40,14 @@ public interface AdminUserApi {
     List<AdminUserRespDTO> getUserList(Collection<Long> ids);
 
     /**
+     * 获得指定昵称的用户数组
+     *
+     * @param nickname 昵称
+     * @return 用户数组
+     */
+    List<AdminUserRespDTO> getUserListByNickname(String nickname);
+
+    /**
      * 获得指定部门的用户数组
      *
      * @param deptIds 部门数组

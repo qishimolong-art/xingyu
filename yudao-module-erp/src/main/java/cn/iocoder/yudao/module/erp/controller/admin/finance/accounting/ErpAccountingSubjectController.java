@@ -207,7 +207,7 @@ public class ErpAccountingSubjectController {
     @Operation(summary = "下载期初余额导入模板")
     @PreAuthorize("@ss.hasPermission('erp:accounting-subject:update')")
     public void exportImportTemplate(HttpServletResponse response) throws IOException {
-        ExcelUtils.write(response, "期初余额导入模板.xls", "期初余额",
+        ExcelUtils.writeImportTemplate(response, "期初余额导入模板.xls", "期初余额",
                 ErpAccountingSubjectImportExcelVO.class,
                 Collections.singletonList(new ErpAccountingSubjectImportExcelVO()));
     }

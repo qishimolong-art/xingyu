@@ -1,6 +1,7 @@
 package cn.iocoder.yudao.module.erp.controller.admin.finance.accounting.vo.subject;
 
 import cn.idev.excel.annotation.ExcelProperty;
+import cn.iocoder.yudao.framework.excel.core.annotations.ExcelRequired;
 import lombok.Data;
 
 import java.math.BigDecimal;
@@ -15,6 +16,7 @@ import java.math.BigDecimal;
 @Data
 public class ErpAccountingSubjectImportExcelVO {
 
+    @ExcelRequired
     @ExcelProperty("科目编码")
     private String subjectCode;
 

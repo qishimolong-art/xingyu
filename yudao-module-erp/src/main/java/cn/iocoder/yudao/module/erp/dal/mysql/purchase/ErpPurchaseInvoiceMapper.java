@@ -6,6 +6,7 @@ import cn.iocoder.yudao.framework.mybatis.core.query.MPJLambdaWrapperX;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.invoice.ErpPurchaseInvoicePageReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseInvoiceDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseInvoiceItemDO;
+import cn.iocoder.yudao.module.erp.enums.ErpAuditStatus;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import org.apache.ibatis.annotations.Mapper;
 
@@ -18,11 +19,17 @@ public interface ErpPurchaseInvoiceMapper extends BaseMapperX<ErpPurchaseInvoice
                 .eqIfPresent(ErpPurchaseInvoiceDO::getSupplierId, reqVO.getSupplierId())
                 .betweenIfPresent(ErpPurchaseInvoiceDO::getInvoiceDate, reqVO.getInvoiceDate())
                 .eqIfPresent(ErpPurchaseInvoiceDO::getStatus, reqVO.getStatus())
+                .eqIfPresent(ErpPurchaseInvoiceDO::getDeptId, reqVO.getDeptId())
                 .likeIfPresent(ErpPurchaseInvoiceDO::getInvoiceNo, reqVO.getInvoiceNo())
                 .likeIfPresent(ErpPurchaseInvoiceDO::getInvoiceType, reqVO.getInvoiceType())
                 .likeIfPresent(ErpPurchaseInvoiceDO::getRemark, reqVO.getRemark())
                 .eqIfPresent(ErpPurchaseInvoiceDO::getCreator, reqVO.getCreator())
                 .orderByDesc(ErpPurchaseInvoiceDO::getId);
+        if (Integer.valueOf(0).equals(reqVO.getInvoiceStatus())) {
+            query.ne(ErpPurchaseInvoiceDO::getStatus, ErpAuditStatus.APPROVE.getStatus());
+        } else if (Integer.valueOf(1).equals(reqVO.getInvoiceStatus())) {
+            query.eq(ErpPurchaseInvoiceDO::getStatus, ErpAuditStatus.APPROVE.getStatus());
+        }
         if (reqVO.getProductId() != null || reqVO.getSourceInNo() != null) {
             query.leftJoin(ErpPurchaseInvoiceItemDO.class, ErpPurchaseInvoiceItemDO::getInvoiceId, ErpPurchaseInvoiceDO::getId)
                     .eq(reqVO.getProductId() != null, ErpPurchaseInvoiceItemDO::getProductId, reqVO.getProductId())
@@ -40,5 +47,17 @@ public interface ErpPurchaseInvoiceMapper extends BaseMapperX<ErpPurchaseInvoice
 
     default ErpPurchaseInvoiceDO selectByNo(String no) {
         return selectOne(ErpPurchaseInvoiceDO::getNo, no);
+    }
+
+    default Long selectCountBySupplierId(Long supplierId) {
+        return selectCount(ErpPurchaseInvoiceDO::getSupplierId, supplierId);
+    }
+
+    default String selectFirstNoBySupplierId(Long supplierId) {
+        ErpPurchaseInvoiceDO invoice = selectOne(new MPJLambdaWrapperX<ErpPurchaseInvoiceDO>()
+                .eq(ErpPurchaseInvoiceDO::getSupplierId, supplierId)
+                .orderByDesc(ErpPurchaseInvoiceDO::getId)
+                .last("LIMIT 1"));
+        return invoice == null ? null : invoice.getNo();
     }
 }

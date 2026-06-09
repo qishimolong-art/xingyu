@@ -22,6 +22,7 @@ public interface ErpStockCheckMapper extends BaseMapperX<ErpStockCheckDO> {
                 .likeIfPresent(ErpStockCheckDO::getNo, reqVO.getNo())
                 .betweenIfPresent(ErpStockCheckDO::getCheckTime, reqVO.getCheckTime())
                 .eqIfPresent(ErpStockCheckDO::getStatus, reqVO.getStatus())
+                .eqIfPresent(ErpStockCheckDO::getDeptId, reqVO.getDeptId())
                 .likeIfPresent(ErpStockCheckDO::getRemark, reqVO.getRemark())
                 .eqIfPresent(ErpStockCheckDO::getCreator, reqVO.getCreator())
                 .orderByDesc(ErpStockCheckDO::getId);

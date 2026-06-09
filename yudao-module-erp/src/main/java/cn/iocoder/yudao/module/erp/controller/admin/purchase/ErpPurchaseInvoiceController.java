@@ -8,6 +8,7 @@ import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.common.util.collection.MapUtils;
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
 import cn.iocoder.yudao.framework.excel.core.util.ExcelUtils;
+import cn.iocoder.yudao.module.erp.controller.admin.common.vo.ErpExportFieldRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpProductRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.invoice.ErpPurchaseInvoiceExportRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.invoice.ErpPurchaseInvoicePageReqVO;
@@ -16,6 +17,7 @@ import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.invoice.ErpPurch
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseInvoiceDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseInvoiceItemDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpSupplierDO;
+import cn.iocoder.yudao.module.erp.framework.excel.ErpExportFieldUtils;
 import cn.iocoder.yudao.module.erp.service.product.ErpProductService;
 import cn.iocoder.yudao.module.erp.service.purchase.ErpPurchaseFieldPermissionMasker;
 import cn.iocoder.yudao.module.erp.service.purchase.ErpPurchaseInvoiceService;
@@ -44,6 +46,7 @@ import javax.validation.Valid;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.LinkedHashSet;
@@ -61,6 +64,10 @@ import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PURCHASE_INVO
 @RequestMapping("/erp/purchase-invoice")
 @Validated
 public class ErpPurchaseInvoiceController {
+
+    private static final String FIELD_PERMISSION_MODULE = "erp_purchase_invoice";
+    private static final Map<String, String> EXPORT_FIELD_GROUP_MAP = buildExportFieldGroupMap();
+    private static final Map<String, String> EXPORT_FIELD_PERMISSION_MAP = buildExportFieldPermissionMap();
 
     @Resource
     private ErpPurchaseInvoiceService purchaseInvoiceService;
@@ -152,6 +159,7 @@ public class ErpPurchaseInvoiceController {
     @PreAuthorize("@ss.hasPermission('erp:purchase-invoice:export')")
     @ApiAccessLog(operateType = EXPORT)
     public void exportPurchaseInvoiceExcel(@Valid ErpPurchaseInvoicePageReqVO pageReqVO,
+                                           @RequestParam(value = "fields", required = false) String fields,
                                            HttpServletResponse response) throws IOException {
         List<ErpPurchaseInvoiceRespVO> list;
         if (CollUtil.isNotEmpty(pageReqVO.getIds())) {
@@ -163,8 +171,19 @@ public class ErpPurchaseInvoiceController {
             list = buildPurchaseInvoiceVOPageResult(
                     purchaseInvoiceService.getPurchaseInvoicePage(pageReqVO)).getList();
         }
+        Set<String> includeFields = ErpExportFieldUtils.resolveIncludeFields(ErpPurchaseInvoiceExportRespVO.class,
+                ErpExportFieldUtils.parseFieldParam(fields),
+                fieldPermissionMasker.getHiddenFieldSet(FIELD_PERMISSION_MODULE), EXPORT_FIELD_PERMISSION_MAP);
         ExcelUtils.write(response, "采购票据.xls", "数据", ErpPurchaseInvoiceExportRespVO.class,
-                buildPurchaseInvoiceExportList(list));
+                buildPurchaseInvoiceExportList(list), includeFields);
+    }
+
+    @GetMapping("/export-fields")
+    @Operation(summary = "获得采购票据导出字段")
+    @PreAuthorize("@ss.hasPermission('erp:purchase-invoice:export')")
+    public CommonResult<List<ErpExportFieldRespVO>> getPurchaseInvoiceExportFields() {
+        return success(ErpExportFieldUtils.listFields(ErpPurchaseInvoiceExportRespVO.class, EXPORT_FIELD_GROUP_MAP,
+                fieldPermissionMasker.getHiddenFieldSet(FIELD_PERMISSION_MODULE), EXPORT_FIELD_PERMISSION_MAP));
     }
 
     private PageResult<ErpPurchaseInvoiceRespVO> buildPurchaseInvoiceVOPageResult(PageResult<ErpPurchaseInvoiceDO> pageResult) {
@@ -308,6 +327,61 @@ public class ErpPurchaseInvoiceController {
         } catch (NumberFormatException ex) {
             return null;
         }
+    }
+
+    private static Map<String, String> buildExportFieldGroupMap() {
+        Map<String, String> map = new LinkedHashMap<>();
+        map.put("no", "main");
+        map.put("supplierName", "main");
+        map.put("status", "main");
+        map.put("invoiceDate", "main");
+        map.put("invoiceType", "main");
+        map.put("invoiceNo", "main");
+        map.put("invoiceCount", "main");
+        map.put("taxExclusiveAmount", "main");
+        map.put("taxAmount", "main");
+        map.put("totalAmount", "main");
+        map.put("deptName", "main");
+        map.put("handlerName", "main");
+        map.put("fileUrl", "main");
+        map.put("creatorName", "system");
+        map.put("createTime", "system");
+        map.put("updaterName", "system");
+        map.put("updateTime", "system");
+        map.put("remark", "main");
+        map.put("sourceInNo", "detail");
+        map.put("sourceInItemId", "detail");
+        map.put("productCode", "detail");
+        map.put("productName", "detail");
+        map.put("productBarCode", "detail");
+        map.put("productUnitName", "detail");
+        map.put("count", "detail");
+        map.put("productPrice", "detail");
+        map.put("taxExclusivePrice", "detail");
+        map.put("taxPercent", "detail");
+        map.put("taxPrice", "detail");
+        map.put("itemTotalPrice", "detail");
+        map.put("itemRemark", "detail");
+        return map;
+    }
+
+    private static Map<String, String> buildExportFieldPermissionMap() {
+        Map<String, String> map = new LinkedHashMap<>();
+        map.put("supplierName", "supplierId");
+        map.put("deptName", "deptId");
+        map.put("handlerName", "handlerId");
+        map.put("productCode", "item_productCode");
+        map.put("productName", "item_productId");
+        map.put("productBarCode", "item_productBarCode");
+        map.put("productUnitName", "item_productUnitName");
+        map.put("count", "item_count");
+        map.put("productPrice", "item_productPrice");
+        map.put("taxExclusivePrice", "item_taxExclusivePrice");
+        map.put("taxPercent", "item_taxPercent");
+        map.put("taxPrice", "item_taxPrice");
+        map.put("itemTotalPrice", "item_totalPrice");
+        map.put("itemRemark", "item_remark");
+        return map;
     }
 
 }

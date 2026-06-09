@@ -27,6 +27,7 @@ public interface ErpSaleReturnMapper extends BaseMapperX<ErpSaleReturnDO> {
         MPJLambdaWrapperX<ErpSaleReturnDO> query = new MPJLambdaWrapperX<ErpSaleReturnDO>()
                 .likeIfPresent(ErpSaleReturnDO::getNo, reqVO.getNo())
                 .eqIfPresent(ErpSaleReturnDO::getCustomerId, reqVO.getCustomerId())
+                .eqIfPresent(ErpSaleReturnDO::getDeptId, reqVO.getDeptId())
                 .betweenIfPresent(ErpSaleReturnDO::getReturnTime, reqVO.getReturnTime())
                 .eqIfPresent(ErpSaleReturnDO::getStatus, reqVO.getStatus())
                 .likeIfPresent(ErpSaleReturnDO::getRemark, reqVO.getRemark())
@@ -63,6 +64,10 @@ public interface ErpSaleReturnMapper extends BaseMapperX<ErpSaleReturnDO> {
 
     default ErpSaleReturnDO selectByNo(String no) {
         return selectOne(ErpSaleReturnDO::getNo, no);
+    }
+
+    default Long selectCountByCustomerId(Long customerId) {
+        return selectCount(ErpSaleReturnDO::getCustomerId, customerId);
     }
 
     default List<ErpSaleReturnDO> selectListByOrderId(Long orderId) {

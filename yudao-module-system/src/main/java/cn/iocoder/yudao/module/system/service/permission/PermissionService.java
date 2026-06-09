@@ -1,6 +1,8 @@
 package cn.iocoder.yudao.module.system.service.permission;
 
 import cn.iocoder.yudao.framework.common.biz.system.permission.dto.DeptDataPermissionRespDTO;
+import cn.iocoder.yudao.module.system.controller.admin.permission.vo.permission.PermissionAssignRoleFormDataScopeReqVO;
+import cn.iocoder.yudao.module.system.controller.admin.permission.vo.permission.RoleFormDataScopeRespVO;
 import cn.iocoder.yudao.module.system.dal.dataobject.permission.FieldDefinitionDO;
 
 import java.util.Collection;
@@ -156,5 +158,28 @@ public interface PermissionService {
      * @return 部门数据权限
      */
     DeptDataPermissionRespDTO getDeptDataPermission(Long userId);
+
+    /**
+     * 获得登陆用户在指定表单上的数据权限。若该表单无独立配置，则 fallback 到全局数据权限。
+     *
+     * @param userId  用户编号
+     * @param formKey 表单标识，通常与数据库表名一致（如 erp_product）
+     * @return 部门数据权限
+     */
+    DeptDataPermissionRespDTO getDeptDataPermission(Long userId, String formKey);
+
+    // ========== 角色-表单数据权限的相关方法 ==========
+
+    /** 获得角色在所有表单上的数据权限列表 */
+    List<RoleFormDataScopeRespVO> getRoleFormDataScopeList(Long roleId);
+
+    /**
+     * 批量保存角色的表单级数据权限（全量替换该角色的所有表单配置）
+     *
+     * @param roleId 角色编号
+     * @param items  表单级配置列表；传空 list 表示清空
+     */
+    void assignRoleFormDataScope(Long roleId,
+            List<PermissionAssignRoleFormDataScopeReqVO.FormDataScopeItem> items);
 
 }

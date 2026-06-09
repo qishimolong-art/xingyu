@@ -83,6 +83,14 @@ public class ErpSupplierRespVO {
     @ExcelProperty("编码")
     private String code;
 
+    @Schema(description = "所属部门")
+    @ExcelProperty("所属部门")
+    private Long deptId;
+
+    @Schema(description = "所属部门名称")
+    @ExcelProperty("所属部门名称")
+    private String deptName;
+
     @Schema(description = "旧编码", example = "OLD001")
     @ExcelProperty("旧编码")
     private String oldCode;
@@ -258,5 +266,23 @@ public class ErpSupplierRespVO {
     @Schema(description = "创建时间", requiredMode = Schema.RequiredMode.REQUIRED)
     @ExcelProperty("创建时间")
     private LocalDateTime createTime;
+
+    @Schema(description = "创建人")
+    private String creator;
+
+    @Schema(description = "创建人名称")
+    @ExcelProperty("创建人")
+    private String creatorName;
+
+    @Schema(description = "修改人")
+    private String updater;
+
+    @Schema(description = "修改人名称")
+    @ExcelProperty("修改人")
+    private String updaterName;
+
+    @Schema(description = "修改时间")
+    @ExcelProperty("修改时间")
+    private LocalDateTime updateTime;
 
 }

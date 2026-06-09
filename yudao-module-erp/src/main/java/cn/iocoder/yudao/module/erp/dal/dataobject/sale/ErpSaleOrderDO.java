@@ -59,6 +59,10 @@ public class ErpSaleOrderDO extends BaseDO {
      */
     private Long saleUserId;
     /**
+     * Department id.
+     */
+    private Long deptId;
+    /**
      * 下单时间
      */
     private LocalDateTime orderTime;
@@ -70,7 +74,7 @@ public class ErpSaleOrderDO extends BaseDO {
     /**
      * 最终合计价格，单位：元
      *
-     * totalPrice = totalProductPrice + totalTaxPrice - discountPrice
+     * totalPrice = totalProductPrice + totalTaxPrice - discountPrice + feeAmount
      */
     private BigDecimal totalPrice;
 
@@ -92,6 +96,10 @@ public class ErpSaleOrderDO extends BaseDO {
      * discountPrice = (totalProductPrice + totalTaxPrice) * discountPercent
      */
     private BigDecimal discountPrice;
+    /**
+     * 费用金额，单位：元
+     */
+    private BigDecimal feeAmount;
     /**
      * 定金金额，单位：元
      */

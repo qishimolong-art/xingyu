@@ -23,6 +23,7 @@ public interface ErpWarehouseMapper extends BaseMapperX<ErpWarehouseDO> {
                 .eqIfPresent(ErpWarehouseDO::getStatus, reqVO.getStatus())
                 .eqIfPresent(ErpWarehouseDO::getWarehouseType, reqVO.getWarehouseType())
                 .likeIfPresent(ErpWarehouseDO::getWarehouseCode, reqVO.getWarehouseCode())
+                .eqIfPresent(ErpWarehouseDO::getDeptId, reqVO.getDeptId())
                 .orderByDesc(ErpWarehouseDO::getId));
     }
 
@@ -32,6 +33,10 @@ public interface ErpWarehouseMapper extends BaseMapperX<ErpWarehouseDO> {
 
     default List<ErpWarehouseDO> selectListByStatus(Integer status) {
         return selectList(ErpWarehouseDO::getStatus, status);
+    }
+
+    default List<ErpWarehouseDO> selectListByDeptId(Long deptId) {
+        return selectList(ErpWarehouseDO::getDeptId, deptId);
     }
 
 }

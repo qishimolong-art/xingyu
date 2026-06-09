@@ -10,6 +10,7 @@ import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.priceadjust.ErpSaleP
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSalePriceAdjustDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSalePriceAdjustItemDO;
 import cn.iocoder.yudao.module.erp.service.sale.ErpCustomerService;
+import cn.iocoder.yudao.module.erp.service.sale.ErpSaleFieldPermissionMasker;
 import cn.iocoder.yudao.module.erp.service.sale.ErpSalePriceAdjustService;
 import cn.iocoder.yudao.module.system.api.dept.DeptApi;
 import cn.iocoder.yudao.module.system.api.user.AdminUserApi;
@@ -49,6 +50,8 @@ public class ErpSalePriceAdjustControllerTest extends BaseMockitoUnitTest {
     private DeptApi deptApi;
     @Mock
     private AdminUserApi adminUserApi;
+    @Mock
+    private ErpSaleFieldPermissionMasker fieldPermissionMasker;
 
     // ==================== createSalePriceAdjust ====================
 
@@ -223,29 +226,32 @@ public class ErpSalePriceAdjustControllerTest extends BaseMockitoUnitTest {
     @Test
     public void testGetAdjustableItemsByCustomerId_paramPassThrough() {
         List<ErpSaleOutItemForAdjustRespVO> items = Collections.emptyList();
-        when(salePriceAdjustService.getAdjustableItemsByCustomerId(eq(500L), eq(600L))).thenReturn(items);
+        when(salePriceAdjustService.getAdjustableItemsByCustomerId(eq(500L), eq(600L), eq(Boolean.FALSE))).thenReturn(items);
 
-        CommonResult<List<ErpSaleOutItemForAdjustRespVO>> result = controller.getAdjustableItemsByCustomerId(500L, 600L);
+        CommonResult<List<ErpSaleOutItemForAdjustRespVO>> result =
+                controller.getAdjustableItemsByCustomerId(500L, 600L, Boolean.FALSE);
 
         assertEquals(0, result.getCode());
         assertNotNull(result.getData());
-        verify(salePriceAdjustService).getAdjustableItemsByCustomerId(eq(500L), eq(600L));
+        verify(salePriceAdjustService).getAdjustableItemsByCustomerId(eq(500L), eq(600L), eq(Boolean.FALSE));
     }
 
     @Test
     public void testGetAdjustableItemsByCustomerId_saleOutIdNull() {
         List<ErpSaleOutItemForAdjustRespVO> items = Collections.emptyList();
-        when(salePriceAdjustService.getAdjustableItemsByCustomerId(eq(500L), eq(null))).thenReturn(items);
+        when(salePriceAdjustService.getAdjustableItemsByCustomerId(eq(500L), eq(null), eq(null))).thenReturn(items);
 
-        CommonResult<List<ErpSaleOutItemForAdjustRespVO>> result = controller.getAdjustableItemsByCustomerId(500L, null);
+        CommonResult<List<ErpSaleOutItemForAdjustRespVO>> result =
+                controller.getAdjustableItemsByCustomerId(500L, null, null);
 
         assertEquals(0, result.getCode());
-        verify(salePriceAdjustService).getAdjustableItemsByCustomerId(eq(500L), eq(null));
+        verify(salePriceAdjustService).getAdjustableItemsByCustomerId(eq(500L), eq(null), eq(null));
     }
 
     @Test
     public void testGetAdjustableItemsByCustomerId_hasPreAuthorize() throws NoSuchMethodException {
-        Method method = ErpSalePriceAdjustController.class.getMethod("getAdjustableItemsByCustomerId", Long.class, Long.class);
+        Method method = ErpSalePriceAdjustController.class.getMethod("getAdjustableItemsByCustomerId",
+                Long.class, Long.class, Boolean.class);
         PreAuthorize anno = method.getAnnotation(PreAuthorize.class);
         assertNotNull(anno);
         assertTrue(anno.value().contains("erp:sale-price-adjust:query"));

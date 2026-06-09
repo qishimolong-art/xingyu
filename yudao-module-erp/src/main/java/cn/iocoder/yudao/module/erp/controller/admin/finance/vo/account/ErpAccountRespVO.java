@@ -39,6 +39,13 @@ public class ErpAccountRespVO {
     @ExcelProperty("账户编码")
     private String no;
 
+    @Schema(description = "所属部门", example = "100")
+    private Long deptId;
+
+    @Schema(description = "所属部门名称", example = "财务部")
+    @ExcelProperty("所属部门")
+    private String deptName;
+
     @Schema(description = "备注", example = "备注")
     @ExcelProperty("备注")
     private String remark;
@@ -60,8 +67,26 @@ public class ErpAccountRespVO {
     @ExcelProperty("当前余额")
     private BigDecimal currentBalance;
 
+    @Schema(description = "创建人", example = "1")
+    private String creator;
+
+    @Schema(description = "创建人名称", example = "管理员")
+    @ExcelProperty("创建人")
+    private String creatorName;
+
     @Schema(description = "创建时间", requiredMode = Schema.RequiredMode.REQUIRED)
     @ExcelProperty("创建时间")
     private LocalDateTime createTime;
+
+    @Schema(description = "修改人", example = "1")
+    private String updater;
+
+    @Schema(description = "修改人名称", example = "管理员")
+    @ExcelProperty("修改人")
+    private String updaterName;
+
+    @Schema(description = "修改时间", requiredMode = Schema.RequiredMode.REQUIRED)
+    @ExcelProperty("修改时间")
+    private LocalDateTime updateTime;
 
 }

@@ -33,6 +33,10 @@ public class ErpWarehouseDO extends BaseDO {
      */
     private String name;
     /**
+     * Department id.
+     */
+    private Long deptId;
+    /**
      * 仓库地址
      */
     private String address;

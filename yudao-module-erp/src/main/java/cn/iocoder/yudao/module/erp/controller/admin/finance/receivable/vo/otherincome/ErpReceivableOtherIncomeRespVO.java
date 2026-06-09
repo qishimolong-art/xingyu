@@ -31,6 +31,9 @@ public class ErpReceivableOtherIncomeRespVO {
     private String creator;
     private String creatorName;
     private LocalDateTime createTime;
+    private String updater;
+    private String updaterName;
+    private LocalDateTime updateTime;
     private List<Item> items;
 
     @Data

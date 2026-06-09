@@ -167,7 +167,8 @@ public class ErpPayableExpenseController {
         Map<Long, ErpAccountDO> accountMap = accountIds.isEmpty()
                 ? Collections.emptyMap() : accountService.getAccountMap(accountIds);
         Map<Long, AdminUserRespDTO> userMap = adminUserApi.getUserMap(convertListByFlatMap(pageResult.getList(),
-                item -> Stream.of(item.getHandlerId(), NumberUtils.parseLong(item.getCreator()))));
+                item -> Stream.of(item.getHandlerId(), NumberUtils.parseLong(item.getCreator()),
+                        NumberUtils.parseLong(item.getUpdater()))));
         Map<Long, DeptRespDTO> deptMap = deptApi.getDeptMap(CollectionUtils.convertSet(pageResult.getList(),
                 ErpPayableExpenseDO::getDeptId));
         return BeanUtils.toBean(pageResult, ErpPayableExpenseRespVO.class, vo -> {
@@ -175,6 +176,7 @@ public class ErpPayableExpenseController {
             MapUtils.findAndThen(accountMap, vo.getAccountId(), account -> vo.setAccountName(account.getName()));
             MapUtils.findAndThen(userMap, vo.getHandlerId(), user -> vo.setHandlerName(user.getNickname()));
             MapUtils.findAndThen(userMap, NumberUtils.parseLong(vo.getCreator()), user -> vo.setCreatorName(user.getNickname()));
+            MapUtils.findAndThen(userMap, NumberUtils.parseLong(vo.getUpdater()), user -> vo.setUpdaterName(user.getNickname()));
             MapUtils.findAndThen(deptMap, vo.getDeptId(), dept -> vo.setDeptName(dept.getName()));
             fillItemExtend(vo);
         });
@@ -225,6 +227,15 @@ public class ErpPayableExpenseController {
                 AdminUserRespDTO user = adminUserApi.getUser(Long.parseLong(vo.getCreator()));
                 if (user != null) {
                     vo.setCreatorName(user.getNickname());
+                }
+            } catch (Exception ignored) {
+            }
+        }
+        if (vo.getUpdater() != null) {
+            try {
+                AdminUserRespDTO user = adminUserApi.getUser(Long.parseLong(vo.getUpdater()));
+                if (user != null) {
+                    vo.setUpdaterName(user.getNickname());
                 }
             } catch (Exception ignored) {
             }

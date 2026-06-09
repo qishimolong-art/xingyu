@@ -8,6 +8,7 @@ import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.common.util.collection.MapUtils;
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
 import cn.iocoder.yudao.framework.excel.core.util.ExcelUtils;
+import cn.iocoder.yudao.module.erp.controller.admin.common.vo.ErpExportFieldRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpProductRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnExportRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnImportExcelVO;
@@ -20,6 +21,10 @@ import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleReturnDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleReturnItemDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpWarehouseDO;
+import cn.iocoder.yudao.module.erp.enums.config.ErpFieldConfigModuleEnum;
+import cn.iocoder.yudao.module.erp.framework.excel.ErpExportFieldUtils;
+import cn.iocoder.yudao.module.erp.framework.excel.ErpImportTemplateRequiredFieldUtils;
+import cn.iocoder.yudao.module.erp.service.config.ErpFieldConfigService;
 import cn.iocoder.yudao.module.erp.service.product.ErpProductService;
 import cn.iocoder.yudao.module.erp.service.sale.ErpCustomerService;
 import cn.iocoder.yudao.module.erp.service.sale.ErpSaleFieldPermissionMasker;
@@ -43,6 +48,7 @@ import java.io.IOException;
 import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -60,6 +66,18 @@ import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.
 public class ErpSaleReturnController {
 
     private static final String FIELD_PERMISSION_MODULE = "erp_sale_return";
+    private static final Map<String, String> EXPORT_FIELD_GROUP_MAP = buildExportFieldGroupMap();
+    private static final Map<String, String> EXPORT_FIELD_PERMISSION_MAP = buildExportFieldPermissionMap();
+    private static final Map<String, String> DETAIL_IMPORT_FIELD_ALIAS_MAP = ErpImportTemplateRequiredFieldUtils.aliasMap(
+            "productId", "productCode",
+            "productCode", "productCode",
+            "warehouseId", "warehouseName",
+            "warehouseName", "warehouseName",
+            "count", "count",
+            "itemCount", "count",
+            "productPrice", "productPrice",
+            "returnReason", "returnReason",
+            "remark", "remark");
 
     @Resource
     private ErpSaleReturnService saleReturnService;
@@ -73,6 +91,8 @@ public class ErpSaleReturnController {
     private ErpWarehouseService warehouseService;
     @Resource
     private ErpSaleFieldPermissionMasker fieldPermissionMasker;
+    @Resource
+    private ErpFieldConfigService fieldConfigService;
 
     @Resource
     private AdminUserApi adminUserApi;
@@ -153,13 +173,25 @@ public class ErpSaleReturnController {
     @PreAuthorize("@ss.hasPermission('erp:sale-return:export')")
     @ApiAccessLog(operateType = EXPORT)
     public void exportSaleReturnExcel(@Valid ErpSaleReturnPageReqVO pageReqVO,
+                                    @RequestParam(value = "fields", required = false) String fields,
                                     HttpServletResponse response) throws IOException {
         pageReqVO.setPageSize(PageParam.PAGE_SIZE_NONE);
         List<ErpSaleReturnRespVO> list = buildSaleReturnVOPageResult(saleReturnService.getSaleReturnPage(pageReqVO)).getList();
         fieldPermissionMasker.maskFormsWithItems(FIELD_PERMISSION_MODULE, list);
         List<ErpSaleReturnExportRespVO> rows = buildSaleReturnExportList(list);
         fieldPermissionMasker.maskExportRows(FIELD_PERMISSION_MODULE, rows);
-        ExcelUtils.write(response, "销售退货.xls", "数据", ErpSaleReturnExportRespVO.class, rows);
+        Set<String> includeFields = ErpExportFieldUtils.resolveIncludeFields(ErpSaleReturnExportRespVO.class,
+                ErpExportFieldUtils.parseFieldParam(fields),
+                fieldPermissionMasker.getHiddenFieldSet(FIELD_PERMISSION_MODULE), EXPORT_FIELD_PERMISSION_MAP);
+        ExcelUtils.write(response, "销售退货.xls", "数据", ErpSaleReturnExportRespVO.class, rows, includeFields);
+    }
+
+    @GetMapping("/export-fields")
+    @Operation(summary = "Get sale return export fields")
+    @PreAuthorize("@ss.hasPermission('erp:sale-return:export')")
+    public CommonResult<List<ErpExportFieldRespVO>> getSaleReturnExportFields() {
+        return success(ErpExportFieldUtils.listFields(ErpSaleReturnExportRespVO.class, EXPORT_FIELD_GROUP_MAP,
+                fieldPermissionMasker.getHiddenFieldSet(FIELD_PERMISSION_MODULE), EXPORT_FIELD_PERMISSION_MAP));
     }
 
     @GetMapping("/export-import-template")
@@ -172,7 +204,11 @@ public class ErpSaleReturnController {
         example.setWarehouseName("默认仓");
         example.setReturnReason("质量问题");
         example.setRemark("备注");
-        ExcelUtils.write(response, "销售退货导入模板.xls", "销售退货", ErpSaleReturnImportExcelVO.class, Collections.singletonList(example));
+        ExcelUtils.writeImportTemplate(response, "销售退货导入模板.xls", "销售退货",
+                ErpSaleReturnImportExcelVO.class, Collections.singletonList(example), null,
+                ErpImportTemplateRequiredFieldUtils.getRequiredFields(fieldConfigService,
+                        ErpFieldConfigModuleEnum.SALE_RETURN, ErpSaleReturnImportExcelVO.class,
+                        DETAIL_IMPORT_FIELD_ALIAS_MAP));
     }
 
     @PostMapping("/import")
@@ -289,6 +325,44 @@ public class ErpSaleReturnController {
         if (parsedUserId != null) {
             userIds.add(parsedUserId);
         }
+    }
+
+    private static Map<String, String> buildExportFieldGroupMap() {
+        Map<String, String> map = new LinkedHashMap<>();
+        map.put("no", "main");
+        map.put("customerName", "main");
+        map.put("status", "main");
+        map.put("returnTime", "main");
+        map.put("creatorName", "system");
+        map.put("totalCount", "main");
+        map.put("totalPrice", "main");
+        map.put("feeAmount", "main");
+        map.put("remark", "main");
+        map.put("productCode", "detail");
+        map.put("productName", "detail");
+        map.put("productUnitName", "detail");
+        map.put("warehouseName", "detail");
+        map.put("itemCount", "detail");
+        map.put("productPrice", "detail");
+        map.put("returnReason", "detail");
+        map.put("warehousePosition", "detail");
+        map.put("itemRemark", "detail");
+        return map;
+    }
+
+    private static Map<String, String> buildExportFieldPermissionMap() {
+        Map<String, String> map = new LinkedHashMap<>();
+        map.put("customerName", "customerId");
+        map.put("productCode", "item_productCode");
+        map.put("productName", "item_productId");
+        map.put("productUnitName", "item_productUnitName");
+        map.put("warehouseName", "item_warehouseId");
+        map.put("itemCount", "item_count");
+        map.put("productPrice", "item_productPrice");
+        map.put("returnReason", "item_returnReason");
+        map.put("warehousePosition", "item_warehousePosition");
+        map.put("itemRemark", "item_remark");
+        return map;
     }
 
 }

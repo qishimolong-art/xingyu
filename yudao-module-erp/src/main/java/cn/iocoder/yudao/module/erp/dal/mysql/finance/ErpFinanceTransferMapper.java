@@ -21,6 +21,7 @@ public interface ErpFinanceTransferMapper extends BaseMapperX<ErpFinanceTransfer
                 .eqIfPresent(ErpFinanceTransferDO::getOutAccountId, reqVO.getOutAccountId())
                 .eqIfPresent(ErpFinanceTransferDO::getInAccountId, reqVO.getInAccountId())
                 .eqIfPresent(ErpFinanceTransferDO::getFinanceUserId, reqVO.getFinanceUserId())
+                .eqIfPresent(ErpFinanceTransferDO::getDeptId, reqVO.getDeptId())
                 .eqIfPresent(ErpFinanceTransferDO::getCreator, reqVO.getCreator())
                 .eqIfPresent(ErpFinanceTransferDO::getStatus, reqVO.getStatus())
                 .likeIfPresent(ErpFinanceTransferDO::getRemark, reqVO.getRemark())

@@ -9,10 +9,12 @@ import cn.iocoder.yudao.module.erp.dal.dataobject.finance.receivable.ErpReceivab
 import cn.iocoder.yudao.module.erp.dal.mysql.finance.receivable.ErpReceivableOtherMapper;
 import cn.iocoder.yudao.module.erp.dal.redis.no.ErpNoRedisDAO;
 import cn.iocoder.yudao.module.erp.enums.ErpAuditStatus;
+import cn.iocoder.yudao.module.erp.service.common.ErpOperateLogService;
 import cn.iocoder.yudao.module.erp.service.finance.ErpFinanceFieldPermissionMasker;
 import cn.iocoder.yudao.module.erp.service.sale.ErpCustomerService;
 import cn.iocoder.yudao.module.system.api.dept.DeptApi;
 import cn.iocoder.yudao.module.system.api.user.AdminUserApi;
+import cn.iocoder.yudao.module.system.api.user.dto.AdminUserRespDTO;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.validation.annotation.Validated;
@@ -21,6 +23,7 @@ import javax.annotation.Resource;
 import java.math.BigDecimal;
 
 import static cn.iocoder.yudao.framework.common.exception.util.ServiceExceptionUtil.exception;
+import static cn.iocoder.yudao.framework.security.core.util.SecurityFrameworkUtils.getLoginUserId;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.OTHER_RECEIVABLE_APPROVE_FAIL;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.OTHER_RECEIVABLE_DELETE_FAIL_APPROVE;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.OTHER_RECEIVABLE_NOT_EXISTS;
@@ -28,6 +31,7 @@ import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.OTHER_RECEIVA
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.OTHER_RECEIVABLE_PROCESS_FAIL;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.OTHER_RECEIVABLE_UPDATE_FAIL_APPROVE;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.OTHER_RECEIVABLE_UPDATE_FAIL_STATUS_CHANGED;
+import static cn.iocoder.yudao.module.erp.enums.LogRecordConstants.ERP_RECEIVABLE_OTHER_TYPE;
 
 @Service
 @Validated
@@ -47,12 +51,13 @@ public class ErpReceivableOtherServiceImpl implements ErpReceivableOtherService 
     private DeptApi deptApi;
     @Resource
     private ErpFinanceFieldPermissionMasker fieldPermissionMasker;
+    @Resource
+    private ErpOperateLogService operateLogService;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Long createReceivableOther(ErpReceivableOtherSaveReqVO createReqVO) {
         customerService.validateCustomer(createReqVO.getCustomerId());
-        validateRefs(createReqVO.getHandlerId(), createReqVO.getDeptId());
         String no = noRedisDAO.generate(ErpNoRedisDAO.OTHER_RECEIVABLE_NO_PREFIX);
         if (receivableOtherMapper.selectByNo(no) != null) {
             throw exception(OTHER_RECEIVABLE_NO_EXISTS);
@@ -61,9 +66,12 @@ public class ErpReceivableOtherServiceImpl implements ErpReceivableOtherService 
                 .setNo(no)
                 .setStatus(ErpAuditStatus.PROCESS.getStatus())
                 .setSourceType(StrUtil.blankToDefault(createReqVO.getSourceType(), "调账")));
+        fillCreateDeptId(doObj);
+        validateRefs(createReqVO.getHandlerId(), doObj.getDeptId());
         normalize(doObj);
         fieldPermissionMasker.clearHiddenFields(FIELD_PERMISSION_MODULE, doObj);
         receivableOtherMapper.insert(doObj);
+        operateLogService.recordCreate(ERP_RECEIVABLE_OTHER_TYPE, doObj.getId(), doObj.getNo());
         return doObj.getId();
     }
 
@@ -76,18 +84,22 @@ public class ErpReceivableOtherServiceImpl implements ErpReceivableOtherService 
         }
         fieldPermissionMasker.preserveHiddenFields(FIELD_PERMISSION_MODULE, updateReqVO, db);
         customerService.validateCustomer(updateReqVO.getCustomerId());
-        validateRefs(updateReqVO.getHandlerId(), updateReqVO.getDeptId());
         ErpReceivableOtherDO updateObj = BeanUtils.toBean(updateReqVO, ErpReceivableOtherDO.class, obj -> {
             if (StrUtil.isBlank(obj.getSourceType())) {
                 obj.setSourceType("调账");
             }
         });
+        if (updateObj.getDeptId() == null) {
+            updateObj.setDeptId(db.getDeptId());
+        }
+        validateRefs(updateReqVO.getHandlerId(), updateObj.getDeptId());
         normalize(updateObj);
         int affected = receivableOtherMapper.updateByIdAndStatus(updateReqVO.getId(),
                 ErpAuditStatus.PROCESS.getStatus(), updateObj);
         if (affected == 0) {
             throw exception(OTHER_RECEIVABLE_UPDATE_FAIL_STATUS_CHANGED);
         }
+        operateLogService.recordUpdate(ERP_RECEIVABLE_OTHER_TYPE, db.getId(), db.getNo());
     }
 
     @Override
@@ -103,6 +115,7 @@ public class ErpReceivableOtherServiceImpl implements ErpReceivableOtherService 
         if (affected == 0) {
             throw exception(OTHER_RECEIVABLE_APPROVE_FAIL);
         }
+        operateLogService.recordStatus(ERP_RECEIVABLE_OTHER_TYPE, id, db.getNo(), true);
     }
 
     @Override
@@ -113,6 +126,7 @@ public class ErpReceivableOtherServiceImpl implements ErpReceivableOtherService 
             throw exception(OTHER_RECEIVABLE_DELETE_FAIL_APPROVE, db.getNo());
         }
         receivableOtherMapper.deleteById(id);
+        operateLogService.recordDelete(ERP_RECEIVABLE_OTHER_TYPE, db.getId(), db.getNo());
     }
 
     @Override
@@ -140,6 +154,18 @@ public class ErpReceivableOtherServiceImpl implements ErpReceivableOtherService 
         if (deptId != null && deptApi.getDept(deptId) == null) {
             throw exception(OTHER_RECEIVABLE_NOT_EXISTS);
         }
+    }
+
+    private void fillCreateDeptId(ErpReceivableOtherDO doObj) {
+        if (doObj.getDeptId() != null) {
+            return;
+        }
+        Long loginUserId = getLoginUserId();
+        if (loginUserId == null) {
+            return;
+        }
+        AdminUserRespDTO user = adminUserApi.getUser(loginUserId);
+        doObj.setDeptId(user == null ? null : user.getDeptId());
     }
 
     private void normalize(ErpReceivableOtherDO doObj) {

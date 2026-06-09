@@ -1,6 +1,7 @@
 package cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.in;
 
 import cn.idev.excel.annotation.ExcelProperty;
+import cn.iocoder.yudao.framework.excel.core.annotations.ExcelRequired;
 import lombok.Data;
 
 import java.math.BigDecimal;
@@ -8,12 +9,15 @@ import java.math.BigDecimal;
 @Data
 public class ErpPurchaseInImportExcelVO {
 
+    @ExcelRequired
     @ExcelProperty("产品编码")
     private String productCode;
 
+    @ExcelRequired
     @ExcelProperty("仓库名称")
     private String warehouseName;
 
+    @ExcelRequired
     @ExcelProperty("入库数量")
     private BigDecimal count;
 

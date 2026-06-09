@@ -30,4 +30,10 @@ public interface ErpStockLockMapper extends BaseMapperX<ErpStockLockDO> {
                 .eq(ErpStockLockDO::getStatus, 1));
     }
 
+    default Long selectActiveCountByWarehouseId(Long warehouseId) {
+        return selectCount(new LambdaQueryWrapperX<ErpStockLockDO>()
+                .eq(ErpStockLockDO::getWarehouseId, warehouseId)
+                .eq(ErpStockLockDO::getStatus, 1));
+    }
+
 }

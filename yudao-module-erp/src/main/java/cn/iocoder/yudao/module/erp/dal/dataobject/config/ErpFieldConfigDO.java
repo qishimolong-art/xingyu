@@ -2,6 +2,7 @@ package cn.iocoder.yudao.module.erp.dal.dataobject.config;
 
 import cn.iocoder.yudao.framework.mybatis.core.dataobject.BaseDO;
 import com.baomidou.mybatisplus.annotation.KeySequence;
+import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.*;
@@ -32,6 +33,9 @@ public class ErpFieldConfigDO extends BaseDO {
     private String fieldLabel;
     /** 是否必填 */
     private Boolean required;
+    /** 是否显示 */
+    @TableField(exist = false)
+    private Boolean visible;
     /** 排序 */
     private Integer sort;
 }

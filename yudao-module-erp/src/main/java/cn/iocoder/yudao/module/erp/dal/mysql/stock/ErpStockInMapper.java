@@ -23,6 +23,7 @@ public interface ErpStockInMapper extends BaseMapperX<ErpStockInDO> {
                 .eqIfPresent(ErpStockInDO::getSupplierId, reqVO.getSupplierId())
                 .betweenIfPresent(ErpStockInDO::getInTime, reqVO.getInTime())
                 .eqIfPresent(ErpStockInDO::getStatus, reqVO.getStatus())
+                .eqIfPresent(ErpStockInDO::getDeptId, reqVO.getDeptId())
                 .likeIfPresent(ErpStockInDO::getRemark, reqVO.getRemark())
                 .eqIfPresent(ErpStockInDO::getCreator, reqVO.getCreator())
                 .orderByDesc(ErpStockInDO::getId);

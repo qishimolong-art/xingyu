@@ -25,4 +25,12 @@ public interface ErpSaleCartItemMapper extends BaseMapperX<ErpSaleCartItemDO> {
         return delete(ErpSaleCartItemDO::getCartId, cartId);
     }
 
+    default Long selectCountByProductId(Long productId) {
+        return selectCount(ErpSaleCartItemDO::getProductId, productId);
+    }
+
+    default Long selectCountByWarehouseId(Long warehouseId) {
+        return selectCount(ErpSaleCartItemDO::getWarehouseId, warehouseId);
+    }
+
 }

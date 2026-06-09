@@ -29,6 +29,10 @@ public class ErpSaleCartItemDO extends BaseDO {
     private Long warehouseId;
     private BigDecimal productPrice;
     private BigDecimal count;
+    /**
+     * 是否赠品
+     */
+    private Boolean giftFlag;
     private BigDecimal totalPrice;
     private BigDecimal taxPercent;
     private BigDecimal taxPrice;

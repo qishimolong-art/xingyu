@@ -16,6 +16,7 @@ CREATE TABLE IF NOT EXISTS `erp_field_config` (
   `field_name`   VARCHAR(100)    NOT NULL COMMENT '字段名（对应前端 schema 的 fieldName）',
   `field_label`  VARCHAR(100)    NULL     COMMENT '字段中文名',
   `required`     BIT(1)          NOT NULL DEFAULT b'0' COMMENT '是否必填',
+  `visible`      BIT(1)          NOT NULL DEFAULT b'1' COMMENT '是否显示',
   `sort`         INT             NOT NULL DEFAULT 0 COMMENT '排序',
   `creator`      VARCHAR(64)     NULL     DEFAULT '',
   `create_time`  DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,

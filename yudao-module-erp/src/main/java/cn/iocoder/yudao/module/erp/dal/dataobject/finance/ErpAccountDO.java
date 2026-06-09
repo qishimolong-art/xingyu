@@ -53,6 +53,11 @@ public class ErpAccountDO extends BaseDO {
     private String no;
 
     /**
+     * 所属部门
+     */
+    private Long deptId;
+
+    /**
      * 备注
      */
     private String remark;

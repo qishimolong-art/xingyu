@@ -40,6 +40,8 @@ public class ErpSaleOrderRespVO {
     @Schema(description = "销售员编号", example = "1888")
     private Long saleUserId;
 
+    private Long deptId;
+
     @Schema(description = "下单时间", requiredMode = Schema.RequiredMode.REQUIRED)
     @ExcelProperty("下单时间")
     private LocalDateTime orderTime;
@@ -62,6 +64,9 @@ public class ErpSaleOrderRespVO {
 
     @Schema(description = "优惠金额，单位：元", requiredMode = Schema.RequiredMode.REQUIRED, example = "7127")
     private BigDecimal discountPrice;
+
+    @Schema(description = "费用金额，单位：元", example = "7127")
+    private BigDecimal feeAmount;
 
     @Schema(description = "定金金额，单位：元", requiredMode = Schema.RequiredMode.REQUIRED, example = "7127")
     private BigDecimal depositPrice;
@@ -130,6 +135,9 @@ public class ErpSaleOrderRespVO {
 
         @ExcelProperty("备注")
         private String remark;
+
+        @Schema(description = "是否赠品", example = "true")
+        private Boolean giftFlag;
 
         @Schema(description = "订单项编号", example = "11756")
         private Long id;

@@ -63,7 +63,7 @@ public class RoleServiceImpl implements RoleService {
         RoleDO role = BeanUtils.toBean(createReqVO, RoleDO.class)
                 .setType(ObjectUtil.defaultIfNull(type, RoleTypeEnum.CUSTOM.getType()))
                 .setStatus(ObjUtil.defaultIfNull(createReqVO.getStatus(), CommonStatusEnum.ENABLE.getStatus()))
-                .setDataScope(DataScopeEnum.ALL.getScope()); // 默认可查看所有数据。原因是，可能一些项目不需要项目权限
+                .setDataScope(DataScopeEnum.DEPT_ONLY.getScope());
         roleMapper.insert(role);
 
         // 3. 记录操作日志上下文

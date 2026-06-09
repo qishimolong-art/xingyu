@@ -22,6 +22,13 @@ public class ErpProductRespVO {
     @ExcelProperty("配件编码")
     private String code;
 
+    @Schema(description = "所属部门编号", example = "100")
+    private Long deptId;
+
+    @Schema(description = "所属部门", example = "销售一部")
+    @ExcelProperty("所属部门")
+    private String deptName;
+
     @Schema(description = "产品编码", example = "P000001")
     @ExcelProperty("产品编码")
     private String productCode;
@@ -82,7 +89,6 @@ public class ErpProductRespVO {
     @Schema(description = "默认仓库编号", example = "1")
     private Long defaultWarehouseId;
     @Schema(description = "默认仓库名称", example = "主仓")
-    @ExcelProperty("默认仓库")
     private String defaultWarehouseName;
 
     @Schema(description = "适用车型", example = "宝马 X5")
@@ -159,6 +165,24 @@ public class ErpProductRespVO {
     @Schema(description = "创建时间", requiredMode = Schema.RequiredMode.REQUIRED)
     @ExcelProperty("创建时间")
     private LocalDateTime createTime;
+
+    @Schema(description = "创建者")
+    private String creator;
+
+    @Schema(description = "创建人")
+    @ExcelProperty("创建人")
+    private String creatorName;
+
+    @Schema(description = "更新时间")
+    @ExcelProperty("更新时间")
+    private LocalDateTime updateTime;
+
+    @Schema(description = "更新者")
+    private String updater;
+
+    @Schema(description = "更新人")
+    @ExcelProperty("更新人")
+    private String updaterName;
 
     @Schema(description = "通用件子项")
     @Data

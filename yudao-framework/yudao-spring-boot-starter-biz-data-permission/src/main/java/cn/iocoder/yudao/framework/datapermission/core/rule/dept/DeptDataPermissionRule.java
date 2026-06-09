@@ -99,18 +99,19 @@ public class DeptDataPermissionRule implements DataPermissionRule {
             return null;
         }
 
-        // 获得数据权限
-        DeptDataPermissionRespDTO deptDataPermission = loginUser.getContext(CONTEXT_KEY, DeptDataPermissionRespDTO.class);
+        // 获得数据权限（按表名分开缓存，支持不同表单使用不同的表单级权限）
+        String cacheKey = CONTEXT_KEY + ":" + tableName;
+        DeptDataPermissionRespDTO deptDataPermission = loginUser.getContext(cacheKey, DeptDataPermissionRespDTO.class);
         // 从上下文中拿不到，则调用逻辑进行获取
         if (deptDataPermission == null) {
-            deptDataPermission = permissionApi.getDeptDataPermission(loginUser.getId());
+            deptDataPermission = permissionApi.getDeptDataPermission(loginUser.getId(), tableName);
             if (deptDataPermission == null) {
                 log.error("[getExpression][LoginUser({}) 获取数据权限为 null]", JsonUtils.toJsonString(loginUser));
                 throw new NullPointerException(String.format("LoginUser(%d) Table(%s/%s) 未返回数据权限",
                         loginUser.getId(), tableName, tableAlias.getName()));
             }
             // 添加到上下文中，避免重复计算
-            loginUser.setContext(CONTEXT_KEY, deptDataPermission);
+            loginUser.setContext(cacheKey, deptDataPermission);
         }
 
         // 情况一，如果是 ALL 可查看全部，则无需拼接条件
@@ -146,19 +147,31 @@ public class DeptDataPermissionRule implements DataPermissionRule {
     }
 
     private Expression buildDeptExpression(String tableName, Alias tableAlias, Set<Long> deptIds) {
-        // 如果不存在配置，则无需作为条件
-        String columnName = deptColumns.get(tableName);
-        if (StrUtil.isEmpty(columnName)) {
-            return null;
-        }
         // 如果为空，则无条件
         if (CollUtil.isEmpty(deptIds)) {
             return null;
+        }
+        String columnName = deptColumns.get(tableName);
+        if (StrUtil.isEmpty(columnName)) {
+            return buildDeptUserExpression(tableName, tableAlias, deptIds);
         }
         // 拼接条件
         return new InExpression(MyBatisUtils.buildColumn(tableName, tableAlias, columnName),
                 // Parenthesis 的目的，是提供 (1,2,3) 的 () 左右括号
                 new ParenthesedExpressionList(new ExpressionList<LongValue>(CollectionUtils.convertList(deptIds, LongValue::new))));
+    }
+
+    private Expression buildDeptUserExpression(String tableName, Alias tableAlias, Set<Long> deptIds) {
+        String columnName = userColumns.get(tableName);
+        if (StrUtil.isEmpty(columnName)) {
+            return null;
+        }
+        Set<Long> userIds = permissionApi.getUserIdsByDeptIds(deptIds);
+        if (CollUtil.isEmpty(userIds)) {
+            return new EqualsTo(null, null);
+        }
+        return new InExpression(MyBatisUtils.buildColumn(tableName, tableAlias, columnName),
+                new ParenthesedExpressionList(new ExpressionList<LongValue>(CollectionUtils.convertList(userIds, LongValue::new))));
     }
 
     private Expression buildUserExpression(String tableName, Alias tableAlias, Boolean self, Long userId) {

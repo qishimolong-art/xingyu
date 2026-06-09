@@ -21,14 +21,17 @@ import cn.iocoder.yudao.module.system.controller.admin.user.vo.user.UserImportRe
 import cn.iocoder.yudao.module.system.controller.admin.user.vo.user.UserPageReqVO;
 import cn.iocoder.yudao.module.system.controller.admin.user.vo.user.UserSaveReqVO;
 import cn.iocoder.yudao.module.system.dal.dataobject.dept.DeptDO;
+import cn.iocoder.yudao.module.system.dal.dataobject.dept.UserDeptDO;
 import cn.iocoder.yudao.module.system.dal.dataobject.dept.UserPostDO;
 import cn.iocoder.yudao.module.system.dal.dataobject.user.AdminUserDO;
+import cn.iocoder.yudao.module.system.dal.mysql.dept.UserDeptMapper;
 import cn.iocoder.yudao.module.system.dal.mysql.dept.UserPostMapper;
 import cn.iocoder.yudao.module.system.dal.mysql.user.AdminUserMapper;
 import cn.iocoder.yudao.module.system.service.dept.DeptService;
 import cn.iocoder.yudao.module.system.service.dept.PostService;
 import cn.iocoder.yudao.module.system.service.oauth2.OAuth2TokenService;
 import cn.iocoder.yudao.module.system.service.permission.PermissionService;
+import cn.iocoder.yudao.module.system.service.permission.RoleService;
 import cn.iocoder.yudao.module.system.service.tenant.TenantService;
 import com.google.common.annotations.VisibleForTesting;
 import com.mzt.logapi.context.LogRecordContext;
@@ -74,6 +77,8 @@ public class AdminUserServiceImpl implements AdminUserService {
     @Resource
     private PermissionService permissionService;
     @Resource
+    private RoleService roleService;
+    @Resource
     private PasswordEncoder passwordEncoder;
     @Resource
     @Lazy // 延迟，避免循环依赖报错
@@ -84,6 +89,8 @@ public class AdminUserServiceImpl implements AdminUserService {
 
     @Resource
     private UserPostMapper userPostMapper;
+    @Resource
+    private UserDeptMapper userDeptMapper;
 
     @Resource
     private ConfigApi configApi;
@@ -100,19 +107,23 @@ public class AdminUserServiceImpl implements AdminUserService {
                 throw exception(USER_COUNT_MAX, tenant.getAccountCount());
             }
         });
+        normalizeUserDept(createReqVO);
         // 1.2 校验正确性
         validateUserForCreateOrUpdate(null, createReqVO.getUsername(),
-                createReqVO.getMobile(), createReqVO.getEmail(), createReqVO.getDeptId(), createReqVO.getPostIds());
+                createReqVO.getMobile(), createReqVO.getEmail(), createReqVO.getDeptIds(), createReqVO.getPostIds(),
+                createReqVO.getRoleIds());
         // 2.1 插入用户
         AdminUserDO user = BeanUtils.toBean(createReqVO, AdminUserDO.class);
         user.setStatus(CommonStatusEnum.ENABLE.getStatus()); // 默认开启
         user.setPassword(encodePassword(createReqVO.getPassword())); // 加密密码
         userMapper.insert(user);
-        // 2.2 插入关联岗位
+        // 2.2 插入关联部门、岗位和角色
+        insertUserDept(user.getId(), createReqVO.getDeptIds());
         if (CollectionUtil.isNotEmpty(user.getPostIds())) {
             userPostMapper.insertBatch(convertList(user.getPostIds(),
                     postId -> new UserPostDO().setUserId(user.getId()).setPostId(postId)));
         }
+        permissionService.assignUserRole(user.getId(), createReqVO.getRoleIds());
 
         // 3. 记录操作日志上下文
         LogRecordContext.putVariable("user", user);
@@ -133,7 +144,7 @@ public class AdminUserServiceImpl implements AdminUserService {
             }
         });
         // 1.3 校验正确性
-        validateUserForCreateOrUpdate(null, registerReqVO.getUsername(), null, null, null, null);
+        validateUserForCreateOrUpdate(null, registerReqVO.getUsername(), null, null, null, null, null);
 
         // 2. 插入用户
         AdminUserDO user = BeanUtils.toBean(registerReqVO, AdminUserDO.class);
@@ -149,15 +160,20 @@ public class AdminUserServiceImpl implements AdminUserService {
             success = SYSTEM_USER_UPDATE_SUCCESS)
     public void updateUser(UserSaveReqVO updateReqVO) {
         updateReqVO.setPassword(null); // 特殊：此处不更新密码
+        normalizeUserDept(updateReqVO);
         // 1. 校验正确性
         AdminUserDO oldUser = validateUserForCreateOrUpdate(updateReqVO.getId(), updateReqVO.getUsername(),
-                updateReqVO.getMobile(), updateReqVO.getEmail(), updateReqVO.getDeptId(), updateReqVO.getPostIds());
+                updateReqVO.getMobile(), updateReqVO.getEmail(), updateReqVO.getDeptIds(), updateReqVO.getPostIds(),
+                updateReqVO.getRoleIds());
 
         // 2.1 更新用户
         AdminUserDO updateObj = BeanUtils.toBean(updateReqVO, AdminUserDO.class);
         userMapper.updateById(updateObj);
         // 2.2 更新岗位
         updateUserPost(updateReqVO, updateObj);
+        // 2.3 更新部门和角色
+        updateUserDept(updateReqVO);
+        permissionService.assignUserRole(updateReqVO.getId(), updateReqVO.getRoleIds());
 
         // 3. 记录操作日志上下文
         LogRecordContext.putVariable(DiffParseFunction.OLD_OBJECT, BeanUtils.toBean(oldUser, UserSaveReqVO.class));
@@ -179,6 +195,39 @@ public class AdminUserServiceImpl implements AdminUserService {
         if (!CollectionUtil.isEmpty(deletePostIds)) {
             userPostMapper.deleteByUserIdAndPostId(userId, deletePostIds);
         }
+    }
+
+    private void insertUserDept(Long userId, Set<Long> deptIds) {
+        if (CollectionUtil.isEmpty(deptIds)) {
+            return;
+        }
+        userDeptMapper.insertBatch(convertList(deptIds,
+                deptId -> new UserDeptDO().setUserId(userId).setDeptId(deptId)));
+    }
+
+    private void updateUserDept(UserSaveReqVO reqVO) {
+        Long userId = reqVO.getId();
+        Set<Long> dbDeptIds = convertSet(userDeptMapper.selectListByUserId(userId), UserDeptDO::getDeptId);
+        Set<Long> deptIds = CollUtil.emptyIfNull(reqVO.getDeptIds());
+        Collection<Long> createDeptIds = CollUtil.subtract(deptIds, dbDeptIds);
+        Collection<Long> deleteDeptIds = CollUtil.subtract(dbDeptIds, deptIds);
+        if (CollectionUtil.isNotEmpty(createDeptIds)) {
+            userDeptMapper.insertBatch(convertList(createDeptIds,
+                    deptId -> new UserDeptDO().setUserId(userId).setDeptId(deptId)));
+        }
+        if (CollectionUtil.isNotEmpty(deleteDeptIds)) {
+            userDeptMapper.deleteByUserIdAndDeptId(userId, deleteDeptIds);
+        }
+    }
+
+    private void normalizeUserDept(UserSaveReqVO reqVO) {
+        if (CollUtil.isEmpty(reqVO.getDeptIds())) {
+            return;
+        }
+        if (reqVO.getDeptId() != null && reqVO.getDeptIds().contains(reqVO.getDeptId())) {
+            return;
+        }
+        reqVO.setDeptId(reqVO.getDeptIds().iterator().next());
     }
 
     @Override
@@ -254,6 +303,8 @@ public class AdminUserServiceImpl implements AdminUserService {
         permissionService.processUserDeleted(id);
         // 2.2 删除用户岗位
         userPostMapper.deleteByUserId(id);
+        // 2.3 删除用户部门
+        userDeptMapper.deleteByUserId(id);
 
         // 3. 记录操作日志上下文
         LogRecordContext.putVariable("user", user);
@@ -269,6 +320,7 @@ public class AdminUserServiceImpl implements AdminUserService {
         ids.forEach(id -> {
             permissionService.processUserDeleted(id);
             userPostMapper.deleteByUserId(id);
+            userDeptMapper.deleteByUserId(id);
         });
     }
 
@@ -293,8 +345,21 @@ public class AdminUserServiceImpl implements AdminUserService {
             }
         }
 
+        Set<Long> deptIds = getDeptCondition(reqVO.getDeptId());
+        if (CollUtil.isNotEmpty(deptIds)) {
+            Set<Long> deptUserIds = convertSet(userDeptMapper.selectListByDeptIds(deptIds), UserDeptDO::getUserId);
+            CollUtil.addAll(deptUserIds, convertSet(userMapper.selectListByDeptIds(deptIds), AdminUserDO::getId));
+            if (CollUtil.isEmpty(deptUserIds)) {
+                return PageResult.empty();
+            }
+            userIds = intersectUserIds(userIds, deptUserIds);
+            if (CollUtil.isEmpty(userIds)) {
+                return PageResult.empty();
+            }
+        }
+
         // 分页查询
-        return userMapper.selectPage(reqVO, getDeptCondition(reqVO.getDeptId()), userIds);
+        return userMapper.selectPage(reqVO, Collections.emptySet(), userIds);
     }
 
     @Override
@@ -303,11 +368,26 @@ public class AdminUserServiceImpl implements AdminUserService {
     }
 
     @Override
+    public Set<Long> getUserDeptIdListByUserId(Long userId) {
+        Set<Long> deptIds = convertSet(userDeptMapper.selectListByUserId(userId), UserDeptDO::getDeptId);
+        AdminUserDO user = userMapper.selectById(userId);
+        if (user != null) {
+            CollectionUtils.addIfNotNull(deptIds, user.getDeptId());
+        }
+        return deptIds;
+    }
+
+    @Override
     public List<AdminUserDO> getUserListByDeptIds(Collection<Long> deptIds) {
         if (CollUtil.isEmpty(deptIds)) {
             return Collections.emptyList();
         }
-        return userMapper.selectListByDeptIds(deptIds);
+        Set<Long> userIds = convertSet(userDeptMapper.selectListByDeptIds(deptIds), UserDeptDO::getUserId);
+        CollUtil.addAll(userIds, convertSet(userMapper.selectListByDeptIds(deptIds), AdminUserDO::getId));
+        if (CollUtil.isEmpty(userIds)) {
+            return Collections.emptyList();
+        }
+        return userMapper.selectByIds(userIds);
     }
 
     @Override
@@ -355,6 +435,14 @@ public class AdminUserServiceImpl implements AdminUserService {
         return userMapper.selectListByNickname(nickname);
     }
 
+    private Set<Long> intersectUserIds(Set<Long> sourceUserIds, Set<Long> filterUserIds) {
+        if (sourceUserIds == null) {
+            return filterUserIds;
+        }
+        sourceUserIds.retainAll(filterUserIds);
+        return sourceUserIds;
+    }
+
     /**
      * 获得部门条件：查询指定部门的子部门编号们，包括自身
      *
@@ -371,7 +459,7 @@ public class AdminUserServiceImpl implements AdminUserService {
     }
 
     private AdminUserDO validateUserForCreateOrUpdate(Long id, String username, String mobile, String email,
-                                               Long deptId, Set<Long> postIds) {
+                                                      Set<Long> deptIds, Set<Long> postIds, Set<Long> roleIds) {
         // 关闭数据权限，避免因为没有数据权限，查询不到数据，进而导致唯一校验不正确
         return DataPermissionUtils.executeIgnore(() -> {
             // 校验用户存在
@@ -383,9 +471,11 @@ public class AdminUserServiceImpl implements AdminUserService {
             // 校验邮箱唯一
             validateEmailUnique(id, email);
             // 校验部门处于开启状态
-            deptService.validateDeptList(CollectionUtils.singleton(deptId));
+            deptService.validateDeptList(deptIds);
             // 校验岗位处于开启状态
             postService.validatePostList(postIds);
+            // 校验角色处于开启状态
+            roleService.validateRoleList(roleIds);
             return user;
         });
     }
@@ -502,7 +592,8 @@ public class AdminUserServiceImpl implements AdminUserService {
             // 2.1.2 校验，判断是否有不符合的原因
             try {
                 validateUserForCreateOrUpdate(null, null, importUser.getMobile(), importUser.getEmail(),
-                        importUser.getDeptId(), null);
+                        importUser.getDeptId() == null ? null : Collections.singleton(importUser.getDeptId()),
+                        null, null);
             } catch (ServiceException ex) {
                 respVO.getFailureUsernames().put(importUser.getUsername(), ex.getMessage());
                 return;

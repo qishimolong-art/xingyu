@@ -41,6 +41,10 @@ public class ErpStockInDO extends BaseDO {
      */
     private Long supplierId;
     /**
+     * Department id.
+     */
+    private Long deptId;
+    /**
      * 入库时间
      */
     private LocalDateTime inTime;

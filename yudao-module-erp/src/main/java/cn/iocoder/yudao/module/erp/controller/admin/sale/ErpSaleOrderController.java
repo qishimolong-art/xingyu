@@ -18,6 +18,9 @@ import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.order.ErpSaleOrderSa
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpCustomerDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleOrderDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleOrderItemDO;
+import cn.iocoder.yudao.module.erp.enums.config.ErpFieldConfigModuleEnum;
+import cn.iocoder.yudao.module.erp.framework.excel.ErpImportTemplateRequiredFieldUtils;
+import cn.iocoder.yudao.module.erp.service.config.ErpFieldConfigService;
 import cn.iocoder.yudao.module.erp.service.product.ErpProductService;
 import cn.iocoder.yudao.module.erp.service.sale.ErpCustomerService;
 import cn.iocoder.yudao.module.erp.service.sale.ErpSaleFieldPermissionMasker;
@@ -55,6 +58,14 @@ import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.
 public class ErpSaleOrderController {
 
     private static final String FIELD_PERMISSION_MODULE = "erp_sale_order";
+    private static final Map<String, String> DETAIL_IMPORT_FIELD_ALIAS_MAP = ErpImportTemplateRequiredFieldUtils.aliasMap(
+            "productId", "productCode",
+            "productCode", "productCode",
+            "count", "count",
+            "itemCount", "count",
+            "productPrice", "productPrice",
+            "taxPercent", "taxPercent",
+            "remark", "remark");
 
     @Resource
     private ErpSaleOrderService saleOrderService;
@@ -66,6 +77,8 @@ public class ErpSaleOrderController {
     private ErpCustomerService customerService;
     @Resource
     private ErpSaleFieldPermissionMasker fieldPermissionMasker;
+    @Resource
+    private ErpFieldConfigService fieldConfigService;
 
     @Resource
     private AdminUserApi adminUserApi;
@@ -160,7 +173,11 @@ public class ErpSaleOrderController {
         example.setProductPrice(new BigDecimal("100.00"));
         example.setTaxPercent(BigDecimal.ZERO);
         example.setRemark("备注");
-        ExcelUtils.write(response, "销售订单导入模板.xls", "销售订单", ErpSaleOrderImportExcelVO.class, Collections.singletonList(example));
+        ExcelUtils.writeImportTemplate(response, "销售订单导入模板.xls", "销售订单",
+                ErpSaleOrderImportExcelVO.class, Collections.singletonList(example), null,
+                ErpImportTemplateRequiredFieldUtils.getRequiredFields(fieldConfigService,
+                        ErpFieldConfigModuleEnum.SALE_ORDER, ErpSaleOrderImportExcelVO.class,
+                        DETAIL_IMPORT_FIELD_ALIAS_MAP));
     }
 
     @PostMapping("/import")

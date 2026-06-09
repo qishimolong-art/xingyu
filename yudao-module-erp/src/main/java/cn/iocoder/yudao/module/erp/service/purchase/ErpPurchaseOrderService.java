@@ -1,7 +1,9 @@
 package cn.iocoder.yudao.module.erp.service.purchase;
 
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.order.ErpPurchaseOrderDetailImportExcelVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.order.ErpPurchaseOrderImportExcelVO;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.order.ErpPurchaseOrderImportResultRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.order.ErpPurchaseOrderImportRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.order.ErpPurchaseOrderInableItemRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.order.ErpPurchaseOrderPageReqVO;
@@ -124,7 +126,15 @@ public interface ErpPurchaseOrderService {
      * @param importVO 导入的 Excel 数据
      * @return 解析后的响应数据（名称已转换为ID）
      */
-    ErpPurchaseOrderImportRespVO parseImportData(List<ErpPurchaseOrderImportExcelVO> list);
+    ErpPurchaseOrderImportRespVO parseImportData(List<ErpPurchaseOrderDetailImportExcelVO> list);
+
+    /**
+     * 导入采购订单整单
+     *
+     * @param list 导入的 Excel 数据
+     * @return 导入结果
+     */
+    ErpPurchaseOrderImportResultRespVO importPurchaseOrderList(List<ErpPurchaseOrderImportExcelVO> list);
 
     /**
      * 获取采购订单的可入库明细

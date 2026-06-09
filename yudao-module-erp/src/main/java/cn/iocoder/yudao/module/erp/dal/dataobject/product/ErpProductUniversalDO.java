@@ -30,6 +30,10 @@ public class ErpProductUniversalDO extends BaseDO {
     @TableId
     private Long id;
     /**
+     * Department id.
+     */
+    private Long deptId;
+    /**
      * 主配件编号
      *
      * 关联 {@link ErpProductDO#getId()}

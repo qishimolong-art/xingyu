@@ -4,12 +4,14 @@ import cn.hutool.core.collection.CollUtil;
 import cn.iocoder.yudao.framework.common.enums.CommonStatusEnum;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
-import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.warehouse.ErpWarehouseSaveReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.warehouse.ErpWarehousePageReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.warehouse.ErpWarehouseSaveReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpWarehouseBranchDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpWarehouseDO;
 import cn.iocoder.yudao.module.erp.dal.mysql.stock.ErpWarehouseBranchMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.stock.ErpWarehouseMapper;
+import cn.iocoder.yudao.module.erp.service.base.ErpBaseArchiveReferenceService;
+import cn.iocoder.yudao.module.erp.service.common.ErpOperateLogService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.validation.annotation.Validated;
@@ -23,13 +25,14 @@ import java.util.Map;
 import static cn.iocoder.yudao.framework.common.exception.util.ServiceExceptionUtil.exception;
 import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.convertList;
 import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.convertMap;
+import static cn.iocoder.yudao.module.erp.enums.LogRecordConstants.ERP_DELETE_SUB_TYPE;
+import static cn.iocoder.yudao.module.erp.enums.LogRecordConstants.ERP_WAREHOUSE_TYPE;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.WAREHOUSE_NOT_ENABLE;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.WAREHOUSE_NOT_EXISTS;
 
 /**
- * ERP 仓库 Service 实现类
- *
- * @author 芋道源码
+ * ERP 濞寸姵鎸哥花?Service 閻庡湱鍋熼獮鍥╃尵? *
+ * @author 闁煎搫顑夋禍鎯р攦閹邦喚鍨?
  */
 @Service
 @Validated
@@ -44,26 +47,30 @@ public class ErpWarehouseServiceImpl implements ErpWarehouseService {
     private ErpWarehouseBranchMapper warehouseBranchMapper;
     @Resource
     private ErpStockFieldPermissionMasker fieldPermissionMasker;
+    @Resource
+    private ErpOperateLogService operateLogService;
+    @Resource
+    private ErpBaseArchiveReferenceService baseArchiveReferenceService;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Long createWarehouse(ErpWarehouseSaveReqVO createReqVO) {
-        // 插入仓库
+        // 闁圭粯甯掗崣鍡樼閹惧磭姘?
         ErpWarehouseDO warehouse = BeanUtils.toBean(createReqVO, ErpWarehouseDO.class);
         warehouseMapper.insert(warehouse);
-        // 插入分店关联
+        // 闁圭粯甯掗崣鍡涘礆閸℃鏆楅柛蹇撶枃娴?
         createWarehouseBranches(warehouse.getId(), createReqVO.getBranchTenantIds());
-        // 返回
+        operateLogService.recordCreate(ERP_WAREHOUSE_TYPE, warehouse.getId(), warehouse.getName());
+        // 閺夆晜鏌ㄥú?
         return warehouse.getId();
     }
 
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void updateWarehouse(ErpWarehouseSaveReqVO updateReqVO) {
-        // 校验存在
         ErpWarehouseDO warehouse = validateWarehouseExists(updateReqVO.getId());
         fieldPermissionMasker.preserveHiddenFields(FIELD_PERMISSION_MODULE, updateReqVO, warehouse);
-        // 更新仓库：只覆盖本次表单提交的字段，避免把历史扩展字段清空
+
         ErpWarehouseDO updateObj = BeanUtils.toBean(updateReqVO, ErpWarehouseDO.class);
         updateObj.setId(warehouse.getId());
         updateObj.setAddress(warehouse.getAddress());
@@ -78,6 +85,9 @@ public class ErpWarehouseServiceImpl implements ErpWarehouseService {
         updateObj.setZeroStockHide(warehouse.getZeroStockHide());
         updateObj.setGoodsToBranch(warehouse.getGoodsToBranch());
         updateObj.setDept(warehouse.getDept());
+        if (updateObj.getDeptId() == null) {
+            updateObj.setDeptId(warehouse.getDeptId());
+        }
         updateObj.setWarehouseLocation(warehouse.getWarehouseLocation());
         updateObj.setOutPacking(warehouse.getOutPacking());
         updateObj.setAutoOrder(warehouse.getAutoOrder());
@@ -86,39 +96,43 @@ public class ErpWarehouseServiceImpl implements ErpWarehouseService {
         updateObj.setCreditControl(warehouse.getCreditControl());
         updateObj.setRegionId(warehouse.getRegionId());
         warehouseMapper.updateById(updateObj);
-        // 精简表单不再提交分店时，保留原有分店关联
+
         if (updateReqVO.getBranchTenantIds() != null) {
             warehouseBranchMapper.deleteByWarehouseId(updateReqVO.getId());
             createWarehouseBranches(updateReqVO.getId(), updateReqVO.getBranchTenantIds());
         }
+        operateLogService.recordUpdate(ERP_WAREHOUSE_TYPE, updateObj.getId(), updateObj.getName());
     }
 
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void updateWarehouseDefaultStatus(Long id, Boolean defaultStatus) {
-        // 1. 校验存在
+        // 1. 闁哄稄绻濋悰娆戔偓娑櫭﹢?
         validateWarehouseExists(id);
 
-        // 2.1 如果开启，则需要关闭所有其它的默认
+        // 2.1 濠碘€冲€归悘澶婎嚕閳ь剟宕ラ銈囩闁告帗鐟╁〒鍓佹啺娴ｇ褰犻梻鍌ゅ幗婢у秹寮垫径濠傚緭閻庣懓鍟板▓鎴烆渶濡鍚?
         if (defaultStatus) {
             ErpWarehouseDO warehouse = warehouseMapper.selectByDefaultStatus();
             if (warehouse != null) {
                 warehouseMapper.updateById(new ErpWarehouseDO().setId(warehouse.getId()).setDefaultStatus(false));
             }
         }
-        // 2.2 更新对应的默认状态
+        // 2.2 闁哄洤鐡ㄩ弻濠勨偓鐢垫嚀缁ㄦ煡鎯冮崟顖滃笡閻犱降鍊楁慨鎼佸箑?
         warehouseMapper.updateById(new ErpWarehouseDO().setId(id).setDefaultStatus(defaultStatus));
     }
 
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void deleteWarehouse(Long id) {
-        // 校验存在
-        validateWarehouseExists(id);
-        // 删除仓库
+        // 闁哄稄绻濋悰娆戔偓娑櫭﹢?
+        ErpWarehouseDO warehouse = validateWarehouseExists(id);
+        baseArchiveReferenceService.validateWarehouseNotReferenced(id);
+        // 闁告帞濞€濞呭孩绂掗幘宕囨皑
         warehouseMapper.deleteById(id);
-        // 删除分店关联
+        // 闁告帞濞€濞呭酣宕氶崱妤冩殫闁稿繐鐤囨禒?
         warehouseBranchMapper.deleteByWarehouseId(id);
+        operateLogService.record(ERP_WAREHOUSE_TYPE, ERP_DELETE_SUB_TYPE, id,
+                "delete warehouse: " + warehouse.getName(), warehouse.getName());
     }
 
     private ErpWarehouseDO validateWarehouseExists(Long id) {
@@ -167,6 +181,14 @@ public class ErpWarehouseServiceImpl implements ErpWarehouseService {
     }
 
     @Override
+    public List<ErpWarehouseDO> getWarehouseListByDeptId(Long deptId) {
+        if (deptId == null) {
+            return Collections.emptyList();
+        }
+        return warehouseMapper.selectListByDeptId(deptId);
+    }
+
+    @Override
     public PageResult<ErpWarehouseDO> getWarehousePage(ErpWarehousePageReqVO pageReqVO) {
         return warehouseMapper.selectPage(pageReqVO);
     }
@@ -178,7 +200,7 @@ public class ErpWarehouseServiceImpl implements ErpWarehouseService {
     }
 
     /**
-     * 批量创建仓库分店关联
+     * 闁归潧缍婇崳娲礆濞戞绱﹀ù鐘虫尭缁ㄩ亶宕氶崱妤冩殫闁稿繐鐤囨禒?
      */
     private void createWarehouseBranches(Long warehouseId, List<Long> branchTenantIds) {
         if (CollUtil.isEmpty(branchTenantIds)) {
@@ -190,3 +212,4 @@ public class ErpWarehouseServiceImpl implements ErpWarehouseService {
     }
 
 }
+

@@ -29,6 +29,10 @@ public class ErpProductDO extends BaseDO {
     @TableId
     private Long id;
     /**
+     * Department id.
+     */
+    private Long deptId;
+    /**
      * 产品名称
      */
     private String name;

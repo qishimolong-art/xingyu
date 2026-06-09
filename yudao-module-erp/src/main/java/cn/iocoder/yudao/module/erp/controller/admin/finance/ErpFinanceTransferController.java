@@ -17,6 +17,8 @@ import cn.iocoder.yudao.module.erp.dal.dataobject.finance.ErpFinanceTransferDO;
 import cn.iocoder.yudao.module.erp.service.finance.ErpAccountService;
 import cn.iocoder.yudao.module.erp.service.finance.ErpFinanceFieldPermissionMasker;
 import cn.iocoder.yudao.module.erp.service.finance.ErpFinanceTransferService;
+import cn.iocoder.yudao.module.system.api.dept.DeptApi;
+import cn.iocoder.yudao.module.system.api.dept.dto.DeptRespDTO;
 import cn.iocoder.yudao.module.system.api.user.AdminUserApi;
 import cn.iocoder.yudao.module.system.api.user.dto.AdminUserRespDTO;
 import io.swagger.v3.oas.annotations.Operation;
@@ -58,6 +60,8 @@ public class ErpFinanceTransferController {
     private ErpAccountService accountService;
     @Resource
     private AdminUserApi adminUserApi;
+    @Resource
+    private DeptApi deptApi;
     @Resource
     private ErpFinanceFieldPermissionMasker fieldPermissionMasker;
 
@@ -142,12 +146,17 @@ public class ErpFinanceTransferController {
         Map<Long, ErpAccountDO> accountMap = accountService.getAccountMap(convertListByFlatMap(pageResult.getList(),
                 transfer -> Stream.of(transfer.getOutAccountId(), transfer.getInAccountId())));
         Map<Long, AdminUserRespDTO> userMap = adminUserApi.getUserMap(convertListByFlatMap(pageResult.getList(),
-                transfer -> Stream.of(NumberUtils.parseLong(transfer.getCreator()), transfer.getFinanceUserId())));
+                transfer -> Stream.of(NumberUtils.parseLong(transfer.getCreator()), NumberUtils.parseLong(transfer.getUpdater()),
+                        transfer.getFinanceUserId())));
+        Map<Long, DeptRespDTO> deptMap = deptApi.getDeptMap(convertListByFlatMap(pageResult.getList(),
+                transfer -> Stream.of(transfer.getDeptId())));
         return BeanUtils.toBean(pageResult, ErpFinanceTransferRespVO.class, transfer -> {
             MapUtils.findAndThen(accountMap, transfer.getOutAccountId(), account -> transfer.setOutAccountName(account.getName()));
             MapUtils.findAndThen(accountMap, transfer.getInAccountId(), account -> transfer.setInAccountName(account.getName()));
             MapUtils.findAndThen(userMap, NumberUtils.parseLong(transfer.getCreator()), user -> transfer.setCreatorName(user.getNickname()));
+            MapUtils.findAndThen(userMap, NumberUtils.parseLong(transfer.getUpdater()), user -> transfer.setUpdaterName(user.getNickname()));
             MapUtils.findAndThen(userMap, transfer.getFinanceUserId(), user -> transfer.setFinanceUserName(user.getNickname()));
+            MapUtils.findAndThen(deptMap, transfer.getDeptId(), dept -> transfer.setDeptName(dept.getName()));
         });
     }
 

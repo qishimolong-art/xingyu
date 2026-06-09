@@ -34,6 +34,14 @@ public interface ErpSaleReturnItemMapper extends BaseMapperX<ErpSaleReturnItemDO
         return delete(ErpSaleReturnItemDO::getReturnId, returnId);
     }
 
+    default Long selectCountByProductId(Long productId) {
+        return selectCount(ErpSaleReturnItemDO::getProductId, productId);
+    }
+
+    default Long selectCountByWarehouseId(Long warehouseId) {
+        return selectCount(ErpSaleReturnItemDO::getWarehouseId, warehouseId);
+    }
+
     /**
      * 基于销售订单编号，查询每个销售订单项的退货数量之和
      *

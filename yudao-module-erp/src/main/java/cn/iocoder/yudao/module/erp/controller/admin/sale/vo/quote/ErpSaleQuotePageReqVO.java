@@ -27,6 +27,8 @@ public class ErpSaleQuotePageReqVO extends PageParam {
     @Schema(description = "销售员编号", example = "1888")
     private Long saleUserId;
 
+    private Long deptId;
+
     @Schema(description = "报价时间")
     @DateTimeFormat(pattern = FORMAT_YEAR_MONTH_DAY_HOUR_MINUTE_SECOND)
     private LocalDateTime[] quoteTime;

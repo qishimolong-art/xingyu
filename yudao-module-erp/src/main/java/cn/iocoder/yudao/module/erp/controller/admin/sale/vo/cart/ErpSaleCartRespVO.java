@@ -39,6 +39,7 @@ public class ErpSaleCartRespVO {
     private BigDecimal totalTaxPrice;
     private BigDecimal discountPercent;
     private BigDecimal discountPrice;
+    private BigDecimal feeAmount;
     private BigDecimal otherPrice;
     private Integer sourceType;
     private Long sourceId;
@@ -95,6 +96,8 @@ public class ErpSaleCartRespVO {
         private BigDecimal lockCount;
         @ExcelProperty("数量")
         private BigDecimal count;
+        @ExcelProperty("是否为赠品")
+        private Boolean giftFlag;
         @ExcelProperty("单价")
         private BigDecimal productPrice;
         @ExcelProperty("金额")

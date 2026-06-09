@@ -33,6 +33,14 @@ public interface ErpPurchaseOrderItemMapper extends BaseMapperX<ErpPurchaseOrder
         return delete(ErpPurchaseOrderItemDO::getOrderId, orderId);
     }
 
+    default Long selectCountByProductId(Long productId) {
+        return selectCount(ErpPurchaseOrderItemDO::getProductId, productId);
+    }
+
+    default Long selectCountByWarehouseId(Long warehouseId) {
+        return selectCount(ErpPurchaseOrderItemDO::getWarehouseId, warehouseId);
+    }
+
     /**
      * 统计每个产品的"未入数"（= SUM(count - inCount)），按 product_id 分组
      */

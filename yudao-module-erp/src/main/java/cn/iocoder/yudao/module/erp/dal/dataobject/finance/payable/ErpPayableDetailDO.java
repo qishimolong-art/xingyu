@@ -9,8 +9,11 @@ import java.time.LocalDateTime;
 public class ErpPayableDetailDO {
 
     private String docType;
+    private Integer bizType;
+    private Long bizId;
     private LocalDateTime docDate;
     private String docNo;
     private BigDecimal increaseAmount;
     private BigDecimal paymentAmount;
+    private BigDecimal writeOffAmount;
 }

@@ -17,6 +17,9 @@ public class ErpPurchaseReturnExportRespVO {
     @ExcelProperty("供应商")
     private String supplierName;
 
+    @ExcelProperty("部门")
+    private String deptName;
+
     @ExcelProperty("退货时间")
     private LocalDateTime returnTime;
 
@@ -67,6 +70,9 @@ public class ErpPurchaseReturnExportRespVO {
 
     @ExcelProperty("明细备注")
     private String itemRemark;
+
+    @ExcelProperty("费用金额")
+    private BigDecimal feeAmount;
 
     @ExcelProperty("备注")
     private String remark;

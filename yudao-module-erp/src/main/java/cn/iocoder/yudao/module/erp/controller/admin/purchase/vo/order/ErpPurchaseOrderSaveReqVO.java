@@ -29,6 +29,9 @@ public class ErpPurchaseOrderSaveReqVO {
     @Schema(description = "优惠率，百分比", requiredMode = Schema.RequiredMode.REQUIRED, example = "99.88")
     private BigDecimal discountPercent;
 
+    @Schema(description = "费用金额，单位：元", example = "7127")
+    private BigDecimal feeAmount;
+
     @Schema(description = "定金金额，单位：元", example = "7127")
     private BigDecimal depositPrice;
 

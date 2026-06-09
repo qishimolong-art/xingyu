@@ -356,7 +356,7 @@ public class ErpPurchaseReturnServiceImplTest extends BaseMockitoUnitTest {
         reqVO.setSupplierId(null); // 让 supplierId 从 order 带出
 
         when(purchaseOrderService.validatePurchaseOrder(eq(555L))).thenReturn(
-                new ErpPurchaseOrderDO().setId(555L).setNo("CGDD001").setSupplierId(100L));
+                new ErpPurchaseOrderDO().setId(555L).setNo("CGDD001").setSupplierId(100L).setDeptId(88L));
         when(productService.validProductList(any())).thenReturn(Collections.singletonList(
                 new ErpProductDO().setId(200L).setUnitId(1L)));
         when(purchaseReturnMapper.selectByNo(any())).thenReturn(null);
@@ -369,6 +369,7 @@ public class ErpPurchaseReturnServiceImplTest extends BaseMockitoUnitTest {
         // 从订单带出供应商
         assertEquals(Long.valueOf(100L), captor.getValue().getSupplierId());
         assertEquals("CGDD001", captor.getValue().getOrderNo());
+        assertEquals(Long.valueOf(88L), captor.getValue().getDeptId());
     }
 
     // ==================== updatePurchaseReturn ====================

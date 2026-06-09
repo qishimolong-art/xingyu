@@ -29,6 +29,9 @@ public class ErpSaleCartExportRespVO {
     @ExcelProperty("合计金额")
     private BigDecimal totalPrice;
 
+    @ExcelProperty("费用金额")
+    private BigDecimal feeAmount;
+
     @ExcelProperty("备注")
     private String remark;
 

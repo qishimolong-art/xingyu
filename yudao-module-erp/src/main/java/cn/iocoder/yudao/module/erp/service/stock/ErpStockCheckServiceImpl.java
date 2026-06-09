@@ -14,6 +14,7 @@ import cn.iocoder.yudao.module.erp.dal.mysql.stock.ErpStockCheckMapper;
 import cn.iocoder.yudao.module.erp.dal.redis.no.ErpNoRedisDAO;
 import cn.iocoder.yudao.module.erp.enums.ErpAuditStatus;
 import cn.iocoder.yudao.module.erp.enums.stock.ErpStockRecordBizTypeEnum;
+import cn.iocoder.yudao.module.erp.service.common.ErpOperateLogService;
 import cn.iocoder.yudao.module.erp.service.product.ErpProductService;
 import cn.iocoder.yudao.module.erp.service.stock.bo.ErpStockRecordCreateReqBO;
 import org.springframework.stereotype.Service;
@@ -24,11 +25,14 @@ import javax.annotation.Resource;
 import java.math.BigDecimal;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import static cn.iocoder.yudao.framework.common.exception.util.ServiceExceptionUtil.exception;
 import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.*;
+import static cn.iocoder.yudao.module.erp.enums.LogRecordConstants.ERP_STOCK_CHECK_TYPE;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.*;
 
 // TODO 芋艿：记录操作日志
@@ -60,6 +64,8 @@ public class ErpStockCheckServiceImpl implements ErpStockCheckService {
     private ErpWarehouseService warehouseService;
     @Resource
     private ErpStockRecordService stockRecordService;
+    @Resource
+    private ErpOperateLogService operateLogService;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -81,6 +87,7 @@ public class ErpStockCheckServiceImpl implements ErpStockCheckService {
         // 2.2 插入盘点单项
         stockCheckItems.forEach(o -> o.setCheckId(stockCheck.getId()));
         stockCheckItemMapper.insertBatch(stockCheckItems);
+        operateLogService.recordCreate(ERP_STOCK_CHECK_TYPE, stockCheck.getId(), stockCheck.getNo());
         return stockCheck.getId();
     }
 
@@ -102,9 +109,13 @@ public class ErpStockCheckServiceImpl implements ErpStockCheckService {
         ErpStockCheckDO updateObj = BeanUtils.toBean(updateReqVO, ErpStockCheckDO.class, in -> in
                 .setTotalCount(getSumValue(stockCheckItems, ErpStockCheckItemDO::getCount, BigDecimal::add))
                 .setTotalPrice(getSumValue(stockCheckItems, ErpStockCheckItemDO::getTotalPrice, BigDecimal::add)));
+        if (updateObj.getDeptId() == null) {
+            updateObj.setDeptId(stockCheck.getDeptId());
+        }
         stockCheckMapper.updateById(updateObj);
         // 2.2 更新盘点单项
         updateStockCheckItemList(updateReqVO.getId(), stockCheckItems);
+        operateLogService.recordUpdate(ERP_STOCK_CHECK_TYPE, stockCheck.getId(), stockCheck.getNo());
     }
 
     @Override
@@ -124,6 +135,7 @@ public class ErpStockCheckServiceImpl implements ErpStockCheckService {
         if (updateCount == 0) {
             throw exception(approve ? STOCK_CHECK_APPROVE_FAIL : STOCK_CHECK_PROCESS_FAIL);
         }
+        operateLogService.recordStatus(ERP_STOCK_CHECK_TYPE, stockCheck.getId(), stockCheck.getNo(), approve);
 
         // 3. 变更库存
         List<ErpStockCheckItemDO> stockCheckItems = stockCheckItemMapper.selectListByCheckId(id);
@@ -151,6 +163,7 @@ public class ErpStockCheckServiceImpl implements ErpStockCheckService {
     }
 
     private List<ErpStockCheckItemDO> validateStockCheckItems(List<ErpStockCheckSaveReqVO.Item> list) {
+        validateDuplicateStockCheckItems(list);
         // 1.1 校验产品存在
         List<ErpProductDO> productList = productService.validProductList(
                 convertSet(list, ErpStockCheckSaveReqVO.Item::getProductId));
@@ -161,6 +174,16 @@ public class ErpStockCheckServiceImpl implements ErpStockCheckService {
         return convertList(list, o -> BeanUtils.toBean(o, ErpStockCheckItemDO.class, item -> item
                 .setProductUnitId(productMap.get(item.getProductId()).getUnitId())
                 .setTotalPrice(MoneyUtils.priceMultiply(item.getProductPrice(), item.getCount()))));
+    }
+
+    private void validateDuplicateStockCheckItems(List<ErpStockCheckSaveReqVO.Item> list) {
+        Set<String> keys = new HashSet<>();
+        for (ErpStockCheckSaveReqVO.Item item : list) {
+            String key = item.getProductId() + "-" + item.getWarehouseId();
+            if (!keys.add(key)) {
+                throw exception(STOCK_CHECK_ITEM_DUPLICATE, key);
+            }
+        }
     }
 
     private void updateStockCheckItemList(Long id, List<ErpStockCheckItemDO> newList) {
@@ -202,6 +225,7 @@ public class ErpStockCheckServiceImpl implements ErpStockCheckService {
             stockCheckMapper.deleteById(stockCheck.getId());
             // 2.2 删除盘点单项
             stockCheckItemMapper.deleteByCheckId(stockCheck.getId());
+            operateLogService.recordDelete(ERP_STOCK_CHECK_TYPE, stockCheck.getId(), stockCheck.getNo());
         });
     }
 

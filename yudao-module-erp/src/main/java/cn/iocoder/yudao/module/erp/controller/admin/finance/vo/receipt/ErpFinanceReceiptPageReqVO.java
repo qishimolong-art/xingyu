@@ -34,6 +34,9 @@ public class ErpFinanceReceiptPageReqVO extends PageParam {
     @Schema(description = "财务人员编号", example = "888")
     private String financeUserId;
 
+    @Schema(description = "所属部门", example = "100")
+    private Long deptId;
+
     @Schema(description = "收款账户编号", example = "31189")
     private Long accountId;
 

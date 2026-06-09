@@ -17,6 +17,12 @@ public class ErpPayableDetailRespVO {
     @ExcelProperty("单据类型")
     private String docType;
 
+    @Schema(description = "业务类型")
+    private Integer bizType;
+
+    @Schema(description = "业务单据编号")
+    private Long bizId;
+
     @Schema(description = "单据日期")
     @ExcelProperty("单据日期")
     private LocalDateTime docDate;
@@ -36,6 +42,10 @@ public class ErpPayableDetailRespVO {
     @Schema(description = "减少金额")
     @ExcelProperty("付款金额")
     private BigDecimal paymentAmount;
+
+    @Schema(description = "核销金额")
+    @ExcelProperty("核销金额")
+    private BigDecimal writeOffAmount;
 
     @Schema(description = "余额")
     @ExcelProperty("余额")

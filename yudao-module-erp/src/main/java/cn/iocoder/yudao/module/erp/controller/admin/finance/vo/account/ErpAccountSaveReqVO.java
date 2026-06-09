@@ -35,6 +35,9 @@ public class ErpAccountSaveReqVO {
     @Schema(description = "账户编码", example = "A88")
     private String no;
 
+    @Schema(description = "所属部门", example = "100")
+    private Long deptId;
+
     @Schema(description = "备注", example = "备注")
     private String remark;
 

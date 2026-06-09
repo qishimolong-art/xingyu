@@ -1,10 +1,12 @@
 package cn.iocoder.yudao.module.erp.service.purchase;
 
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.imports.ErpPurchaseImportResultRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.in.ErpPurchaseInImportExcelVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.in.ErpPurchaseInImportRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.in.ErpPurchaseInForAdjustRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.in.ErpPurchaseInItemForAdjustRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.in.ErpPurchaseInOrderImportExcelVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.in.ErpPurchaseInPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.in.ErpPurchaseInSaveReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.order.ErpPurchaseInFromOrderReqVO;
@@ -15,6 +17,7 @@ import javax.validation.Valid;
 import java.math.BigDecimal;
 import java.util.Collection;
 import java.util.List;
+import java.util.Map;
 
 /**
  * ERP 采购入库 Service 接口
@@ -105,6 +108,8 @@ public interface ErpPurchaseInService {
      */
     List<ErpPurchaseInItemDO> getPurchaseInItemListByInIds(Collection<Long> inIds);
 
+    Map<Long, BigDecimal> getApprovedReturnCountMapByInItemIds(Collection<Long> inItemIds);
+
     /**
      * 查询某采购入库单的可退明细（按单退货模式使用）
      *
@@ -147,5 +152,13 @@ public interface ErpPurchaseInService {
      * @return 导入结果
      */
     ErpPurchaseInImportRespVO importPurchaseInItems(List<ErpPurchaseInImportExcelVO> list);
+
+    /**
+     * 导入采购入库整单。
+     *
+     * @param list Excel 行数据
+     * @return 导入结果
+     */
+    ErpPurchaseImportResultRespVO importPurchaseInOrderList(List<ErpPurchaseInOrderImportExcelVO> list);
 
 }

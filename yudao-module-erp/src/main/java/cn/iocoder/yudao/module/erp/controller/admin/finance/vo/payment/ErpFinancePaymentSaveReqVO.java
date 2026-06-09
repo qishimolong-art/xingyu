@@ -4,7 +4,7 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Data;
 
 import javax.validation.Valid;
-import javax.validation.constraints.NotEmpty;
+import javax.validation.constraints.DecimalMin;
 import javax.validation.constraints.NotNull;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -24,6 +24,9 @@ public class ErpFinancePaymentSaveReqVO {
     @Schema(description = "财务人员编号", example = "19690")
     private Long financeUserId;
 
+    @Schema(description = "所属部门", example = "100")
+    private Long deptId;
+
     @Schema(description = "供应商编号", requiredMode = Schema.RequiredMode.REQUIRED, example = "29399")
     @NotNull(message = "供应商编号不能为空")
     private Long supplierId;
@@ -36,11 +39,20 @@ public class ErpFinancePaymentSaveReqVO {
     @NotNull(message = "优惠金额不能为空")
     private BigDecimal discountPrice;
 
+    @Schema(description = "合计金额，单位：元", requiredMode = Schema.RequiredMode.REQUIRED, example = "10000")
+    @NotNull(message = "合计金额不能为空")
+    @DecimalMin(value = "0", inclusive = false, message = "合计金额必须大于 0")
+    private BigDecimal totalPrice;
+
+    @Schema(description = "实际付款金额，单位：元", requiredMode = Schema.RequiredMode.REQUIRED, example = "10000")
+    @NotNull(message = "实际付款金额不能为空")
+    @DecimalMin(value = "0", inclusive = false, message = "实际付款金额必须大于 0")
+    private BigDecimal paymentPrice;
+
     @Schema(description = "备注", example = "你猜")
     private String remark;
 
-    @Schema(description = "付款项列表", requiredMode = Schema.RequiredMode.REQUIRED)
-    @NotEmpty(message = "付款项列表不能为空")
+    @Schema(description = "付款项列表")
     @Valid
     private List<Item> items;
 

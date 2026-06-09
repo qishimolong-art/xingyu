@@ -19,6 +19,7 @@ public interface ErpSaleQuoteMapper extends BaseMapperX<ErpSaleQuoteDO> {
                 .likeIfPresent(ErpSaleQuoteDO::getNo, reqVO.getNo())
                 .eqIfPresent(ErpSaleQuoteDO::getCustomerId, reqVO.getCustomerId())
                 .eqIfPresent(ErpSaleQuoteDO::getSaleUserId, reqVO.getSaleUserId())
+                .eqIfPresent(ErpSaleQuoteDO::getDeptId, reqVO.getDeptId())
                 .betweenIfPresent(ErpSaleQuoteDO::getQuoteTime, reqVO.getQuoteTime())
                 .eqIfPresent(ErpSaleQuoteDO::getStatus, reqVO.getStatus())
                 .likeIfPresent(ErpSaleQuoteDO::getRemark, reqVO.getRemark())
@@ -28,6 +29,10 @@ public interface ErpSaleQuoteMapper extends BaseMapperX<ErpSaleQuoteDO> {
 
     default ErpSaleQuoteDO selectByNo(String no) {
         return selectOne(ErpSaleQuoteDO::getNo, no);
+    }
+
+    default Long selectCountByCustomerId(Long customerId) {
+        return selectCount(ErpSaleQuoteDO::getCustomerId, customerId);
     }
 
     default int updateByIdAndStatus(Long id, Integer status, ErpSaleQuoteDO updateObj) {

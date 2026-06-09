@@ -18,6 +18,7 @@ import cn.iocoder.yudao.module.erp.dal.mysql.finance.ErpFinancePaymentMapper;
 import cn.iocoder.yudao.module.erp.dal.redis.no.ErpNoRedisDAO;
 import cn.iocoder.yudao.module.erp.enums.ErpAuditStatus;
 import cn.iocoder.yudao.module.erp.enums.common.ErpBizTypeEnum;
+import cn.iocoder.yudao.module.erp.service.common.ErpOperateLogService;
 import cn.iocoder.yudao.module.erp.service.purchase.ErpPurchaseInService;
 import cn.iocoder.yudao.module.erp.service.purchase.ErpPurchasePriceAdjustService;
 import cn.iocoder.yudao.module.erp.service.purchase.ErpPurchaseReturnService;
@@ -36,6 +37,7 @@ import java.util.List;
 import static cn.iocoder.yudao.framework.common.exception.util.ServiceExceptionUtil.exception;
 import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.*;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.*;
+import static cn.iocoder.yudao.module.erp.enums.LogRecordConstants.*;
 
 // TODO 芋艿：记录操作日志
 
@@ -73,6 +75,8 @@ public class ErpFinancePaymentServiceImpl implements ErpFinancePaymentService {
     private AdminUserApi adminUserApi;
     @Resource
     private ErpFinanceFieldPermissionMasker fieldPermissionMasker;
+    @Resource
+    private ErpOperateLogService operateLogService;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -99,14 +103,17 @@ public class ErpFinancePaymentServiceImpl implements ErpFinancePaymentService {
         // 2.1 插入付款单
         ErpFinancePaymentDO payment = BeanUtils.toBean(createReqVO, ErpFinancePaymentDO.class, in -> in
                 .setNo(no).setStatus(ErpAuditStatus.PROCESS.getStatus()));
-        calculateTotalPrice(payment, paymentItems);
+        fillDefaultAmount(payment);
         financePaymentMapper.insert(payment);
         // 2.2 插入付款单项
-        paymentItems.forEach(o -> o.setPaymentId(payment.getId()));
-        financePaymentItemMapper.insertBatch(paymentItems);
+        if (CollUtil.isNotEmpty(paymentItems)) {
+            paymentItems.forEach(o -> o.setPaymentId(payment.getId()));
+            financePaymentItemMapper.insertBatch(paymentItems);
+        }
 
         // 3. 更新采购入库、退货的付款金额情况
         updatePurchasePrice(paymentItems);
+        operateLogService.recordCreate(ERP_FINANCE_PAYMENT_TYPE, payment.getId(), payment.getNo());
         return payment.getId();
     }
 
@@ -141,15 +148,18 @@ public class ErpFinancePaymentServiceImpl implements ErpFinancePaymentService {
 
         // 2.1 更新付款单
         ErpFinancePaymentDO updateObj = BeanUtils.toBean(updateReqVO, ErpFinancePaymentDO.class);
-        calculateTotalPrice(updateObj, paymentItems);
+        if (updateObj.getDeptId() == null) {
+            updateObj.setDeptId(payment.getDeptId());
+        }
+        fillDefaultAmount(updateObj);
         financePaymentMapper.updateById(updateObj);
         // 2.2 更新付款单项
         updateFinancePaymentItemList(updateReqVO.getId(), paymentItems);
+        recordUpdate(payment, updateObj);
     }
 
-    private void calculateTotalPrice(ErpFinancePaymentDO payment, List<ErpFinancePaymentItemDO> paymentItems) {
-        payment.setTotalPrice(getSumValue(paymentItems, ErpFinancePaymentItemDO::getPaymentPrice, BigDecimal::add, BigDecimal.ZERO));
-        payment.setPaymentPrice(payment.getTotalPrice().subtract(payment.getDiscountPrice()));
+    private void fillDefaultAmount(ErpFinancePaymentDO payment) {
+        payment.setDiscountPrice(getZeroIfNull(payment.getDiscountPrice()));
     }
 
     @Override
@@ -164,11 +174,15 @@ public class ErpFinancePaymentServiceImpl implements ErpFinancePaymentService {
         if (updateCount == 0) {
             throw exception(FINANCE_PAYMENT_APPROVE_FAIL);
         }
+        operateLogService.recordStatus(ERP_FINANCE_PAYMENT_TYPE, id, payment.getNo(), true);
     }
 
     private List<ErpFinancePaymentItemDO> validateFinancePaymentItems(
             Long supplierId,
             List<ErpFinancePaymentSaveReqVO.Item> list) {
+        if (CollUtil.isEmpty(list)) {
+            return Collections.emptyList();
+        }
         return convertList(list, o -> BeanUtils.toBean(o, ErpFinancePaymentItemDO.class, item -> {
             if (ObjectUtil.equal(item.getBizType(), ErpBizTypeEnum.PURCHASE_IN.getType())) {
                 ErpPurchaseInDO purchaseIn = purchaseInService.validatePurchaseIn(item.getBizId());
@@ -250,7 +264,16 @@ public class ErpFinancePaymentServiceImpl implements ErpFinancePaymentService {
 
             // 2.3 更新采购入库、退货的付款金额情况
             updatePurchasePrice(paymentItems);
+            operateLogService.recordDelete(ERP_FINANCE_PAYMENT_TYPE, payment.getId(), payment.getNo());
         });
+    }
+
+    private void recordUpdate(ErpFinancePaymentDO oldPayment, ErpFinancePaymentDO newPayment) {
+        operateLogService.record(ERP_FINANCE_PAYMENT_TYPE, ERP_UPDATE_SUB_TYPE, newPayment.getId(),
+                "更新付款单，单据编号：" + oldPayment.getNo()
+                        + "，合计金额：" + oldPayment.getTotalPrice() + " -> " + newPayment.getTotalPrice()
+                        + "，实际付款：" + oldPayment.getPaymentPrice() + " -> " + newPayment.getPaymentPrice(),
+                oldPayment.getNo());
     }
 
     private ErpFinancePaymentDO validateFinancePaymentExists(Long id) {
@@ -292,6 +315,10 @@ public class ErpFinancePaymentServiceImpl implements ErpFinancePaymentService {
             return Collections.emptyList();
         }
         return financePaymentItemMapper.selectListByPaymentIds(paymentIds);
+    }
+
+    private BigDecimal getZeroIfNull(BigDecimal amount) {
+        return amount == null ? BigDecimal.ZERO : amount;
     }
 
 }

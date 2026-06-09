@@ -40,6 +40,10 @@ public class ErpStockOutDO extends BaseDO {
      */
     private Long customerId;
     /**
+     * Department id.
+     */
+    private Long deptId;
+    /**
      * 出库时间
      */
     private LocalDateTime outTime;

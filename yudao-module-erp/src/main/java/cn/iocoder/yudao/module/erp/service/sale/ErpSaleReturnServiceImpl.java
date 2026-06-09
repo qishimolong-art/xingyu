@@ -36,6 +36,7 @@ import cn.iocoder.yudao.module.erp.enums.finance.accounting.ErpVoucherSourceBizT
 import cn.iocoder.yudao.module.erp.enums.finance.accounting.ErpVoucherTypeEnum;
 import cn.iocoder.yudao.module.erp.enums.sale.ErpSaleReturnModeEnum;
 import cn.iocoder.yudao.module.erp.enums.stock.ErpStockRecordBizTypeEnum;
+import cn.iocoder.yudao.module.erp.service.common.ErpOperateLogService;
 import cn.iocoder.yudao.module.erp.service.finance.ErpAccountService;
 import cn.iocoder.yudao.module.erp.service.finance.accounting.ErpAutoVoucherBuilder;
 import cn.iocoder.yudao.module.erp.service.finance.accounting.ErpBookOpenService;
@@ -66,6 +67,7 @@ import java.util.Map;
 import static cn.iocoder.yudao.framework.common.exception.util.ServiceExceptionUtil.exception;
 import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.*;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.*;
+import static cn.iocoder.yudao.module.erp.enums.LogRecordConstants.*;
 
 @Service
 @Validated
@@ -117,6 +119,10 @@ public class ErpSaleReturnServiceImpl implements ErpSaleReturnService {
     private ErpWarehouseService warehouseService;
     @Resource
     private ErpSaleFieldPermissionMasker fieldPermissionMasker;
+    @Resource
+    private ErpSaleDocumentDefaultService saleDocumentDefaultService;
+    @Resource
+    private ErpOperateLogService operateLogService;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -153,11 +159,13 @@ public class ErpSaleReturnServiceImpl implements ErpSaleReturnService {
         saleReturn.setReturnTime(LocalDateTime.now());
         fillSourceInfo(saleReturn, saleOrder, saleOut);
         calculateTotalPrice(saleReturn, saleReturnItems);
+        saleDocumentDefaultService.fillCreateDefaults(saleReturn);
         saleReturnMapper.insert(saleReturn);
         saleReturnItems.forEach(item -> item.setReturnId(saleReturn.getId()));
         saleReturnItemMapper.insertBatch(saleReturnItems);
 
         updateSaleOrderReturnCountIfPresent(saleReturn.getOrderId());
+        operateLogService.recordCreate(ERP_SALE_RETURN_TYPE, saleReturn.getId(), saleReturn.getNo());
         return saleReturn.getId();
     }
 
@@ -205,6 +213,7 @@ public class ErpSaleReturnServiceImpl implements ErpSaleReturnService {
         if (ObjectUtil.notEqual(oldSaleReturn.getOrderId(), updateObj.getOrderId())) {
             updateSaleOrderReturnCountIfPresent(oldSaleReturn.getOrderId());
         }
+        operateLogService.recordUpdate(ERP_SALE_RETURN_TYPE, updateReqVO.getId(), oldSaleReturn.getNo());
     }
 
     private Integer normalizeReturnMode(ErpSaleReturnSaveReqVO reqVO) {
@@ -260,6 +269,7 @@ public class ErpSaleReturnServiceImpl implements ErpSaleReturnService {
         if (excludeReturnId != null) {
             saleReturns.removeIf(saleReturn -> excludeReturnId.equals(saleReturn.getId()));
         }
+        saleReturns.removeIf(saleReturn -> !ErpAuditStatus.APPROVE.getStatus().equals(saleReturn.getStatus()));
         Map<Long, BigDecimal> returnedCountMap = saleReturnItemMapper.selectSourceOutItemCountSumMapByReturnIds(
                 convertList(saleReturns, ErpSaleReturnDO::getId));
         currentCountMap.forEach((sourceOutItemId, count) -> {
@@ -284,14 +294,18 @@ public class ErpSaleReturnServiceImpl implements ErpSaleReturnService {
         if (saleReturn.getDiscountPercent() == null) {
             saleReturn.setDiscountPercent(BigDecimal.ZERO);
         }
-        if (saleReturn.getOtherPrice() == null) {
-            saleReturn.setOtherPrice(BigDecimal.ZERO);
-        }
+        BigDecimal feeAmount = resolveFeeAmount(saleReturn.getFeeAmount(), saleReturn.getOtherPrice());
+        saleReturn.setFeeAmount(feeAmount);
+        saleReturn.setOtherPrice(feeAmount);
         saleReturn.setDiscountPrice(MoneyUtils.priceMultiplyPercent(saleReturn.getTotalPrice(), saleReturn.getDiscountPercent()));
-        saleReturn.setTotalPrice(saleReturn.getTotalPrice().subtract(saleReturn.getDiscountPrice()).add(saleReturn.getOtherPrice()));
+        saleReturn.setTotalPrice(saleReturn.getTotalPrice().subtract(saleReturn.getDiscountPrice()).add(feeAmount));
         if (saleReturn.getRefundPrice() == null) {
             saleReturn.setRefundPrice(BigDecimal.ZERO);
         }
+    }
+
+    private BigDecimal resolveFeeAmount(BigDecimal feeAmount, BigDecimal otherPrice) {
+        return feeAmount != null ? feeAmount : (otherPrice != null ? otherPrice : BigDecimal.ZERO);
     }
 
     private void updateSaleOrderReturnCountIfPresent(Long orderId) {
@@ -375,6 +389,7 @@ public class ErpSaleReturnServiceImpl implements ErpSaleReturnService {
                     "销售退货 - " + customerName,
                     voucherItems);
         }
+        operateLogService.recordStatus(ERP_SALE_RETURN_TYPE, id, saleReturn.getNo(), approve);
     }
 
     @Override
@@ -438,6 +453,7 @@ public class ErpSaleReturnServiceImpl implements ErpSaleReturnService {
             saleReturnMapper.deleteById(saleReturn.getId());
             saleReturnItemMapper.deleteByReturnId(saleReturn.getId());
             updateSaleOrderReturnCountIfPresent(saleReturn.getOrderId());
+            operateLogService.recordDelete(ERP_SALE_RETURN_TYPE, saleReturn.getId(), saleReturn.getNo());
         });
     }
 

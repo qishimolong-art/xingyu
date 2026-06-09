@@ -89,6 +89,11 @@ public class ErpSaleOutItemDO extends BaseDO {
     private BigDecimal taxPrice;
 
     /**
+     * Gift flag
+     */
+    private Boolean giftFlag;
+
+    /**
      * 备注
      */
     private String remark;

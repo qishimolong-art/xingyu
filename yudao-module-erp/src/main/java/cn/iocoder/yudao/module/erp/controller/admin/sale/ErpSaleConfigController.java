@@ -2,6 +2,7 @@ package cn.iocoder.yudao.module.erp.controller.admin.sale;
 
 import cn.iocoder.yudao.framework.common.pojo.CommonResult;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
+import cn.iocoder.yudao.framework.common.util.collection.MapUtils;
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.config.ErpSaleConfigPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.config.ErpSaleConfigRespVO;
@@ -9,6 +10,8 @@ import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.config.ErpSaleConfig
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleConfigDO;
 import cn.iocoder.yudao.module.erp.service.sale.ErpSaleConfigService;
 import cn.iocoder.yudao.module.erp.service.sale.ErpSaleFieldPermissionMasker;
+import cn.iocoder.yudao.module.system.api.dept.DeptApi;
+import cn.iocoder.yudao.module.system.api.dept.dto.DeptRespDTO;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -19,8 +22,10 @@ import org.springframework.web.bind.annotation.*;
 import javax.annotation.Resource;
 import javax.validation.Valid;
 import java.util.List;
+import java.util.Map;
 
 import static cn.iocoder.yudao.framework.common.pojo.CommonResult.success;
+import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.convertSet;
 
 @Tag(name = "管理后台 - ERP 销售配置")
 @RestController
@@ -34,6 +39,8 @@ public class ErpSaleConfigController {
     private ErpSaleConfigService saleConfigService;
     @Resource
     private ErpSaleFieldPermissionMasker fieldPermissionMasker;
+    @Resource
+    private DeptApi deptApi;
 
     @PostMapping("/create")
     @Operation(summary = "创建销售配置")
@@ -64,6 +71,7 @@ public class ErpSaleConfigController {
     @PreAuthorize("@ss.hasPermission('erp:sale-config:query')")
     public CommonResult<ErpSaleConfigRespVO> getSaleConfig(@RequestParam("id") Long id) {
         ErpSaleConfigRespVO respVO = BeanUtils.toBean(saleConfigService.getSaleConfig(id), ErpSaleConfigRespVO.class);
+        fillDeptName(respVO);
         fieldPermissionMasker.maskForm(FIELD_PERMISSION_MODULE, respVO);
         return success(respVO);
     }
@@ -74,6 +82,7 @@ public class ErpSaleConfigController {
     public CommonResult<PageResult<ErpSaleConfigRespVO>> getSaleConfigPage(@Valid ErpSaleConfigPageReqVO pageReqVO) {
         PageResult<ErpSaleConfigRespVO> respResult = BeanUtils.toBean(saleConfigService.getSaleConfigPage(pageReqVO),
                 ErpSaleConfigRespVO.class);
+        fillDeptNames(respResult.getList());
         fieldPermissionMasker.maskForms(FIELD_PERMISSION_MODULE, respResult.getList());
         return success(respResult);
     }
@@ -86,6 +95,23 @@ public class ErpSaleConfigController {
         List<ErpSaleConfigDO> list = saleConfigService.getSaleConfigSimpleList(configType, status);
         fieldPermissionMasker.maskForms(FIELD_PERMISSION_MODULE, list);
         return success(list);
+    }
+
+    private void fillDeptName(ErpSaleConfigRespVO respVO) {
+        if (respVO == null || respVO.getDeptId() == null) {
+            return;
+        }
+        DeptRespDTO dept = deptApi.getDept(respVO.getDeptId());
+        if (dept != null) {
+            respVO.setDeptName(dept.getName());
+        }
+    }
+
+    private void fillDeptNames(List<ErpSaleConfigRespVO> list) {
+        Map<Long, DeptRespDTO> deptMap = deptApi.getDeptMap(convertSet(list, ErpSaleConfigRespVO::getDeptId));
+        for (ErpSaleConfigRespVO respVO : list) {
+            MapUtils.findAndThen(deptMap, respVO.getDeptId(), dept -> respVO.setDeptName(dept.getName()));
+        }
     }
 
 }

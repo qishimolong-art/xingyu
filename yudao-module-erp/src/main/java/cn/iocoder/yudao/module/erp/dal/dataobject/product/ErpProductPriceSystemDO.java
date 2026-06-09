@@ -26,6 +26,8 @@ public class ErpProductPriceSystemDO extends BaseDO {
     /** 编号 */
     @TableId
     private Long id;
+    /** Department id. */
+    private Long deptId;
     /** 产品编号（关联 {@link ErpProductDO#getId()}） */
     private Long productId;
     /** 价格体系编号（关联 {@link ErpPriceSystemDO#getId()}） */

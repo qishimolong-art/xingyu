@@ -32,9 +32,15 @@ import cn.iocoder.yudao.module.erp.dal.mysql.stock.ErpStockLockMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.stock.ErpStockMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.stock.ErpStockRecordMapper;
 import cn.iocoder.yudao.module.erp.dal.redis.no.ErpNoRedisDAO;
+import cn.iocoder.yudao.module.erp.service.base.ErpBaseArchiveReferenceService;
+import cn.iocoder.yudao.module.erp.service.common.ErpOperateLogService;
 import cn.iocoder.yudao.module.infra.api.config.ConfigApi;
+import cn.iocoder.yudao.module.system.api.dept.DeptApi;
+import cn.iocoder.yudao.module.system.api.dept.dto.DeptRespDTO;
 import cn.iocoder.yudao.module.erp.service.stock.ErpWarehouseService;
 import cn.iocoder.yudao.module.system.api.permission.PermissionApi;
+import cn.iocoder.yudao.module.system.api.user.AdminUserApi;
+import cn.iocoder.yudao.module.system.api.user.dto.AdminUserRespDTO;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
@@ -61,6 +67,7 @@ import java.util.stream.Collectors;
 import static cn.iocoder.yudao.framework.common.exception.util.ServiceExceptionUtil.exception;
 import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.convertMap;
 import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.convertSet;
+import static cn.iocoder.yudao.framework.security.core.util.SecurityFrameworkUtils.getLoginUserDeptId;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PRODUCT_CODE_DUPLICATE;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PRODUCT_CODE_GENERATE_FAIL;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PRODUCT_DELETE_FAIL_STOCK_EXISTS;
@@ -70,7 +77,11 @@ import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PRODUCT_NOT_E
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PRODUCT_UNIVERSAL_CODE_INVALID;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PRODUCT_UNIVERSAL_CODE_SELF;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PRODUCT_WAREHOUSE_NOT_EXISTS;
-import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PRODUCT_WAREHOUSE_REQUIRED;
+import static cn.iocoder.yudao.module.erp.enums.LogRecordConstants.ERP_CREATE_SUB_TYPE;
+import static cn.iocoder.yudao.module.erp.enums.LogRecordConstants.ERP_DELETE_SUB_TYPE;
+import static cn.iocoder.yudao.module.erp.enums.LogRecordConstants.ERP_IMPORT_SUB_TYPE;
+import static cn.iocoder.yudao.module.erp.enums.LogRecordConstants.ERP_PRODUCT_TYPE;
+import static cn.iocoder.yudao.module.erp.enums.LogRecordConstants.ERP_UPDATE_SUB_TYPE;
 
 /**
  * ERP 产品 Service 实现类
@@ -107,7 +118,6 @@ public class ErpProductServiceImpl implements ErpProductService {
     private ErpStockLockMapper stockLockMapper;
     @Resource
     private ErpStockRecordMapper stockRecordMapper;
-
     @Resource
     private ErpProductCategoryService productCategoryService;
     @Resource
@@ -116,6 +126,8 @@ public class ErpProductServiceImpl implements ErpProductService {
     private ErpWarehouseService warehouseService;
     @Resource
     private ErpProductPriceSystemService productPriceSystemService;
+    @Resource
+    private ErpBaseArchiveReferenceService baseArchiveReferenceService;
 
     @Resource
     private ErpNoRedisDAO noRedisDAO;
@@ -124,15 +136,18 @@ public class ErpProductServiceImpl implements ErpProductService {
     private ConfigApi configApi;
     @Resource
     private PermissionApi permissionApi;
+    @Resource
+    private DeptApi deptApi;
+    @Resource
+    private AdminUserApi adminUserApi;
+    @Resource
+    private ErpOperateLogService operateLogService;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Long createProduct(ProductSaveReqVO createReqVO) {
-        // 1. 校验仓库存在
-        validateDefaultWarehouse(createReqVO.getDefaultWarehouseId());
-        if (warehouseService.getWarehouse(createReqVO.getDefaultWarehouseId()) == null) {
-            throw exception(PRODUCT_WAREHOUSE_NOT_EXISTS);
-        }
+        // 1. 默认仓库为历史兼容字段，前端已不再要求录入；有传值时校验存在
+        validateDefaultWarehouseExists(createReqVO.getDefaultWarehouseId());
         applyProductSaveFieldPermissions(createReqVO, null);
 
         // 2. 生成配件编码（带重试，防并发）并插入主表
@@ -143,6 +158,9 @@ public class ErpProductServiceImpl implements ErpProductService {
         if (product.getPackageQty() == null) {
             product.setPackageQty(1);
         }
+        if (product.getDeptId() == null) {
+            product.setDeptId(getLoginUserDeptId());
+        }
         prepareProductCode(product, createReqVO.getCode(), null);
         insertProduct(product);
         initProductStock(product.getId(), createReqVO.getDefaultWarehouseId());
@@ -151,6 +169,7 @@ public class ErpProductServiceImpl implements ErpProductService {
         validateUniversalCodes(product.getId(), createReqVO.getUniversals());
         saveUniversals(product.getId(), createReqVO.getUniversals());
 
+        recordProductLog(ERP_CREATE_SUB_TYPE, product.getId(), productSummary("新增", product));
         return product.getId();
     }
 
@@ -217,15 +236,18 @@ public class ErpProductServiceImpl implements ErpProductService {
         applyProductSaveFieldPermissions(updateReqVO, existing);
         ValidationUtils.validate(updateReqVO);
 
-        // 2. 校验仓库
-        validateDefaultWarehouse(updateReqVO.getDefaultWarehouseId());
-        if (warehouseService.getWarehouse(updateReqVO.getDefaultWarehouseId()) == null) {
-            throw exception(PRODUCT_WAREHOUSE_NOT_EXISTS);
-        }
+        // 2. 默认仓库为历史兼容字段，前端已不再要求录入；未传时保留原值
+        validateDefaultWarehouseExists(updateReqVO.getDefaultWarehouseId());
 
         // 3. 更新主表（code/mergedFlag/mergedTargetId/lastPurchasePrice 不允许通过此接口修改，保留原值）
         ErpProductDO updateObj = BeanUtils.toBean(updateReqVO, ErpProductDO.class);
         prepareProductCode(updateObj, updateReqVO.getCode(), existing.getId());
+        if (updateObj.getDeptId() == null) {
+            updateObj.setDeptId(existing.getDeptId());
+        }
+        if (updateObj.getDefaultWarehouseId() == null) {
+            updateObj.setDefaultWarehouseId(existing.getDefaultWarehouseId());
+        }
         updateObj.setMergedFlag(null);
         updateObj.setMergedTargetId(null);
         updateObj.setLastPurchasePrice(null);
@@ -239,11 +261,17 @@ public class ErpProductServiceImpl implements ErpProductService {
         validateUniversalCodes(updateReqVO.getId(), updateReqVO.getUniversals());
         productUniversalMapper.deleteByProductId(updateReqVO.getId());
         saveUniversals(updateReqVO.getId(), updateReqVO.getUniversals());
+        recordProductLog(ERP_UPDATE_SUB_TYPE, updateReqVO.getId(),
+                productSummary("修改", mergeForLog(existing, updateObj))
+                        + buildProductChangeSummary(existing, updateObj));
     }
 
-    private void validateDefaultWarehouse(Long defaultWarehouseId) {
+    private void validateDefaultWarehouseExists(Long defaultWarehouseId) {
         if (defaultWarehouseId == null) {
-            throw exception(PRODUCT_WAREHOUSE_REQUIRED);
+            return;
+        }
+        if (warehouseService.getWarehouse(defaultWarehouseId) == null) {
+            throw exception(PRODUCT_WAREHOUSE_NOT_EXISTS);
         }
     }
 
@@ -304,6 +332,7 @@ public class ErpProductServiceImpl implements ErpProductService {
         productUniversalMapper.deleteByProductId(id);
         productPriceSystemService.deleteByProductId(id);
         productMapper.deleteById(id);
+        recordProductLog(ERP_DELETE_SUB_TYPE, id, productSummary("删除", product));
     }
 
     @Override
@@ -354,6 +383,7 @@ public class ErpProductServiceImpl implements ErpProductService {
 
     private void validateProductCanDelete(ErpProductDO product) {
         Long productId = product.getId();
+        baseArchiveReferenceService.validateProductNotReferenced(productId);
         if (stockRecordMapper.selectCount(ErpStockRecordDO::getProductId, productId) > 0) {
             throw exception(PRODUCT_DELETE_FAIL_STOCK_EXISTS, product.getName());
         }
@@ -448,7 +478,9 @@ public class ErpProductServiceImpl implements ErpProductService {
     @Override
     public List<ErpProductRespVO> getProductVOListByStatus(Integer status) {
         List<ErpProductDO> list = productMapper.selectListByStatus(status);
-        return buildProductVOList(list);
+        List<ErpProductRespVO> result = buildProductVOList(list);
+        applyProductFieldPermissions(result);
+        return result;
     }
 
     @Override
@@ -457,13 +489,17 @@ public class ErpProductServiceImpl implements ErpProductService {
             return Collections.emptyList();
         }
         List<ErpProductDO> list = productMapper.selectByIds(ids);
-        return buildProductVOList(list);
+        List<ErpProductRespVO> result = buildProductVOList(list);
+        applyProductFieldPermissions(result);
+        return result;
     }
 
     @Override
     public PageResult<ErpProductRespVO> getProductVOPage(ErpProductPageReqVO pageReqVO) {
         PageResult<ErpProductDO> pageResult = productMapper.selectPage(pageReqVO);
-        return new PageResult<>(buildProductVOList(pageResult.getList()), pageResult.getTotal());
+        List<ErpProductRespVO> result = buildProductVOList(pageResult.getList());
+        applyProductFieldPermissions(result);
+        return new PageResult<>(result, pageResult.getTotal());
     }
 
     private List<ErpProductRespVO> buildProductVOList(List<ErpProductDO> list) {
@@ -485,6 +521,8 @@ public class ErpProductServiceImpl implements ErpProductService {
         Map<Long, ErpWarehouseDO> warehouseMap = warehouseIds.isEmpty()
                 ? Collections.emptyMap()
                 : warehouseService.getWarehouseMap(warehouseIds);
+        Map<Long, DeptRespDTO> deptMap = deptApi.getDeptMap(convertSet(list, ErpProductDO::getDeptId));
+        Map<Long, AdminUserRespDTO> userMap = adminUserApi.getUserMap(collectUserIds(list));
         Map<Long, BigDecimal> stockMap = stockMapper.selectSumMapByProductIds(productIds);
         Map<Long, BigDecimal> lockCountMap = stockLockMapper.selectList(
                 new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<ErpStockLockDO>()
@@ -507,6 +545,16 @@ public class ErpProductServiceImpl implements ErpProductService {
                     u -> vo.setUnitName(u.getName()));
             MapUtils.findAndThen(warehouseMap, vo.getDefaultWarehouseId(),
                     w -> vo.setDefaultWarehouseName(w.getName()));
+            MapUtils.findAndThen(deptMap, vo.getDeptId(),
+                    dept -> vo.setDeptName(dept.getName()));
+            Long creatorId = parseUserId(vo.getCreator());
+            if (creatorId != null) {
+                MapUtils.findAndThen(userMap, creatorId, user -> vo.setCreatorName(user.getNickname()));
+            }
+            Long updaterId = parseUserId(vo.getUpdater());
+            if (updaterId != null) {
+                MapUtils.findAndThen(userMap, updaterId, user -> vo.setUpdaterName(user.getNickname()));
+            }
             // 库存：currentStock 实时聚合；lockCount 为占用数量；available=current-lock
             BigDecimal current = stockMap.getOrDefault(vo.getId(), BigDecimal.ZERO);
             BigDecimal lockCount = lockCountMap.getOrDefault(vo.getId(), BigDecimal.ZERO);
@@ -523,6 +571,83 @@ public class ErpProductServiceImpl implements ErpProductService {
         return result;
     }
 
+    private Set<Long> collectUserIds(List<ErpProductDO> list) {
+        Set<Long> userIds = new HashSet<>();
+        list.forEach(product -> {
+            addUserId(userIds, product.getCreator());
+            addUserId(userIds, product.getUpdater());
+        });
+        return userIds;
+    }
+
+    private void addUserId(Set<Long> userIds, String userId) {
+        Long parsed = parseUserId(userId);
+        if (parsed != null) {
+            userIds.add(parsed);
+        }
+    }
+
+    private Long parseUserId(String userId) {
+        if (!StringUtils.hasText(userId)) {
+            return null;
+        }
+        try {
+            return Long.parseLong(userId);
+        } catch (NumberFormatException ignored) {
+            return null;
+        }
+    }
+
+    private void recordProductLog(String subType, Long productId, String action) {
+        operateLogService.record(ERP_PRODUCT_TYPE, subType, productId, action, String.valueOf(productId));
+    }
+
+    private String productSummary(String operation, ErpProductDO product) {
+        return operation + "配件信息，操作类型：" + operation
+                + "，产品编码：" + valueOrDash(product.getCode())
+                + "，产品名称：" + valueOrDash(product.getName())
+                + "，规格型号：" + valueOrDash(product.getStandard());
+    }
+
+    private ErpProductDO mergeForLog(ErpProductDO existing, ErpProductDO updateObj) {
+        return ErpProductDO.builder()
+                .id(existing.getId())
+                .code(firstNonNull(updateObj.getCode(), existing.getCode()))
+                .name(firstNonNull(updateObj.getName(), existing.getName()))
+                .standard(firstNonNull(updateObj.getStandard(), existing.getStandard()))
+                .build();
+    }
+
+    private String buildProductChangeSummary(ErpProductDO before, ErpProductDO after) {
+        List<String> changes = new ArrayList<>();
+        addChange(changes, "所属部门", before.getDeptId(), after.getDeptId());
+        addChange(changes, "产品名称", before.getName(), after.getName());
+        addChange(changes, "条形码", before.getBarCode(), after.getBarCode());
+        addChange(changes, "类别", before.getCategoryId(), after.getCategoryId());
+        addChange(changes, "单位", before.getUnitId(), after.getUnitId());
+        addChange(changes, "默认仓库", before.getDefaultWarehouseId(), after.getDefaultWarehouseId());
+        addChange(changes, "适用车型", before.getVehicleModel(), after.getVehicleModel());
+        addChange(changes, "规格型号", before.getStandard(), after.getStandard());
+        addChange(changes, "厂家编码", before.getFactoryCode(), after.getFactoryCode());
+        addChange(changes, "状态", before.getStatus(), after.getStatus());
+        return CollUtil.isEmpty(changes) ? "" : "，关键字段变更：" + String.join("；", changes);
+    }
+
+    private void addChange(List<String> changes, String label, Object before, Object after) {
+        if (Objects.equals(before, after)) {
+            return;
+        }
+        changes.add(label + "：" + valueOrDash(before) + " -> " + valueOrDash(after));
+    }
+
+    private String valueOrDash(Object value) {
+        return value == null || !StringUtils.hasText(String.valueOf(value)) ? "-" : String.valueOf(value);
+    }
+
+    private <T> T firstNonNull(T first, T second) {
+        return first != null ? first : second;
+    }
+
     private void applyProductFieldPermissions(List<ErpProductRespVO> list) {
         List<String> hiddenFields = permissionApi.getCurrentUserHiddenFields(FIELD_PERMISSION_MODULE);
         if (CollUtil.isEmpty(hiddenFields)) {
@@ -533,6 +658,10 @@ public class ErpProductServiceImpl implements ErpProductService {
             if (isFieldHidden(hiddenFieldSet, "code")) {
                 vo.setCode(null);
                 vo.setProductCode(null);
+            }
+            if (isFieldHidden(hiddenFieldSet, "deptId")) {
+                vo.setDeptId(null);
+                vo.setDeptName(null);
             }
             if (isFieldHidden(hiddenFieldSet, "name")) {
                 vo.setName(null);
@@ -642,6 +771,9 @@ public class ErpProductServiceImpl implements ErpProductService {
         Set<String> hiddenFieldSet = new HashSet<>(hiddenFields);
         if (isFieldHidden(hiddenFieldSet, "code")) {
             reqVO.setCode(existing == null ? null : existing.getCode());
+        }
+        if (isFieldHidden(hiddenFieldSet, "deptId")) {
+            reqVO.setDeptId(existing == null ? null : existing.getDeptId());
         }
         if (isFieldHidden(hiddenFieldSet, "name")) {
             reqVO.setName(existing == null ? null : existing.getName());
@@ -796,6 +928,11 @@ public class ErpProductServiceImpl implements ErpProductService {
 
         respVO.setSuccessCount(respVO.getCreateCount() + respVO.getUpdateCount());
         respVO.setFailureCount(respVO.getFailureDetails().size());
+        operateLogService.record(ERP_PRODUCT_TYPE, ERP_IMPORT_SUB_TYPE, 0L,
+                "导入配件信息，新增：" + respVO.getCreateCount()
+                        + "，更新：" + respVO.getUpdateCount()
+                        + "，失败：" + respVO.getFailureCount(),
+                "产品导入");
         return respVO;
     }
 
@@ -881,7 +1018,7 @@ public class ErpProductServiceImpl implements ErpProductService {
         reqVO.setBarCode(trimToNull(row.getBarCode()));
         reqVO.setCategoryId(resolveCategoryId(row.getCategoryName(), categoryMap));
         reqVO.setUnitId(resolveUnitId(row.getUnitName(), unitMap));
-        reqVO.setDefaultWarehouseId(resolveWarehouseId(row.getDefaultWarehouseName(), warehouseMap));
+        reqVO.setDefaultWarehouseId(resolveWarehouseIdIfPresent(row.getDefaultWarehouseName(), warehouseMap));
         reqVO.setStatus(row.getStatus() == null ? CommonStatusEnum.ENABLE.getStatus() : row.getStatus());
         reqVO.setVehicleModel(trimToNull(row.getVehicleModel()));
         reqVO.setFactoryCode(trimToNull(row.getFactoryCode()));
@@ -923,8 +1060,12 @@ public class ErpProductServiceImpl implements ErpProductService {
         return unit.getId();
     }
 
-    private Long resolveWarehouseId(String warehouseName, Map<String, ErpWarehouseDO> warehouseMap) {
-        ErpWarehouseDO warehouse = warehouseMap.get(trimToNull(warehouseName));
+    private Long resolveWarehouseIdIfPresent(String warehouseName, Map<String, ErpWarehouseDO> warehouseMap) {
+        String normalizedName = trimToNull(warehouseName);
+        if (!StringUtils.hasText(normalizedName)) {
+            return null;
+        }
+        ErpWarehouseDO warehouse = warehouseMap.get(normalizedName);
         if (warehouse == null) {
             throw new IllegalArgumentException("默认仓库不存在：" + warehouseName);
         }

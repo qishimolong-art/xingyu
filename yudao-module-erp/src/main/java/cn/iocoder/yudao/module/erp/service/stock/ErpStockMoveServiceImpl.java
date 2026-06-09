@@ -15,6 +15,7 @@ import cn.iocoder.yudao.module.erp.dal.mysql.stock.ErpStockMoveMapper;
 import cn.iocoder.yudao.module.erp.dal.redis.no.ErpNoRedisDAO;
 import cn.iocoder.yudao.module.erp.enums.ErpAuditStatus;
 import cn.iocoder.yudao.module.erp.enums.stock.ErpStockRecordBizTypeEnum;
+import cn.iocoder.yudao.module.erp.service.common.ErpOperateLogService;
 import cn.iocoder.yudao.module.erp.service.product.ErpProductService;
 import cn.iocoder.yudao.module.erp.service.stock.bo.ErpStockRecordCreateReqBO;
 import org.springframework.stereotype.Service;
@@ -25,12 +26,15 @@ import javax.annotation.Resource;
 import java.math.BigDecimal;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.stream.Stream;
 
 import static cn.iocoder.yudao.framework.common.exception.util.ServiceExceptionUtil.exception;
 import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.*;
+import static cn.iocoder.yudao.module.erp.enums.LogRecordConstants.ERP_STOCK_MOVE_TYPE;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.*;
 
 // TODO 芋艿：记录操作日志
@@ -64,6 +68,8 @@ public class ErpStockMoveServiceImpl implements ErpStockMoveService {
     private ErpStockService stockService;
     @Resource
     private ErpStockRecordService stockRecordService;
+    @Resource
+    private ErpOperateLogService operateLogService;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -85,6 +91,7 @@ public class ErpStockMoveServiceImpl implements ErpStockMoveService {
         // 2.2 插入出库单项
         stockMoveItems.forEach(o -> o.setMoveId(stockMove.getId()));
         stockMoveItemMapper.insertBatch(stockMoveItems);
+        operateLogService.recordCreate(ERP_STOCK_MOVE_TYPE, stockMove.getId(), stockMove.getNo());
         return stockMove.getId();
     }
 
@@ -106,9 +113,13 @@ public class ErpStockMoveServiceImpl implements ErpStockMoveService {
         ErpStockMoveDO updateObj = BeanUtils.toBean(updateReqVO, ErpStockMoveDO.class, in -> in
                 .setTotalCount(getSumValue(stockMoveItems, ErpStockMoveItemDO::getCount, BigDecimal::add))
                 .setTotalPrice(getSumValue(stockMoveItems, ErpStockMoveItemDO::getTotalPrice, BigDecimal::add)));
+        if (updateObj.getDeptId() == null) {
+            updateObj.setDeptId(stockMove.getDeptId());
+        }
         stockMoveMapper.updateById(updateObj);
         // 2.2 更新出库单项
         updateStockMoveItemList(updateReqVO.getId(), stockMoveItems);
+        operateLogService.recordUpdate(ERP_STOCK_MOVE_TYPE, stockMove.getId(), stockMove.getNo());
     }
 
     @Override
@@ -128,6 +139,7 @@ public class ErpStockMoveServiceImpl implements ErpStockMoveService {
         if (updateCount == 0) {
             throw exception(approve ? STOCK_MOVE_APPROVE_FAIL : STOCK_MOVE_PROCESS_FAIL);
         }
+        operateLogService.recordStatus(ERP_STOCK_MOVE_TYPE, stockMove.getId(), stockMove.getNo(), approve);
 
         // 3. 变更库存
         List<ErpStockMoveItemDO> stockMoveItems = stockMoveItemMapper.selectListByMoveId(id);
@@ -155,6 +167,7 @@ public class ErpStockMoveServiceImpl implements ErpStockMoveService {
     }
 
     private List<ErpStockMoveItemDO> validateStockMoveItems(List<ErpStockMoveSaveReqVO.Item> list) {
+        validateDuplicateStockMoveItems(list);
         // 1.1 校验产品存在
         List<ErpProductDO> productList = productService.validProductList(
                 convertSet(list, ErpStockMoveSaveReqVO.Item::getProductId));
@@ -166,6 +179,16 @@ public class ErpStockMoveServiceImpl implements ErpStockMoveService {
         return convertList(list, o -> BeanUtils.toBean(o, ErpStockMoveItemDO.class, item -> item
                 .setProductUnitId(productMap.get(item.getProductId()).getUnitId())
                 .setTotalPrice(MoneyUtils.priceMultiply(item.getProductPrice(), item.getCount()))));
+    }
+
+    private void validateDuplicateStockMoveItems(List<ErpStockMoveSaveReqVO.Item> list) {
+        Set<String> keys = new HashSet<>();
+        for (ErpStockMoveSaveReqVO.Item item : list) {
+            String key = item.getProductId() + "-" + item.getFromWarehouseId() + "-" + item.getToWarehouseId();
+            if (!keys.add(key)) {
+                throw exception(STOCK_MOVE_ITEM_DUPLICATE, key);
+            }
+        }
     }
 
     private void updateStockMoveItemList(Long id, List<ErpStockMoveItemDO> newList) {
@@ -207,6 +230,7 @@ public class ErpStockMoveServiceImpl implements ErpStockMoveService {
             stockMoveMapper.deleteById(stockMove.getId());
             // 2.2 删除出库单项
             stockMoveItemMapper.deleteByMoveId(stockMove.getId());
+            operateLogService.recordDelete(ERP_STOCK_MOVE_TYPE, stockMove.getId(), stockMove.getNo());
         });
     }
 

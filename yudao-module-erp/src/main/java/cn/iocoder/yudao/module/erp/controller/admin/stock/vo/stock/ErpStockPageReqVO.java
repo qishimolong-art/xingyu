@@ -18,6 +18,8 @@ public class ErpStockPageReqVO extends PageParam {
     private Long productId;
     @Schema(description = "仓库编号", example = "2802")
     private Long warehouseId;
+    @Schema(description = "所属部门", example = "100")
+    private Long deptId;
 
     // ========== 模糊搜索条件 ==========
     @Schema(description = "零件编码（产品 code）")

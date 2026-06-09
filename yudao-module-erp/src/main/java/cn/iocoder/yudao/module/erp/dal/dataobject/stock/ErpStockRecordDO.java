@@ -44,6 +44,10 @@ public class ErpStockRecordDO extends BaseDO {
      */
     private Long warehouseId;
     /**
+     * Department id.
+     */
+    private Long deptId;
+    /**
      * 出入库数量
      *
      * 正数，表示入库；负数，表示出库

@@ -60,6 +60,9 @@ public class ErpPurchaseOrderRespVO {
     @Schema(description = "优惠金额，单位：元", requiredMode = Schema.RequiredMode.REQUIRED, example = "7127")
     private BigDecimal discountPrice;
 
+    @Schema(description = "费用金额，单位：元", example = "7127")
+    private BigDecimal feeAmount;
+
     @Schema(description = "定金金额，单位：元", requiredMode = Schema.RequiredMode.REQUIRED, example = "7127")
     private BigDecimal depositPrice;
 
@@ -154,6 +157,9 @@ public class ErpPurchaseOrderRespVO {
 
     @Schema(description = "部门ID", example = "100")
     private Long deptId;
+
+    @Schema(description = "部门名称", example = "采购部")
+    private String deptName;
 
     @Schema(description = "订货日期")
     private LocalDateTime orderDate;

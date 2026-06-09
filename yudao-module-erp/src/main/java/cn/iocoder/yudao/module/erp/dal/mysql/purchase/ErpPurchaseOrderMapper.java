@@ -26,6 +26,7 @@ public interface ErpPurchaseOrderMapper extends BaseMapperX<ErpPurchaseOrderDO> 
                 .likeIfPresent(ErpPurchaseOrderDO::getNo, normalizeLikeValue(reqVO.getNo()))
                 .likeIfPresent(ErpPurchaseOrderDO::getFactoryOrderNo, normalizeLikeValue(reqVO.getFactoryOrderNo()))
                 .eqIfPresent(ErpPurchaseOrderDO::getSupplierId, reqVO.getSupplierId())
+                .eqIfPresent(ErpPurchaseOrderDO::getDeptId, reqVO.getDeptId())
                 .betweenIfPresent(ErpPurchaseOrderDO::getOrderTime, reqVO.getOrderTime())
                 .eqIfPresent(ErpPurchaseOrderDO::getStatus, reqVO.getStatus())
                 .likeIfPresent(ErpPurchaseOrderDO::getRemark, normalizeLikeValue(reqVO.getRemark()))
@@ -72,6 +73,18 @@ public interface ErpPurchaseOrderMapper extends BaseMapperX<ErpPurchaseOrderDO> 
 
     default ErpPurchaseOrderDO selectByNo(String no) {
         return selectOne(ErpPurchaseOrderDO::getNo, no);
+    }
+
+    default Long selectCountBySupplierId(Long supplierId) {
+        return selectCount(ErpPurchaseOrderDO::getSupplierId, supplierId);
+    }
+
+    default String selectFirstNoBySupplierId(Long supplierId) {
+        ErpPurchaseOrderDO order = selectOne(new MPJLambdaWrapperX<ErpPurchaseOrderDO>()
+                .eq(ErpPurchaseOrderDO::getSupplierId, supplierId)
+                .orderByDesc(ErpPurchaseOrderDO::getId)
+                .last("LIMIT 1"));
+        return order == null ? null : order.getNo();
     }
 
     static String normalizeLikeValue(String value) {

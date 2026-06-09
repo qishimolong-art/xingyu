@@ -26,6 +26,7 @@ public interface ErpPurchaseReturnMapper extends BaseMapperX<ErpPurchaseReturnDO
         MPJLambdaWrapperX<ErpPurchaseReturnDO> query = new MPJLambdaWrapperX<ErpPurchaseReturnDO>()
                 .likeIfPresent(ErpPurchaseReturnDO::getNo, reqVO.getNo())
                 .eqIfPresent(ErpPurchaseReturnDO::getSupplierId, reqVO.getSupplierId())
+                .eqIfPresent(ErpPurchaseReturnDO::getDeptId, reqVO.getDeptId())
                 .betweenIfPresent(ErpPurchaseReturnDO::getReturnTime, reqVO.getReturnTime())
                 .eqIfPresent(ErpPurchaseReturnDO::getStatus, reqVO.getStatus())
                 .likeIfPresent(ErpPurchaseReturnDO::getRemark, reqVO.getRemark())
@@ -61,6 +62,18 @@ public interface ErpPurchaseReturnMapper extends BaseMapperX<ErpPurchaseReturnDO
 
     default ErpPurchaseReturnDO selectByNo(String no) {
         return selectOne(ErpPurchaseReturnDO::getNo, no);
+    }
+
+    default Long selectCountBySupplierId(Long supplierId) {
+        return selectCount(ErpPurchaseReturnDO::getSupplierId, supplierId);
+    }
+
+    default String selectFirstNoBySupplierId(Long supplierId) {
+        ErpPurchaseReturnDO purchaseReturn = selectOne(new MPJLambdaWrapperX<ErpPurchaseReturnDO>()
+                .eq(ErpPurchaseReturnDO::getSupplierId, supplierId)
+                .orderByDesc(ErpPurchaseReturnDO::getId)
+                .last("LIMIT 1"));
+        return purchaseReturn == null ? null : purchaseReturn.getNo();
     }
 
     default List<ErpPurchaseReturnDO> selectListByOrderId(Long orderId) {

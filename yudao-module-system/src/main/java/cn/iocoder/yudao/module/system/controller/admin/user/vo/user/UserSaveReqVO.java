@@ -41,9 +41,15 @@ public class UserSaveReqVO {
     @DiffLogField(name = "部门", function = DeptParseFunction.NAME)
     private Long deptId;
 
+    @Schema(description = "部门编号数组", requiredMode = Schema.RequiredMode.REQUIRED, example = "1")
+    private Set<Long> deptIds;
+
     @Schema(description = "岗位编号数组", example = "1")
     @DiffLogField(name = "岗位", function = PostParseFunction.NAME)
     private Set<Long> postIds;
+
+    @Schema(description = "角色编号数组", requiredMode = Schema.RequiredMode.REQUIRED, example = "1")
+    private Set<Long> roleIds;
 
     @Schema(description = "用户邮箱", example = "yudao@iocoder.cn")
     @Email(message = "邮箱格式不正确")

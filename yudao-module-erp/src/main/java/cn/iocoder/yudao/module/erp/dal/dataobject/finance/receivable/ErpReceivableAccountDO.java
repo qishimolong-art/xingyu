@@ -21,7 +21,13 @@ public class ErpReceivableAccountDO {
     private BigDecimal saleReturnAmount;
     private BigDecimal priceAdjustAmount;
     private BigDecimal receiptAmount;
+    private BigDecimal writeOffAmount;
     private BigDecimal otherReceivableAmount;
+    private BigDecimal receivableAmount;
+    private BigDecimal receivedAmount;
+    private BigDecimal unreceivedAmount;
+    private String billType;
+    private String receiveStatus;
     private BigDecimal receivableBalance;
     private BigDecimal preAdvanceAmount;
     private BigDecimal totalReceivable;

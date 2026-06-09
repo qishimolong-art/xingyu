@@ -25,6 +25,7 @@ public interface ErpSaleOrderMapper extends BaseMapperX<ErpSaleOrderDO> {
         MPJLambdaWrapperX<ErpSaleOrderDO> query = new MPJLambdaWrapperX<ErpSaleOrderDO>()
                 .likeIfPresent(ErpSaleOrderDO::getNo, normalizeLikeValue(reqVO.getNo()))
                 .eqIfPresent(ErpSaleOrderDO::getCustomerId, reqVO.getCustomerId())
+                .eqIfPresent(ErpSaleOrderDO::getDeptId, reqVO.getDeptId())
                 .betweenIfPresent(ErpSaleOrderDO::getOrderTime, reqVO.getOrderTime())
                 .eqIfPresent(ErpSaleOrderDO::getStatus, reqVO.getStatus())
                 .likeIfPresent(ErpSaleOrderDO::getRemark, normalizeLikeValue(reqVO.getRemark()))
@@ -71,6 +72,10 @@ public interface ErpSaleOrderMapper extends BaseMapperX<ErpSaleOrderDO> {
 
     default ErpSaleOrderDO selectByNo(String no) {
         return selectOne(ErpSaleOrderDO::getNo, no);
+    }
+
+    default Long selectCountByCustomerId(Long customerId) {
+        return selectCount(ErpSaleOrderDO::getCustomerId, customerId);
     }
 
     static String normalizeLikeValue(String value) {

@@ -22,6 +22,7 @@ public interface ErpSaleConfigMapper extends BaseMapperX<ErpSaleConfigDO> {
                 .likeIfPresent(ErpSaleConfigDO::getCode, reqVO.getCode())
                 .likeIfPresent(ErpSaleConfigDO::getName, reqVO.getName())
                 .eqIfPresent(ErpSaleConfigDO::getStatus, reqVO.getStatus())
+                .eqIfPresent(ErpSaleConfigDO::getDeptId, reqVO.getDeptId())
                 .orderByAsc(ErpSaleConfigDO::getConfigType)
                 .orderByAsc(ErpSaleConfigDO::getSort)
                 .orderByDesc(ErpSaleConfigDO::getId));

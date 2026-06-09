@@ -188,7 +188,7 @@ public class ErpPurchaseInServiceImplTest extends BaseMockitoUnitTest {
         reqVO.setOrderId(50L);
 
         when(purchaseOrderService.validatePurchaseOrder(eq(50L)))
-                .thenReturn(new ErpPurchaseOrderDO().setId(50L).setNo("CGDD001").setSupplierId(999L));
+                .thenReturn(new ErpPurchaseOrderDO().setId(50L).setNo("CGDD001").setSupplierId(999L).setDeptId(88L));
         when(productService.validProductList(any())).thenReturn(Collections.singletonList(
                 new ErpProductDO().setId(200L).setUnitId(1L)));
         when(purchaseInMapper.selectByNo(any())).thenReturn(null);
@@ -202,6 +202,7 @@ public class ErpPurchaseInServiceImplTest extends BaseMockitoUnitTest {
         ErpPurchaseInDO inserted = captor.getValue();
         assertEquals("CGDD001", inserted.getOrderNo());
         assertEquals(Long.valueOf(999L), inserted.getSupplierId());
+        assertEquals(Long.valueOf(88L), inserted.getDeptId());
         // 有 orderId，触发更新订单入库数量
         verify(purchaseOrderService).updatePurchaseOrderInCount(eq(50L), any());
     }

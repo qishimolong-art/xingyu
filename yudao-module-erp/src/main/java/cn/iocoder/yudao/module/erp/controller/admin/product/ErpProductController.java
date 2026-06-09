@@ -11,6 +11,8 @@ import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpProduc
 import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpProductPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpProductRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ProductSaveReqVO;
+import cn.iocoder.yudao.module.erp.service.common.ErpExportCaptchaService;
+import cn.iocoder.yudao.module.erp.service.common.ErpOperateLogService;
 import cn.iocoder.yudao.module.erp.service.product.ErpProductService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -31,12 +33,17 @@ import javax.annotation.Resource;
 import javax.servlet.http.HttpServletResponse;
 import javax.validation.Valid;
 import java.io.IOException;
+import java.util.Arrays;
 import java.util.Collections;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 
 import static cn.iocoder.yudao.framework.apilog.core.enums.OperateTypeEnum.EXPORT;
 import static cn.iocoder.yudao.framework.common.pojo.CommonResult.success;
 import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.convertList;
+import static cn.iocoder.yudao.module.erp.enums.LogRecordConstants.ERP_EXPORT_SUB_TYPE;
+import static cn.iocoder.yudao.module.erp.enums.LogRecordConstants.ERP_PRODUCT_TYPE;
 
 @Tag(name = "管理后台 - ERP 产品")
 @RestController
@@ -44,8 +51,19 @@ import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.
 @Validated
 public class ErpProductController {
 
+    private static final Set<String> PRODUCT_IMPORT_TEMPLATE_FIELDS = new LinkedHashSet<>(Arrays.asList(
+            "code", "name", "barCode", "categoryName", "unitName", "status", "vehicleModel", "factoryCode",
+            "purchasePrice", "salePrice", "minPrice", "standard", "remark", "expiryDay", "weight",
+            "referencePrice", "retailPrice", "lastPurchasePrice", "grossProfitRate", "backupPrice1",
+            "wholesalePrice", "stockMax", "stockMin", "stockStandard", "packageQty", "mainImage",
+            "detailContent"));
+
     @Resource
     private ErpProductService productService;
+    @Resource
+    private ErpExportCaptchaService exportCaptchaService;
+    @Resource
+    private ErpOperateLogService operateLogService;
 
     @PostMapping("/create")
     @Operation(summary = "创建产品")
@@ -116,9 +134,15 @@ public class ErpProductController {
     @Operation(summary = "导出产品 Excel")
     @PreAuthorize("@ss.hasPermission('erp:product:export')")
     @ApiAccessLog(operateType = EXPORT)
-    public void exportProductExcel(@Valid ErpProductPageReqVO pageReqVO, HttpServletResponse response) throws IOException {
+    public void exportProductExcel(@Valid ErpProductPageReqVO pageReqVO,
+                                   @RequestParam(value = "captchaCode", required = false) String captchaCode,
+                                   @RequestParam(value = "verifyCode", required = false) String verifyCode,
+                                   HttpServletResponse response) throws IOException {
+        exportCaptchaService.validate(captchaCode, verifyCode);
         pageReqVO.setPageSize(PageParam.PAGE_SIZE_NONE);
         PageResult<ErpProductRespVO> pageResult = productService.getProductVOPage(pageReqVO);
+        operateLogService.record(ERP_PRODUCT_TYPE, ERP_EXPORT_SUB_TYPE, 0L,
+                "导出配件信息，导出数量：" + pageResult.getList().size(), "产品导出");
         ExcelUtils.write(response, "产品.xls", "数据", ErpProductRespVO.class, pageResult.getList());
     }
 
@@ -126,8 +150,8 @@ public class ErpProductController {
     @Operation(summary = "获取产品导入模板")
     @PreAuthorize("@ss.hasPermission('erp:product:import')")
     public void getImportTemplate(HttpServletResponse response) throws IOException {
-        ExcelUtils.write(response, "产品导入模板.xls", "产品", ErpProductImportExcelVO.class,
-                Collections.singletonList(new ErpProductImportExcelVO()));
+        ExcelUtils.writeImportTemplate(response, "产品导入模板.xls", "产品", ErpProductImportExcelVO.class,
+                Collections.singletonList(new ErpProductImportExcelVO()), PRODUCT_IMPORT_TEMPLATE_FIELDS);
     }
 
     @PostMapping("/import")

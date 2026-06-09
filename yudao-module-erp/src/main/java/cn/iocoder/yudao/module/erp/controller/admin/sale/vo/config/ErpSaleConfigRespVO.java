@@ -15,6 +15,8 @@ public class ErpSaleConfigRespVO {
     private String name;
     private String configValue;
     private Integer status;
+    private Long deptId;
+    private String deptName;
     private Integer sort;
     private String remark;
     private LocalDateTime createTime;

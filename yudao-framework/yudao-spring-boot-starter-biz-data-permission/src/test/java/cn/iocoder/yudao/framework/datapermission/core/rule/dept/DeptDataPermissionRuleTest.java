@@ -46,7 +46,7 @@ class DeptDataPermissionRuleTest extends BaseMockitoUnitTest {
         // 清空 rule
         rule.getTableNames().clear();
         ((Map<String, String>) ReflectUtil.getFieldValue(rule, "deptColumns")).clear();
-        ((Map<String, String>) ReflectUtil.getFieldValue(rule, "deptColumns")).clear();
+        ((Map<String, String>) ReflectUtil.getFieldValue(rule, "userColumns")).clear();
     }
 
     @Test // 无 LoginUser
@@ -177,6 +177,28 @@ class DeptDataPermissionRuleTest extends BaseMockitoUnitTest {
             // 断言
             assertEquals("u.id = 1", expression.toString());
             assertSame(deptDataPermission, loginUser.getContext(DeptDataPermissionRule.CONTEXT_KEY, DeptDataPermissionRespDTO.class));
+        }
+    }
+
+    @Test
+    public void testGetExpression_noDeptColumn_yesUserColumn_deptScope() {
+        try (MockedStatic<SecurityFrameworkUtils> securityFrameworkUtilsMock
+                     = mockStatic(SecurityFrameworkUtils.class)) {
+            String tableName = "erp_purchase_order";
+            Alias tableAlias = new Alias("o");
+            LoginUser loginUser = randomPojo(LoginUser.class, o -> o.setId(1L)
+                    .setUserType(UserTypeEnum.ADMIN.getValue()));
+            securityFrameworkUtilsMock.when(SecurityFrameworkUtils::getLoginUser).thenReturn(loginUser);
+            DeptDataPermissionRespDTO deptDataPermission = new DeptDataPermissionRespDTO()
+                    .setDeptIds(CollUtil.newLinkedHashSet(10L, 20L)).setSelf(false);
+            when(permissionApi.getDeptDataPermission(same(1L))).thenReturn(deptDataPermission);
+            when(permissionApi.getUserIdsByDeptIds(eq(CollUtil.newLinkedHashSet(10L, 20L))))
+                    .thenReturn(CollUtil.newLinkedHashSet(100L, 200L));
+            rule.addUserColumn(tableName, "purchaser");
+
+            Expression expression = rule.getExpression(tableName, tableAlias);
+
+            assertEquals("o.purchaser IN (100, 200)", expression.toString());
         }
     }
 

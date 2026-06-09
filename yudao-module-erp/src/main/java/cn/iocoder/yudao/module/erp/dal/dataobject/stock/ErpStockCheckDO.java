@@ -34,6 +34,10 @@ public class ErpStockCheckDO extends BaseDO {
      */
     private String no;
     /**
+     * Department id.
+     */
+    private Long deptId;
+    /**
      * 盘点时间
      */
     private LocalDateTime checkTime;

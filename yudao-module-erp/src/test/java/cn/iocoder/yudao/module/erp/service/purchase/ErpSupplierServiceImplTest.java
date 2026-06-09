@@ -24,6 +24,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
@@ -204,6 +205,14 @@ public class ErpSupplierServiceImplTest extends BaseMockitoUnitTest {
         when(supplierMapper.selectByIds(eq(ids))).thenReturn(suppliers);
 
         assertSame(suppliers, supplierService.getSupplierList(ids));
+    }
+
+    @Test
+    public void testGetSupplierList_emptyIds_skipMapper() {
+        assertTrue(supplierService.getSupplierList(null).isEmpty());
+        assertTrue(supplierService.getSupplierList(Collections.emptyList()).isEmpty());
+
+        verify(supplierMapper, never()).selectByIds(any());
     }
 
     @Test

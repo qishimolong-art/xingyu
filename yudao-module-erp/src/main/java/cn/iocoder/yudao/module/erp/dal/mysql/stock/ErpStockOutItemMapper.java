@@ -27,4 +27,16 @@ public interface ErpStockOutItemMapper extends BaseMapperX<ErpStockOutItemDO> {
         return delete(ErpStockOutItemDO::getOutId, outId);
     }
 
+    default Long selectCountByProductId(Long productId) {
+        return selectCount(ErpStockOutItemDO::getProductId, productId);
+    }
+
+    default Long selectCountByWarehouseId(Long warehouseId) {
+        return selectCount(ErpStockOutItemDO::getWarehouseId, warehouseId);
+    }
+
+    default ErpStockOutItemDO selectFirstByWarehouseId(Long warehouseId) {
+        return selectFirstOne(ErpStockOutItemDO::getWarehouseId, warehouseId);
+    }
+
 }

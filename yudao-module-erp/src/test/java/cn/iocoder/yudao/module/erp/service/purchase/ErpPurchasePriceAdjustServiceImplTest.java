@@ -153,6 +153,8 @@ public class ErpPurchasePriceAdjustServiceImplTest extends BaseMockitoUnitTest {
         when(purchaseInItemMapper.selectById(eq(inItemId))).thenReturn(inItem);
         when(productService.getProductVOMap(any())).thenReturn(new HashMap<>());
         when(priceAdjustMapper.selectByNo(any())).thenReturn(null);
+        when(purchaseInMapper.selectBatchIds(any())).thenReturn(Collections.singletonList(
+                new ErpPurchaseInDO().setId(inId).setDeptId(88L)));
 
         // 执行
         priceAdjustService.createPurchasePriceAdjust(reqVO);
@@ -164,6 +166,7 @@ public class ErpPurchasePriceAdjustServiceImplTest extends BaseMockitoUnitTest {
         ErpPurchasePriceAdjustDO inserted = mainCaptor.getValue();
         assertEquals(ErpAuditStatus.PROCESS.getStatus(), inserted.getStatus());
         assertEquals("CGTJ20260520000001", inserted.getNo());
+        assertEquals(Long.valueOf(88L), inserted.getDeptId());
         // 调价金额 = (13.5 - 12.5) * 100 = 100.00
         assertEquals(0, inserted.getTotalAdjustPrice().compareTo(new BigDecimal("100.00")));
         verify(priceAdjustItemMapper).insertBatch(anyList());

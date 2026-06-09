@@ -32,6 +32,10 @@ public class ErpFieldConfigRespVO {
     @ExcelProperty("是否必填")
     private Boolean required;
 
+    @Schema(description = "是否显示", requiredMode = Schema.RequiredMode.REQUIRED, example = "true")
+    @ExcelProperty("是否显示")
+    private Boolean visible;
+
     @Schema(description = "排序", example = "1")
     @ExcelProperty("排序")
     private Integer sort;

@@ -51,6 +51,10 @@ public class ErpFinancePaymentDO extends BaseDO {
      */
     private Long financeUserId;
     /**
+     * Department id.
+     */
+    private Long deptId;
+    /**
      * 供应商编号
      *
      * 关联 {@link ErpSupplierDO#getId()}

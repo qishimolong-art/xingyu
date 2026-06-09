@@ -22,6 +22,8 @@ import cn.iocoder.yudao.module.erp.service.finance.ErpAccountService;
 import cn.iocoder.yudao.module.erp.service.finance.ErpFinanceFieldPermissionMasker;
 import cn.iocoder.yudao.module.erp.service.finance.ErpFinanceReceiptService;
 import cn.iocoder.yudao.module.erp.service.sale.ErpCustomerService;
+import cn.iocoder.yudao.module.system.api.dept.DeptApi;
+import cn.iocoder.yudao.module.system.api.dept.dto.DeptRespDTO;
 import cn.iocoder.yudao.module.system.api.user.AdminUserApi;
 import cn.iocoder.yudao.module.system.api.user.dto.AdminUserRespDTO;
 import io.swagger.v3.oas.annotations.Operation;
@@ -59,6 +61,8 @@ public class ErpFinanceReceiptController {
     private ErpAccountService accountService;
     @Resource
     private AdminUserApi adminUserApi;
+    @Resource
+    private DeptApi deptApi;
     @Resource
     private ErpFinanceFieldPermissionMasker fieldPermissionMasker;
 
@@ -107,6 +111,7 @@ public class ErpFinanceReceiptController {
         ErpFinanceReceiptRespVO respVO = BeanUtils.toBean(receipt, ErpFinanceReceiptRespVO.class,
                 financeReceiptVO -> financeReceiptVO.setItems(
                         BeanUtils.toBean(receiptItemList, ErpFinanceReceiptRespVO.Item.class)));
+        fillFinanceReceiptNames(Collections.singletonList(respVO));
         fieldPermissionMasker.maskFormWithItems("erp_finance_receipt", respVO);
         return success(respVO);
     }
@@ -152,15 +157,40 @@ public class ErpFinanceReceiptController {
                 convertSet(pageResult.getList(), ErpFinanceReceiptDO::getCustomerId));
         Map<Long, ErpAccountDO> accountMap = accountService.getAccountMap(
                 convertSet(pageResult.getList(), ErpFinanceReceiptDO::getAccountId));
+        Map<Long, DeptRespDTO> deptMap = deptApi.getDeptMap(convertSet(pageResult.getList(), ErpFinanceReceiptDO::getDeptId));
         Map<Long, AdminUserRespDTO> userMap = adminUserApi.getUserMap(convertListByFlatMap(pageResult.getList(),
-                receipt -> Stream.of(NumberUtils.parseLong(receipt.getCreator()), receipt.getFinanceUserId())));
+                receipt -> Stream.of(NumberUtils.parseLong(receipt.getCreator()),
+                        NumberUtils.parseLong(receipt.getUpdater()), receipt.getFinanceUserId())));
         return BeanUtils.toBean(pageResult, ErpFinanceReceiptRespVO.class, receipt -> {
             receipt.setItems(BeanUtils.toBean(financeReceiptItemMap.get(receipt.getId()), ErpFinanceReceiptRespVO.Item.class));
             MapUtils.findAndThen(customerMap, receipt.getCustomerId(), customer -> receipt.setCustomerName(customer.getName()));
             MapUtils.findAndThen(accountMap, receipt.getAccountId(), account -> receipt.setAccountName(account.getName()));
+            MapUtils.findAndThen(deptMap, receipt.getDeptId(), dept -> receipt.setDeptName(dept.getName()));
             MapUtils.findAndThen(userMap, parseUserId(receipt.getCreator()), user -> receipt.setCreatorName(user.getNickname()));
+            MapUtils.findAndThen(userMap, parseUserId(receipt.getUpdater()), user -> receipt.setUpdaterName(user.getNickname()));
             MapUtils.findAndThen(userMap, receipt.getFinanceUserId(), user -> receipt.setFinanceUserName(user.getNickname()));
         });
+    }
+
+    private void fillFinanceReceiptNames(List<ErpFinanceReceiptRespVO> rows) {
+        if (CollUtil.isEmpty(rows)) {
+            return;
+        }
+        Map<Long, ErpCustomerDO> customerMap = customerService.getCustomerMap(
+                convertSet(rows, ErpFinanceReceiptRespVO::getCustomerId));
+        Map<Long, ErpAccountDO> accountMap = accountService.getAccountMap(
+                convertSet(rows, ErpFinanceReceiptRespVO::getAccountId));
+        Map<Long, DeptRespDTO> deptMap = deptApi.getDeptMap(convertSet(rows, ErpFinanceReceiptRespVO::getDeptId));
+        Map<Long, AdminUserRespDTO> userMap = adminUserApi.getUserMap(convertListByFlatMap(rows,
+                row -> Stream.of(parseUserId(row.getCreator()), parseUserId(row.getUpdater()), row.getFinanceUserId())));
+        for (ErpFinanceReceiptRespVO row : rows) {
+            MapUtils.findAndThen(customerMap, row.getCustomerId(), customer -> row.setCustomerName(customer.getName()));
+            MapUtils.findAndThen(accountMap, row.getAccountId(), account -> row.setAccountName(account.getName()));
+            MapUtils.findAndThen(deptMap, row.getDeptId(), dept -> row.setDeptName(dept.getName()));
+            MapUtils.findAndThen(userMap, parseUserId(row.getCreator()), user -> row.setCreatorName(user.getNickname()));
+            MapUtils.findAndThen(userMap, parseUserId(row.getUpdater()), user -> row.setUpdaterName(user.getNickname()));
+            MapUtils.findAndThen(userMap, row.getFinanceUserId(), user -> row.setFinanceUserName(user.getNickname()));
+        }
     }
 
     private List<ErpFinanceReceiptDO> getFinanceReceiptExportList(ErpFinanceReceiptPageReqVO pageReqVO) {

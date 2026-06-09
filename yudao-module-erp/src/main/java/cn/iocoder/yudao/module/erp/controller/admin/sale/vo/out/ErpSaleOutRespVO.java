@@ -77,6 +77,9 @@ public class ErpSaleOutRespVO {
     @Schema(description = "优惠金额，单位：元", requiredMode = Schema.RequiredMode.REQUIRED, example = "7127")
     private BigDecimal discountPrice;
 
+    @Schema(description = "费用金额，单位：元", example = "7127")
+    private BigDecimal feeAmount;
+
     @Schema(description = "其它金额，单位：元", requiredMode = Schema.RequiredMode.REQUIRED, example = "7127")
     private BigDecimal otherPrice;
 
@@ -291,6 +294,9 @@ public class ErpSaleOutRespVO {
 
         @Schema(description = "税额，单位：元", example = "100.00")
         private BigDecimal taxPrice;
+
+        @Schema(description = "gift flag")
+        private Boolean giftFlag;
 
         @Schema(description = "备注", example = "随便")
         private String remark;

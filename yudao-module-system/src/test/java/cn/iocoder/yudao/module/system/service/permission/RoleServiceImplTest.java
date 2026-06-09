@@ -60,7 +60,7 @@ public class RoleServiceImplTest extends BaseDbUnitTest {
         RoleDO roleDO = roleMapper.selectById(roleId);
         assertPojoEquals(reqVO, roleDO, "id");
         assertEquals(RoleTypeEnum.CUSTOM.getType(), roleDO.getType());
-        assertEquals(DataScopeEnum.ALL.getScope(), roleDO.getDataScope());
+        assertEquals(DataScopeEnum.DEPT_ONLY.getScope(), roleDO.getDataScope());
     }
 
     @Test

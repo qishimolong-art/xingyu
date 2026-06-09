@@ -126,7 +126,8 @@ public class ErpReceivableOtherController {
         Map<Long, ErpCustomerDO> customerMap = customerService.getCustomerMap(
                 convertSet(pageResult.getList(), ErpReceivableOtherDO::getCustomerId));
         Map<Long, AdminUserRespDTO> userMap = adminUserApi.getUserMap(convertListByFlatMap(pageResult.getList(),
-                item -> Stream.of(item.getHandlerId(), NumberUtils.parseLong(item.getCreator()))));
+                item -> Stream.of(item.getHandlerId(), NumberUtils.parseLong(item.getCreator()),
+                        NumberUtils.parseLong(item.getUpdater()))));
         Map<Long, DeptRespDTO> deptMap = deptApi.getDeptMap(convertSet(pageResult.getList(), ErpReceivableOtherDO::getDeptId));
         return success(maskPageResult(BeanUtils.toBean(pageResult, ErpReceivableOtherRespVO.class, vo -> {
             fillExtend(vo, customerMap, userMap, deptMap);
@@ -170,6 +171,15 @@ public class ErpReceivableOtherController {
             } catch (Exception ignored) {
             }
         }
+        if (vo.getUpdater() != null) {
+            try {
+                AdminUserRespDTO user = adminUserApi.getUser(Long.parseLong(vo.getUpdater()));
+                if (user != null) {
+                    vo.setUpdaterName(user.getNickname());
+                }
+            } catch (Exception ignored) {
+            }
+        }
         if (vo.getDeptId() != null) {
             DeptRespDTO dept = deptApi.getDept(vo.getDeptId());
             if (dept != null) {
@@ -185,7 +195,8 @@ public class ErpReceivableOtherController {
         Map<Long, ErpCustomerDO> customerMap = customerService.getCustomerMap(
                 convertSet(pageResult.getList(), ErpReceivableOtherDO::getCustomerId));
         Map<Long, AdminUserRespDTO> userMap = adminUserApi.getUserMap(convertListByFlatMap(pageResult.getList(),
-                item -> Stream.of(item.getHandlerId(), NumberUtils.parseLong(item.getCreator()))));
+                item -> Stream.of(item.getHandlerId(), NumberUtils.parseLong(item.getCreator()),
+                        NumberUtils.parseLong(item.getUpdater()))));
         Map<Long, DeptRespDTO> deptMap = deptApi.getDeptMap(convertSet(pageResult.getList(), ErpReceivableOtherDO::getDeptId));
         return maskPageResult(BeanUtils.toBean(pageResult, ErpReceivableOtherRespVO.class, vo -> {
             fillExtend(vo, customerMap, userMap, deptMap);
@@ -206,6 +217,7 @@ public class ErpReceivableOtherController {
         });
         MapUtils.findAndThen(userMap, vo.getHandlerId(), user -> vo.setHandlerName(user.getNickname()));
         MapUtils.findAndThen(userMap, NumberUtils.parseLong(vo.getCreator()), user -> vo.setCreatorName(user.getNickname()));
+        MapUtils.findAndThen(userMap, NumberUtils.parseLong(vo.getUpdater()), user -> vo.setUpdaterName(user.getNickname()));
         MapUtils.findAndThen(deptMap, vo.getDeptId(), dept -> vo.setDeptName(dept.getName()));
     }
 }

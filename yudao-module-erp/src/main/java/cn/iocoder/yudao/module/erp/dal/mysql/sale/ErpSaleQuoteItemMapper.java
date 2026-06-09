@@ -25,4 +25,12 @@ public interface ErpSaleQuoteItemMapper extends BaseMapperX<ErpSaleQuoteItemDO> 
         return delete(ErpSaleQuoteItemDO::getQuoteId, quoteId);
     }
 
+    default Long selectCountByProductId(Long productId) {
+        return selectCount(ErpSaleQuoteItemDO::getProductId, productId);
+    }
+
+    default Long selectCountByWarehouseId(Long warehouseId) {
+        return selectCount(ErpSaleQuoteItemDO::getWarehouseId, warehouseId);
+    }
+
 }

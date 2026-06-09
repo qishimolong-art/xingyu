@@ -13,6 +13,7 @@ import cn.iocoder.yudao.module.system.dal.dataobject.dept.DeptDO;
 import cn.iocoder.yudao.module.system.dal.dataobject.user.AdminUserDO;
 import cn.iocoder.yudao.module.system.enums.common.SexEnum;
 import cn.iocoder.yudao.module.system.service.dept.DeptService;
+import cn.iocoder.yudao.module.system.service.permission.PermissionService;
 import cn.iocoder.yudao.module.system.service.user.AdminUserService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -32,6 +33,7 @@ import java.util.List;
 import java.util.Map;
 
 import static cn.iocoder.yudao.framework.apilog.core.enums.OperateTypeEnum.EXPORT;
+import static cn.iocoder.yudao.framework.common.exception.util.ServiceExceptionUtil.invalidParamException;
 import static cn.iocoder.yudao.framework.common.pojo.CommonResult.success;
 import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.convertList;
 
@@ -45,11 +47,14 @@ public class UserController {
     private AdminUserService userService;
     @Resource
     private DeptService deptService;
+    @Resource
+    private PermissionService permissionService;
 
     @PostMapping("/create")
     @Operation(summary = "新增用户")
     @PreAuthorize("@ss.hasPermission('system:user:create')")
     public CommonResult<Long> createUser(@Valid @RequestBody UserSaveReqVO reqVO) {
+        validateUserDeptAndRole(reqVO);
         Long id = userService.createUser(reqVO);
         return success(id);
     }
@@ -58,8 +63,18 @@ public class UserController {
     @Operation(summary = "修改用户")
     @PreAuthorize("@ss.hasPermission('system:user:update')")
     public CommonResult<Boolean> updateUser(@Valid @RequestBody UserSaveReqVO reqVO) {
+        validateUserDeptAndRole(reqVO);
         userService.updateUser(reqVO);
         return success(true);
+    }
+
+    private void validateUserDeptAndRole(UserSaveReqVO reqVO) {
+        if (CollUtil.isEmpty(reqVO.getDeptIds())) {
+            throw invalidParamException("所属部门不能为空");
+        }
+        if (CollUtil.isEmpty(reqVO.getRoleIds())) {
+            throw invalidParamException("角色不能为空");
+        }
     }
 
     @DeleteMapping("/delete")
@@ -133,7 +148,10 @@ public class UserController {
         }
         // 拼接数据
         DeptDO dept = deptService.getDept(user.getDeptId());
-        return success(UserConvert.INSTANCE.convert(user, dept));
+        UserRespVO respVO = UserConvert.INSTANCE.convert(user, dept);
+        respVO.setDeptIds(userService.getUserDeptIdListByUserId(id));
+        respVO.setRoleIds(permissionService.getUserRoleIdListByUserId(id));
+        return success(respVO);
     }
 
     @GetMapping("/export-excel")

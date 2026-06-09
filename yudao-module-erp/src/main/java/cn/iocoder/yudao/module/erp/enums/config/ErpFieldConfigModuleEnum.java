@@ -6,21 +6,25 @@ import lombok.Getter;
 import java.util.Arrays;
 
 /**
- * ERP 字段配置模块枚举
+ * ERP field configuration module enum.
  */
 @Getter
 @AllArgsConstructor
 public enum ErpFieldConfigModuleEnum {
 
-    PURCHASE_ORDER("purchase_order", "采购订单"),
-    PURCHASE_IN("purchase_in", "采购入库"),
-    PURCHASE_INVOICE("purchase_invoice", "采购票据"),
-    PURCHASE_RETURN("purchase_return", "采购退货"),
-    PURCHASE_PRICE_ADJUST("purchase_price_adjust", "采购调价"),
-    SUPPLIER("supplier", "供应商"),
-    SALE_QUOTE("sale_quote", "销售报价"),
-    SALE_CART("sale_cart", "销售购物车"),
-    SALE_RETURN("sale_return", "销售退货");
+    PURCHASE_ORDER("purchase_order", "purchase_order"),
+    PURCHASE_IN("purchase_in", "purchase_in"),
+    PURCHASE_INVOICE("purchase_invoice", "purchase_invoice"),
+    PURCHASE_RETURN("purchase_return", "purchase_return"),
+    PURCHASE_PRICE_ADJUST("purchase_price_adjust", "purchase_price_adjust"),
+    SUPPLIER("supplier", "supplier"),
+    CUSTOMER("customer", "customer"),
+    SALE_QUOTE("sale_quote", "sale_quote"),
+    SALE_ORDER("sale_order", "sale_order"),
+    SALE_CART("sale_cart", "sale_cart"),
+    SALE_OUT("sale_out", "sale_out"),
+    SALE_RETURN("sale_return", "sale_return"),
+    SALE_PRICE_ADJUST("sale_price_adjust", "sale_price_adjust");
 
     private final String key;
     private final String name;

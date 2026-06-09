@@ -37,6 +37,9 @@ public class ErpFinanceTransferPageReqVO extends PageParam {
     @Schema(description = "Finance user id", example = "100")
     private Long financeUserId;
 
+    @Schema(description = "所属部门编号", example = "100")
+    private Long deptId;
+
     @Schema(description = "Creator", example = "1")
     private String creator;
 

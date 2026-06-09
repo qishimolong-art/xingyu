@@ -22,6 +22,7 @@ public interface ErpStockMoveMapper extends BaseMapperX<ErpStockMoveDO> {
                 .likeIfPresent(ErpStockMoveDO::getNo, reqVO.getNo())
                 .betweenIfPresent(ErpStockMoveDO::getMoveTime, reqVO.getMoveTime())
                 .eqIfPresent(ErpStockMoveDO::getStatus, reqVO.getStatus())
+                .eqIfPresent(ErpStockMoveDO::getDeptId, reqVO.getDeptId())
                 .likeIfPresent(ErpStockMoveDO::getRemark, reqVO.getRemark())
                 .eqIfPresent(ErpStockMoveDO::getCreator, reqVO.getCreator())
                 .orderByDesc(ErpStockMoveDO::getId);

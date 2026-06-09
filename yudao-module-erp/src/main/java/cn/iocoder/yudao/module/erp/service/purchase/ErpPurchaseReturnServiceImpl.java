@@ -7,10 +7,13 @@ import cn.iocoder.yudao.framework.common.enums.CommonStatusEnum;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.common.util.number.MoneyUtils;
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.imports.ErpPurchaseImportResultRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.returns.ErpPurchaseReturnImportExcelVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.returns.ErpPurchaseReturnImportRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.returns.ErpPurchaseReturnOrderImportExcelVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.returns.ErpPurchaseReturnPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.returns.ErpPurchaseReturnSaveReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.supplier.ErpSupplierPageReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.accounting.ErpVoucherDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.accounting.ErpVoucherItemDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.product.ErpProductDO;
@@ -31,6 +34,7 @@ import cn.iocoder.yudao.module.erp.enums.finance.accounting.ErpVoucherTypeEnum;
 import cn.iocoder.yudao.module.erp.enums.finance.accounting.ErpVoucherSourceBizTypeEnum;
 import cn.iocoder.yudao.module.erp.enums.purchase.ErpPurchaseReturnModeEnum;
 import cn.iocoder.yudao.module.erp.enums.stock.ErpStockRecordBizTypeEnum;
+import cn.iocoder.yudao.module.erp.service.common.ErpOperateLogService;
 import cn.iocoder.yudao.module.erp.service.finance.accounting.ErpAutoVoucherBuilder;
 import cn.iocoder.yudao.module.erp.service.finance.accounting.ErpBookOpenService;
 import cn.iocoder.yudao.module.erp.service.finance.accounting.ErpVoucherService;
@@ -46,12 +50,18 @@ import org.springframework.validation.annotation.Validated;
 
 import javax.annotation.Resource;
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -59,6 +69,7 @@ import java.util.stream.Collectors;
 import static cn.iocoder.yudao.framework.common.exception.util.ServiceExceptionUtil.exception;
 import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.*;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.*;
+import static cn.iocoder.yudao.module.erp.enums.LogRecordConstants.*;
 
 // TODO 芋艿：记录操作日志
 
@@ -104,6 +115,10 @@ public class ErpPurchaseReturnServiceImpl implements ErpPurchaseReturnService {
     private ErpVoucherMapper voucherMapper;
     @Resource
     private ErpVoucherItemMapper voucherItemMapper;
+    @Resource
+    private ErpOperateLogService operateLogService;
+    @Resource
+    private ErpPurchaseDocumentDefaultService purchaseDocumentDefaultService;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -133,24 +148,29 @@ public class ErpPurchaseReturnServiceImpl implements ErpPurchaseReturnService {
         // 2.1 插入退货
         ErpPurchaseReturnDO purchaseReturn = BeanUtils.toBean(createReqVO, ErpPurchaseReturnDO.class, in -> in
                 .setNo(no).setStatus(ErpAuditStatus.PROCESS.getStatus()));
-        purchaseReturn.setReturnTime(LocalDateTime.now());
+        purchaseReturn.setReturnTime(createReqVO.getReturnTime() != null ? createReqVO.getReturnTime() : LocalDateTime.now());
         if (purchaseOrder != null) {
-            purchaseReturn.setOrderNo(purchaseOrder.getNo()).setSupplierId(purchaseOrder.getSupplierId());
+            purchaseReturn.setOrderNo(purchaseOrder.getNo()).setSupplierId(purchaseOrder.getSupplierId())
+                    .setDeptId(purchaseOrder.getDeptId());
         }
+        purchaseDocumentDefaultService.fillCreateDefaults(purchaseReturn);
         // 1.6 兜底校验：supplierId 必填（按单退货走 orderId 带出；按库存退货要求前端传）
         if (purchaseReturn.getSupplierId() == null) {
             throw exception(PURCHASE_RETURN_SUPPLIER_REQUIRED);
         }
         calculateTotalPrice(purchaseReturn, purchaseReturnItems);
+        purchaseDocumentDefaultService.fillCreateAuditDefaults(purchaseReturn);
         purchaseReturnMapper.insert(purchaseReturn);
         // 2.2 插入退货项
         purchaseReturnItems.forEach(o -> o.setReturnId(purchaseReturn.getId()));
+        purchaseDocumentDefaultService.fillCreateAuditDefaults(purchaseReturnItems);
         purchaseReturnItemMapper.insertBatch(purchaseReturnItems);
 
         // 3. 更新采购订单的退货数量
         if (createReqVO.getOrderId() != null) {
             updatePurchaseOrderReturnCount(createReqVO.getOrderId());
         }
+        operateLogService.recordCreate(ERP_PURCHASE_RETURN_TYPE, purchaseReturn.getId(), purchaseReturn.getNo());
         return purchaseReturn.getId();
     }
 
@@ -181,10 +201,18 @@ public class ErpPurchaseReturnServiceImpl implements ErpPurchaseReturnService {
 
         // 2.1 更新退货
         ErpPurchaseReturnDO updateObj = BeanUtils.toBean(updateReqVO, ErpPurchaseReturnDO.class);
-        updateObj.setReturnTime(LocalDateTime.now());
+        updateObj.setReturnTime(updateReqVO.getReturnTime() != null ? updateReqVO.getReturnTime() : LocalDateTime.now());
         if (purchaseOrder != null) {
-            updateObj.setOrderNo(purchaseOrder.getNo()).setSupplierId(purchaseOrder.getSupplierId());
+            updateObj.setOrderNo(purchaseOrder.getNo()).setSupplierId(purchaseOrder.getSupplierId())
+                    .setDeptId(purchaseOrder.getDeptId());
         }
+        if (updateObj.getHandler() == null) {
+            updateObj.setHandler(purchaseReturn.getHandler());
+        }
+        if (updateObj.getDeptId() == null) {
+            updateObj.setDeptId(purchaseReturn.getDeptId());
+        }
+        purchaseDocumentDefaultService.fillCreateDefaults(updateObj);
         // 兜底校验：supplierId 必填
         if (updateObj.getSupplierId() == null) {
             throw exception(PURCHASE_RETURN_SUPPLIER_REQUIRED);
@@ -203,6 +231,7 @@ public class ErpPurchaseReturnServiceImpl implements ErpPurchaseReturnService {
                 && purchaseReturn.getOrderId() != null) {
             updatePurchaseOrderReturnCount(purchaseReturn.getOrderId());
         }
+        operateLogService.recordUpdate(ERP_PURCHASE_RETURN_TYPE, updateReqVO.getId(), purchaseReturn.getNo());
     }
 
     private void calculateTotalPrice(ErpPurchaseReturnDO purchaseReturn, List<ErpPurchaseReturnItemDO> purchaseReturnItems) {
@@ -210,6 +239,18 @@ public class ErpPurchaseReturnServiceImpl implements ErpPurchaseReturnService {
         purchaseReturn.setTotalProductPrice(getSumValue(purchaseReturnItems, ErpPurchaseReturnItemDO::getTotalPrice, BigDecimal::add, BigDecimal.ZERO));
         purchaseReturn.setTotalTaxPrice(getSumValue(purchaseReturnItems, ErpPurchaseReturnItemDO::getTaxPrice, BigDecimal::add, BigDecimal.ZERO));
         purchaseReturn.setTotalPrice(purchaseReturn.getTotalProductPrice().add(purchaseReturn.getTotalTaxPrice()));
+        if (purchaseReturn.getDiscountPercent() == null) {
+            purchaseReturn.setDiscountPercent(BigDecimal.ZERO);
+        }
+        BigDecimal feeAmount = resolveFeeAmount(purchaseReturn.getFeeAmount(), purchaseReturn.getOtherPrice());
+        purchaseReturn.setFeeAmount(feeAmount);
+        purchaseReturn.setOtherPrice(feeAmount);
+        purchaseReturn.setDiscountPrice(MoneyUtils.priceMultiplyPercent(purchaseReturn.getTotalPrice(), purchaseReturn.getDiscountPercent()));
+        purchaseReturn.setTotalPrice(purchaseReturn.getTotalPrice().subtract(purchaseReturn.getDiscountPrice()).add(feeAmount));
+    }
+
+    private BigDecimal resolveFeeAmount(BigDecimal feeAmount, BigDecimal otherPrice) {
+        return feeAmount != null ? feeAmount : (otherPrice != null ? otherPrice : BigDecimal.ZERO);
     }
 
     private void updatePurchaseOrderReturnCount(Long orderId) {
@@ -284,6 +325,7 @@ public class ErpPurchaseReturnServiceImpl implements ErpPurchaseReturnService {
                     "采购退货 - " + supplierName,
                     items);
         }
+        operateLogService.recordStatus(ERP_PURCHASE_RETURN_TYPE, id, purchaseReturn.getNo(), approve);
     }
 
     @Override
@@ -310,13 +352,14 @@ public class ErpPurchaseReturnServiceImpl implements ErpPurchaseReturnService {
                 }
             }
         }
-        // 0.5 校验同一明细中产品不重复
-        Set<String> productCodeSet = new LinkedHashSet<>();
+        // 0.5 校验同一明细中产品 + 仓库 + 赠品标识不重复（采购退货暂无赠品字段，固定为 false）
+        Set<String> itemKeySet = new LinkedHashSet<>();
         if (CollUtil.isNotEmpty(list)) {
             for (ErpPurchaseReturnSaveReqVO.Item item : list) {
-                String productCode = StrUtil.blankToDefault(item.getProductCode(), String.valueOf(item.getProductId()));
-                if (!productCodeSet.add(productCode)) {
-                    throw exception(PURCHASE_RETURN_ITEM_DUPLICATE, productCode);
+                String productKey = StrUtil.blankToDefault(item.getProductCode(), String.valueOf(item.getProductId()));
+                String itemKey = item.getProductId() + "|" + item.getWarehouseId() + "|0";
+                if (!itemKeySet.add(itemKey)) {
+                    throw exception(PURCHASE_RETURN_ITEM_DUPLICATE, productKey);
                 }
             }
         }
@@ -400,6 +443,7 @@ public class ErpPurchaseReturnServiceImpl implements ErpPurchaseReturnService {
         // 第二步，批量添加、修改、删除
         if (CollUtil.isNotEmpty(diffList.get(0))) {
             diffList.get(0).forEach(o -> o.setReturnId(id));
+            purchaseDocumentDefaultService.fillCreateAuditDefaults(diffList.get(0));
             purchaseReturnItemMapper.insertBatch(diffList.get(0));
         }
         if (CollUtil.isNotEmpty(diffList.get(1))) {
@@ -433,6 +477,7 @@ public class ErpPurchaseReturnServiceImpl implements ErpPurchaseReturnService {
 
             // 2.3 更新采购订单的出库数量
             updatePurchaseOrderReturnCount(purchaseReturn.getOrderId());
+            operateLogService.recordDelete(ERP_PURCHASE_RETURN_TYPE, purchaseReturn.getId(), purchaseReturn.getNo());
         });
 
     }
@@ -542,6 +587,273 @@ public class ErpPurchaseReturnServiceImpl implements ErpPurchaseReturnService {
         return respVO;
     }
 
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public ErpPurchaseImportResultRespVO importPurchaseReturnOrderList(List<ErpPurchaseReturnOrderImportExcelVO> list) {
+        ErpPurchaseImportResultRespVO respVO = new ErpPurchaseImportResultRespVO();
+        if (CollUtil.isEmpty(list)) {
+            return respVO;
+        }
+
+        Map<String, cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpSupplierDO> supplierMap = buildSupplierMap();
+        Map<String, ErpProductDO> productMap = productMapper.selectListByCodes(extractPurchaseReturnOrderProductCodes(list)).stream()
+                .collect(Collectors.toMap(ErpProductDO::getCode, product -> product, (a, b) -> a));
+        Map<String, cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpWarehouseDO> warehouseMap =
+                warehouseService.getWarehouseListByStatus(CommonStatusEnum.ENABLE.getStatus()).stream()
+                        .collect(Collectors.toMap(cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpWarehouseDO::getName,
+                                warehouse -> warehouse, (a, b) -> a));
+        Map<Long, cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpProductRespVO> productVOMap =
+                productService.getProductVOMap(convertSet(productMap.values(), ErpProductDO::getId));
+
+        List<PurchaseReturnOrderImportGroup> groups = new ArrayList<>();
+        PurchaseReturnOrderImportGroup currentGroup = null;
+        for (int i = 0; i < list.size(); i++) {
+            ErpPurchaseReturnOrderImportExcelVO row = list.get(i);
+            int rowNo = i + 2;
+            if (isBlankPurchaseReturnOrderRow(row)) {
+                continue;
+            }
+            boolean hasMain = hasPurchaseReturnOrderMainFields(row);
+            boolean hasDetail = hasPurchaseReturnOrderDetailFields(row);
+            if (hasMain) {
+                cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpSupplierDO supplier =
+                        resolveSupplier(row.getSupplierName(), supplierMap);
+                currentGroup = new PurchaseReturnOrderImportGroup(rowNo, row, supplier);
+                groups.add(currentGroup);
+                String orderNo = resolvePurchaseReturnOrderNo(rowNo, row);
+                String supplierName = trimToNull(row.getSupplierName());
+                if (supplierName == null) {
+                    addImportFailure(respVO, rowNo, orderNo, null, "供应商不能为空");
+                } else if (supplier == null) {
+                    addImportFailure(respVO, rowNo, orderNo, null, "供应商不存在：" + supplierName);
+                } else if (CommonStatusEnum.isDisable(supplier.getStatus())) {
+                    addImportFailure(respVO, rowNo, orderNo, null, "供应商(" + supplier.getName() + ")未启用");
+                }
+                validateImportDate(respVO, rowNo, orderNo, null, "退货时间", row.getReturnTime());
+            } else if (hasDetail && currentGroup == null) {
+                addImportFailure(respVO, rowNo, null, trimToNull(row.getProductCode()), "明细行前缺少退货单主表信息");
+                continue;
+            }
+            if (!hasDetail) {
+                continue;
+            }
+            String orderNo = currentGroup == null ? null : resolvePurchaseReturnOrderNo(currentGroup.getRowNo(), currentGroup.getMainRow());
+            String productCode = trimToNull(row.getProductCode());
+            boolean valid = true;
+            ErpProductDO product = productMap.get(productCode);
+            cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpWarehouseDO warehouse = warehouseMap.get(trimToNull(row.getWarehouseName()));
+            if (productCode == null) {
+                addImportFailure(respVO, rowNo, orderNo, productCode, "产品编码不能为空");
+                valid = false;
+            } else if (product == null) {
+                addImportFailure(respVO, rowNo, orderNo, productCode, "产品不存在");
+                valid = false;
+            }
+            if (trimToNull(row.getWarehouseName()) == null) {
+                addImportFailure(respVO, rowNo, orderNo, productCode, "仓库名称不能为空");
+                valid = false;
+            } else if (warehouse == null) {
+                addImportFailure(respVO, rowNo, orderNo, productCode, "仓库不存在：" + row.getWarehouseName());
+                valid = false;
+            }
+            if (row.getItemCount() == null || row.getItemCount().compareTo(BigDecimal.ZERO) <= 0) {
+                addImportFailure(respVO, rowNo, orderNo, productCode, "退货数量必须大于 0");
+                valid = false;
+            }
+            BigDecimal price = row.getProductPrice() != null ? row.getProductPrice() : (product == null ? null : product.getPurchasePrice());
+            if (price == null || price.compareTo(BigDecimal.ZERO) <= 0) {
+                addImportFailure(respVO, rowNo, orderNo, productCode, "退货单价必须大于 0");
+                valid = false;
+            }
+            if (valid) {
+                currentGroup.getRows().add(new PurchaseReturnOrderImportRow(rowNo, row, product, warehouse));
+            }
+        }
+
+        for (PurchaseReturnOrderImportGroup group : groups) {
+            if (CollUtil.isEmpty(group.getRows())) {
+                addImportFailure(respVO, group.getRowNo(), resolvePurchaseReturnOrderNo(group.getRowNo(), group.getMainRow()), null,
+                        "采购退货单至少需要一行明细");
+            }
+        }
+        if (respVO.getFailureCount() > 0) {
+            return respVO;
+        }
+
+        for (PurchaseReturnOrderImportGroup group : groups) {
+            ErpPurchaseReturnSaveReqVO saveReqVO = buildPurchaseReturnOrderSaveReq(group, productVOMap);
+            Long id = createPurchaseReturn(saveReqVO);
+            respVO.getDocumentIds().add(id);
+            respVO.setSuccessCount(respVO.getSuccessCount() + 1);
+        }
+        return respVO;
+    }
+
+    private ErpPurchaseReturnSaveReqVO buildPurchaseReturnOrderSaveReq(PurchaseReturnOrderImportGroup group,
+                                                                       Map<Long, cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpProductRespVO> productVOMap) {
+        ErpPurchaseReturnOrderImportExcelVO mainRow = group.getMainRow();
+        ErpPurchaseReturnSaveReqVO saveReqVO = new ErpPurchaseReturnSaveReqVO();
+        saveReqVO.setSupplierId(group.getSupplier().getId());
+        saveReqVO.setReturnMode(ErpPurchaseReturnModeEnum.BY_STOCK.getMode());
+        saveReqVO.setReturnTime(parseImportDate(mainRow.getReturnTime(), LocalDateTime.now()));
+        saveReqVO.setRemark(trimToNull(mainRow.getRemark()));
+        saveReqVO.setDiscountPercent(BigDecimal.ZERO);
+        saveReqVO.setOtherPrice(BigDecimal.ZERO);
+        saveReqVO.setItems(convertList(group.getRows(), row -> buildPurchaseReturnOrderItem(row, productVOMap)));
+        return saveReqVO;
+    }
+
+    private ErpPurchaseReturnSaveReqVO.Item buildPurchaseReturnOrderItem(PurchaseReturnOrderImportRow importRow,
+                                                                         Map<Long, cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpProductRespVO> productVOMap) {
+        ErpPurchaseReturnOrderImportExcelVO row = importRow.getRow();
+        ErpProductDO product = importRow.getProduct();
+        ErpPurchaseReturnSaveReqVO.Item item = new ErpPurchaseReturnSaveReqVO.Item();
+        item.setProductId(product.getId());
+        item.setProductCode(product.getCode());
+        item.setProductName(product.getName());
+        item.setProductUnitId(product.getUnitId());
+        item.setWarehouseId(importRow.getWarehouse().getId());
+        item.setWarehouseName(importRow.getWarehouse().getName());
+        item.setCount(row.getItemCount());
+        item.setProductPrice(row.getProductPrice() != null ? row.getProductPrice() : product.getPurchasePrice());
+        item.setPackageQty(defaultPackageQty(product.getPackageQty()));
+        item.setRemark(trimToNull(row.getItemRemark()));
+        item.setBarCode(product.getBarCode());
+        item.setBrand(product.getBrand());
+        item.setVehicleModel(product.getVehicleModel());
+        item.setOriginPlace(product.getOriginPlace());
+        item.setDrawingNo(product.getDrawingNo());
+        cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpProductRespVO productVO = productVOMap.get(product.getId());
+        if (productVO != null) {
+            item.setProductUnitName(productVO.getUnitName());
+        }
+        return item;
+    }
+
+    private Map<String, cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpSupplierDO> buildSupplierMap() {
+        Map<String, cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpSupplierDO> map = new LinkedHashMap<>();
+        ErpSupplierPageReqVO pageReqVO = new ErpSupplierPageReqVO();
+        pageReqVO.setPageSize(cn.iocoder.yudao.framework.common.pojo.PageParam.PAGE_SIZE_NONE);
+        supplierService.getSupplierPage(pageReqVO).getList().forEach(supplier -> putSupplierKeys(map, supplier));
+        return map;
+    }
+
+    private cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpSupplierDO resolveSupplier(
+            String supplierName, Map<String, cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpSupplierDO> supplierMap) {
+        return supplierMap.get(normalizeKey(supplierName));
+    }
+
+    private void putSupplierKeys(Map<String, cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpSupplierDO> map,
+                                 cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpSupplierDO supplier) {
+        putIfNotBlank(map, supplier.getCode(), supplier);
+        putIfNotBlank(map, supplier.getOldCode(), supplier);
+        putIfNotBlank(map, supplier.getName(), supplier);
+        putIfNotBlank(map, supplier.getShortName(), supplier);
+    }
+
+    private <T> void putIfNotBlank(Map<String, T> map, String key, T value) {
+        String normalized = normalizeKey(key);
+        if (StrUtil.isNotBlank(normalized)) {
+            map.putIfAbsent(normalized, value);
+        }
+    }
+
+    private String normalizeKey(String value) {
+        String normalized = trimToNull(value);
+        if (StrUtil.isBlank(normalized)) {
+            return normalized;
+        }
+        return StrUtil.cleanBlank(normalized).toLowerCase(Locale.ROOT);
+    }
+
+    private static Set<String> extractPurchaseReturnOrderProductCodes(List<ErpPurchaseReturnOrderImportExcelVO> list) {
+        Set<String> codes = new LinkedHashSet<>();
+        for (ErpPurchaseReturnOrderImportExcelVO row : list) {
+            if (row == null) {
+                continue;
+            }
+            String code = trimToNull(row.getProductCode());
+            if (code != null) {
+                codes.add(code);
+            }
+        }
+        return codes;
+    }
+
+    private boolean isBlankPurchaseReturnOrderRow(ErpPurchaseReturnOrderImportExcelVO row) {
+        return row == null || !hasPurchaseReturnOrderMainFields(row) && !hasPurchaseReturnOrderDetailFields(row);
+    }
+
+    private boolean hasPurchaseReturnOrderMainFields(ErpPurchaseReturnOrderImportExcelVO row) {
+        return StrUtil.isNotBlank(trimToNull(row.getNo()))
+                || StrUtil.isNotBlank(trimToNull(row.getSupplierName()))
+                || StrUtil.isNotBlank(trimToNull(row.getReturnTime()))
+                || StrUtil.isNotBlank(trimToNull(row.getRemark()));
+    }
+
+    private boolean hasPurchaseReturnOrderDetailFields(ErpPurchaseReturnOrderImportExcelVO row) {
+        return StrUtil.isNotBlank(trimToNull(row.getProductCode()))
+                || StrUtil.isNotBlank(trimToNull(row.getWarehouseName()))
+                || row.getItemCount() != null
+                || row.getProductPrice() != null
+                || StrUtil.isNotBlank(trimToNull(row.getItemRemark()));
+    }
+
+    private String resolvePurchaseReturnOrderNo(Integer rowNo, ErpPurchaseReturnOrderImportExcelVO row) {
+        String no = trimToNull(row.getNo());
+        if (no != null) {
+            return no;
+        }
+        String supplierName = trimToNull(row.getSupplierName());
+        if (supplierName != null) {
+            return supplierName;
+        }
+        return "第 " + rowNo + " 行";
+    }
+
+    private boolean validateImportDate(ErpPurchaseImportResultRespVO respVO, Integer rowNo, String orderNo,
+                                       String productCode, String label, String value) {
+        if (StrUtil.isBlank(trimToNull(value))) {
+            return true;
+        }
+        try {
+            parseImportDate(value, null);
+            return true;
+        } catch (IllegalArgumentException ignored) {
+            addImportFailure(respVO, rowNo, orderNo, productCode, label + "格式不正确，请使用 yyyy-MM-dd 或 yyyy-MM-dd HH:mm:ss");
+            return false;
+        }
+    }
+
+    private LocalDateTime parseImportDate(String value, LocalDateTime defaultValue) {
+        String normalized = trimToNull(value);
+        if (normalized == null) {
+            return defaultValue;
+        }
+        for (DateTimeFormatter formatter : new DateTimeFormatter[]{
+                DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"),
+                DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm"),
+        }) {
+            try {
+                return LocalDateTime.parse(normalized, formatter);
+            } catch (DateTimeParseException ignored) {
+                // Try next format.
+            }
+        }
+        try {
+            return LocalDate.parse(normalized, DateTimeFormatter.ofPattern("yyyy-MM-dd")).atStartOfDay();
+        } catch (DateTimeParseException ignored) {
+            throw new IllegalArgumentException("Invalid date format: " + value);
+        }
+    }
+
+    private void addImportFailure(ErpPurchaseImportResultRespVO respVO, Integer rowNo, String orderNo,
+                                  String productCode, String reason) {
+        respVO.getFailureDetails().add(new ErpPurchaseImportResultRespVO.FailureItem(
+                rowNo, orderNo, productCode, reason));
+        respVO.setFailureCount(respVO.getFailureCount() + 1);
+    }
+
     private static Set<String> extractPurchaseReturnCodes(List<ErpPurchaseReturnImportExcelVO> list) {
         Set<String> codes = new LinkedHashSet<>();
         for (ErpPurchaseReturnImportExcelVO row : list) {
@@ -609,6 +921,72 @@ public class ErpPurchaseReturnServiceImpl implements ErpPurchaseReturnService {
     private static String trimToNull(String value) {
         String trimmed = StrUtil.trim(value);
         return StrUtil.isEmpty(trimmed) ? null : trimmed;
+    }
+
+    private static class PurchaseReturnOrderImportGroup {
+
+        private final Integer rowNo;
+        private final ErpPurchaseReturnOrderImportExcelVO mainRow;
+        private final cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpSupplierDO supplier;
+        private final List<PurchaseReturnOrderImportRow> rows = new ArrayList<>();
+
+        private PurchaseReturnOrderImportGroup(Integer rowNo, ErpPurchaseReturnOrderImportExcelVO mainRow,
+                                               cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpSupplierDO supplier) {
+            this.rowNo = rowNo;
+            this.mainRow = mainRow;
+            this.supplier = supplier;
+        }
+
+        public Integer getRowNo() {
+            return rowNo;
+        }
+
+        public ErpPurchaseReturnOrderImportExcelVO getMainRow() {
+            return mainRow;
+        }
+
+        public cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpSupplierDO getSupplier() {
+            return supplier;
+        }
+
+        public List<PurchaseReturnOrderImportRow> getRows() {
+            return rows;
+        }
+
+    }
+
+    private static class PurchaseReturnOrderImportRow {
+
+        private final Integer rowNo;
+        private final ErpPurchaseReturnOrderImportExcelVO row;
+        private final ErpProductDO product;
+        private final cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpWarehouseDO warehouse;
+
+        private PurchaseReturnOrderImportRow(Integer rowNo, ErpPurchaseReturnOrderImportExcelVO row,
+                                             ErpProductDO product,
+                                             cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpWarehouseDO warehouse) {
+            this.rowNo = rowNo;
+            this.row = row;
+            this.product = product;
+            this.warehouse = warehouse;
+        }
+
+        public Integer getRowNo() {
+            return rowNo;
+        }
+
+        public ErpPurchaseReturnOrderImportExcelVO getRow() {
+            return row;
+        }
+
+        public ErpProductDO getProduct() {
+            return product;
+        }
+
+        public cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpWarehouseDO getWarehouse() {
+            return warehouse;
+        }
+
     }
 
 }

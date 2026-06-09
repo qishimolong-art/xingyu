@@ -58,6 +58,18 @@ public interface ErpPurchasePriceAdjustMapper extends BaseMapperX<ErpPurchasePri
         return selectOne(ErpPurchasePriceAdjustDO::getNo, no);
     }
 
+    default Long selectCountBySupplierId(Long supplierId) {
+        return selectCount(ErpPurchasePriceAdjustDO::getSupplierId, supplierId);
+    }
+
+    default String selectFirstNoBySupplierId(Long supplierId) {
+        ErpPurchasePriceAdjustDO adjust = selectOne(new LambdaQueryWrapperX<ErpPurchasePriceAdjustDO>()
+                .eq(ErpPurchasePriceAdjustDO::getSupplierId, supplierId)
+                .orderByDesc(ErpPurchasePriceAdjustDO::getId)
+                .last("LIMIT 1"));
+        return adjust == null ? null : adjust.getNo();
+    }
+
     /**
      * 基于 id + 原状态的乐观锁更新，避免并发审批 / 反审批
      *

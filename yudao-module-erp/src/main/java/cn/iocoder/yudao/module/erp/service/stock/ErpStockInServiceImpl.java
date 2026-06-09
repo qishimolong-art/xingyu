@@ -24,6 +24,7 @@ import cn.iocoder.yudao.module.erp.enums.stock.ErpStockRecordBizTypeEnum;
 import cn.iocoder.yudao.module.erp.service.finance.accounting.ErpAutoVoucherBuilder;
 import cn.iocoder.yudao.module.erp.service.finance.accounting.ErpBookOpenService;
 import cn.iocoder.yudao.module.erp.service.finance.accounting.ErpVoucherService;
+import cn.iocoder.yudao.module.erp.service.common.ErpOperateLogService;
 import cn.iocoder.yudao.module.erp.service.product.ErpProductService;
 import cn.iocoder.yudao.module.erp.service.purchase.ErpSupplierService;
 import cn.iocoder.yudao.module.erp.service.stock.bo.ErpStockRecordCreateReqBO;
@@ -36,12 +37,15 @@ import javax.annotation.Resource;
 import java.math.BigDecimal;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 
 import static cn.iocoder.yudao.framework.common.exception.util.ServiceExceptionUtil.exception;
 import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.*;
+import static cn.iocoder.yudao.module.erp.enums.LogRecordConstants.ERP_STOCK_IN_TYPE;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.*;
 
 // TODO 芋艿：记录操作日志
@@ -74,6 +78,8 @@ public class ErpStockInServiceImpl implements ErpStockInService {
     private ErpSupplierService supplierService;
     @Resource
     private ErpStockRecordService stockRecordService;
+    @Resource
+    private ErpOperateLogService operateLogService;
 
     @Resource
     private ErpAutoVoucherBuilder autoVoucherBuilder;
@@ -108,6 +114,7 @@ public class ErpStockInServiceImpl implements ErpStockInService {
         // 2.2 插入入库单项
         stockInItems.forEach(o -> o.setInId(stockIn.getId()));
         stockInItemMapper.insertBatch(stockInItems);
+        operateLogService.recordCreate(ERP_STOCK_IN_TYPE, stockIn.getId(), stockIn.getNo());
         return stockIn.getId();
     }
 
@@ -131,9 +138,13 @@ public class ErpStockInServiceImpl implements ErpStockInService {
         ErpStockInDO updateObj = BeanUtils.toBean(updateReqVO, ErpStockInDO.class, in -> in
                 .setTotalCount(getSumValue(stockInItems, ErpStockInItemDO::getCount, BigDecimal::add))
                 .setTotalPrice(getSumValue(stockInItems, ErpStockInItemDO::getTotalPrice, BigDecimal::add)));
+        if (updateObj.getDeptId() == null) {
+            updateObj.setDeptId(stockIn.getDeptId());
+        }
         stockInMapper.updateById(updateObj);
         // 2.2 更新入库单项
         updateStockInItemList(updateReqVO.getId(), stockInItems);
+        operateLogService.recordUpdate(ERP_STOCK_IN_TYPE, stockIn.getId(), stockIn.getNo());
     }
 
     @Override
@@ -167,6 +178,7 @@ public class ErpStockInServiceImpl implements ErpStockInService {
         if (updateCount == 0) {
             throw exception(approve ? STOCK_IN_APPROVE_FAIL : STOCK_IN_PROCESS_FAIL);
         }
+        operateLogService.recordStatus(ERP_STOCK_IN_TYPE, stockIn.getId(), stockIn.getNo(), approve);
 
         // 3. 变更库存
         List<ErpStockInItemDO> stockInItems = stockInItemMapper.selectListByInId(id);
@@ -199,6 +211,7 @@ public class ErpStockInServiceImpl implements ErpStockInService {
     }
 
     private List<ErpStockInItemDO> validateStockInItems(List<ErpStockInSaveReqVO.Item> list) {
+        validateDuplicateStockInItems(list);
         // 1.1 校验产品存在
         List<ErpProductDO> productList = productService.validProductList(
                 convertSet(list, ErpStockInSaveReqVO.Item::getProductId));
@@ -210,6 +223,16 @@ public class ErpStockInServiceImpl implements ErpStockInService {
         return convertList(list, o -> BeanUtils.toBean(o, ErpStockInItemDO.class, item -> item
                 .setProductUnitId(productMap.get(item.getProductId()).getUnitId())
                 .setTotalPrice(MoneyUtils.priceMultiply(item.getProductPrice(), item.getCount()))));
+    }
+
+    private void validateDuplicateStockInItems(List<ErpStockInSaveReqVO.Item> list) {
+        Set<String> keys = new HashSet<>();
+        for (ErpStockInSaveReqVO.Item item : list) {
+            String key = item.getProductId() + "-" + item.getWarehouseId();
+            if (!keys.add(key)) {
+                throw exception(STOCK_IN_ITEM_DUPLICATE, key);
+            }
+        }
     }
 
     private void updateStockInItemList(Long id, List<ErpStockInItemDO> newList) {
@@ -251,6 +274,7 @@ public class ErpStockInServiceImpl implements ErpStockInService {
             stockInMapper.deleteById(stockIn.getId());
             // 2.2 删除入库单项
             stockInItemMapper.deleteByInId(stockIn.getId());
+            operateLogService.recordDelete(ERP_STOCK_IN_TYPE, stockIn.getId(), stockIn.getNo());
         });
     }
 

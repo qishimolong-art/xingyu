@@ -20,6 +20,8 @@ import cn.iocoder.yudao.module.erp.service.product.ErpProductPriceSystemService;
 import cn.iocoder.yudao.module.erp.service.product.ErpProductService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpStockService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpWarehouseService;
+import cn.iocoder.yudao.module.system.api.dept.DeptApi;
+import cn.iocoder.yudao.module.system.api.dept.dto.DeptRespDTO;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.Parameters;
@@ -65,6 +67,8 @@ public class ErpStockController {
     private ErpSaleOrderItemMapper saleOrderItemMapper;
     @Resource
     private ErpProductPriceSystemService productPriceSystemService;
+    @Resource
+    private DeptApi deptApi;
 
     @GetMapping("/get")
     @Operation(summary = "获得产品库存")
@@ -78,14 +82,22 @@ public class ErpStockController {
                                                  @RequestParam(value = "productId", required = false) Long productId,
                                                  @RequestParam(value = "warehouseId", required = false) Long warehouseId) {
         ErpStockDO stock = id != null ? stockService.getStock(id) : stockService.getStock(productId, warehouseId);
-        return success(BeanUtils.toBean(stock, ErpStockRespVO.class));
+        if (stock == null) {
+            return success(null);
+        }
+        return success(buildStockVOPageResult(new PageResult<>(Collections.singletonList(stock), 1L), null).getList().get(0));
     }
 
     @GetMapping("/get-count")
     @Operation(summary = "获得产品库存数量")
-    @Parameter(name = "productId", description = "产品编号", example = "10")
-    public CommonResult<BigDecimal> getStockCount(@RequestParam("productId") Long productId) {
-        return success(stockService.getStockCount(productId));
+    @Parameters({
+            @Parameter(name = "productId", description = "产品编号", example = "10"),
+            @Parameter(name = "warehouseId", description = "仓库编号", example = "2")
+    })
+    public CommonResult<BigDecimal> getStockCount(@RequestParam("productId") Long productId,
+                                                  @RequestParam(value = "warehouseId", required = false) Long warehouseId) {
+        return success(warehouseId != null ? stockService.getStockCount(productId, warehouseId)
+                : stockService.getStockCount(productId));
     }
 
     @GetMapping("/page")
@@ -126,6 +138,7 @@ public class ErpStockController {
                 convertSet(pageResult.getList(), ErpStockDO::getWarehouseId));
         // 聚合数据：占用数 / 未入数
         Map<Long, BigDecimal> occupiedMap = saleOrderItemMapper.selectOccupiedCountMap(productIds);
+        Map<Long, DeptRespDTO> deptMap = deptApi.getDeptMap(convertSet(warehouseMap.values(), ErpWarehouseDO::getDeptId));
         Map<Long, BigDecimal> pendingInMap = purchaseOrderItemMapper.selectPendingInCountMap(productIds);
         // 价格体系
         Map<Long, BigDecimal> priceMap = priceSystemId != null
@@ -161,8 +174,10 @@ public class ErpStockController {
                         .setPackageQty(product.getPackageQty())
                         .setWeight(product.getWeight());
             });
-            MapUtils.findAndThen(warehouseMap, stock.getWarehouseId(), warehouse ->
-                    stock.setWarehouseName(warehouse.getName()));
+            MapUtils.findAndThen(warehouseMap, stock.getWarehouseId(), warehouse -> {
+                stock.setWarehouseName(warehouse.getName()).setDeptId(warehouse.getDeptId());
+                MapUtils.findAndThen(deptMap, warehouse.getDeptId(), dept -> stock.setDeptName(dept.getName()));
+            });
             // 聚合字段
             BigDecimal occupied = occupiedMap.getOrDefault(stock.getProductId(), BigDecimal.ZERO);
             BigDecimal pending = pendingInMap.getOrDefault(stock.getProductId(), BigDecimal.ZERO);

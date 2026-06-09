@@ -8,6 +8,7 @@ import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.common.util.collection.MapUtils;
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
 import cn.iocoder.yudao.framework.excel.core.util.ExcelUtils;
+import cn.iocoder.yudao.module.erp.controller.admin.common.vo.ErpExportFieldRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.priceadjust.ErpSaleOutItemForAdjustRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.priceadjust.ErpSalePriceAdjustExportRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.priceadjust.ErpSalePriceAdjustImportExcelVO;
@@ -18,6 +19,10 @@ import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.priceadjust.ErpSaleP
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpCustomerDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSalePriceAdjustDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSalePriceAdjustItemDO;
+import cn.iocoder.yudao.module.erp.enums.config.ErpFieldConfigModuleEnum;
+import cn.iocoder.yudao.module.erp.framework.excel.ErpExportFieldUtils;
+import cn.iocoder.yudao.module.erp.framework.excel.ErpImportTemplateRequiredFieldUtils;
+import cn.iocoder.yudao.module.erp.service.config.ErpFieldConfigService;
 import cn.iocoder.yudao.module.erp.service.sale.ErpCustomerService;
 import cn.iocoder.yudao.module.erp.service.sale.ErpSaleFieldPermissionMasker;
 import cn.iocoder.yudao.module.erp.service.sale.ErpSalePriceAdjustService;
@@ -42,6 +47,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -58,6 +64,17 @@ import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.
 public class ErpSalePriceAdjustController {
 
     private static final String FIELD_PERMISSION_MODULE = "erp_sale_price_adjust";
+    private static final Map<String, String> EXPORT_FIELD_GROUP_MAP = buildExportFieldGroupMap();
+    private static final Map<String, String> EXPORT_FIELD_PERMISSION_MAP = buildExportFieldPermissionMap();
+    private static final Map<String, String> DETAIL_IMPORT_FIELD_ALIAS_MAP = ErpImportTemplateRequiredFieldUtils.aliasMap(
+            "customerId", "customerId",
+            "saleOutNo", "saleOutNo",
+            "productId", "productCode",
+            "productCode", "productCode",
+            "newPrice", "newPrice",
+            "adjustReason", "adjustReason",
+            "remark", "itemRemark",
+            "itemRemark", "itemRemark");
 
     @Resource
     private ErpSalePriceAdjustService salePriceAdjustService;
@@ -69,6 +86,8 @@ public class ErpSalePriceAdjustController {
     private ErpSaleFieldPermissionMasker fieldPermissionMasker;
     @Resource
     private AdminUserApi adminUserApi;
+    @Resource
+    private ErpFieldConfigService fieldConfigService;
 
     @PostMapping("/create")
     @Operation(summary = "创建销售调价单")
@@ -105,8 +124,11 @@ public class ErpSalePriceAdjustController {
         example.setNewPrice(new BigDecimal("100.00"));
         example.setAdjustReason("客户议价");
         example.setItemRemark("批量导入");
-        ExcelUtils.write(response, "sale-price-adjust-import-template.xls", "sale-price-adjust",
-                ErpSalePriceAdjustImportExcelVO.class, java.util.Collections.singletonList(example));
+        ExcelUtils.writeImportTemplate(response, "sale-price-adjust-import-template.xls", "sale-price-adjust",
+                ErpSalePriceAdjustImportExcelVO.class, java.util.Collections.singletonList(example), null,
+                ErpImportTemplateRequiredFieldUtils.getRequiredFields(fieldConfigService,
+                        ErpFieldConfigModuleEnum.SALE_PRICE_ADJUST, ErpSalePriceAdjustImportExcelVO.class,
+                        DETAIL_IMPORT_FIELD_ALIAS_MAP));
     }
 
     @PutMapping("/update-status")
@@ -211,6 +233,7 @@ public class ErpSalePriceAdjustController {
     @PreAuthorize("@ss.hasPermission('erp:sale-price-adjust:query')")
     @ApiAccessLog(operateType = EXPORT)
     public void exportSalePriceAdjustExcel(@Valid ErpSalePriceAdjustPageReqVO pageReqVO,
+                                           @RequestParam(value = "fields", required = false) String fields,
                                            HttpServletResponse response) throws IOException {
         pageReqVO.setPageSize(PageParam.PAGE_SIZE_NONE);
         List<ErpSalePriceAdjustRespVO> list = buildSalePriceAdjustVOPageResult(
@@ -218,7 +241,18 @@ public class ErpSalePriceAdjustController {
         fieldPermissionMasker.maskFormsWithItems(FIELD_PERMISSION_MODULE, list);
         List<ErpSalePriceAdjustExportRespVO> rows = buildSalePriceAdjustExportList(list);
         fieldPermissionMasker.maskExportRows(FIELD_PERMISSION_MODULE, rows);
-        ExcelUtils.write(response, "销售调价单.xls", "数据", ErpSalePriceAdjustExportRespVO.class, rows);
+        Set<String> includeFields = ErpExportFieldUtils.resolveIncludeFields(ErpSalePriceAdjustExportRespVO.class,
+                ErpExportFieldUtils.parseFieldParam(fields),
+                fieldPermissionMasker.getHiddenFieldSet(FIELD_PERMISSION_MODULE), EXPORT_FIELD_PERMISSION_MAP);
+        ExcelUtils.write(response, "销售调价单.xls", "数据", ErpSalePriceAdjustExportRespVO.class, rows, includeFields);
+    }
+
+    @GetMapping("/export-fields")
+    @Operation(summary = "Get sale price adjust export fields")
+    @PreAuthorize("@ss.hasPermission('erp:sale-price-adjust:query')")
+    public CommonResult<List<ErpExportFieldRespVO>> getSalePriceAdjustExportFields() {
+        return success(ErpExportFieldUtils.listFields(ErpSalePriceAdjustExportRespVO.class, EXPORT_FIELD_GROUP_MAP,
+                fieldPermissionMasker.getHiddenFieldSet(FIELD_PERMISSION_MODULE), EXPORT_FIELD_PERMISSION_MAP));
     }
 
     @GetMapping("/adjustable-items")
@@ -226,8 +260,10 @@ public class ErpSalePriceAdjustController {
     @PreAuthorize("@ss.hasPermission('erp:sale-price-adjust:query')")
     public CommonResult<List<ErpSaleOutItemForAdjustRespVO>> getAdjustableItemsByCustomerId(
             @RequestParam("customerId") Long customerId,
-            @RequestParam(value = "saleOutId", required = false) Long saleOutId) {
-        List<ErpSaleOutItemForAdjustRespVO> list = salePriceAdjustService.getAdjustableItemsByCustomerId(customerId, saleOutId);
+            @RequestParam(value = "saleOutId", required = false) Long saleOutId,
+            @RequestParam(value = "excludeAdjusted", required = false) Boolean excludeAdjusted) {
+        List<ErpSaleOutItemForAdjustRespVO> list = salePriceAdjustService.getAdjustableItemsByCustomerId(
+                customerId, saleOutId, excludeAdjusted);
         fieldPermissionMasker.maskSelectRows(FIELD_PERMISSION_MODULE, list);
         return success(list);
     }
@@ -355,6 +391,51 @@ public class ErpSalePriceAdjustController {
         row.setAdjustReason(item.getAdjustReason());
         row.setItemRemark(item.getItemRemark());
         return row;
+    }
+
+    private static Map<String, String> buildExportFieldGroupMap() {
+        Map<String, String> map = new LinkedHashMap<>();
+        map.put("no", "main");
+        map.put("customerName", "main");
+        map.put("status", "main");
+        map.put("adjustDate", "main");
+        map.put("adjustUserName", "main");
+        map.put("totalAdjustPrice", "main");
+        map.put("remark", "main");
+        map.put("saleOutNo", "detail");
+        map.put("partCode", "detail");
+        map.put("partName", "detail");
+        map.put("vehicleModel", "detail");
+        map.put("originPlace", "detail");
+        map.put("brand", "detail");
+        map.put("unit", "detail");
+        map.put("outCount", "detail");
+        map.put("oldPrice", "detail");
+        map.put("newPrice", "detail");
+        map.put("adjustPrice", "detail");
+        map.put("adjustReason", "detail");
+        map.put("itemRemark", "detail");
+        return map;
+    }
+
+    private static Map<String, String> buildExportFieldPermissionMap() {
+        Map<String, String> map = new LinkedHashMap<>();
+        map.put("customerName", "customerId");
+        map.put("adjustUserName", "adjustUserId");
+        map.put("saleOutNo", "item_saleOutNo");
+        map.put("partCode", "item_partCode");
+        map.put("partName", "item_partName");
+        map.put("vehicleModel", "item_vehicleModel");
+        map.put("originPlace", "item_originPlace");
+        map.put("brand", "item_brand");
+        map.put("unit", "item_unit");
+        map.put("outCount", "item_outCount");
+        map.put("oldPrice", "item_oldPrice");
+        map.put("newPrice", "item_newPrice");
+        map.put("adjustPrice", "item_adjustPrice");
+        map.put("adjustReason", "item_adjustReason");
+        map.put("itemRemark", "item_itemRemark");
+        return map;
     }
 
 }

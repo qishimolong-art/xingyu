@@ -6,15 +6,26 @@ import cn.iocoder.yudao.framework.common.enums.CommonStatusEnum;
 import cn.iocoder.yudao.framework.common.pojo.CommonResult;
 import cn.iocoder.yudao.framework.common.pojo.PageParam;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
+import cn.iocoder.yudao.framework.common.util.collection.MapUtils;
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
 import cn.iocoder.yudao.framework.excel.core.util.ExcelUtils;
+import cn.iocoder.yudao.module.erp.controller.admin.common.vo.ErpExportFieldRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.supplier.ErpSupplierImportExcelVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.supplier.ErpSupplierPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.supplier.ErpSupplierRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.supplier.ErpSupplierSaveReqVO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.config.ErpFieldConfigDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpSupplierDO;
+import cn.iocoder.yudao.module.erp.enums.config.ErpFieldConfigModuleEnum;
+import cn.iocoder.yudao.module.erp.framework.excel.ErpExportFieldUtils;
+import cn.iocoder.yudao.module.erp.service.common.ErpExportCaptchaService;
+import cn.iocoder.yudao.module.erp.service.config.ErpFieldConfigService;
 import cn.iocoder.yudao.module.erp.service.purchase.ErpPurchaseFieldPermissionMasker;
 import cn.iocoder.yudao.module.erp.service.purchase.ErpSupplierService;
+import cn.iocoder.yudao.module.system.api.dept.DeptApi;
+import cn.iocoder.yudao.module.system.api.dept.dto.DeptRespDTO;
+import cn.iocoder.yudao.module.system.api.user.AdminUserApi;
+import cn.iocoder.yudao.module.system.api.user.dto.AdminUserRespDTO;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -28,11 +39,16 @@ import javax.servlet.http.HttpServletResponse;
 import javax.validation.Valid;
 import java.io.IOException;
 import java.util.Collections;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 import static cn.iocoder.yudao.framework.apilog.core.enums.OperateTypeEnum.EXPORT;
 import static cn.iocoder.yudao.framework.common.pojo.CommonResult.success;
 import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.convertList;
+import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.convertSet;
 
 @Tag(name = "管理后台 - ERP 供应商")
 @RestController
@@ -40,10 +56,22 @@ import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.
 @Validated
 public class ErpSupplierController {
 
+    private static final String FIELD_PERMISSION_MODULE = "erp_supplier";
+    private static final Map<String, String> EXPORT_FIELD_GROUP_MAP = buildExportFieldGroupMap();
+    private static final Map<String, String> EXPORT_FIELD_PERMISSION_MAP = buildExportFieldPermissionMap();
+
     @Resource
     private ErpSupplierService supplierService;
     @Resource
+    private DeptApi deptApi;
+    @Resource
+    private AdminUserApi adminUserApi;
+    @Resource
     private ErpPurchaseFieldPermissionMasker fieldPermissionMasker;
+    @Resource
+    private ErpFieldConfigService fieldConfigService;
+    @Resource
+    private ErpExportCaptchaService exportCaptchaService;
 
     @PostMapping("/create")
     @Operation(summary = "创建供应商")
@@ -87,6 +115,7 @@ public class ErpSupplierController {
     public CommonResult<ErpSupplierRespVO> getSupplier(@RequestParam("id") Long id) {
         ErpSupplierDO supplier = supplierService.getSupplier(id);
         ErpSupplierRespVO respVO = BeanUtils.toBean(supplier, ErpSupplierRespVO.class);
+        fillSupplierExtra(Collections.singletonList(respVO));
         fieldPermissionMasker.mask("erp_supplier", respVO);
         return success(respVO);
     }
@@ -96,7 +125,9 @@ public class ErpSupplierController {
     @PreAuthorize("@ss.hasPermission('erp:supplier:query')")
     public CommonResult<PageResult<ErpSupplierRespVO>> getSupplierPage(@Valid ErpSupplierPageReqVO pageReqVO) {
         PageResult<ErpSupplierDO> pageResult = supplierService.getSupplierPage(pageReqVO);
-        return success(BeanUtils.toBean(pageResult, ErpSupplierRespVO.class));
+        PageResult<ErpSupplierRespVO> respPage = BeanUtils.toBean(pageResult, ErpSupplierRespVO.class);
+        fillSupplierExtra(respPage.getList());
+        return success(respPage);
     }
 
     @GetMapping("/simple-list")
@@ -111,7 +142,11 @@ public class ErpSupplierController {
     @PreAuthorize("@ss.hasPermission('erp:supplier:export')")
     @ApiAccessLog(operateType = EXPORT)
     public void exportSupplierExcel(@Valid ErpSupplierPageReqVO pageReqVO,
-              HttpServletResponse response) throws IOException {
+                                    @RequestParam(value = "fields", required = false) String fields,
+                                    @RequestParam(value = "captchaCode", required = false) String captchaCode,
+                                    @RequestParam(value = "verifyCode", required = false) String verifyCode,
+                                    HttpServletResponse response) throws IOException {
+        exportCaptchaService.validate(captchaCode, verifyCode);
         List<ErpSupplierDO> list;
         if (CollUtil.isNotEmpty(pageReqVO.getIds())) {
             list = supplierService.getSupplierList(pageReqVO.getIds());
@@ -119,17 +154,32 @@ public class ErpSupplierController {
             pageReqVO.setPageSize(PageParam.PAGE_SIZE_NONE);
             list = supplierService.getSupplierPage(pageReqVO).getList();
         }
+        Set<String> includeFields = ErpExportFieldUtils.resolveIncludeFields(ErpSupplierRespVO.class,
+                ErpExportFieldUtils.parseFieldParam(fields),
+                fieldPermissionMasker.getHiddenFieldSet(FIELD_PERMISSION_MODULE), EXPORT_FIELD_PERMISSION_MAP);
         // 导出 Excel
         ExcelUtils.write(response, "供应商.xls", "数据", ErpSupplierRespVO.class,
-                        BeanUtils.toBean(list, ErpSupplierRespVO.class));
+                        buildSupplierRespList(list), includeFields);
+    }
+
+    @GetMapping("/export-fields")
+    @Operation(summary = "Get supplier export fields")
+    @PreAuthorize("@ss.hasPermission('erp:supplier:export')")
+    public CommonResult<List<ErpExportFieldRespVO>> getSupplierExportFields() {
+        return success(ErpExportFieldUtils.listFields(ErpSupplierRespVO.class, EXPORT_FIELD_GROUP_MAP,
+                fieldPermissionMasker.getHiddenFieldSet(FIELD_PERMISSION_MODULE), EXPORT_FIELD_PERMISSION_MAP));
     }
 
     @GetMapping("/get-import-template")
     @Operation(summary = "获得供应商导入模板")
     @PreAuthorize("@ss.hasPermission('erp:supplier:import')")
     public void getImportTemplate(HttpServletResponse response) throws IOException {
-        ExcelUtils.write(response, "供应商导入模板.xls", "供应商", ErpSupplierImportExcelVO.class,
-                Collections.singletonList(new ErpSupplierImportExcelVO()));
+        Set<String> requiredFields = convertSet(
+                fieldConfigService.getFieldConfigListByModule(ErpFieldConfigModuleEnum.SUPPLIER.getKey()),
+                ErpFieldConfigDO::getFieldName,
+                fieldConfig -> Boolean.TRUE.equals(fieldConfig.getRequired()));
+        ExcelUtils.writeImportTemplate(response, "供应商导入模板.xls", "供应商", ErpSupplierImportExcelVO.class,
+                Collections.singletonList(new ErpSupplierImportExcelVO()), null, requiredFields);
     }
 
     @PostMapping("/import")
@@ -139,6 +189,129 @@ public class ErpSupplierController {
         List<ErpSupplierImportExcelVO> list = ExcelUtils.read(file, ErpSupplierImportExcelVO.class);
         supplierService.importSupplierList(list);
         return success(true);
+    }
+
+    private static Map<String, String> buildExportFieldGroupMap() {
+        Map<String, String> map = new LinkedHashMap<>();
+        map.put("id", "system");
+        map.put("name", "main");
+        map.put("shortName", "main");
+        map.put("foreignName", "main");
+        map.put("code", "main");
+        map.put("oldCode", "main");
+        map.put("deptName", "main");
+        map.put("contact", "main");
+        map.put("mobile", "main");
+        map.put("telephone", "main");
+        map.put("email", "main");
+        map.put("fax", "main");
+        map.put("status", "main");
+        map.put("sort", "main");
+        map.put("remark", "main");
+        map.put("region", "category_purchase");
+        map.put("category", "category_purchase");
+        map.put("supplierType", "category_purchase");
+        map.put("purchaser", "category_purchase");
+        map.put("companyNature", "category_purchase");
+        map.put("purchaseControl", "category_purchase");
+        map.put("arrivalCycle", "category_purchase");
+        map.put("purchaseLeadDays", "category_purchase");
+        map.put("obsolete", "category_purchase");
+        map.put("obsoleteDate", "category_purchase");
+        map.put("groupSupplier", "category_purchase");
+        map.put("allowBranchOrder", "category_purchase");
+        map.put("settleMethod", "settle_logistics");
+        map.put("settleLocked", "settle_logistics");
+        map.put("transportMethod", "settle_logistics");
+        map.put("freightType", "settle_logistics");
+        map.put("logisticsCompany", "settle_logistics");
+        map.put("arrivalPoint", "settle_logistics");
+        map.put("floatUpdateLastPrice", "settle_logistics");
+        map.put("performanceProfitRef", "settle_logistics");
+        map.put("address", "address_info");
+        map.put("province", "address_info");
+        map.put("city", "address_info");
+        map.put("district", "address_info");
+        map.put("postalCode", "address_info");
+        map.put("website", "address_info");
+        map.put("invoiceType", "invoice_info");
+        map.put("taxpayerId", "invoice_info");
+        map.put("invoiceBank", "invoice_info");
+        map.put("invoiceBankAccount", "invoice_info");
+        map.put("invoiceAddress", "invoice_info");
+        map.put("invoicePhone", "invoice_info");
+        map.put("invoiceCompany", "invoice_info");
+        map.put("account", "finance_info");
+        map.put("bankName", "finance_info");
+        map.put("bankAccount", "finance_info");
+        map.put("bankAddress", "finance_info");
+        map.put("taxNo", "finance_info");
+        map.put("taxPercent", "finance_info");
+        map.put("financePhone", "finance_info");
+        map.put("memberCode", "finance_info");
+        map.put("legalPerson", "finance_info");
+        map.put("creditCode", "finance_info");
+        map.put("createTime", "system");
+        map.put("creatorName", "system");
+        map.put("updaterName", "system");
+        map.put("updateTime", "system");
+        return map;
+    }
+
+    private List<ErpSupplierRespVO> buildSupplierRespList(List<ErpSupplierDO> list) {
+        List<ErpSupplierRespVO> respList = BeanUtils.toBean(list, ErpSupplierRespVO.class);
+        fillSupplierExtra(respList);
+        return respList;
+    }
+
+    private void fillSupplierExtra(List<ErpSupplierRespVO> list) {
+        if (CollUtil.isEmpty(list)) {
+            return;
+        }
+        Map<Long, DeptRespDTO> deptMap = deptApi.getDeptMap(convertSet(list, ErpSupplierRespVO::getDeptId));
+        Set<Long> userIds = new HashSet<>();
+        list.forEach(supplier -> {
+            addUserId(userIds, supplier.getCreator());
+            addUserId(userIds, supplier.getUpdater());
+        });
+        Map<Long, AdminUserRespDTO> userMap = adminUserApi.getUserMap(userIds);
+        list.forEach(supplier -> {
+            MapUtils.findAndThen(deptMap, supplier.getDeptId(), dept -> supplier.setDeptName(dept.getName()));
+            Long creatorId = parseUserId(supplier.getCreator());
+            if (creatorId != null) {
+                MapUtils.findAndThen(userMap, creatorId, user -> supplier.setCreatorName(user.getNickname()));
+            }
+            Long updaterId = parseUserId(supplier.getUpdater());
+            if (updaterId != null) {
+                MapUtils.findAndThen(userMap, updaterId, user -> supplier.setUpdaterName(user.getNickname()));
+            }
+        });
+    }
+
+    private void addUserId(Set<Long> userIds, String userId) {
+        Long parsed = parseUserId(userId);
+        if (parsed != null) {
+            userIds.add(parsed);
+        }
+    }
+
+    private Long parseUserId(String userId) {
+        if (userId == null || userId.trim().isEmpty()) {
+            return null;
+        }
+        try {
+            return Long.parseLong(userId);
+        } catch (NumberFormatException ignored) {
+            return null;
+        }
+    }
+
+    private static Map<String, String> buildExportFieldPermissionMap() {
+        Map<String, String> map = new LinkedHashMap<>();
+        map.put("province", "areaIds");
+        map.put("city", "areaIds");
+        map.put("district", "areaIds");
+        return map;
     }
 
 }

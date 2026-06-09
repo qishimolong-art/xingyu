@@ -2,6 +2,7 @@ package cn.iocoder.yudao.framework.mybatis.config;
 
 import cn.hutool.core.collection.CollUtil;
 import cn.hutool.core.util.StrUtil;
+import cn.iocoder.yudao.framework.common.biz.system.permission.PermissionCommonApi;
 import cn.iocoder.yudao.framework.common.util.json.JsonUtils;
 import cn.iocoder.yudao.framework.mybatis.core.handler.DefaultDBFieldHandler;
 import com.baomidou.mybatisplus.annotation.DbType;
@@ -22,6 +23,7 @@ import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.core.env.ConfigurableEnvironment;
+import org.springframework.beans.factory.ObjectProvider;
 
 import java.util.List;
 import java.util.concurrent.TimeUnit;
@@ -54,8 +56,8 @@ public class YudaoMybatisAutoConfiguration {
     }
 
     @Bean
-    public MetaObjectHandler defaultMetaObjectHandler() {
-        return new DefaultDBFieldHandler(); // 自动填充参数类
+    public MetaObjectHandler defaultMetaObjectHandler(ObjectProvider<PermissionCommonApi> permissionApi) {
+        return new DefaultDBFieldHandler(permissionApi); // 自动填充参数类
     }
 
     @Bean

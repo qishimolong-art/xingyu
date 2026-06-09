@@ -46,6 +46,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Map;
 import java.util.List;
+import java.util.Set;
 import java.util.stream.Stream;
 
 import static cn.iocoder.yudao.framework.apilog.core.enums.OperateTypeEnum.EXPORT;
@@ -142,10 +143,15 @@ public class ErpReceivableOtherIncomeController {
         accountIds.remove(null);
         Map<Long, ErpAccountDO> accountMap = accountIds.isEmpty() ? java.util.Collections.emptyMap()
                 : accountService.getAccountMap(accountIds);
-        Map<Long, AdminUserRespDTO> userMap = adminUserApi.getUserMap(convertListByFlatMap(pageResult.getList(),
-                item -> Stream.of(item.getHandlerId(), NumberUtils.parseLong(item.getCreator()))));
-        Map<Long, DeptRespDTO> deptMap = deptApi.getDeptMap(CollectionUtils.convertSet(pageResult.getList(),
-                ErpReceivableOtherIncomeDO::getDeptId));
+        List<Long> userIds = convertListByFlatMap(pageResult.getList(), item -> Stream.of(item.getHandlerId(),
+                NumberUtils.parseLong(item.getCreator()), NumberUtils.parseLong(item.getUpdater())));
+        userIds.addAll(CollectionUtils.convertList(itemList, ErpReceivableOtherIncomeItemDO::getHandlerId));
+        userIds.remove(null);
+        Map<Long, AdminUserRespDTO> userMap = adminUserApi.getUserMap(userIds);
+        Set<Long> deptIds = CollectionUtils.convertSet(pageResult.getList(), ErpReceivableOtherIncomeDO::getDeptId);
+        deptIds.addAll(CollectionUtils.convertSet(itemList, ErpReceivableOtherIncomeItemDO::getDeptId));
+        deptIds.remove(null);
+        Map<Long, DeptRespDTO> deptMap = deptApi.getDeptMap(deptIds);
         PageResult<ErpReceivableOtherIncomeRespVO> result = BeanUtils.toBean(pageResult, ErpReceivableOtherIncomeRespVO.class, vo -> {
             vo.setItems(BeanUtils.toBean(itemMap.get(vo.getId()), ErpReceivableOtherIncomeRespVO.Item.class, item -> {
                 MapUtils.findAndThen(userMap, item.getHandlerId(), user -> item.setHandlerName(user.getNickname()));
@@ -154,6 +160,7 @@ public class ErpReceivableOtherIncomeController {
             MapUtils.findAndThen(accountMap, vo.getAccountId(), account -> vo.setAccountName(account.getName()));
             MapUtils.findAndThen(userMap, vo.getHandlerId(), user -> vo.setHandlerName(user.getNickname()));
             MapUtils.findAndThen(userMap, NumberUtils.parseLong(vo.getCreator()), user -> vo.setCreatorName(user.getNickname()));
+            MapUtils.findAndThen(userMap, NumberUtils.parseLong(vo.getUpdater()), user -> vo.setUpdaterName(user.getNickname()));
             MapUtils.findAndThen(deptMap, vo.getDeptId(), dept -> vo.setDeptName(dept.getName()));
         });
         result.getList().forEach(item -> fieldPermissionMasker.maskFormWithItems(FIELD_PERMISSION_MODULE, item));
@@ -224,6 +231,15 @@ public class ErpReceivableOtherIncomeController {
                 AdminUserRespDTO user = adminUserApi.getUser(Long.parseLong(vo.getCreator()));
                 if (user != null) {
                     vo.setCreatorName(user.getNickname());
+                }
+            } catch (Exception ignored) {
+            }
+        }
+        if (vo.getUpdater() != null) {
+            try {
+                AdminUserRespDTO user = adminUserApi.getUser(Long.parseLong(vo.getUpdater()));
+                if (user != null) {
+                    vo.setUpdaterName(user.getNickname());
                 }
             } catch (Exception ignored) {
             }

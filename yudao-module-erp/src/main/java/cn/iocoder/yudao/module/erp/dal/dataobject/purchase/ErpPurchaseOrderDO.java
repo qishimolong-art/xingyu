@@ -64,7 +64,7 @@ public class ErpPurchaseOrderDO extends BaseDO {
     /**
      * 最终合计价格，单位：元
      *
-     * totalPrice = totalProductPrice + totalTaxPrice - discountPrice
+     * totalPrice = totalProductPrice + totalTaxPrice - discountPrice + feeAmount
      */
     private BigDecimal totalPrice;
 
@@ -86,6 +86,10 @@ public class ErpPurchaseOrderDO extends BaseDO {
      * discountPrice = (totalProductPrice + totalTaxPrice) * discountPercent
      */
     private BigDecimal discountPrice;
+    /**
+     * 费用金额，单位：元
+     */
+    private BigDecimal feeAmount;
     /**
      * 定金金额，单位：元
      */

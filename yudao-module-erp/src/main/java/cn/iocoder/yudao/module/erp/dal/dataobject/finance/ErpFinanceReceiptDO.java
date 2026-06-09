@@ -51,6 +51,10 @@ public class ErpFinanceReceiptDO extends BaseDO {
      */
     private Long financeUserId;
     /**
+     * Department id.
+     */
+    private Long deptId;
+    /**
      * 客户编号
      *
      * 关联 {@link ErpCustomerDO#getId()}

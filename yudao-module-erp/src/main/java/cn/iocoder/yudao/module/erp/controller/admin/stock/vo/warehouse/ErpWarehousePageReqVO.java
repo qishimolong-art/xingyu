@@ -27,4 +27,7 @@ public class ErpWarehousePageReqVO extends PageParam {
     @Schema(description = "仓库编码", example = "WH001")
     private String warehouseCode;
 
+    @Schema(description = "所属部门", example = "100")
+    private Long deptId;
+
 }

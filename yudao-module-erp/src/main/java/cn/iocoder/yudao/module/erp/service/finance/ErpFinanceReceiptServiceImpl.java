@@ -18,6 +18,7 @@ import cn.iocoder.yudao.module.erp.dal.mysql.finance.ErpFinanceReceiptMapper;
 import cn.iocoder.yudao.module.erp.dal.redis.no.ErpNoRedisDAO;
 import cn.iocoder.yudao.module.erp.enums.ErpAuditStatus;
 import cn.iocoder.yudao.module.erp.enums.common.ErpBizTypeEnum;
+import cn.iocoder.yudao.module.erp.service.common.ErpOperateLogService;
 import cn.iocoder.yudao.module.erp.service.sale.ErpCustomerService;
 import cn.iocoder.yudao.module.erp.service.sale.ErpSaleOutService;
 import cn.iocoder.yudao.module.erp.service.sale.ErpSalePriceAdjustService;
@@ -36,6 +37,7 @@ import java.util.List;
 import static cn.iocoder.yudao.framework.common.exception.util.ServiceExceptionUtil.exception;
 import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.*;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.*;
+import static cn.iocoder.yudao.module.erp.enums.LogRecordConstants.*;
 
 // TODO 芋艿：记录操作日志
 
@@ -73,6 +75,8 @@ public class ErpFinanceReceiptServiceImpl implements ErpFinanceReceiptService {
     private AdminUserApi adminUserApi;
     @Resource
     private ErpFinanceFieldPermissionMasker fieldPermissionMasker;
+    @Resource
+    private ErpOperateLogService operateLogService;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -99,14 +103,17 @@ public class ErpFinanceReceiptServiceImpl implements ErpFinanceReceiptService {
         // 2.1 插入收款单
         ErpFinanceReceiptDO receipt = BeanUtils.toBean(createReqVO, ErpFinanceReceiptDO.class, in -> in
                 .setNo(no).setStatus(ErpAuditStatus.PROCESS.getStatus()));
-        calculateTotalPrice(receipt, receiptItems);
+        fillDefaultAmount(receipt);
         financeReceiptMapper.insert(receipt);
         // 2.2 插入收款单项
-        receiptItems.forEach(o -> o.setReceiptId(receipt.getId()));
-        financeReceiptItemMapper.insertBatch(receiptItems);
+        if (CollUtil.isNotEmpty(receiptItems)) {
+            receiptItems.forEach(o -> o.setReceiptId(receipt.getId()));
+            financeReceiptItemMapper.insertBatch(receiptItems);
+        }
 
         // 3. 更新销售出库、退货的收款金额情况
         updateSalePrice(receiptItems);
+        operateLogService.recordCreate(ERP_FINANCE_RECEIPT_TYPE, receipt.getId(), receipt.getNo());
         return receipt.getId();
     }
 
@@ -141,15 +148,18 @@ public class ErpFinanceReceiptServiceImpl implements ErpFinanceReceiptService {
 
         // 2.1 更新收款单
         ErpFinanceReceiptDO updateObj = BeanUtils.toBean(updateReqVO, ErpFinanceReceiptDO.class);
-        calculateTotalPrice(updateObj, receiptItems);
+        if (updateObj.getDeptId() == null) {
+            updateObj.setDeptId(receipt.getDeptId());
+        }
+        fillDefaultAmount(updateObj);
         financeReceiptMapper.updateById(updateObj);
         // 2.2 更新收款单项
         updateFinanceReceiptItemList(updateReqVO.getId(), receiptItems);
+        recordUpdate(receipt, updateObj);
     }
 
-    private void calculateTotalPrice(ErpFinanceReceiptDO receipt, List<ErpFinanceReceiptItemDO> receiptItems) {
-        receipt.setTotalPrice(getSumValue(receiptItems, ErpFinanceReceiptItemDO::getReceiptPrice, BigDecimal::add, BigDecimal.ZERO));
-        receipt.setReceiptPrice(receipt.getTotalPrice().subtract(receipt.getDiscountPrice()));
+    private void fillDefaultAmount(ErpFinanceReceiptDO receipt) {
+        receipt.setDiscountPrice(getZeroIfNull(receipt.getDiscountPrice()));
     }
 
     @Override
@@ -168,11 +178,15 @@ public class ErpFinanceReceiptServiceImpl implements ErpFinanceReceiptService {
         if (updateCount == 0) {
             throw exception(FINANCE_RECEIPT_APPROVE_FAIL);
         }
+        operateLogService.recordStatus(ERP_FINANCE_RECEIPT_TYPE, id, receipt.getNo(), true);
     }
 
     private List<ErpFinanceReceiptItemDO> validateFinanceReceiptItems(
             Long customerId,
             List<ErpFinanceReceiptSaveReqVO.Item> list) {
+        if (CollUtil.isEmpty(list)) {
+            return Collections.emptyList();
+        }
         return convertList(list, o -> BeanUtils.toBean(o, ErpFinanceReceiptItemDO.class, item -> {
             if (ObjectUtil.equal(item.getBizType(), ErpBizTypeEnum.SALE_OUT.getType())) {
                 ErpSaleOutDO saleOut = saleOutService.validateSaleOut(item.getBizId());
@@ -254,7 +268,16 @@ public class ErpFinanceReceiptServiceImpl implements ErpFinanceReceiptService {
 
             // 2.3 更新销售出库、退货的收款金额情况
             updateSalePrice(receiptItems);
+            operateLogService.recordDelete(ERP_FINANCE_RECEIPT_TYPE, receipt.getId(), receipt.getNo());
         });
+    }
+
+    private void recordUpdate(ErpFinanceReceiptDO oldReceipt, ErpFinanceReceiptDO newReceipt) {
+        operateLogService.record(ERP_FINANCE_RECEIPT_TYPE, ERP_UPDATE_SUB_TYPE, newReceipt.getId(),
+                "更新收款单，单据编号：" + oldReceipt.getNo()
+                        + "，合计金额：" + oldReceipt.getTotalPrice() + " -> " + newReceipt.getTotalPrice()
+                        + "，实际收款：" + oldReceipt.getReceiptPrice() + " -> " + newReceipt.getReceiptPrice(),
+                oldReceipt.getNo());
     }
 
     private ErpFinanceReceiptDO validateFinanceReceiptExists(Long id) {
@@ -296,6 +319,10 @@ public class ErpFinanceReceiptServiceImpl implements ErpFinanceReceiptService {
             return Collections.emptyList();
         }
         return financeReceiptItemMapper.selectListByReceiptIds(receiptIds);
+    }
+
+    private BigDecimal getZeroIfNull(BigDecimal amount) {
+        return amount == null ? BigDecimal.ZERO : amount;
     }
 
 }

@@ -41,6 +41,7 @@ public class ErpSaleCartDO extends BaseDO {
     private BigDecimal totalTaxPrice;
     private BigDecimal discountPercent;
     private BigDecimal discountPrice;
+    private BigDecimal feeAmount;
     private BigDecimal otherPrice;
     /**
      * 业务来源类型

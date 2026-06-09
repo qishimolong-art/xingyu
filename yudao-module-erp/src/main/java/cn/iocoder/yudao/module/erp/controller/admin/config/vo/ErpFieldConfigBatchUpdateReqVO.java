@@ -36,6 +36,9 @@ public class ErpFieldConfigBatchUpdateReqVO {
         @NotNull(message = "是否必填不能为空")
         private Boolean required;
 
+        @Schema(description = "是否显示", example = "true")
+        private Boolean visible;
+
         @Schema(description = "排序", example = "1")
         private Integer sort;
 

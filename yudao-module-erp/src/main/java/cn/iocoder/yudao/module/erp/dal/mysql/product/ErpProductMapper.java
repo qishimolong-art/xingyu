@@ -34,6 +34,7 @@ public interface ErpProductMapper extends BaseMapperX<ErpProductDO> {
                 .likeIfPresent(ErpProductDO::getVehicleModel, fuzzyKeyword(reqVO.getVehicleModel()))
                 .likeIfPresent(ErpProductDO::getFactoryCode, fuzzyKeyword(reqVO.getFactoryCode()))
                 .eqIfPresent(ErpProductDO::getCategoryId, reqVO.getCategoryId())
+                .eqIfPresent(ErpProductDO::getDeptId, reqVO.getDeptId())
                 .eqIfPresent(ErpProductDO::getDefaultWarehouseId, reqVO.getWarehouseId())
                 .betweenIfPresent(ErpProductDO::getCreateTime, reqVO.getCreateTime())
                 // 默认过滤掉已合并的配件
@@ -54,6 +55,10 @@ public interface ErpProductMapper extends BaseMapperX<ErpProductDO> {
 
     default Long selectCountByUnitId(Long unitId) {
         return selectCount(ErpProductDO::getUnitId, unitId);
+    }
+
+    default Long selectCountByDefaultWarehouseId(Long warehouseId) {
+        return selectCount(ErpProductDO::getDefaultWarehouseId, warehouseId);
     }
 
     default List<ErpProductDO> selectListByStatus(Integer status) {

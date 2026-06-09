@@ -8,7 +8,19 @@ import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.account.ErpAccountPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.account.ErpAccountSaveReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.ErpAccountDO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.finance.ErpFinancePaymentDO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.finance.ErpFinanceReceiptDO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.finance.ErpFinanceTransferDO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.finance.payable.ErpPayableExpenseDO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.finance.receivable.ErpReceivableOtherIncomeDO;
 import cn.iocoder.yudao.module.erp.dal.mysql.finance.ErpAccountMapper;
+import cn.iocoder.yudao.module.erp.dal.mysql.finance.ErpFinancePaymentMapper;
+import cn.iocoder.yudao.module.erp.dal.mysql.finance.ErpFinanceReceiptMapper;
+import cn.iocoder.yudao.module.erp.dal.mysql.finance.ErpFinanceTransferMapper;
+import cn.iocoder.yudao.module.erp.dal.mysql.finance.payable.ErpPayableExpenseMapper;
+import cn.iocoder.yudao.module.erp.dal.mysql.finance.receivable.ErpReceivableOtherIncomeMapper;
+import cn.iocoder.yudao.module.erp.service.base.ErpBaseArchiveReferenceService;
+import cn.iocoder.yudao.module.erp.service.common.ErpOperateLogService;
 import cn.iocoder.yudao.module.erp.service.finance.bo.ErpAccountBalanceBO;
 import org.springframework.stereotype.Service;
 import org.springframework.validation.annotation.Validated;
@@ -20,8 +32,11 @@ import java.util.Collections;
 import java.util.List;
 
 import static cn.iocoder.yudao.framework.common.exception.util.ServiceExceptionUtil.exception;
+import static cn.iocoder.yudao.module.erp.enums.LogRecordConstants.ERP_ACCOUNT_TYPE;
+import static cn.iocoder.yudao.module.erp.enums.LogRecordConstants.ERP_DELETE_SUB_TYPE;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.ACCOUNT_NOT_ENABLE;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.ACCOUNT_NOT_EXISTS;
+import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.ACCOUNT_DELETE_FAIL_REFERENCED;
 
 /**
  * ERP 结算账户 Service 实现类
@@ -36,7 +51,21 @@ public class ErpAccountServiceImpl implements ErpAccountService {
     @Resource
     private ErpAccountMapper accountMapper;
     @Resource
+    private ErpFinanceReceiptMapper financeReceiptMapper;
+    @Resource
+    private ErpFinancePaymentMapper financePaymentMapper;
+    @Resource
+    private ErpFinanceTransferMapper financeTransferMapper;
+    @Resource
+    private ErpReceivableOtherIncomeMapper receivableOtherIncomeMapper;
+    @Resource
+    private ErpPayableExpenseMapper payableExpenseMapper;
+    @Resource
     private ErpFinanceFieldPermissionMasker fieldPermissionMasker;
+    @Resource
+    private ErpBaseArchiveReferenceService baseArchiveReferenceService;
+    @Resource
+    private ErpOperateLogService operateLogService;
 
     @Override
     public Long createAccount(ErpAccountSaveReqVO createReqVO) {
@@ -44,6 +73,7 @@ public class ErpAccountServiceImpl implements ErpAccountService {
         fieldPermissionMasker.clearHiddenFields(FIELD_PERMISSION_MODULE, account);
         normalizeAccount(account);
         accountMapper.insert(account);
+        operateLogService.recordCreate(ERP_ACCOUNT_TYPE, account.getId(), account.getName());
         return account.getId();
     }
 
@@ -55,8 +85,12 @@ public class ErpAccountServiceImpl implements ErpAccountService {
         }
         ErpAccountDO updateObj = BeanUtils.toBean(updateReqVO, ErpAccountDO.class);
         fieldPermissionMasker.preserveHiddenFields(FIELD_PERMISSION_MODULE, updateObj, account);
+        if (updateObj.getDeptId() == null) {
+            updateObj.setDeptId(account.getDeptId());
+        }
         normalizeAccount(updateObj);
         accountMapper.updateById(updateObj);
+        operateLogService.recordUpdate(ERP_ACCOUNT_TYPE, updateObj.getId(), updateObj.getName());
     }
 
     @Override
@@ -73,13 +107,47 @@ public class ErpAccountServiceImpl implements ErpAccountService {
 
     @Override
     public void deleteAccount(Long id) {
-        validateAccountExists(id);
+        ErpAccountDO account = validateAccountExists(id);
+        baseArchiveReferenceService.validateAccountNotReferenced(id);
         accountMapper.deleteById(id);
+        operateLogService.record(ERP_ACCOUNT_TYPE, ERP_DELETE_SUB_TYPE, id,
+                "删除账户，账户名称：" + account.getName(), account.getName());
     }
 
-    private void validateAccountExists(Long id) {
-        if (accountMapper.selectById(id) == null) {
+    private ErpAccountDO validateAccountExists(Long id) {
+        ErpAccountDO account = accountMapper.selectById(id);
+        if (account == null) {
             throw exception(ACCOUNT_NOT_EXISTS);
+        }
+        return account;
+    }
+
+    private void validateAccountNotReferenced(ErpAccountDO account) {
+        Long accountId = account.getId();
+        ErpFinanceReceiptDO receipt = financeReceiptMapper.selectFirstOne(ErpFinanceReceiptDO::getAccountId, accountId);
+        if (receipt != null) {
+            throw exception(ACCOUNT_DELETE_FAIL_REFERENCED, "收款单 " + receipt.getNo());
+        }
+        ErpFinancePaymentDO payment = financePaymentMapper.selectFirstOne(ErpFinancePaymentDO::getAccountId, accountId);
+        if (payment != null) {
+            throw exception(ACCOUNT_DELETE_FAIL_REFERENCED, "付款单 " + payment.getNo());
+        }
+        ErpFinanceTransferDO outTransfer = financeTransferMapper.selectFirstOne(ErpFinanceTransferDO::getOutAccountId, accountId);
+        if (outTransfer != null) {
+            throw exception(ACCOUNT_DELETE_FAIL_REFERENCED, "转账单 " + outTransfer.getNo());
+        }
+        ErpFinanceTransferDO inTransfer = financeTransferMapper.selectFirstOne(ErpFinanceTransferDO::getInAccountId, accountId);
+        if (inTransfer != null) {
+            throw exception(ACCOUNT_DELETE_FAIL_REFERENCED, "转账单 " + inTransfer.getNo());
+        }
+        ErpReceivableOtherIncomeDO income = receivableOtherIncomeMapper.selectFirstOne(
+                ErpReceivableOtherIncomeDO::getAccountId, accountId);
+        if (income != null) {
+            throw exception(ACCOUNT_DELETE_FAIL_REFERENCED, "其他收入单 " + income.getNo());
+        }
+        ErpPayableExpenseDO expense = payableExpenseMapper.selectFirstOne(ErpPayableExpenseDO::getAccountId, accountId);
+        if (expense != null) {
+            throw exception(ACCOUNT_DELETE_FAIL_REFERENCED, "费用支付单 " + expense.getNo());
         }
     }
 

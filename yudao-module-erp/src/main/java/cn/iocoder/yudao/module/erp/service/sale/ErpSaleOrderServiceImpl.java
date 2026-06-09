@@ -19,6 +19,7 @@ import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpSaleOrderItemMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpSaleOrderMapper;
 import cn.iocoder.yudao.module.erp.dal.redis.no.ErpNoRedisDAO;
 import cn.iocoder.yudao.module.erp.enums.ErpAuditStatus;
+import cn.iocoder.yudao.module.erp.service.common.ErpOperateLogService;
 import cn.iocoder.yudao.module.erp.service.finance.ErpAccountService;
 import cn.iocoder.yudao.module.erp.service.product.ErpProductService;
 import cn.iocoder.yudao.module.system.api.user.AdminUserApi;
@@ -37,6 +38,7 @@ import java.util.Map;
 import static cn.iocoder.yudao.framework.common.exception.util.ServiceExceptionUtil.exception;
 import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.*;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.*;
+import static cn.iocoder.yudao.module.erp.enums.LogRecordConstants.*;
 
 // TODO 芋艿：记录操作日志
 
@@ -69,9 +71,13 @@ public class ErpSaleOrderServiceImpl implements ErpSaleOrderService {
     private ErpAccountService accountService;
     @Resource
     private ErpSaleFieldPermissionMasker fieldPermissionMasker;
+    @Resource
+    private ErpSaleDocumentDefaultService saleDocumentDefaultService;
 
     @Resource
     private AdminUserApi adminUserApi;
+    @Resource
+    private ErpOperateLogService operateLogService;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -100,10 +106,12 @@ public class ErpSaleOrderServiceImpl implements ErpSaleOrderService {
         ErpSaleOrderDO saleOrder = BeanUtils.toBean(createReqVO, ErpSaleOrderDO.class, in -> in
                 .setNo(no).setStatus(ErpAuditStatus.PROCESS.getStatus()));
         calculateTotalPrice(saleOrder, saleOrderItems);
+        saleDocumentDefaultService.fillCreateDefaults(saleOrder);
         saleOrderMapper.insert(saleOrder);
         // 2.2 插入订单项
         saleOrderItems.forEach(o -> o.setOrderId(saleOrder.getId()));
         saleOrderItemMapper.insertBatch(saleOrderItems);
+        operateLogService.recordCreate(ERP_SALE_ORDER_TYPE, saleOrder.getId(), saleOrder.getNo());
         return saleOrder.getId();
     }
 
@@ -137,6 +145,7 @@ public class ErpSaleOrderServiceImpl implements ErpSaleOrderService {
         saleOrderMapper.updateById(updateObj);
         // 2.2 更新订单项
         updateSaleOrderItemList(updateReqVO.getId(), saleOrderItems);
+        operateLogService.recordUpdate(ERP_SALE_ORDER_TYPE, updateReqVO.getId(), saleOrder.getNo());
     }
 
     private void calculateTotalPrice(ErpSaleOrderDO saleOrder, List<ErpSaleOrderItemDO> saleOrderItems) {
@@ -148,8 +157,10 @@ public class ErpSaleOrderServiceImpl implements ErpSaleOrderService {
         if (saleOrder.getDiscountPercent() == null) {
             saleOrder.setDiscountPercent(BigDecimal.ZERO);
         }
+        BigDecimal feeAmount = saleOrder.getFeeAmount() == null ? BigDecimal.ZERO : saleOrder.getFeeAmount();
+        saleOrder.setFeeAmount(feeAmount);
         saleOrder.setDiscountPrice(MoneyUtils.priceMultiplyPercent(saleOrder.getTotalPrice(), saleOrder.getDiscountPercent()));
-        saleOrder.setTotalPrice(saleOrder.getTotalPrice().subtract(saleOrder.getDiscountPrice()));
+        saleOrder.setTotalPrice(saleOrder.getTotalPrice().subtract(saleOrder.getDiscountPrice()).add(feeAmount));
     }
 
     @Override
@@ -177,6 +188,7 @@ public class ErpSaleOrderServiceImpl implements ErpSaleOrderService {
         if (updateCount == 0) {
             throw exception(approve ? SALE_ORDER_APPROVE_FAIL : SALE_ORDER_PROCESS_FAIL);
         }
+        operateLogService.recordStatus(ERP_SALE_ORDER_TYPE, id, saleOrder.getNo(), approve);
     }
 
     private List<ErpSaleOrderItemDO> validateSaleOrderItems(List<ErpSaleOrderSaveReqVO.Item> list) {
@@ -187,6 +199,13 @@ public class ErpSaleOrderServiceImpl implements ErpSaleOrderService {
         // 2. 转化为 ErpSaleOrderItemDO 列表
         return convertList(list, o -> BeanUtils.toBean(o, ErpSaleOrderItemDO.class, item -> {
             item.setProductUnitId(productMap.get(item.getProductId()).getUnitId());
+            item.setGiftFlag(Boolean.TRUE.equals(item.getGiftFlag()));
+            if (item.getGiftFlag()) {
+                item.setProductPrice(BigDecimal.ZERO);
+                item.setTotalPrice(BigDecimal.ZERO);
+                item.setTaxPrice(BigDecimal.ZERO);
+                return;
+            }
             item.setTotalPrice(MoneyUtils.priceMultiply(item.getProductPrice(), item.getCount()));
             if (item.getTotalPrice() == null) {
                 return;
@@ -276,6 +295,7 @@ public class ErpSaleOrderServiceImpl implements ErpSaleOrderService {
             saleOrderMapper.deleteById(saleOrder.getId());
             // 2.2 删除订单项
             saleOrderItemMapper.deleteByOrderId(saleOrder.getId());
+            operateLogService.recordDelete(ERP_SALE_ORDER_TYPE, saleOrder.getId(), saleOrder.getNo());
         });
     }
 

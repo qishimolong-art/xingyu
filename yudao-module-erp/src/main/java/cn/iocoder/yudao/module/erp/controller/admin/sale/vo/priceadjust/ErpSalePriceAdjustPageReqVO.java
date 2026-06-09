@@ -27,6 +27,9 @@ public class ErpSalePriceAdjustPageReqVO extends PageParam {
     @Schema(description = "客户编号", example = "1")
     private Long customerId;
 
+    @Schema(description = "部门编号", example = "1")
+    private Long deptId;
+
     @Schema(description = "调价时间")
     @DateTimeFormat(pattern = FORMAT_YEAR_MONTH_DAY_HOUR_MINUTE_SECOND)
     private LocalDateTime[] adjustDate;

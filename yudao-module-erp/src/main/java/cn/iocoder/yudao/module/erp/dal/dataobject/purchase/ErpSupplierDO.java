@@ -94,6 +94,10 @@ public class ErpSupplierDO extends BaseDO {
      */
     private String code;
     /**
+     * Department id.
+     */
+    private Long deptId;
+    /**
      * 旧编码
      */
     private String oldCode;

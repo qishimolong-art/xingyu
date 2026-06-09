@@ -32,6 +32,11 @@ public class ErpFinanceReceiptRespVO {
     @Schema(description = "财务人员名称", example = "张三")
     private String financeUserName;
 
+    @Schema(description = "所属部门", example = "100")
+    private Long deptId;
+    @Schema(description = "所属部门名称", example = "财务部")
+    private String deptName;
+
     @Schema(description = "客户编号", requiredMode = Schema.RequiredMode.REQUIRED, example = "29399")
     private Long customerId;
     @Schema(description = "客户名称", requiredMode = Schema.RequiredMode.REQUIRED, example = "小番茄公司")
@@ -62,6 +67,13 @@ public class ErpFinanceReceiptRespVO {
     @Schema(description = "创建时间", requiredMode = Schema.RequiredMode.REQUIRED)
     @ExcelProperty("创建时间")
     private LocalDateTime createTime;
+
+    @Schema(description = "修改人", example = "芋道")
+    private String updater;
+    @Schema(description = "修改人名称", example = "芋道")
+    private String updaterName;
+    @Schema(description = "修改时间", requiredMode = Schema.RequiredMode.REQUIRED)
+    private LocalDateTime updateTime;
 
     @Schema(description = "收款项列表", requiredMode = Schema.RequiredMode.REQUIRED)
     private List<Item> items;

@@ -66,6 +66,10 @@ public class ErpFinanceTransferDO extends BaseDO {
      * 财务人员编号
      */
     private Long financeUserId;
+    /**
+     * Department id.
+     */
+    private Long deptId;
 
     /**
      * 备注

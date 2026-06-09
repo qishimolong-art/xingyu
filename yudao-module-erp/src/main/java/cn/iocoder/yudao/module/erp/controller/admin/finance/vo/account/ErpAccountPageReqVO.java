@@ -26,6 +26,9 @@ public class ErpAccountPageReqVO extends PageParam {
     @Schema(description = "账户类型", example = "1")
     private Integer accountType;
 
+    @Schema(description = "所属部门", example = "100")
+    private Long deptId;
+
     @Schema(description = "状态", example = "1")
     private Integer status;
 

@@ -11,10 +11,12 @@ import cn.iocoder.yudao.module.erp.dal.mysql.finance.receivable.ErpReceivableOth
 import cn.iocoder.yudao.module.erp.dal.mysql.finance.receivable.ErpReceivableOtherIncomeMapper;
 import cn.iocoder.yudao.module.erp.dal.redis.no.ErpNoRedisDAO;
 import cn.iocoder.yudao.module.erp.enums.ErpAuditStatus;
+import cn.iocoder.yudao.module.erp.service.common.ErpOperateLogService;
 import cn.iocoder.yudao.module.erp.service.finance.ErpAccountService;
 import cn.iocoder.yudao.module.erp.service.finance.ErpFinanceFieldPermissionMasker;
 import cn.iocoder.yudao.module.system.api.dept.DeptApi;
 import cn.iocoder.yudao.module.system.api.user.AdminUserApi;
+import cn.iocoder.yudao.module.system.api.user.dto.AdminUserRespDTO;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.validation.annotation.Validated;
@@ -28,12 +30,14 @@ import java.util.Objects;
 
 import static cn.iocoder.yudao.framework.common.exception.util.ServiceExceptionUtil.exception;
 import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.convertList;
+import static cn.iocoder.yudao.framework.security.core.util.SecurityFrameworkUtils.getLoginUserId;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.OTHER_RECEIVABLE_APPROVE_FAIL;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.OTHER_RECEIVABLE_DELETE_FAIL_APPROVE;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.OTHER_RECEIVABLE_NOT_EXISTS;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.OTHER_RECEIVABLE_PROCESS_FAIL;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.OTHER_RECEIVABLE_UPDATE_FAIL_APPROVE;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.OTHER_RECEIVABLE_UPDATE_FAIL_STATUS_CHANGED;
+import static cn.iocoder.yudao.module.erp.enums.LogRecordConstants.ERP_RECEIVABLE_OTHER_INCOME_TYPE;
 
 @Service
 @Validated
@@ -55,10 +59,13 @@ public class ErpReceivableOtherIncomeServiceImpl implements ErpReceivableOtherIn
     private DeptApi deptApi;
     @Resource
     private ErpFinanceFieldPermissionMasker fieldPermissionMasker;
+    @Resource
+    private ErpOperateLogService operateLogService;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Long createOtherIncome(ErpReceivableOtherIncomeSaveReqVO createReqVO) {
+        fillDefaultDeptId(createReqVO);
         validateRefs(createReqVO.getAccountId(), createReqVO.getHandlerId(), createReqVO.getDeptId());
         createReqVO.getItems().forEach(item -> validateRefs(null, item.getHandlerId(), item.getDeptId()));
 
@@ -72,6 +79,7 @@ public class ErpReceivableOtherIncomeServiceImpl implements ErpReceivableOtherIn
                 ErpReceivableOtherIncomeItemDO.class, item -> item.setId(null).setIncomeId(db.getId()));
         fieldPermissionMasker.clearHiddenItemFields(FIELD_PERMISSION_MODULE, incomeItems);
         otherIncomeItemMapper.insertBatch(incomeItems);
+        operateLogService.recordCreate(ERP_RECEIVABLE_OTHER_INCOME_TYPE, db.getId(), db.getNo());
         return db.getId();
     }
 
@@ -88,6 +96,10 @@ public class ErpReceivableOtherIncomeServiceImpl implements ErpReceivableOtherIn
             updateReqVO.setItems(BeanUtils.toBean(oldItems, ErpReceivableOtherIncomeSaveReqVO.Item.class));
         } else {
             fieldPermissionMasker.preserveOrClearHiddenItemFields(FIELD_PERMISSION_MODULE, updateReqVO.getItems(), oldItems);
+            fillDefaultItemDeptId(updateReqVO.getItems());
+        }
+        if (updateReqVO.getDeptId() == null) {
+            updateReqVO.setDeptId(db.getDeptId());
         }
         validateRefs(updateReqVO.getAccountId(), updateReqVO.getHandlerId(), updateReqVO.getDeptId());
         updateReqVO.getItems().forEach(item -> validateRefs(null, item.getHandlerId(), item.getDeptId()));
@@ -103,6 +115,7 @@ public class ErpReceivableOtherIncomeServiceImpl implements ErpReceivableOtherIn
         }
         otherIncomeItemMapper.insertBatch(BeanUtils.toBean(updateReqVO.getItems(),
                 ErpReceivableOtherIncomeItemDO.class, item -> item.setId(null).setIncomeId(updateReqVO.getId())));
+        operateLogService.recordUpdate(ERP_RECEIVABLE_OTHER_INCOME_TYPE, db.getId(), db.getNo());
     }
 
     @Override
@@ -117,6 +130,7 @@ public class ErpReceivableOtherIncomeServiceImpl implements ErpReceivableOtherIn
                 ErpReceivableOtherIncomeDO.builder().status(status).build()) == 0) {
             throw exception(OTHER_RECEIVABLE_APPROVE_FAIL);
         }
+        operateLogService.recordStatus(ERP_RECEIVABLE_OTHER_INCOME_TYPE, id, db.getNo(), true);
     }
 
     @Override
@@ -138,6 +152,7 @@ public class ErpReceivableOtherIncomeServiceImpl implements ErpReceivableOtherIn
                 otherIncomeItemMapper.deleteByIds(convertList(items, ErpReceivableOtherIncomeItemDO::getId));
             }
         }
+        list.forEach(item -> operateLogService.recordDelete(ERP_RECEIVABLE_OTHER_INCOME_TYPE, item.getId(), item.getNo()));
     }
 
     @Override
@@ -181,6 +196,44 @@ public class ErpReceivableOtherIncomeServiceImpl implements ErpReceivableOtherIn
         if (deptId != null && deptApi.getDept(deptId) == null) {
             throw exception(OTHER_RECEIVABLE_NOT_EXISTS);
         }
+    }
+
+    private void fillDefaultDeptId(ErpReceivableOtherIncomeSaveReqVO reqVO) {
+        Long deptId = getLoginUserDeptId();
+        if (deptId == null) {
+            return;
+        }
+        if (reqVO.getDeptId() == null) {
+            reqVO.setDeptId(deptId);
+        }
+        fillDefaultItemDeptId(reqVO.getItems(), deptId);
+    }
+
+    private void fillDefaultItemDeptId(List<ErpReceivableOtherIncomeSaveReqVO.Item> items) {
+        Long deptId = getLoginUserDeptId();
+        if (deptId != null) {
+            fillDefaultItemDeptId(items, deptId);
+        }
+    }
+
+    private void fillDefaultItemDeptId(List<ErpReceivableOtherIncomeSaveReqVO.Item> items, Long deptId) {
+        if (CollUtil.isEmpty(items)) {
+            return;
+        }
+        items.forEach(item -> {
+            if (item.getDeptId() == null) {
+                item.setDeptId(deptId);
+            }
+        });
+    }
+
+    private Long getLoginUserDeptId() {
+        Long loginUserId = getLoginUserId();
+        if (loginUserId == null) {
+            return null;
+        }
+        AdminUserRespDTO user = adminUserApi.getUser(loginUserId);
+        return user == null ? null : user.getDeptId();
     }
 
     private BigDecimal sumAmount(List<ErpReceivableOtherIncomeSaveReqVO.Item> items) {

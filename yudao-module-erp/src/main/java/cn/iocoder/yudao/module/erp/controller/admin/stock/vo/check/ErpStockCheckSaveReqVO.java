@@ -21,6 +21,9 @@ public class ErpStockCheckSaveReqVO {
     @NotNull(message = "出库时间不能为空")
     private LocalDateTime checkTime;
 
+    @Schema(description = "所属部门", example = "100")
+    private Long deptId;
+
     @Schema(description = "备注", example = "随便")
     private String remark;
 

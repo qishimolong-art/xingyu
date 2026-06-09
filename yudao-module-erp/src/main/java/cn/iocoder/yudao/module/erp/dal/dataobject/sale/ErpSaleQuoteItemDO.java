@@ -29,6 +29,10 @@ public class ErpSaleQuoteItemDO extends BaseDO {
     private Long warehouseId;
     private BigDecimal productPrice;
     private BigDecimal count;
+    /**
+     * 是否赠品
+     */
+    private Boolean giftFlag;
     private BigDecimal convertedCount;
     private BigDecimal totalPrice;
     private BigDecimal taxPercent;

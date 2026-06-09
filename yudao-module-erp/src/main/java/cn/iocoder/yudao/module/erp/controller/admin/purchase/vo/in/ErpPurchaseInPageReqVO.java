@@ -28,6 +28,9 @@ public class ErpPurchaseInPageReqVO extends PageParam {
     @Schema(description = "供应商编号", example = "1724")
     private Long supplierId;
 
+    @Schema(description = "deptId", example = "100")
+    private Long deptId;
+
     @Schema(description = "入库时间")
     @DateTimeFormat(pattern = FORMAT_YEAR_MONTH_DAY_HOUR_MINUTE_SECOND)
     private LocalDateTime[] inTime;
@@ -55,6 +58,12 @@ public class ErpPurchaseInPageReqVO extends PageParam {
 
     @Schema(description = "是否可付款", example = "true")
     private Boolean paymentEnable; // 对应 paymentStatus = [0, 1]
+
+    @Schema(description = "是否为采购发票选择入库单场景，仅该场景排除已开票入库单", example = "true")
+    private Boolean invoiceEnable;
+
+    @Schema(description = "是否排除已开票入库单，兼容采购发票选择弹窗参数", example = "true")
+    private Boolean excludeInvoiced;
 
     @Schema(description = "采购单号", example = "1")
     private String orderNo;

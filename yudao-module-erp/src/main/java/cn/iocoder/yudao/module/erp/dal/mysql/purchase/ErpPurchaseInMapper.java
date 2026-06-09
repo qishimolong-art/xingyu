@@ -26,6 +26,7 @@ public interface ErpPurchaseInMapper extends BaseMapperX<ErpPurchaseInDO> {
         MPJLambdaWrapperX<ErpPurchaseInDO> query = new MPJLambdaWrapperX<ErpPurchaseInDO>()
                 .likeIfPresent(ErpPurchaseInDO::getNo, reqVO.getNo())
                 .eqIfPresent(ErpPurchaseInDO::getSupplierId, reqVO.getSupplierId())
+                .eqIfPresent(ErpPurchaseInDO::getDeptId, reqVO.getDeptId())
                 .betweenIfPresent(ErpPurchaseInDO::getInTime, reqVO.getInTime())
                 .eqIfPresent(ErpPurchaseInDO::getStatus, reqVO.getStatus())
                 .likeIfPresent(ErpPurchaseInDO::getRemark, reqVO.getRemark())
@@ -45,6 +46,17 @@ public interface ErpPurchaseInMapper extends BaseMapperX<ErpPurchaseInDO> {
             query.eq(ErpPurchaseInDO::getStatus, ErpAuditStatus.APPROVE.getStatus())
                     .apply("t.payment_price < t.total_price");
         }
+        if (Boolean.TRUE.equals(reqVO.getInvoiceEnable()) || Boolean.TRUE.equals(reqVO.getExcludeInvoiced())) {
+            query.eq(ErpPurchaseInDO::getStatus, ErpAuditStatus.APPROVE.getStatus())
+                    .and(wrapper -> wrapper.isNull(ErpPurchaseInDO::getHasInvoice)
+                            .or().eq(ErpPurchaseInDO::getHasInvoice, false))
+                    .apply("NOT EXISTS (SELECT 1 FROM erp_purchase_invoice_item pii "
+                            + "INNER JOIN erp_purchase_invoice pi ON pi.id = pii.invoice_id "
+                            + "AND pi.deleted = 0 AND pi.tenant_id = t.tenant_id "
+                            + "WHERE pii.deleted = 0 AND pii.tenant_id = t.tenant_id "
+                            + "AND pii.source_in_id = t.id AND pi.status = {0})",
+                            ErpAuditStatus.APPROVE.getStatus());
+        }
         if (reqVO.getWarehouseId() != null || reqVO.getProductId() != null) {
             query.leftJoin(ErpPurchaseInItemDO.class, ErpPurchaseInItemDO::getInId, ErpPurchaseInDO::getId)
                     .eq(reqVO.getWarehouseId() != null, ErpPurchaseInItemDO::getWarehouseId, reqVO.getWarehouseId())
@@ -61,6 +73,18 @@ public interface ErpPurchaseInMapper extends BaseMapperX<ErpPurchaseInDO> {
 
     default ErpPurchaseInDO selectByNo(String no) {
         return selectOne(ErpPurchaseInDO::getNo, no);
+    }
+
+    default Long selectCountBySupplierId(Long supplierId) {
+        return selectCount(ErpPurchaseInDO::getSupplierId, supplierId);
+    }
+
+    default String selectFirstNoBySupplierId(Long supplierId) {
+        ErpPurchaseInDO in = selectOne(new MPJLambdaWrapperX<ErpPurchaseInDO>()
+                .eq(ErpPurchaseInDO::getSupplierId, supplierId)
+                .orderByDesc(ErpPurchaseInDO::getId)
+                .last("LIMIT 1"));
+        return in == null ? null : in.getNo();
     }
 
     default List<ErpPurchaseInDO> selectListByOrderId(Long orderId) {

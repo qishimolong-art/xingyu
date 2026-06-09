@@ -21,6 +21,8 @@ import cn.iocoder.yudao.module.erp.service.purchase.ErpSupplierService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpStockFieldPermissionMasker;
 import cn.iocoder.yudao.module.erp.service.stock.ErpStockInService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpStockService;
+import cn.iocoder.yudao.module.system.api.dept.DeptApi;
+import cn.iocoder.yudao.module.system.api.dept.dto.DeptRespDTO;
 import cn.iocoder.yudao.module.system.api.user.AdminUserApi;
 import cn.iocoder.yudao.module.system.api.user.dto.AdminUserRespDTO;
 import io.swagger.v3.oas.annotations.Operation;
@@ -28,22 +30,31 @@ import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.validation.annotation.Validated;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
 
 import javax.annotation.Resource;
 import javax.servlet.http.HttpServletResponse;
 import javax.validation.Valid;
 import java.io.IOException;
 import java.math.BigDecimal;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import static cn.iocoder.yudao.framework.apilog.core.enums.OperateTypeEnum.EXPORT;
 import static cn.iocoder.yudao.framework.common.pojo.CommonResult.success;
 import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.convertMultiMap;
 import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.convertSet;
 
-@Tag(name = "管理后台 - ERP 其它入库单")
+@Tag(name = "Admin - ERP stock in")
 @RestController
 @RequestMapping("/erp/stock-in")
 @Validated
@@ -61,19 +72,20 @@ public class ErpStockInController {
     private ErpSupplierService supplierService;
     @Resource
     private ErpStockFieldPermissionMasker fieldPermissionMasker;
-
+    @Resource
+    private DeptApi deptApi;
     @Resource
     private AdminUserApi adminUserApi;
 
     @PostMapping("/create")
-    @Operation(summary = "创建其它入库单")
+    @Operation(summary = "Create stock in")
     @PreAuthorize("@ss.hasPermission('erp:stock-in:create')")
     public CommonResult<Long> createStockIn(@Valid @RequestBody ErpStockInSaveReqVO createReqVO) {
         return success(stockInService.createStockIn(createReqVO));
     }
 
     @PutMapping("/update")
-    @Operation(summary = "更新其它入库单")
+    @Operation(summary = "Update stock in")
     @PreAuthorize("@ss.hasPermission('erp:stock-in:update')")
     public CommonResult<Boolean> updateStockIn(@Valid @RequestBody ErpStockInSaveReqVO updateReqVO) {
         stockInService.updateStockIn(updateReqVO);
@@ -81,7 +93,7 @@ public class ErpStockInController {
     }
 
     @PutMapping("/update-status")
-    @Operation(summary = "更新其它入库单的状态")
+    @Operation(summary = "Update stock in status")
     @PreAuthorize("@ss.hasPermission('erp:stock-in:update-status')")
     public CommonResult<Boolean> updateStockInStatus(@RequestParam("id") Long id,
                                                      @RequestParam("status") Integer status) {
@@ -90,8 +102,8 @@ public class ErpStockInController {
     }
 
     @DeleteMapping("/delete")
-    @Operation(summary = "删除其它入库单")
-    @Parameter(name = "ids", description = "编号数组", required = true)
+    @Operation(summary = "Delete stock in")
+    @Parameter(name = "ids", description = "ids", required = true)
     @PreAuthorize("@ss.hasPermission('erp:stock-in:delete')")
     public CommonResult<Boolean> deleteStockIn(@RequestParam("ids") List<Long> ids) {
         stockInService.deleteStockIn(ids);
@@ -99,74 +111,125 @@ public class ErpStockInController {
     }
 
     @GetMapping("/get")
-    @Operation(summary = "获得其它入库单")
-    @Parameter(name = "id", description = "编号", required = true, example = "1024")
+    @Operation(summary = "Get stock in")
+    @Parameter(name = "id", description = "id", required = true, example = "1024")
     @PreAuthorize("@ss.hasPermission('erp:stock-in:query')")
     public CommonResult<ErpStockInRespVO> getStockIn(@RequestParam("id") Long id) {
         ErpStockInDO stockIn = stockInService.getStockIn(id);
         if (stockIn == null) {
             return success(null);
         }
-        List<ErpStockInItemDO> stockInItemList = stockInService.getStockInItemListByInId(id);
+        List<ErpStockInItemDO> itemList = stockInService.getStockInItemListByInId(id);
         Map<Long, ErpProductRespVO> productMap = productService.getProductVOMap(
-                convertSet(stockInItemList, ErpStockInItemDO::getProductId));
-        ErpStockInRespVO respVO = BeanUtils.toBean(stockIn, ErpStockInRespVO.class, stockInVO ->
-                stockInVO.setItems(BeanUtils.toBean(stockInItemList, ErpStockInRespVO.Item.class, item -> {
-                    ErpStockDO stock = stockService.getStock(item.getProductId(), item.getWarehouseId());
-                    item.setStockCount(stock != null ? stock.getCount() : BigDecimal.ZERO);
-                    MapUtils.findAndThen(productMap, item.getProductId(), product -> item.setProductName(product.getName())
-                            .setProductBarCode(product.getBarCode()).setProductUnitName(product.getUnitName()));
-                })));
+                convertSet(itemList, ErpStockInItemDO::getProductId));
+        Set<Long> userIds = new HashSet<>();
+        addUserId(userIds, stockIn.getCreator());
+        addUserId(userIds, stockIn.getUpdater());
+        Map<Long, AdminUserRespDTO> userMap = adminUserApi.getUserMap(userIds);
+        DeptRespDTO dept = stockIn.getDeptId() == null ? null : deptApi.getDept(stockIn.getDeptId());
+
+        ErpStockInRespVO respVO = BeanUtils.toBean(stockIn, ErpStockInRespVO.class, vo -> {
+            vo.setItems(BeanUtils.toBean(itemList, ErpStockInRespVO.Item.class, item -> {
+                ErpStockDO stock = stockService.getStock(item.getProductId(), item.getWarehouseId());
+                item.setStockCount(stock != null ? stock.getCount() : BigDecimal.ZERO);
+                fillProduct(item, productMap.get(item.getProductId()));
+            }));
+            vo.setProductNames(CollUtil.join(vo.getItems(), ", ", ErpStockInRespVO.Item::getProductName));
+            vo.setProductCodes(CollUtil.join(vo.getItems(), ", ", ErpStockInRespVO.Item::getProductCode));
+            if (dept != null) {
+                vo.setDeptName(dept.getName());
+            }
+            fillUserNames(vo, userMap);
+        });
         fieldPermissionMasker.maskFormWithItems(FIELD_PERMISSION_MODULE, respVO);
         return success(respVO);
     }
 
     @GetMapping("/page")
-    @Operation(summary = "获得其它入库单分页")
+    @Operation(summary = "Get stock in page")
     @PreAuthorize("@ss.hasPermission('erp:stock-in:query')")
     public CommonResult<PageResult<ErpStockInRespVO>> getStockInPage(@Valid ErpStockInPageReqVO pageReqVO) {
-        PageResult<ErpStockInDO> pageResult = stockInService.getStockInPage(pageReqVO);
-        return success(buildStockInVOPageResult(pageResult));
+        return success(buildStockInVOPageResult(stockInService.getStockInPage(pageReqVO)));
     }
 
     @GetMapping("/export-excel")
-    @Operation(summary = "导出其它入库单 Excel")
+    @Operation(summary = "Export stock in")
     @PreAuthorize("@ss.hasPermission('erp:stock-in:export')")
     @ApiAccessLog(operateType = EXPORT)
     public void exportStockInExcel(@Valid ErpStockInPageReqVO pageReqVO,
-              HttpServletResponse response) throws IOException {
+                                   HttpServletResponse response) throws IOException {
         pageReqVO.setPageSize(PageParam.PAGE_SIZE_NONE);
         List<ErpStockInRespVO> list = buildStockInVOPageResult(stockInService.getStockInPage(pageReqVO)).getList();
-        // 导出 Excel
-        ExcelUtils.write(response, "其它入库单.xls", "数据", ErpStockInRespVO.class, list);
+        ExcelUtils.write(response, "stock-in.xls", "data", ErpStockInRespVO.class, list);
     }
 
     private PageResult<ErpStockInRespVO> buildStockInVOPageResult(PageResult<ErpStockInDO> pageResult) {
         if (CollUtil.isEmpty(pageResult.getList())) {
             return PageResult.empty(pageResult.getTotal());
         }
-        // 1.1 入库项
-        List<ErpStockInItemDO> stockInItemList = stockInService.getStockInItemListByInIds(
+        List<ErpStockInItemDO> itemList = stockInService.getStockInItemListByInIds(
                 convertSet(pageResult.getList(), ErpStockInDO::getId));
-        Map<Long, List<ErpStockInItemDO>> stockInItemMap = convertMultiMap(stockInItemList, ErpStockInItemDO::getInId);
-        // 1.2 产品信息
+        Map<Long, List<ErpStockInItemDO>> itemMap = convertMultiMap(itemList, ErpStockInItemDO::getInId);
         Map<Long, ErpProductRespVO> productMap = productService.getProductVOMap(
-                convertSet(stockInItemList, ErpStockInItemDO::getProductId));
-        // 1.3 供应商信息
+                convertSet(itemList, ErpStockInItemDO::getProductId));
         Map<Long, ErpSupplierDO> supplierMap = supplierService.getSupplierMap(
                 convertSet(pageResult.getList(), ErpStockInDO::getSupplierId));
-        // 1.4 管理员信息
-        Map<Long, AdminUserRespDTO> userMap = adminUserApi.getUserMap(
-                convertSet(pageResult.getList(), stockIn -> Long.parseLong(stockIn.getCreator())));
-        // 2. 开始拼接
-        return BeanUtils.toBean(pageResult, ErpStockInRespVO.class, stockIn -> {
-            stockIn.setItems(BeanUtils.toBean(stockInItemMap.get(stockIn.getId()), ErpStockInRespVO.Item.class,
-                    item -> MapUtils.findAndThen(productMap, item.getProductId(), product -> item.setProductName(product.getName())
-                            .setProductBarCode(product.getBarCode()).setProductUnitName(product.getUnitName()))));
-            stockIn.setProductNames(CollUtil.join(stockIn.getItems(), "，", ErpStockInRespVO.Item::getProductName));
-            MapUtils.findAndThen(supplierMap, stockIn.getSupplierId(), supplier -> stockIn.setSupplierName(supplier.getName()));
-            MapUtils.findAndThen(userMap, Long.parseLong(stockIn.getCreator()), user -> stockIn.setCreatorName(user.getNickname()));
+        Map<Long, DeptRespDTO> deptMap = deptApi.getDeptMap(convertSet(pageResult.getList(), ErpStockInDO::getDeptId));
+        Set<Long> userIds = new HashSet<>();
+        pageResult.getList().forEach(stockIn -> {
+            addUserId(userIds, stockIn.getCreator());
+            addUserId(userIds, stockIn.getUpdater());
         });
+        Map<Long, AdminUserRespDTO> userMap = adminUserApi.getUserMap(userIds);
+
+        return BeanUtils.toBean(pageResult, ErpStockInRespVO.class, vo -> {
+            vo.setItems(BeanUtils.toBean(itemMap.get(vo.getId()), ErpStockInRespVO.Item.class,
+                    item -> fillProduct(item, productMap.get(item.getProductId()))));
+            vo.setProductNames(CollUtil.join(vo.getItems(), ", ", ErpStockInRespVO.Item::getProductName));
+            vo.setProductCodes(CollUtil.join(vo.getItems(), ", ", ErpStockInRespVO.Item::getProductCode));
+            MapUtils.findAndThen(supplierMap, vo.getSupplierId(), supplier -> vo.setSupplierName(supplier.getName()));
+            MapUtils.findAndThen(deptMap, vo.getDeptId(), dept -> vo.setDeptName(dept.getName()));
+            fillUserNames(vo, userMap);
+        });
+    }
+
+    private void fillProduct(ErpStockInRespVO.Item item, ErpProductRespVO product) {
+        if (product == null) {
+            return;
+        }
+        item.setProductName(product.getName())
+                .setProductCode(product.getCode())
+                .setProductBarCode(product.getBarCode())
+                .setProductUnitName(product.getUnitName());
+    }
+
+    private void fillUserNames(ErpStockInRespVO stockIn, Map<Long, AdminUserRespDTO> userMap) {
+        Long creatorId = parseUserId(stockIn.getCreator());
+        if (creatorId != null) {
+            MapUtils.findAndThen(userMap, creatorId, user -> stockIn.setCreatorName(user.getNickname()));
+        }
+        Long updaterId = parseUserId(stockIn.getUpdater());
+        if (updaterId != null) {
+            MapUtils.findAndThen(userMap, updaterId, user -> stockIn.setUpdaterName(user.getNickname()));
+        }
+    }
+
+    private void addUserId(Set<Long> userIds, String userId) {
+        Long parsed = parseUserId(userId);
+        if (parsed != null) {
+            userIds.add(parsed);
+        }
+    }
+
+    private Long parseUserId(String userId) {
+        if (userId == null || userId.trim().isEmpty()) {
+            return null;
+        }
+        try {
+            return Long.parseLong(userId);
+        } catch (NumberFormatException ignored) {
+            return null;
+        }
     }
 
 }

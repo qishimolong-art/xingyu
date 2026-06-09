@@ -23,6 +23,10 @@ public class ErpPrePaymentDO extends BaseDO {
     private Long id;
     private String no;
     private Integer status;
+    /**
+     * Department id.
+     */
+    private Long deptId;
     private LocalDateTime bizTime;
     /**
      * 往来单位类型：1=客户 2=供应商 3=员工

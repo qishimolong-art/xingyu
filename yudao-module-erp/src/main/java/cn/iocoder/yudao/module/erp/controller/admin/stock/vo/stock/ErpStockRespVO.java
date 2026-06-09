@@ -54,6 +54,14 @@ public class ErpStockRespVO {
     @ExcelProperty("仓库名称")
     private String warehouseName;
 
+    @Schema(description = "所属部门", example = "100")
+    @ExcelProperty("所属部门ID")
+    private Long deptId;
+
+    @Schema(description = "所属部门名称")
+    @ExcelProperty("所属部门")
+    private String deptName;
+
     // ========== 产品扩展字段 ==========
     @Schema(description = "零件编码")
     @ExcelProperty("编码")

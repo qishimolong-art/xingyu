@@ -55,6 +55,13 @@ public class ErpFinanceTransferRespVO {
     @ExcelProperty("财务人员")
     private String financeUserName;
 
+    @Schema(description = "所属部门编号", example = "100")
+    private Long deptId;
+
+    @Schema(description = "所属部门名称", example = "财务部")
+    @ExcelProperty("所属部门")
+    private String deptName;
+
     @Schema(description = "备注", example = "同行转账")
     @ExcelProperty("备注")
     private String remark;
@@ -72,5 +79,16 @@ public class ErpFinanceTransferRespVO {
     @Schema(description = "创建时间", requiredMode = Schema.RequiredMode.REQUIRED)
     @ExcelProperty("创建时间")
     private LocalDateTime createTime;
+
+    @Schema(description = "修改人", example = "1")
+    private String updater;
+
+    @Schema(description = "修改人名称", example = "管理员")
+    @ExcelProperty("修改人")
+    private String updaterName;
+
+    @Schema(description = "修改时间")
+    @ExcelProperty("修改时间")
+    private LocalDateTime updateTime;
 
 }

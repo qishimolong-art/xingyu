@@ -5,6 +5,7 @@ import cn.iocoder.yudao.framework.common.util.object.ObjectUtils;
 import cn.iocoder.yudao.framework.test.core.ut.BaseDbUnitTest;
 import cn.iocoder.yudao.module.system.controller.admin.dept.vo.dept.DeptListReqVO;
 import cn.iocoder.yudao.module.system.controller.admin.dept.vo.dept.DeptSaveReqVO;
+import cn.iocoder.yudao.module.system.controller.admin.dept.vo.dept.DeptUpdateSortReqVO;
 import cn.iocoder.yudao.module.system.dal.dataobject.dept.DeptDO;
 import cn.iocoder.yudao.module.system.dal.mysql.dept.DeptMapper;
 import org.junit.jupiter.api.Test;
@@ -71,6 +72,40 @@ public class DeptServiceImplTest extends BaseDbUnitTest {
         // 校验是否更新正确
         DeptDO deptDO = deptMapper.selectById(reqVO.getId()); // 获取最新的
         assertPojoEquals(reqVO, deptDO);
+    }
+
+    @Test
+    public void testUpdateDeptSort() {
+        Long parentId = randomLongId();
+        DeptDO deptDO1 = randomPojo(DeptDO.class, o -> o.setParentId(parentId).setSort(1));
+        deptMapper.insert(deptDO1);
+        DeptDO deptDO2 = randomPojo(DeptDO.class, o -> o.setParentId(parentId).setSort(2));
+        deptMapper.insert(deptDO2);
+        DeptUpdateSortReqVO reqVO = new DeptUpdateSortReqVO();
+        reqVO.setItems(Arrays.asList(
+                new DeptUpdateSortReqVO.Item().setId(deptDO1.getId()).setSort(20),
+                new DeptUpdateSortReqVO.Item().setId(deptDO2.getId()).setSort(10)
+        ));
+
+        deptService.updateDeptSort(reqVO);
+
+        assertEquals(20, deptMapper.selectById(deptDO1.getId()).getSort());
+        assertEquals(10, deptMapper.selectById(deptDO2.getId()).getSort());
+    }
+
+    @Test
+    public void testUpdateDeptSort_parentNotSame() {
+        DeptDO deptDO1 = randomPojo(DeptDO.class, o -> o.setParentId(1L).setSort(1));
+        deptMapper.insert(deptDO1);
+        DeptDO deptDO2 = randomPojo(DeptDO.class, o -> o.setParentId(2L).setSort(2));
+        deptMapper.insert(deptDO2);
+        DeptUpdateSortReqVO reqVO = new DeptUpdateSortReqVO();
+        reqVO.setItems(Arrays.asList(
+                new DeptUpdateSortReqVO.Item().setId(deptDO1.getId()).setSort(20),
+                new DeptUpdateSortReqVO.Item().setId(deptDO2.getId()).setSort(10)
+        ));
+
+        assertServiceException(() -> deptService.updateDeptSort(reqVO), DEPT_SORT_PARENT_NOT_SAME);
     }
 
     @Test
@@ -240,6 +275,52 @@ public class DeptServiceImplTest extends BaseDbUnitTest {
         // 断言
         assertEquals(1, sysDeptDOS.size());
         assertPojoEquals(dept, sysDeptDOS.get(0));
+    }
+
+    @Test
+    public void testGetDeptList_sortByNameWhenSortSame() {
+        DeptDO deptDO1 = randomPojo(DeptDO.class, o -> {
+            o.setParentId(DeptDO.PARENT_ID_ROOT);
+            o.setName("深圳分公司");
+            o.setSort(0);
+            o.setStatus(CommonStatusEnum.ENABLE.getStatus());
+        });
+        deptMapper.insert(deptDO1);
+        DeptDO deptDO2 = randomPojo(DeptDO.class, o -> {
+            o.setParentId(DeptDO.PARENT_ID_ROOT);
+            o.setName("成都分公司");
+            o.setSort(0);
+            o.setStatus(CommonStatusEnum.ENABLE.getStatus());
+        });
+        deptMapper.insert(deptDO2);
+
+        List<DeptDO> deptList = deptService.getDeptList(new DeptListReqVO());
+
+        assertEquals(deptDO2.getId(), deptList.get(0).getId());
+        assertEquals(deptDO1.getId(), deptList.get(1).getId());
+    }
+
+    @Test
+    public void testGetDeptList_sortBeforeName() {
+        DeptDO deptDO1 = randomPojo(DeptDO.class, o -> {
+            o.setParentId(DeptDO.PARENT_ID_ROOT);
+            o.setName("深圳分公司");
+            o.setSort(10);
+            o.setStatus(CommonStatusEnum.ENABLE.getStatus());
+        });
+        deptMapper.insert(deptDO1);
+        DeptDO deptDO2 = randomPojo(DeptDO.class, o -> {
+            o.setParentId(DeptDO.PARENT_ID_ROOT);
+            o.setName("成都分公司");
+            o.setSort(20);
+            o.setStatus(CommonStatusEnum.ENABLE.getStatus());
+        });
+        deptMapper.insert(deptDO2);
+
+        List<DeptDO> deptList = deptService.getDeptList(new DeptListReqVO());
+
+        assertEquals(deptDO1.getId(), deptList.get(0).getId());
+        assertEquals(deptDO2.getId(), deptList.get(1).getId());
     }
 
     @Test

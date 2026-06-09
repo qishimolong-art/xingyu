@@ -21,6 +21,9 @@ public class ErpWarehouseSaveReqVO {
     @NotEmpty(message = "仓库名称不能为空")
     private String name;
 
+    @Schema(description = "所属部门", example = "100")
+    private Long deptId;
+
     @Schema(description = "仓库地址", example = "上海陆家嘴")
     private String address;
 

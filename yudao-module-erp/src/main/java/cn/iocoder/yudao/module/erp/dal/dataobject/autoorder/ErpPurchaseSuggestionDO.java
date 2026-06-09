@@ -39,6 +39,10 @@ public class ErpPurchaseSuggestionDO extends BaseDO {
      */
     private Long warehouseId;
     /**
+     * Department id.
+     */
+    private Long deptId;
+    /**
      * 建议时间
      */
     private LocalDateTime suggestTime;

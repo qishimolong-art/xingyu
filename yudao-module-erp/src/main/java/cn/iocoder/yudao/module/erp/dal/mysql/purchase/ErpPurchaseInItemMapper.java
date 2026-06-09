@@ -34,6 +34,14 @@ public interface ErpPurchaseInItemMapper extends BaseMapperX<ErpPurchaseInItemDO
         return delete(ErpPurchaseInItemDO::getInId, inId);
     }
 
+    default Long selectCountByProductId(Long productId) {
+        return selectCount(ErpPurchaseInItemDO::getProductId, productId);
+    }
+
+    default Long selectCountByWarehouseId(Long warehouseId) {
+        return selectCount(ErpPurchaseInItemDO::getWarehouseId, warehouseId);
+    }
+
     /**
      * 基于采购订单编号，查询每个采购订单项的入库数量之和
      *

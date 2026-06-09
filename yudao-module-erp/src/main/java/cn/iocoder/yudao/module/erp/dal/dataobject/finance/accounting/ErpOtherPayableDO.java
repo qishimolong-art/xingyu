@@ -30,6 +30,10 @@ public class ErpOtherPayableDO extends BaseDO {
      */
     private Integer status;
     /**
+     * Department id.
+     */
+    private Long deptId;
+    /**
      * 业务时间
      */
     private LocalDateTime bizTime;

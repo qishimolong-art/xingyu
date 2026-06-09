@@ -65,6 +65,9 @@ public class ErpSupplierSaveReqVO {
     @Schema(description = "编码(自动生成)", example = "GYS001")
     private String code;
 
+    @Schema(description = "所属部门")
+    private Long deptId;
+
     @Schema(description = "旧编码", example = "OLD001")
     private String oldCode;
 

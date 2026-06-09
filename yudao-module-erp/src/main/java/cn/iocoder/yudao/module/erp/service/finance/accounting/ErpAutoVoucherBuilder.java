@@ -57,7 +57,7 @@ public class ErpAutoVoucherBuilder {
         BigDecimal totalProduct = nullToZero(purchaseIn.getTotalProductPrice());
         BigDecimal totalTax = nullToZero(purchaseIn.getTotalTaxPrice());
         BigDecimal discount = nullToZero(purchaseIn.getDiscountPrice());
-        BigDecimal other = nullToZero(purchaseIn.getOtherPrice());
+        BigDecimal other = resolveFeeAmount(purchaseIn.getFeeAmount(), purchaseIn.getOtherPrice());
         BigDecimal apAmount = totalProduct.add(totalTax).subtract(discount).add(other);
         List<ErpVoucherItemDO> items = new ArrayList<>(5);
         items.add(buildLine(items.size() + 1, summary,
@@ -104,7 +104,7 @@ public class ErpAutoVoucherBuilder {
         BigDecimal totalProduct = nullToZero(purchaseReturn.getTotalProductPrice());
         BigDecimal totalTax = nullToZero(purchaseReturn.getTotalTaxPrice());
         BigDecimal discount = nullToZero(purchaseReturn.getDiscountPrice());
-        BigDecimal other = nullToZero(purchaseReturn.getOtherPrice());
+        BigDecimal other = resolveFeeAmount(purchaseReturn.getFeeAmount(), purchaseReturn.getOtherPrice());
         BigDecimal apAmount = totalProduct.add(totalTax).subtract(discount).add(other);
         List<ErpVoucherItemDO> items = new ArrayList<>(5);
         items.add(buildLine(items.size() + 1, summary,
@@ -151,7 +151,7 @@ public class ErpAutoVoucherBuilder {
         BigDecimal totalProduct = nullToZero(saleOut.getTotalProductPrice());
         BigDecimal totalTax = nullToZero(saleOut.getTotalTaxPrice());
         BigDecimal discount = nullToZero(saleOut.getDiscountPrice());
-        BigDecimal other = nullToZero(saleOut.getOtherPrice());
+        BigDecimal other = resolveFeeAmount(saleOut.getFeeAmount(), saleOut.getOtherPrice());
         BigDecimal arAmount = totalProduct.add(totalTax).subtract(discount).add(other);
         List<ErpVoucherItemDO> items = new ArrayList<>(7);
         items.add(buildLine(items.size() + 1, summary,
@@ -206,7 +206,7 @@ public class ErpAutoVoucherBuilder {
         BigDecimal totalProduct = nullToZero(saleReturn.getTotalProductPrice());
         BigDecimal totalTax = nullToZero(saleReturn.getTotalTaxPrice());
         BigDecimal discount = nullToZero(saleReturn.getDiscountPrice());
-        BigDecimal other = nullToZero(saleReturn.getOtherPrice());
+        BigDecimal other = resolveFeeAmount(saleReturn.getFeeAmount(), saleReturn.getOtherPrice());
         BigDecimal arAmount = totalProduct.add(totalTax).subtract(discount).add(other);
         List<ErpVoucherItemDO> items = new ArrayList<>(7);
         items.add(buildLine(items.size() + 1, summary,
@@ -435,6 +435,10 @@ public class ErpAutoVoucherBuilder {
 
     private BigDecimal nullToZero(BigDecimal value) {
         return value == null ? BigDecimal.ZERO : value;
+    }
+
+    private BigDecimal resolveFeeAmount(BigDecimal feeAmount, BigDecimal otherPrice) {
+        return feeAmount != null ? feeAmount : nullToZero(otherPrice);
     }
 
     private String nullToEmpty(String s) {

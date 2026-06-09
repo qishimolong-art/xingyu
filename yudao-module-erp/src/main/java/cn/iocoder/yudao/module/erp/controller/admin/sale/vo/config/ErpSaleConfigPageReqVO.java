@@ -24,4 +24,7 @@ public class ErpSaleConfigPageReqVO extends PageParam {
     @Schema(description = "状态", example = "0")
     private Integer status;
 
+    @Schema(description = "部门编号", example = "1")
+    private Long deptId;
+
 }

@@ -16,8 +16,12 @@ import cn.iocoder.yudao.module.system.dal.dataobject.permission.RoleDO;
 import cn.iocoder.yudao.module.system.dal.dataobject.permission.RoleFieldPermissionDO;
 import cn.iocoder.yudao.module.system.dal.dataobject.permission.RoleMenuDO;
 import cn.iocoder.yudao.module.system.dal.dataobject.permission.UserRoleDO;
+import cn.iocoder.yudao.module.system.controller.admin.permission.vo.permission.PermissionAssignRoleFormDataScopeReqVO;
+import cn.iocoder.yudao.module.system.controller.admin.permission.vo.permission.RoleFormDataScopeRespVO;
+import cn.iocoder.yudao.module.system.dal.dataobject.permission.RoleFormDataScopeDO;
 import cn.iocoder.yudao.module.system.dal.mysql.permission.FieldDefinitionMapper;
 import cn.iocoder.yudao.module.system.dal.mysql.permission.RoleFieldPermissionMapper;
+import cn.iocoder.yudao.module.system.dal.mysql.permission.RoleFormDataScopeMapper;
 import cn.iocoder.yudao.module.system.dal.mysql.permission.RoleMenuMapper;
 import cn.iocoder.yudao.module.system.dal.mysql.permission.UserRoleMapper;
 import cn.iocoder.yudao.module.system.dal.redis.RedisKeyConstants;
@@ -43,6 +47,8 @@ import java.util.stream.Collectors;
 
 import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.convertSet;
 import static cn.iocoder.yudao.framework.common.util.json.JsonUtils.toJsonString;
+import static cn.iocoder.yudao.framework.common.exception.util.ServiceExceptionUtil.exception;
+import static cn.iocoder.yudao.module.system.enums.ErrorCodeConstants.ROLE_DATA_SCOPE_DEPT_IDS_EMPTY;
 
 /**
  * 权限 Service 实现类
@@ -61,6 +67,8 @@ public class PermissionServiceImpl implements PermissionService {
     private FieldDefinitionMapper fieldDefinitionMapper;
     @Resource
     private RoleFieldPermissionMapper roleFieldPermissionMapper;
+    @Resource
+    private RoleFormDataScopeMapper roleFormDataScopeMapper;
 
     @Resource
     private RoleService roleService;
@@ -371,18 +379,37 @@ public class PermissionServiceImpl implements PermissionService {
         return roles;
     }
 
+    /**
+     * Gets enabled roles directly from DB for data permission calculation.
+     */
+    @VisibleForTesting
+    List<RoleDO> getEnableUserRoleListByUserId(Long userId) {
+        Set<Long> roleIds = getUserRoleIdListByUserId(userId);
+        List<RoleDO> roles = roleService.getRoleList(roleIds);
+        roles.removeIf(role -> role == null || !CommonStatusEnum.ENABLE.getStatus().equals(role.getStatus()));
+        return roles;
+    }
+
     // ========== 用户-部门的相关方法  ==========
 
     @Override
     public void assignRoleDataScope(Long roleId, Integer dataScope, Set<Long> dataScopeDeptIds) {
+        validateRoleDataScope(dataScope, dataScopeDeptIds);
         roleService.updateRoleDataScope(roleId, dataScope, dataScopeDeptIds);
+    }
+
+    private void validateRoleDataScope(Integer dataScope, Set<Long> dataScopeDeptIds) {
+        if (Objects.equals(dataScope, DataScopeEnum.DEPT_CUSTOM.getScope())
+                && CollUtil.isEmpty(dataScopeDeptIds)) {
+            throw exception(ROLE_DATA_SCOPE_DEPT_IDS_EMPTY);
+        }
     }
 
     @Override
     @DataPermission(enable = false) // 关闭数据权限，不然就会出现递归获取数据权限的问题
     public DeptDataPermissionRespDTO getDeptDataPermission(Long userId) {
         // 获得用户的角色
-        List<RoleDO> roles = getEnableUserRoleListByUserIdFromCache(userId);
+        List<RoleDO> roles = getEnableUserRoleListByUserId(userId);
 
         // 如果角色为空，则只能查看自己
         DeptDataPermissionRespDTO result = new DeptDataPermissionRespDTO();
@@ -392,7 +419,10 @@ public class PermissionServiceImpl implements PermissionService {
         }
 
         // 获得用户的部门编号的缓存，通过 Guava 的 Suppliers 惰性求值，即有且仅有第一次发起 DB 的查询
-        Supplier<Long> userDeptId = Suppliers.memoize(() -> userService.getUser(userId).getDeptId());
+        Supplier<Set<Long>> userDeptIds = Suppliers.memoize(() -> {
+            Set<Long> deptIds = userService.getUserDeptIdListByUserId(userId);
+            return deptIds == null ? Collections.emptySet() : deptIds;
+        });
         // 遍历每个角色，计算
         for (RoleDO role : roles) {
             // 为空时，跳过
@@ -407,21 +437,24 @@ public class PermissionServiceImpl implements PermissionService {
             // 情况二，DEPT_CUSTOM
             if (Objects.equals(role.getDataScope(), DataScopeEnum.DEPT_CUSTOM.getScope())) {
                 CollUtil.addAll(result.getDeptIds(), role.getDataScopeDeptIds());
-                // 自定义可见部门时，保证可以看到自己所在的部门。否则，一些场景下可能会有问题。
-                // 例如说，登录时，基于 t_user 的 username 查询会可能被 dept_id 过滤掉
-                CollUtil.addAll(result.getDeptIds(), userDeptId.get());
                 continue;
             }
             // 情况三，DEPT_ONLY
             if (Objects.equals(role.getDataScope(), DataScopeEnum.DEPT_ONLY.getScope())) {
-                CollectionUtils.addIfNotNull(result.getDeptIds(), userDeptId.get());
+                for (Long deptId : userDeptIds.get()) {
+                    CollectionUtils.addIfNotNull(result.getDeptIds(), deptId);
+                }
                 continue;
             }
             // 情况四，DEPT_DEPT_AND_CHILD
             if (Objects.equals(role.getDataScope(), DataScopeEnum.DEPT_AND_CHILD.getScope())) {
-                CollUtil.addAll(result.getDeptIds(), deptService.getChildDeptIdListFromCache(userDeptId.get()));
-                // 添加本身部门编号
-                CollUtil.addAll(result.getDeptIds(), userDeptId.get());
+                for (Long deptId : userDeptIds.get()) {
+                    if (deptId == null) {
+                        continue;
+                    }
+                    CollectionUtils.addIfNotNull(result.getDeptIds(), deptId);
+                    CollUtil.addAll(result.getDeptIds(), deptService.getChildDeptIdListFromCache(deptId));
+                }
                 continue;
             }
             // 情况五，SELF
@@ -432,7 +465,148 @@ public class PermissionServiceImpl implements PermissionService {
             // 未知情况，error log 即可
             log.error("[getDeptDataPermission][LoginUser({}) role({}) 无法处理]", userId, toJsonString(result));
         }
+        logEmptyDeptDataPermission(userId, roles, result, userDeptIds);
         return result;
+    }
+
+    private void logEmptyDeptDataPermission(Long userId, List<RoleDO> roles, DeptDataPermissionRespDTO result,
+                                            Supplier<Set<Long>> userDeptIds) {
+        if (Boolean.TRUE.equals(result.getAll()) || Boolean.TRUE.equals(result.getSelf())
+                || CollUtil.isNotEmpty(result.getDeptIds())) {
+            return;
+        }
+        boolean hasDeptCustom = roles.stream()
+                .anyMatch(role -> Objects.equals(role.getDataScope(), DataScopeEnum.DEPT_CUSTOM.getScope()));
+        boolean hasDeptCustomEmpty = roles.stream()
+                .filter(role -> Objects.equals(role.getDataScope(), DataScopeEnum.DEPT_CUSTOM.getScope()))
+                .anyMatch(role -> CollUtil.isEmpty(role.getDataScopeDeptIds()));
+        boolean needsUserDept = roles.stream()
+                .anyMatch(role -> Objects.equals(role.getDataScope(), DataScopeEnum.DEPT_ONLY.getScope())
+                        || Objects.equals(role.getDataScope(), DataScopeEnum.DEPT_AND_CHILD.getScope()));
+        Set<Long> userDeptIdSet = needsUserDept ? userDeptIds.get() : Collections.emptySet();
+        boolean userDeptEmpty = needsUserDept && CollUtil.isEmpty(userDeptIdSet);
+        log.warn("[getDeptDataPermission][LoginUser({}) 数据权限为空，hasDeptCustom={}, hasDeptCustomEmpty={}, " +
+                        "needsUserDept={}, userDeptEmpty={}, userDeptIds={}, roles={}]",
+                userId, hasDeptCustom, hasDeptCustomEmpty, needsUserDept, userDeptEmpty, userDeptIdSet,
+                roles.stream()
+                        .map(role -> String.format("{id=%s,dataScope=%s,dataScopeDeptIds=%s}",
+                                role.getId(), role.getDataScope(), role.getDataScopeDeptIds()))
+                        .collect(Collectors.toList()));
+    }
+
+    @Override
+    @DataPermission(enable = false)
+    public DeptDataPermissionRespDTO getDeptDataPermission(Long userId, String formKey) {
+        List<RoleDO> roles = getEnableUserRoleListByUserId(userId);
+        if (CollUtil.isEmpty(roles)) {
+            DeptDataPermissionRespDTO r = new DeptDataPermissionRespDTO();
+            r.setSelf(true);
+            return r;
+        }
+
+        // 查该用户角色在此 formKey 上的表单级权限配置，过滤掉值为 0（INHERIT）的记录
+        Set<Long> roleIds = convertSet(roles, RoleDO::getId);
+        List<RoleFormDataScopeDO> formScopes =
+                roleFormDataScopeMapper.selectListByRoleIdsAndFormKey(roleIds, formKey);
+        List<RoleFormDataScopeDO> activeFormScopes = formScopes.stream()
+                .filter(s -> s.getDataScope() != null && s.getDataScope() != 0)
+                .collect(Collectors.toList());
+
+        // 没有有效的表单级配置，fallback 到全局权限
+        if (CollUtil.isEmpty(activeFormScopes)) {
+            return getDeptDataPermission(userId);
+        }
+
+        // 按表单级配置计算权限，逻辑与全局计算相同
+        DeptDataPermissionRespDTO result = new DeptDataPermissionRespDTO();
+        Supplier<Set<Long>> userDeptIds = Suppliers.memoize(() -> {
+            Set<Long> deptIds = userService.getUserDeptIdListByUserId(userId);
+            return deptIds == null ? Collections.emptySet() : deptIds;
+        });
+        for (RoleFormDataScopeDO scope : activeFormScopes) {
+            if (Objects.equals(scope.getDataScope(), DataScopeEnum.ALL.getScope())) {
+                result.setAll(true);
+                continue;
+            }
+            if (Objects.equals(scope.getDataScope(), DataScopeEnum.DEPT_CUSTOM.getScope())) {
+                CollUtil.addAll(result.getDeptIds(), scope.getDataScopeDeptIds());
+                continue;
+            }
+            if (Objects.equals(scope.getDataScope(), DataScopeEnum.DEPT_ONLY.getScope())) {
+                userDeptIds.get().forEach(id -> CollectionUtils.addIfNotNull(result.getDeptIds(), id));
+                continue;
+            }
+            if (Objects.equals(scope.getDataScope(), DataScopeEnum.DEPT_AND_CHILD.getScope())) {
+                for (Long deptId : userDeptIds.get()) {
+                    if (deptId == null) {
+                        continue;
+                    }
+                    CollectionUtils.addIfNotNull(result.getDeptIds(), deptId);
+                    CollUtil.addAll(result.getDeptIds(), deptService.getChildDeptIdListFromCache(deptId));
+                }
+                continue;
+            }
+            if (Objects.equals(scope.getDataScope(), DataScopeEnum.SELF.getScope())) {
+                result.setSelf(true);
+            }
+        }
+        return result;
+    }
+
+    // ========== 角色-表单数据权限的相关方法 ==========
+
+    @Override
+    public List<RoleFormDataScopeRespVO> getRoleFormDataScopeList(Long roleId) {
+        return CollectionUtils.convertList(
+            roleFormDataScopeMapper.selectListByRoleId(roleId),
+            item -> {
+                RoleFormDataScopeRespVO vo = new RoleFormDataScopeRespVO();
+                vo.setFormKey(item.getFormKey());
+                vo.setDataScope(item.getDataScope());
+                vo.setDataScopeDeptIds(
+                    CollUtil.defaultIfEmpty(item.getDataScopeDeptIds(), Collections.emptySet()));
+                return vo;
+            });
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void assignRoleFormDataScope(Long roleId,
+            List<PermissionAssignRoleFormDataScopeReqVO.FormDataScopeItem> items) {
+        roleFormDataScopeMapper.deleteListByRoleId(roleId, TenantContextHolder.getRequiredTenantId());
+        if (CollUtil.isEmpty(items)) {
+            return;
+        }
+        Set<Integer> validDataScopes = Arrays.stream(DataScopeEnum.ARRAYS).collect(Collectors.toSet());
+        Map<String, PermissionAssignRoleFormDataScopeReqVO.FormDataScopeItem> itemMap = new LinkedHashMap<>();
+        for (PermissionAssignRoleFormDataScopeReqVO.FormDataScopeItem item : items) {
+            if (item == null || item.getFormKey() == null || item.getDataScope() == null
+                    || !validDataScopes.contains(item.getDataScope())) {
+                continue;
+            }
+            itemMap.put(item.getFormKey(), item);
+        }
+        if (CollUtil.isEmpty(itemMap)) {
+            return;
+        }
+        List<RoleFormDataScopeDO> entities = CollectionUtils.convertList(itemMap.values(), item -> {
+            RoleFormDataScopeDO entity = new RoleFormDataScopeDO();
+            entity.setRoleId(roleId);
+            entity.setFormKey(item.getFormKey());
+            entity.setDataScope(item.getDataScope());
+            entity.setDataScopeDeptIds(
+                    Objects.equals(item.getDataScope(), DataScopeEnum.DEPT_CUSTOM.getScope())
+                            ? CollUtil.defaultIfEmpty(item.getDataScopeDeptIds(), Collections.emptySet())
+                            : Collections.emptySet());
+            return entity;
+        });
+        for (RoleFormDataScopeDO entity : entities) {
+            try {
+                roleFormDataScopeMapper.insert(entity);
+            } catch (DuplicateKeyException ignored) {
+                roleFormDataScopeMapper.updateByRoleIdAndFormKey(entity);
+            }
+        }
     }
 
     /**

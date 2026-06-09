@@ -12,10 +12,12 @@ import cn.iocoder.yudao.module.erp.dal.mysql.finance.payable.ErpPayableExpenseIt
 import cn.iocoder.yudao.module.erp.dal.mysql.finance.payable.ErpPayableExpenseMapper;
 import cn.iocoder.yudao.module.erp.dal.redis.no.ErpNoRedisDAO;
 import cn.iocoder.yudao.module.erp.enums.ErpAuditStatus;
+import cn.iocoder.yudao.module.erp.service.common.ErpOperateLogService;
 import cn.iocoder.yudao.module.erp.service.finance.ErpAccountService;
 import cn.iocoder.yudao.module.erp.service.finance.ErpFinanceFieldPermissionMasker;
 import cn.iocoder.yudao.module.system.api.dept.DeptApi;
 import cn.iocoder.yudao.module.system.api.user.AdminUserApi;
+import cn.iocoder.yudao.module.system.api.user.dto.AdminUserRespDTO;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.validation.annotation.Validated;
@@ -29,6 +31,7 @@ import java.util.Objects;
 
 import static cn.iocoder.yudao.framework.common.exception.util.ServiceExceptionUtil.exception;
 import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.convertList;
+import static cn.iocoder.yudao.framework.security.core.util.SecurityFrameworkUtils.getLoginUserId;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PAYABLE_EXPENSE_APPROVE_FAIL;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PAYABLE_EXPENSE_DELETE_FAIL_APPROVE;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PAYABLE_EXPENSE_NOT_EXISTS;
@@ -36,6 +39,7 @@ import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PAYABLE_EXPEN
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PAYABLE_EXPENSE_PROCESS_FAIL;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PAYABLE_EXPENSE_UPDATE_FAIL_APPROVE;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PAYABLE_EXPENSE_UPDATE_FAIL_STATUS_CHANGED;
+import static cn.iocoder.yudao.module.erp.enums.LogRecordConstants.ERP_PAYABLE_EXPENSE_TYPE;
 
 @Service
 @Validated
@@ -57,10 +61,13 @@ public class ErpPayableExpenseServiceImpl implements ErpPayableExpenseService {
     private DeptApi deptApi;
     @Resource
     private ErpFinanceFieldPermissionMasker fieldPermissionMasker;
+    @Resource
+    private ErpOperateLogService operateLogService;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Long createPayableExpense(ErpPayableExpenseSaveReqVO createReqVO) {
+        fillDefaultDeptId(createReqVO);
         validateRefs(createReqVO.getAccountId(), createReqVO.getHandlerId(), createReqVO.getDeptId());
         validateItemRefs(createReqVO.getItems());
         String no = noRedisDAO.generate("FYZF");
@@ -82,6 +89,7 @@ public class ErpPayableExpenseServiceImpl implements ErpPayableExpenseService {
                 });
         fieldPermissionMasker.clearHiddenItemFields(FIELD_PERMISSION_MODULE, expenseItems);
         payableExpenseItemMapper.insertBatch(expenseItems);
+        operateLogService.recordCreate(ERP_PAYABLE_EXPENSE_TYPE, db.getId(), db.getNo());
         return db.getId();
     }
 
@@ -98,6 +106,10 @@ public class ErpPayableExpenseServiceImpl implements ErpPayableExpenseService {
             updateReqVO.setItems(BeanUtils.toBean(oldItems, ErpPayableExpenseSaveReqVO.Item.class));
         } else {
             fieldPermissionMasker.preserveOrClearHiddenItemFields(FIELD_PERMISSION_MODULE, updateReqVO.getItems(), oldItems);
+            fillDefaultItemDeptId(updateReqVO.getItems());
+        }
+        if (updateReqVO.getDeptId() == null) {
+            updateReqVO.setDeptId(db.getDeptId());
         }
         validateRefs(updateReqVO.getAccountId(), updateReqVO.getHandlerId(), updateReqVO.getDeptId());
         validateItemRefs(updateReqVO.getItems());
@@ -115,23 +127,26 @@ public class ErpPayableExpenseServiceImpl implements ErpPayableExpenseService {
                     item.setExpenseId(updateReqVO.getId());
                     normalizeItem(item);
                 }));
+        operateLogService.recordUpdate(ERP_PAYABLE_EXPENSE_TYPE, db.getId(), db.getNo());
     }
 
     @Override
+    @Transactional(rollbackFor = Exception.class)
     public void updatePayableExpenseStatus(Long id, Integer status) {
         ErpPayableExpenseDO db = validateExists(id);
+        boolean approve = ErpAuditStatus.APPROVE.getStatus().equals(status);
         if (db.getStatus().equals(status)) {
-            throw exception(ErpAuditStatus.APPROVE.getStatus().equals(status)
-                    ? PAYABLE_EXPENSE_APPROVE_FAIL : PAYABLE_EXPENSE_PROCESS_FAIL);
+            throw exception(approve ? PAYABLE_EXPENSE_APPROVE_FAIL : PAYABLE_EXPENSE_PROCESS_FAIL);
         }
         if (payableExpenseMapper.updateByIdAndStatus(id, db.getStatus(),
                 ErpPayableExpenseDO.builder().status(status).build()) == 0) {
-            throw exception(ErpAuditStatus.APPROVE.getStatus().equals(status)
-                    ? PAYABLE_EXPENSE_APPROVE_FAIL : PAYABLE_EXPENSE_PROCESS_FAIL);
+            throw exception(approve ? PAYABLE_EXPENSE_APPROVE_FAIL : PAYABLE_EXPENSE_PROCESS_FAIL);
         }
+        operateLogService.recordStatus(ERP_PAYABLE_EXPENSE_TYPE, id, db.getNo(), approve);
     }
 
     @Override
+    @Transactional(rollbackFor = Exception.class)
     public void deletePayableExpense(List<Long> ids) {
         List<ErpPayableExpenseDO> list = payableExpenseMapper.selectByIds(ids);
         if (CollUtil.isEmpty(list)) {
@@ -145,6 +160,7 @@ public class ErpPayableExpenseServiceImpl implements ErpPayableExpenseService {
         payableExpenseMapper.deleteByIds(ids);
         ids.forEach(id -> payableExpenseItemMapper.deleteByIds(
                 convertList(payableExpenseItemMapper.selectListByExpenseId(id), ErpPayableExpenseItemDO::getId)));
+        list.forEach(item -> operateLogService.recordDelete(ERP_PAYABLE_EXPENSE_TYPE, item.getId(), item.getNo()));
     }
 
     @Override
@@ -177,8 +193,8 @@ public class ErpPayableExpenseServiceImpl implements ErpPayableExpenseService {
         if (handlerId != null) {
             adminUserApi.validateUser(handlerId);
         }
-        if (deptId != null) {
-            deptApi.getDept(deptId);
+        if (deptId != null && deptApi.getDept(deptId) == null) {
+            throw exception(PAYABLE_EXPENSE_NOT_EXISTS);
         }
     }
 
@@ -187,10 +203,48 @@ public class ErpPayableExpenseServiceImpl implements ErpPayableExpenseService {
             if (item.getHandlerId() != null) {
                 adminUserApi.validateUser(item.getHandlerId());
             }
-            if (item.getDeptId() != null) {
-                deptApi.getDept(item.getDeptId());
+            if (item.getDeptId() != null && deptApi.getDept(item.getDeptId()) == null) {
+                throw exception(PAYABLE_EXPENSE_NOT_EXISTS);
             }
         });
+    }
+
+    private void fillDefaultDeptId(ErpPayableExpenseSaveReqVO reqVO) {
+        Long deptId = getLoginUserDeptId();
+        if (deptId == null) {
+            return;
+        }
+        if (reqVO.getDeptId() == null) {
+            reqVO.setDeptId(deptId);
+        }
+        fillDefaultItemDeptId(reqVO.getItems(), deptId);
+    }
+
+    private void fillDefaultItemDeptId(List<ErpPayableExpenseSaveReqVO.Item> items) {
+        Long deptId = getLoginUserDeptId();
+        if (deptId != null) {
+            fillDefaultItemDeptId(items, deptId);
+        }
+    }
+
+    private void fillDefaultItemDeptId(List<ErpPayableExpenseSaveReqVO.Item> items, Long deptId) {
+        if (CollUtil.isEmpty(items)) {
+            return;
+        }
+        items.forEach(item -> {
+            if (item.getDeptId() == null) {
+                item.setDeptId(deptId);
+            }
+        });
+    }
+
+    private Long getLoginUserDeptId() {
+        Long loginUserId = getLoginUserId();
+        if (loginUserId == null) {
+            return null;
+        }
+        AdminUserRespDTO user = adminUserApi.getUser(loginUserId);
+        return user == null ? null : user.getDeptId();
     }
 
     private ErpPayableExpenseDO validateExists(Long id) {
