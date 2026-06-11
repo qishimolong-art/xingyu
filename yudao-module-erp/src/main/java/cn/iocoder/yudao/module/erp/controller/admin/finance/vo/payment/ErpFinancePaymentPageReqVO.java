@@ -31,7 +31,7 @@ public class ErpFinancePaymentPageReqVO extends PageParam {
     @Schema(description = "创建者", example = "666")
     private String creator;
 
-    @Schema(description = "财务人员编号", example = "888")
+    @Schema(description = "经手人编号", example = "888")
     private String financeUserId;
 
     @Schema(description = "所属部门", example = "100")

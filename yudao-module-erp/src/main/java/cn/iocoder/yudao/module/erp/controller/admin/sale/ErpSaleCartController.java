@@ -17,13 +17,17 @@ import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartImpo
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartSaveReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartSubmitRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartUpdateBasicReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartUpdateFileReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpCustomerDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleCartDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleCartItemDO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleQuoteDO;
+import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpSaleQuoteMapper;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpWarehouseDO;
 import cn.iocoder.yudao.module.erp.enums.config.ErpFieldConfigModuleEnum;
+import cn.iocoder.yudao.module.erp.enums.sale.ErpSaleBizSourceTypeEnum;
 import cn.iocoder.yudao.module.erp.framework.excel.ErpExportFieldUtils;
 import cn.iocoder.yudao.module.erp.framework.excel.ErpImportTemplateRequiredFieldUtils;
 import cn.iocoder.yudao.module.erp.service.config.ErpFieldConfigService;
@@ -32,6 +36,8 @@ import cn.iocoder.yudao.module.erp.service.sale.ErpCustomerService;
 import cn.iocoder.yudao.module.erp.service.sale.ErpSaleCartService;
 import cn.iocoder.yudao.module.erp.service.sale.ErpSaleFieldPermissionMasker;
 import cn.iocoder.yudao.module.erp.service.stock.ErpWarehouseService;
+import cn.iocoder.yudao.module.system.api.dept.DeptApi;
+import cn.iocoder.yudao.module.system.api.dept.dto.DeptRespDTO;
 import cn.iocoder.yudao.module.system.api.user.AdminUserApi;
 import cn.iocoder.yudao.module.system.api.user.dto.AdminUserRespDTO;
 import io.swagger.v3.oas.annotations.Operation;
@@ -88,15 +94,26 @@ public class ErpSaleCartController {
     @Resource
     private ErpSaleFieldPermissionMasker fieldPermissionMasker;
     @Resource
+    private ErpSaleQuoteMapper saleQuoteMapper;
+    @Resource
     private AdminUserApi adminUserApi;
     @Resource
     private ErpFieldConfigService fieldConfigService;
+    @Resource
+    private DeptApi deptApi;
 
     @PostMapping("/create")
     @Operation(summary = "创建销售手推车")
     @PreAuthorize("@ss.hasPermission('erp:sale-cart:create')")
     public CommonResult<Long> createSaleCart(@Valid @RequestBody ErpSaleCartSaveReqVO createReqVO) {
         return success(saleCartService.createSaleCart(createReqVO));
+    }
+
+    @PostMapping("/create-and-submit")
+    @Operation(summary = "创建并提交销售手推车")
+    @PreAuthorize("@ss.hasPermission('erp:sale-cart:create')")
+    public CommonResult<ErpSaleCartSubmitRespVO> createAndSubmitSaleCart(@Valid @RequestBody ErpSaleCartSaveReqVO createReqVO) {
+        return success(saleCartService.createAndSubmitSaleCart(createReqVO));
     }
 
     @PutMapping("/update")
@@ -126,9 +143,8 @@ public class ErpSaleCartController {
     @PutMapping("/submit")
     @Operation(summary = "提交销售手推车")
     @PreAuthorize("@ss.hasPermission('erp:sale-cart:submit')")
-    public CommonResult<Boolean> submitSaleCart(@RequestParam("id") Long id) {
-        saleCartService.submitSaleCart(id);
-        return success(true);
+    public CommonResult<ErpSaleCartSubmitRespVO> submitSaleCart(@RequestParam("id") Long id) {
+        return success(saleCartService.submitSaleCart(id));
     }
 
     @PutMapping("/first-approve")
@@ -263,14 +279,22 @@ public class ErpSaleCartController {
                 : warehouseService.getWarehouseMap(convertSet(itemList, ErpSaleCartItemDO::getWarehouseId));
         Map<Long, ErpCustomerDO> customerMap = customerService.getCustomerMap(
                 convertSet(pageResult.getList(), ErpSaleCartDO::getCustomerId));
+        Set<Long> quoteIds = convertSet(pageResult.getList(), cart ->
+                ErpSaleBizSourceTypeEnum.QUOTE.getType().equals(cart.getSourceType()) ? cart.getSourceId() : null);
+        quoteIds.remove(null);
+        Map<Long, ErpSaleQuoteDO> quoteMap = CollUtil.isEmpty(quoteIds)
+                ? Collections.emptyMap()
+                : convertMap(saleQuoteMapper.selectByIds(quoteIds), ErpSaleQuoteDO::getId);
         Set<Long> userIds = convertSet(pageResult.getList(), cart -> parseLongSafely(cart.getCreator()));
         userIds.addAll(convertSet(pageResult.getList(), cart -> parseLongSafely(cart.getUpdater())));
         userIds.addAll(convertSet(pageResult.getList(), ErpSaleCartDO::getSaleUserId));
         userIds.remove(null);
         Map<Long, AdminUserRespDTO> userMap = CollUtil.isNotEmpty(userIds)
                 ? adminUserApi.getUserMap(userIds) : Collections.emptyMap();
+        Map<Long, DeptRespDTO> deptMap = deptApi.getDeptMap(convertSet(pageResult.getList(), ErpSaleCartDO::getDeptId));
         return BeanUtils.toBean(pageResult, ErpSaleCartRespVO.class,
-                cart -> fillRelation(cart, itemMap.get(cart.getId()), productMap, warehouseMap, customerMap, userMap));
+                cart -> fillRelation(cart, itemMap.get(cart.getId()), productMap, warehouseMap, customerMap,
+                        quoteMap, userMap, deptMap));
     }
 
     private ErpSaleCartRespVO buildSaleCartRespVO(ErpSaleCartDO cart, List<ErpSaleCartItemDO> items) {
@@ -283,21 +307,30 @@ public class ErpSaleCartController {
         Map<Long, ErpCustomerDO> customerMap = cart.getCustomerId() == null
                 ? Collections.emptyMap()
                 : customerService.getCustomerMap(Collections.singleton(cart.getCustomerId()));
+        Map<Long, ErpSaleQuoteDO> quoteMap = ErpSaleBizSourceTypeEnum.QUOTE.getType().equals(cart.getSourceType())
+                && cart.getSourceId() != null
+                ? convertMap(saleQuoteMapper.selectByIds(Collections.singleton(cart.getSourceId())), ErpSaleQuoteDO::getId)
+                : Collections.emptyMap();
         Set<Long> userIds = convertSet(Collections.singletonList(cart), item -> parseLongSafely(item.getCreator()));
         userIds.addAll(convertSet(Collections.singletonList(cart), item -> parseLongSafely(item.getUpdater())));
         userIds.add(cart.getSaleUserId());
         userIds.remove(null);
         Map<Long, AdminUserRespDTO> userMap = CollUtil.isNotEmpty(userIds)
                 ? adminUserApi.getUserMap(userIds) : Collections.emptyMap();
+        Map<Long, DeptRespDTO> deptMap = cart.getDeptId() == null
+                ? Collections.emptyMap()
+                : deptApi.getDeptMap(Collections.singleton(cart.getDeptId()));
         return BeanUtils.toBean(cart, ErpSaleCartRespVO.class,
-                vo -> fillRelation(vo, items, productMap, warehouseMap, customerMap, userMap));
+                vo -> fillRelation(vo, items, productMap, warehouseMap, customerMap, quoteMap, userMap, deptMap));
     }
 
     private void fillRelation(ErpSaleCartRespVO vo, List<ErpSaleCartItemDO> items,
                               Map<Long, ErpProductRespVO> productMap,
                               Map<Long, ErpWarehouseDO> warehouseMap,
                               Map<Long, ErpCustomerDO> customerMap,
-                              Map<Long, AdminUserRespDTO> userMap) {
+                              Map<Long, ErpSaleQuoteDO> quoteMap,
+                              Map<Long, AdminUserRespDTO> userMap,
+                              Map<Long, DeptRespDTO> deptMap) {
         List<ErpSaleCartItemDO> safeItems = CollUtil.isEmpty(items) ? Collections.emptyList() : items;
         List<ErpSaleCartRespVO.Item> respItems = BeanUtils.toBean(safeItems, ErpSaleCartRespVO.Item.class,
                 item -> MapUtils.findAndThen(productMap, item.getProductId(), product -> item.setProductName(product.getName())
@@ -308,7 +341,21 @@ public class ErpSaleCartController {
                 MapUtils.findAndThen(warehouseMap, item.getWarehouseId(), warehouse -> item.setWarehouseName(warehouse.getName())));
         vo.setProductNames(CollUtil.join(vo.getItems(), "，", ErpSaleCartRespVO.Item::getProductName));
         if (vo.getCustomerId() != null) {
-            MapUtils.findAndThen(customerMap, vo.getCustomerId(), customer -> vo.setCustomerName(customer.getName()));
+            MapUtils.findAndThen(customerMap, vo.getCustomerId(), customer -> {
+                vo.setCustomerName(customer.getName());
+                vo.setCustomerCode(customer.getCode());
+            });
+        }
+        if (ErpSaleBizSourceTypeEnum.QUOTE.getType().equals(vo.getSourceType())) {
+            if (vo.getSourceNo() != null && !vo.getSourceNo().isEmpty()) {
+                vo.setQuoteNo(vo.getSourceNo());
+            }
+            MapUtils.findAndThen(quoteMap, vo.getSourceId(), quote -> {
+                if (vo.getQuoteNo() == null || vo.getQuoteNo().isEmpty()) {
+                    vo.setQuoteNo(quote.getNo());
+                }
+                vo.setVehiclePlateNo(quote.getVehiclePlateNo());
+            });
         }
         if (vo.getCreator() != null) {
             MapUtils.findAndThen(userMap, parseLongSafely(vo.getCreator()), user -> vo.setCreatorName(user.getNickname()));
@@ -318,6 +365,9 @@ public class ErpSaleCartController {
         }
         if (vo.getSaleUserId() != null) {
             MapUtils.findAndThen(userMap, vo.getSaleUserId(), user -> vo.setSaleUserName(user.getNickname()));
+        }
+        if (vo.getDeptId() != null) {
+            MapUtils.findAndThen(deptMap, vo.getDeptId(), dept -> vo.setDeptName(dept.getName()));
         }
     }
 

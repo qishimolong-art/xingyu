@@ -41,6 +41,9 @@ public class ErpSaleReturnRespVO {
     @Schema(description = "退货员编号", example = "1888")
     private Long saleUserId;
 
+    @Schema(description = "退货员名称", example = "管理员")
+    private String saleUserName;
+
     @Schema(description = "退货模式", example = "0")
     private Integer returnMode;
 
@@ -99,6 +102,8 @@ public class ErpSaleReturnRespVO {
 
     @Schema(description = "部门编号", example = "1")
     private Long deptId;
+    @Schema(description = "部门名称", example = "总公司")
+    private String deptName;
 
     @Schema(description = "优先级别", example = "正常件")
     private String priority;

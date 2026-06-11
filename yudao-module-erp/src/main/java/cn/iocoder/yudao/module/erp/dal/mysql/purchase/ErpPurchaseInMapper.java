@@ -9,6 +9,7 @@ import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseInDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseInItemDO;
 import cn.iocoder.yudao.module.erp.enums.ErpAuditStatus;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
+import com.baomidou.mybatisplus.core.toolkit.support.SFunction;
 import org.apache.ibatis.annotations.Mapper;
 
 import java.util.List;
@@ -32,8 +33,7 @@ public interface ErpPurchaseInMapper extends BaseMapperX<ErpPurchaseInDO> {
                 .likeIfPresent(ErpPurchaseInDO::getRemark, reqVO.getRemark())
                 .eqIfPresent(ErpPurchaseInDO::getCreator, reqVO.getCreator())
                 .eqIfPresent(ErpPurchaseInDO::getAccountId, reqVO.getAccountId())
-                .likeIfPresent(ErpPurchaseInDO::getOrderNo, reqVO.getOrderNo())
-                .orderByDesc(ErpPurchaseInDO::getId);
+                .likeIfPresent(ErpPurchaseInDO::getOrderNo, reqVO.getOrderNo());
         // 付款状态。为什么需要 t. 的原因，是因为联表查询时，需要指定表名，不然会报字段不存在的错误
         if (Objects.equals(reqVO.getPaymentStatus(), ErpPurchaseInPageReqVO.PAYMENT_STATUS_NONE)) {
             query.eq(ErpPurchaseInDO::getPaymentPrice, 0);
@@ -63,7 +63,118 @@ public interface ErpPurchaseInMapper extends BaseMapperX<ErpPurchaseInDO> {
                     .eq(reqVO.getProductId() != null, ErpPurchaseInItemDO::getProductId, reqVO.getProductId())
                     .groupBy(ErpPurchaseInDO::getId); // 避免 1 对多查询，产生相同的 1
         }
+        orderByIfPresent(query, reqVO);
         return selectJoinPage(reqVO, ErpPurchaseInDO.class, query);
+    }
+
+    static void orderByIfPresent(MPJLambdaWrapperX<ErpPurchaseInDO> wrapper, ErpPurchaseInPageReqVO reqVO) {
+        String direction = normalizeOrderDirection(reqVO.getOrderDirection());
+        if (direction == null) {
+            wrapper.orderByDesc(ErpPurchaseInDO::getId);
+            return;
+        }
+        String expression = getOrderExpression(reqVO.getOrderField());
+        if (expression != null) {
+            wrapper.last("ORDER BY " + expression + " " + direction + ", t.id DESC");
+            return;
+        }
+        SFunction<ErpPurchaseInDO, ?> orderColumn = getOrderColumn(reqVO.getOrderField());
+        if (orderColumn == null) {
+            wrapper.orderByDesc(ErpPurchaseInDO::getId);
+            return;
+        }
+        if ("ASC".equals(direction)) {
+            wrapper.orderByAsc(orderColumn);
+        } else {
+            wrapper.orderByDesc(orderColumn);
+        }
+    }
+
+    static String normalizeOrderDirection(String orderDirection) {
+        if (orderDirection == null) {
+            return null;
+        }
+        if ("asc".equalsIgnoreCase(orderDirection.trim())) {
+            return "ASC";
+        }
+        if ("desc".equalsIgnoreCase(orderDirection.trim())) {
+            return "DESC";
+        }
+        return null;
+    }
+
+    static String getOrderExpression(String orderField) {
+        if (orderField == null) {
+            return null;
+        }
+        switch (orderField.trim()) {
+            case "paymentStatus":
+                return "(CASE WHEN COALESCE(t.payment_price, 0) = 0 THEN 0 "
+                        + "WHEN t.payment_price = t.total_price THEN 2 ELSE 1 END)";
+            case "itemCount":
+                return "(SELECT COUNT(1) FROM erp_purchase_in_items pii "
+                        + "WHERE pii.deleted = 0 AND pii.tenant_id = t.tenant_id AND pii.in_id = t.id)";
+            default:
+                return null;
+        }
+    }
+
+    static SFunction<ErpPurchaseInDO, ?> getOrderColumn(String orderField) {
+        if (orderField == null) {
+            return null;
+        }
+        switch (orderField.trim()) {
+            case "no":
+                return ErpPurchaseInDO::getNo;
+            case "factoryOrderNo":
+                return ErpPurchaseInDO::getFactoryOrderNo;
+            case "createTime":
+                return ErpPurchaseInDO::getCreateTime;
+            case "status":
+                return ErpPurchaseInDO::getStatus;
+            case "supplierId":
+            case "supplierName":
+                return ErpPurchaseInDO::getSupplierId;
+            case "totalProductPrice":
+                return ErpPurchaseInDO::getTotalProductPrice;
+            case "discountPrice":
+                return ErpPurchaseInDO::getDiscountPrice;
+            case "totalPrice":
+                return ErpPurchaseInDO::getTotalPrice;
+            case "totalCount":
+                return ErpPurchaseInDO::getTotalCount;
+            case "creator":
+            case "creatorName":
+                return ErpPurchaseInDO::getCreator;
+            case "purchaser":
+            case "purchaserName":
+                return ErpPurchaseInDO::getPurchaser;
+            case "deptId":
+            case "deptName":
+                return ErpPurchaseInDO::getDeptId;
+            case "orderMethod":
+                return ErpPurchaseInDO::getOrderMethod;
+            case "settleMethod":
+                return ErpPurchaseInDO::getSettleMethod;
+            case "invoiceType":
+                return ErpPurchaseInDO::getInvoiceType;
+            case "orderNo":
+                return ErpPurchaseInDO::getOrderNo;
+            case "remark":
+                return ErpPurchaseInDO::getRemark;
+            case "transportMethod":
+                return ErpPurchaseInDO::getTransportMethod;
+            case "freightType1":
+                return ErpPurchaseInDO::getFreightType1;
+            case "totalFreight1":
+                return ErpPurchaseInDO::getTotalFreight1;
+            case "freightType2":
+                return ErpPurchaseInDO::getFreightType2;
+            case "totalFreight2":
+                return ErpPurchaseInDO::getTotalFreight2;
+            default:
+                return null;
+        }
     }
 
     default int updateByIdAndStatus(Long id, Integer status, ErpPurchaseInDO updateObj) {

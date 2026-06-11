@@ -7,6 +7,7 @@ import cn.iocoder.yudao.framework.common.pojo.PageParam;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.common.util.collection.MapUtils;
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
+import cn.iocoder.yudao.framework.datapermission.core.util.DataPermissionUtils;
 import cn.iocoder.yudao.framework.excel.core.util.ExcelUtils;
 import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpProductRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.stock.ErpStockAdjustReqVO;
@@ -133,9 +134,10 @@ public class ErpStockController {
             return PageResult.empty(pageResult.getTotal());
         }
         Set<Long> productIds = convertSet(pageResult.getList(), ErpStockDO::getProductId);
-        Map<Long, ErpProductRespVO> productMap = productService.getProductVOMap(productIds);
-        Map<Long, ErpWarehouseDO> warehouseMap = warehouseService.getWarehouseMap(
-                convertSet(pageResult.getList(), ErpStockDO::getWarehouseId));
+        Map<Long, ErpProductRespVO> productMap = DataPermissionUtils.executeIgnore(
+                () -> productService.getProductVOMap(productIds));
+        Map<Long, ErpWarehouseDO> warehouseMap = DataPermissionUtils.executeIgnore(
+                () -> warehouseService.getWarehouseMap(convertSet(pageResult.getList(), ErpStockDO::getWarehouseId)));
         // 聚合数据：占用数 / 未入数
         Map<Long, BigDecimal> occupiedMap = saleOrderItemMapper.selectOccupiedCountMap(productIds);
         Map<Long, DeptRespDTO> deptMap = deptApi.getDeptMap(convertSet(warehouseMap.values(), ErpWarehouseDO::getDeptId));
@@ -149,6 +151,7 @@ public class ErpStockController {
             MapUtils.findAndThen(productMap, stock.getProductId(), product -> {
                 stock.setProductName(product.getName())
                         .setCategoryName(product.getCategoryName())
+                        .setUnitId(product.getUnitId())
                         .setUnitName(product.getUnitName());
                 // 扩展字段
                 stock.setProductCode(product.getCode())
@@ -164,6 +167,7 @@ public class ErpStockController {
                         .setOeNumber(product.getOeNumber())
                         .setFactoryCode(product.getFactoryCode())
                         .setProductBarCode(product.getBarCode())
+                        .setSalePrice(product.getSalePrice())
                         .setReferencePrice(product.getReferencePrice())
                         .setRetailPrice(product.getRetailPrice())
                         .setBackupPrice1(product.getBackupPrice1())

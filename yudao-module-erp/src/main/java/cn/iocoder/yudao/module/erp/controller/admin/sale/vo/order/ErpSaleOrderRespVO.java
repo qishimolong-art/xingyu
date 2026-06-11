@@ -41,6 +41,7 @@ public class ErpSaleOrderRespVO {
     private Long saleUserId;
 
     private Long deptId;
+    private String deptName;
 
     @Schema(description = "下单时间", requiredMode = Schema.RequiredMode.REQUIRED)
     @ExcelProperty("下单时间")
@@ -87,6 +88,14 @@ public class ErpSaleOrderRespVO {
     @Schema(description = "创建时间", requiredMode = Schema.RequiredMode.REQUIRED)
     @ExcelProperty("创建时间")
     private LocalDateTime createTime;
+
+    @Schema(description = "更新人", example = "1")
+    private String updater;
+    @Schema(description = "更新人名称", example = "管理员")
+    private String updaterName;
+
+    @Schema(description = "更新时间")
+    private LocalDateTime updateTime;
 
     @Schema(description = "订单项列表", requiredMode = Schema.RequiredMode.REQUIRED)
     private List<Item> items;

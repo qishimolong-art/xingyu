@@ -8,6 +8,7 @@ import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.common.util.collection.MapUtils;
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
 import cn.iocoder.yudao.framework.excel.core.util.ExcelUtils;
+import cn.iocoder.yudao.module.erp.controller.admin.common.ErpAuditStatusRequestValidator;
 import cn.iocoder.yudao.module.erp.controller.admin.common.vo.ErpExportFieldRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.imports.ErpPurchaseImportResultRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.priceadjust.ErpPurchasePriceAdjustExportRespVO;
@@ -189,9 +190,10 @@ public class ErpPurchasePriceAdjustController {
 
     @PutMapping("/update-status")
     @Operation(summary = "更新采购调价单状态")
-    @PreAuthorize("@ss.hasPermission('erp:purchase-price-adjust:update')")
+    @PreAuthorize("@ss.hasPermission('erp:purchase-price-adjust:update-status')")
     public CommonResult<Boolean> updatePurchasePriceAdjustStatus(@RequestParam("id") Long id,
                                                                  @RequestParam("status") Integer status) {
+        ErpAuditStatusRequestValidator.validateApproveStatus(status);
         priceAdjustService.updatePurchasePriceAdjustStatus(id, status);
         return success(true);
     }
@@ -217,6 +219,7 @@ public class ErpPurchasePriceAdjustController {
         List<ErpPurchasePriceAdjustItemDO> items = priceAdjustService.getPurchasePriceAdjustItemListByAdjustId(id);
         ErpPurchasePriceAdjustRespVO respVO = BeanUtils.toBean(adjust, ErpPurchasePriceAdjustRespVO.class);
         respVO.setItems(BeanUtils.toBean(items, ErpPurchasePriceAdjustRespVO.Item.class));
+        fillTotalPrices(respVO, items);
         if (adjust.getSupplierId() != null) {
             ErpSupplierDO supplier = supplierService.getSupplier(adjust.getSupplierId());
             if (supplier != null) {
@@ -263,6 +266,7 @@ public class ErpPurchasePriceAdjustController {
             } catch (NumberFormatException ignored) {
             }
         }
+        fillApproverName(respVO, userMap);
         fieldPermissionMasker.mask("erp_purchase_price_adjust", respVO);
         return success(respVO);
     }
@@ -338,7 +342,9 @@ public class ErpPurchasePriceAdjustController {
         Set<Long> deptIds = convertSet(pageResult.getList(), ErpPurchasePriceAdjustDO::getDeptId);
         Map<Long, DeptRespDTO> deptMap = deptIds.isEmpty() ? new java.util.HashMap<>() : deptApi.getDeptMap(deptIds);
         return BeanUtils.toBean(pageResult, ErpPurchasePriceAdjustRespVO.class, respVO -> {
-            respVO.setItems(BeanUtils.toBean(itemMap.get(respVO.getId()), ErpPurchasePriceAdjustRespVO.Item.class));
+            List<ErpPurchasePriceAdjustItemDO> items = itemMap.get(respVO.getId());
+            respVO.setItems(BeanUtils.toBean(items, ErpPurchasePriceAdjustRespVO.Item.class));
+            fillTotalPrices(respVO, items);
             MapUtils.findAndThen(supplierMap, respVO.getSupplierId(), s -> respVO.setSupplierName(s.getName()));
             MapUtils.findAndThen(deptMap, respVO.getDeptId(), d -> respVO.setDeptName(d.getName()));
             if (respVO.getAdjuster() != null) {
@@ -358,7 +364,37 @@ public class ErpPurchasePriceAdjustController {
                 } catch (NumberFormatException ignored) {
                 }
             }
+            fillApproverName(respVO, userMap);
         });
+    }
+
+    private void fillTotalPrices(ErpPurchasePriceAdjustRespVO respVO, List<ErpPurchasePriceAdjustItemDO> items) {
+        BigDecimal originalTotalPrice = BigDecimal.ZERO;
+        BigDecimal adjustedTotalPrice = BigDecimal.ZERO;
+        if (CollUtil.isNotEmpty(items)) {
+            for (ErpPurchasePriceAdjustItemDO item : items) {
+                BigDecimal count = nullToZero(item.getCount());
+                originalTotalPrice = originalTotalPrice.add(nullToZero(item.getOldPrice()).multiply(count));
+                adjustedTotalPrice = adjustedTotalPrice.add(nullToZero(item.getNewPrice()).multiply(count));
+            }
+        }
+        respVO.setOriginalTotalPrice(originalTotalPrice);
+        respVO.setAdjustedTotalPrice(adjustedTotalPrice);
+    }
+
+    private void fillApproverName(ErpPurchasePriceAdjustRespVO respVO, Map<Long, AdminUserRespDTO> userMap) {
+        if (respVO.getApproveTime() == null || respVO.getUpdater() == null) {
+            return;
+        }
+        try {
+            long updaterId = Long.parseLong(respVO.getUpdater());
+            MapUtils.findAndThen(userMap, updaterId, u -> respVO.setApproverName(u.getNickname()));
+        } catch (NumberFormatException ignored) {
+        }
+    }
+
+    private static BigDecimal nullToZero(BigDecimal value) {
+        return value == null ? BigDecimal.ZERO : value;
     }
 
     private List<ErpPurchasePriceAdjustExportRespVO> buildExportList(List<ErpPurchasePriceAdjustRespVO> list) {

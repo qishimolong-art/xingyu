@@ -6,6 +6,7 @@ import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.common.util.collection.MapUtils;
 import cn.iocoder.yudao.framework.common.util.number.NumberUtils;
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
+import cn.iocoder.yudao.module.erp.controller.admin.common.ErpAuditStatusRequestValidator;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.accounting.vo.otherreceivable.ErpOtherReceivablePageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.accounting.vo.otherreceivable.ErpOtherReceivableRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.accounting.vo.otherreceivable.ErpOtherReceivableSaveReqVO;
@@ -67,6 +68,7 @@ public class ErpOtherReceivableController {
     @PreAuthorize("@ss.hasPermission('erp:other-receivable:update-status')")
     public CommonResult<Boolean> updateOtherReceivableStatus(@RequestParam("id") Long id,
                                                              @RequestParam("status") Integer status) {
+        ErpAuditStatusRequestValidator.validateApproveStatus(status);
         otherReceivableService.updateOtherReceivableStatus(id, status);
         return success(true);
     }

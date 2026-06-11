@@ -33,6 +33,8 @@ public class ErpSaleQuoteRespVO {
     @Schema(description = "业务员名称")
     private String saleUserName;
     private Long deptId;
+    @Schema(description = "部门名称")
+    private String deptName;
     @Schema(description = "报价时间")
     @ExcelProperty("报价时间")
     private LocalDateTime quoteTime;

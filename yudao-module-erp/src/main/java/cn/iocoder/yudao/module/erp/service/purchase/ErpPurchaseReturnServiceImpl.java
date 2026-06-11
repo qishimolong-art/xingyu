@@ -14,7 +14,6 @@ import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.returns.ErpPurch
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.returns.ErpPurchaseReturnPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.returns.ErpPurchaseReturnSaveReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.supplier.ErpSupplierPageReqVO;
-import cn.iocoder.yudao.module.erp.dal.dataobject.finance.accounting.ErpVoucherDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.accounting.ErpVoucherItemDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.product.ErpProductDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseInItemDO;
@@ -22,14 +21,11 @@ import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseOrderDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseReturnDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseReturnItemDO;
 import cn.iocoder.yudao.module.erp.dal.mysql.product.ErpProductMapper;
-import cn.iocoder.yudao.module.erp.dal.mysql.finance.accounting.ErpVoucherItemMapper;
-import cn.iocoder.yudao.module.erp.dal.mysql.finance.accounting.ErpVoucherMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.purchase.ErpPurchaseInItemMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.purchase.ErpPurchaseReturnItemMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.purchase.ErpPurchaseReturnMapper;
 import cn.iocoder.yudao.module.erp.dal.redis.no.ErpNoRedisDAO;
 import cn.iocoder.yudao.module.erp.enums.ErpAuditStatus;
-import cn.iocoder.yudao.module.erp.enums.finance.accounting.ErpVoucherAuditStatusEnum;
 import cn.iocoder.yudao.module.erp.enums.finance.accounting.ErpVoucherTypeEnum;
 import cn.iocoder.yudao.module.erp.enums.finance.accounting.ErpVoucherSourceBizTypeEnum;
 import cn.iocoder.yudao.module.erp.enums.purchase.ErpPurchaseReturnModeEnum;
@@ -42,7 +38,6 @@ import cn.iocoder.yudao.module.erp.service.product.ErpProductService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpStockRecordService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpWarehouseService;
 import cn.iocoder.yudao.module.erp.service.stock.bo.ErpStockRecordCreateReqBO;
-import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -111,10 +106,6 @@ public class ErpPurchaseReturnServiceImpl implements ErpPurchaseReturnService {
     private ErpVoucherService voucherService;
     @Resource
     private ErpBookOpenService bookOpenService;
-    @Resource
-    private ErpVoucherMapper voucherMapper;
-    @Resource
-    private ErpVoucherItemMapper voucherItemMapper;
     @Resource
     private ErpOperateLogService operateLogService;
     @Resource
@@ -237,8 +228,8 @@ public class ErpPurchaseReturnServiceImpl implements ErpPurchaseReturnService {
     private void calculateTotalPrice(ErpPurchaseReturnDO purchaseReturn, List<ErpPurchaseReturnItemDO> purchaseReturnItems) {
         purchaseReturn.setTotalCount(getSumValue(purchaseReturnItems, ErpPurchaseReturnItemDO::getCount, BigDecimal::add));
         purchaseReturn.setTotalProductPrice(getSumValue(purchaseReturnItems, ErpPurchaseReturnItemDO::getTotalPrice, BigDecimal::add, BigDecimal.ZERO));
-        purchaseReturn.setTotalTaxPrice(getSumValue(purchaseReturnItems, ErpPurchaseReturnItemDO::getTaxPrice, BigDecimal::add, BigDecimal.ZERO));
-        purchaseReturn.setTotalPrice(purchaseReturn.getTotalProductPrice().add(purchaseReturn.getTotalTaxPrice()));
+        purchaseReturn.setTotalTaxPrice(BigDecimal.ZERO);
+        purchaseReturn.setTotalPrice(purchaseReturn.getTotalProductPrice());
         if (purchaseReturn.getDiscountPercent() == null) {
             purchaseReturn.setDiscountPercent(BigDecimal.ZERO);
         }
@@ -266,52 +257,34 @@ public class ErpPurchaseReturnServiceImpl implements ErpPurchaseReturnService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void updatePurchaseReturnStatus(Long id, Integer status) {
-        boolean approve = ErpAuditStatus.APPROVE.getStatus().equals(status);
+        if (!ErpAuditStatus.APPROVE.getStatus().equals(status)) {
+            throw exception(PURCHASE_RETURN_PROCESS_FAIL);
+        }
         // 1.1 校验存在
         ErpPurchaseReturnDO purchaseReturn = validatePurchaseReturnExists(id);
         // 1.2 校验状态
-        if (purchaseReturn.getStatus().equals(status)) {
-            throw exception(approve ? PURCHASE_RETURN_APPROVE_FAIL : PURCHASE_RETURN_PROCESS_FAIL);
-        }
-        // 1.3 校验已退款
-        if (!approve && purchaseReturn.getRefundPrice().compareTo(BigDecimal.ZERO) > 0) {
-            throw exception(PURCHASE_RETURN_PROCESS_FAIL_EXISTS_REFUND);
-        }
-        // 1.4 反审：先校验关联凭证未审核，并删除未审核凭证
-        if (!approve) {
-            List<ErpVoucherDO> related = voucherMapper.selectListByBiz(
-                    ErpVoucherSourceBizTypeEnum.PURCHASE_RETURN.getType(), id);
-            for (ErpVoucherDO v : related) {
-                if (ErpVoucherAuditStatusEnum.APPROVE.getStatus().equals(v.getAuditStatus())) {
-                    throw exception(BIZ_PROCESS_FAIL_VOUCHER_APPROVED, v.getVoucherNo());
-                }
-                voucherMapper.deleteById(v.getId());
-                voucherItemMapper.delete(new LambdaQueryWrapper<ErpVoucherItemDO>()
-                        .eq(ErpVoucherItemDO::getVoucherId, v.getId()));
-            }
+        if (!ErpAuditStatus.PROCESS.getStatus().equals(purchaseReturn.getStatus())) {
+            throw exception(PURCHASE_RETURN_APPROVE_FAIL);
         }
 
         // 2. 更新状态
         int updateCount = purchaseReturnMapper.updateByIdAndStatus(id, purchaseReturn.getStatus(),
-                new ErpPurchaseReturnDO().setStatus(status));
+                new ErpPurchaseReturnDO().setStatus(ErpAuditStatus.APPROVE.getStatus()));
         if (updateCount == 0) {
-            throw exception(approve ? PURCHASE_RETURN_APPROVE_FAIL : PURCHASE_RETURN_PROCESS_FAIL);
+            throw exception(PURCHASE_RETURN_APPROVE_FAIL);
         }
 
         // 3. 变更库存
         List<ErpPurchaseReturnItemDO> purchaseReturnItems = purchaseReturnItemMapper.selectListByReturnId(id);
-        Integer bizType = approve ? ErpStockRecordBizTypeEnum.PURCHASE_RETURN.getType()
-                : ErpStockRecordBizTypeEnum.PURCHASE_RETURN_CANCEL.getType();
         purchaseReturnItems.forEach(purchaseReturnItem -> {
-            BigDecimal count = approve ? purchaseReturnItem.getCount().negate() : purchaseReturnItem.getCount();
             stockRecordService.createStockRecord(new ErpStockRecordCreateReqBO(
-                    purchaseReturnItem.getProductId(), purchaseReturnItem.getWarehouseId(), count,
-                    bizType, purchaseReturnItem.getReturnId(), purchaseReturnItem.getId(), purchaseReturn.getNo(),
+                    purchaseReturnItem.getProductId(), purchaseReturnItem.getWarehouseId(), purchaseReturnItem.getCount().negate(),
+                    ErpStockRecordBizTypeEnum.PURCHASE_RETURN.getType(), purchaseReturnItem.getReturnId(), purchaseReturnItem.getId(), purchaseReturn.getNo(),
                     purchaseReturnItem.getProductPrice(), purchaseReturn.getReturnTime()));
         });
 
         // 4. 审批通过：自动生成采购红字凭证（受系统开账配置控制）
-        if (approve && bookOpenService.isVoucherTypeEnabled(
+        if (bookOpenService.isVoucherTypeEnabled(
                 purchaseReturn.getReturnTime().toLocalDate(),
                 ErpVoucherTypeEnum.PURCHASE.getType())) {
             String supplierName = supplierService.getSupplier(purchaseReturn.getSupplierId()).getName();
@@ -325,7 +298,7 @@ public class ErpPurchaseReturnServiceImpl implements ErpPurchaseReturnService {
                     "采购退货 - " + supplierName,
                     items);
         }
-        operateLogService.recordStatus(ERP_PURCHASE_RETURN_TYPE, id, purchaseReturn.getNo(), approve);
+        operateLogService.recordStatus(ERP_PURCHASE_RETURN_TYPE, id, purchaseReturn.getNo(), true);
     }
 
     @Override
@@ -370,13 +343,9 @@ public class ErpPurchaseReturnServiceImpl implements ErpPurchaseReturnService {
         // 2. 转化为 ErpPurchaseReturnItemDO 列表
         return convertList(list, o -> BeanUtils.toBean(o, ErpPurchaseReturnItemDO.class, item -> {
             item.setProductUnitId(productMap.get(item.getProductId()).getUnitId());
+            item.setTaxPercent(null);
+            item.setTaxPrice(BigDecimal.ZERO);
             item.setTotalPrice(MoneyUtils.priceMultiply(item.getProductPrice(), item.getCount()));
-            if (item.getTotalPrice() == null) {
-                return;
-            }
-            if (item.getTaxPercent() != null) {
-                item.setTaxPrice(MoneyUtils.priceMultiplyPercent(item.getTotalPrice(), item.getTaxPercent()));
-            }
         }));
     }
 

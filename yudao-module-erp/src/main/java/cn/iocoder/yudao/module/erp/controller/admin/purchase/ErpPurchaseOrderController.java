@@ -8,6 +8,7 @@ import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.common.util.collection.MapUtils;
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
 import cn.iocoder.yudao.framework.excel.core.util.ExcelUtils;
+import cn.iocoder.yudao.module.erp.controller.admin.common.ErpAuditStatusRequestValidator;
 import cn.iocoder.yudao.module.erp.controller.admin.common.vo.ErpExportFieldRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpProductRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.order.ErpPurchaseOrderDetailImportExcelVO;
@@ -140,6 +141,7 @@ public class ErpPurchaseOrderController {
     @PreAuthorize("@ss.hasPermission('erp:purchase-order:update-status')")
     public CommonResult<Boolean> updatePurchaseOrderStatus(@RequestParam("id") Long id,
                                                            @RequestParam("status") Integer status) {
+        ErpAuditStatusRequestValidator.validateApproveStatus(status);
         purchaseOrderService.updatePurchaseOrderStatus(id, status);
         return success(true);
     }
@@ -168,6 +170,7 @@ public class ErpPurchaseOrderController {
         Set<Long> userIds = new HashSet<>();
         addUserId(userIds, purchaseOrder.getCreator());
         addUserId(userIds, purchaseOrder.getUpdater());
+        addUserId(userIds, purchaseOrder.getPurchaser());
         Map<Long, AdminUserRespDTO> userMap = adminUserApi.getUserMap(userIds);
         DeptRespDTO dept = purchaseOrder.getDeptId() == null ? null : deptApi.getDept(purchaseOrder.getDeptId());
         ErpPurchaseOrderRespVO respVO = BeanUtils.toBean(purchaseOrder, ErpPurchaseOrderRespVO.class, purchaseOrderVO -> {
@@ -349,6 +352,7 @@ public class ErpPurchaseOrderController {
         pageResult.getList().forEach(purchaseOrder -> {
             addUserId(userIds, purchaseOrder.getCreator());
             addUserId(userIds, purchaseOrder.getUpdater());
+            addUserId(userIds, purchaseOrder.getPurchaser());
         });
         Map<Long, AdminUserRespDTO> userMap = adminUserApi.getUserMap(userIds);
         return BeanUtils.toBean(pageResult, ErpPurchaseOrderRespVO.class, purchaseOrder -> {
@@ -473,12 +477,22 @@ public class ErpPurchaseOrderController {
         if (updaterId != null) {
             MapUtils.findAndThen(userMap, updaterId, user -> purchaseOrder.setUpdaterName(user.getNickname()));
         }
+        Long purchaserId = purchaseOrder.getPurchaser();
+        if (purchaserId != null) {
+            MapUtils.findAndThen(userMap, purchaserId, user -> purchaseOrder.setPurchaserName(user.getNickname()));
+        }
     }
 
     private void addUserId(Set<Long> userIds, String userId) {
         Long parsed = parseUserId(userId);
         if (parsed != null) {
             userIds.add(parsed);
+        }
+    }
+
+    private void addUserId(Set<Long> userIds, Long userId) {
+        if (userId != null) {
+            userIds.add(userId);
         }
     }
 

@@ -13,63 +13,72 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
 
-@Schema(description = "管理后台 - ERP 库存调拨单新增/修改 Request VO")
+@Schema(description = "Admin - ERP stock move create/update Request VO")
 @Data
 public class ErpStockMoveSaveReqVO {
 
-    @Schema(description = "调拨编号", requiredMode = Schema.RequiredMode.REQUIRED, example = "11756")
+    @Schema(description = "Stock move id", example = "11756")
     private Long id;
 
-    @Schema(description = "客户编号", example = "3113")
+    @Schema(description = "Customer id", example = "3113")
     private Long customerId;
 
-    @Schema(description = "所属部门", example = "100")
+    @Schema(description = "Department id", example = "100")
     private Long deptId;
 
-    @Schema(description = "调拨时间", requiredMode = Schema.RequiredMode.REQUIRED)
-    @NotNull(message = "调拨时间不能为空")
+    @Schema(description = "Move time", requiredMode = Schema.RequiredMode.REQUIRED)
+    @NotNull(message = "Move time cannot be empty")
     private LocalDateTime moveTime;
 
-    @Schema(description = "备注", example = "随便")
+    @Schema(description = "Source type", example = "30")
+    private Integer sourceType;
+
+    @Schema(description = "Source document id", example = "1024")
+    private Long sourceId;
+
+    @Schema(description = "Source document no", example = "SC202606100001")
+    private String sourceNo;
+
+    @Schema(description = "Remark", example = "remark")
     private String remark;
 
-    @Schema(description = "附件 URL", example = "https://www.iocoder.cn/1.doc")
+    @Schema(description = "Attachment URL", example = "https://www.iocoder.cn/1.doc")
     private String fileUrl;
 
-    @Schema(description = "调拨项列表", requiredMode = Schema.RequiredMode.REQUIRED)
-    @NotEmpty(message = "调拨项列表不能为空")
+    @Schema(description = "Move items", requiredMode = Schema.RequiredMode.REQUIRED)
+    @NotEmpty(message = "Move items cannot be empty")
     @Valid
     private List<Item> items;
 
     @Data
     public static class Item {
 
-        @Schema(description = "调拨项编号", example = "11756")
+        @Schema(description = "Move item id", example = "11756")
         private Long id;
 
-        @Schema(description = "调出仓库编号", requiredMode = Schema.RequiredMode.REQUIRED, example = "3113")
-        @NotNull(message = "调出仓库编号不能为空")
+        @Schema(description = "From warehouse id", requiredMode = Schema.RequiredMode.REQUIRED, example = "3113")
+        @NotNull(message = "From warehouse id cannot be empty")
         private Long fromWarehouseId;
 
-        @Schema(description = "调入仓库编号", requiredMode = Schema.RequiredMode.REQUIRED, example = "888")
-        @NotNull(message = "调入仓库编号不能为空")
+        @Schema(description = "To warehouse id", requiredMode = Schema.RequiredMode.REQUIRED, example = "888")
+        @NotNull(message = "To warehouse id cannot be empty")
         private Long toWarehouseId;
 
-        @Schema(description = "产品编号", requiredMode = Schema.RequiredMode.REQUIRED, example = "3113")
-        @NotNull(message = "产品编号不能为空")
+        @Schema(description = "Product id", requiredMode = Schema.RequiredMode.REQUIRED, example = "3113")
+        @NotNull(message = "Product id cannot be empty")
         private Long productId;
 
-        @Schema(description = "产品单价", example = "100.00")
+        @Schema(description = "Product price", example = "100.00")
         private BigDecimal productPrice;
 
-        @Schema(description = "产品数量", requiredMode = Schema.RequiredMode.REQUIRED, example = "100.00")
-        @NotNull(message = "产品数量不能为空")
+        @Schema(description = "Product count", requiredMode = Schema.RequiredMode.REQUIRED, example = "100.00")
+        @NotNull(message = "Product count cannot be empty")
         private BigDecimal count;
 
-        @Schema(description = "备注", example = "随便")
+        @Schema(description = "Remark", example = "remark")
         private String remark;
 
-        @AssertTrue(message = "调出、调仓仓库不能相同")
+        @AssertTrue(message = "调出仓库和调入仓库不能相同")
         @JsonIgnore
         public boolean isWarehouseValid() {
             return ObjectUtil.notEqual(fromWarehouseId, toWarehouseId);

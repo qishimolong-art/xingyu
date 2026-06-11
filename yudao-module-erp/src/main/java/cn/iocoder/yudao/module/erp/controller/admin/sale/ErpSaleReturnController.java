@@ -8,6 +8,7 @@ import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.common.util.collection.MapUtils;
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
 import cn.iocoder.yudao.framework.excel.core.util.ExcelUtils;
+import cn.iocoder.yudao.module.erp.controller.admin.common.ErpAuditStatusRequestValidator;
 import cn.iocoder.yudao.module.erp.controller.admin.common.vo.ErpExportFieldRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpProductRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnExportRespVO;
@@ -31,6 +32,8 @@ import cn.iocoder.yudao.module.erp.service.sale.ErpSaleFieldPermissionMasker;
 import cn.iocoder.yudao.module.erp.service.sale.ErpSaleReturnService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpStockService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpWarehouseService;
+import cn.iocoder.yudao.module.system.api.dept.DeptApi;
+import cn.iocoder.yudao.module.system.api.dept.dto.DeptRespDTO;
 import cn.iocoder.yudao.module.system.api.user.AdminUserApi;
 import cn.iocoder.yudao.module.system.api.user.dto.AdminUserRespDTO;
 import io.swagger.v3.oas.annotations.Operation;
@@ -96,6 +99,8 @@ public class ErpSaleReturnController {
 
     @Resource
     private AdminUserApi adminUserApi;
+    @Resource
+    private DeptApi deptApi;
 
     @PostMapping("/create")
     @Operation(summary = "创建销售退货")
@@ -116,7 +121,8 @@ public class ErpSaleReturnController {
     @Operation(summary = "更新销售退货的状态")
     @PreAuthorize("@ss.hasPermission('erp:sale-return:update-status')")
     public CommonResult<Boolean> updateSaleReturnStatus(@RequestParam("id") Long id,
-                                                      @RequestParam("status") Integer status) {
+                                                        @RequestParam("status") Integer status) {
+        ErpAuditStatusRequestValidator.validateApproveStatus(status);
         saleReturnService.updateSaleReturnStatus(id, status);
         return success(true);
     }
@@ -144,8 +150,12 @@ public class ErpSaleReturnController {
                 convertSet(saleReturnItemList, ErpSaleReturnItemDO::getProductId));
         Set<Long> userIds = convertUserIds(Collections.singletonList(saleReturn));
         Map<Long, AdminUserRespDTO> userMap = userIds.isEmpty() ? Collections.emptyMap() : adminUserApi.getUserMap(userIds);
+        DeptRespDTO dept = saleReturn.getDeptId() == null ? null : deptApi.getDept(saleReturn.getDeptId());
         ErpSaleReturnRespVO respVO = BeanUtils.toBean(saleReturn, ErpSaleReturnRespVO.class, saleReturnVO -> {
             fillUserNames(saleReturnVO, userMap);
+            if (dept != null) {
+                saleReturnVO.setDeptName(dept.getName());
+            }
             saleReturnVO.setItems(BeanUtils.toBean(saleReturnItemList, ErpSaleReturnRespVO.Item.class, item -> {
                 ErpStockDO stock = stockService.getStock(item.getProductId(), item.getWarehouseId());
                 item.setStockCount(stock != null ? stock.getCount() : BigDecimal.ZERO);
@@ -238,6 +248,7 @@ public class ErpSaleReturnController {
         // 1.4 管理员信息
         Set<Long> userIds = convertUserIds(pageResult.getList());
         Map<Long, AdminUserRespDTO> userMap = userIds.isEmpty() ? Collections.emptyMap() : adminUserApi.getUserMap(userIds);
+        Map<Long, DeptRespDTO> deptMap = deptApi.getDeptMap(convertSet(pageResult.getList(), ErpSaleReturnDO::getDeptId));
         // 2. 开始拼接
         return BeanUtils.toBean(pageResult, ErpSaleReturnRespVO.class, saleReturn -> {
             saleReturn.setItems(BeanUtils.toBean(saleReturnItemMap.get(saleReturn.getId()), ErpSaleReturnRespVO.Item.class,
@@ -247,6 +258,7 @@ public class ErpSaleReturnController {
             saleReturn.setProductNames(CollUtil.join(saleReturn.getItems(), "，", ErpSaleReturnRespVO.Item::getProductName));
             MapUtils.findAndThen(customerMap, saleReturn.getCustomerId(), supplier -> saleReturn.setCustomerName(supplier.getName()));
             fillUserNames(saleReturn, userMap);
+            MapUtils.findAndThen(deptMap, saleReturn.getDeptId(), dept -> saleReturn.setDeptName(dept.getName()));
             saleReturn.getItems().forEach(item ->
                     MapUtils.findAndThen(warehouseMap, item.getWarehouseId(), warehouse -> item.setWarehouseName(warehouse.getName())));
         });
@@ -289,9 +301,10 @@ public class ErpSaleReturnController {
 
     private Set<Long> convertUserIds(List<ErpSaleReturnDO> saleReturns) {
         Set<Long> userIds = convertSetByFlatMap(saleReturns, saleReturn -> {
-            List<Long> ids = new ArrayList<>(2);
+            List<Long> ids = new ArrayList<>(3);
             parseUserId(saleReturn.getCreator(), ids);
             parseUserId(saleReturn.getUpdater(), ids);
+            ids.add(saleReturn.getSaleUserId());
             return ids.stream();
         });
         userIds.remove(null);
@@ -306,6 +319,9 @@ public class ErpSaleReturnController {
         Long updaterId = parseUserId(saleReturn.getUpdater());
         if (updaterId != null) {
             MapUtils.findAndThen(userMap, updaterId, user -> saleReturn.setUpdaterName(user.getNickname()));
+        }
+        if (saleReturn.getSaleUserId() != null) {
+            MapUtils.findAndThen(userMap, saleReturn.getSaleUserId(), user -> saleReturn.setSaleUserName(user.getNickname()));
         }
     }
 

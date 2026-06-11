@@ -64,4 +64,13 @@ public class ErpSaleReturnPageReqVO extends PageParam {
     @Schema(description = "销售退货编号数组")
     private List<Long> ids;
 
+    @Schema(description = "Sort field, supports: no, refundStatus, settlementStatus, settlementStatusText, returnTime, "
+            + "status, customerId, customerName, returnMode, orderMethod, totalCount, settleMethod, deliveryMethod, "
+            + "totalProductPrice, discountPrice, totalPrice, invoiceType, billNo, logisticsCompany, deptId, deptName, "
+            + "saleUserId, saleUserName, creator, creatorName, priority, remark")
+    private String orderField;
+
+    @Schema(description = "Sort direction: asc or desc")
+    private String orderDirection;
+
 }

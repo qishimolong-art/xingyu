@@ -8,6 +8,7 @@ import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.common.util.collection.MapUtils;
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
 import cn.iocoder.yudao.framework.excel.core.util.ExcelUtils;
+import cn.iocoder.yudao.module.erp.controller.admin.common.ErpAuditStatusRequestValidator;
 import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpProductRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.order.ErpSaleOrderExportRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.order.ErpSaleOrderImportExcelVO;
@@ -26,6 +27,8 @@ import cn.iocoder.yudao.module.erp.service.sale.ErpCustomerService;
 import cn.iocoder.yudao.module.erp.service.sale.ErpSaleFieldPermissionMasker;
 import cn.iocoder.yudao.module.erp.service.sale.ErpSaleOrderService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpStockService;
+import cn.iocoder.yudao.module.system.api.dept.DeptApi;
+import cn.iocoder.yudao.module.system.api.dept.dto.DeptRespDTO;
 import cn.iocoder.yudao.module.system.api.user.AdminUserApi;
 import cn.iocoder.yudao.module.system.api.user.dto.AdminUserRespDTO;
 import io.swagger.v3.oas.annotations.Operation;
@@ -45,11 +48,13 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import static cn.iocoder.yudao.framework.apilog.core.enums.OperateTypeEnum.EXPORT;
 import static cn.iocoder.yudao.framework.common.pojo.CommonResult.success;
 import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.convertMultiMap;
 import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.convertSet;
+import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.convertSetByFlatMap;
 
 @Tag(name = "管理后台 - ERP 销售订单")
 @RestController
@@ -82,17 +87,19 @@ public class ErpSaleOrderController {
 
     @Resource
     private AdminUserApi adminUserApi;
+    @Resource
+    private DeptApi deptApi;
 
     @PostMapping("/create")
     @Operation(summary = "创建销售订单")
-    @PreAuthorize("@ss.hasPermission('erp:sale-out:create')")
+    @PreAuthorize("@ss.hasPermission('erp:sale-order:create')")
     public CommonResult<Long> createSaleOrder(@Valid @RequestBody ErpSaleOrderSaveReqVO createReqVO) {
         return success(saleOrderService.createSaleOrder(createReqVO));
     }
 
     @PutMapping("/update")
     @Operation(summary = "更新销售订单")
-    @PreAuthorize("@ss.hasPermission('erp:sale-out:update')")
+    @PreAuthorize("@ss.hasPermission('erp:sale-order:update')")
     public CommonResult<Boolean> updateSaleOrder(@Valid @RequestBody ErpSaleOrderSaveReqVO updateReqVO) {
         saleOrderService.updateSaleOrder(updateReqVO);
         return success(true);
@@ -100,9 +107,10 @@ public class ErpSaleOrderController {
 
     @PutMapping("/update-status")
     @Operation(summary = "更新销售订单的状态")
-    @PreAuthorize("@ss.hasPermission('erp:sale-out:update-status')")
+    @PreAuthorize("@ss.hasPermission('erp:sale-order:update-status')")
     public CommonResult<Boolean> updateSaleOrderStatus(@RequestParam("id") Long id,
                                                       @RequestParam("status") Integer status) {
+        ErpAuditStatusRequestValidator.validateApproveStatus(status);
         saleOrderService.updateSaleOrderStatus(id, status);
         return success(true);
     }
@@ -110,7 +118,7 @@ public class ErpSaleOrderController {
     @DeleteMapping("/delete")
     @Operation(summary = "删除销售订单")
     @Parameter(name = "ids", description = "编号数组", required = true)
-    @PreAuthorize("@ss.hasPermission('erp:sale-out:delete')")
+    @PreAuthorize("@ss.hasPermission('erp:sale-order:delete')")
     public CommonResult<Boolean> deleteSaleOrder(@RequestParam("ids") List<Long> ids) {
         saleOrderService.deleteSaleOrder(ids);
         return success(true);
@@ -119,7 +127,7 @@ public class ErpSaleOrderController {
     @GetMapping("/get")
     @Operation(summary = "获得销售订单")
     @Parameter(name = "id", description = "编号", required = true, example = "1024")
-    @PreAuthorize("@ss.hasPermission('erp:sale-out:query')")
+    @PreAuthorize("@ss.hasPermission('erp:sale-order:query')")
     public CommonResult<ErpSaleOrderRespVO> getSaleOrder(@RequestParam("id") Long id) {
         ErpSaleOrderDO saleOrder = saleOrderService.getSaleOrder(id);
         if (saleOrder == null) {
@@ -128,21 +136,29 @@ public class ErpSaleOrderController {
         List<ErpSaleOrderItemDO> saleOrderItemList = saleOrderService.getSaleOrderItemListByOrderId(id);
         Map<Long, ErpProductRespVO> productMap = productService.getProductVOMap(
                 convertSet(saleOrderItemList, ErpSaleOrderItemDO::getProductId));
-        ErpSaleOrderRespVO respVO = BeanUtils.toBean(saleOrder, ErpSaleOrderRespVO.class, saleOrderVO ->
+        Set<Long> userIds = convertUserIds(Collections.singletonList(saleOrder));
+        Map<Long, AdminUserRespDTO> userMap = CollUtil.isEmpty(userIds) ? Collections.emptyMap() : adminUserApi.getUserMap(userIds);
+        DeptRespDTO dept = saleOrder.getDeptId() == null ? null : deptApi.getDept(saleOrder.getDeptId());
+        ErpSaleOrderRespVO respVO = BeanUtils.toBean(saleOrder, ErpSaleOrderRespVO.class, saleOrderVO -> {
+                fillAuditNames(saleOrderVO, userMap);
+                if (dept != null) {
+                    saleOrderVO.setDeptName(dept.getName());
+                }
                 saleOrderVO.setItems(BeanUtils.toBean(saleOrderItemList, ErpSaleOrderRespVO.Item.class, item -> {
                     BigDecimal stockCount = stockService.getStockCount(item.getProductId());
                     item.setStockCount(stockCount != null ? stockCount : BigDecimal.ZERO);
                     MapUtils.findAndThen(productMap, item.getProductId(), product -> item.setProductName(product.getName())
                             .setProductBarCode(product.getBarCode()).setProductUnitName(product.getUnitName())
                             .setProductCode(product.getCode()));
-                })));
+                }));
+        });
         fieldPermissionMasker.maskFormWithItems(FIELD_PERMISSION_MODULE, respVO);
         return success(respVO);
     }
 
     @GetMapping("/page")
     @Operation(summary = "获得销售订单分页")
-    @PreAuthorize("@ss.hasPermission('erp:sale-out:query')")
+    @PreAuthorize("@ss.hasPermission('erp:sale-order:query')")
     public CommonResult<PageResult<ErpSaleOrderRespVO>> getSaleOrderPage(@Valid ErpSaleOrderPageReqVO pageReqVO) {
         PageResult<ErpSaleOrderDO> pageResult = saleOrderService.getSaleOrderPage(pageReqVO);
         PageResult<ErpSaleOrderRespVO> respResult = buildSaleOrderVOPageResult(pageResult);
@@ -152,7 +168,7 @@ public class ErpSaleOrderController {
 
     @GetMapping("/export-excel")
     @Operation(summary = "导出销售订单 Excel")
-    @PreAuthorize("@ss.hasPermission('erp:sale-out:export')")
+    @PreAuthorize("@ss.hasPermission('erp:sale-order:export')")
     @ApiAccessLog(operateType = EXPORT)
     public void exportSaleOrderExcel(@Valid ErpSaleOrderPageReqVO pageReqVO,
                                     HttpServletResponse response) throws IOException {
@@ -182,7 +198,7 @@ public class ErpSaleOrderController {
 
     @PostMapping("/import")
     @Operation(summary = "导入销售订单明细")
-    @PreAuthorize("@ss.hasPermission('erp:sale-out:create')")
+    @PreAuthorize("@ss.hasPermission('erp:sale-order:create')")
     public CommonResult<ErpSaleOrderImportRespVO> importSaleOrder(@RequestParam("file") MultipartFile file) throws Exception {
         List<ErpSaleOrderImportExcelVO> list = ExcelUtils.read(file, ErpSaleOrderImportExcelVO.class);
         return success(saleOrderService.parseImportData(list));
@@ -203,8 +219,10 @@ public class ErpSaleOrderController {
         Map<Long, ErpCustomerDO> customerMap = customerService.getCustomerMap(
                 convertSet(pageResult.getList(), ErpSaleOrderDO::getCustomerId));
         // 1.4 管理员信息
-        Map<Long, AdminUserRespDTO> userMap = adminUserApi.getUserMap(
-                convertSet(pageResult.getList(), saleOrder -> Long.parseLong(saleOrder.getCreator())));
+        Set<Long> userIds = convertUserIds(pageResult.getList());
+        Map<Long, AdminUserRespDTO> userMap = CollUtil.isEmpty(userIds) ? Collections.emptyMap() : adminUserApi.getUserMap(userIds);
+        Map<Long, DeptRespDTO> deptMap = deptApi.getDeptMap(
+                convertSet(pageResult.getList(), ErpSaleOrderDO::getDeptId));
         // 2. 开始拼接
         return BeanUtils.toBean(pageResult, ErpSaleOrderRespVO.class, saleOrder -> {
             saleOrder.setItems(BeanUtils.toBean(saleOrderItemMap.get(saleOrder.getId()), ErpSaleOrderRespVO.Item.class,
@@ -213,8 +231,49 @@ public class ErpSaleOrderController {
                             .setProductCode(product.getCode()))));
             saleOrder.setProductNames(CollUtil.join(saleOrder.getItems(), "，", ErpSaleOrderRespVO.Item::getProductName));
             MapUtils.findAndThen(customerMap, saleOrder.getCustomerId(), supplier -> saleOrder.setCustomerName(supplier.getName()));
-            MapUtils.findAndThen(userMap, Long.parseLong(saleOrder.getCreator()), user -> saleOrder.setCreatorName(user.getNickname()));
+            fillAuditNames(saleOrder, userMap);
+            MapUtils.findAndThen(deptMap, saleOrder.getDeptId(), dept -> saleOrder.setDeptName(dept.getName()));
         });
+    }
+
+    private Set<Long> convertUserIds(List<ErpSaleOrderDO> saleOrders) {
+        Set<Long> userIds = convertSetByFlatMap(saleOrders, saleOrder -> {
+            List<Long> ids = new ArrayList<>(2);
+            parseUserId(saleOrder.getCreator(), ids);
+            parseUserId(saleOrder.getUpdater(), ids);
+            return ids.stream();
+        });
+        userIds.remove(null);
+        return userIds;
+    }
+
+    private void fillAuditNames(ErpSaleOrderRespVO saleOrder, Map<Long, AdminUserRespDTO> userMap) {
+        Long creatorId = parseUserId(saleOrder.getCreator());
+        if (creatorId != null) {
+            MapUtils.findAndThen(userMap, creatorId, user -> saleOrder.setCreatorName(user.getNickname()));
+        }
+        Long updaterId = parseUserId(saleOrder.getUpdater());
+        if (updaterId != null) {
+            MapUtils.findAndThen(userMap, updaterId, user -> saleOrder.setUpdaterName(user.getNickname()));
+        }
+    }
+
+    private Long parseUserId(String userId) {
+        if (userId == null) {
+            return null;
+        }
+        try {
+            return Long.parseLong(userId);
+        } catch (NumberFormatException ignored) {
+            return null;
+        }
+    }
+
+    private void parseUserId(String userId, List<Long> userIds) {
+        Long parsedUserId = parseUserId(userId);
+        if (parsedUserId != null) {
+            userIds.add(parsedUserId);
+        }
     }
 
     private List<ErpSaleOrderExportRespVO> buildSaleOrderExportList(List<ErpSaleOrderRespVO> list) {

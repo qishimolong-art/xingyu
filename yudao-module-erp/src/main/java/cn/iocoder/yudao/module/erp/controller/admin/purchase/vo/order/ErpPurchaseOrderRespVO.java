@@ -155,6 +155,9 @@ public class ErpPurchaseOrderRespVO {
     @Schema(description = "采购员（用户ID）", example = "1")
     private Long purchaser;
 
+    @Schema(description = "采购员名称", example = "张三")
+    private String purchaserName;
+
     @Schema(description = "部门ID", example = "100")
     private Long deptId;
 

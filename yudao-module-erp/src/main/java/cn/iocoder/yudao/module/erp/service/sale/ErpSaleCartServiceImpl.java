@@ -1,6 +1,7 @@
 package cn.iocoder.yudao.module.erp.service.sale;
 
 import cn.hutool.core.collection.CollUtil;
+import cn.iocoder.yudao.framework.common.exception.ServiceException;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.common.enums.CommonStatusEnum;
 import cn.iocoder.yudao.framework.common.util.number.MoneyUtils;
@@ -13,6 +14,7 @@ import cn.iocoder.yudao.framework.security.core.util.SecurityFrameworkUtils;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartConvertQuoteReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartSaveReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartSubmitRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartUpdateBasicReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartUpdateFileReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.out.ErpSaleOutSaveReqVO;
@@ -56,6 +58,7 @@ import java.util.LinkedHashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -114,7 +117,6 @@ public class ErpSaleCartServiceImpl implements ErpSaleCartService {
         clearHiddenFields(createReqVO);
         clearHiddenItemFields(createReqVO.getItems());
         List<ErpSaleCartItemDO> items = validateSaleCartItems(createReqVO.getItems());
-        validateStockEnough(items);
         customerService.validateCustomer(createReqVO.getCustomerId());
         if (createReqVO.getAccountId() != null) {
             accountService.validateAccount(createReqVO.getAccountId());
@@ -141,6 +143,13 @@ public class ErpSaleCartServiceImpl implements ErpSaleCartService {
 
     @Override
     @Transactional(rollbackFor = Exception.class)
+    public ErpSaleCartSubmitRespVO createAndSubmitSaleCart(ErpSaleCartSaveReqVO createReqVO) {
+        Long id = createSaleCart(createReqVO);
+        return submitSaleCart(id);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
     public void updateSaleCart(ErpSaleCartSaveReqVO updateReqVO) {
         ErpSaleCartDO cart = validateSaleCartExists(updateReqVO.getId());
         if (!ErpSaleCartStatusEnum.PROCESS.getStatus().equals(cart.getStatus())) {
@@ -149,7 +158,6 @@ public class ErpSaleCartServiceImpl implements ErpSaleCartService {
         preserveHiddenFields(updateReqVO, cart);
         preserveHiddenItemFields(updateReqVO.getItems(), saleCartItemMapper.selectListByCartId(updateReqVO.getId()));
         List<ErpSaleCartItemDO> items = validateSaleCartItems(updateReqVO.getItems());
-        validateStockEnough(items);
         customerService.validateCustomer(updateReqVO.getCustomerId());
         if (updateReqVO.getAccountId() != null) {
             accountService.validateAccount(updateReqVO.getAccountId());
@@ -197,9 +205,18 @@ public class ErpSaleCartServiceImpl implements ErpSaleCartService {
     }
 
     @Override
-    public void submitSaleCart(Long id) {
+    @Transactional(rollbackFor = Exception.class)
+    public ErpSaleCartSubmitRespVO submitSaleCart(Long id) {
+        ErpSaleCartDO cart = validateSaleCartExists(id);
+        List<ErpSaleCartItemDO> items = saleCartItemMapper.selectListByCartId(id);
+        ErpSaleCartSubmitRespVO result = buildSubmitResult(cart, items);
+        if (CollUtil.isNotEmpty(result.getShortageItems())) {
+            throw buildStockShortageException(result.getShortageItems());
+        }
         updateStatus(id, ErpSaleCartStatusEnum.PROCESS.getStatus(), ErpSaleCartStatusEnum.SUBMITTED.getStatus(),
                 SALE_CART_SUBMIT_FAIL);
+        result.setStatus(ErpSaleCartStatusEnum.SUBMITTED.getStatus());
+        return result;
     }
 
     @Override
@@ -299,11 +316,8 @@ public class ErpSaleCartServiceImpl implements ErpSaleCartService {
         }
         List<ErpSaleCartDO> carts = saleCartMapper.selectBatchIds(ids);
         carts.forEach(cart -> {
-            if (ErpSaleCartStatusEnum.GENERATED_SALE_OUT.getStatus().equals(cart.getStatus())) {
-                throw exception(SALE_CART_DELETE_FAIL_FINAL_APPROVED, cart.getNo());
-            }
-            if (ErpSaleCartStatusEnum.CONVERTED_QUOTE.getStatus().equals(cart.getStatus())) {
-                throw exception(SALE_CART_DELETE_FAIL_CONVERTED, cart.getNo());
+            if (!ErpSaleCartStatusEnum.PROCESS.getStatus().equals(cart.getStatus())) {
+                throw exception(SALE_CART_DELETE_FAIL_NOT_DRAFT, cart.getNo());
             }
         });
         saleCartMapper.deleteBatchIds(ids);
@@ -350,7 +364,7 @@ public class ErpSaleCartServiceImpl implements ErpSaleCartService {
             outItem.setProductUnitId(item.getProductUnitId());
             outItem.setProductPrice(Boolean.TRUE.equals(item.getGiftFlag()) ? BigDecimal.ZERO : item.getProductPrice());
             outItem.setCount(item.getCount());
-            outItem.setTaxPercent(item.getTaxPercent());
+
             outItem.setGiftFlag(Boolean.TRUE.equals(item.getGiftFlag()));
             outItem.setRemark(item.getRemark());
             return outItem;
@@ -378,22 +392,12 @@ public class ErpSaleCartServiceImpl implements ErpSaleCartService {
             if (Boolean.TRUE.equals(item.getGiftFlag())) {
                 item.setProductPrice(BigDecimal.ZERO);
             }
+            item.setTaxPercent(null);
+            item.setTaxPrice(BigDecimal.ZERO);
             item.setTotalPrice(MoneyUtils.priceMultiply(item.getProductPrice(), item.getCount()));
             ErpStockDO stock = stockService != null ? stockService.getStock(item.getProductId(), item.getWarehouseId()) : null;
             item.setStockCount(stock != null ? stock.getCount() : BigDecimal.ZERO);
-            if (item.getTotalPrice() != null && item.getTaxPercent() != null) {
-                item.setTaxPrice(MoneyUtils.priceMultiplyPercent(item.getTotalPrice(), item.getTaxPercent()));
-            }
         }));
-    }
-
-    private void validateStockEnough(List<ErpSaleCartItemDO> items) {
-        items.forEach(item -> {
-            BigDecimal stockCount = item.getStockCount() != null ? item.getStockCount() : BigDecimal.ZERO;
-            if (stockCount.compareTo(item.getCount()) < 0) {
-                throw exception(STOCK_COUNT_NEGATIVE2, item.getProductId(), item.getWarehouseId());
-            }
-        });
     }
 
     private void validateStockEnoughRealtime(List<ErpSaleCartItemDO> items) {
@@ -406,11 +410,93 @@ public class ErpSaleCartServiceImpl implements ErpSaleCartService {
         });
     }
 
+    private ErpSaleCartSubmitRespVO buildSubmitResult(ErpSaleCartDO cart, List<ErpSaleCartItemDO> items) {
+        ErpSaleCartSubmitRespVO result = new ErpSaleCartSubmitRespVO();
+        result.setId(cart.getId());
+        result.setNo(cart.getNo());
+        result.setStatus(cart.getStatus());
+        List<ErpSaleCartSubmitRespVO.ShortageItem> shortages = calculateStockShortages(items);
+        result.setShortageItems(shortages);
+        result.setStockInsufficient(CollUtil.isNotEmpty(shortages));
+        return result;
+    }
+
+    private ServiceException buildStockShortageException(List<ErpSaleCartSubmitRespVO.ShortageItem> shortages) {
+        StringBuilder message = new StringBuilder("库存不足，无法提交：");
+        int displayCount = Math.min(shortages.size(), 3);
+        for (int i = 0; i < displayCount; i++) {
+            ErpSaleCartSubmitRespVO.ShortageItem shortage = shortages.get(i);
+            if (i > 0) {
+                message.append("；");
+            }
+            message.append("产品【").append(defaultIfBlank(shortage.getProductName(), shortage.getProductCode(), shortage.getProductId()))
+                    .append("】仓库【").append(defaultIfBlank(shortage.getWarehouseName(), null, shortage.getWarehouseId()))
+                    .append("】需求数量【").append(formatCount(shortage.getRequiredCount()))
+                    .append("】当前库存【").append(formatCount(shortage.getStockCount()))
+                    .append("】缺少数量【").append(formatCount(shortage.getShortageCount()))
+                    .append("】");
+        }
+        if (shortages.size() > displayCount) {
+            message.append("；等 ").append(shortages.size()).append(" 项商品库存不足");
+        }
+        return new ServiceException(STOCK_COUNT_NEGATIVE2.getCode(), message.toString());
+    }
+
+    private String defaultIfBlank(String first, String second, Long id) {
+        if (first != null && !first.isEmpty()) {
+            return first;
+        }
+        if (second != null && !second.isEmpty()) {
+            return second;
+        }
+        return String.valueOf(id);
+    }
+
+    private String formatCount(BigDecimal count) {
+        return count != null ? count.stripTrailingZeros().toPlainString() : "0";
+    }
+
+    private List<ErpSaleCartSubmitRespVO.ShortageItem> calculateStockShortages(List<ErpSaleCartItemDO> items) {
+        if (CollUtil.isEmpty(items)) {
+            return Collections.emptyList();
+        }
+        Map<ProductWarehouseKey, BigDecimal> requiredCountMap = new LinkedHashMap<>();
+        items.forEach(item -> {
+            ProductWarehouseKey key = new ProductWarehouseKey(item.getProductId(), item.getWarehouseId());
+            requiredCountMap.merge(key, item.getCount() != null ? item.getCount() : BigDecimal.ZERO, BigDecimal::add);
+        });
+        Set<Long> productIds = requiredCountMap.keySet().stream().map(ProductWarehouseKey::getProductId).collect(Collectors.toSet());
+        Set<Long> warehouseIds = requiredCountMap.keySet().stream().map(ProductWarehouseKey::getWarehouseId).collect(Collectors.toSet());
+        Map<Long, ErpProductRespVO> productMap = productService.getProductVOMap(productIds);
+        Map<Long, ErpWarehouseDO> warehouseMap = warehouseService.getWarehouseMap(warehouseIds);
+        List<ErpSaleCartSubmitRespVO.ShortageItem> shortages = new ArrayList<>();
+        requiredCountMap.forEach((key, requiredCount) -> {
+            ErpStockDO stock = stockService.getStock(key.getProductId(), key.getWarehouseId());
+            BigDecimal stockCount = stock != null && stock.getCount() != null ? stock.getCount() : BigDecimal.ZERO;
+            if (stockCount.compareTo(requiredCount) >= 0) {
+                return;
+            }
+            ErpProductRespVO product = productMap.get(key.getProductId());
+            ErpWarehouseDO warehouse = warehouseMap.get(key.getWarehouseId());
+            ErpSaleCartSubmitRespVO.ShortageItem shortage = new ErpSaleCartSubmitRespVO.ShortageItem();
+            shortage.setProductId(key.getProductId());
+            shortage.setProductCode(product != null ? product.getCode() : null);
+            shortage.setProductName(product != null ? product.getName() : null);
+            shortage.setWarehouseId(key.getWarehouseId());
+            shortage.setWarehouseName(warehouse != null ? warehouse.getName() : null);
+            shortage.setRequiredCount(requiredCount);
+            shortage.setStockCount(stockCount);
+            shortage.setShortageCount(requiredCount.subtract(stockCount));
+            shortages.add(shortage);
+        });
+        return shortages;
+    }
+
     private void calculateTotalPrice(ErpSaleCartDO cart, List<ErpSaleCartItemDO> items) {
         cart.setTotalCount(getSumValue(items, ErpSaleCartItemDO::getCount, BigDecimal::add));
         cart.setTotalProductPrice(getSumValue(items, ErpSaleCartItemDO::getTotalPrice, BigDecimal::add, BigDecimal.ZERO));
-        cart.setTotalTaxPrice(getSumValue(items, ErpSaleCartItemDO::getTaxPrice, BigDecimal::add, BigDecimal.ZERO));
-        cart.setTotalPrice(cart.getTotalProductPrice().add(cart.getTotalTaxPrice()));
+        cart.setTotalTaxPrice(BigDecimal.ZERO);
+        cart.setTotalPrice(cart.getTotalProductPrice());
         if (cart.getDiscountPercent() == null) {
             cart.setDiscountPercent(BigDecimal.ZERO);
         }
@@ -424,8 +510,8 @@ public class ErpSaleCartServiceImpl implements ErpSaleCartService {
     private void calculateQuoteTotalPrice(ErpSaleQuoteDO quote, List<ErpSaleQuoteItemDO> items) {
         quote.setTotalCount(getSumValue(items, ErpSaleQuoteItemDO::getCount, BigDecimal::add));
         quote.setTotalProductPrice(getSumValue(items, ErpSaleQuoteItemDO::getTotalPrice, BigDecimal::add, BigDecimal.ZERO));
-        quote.setTotalTaxPrice(getSumValue(items, ErpSaleQuoteItemDO::getTaxPrice, BigDecimal::add, BigDecimal.ZERO));
-        quote.setTotalPrice(quote.getTotalProductPrice().add(quote.getTotalTaxPrice()));
+        quote.setTotalTaxPrice(BigDecimal.ZERO);
+        quote.setTotalPrice(quote.getTotalProductPrice());
         if (quote.getDiscountPercent() == null) {
             quote.setDiscountPercent(BigDecimal.ZERO);
         }
@@ -605,6 +691,43 @@ public class ErpSaleCartServiceImpl implements ErpSaleCartService {
         if (operateLogService != null) {
             operateLogService.record(ERP_SALE_CART_TYPE, subType, id, action, no);
         }
+    }
+
+    private static final class ProductWarehouseKey {
+
+        private final Long productId;
+        private final Long warehouseId;
+
+        private ProductWarehouseKey(Long productId, Long warehouseId) {
+            this.productId = productId;
+            this.warehouseId = warehouseId;
+        }
+
+        private Long getProductId() {
+            return productId;
+        }
+
+        private Long getWarehouseId() {
+            return warehouseId;
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            if (this == o) {
+                return true;
+            }
+            if (!(o instanceof ProductWarehouseKey)) {
+                return false;
+            }
+            ProductWarehouseKey that = (ProductWarehouseKey) o;
+            return Objects.equals(productId, that.productId) && Objects.equals(warehouseId, that.warehouseId);
+        }
+
+        @Override
+        public int hashCode() {
+            return Objects.hash(productId, warehouseId);
+        }
+
     }
 
 }

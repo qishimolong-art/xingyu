@@ -9,6 +9,7 @@ import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.order.ErpSaleOrderSa
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleOrderDO;
 import cn.iocoder.yudao.module.erp.service.product.ErpProductService;
 import cn.iocoder.yudao.module.erp.service.sale.ErpCustomerService;
+import cn.iocoder.yudao.module.erp.service.sale.ErpSaleFieldPermissionMasker;
 import cn.iocoder.yudao.module.erp.service.sale.ErpSaleOrderService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpStockService;
 import cn.iocoder.yudao.module.system.api.user.AdminUserApi;
@@ -25,10 +26,12 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.when;
 
 /**
@@ -47,6 +50,8 @@ public class ErpSaleOrderControllerTest extends BaseMockitoUnitTest {
     private ErpProductService productService;
     @Mock
     private ErpCustomerService customerService;
+    @Mock
+    private ErpSaleFieldPermissionMasker fieldPermissionMasker;
     @Mock
     private AdminUserApi adminUserApi;
 
@@ -69,7 +74,7 @@ public class ErpSaleOrderControllerTest extends BaseMockitoUnitTest {
         Method method = ErpSaleOrderController.class.getMethod("createSaleOrder", ErpSaleOrderSaveReqVO.class);
         PreAuthorize anno = method.getAnnotation(PreAuthorize.class);
         assertNotNull(anno);
-        assertTrue(anno.value().contains("erp:sale-out:create"));
+        assertTrue(anno.value().contains("erp:sale-order:create"));
     }
 
     // ========== updateSaleOrder ==========
@@ -91,7 +96,7 @@ public class ErpSaleOrderControllerTest extends BaseMockitoUnitTest {
         Method method = ErpSaleOrderController.class.getMethod("updateSaleOrder", ErpSaleOrderSaveReqVO.class);
         PreAuthorize anno = method.getAnnotation(PreAuthorize.class);
         assertNotNull(anno);
-        assertTrue(anno.value().contains("erp:sale-out:update"));
+        assertTrue(anno.value().contains("erp:sale-order:update"));
     }
 
     // ========== updateSaleOrderStatus ==========
@@ -110,7 +115,13 @@ public class ErpSaleOrderControllerTest extends BaseMockitoUnitTest {
         Method method = ErpSaleOrderController.class.getMethod("updateSaleOrderStatus", Long.class, Integer.class);
         PreAuthorize anno = method.getAnnotation(PreAuthorize.class);
         assertNotNull(anno);
-        assertTrue(anno.value().contains("erp:sale-out:update-status"));
+        assertTrue(anno.value().contains("erp:sale-order:update-status"));
+    }
+
+    @Test
+    public void testUpdateSaleOrderStatus_rejectsProcessStatus() {
+        assertThrows(RuntimeException.class, () -> controller.updateSaleOrderStatus(11L, 10));
+        verify(saleOrderService, never()).updateSaleOrderStatus(any(), any());
     }
 
     // ========== deleteSaleOrder ==========
@@ -131,7 +142,7 @@ public class ErpSaleOrderControllerTest extends BaseMockitoUnitTest {
         Method method = ErpSaleOrderController.class.getMethod("deleteSaleOrder", List.class);
         PreAuthorize anno = method.getAnnotation(PreAuthorize.class);
         assertNotNull(anno);
-        assertTrue(anno.value().contains("erp:sale-out:delete"));
+        assertTrue(anno.value().contains("erp:sale-order:delete"));
     }
 
     // ========== getSaleOrder ==========
@@ -152,7 +163,7 @@ public class ErpSaleOrderControllerTest extends BaseMockitoUnitTest {
         Method method = ErpSaleOrderController.class.getMethod("getSaleOrder", Long.class);
         PreAuthorize anno = method.getAnnotation(PreAuthorize.class);
         assertNotNull(anno);
-        assertTrue(anno.value().contains("erp:sale-out:query"));
+        assertTrue(anno.value().contains("erp:sale-order:query"));
     }
 
     // ========== getSaleOrderPage ==========
@@ -177,7 +188,7 @@ public class ErpSaleOrderControllerTest extends BaseMockitoUnitTest {
         Method method = ErpSaleOrderController.class.getMethod("getSaleOrderPage", ErpSaleOrderPageReqVO.class);
         PreAuthorize anno = method.getAnnotation(PreAuthorize.class);
         assertNotNull(anno);
-        assertTrue(anno.value().contains("erp:sale-out:query"));
+        assertTrue(anno.value().contains("erp:sale-order:query"));
     }
 
     // ========== exportSaleOrderExcel ==========
@@ -188,7 +199,7 @@ public class ErpSaleOrderControllerTest extends BaseMockitoUnitTest {
                 ErpSaleOrderPageReqVO.class, javax.servlet.http.HttpServletResponse.class);
         PreAuthorize anno = method.getAnnotation(PreAuthorize.class);
         assertNotNull(anno);
-        assertTrue(anno.value().contains("erp:sale-out:export"));
+        assertTrue(anno.value().contains("erp:sale-order:export"));
     }
 
 }

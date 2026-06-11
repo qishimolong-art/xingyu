@@ -10,6 +10,7 @@ import cn.iocoder.yudao.framework.common.util.collection.MapUtils;
 import cn.iocoder.yudao.framework.common.util.number.NumberUtils;
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
 import cn.iocoder.yudao.framework.excel.core.util.ExcelUtils;
+import cn.iocoder.yudao.module.erp.controller.admin.common.ErpAuditStatusRequestValidator;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.receivable.vo.otherincome.ErpReceivableOtherIncomePageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.receivable.vo.otherincome.ErpReceivableOtherIncomeExportRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.receivable.vo.otherincome.ErpReceivableOtherIncomeRespVO;
@@ -94,6 +95,7 @@ public class ErpReceivableOtherIncomeController {
     @PreAuthorize("@ss.hasPermission('erp:receivable-other-income:update-status')")
     public CommonResult<Boolean> updateStatus(@RequestParam("id") Long id,
                                               @RequestParam("status") Integer status) {
+        ErpAuditStatusRequestValidator.validateApproveStatus(status);
         otherIncomeService.updateOtherIncomeStatus(id, status);
         return success(true);
     }

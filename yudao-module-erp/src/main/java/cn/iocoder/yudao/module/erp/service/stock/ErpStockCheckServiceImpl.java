@@ -6,9 +6,13 @@ import cn.iocoder.yudao.framework.common.util.number.MoneyUtils;
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.check.ErpStockCheckPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.check.ErpStockCheckSaveReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.stock.ErpStockAdjustReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.product.ErpProductDO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockCheckDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockCheckItemDO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpWarehouseDO;
+import cn.iocoder.yudao.module.erp.dal.mysql.stock.ErpStockMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.stock.ErpStockCheckItemMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.stock.ErpStockCheckMapper;
 import cn.iocoder.yudao.module.erp.dal.redis.no.ErpNoRedisDAO;
@@ -23,6 +27,8 @@ import org.springframework.validation.annotation.Validated;
 
 import javax.annotation.Resource;
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashSet;
@@ -52,6 +58,8 @@ public class ErpStockCheckServiceImpl implements ErpStockCheckService {
     private ErpStockCheckMapper stockCheckMapper;
     @Resource
     private ErpStockCheckItemMapper stockCheckItemMapper;
+    @Resource
+    private ErpStockMapper stockMapper;
     @Resource
     private ErpStockFieldPermissionMasker fieldPermissionMasker;
 
@@ -93,6 +101,38 @@ public class ErpStockCheckServiceImpl implements ErpStockCheckService {
 
     @Override
     @Transactional(rollbackFor = Exception.class)
+    public BigDecimal createAndApproveStockAdjustCheck(ErpStockAdjustReqVO reqVO) {
+        ErpStockDO stock = stockMapper.selectByProductIdAndWarehouseId(reqVO.getProductId(), reqVO.getWarehouseId());
+        BigDecimal stockCount = stock != null && stock.getCount() != null ? stock.getCount() : BigDecimal.ZERO;
+        BigDecimal actualCount = reqVO.getTargetCount();
+        BigDecimal count = actualCount.subtract(stockCount);
+
+        ErpProductDO product = productService.getProduct(reqVO.getProductId());
+        BigDecimal productPrice = getStockAdjustProductPrice(stock, product);
+        String remark = buildStockAdjustRemark(reqVO);
+
+        ErpStockCheckSaveReqVO.Item item = new ErpStockCheckSaveReqVO.Item();
+        item.setWarehouseId(reqVO.getWarehouseId());
+        item.setProductId(reqVO.getProductId());
+        item.setProductPrice(productPrice);
+        item.setStockCount(stockCount);
+        item.setActualCount(actualCount);
+        item.setCount(count);
+        item.setRemark(remark);
+
+        ErpStockCheckSaveReqVO createReqVO = new ErpStockCheckSaveReqVO();
+        createReqVO.setCheckTime(LocalDateTime.now());
+        ErpWarehouseDO warehouse = warehouseService.getWarehouse(reqVO.getWarehouseId());
+        createReqVO.setDeptId(warehouse != null ? warehouse.getDeptId() : null);
+        createReqVO.setRemark(remark);
+        createReqVO.setItems(new ArrayList<>(Collections.singletonList(item)));
+        Long checkId = createStockCheck(createReqVO);
+        updateStockCheckStatus(checkId, ErpAuditStatus.APPROVE.getStatus());
+        return actualCount;
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
     public void updateStockCheck(ErpStockCheckSaveReqVO updateReqVO) {
         // 1.1 校验存在
         ErpStockCheckDO stockCheck = validateStockCheckExists(updateReqVO.getId());
@@ -121,21 +161,23 @@ public class ErpStockCheckServiceImpl implements ErpStockCheckService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void updateStockCheckStatus(Long id, Integer status) {
-        boolean approve = ErpAuditStatus.APPROVE.getStatus().equals(status);
+        if (!ErpAuditStatus.APPROVE.getStatus().equals(status)) {
+            throw exception(STOCK_CHECK_PROCESS_FAIL);
+        }
         // 1.1 校验存在
         ErpStockCheckDO stockCheck = validateStockCheckExists(id);
         // 1.2 校验状态
         if (stockCheck.getStatus().equals(status)) {
-            throw exception(approve ? STOCK_CHECK_APPROVE_FAIL : STOCK_CHECK_PROCESS_FAIL);
+            throw exception(STOCK_CHECK_APPROVE_FAIL);
         }
 
         // 2. 更新状态
         int updateCount = stockCheckMapper.updateByIdAndStatus(id, stockCheck.getStatus(),
                 new ErpStockCheckDO().setStatus(status));
         if (updateCount == 0) {
-            throw exception(approve ? STOCK_CHECK_APPROVE_FAIL : STOCK_CHECK_PROCESS_FAIL);
+            throw exception(STOCK_CHECK_APPROVE_FAIL);
         }
-        operateLogService.recordStatus(ERP_STOCK_CHECK_TYPE, stockCheck.getId(), stockCheck.getNo(), approve);
+        operateLogService.recordStatus(ERP_STOCK_CHECK_TYPE, stockCheck.getId(), stockCheck.getNo(), true);
 
         // 3. 变更库存
         List<ErpStockCheckItemDO> stockCheckItems = stockCheckItemMapper.selectListByCheckId(id);
@@ -144,16 +186,9 @@ public class ErpStockCheckServiceImpl implements ErpStockCheckService {
             if (stockCheckItem.getCount().compareTo(BigDecimal.ZERO) == 0) {
                 return;
             }
-            // 10；12；-2（）
-            BigDecimal count = approve ? stockCheckItem.getCount(): stockCheckItem.getCount().negate();
-            Integer bizType;
-            if (approve) {
-                bizType = count.compareTo(BigDecimal.ZERO) > 0 ? ErpStockRecordBizTypeEnum.CHECK_MORE_IN.getType()
-                        : ErpStockRecordBizTypeEnum.CHECK_LESS_OUT.getType();
-            } else {
-                bizType = count.compareTo(BigDecimal.ZERO) > 0 ? ErpStockRecordBizTypeEnum.CHECK_MORE_IN_CANCEL.getType()
-                        : ErpStockRecordBizTypeEnum.CHECK_LESS_OUT_CANCEL.getType();
-            }
+            BigDecimal count = stockCheckItem.getCount();
+            Integer bizType = count.compareTo(BigDecimal.ZERO) > 0 ? ErpStockRecordBizTypeEnum.CHECK_MORE_IN.getType()
+                    : ErpStockRecordBizTypeEnum.CHECK_LESS_OUT.getType();
             stockRecordService.createStockRecord(new ErpStockRecordCreateReqBO(
                     stockCheckItem.getProductId(), stockCheckItem.getWarehouseId(), count,
                     bizType, stockCheckItem.getCheckId(), stockCheckItem.getId(), stockCheck.getNo(),
@@ -171,9 +206,36 @@ public class ErpStockCheckServiceImpl implements ErpStockCheckService {
         // 1.2 校验仓库存在
         warehouseService.validWarehouseList(convertSet(list, ErpStockCheckSaveReqVO.Item::getWarehouseId));
         // 2. 转化为 ErpStockCheckItemDO 列表
-        return convertList(list, o -> BeanUtils.toBean(o, ErpStockCheckItemDO.class, item -> item
-                .setProductUnitId(productMap.get(item.getProductId()).getUnitId())
-                .setTotalPrice(MoneyUtils.priceMultiply(item.getProductPrice(), item.getCount()))));
+        return convertList(list, o -> BeanUtils.toBean(o, ErpStockCheckItemDO.class, item -> {
+            BigDecimal stockCount = item.getStockCount() != null ? item.getStockCount() : BigDecimal.ZERO;
+            BigDecimal actualCount = item.getActualCount() != null ? item.getActualCount() : BigDecimal.ZERO;
+            BigDecimal count = actualCount.subtract(stockCount);
+            item.setProductUnitId(productMap.get(item.getProductId()).getUnitId());
+            item.setCount(count);
+            item.setTotalPrice(MoneyUtils.priceMultiply(item.getProductPrice(), count));
+        }));
+    }
+
+    private BigDecimal getStockAdjustProductPrice(ErpStockDO stock, ErpProductDO product) {
+        if (stock != null && stock.getCostPrice() != null) {
+            return stock.getCostPrice();
+        }
+        if (product != null && product.getLastPurchasePrice() != null) {
+            return product.getLastPurchasePrice();
+        }
+        if (product != null && product.getPurchasePrice() != null) {
+            return product.getPurchasePrice();
+        }
+        return BigDecimal.ZERO;
+    }
+
+    private String buildStockAdjustRemark(ErpStockAdjustReqVO reqVO) {
+        String reason = reqVO.getReason() != null && !reqVO.getReason().isEmpty()
+                ? reqVO.getReason() : "库存浏览调整";
+        if (reqVO.getRemark() == null || reqVO.getRemark().isEmpty()) {
+            return reason;
+        }
+        return reason + "：" + reqVO.getRemark();
     }
 
     private void validateDuplicateStockCheckItems(List<ErpStockCheckSaveReqVO.Item> list) {

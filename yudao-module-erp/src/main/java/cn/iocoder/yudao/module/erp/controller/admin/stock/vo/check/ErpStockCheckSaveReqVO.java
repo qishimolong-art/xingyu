@@ -60,7 +60,7 @@ public class ErpStockCheckSaveReqVO {
         @NotNull(message = "实际数量不能为空")
         private BigDecimal actualCount;
 
-        @Schema(description = "盈亏数量", requiredMode = Schema.RequiredMode.REQUIRED, example = "100.00")
+        @Schema(description = "盈亏数量（实际数量 - 账面数量）", requiredMode = Schema.RequiredMode.REQUIRED, example = "100.00")
         @NotNull(message = "盈亏数量不能为空")
         private BigDecimal count;
 

@@ -26,17 +26,13 @@ import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseOrderDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseOrderItemDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpSupplierDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpWarehouseDO;
-import cn.iocoder.yudao.module.erp.dal.dataobject.finance.accounting.ErpVoucherDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.accounting.ErpVoucherItemDO;
-import cn.iocoder.yudao.module.erp.dal.mysql.finance.accounting.ErpVoucherItemMapper;
-import cn.iocoder.yudao.module.erp.dal.mysql.finance.accounting.ErpVoucherMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.product.ErpProductMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.purchase.ErpPurchaseInItemMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.purchase.ErpPurchaseInMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.purchase.ErpPurchaseReturnItemMapper;
 import cn.iocoder.yudao.module.erp.dal.redis.no.ErpNoRedisDAO;
 import cn.iocoder.yudao.module.erp.enums.ErpAuditStatus;
-import cn.iocoder.yudao.module.erp.enums.finance.accounting.ErpVoucherAuditStatusEnum;
 import cn.iocoder.yudao.module.erp.enums.finance.accounting.ErpVoucherTypeEnum;
 import cn.iocoder.yudao.module.erp.enums.finance.accounting.ErpVoucherSourceBizTypeEnum;
 import cn.iocoder.yudao.module.erp.enums.stock.ErpStockRecordBizTypeEnum;
@@ -127,11 +123,6 @@ public class ErpPurchaseInServiceImpl implements ErpPurchaseInService {
     private ErpVoucherService voucherService;
     @Resource
     private ErpBookOpenService bookOpenService;
-    @Resource
-    private ErpVoucherMapper voucherMapper;
-    @Resource
-    private ErpVoucherItemMapper voucherItemMapper;
-
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Long createPurchaseIn(ErpPurchaseInSaveReqVO createReqVO) {
@@ -230,8 +221,8 @@ public class ErpPurchaseInServiceImpl implements ErpPurchaseInService {
     private void calculateTotalPrice(ErpPurchaseInDO purchaseIn, List<ErpPurchaseInItemDO> purchaseInItems) {
         purchaseIn.setTotalCount(getSumValue(purchaseInItems, ErpPurchaseInItemDO::getCount, BigDecimal::add));
         purchaseIn.setTotalProductPrice(getSumValue(purchaseInItems, ErpPurchaseInItemDO::getTotalPrice, BigDecimal::add, BigDecimal.ZERO));
-        purchaseIn.setTotalTaxPrice(getSumValue(purchaseInItems, ErpPurchaseInItemDO::getTaxPrice, BigDecimal::add, BigDecimal.ZERO));
-        purchaseIn.setTotalPrice(purchaseIn.getTotalProductPrice().add(purchaseIn.getTotalTaxPrice()));
+        purchaseIn.setTotalTaxPrice(BigDecimal.ZERO);
+        purchaseIn.setTotalPrice(purchaseIn.getTotalProductPrice());
         // 计算优惠价格
         if (purchaseIn.getDiscountPercent() == null) {
             purchaseIn.setDiscountPercent(BigDecimal.ZERO);
@@ -260,58 +251,38 @@ public class ErpPurchaseInServiceImpl implements ErpPurchaseInService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void updatePurchaseInStatus(Long id, Integer status) {
-        boolean approve = ErpAuditStatus.APPROVE.getStatus().equals(status);
+        if (!ErpAuditStatus.APPROVE.getStatus().equals(status)) {
+            throw exception(PURCHASE_IN_PROCESS_FAIL);
+        }
         // 1.1 校验存在
         ErpPurchaseInDO purchaseIn = validatePurchaseInExists(id);
         // 1.2 校验状态
-        if (purchaseIn.getStatus().equals(status)) {
-            throw exception(approve ? PURCHASE_IN_APPROVE_FAIL : PURCHASE_IN_PROCESS_FAIL);
-        }
-        // 1.3 校验已付款
-        if (!approve && purchaseIn.getPaymentPrice().compareTo(BigDecimal.ZERO) > 0) {
-            throw exception(PURCHASE_IN_PROCESS_FAIL_EXISTS_PAYMENT);
-        }
-        // 1.4 反审：先校验关联凭证未审核，并删除未审核凭证
-        if (!approve) {
-            List<ErpVoucherDO> related = voucherMapper.selectListByBiz(
-                    ErpVoucherSourceBizTypeEnum.PURCHASE_IN.getType(), id);
-            for (ErpVoucherDO v : related) {
-                if (ErpVoucherAuditStatusEnum.APPROVE.getStatus().equals(v.getAuditStatus())) {
-                    throw exception(BIZ_PROCESS_FAIL_VOUCHER_APPROVED, v.getVoucherNo());
-                }
-                voucherMapper.deleteById(v.getId());
-                voucherItemMapper.delete(new LambdaQueryWrapper<ErpVoucherItemDO>()
-                        .eq(ErpVoucherItemDO::getVoucherId, v.getId()));
-            }
+        if (!ErpAuditStatus.PROCESS.getStatus().equals(purchaseIn.getStatus())) {
+            throw exception(PURCHASE_IN_APPROVE_FAIL);
         }
 
         // 2. 更新状态
         int updateCount = purchaseInMapper.updateByIdAndStatus(id, purchaseIn.getStatus(),
-                new ErpPurchaseInDO().setStatus(status));
+                new ErpPurchaseInDO().setStatus(ErpAuditStatus.APPROVE.getStatus()));
         if (updateCount == 0) {
-            throw exception(approve ? PURCHASE_IN_APPROVE_FAIL : PURCHASE_IN_PROCESS_FAIL);
+            throw exception(PURCHASE_IN_APPROVE_FAIL);
         }
 
         // 3. 变更库存
         List<ErpPurchaseInItemDO> purchaseInItems = purchaseInItemMapper.selectListByInId(id);
-        Integer bizType = approve ? ErpStockRecordBizTypeEnum.PURCHASE_IN.getType()
-                : ErpStockRecordBizTypeEnum.PURCHASE_IN_CANCEL.getType();
         purchaseInItems.forEach(purchaseInItem -> {
-            BigDecimal count = approve ? purchaseInItem.getCount() : purchaseInItem.getCount().negate();
             stockRecordService.createStockRecord(new ErpStockRecordCreateReqBO(
-                    purchaseInItem.getProductId(), purchaseInItem.getWarehouseId(), count,
-                    bizType, purchaseInItem.getInId(), purchaseInItem.getId(), purchaseIn.getNo(),
+                    purchaseInItem.getProductId(), purchaseInItem.getWarehouseId(), purchaseInItem.getCount(),
+                    ErpStockRecordBizTypeEnum.PURCHASE_IN.getType(), purchaseInItem.getInId(), purchaseInItem.getId(), purchaseIn.getNo(),
                     purchaseInItem.getProductPrice(), purchaseIn.getInTime()));
         });
 
         // 4. 仅在审批通过时，回写每个产品的最近采购价 last_purchase_price
-        if (approve) {
-            purchaseInItems.forEach(item -> productService.updateProductLastPurchasePrice(
-                    item.getProductId(), item.getProductPrice()));
-        }
+        purchaseInItems.forEach(item -> productService.updateProductLastPurchasePrice(
+                item.getProductId(), item.getProductPrice()));
 
         // 5. 审批通过：自动生成采购凭证（仅在该月份已开账且启用采购凭证时触发）
-        if (approve && bookOpenService.isVoucherTypeEnabled(
+        if (bookOpenService.isVoucherTypeEnabled(
                 purchaseIn.getInTime().toLocalDate(),
                 ErpVoucherTypeEnum.PURCHASE.getType())) {
             ErpSupplierDO supplier = supplierService.validateSupplier(purchaseIn.getSupplierId());
@@ -326,7 +297,7 @@ public class ErpPurchaseInServiceImpl implements ErpPurchaseInService {
                     "采购入库 - " + supplierName,
                     voucherItems);
         }
-        operateLogService.recordStatus(ERP_PURCHASE_IN_TYPE, id, purchaseIn.getNo(), approve);
+        operateLogService.recordStatus(ERP_PURCHASE_IN_TYPE, id, purchaseIn.getNo(), true);
     }
 
     @Override
@@ -386,13 +357,9 @@ public class ErpPurchaseInServiceImpl implements ErpPurchaseInService {
                 item.setCount(new BigDecimal(item.getWholeQty()).multiply(new BigDecimal(packageQty)));
             }
 
+            item.setTaxPercent(null);
+            item.setTaxPrice(BigDecimal.ZERO);
             item.setTotalPrice(MoneyUtils.priceMultiply(item.getProductPrice(), item.getCount()));
-            if (item.getTotalPrice() == null) {
-                return;
-            }
-            if (item.getTaxPercent() != null) {
-                item.setTaxPrice(MoneyUtils.priceMultiplyPercent(item.getTotalPrice(), item.getTaxPercent()));
-            }
         }));
     }
 
@@ -543,7 +510,7 @@ public class ErpPurchaseInServiceImpl implements ErpPurchaseInService {
                 returnable = BigDecimal.ZERO;
             }
             vo.setReturnableCount(returnable);
-            vo.setTaxPercent(item.getTaxPercent());
+
             vo.setPackageQty(item.getPackageQty());
             vo.setWholeQty(item.getWholeQty());
             vo.setWarehousePosition(item.getWarehousePosition());
@@ -614,7 +581,7 @@ public class ErpPurchaseInServiceImpl implements ErpPurchaseInService {
             // 赠品行 productPrice=0
             inItem.setProductPrice(Boolean.TRUE.equals(orderItem.getGift()) ? BigDecimal.ZERO : orderItem.getProductPrice());
             inItem.setCount(reqItem.getCount());
-            inItem.setTaxPercent(orderItem.getTaxPercent());
+
             inItem.setRemark(orderItem.getRemark());
             inItems.add(inItem);
         }

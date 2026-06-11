@@ -7,11 +7,15 @@ import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartConv
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartSaveReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartSubmitRespVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleCartDO;
+import cn.iocoder.yudao.module.erp.service.config.ErpFieldConfigService;
 import cn.iocoder.yudao.module.erp.service.product.ErpProductService;
 import cn.iocoder.yudao.module.erp.service.sale.ErpCustomerService;
 import cn.iocoder.yudao.module.erp.service.sale.ErpSaleCartService;
+import cn.iocoder.yudao.module.erp.service.sale.ErpSaleFieldPermissionMasker;
 import cn.iocoder.yudao.module.erp.service.stock.ErpWarehouseService;
+import cn.iocoder.yudao.module.system.api.user.AdminUserApi;
 import org.junit.jupiter.api.Test;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
@@ -48,6 +52,12 @@ public class ErpSaleCartControllerTest extends BaseMockitoUnitTest {
     private ErpProductService productService;
     @Mock
     private ErpWarehouseService warehouseService;
+    @Mock
+    private ErpSaleFieldPermissionMasker fieldPermissionMasker;
+    @Mock
+    private AdminUserApi adminUserApi;
+    @Mock
+    private ErpFieldConfigService fieldConfigService;
 
     // ==================== createSaleCart ====================
 
@@ -97,10 +107,15 @@ public class ErpSaleCartControllerTest extends BaseMockitoUnitTest {
 
     @Test
     public void testSubmitSaleCart_paramPassThrough() {
-        CommonResult<Boolean> result = controller.submitSaleCart(30L);
+        ErpSaleCartSubmitRespVO respVO = new ErpSaleCartSubmitRespVO();
+        respVO.setId(30L);
+        respVO.setStatus(20);
+        when(saleCartService.submitSaleCart(eq(30L))).thenReturn(respVO);
+
+        CommonResult<ErpSaleCartSubmitRespVO> result = controller.submitSaleCart(30L);
 
         assertEquals(0, result.getCode());
-        assertEquals(Boolean.TRUE, result.getData());
+        assertEquals(respVO, result.getData());
         verify(saleCartService).submitSaleCart(eq(30L));
     }
 
@@ -235,8 +250,6 @@ public class ErpSaleCartControllerTest extends BaseMockitoUnitTest {
         cart.setCustomerId(81L);
         when(saleCartService.getSaleCart(eq(80L))).thenReturn(cart);
         when(saleCartService.getSaleCartItemListByCartId(eq(80L))).thenReturn(Collections.emptyList());
-        when(productService.getProductVOMap(any())).thenReturn(Collections.emptyMap());
-        when(warehouseService.getWarehouseMap(any())).thenReturn(Collections.emptyMap());
         when(customerService.getCustomerMap(any())).thenReturn(Collections.emptyMap());
 
         CommonResult<ErpSaleCartRespVO> result = controller.getSaleCart(80L);
@@ -278,8 +291,6 @@ public class ErpSaleCartControllerTest extends BaseMockitoUnitTest {
         PageResult<ErpSaleCartDO> pageResult = new PageResult<>(singletonList(cart), 1L);
         when(saleCartService.getSaleCartPage(eq(pageReqVO))).thenReturn(pageResult);
         when(saleCartService.getSaleCartItemListByCartIds(any())).thenReturn(Collections.emptyList());
-        when(productService.getProductVOMap(any())).thenReturn(Collections.emptyMap());
-        when(warehouseService.getWarehouseMap(any())).thenReturn(Collections.emptyMap());
         when(customerService.getCustomerMap(any())).thenReturn(Collections.emptyMap());
 
         CommonResult<PageResult<ErpSaleCartRespVO>> result = controller.getSaleCartPage(pageReqVO);
@@ -298,8 +309,6 @@ public class ErpSaleCartControllerTest extends BaseMockitoUnitTest {
         PageResult<ErpSaleCartDO> pageResult = new PageResult<>(singletonList(cart), 1L);
         when(saleCartService.getSaleCartPage(eq(pageReqVO))).thenReturn(pageResult);
         when(saleCartService.getSaleCartItemListByCartIds(any())).thenReturn(Collections.emptyList());
-        when(productService.getProductVOMap(any())).thenReturn(Collections.emptyMap());
-        when(warehouseService.getWarehouseMap(any())).thenReturn(Collections.emptyMap());
         when(customerService.getCustomerMap(any())).thenReturn(Collections.emptyMap());
 
         CommonResult<PageResult<ErpSaleCartRespVO>> result = controller.getSaleCartPage(pageReqVO);
@@ -323,7 +332,7 @@ public class ErpSaleCartControllerTest extends BaseMockitoUnitTest {
     @Test
     public void testExportSaleCartExcel_hasPreAuthorize() throws NoSuchMethodException {
         Method method = ErpSaleCartController.class.getMethod("exportSaleCartExcel",
-                ErpSaleCartPageReqVO.class, javax.servlet.http.HttpServletResponse.class);
+                ErpSaleCartPageReqVO.class, String.class, javax.servlet.http.HttpServletResponse.class);
         PreAuthorize anno = method.getAnnotation(PreAuthorize.class);
         assertNotNull(anno);
         assertTrue(anno.value().contains("erp:sale-cart:export"));

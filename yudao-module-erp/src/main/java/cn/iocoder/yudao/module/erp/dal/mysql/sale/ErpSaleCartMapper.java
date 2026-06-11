@@ -7,6 +7,7 @@ import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartPage
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleCartDO;
 import cn.iocoder.yudao.module.erp.enums.sale.ErpSaleCartStatusEnum;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
+import com.baomidou.mybatisplus.core.toolkit.support.SFunction;
 import org.apache.ibatis.annotations.Mapper;
 
 /**
@@ -24,8 +25,7 @@ public interface ErpSaleCartMapper extends BaseMapperX<ErpSaleCartDO> {
                 .betweenIfPresent(ErpSaleCartDO::getCartTime, reqVO.getCartTime())
                 .eqIfPresent(ErpSaleCartDO::getStatus, reqVO.getStatus())
                 .likeIfPresent(ErpSaleCartDO::getRemark, reqVO.getRemark())
-                .inIfPresent(ErpSaleCartDO::getId, reqVO.getIds())
-                .orderByDesc(ErpSaleCartDO::getId);
+                .inIfPresent(ErpSaleCartDO::getId, reqVO.getIds());
         if (reqVO.getStatus() == null && Boolean.TRUE.equals(reqVO.getIncludeCompleted())) {
             queryWrapper.in(ErpSaleCartDO::getStatus,
                     ErpSaleCartStatusEnum.FINAL_APPROVE.getStatus(),
@@ -35,7 +35,73 @@ public interface ErpSaleCartMapper extends BaseMapperX<ErpSaleCartDO> {
                     ErpSaleCartStatusEnum.FINAL_APPROVE.getStatus(),
                     ErpSaleCartStatusEnum.GENERATED_SALE_OUT.getStatus());
         }
+        orderByIfPresent(queryWrapper, reqVO);
         return selectPage(reqVO, queryWrapper);
+    }
+
+    static void orderByIfPresent(LambdaQueryWrapperX<ErpSaleCartDO> wrapper, ErpSaleCartPageReqVO reqVO) {
+        SFunction<ErpSaleCartDO, ?> orderColumn = getOrderColumn(reqVO.getOrderField());
+        if (orderColumn == null) {
+            wrapper.orderByDesc(ErpSaleCartDO::getId);
+            return;
+        }
+        if ("asc".equalsIgnoreCase(reqVO.getOrderDirection())) {
+            wrapper.orderByAsc(orderColumn);
+            return;
+        }
+        if ("desc".equalsIgnoreCase(reqVO.getOrderDirection())) {
+            wrapper.orderByDesc(orderColumn);
+            return;
+        }
+        wrapper.orderByDesc(ErpSaleCartDO::getId);
+    }
+
+    static SFunction<ErpSaleCartDO, ?> getOrderColumn(String orderField) {
+        if (orderField == null) {
+            return null;
+        }
+        switch (orderField.trim()) {
+            case "no":
+                return ErpSaleCartDO::getNo;
+            case "cartTime":
+                return ErpSaleCartDO::getCartTime;
+            case "customerId":
+            case "customerName":
+                return ErpSaleCartDO::getCustomerId;
+            case "creator":
+            case "creatorName":
+                return ErpSaleCartDO::getCreator;
+            case "totalProductPrice":
+                return ErpSaleCartDO::getTotalProductPrice;
+            case "discountPrice":
+                return ErpSaleCartDO::getDiscountPrice;
+            case "totalPrice":
+                return ErpSaleCartDO::getTotalPrice;
+            case "totalFreight":
+                return ErpSaleCartDO::getTotalFreight;
+            case "settleMethod":
+                return ErpSaleCartDO::getSettleMethod;
+            case "deliveryMethod":
+                return ErpSaleCartDO::getDeliveryMethod;
+            case "logisticsCompany":
+                return ErpSaleCartDO::getLogisticsCompany;
+            case "saleUserId":
+            case "saleUserName":
+                return ErpSaleCartDO::getSaleUserId;
+            case "deptId":
+            case "deptName":
+                return ErpSaleCartDO::getDeptId;
+            case "priority":
+                return ErpSaleCartDO::getPriority;
+            case "invoiceType":
+                return ErpSaleCartDO::getInvoiceType;
+            case "status":
+                return ErpSaleCartDO::getStatus;
+            case "createTime":
+                return ErpSaleCartDO::getCreateTime;
+            default:
+                return null;
+        }
     }
 
     default ErpSaleCartDO selectByNo(String no) {

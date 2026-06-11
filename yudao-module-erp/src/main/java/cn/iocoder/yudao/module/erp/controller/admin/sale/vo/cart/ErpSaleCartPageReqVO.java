@@ -28,5 +28,7 @@ public class ErpSaleCartPageReqVO extends PageParam {
     private Boolean includeCompleted;
     private String remark;
     private List<Long> ids;
+    private String orderField;
+    private String orderDirection;
 
 }

@@ -50,11 +50,20 @@ public class ErpPurchasePriceAdjustRespVO {
     @Schema(description = "调价总金额（可正可负）")
     private BigDecimal totalAdjustPrice;
 
+    @Schema(description = "原单金额")
+    private BigDecimal originalTotalPrice;
+
+    @Schema(description = "调后金额")
+    private BigDecimal adjustedTotalPrice;
+
     @Schema(description = "已结算金额")
     private BigDecimal paymentPrice;
 
     @Schema(description = "审批通过时间")
     private LocalDateTime approveTime;
+
+    @Schema(description = "审核人名称")
+    private String approverName;
 
     @Schema(description = "创建人")
     private String creator;

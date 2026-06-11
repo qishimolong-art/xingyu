@@ -30,6 +30,15 @@ public class ErpStockMovePageReqVO extends PageParam {
     @InEnum(ErpAuditStatus.class)
     private Integer status;
 
+    @Schema(description = "来源类型", example = "30")
+    private Integer sourceType;
+
+    @Schema(description = "来源单据编号", example = "1024")
+    private Long sourceId;
+
+    @Schema(description = "来源单据号", example = "SC202606100001")
+    private String sourceNo;
+
     @Schema(description = "备注", example = "随便")
     private String remark;
 

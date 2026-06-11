@@ -8,6 +8,7 @@ import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.common.util.collection.MapUtils;
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
 import cn.iocoder.yudao.framework.excel.core.util.ExcelUtils;
+import cn.iocoder.yudao.module.erp.controller.admin.common.ErpAuditStatusRequestValidator;
 import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpProductRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.out.ErpSaleOutExportRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.out.ErpSaleOutPageReqVO;
@@ -96,7 +97,8 @@ public class ErpSaleOutController {
     @Operation(summary = "更新销售出库的状态")
     @PreAuthorize("@ss.hasPermission('erp:sale-out:update-status')")
     public CommonResult<Boolean> updateSaleOutStatus(@RequestParam("id") Long id,
-                                                      @RequestParam("status") Integer status) {
+                                                    @RequestParam("status") Integer status) {
+        ErpAuditStatusRequestValidator.validateApproveStatus(status);
         saleOutService.updateSaleOutStatus(id, status);
         return success(true);
     }
@@ -178,6 +180,9 @@ public class ErpSaleOutController {
         if (saleOut.getCreator() != null) {
             try { userIds.add(Long.parseLong(saleOut.getCreator())); } catch (NumberFormatException ignored) {}
         }
+        if (saleOut.getUpdater() != null) {
+            try { userIds.add(Long.parseLong(saleOut.getUpdater())); } catch (NumberFormatException ignored) {}
+        }
         if (saleOut.getSaleUserId() != null) {
             userIds.add(saleOut.getSaleUserId());
         }
@@ -189,6 +194,11 @@ public class ErpSaleOutController {
             if (saleOut.getCreator() != null) {
                 try {
                     MapUtils.findAndThen(userMap, Long.parseLong(saleOut.getCreator()), user -> respVO.setCreatorName(user.getNickname()));
+                } catch (NumberFormatException ignored) {}
+            }
+            if (saleOut.getUpdater() != null) {
+                try {
+                    MapUtils.findAndThen(userMap, Long.parseLong(saleOut.getUpdater()), user -> respVO.setUpdaterName(user.getNickname()));
                 } catch (NumberFormatException ignored) {}
             }
             if (saleOut.getSaleUserId() != null) {
@@ -283,11 +293,18 @@ public class ErpSaleOutController {
             if (out.getCreator() != null) {
                 try { userIds.add(Long.parseLong(out.getCreator())); } catch (NumberFormatException ignored) {}
             }
+            if (out.getUpdater() != null) {
+                try { userIds.add(Long.parseLong(out.getUpdater())); } catch (NumberFormatException ignored) {}
+            }
             if (out.getSaleUserId() != null) {
                 userIds.add(out.getSaleUserId());
             }
+            if (out.getAuditorId() != null) {
+                userIds.add(out.getAuditorId());
+            }
         });
         Map<Long, AdminUserRespDTO> userMap = adminUserApi.getUserMap(userIds);
+        Map<Long, DeptRespDTO> deptMap = deptApi.getDeptMap(convertSet(pageResult.getList(), ErpSaleOutDO::getDeptId));
         // 1.5 退货状态：按 sourceOutItemId 聚合已退数量
         Set<Long> allOutItemIds = convertSet(saleOutItemList, ErpSaleOutItemDO::getId);
         Map<Long, BigDecimal> returnedCountMap = saleReturnItemMapper.selectReturnedCountMapBySourceOutItemIds(allOutItemIds);
@@ -306,10 +323,19 @@ public class ErpSaleOutController {
                     MapUtils.findAndThen(userMap, Long.parseLong(saleOut.getCreator()), user -> saleOut.setCreatorName(user.getNickname()));
                 } catch (NumberFormatException ignored) {}
             }
+            if (saleOut.getUpdater() != null) {
+                try {
+                    MapUtils.findAndThen(userMap, Long.parseLong(saleOut.getUpdater()), user -> saleOut.setUpdaterName(user.getNickname()));
+                } catch (NumberFormatException ignored) {}
+            }
             // 业务员名称
             if (saleOut.getSaleUserId() != null) {
                 MapUtils.findAndThen(userMap, saleOut.getSaleUserId(), user -> saleOut.setSaleUserName(user.getNickname()));
             }
+            if (saleOut.getAuditorId() != null) {
+                MapUtils.findAndThen(userMap, saleOut.getAuditorId(), user -> saleOut.setAuditorName(user.getNickname()));
+            }
+            MapUtils.findAndThen(deptMap, saleOut.getDeptId(), dept -> saleOut.setDeptName(dept.getName()));
             // 退货状态计算
             saleOut.setReturnStatus(calculateReturnStatus(saleOutItemMap.get(saleOut.getId()), returnedCountMap));
         });

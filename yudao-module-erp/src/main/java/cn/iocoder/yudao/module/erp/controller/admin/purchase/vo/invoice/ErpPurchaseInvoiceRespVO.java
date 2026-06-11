@@ -34,6 +34,9 @@ public class ErpPurchaseInvoiceRespVO {
     @ExcelProperty("供应商名称")
     private String supplierName;
 
+    @Schema(description = "供应商类型")
+    private String supplierType;
+
     @Schema(description = "开票日期")
     @ExcelProperty("开票日期")
     private LocalDate invoiceDate;
@@ -95,6 +98,12 @@ public class ErpPurchaseInvoiceRespVO {
     @Schema(description = "修改人名称")
     private String updaterName;
 
+    @Schema(description = "审核人名称")
+    private String auditUserName;
+
+    @Schema(description = "审核时间")
+    private LocalDateTime auditTime;
+
     @Schema(description = "创建时间")
     @ExcelProperty("创建时间")
     private LocalDateTime createTime;
@@ -105,6 +114,9 @@ public class ErpPurchaseInvoiceRespVO {
     @Schema(description = "产品信息")
     @ExcelProperty("产品信息")
     private String productNames;
+
+    @Schema(description = "列表展示税率")
+    private String displayTaxPercent;
 
     @Schema(description = "明细列表")
     private List<Item> items;

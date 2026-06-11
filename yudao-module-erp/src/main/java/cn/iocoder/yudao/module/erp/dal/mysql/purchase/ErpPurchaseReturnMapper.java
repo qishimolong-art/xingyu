@@ -4,11 +4,11 @@ import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.mybatis.core.mapper.BaseMapperX;
 import cn.iocoder.yudao.framework.mybatis.core.query.MPJLambdaWrapperX;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.returns.ErpPurchaseReturnPageReqVO;
-import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseInDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseReturnDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseReturnItemDO;
 import cn.iocoder.yudao.module.erp.enums.ErpAuditStatus;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
+import com.baomidou.mybatisplus.core.toolkit.support.SFunction;
 import org.apache.ibatis.annotations.Mapper;
 
 import java.util.List;
@@ -32,8 +32,7 @@ public interface ErpPurchaseReturnMapper extends BaseMapperX<ErpPurchaseReturnDO
                 .likeIfPresent(ErpPurchaseReturnDO::getRemark, reqVO.getRemark())
                 .eqIfPresent(ErpPurchaseReturnDO::getCreator, reqVO.getCreator())
                 .eqIfPresent(ErpPurchaseReturnDO::getAccountId, reqVO.getAccountId())
-                .likeIfPresent(ErpPurchaseReturnDO::getOrderNo, reqVO.getOrderNo())
-                .orderByDesc(ErpPurchaseReturnDO::getId);
+                .likeIfPresent(ErpPurchaseReturnDO::getOrderNo, reqVO.getOrderNo());
         // 退款状态。为什么需要 t. 的原因，是因为联表查询时，需要指定表名，不然会报字段不存在的错误
         if (Objects.equals(reqVO.getRefundStatus(), ErpPurchaseReturnPageReqVO.REFUND_STATUS_NONE)) {
             query.eq(ErpPurchaseReturnDO::getRefundPrice, 0);
@@ -43,7 +42,7 @@ public interface ErpPurchaseReturnMapper extends BaseMapperX<ErpPurchaseReturnDO
             query.apply("t.refund_price = t.total_price");
         }
         if (Boolean.TRUE.equals(reqVO.getRefundEnable())) {
-            query.eq(ErpPurchaseInDO::getStatus, ErpAuditStatus.APPROVE.getStatus())
+            query.eq(ErpPurchaseReturnDO::getStatus, ErpAuditStatus.APPROVE.getStatus())
                     .apply("t.refund_price < t.total_price");
         }
         if (reqVO.getWarehouseId() != null || reqVO.getProductId() != null) {
@@ -52,7 +51,95 @@ public interface ErpPurchaseReturnMapper extends BaseMapperX<ErpPurchaseReturnDO
                     .eq(reqVO.getProductId() != null, ErpPurchaseReturnItemDO::getProductId, reqVO.getProductId())
                     .groupBy(ErpPurchaseReturnDO::getId); // 避免 1 对多查询，产生相同的 1
         }
+        orderByIfPresent(query, reqVO);
         return selectJoinPage(reqVO, ErpPurchaseReturnDO.class, query);
+    }
+
+    static void orderByIfPresent(MPJLambdaWrapperX<ErpPurchaseReturnDO> wrapper, ErpPurchaseReturnPageReqVO reqVO) {
+        String direction = normalizeOrderDirection(reqVO.getOrderDirection());
+        if (direction == null) {
+            wrapper.orderByDesc(ErpPurchaseReturnDO::getId);
+            return;
+        }
+        String expression = getOrderExpression(reqVO.getOrderField());
+        if (expression != null) {
+            wrapper.last("ORDER BY " + expression + " " + direction + ", t.id DESC");
+            return;
+        }
+        SFunction<ErpPurchaseReturnDO, ?> orderColumn = getOrderColumn(reqVO.getOrderField());
+        if (orderColumn == null) {
+            wrapper.orderByDesc(ErpPurchaseReturnDO::getId);
+            return;
+        }
+        if ("ASC".equals(direction)) {
+            wrapper.orderByAsc(orderColumn);
+        } else {
+            wrapper.orderByDesc(orderColumn);
+        }
+    }
+
+    static String normalizeOrderDirection(String orderDirection) {
+        if (orderDirection == null) {
+            return null;
+        }
+        if ("asc".equalsIgnoreCase(orderDirection.trim())) {
+            return "ASC";
+        }
+        if ("desc".equalsIgnoreCase(orderDirection.trim())) {
+            return "DESC";
+        }
+        return null;
+    }
+
+    static String getOrderExpression(String orderField) {
+        if (orderField == null) {
+            return null;
+        }
+        switch (orderField.trim()) {
+            case "settlementStatus":
+                return "(CASE WHEN t.status = " + ErpAuditStatus.APPROVE.getStatus() + " THEN 0 ELSE 1 END), "
+                        + "(CASE WHEN t.status <> " + ErpAuditStatus.APPROVE.getStatus() + " THEN 3 "
+                        + "WHEN COALESCE(t.refund_price, 0) = 0 THEN 0 "
+                        + "WHEN t.refund_price = t.total_price THEN 2 ELSE 1 END)";
+            case "itemCount":
+                return "(SELECT COUNT(1) FROM erp_purchase_return_items pri "
+                        + "WHERE pri.deleted = 0 AND pri.tenant_id = t.tenant_id AND pri.return_id = t.id)";
+            default:
+                return null;
+        }
+    }
+
+    static SFunction<ErpPurchaseReturnDO, ?> getOrderColumn(String orderField) {
+        if (orderField == null) {
+            return null;
+        }
+        switch (orderField.trim()) {
+            case "no":
+                return ErpPurchaseReturnDO::getNo;
+            case "returnTime":
+                return ErpPurchaseReturnDO::getReturnTime;
+            case "supplierId":
+            case "supplierName":
+                return ErpPurchaseReturnDO::getSupplierId;
+            case "totalCount":
+                return ErpPurchaseReturnDO::getTotalCount;
+            case "totalPrice":
+                return ErpPurchaseReturnDO::getTotalPrice;
+            case "purchaser":
+                return ErpPurchaseReturnDO::getPurchaser;
+            case "status":
+                return ErpPurchaseReturnDO::getStatus;
+            case "deptId":
+            case "deptName":
+                return ErpPurchaseReturnDO::getDeptId;
+            case "remark":
+                return ErpPurchaseReturnDO::getRemark;
+            case "creator":
+            case "creatorName":
+                return ErpPurchaseReturnDO::getCreator;
+            default:
+                return null;
+        }
     }
 
     default int updateByIdAndStatus(Long id, Integer status, ErpPurchaseReturnDO updateObj) {

@@ -8,6 +8,7 @@ import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.common.util.collection.MapUtils;
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
 import cn.iocoder.yudao.framework.excel.core.util.ExcelUtils;
+import cn.iocoder.yudao.module.erp.controller.admin.common.ErpAuditStatusRequestValidator;
 import cn.iocoder.yudao.module.erp.controller.admin.common.vo.ErpExportFieldRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpProductRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.imports.ErpPurchaseImportResultRespVO;
@@ -50,6 +51,7 @@ import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.validation.annotation.Validated;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
@@ -166,7 +168,17 @@ public class ErpPurchaseInController {
     @PreAuthorize("@ss.hasPermission('erp:purchase-in:update-status')")
     public CommonResult<Boolean> updatePurchaseInStatus(@RequestParam("id") Long id,
                                                         @RequestParam("status") Integer status) {
+        ErpAuditStatusRequestValidator.validateApproveStatus(status);
         purchaseInService.updatePurchaseInStatus(id, status);
+        return success(true);
+    }
+
+    @DeleteMapping("/delete")
+    @Operation(summary = "Delete purchase in")
+    @Parameter(name = "ids", description = "IDs", required = true)
+    @PreAuthorize("@ss.hasPermission('erp:purchase-in:delete')")
+    public CommonResult<Boolean> deletePurchaseIn(@RequestParam("ids") List<Long> ids) {
+        purchaseInService.deletePurchaseIn(ids);
         return success(true);
     }
 
@@ -265,6 +277,7 @@ public class ErpPurchaseInController {
                         .setProductCode(product.getCode()));
                 fillPurchaseInItemReturnInfo(item, returnCountMap);
             }));
+            purchaseInVO.setItemCount(CollUtil.size(purchaseInItemList));
             fillPurchaseInReturnInfo(purchaseInVO);
             fillUserNames(purchaseInVO, userMap);
             if (dept != null) {
@@ -408,13 +421,15 @@ public class ErpPurchaseInController {
         pageResult.getList().forEach(purchaseIn -> collectUserIds(userIds, purchaseIn));
         Map<Long, AdminUserRespDTO> userMap = adminUserApi.getUserMap(userIds);
         return BeanUtils.toBean(pageResult, ErpPurchaseInRespVO.class, purchaseIn -> {
-            purchaseIn.setItems(BeanUtils.toBean(purchaseInItemMap.getOrDefault(purchaseIn.getId(), Collections.emptyList()), ErpPurchaseInRespVO.Item.class,
+            List<ErpPurchaseInItemDO> items = purchaseInItemMap.getOrDefault(purchaseIn.getId(), Collections.emptyList());
+            purchaseIn.setItems(BeanUtils.toBean(items, ErpPurchaseInRespVO.Item.class,
                     item -> {
                         MapUtils.findAndThen(productMap, item.getProductId(), product -> item.setProductName(product.getName())
                                 .setProductBarCode(product.getBarCode()).setProductUnitName(product.getUnitName())
                                 .setProductCode(product.getCode()));
                         fillPurchaseInItemReturnInfo(item, returnCountMap);
                     }));
+            purchaseIn.setItemCount(items.size());
             purchaseIn.setProductNames(CollUtil.join(purchaseIn.getItems(), ", ",
                     ErpPurchaseInRespVO.Item::getProductName));
             fillPurchaseInReturnInfo(purchaseIn);

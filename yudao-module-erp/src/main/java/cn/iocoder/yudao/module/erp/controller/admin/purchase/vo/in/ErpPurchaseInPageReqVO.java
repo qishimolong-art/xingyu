@@ -71,4 +71,13 @@ public class ErpPurchaseInPageReqVO extends PageParam {
     @Schema(description = "勾选导出的采购入库编号数组", example = "[1,2,3]")
     private List<Long> ids;
 
+    @Schema(description = "Sort field, supports: no, paymentStatus, factoryOrderNo, createTime, status, supplierId, "
+            + "supplierName, totalProductPrice, discountPrice, totalPrice, itemCount, totalCount, creator, "
+            + "creatorName, purchaser, purchaserName, deptId, deptName, orderMethod, settleMethod, invoiceType, "
+            + "orderNo, remark, transportMethod, freightType1, totalFreight1, freightType2, totalFreight2")
+    private String orderField;
+
+    @Schema(description = "Sort direction: asc or desc")
+    private String orderDirection;
+
 }

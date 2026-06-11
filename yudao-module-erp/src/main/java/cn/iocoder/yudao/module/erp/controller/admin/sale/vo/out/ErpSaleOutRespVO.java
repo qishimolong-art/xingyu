@@ -112,6 +112,14 @@ public class ErpSaleOutRespVO {
     @ExcelProperty("创建时间")
     private LocalDateTime createTime;
 
+    @Schema(description = "更新人", example = "1")
+    private String updater;
+    @Schema(description = "更新人名称", example = "管理员")
+    private String updaterName;
+
+    @Schema(description = "更新时间")
+    private LocalDateTime updateTime;
+
     @Schema(description = "出库项列表", requiredMode = Schema.RequiredMode.REQUIRED)
     private List<Item> items;
 

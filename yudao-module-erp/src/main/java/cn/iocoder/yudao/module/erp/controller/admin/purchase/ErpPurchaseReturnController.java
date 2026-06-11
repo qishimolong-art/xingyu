@@ -8,6 +8,7 @@ import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.common.util.collection.MapUtils;
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
 import cn.iocoder.yudao.framework.excel.core.util.ExcelUtils;
+import cn.iocoder.yudao.module.erp.controller.admin.common.ErpAuditStatusRequestValidator;
 import cn.iocoder.yudao.module.erp.controller.admin.common.vo.ErpExportFieldRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpProductRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.imports.ErpPurchaseImportResultRespVO;
@@ -147,7 +148,8 @@ public class ErpPurchaseReturnController {
     @Operation(summary = "更新采购退货的状态")
     @PreAuthorize("@ss.hasPermission('erp:purchase-return:update-status')")
     public CommonResult<Boolean> updatePurchaseReturnStatus(@RequestParam("id") Long id,
-                                                             @RequestParam("status") Integer status) {
+                                                            @RequestParam("status") Integer status) {
+        ErpAuditStatusRequestValidator.validateApproveStatus(status);
         purchaseReturnService.updatePurchaseReturnStatus(id, status);
         return success(true);
     }
@@ -243,7 +245,8 @@ public class ErpPurchaseReturnController {
                     ErpStockDO stock = stockService.getStock(item.getProductId(), item.getWarehouseId());
                     item.setStockCount(stock != null ? stock.getCount() : BigDecimal.ZERO);
                     MapUtils.findAndThen(productMap, item.getProductId(), product -> item.setProductName(product.getName())
-                            .setProductBarCode(product.getBarCode()).setProductUnitName(product.getUnitName()));
+                            .setProductCode(product.getCode()).setProductBarCode(product.getBarCode())
+                            .setProductUnitName(product.getUnitName()));
                     if (item.getSourceInItemId() != null) {
                         ErpPurchaseInItemDO inItem = finalInItemMap.get(item.getSourceInItemId());
                         if (inItem != null) {
@@ -253,6 +256,7 @@ public class ErpPurchaseReturnController {
                         }
                     }
                 }));
+                purchaseReturnVO.setItemCount(purchaseReturnItemList.size());
                 if (dept != null) {
                     purchaseReturnVO.setDeptName(dept.getName());
                 }
@@ -316,9 +320,12 @@ public class ErpPurchaseReturnController {
                 convertSet(pageResult.getList(), ErpPurchaseReturnDO::getDeptId));
         Map<Long, AdminUserRespDTO> userMap = adminUserApi.getUserMap(collectUserIds(pageResult.getList()));
         return BeanUtils.toBean(pageResult, ErpPurchaseReturnRespVO.class, purchaseReturn -> {
-            purchaseReturn.setItems(BeanUtils.toBean(purchaseReturnItemMap.get(purchaseReturn.getId()), ErpPurchaseReturnRespVO.Item.class,
+            List<ErpPurchaseReturnItemDO> itemList = purchaseReturnItemMap.getOrDefault(purchaseReturn.getId(), java.util.Collections.emptyList());
+            purchaseReturn.setItems(BeanUtils.toBean(itemList, ErpPurchaseReturnRespVO.Item.class,
                     item -> MapUtils.findAndThen(productMap, item.getProductId(), product -> item.setProductName(product.getName())
-                            .setProductBarCode(product.getBarCode()).setProductUnitName(product.getUnitName()))));
+                            .setProductCode(product.getCode()).setProductBarCode(product.getBarCode())
+                            .setProductUnitName(product.getUnitName()))));
+            purchaseReturn.setItemCount(itemList.size());
             purchaseReturn.setProductNames(CollUtil.join(purchaseReturn.getItems(), "，", ErpPurchaseReturnRespVO.Item::getProductName));
             MapUtils.findAndThen(supplierMap, purchaseReturn.getSupplierId(), supplier -> purchaseReturn.setSupplierName(supplier.getName()));
             MapUtils.findAndThen(deptMap, purchaseReturn.getDeptId(), dept -> purchaseReturn.setDeptName(dept.getName()));
@@ -386,6 +393,7 @@ public class ErpPurchaseReturnController {
         list.forEach(purchaseReturn -> {
             addUserId(userIds, purchaseReturn.getCreator());
             addUserId(userIds, purchaseReturn.getUpdater());
+            addUserId(userIds, purchaseReturn.getPurchaser());
         });
         return userIds;
     }
@@ -398,6 +406,10 @@ public class ErpPurchaseReturnController {
         Long updaterId = parseUserId(purchaseReturn.getUpdater());
         if (updaterId != null) {
             MapUtils.findAndThen(userMap, updaterId, user -> purchaseReturn.setUpdaterName(user.getNickname()));
+        }
+        Long purchaserId = parseUserId(purchaseReturn.getPurchaser());
+        if (purchaserId != null) {
+            MapUtils.findAndThen(userMap, purchaserId, user -> purchaseReturn.setPurchaserName(user.getNickname()));
         }
     }
 

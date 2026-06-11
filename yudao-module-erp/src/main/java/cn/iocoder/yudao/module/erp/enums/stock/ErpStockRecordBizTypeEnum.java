@@ -45,6 +45,7 @@ public enum ErpStockRecordBizTypeEnum implements ArrayValuable<Integer> {
 
     PURCHASE_PRICE_ADJUST(90, "采购调价"),
     PURCHASE_PRICE_ADJUST_CANCEL(91, "采购调价（作废）"),
+    SALE_PRICE_ADJUST(92, "销售调价"),
     ;
 
     public static final Integer[] ARRAYS = Arrays.stream(values()).map(ErpStockRecordBizTypeEnum::getType).toArray(Integer[]::new);

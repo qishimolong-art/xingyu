@@ -29,6 +29,7 @@ import cn.iocoder.yudao.module.erp.enums.finance.accounting.ErpVoucherAuditStatu
 import cn.iocoder.yudao.module.erp.enums.finance.accounting.ErpVoucherSourceBizTypeEnum;
 import cn.iocoder.yudao.module.erp.enums.finance.accounting.ErpVoucherTypeEnum;
 import cn.iocoder.yudao.module.erp.enums.stock.ErpStockRecordBizTypeEnum;
+import cn.iocoder.yudao.module.erp.service.common.ErpOperateLogService;
 import cn.iocoder.yudao.module.erp.service.finance.accounting.ErpAutoVoucherBuilder;
 import cn.iocoder.yudao.module.erp.service.finance.accounting.ErpBookOpenService;
 import cn.iocoder.yudao.module.erp.service.finance.accounting.ErpVoucherService;
@@ -118,6 +119,8 @@ public class ErpPurchaseInServiceImplTest extends BaseMockitoUnitTest {
     private ErpVoucherMapper voucherMapper;
     @Mock
     private ErpVoucherItemMapper voucherItemMapper;
+    @Mock
+    private ErpOperateLogService operateLogService;
 
     @BeforeEach
     public void setUp() {

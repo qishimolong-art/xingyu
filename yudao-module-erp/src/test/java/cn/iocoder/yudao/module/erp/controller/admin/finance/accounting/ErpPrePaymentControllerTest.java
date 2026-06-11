@@ -12,6 +12,9 @@ import cn.iocoder.yudao.module.erp.service.finance.accounting.ErpPrePaymentServi
 import org.junit.jupiter.api.Test;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import org.springframework.security.access.prepost.PreAuthorize;
+
+import java.lang.reflect.Method;
 
 import java.util.Arrays;
 import java.util.Collections;
@@ -19,6 +22,7 @@ import java.util.Collections;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -66,6 +70,20 @@ public class ErpPrePaymentControllerTest extends BaseMockitoUnitTest {
         assertEquals(0, result.getCode());
         assertTrue(result.getData());
         verify(prePaymentService).updatePrePaymentStatus(eq(8L), eq(20));
+    }
+
+    @Test
+    public void testUpdatePrePaymentStatus_hasPreAuthorize() throws NoSuchMethodException {
+        Method method = ErpPrePaymentController.class.getMethod("updatePrePaymentStatus", Long.class, Integer.class);
+        PreAuthorize anno = method.getAnnotation(PreAuthorize.class);
+        assertNotNull(anno);
+        assertTrue(anno.value().contains("erp:pre-payment:update-status"));
+    }
+
+    @Test
+    public void testUpdatePrePaymentStatus_rejectsProcessStatus() {
+        assertThrows(RuntimeException.class, () -> controller.updatePrePaymentStatus(8L, 10));
+        verify(prePaymentService, never()).updatePrePaymentStatus(any(), any());
     }
 
     // ==================== deletePrePayment ====================

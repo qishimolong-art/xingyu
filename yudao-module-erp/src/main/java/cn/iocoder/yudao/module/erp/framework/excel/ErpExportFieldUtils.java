@@ -24,6 +24,14 @@ public class ErpExportFieldUtils {
 
     private static final ErrorCode EXPORT_FIELD_EMPTY = new ErrorCode(1_030_000_001, "请至少选择一个导出字段");
 
+    private static final Set<String> ERP_DOCUMENT_TAX_FIELDS = new LinkedHashSet<>(Arrays.asList(
+            "taxPercent", "taxRate", "taxPrice", "totalTaxPrice",
+            "taxAmount", "taxExclusiveAmount", "taxExclusivePrice",
+            "taxInclusivePrice", "taxInclusiveAmount"));
+    private static final List<String> ERP_DOCUMENT_EXPORT_PACKAGES = Arrays.asList(
+            ".purchase.vo.order.", ".purchase.vo.in.", ".purchase.vo.returns.", ".purchase.vo.invoice.",
+            ".sale.vo.quote.", ".sale.vo.order.", ".sale.vo.cart.", ".sale.vo.out.", ".sale.vo.returns.");
+
     private ErpExportFieldUtils() {
     }
 
@@ -36,6 +44,9 @@ public class ErpExportFieldUtils {
         List<ErpExportFieldRespVO> result = new ArrayList<>(excelFields.size());
         for (int i = 0; i < excelFields.size(); i++) {
             Field field = excelFields.get(i);
+            if (isErpDocumentTaxField(head, field.getName())) {
+                continue;
+            }
             if (isHidden(field.getName(), hiddenFieldSet, permissionFieldMap)) {
                 continue;
             }
@@ -57,6 +68,9 @@ public class ErpExportFieldUtils {
                                                    Map<String, String> permissionFieldMap) {
         Set<String> orderedAllFields = new LinkedHashSet<>();
         for (Field field : getExcelFields(head)) {
+            if (isErpDocumentTaxField(head, field.getName())) {
+                continue;
+            }
             orderedAllFields.add(field.getName());
         }
         Set<String> hiddenFieldSet = toSet(hiddenFields);
@@ -190,6 +204,19 @@ public class ErpExportFieldUtils {
         if (exportField.endsWith("Name")) {
             String idField = exportField.substring(0, exportField.length() - "Name".length()) + "Id";
             return hiddenFields.contains(idField) || hiddenFields.contains("col_" + idField);
+        }
+        return false;
+    }
+
+    private static boolean isErpDocumentTaxField(Class<?> head, String fieldName) {
+        if (!ERP_DOCUMENT_TAX_FIELDS.contains(fieldName)) {
+            return false;
+        }
+        String className = head.getName();
+        for (String packagePart : ERP_DOCUMENT_EXPORT_PACKAGES) {
+            if (className.contains(packagePart)) {
+                return true;
+            }
         }
         return false;
     }

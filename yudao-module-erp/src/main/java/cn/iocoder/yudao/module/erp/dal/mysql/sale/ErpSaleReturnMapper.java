@@ -10,6 +10,7 @@ import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleReturnDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleReturnItemDO;
 import cn.iocoder.yudao.module.erp.enums.ErpAuditStatus;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
+import com.baomidou.mybatisplus.core.toolkit.support.SFunction;
 import org.apache.ibatis.annotations.Mapper;
 
 import java.util.List;
@@ -34,8 +35,7 @@ public interface ErpSaleReturnMapper extends BaseMapperX<ErpSaleReturnDO> {
                 .eqIfPresent(ErpSaleReturnDO::getCreator, reqVO.getCreator())
                 .eqIfPresent(ErpSaleReturnDO::getAccountId, reqVO.getAccountId())
                 .likeIfPresent(ErpSaleReturnDO::getOrderNo, reqVO.getOrderNo())
-                .inIfPresent(ErpSaleReturnDO::getId, reqVO.getIds())
-                .orderByDesc(ErpSaleReturnDO::getId);
+                .inIfPresent(ErpSaleReturnDO::getId, reqVO.getIds());
         // 退款状态。为什么需要 t. 的原因，是因为联表查询时，需要指定表名，不然会报字段不存在的错误
         if (Objects.equals(reqVO.getRefundStatus(), ErpSaleReturnPageReqVO.REFUND_STATUS_NONE)) {
             query.eq(ErpSaleReturnDO::getRefundPrice, 0);
@@ -54,7 +54,113 @@ public interface ErpSaleReturnMapper extends BaseMapperX<ErpSaleReturnDO> {
                     .eq(reqVO.getProductId() != null, ErpSaleReturnItemDO::getProductId, reqVO.getProductId())
                     .groupBy(ErpSaleReturnDO::getId); // 避免 1 对多查询，产生相同的 1
         }
+        orderByIfPresent(query, reqVO);
         return selectJoinPage(reqVO, ErpSaleReturnDO.class, query);
+    }
+
+    static void orderByIfPresent(MPJLambdaWrapperX<ErpSaleReturnDO> wrapper, ErpSaleReturnPageReqVO reqVO) {
+        String direction = normalizeOrderDirection(reqVO.getOrderDirection());
+        if (direction == null) {
+            wrapper.orderByDesc(ErpSaleReturnDO::getId);
+            return;
+        }
+        String expression = getOrderExpression(reqVO.getOrderField());
+        if (expression != null) {
+            wrapper.last("ORDER BY " + expression + " " + direction + ", t.id DESC");
+            return;
+        }
+        SFunction<ErpSaleReturnDO, ?> orderColumn = getOrderColumn(reqVO.getOrderField());
+        if (orderColumn == null) {
+            wrapper.orderByDesc(ErpSaleReturnDO::getId);
+            return;
+        }
+        if ("ASC".equals(direction)) {
+            wrapper.orderByAsc(orderColumn);
+        } else {
+            wrapper.orderByDesc(orderColumn);
+        }
+    }
+
+    static String normalizeOrderDirection(String orderDirection) {
+        if (orderDirection == null) {
+            return null;
+        }
+        if ("asc".equalsIgnoreCase(orderDirection.trim())) {
+            return "ASC";
+        }
+        if ("desc".equalsIgnoreCase(orderDirection.trim())) {
+            return "DESC";
+        }
+        return null;
+    }
+
+    static String getOrderExpression(String orderField) {
+        if (orderField == null) {
+            return null;
+        }
+        switch (orderField.trim()) {
+            case "refundStatus":
+            case "settlementStatus":
+            case "settlementStatusText":
+                return "(CASE WHEN COALESCE(t.refund_price, 0) = 0 THEN 0 "
+                        + "WHEN t.refund_price = t.total_price THEN 2 ELSE 1 END)";
+            default:
+                return null;
+        }
+    }
+
+    static SFunction<ErpSaleReturnDO, ?> getOrderColumn(String orderField) {
+        if (orderField == null) {
+            return null;
+        }
+        switch (orderField.trim()) {
+            case "no":
+                return ErpSaleReturnDO::getNo;
+            case "returnTime":
+                return ErpSaleReturnDO::getReturnTime;
+            case "status":
+                return ErpSaleReturnDO::getStatus;
+            case "customerId":
+            case "customerName":
+                return ErpSaleReturnDO::getCustomerId;
+            case "returnMode":
+                return ErpSaleReturnDO::getReturnMode;
+            case "orderMethod":
+                return ErpSaleReturnDO::getOrderMethod;
+            case "totalCount":
+                return ErpSaleReturnDO::getTotalCount;
+            case "settleMethod":
+                return ErpSaleReturnDO::getSettleMethod;
+            case "deliveryMethod":
+                return ErpSaleReturnDO::getDeliveryMethod;
+            case "totalProductPrice":
+                return ErpSaleReturnDO::getTotalProductPrice;
+            case "discountPrice":
+                return ErpSaleReturnDO::getDiscountPrice;
+            case "totalPrice":
+                return ErpSaleReturnDO::getTotalPrice;
+            case "invoiceType":
+                return ErpSaleReturnDO::getInvoiceType;
+            case "billNo":
+                return ErpSaleReturnDO::getBillNo;
+            case "logisticsCompany":
+                return ErpSaleReturnDO::getLogisticsCompany;
+            case "deptId":
+            case "deptName":
+                return ErpSaleReturnDO::getDeptId;
+            case "saleUserId":
+            case "saleUserName":
+                return ErpSaleReturnDO::getSaleUserId;
+            case "creator":
+            case "creatorName":
+                return ErpSaleReturnDO::getCreator;
+            case "priority":
+                return ErpSaleReturnDO::getPriority;
+            case "remark":
+                return ErpSaleReturnDO::getRemark;
+            default:
+                return null;
+        }
     }
 
     default int updateByIdAndStatus(Long id, Integer status, ErpSaleReturnDO updateObj) {

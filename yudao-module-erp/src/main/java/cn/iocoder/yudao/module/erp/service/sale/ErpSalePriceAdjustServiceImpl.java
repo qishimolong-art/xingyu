@@ -15,13 +15,18 @@ import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSalePriceAdjustDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSalePriceAdjustItemDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleOutDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleOutItemDO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockDO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockRecordDO;
 import cn.iocoder.yudao.module.erp.dal.mysql.product.ErpProductMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpSalePriceAdjustItemMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpSalePriceAdjustMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpSaleOutItemMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpSaleOutMapper;
+import cn.iocoder.yudao.module.erp.dal.mysql.stock.ErpStockMapper;
+import cn.iocoder.yudao.module.erp.dal.mysql.stock.ErpStockRecordMapper;
 import cn.iocoder.yudao.module.erp.dal.redis.no.ErpNoRedisDAO;
 import cn.iocoder.yudao.module.erp.enums.ErpAuditStatus;
+import cn.iocoder.yudao.module.erp.enums.stock.ErpStockRecordBizTypeEnum;
 import cn.iocoder.yudao.module.erp.service.common.ErpOperateLogService;
 import cn.iocoder.yudao.module.erp.service.product.ErpProductService;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
@@ -65,6 +70,10 @@ public class ErpSalePriceAdjustServiceImpl implements ErpSalePriceAdjustService 
     private ErpProductService productService;
     @Resource
     private ErpProductMapper productMapper;
+    @Resource
+    private ErpStockMapper stockMapper;
+    @Resource
+    private ErpStockRecordMapper stockRecordMapper;
     @Resource
     private ErpSaleFieldPermissionMasker fieldPermissionMasker;
     @Resource
@@ -142,30 +151,15 @@ public class ErpSalePriceAdjustServiceImpl implements ErpSalePriceAdjustService 
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void updateSalePriceAdjustStatus(Long id, Integer status) {
+        if (!ErpAuditStatus.APPROVE.getStatus().equals(status)) {
+            throw exception(SALE_PRICE_ADJUST_PROCESS_FAIL);
+        }
         ErpSalePriceAdjustDO existDO = validateSalePriceAdjustExists(id);
-        if (ErpAuditStatus.APPROVE.getStatus().equals(status)) {
-            if (!ErpAuditStatus.PROCESS.getStatus().equals(existDO.getStatus())) {
-                throw exception(SALE_PRICE_ADJUST_APPROVE_FAIL);
-            }
-            approveAndModifySaleOut(existDO);
-            recordStatus(id, existDO.getNo(), true);
-            return;
+        if (!ErpAuditStatus.PROCESS.getStatus().equals(existDO.getStatus())) {
+            throw exception(SALE_PRICE_ADJUST_APPROVE_FAIL);
         }
-        if (ErpAuditStatus.PROCESS.getStatus().equals(status)) {
-            if (!ErpAuditStatus.APPROVE.getStatus().equals(existDO.getStatus())) {
-                throw exception(SALE_PRICE_ADJUST_PROCESS_FAIL);
-            }
-            // 反审批：恢复原销售单价格
-            rejectAndRestoreSaleOut(existDO);
-            salePriceAdjustMapper.updateById(new ErpSalePriceAdjustDO().setId(id)
-                    .setStatus(ErpAuditStatus.PROCESS.getStatus()));
-            recordStatus(id, existDO.getNo(), false);
-            return;
-        }
-        ErpSalePriceAdjustDO updateDO = new ErpSalePriceAdjustDO();
-        updateDO.setId(id);
-        updateDO.setStatus(status);
-        salePriceAdjustMapper.updateById(updateDO);
+        approveAndModifySaleOut(existDO);
+        recordStatus(id, existDO.getNo(), true);
     }
 
     @Override
@@ -395,6 +389,7 @@ public class ErpSalePriceAdjustServiceImpl implements ErpSalePriceAdjustService 
             throw exception(SALE_PRICE_ADJUST_APPROVE_FAIL);
         }
         validateSalePriceAdjustItemsNotAdjusted(adjustItems, adjustDO.getId());
+        LocalDateTime approveTime = LocalDateTime.now();
         // 按 saleOutNo 分组处理多张销售单
         Map<String, List<ErpSalePriceAdjustItemDO>> groupBySaleOutNo = adjustItems.stream()
                 .collect(Collectors.groupingBy(ErpSalePriceAdjustItemDO::getSaleOutNo));
@@ -422,6 +417,7 @@ public class ErpSalePriceAdjustServiceImpl implements ErpSalePriceAdjustService 
                     item.setAdjustId(adjustDO.getId());
                     recalculateSaleOutItem(item);
                     saleOutItemMapper.updateById(item);
+                    createSalePriceAdjustStockRecord(adjustDO, adjustItem, item, approveTime);
                 }
             }
 
@@ -435,39 +431,6 @@ public class ErpSalePriceAdjustServiceImpl implements ErpSalePriceAdjustService 
         // 更新调价单状态
         salePriceAdjustMapper.updateById(new ErpSalePriceAdjustDO().setId(adjustDO.getId())
                 .setStatus(ErpAuditStatus.APPROVE.getStatus()));
-    }
-
-    private void rejectAndRestoreSaleOut(ErpSalePriceAdjustDO adjustDO) {
-        List<ErpSalePriceAdjustItemDO> adjustItems = salePriceAdjustItemMapper.selectListByAdjustId(adjustDO.getId());
-        if (CollUtil.isEmpty(adjustItems)) return;
-
-        // 按 saleOutNo 分组
-        Map<String, List<ErpSalePriceAdjustItemDO>> groupBySaleOutNo = adjustItems.stream()
-                .collect(Collectors.groupingBy(ErpSalePriceAdjustItemDO::getSaleOutNo));
-
-        for (Map.Entry<String, List<ErpSalePriceAdjustItemDO>> entry : groupBySaleOutNo.entrySet()) {
-            String saleOutNo = entry.getKey();
-            ErpSaleOutDO originalOut = saleOutMapper.selectByNo(saleOutNo);
-            if (originalOut == null) continue;
-
-            List<ErpSaleOutItemDO> items = saleOutItemMapper.selectListByOutId(originalOut.getId());
-            for (ErpSaleOutItemDO item : items) {
-                if (adjustDO.getId().equals(item.getAdjustId())) {
-                    item.setProductPrice(item.getOriginalProductPrice());
-                    item.setOriginalProductPrice(null);
-                    item.setAdjusted(false);
-                    item.setAdjustId(null);
-                    recalculateSaleOutItem(item);
-                    saleOutItemMapper.updateById(item);
-                }
-            }
-
-            List<ErpSaleOutItemDO> restoredItems = saleOutItemMapper.selectListByOutId(originalOut.getId());
-            recalculateSaleOut(originalOut, restoredItems);
-            originalOut.setAdjusted(false);
-            originalOut.setAdjustPriceAdjustId(null);
-            saleOutMapper.updateById(originalOut);
-        }
     }
 
     private void validateSalePriceAdjustItemsNotAdjusted(List<ErpSalePriceAdjustItemDO> adjustItems, Long currentAdjustId) {
@@ -578,6 +541,38 @@ public class ErpSalePriceAdjustServiceImpl implements ErpSalePriceAdjustService 
         return item.getNewPrice().subtract(item.getOldPrice()).multiply(item.getOutCount());
     }
 
+    private void createSalePriceAdjustStockRecord(ErpSalePriceAdjustDO adjustDO,
+                                                 ErpSalePriceAdjustItemDO adjustItem,
+                                                 ErpSaleOutItemDO saleOutItem,
+                                                 LocalDateTime approveTime) {
+        BigDecimal adjustPrice = calculateAdjustPrice(adjustItem);
+        if (adjustPrice.compareTo(BigDecimal.ZERO) == 0) {
+            return;
+        }
+
+        ErpStockDO stock = stockMapper.selectByProductIdAndWarehouseId(saleOutItem.getProductId(), saleOutItem.getWarehouseId());
+        BigDecimal totalCount = stock != null && stock.getCount() != null ? stock.getCount() : BigDecimal.ZERO;
+        BigDecimal costPrice = stock != null && stock.getCostPrice() != null ? stock.getCostPrice() : BigDecimal.ZERO;
+        BigDecimal costAmount = stock != null && stock.getCostAmount() != null ? stock.getCostAmount() : BigDecimal.ZERO;
+
+        ErpStockRecordDO record = new ErpStockRecordDO()
+                .setProductId(saleOutItem.getProductId())
+                .setWarehouseId(saleOutItem.getWarehouseId())
+                .setDeptId(stock != null ? stock.getDeptId() : null)
+                .setCount(BigDecimal.ZERO)
+                .setTotalCount(totalCount)
+                .setBizType(ErpStockRecordBizTypeEnum.SALE_PRICE_ADJUST.getType())
+                .setBizId(adjustDO.getId())
+                .setBizItemId(adjustItem.getId())
+                .setBizNo(adjustDO.getNo())
+                .setUnitPrice(adjustItem.getNewPrice())
+                .setTotalPrice(adjustPrice)
+                .setCostPrice(costPrice)
+                .setCostAmount(costAmount)
+                .setBizDate(approveTime != null ? approveTime : LocalDateTime.now());
+        stockRecordMapper.insert(record);
+    }
+
     private boolean isEmptyImportRow(ErpSalePriceAdjustImportExcelVO row) {
         return row == null
                 || row.getCustomerId() == null
@@ -595,8 +590,7 @@ public class ErpSalePriceAdjustServiceImpl implements ErpSalePriceAdjustService 
         BigDecimal price = item.getProductPrice() == null ? BigDecimal.ZERO : item.getProductPrice();
         BigDecimal totalPrice = price.multiply(count);
         item.setTotalPrice(totalPrice);
-        BigDecimal taxPercent = item.getTaxPercent() == null ? BigDecimal.ZERO : item.getTaxPercent();
-        item.setTaxPrice(totalPrice.multiply(taxPercent).divide(new BigDecimal("100")));
+        item.setTaxPercent(null); item.setTaxPrice(BigDecimal.ZERO);
     }
 
     private void recalculateSaleOut(ErpSaleOutDO saleOut, List<ErpSaleOutItemDO> items) {
@@ -606,10 +600,9 @@ public class ErpSalePriceAdjustServiceImpl implements ErpSalePriceAdjustService 
         for (ErpSaleOutItemDO item : items) {
             totalCount = totalCount.add(item.getCount() == null ? BigDecimal.ZERO : item.getCount());
             totalProductPrice = totalProductPrice.add(item.getTotalPrice() == null ? BigDecimal.ZERO : item.getTotalPrice());
-            totalTaxPrice = totalTaxPrice.add(item.getTaxPrice() == null ? BigDecimal.ZERO : item.getTaxPrice());
         }
         BigDecimal discountPercent = saleOut.getDiscountPercent() == null ? BigDecimal.ZERO : saleOut.getDiscountPercent();
-        BigDecimal discountPrice = totalProductPrice.add(totalTaxPrice).multiply(discountPercent).divide(new BigDecimal("100"));
+        BigDecimal discountPrice = totalProductPrice.multiply(discountPercent).divide(new BigDecimal("100"));
         BigDecimal feeAmount = saleOut.getFeeAmount() != null ? saleOut.getFeeAmount()
                 : (saleOut.getOtherPrice() != null ? saleOut.getOtherPrice() : BigDecimal.ZERO);
         saleOut.setTotalCount(totalCount);
@@ -619,7 +612,7 @@ public class ErpSalePriceAdjustServiceImpl implements ErpSalePriceAdjustService 
         saleOut.setFeeAmount(feeAmount);
         saleOut.setOtherPrice(feeAmount);
         saleOut.setExtraFee(feeAmount);
-        saleOut.setTotalPrice(totalProductPrice.add(totalTaxPrice).subtract(discountPrice).add(feeAmount));
+        saleOut.setTotalPrice(totalProductPrice.subtract(discountPrice).add(feeAmount));
     }
 
     private void recordCreate(Long id, String no) {

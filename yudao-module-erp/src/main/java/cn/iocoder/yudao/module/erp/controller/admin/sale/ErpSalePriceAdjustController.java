@@ -8,6 +8,7 @@ import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.common.util.collection.MapUtils;
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
 import cn.iocoder.yudao.framework.excel.core.util.ExcelUtils;
+import cn.iocoder.yudao.module.erp.controller.admin.common.ErpAuditStatusRequestValidator;
 import cn.iocoder.yudao.module.erp.controller.admin.common.vo.ErpExportFieldRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.priceadjust.ErpSaleOutItemForAdjustRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.priceadjust.ErpSalePriceAdjustExportRespVO;
@@ -135,7 +136,8 @@ public class ErpSalePriceAdjustController {
     @Operation(summary = "更新销售调价单状态")
     @PreAuthorize("@ss.hasPermission('erp:sale-price-adjust:update-status')")
     public CommonResult<Boolean> updateSalePriceAdjustStatus(@RequestParam("id") Long id,
-                                                              @RequestParam("status") Integer status) {
+                                                             @RequestParam("status") Integer status) {
+        ErpAuditStatusRequestValidator.validateApproveStatus(status);
         salePriceAdjustService.updateSalePriceAdjustStatus(id, status);
         return success(true);
     }

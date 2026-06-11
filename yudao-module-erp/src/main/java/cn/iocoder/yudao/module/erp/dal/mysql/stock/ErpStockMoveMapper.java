@@ -9,6 +9,8 @@ import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockMoveItemDO;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import org.apache.ibatis.annotations.Mapper;
 
+import java.util.List;
+
 /**
  * ERP 库存调拨单 Mapper
  *
@@ -22,6 +24,9 @@ public interface ErpStockMoveMapper extends BaseMapperX<ErpStockMoveDO> {
                 .likeIfPresent(ErpStockMoveDO::getNo, reqVO.getNo())
                 .betweenIfPresent(ErpStockMoveDO::getMoveTime, reqVO.getMoveTime())
                 .eqIfPresent(ErpStockMoveDO::getStatus, reqVO.getStatus())
+                .eqIfPresent(ErpStockMoveDO::getSourceType, reqVO.getSourceType())
+                .eqIfPresent(ErpStockMoveDO::getSourceId, reqVO.getSourceId())
+                .likeIfPresent(ErpStockMoveDO::getSourceNo, reqVO.getSourceNo())
                 .eqIfPresent(ErpStockMoveDO::getDeptId, reqVO.getDeptId())
                 .likeIfPresent(ErpStockMoveDO::getRemark, reqVO.getRemark())
                 .eqIfPresent(ErpStockMoveDO::getCreator, reqVO.getCreator())
@@ -42,6 +47,14 @@ public interface ErpStockMoveMapper extends BaseMapperX<ErpStockMoveDO> {
 
     default ErpStockMoveDO selectByNo(String no) {
         return selectOne(ErpStockMoveDO::getNo, no);
+    }
+
+    default ErpStockMoveDO selectBySource(Integer sourceType, Long sourceId) {
+        return selectFirstOne(ErpStockMoveDO::getSourceType, sourceType, ErpStockMoveDO::getSourceId, sourceId);
+    }
+
+    default List<ErpStockMoveDO> selectListBySource(Integer sourceType, Long sourceId) {
+        return selectList(ErpStockMoveDO::getSourceType, sourceType, ErpStockMoveDO::getSourceId, sourceId);
     }
 
 }

@@ -9,7 +9,6 @@ import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.out.ErpSaleOutPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.out.ErpSaleReturnableItemRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.out.ErpSaleOutSaveReqVO;
-import cn.iocoder.yudao.module.erp.dal.dataobject.finance.accounting.ErpVoucherDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.accounting.ErpVoucherItemDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.product.ErpProductDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpCustomerDO;
@@ -19,15 +18,12 @@ import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleOutDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleOutItemDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleReturnDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockDO;
-import cn.iocoder.yudao.module.erp.dal.mysql.finance.accounting.ErpVoucherItemMapper;
-import cn.iocoder.yudao.module.erp.dal.mysql.finance.accounting.ErpVoucherMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpSaleOutItemMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpSaleOutMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpSaleReturnItemMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpSaleReturnMapper;
 import cn.iocoder.yudao.module.erp.dal.redis.no.ErpNoRedisDAO;
 import cn.iocoder.yudao.module.erp.enums.ErpAuditStatus;
-import cn.iocoder.yudao.module.erp.enums.finance.accounting.ErpVoucherAuditStatusEnum;
 import cn.iocoder.yudao.module.erp.enums.finance.accounting.ErpVoucherTypeEnum;
 import cn.iocoder.yudao.module.erp.enums.finance.accounting.ErpVoucherSourceBizTypeEnum;
 import cn.iocoder.yudao.module.erp.enums.stock.ErpStockRecordBizTypeEnum;
@@ -41,7 +37,6 @@ import cn.iocoder.yudao.module.erp.service.stock.ErpStockRecordService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpStockService;
 import cn.iocoder.yudao.module.erp.service.stock.bo.ErpStockRecordCreateReqBO;
 import cn.iocoder.yudao.module.system.api.user.AdminUserApi;
-import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -114,10 +109,6 @@ public class ErpSaleOutServiceImpl implements ErpSaleOutService {
     private ErpVoucherService voucherService;
     @Resource
     private ErpBookOpenService bookOpenService;
-    @Resource
-    private ErpVoucherMapper voucherMapper;
-    @Resource
-    private ErpVoucherItemMapper voucherItemMapper;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -249,8 +240,8 @@ public class ErpSaleOutServiceImpl implements ErpSaleOutService {
     private void calculateTotalPrice(ErpSaleOutDO saleOut, List<ErpSaleOutItemDO> saleOutItems) {
         saleOut.setTotalCount(getSumValue(saleOutItems, ErpSaleOutItemDO::getCount, BigDecimal::add));
         saleOut.setTotalProductPrice(getSumValue(saleOutItems, ErpSaleOutItemDO::getTotalPrice, BigDecimal::add, BigDecimal.ZERO));
-        saleOut.setTotalTaxPrice(getSumValue(saleOutItems, ErpSaleOutItemDO::getTaxPrice, BigDecimal::add, BigDecimal.ZERO));
-        saleOut.setTotalPrice(saleOut.getTotalProductPrice().add(saleOut.getTotalTaxPrice()));
+        saleOut.setTotalTaxPrice(BigDecimal.ZERO);
+        saleOut.setTotalPrice(saleOut.getTotalProductPrice());
         // 计算优惠价格
         if (saleOut.getDiscountPercent() == null) {
             saleOut.setDiscountPercent(BigDecimal.ZERO);
@@ -286,45 +277,29 @@ public class ErpSaleOutServiceImpl implements ErpSaleOutService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void updateSaleOutStatus(Long id, Integer status) {
-        boolean approve = ErpAuditStatus.APPROVE.getStatus().equals(status);
+        if (!ErpAuditStatus.APPROVE.getStatus().equals(status)) {
+            throw exception(SALE_OUT_PROCESS_FAIL);
+        }
         // 1.1 校验存在
         ErpSaleOutDO saleOut = validateSaleOutExists(id);
         // 1.2 校验状态
-        if (saleOut.getStatus().equals(status)) {
-            throw exception(approve ? SALE_OUT_APPROVE_FAIL : SALE_OUT_PROCESS_FAIL);
-        }
-        // 1.3 校验已退款
-        if (!approve && saleOut.getReceiptPrice().compareTo(BigDecimal.ZERO) > 0) {
-            throw exception(SALE_OUT_PROCESS_FAIL_EXISTS_RECEIPT);
-        }
-        // 1.4 反审：先校验关联凭证状态，未审核才允许删除
-        if (!approve) {
-            List<ErpVoucherDO> related = voucherMapper.selectListByBiz(
-                    ErpVoucherSourceBizTypeEnum.SALE_OUT.getType(), id);
-            for (ErpVoucherDO v : related) {
-                if (ErpVoucherAuditStatusEnum.APPROVE.getStatus().equals(v.getAuditStatus())) {
-                    throw exception(BIZ_PROCESS_FAIL_VOUCHER_APPROVED, v.getVoucherNo());
-                }
-                voucherMapper.deleteById(v.getId());
-                voucherItemMapper.delete(new LambdaQueryWrapper<ErpVoucherItemDO>()
-                        .eq(ErpVoucherItemDO::getVoucherId, v.getId()));
-            }
+        if (!ErpAuditStatus.PROCESS.getStatus().equals(saleOut.getStatus())) {
+            throw exception(SALE_OUT_APPROVE_FAIL);
         }
 
         // 2. 更新状态
         int updateCount = saleOutMapper.updateByIdAndStatus(id, saleOut.getStatus(),
-                new ErpSaleOutDO().setStatus(status));
+                new ErpSaleOutDO().setStatus(ErpAuditStatus.APPROVE.getStatus()));
         if (updateCount == 0) {
-            throw exception(approve ? SALE_OUT_APPROVE_FAIL : SALE_OUT_PROCESS_FAIL);
+            throw exception(SALE_OUT_APPROVE_FAIL);
         }
 
         // 3. 变更库存
         List<ErpSaleOutItemDO> saleOutItems = saleOutItemMapper.selectListByOutId(id);
-        Integer bizType = approve ? ErpStockRecordBizTypeEnum.SALE_OUT.getType()
-                : ErpStockRecordBizTypeEnum.SALE_OUT_CANCEL.getType();
+        Integer bizType = ErpStockRecordBizTypeEnum.SALE_OUT.getType();
 
         // 3.1 审批通过且销售凭证已开账时，先快照成本（必须前置于扣库存）
-        boolean enableVoucher = approve && bookOpenService.isVoucherTypeEnabled(
+        boolean enableVoucher = bookOpenService.isVoucherTypeEnabled(
                 saleOut.getOutTime().toLocalDate(), ErpVoucherTypeEnum.SALE.getType());
         BigDecimal sumCost = BigDecimal.ZERO;
         if (enableVoucher) {
@@ -338,7 +313,7 @@ public class ErpSaleOutServiceImpl implements ErpSaleOutService {
 
         // 3.2 扣库存
         saleOutItems.forEach(saleOutItem -> {
-            BigDecimal count = approve ? saleOutItem.getCount().negate() : saleOutItem.getCount();
+            BigDecimal count = saleOutItem.getCount().negate();
             stockRecordService.createStockRecord(new ErpStockRecordCreateReqBO(
                     saleOutItem.getProductId(), saleOutItem.getWarehouseId(), count,
                     bizType, saleOutItem.getOutId(), saleOutItem.getId(), saleOut.getNo(),
@@ -360,7 +335,7 @@ public class ErpSaleOutServiceImpl implements ErpSaleOutService {
                     "销售出库 - " + customerName,
                     voucherItems);
         }
-        recordStatus(id, saleOut.getNo(), approve);
+        recordStatus(id, saleOut.getNo(), true);
     }
 
     @Override
@@ -392,16 +367,13 @@ public class ErpSaleOutServiceImpl implements ErpSaleOutService {
             if (Boolean.TRUE.equals(item.getGiftFlag())) {
                 item.setProductPrice(BigDecimal.ZERO);
                 item.setTotalPrice(BigDecimal.ZERO);
+                item.setTaxPercent(null);
                 item.setTaxPrice(BigDecimal.ZERO);
                 return;
             }
+            item.setTaxPercent(null);
+            item.setTaxPrice(BigDecimal.ZERO);
             item.setTotalPrice(MoneyUtils.priceMultiply(item.getProductPrice(), item.getCount()));
-            if (item.getTotalPrice() == null) {
-                return;
-            }
-            if (item.getTaxPercent() != null) {
-                item.setTaxPrice(MoneyUtils.priceMultiplyPercent(item.getTotalPrice(), item.getTaxPercent()));
-            }
         }));
     }
 
@@ -550,7 +522,7 @@ public class ErpSaleOutServiceImpl implements ErpSaleOutService {
             vo.setReturnedCount(returned);
             BigDecimal returnable = item.getCount().subtract(returned);
             vo.setReturnableCount(returnable.compareTo(BigDecimal.ZERO) < 0 ? BigDecimal.ZERO : returnable);
-            vo.setTaxPercent(item.getTaxPercent());
+
             vo.setRemark(item.getRemark());
             return vo;
         }).collect(Collectors.toList());

@@ -8,6 +8,7 @@ import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseOrderDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseOrderItemDO;
 import cn.iocoder.yudao.module.erp.enums.ErpAuditStatus;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
+import com.baomidou.mybatisplus.core.toolkit.support.SFunction;
 import org.apache.ibatis.annotations.Mapper;
 import org.springframework.util.StringUtils;
 
@@ -30,8 +31,7 @@ public interface ErpPurchaseOrderMapper extends BaseMapperX<ErpPurchaseOrderDO> 
                 .betweenIfPresent(ErpPurchaseOrderDO::getOrderTime, reqVO.getOrderTime())
                 .eqIfPresent(ErpPurchaseOrderDO::getStatus, reqVO.getStatus())
                 .likeIfPresent(ErpPurchaseOrderDO::getRemark, normalizeLikeValue(reqVO.getRemark()))
-                .eqIfPresent(ErpPurchaseOrderDO::getCreator, reqVO.getCreator())
-                .orderByDesc(ErpPurchaseOrderDO::getId);
+                .eqIfPresent(ErpPurchaseOrderDO::getCreator, reqVO.getCreator());
         // 入库状态。为什么需要 t. 的原因，是因为联表查询时，需要指定表名，不然会报 in_count 错误
         if (Objects.equals(reqVO.getInStatus(), ErpPurchaseOrderPageReqVO.IN_STATUS_NONE)) {
             query.eq(ErpPurchaseOrderDO::getInCount, 0);
@@ -63,7 +63,69 @@ public interface ErpPurchaseOrderMapper extends BaseMapperX<ErpPurchaseOrderDO> 
                     .eq(reqVO.getProductId() != null, ErpPurchaseOrderItemDO::getProductId, reqVO.getProductId())
                     .groupBy(ErpPurchaseOrderDO::getId); // 避免 1 对多查询，产生相同的 1
         }
+        orderByIfPresent(query, reqVO);
         return selectJoinPage(reqVO, ErpPurchaseOrderDO.class, query);
+    }
+
+    static void orderByIfPresent(MPJLambdaWrapperX<ErpPurchaseOrderDO> wrapper, ErpPurchaseOrderPageReqVO reqVO) {
+        SFunction<ErpPurchaseOrderDO, ?> orderColumn = getOrderColumn(reqVO.getOrderField());
+        if (orderColumn == null) {
+            wrapper.orderByDesc(ErpPurchaseOrderDO::getId);
+            return;
+        }
+        if ("asc".equalsIgnoreCase(reqVO.getOrderDirection())) {
+            wrapper.orderByAsc(orderColumn);
+            return;
+        }
+        if ("desc".equalsIgnoreCase(reqVO.getOrderDirection())) {
+            wrapper.orderByDesc(orderColumn);
+            return;
+        }
+        wrapper.orderByDesc(ErpPurchaseOrderDO::getId);
+    }
+
+    static SFunction<ErpPurchaseOrderDO, ?> getOrderColumn(String orderField) {
+        if (orderField == null) {
+            return null;
+        }
+        switch (orderField.trim()) {
+            case "no":
+                return ErpPurchaseOrderDO::getNo;
+            case "createTime":
+                return ErpPurchaseOrderDO::getCreateTime;
+            case "factoryOrderNo":
+                return ErpPurchaseOrderDO::getFactoryOrderNo;
+            case "supplierId":
+            case "supplierName":
+                return ErpPurchaseOrderDO::getSupplierId;
+            case "status":
+                return ErpPurchaseOrderDO::getStatus;
+            case "inStatus":
+                return ErpPurchaseOrderDO::getInCount;
+            case "orderDate":
+                return ErpPurchaseOrderDO::getOrderDate;
+            case "arrivalDate":
+                return ErpPurchaseOrderDO::getArrivalDate;
+            case "totalCount":
+                return ErpPurchaseOrderDO::getTotalCount;
+            case "totalProductPrice":
+                return ErpPurchaseOrderDO::getTotalProductPrice;
+            case "remark":
+                return ErpPurchaseOrderDO::getRemark;
+            case "deptId":
+            case "deptName":
+                return ErpPurchaseOrderDO::getDeptId;
+            case "creator":
+            case "creatorName":
+                return ErpPurchaseOrderDO::getCreator;
+            case "purchaser":
+            case "purchaserName":
+                return ErpPurchaseOrderDO::getPurchaser;
+            case "printFrequency":
+                return ErpPurchaseOrderDO::getId;
+            default:
+                return null;
+        }
     }
 
     default int updateByIdAndStatus(Long id, Integer status, ErpPurchaseOrderDO updateObj) {

@@ -103,9 +103,17 @@ public class ErpPurchaseReturnRespVO {
     @Schema(description = "退货项列表", requiredMode = Schema.RequiredMode.REQUIRED)
     private List<Item> items;
 
+    @Schema(description = "项数", example = "0")
+    private Integer itemCount;
+
     @Schema(description = "产品信息", requiredMode = Schema.RequiredMode.REQUIRED)
     @ExcelProperty("产品信息")
     private String productNames;
+
+    @Schema(description = "Purchaser user id")
+    private String purchaser;
+    @Schema(description = "Purchaser name")
+    private String purchaserName;
 
     // ========== 八期：扩展字段 ==========
 

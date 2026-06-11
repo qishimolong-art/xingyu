@@ -38,12 +38,10 @@ public interface ErpPurchasePriceAdjustService {
     void updatePurchasePriceAdjust(@Valid ErpPurchasePriceAdjustSaveReqVO reqVO);
 
     /**
-     * 更新采购调价单状态（审核通过 / 反审核）
-     *
-     * <p>注意：本期审批通过后不支持反审核，status=PROCESS 将直接抛出异常。</p>
+     * 更新采购调价单状态（仅支持审核通过）
      *
      * @param id     调价单 ID
-     * @param status 目标状态
+     * @param status 目标状态，仅支持 APPROVE
      */
     void updatePurchasePriceAdjustStatus(Long id, Integer status);
 

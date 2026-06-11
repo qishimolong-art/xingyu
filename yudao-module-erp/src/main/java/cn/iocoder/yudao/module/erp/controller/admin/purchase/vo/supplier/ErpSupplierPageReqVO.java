@@ -26,6 +26,12 @@ public class ErpSupplierPageReqVO extends PageParam {
     @Schema(description = "所属部门")
     private Long deptId;
 
+    @Schema(description = "Sort field, supports: code, name, status, region, address, remark, createTime, mobile, telephone, purchaser")
+    private String orderField;
+
+    @Schema(description = "Sort direction: asc or desc")
+    private String orderDirection;
+
     @Schema(description = "勾选导出的供应商编号数组", example = "[1,2,3]")
     private List<Long> ids;
 

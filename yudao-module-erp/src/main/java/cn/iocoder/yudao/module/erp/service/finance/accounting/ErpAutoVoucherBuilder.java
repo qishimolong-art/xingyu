@@ -55,18 +55,13 @@ public class ErpAutoVoucherBuilder {
     public List<ErpVoucherItemDO> buildPurchaseInItems(ErpPurchaseInDO purchaseIn, String supplierName) {
         String summary = "采购入库 - " + nullToEmpty(supplierName);
         BigDecimal totalProduct = nullToZero(purchaseIn.getTotalProductPrice());
-        BigDecimal totalTax = nullToZero(purchaseIn.getTotalTaxPrice());
         BigDecimal discount = nullToZero(purchaseIn.getDiscountPrice());
         BigDecimal other = resolveFeeAmount(purchaseIn.getFeeAmount(), purchaseIn.getOtherPrice());
-        BigDecimal apAmount = totalProduct.add(totalTax).subtract(discount).add(other);
+        BigDecimal apAmount = totalProduct.subtract(discount).add(other);
         List<ErpVoucherItemDO> items = new ArrayList<>(5);
         items.add(buildLine(items.size() + 1, summary,
                 ErpAccountingSubjectCodeConstants.INVENTORY,
                 totalProduct, null,
-                null, null, null));
-        items.add(buildLine(items.size() + 1, summary,
-                ErpAccountingSubjectCodeConstants.TAX_PAYABLE,
-                totalTax, null,
                 null, null, null));
         items.add(buildLine(items.size() + 1, summary,
                 ErpAccountingSubjectCodeConstants.AP,
@@ -102,10 +97,9 @@ public class ErpAutoVoucherBuilder {
     public List<ErpVoucherItemDO> buildPurchaseReturnItems(ErpPurchaseReturnDO purchaseReturn, String supplierName) {
         String summary = "采购退货 - " + nullToEmpty(supplierName);
         BigDecimal totalProduct = nullToZero(purchaseReturn.getTotalProductPrice());
-        BigDecimal totalTax = nullToZero(purchaseReturn.getTotalTaxPrice());
         BigDecimal discount = nullToZero(purchaseReturn.getDiscountPrice());
         BigDecimal other = resolveFeeAmount(purchaseReturn.getFeeAmount(), purchaseReturn.getOtherPrice());
-        BigDecimal apAmount = totalProduct.add(totalTax).subtract(discount).add(other);
+        BigDecimal apAmount = totalProduct.subtract(discount).add(other);
         List<ErpVoucherItemDO> items = new ArrayList<>(5);
         items.add(buildLine(items.size() + 1, summary,
                 ErpAccountingSubjectCodeConstants.AP,
@@ -114,10 +108,6 @@ public class ErpAutoVoucherBuilder {
         items.add(buildLine(items.size() + 1, summary,
                 ErpAccountingSubjectCodeConstants.INVENTORY,
                 null, totalProduct,
-                null, null, null));
-        items.add(buildLine(items.size() + 1, summary,
-                ErpAccountingSubjectCodeConstants.TAX_PAYABLE,
-                null, totalTax,
                 null, null, null));
         if (discount.compareTo(BigDecimal.ZERO) > 0) {
             items.add(buildLine(items.size() + 1, summary + "（折扣）",
@@ -149,10 +139,9 @@ public class ErpAutoVoucherBuilder {
     public List<ErpVoucherItemDO> buildSaleOutItems(ErpSaleOutDO saleOut, String customerName, BigDecimal sumCost) {
         String summary = "销售出库 - " + nullToEmpty(customerName);
         BigDecimal totalProduct = nullToZero(saleOut.getTotalProductPrice());
-        BigDecimal totalTax = nullToZero(saleOut.getTotalTaxPrice());
         BigDecimal discount = nullToZero(saleOut.getDiscountPrice());
         BigDecimal other = resolveFeeAmount(saleOut.getFeeAmount(), saleOut.getOtherPrice());
-        BigDecimal arAmount = totalProduct.add(totalTax).subtract(discount).add(other);
+        BigDecimal arAmount = totalProduct.subtract(discount).add(other);
         List<ErpVoucherItemDO> items = new ArrayList<>(7);
         items.add(buildLine(items.size() + 1, summary,
                 ErpAccountingSubjectCodeConstants.AR,
@@ -161,10 +150,6 @@ public class ErpAutoVoucherBuilder {
         items.add(buildLine(items.size() + 1, summary,
                 ErpAccountingSubjectCodeConstants.REVENUE,
                 null, totalProduct,
-                null, null, null));
-        items.add(buildLine(items.size() + 1, summary,
-                ErpAccountingSubjectCodeConstants.TAX_PAYABLE,
-                null, totalTax,
                 null, null, null));
         items.add(buildLine(items.size() + 1, summary,
                 ErpAccountingSubjectCodeConstants.COST,
@@ -204,10 +189,9 @@ public class ErpAutoVoucherBuilder {
     public List<ErpVoucherItemDO> buildSaleReturnItems(ErpSaleReturnDO saleReturn, String customerName, BigDecimal sumCost) {
         String summary = "销售退货 - " + nullToEmpty(customerName);
         BigDecimal totalProduct = nullToZero(saleReturn.getTotalProductPrice());
-        BigDecimal totalTax = nullToZero(saleReturn.getTotalTaxPrice());
         BigDecimal discount = nullToZero(saleReturn.getDiscountPrice());
         BigDecimal other = resolveFeeAmount(saleReturn.getFeeAmount(), saleReturn.getOtherPrice());
-        BigDecimal arAmount = totalProduct.add(totalTax).subtract(discount).add(other);
+        BigDecimal arAmount = totalProduct.subtract(discount).add(other);
         List<ErpVoucherItemDO> items = new ArrayList<>(7);
         items.add(buildLine(items.size() + 1, summary,
                 ErpAccountingSubjectCodeConstants.AR,
@@ -216,10 +200,6 @@ public class ErpAutoVoucherBuilder {
         items.add(buildLine(items.size() + 1, summary,
                 ErpAccountingSubjectCodeConstants.REVENUE,
                 totalProduct, null,
-                null, null, null));
-        items.add(buildLine(items.size() + 1, summary,
-                ErpAccountingSubjectCodeConstants.TAX_PAYABLE,
-                totalTax, null,
                 null, null, null));
         items.add(buildLine(items.size() + 1, summary,
                 ErpAccountingSubjectCodeConstants.COST,

@@ -17,9 +17,11 @@ import cn.iocoder.yudao.module.system.controller.admin.user.vo.user.UserPageReqV
 import cn.iocoder.yudao.module.system.controller.admin.user.vo.user.UserSaveReqVO;
 import cn.iocoder.yudao.module.system.dal.dataobject.dept.DeptDO;
 import cn.iocoder.yudao.module.system.dal.dataobject.dept.PostDO;
+import cn.iocoder.yudao.module.system.dal.dataobject.dept.UserDeptDO;
 import cn.iocoder.yudao.module.system.dal.dataobject.dept.UserPostDO;
 import cn.iocoder.yudao.module.system.dal.dataobject.tenant.TenantDO;
 import cn.iocoder.yudao.module.system.dal.dataobject.user.AdminUserDO;
+import cn.iocoder.yudao.module.system.dal.mysql.dept.UserDeptMapper;
 import cn.iocoder.yudao.module.system.dal.mysql.dept.UserPostMapper;
 import cn.iocoder.yudao.module.system.dal.mysql.user.AdminUserMapper;
 import cn.iocoder.yudao.module.system.enums.common.SexEnum;
@@ -27,6 +29,7 @@ import cn.iocoder.yudao.module.system.service.dept.DeptService;
 import cn.iocoder.yudao.module.system.service.dept.PostService;
 import cn.iocoder.yudao.module.system.service.oauth2.OAuth2TokenService;
 import cn.iocoder.yudao.module.system.service.permission.PermissionService;
+import cn.iocoder.yudao.module.system.service.permission.RoleService;
 import cn.iocoder.yudao.module.system.service.tenant.TenantService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -67,6 +70,8 @@ public class AdminUserServiceImplTest extends BaseDbUnitTest {
     @Resource
     private AdminUserMapper userMapper;
     @Resource
+    private UserDeptMapper userDeptMapper;
+    @Resource
     private UserPostMapper userPostMapper;
 
     @MockBean
@@ -75,6 +80,8 @@ public class AdminUserServiceImplTest extends BaseDbUnitTest {
     private PostService postService;
     @MockBean
     private PermissionService permissionService;
+    @MockBean
+    private RoleService roleService;
     @MockBean
     private PasswordEncoder passwordEncoder;
     @MockBean
@@ -458,6 +465,9 @@ public class AdminUserServiceImplTest extends BaseDbUnitTest {
         AdminUserDO user = userMapper.selectByUsername(respVO.getCreateUsernames().get(0));
         assertPojoEquals(importUser, user);
         assertEquals("java", user.getPassword());
+        List<UserDeptDO> userDepts = userDeptMapper.selectListByUserId(user.getId());
+        assertEquals(1, userDepts.size());
+        assertEquals(importUser.getDeptId(), userDepts.get(0).getDeptId());
         assertEquals(0, respVO.getUpdateUsernames().size());
         assertEquals(0, respVO.getFailureUsernames().size());
     }
@@ -502,6 +512,7 @@ public class AdminUserServiceImplTest extends BaseDbUnitTest {
         // mock 数据
         AdminUserDO dbUser = randomAdminUserDO();
         userMapper.insert(dbUser);
+        userDeptMapper.insert(new UserDeptDO().setUserId(dbUser.getId()).setDeptId(dbUser.getDeptId()));
         // 准备参数
         UserImportExcelVO importUser = randomPojo(UserImportExcelVO.class, o -> {
             o.setStatus(randomEle(CommonStatusEnum.values()).getStatus()); // 保证 status 的范围
@@ -524,6 +535,9 @@ public class AdminUserServiceImplTest extends BaseDbUnitTest {
         assertEquals(1, respVO.getUpdateUsernames().size());
         AdminUserDO user = userMapper.selectByUsername(respVO.getUpdateUsernames().get(0));
         assertPojoEquals(importUser, user);
+        List<UserDeptDO> userDepts = userDeptMapper.selectListByUserId(user.getId());
+        assertEquals(1, userDepts.size());
+        assertEquals(importUser.getDeptId(), userDepts.get(0).getDeptId());
         assertEquals(0, respVO.getFailureUsernames().size());
     }
 

@@ -198,26 +198,15 @@ public class ErpPurchasePriceAdjustServiceImpl implements ErpPurchasePriceAdjust
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void updatePurchasePriceAdjustStatus(Long id, Integer status) {
-        ErpPurchasePriceAdjustDO adjustDO = validateExists(id);
-
-        // 反审核：本期不支持
-        if (ErpAuditStatus.PROCESS.getStatus().equals(status)) {
+        if (!ErpAuditStatus.APPROVE.getStatus().equals(status)) {
             throw exception(PURCHASE_PRICE_ADJUST_PROCESS_FAIL);
         }
-
-        // 审核通过
-        if (ErpAuditStatus.APPROVE.getStatus().equals(status)) {
-            if (!ErpAuditStatus.PROCESS.getStatus().equals(adjustDO.getStatus())) {
-                throw exception(PURCHASE_PRICE_ADJUST_APPROVE_FAIL);
-            }
-            approveAdjust(adjustDO);
-            operateLogService.recordStatus(ERP_PURCHASE_PRICE_ADJUST_TYPE, id, adjustDO.getNo(), true);
-            return;
+        ErpPurchasePriceAdjustDO adjustDO = validateExists(id);
+        if (!ErpAuditStatus.PROCESS.getStatus().equals(adjustDO.getStatus())) {
+            throw exception(PURCHASE_PRICE_ADJUST_APPROVE_FAIL);
         }
-
-        // 其他状态：直接更新
-        priceAdjustMapper.updateById(new ErpPurchasePriceAdjustDO().setId(id).setStatus(status));
-        operateLogService.recordStatus(ERP_PURCHASE_PRICE_ADJUST_TYPE, id, adjustDO.getNo(), false);
+        approveAdjust(adjustDO);
+        operateLogService.recordStatus(ERP_PURCHASE_PRICE_ADJUST_TYPE, id, adjustDO.getNo(), true);
     }
 
     @Override
@@ -981,10 +970,7 @@ public class ErpPurchasePriceAdjustServiceImpl implements ErpPurchasePriceAdjust
             }
             BigDecimal newTotal = newPrice.multiply(inCount);
             inItemUpdate.setTotalPrice(newTotal);
-            BigDecimal taxPercent = inItem.getTaxPercent() != null ? inItem.getTaxPercent() : BigDecimal.ZERO;
-            BigDecimal newTaxPrice = newTotal.multiply(taxPercent)
-                    .divide(new BigDecimal("100"), 2, RoundingMode.HALF_UP);
-            inItemUpdate.setTaxPrice(newTaxPrice);
+            inItemUpdate.setTaxPercent(null); inItemUpdate.setTaxPrice(BigDecimal.ZERO);
             purchaseInItemMapper.updateById(inItemUpdate);
 
             // 3.3 聚合 (productId, warehouseId) 差额
@@ -1062,19 +1048,15 @@ public class ErpPurchasePriceAdjustServiceImpl implements ErpPurchasePriceAdjust
             if (inItem.getTotalPrice() != null) {
                 totalProductPrice = totalProductPrice.add(inItem.getTotalPrice());
             }
-            if (inItem.getTaxPrice() != null) {
-                totalTaxPrice = totalTaxPrice.add(inItem.getTaxPrice());
-            }
         }
         BigDecimal discountPercent = inDO.getDiscountPercent() != null ? inDO.getDiscountPercent() : BigDecimal.ZERO;
-        BigDecimal discountPrice = MoneyUtils.priceMultiplyPercent(
-                totalProductPrice.add(totalTaxPrice), discountPercent);
+        BigDecimal discountPrice = MoneyUtils.priceMultiplyPercent(totalProductPrice, discountPercent);
         if (discountPrice == null) {
             discountPrice = BigDecimal.ZERO;
         }
         BigDecimal feeAmount = inDO.getFeeAmount() != null ? inDO.getFeeAmount()
                 : (inDO.getOtherPrice() != null ? inDO.getOtherPrice() : BigDecimal.ZERO);
-        BigDecimal totalPrice = totalProductPrice.add(totalTaxPrice).subtract(discountPrice).add(feeAmount);
+        BigDecimal totalPrice = totalProductPrice.subtract(discountPrice).add(feeAmount);
 
         ErpPurchaseInDO updateIn = new ErpPurchaseInDO()
                 .setId(inId)

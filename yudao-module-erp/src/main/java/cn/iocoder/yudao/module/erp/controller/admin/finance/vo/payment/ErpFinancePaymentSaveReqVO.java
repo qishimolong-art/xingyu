@@ -21,7 +21,7 @@ public class ErpFinancePaymentSaveReqVO {
     @NotNull(message = "付款时间不能为空")
     private LocalDateTime paymentTime;
 
-    @Schema(description = "财务人员编号", example = "19690")
+    @Schema(description = "经手人编号", example = "19690")
     private Long financeUserId;
 
     @Schema(description = "所属部门", example = "100")

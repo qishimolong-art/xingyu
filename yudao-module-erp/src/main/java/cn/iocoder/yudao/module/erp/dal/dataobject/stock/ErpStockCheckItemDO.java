@@ -68,7 +68,7 @@ public class ErpStockCheckItemDO extends BaseDO {
     /**
      * 盈亏数量
      *
-     * count = stockCount - actualCount
+     * count = actualCount - stockCount
      */
     private BigDecimal count;
     /**

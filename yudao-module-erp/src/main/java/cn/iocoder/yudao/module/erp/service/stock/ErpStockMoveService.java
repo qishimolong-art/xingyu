@@ -26,6 +26,16 @@ public interface ErpStockMoveService {
     Long createStockMove(@Valid ErpStockMoveSaveReqVO createReqVO);
 
     /**
+     * 创建 ERP 库存调拨草稿
+     *
+     * <p>用于销售手推车库存不足自动生成待完善草稿，允许调出仓库暂时为空。</p>
+     *
+     * @param createReqVO 创建信息
+     * @return 编号
+     */
+    Long createStockMoveDraft(ErpStockMoveSaveReqVO createReqVO);
+
+    /**
      * 更新库存调拨单
      *
      * @param updateReqVO 更新信息

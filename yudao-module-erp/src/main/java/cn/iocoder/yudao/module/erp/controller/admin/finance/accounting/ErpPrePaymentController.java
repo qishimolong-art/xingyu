@@ -3,6 +3,7 @@ package cn.iocoder.yudao.module.erp.controller.admin.finance.accounting;
 import cn.iocoder.yudao.framework.common.pojo.CommonResult;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
+import cn.iocoder.yudao.module.erp.controller.admin.common.ErpAuditStatusRequestValidator;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.accounting.vo.prepayment.ErpPrePaymentPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.accounting.vo.prepayment.ErpPrePaymentRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.accounting.vo.prepayment.ErpPrePaymentSaveReqVO;
@@ -50,9 +51,10 @@ public class ErpPrePaymentController {
     @Operation(summary = "更新预付款单状态")
     @Parameter(name = "id", description = "编号", required = true)
     @Parameter(name = "status", description = "状态", required = true)
-    @PreAuthorize("@ss.hasPermission('erp:pre-payment:update')")
+    @PreAuthorize("@ss.hasPermission('erp:pre-payment:update-status')")
     public CommonResult<Boolean> updatePrePaymentStatus(@RequestParam("id") Long id,
                                                         @RequestParam("status") Integer status) {
+        ErpAuditStatusRequestValidator.validateApproveStatus(status);
         prePaymentService.updatePrePaymentStatus(id, status);
         return success(true);
     }

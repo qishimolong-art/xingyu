@@ -3,6 +3,7 @@ package cn.iocoder.yudao.module.erp.controller.admin.finance.accounting;
 import cn.iocoder.yudao.framework.common.pojo.CommonResult;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
+import cn.iocoder.yudao.module.erp.controller.admin.common.ErpAuditStatusRequestValidator;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.accounting.vo.otherpayable.ErpOtherPayablePageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.accounting.vo.otherpayable.ErpOtherPayableRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.accounting.vo.otherpayable.ErpOtherPayableSaveReqVO;
@@ -50,9 +51,10 @@ public class ErpOtherPayableController {
     @Operation(summary = "更新其他应付单状态")
     @Parameter(name = "id", description = "编号", required = true)
     @Parameter(name = "status", description = "状态", required = true)
-    @PreAuthorize("@ss.hasPermission('erp:other-payable:update')")
+    @PreAuthorize("@ss.hasPermission('erp:other-payable:update-status')")
     public CommonResult<Boolean> updateOtherPayableStatus(@RequestParam("id") Long id,
                                                           @RequestParam("status") Integer status) {
+        ErpAuditStatusRequestValidator.validateApproveStatus(status);
         otherPayableService.updateOtherPayableStatus(id, status);
         return success(true);
     }

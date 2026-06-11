@@ -9,6 +9,7 @@ import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleOutDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleOutItemDO;
 import cn.iocoder.yudao.module.erp.enums.ErpAuditStatus;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
+import com.baomidou.mybatisplus.core.toolkit.support.SFunction;
 import org.apache.ibatis.annotations.Mapper;
 
 import java.util.Collection;
@@ -38,8 +39,7 @@ public interface ErpSaleOutMapper extends BaseMapperX<ErpSaleOutDO> {
                 .eqIfPresent(ErpSaleOutDO::getSourceType, reqVO.getSourceType())
                 .likeIfPresent(ErpSaleOutDO::getSourceNo, reqVO.getSourceNo())
                 .eqIfPresent(ErpSaleOutDO::getSaleUserId, reqVO.getSaleUserId())
-                .inIfPresent(ErpSaleOutDO::getId, reqVO.getIds())
-                .orderByDesc(ErpSaleOutDO::getId);
+                .inIfPresent(ErpSaleOutDO::getId, reqVO.getIds());
         // 收款状态。为什么需要 t. 的原因，是因为联表查询时，需要指定表名，不然会报字段不存在的错误
         if (Objects.equals(reqVO.getReceiptStatus(), ErpSaleOutPageReqVO.RECEIPT_STATUS_NONE)) {
             query.eq(ErpSaleOutDO::getReceiptPrice, 0);
@@ -58,7 +58,126 @@ public interface ErpSaleOutMapper extends BaseMapperX<ErpSaleOutDO> {
                     .eq(reqVO.getProductId() != null, ErpSaleOutItemDO::getProductId, reqVO.getProductId())
                     .groupBy(ErpSaleOutDO::getId); // 避免 1 对多查询，产生相同的 1
         }
+        orderByIfPresent(query, reqVO);
         return selectJoinPage(reqVO, ErpSaleOutDO.class, query);
+    }
+
+    static void orderByIfPresent(MPJLambdaWrapperX<ErpSaleOutDO> wrapper, ErpSaleOutPageReqVO reqVO) {
+        SFunction<ErpSaleOutDO, ?> orderColumn = getOrderColumn(reqVO.getOrderField());
+        if (orderColumn == null) {
+            wrapper.orderByDesc(ErpSaleOutDO::getId);
+            return;
+        }
+        if ("asc".equalsIgnoreCase(reqVO.getOrderDirection())) {
+            wrapper.orderByAsc(orderColumn);
+            return;
+        }
+        if ("desc".equalsIgnoreCase(reqVO.getOrderDirection())) {
+            wrapper.orderByDesc(orderColumn);
+            return;
+        }
+        wrapper.orderByDesc(ErpSaleOutDO::getId);
+    }
+
+    static SFunction<ErpSaleOutDO, ?> getOrderColumn(String orderField) {
+        if (orderField == null) {
+            return null;
+        }
+        switch (orderField.trim()) {
+            case "no":
+                return ErpSaleOutDO::getNo;
+            case "settleStatus":
+                return ErpSaleOutDO::getSettleStatus;
+            case "outTime":
+                return ErpSaleOutDO::getOutTime;
+            case "status":
+                return ErpSaleOutDO::getStatus;
+            case "customerId":
+            case "customerName":
+                return ErpSaleOutDO::getCustomerId;
+            case "deliveryMethod":
+                return ErpSaleOutDO::getDeliveryMethod;
+            case "settleMethod":
+                return ErpSaleOutDO::getSettleMethod;
+            case "totalProductPrice":
+                return ErpSaleOutDO::getTotalProductPrice;
+            case "reductionAmount":
+                return ErpSaleOutDO::getReductionAmount;
+            case "afterReductionAmount":
+                return ErpSaleOutDO::getAfterReductionAmount;
+            case "billAmount":
+                return ErpSaleOutDO::getBillAmount;
+            case "freight":
+                return ErpSaleOutDO::getFreight;
+            case "creator":
+            case "creatorName":
+                return ErpSaleOutDO::getCreator;
+            case "auditorId":
+            case "auditorName":
+                return ErpSaleOutDO::getAuditorId;
+            case "cancelCount":
+                return ErpSaleOutDO::getCancelCount;
+            case "cancelAmount":
+                return ErpSaleOutDO::getCancelAmount;
+            case "afterCancelAmount":
+                return ErpSaleOutDO::getAfterCancelAmount;
+            case "shipper":
+                return ErpSaleOutDO::getShipper;
+            case "deliveryNo":
+                return ErpSaleOutDO::getDeliveryNo;
+            case "logisticsNo":
+                return ErpSaleOutDO::getLogisticsNo;
+            case "logisticsCompany":
+                return ErpSaleOutDO::getLogisticsCompany;
+            case "senderName":
+                return ErpSaleOutDO::getSenderName;
+            case "receiverName":
+                return ErpSaleOutDO::getReceiverName;
+            case "receiverPhone":
+                return ErpSaleOutDO::getReceiverPhone;
+            case "insuranceCompany":
+                return ErpSaleOutDO::getInsuranceCompany;
+            case "thirdPartyNo":
+                return ErpSaleOutDO::getThirdPartyNo;
+            case "thirdPartyUpstreamNo":
+                return ErpSaleOutDO::getThirdPartyUpstreamNo;
+            case "remark":
+                return ErpSaleOutDO::getRemark;
+            case "internalNote":
+                return ErpSaleOutDO::getInternalNote;
+            case "saleUserId":
+            case "saleUserName":
+                return ErpSaleOutDO::getSaleUserId;
+            case "deptId":
+            case "deptName":
+                return ErpSaleOutDO::getDeptId;
+            case "totalWeight":
+                return ErpSaleOutDO::getTotalWeight;
+            case "approveTime":
+                return ErpSaleOutDO::getApproveTime;
+            case "priority":
+                return ErpSaleOutDO::getPriority;
+            case "signStatus":
+                return ErpSaleOutDO::getSignStatus;
+            case "billNo":
+                return ErpSaleOutDO::getBillNo;
+            case "sourceNo":
+                return ErpSaleOutDO::getSourceNo;
+            case "sourceCreateTime":
+                return ErpSaleOutDO::getSourceCreateTime;
+            case "printTime":
+                return ErpSaleOutDO::getPrintTime;
+            case "confirmTime":
+                return ErpSaleOutDO::getConfirmTime;
+            case "vin":
+                return ErpSaleOutDO::getVin;
+            case "extraFee":
+                return ErpSaleOutDO::getExtraFee;
+            case "orderType":
+                return ErpSaleOutDO::getOrderType;
+            default:
+                return null;
+        }
     }
 
     default int updateByIdAndStatus(Long id, Integer status, ErpSaleOutDO updateObj) {

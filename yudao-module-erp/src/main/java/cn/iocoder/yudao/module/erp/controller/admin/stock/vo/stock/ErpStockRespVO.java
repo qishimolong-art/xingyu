@@ -44,6 +44,9 @@ public class ErpStockRespVO {
     @ExcelProperty("产品分类")
     private String categoryName;
 
+    @Schema(description = "单位编号")
+    private Long unitId;
+
     @Schema(description = "单位", requiredMode = Schema.RequiredMode.REQUIRED, example = "个")
     @ExcelProperty("单位")
     private String unitName;
@@ -97,6 +100,8 @@ public class ErpStockRespVO {
     private String factoryCode;
     @Schema(description = "条形码")
     private String productBarCode;
+    @Schema(description = "销售价")
+    private BigDecimal salePrice;
     @Schema(description = "参考价")
     private BigDecimal referencePrice;
     @Schema(description = "零售价")

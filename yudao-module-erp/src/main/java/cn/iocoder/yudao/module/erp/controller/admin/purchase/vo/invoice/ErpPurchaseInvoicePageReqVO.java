@@ -56,4 +56,10 @@ public class ErpPurchaseInvoicePageReqVO extends PageParam {
     @Schema(description = "勾选导出的采购票据编号数组", example = "[1,2,3]")
     private List<Long> ids;
 
+    @Schema(description = "排序字段", example = "createTime")
+    private String orderField;
+
+    @Schema(description = "排序方向", example = "desc")
+    private String orderDirection;
+
 }

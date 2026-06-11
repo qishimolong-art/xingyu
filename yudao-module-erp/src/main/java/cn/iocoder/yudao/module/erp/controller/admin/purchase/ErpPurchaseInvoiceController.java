@@ -8,6 +8,7 @@ import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.common.util.collection.MapUtils;
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
 import cn.iocoder.yudao.framework.excel.core.util.ExcelUtils;
+import cn.iocoder.yudao.module.erp.controller.admin.common.ErpAuditStatusRequestValidator;
 import cn.iocoder.yudao.module.erp.controller.admin.common.vo.ErpExportFieldRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpProductRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.invoice.ErpPurchaseInvoiceExportRespVO;
@@ -17,6 +18,7 @@ import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.invoice.ErpPurch
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseInvoiceDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseInvoiceItemDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpSupplierDO;
+import cn.iocoder.yudao.module.erp.enums.ErpAuditStatus;
 import cn.iocoder.yudao.module.erp.framework.excel.ErpExportFieldUtils;
 import cn.iocoder.yudao.module.erp.service.product.ErpProductService;
 import cn.iocoder.yudao.module.erp.service.purchase.ErpPurchaseFieldPermissionMasker;
@@ -44,6 +46,7 @@ import javax.annotation.Resource;
 import javax.servlet.http.HttpServletResponse;
 import javax.validation.Valid;
 import java.io.IOException;
+import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -102,6 +105,7 @@ public class ErpPurchaseInvoiceController {
     @PreAuthorize("@ss.hasPermission('erp:purchase-invoice:update-status')")
     public CommonResult<Boolean> updatePurchaseInvoiceStatus(@RequestParam("id") Long id,
                                                              @RequestParam("status") Integer status) {
+        ErpAuditStatusRequestValidator.validateApproveStatus(status);
         if (!Integer.valueOf(20).equals(status)) {
             throw exception(PURCHASE_INVOICE_PROCESS_NOT_SUPPORT);
         }
@@ -137,11 +141,15 @@ public class ErpPurchaseInvoiceController {
 
         ErpPurchaseInvoiceRespVO respVO = BeanUtils.toBean(purchaseInvoice, ErpPurchaseInvoiceRespVO.class);
         fillInvoiceRespItems(respVO, itemList, productMap);
-        MapUtils.findAndThen(supplierMap, respVO.getSupplierId(), supplier -> respVO.setSupplierName(supplier.getName()));
+        MapUtils.findAndThen(supplierMap, respVO.getSupplierId(), supplier -> {
+            respVO.setSupplierName(supplier.getName());
+            respVO.setSupplierType(supplier.getSupplierType());
+        });
         if (dept != null) {
             respVO.setDeptName(dept.getName());
         }
         fillUserNames(respVO, userMap);
+        fillAuditInfo(respVO);
         fieldPermissionMasker.mask("erp_purchase_invoice", respVO);
         return success(respVO);
     }
@@ -203,9 +211,13 @@ public class ErpPurchaseInvoiceController {
         PageResult<ErpPurchaseInvoiceRespVO> respPage = BeanUtils.toBean(pageResult, ErpPurchaseInvoiceRespVO.class);
         respPage.getList().forEach(invoice -> {
             fillInvoiceRespItems(invoice, itemMap.get(invoice.getId()), productMap);
-            MapUtils.findAndThen(supplierMap, invoice.getSupplierId(), supplier -> invoice.setSupplierName(supplier.getName()));
+            MapUtils.findAndThen(supplierMap, invoice.getSupplierId(), supplier -> {
+                invoice.setSupplierName(supplier.getName());
+                invoice.setSupplierType(supplier.getSupplierType());
+            });
             MapUtils.findAndThen(deptMap, invoice.getDeptId(), dept -> invoice.setDeptName(dept.getName()));
             fillUserNames(invoice, userMap);
+            fillAuditInfo(invoice);
         });
         return respPage;
     }
@@ -232,6 +244,37 @@ public class ErpPurchaseInvoiceController {
         }
         invoice.setItems(items);
         invoice.setProductNames(CollUtil.join(items, ", ", ErpPurchaseInvoiceRespVO.Item::getProductName));
+        invoice.setDisplayTaxPercent(buildDisplayTaxPercent(itemList));
+    }
+
+    private void fillAuditInfo(ErpPurchaseInvoiceRespVO invoice) {
+        if (ErpAuditStatus.APPROVE.getStatus().equals(invoice.getStatus())) {
+            invoice.setAuditUserName(invoice.getUpdaterName());
+            invoice.setAuditTime(invoice.getUpdateTime());
+            return;
+        }
+        invoice.setAuditUserName(null);
+        invoice.setAuditTime(null);
+    }
+
+    private String buildDisplayTaxPercent(List<ErpPurchaseInvoiceItemDO> itemList) {
+        if (CollUtil.isEmpty(itemList)) {
+            return null;
+        }
+        Set<String> taxPercents = new LinkedHashSet<>();
+        for (ErpPurchaseInvoiceItemDO item : itemList) {
+            BigDecimal taxPercent = item.getTaxPercent();
+            if (taxPercent != null) {
+                taxPercents.add(taxPercent.stripTrailingZeros().toPlainString());
+            }
+        }
+        if (taxPercents.isEmpty()) {
+            return null;
+        }
+        if (taxPercents.size() > 1) {
+            return "多税率";
+        }
+        return taxPercents.iterator().next();
     }
 
     private List<ErpPurchaseInvoiceExportRespVO> buildPurchaseInvoiceExportList(List<ErpPurchaseInvoiceRespVO> list) {

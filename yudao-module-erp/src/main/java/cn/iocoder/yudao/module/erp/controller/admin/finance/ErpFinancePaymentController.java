@@ -9,6 +9,7 @@ import cn.iocoder.yudao.framework.common.util.collection.MapUtils;
 import cn.iocoder.yudao.framework.common.util.number.NumberUtils;
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
 import cn.iocoder.yudao.framework.excel.core.util.ExcelUtils;
+import cn.iocoder.yudao.module.erp.controller.admin.common.ErpAuditStatusRequestValidator;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.payment.ErpFinancePaymentExportRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.payment.ErpFinancePaymentPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.payment.ErpFinancePaymentRespVO;
@@ -84,7 +85,9 @@ public class ErpFinancePaymentController {
     @PutMapping("/update-status")
     @Operation(summary = "审核付款单")
     @PreAuthorize("@ss.hasPermission('erp:finance-payment:update-status')")
-    public CommonResult<Boolean> approveFinancePayment(@RequestParam("id") Long id) {
+    public CommonResult<Boolean> approveFinancePayment(@RequestParam("id") Long id,
+                                                       @RequestParam(value = "status", defaultValue = "20") Integer status) {
+        ErpAuditStatusRequestValidator.validateApproveStatus(status);
         financePaymentService.approveFinancePayment(id);
         return success(true);
     }

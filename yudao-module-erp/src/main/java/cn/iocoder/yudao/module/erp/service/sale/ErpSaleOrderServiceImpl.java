@@ -151,8 +151,8 @@ public class ErpSaleOrderServiceImpl implements ErpSaleOrderService {
     private void calculateTotalPrice(ErpSaleOrderDO saleOrder, List<ErpSaleOrderItemDO> saleOrderItems) {
         saleOrder.setTotalCount(getSumValue(saleOrderItems, ErpSaleOrderItemDO::getCount, BigDecimal::add));
         saleOrder.setTotalProductPrice(getSumValue(saleOrderItems, ErpSaleOrderItemDO::getTotalPrice, BigDecimal::add, BigDecimal.ZERO));
-        saleOrder.setTotalTaxPrice(getSumValue(saleOrderItems, ErpSaleOrderItemDO::getTaxPrice, BigDecimal::add, BigDecimal.ZERO));
-        saleOrder.setTotalPrice(saleOrder.getTotalProductPrice().add(saleOrder.getTotalTaxPrice()));
+        saleOrder.setTotalTaxPrice(BigDecimal.ZERO);
+        saleOrder.setTotalPrice(saleOrder.getTotalProductPrice());
         // 计算优惠价格
         if (saleOrder.getDiscountPercent() == null) {
             saleOrder.setDiscountPercent(BigDecimal.ZERO);
@@ -166,29 +166,23 @@ public class ErpSaleOrderServiceImpl implements ErpSaleOrderService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void updateSaleOrderStatus(Long id, Integer status) {
-        boolean approve = ErpAuditStatus.APPROVE.getStatus().equals(status);
+        if (!ErpAuditStatus.APPROVE.getStatus().equals(status)) {
+            throw exception(SALE_ORDER_PROCESS_FAIL);
+        }
         // 1.1 校验存在
         ErpSaleOrderDO saleOrder = validateSaleOrderExists(id);
         // 1.2 校验状态
-        if (saleOrder.getStatus().equals(status)) {
-            throw exception(approve ? SALE_ORDER_APPROVE_FAIL : SALE_ORDER_PROCESS_FAIL);
-        }
-        // 1.3 存在销售出库单，无法反审核
-        if (!approve && saleOrder.getOutCount().compareTo(BigDecimal.ZERO) > 0) {
-            throw exception(SALE_ORDER_PROCESS_FAIL_EXISTS_OUT);
-        }
-        // 1.4 存在销售退货单，无法反审核
-        if (!approve && saleOrder.getReturnCount().compareTo(BigDecimal.ZERO) > 0) {
-            throw exception(SALE_ORDER_PROCESS_FAIL_EXISTS_RETURN);
+        if (!ErpAuditStatus.PROCESS.getStatus().equals(saleOrder.getStatus())) {
+            throw exception(SALE_ORDER_APPROVE_FAIL);
         }
 
         // 2. 更新状态
         int updateCount = saleOrderMapper.updateByIdAndStatus(id, saleOrder.getStatus(),
-                new ErpSaleOrderDO().setStatus(status));
+                new ErpSaleOrderDO().setStatus(ErpAuditStatus.APPROVE.getStatus()));
         if (updateCount == 0) {
-            throw exception(approve ? SALE_ORDER_APPROVE_FAIL : SALE_ORDER_PROCESS_FAIL);
+            throw exception(SALE_ORDER_APPROVE_FAIL);
         }
-        operateLogService.recordStatus(ERP_SALE_ORDER_TYPE, id, saleOrder.getNo(), approve);
+        operateLogService.recordStatus(ERP_SALE_ORDER_TYPE, id, saleOrder.getNo(), true);
     }
 
     private List<ErpSaleOrderItemDO> validateSaleOrderItems(List<ErpSaleOrderSaveReqVO.Item> list) {
@@ -203,16 +197,13 @@ public class ErpSaleOrderServiceImpl implements ErpSaleOrderService {
             if (item.getGiftFlag()) {
                 item.setProductPrice(BigDecimal.ZERO);
                 item.setTotalPrice(BigDecimal.ZERO);
+                item.setTaxPercent(null);
                 item.setTaxPrice(BigDecimal.ZERO);
                 return;
             }
+            item.setTaxPercent(null);
+            item.setTaxPrice(BigDecimal.ZERO);
             item.setTotalPrice(MoneyUtils.priceMultiply(item.getProductPrice(), item.getCount()));
-            if (item.getTotalPrice() == null) {
-                return;
-            }
-            if (item.getTaxPercent() != null) {
-                item.setTaxPrice(MoneyUtils.priceMultiplyPercent(item.getTotalPrice(), item.getTaxPercent()));
-            }
         }));
     }
 
@@ -382,7 +373,6 @@ public class ErpSaleOrderServiceImpl implements ErpSaleOrderService {
             item.setProductUnitName(productVOMap.get(product.getId()) == null ? null : productVOMap.get(product.getId()).getUnitName());
             item.setProductPrice(row.getProductPrice() != null ? row.getProductPrice() : product.getSalePrice());
             item.setCount(row.getCount());
-            item.setTaxPercent(row.getTaxPercent());
             item.setRemark(row.getRemark());
             respVO.getItems().add(item);
             respVO.setSuccessCount(respVO.getSuccessCount() + 1);

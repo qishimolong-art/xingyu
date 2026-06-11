@@ -46,7 +46,6 @@ import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PURCHASE_INVO
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PURCHASE_INVOICE_NOT_APPROVE;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PURCHASE_INVOICE_NOT_EXISTS;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PURCHASE_INVOICE_NO_EXISTS;
-import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PURCHASE_INVOICE_PROCESS_FAIL;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PURCHASE_INVOICE_PROCESS_NOT_SUPPORT;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PURCHASE_INVOICE_SOURCE_IN_INVOICED;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PURCHASE_INVOICE_SUPPLIER_REQUIRED;
@@ -127,28 +126,23 @@ public class ErpPurchaseInvoiceServiceImpl implements ErpPurchaseInvoiceService 
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void updatePurchaseInvoiceStatus(Long id, Integer status) {
-        boolean approve = ErpAuditStatus.APPROVE.getStatus().equals(status);
-        if (!approve) {
+        if (!ErpAuditStatus.APPROVE.getStatus().equals(status)) {
             throw exception(PURCHASE_INVOICE_PROCESS_NOT_SUPPORT);
         }
         ErpPurchaseInvoiceDO purchaseInvoice = validatePurchaseInvoiceExists(id);
-        if (ObjectUtil.equal(purchaseInvoice.getStatus(), status)) {
-            throw exception(approve ? PURCHASE_INVOICE_APPROVE_FAIL : PURCHASE_INVOICE_PROCESS_FAIL);
+        if (!ErpAuditStatus.PROCESS.getStatus().equals(purchaseInvoice.getStatus())) {
+            throw exception(PURCHASE_INVOICE_APPROVE_FAIL);
         }
-        if (approve) {
-            List<ErpPurchaseInvoiceItemDO> invoiceItems = purchaseInvoiceItemMapper.selectListByInvoiceId(id);
-            validateApprovedSourceInNotInvoiced(invoiceItems, id);
-        }
+        List<ErpPurchaseInvoiceItemDO> invoiceItems = purchaseInvoiceItemMapper.selectListByInvoiceId(id);
+        validateApprovedSourceInNotInvoiced(invoiceItems, id);
         ErpPurchaseInvoiceDO updateObj = new ErpPurchaseInvoiceDO();
-        updateObj.setStatus(status);
+        updateObj.setStatus(ErpAuditStatus.APPROVE.getStatus());
         int updateCount = purchaseInvoiceMapper.updateByIdAndStatus(id, purchaseInvoice.getStatus(), updateObj);
         if (updateCount == 0) {
-            throw exception(approve ? PURCHASE_INVOICE_APPROVE_FAIL : PURCHASE_INVOICE_PROCESS_FAIL);
+            throw exception(PURCHASE_INVOICE_APPROVE_FAIL);
         }
-        if (approve) {
-            markPurchaseInHasInvoice(id);
-        }
-        operateLogService.recordStatus(ERP_PURCHASE_INVOICE_TYPE, id, purchaseInvoice.getNo(), approve);
+        markPurchaseInHasInvoice(id);
+        operateLogService.recordStatus(ERP_PURCHASE_INVOICE_TYPE, id, purchaseInvoice.getNo(), true);
     }
 
     @Override
@@ -298,13 +292,9 @@ public class ErpPurchaseInvoiceServiceImpl implements ErpPurchaseInvoiceService 
             if (invoiceItem.getTaxExclusivePrice() == null) {
                 invoiceItem.setTaxExclusivePrice(BigDecimal.ZERO);
             }
-            BigDecimal taxPercent = invoiceItem.getTaxPercent() == null ? BigDecimal.ZERO : invoiceItem.getTaxPercent();
-            invoiceItem.setTaxPercent(taxPercent);
-            invoiceItem.setTaxPrice(MoneyUtils.priceMultiplyPercent(invoiceItem.getTaxExclusivePrice(), taxPercent));
-            if (invoiceItem.getTaxPrice() == null) {
-                invoiceItem.setTaxPrice(BigDecimal.ZERO);
-            }
-            invoiceItem.setTotalPrice(invoiceItem.getTaxExclusivePrice().add(invoiceItem.getTaxPrice()));
+            invoiceItem.setTaxPercent(null);
+            invoiceItem.setTaxPrice(BigDecimal.ZERO);
+            invoiceItem.setTotalPrice(invoiceItem.getTaxExclusivePrice());
         }));
     }
 
@@ -389,12 +379,11 @@ public class ErpPurchaseInvoiceServiceImpl implements ErpPurchaseInvoiceService 
     }
 
     private void calculateTotalPrice(ErpPurchaseInvoiceDO purchaseInvoice, List<ErpPurchaseInvoiceItemDO> items) {
-        purchaseInvoice.setTaxExclusiveAmount(getSumValue(items,
-                ErpPurchaseInvoiceItemDO::getTaxExclusivePrice, BigDecimal::add, BigDecimal.ZERO));
-        purchaseInvoice.setTaxAmount(getSumValue(items,
-                ErpPurchaseInvoiceItemDO::getTaxPrice, BigDecimal::add, BigDecimal.ZERO));
-        purchaseInvoice.setTotalAmount(getSumValue(items,
-                ErpPurchaseInvoiceItemDO::getTotalPrice, BigDecimal::add, BigDecimal.ZERO));
+        BigDecimal totalAmount = getSumValue(items,
+                ErpPurchaseInvoiceItemDO::getTotalPrice, BigDecimal::add, BigDecimal.ZERO);
+        purchaseInvoice.setTaxExclusiveAmount(null);
+        purchaseInvoice.setTaxAmount(BigDecimal.ZERO);
+        purchaseInvoice.setTotalAmount(totalAmount);
     }
 
 }

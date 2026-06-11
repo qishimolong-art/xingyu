@@ -197,12 +197,10 @@ public class ErpPurchaseOrderServiceImpl implements ErpPurchaseOrderService {
         purchaseOrder.setTotalProductPrice(getSumValue(purchaseOrderItems,
                 item -> Boolean.TRUE.equals(item.getGift()) ? BigDecimal.ZERO : item.getTotalPrice(),
                 BigDecimal::add, BigDecimal.ZERO));
-        purchaseOrder.setTotalTaxPrice(getSumValue(purchaseOrderItems,
-                item -> Boolean.TRUE.equals(item.getGift()) ? BigDecimal.ZERO : (item.getTaxPrice() != null ? item.getTaxPrice() : BigDecimal.ZERO),
-                BigDecimal::add, BigDecimal.ZERO));
+        purchaseOrder.setTotalTaxPrice(BigDecimal.ZERO);
         BigDecimal feeAmount = purchaseOrder.getFeeAmount() == null ? BigDecimal.ZERO : purchaseOrder.getFeeAmount();
         purchaseOrder.setFeeAmount(feeAmount);
-        purchaseOrder.setTotalPrice(purchaseOrder.getTotalProductPrice().add(purchaseOrder.getTotalTaxPrice()));
+        purchaseOrder.setTotalPrice(purchaseOrder.getTotalProductPrice());
         // 计算优惠价格
         if (purchaseOrder.getDiscountPercent() == null) {
             purchaseOrder.setDiscountPercent(BigDecimal.ZERO);
@@ -214,29 +212,23 @@ public class ErpPurchaseOrderServiceImpl implements ErpPurchaseOrderService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void updatePurchaseOrderStatus(Long id, Integer status) {
-        boolean approve = ErpAuditStatus.APPROVE.getStatus().equals(status);
+        if (!ErpAuditStatus.APPROVE.getStatus().equals(status)) {
+            throw exception(PURCHASE_ORDER_PROCESS_FAIL);
+        }
         // 1.1 校验存在
         ErpPurchaseOrderDO purchaseOrder = validatePurchaseOrderExists(id);
         // 1.2 校验状态
-        if (purchaseOrder.getStatus().equals(status)) {
-            throw exception(approve ? PURCHASE_ORDER_APPROVE_FAIL : PURCHASE_ORDER_PROCESS_FAIL);
-        }
-        // 1.3 存在采购入单，无法反审核
-        if (!approve && purchaseOrder.getInCount().compareTo(BigDecimal.ZERO) > 0) {
-            throw exception(PURCHASE_ORDER_PROCESS_FAIL_EXISTS_IN);
-        }
-        // 1.4 存在采购退货单，无法反审核
-        if (!approve && purchaseOrder.getReturnCount().compareTo(BigDecimal.ZERO) > 0) {
-            throw exception(PURCHASE_ORDER_PROCESS_FAIL_EXISTS_RETURN);
+        if (!ErpAuditStatus.PROCESS.getStatus().equals(purchaseOrder.getStatus())) {
+            throw exception(PURCHASE_ORDER_APPROVE_FAIL);
         }
 
         // 2. 更新状态
         int updateCount = purchaseOrderMapper.updateByIdAndStatus(id, purchaseOrder.getStatus(),
-                new ErpPurchaseOrderDO().setStatus(status));
+                new ErpPurchaseOrderDO().setStatus(ErpAuditStatus.APPROVE.getStatus()));
         if (updateCount == 0) {
-            throw exception(approve ? PURCHASE_ORDER_APPROVE_FAIL : PURCHASE_ORDER_PROCESS_FAIL);
+            throw exception(PURCHASE_ORDER_APPROVE_FAIL);
         }
-        operateLogService.recordStatus(ERP_PURCHASE_ORDER_TYPE, id, purchaseOrder.getNo(), approve);
+        operateLogService.recordStatus(ERP_PURCHASE_ORDER_TYPE, id, purchaseOrder.getNo(), true);
     }
 
     private List<ErpPurchaseOrderItemDO> validatePurchaseOrderItems(List<ErpPurchaseOrderSaveReqVO.Item> list) {
@@ -277,16 +269,13 @@ public class ErpPurchaseOrderServiceImpl implements ErpPurchaseOrderService {
             if (Boolean.TRUE.equals(item.getGift())) {
                 item.setProductPrice(BigDecimal.ZERO);
                 item.setTotalPrice(BigDecimal.ZERO);
+                item.setTaxPercent(null);
                 item.setTaxPrice(BigDecimal.ZERO);
                 return;
             }
+            item.setTaxPercent(null);
+            item.setTaxPrice(BigDecimal.ZERO);
             item.setTotalPrice(MoneyUtils.priceMultiply(item.getProductPrice(), item.getCount()));
-            if (item.getTotalPrice() == null) {
-                return;
-            }
-            if (item.getTaxPercent() != null) {
-                item.setTaxPrice(MoneyUtils.priceMultiplyPercent(item.getTotalPrice(), item.getTaxPercent()));
-            }
         }));
     }
 
@@ -482,7 +471,7 @@ public class ErpPurchaseOrderServiceImpl implements ErpPurchaseOrderService {
             item.setWarehouseId(product.getDefaultWarehouseId());
             item.setProductPrice(productPrice);
             item.setCount(row.getCount());
-            item.setTaxPercent(BigDecimal.ZERO);
+
             item.setRemark(null);
             item.setGift(gift);
             respVO.getItems().add(item);
@@ -613,7 +602,7 @@ public class ErpPurchaseOrderServiceImpl implements ErpPurchaseOrderService {
         boolean gift = parseGiftFlag(importRow.getGift());
         item.setProductPrice(resolveImportProductPrice(importRow.getProductPrice(), product, gift));
         item.setCount(importRow.getItemCount());
-        item.setTaxPercent(importRow.getItemTaxPercent() == null ? BigDecimal.ZERO : importRow.getItemTaxPercent());
+
         item.setRemark(importRow.getItemRemark());
         item.setGift(gift);
         return item;
@@ -690,8 +679,7 @@ public class ErpPurchaseOrderServiceImpl implements ErpPurchaseOrderService {
                 || row.getProductPrice() != null
                 || StrUtil.isNotBlank(normalize(row.getGift()))
                 || row.getItemTotalPrice() != null
-                || row.getItemTaxPercent() != null
-                || row.getItemTaxPrice() != null
+
                 || StrUtil.isNotBlank(normalize(row.getItemRemark()));
     }
 

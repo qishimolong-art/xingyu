@@ -42,4 +42,10 @@ public class ErpSaleQuotePageReqVO extends PageParam {
     @Schema(description = "报价订单编号数组")
     private List<Long> ids;
 
+    @Schema(description = "排序字段，支持：no, quoteTime, status, customerId/customerName, totalProductPrice, discountPrice, totalPrice, saleUserId/saleUserName, deptId/deptName, deliveryAddress, expectedDeliveryTime, remark, internalRemark, creator/creatorName, createTime, updater/updaterName, updateTime", example = "quoteTime")
+    private String orderField;
+
+    @Schema(description = "排序方向，仅支持 asc、desc；非法或为空时默认按 id desc", example = "desc")
+    private String orderDirection;
+
 }

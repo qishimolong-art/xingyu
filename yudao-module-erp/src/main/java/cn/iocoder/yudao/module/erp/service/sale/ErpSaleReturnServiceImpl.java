@@ -12,7 +12,6 @@ import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleRetur
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnSaveReqVO;
-import cn.iocoder.yudao.module.erp.dal.dataobject.finance.accounting.ErpVoucherDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.accounting.ErpVoucherItemDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.product.ErpProductDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleOrderDO;
@@ -22,8 +21,6 @@ import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleReturnDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleReturnItemDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpWarehouseDO;
-import cn.iocoder.yudao.module.erp.dal.mysql.finance.accounting.ErpVoucherItemMapper;
-import cn.iocoder.yudao.module.erp.dal.mysql.finance.accounting.ErpVoucherMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.product.ErpProductMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpSaleOutItemMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpSaleOutMapper;
@@ -31,7 +28,6 @@ import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpSaleReturnItemMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpSaleReturnMapper;
 import cn.iocoder.yudao.module.erp.dal.redis.no.ErpNoRedisDAO;
 import cn.iocoder.yudao.module.erp.enums.ErpAuditStatus;
-import cn.iocoder.yudao.module.erp.enums.finance.accounting.ErpVoucherAuditStatusEnum;
 import cn.iocoder.yudao.module.erp.enums.finance.accounting.ErpVoucherSourceBizTypeEnum;
 import cn.iocoder.yudao.module.erp.enums.finance.accounting.ErpVoucherTypeEnum;
 import cn.iocoder.yudao.module.erp.enums.sale.ErpSaleReturnModeEnum;
@@ -47,7 +43,6 @@ import cn.iocoder.yudao.module.erp.service.stock.ErpStockService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpWarehouseService;
 import cn.iocoder.yudao.module.erp.service.stock.bo.ErpStockRecordCreateReqBO;
 import cn.iocoder.yudao.module.system.api.user.AdminUserApi;
-import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -109,10 +104,6 @@ public class ErpSaleReturnServiceImpl implements ErpSaleReturnService {
     private ErpVoucherService voucherService;
     @Resource
     private ErpBookOpenService bookOpenService;
-    @Resource
-    private ErpVoucherMapper voucherMapper;
-    @Resource
-    private ErpVoucherItemMapper voucherItemMapper;
     @Resource
     private ErpStockService stockService;
     @Resource
@@ -289,8 +280,8 @@ public class ErpSaleReturnServiceImpl implements ErpSaleReturnService {
     private void calculateTotalPrice(ErpSaleReturnDO saleReturn, List<ErpSaleReturnItemDO> saleReturnItems) {
         saleReturn.setTotalCount(getSumValue(saleReturnItems, ErpSaleReturnItemDO::getCount, BigDecimal::add));
         saleReturn.setTotalProductPrice(getSumValue(saleReturnItems, ErpSaleReturnItemDO::getTotalPrice, BigDecimal::add, BigDecimal.ZERO));
-        saleReturn.setTotalTaxPrice(getSumValue(saleReturnItems, ErpSaleReturnItemDO::getTaxPrice, BigDecimal::add, BigDecimal.ZERO));
-        saleReturn.setTotalPrice(saleReturn.getTotalProductPrice().add(saleReturn.getTotalTaxPrice()));
+        saleReturn.setTotalTaxPrice(BigDecimal.ZERO);
+        saleReturn.setTotalPrice(saleReturn.getTotalProductPrice());
         if (saleReturn.getDiscountPercent() == null) {
             saleReturn.setDiscountPercent(BigDecimal.ZERO);
         }
@@ -321,42 +312,25 @@ public class ErpSaleReturnServiceImpl implements ErpSaleReturnService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void updateSaleReturnStatus(Long id, Integer status) {
-        boolean approve = ErpAuditStatus.APPROVE.getStatus().equals(status);
+        if (!ErpAuditStatus.APPROVE.getStatus().equals(status)) {
+            throw exception(SALE_RETURN_PROCESS_FAIL);
+        }
         ErpSaleReturnDO saleReturn = validateSaleReturnExists(id);
-        if (saleReturn.getStatus().equals(status)) {
-            throw exception(approve ? SALE_RETURN_APPROVE_FAIL : SALE_RETURN_PROCESS_FAIL);
-        }
-        if (!approve && saleReturn.getRefundPrice().compareTo(BigDecimal.ZERO) > 0) {
-            throw exception(SALE_RETURN_PROCESS_FAIL_EXISTS_REFUND);
-        }
-
-        // 反审：先校验并删除关联凭证（红字销售凭证）
-        if (!approve) {
-            List<ErpVoucherDO> related = voucherMapper.selectListByBiz(
-                    ErpVoucherSourceBizTypeEnum.SALE_RETURN.getType(), id);
-            for (ErpVoucherDO v : related) {
-                if (ErpVoucherAuditStatusEnum.APPROVE.getStatus().equals(v.getAuditStatus())) {
-                    throw exception(BIZ_PROCESS_FAIL_VOUCHER_APPROVED, v.getVoucherNo());
-                }
-                voucherMapper.deleteById(v.getId());
-                voucherItemMapper.delete(new LambdaQueryWrapper<ErpVoucherItemDO>()
-                        .eq(ErpVoucherItemDO::getVoucherId, v.getId()));
-            }
+        if (!ErpAuditStatus.PROCESS.getStatus().equals(saleReturn.getStatus())) {
+            throw exception(SALE_RETURN_APPROVE_FAIL);
         }
 
         int updateCount = saleReturnMapper.updateByIdAndStatus(id, saleReturn.getStatus(),
-                new ErpSaleReturnDO().setStatus(status));
+                new ErpSaleReturnDO().setStatus(ErpAuditStatus.APPROVE.getStatus()));
         if (updateCount == 0) {
-            throw exception(approve ? SALE_RETURN_APPROVE_FAIL : SALE_RETURN_PROCESS_FAIL);
+            throw exception(SALE_RETURN_APPROVE_FAIL);
         }
 
         List<ErpSaleReturnItemDO> saleReturnItems = saleReturnItemMapper.selectListByReturnId(id);
-        Integer bizType = approve ? ErpStockRecordBizTypeEnum.SALE_RETURN.getType()
-                : ErpStockRecordBizTypeEnum.SALE_RETURN_CANCEL.getType();
+        Integer bizType = ErpStockRecordBizTypeEnum.SALE_RETURN.getType();
         saleReturnItems.forEach(saleReturnItem -> {
-            BigDecimal count = approve ? saleReturnItem.getCount() : saleReturnItem.getCount().negate();
             stockRecordService.createStockRecord(new ErpStockRecordCreateReqBO(
-                    saleReturnItem.getProductId(), saleReturnItem.getWarehouseId(), count,
+                    saleReturnItem.getProductId(), saleReturnItem.getWarehouseId(), saleReturnItem.getCount(),
                     bizType, saleReturnItem.getReturnId(), saleReturnItem.getId(), saleReturn.getNo(),
                     saleReturnItem.getProductPrice(), saleReturn.getReturnTime()));
         });
@@ -367,7 +341,7 @@ public class ErpSaleReturnServiceImpl implements ErpSaleReturnService {
         }
 
         // 审核通过：自动生成销售红字凭证（已开账并启用销售凭证类型）
-        if (approve && saleReturn.getReturnTime() != null && bookOpenService.isVoucherTypeEnabled(
+        if (saleReturn.getReturnTime() != null && bookOpenService.isVoucherTypeEnabled(
                 saleReturn.getReturnTime().atZone(ZoneId.systemDefault()).toLocalDate(),
                 ErpVoucherTypeEnum.SALE.getType())) {
             BigDecimal sumCost = BigDecimal.ZERO;
@@ -389,7 +363,7 @@ public class ErpSaleReturnServiceImpl implements ErpSaleReturnService {
                     "销售退货 - " + customerName,
                     voucherItems);
         }
-        operateLogService.recordStatus(ERP_SALE_RETURN_TYPE, id, saleReturn.getNo(), approve);
+        operateLogService.recordStatus(ERP_SALE_RETURN_TYPE, id, saleReturn.getNo(), true);
     }
 
     @Override
@@ -413,10 +387,9 @@ public class ErpSaleReturnServiceImpl implements ErpSaleReturnService {
                 throw exception(SALE_RETURN_COUNT_POSITIVE);
             }
             item.setProductUnitId(productMap.get(item.getProductId()).getUnitId());
+            item.setTaxPercent(null);
+            item.setTaxPrice(BigDecimal.ZERO);
             item.setTotalPrice(MoneyUtils.priceMultiply(item.getProductPrice(), item.getCount()));
-            if (item.getTotalPrice() != null && item.getTaxPercent() != null) {
-                item.setTaxPrice(MoneyUtils.priceMultiplyPercent(item.getTotalPrice(), item.getTaxPercent()));
-            }
         }));
     }
 

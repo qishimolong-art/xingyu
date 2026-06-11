@@ -8,6 +8,7 @@ import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseInvoiceDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseInvoiceItemDO;
 import cn.iocoder.yudao.module.erp.enums.ErpAuditStatus;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
+import com.baomidou.mybatisplus.core.toolkit.support.SFunction;
 import org.apache.ibatis.annotations.Mapper;
 
 @Mapper
@@ -23,8 +24,7 @@ public interface ErpPurchaseInvoiceMapper extends BaseMapperX<ErpPurchaseInvoice
                 .likeIfPresent(ErpPurchaseInvoiceDO::getInvoiceNo, reqVO.getInvoiceNo())
                 .likeIfPresent(ErpPurchaseInvoiceDO::getInvoiceType, reqVO.getInvoiceType())
                 .likeIfPresent(ErpPurchaseInvoiceDO::getRemark, reqVO.getRemark())
-                .eqIfPresent(ErpPurchaseInvoiceDO::getCreator, reqVO.getCreator())
-                .orderByDesc(ErpPurchaseInvoiceDO::getId);
+                .eqIfPresent(ErpPurchaseInvoiceDO::getCreator, reqVO.getCreator());
         if (Integer.valueOf(0).equals(reqVO.getInvoiceStatus())) {
             query.ne(ErpPurchaseInvoiceDO::getStatus, ErpAuditStatus.APPROVE.getStatus());
         } else if (Integer.valueOf(1).equals(reqVO.getInvoiceStatus())) {
@@ -36,7 +36,102 @@ public interface ErpPurchaseInvoiceMapper extends BaseMapperX<ErpPurchaseInvoice
                     .likeIfPresent(ErpPurchaseInvoiceItemDO::getSourceInNo, reqVO.getSourceInNo())
                     .groupBy(ErpPurchaseInvoiceDO::getId);
         }
+        orderByIfPresent(query, reqVO);
         return selectJoinPage(reqVO, ErpPurchaseInvoiceDO.class, query);
+    }
+
+    static void orderByIfPresent(MPJLambdaWrapperX<ErpPurchaseInvoiceDO> wrapper, ErpPurchaseInvoicePageReqVO reqVO) {
+        String direction = normalizeOrderDirection(reqVO.getOrderDirection());
+        if (direction == null) {
+            wrapper.orderByDesc(ErpPurchaseInvoiceDO::getId);
+            return;
+        }
+        String expression = getOrderExpression(reqVO.getOrderField());
+        if (expression != null) {
+            wrapper.last("ORDER BY " + expression + " " + direction + ", t.id DESC");
+            return;
+        }
+        SFunction<ErpPurchaseInvoiceDO, ?> orderColumn = getOrderColumn(reqVO.getOrderField());
+        if (orderColumn == null) {
+            wrapper.orderByDesc(ErpPurchaseInvoiceDO::getId);
+            return;
+        }
+        if ("ASC".equals(direction)) {
+            wrapper.orderByAsc(orderColumn);
+            return;
+        }
+        wrapper.orderByDesc(orderColumn);
+    }
+
+    static String normalizeOrderDirection(String orderDirection) {
+        if (orderDirection == null) {
+            return null;
+        }
+        if ("asc".equalsIgnoreCase(orderDirection.trim())) {
+            return "ASC";
+        }
+        if ("desc".equalsIgnoreCase(orderDirection.trim())) {
+            return "DESC";
+        }
+        return null;
+    }
+
+    static String getOrderExpression(String orderField) {
+        if (orderField == null) {
+            return null;
+        }
+        switch (orderField.trim()) {
+            case "taxPercent":
+            case "displayTaxPercent":
+                return "(SELECT MAX(pii.tax_percent) FROM erp_purchase_invoice_item pii "
+                        + "WHERE pii.deleted = 0 AND pii.tenant_id = t.tenant_id AND pii.invoice_id = t.id)";
+            default:
+                return null;
+        }
+    }
+
+    static SFunction<ErpPurchaseInvoiceDO, ?> getOrderColumn(String orderField) {
+        if (orderField == null) {
+            return null;
+        }
+        switch (orderField.trim()) {
+            case "no":
+                return ErpPurchaseInvoiceDO::getNo;
+            case "supplierId":
+            case "supplierName":
+            case "supplierType":
+                return ErpPurchaseInvoiceDO::getSupplierId;
+            case "invoiceNo":
+                return ErpPurchaseInvoiceDO::getInvoiceNo;
+            case "invoiceType":
+                return ErpPurchaseInvoiceDO::getInvoiceType;
+            case "totalAmount":
+                return ErpPurchaseInvoiceDO::getTotalAmount;
+            case "taxAmount":
+                return ErpPurchaseInvoiceDO::getTaxAmount;
+            case "taxExclusiveAmount":
+                return ErpPurchaseInvoiceDO::getTaxExclusiveAmount;
+            case "status":
+                return ErpPurchaseInvoiceDO::getStatus;
+            case "creator":
+            case "creatorName":
+                return ErpPurchaseInvoiceDO::getCreator;
+            case "createTime":
+                return ErpPurchaseInvoiceDO::getCreateTime;
+            case "invoiceDate":
+                return ErpPurchaseInvoiceDO::getInvoiceDate;
+            case "auditUserName":
+            case "updater":
+            case "updaterName":
+                return ErpPurchaseInvoiceDO::getUpdater;
+            case "auditTime":
+            case "updateTime":
+                return ErpPurchaseInvoiceDO::getUpdateTime;
+            case "remark":
+                return ErpPurchaseInvoiceDO::getRemark;
+            default:
+                return null;
+        }
     }
 
     default int updateByIdAndStatus(Long id, Integer status, ErpPurchaseInvoiceDO updateObj) {

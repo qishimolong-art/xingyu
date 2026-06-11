@@ -89,7 +89,7 @@ public class AdminUserApiImpl implements AdminUserApi {
 
     @Override
     public void validateUserList(Collection<Long> ids) {
-        userService.validateUserList(ids);
+        DataPermissionUtils.executeIgnore(() -> userService.validateUserList(ids));
     }
 
 }

@@ -37,7 +37,6 @@ public class ErpSaleOrderOrderImportExcelVO {
     @ExcelProperty("单价")
     private BigDecimal productPrice;
 
-    @ExcelProperty("税率(%)")
     private BigDecimal taxPercent;
 
     @ExcelProperty("明细备注")

@@ -8,6 +8,7 @@ import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.warehouse.ErpWareho
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.warehouse.ErpWarehouseSaveReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpWarehouseBranchDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpWarehouseDO;
+import cn.iocoder.yudao.module.erp.dal.mysql.stock.ErpStockMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.stock.ErpWarehouseBranchMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.stock.ErpWarehouseMapper;
 import cn.iocoder.yudao.module.erp.service.base.ErpBaseArchiveReferenceService;
@@ -21,6 +22,7 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
 import static cn.iocoder.yudao.framework.common.exception.util.ServiceExceptionUtil.exception;
 import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.convertList;
@@ -42,6 +44,8 @@ public class ErpWarehouseServiceImpl implements ErpWarehouseService {
 
     @Resource
     private ErpWarehouseMapper warehouseMapper;
+    @Resource
+    private ErpStockMapper stockMapper;
 
     @Resource
     private ErpWarehouseBranchMapper warehouseBranchMapper;
@@ -79,7 +83,6 @@ public class ErpWarehouseServiceImpl implements ErpWarehouseService {
         updateObj.setTruckagePrice(warehouse.getTruckagePrice());
         updateObj.setDefaultStatus(warehouse.getDefaultStatus());
         updateObj.setStorageCenterId(warehouse.getStorageCenterId());
-        updateObj.setStorageWarehouseId(warehouse.getStorageWarehouseId());
         updateObj.setEcommerceEnabled(warehouse.getEcommerceEnabled());
         updateObj.setSaleBillControl(warehouse.getSaleBillControl());
         updateObj.setZeroStockHide(warehouse.getZeroStockHide());
@@ -96,6 +99,9 @@ public class ErpWarehouseServiceImpl implements ErpWarehouseService {
         updateObj.setCreditControl(warehouse.getCreditControl());
         updateObj.setRegionId(warehouse.getRegionId());
         warehouseMapper.updateById(updateObj);
+        if (!Objects.equals(updateObj.getDeptId(), warehouse.getDeptId())) {
+            stockMapper.updateDeptIdByWarehouseId(warehouse.getId(), updateObj.getDeptId());
+        }
 
         if (updateReqVO.getBranchTenantIds() != null) {
             warehouseBranchMapper.deleteByWarehouseId(updateReqVO.getId());

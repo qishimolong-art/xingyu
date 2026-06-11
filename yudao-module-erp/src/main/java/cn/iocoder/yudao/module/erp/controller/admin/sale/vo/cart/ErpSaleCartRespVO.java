@@ -21,10 +21,12 @@ public class ErpSaleCartRespVO {
     private Long customerId;
     @ExcelProperty("客户名称")
     private String customerName;
+    private String customerCode;
     private Long accountId;
     private Long saleUserId;
     private String saleUserName;
     private Long deptId;
+    private String deptName;
     @ExcelProperty("开单时间")
     private LocalDateTime cartTime;
     private Long firstAuditUserId;
@@ -44,6 +46,8 @@ public class ErpSaleCartRespVO {
     private Integer sourceType;
     private Long sourceId;
     private String sourceNo;
+    private String quoteNo;
+    private String vehiclePlateNo;
     private String creator;
     private String updater;
     private String fileUrl;

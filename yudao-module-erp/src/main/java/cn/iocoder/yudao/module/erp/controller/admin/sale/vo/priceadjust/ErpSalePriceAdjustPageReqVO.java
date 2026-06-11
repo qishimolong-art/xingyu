@@ -37,4 +37,10 @@ public class ErpSalePriceAdjustPageReqVO extends PageParam {
     @Schema(description = "调价单编号数组")
     private List<Long> ids;
 
+    @Schema(description = "排序字段", example = "adjustDate")
+    private String orderField;
+
+    @Schema(description = "排序方向", example = "desc")
+    private String orderDirection;
+
 }

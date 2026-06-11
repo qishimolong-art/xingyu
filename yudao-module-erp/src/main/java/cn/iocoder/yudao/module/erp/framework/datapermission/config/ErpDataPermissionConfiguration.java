@@ -70,12 +70,14 @@ public class ErpDataPermissionConfiguration {
             rule.addUserColumn("erp_sale_return", "sale_user_id");
 
             // Stock documents with dept_id.
+            rule.addDeptColumn("erp_stock", "dept_id");
             rule.addDeptColumn("erp_stock_check", "dept_id");
             rule.addDeptColumn("erp_stock_in", "dept_id");
             rule.addDeptColumn("erp_stock_move", "dept_id");
             rule.addDeptColumn("erp_stock_out", "dept_id");
             rule.addDeptColumn("erp_stock_record", "dept_id");
             rule.addDeptColumn("erp_warehouse", "dept_id");
+            rule.addUserColumn("erp_stock", "creator");
             rule.addUserColumn("erp_stock_check", "creator");
             rule.addUserColumn("erp_stock_in", "creator");
             rule.addUserColumn("erp_stock_move", "creator");

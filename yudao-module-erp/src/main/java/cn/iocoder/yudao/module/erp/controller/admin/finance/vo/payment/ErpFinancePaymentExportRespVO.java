@@ -20,7 +20,7 @@ public class ErpFinancePaymentExportRespVO {
     @ExcelProperty("付款时间")
     private LocalDateTime paymentTime;
 
-    @ExcelProperty("财务人员")
+    @ExcelProperty("经手人")
     private String financeUserName;
 
     @ExcelProperty("供应商名称")

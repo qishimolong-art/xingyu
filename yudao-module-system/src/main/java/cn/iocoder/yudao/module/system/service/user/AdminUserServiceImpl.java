@@ -602,8 +602,10 @@ public class AdminUserServiceImpl implements AdminUserService {
             // 2.2.1 判断如果不存在，在进行插入
             AdminUserDO existUser = userMapper.selectByUsername(importUser.getUsername());
             if (existUser == null) {
-                userMapper.insert(BeanUtils.toBean(importUser, AdminUserDO.class)
-                        .setPassword(encodePassword(initPassword)).setPostIds(new HashSet<>())); // 设置默认密码及空岗位编号数组
+                AdminUserDO user = BeanUtils.toBean(importUser, AdminUserDO.class)
+                        .setPassword(encodePassword(initPassword)).setPostIds(new HashSet<>()); // 设置默认密码及空岗位编号数组
+                userMapper.insert(user);
+                insertUserDept(user.getId(), importUser.getDeptId() == null ? null : Collections.singleton(importUser.getDeptId()));
                 respVO.getCreateUsernames().add(importUser.getUsername());
                 return;
             }
@@ -615,6 +617,8 @@ public class AdminUserServiceImpl implements AdminUserService {
             AdminUserDO updateUser = BeanUtils.toBean(importUser, AdminUserDO.class);
             updateUser.setId(existUser.getId());
             userMapper.updateById(updateUser);
+            updateUserDept(new UserSaveReqVO().setId(existUser.getId())
+                    .setDeptIds(importUser.getDeptId() == null ? Collections.emptySet() : Collections.singleton(importUser.getDeptId())));
             respVO.getUpdateUsernames().add(importUser.getUsername());
         });
         return respVO;

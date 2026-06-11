@@ -3,10 +3,12 @@ package cn.iocoder.yudao.module.erp.service.stock;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.check.ErpStockCheckPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.check.ErpStockCheckSaveReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.stock.ErpStockAdjustReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockCheckDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockCheckItemDO;
 
 import javax.validation.Valid;
+import java.math.BigDecimal;
 import java.util.Collection;
 import java.util.List;
 
@@ -24,6 +26,14 @@ public interface ErpStockCheckService {
      * @return 编号
      */
     Long createStockCheck(@Valid ErpStockCheckSaveReqVO createReqVO);
+
+    /**
+     * 库存浏览页手动调整库存：自动生成盘点单并审批。
+     *
+     * @param reqVO 调整信息
+     * @return 调整后的库存数量
+     */
+    BigDecimal createAndApproveStockAdjustCheck(@Valid ErpStockAdjustReqVO reqVO);
 
     /**
      * 更新库存盘点单

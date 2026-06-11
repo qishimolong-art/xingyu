@@ -78,6 +78,12 @@ public interface ErpStockMapper extends BaseMapperX<ErpStockDO> {
         return selectCount(ErpStockDO::getWarehouseId, warehouseId);
     }
 
+    default int updateDeptIdByWarehouseId(Long warehouseId, Long deptId) {
+        return update(null, new LambdaUpdateWrapper<ErpStockDO>()
+                .eq(ErpStockDO::getWarehouseId, warehouseId)
+                .set(ErpStockDO::getDeptId, deptId));
+    }
+
     default int updateCountIncrement(Long id, BigDecimal count, boolean negativeEnable) {
         LambdaUpdateWrapper<ErpStockDO> updateWrapper = new LambdaUpdateWrapper<ErpStockDO>()
                 .eq(ErpStockDO::getId, id);

@@ -34,6 +34,8 @@ import cn.iocoder.yudao.module.erp.service.product.ErpProductService;
 import cn.iocoder.yudao.module.erp.service.sale.ErpCustomerService;
 import cn.iocoder.yudao.module.erp.service.sale.ErpSaleFieldPermissionMasker;
 import cn.iocoder.yudao.module.erp.service.sale.ErpSaleQuoteService;
+import cn.iocoder.yudao.module.system.api.dept.DeptApi;
+import cn.iocoder.yudao.module.system.api.dept.dto.DeptRespDTO;
 import cn.iocoder.yudao.module.system.api.user.AdminUserApi;
 import cn.iocoder.yudao.module.system.api.user.dto.AdminUserRespDTO;
 import io.swagger.v3.oas.annotations.Operation;
@@ -97,6 +99,8 @@ public class ErpSaleQuoteController {
     private ErpSaleFieldPermissionMasker fieldPermissionMasker;
     @Resource
     private AdminUserApi adminUserApi;
+    @Resource
+    private DeptApi deptApi;
     @Resource
     private ErpFieldConfigService fieldConfigService;
 
@@ -259,13 +263,17 @@ public class ErpSaleQuoteController {
         userIds.remove(null);
         Map<Long, AdminUserRespDTO> userMap = CollUtil.isNotEmpty(userIds)
                 ? adminUserApi.getUserMap(userIds) : Collections.emptyMap();
+        Set<Long> deptIds = convertSet(pageResult.getList(), ErpSaleQuoteDO::getDeptId);
+        deptIds.remove(null);
+        Map<Long, DeptRespDTO> deptMap = CollUtil.isNotEmpty(deptIds)
+                ? deptApi.getDeptMap(deptIds) : Collections.emptyMap();
         List<ErpSaleOutDO> saleOutList = saleOutMapper.selectListBySourceTypeAndSourceIds(
                 ErpSaleBizSourceTypeEnum.QUOTE.getType(),
                 convertSet(pageResult.getList(), ErpSaleQuoteDO::getId,
                         quote -> ErpSaleQuoteStatusEnum.GENERATED_SALE_OUT.getStatus().equals(quote.getStatus())));
         Map<Long, ErpSaleOutDO> saleOutMap = convertMap(saleOutList, ErpSaleOutDO::getSourceId);
         return BeanUtils.toBean(pageResult, ErpSaleQuoteRespVO.class,
-                quote -> fillRelation(quote, itemMap.get(quote.getId()), productMap, customerMap, userMap, saleOutMap));
+                quote -> fillRelation(quote, itemMap.get(quote.getId()), productMap, customerMap, userMap, deptMap, saleOutMap));
     }
 
     private ErpSaleQuoteRespVO buildSaleQuoteRespVO(ErpSaleQuoteDO quote, List<ErpSaleQuoteItemDO> items) {
@@ -296,14 +304,18 @@ public class ErpSaleQuoteController {
                     ErpSaleOutDO::getSourceId);
         }
         Map<Long, ErpSaleOutDO> finalSaleOutMap = saleOutMap;
+        Map<Long, DeptRespDTO> deptMap = quote.getDeptId() == null
+                ? Collections.emptyMap()
+                : deptApi.getDeptMap(Collections.singleton(quote.getDeptId()));
         return BeanUtils.toBean(quote, ErpSaleQuoteRespVO.class,
-                vo -> fillRelation(vo, items, productMap, customerMap, userMap, finalSaleOutMap));
+                vo -> fillRelation(vo, items, productMap, customerMap, userMap, deptMap, finalSaleOutMap));
     }
 
     private void fillRelation(ErpSaleQuoteRespVO vo, List<ErpSaleQuoteItemDO> items,
                               Map<Long, ErpProductRespVO> productMap,
                               Map<Long, ErpCustomerDO> customerMap,
                               Map<Long, AdminUserRespDTO> userMap,
+                              Map<Long, DeptRespDTO> deptMap,
                               Map<Long, ErpSaleOutDO> saleOutMap) {
         List<ErpSaleQuoteItemDO> safeItems = CollUtil.isEmpty(items) ? Collections.emptyList() : items;
         List<ErpSaleQuoteRespVO.Item> respItems = BeanUtils.toBean(safeItems, ErpSaleQuoteRespVO.Item.class,
@@ -325,6 +337,10 @@ public class ErpSaleQuoteController {
         // 填充业务员名称
         if (vo.getSaleUserId() != null) {
             MapUtils.findAndThen(userMap, vo.getSaleUserId(), user -> vo.setSaleUserName(user.getNickname()));
+        }
+        // 填充部门名称
+        if (vo.getDeptId() != null) {
+            MapUtils.findAndThen(deptMap, vo.getDeptId(), dept -> vo.setDeptName(dept.getName()));
         }
         // 反查生成的销售单号
         if (ErpSaleQuoteStatusEnum.GENERATED_SALE_OUT.getStatus().equals(vo.getStatus())) {

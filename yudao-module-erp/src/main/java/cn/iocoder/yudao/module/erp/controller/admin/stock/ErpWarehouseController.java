@@ -41,11 +41,14 @@ import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 import static cn.iocoder.yudao.framework.apilog.core.enums.OperateTypeEnum.EXPORT;
 import static cn.iocoder.yudao.framework.common.pojo.CommonResult.success;
 import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.convertList;
+import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.convertMap;
 import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.convertSet;
 
 @Tag(name = "Admin - ERP warehouse")
@@ -146,6 +149,12 @@ public class ErpWarehouseController {
 
     private List<ErpWarehouseRespVO> buildWarehouseVOList(List<ErpWarehouseDO> list) {
         Map<Long, DeptRespDTO> deptMap = deptApi.getDeptMap(convertSet(list, ErpWarehouseDO::getDeptId));
+        Set<Long> storageWarehouseIds = list.stream()
+                .map(ErpWarehouseDO::getStorageWarehouseId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+        Map<Long, ErpWarehouseDO> storageWarehouseMap = convertMap(
+                warehouseService.getWarehouseList(storageWarehouseIds), ErpWarehouseDO::getId);
         Set<Long> userIds = new HashSet<>();
         list.forEach(warehouse -> {
             addUserId(userIds, warehouse.getCreator());
@@ -154,6 +163,8 @@ public class ErpWarehouseController {
         Map<Long, AdminUserRespDTO> userMap = adminUserApi.getUserMap(userIds);
         return BeanUtils.toBean(list, ErpWarehouseRespVO.class, vo -> {
             MapUtils.findAndThen(deptMap, vo.getDeptId(), dept -> vo.setDeptName(dept.getName()));
+            MapUtils.findAndThen(storageWarehouseMap, vo.getStorageWarehouseId(),
+                    warehouse -> vo.setStorageWarehouseName(warehouse.getName()));
             fillUserNames(vo, userMap);
         });
     }

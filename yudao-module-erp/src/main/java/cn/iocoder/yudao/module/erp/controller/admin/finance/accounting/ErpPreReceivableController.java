@@ -3,6 +3,7 @@ package cn.iocoder.yudao.module.erp.controller.admin.finance.accounting;
 import cn.iocoder.yudao.framework.common.pojo.CommonResult;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
+import cn.iocoder.yudao.module.erp.controller.admin.common.ErpAuditStatusRequestValidator;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.accounting.vo.prereceivable.ErpPreReceivablePageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.accounting.vo.prereceivable.ErpPreReceivableRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.accounting.vo.prereceivable.ErpPreReceivableSaveReqVO;
@@ -58,9 +59,10 @@ public class ErpPreReceivableController {
     @Operation(summary = "更新预收账款单状态")
     @Parameter(name = "id", description = "编号", required = true)
     @Parameter(name = "status", description = "状态", required = true)
-    @PreAuthorize("@ss.hasPermission('erp:pre-receivable:update')")
+    @PreAuthorize("@ss.hasPermission('erp:pre-receivable:update-status')")
     public CommonResult<Boolean> updatePreReceivableStatus(@RequestParam("id") Long id,
                                                            @RequestParam("status") Integer status) {
+        ErpAuditStatusRequestValidator.validateApproveStatus(status);
         preReceivableService.updatePreReceivableStatus(id, status);
         return success(true);
     }

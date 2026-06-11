@@ -234,6 +234,9 @@ public class ErpPurchaseInRespVO {
     @Schema(description = "入库项列表", requiredMode = Schema.RequiredMode.REQUIRED)
     private List<Item> items;
 
+    @Schema(description = "项数", example = "0")
+    private Integer itemCount;
+
     @Schema(description = "产品信息", requiredMode = Schema.RequiredMode.REQUIRED)
     @ExcelProperty("产品信息")
     private String productNames;

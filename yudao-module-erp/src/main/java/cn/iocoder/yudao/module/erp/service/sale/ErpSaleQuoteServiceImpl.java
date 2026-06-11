@@ -382,6 +382,7 @@ public class ErpSaleQuoteServiceImpl implements ErpSaleQuoteService {
     }
 
     private List<ErpSaleQuoteItemDO> validateSaleQuoteItems(List<ErpSaleQuoteSaveReqVO.Item> list) {
+        validateDuplicateSaleQuoteItems(list);
         List<ErpProductDO> productList = productService.validProductList(
                 convertSet(list, ErpSaleQuoteSaveReqVO.Item::getProductId));
         Map<Long, ErpProductDO> productMap = convertMap(productList, ErpProductDO::getId);
@@ -399,6 +400,26 @@ public class ErpSaleQuoteServiceImpl implements ErpSaleQuoteService {
                 item.setTaxPrice(MoneyUtils.priceMultiplyPercent(item.getTotalPrice(), item.getTaxPercent()));
             }
         }));
+    }
+
+    private void validateDuplicateSaleQuoteItems(List<ErpSaleQuoteSaveReqVO.Item> list) {
+        Set<String> itemKeySet = new LinkedHashSet<>();
+        if (CollUtil.isEmpty(list)) {
+            return;
+        }
+        for (ErpSaleQuoteSaveReqVO.Item item : list) {
+            String itemKey = item.getProductId() + "|" + item.getWarehouseId() + "|"
+                    + (Boolean.TRUE.equals(item.getGiftFlag()) ? 1 : 0);
+            if (!itemKeySet.add(itemKey)) {
+                throw exception(SALE_QUOTE_ITEM_DUPLICATE, buildSaleQuoteItemDuplicateLabel(item));
+            }
+        }
+    }
+
+    private String buildSaleQuoteItemDuplicateLabel(ErpSaleQuoteSaveReqVO.Item item) {
+        return "productId=" + item.getProductId()
+                + ", warehouseId=" + item.getWarehouseId()
+                + ", giftFlag=" + Boolean.TRUE.equals(item.getGiftFlag());
     }
 
     private void calculateTotalPrice(ErpSaleQuoteDO quote, List<ErpSaleQuoteItemDO> items) {

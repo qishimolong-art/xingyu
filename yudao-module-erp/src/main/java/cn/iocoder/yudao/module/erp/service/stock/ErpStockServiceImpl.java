@@ -4,7 +4,6 @@ import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.common.util.number.MoneyUtils;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.stock.ErpStockAdjustReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.stock.ErpStockPageReqVO;
-import cn.iocoder.yudao.module.erp.dal.dataobject.product.ErpProductDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockLockDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockRecordDO;
@@ -15,7 +14,6 @@ import cn.iocoder.yudao.module.erp.dal.mysql.stock.ErpStockMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.stock.ErpStockRecordMapper;
 import cn.iocoder.yudao.module.erp.enums.stock.ErpStockRecordBizTypeEnum;
 import cn.iocoder.yudao.module.erp.service.product.ErpProductService;
-import cn.iocoder.yudao.module.erp.service.stock.bo.ErpStockRecordCreateReqBO;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
@@ -76,15 +74,9 @@ public class ErpStockServiceImpl implements ErpStockService {
     @Resource
     private ErpStockRecordMapper stockRecordMapper;
 
-    /**
-     * 库存流水 Service。
-     *
-     * <p>注意：{@link ErpStockRecordServiceImpl} 反向注入了本类 {@link ErpStockService}，为避免 Spring
-     * 循环依赖导致启动失败，这里使用 {@link Lazy} 延迟解析代理，在实际调用时才创建目标 Bean。</p>
-     */
-    @Resource
     @Lazy
-    private ErpStockRecordService stockRecordService;
+    @Resource
+    private ErpStockCheckService stockCheckService;
 
     @Override
     public ErpStockDO getStock(Long id) {
@@ -181,7 +173,9 @@ public class ErpStockServiceImpl implements ErpStockService {
         // 1.1 查询当前库存
         ErpStockDO stock = stockMapper.selectByProductIdAndWarehouseId(productId, warehouseId);
         if (stock == null) {
-            stock = new ErpStockDO().setProductId(productId).setWarehouseId(warehouseId).setCount(BigDecimal.ZERO);
+            stock = new ErpStockDO().setProductId(productId).setWarehouseId(warehouseId)
+                    .setDeptId(resolveWarehouseDeptId(warehouseId))
+                    .setCount(BigDecimal.ZERO);
             stockMapper.insert(stock);
         }
         // 1.2 校验库存是否充足
@@ -214,6 +208,7 @@ public class ErpStockServiceImpl implements ErpStockService {
         ErpStockDO stock = stockMapper.selectByProductIdAndWarehouseId(productId, warehouseId);
         if (stock == null) {
             stock = new ErpStockDO().setProductId(productId).setWarehouseId(warehouseId)
+                    .setDeptId(resolveWarehouseDeptId(warehouseId))
                     .setCount(BigDecimal.ZERO)
                     .setCostPrice(BigDecimal.ZERO)
                     .setCostAmount(BigDecimal.ZERO);
@@ -283,55 +278,7 @@ public class ErpStockServiceImpl implements ErpStockService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public BigDecimal adjustStock(ErpStockAdjustReqVO reqVO) {
-        // 1. 查当前库存
-        ErpStockDO stock = stockMapper.selectByProductIdAndWarehouseId(reqVO.getProductId(), reqVO.getWarehouseId());
-        BigDecimal currentCount = (stock != null && stock.getCount() != null) ? stock.getCount() : BigDecimal.ZERO;
-        BigDecimal targetCount = reqVO.getTargetCount();
-
-        // 2. 计算差值：== 0 直接返回，无需落流水
-        BigDecimal diff = targetCount.subtract(currentCount);
-        if (diff.compareTo(BigDecimal.ZERO) == 0) {
-            return currentCount;
-        }
-
-        // 3. 构造调整单号与备注
-        String bizNo = "ADJ" + System.currentTimeMillis();
-        String recordRemark = reqVO.getReason() != null ? reqVO.getReason() : "库存调整";
-        if (reqVO.getRemark() != null && !reqVO.getRemark().isEmpty()) {
-            recordRemark = recordRemark + "：" + reqVO.getRemark();
-        }
-
-        // 4. 根据 diff 正负决定业务类型与单价
-        Integer bizType;
-        BigDecimal unitPrice;
-        if (diff.compareTo(BigDecimal.ZERO) > 0) {
-            // 盘盈入库：单价取产品资料的最近采购价，缺省为 0
-            bizType = ErpStockRecordBizTypeEnum.CHECK_MORE_IN.getType();
-            ErpProductDO product = productService.getProduct(reqVO.getProductId());
-            unitPrice = (product != null && product.getLastPurchasePrice() != null)
-                    ? product.getLastPurchasePrice() : BigDecimal.ZERO;
-        } else {
-            // 盘亏出库：单价为 null，由下游 createStockRecord 使用当前成本均价出账
-            bizType = ErpStockRecordBizTypeEnum.CHECK_LESS_OUT.getType();
-            unitPrice = null;
-        }
-
-        // 5. 调用一期库存流水服务（9 参构造，bizId / bizItemId 传 0 表示无单据）
-        ErpStockRecordCreateReqBO bo = new ErpStockRecordCreateReqBO(
-                reqVO.getProductId(),
-                reqVO.getWarehouseId(),
-                diff,
-                bizType,
-                0L,
-                0L,
-                bizNo,
-                unitPrice,
-                LocalDateTime.now()
-        );
-        stockRecordService.createStockRecord(bo);
-
-        // 6. 返回调整后库存
-        return targetCount;
+        return stockCheckService.createAndApproveStockAdjustCheck(reqVO);
     }
 
     @Override
@@ -348,6 +295,7 @@ public class ErpStockServiceImpl implements ErpStockService {
         ErpStockDO stock = stockMapper.selectByProductIdAndWarehouseId(productId, warehouseId);
         if (stock == null) {
             stock = new ErpStockDO().setProductId(productId).setWarehouseId(warehouseId)
+                    .setDeptId(resolveWarehouseDeptId(warehouseId))
                     .setCount(BigDecimal.ZERO)
                     .setCostPrice(BigDecimal.ZERO)
                     .setCostAmount(BigDecimal.ZERO);
@@ -424,6 +372,14 @@ public class ErpStockServiceImpl implements ErpStockService {
                         : effectiveDelta)
                 .setBizDate(bizDate != null ? bizDate : LocalDateTime.now());
         stockRecordMapper.insert(record);
+    }
+
+    private Long resolveWarehouseDeptId(Long warehouseId) {
+        if (warehouseId == null) {
+            return null;
+        }
+        ErpWarehouseDO warehouse = warehouseService.getWarehouse(warehouseId);
+        return warehouse != null ? warehouse.getDeptId() : null;
     }
 
 }

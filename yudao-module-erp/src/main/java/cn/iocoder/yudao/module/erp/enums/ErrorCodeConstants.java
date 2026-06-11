@@ -165,6 +165,8 @@ ErrorCode PURCHASE_ORDER_ITEM_RETURN_FAIL_IN_EXCEED = new ErrorCode(1_030_101_00
     ErrorCode STOCK_MOVE_NO_EXISTS = new ErrorCode(1_030_402_004, "生成调拨号失败，请重新提交");
     ErrorCode STOCK_MOVE_UPDATE_FAIL_APPROVE = new ErrorCode(1_030_402_005, "库存调拨单({})已审核，无法修改");
     ErrorCode STOCK_MOVE_ITEM_DUPLICATE = new ErrorCode(1_030_402_006, "同一调拨单明细中产品、调出仓库和调入仓库重复：{}");
+    ErrorCode STOCK_MOVE_WAREHOUSE_REQUIRED = new ErrorCode(1_030_402_007, "库存调拨单明细的调出仓库和调入仓库不能为空");
+    ErrorCode STOCK_MOVE_WAREHOUSE_SAME = new ErrorCode(1_030_402_008, "库存调拨单明细的调出仓库和调入仓库不能相同");
 
     // ========== ERP 库存盘点单 1-030-403-000 ==========
     ErrorCode STOCK_CHECK_NOT_EXISTS = new ErrorCode(1_030_403_000, "库存盘点单不存在");
@@ -226,6 +228,7 @@ ErrorCode PURCHASE_ORDER_ITEM_RETURN_FAIL_IN_EXCEED = new ErrorCode(1_030_101_00
     ErrorCode SALE_QUOTE_ITEM_NOT_EXISTS = new ErrorCode(1_030_205_008, "报价订单项不存在：{}");
     ErrorCode SALE_QUOTE_UPDATE_FAIL_NOT_DRAFT = new ErrorCode(1_030_205_009, "报价订单({})不是草稿状态，不允许编辑");
     ErrorCode SALE_QUOTE_ITEM_PRODUCT_PRICE_NOT_NULL = new ErrorCode(1_030_205_010, "报价订单项({})单价不能为空");
+    ErrorCode SALE_QUOTE_ITEM_DUPLICATE = new ErrorCode(1_030_205_011, "同一报价订单明细中产品、仓库、赠品标识重复：{}");
 
     // ========== ERP 销售手推车 1-030-206-000 ==========
     ErrorCode SALE_CART_NOT_EXISTS = new ErrorCode(1_030_206_000, "销售手推车不存在");
@@ -243,6 +246,7 @@ ErrorCode PURCHASE_ORDER_ITEM_RETURN_FAIL_IN_EXCEED = new ErrorCode(1_030_101_00
     ErrorCode SALE_CART_ITEM_PRICE_POSITIVE = new ErrorCode(1_030_206_012, "产品单价必须大于 0");
     ErrorCode SALE_CART_CONVERT_QUOTE_ITEMS_EMPTY = new ErrorCode(1_030_206_013, "转出商品列表为空");
     ErrorCode SALE_CART_UPDATE_BASIC_FAIL_STATUS = new ErrorCode(1_030_206_014, "销售手推车({})不是终审通过或已生成销售单状态，无法修改基础信息");
+    ErrorCode SALE_CART_DELETE_FAIL_NOT_DRAFT = new ErrorCode(1_030_206_015, "销售手推车({})已审核，无法删除");
 
     // ========== ERP 销售配置 1-030-207-000 ==========
     ErrorCode SALE_CONFIG_NOT_EXISTS = new ErrorCode(1_030_207_000, "销售配置不存在");

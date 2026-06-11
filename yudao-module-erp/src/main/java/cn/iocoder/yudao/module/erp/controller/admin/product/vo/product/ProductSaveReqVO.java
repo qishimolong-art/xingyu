@@ -64,7 +64,7 @@ public class ProductSaveReqVO {
     private BigDecimal minPrice;
 
     // ========== 配件信息管理扩展字段 ==========
-    @Schema(description = "默认仓库编号", example = "1")
+    @Schema(description = "默认仓库编号", requiredMode = Schema.RequiredMode.REQUIRED, example = "1")
     private Long defaultWarehouseId;
 
     @Schema(description = "适用车型", example = "宝马 X5")

@@ -19,7 +19,7 @@ VALUES
 ('erp_finance_payment', 'no', '付款单号', 'main_form', 10, '1', NOW(), '1', NOW(), b'0', 1),
 ('erp_finance_payment', 'paymentTime', '付款时间', 'main_form', 20, '1', NOW(), '1', NOW(), b'0', 1),
 ('erp_finance_payment', 'supplierId', '供应商', 'main_form', 30, '1', NOW(), '1', NOW(), b'0', 1),
-('erp_finance_payment', 'financeUserId', '财务人员', 'main_form', 40, '1', NOW(), '1', NOW(), b'0', 1),
+('erp_finance_payment', 'financeUserId', '经手人', 'main_form', 40, '1', NOW(), '1', NOW(), b'0', 1),
 ('erp_finance_payment', 'remark', '备注', 'main_form', 50, '1', NOW(), '1', NOW(), b'0', 1),
 ('erp_finance_payment', 'fileUrl', '附件', 'main_form', 60, '1', NOW(), '1', NOW(), b'0', 1),
 ('erp_finance_payment', 'items', '付款明细', 'main_form', 70, '1', NOW(), '1', NOW(), b'0', 1),

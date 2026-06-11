@@ -41,6 +41,7 @@ import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PRODUCT_NOT_E
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.SALE_QUOTE_APPROVE_FAIL;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.SALE_QUOTE_CONVERT_COUNT_EXCEED;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.SALE_QUOTE_DELETE_FAIL_GENERATED;
+import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.SALE_QUOTE_ITEM_DUPLICATE;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.SALE_QUOTE_UPDATE_FAIL_GENERATED;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -327,6 +328,32 @@ public class ErpSaleQuoteServiceImplTest extends BaseMockitoUnitTest {
         // 执行 & 断言
         assertServiceException(() -> saleQuoteService.createSaleQuote(reqVO), PRODUCT_NOT_EXISTS);
         // 校验：未走到客户校验和 insert
+        verify(customerService, never()).validateCustomer(any());
+        verify(saleQuoteMapper, never()).insert(ArgumentMatchers.<ErpSaleQuoteDO>any());
+    }
+
+    @Test
+    public void testCreateSaleQuote_duplicateItem_throwException() {
+        ErpSaleQuoteSaveReqVO reqVO = new ErpSaleQuoteSaveReqVO();
+        reqVO.setCustomerId(53L);
+        reqVO.setQuoteTime(LocalDateTime.of(2026, 5, 9, 9, 0));
+        ErpSaleQuoteSaveReqVO.Item itemVO1 = new ErpSaleQuoteSaveReqVO.Item();
+        itemVO1.setProductId(503L);
+        itemVO1.setWarehouseId(603L);
+        itemVO1.setProductPrice(new BigDecimal("10.00"));
+        itemVO1.setCount(new BigDecimal("5"));
+        itemVO1.setGiftFlag(Boolean.FALSE);
+        ErpSaleQuoteSaveReqVO.Item itemVO2 = new ErpSaleQuoteSaveReqVO.Item();
+        itemVO2.setProductId(503L);
+        itemVO2.setWarehouseId(603L);
+        itemVO2.setProductPrice(new BigDecimal("11.00"));
+        itemVO2.setCount(new BigDecimal("2"));
+        itemVO2.setGiftFlag(Boolean.FALSE);
+        reqVO.setItems(Arrays.asList(itemVO1, itemVO2));
+
+        assertServiceException(() -> saleQuoteService.createSaleQuote(reqVO),
+                SALE_QUOTE_ITEM_DUPLICATE, "productId=503, warehouseId=603, giftFlag=false");
+        verify(productService, never()).validProductList(any());
         verify(customerService, never()).validateCustomer(any());
         verify(saleQuoteMapper, never()).insert(ArgumentMatchers.<ErpSaleQuoteDO>any());
     }

@@ -12,6 +12,9 @@ import cn.iocoder.yudao.module.erp.service.finance.accounting.ErpOtherPayableSer
 import org.junit.jupiter.api.Test;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import org.springframework.security.access.prepost.PreAuthorize;
+
+import java.lang.reflect.Method;
 
 import java.util.Arrays;
 import java.util.Collections;
@@ -19,6 +22,7 @@ import java.util.Collections;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -66,6 +70,20 @@ public class ErpOtherPayableControllerTest extends BaseMockitoUnitTest {
         assertEquals(0, result.getCode());
         assertTrue(result.getData());
         verify(otherPayableService).updateOtherPayableStatus(eq(7L), eq(20));
+    }
+
+    @Test
+    public void testUpdateOtherPayableStatus_hasPreAuthorize() throws NoSuchMethodException {
+        Method method = ErpOtherPayableController.class.getMethod("updateOtherPayableStatus", Long.class, Integer.class);
+        PreAuthorize anno = method.getAnnotation(PreAuthorize.class);
+        assertNotNull(anno);
+        assertTrue(anno.value().contains("erp:other-payable:update-status"));
+    }
+
+    @Test
+    public void testUpdateOtherPayableStatus_rejectsProcessStatus() {
+        assertThrows(RuntimeException.class, () -> controller.updateOtherPayableStatus(7L, 10));
+        verify(otherPayableService, never()).updateOtherPayableStatus(any(), any());
     }
 
     // ==================== deleteOtherPayable ====================

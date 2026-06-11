@@ -2,12 +2,13 @@ package cn.iocoder.yudao.module.erp.dal.mysql.purchase;
 
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.mybatis.core.mapper.BaseMapperX;
-import cn.iocoder.yudao.framework.mybatis.core.query.LambdaQueryWrapperX;
+import cn.iocoder.yudao.framework.mybatis.core.query.MPJLambdaWrapperX;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.priceadjust.ErpPurchasePriceAdjustPageReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchasePriceAdjustDO;
 import cn.iocoder.yudao.module.erp.enums.ErpAuditStatus;
 import cn.iocoder.yudao.module.erp.enums.common.ErpBizTypeEnum;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
+import com.baomidou.mybatisplus.core.toolkit.support.SFunction;
 import org.apache.ibatis.annotations.Mapper;
 
 import java.util.Objects;
@@ -21,7 +22,7 @@ import java.util.Objects;
 public interface ErpPurchasePriceAdjustMapper extends BaseMapperX<ErpPurchasePriceAdjustDO> {
 
     default PageResult<ErpPurchasePriceAdjustDO> selectPage(ErpPurchasePriceAdjustPageReqVO reqVO) {
-        LambdaQueryWrapperX<ErpPurchasePriceAdjustDO> query = new LambdaQueryWrapperX<ErpPurchasePriceAdjustDO>()
+        MPJLambdaWrapperX<ErpPurchasePriceAdjustDO> query = new MPJLambdaWrapperX<ErpPurchasePriceAdjustDO>()
                 .likeIfPresent(ErpPurchasePriceAdjustDO::getNo, reqVO.getNo())
                 .eqIfPresent(ErpPurchasePriceAdjustDO::getStatus, reqVO.getStatus())
                 .eqIfPresent(ErpPurchasePriceAdjustDO::getAdjustType, reqVO.getAdjustType())
@@ -30,28 +31,116 @@ public interface ErpPurchasePriceAdjustMapper extends BaseMapperX<ErpPurchasePri
                 .likeIfPresent(ErpPurchasePriceAdjustDO::getRemark, reqVO.getRemark())
                 .eqIfPresent(ErpPurchasePriceAdjustDO::getCreator, reqVO.getCreator())
                 .eqIfPresent(ErpPurchasePriceAdjustDO::getDeptId, reqVO.getDeptId())
-                .eqIfPresent(ErpPurchasePriceAdjustDO::getAdjuster, reqVO.getAdjuster())
-                .orderByDesc(ErpPurchasePriceAdjustDO::getId);
+                .eqIfPresent(ErpPurchasePriceAdjustDO::getAdjuster, reqVO.getAdjuster());
         if (Objects.equals(reqVO.getPaymentStatus(), ErpPurchasePriceAdjustPageReqVO.PAYMENT_STATUS_NONE)) {
             query.apply(paymentPriceSql() + " = 0");
         } else if (Objects.equals(reqVO.getPaymentStatus(), ErpPurchasePriceAdjustPageReqVO.PAYMENT_STATUS_PART)) {
             query.apply(paymentPriceSql() + " <> 0")
-                    .apply("ABS(" + paymentPriceSql() + ") < ABS(total_adjust_price)");
+                    .apply("ABS(" + paymentPriceSql() + ") < ABS(t.total_adjust_price)");
         } else if (Objects.equals(reqVO.getPaymentStatus(), ErpPurchasePriceAdjustPageReqVO.PAYMENT_STATUS_ALL)) {
-            query.apply("ABS(" + paymentPriceSql() + ") = ABS(total_adjust_price)");
+            query.apply("ABS(" + paymentPriceSql() + ") = ABS(t.total_adjust_price)");
         }
         if (Boolean.TRUE.equals(reqVO.getPaymentEnable())) {
             query.eq(ErpPurchasePriceAdjustDO::getStatus, ErpAuditStatus.APPROVE.getStatus())
-                    .apply("ABS(" + paymentPriceSql() + ") < ABS(total_adjust_price)");
+                    .apply("ABS(" + paymentPriceSql() + ") < ABS(t.total_adjust_price)");
         }
-        return selectPage(reqVO, query);
+        orderByIfPresent(query, reqVO);
+        return selectJoinPage(reqVO, ErpPurchasePriceAdjustDO.class, query);
     }
 
     static String paymentPriceSql() {
         return "(SELECT COALESCE(SUM(item.payment_price), 0) FROM erp_finance_payment_item item "
-                + "WHERE item.deleted = 0 "
+                + "WHERE item.deleted = 0 AND item.tenant_id = t.tenant_id "
                 + "AND item.biz_type = " + ErpBizTypeEnum.PURCHASE_PRICE_ADJUST.getType() + " "
-                + "AND item.biz_id = erp_purchase_price_adjust.id)";
+                + "AND item.biz_id = t.id)";
+    }
+
+    static void orderByIfPresent(MPJLambdaWrapperX<ErpPurchasePriceAdjustDO> wrapper,
+                                 ErpPurchasePriceAdjustPageReqVO reqVO) {
+        String direction = normalizeOrderDirection(reqVO.getOrderDirection());
+        if (direction == null) {
+            wrapper.orderByDesc(ErpPurchasePriceAdjustDO::getId);
+            return;
+        }
+        String expression = getOrderExpression(reqVO.getOrderField());
+        if (expression != null) {
+            wrapper.last("ORDER BY " + expression + " " + direction + ", t.id DESC");
+            return;
+        }
+        SFunction<ErpPurchasePriceAdjustDO, ?> orderColumn = getOrderColumn(reqVO.getOrderField());
+        if (orderColumn == null) {
+            wrapper.orderByDesc(ErpPurchasePriceAdjustDO::getId);
+            return;
+        }
+        if ("ASC".equals(direction)) {
+            wrapper.orderByAsc(orderColumn).orderByDesc(ErpPurchasePriceAdjustDO::getId);
+        } else {
+            wrapper.orderByDesc(orderColumn).orderByDesc(ErpPurchasePriceAdjustDO::getId);
+        }
+    }
+
+    static String normalizeOrderDirection(String orderDirection) {
+        if (orderDirection == null) {
+            return null;
+        }
+        if ("asc".equalsIgnoreCase(orderDirection.trim())) {
+            return "ASC";
+        }
+        if ("desc".equalsIgnoreCase(orderDirection.trim())) {
+            return "DESC";
+        }
+        return null;
+    }
+
+    static String getOrderExpression(String orderField) {
+        if (orderField == null) {
+            return null;
+        }
+        switch (orderField.trim()) {
+            case "originalTotalPrice":
+                return totalPriceSql("old_price");
+            case "adjustedTotalPrice":
+                return totalPriceSql("new_price");
+            default:
+                return null;
+        }
+    }
+
+    static String totalPriceSql(String priceColumn) {
+        return "(SELECT COALESCE(SUM(item." + priceColumn + " * item.`count`), 0) "
+                + "FROM erp_purchase_price_adjust_item item "
+                + "WHERE item.deleted = 0 AND item.tenant_id = t.tenant_id AND item.adjust_id = t.id)";
+    }
+
+    static SFunction<ErpPurchasePriceAdjustDO, ?> getOrderColumn(String orderField) {
+        if (orderField == null) {
+            return null;
+        }
+        switch (orderField.trim()) {
+            case "no":
+                return ErpPurchasePriceAdjustDO::getNo;
+            case "status":
+                return ErpPurchasePriceAdjustDO::getStatus;
+            case "adjustTime":
+                return ErpPurchasePriceAdjustDO::getAdjustTime;
+            case "supplierId":
+            case "supplierName":
+                return ErpPurchasePriceAdjustDO::getSupplierId;
+            case "totalAdjustPrice":
+                return ErpPurchasePriceAdjustDO::getTotalAdjustPrice;
+            case "adjuster":
+            case "adjusterName":
+                return ErpPurchasePriceAdjustDO::getAdjuster;
+            case "updater":
+            case "approverName":
+                return ErpPurchasePriceAdjustDO::getUpdater;
+            case "approveTime":
+                return ErpPurchasePriceAdjustDO::getApproveTime;
+            case "remark":
+                return ErpPurchasePriceAdjustDO::getRemark;
+            default:
+                return null;
+        }
     }
 
     default ErpPurchasePriceAdjustDO selectByNo(String no) {
@@ -63,7 +152,7 @@ public interface ErpPurchasePriceAdjustMapper extends BaseMapperX<ErpPurchasePri
     }
 
     default String selectFirstNoBySupplierId(Long supplierId) {
-        ErpPurchasePriceAdjustDO adjust = selectOne(new LambdaQueryWrapperX<ErpPurchasePriceAdjustDO>()
+        ErpPurchasePriceAdjustDO adjust = selectOne(new MPJLambdaWrapperX<ErpPurchasePriceAdjustDO>()
                 .eq(ErpPurchasePriceAdjustDO::getSupplierId, supplierId)
                 .orderByDesc(ErpPurchasePriceAdjustDO::getId)
                 .last("LIMIT 1"));

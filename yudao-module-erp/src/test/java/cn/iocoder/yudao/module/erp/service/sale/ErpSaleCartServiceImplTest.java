@@ -2,8 +2,10 @@ package cn.iocoder.yudao.module.erp.service.sale;
 
 import cn.iocoder.yudao.framework.common.exception.ServiceException;
 import cn.iocoder.yudao.framework.test.core.ut.BaseMockitoUnitTest;
+import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpProductRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartConvertQuoteReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartSaveReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartSubmitRespVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.product.ErpProductDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpCustomerDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleCartDO;
@@ -11,6 +13,7 @@ import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleCartItemDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleQuoteDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleQuoteItemDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockDO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpWarehouseDO;
 import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpSaleCartItemMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpSaleCartMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpSaleConvertRecordMapper;
@@ -23,6 +26,7 @@ import cn.iocoder.yudao.module.erp.enums.sale.ErpSaleQuoteStatusEnum;
 import cn.iocoder.yudao.module.erp.service.finance.ErpAccountService;
 import cn.iocoder.yudao.module.erp.service.product.ErpProductService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpStockService;
+import cn.iocoder.yudao.module.erp.service.stock.ErpWarehouseService;
 import cn.iocoder.yudao.module.system.api.user.AdminUserApi;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -35,6 +39,9 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 
 import static cn.iocoder.yudao.framework.test.core.util.AssertUtils.assertServiceException;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.CUSTOMER_NOT_EXISTS;
@@ -43,11 +50,12 @@ import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.SALE_CART_DEL
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.SALE_CART_FINAL_APPROVE_FAIL;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.SALE_CART_FIRST_APPROVE_FAIL;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.SALE_CART_REJECT_FAIL;
-import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.SALE_CART_SUBMIT_FAIL;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.SALE_CART_UPDATE_FAIL_NOT_PROCESS;
+import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.STOCK_COUNT_NEGATIVE2;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyCollection;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -83,6 +91,8 @@ public class ErpSaleCartServiceImplTest extends BaseMockitoUnitTest {
     private ErpAccountService accountService;
     @Mock
     private ErpStockService stockService;
+    @Mock
+    private ErpWarehouseService warehouseService;
     @Mock
     private AdminUserApi adminUserApi;
 
@@ -319,17 +329,65 @@ public class ErpSaleCartServiceImplTest extends BaseMockitoUnitTest {
         Long cartId = 71L;
         ErpSaleCartDO cart = new ErpSaleCartDO().setId(cartId).setNo("ST20260509000003")
                 .setStatus(ErpSaleCartStatusEnum.PROCESS.getStatus());
+        ErpSaleCartItemDO item = buildCartItem(cartId, 201L, 401L, new BigDecimal("3"));
         when(saleCartMapper.selectById(eq(cartId))).thenReturn(cart);
+        when(saleCartItemMapper.selectListByCartId(eq(cartId))).thenReturn(Collections.singletonList(item));
+        when(productService.getProductVOMap(anyCollection())).thenReturn(Collections.singletonMap(201L,
+                new ErpProductRespVO().setId(201L).setCode("P001").setName("测试产品")));
+        when(warehouseService.getWarehouseMap(anyCollection())).thenReturn(Collections.singletonMap(401L,
+                new ErpWarehouseDO().setId(401L).setName("默认仓库")));
+        when(stockService.getStock(eq(201L), eq(401L)))
+                .thenReturn(new ErpStockDO().setCount(new BigDecimal("10")));
         when(saleCartMapper.updateByIdAndStatus(eq(cartId),
                 eq(ErpSaleCartStatusEnum.PROCESS.getStatus()),
                 argThat(update -> ErpSaleCartStatusEnum.SUBMITTED.getStatus().equals(update.getStatus()))))
                 .thenReturn(1);
 
-        saleCartService.submitSaleCart(cartId);
+        ErpSaleCartSubmitRespVO result = saleCartService.submitSaleCart(cartId);
 
+        assertEquals(ErpSaleCartStatusEnum.SUBMITTED.getStatus(), result.getStatus());
         verify(saleCartMapper).updateByIdAndStatus(eq(cartId),
                 eq(ErpSaleCartStatusEnum.PROCESS.getStatus()),
                 argThat(update -> ErpSaleCartStatusEnum.SUBMITTED.getStatus().equals(update.getStatus())));
+    }
+
+    @Test
+    public void testSubmitSaleCart_stockInsufficient_throwExceptionAndKeepProcessStatus() {
+        Long cartId = 77L;
+        ErpSaleCartDO cart = new ErpSaleCartDO().setId(cartId).setNo("ST20260509000009")
+                .setStatus(ErpSaleCartStatusEnum.PROCESS.getStatus());
+        List<ErpSaleCartItemDO> items = new ArrayList<>();
+        items.add(buildCartItem(cartId, 201L, 401L, new BigDecimal("5")));
+        items.add(buildCartItem(cartId, 202L, 402L, new BigDecimal("6")));
+        items.add(buildCartItem(cartId, 203L, 403L, new BigDecimal("7")));
+        items.add(buildCartItem(cartId, 204L, 404L, new BigDecimal("8")));
+        Map<Long, ErpProductRespVO> productMap = new LinkedHashMap<>();
+        productMap.put(201L, new ErpProductRespVO().setId(201L).setCode("P001").setName("产品一"));
+        productMap.put(202L, new ErpProductRespVO().setId(202L).setCode("P002").setName("产品二"));
+        productMap.put(203L, new ErpProductRespVO().setId(203L).setCode("P003").setName("产品三"));
+        productMap.put(204L, new ErpProductRespVO().setId(204L).setCode("P004").setName("产品四"));
+        Map<Long, ErpWarehouseDO> warehouseMap = new LinkedHashMap<>();
+        warehouseMap.put(401L, new ErpWarehouseDO().setId(401L).setName("仓库一"));
+        warehouseMap.put(402L, new ErpWarehouseDO().setId(402L).setName("仓库二"));
+        warehouseMap.put(403L, new ErpWarehouseDO().setId(403L).setName("仓库三"));
+        warehouseMap.put(404L, new ErpWarehouseDO().setId(404L).setName("仓库四"));
+        when(saleCartMapper.selectById(eq(cartId))).thenReturn(cart);
+        when(saleCartItemMapper.selectListByCartId(eq(cartId))).thenReturn(items);
+        when(productService.getProductVOMap(anyCollection())).thenReturn(productMap);
+        when(warehouseService.getWarehouseMap(anyCollection())).thenReturn(warehouseMap);
+        when(stockService.getStock(eq(201L), eq(401L))).thenReturn(new ErpStockDO().setCount(new BigDecimal("2")));
+        when(stockService.getStock(eq(202L), eq(402L))).thenReturn(new ErpStockDO().setCount(new BigDecimal("3")));
+        when(stockService.getStock(eq(203L), eq(403L))).thenReturn(new ErpStockDO().setCount(new BigDecimal("4")));
+        when(stockService.getStock(eq(204L), eq(404L))).thenReturn(new ErpStockDO().setCount(new BigDecimal("5")));
+
+        ServiceException exception = assertThrows(ServiceException.class, () -> saleCartService.submitSaleCart(cartId));
+
+        assertEquals(STOCK_COUNT_NEGATIVE2.getCode(), exception.getCode());
+        assertTrue(exception.getMessage().contains("库存不足，无法提交"));
+        assertTrue(exception.getMessage().contains("产品【产品一】仓库【仓库一】需求数量【5】当前库存【2】缺少数量【3】"));
+        assertTrue(exception.getMessage().contains("产品【产品三】仓库【仓库三】需求数量【7】当前库存【4】缺少数量【3】"));
+        assertTrue(exception.getMessage().contains("等 4 项商品库存不足"));
+        verify(saleCartMapper, never()).updateByIdAndStatus(eq(cartId), any(), any());
     }
 
     @Test
@@ -445,6 +503,15 @@ public class ErpSaleCartServiceImplTest extends BaseMockitoUnitTest {
         item.setCount(count);
         item.setTaxPercent(BigDecimal.ZERO);
         return item;
+    }
+
+    private ErpSaleCartItemDO buildCartItem(Long cartId, Long productId, Long warehouseId, BigDecimal count) {
+        return new ErpSaleCartItemDO()
+                .setCartId(cartId)
+                .setProductId(productId)
+                .setWarehouseId(warehouseId)
+                .setProductPrice(new BigDecimal("15.00"))
+                .setCount(count);
     }
 
 }

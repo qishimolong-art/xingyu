@@ -42,6 +42,10 @@ public class ErpStockDO extends BaseDO {
      */
     private Long warehouseId;
     /**
+     * Department id inherited from warehouse for stock data permissions.
+     */
+    private Long deptId;
+    /**
      * 库存数量
      */
     private BigDecimal count;
