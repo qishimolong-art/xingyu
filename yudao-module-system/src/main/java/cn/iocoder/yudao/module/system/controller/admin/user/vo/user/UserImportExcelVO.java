@@ -18,9 +18,6 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 public class UserImportExcelVO {
 
-    @ExcelProperty("登录名称")
-    private String username;
-
     @ExcelProperty("用户名称")
     private String nickname;
 
@@ -37,7 +34,7 @@ public class UserImportExcelVO {
     @DictFormat(DictTypeConstants.USER_SEX)
     private Integer sex;
 
-    @ExcelProperty(value = "账号状态", converter = DictConvert.class)
+    @ExcelProperty(value = "用户状态", converter = DictConvert.class)
     @DictFormat(DictTypeConstants.COMMON_STATUS)
     private Integer status;
 

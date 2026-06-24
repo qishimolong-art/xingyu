@@ -1,6 +1,9 @@
 package cn.iocoder.yudao.module.system.service.dept;
 
 import cn.iocoder.yudao.framework.common.util.collection.CollectionUtils;
+import cn.iocoder.yudao.module.system.controller.admin.dept.vo.dept.DeptBatchUpdateReqVO;
+import cn.iocoder.yudao.module.system.controller.admin.dept.vo.dept.DeptImportExcelVO;
+import cn.iocoder.yudao.module.system.controller.admin.dept.vo.dept.DeptImportRespVO;
 import cn.iocoder.yudao.module.system.controller.admin.dept.vo.dept.DeptListReqVO;
 import cn.iocoder.yudao.module.system.controller.admin.dept.vo.dept.DeptSaveReqVO;
 import cn.iocoder.yudao.module.system.controller.admin.dept.vo.dept.DeptUpdateSortReqVO;
@@ -36,6 +39,13 @@ public interface DeptService {
      * @param reqVO 排序信息
      */
     void updateDeptSort(DeptUpdateSortReqVO reqVO);
+
+    /**
+     * 批量修改部门
+     *
+     * @param reqVO 批量修改信息
+     */
+    void batchUpdateDept(DeptBatchUpdateReqVO reqVO);
 
     /**
      * 删除部门
@@ -74,6 +84,14 @@ public interface DeptService {
      * @return 部门列表
      */
     List<DeptDO> getDeptList(DeptListReqVO reqVO);
+
+    /**
+     * 获得指定名称的部门信息数组
+     *
+     * @param name 部门名称
+     * @return 部门信息数组
+     */
+    List<DeptDO> getDeptListByName(String name);
 
     /**
      * 获得指定编号的部门 Map
@@ -128,5 +146,14 @@ public interface DeptService {
      * @param ids 角色编号数组
      */
     void validateDeptList(Collection<Long> ids);
+
+    /**
+     * 批量导入部门
+     *
+     * @param importDepts 导入部门列表
+     * @param isUpdateSupport 是否支持更新
+     * @return 导入结果
+     */
+    DeptImportRespVO importDeptList(List<DeptImportExcelVO> importDepts, boolean isUpdateSupport);
 
 }

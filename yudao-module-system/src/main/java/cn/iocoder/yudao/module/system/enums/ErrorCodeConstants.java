@@ -57,6 +57,11 @@ public interface ErrorCodeConstants {
     ErrorCode DEPT_NOT_ENABLE = new ErrorCode(1_002_004_006, "部门({})不处于开启状态，不允许选择");
     ErrorCode DEPT_PARENT_IS_CHILD = new ErrorCode(1_002_004_007, "不能设置自己的子部门为父部门");
     ErrorCode DEPT_SORT_PARENT_NOT_SAME = new ErrorCode(1_002_004_008, "只能对同一个父级部门下的部门进行排序");
+    ErrorCode DEPT_IMPORT_LIST_IS_EMPTY = new ErrorCode(1_002_004_009, "导入部门数据不能为空！");
+    ErrorCode DEPT_BATCH_UPDATE_FIELD_EMPTY = new ErrorCode(1_002_004_010, "请至少选择一个需要修改的字段");
+    ErrorCode DEPT_BATCH_UPDATE_PARENT_IS_SELECTED_CHILD = new ErrorCode(1_002_004_011, "上级部门不能是已选部门自身或其下级部门");
+    ErrorCode DEPT_EXISTS_USER = new ErrorCode(1_002_004_012, "部门已关联用户，无法删除");
+    ErrorCode DEPT_EXISTS_BIZ_DATA = new ErrorCode(1_002_004_013, "部门已关联业务数据，无法删除");
 
     // ========== 岗位模块 1-002-005-000 ==========
     ErrorCode POST_NOT_FOUND = new ErrorCode(1_002_005_000, "当前岗位不存在");
@@ -169,5 +174,8 @@ public interface ErrorCodeConstants {
 
     // ========== 站内信发送 1-002-028-000 ==========
     ErrorCode NOTIFY_SEND_TEMPLATE_PARAM_MISS = new ErrorCode(1_002_028_000, "模板参数({})缺失");
+
+    ErrorCode USER_EXISTS_BIZ_DATA = new ErrorCode(1_002_003_012, "用户已关联业务数据，无法删除");
+    ErrorCode USER_IS_DEPT_LEADER = new ErrorCode(1_002_003_013, "用户是部门负责人，无法删除");
 
 }

@@ -18,6 +18,7 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
 import org.springframework.validation.annotation.Validated;
 
 import javax.annotation.Resource;
@@ -154,12 +155,12 @@ public class ErpStockServiceImpl implements ErpStockService {
     }
 
     private boolean hasProductCondition(ErpStockPageReqVO v) {
-        return v.getProductCode() != null || v.getProductName() != null
-                || v.getDrawingNo() != null || v.getVehicleModel() != null
-                || v.getOriginPlace() != null || v.getBrand() != null
-                || v.getShelf() != null || v.getFeatureCode() != null
-                || v.getStandard() != null || v.getFactoryCode() != null
-                || v.getBarCode() != null || v.getOeNumber() != null
+        return StringUtils.hasText(v.getProductCode()) || StringUtils.hasText(v.getProductName())
+                || StringUtils.hasText(v.getDrawingNo()) || StringUtils.hasText(v.getVehicleModel())
+                || StringUtils.hasText(v.getOriginPlace()) || StringUtils.hasText(v.getBrand())
+                || StringUtils.hasText(v.getShelf()) || StringUtils.hasText(v.getFeatureCode())
+                || StringUtils.hasText(v.getStandard()) || StringUtils.hasText(v.getFactoryCode())
+                || StringUtils.hasText(v.getBarCode()) || StringUtils.hasText(v.getOeNumber())
                 || v.getCategoryId() != null || v.getProductStatus() != null
                 || v.getStockMaxMin() != null || v.getStockMaxMax() != null
                 || v.getStockMinMin() != null || v.getStockMinMax() != null

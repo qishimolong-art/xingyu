@@ -1,6 +1,5 @@
 package cn.iocoder.yudao.module.system.controller.admin.user;
 
-import cn.hutool.core.collection.CollUtil;
 import cn.iocoder.yudao.framework.common.pojo.CommonResult;
 import cn.iocoder.yudao.framework.datapermission.core.annotation.DataPermission;
 import cn.iocoder.yudao.module.system.controller.admin.user.vo.profile.UserProfileRespVO;
@@ -8,11 +7,9 @@ import cn.iocoder.yudao.module.system.controller.admin.user.vo.profile.UserProfi
 import cn.iocoder.yudao.module.system.controller.admin.user.vo.profile.UserProfileUpdateReqVO;
 import cn.iocoder.yudao.module.system.convert.user.UserConvert;
 import cn.iocoder.yudao.module.system.dal.dataobject.dept.DeptDO;
-import cn.iocoder.yudao.module.system.dal.dataobject.dept.PostDO;
 import cn.iocoder.yudao.module.system.dal.dataobject.permission.RoleDO;
 import cn.iocoder.yudao.module.system.dal.dataobject.user.AdminUserDO;
 import cn.iocoder.yudao.module.system.service.dept.DeptService;
-import cn.iocoder.yudao.module.system.service.dept.PostService;
 import cn.iocoder.yudao.module.system.service.permission.PermissionService;
 import cn.iocoder.yudao.module.system.service.permission.RoleService;
 import cn.iocoder.yudao.module.system.service.user.AdminUserService;
@@ -41,8 +38,6 @@ public class UserProfileController {
     @Resource
     private DeptService deptService;
     @Resource
-    private PostService postService;
-    @Resource
     private PermissionService permissionService;
     @Resource
     private RoleService roleService;
@@ -57,9 +52,7 @@ public class UserProfileController {
         List<RoleDO> userRoles = roleService.getRoleListFromCache(permissionService.getUserRoleIdListByUserId(user.getId()));
         // 获得部门信息
         DeptDO dept = user.getDeptId() != null ? deptService.getDept(user.getDeptId()) : null;
-        // 获得岗位信息
-        List<PostDO> posts = CollUtil.isNotEmpty(user.getPostIds()) ? postService.getPostList(user.getPostIds()) : null;
-        return success(UserConvert.INSTANCE.convert(user, userRoles, dept, posts));
+        return success(UserConvert.INSTANCE.convert(user, userRoles, dept));
     }
 
     @PutMapping("/update")
@@ -75,5 +68,4 @@ public class UserProfileController {
         userService.updateUserPassword(getLoginUserId(), reqVO);
         return success(true);
     }
-
 }

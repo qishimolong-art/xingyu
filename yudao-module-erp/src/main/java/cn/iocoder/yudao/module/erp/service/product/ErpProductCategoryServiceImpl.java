@@ -1,8 +1,12 @@
 package cn.iocoder.yudao.module.erp.service.product;
 
 import cn.hutool.core.collection.CollUtil;
+import cn.hutool.core.util.StrUtil;
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
 import cn.iocoder.yudao.framework.common.util.validation.ValidationUtils;
+import cn.iocoder.yudao.module.erp.controller.admin.product.vo.category.ErpProductCategoryBatchUpdateReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.product.vo.category.ErpProductCategoryImportExcelVO;
+import cn.iocoder.yudao.module.erp.controller.admin.product.vo.category.ErpProductCategoryImportRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.product.vo.category.ErpProductCategoryListReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.product.vo.category.ErpProductCategorySaveReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.product.ErpProductCategoryDO;
@@ -14,8 +18,10 @@ import org.springframework.validation.annotation.Validated;
 
 import javax.annotation.Resource;
 import java.util.Collection;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 
@@ -73,6 +79,17 @@ public class ErpProductCategoryServiceImpl implements ErpProductCategoryService 
     }
 
     @Override
+    public void batchUpdateProductCategory(ErpProductCategoryBatchUpdateReqVO updateReqVO) {
+        for (Long id : updateReqVO.getIds()) {
+            validateProductCategoryExists(id);
+            ErpProductCategoryDO updateObj = new ErpProductCategoryDO();
+            updateObj.setId(id);
+            updateObj.setStatus(updateReqVO.getStatus());
+            erpProductCategoryMapper.updateById(updateObj);
+        }
+    }
+
+    @Override
     public void deleteProductCategory(Long id) {
         // 1.1 校验存在
         validateProductCategoryExists(id);
@@ -86,6 +103,16 @@ public class ErpProductCategoryServiceImpl implements ErpProductCategoryService 
         }
         // 2. 删除
         erpProductCategoryMapper.deleteById(id);
+    }
+
+    @Override
+    public void deleteProductCategoryList(Collection<Long> ids) {
+        if (CollUtil.isEmpty(ids)) {
+            return;
+        }
+        for (Long id : ids) {
+            deleteProductCategory(id);
+        }
     }
 
     private ErpProductCategoryDO validateProductCategoryExists(Long id) {
@@ -157,6 +184,92 @@ public class ErpProductCategoryServiceImpl implements ErpProductCategoryService 
     @Override
     public List<ErpProductCategoryDO> getProductCategoryList(Collection<Long> ids) {
         return erpProductCategoryMapper.selectByIds(ids);
+    }
+
+    @Override
+    public ErpProductCategoryImportRespVO importProductCategoryList(List<ErpProductCategoryImportExcelVO> list) {
+        ErpProductCategoryImportRespVO result = new ErpProductCategoryImportRespVO();
+        if (CollUtil.isEmpty(list)) {
+            return result;
+        }
+        Map<String, ErpProductCategoryDO> categoryMap = buildCategoryCodeMap();
+        for (int i = 0; i < list.size(); i++) {
+            ErpProductCategoryImportExcelVO row = list.get(i);
+            int rowNo = i + 2;
+            try {
+                importProductCategory(row, rowNo, categoryMap);
+                result.setSuccessCount(result.getSuccessCount() + 1);
+                if (categoryMap.containsKey(trimToNull(row.getCode()))) {
+                    result.setUpdateCount(result.getUpdateCount() + 1);
+                } else {
+                    result.setCreateCount(result.getCreateCount() + 1);
+                }
+                categoryMap = buildCategoryCodeMap();
+            } catch (Exception ex) {
+                result.setFailureCount(result.getFailureCount() + 1);
+                result.getFailureDetails().add(new ErpProductCategoryImportRespVO.FailureItem(
+                        rowNo, row == null ? null : row.getCode(), ex.getMessage()));
+            }
+        }
+        return result;
+    }
+
+    private void importProductCategory(ErpProductCategoryImportExcelVO row, int rowNo,
+                                       Map<String, ErpProductCategoryDO> categoryMap) {
+        if (row == null || (StrUtil.isBlank(row.getName()) && StrUtil.isBlank(row.getCode())
+                && StrUtil.isBlank(row.getParentCode()) && row.getStatus() == null)) {
+            throw new IllegalArgumentException("第 " + rowNo + " 行为空行");
+        }
+        String code = trimToNull(row.getCode());
+        String name = trimToNull(row.getName());
+        if (StrUtil.isBlank(name)) {
+            throw new IllegalArgumentException("分类名称不能为空");
+        }
+        if (StrUtil.isBlank(code)) {
+            throw new IllegalArgumentException("分类编码不能为空");
+        }
+        String parentCode = trimToNull(row.getParentCode());
+        Long parentId = ErpProductCategoryDO.PARENT_ID_ROOT;
+        if (StrUtil.isNotBlank(parentCode)) {
+            ErpProductCategoryDO parent = categoryMap.get(parentCode);
+            if (parent == null) {
+                throw new IllegalArgumentException("上级分类编码不存在：" + parentCode);
+            }
+            if (Objects.equals(parentCode, code)) {
+                throw new IllegalArgumentException("上级分类不能是自身");
+            }
+            parentId = parent.getId();
+        }
+        Integer status = row.getStatus() == null ? 0 : row.getStatus();
+        ErpProductCategoryDO existing = categoryMap.get(code);
+        ErpProductCategorySaveReqVO saveReqVO = new ErpProductCategorySaveReqVO();
+        saveReqVO.setId(existing == null ? null : existing.getId());
+        saveReqVO.setParentId(parentId);
+        saveReqVO.setName(name);
+        saveReqVO.setCode(code);
+        saveReqVO.setSort(existing == null ? rowNo * 10 : existing.getSort());
+        saveReqVO.setStatus(status);
+        if (existing == null) {
+            createProductCategory(saveReqVO);
+        } else {
+            updateProductCategory(saveReqVO);
+        }
+    }
+
+    private Map<String, ErpProductCategoryDO> buildCategoryCodeMap() {
+        List<ErpProductCategoryDO> categories = erpProductCategoryMapper.selectList(new ErpProductCategoryListReqVO());
+        Map<String, ErpProductCategoryDO> result = new HashMap<>(categories.size());
+        for (ErpProductCategoryDO category : categories) {
+            String code = trimToNull(category.getCode());
+            if (StrUtil.isNotBlank(code)) {
+                result.put(code, category);
+            }
+        }
+        return result;
+    }
+
+    private String trimToNull(String value) {
+        return StrUtil.emptyToNull(StrUtil.trim(value));
     }
 
     private ErpProductCategoryDO applyProductCategoryFieldPermissions(ErpProductCategoryDO category) {

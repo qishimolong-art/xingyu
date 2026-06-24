@@ -1,11 +1,15 @@
 package cn.iocoder.yudao.module.erp.service.product;
 
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
+import cn.iocoder.yudao.module.erp.controller.admin.product.vo.unit.ErpProductUnitBatchUpdateReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.product.vo.unit.ErpProductUnitImportExcelVO;
+import cn.iocoder.yudao.module.erp.controller.admin.product.vo.unit.ErpProductUnitImportRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.product.vo.unit.ErpProductUnitPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.product.vo.unit.ErpProductUnitSaveReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.product.ErpProductUnitDO;
 
 import javax.validation.Valid;
+import java.io.Reader;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
@@ -35,11 +39,25 @@ public interface ErpProductUnitService {
     void updateProductUnit(ErpProductUnitSaveReqVO updateReqVO);
 
     /**
+     * 批量修改产品单位
+     *
+     * @param updateReqVO 批量修改信息
+     */
+    void batchUpdateProductUnit(@Valid ErpProductUnitBatchUpdateReqVO updateReqVO);
+
+    /**
      * 删除产品单位
      *
      * @param id 编号
      */
     void deleteProductUnit(Long id);
+
+    /**
+     * 批量删除产品单位
+     *
+     * @param ids 编号列表
+     */
+    void deleteProductUnitList(Collection<Long> ids);
 
     /**
      * 获得产品单位
@@ -58,12 +76,36 @@ public interface ErpProductUnitService {
     PageResult<ErpProductUnitDO> getProductUnitPage(ErpProductUnitPageReqVO pageReqVO);
 
     /**
+     * 导入产品单位列表
+     *
+     * @param list 导入列表
+     * @return 导入结果
+     */
+    ErpProductUnitImportRespVO importProductUnitList(List<ErpProductUnitImportExcelVO> list);
+
+    /**
+     * 解析 CSV 导入文件
+     *
+     * @param reader CSV Reader
+     * @return 导入列表
+     */
+    List<ErpProductUnitImportExcelVO> parseCsvImport(Reader reader);
+
+    /**
      * 获得指定状态的产品单位列表
      *
      * @param status 状态
      * @return 产品单位列表
      */
     List<ErpProductUnitDO> getProductUnitListByStatus(Integer status);
+
+    /**
+     * 获得指定状态的当前用户可见产品单位列表
+     *
+     * @param status 状态
+     * @return 产品单位列表
+     */
+    List<ErpProductUnitDO> getProductUnitListByStatusForCurrentUser(Integer status);
 
     /**
      * 获得产品单位列表

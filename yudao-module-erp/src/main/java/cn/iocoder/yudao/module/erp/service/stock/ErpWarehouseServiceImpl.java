@@ -1,9 +1,13 @@
 package cn.iocoder.yudao.module.erp.service.stock;
 
 import cn.hutool.core.collection.CollUtil;
+import cn.hutool.core.util.StrUtil;
 import cn.iocoder.yudao.framework.common.enums.CommonStatusEnum;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
+import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.warehouse.ErpWarehouseBatchUpdateReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.warehouse.ErpWarehouseImportExcelVO;
+import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.warehouse.ErpWarehouseImportRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.warehouse.ErpWarehousePageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.warehouse.ErpWarehouseSaveReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpWarehouseBranchDO;
@@ -13,6 +17,8 @@ import cn.iocoder.yudao.module.erp.dal.mysql.stock.ErpWarehouseBranchMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.stock.ErpWarehouseMapper;
 import cn.iocoder.yudao.module.erp.service.base.ErpBaseArchiveReferenceService;
 import cn.iocoder.yudao.module.erp.service.common.ErpOperateLogService;
+import cn.iocoder.yudao.module.system.api.dept.DeptApi;
+import cn.iocoder.yudao.module.system.api.dept.dto.DeptRespDTO;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.validation.annotation.Validated;
@@ -20,9 +26,12 @@ import org.springframework.validation.annotation.Validated;
 import javax.annotation.Resource;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 import static cn.iocoder.yudao.framework.common.exception.util.ServiceExceptionUtil.exception;
 import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.convertList;
@@ -55,12 +64,17 @@ public class ErpWarehouseServiceImpl implements ErpWarehouseService {
     private ErpOperateLogService operateLogService;
     @Resource
     private ErpBaseArchiveReferenceService baseArchiveReferenceService;
+    @Resource
+    private DeptApi deptApi;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Long createWarehouse(ErpWarehouseSaveReqVO createReqVO) {
         // 闁圭粯甯掗崣鍡樼閹惧磭姘?
         ErpWarehouseDO warehouse = BeanUtils.toBean(createReqVO, ErpWarehouseDO.class);
+        if (warehouse.getSort() == null) {
+            warehouse.setSort(0L);
+        }
         warehouseMapper.insert(warehouse);
         // 闁圭粯甯掗崣鍡涘礆閸℃鏆楅柛蹇撶枃娴?
         createWarehouseBranches(warehouse.getId(), createReqVO.getBranchTenantIds());
@@ -112,6 +126,73 @@ public class ErpWarehouseServiceImpl implements ErpWarehouseService {
 
     @Override
     @Transactional(rollbackFor = Exception.class)
+    public void batchUpdateWarehouse(ErpWarehouseBatchUpdateReqVO updateReqVO) {
+        if (!hasBatchUpdateFields(updateReqVO)) {
+            return;
+        }
+        for (Long id : updateReqVO.getIds()) {
+            ErpWarehouseDO warehouse = validateWarehouseExists(id);
+            ErpWarehouseDO updateObj = buildBatchUpdateObj(updateReqVO);
+            updateObj.setId(id);
+            fieldPermissionMasker.preserveHiddenFields(FIELD_PERMISSION_MODULE, updateObj, warehouse);
+            warehouseMapper.updateById(updateObj);
+            if (updateReqVO.getDeptId() != null && !Objects.equals(updateReqVO.getDeptId(), warehouse.getDeptId())) {
+                stockMapper.updateDeptIdByWarehouseId(id, updateReqVO.getDeptId());
+            }
+            operateLogService.recordUpdate(ERP_WAREHOUSE_TYPE, id, warehouse.getName());
+        }
+    }
+
+    private boolean hasBatchUpdateFields(ErpWarehouseBatchUpdateReqVO updateReqVO) {
+        return updateReqVO.getDeptId() != null
+                || updateReqVO.getWarehouseType() != null
+                || updateReqVO.getStatus() != null
+                || updateReqVO.getSaleEnabled() != null
+                || updateReqVO.getPurchaseEnabled() != null
+                || updateReqVO.getStockBillEnabled() != null
+                || updateReqVO.getScanControl() != null
+                || updateReqVO.getSplitOrder() != null
+                || updateReqVO.getSort() != null
+                || updateReqVO.getRemark() != null;
+    }
+
+    private ErpWarehouseDO buildBatchUpdateObj(ErpWarehouseBatchUpdateReqVO updateReqVO) {
+        ErpWarehouseDO updateObj = new ErpWarehouseDO();
+        if (updateReqVO.getDeptId() != null) {
+            updateObj.setDeptId(updateReqVO.getDeptId());
+        }
+        if (updateReqVO.getWarehouseType() != null) {
+            updateObj.setWarehouseType(updateReqVO.getWarehouseType());
+        }
+        if (updateReqVO.getStatus() != null) {
+            updateObj.setStatus(updateReqVO.getStatus());
+        }
+        if (updateReqVO.getSaleEnabled() != null) {
+            updateObj.setSaleEnabled(updateReqVO.getSaleEnabled());
+        }
+        if (updateReqVO.getPurchaseEnabled() != null) {
+            updateObj.setPurchaseEnabled(updateReqVO.getPurchaseEnabled());
+        }
+        if (updateReqVO.getStockBillEnabled() != null) {
+            updateObj.setStockBillEnabled(updateReqVO.getStockBillEnabled());
+        }
+        if (updateReqVO.getScanControl() != null) {
+            updateObj.setScanControl(updateReqVO.getScanControl());
+        }
+        if (updateReqVO.getSplitOrder() != null) {
+            updateObj.setSplitOrder(updateReqVO.getSplitOrder());
+        }
+        if (updateReqVO.getSort() != null) {
+            updateObj.setSort(updateReqVO.getSort());
+        }
+        if (updateReqVO.getRemark() != null) {
+            updateObj.setRemark(updateReqVO.getRemark());
+        }
+        return updateObj;
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
     public void updateWarehouseDefaultStatus(Long id, Boolean defaultStatus) {
         // 1. 闁哄稄绻濋悰娆戔偓娑櫭﹢?
         validateWarehouseExists(id);
@@ -139,6 +220,114 @@ public class ErpWarehouseServiceImpl implements ErpWarehouseService {
         warehouseBranchMapper.deleteByWarehouseId(id);
         operateLogService.record(ERP_WAREHOUSE_TYPE, ERP_DELETE_SUB_TYPE, id,
                 "delete warehouse: " + warehouse.getName(), warehouse.getName());
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void deleteWarehouseList(List<Long> ids) {
+        if (CollUtil.isEmpty(ids)) {
+            return;
+        }
+        for (Long id : ids) {
+            deleteWarehouse(id);
+        }
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public ErpWarehouseImportRespVO importWarehouseList(List<ErpWarehouseImportExcelVO> list) {
+        ErpWarehouseImportRespVO respVO = new ErpWarehouseImportRespVO();
+        if (CollUtil.isEmpty(list)) {
+            return respVO;
+        }
+        Map<String, List<DeptRespDTO>> deptNameMap = buildDeptNameMap(list);
+        for (int i = 0; i < list.size(); i++) {
+            ErpWarehouseImportExcelVO row = list.get(i);
+            Integer rowNo = i + 2;
+            try {
+                resolveImportDeptId(row, deptNameMap);
+                boolean create = findImportWarehouse(row) == null;
+                importWarehouse(row);
+                respVO.setSuccessCount(respVO.getSuccessCount() + 1);
+                if (create) {
+                    respVO.setCreateCount(respVO.getCreateCount() + 1);
+                } else {
+                    respVO.setUpdateCount(respVO.getUpdateCount() + 1);
+                }
+            } catch (Exception ex) {
+                respVO.setFailureCount(respVO.getFailureCount() + 1);
+                respVO.getFailureDetails().add(new ErpWarehouseImportRespVO.FailureItem(
+                        rowNo, row == null ? null : row.getWarehouseCode(), ex.getMessage()));
+            }
+        }
+        return respVO;
+    }
+
+    private Map<String, List<DeptRespDTO>> buildDeptNameMap(List<ErpWarehouseImportExcelVO> list) {
+        Set<String> deptNames = list.stream()
+                .filter(row -> row != null && StrUtil.isNotBlank(row.getDeptName()))
+                .map(row -> row.getDeptName().trim())
+                .collect(Collectors.toCollection(HashSet::new));
+        if (CollUtil.isEmpty(deptNames)) {
+            return Collections.emptyMap();
+        }
+        return deptNames.stream().collect(Collectors.toMap(deptName -> deptName,
+                deptName -> deptApi.getDeptListByName(deptName)));
+    }
+
+    private void resolveImportDeptId(ErpWarehouseImportExcelVO row, Map<String, List<DeptRespDTO>> deptNameMap) {
+        if (row == null || StrUtil.isBlank(row.getDeptName())) {
+            return;
+        }
+        String deptName = row.getDeptName().trim();
+        List<DeptRespDTO> matchedDepts = deptNameMap.get(deptName);
+        if (CollUtil.isEmpty(matchedDepts)) {
+            throw new IllegalArgumentException("所属部门不存在：" + deptName);
+        }
+        if (matchedDepts.size() > 1) {
+            throw new IllegalArgumentException("所属部门名称重复，请使用唯一部门名称：" + deptName);
+        }
+        row.setDeptName(deptName);
+        row.setDeptId(matchedDepts.get(0).getId());
+    }
+
+    private void importWarehouse(ErpWarehouseImportExcelVO row) {
+        if (row == null || StrUtil.isBlank(row.getName())) {
+            throw new IllegalArgumentException("仓库名称不能为空");
+        }
+        ErpWarehouseDO existing = findImportWarehouse(row);
+        ErpWarehouseDO importObj = BeanUtils.toBean(row, ErpWarehouseDO.class);
+        if (existing == null) {
+            if (importObj.getStatus() == null) {
+                importObj.setStatus(CommonStatusEnum.ENABLE.getStatus());
+            }
+            if (importObj.getSort() == null) {
+                importObj.setSort(0L);
+            }
+            warehouseMapper.insert(importObj);
+            operateLogService.recordCreate(ERP_WAREHOUSE_TYPE, importObj.getId(), importObj.getName());
+            return;
+        }
+        importObj.setId(existing.getId());
+        importObj.setDefaultStatus(existing.getDefaultStatus());
+        warehouseMapper.updateById(importObj);
+        if (importObj.getDeptId() != null && !Objects.equals(importObj.getDeptId(), existing.getDeptId())) {
+            stockMapper.updateDeptIdByWarehouseId(existing.getId(), importObj.getDeptId());
+        }
+        operateLogService.recordUpdate(ERP_WAREHOUSE_TYPE, existing.getId(), importObj.getName());
+    }
+
+    private ErpWarehouseDO findImportWarehouse(ErpWarehouseImportExcelVO row) {
+        if (row == null) {
+            return null;
+        }
+        if (StrUtil.isNotBlank(row.getWarehouseCode())) {
+            ErpWarehouseDO warehouse = warehouseMapper.selectByWarehouseCode(row.getWarehouseCode());
+            if (warehouse != null) {
+                return warehouse;
+            }
+        }
+        return StrUtil.isBlank(row.getName()) ? null : warehouseMapper.selectByName(row.getName());
     }
 
     private ErpWarehouseDO validateWarehouseExists(Long id) {

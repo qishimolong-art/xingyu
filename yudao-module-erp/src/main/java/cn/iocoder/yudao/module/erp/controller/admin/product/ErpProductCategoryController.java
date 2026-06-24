@@ -5,6 +5,9 @@ import cn.iocoder.yudao.framework.common.enums.CommonStatusEnum;
 import cn.iocoder.yudao.framework.common.pojo.CommonResult;
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
 import cn.iocoder.yudao.framework.excel.core.util.ExcelUtils;
+import cn.iocoder.yudao.module.erp.controller.admin.product.vo.category.ErpProductCategoryBatchUpdateReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.product.vo.category.ErpProductCategoryImportExcelVO;
+import cn.iocoder.yudao.module.erp.controller.admin.product.vo.category.ErpProductCategoryImportRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.product.vo.category.ErpProductCategoryListReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.product.vo.category.ErpProductCategoryRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.product.vo.category.ErpProductCategorySaveReqVO;
@@ -16,12 +19,17 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 import javax.annotation.Resource;
 import javax.servlet.http.HttpServletResponse;
 import javax.validation.Valid;
 import java.io.IOException;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 
 import static cn.iocoder.yudao.framework.apilog.core.enums.OperateTypeEnum.EXPORT;
 import static cn.iocoder.yudao.framework.common.pojo.CommonResult.success;
@@ -32,6 +40,9 @@ import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.
 @RequestMapping("/erp/product-category")
 @Validated
 public class ErpProductCategoryController {
+
+    private static final Set<String> PRODUCT_CATEGORY_IMPORT_TEMPLATE_FIELDS = new LinkedHashSet<>(Arrays.asList(
+            "parentCode", "name", "code", "status"));
 
     @Resource
     private ErpProductCategoryService productCategoryService;
@@ -51,12 +62,29 @@ public class ErpProductCategoryController {
         return success(true);
     }
 
+    @PutMapping("/batch-update")
+    @Operation(summary = "批量更新产品分类")
+    @PreAuthorize("@ss.hasPermission('erp:product-category:update')")
+    public CommonResult<Boolean> batchUpdateProductCategory(@Valid @RequestBody ErpProductCategoryBatchUpdateReqVO updateReqVO) {
+        productCategoryService.batchUpdateProductCategory(updateReqVO);
+        return success(true);
+    }
+
     @DeleteMapping("/delete")
     @Operation(summary = "删除产品分类")
     @Parameter(name = "id", description = "编号", required = true)
     @PreAuthorize("@ss.hasPermission('erp:product-category:delete')")
     public CommonResult<Boolean> deleteProductCategory(@RequestParam("id") Long id) {
         productCategoryService.deleteProductCategory(id);
+        return success(true);
+    }
+
+    @DeleteMapping("/delete-list")
+    @Operation(summary = "批量删除产品分类")
+    @Parameter(name = "ids", description = "编号列表", required = true)
+    @PreAuthorize("@ss.hasPermission('erp:product-category:delete')")
+    public CommonResult<Boolean> deleteProductCategoryList(@RequestParam("ids") List<Long> ids) {
+        productCategoryService.deleteProductCategoryList(ids);
         return success(true);
     }
 
@@ -96,6 +124,25 @@ public class ErpProductCategoryController {
         // 导出 Excel
         ExcelUtils.write(response, "产品分类.xls", "数据", ErpProductCategoryRespVO.class,
                         BeanUtils.toBean(list, ErpProductCategoryRespVO.class));
+    }
+
+    @GetMapping("/get-import-template")
+    @Operation(summary = "获得产品分类导入模板")
+    @PreAuthorize("@ss.hasPermission('erp:product-category:import')")
+    public void getImportTemplate(HttpServletResponse response) throws IOException {
+        ExcelUtils.writeImportTemplate(response, "产品分类导入模板.xls", "产品分类",
+                ErpProductCategoryImportExcelVO.class,
+                Collections.singletonList(new ErpProductCategoryImportExcelVO()),
+                PRODUCT_CATEGORY_IMPORT_TEMPLATE_FIELDS);
+    }
+
+    @PostMapping("/import")
+    @Operation(summary = "导入产品分类")
+    @PreAuthorize("@ss.hasPermission('erp:product-category:import')")
+    public CommonResult<ErpProductCategoryImportRespVO> importProductCategory(@RequestParam("file") MultipartFile file)
+            throws Exception {
+        List<ErpProductCategoryImportExcelVO> list = ExcelUtils.read(file, ErpProductCategoryImportExcelVO.class);
+        return success(productCategoryService.importProductCategoryList(list));
     }
 
 }

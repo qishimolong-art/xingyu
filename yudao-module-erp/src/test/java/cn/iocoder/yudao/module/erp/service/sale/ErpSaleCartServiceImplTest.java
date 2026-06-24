@@ -94,6 +94,8 @@ public class ErpSaleCartServiceImplTest extends BaseMockitoUnitTest {
     @Mock
     private ErpWarehouseService warehouseService;
     @Mock
+    private ErpSaleDocumentDefaultService saleDocumentDefaultService;
+    @Mock
     private AdminUserApi adminUserApi;
 
     @BeforeEach
@@ -259,6 +261,41 @@ public class ErpSaleCartServiceImplTest extends BaseMockitoUnitTest {
                         && cart.getNo() != null && cart.getNo().startsWith(ErpNoRedisDAO.SALE_CART_NO_PREFIX)));
         verify(saleCartItemMapper).insertBatch(argThat((java.util.List<ErpSaleCartItemDO> items) -> items.size() == 1
                 && items.get(0).getCartId().equals(999L)));
+    }
+
+    @Test
+    public void testCreateAndSubmitSaleCart_success_whenCreatedCartNotVisibleBySelect() {
+        ErpSaleCartSaveReqVO reqVO = buildBaseSaveReq();
+        reqVO.setCustomerId(21L);
+        reqVO.setAccountId(31L);
+        reqVO.setSaleUserId(41L);
+        reqVO.setItems(Collections.singletonList(buildItemReq(new BigDecimal("3"), new BigDecimal("15.00"))));
+
+        when(productService.validProductList(anyCollection()))
+                .thenReturn(Collections.singletonList(new ErpProductDO().setId(201L).setUnitId(301L)));
+        when(stockService.getStock(eq(201L), eq(401L)))
+                .thenReturn(new ErpStockDO().setCount(new BigDecimal("100")));
+        when(customerService.validateCustomer(eq(21L))).thenReturn(new ErpCustomerDO().setId(21L));
+        when(saleCartMapper.selectByNo(anyString())).thenReturn(null);
+        when(productService.getProductVOMap(anyCollection())).thenReturn(Collections.singletonMap(201L,
+                new ErpProductRespVO().setId(201L).setCode("P001").setName("测试产品")));
+        when(warehouseService.getWarehouseMap(anyCollection())).thenReturn(Collections.singletonMap(401L,
+                new ErpWarehouseDO().setId(401L).setName("默认仓库")));
+        doAnswer(invocation -> {
+            ErpSaleCartDO cart = invocation.getArgument(0);
+            cart.setId(999L);
+            return 1;
+        }).when(saleCartMapper).insert(any(ErpSaleCartDO.class));
+
+        ErpSaleCartSubmitRespVO result = saleCartService.createAndSubmitSaleCart(reqVO);
+
+        assertEquals(999L, result.getId());
+        assertEquals(ErpSaleCartStatusEnum.SUBMITTED.getStatus(), result.getStatus());
+        verify(saleCartMapper).insert(argThat((ErpSaleCartDO cart) ->
+                ErpSaleCartStatusEnum.SUBMITTED.getStatus().equals(cart.getStatus())
+                        && reqVO.getCustomerId().equals(cart.getCustomerId())));
+        verify(saleCartMapper, never()).selectById(eq(999L));
+        verify(saleCartMapper, never()).updateByIdAndStatus(eq(999L), any(), any());
     }
 
     @Test

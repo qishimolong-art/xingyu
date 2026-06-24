@@ -74,6 +74,8 @@ public class ErpFinancePaymentServiceImpl implements ErpFinancePaymentService {
     @Resource
     private AdminUserApi adminUserApi;
     @Resource
+    private ErpFinancePermissionFieldFiller permissionFieldFiller;
+    @Resource
     private ErpFinanceFieldPermissionMasker fieldPermissionMasker;
     @Resource
     private ErpOperateLogService operateLogService;
@@ -103,6 +105,7 @@ public class ErpFinancePaymentServiceImpl implements ErpFinancePaymentService {
         // 2.1 插入付款单
         ErpFinancePaymentDO payment = BeanUtils.toBean(createReqVO, ErpFinancePaymentDO.class, in -> in
                 .setNo(no).setStatus(ErpAuditStatus.PROCESS.getStatus()));
+        permissionFieldFiller.fillCreateFields(payment);
         fillDefaultAmount(payment);
         financePaymentMapper.insert(payment);
         // 2.2 插入付款单项

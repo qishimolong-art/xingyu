@@ -6,6 +6,7 @@ import cn.iocoder.yudao.framework.common.util.collection.CollectionUtils;
 import cn.iocoder.yudao.module.system.controller.admin.auth.vo.AuthRegisterReqVO;
 import cn.iocoder.yudao.module.system.controller.admin.user.vo.profile.UserProfileUpdatePasswordReqVO;
 import cn.iocoder.yudao.module.system.controller.admin.user.vo.profile.UserProfileUpdateReqVO;
+import cn.iocoder.yudao.module.system.controller.admin.user.vo.user.UserBatchUpdateReqVO;
 import cn.iocoder.yudao.module.system.controller.admin.user.vo.user.UserImportExcelVO;
 import cn.iocoder.yudao.module.system.controller.admin.user.vo.user.UserImportRespVO;
 import cn.iocoder.yudao.module.system.controller.admin.user.vo.user.UserPageReqVO;
@@ -48,6 +49,13 @@ public interface AdminUserService {
      * @param updateReqVO 用户信息
      */
     void updateUser(@Valid UserSaveReqVO updateReqVO);
+
+    /**
+     * 批量修改用户
+     *
+     * @param reqVO 批量修改信息
+     */
+    void updateUserBatch(@Valid UserBatchUpdateReqVO reqVO);
 
     /**
      * 更新用户的最后登陆信息

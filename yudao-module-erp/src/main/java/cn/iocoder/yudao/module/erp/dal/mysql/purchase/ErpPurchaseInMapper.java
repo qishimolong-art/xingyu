@@ -202,4 +202,10 @@ public interface ErpPurchaseInMapper extends BaseMapperX<ErpPurchaseInDO> {
         return selectList(ErpPurchaseInDO::getOrderId, orderId);
     }
 
+    default List<ErpPurchaseInDO> selectListByOrderIdAndStatus(Long orderId, Integer status) {
+        return selectList(new MPJLambdaWrapperX<ErpPurchaseInDO>()
+                .eq(ErpPurchaseInDO::getOrderId, orderId)
+                .eq(ErpPurchaseInDO::getStatus, status));
+    }
+
 }

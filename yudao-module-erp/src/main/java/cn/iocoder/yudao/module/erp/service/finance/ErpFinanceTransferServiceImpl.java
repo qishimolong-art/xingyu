@@ -23,7 +23,6 @@ import java.util.Collections;
 import java.util.List;
 
 import static cn.iocoder.yudao.framework.common.exception.util.ServiceExceptionUtil.exception;
-import static cn.iocoder.yudao.framework.security.core.util.SecurityFrameworkUtils.getLoginUserId;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.FINANCE_TRANSFER_ACCOUNTS_SAME;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.FINANCE_TRANSFER_APPROVE_FAIL;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.FINANCE_TRANSFER_DELETE_FAIL_APPROVE;
@@ -52,6 +51,8 @@ public class ErpFinanceTransferServiceImpl implements ErpFinanceTransferService 
     @Resource
     private AdminUserApi adminUserApi;
     @Resource
+    private ErpFinancePermissionFieldFiller permissionFieldFiller;
+    @Resource
     private ErpFinanceFieldPermissionMasker fieldPermissionMasker;
     @Resource
     private ErpOperateLogService operateLogService;
@@ -68,7 +69,7 @@ public class ErpFinanceTransferServiceImpl implements ErpFinanceTransferService 
         ErpFinanceTransferDO transfer = BeanUtils.toBean(createReqVO, ErpFinanceTransferDO.class, in -> in
                 .setNo(no)
                 .setStatus(ErpAuditStatus.PROCESS.getStatus()));
-        fillCreateDeptId(transfer);
+        permissionFieldFiller.fillCreateFields(transfer);
         financeTransferMapper.insert(transfer);
         recordCreate(transfer);
         return transfer.getId();
@@ -169,18 +170,6 @@ public class ErpFinanceTransferServiceImpl implements ErpFinanceTransferService 
         if (financeUserId != null) {
             adminUserApi.validateUser(financeUserId);
         }
-    }
-
-    private void fillCreateDeptId(ErpFinanceTransferDO transfer) {
-        if (transfer.getDeptId() != null) {
-            return;
-        }
-        Long loginUserId = getLoginUserId();
-        if (loginUserId == null) {
-            return;
-        }
-        AdminUserRespDTO user = adminUserApi.getUser(loginUserId);
-        transfer.setDeptId(user == null ? null : user.getDeptId());
     }
 
     private void recordCreate(ErpFinanceTransferDO transfer) {

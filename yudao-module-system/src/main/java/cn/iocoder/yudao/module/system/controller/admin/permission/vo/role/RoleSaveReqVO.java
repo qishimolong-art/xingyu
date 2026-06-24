@@ -23,14 +23,12 @@ public class RoleSaveReqVO {
     @DiffLogField(name = "角色名称")
     private String name;
 
-    @NotBlank(message = "角色标志不能为空")
     @Size(max = 100, message = "角色标志长度不能超过 100 个字符")
-    @Schema(description = "角色标志", requiredMode = Schema.RequiredMode.REQUIRED, example = "ADMIN")
+    @Schema(description = "角色标志", example = "ADMIN")
     @DiffLogField(name = "角色标志")
     private String code;
 
-    @Schema(description = "显示顺序", requiredMode = Schema.RequiredMode.REQUIRED, example = "1024")
-    @NotNull(message = "显示顺序不能为空")
+    @Schema(description = "显示顺序", example = "1024")
     @DiffLogField(name = "显示顺序")
     private Integer sort;
 

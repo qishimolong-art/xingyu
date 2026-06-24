@@ -231,7 +231,7 @@ yudao:
     local:
       enabled: true
       base-path: files
-      domain: http://192.168.1.118:48080
+      domain: http://localhost:48080
   captcha:
     enable: false # 本地环境，暂时关闭图片验证码，方便登录等接口的测试；
   security:

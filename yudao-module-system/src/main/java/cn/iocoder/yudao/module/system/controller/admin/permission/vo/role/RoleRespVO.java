@@ -27,11 +27,9 @@ public class RoleRespVO {
 
     @Schema(description = "角色标志", requiredMode = Schema.RequiredMode.REQUIRED, example = "admin")
     @NotBlank(message = "角色标志不能为空")
-    @ExcelProperty("角色标志")
     private String code;
 
     @Schema(description = "显示顺序", requiredMode = Schema.RequiredMode.REQUIRED, example = "1024")
-    @ExcelProperty("角色排序")
     private Integer sort;
 
     @Schema(description = "状态，参见 CommonStatusEnum 枚举类", requiredMode = Schema.RequiredMode.REQUIRED, example = "1")
@@ -46,7 +44,6 @@ public class RoleRespVO {
     private String remark;
 
     @Schema(description = "数据范围，参见 DataScopeEnum 枚举类", requiredMode = Schema.RequiredMode.REQUIRED, example = "1")
-    @ExcelProperty(value = "数据范围", converter = DictConvert.class)
     @DictFormat(DictTypeConstants.DATA_SCOPE)
     private Integer dataScope;
 

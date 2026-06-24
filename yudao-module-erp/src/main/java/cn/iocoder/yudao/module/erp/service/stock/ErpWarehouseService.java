@@ -1,6 +1,9 @@
 package cn.iocoder.yudao.module.erp.service.stock;
 
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
+import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.warehouse.ErpWarehouseBatchUpdateReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.warehouse.ErpWarehouseImportExcelVO;
+import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.warehouse.ErpWarehouseImportRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.warehouse.ErpWarehouseSaveReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.warehouse.ErpWarehousePageReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpWarehouseDO;
@@ -35,6 +38,13 @@ public interface ErpWarehouseService {
     void updateWarehouse(@Valid ErpWarehouseSaveReqVO updateReqVO);
 
     /**
+     * 批量修改仓库
+     *
+     * @param updateReqVO 批量修改信息
+     */
+    void batchUpdateWarehouse(@Valid ErpWarehouseBatchUpdateReqVO updateReqVO);
+
+    /**
      * 更新仓库默认状态
      *
      * @param id     编号
@@ -48,6 +58,21 @@ public interface ErpWarehouseService {
      * @param id 编号
      */
     void deleteWarehouse(Long id);
+
+    /**
+     * 批量删除仓库
+     *
+     * @param ids 编号数组
+     */
+    void deleteWarehouseList(List<Long> ids);
+
+    /**
+     * 导入仓库列表
+     *
+     * @param list 导入数据
+     * @return 导入结果
+     */
+    ErpWarehouseImportRespVO importWarehouseList(List<ErpWarehouseImportExcelVO> list);
 
     /**
      * 获得仓库

@@ -3,6 +3,7 @@ package cn.iocoder.yudao.module.system.dal.mysql.permission;
 import cn.iocoder.yudao.framework.mybatis.core.mapper.BaseMapperX;
 import cn.iocoder.yudao.module.system.dal.dataobject.permission.RoleFieldPermissionDO;
 import org.apache.ibatis.annotations.Delete;
+import org.apache.ibatis.annotations.Insert;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 
@@ -33,5 +34,12 @@ public interface RoleFieldPermissionMapper extends BaseMapperX<RoleFieldPermissi
     void deleteListByRoleIdAndFieldIds(@Param("roleId") Long roleId,
                                        @Param("tenantId") Long tenantId,
                                        @Param("fieldIds") Collection<Long> fieldIds);
+
+    @Insert("INSERT IGNORE INTO system_role_field_permission "
+            + "(role_id, field_id, hidden, creator, create_time, updater, update_time, deleted, tenant_id) "
+            + "VALUES (#{roleId}, #{fieldId}, b'1', '1', NOW(), '1', NOW(), b'0', #{tenantId})")
+    int insertIgnore(@Param("roleId") Long roleId,
+                     @Param("fieldId") Long fieldId,
+                     @Param("tenantId") Long tenantId);
 
 }

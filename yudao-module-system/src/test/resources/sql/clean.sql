@@ -31,5 +31,6 @@ DELETE FROM "system_oauth2_code";
 DELETE FROM "system_mail_account";
 DELETE FROM "system_mail_template";
 DELETE FROM "system_mail_log";
+DELETE FROM "erp_purchase_order";
 DELETE FROM "system_notify_template";
 DELETE FROM "system_notify_message";

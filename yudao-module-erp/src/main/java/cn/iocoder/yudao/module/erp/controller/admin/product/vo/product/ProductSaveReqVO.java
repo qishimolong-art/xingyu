@@ -79,6 +79,9 @@ public class ProductSaveReqVO {
     @Schema(description = "零售价", example = "120.00")
     private BigDecimal retailPrice;
 
+    @Schema(description = "最后采购入库价", example = "100.00")
+    private BigDecimal lastPurchasePrice;
+
     @Schema(description = "毛利率（百分比整数）", example = "20")
     private Integer grossProfitRate;
 

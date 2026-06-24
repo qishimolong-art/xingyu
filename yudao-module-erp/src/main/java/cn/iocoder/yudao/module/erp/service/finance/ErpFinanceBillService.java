@@ -20,6 +20,7 @@ import cn.iocoder.yudao.module.erp.dal.mysql.finance.ErpFinancePaymentItemMapper
 import cn.iocoder.yudao.module.erp.dal.mysql.finance.ErpFinancePaymentMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.finance.ErpFinanceReceiptItemMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.finance.ErpFinanceReceiptMapper;
+import cn.iocoder.yudao.module.erp.enums.ErpAuditStatus;
 import cn.iocoder.yudao.module.erp.service.purchase.ErpSupplierService;
 import cn.iocoder.yudao.module.erp.service.sale.ErpCustomerService;
 import cn.iocoder.yudao.module.system.api.dept.DeptApi;
@@ -85,6 +86,7 @@ public class ErpFinanceBillService {
         billReqVO.setAccountId(reqVO.getAccountId());
         billReqVO.setBillType(reqVO.getBillType());
         billReqVO.setBillTime(reqVO.getTransactionTime());
+        billReqVO.setStatus(ErpAuditStatus.APPROVE.getStatus());
         List<ErpAccountTransactionRespVO> rows = convertList(buildBillRows(billReqVO), bill -> {
             ErpAccountTransactionRespVO row = new ErpAccountTransactionRespVO();
             row.setNo(bill.getNo());

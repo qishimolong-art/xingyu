@@ -168,41 +168,41 @@ public interface ErpProductMapper extends BaseMapperX<ErpProductDO> {
                                                Collection<Long> shelfEmptyIds) {
         LambdaQueryWrapper<ErpProductDO> w = new LambdaQueryWrapper<>();
         w.select(ErpProductDO::getId);
-        if (reqVO.getProductCode() != null && !reqVO.getProductCode().isEmpty()) {
-            w.like(ErpProductDO::getCode, reqVO.getProductCode());
+        if (StringUtils.hasText(reqVO.getProductCode())) {
+            w.like(ErpProductDO::getCode, fuzzyKeyword(reqVO.getProductCode()));
         }
-        if (reqVO.getProductName() != null && !reqVO.getProductName().isEmpty()) {
-            w.like(ErpProductDO::getName, reqVO.getProductName());
+        if (StringUtils.hasText(reqVO.getProductName())) {
+            w.like(ErpProductDO::getName, fuzzyKeyword(reqVO.getProductName()));
         }
-        if (reqVO.getDrawingNo() != null && !reqVO.getDrawingNo().isEmpty()) {
-            w.like(ErpProductDO::getDrawingNo, reqVO.getDrawingNo());
+        if (StringUtils.hasText(reqVO.getDrawingNo())) {
+            w.like(ErpProductDO::getDrawingNo, fuzzyKeyword(reqVO.getDrawingNo()));
         }
-        if (reqVO.getVehicleModel() != null && !reqVO.getVehicleModel().isEmpty()) {
-            w.like(ErpProductDO::getVehicleModel, reqVO.getVehicleModel());
+        if (StringUtils.hasText(reqVO.getVehicleModel())) {
+            w.like(ErpProductDO::getVehicleModel, fuzzyKeyword(reqVO.getVehicleModel()));
         }
-        if (reqVO.getOriginPlace() != null && !reqVO.getOriginPlace().isEmpty()) {
-            w.like(ErpProductDO::getOriginPlace, reqVO.getOriginPlace());
+        if (StringUtils.hasText(reqVO.getOriginPlace())) {
+            w.like(ErpProductDO::getOriginPlace, fuzzyKeyword(reqVO.getOriginPlace()));
         }
-        if (reqVO.getBrand() != null && !reqVO.getBrand().isEmpty()) {
-            w.like(ErpProductDO::getBrand, reqVO.getBrand());
+        if (StringUtils.hasText(reqVO.getBrand())) {
+            w.like(ErpProductDO::getBrand, fuzzyKeyword(reqVO.getBrand()));
         }
-        if (reqVO.getShelf() != null && !reqVO.getShelf().isEmpty()) {
-            w.like(ErpProductDO::getShelf, reqVO.getShelf());
+        if (StringUtils.hasText(reqVO.getShelf())) {
+            w.like(ErpProductDO::getShelf, fuzzyKeyword(reqVO.getShelf()));
         }
-        if (reqVO.getFeatureCode() != null && !reqVO.getFeatureCode().isEmpty()) {
-            w.like(ErpProductDO::getFeatureCode, reqVO.getFeatureCode());
+        if (StringUtils.hasText(reqVO.getFeatureCode())) {
+            w.like(ErpProductDO::getFeatureCode, fuzzyKeyword(reqVO.getFeatureCode()));
         }
-        if (reqVO.getStandard() != null && !reqVO.getStandard().isEmpty()) {
-            w.like(ErpProductDO::getStandard, reqVO.getStandard());
+        if (StringUtils.hasText(reqVO.getStandard())) {
+            w.like(ErpProductDO::getStandard, fuzzyKeyword(reqVO.getStandard()));
         }
-        if (reqVO.getFactoryCode() != null && !reqVO.getFactoryCode().isEmpty()) {
-            w.like(ErpProductDO::getFactoryCode, reqVO.getFactoryCode());
+        if (StringUtils.hasText(reqVO.getFactoryCode())) {
+            w.like(ErpProductDO::getFactoryCode, fuzzyKeyword(reqVO.getFactoryCode()));
         }
-        if (reqVO.getBarCode() != null && !reqVO.getBarCode().isEmpty()) {
-            w.like(ErpProductDO::getBarCode, reqVO.getBarCode());
+        if (StringUtils.hasText(reqVO.getBarCode())) {
+            w.like(ErpProductDO::getBarCode, fuzzyKeyword(reqVO.getBarCode()));
         }
-        if (reqVO.getOeNumber() != null && !reqVO.getOeNumber().isEmpty()) {
-            w.like(ErpProductDO::getOeNumber, reqVO.getOeNumber());
+        if (StringUtils.hasText(reqVO.getOeNumber())) {
+            w.like(ErpProductDO::getOeNumber, fuzzyKeyword(reqVO.getOeNumber()));
         }
         if (reqVO.getCategoryId() != null) {
             w.eq(ErpProductDO::getCategoryId, reqVO.getCategoryId());

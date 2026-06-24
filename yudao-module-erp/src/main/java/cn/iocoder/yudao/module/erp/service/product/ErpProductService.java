@@ -5,6 +5,7 @@ import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpProduc
 import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpProductImportRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpProductPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpProductRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ProductBatchUpdateReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ProductSaveReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.product.ErpProductDO;
 
@@ -48,6 +49,13 @@ public interface ErpProductService {
      * @param updateReqVO 更新信息
      */
     void updateProduct(ProductSaveReqVO updateReqVO);
+
+    /**
+     * 批量修改产品
+     *
+     * @param updateReqVO 批量修改信息
+     */
+    void batchUpdateProduct(ProductBatchUpdateReqVO updateReqVO);
 
     /**
      * 删除产品

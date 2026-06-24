@@ -8,6 +8,9 @@ import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.common.util.collection.MapUtils;
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
 import cn.iocoder.yudao.framework.excel.core.util.ExcelUtils;
+import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.warehouse.ErpWarehouseBatchUpdateReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.warehouse.ErpWarehouseImportExcelVO;
+import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.warehouse.ErpWarehouseImportRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.warehouse.ErpWarehousePageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.warehouse.ErpWarehouseRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.warehouse.ErpWarehouseSaveReqVO;
@@ -32,13 +35,16 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.multipart.MultipartFile;
 
 import javax.annotation.Resource;
 import javax.servlet.http.HttpServletResponse;
 import javax.validation.Valid;
 import java.io.IOException;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -58,6 +64,9 @@ import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.
 public class ErpWarehouseController {
 
     private static final String FIELD_PERMISSION_MODULE = "erp_warehouse";
+    private static final Set<String> WAREHOUSE_IMPORT_TEMPLATE_FIELDS = new LinkedHashSet<>(Arrays.asList(
+            "name", "warehouseCode", "deptName", "warehouseType", "status", "saleEnabled", "purchaseEnabled",
+            "stockBillEnabled", "scanControl", "splitOrder", "sort", "remark"));
 
     @Resource
     private ErpWarehouseService warehouseService;
@@ -83,6 +92,14 @@ public class ErpWarehouseController {
         return success(true);
     }
 
+    @PutMapping("/batch-update")
+    @Operation(summary = "Batch update warehouse")
+    @PreAuthorize("@ss.hasPermission('erp:warehouse:update')")
+    public CommonResult<Boolean> batchUpdateWarehouse(@Valid @RequestBody ErpWarehouseBatchUpdateReqVO updateReqVO) {
+        warehouseService.batchUpdateWarehouse(updateReqVO);
+        return success(true);
+    }
+
     @PutMapping("/update-default-status")
     @Operation(summary = "Update warehouse default status")
     @Parameters({
@@ -101,6 +118,15 @@ public class ErpWarehouseController {
     @PreAuthorize("@ss.hasPermission('erp:warehouse:delete')")
     public CommonResult<Boolean> deleteWarehouse(@RequestParam("id") Long id) {
         warehouseService.deleteWarehouse(id);
+        return success(true);
+    }
+
+    @DeleteMapping("/delete-list")
+    @Operation(summary = "Batch delete warehouse")
+    @Parameter(name = "ids", description = "ids", required = true)
+    @PreAuthorize("@ss.hasPermission('erp:warehouse:delete')")
+    public CommonResult<Boolean> deleteWarehouseList(@RequestParam("ids") List<Long> ids) {
+        warehouseService.deleteWarehouseList(ids);
         return success(true);
     }
 
@@ -145,6 +171,22 @@ public class ErpWarehouseController {
         pageReqVO.setPageSize(PageParam.PAGE_SIZE_NONE);
         List<ErpWarehouseRespVO> list = buildWarehouseVOList(warehouseService.getWarehousePage(pageReqVO).getList());
         ExcelUtils.write(response, "warehouse.xls", "data", ErpWarehouseRespVO.class, list);
+    }
+
+    @GetMapping("/get-import-template")
+    @Operation(summary = "Get warehouse import template")
+    @PreAuthorize("@ss.hasPermission('erp:warehouse:import')")
+    public void getImportTemplate(HttpServletResponse response) throws IOException {
+        ExcelUtils.writeImportTemplate(response, "仓库导入模板.xls", "仓库", ErpWarehouseImportExcelVO.class,
+                Collections.singletonList(new ErpWarehouseImportExcelVO()), WAREHOUSE_IMPORT_TEMPLATE_FIELDS);
+    }
+
+    @PostMapping("/import")
+    @Operation(summary = "Import warehouse")
+    @PreAuthorize("@ss.hasPermission('erp:warehouse:import')")
+    public CommonResult<ErpWarehouseImportRespVO> importWarehouse(@RequestParam("file") MultipartFile file) throws Exception {
+        List<ErpWarehouseImportExcelVO> list = ExcelUtils.read(file, ErpWarehouseImportExcelVO.class);
+        return success(warehouseService.importWarehouseList(list));
     }
 
     private List<ErpWarehouseRespVO> buildWarehouseVOList(List<ErpWarehouseDO> list) {

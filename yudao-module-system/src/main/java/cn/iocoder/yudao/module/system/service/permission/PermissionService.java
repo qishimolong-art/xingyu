@@ -4,9 +4,12 @@ import cn.iocoder.yudao.framework.common.biz.system.permission.dto.DeptDataPermi
 import cn.iocoder.yudao.module.system.controller.admin.permission.vo.permission.PermissionAssignRoleFormDataScopeReqVO;
 import cn.iocoder.yudao.module.system.controller.admin.permission.vo.permission.RoleFormDataScopeRespVO;
 import cn.iocoder.yudao.module.system.dal.dataobject.permission.FieldDefinitionDO;
+import cn.iocoder.yudao.module.system.dal.dataobject.permission.MenuDO;
+import cn.iocoder.yudao.module.system.dal.dataobject.permission.RoleDO;
 
 import java.util.Collection;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 import static java.util.Collections.singleton;
@@ -110,6 +113,49 @@ public interface PermissionService {
     void assignUserRole(Long userId, Set<Long> roleIds);
 
     /**
+     * Save user-level denied button permissions. These records only subtract from role-granted permissions.
+     *
+     * @param userId user id
+     * @param deniedPermissions denied permission codes
+     */
+    void assignUserDeniedPermissions(Long userId, Set<String> deniedPermissions);
+
+    /**
+     * Save user roles and user-level denied button permissions together.
+     *
+     * @param userId user id
+     * @param roleIds role ids
+     * @param deniedPermissions denied permission codes
+     */
+    void assignUserRoleAndDeniedPermissions(Long userId, Set<Long> roleIds, Set<String> deniedPermissions);
+
+    /**
+     * Get user-level denied button permission codes.
+     *
+     * @param userId user id
+     * @return denied permission codes
+     */
+    Set<String> getUserDeniedPermissions(Long userId);
+
+    /**
+     * Get user-level denied button permission codes from cache.
+     *
+     * @param userId user id
+     * @return denied permission codes
+     */
+    Set<String> getUserDeniedPermissionsFromCache(Long userId);
+
+    /**
+     * Remove denied button permissions from role-granted menu list for normal users.
+     *
+     * @param userId user id
+     * @param roles enabled user roles
+     * @param menuList role-granted menu list
+     * @return filtered menu list
+     */
+    List<MenuDO> filterDeniedMenus(Long userId, List<RoleDO> roles, List<MenuDO> menuList);
+
+    /**
      * 处理用户删除时，删除关联授权数据
      *
      * @param userId 用户编号
@@ -131,6 +177,14 @@ public interface PermissionService {
      * @return 角色编号集合
      */
     Set<Long> getUserRoleIdListByUserId(Long userId);
+
+    /**
+     * 获得多个用户拥有的角色编号集合
+     *
+     * @param userIds 用户编号集合
+     * @return 用户编号与角色编号集合的映射
+     */
+    Map<Long, Set<Long>> getUserRoleIdListByUserIds(Collection<Long> userIds);
 
     /**
      * 获得用户拥有的角色编号集合，从缓存中获取

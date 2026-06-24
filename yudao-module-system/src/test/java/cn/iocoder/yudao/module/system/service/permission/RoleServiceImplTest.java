@@ -16,6 +16,7 @@ import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.context.annotation.Import;
 
 import javax.annotation.Resource;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.List;
 import java.util.Set;
@@ -60,7 +61,35 @@ public class RoleServiceImplTest extends BaseDbUnitTest {
         RoleDO roleDO = roleMapper.selectById(roleId);
         assertPojoEquals(reqVO, roleDO, "id");
         assertEquals(RoleTypeEnum.CUSTOM.getType(), roleDO.getType());
-        assertEquals(DataScopeEnum.DEPT_ONLY.getScope(), roleDO.getDataScope());
+        assertEquals(DataScopeEnum.ALL.getScope(), roleDO.getDataScope());
+    }
+
+    @Test
+    public void testCreateRole_sortDefaultWhenNull() {
+        // 准备参数
+        RoleSaveReqVO reqVO = randomPojo(RoleSaveReqVO.class)
+                .setId(null)  // 防止 id 被赋值
+                .setSort(null)
+                .setStatus(randomCommonStatus());
+
+        // 调用
+        Long roleId = roleService.createRole(reqVO, null);
+        // 断言
+        RoleDO roleDO = roleMapper.selectById(roleId);
+        assertEquals(0, roleDO.getSort());
+    }
+
+    @Test
+    public void testCreateRole_generateCodeWhenBlank() {
+        RoleSaveReqVO reqVO = randomPojo(RoleSaveReqVO.class)
+                .setId(null)
+                .setCode(null)
+                .setStatus(randomCommonStatus());
+
+        Long roleId = roleService.createRole(reqVO, null);
+
+        RoleDO roleDO = roleMapper.selectById(roleId);
+        assertTrue(roleDO.getCode().startsWith("CUSTOM_ROLE_"));
     }
 
     @Test
@@ -78,6 +107,24 @@ public class RoleServiceImplTest extends BaseDbUnitTest {
         // 断言
         RoleDO newRoleDO = roleMapper.selectById(id);
         assertPojoEquals(reqVO, newRoleDO);
+    }
+
+    @Test
+    public void testUpdateRole_keepCodeWhenBlank() {
+        RoleDO roleDO = randomPojo(RoleDO.class, o -> o.setType(RoleTypeEnum.CUSTOM.getType())
+                .setCode("old_code"));
+        roleMapper.insert(roleDO);
+        Long id = roleDO.getId();
+        RoleSaveReqVO reqVO = randomPojo(RoleSaveReqVO.class, o -> o.setId(id)
+                .setCode(null)
+                .setStatus(randomCommonStatus()));
+
+        roleService.updateRole(reqVO);
+
+        RoleDO newRoleDO = roleMapper.selectById(id);
+        assertEquals("old_code", newRoleDO.getCode());
+        assertEquals(reqVO.getName(), newRoleDO.getName());
+        assertEquals(reqVO.getStatus(), newRoleDO.getStatus());
     }
 
     @Test
@@ -301,6 +348,44 @@ public class RoleServiceImplTest extends BaseDbUnitTest {
         assertEquals(1, pageResult.getTotal());
         assertEquals(1, pageResult.getList().size());
         assertPojoEquals(dbRole, pageResult.getList().get(0));
+    }
+
+    @Test
+    public void testGetRolePage_ids() {
+        RoleDO dbRole01 = randomPojo(RoleDO.class, o -> o.setStatus(CommonStatusEnum.ENABLE.getStatus()));
+        roleMapper.insert(dbRole01);
+        RoleDO dbRole02 = randomPojo(RoleDO.class, o -> o.setStatus(CommonStatusEnum.ENABLE.getStatus()));
+        roleMapper.insert(dbRole02);
+        RoleDO dbRole03 = randomPojo(RoleDO.class, o -> o.setStatus(CommonStatusEnum.DISABLE.getStatus()));
+        roleMapper.insert(dbRole03);
+
+        RolePageReqVO reqVO = new RolePageReqVO();
+        reqVO.setIds(Arrays.asList(dbRole01.getId(), dbRole03.getId()));
+        reqVO.setStatus(CommonStatusEnum.ENABLE.getStatus());
+
+        PageResult<RoleDO> pageResult = roleService.getRolePage(reqVO);
+
+        assertEquals(1, pageResult.getTotal());
+        assertEquals(1, pageResult.getList().size());
+        assertPojoEquals(dbRole01, pageResult.getList().get(0));
+    }
+
+    @Test
+    public void testGetRolePage_orderByNameAsc() {
+        RoleDO dbRole01 = randomPojo(RoleDO.class, o -> o.setName("role_b"));
+        roleMapper.insert(dbRole01);
+        RoleDO dbRole02 = randomPojo(RoleDO.class, o -> o.setName("role_a"));
+        roleMapper.insert(dbRole02);
+
+        RolePageReqVO reqVO = new RolePageReqVO();
+        reqVO.setOrderField("name");
+        reqVO.setOrderDirection("asc");
+
+        PageResult<RoleDO> pageResult = roleService.getRolePage(reqVO);
+
+        assertEquals(2, pageResult.getTotal());
+        assertEquals(dbRole02.getId(), pageResult.getList().get(0).getId());
+        assertEquals(dbRole01.getId(), pageResult.getList().get(1).getId());
     }
 
     @Test

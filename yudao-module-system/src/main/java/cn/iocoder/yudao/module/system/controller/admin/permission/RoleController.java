@@ -92,7 +92,8 @@ public class RoleController {
     @Operation(summary = "获取角色精简信息列表", description = "只包含被开启的角色，主要用于前端的下拉选项")
     public CommonResult<List<RoleRespVO>> getSimpleRoleList() {
         List<RoleDO> list = roleService.getRoleListByStatus(singleton(CommonStatusEnum.ENABLE.getStatus()));
-        list.sort(Comparator.comparing(RoleDO::getSort));
+        list.sort(Comparator.comparing(RoleDO::getCreateTime, Comparator.nullsLast(Comparator.reverseOrder()))
+                .thenComparing(RoleDO::getId, Comparator.nullsLast(Comparator.reverseOrder())));
         return success(BeanUtils.toBean(list, RoleRespVO.class));
     }
 

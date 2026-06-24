@@ -3409,7 +3409,7 @@ CREATE TABLE `system_role`  (
   `id` bigint NOT NULL AUTO_INCREMENT COMMENT '角色ID',
   `name` varchar(30) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '角色名称',
   `code` varchar(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '角色权限字符串',
-  `sort` int NOT NULL COMMENT '显示顺序',
+  `sort` int NOT NULL DEFAULT 0 COMMENT '显示顺序',
   `data_scope` tinyint NOT NULL DEFAULT 1 COMMENT '数据范围（1：全部数据权限 2：自定数据权限 3：本部门数据权限 4：本部门及以下数据权限）',
   `data_scope_dept_ids` varchar(500) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT '' COMMENT '数据范围(指定部门数组)',
   `status` tinyint NOT NULL COMMENT '角色状态（0正常 1停用）',

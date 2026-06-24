@@ -32,4 +32,9 @@ public interface ErpProductUnitMapper extends BaseMapperX<ErpProductUnitDO> {
         return selectList(ErpProductUnitDO::getStatus, status);
     }
 
+    default List<ErpProductUnitDO> selectListAll() {
+        return selectList(new LambdaQueryWrapperX<ErpProductUnitDO>()
+                .orderByDesc(ErpProductUnitDO::getId));
+    }
+
 }

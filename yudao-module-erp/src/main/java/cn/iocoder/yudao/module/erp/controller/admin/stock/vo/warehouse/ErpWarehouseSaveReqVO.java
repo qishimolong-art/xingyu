@@ -27,8 +27,7 @@ public class ErpWarehouseSaveReqVO {
     @Schema(description = "仓库地址", example = "上海陆家嘴")
     private String address;
 
-    @Schema(description = "排序", requiredMode = Schema.RequiredMode.REQUIRED, example = "10")
-    @NotNull(message = "排序不能为空")
+    @Schema(description = "排序", example = "10")
     private Long sort;
 
     @Schema(description = "备注", example = "随便")

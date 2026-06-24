@@ -112,6 +112,7 @@ public class AuthController {
         Set<Long> menuIds = permissionService.getRoleMenuListByRoleId(convertSet(roles, RoleDO::getId));
         List<MenuDO> menuList = menuService.getMenuList(menuIds);
         menuList = menuService.filterDisableMenus(menuList);
+        menuList = permissionService.filterDeniedMenus(getLoginUserId(), roles, menuList);
 
         // 2. 拼接结果返回
         return success(AuthConvert.INSTANCE.convert(user, roles, menuList));

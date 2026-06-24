@@ -2,6 +2,7 @@ package cn.iocoder.yudao.module.system.service.permission;
 
 import cn.hutool.core.collection.CollUtil;
 import cn.hutool.core.collection.CollectionUtil;
+import cn.hutool.core.util.IdUtil;
 import cn.hutool.core.util.ObjUtil;
 import cn.hutool.core.util.ObjectUtil;
 import cn.hutool.extra.spring.SpringUtil;
@@ -45,6 +46,8 @@ import static cn.iocoder.yudao.module.system.enums.LogRecordConstants.*;
 @Slf4j
 public class RoleServiceImpl implements RoleService {
 
+    private static final String CUSTOM_ROLE_CODE_PREFIX = "CUSTOM_ROLE_";
+
     @Resource
     private PermissionService permissionService;
 
@@ -57,13 +60,17 @@ public class RoleServiceImpl implements RoleService {
             success = SYSTEM_ROLE_CREATE_SUCCESS)
     public Long createRole(RoleSaveReqVO createReqVO, Integer type) {
         // 1. 校验角色
+        if (!StringUtils.hasText(createReqVO.getCode())) {
+            createReqVO.setCode(generateCustomRoleCode());
+        }
         validateRoleDuplicate(createReqVO.getName(), createReqVO.getCode(), null);
 
         // 2. 插入到数据库
         RoleDO role = BeanUtils.toBean(createReqVO, RoleDO.class)
+                .setSort(ObjUtil.defaultIfNull(createReqVO.getSort(), 0))
                 .setType(ObjectUtil.defaultIfNull(type, RoleTypeEnum.CUSTOM.getType()))
                 .setStatus(ObjUtil.defaultIfNull(createReqVO.getStatus(), CommonStatusEnum.ENABLE.getStatus()))
-                .setDataScope(DataScopeEnum.DEPT_ONLY.getScope());
+                .setDataScope(DataScopeEnum.ALL.getScope());
         roleMapper.insert(role);
 
         // 3. 记录操作日志上下文
@@ -79,10 +86,14 @@ public class RoleServiceImpl implements RoleService {
         // 1.1 校验是否可以更新
         RoleDO role = validateRoleForUpdate(updateReqVO.getId());
         // 1.2 校验角色的唯一字段是否重复
+        if (!StringUtils.hasText(updateReqVO.getCode())) {
+            updateReqVO.setCode(role.getCode());
+        }
         validateRoleDuplicate(updateReqVO.getName(), updateReqVO.getCode(), updateReqVO.getId());
 
         // 2. 更新到数据库
         RoleDO updateObj = BeanUtils.toBean(updateReqVO, RoleDO.class);
+        updateObj.setSort(ObjectUtil.defaultIfNull(updateReqVO.getSort(), role.getSort()));
         roleMapper.updateById(updateObj);
 
         // 3. 记录操作日志上下文
@@ -164,6 +175,14 @@ public class RoleServiceImpl implements RoleService {
         if (role != null && !role.getId().equals(id)) {
             throw exception(ROLE_CODE_DUPLICATE, code);
         }
+    }
+
+    private String generateCustomRoleCode() {
+        String code;
+        do {
+            code = CUSTOM_ROLE_CODE_PREFIX + IdUtil.fastSimpleUUID();
+        } while (roleMapper.selectByCode(code) != null);
+        return code;
     }
 
     /**

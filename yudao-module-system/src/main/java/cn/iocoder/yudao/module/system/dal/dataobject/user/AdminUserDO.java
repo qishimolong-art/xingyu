@@ -3,12 +3,17 @@ package cn.iocoder.yudao.module.system.dal.dataobject.user;
 import cn.iocoder.yudao.framework.common.enums.CommonStatusEnum;
 import cn.iocoder.yudao.framework.tenant.core.db.TenantBaseDO;
 import cn.iocoder.yudao.module.system.enums.common.SexEnum;
+import cn.iocoder.yudao.module.system.enums.permission.DataScopeEnum;
 import com.baomidou.mybatisplus.annotation.KeySequence;
 import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
 import com.baomidou.mybatisplus.extension.handlers.JacksonTypeHandler;
-import lombok.*;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.EqualsAndHashCode;
+import lombok.NoArgsConstructor;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 
 import java.time.LocalDateTime;
@@ -16,11 +21,9 @@ import java.util.Set;
 
 /**
  * 管理后台的用户 DO
- *
- * @author 芋道源码
  */
-@TableName(value = "system_users", autoResultMap = true) // 由于 SQL Server 的 system_user 是关键字，所以使用 system_users
-@KeySequence("system_users_seq") // 用于 Oracle、PostgreSQL、Kingbase、DB2、H2 数据库的主键自增。如果是 MySQL 等数据库，可不写。
+@TableName(value = "system_users", autoResultMap = true)
+@KeySequence("system_users_seq")
 @Data
 @EqualsAndHashCode(callSuper = true)
 @Builder
@@ -39,8 +42,6 @@ public class AdminUserDO extends TenantBaseDO {
     private String username;
     /**
      * 加密后的密码
-     *
-     * 因为目前使用 {@link BCryptPasswordEncoder} 加密器，所以无需自己处理 salt 盐
      */
     private String password;
     /**
@@ -70,8 +71,6 @@ public class AdminUserDO extends TenantBaseDO {
     private String mobile;
     /**
      * 用户性别
-     *
-     * 枚举类 {@link SexEnum}
      */
     private Integer sex;
     /**
@@ -79,11 +78,18 @@ public class AdminUserDO extends TenantBaseDO {
      */
     private String avatar;
     /**
-     * 帐号状态
-     *
-     * 枚举 {@link CommonStatusEnum}
+     * 账号状态
      */
     private Integer status;
+    /**
+     * User-level data scope. Null means inheriting role data scope.
+     */
+    private Integer dataScope;
+    /**
+     * Dept ids for custom data scope.
+     */
+    @TableField(typeHandler = JacksonTypeHandler.class)
+    private Set<Long> dataScopeDeptIds;
     /**
      * 最后登录IP
      */

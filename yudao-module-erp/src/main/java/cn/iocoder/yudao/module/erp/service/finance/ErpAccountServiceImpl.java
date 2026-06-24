@@ -61,6 +61,8 @@ public class ErpAccountServiceImpl implements ErpAccountService {
     @Resource
     private ErpPayableExpenseMapper payableExpenseMapper;
     @Resource
+    private ErpFinancePermissionFieldFiller permissionFieldFiller;
+    @Resource
     private ErpFinanceFieldPermissionMasker fieldPermissionMasker;
     @Resource
     private ErpBaseArchiveReferenceService baseArchiveReferenceService;
@@ -71,6 +73,7 @@ public class ErpAccountServiceImpl implements ErpAccountService {
     public Long createAccount(ErpAccountSaveReqVO createReqVO) {
         ErpAccountDO account = BeanUtils.toBean(createReqVO, ErpAccountDO.class);
         fieldPermissionMasker.clearHiddenFields(FIELD_PERMISSION_MODULE, account);
+        permissionFieldFiller.fillCreateFields(account);
         normalizeAccount(account);
         accountMapper.insert(account);
         operateLogService.recordCreate(ERP_ACCOUNT_TYPE, account.getId(), account.getName());

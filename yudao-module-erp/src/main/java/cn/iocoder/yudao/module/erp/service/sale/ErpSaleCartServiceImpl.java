@@ -114,6 +114,27 @@ public class ErpSaleCartServiceImpl implements ErpSaleCartService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Long createSaleCart(ErpSaleCartSaveReqVO createReqVO) {
+        CreatedSaleCart created = createSaleCart(createReqVO, ErpSaleCartStatusEnum.PROCESS.getStatus());
+        recordCreate(created.cart.getId(), created.cart.getNo());
+        return created.cart.getId();
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public ErpSaleCartSubmitRespVO createAndSubmitSaleCart(ErpSaleCartSaveReqVO createReqVO) {
+        CreatedSaleCart created = createSaleCart(createReqVO, ErpSaleCartStatusEnum.SUBMITTED.getStatus());
+        ErpSaleCartSubmitRespVO result = buildSubmitResult(created.cart, created.items);
+        if (CollUtil.isNotEmpty(result.getShortageItems())) {
+            throw buildStockShortageException(result.getShortageItems());
+        }
+        result.setId(created.cart.getId());
+        result.setStatus(ErpSaleCartStatusEnum.SUBMITTED.getStatus());
+        recordCreate(created.cart.getId(), created.cart.getNo());
+        record(created.cart.getId(), "提交", "提交销售手推车，单据编号：" + created.cart.getNo(), created.cart.getNo());
+        return result;
+    }
+
+    private CreatedSaleCart createSaleCart(ErpSaleCartSaveReqVO createReqVO, Integer status) {
         clearHiddenFields(createReqVO);
         clearHiddenItemFields(createReqVO.getItems());
         List<ErpSaleCartItemDO> items = validateSaleCartItems(createReqVO.getItems());
@@ -130,22 +151,14 @@ public class ErpSaleCartServiceImpl implements ErpSaleCartService {
         }
 
         ErpSaleCartDO cart = BeanUtils.toBean(createReqVO, ErpSaleCartDO.class,
-                in -> in.setNo(no).setStatus(ErpSaleCartStatusEnum.PROCESS.getStatus())
+                in -> in.setNo(no).setStatus(status)
                         .setCartTime(LocalDateTime.now()));
         calculateTotalPrice(cart, items);
         saleDocumentDefaultService.fillCreateDefaults(cart);
         saleCartMapper.insert(cart);
         items.forEach(item -> item.setCartId(cart.getId()));
         saleCartItemMapper.insertBatch(items);
-        recordCreate(cart.getId(), cart.getNo());
-        return cart.getId();
-    }
-
-    @Override
-    @Transactional(rollbackFor = Exception.class)
-    public ErpSaleCartSubmitRespVO createAndSubmitSaleCart(ErpSaleCartSaveReqVO createReqVO) {
-        Long id = createSaleCart(createReqVO);
-        return submitSaleCart(id);
+        return new CreatedSaleCart(cart, items);
     }
 
     @Override
@@ -726,6 +739,18 @@ public class ErpSaleCartServiceImpl implements ErpSaleCartService {
         @Override
         public int hashCode() {
             return Objects.hash(productId, warehouseId);
+        }
+
+    }
+
+    private static final class CreatedSaleCart {
+
+        private final ErpSaleCartDO cart;
+        private final List<ErpSaleCartItemDO> items;
+
+        private CreatedSaleCart(ErpSaleCartDO cart, List<ErpSaleCartItemDO> items) {
+            this.cart = cart;
+            this.items = items;
         }
 
     }

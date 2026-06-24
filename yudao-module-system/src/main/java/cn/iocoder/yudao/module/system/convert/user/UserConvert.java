@@ -4,13 +4,11 @@ import cn.iocoder.yudao.framework.common.util.collection.CollectionUtils;
 import cn.iocoder.yudao.framework.common.util.collection.MapUtils;
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
 import cn.iocoder.yudao.module.system.controller.admin.dept.vo.dept.DeptSimpleRespVO;
-import cn.iocoder.yudao.module.system.controller.admin.dept.vo.post.PostSimpleRespVO;
 import cn.iocoder.yudao.module.system.controller.admin.permission.vo.role.RoleSimpleRespVO;
 import cn.iocoder.yudao.module.system.controller.admin.user.vo.profile.UserProfileRespVO;
 import cn.iocoder.yudao.module.system.controller.admin.user.vo.user.UserRespVO;
 import cn.iocoder.yudao.module.system.controller.admin.user.vo.user.UserSimpleRespVO;
 import cn.iocoder.yudao.module.system.dal.dataobject.dept.DeptDO;
-import cn.iocoder.yudao.module.system.dal.dataobject.dept.PostDO;
 import cn.iocoder.yudao.module.system.dal.dataobject.permission.RoleDO;
 import cn.iocoder.yudao.module.system.dal.dataobject.user.AdminUserDO;
 import org.mapstruct.Mapper;
@@ -44,12 +42,10 @@ public interface UserConvert {
         });
     }
 
-    default UserProfileRespVO convert(AdminUserDO user, List<RoleDO> userRoles,
-                                      DeptDO dept, List<PostDO> posts) {
+    default UserProfileRespVO convert(AdminUserDO user, List<RoleDO> userRoles, DeptDO dept) {
         UserProfileRespVO userVO = BeanUtils.toBean(user, UserProfileRespVO.class);
         userVO.setRoles(BeanUtils.toBean(userRoles, RoleSimpleRespVO.class));
         userVO.setDept(BeanUtils.toBean(dept, DeptSimpleRespVO.class));
-        userVO.setPosts(BeanUtils.toBean(posts, PostSimpleRespVO.class));
         return userVO;
     }
 

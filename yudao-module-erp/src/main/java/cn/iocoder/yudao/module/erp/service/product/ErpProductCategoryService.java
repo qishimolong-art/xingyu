@@ -1,6 +1,9 @@
 package cn.iocoder.yudao.module.erp.service.product;
 
 import cn.iocoder.yudao.module.erp.controller.admin.product.vo.category.ErpProductCategoryListReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.product.vo.category.ErpProductCategoryBatchUpdateReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.product.vo.category.ErpProductCategoryImportExcelVO;
+import cn.iocoder.yudao.module.erp.controller.admin.product.vo.category.ErpProductCategoryImportRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.product.vo.category.ErpProductCategorySaveReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.product.ErpProductCategoryDO;
 
@@ -34,11 +37,33 @@ public interface ErpProductCategoryService {
     void updateProductCategory(ErpProductCategorySaveReqVO updateReqVO);
 
     /**
+     * 批量修改产品分类
+     *
+     * @param updateReqVO 批量修改信息
+     */
+    void batchUpdateProductCategory(@Valid ErpProductCategoryBatchUpdateReqVO updateReqVO);
+
+    /**
      * 删除产品分类
      *
      * @param id 编号
      */
     void deleteProductCategory(Long id);
+
+    /**
+     * 批量删除产品分类
+     *
+     * @param ids 编号列表
+     */
+    void deleteProductCategoryList(Collection<Long> ids);
+
+    /**
+     * 导入产品分类
+     *
+     * @param list 导入列表
+     * @return 导入结果
+     */
+    ErpProductCategoryImportRespVO importProductCategoryList(List<ErpProductCategoryImportExcelVO> list);
 
     /**
      * 获得产品分类

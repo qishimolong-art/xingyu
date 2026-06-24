@@ -31,6 +31,14 @@ public interface DeptApi {
     List<DeptRespDTO> getDeptList(Collection<Long> ids);
 
     /**
+     * 获得指定名称的部门信息数组
+     *
+     * @param name 部门名称
+     * @return 部门信息数组
+     */
+    List<DeptRespDTO> getDeptListByName(String name);
+
+    /**
      * 校验部门们是否有效。如下情况，视为无效：
      * 1. 部门编号不存在
      * 2. 部门被禁用

@@ -320,7 +320,7 @@ public class ErpSaleQuoteController {
         List<ErpSaleQuoteItemDO> safeItems = CollUtil.isEmpty(items) ? Collections.emptyList() : items;
         List<ErpSaleQuoteRespVO.Item> respItems = BeanUtils.toBean(safeItems, ErpSaleQuoteRespVO.Item.class,
                 item -> MapUtils.findAndThen(productMap, item.getProductId(), product -> item.setProductName(product.getName())
-                        .setProductBarCode(product.getBarCode()).setProductUnitName(product.getUnitName())));
+                        .setProductCode(product.getCode()).setProductBarCode(product.getBarCode()).setProductUnitName(product.getUnitName())));
         vo.setItems(respItems == null ? Collections.emptyList() : respItems);
         vo.setProductNames(CollUtil.join(vo.getItems(), "，", ErpSaleQuoteRespVO.Item::getProductName));
         if (vo.getCustomerId() != null) {

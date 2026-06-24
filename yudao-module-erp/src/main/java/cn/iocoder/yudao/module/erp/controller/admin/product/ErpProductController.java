@@ -10,6 +10,7 @@ import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpProduc
 import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpProductImportRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpProductPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpProductRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ProductBatchUpdateReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ProductSaveReqVO;
 import cn.iocoder.yudao.module.erp.service.common.ErpExportCaptchaService;
 import cn.iocoder.yudao.module.erp.service.common.ErpOperateLogService;
@@ -77,6 +78,14 @@ public class ErpProductController {
     @PreAuthorize("@ss.hasPermission('erp:product:update')")
     public CommonResult<Boolean> updateProduct(@RequestBody ProductSaveReqVO updateReqVO) {
         productService.updateProduct(updateReqVO);
+        return success(true);
+    }
+
+    @PutMapping("/batch-update")
+    @Operation(summary = "批量修改产品")
+    @PreAuthorize("@ss.hasPermission('erp:product:update')")
+    public CommonResult<Boolean> batchUpdateProduct(@Valid @RequestBody ProductBatchUpdateReqVO updateReqVO) {
+        productService.batchUpdateProduct(updateReqVO);
         return success(true);
     }
 

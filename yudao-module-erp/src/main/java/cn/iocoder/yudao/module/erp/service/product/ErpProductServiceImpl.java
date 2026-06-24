@@ -17,6 +17,7 @@ import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpProduc
 import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpProductImportRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpProductPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpProductRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ProductBatchUpdateReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ProductSaveReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.product.ErpProductCategoryDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.product.ErpProductDO;
@@ -70,10 +71,12 @@ import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.
 import static cn.iocoder.yudao.framework.security.core.util.SecurityFrameworkUtils.getLoginUserDeptId;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PRODUCT_CODE_DUPLICATE;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PRODUCT_CODE_GENERATE_FAIL;
+import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PRODUCT_CATEGORY_NOT_EXISTS;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PRODUCT_DELETE_FAIL_STOCK_EXISTS;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PRODUCT_MERGED;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PRODUCT_NOT_ENABLE;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PRODUCT_NOT_EXISTS;
+import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PRODUCT_UNIT_NOT_EXISTS;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PRODUCT_UNIVERSAL_CODE_INVALID;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PRODUCT_UNIVERSAL_CODE_SELF;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PRODUCT_WAREHOUSE_NOT_EXISTS;
@@ -149,6 +152,7 @@ public class ErpProductServiceImpl implements ErpProductService {
     public Long createProduct(ProductSaveReqVO createReqVO) {
         // 1. 默认仓库必填，并校验仓库存在
         applyProductSaveFieldPermissions(createReqVO, null);
+        ignoreReadonlyProductSaveFields(createReqVO);
         ValidationUtils.validate(createReqVO);
 
 
@@ -1122,12 +1126,13 @@ public class ErpProductServiceImpl implements ErpProductService {
             throw exception(PRODUCT_MERGED, existing.getName());
         }
         applyProductSaveFieldPermissions(updateReqVO, existing);
+        ignoreReadonlyProductSaveFields(updateReqVO);
         ValidationUtils.validate(updateReqVO);
         Long targetDefaultWarehouseId = updateReqVO.getDefaultWarehouseId() != null
                 ? updateReqVO.getDefaultWarehouseId() : existing.getDefaultWarehouseId();
         validateDefaultWarehouseExists(targetDefaultWarehouseId);
 
-        // 2. 更新主表（code/mergedFlag/mergedTargetId/lastPurchasePrice 不允许通过此接口修改，保留原值）
+        // 2. 更新主表（code/mergedFlag/mergedTargetId 不允许通过此接口修改，保留原值）
         ErpProductDO updateObj = BeanUtils.toBean(updateReqVO, ErpProductDO.class);
         prepareProductCode(updateObj, updateReqVO.getCode(), existing.getId());
         if (updateObj.getDeptId() == null) {
@@ -1136,7 +1141,6 @@ public class ErpProductServiceImpl implements ErpProductService {
         updateObj.setDefaultWarehouseId(targetDefaultWarehouseId);
         updateObj.setMergedFlag(null);
         updateObj.setMergedTargetId(null);
-        updateObj.setLastPurchasePrice(null);
         try {
             productMapper.updateById(updateObj);
         } catch (DuplicateKeyException ex) {
@@ -1151,6 +1155,58 @@ public class ErpProductServiceImpl implements ErpProductService {
         recordProductLog(ERP_UPDATE_SUB_TYPE, updateReqVO.getId(),
                 productSummary("修改", mergeForLog(existing, updateObj))
                         + buildProductChangeSummary(existing, updateObj));
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void batchUpdateProduct(ProductBatchUpdateReqVO updateReqVO) {
+        if (CollUtil.isEmpty(updateReqVO.getIds())) {
+            return;
+        }
+        List<String> hiddenFields = permissionApi.getCurrentUserHiddenFields(FIELD_PERMISSION_MODULE);
+        Set<String> hiddenFieldSet = CollUtil.isEmpty(hiddenFields) ? Collections.emptySet() : new HashSet<>(hiddenFields);
+
+        Long categoryId = isFieldHidden(hiddenFieldSet, "categoryId") ? null : updateReqVO.getCategoryId();
+        Long unitId = isFieldHidden(hiddenFieldSet, "unitId") ? null : updateReqVO.getUnitId();
+        Long defaultWarehouseId = isFieldHidden(hiddenFieldSet, "defaultWarehouseId") ? null : updateReqVO.getDefaultWarehouseId();
+        Integer status = isFieldHidden(hiddenFieldSet, "status") ? null : updateReqVO.getStatus();
+        String remark = isFieldHidden(hiddenFieldSet, "remark") ? null : trimToNull(updateReqVO.getRemark());
+
+        if (categoryId == null && unitId == null && defaultWarehouseId == null && status == null && remark == null) {
+            return;
+        }
+
+        if (categoryId != null && productCategoryService.getProductCategory(categoryId) == null) {
+            throw exception(PRODUCT_CATEGORY_NOT_EXISTS);
+        }
+        if (unitId != null && productUnitService.getProductUnit(unitId) == null) {
+            throw exception(PRODUCT_UNIT_NOT_EXISTS);
+        }
+        validateDefaultWarehouseExists(defaultWarehouseId);
+
+        List<ErpProductDO> products = productMapper.selectByIds(updateReqVO.getIds());
+        Map<Long, ErpProductDO> productMap = convertMap(products, ErpProductDO::getId);
+        for (Long id : updateReqVO.getIds()) {
+            ErpProductDO existing = productMap.get(id);
+            if (existing == null) {
+                throw exception(PRODUCT_NOT_EXISTS);
+            }
+            if (Boolean.TRUE.equals(existing.getMergedFlag())) {
+                throw exception(PRODUCT_MERGED, existing.getName());
+            }
+            ErpProductDO updateObj = new ErpProductDO();
+            updateObj.setId(id);
+            updateObj.setCategoryId(categoryId);
+            updateObj.setUnitId(unitId);
+            updateObj.setDefaultWarehouseId(defaultWarehouseId);
+            updateObj.setStatus(status);
+            updateObj.setRemark(remark);
+            productMapper.updateById(updateObj);
+            initProductStock(id, defaultWarehouseId);
+            recordProductLog(ERP_UPDATE_SUB_TYPE, id,
+                    productSummary("批量修改", mergeForLog(existing, updateObj))
+                            + buildProductChangeSummary(existing, updateObj));
+        }
     }
 
     private void validateDefaultWarehouseRequiredAndExists(Long defaultWarehouseId) {
@@ -1661,6 +1717,10 @@ public class ErpProductServiceImpl implements ErpProductService {
 
     private boolean isFieldHidden(Set<String> hiddenFields, String fieldKey) {
         return hiddenFields.contains(fieldKey) || hiddenFields.contains("col_" + fieldKey);
+    }
+
+    private void ignoreReadonlyProductSaveFields(ProductSaveReqVO reqVO) {
+        reqVO.setLastPurchasePrice(null);
     }
 
     private void applyProductSaveFieldPermissions(ProductSaveReqVO reqVO, ErpProductDO existing) {

@@ -121,6 +121,8 @@ public class ErpPurchaseInServiceImplTest extends BaseMockitoUnitTest {
     private ErpVoucherItemMapper voucherItemMapper;
     @Mock
     private ErpOperateLogService operateLogService;
+    @Mock
+    private ErpPurchaseDocumentDefaultService purchaseDocumentDefaultService;
 
     @BeforeEach
     public void setUp() {
@@ -195,7 +197,8 @@ public class ErpPurchaseInServiceImplTest extends BaseMockitoUnitTest {
         when(productService.validProductList(any())).thenReturn(Collections.singletonList(
                 new ErpProductDO().setId(200L).setUnitId(1L)));
         when(purchaseInMapper.selectByNo(any())).thenReturn(null);
-        when(purchaseInMapper.selectListByOrderId(eq(50L))).thenReturn(Collections.emptyList());
+        when(purchaseInMapper.selectListByOrderIdAndStatus(eq(50L), eq(ErpAuditStatus.APPROVE.getStatus())))
+                .thenReturn(Collections.emptyList());
         when(purchaseInItemMapper.selectOrderItemCountSumMapByInIds(any())).thenReturn(Collections.emptyMap());
 
         purchaseInService.createPurchaseIn(reqVO);
@@ -208,6 +211,28 @@ public class ErpPurchaseInServiceImplTest extends BaseMockitoUnitTest {
         assertEquals(Long.valueOf(88L), inserted.getDeptId());
         // 有 orderId，触发更新订单入库数量
         verify(purchaseOrderService).updatePurchaseOrderInCount(eq(50L), any());
+    }
+
+    @Test
+    public void testCreatePurchaseIn_withOrderIdOnlyCountsApprovedIn() {
+        ErpPurchaseInSaveReqVO.Item item = buildItem(200L, new BigDecimal("10"), new BigDecimal("5"));
+        ErpPurchaseInSaveReqVO reqVO = buildBaseReqVO(item);
+        reqVO.setOrderId(50L);
+
+        when(purchaseOrderService.validatePurchaseOrder(eq(50L)))
+                .thenReturn(new ErpPurchaseOrderDO().setId(50L).setNo("CGDD001").setSupplierId(999L).setDeptId(88L));
+        when(productService.validProductList(any())).thenReturn(Collections.singletonList(
+                new ErpProductDO().setId(200L).setUnitId(1L)));
+        when(purchaseInMapper.selectByNo(any())).thenReturn(null);
+        when(purchaseInMapper.selectListByOrderIdAndStatus(eq(50L), eq(ErpAuditStatus.APPROVE.getStatus())))
+                .thenReturn(Collections.emptyList());
+        when(purchaseInItemMapper.selectOrderItemCountSumMapByInIds(any())).thenReturn(Collections.emptyMap());
+
+        purchaseInService.createPurchaseIn(reqVO);
+
+        verify(purchaseInMapper).selectListByOrderIdAndStatus(eq(50L), eq(ErpAuditStatus.APPROVE.getStatus()));
+        verify(purchaseInMapper, never()).selectListByOrderId(eq(50L));
+        verify(purchaseOrderService).updatePurchaseOrderInCount(eq(50L), eq(Collections.emptyMap()));
     }
 
     @Test
@@ -319,6 +344,7 @@ public class ErpPurchaseInServiceImplTest extends BaseMockitoUnitTest {
     public void testUpdatePurchaseInStatus_approveSuccess_triggersStockAndLastPriceAndVoucher() {
         ErpPurchaseInDO existing = new ErpPurchaseInDO()
                 .setId(10L).setNo("CGRK001").setSupplierId(99L)
+                .setOrderId(50L)
                 .setInTime(LocalDateTime.of(2026, 5, 20, 10, 0, 0))
                 .setStatus(ErpAuditStatus.PROCESS.getStatus())
                 .setPaymentPrice(BigDecimal.ZERO);
@@ -337,6 +363,12 @@ public class ErpPurchaseInServiceImplTest extends BaseMockitoUnitTest {
                 .thenReturn(new ErpSupplierDO().setId(99L).setName("芋道供应商"));
         when(autoVoucherBuilder.buildPurchaseInItems(any(), eq("芋道供应商")))
                 .thenReturn(Collections.singletonList(new ErpVoucherItemDO()));
+        when(purchaseInMapper.selectListByOrderIdAndStatus(eq(50L), eq(ErpAuditStatus.APPROVE.getStatus())))
+                .thenReturn(Collections.singletonList(new ErpPurchaseInDO().setId(10L).setOrderId(50L)
+                        .setStatus(ErpAuditStatus.APPROVE.getStatus())));
+        Map<Long, BigDecimal> inCountMap = Collections.singletonMap(1000L, new BigDecimal("5"));
+        when(purchaseInItemMapper.selectOrderItemCountSumMapByInIds(eq(Collections.singletonList(10L))))
+                .thenReturn(inCountMap);
 
         purchaseInService.updatePurchaseInStatus(10L, ErpAuditStatus.APPROVE.getStatus());
 
@@ -353,6 +385,7 @@ public class ErpPurchaseInServiceImplTest extends BaseMockitoUnitTest {
         // 凭证生成
         verify(voucherService).createVoucherFromBiz(eq(ErpVoucherSourceBizTypeEnum.PURCHASE_IN.getType()),
                 eq(10L), eq("CGRK001"), any(), any(), any(String.class), anyList());
+        verify(purchaseOrderService).updatePurchaseOrderInCount(eq(50L), eq(inCountMap));
     }
 
     @Test
@@ -690,7 +723,8 @@ public class ErpPurchaseInServiceImplTest extends BaseMockitoUnitTest {
         when(productService.validProductList(any())).thenReturn(Collections.singletonList(
                 new ErpProductDO().setId(200L).setUnitId(1L)));
         when(purchaseInMapper.selectByNo(any())).thenReturn(null);
-        when(purchaseInMapper.selectListByOrderId(eq(50L))).thenReturn(Collections.emptyList());
+        when(purchaseInMapper.selectListByOrderIdAndStatus(eq(50L), eq(ErpAuditStatus.APPROVE.getStatus())))
+                .thenReturn(Collections.emptyList());
         when(purchaseInItemMapper.selectOrderItemCountSumMapByInIds(any())).thenReturn(Collections.emptyMap());
 
         // 自动审批后会再次 selectById（updatePurchaseInStatus 内部调用）
@@ -769,7 +803,8 @@ public class ErpPurchaseInServiceImplTest extends BaseMockitoUnitTest {
         when(productService.validProductList(any())).thenReturn(Collections.singletonList(
                 new ErpProductDO().setId(200L).setUnitId(1L)));
         when(purchaseInMapper.selectByNo(any())).thenReturn(null);
-        when(purchaseInMapper.selectListByOrderId(eq(50L))).thenReturn(Collections.emptyList());
+        when(purchaseInMapper.selectListByOrderIdAndStatus(eq(50L), eq(ErpAuditStatus.APPROVE.getStatus())))
+                .thenReturn(Collections.emptyList());
         when(purchaseInItemMapper.selectOrderItemCountSumMapByInIds(any())).thenReturn(Collections.emptyMap());
         // 后续 updatePurchaseInStatus 链路
         ErpPurchaseInFromOrderReqVO reqVO = new ErpPurchaseInFromOrderReqVO();

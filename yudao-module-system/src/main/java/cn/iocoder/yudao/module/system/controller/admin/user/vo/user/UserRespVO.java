@@ -14,14 +14,13 @@ import java.util.Set;
 @Schema(description = "管理后台 - 用户信息 Response VO")
 @Data
 @ExcelIgnoreUnannotated
-public class UserRespVO{
+public class UserRespVO {
 
     @Schema(description = "用户编号", requiredMode = Schema.RequiredMode.REQUIRED, example = "1")
     @ExcelProperty("用户编号")
     private Long id;
 
     @Schema(description = "用户账号", requiredMode = Schema.RequiredMode.REQUIRED, example = "yudao")
-    @ExcelProperty("用户名称")
     private String username;
 
     @Schema(description = "用户昵称", requiredMode = Schema.RequiredMode.REQUIRED, example = "芋艿")
@@ -29,22 +28,31 @@ public class UserRespVO{
     private String nickname;
 
     @Schema(description = "备注", example = "我是一个用户")
+    @ExcelProperty("备注")
     private String remark;
 
-    @Schema(description = "部门ID", example = "我是一个用户")
+    @Schema(description = "部门ID", example = "1")
     private Long deptId;
-    @Schema(description = "部门名称", example = "IT 部")
+
+    @Schema(description = "部门名称", example = "IT 部门")
     @ExcelProperty("部门名称")
     private String deptName;
 
     @Schema(description = "部门编号数组", example = "1")
     private Set<Long> deptIds;
 
-    @Schema(description = "岗位编号数组", example = "1")
-    private Set<Long> postIds;
-
     @Schema(description = "角色编号数组", example = "1")
     private Set<Long> roleIds;
+
+    @Schema(description = "角色名称", example = "管理员")
+    @ExcelProperty("角色")
+    private String roleNames;
+
+    @Schema(description = "数据范围，空表示继承角色", example = "1")
+    private Integer dataScope;
+
+    @Schema(description = "数据范围(指定部门数组)", example = "1")
+    private Set<Long> dataScopeDeptIds;
 
     @Schema(description = "用户邮箱", example = "yudao@iocoder.cn")
     @ExcelProperty("用户邮箱")
@@ -63,11 +71,11 @@ public class UserRespVO{
     private String avatar;
 
     @Schema(description = "状态，参见 CommonStatusEnum 枚举类", requiredMode = Schema.RequiredMode.REQUIRED, example = "1")
-    @ExcelProperty(value = "帐号状态", converter = DictConvert.class)
+    @ExcelProperty(value = "用户状态", converter = DictConvert.class)
     @DictFormat(DictTypeConstants.COMMON_STATUS)
     private Integer status;
 
-    @Schema(description = "最后登录 IP", requiredMode = Schema.RequiredMode.REQUIRED, example = "192.168.1.1")
+    @Schema(description = "最后登录IP", requiredMode = Schema.RequiredMode.REQUIRED, example = "192.168.1.1")
     @ExcelProperty("最后登录IP")
     private String loginIp;
 

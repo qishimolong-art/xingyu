@@ -240,7 +240,8 @@ public class ErpPurchaseInServiceImpl implements ErpPurchaseInService {
 
     private void updatePurchaseOrderInCount(Long orderId) {
         // 1.1 查询采购订单对应的采购入库单列表
-        List<ErpPurchaseInDO> purchaseIns = purchaseInMapper.selectListByOrderId(orderId);
+        List<ErpPurchaseInDO> purchaseIns = purchaseInMapper.selectListByOrderIdAndStatus(orderId,
+                ErpAuditStatus.APPROVE.getStatus());
         // 1.2 查询对应的采购订单项的入库数量
         Map<Long, BigDecimal> returnCountMap = purchaseInItemMapper.selectOrderItemCountSumMapByInIds(
                 convertList(purchaseIns, ErpPurchaseInDO::getId));
@@ -296,6 +297,9 @@ public class ErpPurchaseInServiceImpl implements ErpPurchaseInService {
                     purchaseIn.getInTime().toLocalDate(),
                     "采购入库 - " + supplierName,
                     voucherItems);
+        }
+        if (purchaseIn.getOrderId() != null) {
+            updatePurchaseOrderInCount(purchaseIn.getOrderId());
         }
         operateLogService.recordStatus(ERP_PURCHASE_IN_TYPE, id, purchaseIn.getNo(), true);
     }

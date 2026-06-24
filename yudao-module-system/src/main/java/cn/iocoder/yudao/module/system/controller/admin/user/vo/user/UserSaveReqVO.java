@@ -2,9 +2,10 @@ package cn.iocoder.yudao.module.system.controller.admin.user.vo.user;
 
 import cn.hutool.core.util.ObjectUtil;
 import cn.iocoder.yudao.framework.common.validation.Mobile;
+import cn.iocoder.yudao.framework.common.validation.InEnum;
 import cn.iocoder.yudao.module.system.framework.operatelog.core.DeptParseFunction;
-import cn.iocoder.yudao.module.system.framework.operatelog.core.PostParseFunction;
 import cn.iocoder.yudao.module.system.framework.operatelog.core.SexParseFunction;
+import cn.iocoder.yudao.module.system.enums.permission.DataScopeEnum;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.mzt.logapi.starter.annotation.DiffLogField;
 import io.swagger.v3.oas.annotations.media.Schema;
@@ -21,8 +22,7 @@ public class UserSaveReqVO {
     @Schema(description = "用户编号", example = "1024")
     private Long id;
 
-    @Schema(description = "用户账号", requiredMode = Schema.RequiredMode.REQUIRED, example = "yudao")
-    @NotBlank(message = "用户账号不能为空")
+    @Schema(description = "用户账号，固定等于手机号码", example = "15601691300")
     @Pattern(regexp = "^[a-zA-Z0-9]{4,30}$", message = "用户账号由 数字、字母 组成")
     @Size(min = 4, max = 30, message = "用户账号长度为 4-30 个字符")
     @DiffLogField(name = "用户账号")
@@ -44,12 +44,16 @@ public class UserSaveReqVO {
     @Schema(description = "部门编号数组", requiredMode = Schema.RequiredMode.REQUIRED, example = "1")
     private Set<Long> deptIds;
 
-    @Schema(description = "岗位编号数组", example = "1")
-    @DiffLogField(name = "岗位", function = PostParseFunction.NAME)
-    private Set<Long> postIds;
-
     @Schema(description = "角色编号数组", requiredMode = Schema.RequiredMode.REQUIRED, example = "1")
     private Set<Long> roleIds;
+
+    @Schema(description = "数据范围", example = "1")
+    @InEnum(value = DataScopeEnum.class, message = "数据范围必须是 {value}")
+    @DiffLogField(name = "数据范围")
+    private Integer dataScope;
+
+    @Schema(description = "数据范围(指定部门数组)", example = "1")
+    private Set<Long> dataScopeDeptIds;
 
     @Schema(description = "用户邮箱", example = "yudao@iocoder.cn")
     @Email(message = "邮箱格式不正确")
@@ -57,7 +61,7 @@ public class UserSaveReqVO {
     @DiffLogField(name = "用户邮箱")
     private String email;
 
-    @Schema(description = "手机号码", example = "15601691300")
+    @Schema(description = "手机号码", requiredMode = Schema.RequiredMode.REQUIRED, example = "15601691300")
     @Mobile
     @DiffLogField(name = "手机号码")
     private String mobile;
@@ -81,6 +85,13 @@ public class UserSaveReqVO {
     public boolean isPasswordValid() {
         return id != null // 修改时，不需要传递
                 || (ObjectUtil.isAllNotEmpty(password)); // 新增时，必须都传递 password
+    }
+
+    @AssertTrue(message = "指定部门数据范围时，部门不能为空")
+    @JsonIgnore
+    public boolean isDataScopeDeptIdsValid() {
+        return !ObjectUtil.equals(dataScope, DataScopeEnum.DEPT_CUSTOM.getScope())
+                || ObjectUtil.isNotEmpty(dataScopeDeptIds);
     }
 
 }

@@ -9,6 +9,7 @@ import cn.iocoder.yudao.framework.common.enums.UserTypeEnum;
 import cn.iocoder.yudao.framework.common.exception.ServiceException;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.common.util.collection.CollectionUtils;
+import cn.iocoder.yudao.framework.common.util.json.JsonUtils;
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
 import cn.iocoder.yudao.framework.common.util.validation.ValidationUtils;
 import cn.iocoder.yudao.framework.datapermission.core.util.DataPermissionUtils;
@@ -16,6 +17,7 @@ import cn.iocoder.yudao.module.infra.api.config.ConfigApi;
 import cn.iocoder.yudao.module.system.controller.admin.auth.vo.AuthRegisterReqVO;
 import cn.iocoder.yudao.module.system.controller.admin.user.vo.profile.UserProfileUpdatePasswordReqVO;
 import cn.iocoder.yudao.module.system.controller.admin.user.vo.profile.UserProfileUpdateReqVO;
+import cn.iocoder.yudao.module.system.controller.admin.user.vo.user.UserBatchUpdateReqVO;
 import cn.iocoder.yudao.module.system.controller.admin.user.vo.user.UserImportExcelVO;
 import cn.iocoder.yudao.module.system.controller.admin.user.vo.user.UserImportRespVO;
 import cn.iocoder.yudao.module.system.controller.admin.user.vo.user.UserPageReqVO;
@@ -24,15 +26,18 @@ import cn.iocoder.yudao.module.system.dal.dataobject.dept.DeptDO;
 import cn.iocoder.yudao.module.system.dal.dataobject.dept.UserDeptDO;
 import cn.iocoder.yudao.module.system.dal.dataobject.dept.UserPostDO;
 import cn.iocoder.yudao.module.system.dal.dataobject.user.AdminUserDO;
+import cn.iocoder.yudao.module.system.dal.mysql.dept.DeptMapper;
 import cn.iocoder.yudao.module.system.dal.mysql.dept.UserDeptMapper;
 import cn.iocoder.yudao.module.system.dal.mysql.dept.UserPostMapper;
 import cn.iocoder.yudao.module.system.dal.mysql.user.AdminUserMapper;
+import cn.iocoder.yudao.module.system.enums.common.SexEnum;
+import cn.iocoder.yudao.module.system.enums.permission.DataScopeEnum;
 import cn.iocoder.yudao.module.system.service.dept.DeptService;
-import cn.iocoder.yudao.module.system.service.dept.PostService;
 import cn.iocoder.yudao.module.system.service.oauth2.OAuth2TokenService;
 import cn.iocoder.yudao.module.system.service.permission.PermissionService;
 import cn.iocoder.yudao.module.system.service.permission.RoleService;
 import cn.iocoder.yudao.module.system.service.tenant.TenantService;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.google.common.annotations.VisibleForTesting;
 import com.mzt.logapi.context.LogRecordContext;
 import com.mzt.logapi.service.impl.DiffParseFunction;
@@ -50,6 +55,7 @@ import java.util.*;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static cn.iocoder.yudao.framework.common.exception.util.ServiceExceptionUtil.exception;
+import static cn.iocoder.yudao.framework.common.exception.util.ServiceExceptionUtil.invalidParamException;
 import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.*;
 import static cn.iocoder.yudao.module.system.enums.ErrorCodeConstants.*;
 import static cn.iocoder.yudao.module.system.enums.LogRecordConstants.*;
@@ -63,17 +69,19 @@ import static cn.iocoder.yudao.module.system.enums.LogRecordConstants.*;
 @Slf4j
 public class AdminUserServiceImpl implements AdminUserService {
 
+    private static final String FIELD_PERMISSION_MODULE = "system_users";
+
     static final String USER_INIT_PASSWORD_KEY = "system.user.init-password";
 
     static final String USER_REGISTER_ENABLED_KEY = "system.user.register-enabled";
 
     @Resource
     private AdminUserMapper userMapper;
+    @Resource
+    private DeptMapper deptMapper;
 
     @Resource
     private DeptService deptService;
-    @Resource
-    private PostService postService;
     @Resource
     private PermissionService permissionService;
     @Resource
@@ -94,6 +102,8 @@ public class AdminUserServiceImpl implements AdminUserService {
 
     @Resource
     private ConfigApi configApi;
+    @Resource
+    private UserErpBizDataReferenceService userErpBizDataReferenceService;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -108,21 +118,19 @@ public class AdminUserServiceImpl implements AdminUserService {
             }
         });
         normalizeUserDept(createReqVO);
+        validateUserDataScope(createReqVO);
+        normalizeUserDataScope(createReqVO, false);
+        syncUsernameWithMobile(createReqVO);
         // 1.2 校验正确性
         validateUserForCreateOrUpdate(null, createReqVO.getUsername(),
-                createReqVO.getMobile(), createReqVO.getEmail(), createReqVO.getDeptIds(), createReqVO.getPostIds(),
-                createReqVO.getRoleIds());
+                createReqVO.getMobile(), createReqVO.getEmail(), createReqVO.getDeptIds(), createReqVO.getRoleIds());
         // 2.1 插入用户
         AdminUserDO user = BeanUtils.toBean(createReqVO, AdminUserDO.class);
         user.setStatus(CommonStatusEnum.ENABLE.getStatus()); // 默认开启
         user.setPassword(encodePassword(createReqVO.getPassword())); // 加密密码
         userMapper.insert(user);
-        // 2.2 插入关联部门、岗位和角色
+        // 2.2 插入关联部门和角色
         insertUserDept(user.getId(), createReqVO.getDeptIds());
-        if (CollectionUtil.isNotEmpty(user.getPostIds())) {
-            userPostMapper.insertBatch(convertList(user.getPostIds(),
-                    postId -> new UserPostDO().setUserId(user.getId()).setPostId(postId)));
-        }
         permissionService.assignUserRole(user.getId(), createReqVO.getRoleIds());
 
         // 3. 记录操作日志上下文
@@ -144,7 +152,7 @@ public class AdminUserServiceImpl implements AdminUserService {
             }
         });
         // 1.3 校验正确性
-        validateUserForCreateOrUpdate(null, registerReqVO.getUsername(), null, null, null, null, null);
+        validateUserForCreateOrUpdate(null, registerReqVO.getUsername(), null, null, null, null);
 
         // 2. 插入用户
         AdminUserDO user = BeanUtils.toBean(registerReqVO, AdminUserDO.class);
@@ -161,40 +169,215 @@ public class AdminUserServiceImpl implements AdminUserService {
     public void updateUser(UserSaveReqVO updateReqVO) {
         updateReqVO.setPassword(null); // 特殊：此处不更新密码
         normalizeUserDept(updateReqVO);
+        List<String> hiddenFields = permissionService.getCurrentUserHiddenFields(FIELD_PERMISSION_MODULE);
+        preserveHiddenFields(updateReqVO, hiddenFields);
+        boolean dataScopeHidden = isFieldHidden(hiddenFields, "dataScope");
+        if (!dataScopeHidden) {
+            validateUserDataScope(updateReqVO);
+        }
+        normalizeUserDataScope(updateReqVO, dataScopeHidden);
+        syncUsernameWithMobile(updateReqVO);
         // 1. 校验正确性
         AdminUserDO oldUser = validateUserForCreateOrUpdate(updateReqVO.getId(), updateReqVO.getUsername(),
-                updateReqVO.getMobile(), updateReqVO.getEmail(), updateReqVO.getDeptIds(), updateReqVO.getPostIds(),
-                updateReqVO.getRoleIds());
+                updateReqVO.getMobile(), updateReqVO.getEmail(), updateReqVO.getDeptIds(), updateReqVO.getRoleIds());
 
         // 2.1 更新用户
         AdminUserDO updateObj = BeanUtils.toBean(updateReqVO, AdminUserDO.class);
         userMapper.updateById(updateObj);
-        // 2.2 更新岗位
-        updateUserPost(updateReqVO, updateObj);
-        // 2.3 更新部门和角色
-        updateUserDept(updateReqVO);
-        permissionService.assignUserRole(updateReqVO.getId(), updateReqVO.getRoleIds());
+        // 2.2 更新部门和角色
+        if (!isFieldHidden(hiddenFields, "deptIds")) {
+            updateUserDept(updateReqVO);
+        }
+        if (!isFieldHidden(hiddenFields, "roleIds")) {
+            permissionService.assignUserRole(updateReqVO.getId(), updateReqVO.getRoleIds());
+        }
 
         // 3. 记录操作日志上下文
         LogRecordContext.putVariable(DiffParseFunction.OLD_OBJECT, BeanUtils.toBean(oldUser, UserSaveReqVO.class));
         LogRecordContext.putVariable("user", oldUser);
     }
 
-    private void updateUserPost(UserSaveReqVO reqVO, AdminUserDO updateObj) {
-        Long userId = reqVO.getId();
-        Set<Long> dbPostIds = convertSet(userPostMapper.selectListByUserId(userId), UserPostDO::getPostId);
-        // 计算新增和删除的岗位编号
-        Set<Long> postIds = CollUtil.emptyIfNull(updateObj.getPostIds());
-        Collection<Long> createPostIds = CollUtil.subtract(postIds, dbPostIds);
-        Collection<Long> deletePostIds = CollUtil.subtract(dbPostIds, postIds);
-        // 执行新增和删除。对于已经授权的岗位，不用做任何处理
-        if (!CollectionUtil.isEmpty(createPostIds)) {
-            userPostMapper.insertBatch(convertList(createPostIds,
-                    postId -> new UserPostDO().setUserId(userId).setPostId(postId)));
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void updateUserBatch(UserBatchUpdateReqVO reqVO) {
+        validateBatchUpdateUser(reqVO);
+        Set<Long> deptIds = CollUtil.emptyIfNull(reqVO.getDeptIds());
+        for (Long id : new LinkedHashSet<>(reqVO.getIds())) {
+            updateUserBaseFields(id, reqVO, deptIds);
+            if (Boolean.TRUE.equals(reqVO.getUpdateDeptIds())) {
+                updateUserDept(new UserSaveReqVO().setId(id).setDeptIds(deptIds));
+            }
+            if (Boolean.TRUE.equals(reqVO.getUpdateRoleIds())) {
+                permissionService.assignUserRole(id, reqVO.getRoleIds());
+            }
+            if (Boolean.TRUE.equals(reqVO.getUpdateStatus()) && CommonStatusEnum.isDisable(reqVO.getStatus())) {
+                oauth2TokenService.removeAccessToken(id, UserTypeEnum.ADMIN.getValue());
+            }
         }
-        if (!CollectionUtil.isEmpty(deletePostIds)) {
-            userPostMapper.deleteByUserIdAndPostId(userId, deletePostIds);
+    }
+
+    private void updateUserBaseFields(Long id, UserBatchUpdateReqVO reqVO, Set<Long> deptIds) {
+        boolean updateBaseFields = Boolean.TRUE.equals(reqVO.getUpdateNickname())
+                || Boolean.TRUE.equals(reqVO.getUpdateDeptIds())
+                || Boolean.TRUE.equals(reqVO.getUpdateEmail())
+                || Boolean.TRUE.equals(reqVO.getUpdateMobile())
+                || Boolean.TRUE.equals(reqVO.getUpdateSex())
+                || Boolean.TRUE.equals(reqVO.getUpdateStatus())
+                || Boolean.TRUE.equals(reqVO.getUpdateDataScope())
+                || Boolean.TRUE.equals(reqVO.getUpdateRemark());
+        if (!updateBaseFields) {
+            return;
         }
+        LambdaUpdateWrapper<AdminUserDO> updateWrapper = new LambdaUpdateWrapper<AdminUserDO>()
+                .eq(AdminUserDO::getId, id);
+        if (Boolean.TRUE.equals(reqVO.getUpdateNickname())) {
+            updateWrapper.set(AdminUserDO::getNickname, reqVO.getNickname().trim());
+        }
+        if (Boolean.TRUE.equals(reqVO.getUpdateDeptIds())) {
+            updateWrapper.set(AdminUserDO::getDeptId, deptIds.iterator().next());
+        }
+        if (Boolean.TRUE.equals(reqVO.getUpdateEmail())) {
+            updateWrapper.set(AdminUserDO::getEmail, trimToNull(reqVO.getEmail()));
+        }
+        if (Boolean.TRUE.equals(reqVO.getUpdateMobile())) {
+            updateWrapper.set(AdminUserDO::getMobile, trimToNull(reqVO.getMobile()));
+            updateWrapper.set(AdminUserDO::getUsername, trimToNull(reqVO.getMobile()));
+        }
+        if (Boolean.TRUE.equals(reqVO.getUpdateSex())) {
+            updateWrapper.set(AdminUserDO::getSex, reqVO.getSex());
+        }
+        if (Boolean.TRUE.equals(reqVO.getUpdateStatus())) {
+            updateWrapper.set(AdminUserDO::getStatus, reqVO.getStatus());
+        }
+        if (Boolean.TRUE.equals(reqVO.getUpdateDataScope())) {
+            updateWrapper.set(AdminUserDO::getDataScope, reqVO.getDataScope());
+            updateWrapper.set(AdminUserDO::getDataScopeDeptIds, JsonUtils.toJsonString(reqVO.getDataScopeDeptIds()));
+        }
+        if (Boolean.TRUE.equals(reqVO.getUpdateRemark())) {
+            updateWrapper.set(AdminUserDO::getRemark, reqVO.getRemark());
+        }
+        userMapper.update(null, updateWrapper);
+    }
+
+    private String trimToNull(String value) {
+        return StrUtil.emptyToNull(StrUtil.trim(value));
+    }
+
+    private void validateBatchUpdateUser(UserBatchUpdateReqVO reqVO) {
+        Set<Long> userIds = new LinkedHashSet<>(reqVO.getIds());
+        if (userIds.size() != reqVO.getIds().size() || userIds.contains(null)) {
+            throw exception(USER_NOT_EXISTS);
+        }
+        if (userMapper.selectByIds(userIds).size() != userIds.size()) {
+            throw exception(USER_NOT_EXISTS);
+        }
+        if (Boolean.TRUE.equals(reqVO.getUpdateDeptIds())) {
+            deptService.validateDeptList(reqVO.getDeptIds());
+        }
+        if (Boolean.TRUE.equals(reqVO.getUpdateRoleIds())) {
+            roleService.validateRoleList(reqVO.getRoleIds());
+        }
+        if (Boolean.TRUE.equals(reqVO.getUpdateEmail()) && StrUtil.isNotBlank(reqVO.getEmail())) {
+            if (userIds.size() > 1) {
+                throw invalidParamException("邮箱不能批量设置为同一个非空值");
+            }
+            validateEmailUnique(userIds.iterator().next(), reqVO.getEmail());
+        }
+        if (Boolean.TRUE.equals(reqVO.getUpdateMobile())) {
+            if (StrUtil.isBlank(reqVO.getMobile())) {
+                throw invalidParamException("手机号码不能为空");
+            }
+            if (userIds.size() > 1) {
+                throw invalidParamException("手机号码不能批量设置为同一个非空值");
+            }
+            String mobile = StrUtil.trim(reqVO.getMobile());
+            reqVO.setMobile(mobile);
+            validateMobileUnique(userIds.iterator().next(), mobile);
+            validateUsernameUnique(userIds.iterator().next(), mobile);
+        }
+        if (Boolean.TRUE.equals(reqVO.getUpdateSex()) && !isValidSex(reqVO.getSex())) {
+            throw invalidParamException("用户性别不正确");
+        }
+        if (Boolean.TRUE.equals(reqVO.getUpdateDataScope())) {
+            normalizeBatchUserDataScope(reqVO);
+            validateBatchDataScope(reqVO);
+        }
+    }
+
+    private void normalizeBatchUserDataScope(UserBatchUpdateReqVO reqVO) {
+        if (Objects.equals(reqVO.getDataScope(), 0)) {
+            throw invalidParamException("数据范围不能选择继承角色");
+        }
+        if (!Objects.equals(reqVO.getDataScope(), DataScopeEnum.DEPT_CUSTOM.getScope())) {
+            reqVO.setDataScopeDeptIds(Collections.emptySet());
+        }
+    }
+
+    private void validateBatchDataScope(UserBatchUpdateReqVO reqVO) {
+        if (reqVO.getDataScope() == null) {
+            throw invalidParamException("数据范围不能为空");
+        }
+        boolean validScope = Arrays.stream(DataScopeEnum.values())
+                .anyMatch(item -> item.getScope().equals(reqVO.getDataScope()));
+        if (!validScope) {
+            throw invalidParamException("数据范围不正确");
+        }
+        if (Objects.equals(reqVO.getDataScope(), DataScopeEnum.DEPT_CUSTOM.getScope())) {
+            if (CollUtil.isEmpty(reqVO.getDataScopeDeptIds())) {
+                throw invalidParamException("指定部门数据范围时，部门不能为空");
+            }
+            deptService.validateDeptList(reqVO.getDataScopeDeptIds());
+        }
+    }
+
+    private boolean isValidSex(Integer sex) {
+        if (sex == null) {
+            return false;
+        }
+        return Arrays.stream(SexEnum.values()).anyMatch(item -> item.getSex().equals(sex));
+    }
+
+    private void preserveHiddenFields(UserSaveReqVO reqVO, List<String> hiddenFields) {
+        if (reqVO.getId() == null || CollUtil.isEmpty(hiddenFields)) {
+            return;
+        }
+        AdminUserDO oldUser = userMapper.selectById(reqVO.getId());
+        if (oldUser == null) {
+            return;
+        }
+        if (isFieldHidden(hiddenFields, "username")) {
+            reqVO.setUsername(oldUser.getUsername());
+        }
+        if (isFieldHidden(hiddenFields, "nickname")) {
+            reqVO.setNickname(oldUser.getNickname());
+        }
+        if (isFieldHidden(hiddenFields, "email")) {
+            reqVO.setEmail(oldUser.getEmail());
+        }
+        if (isFieldHidden(hiddenFields, "mobile")) {
+            reqVO.setMobile(oldUser.getMobile());
+        }
+        if (isFieldHidden(hiddenFields, "sex")) {
+            reqVO.setSex(oldUser.getSex());
+        }
+        if (isFieldHidden(hiddenFields, "remark")) {
+            reqVO.setRemark(oldUser.getRemark());
+        }
+        if (isFieldHidden(hiddenFields, "deptIds")) {
+            reqVO.setDeptId(oldUser.getDeptId());
+            reqVO.setDeptIds(getUserDeptIdListByUserId(reqVO.getId()));
+        }
+        if (isFieldHidden(hiddenFields, "roleIds")) {
+            reqVO.setRoleIds(permissionService.getUserRoleIdListByUserId(reqVO.getId()));
+        }
+        if (isFieldHidden(hiddenFields, "dataScope")) {
+            reqVO.setDataScope(oldUser.getDataScope());
+            reqVO.setDataScopeDeptIds(oldUser.getDataScopeDeptIds());
+        }
+    }
+
+    private boolean isFieldHidden(Collection<String> hiddenFields, String fieldKey) {
+        return hiddenFields != null && (hiddenFields.contains(fieldKey) || hiddenFields.contains("col_" + fieldKey));
     }
 
     private void insertUserDept(Long userId, Set<Long> deptIds) {
@@ -228,6 +411,38 @@ public class AdminUserServiceImpl implements AdminUserService {
             return;
         }
         reqVO.setDeptId(reqVO.getDeptIds().iterator().next());
+    }
+
+    private void validateUserDataScope(UserSaveReqVO reqVO) {
+        if (reqVO.getDataScope() == null) {
+            throw invalidParamException("数据范围不能为空");
+        }
+        if (Objects.equals(reqVO.getDataScope(), 0)) {
+            throw invalidParamException("数据范围不能选择继承角色");
+        }
+    }
+
+    private void normalizeUserDataScope(UserSaveReqVO reqVO, boolean allowLegacyInherit) {
+        if (Objects.equals(reqVO.getDataScope(), 0)) {
+            if (allowLegacyInherit) {
+                return;
+            }
+            throw invalidParamException("数据范围不能选择继承角色");
+        }
+        if (reqVO.getDataScope() == null && allowLegacyInherit) {
+            return;
+        }
+        if (!Objects.equals(reqVO.getDataScope(), DataScopeEnum.DEPT_CUSTOM.getScope())) {
+            reqVO.setDataScopeDeptIds(Collections.emptySet());
+        }
+    }
+
+    private void syncUsernameWithMobile(UserSaveReqVO reqVO) {
+        if (StrUtil.isBlank(reqVO.getMobile())) {
+            throw invalidParamException("手机号码不能为空");
+        }
+        reqVO.setMobile(StrUtil.trim(reqVO.getMobile()));
+        reqVO.setUsername(reqVO.getMobile());
     }
 
     @Override
@@ -298,6 +513,7 @@ public class AdminUserServiceImpl implements AdminUserService {
         AdminUserDO user = validateUserExists(id);
 
         // 2.1 删除用户
+        validateUserCanDelete(Collections.singletonList(id));
         userMapper.deleteById(id);
         // 2.2 删除用户关联数据
         permissionService.processUserDeleted(id);
@@ -314,6 +530,7 @@ public class AdminUserServiceImpl implements AdminUserService {
     @Transactional(rollbackFor = Exception.class)
     public void deleteUserList(List<Long> ids) {
         // 1. 批量删除用户
+        validateUserCanDelete(ids);
         userMapper.deleteByIds(ids);
 
         // 2. 批量删除用户关联数据
@@ -327,6 +544,25 @@ public class AdminUserServiceImpl implements AdminUserService {
     @Override
     public AdminUserDO getUserByUsername(String username) {
         return userMapper.selectByUsername(username);
+    }
+
+    private void validateUserCanDelete(Collection<Long> ids) {
+        if (CollUtil.isEmpty(ids)) {
+            return;
+        }
+        if (ids.stream().anyMatch(Objects::isNull)) {
+            throw exception(USER_NOT_EXISTS);
+        }
+        Set<Long> userIds = new HashSet<>(ids);
+        if (userMapper.selectByIds(userIds).size() != userIds.size()) {
+            throw exception(USER_NOT_EXISTS);
+        }
+        if (CollUtil.isNotEmpty(deptMapper.selectListByLeaderUserIds(userIds))) {
+            throw exception(USER_IS_DEPT_LEADER);
+        }
+        if (userErpBizDataReferenceService.existsByUserIds(userIds)) {
+            throw exception(USER_EXISTS_BIZ_DATA);
+        }
     }
 
     @Override
@@ -459,7 +695,7 @@ public class AdminUserServiceImpl implements AdminUserService {
     }
 
     private AdminUserDO validateUserForCreateOrUpdate(Long id, String username, String mobile, String email,
-                                                      Set<Long> deptIds, Set<Long> postIds, Set<Long> roleIds) {
+                                                      Set<Long> deptIds, Set<Long> roleIds) {
         // 关闭数据权限，避免因为没有数据权限，查询不到数据，进而导致唯一校验不正确
         return DataPermissionUtils.executeIgnore(() -> {
             // 校验用户存在
@@ -472,8 +708,6 @@ public class AdminUserServiceImpl implements AdminUserService {
             validateEmailUnique(id, email);
             // 校验部门处于开启状态
             deptService.validateDeptList(deptIds);
-            // 校验岗位处于开启状态
-            postService.validatePostList(postIds);
             // 校验角色处于开启状态
             roleService.validateRoleList(roleIds);
             return user;
@@ -581,45 +815,57 @@ public class AdminUserServiceImpl implements AdminUserService {
         AtomicInteger index = new AtomicInteger(1);
         importUsers.forEach(importUser -> {
             int currentIndex = index.getAndIncrement();
+            String mobile = StrUtil.trim(importUser.getMobile());
+            String rowKey = StrUtil.blankToDefault(mobile, "第 " + currentIndex + " 行");
+            if (StrUtil.isBlank(mobile)) {
+                respVO.getFailureUsernames().put(rowKey, "手机号码不能为空");
+                return;
+            }
             // 2.1.1 校验字段是否符合要求
             try {
-                ValidationUtils.validate(BeanUtils.toBean(importUser, UserSaveReqVO.class).setPassword(initPassword));
+                ValidationUtils.validate(BeanUtils.toBean(importUser, UserSaveReqVO.class)
+                        .setMobile(mobile).setUsername(mobile).setPassword(initPassword));
             } catch (ConstraintViolationException ex) {
-                String key = StrUtil.blankToDefault(importUser.getUsername(), "第 " + currentIndex + " 行");
-                respVO.getFailureUsernames().put(key, ex.getMessage());
+                respVO.getFailureUsernames().put(rowKey, ex.getMessage());
                 return;
+            }
+            AdminUserDO existUser = userMapper.selectByMobile(mobile);
+            if (existUser == null) {
+                existUser = userMapper.selectByUsername(mobile);
             }
             // 2.1.2 校验，判断是否有不符合的原因
             try {
-                validateUserForCreateOrUpdate(null, null, importUser.getMobile(), importUser.getEmail(),
-                        importUser.getDeptId() == null ? null : Collections.singleton(importUser.getDeptId()),
-                        null, null);
+                validateUserForCreateOrUpdate(existUser == null ? null : existUser.getId(), mobile, mobile, importUser.getEmail(),
+                        importUser.getDeptId() == null ? null : Collections.singleton(importUser.getDeptId()), null);
             } catch (ServiceException ex) {
-                respVO.getFailureUsernames().put(importUser.getUsername(), ex.getMessage());
+                respVO.getFailureUsernames().put(mobile, ex.getMessage());
                 return;
             }
 
             // 2.2.1 判断如果不存在，在进行插入
-            AdminUserDO existUser = userMapper.selectByUsername(importUser.getUsername());
             if (existUser == null) {
                 AdminUserDO user = BeanUtils.toBean(importUser, AdminUserDO.class)
-                        .setPassword(encodePassword(initPassword)).setPostIds(new HashSet<>()); // 设置默认密码及空岗位编号数组
+                        .setUsername(mobile)
+                        .setMobile(mobile)
+                        .setPassword(encodePassword(initPassword)); // 设置默认密码
                 userMapper.insert(user);
                 insertUserDept(user.getId(), importUser.getDeptId() == null ? null : Collections.singleton(importUser.getDeptId()));
-                respVO.getCreateUsernames().add(importUser.getUsername());
+                respVO.getCreateUsernames().add(mobile);
                 return;
             }
             // 2.2.2 如果存在，判断是否允许更新
             if (!isUpdateSupport) {
-                respVO.getFailureUsernames().put(importUser.getUsername(), USER_USERNAME_EXISTS.getMsg());
+                respVO.getFailureUsernames().put(mobile, USER_USERNAME_EXISTS.getMsg());
                 return;
             }
-            AdminUserDO updateUser = BeanUtils.toBean(importUser, AdminUserDO.class);
+            AdminUserDO updateUser = BeanUtils.toBean(importUser, AdminUserDO.class)
+                    .setUsername(mobile)
+                    .setMobile(mobile);
             updateUser.setId(existUser.getId());
             userMapper.updateById(updateUser);
             updateUserDept(new UserSaveReqVO().setId(existUser.getId())
                     .setDeptIds(importUser.getDeptId() == null ? Collections.emptySet() : Collections.singleton(importUser.getDeptId())));
-            respVO.getUpdateUsernames().add(importUser.getUsername());
+            respVO.getUpdateUsernames().add(mobile);
         });
         return respVO;
     }

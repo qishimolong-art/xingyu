@@ -38,6 +38,7 @@ import java.util.Set;
 
 import static cn.iocoder.yudao.framework.common.exception.util.ServiceExceptionUtil.exception;
 import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.*;
+import static cn.iocoder.yudao.framework.security.core.util.SecurityFrameworkUtils.getLoginUserDeptId;
 import static cn.iocoder.yudao.module.erp.enums.LogRecordConstants.ERP_STOCK_CHECK_TYPE;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.*;
 
@@ -84,6 +85,9 @@ public class ErpStockCheckServiceImpl implements ErpStockCheckService {
         String no = noRedisDAO.generate(ErpNoRedisDAO.STOCK_CHECK_NO_PREFIX);
         if (stockCheckMapper.selectByNo(no) != null) {
             throw exception(STOCK_CHECK_NO_EXISTS);
+        }
+        if (createReqVO.getDeptId() == null) {
+            createReqVO.setDeptId(getLoginUserDeptId());
         }
 
         // 2.1 插入盘点单

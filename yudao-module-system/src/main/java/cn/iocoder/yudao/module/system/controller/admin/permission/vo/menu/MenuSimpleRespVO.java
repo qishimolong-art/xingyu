@@ -17,6 +17,9 @@ public class MenuSimpleRespVO {
     @Schema(description = "菜单名称", requiredMode = Schema.RequiredMode.REQUIRED, example = "芋道")
     private String name;
 
+    @Schema(description = "权限标识", example = "sys:menu:add")
+    private String permission;
+
     @Schema(description = "父菜单 ID", requiredMode = Schema.RequiredMode.REQUIRED, example = "1024")
     private Long parentId;
 

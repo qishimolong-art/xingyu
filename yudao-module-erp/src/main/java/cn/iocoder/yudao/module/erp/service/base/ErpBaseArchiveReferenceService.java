@@ -16,6 +16,7 @@ import cn.iocoder.yudao.module.erp.dal.dataobject.finance.receivable.ErpReceivab
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.receivable.ErpReceivableOtherIncomeDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.receivable.ErpReceivableWriteOffDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.product.ErpProductDO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.product.ErpProductUniversalDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseInDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseInItemDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseInvoiceDO;
@@ -49,6 +50,7 @@ import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockMoveItemDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockOutDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockOutItemDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockRecordDO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.vehicle.ErpVehicleProductFitDO;
 import cn.iocoder.yudao.module.erp.dal.mysql.finance.ErpFinancePaymentMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.finance.ErpFinanceReceiptMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.finance.ErpFinanceTransferMapper;
@@ -64,6 +66,7 @@ import cn.iocoder.yudao.module.erp.dal.mysql.finance.receivable.ErpReceivableOth
 import cn.iocoder.yudao.module.erp.dal.mysql.finance.receivable.ErpReceivableOtherMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.finance.receivable.ErpReceivableWriteOffMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.product.ErpProductMapper;
+import cn.iocoder.yudao.module.erp.dal.mysql.product.ErpProductUniversalMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.purchase.ErpPurchaseInItemMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.purchase.ErpPurchaseInMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.purchase.ErpPurchaseInvoiceItemMapper;
@@ -97,6 +100,7 @@ import cn.iocoder.yudao.module.erp.dal.mysql.stock.ErpStockMoveMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.stock.ErpStockOutItemMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.stock.ErpStockOutMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.stock.ErpStockRecordMapper;
+import cn.iocoder.yudao.module.erp.dal.mysql.vehicle.ErpVehicleProductFitMapper;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
@@ -124,6 +128,8 @@ public class ErpBaseArchiveReferenceService {
 
     @Resource
     private ErpProductMapper productMapper;
+    @Resource
+    private ErpProductUniversalMapper productUniversalMapper;
     @Resource
     private ErpPurchaseOrderMapper purchaseOrderMapper;
     @Resource
@@ -174,6 +180,8 @@ public class ErpBaseArchiveReferenceService {
     private ErpStockRecordMapper stockRecordMapper;
     @Resource
     private ErpStockLockMapper stockLockMapper;
+    @Resource
+    private ErpVehicleProductFitMapper vehicleProductFitMapper;
     @Resource
     private ErpStockInMapper stockInMapper;
     @Resource
@@ -294,6 +302,16 @@ public class ErpBaseArchiveReferenceService {
         ErpStockLockDO stockLock = stockLockMapper.selectFirstOne(ErpStockLockDO::getProductId, productId,
                 ErpStockLockDO::getStatus, STOCK_LOCK_STATUS_ACTIVE);
         addReference(references, "库存锁定", stockLock == null ? null : "ID " + stockLock.getId());
+
+        ErpProductDO product = productMapper.selectById(productId);
+        if (product != null && StringUtils.hasText(product.getCode())) {
+            ErpProductUniversalDO productUniversal = productUniversalMapper.selectFirstOne(
+                    ErpProductUniversalDO::getUniversalCode, product.getCode());
+            addReference(references, "配件通用件", productUniversal == null ? null : "ID " + productUniversal.getId());
+        }
+        ErpVehicleProductFitDO vehicleProductFit = vehicleProductFitMapper.selectFirstOne(
+                ErpVehicleProductFitDO::getProductId, productId);
+        addReference(references, "车型配件适配", vehicleProductFit == null ? null : "ID " + vehicleProductFit.getId());
 
         throwIfReferenced(PRODUCT_DELETE_FAIL_REFERENCED, references);
     }

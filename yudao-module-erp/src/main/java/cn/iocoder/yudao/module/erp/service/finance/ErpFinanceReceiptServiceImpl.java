@@ -74,6 +74,8 @@ public class ErpFinanceReceiptServiceImpl implements ErpFinanceReceiptService {
     @Resource
     private AdminUserApi adminUserApi;
     @Resource
+    private ErpFinancePermissionFieldFiller permissionFieldFiller;
+    @Resource
     private ErpFinanceFieldPermissionMasker fieldPermissionMasker;
     @Resource
     private ErpOperateLogService operateLogService;
@@ -103,6 +105,7 @@ public class ErpFinanceReceiptServiceImpl implements ErpFinanceReceiptService {
         // 2.1 插入收款单
         ErpFinanceReceiptDO receipt = BeanUtils.toBean(createReqVO, ErpFinanceReceiptDO.class, in -> in
                 .setNo(no).setStatus(ErpAuditStatus.PROCESS.getStatus()));
+        permissionFieldFiller.fillCreateFields(receipt);
         fillDefaultAmount(receipt);
         financeReceiptMapper.insert(receipt);
         // 2.2 插入收款单项

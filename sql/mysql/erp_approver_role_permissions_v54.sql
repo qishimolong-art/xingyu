@@ -51,6 +51,7 @@ VALUES
 ('erp:sale-quote:approve'),
 ('erp:sale-cart:first-approve'),
 ('erp:sale-cart:final-approve'),
+('erp:sale-cart:reject'),
 ('erp:sale-order:update-status'),
 ('erp:sale-out:update-status'),
 ('erp:sale-return:update-status'),

@@ -34,6 +34,14 @@ public interface RedisKeyConstants {
     String USER_ROLE_ID_LIST = "user_role_ids";
 
     /**
+     * User-level denied button permission codes.
+     * <p>
+     * KEY format: user_denied_permissions:{userId}
+     * VALUE data type: String permission code set
+     */
+    String USER_DENIED_PERMISSION_LIST = "user_denied_permissions";
+
+    /**
      * 拥有指定菜单的角色编号的缓存
      * <p>
      * KEY 格式：menu_role_ids:{menuId}

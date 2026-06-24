@@ -5,32 +5,38 @@ import cn.iocoder.yudao.framework.common.enums.CommonStatusEnum;
 import cn.iocoder.yudao.framework.common.exception.ServiceException;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.common.util.collection.ArrayUtils;
-import cn.iocoder.yudao.framework.common.util.collection.CollectionUtils;
 import cn.iocoder.yudao.framework.test.core.ut.BaseDbUnitTest;
+import cn.iocoder.yudao.framework.tenant.core.context.TenantContextHolder;
 import cn.iocoder.yudao.module.infra.api.config.ConfigApi;
 import cn.iocoder.yudao.module.infra.api.file.FileApi;
 import cn.iocoder.yudao.module.system.controller.admin.user.vo.profile.UserProfileUpdatePasswordReqVO;
 import cn.iocoder.yudao.module.system.controller.admin.user.vo.profile.UserProfileUpdateReqVO;
+import cn.iocoder.yudao.module.system.controller.admin.user.vo.user.UserBatchUpdateReqVO;
 import cn.iocoder.yudao.module.system.controller.admin.user.vo.user.UserImportExcelVO;
 import cn.iocoder.yudao.module.system.controller.admin.user.vo.user.UserImportRespVO;
 import cn.iocoder.yudao.module.system.controller.admin.user.vo.user.UserPageReqVO;
 import cn.iocoder.yudao.module.system.controller.admin.user.vo.user.UserSaveReqVO;
 import cn.iocoder.yudao.module.system.dal.dataobject.dept.DeptDO;
-import cn.iocoder.yudao.module.system.dal.dataobject.dept.PostDO;
 import cn.iocoder.yudao.module.system.dal.dataobject.dept.UserDeptDO;
 import cn.iocoder.yudao.module.system.dal.dataobject.dept.UserPostDO;
+import cn.iocoder.yudao.module.system.dal.dataobject.permission.RoleDO;
+import cn.iocoder.yudao.module.system.dal.dataobject.permission.UserRoleDO;
 import cn.iocoder.yudao.module.system.dal.dataobject.tenant.TenantDO;
 import cn.iocoder.yudao.module.system.dal.dataobject.user.AdminUserDO;
+import cn.iocoder.yudao.module.system.dal.mysql.dept.DeptMapper;
 import cn.iocoder.yudao.module.system.dal.mysql.dept.UserDeptMapper;
 import cn.iocoder.yudao.module.system.dal.mysql.dept.UserPostMapper;
+import cn.iocoder.yudao.module.system.dal.mysql.permission.RoleMapper;
+import cn.iocoder.yudao.module.system.dal.mysql.permission.UserRoleMapper;
 import cn.iocoder.yudao.module.system.dal.mysql.user.AdminUserMapper;
 import cn.iocoder.yudao.module.system.enums.common.SexEnum;
+import cn.iocoder.yudao.module.system.enums.permission.DataScopeEnum;
 import cn.iocoder.yudao.module.system.service.dept.DeptService;
-import cn.iocoder.yudao.module.system.service.dept.PostService;
 import cn.iocoder.yudao.module.system.service.oauth2.OAuth2TokenService;
 import cn.iocoder.yudao.module.system.service.permission.PermissionService;
 import cn.iocoder.yudao.module.system.service.permission.RoleService;
 import cn.iocoder.yudao.module.system.service.tenant.TenantService;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.stubbing.Answer;
@@ -39,9 +45,14 @@ import org.springframework.context.annotation.Import;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
 import javax.annotation.Resource;
+import javax.sql.DataSource;
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.SQLException;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.Consumer;
 
 import static cn.hutool.core.util.RandomUtil.randomEle;
@@ -61,7 +72,7 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
-@Import(AdminUserServiceImpl.class)
+@Import({AdminUserServiceImpl.class, UserErpBizDataReferenceService.class})
 public class AdminUserServiceImplTest extends BaseDbUnitTest {
 
     @Resource
@@ -70,14 +81,20 @@ public class AdminUserServiceImplTest extends BaseDbUnitTest {
     @Resource
     private AdminUserMapper userMapper;
     @Resource
+    private DeptMapper deptMapper;
+    @Resource
     private UserDeptMapper userDeptMapper;
     @Resource
     private UserPostMapper userPostMapper;
+    @Resource
+    private RoleMapper roleMapper;
+    @Resource
+    private UserRoleMapper userRoleMapper;
+    @Resource
+    private DataSource dataSource;
 
     @MockBean
     private DeptService deptService;
-    @MockBean
-    private PostService postService;
     @MockBean
     private PermissionService permissionService;
     @MockBean
@@ -99,13 +116,18 @@ public class AdminUserServiceImplTest extends BaseDbUnitTest {
         when(configApi.getConfigValueByKey(USER_INIT_PASSWORD_KEY)).thenReturn("yudaoyuanma");
     }
 
+    @AfterEach
+    public void clearTenantContext() {
+        TenantContextHolder.clear();
+    }
+
     @Test
     public void testCreatUser_success() {
         // 准备参数
         UserSaveReqVO reqVO = randomPojo(UserSaveReqVO.class, o -> {
             o.setSex(RandomUtil.randomEle(SexEnum.values()).getSex());
             o.setMobile(randomString());
-            o.setPostIds(asSet(1L, 2L));
+            o.setDataScope(DataScopeEnum.DEPT_ONLY.getScope());
         }).setId(null); // 避免 id 被赋值
         // mock 账户额度充足
         TenantDO tenant = randomPojo(TenantDO.class, o -> o.setAccountCount(1));
@@ -119,13 +141,6 @@ public class AdminUserServiceImplTest extends BaseDbUnitTest {
             o.setStatus(CommonStatusEnum.ENABLE.getStatus());
         });
         when(deptService.getDept(eq(dept.getId()))).thenReturn(dept);
-        // mock postService 的方法
-        List<PostDO> posts = CollectionUtils.convertList(reqVO.getPostIds(), postId ->
-                randomPojo(PostDO.class, o -> {
-                    o.setId(postId);
-                    o.setStatus(CommonStatusEnum.ENABLE.getStatus());
-                }));
-        when(postService.getPostList(eq(reqVO.getPostIds()), isNull())).thenReturn(posts);
         // mock passwordEncoder 的方法
         when(passwordEncoder.encode(eq(reqVO.getPassword()))).thenReturn("yudaoyuanma");
 
@@ -133,13 +148,11 @@ public class AdminUserServiceImplTest extends BaseDbUnitTest {
         Long userId = userService.createUser(reqVO);
         // 断言
         AdminUserDO user = userMapper.selectById(userId);
-        assertPojoEquals(reqVO, user, "password", "id");
+        assertPojoEquals(reqVO, user, "password", "id", "username");
+        assertEquals(reqVO.getMobile(), user.getUsername());
         assertEquals("yudaoyuanma", user.getPassword());
         assertEquals(CommonStatusEnum.ENABLE.getStatus(), user.getStatus());
-        // 断言关联岗位
-        List<UserPostDO> userPosts = userPostMapper.selectListByUserId(user.getId());
-        assertEquals(1L, userPosts.get(0).getPostId());
-        assertEquals(2L, userPosts.get(1).getPostId());
+        assertTrue(userPostMapper.selectListByUserId(user.getId()).isEmpty());
     }
 
     @Test
@@ -169,7 +182,7 @@ public class AdminUserServiceImplTest extends BaseDbUnitTest {
             o.setId(dbUser.getId());
             o.setSex(RandomUtil.randomEle(SexEnum.values()).getSex());
             o.setMobile(randomString());
-            o.setPostIds(asSet(2L, 3L));
+            o.setDataScope(DataScopeEnum.DEPT_ONLY.getScope());
         });
         // mock deptService 的方法
         DeptDO dept = randomPojo(DeptDO.class, o -> {
@@ -177,23 +190,101 @@ public class AdminUserServiceImplTest extends BaseDbUnitTest {
             o.setStatus(CommonStatusEnum.ENABLE.getStatus());
         });
         when(deptService.getDept(eq(dept.getId()))).thenReturn(dept);
-        // mock postService 的方法
-        List<PostDO> posts = CollectionUtils.convertList(reqVO.getPostIds(), postId ->
-                randomPojo(PostDO.class, o -> {
-                    o.setId(postId);
-                    o.setStatus(CommonStatusEnum.ENABLE.getStatus());
-                }));
-        when(postService.getPostList(eq(reqVO.getPostIds()), isNull())).thenReturn(posts);
-
         // 调用
         userService.updateUser(reqVO);
         // 断言
         AdminUserDO user = userMapper.selectById(reqVO.getId());
-        assertPojoEquals(reqVO, user, "password");
-        // 断言关联岗位
+        assertPojoEquals(reqVO, user, "password", "username");
+        assertEquals(reqVO.getMobile(), user.getUsername());
+        // 断言历史岗位关联不随用户编辑被清空或修改
         List<UserPostDO> userPosts = userPostMapper.selectListByUserId(user.getId());
-        assertEquals(2L, userPosts.get(0).getPostId());
-        assertEquals(3L, userPosts.get(1).getPostId());
+        assertEquals(1L, userPosts.get(0).getPostId());
+        assertEquals(2L, userPosts.get(1).getPostId());
+    }
+
+    @Test
+    public void testUpdateUserBatch_mobileSyncUsername() {
+        // mock 数据
+        AdminUserDO dbUser = randomAdminUserDO(o -> o.setMobile(randomMobile()));
+        userMapper.insert(dbUser);
+        String mobile = randomMobile();
+        UserBatchUpdateReqVO reqVO = new UserBatchUpdateReqVO()
+                .setIds(singletonList(dbUser.getId()))
+                .setUpdateMobile(true)
+                .setMobile(mobile);
+
+        // 调用
+        userService.updateUserBatch(reqVO);
+
+        // 断言
+        AdminUserDO user = userMapper.selectById(dbUser.getId());
+        assertEquals(mobile, user.getMobile());
+        assertEquals(mobile, user.getUsername());
+    }
+
+    @Test
+    public void testUpdateUserBatch_dataScopeCustom() {
+        // mock 数据
+        AdminUserDO dbUser = randomAdminUserDO(o -> {
+            o.setDataScope(DataScopeEnum.SELF.getScope());
+            o.setDataScopeDeptIds(asSet(10L));
+        });
+        userMapper.insert(dbUser);
+        Set<Long> dataScopeDeptIds = asSet(20L, 30L);
+        UserBatchUpdateReqVO reqVO = new UserBatchUpdateReqVO()
+                .setIds(singletonList(dbUser.getId()))
+                .setUpdateDataScope(true)
+                .setDataScope(DataScopeEnum.DEPT_CUSTOM.getScope())
+                .setDataScopeDeptIds(dataScopeDeptIds);
+
+        // 调用
+        userService.updateUserBatch(reqVO);
+
+        // 断言
+        AdminUserDO user = userMapper.selectById(dbUser.getId());
+        assertEquals(DataScopeEnum.DEPT_CUSTOM.getScope(), user.getDataScope());
+        assertEquals(dataScopeDeptIds, user.getDataScopeDeptIds());
+        verify(deptService, times(1)).validateDeptList(eq(dataScopeDeptIds));
+    }
+
+    @Test
+    public void testUpdateUserBatch_dataScopeInheritRole() {
+        // mock 数据
+        AdminUserDO dbUser = randomAdminUserDO(o -> {
+            o.setDataScope(DataScopeEnum.DEPT_CUSTOM.getScope());
+            o.setDataScopeDeptIds(asSet(10L, 20L));
+        });
+        userMapper.insert(dbUser);
+        UserBatchUpdateReqVO reqVO = new UserBatchUpdateReqVO()
+                .setIds(singletonList(dbUser.getId()))
+                .setUpdateDataScope(true)
+                .setDataScope(0)
+                .setDataScopeDeptIds(asSet(10L));
+
+        // 调用，并断言异常
+        ServiceException exception = assertThrows(ServiceException.class, () -> userService.updateUserBatch(reqVO));
+        assertEquals("数据范围不能选择继承角色", exception.getMessage());
+
+        // 断言原数据未被覆盖
+        AdminUserDO user = userMapper.selectById(dbUser.getId());
+        assertEquals(DataScopeEnum.DEPT_CUSTOM.getScope(), user.getDataScope());
+        assertEquals(asSet(10L, 20L), user.getDataScopeDeptIds());
+        verify(deptService, never()).validateDeptList(eq(reqVO.getDataScopeDeptIds()));
+    }
+
+    @Test
+    public void testUpdateUserBatch_dataScopeInvalid() {
+        // mock 数据
+        AdminUserDO dbUser = randomAdminUserDO();
+        userMapper.insert(dbUser);
+        UserBatchUpdateReqVO reqVO = new UserBatchUpdateReqVO()
+                .setIds(singletonList(dbUser.getId()))
+                .setUpdateDataScope(true)
+                .setDataScope(99);
+
+        // 调用，并断言异常
+        ServiceException exception = assertThrows(ServiceException.class, () -> userService.updateUserBatch(reqVO));
+        assertEquals("数据范围不正确", exception.getMessage());
     }
 
     @Test
@@ -216,7 +307,7 @@ public class AdminUserServiceImplTest extends BaseDbUnitTest {
     @Test
     public void testUpdateUserProfile_success() {
         // mock 数据
-        AdminUserDO dbUser = randomAdminUserDO();
+        AdminUserDO dbUser = randomAdminUserDO(o -> o.setMobile(randomMobile()));
         userMapper.insert(dbUser);
         // 准备参数
         Long userId = dbUser.getId();
@@ -259,7 +350,7 @@ public class AdminUserServiceImplTest extends BaseDbUnitTest {
     @Test
     public void testUpdateUserPassword02_success() {
         // mock 数据
-        AdminUserDO dbUser = randomAdminUserDO();
+        AdminUserDO dbUser = randomAdminUserDO(o -> o.setMobile(randomMobile()));
         userMapper.insert(dbUser);
         // 准备参数
         Long userId = dbUser.getId();
@@ -278,7 +369,7 @@ public class AdminUserServiceImplTest extends BaseDbUnitTest {
     @Test
     public void testUpdateUserStatus() {
         // mock 数据
-        AdminUserDO dbUser = randomAdminUserDO();
+        AdminUserDO dbUser = randomAdminUserDO(o -> o.setMobile(randomMobile()));
         userMapper.insert(dbUser);
         // 准备参数
         Long userId = dbUser.getId();
@@ -305,6 +396,60 @@ public class AdminUserServiceImplTest extends BaseDbUnitTest {
         assertNull(userMapper.selectById(userId));
         // 校验调用次数
         verify(permissionService, times(1)).processUserDeleted(eq(userId));
+    }
+
+    @Test
+    public void testDeleteUser_isDeptLeader() {
+        AdminUserDO dbUser = randomAdminUserDO();
+        userMapper.insert(dbUser);
+        DeptDO deptDO = randomPojo(DeptDO.class, o -> o.setLeaderUserId(dbUser.getId()));
+        deptMapper.insert(deptDO);
+
+        assertServiceException(() -> userService.deleteUser(dbUser.getId()), USER_IS_DEPT_LEADER);
+        assertNotNull(userMapper.selectById(dbUser.getId()));
+        verify(permissionService, never()).processUserDeleted(eq(dbUser.getId()));
+    }
+
+    @Test
+    public void testDeleteUser_existsBizData() throws SQLException {
+        TenantContextHolder.setTenantId(1L);
+        AdminUserDO dbUser = randomAdminUserDO();
+        userMapper.insert(dbUser);
+        insertErpPurchaseOrder(dbUser.getId(), false, 1L);
+
+        assertServiceException(() -> userService.deleteUser(dbUser.getId()), USER_EXISTS_BIZ_DATA);
+        assertNotNull(userMapper.selectById(dbUser.getId()));
+        verify(permissionService, never()).processUserDeleted(eq(dbUser.getId()));
+    }
+
+    @Test
+    public void testDeleteUser_ignoreDeletedAndOtherTenantBizData() throws SQLException {
+        TenantContextHolder.setTenantId(1L);
+        AdminUserDO dbUser = randomAdminUserDO();
+        userMapper.insert(dbUser);
+        insertErpPurchaseOrder(dbUser.getId(), true, 1L);
+        insertErpPurchaseOrder(dbUser.getId(), false, 2L);
+
+        userService.deleteUser(dbUser.getId());
+
+        assertNull(userMapper.selectById(dbUser.getId()));
+        verify(permissionService, times(1)).processUserDeleted(eq(dbUser.getId()));
+    }
+
+    @Test
+    public void testDeleteUserList_existsBizData() throws SQLException {
+        TenantContextHolder.setTenantId(1L);
+        AdminUserDO dbUser1 = randomAdminUserDO();
+        userMapper.insert(dbUser1);
+        AdminUserDO dbUser2 = randomAdminUserDO();
+        userMapper.insert(dbUser2);
+        insertErpPurchaseOrder(dbUser2.getId(), false, 1L);
+
+        assertServiceException(() -> userService.deleteUserList(newArrayList(dbUser1.getId(), dbUser2.getId())),
+                USER_EXISTS_BIZ_DATA);
+        assertNotNull(userMapper.selectById(dbUser1.getId()));
+        assertNotNull(userMapper.selectById(dbUser2.getId()));
+        verify(permissionService, never()).processUserDeleted(anyLong());
     }
 
     @Test
@@ -356,6 +501,77 @@ public class AdminUserServiceImplTest extends BaseDbUnitTest {
         assertEquals(1, pageResult.getTotal());
         assertEquals(1, pageResult.getList().size());
         assertPojoEquals(dbUser, pageResult.getList().get(0));
+    }
+
+    @Test
+    public void testGetUserPage_orderByDeptName() {
+        TenantContextHolder.setTenantId(1L);
+        DeptDO deptA = insertDept("Alpha Dept");
+        DeptDO deptB = insertDept("Beta Dept");
+        AdminUserDO userB = insertUser("user-b", deptB.getId());
+        AdminUserDO userNoDept = insertUser("user-no-dept", null);
+        AdminUserDO userA = insertUser("user-a", deptA.getId());
+        UserPageReqVO reqVO = new UserPageReqVO();
+        reqVO.setOrderField("deptName");
+        reqVO.setOrderDirection("asc");
+
+        PageResult<AdminUserDO> pageResult = userService.getUserPage(reqVO);
+
+        assertEquals(3, pageResult.getTotal());
+        assertEquals(userA.getId(), pageResult.getList().get(0).getId());
+        assertEquals(userB.getId(), pageResult.getList().get(1).getId());
+        assertEquals(userNoDept.getId(), pageResult.getList().get(2).getId());
+
+        reqVO.setOrderDirection("desc");
+        pageResult = userService.getUserPage(reqVO);
+        assertEquals(userB.getId(), pageResult.getList().get(0).getId());
+        assertEquals(userA.getId(), pageResult.getList().get(1).getId());
+        assertEquals(userNoDept.getId(), pageResult.getList().get(2).getId());
+    }
+
+    @Test
+    public void testGetUserPage_orderByRoleNames() {
+        TenantContextHolder.setTenantId(1L);
+        RoleDO roleAlpha = insertRole("Alpha Role");
+        RoleDO roleBeta = insertRole("Beta Role");
+        RoleDO roleGamma = insertRole("Gamma Role");
+        AdminUserDO userBeta = insertUser("user-beta-role", null);
+        AdminUserDO userNoRole = insertUser("user-no-role", null);
+        AdminUserDO userAlpha = insertUser("user-alpha-role", null);
+        insertUserRole(userBeta.getId(), roleBeta.getId());
+        insertUserRole(userAlpha.getId(), roleGamma.getId());
+        insertUserRole(userAlpha.getId(), roleAlpha.getId());
+        UserPageReqVO reqVO = new UserPageReqVO();
+        reqVO.setOrderField("roleNames");
+        reqVO.setOrderDirection("asc");
+
+        PageResult<AdminUserDO> pageResult = userService.getUserPage(reqVO);
+
+        assertEquals(3, pageResult.getTotal());
+        assertEquals(userAlpha.getId(), pageResult.getList().get(0).getId());
+        assertEquals(userBeta.getId(), pageResult.getList().get(1).getId());
+        assertEquals(userNoRole.getId(), pageResult.getList().get(2).getId());
+
+        reqVO.setOrderDirection("desc");
+        pageResult = userService.getUserPage(reqVO);
+        assertEquals(userBeta.getId(), pageResult.getList().get(0).getId());
+        assertEquals(userAlpha.getId(), pageResult.getList().get(1).getId());
+        assertEquals(userNoRole.getId(), pageResult.getList().get(2).getId());
+    }
+
+    @Test
+    public void testGetUserPage_invalidOrderFallback() {
+        AdminUserDO lowIdUser = insertUser("low-id-user", null);
+        AdminUserDO highIdUser = insertUser("high-id-user", null);
+        UserPageReqVO reqVO = new UserPageReqVO();
+        reqVO.setOrderField("roleNames");
+        reqVO.setOrderDirection("invalid");
+
+        PageResult<AdminUserDO> pageResult = userService.getUserPage(reqVO);
+
+        assertEquals(2, pageResult.getTotal());
+        assertEquals(highIdUser.getId(), pageResult.getList().get(0).getId());
+        assertEquals(lowIdUser.getId(), pageResult.getList().get(1).getId());
     }
 
     /**
@@ -434,7 +650,7 @@ public class AdminUserServiceImplTest extends BaseDbUnitTest {
         assertEquals(0, respVO.getCreateUsernames().size());
         assertEquals(0, respVO.getUpdateUsernames().size());
         assertEquals(1, respVO.getFailureUsernames().size());
-        assertEquals(DEPT_NOT_FOUND.getMsg(), respVO.getFailureUsernames().get(importUser.getUsername()));
+        assertEquals(DEPT_NOT_FOUND.getMsg(), respVO.getFailureUsernames().get(importUser.getMobile()));
     }
 
     /**
@@ -463,7 +679,8 @@ public class AdminUserServiceImplTest extends BaseDbUnitTest {
         // 断言
         assertEquals(1, respVO.getCreateUsernames().size());
         AdminUserDO user = userMapper.selectByUsername(respVO.getCreateUsernames().get(0));
-        assertPojoEquals(importUser, user);
+        assertPojoEquals(importUser, user, "username");
+        assertEquals(importUser.getMobile(), user.getUsername());
         assertEquals("java", user.getPassword());
         List<UserDeptDO> userDepts = userDeptMapper.selectListByUserId(user.getId());
         assertEquals(1, userDepts.size());
@@ -478,15 +695,14 @@ public class AdminUserServiceImplTest extends BaseDbUnitTest {
     @Test
     public void testImportUserList_03() {
         // mock 数据
-        AdminUserDO dbUser = randomAdminUserDO();
+        AdminUserDO dbUser = randomAdminUserDO(o -> o.setMobile(randomMobile()));
         userMapper.insert(dbUser);
         // 准备参数
         UserImportExcelVO importUser = randomPojo(UserImportExcelVO.class, o -> {
             o.setStatus(randomEle(CommonStatusEnum.values()).getStatus()); // 保证 status 的范围
             o.setSex(randomEle(SexEnum.values()).getSex()); // 保证 sex 的范围
-            o.setUsername(dbUser.getUsername());
+            o.setMobile(dbUser.getMobile());
             o.setEmail(randomEmail());
-            o.setMobile(randomMobile());
         });
         // mock deptService 的方法
         DeptDO dept = randomPojo(DeptDO.class, o -> {
@@ -501,7 +717,7 @@ public class AdminUserServiceImplTest extends BaseDbUnitTest {
         assertEquals(0, respVO.getCreateUsernames().size());
         assertEquals(0, respVO.getUpdateUsernames().size());
         assertEquals(1, respVO.getFailureUsernames().size());
-        assertEquals(USER_USERNAME_EXISTS.getMsg(), respVO.getFailureUsernames().get(importUser.getUsername()));
+        assertEquals(USER_USERNAME_EXISTS.getMsg(), respVO.getFailureUsernames().get(importUser.getMobile()));
     }
 
     /**
@@ -510,16 +726,15 @@ public class AdminUserServiceImplTest extends BaseDbUnitTest {
     @Test
     public void testImportUserList_04() {
         // mock 数据
-        AdminUserDO dbUser = randomAdminUserDO();
+        AdminUserDO dbUser = randomAdminUserDO(o -> o.setMobile(randomMobile()));
         userMapper.insert(dbUser);
         userDeptMapper.insert(new UserDeptDO().setUserId(dbUser.getId()).setDeptId(dbUser.getDeptId()));
         // 准备参数
         UserImportExcelVO importUser = randomPojo(UserImportExcelVO.class, o -> {
             o.setStatus(randomEle(CommonStatusEnum.values()).getStatus()); // 保证 status 的范围
             o.setSex(randomEle(SexEnum.values()).getSex()); // 保证 sex 的范围
-            o.setUsername(dbUser.getUsername());
+            o.setMobile(dbUser.getMobile());
             o.setEmail(randomEmail());
-            o.setMobile(randomMobile());
         });
         // mock deptService 的方法
         DeptDO dept = randomPojo(DeptDO.class, o -> {
@@ -534,7 +749,8 @@ public class AdminUserServiceImplTest extends BaseDbUnitTest {
         assertEquals(0, respVO.getCreateUsernames().size());
         assertEquals(1, respVO.getUpdateUsernames().size());
         AdminUserDO user = userMapper.selectByUsername(respVO.getUpdateUsernames().get(0));
-        assertPojoEquals(importUser, user);
+        assertPojoEquals(importUser, user, "username");
+        assertEquals(importUser.getMobile(), user.getUsername());
         List<UserDeptDO> userDepts = userDeptMapper.selectListByUserId(user.getId());
         assertEquals(1, userDepts.size());
         assertEquals(importUser.getDeptId(), userDepts.get(0).getDeptId());
@@ -767,6 +983,60 @@ public class AdminUserServiceImplTest extends BaseDbUnitTest {
     }
 
     // ========== 随机对象 ==========
+
+    private void insertErpPurchaseOrder(Long purchaser, boolean deleted, Long tenantId) throws SQLException {
+        try (Connection connection = dataSource.getConnection();
+             PreparedStatement statement = connection.prepareStatement(
+                     "INSERT INTO erp_purchase_order (purchaser, deleted, tenant_id) VALUES (?, ?, ?)")) {
+            statement.setLong(1, purchaser);
+            statement.setBoolean(2, deleted);
+            statement.setLong(3, tenantId);
+            statement.executeUpdate();
+        }
+    }
+
+    private DeptDO insertDept(String name) {
+        DeptDO dept = randomPojo(DeptDO.class, o -> {
+            o.setName(name);
+            o.setParentId(0L);
+            o.setStatus(CommonStatusEnum.ENABLE.getStatus());
+            o.setTenantId(1L);
+        });
+        deptMapper.insert(dept);
+        return dept;
+    }
+
+    private RoleDO insertRole(String name) {
+        RoleDO role = randomPojo(RoleDO.class, o -> {
+            o.setName(name);
+            o.setCode(name.toLowerCase().replace(" ", "_"));
+            o.setStatus(CommonStatusEnum.ENABLE.getStatus());
+            o.setType(1);
+            o.setDataScope(1);
+            o.setTenantId(1L);
+        });
+        roleMapper.insert(role);
+        return role;
+    }
+
+    private AdminUserDO insertUser(String username, Long deptId) {
+        AdminUserDO user = randomAdminUserDO(o -> {
+            o.setUsername(username);
+            o.setMobile(randomMobile());
+            o.setNickname(username);
+            o.setDeptId(deptId);
+            o.setTenantId(1L);
+        });
+        userMapper.insert(user);
+        return user;
+    }
+
+    private void insertUserRole(Long userId, Long roleId) {
+        UserRoleDO userRole = new UserRoleDO();
+        userRole.setUserId(userId);
+        userRole.setRoleId(roleId);
+        userRoleMapper.insert(userRole);
+    }
 
     @SafeVarargs
     private static AdminUserDO randomAdminUserDO(Consumer<AdminUserDO>... consumers) {

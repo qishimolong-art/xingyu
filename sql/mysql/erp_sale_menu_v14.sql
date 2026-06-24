@@ -210,7 +210,7 @@ ON DUPLICATE KEY UPDATE
  `deleted` = b'0';
 
 -- =====================================================
--- 销售手推车 (2980-2989)
+-- 销售手推车 (2980-2989, 3013)
 -- =====================================================
 INSERT INTO `system_menu`
 (`id`, `name`, `permission`, `type`, `sort`, `parent_id`, `path`, `icon`, `component`, `component_name`,
@@ -409,7 +409,7 @@ INSERT INTO `system_menu`
 (`id`, `name`, `permission`, `type`, `sort`, `parent_id`, `path`, `icon`, `component`, `component_name`,
  `status`, `visible`, `keep_alive`, `always_show`, `creator`, `create_time`, `updater`, `update_time`, `deleted`)
 VALUES
-(2988, '手推车转报价', 'erp:sale-cart:convert-quote', 3, 8, 2980, '', '', '', NULL,
+(3013, '销售手推车驳回', 'erp:sale-cart:reject', 3, 8, 2980, '', '', '', NULL,
  0, b'1', b'1', b'1', '1', NOW(), '1', NOW(), b'0')
 ON DUPLICATE KEY UPDATE
  `name` = VALUES(`name`),
@@ -433,7 +433,31 @@ INSERT INTO `system_menu`
 (`id`, `name`, `permission`, `type`, `sort`, `parent_id`, `path`, `icon`, `component`, `component_name`,
  `status`, `visible`, `keep_alive`, `always_show`, `creator`, `create_time`, `updater`, `update_time`, `deleted`)
 VALUES
-(2989, '销售手推车导出', 'erp:sale-cart:export', 3, 9, 2980, '', '', '', NULL,
+(2988, '手推车转报价', 'erp:sale-cart:convert-quote', 3, 9, 2980, '', '', '', NULL,
+ 0, b'1', b'1', b'1', '1', NOW(), '1', NOW(), b'0')
+ON DUPLICATE KEY UPDATE
+ `name` = VALUES(`name`),
+ `permission` = VALUES(`permission`),
+ `type` = VALUES(`type`),
+ `sort` = VALUES(`sort`),
+ `parent_id` = VALUES(`parent_id`),
+ `path` = VALUES(`path`),
+ `icon` = VALUES(`icon`),
+ `component` = VALUES(`component`),
+ `component_name` = VALUES(`component_name`),
+ `status` = VALUES(`status`),
+ `visible` = VALUES(`visible`),
+ `keep_alive` = VALUES(`keep_alive`),
+ `always_show` = VALUES(`always_show`),
+ `updater` = '1',
+ `update_time` = NOW(),
+ `deleted` = b'0';
+
+INSERT INTO `system_menu`
+(`id`, `name`, `permission`, `type`, `sort`, `parent_id`, `path`, `icon`, `component`, `component_name`,
+ `status`, `visible`, `keep_alive`, `always_show`, `creator`, `create_time`, `updater`, `update_time`, `deleted`)
+VALUES
+(2989, '销售手推车导出', 'erp:sale-cart:export', 3, 10, 2980, '', '', '', NULL,
  0, b'1', b'1', b'1', '1', NOW(), '1', NOW(), b'0')
 ON DUPLICATE KEY UPDATE
  `name` = VALUES(`name`),
@@ -739,7 +763,7 @@ VALUES
     (1, 2983, '1', NOW(), '1', NOW(), b'0', 1), (1, 2984, '1', NOW(), '1', NOW(), b'0', 1),
     (1, 2985, '1', NOW(), '1', NOW(), b'0', 1), (1, 2986, '1', NOW(), '1', NOW(), b'0', 1),
     (1, 2987, '1', NOW(), '1', NOW(), b'0', 1), (1, 2988, '1', NOW(), '1', NOW(), b'0', 1),
-    (1, 2989, '1', NOW(), '1', NOW(), b'0', 1),
+    (1, 2989, '1', NOW(), '1', NOW(), b'0', 1), (1, 3013, '1', NOW(), '1', NOW(), b'0', 1),
     (1, 2990, '1', NOW(), '1', NOW(), b'0', 1), (1, 2991, '1', NOW(), '1', NOW(), b'0', 1),
     (1, 2992, '1', NOW(), '1', NOW(), b'0', 1), (1, 2993, '1', NOW(), '1', NOW(), b'0', 1),
     (1, 2994, '1', NOW(), '1', NOW(), b'0', 1), (1, 2995, '1', NOW(), '1', NOW(), b'0', 1),

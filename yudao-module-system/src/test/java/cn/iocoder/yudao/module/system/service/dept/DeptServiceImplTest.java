@@ -3,15 +3,29 @@ package cn.iocoder.yudao.module.system.service.dept;
 import cn.iocoder.yudao.framework.common.enums.CommonStatusEnum;
 import cn.iocoder.yudao.framework.common.util.object.ObjectUtils;
 import cn.iocoder.yudao.framework.test.core.ut.BaseDbUnitTest;
+import cn.iocoder.yudao.framework.tenant.core.context.TenantContextHolder;
+import cn.iocoder.yudao.module.system.controller.admin.dept.vo.dept.DeptBatchUpdateReqVO;
+import cn.iocoder.yudao.module.system.controller.admin.dept.vo.dept.DeptImportExcelVO;
+import cn.iocoder.yudao.module.system.controller.admin.dept.vo.dept.DeptImportRespVO;
 import cn.iocoder.yudao.module.system.controller.admin.dept.vo.dept.DeptListReqVO;
 import cn.iocoder.yudao.module.system.controller.admin.dept.vo.dept.DeptSaveReqVO;
 import cn.iocoder.yudao.module.system.controller.admin.dept.vo.dept.DeptUpdateSortReqVO;
 import cn.iocoder.yudao.module.system.dal.dataobject.dept.DeptDO;
+import cn.iocoder.yudao.module.system.dal.dataobject.dept.UserDeptDO;
+import cn.iocoder.yudao.module.system.dal.mysql.dept.UserDeptMapper;
+import cn.iocoder.yudao.module.system.dal.dataobject.user.AdminUserDO;
 import cn.iocoder.yudao.module.system.dal.mysql.dept.DeptMapper;
+import cn.iocoder.yudao.module.system.dal.mysql.user.AdminUserMapper;
+import cn.iocoder.yudao.module.system.enums.common.SexEnum;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.context.annotation.Import;
 
 import javax.annotation.Resource;
+import javax.sql.DataSource;
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.SQLException;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Set;
@@ -28,13 +42,24 @@ import static org.junit.jupiter.api.Assertions.*;
  *
  * @author niudehua
  */
-@Import(DeptServiceImpl.class)
+@Import({DeptServiceImpl.class, DeptErpBizDataReferenceService.class})
 public class DeptServiceImplTest extends BaseDbUnitTest {
 
     @Resource
     private DeptServiceImpl deptService;
     @Resource
     private DeptMapper deptMapper;
+    @Resource
+    private AdminUserMapper userMapper;
+    @Resource
+    private UserDeptMapper userDeptMapper;
+    @Resource
+    private DataSource dataSource;
+
+    @AfterEach
+    public void clearTenantContext() {
+        TenantContextHolder.clear();
+    }
 
     @Test
     public void testCreateDept() {
@@ -55,6 +80,42 @@ public class DeptServiceImplTest extends BaseDbUnitTest {
     }
 
     @Test
+    public void testCreateDept_defaultSortWhenSortNull() {
+        DeptDO siblingDeptDO = randomPojo(DeptDO.class, o -> {
+            o.setParentId(DeptDO.PARENT_ID_ROOT);
+            o.setSort(20);
+            o.setStatus(randomCommonStatus());
+        });
+        deptMapper.insert(siblingDeptDO);
+        DeptSaveReqVO reqVO = randomPojo(DeptSaveReqVO.class, o -> {
+            o.setId(null);
+            o.setParentId(DeptDO.PARENT_ID_ROOT);
+            o.setSort(null);
+            o.setStatus(randomCommonStatus());
+        });
+
+        Long deptId = deptService.createDept(reqVO);
+
+        DeptDO deptDO = deptMapper.selectById(deptId);
+        assertEquals(30, deptDO.getSort());
+    }
+
+    @Test
+    public void testCreateDept_defaultSortWhenNoSibling() {
+        DeptSaveReqVO reqVO = randomPojo(DeptSaveReqVO.class, o -> {
+            o.setId(null);
+            o.setParentId(DeptDO.PARENT_ID_ROOT);
+            o.setSort(null);
+            o.setStatus(randomCommonStatus());
+        });
+
+        Long deptId = deptService.createDept(reqVO);
+
+        DeptDO deptDO = deptMapper.selectById(deptId);
+        assertEquals(10, deptDO.getSort());
+    }
+
+    @Test
     public void testUpdateDept() {
         // mock 数据
         DeptDO dbDeptDO = randomPojo(DeptDO.class, o -> o.setStatus(randomCommonStatus()));
@@ -72,6 +133,34 @@ public class DeptServiceImplTest extends BaseDbUnitTest {
         // 校验是否更新正确
         DeptDO deptDO = deptMapper.selectById(reqVO.getId()); // 获取最新的
         assertPojoEquals(reqVO, deptDO);
+    }
+
+    @Test
+    public void testUpdateDept_clearLeaderUserId() {
+        AdminUserDO user = randomPojo(AdminUserDO.class, o -> {
+            o.setStatus(CommonStatusEnum.ENABLE.getStatus());
+            o.setSex(SexEnum.UNKNOWN.getSex());
+        });
+        userMapper.insert(user);
+        DeptDO dbDeptDO = randomPojo(DeptDO.class, o -> {
+            o.setParentId(DeptDO.PARENT_ID_ROOT);
+            o.setLeaderUserId(user.getId());
+            o.setStatus(CommonStatusEnum.ENABLE.getStatus());
+        });
+        deptMapper.insert(dbDeptDO);
+        DeptSaveReqVO reqVO = new DeptSaveReqVO()
+                .setId(dbDeptDO.getId())
+                .setName(dbDeptDO.getName())
+                .setParentId(dbDeptDO.getParentId())
+                .setSort(dbDeptDO.getSort())
+                .setLeaderUserId(null)
+                .setStatus(CommonStatusEnum.DISABLE.getStatus());
+
+        deptService.updateDept(reqVO);
+
+        DeptDO deptDO = deptMapper.selectById(reqVO.getId());
+        assertNull(deptDO.getLeaderUserId());
+        assertEquals(CommonStatusEnum.DISABLE.getStatus(), deptDO.getStatus());
     }
 
     @Test
@@ -109,6 +198,118 @@ public class DeptServiceImplTest extends BaseDbUnitTest {
     }
 
     @Test
+    public void testBatchUpdateDept_clearLeaderAndUpdateStatus() {
+        AdminUserDO user = randomPojo(AdminUserDO.class, o -> {
+            o.setStatus(CommonStatusEnum.ENABLE.getStatus());
+            o.setSex(SexEnum.UNKNOWN.getSex());
+        });
+        userMapper.insert(user);
+        DeptDO deptDO1 = randomPojo(DeptDO.class, o -> {
+            o.setParentId(DeptDO.PARENT_ID_ROOT);
+            o.setLeaderUserId(user.getId());
+            o.setStatus(CommonStatusEnum.ENABLE.getStatus());
+        });
+        deptMapper.insert(deptDO1);
+        DeptDO deptDO2 = randomPojo(DeptDO.class, o -> {
+            o.setParentId(DeptDO.PARENT_ID_ROOT);
+            o.setLeaderUserId(user.getId());
+            o.setStatus(CommonStatusEnum.ENABLE.getStatus());
+        });
+        deptMapper.insert(deptDO2);
+        DeptBatchUpdateReqVO reqVO = new DeptBatchUpdateReqVO()
+                .setIds(Arrays.asList(deptDO1.getId(), deptDO2.getId()))
+                .setUpdateLeaderUserId(true).setLeaderUserId(null)
+                .setUpdateStatus(true).setStatus(CommonStatusEnum.DISABLE.getStatus());
+
+        deptService.batchUpdateDept(reqVO);
+
+        DeptDO updateDeptDO1 = deptMapper.selectById(deptDO1.getId());
+        DeptDO updateDeptDO2 = deptMapper.selectById(deptDO2.getId());
+        assertNull(updateDeptDO1.getLeaderUserId());
+        assertNull(updateDeptDO2.getLeaderUserId());
+        assertEquals(CommonStatusEnum.DISABLE.getStatus(), updateDeptDO1.getStatus());
+        assertEquals(CommonStatusEnum.DISABLE.getStatus(), updateDeptDO2.getStatus());
+    }
+
+    @Test
+    public void testBatchUpdateDept_parentIsSelectedChild() {
+        DeptDO parentDept = randomPojo(DeptDO.class, o -> o.setParentId(DeptDO.PARENT_ID_ROOT));
+        deptMapper.insert(parentDept);
+        DeptDO childDept = randomPojo(DeptDO.class, o -> o.setParentId(parentDept.getId()));
+        deptMapper.insert(childDept);
+        DeptBatchUpdateReqVO reqVO = new DeptBatchUpdateReqVO()
+                .setIds(singletonList(parentDept.getId()))
+                .setUpdateParentId(true).setParentId(childDept.getId());
+
+        assertServiceException(() -> deptService.batchUpdateDept(reqVO), DEPT_BATCH_UPDATE_PARENT_IS_SELECTED_CHILD);
+    }
+
+    @Test
+    public void testImportDeptList_createRootSuccess() {
+        DeptDO siblingDeptDO = randomPojo(DeptDO.class, o -> {
+            o.setParentId(DeptDO.PARENT_ID_ROOT);
+            o.setSort(20);
+            o.setStatus(CommonStatusEnum.ENABLE.getStatus());
+        });
+        deptMapper.insert(siblingDeptDO);
+        DeptImportExcelVO importDept = DeptImportExcelVO.builder()
+                .name("导入部门").status("启用").build();
+
+        DeptImportRespVO respVO = deptService.importDeptList(singletonList(importDept), false);
+
+        assertEquals(singletonList("导入部门"), respVO.getCreateNames(), respVO.getFailureNames().toString());
+        assertTrue(respVO.getUpdateNames().isEmpty());
+        assertTrue(respVO.getFailureNames().isEmpty());
+        DeptDO deptDO = deptMapper.selectByParentIdAndName(DeptDO.PARENT_ID_ROOT, "导入部门");
+        assertNotNull(deptDO);
+        assertEquals(30, deptDO.getSort());
+        assertEquals(CommonStatusEnum.ENABLE.getStatus(), deptDO.getStatus());
+    }
+
+    @Test
+    public void testImportDeptList_invalidStatus() {
+        DeptImportExcelVO importDept = DeptImportExcelVO.builder()
+                .name("导入部门").status("1").build();
+
+        DeptImportRespVO respVO = deptService.importDeptList(singletonList(importDept), false);
+
+        assertTrue(respVO.getCreateNames().isEmpty());
+        assertTrue(respVO.getUpdateNames().isEmpty());
+        assertEquals(1, respVO.getFailureNames().size());
+        assertTrue(respVO.getFailureNames().get("导入部门").contains("启用"));
+        assertNull(deptMapper.selectByParentIdAndName(DeptDO.PARENT_ID_ROOT, "导入部门"));
+    }
+
+    @Test
+    public void testImportDeptList_updateClearLeader() {
+        AdminUserDO user = randomPojo(AdminUserDO.class, o -> {
+            o.setStatus(CommonStatusEnum.ENABLE.getStatus());
+            o.setSex(SexEnum.UNKNOWN.getSex());
+        });
+        userMapper.insert(user);
+        DeptDO deptDO = randomPojo(DeptDO.class, o -> {
+            o.setName("导入部门");
+            o.setParentId(DeptDO.PARENT_ID_ROOT);
+            o.setLeaderUserId(user.getId());
+            o.setStatus(CommonStatusEnum.ENABLE.getStatus());
+            o.setSort(10);
+        });
+        deptMapper.insert(deptDO);
+        DeptImportExcelVO importDept = DeptImportExcelVO.builder()
+                .name("导入部门").sort(40).leaderUserName("").status("禁用").build();
+
+        DeptImportRespVO respVO = deptService.importDeptList(singletonList(importDept), true);
+
+        assertEquals(singletonList("导入部门"), respVO.getUpdateNames());
+        assertTrue(respVO.getCreateNames().isEmpty());
+        assertTrue(respVO.getFailureNames().isEmpty());
+        DeptDO updateDeptDO = deptMapper.selectById(deptDO.getId());
+        assertEquals(40, updateDeptDO.getSort());
+        assertNull(updateDeptDO.getLeaderUserId());
+        assertEquals(CommonStatusEnum.DISABLE.getStatus(), updateDeptDO.getStatus());
+    }
+
+    @Test
     public void testDeleteDept_success() {
         // mock 数据
         DeptDO dbDeptDO = randomPojo(DeptDO.class);
@@ -137,6 +338,57 @@ public class DeptServiceImplTest extends BaseDbUnitTest {
 
         // 调用, 并断言异常
         assertServiceException(() -> deptService.deleteDept(parentDept.getId()), DEPT_EXITS_CHILDREN);
+    }
+
+    @Test
+    public void testDeleteDept_existsUserByMainDept() {
+        DeptDO deptDO = randomPojo(DeptDO.class);
+        deptMapper.insert(deptDO);
+        userMapper.insert(randomPojo(AdminUserDO.class, o -> {
+            o.setDeptId(deptDO.getId());
+            o.setStatus(CommonStatusEnum.ENABLE.getStatus());
+            o.setSex(SexEnum.UNKNOWN.getSex());
+        }));
+
+        assertServiceException(() -> deptService.deleteDept(deptDO.getId()), DEPT_EXISTS_USER);
+        assertNotNull(deptMapper.selectById(deptDO.getId()));
+    }
+
+    @Test
+    public void testDeleteDept_existsUserByUserDept() {
+        DeptDO deptDO = randomPojo(DeptDO.class);
+        deptMapper.insert(deptDO);
+        UserDeptDO userDeptDO = new UserDeptDO();
+        userDeptDO.setUserId(randomLongId());
+        userDeptDO.setDeptId(deptDO.getId());
+        userDeptMapper.insert(userDeptDO);
+
+        assertServiceException(() -> deptService.deleteDept(deptDO.getId()), DEPT_EXISTS_USER);
+        assertNotNull(deptMapper.selectById(deptDO.getId()));
+    }
+
+    @Test
+    public void testDeleteDept_existsBizData() throws SQLException {
+        TenantContextHolder.setTenantId(1L);
+        DeptDO deptDO = randomPojo(DeptDO.class);
+        deptMapper.insert(deptDO);
+        insertErpPurchaseOrder(deptDO.getId(), false, 1L);
+
+        assertServiceException(() -> deptService.deleteDept(deptDO.getId()), DEPT_EXISTS_BIZ_DATA);
+        assertNotNull(deptMapper.selectById(deptDO.getId()));
+    }
+
+    @Test
+    public void testDeleteDept_ignoreDeletedAndOtherTenantBizData() throws SQLException {
+        TenantContextHolder.setTenantId(1L);
+        DeptDO deptDO = randomPojo(DeptDO.class);
+        deptMapper.insert(deptDO);
+        insertErpPurchaseOrder(deptDO.getId(), true, 1L);
+        insertErpPurchaseOrder(deptDO.getId(), false, 2L);
+
+        deptService.deleteDept(deptDO.getId());
+
+        assertNull(deptMapper.selectById(deptDO.getId()));
     }
 
     @Test
@@ -174,6 +426,56 @@ public class DeptServiceImplTest extends BaseDbUnitTest {
 
         // 调用, 并断言异常
         assertServiceException(() -> deptService.deleteDeptList(ids), DEPT_EXITS_CHILDREN);
+    }
+
+    @Test
+    public void testDeleteDeptList_existsUserByMainDept() {
+        DeptDO deptDO1 = randomPojo(DeptDO.class);
+        deptMapper.insert(deptDO1);
+        DeptDO deptDO2 = randomPojo(DeptDO.class);
+        deptMapper.insert(deptDO2);
+        userMapper.insert(randomPojo(AdminUserDO.class, o -> {
+            o.setDeptId(deptDO1.getId());
+            o.setStatus(CommonStatusEnum.ENABLE.getStatus());
+            o.setSex(SexEnum.UNKNOWN.getSex());
+        }));
+
+        assertServiceException(() -> deptService.deleteDeptList(Arrays.asList(deptDO1.getId(), deptDO2.getId())),
+                DEPT_EXISTS_USER);
+        assertNotNull(deptMapper.selectById(deptDO1.getId()));
+        assertNotNull(deptMapper.selectById(deptDO2.getId()));
+    }
+
+    @Test
+    public void testDeleteDeptList_existsUserByUserDept() {
+        DeptDO deptDO1 = randomPojo(DeptDO.class);
+        deptMapper.insert(deptDO1);
+        DeptDO deptDO2 = randomPojo(DeptDO.class);
+        deptMapper.insert(deptDO2);
+        UserDeptDO userDeptDO = new UserDeptDO();
+        userDeptDO.setUserId(randomLongId());
+        userDeptDO.setDeptId(deptDO2.getId());
+        userDeptMapper.insert(userDeptDO);
+
+        assertServiceException(() -> deptService.deleteDeptList(Arrays.asList(deptDO1.getId(), deptDO2.getId())),
+                DEPT_EXISTS_USER);
+        assertNotNull(deptMapper.selectById(deptDO1.getId()));
+        assertNotNull(deptMapper.selectById(deptDO2.getId()));
+    }
+
+    @Test
+    public void testDeleteDeptList_existsBizData() throws SQLException {
+        TenantContextHolder.setTenantId(1L);
+        DeptDO deptDO1 = randomPojo(DeptDO.class);
+        deptMapper.insert(deptDO1);
+        DeptDO deptDO2 = randomPojo(DeptDO.class);
+        deptMapper.insert(deptDO2);
+        insertErpPurchaseOrder(deptDO2.getId(), false, 1L);
+
+        assertServiceException(() -> deptService.deleteDeptList(Arrays.asList(deptDO1.getId(), deptDO2.getId())),
+                DEPT_EXISTS_BIZ_DATA);
+        assertNotNull(deptMapper.selectById(deptDO1.getId()));
+        assertNotNull(deptMapper.selectById(deptDO2.getId()));
     }
 
     @Test
@@ -275,6 +577,65 @@ public class DeptServiceImplTest extends BaseDbUnitTest {
         // 断言
         assertEquals(1, sysDeptDOS.size());
         assertPojoEquals(dept, sysDeptDOS.get(0));
+    }
+
+    @Test
+    public void testGetDeptList_leaderUserNameLike() {
+        AdminUserDO leader01 = randomPojo(AdminUserDO.class, o -> {
+            o.setNickname("张三丰");
+            o.setStatus(CommonStatusEnum.ENABLE.getStatus());
+            o.setSex(SexEnum.UNKNOWN.getSex());
+        });
+        userMapper.insert(leader01);
+        AdminUserDO leader02 = randomPojo(AdminUserDO.class, o -> {
+            o.setNickname("张三");
+            o.setStatus(CommonStatusEnum.ENABLE.getStatus());
+            o.setSex(SexEnum.UNKNOWN.getSex());
+        });
+        userMapper.insert(leader02);
+        AdminUserDO leader03 = randomPojo(AdminUserDO.class, o -> {
+            o.setNickname("李四");
+            o.setStatus(CommonStatusEnum.ENABLE.getStatus());
+            o.setSex(SexEnum.UNKNOWN.getSex());
+        });
+        userMapper.insert(leader03);
+        DeptDO dept01 = randomPojo(DeptDO.class, o -> {
+            o.setParentId(DeptDO.PARENT_ID_ROOT);
+            o.setLeaderUserId(leader01.getId());
+            o.setSort(10);
+        });
+        deptMapper.insert(dept01);
+        DeptDO dept02 = randomPojo(DeptDO.class, o -> {
+            o.setParentId(DeptDO.PARENT_ID_ROOT);
+            o.setLeaderUserId(leader02.getId());
+            o.setSort(20);
+        });
+        deptMapper.insert(dept02);
+        deptMapper.insert(randomPojo(DeptDO.class, o -> {
+            o.setParentId(DeptDO.PARENT_ID_ROOT);
+            o.setLeaderUserId(leader03.getId());
+            o.setSort(30);
+        }));
+        DeptListReqVO reqVO = new DeptListReqVO();
+        reqVO.setLeaderUserName("张三");
+
+        List<DeptDO> deptList = deptService.getDeptList(reqVO);
+
+        assertEquals(2, deptList.size());
+        assertEquals(dept01.getId(), deptList.get(0).getId());
+        assertEquals(dept02.getId(), deptList.get(1).getId());
+    }
+
+    @Test
+    public void testGetDeptList_leaderUserNameNotMatch() {
+        DeptDO dept = randomPojo(DeptDO.class, o -> o.setParentId(DeptDO.PARENT_ID_ROOT));
+        deptMapper.insert(dept);
+        DeptListReqVO reqVO = new DeptListReqVO();
+        reqVO.setLeaderUserName("不存在的负责人");
+
+        List<DeptDO> deptList = deptService.getDeptList(reqVO);
+
+        assertTrue(deptList.isEmpty());
     }
 
     @Test
@@ -400,6 +761,17 @@ public class DeptServiceImplTest extends BaseDbUnitTest {
 
         // 调用, 并断言异常
         assertServiceException(() -> deptService.validateDeptList(ids), DEPT_NOT_ENABLE, deptDO.getName());
+    }
+
+    private void insertErpPurchaseOrder(Long deptId, boolean deleted, Long tenantId) throws SQLException {
+        try (Connection connection = dataSource.getConnection();
+             PreparedStatement statement = connection.prepareStatement(
+                     "INSERT INTO erp_purchase_order (dept_id, deleted, tenant_id) VALUES (?, ?, ?)")) {
+            statement.setLong(1, deptId);
+            statement.setBoolean(2, deleted);
+            statement.setLong(3, tenantId);
+            statement.executeUpdate();
+        }
     }
 
 }
