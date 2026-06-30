@@ -9,6 +9,7 @@ import cn.iocoder.yudao.module.erp.dal.dataobject.base.ErpBaseDataDO;
 import cn.iocoder.yudao.module.erp.dal.mysql.base.ErpBaseDataMapper;
 import cn.iocoder.yudao.module.erp.service.finance.ErpFinanceFieldPermissionMasker;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 import org.springframework.validation.annotation.Validated;
 
 import javax.annotation.Resource;
@@ -35,8 +36,10 @@ public class ErpBaseDataServiceImpl implements ErpBaseDataService {
 
     @Override
     public Long createBaseData(ErpBaseDataSaveReqVO createReqVO) {
+        createReqVO.setCode(trimToNull(createReqVO.getCode()));
         // 1. 校验同类型下名字唯一
         validateBaseDataNameUnique(null, createReqVO.getType(), createReqVO.getName());
+        validateBaseDataCodeUnique(null, createReqVO.getType(), createReqVO.getCode());
         // 2. 插入
         ErpBaseDataDO baseData = BeanUtils.toBean(createReqVO, ErpBaseDataDO.class);
         fieldPermissionMasker.clearHiddenFields(FIELD_PERMISSION_MODULE, baseData);
@@ -46,11 +49,13 @@ public class ErpBaseDataServiceImpl implements ErpBaseDataService {
 
     @Override
     public void updateBaseData(ErpBaseDataSaveReqVO updateReqVO) {
+        updateReqVO.setCode(trimToNull(updateReqVO.getCode()));
         // 1.1 校验存在
         ErpBaseDataDO db = validateBaseDataExists(updateReqVO.getId());
         fieldPermissionMasker.preserveHiddenFields(FIELD_PERMISSION_MODULE, updateReqVO, db);
         // 1.2 校验同类型下名字唯一
         validateBaseDataNameUnique(updateReqVO.getId(), updateReqVO.getType(), updateReqVO.getName());
+        validateBaseDataCodeUnique(updateReqVO.getId(), updateReqVO.getType(), updateReqVO.getCode());
         // 2. 更新
         ErpBaseDataDO updateObj = BeanUtils.toBean(updateReqVO, ErpBaseDataDO.class);
         baseDataMapper.updateById(updateObj);
@@ -83,6 +88,23 @@ public class ErpBaseDataServiceImpl implements ErpBaseDataService {
         if (!baseData.getId().equals(id)) {
             throw exception(BASE_DATA_NAME_DUPLICATE);
         }
+    }
+
+    private void validateBaseDataCodeUnique(Long id, String type, String code) {
+        if (!StringUtils.hasText(code)) {
+            return;
+        }
+        ErpBaseDataDO baseData = baseDataMapper.selectByTypeAndCode(type, code);
+        if (baseData == null) {
+            return;
+        }
+        if (id == null || !baseData.getId().equals(id)) {
+            throw exception(BASE_DATA_CODE_DUPLICATE);
+        }
+    }
+
+    private String trimToNull(String value) {
+        return StringUtils.hasText(value) ? value.trim() : null;
     }
 
     @Override

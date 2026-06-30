@@ -19,4 +19,10 @@ public class CrmProductCategoryListReqVO {
     @ExcelProperty("创建时间")
     private LocalDateTime createTime;
 
+    @Schema(description = "排序字段", example = "createTime")
+    private String orderField;
+
+    @Schema(description = "排序方向", example = "desc")
+    private String orderDirection;
+
 }

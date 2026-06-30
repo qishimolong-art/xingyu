@@ -5627,7 +5627,7 @@ INSERT INTO system_menu (id, name, permission, type, sort, parent_id, path, icon
 GO
 INSERT INTO system_menu (id, name, permission, type, sort, parent_id, path, icon, component, component_name, status, visible, keep_alive, always_show, creator, create_time, updater, update_time, deleted) VALUES (2570, N'产品导出', N'erp:product:export', 3, 5, 2565, N'', N'', N'', N'', 0, N'1', N'1', N'1', N'', N'2024-02-04 07:52:15', N'1', N'2024-02-04 17:22:26', N'0')
 GO
-INSERT INTO system_menu (id, name, permission, type, sort, parent_id, path, icon, component, component_name, status, visible, keep_alive, always_show, creator, create_time, updater, update_time, deleted) VALUES (2571, N'产品分类', N'', 2, 1, 2564, N'product-category', N'fa:certificate', N'erp/product/category/index', N'ErpProductCategory', 0, N'1', N'1', N'1', N'', N'2024-02-04 09:21:04', N'1', N'2024-02-04 17:24:58', N'0')
+INSERT INTO system_menu (id, name, permission, type, sort, parent_id, path, icon, component, component_name, status, visible, keep_alive, always_show, creator, create_time, updater, update_time, deleted) VALUES (2571, N'商品分类', N'', 2, 1, 2564, N'product-category', N'fa:certificate', N'erp/product/category/index', N'ErpProductCategory', 0, N'1', N'1', N'1', N'', N'2024-02-04 09:21:04', N'1', N'2024-02-04 17:24:58', N'0')
 GO
 INSERT INTO system_menu (id, name, permission, type, sort, parent_id, path, icon, component, component_name, status, visible, keep_alive, always_show, creator, create_time, updater, update_time, deleted) VALUES (2572, N'分类查询', N'erp:product-category:query', 3, 1, 2571, N'', N'', N'', NULL, 0, N'1', N'1', N'1', N'', N'2024-02-04 09:21:04', N'', N'2024-02-04 09:21:04', N'0')
 GO
@@ -12208,4 +12208,3 @@ GO
 COMMIT
 GO
 -- @formatter:on
-

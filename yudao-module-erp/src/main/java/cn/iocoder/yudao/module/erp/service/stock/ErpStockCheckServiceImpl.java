@@ -185,6 +185,7 @@ public class ErpStockCheckServiceImpl implements ErpStockCheckService {
 
         // 3. 变更库存
         List<ErpStockCheckItemDO> stockCheckItems = stockCheckItemMapper.selectListByCheckId(id);
+        warehouseService.validateCurrentUserWarehousePermission(convertSet(stockCheckItems, ErpStockCheckItemDO::getWarehouseId));
         stockCheckItems.forEach(stockCheckItem -> {
             // 没有盈亏，不用出入库
             if (stockCheckItem.getCount().compareTo(BigDecimal.ZERO) == 0) {
@@ -208,7 +209,9 @@ public class ErpStockCheckServiceImpl implements ErpStockCheckService {
                 convertSet(list, ErpStockCheckSaveReqVO.Item::getProductId));
         Map<Long, ErpProductDO> productMap = convertMap(productList, ErpProductDO::getId);
         // 1.2 校验仓库存在
-        warehouseService.validWarehouseList(convertSet(list, ErpStockCheckSaveReqVO.Item::getWarehouseId));
+        Set<Long> warehouseIds = convertSet(list, ErpStockCheckSaveReqVO.Item::getWarehouseId);
+        warehouseService.validWarehouseList(warehouseIds);
+        warehouseService.validateCurrentUserWarehousePermission(warehouseIds);
         // 2. 转化为 ErpStockCheckItemDO 列表
         return convertList(list, o -> BeanUtils.toBean(o, ErpStockCheckItemDO.class, item -> {
             BigDecimal stockCount = item.getStockCount() != null ? item.getStockCount() : BigDecimal.ZERO;

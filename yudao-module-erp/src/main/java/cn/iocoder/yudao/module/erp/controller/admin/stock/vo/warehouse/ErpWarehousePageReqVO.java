@@ -30,4 +30,10 @@ public class ErpWarehousePageReqVO extends PageParam {
     @Schema(description = "所属部门", example = "100")
     private Long deptId;
 
+    @Schema(description = "排序字段", example = "name")
+    private String orderField;
+
+    @Schema(description = "排序方向", example = "asc")
+    private String orderDirection;
+
 }

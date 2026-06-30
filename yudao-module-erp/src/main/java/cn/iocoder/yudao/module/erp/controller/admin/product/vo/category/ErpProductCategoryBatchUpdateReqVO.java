@@ -9,7 +9,7 @@ import javax.validation.constraints.NotEmpty;
 import javax.validation.constraints.NotNull;
 import java.util.List;
 
-@Schema(description = "管理后台 - ERP 产品分类批量修改 Request VO")
+@Schema(description = "管理后台 - ERP 商品分类批量修改 Request VO")
 @Data
 public class ErpProductCategoryBatchUpdateReqVO {
 

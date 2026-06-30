@@ -34,6 +34,7 @@ import cn.iocoder.yudao.module.erp.service.finance.accounting.ErpAutoVoucherBuil
 import cn.iocoder.yudao.module.erp.service.finance.accounting.ErpBookOpenService;
 import cn.iocoder.yudao.module.erp.service.finance.accounting.ErpVoucherService;
 import cn.iocoder.yudao.module.erp.service.product.ErpProductService;
+import cn.iocoder.yudao.module.erp.service.stock.ErpStockInBillService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpStockRecordService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpWarehouseService;
 import cn.iocoder.yudao.module.erp.service.stock.bo.ErpStockRecordCreateReqBO;
@@ -103,6 +104,8 @@ public class ErpPurchaseInServiceImplTest extends BaseMockitoUnitTest {
     private ErpPurchaseOrderService purchaseOrderService;
     @Mock
     private ErpStockRecordService stockRecordService;
+    @Mock
+    private ErpStockInBillService stockInBillService;
     @Mock
     private ErpSupplierService supplierService;
     @Mock
@@ -355,6 +358,9 @@ public class ErpPurchaseInServiceImplTest extends BaseMockitoUnitTest {
                 .setId(1L).setInId(10L).setProductId(200L).setWarehouseId(10L)
                 .setCount(new BigDecimal("5")).setProductPrice(new BigDecimal("10"));
         when(purchaseInItemMapper.selectListByInId(eq(10L))).thenReturn(Collections.singletonList(item));
+        Map<Long, ErpWarehouseDO> warehouseMap = Collections.singletonMap(10L,
+                new ErpWarehouseDO().setId(10L).setStockBillEnabled(false));
+        when(warehouseService.getWarehouseMap(any())).thenReturn(warehouseMap);
 
         // 开账启用，触发凭证生成
         when(bookOpenService.isVoucherTypeEnabled(any(), eq(ErpVoucherTypeEnum.PURCHASE.getType())))
@@ -386,6 +392,33 @@ public class ErpPurchaseInServiceImplTest extends BaseMockitoUnitTest {
         verify(voucherService).createVoucherFromBiz(eq(ErpVoucherSourceBizTypeEnum.PURCHASE_IN.getType()),
                 eq(10L), eq("CGRK001"), any(), any(), any(String.class), anyList());
         verify(purchaseOrderService).updatePurchaseOrderInCount(eq(50L), eq(inCountMap));
+        verify(stockInBillService).createFromPurchaseIn(eq(existing), eq(Collections.emptyList()));
+    }
+
+    @Test
+    public void testUpdatePurchaseInStatus_stockBillWarehouse_createsStockInBillWithoutStockRecord() {
+        ErpPurchaseInDO existing = new ErpPurchaseInDO()
+                .setId(10L).setNo("CGRK001").setSupplierId(99L)
+                .setInTime(LocalDateTime.of(2026, 5, 20, 10, 0, 0))
+                .setStatus(ErpAuditStatus.PROCESS.getStatus())
+                .setPaymentPrice(BigDecimal.ZERO);
+        when(purchaseInMapper.selectById(eq(10L))).thenReturn(existing);
+        when(purchaseInMapper.updateByIdAndStatus(eq(10L),
+                eq(ErpAuditStatus.PROCESS.getStatus()), any(ErpPurchaseInDO.class))).thenReturn(1);
+        ErpPurchaseInItemDO item = new ErpPurchaseInItemDO()
+                .setId(1L).setInId(10L).setProductId(200L).setWarehouseId(10L)
+                .setCount(new BigDecimal("5")).setProductPrice(new BigDecimal("10"));
+        when(purchaseInItemMapper.selectListByInId(eq(10L))).thenReturn(Collections.singletonList(item));
+        when(warehouseService.getWarehouseMap(any())).thenReturn(Collections.singletonMap(10L,
+                new ErpWarehouseDO().setId(10L).setStockBillEnabled(true)));
+        when(bookOpenService.isVoucherTypeEnabled(any(), eq(ErpVoucherTypeEnum.PURCHASE.getType())))
+                .thenReturn(false);
+
+        purchaseInService.updatePurchaseInStatus(10L, ErpAuditStatus.APPROVE.getStatus());
+
+        verify(stockRecordService, never()).createStockRecord(any());
+        verify(stockInBillService).createFromPurchaseIn(eq(existing), eq(Collections.singletonList(item)));
+        verify(productService).updateProductLastPurchasePrice(eq(200L), eq(new BigDecimal("10")));
     }
 
     @Test

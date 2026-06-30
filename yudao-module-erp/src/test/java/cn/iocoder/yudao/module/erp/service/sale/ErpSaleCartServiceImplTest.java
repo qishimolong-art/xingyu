@@ -24,6 +24,7 @@ import cn.iocoder.yudao.module.erp.enums.sale.ErpSaleBizSourceTypeEnum;
 import cn.iocoder.yudao.module.erp.enums.sale.ErpSaleCartStatusEnum;
 import cn.iocoder.yudao.module.erp.enums.sale.ErpSaleQuoteStatusEnum;
 import cn.iocoder.yudao.module.erp.service.finance.ErpAccountService;
+import cn.iocoder.yudao.module.erp.service.product.ErpProductBatchNoValidator;
 import cn.iocoder.yudao.module.erp.service.product.ErpProductService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpStockService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpWarehouseService;
@@ -46,7 +47,7 @@ import java.util.Map;
 import static cn.iocoder.yudao.framework.test.core.util.AssertUtils.assertServiceException;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.CUSTOMER_NOT_EXISTS;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.SALE_CART_CONVERT_QUOTE_FAIL;
-import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.SALE_CART_DELETE_FAIL_FINAL_APPROVED;
+import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.SALE_CART_DELETE_FAIL_NOT_DRAFT;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.SALE_CART_FINAL_APPROVE_FAIL;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.SALE_CART_FIRST_APPROVE_FAIL;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.SALE_CART_REJECT_FAIL;
@@ -62,6 +63,7 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -97,6 +99,8 @@ public class ErpSaleCartServiceImplTest extends BaseMockitoUnitTest {
     private ErpSaleDocumentDefaultService saleDocumentDefaultService;
     @Mock
     private AdminUserApi adminUserApi;
+    @Mock
+    private ErpProductBatchNoValidator productBatchNoValidator;
 
     @BeforeEach
     public void setUp() {
@@ -106,6 +110,8 @@ public class ErpSaleCartServiceImplTest extends BaseMockitoUnitTest {
                 return prefix + "20260509000001";
             }
         });
+        lenient().when(warehouseService.validSaleWarehouseList(anyCollection())).thenReturn(Collections.singletonList(
+                new ErpWarehouseDO().setId(401L)));
     }
 
     // ==================== 现有保留测试 ====================
@@ -135,6 +141,8 @@ public class ErpSaleCartServiceImplTest extends BaseMockitoUnitTest {
         // finalApproveSaleCart 内部会通过 stockService 实时校验库存
         when(stockService.getStock(eq(201L), eq(301L)))
                 .thenReturn(new ErpStockDO().setCount(new BigDecimal("100")));
+        when(warehouseService.getWarehouseMap(anyCollection())).thenReturn(Collections.singletonMap(301L,
+                new ErpWarehouseDO().setId(301L).setStockBillEnabled(false)));
         when(saleCartMapper.updateByIdAndStatus(eq(cartId), eq(ErpSaleCartStatusEnum.FIRST_APPROVE.getStatus()),
                 argThat(update -> ErpSaleCartStatusEnum.GENERATED_SALE_OUT.getStatus().equals(update.getStatus()))))
                 .thenReturn(1);
@@ -149,7 +157,7 @@ public class ErpSaleCartServiceImplTest extends BaseMockitoUnitTest {
                         && item.getProductId().equals(req.getItems().get(0).getProductId())
                         && item.getWarehouseId().equals(req.getItems().get(0).getWarehouseId())
                         && item.getCount().equals(req.getItems().get(0).getCount())),
-                eq(ErpSaleBizSourceTypeEnum.CART.getType()), eq(cart.getId()), eq(cart.getNo()));
+                eq(ErpSaleBizSourceTypeEnum.CART.getType()), eq(cart.getId()), eq(cart.getNo()), eq(false));
     }
 
     @Test
@@ -227,7 +235,7 @@ public class ErpSaleCartServiceImplTest extends BaseMockitoUnitTest {
                 .thenReturn(Collections.singletonList(cart));
 
         assertServiceException(() -> saleCartService.deleteSaleCart(Collections.singletonList(cartId)),
-                SALE_CART_DELETE_FAIL_FINAL_APPROVED, cart.getNo());
+                SALE_CART_DELETE_FAIL_NOT_DRAFT, cart.getNo());
     }
 
     // ==================== create 场景 ====================

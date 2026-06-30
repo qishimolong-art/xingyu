@@ -21,6 +21,9 @@ public class ErpBaseDataSaveReqVO {
     @NotEmpty(message = "名称不能为空")
     private String name;
 
+    @Schema(description = "稳定业务编码", example = "cash")
+    private String code;
+
     @Schema(description = "排序", requiredMode = Schema.RequiredMode.REQUIRED, example = "1")
     @NotNull(message = "排序不能为空")
     private Integer sort;

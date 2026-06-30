@@ -35,6 +35,16 @@ public interface RoleFieldPermissionMapper extends BaseMapperX<RoleFieldPermissi
                                        @Param("tenantId") Long tenantId,
                                        @Param("fieldIds") Collection<Long> fieldIds);
 
+    @Delete("<script>"
+            + "DELETE FROM system_role_field_permission "
+            + "WHERE tenant_id = #{tenantId} AND field_id IN "
+            + "<foreach collection='fieldIds' item='fieldId' open='(' separator=',' close=')'>"
+            + "#{fieldId}"
+            + "</foreach>"
+            + "</script>")
+    void deleteListByFieldIds(@Param("tenantId") Long tenantId,
+                              @Param("fieldIds") Collection<Long> fieldIds);
+
     @Insert("INSERT IGNORE INTO system_role_field_permission "
             + "(role_id, field_id, hidden, creator, create_time, updater, update_time, deleted, tenant_id) "
             + "VALUES (#{roleId}, #{fieldId}, b'1', '1', NOW(), '1', NOW(), b'0', #{tenantId})")

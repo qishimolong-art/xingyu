@@ -160,6 +160,7 @@ public class ErpStockInServiceImpl implements ErpStockInService {
 
         // 3. 变更库存
         List<ErpStockInItemDO> stockInItems = stockInItemMapper.selectListByInId(id);
+        warehouseService.validateCurrentUserWarehousePermission(convertSet(stockInItems, ErpStockInItemDO::getWarehouseId));
         Integer bizType = ErpStockRecordBizTypeEnum.OTHER_IN.getType();
         stockInItems.forEach(stockInItem -> {
             stockRecordService.createStockRecord(new ErpStockRecordCreateReqBO(
@@ -193,8 +194,9 @@ public class ErpStockInServiceImpl implements ErpStockInService {
                 convertSet(list, ErpStockInSaveReqVO.Item::getProductId));
         Map<Long, ErpProductDO> productMap = convertMap(productList, ErpProductDO::getId);
         // 1.2 校验仓库存在
-        warehouseService.validWarehouseList(convertSet(
-                list, ErpStockInSaveReqVO.Item::getWarehouseId));
+        Set<Long> warehouseIds = convertSet(list, ErpStockInSaveReqVO.Item::getWarehouseId);
+        warehouseService.validWarehouseList(warehouseIds);
+        warehouseService.validateCurrentUserWarehousePermission(warehouseIds);
         // 2. 转化为 ErpStockInItemDO 列表
         return convertList(list, o -> BeanUtils.toBean(o, ErpStockInItemDO.class, item -> item
                 .setProductUnitId(productMap.get(item.getProductId()).getUnitId())

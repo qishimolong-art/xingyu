@@ -1,4 +1,4 @@
--- System field permission v35
+﻿-- System field permission v35
 -- Blacklist mode: records in system_role_field_permission mean hidden fields.
 -- Current field hierarchy in the role permission UI: 产品管理 > 配件信息 > 字段分组 > 字段.
 
@@ -45,7 +45,8 @@ VALUES
 ('erp_product', 'defaultWarehouseId', '默认仓库', 'base_info', 30, '1', NOW(), '1', NOW(), b'0', 1),
 ('erp_product', 'vehicleModel', '适用车型', 'base_info', 40, '1', NOW(), '1', NOW(), b'0', 1),
 ('erp_product', 'standard', '规格', 'base_info', 50, '1', NOW(), '1', NOW(), b'0', 1),
-('erp_product', 'categoryId', '类别', 'base_info', 60, '1', NOW(), '1', NOW(), b'0', 1),
+('erp_product', 'categoryId', '商品分类', 'base_info', 60, '1', NOW(), '1', NOW(), b'0', 1),
+('erp_product', 'batchNoEnabled', '是否开启批次号管理', 'base_info', 65, '1', NOW(), '1', NOW(), b'0', 1),
 ('erp_product', 'barCode', '条形码', 'base_info', 70, '1', NOW(), '1', NOW(), b'0', 1),
 ('erp_product', 'factoryCode', '厂家编码', 'base_info', 80, '1', NOW(), '1', NOW(), b'0', 1),
 ('erp_product', 'status', '状态', 'base_info', 90, '1', NOW(), '1', NOW(), b'0', 1),
@@ -62,6 +63,7 @@ VALUES
 ('erp_product', 'grossProfitRate', '毛利率（%）', 'price_info', 40, '1', NOW(), '1', NOW(), b'0', 1),
 ('erp_product', 'backupPrice1', '备用价1', 'price_info', 50, '1', NOW(), '1', NOW(), b'0', 1),
 ('erp_product', 'wholesalePrice', '批发价', 'price_info', 60, '1', NOW(), '1', NOW(), b'0', 1),
+('erp_product', 'sharePrice', '股份价', 'price_info', 70, '1', NOW(), '1', NOW(), b'0', 1),
 ('erp_product', 'stockMax', '库存上限', 'extend_info', 10, '1', NOW(), '1', NOW(), b'0', 1),
 ('erp_product', 'stockMin', '库存下限', 'extend_info', 20, '1', NOW(), '1', NOW(), b'0', 1),
 ('erp_product', 'stockStandard', '标准库存', 'extend_info', 30, '1', NOW(), '1', NOW(), b'0', 1),
@@ -71,7 +73,7 @@ VALUES
 ('erp_product', 'col_name', '列表-零件名称', 'list_col', 20, '1', NOW(), '1', NOW(), b'0', 1),
 ('erp_product', 'col_vehicleModel', '列表-适用车型', 'list_col', 30, '1', NOW(), '1', NOW(), b'0', 1),
 ('erp_product', 'col_standard', '列表-规格', 'list_col', 40, '1', NOW(), '1', NOW(), b'0', 1),
-('erp_product', 'col_categoryName', '列表-类别', 'list_col', 50, '1', NOW(), '1', NOW(), b'0', 1),
+('erp_product', 'col_categoryName', '列表-商品分类', 'list_col', 50, '1', NOW(), '1', NOW(), b'0', 1),
 ('erp_product', 'col_unitName', '列表-单位', 'list_col', 60, '1', NOW(), '1', NOW(), b'0', 1),
 ('erp_product', 'col_barCode', '列表-条形码', 'list_col', 70, '1', NOW(), '1', NOW(), b'0', 1),
 ('erp_product', 'col_factoryCode', '列表-厂家编码', 'list_col', 80, '1', NOW(), '1', NOW(), b'0', 1),
@@ -90,7 +92,8 @@ VALUES
 ('erp_product', 'col_remark', '列表-零件备注', 'list_col', 170, '1', NOW(), '1', NOW(), b'0', 1),
 ('erp_product', 'col_weight', '列表-重量', 'list_col', 180, '1', NOW(), '1', NOW(), b'0', 1),
 ('erp_product', 'col_backupPrice1', '列表-备用价1', 'list_col', 190, '1', NOW(), '1', NOW(), b'0', 1),
-('erp_product', 'col_wholesalePrice', '列表-批发价', 'list_col', 200, '1', NOW(), '1', NOW(), b'0', 1)
+('erp_product', 'col_wholesalePrice', '列表-批发价', 'list_col', 200, '1', NOW(), '1', NOW(), b'0', 1),
+('erp_product', 'col_sharePrice', '列表-股份价', 'list_col', 210, '1', NOW(), '1', NOW(), b'0', 1)
 ON DUPLICATE KEY UPDATE
   `field_label` = VALUES(`field_label`),
   `field_group` = VALUES(`field_group`),

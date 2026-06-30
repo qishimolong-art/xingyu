@@ -6,6 +6,8 @@ import cn.iocoder.yudao.module.erp.dal.dataobject.config.ErpFieldConfigDO;
 import org.apache.ibatis.annotations.Delete;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
+import org.apache.ibatis.annotations.Select;
+import org.apache.ibatis.annotations.Update;
 
 import java.util.Collection;
 import java.util.List;
@@ -32,4 +34,13 @@ public interface ErpFieldConfigMapper extends BaseMapperX<ErpFieldConfigDO> {
             "<foreach collection='ids' item='id' open='(' separator=',' close=')'>#{id}</foreach>" +
             "</script>")
     int physicalDeleteByIds(@Param("ids") Collection<Long> ids);
+
+    @Select("SELECT COUNT(*) FROM information_schema.COLUMNS " +
+            "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = #{tableName} AND COLUMN_NAME = #{columnName}")
+    Long selectColumnCount(@Param("tableName") String tableName, @Param("columnName") String columnName);
+
+    @Update("ALTER TABLE `${tableName}` ADD COLUMN `${columnName}` ${columnDefinition}")
+    void addColumn(@Param("tableName") String tableName,
+                   @Param("columnName") String columnName,
+                   @Param("columnDefinition") String columnDefinition);
 }

@@ -7,6 +7,7 @@ import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.*;
 
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
 
 /**
  * ERP 产品 DO
@@ -47,6 +48,10 @@ public class ErpProductDO extends BaseDO {
      */
     private Long categoryId;
     /**
+     * 是否开启批次号管理
+     */
+    private Boolean batchNoEnabled;
+    /**
      * 单位编号
      *
      * 关联 {@link ErpProductUnitDO#getId()}
@@ -58,6 +63,14 @@ public class ErpProductDO extends BaseDO {
      * 枚举 {@link cn.iocoder.yudao.framework.common.enums.CommonStatusEnum}
      */
     private Integer status;
+    /**
+     * 停用人用户编号
+     */
+    private Long disabledBy;
+    /**
+     * 停用时间
+     */
+    private LocalDateTime disabledTime;
     /**
      * 产品规格
      */
@@ -161,6 +174,10 @@ public class ErpProductDO extends BaseDO {
      * 批发价
      */
     private BigDecimal wholesalePrice;
+    /**
+     * 股份价
+     */
+    private BigDecimal sharePrice;
 
     /**
      * 库存上限

@@ -35,7 +35,7 @@ import static cn.iocoder.yudao.framework.apilog.core.enums.OperateTypeEnum.EXPOR
 import static cn.iocoder.yudao.framework.common.pojo.CommonResult.success;
 import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.convertList;
 
-@Tag(name = "管理后台 - ERP 产品分类")
+@Tag(name = "管理后台 - ERP 商品分类")
 @RestController
 @RequestMapping("/erp/product-category")
 @Validated
@@ -48,14 +48,21 @@ public class ErpProductCategoryController {
     private ErpProductCategoryService productCategoryService;
 
     @PostMapping("/create")
-    @Operation(summary = "创建产品分类")
+    @Operation(summary = "创建商品分类")
     @PreAuthorize("@ss.hasPermission('erp:product-category:create')")
     public CommonResult<Long> createProductCategory(@Valid @RequestBody ErpProductCategorySaveReqVO createReqVO) {
         return success(productCategoryService.createProductCategory(createReqVO));
     }
 
+    @GetMapping("/next-code")
+    @Operation(summary = "获得下一个商品分类编码")
+    @PreAuthorize("@ss.hasPermission('erp:product-category:create')")
+    public CommonResult<String> getNextProductCategoryCode(@RequestParam(value = "parentCode", required = false) String parentCode) {
+        return success(productCategoryService.getNextProductCategoryCode(parentCode));
+    }
+
     @PutMapping("/update")
-    @Operation(summary = "更新产品分类")
+    @Operation(summary = "更新商品分类")
     @PreAuthorize("@ss.hasPermission('erp:product-category:update')")
     public CommonResult<Boolean> updateProductCategory(@RequestBody ErpProductCategorySaveReqVO updateReqVO) {
         productCategoryService.updateProductCategory(updateReqVO);
@@ -63,7 +70,7 @@ public class ErpProductCategoryController {
     }
 
     @PutMapping("/batch-update")
-    @Operation(summary = "批量更新产品分类")
+    @Operation(summary = "批量更新商品分类")
     @PreAuthorize("@ss.hasPermission('erp:product-category:update')")
     public CommonResult<Boolean> batchUpdateProductCategory(@Valid @RequestBody ErpProductCategoryBatchUpdateReqVO updateReqVO) {
         productCategoryService.batchUpdateProductCategory(updateReqVO);
@@ -71,7 +78,7 @@ public class ErpProductCategoryController {
     }
 
     @DeleteMapping("/delete")
-    @Operation(summary = "删除产品分类")
+    @Operation(summary = "删除商品分类")
     @Parameter(name = "id", description = "编号", required = true)
     @PreAuthorize("@ss.hasPermission('erp:product-category:delete')")
     public CommonResult<Boolean> deleteProductCategory(@RequestParam("id") Long id) {
@@ -80,7 +87,7 @@ public class ErpProductCategoryController {
     }
 
     @DeleteMapping("/delete-list")
-    @Operation(summary = "批量删除产品分类")
+    @Operation(summary = "批量删除商品分类")
     @Parameter(name = "ids", description = "编号列表", required = true)
     @PreAuthorize("@ss.hasPermission('erp:product-category:delete')")
     public CommonResult<Boolean> deleteProductCategoryList(@RequestParam("ids") List<Long> ids) {
@@ -89,7 +96,7 @@ public class ErpProductCategoryController {
     }
 
     @GetMapping("/get")
-    @Operation(summary = "获得产品分类")
+    @Operation(summary = "获得商品分类")
     @Parameter(name = "id", description = "编号", required = true, example = "1024")
     @PreAuthorize("@ss.hasPermission('erp:product-category:query')")
     public CommonResult<ErpProductCategoryRespVO> getProductCategory(@RequestParam("id") Long id) {
@@ -98,7 +105,7 @@ public class ErpProductCategoryController {
     }
 
     @GetMapping("/list")
-    @Operation(summary = "获得产品分类列表")
+    @Operation(summary = "获得商品分类列表")
     @PreAuthorize("@ss.hasPermission('erp:product-category:query')")
     public CommonResult<List<ErpProductCategoryRespVO>> getProductCategoryList(@Valid ErpProductCategoryListReqVO listReqVO) {
         List<ErpProductCategoryDO> list = productCategoryService.getProductCategoryList(listReqVO);
@@ -106,7 +113,7 @@ public class ErpProductCategoryController {
     }
 
     @GetMapping("/simple-list")
-    @Operation(summary = "获得产品分类精简列表", description = "只包含被开启的分类，主要用于前端的下拉选项")
+    @Operation(summary = "获得商品分类精简列表", description = "只包含被开启的分类，主要用于前端的下拉选项")
     public CommonResult<List<ErpProductCategoryRespVO>> getProductCategorySimpleList() {
         List<ErpProductCategoryDO> list = productCategoryService.getProductCategoryList(
                 new ErpProductCategoryListReqVO().setStatus(CommonStatusEnum.ENABLE.getStatus()));
@@ -115,29 +122,29 @@ public class ErpProductCategoryController {
     }
 
     @GetMapping("/export-excel")
-    @Operation(summary = "导出产品分类 Excel")
+    @Operation(summary = "导出商品分类 Excel")
     @PreAuthorize("@ss.hasPermission('erp:product-category:export')")
     @ApiAccessLog(operateType = EXPORT)
     public void exportProductCategoryExcel(@Valid ErpProductCategoryListReqVO listReqVO,
               HttpServletResponse response) throws IOException {
         List<ErpProductCategoryDO> list = productCategoryService.getProductCategoryList(listReqVO);
         // 导出 Excel
-        ExcelUtils.write(response, "产品分类.xls", "数据", ErpProductCategoryRespVO.class,
+        ExcelUtils.write(response, "商品分类.xls", "数据", ErpProductCategoryRespVO.class,
                         BeanUtils.toBean(list, ErpProductCategoryRespVO.class));
     }
 
     @GetMapping("/get-import-template")
-    @Operation(summary = "获得产品分类导入模板")
+    @Operation(summary = "获得商品分类导入模板")
     @PreAuthorize("@ss.hasPermission('erp:product-category:import')")
     public void getImportTemplate(HttpServletResponse response) throws IOException {
-        ExcelUtils.writeImportTemplate(response, "产品分类导入模板.xls", "产品分类",
+        ExcelUtils.writeImportTemplate(response, "商品分类导入模板.xls", "商品分类",
                 ErpProductCategoryImportExcelVO.class,
                 Collections.singletonList(new ErpProductCategoryImportExcelVO()),
                 PRODUCT_CATEGORY_IMPORT_TEMPLATE_FIELDS);
     }
 
     @PostMapping("/import")
-    @Operation(summary = "导入产品分类")
+    @Operation(summary = "导入商品分类")
     @PreAuthorize("@ss.hasPermission('erp:product-category:import')")
     public CommonResult<ErpProductCategoryImportRespVO> importProductCategory(@RequestParam("file") MultipartFile file)
             throws Exception {

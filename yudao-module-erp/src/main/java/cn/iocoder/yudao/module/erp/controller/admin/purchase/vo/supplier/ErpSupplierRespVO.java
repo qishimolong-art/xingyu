@@ -10,6 +10,7 @@ import lombok.Data;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.List;
 
 @Schema(description = "管理后台 - ERP 供应商 Response VO")
 @Data
@@ -41,7 +42,6 @@ public class ErpSupplierRespVO {
     private String email;
 
     @Schema(description = "传真", example = "20 7123 4567")
-    @ExcelProperty("传真")
     private String fax;
 
     @Schema(description = "备注", example = "你猜")
@@ -87,12 +87,22 @@ public class ErpSupplierRespVO {
     @ExcelProperty("所属部门")
     private Long deptId;
 
+    @Schema(description = "适用部门")
+    private List<Long> deptIds;
+
     @Schema(description = "所属部门名称")
     @ExcelProperty("所属部门名称")
     private String deptName;
 
+    @Schema(description = "适用部门名称")
+    @ExcelProperty("适用部门名称")
+    private String deptNames;
+
+    @Schema(description = "允许多部门", example = "false")
+    @ExcelProperty("允许多部门")
+    private Boolean allowMultiDept;
+
     @Schema(description = "旧编码", example = "OLD001")
-    @ExcelProperty("旧编码")
     private String oldCode;
 
     @Schema(description = "简称", example = "芋道")
@@ -100,15 +110,14 @@ public class ErpSupplierRespVO {
     private String shortName;
 
     @Schema(description = "外文名", example = "YuDao")
-    @ExcelProperty("外文名")
     private String foreignName;
 
     @Schema(description = "区域", example = "华东")
     @ExcelProperty("区域")
     private String region;
 
-    @Schema(description = "往来类别", example = "供应商")
-    @ExcelProperty("往来类别")
+    @Schema(description = "供应商类别", example = "供应商")
+    @ExcelProperty("供应商类别")
     private String category;
 
     @Schema(description = "账户", example = "ACC001")
@@ -120,19 +129,15 @@ public class ErpSupplierRespVO {
     private String settleMethod;
 
     @Schema(description = "结算锁定", example = "false")
-    @ExcelProperty("结算锁定")
     private Boolean settleLocked;
 
     @Schema(description = "供应商类型", example = "生产厂家")
-    @ExcelProperty("供应商类型")
     private String supplierType;
 
     @Schema(description = "到货周期(天)", example = "7")
-    @ExcelProperty("到货周期(天)")
     private Integer arrivalCycle;
 
     @Schema(description = "采购提前期(天)", example = "3")
-    @ExcelProperty("采购提前期(天)")
     private Integer purchaseLeadDays;
 
     @Schema(description = "运输方式", example = "公路")
@@ -156,15 +161,12 @@ public class ErpSupplierRespVO {
     private String purchaser;
 
     @Schema(description = "公司性质", example = "民营")
-    @ExcelProperty("公司性质")
     private String companyNature;
 
     @Schema(description = "淘汰", example = "false")
-    @ExcelProperty("淘汰")
     private Boolean obsolete;
 
     @Schema(description = "淘汰日期")
-    @ExcelProperty("淘汰日期")
     private LocalDateTime obsoleteDate;
 
     @Schema(description = "开票类型", example = "增值税专用发票")
@@ -172,11 +174,9 @@ public class ErpSupplierRespVO {
     private String invoiceType;
 
     @Schema(description = "集团供应商", example = "false")
-    @ExcelProperty("集团供应商")
     private Boolean groupSupplier;
 
     @Schema(description = "是否允许分店开单", example = "true")
-    @ExcelProperty("是否允许分店开单")
     private Boolean allowBranchOrder;
 
     @Schema(description = "物流公司", example = "顺丰")
@@ -184,11 +184,9 @@ public class ErpSupplierRespVO {
     private String logisticsCompany;
 
     @Schema(description = "到货点", example = "仓库A")
-    @ExcelProperty("到货点")
     private String arrivalPoint;
 
     @Schema(description = "邮政编码", example = "200000")
-    @ExcelProperty("邮政编码")
     private String postalCode;
 
     @Schema(description = "会员编码(自动生成)", example = "HY001")
@@ -196,23 +194,18 @@ public class ErpSupplierRespVO {
     private String memberCode;
 
     @Schema(description = "地址", example = "上海市浦东新区")
-    @ExcelProperty("地址")
     private String address;
 
     @Schema(description = "省", example = "上海")
-    @ExcelProperty("省")
     private String province;
 
     @Schema(description = "市", example = "上海市")
-    @ExcelProperty("市")
     private String city;
 
     @Schema(description = "区/县", example = "浦东新区")
-    @ExcelProperty("区/县")
     private String district;
 
     @Schema(description = "网址", example = "https://www.iocoder.cn")
-    @ExcelProperty("网址")
     private String website;
 
     @Schema(description = "法定代表", example = "张三")
@@ -224,11 +217,9 @@ public class ErpSupplierRespVO {
     private String creditCode;
 
     @Schema(description = "采购管控", example = "严格")
-    @ExcelProperty("采购管控")
     private String purchaseControl;
 
     @Schema(description = "浮动是否更新供应商最后进价", example = "是")
-    @ExcelProperty("浮动是否更新供应商最后进价")
     private String floatUpdateLastPrice;
 
     @Schema(description = "纳税人识别号", example = "91130803MA098BY05W")
@@ -260,7 +251,6 @@ public class ErpSupplierRespVO {
     private String financePhone;
 
     @Schema(description = "绩效考核利润参考依据", example = "毛利率")
-    @ExcelProperty("绩效考核利润参考依据")
     private String performanceProfitRef;
 
     @Schema(description = "创建时间", requiredMode = Schema.RequiredMode.REQUIRED)

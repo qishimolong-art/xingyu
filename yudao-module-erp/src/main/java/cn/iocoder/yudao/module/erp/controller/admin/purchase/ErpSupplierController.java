@@ -10,6 +10,8 @@ import cn.iocoder.yudao.framework.common.util.collection.MapUtils;
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
 import cn.iocoder.yudao.framework.excel.core.util.ExcelUtils;
 import cn.iocoder.yudao.module.erp.controller.admin.common.vo.ErpExportFieldRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.supplier.ErpSupplierBatchDisableReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.supplier.ErpSupplierBatchUpdateReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.supplier.ErpSupplierImportExcelVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.supplier.ErpSupplierPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.supplier.ErpSupplierRespVO;
@@ -46,9 +48,11 @@ import java.util.Map;
 import java.util.Set;
 
 import static cn.iocoder.yudao.framework.apilog.core.enums.OperateTypeEnum.EXPORT;
+import static cn.iocoder.yudao.framework.common.exception.util.ServiceExceptionUtil.exception;
 import static cn.iocoder.yudao.framework.common.pojo.CommonResult.success;
 import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.convertList;
 import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.convertSet;
+import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.SUPPLIER_NOT_EXISTS;
 
 @Tag(name = "管理后台 - ERP 供应商")
 @RestController
@@ -88,6 +92,22 @@ public class ErpSupplierController {
         return success(true);
     }
 
+    @PutMapping("/batch-update")
+    @Operation(summary = "批量编辑供应商")
+    @PreAuthorize("@ss.hasPermission('erp:supplier:update')")
+    public CommonResult<Boolean> batchUpdateSupplier(@Valid @RequestBody ErpSupplierBatchUpdateReqVO reqVO) {
+        supplierService.batchUpdateSupplier(reqVO);
+        return success(true);
+    }
+
+    @PutMapping("/batch-disable")
+    @Operation(summary = "批量停用供应商")
+    @PreAuthorize("@ss.hasPermission('erp:supplier:update')")
+    public CommonResult<Boolean> batchDisableSupplier(@Valid @RequestBody ErpSupplierBatchDisableReqVO reqVO) {
+        supplierService.batchDisableSupplier(reqVO.getIds());
+        return success(true);
+    }
+
     @PutMapping("/update-status")
     @Operation(summary = "更新供应商开启状态（停用/启用）")
     @Parameter(name = "id", description = "编号", required = true, example = "1024")
@@ -108,12 +128,24 @@ public class ErpSupplierController {
         return success(true);
     }
 
+    @DeleteMapping("/delete-list")
+    @Operation(summary = "批量删除供应商")
+    @Parameter(name = "ids", description = "编号列表", required = true)
+    @PreAuthorize("@ss.hasPermission('erp:supplier:delete')")
+    public CommonResult<Boolean> deleteSupplierList(@RequestParam("ids") List<Long> ids) {
+        supplierService.deleteSupplierList(ids);
+        return success(true);
+    }
+
     @GetMapping("/get")
     @Operation(summary = "获得供应商")
     @Parameter(name = "id", description = "编号", required = true, example = "1024")
     @PreAuthorize("@ss.hasPermission('erp:supplier:query')")
     public CommonResult<ErpSupplierRespVO> getSupplier(@RequestParam("id") Long id) {
         ErpSupplierDO supplier = supplierService.getSupplier(id);
+        if (supplier == null) {
+            throw exception(SUPPLIER_NOT_EXISTS);
+        }
         ErpSupplierRespVO respVO = BeanUtils.toBean(supplier, ErpSupplierRespVO.class);
         fillSupplierExtra(Collections.singletonList(respVO));
         fieldPermissionMasker.mask("erp_supplier", respVO);
@@ -127,6 +159,7 @@ public class ErpSupplierController {
         PageResult<ErpSupplierDO> pageResult = supplierService.getSupplierPage(pageReqVO);
         PageResult<ErpSupplierRespVO> respPage = BeanUtils.toBean(pageResult, ErpSupplierRespVO.class);
         fillSupplierExtra(respPage.getList());
+        maskSupplierFields(respPage.getList());
         return success(respPage);
     }
 
@@ -196,44 +229,24 @@ public class ErpSupplierController {
         map.put("id", "system");
         map.put("name", "main");
         map.put("shortName", "main");
-        map.put("foreignName", "main");
         map.put("code", "main");
-        map.put("oldCode", "main");
         map.put("deptName", "main");
+        map.put("deptNames", "main");
+        map.put("allowMultiDept", "main");
         map.put("contact", "main");
         map.put("mobile", "main");
         map.put("telephone", "main");
         map.put("email", "main");
-        map.put("fax", "main");
         map.put("status", "main");
         map.put("sort", "main");
         map.put("remark", "main");
-        map.put("region", "category_purchase");
-        map.put("category", "category_purchase");
-        map.put("supplierType", "category_purchase");
-        map.put("purchaser", "category_purchase");
-        map.put("companyNature", "category_purchase");
-        map.put("purchaseControl", "category_purchase");
-        map.put("arrivalCycle", "category_purchase");
-        map.put("purchaseLeadDays", "category_purchase");
-        map.put("obsolete", "category_purchase");
-        map.put("obsoleteDate", "category_purchase");
-        map.put("groupSupplier", "category_purchase");
-        map.put("allowBranchOrder", "category_purchase");
-        map.put("settleMethod", "settle_logistics");
-        map.put("settleLocked", "settle_logistics");
-        map.put("transportMethod", "settle_logistics");
-        map.put("freightType", "settle_logistics");
-        map.put("logisticsCompany", "settle_logistics");
-        map.put("arrivalPoint", "settle_logistics");
-        map.put("floatUpdateLastPrice", "settle_logistics");
-        map.put("performanceProfitRef", "settle_logistics");
-        map.put("address", "address_info");
-        map.put("province", "address_info");
-        map.put("city", "address_info");
-        map.put("district", "address_info");
-        map.put("postalCode", "address_info");
-        map.put("website", "address_info");
+        map.put("region", "main");
+        map.put("category", "main");
+        map.put("purchaser", "main");
+        map.put("settleMethod", "main");
+        map.put("transportMethod", "main");
+        map.put("freightType", "main");
+        map.put("logisticsCompany", "main");
         map.put("invoiceType", "invoice_info");
         map.put("taxpayerId", "invoice_info");
         map.put("invoiceBank", "invoice_info");
@@ -268,7 +281,15 @@ public class ErpSupplierController {
         if (CollUtil.isEmpty(list)) {
             return;
         }
-        Map<Long, DeptRespDTO> deptMap = deptApi.getDeptMap(convertSet(list, ErpSupplierRespVO::getDeptId));
+        Map<Long, List<Long>> supplierDeptMap = supplierService.getSupplierDeptMap(convertSet(list, ErpSupplierRespVO::getId));
+        Set<Long> deptIds = new HashSet<>(convertSet(list, ErpSupplierRespVO::getDeptId));
+        supplierDeptMap.values().forEach(ids -> {
+            if (ids != null) {
+                deptIds.addAll(ids);
+            }
+        });
+        deptIds.remove(null);
+        Map<Long, DeptRespDTO> deptMap = deptApi.getDeptMap(deptIds);
         Set<Long> userIds = new HashSet<>();
         list.forEach(supplier -> {
             addUserId(userIds, supplier.getCreator());
@@ -276,6 +297,13 @@ public class ErpSupplierController {
         });
         Map<Long, AdminUserRespDTO> userMap = adminUserApi.getUserMap(userIds);
         list.forEach(supplier -> {
+            List<Long> currentDeptIds = supplierDeptMap.getOrDefault(supplier.getId(), Collections.emptyList());
+            supplier.setDeptIds(currentDeptIds);
+            supplier.setDeptNames(currentDeptIds.stream()
+                    .map(deptMap::get)
+                    .filter(dept -> dept != null && dept.getName() != null)
+                    .map(DeptRespDTO::getName)
+                    .collect(java.util.stream.Collectors.joining("、")));
             MapUtils.findAndThen(deptMap, supplier.getDeptId(), dept -> supplier.setDeptName(dept.getName()));
             Long creatorId = parseUserId(supplier.getCreator());
             if (creatorId != null) {
@@ -306,11 +334,17 @@ public class ErpSupplierController {
         }
     }
 
+    private void maskSupplierFields(List<ErpSupplierRespVO> list) {
+        if (CollUtil.isEmpty(list)) {
+            return;
+        }
+        list.forEach(supplier -> fieldPermissionMasker.mask(FIELD_PERMISSION_MODULE, supplier));
+    }
+
     private static Map<String, String> buildExportFieldPermissionMap() {
         Map<String, String> map = new LinkedHashMap<>();
-        map.put("province", "areaIds");
-        map.put("city", "areaIds");
-        map.put("district", "areaIds");
+        map.put("deptName", "deptId");
+        map.put("deptNames", "deptIds");
         return map;
     }
 

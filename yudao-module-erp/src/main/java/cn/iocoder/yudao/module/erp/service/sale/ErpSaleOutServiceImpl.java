@@ -32,9 +32,12 @@ import cn.iocoder.yudao.module.erp.service.finance.ErpAccountService;
 import cn.iocoder.yudao.module.erp.service.finance.accounting.ErpAutoVoucherBuilder;
 import cn.iocoder.yudao.module.erp.service.finance.accounting.ErpBookOpenService;
 import cn.iocoder.yudao.module.erp.service.finance.accounting.ErpVoucherService;
+import cn.iocoder.yudao.module.erp.service.product.ErpProductBatchNoValidator;
 import cn.iocoder.yudao.module.erp.service.product.ErpProductService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpStockRecordService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpStockService;
+import cn.iocoder.yudao.module.erp.service.stock.ErpStockOutBillService;
+import cn.iocoder.yudao.module.erp.service.stock.ErpWarehouseService;
 import cn.iocoder.yudao.module.erp.service.stock.bo.ErpStockRecordCreateReqBO;
 import cn.iocoder.yudao.module.system.api.user.AdminUserApi;
 import org.springframework.context.annotation.Lazy;
@@ -94,6 +97,10 @@ public class ErpSaleOutServiceImpl implements ErpSaleOutService {
     @Resource
     private ErpStockService stockService;
     @Resource
+    private ErpStockOutBillService stockOutBillService;
+    @Resource
+    private ErpWarehouseService warehouseService;
+    @Resource
     private ErpSaleFieldPermissionMasker fieldPermissionMasker;
     @Resource
     private ErpSaleDocumentDefaultService saleDocumentDefaultService;
@@ -109,6 +116,8 @@ public class ErpSaleOutServiceImpl implements ErpSaleOutService {
     private ErpVoucherService voucherService;
     @Resource
     private ErpBookOpenService bookOpenService;
+    @Resource
+    private ErpProductBatchNoValidator productBatchNoValidator;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -151,6 +160,13 @@ public class ErpSaleOutServiceImpl implements ErpSaleOutService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Long createGeneratedSaleOut(ErpSaleOutSaveReqVO createReqVO, Integer sourceType, Long sourceId, String sourceNo) {
+        return createGeneratedSaleOut(createReqVO, sourceType, sourceId, sourceNo, false);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public Long createGeneratedSaleOut(ErpSaleOutSaveReqVO createReqVO, Integer sourceType, Long sourceId, String sourceNo,
+                                       Boolean deferStockOutBill) {
         clearHiddenFields(createReqVO);
         clearHiddenItemFields(createReqVO.getItems());
         // 1. 校验基础资料。新销售流程不再强制依赖旧销售订单。
@@ -190,9 +206,26 @@ public class ErpSaleOutServiceImpl implements ErpSaleOutService {
 
         // 3. 自动审核，复用现有销售出库扣库存流水。
         Long generatedSaleOutId = saleOutId;
-        DataPermissionUtils.executeIgnore(() -> updateSaleOutStatus(generatedSaleOutId, ErpAuditStatus.APPROVE.getStatus()));
+        if (Boolean.TRUE.equals(deferStockOutBill)) {
+            DataPermissionUtils.executeIgnore(
+                    () -> approveGeneratedSaleOutAndCreateStockOutBill(generatedSaleOutId, saleOut, saleOutItems));
+        } else {
+            DataPermissionUtils.executeIgnore(() -> updateSaleOutStatus(generatedSaleOutId, ErpAuditStatus.APPROVE.getStatus()));
+        }
         recordCreate(generatedSaleOutId, saleOut.getNo());
         return generatedSaleOutId;
+    }
+
+    private void approveGeneratedSaleOutAndCreateStockOutBill(Long saleOutId, ErpSaleOutDO saleOut,
+                                                              List<ErpSaleOutItemDO> saleOutItems) {
+        int updateCount = saleOutMapper.updateByIdAndStatus(saleOutId, ErpAuditStatus.PROCESS.getStatus(),
+                new ErpSaleOutDO().setStatus(ErpAuditStatus.APPROVE.getStatus()));
+        if (updateCount == 0) {
+            throw exception(SALE_OUT_APPROVE_FAIL);
+        }
+        saleOut.setId(saleOutId).setStatus(ErpAuditStatus.APPROVE.getStatus());
+        stockOutBillService.createFromSaleOut(saleOut, saleOutItemMapper.selectListByOutId(saleOutId));
+        recordStatus(saleOutId, saleOut.getNo(), true);
     }
 
     @Override
@@ -296,6 +329,7 @@ public class ErpSaleOutServiceImpl implements ErpSaleOutService {
 
         // 3. 变更库存
         List<ErpSaleOutItemDO> saleOutItems = saleOutItemMapper.selectListByOutId(id);
+        warehouseService.validSaleWarehouseList(convertList(saleOutItems, ErpSaleOutItemDO::getWarehouseId));
         Integer bizType = ErpStockRecordBizTypeEnum.SALE_OUT.getType();
 
         // 3.1 审批通过且销售凭证已开账时，先快照成本（必须前置于扣库存）
@@ -359,6 +393,10 @@ public class ErpSaleOutServiceImpl implements ErpSaleOutService {
         List<ErpProductDO> productList = productService.validProductList(
                 convertSet(list, ErpSaleOutSaveReqVO.Item::getProductId));
         Map<Long, ErpProductDO> productMap = convertMap(productList, ErpProductDO::getId);
+        productBatchNoValidator.validateBatchNoRequired(list, productMap,
+                ErpSaleOutSaveReqVO.Item::getProductId, ErpSaleOutSaveReqVO.Item::getBatchNo);
+        List<Long> warehouseIds = convertList(list, ErpSaleOutSaveReqVO.Item::getWarehouseId);
+        warehouseService.validSaleWarehouseList(warehouseIds);
         Map<Long, Boolean> orderItemGiftFlagMap = buildOrderItemGiftFlagMap(orderId);
         // 2. 转化为 ErpSaleOutItemDO 列表
         return convertList(list, o -> BeanUtils.toBean(o, ErpSaleOutItemDO.class, item -> {

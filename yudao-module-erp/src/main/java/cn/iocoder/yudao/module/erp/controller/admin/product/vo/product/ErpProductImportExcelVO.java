@@ -21,8 +21,11 @@ public class ErpProductImportExcelVO {
     private String barCode;
 
     @ExcelRequired
-    @ExcelProperty("产品分类")
+    @ExcelProperty("商品分类")
     private String categoryName;
+
+    @ExcelProperty("是否开启批次号管理")
+    private Boolean batchNoEnabled;
 
     @ExcelRequired
     @ExcelProperty("单位")
@@ -78,6 +81,9 @@ public class ErpProductImportExcelVO {
 
     @ExcelProperty("批发价")
     private BigDecimal wholesalePrice;
+
+    @ExcelProperty("股份价")
+    private BigDecimal sharePrice;
 
     @ExcelProperty("库存上限")
     private Integer stockMax;

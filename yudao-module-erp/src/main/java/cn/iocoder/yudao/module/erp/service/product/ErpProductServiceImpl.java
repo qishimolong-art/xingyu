@@ -19,6 +19,7 @@ import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpProduc
 import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpProductRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ProductBatchUpdateReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ProductSaveReqVO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.config.ErpFieldConfigDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.product.ErpProductCategoryDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.product.ErpProductDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.product.ErpProductUnitDO;
@@ -35,6 +36,7 @@ import cn.iocoder.yudao.module.erp.dal.mysql.stock.ErpStockRecordMapper;
 import cn.iocoder.yudao.module.erp.dal.redis.no.ErpNoRedisDAO;
 import cn.iocoder.yudao.module.erp.service.base.ErpBaseArchiveReferenceService;
 import cn.iocoder.yudao.module.erp.service.common.ErpOperateLogService;
+import cn.iocoder.yudao.module.erp.service.config.ErpFieldConfigService;
 import cn.iocoder.yudao.module.infra.api.config.ConfigApi;
 import cn.iocoder.yudao.module.system.api.dept.DeptApi;
 import cn.iocoder.yudao.module.system.api.dept.dto.DeptRespDTO;
@@ -43,6 +45,7 @@ import cn.iocoder.yudao.module.system.api.permission.PermissionApi;
 import cn.iocoder.yudao.module.system.api.user.AdminUserApi;
 import cn.iocoder.yudao.module.system.api.user.dto.AdminUserRespDTO;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -53,6 +56,8 @@ import javax.annotation.Resource;
 import javax.validation.ConstraintViolationException;
 import java.io.Reader;
 import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -69,9 +74,12 @@ import static cn.iocoder.yudao.framework.common.exception.util.ServiceExceptionU
 import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.convertMap;
 import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.convertSet;
 import static cn.iocoder.yudao.framework.security.core.util.SecurityFrameworkUtils.getLoginUserDeptId;
+import static cn.iocoder.yudao.framework.security.core.util.SecurityFrameworkUtils.getLoginUserId;
+import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.FIELD_CONFIG_FIELD_NAME_EMPTY;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PRODUCT_CODE_DUPLICATE;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PRODUCT_CODE_GENERATE_FAIL;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PRODUCT_CATEGORY_NOT_EXISTS;
+import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PRODUCT_CATEGORY_NOT_LEAF;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PRODUCT_DELETE_FAIL_STOCK_EXISTS;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PRODUCT_MERGED;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PRODUCT_NOT_ENABLE;
@@ -132,6 +140,8 @@ public class ErpProductServiceImpl implements ErpProductService {
     private ErpProductPriceSystemService productPriceSystemService;
     @Resource
     private ErpBaseArchiveReferenceService baseArchiveReferenceService;
+    @Resource
+    private ErpFieldConfigService fieldConfigService;
 
     @Resource
     private ErpNoRedisDAO noRedisDAO;
@@ -154,6 +164,7 @@ public class ErpProductServiceImpl implements ErpProductService {
         applyProductSaveFieldPermissions(createReqVO, null);
         ignoreReadonlyProductSaveFields(createReqVO);
         ValidationUtils.validate(createReqVO);
+        validateProductCategoryLeaf(createReqVO.getCategoryId());
 
 
 
@@ -1047,6 +1058,9 @@ public class ErpProductServiceImpl implements ErpProductService {
         if (product.getMergedFlag() == null) {
             product.setMergedFlag(false);
         }
+        if (product.getBatchNoEnabled() == null) {
+            product.setBatchNoEnabled(false);
+        }
         if (product.getPackageQty() == null) {
             product.setPackageQty(1);
         }
@@ -1055,6 +1069,7 @@ public class ErpProductServiceImpl implements ErpProductService {
         }
         prepareProductCode(product, createReqVO.getCode(), null);
         insertProduct(product);
+        saveProductCustomFields(product.getId(), createReqVO, getHiddenFieldSet(), true);
         initProductStock(product.getId(), createReqVO.getDefaultWarehouseId());
 
         // 3. 校验并插入通用件子表
@@ -1128,6 +1143,7 @@ public class ErpProductServiceImpl implements ErpProductService {
         applyProductSaveFieldPermissions(updateReqVO, existing);
         ignoreReadonlyProductSaveFields(updateReqVO);
         ValidationUtils.validate(updateReqVO);
+        validateProductCategoryLeaf(updateReqVO.getCategoryId());
         Long targetDefaultWarehouseId = updateReqVO.getDefaultWarehouseId() != null
                 ? updateReqVO.getDefaultWarehouseId() : existing.getDefaultWarehouseId();
         validateDefaultWarehouseExists(targetDefaultWarehouseId);
@@ -1139,6 +1155,9 @@ public class ErpProductServiceImpl implements ErpProductService {
             updateObj.setDeptId(existing.getDeptId());
         }
         updateObj.setDefaultWarehouseId(targetDefaultWarehouseId);
+        if (updateObj.getBatchNoEnabled() == null) {
+            updateObj.setBatchNoEnabled(Boolean.TRUE.equals(existing.getBatchNoEnabled()));
+        }
         updateObj.setMergedFlag(null);
         updateObj.setMergedTargetId(null);
         try {
@@ -1146,6 +1165,7 @@ public class ErpProductServiceImpl implements ErpProductService {
         } catch (DuplicateKeyException ex) {
             throw exception(PRODUCT_CODE_DUPLICATE, updateReqVO.getCode());
         }
+        saveProductCustomFields(updateReqVO.getId(), updateReqVO, getHiddenFieldSet(), false);
         initProductStock(updateReqVO.getId(), updateObj.getDefaultWarehouseId());
 
         // 4. 子表：先删后插
@@ -1176,9 +1196,7 @@ public class ErpProductServiceImpl implements ErpProductService {
             return;
         }
 
-        if (categoryId != null && productCategoryService.getProductCategory(categoryId) == null) {
-            throw exception(PRODUCT_CATEGORY_NOT_EXISTS);
-        }
+        validateProductCategoryLeaf(categoryId);
         if (unitId != null && productUnitService.getProductUnit(unitId) == null) {
             throw exception(PRODUCT_UNIT_NOT_EXISTS);
         }
@@ -1200,12 +1218,41 @@ public class ErpProductServiceImpl implements ErpProductService {
             updateObj.setUnitId(unitId);
             updateObj.setDefaultWarehouseId(defaultWarehouseId);
             updateObj.setStatus(status);
+            if (CommonStatusEnum.isDisable(status)) {
+                updateObj.setDisabledBy(getLoginUserId());
+                updateObj.setDisabledTime(LocalDateTime.now());
+            }
             updateObj.setRemark(remark);
             productMapper.updateById(updateObj);
             initProductStock(id, defaultWarehouseId);
             recordProductLog(ERP_UPDATE_SUB_TYPE, id,
                     productSummary("批量修改", mergeForLog(existing, updateObj))
                             + buildProductChangeSummary(existing, updateObj));
+        }
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void restoreProduct(List<Long> ids) {
+        if (CollUtil.isEmpty(ids)) {
+            return;
+        }
+        List<Long> distinctIds = ids.stream().filter(Objects::nonNull).distinct().collect(Collectors.toList());
+        for (Long id : distinctIds) {
+            ErpProductDO product = validateProductExists(id);
+            if (Boolean.TRUE.equals(product.getMergedFlag())) {
+                throw exception(PRODUCT_MERGED, product.getName());
+            }
+            if (!CommonStatusEnum.isDisable(product.getStatus())) {
+                throw exception(PRODUCT_NOT_ENABLE, product.getName());
+            }
+            productMapper.update(null, new LambdaUpdateWrapper<ErpProductDO>()
+                    .eq(ErpProductDO::getId, id)
+                    .set(ErpProductDO::getStatus, CommonStatusEnum.ENABLE.getStatus())
+                    .set(ErpProductDO::getDisabledBy, null)
+                    .set(ErpProductDO::getDisabledTime, null));
+            recordProductLog(ERP_UPDATE_SUB_TYPE, id,
+                    productSummary("还原", product));
         }
     }
 
@@ -1216,6 +1263,19 @@ public class ErpProductServiceImpl implements ErpProductService {
         validateDefaultWarehouseExists(defaultWarehouseId);
     }
 
+    private void validateProductCategoryLeaf(Long categoryId) {
+        if (categoryId == null) {
+            return;
+        }
+        if (productCategoryService.getProductCategory(categoryId) == null) {
+            throw exception(PRODUCT_CATEGORY_NOT_EXISTS);
+        }
+        Long childCount = productCategoryService.getProductCategoryChildCount(categoryId);
+        if (childCount != null && childCount > 0) {
+            throw exception(PRODUCT_CATEGORY_NOT_LEAF);
+        }
+    }
+
     private void validateDefaultWarehouseExists(Long defaultWarehouseId) {
         if (defaultWarehouseId == null) {
             return;
@@ -1223,6 +1283,7 @@ public class ErpProductServiceImpl implements ErpProductService {
         if (warehouseService.getWarehouse(defaultWarehouseId) == null) {
             throw exception(PRODUCT_WAREHOUSE_NOT_EXISTS);
         }
+        warehouseService.validateCurrentUserWarehousePermission(Collections.singleton(defaultWarehouseId));
     }
 
     private void prepareProductCode(ErpProductDO product, String inputCode, Long excludeId) {
@@ -1524,6 +1585,7 @@ public class ErpProductServiceImpl implements ErpProductService {
             vo.setUniversals(universals == null ? Collections.emptyList()
                     : BeanUtils.toBean(universals, ErpProductRespVO.Universal.class));
         });
+        fillCustomFields(result, productIds);
         return result;
     }
 
@@ -1640,6 +1702,9 @@ public class ErpProductServiceImpl implements ErpProductService {
                 vo.setCategoryId(null);
                 vo.setCategoryName(null);
             }
+            if (isFieldHidden(hiddenFieldSet, "batchNoEnabled")) {
+                vo.setBatchNoEnabled(null);
+            }
             if (isFieldHidden(hiddenFieldSet, "barCode")) {
                 vo.setBarCode(null);
             }
@@ -1688,6 +1753,9 @@ public class ErpProductServiceImpl implements ErpProductService {
             if (isFieldHidden(hiddenFieldSet, "wholesalePrice")) {
                 vo.setWholesalePrice(null);
             }
+            if (isFieldHidden(hiddenFieldSet, "sharePrice")) {
+                vo.setSharePrice(null);
+            }
             if (isFieldHidden(hiddenFieldSet, "weight")) {
                 vo.setWeight(null);
             }
@@ -1712,11 +1780,124 @@ public class ErpProductServiceImpl implements ErpProductService {
             if (isFieldHidden(hiddenFieldSet, "availableStock")) {
                 vo.setAvailableStock(null);
             }
+            if (vo.getCustomFields() != null) {
+                vo.getCustomFields().keySet().removeIf(fieldKey -> isFieldHidden(hiddenFieldSet, fieldKey));
+            }
         }
     }
 
     private boolean isFieldHidden(Set<String> hiddenFields, String fieldKey) {
         return hiddenFields.contains(fieldKey) || hiddenFields.contains("col_" + fieldKey);
+    }
+
+    private Set<String> getHiddenFieldSet() {
+        List<String> hiddenFields = permissionApi.getCurrentUserHiddenFields(FIELD_PERMISSION_MODULE);
+        return CollUtil.isEmpty(hiddenFields) ? Collections.emptySet() : new HashSet<>(hiddenFields);
+    }
+
+    private void fillCustomFields(List<ErpProductRespVO> list, Set<Long> productIds) {
+        List<ErpFieldConfigDO> customFields = getCustomFieldConfigs();
+        if (CollUtil.isEmpty(customFields) || CollUtil.isEmpty(productIds)) {
+            return;
+        }
+        List<String> columns = customFields.stream()
+                .map(ErpFieldConfigDO::getPhysicalColumn)
+                .filter(StringUtils::hasText)
+                .collect(Collectors.toList());
+        if (CollUtil.isEmpty(columns)) {
+            return;
+        }
+        Map<String, ErpFieldConfigDO> configByColumn = customFields.stream()
+                .collect(Collectors.toMap(ErpFieldConfigDO::getPhysicalColumn, item -> item, (a, b) -> a));
+        Map<Long, ErpProductRespVO> voMap = convertMap(list, ErpProductRespVO::getId);
+        for (Map<String, Object> row : productMapper.selectCustomFieldMaps(productIds, columns)) {
+            Long productId = ((Number) row.get("id")).longValue();
+            ErpProductRespVO vo = voMap.get(productId);
+            if (vo == null) {
+                continue;
+            }
+            Map<String, Object> values = new LinkedHashMap<>();
+            for (String column : columns) {
+                ErpFieldConfigDO config = configByColumn.get(column);
+                if (config != null) {
+                    values.put(config.getFieldName(), normalizeCustomFieldValue(row.get(column)));
+                }
+            }
+            vo.setCustomFields(values);
+        }
+    }
+
+    private Object normalizeCustomFieldValue(Object value) {
+        if (value instanceof Boolean) {
+            return value;
+        }
+        return value;
+    }
+
+    private void saveProductCustomFields(Long productId, ProductSaveReqVO reqVO, Set<String> hiddenFieldSet,
+                                         boolean validateRequired) {
+        if (productId == null || reqVO == null) {
+            return;
+        }
+        Map<String, Object> requestValues = reqVO.getCustomFields() == null
+                ? Collections.emptyMap() : reqVO.getCustomFields();
+        List<ErpFieldConfigDO> customFields = getCustomFieldConfigs();
+        if (CollUtil.isEmpty(customFields)) {
+            return;
+        }
+        Map<String, Object> updateValues = new LinkedHashMap<>();
+        for (ErpFieldConfigDO config : customFields) {
+            if (Boolean.TRUE.equals(config.getReadonly()) || !StringUtils.hasText(config.getPhysicalColumn())
+                    || isFieldHidden(hiddenFieldSet, config.getFieldName())) {
+                continue;
+            }
+            boolean containsKey = requestValues.containsKey(config.getFieldName());
+            if (Boolean.TRUE.equals(config.getRequired()) && Boolean.TRUE.equals(config.getVisible())
+                    && ((validateRequired && !containsKey) || (containsKey && requestValues.get(config.getFieldName()) == null))) {
+                throw exception(FIELD_CONFIG_FIELD_NAME_EMPTY);
+            }
+            if (!containsKey) {
+                continue;
+            }
+            Object value = requestValues.get(config.getFieldName());
+            updateValues.put(config.getPhysicalColumn(), convertCustomFieldValue(value, config));
+        }
+        if (!updateValues.isEmpty()) {
+            productMapper.updateCustomFields(productId, updateValues);
+        }
+    }
+
+    private Object convertCustomFieldValue(Object value, ErpFieldConfigDO config) {
+        if (value == null || !StringUtils.hasText(String.valueOf(value))) {
+            return null;
+        }
+        String type = config.getFieldType();
+        if ("INTEGER".equals(type)) {
+            return Long.valueOf(String.valueOf(value));
+        }
+        if ("DECIMAL".equals(type)) {
+            return new BigDecimal(String.valueOf(value));
+        }
+        if ("BOOLEAN".equals(type)) {
+            if (value instanceof Boolean) {
+                return value;
+            }
+            return Boolean.valueOf(String.valueOf(value));
+        }
+        if ("DATE".equals(type)) {
+            return value instanceof LocalDate ? value : LocalDate.parse(String.valueOf(value));
+        }
+        if ("DATETIME".equals(type)) {
+            return value instanceof LocalDateTime ? value : LocalDateTime.parse(String.valueOf(value));
+        }
+        return String.valueOf(value);
+    }
+
+    private List<ErpFieldConfigDO> getCustomFieldConfigs() {
+        return fieldConfigService.getFieldConfigListByModule(FIELD_PERMISSION_MODULE).stream()
+                .filter(config -> "CUSTOM".equals(config.getFieldSource()))
+                .filter(config -> StringUtils.hasText(config.getPhysicalColumn()))
+                .collect(Collectors.toList());
     }
 
     private void ignoreReadonlyProductSaveFields(ProductSaveReqVO reqVO) {
@@ -1753,6 +1934,9 @@ public class ErpProductServiceImpl implements ErpProductService {
         if (isFieldHidden(hiddenFieldSet, "categoryId")) {
             reqVO.setCategoryId(existing == null ? null : existing.getCategoryId());
         }
+        if (isFieldHidden(hiddenFieldSet, "batchNoEnabled")) {
+            reqVO.setBatchNoEnabled(existing == null ? null : existing.getBatchNoEnabled());
+        }
         if (isFieldHidden(hiddenFieldSet, "barCode")) {
             reqVO.setBarCode(existing == null ? null : existing.getBarCode());
         }
@@ -1788,6 +1972,9 @@ public class ErpProductServiceImpl implements ErpProductService {
         }
         if (isFieldHidden(hiddenFieldSet, "wholesalePrice")) {
             reqVO.setWholesalePrice(existing == null ? null : existing.getWholesalePrice());
+        }
+        if (isFieldHidden(hiddenFieldSet, "sharePrice")) {
+            reqVO.setSharePrice(existing == null ? null : existing.getSharePrice());
         }
         if (isFieldHidden(hiddenFieldSet, "weight")) {
             reqVO.setWeight(existing == null ? null : existing.getWeight());
@@ -1906,7 +2093,8 @@ public class ErpProductServiceImpl implements ErpProductService {
             item.setCode(trimToNull(readCsvValue(row, "配件编码", "产品编码")));
             item.setName(trimToNull(readCsvValue(row, "产品名称")));
             item.setBarCode(trimToNull(readCsvValue(row, "产品条码")));
-            item.setCategoryName(trimToNull(readCsvValue(row, "产品分类", "分类")));
+            item.setCategoryName(trimToNull(readCsvValue(row, "商品分类", "产品分类", "分类")));
+            item.setBatchNoEnabled(parseBoolean(readCsvValue(row, "是否开启批次号管理", "批次号管理")));
             item.setUnitName(trimToNull(readCsvValue(row, "单位")));
             item.setStatus(parseInteger(readCsvValue(row, "状态")));
             item.setDefaultWarehouseName(trimToNull(readCsvValue(row, "默认仓库")));
@@ -1931,6 +2119,7 @@ public class ErpProductServiceImpl implements ErpProductService {
             item.setPackageQty(parseInteger(readCsvValue(row, "包装数")));
             item.setMainImage(trimToNull(readCsvValue(row, "主图URL")));
             item.setDetailContent(trimToNull(readCsvValue(row, "详情内容")));
+            item.setSharePrice(parseBigDecimal(readCsvValue(row, "股份价")));
             result.add(item);
         }
         return result;
@@ -1977,6 +2166,7 @@ public class ErpProductServiceImpl implements ErpProductService {
         reqVO.setName(trimToNull(row.getName()));
         reqVO.setBarCode(trimToNull(row.getBarCode()));
         reqVO.setCategoryId(resolveCategoryId(row.getCategoryName(), categoryMap));
+        reqVO.setBatchNoEnabled(Boolean.TRUE.equals(row.getBatchNoEnabled()));
         reqVO.setUnitId(resolveUnitId(row.getUnitName(), unitMap));
         reqVO.setDefaultWarehouseId(resolveWarehouseIdIfPresent(row.getDefaultWarehouseName(), warehouseMap));
         reqVO.setStatus(row.getStatus() == null ? CommonStatusEnum.ENABLE.getStatus() : row.getStatus());
@@ -1994,6 +2184,7 @@ public class ErpProductServiceImpl implements ErpProductService {
         reqVO.setGrossProfitRate(row.getGrossProfitRate());
         reqVO.setBackupPrice1(row.getBackupPrice1());
         reqVO.setWholesalePrice(row.getWholesalePrice());
+        reqVO.setSharePrice(row.getSharePrice());
         reqVO.setStockMax(row.getStockMax());
         reqVO.setStockMin(row.getStockMin());
         reqVO.setStockStandard(row.getStockStandard());
@@ -2007,7 +2198,7 @@ public class ErpProductServiceImpl implements ErpProductService {
     private Long resolveCategoryId(String categoryName, Map<String, ErpProductCategoryDO> categoryMap) {
         ErpProductCategoryDO category = categoryMap.get(trimToNull(categoryName));
         if (category == null) {
-            throw new IllegalArgumentException("产品分类不存在：" + categoryName);
+            throw new IllegalArgumentException("商品分类不存在：" + categoryName);
         }
         return category.getId();
     }
@@ -2059,6 +2250,11 @@ public class ErpProductServiceImpl implements ErpProductService {
         return value != null ? value : readCsvValue(row, fallbackHeader);
     }
 
+    private String readCsvValue(CsvRow row, String header, String fallbackHeader, String secondFallbackHeader) {
+        String value = readCsvValue(row, header, fallbackHeader);
+        return value != null ? value : readCsvValue(row, secondFallbackHeader);
+    }
+
     private String trimToNull(String value) {
         return StrUtil.emptyToNull(StrUtil.trim(value));
     }
@@ -2077,6 +2273,211 @@ public class ErpProductServiceImpl implements ErpProductService {
             return null;
         }
         return new BigDecimal(trim);
+    }
+
+    private Boolean parseBoolean(String value) {
+        String trim = trimToNull(value);
+        if (trim == null) {
+            return null;
+        }
+        if ("是".equals(trim) || "启用".equals(trim) || "开启".equals(trim) || "1".equals(trim)
+                || "true".equalsIgnoreCase(trim) || "yes".equalsIgnoreCase(trim)) {
+            return true;
+        }
+        if ("否".equals(trim) || "禁用".equals(trim) || "关闭".equals(trim) || "0".equals(trim)
+                || "false".equalsIgnoreCase(trim) || "no".equalsIgnoreCase(trim)) {
+            return false;
+        }
+        throw new IllegalArgumentException("是否开启批次号管理只能填写是/否");
+    }
+
+    // ========== 配件价格调整 ==========
+
+    private static final String PARTS_ADJUST_PASSWORD_CONFIG_KEY = "erp.parts.adjustPassword";
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void batchUpdatePriceFields(
+            List<cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpPartsBatchUpdatePriceFieldsReqVO> reqList) {
+        if (CollUtil.isEmpty(reqList)) {
+            return;
+        }
+        for (cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpPartsBatchUpdatePriceFieldsReqVO req : reqList) {
+            ErpProductDO update = new ErpProductDO();
+            update.setId(req.getId());
+            if (req.getBackupPrice1() != null) update.setBackupPrice1(req.getBackupPrice1());
+            if (req.getReferencePrice() != null) update.setReferencePrice(req.getReferencePrice());
+            if (req.getRetailPrice() != null) update.setRetailPrice(req.getRetailPrice());
+            if (req.getWholesalePrice() != null) update.setWholesalePrice(req.getWholesalePrice());
+            if (req.getSharePrice() != null) update.setSharePrice(req.getSharePrice());
+            if (req.getStockMax() != null) update.setStockMax(req.getStockMax());
+            if (req.getStockMin() != null) update.setStockMin(req.getStockMin());
+            if (req.getStockStandard() != null) update.setStockStandard(req.getStockStandard());
+            productMapper.updateById(update);
+        }
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public int batchAdjustPrice(
+            cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpPartsBatchAdjustPriceReqVO reqVO) {
+        // 1. 按筛选条件查询配件 ID
+        List<Long> productIds = selectProductIdsByFilter(reqVO.getFilterCondition());
+        if (CollUtil.isEmpty(productIds)) {
+            return 0;
+        }
+
+        // 2. 分批查询配件，逐条计算新价格并更新
+        int adjusted = 0;
+        // 每批最多 200 条
+        List<List<Long>> batches = CollUtil.split(productIds, 200);
+        for (List<Long> batch : batches) {
+            List<ErpProductDO> products = productMapper.selectByIds(batch);
+            for (ErpProductDO product : products) {
+                BigDecimal sourcePrice = getSourcePrice(product, reqVO.getSourcePriceType());
+                if (sourcePrice == null) {
+                    continue;
+                }
+                BigDecimal newPrice = calcAdjustedPrice(sourcePrice, reqVO.getAdjustMethod(),
+                        reqVO.getAdjustCoefficient(), reqVO.getDecimalPlaces());
+                if (newPrice == null || newPrice.compareTo(BigDecimal.ZERO) < 0) {
+                    continue;
+                }
+                setTargetPrice(product, reqVO.getTargetPriceType(), newPrice);
+                productMapper.updateById(product);
+                adjusted++;
+            }
+        }
+        return adjusted;
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public int batchAdjustStockLimits(
+            cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpPartsBatchAdjustStockLimitsReqVO reqVO) {
+        // 1. 口令校验
+        validateAdjustPassword(reqVO.getPassword());
+
+        // 2. 至少有一项需要更新
+        if (reqVO.getStockMax() == null && reqVO.getStockMin() == null && reqVO.getStockStandard() == null) {
+            return 0;
+        }
+
+        // 3. 按筛选条件查询配件 ID
+        List<Long> productIds = selectProductIdsByFilter(reqVO.getFilterCondition());
+        if (CollUtil.isEmpty(productIds)) {
+            return 0;
+        }
+
+        // 4. 分批更新
+        int updated = 0;
+        List<List<Long>> batches = CollUtil.split(productIds, 200);
+        for (List<Long> batch : batches) {
+            for (Long id : batch) {
+                ErpProductDO update = new ErpProductDO();
+                update.setId(id);
+                if (reqVO.getStockMax() != null) update.setStockMax(reqVO.getStockMax());
+                if (reqVO.getStockMin() != null) update.setStockMin(reqVO.getStockMin());
+                if (reqVO.getStockStandard() != null) update.setStockStandard(reqVO.getStockStandard());
+                productMapper.updateById(update);
+                updated++;
+            }
+        }
+        return updated;
+    }
+
+    private void validateAdjustPassword(String password) {
+        String configPassword = configApi.getConfigValueByKey(PARTS_ADJUST_PASSWORD_CONFIG_KEY);
+        if (!StringUtils.hasText(configPassword)) {
+            throw exception(
+                    new cn.iocoder.yudao.framework.common.exception.ErrorCode(1_030_507_000, "调整口令未配置，请联系管理员"));
+        }
+        if (!configPassword.equals(password)) {
+            throw exception(
+                    new cn.iocoder.yudao.framework.common.exception.ErrorCode(1_030_507_001, "调整口令错误，请重新输入"));
+        }
+    }
+
+    private List<Long> selectProductIdsByFilter(
+            cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpPartsPriceAdjustFilterVO filter) {
+        LambdaQueryWrapper<ErpProductDO> w = new LambdaQueryWrapper<>();
+        w.select(ErpProductDO::getId);
+        w.ne(ErpProductDO::getMergedFlag, Boolean.TRUE);
+        if (filter == null) {
+            List<Map<String, Object>> rows = productMapper.selectMaps(w);
+            return rows.stream().map(m -> (Long) m.get("id")).collect(Collectors.toList());
+        }
+        if (StringUtils.hasText(filter.getCode())) {
+            w.like(ErpProductDO::getCode, filter.getCode().trim());
+        }
+        if (StringUtils.hasText(filter.getName())) {
+            w.like(ErpProductDO::getName, filter.getName().trim());
+        }
+        if (filter.getCategoryId() != null) {
+            w.eq(ErpProductDO::getCategoryId, filter.getCategoryId());
+        }
+        if (StringUtils.hasText(filter.getVehicleModel())) {
+            w.like(ErpProductDO::getVehicleModel, filter.getVehicleModel().trim());
+        }
+        if (StringUtils.hasText(filter.getOriginPlace())) {
+            w.like(ErpProductDO::getOriginPlace, filter.getOriginPlace().trim());
+        }
+        if (StringUtils.hasText(filter.getBrand())) {
+            w.like(ErpProductDO::getBrand, filter.getBrand().trim());
+        }
+        if (filter.getWarehouseId() != null) {
+            w.eq(ErpProductDO::getDefaultWarehouseId, filter.getWarehouseId());
+        }
+        List<Map<String, Object>> rows = productMapper.selectMaps(w);
+        return rows.stream().map(m -> (Long) m.get("id")).collect(Collectors.toList());
+    }
+
+    private BigDecimal getSourcePrice(ErpProductDO product, String sourcePriceType) {
+        switch (sourcePriceType) {
+            case "SPARE_PRICE_1": return product.getBackupPrice1();
+            case "REFERENCE_PRICE": return product.getReferencePrice();
+            case "RETAIL_PRICE": return product.getRetailPrice();
+            case "WHOLESALE_PRICE": return product.getWholesalePrice();
+            case "SHARE_PRICE": return product.getSharePrice();
+            case "LAST_PURCHASE_PRICE": return product.getLastPurchasePrice();
+            case "PURCHASE_PRICE": return product.getPurchasePrice();
+            case "SALE_PRICE": return product.getSalePrice();
+            default: return null;
+        }
+    }
+
+    private void setTargetPrice(ErpProductDO product, String targetPriceType, BigDecimal newPrice) {
+        switch (targetPriceType) {
+            case "SPARE_PRICE_1": product.setBackupPrice1(newPrice); break;
+            case "REFERENCE_PRICE": product.setReferencePrice(newPrice); break;
+            case "RETAIL_PRICE": product.setRetailPrice(newPrice); break;
+            case "WHOLESALE_PRICE": product.setWholesalePrice(newPrice); break;
+            case "SHARE_PRICE": product.setSharePrice(newPrice); break;
+            case "PURCHASE_PRICE": product.setPurchasePrice(newPrice); break;
+            case "SALE_PRICE": product.setSalePrice(newPrice); break;
+            default: break;
+        }
+    }
+
+    private BigDecimal calcAdjustedPrice(BigDecimal source, String method,
+                                          BigDecimal coefficient, int decimalPlaces) {
+        if (source == null || coefficient == null) {
+            return null;
+        }
+        BigDecimal result;
+        switch (method) {
+            case "ADD": result = source.add(coefficient); break;
+            case "SUBTRACT": result = source.subtract(coefficient); break;
+            case "MULTIPLY": result = source.multiply(coefficient); break;
+            case "DIVIDE":
+                if (coefficient.compareTo(BigDecimal.ZERO) == 0) {
+                    return null;
+                }
+                result = source.divide(coefficient, decimalPlaces + 4, java.math.RoundingMode.HALF_UP);
+                break;
+            default: return null;
+        }
+        return result.setScale(decimalPlaces, java.math.RoundingMode.HALF_UP);
     }
 
 }

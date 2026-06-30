@@ -1,4 +1,4 @@
--- Product management form field permission definitions.
+﻿-- Product management form field permission definitions.
 -- Scope: form fields only. List columns and search fields are intentionally excluded.
 
 CREATE TABLE IF NOT EXISTS `system_field_definition` (
@@ -34,7 +34,7 @@ CREATE TABLE IF NOT EXISTS `system_role_field_permission` (
   KEY `idx_field_id` (`field_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='System role field permission';
 
--- Remove old list-column/search-field permissions for product management forms.
+-- Remove old list-column/search-field permissions and definitions for product management forms.
 DELETE rfp
 FROM `system_role_field_permission` rfp
 JOIN `system_field_definition` fd ON fd.id = rfp.field_id
@@ -45,10 +45,7 @@ WHERE fd.module IN ('erp_product', 'erp_product_category', 'erp_product_unit', '
     OR fd.field_key LIKE 'search\_%'
   );
 
-UPDATE `system_field_definition`
-SET `deleted` = b'1',
-    `updater` = '1',
-    `update_time` = NOW()
+DELETE FROM `system_field_definition`
 WHERE `module` IN ('erp_product', 'erp_product_category', 'erp_product_unit', 'erp_price_system')
   AND (
     `field_group` IN ('list_col', 'search_info')
@@ -66,7 +63,8 @@ VALUES
 ('erp_product', 'defaultWarehouseId', '默认仓库', 'base_info', 50, '1', NOW(), '1', NOW(), b'0', 1),
 ('erp_product', 'vehicleModel', '适用车型', 'base_info', 60, '1', NOW(), '1', NOW(), b'0', 1),
 ('erp_product', 'standard', '规格', 'base_info', 70, '1', NOW(), '1', NOW(), b'0', 1),
-('erp_product', 'categoryId', '类别', 'base_info', 80, '1', NOW(), '1', NOW(), b'0', 1),
+('erp_product', 'categoryId', '商品分类', 'base_info', 80, '1', NOW(), '1', NOW(), b'0', 1),
+('erp_product', 'batchNoEnabled', '是否开启批次号管理', 'base_info', 85, '1', NOW(), '1', NOW(), b'0', 1),
 ('erp_product', 'barCode', '条形码', 'base_info', 90, '1', NOW(), '1', NOW(), b'0', 1),
 ('erp_product', 'factoryCode', '厂家编码', 'base_info', 100, '1', NOW(), '1', NOW(), b'0', 1),
 ('erp_product', 'status', '状态', 'base_info', 110, '1', NOW(), '1', NOW(), b'0', 1),
@@ -77,6 +75,7 @@ VALUES
 ('erp_product', 'grossProfitRate', '毛利率（%）', 'price_info', 40, '1', NOW(), '1', NOW(), b'0', 1),
 ('erp_product', 'backupPrice1', '备用价', 'price_info', 50, '1', NOW(), '1', NOW(), b'0', 1),
 ('erp_product', 'wholesalePrice', '批发价', 'price_info', 60, '1', NOW(), '1', NOW(), b'0', 1),
+('erp_product', 'sharePrice', '股份价', 'price_info', 70, '1', NOW(), '1', NOW(), b'0', 1),
 ('erp_product', 'stockMax', '库存上限', 'extend_info', 10, '1', NOW(), '1', NOW(), b'0', 1),
 ('erp_product', 'stockMin', '库存下限', 'extend_info', 20, '1', NOW(), '1', NOW(), b'0', 1),
 ('erp_product', 'stockStandard', '标准库存', 'extend_info', 30, '1', NOW(), '1', NOW(), b'0', 1),
@@ -85,6 +84,7 @@ VALUES
 ('erp_product', 'currentStock', '当前库存', 'stock_info', 10, '1', NOW(), '1', NOW(), b'0', 1),
 ('erp_product', 'inTransitStock', '在途数量', 'stock_info', 20, '1', NOW(), '1', NOW(), b'0', 1),
 ('erp_product', 'availableStock', '可用库存', 'stock_info', 30, '1', NOW(), '1', NOW(), b'0', 1),
+('erp_product', 'col_sharePrice', '列表-股份价', 'list_col', 210, '1', NOW(), '1', NOW(), b'0', 1),
 ('erp_product_category', 'parentId', '上级分类', 'base_info', 10, '1', NOW(), '1', NOW(), b'0', 1),
 ('erp_product_category', 'name', '分类名称', 'base_info', 20, '1', NOW(), '1', NOW(), b'0', 1),
 ('erp_product_category', 'code', '分类编码', 'base_info', 30, '1', NOW(), '1', NOW(), b'0', 1),

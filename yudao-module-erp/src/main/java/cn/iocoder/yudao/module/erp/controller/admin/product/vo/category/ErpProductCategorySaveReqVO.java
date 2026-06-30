@@ -6,15 +6,14 @@ import lombok.Data;
 import javax.validation.constraints.NotEmpty;
 import javax.validation.constraints.NotNull;
 
-@Schema(description = "管理后台 - ERP 产品分类新增/修改 Request VO")
+@Schema(description = "管理后台 - ERP 商品分类新增/修改 Request VO")
 @Data
 public class ErpProductCategorySaveReqVO {
 
     @Schema(description = "分类编号", requiredMode = Schema.RequiredMode.REQUIRED, example = "5860")
     private Long id;
 
-    @Schema(description = "父分类编号", requiredMode = Schema.RequiredMode.REQUIRED, example = "21829")
-    @NotNull(message = "父分类编号不能为空")
+    @Schema(description = "父分类编号", example = "21829")
     private Long parentId;
 
     @Schema(description = "分类名称", requiredMode = Schema.RequiredMode.REQUIRED, example = "芋艿")

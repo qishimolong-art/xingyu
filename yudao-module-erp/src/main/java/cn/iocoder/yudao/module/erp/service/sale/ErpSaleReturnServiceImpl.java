@@ -20,6 +20,7 @@ import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleOutItemDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleReturnDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleReturnItemDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockDO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockOutBillItemDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpWarehouseDO;
 import cn.iocoder.yudao.module.erp.dal.mysql.product.ErpProductMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpSaleOutItemMapper;
@@ -38,6 +39,7 @@ import cn.iocoder.yudao.module.erp.service.finance.accounting.ErpAutoVoucherBuil
 import cn.iocoder.yudao.module.erp.service.finance.accounting.ErpBookOpenService;
 import cn.iocoder.yudao.module.erp.service.finance.accounting.ErpVoucherService;
 import cn.iocoder.yudao.module.erp.service.product.ErpProductService;
+import cn.iocoder.yudao.module.erp.service.stock.ErpStockOutBillService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpStockRecordService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpStockService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpWarehouseService;
@@ -108,6 +110,8 @@ public class ErpSaleReturnServiceImpl implements ErpSaleReturnService {
     private ErpStockService stockService;
     @Resource
     private ErpWarehouseService warehouseService;
+    @Resource
+    private ErpStockOutBillService stockOutBillService;
     @Resource
     private ErpSaleFieldPermissionMasker fieldPermissionMasker;
     @Resource
@@ -245,6 +249,7 @@ public class ErpSaleReturnServiceImpl implements ErpSaleReturnService {
         ErpSaleOutDO saleOut = saleOutService.validateSaleOut(reqVO.getSourceOutId());
         Map<Long, ErpSaleOutItemDO> sourceItemMap = convertMap(
                 saleOutService.getSaleOutItemListByOutId(reqVO.getSourceOutId()), ErpSaleOutItemDO::getId);
+        Map<Long, BigDecimal> pickedCountMap = getPickedCountMapBySaleOut(reqVO.getSourceOutId());
         Map<Long, BigDecimal> currentCountMap = new HashMap<>();
         reqVO.getItems().forEach(item -> {
             if (item.getSourceOutItemId() == null) {
@@ -269,12 +274,30 @@ public class ErpSaleReturnServiceImpl implements ErpSaleReturnService {
                 throw exception(SALE_RETURN_SOURCE_OUT_ITEM_NOT_EXISTS, sourceOutItemId);
             }
             BigDecimal returnedCount = returnedCountMap.getOrDefault(sourceOutItemId, BigDecimal.ZERO);
-            BigDecimal returnableCount = sourceItem.getCount().subtract(returnedCount);
+            BigDecimal sourceCount = pickedCountMap.isEmpty()
+                    ? sourceItem.getCount() : pickedCountMap.getOrDefault(sourceOutItemId, BigDecimal.ZERO);
+            BigDecimal returnableCount = sourceCount.subtract(returnedCount);
             if (count.compareTo(returnableCount) > 0) {
                 throw exception(SALE_RETURN_EXCEED_RETURNABLE, sourceOutItemId, count, returnableCount);
             }
         });
         return saleOut;
+    }
+
+    private Map<Long, BigDecimal> getPickedCountMapBySaleOut(Long sourceOutId) {
+        List<ErpStockOutBillItemDO> stockOutBillItems = stockOutBillService.getSaleOutSourceItemList(sourceOutId);
+        if (CollUtil.isEmpty(stockOutBillItems)) {
+            return Collections.emptyMap();
+        }
+        Map<Long, BigDecimal> result = new HashMap<>();
+        stockOutBillItems.forEach(item -> {
+            if (item.getSourceItemId() != null) {
+                result.merge(item.getSourceItemId(),
+                        item.getPickedCount() != null ? item.getPickedCount() : BigDecimal.ZERO,
+                        BigDecimal::add);
+            }
+        });
+        return result;
     }
 
     private void calculateTotalPrice(ErpSaleReturnDO saleReturn, List<ErpSaleReturnItemDO> saleReturnItems) {
@@ -327,6 +350,7 @@ public class ErpSaleReturnServiceImpl implements ErpSaleReturnService {
         }
 
         List<ErpSaleReturnItemDO> saleReturnItems = saleReturnItemMapper.selectListByReturnId(id);
+        warehouseService.validSaleWarehouseList(convertList(saleReturnItems, ErpSaleReturnItemDO::getWarehouseId));
         Integer bizType = ErpStockRecordBizTypeEnum.SALE_RETURN.getType();
         saleReturnItems.forEach(saleReturnItem -> {
             stockRecordService.createStockRecord(new ErpStockRecordCreateReqBO(
@@ -382,6 +406,8 @@ public class ErpSaleReturnServiceImpl implements ErpSaleReturnService {
         List<ErpProductDO> productList = productService.validProductList(
                 convertSet(list, ErpSaleReturnSaveReqVO.Item::getProductId));
         Map<Long, ErpProductDO> productMap = convertMap(productList, ErpProductDO::getId);
+        List<Long> warehouseIds = convertList(list, ErpSaleReturnSaveReqVO.Item::getWarehouseId);
+        warehouseService.validSaleWarehouseList(warehouseIds);
         return convertList(list, itemVO -> BeanUtils.toBean(itemVO, ErpSaleReturnItemDO.class, item -> {
             if (item.getCount() == null || item.getCount().compareTo(BigDecimal.ZERO) <= 0) {
                 throw exception(SALE_RETURN_COUNT_POSITIVE);
@@ -485,7 +511,7 @@ public class ErpSaleReturnServiceImpl implements ErpSaleReturnService {
         Map<String, ErpProductDO> productMap = convertMap(productMapper.selectListByCodes(productCodes), ErpProductDO::getCode);
         Map<Long, ErpProductRespVO> productVOMap = productService.getProductVOMap(convertList(productMap.values(), ErpProductDO::getId));
         Map<String, ErpWarehouseDO> warehouseMap = convertMap(
-                warehouseService.getWarehouseListByStatus(CommonStatusEnum.ENABLE.getStatus()), ErpWarehouseDO::getName);
+                warehouseService.getSaleWarehouseListByStatus(CommonStatusEnum.ENABLE.getStatus()), ErpWarehouseDO::getName);
         for (int i = 0; i < list.size(); i++) {
             ErpSaleReturnImportExcelVO row = list.get(i);
             int rowNo = i + 2;

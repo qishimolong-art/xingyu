@@ -7,6 +7,7 @@ import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.*;
 
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
 
 /**
  * ERP 仓库 DO
@@ -66,6 +67,14 @@ public class ErpWarehouseDO extends BaseDO {
      * 枚举 {@link cn.iocoder.yudao.framework.common.enums.CommonStatusEnum}
      */
     private Integer status;
+    /**
+     * 停用人用户编号
+     */
+    private Long disabledBy;
+    /**
+     * 停用时间
+     */
+    private LocalDateTime disabledTime;
     /**
      * 是否默认
      */

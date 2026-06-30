@@ -40,6 +40,30 @@ public class ErpFieldConfigRespVO {
     @ExcelProperty("排序")
     private Integer sort;
 
+    private String fieldSource;
+
+    private String physicalColumn;
+
+    private String fieldType;
+
+    private String fieldGroup;
+
+    private String componentType;
+
+    private Integer maxLength;
+
+    private Integer decimalPrecision;
+
+    private Integer decimalScale;
+
+    private String defaultValue;
+
+    private Boolean listVisible;
+
+    private Boolean searchable;
+
+    private Boolean readonly;
+
     @Schema(description = "创建者", example = "1024")
     @ExcelProperty("创建者")
     private String creator;

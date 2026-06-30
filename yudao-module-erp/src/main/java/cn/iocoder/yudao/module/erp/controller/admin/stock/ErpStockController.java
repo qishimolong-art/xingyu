@@ -176,6 +176,7 @@ public class ErpStockController {
                         .setStockMin(product.getStockMin())
                         .setStockStandard(product.getStockStandard())
                         .setPackageQty(product.getPackageQty())
+                        .setBatchNoEnabled(product.getBatchNoEnabled())
                         .setWeight(product.getWeight());
             });
             MapUtils.findAndThen(warehouseMap, stock.getWarehouseId(), warehouse -> {

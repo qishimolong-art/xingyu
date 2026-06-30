@@ -46,6 +46,18 @@ FROM (
 ) parent_source
 GROUP BY parent_source.permission;
 
+-- Fallback: some upgraded databases may have the product-unit page menu but
+-- miss all legacy product-unit button permissions, so the parent cannot be
+-- inferred from query/create/update/export permissions alone.
+INSERT IGNORE INTO tmp_erp_product_unit_import_parent (permission, parent_id)
+SELECT source.permission, MIN(page_menu.id) AS parent_id
+FROM tmp_erp_product_unit_import_permission source
+JOIN system_menu page_menu
+  ON page_menu.component COLLATE utf8mb4_unicode_ci = 'erp/product/unit/index' COLLATE utf8mb4_unicode_ci
+ AND page_menu.type = 2
+ AND page_menu.deleted = b'0'
+GROUP BY source.permission;
+
 -- Restore a previously soft-deleted import menu for the exact permission.
 UPDATE system_menu m
 JOIN tmp_erp_product_unit_import_permission source

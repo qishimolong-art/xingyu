@@ -39,10 +39,12 @@ VALUES
 (1, 2964, '1', NOW(), '1', NOW(), b'0', 1),
 (1, 2965, '1', NOW(), '1', NOW(), b'0', 1);
 
+-- 保持字段配置菜单指向实际存在的字段配置页面。
+-- 搜索字段配置当前没有独立前端页面，不能覆盖 2961 的 component，否则进入字段配置会落到 404。
 UPDATE `system_menu`
-SET `component` = 'erp/config/search/index',
-    `component_name` = 'ErpSearchFieldConfig',
-    `permission` = 'erp:search-field-config:query',
+SET `component` = 'erp/system/fieldconfig/index',
+    `component_name` = 'ErpFieldConfig',
+    `permission` = '',
     `updater` = '1',
     `update_time` = NOW()
 WHERE `id` = 2961 AND `deleted` = b'0';

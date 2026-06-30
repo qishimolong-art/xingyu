@@ -22,9 +22,6 @@ public class ErpCustomerRespVO {
     @ExcelProperty("客户编码")
     private String code;
 
-    @Schema(description = "旧编码")
-    private String oldCode;
-
     @Schema(description = "客户名称", requiredMode = Schema.RequiredMode.REQUIRED, example = "张三")
     @ExcelProperty("客户名称")
     private String name;
@@ -32,9 +29,6 @@ public class ErpCustomerRespVO {
     @Schema(description = "简称")
     @ExcelProperty("简称")
     private String shortName;
-
-    @Schema(description = "外文名")
-    private String foreignName;
 
     @Schema(description = "往来类别")
     private Integer relationType;
@@ -45,9 +39,6 @@ public class ErpCustomerRespVO {
     @Schema(description = "客户类型")
     @ExcelProperty("客户类型")
     private Integer customerType;
-
-    @Schema(description = "公司性质")
-    private String companyNature;
 
     @Schema(description = "是否集团客户")
     private Boolean groupCustomer;
@@ -72,18 +63,12 @@ public class ErpCustomerRespVO {
     @ExcelProperty("电子邮箱")
     private String email;
 
-    @Schema(description = "传真", example = "20 7123 4567")
-    @ExcelProperty("传真")
-    private String fax;
-
     private String financeTelephone;
     private Long addressAreaId;
     @ExcelProperty("地址")
     private String address;
     private String detailAddress;
     private String postCode;
-    private Integer deliveryArea;
-    private String arrivalPoint;
 
     @Schema(description = "备注", example = "你猜")
     @ExcelProperty("备注")
@@ -141,8 +126,6 @@ public class ErpCustomerRespVO {
     @ExcelProperty("价格级别")
     private Integer priceLevel;
     private Boolean priceLocked;
-    private Integer profitReferencePriceLevel;
-    private Integer ecommercePayment;
     private Boolean logistics;
     private Integer transportMethod;
     @ExcelProperty("线路")
@@ -153,10 +136,6 @@ public class ErpCustomerRespVO {
     private String memberCode;
     private String platformCode;
 
-    @Schema(description = "客户标签（逗号分隔）")
-    private String customerTag;
-    @Schema(description = "微信客服账号/姓名")
-    private String wechatService;
     @Schema(description = "白条授信额度")
     private BigDecimal creditLimit;
     @Schema(description = "数据中心审核状态 0未审核 1已审核 2驳回")

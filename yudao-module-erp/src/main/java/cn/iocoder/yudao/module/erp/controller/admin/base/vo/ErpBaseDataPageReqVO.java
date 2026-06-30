@@ -18,7 +18,16 @@ public class ErpBaseDataPageReqVO extends PageParam {
     @Schema(description = "名称", example = "华东")
     private String name;
 
+    @Schema(description = "稳定业务编码", example = "cash")
+    private String code;
+
     @Schema(description = "状态", example = "0")
     private Integer status;
+
+    @Schema(description = "排序字段", example = "name")
+    private String orderField;
+
+    @Schema(description = "排序方向", example = "asc")
+    private String orderDirection;
 
 }

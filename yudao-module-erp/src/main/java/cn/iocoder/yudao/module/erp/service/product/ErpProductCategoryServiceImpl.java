@@ -24,6 +24,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.regex.Pattern;
 
 import static cn.iocoder.yudao.framework.common.exception.util.ServiceExceptionUtil.exception;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.*;
@@ -38,6 +39,7 @@ import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.*;
 public class ErpProductCategoryServiceImpl implements ErpProductCategoryService {
 
     private static final String FIELD_PERMISSION_MODULE = "erp_product_category";
+    private static final Pattern CATEGORY_CODE_PATTERN = Pattern.compile("^\\d{3}( \\d{3})*$");
 
     @Resource
     private ErpProductCategoryMapper erpProductCategoryMapper;
@@ -51,9 +53,12 @@ public class ErpProductCategoryServiceImpl implements ErpProductCategoryService 
     @Override
     public Long createProductCategory(ErpProductCategorySaveReqVO createReqVO) {
         // 校验父分类编号的有效性
+        prepareProductCategorySaveReqVO(null, createReqVO);
+        prepareProductCategorySaveReqVO(null, createReqVO);
         validateParentProductCategory(null, createReqVO.getParentId());
         // 校验分类名称的唯一性
         validateProductCategoryNameUnique(null, createReqVO.getParentId(), createReqVO.getName());
+        validateProductCategoryCodeUnique(null, createReqVO.getCode());
 
         // 插入
         ErpProductCategoryDO category = BeanUtils.toBean(createReqVO, ErpProductCategoryDO.class);
@@ -69,9 +74,13 @@ public class ErpProductCategoryServiceImpl implements ErpProductCategoryService 
         applyProductCategorySaveFieldPermissions(updateReqVO, existing);
         ValidationUtils.validate(updateReqVO);
         // 校验父分类编号的有效性
+        validateProductCategoryCodeCanUpdate(existing, updateReqVO.getCode());
+        validateProductCategoryCodeCanUpdate(existing, updateReqVO.getCode());
+        prepareProductCategorySaveReqVO(updateReqVO.getId(), updateReqVO);
         validateParentProductCategory(updateReqVO.getId(), updateReqVO.getParentId());
         // 校验分类名称的唯一性
         validateProductCategoryNameUnique(updateReqVO.getId(), updateReqVO.getParentId(), updateReqVO.getName());
+        validateProductCategoryCodeUnique(updateReqVO.getId(), updateReqVO.getCode());
 
         // 更新
         ErpProductCategoryDO updateObj = BeanUtils.toBean(updateReqVO, ErpProductCategoryDO.class);
@@ -171,9 +180,80 @@ public class ErpProductCategoryServiceImpl implements ErpProductCategoryService 
         }
     }
 
+    private void prepareProductCategorySaveReqVO(Long id, ErpProductCategorySaveReqVO reqVO) {
+        String code = normalizeCategoryCode(reqVO.getCode());
+        validateProductCategoryCodeFormat(code);
+        reqVO.setCode(code);
+        reqVO.setParentId(resolveParentIdByCode(id, code));
+    }
+
+    private Long resolveParentIdByCode(Long id, String code) {
+        String parentCode = getParentCode(code);
+        if (parentCode == null) {
+            return ErpProductCategoryDO.PARENT_ID_ROOT;
+        }
+        ErpProductCategoryDO parent = erpProductCategoryMapper.selectByCode(parentCode);
+        if (parent == null) {
+            throw exception(PRODUCT_CATEGORY_PARENT_CODE_NOT_EXISTS, parentCode);
+        }
+        if (Objects.equals(id, parent.getId())) {
+            throw exception(PRODUCT_CATEGORY_PARENT_ERROR);
+        }
+        return parent.getId();
+    }
+
+    private void validateProductCategoryCodeUnique(Long id, String code) {
+        ErpProductCategoryDO productCategory = erpProductCategoryMapper.selectByCodeExcludeId(code, id);
+        if (productCategory != null) {
+            throw exception(PRODUCT_CATEGORY_CODE_DUPLICATE, code);
+        }
+    }
+
+    private void validateProductCategoryCodeCanUpdate(ErpProductCategoryDO existing, String code) {
+        String oldCode = normalizeOptionalCategoryCode(existing.getCode());
+        String newCode = normalizeOptionalCategoryCode(code);
+        if (!Objects.equals(oldCode, newCode) && erpProductCategoryMapper.selectCountByParentId(existing.getId()) > 0) {
+            throw exception(PRODUCT_CATEGORY_CODE_UPDATE_FAIL_HAS_CHILDREN);
+        }
+    }
+
+    private String normalizeCategoryCode(String code) {
+        return StrUtil.blankToDefault(code, "").trim().replaceAll("\\s+", " ");
+    }
+
+    private String normalizeOptionalCategoryCode(String code) {
+        String normalizedCode = normalizeCategoryCode(code);
+        return StrUtil.emptyToNull(normalizedCode);
+    }
+
+    private void validateProductCategoryCodeFormat(String code) {
+        if (!CATEGORY_CODE_PATTERN.matcher(code).matches()) {
+            throw exception(PRODUCT_CATEGORY_CODE_INVALID);
+        }
+    }
+
+    private String getParentCode(String code) {
+        int lastSpaceIndex = code.lastIndexOf(' ');
+        return lastSpaceIndex < 0 ? null : code.substring(0, lastSpaceIndex);
+    }
+
+    private int parseLastCodeSegment(String code) {
+        if (!CATEGORY_CODE_PATTERN.matcher(code).matches()) {
+            return 0;
+        }
+        int lastSpaceIndex = code.lastIndexOf(' ');
+        String lastSegment = lastSpaceIndex < 0 ? code : code.substring(lastSpaceIndex + 1);
+        return Integer.parseInt(lastSegment);
+    }
+
     @Override
     public ErpProductCategoryDO getProductCategory(Long id) {
         return applyProductCategoryFieldPermissions(erpProductCategoryMapper.selectById(id));
+    }
+
+    @Override
+    public Long getProductCategoryChildCount(Long parentId) {
+        return erpProductCategoryMapper.selectCountByParentId(parentId);
     }
 
     @Override
@@ -199,7 +279,7 @@ public class ErpProductCategoryServiceImpl implements ErpProductCategoryService 
             try {
                 importProductCategory(row, rowNo, categoryMap);
                 result.setSuccessCount(result.getSuccessCount() + 1);
-                if (categoryMap.containsKey(trimToNull(row.getCode()))) {
+                if (categoryMap.containsKey(normalizeOptionalCategoryCode(row.getCode()))) {
                     result.setUpdateCount(result.getUpdateCount() + 1);
                 } else {
                     result.setCreateCount(result.getCreateCount() + 1);
@@ -214,13 +294,41 @@ public class ErpProductCategoryServiceImpl implements ErpProductCategoryService 
         return result;
     }
 
+    @Override
+    public String getNextProductCategoryCode(String parentCode) {
+        String normalizedParentCode = normalizeOptionalCategoryCode(parentCode);
+        Long parentId = ErpProductCategoryDO.PARENT_ID_ROOT;
+        if (StrUtil.isNotBlank(normalizedParentCode)) {
+            validateProductCategoryCodeFormat(normalizedParentCode);
+            ErpProductCategoryDO parent = erpProductCategoryMapper.selectByCode(normalizedParentCode);
+            if (parent == null) {
+                throw exception(PRODUCT_CATEGORY_PARENT_CODE_NOT_EXISTS, normalizedParentCode);
+            }
+            parentId = parent.getId();
+        }
+        List<ErpProductCategoryDO> children = erpProductCategoryMapper.selectListByParentId(parentId);
+        int nextNo = children.stream()
+                .map(ErpProductCategoryDO::getCode)
+                .map(this::normalizeOptionalCategoryCode)
+                .filter(StrUtil::isNotBlank)
+                .filter(code -> Objects.equals(getParentCode(code), normalizedParentCode))
+                .mapToInt(this::parseLastCodeSegment)
+                .max()
+                .orElse(0) + 1;
+        if (nextNo > 999) {
+            throw exception(PRODUCT_CATEGORY_CODE_GENERATE_FAIL);
+        }
+        String nextSegment = String.format("%03d", nextNo);
+        return StrUtil.isBlank(normalizedParentCode) ? nextSegment : normalizedParentCode + " " + nextSegment;
+    }
+
     private void importProductCategory(ErpProductCategoryImportExcelVO row, int rowNo,
                                        Map<String, ErpProductCategoryDO> categoryMap) {
         if (row == null || (StrUtil.isBlank(row.getName()) && StrUtil.isBlank(row.getCode())
                 && StrUtil.isBlank(row.getParentCode()) && row.getStatus() == null)) {
             throw new IllegalArgumentException("第 " + rowNo + " 行为空行");
         }
-        String code = trimToNull(row.getCode());
+        String code = normalizeOptionalCategoryCode(row.getCode());
         String name = trimToNull(row.getName());
         if (StrUtil.isBlank(name)) {
             throw new IllegalArgumentException("分类名称不能为空");
@@ -228,8 +336,12 @@ public class ErpProductCategoryServiceImpl implements ErpProductCategoryService 
         if (StrUtil.isBlank(code)) {
             throw new IllegalArgumentException("分类编码不能为空");
         }
-        String parentCode = trimToNull(row.getParentCode());
-        Long parentId = ErpProductCategoryDO.PARENT_ID_ROOT;
+        validateProductCategoryCodeFormat(code);
+        String parentCode = normalizeOptionalCategoryCode(row.getParentCode());
+        String inferredParentCode = getParentCode(code);
+        if (StrUtil.isNotBlank(parentCode) && !Objects.equals(parentCode, inferredParentCode)) {
+            throw new IllegalArgumentException("上级分类编码与分类编码不一致：" + parentCode);
+        }
         if (StrUtil.isNotBlank(parentCode)) {
             ErpProductCategoryDO parent = categoryMap.get(parentCode);
             if (parent == null) {
@@ -238,13 +350,11 @@ public class ErpProductCategoryServiceImpl implements ErpProductCategoryService 
             if (Objects.equals(parentCode, code)) {
                 throw new IllegalArgumentException("上级分类不能是自身");
             }
-            parentId = parent.getId();
         }
         Integer status = row.getStatus() == null ? 0 : row.getStatus();
         ErpProductCategoryDO existing = categoryMap.get(code);
         ErpProductCategorySaveReqVO saveReqVO = new ErpProductCategorySaveReqVO();
         saveReqVO.setId(existing == null ? null : existing.getId());
-        saveReqVO.setParentId(parentId);
         saveReqVO.setName(name);
         saveReqVO.setCode(code);
         saveReqVO.setSort(existing == null ? rowNo * 10 : existing.getSort());
@@ -260,7 +370,7 @@ public class ErpProductCategoryServiceImpl implements ErpProductCategoryService 
         List<ErpProductCategoryDO> categories = erpProductCategoryMapper.selectList(new ErpProductCategoryListReqVO());
         Map<String, ErpProductCategoryDO> result = new HashMap<>(categories.size());
         for (ErpProductCategoryDO category : categories) {
-            String code = trimToNull(category.getCode());
+            String code = normalizeOptionalCategoryCode(category.getCode());
             if (StrUtil.isNotBlank(code)) {
                 result.put(code, category);
             }

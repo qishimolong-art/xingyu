@@ -1,4 +1,4 @@
--- ============================================================
+﻿-- ============================================================
 -- ERP 配件信息管理模块扩展（MySQL）
 -- 功能：为 erp_product 增加配件管理所需字段，并新建通用件子表
 -- 执行时间：一次性 DDL，幂等执行请自行判断（本脚本未带 IF NOT EXISTS 包裹）
@@ -16,6 +16,7 @@ ALTER TABLE `erp_product`
     ADD COLUMN `gross_profit_rate`    INT           DEFAULT NULL COMMENT '毛利率（%），可为负',
     ADD COLUMN `backup_price1`        DECIMAL(10,2) DEFAULT NULL COMMENT '备用价1',
     ADD COLUMN `wholesale_price`      DECIMAL(10,2) DEFAULT NULL COMMENT '批发价',
+    ADD COLUMN `share_price`          DECIMAL(10,2) DEFAULT NULL COMMENT '股份价',
     ADD COLUMN `stock_max`            INT           DEFAULT NULL COMMENT '库存上限',
     ADD COLUMN `stock_min`            INT           DEFAULT NULL COMMENT '库存下限',
     ADD COLUMN `stock_standard`       INT           DEFAULT NULL COMMENT '标准库存',

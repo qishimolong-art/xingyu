@@ -11,6 +11,7 @@ import cn.iocoder.yudao.framework.datapermission.core.annotation.DataPermission;
 import cn.iocoder.yudao.framework.common.biz.system.permission.dto.DeptDataPermissionRespDTO;
 import cn.iocoder.yudao.framework.security.core.util.SecurityFrameworkUtils;
 import cn.iocoder.yudao.framework.tenant.core.context.TenantContextHolder;
+import cn.iocoder.yudao.module.system.api.permission.dto.FieldDefinitionCreateOrUpdateReqDTO;
 import cn.iocoder.yudao.module.system.dal.dataobject.permission.FieldDefinitionDO;
 import cn.iocoder.yudao.module.system.dal.dataobject.permission.MenuDO;
 import cn.iocoder.yudao.module.system.dal.dataobject.permission.RoleDO;
@@ -296,6 +297,58 @@ public class PermissionServiceImpl implements PermissionService {
             hiddenFields.addAll(userPriceFieldService.getHiddenProductPriceFields(userId));
         }
         return hiddenFields.stream().distinct().collect(Collectors.toList());
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void createOrUpdateFieldDefinitions(List<FieldDefinitionCreateOrUpdateReqDTO> definitions) {
+        if (CollUtil.isEmpty(definitions)) {
+            return;
+        }
+        for (FieldDefinitionCreateOrUpdateReqDTO definition : definitions) {
+            if (definition == null || StrUtil.isBlank(definition.getModule())
+                    || StrUtil.isBlank(definition.getFieldKey())) {
+                continue;
+            }
+            FieldDefinitionDO existing = fieldDefinitionMapper.selectByModuleAndFieldKey(
+                    definition.getModule(), definition.getFieldKey());
+            if (existing == null) {
+                FieldDefinitionDO create = new FieldDefinitionDO();
+                create.setModule(definition.getModule());
+                create.setFieldKey(definition.getFieldKey());
+                create.setFieldLabel(definition.getFieldLabel());
+                create.setFieldGroup(definition.getFieldGroup());
+                create.setSort(definition.getSort());
+                fieldDefinitionMapper.insert(create);
+                continue;
+            }
+            existing.setFieldLabel(definition.getFieldLabel());
+            existing.setFieldGroup(definition.getFieldGroup());
+            existing.setSort(definition.getSort());
+            fieldDefinitionMapper.updateById(existing);
+        }
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void deleteFieldDefinitions(String module, List<String> fieldKeys) {
+        if (StrUtil.isBlank(module) || CollUtil.isEmpty(fieldKeys)) {
+            return;
+        }
+        Set<String> fieldKeySet = fieldKeys.stream()
+                .filter(StrUtil::isNotBlank)
+                .map(StrUtil::trim)
+                .collect(Collectors.toCollection(LinkedHashSet::new));
+        if (CollUtil.isEmpty(fieldKeySet)) {
+            return;
+        }
+        List<FieldDefinitionDO> definitions = fieldDefinitionMapper.selectListByModuleAndFieldKeys(module, fieldKeySet);
+        if (CollUtil.isEmpty(definitions)) {
+            return;
+        }
+        Set<Long> fieldIds = convertSet(definitions, FieldDefinitionDO::getId);
+        roleFieldPermissionMapper.deleteListByFieldIds(TenantContextHolder.getRequiredTenantId(), fieldIds);
+        fieldDefinitionMapper.deleteBatchIds(fieldIds);
     }
 
     @Override

@@ -14,7 +14,7 @@ public class ProductBatchUpdateReqVO {
     @NotEmpty(message = "产品编号列表不能为空")
     private List<Long> ids;
 
-    @Schema(description = "产品分类编号", example = "11161")
+    @Schema(description = "商品分类编号", example = "11161")
     private Long categoryId;
 
     @Schema(description = "单位编号", example = "8869")

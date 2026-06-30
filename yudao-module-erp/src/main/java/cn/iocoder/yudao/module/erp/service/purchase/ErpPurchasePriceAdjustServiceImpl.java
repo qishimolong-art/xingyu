@@ -61,6 +61,7 @@ import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.util.stream.Collectors;
 
+import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.convertSet;
 import static cn.iocoder.yudao.framework.common.exception.util.ServiceExceptionUtil.exception;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.*;
 import static cn.iocoder.yudao.module.erp.enums.LogRecordConstants.ERP_PURCHASE_PRICE_ADJUST_TYPE;
@@ -365,7 +366,7 @@ public class ErpPurchasePriceAdjustServiceImpl implements ErpPurchasePriceAdjust
                 .collect(Collectors.toMap(ErpProductDO::getCode, product -> product, (a, b) -> a));
         Map<Long, ErpProductRespVO> productVOMap = productService.getProductVOMap(
                 productMap.values().stream().map(ErpProductDO::getId).collect(Collectors.toSet()));
-        Map<String, ErpWarehouseDO> warehouseMap = warehouseService.getWarehouseListByStatus(CommonStatusEnum.ENABLE.getStatus()).stream()
+        Map<String, ErpWarehouseDO> warehouseMap = warehouseService.getPurchaseWarehouseListByStatus(CommonStatusEnum.ENABLE.getStatus()).stream()
                 .collect(Collectors.toMap(ErpWarehouseDO::getName, warehouse -> warehouse, (a, b) -> a));
 
         List<PurchasePriceAdjustOrderImportGroup> groups = new ArrayList<>();
@@ -720,6 +721,7 @@ public class ErpPurchasePriceAdjustServiceImpl implements ErpPurchasePriceAdjust
                 }
                 result.add(item);
             }
+            warehouseService.validPurchaseWarehouseList(convertSet(result, ErpPurchasePriceAdjustItemDO::getWarehouseId));
             return result;
         }
 
@@ -786,6 +788,7 @@ public class ErpPurchasePriceAdjustServiceImpl implements ErpPurchasePriceAdjust
             }
             items.add(item);
         }
+        warehouseService.validPurchaseWarehouseList(convertSet(items, ErpPurchasePriceAdjustItemDO::getWarehouseId));
         return items;
     }
 
@@ -901,6 +904,7 @@ public class ErpPurchasePriceAdjustServiceImpl implements ErpPurchasePriceAdjust
         if (CollUtil.isEmpty(items)) {
             throw exception(PURCHASE_PRICE_ADJUST_ITEM_EMPTY);
         }
+        warehouseService.validPurchaseWarehouseList(convertSet(items, ErpPurchasePriceAdjustItemDO::getWarehouseId));
 
         // 2. 乐观锁更新主表状态：PROCESS -> APPROVE
         LocalDateTime now = LocalDateTime.now();

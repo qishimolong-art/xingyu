@@ -66,8 +66,6 @@ public interface ErpCustomerMapper extends BaseMapperX<ErpCustomerDO> {
                 return ErpCustomerDO::getStatus;
             case "settleMethod":
                 return ErpCustomerDO::getSettleMethod;
-            case "wechatService":
-                return ErpCustomerDO::getWechatService;
             case "areaId":
             case "areaName":
                 return ErpCustomerDO::getAreaId;
@@ -85,8 +83,6 @@ public interface ErpCustomerMapper extends BaseMapperX<ErpCustomerDO> {
                 return ErpCustomerDO::getAddress;
             case "remark":
                 return ErpCustomerDO::getRemark;
-            case "customerTag":
-                return ErpCustomerDO::getCustomerTag;
             case "creator":
             case "creatorName":
                 return ErpCustomerDO::getCreator;
@@ -107,6 +103,12 @@ public interface ErpCustomerMapper extends BaseMapperX<ErpCustomerDO> {
     default List<ErpCustomerDO> selectListByNameLike(String name) {
         return selectList(new LambdaQueryWrapperX<ErpCustomerDO>()
                 .like(ErpCustomerDO::getName, name));
+    }
+
+    default ErpCustomerDO selectByCodeExcludeId(String code, Long excludeId) {
+        return selectOne(new LambdaQueryWrapperX<ErpCustomerDO>()
+                .eq(ErpCustomerDO::getCode, code)
+                .neIfPresent(ErpCustomerDO::getId, excludeId));
     }
 
 }

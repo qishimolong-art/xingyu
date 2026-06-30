@@ -2,38 +2,51 @@ package cn.iocoder.yudao.module.erp.service.stock;
 
 import cn.iocoder.yudao.framework.common.enums.CommonStatusEnum;
 import cn.iocoder.yudao.framework.common.exception.ServiceException;
+import cn.iocoder.yudao.framework.common.pojo.PageResult;
+import cn.iocoder.yudao.framework.security.core.util.SecurityFrameworkUtils;
 import cn.iocoder.yudao.framework.test.core.ut.BaseMockitoUnitTest;
+import cn.iocoder.yudao.framework.tenant.core.context.TenantContextHolder;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.warehouse.ErpWarehouseBatchUpdateReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.warehouse.ErpWarehouseImportExcelVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.warehouse.ErpWarehouseImportRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.warehouse.ErpWarehousePageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.warehouse.ErpWarehouseSaveReqVO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpUserWarehousePermissionDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpWarehouseDO;
 import cn.iocoder.yudao.module.erp.dal.mysql.stock.ErpStockMapper;
+import cn.iocoder.yudao.module.erp.dal.mysql.stock.ErpUserWarehousePermissionMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.stock.ErpWarehouseBranchMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.stock.ErpWarehouseMapper;
 import cn.iocoder.yudao.module.erp.service.base.ErpBaseArchiveReferenceService;
 import cn.iocoder.yudao.module.erp.service.common.ErpOperateLogService;
 import cn.iocoder.yudao.module.system.api.dept.DeptApi;
 import cn.iocoder.yudao.module.system.api.dept.dto.DeptRespDTO;
+import cn.iocoder.yudao.module.system.api.permission.PermissionApi;
+import cn.iocoder.yudao.module.system.enums.permission.RoleCodeEnum;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.mockito.ArgumentCaptor;
 import org.junit.jupiter.api.Test;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import org.mockito.MockedStatic;
 
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
 
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.WAREHOUSE_NOT_ENABLE;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.WAREHOUSE_NOT_EXISTS;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.mockStatic;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -50,6 +63,8 @@ public class ErpWarehouseServiceImplTest extends BaseMockitoUnitTest {
     @Mock
     private ErpWarehouseBranchMapper warehouseBranchMapper;
     @Mock
+    private ErpUserWarehousePermissionMapper userWarehousePermissionMapper;
+    @Mock
     private ErpStockFieldPermissionMasker fieldPermissionMasker;
     @Mock
     private ErpOperateLogService operateLogService;
@@ -57,6 +72,18 @@ public class ErpWarehouseServiceImplTest extends BaseMockitoUnitTest {
     private ErpBaseArchiveReferenceService baseArchiveReferenceService;
     @Mock
     private DeptApi deptApi;
+    @Mock
+    private PermissionApi permissionApi;
+
+    @BeforeEach
+    public void setUpTenant() {
+        TenantContextHolder.setTenantId(1L);
+    }
+
+    @AfterEach
+    public void tearDown() {
+        TenantContextHolder.clear();
+    }
 
     @Test
     public void testCreateWarehouse_nullSort_defaultsToZero() {
@@ -98,6 +125,101 @@ public class ErpWarehouseServiceImplTest extends BaseMockitoUnitTest {
     }
 
     @Test
+    public void testGetUserWarehouseIds_success() {
+        TenantContextHolder.setTenantId(7L);
+        List<ErpUserWarehousePermissionDO> permissions = Arrays.asList(
+                ErpUserWarehousePermissionDO.builder().userId(104L).warehouseId(11L).build(),
+                ErpUserWarehousePermissionDO.builder().userId(104L).warehouseId(12L).build());
+        when(userWarehousePermissionMapper.selectListByUserId(eq(104L))).thenReturn(permissions);
+
+        List<Long> result = warehouseService.getUserWarehouseIds(104L);
+
+        assertEquals(Arrays.asList(11L, 12L), result);
+    }
+
+    @Test
+    public void testUpdateUserWarehousePermissions_savesCurrentTenantAndDeduplicates() {
+        TenantContextHolder.setTenantId(7L);
+        List<ErpWarehouseDO> warehouses = Arrays.asList(
+                new ErpWarehouseDO().setId(11L).setStatus(CommonStatusEnum.ENABLE.getStatus()),
+                new ErpWarehouseDO().setId(12L).setStatus(CommonStatusEnum.ENABLE.getStatus()));
+        when(warehouseMapper.selectByIds(any())).thenReturn(warehouses);
+
+        warehouseService.updateUserWarehousePermissions(104L, Arrays.asList(11L, 12L, 11L, null));
+
+        verify(userWarehousePermissionMapper).deleteListByUserId(eq(104L), eq(7L));
+        verify(userWarehousePermissionMapper).insertIgnore(eq(104L), eq(11L), eq(7L));
+        verify(userWarehousePermissionMapper).insertIgnore(eq(104L), eq(12L), eq(7L));
+    }
+
+    @Test
+    public void testGetWarehouseUserIds_success() {
+        when(warehouseMapper.selectById(eq(11L))).thenReturn(new ErpWarehouseDO().setId(11L));
+        List<ErpUserWarehousePermissionDO> permissions = Arrays.asList(
+                ErpUserWarehousePermissionDO.builder().userId(104L).warehouseId(11L).build(),
+                ErpUserWarehousePermissionDO.builder().userId(105L).warehouseId(11L).build());
+        when(userWarehousePermissionMapper.selectListByWarehouseId(eq(11L))).thenReturn(permissions);
+
+        List<Long> result = warehouseService.getWarehouseUserIds(11L);
+
+        assertEquals(Arrays.asList(104L, 105L), result);
+    }
+
+    @Test
+    public void testUpdateWarehouseUserPermissions_savesCurrentTenantAndDeduplicates() {
+        TenantContextHolder.setTenantId(7L);
+        when(warehouseMapper.selectById(eq(11L))).thenReturn(new ErpWarehouseDO().setId(11L));
+
+        warehouseService.updateWarehouseUserPermissions(11L, Arrays.asList(104L, 105L, 104L, null));
+
+        verify(userWarehousePermissionMapper).deleteListByWarehouseId(eq(11L), eq(7L));
+        verify(userWarehousePermissionMapper).insertIgnore(eq(104L), eq(11L), eq(7L));
+        verify(userWarehousePermissionMapper).insertIgnore(eq(105L), eq(11L), eq(7L));
+    }
+
+    @Test
+    public void testUpdateWarehouseUserPermissions_emptyUsers_clearsCurrentTenant() {
+        TenantContextHolder.setTenantId(7L);
+        when(warehouseMapper.selectById(eq(11L))).thenReturn(new ErpWarehouseDO().setId(11L));
+
+        warehouseService.updateWarehouseUserPermissions(11L, Collections.emptyList());
+
+        verify(userWarehousePermissionMapper).deleteListByWarehouseId(eq(11L), eq(7L));
+        verify(userWarehousePermissionMapper, never()).insertIgnore(any(), any(), any());
+    }
+
+    @Test
+    public void testGetCurrentUserAuthorizedWarehouseList_normalUserUsesPermissionIds() {
+        TenantContextHolder.setTenantId(7L);
+        List<ErpUserWarehousePermissionDO> permissions = Arrays.asList(
+                ErpUserWarehousePermissionDO.builder().userId(104L).warehouseId(11L).build(),
+                ErpUserWarehousePermissionDO.builder().userId(104L).warehouseId(12L).build());
+        List<ErpWarehouseDO> deptWarehouses = Collections.singletonList(
+                new ErpWarehouseDO().setId(10L).setStatus(CommonStatusEnum.ENABLE.getStatus()));
+        List<ErpWarehouseDO> warehouses = Arrays.asList(
+                new ErpWarehouseDO().setId(10L).setStatus(CommonStatusEnum.ENABLE.getStatus()),
+                new ErpWarehouseDO().setId(11L).setStatus(CommonStatusEnum.ENABLE.getStatus()),
+                new ErpWarehouseDO().setId(12L).setStatus(CommonStatusEnum.ENABLE.getStatus()));
+        when(permissionApi.hasAnyRoles(eq(104L), eq(RoleCodeEnum.SUPER_ADMIN.getCode()))).thenReturn(false);
+        when(warehouseMapper.selectListByStatusIfPresent(eq(CommonStatusEnum.ENABLE.getStatus())))
+                .thenReturn(deptWarehouses);
+        when(userWarehousePermissionMapper.selectListByUserId(eq(104L))).thenReturn(permissions);
+        when(warehouseMapper.selectListByStatusAndIds(eq(CommonStatusEnum.ENABLE.getStatus()), any()))
+                .thenReturn(warehouses);
+
+        try (MockedStatic<SecurityFrameworkUtils> mock = mockStatic(SecurityFrameworkUtils.class)) {
+            mock.when(SecurityFrameworkUtils::getLoginUserId).thenReturn(104L);
+
+            List<ErpWarehouseDO> result = warehouseService.getCurrentUserAuthorizedWarehouseList();
+
+            assertSame(warehouses, result);
+            ArgumentCaptor<Collection<Long>> captor = ArgumentCaptor.forClass(Collection.class);
+            verify(warehouseMapper).selectListByStatusAndIds(eq(CommonStatusEnum.ENABLE.getStatus()), captor.capture());
+            assertEquals(Arrays.asList(10L, 11L, 12L), captor.getValue().stream().collect(java.util.stream.Collectors.toList()));
+        }
+    }
+
+    @Test
     public void testValidWarehouseList_emptyIds_returnsEmptyList() {
         List<ErpWarehouseDO> result = warehouseService.validWarehouseList(Collections.emptyList());
 
@@ -135,6 +257,39 @@ public class ErpWarehouseServiceImplTest extends BaseMockitoUnitTest {
         when(warehouseMapper.selectById(eq(10L))).thenReturn(warehouse);
 
         assertSame(warehouse, warehouseService.getWarehouse(10L));
+    }
+
+    @Test
+    public void testGetCurrentUserVisibleWarehouse_extraPermissionCanViewDetail() {
+        ErpWarehouseDO warehouse = new ErpWarehouseDO().setId(11L);
+        when(permissionApi.hasAnyRoles(eq(104L), eq(RoleCodeEnum.SUPER_ADMIN.getCode()))).thenReturn(false);
+        when(warehouseMapper.selectListByStatusIfPresent(eq(null)))
+                .thenReturn(Collections.singletonList(new ErpWarehouseDO().setId(10L)));
+        when(userWarehousePermissionMapper.selectListByUserId(eq(104L))).thenReturn(Collections.singletonList(
+                ErpUserWarehousePermissionDO.builder().userId(104L).warehouseId(11L).build()));
+        when(warehouseMapper.selectById(eq(11L))).thenReturn(warehouse);
+
+        try (MockedStatic<SecurityFrameworkUtils> mock = mockStatic(SecurityFrameworkUtils.class)) {
+            mock.when(SecurityFrameworkUtils::getLoginUserId).thenReturn(104L);
+
+            assertSame(warehouse, warehouseService.getCurrentUserVisibleWarehouse(11L));
+        }
+    }
+
+    @Test
+    public void testGetCurrentUserVisibleWarehouse_noPermissionReturnsNull() {
+        when(permissionApi.hasAnyRoles(eq(104L), eq(RoleCodeEnum.SUPER_ADMIN.getCode()))).thenReturn(false);
+        when(warehouseMapper.selectListByStatusIfPresent(eq(null)))
+                .thenReturn(Collections.singletonList(new ErpWarehouseDO().setId(10L)));
+        when(userWarehousePermissionMapper.selectListByUserId(eq(104L))).thenReturn(Collections.singletonList(
+                ErpUserWarehousePermissionDO.builder().userId(104L).warehouseId(11L).build()));
+
+        try (MockedStatic<SecurityFrameworkUtils> mock = mockStatic(SecurityFrameworkUtils.class)) {
+            mock.when(SecurityFrameworkUtils::getLoginUserId).thenReturn(104L);
+
+            assertNull(warehouseService.getCurrentUserVisibleWarehouse(12L));
+            verify(warehouseMapper, never()).selectById(eq(12L));
+        }
     }
 
     @Test
@@ -313,9 +468,22 @@ public class ErpWarehouseServiceImplTest extends BaseMockitoUnitTest {
     @Test
     public void testGetWarehousePage() {
         ErpWarehousePageReqVO reqVO = new ErpWarehousePageReqVO();
-        when(warehouseMapper.selectPage(eq(reqVO))).thenReturn(null);
+        when(permissionApi.hasAnyRoles(eq(104L), eq(RoleCodeEnum.SUPER_ADMIN.getCode()))).thenReturn(false);
+        when(warehouseMapper.selectListByStatusIfPresent(eq(null)))
+                .thenReturn(Collections.singletonList(new ErpWarehouseDO().setId(10L)));
+        when(userWarehousePermissionMapper.selectListByUserId(eq(104L))).thenReturn(Collections.singletonList(
+                ErpUserWarehousePermissionDO.builder().userId(104L).warehouseId(11L).build()));
+        PageResult<ErpWarehouseDO> pageResult = new PageResult<>(Collections.singletonList(new ErpWarehouseDO().setId(11L)), 1L);
+        when(warehouseMapper.selectPageByIds(eq(reqVO), any())).thenReturn(pageResult);
 
-        assertSame(null, warehouseService.getWarehousePage(reqVO));
+        try (MockedStatic<SecurityFrameworkUtils> mock = mockStatic(SecurityFrameworkUtils.class)) {
+            mock.when(SecurityFrameworkUtils::getLoginUserId).thenReturn(104L);
+
+            assertSame(pageResult, warehouseService.getWarehousePage(reqVO));
+            ArgumentCaptor<Collection<Long>> captor = ArgumentCaptor.forClass(Collection.class);
+            verify(warehouseMapper).selectPageByIds(eq(reqVO), captor.capture());
+            assertEquals(Arrays.asList(10L, 11L), captor.getValue().stream().collect(java.util.stream.Collectors.toList()));
+        }
     }
 
     private DeptRespDTO dept(Long id, String name) {

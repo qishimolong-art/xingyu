@@ -34,6 +34,7 @@ import cn.iocoder.yudao.module.erp.service.common.ErpOperateLogService;
 import cn.iocoder.yudao.module.erp.service.finance.accounting.ErpAutoVoucherBuilder;
 import cn.iocoder.yudao.module.erp.service.finance.accounting.ErpBookOpenService;
 import cn.iocoder.yudao.module.erp.service.finance.accounting.ErpVoucherService;
+import cn.iocoder.yudao.module.erp.service.product.ErpProductBatchNoValidator;
 import cn.iocoder.yudao.module.erp.service.product.ErpProductService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpStockRecordService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpWarehouseService;
@@ -110,6 +111,8 @@ public class ErpPurchaseReturnServiceImpl implements ErpPurchaseReturnService {
     private ErpOperateLogService operateLogService;
     @Resource
     private ErpPurchaseDocumentDefaultService purchaseDocumentDefaultService;
+    @Resource
+    private ErpProductBatchNoValidator productBatchNoValidator;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -276,6 +279,7 @@ public class ErpPurchaseReturnServiceImpl implements ErpPurchaseReturnService {
 
         // 3. 变更库存
         List<ErpPurchaseReturnItemDO> purchaseReturnItems = purchaseReturnItemMapper.selectListByReturnId(id);
+        warehouseService.validPurchaseWarehouseList(convertSet(purchaseReturnItems, ErpPurchaseReturnItemDO::getWarehouseId));
         purchaseReturnItems.forEach(purchaseReturnItem -> {
             stockRecordService.createStockRecord(new ErpStockRecordCreateReqBO(
                     purchaseReturnItem.getProductId(), purchaseReturnItem.getWarehouseId(), purchaseReturnItem.getCount().negate(),
@@ -340,6 +344,10 @@ public class ErpPurchaseReturnServiceImpl implements ErpPurchaseReturnService {
         List<ErpProductDO> productList = productService.validProductList(
                 convertSet(list, ErpPurchaseReturnSaveReqVO.Item::getProductId));
         Map<Long, ErpProductDO> productMap = convertMap(productList, ErpProductDO::getId);
+        productBatchNoValidator.validateBatchNoRequired(list, productMap,
+                ErpPurchaseReturnSaveReqVO.Item::getProductId, ErpPurchaseReturnSaveReqVO.Item::getBatchNo);
+        Set<Long> warehouseIds = convertSet(list, ErpPurchaseReturnSaveReqVO.Item::getWarehouseId);
+        warehouseService.validPurchaseWarehouseList(warehouseIds);
         // 2. 转化为 ErpPurchaseReturnItemDO 列表
         return convertList(list, o -> BeanUtils.toBean(o, ErpPurchaseReturnItemDO.class, item -> {
             item.setProductUnitId(productMap.get(item.getProductId()).getUnitId());
@@ -511,7 +519,7 @@ public class ErpPurchaseReturnServiceImpl implements ErpPurchaseReturnService {
         Map<String, ErpProductDO> productMap = productMapper.selectListByCodes(extractPurchaseReturnCodes(list)).stream()
                 .collect(Collectors.toMap(ErpProductDO::getCode, product -> product, (a, b) -> a));
         Map<String, cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpWarehouseDO> enabledWarehouseMap = cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.convertMap(
-                warehouseService.getWarehouseListByStatus(CommonStatusEnum.ENABLE.getStatus()),
+                warehouseService.getPurchaseWarehouseListByStatus(CommonStatusEnum.ENABLE.getStatus()),
                 cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpWarehouseDO::getName);
         Map<Long, cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpProductRespVO> productVOMap = productService.getProductVOMap(
                 convertSet(productMap.values(), ErpProductDO::getId));
@@ -568,7 +576,7 @@ public class ErpPurchaseReturnServiceImpl implements ErpPurchaseReturnService {
         Map<String, ErpProductDO> productMap = productMapper.selectListByCodes(extractPurchaseReturnOrderProductCodes(list)).stream()
                 .collect(Collectors.toMap(ErpProductDO::getCode, product -> product, (a, b) -> a));
         Map<String, cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpWarehouseDO> warehouseMap =
-                warehouseService.getWarehouseListByStatus(CommonStatusEnum.ENABLE.getStatus()).stream()
+                warehouseService.getPurchaseWarehouseListByStatus(CommonStatusEnum.ENABLE.getStatus()).stream()
                         .collect(Collectors.toMap(cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpWarehouseDO::getName,
                                 warehouse -> warehouse, (a, b) -> a));
         Map<Long, cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpProductRespVO> productVOMap =

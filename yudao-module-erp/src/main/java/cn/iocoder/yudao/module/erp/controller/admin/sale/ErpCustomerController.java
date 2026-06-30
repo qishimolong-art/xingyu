@@ -8,6 +8,7 @@ import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
 import cn.iocoder.yudao.framework.excel.core.util.ExcelUtils;
 import cn.iocoder.yudao.module.erp.controller.admin.common.vo.ErpExportFieldRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.customer.ErpCustomerBatchDisableReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.customer.ErpCustomerBatchUpdateReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.customer.ErpCustomerImportExcelVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.customer.ErpCustomerPageReqVO;
@@ -91,6 +92,15 @@ public class ErpCustomerController {
     @PreAuthorize("@ss.hasPermission('erp:customer:delete')")
     public CommonResult<Boolean> deleteCustomer(@RequestParam("id") Long id) {
         customerService.deleteCustomer(id);
+        return success(true);
+    }
+
+    @DeleteMapping("/delete-list")
+    @Operation(summary = "批量删除客户")
+    @Parameter(name = "ids", description = "编号列表", required = true)
+    @PreAuthorize("@ss.hasPermission('erp:customer:delete')")
+    public CommonResult<Boolean> deleteCustomerList(@RequestParam("ids") List<Long> ids) {
+        customerService.deleteCustomerList(ids);
         return success(true);
     }
 
@@ -205,6 +215,14 @@ public class ErpCustomerController {
         return success(true);
     }
 
+    @PutMapping("/batch-disable")
+    @Operation(summary = "批量停用客户")
+    @PreAuthorize("@ss.hasPermission('erp:customer:update')")
+    public CommonResult<Boolean> batchDisableCustomer(@Valid @RequestBody ErpCustomerBatchDisableReqVO reqVO) {
+        customerService.batchDisableCustomer(reqVO.getIds());
+        return success(true);
+    }
+
     private static Map<String, String> buildExportFieldGroupMap() {
         Map<String, String> map = new LinkedHashMap<>();
         map.put("id", "main");
@@ -217,7 +235,6 @@ public class ErpCustomerController {
         map.put("mobile", "main");
         map.put("telephone", "main");
         map.put("email", "main");
-        map.put("fax", "main");
         map.put("address", "main");
         map.put("remark", "main");
         map.put("status", "main");

@@ -7,7 +7,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 @Data
-@Schema(description = "管理后台 - ERP 产品分类导入结果 Response VO")
+@Schema(description = "管理后台 - ERP 商品分类导入结果 Response VO")
 public class ErpProductCategoryImportRespVO {
 
     @Schema(description = "成功条数")

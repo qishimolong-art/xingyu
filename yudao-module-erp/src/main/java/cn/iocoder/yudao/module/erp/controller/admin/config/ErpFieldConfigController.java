@@ -3,9 +3,9 @@ package cn.iocoder.yudao.module.erp.controller.admin.config;
 import cn.iocoder.yudao.framework.common.pojo.CommonResult;
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
 import cn.iocoder.yudao.module.erp.controller.admin.config.vo.ErpFieldConfigBatchUpdateReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.config.vo.ErpFieldConfigCreateCustomReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.config.vo.ErpFieldConfigRespVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.config.ErpFieldConfigDO;
-import cn.iocoder.yudao.module.erp.enums.config.ErpFieldConfigModuleEnum;
 import cn.iocoder.yudao.module.erp.service.config.ErpFieldConfigService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -13,6 +13,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -52,6 +53,15 @@ public class ErpFieldConfigController {
     public CommonResult<Boolean> batchUpdateFieldConfig(@Valid @RequestBody ErpFieldConfigBatchUpdateReqVO reqVO) {
         fieldConfigService.batchUpdate(reqVO);
         return success(true);
+    }
+
+    @PostMapping("/create-custom-field")
+    @Operation(summary = "新增自定义字段")
+    @PreAuthorize("@ss.hasPermission('erp:field-config:create-custom-field')")
+    public CommonResult<ErpFieldConfigRespVO> createCustomField(
+            @Valid @RequestBody ErpFieldConfigCreateCustomReqVO reqVO) {
+        ErpFieldConfigDO config = fieldConfigService.createCustomField(reqVO);
+        return success(BeanUtils.toBean(config, ErpFieldConfigRespVO.class));
     }
 
     @PutMapping("/reset")

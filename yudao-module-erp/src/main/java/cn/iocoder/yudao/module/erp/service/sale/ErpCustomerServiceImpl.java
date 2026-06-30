@@ -7,8 +7,10 @@ import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.customer.ErpCustomer
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.customer.ErpCustomerImportExcelVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.customer.ErpCustomerPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.customer.ErpCustomerSaveReqVO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.finance.receivable.ErpReceivableAccountDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpCustomerDO;
 import cn.iocoder.yudao.module.erp.dal.mysql.finance.ErpFinanceReceiptMapper;
+import cn.iocoder.yudao.module.erp.dal.mysql.finance.receivable.ErpReceivableAccountMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.finance.receivable.ErpReceivableOtherMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.finance.receivable.ErpReceivableWriteOffMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpCustomerMapper;
@@ -28,11 +30,18 @@ import org.springframework.util.StringUtils;
 import org.springframework.validation.annotation.Validated;
 
 import javax.annotation.Resource;
+import java.math.BigDecimal;
+import java.time.LocalDateTime;
 import java.util.Collection;
 import java.util.List;
+import java.util.Objects;
+import java.util.stream.Collectors;
 
 import static cn.iocoder.yudao.framework.common.exception.util.ServiceExceptionUtil.exception;
+import static cn.iocoder.yudao.framework.security.core.util.SecurityFrameworkUtils.getLoginUserId;
+import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.CUSTOMER_CODE_DUPLICATE;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.CUSTOMER_DELETE_FAIL_REFERENCED;
+import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.CUSTOMER_DISABLE_FAIL_RECEIVABLE_NOT_CLEAR;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.CUSTOMER_NOT_ENABLE;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.CUSTOMER_NOT_EXISTS;
 import static cn.iocoder.yudao.module.erp.enums.LogRecordConstants.ERP_CUSTOMER_TYPE;
@@ -68,6 +77,8 @@ public class ErpCustomerServiceImpl implements ErpCustomerService {
     private ErpReceivableOtherMapper receivableOtherMapper;
     @Resource
     private ErpReceivableWriteOffMapper receivableWriteOffMapper;
+    @Resource
+    private ErpReceivableAccountMapper receivableAccountMapper;
 
     @Resource
     private ErpNoRedisDAO noRedisDAO;
@@ -86,9 +97,11 @@ public class ErpCustomerServiceImpl implements ErpCustomerService {
         // 插入
         ErpCustomerDO customer = BeanUtils.toBean(createReqVO, ErpCustomerDO.class);
         // 自动生成编码
+        customer.setCode(normalizeCode(customer.getCode()));
         if (!StringUtils.hasText(customer.getCode())) {
             customer.setCode(noRedisDAO.generate(ErpNoRedisDAO.CUSTOMER_NO_PREFIX));
         }
+        validateCustomerCodeUnique(null, customer.getCode());
         if (!StringUtils.hasText(customer.getMemberCode())) {
             customer.setMemberCode(noRedisDAO.generate(ErpNoRedisDAO.MEMBER_NO_PREFIX));
         }
@@ -113,6 +126,7 @@ public class ErpCustomerServiceImpl implements ErpCustomerService {
         preserveHiddenFields(updateReqVO, existing);
         // 更新
         ErpCustomerDO updateObj = BeanUtils.toBean(updateReqVO, ErpCustomerDO.class);
+        updateObj.setCode(existing.getCode());
         customerMapper.updateById(updateObj);
         recordUpdate(updateReqVO.getId(), existing.getCode());
     }
@@ -125,6 +139,17 @@ public class ErpCustomerServiceImpl implements ErpCustomerService {
         // 删除
         customerMapper.deleteById(id);
         recordDelete(id, customer.getCode());
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void deleteCustomerList(List<Long> ids) {
+        if (cn.hutool.core.collection.CollUtil.isEmpty(ids)) {
+            return;
+        }
+        for (Long id : ids) {
+            deleteCustomer(id);
+        }
     }
 
     private void validateCustomerNotReferenced(Long customerId) {
@@ -234,6 +259,9 @@ public class ErpCustomerServiceImpl implements ErpCustomerService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void batchUpdateCustomer(ErpCustomerBatchUpdateReqVO reqVO) {
+        if (CommonStatusEnum.isDisable(reqVO.getStatus())) {
+            validateCustomerReceivableClear(reqVO.getIds());
+        }
         LambdaUpdateWrapper<ErpCustomerDO> wrapper = new LambdaUpdateWrapper<ErpCustomerDO>()
                 .in(ErpCustomerDO::getId, reqVO.getIds());
         boolean hasUpdate = false;
@@ -251,6 +279,10 @@ public class ErpCustomerServiceImpl implements ErpCustomerService {
         }
         if (reqVO.getStatus() != null && !isFieldHidden("status")) {
             wrapper.set(ErpCustomerDO::getStatus, reqVO.getStatus());
+            if (CommonStatusEnum.isDisable(reqVO.getStatus())) {
+                wrapper.set(ErpCustomerDO::getDisabledBy, getLoginUserId());
+                wrapper.set(ErpCustomerDO::getDisabledTime, LocalDateTime.now());
+            }
             hasUpdate = true;
         }
         if (reqVO.getPriceLevel() != null && !isFieldHidden("priceLevel")) {
@@ -275,6 +307,65 @@ public class ErpCustomerServiceImpl implements ErpCustomerService {
         customerMapper.update(null, wrapper);
     }
 
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void batchDisableCustomer(List<Long> ids) {
+        if (cn.hutool.core.collection.CollUtil.isEmpty(ids)) {
+            return;
+        }
+        List<Long> distinctIds = ids.stream().filter(Objects::nonNull).distinct().collect(Collectors.toList());
+        validateCustomerReceivableClear(distinctIds);
+        for (Long id : distinctIds) {
+            ErpCustomerDO customer = validateCustomerExists(id);
+            ErpCustomerDO updateObj = new ErpCustomerDO();
+            updateObj.setId(id);
+            updateObj.setStatus(CommonStatusEnum.DISABLE.getStatus());
+            updateObj.setDisabledBy(getLoginUserId());
+            updateObj.setDisabledTime(LocalDateTime.now());
+            customerMapper.updateById(updateObj);
+            recordUpdate(id, customer.getCode());
+        }
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void restoreCustomer(List<Long> ids) {
+        if (cn.hutool.core.collection.CollUtil.isEmpty(ids)) {
+            return;
+        }
+        List<Long> distinctIds = ids.stream().filter(Objects::nonNull).distinct().collect(Collectors.toList());
+        for (Long id : distinctIds) {
+            ErpCustomerDO customer = validateCustomerExists(id);
+            if (!CommonStatusEnum.isDisable(customer.getStatus())) {
+                throw exception(CUSTOMER_NOT_ENABLE, customer.getName());
+            }
+            customerMapper.update(null, new LambdaUpdateWrapper<ErpCustomerDO>()
+                    .eq(ErpCustomerDO::getId, id)
+                    .set(ErpCustomerDO::getStatus, CommonStatusEnum.ENABLE.getStatus())
+                    .set(ErpCustomerDO::getDisabledBy, null)
+                    .set(ErpCustomerDO::getDisabledTime, null));
+            recordUpdate(id, customer.getCode());
+        }
+    }
+
+    private void validateCustomerReceivableClear(Collection<Long> ids) {
+        if (cn.hutool.core.collection.CollUtil.isEmpty(ids)) {
+            return;
+        }
+        for (Long id : ids) {
+            validateCustomerReceivableClear(validateCustomerExists(id));
+        }
+    }
+
+    private void validateCustomerReceivableClear(ErpCustomerDO customer) {
+        ErpReceivableAccountDO account = receivableAccountMapper.selectByCustomerId(customer.getId());
+        BigDecimal balance = account == null || account.getReceivableBalance() == null
+                ? BigDecimal.ZERO : account.getReceivableBalance();
+        if (balance.compareTo(BigDecimal.ZERO) != 0) {
+            throw exception(CUSTOMER_DISABLE_FAIL_RECEIVABLE_NOT_CLEAR, customer.getName(), balance);
+        }
+    }
+
     private void clearHiddenFields(Object target) {
         if (fieldPermissionMasker != null) {
             fieldPermissionMasker.clearHiddenFields(FIELD_PERMISSION_MODULE, target);
@@ -289,6 +380,20 @@ public class ErpCustomerServiceImpl implements ErpCustomerService {
 
     private boolean isFieldHidden(String fieldName) {
         return fieldPermissionMasker != null && fieldPermissionMasker.isFieldHidden(FIELD_PERMISSION_MODULE, fieldName);
+    }
+
+    private void validateCustomerCodeUnique(Long id, String code) {
+        if (!StringUtils.hasText(code)) {
+            return;
+        }
+        ErpCustomerDO customer = customerMapper.selectByCodeExcludeId(code, id);
+        if (customer != null) {
+            throw exception(CUSTOMER_CODE_DUPLICATE, code);
+        }
+    }
+
+    private String normalizeCode(String code) {
+        return StringUtils.hasText(code) ? code.trim() : null;
     }
 
     private void recordCreate(Long id, String no) {

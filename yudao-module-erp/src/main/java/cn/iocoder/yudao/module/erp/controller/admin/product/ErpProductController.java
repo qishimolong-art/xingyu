@@ -12,6 +12,9 @@ import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpProduc
 import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpProductRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ProductBatchUpdateReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ProductSaveReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpPartsBatchUpdatePriceFieldsReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpPartsBatchAdjustPriceReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpPartsBatchAdjustStockLimitsReqVO;
 import cn.iocoder.yudao.module.erp.service.common.ErpExportCaptchaService;
 import cn.iocoder.yudao.module.erp.service.common.ErpOperateLogService;
 import cn.iocoder.yudao.module.erp.service.product.ErpProductService;
@@ -53,10 +56,10 @@ import static cn.iocoder.yudao.module.erp.enums.LogRecordConstants.ERP_PRODUCT_T
 public class ErpProductController {
 
     private static final Set<String> PRODUCT_IMPORT_TEMPLATE_FIELDS = new LinkedHashSet<>(Arrays.asList(
-            "code", "name", "barCode", "categoryName", "unitName", "status", "defaultWarehouseName", "vehicleModel", "factoryCode",
+            "code", "name", "barCode", "categoryName", "batchNoEnabled", "unitName", "status", "defaultWarehouseName", "vehicleModel", "factoryCode",
             "purchasePrice", "salePrice", "minPrice", "standard", "remark", "expiryDay", "weight",
             "referencePrice", "retailPrice", "lastPurchasePrice", "grossProfitRate", "backupPrice1",
-            "wholesalePrice", "stockMax", "stockMin", "stockStandard", "packageQty", "mainImage",
+            "wholesalePrice", "sharePrice", "stockMax", "stockMin", "stockStandard", "packageQty", "mainImage",
             "detailContent"));
 
     @Resource
@@ -136,7 +139,8 @@ public class ErpProductController {
                 .setUnitName(product.getUnitName())
                 .setPurchasePrice(product.getPurchasePrice())
                 .setSalePrice(product.getSalePrice())
-                .setMinPrice(product.getMinPrice())));
+                .setMinPrice(product.getMinPrice())
+                .setSharePrice(product.getSharePrice())));
     }
 
     @GetMapping("/export-excel")
@@ -181,6 +185,33 @@ public class ErpProductController {
                                                      @RequestParam("shelf") String shelf) {
         productService.updateProductsShelf(ids, shelf);
         return success(true);
+    }
+
+    @PutMapping("/batch-update-price-fields")
+    @Operation(summary = "列表直接编辑保存价格/库存字段（无需口令）")
+    @PreAuthorize("@ss.hasPermission('erp:product:update')")
+    public CommonResult<Boolean> batchUpdatePriceFields(
+            @RequestBody @Valid List<ErpPartsBatchUpdatePriceFieldsReqVO> reqList) {
+        productService.batchUpdatePriceFields(reqList);
+        return success(true);
+    }
+
+    @PutMapping("/batch-adjust-price")
+    @Operation(summary = "批量调整配件价格")
+    @PreAuthorize("@ss.hasPermission('erp:parts:adjust-price')")
+    public CommonResult<Integer> batchAdjustPrice(
+            @RequestBody @Valid ErpPartsBatchAdjustPriceReqVO reqVO) {
+        int count = productService.batchAdjustPrice(reqVO);
+        return success(count);
+    }
+
+    @PutMapping("/batch-adjust-stock-limits")
+    @Operation(summary = "批量调整配件库存上下限（需口令）")
+    @PreAuthorize("@ss.hasPermission('erp:parts:adjust-price')")
+    public CommonResult<Integer> batchAdjustStockLimits(
+            @RequestBody @Valid ErpPartsBatchAdjustStockLimitsReqVO reqVO) {
+        int count = productService.batchAdjustStockLimits(reqVO);
+        return success(count);
     }
 
     @GetMapping("/duplicate-shelf-ids")

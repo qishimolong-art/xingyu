@@ -8,6 +8,7 @@ import lombok.Data;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 
 @Schema(description = "管理后台 - ERP 产品 Response VO")
 @Data
@@ -41,11 +42,15 @@ public class ErpProductRespVO {
     @ExcelProperty("产品条码")
     private String barCode;
 
-    @Schema(description = "产品分类编号", requiredMode = Schema.RequiredMode.REQUIRED, example = "11161")
+    @Schema(description = "商品分类编号", requiredMode = Schema.RequiredMode.REQUIRED, example = "11161")
     private Long categoryId;
-    @Schema(description = "产品分类", requiredMode = Schema.RequiredMode.REQUIRED, example = "水果")
-    @ExcelProperty("产品分类")
+    @Schema(description = "商品分类", requiredMode = Schema.RequiredMode.REQUIRED, example = "水果")
+    @ExcelProperty("商品分类")
     private String categoryName;
+
+    @Schema(description = "是否开启批次号管理", example = "false")
+    @ExcelProperty("是否开启批次号管理")
+    private Boolean batchNoEnabled;
 
     @Schema(description = "单位编号", requiredMode = Schema.RequiredMode.REQUIRED, example = "8869")
     private Long unitId;
@@ -125,6 +130,9 @@ public class ErpProductRespVO {
     private BigDecimal backupPrice1;
     @Schema(description = "批发价", example = "80.00")
     private BigDecimal wholesalePrice;
+    @Schema(description = "股份价", example = "88.00")
+    @ExcelProperty("股份价")
+    private BigDecimal sharePrice;
 
     @Schema(description = "库存上限", example = "1000")
     private Integer stockMax;
@@ -161,6 +169,9 @@ public class ErpProductRespVO {
 
     @Schema(description = "通用件列表")
     private List<Universal> universals;
+
+    @Schema(description = "自定义字段值，key 为字段编码")
+    private Map<String, Object> customFields;
 
     @Schema(description = "创建时间", requiredMode = Schema.RequiredMode.REQUIRED)
     @ExcelProperty("创建时间")

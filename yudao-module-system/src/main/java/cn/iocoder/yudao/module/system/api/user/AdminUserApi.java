@@ -40,6 +40,14 @@ public interface AdminUserApi {
     List<AdminUserRespDTO> getUserList(Collection<Long> ids);
 
     /**
+     * 获得指定状态的用户列表。
+     *
+     * @param status 用户状态
+     * @return 用户列表
+     */
+    List<AdminUserRespDTO> getUserListByStatus(Integer status);
+
+    /**
      * 获得指定昵称的用户数组
      *
      * @param nickname 昵称

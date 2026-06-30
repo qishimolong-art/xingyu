@@ -33,6 +33,10 @@ public class ErpBaseDataDO extends BaseDO {
      */
     private String name;
     /**
+     * 稳定业务编码
+     */
+    private String code;
+    /**
      * 排序
      */
     private Integer sort;

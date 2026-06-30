@@ -38,6 +38,7 @@ import cn.iocoder.yudao.module.erp.enums.sale.ErpSaleConvertTypeEnum;
 import cn.iocoder.yudao.module.erp.enums.sale.ErpSaleQuoteStatusEnum;
 import cn.iocoder.yudao.module.erp.service.common.ErpOperateLogService;
 import cn.iocoder.yudao.module.erp.service.finance.ErpAccountService;
+import cn.iocoder.yudao.module.erp.service.product.ErpProductBatchNoValidator;
 import cn.iocoder.yudao.module.erp.service.product.ErpProductService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpStockService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpWarehouseService;
@@ -114,6 +115,8 @@ public class ErpSaleQuoteServiceImpl implements ErpSaleQuoteService {
     private AdminUserApi adminUserApi;
     @Resource
     private ErpOperateLogService operateLogService;
+    @Resource
+    private ErpProductBatchNoValidator productBatchNoValidator;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -370,6 +373,7 @@ public class ErpSaleQuoteServiceImpl implements ErpSaleQuoteService {
             outItem.setCount(item.getCount());
             outItem.setTaxPercent(item.getTaxPercent());
             outItem.setGiftFlag(Boolean.TRUE.equals(item.getGiftFlag()));
+            outItem.setBatchNo(item.getBatchNo());
             outItem.setRemark(item.getRemark());
             return outItem;
         }));
@@ -386,6 +390,10 @@ public class ErpSaleQuoteServiceImpl implements ErpSaleQuoteService {
         List<ErpProductDO> productList = productService.validProductList(
                 convertSet(list, ErpSaleQuoteSaveReqVO.Item::getProductId));
         Map<Long, ErpProductDO> productMap = convertMap(productList, ErpProductDO::getId);
+        productBatchNoValidator.validateBatchNoRequired(list, productMap,
+                ErpSaleQuoteSaveReqVO.Item::getProductId, ErpSaleQuoteSaveReqVO.Item::getBatchNo);
+        Set<Long> warehouseIds = convertSet(list, ErpSaleQuoteSaveReqVO.Item::getWarehouseId);
+        warehouseService.validSaleWarehouseList(warehouseIds);
         return convertList(list, o -> BeanUtils.toBean(o, ErpSaleQuoteItemDO.class, item -> {
             item.setId(null); // 清除前端传回的旧 id，避免 insertBatch 时主键冲突
             ErpProductDO product = productMap.get(item.getProductId());
@@ -537,7 +545,7 @@ public class ErpSaleQuoteServiceImpl implements ErpSaleQuoteService {
         Map<String, ErpProductDO> productMap = productMapper.selectListByCodes(extractQuoteOrderProductCodes(list)).stream()
                 .collect(Collectors.toMap(ErpProductDO::getCode, product -> product, (a, b) -> a));
         Map<String, cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpWarehouseDO> warehouseMap =
-                warehouseService.getWarehouseListByStatus(CommonStatusEnum.ENABLE.getStatus()).stream()
+                warehouseService.getSaleWarehouseListByStatus(CommonStatusEnum.ENABLE.getStatus()).stream()
                         .collect(Collectors.toMap(item -> normalizeKey(item.getName()), item -> item, (a, b) -> a));
 
         List<SaleQuoteOrderImportGroup> groups = new ArrayList<>();
@@ -682,7 +690,6 @@ public class ErpSaleQuoteServiceImpl implements ErpSaleQuoteService {
         pageReqVO.setPageSize(cn.iocoder.yudao.framework.common.pojo.PageParam.PAGE_SIZE_NONE);
         customerService.getCustomerPage(pageReqVO).getList().forEach(customer -> {
             putIfNotBlank(map, customer.getCode(), customer);
-            putIfNotBlank(map, customer.getOldCode(), customer);
             putIfNotBlank(map, customer.getName(), customer);
             putIfNotBlank(map, customer.getShortName(), customer);
         });

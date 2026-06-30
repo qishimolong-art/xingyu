@@ -5,6 +5,7 @@ import cn.iocoder.yudao.framework.mybatis.core.query.LambdaQueryWrapperX;
 import cn.iocoder.yudao.framework.mybatis.core.mapper.BaseMapperX;
 import cn.iocoder.yudao.module.erp.controller.admin.base.vo.ErpBaseDataPageReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.base.ErpBaseDataDO;
+import com.baomidou.mybatisplus.core.toolkit.support.SFunction;
 import org.apache.ibatis.annotations.Mapper;
 
 import java.util.List;
@@ -18,12 +19,50 @@ import java.util.List;
 public interface ErpBaseDataMapper extends BaseMapperX<ErpBaseDataDO> {
 
     default PageResult<ErpBaseDataDO> selectPage(ErpBaseDataPageReqVO reqVO) {
-        return selectPage(reqVO, new LambdaQueryWrapperX<ErpBaseDataDO>()
+        LambdaQueryWrapperX<ErpBaseDataDO> wrapper = new LambdaQueryWrapperX<ErpBaseDataDO>()
                 .eqIfPresent(ErpBaseDataDO::getType, reqVO.getType())
                 .likeIfPresent(ErpBaseDataDO::getName, reqVO.getName())
-                .eqIfPresent(ErpBaseDataDO::getStatus, reqVO.getStatus())
-                .orderByAsc(ErpBaseDataDO::getSort)
-                .orderByDesc(ErpBaseDataDO::getId));
+                .likeIfPresent(ErpBaseDataDO::getCode, reqVO.getCode())
+                .eqIfPresent(ErpBaseDataDO::getStatus, reqVO.getStatus());
+        orderByIfPresent(wrapper, reqVO);
+        return selectPage(reqVO, wrapper);
+    }
+
+    static void orderByIfPresent(LambdaQueryWrapperX<ErpBaseDataDO> wrapper, ErpBaseDataPageReqVO reqVO) {
+        SFunction<ErpBaseDataDO, ?> orderColumn = getOrderColumn(reqVO.getOrderField());
+        if (orderColumn == null) {
+            wrapper.orderByAsc(ErpBaseDataDO::getSort).orderByDesc(ErpBaseDataDO::getId);
+            return;
+        }
+        if ("asc".equalsIgnoreCase(reqVO.getOrderDirection())) {
+            wrapper.orderByAsc(orderColumn);
+        } else if ("desc".equalsIgnoreCase(reqVO.getOrderDirection())) {
+            wrapper.orderByDesc(orderColumn);
+        } else {
+            wrapper.orderByAsc(ErpBaseDataDO::getSort).orderByDesc(ErpBaseDataDO::getId);
+        }
+    }
+
+    static SFunction<ErpBaseDataDO, ?> getOrderColumn(String orderField) {
+        if (orderField == null) {
+            return null;
+        }
+        switch (orderField.trim()) {
+            case "id":
+                return ErpBaseDataDO::getId;
+            case "name":
+                return ErpBaseDataDO::getName;
+            case "code":
+                return ErpBaseDataDO::getCode;
+            case "sort":
+                return ErpBaseDataDO::getSort;
+            case "status":
+                return ErpBaseDataDO::getStatus;
+            case "createTime":
+                return ErpBaseDataDO::getCreateTime;
+            default:
+                return null;
+        }
     }
 
     default List<ErpBaseDataDO> selectListByTypeAndStatus(String type, Integer status) {
@@ -37,6 +76,12 @@ public interface ErpBaseDataMapper extends BaseMapperX<ErpBaseDataDO> {
         return selectOne(new LambdaQueryWrapperX<ErpBaseDataDO>()
                 .eq(ErpBaseDataDO::getType, type)
                 .eq(ErpBaseDataDO::getName, name));
+    }
+
+    default ErpBaseDataDO selectByTypeAndCode(String type, String code) {
+        return selectOne(new LambdaQueryWrapperX<ErpBaseDataDO>()
+                .eq(ErpBaseDataDO::getType, type)
+                .eq(ErpBaseDataDO::getCode, code));
     }
 
 }

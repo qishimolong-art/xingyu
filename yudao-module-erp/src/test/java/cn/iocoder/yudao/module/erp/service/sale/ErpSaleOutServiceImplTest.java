@@ -5,13 +5,13 @@ import cn.iocoder.yudao.framework.test.core.ut.BaseMockitoUnitTest;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.out.ErpSaleOutSaveReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.out.ErpSaleReturnableItemRespVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.ErpAccountDO;
-import cn.iocoder.yudao.module.erp.dal.dataobject.finance.accounting.ErpVoucherDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.product.ErpProductDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpCustomerDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleOrderDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleOutDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleOutItemDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockDO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpWarehouseDO;
 import cn.iocoder.yudao.module.erp.dal.mysql.finance.accounting.ErpVoucherItemMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.finance.accounting.ErpVoucherMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpSaleOutItemMapper;
@@ -19,16 +19,19 @@ import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpSaleOutMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpSaleReturnItemMapper;
 import cn.iocoder.yudao.module.erp.dal.redis.no.ErpNoRedisDAO;
 import cn.iocoder.yudao.module.erp.enums.ErpAuditStatus;
-import cn.iocoder.yudao.module.erp.enums.finance.accounting.ErpVoucherAuditStatusEnum;
 import cn.iocoder.yudao.module.erp.enums.finance.accounting.ErpVoucherSourceBizTypeEnum;
 import cn.iocoder.yudao.module.erp.enums.sale.ErpSaleBizSourceTypeEnum;
+import cn.iocoder.yudao.module.erp.service.common.ErpOperateLogService;
 import cn.iocoder.yudao.module.erp.service.finance.ErpAccountService;
 import cn.iocoder.yudao.module.erp.service.finance.accounting.ErpAutoVoucherBuilder;
 import cn.iocoder.yudao.module.erp.service.finance.accounting.ErpBookOpenService;
 import cn.iocoder.yudao.module.erp.service.finance.accounting.ErpVoucherService;
+import cn.iocoder.yudao.module.erp.service.product.ErpProductBatchNoValidator;
 import cn.iocoder.yudao.module.erp.service.product.ErpProductService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpStockRecordService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpStockService;
+import cn.iocoder.yudao.module.erp.service.stock.ErpStockOutBillService;
+import cn.iocoder.yudao.module.erp.service.stock.ErpWarehouseService;
 import cn.iocoder.yudao.module.erp.service.stock.bo.ErpStockRecordCreateReqBO;
 import cn.iocoder.yudao.module.system.api.user.AdminUserApi;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
@@ -93,6 +96,18 @@ public class ErpSaleOutServiceImplTest extends BaseMockitoUnitTest {
     @Mock
     private ErpStockService stockService;
     @Mock
+    private ErpStockOutBillService stockOutBillService;
+    @Mock
+    private ErpWarehouseService warehouseService;
+    @Mock
+    private ErpSaleDocumentDefaultService saleDocumentDefaultService;
+    @Mock
+    private ErpSaleFieldPermissionMasker fieldPermissionMasker;
+    @Mock
+    private ErpOperateLogService operateLogService;
+    @Mock
+    private ErpProductBatchNoValidator productBatchNoValidator;
+    @Mock
     private AdminUserApi adminUserApi;
     @Mock
     private ErpAutoVoucherBuilder autoVoucherBuilder;
@@ -113,6 +128,8 @@ public class ErpSaleOutServiceImplTest extends BaseMockitoUnitTest {
                 return prefix + "20260520000001";
             }
         });
+        lenient().when(warehouseService.validSaleWarehouseList(anyCollection())).thenReturn(Collections.singletonList(
+                new ErpWarehouseDO().setId(400L)));
     }
 
     // ==================== createSaleOut ====================
@@ -356,37 +373,23 @@ public class ErpSaleOutServiceImplTest extends BaseMockitoUnitTest {
     }
 
     @Test
-    public void testUpdateSaleOutStatus_processFromApprove_deleteStockRecord() {
+    public void testUpdateSaleOutStatus_processFromApprove_throwException() {
         // APPROVE 状态反审核
         ErpSaleOutDO saleOut = new ErpSaleOutDO()
                 .setId(21L).setNo("XSCK002")
                 .setStatus(ErpAuditStatus.APPROVE.getStatus())
                 .setReceiptPrice(BigDecimal.ZERO)
                 .setOutTime(LocalDateTime.of(2026, 5, 20, 10, 0));
-        when(saleOutMapper.selectById(eq(21L))).thenReturn(saleOut);
-        when(saleOutMapper.updateByIdAndStatus(eq(21L), eq(ErpAuditStatus.APPROVE.getStatus()), any(ErpSaleOutDO.class)))
-                .thenReturn(1);
-        // 反审：未审核的凭证可以删除
-        ErpVoucherDO voucher = new ErpVoucherDO().setId(900L).setVoucherNo("记-202605-000001")
-                .setAuditStatus(ErpVoucherAuditStatusEnum.PROCESS.getStatus());
-        when(voucherMapper.selectListByBiz(eq(ErpVoucherSourceBizTypeEnum.SALE_OUT.getType()), eq(21L)))
-                .thenReturn(Collections.singletonList(voucher));
-        // 出库项（反审会再次写入流水）
-        ErpSaleOutItemDO item = new ErpSaleOutItemDO()
-                .setId(200L).setOutId(21L).setProductId(300L).setWarehouseId(400L)
-                .setCount(new BigDecimal("5")).setProductPrice(new BigDecimal("10"));
-        when(saleOutItemMapper.selectListByOutId(eq(21L))).thenReturn(Collections.singletonList(item));
 
-        // 执行：反审核
-        saleOutService.updateSaleOutStatus(21L, ErpAuditStatus.PROCESS.getStatus());
+        // 执行 + 断言：当前销售出库状态接口只允许审批，不支持反审核
+        assertThrows(ServiceException.class,
+                () -> saleOutService.updateSaleOutStatus(21L, ErpAuditStatus.PROCESS.getStatus()));
 
-        // 断言：删除关联凭证
-        verify(voucherMapper).deleteById(eq(900L));
-        verify(voucherItemMapper).delete(any(LambdaQueryWrapper.class));
-        // 反审核的库存流水：count 为正（出库取消）
-        verify(stockRecordService).createStockRecord(argThat((ErpStockRecordCreateReqBO bo) ->
-                bo.getCount().compareTo(new BigDecimal("5")) == 0
-                        && bo.getUnitPrice().compareTo(new BigDecimal("10")) == 0));
+        verify(saleOutMapper, never()).selectById(eq(21L));
+        verify(saleOutMapper, never()).updateByIdAndStatus(anyLong(), any(), any());
+        verify(voucherMapper, never()).deleteById(anyLong());
+        verify(voucherItemMapper, never()).delete(any(LambdaQueryWrapper.class));
+        verify(stockRecordService, never()).createStockRecord(any());
     }
 
     @Test

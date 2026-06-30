@@ -58,6 +58,13 @@ public interface ErpProductService {
     void batchUpdateProduct(ProductBatchUpdateReqVO updateReqVO);
 
     /**
+     * 还原停用配件
+     *
+     * @param ids 配件编号列表
+     */
+    void restoreProduct(List<Long> ids);
+
+    /**
      * 删除产品
      *
      * @param id 编号
@@ -167,5 +174,28 @@ public interface ErpProductService {
      * @return 产品 ID 列表
      */
     List<Long> findEmptyShelfProductIds();
+
+    /**
+     * 列表直接编辑保存价格/库存字段（无需口令）
+     *
+     * @param reqList 修改列表
+     */
+    void batchUpdatePriceFields(List<cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpPartsBatchUpdatePriceFieldsReqVO> reqList);
+
+    /**
+     * 批量调整配件价格
+     *
+     * @param reqVO 调整参数
+     * @return 调整成功的配件数量
+     */
+    int batchAdjustPrice(cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpPartsBatchAdjustPriceReqVO reqVO);
+
+    /**
+     * 批量调整配件库存上下限（需口令校验）
+     *
+     * @param reqVO 调整参数
+     * @return 调整成功的配件数量
+     */
+    int batchAdjustStockLimits(cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpPartsBatchAdjustStockLimitsReqVO reqVO);
 
 }

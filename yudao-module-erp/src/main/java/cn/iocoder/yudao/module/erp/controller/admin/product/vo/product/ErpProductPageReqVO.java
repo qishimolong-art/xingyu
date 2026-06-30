@@ -17,7 +17,7 @@ public class ErpProductPageReqVO extends PageParam {
     @Schema(description = "产品名称", example = "李四")
     private String name;
 
-    @Schema(description = "产品分类编号", example = "11161")
+    @Schema(description = "商品分类编号", example = "11161")
     private Long categoryId;
 
     @Schema(description = "所属部门编号", example = "100")
@@ -38,5 +38,11 @@ public class ErpProductPageReqVO extends PageParam {
     @Schema(description = "创建时间")
     @DateTimeFormat(pattern = FORMAT_YEAR_MONTH_DAY_HOUR_MINUTE_SECOND)
     private LocalDateTime[] createTime;
+
+    @Schema(description = "排序字段", example = "createTime")
+    private String orderField;
+
+    @Schema(description = "排序方向", example = "desc")
+    private String orderDirection;
 
 }

@@ -64,6 +64,14 @@ public class ErpSupplierDO extends BaseDO {
      */
     private Integer status;
     /**
+     * 停用人用户编号
+     */
+    private Long disabledBy;
+    /**
+     * 停用时间
+     */
+    private LocalDateTime disabledTime;
+    /**
      * 排序
      */
     private Integer sort;
@@ -97,6 +105,10 @@ public class ErpSupplierDO extends BaseDO {
      * Department id.
      */
     private Long deptId;
+    /**
+     * 允许多部门
+     */
+    private Boolean allowMultiDept;
     /**
      * 旧编码
      */

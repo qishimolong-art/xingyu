@@ -19,6 +19,8 @@ import java.time.format.DateTimeFormatter;
 public class ErpNoRedisDAO {
 
     public static final String STOCK_IN_NO_PREFIX = "QTRK";
+    public static final String STOCK_IN_BILL_NO_PREFIX = "RCD";
+    public static final String STOCK_OUT_BILL_NO_PREFIX = "CCD";
     public static final String STOCK_OUT_NO_PREFIX = "QCKD";
     public static final String STOCK_MOVE_NO_PREFIX = "QCDB";
     public static final String STOCK_CHECK_NO_PREFIX = "QCPD";

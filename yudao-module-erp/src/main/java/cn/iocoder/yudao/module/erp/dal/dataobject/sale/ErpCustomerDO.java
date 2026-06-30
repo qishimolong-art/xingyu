@@ -7,6 +7,7 @@ import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.*;
 
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
 
 /**
  * ERP 客户 DO
@@ -33,10 +34,6 @@ public class ErpCustomerDO extends BaseDO {
      */
     private String code;
     /**
-     * 旧编码
-     */
-    private String oldCode;
-    /**
      * 客户名称
      */
     private String name;
@@ -44,10 +41,6 @@ public class ErpCustomerDO extends BaseDO {
      * 简称
      */
     private String shortName;
-    /**
-     * 外文名
-     */
-    private String foreignName;
     /**
      * 往来类别
      */
@@ -60,10 +53,6 @@ public class ErpCustomerDO extends BaseDO {
      * 客户类型
      */
     private Integer customerType;
-    /**
-     * 公司性质
-     */
-    private String companyNature;
     /**
      * 是否集团客户
      */
@@ -89,10 +78,6 @@ public class ErpCustomerDO extends BaseDO {
      */
     private String email;
     /**
-     * 传真
-     */
-    private String fax;
-    /**
      * 财务联系电话
      */
     private String financeTelephone;
@@ -113,14 +98,6 @@ public class ErpCustomerDO extends BaseDO {
      */
     private String postCode;
     /**
-     * 发货区
-     */
-    private Integer deliveryArea;
-    /**
-     * 到货点
-     */
-    private String arrivalPoint;
-    /**
      * 备注
      */
     private String remark;
@@ -130,6 +107,14 @@ public class ErpCustomerDO extends BaseDO {
      * 枚举 {@link cn.iocoder.yudao.framework.common.enums.CommonStatusEnum}
      */
     private Integer status;
+    /**
+     * 停用人用户编号
+     */
+    private Long disabledBy;
+    /**
+     * 停用时间
+     */
+    private LocalDateTime disabledTime;
     /**
      * 排序
      */
@@ -231,14 +216,6 @@ public class ErpCustomerDO extends BaseDO {
      */
     private Boolean priceLocked;
     /**
-     * 绩效考核利润参考依据
-     */
-    private Integer profitReferencePriceLevel;
-    /**
-     * 电商支付
-     */
-    private Integer ecommercePayment;
-    /**
      * 是否物流
      */
     private Boolean logistics;
@@ -270,14 +247,6 @@ public class ErpCustomerDO extends BaseDO {
      * 平台唯一码
      */
     private String platformCode;
-    /**
-     * 客户标签（逗号分隔）
-     */
-    private String customerTag;
-    /**
-     * 微信客服账号/姓名
-     */
-    private String wechatService;
     /**
      * 白条授信额度
      */

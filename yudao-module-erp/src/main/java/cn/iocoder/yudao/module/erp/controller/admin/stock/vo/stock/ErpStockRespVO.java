@@ -118,6 +118,8 @@ public class ErpStockRespVO {
     private Integer stockStandard;
     @Schema(description = "包装数")
     private Integer packageQty;
+    @Schema(description = "是否开启批次号管理")
+    private Boolean batchNoEnabled;
     @Schema(description = "重量（kg）")
     private BigDecimal weight;
 

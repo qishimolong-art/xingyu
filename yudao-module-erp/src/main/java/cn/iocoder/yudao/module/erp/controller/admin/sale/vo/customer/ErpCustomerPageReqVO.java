@@ -43,7 +43,7 @@ public class ErpCustomerPageReqVO extends PageParam {
     @Schema(description = "所属业务员")
     private Long saleUserId;
 
-    @Schema(description = "Sort field, supports: code, name, enterpriseMatchStatus, status, settleMethod, wechatService, areaId, routeId, saleUserId, customerType, detailAddress, address, remark, customerTag, creator, createTime, mobile")
+    @Schema(description = "Sort field, supports: code, name, enterpriseMatchStatus, status, settleMethod, areaId, routeId, saleUserId, customerType, detailAddress, address, remark, creator, createTime, mobile")
     private String orderField;
 
     @Schema(description = "Sort direction: asc or desc")

@@ -2,6 +2,7 @@ package cn.iocoder.yudao.module.system.api.permission;
 
 import cn.iocoder.yudao.framework.common.biz.system.permission.dto.DeptDataPermissionRespDTO;
 import cn.iocoder.yudao.framework.common.util.collection.CollectionUtils;
+import cn.iocoder.yudao.module.system.api.permission.dto.FieldDefinitionCreateOrUpdateReqDTO;
 import cn.iocoder.yudao.module.system.dal.dataobject.user.AdminUserDO;
 import cn.iocoder.yudao.module.system.service.permission.PermissionService;
 import cn.iocoder.yudao.module.system.service.user.AdminUserService;
@@ -33,6 +34,16 @@ public class PermissionApiImpl implements PermissionApi {
     @Override
     public List<String> getCurrentUserHiddenFields(String module) {
         return permissionService.getCurrentUserHiddenFields(module);
+    }
+
+    @Override
+    public void createOrUpdateFieldDefinitions(List<FieldDefinitionCreateOrUpdateReqDTO> definitions) {
+        permissionService.createOrUpdateFieldDefinitions(definitions);
+    }
+
+    @Override
+    public void deleteFieldDefinitions(String module, List<String> fieldKeys) {
+        permissionService.deleteFieldDefinitions(module, fieldKeys);
     }
 
     @Override

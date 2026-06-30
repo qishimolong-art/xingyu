@@ -40,8 +40,10 @@ import cn.iocoder.yudao.module.erp.service.common.ErpOperateLogService;
 import cn.iocoder.yudao.module.erp.service.finance.accounting.ErpAutoVoucherBuilder;
 import cn.iocoder.yudao.module.erp.service.finance.accounting.ErpBookOpenService;
 import cn.iocoder.yudao.module.erp.service.finance.accounting.ErpVoucherService;
+import cn.iocoder.yudao.module.erp.service.product.ErpProductBatchNoValidator;
 import cn.iocoder.yudao.module.erp.service.product.ErpProductService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpStockRecordService;
+import cn.iocoder.yudao.module.erp.service.stock.ErpStockInBillService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpWarehouseService;
 import cn.iocoder.yudao.module.erp.service.stock.bo.ErpStockRecordCreateReqBO;
 import cn.iocoder.yudao.module.system.api.user.AdminUserApi;
@@ -105,6 +107,8 @@ public class ErpPurchaseInServiceImpl implements ErpPurchaseInService {
     @Resource
     private ErpStockRecordService stockRecordService;
     @Resource
+    private ErpStockInBillService stockInBillService;
+    @Resource
     private ErpSupplierService supplierService;
     @Resource
     private ErpWarehouseService warehouseService;
@@ -115,6 +119,8 @@ public class ErpPurchaseInServiceImpl implements ErpPurchaseInService {
     private ErpOperateLogService operateLogService;
     @Resource
     private ErpPurchaseDocumentDefaultService purchaseDocumentDefaultService;
+    @Resource
+    private ErpProductBatchNoValidator productBatchNoValidator;
 
     @Resource
     private ErpAutoVoucherBuilder autoVoucherBuilder;
@@ -271,12 +277,26 @@ public class ErpPurchaseInServiceImpl implements ErpPurchaseInService {
 
         // 3. 变更库存
         List<ErpPurchaseInItemDO> purchaseInItems = purchaseInItemMapper.selectListByInId(id);
-        purchaseInItems.forEach(purchaseInItem -> {
+        warehouseService.validPurchaseWarehouseList(convertSet(purchaseInItems, ErpPurchaseInItemDO::getWarehouseId));
+        Map<Long, ErpWarehouseDO> warehouseMap = warehouseService.getWarehouseMap(
+                convertSet(purchaseInItems, ErpPurchaseInItemDO::getWarehouseId));
+        if (warehouseMap == null) {
+            warehouseMap = Collections.emptyMap();
+        }
+        Map<Long, ErpWarehouseDO> finalWarehouseMap = warehouseMap;
+        List<ErpPurchaseInItemDO> stockInBillItems = purchaseInItems.stream()
+                .filter(item -> isStockBillEnabled(finalWarehouseMap, item.getWarehouseId()))
+                .collect(Collectors.toList());
+        List<ErpPurchaseInItemDO> directStockItems = purchaseInItems.stream()
+                .filter(item -> !isStockBillEnabled(finalWarehouseMap, item.getWarehouseId()))
+                .collect(Collectors.toList());
+        directStockItems.forEach(purchaseInItem -> {
             stockRecordService.createStockRecord(new ErpStockRecordCreateReqBO(
                     purchaseInItem.getProductId(), purchaseInItem.getWarehouseId(), purchaseInItem.getCount(),
                     ErpStockRecordBizTypeEnum.PURCHASE_IN.getType(), purchaseInItem.getInId(), purchaseInItem.getId(), purchaseIn.getNo(),
                     purchaseInItem.getProductPrice(), purchaseIn.getInTime()));
         });
+        stockInBillService.createFromPurchaseIn(purchaseIn, stockInBillItems);
 
         // 4. 仅在审批通过时，回写每个产品的最近采购价 last_purchase_price
         purchaseInItems.forEach(item -> productService.updateProductLastPurchasePrice(
@@ -302,6 +322,11 @@ public class ErpPurchaseInServiceImpl implements ErpPurchaseInService {
             updatePurchaseOrderInCount(purchaseIn.getOrderId());
         }
         operateLogService.recordStatus(ERP_PURCHASE_IN_TYPE, id, purchaseIn.getNo(), true);
+    }
+
+    private boolean isStockBillEnabled(Map<Long, ErpWarehouseDO> warehouseMap, Long warehouseId) {
+        ErpWarehouseDO warehouse = warehouseMap.get(warehouseId);
+        return warehouse != null && Boolean.TRUE.equals(warehouse.getStockBillEnabled());
     }
 
     @Override
@@ -343,6 +368,10 @@ public class ErpPurchaseInServiceImpl implements ErpPurchaseInService {
         List<ErpProductDO> productList = productService.validProductList(
                 convertSet(list, ErpPurchaseInSaveReqVO.Item::getProductId));
         Map<Long, ErpProductDO> productMap = convertMap(productList, ErpProductDO::getId);
+        productBatchNoValidator.validateBatchNoRequired(list, productMap,
+                ErpPurchaseInSaveReqVO.Item::getProductId, ErpPurchaseInSaveReqVO.Item::getBatchNo);
+        Set<Long> warehouseIds = convertSet(list, ErpPurchaseInSaveReqVO.Item::getWarehouseId);
+        warehouseService.validPurchaseWarehouseList(warehouseIds);
         // 2. 转化为 ErpPurchaseInItemDO 列表
         return convertList(list, o -> BeanUtils.toBean(o, ErpPurchaseInItemDO.class, item -> {
             ErpProductDO product = productMap.get(item.getProductId());
@@ -530,6 +559,7 @@ public class ErpPurchaseInServiceImpl implements ErpPurchaseInService {
             if (product != null) {
                 vo.setProductName(product.getName());
                 vo.setProductCode(product.getCode());
+                vo.setBatchNoEnabled(product.getBatchNoEnabled());
             }
             return vo;
         }).collect(Collectors.toList());
@@ -762,7 +792,7 @@ public class ErpPurchaseInServiceImpl implements ErpPurchaseInService {
 
         Map<String, ErpProductDO> productMap = productMapper.selectListByCodes(extractPurchaseInCodes(list)).stream()
                 .collect(Collectors.toMap(ErpProductDO::getCode, product -> product, (a, b) -> a));
-        Map<String, ErpWarehouseDO> warehouseMap = warehouseService.getWarehouseListByStatus(CommonStatusEnum.ENABLE.getStatus()).stream()
+        Map<String, ErpWarehouseDO> warehouseMap = warehouseService.getPurchaseWarehouseListByStatus(CommonStatusEnum.ENABLE.getStatus()).stream()
                 .collect(Collectors.toMap(ErpWarehouseDO::getName, warehouse -> warehouse, (a, b) -> a));
         Map<Long, ErpProductRespVO> productVOMap = productService.getProductVOMap(
                 convertSet(productMap.values(), ErpProductDO::getId));
@@ -809,7 +839,7 @@ public class ErpPurchaseInServiceImpl implements ErpPurchaseInService {
         Map<String, ErpSupplierDO> supplierMap = buildSupplierMap();
         Map<String, ErpProductDO> productMap = productMapper.selectListByCodes(extractPurchaseInOrderProductCodes(list)).stream()
                 .collect(Collectors.toMap(ErpProductDO::getCode, product -> product, (a, b) -> a));
-        Map<String, ErpWarehouseDO> warehouseMap = warehouseService.getWarehouseListByStatus(CommonStatusEnum.ENABLE.getStatus()).stream()
+        Map<String, ErpWarehouseDO> warehouseMap = warehouseService.getPurchaseWarehouseListByStatus(CommonStatusEnum.ENABLE.getStatus()).stream()
                 .collect(Collectors.toMap(ErpWarehouseDO::getName, warehouse -> warehouse, (a, b) -> a));
         Map<Long, ErpProductRespVO> productVOMap = productService.getProductVOMap(
                 convertSet(productMap.values(), ErpProductDO::getId));

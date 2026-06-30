@@ -87,8 +87,11 @@ public class ErpBaseDataController {
     public CommonResult<List<ErpBaseDataRespVO>> getBaseDataSimpleList(@RequestParam("type") String type) {
         List<ErpBaseDataDO> list = baseDataService.getBaseDataSimpleListByType(type);
         List<ErpBaseDataRespVO> result = convertList(list, data -> new ErpBaseDataRespVO()
-                .setId(data.getId()).setName(data.getName()));
-        result.forEach(item -> fieldPermissionMasker.maskForm(FIELD_PERMISSION_MODULE, item));
+                .setId(data.getId()).setName(data.getName()).setCode(data.getCode()));
+        for (int i = 0; i < result.size(); i++) {
+            fieldPermissionMasker.maskForm(FIELD_PERMISSION_MODULE, result.get(i));
+            result.get(i).setCode(list.get(i).getCode());
+        }
         return success(result);
     }
 

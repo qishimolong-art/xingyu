@@ -109,6 +109,8 @@ public class AdminUserServiceImplTest extends BaseDbUnitTest {
     private ConfigApi configApi;
     @MockBean
     private OAuth2TokenService oauth2TokenService;
+    @MockBean
+    private AdminUserBatchUpdateExtension batchUpdateExtension;
 
     @BeforeEach
     public void before() {
@@ -285,6 +287,42 @@ public class AdminUserServiceImplTest extends BaseDbUnitTest {
         // 调用，并断言异常
         ServiceException exception = assertThrows(ServiceException.class, () -> userService.updateUserBatch(reqVO));
         assertEquals("数据范围不正确", exception.getMessage());
+    }
+
+    @Test
+    public void testUpdateUserBatch_warehousePermissionOnly_callsExtension() {
+        AdminUserDO dbUser = randomAdminUserDO();
+        userMapper.insert(dbUser);
+        UserBatchUpdateReqVO reqVO = new UserBatchUpdateReqVO()
+                .setIds(singletonList(dbUser.getId()))
+                .setUpdateWarehousePermissions(true)
+                .setWarehousePermissionMode(UserBatchUpdateReqVO.WAREHOUSE_PERMISSION_MODE_ADD)
+                .setWarehouseIds(asSet(11L, 12L));
+
+        userService.updateUserBatch(reqVO);
+
+        verify(batchUpdateExtension).validate(eq(reqVO), eq(asSet(dbUser.getId())));
+        verify(batchUpdateExtension).update(eq(dbUser.getId()), eq(reqVO));
+        AdminUserDO user = userMapper.selectById(dbUser.getId());
+        assertPojoEquals(dbUser, user);
+    }
+
+    @Test
+    public void testUpdateUserBatch_extensionValidateFail_doesNotUpdateUser() {
+        AdminUserDO dbUser = randomAdminUserDO(o -> o.setNickname("old"));
+        userMapper.insert(dbUser);
+        UserBatchUpdateReqVO reqVO = new UserBatchUpdateReqVO()
+                .setIds(singletonList(dbUser.getId()))
+                .setUpdateNickname(true)
+                .setNickname("new");
+        doThrow(new IllegalStateException("extension validate failed"))
+                .when(batchUpdateExtension).validate(eq(reqVO), eq(asSet(dbUser.getId())));
+
+        assertThrows(IllegalStateException.class, () -> userService.updateUserBatch(reqVO));
+
+        AdminUserDO user = userMapper.selectById(dbUser.getId());
+        assertEquals("old", user.getNickname());
+        verify(batchUpdateExtension, never()).update(anyLong(), any());
     }
 
     @Test

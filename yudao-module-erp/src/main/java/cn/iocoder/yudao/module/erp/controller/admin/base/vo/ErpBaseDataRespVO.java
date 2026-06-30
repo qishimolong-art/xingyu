@@ -18,6 +18,9 @@ public class ErpBaseDataRespVO {
     @Schema(description = "名称", requiredMode = Schema.RequiredMode.REQUIRED, example = "华东")
     private String name;
 
+    @Schema(description = "稳定业务编码", example = "cash")
+    private String code;
+
     @Schema(description = "排序", requiredMode = Schema.RequiredMode.REQUIRED, example = "1")
     private Integer sort;
 

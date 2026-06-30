@@ -69,6 +69,14 @@ public class AdminUserApiImpl implements AdminUserApi {
     }
 
     @Override
+    public List<AdminUserRespDTO> getUserListByStatus(Integer status) {
+        return DataPermissionUtils.executeIgnore(() -> {
+            List<AdminUserDO> users = userService.getUserListByStatus(status);
+            return BeanUtils.toBean(users, AdminUserRespDTO.class);
+        });
+    }
+
+    @Override
     @DataPermission(enable = false)
     public List<AdminUserRespDTO> getUserListByNickname(String nickname) {
         List<AdminUserDO> users = userService.getUserListByNickname(nickname);

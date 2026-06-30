@@ -164,6 +164,7 @@ public class ErpStockOutServiceImpl implements ErpStockOutService {
 
         // 3. 取出库项
         List<ErpStockOutItemDO> stockOutItems = stockOutItemMapper.selectListByOutId(id);
+        warehouseService.validateCurrentUserWarehousePermission(convertSet(stockOutItems, ErpStockOutItemDO::getWarehouseId));
 
         // 4. 审批通过：扣库存前先累加成本快照（与销售出库一致）
         boolean enableVoucher = stockOut.getOutTime() != null
@@ -209,7 +210,9 @@ public class ErpStockOutServiceImpl implements ErpStockOutService {
                 convertSet(list, ErpStockOutSaveReqVO.Item::getProductId));
         Map<Long, ErpProductDO> productMap = convertMap(productList, ErpProductDO::getId);
         // 1.2 校验仓库存在
-        warehouseService.validWarehouseList(convertSet(list, ErpStockOutSaveReqVO.Item::getWarehouseId));
+        Set<Long> warehouseIds = convertSet(list, ErpStockOutSaveReqVO.Item::getWarehouseId);
+        warehouseService.validWarehouseList(warehouseIds);
+        warehouseService.validateCurrentUserWarehousePermission(warehouseIds);
         // 2. 转化为 ErpStockOutItemDO 列表
         return convertList(list, o -> BeanUtils.toBean(o, ErpStockOutItemDO.class, item -> item
                 .setProductUnitId(productMap.get(item.getProductId()).getUnitId())

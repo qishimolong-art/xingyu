@@ -38,6 +38,9 @@ public interface ErpSaleOutService {
      */
     Long createGeneratedSaleOut(ErpSaleOutSaveReqVO createReqVO, Integer sourceType, Long sourceId, String sourceNo);
 
+    Long createGeneratedSaleOut(ErpSaleOutSaveReqVO createReqVO, Integer sourceType, Long sourceId, String sourceNo,
+                                Boolean deferStockOutBill);
+
     /**
      * 更新销售出库
      *

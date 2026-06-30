@@ -44,6 +44,13 @@ public interface ErpCustomerService {
     void deleteCustomer(Long id);
 
     /**
+     * 批量删除客户
+     *
+     * @param ids 编号列表
+     */
+    void deleteCustomerList(List<Long> ids);
+
+    /**
      * 获得客户
      *
      * @param id 编号
@@ -114,5 +121,19 @@ public interface ErpCustomerService {
      * @param reqVO 批量编辑参数
      */
     void batchUpdateCustomer(@Valid ErpCustomerBatchUpdateReqVO reqVO);
+
+    /**
+     * 批量停用客户
+     *
+     * @param ids 客户编号列表
+     */
+    void batchDisableCustomer(List<Long> ids);
+
+    /**
+     * 还原停用客户
+     *
+     * @param ids 客户编号列表
+     */
+    void restoreCustomer(List<Long> ids);
 
 }

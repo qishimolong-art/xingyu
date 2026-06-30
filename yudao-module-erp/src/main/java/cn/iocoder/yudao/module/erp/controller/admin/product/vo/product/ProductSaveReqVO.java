@@ -8,6 +8,7 @@ import javax.validation.constraints.NotEmpty;
 import javax.validation.constraints.NotNull;
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.Map;
 
 @Schema(description = "管理后台 - ERP 产品新增/修改 Request VO")
 @Data
@@ -30,9 +31,12 @@ public class ProductSaveReqVO {
     @NotEmpty(message = "产品条码不能为空")
     private String barCode;
 
-    @Schema(description = "产品分类编号", requiredMode = Schema.RequiredMode.REQUIRED, example = "11161")
-    @NotNull(message = "产品分类编号不能为空")
+    @Schema(description = "商品分类编号", requiredMode = Schema.RequiredMode.REQUIRED, example = "11161")
+    @NotNull(message = "商品分类编号不能为空")
     private Long categoryId;
+
+    @Schema(description = "是否开启批次号管理", example = "false")
+    private Boolean batchNoEnabled;
 
     @Schema(description = "单位编号", requiredMode = Schema.RequiredMode.REQUIRED, example = "8869")
     @NotNull(message = "单位编号不能为空")
@@ -91,6 +95,9 @@ public class ProductSaveReqVO {
     @Schema(description = "批发价", example = "80.00")
     private BigDecimal wholesalePrice;
 
+    @Schema(description = "股份价", example = "88.00")
+    private BigDecimal sharePrice;
+
     @Schema(description = "库存上限", example = "1000")
     private Integer stockMax;
 
@@ -112,6 +119,9 @@ public class ProductSaveReqVO {
     @Schema(description = "通用件列表")
     @Valid
     private List<Universal> universals;
+
+    @Schema(description = "自定义字段值，key 为字段编码")
+    private Map<String, Object> customFields;
 
     @Schema(description = "通用件子项")
     @Data

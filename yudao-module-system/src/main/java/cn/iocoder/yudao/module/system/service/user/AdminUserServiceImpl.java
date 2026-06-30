@@ -43,6 +43,7 @@ import com.mzt.logapi.context.LogRecordContext;
 import com.mzt.logapi.service.impl.DiffParseFunction;
 import com.mzt.logapi.starter.annotation.LogRecord;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -104,6 +105,8 @@ public class AdminUserServiceImpl implements AdminUserService {
     private ConfigApi configApi;
     @Resource
     private UserErpBizDataReferenceService userErpBizDataReferenceService;
+    @Autowired(required = false)
+    private List<AdminUserBatchUpdateExtension> batchUpdateExtensions = Collections.emptyList();
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -213,6 +216,9 @@ public class AdminUserServiceImpl implements AdminUserService {
             if (Boolean.TRUE.equals(reqVO.getUpdateStatus()) && CommonStatusEnum.isDisable(reqVO.getStatus())) {
                 oauth2TokenService.removeAccessToken(id, UserTypeEnum.ADMIN.getValue());
             }
+            for (AdminUserBatchUpdateExtension extension : batchUpdateExtensions) {
+                extension.update(id, reqVO);
+            }
         }
     }
 
@@ -301,6 +307,9 @@ public class AdminUserServiceImpl implements AdminUserService {
         if (Boolean.TRUE.equals(reqVO.getUpdateDataScope())) {
             normalizeBatchUserDataScope(reqVO);
             validateBatchDataScope(reqVO);
+        }
+        for (AdminUserBatchUpdateExtension extension : batchUpdateExtensions) {
+            extension.validate(reqVO, userIds);
         }
     }
 

@@ -10,6 +10,7 @@ import cn.iocoder.yudao.module.erp.dal.dataobject.product.ErpProductDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockMoveDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockMoveItemDO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpWarehouseDO;
 import cn.iocoder.yudao.module.erp.dal.mysql.stock.ErpStockMoveItemMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.stock.ErpStockMoveMapper;
 import cn.iocoder.yudao.module.erp.dal.redis.no.ErpNoRedisDAO;
@@ -155,16 +156,21 @@ public class ErpStockMoveServiceImpl implements ErpStockMoveService {
         // 3. 变更库存
         List<ErpStockMoveItemDO> stockMoveItems = stockMoveItemMapper.selectListByMoveId(id);
         validateStockMoveItemsReadyForApprove(stockMoveItems);
+        Set<Long> warehouseIds = new HashSet<>();
+        stockMoveItems.forEach(item -> {
+            warehouseIds.add(item.getFromWarehouseId());
+            warehouseIds.add(item.getToWarehouseId());
+        });
+        Map<Long, ErpWarehouseDO> warehouseMap = warehouseService.getWarehouseMap(warehouseIds);
+        Map<Long, ErpProductDO> productMap = convertMap(productService.validProductList(
+                convertSet(stockMoveItems, ErpStockMoveItemDO::getProductId)), ErpProductDO::getId);
         Integer fromBizType = ErpStockRecordBizTypeEnum.MOVE_OUT.getType();
         Integer toBizType = ErpStockRecordBizTypeEnum.MOVE_IN.getType();
         stockMoveItems.forEach(stockMoveItem -> {
             BigDecimal fromCount = stockMoveItem.getCount().negate();
             BigDecimal toCount = stockMoveItem.getCount();
             // 调拨入库单价：优先取 A 仓（fromWarehouse）当前成本均价；取不到则 fallback 到明细单价
-            ErpStockDO fromStock = stockService.getStock(
-                    stockMoveItem.getProductId(), stockMoveItem.getFromWarehouseId());
-            BigDecimal toUnitPrice = (fromStock != null && fromStock.getCostPrice() != null)
-                    ? fromStock.getCostPrice() : stockMoveItem.getProductPrice();
+            BigDecimal toUnitPrice = resolveStockMoveUnitPrice(stockMoveItem, warehouseMap, productMap);
             stockRecordService.createStockRecord(new ErpStockRecordCreateReqBO(
                     stockMoveItem.getProductId(), stockMoveItem.getFromWarehouseId(), fromCount,
                     fromBizType, stockMoveItem.getMoveId(), stockMoveItem.getId(), stockMove.getNo(),
@@ -185,10 +191,61 @@ public class ErpStockMoveServiceImpl implements ErpStockMoveService {
         Map<Long, ErpProductDO> productMap = convertMap(productList, ErpProductDO::getId);
         // 1.2 校验仓库存在
         validateStockMoveItemWarehouses(list, requireWarehouses);
+        Map<Long, ErpWarehouseDO> warehouseMap = warehouseService.getWarehouseMap(collectStockMoveWarehouseIds(list));
         // 2. 转化为 ErpStockMoveItemDO 列表
         return convertList(list, o -> BeanUtils.toBean(o, ErpStockMoveItemDO.class, item -> item
                 .setProductUnitId(productMap.get(item.getProductId()).getUnitId())
+                .setProductPrice(resolveSubmittedProductPrice(item, warehouseMap, productMap))
                 .setTotalPrice(MoneyUtils.priceMultiply(item.getProductPrice(), item.getCount()))));
+    }
+
+    private Set<Long> collectStockMoveWarehouseIds(List<ErpStockMoveSaveReqVO.Item> list) {
+        Set<Long> warehouseIds = new HashSet<>();
+        for (ErpStockMoveSaveReqVO.Item item : list) {
+            if (item.getFromWarehouseId() != null) {
+                warehouseIds.add(item.getFromWarehouseId());
+            }
+            if (item.getToWarehouseId() != null) {
+                warehouseIds.add(item.getToWarehouseId());
+            }
+        }
+        return warehouseIds;
+    }
+
+    private BigDecimal resolveSubmittedProductPrice(ErpStockMoveItemDO item,
+                                                    Map<Long, ErpWarehouseDO> warehouseMap,
+                                                    Map<Long, ErpProductDO> productMap) {
+        if (!isCrossDeptMove(item.getFromWarehouseId(), item.getToWarehouseId(), warehouseMap)) {
+            return item.getProductPrice();
+        }
+        return requireSharePrice(item, productMap);
+    }
+
+    private BigDecimal resolveStockMoveUnitPrice(ErpStockMoveItemDO item,
+                                                 Map<Long, ErpWarehouseDO> warehouseMap,
+                                                 Map<Long, ErpProductDO> productMap) {
+        if (isCrossDeptMove(item.getFromWarehouseId(), item.getToWarehouseId(), warehouseMap)) {
+            return requireSharePrice(item, productMap);
+        }
+        ErpStockDO fromStock = stockService.getStock(item.getProductId(), item.getFromWarehouseId());
+        return (fromStock != null && fromStock.getCostPrice() != null)
+                ? fromStock.getCostPrice() : item.getProductPrice();
+    }
+
+    private boolean isCrossDeptMove(Long fromWarehouseId, Long toWarehouseId, Map<Long, ErpWarehouseDO> warehouseMap) {
+        ErpWarehouseDO fromWarehouse = warehouseMap.get(fromWarehouseId);
+        ErpWarehouseDO toWarehouse = warehouseMap.get(toWarehouseId);
+        return fromWarehouse != null && toWarehouse != null
+                && fromWarehouse.getDeptId() != null && toWarehouse.getDeptId() != null
+                && !fromWarehouse.getDeptId().equals(toWarehouse.getDeptId());
+    }
+
+    private BigDecimal requireSharePrice(ErpStockMoveItemDO item, Map<Long, ErpProductDO> productMap) {
+        ErpProductDO product = productMap.get(item.getProductId());
+        if (product == null || product.getSharePrice() == null) {
+            throw exception(STOCK_MOVE_SHARE_PRICE_REQUIRED, item.getProductId());
+        }
+        return product.getSharePrice();
     }
 
     private void validateStockMoveItemWarehouses(List<ErpStockMoveSaveReqVO.Item> list, boolean requireWarehouses) {
@@ -209,6 +266,7 @@ public class ErpStockMoveServiceImpl implements ErpStockMoveService {
             }
         }
         warehouseService.validWarehouseList(warehouseIds);
+        warehouseService.validateCurrentUserWarehousePermission(warehouseIds);
     }
 
     private void validateStockMoveItemsReadyForApprove(List<ErpStockMoveItemDO> list) {
@@ -224,6 +282,7 @@ public class ErpStockMoveServiceImpl implements ErpStockMoveService {
             warehouseIds.add(item.getToWarehouseId());
         }
         warehouseService.validWarehouseList(warehouseIds);
+        warehouseService.validateCurrentUserWarehousePermission(warehouseIds);
     }
 
     private void validateDuplicateStockMoveItems(List<ErpStockMoveSaveReqVO.Item> list) {

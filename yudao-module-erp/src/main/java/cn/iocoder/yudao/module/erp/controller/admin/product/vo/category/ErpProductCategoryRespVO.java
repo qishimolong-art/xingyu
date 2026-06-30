@@ -10,7 +10,7 @@ import lombok.Data;
 
 import java.time.LocalDateTime;
 
-@Schema(description = "管理后台 - ERP 产品分类 Response VO")
+@Schema(description = "管理后台 - ERP 商品分类 Response VO")
 @Data
 @ExcelIgnoreUnannotated
 public class ErpProductCategoryRespVO {

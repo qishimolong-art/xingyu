@@ -20,6 +20,10 @@ import java.util.Set;
 @Data
 public class UserBatchUpdateReqVO {
 
+    public static final String WAREHOUSE_PERMISSION_MODE_REPLACE = "REPLACE";
+    public static final String WAREHOUSE_PERMISSION_MODE_ADD = "ADD";
+    public static final String WAREHOUSE_PERMISSION_MODE_REMOVE = "REMOVE";
+
     @Schema(description = "用户编号列表", requiredMode = Schema.RequiredMode.REQUIRED)
     @NotEmpty(message = "请选择需要批量修改的用户")
     private List<Long> ids;
@@ -87,6 +91,15 @@ public class UserBatchUpdateReqVO {
     @Schema(description = "备注", example = "我是一个用户")
     private String remark;
 
+    @Schema(description = "是否修改仓库权限")
+    private Boolean updateWarehousePermissions;
+
+    @Schema(description = "仓库权限修改模式：REPLACE 替换，ADD 追加，REMOVE 移除")
+    private String warehousePermissionMode;
+
+    @Schema(description = "仓库编号数组")
+    private Set<Long> warehouseIds;
+
     @AssertTrue(message = "请至少选择一个需要修改的字段")
     public boolean isAnyFieldUpdated() {
         return Boolean.TRUE.equals(updateNickname)
@@ -97,7 +110,8 @@ public class UserBatchUpdateReqVO {
                 || Boolean.TRUE.equals(updateSex)
                 || Boolean.TRUE.equals(updateStatus)
                 || Boolean.TRUE.equals(updateDataScope)
-                || Boolean.TRUE.equals(updateRemark);
+                || Boolean.TRUE.equals(updateRemark)
+                || Boolean.TRUE.equals(updateWarehousePermissions);
     }
 
     @AssertTrue(message = "请输入名称")
@@ -144,6 +158,25 @@ public class UserBatchUpdateReqVO {
     public boolean isMobileValid() {
         return !Boolean.TRUE.equals(updateMobile)
                 || (mobile != null && !mobile.trim().isEmpty());
+    }
+
+    @AssertTrue(message = "仓库权限修改模式不正确")
+    public boolean isWarehousePermissionModeValid() {
+        if (!Boolean.TRUE.equals(updateWarehousePermissions)) {
+            return true;
+        }
+        return WAREHOUSE_PERMISSION_MODE_REPLACE.equals(warehousePermissionMode)
+                || WAREHOUSE_PERMISSION_MODE_ADD.equals(warehousePermissionMode)
+                || WAREHOUSE_PERMISSION_MODE_REMOVE.equals(warehousePermissionMode);
+    }
+
+    @AssertTrue(message = "请选择仓库")
+    public boolean isWarehouseIdsValid() {
+        if (!Boolean.TRUE.equals(updateWarehousePermissions)
+                || WAREHOUSE_PERMISSION_MODE_REPLACE.equals(warehousePermissionMode)) {
+            return true;
+        }
+        return warehouseIds != null && !warehouseIds.isEmpty();
     }
 
 }

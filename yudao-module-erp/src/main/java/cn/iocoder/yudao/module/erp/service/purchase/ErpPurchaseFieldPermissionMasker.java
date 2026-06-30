@@ -29,6 +29,11 @@ public class ErpPurchaseFieldPermissionMasker {
         return new HashSet<>(hiddenFields);
     }
 
+    public boolean isFieldHidden(String module, String fieldKey) {
+        Set<String> hiddenFieldSet = getHiddenFieldSet(module);
+        return hiddenFieldSet.contains(fieldKey) || hiddenFieldSet.contains("col_" + fieldKey);
+    }
+
     public void mask(String module, Object vo) {
         if (vo == null) {
             return;

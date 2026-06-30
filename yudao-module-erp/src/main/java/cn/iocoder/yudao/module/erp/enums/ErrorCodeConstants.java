@@ -13,6 +13,9 @@ public interface ErrorCodeConstants {
     ErrorCode SUPPLIER_NOT_EXISTS = new ErrorCode(1_030_100_000, "供应商不存在");
     ErrorCode SUPPLIER_NOT_ENABLE = new ErrorCode(1_030_100_000, "供应商({})未启用");
     ErrorCode SUPPLIER_DELETE_FAIL_REFERENCED = new ErrorCode(1_030_100_001, "该供应商已被{}引用，无法删除");
+    ErrorCode SUPPLIER_CATEGORY_INVALID = new ErrorCode(1_030_100_002, "供应商类别必须是：供应商、既是客户又是供应商");
+    ErrorCode SUPPLIER_DISABLE_FAIL_PAYABLE_NOT_CLEAR = new ErrorCode(1_030_100_003, "供应商【{}】仍有未结清欠款【{}】，无法停用");
+    ErrorCode SUPPLIER_CODE_DUPLICATE = new ErrorCode(1_030_100_004, "供应商编码({})已存在");
 
     // ========== ERP 采购订单（1-030-101-000） ==========
     ErrorCode PURCHASE_ORDER_NOT_EXISTS = new ErrorCode(1_030_101_000, "采购订单不存在");
@@ -85,6 +88,8 @@ ErrorCode PURCHASE_ORDER_ITEM_RETURN_FAIL_IN_EXCEED = new ErrorCode(1_030_101_00
     ErrorCode CUSTOMER_NOT_EXISTS = new ErrorCode(1_020_200_000, "客户不存在");
     ErrorCode CUSTOMER_NOT_ENABLE = new ErrorCode(1_020_200_001, "客户({})未启用");
     ErrorCode CUSTOMER_DELETE_FAIL_REFERENCED = new ErrorCode(1_020_200_002, "该客户已被{}引用，无法删除");
+    ErrorCode CUSTOMER_DISABLE_FAIL_RECEIVABLE_NOT_CLEAR = new ErrorCode(1_020_200_003, "客户【{}】仍有未结清应收账款【{}】，无法停用");
+    ErrorCode CUSTOMER_CODE_DUPLICATE = new ErrorCode(1_020_200_004, "客户编码({})已存在");
     ErrorCode CUSTOMER_CONTACT_NOT_EXISTS = new ErrorCode(1_030_207_000, "客户联系人不存在");
     ErrorCode CUSTOMER_CONTRACT_NOT_EXISTS = new ErrorCode(1_030_207_001, "客户合同不存在");
     ErrorCode CUSTOMER_IMAGE_NOT_EXISTS = new ErrorCode(1_030_207_002, "客户图片不存在");
@@ -138,6 +143,10 @@ ErrorCode PURCHASE_ORDER_ITEM_RETURN_FAIL_IN_EXCEED = new ErrorCode(1_030_101_00
     ErrorCode WAREHOUSE_NOT_EXISTS = new ErrorCode(1_030_400_000, "仓库不存在");
     ErrorCode WAREHOUSE_NOT_ENABLE = new ErrorCode(1_030_400_001, "仓库({})未启用");
     ErrorCode WAREHOUSE_DELETE_FAIL_REFERENCED = new ErrorCode(1_030_400_002, "该仓库已被{}引用，无法删除");
+    ErrorCode WAREHOUSE_DISABLE_FAIL_STOCK_NOT_ZERO = new ErrorCode(1_030_400_003, "仓库【{}】仍存在非零库存，无法停用");
+    ErrorCode WAREHOUSE_SALE_DISABLE_FAIL_STOCK_NOT_ZERO = new ErrorCode(1_030_400_004, "仓库【{}】仍存在非零库存，无法关闭销售启用");
+    ErrorCode WAREHOUSE_PURCHASE_NOT_ENABLE = new ErrorCode(1_030_400_005, "仓库【{}】未启用采购，不能在采购模块选择");
+    ErrorCode WAREHOUSE_SALE_NOT_ENABLE = new ErrorCode(1_030_400_006, "仓库【{}】未启用销售，不能在销售模块选择");
 
     // ========== ERP 其它入库单 1-030-401-000 ==========
     ErrorCode STOCK_IN_NOT_EXISTS = new ErrorCode(1_030_401_000, "其它入库单不存在");
@@ -147,6 +156,20 @@ ErrorCode PURCHASE_ORDER_ITEM_RETURN_FAIL_IN_EXCEED = new ErrorCode(1_030_101_00
     ErrorCode STOCK_IN_NO_EXISTS = new ErrorCode(1_030_401_004, "生成入库单失败，请重新提交");
     ErrorCode STOCK_IN_UPDATE_FAIL_APPROVE = new ErrorCode(1_030_401_005, "其它入库单({})已审核，无法修改");
     ErrorCode STOCK_IN_ITEM_DUPLICATE = new ErrorCode(1_030_401_006, "同一入库单明细中产品和仓库重复：{}");
+
+    // ========== ERP 入仓单 1-030-406-000 ==========
+    ErrorCode STOCK_IN_BILL_NOT_EXISTS = new ErrorCode(1_030_406_000, "入仓单不存在");
+    ErrorCode STOCK_IN_BILL_PICKUP_FAIL_COMPLETED = new ErrorCode(1_030_406_001, "入仓单({})已完成提货");
+    ErrorCode STOCK_IN_BILL_PICKUP_ITEM_NOT_EXISTS = new ErrorCode(1_030_406_002, "入仓单明细不存在：{}");
+    ErrorCode STOCK_IN_BILL_PICKUP_COUNT_EXCEED = new ErrorCode(1_030_406_003, "入仓单明细({})本次提货数量({})超过待提数量({})");
+    ErrorCode STOCK_IN_BILL_NO_EXISTS = new ErrorCode(1_030_406_004, "生成入仓单失败，请重新提交");
+
+    // ========== ERP 出仓单 1-030-407-000 ==========
+    ErrorCode STOCK_OUT_BILL_NOT_EXISTS = new ErrorCode(1_030_407_000, "出仓单不存在");
+    ErrorCode STOCK_OUT_BILL_PICK_FAIL_COMPLETED = new ErrorCode(1_030_407_001, "出仓单({})已完成拣货");
+    ErrorCode STOCK_OUT_BILL_PICK_ITEM_NOT_EXISTS = new ErrorCode(1_030_407_002, "出仓单明细不存在：{}");
+    ErrorCode STOCK_OUT_BILL_PICK_COUNT_EXCEED = new ErrorCode(1_030_407_003, "出仓单明细({})本次拣货数量({})超过待拣数量({})");
+    ErrorCode STOCK_OUT_BILL_NO_EXISTS = new ErrorCode(1_030_407_004, "生成出仓单失败，请重新提交");
 
     // ========== ERP 其它出库单 1-030-402-000 ==========
     ErrorCode STOCK_OUT_NOT_EXISTS = new ErrorCode(1_030_402_000, "其它出库单不存在");
@@ -167,6 +190,7 @@ ErrorCode PURCHASE_ORDER_ITEM_RETURN_FAIL_IN_EXCEED = new ErrorCode(1_030_101_00
     ErrorCode STOCK_MOVE_ITEM_DUPLICATE = new ErrorCode(1_030_402_006, "同一调拨单明细中产品、调出仓库和调入仓库重复：{}");
     ErrorCode STOCK_MOVE_WAREHOUSE_REQUIRED = new ErrorCode(1_030_402_007, "库存调拨单明细的调出仓库和调入仓库不能为空");
     ErrorCode STOCK_MOVE_WAREHOUSE_SAME = new ErrorCode(1_030_402_008, "库存调拨单明细的调出仓库和调入仓库不能相同");
+    ErrorCode STOCK_MOVE_SHARE_PRICE_REQUIRED = new ErrorCode(1_030_402_009, "产品({})跨部门调拨需要维护股份价");
 
     // ========== ERP 库存盘点单 1-030-403-000 ==========
     ErrorCode STOCK_CHECK_NOT_EXISTS = new ErrorCode(1_030_403_000, "库存盘点单不存在");
@@ -290,14 +314,21 @@ ErrorCode PURCHASE_ORDER_ITEM_RETURN_FAIL_IN_EXCEED = new ErrorCode(1_030_101_00
     ErrorCode PRODUCT_WAREHOUSE_REQUIRED = new ErrorCode(1_030_500_008, "默认仓库不能为空");
     ErrorCode PRODUCT_DELETE_FAIL_STOCK_EXISTS = new ErrorCode(1_030_500_009, "产品({})已有库存或库存历史记录，不允许删除，请停用或先清理后再操作");
     ErrorCode PRODUCT_DELETE_FAIL_REFERENCED = new ErrorCode(1_030_500_010, "该产品已被{}引用，无法删除");
+    ErrorCode ERP_ITEM_BATCH_NO_REQUIRED = new ErrorCode(1_030_500_011, "第 {} 行：该配件已开启批次号管理，请填写批次号");
 
-    // ========== ERP 产品分类 1-030-501-000 ==========
-    ErrorCode PRODUCT_CATEGORY_NOT_EXISTS = new ErrorCode(1_030_501_000, "产品分类不存在");
-    ErrorCode PRODUCT_CATEGORY_EXITS_CHILDREN = new ErrorCode(1_030_501_001, "存在存在子产品分类，无法删除");
-    ErrorCode PRODUCT_CATEGORY_PARENT_NOT_EXITS = new ErrorCode(1_030_501_002,"父级产品分类不存在");
-    ErrorCode PRODUCT_CATEGORY_PARENT_ERROR = new ErrorCode(1_030_501_003, "不能设置自己为父产品分类");
-    ErrorCode PRODUCT_CATEGORY_NAME_DUPLICATE = new ErrorCode(1_030_501_004, "已经存在该分类名称的产品分类");
+    // ========== ERP 商品分类 1-030-501-000 ==========
+    ErrorCode PRODUCT_CATEGORY_NOT_EXISTS = new ErrorCode(1_030_501_000, "商品分类不存在");
+    ErrorCode PRODUCT_CATEGORY_EXITS_CHILDREN = new ErrorCode(1_030_501_001, "存在子商品分类，无法删除");
+    ErrorCode PRODUCT_CATEGORY_PARENT_NOT_EXITS = new ErrorCode(1_030_501_002,"父级商品分类不存在");
+    ErrorCode PRODUCT_CATEGORY_PARENT_ERROR = new ErrorCode(1_030_501_003, "不能设置自己为父商品分类");
+    ErrorCode PRODUCT_CATEGORY_NAME_DUPLICATE = new ErrorCode(1_030_501_004, "已经存在该分类名称的商品分类");
     ErrorCode PRODUCT_CATEGORY_PARENT_IS_CHILD = new ErrorCode(1_030_501_005, "不能设置自己的子分类为父分类");
+    ErrorCode PRODUCT_CATEGORY_NOT_LEAF = new ErrorCode(1_030_501_006, "请选择最末级商品分类");
+    ErrorCode PRODUCT_CATEGORY_CODE_DUPLICATE = new ErrorCode(1_030_501_007, "商品分类编码({})已存在");
+    ErrorCode PRODUCT_CATEGORY_CODE_INVALID = new ErrorCode(1_030_501_008, "商品分类编码格式不正确，请按 001 或 001 001 的格式填写");
+    ErrorCode PRODUCT_CATEGORY_PARENT_CODE_NOT_EXISTS = new ErrorCode(1_030_501_009, "父级分类编码({})不存在，请先新增父级分类");
+    ErrorCode PRODUCT_CATEGORY_CODE_GENERATE_FAIL = new ErrorCode(1_030_501_010, "生成商品分类编码失败，请手动填写");
+    ErrorCode PRODUCT_CATEGORY_CODE_UPDATE_FAIL_HAS_CHILDREN = new ErrorCode(1_030_501_011, "该商品分类存在子分类，不允许修改编码");
     ErrorCode PRODUCT_CATEGORY_EXITS_PRODUCT = new ErrorCode(1_030_502_002, "存在产品使用该分类，无法删除");
 
     // ========== ERP 产品单位 1-030-502-000 ==========
@@ -308,6 +339,7 @@ ErrorCode PURCHASE_ORDER_ITEM_RETURN_FAIL_IN_EXCEED = new ErrorCode(1_030_101_00
     // ========== ERP 基础数据 1-030-503-000 ==========
     ErrorCode BASE_DATA_NOT_EXISTS = new ErrorCode(1_030_503_000, "基础数据不存在");
     ErrorCode BASE_DATA_NAME_DUPLICATE = new ErrorCode(1_030_503_001, "同类型下已存在该名字的基础数据");
+    ErrorCode BASE_DATA_CODE_DUPLICATE = new ErrorCode(1_030_503_002, "同类型下已存在该编码的基础数据");
 
     // ========== ERP 价格体系 1-030-504-000 ==========
     ErrorCode PRICE_SYSTEM_NOT_EXISTS = new ErrorCode(1_030_504_000, "价格体系不存在");
@@ -321,6 +353,7 @@ ErrorCode PURCHASE_ORDER_ITEM_RETURN_FAIL_IN_EXCEED = new ErrorCode(1_030_101_00
     ErrorCode SEARCH_FIELD_CONFIG_MODULE_KEY_INVALID = new ErrorCode(1_030_505_003, "无效的搜索字段配置模块标识：{}");
     ErrorCode SEARCH_FIELD_CONFIG_DUPLICATE = new ErrorCode(1_030_505_004, "搜索字段配置重复：模块[{}]字段[{}]");
     ErrorCode ERP_EXPORT_CAPTCHA_INVALID = new ErrorCode(1_030_505_005, "导出验证码不正确");
+    ErrorCode FIELD_CONFIG_FIELD_NAME_EMPTY = new ErrorCode(1_030_505_006, "字段名不能为空");
 
     // ========== ERP 结算账户 1-030-600-000 ==========
     ErrorCode ACCOUNT_NOT_EXISTS = new ErrorCode(1_030_600_000, "结算账户不存在");

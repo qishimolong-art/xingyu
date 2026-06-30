@@ -28,7 +28,9 @@ import cn.iocoder.yudao.module.erp.dal.redis.no.ErpNoRedisDAO;
 import cn.iocoder.yudao.module.erp.enums.ErpAuditStatus;
 import cn.iocoder.yudao.module.erp.service.common.ErpOperateLogService;
 import cn.iocoder.yudao.module.erp.service.finance.ErpAccountService;
+import cn.iocoder.yudao.module.erp.service.product.ErpProductBatchNoValidator;
 import cn.iocoder.yudao.module.erp.service.product.ErpProductService;
+import cn.iocoder.yudao.module.erp.service.stock.ErpWarehouseService;
 import cn.iocoder.yudao.module.system.api.dept.DeptApi;
 import cn.iocoder.yudao.module.system.api.dept.dto.DeptRespDTO;
 import cn.iocoder.yudao.module.system.api.user.AdminUserApi;
@@ -94,6 +96,10 @@ public class ErpPurchaseOrderServiceImpl implements ErpPurchaseOrderService {
     private ErpOperateLogService operateLogService;
     @Resource
     private ErpPurchaseDocumentDefaultService purchaseDocumentDefaultService;
+    @Resource
+    private ErpWarehouseService warehouseService;
+    @Resource
+    private ErpProductBatchNoValidator productBatchNoValidator;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -262,6 +268,10 @@ public class ErpPurchaseOrderServiceImpl implements ErpPurchaseOrderService {
         List<ErpProductDO> productList = productService.validProductList(
                 convertSet(list, ErpPurchaseOrderSaveReqVO.Item::getProductId));
         Map<Long, ErpProductDO> productMap = convertMap(productList, ErpProductDO::getId);
+        productBatchNoValidator.validateBatchNoRequired(list, productMap,
+                ErpPurchaseOrderSaveReqVO.Item::getProductId, ErpPurchaseOrderSaveReqVO.Item::getBatchNo);
+        Set<Long> warehouseIds = convertSet(list, ErpPurchaseOrderSaveReqVO.Item::getWarehouseId);
+        warehouseService.validPurchaseWarehouseList(warehouseIds);
         // 2. 转化为 ErpPurchaseOrderItemDO 列表
         return convertList(list, o -> BeanUtils.toBean(o, ErpPurchaseOrderItemDO.class, item -> {
             item.setProductUnitId(productMap.get(item.getProductId()).getUnitId());

@@ -8,8 +8,12 @@ import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.customer.ErpCustomer
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.customer.ErpCustomerPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.customer.ErpCustomerSaveReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpCustomerDO;
+import cn.iocoder.yudao.module.erp.dal.mysql.finance.receivable.ErpReceivableAccountMapper;
+import cn.iocoder.yudao.module.erp.dal.mysql.finance.receivable.ErpReceivableAccountMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpCustomerMapper;
 import cn.iocoder.yudao.module.erp.dal.redis.no.ErpNoRedisDAO;
+import cn.iocoder.yudao.module.erp.service.base.ErpBaseArchiveReferenceService;
+import cn.iocoder.yudao.module.erp.service.common.ErpOperateLogService;
 import com.baomidou.mybatisplus.core.MybatisConfiguration;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
@@ -27,6 +31,7 @@ import java.util.Collections;
 import java.util.List;
 
 import static cn.iocoder.yudao.framework.test.core.util.AssertUtils.assertServiceException;
+import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.CUSTOMER_CODE_DUPLICATE;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.CUSTOMER_NOT_ENABLE;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.CUSTOMER_NOT_EXISTS;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -51,6 +56,14 @@ public class ErpCustomerServiceImplTest extends BaseMockitoUnitTest {
 
     @Mock
     private ErpCustomerMapper customerMapper;
+    @Mock
+    private ErpSaleDocumentDefaultService saleDocumentDefaultService;
+    @Mock
+    private ErpBaseArchiveReferenceService baseArchiveReferenceService;
+    @Mock
+    private ErpOperateLogService operateLogService;
+    @Mock
+    private ErpReceivableAccountMapper receivableAccountMapper;
 
     /**
      * 在测试类加载时初始化 MyBatis-Plus 的 TableInfo 缓存（含 lambda 缓存）。
@@ -111,7 +124,7 @@ public class ErpCustomerServiceImplTest extends BaseMockitoUnitTest {
     public void testCreateCustomer_withProvidedCodes_keepOriginal() {
         // 准备：用户已传 code/memberCode/platformCode/sort，不应被覆盖
         ErpCustomerSaveReqVO reqVO = new ErpCustomerSaveReqVO();
-        reqVO.setCode("CUSTOM001");
+        reqVO.setCode(" CUSTOM001 ");
         reqVO.setMemberCode("MEMBER001");
         reqVO.setPlatformCode("PLAT001");
         reqVO.setName("自定义客户");
@@ -136,6 +149,40 @@ public class ErpCustomerServiceImplTest extends BaseMockitoUnitTest {
                         && Integer.valueOf(99).equals(customer.getSort())));
     }
 
+    @Test
+    public void testCreateCustomer_withBlankManualCode_generateCode() {
+        ErpCustomerSaveReqVO reqVO = new ErpCustomerSaveReqVO();
+        reqVO.setCode("   ");
+        reqVO.setName("空白编码客户");
+        reqVO.setStatus(CommonStatusEnum.ENABLE.getStatus());
+
+        doAnswer(invocation -> {
+            ErpCustomerDO customer = invocation.getArgument(0);
+            customer.setId(125L);
+            return 1;
+        }).when(customerMapper).insert(any(ErpCustomerDO.class));
+
+        Long resultId = customerService.createCustomer(reqVO);
+
+        assertEquals(125L, resultId);
+        verify(customerMapper).insert(ArgumentMatchers.<ErpCustomerDO>argThat(customer ->
+                (ErpNoRedisDAO.CUSTOMER_NO_PREFIX + "20260520000001").equals(customer.getCode())));
+    }
+
+    @Test
+    public void testCreateCustomer_duplicateManualCode_throwException() {
+        when(customerMapper.selectByCodeExcludeId(eq("CUSTOM001"), eq(null)))
+                .thenReturn(new ErpCustomerDO().setId(10L).setCode("CUSTOM001"));
+        ErpCustomerSaveReqVO reqVO = new ErpCustomerSaveReqVO();
+        reqVO.setCode(" CUSTOM001 ");
+        reqVO.setName("重复编码客户");
+        reqVO.setStatus(CommonStatusEnum.ENABLE.getStatus());
+
+        assertServiceException(() -> customerService.createCustomer(reqVO),
+                CUSTOMER_CODE_DUPLICATE, "CUSTOM001");
+        verify(customerMapper, never()).insert(any(ErpCustomerDO.class));
+    }
+
     // ==================== update ====================
 
     @Test
@@ -143,12 +190,14 @@ public class ErpCustomerServiceImplTest extends BaseMockitoUnitTest {
         Long id = 200L;
         // 准备：existing 客户存在
         ErpCustomerDO exist = new ErpCustomerDO().setId(id).setName("旧名称")
+                .setCode("KH000200")
                 .setStatus(CommonStatusEnum.ENABLE.getStatus());
         when(customerMapper.selectById(eq(id))).thenReturn(exist);
 
         ErpCustomerSaveReqVO reqVO = new ErpCustomerSaveReqVO();
         reqVO.setId(id);
         reqVO.setName("新名称");
+        reqVO.setCode("SHOULD-NOT-CHANGE");
         reqVO.setStatus(CommonStatusEnum.ENABLE.getStatus());
 
         // 执行
@@ -156,7 +205,9 @@ public class ErpCustomerServiceImplTest extends BaseMockitoUnitTest {
 
         // 断言：updateById 被调用，name 已更新
         verify(customerMapper).updateById(ArgumentMatchers.<ErpCustomerDO>argThat(update ->
-                id.equals(update.getId()) && "新名称".equals(update.getName())));
+                id.equals(update.getId())
+                        && "新名称".equals(update.getName())
+                        && "KH000200".equals(update.getCode())));
     }
 
     @Test
@@ -352,6 +403,8 @@ public class ErpCustomerServiceImplTest extends BaseMockitoUnitTest {
         reqVO.setStatus(CommonStatusEnum.DISABLE.getStatus());
         reqVO.setPriceLevel(2);
         reqVO.setRemark("批量备注");
+        when(customerMapper.selectById(eq(801L))).thenReturn(new ErpCustomerDO().setId(801L).setName("客户A"));
+        when(customerMapper.selectById(eq(802L))).thenReturn(new ErpCustomerDO().setId(802L).setName("客户B"));
 
         // 执行
         customerService.batchUpdateCustomer(reqVO);

@@ -7,13 +7,19 @@ import cn.iocoder.yudao.framework.common.pojo.PageParam;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.common.util.collection.MapUtils;
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
+import cn.iocoder.yudao.framework.datapermission.core.annotation.DataPermission;
 import cn.iocoder.yudao.framework.excel.core.util.ExcelUtils;
+import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.warehouse.ErpWarehouseBatchDisableReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.warehouse.ErpWarehouseBatchUpdateReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.warehouse.ErpWarehouseImportExcelVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.warehouse.ErpWarehouseImportRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.warehouse.ErpWarehousePageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.warehouse.ErpWarehouseRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.warehouse.ErpWarehouseSaveReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.warehouse.ErpWarehouseUserPermissionRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.warehouse.ErpWarehouseUserPermissionSaveReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.warehouse.ErpUserWarehousePermissionRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.warehouse.ErpUserWarehousePermissionSaveReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpWarehouseDO;
 import cn.iocoder.yudao.module.erp.service.stock.ErpStockFieldPermissionMasker;
 import cn.iocoder.yudao.module.erp.service.stock.ErpWarehouseService;
@@ -100,6 +106,14 @@ public class ErpWarehouseController {
         return success(true);
     }
 
+    @PutMapping("/batch-disable")
+    @Operation(summary = "Batch disable warehouse")
+    @PreAuthorize("@ss.hasPermission('erp:warehouse:update')")
+    public CommonResult<Boolean> batchDisableWarehouse(@Valid @RequestBody ErpWarehouseBatchDisableReqVO reqVO) {
+        warehouseService.batchDisableWarehouse(reqVO.getIds());
+        return success(true);
+    }
+
     @PutMapping("/update-default-status")
     @Operation(summary = "Update warehouse default status")
     @Parameters({
@@ -135,7 +149,7 @@ public class ErpWarehouseController {
     @Parameter(name = "id", description = "id", required = true, example = "1024")
     @PreAuthorize("@ss.hasPermission('erp:warehouse:query')")
     public CommonResult<ErpWarehouseRespVO> getWarehouse(@RequestParam("id") Long id) {
-        ErpWarehouseDO warehouse = warehouseService.getWarehouse(id);
+        ErpWarehouseDO warehouse = warehouseService.getCurrentUserVisibleWarehouse(id);
         if (warehouse == null) {
             return success(null);
         }
@@ -155,11 +169,87 @@ public class ErpWarehouseController {
 
     @GetMapping("/simple-list")
     @Operation(summary = "Get warehouse simple list")
-    public CommonResult<List<ErpWarehouseRespVO>> getWarehouseSimpleList() {
-        List<ErpWarehouseDO> list = warehouseService.getWarehouseListByStatus(CommonStatusEnum.ENABLE.getStatus());
+    public CommonResult<List<ErpWarehouseRespVO>> getWarehouseSimpleList(
+            @RequestParam(value = "bizType", required = false) String bizType) {
+        List<ErpWarehouseDO> list;
+        if ("purchase".equalsIgnoreCase(bizType)) {
+            list = warehouseService.getCurrentUserAuthorizedPurchaseWarehouseList();
+        } else if ("sale".equalsIgnoreCase(bizType)) {
+            list = warehouseService.getCurrentUserAuthorizedSaleWarehouseList();
+        } else {
+            list = warehouseService.getCurrentUserAuthorizedWarehouseList();
+        }
         return success(convertList(list, warehouse -> new ErpWarehouseRespVO().setId(warehouse.getId())
                 .setName(warehouse.getName()).setDeptId(warehouse.getDeptId())
                 .setDefaultStatus(warehouse.getDefaultStatus())));
+    }
+
+    @GetMapping("/assignable-list")
+    @Operation(summary = "Get assignable warehouse list")
+    @PreAuthorize("@ss.hasPermission('erp:warehouse-permission:query') or @ss.hasPermission('erp:warehouse-permission:update')")
+    public CommonResult<List<ErpWarehouseRespVO>> getWarehouseAssignableList() {
+        List<ErpWarehouseDO> list = warehouseService.getAssignableWarehouseList();
+        return success(convertList(list, warehouse -> new ErpWarehouseRespVO().setId(warehouse.getId())
+                .setName(warehouse.getName()).setDeptId(warehouse.getDeptId())
+                .setDefaultStatus(warehouse.getDefaultStatus())));
+    }
+
+    @GetMapping("/user-permissions")
+    @Operation(summary = "Get user warehouse permissions")
+    @Parameter(name = "userId", description = "user id", required = true)
+    @DataPermission(enable = false)
+    @PreAuthorize("@ss.hasPermission('erp:warehouse-permission:query') or @ss.hasPermission('erp:warehouse-permission:update')")
+    public CommonResult<ErpUserWarehousePermissionRespVO> getUserWarehousePermissions(
+            @RequestParam("userId") Long userId) {
+        ErpUserWarehousePermissionRespVO respVO = new ErpUserWarehousePermissionRespVO()
+                .setUserId(userId)
+                .setWarehouseIds(warehouseService.getUserWarehouseIds(userId));
+        return success(respVO);
+    }
+
+    @PutMapping("/user-permissions")
+    @Operation(summary = "Update user warehouse permissions")
+    @DataPermission(enable = false)
+    @PreAuthorize("@ss.hasPermission('erp:warehouse-permission:update')")
+    public CommonResult<Boolean> updateUserWarehousePermissions(
+            @Valid @RequestBody ErpUserWarehousePermissionSaveReqVO updateReqVO) {
+        adminUserApi.validateUser(updateReqVO.getUserId());
+        warehouseService.updateUserWarehousePermissions(updateReqVO.getUserId(), updateReqVO.getWarehouseIds());
+        return success(true);
+    }
+
+    @GetMapping("/warehouse-user-permissions")
+    @Operation(summary = "Get warehouse user permissions")
+    @Parameter(name = "warehouseId", description = "warehouse id", required = true)
+    @DataPermission(enable = false)
+    @PreAuthorize("@ss.hasPermission('erp:warehouse-permission:query') or @ss.hasPermission('erp:warehouse-permission:update')")
+    public CommonResult<ErpWarehouseUserPermissionRespVO> getWarehouseUserPermissions(
+            @RequestParam("warehouseId") Long warehouseId) {
+        ErpWarehouseUserPermissionRespVO respVO = new ErpWarehouseUserPermissionRespVO()
+                .setWarehouseId(warehouseId)
+                .setUserIds(warehouseService.getWarehouseUserIds(warehouseId));
+        return success(respVO);
+    }
+
+    @PutMapping("/warehouse-user-permissions")
+    @Operation(summary = "Update warehouse user permissions")
+    @DataPermission(enable = false)
+    @PreAuthorize("@ss.hasPermission('erp:warehouse-permission:update')")
+    public CommonResult<Boolean> updateWarehouseUserPermissions(
+            @Valid @RequestBody ErpWarehouseUserPermissionSaveReqVO updateReqVO) {
+        if (updateReqVO.getUserIds() != null && !updateReqVO.getUserIds().isEmpty()) {
+            adminUserApi.validateUserList(updateReqVO.getUserIds());
+        }
+        warehouseService.updateWarehouseUserPermissions(updateReqVO.getWarehouseId(), updateReqVO.getUserIds());
+        return success(true);
+    }
+
+    @GetMapping("/assignable-users")
+    @Operation(summary = "Get assignable user list for warehouse permissions")
+    @DataPermission(enable = false)
+    @PreAuthorize("@ss.hasPermission('erp:warehouse-permission:query') or @ss.hasPermission('erp:warehouse-permission:update')")
+    public CommonResult<List<AdminUserRespDTO>> getWarehouseAssignableUsers() {
+        return success(adminUserApi.getUserListByStatus(CommonStatusEnum.ENABLE.getStatus()));
     }
 
     @GetMapping("/export-excel")

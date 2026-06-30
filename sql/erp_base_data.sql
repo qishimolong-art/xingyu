@@ -3,6 +3,7 @@ CREATE TABLE IF NOT EXISTS `erp_base_data` (
   `id` bigint NOT NULL AUTO_INCREMENT COMMENT '编号',
   `type` varchar(50) NOT NULL COMMENT '数据类型（region/category/supplier_type/logistics_company）',
   `name` varchar(100) NOT NULL COMMENT '名称',
+  `code` varchar(64) DEFAULT NULL COMMENT '稳定业务编码',
   `sort` int NOT NULL DEFAULT 0 COMMENT '排序',
   `status` tinyint NOT NULL DEFAULT 0 COMMENT '状态（0启用 1禁用）',
   `remark` varchar(500) DEFAULT NULL COMMENT '备注',
@@ -13,7 +14,8 @@ CREATE TABLE IF NOT EXISTS `erp_base_data` (
   `deleted` bit(1) NOT NULL DEFAULT b'0' COMMENT '是否删除',
   `tenant_id` bigint NOT NULL DEFAULT 0 COMMENT '租户编号',
   PRIMARY KEY (`id`),
-  KEY `idx_type_status` (`type`, `status`)
+  KEY `idx_type_status` (`type`, `status`),
+  KEY `idx_type_code` (`type`, `code`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='ERP 基础数据表';
 
 -- 初始化区域数据

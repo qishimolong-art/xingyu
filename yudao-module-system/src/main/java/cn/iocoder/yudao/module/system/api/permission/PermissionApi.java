@@ -2,6 +2,7 @@ package cn.iocoder.yudao.module.system.api.permission;
 
 import cn.iocoder.yudao.framework.common.biz.system.permission.PermissionCommonApi;
 import cn.iocoder.yudao.framework.common.biz.system.permission.dto.DeptDataPermissionRespDTO;
+import cn.iocoder.yudao.module.system.api.permission.dto.FieldDefinitionCreateOrUpdateReqDTO;
 
 import java.util.Collection;
 import java.util.List;
@@ -29,6 +30,10 @@ public interface PermissionApi extends PermissionCommonApi {
      * @return 字段 key 列表
      */
     List<String> getCurrentUserHiddenFields(String module);
+
+    void createOrUpdateFieldDefinitions(List<FieldDefinitionCreateOrUpdateReqDTO> definitions);
+
+    void deleteFieldDefinitions(String module, List<String> fieldKeys);
 
     /**
      * 获得用户真实关联的部门编号集合。

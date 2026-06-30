@@ -1,6 +1,7 @@
 package cn.iocoder.yudao.module.erp.service.config;
 
 import cn.iocoder.yudao.module.erp.controller.admin.config.vo.ErpFieldConfigBatchUpdateReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.config.vo.ErpFieldConfigCreateCustomReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.config.ErpFieldConfigDO;
 import cn.iocoder.yudao.module.erp.enums.config.ErpFieldConfigModuleEnum;
 
@@ -28,6 +29,8 @@ public interface ErpFieldConfigService {
      * @param reqVO 批量保存请求
      */
     void batchUpdate(@Valid ErpFieldConfigBatchUpdateReqVO reqVO);
+
+    ErpFieldConfigDO createCustomField(@Valid ErpFieldConfigCreateCustomReqVO reqVO);
 
     /**
      * 清空某模块的自定义配置：删除当前租户下该模块的所有记录，清空后前端将按代码默认规则渲染

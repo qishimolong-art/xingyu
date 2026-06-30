@@ -41,6 +41,7 @@ public class ErpPurchaseReturnableItemRespVO {
     private String warehousePosition;
     private String drawingNo;
     private String batchNo;
+    private Boolean batchNoEnabled;
     private String barCode;
     private String brand;
     private String vehicleModel;

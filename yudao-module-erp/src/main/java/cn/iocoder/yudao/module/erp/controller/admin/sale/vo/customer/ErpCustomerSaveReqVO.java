@@ -15,8 +15,6 @@ public class ErpCustomerSaveReqVO {
 
     @Schema(description = "客户编码")
     private String code;
-    @Schema(description = "旧编码")
-    private String oldCode;
 
     @Schema(description = "客户名称", requiredMode = Schema.RequiredMode.REQUIRED, example = "张三")
     @NotEmpty(message = "客户名称不能为空")
@@ -24,8 +22,6 @@ public class ErpCustomerSaveReqVO {
 
     @Schema(description = "简称")
     private String shortName;
-    @Schema(description = "外文名")
-    private String foreignName;
     @Schema(description = "往来类别")
     @Min(value = 1, message = "往来类别必须为正数")
     private Integer relationType;
@@ -33,8 +29,6 @@ public class ErpCustomerSaveReqVO {
     private Long areaId;
     @Schema(description = "客户类型")
     private Integer customerType;
-    @Schema(description = "公司性质")
-    private String companyNature;
     @Schema(description = "是否集团客户")
     private Boolean groupCustomer;
     @Schema(description = "企业匹配状态")
@@ -52,9 +46,6 @@ public class ErpCustomerSaveReqVO {
     @Schema(description = "电子邮箱", example = "7685323@qq.com")
     private String email;
 
-    @Schema(description = "传真", example = "20 7123 4567")
-    private String fax;
-
     @Schema(description = "财务联系电话")
     private String financeTelephone;
     @Schema(description = "地址区域编号")
@@ -65,10 +56,6 @@ public class ErpCustomerSaveReqVO {
     private String detailAddress;
     @Schema(description = "邮政编码")
     private String postCode;
-    @Schema(description = "发货区")
-    private Integer deliveryArea;
-    @Schema(description = "到货点")
-    private String arrivalPoint;
 
     @Schema(description = "备注", example = "你猜")
     private String remark;
@@ -135,10 +122,6 @@ public class ErpCustomerSaveReqVO {
     private Integer priceLevel;
     @Schema(description = "价格锁定")
     private Boolean priceLocked;
-    @Schema(description = "绩效考核利润参考依据")
-    private Integer profitReferencePriceLevel;
-    @Schema(description = "电商支付")
-    private Integer ecommercePayment;
     @Schema(description = "是否物流")
     private Boolean logistics;
     @Schema(description = "运输方式")
@@ -156,10 +139,6 @@ public class ErpCustomerSaveReqVO {
     @Schema(description = "平台唯一码")
     private String platformCode;
 
-    @Schema(description = "客户标签（逗号分隔）")
-    private String customerTag;
-    @Schema(description = "微信客服账号/姓名")
-    private String wechatService;
     @Schema(description = "白条授信额度")
     private BigDecimal creditLimit;
     @Schema(description = "数据中心审核状态 0未审核 1已审核 2驳回")

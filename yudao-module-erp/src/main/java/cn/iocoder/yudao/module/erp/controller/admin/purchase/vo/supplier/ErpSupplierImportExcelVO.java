@@ -5,7 +5,6 @@ import cn.iocoder.yudao.framework.excel.core.annotations.ExcelRequired;
 import lombok.Data;
 
 import java.math.BigDecimal;
-import java.time.LocalDateTime;
 
 /**
  * ERP 供应商导入 Excel VO
@@ -20,14 +19,11 @@ public class ErpSupplierImportExcelVO {
     @ExcelProperty("供应商编码")
     private String code;
 
-    @ExcelProperty("旧编码")
-    private String oldCode;
-
     @ExcelProperty("简称")
     private String shortName;
 
-    @ExcelProperty("外文名")
-    private String foreignName;
+    @ExcelProperty("允许多部门")
+    private Boolean allowMultiDept;
 
     @ExcelProperty("联系人")
     private String contact;
@@ -41,50 +37,17 @@ public class ErpSupplierImportExcelVO {
     @ExcelProperty("电子邮箱")
     private String email;
 
-    @ExcelProperty("传真")
-    private String fax;
-
     @ExcelProperty("区域")
     private String region;
 
-    @ExcelProperty("往来类别")
+    @ExcelProperty("供应商类别")
     private String category;
-
-    @ExcelProperty("供应商类型")
-    private String supplierType;
 
     @ExcelProperty("采购员")
     private String purchaser;
 
-    @ExcelProperty("公司性质")
-    private String companyNature;
-
-    @ExcelProperty("采购管控")
-    private String purchaseControl;
-
-    @ExcelProperty("到货周期(天)")
-    private Integer arrivalCycle;
-
-    @ExcelProperty("采购提前期(天)")
-    private Integer purchaseLeadDays;
-
-    @ExcelProperty("淘汰")
-    private Boolean obsolete;
-
-    @ExcelProperty("淘汰日期")
-    private LocalDateTime obsoleteDate;
-
-    @ExcelProperty("集团供应商")
-    private Boolean groupSupplier;
-
-    @ExcelProperty("允许分店开单")
-    private Boolean allowBranchOrder;
-
     @ExcelProperty("结算方式")
     private String settleMethod;
-
-    @ExcelProperty("结算锁定")
-    private Boolean settleLocked;
 
     @ExcelProperty("运输方式")
     private String transportMethod;
@@ -94,33 +57,6 @@ public class ErpSupplierImportExcelVO {
 
     @ExcelProperty("物流公司")
     private String logisticsCompany;
-
-    @ExcelProperty("到货点")
-    private String arrivalPoint;
-
-    @ExcelProperty("浮动是否更新供应商最后进价")
-    private String floatUpdateLastPrice;
-
-    @ExcelProperty("绩效考核利润参考依据")
-    private String performanceProfitRef;
-
-    @ExcelProperty("地址")
-    private String address;
-
-    @ExcelProperty("省")
-    private String province;
-
-    @ExcelProperty("市")
-    private String city;
-
-    @ExcelProperty("区县")
-    private String district;
-
-    @ExcelProperty("邮政编码")
-    private String postalCode;
-
-    @ExcelProperty("网址")
-    private String website;
 
     @ExcelProperty("开票类型")
     private String invoiceType;

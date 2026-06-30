@@ -78,6 +78,12 @@ public interface ErpStockMapper extends BaseMapperX<ErpStockDO> {
         return selectCount(ErpStockDO::getWarehouseId, warehouseId);
     }
 
+    default Long selectNonZeroCountByWarehouseId(Long warehouseId) {
+        return selectCount(new LambdaQueryWrapperX<ErpStockDO>()
+                .eq(ErpStockDO::getWarehouseId, warehouseId)
+                .ne(ErpStockDO::getCount, BigDecimal.ZERO));
+    }
+
     default int updateDeptIdByWarehouseId(Long warehouseId, Long deptId) {
         return update(null, new LambdaUpdateWrapper<ErpStockDO>()
                 .eq(ErpStockDO::getWarehouseId, warehouseId)

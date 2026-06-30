@@ -39,6 +39,7 @@ import cn.iocoder.yudao.module.erp.enums.sale.ErpSaleConvertTypeEnum;
 import cn.iocoder.yudao.module.erp.enums.sale.ErpSaleQuoteStatusEnum;
 import cn.iocoder.yudao.module.erp.service.common.ErpOperateLogService;
 import cn.iocoder.yudao.module.erp.service.finance.ErpAccountService;
+import cn.iocoder.yudao.module.erp.service.product.ErpProductBatchNoValidator;
 import cn.iocoder.yudao.module.erp.service.product.ErpProductService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpStockService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpWarehouseService;
@@ -110,6 +111,8 @@ public class ErpSaleCartServiceImpl implements ErpSaleCartService {
     private AdminUserApi adminUserApi;
     @Resource
     private ErpOperateLogService operateLogService;
+    @Resource
+    private ErpProductBatchNoValidator productBatchNoValidator;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -247,10 +250,14 @@ public class ErpSaleCartServiceImpl implements ErpSaleCartService {
         validateStockEnoughRealtime(items);
         Map<Long, List<ErpSaleCartItemDO>> itemsByWarehouse = items.stream()
                 .collect(Collectors.groupingBy(ErpSaleCartItemDO::getWarehouseId, LinkedHashMap::new, Collectors.toList()));
+        warehouseService.validSaleWarehouseList(itemsByWarehouse.keySet());
+        Map<Long, ErpWarehouseDO> warehouseMap = warehouseService.getWarehouseMap(itemsByWarehouse.keySet());
         List<Long> saleOutIds = new ArrayList<>();
         for (Map.Entry<Long, List<ErpSaleCartItemDO>> entry : itemsByWarehouse.entrySet()) {
+            ErpWarehouseDO warehouse = warehouseMap.get(entry.getKey());
+            boolean stockBillEnabled = warehouse != null && Boolean.TRUE.equals(warehouse.getStockBillEnabled());
             Long saleOutId = saleOutService.createGeneratedSaleOut(buildSaleOutReqVO(cart, entry.getValue()),
-                    ErpSaleBizSourceTypeEnum.CART.getType(), cart.getId(), cart.getNo());
+                    ErpSaleBizSourceTypeEnum.CART.getType(), cart.getId(), cart.getNo(), stockBillEnabled);
             saleOutIds.add(saleOutId);
         }
         int updateCount = saleCartMapper.updateByIdAndStatus(id, ErpSaleCartStatusEnum.FIRST_APPROVE.getStatus(),
@@ -379,6 +386,7 @@ public class ErpSaleCartServiceImpl implements ErpSaleCartService {
             outItem.setCount(item.getCount());
 
             outItem.setGiftFlag(Boolean.TRUE.equals(item.getGiftFlag()));
+            outItem.setBatchNo(item.getBatchNo());
             outItem.setRemark(item.getRemark());
             return outItem;
         }));
@@ -389,6 +397,10 @@ public class ErpSaleCartServiceImpl implements ErpSaleCartService {
         List<ErpProductDO> productList = productService.validProductList(
                 convertSet(list, ErpSaleCartSaveReqVO.Item::getProductId));
         Map<Long, ErpProductDO> productMap = convertMap(productList, ErpProductDO::getId);
+        productBatchNoValidator.validateBatchNoRequired(list, productMap,
+                ErpSaleCartSaveReqVO.Item::getProductId, ErpSaleCartSaveReqVO.Item::getBatchNo);
+        Set<Long> warehouseIds = convertSet(list, ErpSaleCartSaveReqVO.Item::getWarehouseId);
+        warehouseService.validSaleWarehouseList(warehouseIds);
         // 校验数量和价格
         list.forEach(item -> {
             if (item.getCount() == null || item.getCount().compareTo(BigDecimal.ZERO) <= 0) {
@@ -414,13 +426,10 @@ public class ErpSaleCartServiceImpl implements ErpSaleCartService {
     }
 
     private void validateStockEnoughRealtime(List<ErpSaleCartItemDO> items) {
-        items.forEach(item -> {
-            ErpStockDO stock = stockService.getStock(item.getProductId(), item.getWarehouseId());
-            BigDecimal stockCount = stock != null ? stock.getCount() : BigDecimal.ZERO;
-            if (stockCount.compareTo(item.getCount()) < 0) {
-                throw exception(STOCK_COUNT_NEGATIVE2, item.getProductId(), item.getWarehouseId());
-            }
-        });
+        List<ErpSaleCartSubmitRespVO.ShortageItem> shortages = calculateStockShortages(items);
+        if (CollUtil.isNotEmpty(shortages)) {
+            throw buildStockShortageException(shortages);
+        }
     }
 
     private ErpSaleCartSubmitRespVO buildSubmitResult(ErpSaleCartDO cart, List<ErpSaleCartItemDO> items) {
@@ -473,15 +482,22 @@ public class ErpSaleCartServiceImpl implements ErpSaleCartService {
         if (CollUtil.isEmpty(items)) {
             return Collections.emptyList();
         }
+        Set<Long> warehouseIds = convertSet(items, ErpSaleCartItemDO::getWarehouseId);
+        Map<Long, ErpWarehouseDO> warehouseMap = warehouseService.getWarehouseMap(warehouseIds);
         Map<ProductWarehouseKey, BigDecimal> requiredCountMap = new LinkedHashMap<>();
         items.forEach(item -> {
+            ErpWarehouseDO warehouse = warehouseMap.get(item.getWarehouseId());
+            if (warehouse != null && Boolean.TRUE.equals(warehouse.getStockBillEnabled())) {
+                return;
+            }
             ProductWarehouseKey key = new ProductWarehouseKey(item.getProductId(), item.getWarehouseId());
             requiredCountMap.merge(key, item.getCount() != null ? item.getCount() : BigDecimal.ZERO, BigDecimal::add);
         });
+        if (requiredCountMap.isEmpty()) {
+            return Collections.emptyList();
+        }
         Set<Long> productIds = requiredCountMap.keySet().stream().map(ProductWarehouseKey::getProductId).collect(Collectors.toSet());
-        Set<Long> warehouseIds = requiredCountMap.keySet().stream().map(ProductWarehouseKey::getWarehouseId).collect(Collectors.toSet());
         Map<Long, ErpProductRespVO> productMap = productService.getProductVOMap(productIds);
-        Map<Long, ErpWarehouseDO> warehouseMap = warehouseService.getWarehouseMap(warehouseIds);
         List<ErpSaleCartSubmitRespVO.ShortageItem> shortages = new ArrayList<>();
         requiredCountMap.forEach((key, requiredCount) -> {
             ErpStockDO stock = stockService.getStock(key.getProductId(), key.getWarehouseId());
@@ -604,7 +620,7 @@ public class ErpSaleCartServiceImpl implements ErpSaleCartService {
         Map<String, ErpProductDO> productMap = convertMap(productMapper.selectListByCodes(productCodes), ErpProductDO::getCode);
         Map<Long, ErpProductRespVO> productVOMap = productService.getProductVOMap(convertList(productMap.values(), ErpProductDO::getId));
         Map<String, ErpWarehouseDO> warehouseMap = convertMap(
-                warehouseService.getWarehouseListByStatus(CommonStatusEnum.ENABLE.getStatus()), ErpWarehouseDO::getName);
+                warehouseService.getSaleWarehouseListByStatus(CommonStatusEnum.ENABLE.getStatus()), ErpWarehouseDO::getName);
         for (int i = 0; i < list.size(); i++) {
             ErpSaleCartImportExcelVO row = list.get(i);
             int rowNo = i + 2;

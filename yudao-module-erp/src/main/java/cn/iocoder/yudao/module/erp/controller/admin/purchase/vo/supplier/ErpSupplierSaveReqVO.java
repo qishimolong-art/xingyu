@@ -8,6 +8,7 @@ import lombok.Data;
 import javax.validation.constraints.NotEmpty;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.List;
 
 @Schema(description = "管理后台 - ERP 供应商新增/修改 Request VO")
 @Data
@@ -68,6 +69,12 @@ public class ErpSupplierSaveReqVO {
     @Schema(description = "所属部门")
     private Long deptId;
 
+    @Schema(description = "适用部门")
+    private List<Long> deptIds;
+
+    @Schema(description = "允许多部门", example = "false")
+    private Boolean allowMultiDept;
+
     @Schema(description = "旧编码", example = "OLD001")
     private String oldCode;
 
@@ -80,7 +87,7 @@ public class ErpSupplierSaveReqVO {
     @Schema(description = "区域", example = "华东")
     private String region;
 
-    @Schema(description = "往来类别", example = "供应商")
+    @Schema(description = "供应商类别", example = "供应商")
     private String category;
 
     @Schema(description = "账户", example = "ACC001")

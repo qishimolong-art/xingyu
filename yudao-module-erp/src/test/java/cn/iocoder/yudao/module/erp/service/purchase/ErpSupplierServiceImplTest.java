@@ -7,7 +7,12 @@ import cn.iocoder.yudao.framework.test.core.ut.BaseMockitoUnitTest;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.supplier.ErpSupplierPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.supplier.ErpSupplierSaveReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpSupplierDO;
+import cn.iocoder.yudao.module.erp.dal.mysql.finance.payable.ErpPayableAccountMapper;
+import cn.iocoder.yudao.module.erp.dal.mysql.finance.payable.ErpPayableAccountMapper;
+import cn.iocoder.yudao.module.erp.dal.mysql.purchase.ErpSupplierDeptMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.purchase.ErpSupplierMapper;
+import cn.iocoder.yudao.module.erp.service.base.ErpBaseArchiveReferenceService;
+import cn.iocoder.yudao.module.erp.service.common.ErpOperateLogService;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
@@ -17,6 +22,7 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 
+import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.SUPPLIER_CODE_DUPLICATE;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.SUPPLIER_NOT_ENABLE;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.SUPPLIER_NOT_EXISTS;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -41,6 +47,14 @@ public class ErpSupplierServiceImplTest extends BaseMockitoUnitTest {
 
     @Mock
     private ErpSupplierMapper supplierMapper;
+    @Mock
+    private ErpSupplierDeptMapper supplierDeptMapper;
+    @Mock
+    private ErpBaseArchiveReferenceService baseArchiveReferenceService;
+    @Mock
+    private ErpOperateLogService operateLogService;
+    @Mock
+    private ErpPayableAccountMapper payableAccountMapper;
 
     // ========== createSupplier ==========
 
@@ -95,15 +109,59 @@ public class ErpSupplierServiceImplTest extends BaseMockitoUnitTest {
         assertEquals("GYS000001", captor.getValue().getCode());
     }
 
+    @Test
+    public void testCreateSupplier_withManualCode_keepTrimmedCode() {
+        ErpSupplierSaveReqVO reqVO = new ErpSupplierSaveReqVO();
+        reqVO.setName("手动编码供应商");
+        reqVO.setCode(" GYS-MANUAL-001 ");
+
+        supplierService.createSupplier(reqVO);
+
+        ArgumentCaptor<ErpSupplierDO> captor = ArgumentCaptor.forClass(ErpSupplierDO.class);
+        verify(supplierMapper).insert(captor.capture());
+        assertEquals("GYS-MANUAL-001", captor.getValue().getCode());
+        verify(supplierMapper, never()).selectMaxCode();
+    }
+
+    @Test
+    public void testCreateSupplier_withBlankManualCode_generatesCode() {
+        when(supplierMapper.selectMaxCode()).thenReturn("GYS000001");
+        ErpSupplierSaveReqVO reqVO = new ErpSupplierSaveReqVO();
+        reqVO.setName("空白编码供应商");
+        reqVO.setCode("   ");
+
+        supplierService.createSupplier(reqVO);
+
+        ArgumentCaptor<ErpSupplierDO> captor = ArgumentCaptor.forClass(ErpSupplierDO.class);
+        verify(supplierMapper).insert(captor.capture());
+        assertEquals("GYS000002", captor.getValue().getCode());
+    }
+
+    @Test
+    public void testCreateSupplier_duplicateManualCode_throwException() {
+        when(supplierMapper.selectByCodeExcludeId(eq("GYS-MANUAL-001"), eq(null)))
+                .thenReturn(new ErpSupplierDO().setId(10L).setCode("GYS-MANUAL-001"));
+        ErpSupplierSaveReqVO reqVO = new ErpSupplierSaveReqVO();
+        reqVO.setName("重复编码供应商");
+        reqVO.setCode(" GYS-MANUAL-001 ");
+
+        ServiceException ex = assertThrows(ServiceException.class,
+                () -> supplierService.createSupplier(reqVO));
+
+        assertEquals(SUPPLIER_CODE_DUPLICATE.getCode(), ex.getCode());
+        verify(supplierMapper, never()).insert(any(ErpSupplierDO.class));
+    }
+
     // ========== updateSupplier ==========
 
     @Test
     public void testUpdateSupplier_success() {
         when(supplierMapper.selectById(eq(10L)))
-                .thenReturn(new ErpSupplierDO().setId(10L));
+                .thenReturn(new ErpSupplierDO().setId(10L).setCode("GYS000010"));
         ErpSupplierSaveReqVO reqVO = new ErpSupplierSaveReqVO();
         reqVO.setId(10L);
         reqVO.setName("芋道源码-更新");
+        reqVO.setCode("SHOULD-NOT-CHANGE");
 
         supplierService.updateSupplier(reqVO);
 
@@ -111,6 +169,7 @@ public class ErpSupplierServiceImplTest extends BaseMockitoUnitTest {
         verify(supplierMapper).updateById(captor.capture());
         assertEquals(Long.valueOf(10L), captor.getValue().getId());
         assertEquals("芋道源码-更新", captor.getValue().getName());
+        assertEquals("GYS000010", captor.getValue().getCode());
     }
 
     @Test

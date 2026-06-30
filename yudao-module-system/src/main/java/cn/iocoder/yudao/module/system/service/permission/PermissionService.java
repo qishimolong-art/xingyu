@@ -1,6 +1,7 @@
 package cn.iocoder.yudao.module.system.service.permission;
 
 import cn.iocoder.yudao.framework.common.biz.system.permission.dto.DeptDataPermissionRespDTO;
+import cn.iocoder.yudao.module.system.api.permission.dto.FieldDefinitionCreateOrUpdateReqDTO;
 import cn.iocoder.yudao.module.system.controller.admin.permission.vo.permission.PermissionAssignRoleFormDataScopeReqVO;
 import cn.iocoder.yudao.module.system.controller.admin.permission.vo.permission.RoleFormDataScopeRespVO;
 import cn.iocoder.yudao.module.system.dal.dataobject.permission.FieldDefinitionDO;
@@ -91,6 +92,10 @@ public interface PermissionService {
     List<Long> getRoleHiddenFieldIds(Long roleId, String module);
 
     List<String> getCurrentUserHiddenFields(String module);
+
+    void createOrUpdateFieldDefinitions(List<FieldDefinitionCreateOrUpdateReqDTO> definitions);
+
+    void deleteFieldDefinitions(String module, List<String> fieldKeys);
 
     void assignRoleFieldPermission(Long roleId, String module, List<Long> hiddenFieldIds);
 

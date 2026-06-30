@@ -21,6 +21,9 @@ public class ErpFieldConfigBatchUpdateReqVO {
     @Valid
     private List<Item> items;
 
+    @Schema(description = "Deleted custom field names", example = "[\"hello\"]")
+    private List<String> deletedCustomFields;
+
     @Schema(description = "字段配置项")
     @Data
     public static class Item {
@@ -41,6 +44,30 @@ public class ErpFieldConfigBatchUpdateReqVO {
 
         @Schema(description = "排序", example = "1")
         private Integer sort;
+
+        private String fieldSource;
+
+        private String physicalColumn;
+
+        private String fieldType;
+
+        private String fieldGroup;
+
+        private String componentType;
+
+        private Integer maxLength;
+
+        private Integer decimalPrecision;
+
+        private Integer decimalScale;
+
+        private String defaultValue;
+
+        private Boolean listVisible;
+
+        private Boolean searchable;
+
+        private Boolean readonly;
 
     }
 

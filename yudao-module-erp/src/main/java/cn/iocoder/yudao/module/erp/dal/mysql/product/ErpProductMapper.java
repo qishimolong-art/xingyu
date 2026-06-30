@@ -10,7 +10,11 @@ import cn.iocoder.yudao.module.erp.dal.dataobject.product.ErpProductDO;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
+import com.baomidou.mybatisplus.core.toolkit.support.SFunction;
 import org.apache.ibatis.annotations.Mapper;
+import org.apache.ibatis.annotations.Param;
+import org.apache.ibatis.annotations.Select;
+import org.apache.ibatis.annotations.Update;
 import org.springframework.util.StringUtils;
 
 import java.util.Collection;
@@ -27,8 +31,25 @@ import java.util.stream.Collectors;
 @Mapper
 public interface ErpProductMapper extends BaseMapperX<ErpProductDO> {
 
+    @Select("<script>" +
+            "SELECT id" +
+            "<foreach collection='columns' item='column'>, `${column}`</foreach>" +
+            " FROM erp_product WHERE id IN " +
+            "<foreach collection='ids' item='id' open='(' separator=',' close=')'>#{id}</foreach>" +
+            "</script>")
+    List<Map<String, Object>> selectCustomFieldMaps(@Param("ids") Collection<Long> ids,
+                                                    @Param("columns") Collection<String> columns);
+
+    @Update("<script>" +
+            "UPDATE erp_product SET " +
+            "<foreach collection='values' item='value' index='column' separator=','>`${column}` = #{value}</foreach>" +
+            " WHERE id = #{id}" +
+            "</script>")
+    int updateCustomFields(@Param("id") Long id, @Param("values") Map<String, Object> values);
+
     default PageResult<ErpProductDO> selectPage(ErpProductPageReqVO reqVO) {
-        return selectPage(reqVO, new LambdaQueryWrapperX<ErpProductDO>()
+        LambdaQueryWrapperX<ErpProductDO> wrapper = new LambdaQueryWrapperX<ErpProductDO>();
+        wrapper
                 .likeIfPresent(ErpProductDO::getName, fuzzyKeyword(reqVO.getName()))
                 .likeIfPresent(ErpProductDO::getCode, fuzzyKeyword(reqVO.getCode()))
                 .likeIfPresent(ErpProductDO::getVehicleModel, fuzzyKeyword(reqVO.getVehicleModel()))
@@ -36,10 +57,62 @@ public interface ErpProductMapper extends BaseMapperX<ErpProductDO> {
                 .eqIfPresent(ErpProductDO::getCategoryId, reqVO.getCategoryId())
                 .eqIfPresent(ErpProductDO::getDeptId, reqVO.getDeptId())
                 .eqIfPresent(ErpProductDO::getDefaultWarehouseId, reqVO.getWarehouseId())
-                .betweenIfPresent(ErpProductDO::getCreateTime, reqVO.getCreateTime())
-                // 默认过滤掉已合并的配件
-                .ne(ErpProductDO::getMergedFlag, Boolean.TRUE)
-                .orderByDesc(ErpProductDO::getId));
+                .betweenIfPresent(ErpProductDO::getCreateTime, reqVO.getCreateTime());
+        // 默认过滤掉已合并的配件
+        wrapper.ne(ErpProductDO::getMergedFlag, Boolean.TRUE);
+        orderByIfPresent(wrapper, reqVO);
+        return selectPage(reqVO, wrapper);
+    }
+
+    static void orderByIfPresent(LambdaQueryWrapperX<ErpProductDO> wrapper, ErpProductPageReqVO reqVO) {
+        SFunction<ErpProductDO, ?> orderColumn = getOrderColumn(reqVO.getOrderField());
+        if (orderColumn == null) {
+            wrapper.orderByDesc(ErpProductDO::getId);
+            return;
+        }
+        if ("asc".equalsIgnoreCase(reqVO.getOrderDirection())) {
+            wrapper.orderByAsc(orderColumn);
+            return;
+        }
+        if ("desc".equalsIgnoreCase(reqVO.getOrderDirection())) {
+            wrapper.orderByDesc(orderColumn);
+            return;
+        }
+        wrapper.orderByDesc(ErpProductDO::getId);
+    }
+
+    static SFunction<ErpProductDO, ?> getOrderColumn(String orderField) {
+        if (orderField == null) {
+            return null;
+        }
+        switch (orderField.trim()) {
+            case "code":
+                return ErpProductDO::getCode;
+            case "name":
+                return ErpProductDO::getName;
+            case "vehicleModel":
+                return ErpProductDO::getVehicleModel;
+            case "standard":
+                return ErpProductDO::getStandard;
+            case "barCode":
+                return ErpProductDO::getBarCode;
+            case "factoryCode":
+                return ErpProductDO::getFactoryCode;
+            case "retailPrice":
+                return ErpProductDO::getRetailPrice;
+            case "referencePrice":
+                return ErpProductDO::getReferencePrice;
+            case "sharePrice":
+                return ErpProductDO::getSharePrice;
+            case "status":
+                return ErpProductDO::getStatus;
+            case "createTime":
+                return ErpProductDO::getCreateTime;
+            case "updateTime":
+                return ErpProductDO::getUpdateTime;
+            default:
+                return null;
+        }
     }
 
     static String fuzzyKeyword(String keyword) {

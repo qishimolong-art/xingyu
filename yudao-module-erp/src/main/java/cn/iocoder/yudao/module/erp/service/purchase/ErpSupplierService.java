@@ -1,6 +1,7 @@
 package cn.iocoder.yudao.module.erp.service.purchase;
 
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.supplier.ErpSupplierBatchUpdateReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.supplier.ErpSupplierImportExcelVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.supplier.ErpSupplierPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.supplier.ErpSupplierSaveReqVO;
@@ -36,11 +37,39 @@ public interface ErpSupplierService {
     void updateSupplier(@Valid ErpSupplierSaveReqVO updateReqVO);
 
     /**
+     * 批量编辑供应商
+     *
+     * @param reqVO 批量编辑参数
+     */
+    void batchUpdateSupplier(@Valid ErpSupplierBatchUpdateReqVO reqVO);
+
+    /**
+     * 批量停用供应商
+     *
+     * @param ids 供应商编号列表
+     */
+    void batchDisableSupplier(List<Long> ids);
+
+    /**
+     * 还原停用供应商
+     *
+     * @param ids 供应商编号列表
+     */
+    void restoreSupplier(List<Long> ids);
+
+    /**
      * 删除供应商
      *
      * @param id 编号
      */
     void deleteSupplier(Long id);
+
+    /**
+     * 批量删除供应商
+     *
+     * @param ids 编号列表
+     */
+    void deleteSupplierList(List<Long> ids);
 
     /**
      * 获得供应商
@@ -107,6 +136,14 @@ public interface ErpSupplierService {
      * @return 供应商列表
      */
     List<ErpSupplierDO> getSupplierListByNameLike(String name);
+
+    /**
+     * 获得供应商适用部门 Map。
+     *
+     * @param supplierIds 供应商编号集合
+     * @return 供应商编号与适用部门编号集合的映射
+     */
+    Map<Long, List<Long>> getSupplierDeptMap(Collection<Long> supplierIds);
 
     /**
      * 导入供应商列表
