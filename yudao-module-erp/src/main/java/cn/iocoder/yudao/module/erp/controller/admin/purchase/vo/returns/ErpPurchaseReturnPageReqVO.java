@@ -44,6 +44,12 @@ public class ErpPurchaseReturnPageReqVO extends PageParam {
     @Schema(description = "创建者")
     private String creator;
 
+    @Schema(description = "采购员", example = "1")
+    private String purchaser;
+
+    @Schema(description = "制单人", example = "1")
+    private Long handler;
+
     @Schema(description = "产品编号", example = "1")
     private Long productId;
 
@@ -55,6 +61,9 @@ public class ErpPurchaseReturnPageReqVO extends PageParam {
 
     @Schema(description = "采购单号", example = "1")
     private String orderNo;
+
+    @Schema(description = "原采购入库单号", example = "RKD20260101001")
+    private String sourceInNo;
 
     @Schema(description = "退款状态", example = "1")
     private Integer refundStatus;

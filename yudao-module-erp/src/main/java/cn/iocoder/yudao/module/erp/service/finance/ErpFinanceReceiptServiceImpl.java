@@ -1,13 +1,17 @@
 package cn.iocoder.yudao.module.erp.service.finance;
 
 import cn.hutool.core.collection.CollUtil;
-import cn.hutool.core.lang.Assert;
 import cn.hutool.core.util.ObjectUtil;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
+import cn.iocoder.yudao.framework.mybatis.core.query.LambdaQueryWrapperX;
+import cn.iocoder.yudao.framework.security.core.util.SecurityFrameworkUtils;
 import cn.iocoder.yudao.framework.common.util.collection.CollectionUtils;
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.receipt.ErpFinanceReceiptPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.receipt.ErpFinanceReceiptSaveReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.receipt.ErpFinanceReceiptWriteOffCandidateRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.receipt.ErpFinanceReceiptWriteOffReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.receipt.ErpFinanceReceiptWriteOffReverseReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.ErpFinanceReceiptDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.ErpFinanceReceiptItemDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleOutDO;
@@ -15,9 +19,13 @@ import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSalePriceAdjustDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleReturnDO;
 import cn.iocoder.yudao.module.erp.dal.mysql.finance.ErpFinanceReceiptItemMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.finance.ErpFinanceReceiptMapper;
+import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpSaleOutMapper;
+import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpSalePriceAdjustMapper;
+import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpSaleReturnMapper;
 import cn.iocoder.yudao.module.erp.dal.redis.no.ErpNoRedisDAO;
 import cn.iocoder.yudao.module.erp.enums.ErpAuditStatus;
 import cn.iocoder.yudao.module.erp.enums.common.ErpBizTypeEnum;
+import cn.iocoder.yudao.module.erp.enums.finance.ErpFinanceWriteOffStatusEnum;
 import cn.iocoder.yudao.module.erp.service.common.ErpOperateLogService;
 import cn.iocoder.yudao.module.erp.service.sale.ErpCustomerService;
 import cn.iocoder.yudao.module.erp.service.sale.ErpSaleOutService;
@@ -30,9 +38,16 @@ import org.springframework.validation.annotation.Validated;
 
 import javax.annotation.Resource;
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.Comparator;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 import static cn.iocoder.yudao.framework.common.exception.util.ServiceExceptionUtil.exception;
 import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.*;
@@ -56,6 +71,12 @@ public class ErpFinanceReceiptServiceImpl implements ErpFinanceReceiptService {
     private ErpFinanceReceiptMapper financeReceiptMapper;
     @Resource
     private ErpFinanceReceiptItemMapper financeReceiptItemMapper;
+    @Resource
+    private ErpSaleOutMapper saleOutMapper;
+    @Resource
+    private ErpSaleReturnMapper saleReturnMapper;
+    @Resource
+    private ErpSalePriceAdjustMapper salePriceAdjustMapper;
 
     @Resource
     private ErpNoRedisDAO noRedisDAO;
@@ -107,6 +128,7 @@ public class ErpFinanceReceiptServiceImpl implements ErpFinanceReceiptService {
                 .setNo(no).setStatus(ErpAuditStatus.PROCESS.getStatus()));
         permissionFieldFiller.fillCreateFields(receipt);
         fillDefaultAmount(receipt);
+        preparePendingItems(receipt, receiptItems);
         financeReceiptMapper.insert(receipt);
         // 2.2 插入收款单项
         if (CollUtil.isNotEmpty(receiptItems)) {
@@ -114,8 +136,6 @@ public class ErpFinanceReceiptServiceImpl implements ErpFinanceReceiptService {
             financeReceiptItemMapper.insertBatch(receiptItems);
         }
 
-        // 3. 更新销售出库、退货的收款金额情况
-        updateSalePrice(receiptItems);
         operateLogService.recordCreate(ERP_FINANCE_RECEIPT_TYPE, receipt.getId(), receipt.getNo());
         return receipt.getId();
     }
@@ -155,6 +175,7 @@ public class ErpFinanceReceiptServiceImpl implements ErpFinanceReceiptService {
             updateObj.setDeptId(receipt.getDeptId());
         }
         fillDefaultAmount(updateObj);
+        preparePendingItems(updateObj, receiptItems);
         financeReceiptMapper.updateById(updateObj);
         // 2.2 更新收款单项
         updateFinanceReceiptItemList(updateReqVO.getId(), receiptItems);
@@ -163,23 +184,46 @@ public class ErpFinanceReceiptServiceImpl implements ErpFinanceReceiptService {
 
     private void fillDefaultAmount(ErpFinanceReceiptDO receipt) {
         receipt.setDiscountPrice(getZeroIfNull(receipt.getDiscountPrice()));
+        BigDecimal totalPrice = getZeroIfNull(receipt.getTotalPrice());
+        BigDecimal receiptPrice = totalPrice.subtract(receipt.getDiscountPrice());
+        if (receiptPrice.compareTo(BigDecimal.ZERO) <= 0) {
+            throw exception(FINANCE_RECEIPT_WRITEOFF_AMOUNT_INVALID, "实际收款金额必须大于 0");
+        }
+        receipt.setReceiptPrice(receiptPrice);
     }
 
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void approveFinanceReceipt(Long id) {
         // 1.1 校验存在
-        ErpFinanceReceiptDO receipt = validateFinanceReceiptExists(id);
+        ErpFinanceReceiptDO receipt = financeReceiptMapper.selectByIdForUpdate(id);
+        if (receipt == null) {
+            throw exception(FINANCE_RECEIPT_NOT_EXISTS);
+        }
         // 1.2 校验状态
         if (ErpAuditStatus.APPROVE.getStatus().equals(receipt.getStatus())) {
             throw exception(FINANCE_RECEIPT_APPROVE_FAIL);
         }
 
-        // 2. 更新状态
+        List<ErpFinanceReceiptItemDO> pendingItems = financeReceiptItemMapper.selectListByReceiptId(id).stream()
+                .filter(item -> item.getWriteOffStatus() == null
+                        || ErpFinanceWriteOffStatusEnum.PENDING.getStatus().equals(item.getWriteOffStatus()))
+                .collect(Collectors.toList());
+        validateAndFillEffectiveItems(receipt, pendingItems);
+
+        // 2. 更新状态并使初始核销明细生效
         int updateCount = financeReceiptMapper.updateByIdAndStatus(id, receipt.getStatus(),
                 new ErpFinanceReceiptDO().setStatus(ErpAuditStatus.APPROVE.getStatus()));
         if (updateCount == 0) {
             throw exception(FINANCE_RECEIPT_APPROVE_FAIL);
+        }
+        LocalDateTime now = LocalDateTime.now();
+        Long loginUserId = SecurityFrameworkUtils.getLoginUserId();
+        pendingItems.forEach(item -> item.setWriteOffStatus(ErpFinanceWriteOffStatusEnum.EFFECTIVE.getStatus())
+                .setWriteOffTime(now).setWriteOffUserId(loginUserId));
+        if (CollUtil.isNotEmpty(pendingItems)) {
+            financeReceiptItemMapper.updateBatch(pendingItems);
+            updateSalePrice(pendingItems);
         }
         operateLogService.recordStatus(ERP_FINANCE_RECEIPT_TYPE, id, receipt.getNo(), true);
     }
@@ -193,19 +237,26 @@ public class ErpFinanceReceiptServiceImpl implements ErpFinanceReceiptService {
         return convertList(list, o -> BeanUtils.toBean(o, ErpFinanceReceiptItemDO.class, item -> {
             if (ObjectUtil.equal(item.getBizType(), ErpBizTypeEnum.SALE_OUT.getType())) {
                 ErpSaleOutDO saleOut = saleOutService.validateSaleOut(item.getBizId());
-                Assert.equals(saleOut.getCustomerId(), customerId, "客户必须相同");
+                if (!Objects.equals(saleOut.getCustomerId(), customerId)) {
+                    throw exception(FINANCE_RECEIPT_WRITEOFF_BIZ_INVALID, "客户必须相同");
+                }
                 item.setTotalPrice(saleOut.getTotalPrice()).setBizNo(saleOut.getNo());
             } else if (ObjectUtil.equal(item.getBizType(), ErpBizTypeEnum.SALE_RETURN.getType())) {
                 ErpSaleReturnDO saleReturn = saleReturnService.validateSaleReturn(item.getBizId());
-                Assert.equals(saleReturn.getCustomerId(), customerId, "客户必须相同");
+                if (!Objects.equals(saleReturn.getCustomerId(), customerId)) {
+                    throw exception(FINANCE_RECEIPT_WRITEOFF_BIZ_INVALID, "客户必须相同");
+                }
                 item.setTotalPrice(saleReturn.getTotalPrice().negate()).setBizNo(saleReturn.getNo());
             } else if (ObjectUtil.equal(item.getBizType(), ErpBizTypeEnum.SALE_PRICE_ADJUST.getType())) {
                 ErpSalePriceAdjustDO salePriceAdjust = salePriceAdjustService.validateSalePriceAdjust(item.getBizId());
-                Assert.equals(salePriceAdjust.getCustomerId(), customerId, "客户必须相同");
+                if (!Objects.equals(salePriceAdjust.getCustomerId(), customerId)) {
+                    throw exception(FINANCE_RECEIPT_WRITEOFF_BIZ_INVALID, "客户必须相同");
+                }
                 item.setTotalPrice(salePriceAdjust.getTotalAdjustPrice()).setBizNo(salePriceAdjust.getNo());
             } else {
-                throw new IllegalArgumentException("业务类型不正确：" + item.getBizType());
+                throw exception(FINANCE_RECEIPT_WRITEOFF_BIZ_INVALID, "业务类型不正确：" + item.getBizType());
             }
+            item.setWriteOffStatus(ErpFinanceWriteOffStatusEnum.PENDING.getStatus());
         }));
     }
 
@@ -227,8 +278,6 @@ public class ErpFinanceReceiptServiceImpl implements ErpFinanceReceiptService {
             financeReceiptItemMapper.deleteByIds(convertList(diffList.get(2), ErpFinanceReceiptItemDO::getId));
         }
 
-        // 第三步，更新销售出库、退货的收款金额情况
-        updateSalePrice(CollectionUtils.newArrayList(diffList));
     }
 
     private void updateSalePrice(List<ErpFinanceReceiptItemDO> receiptItems) {
@@ -245,6 +294,252 @@ public class ErpFinanceReceiptServiceImpl implements ErpFinanceReceiptService {
                 throw new IllegalArgumentException("业务类型不正确：" + receiptItem.getBizType());
             }
         });
+    }
+
+    private void preparePendingItems(ErpFinanceReceiptDO receipt, List<ErpFinanceReceiptItemDO> items) {
+        if (CollUtil.isEmpty(items)) {
+            return;
+        }
+        validateAllocationItems(receipt, items);
+        items.forEach(item -> item.setWriteOffStatus(ErpFinanceWriteOffStatusEnum.PENDING.getStatus())
+                .setWriteOffTime(null).setWriteOffUserId(null)
+                .setReverseTime(null).setReverseUserId(null).setReverseReason(null));
+    }
+
+    private void validateAndFillEffectiveItems(ErpFinanceReceiptDO receipt,
+                                               List<ErpFinanceReceiptItemDO> items) {
+        if (CollUtil.isEmpty(items)) {
+            return;
+        }
+        validateAllocationItems(receipt, items);
+    }
+
+    private void validateAllocationItems(ErpFinanceReceiptDO receipt, List<ErpFinanceReceiptItemDO> items) {
+        Set<String> bizKeys = new HashSet<>();
+        BigDecimal allocationAmount = BigDecimal.ZERO;
+        for (ErpFinanceReceiptItemDO item : items) {
+            String bizKey = item.getBizType() + ":" + item.getBizId();
+            if (!bizKeys.add(bizKey)) {
+                throw exception(FINANCE_RECEIPT_WRITEOFF_BIZ_INVALID, "同一业务单据不能重复选择");
+            }
+            ReceiptBizSnapshot biz = lockReceiptBiz(item.getBizType(), item.getBizId(), receipt);
+            BigDecimal allocatedPrice = financeReceiptItemMapper.selectReceiptPriceSumByBizIdAndBizType(
+                    item.getBizId(), item.getBizType());
+            BigDecimal remainingPrice = biz.totalPrice.subtract(allocatedPrice);
+            validateReceiptWriteOffAmount(item.getReceiptPrice(), remainingPrice);
+            item.setBizNo(biz.bizNo).setTotalPrice(biz.totalPrice).setReceiptedPrice(allocatedPrice);
+            allocationAmount = allocationAmount.add(item.getReceiptPrice());
+        }
+        BigDecimal currentAllocatedPrice = receipt.getId() == null ? BigDecimal.ZERO
+                : financeReceiptItemMapper.selectEffectivePriceSumMapByReceiptIds(
+                        Collections.singleton(receipt.getId())).getOrDefault(receipt.getId(), BigDecimal.ZERO);
+        validateReceiptAllocationLimit(receipt, currentAllocatedPrice.add(allocationAmount));
+    }
+
+    @Override
+    public List<ErpFinanceReceiptWriteOffCandidateRespVO> getWriteOffCandidates(Long receiptId) {
+        ErpFinanceReceiptDO receipt = validateFinanceReceiptExists(receiptId);
+        validateReceiptWriteOffStatus(receipt);
+        List<ErpFinanceReceiptWriteOffCandidateRespVO> result = new java.util.ArrayList<>();
+
+        LambdaQueryWrapperX<ErpSaleOutDO> outQuery = new LambdaQueryWrapperX<ErpSaleOutDO>()
+                .eq(ErpSaleOutDO::getCustomerId, receipt.getCustomerId())
+                .eq(ErpSaleOutDO::getStatus, ErpAuditStatus.APPROVE.getStatus());
+        if (receipt.getDeptId() == null) {
+            outQuery.isNull(ErpSaleOutDO::getDeptId);
+        } else {
+            outQuery.eq(ErpSaleOutDO::getDeptId, receipt.getDeptId());
+        }
+        List<ErpSaleOutDO> saleOuts = saleOutMapper.selectList(outQuery);
+        Map<Long, BigDecimal> outAllocated = financeReceiptItemMapper.selectReceiptPriceSumMapByBizIdsAndBizType(
+                convertSet(saleOuts, ErpSaleOutDO::getId), ErpBizTypeEnum.SALE_OUT.getType());
+        saleOuts.forEach(row -> addReceiptCandidate(result, ErpBizTypeEnum.SALE_OUT, row.getId(), row.getNo(),
+                row.getOutTime(), getZeroIfNull(row.getTotalPrice()), outAllocated.getOrDefault(row.getId(), BigDecimal.ZERO)));
+
+        LambdaQueryWrapperX<ErpSaleReturnDO> returnQuery = new LambdaQueryWrapperX<ErpSaleReturnDO>()
+                .eq(ErpSaleReturnDO::getCustomerId, receipt.getCustomerId())
+                .eq(ErpSaleReturnDO::getStatus, ErpAuditStatus.APPROVE.getStatus());
+        if (receipt.getDeptId() == null) {
+            returnQuery.isNull(ErpSaleReturnDO::getDeptId);
+        } else {
+            returnQuery.eq(ErpSaleReturnDO::getDeptId, receipt.getDeptId());
+        }
+        List<ErpSaleReturnDO> saleReturns = saleReturnMapper.selectList(returnQuery);
+        Map<Long, BigDecimal> returnAllocated = financeReceiptItemMapper.selectReceiptPriceSumMapByBizIdsAndBizType(
+                convertSet(saleReturns, ErpSaleReturnDO::getId), ErpBizTypeEnum.SALE_RETURN.getType());
+        saleReturns.forEach(row -> addReceiptCandidate(result, ErpBizTypeEnum.SALE_RETURN, row.getId(), row.getNo(),
+                row.getReturnTime(), getZeroIfNull(row.getTotalPrice()).negate(),
+                returnAllocated.getOrDefault(row.getId(), BigDecimal.ZERO)));
+
+        LambdaQueryWrapperX<ErpSalePriceAdjustDO> adjustQuery = new LambdaQueryWrapperX<ErpSalePriceAdjustDO>()
+                .eq(ErpSalePriceAdjustDO::getCustomerId, receipt.getCustomerId())
+                .eq(ErpSalePriceAdjustDO::getStatus, ErpAuditStatus.APPROVE.getStatus());
+        if (receipt.getDeptId() == null) {
+            adjustQuery.isNull(ErpSalePriceAdjustDO::getDeptId);
+        } else {
+            adjustQuery.eq(ErpSalePriceAdjustDO::getDeptId, receipt.getDeptId());
+        }
+        List<ErpSalePriceAdjustDO> adjusts = salePriceAdjustMapper.selectList(adjustQuery);
+        Map<Long, BigDecimal> adjustAllocated = financeReceiptItemMapper.selectReceiptPriceSumMapByBizIdsAndBizType(
+                convertSet(adjusts, ErpSalePriceAdjustDO::getId), ErpBizTypeEnum.SALE_PRICE_ADJUST.getType());
+        adjusts.forEach(row -> addReceiptCandidate(result, ErpBizTypeEnum.SALE_PRICE_ADJUST, row.getId(), row.getNo(),
+                row.getAdjustDate(), getZeroIfNull(row.getTotalAdjustPrice()),
+                adjustAllocated.getOrDefault(row.getId(), BigDecimal.ZERO)));
+
+        result.sort(Comparator.comparing(ErpFinanceReceiptWriteOffCandidateRespVO::getBizTime,
+                Comparator.nullsLast(Comparator.naturalOrder())).reversed()
+                .thenComparing(ErpFinanceReceiptWriteOffCandidateRespVO::getBizNo,
+                        Comparator.nullsLast(Comparator.naturalOrder())));
+        return result;
+    }
+
+    private void addReceiptCandidate(List<ErpFinanceReceiptWriteOffCandidateRespVO> result, ErpBizTypeEnum bizType,
+                                     Long bizId, String bizNo, LocalDateTime bizTime,
+                                     BigDecimal totalPrice, BigDecimal allocatedPrice) {
+        BigDecimal unallocatedPrice = totalPrice.subtract(allocatedPrice);
+        if (unallocatedPrice.compareTo(BigDecimal.ZERO) == 0) {
+            return;
+        }
+        result.add(new ErpFinanceReceiptWriteOffCandidateRespVO()
+                .setBizType(bizType.getType()).setBizTypeName(bizType.getName())
+                .setBizId(bizId).setBizNo(bizNo).setBizTime(bizTime)
+                .setTotalPrice(totalPrice).setAllocatedPrice(allocatedPrice)
+                .setUnallocatedPrice(unallocatedPrice));
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void writeOffFinanceReceipt(ErpFinanceReceiptWriteOffReqVO reqVO) {
+        ErpFinanceReceiptDO receipt = financeReceiptMapper.selectByIdForUpdate(reqVO.getReceiptId());
+        if (receipt == null) {
+            throw exception(FINANCE_RECEIPT_NOT_EXISTS);
+        }
+        validateReceiptWriteOffStatus(receipt);
+        Set<String> bizKeys = new HashSet<>();
+        LocalDateTime now = LocalDateTime.now();
+        Long loginUserId = SecurityFrameworkUtils.getLoginUserId();
+        List<ErpFinanceReceiptItemDO> items = reqVO.getItems().stream().map(reqItem -> {
+            String bizKey = reqItem.getBizType() + ":" + reqItem.getBizId();
+            if (!bizKeys.add(bizKey)) {
+                throw exception(FINANCE_RECEIPT_WRITEOFF_BIZ_INVALID, "同一业务单据不能重复选择");
+            }
+            ReceiptBizSnapshot biz = lockReceiptBiz(reqItem.getBizType(), reqItem.getBizId(), receipt);
+            BigDecimal allocatedPrice = financeReceiptItemMapper.selectReceiptPriceSumByBizIdAndBizType(
+                    reqItem.getBizId(), reqItem.getBizType());
+            validateReceiptWriteOffAmount(reqItem.getWriteOffAmount(), biz.totalPrice.subtract(allocatedPrice));
+            return new ErpFinanceReceiptItemDO().setReceiptId(receipt.getId())
+                    .setBizType(reqItem.getBizType()).setBizId(reqItem.getBizId()).setBizNo(biz.bizNo)
+                    .setTotalPrice(biz.totalPrice).setReceiptedPrice(allocatedPrice)
+                    .setReceiptPrice(reqItem.getWriteOffAmount()).setRemark(reqItem.getRemark())
+                    .setWriteOffStatus(ErpFinanceWriteOffStatusEnum.EFFECTIVE.getStatus())
+                    .setWriteOffTime(now).setWriteOffUserId(loginUserId);
+        }).collect(Collectors.toList());
+        BigDecimal currentAllocatedPrice = financeReceiptItemMapper.selectEffectivePriceSumMapByReceiptIds(
+                Collections.singleton(receipt.getId())).getOrDefault(receipt.getId(), BigDecimal.ZERO);
+        BigDecimal newAllocatedPrice = items.stream().map(ErpFinanceReceiptItemDO::getReceiptPrice)
+                .reduce(currentAllocatedPrice, BigDecimal::add);
+        validateReceiptAllocationLimit(receipt, newAllocatedPrice);
+        financeReceiptItemMapper.insertBatch(items);
+        updateSalePrice(items);
+        operateLogService.record(ERP_FINANCE_RECEIPT_TYPE, ERP_UPDATE_SUB_TYPE, receipt.getId(),
+                "收款单后续核销，单据编号：" + receipt.getNo() + "，本次核销："
+                        + items.stream().map(ErpFinanceReceiptItemDO::getReceiptPrice)
+                        .reduce(BigDecimal.ZERO, BigDecimal::add), receipt.getNo());
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void reverseFinanceReceiptWriteOff(ErpFinanceReceiptWriteOffReverseReqVO reqVO) {
+        ErpFinanceReceiptItemDO item = financeReceiptItemMapper.selectByIdForUpdate(reqVO.getItemId());
+        if (item == null || !ErpFinanceWriteOffStatusEnum.EFFECTIVE.getStatus().equals(item.getWriteOffStatus())) {
+            throw exception(FINANCE_RECEIPT_WRITEOFF_ITEM_NOT_EFFECTIVE);
+        }
+        ErpFinanceReceiptDO receipt = financeReceiptMapper.selectByIdForUpdate(item.getReceiptId());
+        if (receipt == null) {
+            throw exception(FINANCE_RECEIPT_NOT_EXISTS);
+        }
+        validateReceiptWriteOffStatus(receipt);
+        lockReceiptBiz(item.getBizType(), item.getBizId(), receipt);
+        item.setWriteOffStatus(ErpFinanceWriteOffStatusEnum.REVERSED.getStatus())
+                .setReverseTime(LocalDateTime.now()).setReverseUserId(SecurityFrameworkUtils.getLoginUserId())
+                .setReverseReason(reqVO.getReason());
+        financeReceiptItemMapper.updateById(item);
+        updateSalePrice(Collections.singletonList(item));
+        operateLogService.record(ERP_FINANCE_RECEIPT_TYPE, ERP_UPDATE_SUB_TYPE, receipt.getId(),
+                "撤销收款核销，单据编号：" + receipt.getNo() + "，核销明细：" + item.getId()
+                        + "，原因：" + reqVO.getReason(), receipt.getNo());
+    }
+
+    private ReceiptBizSnapshot lockReceiptBiz(Integer bizType, Long bizId, ErpFinanceReceiptDO receipt) {
+        ReceiptBizSnapshot result;
+        if (ObjectUtil.equal(bizType, ErpBizTypeEnum.SALE_OUT.getType())) {
+            ErpSaleOutDO row = saleOutMapper.selectOne(new LambdaQueryWrapperX<ErpSaleOutDO>()
+                    .eq(ErpSaleOutDO::getId, bizId).last("FOR UPDATE"));
+            result = row == null ? null : new ReceiptBizSnapshot(row.getCustomerId(), row.getDeptId(), row.getStatus(),
+                    row.getNo(), getZeroIfNull(row.getTotalPrice()));
+        } else if (ObjectUtil.equal(bizType, ErpBizTypeEnum.SALE_RETURN.getType())) {
+            ErpSaleReturnDO row = saleReturnMapper.selectOne(new LambdaQueryWrapperX<ErpSaleReturnDO>()
+                    .eq(ErpSaleReturnDO::getId, bizId).last("FOR UPDATE"));
+            result = row == null ? null : new ReceiptBizSnapshot(row.getCustomerId(), row.getDeptId(), row.getStatus(),
+                    row.getNo(), getZeroIfNull(row.getTotalPrice()).negate());
+        } else if (ObjectUtil.equal(bizType, ErpBizTypeEnum.SALE_PRICE_ADJUST.getType())) {
+            ErpSalePriceAdjustDO row = salePriceAdjustMapper.selectOne(new LambdaQueryWrapperX<ErpSalePriceAdjustDO>()
+                    .eq(ErpSalePriceAdjustDO::getId, bizId).last("FOR UPDATE"));
+            result = row == null ? null : new ReceiptBizSnapshot(row.getCustomerId(), row.getDeptId(), row.getStatus(),
+                    row.getNo(), getZeroIfNull(row.getTotalAdjustPrice()));
+        } else {
+            throw exception(FINANCE_RECEIPT_WRITEOFF_BIZ_INVALID, "业务类型不正确：" + bizType);
+        }
+        if (result == null || !ErpAuditStatus.APPROVE.getStatus().equals(result.status)) {
+            throw exception(FINANCE_RECEIPT_WRITEOFF_BIZ_INVALID, "业务单据不存在或未审核");
+        }
+        if (!Objects.equals(result.partyId, receipt.getCustomerId())) {
+            throw exception(FINANCE_RECEIPT_WRITEOFF_BIZ_INVALID, "客户必须相同");
+        }
+        if (!Objects.equals(result.deptId, receipt.getDeptId())) {
+            throw exception(FINANCE_RECEIPT_WRITEOFF_BIZ_INVALID, "所属部门必须相同");
+        }
+        return result;
+    }
+
+    private void validateReceiptWriteOffStatus(ErpFinanceReceiptDO receipt) {
+        if (!ErpAuditStatus.APPROVE.getStatus().equals(receipt.getStatus())) {
+            throw exception(FINANCE_RECEIPT_WRITEOFF_STATUS_INVALID);
+        }
+    }
+
+    private void validateReceiptWriteOffAmount(BigDecimal amount, BigDecimal remainingPrice) {
+        if (amount == null || amount.compareTo(BigDecimal.ZERO) == 0) {
+            throw exception(FINANCE_RECEIPT_WRITEOFF_AMOUNT_INVALID, "核销金额不能为 0");
+        }
+        if (remainingPrice.compareTo(BigDecimal.ZERO) == 0
+                || amount.signum() != remainingPrice.signum()
+                || amount.abs().compareTo(remainingPrice.abs()) > 0) {
+            throw exception(FINANCE_RECEIPT_WRITEOFF_AMOUNT_INVALID, "核销金额超过业务单据未核销金额或符号不一致");
+        }
+    }
+
+    private void validateReceiptAllocationLimit(ErpFinanceReceiptDO receipt, BigDecimal allocatedPrice) {
+        if (allocatedPrice.compareTo(BigDecimal.ZERO) < 0
+                || allocatedPrice.compareTo(getZeroIfNull(receipt.getTotalPrice())) > 0) {
+            throw exception(FINANCE_RECEIPT_WRITEOFF_AMOUNT_EXCEED);
+        }
+    }
+
+    private static final class ReceiptBizSnapshot {
+        private final Long partyId;
+        private final Long deptId;
+        private final Integer status;
+        private final String bizNo;
+        private final BigDecimal totalPrice;
+
+        private ReceiptBizSnapshot(Long partyId, Long deptId, Integer status, String bizNo, BigDecimal totalPrice) {
+            this.partyId = partyId;
+            this.deptId = deptId;
+            this.status = status;
+            this.bizNo = bizNo;
+            this.totalPrice = totalPrice;
+        }
     }
 
     @Override
@@ -269,8 +564,6 @@ public class ErpFinanceReceiptServiceImpl implements ErpFinanceReceiptService {
             List<ErpFinanceReceiptItemDO> receiptItems = financeReceiptItemMapper.selectListByReceiptId(receipt.getId());
             financeReceiptItemMapper.deleteByIds(convertSet(receiptItems, ErpFinanceReceiptItemDO::getId));
 
-            // 2.3 更新销售出库、退货的收款金额情况
-            updateSalePrice(receiptItems);
             operateLogService.recordDelete(ERP_FINANCE_RECEIPT_TYPE, receipt.getId(), receipt.getNo());
         });
     }

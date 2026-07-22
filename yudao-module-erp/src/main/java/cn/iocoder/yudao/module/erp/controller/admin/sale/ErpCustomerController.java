@@ -8,11 +8,15 @@ import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
 import cn.iocoder.yudao.framework.excel.core.util.ExcelUtils;
 import cn.iocoder.yudao.module.erp.controller.admin.common.vo.ErpExportFieldRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.common.vo.ErpArchiveMergeReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.customer.ErpCustomerBatchDisableReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.customer.ErpCustomerBatchUpdateReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.customer.ErpCustomerDeptDistributionRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.customer.ErpCustomerDeptDistributionSaveReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.customer.ErpCustomerImportExcelVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.customer.ErpCustomerPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.customer.ErpCustomerRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.customer.ErpCustomerSaleDeptRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.customer.ErpCustomerSaveReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpCustomerDO;
 import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpSaleOutMapper;
@@ -23,7 +27,10 @@ import cn.iocoder.yudao.module.erp.service.common.ErpExportCaptchaService;
 import cn.iocoder.yudao.module.erp.service.config.ErpFieldConfigService;
 import cn.iocoder.yudao.module.erp.service.sale.ErpCustomerService;
 import cn.iocoder.yudao.module.erp.service.sale.ErpSaleFieldPermissionMasker;
+import cn.iocoder.yudao.module.erp.service.sale.bo.ErpCustomerCreditStatusBO;
 import cn.iocoder.yudao.module.erp.service.sale.bo.ErpCustomerSaleStatsBO;
+import cn.iocoder.yudao.module.system.api.dept.DeptApi;
+import cn.iocoder.yudao.module.system.api.dept.dto.DeptRespDTO;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -70,6 +77,8 @@ public class ErpCustomerController {
     private ErpFieldConfigService fieldConfigService;
     @Resource
     private ErpExportCaptchaService exportCaptchaService;
+    @Resource
+    private DeptApi deptApi;
 
     @PostMapping("/create")
     @Operation(summary = "创建客户")
@@ -83,6 +92,31 @@ public class ErpCustomerController {
     @PreAuthorize("@ss.hasPermission('erp:customer:update')")
     public CommonResult<Boolean> updateCustomer(@Valid @RequestBody ErpCustomerSaveReqVO updateReqVO) {
         customerService.updateCustomer(updateReqVO);
+        return success(true);
+    }
+
+    @GetMapping("/dept-distribution")
+    @Operation(summary = "获得客户部门分配")
+    @Parameter(name = "id", description = "客户编号", required = true, example = "1024")
+    @PreAuthorize("@ss.hasPermission('erp:customer:dept-distribute')")
+    public CommonResult<ErpCustomerDeptDistributionRespVO> getCustomerDeptDistribution(@RequestParam("id") Long id) {
+        return success(customerService.getCustomerDeptDistribution(id));
+    }
+
+    @PutMapping("/dept-distribution")
+    @Operation(summary = "更新客户部门分配")
+    @PreAuthorize("@ss.hasPermission('erp:customer:dept-distribute')")
+    public CommonResult<Boolean> updateCustomerDeptDistribution(
+            @Valid @RequestBody ErpCustomerDeptDistributionSaveReqVO reqVO) {
+        customerService.updateCustomerDeptDistribution(reqVO);
+        return success(true);
+    }
+
+    @PutMapping("/merge")
+    @Operation(summary = "合并客户")
+    @PreAuthorize("@ss.hasPermission('erp:customer:merge')")
+    public CommonResult<Boolean> mergeCustomer(@Valid @RequestBody ErpArchiveMergeReqVO reqVO) {
+        customerService.mergeCustomer(reqVO.getSourceId(), reqVO.getKeepId());
         return success(true);
     }
 
@@ -111,6 +145,8 @@ public class ErpCustomerController {
     public CommonResult<ErpCustomerRespVO> getCustomer(@RequestParam("id") Long id) {
         ErpCustomerDO customer = customerService.getCustomer(id);
         ErpCustomerRespVO respVO = BeanUtils.toBean(customer, ErpCustomerRespVO.class);
+        fillCustomerExtra(Collections.singletonList(respVO));
+        applyCreditStatus(respVO, customerService.getCustomerCreditStatus(id));
         fieldPermissionMasker.maskForm(FIELD_PERMISSION_MODULE, respVO);
         return success(respVO);
     }
@@ -121,6 +157,7 @@ public class ErpCustomerController {
     public CommonResult<PageResult<ErpCustomerRespVO>> getCustomerPage(@Valid ErpCustomerPageReqVO pageReqVO) {
         PageResult<ErpCustomerDO> pageResult = customerService.getCustomerPage(pageReqVO);
         PageResult<ErpCustomerRespVO> respResult = BeanUtils.toBean(pageResult, ErpCustomerRespVO.class);
+        fillCustomerExtra(respResult.getList());
         // 批量聚合销售统计（最近销售日期 / 累计销售额 / 应收余额）
         if (CollUtil.isNotEmpty(respResult.getList())) {
             java.util.Collection<Long> customerIds = convertList(respResult.getList(), ErpCustomerRespVO::getId);
@@ -137,6 +174,9 @@ public class ErpCustomerController {
                     vo.setReceivableBalance(stats.getReceivableBalance());
                 }
             });
+            java.util.Map<Long, ErpCustomerCreditStatusBO> creditStatusMap =
+                    customerService.getCustomerCreditStatusMap(customerIds);
+            respResult.getList().forEach(vo -> applyCreditStatus(vo, creditStatusMap.get(vo.getId())));
         }
         fieldPermissionMasker.maskForms(FIELD_PERMISSION_MODULE, respResult.getList());
         return success(respResult);
@@ -148,8 +188,46 @@ public class ErpCustomerController {
         List<ErpCustomerDO> list = customerService.getCustomerListByStatus(CommonStatusEnum.ENABLE.getStatus());
         List<ErpCustomerRespVO> respList = convertList(list, customer -> new ErpCustomerRespVO().setId(customer.getId())
                 .setName(customer.getName()).setContact(customer.getContact()).setMobile(customer.getMobile()));
+        fillCustomerExtra(respList);
         fieldPermissionMasker.maskForms(FIELD_PERMISSION_MODULE, respList);
         return success(respList);
+    }
+
+    @GetMapping("/sale-simple-list")
+    @Operation(summary = "获得销售可选客户精简列表", description = "包含启用客户，并标记超过白条授信限制的客户为禁选")
+    public CommonResult<List<ErpCustomerRespVO>> getSaleCustomerSimpleList() {
+        List<ErpCustomerDO> list = customerService.getCustomerListByStatus(CommonStatusEnum.ENABLE.getStatus());
+        List<ErpCustomerRespVO> respList = convertList(list, customer -> new ErpCustomerRespVO()
+                .setId(customer.getId()).setName(customer.getName()).setContact(customer.getContact())
+                .setMobile(customer.getMobile()).setCreditEnabled(customer.getCreditEnabled())
+                .setCreditLimit(customer.getCreditLimit()).setCreditTermDays(customer.getCreditTermDays()));
+        fillCustomerExtra(respList);
+        Map<Long, ErpCustomerCreditStatusBO> creditStatusMap = customerService.getCustomerCreditStatusMap(
+                convertList(respList, ErpCustomerRespVO::getId));
+        respList.forEach(vo -> {
+            ErpCustomerCreditStatusBO status = creditStatusMap.get(vo.getId());
+            applyCreditStatus(vo, status);
+            vo.setDisabled(status != null && Boolean.TRUE.equals(status.getBlocked()));
+        });
+        fieldPermissionMasker.maskForms(FIELD_PERMISSION_MODULE, respList);
+        return success(respList);
+    }
+
+    @GetMapping("/sale-dept-list")
+    @Operation(summary = "获得客户销售可选部门列表")
+    @Parameter(name = "customerId", description = "客户编号", required = true, example = "1024")
+    public CommonResult<List<ErpCustomerSaleDeptRespVO>> getCustomerSaleDeptList(
+            @RequestParam("customerId") Long customerId) {
+        List<Long> deptIds = customerService.getCustomerSaleDeptIds(customerId);
+        if (CollUtil.isEmpty(deptIds)) {
+            return success(Collections.emptyList());
+        }
+        Map<Long, DeptRespDTO> deptMap = deptApi.getDeptMap(deptIds);
+        return success(deptIds.stream()
+                .map(deptMap::get)
+                .filter(dept -> dept != null && CommonStatusEnum.ENABLE.getStatus().equals(dept.getStatus()))
+                .map(dept -> BeanUtils.toBean(dept, ErpCustomerSaleDeptRespVO.class))
+                .collect(java.util.stream.Collectors.toList()));
     }
 
     @GetMapping("/export-excel")
@@ -165,6 +243,7 @@ public class ErpCustomerController {
         pageReqVO.setPageSize(PageParam.PAGE_SIZE_NONE);
         List<ErpCustomerDO> list = customerService.getCustomerPage(pageReqVO).getList();
         List<ErpCustomerRespVO> rows = BeanUtils.toBean(list, ErpCustomerRespVO.class);
+        fillCustomerExtra(rows);
         fieldPermissionMasker.maskForms(FIELD_PERMISSION_MODULE, rows);
         Set<String> includeFields = ErpExportFieldUtils.resolveIncludeFields(ErpCustomerRespVO.class,
                 ErpExportFieldUtils.parseFieldParam(fields),
@@ -223,6 +302,14 @@ public class ErpCustomerController {
         return success(true);
     }
 
+    @PutMapping("/restore")
+    @Operation(summary = "还原停用客户")
+    @PreAuthorize("@ss.hasPermission('erp:customer:update')")
+    public CommonResult<Boolean> restoreCustomer(@Valid @RequestBody ErpCustomerBatchDisableReqVO reqVO) {
+        customerService.restoreCustomer(reqVO.getIds());
+        return success(true);
+    }
+
     private static Map<String, String> buildExportFieldGroupMap() {
         Map<String, String> map = new LinkedHashMap<>();
         map.put("id", "main");
@@ -246,6 +333,9 @@ public class ErpCustomerController {
         map.put("bankAccount", "finance_info");
         map.put("bankAddress", "finance_info");
         map.put("saleUserId", "main");
+        map.put("deptName", "main");
+        map.put("deptNames", "main");
+        map.put("allowMultiDept", "main");
         map.put("priceLevel", "main");
         map.put("routeId", "main");
         map.put("createTime", "system");
@@ -253,7 +343,56 @@ public class ErpCustomerController {
     }
 
     private static Map<String, String> buildExportFieldPermissionMap() {
-        return new LinkedHashMap<>();
+        Map<String, String> map = new LinkedHashMap<>();
+        map.put("deptName", "deptId");
+        map.put("deptNames", "deptIds");
+        return map;
+    }
+
+    private void fillCustomerExtra(List<ErpCustomerRespVO> list) {
+        if (CollUtil.isEmpty(list)) {
+            return;
+        }
+        Map<Long, List<Long>> customerDeptMap =
+                customerService.getCustomerDeptMap(convertList(list, ErpCustomerRespVO::getId));
+        Set<Long> deptIds = new java.util.HashSet<>();
+        list.forEach(customer -> {
+            if (customer.getDeptId() != null) {
+                deptIds.add(customer.getDeptId());
+            }
+            List<Long> currentDeptIds =
+                    customerDeptMap.getOrDefault(customer.getId(), Collections.emptyList());
+            customer.setDeptIds(currentDeptIds);
+            deptIds.addAll(currentDeptIds);
+        });
+        deptIds.remove(null);
+        Map<Long, DeptRespDTO> deptMap =
+                CollUtil.isEmpty(deptIds) ? Collections.emptyMap() : deptApi.getDeptMap(deptIds);
+        list.forEach(customer -> {
+            DeptRespDTO dept = deptMap.get(customer.getDeptId());
+            if (dept != null) {
+                customer.setDeptName(dept.getName());
+            }
+            customer.setDeptNames(customer.getDeptIds().stream()
+                    .map(deptMap::get)
+                    .filter(item -> item != null && item.getName() != null)
+                    .map(DeptRespDTO::getName)
+                    .collect(java.util.stream.Collectors.joining("、")));
+        });
+    }
+
+    private void applyCreditStatus(ErpCustomerRespVO vo, ErpCustomerCreditStatusBO status) {
+        if (vo == null || status == null) {
+            return;
+        }
+        vo.setReceivableBalance(status.getReceivableBalance());
+        vo.setEarliestUnpaidDate(status.getEarliestUnpaidDate());
+        vo.setDebtDays(status.getDebtDays());
+        vo.setCreditAmountExceeded(status.getAmountExceeded());
+        vo.setCreditTermExceeded(status.getTermExceeded());
+        vo.setCreditBlocked(status.getBlocked());
+        vo.setCreditBlockedReason(status.getBlockedReason());
+        vo.setDisabled(Boolean.TRUE.equals(status.getBlocked()));
     }
 
 }

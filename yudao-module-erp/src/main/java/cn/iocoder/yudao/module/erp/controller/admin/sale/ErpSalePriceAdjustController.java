@@ -20,6 +20,9 @@ import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.priceadjust.ErpSaleP
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpCustomerDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSalePriceAdjustDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSalePriceAdjustItemDO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleOutItemDO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpWarehouseDO;
+import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpSaleOutItemMapper;
 import cn.iocoder.yudao.module.erp.enums.config.ErpFieldConfigModuleEnum;
 import cn.iocoder.yudao.module.erp.framework.excel.ErpExportFieldUtils;
 import cn.iocoder.yudao.module.erp.framework.excel.ErpImportTemplateRequiredFieldUtils;
@@ -27,6 +30,7 @@ import cn.iocoder.yudao.module.erp.service.config.ErpFieldConfigService;
 import cn.iocoder.yudao.module.erp.service.sale.ErpCustomerService;
 import cn.iocoder.yudao.module.erp.service.sale.ErpSaleFieldPermissionMasker;
 import cn.iocoder.yudao.module.erp.service.sale.ErpSalePriceAdjustService;
+import cn.iocoder.yudao.module.erp.service.stock.ErpWarehouseService;
 import cn.iocoder.yudao.module.system.api.dept.DeptApi;
 import cn.iocoder.yudao.module.system.api.dept.dto.DeptRespDTO;
 import cn.iocoder.yudao.module.system.api.user.AdminUserApi;
@@ -55,6 +59,7 @@ import java.util.Set;
 
 import static cn.iocoder.yudao.framework.apilog.core.enums.OperateTypeEnum.EXPORT;
 import static cn.iocoder.yudao.framework.common.pojo.CommonResult.success;
+import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.convertMap;
 import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.convertMultiMap;
 import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.convertSet;
 
@@ -89,6 +94,10 @@ public class ErpSalePriceAdjustController {
     private AdminUserApi adminUserApi;
     @Resource
     private ErpFieldConfigService fieldConfigService;
+    @Resource
+    private ErpSaleOutItemMapper saleOutItemMapper;
+    @Resource
+    private ErpWarehouseService warehouseService;
 
     @PostMapping("/create")
     @Operation(summary = "创建销售调价单")
@@ -163,6 +172,7 @@ public class ErpSalePriceAdjustController {
         List<ErpSalePriceAdjustItemDO> items = salePriceAdjustService.getSalePriceAdjustItemListByAdjustId(id);
         ErpSalePriceAdjustRespVO respVO = BeanUtils.toBean(adjust, ErpSalePriceAdjustRespVO.class);
         respVO.setItems(BeanUtils.toBean(items, ErpSalePriceAdjustRespVO.Item.class));
+        fillItemWarehouseSnapshots(respVO.getItems());
 
         // 客户名称
         if (adjust.getCustomerId() != null) {
@@ -308,6 +318,7 @@ public class ErpSalePriceAdjustController {
         // 2. 拼装
         return BeanUtils.toBean(pageResult, ErpSalePriceAdjustRespVO.class, respVO -> {
             respVO.setItems(BeanUtils.toBean(itemMap.get(respVO.getId()), ErpSalePriceAdjustRespVO.Item.class));
+            fillItemWarehouseSnapshots(respVO.getItems());
             MapUtils.findAndThen(customerMap, respVO.getCustomerId(), customer -> respVO.setCustomerName(customer.getName()));
             MapUtils.findAndThen(deptMap, respVO.getDeptId(), d -> respVO.setDeptName(d.getName()));
             if (respVO.getAdjustUserId() != null) {
@@ -393,6 +404,45 @@ public class ErpSalePriceAdjustController {
         row.setAdjustReason(item.getAdjustReason());
         row.setItemRemark(item.getItemRemark());
         return row;
+    }
+
+    private void fillItemWarehouseSnapshots(List<ErpSalePriceAdjustRespVO.Item> items) {
+        if (CollUtil.isEmpty(items)) {
+            return;
+        }
+        Set<Long> saleOutItemIds = convertSet(items, ErpSalePriceAdjustRespVO.Item::getSaleOutItemId);
+        saleOutItemIds.remove(null);
+        if (CollUtil.isEmpty(saleOutItemIds)) {
+            return;
+        }
+        Map<Long, ErpSaleOutItemDO> saleOutItemMap = convertMap(
+                saleOutItemMapper.selectListByIds(saleOutItemIds), ErpSaleOutItemDO::getId);
+        Map<Long, ErpWarehouseDO> warehouseMap = getWarehouseMapIgnoreDataPermission(
+                convertSet(saleOutItemMap.values(), ErpSaleOutItemDO::getWarehouseId));
+        Set<Long> deptIds = convertSet(warehouseMap.values(), ErpWarehouseDO::getDeptId);
+        deptIds.remove(null);
+        Map<Long, DeptRespDTO> deptMap = CollUtil.isEmpty(deptIds) ? Collections.emptyMap() : deptApi.getDeptMap(deptIds);
+        items.forEach(item -> {
+            ErpSaleOutItemDO saleOutItem = saleOutItemMap.get(item.getSaleOutItemId());
+            if (saleOutItem == null) {
+                return;
+            }
+            item.setWarehouseId(saleOutItem.getWarehouseId());
+            MapUtils.findAndThen(warehouseMap, saleOutItem.getWarehouseId(), warehouse -> {
+                item.setWarehouseName(warehouse.getName());
+                item.setWarehouseDeptId(warehouse.getDeptId());
+                MapUtils.findAndThen(deptMap, warehouse.getDeptId(),
+                        dept -> item.setWarehouseDeptName(dept.getName()));
+            });
+        });
+    }
+
+    private Map<Long, ErpWarehouseDO> getWarehouseMapIgnoreDataPermission(Set<Long> warehouseIds) {
+        if (CollUtil.isEmpty(warehouseIds)) {
+            return Collections.emptyMap();
+        }
+        return cn.iocoder.yudao.framework.datapermission.core.util.DataPermissionUtils.executeIgnore(
+                () -> warehouseService.getWarehouseMap(warehouseIds));
     }
 
     private static Map<String, String> buildExportFieldGroupMap() {

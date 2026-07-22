@@ -6,15 +6,20 @@ import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.order.ErpPurchas
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.order.ErpPurchaseOrderSaveReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpProductRespVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.product.ErpProductDO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseInDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseOrderDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseOrderItemDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpSupplierDO;
+import cn.iocoder.yudao.module.erp.dal.mysql.purchase.ErpPurchaseInMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.purchase.ErpPurchaseOrderItemMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.purchase.ErpPurchaseOrderMapper;
 import cn.iocoder.yudao.module.erp.dal.redis.no.ErpNoRedisDAO;
 import cn.iocoder.yudao.module.erp.enums.ErpAuditStatus;
+import cn.iocoder.yudao.module.erp.service.common.ErpOperateLogService;
 import cn.iocoder.yudao.module.erp.service.finance.ErpAccountService;
+import cn.iocoder.yudao.module.erp.service.product.ErpProductBatchNoValidator;
 import cn.iocoder.yudao.module.erp.service.product.ErpProductService;
+import cn.iocoder.yudao.module.erp.service.stock.ErpWarehouseService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -69,11 +74,21 @@ public class ErpPurchaseOrderServiceImplTest extends BaseMockitoUnitTest {
     @Mock
     private ErpPurchaseOrderItemMapper purchaseOrderItemMapper;
     @Mock
+    private ErpPurchaseInMapper purchaseInMapper;
+    @Mock
     private ErpProductService productService;
     @Mock
     private ErpSupplierService supplierService;
     @Mock
     private ErpAccountService accountService;
+    @Mock
+    private ErpOperateLogService operateLogService;
+    @Mock
+    private ErpPurchaseDocumentDefaultService purchaseDocumentDefaultService;
+    @Mock
+    private ErpWarehouseService warehouseService;
+    @Mock
+    private ErpProductBatchNoValidator productBatchNoValidator;
 
     @BeforeEach
     public void setUp() {
@@ -292,11 +307,43 @@ public class ErpPurchaseOrderServiceImplTest extends BaseMockitoUnitTest {
     }
 
     @Test
-    public void testUpdatePurchaseOrderStatus_processWhenHasIn_throwException() {
+    public void testUpdatePurchaseOrderStatus_processSuccessWhenNoInbound() {
+        ErpPurchaseOrderDO existing = new ErpPurchaseOrderDO()
+                .setId(10L).setStatus(ErpAuditStatus.APPROVE.getStatus())
+                .setInCount(BigDecimal.ZERO).setReturnCount(BigDecimal.ZERO);
+        when(purchaseOrderMapper.selectById(eq(10L))).thenReturn(existing);
+        when(purchaseInMapper.selectListByOrderIdAndStatus(eq(10L), eq(ErpAuditStatus.APPROVE.getStatus())))
+                .thenReturn(Collections.emptyList());
+        when(purchaseOrderMapper.updateByIdAndStatus(eq(10L),
+                eq(ErpAuditStatus.APPROVE.getStatus()), any(ErpPurchaseOrderDO.class))).thenReturn(1);
+
+        purchaseOrderService.updatePurchaseOrderStatus(10L, ErpAuditStatus.PROCESS.getStatus());
+
+        verify(purchaseOrderMapper).updateByIdAndStatus(eq(10L),
+                eq(ErpAuditStatus.APPROVE.getStatus()), any(ErpPurchaseOrderDO.class));
+    }
+
+    @Test
+    public void testUpdatePurchaseOrderStatus_processWhenHasInCount_throwException() {
         ErpPurchaseOrderDO existing = new ErpPurchaseOrderDO()
                 .setId(10L).setStatus(ErpAuditStatus.APPROVE.getStatus())
                 .setInCount(new BigDecimal("3")).setReturnCount(BigDecimal.ZERO);
         when(purchaseOrderMapper.selectById(eq(10L))).thenReturn(existing);
+
+        ServiceException ex = assertThrows(ServiceException.class,
+                () -> purchaseOrderService.updatePurchaseOrderStatus(10L, ErpAuditStatus.PROCESS.getStatus()));
+        assertEquals(PURCHASE_ORDER_PROCESS_FAIL_EXISTS_IN.getCode(), ex.getCode());
+        verify(purchaseOrderMapper, never()).updateByIdAndStatus(any(), any(), any());
+    }
+
+    @Test
+    public void testUpdatePurchaseOrderStatus_processWhenHasApprovedIn_throwException() {
+        ErpPurchaseOrderDO existing = new ErpPurchaseOrderDO()
+                .setId(10L).setStatus(ErpAuditStatus.APPROVE.getStatus())
+                .setInCount(BigDecimal.ZERO).setReturnCount(BigDecimal.ZERO);
+        when(purchaseOrderMapper.selectById(eq(10L))).thenReturn(existing);
+        when(purchaseInMapper.selectListByOrderIdAndStatus(eq(10L), eq(ErpAuditStatus.APPROVE.getStatus())))
+                .thenReturn(Collections.singletonList(new ErpPurchaseInDO().setId(20L)));
 
         ServiceException ex = assertThrows(ServiceException.class,
                 () -> purchaseOrderService.updatePurchaseOrderStatus(10L, ErpAuditStatus.PROCESS.getStatus()));
@@ -309,6 +356,8 @@ public class ErpPurchaseOrderServiceImplTest extends BaseMockitoUnitTest {
                 .setId(10L).setStatus(ErpAuditStatus.APPROVE.getStatus())
                 .setInCount(BigDecimal.ZERO).setReturnCount(new BigDecimal("1"));
         when(purchaseOrderMapper.selectById(eq(10L))).thenReturn(existing);
+        when(purchaseInMapper.selectListByOrderIdAndStatus(eq(10L), eq(ErpAuditStatus.APPROVE.getStatus())))
+                .thenReturn(Collections.emptyList());
 
         ServiceException ex = assertThrows(ServiceException.class,
                 () -> purchaseOrderService.updatePurchaseOrderStatus(10L, ErpAuditStatus.PROCESS.getStatus()));
@@ -555,6 +604,22 @@ public class ErpPurchaseOrderServiceImplTest extends BaseMockitoUnitTest {
     }
 
     // ========== 涵盖文档要求 PURCHASE_ORDER_IN_EXCEED_INABLE 的常量引用 ==========
+
+    @Test
+    public void testGetInableItemsByOrderId_inCountGreaterThanCount_returnsEmpty() {
+        when(purchaseOrderMapper.selectById(eq(10L))).thenReturn(new ErpPurchaseOrderDO()
+                .setId(10L).setStatus(ErpAuditStatus.APPROVE.getStatus()));
+        ErpPurchaseOrderItemDO item = new ErpPurchaseOrderItemDO()
+                .setId(1L).setProductId(200L)
+                .setCount(new BigDecimal("5")).setInCount(new BigDecimal("8"));
+        when(purchaseOrderItemMapper.selectListByOrderId(eq(10L)))
+                .thenReturn(Collections.singletonList(item));
+        when(productService.getProductVOMap(any())).thenReturn(Collections.emptyMap());
+
+        List<ErpPurchaseOrderInableItemRespVO> result = purchaseOrderService.getInableItemsByOrderId(10L);
+
+        assertTrue(result.isEmpty());
+    }
 
     @Test
     public void testInExceedInableErrorCodeValue() {

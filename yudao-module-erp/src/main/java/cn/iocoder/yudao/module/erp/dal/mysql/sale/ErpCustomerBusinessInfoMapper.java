@@ -5,6 +5,7 @@ import cn.iocoder.yudao.framework.mybatis.core.mapper.BaseMapperX;
 import cn.iocoder.yudao.framework.mybatis.core.query.LambdaQueryWrapperX;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.customerbusinessinfo.ErpCustomerBusinessInfoPageReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpCustomerBusinessInfoDO;
+import cn.iocoder.yudao.module.erp.dal.mysql.common.ErpKeywordQuery;
 import org.apache.ibatis.annotations.Mapper;
 
 import java.util.List;
@@ -13,11 +14,17 @@ import java.util.List;
 public interface ErpCustomerBusinessInfoMapper extends BaseMapperX<ErpCustomerBusinessInfoDO> {
 
     default PageResult<ErpCustomerBusinessInfoDO> selectPage(ErpCustomerBusinessInfoPageReqVO reqVO) {
-        return selectPage(reqVO, new LambdaQueryWrapperX<ErpCustomerBusinessInfoDO>()
-                .eqIfPresent(ErpCustomerBusinessInfoDO::getCustomerId, reqVO.getCustomerId())
-                .likeIfPresent(ErpCustomerBusinessInfoDO::getCreditCode, reqVO.getCreditCode())
-                .likeIfPresent(ErpCustomerBusinessInfoDO::getLegalPerson, reqVO.getLegalPerson())
-                .orderByDesc(ErpCustomerBusinessInfoDO::getId));
+        LambdaQueryWrapperX<ErpCustomerBusinessInfoDO> wrapper = new LambdaQueryWrapperX<>();
+        wrapper.eqIfPresent(ErpCustomerBusinessInfoDO::getCustomerId, reqVO.getCustomerId());
+        wrapper.likeIfPresent(ErpCustomerBusinessInfoDO::getCreditCode, reqVO.getCreditCode());
+        wrapper.likeIfPresent(ErpCustomerBusinessInfoDO::getLegalPerson, reqVO.getLegalPerson());
+        wrapper.orderByDesc(ErpCustomerBusinessInfoDO::getId);
+        ErpKeywordQuery.append(wrapper, reqVO.getKeyword(),
+                ErpCustomerBusinessInfoDO::getCreditCode,
+                ErpCustomerBusinessInfoDO::getLegalPerson,
+                ErpCustomerBusinessInfoDO::getBusinessScope,
+                ErpCustomerBusinessInfoDO::getRemark);
+        return selectPage(reqVO, wrapper);
     }
 
     default List<ErpCustomerBusinessInfoDO> selectListByCustomerId(Long customerId) {

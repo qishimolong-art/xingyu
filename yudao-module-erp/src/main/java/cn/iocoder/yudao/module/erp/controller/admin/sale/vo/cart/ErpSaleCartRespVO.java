@@ -18,6 +18,7 @@ public class ErpSaleCartRespVO {
     private String no;
     @ExcelProperty("状态")
     private Integer status;
+    private Boolean firstApproveRequired;
     private Long customerId;
     @ExcelProperty("客户名称")
     private String customerName;
@@ -122,11 +123,15 @@ public class ErpSaleCartRespVO {
         private Long productId;
         private Long productUnitId;
         private Long warehouseId;
+        private Long warehouseDeptId;
+        private String warehouseDeptName;
+        private Long deptId;
         private BigDecimal taxPercent;
         private BigDecimal taxPrice;
         private BigDecimal stockCount;
         private String drawingNo;
         private String batchNo;
+        private Boolean batchNoEnabled;
         private String barCode;
         private String productBarCode;
     }

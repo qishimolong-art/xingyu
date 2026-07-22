@@ -25,6 +25,18 @@ public class ErpSettlementOffsetDetailReqVO {
     @DateTimeFormat(pattern = FORMAT_YEAR_MONTH_DAY_HOUR_MINUTE_SECOND)
     private LocalDateTime[] bizTime;
 
+    @Schema(description = "应收明细排序字段")
+    private String receivableOrderField;
+
+    @Schema(description = "应收明细排序方向", example = "asc")
+    private String receivableOrderDirection;
+
+    @Schema(description = "应付明细排序字段")
+    private String payableOrderField;
+
+    @Schema(description = "应付明细排序方向", example = "desc")
+    private String payableOrderDirection;
+
     public LocalDateTime getStartTime() {
         return bizTime == null || bizTime.length == 0 ? null : bizTime[0];
     }

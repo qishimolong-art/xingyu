@@ -98,10 +98,46 @@ public class ErpFinanceBillService {
             row.setRemark(bill.getRemark());
             return row;
         });
-        rows.sort(Comparator.comparing(ErpAccountTransactionRespVO::getTransactionTime,
-                        Comparator.nullsLast(Comparator.reverseOrder()))
-                .thenComparing(ErpAccountTransactionRespVO::getNo, Comparator.nullsLast(Comparator.reverseOrder())));
+        rows.sort(getAccountTransactionComparator(reqVO));
         return page(rows, reqVO.getPageNo(), reqVO.getPageSize());
+    }
+
+    private Comparator<ErpAccountTransactionRespVO> getAccountTransactionComparator(
+            ErpAccountTransactionPageReqVO reqVO) {
+        Comparator<ErpAccountTransactionRespVO> comparator;
+        switch (reqVO.getOrderField() == null ? "" : reqVO.getOrderField()) {
+            case "no":
+                comparator = Comparator.comparing(ErpAccountTransactionRespVO::getNo,
+                        Comparator.nullsLast(Comparator.naturalOrder()));
+                break;
+            case "amount":
+                comparator = Comparator.comparing(ErpAccountTransactionRespVO::getAmount,
+                        Comparator.nullsLast(Comparator.naturalOrder()));
+                break;
+            case "transactionTime":
+                comparator = Comparator.comparing(ErpAccountTransactionRespVO::getTransactionTime,
+                        Comparator.nullsLast(Comparator.naturalOrder()));
+                break;
+            case "bizNo":
+                comparator = Comparator.comparing(ErpAccountTransactionRespVO::getBizNo,
+                        Comparator.nullsLast(Comparator.naturalOrder()));
+                break;
+            default:
+                return Comparator.comparing(ErpAccountTransactionRespVO::getTransactionTime,
+                                Comparator.nullsLast(Comparator.reverseOrder()))
+                        .thenComparing(ErpAccountTransactionRespVO::getNo,
+                                Comparator.nullsLast(Comparator.reverseOrder()));
+        }
+        if ("desc".equalsIgnoreCase(reqVO.getOrderDirection())) {
+            comparator = comparator.reversed();
+        } else if (!"asc".equalsIgnoreCase(reqVO.getOrderDirection())) {
+            return Comparator.comparing(ErpAccountTransactionRespVO::getTransactionTime,
+                            Comparator.nullsLast(Comparator.reverseOrder()))
+                    .thenComparing(ErpAccountTransactionRespVO::getNo,
+                            Comparator.nullsLast(Comparator.reverseOrder()));
+        }
+        return comparator.thenComparing(ErpAccountTransactionRespVO::getNo,
+                Comparator.nullsLast(Comparator.reverseOrder()));
     }
 
     private List<ErpFinanceBillRespVO> buildBillRows(ErpFinanceBillPageReqVO reqVO) {

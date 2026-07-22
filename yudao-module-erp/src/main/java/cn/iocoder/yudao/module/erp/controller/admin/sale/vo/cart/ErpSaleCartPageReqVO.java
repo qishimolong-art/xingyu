@@ -24,6 +24,8 @@ public class ErpSaleCartPageReqVO extends PageParam {
     private Long deptId;
     @DateTimeFormat(pattern = FORMAT_YEAR_MONTH_DAY_HOUR_MINUTE_SECOND)
     private LocalDateTime[] cartTime;
+    private String contactPerson;
+    private Long productId;
     private Integer status;
     private Boolean includeCompleted;
     private String remark;

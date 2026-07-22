@@ -2,16 +2,26 @@ package cn.iocoder.yudao.module.erp.service.purchase;
 
 import cn.hutool.core.collection.CollUtil;
 import cn.hutool.core.util.ObjectUtil;
+import cn.hutool.core.util.StrUtil;
+import cn.iocoder.yudao.framework.common.enums.CommonStatusEnum;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.common.util.number.MoneyUtils;
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
+import cn.iocoder.yudao.framework.datapermission.core.util.DataPermissionUtils;
 import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpProductRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.imports.ErpPurchaseImportResultRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.invoice.ErpPurchaseInvoiceImportExcelVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.invoice.ErpPurchaseInvoicePageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.invoice.ErpPurchaseInvoiceSaveReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.supplier.ErpSupplierPageReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.product.ErpProductDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseInDO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseInItemDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseInvoiceDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseInvoiceItemDO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpSupplierDO;
+import cn.iocoder.yudao.module.erp.dal.mysql.product.ErpProductMapper;
+import cn.iocoder.yudao.module.erp.dal.mysql.purchase.ErpPurchaseInItemMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.purchase.ErpPurchaseInMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.purchase.ErpPurchaseInvoiceItemMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.purchase.ErpPurchaseInvoiceMapper;
@@ -25,12 +35,20 @@ import org.springframework.validation.annotation.Validated;
 
 import javax.annotation.Resource;
 import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 import static cn.iocoder.yudao.framework.common.exception.util.ServiceExceptionUtil.exception;
 import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.convertList;
@@ -67,7 +85,11 @@ public class ErpPurchaseInvoiceServiceImpl implements ErpPurchaseInvoiceService 
     @Resource
     private ErpProductService productService;
     @Resource
+    private ErpProductMapper productMapper;
+    @Resource
     private ErpPurchaseInMapper purchaseInMapper;
+    @Resource
+    private ErpPurchaseInItemMapper purchaseInItemMapper;
     @Resource
     private ErpPurchaseDocumentDefaultService purchaseDocumentDefaultService;
     @Resource
@@ -215,6 +237,108 @@ public class ErpPurchaseInvoiceServiceImpl implements ErpPurchaseInvoiceService 
         return purchaseInvoiceItemMapper.selectApprovedListBySourceInIds(sourceInIds);
     }
 
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public ErpPurchaseImportResultRespVO importPurchaseInvoiceList(List<ErpPurchaseInvoiceImportExcelVO> list) {
+        ErpPurchaseImportResultRespVO respVO = new ErpPurchaseImportResultRespVO();
+        if (CollUtil.isEmpty(list)) {
+            return respVO;
+        }
+
+        Map<String, ErpSupplierDO> supplierMap = buildSupplierMap();
+        Map<String, ErpProductDO> productMap = productMapper.selectListByCodes(extractInvoiceProductCodes(list)).stream()
+                .collect(Collectors.toMap(ErpProductDO::getCode, product -> product, (a, b) -> a));
+        Map<String, ErpPurchaseInDO> purchaseInMap = getPurchaseInMapByNos(extractInvoiceSourceInNos(list)).stream()
+                .collect(Collectors.toMap(ErpPurchaseInDO::getNo, purchaseIn -> purchaseIn, (a, b) -> a));
+        Map<Long, ErpPurchaseInItemDO> purchaseInItemMap = getPurchaseInItemListByIds(extractInvoiceSourceInItemIds(list)).stream()
+                .collect(Collectors.toMap(ErpPurchaseInItemDO::getId, item -> item, (a, b) -> a));
+
+        List<PurchaseInvoiceImportGroup> groups = new ArrayList<>();
+        PurchaseInvoiceImportGroup currentGroup = null;
+        for (int i = 0; i < list.size(); i++) {
+            ErpPurchaseInvoiceImportExcelVO row = list.get(i);
+            int rowNo = i + 2;
+            if (isBlankInvoiceImportRow(row)) {
+                continue;
+            }
+            boolean hasMain = hasInvoiceMainFields(row);
+            boolean hasDetail = hasInvoiceDetailFields(row);
+            if (hasMain) {
+                ErpSupplierDO supplier = resolveSupplier(row.getSupplierName(), supplierMap);
+                currentGroup = new PurchaseInvoiceImportGroup(rowNo, row, supplier);
+                groups.add(currentGroup);
+                String invoiceNo = resolveInvoiceImportNo(rowNo, row);
+                String supplierName = trimToNull(row.getSupplierName());
+                if (supplierName == null) {
+                    addImportFailure(respVO, rowNo, invoiceNo, null, "供应商不能为空");
+                } else if (supplier == null) {
+                    addImportFailure(respVO, rowNo, invoiceNo, null, "供应商不存在：" + supplierName);
+                } else if (CommonStatusEnum.isDisable(supplier.getStatus())) {
+                    addImportFailure(respVO, rowNo, invoiceNo, null, "供应商(" + supplier.getName() + ")未启用");
+                }
+                if (trimToNull(row.getInvoiceDate()) == null) {
+                    addImportFailure(respVO, rowNo, invoiceNo, null, "开票日期不能为空");
+                }
+                if (trimToNull(row.getInvoiceType()) == null) {
+                    addImportFailure(respVO, rowNo, invoiceNo, null, "票据类型不能为空");
+                }
+                validateImportDate(respVO, rowNo, invoiceNo, null, "开票日期", row.getInvoiceDate());
+            } else if (hasDetail && currentGroup == null) {
+                addImportFailure(respVO, rowNo, null, trimToNull(row.getProductCode()), "明细行前缺少采购票据主表信息");
+                continue;
+            }
+            if (!hasDetail) {
+                continue;
+            }
+            String invoiceNo = currentGroup == null ? null : resolveInvoiceImportNo(currentGroup.getRowNo(), currentGroup.getMainRow());
+            String productCode = trimToNull(row.getProductCode());
+            boolean valid = true;
+            ErpProductDO product = productMap.get(productCode);
+            if (productCode == null) {
+                addImportFailure(respVO, rowNo, invoiceNo, productCode, "产品编码不能为空");
+                valid = false;
+            } else if (product == null) {
+                addImportFailure(respVO, rowNo, invoiceNo, productCode, "产品不存在");
+                valid = false;
+            }
+            if (row.getCount() == null || row.getCount().compareTo(BigDecimal.ZERO) <= 0) {
+                addImportFailure(respVO, rowNo, invoiceNo, productCode, "数量必须大于 0");
+                valid = false;
+            }
+            if (row.getProductPrice() == null || row.getProductPrice().compareTo(BigDecimal.ZERO) < 0) {
+                addImportFailure(respVO, rowNo, invoiceNo, productCode, "不含税单价不能为空且不能小于 0");
+                valid = false;
+            }
+            PurchaseInvoiceSourceRef sourceRef = validateInvoiceSourceRef(respVO, rowNo, invoiceNo, productCode, row,
+                    purchaseInMap, purchaseInItemMap, product);
+            valid = valid && sourceRef.isValid();
+            if (valid && currentGroup != null) {
+                currentGroup.getRows().add(new PurchaseInvoiceImportRow(rowNo, row, product, sourceRef.getPurchaseIn(),
+                        sourceRef.getPurchaseInItem()));
+            }
+        }
+
+        for (PurchaseInvoiceImportGroup group : groups) {
+            if (CollUtil.isEmpty(group.getRows())) {
+                addImportFailure(respVO, group.getRowNo(), resolveInvoiceImportNo(group.getRowNo(), group.getMainRow()), null,
+                        "采购票据至少需要一行明细");
+            }
+        }
+        if (respVO.getFailureCount() > 0) {
+            return respVO;
+        }
+
+        Map<Long, ErpProductRespVO> productVOMap = productService.getProductVOMap(
+                convertSet(productMap.values(), ErpProductDO::getId));
+        for (PurchaseInvoiceImportGroup group : groups) {
+            ErpPurchaseInvoiceSaveReqVO saveReqVO = buildPurchaseInvoiceImportSaveReq(group, productVOMap);
+            Long id = createPurchaseInvoice(saveReqVO);
+            respVO.getDocumentIds().add(id);
+            respVO.setSuccessCount(respVO.getSuccessCount() + 1);
+        }
+        return respVO;
+    }
+
     private void validateSupplierExists(Long supplierId) {
         if (supplierId == null) {
             throw exception(PURCHASE_INVOICE_SUPPLIER_REQUIRED);
@@ -275,8 +399,8 @@ public class ErpPurchaseInvoiceServiceImpl implements ErpPurchaseInvoiceService 
                 throw exception(PURCHASE_INVOICE_ITEM_PRICE_NEGATIVE);
             }
         });
-        List<ErpProductDO> products = productService.validProductList(
-                convertSet(list, ErpPurchaseInvoiceSaveReqVO.Item::getProductId));
+        List<ErpProductDO> products = DataPermissionUtils.executeIgnore(() -> productService.validProductList(
+                convertSet(list, ErpPurchaseInvoiceSaveReqVO.Item::getProductId)));
         Map<Long, ErpProductDO> productMap = convertMap(products, ErpProductDO::getId);
         Map<Long, ErpProductRespVO> productVOMap = productService.getProductVOMap(productMap.keySet());
         return convertList(list, item -> BeanUtils.toBean(item, ErpPurchaseInvoiceItemDO.class, invoiceItem -> {
@@ -384,6 +508,358 @@ public class ErpPurchaseInvoiceServiceImpl implements ErpPurchaseInvoiceService 
         purchaseInvoice.setTaxExclusiveAmount(null);
         purchaseInvoice.setTaxAmount(BigDecimal.ZERO);
         purchaseInvoice.setTotalAmount(totalAmount);
+    }
+
+    private ErpPurchaseInvoiceSaveReqVO buildPurchaseInvoiceImportSaveReq(PurchaseInvoiceImportGroup group,
+                                                                          Map<Long, ErpProductRespVO> productVOMap) {
+        ErpPurchaseInvoiceImportExcelVO mainRow = group.getMainRow();
+        ErpPurchaseInvoiceSaveReqVO saveReqVO = new ErpPurchaseInvoiceSaveReqVO();
+        saveReqVO.setSupplierId(group.getSupplier().getId());
+        saveReqVO.setInvoiceDate(parseImportDate(mainRow.getInvoiceDate(), LocalDate.now()));
+        saveReqVO.setInvoiceType(trimToNull(mainRow.getInvoiceType()));
+        saveReqVO.setInvoiceNo(trimToNull(mainRow.getInvoiceNo()));
+        saveReqVO.setInvoiceCount(mainRow.getInvoiceCount());
+        saveReqVO.setRemark(trimToNull(mainRow.getRemark()));
+        saveReqVO.setItems(convertList(group.getRows(), row -> buildPurchaseInvoiceImportItem(row, productVOMap)));
+        return saveReqVO;
+    }
+
+    private ErpPurchaseInvoiceSaveReqVO.Item buildPurchaseInvoiceImportItem(PurchaseInvoiceImportRow importRow,
+                                                                           Map<Long, ErpProductRespVO> productVOMap) {
+        ErpPurchaseInvoiceImportExcelVO row = importRow.getRow();
+        ErpProductDO product = importRow.getProduct();
+        ErpProductRespVO productVO = productVOMap.get(product.getId());
+        ErpPurchaseInvoiceSaveReqVO.Item item = new ErpPurchaseInvoiceSaveReqVO.Item();
+        item.setSourceInId(importRow.getPurchaseIn() == null ? null : importRow.getPurchaseIn().getId());
+        item.setSourceInNo(importRow.getPurchaseIn() == null ? trimToNull(row.getSourceInNo()) : importRow.getPurchaseIn().getNo());
+        item.setSourceInItemId(importRow.getPurchaseInItem() == null ? row.getSourceInItemId() : importRow.getPurchaseInItem().getId());
+        item.setProductId(product.getId());
+        item.setProductCode(product.getCode());
+        item.setProductName(product.getName());
+        item.setProductBarCode(product.getBarCode());
+        item.setProductUnitName(productVO == null ? null : productVO.getUnitName());
+        item.setCount(row.getCount());
+        item.setProductPrice(row.getProductPrice());
+        item.setTaxPercent(null);
+        item.setRemark(trimToNull(row.getItemRemark()));
+        return item;
+    }
+
+    private PurchaseInvoiceSourceRef validateInvoiceSourceRef(ErpPurchaseImportResultRespVO respVO, Integer rowNo,
+                                                              String invoiceNo, String productCode,
+                                                              ErpPurchaseInvoiceImportExcelVO row,
+                                                              Map<String, ErpPurchaseInDO> purchaseInMap,
+                                                              Map<Long, ErpPurchaseInItemDO> purchaseInItemMap,
+                                                              ErpProductDO product) {
+        ErpPurchaseInDO purchaseIn = null;
+        ErpPurchaseInItemDO purchaseInItem = null;
+        boolean valid = true;
+        String sourceInNo = trimToNull(row.getSourceInNo());
+        if (sourceInNo != null) {
+            purchaseIn = purchaseInMap.get(sourceInNo);
+            if (purchaseIn == null) {
+                addImportFailure(respVO, rowNo, invoiceNo, productCode, "来源入库单不存在：" + sourceInNo);
+                valid = false;
+            } else if (!ErpAuditStatus.APPROVE.getStatus().equals(purchaseIn.getStatus())) {
+                addImportFailure(respVO, rowNo, invoiceNo, productCode, "来源入库单未审批：" + sourceInNo);
+                valid = false;
+            }
+        }
+        if (row.getSourceInItemId() != null) {
+            purchaseInItem = purchaseInItemMap.get(row.getSourceInItemId());
+            if (purchaseInItem == null) {
+                addImportFailure(respVO, rowNo, invoiceNo, productCode, "来源入库明细不存在：" + row.getSourceInItemId());
+                valid = false;
+            } else {
+                if (purchaseIn != null && !purchaseIn.getId().equals(purchaseInItem.getInId())) {
+                    addImportFailure(respVO, rowNo, invoiceNo, productCode, "来源入库明细不属于来源入库单：" + sourceInNo);
+                    valid = false;
+                }
+                if (product != null && !product.getId().equals(purchaseInItem.getProductId())) {
+                    addImportFailure(respVO, rowNo, invoiceNo, productCode, "来源入库明细产品与产品编码不一致");
+                    valid = false;
+                }
+                if (purchaseIn == null) {
+                    purchaseIn = purchaseInMapper.selectById(purchaseInItem.getInId());
+                    if (purchaseIn == null) {
+                        addImportFailure(respVO, rowNo, invoiceNo, productCode, "来源入库单不存在：" + purchaseInItem.getInId());
+                        valid = false;
+                    } else if (!ErpAuditStatus.APPROVE.getStatus().equals(purchaseIn.getStatus())) {
+                        addImportFailure(respVO, rowNo, invoiceNo, productCode, "来源入库单未审批：" + purchaseIn.getNo());
+                        valid = false;
+                    }
+                }
+            }
+        }
+        return new PurchaseInvoiceSourceRef(valid, purchaseIn, purchaseInItem);
+    }
+
+    private List<ErpPurchaseInDO> getPurchaseInMapByNos(Set<String> sourceInNos) {
+        if (CollUtil.isEmpty(sourceInNos)) {
+            return Collections.emptyList();
+        }
+        return CollUtil.emptyIfNull(purchaseInMapper.selectList(ErpPurchaseInDO::getNo, sourceInNos));
+    }
+
+    private List<ErpPurchaseInItemDO> getPurchaseInItemListByIds(Set<Long> sourceInItemIds) {
+        if (CollUtil.isEmpty(sourceInItemIds)) {
+            return Collections.emptyList();
+        }
+        return CollUtil.emptyIfNull(purchaseInItemMapper.selectBatchIds(sourceInItemIds));
+    }
+
+    private Map<String, ErpSupplierDO> buildSupplierMap() {
+        Map<String, ErpSupplierDO> map = new LinkedHashMap<>();
+        ErpSupplierPageReqVO pageReqVO = new ErpSupplierPageReqVO();
+        pageReqVO.setPageSize(cn.iocoder.yudao.framework.common.pojo.PageParam.PAGE_SIZE_NONE);
+        supplierService.getSupplierPage(pageReqVO).getList().forEach(supplier -> putSupplierKeys(map, supplier));
+        return map;
+    }
+
+    private ErpSupplierDO resolveSupplier(String supplierName, Map<String, ErpSupplierDO> supplierMap) {
+        return supplierMap.get(normalizeKey(supplierName));
+    }
+
+    private void putSupplierKeys(Map<String, ErpSupplierDO> map, ErpSupplierDO supplier) {
+        putIfNotBlank(map, supplier.getCode(), supplier);
+        putIfNotBlank(map, supplier.getOldCode(), supplier);
+        putIfNotBlank(map, supplier.getName(), supplier);
+        putIfNotBlank(map, supplier.getShortName(), supplier);
+    }
+
+    private <T> void putIfNotBlank(Map<String, T> map, String key, T value) {
+        String normalized = normalizeKey(key);
+        if (StrUtil.isNotBlank(normalized)) {
+            map.putIfAbsent(normalized, value);
+        }
+    }
+
+    private String normalizeKey(String value) {
+        String normalized = trimToNull(value);
+        if (StrUtil.isBlank(normalized)) {
+            return normalized;
+        }
+        return StrUtil.cleanBlank(normalized).toLowerCase(Locale.ROOT);
+    }
+
+    private static Set<String> extractInvoiceProductCodes(List<ErpPurchaseInvoiceImportExcelVO> list) {
+        Set<String> codes = new LinkedHashSet<>();
+        for (ErpPurchaseInvoiceImportExcelVO row : list) {
+            if (row == null) {
+                continue;
+            }
+            String code = trimToNull(row.getProductCode());
+            if (code != null) {
+                codes.add(code);
+            }
+        }
+        return codes;
+    }
+
+    private static Set<String> extractInvoiceSourceInNos(List<ErpPurchaseInvoiceImportExcelVO> list) {
+        Set<String> nos = new LinkedHashSet<>();
+        for (ErpPurchaseInvoiceImportExcelVO row : list) {
+            if (row == null) {
+                continue;
+            }
+            String no = trimToNull(row.getSourceInNo());
+            if (no != null) {
+                nos.add(no);
+            }
+        }
+        return nos;
+    }
+
+    private static Set<Long> extractInvoiceSourceInItemIds(List<ErpPurchaseInvoiceImportExcelVO> list) {
+        Set<Long> ids = new LinkedHashSet<>();
+        for (ErpPurchaseInvoiceImportExcelVO row : list) {
+            if (row != null && row.getSourceInItemId() != null) {
+                ids.add(row.getSourceInItemId());
+            }
+        }
+        return ids;
+    }
+
+    private boolean isBlankInvoiceImportRow(ErpPurchaseInvoiceImportExcelVO row) {
+        return row == null || !hasInvoiceMainFields(row) && !hasInvoiceDetailFields(row);
+    }
+
+    private boolean hasInvoiceMainFields(ErpPurchaseInvoiceImportExcelVO row) {
+        return StrUtil.isNotBlank(trimToNull(row.getNo()))
+                || StrUtil.isNotBlank(trimToNull(row.getSupplierName()))
+                || StrUtil.isNotBlank(trimToNull(row.getInvoiceDate()))
+                || StrUtil.isNotBlank(trimToNull(row.getInvoiceType()))
+                || StrUtil.isNotBlank(trimToNull(row.getInvoiceNo()))
+                || row.getInvoiceCount() != null
+                || StrUtil.isNotBlank(trimToNull(row.getRemark()));
+    }
+
+    private boolean hasInvoiceDetailFields(ErpPurchaseInvoiceImportExcelVO row) {
+        return StrUtil.isNotBlank(trimToNull(row.getSourceInNo()))
+                || row.getSourceInItemId() != null
+                || StrUtil.isNotBlank(trimToNull(row.getProductCode()))
+                || row.getCount() != null
+                || row.getProductPrice() != null
+                || StrUtil.isNotBlank(trimToNull(row.getItemRemark()));
+    }
+
+    private String resolveInvoiceImportNo(Integer rowNo, ErpPurchaseInvoiceImportExcelVO row) {
+        String no = trimToNull(row.getNo());
+        if (no != null) {
+            return no;
+        }
+        String invoiceNo = trimToNull(row.getInvoiceNo());
+        if (invoiceNo != null) {
+            return invoiceNo;
+        }
+        String supplierName = trimToNull(row.getSupplierName());
+        if (supplierName != null) {
+            return supplierName;
+        }
+        return "第" + rowNo + "行";
+    }
+
+    private boolean validateImportDate(ErpPurchaseImportResultRespVO respVO, Integer rowNo, String orderNo,
+                                       String productCode, String label, String value) {
+        if (StrUtil.isBlank(trimToNull(value))) {
+            return true;
+        }
+        try {
+            parseImportDate(value, null);
+            return true;
+        } catch (IllegalArgumentException ignored) {
+            addImportFailure(respVO, rowNo, orderNo, productCode, label + "格式不正确，请使用 yyyy-MM-dd");
+            return false;
+        }
+    }
+
+    private LocalDate parseImportDate(String value, LocalDate defaultValue) {
+        String normalized = trimToNull(value);
+        if (normalized == null) {
+            return defaultValue;
+        }
+        for (DateTimeFormatter formatter : new DateTimeFormatter[]{
+                DateTimeFormatter.ofPattern("yyyy-MM-dd"),
+                DateTimeFormatter.ofPattern("yyyy/M/d"),
+                DateTimeFormatter.ofPattern("yyyy/M/dd"),
+                DateTimeFormatter.ofPattern("yyyy/MM/d"),
+                DateTimeFormatter.ofPattern("yyyy/MM/dd"),
+        }) {
+            try {
+                return LocalDate.parse(normalized, formatter);
+            } catch (DateTimeParseException ignored) {
+                // Try next format.
+            }
+        }
+        throw new IllegalArgumentException("Invalid date format: " + value);
+    }
+
+    private void addImportFailure(ErpPurchaseImportResultRespVO respVO, Integer rowNo, String orderNo,
+                                  String productCode, String reason) {
+        respVO.getFailureDetails().add(new ErpPurchaseImportResultRespVO.FailureItem(
+                rowNo, orderNo, productCode, reason));
+        respVO.setFailureCount(respVO.getFailureCount() + 1);
+    }
+
+    private static String trimToNull(String value) {
+        String trimmed = StrUtil.trim(value);
+        return StrUtil.isEmpty(trimmed) ? null : trimmed;
+    }
+
+    private static class PurchaseInvoiceImportGroup {
+
+        private final Integer rowNo;
+        private final ErpPurchaseInvoiceImportExcelVO mainRow;
+        private final ErpSupplierDO supplier;
+        private final List<PurchaseInvoiceImportRow> rows = new ArrayList<>();
+
+        private PurchaseInvoiceImportGroup(Integer rowNo, ErpPurchaseInvoiceImportExcelVO mainRow, ErpSupplierDO supplier) {
+            this.rowNo = rowNo;
+            this.mainRow = mainRow;
+            this.supplier = supplier;
+        }
+
+        public Integer getRowNo() {
+            return rowNo;
+        }
+
+        public ErpPurchaseInvoiceImportExcelVO getMainRow() {
+            return mainRow;
+        }
+
+        public ErpSupplierDO getSupplier() {
+            return supplier;
+        }
+
+        public List<PurchaseInvoiceImportRow> getRows() {
+            return rows;
+        }
+
+    }
+
+    private static class PurchaseInvoiceImportRow {
+
+        private final Integer rowNo;
+        private final ErpPurchaseInvoiceImportExcelVO row;
+        private final ErpProductDO product;
+        private final ErpPurchaseInDO purchaseIn;
+        private final ErpPurchaseInItemDO purchaseInItem;
+
+        private PurchaseInvoiceImportRow(Integer rowNo, ErpPurchaseInvoiceImportExcelVO row, ErpProductDO product,
+                                         ErpPurchaseInDO purchaseIn, ErpPurchaseInItemDO purchaseInItem) {
+            this.rowNo = rowNo;
+            this.row = row;
+            this.product = product;
+            this.purchaseIn = purchaseIn;
+            this.purchaseInItem = purchaseInItem;
+        }
+
+        public Integer getRowNo() {
+            return rowNo;
+        }
+
+        public ErpPurchaseInvoiceImportExcelVO getRow() {
+            return row;
+        }
+
+        public ErpProductDO getProduct() {
+            return product;
+        }
+
+        public ErpPurchaseInDO getPurchaseIn() {
+            return purchaseIn;
+        }
+
+        public ErpPurchaseInItemDO getPurchaseInItem() {
+            return purchaseInItem;
+        }
+
+    }
+
+    private static class PurchaseInvoiceSourceRef {
+
+        private final boolean valid;
+        private final ErpPurchaseInDO purchaseIn;
+        private final ErpPurchaseInItemDO purchaseInItem;
+
+        private PurchaseInvoiceSourceRef(boolean valid, ErpPurchaseInDO purchaseIn, ErpPurchaseInItemDO purchaseInItem) {
+            this.valid = valid;
+            this.purchaseIn = purchaseIn;
+            this.purchaseInItem = purchaseInItem;
+        }
+
+        public boolean isValid() {
+            return valid;
+        }
+
+        public ErpPurchaseInDO getPurchaseIn() {
+            return purchaseIn;
+        }
+
+        public ErpPurchaseInItemDO getPurchaseInItem() {
+            return purchaseInItem;
+        }
+
     }
 
 }

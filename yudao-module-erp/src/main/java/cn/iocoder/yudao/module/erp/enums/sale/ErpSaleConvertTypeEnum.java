@@ -15,6 +15,7 @@ public enum ErpSaleConvertTypeEnum implements ArrayValuable<Integer> {
 
     QUOTE_TO_CART(10, "报价订单转销售手推车"),
     CART_TO_QUOTE(20, "销售手推车转报价订单"),
+    PURCHASE_IN_TO_CART(30, "Purchase In To Sale Cart"),
     ;
 
     public static final Integer[] ARRAYS = Arrays.stream(values()).map(ErpSaleConvertTypeEnum::getType).toArray(Integer[]::new);

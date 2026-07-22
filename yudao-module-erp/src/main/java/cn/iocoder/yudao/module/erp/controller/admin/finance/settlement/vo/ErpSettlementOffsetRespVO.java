@@ -9,7 +9,10 @@ import java.math.BigDecimal;
 @Data
 public class ErpSettlementOffsetRespVO {
 
-    @Schema(description = "往来对象名称")
+    @Schema(description = "客户编码")
+    private String customerCode;
+
+    @Schema(description = "客户名称")
     private String subjectName;
 
     @Schema(description = "客户 ID")

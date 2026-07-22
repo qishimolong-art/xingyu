@@ -15,7 +15,7 @@ public enum ErpSaleCartStatusEnum implements ArrayValuable<Integer> {
 
     PROCESS(10, "草稿"),
     SUBMITTED(20, "待初审"),
-    FIRST_APPROVE(30, "初审通过"),
+    FIRST_APPROVE(30, "待终审"),
     FINAL_APPROVE(40, "终审通过"),
     GENERATED_SALE_OUT(50, "已生成销售单"),
     CONVERTED_QUOTE(60, "已转报价"),

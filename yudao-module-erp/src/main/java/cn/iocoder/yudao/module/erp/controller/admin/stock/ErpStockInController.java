@@ -3,13 +3,16 @@ package cn.iocoder.yudao.module.erp.controller.admin.stock;
 import cn.hutool.core.collection.CollUtil;
 import cn.iocoder.yudao.framework.apilog.core.annotation.ApiAccessLog;
 import cn.iocoder.yudao.framework.common.pojo.CommonResult;
-import cn.iocoder.yudao.framework.common.pojo.PageParam;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
+import cn.iocoder.yudao.framework.common.exception.ErrorCode;
 import cn.iocoder.yudao.framework.common.util.collection.MapUtils;
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
+import cn.iocoder.yudao.framework.datapermission.core.util.DataPermissionUtils;
 import cn.iocoder.yudao.framework.excel.core.util.ExcelUtils;
 import cn.iocoder.yudao.module.erp.controller.admin.common.ErpAuditStatusRequestValidator;
 import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpProductRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.imports.ErpStockImportExcelVO;
+import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.imports.ErpStockImportResultRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.in.ErpStockInPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.in.ErpStockInRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.in.ErpStockInSaveReqVO;
@@ -20,6 +23,7 @@ import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockInItemDO;
 import cn.iocoder.yudao.module.erp.service.product.ErpProductService;
 import cn.iocoder.yudao.module.erp.service.purchase.ErpSupplierService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpStockFieldPermissionMasker;
+import cn.iocoder.yudao.module.erp.service.stock.ErpStockImportService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpStockInService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpStockService;
 import cn.iocoder.yudao.module.system.api.dept.DeptApi;
@@ -39,19 +43,23 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.multipart.MultipartFile;
 
 import javax.annotation.Resource;
 import javax.servlet.http.HttpServletResponse;
 import javax.validation.Valid;
 import java.io.IOException;
 import java.math.BigDecimal;
+import java.util.Arrays;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
 import static cn.iocoder.yudao.framework.apilog.core.enums.OperateTypeEnum.EXPORT;
 import static cn.iocoder.yudao.framework.common.pojo.CommonResult.success;
+import static cn.iocoder.yudao.framework.common.exception.util.ServiceExceptionUtil.exception;
 import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.convertMultiMap;
 import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.convertSet;
 
@@ -61,10 +69,18 @@ import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.
 @Validated
 public class ErpStockInController {
 
+    private static final int EXPORT_MAX_COUNT = 5000;
+    private static final ErrorCode EXPORT_COUNT_EXCEEDED = new ErrorCode(1_030_590_001,
+            "单次最多导出 5000 条入库单，请缩小筛选范围后重试");
     private static final String FIELD_PERMISSION_MODULE = "erp_stock_in";
+    private static final Set<String> IMPORT_TEMPLATE_FIELDS = new LinkedHashSet<>(Arrays.asList(
+            "orderNo", "supplierName", "bizTime", "warehouseName", "productCode", "count", "productPrice",
+            "remark", "itemRemark"));
 
     @Resource
     private ErpStockInService stockInService;
+    @Resource
+    private ErpStockImportService stockImportService;
     @Resource
     private ErpStockService stockService;
     @Resource
@@ -122,8 +138,8 @@ public class ErpStockInController {
             return success(null);
         }
         List<ErpStockInItemDO> itemList = stockInService.getStockInItemListByInId(id);
-        Map<Long, ErpProductRespVO> productMap = productService.getProductVOMap(
-                convertSet(itemList, ErpStockInItemDO::getProductId));
+        Map<Long, ErpProductRespVO> productMap = DataPermissionUtils.executeIgnore(() -> productService.getProductVOMap(
+                convertSet(itemList, ErpStockInItemDO::getProductId)));
         Set<Long> userIds = new HashSet<>();
         addUserId(userIds, stockIn.getCreator());
         addUserId(userIds, stockIn.getUpdater());
@@ -132,7 +148,8 @@ public class ErpStockInController {
 
         ErpStockInRespVO respVO = BeanUtils.toBean(stockIn, ErpStockInRespVO.class, vo -> {
             vo.setItems(BeanUtils.toBean(itemList, ErpStockInRespVO.Item.class, item -> {
-                ErpStockDO stock = stockService.getStock(item.getProductId(), item.getWarehouseId());
+                ErpStockDO stock = DataPermissionUtils.executeIgnore(() ->
+                        stockService.getStock(item.getProductId(), item.getWarehouseId()));
                 item.setStockCount(stock != null ? stock.getCount() : BigDecimal.ZERO);
                 fillProduct(item, productMap.get(item.getProductId()));
             }));
@@ -160,9 +177,46 @@ public class ErpStockInController {
     @ApiAccessLog(operateType = EXPORT)
     public void exportStockInExcel(@Valid ErpStockInPageReqVO pageReqVO,
                                    HttpServletResponse response) throws IOException {
-        pageReqVO.setPageSize(PageParam.PAGE_SIZE_NONE);
-        List<ErpStockInRespVO> list = buildStockInVOPageResult(stockInService.getStockInPage(pageReqVO)).getList();
+        pageReqVO.setPageNo(1);
+        pageReqVO.setPageSize(EXPORT_MAX_COUNT);
+        PageResult<ErpStockInDO> pageResult = stockInService.getStockInPage(pageReqVO);
+        if (pageResult.getTotal() > EXPORT_MAX_COUNT) {
+            throw exception(EXPORT_COUNT_EXCEEDED);
+        }
+        List<ErpStockInRespVO> list = buildStockInVOPageResult(pageResult).getList();
         ExcelUtils.write(response, "stock-in.xls", "data", ErpStockInRespVO.class, list);
+    }
+
+    @GetMapping("/get-import-template")
+    @Operation(summary = "Get stock in import template")
+    @PreAuthorize("@ss.hasPermission('erp:stock-in:import')")
+    public void getImportTemplate(HttpServletResponse response) throws IOException {
+        ErpStockImportExcelVO first = new ErpStockImportExcelVO();
+        first.setOrderNo("IN-001");
+        first.setSupplierName("示例供应商");
+        first.setBizTime("2026-07-01 09:00:00");
+        first.setWarehouseName("示例仓库");
+        first.setProductCode("P0001");
+        first.setCount(BigDecimal.ONE);
+        first.setProductPrice(new BigDecimal("100.00"));
+        first.setRemark("单据备注");
+        first.setItemRemark("明细备注");
+        ErpStockImportExcelVO second = new ErpStockImportExcelVO();
+        second.setOrderNo("IN-001");
+        second.setWarehouseName("示例仓库");
+        second.setProductCode("P0002");
+        second.setCount(new BigDecimal("2"));
+        second.setProductPrice(new BigDecimal("50.00"));
+        ExcelUtils.writeImportTemplate(response, "其它入库导入模板.xls", "其它入库",
+                ErpStockImportExcelVO.class, Arrays.asList(first, second), IMPORT_TEMPLATE_FIELDS);
+    }
+
+    @PostMapping("/import")
+    @Operation(summary = "Import stock in")
+    @PreAuthorize("@ss.hasPermission('erp:stock-in:import')")
+    public CommonResult<ErpStockImportResultRespVO> importStockIn(@RequestParam("file") MultipartFile file)
+            throws Exception {
+        return success(stockImportService.importStockInList(ExcelUtils.read(file, ErpStockImportExcelVO.class)));
     }
 
     private PageResult<ErpStockInRespVO> buildStockInVOPageResult(PageResult<ErpStockInDO> pageResult) {
@@ -172,8 +226,8 @@ public class ErpStockInController {
         List<ErpStockInItemDO> itemList = stockInService.getStockInItemListByInIds(
                 convertSet(pageResult.getList(), ErpStockInDO::getId));
         Map<Long, List<ErpStockInItemDO>> itemMap = convertMultiMap(itemList, ErpStockInItemDO::getInId);
-        Map<Long, ErpProductRespVO> productMap = productService.getProductVOMap(
-                convertSet(itemList, ErpStockInItemDO::getProductId));
+        Map<Long, ErpProductRespVO> productMap = DataPermissionUtils.executeIgnore(() -> productService.getProductVOMap(
+                convertSet(itemList, ErpStockInItemDO::getProductId)));
         Map<Long, ErpSupplierDO> supplierMap = supplierService.getSupplierMap(
                 convertSet(pageResult.getList(), ErpStockInDO::getSupplierId));
         Map<Long, DeptRespDTO> deptMap = deptApi.getDeptMap(convertSet(pageResult.getList(), ErpStockInDO::getDeptId));

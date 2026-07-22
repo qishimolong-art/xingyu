@@ -5,6 +5,7 @@ import cn.iocoder.yudao.framework.mybatis.core.mapper.BaseMapperX;
 import cn.iocoder.yudao.framework.mybatis.core.query.LambdaQueryWrapperX;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.accounting.vo.bookopen.ErpBookOpenPageReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.accounting.ErpBookOpenDO;
+import cn.iocoder.yudao.module.erp.dal.mysql.common.ErpKeywordQuery;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import org.apache.ibatis.annotations.Mapper;
 
@@ -37,13 +38,16 @@ public interface ErpBookOpenMapper extends BaseMapperX<ErpBookOpenDO> {
     }
 
     default PageResult<ErpBookOpenDO> selectPage(ErpBookOpenPageReqVO reqVO) {
-        return selectPage(reqVO, new LambdaQueryWrapperX<ErpBookOpenDO>()
+        LambdaQueryWrapperX<ErpBookOpenDO> wrapper = new LambdaQueryWrapperX<ErpBookOpenDO>()
                 .likeIfPresent(ErpBookOpenDO::getNo, reqVO.getNo())
                 .likeIfPresent(ErpBookOpenDO::getChainName, reqVO.getChainName())
                 .eqIfPresent(ErpBookOpenDO::getFiscalYear, reqVO.getFiscalYear())
                 .eqIfPresent(ErpBookOpenDO::getPeriod, reqVO.getPeriod())
-                .eqIfPresent(ErpBookOpenDO::getOpened, reqVO.getOpened())
-                .orderByDesc(ErpBookOpenDO::getId));
+                .eqIfPresent(ErpBookOpenDO::getOpened, reqVO.getOpened());
+        ErpKeywordQuery.append(wrapper, reqVO.getKeyword(),
+                ErpBookOpenDO::getNo, ErpBookOpenDO::getChainName, ErpBookOpenDO::getOperator);
+        wrapper.orderByDesc(ErpBookOpenDO::getId);
+        return selectPage(reqVO, wrapper);
     }
 
     /**

@@ -1,6 +1,6 @@
 ﻿-- System field permission v35
 -- Blacklist mode: records in system_role_field_permission mean hidden fields.
--- Current field hierarchy in the role permission UI: 产品管理 > 配件信息 > 字段分组 > 字段.
+-- Current field hierarchy in the role permission UI: 配件基本信息 > 配件信息 > 字段分组 > 字段.
 
 CREATE TABLE IF NOT EXISTS `system_field_definition` (
   `id` BIGINT NOT NULL AUTO_INCREMENT COMMENT 'Primary key',
@@ -40,12 +40,12 @@ INSERT INTO `system_field_definition`
 VALUES
 ('erp_product', 'code', '配件编码', 'base_info', 5, '1', NOW(), '1', NOW(), b'0', 1),
 ('erp_product', 'deptId', '所属部门', 'base_info', 8, '1', NOW(), '1', NOW(), b'0', 1),
-('erp_product', 'name', '零件名称', 'base_info', 10, '1', NOW(), '1', NOW(), b'0', 1),
+('erp_product', 'name', '配件名称', 'base_info', 10, '1', NOW(), '1', NOW(), b'0', 1),
 ('erp_product', 'unitId', '单位', 'base_info', 20, '1', NOW(), '1', NOW(), b'0', 1),
 ('erp_product', 'defaultWarehouseId', '默认仓库', 'base_info', 30, '1', NOW(), '1', NOW(), b'0', 1),
 ('erp_product', 'vehicleModel', '适用车型', 'base_info', 40, '1', NOW(), '1', NOW(), b'0', 1),
 ('erp_product', 'standard', '规格', 'base_info', 50, '1', NOW(), '1', NOW(), b'0', 1),
-('erp_product', 'categoryId', '商品分类', 'base_info', 60, '1', NOW(), '1', NOW(), b'0', 1),
+('erp_product', 'categoryId', '配件分类', 'base_info', 60, '1', NOW(), '1', NOW(), b'0', 1),
 ('erp_product', 'batchNoEnabled', '是否开启批次号管理', 'base_info', 65, '1', NOW(), '1', NOW(), b'0', 1),
 ('erp_product', 'barCode', '条形码', 'base_info', 70, '1', NOW(), '1', NOW(), b'0', 1),
 ('erp_product', 'factoryCode', '厂家编码', 'base_info', 80, '1', NOW(), '1', NOW(), b'0', 1),
@@ -70,10 +70,10 @@ VALUES
 ('erp_product', 'packageQty', '包装数', 'extend_info', 40, '1', NOW(), '1', NOW(), b'0', 1),
 ('erp_product', 'weight', '重量（kg）', 'extend_info', 50, '1', NOW(), '1', NOW(), b'0', 1),
 ('erp_product', 'col_code', '列表-配件编码', 'list_col', 10, '1', NOW(), '1', NOW(), b'0', 1),
-('erp_product', 'col_name', '列表-零件名称', 'list_col', 20, '1', NOW(), '1', NOW(), b'0', 1),
+('erp_product', 'col_name', '列表-配件名称', 'list_col', 20, '1', NOW(), '1', NOW(), b'0', 1),
 ('erp_product', 'col_vehicleModel', '列表-适用车型', 'list_col', 30, '1', NOW(), '1', NOW(), b'0', 1),
 ('erp_product', 'col_standard', '列表-规格', 'list_col', 40, '1', NOW(), '1', NOW(), b'0', 1),
-('erp_product', 'col_categoryName', '列表-商品分类', 'list_col', 50, '1', NOW(), '1', NOW(), b'0', 1),
+('erp_product', 'col_categoryName', '列表-配件分类', 'list_col', 50, '1', NOW(), '1', NOW(), b'0', 1),
 ('erp_product', 'col_unitName', '列表-单位', 'list_col', 60, '1', NOW(), '1', NOW(), b'0', 1),
 ('erp_product', 'col_barCode', '列表-条形码', 'list_col', 70, '1', NOW(), '1', NOW(), b'0', 1),
 ('erp_product', 'col_factoryCode', '列表-厂家编码', 'list_col', 80, '1', NOW(), '1', NOW(), b'0', 1),

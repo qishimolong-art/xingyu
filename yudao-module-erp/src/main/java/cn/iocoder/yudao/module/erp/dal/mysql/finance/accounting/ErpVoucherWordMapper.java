@@ -5,6 +5,7 @@ import cn.iocoder.yudao.framework.mybatis.core.mapper.BaseMapperX;
 import cn.iocoder.yudao.framework.mybatis.core.query.LambdaQueryWrapperX;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.accounting.vo.voucherword.ErpVoucherWordPageReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.accounting.ErpVoucherWordDO;
+import cn.iocoder.yudao.module.erp.dal.mysql.common.ErpKeywordQuery;
 import org.apache.ibatis.annotations.Mapper;
 
 import java.util.List;
@@ -22,12 +23,14 @@ public interface ErpVoucherWordMapper extends BaseMapperX<ErpVoucherWordDO> {
     }
 
     default PageResult<ErpVoucherWordDO> selectPage(ErpVoucherWordPageReqVO reqVO) {
-        return selectPage(reqVO, new LambdaQueryWrapperX<ErpVoucherWordDO>()
+        LambdaQueryWrapperX<ErpVoucherWordDO> wrapper = new LambdaQueryWrapperX<ErpVoucherWordDO>()
                 .likeIfPresent(ErpVoucherWordDO::getCode, reqVO.getCode())
                 .likeIfPresent(ErpVoucherWordDO::getName, reqVO.getName())
-                .eqIfPresent(ErpVoucherWordDO::getEnable, reqVO.getEnable())
-                .orderByAsc(ErpVoucherWordDO::getSort)
-                .orderByDesc(ErpVoucherWordDO::getId));
+                .eqIfPresent(ErpVoucherWordDO::getEnable, reqVO.getEnable());
+        ErpKeywordQuery.append(wrapper, reqVO.getKeyword(), ErpVoucherWordDO::getCode, ErpVoucherWordDO::getName);
+        wrapper.orderByAsc(ErpVoucherWordDO::getSort)
+                .orderByDesc(ErpVoucherWordDO::getId);
+        return selectPage(reqVO, wrapper);
     }
 
     default List<ErpVoucherWordDO> selectListByEnable(Boolean enable) {

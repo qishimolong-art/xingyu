@@ -1,0 +1,113 @@
+package cn.iocoder.yudao.module.erp.dal.mysql.stock;
+
+import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.stock.ErpStockOccupiedDetailRespVO;
+import org.apache.ibatis.annotations.Mapper;
+import org.apache.ibatis.annotations.Param;
+import org.apache.ibatis.annotations.Select;
+
+import java.util.List;
+
+/** Queries every document source included by the stock occupied aggregate. */
+@Mapper
+public interface ErpStockOccupiedDetailMapper {
+
+    // Normalize text columns before UNION ALL because legacy and newly created ERP tables may use different
+    // utf8mb4 collations (for example utf8mb4_unicode_ci and MySQL 8's utf8mb4_0900_ai_ci).
+    @Select({
+            "<script>",
+            "SELECT d.*, p.code AS productCode, p.name AS productName, w.name AS warehouseName,",
+            "       p.vehicle_model AS vehicleModel, p.origin_place AS originPlace,",
+            "       p.drawing_no AS drawingNo, p.standard AS standard",
+            "  FROM (",
+            " SELECT 'SALE_CART' AS documentType, sc.id AS documentId, sci.id AS itemId,",
+            "        CONVERT(sc.no USING utf8mb4) COLLATE utf8mb4_unicode_ci AS no,",
+            "        sci.product_id AS productId, sci.warehouse_id AS warehouseId,",
+            "        NULLIF(TRIM(CONVERT(sci.batch_no USING utf8mb4) COLLATE utf8mb4_unicode_ci), '') AS batchNo, COALESCE(sci.count, 0) AS count,",
+            "        sc.create_time AS createTime,",
+            "        CONVERT(sc.creator USING utf8mb4) COLLATE utf8mb4_unicode_ci AS creator",
+            "   FROM erp_sale_cart_items sci INNER JOIN erp_sale_cart sc ON sc.id = sci.cart_id",
+            "    AND sc.deleted = 0 AND sc.status IN",
+            "    <foreach collection='cartStatuses' item='status' open='(' separator=',' close=')'>#{status}</foreach>",
+            "  WHERE sci.deleted = 0 AND sci.product_id = #{productId} AND sci.warehouse_id = #{warehouseId}",
+            "    AND NOT EXISTS (SELECT 1 FROM erp_sale_out so WHERE so.deleted = 0 AND so.source_id = sc.id)",
+            " UNION ALL",
+            " SELECT 'SALE_OUT', so.id, soi.id, CONVERT(so.no USING utf8mb4) COLLATE utf8mb4_unicode_ci,",
+            "        soi.product_id, soi.warehouse_id, NULLIF(TRIM(CONVERT(soi.batch_no USING utf8mb4) COLLATE utf8mb4_unicode_ci), ''),",
+            "        COALESCE(soi.count, 0), so.create_time,",
+            "        CONVERT(so.creator USING utf8mb4) COLLATE utf8mb4_unicode_ci",
+            "   FROM erp_sale_out_items soi INNER JOIN erp_sale_out so ON so.id = soi.out_id",
+            "    AND so.deleted = 0 AND so.status = #{processStatus}",
+            "  WHERE soi.deleted = 0 AND soi.product_id = #{productId} AND soi.warehouse_id = #{warehouseId}",
+            " UNION ALL",
+            " SELECT 'PURCHASE_RETURN', pr.id, pri.id, CONVERT(pr.no USING utf8mb4) COLLATE utf8mb4_unicode_ci,",
+            "        pri.product_id, pri.warehouse_id, NULLIF(TRIM(CONVERT(pri.batch_no USING utf8mb4) COLLATE utf8mb4_unicode_ci), ''),",
+            "        COALESCE(pri.count, 0), pr.create_time,",
+            "        CONVERT(pr.creator USING utf8mb4) COLLATE utf8mb4_unicode_ci",
+            "   FROM erp_purchase_return_items pri INNER JOIN erp_purchase_return pr ON pr.id = pri.return_id",
+            "    AND pr.deleted = 0 AND pr.status = #{processStatus}",
+            "  WHERE pri.deleted = 0 AND pri.product_id = #{productId} AND pri.warehouse_id = #{warehouseId}",
+            " UNION ALL",
+            " SELECT 'STOCK_OUT', so2.id, soi2.id, CONVERT(so2.no USING utf8mb4) COLLATE utf8mb4_unicode_ci,",
+            "        soi2.product_id, soi2.warehouse_id, NULL, COALESCE(soi2.count, 0), so2.create_time,",
+            "        CONVERT(so2.creator USING utf8mb4) COLLATE utf8mb4_unicode_ci",
+            "   FROM erp_stock_out_item soi2 INNER JOIN erp_stock_out so2 ON so2.id = soi2.out_id",
+            "    AND so2.deleted = 0 AND so2.status = #{processStatus}",
+            "  WHERE soi2.deleted = 0 AND soi2.product_id = #{productId} AND soi2.warehouse_id = #{warehouseId}",
+            " UNION ALL",
+            " SELECT 'STOCK_MOVE', sm.id, smi.id, CONVERT(sm.no USING utf8mb4) COLLATE utf8mb4_unicode_ci,",
+            "        smi.product_id, smi.from_warehouse_id, NULLIF(TRIM(CONVERT(smi.batch_no USING utf8mb4) COLLATE utf8mb4_unicode_ci), ''),",
+            "        COALESCE(smi.count, 0), sm.create_time,",
+            "        CONVERT(sm.creator USING utf8mb4) COLLATE utf8mb4_unicode_ci",
+            "   FROM erp_stock_move_item smi INNER JOIN erp_stock_move sm ON sm.id = smi.move_id",
+            "    AND sm.deleted = 0 AND sm.status = #{processStatus} AND sm.transfer_direction = #{transferOutDirection}",
+            "  WHERE smi.deleted = 0 AND smi.product_id = #{productId} AND smi.from_warehouse_id = #{warehouseId}",
+            " UNION ALL",
+            " SELECT 'WAREHOUSE_MOVE', wm.id, wmi.id, CONVERT(wm.no USING utf8mb4) COLLATE utf8mb4_unicode_ci,",
+            "        wmi.product_id, wmi.from_warehouse_id, NULLIF(TRIM(CONVERT(wmi.batch_no USING utf8mb4) COLLATE utf8mb4_unicode_ci), ''),",
+            "        COALESCE(wmi.count, 0), wm.create_time,",
+            "        CONVERT(wm.creator USING utf8mb4) COLLATE utf8mb4_unicode_ci",
+            "   FROM erp_warehouse_move_item wmi INNER JOIN erp_warehouse_move wm ON wm.id = wmi.move_id",
+            "    AND wm.deleted = 0 AND wm.status = #{processStatus}",
+            "  WHERE wmi.deleted = 0 AND wmi.product_id = #{productId} AND wmi.from_warehouse_id = #{warehouseId}",
+            " UNION ALL",
+            " SELECT 'STOCK_CHECK', sc2.id, sci2.id, CONVERT(sc2.no USING utf8mb4) COLLATE utf8mb4_unicode_ci,",
+            "        sci2.product_id, sci2.warehouse_id, NULLIF(TRIM(CONVERT(sci2.batch_no USING utf8mb4) COLLATE utf8mb4_unicode_ci), ''),",
+            "        ABS(COALESCE(sci2.count, 0)), sc2.create_time,",
+            "        CONVERT(sc2.creator USING utf8mb4) COLLATE utf8mb4_unicode_ci",
+            "   FROM erp_stock_check_item sci2 INNER JOIN erp_stock_check sc2 ON sc2.id = sci2.check_id",
+            "    AND sc2.deleted = 0 AND sc2.status = #{processStatus} AND sc2.check_type = #{checkType}",
+            "  WHERE sci2.deleted = 0 AND sci2.count &lt; 0 AND sci2.product_id = #{productId}",
+            "    AND sci2.warehouse_id = #{warehouseId}",
+            " UNION ALL",
+            " SELECT 'STOCK_OUT_BILL', sob.id, sobi.id, CONVERT(sob.no USING utf8mb4) COLLATE utf8mb4_unicode_ci,",
+            "        sobi.product_id, sobi.warehouse_id, NULLIF(TRIM(CONVERT(sobi.batch_no USING utf8mb4) COLLATE utf8mb4_unicode_ci), ''),",
+            "        GREATEST(COALESCE(sobi.count, 0) - COALESCE(sobi.picked_count, 0), 0), sob.create_time,",
+            "        CONVERT(sob.creator USING utf8mb4) COLLATE utf8mb4_unicode_ci",
+            "   FROM erp_stock_out_bill_item sobi INNER JOIN erp_stock_out_bill sob ON sob.id = sobi.bill_id",
+            "    AND sob.deleted = 0 AND sob.status IN (10, 20)",
+            "  WHERE sobi.deleted = 0 AND sobi.product_id = #{productId} AND sobi.warehouse_id = #{warehouseId}",
+            "    AND GREATEST(COALESCE(sobi.count, 0) - COALESCE(sobi.picked_count, 0), 0) &gt; 0",
+            "       ) d",
+            "  LEFT JOIN erp_product p ON p.id = d.productId AND p.deleted = 0",
+            "  LEFT JOIN erp_warehouse w ON w.id = d.warehouseId AND w.deleted = 0",
+            " <where>",
+            "   <if test='unassignedBatch != null and unassignedBatch'>",
+            "     (d.batchNo IS NULL OR TRIM(d.batchNo) = '')",
+            "   </if>",
+            "   <if test='(unassignedBatch == null or !unassignedBatch) and batchNo != null and batchNo.trim() != \"\"'>",
+            "     TRIM(d.batchNo) = TRIM(#{batchNo})",
+            "   </if>",
+            " </where>",
+            " ORDER BY d.createTime DESC, d.documentId DESC, d.itemId DESC",
+            "</script>"
+    })
+    List<ErpStockOccupiedDetailRespVO> selectList(@Param("productId") Long productId,
+                                                  @Param("warehouseId") Long warehouseId,
+                                                  @Param("processStatus") Integer processStatus,
+                                                  @Param("cartStatuses") List<Integer> cartStatuses,
+                                                  @Param("checkType") Integer checkType,
+                                                  @Param("transferOutDirection") Integer transferOutDirection,
+                                                  @Param("batchNo") String batchNo,
+                                                  @Param("unassignedBatch") Boolean unassignedBatch);
+
+}

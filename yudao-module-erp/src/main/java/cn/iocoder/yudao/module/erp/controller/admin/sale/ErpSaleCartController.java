@@ -7,11 +7,14 @@ import cn.iocoder.yudao.framework.common.pojo.PageParam;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.common.util.collection.MapUtils;
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
+import cn.iocoder.yudao.framework.datapermission.core.util.DataPermissionUtils;
 import cn.iocoder.yudao.framework.excel.core.util.ExcelUtils;
 import cn.iocoder.yudao.module.erp.controller.admin.common.vo.ErpExportFieldRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpProductRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartConvertQuoteReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartExportRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartFirstApproveConfigRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartFirstApproveConfigSaveReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartImportExcelVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartImportRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartPageReqVO;
@@ -19,7 +22,6 @@ import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartResp
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartSaveReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartSubmitRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartUpdateBasicReqVO;
-import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartUpdateFileReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpCustomerDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleCartDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleCartItemDO;
@@ -132,14 +134,6 @@ public class ErpSaleCartController {
         return success(true);
     }
 
-    @PutMapping("/update-file")
-    @Operation(summary = "更新销售手推车快递单")
-    @PreAuthorize("@ss.hasPermission('erp:sale-cart:update')")
-    public CommonResult<Boolean> updateSaleCartFile(@Valid @RequestBody ErpSaleCartUpdateFileReqVO updateReqVO) {
-        saleCartService.updateSaleCartFile(updateReqVO);
-        return success(true);
-    }
-
     @PutMapping("/submit")
     @Operation(summary = "提交销售手推车")
     @PreAuthorize("@ss.hasPermission('erp:sale-cart:submit')")
@@ -152,6 +146,30 @@ public class ErpSaleCartController {
     @PreAuthorize("@ss.hasPermission('erp:sale-cart:first-approve')")
     public CommonResult<Boolean> firstApproveSaleCart(@RequestParam("id") Long id) {
         saleCartService.firstApproveSaleCart(id);
+        return success(true);
+    }
+
+    @PutMapping("/cancel-first-approve")
+    @Operation(summary = "撤销销售手推车初审")
+    @PreAuthorize("@ss.hasPermission('erp:sale-cart:cancel-first-approve')")
+    public CommonResult<Boolean> cancelFirstApproveSaleCart(@RequestParam("id") Long id) {
+        saleCartService.cancelFirstApproveSaleCart(id);
+        return success(true);
+    }
+
+    @GetMapping("/first-approve-config")
+    @Operation(summary = "获得销售手推车初审配置")
+    @PreAuthorize("@ss.hasAnyPermissions('erp:sale-cart:query', 'erp:sale-cart:first-approve-config')")
+    public CommonResult<ErpSaleCartFirstApproveConfigRespVO> getFirstApproveConfig() {
+        return success(saleCartService.getFirstApproveConfig());
+    }
+
+    @PutMapping("/first-approve-config")
+    @Operation(summary = "保存销售手推车初审配置")
+    @PreAuthorize("@ss.hasPermission('erp:sale-cart:first-approve-config')")
+    public CommonResult<Boolean> updateFirstApproveConfig(
+            @Valid @RequestBody ErpSaleCartFirstApproveConfigSaveReqVO reqVO) {
+        saleCartService.updateFirstApproveConfig(reqVO);
         return success(true);
     }
 
@@ -273,10 +291,10 @@ public class ErpSaleCartController {
         Map<Long, List<ErpSaleCartItemDO>> itemMap = convertMultiMap(itemList, ErpSaleCartItemDO::getCartId);
         Map<Long, ErpProductRespVO> productMap = CollUtil.isEmpty(itemList)
                 ? Collections.emptyMap()
-                : productService.getProductVOMap(convertSet(itemList, ErpSaleCartItemDO::getProductId));
+                : getProductVOMapIgnoreDataPermission(convertSet(itemList, ErpSaleCartItemDO::getProductId));
         Map<Long, ErpWarehouseDO> warehouseMap = CollUtil.isEmpty(itemList)
                 ? Collections.emptyMap()
-                : warehouseService.getWarehouseMap(convertSet(itemList, ErpSaleCartItemDO::getWarehouseId));
+                : getWarehouseMapIgnoreDataPermission(convertSet(itemList, ErpSaleCartItemDO::getWarehouseId));
         Map<Long, ErpCustomerDO> customerMap = customerService.getCustomerMap(
                 convertSet(pageResult.getList(), ErpSaleCartDO::getCustomerId));
         Set<Long> quoteIds = convertSet(pageResult.getList(), cart ->
@@ -291,19 +309,24 @@ public class ErpSaleCartController {
         userIds.remove(null);
         Map<Long, AdminUserRespDTO> userMap = CollUtil.isNotEmpty(userIds)
                 ? adminUserApi.getUserMap(userIds) : Collections.emptyMap();
-        Map<Long, DeptRespDTO> deptMap = deptApi.getDeptMap(convertSet(pageResult.getList(), ErpSaleCartDO::getDeptId));
+        Set<Long> deptIds = convertSet(pageResult.getList(), ErpSaleCartDO::getDeptId);
+        Map<Long, Boolean> firstApproveRequiredMap = saleCartService.getFirstApproveRequiredMap(deptIds);
+        deptIds.addAll(convertSet(warehouseMap.values(), ErpWarehouseDO::getDeptId));
+        deptIds.remove(null);
+        Map<Long, DeptRespDTO> deptMap = CollUtil.isEmpty(deptIds)
+                ? Collections.emptyMap() : deptApi.getDeptMap(deptIds);
         return BeanUtils.toBean(pageResult, ErpSaleCartRespVO.class,
                 cart -> fillRelation(cart, itemMap.get(cart.getId()), productMap, warehouseMap, customerMap,
-                        quoteMap, userMap, deptMap));
+                        quoteMap, userMap, deptMap, firstApproveRequiredMap.get(cart.getDeptId())));
     }
 
     private ErpSaleCartRespVO buildSaleCartRespVO(ErpSaleCartDO cart, List<ErpSaleCartItemDO> items) {
         Map<Long, ErpProductRespVO> productMap = CollUtil.isEmpty(items)
                 ? Collections.emptyMap()
-                : productService.getProductVOMap(convertSet(items, ErpSaleCartItemDO::getProductId));
+                : getProductVOMapIgnoreDataPermission(convertSet(items, ErpSaleCartItemDO::getProductId));
         Map<Long, ErpWarehouseDO> warehouseMap = CollUtil.isEmpty(items)
                 ? Collections.emptyMap()
-                : warehouseService.getWarehouseMap(convertSet(items, ErpSaleCartItemDO::getWarehouseId));
+                : getWarehouseMapIgnoreDataPermission(convertSet(items, ErpSaleCartItemDO::getWarehouseId));
         Map<Long, ErpCustomerDO> customerMap = cart.getCustomerId() == null
                 ? Collections.emptyMap()
                 : customerService.getCustomerMap(Collections.singleton(cart.getCustomerId()));
@@ -317,11 +340,31 @@ public class ErpSaleCartController {
         userIds.remove(null);
         Map<Long, AdminUserRespDTO> userMap = CollUtil.isNotEmpty(userIds)
                 ? adminUserApi.getUserMap(userIds) : Collections.emptyMap();
-        Map<Long, DeptRespDTO> deptMap = cart.getDeptId() == null
-                ? Collections.emptyMap()
-                : deptApi.getDeptMap(Collections.singleton(cart.getDeptId()));
+        Set<Long> deptIds = new java.util.HashSet<>();
+        if (cart.getDeptId() != null) {
+            deptIds.add(cart.getDeptId());
+        }
+        deptIds.addAll(convertSet(warehouseMap.values(), ErpWarehouseDO::getDeptId));
+        deptIds.remove(null);
+        Map<Long, DeptRespDTO> deptMap = CollUtil.isEmpty(deptIds)
+                ? Collections.emptyMap() : deptApi.getDeptMap(deptIds);
         return BeanUtils.toBean(cart, ErpSaleCartRespVO.class,
-                vo -> fillRelation(vo, items, productMap, warehouseMap, customerMap, quoteMap, userMap, deptMap));
+                vo -> fillRelation(vo, items, productMap, warehouseMap, customerMap, quoteMap, userMap, deptMap,
+                        saleCartService.isFirstApproveRequiredForDept(cart.getDeptId())));
+    }
+
+    private Map<Long, ErpProductRespVO> getProductVOMapIgnoreDataPermission(Set<Long> productIds) {
+        if (CollUtil.isEmpty(productIds)) {
+            return Collections.emptyMap();
+        }
+        return DataPermissionUtils.executeIgnore(() -> productService.getProductVOMap(productIds));
+    }
+
+    private Map<Long, ErpWarehouseDO> getWarehouseMapIgnoreDataPermission(Set<Long> warehouseIds) {
+        if (CollUtil.isEmpty(warehouseIds)) {
+            return Collections.emptyMap();
+        }
+        return DataPermissionUtils.executeIgnore(() -> warehouseService.getWarehouseMap(warehouseIds));
     }
 
     private void fillRelation(ErpSaleCartRespVO vo, List<ErpSaleCartItemDO> items,
@@ -330,15 +373,21 @@ public class ErpSaleCartController {
                               Map<Long, ErpCustomerDO> customerMap,
                               Map<Long, ErpSaleQuoteDO> quoteMap,
                               Map<Long, AdminUserRespDTO> userMap,
-                              Map<Long, DeptRespDTO> deptMap) {
+                              Map<Long, DeptRespDTO> deptMap,
+                              Boolean firstApproveRequired) {
         List<ErpSaleCartItemDO> safeItems = CollUtil.isEmpty(items) ? Collections.emptyList() : items;
         List<ErpSaleCartRespVO.Item> respItems = BeanUtils.toBean(safeItems, ErpSaleCartRespVO.Item.class,
                 item -> MapUtils.findAndThen(productMap, item.getProductId(), product -> item.setProductName(product.getName())
                         .setProductBarCode(product.getBarCode()).setProductUnitName(product.getUnitName())
-                        .setProductCode(product.getCode()).setLockCount(product.getLockCount())));
+                        .setProductCode(product.getCode()).setLockCount(product.getLockCount())
+                        .setBatchNoEnabled(product.getBatchNoEnabled())));
         vo.setItems(respItems == null ? Collections.emptyList() : respItems);
         vo.getItems().forEach(item ->
-                MapUtils.findAndThen(warehouseMap, item.getWarehouseId(), warehouse -> item.setWarehouseName(warehouse.getName())));
+                MapUtils.findAndThen(warehouseMap, item.getWarehouseId(), warehouse -> {
+                    item.setWarehouseName(warehouse.getName());
+                    item.setWarehouseDeptId(warehouse.getDeptId());
+                    MapUtils.findAndThen(deptMap, warehouse.getDeptId(), dept -> item.setWarehouseDeptName(dept.getName()));
+                }));
         vo.setProductNames(CollUtil.join(vo.getItems(), "，", ErpSaleCartRespVO.Item::getProductName));
         if (vo.getCustomerId() != null) {
             MapUtils.findAndThen(customerMap, vo.getCustomerId(), customer -> {
@@ -369,6 +418,7 @@ public class ErpSaleCartController {
         if (vo.getDeptId() != null) {
             MapUtils.findAndThen(deptMap, vo.getDeptId(), dept -> vo.setDeptName(dept.getName()));
         }
+        vo.setFirstApproveRequired(firstApproveRequired);
     }
 
     private static Long parseLongSafely(String value) {

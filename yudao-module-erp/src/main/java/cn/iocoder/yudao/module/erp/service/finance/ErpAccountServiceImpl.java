@@ -33,7 +33,6 @@ import java.util.List;
 
 import static cn.iocoder.yudao.framework.common.exception.util.ServiceExceptionUtil.exception;
 import static cn.iocoder.yudao.module.erp.enums.LogRecordConstants.ERP_ACCOUNT_TYPE;
-import static cn.iocoder.yudao.module.erp.enums.LogRecordConstants.ERP_DELETE_SUB_TYPE;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.ACCOUNT_NOT_ENABLE;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.ACCOUNT_NOT_EXISTS;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.ACCOUNT_DELETE_FAIL_REFERENCED;
@@ -76,7 +75,7 @@ public class ErpAccountServiceImpl implements ErpAccountService {
         permissionFieldFiller.fillCreateFields(account);
         normalizeAccount(account);
         accountMapper.insert(account);
-        operateLogService.recordCreate(ERP_ACCOUNT_TYPE, account.getId(), account.getName());
+        operateLogService.recordCreate(ERP_ACCOUNT_TYPE, account.getId(), account, account.getNo());
         return account.getId();
     }
 
@@ -93,19 +92,23 @@ public class ErpAccountServiceImpl implements ErpAccountService {
         }
         normalizeAccount(updateObj);
         accountMapper.updateById(updateObj);
-        operateLogService.recordUpdate(ERP_ACCOUNT_TYPE, updateObj.getId(), updateObj.getName());
+        operateLogService.recordUpdate(ERP_ACCOUNT_TYPE, updateObj.getId(), account,
+                accountMapper.selectById(updateObj.getId()), account.getNo());
     }
 
     @Override
     public void updateAccountDefaultStatus(Long id, Boolean defaultStatus) {
-        validateAccountExists(id);
+        ErpAccountDO oldAccount = validateAccountExists(id);
         if (Boolean.TRUE.equals(defaultStatus)) {
             ErpAccountDO account = accountMapper.selectByDefaultStatus();
             if (account != null) {
                 accountMapper.updateById(new ErpAccountDO().setId(account.getId()).setDefaultStatus(false));
+                operateLogService.recordUpdate(ERP_ACCOUNT_TYPE, account.getId(), account,
+                        accountMapper.selectById(account.getId()), account.getNo());
             }
         }
         accountMapper.updateById(new ErpAccountDO().setId(id).setDefaultStatus(defaultStatus));
+        operateLogService.recordUpdate(ERP_ACCOUNT_TYPE, id, oldAccount, accountMapper.selectById(id), oldAccount.getNo());
     }
 
     @Override
@@ -113,8 +116,7 @@ public class ErpAccountServiceImpl implements ErpAccountService {
         ErpAccountDO account = validateAccountExists(id);
         baseArchiveReferenceService.validateAccountNotReferenced(id);
         accountMapper.deleteById(id);
-        operateLogService.record(ERP_ACCOUNT_TYPE, ERP_DELETE_SUB_TYPE, id,
-                "删除账户，账户名称：" + account.getName(), account.getName());
+        operateLogService.recordDelete(ERP_ACCOUNT_TYPE, id, account, account.getNo());
     }
 
     private ErpAccountDO validateAccountExists(Long id) {

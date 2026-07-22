@@ -3,11 +3,11 @@ package cn.iocoder.yudao.module.erp.service.purchase;
 import cn.iocoder.yudao.framework.common.enums.CommonStatusEnum;
 import cn.iocoder.yudao.framework.common.exception.ServiceException;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
+import cn.iocoder.yudao.framework.security.core.util.SecurityFrameworkUtils;
 import cn.iocoder.yudao.framework.test.core.ut.BaseMockitoUnitTest;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.supplier.ErpSupplierPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.supplier.ErpSupplierSaveReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpSupplierDO;
-import cn.iocoder.yudao.module.erp.dal.mysql.finance.payable.ErpPayableAccountMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.finance.payable.ErpPayableAccountMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.purchase.ErpSupplierDeptMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.purchase.ErpSupplierMapper;
@@ -17,6 +17,7 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import org.mockito.MockedStatic;
 
 import java.util.Arrays;
 import java.util.Collections;
@@ -33,6 +34,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.mockStatic;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -74,6 +76,24 @@ public class ErpSupplierServiceImplTest extends BaseMockitoUnitTest {
         // 兜底默认值
         assertEquals(Integer.valueOf(0), inserted.getSort());
         assertEquals(CommonStatusEnum.ENABLE.getStatus(), inserted.getStatus());
+    }
+
+    @Test
+    public void testCreateSupplier_keepsCreationDepartmentSeparateFromBusinessDepartment() {
+        ErpSupplierSaveReqVO reqVO = new ErpSupplierSaveReqVO();
+        reqVO.setName("部门测试供应商");
+        reqVO.setDeptId(99L);
+
+        try (MockedStatic<SecurityFrameworkUtils> security = mockStatic(SecurityFrameworkUtils.class)) {
+            security.when(SecurityFrameworkUtils::getLoginUserDeptId).thenReturn(88L);
+
+            supplierService.createSupplier(reqVO);
+        }
+
+        ArgumentCaptor<ErpSupplierDO> captor = ArgumentCaptor.forClass(ErpSupplierDO.class);
+        verify(supplierMapper).insert(captor.capture());
+        assertEquals(99L, captor.getValue().getDeptId());
+        assertEquals(88L, captor.getValue().getCreateDeptId());
     }
 
     @Test
@@ -157,7 +177,7 @@ public class ErpSupplierServiceImplTest extends BaseMockitoUnitTest {
     @Test
     public void testUpdateSupplier_success() {
         when(supplierMapper.selectById(eq(10L)))
-                .thenReturn(new ErpSupplierDO().setId(10L).setCode("GYS000010"));
+                .thenReturn(new ErpSupplierDO().setId(10L).setCode("GYS000010").setCreateDeptId(88L));
         ErpSupplierSaveReqVO reqVO = new ErpSupplierSaveReqVO();
         reqVO.setId(10L);
         reqVO.setName("芋道源码-更新");
@@ -170,6 +190,7 @@ public class ErpSupplierServiceImplTest extends BaseMockitoUnitTest {
         assertEquals(Long.valueOf(10L), captor.getValue().getId());
         assertEquals("芋道源码-更新", captor.getValue().getName());
         assertEquals("GYS000010", captor.getValue().getCode());
+        assertEquals(88L, captor.getValue().getCreateDeptId());
     }
 
     @Test

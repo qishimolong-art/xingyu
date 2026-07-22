@@ -60,6 +60,9 @@ public class RequiredHeaderStyleWriteHandler implements CellWriteHandler {
     }
 
     private boolean isRequired(Head head, ExcelRequired required) {
+        if (!requiredFieldNames.isEmpty()) {
+            return head != null && head.getField() != null && requiredFieldNames.contains(head.getField().getName());
+        }
         if (required != null) {
             return true;
         }

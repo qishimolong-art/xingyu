@@ -5,6 +5,7 @@ import cn.hutool.core.util.ObjectUtil;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.common.util.number.MoneyUtils;
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
+import cn.iocoder.yudao.framework.datapermission.core.util.DataPermissionUtils;
 import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpProductRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.order.ErpSaleOrderImportExcelVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.order.ErpSaleOrderImportRespVO;
@@ -14,6 +15,8 @@ import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.order.ErpSaleOrderSa
 import cn.iocoder.yudao.module.erp.dal.dataobject.product.ErpProductDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleOrderDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleOrderItemDO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockDO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpWarehouseDO;
 import cn.iocoder.yudao.module.erp.dal.mysql.product.ErpProductMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpSaleOrderItemMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpSaleOrderMapper;
@@ -22,6 +25,8 @@ import cn.iocoder.yudao.module.erp.enums.ErpAuditStatus;
 import cn.iocoder.yudao.module.erp.service.common.ErpOperateLogService;
 import cn.iocoder.yudao.module.erp.service.finance.ErpAccountService;
 import cn.iocoder.yudao.module.erp.service.product.ErpProductService;
+import cn.iocoder.yudao.module.erp.service.stock.ErpStockService;
+import cn.iocoder.yudao.module.erp.service.stock.ErpWarehouseService;
 import cn.iocoder.yudao.module.system.api.user.AdminUserApi;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -34,6 +39,7 @@ import java.util.Collections;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import static cn.iocoder.yudao.framework.common.exception.util.ServiceExceptionUtil.exception;
 import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.*;
@@ -73,6 +79,10 @@ public class ErpSaleOrderServiceImpl implements ErpSaleOrderService {
     private ErpSaleFieldPermissionMasker fieldPermissionMasker;
     @Resource
     private ErpSaleDocumentDefaultService saleDocumentDefaultService;
+    @Resource
+    private ErpWarehouseService warehouseService;
+    @Resource
+    private ErpStockService stockService;
 
     @Resource
     private AdminUserApi adminUserApi;
@@ -87,7 +97,7 @@ public class ErpSaleOrderServiceImpl implements ErpSaleOrderService {
         // 1.1 校验订单项的有效性
         List<ErpSaleOrderItemDO> saleOrderItems = validateSaleOrderItems(createReqVO.getItems());
         // 1.2 校验客户
-        customerService.validateCustomer(createReqVO.getCustomerId());
+        customerService.validateCustomerForSale(createReqVO.getCustomerId());
         // 1.3 校验结算账户
         if (createReqVO.getAccountId() != null) {
             accountService.validateAccount(createReqVO.getAccountId());
@@ -127,7 +137,7 @@ public class ErpSaleOrderServiceImpl implements ErpSaleOrderService {
         fieldPermissionMasker.preserveHiddenItemFields(FIELD_PERMISSION_MODULE, updateReqVO.getItems(),
                 saleOrderItemMapper.selectListByOrderId(updateReqVO.getId()));
         // 1.2 校验客户
-        customerService.validateCustomer(updateReqVO.getCustomerId());
+        customerService.validateCustomerForSale(updateReqVO.getCustomerId());
         // 1.3 校验结算账户
         if (updateReqVO.getAccountId() != null) {
             accountService.validateAccount(updateReqVO.getAccountId());
@@ -187,12 +197,22 @@ public class ErpSaleOrderServiceImpl implements ErpSaleOrderService {
 
     private List<ErpSaleOrderItemDO> validateSaleOrderItems(List<ErpSaleOrderSaveReqVO.Item> list) {
         // 1. 校验产品存在
-        List<ErpProductDO> productList = productService.validProductList(
-                convertSet(list, ErpSaleOrderSaveReqVO.Item::getProductId));
+        List<ErpProductDO> productList = DataPermissionUtils.executeIgnore(() ->
+                productService.validProductList(convertSet(list, ErpSaleOrderSaveReqVO.Item::getProductId)));
         Map<Long, ErpProductDO> productMap = convertMap(productList, ErpProductDO::getId);
+        list.forEach(item -> {
+            if (item.getWarehouseId() == null && item.getProductId() != null) {
+                ErpProductDO product = productMap.get(item.getProductId());
+                item.setWarehouseId(product == null ? null : product.getDefaultWarehouseId());
+            }
+        });
+        Set<Long> warehouseIds = convertSet(list, ErpSaleOrderSaveReqVO.Item::getWarehouseId);
+        Map<Long, ErpWarehouseDO> warehouseMap = convertMap(
+                warehouseService.validSaleWarehouseList(warehouseIds), ErpWarehouseDO::getId);
         // 2. 转化为 ErpSaleOrderItemDO 列表
         return convertList(list, o -> BeanUtils.toBean(o, ErpSaleOrderItemDO.class, item -> {
             item.setProductUnitId(productMap.get(item.getProductId()).getUnitId());
+            fillDeptIdFromWarehouse(item, warehouseMap);
             item.setGiftFlag(Boolean.TRUE.equals(item.getGiftFlag()));
             if (item.getGiftFlag()) {
                 item.setProductPrice(BigDecimal.ZERO);
@@ -205,6 +225,19 @@ public class ErpSaleOrderServiceImpl implements ErpSaleOrderService {
             item.setTaxPrice(BigDecimal.ZERO);
             item.setTotalPrice(MoneyUtils.priceMultiply(item.getProductPrice(), item.getCount()));
         }));
+    }
+
+    private void fillDeptIdFromWarehouse(ErpSaleOrderItemDO item, Map<Long, ErpWarehouseDO> warehouseMap) {
+        if (item.getDeptId() == null && item.getWarehouseId() != null) {
+            ErpStockDO stock = DataPermissionUtils.executeIgnore(() ->
+                    stockService.getStock(item.getProductId(), item.getWarehouseId()));
+            if (stock != null && stock.getDeptId() != null) {
+                item.setDeptId(stock.getDeptId());
+                return;
+            }
+            ErpWarehouseDO warehouse = warehouseMap.get(item.getWarehouseId());
+            item.setDeptId(warehouse == null ? null : warehouse.getDeptId());
+        }
     }
 
     private void updateSaleOrderItemList(Long id, List<ErpSaleOrderItemDO> newList) {
@@ -237,7 +270,7 @@ public class ErpSaleOrderServiceImpl implements ErpSaleOrderService {
             }
             if (outCount.compareTo(item.getCount()) > 0) {
                 throw exception(SALE_ORDER_ITEM_OUT_FAIL_PRODUCT_EXCEED,
-                        productService.getProduct(item.getProductId()).getName(), item.getCount());
+                        getProductNameIgnoreDataPermission(item.getProductId()), item.getCount());
             }
             saleOrderItemMapper.updateById(new ErpSaleOrderItemDO().setId(item.getId()).setOutCount(outCount));
         });
@@ -257,7 +290,7 @@ public class ErpSaleOrderServiceImpl implements ErpSaleOrderService {
             }
             if (returnCount.compareTo(item.getOutCount()) > 0) {
                 throw exception(SALE_ORDER_ITEM_RETURN_FAIL_OUT_EXCEED,
-                        productService.getProduct(item.getProductId()).getName(), item.getOutCount());
+                        getProductNameIgnoreDataPermission(item.getProductId()), item.getOutCount());
             }
             saleOrderItemMapper.updateById(new ErpSaleOrderItemDO().setId(item.getId()).setReturnCount(returnCount));
         });
@@ -296,6 +329,11 @@ public class ErpSaleOrderServiceImpl implements ErpSaleOrderService {
             throw exception(SALE_ORDER_NOT_EXISTS);
         }
         return saleOrder;
+    }
+
+    private String getProductNameIgnoreDataPermission(Long productId) {
+        ErpProductDO product = DataPermissionUtils.executeIgnore(() -> productService.getProduct(productId));
+        return product == null ? String.valueOf(productId) : product.getName();
     }
 
     @Override
@@ -344,8 +382,10 @@ public class ErpSaleOrderServiceImpl implements ErpSaleOrderService {
                 productCodes.add(row.getProductCode());
             }
         });
-        Map<String, ErpProductDO> productMap = convertMap(productMapper.selectListByCodes(productCodes), ErpProductDO::getCode);
-        Map<Long, ErpProductRespVO> productVOMap = productService.getProductVOMap(convertList(productMap.values(), ErpProductDO::getId));
+        Map<String, ErpProductDO> productMap = convertMap(
+                DataPermissionUtils.executeIgnore(() -> productMapper.selectListByCodes(productCodes)), ErpProductDO::getCode);
+        Map<Long, ErpProductRespVO> productVOMap = DataPermissionUtils.executeIgnore(() ->
+                productService.getProductVOMap(convertList(productMap.values(), ErpProductDO::getId)));
         for (int i = 0; i < list.size(); i++) {
             ErpSaleOrderImportExcelVO row = list.get(i);
             int rowNo = i + 2;

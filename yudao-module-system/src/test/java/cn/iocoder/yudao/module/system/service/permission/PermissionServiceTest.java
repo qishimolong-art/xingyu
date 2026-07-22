@@ -12,10 +12,13 @@ import cn.iocoder.yudao.module.system.dal.dataobject.permission.RoleDO;
 import cn.iocoder.yudao.module.system.dal.dataobject.permission.RoleMenuDO;
 import cn.iocoder.yudao.module.system.dal.dataobject.permission.UserRoleDO;
 import cn.iocoder.yudao.module.system.dal.mysql.permission.RoleMenuMapper;
+import cn.iocoder.yudao.module.system.dal.mysql.permission.FieldDefinitionMapper;
 import cn.iocoder.yudao.module.system.dal.mysql.permission.UserRoleMapper;
 import cn.iocoder.yudao.module.system.enums.permission.DataScopeEnum;
 import cn.iocoder.yudao.module.system.service.dept.DeptService;
 import cn.iocoder.yudao.module.system.service.user.AdminUserService;
+import cn.iocoder.yudao.module.system.service.user.UserPriceFieldService;
+import cn.iocoder.yudao.framework.security.core.util.SecurityFrameworkUtils;
 import org.junit.jupiter.api.Test;
 import org.mockito.MockedStatic;
 import org.springframework.boot.test.mock.mockito.MockBean;
@@ -59,6 +62,62 @@ public class PermissionServiceTest extends BaseDbUnitTest {
     private DeptService deptService;
     @MockBean
     private AdminUserService userService;
+    @MockBean
+    private DeptPriceFieldService deptPriceFieldService;
+    @MockBean
+    private UserPriceFieldService userPriceFieldService;
+    @MockBean
+    private FieldDefinitionMapper fieldDefinitionMapper;
+
+    @Test
+    public void testGetCurrentUserHiddenFields_ProductMergeDepartmentAndPersonal() {
+        try (MockedStatic<SpringUtil> springUtilMockedStatic = mockStatic(SpringUtil.class);
+             MockedStatic<SecurityFrameworkUtils> securityMockedStatic = mockStatic(SecurityFrameworkUtils.class)) {
+            springUtilMockedStatic.when(() -> SpringUtil.getBean(eq(PermissionServiceImpl.class)))
+                    .thenReturn(permissionService);
+            securityMockedStatic.when(SecurityFrameworkUtils::getLoginUserId).thenReturn(1L);
+            userRoleMapper.insert(randomPojo(UserRoleDO.class).setUserId(1L).setRoleId(100L));
+            RoleDO role = randomPojo(RoleDO.class, item -> item.setId(100L)
+                    .setStatus(CommonStatusEnum.ENABLE.getStatus()));
+            when(roleService.getRoleListFromCache(eq(singleton(100L)))).thenReturn(toList(role));
+            when(roleService.hasAnySuperAdmin(eq(singleton(100L)))).thenReturn(false);
+            when(userService.getUserDeptIdListByUserId(1L)).thenReturn(asSet(10L, 20L));
+            DeptDO enabledDept = randomPojo(DeptDO.class, item -> item.setId(10L)
+                    .setStatus(CommonStatusEnum.ENABLE.getStatus()));
+            DeptDO disabledDept = randomPojo(DeptDO.class, item -> item.setId(20L)
+                    .setStatus(CommonStatusEnum.DISABLE.getStatus()));
+            when(deptService.getDeptList(eq(asSet(10L, 20L)))).thenReturn(toList(enabledDept, disabledDept));
+            when(deptPriceFieldService.getHiddenPriceFields(eq(singleton(10L))))
+                    .thenReturn(toList("referencePrice", "col_referencePrice"));
+            when(userPriceFieldService.getHiddenProductPriceFields(1L)).thenReturn(toList("retailPrice"));
+
+            List<String> result = permissionService.getCurrentUserHiddenFields("erp_product");
+
+            assertEquals(toList("referencePrice", "col_referencePrice", "retailPrice"), result);
+        }
+    }
+
+    @Test
+    public void testGetCurrentUserHiddenFields_ProductSuperAdminBypassesDepartmentOnly() {
+        try (MockedStatic<SpringUtil> springUtilMockedStatic = mockStatic(SpringUtil.class);
+             MockedStatic<SecurityFrameworkUtils> securityMockedStatic = mockStatic(SecurityFrameworkUtils.class)) {
+            springUtilMockedStatic.when(() -> SpringUtil.getBean(eq(PermissionServiceImpl.class)))
+                    .thenReturn(permissionService);
+            securityMockedStatic.when(SecurityFrameworkUtils::getLoginUserId).thenReturn(1L);
+            userRoleMapper.insert(randomPojo(UserRoleDO.class).setUserId(1L).setRoleId(100L));
+            RoleDO role = randomPojo(RoleDO.class, item -> item.setId(100L)
+                    .setStatus(CommonStatusEnum.ENABLE.getStatus()));
+            when(roleService.getRoleListFromCache(eq(singleton(100L)))).thenReturn(toList(role));
+            when(roleService.hasAnySuperAdmin(eq(singleton(100L)))).thenReturn(true);
+            when(userPriceFieldService.getHiddenProductPriceFields(1L)).thenReturn(toList("retailPrice"));
+
+            List<String> result = permissionService.getCurrentUserHiddenFields("erp_product");
+
+            assertEquals(toList("retailPrice"), result);
+            verify(deptPriceFieldService, never()).getHiddenPriceFields(anySet());
+            verify(userService, never()).getUserDeptIdListByUserId(anyLong());
+        }
+    }
 
     @Test
     public void testHasAnyPermissions_superAdmin() {

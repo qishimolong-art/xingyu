@@ -69,6 +69,9 @@ public class ErpPurchaseOrderPageReqVO extends PageParam {
     @Schema(description = "创建者")
     private String creator;
 
+    @Schema(description = "采购员", example = "1")
+    private Long purchaser;
+
     @Schema(description = "产品编号", example = "1")
     private Long productId;
 

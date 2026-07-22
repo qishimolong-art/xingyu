@@ -5,6 +5,9 @@ import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpProduc
 import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpProductImportRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpProductPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpProductRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpProductStockDistributionBatchSaveReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpProductStockDistributionRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpProductStockDistributionSaveReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ProductBatchUpdateReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ProductSaveReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.product.ErpProductDO;
@@ -58,11 +61,26 @@ public interface ErpProductService {
     void batchUpdateProduct(ProductBatchUpdateReqVO updateReqVO);
 
     /**
+     * 批量停用配件
+     *
+     * @param ids 配件编号列表
+     */
+    void batchDisableProduct(List<Long> ids);
+
+    /**
      * 还原停用配件
      *
      * @param ids 配件编号列表
      */
     void restoreProduct(List<Long> ids);
+
+    /**
+     * 合并配件。
+     *
+     * @param sourceId 被合并配件编号
+     * @param keepId 保留配件编号
+     */
+    void mergeProduct(Long sourceId, Long keepId);
 
     /**
      * 删除产品
@@ -94,6 +112,36 @@ public interface ErpProductService {
      * @return 详情 VO
      */
     ErpProductRespVO getProductDetail(Long id);
+
+    /**
+     * 获得配件档案详情，包含销售分配仓库带来的只读可见数据。
+     *
+     * @param id 编号
+     * @return 详情 VO
+     */
+    ErpProductRespVO getProductArchiveDetail(Long id);
+
+    /**
+     * 获得配件库存分发信息。
+     *
+     * @param productId 配件编号
+     * @return 库存分发信息
+     */
+    ErpProductStockDistributionRespVO getProductStockDistribution(Long productId);
+
+    /**
+     * 更新配件库存分发。
+     *
+     * @param reqVO 保存信息
+     */
+    void updateProductStockDistribution(@Valid ErpProductStockDistributionSaveReqVO reqVO);
+
+    /**
+     * 批量追加配件库存分发。
+     *
+     * @param reqVO 保存信息
+     */
+    void batchUpdateProductStockDistribution(@Valid ErpProductStockDistributionBatchSaveReqVO reqVO);
 
     /**
      * 获得指定状态的产品 VO 列表

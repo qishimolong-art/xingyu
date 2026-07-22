@@ -6,11 +6,16 @@ import cn.iocoder.yudao.framework.test.core.ut.BaseMockitoUnitTest;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnSaveReqVO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpCustomerDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleReturnDO;
+import cn.iocoder.yudao.module.erp.service.config.ErpFieldConfigService;
 import cn.iocoder.yudao.module.erp.service.product.ErpProductService;
 import cn.iocoder.yudao.module.erp.service.sale.ErpCustomerService;
+import cn.iocoder.yudao.module.erp.service.sale.ErpSaleFieldPermissionMasker;
 import cn.iocoder.yudao.module.erp.service.sale.ErpSaleReturnService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpStockService;
+import cn.iocoder.yudao.module.erp.service.stock.ErpWarehouseService;
+import cn.iocoder.yudao.module.system.api.dept.DeptApi;
 import cn.iocoder.yudao.module.system.api.user.AdminUserApi;
 import org.junit.jupiter.api.Test;
 import org.mockito.InjectMocks;
@@ -20,6 +25,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -48,7 +54,15 @@ public class ErpSaleReturnControllerTest extends BaseMockitoUnitTest {
     @Mock
     private ErpCustomerService customerService;
     @Mock
+    private ErpWarehouseService warehouseService;
+    @Mock
+    private ErpSaleFieldPermissionMasker fieldPermissionMasker;
+    @Mock
     private AdminUserApi adminUserApi;
+    @Mock
+    private DeptApi deptApi;
+    @Mock
+    private ErpFieldConfigService fieldConfigService;
 
     // ========== createSaleReturn ==========
 
@@ -148,6 +162,39 @@ public class ErpSaleReturnControllerTest extends BaseMockitoUnitTest {
     }
 
     @Test
+    public void testGetSaleReturn_withoutItems_returnsEmptyItems() {
+        ErpSaleReturnDO saleReturn = new ErpSaleReturnDO();
+        saleReturn.setId(1025L);
+        saleReturn.setNo("XSTH1025");
+        when(saleReturnService.getSaleReturn(eq(1025L))).thenReturn(saleReturn);
+        when(saleReturnService.getSaleReturnItemListByReturnId(eq(1025L))).thenReturn(null);
+
+        CommonResult<ErpSaleReturnRespVO> result = controller.getSaleReturn(1025L);
+
+        assertEquals(0, result.getCode());
+        assertNotNull(result.getData());
+        assertNotNull(result.getData().getItems());
+        assertTrue(result.getData().getItems().isEmpty());
+    }
+
+    @Test
+    public void testGetSaleReturn_customerNameFilledByCustomerId() {
+        ErpSaleReturnDO saleReturn = new ErpSaleReturnDO();
+        saleReturn.setId(1026L);
+        saleReturn.setCustomerId(31L);
+        when(saleReturnService.getSaleReturn(eq(1026L))).thenReturn(saleReturn);
+        when(saleReturnService.getSaleReturnItemListByReturnId(eq(1026L))).thenReturn(Collections.emptyList());
+        when(customerService.getCustomer(eq(31L)))
+                .thenReturn(new ErpCustomerDO().setId(31L).setName("客户乙"));
+
+        CommonResult<ErpSaleReturnRespVO> result = controller.getSaleReturn(1026L);
+
+        assertEquals(0, result.getCode());
+        assertEquals("客户乙", result.getData().getCustomerName());
+        verify(customerService).getCustomer(eq(31L));
+    }
+
+    @Test
     public void testGetSaleReturn_hasPreAuthorize() throws NoSuchMethodException {
         Method method = ErpSaleReturnController.class.getMethod("getSaleReturn", Long.class);
         PreAuthorize anno = method.getAnnotation(PreAuthorize.class);
@@ -173,6 +220,26 @@ public class ErpSaleReturnControllerTest extends BaseMockitoUnitTest {
     }
 
     @Test
+    public void testGetSaleReturnPage_withoutItems_returnsEmptyItems() {
+        ErpSaleReturnPageReqVO reqVO = new ErpSaleReturnPageReqVO();
+        ErpSaleReturnDO saleReturn = new ErpSaleReturnDO();
+        saleReturn.setId(1030L);
+        saleReturn.setNo("XSTH1030");
+        PageResult<ErpSaleReturnDO> pageResult = new PageResult<>(Collections.singletonList(saleReturn), 1L);
+        when(saleReturnService.getSaleReturnPage(eq(reqVO))).thenReturn(pageResult);
+        when(saleReturnService.getSaleReturnItemListByReturnIds(any())).thenReturn(null);
+        when(customerService.getCustomerMap(any())).thenReturn(null);
+
+        CommonResult<PageResult<ErpSaleReturnRespVO>> result = controller.getSaleReturnPage(reqVO);
+
+        assertEquals(0, result.getCode());
+        assertNotNull(result.getData());
+        assertEquals(1L, result.getData().getTotal());
+        assertNotNull(result.getData().getList().get(0).getItems());
+        assertTrue(result.getData().getList().get(0).getItems().isEmpty());
+    }
+
+    @Test
     public void testGetSaleReturnPage_hasPreAuthorize() throws NoSuchMethodException {
         Method method = ErpSaleReturnController.class.getMethod("getSaleReturnPage", ErpSaleReturnPageReqVO.class);
         PreAuthorize anno = method.getAnnotation(PreAuthorize.class);
@@ -185,7 +252,7 @@ public class ErpSaleReturnControllerTest extends BaseMockitoUnitTest {
     @Test
     public void testExportSaleReturnExcel_hasPreAuthorize() throws NoSuchMethodException {
         Method method = ErpSaleReturnController.class.getMethod("exportSaleReturnExcel",
-                ErpSaleReturnPageReqVO.class, javax.servlet.http.HttpServletResponse.class);
+                ErpSaleReturnPageReqVO.class, String.class, javax.servlet.http.HttpServletResponse.class);
         PreAuthorize anno = method.getAnnotation(PreAuthorize.class);
         assertNotNull(anno);
         assertTrue(anno.value().contains("erp:sale-return:export"));

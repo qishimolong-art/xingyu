@@ -27,6 +27,8 @@ public class ErpReceivableAccountPageReqVO extends PageParam {
     private LocalDateTime[] bizTime;
 
     private Boolean showZeroBalance;
+    private String orderField;
+    private String orderDirection;
 
     public LocalDateTime getStartTime() {
         return bizTime == null || bizTime.length == 0 ? null : bizTime[0];

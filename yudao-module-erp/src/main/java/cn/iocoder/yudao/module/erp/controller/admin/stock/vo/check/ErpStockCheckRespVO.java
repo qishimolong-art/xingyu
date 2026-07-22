@@ -5,9 +5,9 @@ import cn.iocoder.yudao.framework.excel.core.convert.DictConvert;
 import cn.idev.excel.annotation.ExcelIgnoreUnannotated;
 import cn.idev.excel.annotation.ExcelProperty;
 import io.swagger.v3.oas.annotations.media.Schema;
-import javax.validation.constraints.NotNull;
 import lombok.Data;
 
+import javax.validation.constraints.NotNull;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -38,6 +38,10 @@ public class ErpStockCheckRespVO {
     @Schema(description = "盘点时间", requiredMode = Schema.RequiredMode.REQUIRED)
     @ExcelProperty("盘点时间")
     private LocalDateTime checkTime;
+
+    @Schema(description = "盘点类型：1 盘数量，2 盘成本", requiredMode = Schema.RequiredMode.REQUIRED, example = "1")
+    @ExcelProperty("盘点类型")
+    private Integer checkType;
 
     @Schema(description = "合计数量", requiredMode = Schema.RequiredMode.REQUIRED, example = "15663")
     @ExcelProperty("合计数量")
@@ -96,8 +100,17 @@ public class ErpStockCheckRespVO {
         @Schema(description = "仓库编号", requiredMode = Schema.RequiredMode.REQUIRED, example = "3113")
         private Long warehouseId;
 
+        @Schema(description = "仓库所属部门 ID", example = "100")
+        private Long warehouseDeptId;
+
+        @Schema(description = "仓库所属部门名称")
+        private String warehouseDeptName;
+
         @Schema(description = "产品编号", requiredMode = Schema.RequiredMode.REQUIRED, example = "3113")
         private Long productId;
+
+        @Schema(description = "批次号", example = "BATCH-001")
+        private String batchNo;
 
         @Schema(description = "产品单价", requiredMode = Schema.RequiredMode.REQUIRED, example = "100.00")
         private BigDecimal productPrice;
@@ -110,8 +123,8 @@ public class ErpStockCheckRespVO {
         @NotNull(message = "实际数量不能为空")
         private BigDecimal actualCount;
 
-        @Schema(description = "盈亏数量", requiredMode = Schema.RequiredMode.REQUIRED, example = "100.00")
-        @NotNull(message = "盈亏数量不能为空")
+        @Schema(description = "调整数量", requiredMode = Schema.RequiredMode.REQUIRED, example = "100.00")
+        @NotNull(message = "调整数量不能为空")
         private BigDecimal count;
 
         @Schema(description = "备注", example = "随便")
@@ -125,8 +138,10 @@ public class ErpStockCheckRespVO {
         private String productCode;
         @Schema(description = "产品条码", requiredMode = Schema.RequiredMode.REQUIRED, example = "A9985")
         private String productBarCode;
-        @Schema(description = "产品单位名称", requiredMode = Schema.RequiredMode.REQUIRED, example = "盒")
+        @Schema(description = "产品单位名称", requiredMode = Schema.RequiredMode.REQUIRED, example = "件")
         private String productUnitName;
+        @Schema(description = "是否启用批次号")
+        private Boolean batchNoEnabled;
 
     }
 

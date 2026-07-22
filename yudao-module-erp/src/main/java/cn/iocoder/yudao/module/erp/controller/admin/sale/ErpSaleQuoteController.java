@@ -7,6 +7,7 @@ import cn.iocoder.yudao.framework.common.pojo.PageParam;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.common.util.collection.MapUtils;
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
+import cn.iocoder.yudao.framework.datapermission.core.util.DataPermissionUtils;
 import cn.iocoder.yudao.framework.excel.core.util.ExcelUtils;
 import cn.iocoder.yudao.module.erp.controller.admin.common.vo.ErpExportFieldRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpProductRespVO;
@@ -23,6 +24,7 @@ import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpCustomerDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleOutDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleQuoteDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleQuoteItemDO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpWarehouseDO;
 import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpSaleOutMapper;
 import cn.iocoder.yudao.module.erp.enums.config.ErpFieldConfigModuleEnum;
 import cn.iocoder.yudao.module.erp.enums.sale.ErpSaleBizSourceTypeEnum;
@@ -34,6 +36,7 @@ import cn.iocoder.yudao.module.erp.service.product.ErpProductService;
 import cn.iocoder.yudao.module.erp.service.sale.ErpCustomerService;
 import cn.iocoder.yudao.module.erp.service.sale.ErpSaleFieldPermissionMasker;
 import cn.iocoder.yudao.module.erp.service.sale.ErpSaleQuoteService;
+import cn.iocoder.yudao.module.erp.service.stock.ErpWarehouseService;
 import cn.iocoder.yudao.module.system.api.dept.DeptApi;
 import cn.iocoder.yudao.module.system.api.dept.dto.DeptRespDTO;
 import cn.iocoder.yudao.module.system.api.user.AdminUserApi;
@@ -58,6 +61,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.Collection;
 
 import static cn.iocoder.yudao.framework.apilog.core.enums.OperateTypeEnum.EXPORT;
 import static cn.iocoder.yudao.framework.common.pojo.CommonResult.success;
@@ -97,6 +101,8 @@ public class ErpSaleQuoteController {
     private ErpSaleOutMapper saleOutMapper;
     @Resource
     private ErpSaleFieldPermissionMasker fieldPermissionMasker;
+    @Resource
+    private ErpWarehouseService warehouseService;
     @Resource
     private AdminUserApi adminUserApi;
     @Resource
@@ -254,7 +260,10 @@ public class ErpSaleQuoteController {
         Map<Long, List<ErpSaleQuoteItemDO>> itemMap = convertMultiMap(itemList, ErpSaleQuoteItemDO::getQuoteId);
         Map<Long, ErpProductRespVO> productMap = CollUtil.isEmpty(itemList)
                 ? Collections.emptyMap()
-                : productService.getProductVOMap(convertSet(itemList, ErpSaleQuoteItemDO::getProductId));
+                : getProductVOMapIgnoreDataPermission(convertSet(itemList, ErpSaleQuoteItemDO::getProductId));
+        Map<Long, ErpWarehouseDO> warehouseMap = CollUtil.isEmpty(itemList)
+                ? Collections.emptyMap()
+                : getWarehouseMapIgnoreDataPermission(convertSet(itemList, ErpSaleQuoteItemDO::getWarehouseId));
         Map<Long, ErpCustomerDO> customerMap = customerService.getCustomerMap(
                 convertSet(pageResult.getList(), ErpSaleQuoteDO::getCustomerId));
         Set<Long> userIds = convertSet(pageResult.getList(), quote -> parseLongSafely(quote.getCreator()));
@@ -264,6 +273,8 @@ public class ErpSaleQuoteController {
         Map<Long, AdminUserRespDTO> userMap = CollUtil.isNotEmpty(userIds)
                 ? adminUserApi.getUserMap(userIds) : Collections.emptyMap();
         Set<Long> deptIds = convertSet(pageResult.getList(), ErpSaleQuoteDO::getDeptId);
+        deptIds.addAll(convertSet(itemList, ErpSaleQuoteItemDO::getDeptId));
+        deptIds.addAll(convertSet(warehouseMap.values(), ErpWarehouseDO::getDeptId));
         deptIds.remove(null);
         Map<Long, DeptRespDTO> deptMap = CollUtil.isNotEmpty(deptIds)
                 ? deptApi.getDeptMap(deptIds) : Collections.emptyMap();
@@ -273,7 +284,7 @@ public class ErpSaleQuoteController {
                         quote -> ErpSaleQuoteStatusEnum.GENERATED_SALE_OUT.getStatus().equals(quote.getStatus())));
         Map<Long, ErpSaleOutDO> saleOutMap = convertMap(saleOutList, ErpSaleOutDO::getSourceId);
         return BeanUtils.toBean(pageResult, ErpSaleQuoteRespVO.class,
-                quote -> fillRelation(quote, itemMap.get(quote.getId()), productMap, customerMap, userMap, deptMap, saleOutMap));
+                quote -> fillRelation(quote, itemMap.get(quote.getId()), productMap, warehouseMap, customerMap, userMap, deptMap, saleOutMap));
     }
 
     private ErpSaleQuoteRespVO buildSaleQuoteRespVO(ErpSaleQuoteDO quote, List<ErpSaleQuoteItemDO> items) {
@@ -293,7 +304,10 @@ public class ErpSaleQuoteController {
                 ? adminUserApi.getUserMap(userIds) : Collections.emptyMap();
         Map<Long, ErpProductRespVO> productMap = CollUtil.isEmpty(items)
                 ? Collections.emptyMap()
-                : productService.getProductVOMap(convertSet(items, ErpSaleQuoteItemDO::getProductId));
+                : getProductVOMapIgnoreDataPermission(convertSet(items, ErpSaleQuoteItemDO::getProductId));
+        Map<Long, ErpWarehouseDO> warehouseMap = CollUtil.isEmpty(items)
+                ? Collections.emptyMap()
+                : getWarehouseMapIgnoreDataPermission(convertSet(items, ErpSaleQuoteItemDO::getWarehouseId));
         Map<Long, ErpCustomerDO> customerMap = quote.getCustomerId() == null
                 ? Collections.emptyMap()
                 : customerService.getCustomerMap(Collections.singleton(quote.getCustomerId()));
@@ -304,27 +318,59 @@ public class ErpSaleQuoteController {
                     ErpSaleOutDO::getSourceId);
         }
         Map<Long, ErpSaleOutDO> finalSaleOutMap = saleOutMap;
-        Map<Long, DeptRespDTO> deptMap = quote.getDeptId() == null
-                ? Collections.emptyMap()
-                : deptApi.getDeptMap(Collections.singleton(quote.getDeptId()));
+        Set<Long> deptIds = convertSet(items, ErpSaleQuoteItemDO::getDeptId);
+        if (quote.getDeptId() != null) {
+            deptIds.add(quote.getDeptId());
+        }
+        deptIds.addAll(convertSet(warehouseMap.values(), ErpWarehouseDO::getDeptId));
+        deptIds.remove(null);
+        Map<Long, DeptRespDTO> deptMap = CollUtil.isEmpty(deptIds)
+                ? Collections.emptyMap() : deptApi.getDeptMap(deptIds);
         return BeanUtils.toBean(quote, ErpSaleQuoteRespVO.class,
-                vo -> fillRelation(vo, items, productMap, customerMap, userMap, deptMap, finalSaleOutMap));
+                vo -> fillRelation(vo, items, productMap, warehouseMap, customerMap, userMap, deptMap, finalSaleOutMap));
+    }
+
+    private Map<Long, ErpProductRespVO> getProductVOMapIgnoreDataPermission(Collection<Long> productIds) {
+        if (CollUtil.isEmpty(productIds)) {
+            return Collections.emptyMap();
+        }
+        return DataPermissionUtils.executeIgnore(() -> productService.getProductVOMap(productIds));
+    }
+
+    private Map<Long, ErpWarehouseDO> getWarehouseMapIgnoreDataPermission(Collection<Long> warehouseIds) {
+        if (CollUtil.isEmpty(warehouseIds)) {
+            return Collections.emptyMap();
+        }
+        return DataPermissionUtils.executeIgnore(() -> warehouseService.getWarehouseMap(warehouseIds));
     }
 
     private void fillRelation(ErpSaleQuoteRespVO vo, List<ErpSaleQuoteItemDO> items,
                               Map<Long, ErpProductRespVO> productMap,
+                              Map<Long, ErpWarehouseDO> warehouseMap,
                               Map<Long, ErpCustomerDO> customerMap,
                               Map<Long, AdminUserRespDTO> userMap,
                               Map<Long, DeptRespDTO> deptMap,
                               Map<Long, ErpSaleOutDO> saleOutMap) {
         List<ErpSaleQuoteItemDO> safeItems = CollUtil.isEmpty(items) ? Collections.emptyList() : items;
         List<ErpSaleQuoteRespVO.Item> respItems = BeanUtils.toBean(safeItems, ErpSaleQuoteRespVO.Item.class,
-                item -> MapUtils.findAndThen(productMap, item.getProductId(), product -> item.setProductName(product.getName())
-                        .setProductCode(product.getCode()).setProductBarCode(product.getBarCode()).setProductUnitName(product.getUnitName())));
+                item -> {
+                    MapUtils.findAndThen(productMap, item.getProductId(), product -> item.setProductName(product.getName())
+                            .setProductCode(product.getCode()).setProductBarCode(product.getBarCode())
+                            .setProductUnitName(product.getUnitName()).setBatchNoEnabled(product.getBatchNoEnabled()));
+                    MapUtils.findAndThen(warehouseMap, item.getWarehouseId(), warehouse -> {
+                        item.setWarehouseName(warehouse.getName());
+                        item.setWarehouseDeptId(warehouse.getDeptId());
+                        MapUtils.findAndThen(deptMap, warehouse.getDeptId(), dept -> item.setWarehouseDeptName(dept.getName()));
+                    });
+                    MapUtils.findAndThen(deptMap, item.getDeptId(), dept -> item.setDeptName(dept.getName()));
+                });
         vo.setItems(respItems == null ? Collections.emptyList() : respItems);
         vo.setProductNames(CollUtil.join(vo.getItems(), "，", ErpSaleQuoteRespVO.Item::getProductName));
         if (vo.getCustomerId() != null) {
-            MapUtils.findAndThen(customerMap, vo.getCustomerId(), customer -> vo.setCustomerName(customer.getName()));
+            MapUtils.findAndThen(customerMap, vo.getCustomerId(), customer -> {
+                vo.setCustomerName(customer.getName());
+                vo.setCustomerCode(customer.getCode());
+            });
         }
         Long creatorId = parseLongSafely(vo.getCreator());
         if (creatorId != null) {

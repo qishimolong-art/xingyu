@@ -7,9 +7,11 @@ import cn.iocoder.yudao.framework.common.pojo.PageParam;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.common.util.collection.MapUtils;
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
+import cn.iocoder.yudao.framework.datapermission.core.util.DataPermissionUtils;
 import cn.iocoder.yudao.framework.excel.core.util.ExcelUtils;
 import cn.iocoder.yudao.module.erp.controller.admin.common.ErpAuditStatusRequestValidator;
 import cn.iocoder.yudao.module.erp.controller.admin.common.vo.ErpExportFieldRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpProductRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.imports.ErpPurchaseImportResultRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.priceadjust.ErpPurchasePriceAdjustExportRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.priceadjust.ErpPurchasePriceAdjustImportExcelVO;
@@ -27,6 +29,7 @@ import cn.iocoder.yudao.module.erp.enums.purchase.ErpPurchasePriceAdjustTypeEnum
 import cn.iocoder.yudao.module.erp.framework.excel.ErpExportFieldUtils;
 import cn.iocoder.yudao.module.erp.framework.excel.ErpImportTemplateRequiredFieldUtils;
 import cn.iocoder.yudao.module.erp.service.config.ErpFieldConfigService;
+import cn.iocoder.yudao.module.erp.service.product.ErpProductService;
 import cn.iocoder.yudao.module.erp.service.purchase.ErpPurchaseFieldPermissionMasker;
 import cn.iocoder.yudao.module.erp.service.purchase.ErpPurchasePriceAdjustService;
 import cn.iocoder.yudao.module.erp.service.purchase.ErpSupplierService;
@@ -99,6 +102,8 @@ public class ErpPurchasePriceAdjustController {
 
     @Resource
     private ErpPurchasePriceAdjustService priceAdjustService;
+    @Resource
+    private ErpProductService productService;
     @Resource
     private ErpSupplierService supplierService;
     @Resource
@@ -219,6 +224,7 @@ public class ErpPurchasePriceAdjustController {
         List<ErpPurchasePriceAdjustItemDO> items = priceAdjustService.getPurchasePriceAdjustItemListByAdjustId(id);
         ErpPurchasePriceAdjustRespVO respVO = BeanUtils.toBean(adjust, ErpPurchasePriceAdjustRespVO.class);
         respVO.setItems(BeanUtils.toBean(items, ErpPurchasePriceAdjustRespVO.Item.class));
+        fillItemProductSnapshots(respVO.getItems());
         fillTotalPrices(respVO, items);
         if (adjust.getSupplierId() != null) {
             ErpSupplierDO supplier = supplierService.getSupplier(adjust.getSupplierId());
@@ -318,6 +324,8 @@ public class ErpPurchasePriceAdjustController {
         List<ErpPurchasePriceAdjustItemDO> itemList = priceAdjustService.getPurchasePriceAdjustItemListByAdjustIds(
                 convertSet(pageResult.getList(), ErpPurchasePriceAdjustDO::getId));
         Map<Long, List<ErpPurchasePriceAdjustItemDO>> itemMap = convertMultiMap(itemList, ErpPurchasePriceAdjustItemDO::getAdjustId);
+        Map<Long, ErpProductRespVO> productMap = getProductSnapshotMap(
+                convertSet(itemList, ErpPurchasePriceAdjustItemDO::getProductId));
         Map<Long, ErpSupplierDO> supplierMap = supplierService.getSupplierMap(
                 convertSet(pageResult.getList(), ErpPurchasePriceAdjustDO::getSupplierId));
         Set<Long> userIds = new HashSet<>();
@@ -341,9 +349,10 @@ public class ErpPurchasePriceAdjustController {
         Map<Long, AdminUserRespDTO> userMap = adminUserApi.getUserMap(userIds);
         Set<Long> deptIds = convertSet(pageResult.getList(), ErpPurchasePriceAdjustDO::getDeptId);
         Map<Long, DeptRespDTO> deptMap = deptIds.isEmpty() ? new java.util.HashMap<>() : deptApi.getDeptMap(deptIds);
-        return BeanUtils.toBean(pageResult, ErpPurchasePriceAdjustRespVO.class, respVO -> {
+        PageResult<ErpPurchasePriceAdjustRespVO> respResult = BeanUtils.toBean(pageResult, ErpPurchasePriceAdjustRespVO.class, respVO -> {
             List<ErpPurchasePriceAdjustItemDO> items = itemMap.get(respVO.getId());
             respVO.setItems(BeanUtils.toBean(items, ErpPurchasePriceAdjustRespVO.Item.class));
+            fillItemProductSnapshots(respVO.getItems(), productMap);
             fillTotalPrices(respVO, items);
             MapUtils.findAndThen(supplierMap, respVO.getSupplierId(), s -> respVO.setSupplierName(s.getName()));
             MapUtils.findAndThen(deptMap, respVO.getDeptId(), d -> respVO.setDeptName(d.getName()));
@@ -366,6 +375,8 @@ public class ErpPurchasePriceAdjustController {
             }
             fillApproverName(respVO, userMap);
         });
+        fieldPermissionMasker.maskList(FIELD_PERMISSION_MODULE, respResult.getList());
+        return respResult;
     }
 
     private void fillTotalPrices(ErpPurchasePriceAdjustRespVO respVO, List<ErpPurchasePriceAdjustItemDO> items) {
@@ -380,6 +391,59 @@ public class ErpPurchasePriceAdjustController {
         }
         respVO.setOriginalTotalPrice(originalTotalPrice);
         respVO.setAdjustedTotalPrice(adjustedTotalPrice);
+    }
+
+    private void fillItemProductSnapshots(List<ErpPurchasePriceAdjustRespVO.Item> items) {
+        if (CollUtil.isEmpty(items)) {
+            return;
+        }
+        fillItemProductSnapshots(items,
+                getProductSnapshotMap(convertSet(items, ErpPurchasePriceAdjustRespVO.Item::getProductId)));
+    }
+
+    private Map<Long, ErpProductRespVO> getProductSnapshotMap(Set<Long> productIds) {
+        if (CollUtil.isEmpty(productIds)) {
+            return Collections.emptyMap();
+        }
+        return DataPermissionUtils.executeIgnore(() -> productService.getProductVOMap(productIds));
+    }
+
+    private void fillItemProductSnapshots(List<ErpPurchasePriceAdjustRespVO.Item> items,
+                                          Map<Long, ErpProductRespVO> productMap) {
+        if (CollUtil.isEmpty(items) || CollUtil.isEmpty(productMap)) {
+            return;
+        }
+        for (ErpPurchasePriceAdjustRespVO.Item item : items) {
+            MapUtils.findAndThen(productMap, item.getProductId(), product -> {
+                if (item.getProductCode() == null) {
+                    item.setProductCode(product.getCode());
+                }
+                if (item.getProductName() == null) {
+                    item.setProductName(product.getName());
+                }
+                if (item.getProductUnitName() == null) {
+                    item.setProductUnitName(product.getUnitName());
+                }
+                if (item.getVehicleModel() == null) {
+                    item.setVehicleModel(product.getVehicleModel());
+                }
+                if (item.getStandard() == null) {
+                    item.setStandard(product.getStandard());
+                }
+                if (item.getFeatureCode() == null) {
+                    item.setFeatureCode(product.getFeatureCode());
+                }
+                if (item.getOriginPlace() == null) {
+                    item.setOriginPlace(product.getOriginPlace());
+                }
+                if (item.getBrand() == null) {
+                    item.setBrand(product.getBrand());
+                }
+                if (item.getDrawingNo() == null) {
+                    item.setDrawingNo(product.getDrawingNo());
+                }
+            });
+        }
     }
 
     private void fillApproverName(ErpPurchasePriceAdjustRespVO respVO, Map<Long, AdminUserRespDTO> userMap) {
@@ -511,7 +575,7 @@ public class ErpPurchasePriceAdjustController {
         map.put("deptName", "deptId");
         map.put("adjusterName", "adjuster");
         map.put("productCode", "item_productCode");
-        map.put("productName", "item_productId");
+        map.put("productName", "item_productName");
         map.put("productUnitName", "item_productUnitName");
         map.put("vehicleModel", "item_vehicleModel");
         map.put("standard", "item_standard");

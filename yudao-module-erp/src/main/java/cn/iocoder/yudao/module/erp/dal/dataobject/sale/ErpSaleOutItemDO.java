@@ -50,6 +50,7 @@ public class ErpSaleOutItemDO extends BaseDO {
      * 关联 {@link ErpWarehouseDO#getId()}
      */
     private Long warehouseId;
+    private Long deptId;
     /**
      * 产品编号
      *

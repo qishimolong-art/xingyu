@@ -7,8 +7,14 @@ import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.in.ErpPurchaseIn
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.in.ErpPurchaseInForAdjustRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.in.ErpPurchaseInItemForAdjustRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.in.ErpPurchaseInOrderImportExcelVO;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.in.ErpPurchaseInCreateTransferOutReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.in.ErpPurchaseInCreateTransferOutRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.in.ErpPurchaseInCreateSaleCartReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.in.ErpPurchaseInCreateSaleCartRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.in.ErpPurchaseInPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.in.ErpPurchaseInSaveReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.in.ErpPurchaseInSaleCartableItemRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.in.ErpPurchaseInTransferOutableItemRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.order.ErpPurchaseInFromOrderReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseInDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseInItemDO;
@@ -111,12 +117,52 @@ public interface ErpPurchaseInService {
     Map<Long, BigDecimal> getApprovedReturnCountMapByInItemIds(Collection<Long> inItemIds);
 
     /**
+     * 批量查询采购入库明细已生成的调拨出库数量。
+     *
+     * @param inItemIds 采购入库明细 ID 集合
+     * @return Map&lt;采购入库明细 ID, 已调拨数量&gt;
+     */
+    Map<Long, BigDecimal> getTransferOutCountMapByInItemIds(Collection<Long> inItemIds);
+
+    /**
      * 查询某采购入库单的可退明细（按单退货模式使用）
      *
      * @param inId 采购入库单 ID（必须存在且已审批）
      * @return 可退明细列表；每项包含原入库数量、已退数量、可退数量、原入库单价等
      */
     java.util.List<cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.returns.ErpPurchaseReturnableItemRespVO> getReturnableItemsByInId(Long inId);
+
+    /**
+     * 查询某采购入库单的可调拨出库明细。
+     *
+     * @param inId 采购入库单 ID（必须存在且已审批）
+     * @return 可调拨明细列表
+     */
+    List<ErpPurchaseInTransferOutableItemRespVO> getTransferOutableItemsByInId(Long inId);
+
+    /**
+     * 查询某采购入库单的可转销售手推车明细。
+     *
+     * @param inId 采购入库单 ID
+     * @return 可转销售手推车明细列表
+     */
+    List<ErpPurchaseInSaleCartableItemRespVO> getSaleCartableItemsByInId(Long inId);
+
+    /**
+     * 由采购入库单生成调拨出库单。
+     *
+     * @param reqVO 生成请求
+     * @return 调拨出库单信息
+     */
+    ErpPurchaseInCreateTransferOutRespVO createTransferOutFromPurchaseIn(ErpPurchaseInCreateTransferOutReqVO reqVO);
+
+    /**
+     * 由采购入库单生成销售手推车。
+     *
+     * @param reqVO 生成请求
+     * @return 销售手推车信息
+     */
+    ErpPurchaseInCreateSaleCartRespVO createSaleCartFromPurchaseIn(ErpPurchaseInCreateSaleCartReqVO reqVO);
 
     /**
      * 从采购订单分批入库（自动审批生效）

@@ -18,6 +18,7 @@ import cn.iocoder.yudao.module.system.dal.dataobject.permission.RoleDO;
 import cn.iocoder.yudao.module.system.dal.dataobject.permission.RoleFieldPermissionDO;
 import cn.iocoder.yudao.module.system.dal.dataobject.permission.RoleMenuDO;
 import cn.iocoder.yudao.module.system.dal.dataobject.permission.UserRoleDO;
+import cn.iocoder.yudao.module.system.dal.dataobject.dept.DeptDO;
 import cn.iocoder.yudao.module.system.controller.admin.permission.vo.permission.PermissionAssignRoleFormDataScopeReqVO;
 import cn.iocoder.yudao.module.system.controller.admin.permission.vo.permission.RoleFormDataScopeRespVO;
 import cn.iocoder.yudao.module.system.dal.dataobject.permission.RoleFormDataScopeDO;
@@ -92,6 +93,8 @@ public class PermissionServiceImpl implements PermissionService {
     private AdminUserService userService;
     @Resource
     private UserPriceFieldService userPriceFieldService;
+    @Resource
+    private DeptPriceFieldService deptPriceFieldService;
 
     @Override
     public boolean hasAnyPermissions(Long userId, String... permissions) {
@@ -281,6 +284,7 @@ public class PermissionServiceImpl implements PermissionService {
         }
         List<String> hiddenFields = new ArrayList<>();
         Set<Long> roleIds = convertSet(getEnableUserRoleListByUserIdFromCache(userId), RoleDO::getId);
+        boolean superAdmin = CollUtil.isNotEmpty(roleIds) && roleService.hasAnySuperAdmin(roleIds);
         if (CollUtil.isNotEmpty(roleIds)) {
             List<FieldDefinitionDO> definitions = fieldDefinitionMapper.selectListByModule(module);
             if (CollUtil.isNotEmpty(definitions)) {
@@ -294,6 +298,15 @@ public class PermissionServiceImpl implements PermissionService {
             }
         }
         if (ERP_PRODUCT_FIELD_PERMISSION_MODULE.equals(module)) {
+            if (!superAdmin) {
+                Set<Long> userDeptIds = userService.getUserDeptIdListByUserId(userId);
+                Set<Long> enabledDeptIds = CollUtil.isEmpty(userDeptIds) ? Collections.emptySet()
+                        : deptService.getDeptList(userDeptIds).stream()
+                                .filter(dept -> CommonStatusEnum.ENABLE.getStatus().equals(dept.getStatus()))
+                                .map(DeptDO::getId)
+                                .collect(Collectors.toSet());
+                hiddenFields.addAll(deptPriceFieldService.getHiddenPriceFields(enabledDeptIds));
+            }
             hiddenFields.addAll(userPriceFieldService.getHiddenProductPriceFields(userId));
         }
         return hiddenFields.stream().distinct().collect(Collectors.toList());
@@ -348,6 +361,9 @@ public class PermissionServiceImpl implements PermissionService {
         }
         Set<Long> fieldIds = convertSet(definitions, FieldDefinitionDO::getId);
         roleFieldPermissionMapper.deleteListByFieldIds(TenantContextHolder.getRequiredTenantId(), fieldIds);
+        if (ERP_PRODUCT_FIELD_PERMISSION_MODULE.equals(module)) {
+            deptPriceFieldService.deleteByFieldKeys(fieldKeySet);
+        }
         fieldDefinitionMapper.deleteBatchIds(fieldIds);
     }
 

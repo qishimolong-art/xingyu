@@ -94,6 +94,12 @@ public class ErpSupplierRespVO {
     @ExcelProperty("所属部门名称")
     private String deptName;
 
+    @Schema(description = "创建时所在部门编号")
+    private Long createDeptId;
+
+    @Schema(description = "创建时所在部门名称")
+    private String createDeptName;
+
     @Schema(description = "适用部门名称")
     @ExcelProperty("适用部门名称")
     private String deptNames;

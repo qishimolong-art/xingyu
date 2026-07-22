@@ -17,6 +17,7 @@ public enum ErpSaleBizSourceTypeEnum implements ArrayValuable<Integer> {
     QUOTE(20, "报价订单"),
     CART(30, "销售手推车"),
     PRICE_ADJUST(40, "销售调价"),
+    PURCHASE_IN(50, "Purchase In"),
     ;
 
     public static final Integer[] ARRAYS = Arrays.stream(values()).map(ErpSaleBizSourceTypeEnum::getType).toArray(Integer[]::new);

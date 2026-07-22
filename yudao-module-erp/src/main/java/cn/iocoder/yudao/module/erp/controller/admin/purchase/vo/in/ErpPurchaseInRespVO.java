@@ -216,6 +216,12 @@ public class ErpPurchaseInRespVO {
     @Schema(description = "退货状态：0=未退货，1=部分退货，2=全部退货", example = "1")
     private Integer returnStatus;
 
+    @Schema(description = "调拨出库数量", example = "10")
+    private BigDecimal transferOutCount;
+
+    @Schema(description = "调拨出库状态：0=未调拨，1=部分调拨，2=全部调拨", example = "1")
+    private Integer transferOutStatus;
+
     @Schema(description = "创建人", example = "芋道")
     private String creator;
     @Schema(description = "创建人名称", example = "芋道")
@@ -234,12 +240,51 @@ public class ErpPurchaseInRespVO {
     @Schema(description = "入库项列表", requiredMode = Schema.RequiredMode.REQUIRED)
     private List<Item> items;
 
+    @Schema(description = "是否存在对应入仓单")
+    private Boolean hasStockInBill;
+
+    @Schema(description = "入仓单简要信息")
+    private List<StockInBillBrief> stockInBills;
+
     @Schema(description = "项数", example = "0")
     private Integer itemCount;
 
     @Schema(description = "产品信息", requiredMode = Schema.RequiredMode.REQUIRED)
     @ExcelProperty("产品信息")
     private String productNames;
+
+    @Data
+    public static class StockInBillBrief {
+
+        @Schema(description = "入仓单编号")
+        private Long id;
+
+        @Schema(description = "入仓单号")
+        private String no;
+
+        @Schema(description = "仓库编号")
+        private Long warehouseId;
+        private Long deptId;
+
+        @Schema(description = "仓库名称")
+        private String warehouseName;
+
+        @Schema(description = "入仓状态")
+        private Integer status;
+
+        @Schema(description = "入仓状态名称")
+        private String statusName;
+
+        @Schema(description = "入仓数量")
+        private BigDecimal totalCount;
+
+        @Schema(description = "已提货数量")
+        private BigDecimal pickedCount;
+
+        @Schema(description = "单据日期")
+        private LocalDateTime billDate;
+
+    }
 
     @Data
     public static class Item {
@@ -252,6 +297,7 @@ public class ErpPurchaseInRespVO {
 
         @Schema(description = "仓库编号", requiredMode = Schema.RequiredMode.REQUIRED, example = "3113")
         private Long warehouseId;
+        private Long deptId;
 
         @Schema(description = "产品编号", requiredMode = Schema.RequiredMode.REQUIRED, example = "3113")
         private Long productId;
@@ -300,6 +346,8 @@ public class ErpPurchaseInRespVO {
         @Schema(description = "批次", example = "B20260508")
         private String batchNo;
 
+        private Boolean batchNoEnabled;
+
         @Schema(description = "条形码", example = "6901234567890")
         private String barCode;
 
@@ -333,6 +381,27 @@ public class ErpPurchaseInRespVO {
 
         @Schema(description = "退货状态：0=未退货，1=部分退货，2=全部退货", example = "1")
         private Integer returnStatus;
+
+        @Schema(description = "是否存在对应入仓单")
+        private Boolean hasStockInBill;
+
+        @Schema(description = "入仓单号")
+        private String stockInBillNos;
+
+        @Schema(description = "入仓状态")
+        private Integer stockInBillStatus;
+
+        @Schema(description = "入仓状态名称")
+        private String stockInBillStatusName;
+
+        @Schema(description = "入仓数量")
+        private BigDecimal stockInBillCount;
+
+        @Schema(description = "已提货数量")
+        private BigDecimal stockInBillPickedCount;
+
+        @Schema(description = "待提货数量")
+        private BigDecimal stockInBillRemainCount;
 
     }
 

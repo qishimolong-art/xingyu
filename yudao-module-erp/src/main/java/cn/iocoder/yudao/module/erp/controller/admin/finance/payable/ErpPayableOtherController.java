@@ -10,12 +10,15 @@ import cn.iocoder.yudao.framework.common.util.number.NumberUtils;
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
 import cn.iocoder.yudao.framework.excel.core.util.ExcelUtils;
 import cn.iocoder.yudao.module.erp.controller.admin.common.ErpAuditStatusRequestValidator;
+import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.imports.ErpFinanceImportRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.payable.vo.other.ErpPayableOtherExportRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.finance.payable.vo.other.ErpPayableOtherImportExcelVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.payable.vo.other.ErpPayableOtherPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.payable.vo.other.ErpPayableOtherRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.payable.vo.other.ErpPayableOtherSaveReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.payable.ErpPayableOtherDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpSupplierDO;
+import cn.iocoder.yudao.module.erp.enums.ErpAuditStatus;
 import cn.iocoder.yudao.module.erp.service.finance.ErpFinanceFieldPermissionMasker;
 import cn.iocoder.yudao.module.erp.service.finance.payable.ErpPayableOtherService;
 import cn.iocoder.yudao.module.erp.service.purchase.ErpSupplierService;
@@ -36,6 +39,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.multipart.MultipartFile;
 
 import javax.annotation.Resource;
 import javax.servlet.http.HttpServletResponse;
@@ -48,6 +52,9 @@ import static cn.iocoder.yudao.framework.apilog.core.enums.OperateTypeEnum.EXPOR
 import static cn.iocoder.yudao.framework.common.pojo.CommonResult.success;
 import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.convertListByFlatMap;
 import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.convertSet;
+import static cn.iocoder.yudao.module.erp.controller.admin.finance.vo.imports.ErpFinanceImportUtils.allBlank;
+import static cn.iocoder.yudao.module.erp.controller.admin.finance.vo.imports.ErpFinanceImportUtils.failureReason;
+import static cn.iocoder.yudao.module.erp.controller.admin.finance.vo.imports.ErpFinanceImportUtils.parseDate;
 
 @Tag(name = "ERP 其他应付")
 @RestController
@@ -136,6 +143,37 @@ public class ErpPayableOtherController {
                 BeanUtils.toBean(voPage.getList(), ErpPayableOtherExportRespVO.class));
     }
 
+    @GetMapping("/get-import-template")
+    @Operation(summary = "获得其他应付导入模板")
+    @PreAuthorize("@ss.hasPermission('erp:payable-other:import')")
+    public void getImportTemplate(HttpServletResponse response) throws IOException {
+        ExcelUtils.writeImportTemplate(response, "其他应付导入模板.xls", "其他应付",
+                ErpPayableOtherImportExcelVO.class, java.util.Collections.singletonList(new ErpPayableOtherImportExcelVO()));
+    }
+
+    @PostMapping("/import")
+    @Operation(summary = "导入其他应付")
+    @PreAuthorize("@ss.hasPermission('erp:payable-other:import')")
+    public CommonResult<ErpFinanceImportRespVO> importExcel(@RequestParam("file") MultipartFile file) throws Exception {
+        java.util.List<ErpPayableOtherImportExcelVO> list = ExcelUtils.read(file, ErpPayableOtherImportExcelVO.class);
+        ErpFinanceImportRespVO result = new ErpFinanceImportRespVO();
+        for (int i = 0; i < list.size(); i++) {
+            ErpPayableOtherImportExcelVO row = list.get(i);
+            if (row == null || allBlank(row.getBizTime(), row.getSupplierId(), row.getPayableAmount(), row.getRemark())) {
+                continue;
+            }
+            try {
+                ErpPayableOtherSaveReqVO reqVO = BeanUtils.toBean(row, ErpPayableOtherSaveReqVO.class);
+                reqVO.setBizTime(parseDate(row.getBizTime(), null));
+                payableOtherService.createPayableOther(reqVO);
+                result.addCreated();
+            } catch (Exception ex) {
+                result.addFailure(i + 2, row.getRemark(), failureReason(ex));
+            }
+        }
+        return success(result);
+    }
+
     private PageResult<ErpPayableOtherRespVO> buildPageResult(PageResult<ErpPayableOtherDO> pageResult) {
         if (CollUtil.isEmpty(pageResult.getList())) {
             return PageResult.empty(pageResult.getTotal());
@@ -156,6 +194,7 @@ public class ErpPayableOtherController {
             MapUtils.findAndThen(userMap, NumberUtils.parseLong(vo.getCreator()), user -> vo.setCreatorName(user.getNickname()));
             MapUtils.findAndThen(userMap, NumberUtils.parseLong(vo.getUpdater()), user -> vo.setUpdaterName(user.getNickname()));
             MapUtils.findAndThen(deptMap, vo.getDeptId(), dept -> vo.setDeptName(dept.getName()));
+            fillAuditInfo(vo);
         });
     }
 
@@ -203,6 +242,15 @@ public class ErpPayableOtherController {
                 vo.setDeptName(dept.getName());
             }
         }
+        fillAuditInfo(vo);
+    }
+
+    private void fillAuditInfo(ErpPayableOtherRespVO vo) {
+        if (!ErpAuditStatus.APPROVE.getStatus().equals(vo.getStatus())) {
+            return;
+        }
+        vo.setAuditorName(vo.getUpdaterName());
+        vo.setAuditTime(vo.getUpdateTime());
     }
 
 }

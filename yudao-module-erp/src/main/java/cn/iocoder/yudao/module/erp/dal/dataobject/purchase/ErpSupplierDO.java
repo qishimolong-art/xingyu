@@ -72,6 +72,22 @@ public class ErpSupplierDO extends BaseDO {
      */
     private LocalDateTime disabledTime;
     /**
+     * Whether this supplier has been merged into another supplier.
+     */
+    private Boolean mergedFlag;
+    /**
+     * Target supplier id when mergedFlag is true.
+     */
+    private Long mergedTargetId;
+    /**
+     * Merge operator user id.
+     */
+    private Long mergedBy;
+    /**
+     * Merge time.
+     */
+    private LocalDateTime mergedTime;
+    /**
      * 排序
      */
     private Integer sort;
@@ -105,6 +121,10 @@ public class ErpSupplierDO extends BaseDO {
      * Department id.
      */
     private Long deptId;
+    /**
+     * 创建时所在部门编号，与供应商后续分配的业务部门分开保存。
+     */
+    private Long createDeptId;
     /**
      * 允许多部门
      */

@@ -153,6 +153,12 @@ public class ErpSaleReturnRespVO {
     @Schema(description = "开发员编号", example = "1")
     private Long developerUserId;
 
+    @Schema(description = "制单人（用户ID）", example = "1")
+    private Long handler;
+
+    @Schema(description = "制单人名称", example = "管理员")
+    private String handlerName;
+
     @Schema(description = "创建人", example = "1")
     private String creator;
 
@@ -195,6 +201,9 @@ public class ErpSaleReturnRespVO {
 
         @ExcelProperty("仓库编号")
         private Long warehouseId;
+        private Long warehouseDeptId;
+        private String warehouseDeptName;
+        private Long deptId;
 
         @ExcelProperty("退货数量")
         @NotNull(message = "产品数量不能为空")

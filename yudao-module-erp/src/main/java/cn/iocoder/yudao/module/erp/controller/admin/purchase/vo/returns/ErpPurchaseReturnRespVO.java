@@ -147,6 +147,7 @@ public class ErpPurchaseReturnRespVO {
 
         @Schema(description = "仓库编号", requiredMode = Schema.RequiredMode.REQUIRED, example = "3113")
         private Long warehouseId;
+        private Long deptId;
 
         @Schema(description = "产品编号", requiredMode = Schema.RequiredMode.REQUIRED, example = "3113")
         private Long productId;
@@ -197,6 +198,8 @@ public class ErpPurchaseReturnRespVO {
 
         @Schema(description = "批次", example = "B20260508")
         private String batchNo;
+
+        private Boolean batchNoEnabled;
 
         @Schema(description = "条形码", example = "6901234567890")
         private String barCode;

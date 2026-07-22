@@ -34,6 +34,19 @@ public class ErpStockMoveDO extends BaseDO {
 
     private Long deptId;
 
+    /**
+     * Transfer direction: 10 = transfer out, 20 = transfer in.
+     */
+    private Integer transferDirection;
+
+    private Long relatedMoveId;
+
+    private String relatedMoveNo;
+
+    private Long fromDeptId;
+
+    private Long toDeptId;
+
     private LocalDateTime moveTime;
 
     private Integer sourceType;
@@ -50,6 +63,10 @@ public class ErpStockMoveDO extends BaseDO {
      * See {@link cn.iocoder.yudao.module.erp.enums.ErpAuditStatus}.
      */
     private Integer status;
+
+    private Long approveUserId;
+
+    private LocalDateTime approveTime;
 
     private String remark;
 

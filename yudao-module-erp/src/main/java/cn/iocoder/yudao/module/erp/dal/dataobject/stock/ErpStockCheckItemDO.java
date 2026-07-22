@@ -54,6 +54,10 @@ public class ErpStockCheckItemDO extends BaseDO {
      */
     private Long productUnitId;
     /**
+     * 批次号
+     */
+    private String batchNo;
+    /**
      * 产品单价
      */
     private BigDecimal productPrice;

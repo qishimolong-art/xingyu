@@ -2,9 +2,11 @@ package cn.iocoder.yudao.module.erp.dal.mysql.sale;
 
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.mybatis.core.mapper.BaseMapperX;
-import cn.iocoder.yudao.framework.mybatis.core.query.LambdaQueryWrapperX;
+import cn.iocoder.yudao.framework.mybatis.core.query.MPJLambdaWrapperX;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.priceadjust.ErpSalePriceAdjustPageReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSalePriceAdjustDO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSalePriceAdjustItemDO;
+import cn.iocoder.yudao.module.erp.dal.mysql.common.ErpKeywordQuery;
 import com.baomidou.mybatisplus.core.toolkit.support.SFunction;
 import org.apache.ibatis.annotations.Mapper;
 
@@ -17,18 +19,32 @@ import org.apache.ibatis.annotations.Mapper;
 public interface ErpSalePriceAdjustMapper extends BaseMapperX<ErpSalePriceAdjustDO> {
 
     default PageResult<ErpSalePriceAdjustDO> selectPage(ErpSalePriceAdjustPageReqVO reqVO) {
-        LambdaQueryWrapperX<ErpSalePriceAdjustDO> wrapper = new LambdaQueryWrapperX<ErpSalePriceAdjustDO>()
+        MPJLambdaWrapperX<ErpSalePriceAdjustDO> wrapper = new MPJLambdaWrapperX<ErpSalePriceAdjustDO>()
                 .likeIfPresent(ErpSalePriceAdjustDO::getNo, reqVO.getNo())
                 .eqIfPresent(ErpSalePriceAdjustDO::getStatus, reqVO.getStatus())
                 .eqIfPresent(ErpSalePriceAdjustDO::getCustomerId, reqVO.getCustomerId())
                 .eqIfPresent(ErpSalePriceAdjustDO::getDeptId, reqVO.getDeptId())
+                .eqIfPresent(ErpSalePriceAdjustDO::getAdjustUserId, reqVO.getAdjustUserId())
+                .eqIfPresent(ErpSalePriceAdjustDO::getAdjustType, reqVO.getAdjustType())
                 .betweenIfPresent(ErpSalePriceAdjustDO::getAdjustDate, reqVO.getAdjustDate())
+                .likeIfPresent(ErpSalePriceAdjustDO::getRemark, reqVO.getRemark())
                 .inIfPresent(ErpSalePriceAdjustDO::getId, reqVO.getIds());
+        if (reqVO.getProductId() != null) {
+            wrapper.leftJoin(ErpSalePriceAdjustItemDO.class,
+                            ErpSalePriceAdjustItemDO::getAdjustId, ErpSalePriceAdjustDO::getId)
+                    .eq(ErpSalePriceAdjustItemDO::getProductId, reqVO.getProductId())
+                    .groupBy(ErpSalePriceAdjustDO::getId);
+        }
+        ErpKeywordQuery.appendWithDeptName(wrapper, reqVO.getKeyword(),
+                ErpSalePriceAdjustDO::getNo, ErpSalePriceAdjustDO::getRemark,
+                ErpSalePriceAdjustDO::getOriginalSaleOutNo, ErpSalePriceAdjustDO::getNewSaleOutNo,
+                ErpSalePriceAdjustDO::getSettleMethod, ErpSalePriceAdjustDO::getDeliveryMethod,
+                ErpSalePriceAdjustDO::getLogisticsCompany);
         orderByIfPresent(wrapper, reqVO);
-        return selectPage(reqVO, wrapper);
+        return selectJoinPage(reqVO, ErpSalePriceAdjustDO.class, wrapper);
     }
 
-    static void orderByIfPresent(LambdaQueryWrapperX<ErpSalePriceAdjustDO> wrapper,
+    static void orderByIfPresent(MPJLambdaWrapperX<ErpSalePriceAdjustDO> wrapper,
                                  ErpSalePriceAdjustPageReqVO reqVO) {
         SFunction<ErpSalePriceAdjustDO, ?> orderColumn = getOrderColumn(reqVO.getOrderField());
         if (orderColumn == null) {

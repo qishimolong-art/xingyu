@@ -162,6 +162,46 @@ public class ErpSaleReturnServiceImplTest extends BaseMockitoUnitTest {
     }
 
     @Test
+    public void testCreateByStock_emptyItems_throwException() {
+        ErpSaleReturnSaveReqVO reqVO = buildBaseReq(ErpSaleReturnModeEnum.BY_STOCK.getMode());
+        reqVO.setCustomerId(20L);
+        reqVO.setItems(Collections.emptyList());
+        when(customerService.validateCustomer(eq(20L))).thenReturn(new ErpCustomerDO().setId(20L));
+
+        assertException(() -> saleReturnService.createSaleReturn(reqVO),
+                ErrorCodeConstants.SALE_RETURN_ITEMS_EMPTY);
+        verify(saleReturnMapper, never()).insert(any(ErpSaleReturnDO.class));
+    }
+
+    @Test
+    public void testCreateByStock_emptyProduct_throwException() {
+        ErpSaleReturnSaveReqVO reqVO = buildBaseReq(ErpSaleReturnModeEnum.BY_STOCK.getMode());
+        reqVO.setCustomerId(20L);
+        ErpSaleReturnSaveReqVO.Item item = buildItem(new BigDecimal("2"));
+        item.setProductId(null);
+        reqVO.setItems(Collections.singletonList(item));
+        when(customerService.validateCustomer(eq(20L))).thenReturn(new ErpCustomerDO().setId(20L));
+
+        assertException(() -> saleReturnService.createSaleReturn(reqVO),
+                ErrorCodeConstants.SALE_RETURN_ITEM_PRODUCT_REQUIRED);
+        verify(saleReturnMapper, never()).insert(any(ErpSaleReturnDO.class));
+    }
+
+    @Test
+    public void testCreateByStock_emptyProductPrice_throwException() {
+        ErpSaleReturnSaveReqVO reqVO = buildBaseReq(ErpSaleReturnModeEnum.BY_STOCK.getMode());
+        reqVO.setCustomerId(20L);
+        ErpSaleReturnSaveReqVO.Item item = buildItem(new BigDecimal("2"));
+        item.setProductPrice(null);
+        reqVO.setItems(Collections.singletonList(item));
+        when(customerService.validateCustomer(eq(20L))).thenReturn(new ErpCustomerDO().setId(20L));
+
+        assertException(() -> saleReturnService.createSaleReturn(reqVO),
+                ErrorCodeConstants.SALE_RETURN_ITEM_PRICE_REQUIRED);
+        verify(saleReturnMapper, never()).insert(any(ErpSaleReturnDO.class));
+    }
+
+    @Test
     public void testCreateBySaleOut_normalCase_createReturn() {
         ErpSaleReturnSaveReqVO reqVO = buildBaseReq(ErpSaleReturnModeEnum.BY_SALE_OUT.getMode());
         reqVO.setSourceOutId(10L);

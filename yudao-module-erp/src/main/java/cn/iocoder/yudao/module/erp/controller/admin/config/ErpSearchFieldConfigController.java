@@ -54,6 +54,14 @@ public class ErpSearchFieldConfigController {
         return success(BeanUtils.toBean(list, ErpSearchFieldConfigRespVO.class));
     }
 
+    @GetMapping("/runtime-enabled-list")
+    @Operation(summary = "Get runtime ERP search field config list")
+    @Parameter(name = "moduleKey", description = "Module key", required = true, example = "purchase_order")
+    public CommonResult<List<ErpSearchFieldConfigRespVO>> getRuntimeEnabledSearchFieldConfigList(@RequestParam("moduleKey") String moduleKey) {
+        List<ErpSearchFieldConfigDO> list = searchFieldConfigService.getEnabledSearchFieldConfigListByModule(moduleKey);
+        return success(BeanUtils.toBean(list, ErpSearchFieldConfigRespVO.class));
+    }
+
     @PutMapping("/batch-update")
     @Operation(summary = "批量保存搜索字段配置", description = "全量覆盖：先删除该模块所有配置，再整批插入")
     @PreAuthorize("@ss.hasPermission('erp:search-field-config:update')")

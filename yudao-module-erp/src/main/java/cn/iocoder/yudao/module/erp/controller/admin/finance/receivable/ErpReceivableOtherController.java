@@ -11,11 +11,14 @@ import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
 import cn.iocoder.yudao.framework.excel.core.util.ExcelUtils;
 import cn.iocoder.yudao.module.erp.controller.admin.common.ErpAuditStatusRequestValidator;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.receivable.vo.otherreceivable.ErpReceivableOtherExportRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.finance.receivable.vo.otherreceivable.ErpReceivableOtherImportExcelVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.receivable.vo.otherreceivable.ErpReceivableOtherPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.receivable.vo.otherreceivable.ErpReceivableOtherRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.receivable.vo.otherreceivable.ErpReceivableOtherSaveReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.imports.ErpFinanceImportRespVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.receivable.ErpReceivableOtherDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpCustomerDO;
+import cn.iocoder.yudao.module.erp.enums.ErpAuditStatus;
 import cn.iocoder.yudao.module.erp.service.finance.ErpFinanceFieldPermissionMasker;
 import cn.iocoder.yudao.module.erp.service.finance.receivable.ErpReceivableOtherService;
 import cn.iocoder.yudao.module.erp.service.sale.ErpCustomerService;
@@ -36,19 +39,25 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.multipart.MultipartFile;
 
 import javax.annotation.Resource;
 import javax.servlet.http.HttpServletResponse;
 import javax.validation.Valid;
 import java.io.IOException;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.stream.Stream;
 
 import static cn.iocoder.yudao.framework.apilog.core.enums.OperateTypeEnum.EXPORT;
 import static cn.iocoder.yudao.framework.common.pojo.CommonResult.success;
 import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.convertListByFlatMap;
 import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.convertSet;
+import static cn.iocoder.yudao.module.erp.controller.admin.finance.vo.imports.ErpFinanceImportUtils.allBlank;
+import static cn.iocoder.yudao.module.erp.controller.admin.finance.vo.imports.ErpFinanceImportUtils.failureReason;
+import static cn.iocoder.yudao.module.erp.controller.admin.finance.vo.imports.ErpFinanceImportUtils.parseDate;
 
 @Tag(name = "ERP 其他应收")
 @RestController
@@ -127,9 +136,7 @@ public class ErpReceivableOtherController {
         }
         Map<Long, ErpCustomerDO> customerMap = customerService.getCustomerMap(
                 convertSet(pageResult.getList(), ErpReceivableOtherDO::getCustomerId));
-        Map<Long, AdminUserRespDTO> userMap = adminUserApi.getUserMap(convertListByFlatMap(pageResult.getList(),
-                item -> Stream.of(item.getHandlerId(), NumberUtils.parseLong(item.getCreator()),
-                        NumberUtils.parseLong(item.getUpdater()))));
+        Map<Long, AdminUserRespDTO> userMap = getUserMap(pageResult.getList(), customerMap);
         Map<Long, DeptRespDTO> deptMap = deptApi.getDeptMap(convertSet(pageResult.getList(), ErpReceivableOtherDO::getDeptId));
         return success(maskPageResult(BeanUtils.toBean(pageResult, ErpReceivableOtherRespVO.class, vo -> {
             fillExtend(vo, customerMap, userMap, deptMap);
@@ -149,6 +156,38 @@ public class ErpReceivableOtherController {
                 BeanUtils.toBean(voPage.getList(), ErpReceivableOtherExportRespVO.class));
     }
 
+    @GetMapping("/get-import-template")
+    @Operation(summary = "获得其他应收导入模板")
+    @PreAuthorize("@ss.hasPermission('erp:receivable-other:import')")
+    public void getImportTemplate(HttpServletResponse response) throws IOException {
+        ExcelUtils.writeImportTemplate(response, "其他应收导入模板.xls", "其他应收",
+                ErpReceivableOtherImportExcelVO.class,
+                java.util.Collections.singletonList(new ErpReceivableOtherImportExcelVO()));
+    }
+
+    @PostMapping("/import")
+    @Operation(summary = "导入其他应收")
+    @PreAuthorize("@ss.hasPermission('erp:receivable-other:import')")
+    public CommonResult<ErpFinanceImportRespVO> importExcel(@RequestParam("file") MultipartFile file) throws Exception {
+        java.util.List<ErpReceivableOtherImportExcelVO> list = ExcelUtils.read(file, ErpReceivableOtherImportExcelVO.class);
+        ErpFinanceImportRespVO result = new ErpFinanceImportRespVO();
+        for (int i = 0; i < list.size(); i++) {
+            ErpReceivableOtherImportExcelVO row = list.get(i);
+            if (row == null || allBlank(row.getBizTime(), row.getCustomerId(), row.getReceivableAmount(), row.getRemark())) {
+                continue;
+            }
+            try {
+                ErpReceivableOtherSaveReqVO reqVO = BeanUtils.toBean(row, ErpReceivableOtherSaveReqVO.class);
+                reqVO.setBizTime(parseDate(row.getBizTime(), null));
+                receivableOtherService.createReceivableOther(reqVO);
+                result.addCreated();
+            } catch (Exception ex) {
+                result.addFailure(i + 2, row.getRemark(), failureReason(ex));
+            }
+        }
+        return success(result);
+    }
+
     private void fillExtend(ErpReceivableOtherRespVO vo) {
         if (vo.getCustomerId() != null) {
             ErpCustomerDO customer = customerService.getCustomer(vo.getCustomerId());
@@ -156,6 +195,13 @@ public class ErpReceivableOtherController {
                 vo.setCustomerName(customer.getName());
                 vo.setCustomerContact(customer.getContact());
                 vo.setCustomerMobile(customer.getMobile());
+                vo.setSaleUserId(customer.getSaleUserId());
+                if (customer.getSaleUserId() != null) {
+                    AdminUserRespDTO saleUser = adminUserApi.getUser(customer.getSaleUserId());
+                    if (saleUser != null) {
+                        vo.setSaleUserName(saleUser.getNickname());
+                    }
+                }
             }
         }
         if (vo.getHandlerId() != null) {
@@ -188,6 +234,7 @@ public class ErpReceivableOtherController {
                 vo.setDeptName(dept.getName());
             }
         }
+        fillAuditInfo(vo);
     }
 
     private PageResult<ErpReceivableOtherRespVO> buildPageResult(PageResult<ErpReceivableOtherDO> pageResult) {
@@ -196,9 +243,7 @@ public class ErpReceivableOtherController {
         }
         Map<Long, ErpCustomerDO> customerMap = customerService.getCustomerMap(
                 convertSet(pageResult.getList(), ErpReceivableOtherDO::getCustomerId));
-        Map<Long, AdminUserRespDTO> userMap = adminUserApi.getUserMap(convertListByFlatMap(pageResult.getList(),
-                item -> Stream.of(item.getHandlerId(), NumberUtils.parseLong(item.getCreator()),
-                        NumberUtils.parseLong(item.getUpdater()))));
+        Map<Long, AdminUserRespDTO> userMap = getUserMap(pageResult.getList(), customerMap);
         Map<Long, DeptRespDTO> deptMap = deptApi.getDeptMap(convertSet(pageResult.getList(), ErpReceivableOtherDO::getDeptId));
         return maskPageResult(BeanUtils.toBean(pageResult, ErpReceivableOtherRespVO.class, vo -> {
             fillExtend(vo, customerMap, userMap, deptMap);
@@ -216,10 +261,32 @@ public class ErpReceivableOtherController {
             vo.setCustomerName(customer.getName());
             vo.setCustomerContact(customer.getContact());
             vo.setCustomerMobile(customer.getMobile());
+            vo.setSaleUserId(customer.getSaleUserId());
+            MapUtils.findAndThen(userMap, customer.getSaleUserId(),
+                    user -> vo.setSaleUserName(user.getNickname()));
         });
         MapUtils.findAndThen(userMap, vo.getHandlerId(), user -> vo.setHandlerName(user.getNickname()));
         MapUtils.findAndThen(userMap, NumberUtils.parseLong(vo.getCreator()), user -> vo.setCreatorName(user.getNickname()));
         MapUtils.findAndThen(userMap, NumberUtils.parseLong(vo.getUpdater()), user -> vo.setUpdaterName(user.getNickname()));
         MapUtils.findAndThen(deptMap, vo.getDeptId(), dept -> vo.setDeptName(dept.getName()));
+        fillAuditInfo(vo);
+    }
+
+    private Map<Long, AdminUserRespDTO> getUserMap(List<ErpReceivableOtherDO> rows,
+                                                    Map<Long, ErpCustomerDO> customerMap) {
+        Set<Long> userIds = new HashSet<>(convertListByFlatMap(rows,
+                item -> Stream.of(item.getHandlerId(), NumberUtils.parseLong(item.getCreator()),
+                        NumberUtils.parseLong(item.getUpdater()))));
+        customerMap.values().stream().map(ErpCustomerDO::getSaleUserId)
+                .filter(java.util.Objects::nonNull).forEach(userIds::add);
+        return adminUserApi.getUserMap(userIds);
+    }
+
+    private void fillAuditInfo(ErpReceivableOtherRespVO vo) {
+        if (!ErpAuditStatus.APPROVE.getStatus().equals(vo.getStatus())) {
+            return;
+        }
+        vo.setAuditorName(vo.getUpdaterName());
+        vo.setAuditTime(vo.getUpdateTime());
     }
 }

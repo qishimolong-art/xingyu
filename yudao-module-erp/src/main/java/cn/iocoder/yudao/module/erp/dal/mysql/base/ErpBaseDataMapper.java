@@ -5,6 +5,7 @@ import cn.iocoder.yudao.framework.mybatis.core.query.LambdaQueryWrapperX;
 import cn.iocoder.yudao.framework.mybatis.core.mapper.BaseMapperX;
 import cn.iocoder.yudao.module.erp.controller.admin.base.vo.ErpBaseDataPageReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.base.ErpBaseDataDO;
+import cn.iocoder.yudao.module.erp.dal.mysql.common.ErpKeywordQuery;
 import com.baomidou.mybatisplus.core.toolkit.support.SFunction;
 import org.apache.ibatis.annotations.Mapper;
 
@@ -24,6 +25,9 @@ public interface ErpBaseDataMapper extends BaseMapperX<ErpBaseDataDO> {
                 .likeIfPresent(ErpBaseDataDO::getName, reqVO.getName())
                 .likeIfPresent(ErpBaseDataDO::getCode, reqVO.getCode())
                 .eqIfPresent(ErpBaseDataDO::getStatus, reqVO.getStatus());
+        ErpKeywordQuery.append(wrapper, reqVO.getKeyword(),
+                ErpBaseDataDO::getType, ErpBaseDataDO::getName, ErpBaseDataDO::getCode,
+                ErpBaseDataDO::getRemark);
         orderByIfPresent(wrapper, reqVO);
         return selectPage(reqVO, wrapper);
     }

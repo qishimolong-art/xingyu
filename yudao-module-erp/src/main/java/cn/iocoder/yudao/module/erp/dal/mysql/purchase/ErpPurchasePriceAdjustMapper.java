@@ -5,6 +5,8 @@ import cn.iocoder.yudao.framework.mybatis.core.mapper.BaseMapperX;
 import cn.iocoder.yudao.framework.mybatis.core.query.MPJLambdaWrapperX;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.priceadjust.ErpPurchasePriceAdjustPageReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchasePriceAdjustDO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchasePriceAdjustItemDO;
+import cn.iocoder.yudao.module.erp.dal.mysql.common.ErpKeywordQuery;
 import cn.iocoder.yudao.module.erp.enums.ErpAuditStatus;
 import cn.iocoder.yudao.module.erp.enums.common.ErpBizTypeEnum;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
@@ -14,7 +16,7 @@ import org.apache.ibatis.annotations.Mapper;
 import java.util.Objects;
 
 /**
- * ERP 采购调价单 Mapper
+ * ERP 采购调价�?Mapper
  *
  * @author 汽配ERP
  */
@@ -32,6 +34,12 @@ public interface ErpPurchasePriceAdjustMapper extends BaseMapperX<ErpPurchasePri
                 .eqIfPresent(ErpPurchasePriceAdjustDO::getCreator, reqVO.getCreator())
                 .eqIfPresent(ErpPurchasePriceAdjustDO::getDeptId, reqVO.getDeptId())
                 .eqIfPresent(ErpPurchasePriceAdjustDO::getAdjuster, reqVO.getAdjuster());
+        if (reqVO.getProductId() != null) {
+            query.leftJoin(ErpPurchasePriceAdjustItemDO.class,
+                            ErpPurchasePriceAdjustItemDO::getAdjustId, ErpPurchasePriceAdjustDO::getId)
+                    .eq(ErpPurchasePriceAdjustItemDO::getProductId, reqVO.getProductId())
+                    .groupBy(ErpPurchasePriceAdjustDO::getId);
+        }
         if (Objects.equals(reqVO.getPaymentStatus(), ErpPurchasePriceAdjustPageReqVO.PAYMENT_STATUS_NONE)) {
             query.apply(paymentPriceSql() + " = 0");
         } else if (Objects.equals(reqVO.getPaymentStatus(), ErpPurchasePriceAdjustPageReqVO.PAYMENT_STATUS_PART)) {
@@ -44,6 +52,8 @@ public interface ErpPurchasePriceAdjustMapper extends BaseMapperX<ErpPurchasePri
             query.eq(ErpPurchasePriceAdjustDO::getStatus, ErpAuditStatus.APPROVE.getStatus())
                     .apply("ABS(" + paymentPriceSql() + ") < ABS(t.total_adjust_price)");
         }
+        ErpKeywordQuery.appendWithDeptName(query, reqVO.getKeyword(),
+                ErpPurchasePriceAdjustDO::getNo, ErpPurchasePriceAdjustDO::getRemark);
         orderByIfPresent(query, reqVO);
         return selectJoinPage(reqVO, ErpPurchasePriceAdjustDO.class, query);
     }
@@ -160,10 +170,9 @@ public interface ErpPurchasePriceAdjustMapper extends BaseMapperX<ErpPurchasePri
     }
 
     /**
-     * 基于 id + 原状态的乐观锁更新，避免并发审批 / 反审批
-     *
-     * @param id        调价单 id
-     * @param status    期望的原状态（作为乐观锁 where 条件）
+     * 基于 id + 原状态的乐观锁更新，避免并发审批 / 反审�?     *
+     * @param id        调价�?id
+     * @param status    期望的原状态（作为乐观�?where 条件�?
      * @param updateObj 更新内容
      * @return 实际影响行数
      */

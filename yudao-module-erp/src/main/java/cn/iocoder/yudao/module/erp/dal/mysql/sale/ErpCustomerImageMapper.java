@@ -5,6 +5,7 @@ import cn.iocoder.yudao.framework.mybatis.core.mapper.BaseMapperX;
 import cn.iocoder.yudao.framework.mybatis.core.query.LambdaQueryWrapperX;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.customerimage.ErpCustomerImagePageReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpCustomerImageDO;
+import cn.iocoder.yudao.module.erp.dal.mysql.common.ErpKeywordQuery;
 import org.apache.ibatis.annotations.Mapper;
 
 import java.util.List;
@@ -13,11 +14,16 @@ import java.util.List;
 public interface ErpCustomerImageMapper extends BaseMapperX<ErpCustomerImageDO> {
 
     default PageResult<ErpCustomerImageDO> selectPage(ErpCustomerImagePageReqVO reqVO) {
-        return selectPage(reqVO, new LambdaQueryWrapperX<ErpCustomerImageDO>()
-                .eqIfPresent(ErpCustomerImageDO::getCustomerId, reqVO.getCustomerId())
-                .eqIfPresent(ErpCustomerImageDO::getImageType, reqVO.getImageType())
-                .orderByAsc(ErpCustomerImageDO::getSort)
-                .orderByDesc(ErpCustomerImageDO::getId));
+        LambdaQueryWrapperX<ErpCustomerImageDO> wrapper = new LambdaQueryWrapperX<>();
+        wrapper.eqIfPresent(ErpCustomerImageDO::getCustomerId, reqVO.getCustomerId());
+        wrapper.eqIfPresent(ErpCustomerImageDO::getImageType, reqVO.getImageType());
+        wrapper.orderByAsc(ErpCustomerImageDO::getSort);
+        wrapper.orderByDesc(ErpCustomerImageDO::getId);
+        ErpKeywordQuery.append(wrapper, reqVO.getKeyword(),
+                ErpCustomerImageDO::getImageType,
+                ErpCustomerImageDO::getImageName,
+                ErpCustomerImageDO::getRemark);
+        return selectPage(reqVO, wrapper);
     }
 
     default List<ErpCustomerImageDO> selectListByCustomerId(Long customerId) {

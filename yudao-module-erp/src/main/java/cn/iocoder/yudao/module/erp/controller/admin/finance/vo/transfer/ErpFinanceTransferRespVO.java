@@ -26,6 +26,10 @@ public class ErpFinanceTransferRespVO {
     @DictFormat(cn.iocoder.yudao.module.erp.enums.DictTypeConstants.AUDIT_STATUS)
     private Integer status;
 
+    @Schema(description = "凭证号", example = "记-202607-000001")
+    @ExcelProperty("凭证号")
+    private String voucherNo;
+
     @Schema(description = "转账时间", requiredMode = Schema.RequiredMode.REQUIRED)
     @ExcelProperty("转账时间")
     private LocalDateTime transferTime;
@@ -90,5 +94,13 @@ public class ErpFinanceTransferRespVO {
     @Schema(description = "修改时间")
     @ExcelProperty("修改时间")
     private LocalDateTime updateTime;
+
+    @Schema(description = "审核人", example = "审核员")
+    @ExcelProperty("审核人")
+    private String auditorName;
+
+    @Schema(description = "审核日期")
+    @ExcelProperty("审核日期")
+    private LocalDateTime auditTime;
 
 }

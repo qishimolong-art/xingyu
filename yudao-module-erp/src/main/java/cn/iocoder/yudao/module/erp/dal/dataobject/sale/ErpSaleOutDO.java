@@ -140,6 +140,10 @@ public class ErpSaleOutDO extends BaseDO {
      */
     private String fileUrl;
     /**
+     * 快递单图片地址
+     */
+    private String expressFileUrl;
+    /**
      * 备注
      */
     private String remark;

@@ -7,6 +7,7 @@ import cn.iocoder.yudao.framework.common.pojo.PageParam;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.common.util.collection.MapUtils;
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
+import cn.iocoder.yudao.framework.datapermission.core.util.DataPermissionUtils;
 import cn.iocoder.yudao.framework.excel.core.util.ExcelUtils;
 import cn.iocoder.yudao.module.erp.controller.admin.common.ErpAuditStatusRequestValidator;
 import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpProductRespVO;
@@ -19,6 +20,7 @@ import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.order.ErpSaleOrderSa
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpCustomerDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleOrderDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleOrderItemDO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpWarehouseDO;
 import cn.iocoder.yudao.module.erp.enums.config.ErpFieldConfigModuleEnum;
 import cn.iocoder.yudao.module.erp.framework.excel.ErpImportTemplateRequiredFieldUtils;
 import cn.iocoder.yudao.module.erp.service.config.ErpFieldConfigService;
@@ -27,6 +29,7 @@ import cn.iocoder.yudao.module.erp.service.sale.ErpCustomerService;
 import cn.iocoder.yudao.module.erp.service.sale.ErpSaleFieldPermissionMasker;
 import cn.iocoder.yudao.module.erp.service.sale.ErpSaleOrderService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpStockService;
+import cn.iocoder.yudao.module.erp.service.stock.ErpWarehouseService;
 import cn.iocoder.yudao.module.system.api.dept.DeptApi;
 import cn.iocoder.yudao.module.system.api.dept.dto.DeptRespDTO;
 import cn.iocoder.yudao.module.system.api.user.AdminUserApi;
@@ -76,6 +79,8 @@ public class ErpSaleOrderController {
     private ErpSaleOrderService saleOrderService;
     @Resource
     private ErpStockService stockService;
+    @Resource
+    private ErpWarehouseService warehouseService;
     @Resource
     private ErpProductService productService;
     @Resource
@@ -134,22 +139,40 @@ public class ErpSaleOrderController {
             return success(null);
         }
         List<ErpSaleOrderItemDO> saleOrderItemList = saleOrderService.getSaleOrderItemListByOrderId(id);
-        Map<Long, ErpProductRespVO> productMap = productService.getProductVOMap(
+        Map<Long, ErpProductRespVO> productMap = getProductVOMapIgnoreDataPermission(
                 convertSet(saleOrderItemList, ErpSaleOrderItemDO::getProductId));
+        Map<Long, ErpWarehouseDO> warehouseMap = getWarehouseMapIgnoreDataPermission(
+                convertSet(saleOrderItemList, ErpSaleOrderItemDO::getWarehouseId));
         Set<Long> userIds = convertUserIds(Collections.singletonList(saleOrder));
         Map<Long, AdminUserRespDTO> userMap = CollUtil.isEmpty(userIds) ? Collections.emptyMap() : adminUserApi.getUserMap(userIds);
         DeptRespDTO dept = saleOrder.getDeptId() == null ? null : deptApi.getDept(saleOrder.getDeptId());
+        ErpCustomerDO customer = saleOrder.getCustomerId() == null
+                ? null : customerService.getCustomer(saleOrder.getCustomerId());
+        Set<Long> deptIds = convertSet(saleOrderItemList, ErpSaleOrderItemDO::getDeptId);
+        deptIds.addAll(convertSet(warehouseMap.values(), ErpWarehouseDO::getDeptId));
+        deptIds.remove(null);
+        Map<Long, DeptRespDTO> itemDeptMap = CollUtil.isEmpty(deptIds) ? Collections.emptyMap() : deptApi.getDeptMap(deptIds);
         ErpSaleOrderRespVO respVO = BeanUtils.toBean(saleOrder, ErpSaleOrderRespVO.class, saleOrderVO -> {
                 fillAuditNames(saleOrderVO, userMap);
                 if (dept != null) {
                     saleOrderVO.setDeptName(dept.getName());
                 }
+                if (customer != null) {
+                    saleOrderVO.setCustomerName(customer.getName());
+                }
                 saleOrderVO.setItems(BeanUtils.toBean(saleOrderItemList, ErpSaleOrderRespVO.Item.class, item -> {
-                    BigDecimal stockCount = stockService.getStockCount(item.getProductId());
+                    BigDecimal stockCount = getStockCountIgnoreDataPermission(item.getProductId());
                     item.setStockCount(stockCount != null ? stockCount : BigDecimal.ZERO);
                     MapUtils.findAndThen(productMap, item.getProductId(), product -> item.setProductName(product.getName())
                             .setProductBarCode(product.getBarCode()).setProductUnitName(product.getUnitName())
                             .setProductCode(product.getCode()));
+                    MapUtils.findAndThen(warehouseMap, item.getWarehouseId(),
+                            warehouse -> {
+                                item.setWarehouseName(warehouse.getName());
+                                item.setWarehouseDeptId(warehouse.getDeptId());
+                                MapUtils.findAndThen(itemDeptMap, warehouse.getDeptId(),
+                                        deptResp -> item.setWarehouseDeptName(deptResp.getName()));
+                            });
                 }));
         });
         fieldPermissionMasker.maskFormWithItems(FIELD_PERMISSION_MODULE, respVO);
@@ -213,22 +236,35 @@ public class ErpSaleOrderController {
                 convertSet(pageResult.getList(), ErpSaleOrderDO::getId));
         Map<Long, List<ErpSaleOrderItemDO>> saleOrderItemMap = convertMultiMap(saleOrderItemList, ErpSaleOrderItemDO::getOrderId);
         // 1.2 产品信息
-        Map<Long, ErpProductRespVO> productMap = productService.getProductVOMap(
+        Map<Long, ErpProductRespVO> productMap = getProductVOMapIgnoreDataPermission(
                 convertSet(saleOrderItemList, ErpSaleOrderItemDO::getProductId));
+        Map<Long, ErpWarehouseDO> warehouseMap = getWarehouseMapIgnoreDataPermission(
+                convertSet(saleOrderItemList, ErpSaleOrderItemDO::getWarehouseId));
         // 1.3 客户信息
         Map<Long, ErpCustomerDO> customerMap = customerService.getCustomerMap(
                 convertSet(pageResult.getList(), ErpSaleOrderDO::getCustomerId));
         // 1.4 管理员信息
         Set<Long> userIds = convertUserIds(pageResult.getList());
         Map<Long, AdminUserRespDTO> userMap = CollUtil.isEmpty(userIds) ? Collections.emptyMap() : adminUserApi.getUserMap(userIds);
-        Map<Long, DeptRespDTO> deptMap = deptApi.getDeptMap(
-                convertSet(pageResult.getList(), ErpSaleOrderDO::getDeptId));
+        Set<Long> deptIds = convertSet(pageResult.getList(), ErpSaleOrderDO::getDeptId);
+        deptIds.addAll(convertSet(saleOrderItemList, ErpSaleOrderItemDO::getDeptId));
+        deptIds.addAll(convertSet(warehouseMap.values(), ErpWarehouseDO::getDeptId));
+        deptIds.remove(null);
+        Map<Long, DeptRespDTO> deptMap = CollUtil.isEmpty(deptIds) ? Collections.emptyMap() : deptApi.getDeptMap(deptIds);
         // 2. 开始拼接
         return BeanUtils.toBean(pageResult, ErpSaleOrderRespVO.class, saleOrder -> {
             saleOrder.setItems(BeanUtils.toBean(saleOrderItemMap.get(saleOrder.getId()), ErpSaleOrderRespVO.Item.class,
                     item -> MapUtils.findAndThen(productMap, item.getProductId(), product -> item.setProductName(product.getName())
                             .setProductBarCode(product.getBarCode()).setProductUnitName(product.getUnitName())
                             .setProductCode(product.getCode()))));
+            saleOrder.getItems().forEach(item ->
+                    MapUtils.findAndThen(warehouseMap, item.getWarehouseId(),
+                            warehouse -> {
+                                item.setWarehouseName(warehouse.getName());
+                                item.setWarehouseDeptId(warehouse.getDeptId());
+                                MapUtils.findAndThen(deptMap, warehouse.getDeptId(),
+                                        dept -> item.setWarehouseDeptName(dept.getName()));
+                            }));
             saleOrder.setProductNames(CollUtil.join(saleOrder.getItems(), "，", ErpSaleOrderRespVO.Item::getProductName));
             MapUtils.findAndThen(customerMap, saleOrder.getCustomerId(), supplier -> saleOrder.setCustomerName(supplier.getName()));
             fillAuditNames(saleOrder, userMap);
@@ -245,6 +281,24 @@ public class ErpSaleOrderController {
         });
         userIds.remove(null);
         return userIds;
+    }
+
+    private Map<Long, ErpProductRespVO> getProductVOMapIgnoreDataPermission(Set<Long> productIds) {
+        if (CollUtil.isEmpty(productIds)) {
+            return Collections.emptyMap();
+        }
+        return DataPermissionUtils.executeIgnore(() -> productService.getProductVOMap(productIds));
+    }
+
+    private Map<Long, ErpWarehouseDO> getWarehouseMapIgnoreDataPermission(Set<Long> warehouseIds) {
+        if (CollUtil.isEmpty(warehouseIds)) {
+            return Collections.emptyMap();
+        }
+        return DataPermissionUtils.executeIgnore(() -> warehouseService.getWarehouseMap(warehouseIds));
+    }
+
+    private BigDecimal getStockCountIgnoreDataPermission(Long productId) {
+        return DataPermissionUtils.executeIgnore(() -> stockService.getStockCount(productId));
     }
 
     private void fillAuditNames(ErpSaleOrderRespVO saleOrder, Map<Long, AdminUserRespDTO> userMap) {

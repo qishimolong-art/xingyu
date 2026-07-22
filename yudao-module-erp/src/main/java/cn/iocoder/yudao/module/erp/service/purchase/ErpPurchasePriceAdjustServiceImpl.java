@@ -6,6 +6,7 @@ import cn.iocoder.yudao.framework.common.enums.CommonStatusEnum;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.common.util.number.MoneyUtils;
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
+import cn.iocoder.yudao.framework.datapermission.core.util.DataPermissionUtils;
 import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpProductRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.imports.ErpPurchaseImportResultRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.priceadjust.ErpPurchasePriceAdjustImportExcelVO;
@@ -674,12 +675,26 @@ public class ErpPurchasePriceAdjustServiceImpl implements ErpPurchasePriceAdjust
         Integer adjustType = reqVO.getAdjustType();
         List<ErpPurchasePriceAdjustItemDO> items = new ArrayList<>(reqVO.getItems().size());
 
-        // 批量预取产品信息（减少循环内查询）
+        Map<Long, ErpPurchaseInItemDO> inItemMap = new HashMap<>();
+        if (ErpPurchasePriceAdjustTypeEnum.isByInOrder(adjustType)) {
+            Set<Long> inItemIds = reqVO.getItems().stream()
+                    .map(ErpPurchasePriceAdjustSaveReqVO.Item::getInItemId)
+                    .filter(java.util.Objects::nonNull).collect(Collectors.toSet());
+            if (!inItemIds.isEmpty()) {
+                inItemMap = cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.convertMap(
+                        purchaseInItemMapper.selectBatchIds(inItemIds), ErpPurchaseInItemDO::getId);
+            }
+        }
+
+        // 批量预取产品信息（减少循环内查询）；按入库单调价时以入库明细的 productId 为准
         Set<Long> productIds = reqVO.getItems().stream()
                 .map(ErpPurchasePriceAdjustSaveReqVO.Item::getProductId)
                 .filter(java.util.Objects::nonNull).collect(Collectors.toSet());
+        productIds.addAll(inItemMap.values().stream()
+                .map(ErpPurchaseInItemDO::getProductId)
+                .filter(java.util.Objects::nonNull).collect(Collectors.toSet()));
         Map<Long, ErpProductRespVO> productMap = productIds.isEmpty() ? new HashMap<>()
-                : productService.getProductVOMap(productIds);
+                : DataPermissionUtils.executeIgnore(() -> productService.getProductVOMap(productIds));
 
         if (ErpPurchasePriceAdjustTypeEnum.isByItem(adjustType)) {
             List<ErpPurchasePriceAdjustItemDO> result = new ArrayList<>(reqVO.getItems().size());
@@ -721,14 +736,17 @@ public class ErpPurchasePriceAdjustServiceImpl implements ErpPurchasePriceAdjust
                 }
                 result.add(item);
             }
-            warehouseService.validPurchaseWarehouseList(convertSet(result, ErpPurchasePriceAdjustItemDO::getWarehouseId));
+            Set<Long> warehouseIds = convertSet(result, ErpPurchasePriceAdjustItemDO::getWarehouseId);
+            warehouseService.validPurchaseWarehouseList(warehouseIds);
+            Map<Long, ErpWarehouseDO> warehouseMap = warehouseService.getWarehouseMap(warehouseIds);
+            result.forEach(item -> fillDeptIdFromWarehouse(item, warehouseMap));
             return result;
         }
 
         Set<String> itemKeySet = new LinkedHashSet<>();
         for (ErpPurchasePriceAdjustSaveReqVO.Item voItem : reqVO.getItems()) {
             // 校验入库项存在 + 入库单一致
-            ErpPurchaseInItemDO inItem = purchaseInItemMapper.selectById(voItem.getInItemId());
+            ErpPurchaseInItemDO inItem = inItemMap.get(voItem.getInItemId());
             if (inItem == null) {
                 throw exception(PURCHASE_PRICE_ADJUST_ITEM_NOT_EXISTS);
             }
@@ -763,6 +781,7 @@ public class ErpPurchasePriceAdjustServiceImpl implements ErpPurchasePriceAdjust
             // 冗余信息：优先从产品资料带最新值；次选 inItem（历史快照）
             item.setProductId(inItem.getProductId());
             item.setWarehouseId(inItem.getWarehouseId());
+            item.setDeptId(inItem.getDeptId());
             item.setInNo(voItem.getInNo()); // VO 未填也允许，Controller 拼装时可补
 
             ErpProductRespVO product = productMap.get(inItem.getProductId());
@@ -788,8 +807,18 @@ public class ErpPurchasePriceAdjustServiceImpl implements ErpPurchasePriceAdjust
             }
             items.add(item);
         }
-        warehouseService.validPurchaseWarehouseList(convertSet(items, ErpPurchasePriceAdjustItemDO::getWarehouseId));
+        Set<Long> warehouseIds = convertSet(items, ErpPurchasePriceAdjustItemDO::getWarehouseId);
+        warehouseService.validPurchaseWarehouseList(warehouseIds);
+        Map<Long, ErpWarehouseDO> warehouseMap = warehouseService.getWarehouseMap(warehouseIds);
+        items.forEach(item -> fillDeptIdFromWarehouse(item, warehouseMap));
         return items;
+    }
+
+    private void fillDeptIdFromWarehouse(ErpPurchasePriceAdjustItemDO item, Map<Long, ErpWarehouseDO> warehouseMap) {
+        if (item.getDeptId() == null && item.getWarehouseId() != null) {
+            ErpWarehouseDO warehouse = warehouseMap.get(item.getWarehouseId());
+            item.setDeptId(warehouse == null ? null : warehouse.getDeptId());
+        }
     }
 
     private BigDecimal sumAdjustPrice(List<ErpPurchasePriceAdjustItemDO> items) {

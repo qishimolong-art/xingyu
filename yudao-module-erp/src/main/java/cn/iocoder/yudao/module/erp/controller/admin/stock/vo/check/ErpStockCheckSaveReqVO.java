@@ -1,5 +1,7 @@
 package cn.iocoder.yudao.module.erp.controller.admin.stock.vo.check;
 
+import cn.iocoder.yudao.framework.common.validation.InEnum;
+import cn.iocoder.yudao.module.erp.enums.stock.ErpStockCheckTypeEnum;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Data;
 
@@ -10,16 +12,20 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
 
-@Schema(description = "管理后台 - ERP 其它出库单新增/修改 Request VO")
+@Schema(description = "管理后台 - ERP 库存盘点单新增/修改 Request VO")
 @Data
 public class ErpStockCheckSaveReqVO {
 
-    @Schema(description = "出库编号", requiredMode = Schema.RequiredMode.REQUIRED, example = "11756")
+    @Schema(description = "盘点编号", requiredMode = Schema.RequiredMode.REQUIRED, example = "11756")
     private Long id;
 
-    @Schema(description = "出库时间", requiredMode = Schema.RequiredMode.REQUIRED)
-    @NotNull(message = "出库时间不能为空")
+    @Schema(description = "盘点时间", requiredMode = Schema.RequiredMode.REQUIRED)
+    @NotNull(message = "盘点时间不能为空")
     private LocalDateTime checkTime;
+
+    @Schema(description = "盘点类型：1 盘数量，2 盘成本", requiredMode = Schema.RequiredMode.REQUIRED, example = "1")
+    @InEnum(ErpStockCheckTypeEnum.class)
+    private Integer checkType;
 
     @Schema(description = "所属部门", example = "100")
     private Long deptId;
@@ -30,15 +36,15 @@ public class ErpStockCheckSaveReqVO {
     @Schema(description = "附件 URL", example = "https://www.iocoder.cn/1.doc")
     private String fileUrl;
 
-    @Schema(description = "出库项列表", requiredMode = Schema.RequiredMode.REQUIRED)
-    @NotEmpty(message = "出库项列表不能为空")
+    @Schema(description = "盘点项列表", requiredMode = Schema.RequiredMode.REQUIRED)
+    @NotEmpty(message = "盘点项列表不能为空")
     @Valid
     private List<Item> items;
 
     @Data
     public static class Item {
 
-        @Schema(description = "出库项编号", example = "11756")
+        @Schema(description = "盘点项编号", example = "11756")
         private Long id;
 
         @Schema(description = "仓库编号", requiredMode = Schema.RequiredMode.REQUIRED, example = "3113")
@@ -49,6 +55,9 @@ public class ErpStockCheckSaveReqVO {
         @NotNull(message = "产品编号不能为空")
         private Long productId;
 
+        @Schema(description = "批次号", example = "BATCH-001")
+        private String batchNo;
+
         @Schema(description = "产品单价", example = "100.00")
         private BigDecimal productPrice;
 
@@ -56,13 +65,14 @@ public class ErpStockCheckSaveReqVO {
         @NotNull(message = "账面数量不能为空")
         private BigDecimal stockCount;
 
-        @Schema(description = "实际数量（实际库存）", requiredMode = Schema.RequiredMode.REQUIRED, example = "100.00")
-        @NotNull(message = "实际数量不能为空")
+        @Schema(description = "实际数量（实际库存），盘成本时由系统按账面数量写入", example = "100.00")
         private BigDecimal actualCount;
 
-        @Schema(description = "盈亏数量（实际数量 - 账面数量）", requiredMode = Schema.RequiredMode.REQUIRED, example = "100.00")
-        @NotNull(message = "盈亏数量不能为空")
+        @Schema(description = "调整数量，盘数量时必填；盘成本时由系统写入 0", example = "100.00")
         private BigDecimal count;
+
+        @Schema(description = "金额，盘成本时必填", example = "100.00")
+        private BigDecimal totalPrice;
 
         @Schema(description = "备注", example = "随便")
         private String remark;

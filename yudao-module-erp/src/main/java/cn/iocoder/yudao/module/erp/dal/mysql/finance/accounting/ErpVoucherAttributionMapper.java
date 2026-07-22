@@ -5,6 +5,7 @@ import cn.iocoder.yudao.framework.mybatis.core.mapper.BaseMapperX;
 import cn.iocoder.yudao.framework.mybatis.core.query.LambdaQueryWrapperX;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.accounting.vo.attribution.ErpVoucherAttributionPageReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.accounting.ErpVoucherAttributionDO;
+import cn.iocoder.yudao.module.erp.dal.mysql.common.ErpKeywordQuery;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import org.apache.ibatis.annotations.Mapper;
 
@@ -17,7 +18,7 @@ import org.apache.ibatis.annotations.Mapper;
 public interface ErpVoucherAttributionMapper extends BaseMapperX<ErpVoucherAttributionDO> {
 
     default PageResult<ErpVoucherAttributionDO> selectPage(ErpVoucherAttributionPageReqVO reqVO) {
-        return selectPage(reqVO, new LambdaQueryWrapperX<ErpVoucherAttributionDO>()
+        LambdaQueryWrapperX<ErpVoucherAttributionDO> wrapper = new LambdaQueryWrapperX<ErpVoucherAttributionDO>()
                 .eqIfPresent(ErpVoucherAttributionDO::getBizType, reqVO.getBizType())
                 .likeIfPresent(ErpVoucherAttributionDO::getBizNo, reqVO.getBizNo())
                 .betweenIfPresent(ErpVoucherAttributionDO::getBizDate, reqVO.getBizDate())
@@ -33,12 +34,20 @@ public interface ErpVoucherAttributionMapper extends BaseMapperX<ErpVoucherAttri
                 .eqIfPresent(ErpVoucherAttributionDO::getShipStatus, reqVO.getShipStatus())
                 .likeIfPresent(ErpVoucherAttributionDO::getTransactionParty, reqVO.getTransactionParty())
                 .likeIfPresent(ErpVoucherAttributionDO::getSummary, reqVO.getSummary())
-                .orderByDesc(ErpVoucherAttributionDO::getId));
+                .orderByDesc(ErpVoucherAttributionDO::getId);
+        ErpKeywordQuery.appendWithDeptName(wrapper, reqVO.getKeyword(),
+                ErpVoucherAttributionDO::getBizNo,
+                ErpVoucherAttributionDO::getTransactionParty,
+                ErpVoucherAttributionDO::getSettleMethod,
+                ErpVoucherAttributionDO::getShippingMethod,
+                ErpVoucherAttributionDO::getSummary,
+                ErpVoucherAttributionDO::getRemark);
+        return selectPage(reqVO, wrapper);
     }
 
     /**
-     * 乐观锁更新：仅当当前 attribution_status = oldStatus 时才更新成功。
-     * 用于幂等保护并发生成凭证（H3）。
+     * 乐观锁更新：仅当当前 attribution_status = oldStatus 时才更新成功�?
+     * 用于幂等保护并发生成凭证（H3）�?
      */
     default int updateByIdAndStatus(Long id, Integer oldStatus, ErpVoucherAttributionDO updateObj) {
         return update(updateObj, Wrappers.<ErpVoucherAttributionDO>lambdaUpdate()

@@ -1,0 +1,21 @@
+package cn.iocoder.yudao.module.erp.controller.admin.product.vo.product;
+
+import io.swagger.v3.oas.annotations.media.Schema;
+import lombok.Data;
+
+import javax.validation.constraints.NotEmpty;
+import java.util.List;
+
+@Schema(description = "管理后台 - ERP 配件批量库存分发保存 Request VO")
+@Data
+public class ErpProductStockDistributionBatchSaveReqVO {
+
+    @Schema(description = "配件编号列表", requiredMode = Schema.RequiredMode.REQUIRED)
+    @NotEmpty(message = "配件编号列表不能为空")
+    private List<Long> productIds;
+
+    @Schema(description = "分发仓库编号列表", requiredMode = Schema.RequiredMode.REQUIRED)
+    @NotEmpty(message = "分发仓库不能为空")
+    private List<Long> warehouseIds;
+
+}

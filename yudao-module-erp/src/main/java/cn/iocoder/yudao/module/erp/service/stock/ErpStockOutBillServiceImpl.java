@@ -80,13 +80,39 @@ public class ErpStockOutBillServiceImpl implements ErpStockOutBillService {
     }
 
     @Override
+    public List<ErpStockOutBillDO> getStockOutBillList(List<Long> ids) {
+        if (CollUtil.isEmpty(ids)) {
+            return Collections.emptyList();
+        }
+        return stockOutBillMapper.selectBatchIds(ids);
+    }
+
+    @Override
     public List<ErpStockOutBillItemDO> getStockOutBillItemList(Long billId) {
         return stockOutBillItemMapper.selectListByBillId(billId);
     }
 
     @Override
+    public List<ErpStockOutBillItemDO> getStockOutBillItemListByBillIds(Collection<Long> billIds) {
+        if (CollUtil.isEmpty(billIds)) {
+            return Collections.emptyList();
+        }
+        return stockOutBillItemMapper.selectListByBillIds(billIds);
+    }
+
+    @Override
+    public List<ErpStockOutBillDO> getStockOutBillListBySaleOutId(Long saleOutId) {
+        return stockOutBillMapper.selectListBySource(SOURCE_BIZ_TYPE_SALE_OUT, saleOutId);
+    }
+
+    @Override
+    public List<ErpStockOutBillDO> getStockOutBillListBySaleOutIds(Collection<Long> saleOutIds) {
+        return stockOutBillMapper.selectListBySources(SOURCE_BIZ_TYPE_SALE_OUT, saleOutIds);
+    }
+
+    @Override
     public List<ErpStockOutBillItemDO> getSaleOutSourceItemList(Long saleOutId) {
-        List<ErpStockOutBillDO> bills = stockOutBillMapper.selectListBySource(SOURCE_BIZ_TYPE_SALE_OUT, saleOutId);
+        List<ErpStockOutBillDO> bills = getStockOutBillListBySaleOutId(saleOutId);
         if (CollUtil.isEmpty(bills)) {
             return Collections.emptyList();
         }
@@ -187,7 +213,7 @@ public class ErpStockOutBillServiceImpl implements ErpStockOutBillService {
             }
             BigDecimal pickCount = reqItem.getPickCount().negate();
             stockRecordService.createStockRecord(new ErpStockRecordCreateReqBO(
-                    billItem.getProductId(), billItem.getWarehouseId(), pickCount,
+                    billItem.getProductId(), billItem.getWarehouseId(), billItem.getBatchNo(), pickCount,
                     ErpStockRecordBizTypeEnum.SALE_OUT.getType(), bill.getSourceId(), billItem.getSourceItemId(), bill.getSourceNo(),
                     billItem.getProductPrice(), pickTime));
             BigDecimal pickedCount = oldPickedCount.add(reqItem.getPickCount());

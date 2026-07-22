@@ -53,6 +53,26 @@ public class ErpPurchaseFieldPermissionMasker {
         }
     }
 
+    public void maskList(String module, Collection<?> list) {
+        if (CollUtil.isEmpty(list)) {
+            return;
+        }
+        Set<String> hiddenFieldSet = getHiddenFieldSet(module);
+        if (CollUtil.isEmpty(hiddenFieldSet)) {
+            return;
+        }
+        for (Object vo : list) {
+            maskBean(vo, hiddenFieldSet, "");
+            Object items = getFieldValue(vo, "items");
+            if (!(items instanceof Collection<?>)) {
+                continue;
+            }
+            for (Object item : (Collection<?>) items) {
+                maskBean(item, hiddenFieldSet, "item_");
+            }
+        }
+    }
+
     private void maskBean(Object bean, Set<String> hiddenFields, String prefix) {
         if (bean == null) {
             return;

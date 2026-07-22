@@ -18,7 +18,7 @@ INSERT INTO `system_menu` (
   `component_name`, `status`, `visible`, `keep_alive`, `always_show`, `creator`, `create_time`,
   `updater`, `update_time`, `deleted`
 )
-SELECT '商品分类导入', 'erp:product-category:import', 3, 6, @product_category_menu_id,
+SELECT '配件分类导入', 'erp:product-category:import', 3, 6, @product_category_menu_id,
        '', '', '', NULL, 0, b'1', b'1', b'1', '1', NOW(), '1', NOW(), b'0'
 WHERE @product_category_menu_id IS NOT NULL
   AND NOT EXISTS (
@@ -28,7 +28,7 @@ WHERE @product_category_menu_id IS NOT NULL
   );
 
 UPDATE `system_menu`
-SET `name` = '商品分类导入',
+SET `name` = '配件分类导入',
     `updater` = '1',
     `update_time` = NOW()
 WHERE `permission` = 'erp:product-category:import'

@@ -4,6 +4,7 @@ import cn.hutool.core.collection.CollUtil;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.common.util.number.MoneyUtils;
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
+import cn.iocoder.yudao.framework.datapermission.core.util.DataPermissionUtils;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.out.ErpStockOutPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.out.ErpStockOutSaveReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.accounting.ErpVoucherItemDO;
@@ -173,7 +174,8 @@ public class ErpStockOutServiceImpl implements ErpStockOutService {
         BigDecimal sumCost = BigDecimal.ZERO;
         if (enableVoucher) {
             for (ErpStockOutItemDO item : stockOutItems) {
-                ErpStockDO stock = stockService.getStock(item.getProductId(), item.getWarehouseId());
+                ErpStockDO stock = DataPermissionUtils.executeIgnore(() ->
+                        stockService.getStock(item.getProductId(), item.getWarehouseId()));
                 BigDecimal cost = (stock != null && stock.getCostPrice() != null)
                         ? stock.getCostPrice() : BigDecimal.ZERO;
                 sumCost = sumCost.add(cost.multiply(item.getCount()));
@@ -206,12 +208,12 @@ public class ErpStockOutServiceImpl implements ErpStockOutService {
     private List<ErpStockOutItemDO> validateStockOutItems(List<ErpStockOutSaveReqVO.Item> list) {
         validateDuplicateStockOutItems(list);
         // 1.1 校验产品存在
-        List<ErpProductDO> productList = productService.validProductList(
-                convertSet(list, ErpStockOutSaveReqVO.Item::getProductId));
+        List<ErpProductDO> productList = DataPermissionUtils.executeIgnore(() -> productService.validProductList(
+                convertSet(list, ErpStockOutSaveReqVO.Item::getProductId)));
         Map<Long, ErpProductDO> productMap = convertMap(productList, ErpProductDO::getId);
         // 1.2 校验仓库存在
         Set<Long> warehouseIds = convertSet(list, ErpStockOutSaveReqVO.Item::getWarehouseId);
-        warehouseService.validWarehouseList(warehouseIds);
+        DataPermissionUtils.executeIgnore(() -> warehouseService.validWarehouseList(warehouseIds));
         warehouseService.validateCurrentUserWarehousePermission(warehouseIds);
         // 2. 转化为 ErpStockOutItemDO 列表
         return convertList(list, o -> BeanUtils.toBean(o, ErpStockOutItemDO.class, item -> item

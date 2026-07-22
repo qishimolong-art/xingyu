@@ -7,6 +7,7 @@ import java.math.BigDecimal;
 @Data
 public class ErpSettlementOffsetDO {
 
+    private String customerCode;
     private String subjectName;
     private Long customerId;
     private Long supplierId;

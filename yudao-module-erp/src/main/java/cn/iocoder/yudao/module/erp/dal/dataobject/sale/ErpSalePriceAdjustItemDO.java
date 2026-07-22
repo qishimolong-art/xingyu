@@ -78,6 +78,10 @@ public class ErpSalePriceAdjustItemDO extends BaseDO {
      */
     private Long productId;
     /**
+     * 所属部门
+     */
+    private Long deptId;
+    /**
      * 关联销售出库项ID
      */
     private Long saleOutItemId;

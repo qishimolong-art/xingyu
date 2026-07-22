@@ -20,7 +20,7 @@ CREATE TEMPORARY TABLE tmp_erp_product_unit_import_permission (
 INSERT INTO tmp_erp_product_unit_import_permission
 (name, permission, sort, query_perm, create_perm, update_perm, export_perm)
 VALUES
-('产品单位导入', 'erp:product-unit:import', 6,
+('配件单位导入', 'erp:product-unit:import', 6,
  'erp:product-unit:query', 'erp:product-unit:create',
  'erp:product-unit:update', 'erp:product-unit:export');
 

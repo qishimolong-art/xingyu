@@ -6,6 +6,7 @@ import cn.iocoder.yudao.framework.mybatis.core.query.MPJLambdaWrapperX;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.returns.ErpPurchaseReturnPageReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseReturnDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseReturnItemDO;
+import cn.iocoder.yudao.module.erp.dal.mysql.common.ErpKeywordQuery;
 import cn.iocoder.yudao.module.erp.enums.ErpAuditStatus;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.core.toolkit.support.SFunction;
@@ -15,7 +16,7 @@ import java.util.List;
 import java.util.Objects;
 
 /**
- * ERP 采购退货 Mapper
+ * ERP 采购退�?Mapper
  *
  * @author 芋道源码
  */
@@ -31,9 +32,11 @@ public interface ErpPurchaseReturnMapper extends BaseMapperX<ErpPurchaseReturnDO
                 .eqIfPresent(ErpPurchaseReturnDO::getStatus, reqVO.getStatus())
                 .likeIfPresent(ErpPurchaseReturnDO::getRemark, reqVO.getRemark())
                 .eqIfPresent(ErpPurchaseReturnDO::getCreator, reqVO.getCreator())
+                .eqIfPresent(ErpPurchaseReturnDO::getPurchaser, reqVO.getPurchaser())
+                .eqIfPresent(ErpPurchaseReturnDO::getHandler, reqVO.getHandler())
                 .eqIfPresent(ErpPurchaseReturnDO::getAccountId, reqVO.getAccountId())
                 .likeIfPresent(ErpPurchaseReturnDO::getOrderNo, reqVO.getOrderNo());
-        // 退款状态。为什么需要 t. 的原因，是因为联表查询时，需要指定表名，不然会报字段不存在的错误
+        // 退款状态。为什么需�?t. 的原因，是因为联表查询时，需要指定表名，不然会报字段不存在的错误
         if (Objects.equals(reqVO.getRefundStatus(), ErpPurchaseReturnPageReqVO.REFUND_STATUS_NONE)) {
             query.eq(ErpPurchaseReturnDO::getRefundPrice, 0);
         } else if (Objects.equals(reqVO.getRefundStatus(), ErpPurchaseReturnPageReqVO.REFUND_STATUS_PART)) {
@@ -45,12 +48,25 @@ public interface ErpPurchaseReturnMapper extends BaseMapperX<ErpPurchaseReturnDO
             query.eq(ErpPurchaseReturnDO::getStatus, ErpAuditStatus.APPROVE.getStatus())
                     .apply("t.refund_price < t.total_price");
         }
-        if (reqVO.getWarehouseId() != null || reqVO.getProductId() != null) {
+        boolean hasSourceInNo = reqVO.getSourceInNo() != null && !reqVO.getSourceInNo().trim().isEmpty();
+        if (reqVO.getWarehouseId() != null || reqVO.getProductId() != null || hasSourceInNo) {
             query.leftJoin(ErpPurchaseReturnItemDO.class, ErpPurchaseReturnItemDO::getReturnId, ErpPurchaseReturnDO::getId)
                     .eq(reqVO.getWarehouseId() != null, ErpPurchaseReturnItemDO::getWarehouseId, reqVO.getWarehouseId())
                     .eq(reqVO.getProductId() != null, ErpPurchaseReturnItemDO::getProductId, reqVO.getProductId())
+                    .likeIfPresent(ErpPurchaseReturnItemDO::getSourceInNo, reqVO.getSourceInNo())
                     .groupBy(ErpPurchaseReturnDO::getId); // 避免 1 对多查询，产生相同的 1
         }
+        ErpKeywordQuery.appendWithDeptName(query, reqVO.getKeyword(),
+                ErpPurchaseReturnDO::getNo, ErpPurchaseReturnDO::getOrderNo,
+                ErpPurchaseReturnDO::getRemark, ErpPurchaseReturnDO::getReturnType,
+                ErpPurchaseReturnDO::getPurchaser, ErpPurchaseReturnDO::getInvoiceType,
+                ErpPurchaseReturnDO::getTransportMethod, ErpPurchaseReturnDO::getSettleMethod,
+                ErpPurchaseReturnDO::getLogisticsCompany, ErpPurchaseReturnDO::getDocSource,
+                ErpPurchaseReturnDO::getFactoryOrderNo, ErpPurchaseReturnDO::getMaker,
+                ErpPurchaseReturnDO::getDept, ErpPurchaseReturnDO::getShippingArea,
+                ErpPurchaseReturnDO::getWarehouseType, ErpPurchaseReturnDO::getFreightType,
+                ErpPurchaseReturnDO::getLogisticsNo, ErpPurchaseReturnDO::getPriority,
+                ErpPurchaseReturnDO::getOrderMethod);
         orderByIfPresent(query, reqVO);
         return selectJoinPage(reqVO, ErpPurchaseReturnDO.class, query);
     }

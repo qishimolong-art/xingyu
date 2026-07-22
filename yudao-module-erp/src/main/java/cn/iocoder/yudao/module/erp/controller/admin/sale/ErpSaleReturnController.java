@@ -7,6 +7,7 @@ import cn.iocoder.yudao.framework.common.pojo.PageParam;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.common.util.collection.MapUtils;
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
+import cn.iocoder.yudao.framework.datapermission.core.util.DataPermissionUtils;
 import cn.iocoder.yudao.framework.excel.core.util.ExcelUtils;
 import cn.iocoder.yudao.module.erp.controller.admin.common.ErpAuditStatusRequestValidator;
 import cn.iocoder.yudao.module.erp.controller.admin.common.vo.ErpExportFieldRespVO;
@@ -145,24 +146,46 @@ public class ErpSaleReturnController {
         if (saleReturn == null) {
             return success(null);
         }
-        List<ErpSaleReturnItemDO> saleReturnItemList = saleReturnService.getSaleReturnItemListByReturnId(id);
-        Map<Long, ErpProductRespVO> productMap = productService.getProductVOMap(
-                convertSet(saleReturnItemList, ErpSaleReturnItemDO::getProductId));
+        List<ErpSaleReturnItemDO> saleReturnItemList = emptyIfNull(saleReturnService.getSaleReturnItemListByReturnId(id));
+        Map<Long, ErpProductRespVO> productMap = saleReturnItemList.isEmpty()
+                ? Collections.emptyMap()
+                : getProductVOMapIgnoreDataPermission(convertSet(saleReturnItemList, ErpSaleReturnItemDO::getProductId));
+        Map<Long, ErpWarehouseDO> warehouseMap = saleReturnItemList.isEmpty()
+                ? Collections.emptyMap()
+                : getWarehouseMapIgnoreDataPermission(convertSet(saleReturnItemList, ErpSaleReturnItemDO::getWarehouseId));
+        Set<Long> itemDeptIds = convertSet(saleReturnItemList, ErpSaleReturnItemDO::getDeptId);
+        itemDeptIds.addAll(convertSet(warehouseMap.values(), ErpWarehouseDO::getDeptId));
+        itemDeptIds.remove(null);
+        Map<Long, DeptRespDTO> itemDeptMap = CollUtil.isEmpty(itemDeptIds) ? Collections.emptyMap() : deptApi.getDeptMap(itemDeptIds);
         Set<Long> userIds = convertUserIds(Collections.singletonList(saleReturn));
-        Map<Long, AdminUserRespDTO> userMap = userIds.isEmpty() ? Collections.emptyMap() : adminUserApi.getUserMap(userIds);
+        Map<Long, AdminUserRespDTO> userMap = userIds.isEmpty()
+                ? Collections.emptyMap()
+                : emptyIfNull(adminUserApi.getUserMap(userIds));
         DeptRespDTO dept = saleReturn.getDeptId() == null ? null : deptApi.getDept(saleReturn.getDeptId());
+        ErpCustomerDO customer = saleReturn.getCustomerId() == null
+                ? null : customerService.getCustomer(saleReturn.getCustomerId());
         ErpSaleReturnRespVO respVO = BeanUtils.toBean(saleReturn, ErpSaleReturnRespVO.class, saleReturnVO -> {
             fillUserNames(saleReturnVO, userMap);
             if (dept != null) {
                 saleReturnVO.setDeptName(dept.getName());
             }
-            saleReturnVO.setItems(BeanUtils.toBean(saleReturnItemList, ErpSaleReturnRespVO.Item.class, item -> {
-                ErpStockDO stock = stockService.getStock(item.getProductId(), item.getWarehouseId());
+            if (customer != null) {
+                saleReturnVO.setCustomerName(customer.getName());
+            }
+            List<ErpSaleReturnRespVO.Item> items = BeanUtils.toBean(saleReturnItemList, ErpSaleReturnRespVO.Item.class, item -> {
+                ErpStockDO stock = getStockIgnoreDataPermission(item.getProductId(), item.getWarehouseId());
                 item.setStockCount(stock != null ? stock.getCount() : BigDecimal.ZERO);
                 MapUtils.findAndThen(productMap, item.getProductId(), product -> item.setProductName(product.getName())
                         .setProductBarCode(product.getBarCode()).setProductUnitName(product.getUnitName())
                         .setProductCode(product.getCode()));
-            }));
+                MapUtils.findAndThen(warehouseMap, item.getWarehouseId(), warehouse -> {
+                    item.setWarehouseName(warehouse.getName());
+                    item.setWarehouseDeptId(warehouse.getDeptId());
+                    MapUtils.findAndThen(itemDeptMap, warehouse.getDeptId(),
+                            deptResp -> item.setWarehouseDeptName(deptResp.getName()));
+                });
+            });
+            saleReturnVO.setItems(emptyIfNull(items));
         });
         fieldPermissionMasker.maskFormWithItems(FIELD_PERMISSION_MODULE, respVO);
         return success(respVO);
@@ -233,35 +256,77 @@ public class ErpSaleReturnController {
         if (CollUtil.isEmpty(pageResult.getList())) {
             return PageResult.empty(pageResult.getTotal());
         }
+        List<ErpSaleReturnDO> saleReturnList = pageResult.getList();
         // 1.1 退货项
-        List<ErpSaleReturnItemDO> saleReturnItemList = saleReturnService.getSaleReturnItemListByReturnIds(
-                convertSet(pageResult.getList(), ErpSaleReturnDO::getId));
+        List<ErpSaleReturnItemDO> saleReturnItemList = emptyIfNull(saleReturnService.getSaleReturnItemListByReturnIds(
+                convertSet(saleReturnList, ErpSaleReturnDO::getId)));
         Map<Long, List<ErpSaleReturnItemDO>> saleReturnItemMap = convertMultiMap(saleReturnItemList, ErpSaleReturnItemDO::getReturnId);
         // 1.2 产品信息
-        Map<Long, ErpProductRespVO> productMap = productService.getProductVOMap(
-                convertSet(saleReturnItemList, ErpSaleReturnItemDO::getProductId));
-        Map<Long, ErpWarehouseDO> warehouseMap = warehouseService.getWarehouseMap(
-                convertSet(saleReturnItemList, ErpSaleReturnItemDO::getWarehouseId));
+        Map<Long, ErpProductRespVO> productMap = saleReturnItemList.isEmpty()
+                ? Collections.emptyMap()
+                : getProductVOMapIgnoreDataPermission(convertSet(saleReturnItemList, ErpSaleReturnItemDO::getProductId));
+        Map<Long, ErpWarehouseDO> warehouseMap = saleReturnItemList.isEmpty()
+                ? Collections.emptyMap()
+                : getWarehouseMapIgnoreDataPermission(convertSet(saleReturnItemList, ErpSaleReturnItemDO::getWarehouseId));
         // 1.3 客户信息
-        Map<Long, ErpCustomerDO> customerMap = customerService.getCustomerMap(
-                convertSet(pageResult.getList(), ErpSaleReturnDO::getCustomerId));
+        Map<Long, ErpCustomerDO> customerMap = emptyIfNull(customerService.getCustomerMap(
+                convertSet(saleReturnList, ErpSaleReturnDO::getCustomerId)));
         // 1.4 管理员信息
-        Set<Long> userIds = convertUserIds(pageResult.getList());
-        Map<Long, AdminUserRespDTO> userMap = userIds.isEmpty() ? Collections.emptyMap() : adminUserApi.getUserMap(userIds);
-        Map<Long, DeptRespDTO> deptMap = deptApi.getDeptMap(convertSet(pageResult.getList(), ErpSaleReturnDO::getDeptId));
+        Set<Long> userIds = convertUserIds(saleReturnList);
+        Map<Long, AdminUserRespDTO> userMap = userIds.isEmpty()
+                ? Collections.emptyMap()
+                : emptyIfNull(adminUserApi.getUserMap(userIds));
+        Set<Long> deptIds = convertSet(saleReturnList, ErpSaleReturnDO::getDeptId);
+        deptIds.addAll(convertSet(saleReturnItemList, ErpSaleReturnItemDO::getDeptId));
+        deptIds.addAll(convertSet(warehouseMap.values(), ErpWarehouseDO::getDeptId));
+        deptIds.remove(null);
+        Map<Long, DeptRespDTO> deptMap = CollUtil.isEmpty(deptIds) ? Collections.emptyMap() : emptyIfNull(deptApi.getDeptMap(deptIds));
         // 2. 开始拼接
         return BeanUtils.toBean(pageResult, ErpSaleReturnRespVO.class, saleReturn -> {
-            saleReturn.setItems(BeanUtils.toBean(saleReturnItemMap.get(saleReturn.getId()), ErpSaleReturnRespVO.Item.class,
-                    item -> MapUtils.findAndThen(productMap, item.getProductId(), product -> item.setProductName(product.getName())
-                            .setProductBarCode(product.getBarCode()).setProductUnitName(product.getUnitName())
-                            .setProductCode(product.getCode()))));
+            List<ErpSaleReturnItemDO> safeItems = emptyIfNull(saleReturnItemMap.get(saleReturn.getId()));
+            List<ErpSaleReturnRespVO.Item> items = BeanUtils.toBean(safeItems, ErpSaleReturnRespVO.Item.class,
+                    item -> MapUtils.findAndThen(productMap, item.getProductId(), product -> item
+                            .setProductName(product.getName()).setProductBarCode(product.getBarCode())
+                            .setProductUnitName(product.getUnitName()).setProductCode(product.getCode())));
+            saleReturn.setItems(emptyIfNull(items));
             saleReturn.setProductNames(CollUtil.join(saleReturn.getItems(), "，", ErpSaleReturnRespVO.Item::getProductName));
             MapUtils.findAndThen(customerMap, saleReturn.getCustomerId(), supplier -> saleReturn.setCustomerName(supplier.getName()));
             fillUserNames(saleReturn, userMap);
             MapUtils.findAndThen(deptMap, saleReturn.getDeptId(), dept -> saleReturn.setDeptName(dept.getName()));
             saleReturn.getItems().forEach(item ->
-                    MapUtils.findAndThen(warehouseMap, item.getWarehouseId(), warehouse -> item.setWarehouseName(warehouse.getName())));
+                    MapUtils.findAndThen(warehouseMap, item.getWarehouseId(), warehouse -> {
+                        item.setWarehouseName(warehouse.getName());
+                        item.setWarehouseDeptId(warehouse.getDeptId());
+                        MapUtils.findAndThen(deptMap, warehouse.getDeptId(),
+                                dept -> item.setWarehouseDeptName(dept.getName()));
+                    }));
         });
+    }
+
+    private <T> List<T> emptyIfNull(List<T> list) {
+        return list == null ? Collections.emptyList() : list;
+    }
+
+    private <K, V> Map<K, V> emptyIfNull(Map<K, V> map) {
+        return map == null ? Collections.emptyMap() : map;
+    }
+
+    private Map<Long, ErpProductRespVO> getProductVOMapIgnoreDataPermission(Set<Long> productIds) {
+        if (CollUtil.isEmpty(productIds)) {
+            return Collections.emptyMap();
+        }
+        return emptyIfNull(DataPermissionUtils.executeIgnore(() -> productService.getProductVOMap(productIds)));
+    }
+
+    private ErpStockDO getStockIgnoreDataPermission(Long productId, Long warehouseId) {
+        return DataPermissionUtils.executeIgnore(() -> stockService.getStock(productId, warehouseId));
+    }
+
+    private Map<Long, ErpWarehouseDO> getWarehouseMapIgnoreDataPermission(Set<Long> warehouseIds) {
+        if (CollUtil.isEmpty(warehouseIds)) {
+            return Collections.emptyMap();
+        }
+        return emptyIfNull(DataPermissionUtils.executeIgnore(() -> warehouseService.getWarehouseMap(warehouseIds)));
     }
 
     private List<ErpSaleReturnExportRespVO> buildSaleReturnExportList(List<ErpSaleReturnRespVO> list) {
@@ -305,6 +370,7 @@ public class ErpSaleReturnController {
             parseUserId(saleReturn.getCreator(), ids);
             parseUserId(saleReturn.getUpdater(), ids);
             ids.add(saleReturn.getSaleUserId());
+            ids.add(saleReturn.getHandler());
             return ids.stream();
         });
         userIds.remove(null);
@@ -322,6 +388,9 @@ public class ErpSaleReturnController {
         }
         if (saleReturn.getSaleUserId() != null) {
             MapUtils.findAndThen(userMap, saleReturn.getSaleUserId(), user -> saleReturn.setSaleUserName(user.getNickname()));
+        }
+        if (saleReturn.getHandler() != null) {
+            MapUtils.findAndThen(userMap, saleReturn.getHandler(), user -> saleReturn.setHandlerName(user.getNickname()));
         }
     }
 

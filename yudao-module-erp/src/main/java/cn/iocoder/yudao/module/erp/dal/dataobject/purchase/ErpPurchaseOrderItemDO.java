@@ -97,6 +97,10 @@ public class ErpPurchaseOrderItemDO extends BaseDO {
      */
     private Long warehouseId;
     /**
+     * 所属部门
+     */
+    private Long deptId;
+    /**
      * 货架位
      */
     private String warehousePosition;

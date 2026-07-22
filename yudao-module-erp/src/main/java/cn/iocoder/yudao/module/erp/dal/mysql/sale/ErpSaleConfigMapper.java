@@ -5,8 +5,12 @@ import cn.iocoder.yudao.framework.mybatis.core.mapper.BaseMapperX;
 import cn.iocoder.yudao.framework.mybatis.core.query.LambdaQueryWrapperX;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.config.ErpSaleConfigPageReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleConfigDO;
+import cn.iocoder.yudao.module.erp.dal.mysql.common.ErpKeywordQuery;
+import org.apache.ibatis.annotations.Delete;
 import org.apache.ibatis.annotations.Mapper;
+import org.apache.ibatis.annotations.Param;
 
+import java.util.Collection;
 import java.util.List;
 
 @Mapper
@@ -17,15 +21,19 @@ public interface ErpSaleConfigMapper extends BaseMapperX<ErpSaleConfigDO> {
     }
 
     default PageResult<ErpSaleConfigDO> selectPage(ErpSaleConfigPageReqVO reqVO) {
-        return selectPage(reqVO, new LambdaQueryWrapperX<ErpSaleConfigDO>()
+        LambdaQueryWrapperX<ErpSaleConfigDO> wrapper = new LambdaQueryWrapperX<ErpSaleConfigDO>()
                 .eqIfPresent(ErpSaleConfigDO::getConfigType, reqVO.getConfigType())
                 .likeIfPresent(ErpSaleConfigDO::getCode, reqVO.getCode())
                 .likeIfPresent(ErpSaleConfigDO::getName, reqVO.getName())
                 .eqIfPresent(ErpSaleConfigDO::getStatus, reqVO.getStatus())
-                .eqIfPresent(ErpSaleConfigDO::getDeptId, reqVO.getDeptId())
-                .orderByAsc(ErpSaleConfigDO::getConfigType)
+                .eqIfPresent(ErpSaleConfigDO::getDeptId, reqVO.getDeptId());
+        ErpKeywordQuery.appendWithDeptName(wrapper, reqVO.getKeyword(),
+                ErpSaleConfigDO::getConfigType, ErpSaleConfigDO::getCode, ErpSaleConfigDO::getName,
+                ErpSaleConfigDO::getConfigValue, ErpSaleConfigDO::getRemark);
+        wrapper.orderByAsc(ErpSaleConfigDO::getConfigType)
                 .orderByAsc(ErpSaleConfigDO::getSort)
-                .orderByDesc(ErpSaleConfigDO::getId));
+                .orderByDesc(ErpSaleConfigDO::getId);
+        return selectPage(reqVO, wrapper);
     }
 
     default List<ErpSaleConfigDO> selectListByTypeAndStatus(String configType, Integer status) {
@@ -35,5 +43,26 @@ public interface ErpSaleConfigMapper extends BaseMapperX<ErpSaleConfigDO> {
                 .orderByAsc(ErpSaleConfigDO::getSort)
                 .orderByDesc(ErpSaleConfigDO::getId));
     }
+
+    default List<ErpSaleConfigDO> selectListByType(String configType) {
+        return selectList(new LambdaQueryWrapperX<ErpSaleConfigDO>()
+                .eq(ErpSaleConfigDO::getConfigType, configType)
+                .orderByAsc(ErpSaleConfigDO::getSort)
+                .orderByDesc(ErpSaleConfigDO::getId));
+    }
+
+    @Delete("<script>"
+            + "DELETE FROM erp_sale_config "
+            + "WHERE config_type = #{configType} "
+            + "<if test='tenantId != null'>"
+            + "AND tenant_id = #{tenantId} "
+            + "</if>"
+            + "AND id IN "
+            + "<foreach collection='ids' item='id' open='(' separator=',' close=')'>"
+            + "#{id}"
+            + "</foreach>"
+            + "</script>")
+    void deletePhysicalByTypeAndIds(@Param("configType") String configType, @Param("tenantId") Long tenantId,
+                                    @Param("ids") Collection<Long> ids);
 
 }

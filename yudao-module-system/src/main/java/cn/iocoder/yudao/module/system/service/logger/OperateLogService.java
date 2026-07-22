@@ -3,8 +3,11 @@ package cn.iocoder.yudao.module.system.service.logger;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.common.biz.system.logger.dto.OperateLogCreateReqDTO;
 import cn.iocoder.yudao.module.system.api.logger.dto.OperateLogPageReqDTO;
+import cn.iocoder.yudao.module.system.controller.admin.logger.vo.operatelog.OperateLogModuleOptionRespVO;
 import cn.iocoder.yudao.module.system.controller.admin.logger.vo.operatelog.OperateLogPageReqVO;
 import cn.iocoder.yudao.module.system.dal.dataobject.logger.OperateLogDO;
+
+import java.util.List;
 
 /**
  * 操作日志 Service 接口
@@ -43,5 +46,12 @@ public interface OperateLogService {
      * @return 操作日志分页列表
      */
     PageResult<OperateLogDO> getOperateLogPage(OperateLogPageReqDTO pageReqVO);
+
+    /**
+     * 鑾峰緱鎿嶄綔鏃ュ織妯″潡閫夐」
+     *
+     * @return 妯″潡閫夐」
+     */
+    List<OperateLogModuleOptionRespVO> getOperateLogModuleOptions();
 
 }

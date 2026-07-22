@@ -2,10 +2,13 @@ package cn.iocoder.yudao.module.erp.service.sale;
 
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.customer.ErpCustomerBatchUpdateReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.customer.ErpCustomerDeptDistributionRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.customer.ErpCustomerDeptDistributionSaveReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.customer.ErpCustomerImportExcelVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.customer.ErpCustomerPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.customer.ErpCustomerSaveReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpCustomerDO;
+import cn.iocoder.yudao.module.erp.service.sale.bo.ErpCustomerCreditStatusBO;
 
 import javax.validation.Valid;
 import java.util.Collection;
@@ -36,6 +39,10 @@ public interface ErpCustomerService {
      */
     void updateCustomer(@Valid ErpCustomerSaveReqVO updateReqVO);
 
+    ErpCustomerDeptDistributionRespVO getCustomerDeptDistribution(Long id);
+
+    void updateCustomerDeptDistribution(@Valid ErpCustomerDeptDistributionSaveReqVO reqVO);
+
     /**
      * 删除客户
      *
@@ -65,6 +72,27 @@ public interface ErpCustomerService {
      * @return 客户
      */
     ErpCustomerDO validateCustomer(Long id);
+
+    ErpCustomerDO validateCustomerForSale(Long id);
+
+    /**
+     * 校验系统自动生成销售单据时使用的客户。
+     *
+     * <p>该校验不使用当前操作人的客户数据范围，而是按来源销售业务的实际所属部门校验客户分配关系。</p>
+     *
+     * @param id 客户编号
+     * @param saleDeptId 销售业务所属部门编号
+     * @return 客户
+     */
+    ErpCustomerDO validateCustomerForGeneratedSale(Long id, Long saleDeptId);
+
+    List<Long> getCustomerSaleDeptIds(Long customerId);
+
+    void validateCustomerSaleDept(Long customerId, Long deptId);
+
+    ErpCustomerCreditStatusBO getCustomerCreditStatus(Long customerId);
+
+    Map<Long, ErpCustomerCreditStatusBO> getCustomerCreditStatusMap(Collection<Long> customerIds);
 
     /**
      * 获得客户列表
@@ -108,6 +136,8 @@ public interface ErpCustomerService {
      */
     List<ErpCustomerDO> getCustomerListByNameLike(String name);
 
+    Map<Long, List<Long>> getCustomerDeptMap(Collection<Long> customerIds);
+
     /**
      * 导入客户列表
      *
@@ -135,5 +165,13 @@ public interface ErpCustomerService {
      * @param ids 客户编号列表
      */
     void restoreCustomer(List<Long> ids);
+
+    /**
+     * 合并客户。
+     *
+     * @param sourceId 被合并客户编号
+     * @param keepId 保留客户编号
+     */
+    void mergeCustomer(Long sourceId, Long keepId);
 
 }

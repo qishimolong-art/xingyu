@@ -7,6 +7,7 @@ import cn.iocoder.yudao.framework.common.pojo.PageParam;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.common.util.collection.MapUtils;
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
+import cn.iocoder.yudao.framework.datapermission.core.util.DataPermissionUtils;
 import cn.iocoder.yudao.framework.excel.core.util.ExcelUtils;
 import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpProductRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.record.ErpStockRecordPageReqVO;
@@ -23,6 +24,7 @@ import cn.iocoder.yudao.module.system.api.user.dto.AdminUserRespDTO;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -47,6 +49,7 @@ import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.
 @RestController
 @RequestMapping("/erp/stock-record")
 @Validated
+@Slf4j
 public class ErpStockRecordController {
 
     @Resource
@@ -92,10 +95,10 @@ public class ErpStockRecordController {
         if (CollUtil.isEmpty(pageResult.getList())) {
             return PageResult.empty(pageResult.getTotal());
         }
-        Map<Long, ErpProductRespVO> productMap = productService.getProductVOMap(
-                convertSet(pageResult.getList(), ErpStockRecordDO::getProductId));
-        Map<Long, ErpWarehouseDO> warehouseMap = warehouseService.getWarehouseMap(
-                convertSet(pageResult.getList(), ErpStockRecordDO::getWarehouseId));
+        Map<Long, ErpProductRespVO> productMap = DataPermissionUtils.executeIgnore(() -> productService.getProductVOMap(
+                convertSet(pageResult.getList(), ErpStockRecordDO::getProductId)));
+        Map<Long, ErpWarehouseDO> warehouseMap = DataPermissionUtils.executeIgnore(() -> warehouseService.getWarehouseMap(
+                convertSet(pageResult.getList(), ErpStockRecordDO::getWarehouseId)));
         Map<Long, AdminUserRespDTO> userMap = adminUserApi.getUserMap(
                 convertSet(pageResult.getList(), record -> Long.parseLong(record.getCreator())));
         return BeanUtils.toBean(pageResult, ErpStockRecordRespVO.class, stock -> {
@@ -134,18 +137,24 @@ public class ErpStockRecordController {
         pageReqVO.setPageSize(PageParam.PAGE_SIZE_NONE);
         List<ErpStockRecordReportRespVO> list = buildReportPageResult(
                 stockRecordService.getStockRecordPage(pageReqVO)).getList();
-        ExcelUtils.write(response, "库存进出流水明细账.xls", "数据",
-                ErpStockRecordReportRespVO.class, list);
+        try {
+            ExcelUtils.write(response, "库存进出流水明细账.xlsx", "数据",
+                    ErpStockRecordReportRespVO.class, list);
+        } catch (IOException | RuntimeException ex) {
+            log.error("[exportStockRecordReportExcel][库存流水导出失败，count={}, reqVO={}]",
+                    list.size(), pageReqVO, ex);
+            throw ex;
+        }
     }
 
     private PageResult<ErpStockRecordReportRespVO> buildReportPageResult(PageResult<ErpStockRecordDO> pageResult) {
         if (CollUtil.isEmpty(pageResult.getList())) {
             return PageResult.empty(pageResult.getTotal());
         }
-        Map<Long, ErpProductRespVO> productMap = productService.getProductVOMap(
-                convertSet(pageResult.getList(), ErpStockRecordDO::getProductId));
-        Map<Long, ErpWarehouseDO> warehouseMap = warehouseService.getWarehouseMap(
-                convertSet(pageResult.getList(), ErpStockRecordDO::getWarehouseId));
+        Map<Long, ErpProductRespVO> productMap = DataPermissionUtils.executeIgnore(() -> productService.getProductVOMap(
+                convertSet(pageResult.getList(), ErpStockRecordDO::getProductId)));
+        Map<Long, ErpWarehouseDO> warehouseMap = DataPermissionUtils.executeIgnore(() -> warehouseService.getWarehouseMap(
+                convertSet(pageResult.getList(), ErpStockRecordDO::getWarehouseId)));
 
         List<ErpStockRecordReportRespVO> list = pageResult.getList().stream().map(r -> {
             ErpStockRecordReportRespVO vo = BeanUtils.toBean(r, ErpStockRecordReportRespVO.class);

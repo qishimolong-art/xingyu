@@ -175,6 +175,12 @@ public interface ErrorCodeConstants {
     // ========== 站内信发送 1-002-028-000 ==========
     ErrorCode NOTIFY_SEND_TEMPLATE_PARAM_MISS = new ErrorCode(1_002_028_000, "模板参数({})缺失");
 
+    // ========== 配件价格查看权限 1-002-029-000 ==========
+    ErrorCode DEPT_PRICE_FIELD_CONFIG_CHANGED = new ErrorCode(1_002_029_000, "价格查看权限配置已被其他管理员修改，请刷新后重试");
+    ErrorCode DEPT_PRICE_FIELD_INVALID_FIELD = new ErrorCode(1_002_029_001, "价格字段【{}】不存在或已不属于价格信息分组");
+    ErrorCode DEPT_PRICE_FIELD_INVALID_DEPT = new ErrorCode(1_002_029_002, "授权部门不存在：{}");
+    ErrorCode DEPT_PRICE_FIELD_DUPLICATE_FIELD = new ErrorCode(1_002_029_003, "价格字段【{}】重复提交");
+
     ErrorCode USER_EXISTS_BIZ_DATA = new ErrorCode(1_002_003_012, "用户已关联业务数据，无法删除");
     ErrorCode USER_IS_DEPT_LEADER = new ErrorCode(1_002_003_013, "用户是部门负责人，无法删除");
 

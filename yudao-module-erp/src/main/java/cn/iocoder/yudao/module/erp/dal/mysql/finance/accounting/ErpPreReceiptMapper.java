@@ -5,6 +5,7 @@ import cn.iocoder.yudao.framework.mybatis.core.mapper.BaseMapperX;
 import cn.iocoder.yudao.framework.mybatis.core.query.LambdaQueryWrapperX;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.accounting.vo.prereceipt.ErpPreReceiptPageReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.accounting.ErpPreReceiptDO;
+import cn.iocoder.yudao.module.erp.dal.mysql.common.ErpKeywordQuery;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import org.apache.ibatis.annotations.Mapper;
 
@@ -15,7 +16,7 @@ import org.apache.ibatis.annotations.Mapper;
 public interface ErpPreReceiptMapper extends BaseMapperX<ErpPreReceiptDO> {
 
     default PageResult<ErpPreReceiptDO> selectPage(ErpPreReceiptPageReqVO reqVO) {
-        return selectPage(reqVO, new LambdaQueryWrapperX<ErpPreReceiptDO>()
+        LambdaQueryWrapperX<ErpPreReceiptDO> wrapper = new LambdaQueryWrapperX<ErpPreReceiptDO>()
                 .likeIfPresent(ErpPreReceiptDO::getNo, reqVO.getNo())
                 .betweenIfPresent(ErpPreReceiptDO::getBizTime, reqVO.getBizTime())
                 .eqIfPresent(ErpPreReceiptDO::getPartyType, reqVO.getPartyType())
@@ -23,7 +24,12 @@ public interface ErpPreReceiptMapper extends BaseMapperX<ErpPreReceiptDO> {
                 .likeIfPresent(ErpPreReceiptDO::getPartyName, reqVO.getPartyName())
                 .eqIfPresent(ErpPreReceiptDO::getAccountId, reqVO.getAccountId())
                 .eqIfPresent(ErpPreReceiptDO::getStatus, reqVO.getStatus())
-                .orderByDesc(ErpPreReceiptDO::getId));
+                .orderByDesc(ErpPreReceiptDO::getId);
+        ErpKeywordQuery.appendWithDeptName(wrapper, reqVO.getKeyword(),
+                ErpPreReceiptDO::getNo,
+                ErpPreReceiptDO::getPartyName,
+                ErpPreReceiptDO::getRemark);
+        return selectPage(reqVO, wrapper);
     }
 
     default int updateByIdAndStatus(Long id, Integer status, ErpPreReceiptDO updateObj) {

@@ -47,6 +47,12 @@ public class ErpFinanceReceiptRespVO {
     @Schema(description = "收款账户名称", requiredMode = Schema.RequiredMode.REQUIRED, example = "张三")
     private String accountName;
 
+    @Schema(description = "结算方式", example = "现金")
+    private String settleMethod;
+
+    @Schema(description = "开户行", example = "中国银行")
+    private String bankName;
+
     @Schema(description = "合计价格，单位：元", requiredMode = Schema.RequiredMode.REQUIRED, example = "13832")
     private BigDecimal totalPrice;
 
@@ -56,8 +62,23 @@ public class ErpFinanceReceiptRespVO {
     @Schema(description = "实际价格，单位：元", requiredMode = Schema.RequiredMode.REQUIRED, example = "10000")
     private BigDecimal receiptPrice;
 
+    @Schema(description = "已核销金额，单位：元")
+    private BigDecimal allocatedPrice;
+
+    @Schema(description = "未核销金额，单位：元")
+    private BigDecimal unallocatedPrice;
+
+    @Schema(description = "核销状态：0 未核销、1 部分核销、2 已核销、3 数据异常")
+    private Integer writeOffStatus;
+
+    @Schema(description = "有效核销明细数")
+    private Integer writeOffCount;
+
     @Schema(description = "备注", example = "你猜")
     private String remark;
+
+    @Schema(description = "关联凭证号", example = "记-202607-000001")
+    private String voucherNo;
 
     @Schema(description = "创建人", example = "芋道")
     private String creator;
@@ -74,6 +95,11 @@ public class ErpFinanceReceiptRespVO {
     private String updaterName;
     @Schema(description = "修改时间", requiredMode = Schema.RequiredMode.REQUIRED)
     private LocalDateTime updateTime;
+
+    @Schema(description = "审核人", example = "芋道")
+    private String auditorName;
+    @Schema(description = "审核日期")
+    private LocalDateTime auditTime;
 
     @Schema(description = "收款项列表", requiredMode = Schema.RequiredMode.REQUIRED)
     private List<Item> items;
@@ -102,6 +128,15 @@ public class ErpFinanceReceiptRespVO {
         @Schema(description = "本次收款，单位：分", requiredMode = Schema.RequiredMode.REQUIRED, example = "10000")
         @NotNull(message = "本次收款不能为空")
         private BigDecimal receiptPrice;
+
+        @Schema(description = "核销生命周期状态：0 待生效、1 已生效、2 已撤销")
+        private Integer writeOffStatus;
+
+        private LocalDateTime writeOffTime;
+        private Long writeOffUserId;
+        private LocalDateTime reverseTime;
+        private Long reverseUserId;
+        private String reverseReason;
 
         @Schema(description = "备注", example = "随便")
         private String remark;

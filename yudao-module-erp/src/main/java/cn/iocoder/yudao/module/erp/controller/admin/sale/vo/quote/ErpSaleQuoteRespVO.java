@@ -28,6 +28,8 @@ public class ErpSaleQuoteRespVO {
     @Schema(description = "客户名称")
     @ExcelProperty("客户名称")
     private String customerName;
+    @Schema(description = "客户编码")
+    private String customerCode;
     private Long accountId;
     private Long saleUserId;
     @Schema(description = "业务员名称")
@@ -130,8 +132,14 @@ public class ErpSaleQuoteRespVO {
         private Long productId;
         private Long productUnitId;
         private Long warehouseId;
+        private String warehouseName;
+        private Long warehouseDeptId;
+        private String warehouseDeptName;
+        private Long deptId;
+        private String deptName;
         private String drawingNo;
         private String batchNo;
+        private Boolean batchNoEnabled;
         private String barCode;
         private String productBarCode;
     }

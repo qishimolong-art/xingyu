@@ -8,6 +8,7 @@ import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleRetur
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleOutDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleReturnDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleReturnItemDO;
+import cn.iocoder.yudao.module.erp.dal.mysql.common.ErpKeywordQuery;
 import cn.iocoder.yudao.module.erp.enums.ErpAuditStatus;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.core.toolkit.support.SFunction;
@@ -17,7 +18,7 @@ import java.util.List;
 import java.util.Objects;
 
 /**
- * ERP 销售退货 Mapper
+ * ERP 销售退�?Mapper
  *
  * @author 芋道源码
  */
@@ -33,10 +34,11 @@ public interface ErpSaleReturnMapper extends BaseMapperX<ErpSaleReturnDO> {
                 .eqIfPresent(ErpSaleReturnDO::getStatus, reqVO.getStatus())
                 .likeIfPresent(ErpSaleReturnDO::getRemark, reqVO.getRemark())
                 .eqIfPresent(ErpSaleReturnDO::getCreator, reqVO.getCreator())
+                .eqIfPresent(ErpSaleReturnDO::getHandler, reqVO.getHandler())
                 .eqIfPresent(ErpSaleReturnDO::getAccountId, reqVO.getAccountId())
                 .likeIfPresent(ErpSaleReturnDO::getOrderNo, reqVO.getOrderNo())
                 .inIfPresent(ErpSaleReturnDO::getId, reqVO.getIds());
-        // 退款状态。为什么需要 t. 的原因，是因为联表查询时，需要指定表名，不然会报字段不存在的错误
+        // 退款状态。为什么需�?t. 的原因，是因为联表查询时，需要指定表名，不然会报字段不存在的错误
         if (Objects.equals(reqVO.getRefundStatus(), ErpSaleReturnPageReqVO.REFUND_STATUS_NONE)) {
             query.eq(ErpSaleReturnDO::getRefundPrice, 0);
         } else if (Objects.equals(reqVO.getRefundStatus(), ErpSaleReturnPageReqVO.REFUND_STATUS_PART)) {
@@ -54,6 +56,15 @@ public interface ErpSaleReturnMapper extends BaseMapperX<ErpSaleReturnDO> {
                     .eq(reqVO.getProductId() != null, ErpSaleReturnItemDO::getProductId, reqVO.getProductId())
                     .groupBy(ErpSaleReturnDO::getId); // 避免 1 对多查询，产生相同的 1
         }
+        ErpKeywordQuery.appendWithDeptName(query, reqVO.getKeyword(),
+                ErpSaleReturnDO::getNo, ErpSaleReturnDO::getOrderNo,
+                ErpSaleReturnDO::getSourceOutNo, ErpSaleReturnDO::getRemark,
+                ErpSaleReturnDO::getPriority, ErpSaleReturnDO::getInvoiceType,
+                ErpSaleReturnDO::getBillNo, ErpSaleReturnDO::getDeliveryMethod,
+                ErpSaleReturnDO::getFreightType, ErpSaleReturnDO::getSettleMethod,
+                ErpSaleReturnDO::getLogisticsCompany, ErpSaleReturnDO::getVehicleNo,
+                ErpSaleReturnDO::getBranchStore, ErpSaleReturnDO::getPurchaseArea,
+                ErpSaleReturnDO::getBusinessType, ErpSaleReturnDO::getOrderMethod);
         orderByIfPresent(query, reqVO);
         return selectJoinPage(reqVO, ErpSaleReturnDO.class, query);
     }
@@ -154,6 +165,9 @@ public interface ErpSaleReturnMapper extends BaseMapperX<ErpSaleReturnDO> {
             case "creator":
             case "creatorName":
                 return ErpSaleReturnDO::getCreator;
+            case "handler":
+            case "handlerName":
+                return ErpSaleReturnDO::getHandler;
             case "priority":
                 return ErpSaleReturnDO::getPriority;
             case "remark":

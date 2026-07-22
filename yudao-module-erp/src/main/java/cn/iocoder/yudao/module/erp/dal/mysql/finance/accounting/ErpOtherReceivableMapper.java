@@ -5,6 +5,7 @@ import cn.iocoder.yudao.framework.mybatis.core.mapper.BaseMapperX;
 import cn.iocoder.yudao.framework.mybatis.core.query.LambdaQueryWrapperX;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.accounting.vo.otherreceivable.ErpOtherReceivablePageReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.accounting.ErpOtherReceivableDO;
+import cn.iocoder.yudao.module.erp.dal.mysql.common.ErpKeywordQuery;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import org.apache.ibatis.annotations.Mapper;
 
@@ -12,7 +13,7 @@ import org.apache.ibatis.annotations.Mapper;
 public interface ErpOtherReceivableMapper extends BaseMapperX<ErpOtherReceivableDO> {
 
     default PageResult<ErpOtherReceivableDO> selectPage(ErpOtherReceivablePageReqVO reqVO) {
-        return selectPage(reqVO, new LambdaQueryWrapperX<ErpOtherReceivableDO>()
+        LambdaQueryWrapperX<ErpOtherReceivableDO> wrapper = new LambdaQueryWrapperX<ErpOtherReceivableDO>()
                 .likeIfPresent(ErpOtherReceivableDO::getNo, reqVO.getNo())
                 .eqIfPresent(ErpOtherReceivableDO::getStatus, reqVO.getStatus())
                 .eqIfPresent(ErpOtherReceivableDO::getPartyType, reqVO.getPartyType())
@@ -21,7 +22,12 @@ public interface ErpOtherReceivableMapper extends BaseMapperX<ErpOtherReceivable
                 .eqIfPresent(ErpOtherReceivableDO::getAccountId, reqVO.getAccountId())
                 .betweenIfPresent(ErpOtherReceivableDO::getBizTime, reqVO.getBizTime())
                 .eqIfPresent(ErpOtherReceivableDO::getCreator, reqVO.getCreator())
-                .orderByDesc(ErpOtherReceivableDO::getId));
+                .orderByDesc(ErpOtherReceivableDO::getId);
+        ErpKeywordQuery.appendWithDeptName(wrapper, reqVO.getKeyword(),
+                ErpOtherReceivableDO::getNo,
+                ErpOtherReceivableDO::getPartyName,
+                ErpOtherReceivableDO::getRemark);
+        return selectPage(reqVO, wrapper);
     }
 
     default int updateByIdAndStatus(Long id, Integer status, ErpOtherReceivableDO updateObj) {

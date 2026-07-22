@@ -5,6 +5,7 @@ import cn.iocoder.yudao.framework.mybatis.core.query.LambdaQueryWrapperX;
 import cn.iocoder.yudao.framework.mybatis.core.mapper.BaseMapperX;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.warehouse.ErpWarehousePageReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpWarehouseDO;
+import cn.iocoder.yudao.module.erp.dal.mysql.common.ErpKeywordQuery;
 import com.baomidou.mybatisplus.core.toolkit.support.SFunction;
 import org.apache.ibatis.annotations.Mapper;
 
@@ -26,7 +27,17 @@ public interface ErpWarehouseMapper extends BaseMapperX<ErpWarehouseDO> {
                 .eqIfPresent(ErpWarehouseDO::getStatus, reqVO.getStatus())
                 .eqIfPresent(ErpWarehouseDO::getWarehouseType, reqVO.getWarehouseType())
                 .likeIfPresent(ErpWarehouseDO::getWarehouseCode, reqVO.getWarehouseCode())
-                .eqIfPresent(ErpWarehouseDO::getDeptId, reqVO.getDeptId());
+                .eqIfPresent(ErpWarehouseDO::getDeptId, reqVO.getDeptId())
+                .eqIfPresent(ErpWarehouseDO::getSaleEnabled, reqVO.getSaleEnabled())
+                .eqIfPresent(ErpWarehouseDO::getPurchaseEnabled, reqVO.getPurchaseEnabled())
+                .eqIfPresent(ErpWarehouseDO::getStockBillEnabled, reqVO.getStockBillEnabled())
+                .eqIfPresent(ErpWarehouseDO::getScanControl, reqVO.getScanControl())
+                .eqIfPresent(ErpWarehouseDO::getSplitOrder, reqVO.getSplitOrder())
+                .likeIfPresent(ErpWarehouseDO::getRemark, reqVO.getRemark());
+        ErpKeywordQuery.appendWithDeptName(wrapper, reqVO.getKeyword(),
+                ErpWarehouseDO::getName, ErpWarehouseDO::getWarehouseCode, ErpWarehouseDO::getAddress,
+                ErpWarehouseDO::getPrincipal, ErpWarehouseDO::getGoodsToBranch, ErpWarehouseDO::getDept,
+                ErpWarehouseDO::getWarehouseLocation, ErpWarehouseDO::getRemark);
         orderByIfPresent(wrapper, reqVO);
         return selectPage(reqVO, wrapper);
     }
@@ -41,7 +52,17 @@ public interface ErpWarehouseMapper extends BaseMapperX<ErpWarehouseDO> {
                 .eqIfPresent(ErpWarehouseDO::getWarehouseType, reqVO.getWarehouseType())
                 .likeIfPresent(ErpWarehouseDO::getWarehouseCode, reqVO.getWarehouseCode())
                 .eqIfPresent(ErpWarehouseDO::getDeptId, reqVO.getDeptId())
+                .eqIfPresent(ErpWarehouseDO::getSaleEnabled, reqVO.getSaleEnabled())
+                .eqIfPresent(ErpWarehouseDO::getPurchaseEnabled, reqVO.getPurchaseEnabled())
+                .eqIfPresent(ErpWarehouseDO::getStockBillEnabled, reqVO.getStockBillEnabled())
+                .eqIfPresent(ErpWarehouseDO::getScanControl, reqVO.getScanControl())
+                .eqIfPresent(ErpWarehouseDO::getSplitOrder, reqVO.getSplitOrder())
+                .likeIfPresent(ErpWarehouseDO::getRemark, reqVO.getRemark())
                 .in(ErpWarehouseDO::getId, ids);
+        ErpKeywordQuery.appendWithDeptName(wrapper, reqVO.getKeyword(),
+                ErpWarehouseDO::getName, ErpWarehouseDO::getWarehouseCode, ErpWarehouseDO::getAddress,
+                ErpWarehouseDO::getPrincipal, ErpWarehouseDO::getGoodsToBranch, ErpWarehouseDO::getDept,
+                ErpWarehouseDO::getWarehouseLocation, ErpWarehouseDO::getRemark);
         orderByIfPresent(wrapper, reqVO);
         return selectPage(reqVO, wrapper);
     }
@@ -109,6 +130,19 @@ public interface ErpWarehouseMapper extends BaseMapperX<ErpWarehouseDO> {
         return selectOne(ErpWarehouseDO::getName, name);
     }
 
+    default List<ErpWarehouseDO> selectListByNameAndStatus(String name, Integer status) {
+        return selectList(new LambdaQueryWrapperX<ErpWarehouseDO>()
+                .eq(ErpWarehouseDO::getName, name)
+                .eq(ErpWarehouseDO::getStatus, status));
+    }
+
+    default List<ErpWarehouseDO> selectListByNameAndDeptIdAndStatus(String name, Long deptId, Integer status) {
+        return selectList(new LambdaQueryWrapperX<ErpWarehouseDO>()
+                .eq(ErpWarehouseDO::getName, name)
+                .eq(ErpWarehouseDO::getDeptId, deptId)
+                .eq(ErpWarehouseDO::getStatus, status));
+    }
+
     default List<ErpWarehouseDO> selectListByStatus(Integer status) {
         return selectList(ErpWarehouseDO::getStatus, status);
     }
@@ -125,6 +159,26 @@ public interface ErpWarehouseMapper extends BaseMapperX<ErpWarehouseDO> {
         return selectList(new LambdaQueryWrapperX<ErpWarehouseDO>()
                 .eqIfPresent(ErpWarehouseDO::getStatus, status)
                 .in(ErpWarehouseDO::getId, ids));
+    }
+
+    default List<ErpWarehouseDO> selectListByStatusAndDeptIdOrIds(Integer status, Long deptId, Collection<Long> ids) {
+        if (deptId == null && (ids == null || ids.isEmpty())) {
+            return Collections.emptyList();
+        }
+        boolean hasIds = ids != null && !ids.isEmpty();
+        return selectList(new LambdaQueryWrapperX<ErpWarehouseDO>()
+                .eqIfPresent(ErpWarehouseDO::getStatus, status)
+                .and(wrapper -> {
+                    if (deptId != null) {
+                        wrapper.eq(ErpWarehouseDO::getDeptId, deptId);
+                    }
+                    if (hasIds) {
+                        if (deptId != null) {
+                            wrapper.or();
+                        }
+                        wrapper.in(ErpWarehouseDO::getId, ids);
+                    }
+                }));
     }
 
     default List<ErpWarehouseDO> selectListByDeptId(Long deptId) {

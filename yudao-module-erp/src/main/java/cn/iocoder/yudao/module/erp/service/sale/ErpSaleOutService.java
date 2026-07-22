@@ -4,6 +4,7 @@ import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.out.ErpSaleOutPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.out.ErpSaleReturnableItemRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.out.ErpSaleOutSaveReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.out.ErpSaleOutUpdateExpressFileReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleOutDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleOutItemDO;
 
@@ -47,6 +48,23 @@ public interface ErpSaleOutService {
      * @param updateReqVO 更新信息
      */
     void updateSaleOut(@Valid ErpSaleOutSaveReqVO updateReqVO);
+
+    /**
+     * 更新销售单快递单。
+     *
+     * @param updateReqVO 快递单信息
+     */
+    void updateSaleOutExpressFile(@Valid ErpSaleOutUpdateExpressFileReqVO updateReqVO);
+
+    /**
+     * 上传并绑定销售单快递单。
+     *
+     * @param id 销售单编号
+     * @param content 文件内容
+     * @param fileName 原始文件名
+     * @return 文件访问地址
+     */
+    String uploadSaleOutExpressFile(Long id, byte[] content, String fileName);
 
     /**
      * 更新销售出库的状态

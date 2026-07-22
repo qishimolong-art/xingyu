@@ -75,7 +75,7 @@ FROM `system_role` r
 JOIN `system_menu` m
   ON m.`permission` IN ('erp:warehouse-permission:query', 'erp:warehouse-permission:update')
  AND m.`deleted` = b'0'
-WHERE r.`code` = 'crm_admin'
+WHERE r.`code` = 'super_admin'
   AND r.`deleted` = b'0'
   AND r.`status` = 0
   AND NOT EXISTS (
@@ -95,7 +95,7 @@ SELECT COUNT(*) AS active_super_admin_grants
 FROM `system_role_menu` rm
 JOIN `system_role` r ON r.`id` = rm.`role_id`
 JOIN `system_menu` m ON m.`id` = rm.`menu_id`
-WHERE r.`code` = 'crm_admin'
+WHERE r.`code` = 'super_admin'
   AND r.`deleted` = b'0'
   AND rm.`deleted` = b'0'
   AND m.`permission` IN ('erp:warehouse-permission:query', 'erp:warehouse-permission:update');

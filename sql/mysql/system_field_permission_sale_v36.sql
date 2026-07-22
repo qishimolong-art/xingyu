@@ -157,6 +157,7 @@ VALUES
 ('erp_sale_cart', 'depositPrice', '订金', 'main_form', 100, '1', NOW(), '1', NOW(), b'0', 1),
 ('erp_sale_cart', 'item_productId', '产品名称', 'detail_item', 400, '1', NOW(), '1', NOW(), b'0', 1),
 ('erp_sale_cart', 'item_warehouseId', '仓库', 'detail_item', 410, '1', NOW(), '1', NOW(), b'0', 1),
+('erp_sale_cart', 'item_warehouseDeptName', '仓库所属部门', 'detail_item', 415, '1', NOW(), '1', NOW(), b'0', 1),
 ('erp_sale_cart', 'item_count', '数量', 'detail_item', 420, '1', NOW(), '1', NOW(), b'0', 1),
 ('erp_sale_cart', 'item_productPrice', '产品单价', 'detail_item', 430, '1', NOW(), '1', NOW(), b'0', 1),
 ('erp_sale_cart', 'item_giftFlag', '是否为赠品', 'detail_item', 435, '1', NOW(), '1', NOW(), b'0', 1),

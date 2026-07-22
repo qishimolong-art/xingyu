@@ -11,7 +11,9 @@ import cn.iocoder.yudao.framework.common.util.number.NumberUtils;
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
 import cn.iocoder.yudao.framework.excel.core.util.ExcelUtils;
 import cn.iocoder.yudao.module.erp.controller.admin.common.ErpAuditStatusRequestValidator;
+import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.imports.ErpFinanceImportRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.payable.vo.expense.ErpPayableExpenseExportRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.finance.payable.vo.expense.ErpPayableExpenseImportExcelVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.payable.vo.expense.ErpPayableExpensePageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.payable.vo.expense.ErpPayableExpenseRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.payable.vo.expense.ErpPayableExpenseSaveReqVO;
@@ -38,6 +40,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.multipart.MultipartFile;
 
 import javax.annotation.Resource;
 import javax.servlet.http.HttpServletResponse;
@@ -55,6 +58,9 @@ import static cn.iocoder.yudao.framework.common.pojo.CommonResult.success;
 import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.convertListByFlatMap;
 import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.convertMultiMap;
 import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.convertSet;
+import static cn.iocoder.yudao.module.erp.controller.admin.finance.vo.imports.ErpFinanceImportUtils.allBlank;
+import static cn.iocoder.yudao.module.erp.controller.admin.finance.vo.imports.ErpFinanceImportUtils.failureReason;
+import static cn.iocoder.yudao.module.erp.controller.admin.finance.vo.imports.ErpFinanceImportUtils.parseDate;
 
 @Tag(name = "ERP 费用支付")
 @RestController
@@ -154,6 +160,51 @@ public class ErpPayableExpenseController {
             }
         }
         ExcelUtils.write(response, "费用支付.xls", "数据", ErpPayableExpenseExportRespVO.class, rows);
+    }
+
+    @GetMapping("/get-import-template")
+    @Operation(summary = "获得费用支付导入模板")
+    @PreAuthorize("@ss.hasPermission('erp:payable-expense:import')")
+    public void getImportTemplate(HttpServletResponse response) throws IOException {
+        ExcelUtils.writeImportTemplate(response, "费用支付导入模板.xls", "费用支付",
+                ErpPayableExpenseImportExcelVO.class,
+                Collections.singletonList(new ErpPayableExpenseImportExcelVO()));
+    }
+
+    @PostMapping("/import")
+    @Operation(summary = "导入费用支付")
+    @PreAuthorize("@ss.hasPermission('erp:payable-expense:import')")
+    public CommonResult<ErpFinanceImportRespVO> importExcel(@RequestParam("file") MultipartFile file) throws Exception {
+        List<ErpPayableExpenseImportExcelVO> list = ExcelUtils.read(file, ErpPayableExpenseImportExcelVO.class);
+        ErpFinanceImportRespVO result = new ErpFinanceImportRespVO();
+        for (int i = 0; i < list.size(); i++) {
+            ErpPayableExpenseImportExcelVO row = list.get(i);
+            if (row == null || allBlank(row.getBizTime(), row.getSettleMethod(), row.getAccountId(),
+                    row.getExpenseType(), row.getHandlerId(), row.getItemName(), row.getAmount())) {
+                continue;
+            }
+            try {
+                ErpPayableExpenseSaveReqVO reqVO = BeanUtils.toBean(row, ErpPayableExpenseSaveReqVO.class);
+                reqVO.setBizTime(parseDate(row.getBizTime(), null));
+                ErpPayableExpenseSaveReqVO.Item item = new ErpPayableExpenseSaveReqVO.Item();
+                item.setItemName(row.getItemName());
+                item.setAmount(row.getAmount());
+                item.setInvoiceNo(row.getInvoiceNo());
+                item.setParty(row.getItemParty());
+                item.setDeptId(row.getItemDeptId());
+                item.setBizDate(parseDate(row.getItemBizDate(), null));
+                item.setHandlerId(row.getItemHandlerId());
+                item.setQty(row.getQty());
+                item.setExpenseCategory(row.getExpenseCategory());
+                item.setRemark(row.getItemRemark());
+                reqVO.setItems(Collections.singletonList(item));
+                payableExpenseService.createPayableExpense(reqVO);
+                result.addCreated();
+            } catch (Exception ex) {
+                result.addFailure(i + 2, row.getItemName(), failureReason(ex));
+            }
+        }
+        return success(result);
     }
 
     private PageResult<ErpPayableExpenseRespVO> buildPageResult(PageResult<ErpPayableExpenseDO> pageResult) {

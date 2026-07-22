@@ -11,6 +11,7 @@ import cn.iocoder.yudao.module.erp.controller.admin.product.vo.category.ErpProdu
 import cn.iocoder.yudao.module.erp.controller.admin.product.vo.category.ErpProductCategorySaveReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.product.ErpProductCategoryDO;
 import cn.iocoder.yudao.module.erp.dal.mysql.product.ErpProductCategoryMapper;
+import cn.iocoder.yudao.module.erp.service.common.ErpOperateLogService;
 import cn.iocoder.yudao.module.system.api.permission.PermissionApi;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
@@ -27,7 +28,9 @@ import java.util.Set;
 import java.util.regex.Pattern;
 
 import static cn.iocoder.yudao.framework.common.exception.util.ServiceExceptionUtil.exception;
+import static cn.iocoder.yudao.framework.security.core.util.SecurityFrameworkUtils.getLoginUserDeptId;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.*;
+import static cn.iocoder.yudao.module.erp.enums.LogRecordConstants.*;
 
 /**
  * ERP 产品分类 Service 实现类
@@ -45,6 +48,8 @@ public class ErpProductCategoryServiceImpl implements ErpProductCategoryService 
     private ErpProductCategoryMapper erpProductCategoryMapper;
     @Resource
     private PermissionApi permissionApi;
+    @Resource
+    private ErpOperateLogService operateLogService;
 
     @Resource
     @Lazy // 延迟加载，避免循环依赖
@@ -54,7 +59,6 @@ public class ErpProductCategoryServiceImpl implements ErpProductCategoryService 
     public Long createProductCategory(ErpProductCategorySaveReqVO createReqVO) {
         // 校验父分类编号的有效性
         prepareProductCategorySaveReqVO(null, createReqVO);
-        prepareProductCategorySaveReqVO(null, createReqVO);
         validateParentProductCategory(null, createReqVO.getParentId());
         // 校验分类名称的唯一性
         validateProductCategoryNameUnique(null, createReqVO.getParentId(), createReqVO.getName());
@@ -62,7 +66,11 @@ public class ErpProductCategoryServiceImpl implements ErpProductCategoryService 
 
         // 插入
         ErpProductCategoryDO category = BeanUtils.toBean(createReqVO, ErpProductCategoryDO.class);
+        if (category.getDeptId() == null) {
+            category.setDeptId(getLoginUserDeptId());
+        }
         erpProductCategoryMapper.insert(category);
+        operateLogService.recordCreate(ERP_PRODUCT_CATEGORY_TYPE, category.getId(), category, category.getCode());
         // 返回
         return category.getId();
     }
@@ -75,7 +83,6 @@ public class ErpProductCategoryServiceImpl implements ErpProductCategoryService 
         ValidationUtils.validate(updateReqVO);
         // 校验父分类编号的有效性
         validateProductCategoryCodeCanUpdate(existing, updateReqVO.getCode());
-        validateProductCategoryCodeCanUpdate(existing, updateReqVO.getCode());
         prepareProductCategorySaveReqVO(updateReqVO.getId(), updateReqVO);
         validateParentProductCategory(updateReqVO.getId(), updateReqVO.getParentId());
         // 校验分类名称的唯一性
@@ -84,24 +91,29 @@ public class ErpProductCategoryServiceImpl implements ErpProductCategoryService 
 
         // 更新
         ErpProductCategoryDO updateObj = BeanUtils.toBean(updateReqVO, ErpProductCategoryDO.class);
+        updateObj.setDeptId(existing.getDeptId());
         erpProductCategoryMapper.updateById(updateObj);
+        operateLogService.recordUpdate(ERP_PRODUCT_CATEGORY_TYPE, updateReqVO.getId(), existing,
+                erpProductCategoryMapper.selectById(updateReqVO.getId()), updateObj.getCode());
     }
 
     @Override
     public void batchUpdateProductCategory(ErpProductCategoryBatchUpdateReqVO updateReqVO) {
         for (Long id : updateReqVO.getIds()) {
-            validateProductCategoryExists(id);
+            ErpProductCategoryDO existing = validateProductCategoryExists(id);
             ErpProductCategoryDO updateObj = new ErpProductCategoryDO();
             updateObj.setId(id);
             updateObj.setStatus(updateReqVO.getStatus());
             erpProductCategoryMapper.updateById(updateObj);
+            operateLogService.recordUpdate(ERP_PRODUCT_CATEGORY_TYPE, id, existing,
+                    erpProductCategoryMapper.selectById(id), existing.getCode());
         }
     }
 
     @Override
     public void deleteProductCategory(Long id) {
         // 1.1 校验存在
-        validateProductCategoryExists(id);
+        ErpProductCategoryDO category = validateProductCategoryExists(id);
         // 1.2 校验是否有子产品分类
         if (erpProductCategoryMapper.selectCountByParentId(id) > 0) {
             throw exception(PRODUCT_CATEGORY_EXITS_CHILDREN);
@@ -112,6 +124,7 @@ public class ErpProductCategoryServiceImpl implements ErpProductCategoryService 
         }
         // 2. 删除
         erpProductCategoryMapper.deleteById(id);
+        operateLogService.recordDelete(ERP_PRODUCT_CATEGORY_TYPE, id, category, category.getCode());
     }
 
     @Override

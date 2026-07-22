@@ -17,6 +17,8 @@ public class ErpReceivableOtherRespVO {
     private String customerName;
     private String customerContact;
     private String customerMobile;
+    private Long saleUserId;
+    private String saleUserName;
     private String voucherNo;
     private BigDecimal settledAmount;
     private Long deptId;
@@ -36,6 +38,8 @@ public class ErpReceivableOtherRespVO {
     private String creator;
     private String creatorName;
     private LocalDateTime createTime;
+    private String auditorName;
+    private LocalDateTime auditTime;
     private String updater;
     private String updaterName;
     private LocalDateTime updateTime;

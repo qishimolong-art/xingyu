@@ -32,4 +32,10 @@ public class OperateLogPageReqVO extends PageParam {
     @DateTimeFormat(pattern = FORMAT_YEAR_MONTH_DAY_HOUR_MINUTE_SECOND)
     private LocalDateTime[] createTime;
 
+    @Schema(description = "排序字段", example = "createTime")
+    private String orderField;
+
+    @Schema(description = "排序方向", example = "desc")
+    private String orderDirection;
+
 }

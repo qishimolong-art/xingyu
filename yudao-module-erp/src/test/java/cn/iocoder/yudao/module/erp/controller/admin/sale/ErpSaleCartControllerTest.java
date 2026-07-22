@@ -4,24 +4,31 @@ import cn.iocoder.yudao.framework.common.pojo.CommonResult;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.test.core.ut.BaseMockitoUnitTest;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartConvertQuoteReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartFirstApproveConfigRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartFirstApproveConfigSaveReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartSaveReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartSubmitRespVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleCartDO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleCartItemDO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpWarehouseDO;
 import cn.iocoder.yudao.module.erp.service.config.ErpFieldConfigService;
 import cn.iocoder.yudao.module.erp.service.product.ErpProductService;
 import cn.iocoder.yudao.module.erp.service.sale.ErpCustomerService;
 import cn.iocoder.yudao.module.erp.service.sale.ErpSaleCartService;
 import cn.iocoder.yudao.module.erp.service.sale.ErpSaleFieldPermissionMasker;
 import cn.iocoder.yudao.module.erp.service.stock.ErpWarehouseService;
+import cn.iocoder.yudao.module.system.api.dept.DeptApi;
 import cn.iocoder.yudao.module.system.api.user.AdminUserApi;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.springframework.security.access.prepost.PreAuthorize;
 
 import java.lang.reflect.Method;
+import java.math.BigDecimal;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
@@ -33,6 +40,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -57,7 +65,14 @@ public class ErpSaleCartControllerTest extends BaseMockitoUnitTest {
     @Mock
     private AdminUserApi adminUserApi;
     @Mock
+    private DeptApi deptApi;
+    @Mock
     private ErpFieldConfigService fieldConfigService;
+
+    @BeforeEach
+    public void setUp() {
+        lenient().when(deptApi.getDeptMap(any())).thenReturn(Collections.emptyMap());
+    }
 
     // ==================== createSaleCart ====================
 
@@ -144,6 +159,51 @@ public class ErpSaleCartControllerTest extends BaseMockitoUnitTest {
         PreAuthorize anno = method.getAnnotation(PreAuthorize.class);
         assertNotNull(anno);
         assertTrue(anno.value().contains("erp:sale-cart:first-approve"));
+    }
+
+    @Test
+    public void testGetFirstApproveConfig_paramPassThrough() {
+        ErpSaleCartFirstApproveConfigRespVO respVO = new ErpSaleCartFirstApproveConfigRespVO();
+        respVO.setEnabled(true);
+        when(saleCartService.getFirstApproveConfig()).thenReturn(respVO);
+
+        CommonResult<ErpSaleCartFirstApproveConfigRespVO> result = controller.getFirstApproveConfig();
+
+        assertEquals(0, result.getCode());
+        assertEquals(respVO, result.getData());
+        verify(saleCartService).getFirstApproveConfig();
+    }
+
+    @Test
+    public void testGetFirstApproveConfig_hasPreAuthorize() throws NoSuchMethodException {
+        Method method = ErpSaleCartController.class.getMethod("getFirstApproveConfig");
+        PreAuthorize anno = method.getAnnotation(PreAuthorize.class);
+        assertNotNull(anno);
+        assertTrue(anno.value().contains("erp:sale-cart:query"));
+        assertTrue(anno.value().contains("erp:sale-cart:first-approve-config"));
+    }
+
+    @Test
+    public void testUpdateFirstApproveConfig_paramPassThrough() {
+        ErpSaleCartFirstApproveConfigSaveReqVO reqVO = new ErpSaleCartFirstApproveConfigSaveReqVO();
+        reqVO.setEnabled(true);
+        reqVO.setDeptAuthEnabled(false);
+        reqVO.setIncludeChildDept(true);
+
+        CommonResult<Boolean> result = controller.updateFirstApproveConfig(reqVO);
+
+        assertEquals(0, result.getCode());
+        assertEquals(Boolean.TRUE, result.getData());
+        verify(saleCartService).updateFirstApproveConfig(eq(reqVO));
+    }
+
+    @Test
+    public void testUpdateFirstApproveConfig_hasPreAuthorize() throws NoSuchMethodException {
+        Method method = ErpSaleCartController.class.getMethod("updateFirstApproveConfig",
+                ErpSaleCartFirstApproveConfigSaveReqVO.class);
+        PreAuthorize anno = method.getAnnotation(PreAuthorize.class);
+        assertNotNull(anno);
+        assertTrue(anno.value().contains("erp:sale-cart:first-approve-config"));
     }
 
     // ==================== finalApproveSaleCart ====================
@@ -248,15 +308,39 @@ public class ErpSaleCartControllerTest extends BaseMockitoUnitTest {
         ErpSaleCartDO cart = new ErpSaleCartDO();
         cart.setId(80L);
         cart.setCustomerId(81L);
+        cart.setDeptId(82L);
         when(saleCartService.getSaleCart(eq(80L))).thenReturn(cart);
         when(saleCartService.getSaleCartItemListByCartId(eq(80L))).thenReturn(Collections.emptyList());
         when(customerService.getCustomerMap(any())).thenReturn(Collections.emptyMap());
+        when(saleCartService.isFirstApproveRequiredForDept(eq(82L))).thenReturn(false);
 
         CommonResult<ErpSaleCartRespVO> result = controller.getSaleCart(80L);
 
         assertEquals(0, result.getCode());
         assertNotNull(result.getData());
         assertEquals(80L, result.getData().getId());
+        assertEquals(Boolean.FALSE, result.getData().getFirstApproveRequired());
+    }
+
+    @Test
+    public void testGetSaleCart_itemWarehouseNameFilledByWarehouseId() {
+        ErpSaleCartDO cart = new ErpSaleCartDO();
+        cart.setId(80L);
+        ErpSaleCartItemDO item = new ErpSaleCartItemDO();
+        item.setId(1L);
+        item.setCartId(80L);
+        item.setProductId(10L);
+        item.setWarehouseId(20L);
+        item.setCount(BigDecimal.ONE);
+        when(saleCartService.getSaleCart(eq(80L))).thenReturn(cart);
+        when(saleCartService.getSaleCartItemListByCartId(eq(80L))).thenReturn(Collections.singletonList(item));
+        when(warehouseService.getWarehouseMap(any())).thenReturn(Collections.singletonMap(20L,
+                ErpWarehouseDO.builder().id(20L).name("分发仓").warehouseCode("WH001").build()));
+
+        CommonResult<ErpSaleCartRespVO> result = controller.getSaleCart(80L);
+
+        assertEquals(0, result.getCode());
+        assertEquals("分发仓", result.getData().getItems().get(0).getWarehouseName());
     }
 
     @Test

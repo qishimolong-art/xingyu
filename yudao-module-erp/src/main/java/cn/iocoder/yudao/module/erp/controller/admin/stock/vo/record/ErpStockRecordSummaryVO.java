@@ -22,6 +22,10 @@ public class ErpStockRecordSummaryVO {
     private BigDecimal totalOutCount = BigDecimal.ZERO;
     @Schema(description = "总出库成本金额")
     private BigDecimal totalOutAmount = BigDecimal.ZERO;
+    @Schema(description = "结存数量")
+    private BigDecimal balanceCount = BigDecimal.ZERO;
+    @Schema(description = "结存金额")
+    private BigDecimal balanceAmount = BigDecimal.ZERO;
     @Schema(description = "记录条数")
     private Long recordCount = 0L;
 

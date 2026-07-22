@@ -35,8 +35,14 @@ public class ErpReceivableOtherPageReqVO extends PageParam {
     @Schema(description = "经手人编号")
     private Long handlerId;
 
+    @Schema(description = "创建者")
+    private String creator;
+
     @Schema(description = "状态")
     private Integer status;
+
+    @Schema(description = "备注")
+    private String remark;
 
     public LocalDate getStartTime() {
         return bizTime == null || bizTime.length == 0 ? null : bizTime[0];
@@ -45,4 +51,10 @@ public class ErpReceivableOtherPageReqVO extends PageParam {
     public LocalDate getEndTime() {
         return bizTime == null || bizTime.length < 2 ? null : bizTime[1];
     }
+    @Schema(description = "排序字段")
+    private String orderField;
+
+    @Schema(description = "排序方向（asc/desc）")
+    private String orderDirection;
+
 }

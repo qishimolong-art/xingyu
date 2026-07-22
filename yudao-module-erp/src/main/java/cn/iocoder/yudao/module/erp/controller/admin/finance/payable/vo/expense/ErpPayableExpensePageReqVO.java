@@ -36,6 +36,12 @@ public class ErpPayableExpensePageReqVO extends PageParam {
 
     private String party;
 
+    private String itemName;
+
+    private String invoiceNo;
+
+    private String remark;
+
     private Integer status;
 
     public LocalDate getStartTime() {
@@ -45,5 +51,11 @@ public class ErpPayableExpensePageReqVO extends PageParam {
     public LocalDate getEndTime() {
         return bizTime == null || bizTime.length < 2 ? null : bizTime[1];
     }
+
+    @Schema(description = "排序字段")
+    private String orderField;
+
+    @Schema(description = "排序方向（asc/desc）")
+    private String orderDirection;
 
 }

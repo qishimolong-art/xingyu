@@ -118,12 +118,7 @@ public class ErpPriceSystemServiceImpl implements ErpPriceSystemService {
 
     @Override
     public PageResult<ErpPriceSystemDO> getPriceSystemPage(ErpPriceSystemPageReqVO pageReqVO) {
-        return priceSystemMapper.selectPage(pageReqVO,
-                new LambdaQueryWrapperX<ErpPriceSystemDO>()
-                        .likeIfPresent(ErpPriceSystemDO::getName, pageReqVO.getName())
-                        .eqIfPresent(ErpPriceSystemDO::getStatus, pageReqVO.getStatus())
-                        .likeIfPresent(ErpPriceSystemDO::getCode, pageReqVO.getCode())
-                        .orderByAsc(ErpPriceSystemDO::getSort));
+        return priceSystemMapper.selectPage(pageReqVO);
     }
 
     @Override

@@ -6,6 +6,7 @@ import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.common.enums.CommonStatusEnum;
 import cn.iocoder.yudao.framework.common.util.number.MoneyUtils;
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
+import cn.iocoder.yudao.framework.datapermission.core.util.DataPermissionUtils;
 import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpProductRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnImportExcelVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnImportRespVO;
@@ -370,7 +371,7 @@ public class ErpSaleReturnServiceImpl implements ErpSaleReturnService {
                 ErpVoucherTypeEnum.SALE.getType())) {
             BigDecimal sumCost = BigDecimal.ZERO;
             for (ErpSaleReturnItemDO item : saleReturnItems) {
-                ErpStockDO stock = stockService.getStock(item.getProductId(), item.getWarehouseId());
+                ErpStockDO stock = getStockIgnoreDataPermission(item.getProductId(), item.getWarehouseId());
                 BigDecimal cost = (stock != null && stock.getCostPrice() != null)
                         ? stock.getCostPrice() : BigDecimal.ZERO;
                 sumCost = sumCost.add(cost.multiply(item.getCount()));
@@ -403,20 +404,53 @@ public class ErpSaleReturnServiceImpl implements ErpSaleReturnService {
     }
 
     private List<ErpSaleReturnItemDO> validateSaleReturnItems(List<ErpSaleReturnSaveReqVO.Item> list) {
-        List<ErpProductDO> productList = productService.validProductList(
-                convertSet(list, ErpSaleReturnSaveReqVO.Item::getProductId));
-        Map<Long, ErpProductDO> productMap = convertMap(productList, ErpProductDO::getId);
-        List<Long> warehouseIds = convertList(list, ErpSaleReturnSaveReqVO.Item::getWarehouseId);
-        warehouseService.validSaleWarehouseList(warehouseIds);
-        return convertList(list, itemVO -> BeanUtils.toBean(itemVO, ErpSaleReturnItemDO.class, item -> {
+        if (CollUtil.isEmpty(list)) {
+            throw exception(SALE_RETURN_ITEMS_EMPTY);
+        }
+        list.forEach(item -> {
+            if (item.getProductId() == null) {
+                throw exception(SALE_RETURN_ITEM_PRODUCT_REQUIRED);
+            }
             if (item.getCount() == null || item.getCount().compareTo(BigDecimal.ZERO) <= 0) {
                 throw exception(SALE_RETURN_COUNT_POSITIVE);
             }
-            item.setProductUnitId(productMap.get(item.getProductId()).getUnitId());
+            if (item.getProductPrice() == null || item.getProductPrice().compareTo(BigDecimal.ZERO) < 0) {
+                throw exception(SALE_RETURN_ITEM_PRICE_REQUIRED);
+            }
+        });
+        List<ErpProductDO> productList = DataPermissionUtils.executeIgnore(() ->
+                productService.validProductList(convertSet(list, ErpSaleReturnSaveReqVO.Item::getProductId)));
+        Map<Long, ErpProductDO> productMap = convertMap(productList, ErpProductDO::getId);
+        List<Long> warehouseIds = convertList(list, ErpSaleReturnSaveReqVO.Item::getWarehouseId);
+        Map<Long, ErpWarehouseDO> warehouseMap = convertMap(
+                warehouseService.validSaleWarehouseList(warehouseIds), ErpWarehouseDO::getId);
+        return convertList(list, itemVO -> BeanUtils.toBean(itemVO, ErpSaleReturnItemDO.class, item -> {
+            ErpProductDO product = productMap.get(item.getProductId());
+            if (product == null) {
+                throw exception(SALE_RETURN_ITEM_PRODUCT_REQUIRED);
+            }
+            item.setProductUnitId(product.getUnitId());
+            fillDeptIdFromWarehouse(item, warehouseMap);
             item.setTaxPercent(null);
             item.setTaxPrice(BigDecimal.ZERO);
             item.setTotalPrice(MoneyUtils.priceMultiply(item.getProductPrice(), item.getCount()));
         }));
+    }
+
+    private void fillDeptIdFromWarehouse(ErpSaleReturnItemDO item, Map<Long, ErpWarehouseDO> warehouseMap) {
+        if (item.getDeptId() == null && item.getWarehouseId() != null) {
+            ErpStockDO stock = getStockIgnoreDataPermission(item.getProductId(), item.getWarehouseId());
+            if (stock != null && stock.getDeptId() != null) {
+                item.setDeptId(stock.getDeptId());
+                return;
+            }
+            ErpWarehouseDO warehouse = warehouseMap.get(item.getWarehouseId());
+            item.setDeptId(warehouse == null ? null : warehouse.getDeptId());
+        }
+    }
+
+    private ErpStockDO getStockIgnoreDataPermission(Long productId, Long warehouseId) {
+        return DataPermissionUtils.executeIgnore(() -> stockService.getStock(productId, warehouseId));
     }
 
     private void updateSaleReturnItemList(Long id, List<ErpSaleReturnItemDO> newList) {
@@ -508,10 +542,12 @@ public class ErpSaleReturnServiceImpl implements ErpSaleReturnService {
                 productCodes.add(row.getProductCode());
             }
         });
-        Map<String, ErpProductDO> productMap = convertMap(productMapper.selectListByCodes(productCodes), ErpProductDO::getCode);
-        Map<Long, ErpProductRespVO> productVOMap = productService.getProductVOMap(convertList(productMap.values(), ErpProductDO::getId));
+        Map<String, ErpProductDO> productMap = convertMap(
+                DataPermissionUtils.executeIgnore(() -> productMapper.selectListByCodes(productCodes)), ErpProductDO::getCode);
+        Map<Long, ErpProductRespVO> productVOMap = DataPermissionUtils.executeIgnore(() ->
+                productService.getProductVOMap(convertList(productMap.values(), ErpProductDO::getId)));
         Map<String, ErpWarehouseDO> warehouseMap = convertMap(
-                warehouseService.getSaleWarehouseListByStatus(CommonStatusEnum.ENABLE.getStatus()), ErpWarehouseDO::getName);
+                warehouseService.getCurrentUserVisibleSaleWarehouseList(), ErpWarehouseDO::getName);
         for (int i = 0; i < list.size(); i++) {
             ErpSaleReturnImportExcelVO row = list.get(i);
             int rowNo = i + 2;

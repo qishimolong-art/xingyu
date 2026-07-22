@@ -7,6 +7,7 @@ import cn.iocoder.yudao.framework.common.pojo.PageParam;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.common.util.collection.MapUtils;
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
+import cn.iocoder.yudao.framework.datapermission.core.util.DataPermissionUtils;
 import cn.iocoder.yudao.framework.excel.core.util.ExcelUtils;
 import cn.iocoder.yudao.module.erp.controller.admin.common.ErpAuditStatusRequestValidator;
 import cn.iocoder.yudao.module.erp.controller.admin.common.vo.ErpExportFieldRespVO;
@@ -154,6 +155,15 @@ public class ErpPurchaseReturnController {
         return success(true);
     }
 
+    @DeleteMapping("/delete")
+    @Operation(summary = "删除采购退货")
+    @Parameter(name = "ids", description = "编号数组", required = true)
+    @PreAuthorize("@ss.hasPermission('erp:purchase-return:delete')")
+    public CommonResult<Boolean> deletePurchaseReturn(@RequestParam("ids") List<Long> ids) {
+        purchaseReturnService.deletePurchaseReturn(ids);
+        return success(true);
+    }
+
     @PostMapping("/import")
     @Operation(summary = "解析采购退货导入 Excel")
     @PreAuthorize("@ss.hasPermission('erp:purchase-return:create')")
@@ -225,8 +235,8 @@ public class ErpPurchaseReturnController {
             return success(null);
         }
         List<ErpPurchaseReturnItemDO> purchaseReturnItemList = purchaseReturnService.getPurchaseReturnItemListByReturnId(id);
-        Map<Long, ErpProductRespVO> productMap = productService.getProductVOMap(
-                convertSet(purchaseReturnItemList, ErpPurchaseReturnItemDO::getProductId));
+        Map<Long, ErpProductRespVO> productMap = DataPermissionUtils.executeIgnore(() ->
+                productService.getProductVOMap(convertSet(purchaseReturnItemList, ErpPurchaseReturnItemDO::getProductId)));
         Map<Long, ErpPurchaseInItemDO> inItemMap = java.util.Collections.emptyMap();
         Map<Long, BigDecimal> returnedMap = java.util.Collections.emptyMap();
         java.util.Set<Long> sourceInItemIds = convertSet(purchaseReturnItemList, ErpPurchaseReturnItemDO::getSourceInItemId);
@@ -240,13 +250,15 @@ public class ErpPurchaseReturnController {
         Map<Long, BigDecimal> finalReturnedMap = returnedMap;
         Map<Long, AdminUserRespDTO> userMap = adminUserApi.getUserMap(collectUserIds(java.util.Collections.singletonList(purchaseReturn)));
         DeptRespDTO dept = purchaseReturn.getDeptId() == null ? null : deptApi.getDept(purchaseReturn.getDeptId());
+        ErpSupplierDO supplier = purchaseReturn.getSupplierId() == null
+                ? null : supplierService.getSupplier(purchaseReturn.getSupplierId());
         ErpPurchaseReturnRespVO respVO = BeanUtils.toBean(purchaseReturn, ErpPurchaseReturnRespVO.class, purchaseReturnVO -> {
                 purchaseReturnVO.setItems(BeanUtils.toBean(purchaseReturnItemList, ErpPurchaseReturnRespVO.Item.class, item -> {
                     ErpStockDO stock = stockService.getStock(item.getProductId(), item.getWarehouseId());
                     item.setStockCount(stock != null ? stock.getCount() : BigDecimal.ZERO);
                     MapUtils.findAndThen(productMap, item.getProductId(), product -> item.setProductName(product.getName())
                             .setProductCode(product.getCode()).setProductBarCode(product.getBarCode())
-                            .setProductUnitName(product.getUnitName()));
+                            .setProductUnitName(product.getUnitName()).setBatchNoEnabled(product.getBatchNoEnabled()));
                     if (item.getSourceInItemId() != null) {
                         ErpPurchaseInItemDO inItem = finalInItemMap.get(item.getSourceInItemId());
                         if (inItem != null) {
@@ -259,6 +271,9 @@ public class ErpPurchaseReturnController {
                 purchaseReturnVO.setItemCount(purchaseReturnItemList.size());
                 if (dept != null) {
                     purchaseReturnVO.setDeptName(dept.getName());
+                }
+                if (supplier != null) {
+                    purchaseReturnVO.setSupplierName(supplier.getName());
                 }
                 fillUserNames(purchaseReturnVO, userMap);
         });
@@ -312,25 +327,27 @@ public class ErpPurchaseReturnController {
         List<ErpPurchaseReturnItemDO> purchaseReturnItemList = purchaseReturnService.getPurchaseReturnItemListByReturnIds(
                 convertSet(pageResult.getList(), ErpPurchaseReturnDO::getId));
         Map<Long, List<ErpPurchaseReturnItemDO>> purchaseReturnItemMap = convertMultiMap(purchaseReturnItemList, ErpPurchaseReturnItemDO::getReturnId);
-        Map<Long, ErpProductRespVO> productMap = productService.getProductVOMap(
-                convertSet(purchaseReturnItemList, ErpPurchaseReturnItemDO::getProductId));
+        Map<Long, ErpProductRespVO> productMap = DataPermissionUtils.executeIgnore(() ->
+                productService.getProductVOMap(convertSet(purchaseReturnItemList, ErpPurchaseReturnItemDO::getProductId)));
         Map<Long, ErpSupplierDO> supplierMap = supplierService.getSupplierMap(
                 convertSet(pageResult.getList(), ErpPurchaseReturnDO::getSupplierId));
         Map<Long, DeptRespDTO> deptMap = deptApi.getDeptMap(
                 convertSet(pageResult.getList(), ErpPurchaseReturnDO::getDeptId));
         Map<Long, AdminUserRespDTO> userMap = adminUserApi.getUserMap(collectUserIds(pageResult.getList()));
-        return BeanUtils.toBean(pageResult, ErpPurchaseReturnRespVO.class, purchaseReturn -> {
+        PageResult<ErpPurchaseReturnRespVO> respResult = BeanUtils.toBean(pageResult, ErpPurchaseReturnRespVO.class, purchaseReturn -> {
             List<ErpPurchaseReturnItemDO> itemList = purchaseReturnItemMap.getOrDefault(purchaseReturn.getId(), java.util.Collections.emptyList());
             purchaseReturn.setItems(BeanUtils.toBean(itemList, ErpPurchaseReturnRespVO.Item.class,
                     item -> MapUtils.findAndThen(productMap, item.getProductId(), product -> item.setProductName(product.getName())
                             .setProductCode(product.getCode()).setProductBarCode(product.getBarCode())
-                            .setProductUnitName(product.getUnitName()))));
+                            .setProductUnitName(product.getUnitName()).setBatchNoEnabled(product.getBatchNoEnabled()))));
             purchaseReturn.setItemCount(itemList.size());
             purchaseReturn.setProductNames(CollUtil.join(purchaseReturn.getItems(), "，", ErpPurchaseReturnRespVO.Item::getProductName));
             MapUtils.findAndThen(supplierMap, purchaseReturn.getSupplierId(), supplier -> purchaseReturn.setSupplierName(supplier.getName()));
             MapUtils.findAndThen(deptMap, purchaseReturn.getDeptId(), dept -> purchaseReturn.setDeptName(dept.getName()));
             fillUserNames(purchaseReturn, userMap);
         });
+        fieldPermissionMasker.maskList(FIELD_PERMISSION_MODULE, respResult.getList());
+        return respResult;
     }
 
     private List<ErpPurchaseReturnExportRespVO> buildPurchaseReturnExportList(List<ErpPurchaseReturnRespVO> list) {
@@ -463,7 +480,7 @@ public class ErpPurchaseReturnController {
         map.put("supplierName", "supplierId");
         map.put("deptName", "deptId");
         map.put("productCode", "item_productCode");
-        map.put("productName", "item_productId");
+        map.put("productName", "item_productName");
         map.put("productUnitName", "item_productUnitName");
         map.put("itemCount", "item_count");
         map.put("productPrice", "item_productPrice");

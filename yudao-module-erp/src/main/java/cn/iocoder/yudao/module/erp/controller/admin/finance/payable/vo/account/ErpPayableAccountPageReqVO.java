@@ -35,6 +35,8 @@ public class ErpPayableAccountPageReqVO extends PageParam {
 
     @Schema(description = "是否显示零余额", example = "false")
     private Boolean showZeroBalance;
+    private String orderField;
+    private String orderDirection;
 
     public LocalDateTime getStartTime() {
         return bizTime == null || bizTime.length == 0 ? null : bizTime[0];

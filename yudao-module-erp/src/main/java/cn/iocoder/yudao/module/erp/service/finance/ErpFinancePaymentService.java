@@ -3,6 +3,9 @@ package cn.iocoder.yudao.module.erp.service.finance;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.payment.ErpFinancePaymentPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.payment.ErpFinancePaymentSaveReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.payment.ErpFinancePaymentWriteOffCandidateRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.payment.ErpFinancePaymentWriteOffReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.payment.ErpFinancePaymentWriteOffReverseReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.ErpFinancePaymentDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.ErpFinancePaymentItemDO;
 
@@ -63,6 +66,12 @@ public interface ErpFinancePaymentService {
      * @return 付款单分页
      */
     PageResult<ErpFinancePaymentDO> getFinancePaymentPage(ErpFinancePaymentPageReqVO pageReqVO);
+
+    List<ErpFinancePaymentWriteOffCandidateRespVO> getWriteOffCandidates(Long paymentId);
+
+    void writeOffFinancePayment(@Valid ErpFinancePaymentWriteOffReqVO reqVO);
+
+    void reverseFinancePaymentWriteOff(@Valid ErpFinancePaymentWriteOffReverseReqVO reqVO);
 
     // ==================== 付款单项 ====================
 

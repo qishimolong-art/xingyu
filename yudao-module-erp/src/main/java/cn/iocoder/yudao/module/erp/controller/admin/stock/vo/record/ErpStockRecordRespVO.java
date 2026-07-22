@@ -26,6 +26,10 @@ public class ErpStockRecordRespVO {
     @Schema(description = "仓库编号", requiredMode = Schema.RequiredMode.REQUIRED, example = "32407")
     private Long warehouseId;
 
+    @Schema(description = "批次号", example = "BATCH-001")
+    @ExcelProperty("批次号")
+    private String batchNo;
+
     @Schema(description = "出入库数量", requiredMode = Schema.RequiredMode.REQUIRED, example = "11084")
     @ExcelProperty("出入库数量")
     private BigDecimal count;

@@ -39,6 +39,9 @@ public interface ErpStockLockService {
      */
     void deductStock(Integer bizType, Long bizId);
 
+    void transferStockLocks(Integer bizType, Long bizId, Long productId,
+                            Long fromWarehouseId, Long toWarehouseId);
+
     /**
      * 获取可用库存 = 实际库存 - 锁定库存
      *

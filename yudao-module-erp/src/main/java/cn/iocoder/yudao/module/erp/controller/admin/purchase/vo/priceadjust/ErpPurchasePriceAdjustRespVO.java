@@ -109,6 +109,7 @@ public class ErpPurchasePriceAdjustRespVO {
 
         @Schema(description = "仓库编号")
         private Long warehouseId;
+        private Long deptId;
 
         @Schema(description = "调价前单价")
         private BigDecimal oldPrice;

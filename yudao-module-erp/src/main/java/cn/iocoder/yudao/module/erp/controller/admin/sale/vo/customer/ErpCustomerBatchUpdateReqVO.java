@@ -23,6 +23,12 @@ public class ErpCustomerBatchUpdateReqVO {
     @Schema(description = "所属部门")
     private Long deptId;
 
+    @Schema(description = "适用部门")
+    private List<Long> deptIds;
+
+    @Schema(description = "允许多部门")
+    private Boolean allowMultiDept;
+
     @Schema(description = "开启状态")
     private Integer status;
 

@@ -4,6 +4,7 @@ import cn.hutool.core.collection.CollUtil;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.common.util.number.MoneyUtils;
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
+import cn.iocoder.yudao.framework.datapermission.core.util.DataPermissionUtils;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.in.ErpStockInPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.in.ErpStockInSaveReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.accounting.ErpVoucherItemDO;
@@ -190,12 +191,12 @@ public class ErpStockInServiceImpl implements ErpStockInService {
     private List<ErpStockInItemDO> validateStockInItems(List<ErpStockInSaveReqVO.Item> list) {
         validateDuplicateStockInItems(list);
         // 1.1 校验产品存在
-        List<ErpProductDO> productList = productService.validProductList(
-                convertSet(list, ErpStockInSaveReqVO.Item::getProductId));
+        List<ErpProductDO> productList = DataPermissionUtils.executeIgnore(() -> productService.validProductList(
+                convertSet(list, ErpStockInSaveReqVO.Item::getProductId)));
         Map<Long, ErpProductDO> productMap = convertMap(productList, ErpProductDO::getId);
         // 1.2 校验仓库存在
         Set<Long> warehouseIds = convertSet(list, ErpStockInSaveReqVO.Item::getWarehouseId);
-        warehouseService.validWarehouseList(warehouseIds);
+        DataPermissionUtils.executeIgnore(() -> warehouseService.validWarehouseList(warehouseIds));
         warehouseService.validateCurrentUserWarehousePermission(warehouseIds);
         // 2. 转化为 ErpStockInItemDO 列表
         return convertList(list, o -> BeanUtils.toBean(o, ErpStockInItemDO.class, item -> item

@@ -22,6 +22,7 @@ public class ErpPurchaseReturnableItemRespVO {
     private Long productUnitId;
     @Schema(description = "仓库编号", example = "2")
     private Long warehouseId;
+    private Long deptId;
 
     @Schema(description = "原入库单价", example = "12.34")
     private BigDecimal productPrice;

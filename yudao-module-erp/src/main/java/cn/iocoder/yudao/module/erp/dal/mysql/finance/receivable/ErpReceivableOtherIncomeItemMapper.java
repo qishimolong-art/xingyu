@@ -1,6 +1,7 @@
 package cn.iocoder.yudao.module.erp.dal.mysql.finance.receivable;
 
 import cn.iocoder.yudao.framework.mybatis.core.mapper.BaseMapperX;
+import cn.iocoder.yudao.framework.mybatis.core.query.LambdaQueryWrapperX;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.receivable.ErpReceivableOtherIncomeItemDO;
 import org.apache.ibatis.annotations.Mapper;
 
@@ -16,5 +17,11 @@ public interface ErpReceivableOtherIncomeItemMapper extends BaseMapperX<ErpRecei
 
     default List<ErpReceivableOtherIncomeItemDO> selectListByIncomeIds(Collection<Long> incomeIds) {
         return selectList(ErpReceivableOtherIncomeItemDO::getIncomeId, incomeIds);
+    }
+
+    default List<ErpReceivableOtherIncomeItemDO> selectListByItemNameOrInvoiceNo(String itemName, String invoiceNo) {
+        return selectList(new LambdaQueryWrapperX<ErpReceivableOtherIncomeItemDO>()
+                .likeIfPresent(ErpReceivableOtherIncomeItemDO::getItemName, itemName)
+                .likeIfPresent(ErpReceivableOtherIncomeItemDO::getInvoiceNo, invoiceNo));
     }
 }

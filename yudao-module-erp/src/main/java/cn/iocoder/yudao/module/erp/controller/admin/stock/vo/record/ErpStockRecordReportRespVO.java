@@ -37,6 +37,12 @@ public class ErpStockRecordReportRespVO {
     @DictFormat(DictTypeConstants.STOCK_RECORD_BIZ_TYPE)
     private Integer bizType;
 
+    @Schema(description = "业务编号")
+    private Long bizId;
+
+    @Schema(description = "业务项编号")
+    private Long bizItemId;
+
     @Schema(description = "业务单号")
     @ExcelProperty("单号")
     private String bizNo;
@@ -49,6 +55,10 @@ public class ErpStockRecordReportRespVO {
     @Schema(description = "产品名称")
     @ExcelProperty("产品名称")
     private String productName;
+
+    @Schema(description = "批次号")
+    @ExcelProperty("批次号")
+    private String batchNo;
 
     @Schema(description = "仓库编号")
     private Long warehouseId;

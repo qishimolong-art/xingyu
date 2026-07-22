@@ -76,6 +76,9 @@ public class ErpSaleDocumentDefaultService {
         if (document.getSaleUserId() == null) {
             document.setSaleUserId(loginUserId);
         }
+        if (document.getHandler() == null) {
+            document.setHandler(loginUserId);
+        }
         fillDeptId(document);
         fillCreateAuditDefaults(document);
     }

@@ -8,6 +8,7 @@ import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.*;
 
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
 
 /**
  * ERP 付款项 DO
@@ -67,6 +68,31 @@ public class ErpFinancePaymentItemDO extends BaseDO {
      * 本次付款，单位：分
      */
     private BigDecimal paymentPrice;
+
+    /**
+     * 核销状态：0 待生效、1 已生效、2 已撤销
+     */
+    private Integer writeOffStatus;
+    /**
+     * 核销生效时间
+     */
+    private LocalDateTime writeOffTime;
+    /**
+     * 核销操作人
+     */
+    private Long writeOffUserId;
+    /**
+     * 撤销时间
+     */
+    private LocalDateTime reverseTime;
+    /**
+     * 撤销操作人
+     */
+    private Long reverseUserId;
+    /**
+     * 撤销原因
+     */
+    private String reverseReason;
     /**
      * 备注
      */

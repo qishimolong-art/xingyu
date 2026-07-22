@@ -116,6 +116,22 @@ public class ErpCustomerDO extends BaseDO {
      */
     private LocalDateTime disabledTime;
     /**
+     * Whether this customer has been merged into another customer.
+     */
+    private Boolean mergedFlag;
+    /**
+     * Target customer id when mergedFlag is true.
+     */
+    private Long mergedTargetId;
+    /**
+     * Merge operator user id.
+     */
+    private Long mergedBy;
+    /**
+     * Merge time.
+     */
+    private LocalDateTime mergedTime;
+    /**
      * 排序
      */
     private Integer sort;
@@ -207,6 +223,7 @@ public class ErpCustomerDO extends BaseDO {
      * 所属部门
      */
     private Long deptId;
+    private Boolean allowMultiDept;
     /**
      * 价格级别
      */
@@ -251,6 +268,14 @@ public class ErpCustomerDO extends BaseDO {
      * 白条授信额度
      */
     private BigDecimal creditLimit;
+    /**
+     * 是否启用白条授信
+     */
+    private Boolean creditEnabled;
+    /**
+     * 白条授信期限（天）
+     */
+    private Integer creditTermDays;
     /**
      * 数据中心审核状态 0未审核 1已审核 2驳回
      */

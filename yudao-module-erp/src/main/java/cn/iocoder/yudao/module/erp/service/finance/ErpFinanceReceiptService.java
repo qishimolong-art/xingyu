@@ -3,6 +3,9 @@ package cn.iocoder.yudao.module.erp.service.finance;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.receipt.ErpFinanceReceiptPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.receipt.ErpFinanceReceiptSaveReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.receipt.ErpFinanceReceiptWriteOffCandidateRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.receipt.ErpFinanceReceiptWriteOffReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.receipt.ErpFinanceReceiptWriteOffReverseReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.ErpFinanceReceiptDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.ErpFinanceReceiptItemDO;
 
@@ -63,6 +66,12 @@ public interface ErpFinanceReceiptService {
      * @return 收款单分页
      */
     PageResult<ErpFinanceReceiptDO> getFinanceReceiptPage(ErpFinanceReceiptPageReqVO pageReqVO);
+
+    List<ErpFinanceReceiptWriteOffCandidateRespVO> getWriteOffCandidates(Long receiptId);
+
+    void writeOffFinanceReceipt(@Valid ErpFinanceReceiptWriteOffReqVO reqVO);
+
+    void reverseFinanceReceiptWriteOff(@Valid ErpFinanceReceiptWriteOffReverseReqVO reqVO);
 
     // ==================== 收款单项 ====================
 

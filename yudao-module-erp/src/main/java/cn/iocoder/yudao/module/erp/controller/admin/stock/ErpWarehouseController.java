@@ -15,6 +15,8 @@ import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.warehouse.ErpWareho
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.warehouse.ErpWarehouseImportRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.warehouse.ErpWarehousePageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.warehouse.ErpWarehouseRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.warehouse.ErpWarehouseSaleDeptPermissionRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.warehouse.ErpWarehouseSaleDeptPermissionSaveReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.warehouse.ErpWarehouseSaveReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.warehouse.ErpWarehouseUserPermissionRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.warehouse.ErpWarehouseUserPermissionSaveReqVO;
@@ -114,6 +116,14 @@ public class ErpWarehouseController {
         return success(true);
     }
 
+    @PutMapping("/restore")
+    @Operation(summary = "Restore warehouse")
+    @PreAuthorize("@ss.hasPermission('erp:warehouse:update')")
+    public CommonResult<Boolean> restoreWarehouse(@Valid @RequestBody ErpWarehouseBatchDisableReqVO reqVO) {
+        warehouseService.restoreWarehouse(reqVO.getIds());
+        return success(true);
+    }
+
     @PutMapping("/update-default-status")
     @Operation(summary = "Update warehouse default status")
     @Parameters({
@@ -153,7 +163,7 @@ public class ErpWarehouseController {
         if (warehouse == null) {
             return success(null);
         }
-        ErpWarehouseRespVO respVO = buildWarehouseVOList(Collections.singletonList(warehouse)).get(0);
+        ErpWarehouseRespVO respVO = buildWarehouseVOList(Collections.singletonList(warehouse), true).get(0);
         respVO.setBranchTenantIds(warehouseService.getWarehouseBranchTenantIds(id));
         fieldPermissionMasker.maskForm(FIELD_PERMISSION_MODULE, respVO);
         return success(respVO);
@@ -164,24 +174,85 @@ public class ErpWarehouseController {
     @PreAuthorize("@ss.hasPermission('erp:warehouse:query')")
     public CommonResult<PageResult<ErpWarehouseRespVO>> getWarehousePage(@Valid ErpWarehousePageReqVO pageReqVO) {
         PageResult<ErpWarehouseDO> pageResult = warehouseService.getWarehousePage(pageReqVO);
-        return success(new PageResult<>(buildWarehouseVOList(pageResult.getList()), pageResult.getTotal()));
+        return success(new PageResult<>(buildWarehouseVOList(pageResult.getList(), true), pageResult.getTotal()));
     }
 
     @GetMapping("/simple-list")
     @Operation(summary = "Get warehouse simple list")
     public CommonResult<List<ErpWarehouseRespVO>> getWarehouseSimpleList(
-            @RequestParam(value = "bizType", required = false) String bizType) {
+            @RequestParam(value = "bizType", required = false) String bizType,
+            @RequestParam(value = "deptId", required = false) Long deptId) {
         List<ErpWarehouseDO> list;
-        if ("purchase".equalsIgnoreCase(bizType)) {
+        if ("stockMoveFrom".equalsIgnoreCase(bizType)) {
+            list = warehouseService.getCurrentUserStockMoveFromWarehouseList();
+        } else if ("stock".equalsIgnoreCase(bizType)) {
+            list = warehouseService.getCurrentUserStockVisibleWarehouseList();
+        } else if ("purchase".equalsIgnoreCase(bizType)) {
             list = warehouseService.getCurrentUserAuthorizedPurchaseWarehouseList();
+        } else if ("sale".equalsIgnoreCase(bizType) && deptId != null) {
+            list = intersectWarehouseList(warehouseService.getSaleWarehouseListByDeptId(deptId),
+                    warehouseService.getCurrentUserVisibleSaleWarehouseList());
         } else if ("sale".equalsIgnoreCase(bizType)) {
-            list = warehouseService.getCurrentUserAuthorizedSaleWarehouseList();
+            list = warehouseService.getCurrentUserVisibleSaleWarehouseList();
         } else {
             list = warehouseService.getCurrentUserAuthorizedWarehouseList();
         }
-        return success(convertList(list, warehouse -> new ErpWarehouseRespVO().setId(warehouse.getId())
-                .setName(warehouse.getName()).setDeptId(warehouse.getDeptId())
-                .setDefaultStatus(warehouse.getDefaultStatus())));
+        return success(buildSimpleWarehouseVOList(list));
+    }
+
+    private List<ErpWarehouseDO> intersectWarehouseList(List<ErpWarehouseDO> requestWarehouses,
+                                                        List<ErpWarehouseDO> visibleWarehouses) {
+        Set<Long> visibleWarehouseIds = convertSet(visibleWarehouses, ErpWarehouseDO::getId);
+        return requestWarehouses.stream()
+                .filter(warehouse -> visibleWarehouseIds.contains(warehouse.getId()))
+                .collect(Collectors.toList());
+    }
+
+    @GetMapping("/sale-list-by-dept")
+    @Operation(summary = "Get sale warehouse list by department")
+    @Parameter(name = "deptId", description = "sales department id", required = true)
+    public CommonResult<List<ErpWarehouseRespVO>> getSaleWarehouseListByDept(@RequestParam("deptId") Long deptId) {
+        List<ErpWarehouseDO> list = intersectWarehouseList(warehouseService.getSaleWarehouseListByDeptId(deptId),
+                warehouseService.getCurrentUserVisibleSaleWarehouseList());
+        return success(buildSimpleWarehouseVOList(list));
+    }
+
+    @GetMapping("/sale-owner-dept-simple-list")
+    @Operation(summary = "Get owner department list of sale-selectable warehouses")
+    @Parameter(name = "deptId", description = "sales department id", required = true)
+    @DataPermission(enable = false)
+    public CommonResult<List<DeptRespDTO>> getSaleWarehouseOwnerDeptSimpleList(@RequestParam("deptId") Long deptId) {
+        Set<Long> ownerDeptIds = intersectWarehouseList(warehouseService.getSaleWarehouseListByDeptId(deptId),
+                warehouseService.getCurrentUserVisibleSaleWarehouseList()).stream()
+                .map(ErpWarehouseDO::getDeptId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toCollection(LinkedHashSet::new));
+        if (ownerDeptIds.isEmpty()) {
+            return success(Collections.emptyList());
+        }
+        Map<Long, DeptRespDTO> deptMap = deptApi.getDeptMap(ownerDeptIds);
+        return success(ownerDeptIds.stream()
+                .map(deptMap::get)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toList()));
+    }
+
+    @GetMapping("/purchase-owner-dept-simple-list")
+    @Operation(summary = "Get owner department list of purchase-selectable warehouses")
+    @DataPermission(enable = false)
+    public CommonResult<List<DeptRespDTO>> getPurchaseWarehouseOwnerDeptSimpleList() {
+        Set<Long> ownerDeptIds = warehouseService.getCurrentUserAuthorizedPurchaseWarehouseList().stream()
+                .map(ErpWarehouseDO::getDeptId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toCollection(LinkedHashSet::new));
+        if (ownerDeptIds.isEmpty()) {
+            return success(Collections.emptyList());
+        }
+        Map<Long, DeptRespDTO> deptMap = deptApi.getDeptMap(ownerDeptIds);
+        return success(ownerDeptIds.stream()
+                .map(deptMap::get)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toList()));
     }
 
     @GetMapping("/assignable-list")
@@ -189,9 +260,7 @@ public class ErpWarehouseController {
     @PreAuthorize("@ss.hasPermission('erp:warehouse-permission:query') or @ss.hasPermission('erp:warehouse-permission:update')")
     public CommonResult<List<ErpWarehouseRespVO>> getWarehouseAssignableList() {
         List<ErpWarehouseDO> list = warehouseService.getAssignableWarehouseList();
-        return success(convertList(list, warehouse -> new ErpWarehouseRespVO().setId(warehouse.getId())
-                .setName(warehouse.getName()).setDeptId(warehouse.getDeptId())
-                .setDefaultStatus(warehouse.getDefaultStatus())));
+        return success(buildSimpleWarehouseVOList(list));
     }
 
     @GetMapping("/user-permissions")
@@ -244,6 +313,29 @@ public class ErpWarehouseController {
         return success(true);
     }
 
+    @GetMapping("/sale-dept-permissions")
+    @Operation(summary = "Get warehouse sale department permissions")
+    @Parameter(name = "warehouseId", description = "warehouse id", required = true)
+    @DataPermission(enable = false)
+    @PreAuthorize("@ss.hasPermission('erp:warehouse-permission:query') or @ss.hasPermission('erp:warehouse-permission:update')")
+    public CommonResult<ErpWarehouseSaleDeptPermissionRespVO> getWarehouseSaleDeptPermissions(
+            @RequestParam("warehouseId") Long warehouseId) {
+        ErpWarehouseSaleDeptPermissionRespVO respVO = new ErpWarehouseSaleDeptPermissionRespVO();
+        respVO.setWarehouseId(warehouseId);
+        respVO.setDeptIds(warehouseService.getWarehouseSaleDeptIds(warehouseId));
+        return success(respVO);
+    }
+
+    @PutMapping("/sale-dept-permissions")
+    @Operation(summary = "Update warehouse sale department permissions")
+    @DataPermission(enable = false)
+    @PreAuthorize("@ss.hasPermission('erp:warehouse-permission:update')")
+    public CommonResult<Boolean> updateWarehouseSaleDeptPermissions(
+            @Valid @RequestBody ErpWarehouseSaleDeptPermissionSaveReqVO updateReqVO) {
+        warehouseService.updateWarehouseSaleDeptPermissions(updateReqVO.getWarehouseId(), updateReqVO.getDeptIds());
+        return success(true);
+    }
+
     @GetMapping("/assignable-users")
     @Operation(summary = "Get assignable user list for warehouse permissions")
     @DataPermission(enable = false)
@@ -280,6 +372,21 @@ public class ErpWarehouseController {
     }
 
     private List<ErpWarehouseRespVO> buildWarehouseVOList(List<ErpWarehouseDO> list) {
+        return buildWarehouseVOList(list, false);
+    }
+
+    private List<ErpWarehouseRespVO> buildSimpleWarehouseVOList(List<ErpWarehouseDO> list) {
+        Map<Long, DeptRespDTO> deptMap = deptApi.getDeptMap(convertSet(list, ErpWarehouseDO::getDeptId));
+        return convertList(list, warehouse -> {
+            ErpWarehouseRespVO vo = new ErpWarehouseRespVO().setId(warehouse.getId())
+                    .setName(warehouse.getName()).setDeptId(warehouse.getDeptId())
+                    .setDefaultStatus(warehouse.getDefaultStatus());
+            MapUtils.findAndThen(deptMap, warehouse.getDeptId(), dept -> vo.setDeptName(dept.getName()));
+            return vo;
+        });
+    }
+
+    private List<ErpWarehouseRespVO> buildWarehouseVOList(List<ErpWarehouseDO> list, boolean markReadonlyBySaleDistribution) {
         Map<Long, DeptRespDTO> deptMap = deptApi.getDeptMap(convertSet(list, ErpWarehouseDO::getDeptId));
         Set<Long> storageWarehouseIds = list.stream()
                 .map(ErpWarehouseDO::getStorageWarehouseId)
@@ -293,11 +400,14 @@ public class ErpWarehouseController {
             addUserId(userIds, warehouse.getUpdater());
         });
         Map<Long, AdminUserRespDTO> userMap = adminUserApi.getUserMap(userIds);
+        Set<Long> readonlyWarehouseIds = markReadonlyBySaleDistribution
+                ? warehouseService.getCurrentUserSaleDistributedVisibleWarehouseIds() : Collections.emptySet();
         return BeanUtils.toBean(list, ErpWarehouseRespVO.class, vo -> {
             MapUtils.findAndThen(deptMap, vo.getDeptId(), dept -> vo.setDeptName(dept.getName()));
             MapUtils.findAndThen(storageWarehouseMap, vo.getStorageWarehouseId(),
                     warehouse -> vo.setStorageWarehouseName(warehouse.getName()));
             fillUserNames(vo, userMap);
+            vo.setReadonlyBySaleDistribution(readonlyWarehouseIds.contains(vo.getId()));
         });
     }
 

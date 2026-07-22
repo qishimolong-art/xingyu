@@ -43,6 +43,9 @@ public class ErpSaleReturnPageReqVO extends PageParam {
     @Schema(description = "创建者")
     private String creator;
 
+    @Schema(description = "制单人", example = "1")
+    private Long handler;
+
     @Schema(description = "产品编号", example = "1")
     private Long productId;
 
@@ -67,7 +70,7 @@ public class ErpSaleReturnPageReqVO extends PageParam {
     @Schema(description = "Sort field, supports: no, refundStatus, settlementStatus, settlementStatusText, returnTime, "
             + "status, customerId, customerName, returnMode, orderMethod, totalCount, settleMethod, deliveryMethod, "
             + "totalProductPrice, discountPrice, totalPrice, invoiceType, billNo, logisticsCompany, deptId, deptName, "
-            + "saleUserId, saleUserName, creator, creatorName, priority, remark")
+            + "saleUserId, saleUserName, creator, creatorName, handler, priority, remark")
     private String orderField;
 
     @Schema(description = "Sort direction: asc or desc")

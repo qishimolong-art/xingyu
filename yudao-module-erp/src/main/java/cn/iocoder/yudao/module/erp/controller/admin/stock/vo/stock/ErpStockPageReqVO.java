@@ -20,6 +20,10 @@ public class ErpStockPageReqVO extends PageParam {
     private Long warehouseId;
     @Schema(description = "所属部门", example = "100")
     private Long deptId;
+    @Schema(description = "Sale business department id, used when bizType=sale")
+    private Long saleDeptId;
+    @Schema(description = "Business type: purchase or sale")
+    private String bizType;
 
     // ========== 模糊搜索条件 ==========
     @Schema(description = "零件编码（产品 code）")
@@ -34,7 +38,7 @@ public class ErpStockPageReqVO extends PageParam {
     private String originPlace;
     @Schema(description = "品牌")
     private String brand;
-    @Schema(description = "货架（产品 shelf）")
+    @Schema(description = "货架号（库存 shelf）")
     private String shelf;
     @Schema(description = "特征码")
     private String featureCode;
@@ -74,9 +78,9 @@ public class ErpStockPageReqVO extends PageParam {
     private Integer stockStandardMax;
 
     // ========== 特殊筛选 ==========
-    @Schema(description = "只查询货架位重复的产品", example = "false")
+    @Schema(description = "只查询同仓库内货架号重复的库存", example = "false")
     private Boolean shelfDuplicateOnly;
-    @Schema(description = "只查询空置货架位的产品", example = "false")
+    @Schema(description = "只查询货架号为空的库存", example = "false")
     private Boolean shelfEmptyOnly;
     @Schema(description = "只显示正库存（count > 0）", example = "false")
     private Boolean positiveCountOnly;
@@ -88,4 +92,13 @@ public class ErpStockPageReqVO extends PageParam {
     // ========== 多仓合并 ==========
     @Schema(description = "多仓合并：true 按产品维度聚合同产品的多仓库存", example = "false")
     private Boolean mergeWarehouse;
+
+    @Schema(description = "是否按批次号展开库存明细", example = "false")
+    private Boolean showBatchNo;
+
+    @Schema(description = "排序字段", example = "count")
+    private String orderField;
+
+    @Schema(description = "排序方向", example = "asc")
+    private String orderDirection;
 }

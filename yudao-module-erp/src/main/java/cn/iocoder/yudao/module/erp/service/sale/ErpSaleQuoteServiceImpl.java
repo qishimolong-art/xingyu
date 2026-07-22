@@ -24,6 +24,8 @@ import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleConvertRecordDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleOutDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleQuoteDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleQuoteItemDO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockDO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpWarehouseDO;
 import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpSaleCartItemMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpSaleCartMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpSaleConvertRecordMapper;
@@ -67,11 +69,12 @@ import java.util.stream.Collectors;
 
 import static cn.iocoder.yudao.framework.common.exception.util.ServiceExceptionUtil.exception;
 import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.*;
+import static cn.iocoder.yudao.framework.security.core.util.SecurityFrameworkUtils.getLoginUserDeptId;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.*;
 import static cn.iocoder.yudao.module.erp.enums.LogRecordConstants.ERP_SALE_QUOTE_TYPE;
 
 /**
- * ERP 报价订单 Service 实现类
+ * ERP 报价订单 Service 实现�?
  */
 @Service
 @Validated
@@ -108,6 +111,8 @@ public class ErpSaleQuoteServiceImpl implements ErpSaleQuoteService {
     @Resource
     private ErpSaleOutService saleOutService;
     @Resource
+    private ErpSaleCartService saleCartService;
+    @Resource
     private ErpSaleFieldPermissionMasker fieldPermissionMasker;
     @Resource
     private ErpSaleDocumentDefaultService saleDocumentDefaultService;
@@ -123,8 +128,12 @@ public class ErpSaleQuoteServiceImpl implements ErpSaleQuoteService {
     public Long createSaleQuote(ErpSaleQuoteSaveReqVO createReqVO) {
         clearHiddenFields(createReqVO);
         clearHiddenItemFields(createReqVO.getItems());
-        List<ErpSaleQuoteItemDO> items = validateSaleQuoteItems(createReqVO.getItems());
-        customerService.validateCustomer(createReqVO.getCustomerId());
+        Long reqDeptId = createReqVO.getDeptId();
+        List<ErpSaleQuoteItemDO> items = validateSaleQuoteItems(createReqVO.getItems(), reqDeptId);
+        Long quoteDeptId = prepareSaleQuoteDept(createReqVO);
+        if (reqDeptId == null && quoteDeptId != null) {
+            validateSaleQuoteItemWarehousesAllowed(items, quoteDeptId);
+        }
         if (createReqVO.getAccountId() != null) {
             accountService.validateAccount(createReqVO.getAccountId());
         }
@@ -162,8 +171,12 @@ public class ErpSaleQuoteServiceImpl implements ErpSaleQuoteService {
         }
         preserveHiddenFields(updateReqVO, quote);
         preserveHiddenItemFields(updateReqVO.getItems(), saleQuoteItemMapper.selectListByQuoteId(updateReqVO.getId()));
-        List<ErpSaleQuoteItemDO> items = validateSaleQuoteItems(updateReqVO.getItems());
-        customerService.validateCustomer(updateReqVO.getCustomerId());
+        Long reqDeptId = updateReqVO.getDeptId();
+        List<ErpSaleQuoteItemDO> items = validateSaleQuoteItems(updateReqVO.getItems(), reqDeptId);
+        Long quoteDeptId = prepareSaleQuoteDept(updateReqVO);
+        if (reqDeptId == null && quoteDeptId != null) {
+            validateSaleQuoteItemWarehousesAllowed(items, quoteDeptId);
+        }
         if (updateReqVO.getAccountId() != null) {
             accountService.validateAccount(updateReqVO.getAccountId());
         }
@@ -266,9 +279,8 @@ public class ErpSaleQuoteServiceImpl implements ErpSaleQuoteService {
         saleCartMapper.insert(cart);
         cartItems.forEach(item -> item.setCartId(cart.getId()));
         cartItems.forEach(item ->
-                item.setStockCount(stockService.getStockCount(item.getProductId(), item.getWarehouseId())));
+                item.setStockCount(getStockCountIgnoreDataPermission(item.getProductId(), item.getWarehouseId())));
         saleCartItemMapper.insertBatch(cartItems);
-
         convertCountMap.forEach((quoteItemId, count) -> {
             ErpSaleQuoteItemDO quoteItem = quoteItemMap.get(quoteItemId);
             BigDecimal oldConvertedCount = quoteItem.getConvertedCount() != null ? quoteItem.getConvertedCount() : BigDecimal.ZERO;
@@ -286,6 +298,13 @@ public class ErpSaleQuoteServiceImpl implements ErpSaleQuoteService {
         record(quote.getId(), "转手推车",
                 "报价订单转销售手推车，单据编号：" + quote.getNo() + "，目标单号：" + cart.getNo(), quote.getNo());
         return cart.getId();
+    }
+
+    private BigDecimal getStockCountIgnoreDataPermission(Long productId, Long warehouseId) {
+        if (stockService == null) {
+            return BigDecimal.ZERO;
+        }
+        return DataPermissionUtils.executeIgnore(() -> stockService.getStockCount(productId, warehouseId));
     }
 
     private void validateConvertCartCount(Map<Long, ErpSaleQuoteItemDO> quoteItemMap, Map<Long, BigDecimal> convertCountMap) {
@@ -367,6 +386,7 @@ public class ErpSaleQuoteServiceImpl implements ErpSaleQuoteService {
         reqVO.setItems(convertList(items, item -> {
             ErpSaleOutSaveReqVO.Item outItem = new ErpSaleOutSaveReqVO.Item();
             outItem.setWarehouseId(item.getWarehouseId());
+            outItem.setDeptId(item.getDeptId());
             outItem.setProductId(item.getProductId());
             outItem.setProductUnitId(item.getProductUnitId());
             outItem.setProductPrice(Boolean.TRUE.equals(item.getGiftFlag()) ? BigDecimal.ZERO : item.getProductPrice());
@@ -385,19 +405,48 @@ public class ErpSaleQuoteServiceImpl implements ErpSaleQuoteService {
                 ErpSaleBizSourceTypeEnum.QUOTE.getType(), quoteId));
     }
 
-    private List<ErpSaleQuoteItemDO> validateSaleQuoteItems(List<ErpSaleQuoteSaveReqVO.Item> list) {
-        validateDuplicateSaleQuoteItems(list);
-        List<ErpProductDO> productList = productService.validProductList(
-                convertSet(list, ErpSaleQuoteSaveReqVO.Item::getProductId));
+    private Long prepareSaleQuoteDept(ErpSaleQuoteSaveReqVO reqVO) {
+        customerService.validateCustomerForSale(reqVO.getCustomerId());
+        List<Long> saleDeptIds = customerService.getCustomerSaleDeptIds(reqVO.getCustomerId());
+        Long deptId = reqVO.getDeptId();
+        if (deptId == null) {
+            deptId = resolveDefaultQuoteDeptId(saleDeptIds);
+            reqVO.setDeptId(deptId);
+        }
+        customerService.validateCustomerSaleDept(reqVO.getCustomerId(), deptId);
+        return deptId;
+    }
+
+    private Long resolveDefaultQuoteDeptId(List<Long> saleDeptIds) {
+        if (CollUtil.isEmpty(saleDeptIds)) {
+            return null;
+        }
+        Long loginDeptId = getLoginUserDeptId();
+        if (loginDeptId != null && saleDeptIds.contains(loginDeptId)) {
+            return loginDeptId;
+        }
+        return saleDeptIds.get(0);
+    }
+
+    private List<ErpSaleQuoteItemDO> validateSaleQuoteItems(List<ErpSaleQuoteSaveReqVO.Item> list, Long quoteDeptId) {
+        validateSaleQuoteItemBasics(list);
+        List<ErpProductDO> productList = DataPermissionUtils.executeIgnore(() ->
+                productService.validProductList(convertSet(list, ErpSaleQuoteSaveReqVO.Item::getProductId)));
         Map<Long, ErpProductDO> productMap = convertMap(productList, ErpProductDO::getId);
-        productBatchNoValidator.validateBatchNoRequired(list, productMap,
+        productBatchNoValidator.validateBatchNoAllowed(list, productMap,
                 ErpSaleQuoteSaveReqVO.Item::getProductId, ErpSaleQuoteSaveReqVO.Item::getBatchNo);
         Set<Long> warehouseIds = convertSet(list, ErpSaleQuoteSaveReqVO.Item::getWarehouseId);
-        warehouseService.validSaleWarehouseList(warehouseIds);
+        Map<Long, ErpWarehouseDO> warehouseMap = convertMap(warehouseService.validSaleWarehouseList(warehouseIds),
+                ErpWarehouseDO::getId);
+        if (quoteDeptId != null) {
+            validateSaleQuoteWarehouseIdsAllowed(warehouseIds, quoteDeptId);
+        }
         return convertList(list, o -> BeanUtils.toBean(o, ErpSaleQuoteItemDO.class, item -> {
-            item.setId(null); // 清除前端传回的旧 id，避免 insertBatch 时主键冲突
+            item.setId(null); // Clear stale id returned from frontend before insertBatch.
             ErpProductDO product = productMap.get(item.getProductId());
             item.setProductUnitId(product.getUnitId());
+            item.setDeptId(resolveQuoteItemDeptId(item.getProductId(), item.getWarehouseId(),
+                    item.getDeptId(), warehouseMap));
             item.setConvertedCount(BigDecimal.ZERO);
             item.setGiftFlag(Boolean.TRUE.equals(item.getGiftFlag()));
             if (Boolean.TRUE.equals(item.getGiftFlag())) {
@@ -408,6 +457,51 @@ public class ErpSaleQuoteServiceImpl implements ErpSaleQuoteService {
                 item.setTaxPrice(MoneyUtils.priceMultiplyPercent(item.getTotalPrice(), item.getTaxPercent()));
             }
         }));
+    }
+
+    private void validateSaleQuoteItemBasics(List<ErpSaleQuoteSaveReqVO.Item> list) {
+        validateDuplicateSaleQuoteItems(list);
+        validateSaleQuoteItemAmounts(list);
+    }
+
+    private void validateSaleQuoteItemWarehousesAllowed(Collection<ErpSaleQuoteItemDO> items, Long quoteDeptId) {
+        validateSaleQuoteWarehouseIdsAllowed(convertSet(items, ErpSaleQuoteItemDO::getWarehouseId), quoteDeptId);
+    }
+
+    private void validateSaleQuoteWarehouseIdsAllowed(Collection<Long> warehouseIds, Long quoteDeptId) {
+        if (quoteDeptId == null || CollUtil.isEmpty(warehouseIds)) {
+            return;
+        }
+        warehouseIds.forEach(warehouseId -> warehouseService.validateWarehouseSaleAllowedForDept(warehouseId, quoteDeptId));
+    }
+
+    private Long resolveQuoteItemDeptId(Long productId, Long warehouseId, Long itemDeptId,
+                                        Map<Long, ErpWarehouseDO> warehouseMap) {
+        ErpStockDO stock = DataPermissionUtils.executeIgnore(() -> stockService.getStock(productId, warehouseId));
+        if (stock != null && stock.getDeptId() != null) {
+            return stock.getDeptId();
+        }
+        ErpWarehouseDO warehouse = warehouseMap.get(warehouseId);
+        if (warehouse != null && warehouse.getDeptId() != null) {
+            return warehouse.getDeptId();
+        }
+        return itemDeptId;
+    }
+
+    private void validateSaleQuoteItemAmounts(List<ErpSaleQuoteSaveReqVO.Item> list) {
+        if (CollUtil.isEmpty(list)) {
+            return;
+        }
+        for (int i = 0; i < list.size(); i++) {
+            ErpSaleQuoteSaveReqVO.Item item = list.get(i);
+            if (item.getCount() == null || item.getCount().compareTo(BigDecimal.ZERO) <= 0) {
+                throw exception(SALE_QUOTE_ITEM_COUNT_POSITIVE, i + 1);
+            }
+            if (!Boolean.TRUE.equals(item.getGiftFlag())
+                    && (item.getProductPrice() == null || item.getProductPrice().compareTo(BigDecimal.ZERO) <= 0)) {
+                throw exception(SALE_QUOTE_ITEM_PRODUCT_PRICE_POSITIVE, i + 1);
+            }
+        }
     }
 
     private void validateDuplicateSaleQuoteItems(List<ErpSaleQuoteSaveReqVO.Item> list) {
@@ -492,8 +586,10 @@ public class ErpSaleQuoteServiceImpl implements ErpSaleQuoteService {
                 productCodes.add(row.getProductCode());
             }
         });
-        Map<String, ErpProductDO> productMap = convertMap(productMapper.selectListByCodes(productCodes), ErpProductDO::getCode);
-        Map<Long, ErpProductRespVO> productVOMap = productService.getProductVOMap(convertList(productMap.values(), ErpProductDO::getId));
+        Map<String, ErpProductDO> productMap = convertMap(
+                DataPermissionUtils.executeIgnore(() -> productMapper.selectListByCodes(productCodes)), ErpProductDO::getCode);
+        Map<Long, ErpProductRespVO> productVOMap = DataPermissionUtils.executeIgnore(() ->
+                productService.getProductVOMap(convertList(productMap.values(), ErpProductDO::getId)));
         list.forEach((row) -> {
             int rowNo = respVO.getSuccessCount() + respVO.getFailureCount() + 2;
             if (row.getProductCode() == null || row.getProductCode().isEmpty()) {
@@ -503,7 +599,7 @@ public class ErpSaleQuoteServiceImpl implements ErpSaleQuoteService {
             }
             ErpProductDO product = productMap.get(row.getProductCode());
             if (product == null) {
-                respVO.getFailureDetails().add(new ErpSaleQuoteImportRespVO.FailureItem(rowNo, row.getProductCode(), "产品不存在"));
+                respVO.getFailureDetails().add(new ErpSaleQuoteImportRespVO.FailureItem(rowNo, row.getProductCode(), "?????"));
                 respVO.setFailureCount(respVO.getFailureCount() + 1);
                 return;
             }
@@ -542,10 +638,11 @@ public class ErpSaleQuoteServiceImpl implements ErpSaleQuoteService {
             return respVO;
         }
         Map<String, ErpCustomerDO> customerMap = buildCustomerMap();
-        Map<String, ErpProductDO> productMap = productMapper.selectListByCodes(extractQuoteOrderProductCodes(list)).stream()
+        Map<String, ErpProductDO> productMap = DataPermissionUtils.executeIgnore(() ->
+                        productMapper.selectListByCodes(extractQuoteOrderProductCodes(list))).stream()
                 .collect(Collectors.toMap(ErpProductDO::getCode, product -> product, (a, b) -> a));
         Map<String, cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpWarehouseDO> warehouseMap =
-                warehouseService.getSaleWarehouseListByStatus(CommonStatusEnum.ENABLE.getStatus()).stream()
+                warehouseService.getCurrentUserVisibleSaleWarehouseList().stream()
                         .collect(Collectors.toMap(item -> normalizeKey(item.getName()), item -> item, (a, b) -> a));
 
         List<SaleQuoteOrderImportGroup> groups = new ArrayList<>();
@@ -587,7 +684,7 @@ public class ErpSaleQuoteServiceImpl implements ErpSaleQuoteService {
                 addImportFailure(respVO, rowNo, orderNo, null, "产品编码不能为空");
                 valid = false;
             } else if (product == null) {
-                addImportFailure(respVO, rowNo, orderNo, productCode, "产品不存在");
+                addImportFailure(respVO, rowNo, orderNo, productCode, "?????");
                 valid = false;
             }
             if (row.getItemCount() == null || row.getItemCount().compareTo(BigDecimal.ZERO) <= 0) {
@@ -609,7 +706,7 @@ public class ErpSaleQuoteServiceImpl implements ErpSaleQuoteService {
         for (SaleQuoteOrderImportGroup group : groups) {
             if (CollUtil.isEmpty(group.getRows())) {
                 addImportFailure(respVO, group.getRowNo(), resolveQuoteImportNo(group.getRowNo(), group.getMainRow()), null,
-                        "报价订单至少需要一行明细");
+                        "????????????");
             }
         }
         if (respVO.getFailureCount() > 0) {
@@ -645,11 +742,11 @@ public class ErpSaleQuoteServiceImpl implements ErpSaleQuoteService {
         }
         List<AdminUserRespDTO> users = getExactNicknameUsers(normalized);
         if (CollUtil.isEmpty(users)) {
-            addImportFailure(respVO, rowNo, orderNo, null, "业务员不存在：" + normalized);
+            addImportFailure(respVO, rowNo, orderNo, null, "???????" + normalized);
             return false;
         }
         if (users.size() > 1) {
-            addImportFailure(respVO, rowNo, orderNo, null, "业务员不唯一：" + normalized);
+            addImportFailure(respVO, rowNo, orderNo, null, "???????" + normalized);
             return false;
         }
         return true;
@@ -756,7 +853,7 @@ public class ErpSaleQuoteServiceImpl implements ErpSaleQuoteService {
             return true;
         } catch (IllegalArgumentException ignored) {
             addImportFailure(respVO, rowNo, orderNo, productCode,
-                    label + "格式不正确，请使用 yyyy-MM-dd 或 yyyy-MM-dd HH:mm:ss");
+                    label + "格式不正确，请使�?yyyy-MM-dd �?yyyy-MM-dd HH:mm:ss");
             return false;
         }
     }

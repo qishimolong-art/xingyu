@@ -47,6 +47,8 @@ public class ErpSaleOrderItemDO extends BaseDO {
      * 冗余 {@link ErpProductDO#getUnitId()}
      */
     private Long productUnitId;
+    private Long warehouseId;
+    private Long deptId;
 
     /**
      * 产品单位单价，单位：元

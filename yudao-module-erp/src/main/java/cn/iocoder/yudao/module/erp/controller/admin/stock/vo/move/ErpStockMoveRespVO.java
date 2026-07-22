@@ -34,6 +34,30 @@ public class ErpStockMoveRespVO {
     @ExcelProperty("所属部门")
     private String deptName;
 
+    @Schema(description = "Transfer direction, 10 transfer out, 20 transfer in", example = "10")
+    private Integer transferDirection;
+
+    @Schema(description = "Related stock move id", example = "1024")
+    private Long relatedMoveId;
+
+    @Schema(description = "Related stock move no", example = "QCDB20260714000001")
+    @ExcelProperty("关联调拨单号")
+    private String relatedMoveNo;
+
+    @Schema(description = "From department id", example = "100")
+    private Long fromDeptId;
+
+    @Schema(description = "From department name")
+    @ExcelProperty("调出部门")
+    private String fromDeptName;
+
+    @Schema(description = "To department id", example = "101")
+    private Long toDeptId;
+
+    @Schema(description = "To department name")
+    @ExcelProperty("调入部门")
+    private String toDeptName;
+
     @Schema(description = "Move time", requiredMode = Schema.RequiredMode.REQUIRED)
     @ExcelProperty("调拨时间")
     private LocalDateTime moveTime;
@@ -59,6 +83,17 @@ public class ErpStockMoveRespVO {
     @ExcelProperty(value = "状态", converter = DictConvert.class)
     @DictFormat(AUDIT_STATUS)
     private Integer status;
+
+    @Schema(description = "Approve user id", example = "1")
+    private Long approveUserId;
+
+    @Schema(description = "Approve user name")
+    @ExcelProperty("审核人")
+    private String approveUserName;
+
+    @Schema(description = "Approve time")
+    @ExcelProperty("审核时间")
+    private LocalDateTime approveTime;
 
     @Schema(description = "Remark", example = "remark")
     @ExcelProperty("备注")
@@ -96,6 +131,24 @@ public class ErpStockMoveRespVO {
     @ExcelProperty("产品编码")
     private String productCodes;
 
+    @Schema(description = "Whether current user can approve")
+    private Boolean approveAllowed;
+
+    @Schema(description = "Approve disabled reason")
+    private String approveDisabledReason;
+
+    @Schema(description = "Whether current user can delete")
+    private Boolean deleteAllowed;
+
+    @Schema(description = "Delete disabled reason")
+    private String deleteDisabledReason;
+
+    @Schema(description = "Whether current user can unlock the source sale cart")
+    private Boolean unlockCartAllowed;
+
+    @Schema(description = "Unlock sale cart disabled reason")
+    private String unlockCartDisabledReason;
+
     @Data
     public static class Item {
 
@@ -105,8 +158,38 @@ public class ErpStockMoveRespVO {
         @Schema(description = "From warehouse id", requiredMode = Schema.RequiredMode.REQUIRED, example = "3113")
         private Long fromWarehouseId;
 
+        @Schema(description = "From warehouse name", example = "Main warehouse")
+        private String fromWarehouseName;
+
+        @Schema(description = "From warehouse department id", example = "100")
+        private Long fromWarehouseDeptId;
+
+        @Schema(description = "From warehouse department name", example = "Sales Department")
+        private String fromWarehouseDeptName;
+
         @Schema(description = "To warehouse id", requiredMode = Schema.RequiredMode.REQUIRED, example = "888")
         private Long toWarehouseId;
+
+        @Schema(description = "To warehouse name", example = "Branch warehouse")
+        private String toWarehouseName;
+
+        @Schema(description = "To warehouse department id", example = "101")
+        private Long toWarehouseDeptId;
+
+        @Schema(description = "To warehouse department name", example = "Warehouse Department")
+        private String toWarehouseDeptName;
+
+        @Schema(description = "From department id", example = "100")
+        private Long fromDeptId;
+
+        @Schema(description = "From department name")
+        private String fromDeptName;
+
+        @Schema(description = "To department id", example = "101")
+        private Long toDeptId;
+
+        @Schema(description = "To department name")
+        private String toDeptName;
 
         @Schema(description = "Product id", requiredMode = Schema.RequiredMode.REQUIRED, example = "3113")
         private Long productId;
@@ -134,6 +217,24 @@ public class ErpStockMoveRespVO {
 
         @Schema(description = "Stock count", requiredMode = Schema.RequiredMode.REQUIRED, example = "100.00")
         private BigDecimal stockCount;
+
+        @Schema(description = "From shelf", example = "A-01")
+        private String fromShelf;
+
+        @Schema(description = "Batch no", example = "B20260714001")
+        private String batchNo;
+
+        @Schema(description = "Source purchase in id", example = "1024")
+        private Long sourceInId;
+
+        @Schema(description = "Source purchase in item id", example = "2048")
+        private Long sourceInItemId;
+
+        @Schema(description = "Source purchase in no", example = "CGRK202607140001")
+        private String sourceInNo;
+
+        @Schema(description = "Source purchase in count", example = "100.00")
+        private BigDecimal sourceCount;
 
     }
 

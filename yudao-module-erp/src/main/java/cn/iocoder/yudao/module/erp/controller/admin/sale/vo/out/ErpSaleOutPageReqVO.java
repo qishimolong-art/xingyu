@@ -70,7 +70,10 @@ public class ErpSaleOutPageReqVO extends PageParam {
     @Schema(description = "业务员编号")
     private Long saleUserId;
 
-    @Schema(description = "排序字段，支持 no、settleStatus、outTime、status、customerId、deliveryMethod、settleMethod、totalProductPrice、reductionAmount、afterReductionAmount、billAmount、freight、creator、auditorId、cancelCount、cancelAmount、afterCancelAmount、shipper、deliveryNo、logisticsNo、logisticsCompany、senderName、receiverName、receiverPhone、insuranceCompany、thirdPartyNo、thirdPartyUpstreamNo、remark、internalNote、saleUserId、deptId、totalWeight、approveTime、priority、signStatus、billNo、sourceNo、sourceCreateTime、printTime、confirmTime、vin、extraFee、orderType")
+    @Schema(description = "联系人", example = "张三")
+    private String receiverName;
+
+    @Schema(description = "排序字段，支持 printCount、no、settleStatus、outTime、status、customerId、deliveryMethod、settleMethod、totalProductPrice、reductionAmount、afterReductionAmount、billAmount、freight、creator、auditorId、totalCount、cancelCount、cancelAmount、afterCancelAmount、shipper、deliveryNo、logisticsNo、logisticsCompany、senderName、receiverName、receiverPhone、insuranceCompany、thirdPartyNo、thirdPartyUpstreamNo、remark、internalNote、saleUserId、deptId、totalWeight、approveTime、priority、signStatus、billNo、sourceNo、sourceCreateTime、printTime、confirmTime、vin、extraFee、orderType")
     private String orderField;
 
     @Schema(description = "排序方向，支持 asc、desc")

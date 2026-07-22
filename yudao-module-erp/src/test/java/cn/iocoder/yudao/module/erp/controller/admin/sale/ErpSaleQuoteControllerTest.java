@@ -8,12 +8,17 @@ import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.quote.ErpSaleQuoteEx
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.quote.ErpSaleQuotePageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.quote.ErpSaleQuoteRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.quote.ErpSaleQuoteSaveReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpProductRespVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleQuoteDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleQuoteItemDO;
 import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpSaleOutMapper;
+import cn.iocoder.yudao.module.erp.service.config.ErpFieldConfigService;
 import cn.iocoder.yudao.module.erp.service.product.ErpProductService;
 import cn.iocoder.yudao.module.erp.service.sale.ErpCustomerService;
+import cn.iocoder.yudao.module.erp.service.sale.ErpSaleFieldPermissionMasker;
 import cn.iocoder.yudao.module.erp.service.sale.ErpSaleQuoteService;
+import cn.iocoder.yudao.module.system.api.dept.DeptApi;
+import cn.iocoder.yudao.module.system.api.dept.dto.DeptRespDTO;
 import cn.iocoder.yudao.module.system.api.user.AdminUserApi;
 import org.junit.jupiter.api.Test;
 import org.mockito.InjectMocks;
@@ -21,9 +26,12 @@ import org.mockito.Mock;
 import org.springframework.security.access.prepost.PreAuthorize;
 
 import java.lang.reflect.Method;
+import java.math.BigDecimal;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 import static java.util.Collections.singletonList;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -52,7 +60,13 @@ public class ErpSaleQuoteControllerTest extends BaseMockitoUnitTest {
     @Mock
     private ErpSaleOutMapper saleOutMapper;
     @Mock
+    private ErpSaleFieldPermissionMasker fieldPermissionMasker;
+    @Mock
     private AdminUserApi adminUserApi;
+    @Mock
+    private DeptApi deptApi;
+    @Mock
+    private ErpFieldConfigService fieldConfigService;
 
     // ==================== createSaleQuote ====================
 
@@ -196,6 +210,48 @@ public class ErpSaleQuoteControllerTest extends BaseMockitoUnitTest {
     }
 
     @Test
+    public void testGetSaleQuote_itemDeptNameFilledByItemDeptId() {
+        ErpSaleQuoteDO quote = new ErpSaleQuoteDO();
+        quote.setId(50L);
+        quote.setDeptId(10L);
+        quote.setStatus(10);
+        ErpSaleQuoteItemDO item = new ErpSaleQuoteItemDO();
+        item.setId(501L);
+        item.setQuoteId(50L);
+        item.setProductId(100L);
+        item.setWarehouseId(200L);
+        item.setDeptId(30L);
+        item.setCount(BigDecimal.ONE);
+
+        ErpProductRespVO product = new ErpProductRespVO();
+        product.setId(100L);
+        product.setName("P1");
+        product.setCode("P001");
+        DeptRespDTO mainDept = new DeptRespDTO();
+        mainDept.setId(10L);
+        mainDept.setName("Sales Dept");
+        DeptRespDTO itemDept = new DeptRespDTO();
+        itemDept.setId(30L);
+        itemDept.setName("Qionglai Dept");
+
+        when(saleQuoteService.getSaleQuote(eq(50L))).thenReturn(quote);
+        when(saleQuoteService.getSaleQuoteItemListByQuoteId(eq(50L))).thenReturn(Collections.singletonList(item));
+        when(productService.getProductVOMap(any())).thenReturn(Collections.singletonMap(100L, product));
+        Map<Long, DeptRespDTO> deptMap = new HashMap<>();
+        deptMap.put(10L, mainDept);
+        deptMap.put(30L, itemDept);
+        when(deptApi.getDeptMap(any())).thenReturn(deptMap);
+
+        CommonResult<ErpSaleQuoteRespVO> result = controller.getSaleQuote(50L);
+
+        assertEquals(0, result.getCode());
+        assertEquals("Sales Dept", result.getData().getDeptName());
+        assertEquals(1, result.getData().getItems().size());
+        assertEquals(30L, result.getData().getItems().get(0).getDeptId());
+        assertEquals("Qionglai Dept", result.getData().getItems().get(0).getDeptName());
+    }
+
+    @Test
     public void testGetSaleQuote_hasPreAuthorize() throws NoSuchMethodException {
         Method method = ErpSaleQuoteController.class.getMethod("getSaleQuote", Long.class);
         PreAuthorize anno = method.getAnnotation(PreAuthorize.class);
@@ -253,7 +309,7 @@ public class ErpSaleQuoteControllerTest extends BaseMockitoUnitTest {
     @Test
     public void testExportSaleQuoteExcel_hasPreAuthorize() throws NoSuchMethodException {
         Method method = ErpSaleQuoteController.class.getMethod("exportSaleQuoteExcel",
-                ErpSaleQuotePageReqVO.class, javax.servlet.http.HttpServletResponse.class);
+                ErpSaleQuotePageReqVO.class, String.class, javax.servlet.http.HttpServletResponse.class);
         PreAuthorize anno = method.getAnnotation(PreAuthorize.class);
         assertNotNull(anno);
         assertTrue(anno.value().contains("erp:sale-quote:export"));

@@ -209,5 +209,9 @@ public class ErpSaleReturnDO extends BaseDO {
      * 开发员编号
      */
     private Long developerUserId;
+    /**
+     * 制单人（用户 ID）
+     */
+    private Long handler;
 
 }

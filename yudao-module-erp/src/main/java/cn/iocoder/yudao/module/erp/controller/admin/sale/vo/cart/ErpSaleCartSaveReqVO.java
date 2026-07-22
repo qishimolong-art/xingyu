@@ -34,7 +34,11 @@ public class ErpSaleCartSaveReqVO {
 
     private BigDecimal otherPrice;
 
-    private String fileUrl;
+    private Integer sourceType;
+
+    private Long sourceId;
+
+    private String sourceNo;
 
     private String remark;
 
@@ -73,6 +77,7 @@ public class ErpSaleCartSaveReqVO {
 
         @NotNull(message = "仓库编号不能为空")
         private Long warehouseId;
+        private Long deptId;
 
         @NotNull(message = "产品编号不能为空")
         private Long productId;

@@ -34,6 +34,15 @@ public class ErpCustomerPageReqVO extends PageParam {
     @Schema(description = "客户类型")
     private Integer customerType;
 
+    @Schema(description = "所属部门")
+    private Long deptId;
+
+    @Schema(description = "默认结算方式")
+    private Integer settleMethod;
+
+    @Schema(description = "价格级别")
+    private Integer priceLevel;
+
     @Schema(description = "区域编号")
     private Long areaId;
 
@@ -43,7 +52,16 @@ public class ErpCustomerPageReqVO extends PageParam {
     @Schema(description = "所属业务员")
     private Long saleUserId;
 
-    @Schema(description = "Sort field, supports: code, name, enterpriseMatchStatus, status, settleMethod, areaId, routeId, saleUserId, customerType, detailAddress, address, remark, creator, createTime, mobile")
+    @Schema(description = "地址")
+    private String address;
+
+    @Schema(description = "备注")
+    private String remark;
+
+    @Schema(description = "创建人")
+    private String creator;
+
+    @Schema(description = "Sort field, supports: code, name, enterpriseMatchStatus, status, settleMethod, priceLevel, areaId, routeId, saleUserId, customerType, detailAddress, address, remark, creator, createTime, mobile")
     private String orderField;
 
     @Schema(description = "Sort direction: asc or desc")

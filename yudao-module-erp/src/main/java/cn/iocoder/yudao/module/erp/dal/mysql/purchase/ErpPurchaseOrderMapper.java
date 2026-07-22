@@ -6,6 +6,7 @@ import cn.iocoder.yudao.framework.mybatis.core.query.MPJLambdaWrapperX;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.order.ErpPurchaseOrderPageReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseOrderDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseOrderItemDO;
+import cn.iocoder.yudao.module.erp.dal.mysql.common.ErpKeywordQuery;
 import cn.iocoder.yudao.module.erp.enums.ErpAuditStatus;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.core.toolkit.support.SFunction;
@@ -31,8 +32,9 @@ public interface ErpPurchaseOrderMapper extends BaseMapperX<ErpPurchaseOrderDO> 
                 .betweenIfPresent(ErpPurchaseOrderDO::getOrderTime, reqVO.getOrderTime())
                 .eqIfPresent(ErpPurchaseOrderDO::getStatus, reqVO.getStatus())
                 .likeIfPresent(ErpPurchaseOrderDO::getRemark, normalizeLikeValue(reqVO.getRemark()))
-                .eqIfPresent(ErpPurchaseOrderDO::getCreator, reqVO.getCreator());
-        // 入库状态。为什么需要 t. 的原因，是因为联表查询时，需要指定表名，不然会报 in_count 错误
+                .eqIfPresent(ErpPurchaseOrderDO::getCreator, reqVO.getCreator())
+                .eqIfPresent(ErpPurchaseOrderDO::getPurchaser, reqVO.getPurchaser());
+        // 入库状态。为什么需�?t. 的原因，是因为联表查询时，需要指定表名，不然会报 in_count 错误
         if (Objects.equals(reqVO.getInStatus(), ErpPurchaseOrderPageReqVO.IN_STATUS_NONE)) {
             query.eq(ErpPurchaseOrderDO::getInCount, 0);
         } else if (Objects.equals(reqVO.getInStatus(), ErpPurchaseOrderPageReqVO.IN_STATUS_PART)) {
@@ -40,7 +42,7 @@ public interface ErpPurchaseOrderMapper extends BaseMapperX<ErpPurchaseOrderDO> 
         } else if (Objects.equals(reqVO.getInStatus(), ErpPurchaseOrderPageReqVO.IN_STATUS_ALL)) {
             query.apply("t.in_count = t.total_count");
         }
-        // 退货状态
+        // Return status.
         if (Objects.equals(reqVO.getReturnStatus(), ErpPurchaseOrderPageReqVO.RETURN_STATUS_NONE)) {
             query.eq(ErpPurchaseOrderDO::getReturnCount, 0);
         } else if (Objects.equals(reqVO.getReturnStatus(), ErpPurchaseOrderPageReqVO.RETURN_STATUS_PART)) {
@@ -48,12 +50,12 @@ public interface ErpPurchaseOrderMapper extends BaseMapperX<ErpPurchaseOrderDO> 
         } else if (Objects.equals(reqVO.getReturnStatus(), ErpPurchaseOrderPageReqVO.RETURN_STATUS_ALL)) {
             query.apply("t.return_count = t.total_count");
         }
-        // 可采购入库
+        // Purchasable inbound.
         if (Boolean.TRUE.equals(reqVO.getInEnable())) {
             query.eq(ErpPurchaseOrderDO::getStatus, ErpAuditStatus.APPROVE.getStatus())
                     .apply("t.in_count < t.total_count");
         }
-        // 可采购退货
+        // Purchasable return.
         if (Boolean.TRUE.equals(reqVO.getReturnEnable())) {
             query.eq(ErpPurchaseOrderDO::getStatus, ErpAuditStatus.APPROVE.getStatus())
                     .apply("t.return_count < t.in_count");
@@ -63,6 +65,13 @@ public interface ErpPurchaseOrderMapper extends BaseMapperX<ErpPurchaseOrderDO> 
                     .eq(reqVO.getProductId() != null, ErpPurchaseOrderItemDO::getProductId, reqVO.getProductId())
                     .groupBy(ErpPurchaseOrderDO::getId); // 避免 1 对多查询，产生相同的 1
         }
+        ErpKeywordQuery.appendWithDeptName(query, reqVO.getKeyword(),
+                ErpPurchaseOrderDO::getNo, ErpPurchaseOrderDO::getFactoryOrderNo,
+                ErpPurchaseOrderDO::getRemark, ErpPurchaseOrderDO::getDeliveryMethod,
+                ErpPurchaseOrderDO::getPurchaseType, ErpPurchaseOrderDO::getOrderFormula,
+                ErpPurchaseOrderDO::getReceiveAddress, ErpPurchaseOrderDO::getInvoiceType,
+                ErpPurchaseOrderDO::getSettleMethod, ErpPurchaseOrderDO::getOrderCompany,
+                ErpPurchaseOrderDO::getDocumentType);
         orderByIfPresent(query, reqVO);
         return selectJoinPage(reqVO, ErpPurchaseOrderDO.class, query);
     }

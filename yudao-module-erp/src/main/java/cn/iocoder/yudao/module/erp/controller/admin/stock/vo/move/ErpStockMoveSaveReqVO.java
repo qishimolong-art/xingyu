@@ -1,6 +1,8 @@
 package cn.iocoder.yudao.module.erp.controller.admin.stock.vo.move;
 
 import cn.hutool.core.util.ObjectUtil;
+import cn.iocoder.yudao.framework.common.validation.InEnum;
+import cn.iocoder.yudao.module.erp.enums.stock.ErpStockTransferDirectionEnum;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Data;
@@ -25,6 +27,22 @@ public class ErpStockMoveSaveReqVO {
 
     @Schema(description = "Department id", example = "100")
     private Long deptId;
+
+    @Schema(description = "Transfer direction, 10 transfer out, 20 transfer in", example = "10")
+    @InEnum(ErpStockTransferDirectionEnum.class)
+    private Integer transferDirection;
+
+    @Schema(description = "Related stock move id", example = "1024")
+    private Long relatedMoveId;
+
+    @Schema(description = "Related stock move no", example = "QCDB20260714000001")
+    private String relatedMoveNo;
+
+    @Schema(description = "From department id", example = "100")
+    private Long fromDeptId;
+
+    @Schema(description = "To department id", example = "101")
+    private Long toDeptId;
 
     @Schema(description = "Move time", requiredMode = Schema.RequiredMode.REQUIRED)
     @NotNull(message = "Move time cannot be empty")
@@ -64,6 +82,12 @@ public class ErpStockMoveSaveReqVO {
         @NotNull(message = "To warehouse id cannot be empty")
         private Long toWarehouseId;
 
+        @Schema(description = "From department id", example = "100")
+        private Long fromDeptId;
+
+        @Schema(description = "To department id", example = "101")
+        private Long toDeptId;
+
         @Schema(description = "Product id", requiredMode = Schema.RequiredMode.REQUIRED, example = "3113")
         @NotNull(message = "Product id cannot be empty")
         private Long productId;
@@ -77,6 +101,24 @@ public class ErpStockMoveSaveReqVO {
 
         @Schema(description = "Remark", example = "remark")
         private String remark;
+
+        @Schema(description = "From shelf", example = "A-01")
+        private String fromShelf;
+
+        @Schema(description = "Batch no", example = "B20260714001")
+        private String batchNo;
+
+        @Schema(description = "Source purchase in id", example = "1024")
+        private Long sourceInId;
+
+        @Schema(description = "Source purchase in item id", example = "2048")
+        private Long sourceInItemId;
+
+        @Schema(description = "Source purchase in no", example = "CGRK202607140001")
+        private String sourceInNo;
+
+        @Schema(description = "Source purchase in count", example = "100.00")
+        private BigDecimal sourceCount;
 
         @AssertTrue(message = "调出仓库和调入仓库不能相同")
         @JsonIgnore

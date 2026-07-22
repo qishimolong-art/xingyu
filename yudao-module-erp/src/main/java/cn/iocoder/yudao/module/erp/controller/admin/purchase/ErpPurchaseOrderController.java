@@ -7,6 +7,7 @@ import cn.iocoder.yudao.framework.common.pojo.PageParam;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.common.util.collection.MapUtils;
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
+import cn.iocoder.yudao.framework.datapermission.core.util.DataPermissionUtils;
 import cn.iocoder.yudao.framework.excel.core.util.ExcelUtils;
 import cn.iocoder.yudao.module.erp.controller.admin.common.ErpAuditStatusRequestValidator;
 import cn.iocoder.yudao.module.erp.controller.admin.common.vo.ErpExportFieldRespVO;
@@ -137,11 +138,11 @@ public class ErpPurchaseOrderController {
     }
 
     @PutMapping("/update-status")
-    @Operation(summary = "更新采购订单状态")
+    @Operation(summary = "采购订单下订/反下订")
     @PreAuthorize("@ss.hasPermission('erp:purchase-order:update-status')")
     public CommonResult<Boolean> updatePurchaseOrderStatus(@RequestParam("id") Long id,
                                                            @RequestParam("status") Integer status) {
-        ErpAuditStatusRequestValidator.validateApproveStatus(status);
+        ErpAuditStatusRequestValidator.validateProcessOrApproveStatus(status);
         purchaseOrderService.updatePurchaseOrderStatus(id, status);
         return success(true);
     }
@@ -165,24 +166,29 @@ public class ErpPurchaseOrderController {
             return success(null);
         }
         List<ErpPurchaseOrderItemDO> purchaseOrderItemList = purchaseOrderService.getPurchaseOrderItemListByOrderId(id);
-        Map<Long, ErpProductRespVO> productMap = productService.getProductVOMap(
-                convertSet(purchaseOrderItemList, ErpPurchaseOrderItemDO::getProductId));
+        Map<Long, ErpProductRespVO> productMap = DataPermissionUtils.executeIgnore(() ->
+                productService.getProductVOMap(convertSet(purchaseOrderItemList, ErpPurchaseOrderItemDO::getProductId)));
         Set<Long> userIds = new HashSet<>();
         addUserId(userIds, purchaseOrder.getCreator());
         addUserId(userIds, purchaseOrder.getUpdater());
         addUserId(userIds, purchaseOrder.getPurchaser());
         Map<Long, AdminUserRespDTO> userMap = adminUserApi.getUserMap(userIds);
         DeptRespDTO dept = purchaseOrder.getDeptId() == null ? null : deptApi.getDept(purchaseOrder.getDeptId());
+        ErpSupplierDO supplier = purchaseOrder.getSupplierId() == null
+                ? null : supplierService.getSupplier(purchaseOrder.getSupplierId());
         ErpPurchaseOrderRespVO respVO = BeanUtils.toBean(purchaseOrder, ErpPurchaseOrderRespVO.class, purchaseOrderVO -> {
             purchaseOrderVO.setItems(BeanUtils.toBean(purchaseOrderItemList, ErpPurchaseOrderRespVO.Item.class, item -> {
                 BigDecimal stockCount = stockService.getStockCount(item.getProductId());
                 item.setStockCount(stockCount != null ? stockCount : BigDecimal.ZERO);
                 MapUtils.findAndThen(productMap, item.getProductId(), product -> item.setProductName(product.getName())
                         .setProductBarCode(product.getBarCode()).setProductUnitName(product.getUnitName())
-                        .setProductCode(product.getCode()));
+                        .setProductCode(product.getCode()).setBatchNoEnabled(product.getBatchNoEnabled()));
             }));
             if (dept != null) {
                 purchaseOrderVO.setDeptName(dept.getName());
+            }
+            if (supplier != null) {
+                purchaseOrderVO.setSupplierName(supplier.getName());
             }
             fillUserNames(purchaseOrderVO, userMap);
         });
@@ -342,8 +348,8 @@ public class ErpPurchaseOrderController {
                 convertSet(pageResult.getList(), ErpPurchaseOrderDO::getId));
         Map<Long, List<ErpPurchaseOrderItemDO>> purchaseOrderItemMap = convertMultiMap(
                 purchaseOrderItemList, ErpPurchaseOrderItemDO::getOrderId);
-        Map<Long, ErpProductRespVO> productMap = productService.getProductVOMap(
-                convertSet(purchaseOrderItemList, ErpPurchaseOrderItemDO::getProductId));
+        Map<Long, ErpProductRespVO> productMap = DataPermissionUtils.executeIgnore(() ->
+                productService.getProductVOMap(convertSet(purchaseOrderItemList, ErpPurchaseOrderItemDO::getProductId)));
         Map<Long, ErpSupplierDO> supplierMap = supplierService.getSupplierMap(
                 convertSet(pageResult.getList(), ErpPurchaseOrderDO::getSupplierId));
         Map<Long, DeptRespDTO> deptMap = deptApi.getDeptMap(
@@ -355,12 +361,12 @@ public class ErpPurchaseOrderController {
             addUserId(userIds, purchaseOrder.getPurchaser());
         });
         Map<Long, AdminUserRespDTO> userMap = adminUserApi.getUserMap(userIds);
-        return BeanUtils.toBean(pageResult, ErpPurchaseOrderRespVO.class, purchaseOrder -> {
+        PageResult<ErpPurchaseOrderRespVO> respResult = BeanUtils.toBean(pageResult, ErpPurchaseOrderRespVO.class, purchaseOrder -> {
             purchaseOrder.setItems(BeanUtils.toBean(purchaseOrderItemMap.get(purchaseOrder.getId()),
                     ErpPurchaseOrderRespVO.Item.class, item ->
                             MapUtils.findAndThen(productMap, item.getProductId(), product -> item.setProductName(product.getName())
                                     .setProductBarCode(product.getBarCode()).setProductUnitName(product.getUnitName())
-                                    .setProductCode(product.getCode()))));
+                                    .setProductCode(product.getCode()).setBatchNoEnabled(product.getBatchNoEnabled()))));
             purchaseOrder.setProductNames(CollUtil.join(purchaseOrder.getItems(), "，",
                     ErpPurchaseOrderRespVO.Item::getProductName));
             MapUtils.findAndThen(supplierMap, purchaseOrder.getSupplierId(),
@@ -371,6 +377,8 @@ public class ErpPurchaseOrderController {
             purchaseOrder.setInStatus(calcStatus(purchaseOrder.getInCount(), purchaseOrder.getTotalCount()));
             purchaseOrder.setReturnStatus(calcStatus(purchaseOrder.getReturnCount(), purchaseOrder.getTotalCount()));
         });
+        fieldPermissionMasker.maskList(FIELD_PERMISSION_MODULE, respResult.getList());
+        return respResult;
     }
 
     private List<ErpPurchaseOrderExportRespVO> buildPurchaseOrderExportList(PageResult<ErpPurchaseOrderDO> pageResult) {
@@ -381,8 +389,8 @@ public class ErpPurchaseOrderController {
                 convertSet(pageResult.getList(), ErpPurchaseOrderDO::getId));
         Map<Long, List<ErpPurchaseOrderItemDO>> purchaseOrderItemMap = convertMultiMap(
                 purchaseOrderItemList, ErpPurchaseOrderItemDO::getOrderId);
-        Map<Long, ErpProductRespVO> productMap = productService.getProductVOMap(
-                convertSet(purchaseOrderItemList, ErpPurchaseOrderItemDO::getProductId));
+        Map<Long, ErpProductRespVO> productMap = DataPermissionUtils.executeIgnore(() ->
+                productService.getProductVOMap(convertSet(purchaseOrderItemList, ErpPurchaseOrderItemDO::getProductId)));
         Map<Long, ErpSupplierDO> supplierMap = supplierService.getSupplierMap(
                 convertSet(pageResult.getList(), ErpPurchaseOrderDO::getSupplierId));
         Map<Long, AdminUserRespDTO> userMap = adminUserApi.getUserMap(

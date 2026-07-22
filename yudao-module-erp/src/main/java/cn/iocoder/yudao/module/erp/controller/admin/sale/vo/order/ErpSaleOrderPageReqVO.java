@@ -79,4 +79,10 @@ public class ErpSaleOrderPageReqVO extends PageParam {
     @Schema(description = "是否可退货", example = "true")
     private Boolean returnEnable;
 
+    @Schema(description = "排序字段", example = "orderTime")
+    private String orderField;
+
+    @Schema(description = "排序方向，仅支持 asc 或 desc", example = "desc")
+    private String orderDirection;
+
 }

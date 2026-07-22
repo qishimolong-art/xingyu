@@ -1,0 +1,8 @@
+#NOTE: This is a Maven Resolver internal implementation file, its format can be changed without prior notice.
+#Tue Jul 21 13:53:49 CST 2026
+https\://mirrors.huaweicloud.com/repository/maven/.error=
+https\://repo.spring.io/snapshot/.error=
+https\://maven.aliyun.com/repository/public/.error=
+https\://mirrors.huaweicloud.com/repository/maven/.lastUpdated=1784613228632
+https\://repo.spring.io/snapshot/.lastUpdated=1784613229108
+https\://maven.aliyun.com/repository/public/.lastUpdated=1784613228852

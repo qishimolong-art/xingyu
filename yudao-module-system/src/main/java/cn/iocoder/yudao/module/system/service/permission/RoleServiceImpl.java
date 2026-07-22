@@ -18,6 +18,7 @@ import cn.iocoder.yudao.module.system.dal.redis.RedisKeyConstants;
 import cn.iocoder.yudao.module.system.enums.permission.DataScopeEnum;
 import cn.iocoder.yudao.module.system.enums.permission.RoleCodeEnum;
 import cn.iocoder.yudao.module.system.enums.permission.RoleTypeEnum;
+import cn.iocoder.yudao.module.system.service.logger.SystemOperateLogService;
 import com.google.common.annotations.VisibleForTesting;
 import com.mzt.logapi.context.LogRecordContext;
 import com.mzt.logapi.service.impl.DiffParseFunction;
@@ -53,6 +54,8 @@ public class RoleServiceImpl implements RoleService {
 
     @Resource
     private RoleMapper roleMapper;
+    @Resource
+    private SystemOperateLogService operateLogService;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -105,7 +108,7 @@ public class RoleServiceImpl implements RoleService {
     @CacheEvict(value = RedisKeyConstants.ROLE, key = "#id")
     public void updateRoleDataScope(Long id, Integer dataScope, Set<Long> dataScopeDeptIds) {
         // 校验是否可以更新
-        validateRoleForUpdate(id);
+        RoleDO oldRole = validateRoleForUpdate(id);
 
         // 更新数据范围
         RoleDO updateObject = new RoleDO();
@@ -113,6 +116,8 @@ public class RoleServiceImpl implements RoleService {
         updateObject.setDataScope(dataScope);
         updateObject.setDataScopeDeptIds(dataScopeDeptIds);
         roleMapper.updateById(updateObject);
+        operateLogService.recordUpdate(SYSTEM_ROLE_TYPE, SYSTEM_ROLE_UPDATE_DATA_SCOPE_SUB_TYPE,
+                id, oldRole, roleMapper.selectById(id));
     }
 
     @Override
@@ -138,11 +143,14 @@ public class RoleServiceImpl implements RoleService {
     public void deleteRoleList(List<Long> ids) {
         // 1. 校验是否可以删除
         ids.forEach(this::validateRoleForUpdate);
+        List<RoleDO> roles = roleMapper.selectByIds(ids);
 
         // 2.1 标记删除
         roleMapper.deleteByIds(ids);
         // 2.2 删除相关数据
         ids.forEach(id -> permissionService.processRoleDeleted(id));
+        roles.forEach(role -> operateLogService.recordDelete(SYSTEM_ROLE_TYPE, SYSTEM_ROLE_BATCH_DELETE_SUB_TYPE,
+                role.getId(), role));
     }
 
     /**

@@ -6,10 +6,13 @@ import static cn.iocoder.yudao.framework.common.exception.util.ServiceExceptionU
 
 public final class ErpAuditStatusRequestValidator {
 
+    private static final Integer PROCESS_STATUS = 10;
     private static final Integer APPROVE_STATUS = 20;
 
     private static final ErrorCode APPROVE_STATUS_REQUIRED =
             new ErrorCode(1_030_000_002, "Only approve status is allowed");
+    private static final ErrorCode PROCESS_OR_APPROVE_STATUS_REQUIRED =
+            new ErrorCode(1_030_000_003, "Only process or approve status is allowed");
 
     private ErpAuditStatusRequestValidator() {
     }
@@ -17,6 +20,12 @@ public final class ErpAuditStatusRequestValidator {
     public static void validateApproveStatus(Integer status) {
         if (!APPROVE_STATUS.equals(status)) {
             throw exception(APPROVE_STATUS_REQUIRED);
+        }
+    }
+
+    public static void validateProcessOrApproveStatus(Integer status) {
+        if (!PROCESS_STATUS.equals(status) && !APPROVE_STATUS.equals(status)) {
+            throw exception(PROCESS_OR_APPROVE_STATUS_REQUIRED);
         }
     }
 

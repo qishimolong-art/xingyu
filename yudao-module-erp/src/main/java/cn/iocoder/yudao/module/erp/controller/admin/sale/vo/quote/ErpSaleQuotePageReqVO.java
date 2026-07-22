@@ -39,6 +39,12 @@ public class ErpSaleQuotePageReqVO extends PageParam {
     @Schema(description = "备注", example = "客户缺货报价")
     private String remark;
 
+    @Schema(description = "VIN车架号", example = "LGBH52E03HY123456")
+    private String vin;
+
+    @Schema(description = "产品编号", example = "1")
+    private Long productId;
+
     @Schema(description = "报价订单编号数组")
     private List<Long> ids;
 

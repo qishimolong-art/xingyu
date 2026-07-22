@@ -6,11 +6,13 @@ import cn.iocoder.yudao.framework.mybatis.core.query.MPJLambdaWrapperX;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.in.ErpStockInPageReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockInDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockInItemDO;
+import cn.iocoder.yudao.module.erp.dal.mysql.common.ErpKeywordQuery;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
+import com.baomidou.mybatisplus.core.toolkit.support.SFunction;
 import org.apache.ibatis.annotations.Mapper;
 
 /**
- * ERP 其它入库单 Mapper
+ * ERP 其它入库�?Mapper
  *
  * @author 芋道源码
  */
@@ -25,15 +27,36 @@ public interface ErpStockInMapper extends BaseMapperX<ErpStockInDO> {
                 .eqIfPresent(ErpStockInDO::getStatus, reqVO.getStatus())
                 .eqIfPresent(ErpStockInDO::getDeptId, reqVO.getDeptId())
                 .likeIfPresent(ErpStockInDO::getRemark, reqVO.getRemark())
-                .eqIfPresent(ErpStockInDO::getCreator, reqVO.getCreator())
-                .orderByDesc(ErpStockInDO::getId);
+                .eqIfPresent(ErpStockInDO::getCreator, reqVO.getCreator());
         if (reqVO.getWarehouseId() != null || reqVO.getProductId() != null) {
             query.leftJoin(ErpStockInItemDO.class, ErpStockInItemDO::getInId, ErpStockInDO::getId)
                     .eq(reqVO.getWarehouseId() != null, ErpStockInItemDO::getWarehouseId, reqVO.getWarehouseId())
                     .eq(reqVO.getProductId() != null, ErpStockInItemDO::getProductId, reqVO.getProductId())
                     .groupBy(ErpStockInDO::getId); // 避免 1 对多查询，产生相同的 1
         }
+        ErpKeywordQuery.appendWithDeptName(query, reqVO.getKeyword(),
+                ErpStockInDO::getNo, ErpStockInDO::getRemark);
+        orderBy(query, reqVO);
         return selectJoinPage(reqVO, ErpStockInDO.class, query);
+    }
+
+    static void orderBy(MPJLambdaWrapperX<ErpStockInDO> query, ErpStockInPageReqVO reqVO) {
+        SFunction<ErpStockInDO, ?> column = getOrderColumn(reqVO.getOrderField());
+        boolean asc = "asc".equalsIgnoreCase(reqVO.getOrderDirection());
+        boolean desc = "desc".equalsIgnoreCase(reqVO.getOrderDirection());
+        if (column != null && (asc || desc)) query.orderBy(true, asc, column);
+        query.orderByDesc(ErpStockInDO::getId);
+    }
+
+    static SFunction<ErpStockInDO, ?> getOrderColumn(String field) {
+        if (field == null) return null;
+        switch (field.trim()) {
+            case "no": return ErpStockInDO::getNo;
+            case "inTime": return ErpStockInDO::getInTime;
+            case "updateTime": return ErpStockInDO::getUpdateTime;
+            case "status": return ErpStockInDO::getStatus;
+            default: return null;
+        }
     }
 
     default int updateByIdAndStatus(Long id, Integer status, ErpStockInDO updateObj) {

@@ -24,7 +24,7 @@ public class ErpProductImportExcelVO {
     @ExcelProperty("商品分类")
     private String categoryName;
 
-    @ExcelProperty("是否开启批次号管理")
+    @ExcelProperty("开启批次号")
     private Boolean batchNoEnabled;
 
     @ExcelRequired

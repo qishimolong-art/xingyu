@@ -27,6 +27,7 @@ public class ErpSaleCartItemDO extends BaseDO {
     private Long productId;
     private Long productUnitId;
     private Long warehouseId;
+    private Long deptId;
     private BigDecimal productPrice;
     private BigDecimal count;
     /**

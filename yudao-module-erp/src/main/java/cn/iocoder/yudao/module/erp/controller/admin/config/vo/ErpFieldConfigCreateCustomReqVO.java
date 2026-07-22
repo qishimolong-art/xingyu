@@ -58,4 +58,7 @@ public class ErpFieldConfigCreateCustomReqVO {
     @Schema(description = "是否只读", example = "false")
     private Boolean readonly;
 
+    @Schema(description = "排序", example = "10")
+    private Integer sort;
+
 }

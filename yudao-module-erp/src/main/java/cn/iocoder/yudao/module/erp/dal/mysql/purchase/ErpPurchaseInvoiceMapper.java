@@ -6,6 +6,7 @@ import cn.iocoder.yudao.framework.mybatis.core.query.MPJLambdaWrapperX;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.invoice.ErpPurchaseInvoicePageReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseInvoiceDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseInvoiceItemDO;
+import cn.iocoder.yudao.module.erp.dal.mysql.common.ErpKeywordQuery;
 import cn.iocoder.yudao.module.erp.enums.ErpAuditStatus;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.core.toolkit.support.SFunction;
@@ -24,7 +25,8 @@ public interface ErpPurchaseInvoiceMapper extends BaseMapperX<ErpPurchaseInvoice
                 .likeIfPresent(ErpPurchaseInvoiceDO::getInvoiceNo, reqVO.getInvoiceNo())
                 .likeIfPresent(ErpPurchaseInvoiceDO::getInvoiceType, reqVO.getInvoiceType())
                 .likeIfPresent(ErpPurchaseInvoiceDO::getRemark, reqVO.getRemark())
-                .eqIfPresent(ErpPurchaseInvoiceDO::getCreator, reqVO.getCreator());
+                .eqIfPresent(ErpPurchaseInvoiceDO::getCreator, reqVO.getCreator())
+                .eqIfPresent(ErpPurchaseInvoiceDO::getHandlerId, reqVO.getHandlerId());
         if (Integer.valueOf(0).equals(reqVO.getInvoiceStatus())) {
             query.ne(ErpPurchaseInvoiceDO::getStatus, ErpAuditStatus.APPROVE.getStatus());
         } else if (Integer.valueOf(1).equals(reqVO.getInvoiceStatus())) {
@@ -36,6 +38,9 @@ public interface ErpPurchaseInvoiceMapper extends BaseMapperX<ErpPurchaseInvoice
                     .likeIfPresent(ErpPurchaseInvoiceItemDO::getSourceInNo, reqVO.getSourceInNo())
                     .groupBy(ErpPurchaseInvoiceDO::getId);
         }
+        ErpKeywordQuery.appendWithDeptName(query, reqVO.getKeyword(),
+                ErpPurchaseInvoiceDO::getNo, ErpPurchaseInvoiceDO::getInvoiceNo,
+                ErpPurchaseInvoiceDO::getInvoiceType, ErpPurchaseInvoiceDO::getRemark);
         orderByIfPresent(query, reqVO);
         return selectJoinPage(reqVO, ErpPurchaseInvoiceDO.class, query);
     }

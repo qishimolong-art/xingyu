@@ -19,6 +19,8 @@ import static cn.iocoder.yudao.framework.test.core.util.RandomUtils.randomPojo;
 import static cn.iocoder.yudao.module.system.enums.logger.LoginResultEnum.CAPTCHA_CODE_ERROR;
 import static cn.iocoder.yudao.module.system.enums.logger.LoginResultEnum.SUCCESS;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 
 @Import(LoginLogServiceImpl.class)
 public class LoginLogServiceImplTest extends BaseDbUnitTest {
@@ -71,6 +73,40 @@ public class LoginLogServiceImplTest extends BaseDbUnitTest {
         // 断言
         LoginLogDO loginLogDO = loginLogMapper.selectOne(null);
         assertPojoEquals(reqDTO, loginLogDO);
+    }
+
+    @Test
+    public void testGetLoginLogPageSort() {
+        LoginLogDO laterUsernameLog = randomPojo(LoginLogDO.class, o -> {
+            o.setUsername("z-user");
+            o.setResult(SUCCESS.getResult());
+        });
+        loginLogMapper.insert(laterUsernameLog);
+        LoginLogDO earlierUsernameLog = cloneIgnoreId(laterUsernameLog, o -> o.setUsername("a-user"));
+        loginLogMapper.insert(earlierUsernameLog);
+
+        LoginLogPageReqVO reqVO = new LoginLogPageReqVO();
+        reqVO.setOrderField("username");
+        reqVO.setOrderDirection("asc");
+
+        PageResult<LoginLogDO> pageResult = loginLogService.getLoginLogPage(reqVO);
+
+        assertEquals(2, pageResult.getTotal());
+        assertEquals("a-user", pageResult.getList().get(0).getUsername());
+        assertEquals("z-user", pageResult.getList().get(1).getUsername());
+    }
+
+    @Test
+    public void testLoginLogSortFieldWhitelist() {
+        assertNotNull(LoginLogMapper.getOrderColumn("id"));
+        assertNotNull(LoginLogMapper.getOrderColumn("logType"));
+        assertNotNull(LoginLogMapper.getOrderColumn("username"));
+        assertNotNull(LoginLogMapper.getOrderColumn("userIp"));
+        assertNotNull(LoginLogMapper.getOrderColumn("userAgent"));
+        assertNotNull(LoginLogMapper.getOrderColumn("result"));
+        assertNotNull(LoginLogMapper.getOrderColumn("createTime"));
+        assertNull(LoginLogMapper.getOrderColumn("deleted desc"));
+        assertNull(LoginLogMapper.getOrderColumn(null));
     }
 
 }

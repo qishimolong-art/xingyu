@@ -24,11 +24,26 @@ public class ErpStockRecordPageReqVO extends PageParam {
     @Schema(description = "仓库编号", example = "32407")
     private Long warehouseId;
 
+    @Schema(description = "批次号（精确匹配）")
+    private String batchNo;
+
+    @Schema(description = "是否仅查询未指定批次的流水", example = "false")
+    private Boolean unassignedBatch;
+
+    @Schema(description = "是否从产品库存页面按库存查看权限查询")
+    private Boolean stockView;
+
     @Schema(description = "业务类型（单选，兼容旧查询）", example = "10")
     private Integer bizType;
 
     @Schema(description = "业务类型多选（五期新增）")
     private List<Integer> bizTypes;
+
+    @Schema(description = "业务编号", example = "1024")
+    private Long bizId;
+
+    @Schema(description = "业务项编号", example = "2048")
+    private Long bizItemId;
 
     @Schema(description = "业务单号", example = "Z110")
     private String bizNo;
@@ -53,5 +68,11 @@ public class ErpStockRecordPageReqVO extends PageParam {
 
     @Schema(description = "来源供应商编号", example = "1724")
     private Long supplierId;
+
+    @Schema(description = "排序字段", example = "bizDate")
+    private String orderField;
+
+    @Schema(description = "排序方向", example = "desc")
+    private String orderDirection;
 
 }

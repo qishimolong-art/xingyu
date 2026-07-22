@@ -7,6 +7,7 @@ import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
 import cn.iocoder.yudao.framework.excel.core.util.ExcelUtils;
 import cn.iocoder.yudao.framework.translate.core.TranslateUtils;
+import cn.iocoder.yudao.module.system.controller.admin.logger.vo.operatelog.OperateLogModuleOptionRespVO;
 import cn.iocoder.yudao.module.system.controller.admin.logger.vo.operatelog.OperateLogPageReqVO;
 import cn.iocoder.yudao.module.system.controller.admin.logger.vo.operatelog.OperateLogRespVO;
 import cn.iocoder.yudao.module.system.dal.dataobject.logger.OperateLogDO;
@@ -56,6 +57,12 @@ public class OperateLogController {
     public CommonResult<PageResult<OperateLogRespVO>> pageOperateLog(@Valid OperateLogPageReqVO pageReqVO) {
         PageResult<OperateLogDO> pageResult = operateLogService.getOperateLogPage(pageReqVO);
         return success(BeanUtils.toBean(pageResult, OperateLogRespVO.class));
+    }
+    @GetMapping("/module-options")
+    @Operation(summary = "获得操作日志模块选项")
+    @PreAuthorize("@ss.hasPermission('system:operate-log:query')")
+    public CommonResult<List<OperateLogModuleOptionRespVO>> getOperateLogModuleOptions() {
+        return success(operateLogService.getOperateLogModuleOptions());
     }
 
     @Operation(summary = "导出操作日志")

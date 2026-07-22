@@ -16,19 +16,20 @@ public interface ErrorCodeConstants {
     ErrorCode SUPPLIER_CATEGORY_INVALID = new ErrorCode(1_030_100_002, "供应商类别必须是：供应商、既是客户又是供应商");
     ErrorCode SUPPLIER_DISABLE_FAIL_PAYABLE_NOT_CLEAR = new ErrorCode(1_030_100_003, "供应商【{}】仍有未结清欠款【{}】，无法停用");
     ErrorCode SUPPLIER_CODE_DUPLICATE = new ErrorCode(1_030_100_004, "供应商编码({})已存在");
+    ErrorCode SUPPLIER_MERGED = new ErrorCode(1_030_100_005, "供应商({})已被合并，不可操作");
 
     // ========== ERP 采购订单（1-030-101-000） ==========
     ErrorCode PURCHASE_ORDER_NOT_EXISTS = new ErrorCode(1_030_101_000, "采购订单不存在");
-    ErrorCode PURCHASE_ORDER_DELETE_FAIL_APPROVE = new ErrorCode(1_030_101_001, "采购订单({})已审核，无法删除");
-    ErrorCode PURCHASE_ORDER_PROCESS_FAIL = new ErrorCode(1_030_101_002, "反审核失败，只有已审核的采购订单才能反审核");
-    ErrorCode PURCHASE_ORDER_APPROVE_FAIL = new ErrorCode(1_030_101_003, "审核失败，只有未审核的采购订单才能审核");
+    ErrorCode PURCHASE_ORDER_DELETE_FAIL_APPROVE = new ErrorCode(1_030_101_001, "采购订单({})已下订，无法删除");
+    ErrorCode PURCHASE_ORDER_PROCESS_FAIL = new ErrorCode(1_030_101_002, "反下订失败，只有已下订的采购订单才能反下订");
+    ErrorCode PURCHASE_ORDER_APPROVE_FAIL = new ErrorCode(1_030_101_003, "下订失败，只有未下订的采购订单才能下订");
     ErrorCode PURCHASE_ORDER_NO_EXISTS = new ErrorCode(1_030_101_004, "生成采购单号失败，请重新提交");
-    ErrorCode PURCHASE_ORDER_UPDATE_FAIL_APPROVE = new ErrorCode(1_030_101_005, "采购订单({})已审核，无法修改");
-    ErrorCode PURCHASE_ORDER_NOT_APPROVE = new ErrorCode(1_030_101_006, "采购订单未审核，无法操作");
+    ErrorCode PURCHASE_ORDER_UPDATE_FAIL_APPROVE = new ErrorCode(1_030_101_005, "采购订单({})已下订，无法修改");
+    ErrorCode PURCHASE_ORDER_NOT_APPROVE = new ErrorCode(1_030_101_006, "采购订单未下订，无法操作");
     ErrorCode PURCHASE_ORDER_ITEM_IN_FAIL_PRODUCT_EXCEED = new ErrorCode(1_030_101_007, "采购订单项({})超过最大允许入库数量({})");
-    ErrorCode PURCHASE_ORDER_PROCESS_FAIL_EXISTS_IN = new ErrorCode(1_030_101_008, "反审核失败，已存在对应的采购入库单");
+    ErrorCode PURCHASE_ORDER_PROCESS_FAIL_EXISTS_IN = new ErrorCode(1_030_101_008, "反下订失败，采购订单已进行入库操作");
 ErrorCode PURCHASE_ORDER_ITEM_RETURN_FAIL_IN_EXCEED = new ErrorCode(1_030_101_009, "采购订单项({})超过最大允许退货数量({})");
-    ErrorCode PURCHASE_ORDER_PROCESS_FAIL_EXISTS_RETURN = new ErrorCode(1_030_101_010, "反审核失败，已存在对应的采购退货单");
+    ErrorCode PURCHASE_ORDER_PROCESS_FAIL_EXISTS_RETURN = new ErrorCode(1_030_101_010, "反下订失败，已存在对应的采购退货单");
     ErrorCode PURCHASE_ORDER_ITEM_GIFT_MODIFY_FAIL_HAS_IN = new ErrorCode(1_030_101_011, "采购订单项({})已有入库记录，不允许修改赠品标记");
     ErrorCode PURCHASE_ORDER_IN_EXCEED_INABLE = new ErrorCode(1_030_101_012, "入库数量超过可入库数量，商品[{}] 可入[{}] 实入[{}]");
     ErrorCode PURCHASE_ORDER_ITEM_COUNT_POSITIVE = new ErrorCode(1_030_101_013, "订货数量不得小于等于 0");
@@ -48,6 +49,10 @@ ErrorCode PURCHASE_ORDER_ITEM_RETURN_FAIL_IN_EXCEED = new ErrorCode(1_030_101_00
     ErrorCode PURCHASE_IN_ITEM_COUNT_POSITIVE = new ErrorCode(1_030_102_015, "入库数量不得小于等于 0");
     ErrorCode PURCHASE_IN_ITEM_PRICE_POSITIVE = new ErrorCode(1_030_102_016, "入库价格不得小于 0");
     ErrorCode PURCHASE_IN_ITEM_DUPLICATE = new ErrorCode(1_030_102_017, "同一采购入库明细中产品、仓库、赠品标识重复：{}");
+    ErrorCode PURCHASE_IN_TRANSFER_OUT_ITEMS_EMPTY = new ErrorCode(1_030_102_018, "当前采购入库单无可调拨明细");
+    ErrorCode PURCHASE_IN_TRANSFER_OUT_SOURCE_ITEM_NOT_EXISTS = new ErrorCode(1_030_102_019, "来源采购入库明细不存在或不属于当前入库单");
+    ErrorCode PURCHASE_IN_TRANSFER_OUT_COUNT_POSITIVE = new ErrorCode(1_030_102_020, "调拨数量必须大于 0");
+    ErrorCode PURCHASE_IN_TRANSFER_OUT_EXCEED_AVAILABLE = new ErrorCode(1_030_102_021, "入库明细[{}]本次调拨数量({})超过可调拨数量({})");
 
     // ========== ERP 采购退货（1-030-103-000） ==========
     ErrorCode PURCHASE_RETURN_NOT_EXISTS = new ErrorCode(1_030_103_000, "采购退货单不存在");
@@ -90,6 +95,11 @@ ErrorCode PURCHASE_ORDER_ITEM_RETURN_FAIL_IN_EXCEED = new ErrorCode(1_030_101_00
     ErrorCode CUSTOMER_DELETE_FAIL_REFERENCED = new ErrorCode(1_020_200_002, "该客户已被{}引用，无法删除");
     ErrorCode CUSTOMER_DISABLE_FAIL_RECEIVABLE_NOT_CLEAR = new ErrorCode(1_020_200_003, "客户【{}】仍有未结清应收账款【{}】，无法停用");
     ErrorCode CUSTOMER_CODE_DUPLICATE = new ErrorCode(1_020_200_004, "客户编码({})已存在");
+    ErrorCode CUSTOMER_MERGED = new ErrorCode(1_020_200_005, "客户({})已被合并，不可操作");
+    ErrorCode CUSTOMER_CREDIT_CONFIG_REQUIRED = new ErrorCode(1_020_200_006, "开启白条授信后，授信金额和授信期限至少填写一项");
+    ErrorCode CUSTOMER_CREDIT_VALUE_INVALID = new ErrorCode(1_020_200_007, "白条授信金额和授信期限不能小于 0");
+    ErrorCode CUSTOMER_CREDIT_BLOCKED = new ErrorCode(1_020_200_008, "客户({})已超过白条授信限制，不能继续选择：{}");
+    ErrorCode CUSTOMER_SALE_DEPT_NOT_ALLOWED = new ErrorCode(1_020_200_009, "客户未分配给当前报价部门，不能保存报价订单");
     ErrorCode CUSTOMER_CONTACT_NOT_EXISTS = new ErrorCode(1_030_207_000, "客户联系人不存在");
     ErrorCode CUSTOMER_CONTRACT_NOT_EXISTS = new ErrorCode(1_030_207_001, "客户合同不存在");
     ErrorCode CUSTOMER_IMAGE_NOT_EXISTS = new ErrorCode(1_030_207_002, "客户图片不存在");
@@ -121,6 +131,9 @@ ErrorCode PURCHASE_ORDER_ITEM_RETURN_FAIL_IN_EXCEED = new ErrorCode(1_030_101_00
     ErrorCode SALE_OUT_NOT_APPROVE = new ErrorCode(1_020_202_006, "销售出库单未审核，无法操作");
     ErrorCode SALE_OUT_FAIL_RECEIPT_PRICE_EXCEED = new ErrorCode(1_020_202_007, "收款金额({})超过销售出库单总金额({})");
     ErrorCode SALE_OUT_PROCESS_FAIL_EXISTS_RECEIPT = new ErrorCode(1_020_202_008, "反审核失败，已存在对应的收款单");
+    ErrorCode SALE_OUT_EXPRESS_FILE_EMPTY = new ErrorCode(1_020_202_009, "快递单图片不能为空");
+    ErrorCode SALE_OUT_EXPRESS_FILE_TYPE_INVALID = new ErrorCode(1_020_202_010, "快递单仅支持 jpg、jpeg、png 格式");
+    ErrorCode SALE_OUT_EXPRESS_FILE_SIZE_EXCEEDED = new ErrorCode(1_020_202_011, "快递单图片不能超过 5MB");
 
     // ========== ERP 销售退货（1-030-203-000） ==========
     ErrorCode SALE_RETURN_NOT_EXISTS = new ErrorCode(1_020_203_000, "销售退货单不存在");
@@ -138,6 +151,9 @@ ErrorCode PURCHASE_ORDER_ITEM_RETURN_FAIL_IN_EXCEED = new ErrorCode(1_030_101_00
     ErrorCode SALE_RETURN_EXCEED_RETURNABLE = new ErrorCode(1_020_203_012, "销售单明细({})本次退货数量({})超过可退数量({})");
     ErrorCode SALE_RETURN_COUNT_POSITIVE = new ErrorCode(1_020_203_013, "销售退货数量必须大于 0");
     ErrorCode SALE_RETURN_BY_STOCK_CUSTOMER_REQUIRED = new ErrorCode(1_020_203_014, "按库存退货时，客户不能为空");
+    ErrorCode SALE_RETURN_ITEMS_EMPTY = new ErrorCode(1_020_203_015, "销售退货明细不能为空");
+    ErrorCode SALE_RETURN_ITEM_PRODUCT_REQUIRED = new ErrorCode(1_020_203_016, "销售退货明细产品不能为空");
+    ErrorCode SALE_RETURN_ITEM_PRICE_REQUIRED = new ErrorCode(1_020_203_017, "销售退货明细产品单价不能为空且不能小于 0");
 
     // ========== ERP 仓库 1-030-400-000 ==========
     ErrorCode WAREHOUSE_NOT_EXISTS = new ErrorCode(1_030_400_000, "仓库不存在");
@@ -147,6 +163,12 @@ ErrorCode PURCHASE_ORDER_ITEM_RETURN_FAIL_IN_EXCEED = new ErrorCode(1_030_101_00
     ErrorCode WAREHOUSE_SALE_DISABLE_FAIL_STOCK_NOT_ZERO = new ErrorCode(1_030_400_004, "仓库【{}】仍存在非零库存，无法关闭销售启用");
     ErrorCode WAREHOUSE_PURCHASE_NOT_ENABLE = new ErrorCode(1_030_400_005, "仓库【{}】未启用采购，不能在采购模块选择");
     ErrorCode WAREHOUSE_SALE_NOT_ENABLE = new ErrorCode(1_030_400_006, "仓库【{}】未启用销售，不能在销售模块选择");
+    ErrorCode WAREHOUSE_CODE_EXISTS = new ErrorCode(1_030_400_007, "仓库编码({})已存在");
+    ErrorCode WAREHOUSE_SALE_DEPT_PERMISSION_DENIED = new ErrorCode(1_030_400_008, "当前部门无权在销售中使用仓库【{}】");
+    ErrorCode WAREHOUSE_DIRECT_NOT_CONFIGURED = new ErrorCode(1_030_400_009,
+            "未配置启用的直发仓，无法自动生成调拨出仓单");
+    ErrorCode WAREHOUSE_DIRECT_MULTIPLE = new ErrorCode(1_030_400_010,
+            "存在多个可匹配的直发仓，请按销售部门保留唯一的启用直发仓");
 
     // ========== ERP 其它入库单 1-030-401-000 ==========
     ErrorCode STOCK_IN_NOT_EXISTS = new ErrorCode(1_030_401_000, "其它入库单不存在");
@@ -180,17 +202,54 @@ ErrorCode PURCHASE_ORDER_ITEM_RETURN_FAIL_IN_EXCEED = new ErrorCode(1_030_101_00
     ErrorCode STOCK_OUT_UPDATE_FAIL_APPROVE = new ErrorCode(1_030_402_005, "其它出库单({})已审核，无法修改");
     ErrorCode STOCK_OUT_ITEM_DUPLICATE = new ErrorCode(1_030_402_006, "同一出库单明细中产品和仓库重复：{}");
 
-    // ========== ERP 库存调拨单 1-030-403-000 ==========
-    ErrorCode STOCK_MOVE_NOT_EXISTS = new ErrorCode(1_030_402_000, "库存调拨单不存在");
-    ErrorCode STOCK_MOVE_DELETE_FAIL_APPROVE = new ErrorCode(1_030_402_001, "库存调拨单({})已审核，无法删除");
-    ErrorCode STOCK_MOVE_PROCESS_FAIL = new ErrorCode(1_030_402_002, "反审核失败，只有已审核的调拨单才能反审核");
-    ErrorCode STOCK_MOVE_APPROVE_FAIL = new ErrorCode(1_030_402_003, "审核失败，只有未审核的调拨单才能审核");
+    // ========== ERP 调拨出库单 1-030-403-000 ==========
+    ErrorCode STOCK_MOVE_NOT_EXISTS = new ErrorCode(1_030_402_000, "调拨出库单不存在");
+    ErrorCode STOCK_MOVE_DELETE_FAIL_APPROVE = new ErrorCode(1_030_402_001, "调拨出库单({})已审核，无法删除");
+    ErrorCode STOCK_MOVE_PROCESS_FAIL = new ErrorCode(1_030_402_002, "反审核失败，只有已审核的调拨出库单才能反审核");
+    ErrorCode STOCK_MOVE_APPROVE_FAIL = new ErrorCode(1_030_402_003, "审核失败，只有未审核的调拨出库单才能审核");
     ErrorCode STOCK_MOVE_NO_EXISTS = new ErrorCode(1_030_402_004, "生成调拨号失败，请重新提交");
-    ErrorCode STOCK_MOVE_UPDATE_FAIL_APPROVE = new ErrorCode(1_030_402_005, "库存调拨单({})已审核，无法修改");
-    ErrorCode STOCK_MOVE_ITEM_DUPLICATE = new ErrorCode(1_030_402_006, "同一调拨单明细中产品、调出仓库和调入仓库重复：{}");
-    ErrorCode STOCK_MOVE_WAREHOUSE_REQUIRED = new ErrorCode(1_030_402_007, "库存调拨单明细的调出仓库和调入仓库不能为空");
-    ErrorCode STOCK_MOVE_WAREHOUSE_SAME = new ErrorCode(1_030_402_008, "库存调拨单明细的调出仓库和调入仓库不能相同");
+    ErrorCode STOCK_MOVE_UPDATE_FAIL_APPROVE = new ErrorCode(1_030_402_005, "调拨出库单({})已审核，无法修改");
+    ErrorCode STOCK_MOVE_ITEM_DUPLICATE = new ErrorCode(1_030_402_006, "同一调拨出库单明细中产品、调出仓库和调入仓库重复：{}");
+    ErrorCode STOCK_MOVE_WAREHOUSE_REQUIRED = new ErrorCode(1_030_402_007, "调拨出库单明细的调出仓库和调入仓库不能为空");
+    ErrorCode STOCK_MOVE_WAREHOUSE_SAME = new ErrorCode(1_030_402_008, "调拨出库单明细的调出仓库和调入仓库不能相同");
     ErrorCode STOCK_MOVE_SHARE_PRICE_REQUIRED = new ErrorCode(1_030_402_009, "产品({})跨部门调拨需要维护股份价");
+    ErrorCode STOCK_MOVE_DELETE_CROSS_DEPT_DENIED = new ErrorCode(1_030_402_011, "销售手推车跨部门调拨出库单只能由总公司删除");
+    ErrorCode STOCK_MOVE_CREATE_PERMISSION_DENIED = new ErrorCode(1_030_402_012, "当前用户没有创建调拨出库单的权限");
+    ErrorCode STOCK_MOVE_ITEM_EMPTY = new ErrorCode(1_030_402_013, "调拨出库单明细不能为空");
+    ErrorCode STOCK_MOVE_ITEM_COUNT_POSITIVE = new ErrorCode(1_030_402_014, "调拨数量必须大于 0");
+    ErrorCode STOCK_MOVE_ITEM_PRICE_POSITIVE = new ErrorCode(1_030_402_015, "调拨单价必须大于 0");
+    ErrorCode STOCK_MOVE_TRANSFER_IN_EXISTS = new ErrorCode(1_030_402_016, "该调拨出库单已生成调拨入库单，请勿重复审批");
+    ErrorCode STOCK_MOVE_LEGACY_READ_ONLY = new ErrorCode(1_030_402_017,
+            "原库存调拨功能已停用，仅支持历史查询；新业务请使用调拨出库单");
+    ErrorCode STOCK_MOVE_DELETE_CART_SOURCE_DENIED = new ErrorCode(1_030_402_018,
+            "销售手推车来源调拨出库单请使用“解锁手推车”操作");
+    ErrorCode STOCK_MOVE_UNLOCK_NOT_TRANSFER_OUT = new ErrorCode(1_030_402_019,
+            "当前单据不是调拨出库单，不能解锁手推车");
+    ErrorCode STOCK_MOVE_UNLOCK_NOT_CART_SOURCE = new ErrorCode(1_030_402_020,
+            "当前调拨出库单不是由销售手推车生成，不能解锁");
+    ErrorCode STOCK_MOVE_UNLOCK_SOURCE_ID_MISSING = new ErrorCode(1_030_402_021,
+            "调拨出库单缺少来源手推车信息，不能解锁");
+    ErrorCode STOCK_MOVE_UNLOCK_APPROVED = new ErrorCode(1_030_402_022,
+            "调拨出库单已审核，不能解锁手推车");
+    ErrorCode STOCK_MOVE_UNLOCK_CROSS_DEPT_DENIED = new ErrorCode(1_030_402_023,
+            "销售手推车跨部门调拨出库单只能由总公司解锁");
+    ErrorCode STOCK_MOVE_UNLOCK_SOURCE_APPROVED_EXISTS = new ErrorCode(1_030_402_024,
+            "来源手推车已存在审核后的调拨出库单，不能解锁");
+    ErrorCode STOCK_MOVE_APPROVE_DEPT_PERMISSION_DENIED = new ErrorCode(1_030_402_025,
+            "当前账号的数据权限不包含全部调出部门，不能审批该调拨出库单");
+
+    // ========== ERP 仓库移货单 1-030-408-000 ==========
+    ErrorCode WAREHOUSE_MOVE_NOT_EXISTS = new ErrorCode(1_030_408_000, "仓库移货单不存在");
+    ErrorCode WAREHOUSE_MOVE_DELETE_FAIL_APPROVE = new ErrorCode(1_030_408_001, "仓库移货单({})已审核，无法删除");
+    ErrorCode WAREHOUSE_MOVE_PROCESS_FAIL = new ErrorCode(1_030_408_002, "反审核失败，只有已审核的仓库移货单才能反审核");
+    ErrorCode WAREHOUSE_MOVE_APPROVE_FAIL = new ErrorCode(1_030_408_003, "审核失败，只有未审核的仓库移货单才能审核");
+    ErrorCode WAREHOUSE_MOVE_NO_EXISTS = new ErrorCode(1_030_408_004, "生成移货单号失败，请重新提交");
+    ErrorCode WAREHOUSE_MOVE_UPDATE_FAIL_APPROVE = new ErrorCode(1_030_408_005, "仓库移货单({})已审核，无法修改");
+    ErrorCode WAREHOUSE_MOVE_ITEM_DUPLICATE = new ErrorCode(1_030_408_006, "同一移货单明细中产品、移出仓库、移入仓库和移出货架重复：{}");
+    ErrorCode WAREHOUSE_MOVE_WAREHOUSE_REQUIRED = new ErrorCode(1_030_408_007, "仓库移货单的移出仓库和移入仓库不能为空");
+    ErrorCode WAREHOUSE_MOVE_WAREHOUSE_SAME = new ErrorCode(1_030_408_008, "移出仓库和移入仓库不能相同");
+    ErrorCode WAREHOUSE_MOVE_ITEM_COUNT_POSITIVE = new ErrorCode(1_030_408_009, "移货数量必须大于 0");
+    ErrorCode WAREHOUSE_MOVE_STOCK_NOT_ENOUGH = new ErrorCode(1_030_408_010, "产品({})移出仓库库存不足，可用数量({})，移货数量({})");
 
     // ========== ERP 库存盘点单 1-030-403-000 ==========
     ErrorCode STOCK_CHECK_NOT_EXISTS = new ErrorCode(1_030_403_000, "库存盘点单不存在");
@@ -253,6 +312,8 @@ ErrorCode PURCHASE_ORDER_ITEM_RETURN_FAIL_IN_EXCEED = new ErrorCode(1_030_101_00
     ErrorCode SALE_QUOTE_UPDATE_FAIL_NOT_DRAFT = new ErrorCode(1_030_205_009, "报价订单({})不是草稿状态，不允许编辑");
     ErrorCode SALE_QUOTE_ITEM_PRODUCT_PRICE_NOT_NULL = new ErrorCode(1_030_205_010, "报价订单项({})单价不能为空");
     ErrorCode SALE_QUOTE_ITEM_DUPLICATE = new ErrorCode(1_030_205_011, "同一报价订单明细中产品、仓库、赠品标识重复：{}");
+    ErrorCode SALE_QUOTE_ITEM_PRODUCT_PRICE_POSITIVE = new ErrorCode(1_030_205_012, "报价订单项({})单价必须大于 0");
+    ErrorCode SALE_QUOTE_ITEM_COUNT_POSITIVE = new ErrorCode(1_030_205_013, "报价订单项({})数量必须大于 0");
 
     // ========== ERP 销售手推车 1-030-206-000 ==========
     ErrorCode SALE_CART_NOT_EXISTS = new ErrorCode(1_030_206_000, "销售手推车不存在");
@@ -264,13 +325,24 @@ ErrorCode PURCHASE_ORDER_ITEM_RETURN_FAIL_IN_EXCEED = new ErrorCode(1_030_101_00
     ErrorCode SALE_CART_CONVERT_QUOTE_FAIL = new ErrorCode(1_030_206_006, "销售手推车转报价订单失败，只有草稿状态才能转换");
     ErrorCode SALE_CART_DELETE_FAIL_FINAL_APPROVED = new ErrorCode(1_030_206_007, "销售手推车({})已终审生成销售单，无法删除");
     ErrorCode SALE_CART_DELETE_FAIL_CONVERTED = new ErrorCode(1_030_206_008, "销售手推车({})已转为报价订单，无法删除");
-    ErrorCode SALE_CART_UPDATE_FAIL_NOT_PROCESS = new ErrorCode(1_030_206_009, "销售手推车({})不是草稿状态，无法修改");
+    ErrorCode SALE_CART_UPDATE_FAIL_NOT_PROCESS = new ErrorCode(1_030_206_009, "销售手推车({})已初审，无法修改");
     ErrorCode SALE_CART_REJECT_FAIL = new ErrorCode(1_030_206_010, "驳回失败，只有已提交或初审通过的销售手推车才能驳回");
     ErrorCode SALE_CART_ITEM_COUNT_POSITIVE = new ErrorCode(1_030_206_011, "产品数量必须大于 0");
     ErrorCode SALE_CART_ITEM_PRICE_POSITIVE = new ErrorCode(1_030_206_012, "产品单价必须大于 0");
     ErrorCode SALE_CART_CONVERT_QUOTE_ITEMS_EMPTY = new ErrorCode(1_030_206_013, "转出商品列表为空");
     ErrorCode SALE_CART_UPDATE_BASIC_FAIL_STATUS = new ErrorCode(1_030_206_014, "销售手推车({})不是终审通过或已生成销售单状态，无法修改基础信息");
-    ErrorCode SALE_CART_DELETE_FAIL_NOT_DRAFT = new ErrorCode(1_030_206_015, "销售手推车({})已审核，无法删除");
+    ErrorCode SALE_CART_DELETE_FAIL_NOT_DRAFT = new ErrorCode(1_030_206_015, "销售手推车({})已初审，无法删除");
+    ErrorCode SALE_CART_FIRST_APPROVE_DISABLED = new ErrorCode(1_030_206_016, "销售手推车初审已关闭，无法执行初审");
+    ErrorCode SALE_CART_FIRST_APPROVE_DEPT_UNAUTHORIZED = new ErrorCode(1_030_206_017, "当前用户所属部门未被授权执行销售手推车初审");
+    ErrorCode SALE_CART_FIRST_APPROVE_DEPT_EMPTY = new ErrorCode(1_030_206_018, "启用部门授权时，授权部门不能为空");
+    ErrorCode SALE_WAREHOUSE_DEPT_REQUIRED = new ErrorCode(1_030_206_019, "销售明细部门不能为空");
+    ErrorCode SALE_WAREHOUSE_TRANSFER_APPROVED_EXISTS = new ErrorCode(1_030_206_020, "已存在审核后的来源调拨出库单，不能自动覆盖");
+    ErrorCode SALE_WAREHOUSE_TRANSFER_NOT_APPROVED = new ErrorCode(1_030_206_021, "跨部门销售需要先审核调拨出库单，不能终审");
+    ErrorCode SALE_CART_CANCEL_FIRST_APPROVE_FAIL = new ErrorCode(1_030_206_022,
+            "撤销初审失败，只有待终审状态的销售手推车才能撤销初审");
+    ErrorCode SALE_CART_STATUS_CHANGED = new ErrorCode(1_030_206_023, "销售手推车状态已变化，请刷新后重试");
+    ErrorCode SALE_CART_UNLOCK_STATUS_INVALID = new ErrorCode(1_030_206_024,
+            "销售手推车当前不是待终审状态，不能解锁");
 
     // ========== ERP 销售配置 1-030-207-000 ==========
     ErrorCode SALE_CONFIG_NOT_EXISTS = new ErrorCode(1_030_207_000, "销售配置不存在");
@@ -315,6 +387,16 @@ ErrorCode PURCHASE_ORDER_ITEM_RETURN_FAIL_IN_EXCEED = new ErrorCode(1_030_101_00
     ErrorCode PRODUCT_DELETE_FAIL_STOCK_EXISTS = new ErrorCode(1_030_500_009, "产品({})已有库存或库存历史记录，不允许删除，请停用或先清理后再操作");
     ErrorCode PRODUCT_DELETE_FAIL_REFERENCED = new ErrorCode(1_030_500_010, "该产品已被{}引用，无法删除");
     ErrorCode ERP_ITEM_BATCH_NO_REQUIRED = new ErrorCode(1_030_500_011, "第 {} 行：该配件已开启批次号管理，请填写批次号");
+    ErrorCode ERP_ITEM_BATCH_NO_DISABLED = new ErrorCode(1_030_500_014, "第 {} 行：该配件未开启批次号管理，不能填写批次号");
+    ErrorCode ARCHIVE_MERGE_SAME_ID = new ErrorCode(1_030_500_012, "被合并数据和保留数据不能相同");
+    ErrorCode PRODUCT_MERGE_STOCK_CONFLICT = new ErrorCode(1_030_500_013, "被合并配件与保留配件存在相同仓库库存或锁定记录，请先处理库存后再合并");
+    ErrorCode PRODUCT_STOCK_DISTRIBUTION_PRODUCT_DISABLED = new ErrorCode(1_030_500_015, "停用配件({})不能库存分发");
+    ErrorCode PRODUCT_STOCK_DISTRIBUTION_REMOVE_DENIED = new ErrorCode(1_030_500_016, "仓库({})已有库存业务，不能取消分发");
+    ErrorCode PRODUCT_STOCK_DISTRIBUTION_WAREHOUSE_DENIED = new ErrorCode(1_030_500_017, "无仓库权限，不能分发到仓库({})");
+    ErrorCode PRODUCT_STOCK_DISTRIBUTION_WAREHOUSE_EMPTY = new ErrorCode(1_030_500_018, "分发仓库不能为空");
+    ErrorCode PRODUCT_READONLY_BY_SALE_DISTRIBUTION = new ErrorCode(1_030_500_019,
+            "该配件仅因销售仓库分配而可见，只允许查看");
+    ErrorCode PRODUCT_FIELD_NO_PERMISSION = new ErrorCode(1_030_500_020, "无权查看或修改配件字段【{}】");
 
     // ========== ERP 商品分类 1-030-501-000 ==========
     ErrorCode PRODUCT_CATEGORY_NOT_EXISTS = new ErrorCode(1_030_501_000, "商品分类不存在");
@@ -367,6 +449,11 @@ ErrorCode PURCHASE_ORDER_ITEM_RETURN_FAIL_IN_EXCEED = new ErrorCode(1_030_101_00
     ErrorCode FINANCE_PAYMENT_APPROVE_FAIL = new ErrorCode(1_030_601_003, "审核失败，只有未审核的付款单才能审核");
     ErrorCode FINANCE_PAYMENT_NO_EXISTS = new ErrorCode(1_030_601_004, "生成付款单号失败，请重新提交");
     ErrorCode FINANCE_PAYMENT_UPDATE_FAIL_APPROVE = new ErrorCode(1_030_601_005, "付款单({})已审核，无法修改");
+    ErrorCode FINANCE_PAYMENT_WRITEOFF_STATUS_INVALID = new ErrorCode(1_030_601_006, "只有已审核的付款单才能核销");
+    ErrorCode FINANCE_PAYMENT_WRITEOFF_AMOUNT_INVALID = new ErrorCode(1_030_601_007, "付款核销金额不正确：{}");
+    ErrorCode FINANCE_PAYMENT_WRITEOFF_AMOUNT_EXCEED = new ErrorCode(1_030_601_008, "本次核销后超过付款单可核销额度");
+    ErrorCode FINANCE_PAYMENT_WRITEOFF_BIZ_INVALID = new ErrorCode(1_030_601_009, "付款核销业务单据不符合条件：{}");
+    ErrorCode FINANCE_PAYMENT_WRITEOFF_ITEM_NOT_EFFECTIVE = new ErrorCode(1_030_601_010, "付款核销明细不存在、已撤销或尚未生效");
 
     // ========== ERP 收款单 1-030-602-000 ==========
     ErrorCode FINANCE_RECEIPT_NOT_EXISTS = new ErrorCode(1_030_602_000, "收款单不存在");
@@ -375,6 +462,11 @@ ErrorCode PURCHASE_ORDER_ITEM_RETURN_FAIL_IN_EXCEED = new ErrorCode(1_030_101_00
     ErrorCode FINANCE_RECEIPT_APPROVE_FAIL = new ErrorCode(1_030_602_003, "审核失败，只有未审核的收款单才能审核");
     ErrorCode FINANCE_RECEIPT_NO_EXISTS = new ErrorCode(1_030_602_004, "生成收款单号失败，请重新提交");
     ErrorCode FINANCE_RECEIPT_UPDATE_FAIL_APPROVE = new ErrorCode(1_030_602_005, "收款单({})已审核，无法修改");
+    ErrorCode FINANCE_RECEIPT_WRITEOFF_STATUS_INVALID = new ErrorCode(1_030_602_006, "只有已审核的收款单才能核销");
+    ErrorCode FINANCE_RECEIPT_WRITEOFF_AMOUNT_INVALID = new ErrorCode(1_030_602_007, "收款核销金额不正确：{}");
+    ErrorCode FINANCE_RECEIPT_WRITEOFF_AMOUNT_EXCEED = new ErrorCode(1_030_602_008, "本次核销后超过收款单可核销额度");
+    ErrorCode FINANCE_RECEIPT_WRITEOFF_BIZ_INVALID = new ErrorCode(1_030_602_009, "收款核销业务单据不符合条件：{}");
+    ErrorCode FINANCE_RECEIPT_WRITEOFF_ITEM_NOT_EFFECTIVE = new ErrorCode(1_030_602_010, "收款核销明细不存在、已撤销或尚未生效");
 
     // ========== ERP 银行转账 1-030-603-000 ==========
     ErrorCode FINANCE_TRANSFER_NOT_EXISTS = new ErrorCode(1_030_603_000, "银行转账单不存在");
@@ -486,5 +578,7 @@ ErrorCode PURCHASE_ORDER_ITEM_RETURN_FAIL_IN_EXCEED = new ErrorCode(1_030_101_00
     ErrorCode PAYABLE_EXPENSE_NO_EXISTS = new ErrorCode(1_030_623_004, "生成费用支付单号失败，请重新提交");
     ErrorCode PAYABLE_EXPENSE_UPDATE_FAIL_APPROVE = new ErrorCode(1_030_623_005, "费用支付单({})已审核，无法修改");
     ErrorCode PAYABLE_EXPENSE_UPDATE_FAIL_STATUS_CHANGED = new ErrorCode(1_030_623_006, "费用支付单状态已变更，请刷新后重试");
+
+    ErrorCode STOCK_MOVE_APPROVE_CROSS_DEPT_DENIED = new ErrorCode(1_030_402_010, "销售手推车跨部门调拨出库单只能由总公司审批");
 
 }

@@ -42,6 +42,12 @@ public class ErpStockCheckDO extends BaseDO {
      */
     private LocalDateTime checkTime;
     /**
+     * 盘点类型：1 盘数量，2 盘成本
+     *
+     * 枚举 {@link cn.iocoder.yudao.module.erp.enums.stock.ErpStockCheckTypeEnum}
+     */
+    private Integer checkType;
+    /**
      * 合计数量
      */
     private BigDecimal totalCount;

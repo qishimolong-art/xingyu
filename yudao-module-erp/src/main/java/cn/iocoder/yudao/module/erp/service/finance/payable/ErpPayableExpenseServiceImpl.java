@@ -20,6 +20,7 @@ import cn.iocoder.yudao.module.system.api.user.AdminUserApi;
 import cn.iocoder.yudao.module.system.api.user.dto.AdminUserRespDTO;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
 import org.springframework.validation.annotation.Validated;
 
 import javax.annotation.Resource;
@@ -170,6 +171,15 @@ public class ErpPayableExpenseServiceImpl implements ErpPayableExpenseService {
 
     @Override
     public PageResult<ErpPayableExpenseDO> getPayableExpensePage(ErpPayableExpensePageReqVO pageReqVO) {
+        if (hasItemFilter(pageReqVO)) {
+            List<Long> expenseIds = convertList(
+                    payableExpenseItemMapper.selectListByItemNameOrInvoiceNo(pageReqVO.getItemName(), pageReqVO.getInvoiceNo()),
+                    ErpPayableExpenseItemDO::getExpenseId);
+            if (CollUtil.isEmpty(expenseIds)) {
+                return PageResult.empty();
+            }
+            pageReqVO.setIds(expenseIds);
+        }
         return payableExpenseMapper.selectPage(pageReqVO);
     }
 
@@ -272,6 +282,10 @@ public class ErpPayableExpenseServiceImpl implements ErpPayableExpenseService {
     private void normalizeItem(ErpPayableExpenseItemDO item) {
         item.setQty(item.getQty() == null || item.getQty() <= 0 ? 1 : item.getQty());
         item.setAmount(item.getAmount() == null ? BigDecimal.ZERO : item.getAmount());
+    }
+
+    private boolean hasItemFilter(ErpPayableExpensePageReqVO pageReqVO) {
+        return StringUtils.hasText(pageReqVO.getItemName()) || StringUtils.hasText(pageReqVO.getInvoiceNo());
     }
 
 }

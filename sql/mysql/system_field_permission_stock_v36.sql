@@ -56,6 +56,7 @@ VALUES
 
 -- 库存盘点
 ('erp_stock_check', 'no', '盘点单号', 'main_form', 10, '1', NOW(), '1', NOW(), b'0', 1),
+('erp_stock_check', 'checkType', '盘点类型', 'main_form', 15, '1', NOW(), '1', NOW(), b'0', 1),
 ('erp_stock_check', 'checkTime', '盘点时间', 'main_form', 20, '1', NOW(), '1', NOW(), b'0', 1),
 ('erp_stock_check', 'remark', '备注', 'main_form', 30, '1', NOW(), '1', NOW(), b'0', 1),
 ('erp_stock_check', 'fileUrl', '附件', 'main_form', 40, '1', NOW(), '1', NOW(), b'0', 1),
@@ -92,6 +93,18 @@ VALUES
 ('erp_warehouse', 'splitOrder', '是否拆单', 'operation_control', 210, '1', NOW(), '1', NOW(), b'0', 1),
 ('erp_warehouse', 'sort', '排序', 'system_info', 300, '1', NOW(), '1', NOW(), b'0', 1),
 ('erp_warehouse', 'remark', '备注', 'system_info', 310, '1', NOW(), '1', NOW(), b'0', 1)
+ON DUPLICATE KEY UPDATE
+  `field_label` = VALUES(`field_label`),
+  `field_group` = VALUES(`field_group`),
+  `sort` = VALUES(`sort`),
+  `updater` = '1',
+  `update_time` = NOW(),
+  `deleted` = b'0';
+
+INSERT INTO `system_field_definition`
+(`module`, `field_key`, `field_label`, `field_group`, `sort`, `creator`, `create_time`, `updater`, `update_time`, `deleted`, `tenant_id`)
+VALUES
+('erp_stock_check', 'item_batchNo', '批次号', 'detail_item', 225, '1', NOW(), '1', NOW(), b'0', 1)
 ON DUPLICATE KEY UPDATE
   `field_label` = VALUES(`field_label`),
   `field_group` = VALUES(`field_group`),

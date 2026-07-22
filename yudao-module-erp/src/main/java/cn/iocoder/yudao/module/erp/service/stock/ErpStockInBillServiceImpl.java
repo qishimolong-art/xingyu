@@ -29,12 +29,14 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.stream.Collectors;
 
 import static cn.iocoder.yudao.framework.common.exception.util.ServiceExceptionUtil.exception;
+import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.convertList;
 import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.convertMap;
 import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.convertSet;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.STOCK_IN_BILL_NO_EXISTS;
@@ -78,8 +80,38 @@ public class ErpStockInBillServiceImpl implements ErpStockInBillService {
     }
 
     @Override
+    public List<ErpStockInBillDO> getStockInBillList(List<Long> ids) {
+        if (CollUtil.isEmpty(ids)) {
+            return Collections.emptyList();
+        }
+        return stockInBillMapper.selectBatchIds(ids);
+    }
+
+    @Override
     public List<ErpStockInBillItemDO> getStockInBillItemList(Long billId) {
         return stockInBillItemMapper.selectListByBillId(billId);
+    }
+
+    @Override
+    public List<ErpStockInBillItemDO> getStockInBillItemListByBillIds(Collection<Long> billIds) {
+        if (CollUtil.isEmpty(billIds)) {
+            return Collections.emptyList();
+        }
+        return stockInBillItemMapper.selectListByBillIds(billIds);
+    }
+
+    @Override
+    public List<ErpStockInBillDO> getStockInBillListByPurchaseInId(Long purchaseInId) {
+        return stockInBillMapper.selectListBySource(SOURCE_BIZ_TYPE_PURCHASE_IN, purchaseInId);
+    }
+
+    @Override
+    public List<ErpStockInBillItemDO> getPurchaseInSourceItemList(Long purchaseInId) {
+        List<ErpStockInBillDO> bills = getStockInBillListByPurchaseInId(purchaseInId);
+        if (CollUtil.isEmpty(bills)) {
+            return Collections.emptyList();
+        }
+        return stockInBillItemMapper.selectListByBillIds(convertList(bills, ErpStockInBillDO::getId));
     }
 
     @Override
@@ -170,7 +202,7 @@ public class ErpStockInBillServiceImpl implements ErpStockInBillService {
                         billItem.getId(), reqItem.getPickupCount(), remainCount);
             }
             stockRecordService.createStockRecord(new ErpStockRecordCreateReqBO(
-                    billItem.getProductId(), billItem.getWarehouseId(), reqItem.getPickupCount(),
+                    billItem.getProductId(), billItem.getWarehouseId(), billItem.getBatchNo(), reqItem.getPickupCount(),
                     ErpStockRecordBizTypeEnum.PURCHASE_IN.getType(), bill.getSourceId(), billItem.getSourceItemId(), bill.getSourceNo(),
                     billItem.getProductPrice(), pickupTime));
             BigDecimal pickedCount = nullToZero(billItem.getPickedCount()).add(reqItem.getPickupCount());

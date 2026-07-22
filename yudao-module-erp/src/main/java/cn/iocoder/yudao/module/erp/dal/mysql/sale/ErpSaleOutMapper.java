@@ -7,6 +7,7 @@ import cn.iocoder.yudao.framework.mybatis.core.query.MPJLambdaWrapperX;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.out.ErpSaleOutPageReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleOutDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleOutItemDO;
+import cn.iocoder.yudao.module.erp.dal.mysql.common.ErpKeywordQuery;
 import cn.iocoder.yudao.module.erp.enums.ErpAuditStatus;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.core.toolkit.support.SFunction;
@@ -18,7 +19,7 @@ import java.util.List;
 import java.util.Objects;
 
 /**
- * ERP 销售出库 Mapper
+ * ERP 销售出�?Mapper
  *
  * @author 芋道源码
  */
@@ -39,8 +40,9 @@ public interface ErpSaleOutMapper extends BaseMapperX<ErpSaleOutDO> {
                 .eqIfPresent(ErpSaleOutDO::getSourceType, reqVO.getSourceType())
                 .likeIfPresent(ErpSaleOutDO::getSourceNo, reqVO.getSourceNo())
                 .eqIfPresent(ErpSaleOutDO::getSaleUserId, reqVO.getSaleUserId())
+                .likeIfPresent(ErpSaleOutDO::getReceiverName, reqVO.getReceiverName())
                 .inIfPresent(ErpSaleOutDO::getId, reqVO.getIds());
-        // 收款状态。为什么需要 t. 的原因，是因为联表查询时，需要指定表名，不然会报字段不存在的错误
+        // 收款状态。为什么需�?t. 的原因，是因为联表查询时，需要指定表名，不然会报字段不存在的错误
         if (Objects.equals(reqVO.getReceiptStatus(), ErpSaleOutPageReqVO.RECEIPT_STATUS_NONE)) {
             query.eq(ErpSaleOutDO::getReceiptPrice, 0);
         } else if (Objects.equals(reqVO.getReceiptStatus(), ErpSaleOutPageReqVO.RECEIPT_STATUS_PART)) {
@@ -58,6 +60,18 @@ public interface ErpSaleOutMapper extends BaseMapperX<ErpSaleOutDO> {
                     .eq(reqVO.getProductId() != null, ErpSaleOutItemDO::getProductId, reqVO.getProductId())
                     .groupBy(ErpSaleOutDO::getId); // 避免 1 对多查询，产生相同的 1
         }
+        ErpKeywordQuery.appendWithDeptName(query, reqVO.getKeyword(),
+                ErpSaleOutDO::getNo, ErpSaleOutDO::getOrderNo,
+                ErpSaleOutDO::getSourceNo, ErpSaleOutDO::getRemark,
+                ErpSaleOutDO::getOrderType, ErpSaleOutDO::getPriority,
+                ErpSaleOutDO::getDeliveryMethod, ErpSaleOutDO::getShipper,
+                ErpSaleOutDO::getReceiverName, ErpSaleOutDO::getReceiverPhone,
+                ErpSaleOutDO::getDeliveryNo, ErpSaleOutDO::getLogisticsNo,
+                ErpSaleOutDO::getLogisticsCompany, ErpSaleOutDO::getSenderName,
+                ErpSaleOutDO::getInsuranceCompany, ErpSaleOutDO::getThirdPartyNo,
+                ErpSaleOutDO::getThirdPartyUpstreamNo, ErpSaleOutDO::getSettleMethod,
+                ErpSaleOutDO::getBillType, ErpSaleOutDO::getBillNo,
+                ErpSaleOutDO::getInternalNote, ErpSaleOutDO::getVin);
         orderByIfPresent(query, reqVO);
         return selectJoinPage(reqVO, ErpSaleOutDO.class, query);
     }
@@ -84,6 +98,8 @@ public interface ErpSaleOutMapper extends BaseMapperX<ErpSaleOutDO> {
             return null;
         }
         switch (orderField.trim()) {
+            case "printCount":
+                return ErpSaleOutDO::getPrintCount;
             case "no":
                 return ErpSaleOutDO::getNo;
             case "settleStatus":
@@ -115,6 +131,8 @@ public interface ErpSaleOutMapper extends BaseMapperX<ErpSaleOutDO> {
             case "auditorId":
             case "auditorName":
                 return ErpSaleOutDO::getAuditorId;
+            case "totalCount":
+                return ErpSaleOutDO::getTotalCount;
             case "cancelCount":
                 return ErpSaleOutDO::getCancelCount;
             case "cancelAmount":

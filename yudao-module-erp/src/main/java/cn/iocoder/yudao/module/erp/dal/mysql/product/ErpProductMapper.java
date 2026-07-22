@@ -31,6 +31,26 @@ import java.util.stream.Collectors;
 @Mapper
 public interface ErpProductMapper extends BaseMapperX<ErpProductDO> {
 
+    String KEYWORD_FIELD_CODE = "code";
+    String KEYWORD_FIELD_NAME = "name";
+    String KEYWORD_FIELD_BAR_CODE = "barCode";
+    String KEYWORD_FIELD_VEHICLE_MODEL = "vehicleModel";
+    String KEYWORD_FIELD_FACTORY_CODE = "factoryCode";
+    String KEYWORD_FIELD_STANDARD = "standard";
+    String KEYWORD_FIELD_REMARK = "remark";
+    String KEYWORD_FIELD_BRAND = "brand";
+    String KEYWORD_FIELD_OE_NUMBER = "oeNumber";
+    String KEYWORD_FIELD_ORIGIN_PLACE = "originPlace";
+    String KEYWORD_FIELD_FEATURE_CODE = "featureCode";
+    String KEYWORD_FIELD_DRAWING_NO = "drawingNo";
+    String KEYWORD_FIELD_SHELF = "shelf";
+    String KEYWORD_FIELD_CATEGORY_NAME = "categoryName";
+    String KEYWORD_FIELD_UNIT_NAME = "unitName";
+    String KEYWORD_FIELD_DEFAULT_WAREHOUSE_NAME = "defaultWarehouseName";
+    String KEYWORD_FIELD_DEPT_NAME = "deptName";
+    String KEYWORD_FIELD_UNIVERSAL = "universal";
+    String KEYWORD_FIELD_CREATE_TIME = "createTime";
+
     @Select("<script>" +
             "SELECT id" +
             "<foreach collection='columns' item='column'>, `${column}`</foreach>" +
@@ -48,6 +68,31 @@ public interface ErpProductMapper extends BaseMapperX<ErpProductDO> {
     int updateCustomFields(@Param("id") Long id, @Param("values") Map<String, Object> values);
 
     default PageResult<ErpProductDO> selectPage(ErpProductPageReqVO reqVO) {
+        return selectPage(reqVO, java.util.Arrays.asList(
+                KEYWORD_FIELD_CODE,
+                KEYWORD_FIELD_NAME,
+                KEYWORD_FIELD_BAR_CODE,
+                KEYWORD_FIELD_VEHICLE_MODEL,
+                KEYWORD_FIELD_FACTORY_CODE,
+                KEYWORD_FIELD_STANDARD,
+                KEYWORD_FIELD_REMARK,
+                KEYWORD_FIELD_BRAND,
+                KEYWORD_FIELD_OE_NUMBER,
+                KEYWORD_FIELD_ORIGIN_PLACE,
+                KEYWORD_FIELD_FEATURE_CODE,
+                KEYWORD_FIELD_DRAWING_NO,
+                KEYWORD_FIELD_SHELF,
+                KEYWORD_FIELD_CATEGORY_NAME,
+                KEYWORD_FIELD_UNIT_NAME,
+                KEYWORD_FIELD_DEFAULT_WAREHOUSE_NAME,
+                KEYWORD_FIELD_DEPT_NAME,
+                KEYWORD_FIELD_UNIVERSAL,
+                KEYWORD_FIELD_CREATE_TIME), Collections.emptyList());
+    }
+
+    default PageResult<ErpProductDO> selectPage(ErpProductPageReqVO reqVO,
+                                                Collection<String> keywordFields,
+                                                Collection<String> customKeywordColumns) {
         LambdaQueryWrapperX<ErpProductDO> wrapper = new LambdaQueryWrapperX<ErpProductDO>();
         wrapper
                 .likeIfPresent(ErpProductDO::getName, fuzzyKeyword(reqVO.getName()))
@@ -55,13 +100,163 @@ public interface ErpProductMapper extends BaseMapperX<ErpProductDO> {
                 .likeIfPresent(ErpProductDO::getVehicleModel, fuzzyKeyword(reqVO.getVehicleModel()))
                 .likeIfPresent(ErpProductDO::getFactoryCode, fuzzyKeyword(reqVO.getFactoryCode()))
                 .eqIfPresent(ErpProductDO::getCategoryId, reqVO.getCategoryId())
-                .eqIfPresent(ErpProductDO::getDeptId, reqVO.getDeptId())
+                .eqIfPresent(ErpProductDO::getStatus, reqVO.getStatus())
                 .eqIfPresent(ErpProductDO::getDefaultWarehouseId, reqVO.getWarehouseId())
                 .betweenIfPresent(ErpProductDO::getCreateTime, reqVO.getCreateTime());
+        appendKeywordCondition(wrapper, fuzzyKeyword(reqVO.getKeyword()), keywordFields, customKeywordColumns);
+        if (reqVO.getDeptId() != null) {
+            wrapper.and(w -> w.eq(ErpProductDO::getDeptId, reqVO.getDeptId())
+                    .or()
+                    .exists("SELECT 1 FROM erp_product_dept epd "
+                            + "WHERE epd.product_id = erp_product.id "
+                            + "AND epd.deleted = b'0' "
+                            + "AND epd.dept_id = " + reqVO.getDeptId())
+                    .or()
+                    .exists("SELECT 1 FROM erp_stock s "
+                            + "JOIN erp_warehouse w2 ON w2.id = s.warehouse_id AND w2.deleted = b'0' "
+                            + "WHERE s.product_id = erp_product.id "
+                            + "AND s.deleted = b'0' "
+                            + "AND w2.dept_id = " + reqVO.getDeptId()));
+        }
+        applyVisibleScope(wrapper, reqVO);
         // 默认过滤掉已合并的配件
+        // Filter merged products by default.
         wrapper.ne(ErpProductDO::getMergedFlag, Boolean.TRUE);
         orderByIfPresent(wrapper, reqVO);
         return selectPage(reqVO, wrapper);
+    }
+
+    static void appendKeywordCondition(LambdaQueryWrapperX<ErpProductDO> wrapper,
+                                       String keyword,
+                                       Collection<String> keywordFields,
+                                       Collection<String> customKeywordColumns) {
+        if (!StringUtils.hasText(keyword)) {
+            return;
+        }
+        wrapper.and(w -> {
+            boolean hasCondition = false;
+            if (keywordFields.contains(KEYWORD_FIELD_CODE)) {
+                w.like(ErpProductDO::getCode, keyword);
+                hasCondition = true;
+            }
+            if (keywordFields.contains(KEYWORD_FIELD_NAME)) {
+                appendOr(w, hasCondition).like(ErpProductDO::getName, keyword);
+                hasCondition = true;
+            }
+            if (keywordFields.contains(KEYWORD_FIELD_BAR_CODE)) {
+                appendOr(w, hasCondition).like(ErpProductDO::getBarCode, keyword);
+                hasCondition = true;
+            }
+            if (keywordFields.contains(KEYWORD_FIELD_VEHICLE_MODEL)) {
+                appendOr(w, hasCondition).like(ErpProductDO::getVehicleModel, keyword);
+                hasCondition = true;
+            }
+            if (keywordFields.contains(KEYWORD_FIELD_FACTORY_CODE)) {
+                appendOr(w, hasCondition).like(ErpProductDO::getFactoryCode, keyword);
+                hasCondition = true;
+            }
+            if (keywordFields.contains(KEYWORD_FIELD_STANDARD)) {
+                appendOr(w, hasCondition).like(ErpProductDO::getStandard, keyword);
+                hasCondition = true;
+            }
+            if (keywordFields.contains(KEYWORD_FIELD_REMARK)) {
+                appendOr(w, hasCondition).like(ErpProductDO::getRemark, keyword);
+                hasCondition = true;
+            }
+            if (keywordFields.contains(KEYWORD_FIELD_BRAND)) {
+                appendOr(w, hasCondition).like(ErpProductDO::getBrand, keyword);
+                hasCondition = true;
+            }
+            if (keywordFields.contains(KEYWORD_FIELD_OE_NUMBER)) {
+                appendOr(w, hasCondition).like(ErpProductDO::getOeNumber, keyword);
+                hasCondition = true;
+            }
+            if (keywordFields.contains(KEYWORD_FIELD_ORIGIN_PLACE)) {
+                appendOr(w, hasCondition).like(ErpProductDO::getOriginPlace, keyword);
+                hasCondition = true;
+            }
+            if (keywordFields.contains(KEYWORD_FIELD_FEATURE_CODE)) {
+                appendOr(w, hasCondition).like(ErpProductDO::getFeatureCode, keyword);
+                hasCondition = true;
+            }
+            if (keywordFields.contains(KEYWORD_FIELD_DRAWING_NO)) {
+                appendOr(w, hasCondition).like(ErpProductDO::getDrawingNo, keyword);
+                hasCondition = true;
+            }
+            if (keywordFields.contains(KEYWORD_FIELD_SHELF)) {
+                appendOr(w, hasCondition).like(ErpProductDO::getShelf, keyword);
+                hasCondition = true;
+            }
+            if (keywordFields.contains(KEYWORD_FIELD_CREATE_TIME)) {
+                appendOr(w, hasCondition).apply("DATE_FORMAT(create_time, '%Y-%m-%d %H:%i:%s') LIKE {0}", "%" + keyword + "%");
+                hasCondition = true;
+            }
+            for (String column : customKeywordColumns) {
+                if (!StringUtils.hasText(column)) {
+                    continue;
+                }
+                appendOr(w, hasCondition).apply(column + " LIKE {0}", "%" + keyword + "%");
+                hasCondition = true;
+            }
+            hasCondition = appendKeywordExists(w, hasCondition, keyword, keywordFields);
+            if (!hasCondition) {
+                w.apply("1 = 0");
+            }
+        });
+    }
+
+    static LambdaQueryWrapper<ErpProductDO> appendOr(LambdaQueryWrapper<ErpProductDO> wrapper,
+                                                    boolean hasCondition) {
+        return hasCondition ? wrapper.or() : wrapper;
+    }
+
+    static boolean appendKeywordExists(LambdaQueryWrapper<ErpProductDO> wrapper,
+                                       boolean hasCondition,
+                                       String keyword,
+                                       Collection<String> keywordFields) {
+        if (keywordFields.contains(KEYWORD_FIELD_CATEGORY_NAME)) {
+            appendOr(wrapper, hasCondition).exists("SELECT 1 FROM erp_product_category c "
+                    + "WHERE c.id = erp_product.category_id "
+                    + "AND c.deleted = b'0' "
+                    + "AND c.name LIKE {0}", "%" + keyword + "%");
+            hasCondition = true;
+        }
+        if (keywordFields.contains(KEYWORD_FIELD_UNIT_NAME)) {
+            appendOr(wrapper, hasCondition).exists("SELECT 1 FROM erp_product_unit u "
+                    + "WHERE u.id = erp_product.unit_id "
+                    + "AND u.deleted = b'0' "
+                    + "AND u.name LIKE {0}", "%" + keyword + "%");
+            hasCondition = true;
+        }
+        if (keywordFields.contains(KEYWORD_FIELD_DEFAULT_WAREHOUSE_NAME)) {
+            appendOr(wrapper, hasCondition).exists("SELECT 1 FROM erp_warehouse wh "
+                    + "WHERE wh.id = erp_product.default_warehouse_id "
+                    + "AND wh.deleted = b'0' "
+                    + "AND wh.name LIKE {0}", "%" + keyword + "%");
+            hasCondition = true;
+        }
+        if (keywordFields.contains(KEYWORD_FIELD_DEPT_NAME)) {
+            appendOr(wrapper, hasCondition).exists("SELECT 1 FROM system_dept d "
+                    + "WHERE d.deleted = b'0' "
+                    + "AND d.name LIKE {0} "
+                    + "AND (d.id = erp_product.dept_id "
+                    + "OR EXISTS (SELECT 1 FROM erp_product_dept epd "
+                    + "WHERE epd.product_id = erp_product.id "
+                    + "AND epd.deleted = b'0' "
+                    + "AND epd.dept_id = d.id))", "%" + keyword + "%");
+            hasCondition = true;
+        }
+        if (keywordFields.contains(KEYWORD_FIELD_UNIVERSAL)) {
+            appendOr(wrapper, hasCondition).exists("SELECT 1 FROM erp_product_universal epu "
+                    + "WHERE epu.product_id = erp_product.id "
+                    + "AND epu.deleted = b'0' "
+                    + "AND (epu.universal_code LIKE {0} "
+                    + "OR epu.universal_name LIKE {1} "
+                    + "OR epu.universal_vehicle LIKE {2})",
+                    "%" + keyword + "%", "%" + keyword + "%", "%" + keyword + "%");
+            hasCondition = true;
+        }
+        return hasCondition;
     }
 
     static void orderByIfPresent(LambdaQueryWrapperX<ErpProductDO> wrapper, ErpProductPageReqVO reqVO) {
@@ -71,11 +266,11 @@ public interface ErpProductMapper extends BaseMapperX<ErpProductDO> {
             return;
         }
         if ("asc".equalsIgnoreCase(reqVO.getOrderDirection())) {
-            wrapper.orderByAsc(orderColumn);
+            wrapper.orderByAsc(orderColumn).orderByDesc(ErpProductDO::getId);
             return;
         }
         if ("desc".equalsIgnoreCase(reqVO.getOrderDirection())) {
-            wrapper.orderByDesc(orderColumn);
+            wrapper.orderByDesc(orderColumn).orderByDesc(ErpProductDO::getId);
             return;
         }
         wrapper.orderByDesc(ErpProductDO::getId);
@@ -98,6 +293,18 @@ public interface ErpProductMapper extends BaseMapperX<ErpProductDO> {
                 return ErpProductDO::getBarCode;
             case "factoryCode":
                 return ErpProductDO::getFactoryCode;
+            case "lastPurchasePrice":
+                return ErpProductDO::getLastPurchasePrice;
+            case "salePrice":
+                return ErpProductDO::getSalePrice;
+            case "brand":
+                return ErpProductDO::getBrand;
+            case "originPlace":
+                return ErpProductDO::getOriginPlace;
+            case "drawingNo":
+                return ErpProductDO::getDrawingNo;
+            case "shelf":
+                return ErpProductDO::getShelf;
             case "retailPrice":
                 return ErpProductDO::getRetailPrice;
             case "referencePrice":
@@ -138,6 +345,76 @@ public interface ErpProductMapper extends BaseMapperX<ErpProductDO> {
         return selectList(new LambdaQueryWrapperX<ErpProductDO>()
                 .eq(ErpProductDO::getStatus, status)
                 .ne(ErpProductDO::getMergedFlag, Boolean.TRUE));
+    }
+
+    default List<ErpProductDO> selectVisibleListByStatus(Integer status, ErpProductPageReqVO reqVO) {
+        LambdaQueryWrapperX<ErpProductDO> wrapper = new LambdaQueryWrapperX<>();
+        wrapper.eq(ErpProductDO::getStatus, status);
+        wrapper.ne(ErpProductDO::getMergedFlag, Boolean.TRUE);
+        wrapper.orderByDesc(ErpProductDO::getId);
+        applyVisibleScope(wrapper, reqVO);
+        return selectList(wrapper);
+    }
+
+    default ErpProductDO selectVisibleById(Long id, ErpProductPageReqVO reqVO) {
+        LambdaQueryWrapperX<ErpProductDO> wrapper = new LambdaQueryWrapperX<>();
+        wrapper.eq(ErpProductDO::getId, id);
+        applyVisibleScope(wrapper, reqVO);
+        return selectOne(wrapper);
+    }
+
+    default List<ErpProductDO> selectVisibleListByIds(Collection<Long> ids, ErpProductPageReqVO reqVO) {
+        if (CollUtil.isEmpty(ids)) {
+            return Collections.emptyList();
+        }
+        LambdaQueryWrapperX<ErpProductDO> wrapper = new LambdaQueryWrapperX<>();
+        wrapper.in(ErpProductDO::getId, ids);
+        applyVisibleScope(wrapper, reqVO);
+        return selectList(wrapper);
+    }
+
+    static void applyVisibleScope(LambdaQueryWrapper<ErpProductDO> wrapper, ErpProductPageReqVO reqVO) {
+        if (Boolean.TRUE.equals(reqVO.getVisibleAll())) {
+            return;
+        }
+        Collection<Long> deptIds = reqVO.getVisibleDeptIds();
+        Collection<Long> warehouseIds = reqVO.getVisibleWarehouseIds();
+        Long selfUserId = reqVO.getVisibleSelfUserId();
+        boolean hasDeptScope = CollUtil.isNotEmpty(deptIds);
+        boolean hasWarehouseScope = CollUtil.isNotEmpty(warehouseIds);
+        boolean hasSelfScope = selfUserId != null;
+        if (!hasDeptScope && !hasWarehouseScope && !hasSelfScope) {
+            wrapper.apply("1 = 0");
+            return;
+        }
+        wrapper.and(scope -> {
+            boolean hasCondition = false;
+            if (hasDeptScope) {
+                scope.in(ErpProductDO::getDeptId, deptIds)
+                        .or()
+                        .exists("SELECT 1 FROM erp_product_dept epd "
+                                + "WHERE epd.product_id = erp_product.id "
+                                + "AND epd.deleted = b'0' "
+                                + "AND epd.dept_id IN (" + CollUtil.join(deptIds, ",") + ")")
+                        .or()
+                        .exists("SELECT 1 FROM erp_stock s "
+                                + "JOIN erp_warehouse w ON w.id = s.warehouse_id AND w.deleted = b'0' "
+                                + "WHERE s.product_id = erp_product.id "
+                                + "AND s.deleted = b'0' "
+                                + "AND w.dept_id IN (" + CollUtil.join(deptIds, ",") + ")");
+                hasCondition = true;
+            }
+            if (hasWarehouseScope) {
+                appendOr(scope, hasCondition).exists("SELECT 1 FROM erp_stock s "
+                        + "WHERE s.product_id = erp_product.id "
+                        + "AND s.deleted = b'0' "
+                        + "AND s.warehouse_id IN (" + CollUtil.join(warehouseIds, ",") + ")");
+                hasCondition = true;
+            }
+            if (hasSelfScope) {
+                appendOr(scope, hasCondition).eq(ErpProductDO::getCreator, String.valueOf(selfUserId));
+            }
+        });
     }
 
     default ErpProductDO selectByCode(String code) {
@@ -239,6 +516,27 @@ public interface ErpProductMapper extends BaseMapperX<ErpProductDO> {
     default List<Long> selectIdsByComplexQuery(ErpStockPageReqVO reqVO,
                                                Collection<Long> shelfDuplicateIds,
                                                Collection<Long> shelfEmptyIds) {
+        return selectIdsByComplexQuery(reqVO, shelfDuplicateIds, shelfEmptyIds, true);
+    }
+
+    default List<Long> selectIdsByComplexQueryWithoutKeyword(ErpStockPageReqVO reqVO,
+                                                             Collection<Long> shelfDuplicateIds,
+                                                             Collection<Long> shelfEmptyIds) {
+        return selectIdsByComplexQuery(reqVO, shelfDuplicateIds, shelfEmptyIds, false);
+    }
+
+    default List<Long> selectIdsByKeyword(ErpStockPageReqVO reqVO) {
+        LambdaQueryWrapper<ErpProductDO> w = new LambdaQueryWrapper<>();
+        w.select(ErpProductDO::getId);
+        appendStockKeywordCondition(w, fuzzyKeyword(reqVO.getKeyword()));
+        List<Map<String, Object>> rows = selectMaps(w);
+        return rows.stream().map(m -> (Long) m.get("id")).collect(Collectors.toList());
+    }
+
+    default List<Long> selectIdsByComplexQuery(ErpStockPageReqVO reqVO,
+                                               Collection<Long> shelfDuplicateIds,
+                                               Collection<Long> shelfEmptyIds,
+                                               boolean includeKeyword) {
         LambdaQueryWrapper<ErpProductDO> w = new LambdaQueryWrapper<>();
         w.select(ErpProductDO::getId);
         if (StringUtils.hasText(reqVO.getProductCode())) {
@@ -277,6 +575,9 @@ public interface ErpProductMapper extends BaseMapperX<ErpProductDO> {
         if (StringUtils.hasText(reqVO.getOeNumber())) {
             w.like(ErpProductDO::getOeNumber, fuzzyKeyword(reqVO.getOeNumber()));
         }
+        if (includeKeyword) {
+            appendStockKeywordCondition(w, fuzzyKeyword(reqVO.getKeyword()));
+        }
         if (reqVO.getCategoryId() != null) {
             w.eq(ErpProductDO::getCategoryId, reqVO.getCategoryId());
         }
@@ -290,6 +591,7 @@ public interface ErpProductMapper extends BaseMapperX<ErpProductDO> {
         if (reqVO.getStockStandardMin() != null) w.ge(ErpProductDO::getStockStandard, reqVO.getStockStandardMin());
         if (reqVO.getStockStandardMax() != null) w.le(ErpProductDO::getStockStandard, reqVO.getStockStandardMax());
         // 特殊：货架位重复/空置 → 预查出的 ids 做交集
+        // Intersect with precomputed shelf duplicate IDs.
         if (Boolean.TRUE.equals(reqVO.getShelfDuplicateOnly())) {
             if (shelfDuplicateIds == null || shelfDuplicateIds.isEmpty()) {
                 return Collections.emptyList();
@@ -304,6 +606,34 @@ public interface ErpProductMapper extends BaseMapperX<ErpProductDO> {
         }
         List<Map<String, Object>> rows = selectMaps(w);
         return rows.stream().map(m -> (Long) m.get("id")).collect(Collectors.toList());
+    }
+
+    static void appendStockKeywordCondition(LambdaQueryWrapper<ErpProductDO> w, String keyword) {
+        if (!StringUtils.hasText(keyword)) {
+            return;
+        }
+        w.and(q -> q.like(ErpProductDO::getCode, keyword)
+                .or().like(ErpProductDO::getName, keyword)
+                .or().like(ErpProductDO::getBarCode, keyword)
+                .or().like(ErpProductDO::getVehicleModel, keyword)
+                .or().like(ErpProductDO::getFactoryCode, keyword)
+                .or().like(ErpProductDO::getStandard, keyword)
+                .or().like(ErpProductDO::getRemark, keyword)
+                .or().like(ErpProductDO::getBrand, keyword)
+                .or().like(ErpProductDO::getOeNumber, keyword)
+                .or().like(ErpProductDO::getOriginPlace, keyword)
+                .or().like(ErpProductDO::getFeatureCode, keyword)
+                .or().like(ErpProductDO::getDrawingNo, keyword)
+                .or().like(ErpProductDO::getShelf, keyword)
+                .or().exists("SELECT 1 FROM system_dept d "
+                        + "WHERE d.deleted = b'0' "
+                        + "AND d.name LIKE {0} "
+                        + "AND (d.id = erp_product.dept_id "
+                        + "OR EXISTS (SELECT 1 FROM erp_product_dept epd "
+                        + "WHERE epd.product_id = erp_product.id "
+                        + "AND epd.deleted = b'0' "
+                        + "AND epd.dept_id = d.id))", "%" + keyword + "%")
+                .or().apply("DATE_FORMAT(create_time, '%Y-%m-%d %H:%i:%s') LIKE {0}", "%" + keyword + "%"));
     }
 
 }

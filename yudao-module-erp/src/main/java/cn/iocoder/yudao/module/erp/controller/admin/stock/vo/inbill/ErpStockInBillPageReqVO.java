@@ -8,6 +8,7 @@ import lombok.ToString;
 import org.springframework.format.annotation.DateTimeFormat;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 import static cn.iocoder.yudao.framework.common.util.date.DateUtils.FORMAT_YEAR_MONTH_DAY_HOUR_MINUTE_SECOND;
 
@@ -16,6 +17,9 @@ import static cn.iocoder.yudao.framework.common.util.date.DateUtils.FORMAT_YEAR_
 @EqualsAndHashCode(callSuper = true)
 @ToString(callSuper = true)
 public class ErpStockInBillPageReqVO extends PageParam {
+
+    @Schema(description = "入仓单编号列表")
+    private List<Long> ids;
 
     @Schema(description = "入仓单号", example = "RC202606240001")
     private String no;
@@ -41,5 +45,11 @@ public class ErpStockInBillPageReqVO extends PageParam {
 
     @Schema(description = "创建者")
     private String creator;
+
+    @Schema(description = "排序字段")
+    private String orderField;
+
+    @Schema(description = "排序方向（asc/desc）")
+    private String orderDirection;
 
 }

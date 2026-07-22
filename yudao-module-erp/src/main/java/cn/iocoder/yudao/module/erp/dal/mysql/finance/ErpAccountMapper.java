@@ -5,6 +5,7 @@ import cn.iocoder.yudao.framework.mybatis.core.mapper.BaseMapperX;
 import cn.iocoder.yudao.framework.mybatis.core.query.LambdaQueryWrapperX;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.account.ErpAccountPageReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.ErpAccountDO;
+import cn.iocoder.yudao.module.erp.dal.mysql.common.ErpKeywordQuery;
 import cn.iocoder.yudao.module.erp.service.finance.bo.ErpAccountBalanceBO;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Select;
@@ -19,14 +20,20 @@ import java.util.List;
 public interface ErpAccountMapper extends BaseMapperX<ErpAccountDO> {
 
     default PageResult<ErpAccountDO> selectPage(ErpAccountPageReqVO reqVO) {
-        return selectPage(reqVO, new LambdaQueryWrapperX<ErpAccountDO>()
+        LambdaQueryWrapperX<ErpAccountDO> wrapper = new LambdaQueryWrapperX<ErpAccountDO>()
                 .likeIfPresent(ErpAccountDO::getName, reqVO.getName())
                 .likeIfPresent(ErpAccountDO::getNo, reqVO.getNo())
                 .eqIfPresent(ErpAccountDO::getAccountType, reqVO.getAccountType())
                 .eqIfPresent(ErpAccountDO::getDeptId, reqVO.getDeptId())
                 .eqIfPresent(ErpAccountDO::getStatus, reqVO.getStatus())
-                .likeIfPresent(ErpAccountDO::getRemark, reqVO.getRemark())
-                .orderByDesc(ErpAccountDO::getId));
+                .likeIfPresent(ErpAccountDO::getRemark, reqVO.getRemark());
+        ErpKeywordQuery.appendWithDeptName(wrapper, reqVO.getKeyword(),
+                ErpAccountDO::getName, ErpAccountDO::getNo, ErpAccountDO::getBankName,
+                ErpAccountDO::getBankAccount, ErpAccountDO::getRemark);
+        ErpFinanceSortUtils.apply(wrapper, reqVO.getOrderField(), reqVO.getOrderDirection(), "erp_account",
+                "no", "name", "accountType", "bankName", "bankAccount", "deptId", "status",
+                "defaultStatus", "sort", "createTime", "updateTime");
+        return selectPage(reqVO, wrapper);
     }
 
     default ErpAccountDO selectByDefaultStatus() {

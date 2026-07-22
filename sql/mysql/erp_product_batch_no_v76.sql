@@ -33,7 +33,7 @@ ON DUPLICATE KEY UPDATE
   `deleted` = b'0';
 
 UPDATE `system_field_definition`
-SET `field_label` = '商品分类',
+SET `field_label` = '配件分类',
     `updater` = '1',
     `update_time` = NOW(),
     `deleted` = b'0'
@@ -42,7 +42,7 @@ WHERE `module` = 'erp_product'
   AND `deleted` = b'0';
 
 UPDATE `system_field_definition`
-SET `field_label` = '列表-商品分类',
+SET `field_label` = '列表-配件分类',
     `updater` = '1',
     `update_time` = NOW(),
     `deleted` = b'0'

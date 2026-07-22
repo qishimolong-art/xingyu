@@ -8,10 +8,14 @@ import cn.iocoder.yudao.framework.common.pojo.PageParam;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.common.util.collection.MapUtils;
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
+import cn.iocoder.yudao.framework.datapermission.core.util.DataPermissionUtils;
 import cn.iocoder.yudao.framework.excel.core.util.ExcelUtils;
 import cn.iocoder.yudao.module.erp.controller.admin.common.vo.ErpExportFieldRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.common.vo.ErpArchiveMergeReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.supplier.ErpSupplierBatchDisableReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.supplier.ErpSupplierBatchUpdateReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.supplier.ErpSupplierDeptDistributionRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.supplier.ErpSupplierDeptDistributionSaveReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.supplier.ErpSupplierImportExcelVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.supplier.ErpSupplierPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.supplier.ErpSupplierRespVO;
@@ -92,6 +96,23 @@ public class ErpSupplierController {
         return success(true);
     }
 
+    @GetMapping("/dept-distribution")
+    @Operation(summary = "获得供应商部门分配")
+    @Parameter(name = "id", description = "供应商编号", required = true, example = "1024")
+    @PreAuthorize("@ss.hasPermission('erp:supplier:dept-distribute')")
+    public CommonResult<ErpSupplierDeptDistributionRespVO> getSupplierDeptDistribution(@RequestParam("id") Long id) {
+        return success(supplierService.getSupplierDeptDistribution(id));
+    }
+
+    @PutMapping("/dept-distribution")
+    @Operation(summary = "更新供应商部门分配")
+    @PreAuthorize("@ss.hasPermission('erp:supplier:dept-distribute')")
+    public CommonResult<Boolean> updateSupplierDeptDistribution(
+            @Valid @RequestBody ErpSupplierDeptDistributionSaveReqVO reqVO) {
+        supplierService.updateSupplierDeptDistribution(reqVO);
+        return success(true);
+    }
+
     @PutMapping("/batch-update")
     @Operation(summary = "批量编辑供应商")
     @PreAuthorize("@ss.hasPermission('erp:supplier:update')")
@@ -116,6 +137,14 @@ public class ErpSupplierController {
     public CommonResult<Boolean> updateSupplierStatus(@RequestParam("id") Long id,
                                                       @RequestParam("status") Integer status) {
         supplierService.updateSupplierStatus(id, status);
+        return success(true);
+    }
+
+    @PutMapping("/merge")
+    @Operation(summary = "合并供应商")
+    @PreAuthorize("@ss.hasPermission('erp:supplier:merge')")
+    public CommonResult<Boolean> mergeSupplier(@Valid @RequestBody ErpArchiveMergeReqVO reqVO) {
+        supplierService.mergeSupplier(reqVO.getSourceId(), reqVO.getKeepId());
         return success(true);
     }
 
@@ -264,6 +293,7 @@ public class ErpSupplierController {
         map.put("memberCode", "finance_info");
         map.put("legalPerson", "finance_info");
         map.put("creditCode", "finance_info");
+        map.put("createDeptName", "system");
         map.put("createTime", "system");
         map.put("creatorName", "system");
         map.put("updaterName", "system");
@@ -288,14 +318,24 @@ public class ErpSupplierController {
                 deptIds.addAll(ids);
             }
         });
-        deptIds.remove(null);
-        Map<Long, DeptRespDTO> deptMap = deptApi.getDeptMap(deptIds);
         Set<Long> userIds = new HashSet<>();
         list.forEach(supplier -> {
             addUserId(userIds, supplier.getCreator());
             addUserId(userIds, supplier.getUpdater());
         });
         Map<Long, AdminUserRespDTO> userMap = adminUserApi.getUserMap(userIds);
+        list.forEach(supplier -> {
+            Long creatorId = parseUserId(supplier.getCreator());
+            AdminUserRespDTO creator = creatorId == null ? null : userMap.get(creatorId);
+            if (supplier.getCreateDeptId() == null && creator != null) {
+                supplier.setCreateDeptId(creator.getDeptId());
+            }
+            if (supplier.getCreateDeptId() != null) {
+                deptIds.add(supplier.getCreateDeptId());
+            }
+        });
+        deptIds.remove(null);
+        Map<Long, DeptRespDTO> deptMap = DataPermissionUtils.executeIgnore(() -> deptApi.getDeptMap(deptIds));
         list.forEach(supplier -> {
             List<Long> currentDeptIds = supplierDeptMap.getOrDefault(supplier.getId(), Collections.emptyList());
             supplier.setDeptIds(currentDeptIds);
@@ -305,6 +345,8 @@ public class ErpSupplierController {
                     .map(DeptRespDTO::getName)
                     .collect(java.util.stream.Collectors.joining("、")));
             MapUtils.findAndThen(deptMap, supplier.getDeptId(), dept -> supplier.setDeptName(dept.getName()));
+            MapUtils.findAndThen(deptMap, supplier.getCreateDeptId(),
+                    dept -> supplier.setCreateDeptName(dept.getName()));
             Long creatorId = parseUserId(supplier.getCreator());
             if (creatorId != null) {
                 MapUtils.findAndThen(userMap, creatorId, user -> supplier.setCreatorName(user.getNickname()));

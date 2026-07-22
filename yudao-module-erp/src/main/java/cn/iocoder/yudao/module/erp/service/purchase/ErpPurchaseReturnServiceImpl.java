@@ -7,6 +7,7 @@ import cn.iocoder.yudao.framework.common.enums.CommonStatusEnum;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.common.util.number.MoneyUtils;
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
+import cn.iocoder.yudao.framework.datapermission.core.util.DataPermissionUtils;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.imports.ErpPurchaseImportResultRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.returns.ErpPurchaseReturnImportExcelVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.returns.ErpPurchaseReturnImportRespVO;
@@ -67,10 +68,10 @@ import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.*;
 import static cn.iocoder.yudao.module.erp.enums.LogRecordConstants.*;
 
-// TODO 芋艿：记录操作日志
+// TODO 芋艿：记录操作日�?
 
 /**
- * ERP 采购退货 Service 实现类
+ * ERP 采购退�?Service 实现�?
  *
  * @author 芋道源码
  */
@@ -93,7 +94,7 @@ public class ErpPurchaseReturnServiceImpl implements ErpPurchaseReturnService {
     @Resource
     private ErpProductService productService;
     @Resource
-    @Lazy // 延迟加载，避免循环依赖
+    @Lazy // 延迟加载，避免循环依�?
     private ErpPurchaseOrderService purchaseOrderService;
     @Resource
     private ErpStockRecordService stockRecordService;
@@ -117,29 +118,29 @@ public class ErpPurchaseReturnServiceImpl implements ErpPurchaseReturnService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Long createPurchaseReturn(ErpPurchaseReturnSaveReqVO createReqVO) {
-        // 1.1 校验退货模式
+        // 1.1 校验退货模�?
         Integer returnMode = createReqVO.getReturnMode();
         if (returnMode == null || (!ErpPurchaseReturnModeEnum.isByOrder(returnMode) && !ErpPurchaseReturnModeEnum.isByStock(returnMode))) {
             throw exception(PURCHASE_RETURN_MODE_INVALID);
         }
-        // 1.2 校验采购订单已审核（orderId 可空）
+        // 1.2 校验采购订单已审核（orderId 可空�?
         ErpPurchaseOrderDO purchaseOrder = null;
         if (createReqVO.getOrderId() != null) {
             purchaseOrder = purchaseOrderService.validatePurchaseOrder(createReqVO.getOrderId());
         }
-        // 1.3 按入库单退货模式下，校验 sourceInItem 可退数量
+        // 1.3 按入库单退货模式下，校�?sourceInItem 可退数量
         if (ErpPurchaseReturnModeEnum.isByOrder(returnMode)) {
             validateReturnableCountForByOrder(createReqVO.getItems(), null);
         }
-        // 1.4 校验退货项的有效性
+        // 1.4 校验退货项的有效�?
         List<ErpPurchaseReturnItemDO> purchaseReturnItems = validatePurchaseReturnItems(createReqVO.getItems());
-        // 1.5 生成退货单号，并校验唯一性
+        // 1.5 生成退货单号，并校验唯一�?
         String no = noRedisDAO.generate(ErpNoRedisDAO.PURCHASE_RETURN_NO_PREFIX);
         if (purchaseReturnMapper.selectByNo(no) != null) {
             throw exception(PURCHASE_RETURN_NO_EXISTS);
         }
 
-        // 2.1 插入退货
+        // 2.1 插入退�?
         ErpPurchaseReturnDO purchaseReturn = BeanUtils.toBean(createReqVO, ErpPurchaseReturnDO.class, in -> in
                 .setNo(no).setStatus(ErpAuditStatus.PROCESS.getStatus()));
         purchaseReturn.setReturnTime(createReqVO.getReturnTime() != null ? createReqVO.getReturnTime() : LocalDateTime.now());
@@ -148,7 +149,7 @@ public class ErpPurchaseReturnServiceImpl implements ErpPurchaseReturnService {
                     .setDeptId(purchaseOrder.getDeptId());
         }
         purchaseDocumentDefaultService.fillCreateDefaults(purchaseReturn);
-        // 1.6 兜底校验：supplierId 必填（按单退货走 orderId 带出；按库存退货要求前端传）
+        // Supplier is required.
         if (purchaseReturn.getSupplierId() == null) {
             throw exception(PURCHASE_RETURN_SUPPLIER_REQUIRED);
         }
@@ -160,7 +161,7 @@ public class ErpPurchaseReturnServiceImpl implements ErpPurchaseReturnService {
         purchaseDocumentDefaultService.fillCreateAuditDefaults(purchaseReturnItems);
         purchaseReturnItemMapper.insertBatch(purchaseReturnItems);
 
-        // 3. 更新采购订单的退货数量
+        // 3. 更新采购订单的退货数�?
         if (createReqVO.getOrderId() != null) {
             updatePurchaseOrderReturnCount(createReqVO.getOrderId());
         }
@@ -176,24 +177,24 @@ public class ErpPurchaseReturnServiceImpl implements ErpPurchaseReturnService {
         if (ErpAuditStatus.APPROVE.getStatus().equals(purchaseReturn.getStatus())) {
             throw exception(PURCHASE_RETURN_UPDATE_FAIL_APPROVE, purchaseReturn.getNo());
         }
-        // 1.2 校验退货模式
+        // 1.2 校验退货模�?
         Integer returnMode = updateReqVO.getReturnMode();
         if (returnMode == null || (!ErpPurchaseReturnModeEnum.isByOrder(returnMode) && !ErpPurchaseReturnModeEnum.isByStock(returnMode))) {
             throw exception(PURCHASE_RETURN_MODE_INVALID);
         }
-        // 1.3 校验采购订单已审核（orderId 可空）
+        // 1.3 校验采购订单已审核（orderId 可空�?
         ErpPurchaseOrderDO purchaseOrder = null;
         if (updateReqVO.getOrderId() != null) {
             purchaseOrder = purchaseOrderService.validatePurchaseOrder(updateReqVO.getOrderId());
         }
-        // 1.4 按入库单退货模式下，校验 sourceInItem 可退数量（排除当前退货单自己）
+        // 1.4 按入库单退货模式下，校�?sourceInItem 可退数量（排除当前退货单自己�?
         if (ErpPurchaseReturnModeEnum.isByOrder(returnMode)) {
             validateReturnableCountForByOrder(updateReqVO.getItems(), updateReqVO.getId());
         }
-        // 1.5 校验订单项的有效性
+        // 1.5 校验订单项的有效�?
         List<ErpPurchaseReturnItemDO> purchaseReturnItems = validatePurchaseReturnItems(updateReqVO.getItems());
 
-        // 2.1 更新退货
+        // 2.1 更新退�?
         ErpPurchaseReturnDO updateObj = BeanUtils.toBean(updateReqVO, ErpPurchaseReturnDO.class);
         updateObj.setReturnTime(updateReqVO.getReturnTime() != null ? updateReqVO.getReturnTime() : LocalDateTime.now());
         if (purchaseOrder != null) {
@@ -216,7 +217,7 @@ public class ErpPurchaseReturnServiceImpl implements ErpPurchaseReturnService {
         // 2.2 更新退货项
         updatePurchaseReturnItemList(updateReqVO.getId(), purchaseReturnItems);
 
-        // 3.1 更新采购订单的出库数量
+        // 3.1 更新采购订单的出库数�?
         if (updateObj.getOrderId() != null) {
             updatePurchaseOrderReturnCount(updateObj.getOrderId());
         }
@@ -250,10 +251,10 @@ public class ErpPurchaseReturnServiceImpl implements ErpPurchaseReturnService {
     private void updatePurchaseOrderReturnCount(Long orderId) {
         // 1.1 查询采购订单对应的采购出库单列表
         List<ErpPurchaseReturnDO> purchaseReturns = purchaseReturnMapper.selectListByOrderId(orderId);
-        // 1.2 查询对应的采购订单项的退货数量
+        // 1.2 查询对应的采购订单项的退货数�?
         Map<Long, BigDecimal> returnCountMap = purchaseReturnItemMapper.selectOrderItemCountSumMapByReturnIds(
                 convertList(purchaseReturns, ErpPurchaseReturnDO::getId));
-        // 2. 更新采购订单的出库数量
+        // 2. 更新采购订单的出库数�?
         purchaseOrderService.updatePurchaseOrderReturnCount(orderId, returnCountMap);
     }
 
@@ -265,12 +266,12 @@ public class ErpPurchaseReturnServiceImpl implements ErpPurchaseReturnService {
         }
         // 1.1 校验存在
         ErpPurchaseReturnDO purchaseReturn = validatePurchaseReturnExists(id);
-        // 1.2 校验状态
+        // Validate status.
         if (!ErpAuditStatus.PROCESS.getStatus().equals(purchaseReturn.getStatus())) {
             throw exception(PURCHASE_RETURN_APPROVE_FAIL);
         }
 
-        // 2. 更新状态
+        // Update status.
         int updateCount = purchaseReturnMapper.updateByIdAndStatus(id, purchaseReturn.getStatus(),
                 new ErpPurchaseReturnDO().setStatus(ErpAuditStatus.APPROVE.getStatus()));
         if (updateCount == 0) {
@@ -282,7 +283,8 @@ public class ErpPurchaseReturnServiceImpl implements ErpPurchaseReturnService {
         warehouseService.validPurchaseWarehouseList(convertSet(purchaseReturnItems, ErpPurchaseReturnItemDO::getWarehouseId));
         purchaseReturnItems.forEach(purchaseReturnItem -> {
             stockRecordService.createStockRecord(new ErpStockRecordCreateReqBO(
-                    purchaseReturnItem.getProductId(), purchaseReturnItem.getWarehouseId(), purchaseReturnItem.getCount().negate(),
+                    purchaseReturnItem.getProductId(), purchaseReturnItem.getWarehouseId(), purchaseReturnItem.getBatchNo(),
+                    purchaseReturnItem.getCount().negate(),
                     ErpStockRecordBizTypeEnum.PURCHASE_RETURN.getType(), purchaseReturnItem.getReturnId(), purchaseReturnItem.getId(), purchaseReturn.getNo(),
                     purchaseReturnItem.getProductPrice(), purchaseReturn.getReturnTime()));
         });
@@ -299,7 +301,7 @@ public class ErpPurchaseReturnServiceImpl implements ErpPurchaseReturnService {
                     purchaseReturn.getNo(),
                     purchaseReturn.getTotalPrice(),
                     purchaseReturn.getReturnTime().toLocalDate(),
-                    "采购退货 - " + supplierName,
+                    "采购退�?- " + supplierName,
                     items);
         }
         operateLogService.recordStatus(ERP_PURCHASE_RETURN_TYPE, id, purchaseReturn.getNo(), true);
@@ -318,7 +320,7 @@ public class ErpPurchaseReturnServiceImpl implements ErpPurchaseReturnService {
     }
 
     private List<ErpPurchaseReturnItemDO> validatePurchaseReturnItems(List<ErpPurchaseReturnSaveReqVO.Item> list) {
-        // 0. 校验每项的退货数量和退货价格必须大于 0
+        // 0. 校验每项的退货数量和退货价格必须大�?0
         if (CollUtil.isNotEmpty(list)) {
             for (ErpPurchaseReturnSaveReqVO.Item item : list) {
                 if (item.getCount() == null || item.getCount().compareTo(BigDecimal.ZERO) <= 0) {
@@ -329,7 +331,7 @@ public class ErpPurchaseReturnServiceImpl implements ErpPurchaseReturnService {
                 }
             }
         }
-        // 0.5 校验同一明细中产品 + 仓库 + 赠品标识不重复（采购退货暂无赠品字段，固定为 false）
+        // 0.5 校验同一明细中产品 + 仓库 + 赠品标识不重复（采购退货暂无赠品字段，固定 false）
         Set<String> itemKeySet = new LinkedHashSet<>();
         if (CollUtil.isNotEmpty(list)) {
             for (ErpPurchaseReturnSaveReqVO.Item item : list) {
@@ -341,16 +343,18 @@ public class ErpPurchaseReturnServiceImpl implements ErpPurchaseReturnService {
             }
         }
         // 1. 校验产品存在
-        List<ErpProductDO> productList = productService.validProductList(
-                convertSet(list, ErpPurchaseReturnSaveReqVO.Item::getProductId));
+        List<ErpProductDO> productList = DataPermissionUtils.executeIgnore(() -> productService.validProductList(
+                convertSet(list, ErpPurchaseReturnSaveReqVO.Item::getProductId)));
         Map<Long, ErpProductDO> productMap = convertMap(productList, ErpProductDO::getId);
-        productBatchNoValidator.validateBatchNoRequired(list, productMap,
+        productBatchNoValidator.validateBatchNoAllowed(list, productMap,
                 ErpPurchaseReturnSaveReqVO.Item::getProductId, ErpPurchaseReturnSaveReqVO.Item::getBatchNo);
         Set<Long> warehouseIds = convertSet(list, ErpPurchaseReturnSaveReqVO.Item::getWarehouseId);
         warehouseService.validPurchaseWarehouseList(warehouseIds);
-        // 2. 转化为 ErpPurchaseReturnItemDO 列表
+        Map<Long, cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpWarehouseDO> warehouseMap = warehouseService.getWarehouseMap(warehouseIds);
+        // 2. 转化�?ErpPurchaseReturnItemDO 列表
         return convertList(list, o -> BeanUtils.toBean(o, ErpPurchaseReturnItemDO.class, item -> {
             item.setProductUnitId(productMap.get(item.getProductId()).getUnitId());
+            fillDeptIdFromWarehouse(item, warehouseMap);
             item.setTaxPercent(null);
             item.setTaxPrice(BigDecimal.ZERO);
             item.setTotalPrice(MoneyUtils.priceMultiply(item.getProductPrice(), item.getCount()));
@@ -358,14 +362,22 @@ public class ErpPurchaseReturnServiceImpl implements ErpPurchaseReturnService {
     }
 
     /**
-     * 校验"按单退货"模式下每一项的可退数量合法
+     * ??"????"?????????????
      * - sourceInItemId 必填
-     * - 可退数量 = 原入库数量 - 其他退货单对该项已退数量（排除当前 currentReturnId 自己）
-     * - 当前单所有行对同一 sourceInItemId 的 count 总和不能超过可退数量
+     * - 可退数量 = 原入库数�?- 其他退货单对该项已退数量（排除当�?currentReturnId 自己�?
+     * - 当前单所有行对同一 sourceInItemId �?count 总和不能超过可退数量
      *
-     * @param items 提交的子表
-     * @param currentReturnId 当前退货单 ID（更新场景传入；新建场景传 null）
+     * @param items 提交的子�?
+     * @param currentReturnId 当前退货单 ID（更新场景传入；新建场景�?null�?
      */
+    private void fillDeptIdFromWarehouse(ErpPurchaseReturnItemDO item,
+                                         Map<Long, cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpWarehouseDO> warehouseMap) {
+        if (item.getDeptId() == null && item.getWarehouseId() != null) {
+            cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpWarehouseDO warehouse = warehouseMap.get(item.getWarehouseId());
+            item.setDeptId(warehouse == null ? null : warehouse.getDeptId());
+        }
+    }
+
     private void validateReturnableCountForByOrder(List<ErpPurchaseReturnSaveReqVO.Item> items, Long currentReturnId) {
         if (CollUtil.isEmpty(items)) {
             return;
@@ -380,18 +392,18 @@ public class ErpPurchaseReturnServiceImpl implements ErpPurchaseReturnService {
             }
         }
 
-        // 2. 聚合当前单对每个 sourceInItemId 的提交数量
+        // 2. 聚合当前单对每个 sourceInItemId 的提交数�?
         Map<Long, BigDecimal> currentItemCountMap = new HashMap<>();
         for (ErpPurchaseReturnSaveReqVO.Item it : items) {
             currentItemCountMap.merge(it.getSourceInItemId(), it.getCount(), BigDecimal::add);
         }
 
-        // 3. 查询这些 sourceInItemId 对应的原入库项
+        // 3. 查询这些 sourceInItemId 对应的原入库�?
         Set<Long> sourceInItemIds = currentItemCountMap.keySet();
         List<ErpPurchaseInItemDO> inItems = purchaseInItemMapper.selectBatchIds(sourceInItemIds);
         Map<Long, ErpPurchaseInItemDO> inItemMap = convertMap(inItems, ErpPurchaseInItemDO::getId);
 
-        // 4. 查询这些入库项的"其他退货单"累计已退数量（排除 currentReturnId）
+        // 4. 查询这些入库项的"其他退货单"累计已退数量（排�?currentReturnId�?
         Map<Long, BigDecimal> returnedMap = purchaseReturnItemMapper.selectReturnedCountMapBySourceInItemIdsExcludeReturn(
                 sourceInItemIds, currentReturnId);
 
@@ -417,7 +429,7 @@ public class ErpPurchaseReturnServiceImpl implements ErpPurchaseReturnService {
         List<List<ErpPurchaseReturnItemDO>> diffList = diffList(oldList, newList, // id 不同，就认为是不同的记录
                 (oldVal, newVal) -> oldVal.getId().equals(newVal.getId()));
 
-        // 第二步，批量添加、修改、删除
+        // Batch insert, update and delete items.
         if (CollUtil.isNotEmpty(diffList.get(0))) {
             diffList.get(0).forEach(o -> o.setReturnId(id));
             purchaseDocumentDefaultService.fillCreateAuditDefaults(diffList.get(0));
@@ -449,11 +461,13 @@ public class ErpPurchaseReturnServiceImpl implements ErpPurchaseReturnService {
         purchaseReturns.forEach(purchaseReturn -> {
             // 2.1 删除订单
             purchaseReturnMapper.deleteById(purchaseReturn.getId());
-            // 2.2 删除订单项
+            // 2.2 删除订单�?
             purchaseReturnItemMapper.deleteByReturnId(purchaseReturn.getId());
 
-            // 2.3 更新采购订单的出库数量
-            updatePurchaseOrderReturnCount(purchaseReturn.getOrderId());
+            // 2.3 更新采购订单的出库数�?
+            if (purchaseReturn.getOrderId() != null) {
+                updatePurchaseOrderReturnCount(purchaseReturn.getOrderId());
+            }
             operateLogService.recordDelete(ERP_PURCHASE_RETURN_TYPE, purchaseReturn.getId(), purchaseReturn.getNo());
         });
 
@@ -600,13 +614,13 @@ public class ErpPurchaseReturnServiceImpl implements ErpPurchaseReturnService {
                 String orderNo = resolvePurchaseReturnOrderNo(rowNo, row);
                 String supplierName = trimToNull(row.getSupplierName());
                 if (supplierName == null) {
-                    addImportFailure(respVO, rowNo, orderNo, null, "供应商不能为空");
+                    addImportFailure(respVO, rowNo, orderNo, null, "???????");
                 } else if (supplier == null) {
-                    addImportFailure(respVO, rowNo, orderNo, null, "供应商不存在：" + supplierName);
+                    addImportFailure(respVO, rowNo, orderNo, null, "???????" + supplierName);
                 } else if (CommonStatusEnum.isDisable(supplier.getStatus())) {
-                    addImportFailure(respVO, rowNo, orderNo, null, "供应商(" + supplier.getName() + ")未启用");
+                    addImportFailure(respVO, rowNo, orderNo, null, "???(" + supplier.getName() + ")???");
                 }
-                validateImportDate(respVO, rowNo, orderNo, null, "退货时间", row.getReturnTime());
+                validateImportDate(respVO, rowNo, orderNo, null, "????", row.getReturnTime());
             } else if (hasDetail && currentGroup == null) {
                 addImportFailure(respVO, rowNo, null, trimToNull(row.getProductCode()), "明细行前缺少退货单主表信息");
                 continue;
@@ -623,7 +637,7 @@ public class ErpPurchaseReturnServiceImpl implements ErpPurchaseReturnService {
                 addImportFailure(respVO, rowNo, orderNo, productCode, "产品编码不能为空");
                 valid = false;
             } else if (product == null) {
-                addImportFailure(respVO, rowNo, orderNo, productCode, "产品不存在");
+                addImportFailure(respVO, rowNo, orderNo, productCode, "?????");
                 valid = false;
             }
             if (trimToNull(row.getWarehouseName()) == null) {
@@ -634,12 +648,12 @@ public class ErpPurchaseReturnServiceImpl implements ErpPurchaseReturnService {
                 valid = false;
             }
             if (row.getItemCount() == null || row.getItemCount().compareTo(BigDecimal.ZERO) <= 0) {
-                addImportFailure(respVO, rowNo, orderNo, productCode, "退货数量必须大于 0");
+                addImportFailure(respVO, rowNo, orderNo, productCode, "退货数量必须大�?0");
                 valid = false;
             }
             BigDecimal price = row.getProductPrice() != null ? row.getProductPrice() : (product == null ? null : product.getPurchasePrice());
             if (price == null || price.compareTo(BigDecimal.ZERO) <= 0) {
-                addImportFailure(respVO, rowNo, orderNo, productCode, "退货单价必须大于 0");
+                addImportFailure(respVO, rowNo, orderNo, productCode, "退货单价必须大�?0");
                 valid = false;
             }
             if (valid) {
@@ -650,7 +664,7 @@ public class ErpPurchaseReturnServiceImpl implements ErpPurchaseReturnService {
         for (PurchaseReturnOrderImportGroup group : groups) {
             if (CollUtil.isEmpty(group.getRows())) {
                 addImportFailure(respVO, group.getRowNo(), resolvePurchaseReturnOrderNo(group.getRowNo(), group.getMainRow()), null,
-                        "采购退货单至少需要一行明细");
+                        "?????????????");
             }
         }
         if (respVO.getFailureCount() > 0) {
@@ -785,7 +799,7 @@ public class ErpPurchaseReturnServiceImpl implements ErpPurchaseReturnService {
         if (supplierName != null) {
             return supplierName;
         }
-        return "第 " + rowNo + " 行";
+        return "?" + rowNo + "?";
     }
 
     private boolean validateImportDate(ErpPurchaseImportResultRespVO respVO, Integer rowNo, String orderNo,
@@ -797,7 +811,7 @@ public class ErpPurchaseReturnServiceImpl implements ErpPurchaseReturnService {
             parseImportDate(value, null);
             return true;
         } catch (IllegalArgumentException ignored) {
-            addImportFailure(respVO, rowNo, orderNo, productCode, label + "格式不正确，请使用 yyyy-MM-dd 或 yyyy-MM-dd HH:mm:ss");
+            addImportFailure(respVO, rowNo, orderNo, productCode, label + "格式不正确，请使�?yyyy-MM-dd �?yyyy-MM-dd HH:mm:ss");
             return false;
         }
     }

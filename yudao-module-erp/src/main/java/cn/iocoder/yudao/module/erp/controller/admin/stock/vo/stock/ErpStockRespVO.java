@@ -6,6 +6,8 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Data;
 
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
+import java.util.List;
 
 @Schema(description = "管理后台 - ERP 库存 Response VO")
 @Data
@@ -89,6 +91,8 @@ public class ErpStockRespVO {
     @Schema(description = "货架")
     @ExcelProperty("货架")
     private String shelf;
+    @Schema(description = "库存行维护的进价")
+    private BigDecimal purchasePrice;
     @Schema(description = "产品分类编号")
     private Long categoryId;
     @Schema(description = "最近采购价")
@@ -120,6 +124,22 @@ public class ErpStockRespVO {
     private Integer packageQty;
     @Schema(description = "是否开启批次号管理")
     private Boolean batchNoEnabled;
+    @Schema(description = "可用批次号数量")
+    private Integer batchNoCount;
+    @Schema(description = "可用批次号摘要")
+    private String batchNoSummary;
+    @Schema(description = "可用批次号列表")
+    private List<ErpStockBatchNoRespVO> batchNoList;
+    @Schema(description = "前端库存行唯一标识；批次展开时由库存编号和批次号组成")
+    private String rowKey;
+    @Schema(description = "是否为按批次展开的虚拟库存行")
+    private Boolean batchRow;
+    @Schema(description = "当前库存行批次号；空值表示未指定批次")
+    @ExcelProperty("批次号")
+    private String batchNo;
+    @Schema(description = "当前批次首次入库时间")
+    @ExcelProperty("批次首次入库时间")
+    private LocalDateTime firstInTime;
     @Schema(description = "重量（kg）")
     private BigDecimal weight;
 
@@ -127,12 +147,20 @@ public class ErpStockRespVO {
     @Schema(description = "占用数（已下销售单未出库数量）")
     @ExcelProperty("占用数")
     private BigDecimal occupiedCount;
+    @Schema(description = "可用库存（库存数 - 占用数）")
+    private BigDecimal availableCount;
     @Schema(description = "未入数（已下采购单未入库数量）")
     @ExcelProperty("未入数")
     private BigDecimal pendingInCount;
     @Schema(description = "在途数（= 未入数）")
     @ExcelProperty("在途数")
     private BigDecimal inTransitCount;
+
+    @Schema(description = "是否仅通过销售部门仓库分配获得查看权限")
+    private Boolean readonlyBySaleDistribution;
+
+    @Schema(description = "当前业务场景是否允许查看该库存行的价格")
+    private Boolean priceVisible;
 
     // ========== 价格体系动态列（priceSystemId 有值时填充） ==========
     @Schema(description = "所选价格体系单价")

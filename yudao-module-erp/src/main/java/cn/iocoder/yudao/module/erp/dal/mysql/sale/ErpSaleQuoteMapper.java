@@ -2,9 +2,11 @@ package cn.iocoder.yudao.module.erp.dal.mysql.sale;
 
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.mybatis.core.mapper.BaseMapperX;
-import cn.iocoder.yudao.framework.mybatis.core.query.LambdaQueryWrapperX;
+import cn.iocoder.yudao.framework.mybatis.core.query.MPJLambdaWrapperX;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.quote.ErpSaleQuotePageReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleQuoteDO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleQuoteItemDO;
+import cn.iocoder.yudao.module.erp.dal.mysql.common.ErpKeywordQuery;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.core.toolkit.support.SFunction;
 import org.apache.ibatis.annotations.Mapper;
@@ -16,7 +18,7 @@ import org.apache.ibatis.annotations.Mapper;
 public interface ErpSaleQuoteMapper extends BaseMapperX<ErpSaleQuoteDO> {
 
     default PageResult<ErpSaleQuoteDO> selectPage(ErpSaleQuotePageReqVO reqVO) {
-        LambdaQueryWrapperX<ErpSaleQuoteDO> wrapper = new LambdaQueryWrapperX<ErpSaleQuoteDO>()
+        MPJLambdaWrapperX<ErpSaleQuoteDO> wrapper = new MPJLambdaWrapperX<ErpSaleQuoteDO>()
                 .likeIfPresent(ErpSaleQuoteDO::getNo, reqVO.getNo())
                 .eqIfPresent(ErpSaleQuoteDO::getCustomerId, reqVO.getCustomerId())
                 .eqIfPresent(ErpSaleQuoteDO::getSaleUserId, reqVO.getSaleUserId())
@@ -24,12 +26,30 @@ public interface ErpSaleQuoteMapper extends BaseMapperX<ErpSaleQuoteDO> {
                 .betweenIfPresent(ErpSaleQuoteDO::getQuoteTime, reqVO.getQuoteTime())
                 .eqIfPresent(ErpSaleQuoteDO::getStatus, reqVO.getStatus())
                 .likeIfPresent(ErpSaleQuoteDO::getRemark, reqVO.getRemark())
+                .likeIfPresent(ErpSaleQuoteDO::getVin, reqVO.getVin())
                 .inIfPresent(ErpSaleQuoteDO::getId, reqVO.getIds());
+        if (reqVO.getProductId() != null) {
+            wrapper.leftJoin(ErpSaleQuoteItemDO.class, ErpSaleQuoteItemDO::getQuoteId, ErpSaleQuoteDO::getId)
+                    .eq(ErpSaleQuoteItemDO::getProductId, reqVO.getProductId())
+                    .groupBy(ErpSaleQuoteDO::getId);
+        }
+        ErpKeywordQuery.appendWithDeptName(wrapper, reqVO.getKeyword(),
+                ErpSaleQuoteDO::getNo, ErpSaleQuoteDO::getSourceNo,
+                ErpSaleQuoteDO::getRemark, ErpSaleQuoteDO::getOrderType,
+                ErpSaleQuoteDO::getSettleMethod, ErpSaleQuoteDO::getPriority,
+                ErpSaleQuoteDO::getDeliveryMethod, ErpSaleQuoteDO::getDeliveryAddress,
+                ErpSaleQuoteDO::getTicketNo, ErpSaleQuoteDO::getInvoiceType,
+                ErpSaleQuoteDO::getFreightType, ErpSaleQuoteDO::getLogisticsCompany,
+                ErpSaleQuoteDO::getReceiverName, ErpSaleQuoteDO::getReceiverPhone,
+                ErpSaleQuoteDO::getPriceType, ErpSaleQuoteDO::getBranchDelivery,
+                ErpSaleQuoteDO::getBillingMethod, ErpSaleQuoteDO::getVehiclePlateNo,
+                ErpSaleQuoteDO::getBusinessType, ErpSaleQuoteDO::getVin,
+                ErpSaleQuoteDO::getInternalRemark);
         orderByIfPresent(wrapper, reqVO);
-        return selectPage(reqVO, wrapper);
+        return selectJoinPage(reqVO, ErpSaleQuoteDO.class, wrapper);
     }
 
-    static void orderByIfPresent(LambdaQueryWrapperX<ErpSaleQuoteDO> wrapper, ErpSaleQuotePageReqVO reqVO) {
+    static void orderByIfPresent(MPJLambdaWrapperX<ErpSaleQuoteDO> wrapper, ErpSaleQuotePageReqVO reqVO) {
         SFunction<ErpSaleQuoteDO, ?> orderColumn = getOrderColumn(reqVO.getOrderField());
         if (orderColumn == null) {
             wrapper.orderByDesc(ErpSaleQuoteDO::getId);

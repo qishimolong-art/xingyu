@@ -44,6 +44,7 @@ public class UserErpBizDataReferenceService {
             new TableUserColumn("erp_sale_quote", "developer_user_id"),
             new TableUserColumn("erp_sale_return", "sale_user_id"),
             new TableUserColumn("erp_sale_return", "developer_user_id"),
+            new TableUserColumn("erp_sale_return", "handler"),
             new TableUserColumn("erp_book_open", "operator_user_id"),
             new TableUserColumn("erp_finance_payment", "finance_user_id"),
             new TableUserColumn("erp_finance_receipt", "finance_user_id"),

@@ -148,6 +148,9 @@ public class ErpPurchaseOrderSaveReqVO {
         @Schema(description = "仓库编号", example = "1")
         private Long warehouseId;
 
+        @Schema(description = "所属部门", example = "100")
+        private Long deptId;
+
         @Schema(description = "货架位", example = "A-01-02")
         private String warehousePosition;
 

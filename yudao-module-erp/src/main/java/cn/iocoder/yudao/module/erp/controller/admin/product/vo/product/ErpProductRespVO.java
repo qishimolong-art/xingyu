@@ -26,9 +26,24 @@ public class ErpProductRespVO {
     @Schema(description = "所属部门编号", example = "100")
     private Long deptId;
 
+    @Schema(description = "所属部门编号列表", example = "[100, 101]")
+    private List<Long> deptIds;
+
     @Schema(description = "所属部门", example = "销售一部")
     @ExcelProperty("所属部门")
     private String deptName;
+
+    @Schema(description = "所属部门名称列表", example = "销售部、采购部")
+    private String deptNames;
+
+    @Schema(description = "审计展示用开放部门名称列表", example = "总公司 / 销售部、总公司 / 采购部")
+    private String openDeptNames;
+
+    @Schema(description = "创建时所在部门编号", example = "100")
+    private Long createDeptId;
+
+    @Schema(description = "创建时所在部门", example = "总公司 / 销售部")
+    private String createDeptName;
 
     @Schema(description = "产品编码", example = "P000001")
     @ExcelProperty("产品编码")
@@ -48,8 +63,8 @@ public class ErpProductRespVO {
     @ExcelProperty("商品分类")
     private String categoryName;
 
-    @Schema(description = "是否开启批次号管理", example = "false")
-    @ExcelProperty("是否开启批次号管理")
+    @Schema(description = "开启批次号", example = "false")
+    @ExcelProperty("开启批次号")
     private Boolean batchNoEnabled;
 
     @Schema(description = "单位编号", requiredMode = Schema.RequiredMode.REQUIRED, example = "8869")
@@ -166,6 +181,9 @@ public class ErpProductRespVO {
     private BigDecimal availableStock;
     @Schema(description = "是否低于安全库存", example = "false")
     private Boolean lowStockWarning;
+
+    @Schema(description = "是否仅因销售仓库分配而只读可见", example = "false")
+    private Boolean readonlyBySaleDistribution;
 
     @Schema(description = "通用件列表")
     private List<Universal> universals;

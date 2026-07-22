@@ -5,6 +5,7 @@ import lombok.*;
 
 import javax.validation.constraints.*;
 import java.math.BigDecimal;
+import java.util.List;
 
 @Schema(description = "管理后台 - ERP 客户新增/修改 Request VO")
 @Data
@@ -118,6 +119,10 @@ public class ErpCustomerSaveReqVO {
     private Long developerUserId;
     @Schema(description = "所属部门")
     private Long deptId;
+    @Schema(description = "适用部门")
+    private List<Long> deptIds;
+    @Schema(description = "允许多部门")
+    private Boolean allowMultiDept;
     @Schema(description = "价格级别")
     private Integer priceLevel;
     @Schema(description = "价格锁定")
@@ -141,6 +146,10 @@ public class ErpCustomerSaveReqVO {
 
     @Schema(description = "白条授信额度")
     private BigDecimal creditLimit;
+    @Schema(description = "是否启用白条授信")
+    private Boolean creditEnabled;
+    @Schema(description = "白条授信期限（天）")
+    private Integer creditTermDays;
     @Schema(description = "数据中心审核状态 0未审核 1已审核 2驳回")
     private Integer dataCenterAuditStatus;
 

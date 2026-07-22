@@ -25,6 +25,8 @@ public enum ErpStockRecordBizTypeEnum implements ArrayValuable<Integer> {
     MOVE_IN_CANCEL(31, "调拨入库（作废）"),
     MOVE_OUT(32, "调拨出库"),
     MOVE_OUT_CANCEL(33, "调拨出库（作废）"),
+    WAREHOUSE_MOVE_IN(34, "仓库移货入库"),
+    WAREHOUSE_MOVE_OUT(35, "仓库移货出库"),
 
     CHECK_MORE_IN(40, "盘盈入库"),
     CHECK_MORE_IN_CANCEL(41, "盘盈入库（作废）"),

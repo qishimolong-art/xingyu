@@ -47,6 +47,10 @@ public class ErpStockMoveItemDO extends BaseDO {
      * 关联 {@link ErpWarehouseDO#getId()}
      */
     private Long toWarehouseId;
+
+    private Long fromDeptId;
+
+    private Long toDeptId;
     /**
      * 产品编号
      *
@@ -75,5 +79,29 @@ public class ErpStockMoveItemDO extends BaseDO {
      * 备注
      */
     private String remark;
+
+    private String fromShelf;
+
+    private String batchNo;
+
+    /**
+     * 来源采购入库单 ID。
+     */
+    private Long sourceInId;
+
+    /**
+     * 来源采购入库明细 ID。
+     */
+    private Long sourceInItemId;
+
+    /**
+     * 来源采购入库单号。
+     */
+    private String sourceInNo;
+
+    /**
+     * 来源采购入库数量快照。
+     */
+    private BigDecimal sourceCount;
 
 }

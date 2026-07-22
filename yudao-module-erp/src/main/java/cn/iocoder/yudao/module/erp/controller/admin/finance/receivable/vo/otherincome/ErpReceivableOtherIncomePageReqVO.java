@@ -24,10 +24,21 @@ public class ErpReceivableOtherIncomePageReqVO extends PageParam {
     private String settleMethod;
     private String incomeType;
     private Long accountId;
+    private String voucherNo;
     private Long deptId;
     private Long handlerId;
+    private String itemName;
+    private String invoiceNo;
     private String party;
     private Integer status;
+    private String remark;
+    private String creator;
     public LocalDateTime getStartTime() { return bizTime == null || bizTime.length == 0 ? null : bizTime[0]; }
     public LocalDateTime getEndTime() { return bizTime == null || bizTime.length < 2 ? null : bizTime[1]; }
+    @Schema(description = "排序字段")
+    private String orderField;
+
+    @Schema(description = "排序方向（asc/desc）")
+    private String orderDirection;
+
 }

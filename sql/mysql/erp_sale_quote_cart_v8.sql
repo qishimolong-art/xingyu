@@ -83,7 +83,7 @@ CREATE TABLE `erp_sale_quote` (
     `tenant_id` bigint NOT NULL DEFAULT 0 COMMENT '租户编号',
     PRIMARY KEY (`id`),
     UNIQUE KEY `uk_sale_quote_no` (`no`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='ERP 报价订单';
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='ERP 报价订单';
 
 CREATE TABLE `erp_sale_quote_items` (
     `id` bigint NOT NULL AUTO_INCREMENT COMMENT '编号',
@@ -114,7 +114,7 @@ CREATE TABLE `erp_sale_quote_items` (
     `tenant_id` bigint NOT NULL DEFAULT 0 COMMENT '租户编号',
     PRIMARY KEY (`id`),
     KEY `idx_sale_quote_items_quote_id` (`quote_id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='ERP 报价订单项';
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='ERP 报价订单项';
 
 CREATE TABLE `erp_sale_cart` (
     `id` bigint NOT NULL AUTO_INCREMENT COMMENT '编号',
@@ -149,7 +149,7 @@ CREATE TABLE `erp_sale_cart` (
     `tenant_id` bigint NOT NULL DEFAULT 0 COMMENT '租户编号',
     PRIMARY KEY (`id`),
     UNIQUE KEY `uk_sale_cart_no` (`no`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='ERP 销售手推车';
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='ERP 销售手推车';
 
 CREATE TABLE `erp_sale_cart_items` (
     `id` bigint NOT NULL AUTO_INCREMENT COMMENT '编号',
@@ -180,7 +180,7 @@ CREATE TABLE `erp_sale_cart_items` (
     `tenant_id` bigint NOT NULL DEFAULT 0 COMMENT '租户编号',
     PRIMARY KEY (`id`),
     KEY `idx_sale_cart_items_cart_id` (`cart_id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='ERP 销售手推车项';
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='ERP 销售手推车项';
 
 CREATE TABLE `erp_sale_convert_record` (
     `id` bigint NOT NULL AUTO_INCREMENT COMMENT '编号',
@@ -205,4 +205,4 @@ CREATE TABLE `erp_sale_convert_record` (
     PRIMARY KEY (`id`),
     KEY `idx_sale_convert_source` (`source_type`, `source_id`),
     KEY `idx_sale_convert_target` (`target_type`, `target_id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='ERP 销售单据转换记录';
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='ERP 销售单据转换记录';

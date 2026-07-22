@@ -11,6 +11,8 @@ import cn.iocoder.yudao.framework.common.util.number.NumberUtils;
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
 import cn.iocoder.yudao.framework.excel.core.util.ExcelUtils;
 import cn.iocoder.yudao.module.erp.controller.admin.common.ErpAuditStatusRequestValidator;
+import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.imports.ErpFinanceImportRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.finance.receivable.vo.otherincome.ErpReceivableOtherIncomeImportExcelVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.receivable.vo.otherincome.ErpReceivableOtherIncomePageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.receivable.vo.otherincome.ErpReceivableOtherIncomeExportRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.receivable.vo.otherincome.ErpReceivableOtherIncomeRespVO;
@@ -38,6 +40,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.multipart.MultipartFile;
 
 import javax.annotation.Resource;
 import javax.servlet.http.HttpServletResponse;
@@ -55,6 +58,9 @@ import static cn.iocoder.yudao.framework.common.pojo.CommonResult.success;
 import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.convertMultiMap;
 import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.convertListByFlatMap;
 import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.convertSet;
+import static cn.iocoder.yudao.module.erp.controller.admin.finance.vo.imports.ErpFinanceImportUtils.allBlank;
+import static cn.iocoder.yudao.module.erp.controller.admin.finance.vo.imports.ErpFinanceImportUtils.failureReason;
+import static cn.iocoder.yudao.module.erp.controller.admin.finance.vo.imports.ErpFinanceImportUtils.parseDateTime;
 
 @Tag(name = "ERP 其他收入")
 @RestController
@@ -191,6 +197,53 @@ public class ErpReceivableOtherIncomeController {
             }
         }
         ExcelUtils.write(response, "其他收入.xls", "数据", ErpReceivableOtherIncomeExportRespVO.class, rows);
+    }
+
+    @GetMapping("/get-import-template")
+    @Operation(summary = "获得其他收入导入模板")
+    @PreAuthorize("@ss.hasPermission('erp:receivable-other-income:import')")
+    public void getImportTemplate(HttpServletResponse response) throws IOException {
+        ExcelUtils.writeImportTemplate(response, "其他收入导入模板.xls", "其他收入",
+                ErpReceivableOtherIncomeImportExcelVO.class,
+                Collections.singletonList(new ErpReceivableOtherIncomeImportExcelVO()));
+    }
+
+    @PostMapping("/import")
+    @Operation(summary = "导入其他收入")
+    @PreAuthorize("@ss.hasPermission('erp:receivable-other-income:import')")
+    public CommonResult<ErpFinanceImportRespVO> importExcel(@RequestParam("file") MultipartFile file) throws Exception {
+        List<ErpReceivableOtherIncomeImportExcelVO> list = ExcelUtils.read(file,
+                ErpReceivableOtherIncomeImportExcelVO.class);
+        ErpFinanceImportRespVO result = new ErpFinanceImportRespVO();
+        for (int i = 0; i < list.size(); i++) {
+            ErpReceivableOtherIncomeImportExcelVO row = list.get(i);
+            if (row == null || allBlank(row.getBizTime(), row.getSettleMethod(), row.getAccountId(),
+                    row.getIncomeType(), row.getHandlerId(), row.getItemName(), row.getAmount())) {
+                continue;
+            }
+            try {
+                ErpReceivableOtherIncomeSaveReqVO reqVO = BeanUtils.toBean(row,
+                        ErpReceivableOtherIncomeSaveReqVO.class);
+                reqVO.setBizTime(parseDateTime(row.getBizTime(), null));
+                ErpReceivableOtherIncomeSaveReqVO.Item item = new ErpReceivableOtherIncomeSaveReqVO.Item();
+                item.setItemName(row.getItemName());
+                item.setAmount(row.getAmount());
+                item.setInvoiceNo(row.getInvoiceNo());
+                item.setParty(row.getItemParty());
+                item.setDeptId(row.getItemDeptId());
+                item.setBizDate(parseDateTime(row.getItemBizDate(), null));
+                item.setHandlerId(row.getItemHandlerId());
+                item.setQty(row.getQty());
+                item.setFreightType(row.getFreightType());
+                item.setRemark(row.getItemRemark());
+                reqVO.setItems(Collections.singletonList(item));
+                otherIncomeService.createOtherIncome(reqVO);
+                result.addCreated();
+            } catch (Exception ex) {
+                result.addFailure(i + 2, row.getItemName(), failureReason(ex));
+            }
+        }
+        return success(result);
     }
 
     private ErpReceivableOtherIncomeExportRespVO buildExportRow(ErpReceivableOtherIncomeRespVO income,

@@ -63,6 +63,7 @@ public class ErpPurchasePriceAdjustSaveReqVO {
 
         @Schema(description = "仓库编号", example = "1")
         private Long warehouseId;
+        private Long deptId;
 
         @Schema(description = "调价前单价", requiredMode = Schema.RequiredMode.REQUIRED, example = "12.5")
         @NotNull(message = "调价前单价不能为空")

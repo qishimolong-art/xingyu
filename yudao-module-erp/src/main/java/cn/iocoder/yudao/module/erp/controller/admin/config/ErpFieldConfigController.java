@@ -47,6 +47,14 @@ public class ErpFieldConfigController {
         return success(BeanUtils.toBean(list, ErpFieldConfigRespVO.class));
     }
 
+    @GetMapping("/runtime-list")
+    @Operation(summary = "Get runtime ERP field config list")
+    @Parameter(name = "moduleKey", description = "Module key", required = true, example = "purchase_order")
+    public CommonResult<List<ErpFieldConfigRespVO>> getRuntimeFieldConfigList(@RequestParam("moduleKey") String moduleKey) {
+        List<ErpFieldConfigDO> list = fieldConfigService.getFieldConfigListByModule(moduleKey);
+        return success(BeanUtils.toBean(list, ErpFieldConfigRespVO.class));
+    }
+
     @PutMapping("/batch-update")
     @Operation(summary = "批量保存字段配置", description = "全量覆盖：先删除该模块所有配置，再整批插入")
     @PreAuthorize("@ss.hasPermission('erp:field-config:update')")

@@ -162,4 +162,7 @@ public class ErpWarehouseRespVO {
     @Schema(description = "区域名称")
     private String regionName;
 
+    @Schema(description = "Whether the warehouse is readonly because it is visible through sale department distribution")
+    private Boolean readonlyBySaleDistribution;
+
 }

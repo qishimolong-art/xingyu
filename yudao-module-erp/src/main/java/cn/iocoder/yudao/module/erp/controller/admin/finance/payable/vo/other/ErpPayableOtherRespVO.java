@@ -55,6 +55,10 @@ public class ErpPayableOtherRespVO {
 
     private LocalDateTime createTime;
 
+    private String auditorName;
+
+    private LocalDateTime auditTime;
+
     private String updater;
 
     private String updaterName;

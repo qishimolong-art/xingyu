@@ -9,12 +9,19 @@ import cn.iocoder.yudao.framework.common.util.collection.MapUtils;
 import cn.iocoder.yudao.framework.common.util.number.NumberUtils;
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
 import cn.iocoder.yudao.framework.excel.core.util.ExcelUtils;
+import cn.iocoder.yudao.framework.mybatis.core.query.LambdaQueryWrapperX;
 import cn.iocoder.yudao.module.erp.controller.admin.common.ErpAuditStatusRequestValidator;
+import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.imports.ErpFinanceImportRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.transfer.ErpFinanceTransferImportExcelVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.transfer.ErpFinanceTransferPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.transfer.ErpFinanceTransferRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.transfer.ErpFinanceTransferSaveReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.ErpAccountDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.ErpFinanceTransferDO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.finance.accounting.ErpVoucherDO;
+import cn.iocoder.yudao.module.erp.dal.mysql.finance.accounting.ErpVoucherMapper;
+import cn.iocoder.yudao.module.erp.enums.ErpAuditStatus;
+import cn.iocoder.yudao.module.erp.enums.finance.accounting.ErpVoucherSourceBizTypeEnum;
 import cn.iocoder.yudao.module.erp.service.finance.ErpAccountService;
 import cn.iocoder.yudao.module.erp.service.finance.ErpFinanceFieldPermissionMasker;
 import cn.iocoder.yudao.module.erp.service.finance.ErpFinanceTransferService;
@@ -35,12 +42,14 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.multipart.MultipartFile;
 
 import javax.annotation.Resource;
 import javax.servlet.http.HttpServletResponse;
 import javax.validation.Valid;
 import java.io.IOException;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Stream;
@@ -48,6 +57,10 @@ import java.util.stream.Stream;
 import static cn.iocoder.yudao.framework.apilog.core.enums.OperateTypeEnum.EXPORT;
 import static cn.iocoder.yudao.framework.common.pojo.CommonResult.success;
 import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.convertListByFlatMap;
+import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.convertSet;
+import static cn.iocoder.yudao.module.erp.controller.admin.finance.vo.imports.ErpFinanceImportUtils.allBlank;
+import static cn.iocoder.yudao.module.erp.controller.admin.finance.vo.imports.ErpFinanceImportUtils.failureReason;
+import static cn.iocoder.yudao.module.erp.controller.admin.finance.vo.imports.ErpFinanceImportUtils.parseDateTime;
 
 @Tag(name = "管理后台 - ERP 银行转账单")
 @RestController
@@ -65,6 +78,8 @@ public class ErpFinanceTransferController {
     private DeptApi deptApi;
     @Resource
     private ErpFinanceFieldPermissionMasker fieldPermissionMasker;
+    @Resource
+    private ErpVoucherMapper voucherMapper;
 
     @PostMapping("/create")
     @Operation(summary = "创建银行转账单")
@@ -141,6 +156,40 @@ public class ErpFinanceTransferController {
         ExcelUtils.write(response, "银行转账.xls", "数据", ErpFinanceTransferRespVO.class, list);
     }
 
+    @GetMapping("/get-import-template")
+    @Operation(summary = "获得银行转账导入模板")
+    @PreAuthorize("@ss.hasPermission('erp:finance-transfer:import')")
+    public void getImportTemplate(HttpServletResponse response) throws IOException {
+        ExcelUtils.writeImportTemplate(response, "银行转账导入模板.xls", "银行转账",
+                ErpFinanceTransferImportExcelVO.class,
+                Collections.singletonList(new ErpFinanceTransferImportExcelVO()));
+    }
+
+    @PostMapping("/import")
+    @Operation(summary = "导入银行转账")
+    @PreAuthorize("@ss.hasPermission('erp:finance-transfer:import')")
+    public CommonResult<ErpFinanceImportRespVO> importFinanceTransfer(@RequestParam("file") MultipartFile file)
+            throws Exception {
+        List<ErpFinanceTransferImportExcelVO> list = ExcelUtils.read(file, ErpFinanceTransferImportExcelVO.class);
+        ErpFinanceImportRespVO result = new ErpFinanceImportRespVO();
+        for (int i = 0; i < list.size(); i++) {
+            ErpFinanceTransferImportExcelVO row = list.get(i);
+            if (row == null || allBlank(row.getTransferTime(), row.getOutAccountId(), row.getInAccountId(),
+                    row.getTransferPrice(), row.getFinanceUserId(), row.getDeptId(), row.getRemark(), row.getFileUrl())) {
+                continue;
+            }
+            try {
+                ErpFinanceTransferSaveReqVO reqVO = BeanUtils.toBean(row, ErpFinanceTransferSaveReqVO.class);
+                reqVO.setTransferTime(parseDateTime(row.getTransferTime(), null));
+                financeTransferService.createFinanceTransfer(reqVO);
+                result.addCreated();
+            } catch (Exception ex) {
+                result.addFailure(i + 2, row.getTransferTime(), failureReason(ex));
+            }
+        }
+        return success(result);
+    }
+
     private PageResult<ErpFinanceTransferRespVO> buildFinanceTransferVOPageResult(PageResult<ErpFinanceTransferDO> pageResult) {
         if (CollUtil.isEmpty(pageResult.getList())) {
             return PageResult.empty(pageResult.getTotal());
@@ -152,6 +201,14 @@ public class ErpFinanceTransferController {
                         transfer.getFinanceUserId())));
         Map<Long, DeptRespDTO> deptMap = deptApi.getDeptMap(convertListByFlatMap(pageResult.getList(),
                 transfer -> Stream.of(transfer.getDeptId())));
+        Map<Long, String> voucherNoMap = new HashMap<>();
+        List<ErpVoucherDO> vouchers = voucherMapper.selectList(new LambdaQueryWrapperX<ErpVoucherDO>()
+                .eq(ErpVoucherDO::getSourceBizType, ErpVoucherSourceBizTypeEnum.BANK_TRANSFER.getType())
+                .in(ErpVoucherDO::getSourceBizId, convertSet(pageResult.getList(), ErpFinanceTransferDO::getId))
+                .orderByDesc(ErpVoucherDO::getId));
+        for (ErpVoucherDO voucher : vouchers) {
+            voucherNoMap.putIfAbsent(voucher.getSourceBizId(), voucher.getVoucherNo());
+        }
         return BeanUtils.toBean(pageResult, ErpFinanceTransferRespVO.class, transfer -> {
             MapUtils.findAndThen(accountMap, transfer.getOutAccountId(), account -> transfer.setOutAccountName(account.getName()));
             MapUtils.findAndThen(accountMap, transfer.getInAccountId(), account -> transfer.setInAccountName(account.getName()));
@@ -159,6 +216,11 @@ public class ErpFinanceTransferController {
             MapUtils.findAndThen(userMap, NumberUtils.parseLong(transfer.getUpdater()), user -> transfer.setUpdaterName(user.getNickname()));
             MapUtils.findAndThen(userMap, transfer.getFinanceUserId(), user -> transfer.setFinanceUserName(user.getNickname()));
             MapUtils.findAndThen(deptMap, transfer.getDeptId(), dept -> transfer.setDeptName(dept.getName()));
+            if (ErpAuditStatus.APPROVE.getStatus().equals(transfer.getStatus())) {
+                transfer.setAuditorName(transfer.getUpdaterName());
+                transfer.setAuditTime(transfer.getUpdateTime());
+            }
+            transfer.setVoucherNo(voucherNoMap.get(transfer.getId()));
         });
     }
 

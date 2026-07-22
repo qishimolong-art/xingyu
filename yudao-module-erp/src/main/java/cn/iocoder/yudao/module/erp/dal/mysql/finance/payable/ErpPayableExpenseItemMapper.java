@@ -1,6 +1,7 @@
 package cn.iocoder.yudao.module.erp.dal.mysql.finance.payable;
 
 import cn.iocoder.yudao.framework.mybatis.core.mapper.BaseMapperX;
+import cn.iocoder.yudao.framework.mybatis.core.query.LambdaQueryWrapperX;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.payable.ErpPayableExpenseItemDO;
 import org.apache.ibatis.annotations.Mapper;
 
@@ -16,6 +17,12 @@ public interface ErpPayableExpenseItemMapper extends BaseMapperX<ErpPayableExpen
 
     default List<ErpPayableExpenseItemDO> selectListByExpenseIds(Collection<Long> expenseIds) {
         return selectList(ErpPayableExpenseItemDO::getExpenseId, expenseIds);
+    }
+
+    default List<ErpPayableExpenseItemDO> selectListByItemNameOrInvoiceNo(String itemName, String invoiceNo) {
+        return selectList(new LambdaQueryWrapperX<ErpPayableExpenseItemDO>()
+                .likeIfPresent(ErpPayableExpenseItemDO::getItemName, itemName)
+                .likeIfPresent(ErpPayableExpenseItemDO::getInvoiceNo, invoiceNo));
     }
 
 }

@@ -5,6 +5,7 @@ import cn.iocoder.yudao.framework.mybatis.core.mapper.BaseMapperX;
 import cn.iocoder.yudao.framework.mybatis.core.query.LambdaQueryWrapperX;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.accounting.vo.voucher.ErpVoucherPageReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.accounting.ErpVoucherDO;
+import cn.iocoder.yudao.module.erp.dal.mysql.common.ErpKeywordQuery;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import org.apache.ibatis.annotations.Mapper;
 
@@ -23,7 +24,7 @@ public interface ErpVoucherMapper extends BaseMapperX<ErpVoucherDO> {
     }
 
     default PageResult<ErpVoucherDO> selectPage(ErpVoucherPageReqVO reqVO) {
-        return selectPage(reqVO, new LambdaQueryWrapperX<ErpVoucherDO>()
+        LambdaQueryWrapperX<ErpVoucherDO> wrapper = new LambdaQueryWrapperX<ErpVoucherDO>()
                 .likeIfPresent(ErpVoucherDO::getVoucherNo, reqVO.getVoucherNo())
                 .eqIfPresent(ErpVoucherDO::getVoucherWord, reqVO.getVoucherWord())
                 .betweenIfPresent(ErpVoucherDO::getVoucherDate, reqVO.getVoucherDate())
@@ -36,7 +37,19 @@ public interface ErpVoucherMapper extends BaseMapperX<ErpVoucherDO> {
                 .eqIfPresent(ErpVoucherDO::getAuditorUserId, reqVO.getAuditorUserId())
                 .likeIfPresent(ErpVoucherDO::getSummary, reqVO.getSummary())
                 .likeIfPresent(ErpVoucherDO::getRemark, reqVO.getRemark())
-                .orderByDesc(ErpVoucherDO::getId));
+                .orderByDesc(ErpVoucherDO::getId);
+        ErpKeywordQuery.appendWithDeptName(wrapper, reqVO.getKeyword(),
+                ErpVoucherDO::getVoucherNo,
+                ErpVoucherDO::getVoucherWord,
+                ErpVoucherDO::getSourceBizNo,
+                ErpVoucherDO::getSummary,
+                ErpVoucherDO::getMakerUserName,
+                ErpVoucherDO::getBookkeeper,
+                ErpVoucherDO::getCashier,
+                ErpVoucherDO::getSupervisor,
+                ErpVoucherDO::getAuditorUserName,
+                ErpVoucherDO::getRemark);
+        return selectPage(reqVO, wrapper);
     }
 
     default int updateByIdAndAuditStatus(Long id, Integer auditStatus, ErpVoucherDO updateObj) {

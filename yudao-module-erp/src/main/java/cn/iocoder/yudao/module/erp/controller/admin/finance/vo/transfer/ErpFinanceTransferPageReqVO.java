@@ -49,4 +49,10 @@ public class ErpFinanceTransferPageReqVO extends PageParam {
     @Schema(description = "Remark", example = "same-bank transfer")
     private String remark;
 
+    @Schema(description = "排序字段")
+    private String orderField;
+
+    @Schema(description = "排序方向（asc/desc）")
+    private String orderDirection;
+
 }

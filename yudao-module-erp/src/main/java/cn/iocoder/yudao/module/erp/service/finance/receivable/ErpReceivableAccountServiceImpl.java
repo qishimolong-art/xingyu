@@ -1,6 +1,8 @@
 package cn.iocoder.yudao.module.erp.service.finance.receivable;
 
+import cn.iocoder.yudao.framework.common.biz.system.permission.dto.DeptDataPermissionRespDTO;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
+import cn.iocoder.yudao.framework.datapermission.core.util.DataPermissionUtils;
 import cn.iocoder.yudao.framework.mybatis.core.query.LambdaQueryWrapperX;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.receivable.vo.account.ErpReceivableAccountPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.receivable.vo.account.ErpReceivableDetailReqVO;
@@ -14,6 +16,7 @@ import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleOutDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSalePriceAdjustDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleReturnDO;
 import cn.iocoder.yudao.module.erp.dal.mysql.finance.ErpFinanceReceiptMapper;
+import cn.iocoder.yudao.module.erp.dal.mysql.finance.ErpFinanceReceiptItemMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.finance.receivable.ErpReceivableAccountMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.finance.receivable.ErpReceivableOtherMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.finance.receivable.ErpReceivableWriteOffMapper;
@@ -24,7 +27,11 @@ import cn.iocoder.yudao.module.erp.enums.ErpAuditStatus;
 import cn.iocoder.yudao.module.erp.enums.common.ErpBizTypeEnum;
 import cn.iocoder.yudao.framework.security.core.util.SecurityFrameworkUtils;
 import cn.iocoder.yudao.module.erp.service.common.ErpOperateLogService;
+import cn.iocoder.yudao.module.erp.service.finance.ErpFinanceVisibleScope;
 import cn.iocoder.yudao.module.erp.service.sale.ErpCustomerService;
+import cn.iocoder.yudao.module.system.api.permission.PermissionApi;
+import cn.iocoder.yudao.module.system.api.user.AdminUserApi;
+import cn.iocoder.yudao.module.system.api.user.dto.AdminUserRespDTO;
 import org.springframework.stereotype.Service;
 import org.springframework.validation.annotation.Validated;
 
@@ -32,8 +39,12 @@ import javax.annotation.Resource;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Comparator;
+import java.util.Collections;
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 import static cn.iocoder.yudao.framework.common.exception.util.ServiceExceptionUtil.exception;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.RECEIVABLE_WRITEOFF_AMOUNT_EXCEED;
@@ -56,6 +67,8 @@ public class ErpReceivableAccountServiceImpl implements ErpReceivableAccountServ
     @Resource
     private ErpFinanceReceiptMapper financeReceiptMapper;
     @Resource
+    private ErpFinanceReceiptItemMapper financeReceiptItemMapper;
+    @Resource
     private ErpReceivableOtherMapper receivableOtherMapper;
     @Resource
     private ErpReceivableWriteOffMapper receivableWriteOffMapper;
@@ -63,34 +76,57 @@ public class ErpReceivableAccountServiceImpl implements ErpReceivableAccountServ
     private ErpCustomerService customerService;
     @Resource
     private ErpOperateLogService operateLogService;
+    @Resource
+    private PermissionApi permissionApi;
+    @Resource
+    private AdminUserApi adminUserApi;
 
     @Override
     public PageResult<ErpReceivableAccountDO> getReceivableAccountPage(ErpReceivableAccountPageReqVO reqVO) {
-        return receivableAccountMapper.selectPage(reqVO);
+        CustomerVisibleScope customerScope = getCustomerVisibleScope();
+        ReceivableVisibleScope documentScope = getReceivableVisibleScope();
+        if (customerScope == null || documentScope == null || !documentScope.hasAccess()) {
+            return PageResult.empty();
+        }
+        return DataPermissionUtils.executeIgnore(() ->
+                receivableAccountMapper.selectPage(reqVO, customerScope.getDeptIds(), customerScope.getSelfUserId(),
+                        customerScope.isAll(), documentScope.getDeptIds(), documentScope.getSelfUserId(),
+                        documentScope.isAll()));
     }
 
     @Override
     public List<ErpReceivableDetailRespVO> getReceivableDetailList(ErpReceivableDetailReqVO reqVO) {
-        List<ErpReceivableDetailRespVO> rows = buildRows(reqVO);
-        BigDecimal balance = getInitialBalance(reqVO);
-        List<ErpReceivableDetailRespVO> result = new ArrayList<>(rows.size());
-        for (ErpReceivableDetailRespVO row : rows) {
-            BigDecimal prevBalance = balance;
-            balance = balance.add(getChangeAmount(row));
-
-            row.setPrevBalance(prevBalance);
-            row.setBalance(balance);
-            result.add(row);
+        customerService.validateCustomer(reqVO.getCustomerId());
+        ReceivableVisibleScope scope = getReceivableVisibleScope();
+        if (scope == null || !scope.hasAccess()) {
+            return Collections.emptyList();
         }
-        return result;
+        return DataPermissionUtils.executeIgnore(() -> buildReceivableDetailList(reqVO, scope));
+    }
+
+    @Override
+    public List<ErpReceivableDetailRespVO> getReceivableDetailList(ErpReceivableDetailReqVO reqVO,
+                                                                   ErpFinanceVisibleScope scope) {
+        customerService.validateCustomer(reqVO.getCustomerId());
+        if (scope == null || !scope.hasAccess()) {
+            return Collections.emptyList();
+        }
+        ReceivableVisibleScope localScope = new ReceivableVisibleScope(scope.isAll(), scope.getDeptIds(),
+                scope.getSelfUserId());
+        return DataPermissionUtils.executeIgnore(() -> buildReceivableDetailList(reqVO, localScope));
     }
 
     @Override
     public Long writeOffReceivable(ErpReceivableWriteOffReqVO reqVO) {
         customerService.validateCustomer(reqVO.getCustomerId());
-        ErpReceivableAccountDO account = receivableAccountMapper.selectByCustomerId(reqVO.getCustomerId());
-        BigDecimal balance = account == null || account.getReceivableBalance() == null
-                ? BigDecimal.ZERO : account.getReceivableBalance();
+        ReceivableVisibleScope scope = getReceivableVisibleScope();
+        if (scope == null || !scope.hasAccess()) {
+            throw exception(RECEIVABLE_WRITEOFF_BALANCE_EMPTY);
+        }
+        ErpReceivableDetailReqVO balanceReqVO = new ErpReceivableDetailReqVO();
+        balanceReqVO.setCustomerId(reqVO.getCustomerId());
+        BigDecimal balance = DataPermissionUtils.executeIgnore(() -> buildRows(balanceReqVO, scope).stream()
+                .map(this::getChangeAmount).reduce(BigDecimal.ZERO, BigDecimal::add));
         if (balance.compareTo(BigDecimal.ZERO) <= 0) {
             throw exception(RECEIVABLE_WRITEOFF_BALANCE_EMPTY);
         }
@@ -105,7 +141,10 @@ public class ErpReceivableAccountServiceImpl implements ErpReceivableAccountServ
         writeOff.setWriteOffAmount(reqVO.getWriteOffAmount());
         writeOff.setRemark(reqVO.getRemark());
         writeOff.setWriteOffTime(LocalDateTime.now());
-        writeOff.setOperatorUserId(SecurityFrameworkUtils.getLoginUserId());
+        Long loginUserId = SecurityFrameworkUtils.getLoginUserId();
+        writeOff.setOperatorUserId(loginUserId);
+        AdminUserRespDTO loginUser = loginUserId == null ? null : adminUserApi.getUser(loginUserId);
+        writeOff.setDeptId(resolveWriteOffDeptId(reqVO, loginUser));
         receivableWriteOffMapper.insert(writeOff);
         operateLogService.record(ERP_RECEIVABLE_WRITEOFF_TYPE, ERP_WRITEOFF_SUB_TYPE, writeOff.getId(),
                 "核销应收账款，客户编号：" + reqVO.getCustomerId()
@@ -114,7 +153,29 @@ public class ErpReceivableAccountServiceImpl implements ErpReceivableAccountServ
         return writeOff.getId();
     }
 
-    private BigDecimal getInitialBalance(ErpReceivableDetailReqVO reqVO) {
+    private Long resolveWriteOffDeptId(ErpReceivableWriteOffReqVO reqVO, AdminUserRespDTO loginUser) {
+        if (reqVO.getBizId() != null && reqVO.getBizType() != null) {
+            if (ErpBizTypeEnum.SALE_OUT.getType().equals(reqVO.getBizType())) {
+                ErpSaleOutDO source = saleOutMapper.selectById(reqVO.getBizId());
+                if (source != null && source.getDeptId() != null) {
+                    return source.getDeptId();
+                }
+            } else if (ErpBizTypeEnum.SALE_RETURN.getType().equals(reqVO.getBizType())) {
+                ErpSaleReturnDO source = saleReturnMapper.selectById(reqVO.getBizId());
+                if (source != null && source.getDeptId() != null) {
+                    return source.getDeptId();
+                }
+            } else if (ErpBizTypeEnum.SALE_PRICE_ADJUST.getType().equals(reqVO.getBizType())) {
+                ErpSalePriceAdjustDO source = salePriceAdjustMapper.selectById(reqVO.getBizId());
+                if (source != null && source.getDeptId() != null) {
+                    return source.getDeptId();
+                }
+            }
+        }
+        return loginUser == null ? null : loginUser.getDeptId();
+    }
+
+    private BigDecimal getInitialBalance(ErpReceivableDetailReqVO reqVO, ReceivableVisibleScope scope) {
         if (reqVO.getStartTime() == null) {
             return BigDecimal.ZERO;
         }
@@ -123,57 +184,96 @@ public class ErpReceivableAccountServiceImpl implements ErpReceivableAccountServ
         copy.setBizTime(new LocalDateTime[]{null, reqVO.getStartTime()});
 
         BigDecimal total = BigDecimal.ZERO;
-        for (ErpReceivableDetailRespVO row : buildRows(copy)) {
+        for (ErpReceivableDetailRespVO row : buildRows(copy, scope)) {
             total = total.add(getChangeAmount(row));
         }
         return total;
     }
 
-    private List<ErpReceivableDetailRespVO> buildRows(ErpReceivableDetailReqVO reqVO) {
+    private List<ErpReceivableDetailRespVO> buildReceivableDetailList(ErpReceivableDetailReqVO reqVO,
+                                                                      ReceivableVisibleScope scope) {
+        List<ErpReceivableDetailRespVO> rows = buildRows(reqVO, scope);
+        BigDecimal balance = getInitialBalance(reqVO, scope);
+        List<ErpReceivableDetailRespVO> result = new ArrayList<>(rows.size());
+        for (ErpReceivableDetailRespVO row : rows) {
+            BigDecimal prevBalance = balance;
+            balance = balance.add(getChangeAmount(row));
+
+            row.setPrevBalance(prevBalance);
+            row.setBalance(balance);
+            result.add(row);
+        }
+        return result;
+    }
+
+    private List<ErpReceivableDetailRespVO> buildRows(ErpReceivableDetailReqVO reqVO, ReceivableVisibleScope scope) {
         List<ErpReceivableDetailRespVO> rows = new ArrayList<>();
 
-        saleOutMapper.selectList(new LambdaQueryWrapperX<ErpSaleOutDO>()
+        LambdaQueryWrapperX<ErpSaleOutDO> saleOutQuery = new LambdaQueryWrapperX<ErpSaleOutDO>()
                 .eq(ErpSaleOutDO::getCustomerId, reqVO.getCustomerId())
                 .eq(ErpSaleOutDO::getStatus, ErpAuditStatus.APPROVE.getStatus())
                 .geIfPresent(ErpSaleOutDO::getOutTime, reqVO.getStartTime())
-                .ltIfPresent(ErpSaleOutDO::getOutTime, reqVO.getEndTime()))
-                .forEach(item -> rows.add(buildRow("销售出库", ErpBizTypeEnum.SALE_OUT.getType(), item.getId(),
-                        item.getOutTime(), item.getNo(), item.getTotalPrice(), false)));
+                .ltIfPresent(ErpSaleOutDO::getOutTime, reqVO.getEndTime());
+        applyScope(saleOutQuery, scope, ErpSaleOutDO::getDeptId, ErpSaleOutDO::getSaleUserId);
+        List<ErpSaleOutDO> saleOuts = saleOutMapper.selectList(saleOutQuery);
+        Map<Long, BigDecimal> saleOutAllocated = financeReceiptItemMapper
+                .selectReceiptPriceSumMapByBizIdsAndBizType(saleOuts.stream().map(ErpSaleOutDO::getId)
+                        .collect(Collectors.toSet()), ErpBizTypeEnum.SALE_OUT.getType());
+        saleOuts.forEach(item -> rows.add(buildAllocatedRow("销售出库", ErpBizTypeEnum.SALE_OUT.getType(),
+                item.getId(), item.getOutTime(), item.getNo(), item.getTotalPrice(),
+                saleOutAllocated.get(item.getId()))));
 
-        saleReturnMapper.selectList(new LambdaQueryWrapperX<ErpSaleReturnDO>()
+        LambdaQueryWrapperX<ErpSaleReturnDO> saleReturnQuery = new LambdaQueryWrapperX<ErpSaleReturnDO>()
                 .eq(ErpSaleReturnDO::getCustomerId, reqVO.getCustomerId())
                 .eq(ErpSaleReturnDO::getStatus, ErpAuditStatus.APPROVE.getStatus())
                 .geIfPresent(ErpSaleReturnDO::getReturnTime, reqVO.getStartTime())
-                .ltIfPresent(ErpSaleReturnDO::getReturnTime, reqVO.getEndTime()))
-                .forEach(item -> rows.add(buildRow("销售退货", ErpBizTypeEnum.SALE_RETURN.getType(), item.getId(),
-                        item.getReturnTime(), item.getNo(), negateAmount(item.getTotalPrice()), false)));
+                .ltIfPresent(ErpSaleReturnDO::getReturnTime, reqVO.getEndTime());
+        applyScope(saleReturnQuery, scope, ErpSaleReturnDO::getDeptId, ErpSaleReturnDO::getSaleUserId);
+        List<ErpSaleReturnDO> saleReturns = saleReturnMapper.selectList(saleReturnQuery);
+        Map<Long, BigDecimal> saleReturnAllocated = financeReceiptItemMapper
+                .selectReceiptPriceSumMapByBizIdsAndBizType(saleReturns.stream().map(ErpSaleReturnDO::getId)
+                        .collect(Collectors.toSet()), ErpBizTypeEnum.SALE_RETURN.getType());
+        saleReturns.forEach(item -> rows.add(buildAllocatedRow("销售退货", ErpBizTypeEnum.SALE_RETURN.getType(),
+                item.getId(), item.getReturnTime(), item.getNo(), negateAmount(item.getTotalPrice()),
+                saleReturnAllocated.get(item.getId()))));
 
-        salePriceAdjustMapper.selectList(new LambdaQueryWrapperX<ErpSalePriceAdjustDO>()
+        LambdaQueryWrapperX<ErpSalePriceAdjustDO> priceAdjustQuery = new LambdaQueryWrapperX<ErpSalePriceAdjustDO>()
                 .eq(ErpSalePriceAdjustDO::getCustomerId, reqVO.getCustomerId())
                 .eq(ErpSalePriceAdjustDO::getStatus, ErpAuditStatus.APPROVE.getStatus())
                 .geIfPresent(ErpSalePriceAdjustDO::getAdjustDate, reqVO.getStartTime())
-                .ltIfPresent(ErpSalePriceAdjustDO::getAdjustDate, reqVO.getEndTime()))
-                .forEach(item -> rows.add(buildRow("销售调价", ErpBizTypeEnum.SALE_PRICE_ADJUST.getType(), item.getId(),
-                        item.getAdjustDate(), item.getNo(), item.getTotalAdjustPrice(), false)));
+                .ltIfPresent(ErpSalePriceAdjustDO::getAdjustDate, reqVO.getEndTime());
+        applyScope(priceAdjustQuery, scope, ErpSalePriceAdjustDO::getDeptId, ErpSalePriceAdjustDO::getAdjustUserId);
+        List<ErpSalePriceAdjustDO> priceAdjusts = salePriceAdjustMapper.selectList(priceAdjustQuery);
+        Map<Long, BigDecimal> priceAdjustAllocated = financeReceiptItemMapper
+                .selectReceiptPriceSumMapByBizIdsAndBizType(priceAdjusts.stream().map(ErpSalePriceAdjustDO::getId)
+                        .collect(Collectors.toSet()), ErpBizTypeEnum.SALE_PRICE_ADJUST.getType());
+        priceAdjusts.forEach(item -> rows.add(buildAllocatedRow("销售调价",
+                ErpBizTypeEnum.SALE_PRICE_ADJUST.getType(), item.getId(), item.getAdjustDate(), item.getNo(),
+                item.getTotalAdjustPrice(), priceAdjustAllocated.get(item.getId()))));
 
-        financeReceiptMapper.selectList(new LambdaQueryWrapperX<ErpFinanceReceiptDO>()
+        LambdaQueryWrapperX<ErpFinanceReceiptDO> receiptQuery = new LambdaQueryWrapperX<ErpFinanceReceiptDO>()
                 .eq(ErpFinanceReceiptDO::getCustomerId, reqVO.getCustomerId())
                 .eq(ErpFinanceReceiptDO::getStatus, ErpAuditStatus.APPROVE.getStatus())
                 .geIfPresent(ErpFinanceReceiptDO::getReceiptTime, reqVO.getStartTime())
-                .ltIfPresent(ErpFinanceReceiptDO::getReceiptTime, reqVO.getEndTime()))
-                .forEach(item -> rows.add(buildRow("收款单", null, null,
-                        item.getReceiptTime(), item.getNo(), negateAmount(item.getReceiptPrice()), false)));
+                .ltIfPresent(ErpFinanceReceiptDO::getReceiptTime, reqVO.getEndTime());
+        applyScope(receiptQuery, scope, ErpFinanceReceiptDO::getDeptId, ErpFinanceReceiptDO::getFinanceUserId);
+        financeReceiptMapper.selectList(receiptQuery)
+                .forEach(item -> rows.add(buildRow("收款单", null, item.getId(),
+                        item.getReceiptTime(), item.getNo(), negateAmount(item.getTotalPrice()), false)));
 
-        receivableWriteOffMapper.selectListByCustomerId(reqVO.getCustomerId(), reqVO.getStartTime(), reqVO.getEndTime())
+        receivableWriteOffMapper.selectListByCustomerId(reqVO.getCustomerId(), reqVO.getStartTime(), reqVO.getEndTime(),
+                        scope.getDeptIds(), scope.getSelfUserId(), scope.isAll())
                 .forEach(item -> rows.add(buildRow("核销", item.getBizType(), item.getBizId(),
                         item.getWriteOffTime(), item.getBizNo() == null ? String.valueOf(item.getId()) : item.getBizNo(),
                         negateAmount(item.getWriteOffAmount()), true)));
 
-        receivableOtherMapper.selectList(new LambdaQueryWrapperX<ErpReceivableOtherDO>()
+        LambdaQueryWrapperX<ErpReceivableOtherDO> otherQuery = new LambdaQueryWrapperX<ErpReceivableOtherDO>()
                 .eq(ErpReceivableOtherDO::getCustomerId, reqVO.getCustomerId())
                 .eq(ErpReceivableOtherDO::getStatus, ErpAuditStatus.APPROVE.getStatus())
                 .geIfPresent(ErpReceivableOtherDO::getBizTime, reqVO.getStartTime() == null ? null : reqVO.getStartTime().toLocalDate())
-                .leIfPresent(ErpReceivableOtherDO::getBizTime, reqVO.getEndTime() == null ? null : reqVO.getEndTime().toLocalDate()))
+                .leIfPresent(ErpReceivableOtherDO::getBizTime, reqVO.getEndTime() == null ? null : reqVO.getEndTime().toLocalDate());
+        applyScope(otherQuery, scope, ErpReceivableOtherDO::getDeptId, ErpReceivableOtherDO::getHandlerId);
+        receivableOtherMapper.selectList(otherQuery)
                 .forEach(item -> rows.add(buildRow("其他应收", null, item.getId(),
                         item.getBizTime() == null ? null : item.getBizTime().atStartOfDay(),
                         item.getNo(), item.getReceivableAmount(), false)));
@@ -204,10 +304,103 @@ public class ErpReceivableAccountServiceImpl implements ErpReceivableAccountServ
         return row;
     }
 
+    private ErpReceivableDetailRespVO buildAllocatedRow(String docType, Integer bizType, Long bizId,
+                                                        LocalDateTime docDate, String docNo, BigDecimal amount,
+                                                        BigDecimal allocatedAmount) {
+        ErpReceivableDetailRespVO row = buildRow(docType, bizType, bizId, docDate, docNo, amount, false);
+        row.setAllocatedAmount(allocatedAmount == null ? BigDecimal.ZERO : allocatedAmount.abs());
+        return row;
+    }
+
     private BigDecimal getChangeAmount(ErpReceivableDetailRespVO row) {
         BigDecimal increaseAmount = row.getIncreaseAmount() == null ? BigDecimal.ZERO : row.getIncreaseAmount();
         BigDecimal receiptAmount = row.getReceiptAmount() == null ? BigDecimal.ZERO : row.getReceiptAmount();
         BigDecimal writeOffAmount = row.getWriteOffAmount() == null ? BigDecimal.ZERO : row.getWriteOffAmount();
         return increaseAmount.subtract(receiptAmount).subtract(writeOffAmount);
+    }
+
+    private CustomerVisibleScope getCustomerVisibleScope() {
+        Long loginUserId = SecurityFrameworkUtils.getLoginUserId();
+        if (loginUserId == null) {
+            return null;
+        }
+        DeptDataPermissionRespDTO permission = permissionApi.getDeptDataPermission(loginUserId, "erp_customer");
+        if (permission == null) {
+            return null;
+        }
+        String selfUserId = Boolean.TRUE.equals(permission.getSelf()) ? String.valueOf(loginUserId) : null;
+        return new CustomerVisibleScope(Boolean.TRUE.equals(permission.getAll()), permission.getDeptIds(), selfUserId);
+    }
+
+    private ReceivableVisibleScope getReceivableVisibleScope() {
+        Long loginUserId = SecurityFrameworkUtils.getLoginUserId();
+        if (loginUserId == null) {
+            return null;
+        }
+        DeptDataPermissionRespDTO permission = permissionApi.getDeptDataPermission(
+                loginUserId, "erp_finance_receivable_account");
+        if (permission == null) {
+            return null;
+        }
+        Long selfUserId = Boolean.TRUE.equals(permission.getSelf()) ? loginUserId : null;
+        return new ReceivableVisibleScope(Boolean.TRUE.equals(permission.getAll()), permission.getDeptIds(), selfUserId);
+    }
+
+    private <T> void applyScope(LambdaQueryWrapperX<T> query, ReceivableVisibleScope scope,
+                                com.baomidou.mybatisplus.core.toolkit.support.SFunction<T, ?> deptColumn,
+                                com.baomidou.mybatisplus.core.toolkit.support.SFunction<T, ?> userColumn) {
+        if (scope.isAll()) {
+            return;
+        }
+        if (!scope.getDeptIds().isEmpty() && scope.getSelfUserId() != null) {
+            query.and(wrapper -> wrapper.in(deptColumn, scope.getDeptIds())
+                    .or().eq(userColumn, scope.getSelfUserId()));
+        } else if (!scope.getDeptIds().isEmpty()) {
+            query.in(deptColumn, scope.getDeptIds());
+        } else {
+            query.eq(userColumn, scope.getSelfUserId());
+        }
+    }
+
+    private static class ReceivableVisibleScope {
+        private final boolean all;
+        private final Collection<Long> deptIds;
+        private final Long selfUserId;
+
+        private ReceivableVisibleScope(boolean all, Collection<Long> deptIds, Long selfUserId) {
+            this.all = all;
+            this.deptIds = deptIds == null ? Collections.emptyList() : deptIds;
+            this.selfUserId = selfUserId;
+        }
+
+        boolean hasAccess() { return all || !deptIds.isEmpty() || selfUserId != null; }
+        boolean isAll() { return all; }
+        Collection<Long> getDeptIds() { return deptIds; }
+        Long getSelfUserId() { return selfUserId; }
+    }
+
+    private static class CustomerVisibleScope {
+
+        private final boolean all;
+        private final Collection<Long> deptIds;
+        private final String selfUserId;
+
+        private CustomerVisibleScope(boolean all, Collection<Long> deptIds, String selfUserId) {
+            this.all = all;
+            this.deptIds = deptIds == null ? Collections.emptyList() : deptIds;
+            this.selfUserId = selfUserId;
+        }
+
+        public boolean isAll() {
+            return all;
+        }
+
+        public Collection<Long> getDeptIds() {
+            return deptIds;
+        }
+
+        public String getSelfUserId() {
+            return selfUserId;
+        }
     }
 }

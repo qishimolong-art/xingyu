@@ -7,6 +7,8 @@ import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
 import cn.iocoder.yudao.framework.datapermission.core.util.DataPermissionUtils;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.supplier.ErpSupplierBatchUpdateReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.supplier.ErpSupplierDeptDistributionRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.supplier.ErpSupplierDeptDistributionSaveReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.supplier.ErpSupplierImportExcelVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.supplier.ErpSupplierPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.supplier.ErpSupplierSaveReqVO;
@@ -22,8 +24,11 @@ import cn.iocoder.yudao.module.erp.dal.mysql.purchase.ErpPurchaseReturnMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.purchase.ErpSupplierDeptMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.purchase.ErpSupplierMapper;
 import cn.iocoder.yudao.module.erp.service.base.ErpBaseArchiveReferenceService;
+import cn.iocoder.yudao.module.erp.service.base.ErpArchiveMergeService;
 import cn.iocoder.yudao.module.erp.service.common.ErpOperateLogService;
 import cn.iocoder.yudao.module.system.api.permission.PermissionApi;
+import cn.iocoder.yudao.module.system.api.dept.DeptApi;
+import cn.iocoder.yudao.module.system.api.dept.dto.DeptRespDTO;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -33,9 +38,11 @@ import org.springframework.validation.annotation.Validated;
 import javax.annotation.Resource;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -50,6 +57,8 @@ import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.SUPPLIER_CATE
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.SUPPLIER_CODE_DUPLICATE;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.SUPPLIER_DELETE_FAIL_REFERENCED;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.SUPPLIER_DISABLE_FAIL_PAYABLE_NOT_CLEAR;
+import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.ARCHIVE_MERGE_SAME_ID;
+import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.SUPPLIER_MERGED;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.SUPPLIER_NOT_ENABLE;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.SUPPLIER_NOT_EXISTS;
 import static cn.iocoder.yudao.module.erp.enums.LogRecordConstants.ERP_SUPPLIER_TYPE;
@@ -83,6 +92,8 @@ public class ErpSupplierServiceImpl implements ErpSupplierService {
     @Resource
     private ErpBaseArchiveReferenceService baseArchiveReferenceService;
     @Resource
+    private ErpArchiveMergeService archiveMergeService;
+    @Resource
     private ErpOperateLogService operateLogService;
     @Resource
     private ErpPurchaseDocumentDefaultService purchaseDocumentDefaultService;
@@ -90,6 +101,8 @@ public class ErpSupplierServiceImpl implements ErpSupplierService {
     private ErpPurchaseFieldPermissionMasker fieldPermissionMasker;
     @Resource
     private PermissionApi permissionApi;
+    @Resource
+    private DeptApi deptApi;
     @Resource
     private ErpPayableAccountMapper payableAccountMapper;
 
@@ -111,9 +124,11 @@ public class ErpSupplierServiceImpl implements ErpSupplierService {
         if (supplier.getStatus() == null) {
             supplier.setStatus(CommonStatusEnum.ENABLE.getStatus());
         }
+        Long loginUserDeptId = getLoginUserDeptId();
         if (supplier.getDeptId() == null) {
-            supplier.setDeptId(getLoginUserDeptId());
+            supplier.setDeptId(loginUserDeptId);
         }
+        supplier.setCreateDeptId(loginUserDeptId != null ? loginUserDeptId : supplier.getDeptId());
         applySupplierCreateDefaults(supplier);
         // 鑷姩鐢熸垚缂栫爜
         supplier.setCode(normalizeCode(supplier.getCode()));
@@ -124,7 +139,7 @@ public class ErpSupplierServiceImpl implements ErpSupplierService {
         supplierMapper.insert(supplier);
         syncSupplierDeptList(supplier.getId(), buildSupplierDeptIds(supplier.getDeptId(), supplierDeptIds,
                 supplier.getAllowMultiDept()));
-        operateLogService.recordCreate(ERP_SUPPLIER_TYPE, supplier.getId(), supplier.getName());
+        operateLogService.recordCreate(ERP_SUPPLIER_TYPE, supplier.getId(), supplier, supplier.getCode());
         return supplier.getId();
     }
 
@@ -148,6 +163,7 @@ public class ErpSupplierServiceImpl implements ErpSupplierService {
         // 鏇存柊
         ErpSupplierDO updateObj = BeanUtils.toBean(updateReqVO, ErpSupplierDO.class);
         updateObj.setCode(supplier.getCode());
+        updateObj.setCreateDeptId(supplier.getCreateDeptId());
         validateSupplierCategory(updateObj.getCategory());
         boolean allowMultiDeptHidden = isFieldHidden("allowMultiDept");
         boolean deptIdHidden = isFieldHidden("deptId");
@@ -171,8 +187,56 @@ public class ErpSupplierServiceImpl implements ErpSupplierService {
             syncSupplierDeptList(updateReqVO.getId(), buildSupplierDeptIds(effectiveDeptId, updateReqVO.getDeptIds(),
                     effectiveAllowMultiDept));
         }
-        operateLogService.recordUpdate(ERP_SUPPLIER_TYPE, updateReqVO.getId(),
-                StringUtils.hasText(updateObj.getName()) ? updateObj.getName() : supplier.getName());
+        operateLogService.recordUpdate(ERP_SUPPLIER_TYPE, updateReqVO.getId(), supplier,
+                supplierMapper.selectById(updateReqVO.getId()), supplier.getCode());
+    }
+
+    @Override
+    public ErpSupplierDeptDistributionRespVO getSupplierDeptDistribution(Long id) {
+        // 查看分配部门信息时，使用无可见范围限制的查询——调用此接口的用户已通过权限校验，
+        // 不应再受数据权限过滤的影响（例如部门可见范围会导致跨部门分配信息丢失）
+        ErpSupplierDO supplier = DataPermissionUtils.executeIgnore(() -> supplierMapper.selectById(id));
+        if (supplier == null) {
+            throw exception(SUPPLIER_NOT_EXISTS);
+        }
+        ErpSupplierDeptDistributionRespVO respVO =
+                BeanUtils.toBean(supplier, ErpSupplierDeptDistributionRespVO.class);
+        List<Long> deptIds = getSupplierDeptMap(Collections.singleton(id)).getOrDefault(id, Collections.emptyList());
+        Set<Long> allDeptIds = new LinkedHashSet<>();
+        if (supplier.getDeptId() != null) {
+            allDeptIds.add(supplier.getDeptId());
+        }
+        allDeptIds.addAll(deptIds);
+        Map<Long, String> deptNameMap = buildDeptNameMap(allDeptIds);
+        respVO.setDeptName(deptNameMap.get(supplier.getDeptId()));
+        respVO.setDeptIds(deptIds);
+        respVO.setDeptNames(buildDeptNames(deptIds, deptNameMap));
+        respVO.setDeptNameMap(deptNameMap);
+        return respVO;
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void updateSupplierDeptDistribution(ErpSupplierDeptDistributionSaveReqVO reqVO) {
+        ErpSupplierDO existing = validateSupplierExists(reqVO.getId());
+        if (CollUtil.isNotEmpty(reqVO.getDeptIds())) {
+            deptApi.validateDeptList(reqVO.getDeptIds());
+        }
+        if (reqVO.getDeptId() != null) {
+            deptApi.validateDeptList(Collections.singleton(reqVO.getDeptId()));
+        }
+        ErpSupplierDO updateObj = new ErpSupplierDO();
+        updateObj.setId(reqVO.getId());
+        updateObj.setDeptId(resolvePrimaryDeptId(reqVO.getDeptId(), reqVO.getDeptIds(), existing.getDeptId()));
+        updateObj.setAllowMultiDept(Boolean.TRUE.equals(reqVO.getAllowMultiDept()));
+        supplierMapper.updateById(updateObj);
+        if (Boolean.TRUE.equals(updateObj.getAllowMultiDept())) {
+            syncSupplierDeptList(reqVO.getId(), buildSupplierDeptIds(updateObj.getDeptId(), reqVO.getDeptIds(), true));
+        } else {
+            supplierDeptMapper.deleteBySupplierId(reqVO.getId());
+        }
+        operateLogService.recordUpdate(ERP_SUPPLIER_TYPE, reqVO.getId(), existing,
+                supplierMapper.selectById(reqVO.getId()), existing.getCode());
     }
 
     @Override
@@ -229,8 +293,7 @@ public class ErpSupplierServiceImpl implements ErpSupplierService {
         if (!hasUpdate && !deptIdsChanged && !allowMultiDeptChanged) {
             return;
         }
-        List<ErpSupplierDO> suppliers = (deptIdsChanged || allowMultiDeptChanged)
-                ? supplierMapper.selectByIds(reqVO.getIds()) : Collections.emptyList();
+        List<ErpSupplierDO> suppliers = supplierMapper.selectByIds(reqVO.getIds());
         Map<Long, ErpSupplierDO> supplierMap = suppliers.stream()
                 .collect(Collectors.toMap(ErpSupplierDO::getId, supplier -> supplier, (first, second) -> first));
         if (hasUpdate) {
@@ -251,6 +314,14 @@ public class ErpSupplierServiceImpl implements ErpSupplierService {
                 syncSupplierDeptList(supplierId, buildSupplierDeptIds(effectiveDeptId, reqVO.getDeptIds(),
                         effectiveAllowMultiDept));
             }
+        }
+        for (Long supplierId : reqVO.getIds()) {
+            ErpSupplierDO supplier = supplierMap.get(supplierId);
+            if (supplier == null) {
+                continue;
+            }
+            operateLogService.recordUpdate(ERP_SUPPLIER_TYPE, supplierId, supplier,
+                    supplierMapper.selectById(supplierId), supplier.getCode());
         }
     }
 
@@ -276,7 +347,34 @@ public class ErpSupplierServiceImpl implements ErpSupplierService {
         // 鍒犻櫎
         supplierMapper.deleteById(id);
         supplierDeptMapper.deleteBySupplierId(id);
-        operateLogService.recordDelete(ERP_SUPPLIER_TYPE, id, supplier.getName());
+        operateLogService.recordDelete(ERP_SUPPLIER_TYPE, id, supplier, supplier.getCode());
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void mergeSupplier(Long sourceId, Long keepId) {
+        if (Objects.equals(sourceId, keepId)) {
+            throw exception(ARCHIVE_MERGE_SAME_ID);
+        }
+        ErpSupplierDO source = validateSupplierExists(sourceId);
+        ErpSupplierDO keep = validateSupplierExists(keepId);
+        if (Boolean.TRUE.equals(source.getMergedFlag())) {
+            throw exception(SUPPLIER_MERGED, source.getName());
+        }
+        if (Boolean.TRUE.equals(keep.getMergedFlag())) {
+            throw exception(SUPPLIER_MERGED, keep.getName());
+        }
+        String operatorId = String.valueOf(getLoginUserId());
+        archiveMergeService.mergeSupplierReferences(sourceId, keepId, operatorId);
+        supplierMapper.update(null, new LambdaUpdateWrapper<ErpSupplierDO>()
+                .eq(ErpSupplierDO::getId, sourceId)
+                .ne(ErpSupplierDO::getMergedFlag, Boolean.TRUE)
+                .set(ErpSupplierDO::getMergedFlag, true)
+                .set(ErpSupplierDO::getMergedTargetId, keepId)
+                .set(ErpSupplierDO::getMergedBy, getLoginUserId())
+                .set(ErpSupplierDO::getMergedTime, LocalDateTime.now()));
+        operateLogService.recordUpdate(ERP_SUPPLIER_TYPE, sourceId, source,
+                supplierMapper.selectById(sourceId), source.getCode());
     }
 
     @Override
@@ -318,7 +416,7 @@ public class ErpSupplierServiceImpl implements ErpSupplierService {
     }
 
     private ErpSupplierDO validateSupplierExists(Long id) {
-        ErpSupplierDO supplier = supplierMapper.selectById(id);
+        ErpSupplierDO supplier = DataPermissionUtils.executeIgnore(() -> supplierMapper.selectById(id));
         if (supplier == null) {
             throw exception(SUPPLIER_NOT_EXISTS);
         }
@@ -385,7 +483,7 @@ public class ErpSupplierServiceImpl implements ErpSupplierService {
         updateObj.setId(id);
         updateObj.setStatus(status);
         supplierMapper.updateById(updateObj);
-        operateLogService.recordUpdate(ERP_SUPPLIER_TYPE, id, supplier.getName());
+        operateLogService.recordUpdate(ERP_SUPPLIER_TYPE, id, supplier, supplierMapper.selectById(id), supplier.getCode());
     }
 
     @Override
@@ -405,7 +503,7 @@ public class ErpSupplierServiceImpl implements ErpSupplierService {
                     .set(ErpSupplierDO::getStatus, CommonStatusEnum.ENABLE.getStatus())
                     .set(ErpSupplierDO::getDisabledBy, null)
                     .set(ErpSupplierDO::getDisabledTime, null));
-            operateLogService.recordUpdate(ERP_SUPPLIER_TYPE, id, supplier.getName());
+            operateLogService.recordUpdate(ERP_SUPPLIER_TYPE, id, supplier, supplierMapper.selectById(id), supplier.getCode());
         }
     }
 
@@ -418,7 +516,7 @@ public class ErpSupplierServiceImpl implements ErpSupplierService {
         updateObj.setDisabledBy(getLoginUserId());
         updateObj.setDisabledTime(LocalDateTime.now());
         supplierMapper.updateById(updateObj);
-        operateLogService.recordUpdate(ERP_SUPPLIER_TYPE, id, supplier.getName());
+        operateLogService.recordUpdate(ERP_SUPPLIER_TYPE, id, supplier, supplierMapper.selectById(id), supplier.getCode());
     }
 
     @Override
@@ -465,11 +563,16 @@ public class ErpSupplierServiceImpl implements ErpSupplierService {
                 supplier.setSort(0);
             }
             purchaseDocumentDefaultService.fillCreateDefaults(supplier);
+            Long loginUserDeptId = getLoginUserDeptId();
+            if (supplier.getDeptId() == null) {
+                supplier.setDeptId(loginUserDeptId);
+            }
+            supplier.setCreateDeptId(loginUserDeptId != null ? loginUserDeptId : supplier.getDeptId());
             applySupplierCreateDefaults(supplier);
             supplierMapper.insert(supplier);
             syncSupplierDeptList(supplier.getId(), buildSupplierDeptIds(supplier.getDeptId(), null,
                     supplier.getAllowMultiDept()));
-            operateLogService.recordCreate(ERP_SUPPLIER_TYPE, supplier.getId(), supplier.getName());
+            operateLogService.recordCreate(ERP_SUPPLIER_TYPE, supplier.getId(), supplier, supplier.getCode());
         }
     }
 
@@ -480,7 +583,9 @@ public class ErpSupplierServiceImpl implements ErpSupplierService {
         }
         return supplierDeptMapper.selectListBySupplierIds(supplierIds).stream()
                 .collect(Collectors.groupingBy(ErpSupplierDeptDO::getSupplierId, Collectors.mapping(
-                        ErpSupplierDeptDO::getDeptId, Collectors.toList())));
+                        ErpSupplierDeptDO::getDeptId,
+                        Collectors.collectingAndThen(Collectors.toList(),
+                                list -> list.stream().distinct().collect(Collectors.toList())))));
     }
 
     private boolean isFieldHidden(String fieldName) {
@@ -554,6 +659,84 @@ public class ErpSupplierServiceImpl implements ErpSupplierService {
                     return dept;
                 })
                 .collect(Collectors.toList()));
+    }
+
+    private String buildDeptNames(Collection<Long> deptIds, Map<Long, String> deptNameMap) {
+        if (CollUtil.isEmpty(deptIds)) {
+            return null;
+        }
+        return deptIds.stream()
+                .map(deptNameMap::get)
+                .filter(StringUtils::hasText)
+                .collect(Collectors.joining("、"));
+    }
+
+    private Map<Long, String> buildDeptNameMap(Collection<Long> deptIds) {
+        if (CollUtil.isEmpty(deptIds)) {
+            return Collections.emptyMap();
+        }
+        Map<Long, DeptRespDTO> deptMap = loadDeptWithParents(deptIds);
+        Map<Long, String> result = new LinkedHashMap<>();
+        deptIds.stream()
+                .filter(Objects::nonNull)
+                .distinct()
+                .forEach(deptId -> {
+                    String deptName = buildDeptFullName(deptId, deptMap);
+                    if (StringUtils.hasText(deptName)) {
+                        result.put(deptId, deptName);
+                    }
+                });
+        return result;
+    }
+
+    private Map<Long, DeptRespDTO> loadDeptWithParents(Collection<Long> deptIds) {
+        Map<Long, DeptRespDTO> result = new LinkedHashMap<>();
+        Set<Long> pendingIds = deptIds.stream()
+                .filter(Objects::nonNull)
+                .collect(Collectors.toCollection(LinkedHashSet::new));
+        while (CollUtil.isNotEmpty(pendingIds)) {
+            Map<Long, DeptRespDTO> deptMap = deptApi.getDeptMap(pendingIds);
+            pendingIds = new LinkedHashSet<>();
+            if (CollUtil.isEmpty(deptMap)) {
+                break;
+            }
+            for (DeptRespDTO dept : deptMap.values()) {
+                if (dept == null || dept.getId() == null || result.containsKey(dept.getId())) {
+                    continue;
+                }
+                result.put(dept.getId(), dept);
+                Long parentId = dept.getParentId();
+                if (parentId != null && parentId > 0 && !result.containsKey(parentId)) {
+                    pendingIds.add(parentId);
+                }
+            }
+        }
+        return result;
+    }
+
+    private String buildDeptFullName(Long deptId, Map<Long, DeptRespDTO> deptMap) {
+        DeptRespDTO dept = deptMap.get(deptId);
+        if (dept == null) {
+            return null;
+        }
+        List<String> names = new ArrayList<>();
+        Set<Long> visitedIds = new LinkedHashSet<>();
+        Long currentId = deptId;
+        while (currentId != null && visitedIds.add(currentId)) {
+            DeptRespDTO current = deptMap.get(currentId);
+            if (current == null) {
+                break;
+            }
+            if (StringUtils.hasText(current.getName())) {
+                names.add(0, current.getName());
+            }
+            Long parentId = current.getParentId();
+            if (parentId == null || parentId <= 0) {
+                break;
+            }
+            currentId = parentId;
+        }
+        return CollUtil.isEmpty(names) ? null : String.join(" / ", names);
     }
 
     private void validateSupplierCategory(String category) {

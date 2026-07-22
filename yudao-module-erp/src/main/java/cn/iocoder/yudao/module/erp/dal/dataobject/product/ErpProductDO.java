@@ -34,6 +34,10 @@ public class ErpProductDO extends BaseDO {
      */
     private Long deptId;
     /**
+     * 创建时所在部门编号，与配件后续分配的业务部门分开保存。
+     */
+    private Long createDeptId;
+    /**
      * 产品名称
      */
     private String name;
@@ -215,5 +219,13 @@ public class ErpProductDO extends BaseDO {
      * 关联 {@link ErpProductDO#getId()}
      */
     private Long mergedTargetId;
+    /**
+     * Merge operator user id.
+     */
+    private Long mergedBy;
+    /**
+     * Merge time.
+     */
+    private LocalDateTime mergedTime;
 
 }

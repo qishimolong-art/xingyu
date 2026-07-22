@@ -7,10 +7,18 @@ import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.customer.ErpCustomer
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.customer.ErpCustomerImportExcelVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.customer.ErpCustomerPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.customer.ErpCustomerSaveReqVO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.finance.receivable.ErpReceivableAccountDO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpCustomerDeptDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpCustomerDO;
+import cn.iocoder.yudao.module.erp.dal.mysql.finance.ErpFinanceReceiptMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.finance.receivable.ErpReceivableAccountMapper;
-import cn.iocoder.yudao.module.erp.dal.mysql.finance.receivable.ErpReceivableAccountMapper;
+import cn.iocoder.yudao.module.erp.dal.mysql.finance.receivable.ErpReceivableOtherMapper;
+import cn.iocoder.yudao.module.erp.dal.mysql.finance.receivable.ErpReceivableWriteOffMapper;
+import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpCustomerDeptMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpCustomerMapper;
+import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpSaleOutMapper;
+import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpSalePriceAdjustMapper;
+import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpSaleReturnMapper;
 import cn.iocoder.yudao.module.erp.dal.redis.no.ErpNoRedisDAO;
 import cn.iocoder.yudao.module.erp.service.base.ErpBaseArchiveReferenceService;
 import cn.iocoder.yudao.module.erp.service.common.ErpOperateLogService;
@@ -26,14 +34,17 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.springframework.test.util.ReflectionTestUtils;
 
+import java.math.BigDecimal;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 
 import static cn.iocoder.yudao.framework.test.core.util.AssertUtils.assertServiceException;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.CUSTOMER_CODE_DUPLICATE;
+import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.CUSTOMER_CREDIT_BLOCKED;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.CUSTOMER_NOT_ENABLE;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.CUSTOMER_NOT_EXISTS;
+import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.CUSTOMER_SALE_DEPT_NOT_ALLOWED;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
@@ -56,6 +67,20 @@ public class ErpCustomerServiceImplTest extends BaseMockitoUnitTest {
 
     @Mock
     private ErpCustomerMapper customerMapper;
+    @Mock
+    private ErpCustomerDeptMapper customerDeptMapper;
+    @Mock
+    private ErpSaleOutMapper saleOutMapper;
+    @Mock
+    private ErpSaleReturnMapper saleReturnMapper;
+    @Mock
+    private ErpSalePriceAdjustMapper salePriceAdjustMapper;
+    @Mock
+    private ErpFinanceReceiptMapper financeReceiptMapper;
+    @Mock
+    private ErpReceivableWriteOffMapper receivableWriteOffMapper;
+    @Mock
+    private ErpReceivableOtherMapper receivableOtherMapper;
     @Mock
     private ErpSaleDocumentDefaultService saleDocumentDefaultService;
     @Mock
@@ -87,6 +112,82 @@ public class ErpCustomerServiceImplTest extends BaseMockitoUnitTest {
                 return prefix + "20260520000001";
             }
         });
+    }
+
+    // ==================== generated sale validation ====================
+
+    @Test
+    public void testValidateCustomerForGeneratedSale_multiDeptMatch_success() {
+        ErpCustomerDO customer = new ErpCustomerDO().setId(14L).setName("大邑逸鑫汽修")
+                .setStatus(CommonStatusEnum.ENABLE.getStatus()).setDeptId(128L).setAllowMultiDept(true)
+                .setCreditEnabled(false);
+        when(customerMapper.selectById(14L)).thenReturn(customer);
+        when(customerDeptMapper.selectListByCustomerId(14L)).thenReturn(Arrays.asList(
+                new ErpCustomerDeptDO().setCustomerId(14L).setDeptId(128L),
+                new ErpCustomerDeptDO().setCustomerId(14L).setDeptId(102L)));
+
+        ErpCustomerDO result = customerService.validateCustomerForGeneratedSale(14L, 102L);
+
+        assertSame(customer, result);
+        verify(customerMapper).selectById(14L);
+        verify(customerDeptMapper).selectListByCustomerId(14L);
+    }
+
+    @Test
+    public void testValidateCustomerForGeneratedSale_primaryDeptMatch_success() {
+        ErpCustomerDO customer = new ErpCustomerDO().setId(14L).setName("大邑逸鑫汽修")
+                .setStatus(CommonStatusEnum.ENABLE.getStatus()).setDeptId(128L).setAllowMultiDept(false)
+                .setCreditEnabled(false);
+        when(customerMapper.selectById(14L)).thenReturn(customer);
+
+        assertSame(customer, customerService.validateCustomerForGeneratedSale(14L, 128L));
+        verify(customerDeptMapper, never()).selectListByCustomerId(any());
+    }
+
+    @Test
+    public void testValidateCustomerForGeneratedSale_deptNotAssigned_throwException() {
+        ErpCustomerDO customer = new ErpCustomerDO().setId(14L).setName("大邑逸鑫汽修")
+                .setStatus(CommonStatusEnum.ENABLE.getStatus()).setDeptId(128L).setAllowMultiDept(true)
+                .setCreditEnabled(false);
+        when(customerMapper.selectById(14L)).thenReturn(customer);
+        when(customerDeptMapper.selectListByCustomerId(14L)).thenReturn(Collections.singletonList(
+                new ErpCustomerDeptDO().setCustomerId(14L).setDeptId(102L)));
+
+        assertServiceException(() -> customerService.validateCustomerForGeneratedSale(14L, 132L),
+                CUSTOMER_SALE_DEPT_NOT_ALLOWED);
+    }
+
+    @Test
+    public void testValidateCustomerForGeneratedSale_customerInvalid_throwException() {
+        when(customerMapper.selectById(14L)).thenReturn(null);
+        assertServiceException(() -> customerService.validateCustomerForGeneratedSale(14L, 102L),
+                CUSTOMER_NOT_EXISTS);
+
+        ErpCustomerDO disabled = new ErpCustomerDO().setId(15L).setName("停用客户")
+                .setStatus(CommonStatusEnum.DISABLE.getStatus());
+        when(customerMapper.selectById(15L)).thenReturn(disabled);
+        assertServiceException(() -> customerService.validateCustomerForGeneratedSale(15L, 102L),
+                CUSTOMER_NOT_ENABLE, "停用客户");
+    }
+
+    @Test
+    public void testValidateCustomerForGeneratedSale_creditBlocked_throwException() {
+        ErpCustomerDO customer = new ErpCustomerDO().setId(14L).setName("授信超限客户")
+                .setStatus(CommonStatusEnum.ENABLE.getStatus()).setDeptId(102L).setAllowMultiDept(false)
+                .setCreditEnabled(true).setCreditLimit(new BigDecimal("100"));
+        when(customerMapper.selectById(14L)).thenReturn(customer);
+        when(receivableAccountMapper.selectByCustomerId(14L)).thenReturn(
+                new ErpReceivableAccountDO().setReceivableBalance(new BigDecimal("100")));
+        when(saleOutMapper.selectList(any())).thenReturn(Collections.emptyList());
+        when(saleReturnMapper.selectList(any())).thenReturn(Collections.emptyList());
+        when(salePriceAdjustMapper.selectList(any())).thenReturn(Collections.emptyList());
+        when(financeReceiptMapper.selectList(any())).thenReturn(Collections.emptyList());
+        when(receivableWriteOffMapper.selectListByCustomerId(eq(14L),
+                ArgumentMatchers.isNull(), ArgumentMatchers.isNull())).thenReturn(Collections.emptyList());
+        when(receivableOtherMapper.selectList(any())).thenReturn(Collections.emptyList());
+
+        assertServiceException(() -> customerService.validateCustomerForGeneratedSale(14L, 102L),
+                CUSTOMER_CREDIT_BLOCKED, "授信超限客户", "欠款金额 100 已达到授信金额 100");
     }
 
     // ==================== create ====================

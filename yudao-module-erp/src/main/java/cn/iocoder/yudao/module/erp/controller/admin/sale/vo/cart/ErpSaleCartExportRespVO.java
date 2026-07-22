@@ -35,9 +35,6 @@ public class ErpSaleCartExportRespVO {
     @ExcelProperty("备注")
     private String remark;
 
-    @ExcelProperty("快递单")
-    private String fileUrl;
-
     @ExcelProperty("产品编码")
     private String productCode;
 

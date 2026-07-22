@@ -126,7 +126,7 @@ public class ErpStockFieldPermissionMasker {
         maskBean(target, hiddenFieldSet, prefix);
     }
 
-    private Set<String> getHiddenFieldSet(String module) {
+    public Set<String> getHiddenFieldSet(String module) {
         List<String> hiddenFields = permissionApi.getCurrentUserHiddenFields(module);
         if (CollUtil.isEmpty(hiddenFields)) {
             return Collections.emptySet();

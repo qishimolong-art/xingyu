@@ -42,6 +42,7 @@ public class ErpPurchaseInItemForAdjustRespVO {
 
     @Schema(description = "仓库编号", example = "101")
     private Long warehouseId;
+    private Long deptId;
 
     @Schema(description = "仓库名称", example = "主仓库")
     private String warehouseName;

@@ -34,6 +34,9 @@ public class ErpPurchasePriceAdjustPageReqVO extends PageParam {
     @Schema(description = "供应商编号", example = "1")
     private Long supplierId;
 
+    @Schema(description = "产品编号", example = "1")
+    private Long productId;
+
     @Schema(description = "调价日期区间")
     @DateTimeFormat(pattern = FORMAT_YEAR_MONTH_DAY_HOUR_MINUTE_SECOND)
     private LocalDateTime[] adjustTime;

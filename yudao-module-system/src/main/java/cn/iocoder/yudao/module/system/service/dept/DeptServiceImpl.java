@@ -19,6 +19,7 @@ import cn.iocoder.yudao.module.system.dal.dataobject.user.AdminUserDO;
 import cn.iocoder.yudao.module.system.dal.mysql.dept.DeptMapper;
 import cn.iocoder.yudao.module.system.dal.mysql.dept.UserDeptMapper;
 import cn.iocoder.yudao.module.system.dal.mysql.user.AdminUserMapper;
+import cn.iocoder.yudao.module.system.service.logger.SystemOperateLogService;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import cn.iocoder.yudao.module.system.dal.redis.RedisKeyConstants;
 import com.google.common.annotations.VisibleForTesting;
@@ -38,6 +39,7 @@ import java.util.stream.Collectors;
 import static cn.iocoder.yudao.framework.common.exception.util.ServiceExceptionUtil.exception;
 import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.convertSet;
 import static cn.iocoder.yudao.module.system.enums.ErrorCodeConstants.*;
+import static cn.iocoder.yudao.module.system.enums.LogRecordConstants.*;
 
 /**
  * 部门 Service 实现类
@@ -61,6 +63,8 @@ public class DeptServiceImpl implements DeptService {
     private UserDeptMapper userDeptMapper;
     @Resource
     private DeptErpBizDataReferenceService deptErpBizDataReferenceService;
+    @Resource
+    private SystemOperateLogService operateLogService;
 
     @Override
     @CacheEvict(cacheNames = RedisKeyConstants.DEPT_CHILDREN_ID_LIST,
@@ -78,6 +82,7 @@ public class DeptServiceImpl implements DeptService {
         fillDefaultSort(createReqVO);
         DeptDO dept = BeanUtils.toBean(createReqVO, DeptDO.class);
         deptMapper.insert(dept);
+        operateLogService.recordCreate(SYSTEM_DEPT_TYPE, SYSTEM_DEPT_CREATE_SUB_TYPE, dept.getId(), dept);
         return dept.getId();
     }
 
@@ -90,6 +95,7 @@ public class DeptServiceImpl implements DeptService {
         }
         // 校验自己存在
         validateDeptExists(updateReqVO.getId());
+        DeptDO oldDept = deptMapper.selectById(updateReqVO.getId());
         // 校验父部门的有效性
         validateParentDept(updateReqVO.getId(), updateReqVO.getParentId());
         // 校验部门名的唯一性
@@ -107,9 +113,13 @@ public class DeptServiceImpl implements DeptService {
                     .set(DeptDO::getLeaderUserId, null)
                     .set(DeptDO::getStatus, updateObj.getStatus());
             deptMapper.update(null, updateWrapper);
+            operateLogService.recordUpdate(SYSTEM_DEPT_TYPE, SYSTEM_DEPT_UPDATE_SUB_TYPE,
+                    updateReqVO.getId(), oldDept, deptMapper.selectById(updateReqVO.getId()));
             return;
         }
         deptMapper.updateById(updateObj);
+        operateLogService.recordUpdate(SYSTEM_DEPT_TYPE, SYSTEM_DEPT_UPDATE_SUB_TYPE,
+                updateReqVO.getId(), oldDept, deptMapper.selectById(updateReqVO.getId()));
     }
 
     @Override
@@ -118,11 +128,13 @@ public class DeptServiceImpl implements DeptService {
     public void updateDeptSort(DeptUpdateSortReqVO reqVO) {
         Long parentId = null;
         boolean parentIdInitialized = false;
+        Map<Long, DeptDO> oldDeptMap = new LinkedHashMap<>();
         for (DeptUpdateSortReqVO.Item item : reqVO.getItems()) {
             DeptDO dept = deptMapper.selectById(item.getId());
             if (dept == null) {
                 throw exception(DEPT_NOT_FOUND);
             }
+            oldDeptMap.put(dept.getId(), dept);
             if (!parentIdInitialized) {
                 parentId = dept.getParentId();
                 parentIdInitialized = true;
@@ -132,6 +144,8 @@ public class DeptServiceImpl implements DeptService {
         }
         for (DeptUpdateSortReqVO.Item item : reqVO.getItems()) {
             deptMapper.updateById(new DeptDO().setId(item.getId()).setSort(item.getSort()));
+            operateLogService.recordUpdate(SYSTEM_DEPT_TYPE, SYSTEM_DEPT_UPDATE_SORT_SUB_TYPE,
+                    item.getId(), oldDeptMap.get(item.getId()), deptMapper.selectById(item.getId()));
         }
     }
 
@@ -184,6 +198,8 @@ public class DeptServiceImpl implements DeptService {
             } else {
                 deptMapper.updateById(updateObj);
             }
+            operateLogService.recordUpdate(SYSTEM_DEPT_TYPE, SYSTEM_DEPT_BATCH_UPDATE_SUB_TYPE,
+                    dept.getId(), dept, deptMapper.selectById(dept.getId()));
         }
     }
 
@@ -193,9 +209,11 @@ public class DeptServiceImpl implements DeptService {
     public void deleteDept(Long id) {
         // 校验是否存在
         validateDeptCanDelete(Collections.singletonList(id));
+        DeptDO dept = deptMapper.selectById(id);
         // 校验是否有子部门
         // 删除部门
         deptMapper.deleteById(id);
+        operateLogService.recordDelete(SYSTEM_DEPT_TYPE, SYSTEM_DEPT_DELETE_SUB_TYPE, id, dept);
     }
 
     @Override
@@ -204,9 +222,12 @@ public class DeptServiceImpl implements DeptService {
     public void deleteDeptList(List<Long> ids) {
         // 校验是否有子部门
         validateDeptCanDelete(ids);
+        List<DeptDO> depts = deptMapper.selectByIds(ids);
 
         // 批量删除部门
         deptMapper.deleteByIds(ids);
+        depts.forEach(dept -> operateLogService.recordDelete(SYSTEM_DEPT_TYPE, SYSTEM_DEPT_BATCH_DELETE_SUB_TYPE,
+                dept.getId(), dept));
     }
 
     private void validateDeptCanDelete(Collection<Long> ids) {
@@ -546,6 +567,7 @@ public class DeptServiceImpl implements DeptService {
             DeptDO dept = BeanUtils.toBean(reqVO, DeptDO.class);
             deptMapper.insert(dept);
             respVO.getCreateNames().add(reqVO.getName());
+            operateLogService.recordCreate(SYSTEM_DEPT_TYPE, SYSTEM_DEPT_IMPORT_SUB_TYPE, dept.getId(), dept);
             return;
         }
         if (!isUpdateSupport) {
@@ -561,6 +583,8 @@ public class DeptServiceImpl implements DeptService {
                 .set(DeptDO::getStatus, reqVO.getStatus());
         deptMapper.update(new DeptDO().setName(reqVO.getName()), updateWrapper);
         respVO.getUpdateNames().add(reqVO.getName());
+        operateLogService.recordUpdate(SYSTEM_DEPT_TYPE, SYSTEM_DEPT_IMPORT_SUB_TYPE,
+                existDept.getId(), existDept, deptMapper.selectById(existDept.getId()));
     }
 
     private Integer parseImportStatus(String statusText) {

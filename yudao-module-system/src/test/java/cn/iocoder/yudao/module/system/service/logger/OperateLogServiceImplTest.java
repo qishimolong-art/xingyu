@@ -5,6 +5,7 @@ import cn.iocoder.yudao.framework.test.core.ut.BaseDbUnitTest;
 import cn.iocoder.yudao.framework.test.core.util.RandomUtils;
 import cn.iocoder.yudao.framework.common.biz.system.logger.dto.OperateLogCreateReqDTO;
 import cn.iocoder.yudao.module.system.api.logger.dto.OperateLogPageReqDTO;
+import cn.iocoder.yudao.module.system.controller.admin.logger.vo.operatelog.OperateLogModuleOptionRespVO;
 import cn.iocoder.yudao.module.system.controller.admin.logger.vo.operatelog.OperateLogPageReqVO;
 import cn.iocoder.yudao.module.system.dal.dataobject.logger.OperateLogDO;
 import cn.iocoder.yudao.module.system.dal.mysql.logger.OperateLogMapper;
@@ -12,12 +13,14 @@ import org.junit.jupiter.api.Test;
 import org.springframework.context.annotation.Import;
 
 import javax.annotation.Resource;
+import java.util.List;
 
 import static cn.iocoder.yudao.framework.common.util.date.LocalDateTimeUtils.buildBetweenTime;
 import static cn.iocoder.yudao.framework.common.util.date.LocalDateTimeUtils.buildTime;
 import static cn.iocoder.yudao.framework.common.util.object.ObjectUtils.cloneIgnoreId;
 import static cn.iocoder.yudao.framework.test.core.util.AssertUtils.assertPojoEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @Import({OperateLogServiceImpl.class})
 public class OperateLogServiceImplTest extends BaseDbUnitTest {
@@ -68,7 +71,7 @@ public class OperateLogServiceImplTest extends BaseDbUnitTest {
         OperateLogPageReqVO reqVO = new OperateLogPageReqVO();
         reqVO.setUserId(2048L);
         reqVO.setBizId(999L);
-        reqVO.setType("订");
+        reqVO.setType("订单");
         reqVO.setSubType("订单");
         reqVO.setAction("用户信息");
         reqVO.setCreateTime(buildBetweenTime(2021, 3, 5, 2021, 3, 7));
@@ -109,6 +112,57 @@ public class OperateLogServiceImplTest extends BaseDbUnitTest {
         assertEquals(1, pageResult.getTotal());
         assertEquals(1, pageResult.getList().size());
         assertPojoEquals(operateLogDO, pageResult.getList().get(0));
+    }
+
+    @Test
+    public void testGetOperateLogPage_voOrderByCreateTimeAsc() {
+        OperateLogDO oldLog = RandomUtils.randomPojo(OperateLogDO.class, o -> {
+            o.setType("配件信息");
+            o.setCreateTime(buildTime(2021, 3, 6));
+        });
+        operateLogMapper.insert(oldLog);
+        OperateLogDO newLog = cloneIgnoreId(oldLog, o -> o.setCreateTime(buildTime(2021, 3, 7)));
+        operateLogMapper.insert(newLog);
+
+        OperateLogPageReqVO reqVO = new OperateLogPageReqVO();
+        reqVO.setOrderField("createTime");
+        reqVO.setOrderDirection("asc");
+
+        PageResult<OperateLogDO> pageResult = operateLogServiceImpl.getOperateLogPage(reqVO);
+
+        assertEquals(2, pageResult.getTotal());
+        assertEquals(oldLog.getId(), pageResult.getList().get(0).getId());
+        assertEquals(newLog.getId(), pageResult.getList().get(1).getId());
+    }
+
+    @Test
+    public void testGetOperateLogPage_voTypeCompatiblePrefix() {
+        OperateLogDO operateLogDO = RandomUtils.randomPojo(OperateLogDO.class, o -> o.setType("ERP 配件信息"));
+        operateLogMapper.insert(operateLogDO);
+        operateLogMapper.insert(cloneIgnoreId(operateLogDO, o -> o.setType("客户档案")));
+
+        OperateLogPageReqVO reqVO = new OperateLogPageReqVO();
+        reqVO.setType("配件信息");
+
+        PageResult<OperateLogDO> pageResult = operateLogServiceImpl.getOperateLogPage(reqVO);
+
+        assertEquals(1, pageResult.getTotal());
+        assertEquals(operateLogDO.getId(), pageResult.getList().get(0).getId());
+    }
+
+    @Test
+    public void testGetOperateLogModuleOptions() {
+        operateLogMapper.insert(RandomUtils.randomPojo(OperateLogDO.class, o -> o.setType("ERP 配件信息")));
+        operateLogMapper.insert(RandomUtils.randomPojo(OperateLogDO.class, o -> o.setType("SYSTEM 用户管理")));
+
+        List<OperateLogModuleOptionRespVO> options = operateLogServiceImpl.getOperateLogModuleOptions();
+
+        assertTrue(options.stream().anyMatch(option -> "配件信息".equals(option.getLabel())
+                && "配件信息".equals(option.getValue())));
+        assertTrue(options.stream().anyMatch(option -> "用户管理".equals(option.getLabel())
+                && "用户管理".equals(option.getValue())));
+        assertTrue(options.stream().noneMatch(option -> option.getLabel().startsWith("ERP")
+                || option.getLabel().startsWith("SYSTEM")));
     }
 
 }

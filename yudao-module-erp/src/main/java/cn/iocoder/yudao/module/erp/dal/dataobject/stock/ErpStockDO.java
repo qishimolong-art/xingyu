@@ -46,6 +46,26 @@ public class ErpStockDO extends BaseDO {
      */
     private Long deptId;
     /**
+     * Shelf location in the warehouse.
+     */
+    private String shelf;
+    /**
+     * Purchase price maintained on the stock row.
+     */
+    private BigDecimal purchasePrice;
+    /**
+     * Occupied quantity maintained on the stock row.
+     */
+    private BigDecimal occupiedCount;
+    /**
+     * Pending inbound quantity maintained on the stock row.
+     */
+    private BigDecimal pendingInCount;
+    /**
+     * In-transit quantity maintained on the stock row.
+     */
+    private BigDecimal inTransitCount;
+    /**
      * 库存数量
      */
     private BigDecimal count;

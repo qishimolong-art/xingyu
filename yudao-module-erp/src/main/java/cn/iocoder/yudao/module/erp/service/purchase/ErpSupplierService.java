@@ -2,6 +2,8 @@ package cn.iocoder.yudao.module.erp.service.purchase;
 
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.supplier.ErpSupplierBatchUpdateReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.supplier.ErpSupplierDeptDistributionRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.supplier.ErpSupplierDeptDistributionSaveReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.supplier.ErpSupplierImportExcelVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.supplier.ErpSupplierPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.supplier.ErpSupplierSaveReqVO;
@@ -36,6 +38,10 @@ public interface ErpSupplierService {
      */
     void updateSupplier(@Valid ErpSupplierSaveReqVO updateReqVO);
 
+    ErpSupplierDeptDistributionRespVO getSupplierDeptDistribution(Long id);
+
+    void updateSupplierDeptDistribution(@Valid ErpSupplierDeptDistributionSaveReqVO reqVO);
+
     /**
      * 批量编辑供应商
      *
@@ -56,6 +62,14 @@ public interface ErpSupplierService {
      * @param ids 供应商编号列表
      */
     void restoreSupplier(List<Long> ids);
+
+    /**
+     * 合并供应商。
+     *
+     * @param sourceId 被合并供应商编号
+     * @param keepId 保留供应商编号
+     */
+    void mergeSupplier(Long sourceId, Long keepId);
 
     /**
      * 删除供应商

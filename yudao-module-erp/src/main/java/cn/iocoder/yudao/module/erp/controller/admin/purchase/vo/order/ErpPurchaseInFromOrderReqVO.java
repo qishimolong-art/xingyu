@@ -43,6 +43,7 @@ public class ErpPurchaseInFromOrderReqVO {
         @Schema(description = "仓库编号", requiredMode = Schema.RequiredMode.REQUIRED, example = "1")
         @NotNull(message = "仓库编号不能为空")
         private Long warehouseId;
+        private Long deptId;
 
     }
 

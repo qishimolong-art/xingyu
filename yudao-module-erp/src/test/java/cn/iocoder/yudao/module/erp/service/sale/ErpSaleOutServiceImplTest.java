@@ -2,7 +2,9 @@ package cn.iocoder.yudao.module.erp.service.sale;
 
 import cn.iocoder.yudao.framework.common.exception.ServiceException;
 import cn.iocoder.yudao.framework.test.core.ut.BaseMockitoUnitTest;
+import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpProductRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.out.ErpSaleOutSaveReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.out.ErpSaleOutUpdateExpressFileReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.out.ErpSaleReturnableItemRespVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.ErpAccountDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.product.ErpProductDO;
@@ -33,6 +35,9 @@ import cn.iocoder.yudao.module.erp.service.stock.ErpStockService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpStockOutBillService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpWarehouseService;
 import cn.iocoder.yudao.module.erp.service.stock.bo.ErpStockRecordCreateReqBO;
+import cn.iocoder.yudao.module.infra.api.file.FileApi;
+import cn.iocoder.yudao.module.system.api.dept.DeptApi;
+import cn.iocoder.yudao.module.system.api.dept.dto.DeptRespDTO;
 import cn.iocoder.yudao.module.system.api.user.AdminUserApi;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import org.junit.jupiter.api.BeforeEach;
@@ -53,6 +58,8 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.SALE_OUT_EXPRESS_FILE_SIZE_EXCEEDED;
+import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.SALE_OUT_EXPRESS_FILE_TYPE_INVALID;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyCollection;
 import static org.mockito.ArgumentMatchers.anyLong;
@@ -110,6 +117,8 @@ public class ErpSaleOutServiceImplTest extends BaseMockitoUnitTest {
     @Mock
     private AdminUserApi adminUserApi;
     @Mock
+    private DeptApi deptApi;
+    @Mock
     private ErpAutoVoucherBuilder autoVoucherBuilder;
     @Mock
     private ErpVoucherService voucherService;
@@ -119,6 +128,8 @@ public class ErpSaleOutServiceImplTest extends BaseMockitoUnitTest {
     private ErpVoucherMapper voucherMapper;
     @Mock
     private ErpVoucherItemMapper voucherItemMapper;
+    @Mock
+    private FileApi fileApi;
 
     @BeforeEach
     public void setUp() {
@@ -130,6 +141,12 @@ public class ErpSaleOutServiceImplTest extends BaseMockitoUnitTest {
         });
         lenient().when(warehouseService.validSaleWarehouseList(anyCollection())).thenReturn(Collections.singletonList(
                 new ErpWarehouseDO().setId(400L)));
+        lenient().when(warehouseService.validSaleWarehouseListForDept(anyCollection(), any())).thenReturn(
+                Collections.singletonList(new ErpWarehouseDO().setId(400L).setDeptId(10L)));
+        lenient().doNothing().when(warehouseService).validateWarehouseSaleAllowedForDept(any(), any());
+        lenient().when(productService.getProductVOMap(anyCollection())).thenReturn(Collections.emptyMap());
+        lenient().when(warehouseService.getWarehouseMap(anyCollection())).thenReturn(Collections.emptyMap());
+        lenient().when(deptApi.getDeptMap(anyCollection())).thenReturn(Collections.emptyMap());
     }
 
     // ==================== createSaleOut ====================
@@ -180,7 +197,7 @@ public class ErpSaleOutServiceImplTest extends BaseMockitoUnitTest {
         reqVO.setItems(Collections.singletonList(buildItem(new BigDecimal("2"))));
 
         // mock 客户校验抛出异常
-        when(customerService.validateCustomer(eq(99L)))
+        when(customerService.validateCustomerForGeneratedSale(eq(99L), eq(10L)))
                 .thenThrow(new ServiceException(1, "客户不存在"));
 
         // 验证 createGeneratedSaleOut 因 customer 校验失败抛错
@@ -217,7 +234,8 @@ public class ErpSaleOutServiceImplTest extends BaseMockitoUnitTest {
         reqVO.setCustomerId(20L);
         reqVO.setItems(Collections.singletonList(buildItem(new BigDecimal("2"))));
 
-        when(customerService.validateCustomer(eq(20L))).thenReturn(new ErpCustomerDO().setId(20L));
+        when(customerService.validateCustomerForGeneratedSale(eq(20L), eq(10L)))
+                .thenReturn(new ErpCustomerDO().setId(20L));
         mockProduct();
         when(saleOutMapper.selectByNo(anyString())).thenReturn(null);
         doAnswer(invocation -> {
@@ -244,9 +262,11 @@ public class ErpSaleOutServiceImplTest extends BaseMockitoUnitTest {
     public void testCreateGeneratedSaleOut_fromCart_setSourceFields() {
         ErpSaleOutSaveReqVO reqVO = buildBaseReq();
         reqVO.setCustomerId(20L);
+        reqVO.setDeptId(102L);
         reqVO.setItems(Collections.singletonList(buildItem(new BigDecimal("2"))));
 
-        when(customerService.validateCustomer(eq(20L))).thenReturn(new ErpCustomerDO().setId(20L));
+        when(customerService.validateCustomerForGeneratedSale(eq(20L), eq(102L)))
+                .thenReturn(new ErpCustomerDO().setId(20L));
         mockProduct();
         when(saleOutMapper.selectByNo(anyString())).thenReturn(null);
         doAnswer(invocation -> {
@@ -264,6 +284,8 @@ public class ErpSaleOutServiceImplTest extends BaseMockitoUnitTest {
                 ErpSaleBizSourceTypeEnum.CART.getType().equals(saleOut.getSourceType())
                         && Long.valueOf(666L).equals(saleOut.getSourceId())
                         && "CART001".equals(saleOut.getSourceNo())));
+        verify(warehouseService, never()).validSaleWarehouseList(anyCollection());
+        verify(warehouseService).validSaleWarehouseListForDept(anyCollection(), eq(102L));
     }
 
     @Test
@@ -272,7 +294,8 @@ public class ErpSaleOutServiceImplTest extends BaseMockitoUnitTest {
         reqVO.setCustomerId(20L);
         reqVO.setItems(Collections.singletonList(buildItem(new BigDecimal("2"))));
 
-        when(customerService.validateCustomer(eq(20L))).thenReturn(new ErpCustomerDO().setId(20L));
+        when(customerService.validateCustomerForGeneratedSale(eq(20L), eq(10L)))
+                .thenReturn(new ErpCustomerDO().setId(20L));
         mockProduct();
         when(saleOutMapper.selectByNo(anyString())).thenReturn(null);
         doAnswer(invocation -> {
@@ -334,6 +357,90 @@ public class ErpSaleOutServiceImplTest extends BaseMockitoUnitTest {
                         .setStatus(ErpAuditStatus.APPROVE.getStatus()));
 
         assertThrows(ServiceException.class, () -> saleOutService.updateSaleOut(reqVO));
+        verify(saleOutMapper, never()).updateById(any(ErpSaleOutDO.class));
+    }
+
+    @Test
+    public void testUpdateSaleOutExpressFile_onlyUpdatesExpressField() {
+        ErpSaleOutDO saleOut = new ErpSaleOutDO()
+                .setId(10L)
+                .setNo("XSCK001")
+                .setStatus(ErpAuditStatus.APPROVE.getStatus())
+                .setFileUrl("https://example.com/general.pdf");
+        when(saleOutMapper.selectById(eq(10L))).thenReturn(saleOut);
+        ErpSaleOutUpdateExpressFileReqVO reqVO = new ErpSaleOutUpdateExpressFileReqVO();
+        reqVO.setId(10L);
+        reqVO.setExpressFileUrl("https://example.com/express.jpg");
+
+        saleOutService.updateSaleOutExpressFile(reqVO);
+
+        verify(saleOutMapper).updateById(argThat((ErpSaleOutDO updateObj) ->
+                Long.valueOf(10L).equals(updateObj.getId())
+                        && "https://example.com/express.jpg".equals(updateObj.getExpressFileUrl())
+                        && updateObj.getFileUrl() == null
+                        && updateObj.getStatus() == null
+                        && updateObj.getCustomerId() == null
+                        && updateObj.getTotalPrice() == null));
+    }
+
+    @Test
+    public void testUpdateSaleOutExpressFile_notExists_throwException() {
+        ErpSaleOutUpdateExpressFileReqVO reqVO = new ErpSaleOutUpdateExpressFileReqVO();
+        reqVO.setId(999L);
+        reqVO.setExpressFileUrl("https://example.com/express.jpg");
+        when(saleOutMapper.selectById(eq(999L))).thenReturn(null);
+
+        assertThrows(ServiceException.class, () -> saleOutService.updateSaleOutExpressFile(reqVO));
+
+        verify(saleOutMapper, never()).updateById(any(ErpSaleOutDO.class));
+    }
+
+    @Test
+    public void testUploadSaleOutExpressFile_uploadsAndOnlyUpdatesExpressField() {
+        ErpSaleOutDO saleOut = new ErpSaleOutDO().setId(10L).setNo("XSCK001");
+        when(saleOutMapper.selectById(eq(10L))).thenReturn(saleOut);
+        byte[] content = new byte[]{
+                (byte) 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00};
+        when(fileApi.createFile(any(byte[].class), eq("express.png"),
+                eq("erp/sale-out/express/10"), eq("image/png")))
+                .thenReturn("https://example.com/express.png");
+
+        String result = saleOutService.uploadSaleOutExpressFile(10L, content, "express.png");
+
+        assertEquals("https://example.com/express.png", result);
+        verify(fileApi).createFile(argThat(bytes -> Arrays.equals(content, bytes)), eq("express.png"),
+                eq("erp/sale-out/express/10"), eq("image/png"));
+        verify(saleOutMapper).updateById(argThat((ErpSaleOutDO updateObj) ->
+                Long.valueOf(10L).equals(updateObj.getId())
+                        && "https://example.com/express.png".equals(updateObj.getExpressFileUrl())
+                        && updateObj.getFileUrl() == null
+                        && updateObj.getStatus() == null
+                        && updateObj.getCustomerId() == null
+                        && updateObj.getTotalPrice() == null));
+    }
+
+    @Test
+    public void testUploadSaleOutExpressFile_rejectsSpoofedImage() {
+        when(saleOutMapper.selectById(eq(10L))).thenReturn(new ErpSaleOutDO().setId(10L));
+
+        ServiceException exception = assertThrows(ServiceException.class,
+                () -> saleOutService.uploadSaleOutExpressFile(10L, new byte[]{1, 2, 3}, "express.png"));
+
+        assertEquals(SALE_OUT_EXPRESS_FILE_TYPE_INVALID.getCode(), exception.getCode());
+        verify(fileApi, never()).createFile(any(byte[].class), anyString(), anyString(), anyString());
+        verify(saleOutMapper, never()).updateById(any(ErpSaleOutDO.class));
+    }
+
+    @Test
+    public void testUploadSaleOutExpressFile_rejectsOversizedImage() {
+        when(saleOutMapper.selectById(eq(10L))).thenReturn(new ErpSaleOutDO().setId(10L));
+        byte[] oversizedContent = new byte[5 * 1024 * 1024 + 1];
+
+        ServiceException exception = assertThrows(ServiceException.class,
+                () -> saleOutService.uploadSaleOutExpressFile(10L, oversizedContent, "express.png"));
+
+        assertEquals(SALE_OUT_EXPRESS_FILE_SIZE_EXCEEDED.getCode(), exception.getCode());
+        verify(fileApi, never()).createFile(any(byte[].class), anyString(), anyString(), anyString());
         verify(saleOutMapper, never()).updateById(any(ErpSaleOutDO.class));
     }
 
@@ -452,9 +559,22 @@ public class ErpSaleOutServiceImplTest extends BaseMockitoUnitTest {
                 .setStatus(ErpAuditStatus.APPROVE.getStatus());
         when(saleOutMapper.selectById(eq(40L))).thenReturn(saleOut);
         ErpSaleOutItemDO item1 = new ErpSaleOutItemDO()
-                .setId(500L).setOutId(40L).setProductId(600L).setWarehouseId(700L)
+                .setId(500L).setOutId(40L).setProductId(600L).setWarehouseId(700L).setDeptId(800L)
                 .setCount(new BigDecimal("10")).setProductPrice(new BigDecimal("12.34"));
         when(saleOutItemMapper.selectListByOutId(eq(40L))).thenReturn(Collections.singletonList(item1));
+        ErpProductRespVO product = new ErpProductRespVO();
+        product.setId(600L);
+        product.setCode("P600");
+        product.setName("产品600");
+        product.setBarCode("BAR600");
+        product.setUnitName("件");
+        when(productService.getProductVOMap(anyCollection())).thenReturn(Collections.singletonMap(600L, product));
+        when(warehouseService.getWarehouseMap(anyCollection())).thenReturn(Collections.singletonMap(700L,
+                new ErpWarehouseDO().setId(700L).setName("仓库700")));
+        DeptRespDTO dept = new DeptRespDTO();
+        dept.setId(800L);
+        dept.setName("部门800");
+        when(deptApi.getDeptMap(anyCollection())).thenReturn(Collections.singletonMap(800L, dept));
         // 已退 3，剩余可退 7
         Map<Long, BigDecimal> returnedMap = new HashMap<>();
         returnedMap.put(500L, new BigDecimal("3"));
@@ -467,6 +587,12 @@ public class ErpSaleOutServiceImplTest extends BaseMockitoUnitTest {
         ErpSaleReturnableItemRespVO vo = resp.get(0);
         assertEquals(40L, vo.getSourceOutId());
         assertEquals(500L, vo.getSourceOutItemId());
+        assertEquals("P600", vo.getProductCode());
+        assertEquals("产品600", vo.getProductName());
+        assertEquals("BAR600", vo.getProductBarCode());
+        assertEquals("件", vo.getProductUnitName());
+        assertEquals("仓库700", vo.getWarehouseName());
+        assertEquals("部门800", vo.getDeptName());
         assertEquals(0, new BigDecimal("10").compareTo(vo.getOutCount()));
         assertEquals(0, new BigDecimal("3").compareTo(vo.getReturnedCount()));
         assertEquals(0, new BigDecimal("7").compareTo(vo.getReturnableCount()));
@@ -526,6 +652,7 @@ public class ErpSaleOutServiceImplTest extends BaseMockitoUnitTest {
     private ErpSaleOutSaveReqVO.Item buildItem(BigDecimal count) {
         ErpSaleOutSaveReqVO.Item item = new ErpSaleOutSaveReqVO.Item();
         item.setWarehouseId(400L);
+        item.setDeptId(10L);
         item.setProductId(300L);
         item.setProductUnitId(500L);
         item.setProductPrice(new BigDecimal("10"));

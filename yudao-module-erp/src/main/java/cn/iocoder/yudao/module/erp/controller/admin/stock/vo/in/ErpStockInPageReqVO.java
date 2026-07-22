@@ -48,4 +48,10 @@ public class ErpStockInPageReqVO extends PageParam {
     @Schema(description = "所属部门", example = "100")
     private Long deptId;
 
+    @Schema(description = "排序字段")
+    private String orderField;
+
+    @Schema(description = "排序方向（asc/desc）")
+    private String orderDirection;
+
 }

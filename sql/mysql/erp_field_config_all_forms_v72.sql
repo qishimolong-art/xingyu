@@ -139,6 +139,7 @@ FROM (
     SELECT 'erp_stock_move', 'totalPrice', '金额', b'0', 150, 'detail_item' UNION ALL
 
     SELECT 'erp_stock_check', 'no', '盘点单号', b'0', 10, 'base_info' UNION ALL
+    SELECT 'erp_stock_check', 'checkType', '盘点类型', b'1', 15, 'base_info' UNION ALL
     SELECT 'erp_stock_check', 'checkTime', '盘点时间', b'1', 20, 'base_info' UNION ALL
     SELECT 'erp_stock_check', 'remark', '备注', b'0', 30, 'base_info' UNION ALL
     SELECT 'erp_stock_check', 'fileUrl', '附件', b'0', 40, 'base_info' UNION ALL

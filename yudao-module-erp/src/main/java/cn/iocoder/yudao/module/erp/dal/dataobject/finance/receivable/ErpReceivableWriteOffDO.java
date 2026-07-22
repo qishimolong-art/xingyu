@@ -28,5 +28,6 @@ public class ErpReceivableWriteOffDO extends BaseDO {
     private String remark;
     private LocalDateTime writeOffTime;
     private Long operatorUserId;
+    private Long deptId;
 
 }

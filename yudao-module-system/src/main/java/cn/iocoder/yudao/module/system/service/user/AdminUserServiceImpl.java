@@ -36,6 +36,7 @@ import cn.iocoder.yudao.module.system.service.dept.DeptService;
 import cn.iocoder.yudao.module.system.service.oauth2.OAuth2TokenService;
 import cn.iocoder.yudao.module.system.service.permission.PermissionService;
 import cn.iocoder.yudao.module.system.service.permission.RoleService;
+import cn.iocoder.yudao.module.system.service.logger.SystemOperateLogService;
 import cn.iocoder.yudao.module.system.service.tenant.TenantService;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.google.common.annotations.VisibleForTesting;
@@ -105,6 +106,8 @@ public class AdminUserServiceImpl implements AdminUserService {
     private ConfigApi configApi;
     @Resource
     private UserErpBizDataReferenceService userErpBizDataReferenceService;
+    @Resource
+    private SystemOperateLogService operateLogService;
     @Autowired(required = false)
     private List<AdminUserBatchUpdateExtension> batchUpdateExtensions = Collections.emptyList();
 
@@ -206,6 +209,7 @@ public class AdminUserServiceImpl implements AdminUserService {
         validateBatchUpdateUser(reqVO);
         Set<Long> deptIds = CollUtil.emptyIfNull(reqVO.getDeptIds());
         for (Long id : new LinkedHashSet<>(reqVO.getIds())) {
+            AdminUserDO oldUser = userMapper.selectById(id);
             updateUserBaseFields(id, reqVO, deptIds);
             if (Boolean.TRUE.equals(reqVO.getUpdateDeptIds())) {
                 updateUserDept(new UserSaveReqVO().setId(id).setDeptIds(deptIds));
@@ -219,6 +223,8 @@ public class AdminUserServiceImpl implements AdminUserService {
             for (AdminUserBatchUpdateExtension extension : batchUpdateExtensions) {
                 extension.update(id, reqVO);
             }
+            operateLogService.recordUpdate(SYSTEM_USER_TYPE, SYSTEM_USER_BATCH_UPDATE_SUB_TYPE,
+                    id, oldUser, userMapper.selectById(id));
         }
     }
 
@@ -500,12 +506,14 @@ public class AdminUserServiceImpl implements AdminUserService {
     @Override
     public void updateUserStatus(Long id, Integer status) {
         // 校验用户存在
-        validateUserExists(id);
+        AdminUserDO oldUser = validateUserExists(id);
         // 更新状态
         AdminUserDO updateObj = new AdminUserDO();
         updateObj.setId(id);
         updateObj.setStatus(status);
         userMapper.updateById(updateObj);
+        operateLogService.recordUpdate(SYSTEM_USER_TYPE, SYSTEM_USER_UPDATE_STATUS_SUB_TYPE,
+                id, oldUser, userMapper.selectById(id));
 
         // 如果是禁用用户，则删除其 Token 信息
         if (CommonStatusEnum.isDisable(status)) {
@@ -540,6 +548,7 @@ public class AdminUserServiceImpl implements AdminUserService {
     public void deleteUserList(List<Long> ids) {
         // 1. 批量删除用户
         validateUserCanDelete(ids);
+        List<AdminUserDO> users = userMapper.selectByIds(ids);
         userMapper.deleteByIds(ids);
 
         // 2. 批量删除用户关联数据
@@ -548,6 +557,8 @@ public class AdminUserServiceImpl implements AdminUserService {
             userPostMapper.deleteByUserId(id);
             userDeptMapper.deleteByUserId(id);
         });
+        users.forEach(user -> operateLogService.recordDelete(SYSTEM_USER_TYPE, SYSTEM_USER_BATCH_DELETE_SUB_TYPE,
+                user.getId(), user));
     }
 
     @Override

@@ -76,6 +76,7 @@ public class ErpDataPermissionConfiguration {
             rule.addDeptColumn("erp_stock_move", "dept_id");
             rule.addDeptColumn("erp_stock_out", "dept_id");
             rule.addDeptColumn("erp_stock_record", "dept_id");
+            rule.addDeptColumn("erp_warehouse_move", "dept_id");
             rule.addDeptColumn("erp_warehouse", "dept_id");
             rule.addUserColumn("erp_stock", "creator");
             rule.addUserColumn("erp_stock_check", "creator");
@@ -83,6 +84,7 @@ public class ErpDataPermissionConfiguration {
             rule.addUserColumn("erp_stock_move", "creator");
             rule.addUserColumn("erp_stock_out", "creator");
             rule.addUserColumn("erp_stock_record", "creator");
+            rule.addUserColumn("erp_warehouse_move", "creator");
             rule.addUserColumn("erp_warehouse", "creator");
 
             // Chain order documents with dept_id.
@@ -119,6 +121,8 @@ public class ErpDataPermissionConfiguration {
             rule.addDeptColumn("erp_receivable_other_income", "dept_id");
             rule.addDeptColumn("erp_receivable_other_income_item", "dept_id");
             rule.addDeptColumn("erp_receivable_other_item", "dept_id");
+            rule.addDeptColumn("erp_receivable_writeoff", "dept_id");
+            rule.addDeptColumn("erp_payable_writeoff", "dept_id");
             rule.addUserColumn("erp_other_receivable", "creator");
             rule.addUserColumn("erp_pre_receipt", "creator");
             rule.addUserColumn("erp_pre_receivable", "creator");
@@ -126,6 +130,8 @@ public class ErpDataPermissionConfiguration {
             rule.addUserColumn("erp_receivable_other_income", "handler_id");
             rule.addUserColumn("erp_receivable_other_income_item", "handler_id");
             rule.addUserColumn("erp_receivable_other_item", "handler_id");
+            rule.addUserColumn("erp_receivable_writeoff", "operator_user_id");
+            rule.addUserColumn("erp_payable_writeoff", "operator_user_id");
 
             // Finance accounting documents with dept_id.
             rule.addDeptColumn("erp_voucher", "dept_id");

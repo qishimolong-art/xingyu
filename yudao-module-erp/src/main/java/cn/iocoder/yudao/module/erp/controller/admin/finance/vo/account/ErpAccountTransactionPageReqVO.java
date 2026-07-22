@@ -28,6 +28,9 @@ public class ErpAccountTransactionPageReqVO extends PageParam {
     @DateTimeFormat(pattern = FORMAT_YEAR_MONTH_DAY_HOUR_MINUTE_SECOND)
     private LocalDateTime[] transactionTime;
 
+    private String orderField;
+    private String orderDirection;
+
     public LocalDateTime getStartTime() {
         return transactionTime == null || transactionTime.length == 0 ? null : transactionTime[0];
     }

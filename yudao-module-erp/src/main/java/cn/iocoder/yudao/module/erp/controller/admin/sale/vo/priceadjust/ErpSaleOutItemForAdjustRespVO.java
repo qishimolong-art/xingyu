@@ -43,6 +43,18 @@ public class ErpSaleOutItemForAdjustRespVO {
     @Schema(description = "出库数")
     private BigDecimal count;
 
+    @Schema(description = "仓库编号")
+    private Long warehouseId;
+
+    @Schema(description = "仓库名称")
+    private String warehouseName;
+
+    @Schema(description = "仓库所属部门 ID")
+    private Long warehouseDeptId;
+
+    @Schema(description = "仓库所属部门名称")
+    private String warehouseDeptName;
+
     @Schema(description = "当前售价")
     private BigDecimal productPrice;
 
@@ -51,5 +63,8 @@ public class ErpSaleOutItemForAdjustRespVO {
 
     @Schema(description = "是否已调价")
     private Boolean adjusted;
+
+    @Schema(description = "所属部门ID")
+    private Long deptId;
 
 }

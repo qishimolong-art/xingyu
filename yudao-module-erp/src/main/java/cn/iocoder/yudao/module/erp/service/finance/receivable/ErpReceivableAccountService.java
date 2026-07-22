@@ -6,6 +6,7 @@ import cn.iocoder.yudao.module.erp.controller.admin.finance.receivable.vo.accoun
 import cn.iocoder.yudao.module.erp.controller.admin.finance.receivable.vo.account.ErpReceivableDetailRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.receivable.vo.account.ErpReceivableWriteOffReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.receivable.ErpReceivableAccountDO;
+import cn.iocoder.yudao.module.erp.service.finance.ErpFinanceVisibleScope;
 
 import java.util.List;
 
@@ -14,6 +15,9 @@ public interface ErpReceivableAccountService {
     PageResult<ErpReceivableAccountDO> getReceivableAccountPage(ErpReceivableAccountPageReqVO reqVO);
 
     List<ErpReceivableDetailRespVO> getReceivableDetailList(ErpReceivableDetailReqVO reqVO);
+
+    List<ErpReceivableDetailRespVO> getReceivableDetailList(ErpReceivableDetailReqVO reqVO,
+                                                             ErpFinanceVisibleScope scope);
 
     Long writeOffReceivable(ErpReceivableWriteOffReqVO reqVO);
 

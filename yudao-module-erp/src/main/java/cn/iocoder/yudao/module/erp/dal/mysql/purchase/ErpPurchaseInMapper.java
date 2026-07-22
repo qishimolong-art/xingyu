@@ -7,6 +7,7 @@ import cn.iocoder.yudao.framework.mybatis.core.query.MPJLambdaWrapperX;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.in.ErpPurchaseInPageReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseInDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseInItemDO;
+import cn.iocoder.yudao.module.erp.dal.mysql.common.ErpKeywordQuery;
 import cn.iocoder.yudao.module.erp.enums.ErpAuditStatus;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.core.toolkit.support.SFunction;
@@ -31,10 +32,12 @@ public interface ErpPurchaseInMapper extends BaseMapperX<ErpPurchaseInDO> {
                 .betweenIfPresent(ErpPurchaseInDO::getInTime, reqVO.getInTime())
                 .eqIfPresent(ErpPurchaseInDO::getStatus, reqVO.getStatus())
                 .likeIfPresent(ErpPurchaseInDO::getRemark, reqVO.getRemark())
+                .eqIfPresent(ErpPurchaseInDO::getPurchaser, reqVO.getPurchaser())
+                .eqIfPresent(ErpPurchaseInDO::getHandler, reqVO.getHandler())
                 .eqIfPresent(ErpPurchaseInDO::getCreator, reqVO.getCreator())
                 .eqIfPresent(ErpPurchaseInDO::getAccountId, reqVO.getAccountId())
                 .likeIfPresent(ErpPurchaseInDO::getOrderNo, reqVO.getOrderNo());
-        // 付款状态。为什么需要 t. 的原因，是因为联表查询时，需要指定表名，不然会报字段不存在的错误
+        // 付款状态。为什么需�?t. 的原因，是因为联表查询时，需要指定表名，不然会报字段不存在的错误
         if (Objects.equals(reqVO.getPaymentStatus(), ErpPurchaseInPageReqVO.PAYMENT_STATUS_NONE)) {
             query.eq(ErpPurchaseInDO::getPaymentPrice, 0);
         } else if (Objects.equals(reqVO.getPaymentStatus(), ErpPurchaseInPageReqVO.PAYMENT_STATUS_PART)) {
@@ -63,6 +66,18 @@ public interface ErpPurchaseInMapper extends BaseMapperX<ErpPurchaseInDO> {
                     .eq(reqVO.getProductId() != null, ErpPurchaseInItemDO::getProductId, reqVO.getProductId())
                     .groupBy(ErpPurchaseInDO::getId); // 避免 1 对多查询，产生相同的 1
         }
+        ErpKeywordQuery.appendWithDeptName(query, reqVO.getKeyword(),
+                ErpPurchaseInDO::getNo, ErpPurchaseInDO::getOrderNo,
+                ErpPurchaseInDO::getRemark, ErpPurchaseInDO::getPurchaser,
+                ErpPurchaseInDO::getInvoiceType, ErpPurchaseInDO::getTransportMethod,
+                ErpPurchaseInDO::getSettleMethod, ErpPurchaseInDO::getPurchaseArea,
+                ErpPurchaseInDO::getAccountant, ErpPurchaseInDO::getFactoryOrderNo,
+                ErpPurchaseInDO::getOrderMethod, ErpPurchaseInDO::getFreightType1,
+                ErpPurchaseInDO::getFreightType2, ErpPurchaseInDO::getFreightObject1,
+                ErpPurchaseInDO::getFreightObject2, ErpPurchaseInDO::getLogisticsCompany,
+                ErpPurchaseInDO::getHandler, ErpPurchaseInDO::getPriority,
+                ErpPurchaseInDO::getUnloader, ErpPurchaseInDO::getFloatRecord,
+                ErpPurchaseInDO::getReceiveUnit, ErpPurchaseInDO::getBusinessEntity);
         orderByIfPresent(query, reqVO);
         return selectJoinPage(reqVO, ErpPurchaseInDO.class, query);
     }

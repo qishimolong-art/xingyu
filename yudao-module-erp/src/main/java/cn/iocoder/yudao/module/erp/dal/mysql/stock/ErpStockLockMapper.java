@@ -4,6 +4,7 @@ import cn.iocoder.yudao.framework.mybatis.core.mapper.BaseMapperX;
 import cn.iocoder.yudao.framework.mybatis.core.query.LambdaQueryWrapperX;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockLockDO;
 import org.apache.ibatis.annotations.Mapper;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 
 import java.math.BigDecimal;
 import java.util.List;
@@ -30,8 +31,38 @@ public interface ErpStockLockMapper extends BaseMapperX<ErpStockLockDO> {
                 .eq(ErpStockLockDO::getStatus, 1));
     }
 
+    default ErpStockLockDO selectActiveByBizItem(Integer bizType, Long bizId, Long bizItemId) {
+        return selectOne(new LambdaQueryWrapperX<ErpStockLockDO>()
+                .eq(ErpStockLockDO::getBizType, bizType)
+                .eq(ErpStockLockDO::getBizId, bizId)
+                .eq(ErpStockLockDO::getBizItemId, bizItemId)
+                .eq(ErpStockLockDO::getStatus, 1));
+    }
+
+    default int updateStatusIfActive(Long id, Integer status) {
+        return update(null, new LambdaUpdateWrapper<ErpStockLockDO>()
+                .eq(ErpStockLockDO::getId, id)
+                .eq(ErpStockLockDO::getStatus, 1)
+                .set(ErpStockLockDO::getStatus, status));
+    }
+
+    default int updateWarehouseIfActive(Long id, Long fromWarehouseId, Long toWarehouseId) {
+        return update(null, new LambdaUpdateWrapper<ErpStockLockDO>()
+                .eq(ErpStockLockDO::getId, id)
+                .eq(ErpStockLockDO::getStatus, 1)
+                .eq(ErpStockLockDO::getWarehouseId, fromWarehouseId)
+                .set(ErpStockLockDO::getWarehouseId, toWarehouseId));
+    }
+
     default Long selectActiveCountByWarehouseId(Long warehouseId) {
         return selectCount(new LambdaQueryWrapperX<ErpStockLockDO>()
+                .eq(ErpStockLockDO::getWarehouseId, warehouseId)
+                .eq(ErpStockLockDO::getStatus, 1));
+    }
+
+    default Long selectActiveCountByProductIdAndWarehouseId(Long productId, Long warehouseId) {
+        return selectCount(new LambdaQueryWrapperX<ErpStockLockDO>()
+                .eq(ErpStockLockDO::getProductId, productId)
                 .eq(ErpStockLockDO::getWarehouseId, warehouseId)
                 .eq(ErpStockLockDO::getStatus, 1));
     }

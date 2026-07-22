@@ -8,6 +8,7 @@ import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseInItemDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockInBillDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockInBillItemDO;
 
+import java.util.Collection;
 import java.util.List;
 
 public interface ErpStockInBillService {
@@ -16,7 +17,15 @@ public interface ErpStockInBillService {
 
     ErpStockInBillDO getStockInBill(Long id);
 
+    List<ErpStockInBillDO> getStockInBillList(List<Long> ids);
+
     List<ErpStockInBillItemDO> getStockInBillItemList(Long billId);
+
+    List<ErpStockInBillItemDO> getStockInBillItemListByBillIds(Collection<Long> billIds);
+
+    List<ErpStockInBillDO> getStockInBillListByPurchaseInId(Long purchaseInId);
+
+    List<ErpStockInBillItemDO> getPurchaseInSourceItemList(Long purchaseInId);
 
     void createFromPurchaseIn(ErpPurchaseInDO purchaseIn, List<ErpPurchaseInItemDO> purchaseInItems);
 

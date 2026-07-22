@@ -7,6 +7,8 @@ import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.warehouse.ErpWareho
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.warehouse.ErpWarehouseSaveReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.warehouse.ErpWarehousePageReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpWarehouseDO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockDO;
+import cn.iocoder.yudao.module.erp.service.stock.bo.ErpProductStockPermissionScope;
 
 import javax.validation.Valid;
 import java.util.Collection;
@@ -106,6 +108,13 @@ public interface ErpWarehouseService {
     ErpWarehouseDO getCurrentUserVisibleWarehouse(Long id);
 
     /**
+     * Gets warehouse ids visible only because of sale department distribution.
+     *
+     * @return sale-distributed visible warehouse ids
+     */
+    Set<Long> getCurrentUserSaleDistributedVisibleWarehouseIds();
+
+    /**
      * 校验仓库列表的有效性
      *
      * @param ids 编号数组
@@ -130,12 +139,30 @@ public interface ErpWarehouseService {
     List<ErpWarehouseDO> validSaleWarehouseList(Collection<Long> ids);
 
     /**
+     * Validates sale warehouses against the owning sales department instead of the current login user.
+     * Used by automatic document linkage executed outside the original request security context.
+     *
+     * @param ids warehouse ids
+     * @param deptId sales department id
+     * @return warehouse list
+     */
+    List<ErpWarehouseDO> validSaleWarehouseListForDept(Collection<Long> ids, Long deptId);
+
+    /**
      * 获得指定状态的仓库列表
      *
      * @param status 状态
      * @return 仓库列表
      */
     List<ErpWarehouseDO> getWarehouseListByStatus(Integer status);
+
+    /**
+     * Resolves the enabled direct-delivery warehouse owned by the sales department, creating it when absent.
+     *
+     * @param deptId sales department id
+     * @return direct-delivery warehouse id
+     */
+    Long resolveDirectWarehouseId(Long deptId);
 
     /**
      * Gets purchase enabled warehouses by status.
@@ -182,6 +209,66 @@ public interface ErpWarehouseService {
     List<ErpWarehouseDO> getCurrentUserAuthorizedSaleWarehouseList();
 
     /**
+     * Gets enabled sale warehouse list visible to current login user in sale workflows.
+     *
+     * @return warehouse list
+     */
+    List<ErpWarehouseDO> getCurrentUserVisibleSaleWarehouseList();
+
+    /**
+     * Gets enabled warehouse list visible to current login user on the product stock page.
+     * Includes directly authorized warehouses and sale-department distributed warehouses.
+     *
+     * @return warehouse list
+     */
+    List<ErpWarehouseDO> getCurrentUserStockVisibleWarehouseList();
+
+    /**
+     * Resolves the product-stock form data permission to warehouse ownership.
+     * User warehouse assignments and sale-department distribution are deliberately excluded.
+     */
+    ErpProductStockPermissionScope getCurrentUserProductStockPermissionScope();
+
+    /**
+     * Gets enabled warehouse list visible to current login user as stock move source warehouses.
+     *
+     * @return warehouse list
+     */
+    List<ErpWarehouseDO> getCurrentUserStockMoveFromWarehouseList();
+
+    /**
+     * Gets sale enabled warehouse list authorized to current login user and sales department.
+     *
+     * @param deptId sales department id
+     * @return warehouse list
+     */
+    List<ErpWarehouseDO> getSaleWarehouseListByDeptId(Long deptId);
+
+    /**
+     * Gets warehouse sale department permissions.
+     *
+     * @param warehouseId warehouse id
+     * @return department ids
+     */
+    Set<Long> getWarehouseSaleDeptIds(Long warehouseId);
+
+    /**
+     * Replaces warehouse sale department permissions.
+     *
+     * @param warehouseId warehouse id
+     * @param deptIds department ids
+     */
+    void updateWarehouseSaleDeptPermissions(Long warehouseId, Collection<Long> deptIds);
+
+    /**
+     * Validates warehouse can be selected by sales department.
+     *
+     * @param warehouseId warehouse id
+     * @param deptId sales department id
+     */
+    void validateWarehouseSaleAllowedForDept(Long warehouseId, Long deptId);
+
+    /**
      * Gets authorized warehouse ids by user id.
      *
      * @param userId user id
@@ -219,6 +306,25 @@ public interface ErpWarehouseService {
      * @param warehouseIds warehouse ids
      */
     void validateCurrentUserWarehousePermission(Collection<Long> warehouseIds);
+
+    /**
+     * Validates current login user can view warehouses on the product stock page.
+     *
+     * @param warehouseIds warehouse ids
+     */
+    void validateCurrentUserStockWarehousePermission(Collection<Long> warehouseIds);
+
+    /**
+     * Validates product-stock row access, including the strict creator predicate for self-only scope.
+     */
+    void validateCurrentUserStockPermission(Collection<ErpStockDO> stocks);
+
+    /**
+     * Validates current login user can use warehouses as stock move source warehouses.
+     *
+     * @param warehouseIds warehouse ids
+     */
+    void validateCurrentUserStockMoveFromWarehousePermission(Collection<Long> warehouseIds);
 
     /**
      * Whether current login user has all warehouse access.

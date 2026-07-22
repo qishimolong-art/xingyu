@@ -119,6 +119,18 @@ public class ErpSalePriceAdjustRespVO {
         @Schema(description = "出库数")
         private BigDecimal outCount;
 
+        @Schema(description = "仓库编号")
+        private Long warehouseId;
+
+        @Schema(description = "仓库名称")
+        private String warehouseName;
+
+        @Schema(description = "仓库所属部门 ID")
+        private Long warehouseDeptId;
+
+        @Schema(description = "仓库所属部门名称")
+        private String warehouseDeptName;
+
         @Schema(description = "原售价")
         private BigDecimal oldPrice;
 
@@ -130,6 +142,9 @@ public class ErpSalePriceAdjustRespVO {
 
         @Schema(description = "产品ID")
         private Long productId;
+
+        @Schema(description = "所属部门ID")
+        private Long deptId;
 
         @Schema(description = "关联销售出库项ID")
         private Long saleOutItemId;

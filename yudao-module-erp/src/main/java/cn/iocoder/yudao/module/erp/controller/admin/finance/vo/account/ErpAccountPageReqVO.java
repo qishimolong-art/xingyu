@@ -35,4 +35,10 @@ public class ErpAccountPageReqVO extends PageParam {
     @Schema(description = "备注", example = "备注")
     private String remark;
 
+    @Schema(description = "排序字段")
+    private String orderField;
+
+    @Schema(description = "排序方向（asc/desc）")
+    private String orderDirection;
+
 }

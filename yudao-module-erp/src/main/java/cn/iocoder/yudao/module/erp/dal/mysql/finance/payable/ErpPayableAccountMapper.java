@@ -10,6 +10,7 @@ import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
 
+import java.util.Collection;
 import java.util.List;
 
 @Mapper
@@ -41,6 +42,7 @@ public interface ErpPayableAccountMapper extends BaseMapperX<ErpPayableAccountDO
             "              MAX(handler) AS handlerId",
             "         FROM erp_purchase_in",
             "        WHERE deleted = 0",
+            "          <if test='!documentAll'> AND (<choose><when test='documentDeptIds != null and documentDeptIds.size() > 0'>dept_id IN <foreach collection='documentDeptIds' item='id' open='(' separator=',' close=')'>#{id}</foreach><if test='documentSelfUserId != null'> OR creator = #{documentSelfUserId}</if></when><otherwise>creator = #{documentSelfUserId}</otherwise></choose>) </if>",
             "        GROUP BY supplier_id",
             "  ) base ON base.supplierId = s.id",
             "  LEFT JOIN (",
@@ -49,6 +51,7 @@ public interface ErpPayableAccountMapper extends BaseMapperX<ErpPayableAccountDO
             "              MAX(dept_id) AS deptId",
             "         FROM erp_purchase_price_adjust",
             "        WHERE deleted = 0 AND status = 20",
+            "          <if test='!documentAll'> AND (<choose><when test='documentDeptIds != null and documentDeptIds.size() > 0'>dept_id IN <foreach collection='documentDeptIds' item='id' open='(' separator=',' close=')'>#{id}</foreach><if test='documentSelfUserId != null'> OR adjuster = #{documentSelfUserId}</if></when><otherwise>adjuster = #{documentSelfUserId}</otherwise></choose>) </if>",
             "          <if test='reqVO.startTime != null and reqVO.endTime != null'>",
             "          AND adjust_time BETWEEN #{reqVO.startTime} AND #{reqVO.endTime}",
             "          </if>",
@@ -60,6 +63,7 @@ public interface ErpPayableAccountMapper extends BaseMapperX<ErpPayableAccountDO
             "       SELECT supplier_id, SUM(total_price) AS purchaseInAmount",
             "         FROM erp_purchase_in",
             "        WHERE deleted = 0 AND status = 20",
+            "          <if test='!documentAll'> AND (<choose><when test='documentDeptIds != null and documentDeptIds.size() > 0'>dept_id IN <foreach collection='documentDeptIds' item='id' open='(' separator=',' close=')'>#{id}</foreach><if test='documentSelfUserId != null'> OR creator = #{documentSelfUserId}</if></when><otherwise>creator = #{documentSelfUserId}</otherwise></choose>) </if>",
             "          <if test='reqVO.startTime != null and reqVO.endTime != null'>",
             "          AND in_time BETWEEN #{reqVO.startTime} AND #{reqVO.endTime}",
             "          </if>",
@@ -69,15 +73,17 @@ public interface ErpPayableAccountMapper extends BaseMapperX<ErpPayableAccountDO
             "       SELECT supplier_id, SUM(total_price) AS purchaseReturnAmount",
             "         FROM erp_purchase_return",
             "        WHERE deleted = 0 AND status = 20",
+            "          <if test='!documentAll'> AND (<choose><when test='documentDeptIds != null and documentDeptIds.size() > 0'>dept_id IN <foreach collection='documentDeptIds' item='id' open='(' separator=',' close=')'>#{id}</foreach><if test='documentSelfUserId != null'> OR handler = #{documentSelfUserId}</if></when><otherwise>handler = #{documentSelfUserId}</otherwise></choose>) </if>",
             "          <if test='reqVO.startTime != null and reqVO.endTime != null'>",
             "          AND return_time BETWEEN #{reqVO.startTime} AND #{reqVO.endTime}",
             "          </if>",
             "        GROUP BY supplier_id",
             "  ) pr ON pr.supplier_id = s.id",
             "  LEFT JOIN (",
-            "       SELECT supplier_id, SUM(payment_price) AS paymentAmount",
+            "       SELECT supplier_id, SUM(total_price) AS paymentAmount",
             "         FROM erp_finance_payment",
             "        WHERE deleted = 0 AND status = 20",
+            "          <if test='!documentAll'> AND (<choose><when test='documentDeptIds != null and documentDeptIds.size() > 0'>dept_id IN <foreach collection='documentDeptIds' item='id' open='(' separator=',' close=')'>#{id}</foreach><if test='documentSelfUserId != null'> OR finance_user_id = #{documentSelfUserId}</if></when><otherwise>finance_user_id = #{documentSelfUserId}</otherwise></choose>) </if>",
             "          <if test='reqVO.startTime != null and reqVO.endTime != null'>",
             "          AND payment_time BETWEEN #{reqVO.startTime} AND #{reqVO.endTime}",
             "          </if>",
@@ -87,6 +93,7 @@ public interface ErpPayableAccountMapper extends BaseMapperX<ErpPayableAccountDO
             "       SELECT supplier_id, SUM(payable_amount) AS otherPayableAmount",
             "         FROM erp_payable_other",
             "        WHERE deleted = 0 AND status = 20",
+            "          <if test='!documentAll'> AND (<choose><when test='documentDeptIds != null and documentDeptIds.size() > 0'>dept_id IN <foreach collection='documentDeptIds' item='id' open='(' separator=',' close=')'>#{id}</foreach><if test='documentSelfUserId != null'> OR handler_id = #{documentSelfUserId}</if></when><otherwise>handler_id = #{documentSelfUserId}</otherwise></choose>) </if>",
             "          <if test='reqVO.startTime != null and reqVO.endTime != null'>",
             "          AND biz_time BETWEEN #{reqVO.startTime} AND #{reqVO.endTime}",
             "          </if>",
@@ -96,6 +103,7 @@ public interface ErpPayableAccountMapper extends BaseMapperX<ErpPayableAccountDO
             "       SELECT supplier_id, SUM(write_off_amount) AS writeOffAmount, MAX(write_off_time) AS lastBizTime",
             "         FROM erp_payable_writeoff",
             "        WHERE deleted = 0",
+            "          <if test='!documentAll'> AND (<choose><when test='documentDeptIds != null and documentDeptIds.size() > 0'>dept_id IN <foreach collection='documentDeptIds' item='id' open='(' separator=',' close=')'>#{id}</foreach><if test='documentSelfUserId != null'> OR operator_user_id = #{documentSelfUserId}</if></when><otherwise>operator_user_id = #{documentSelfUserId}</otherwise></choose>) </if>",
             "          <if test='reqVO.startTime != null and reqVO.endTime != null'>",
             "          AND write_off_time BETWEEN #{reqVO.startTime} AND #{reqVO.endTime}",
             "          </if>",
@@ -105,6 +113,7 @@ public interface ErpPayableAccountMapper extends BaseMapperX<ErpPayableAccountDO
             "       SELECT party_id, SUM(actual_amount) AS unclearedPrepayment",
             "         FROM erp_pre_payment",
             "        WHERE deleted = 0 AND status = 20 AND party_type = 2",
+            "          <if test='!documentAll'> AND <choose><when test='documentDeptIds != null and documentDeptIds.size() > 0'>dept_id IN <foreach collection='documentDeptIds' item='id' open='(' separator=',' close=')'>#{id}</foreach></when><otherwise>creator = CAST(#{documentSelfUserId} AS CHAR)</otherwise></choose> </if>",
             "        GROUP BY party_id",
             "  ) pp ON pp.party_id = s.id",
             "  LEFT JOIN (",
@@ -127,18 +136,76 @@ public interface ErpPayableAccountMapper extends BaseMapperX<ErpPayableAccountDO
             " WHERE s.deleted = 0",
             "   <if test='reqVO.supplierId != null'> AND s.id = #{reqVO.supplierId} </if>",
             "   <if test='reqVO.supplierName != null and reqVO.supplierName != \"\"'> AND s.name LIKE CONCAT('%', #{reqVO.supplierName}, '%') </if>",
-            "   <if test='reqVO.deptId != null'> AND COALESCE(base.deptId, pa.deptId) = #{reqVO.deptId} </if>",
+            "   <if test='reqVO.deptId != null'>",
+            "   AND (s.dept_id = #{reqVO.deptId}",
+            "        OR (s.allow_multi_dept = true",
+            "            AND EXISTS (SELECT 1 FROM erp_supplier_dept esd",
+            "                         WHERE esd.supplier_id = s.id",
+            "                           AND esd.deleted = b'0'",
+            "                           AND esd.tenant_id = s.tenant_id",
+            "                           AND esd.dept_id = #{reqVO.deptId})))",
+            "   </if>",
             "   <if test='reqVO.handlerId != null'> AND base.handlerId = #{reqVO.handlerId} </if>",
+            "   <if test='!all'>",
+            "   AND (",
+            "        <choose>",
+            "        <when test='deptIds != null and deptIds.size() > 0'>",
+            "        (s.dept_id IN",
+            "         <foreach collection='deptIds' item='deptId' open='(' separator=',' close=')'>#{deptId}</foreach>",
+            "         OR (s.allow_multi_dept = true",
+            "             AND EXISTS (SELECT 1 FROM erp_supplier_dept esd_scope",
+            "                          WHERE esd_scope.supplier_id = s.id",
+            "                            AND esd_scope.deleted = b'0'",
+            "                            AND esd_scope.tenant_id = s.tenant_id",
+            "                            AND esd_scope.dept_id IN",
+            "                            <foreach collection='deptIds' item='scopeDeptId' open='(' separator=',' close=')'>#{scopeDeptId}</foreach>)))",
+            "        </when>",
+            "        <otherwise>1 = 0</otherwise>",
+            "        </choose>",
+            "        <if test='selfUserId != null'> OR s.creator = #{selfUserId} </if>",
+            "   )",
+            "   </if>",
+            "   <if test='reqVO.keyword != null and reqVO.keyword != \"\"'>",
+            "   AND (s.name LIKE CONCAT('%', #{reqVO.keyword}, '%')",
+            "        OR s.contact LIKE CONCAT('%', #{reqVO.keyword}, '%')",
+            "        OR s.mobile LIKE CONCAT('%', #{reqVO.keyword}, '%')",
+            "        OR d.name LIKE CONCAT('%', #{reqVO.keyword}, '%')",
+            "        OR u.nickname LIKE CONCAT('%', #{reqVO.keyword}, '%')",
+            "        OR DATE_FORMAT(s.create_time, '%Y-%m-%d %H:%i:%s') LIKE CONCAT('%', #{reqVO.keyword}, '%'))",
+            "   </if>",
             "   <if test='reqVO.showZeroBalance == null or !reqVO.showZeroBalance'>",
             "   AND (IFNULL(pi.purchaseInAmount, 0) + IFNULL(pa.priceAdjustAmount, 0) + IFNULL(po.otherPayableAmount, 0) - IFNULL(pr.purchaseReturnAmount, 0) - IFNULL(fp.paymentAmount, 0) - IFNULL(pwo.writeOffAmount, 0)) &lt;&gt; 0",
             "   </if>",
-            " ORDER BY balance DESC, s.id DESC",
+            " <choose>",
+            "   <when test='reqVO.orderDirection == \"asc\" and reqVO.orderField == \"supplierName\"'>ORDER BY supplierName ASC, s.id DESC</when>",
+            "   <when test='reqVO.orderDirection == \"desc\" and reqVO.orderField == \"supplierName\"'>ORDER BY supplierName DESC, s.id DESC</when>",
+            "   <when test='reqVO.orderDirection == \"asc\" and reqVO.orderField == \"balance\"'>ORDER BY balance ASC, s.id DESC</when>",
+            "   <when test='reqVO.orderDirection == \"desc\" and reqVO.orderField == \"balance\"'>ORDER BY balance DESC, s.id DESC</when>",
+            "   <when test='reqVO.orderDirection == \"asc\" and reqVO.orderField == \"paymentAmount\"'>ORDER BY paymentAmount ASC, s.id DESC</when>",
+            "   <when test='reqVO.orderDirection == \"desc\" and reqVO.orderField == \"paymentAmount\"'>ORDER BY paymentAmount DESC, s.id DESC</when>",
+            "   <otherwise>ORDER BY balance DESC, s.id DESC</otherwise>",
+            " </choose>",
             "</script>"
     })
-    List<ErpPayableAccountDO> selectList(@Param("reqVO") ErpPayableAccountPageReqVO reqVO);
+    List<ErpPayableAccountDO> selectList(@Param("reqVO") ErpPayableAccountPageReqVO reqVO,
+                                         @Param("deptIds") Collection<Long> deptIds,
+                                         @Param("selfUserId") String selfUserId,
+                                         @Param("all") boolean all,
+                                         @Param("documentDeptIds") Collection<Long> documentDeptIds,
+                                         @Param("documentSelfUserId") Long documentSelfUserId,
+                                         @Param("documentAll") boolean documentAll);
 
     default PageResult<ErpPayableAccountDO> selectPage(ErpPayableAccountPageReqVO reqVO) {
-        List<ErpPayableAccountDO> list = selectList(reqVO);
+        return selectPage(reqVO, null, null, true, null, null, true);
+    }
+
+    default PageResult<ErpPayableAccountDO> selectPage(ErpPayableAccountPageReqVO reqVO,
+                                                       Collection<Long> deptIds,
+                                                       String selfUserId,
+                                                       boolean all, Collection<Long> documentDeptIds,
+                                                       Long documentSelfUserId, boolean documentAll) {
+        List<ErpPayableAccountDO> list = selectList(reqVO, deptIds, selfUserId, all,
+                documentDeptIds, documentSelfUserId, documentAll);
         long total = list.size();
         int fromIndex = Math.max(0, (reqVO.getPageNo() - 1) * reqVO.getPageSize());
         int toIndex = Math.min(list.size(), fromIndex + reqVO.getPageSize());
@@ -166,7 +233,7 @@ public interface ErpPayableAccountMapper extends BaseMapperX<ErpPayableAccountDO
             "  LEFT JOIN (SELECT supplier_id, SUM(total_price) AS purchaseReturnAmount FROM erp_purchase_return WHERE deleted = 0 AND status = 20 AND supplier_id = #{supplierId} GROUP BY supplier_id) pr ON pr.supplier_id = s.id",
             "  LEFT JOIN (SELECT supplier_id, SUM(total_adjust_price) AS priceAdjustAmount FROM erp_purchase_price_adjust WHERE deleted = 0 AND status = 20 AND supplier_id = #{supplierId} GROUP BY supplier_id) pa ON pa.supplier_id = s.id",
             "  LEFT JOIN (SELECT supplier_id, SUM(payable_amount) AS otherPayableAmount FROM erp_payable_other WHERE deleted = 0 AND status = 20 AND supplier_id = #{supplierId} GROUP BY supplier_id) po ON po.supplier_id = s.id",
-            "  LEFT JOIN (SELECT supplier_id, SUM(payment_price) AS paymentAmount FROM erp_finance_payment WHERE deleted = 0 AND status = 20 AND supplier_id = #{supplierId} GROUP BY supplier_id) fp ON fp.supplier_id = s.id",
+            "  LEFT JOIN (SELECT supplier_id, SUM(total_price) AS paymentAmount FROM erp_finance_payment WHERE deleted = 0 AND status = 20 AND supplier_id = #{supplierId} GROUP BY supplier_id) fp ON fp.supplier_id = s.id",
             "  LEFT JOIN (SELECT supplier_id, SUM(write_off_amount) AS writeOffAmount FROM erp_payable_writeoff WHERE deleted = 0 AND supplier_id = #{supplierId} GROUP BY supplier_id) pwo ON pwo.supplier_id = s.id",
             " WHERE s.deleted = 0 AND s.id = #{supplierId}",
             "</script>"
@@ -208,7 +275,7 @@ public interface ErpPayableAccountMapper extends BaseMapperX<ErpPayableAccountDO
             "          AND biz_time BETWEEN #{reqVO.startTime} AND #{reqVO.endTime}",
             "          </if>",
             "       UNION ALL",
-            "       SELECT '付款单' AS docType, NULL AS bizType, id AS bizId, payment_time AS docDate, no AS docNo, 0 AS increaseAmount, payment_price AS paymentAmount, 0 AS writeOffAmount",
+            "       SELECT '付款单' AS docType, NULL AS bizType, id AS bizId, payment_time AS docDate, no AS docNo, 0 AS increaseAmount, total_price AS paymentAmount, 0 AS writeOffAmount",
             "         FROM erp_finance_payment",
             "        WHERE deleted = 0 AND status = 20 AND supplier_id = #{reqVO.supplierId}",
             "          <if test='reqVO.startTime != null and reqVO.endTime != null'>",

@@ -134,6 +134,7 @@ public class ErpSaleQuoteSaveReqVO {
         @Schema(description = "仓库编号")
         @NotNull(message = "仓库编号不能为空")
         private Long warehouseId;
+        private Long deptId;
 
         @Schema(description = "产品编号", requiredMode = Schema.RequiredMode.REQUIRED)
         @NotNull(message = "产品编号不能为空")

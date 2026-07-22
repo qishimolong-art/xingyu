@@ -3,15 +3,21 @@ package cn.iocoder.yudao.module.erp.controller.admin.sale;
 import cn.iocoder.yudao.framework.common.pojo.CommonResult;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.test.core.ut.BaseMockitoUnitTest;
+import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpProductRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.order.ErpSaleOrderPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.order.ErpSaleOrderRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.order.ErpSaleOrderSaveReqVO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpCustomerDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleOrderDO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleOrderItemDO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpWarehouseDO;
 import cn.iocoder.yudao.module.erp.service.product.ErpProductService;
 import cn.iocoder.yudao.module.erp.service.sale.ErpCustomerService;
 import cn.iocoder.yudao.module.erp.service.sale.ErpSaleFieldPermissionMasker;
 import cn.iocoder.yudao.module.erp.service.sale.ErpSaleOrderService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpStockService;
+import cn.iocoder.yudao.module.erp.service.stock.ErpWarehouseService;
+import cn.iocoder.yudao.module.system.api.dept.DeptApi;
 import cn.iocoder.yudao.module.system.api.user.AdminUserApi;
 import org.junit.jupiter.api.Test;
 import org.mockito.InjectMocks;
@@ -19,8 +25,10 @@ import org.mockito.Mock;
 import org.springframework.security.access.prepost.PreAuthorize;
 
 import java.lang.reflect.Method;
+import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -47,6 +55,8 @@ public class ErpSaleOrderControllerTest extends BaseMockitoUnitTest {
     @Mock
     private ErpStockService stockService;
     @Mock
+    private ErpWarehouseService warehouseService;
+    @Mock
     private ErpProductService productService;
     @Mock
     private ErpCustomerService customerService;
@@ -54,6 +64,8 @@ public class ErpSaleOrderControllerTest extends BaseMockitoUnitTest {
     private ErpSaleFieldPermissionMasker fieldPermissionMasker;
     @Mock
     private AdminUserApi adminUserApi;
+    @Mock
+    private DeptApi deptApi;
 
     // ========== createSaleOrder ==========
 
@@ -156,6 +168,47 @@ public class ErpSaleOrderControllerTest extends BaseMockitoUnitTest {
         assertEquals(0, result.getCode());
         assertNull(result.getData());
         verify(saleOrderService).getSaleOrder(eq(1024L));
+    }
+
+    @Test
+    public void testGetSaleOrder_itemWarehouseNameFilledByWarehouseId() {
+        ErpSaleOrderDO order = new ErpSaleOrderDO();
+        order.setId(1024L);
+        ErpSaleOrderItemDO item = new ErpSaleOrderItemDO();
+        item.setId(1L);
+        item.setOrderId(1024L);
+        item.setProductId(10L);
+        item.setWarehouseId(20L);
+        item.setCount(BigDecimal.ONE);
+        when(saleOrderService.getSaleOrder(eq(1024L))).thenReturn(order);
+        when(saleOrderService.getSaleOrderItemListByOrderId(eq(1024L))).thenReturn(Collections.singletonList(item));
+        when(productService.getProductVOMap(any())).thenReturn(Collections.singletonMap(10L,
+                new ErpProductRespVO().setId(10L).setName("P1")));
+        when(warehouseService.getWarehouseMap(any())).thenReturn(Collections.singletonMap(20L,
+                ErpWarehouseDO.builder().id(20L).name("分发仓").warehouseCode("WH001").build()));
+        when(stockService.getStockCount(eq(10L))).thenReturn(BigDecimal.TEN);
+
+        CommonResult<ErpSaleOrderRespVO> result = controller.getSaleOrder(1024L);
+
+        assertEquals(0, result.getCode());
+        assertEquals("分发仓", result.getData().getItems().get(0).getWarehouseName());
+    }
+
+    @Test
+    public void testGetSaleOrder_customerNameFilledByCustomerId() {
+        ErpSaleOrderDO order = new ErpSaleOrderDO();
+        order.setId(1025L);
+        order.setCustomerId(30L);
+        when(saleOrderService.getSaleOrder(eq(1025L))).thenReturn(order);
+        when(saleOrderService.getSaleOrderItemListByOrderId(eq(1025L))).thenReturn(Collections.emptyList());
+        when(customerService.getCustomer(eq(30L)))
+                .thenReturn(new ErpCustomerDO().setId(30L).setName("客户甲"));
+
+        CommonResult<ErpSaleOrderRespVO> result = controller.getSaleOrder(1025L);
+
+        assertEquals(0, result.getCode());
+        assertEquals("客户甲", result.getData().getCustomerName());
+        verify(customerService).getCustomer(eq(30L));
     }
 
     @Test

@@ -18,4 +18,10 @@ public class ErpProductUnitPageReqVO extends PageParam {
     @Schema(description = "单位状态", example = "1")
     private Integer status;
 
+    @Schema(description = "排序字段", example = "createTime")
+    private String orderField;
+
+    @Schema(description = "排序方向", example = "desc")
+    private String orderDirection;
+
 }

@@ -181,7 +181,7 @@ public class ErpFieldConfigServiceImpl implements ErpFieldConfigService {
         config.setListVisible(Boolean.TRUE.equals(reqVO.getListVisible()));
         config.setSearchable(Boolean.TRUE.equals(reqVO.getSearchable()));
         config.setReadonly(Boolean.TRUE.equals(reqVO.getReadonly()));
-        config.setSort(resolveCustomFieldSort(moduleKey));
+        config.setSort(reqVO.getSort() == null ? resolveCustomFieldSort(moduleKey) : reqVO.getSort());
         fieldConfigMapper.insert(config);
         syncFieldDefinition(config);
         return config;

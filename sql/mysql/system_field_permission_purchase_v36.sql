@@ -1,6 +1,6 @@
 -- Purchase management form field permission definitions.
--- Scope: main form fields, form detail-item columns, and supplier form fields.
--- List search fields, list table columns, and selection modal fields are intentionally excluded.
+-- Scope: main form fields, form detail-item columns, supplier form fields, and
+-- selection modal fields used by purchase invoice/return detail picking.
 
 CREATE TABLE IF NOT EXISTS `system_field_definition` (
   `id` BIGINT NOT NULL AUTO_INCREMENT COMMENT 'Primary key',
@@ -161,6 +161,8 @@ VALUES
 ('erp_purchase_return', 'fileUrl', '附件', 'main_form', 250, '1', NOW(), '1', NOW(), b'0', 1),
 ('erp_purchase_return', 'items', '退货产品清单', 'main_form', 260, '1', NOW(), '1', NOW(), b'0', 1),
 ('erp_purchase_return', 'item_warehouseId', '仓库名称', 'detail_item', 310, '1', NOW(), '1', NOW(), b'0', 1),
+('erp_purchase_return', 'item_productCode', '产品编码', 'detail_item', 315, '1', NOW(), '1', NOW(), b'0', 1),
+('erp_purchase_return', 'item_productName', '产品名称', 'detail_item', 318, '1', NOW(), '1', NOW(), b'0', 1),
 ('erp_purchase_return', 'item_productId', '产品名称', 'detail_item', 320, '1', NOW(), '1', NOW(), b'0', 1),
 ('erp_purchase_return', 'item_count', '数量', 'detail_item', 330, '1', NOW(), '1', NOW(), b'0', 1),
 ('erp_purchase_return', 'item_productPrice', '产品单价', 'detail_item', 340, '1', NOW(), '1', NOW(), b'0', 1),
@@ -179,6 +181,18 @@ VALUES
 ('erp_purchase_return', 'item_returnCount', '已退货', 'detail_item', 470, '1', NOW(), '1', NOW(), b'0', 1),
 ('erp_purchase_return', 'item_taxPercent', '税率(%)', 'detail_item', 480, '1', NOW(), '1', NOW(), b'0', 1),
 ('erp_purchase_return', 'item_taxPrice', '税额', 'detail_item', 490, '1', NOW(), '1', NOW(), b'0', 1),
+('erp_purchase_return', 'select_col_no', '选择入库单号', 'select_modal', 610, '1', NOW(), '1', NOW(), b'0', 1),
+('erp_purchase_return', 'select_col_supplierName', '选择供应商', 'select_modal', 620, '1', NOW(), '1', NOW(), b'0', 1),
+('erp_purchase_return', 'select_col_inTime', '选择入库时间', 'select_modal', 630, '1', NOW(), '1', NOW(), b'0', 1),
+('erp_purchase_return', 'select_col_totalCount', '选择入库数量', 'select_modal', 640, '1', NOW(), '1', NOW(), b'0', 1),
+('erp_purchase_return', 'select_col_totalPrice', '选择入库金额', 'select_modal', 650, '1', NOW(), '1', NOW(), b'0', 1),
+('erp_purchase_return', 'select_col_orderNo', '选择来源单号', 'select_modal', 660, '1', NOW(), '1', NOW(), b'0', 1),
+('erp_purchase_return', 'select_col_productCode', '选择产品编码', 'select_modal', 710, '1', NOW(), '1', NOW(), b'0', 1),
+('erp_purchase_return', 'select_col_productName', '选择产品名称', 'select_modal', 720, '1', NOW(), '1', NOW(), b'0', 1),
+('erp_purchase_return', 'select_col_lastPurchasePrice', '选择最近采购价', 'select_modal', 730, '1', NOW(), '1', NOW(), b'0', 1),
+('erp_purchase_return', 'select_col_salePrice', '选择销售价', 'select_modal', 740, '1', NOW(), '1', NOW(), b'0', 1),
+('erp_purchase_return', 'select_col_referencePrice', '选择参考价', 'select_modal', 750, '1', NOW(), '1', NOW(), b'0', 1),
+('erp_purchase_return', 'select_col_retailPrice', '选择零售价', 'select_modal', 760, '1', NOW(), '1', NOW(), b'0', 1),
 ('erp_purchase_return', 'item_totalPrice', '合计金额', 'detail_item', 500, '1', NOW(), '1', NOW(), b'0', 1),
 
 ('erp_supplier', 'name', '供应商名称', 'basic_info', 10, '1', NOW(), '1', NOW(), b'0', 1),
@@ -249,6 +263,7 @@ VALUES
 ('erp_purchase_invoice', 'taxAmount', '税额', 'main_form', 130, '1', NOW(), '1', NOW(), b'0', 1),
 ('erp_purchase_invoice', 'totalAmount', '价税合计', 'main_form', 140, '1', NOW(), '1', NOW(), b'0', 1),
 ('erp_purchase_invoice', 'item_sourceInNo', '来源入库单', 'detail_item', 210, '1', NOW(), '1', NOW(), b'0', 1),
+('erp_purchase_invoice', 'item_productCode', '产品编码', 'detail_item', 215, '1', NOW(), '1', NOW(), b'0', 1),
 ('erp_purchase_invoice', 'item_productId', '产品名称', 'detail_item', 220, '1', NOW(), '1', NOW(), b'0', 1),
 ('erp_purchase_invoice', 'item_count', '数量', 'detail_item', 230, '1', NOW(), '1', NOW(), b'0', 1),
 ('erp_purchase_invoice', 'item_productPrice', '不含税单价', 'detail_item', 240, '1', NOW(), '1', NOW(), b'0', 1),
@@ -256,6 +271,12 @@ VALUES
 ('erp_purchase_invoice', 'item_taxPercent', '税率(%)', 'detail_item', 260, '1', NOW(), '1', NOW(), b'0', 1),
 ('erp_purchase_invoice', 'item_taxPrice', '税额', 'detail_item', 270, '1', NOW(), '1', NOW(), b'0', 1),
 ('erp_purchase_invoice', 'item_totalPrice', '价税合计', 'detail_item', 280, '1', NOW(), '1', NOW(), b'0', 1),
+('erp_purchase_invoice', 'select_col_no', '选择入库单号', 'select_modal', 610, '1', NOW(), '1', NOW(), b'0', 1),
+('erp_purchase_invoice', 'select_col_inTime', '选择入库时间', 'select_modal', 620, '1', NOW(), '1', NOW(), b'0', 1),
+('erp_purchase_invoice', 'select_col_creatorName', '选择创建人', 'select_modal', 630, '1', NOW(), '1', NOW(), b'0', 1),
+('erp_purchase_invoice', 'select_col_hasInvoice', '选择已开票', 'select_modal', 640, '1', NOW(), '1', NOW(), b'0', 1),
+('erp_purchase_invoice', 'select_col_totalCount', '选择合计数量', 'select_modal', 650, '1', NOW(), '1', NOW(), b'0', 1),
+('erp_purchase_invoice', 'select_col_totalPrice', '选择合计金额', 'select_modal', 660, '1', NOW(), '1', NOW(), b'0', 1),
 ('erp_purchase_invoice', 'item_remark', '备注', 'detail_item', 290, '1', NOW(), '1', NOW(), b'0', 1),
 
 ('erp_purchase_price_adjust', 'no', '调价单号', 'main_form', 10, '1', NOW(), '1', NOW(), b'0', 1),

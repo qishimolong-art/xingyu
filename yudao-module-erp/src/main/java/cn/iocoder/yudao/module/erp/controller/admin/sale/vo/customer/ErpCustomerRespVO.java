@@ -5,6 +5,7 @@ import lombok.*;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.List;
 import cn.idev.excel.annotation.*;
 import cn.iocoder.yudao.framework.excel.core.annotations.DictFormat;
 import cn.iocoder.yudao.framework.excel.core.convert.DictConvert;
@@ -123,6 +124,13 @@ public class ErpCustomerRespVO {
     private Long saleUserId;
     private Long developerUserId;
     private Long deptId;
+    private List<Long> deptIds;
+    @ExcelProperty("所属部门")
+    private String deptName;
+    @ExcelProperty("适用部门")
+    private String deptNames;
+    @ExcelProperty("允许多部门")
+    private Boolean allowMultiDept;
     @ExcelProperty("价格级别")
     private Integer priceLevel;
     private Boolean priceLocked;
@@ -138,6 +146,10 @@ public class ErpCustomerRespVO {
 
     @Schema(description = "白条授信额度")
     private BigDecimal creditLimit;
+    @Schema(description = "是否启用白条授信")
+    private Boolean creditEnabled;
+    @Schema(description = "白条授信期限（天）")
+    private Integer creditTermDays;
     @Schema(description = "数据中心审核状态 0未审核 1已审核 2驳回")
     private Integer dataCenterAuditStatus;
 
@@ -147,6 +159,20 @@ public class ErpCustomerRespVO {
     private BigDecimal totalSaleAmount;
     @Schema(description = "应收余额")
     private BigDecimal receivableBalance;
+    @Schema(description = "最早未还欠款日期")
+    private LocalDate earliestUnpaidDate;
+    @Schema(description = "欠款天数")
+    private Integer debtDays;
+    @Schema(description = "授信金额超限")
+    private Boolean creditAmountExceeded;
+    @Schema(description = "授信期限超限")
+    private Boolean creditTermExceeded;
+    @Schema(description = "授信超限不可选")
+    private Boolean creditBlocked;
+    @Schema(description = "授信超限原因")
+    private String creditBlockedReason;
+    @Schema(description = "下拉选项是否禁用")
+    private Boolean disabled;
 
     @Schema(description = "创建时间", requiredMode = Schema.RequiredMode.REQUIRED)
     @ExcelProperty("创建时间")

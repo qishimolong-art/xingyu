@@ -3,6 +3,7 @@ package cn.iocoder.yudao.module.erp.controller.admin.stock.vo.check;
 import cn.iocoder.yudao.framework.common.pojo.PageParam;
 import cn.iocoder.yudao.framework.common.validation.InEnum;
 import cn.iocoder.yudao.module.erp.enums.ErpAuditStatus;
+import cn.iocoder.yudao.module.erp.enums.stock.ErpStockCheckTypeEnum;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
@@ -32,6 +33,10 @@ public class ErpStockCheckPageReqVO extends PageParam {
     @DateTimeFormat(pattern = FORMAT_YEAR_MONTH_DAY_HOUR_MINUTE_SECOND)
     private LocalDateTime[] checkTime;
 
+    @Schema(description = "盘点类型：1 盘数量，2 盘成本", example = "1")
+    @InEnum(ErpStockCheckTypeEnum.class)
+    private Integer checkType;
+
     @Schema(description = "状态", example = "10")
     @InEnum(ErpAuditStatus.class)
     private Integer status;
@@ -44,5 +49,11 @@ public class ErpStockCheckPageReqVO extends PageParam {
 
     @Schema(description = "产品编号", example = "1")
     private Long productId;
+
+    @Schema(description = "排序字段")
+    private String orderField;
+
+    @Schema(description = "排序方向（asc/desc）")
+    private String orderDirection;
 
 }

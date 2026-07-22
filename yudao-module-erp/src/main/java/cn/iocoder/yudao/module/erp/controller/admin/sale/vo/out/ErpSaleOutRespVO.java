@@ -87,6 +87,9 @@ public class ErpSaleOutRespVO {
     @ExcelProperty("附件地址")
     private String fileUrl;
 
+    @Schema(description = "快递单图片地址", example = "https://example.com/express.jpg")
+    private String expressFileUrl;
+
     @Schema(description = "备注", example = "你猜")
     @ExcelProperty("备注")
     private String remark;
@@ -122,6 +125,12 @@ public class ErpSaleOutRespVO {
 
     @Schema(description = "出库项列表", requiredMode = Schema.RequiredMode.REQUIRED)
     private List<Item> items;
+
+    @Schema(description = "是否存在对应出仓单")
+    private Boolean hasStockOutBill;
+
+    @Schema(description = "出仓单简要信息")
+    private List<StockOutBillBrief> stockOutBills;
 
     @Schema(description = "产品信息", requiredMode = Schema.RequiredMode.REQUIRED)
     @ExcelProperty("产品信息")
@@ -256,6 +265,9 @@ public class ErpSaleOutRespVO {
     @Schema(description = "来源单制单日期")
     private LocalDateTime sourceCreateTime;
 
+    @Schema(description = "来源单制单人")
+    private String sourceCreatorName;
+
     // ========== 其他 ==========
 
     @Schema(description = "内部说明")
@@ -273,6 +285,39 @@ public class ErpSaleOutRespVO {
     private Integer returnStatus;
 
     @Data
+    public static class StockOutBillBrief {
+
+        @Schema(description = "出仓单编号")
+        private Long id;
+
+        @Schema(description = "出仓单号")
+        private String no;
+
+        @Schema(description = "仓库编号")
+        private Long warehouseId;
+        private Long deptId;
+
+        @Schema(description = "仓库名称")
+        private String warehouseName;
+
+        @Schema(description = "出仓状态")
+        private Integer status;
+
+        @Schema(description = "出仓状态名称")
+        private String statusName;
+
+        @Schema(description = "出仓数量")
+        private BigDecimal totalCount;
+
+        @Schema(description = "已拣货数量")
+        private BigDecimal pickedCount;
+
+        @Schema(description = "单据日期")
+        private LocalDateTime billDate;
+
+    }
+
+    @Data
     public static class Item {
 
         @Schema(description = "出库项编号", example = "11756")
@@ -283,6 +328,7 @@ public class ErpSaleOutRespVO {
 
         @Schema(description = "仓库编号", requiredMode = Schema.RequiredMode.REQUIRED, example = "3113")
         private Long warehouseId;
+        private Long deptId;
 
         @Schema(description = "产品编号", requiredMode = Schema.RequiredMode.REQUIRED, example = "3113")
         private Long productId;
@@ -328,6 +374,11 @@ public class ErpSaleOutRespVO {
 
         @Schema(description = "仓库名称")
         private String warehouseName;
+        private Long warehouseDeptId;
+        private String warehouseDeptName;
+
+        @Schema(description = "部门名称")
+        private String deptName;
 
         @Schema(description = "车型")
         private String vehicleModel;
@@ -379,6 +430,27 @@ public class ErpSaleOutRespVO {
 
         @Schema(description = "已退数量")
         private BigDecimal returnedCount;
+
+        @Schema(description = "是否存在对应出仓单")
+        private Boolean hasStockOutBill;
+
+        @Schema(description = "出仓单号")
+        private String stockOutBillNos;
+
+        @Schema(description = "出仓状态")
+        private Integer stockOutBillStatus;
+
+        @Schema(description = "出仓状态名称")
+        private String stockOutBillStatusName;
+
+        @Schema(description = "出仓数量")
+        private BigDecimal stockOutBillCount;
+
+        @Schema(description = "已拣货数量")
+        private BigDecimal stockOutBillPickedCount;
+
+        @Schema(description = "待拣货数量")
+        private BigDecimal stockOutBillRemainCount;
 
     }
 

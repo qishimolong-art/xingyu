@@ -133,6 +133,7 @@ public class ErpPurchaseInvoiceRespVO {
         private String productName;
         private String productUnitName;
         private String productBarCode;
+        private BigDecimal stockCount;
         private BigDecimal count;
         private BigDecimal productPrice;
         private BigDecimal taxExclusivePrice;

@@ -27,6 +27,7 @@ public class ErpPayableWriteOffDO extends BaseDO {
     private BigDecimal writeOffAmount;
     private String remark;
     private LocalDateTime writeOffTime;
+    private Long deptId;
     private Long operatorUserId;
 
 }

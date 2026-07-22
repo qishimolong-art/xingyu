@@ -1,14 +1,18 @@
 package cn.iocoder.yudao.module.erp.service.purchase;
 
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
+import cn.iocoder.yudao.framework.common.exception.ServiceException;
 import cn.iocoder.yudao.framework.test.core.ut.BaseMockitoUnitTest;
 import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpProductRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.in.ErpPurchaseInForAdjustRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.in.ErpPurchaseInCreateTransferOutReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.in.ErpPurchaseInCreateTransferOutRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.in.ErpPurchaseInItemForAdjustRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.in.ErpPurchaseInPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.in.ErpPurchaseInSaveReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.order.ErpPurchaseInFromOrderReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.returns.ErpPurchaseReturnableItemRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.move.ErpStockMoveSaveReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.accounting.ErpVoucherDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.accounting.ErpVoucherItemDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.product.ErpProductDO;
@@ -23,6 +27,7 @@ import cn.iocoder.yudao.module.erp.dal.mysql.finance.accounting.ErpVoucherMapper
 import cn.iocoder.yudao.module.erp.dal.mysql.purchase.ErpPurchaseInItemMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.purchase.ErpPurchaseInMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.purchase.ErpPurchaseReturnItemMapper;
+import cn.iocoder.yudao.module.erp.dal.mysql.stock.ErpStockMoveItemMapper;
 import cn.iocoder.yudao.module.erp.dal.redis.no.ErpNoRedisDAO;
 import cn.iocoder.yudao.module.erp.enums.ErpAuditStatus;
 import cn.iocoder.yudao.module.erp.enums.finance.accounting.ErpVoucherAuditStatusEnum;
@@ -35,6 +40,7 @@ import cn.iocoder.yudao.module.erp.service.finance.accounting.ErpBookOpenService
 import cn.iocoder.yudao.module.erp.service.finance.accounting.ErpVoucherService;
 import cn.iocoder.yudao.module.erp.service.product.ErpProductService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpStockInBillService;
+import cn.iocoder.yudao.module.erp.service.stock.ErpStockMoveService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpStockRecordService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpWarehouseService;
 import cn.iocoder.yudao.module.erp.service.stock.bo.ErpStockRecordCreateReqBO;
@@ -68,12 +74,14 @@ import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PURCHASE_IN_N
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PURCHASE_IN_NOT_EXISTS;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PURCHASE_IN_PROCESS_FAIL_EXISTS_PAYMENT;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PURCHASE_IN_UPDATE_FAIL_APPROVE;
+import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PURCHASE_IN_TRANSFER_OUT_EXCEED_AVAILABLE;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PURCHASE_ORDER_IN_EXCEED_INABLE;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PURCHASE_ORDER_NOT_EXISTS;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
@@ -99,6 +107,8 @@ public class ErpPurchaseInServiceImplTest extends BaseMockitoUnitTest {
     @Mock
     private ErpPurchaseReturnItemMapper purchaseReturnItemMapper;
     @Mock
+    private ErpStockMoveItemMapper stockMoveItemMapper;
+    @Mock
     private ErpProductService productService;
     @Mock
     private ErpPurchaseOrderService purchaseOrderService;
@@ -106,6 +116,8 @@ public class ErpPurchaseInServiceImplTest extends BaseMockitoUnitTest {
     private ErpStockRecordService stockRecordService;
     @Mock
     private ErpStockInBillService stockInBillService;
+    @Mock
+    private ErpStockMoveService stockMoveService;
     @Mock
     private ErpSupplierService supplierService;
     @Mock
@@ -200,9 +212,12 @@ public class ErpPurchaseInServiceImplTest extends BaseMockitoUnitTest {
         when(productService.validProductList(any())).thenReturn(Collections.singletonList(
                 new ErpProductDO().setId(200L).setUnitId(1L)));
         when(purchaseInMapper.selectByNo(any())).thenReturn(null);
-        when(purchaseInMapper.selectListByOrderIdAndStatus(eq(50L), eq(ErpAuditStatus.APPROVE.getStatus())))
-                .thenReturn(Collections.emptyList());
-        when(purchaseInItemMapper.selectOrderItemCountSumMapByInIds(any())).thenReturn(Collections.emptyMap());
+        when(purchaseInMapper.selectListByOrderId(eq(50L)))
+                .thenReturn(Collections.singletonList(new ErpPurchaseInDO().setId(10L).setOrderId(50L)
+                        .setStatus(ErpAuditStatus.PROCESS.getStatus())));
+        Map<Long, BigDecimal> generatedInCountMap = new HashMap<>();
+        generatedInCountMap.put(101L, new BigDecimal("3"));
+        when(purchaseInItemMapper.selectOrderItemCountSumMapByInIds(any())).thenReturn(generatedInCountMap);
 
         purchaseInService.createPurchaseIn(reqVO);
 
@@ -217,7 +232,7 @@ public class ErpPurchaseInServiceImplTest extends BaseMockitoUnitTest {
     }
 
     @Test
-    public void testCreatePurchaseIn_withOrderIdOnlyCountsApprovedIn() {
+    public void testCreatePurchaseIn_withOrderIdCountsAllGeneratedIn() {
         ErpPurchaseInSaveReqVO.Item item = buildItem(200L, new BigDecimal("10"), new BigDecimal("5"));
         ErpPurchaseInSaveReqVO reqVO = buildBaseReqVO(item);
         reqVO.setOrderId(50L);
@@ -227,15 +242,18 @@ public class ErpPurchaseInServiceImplTest extends BaseMockitoUnitTest {
         when(productService.validProductList(any())).thenReturn(Collections.singletonList(
                 new ErpProductDO().setId(200L).setUnitId(1L)));
         when(purchaseInMapper.selectByNo(any())).thenReturn(null);
-        when(purchaseInMapper.selectListByOrderIdAndStatus(eq(50L), eq(ErpAuditStatus.APPROVE.getStatus())))
-                .thenReturn(Collections.emptyList());
-        when(purchaseInItemMapper.selectOrderItemCountSumMapByInIds(any())).thenReturn(Collections.emptyMap());
+        when(purchaseInMapper.selectListByOrderId(eq(50L)))
+                .thenReturn(Collections.singletonList(new ErpPurchaseInDO().setId(10L).setOrderId(50L)
+                        .setStatus(ErpAuditStatus.PROCESS.getStatus())));
+        Map<Long, BigDecimal> inCountMap = new HashMap<>();
+        inCountMap.put(101L, new BigDecimal("10"));
+        when(purchaseInItemMapper.selectOrderItemCountSumMapByInIds(any())).thenReturn(inCountMap);
 
         purchaseInService.createPurchaseIn(reqVO);
 
-        verify(purchaseInMapper).selectListByOrderIdAndStatus(eq(50L), eq(ErpAuditStatus.APPROVE.getStatus()));
-        verify(purchaseInMapper, never()).selectListByOrderId(eq(50L));
-        verify(purchaseOrderService).updatePurchaseOrderInCount(eq(50L), eq(Collections.emptyMap()));
+        verify(purchaseInMapper).selectListByOrderId(eq(50L));
+        verify(purchaseInMapper, never()).selectListByOrderIdAndStatus(eq(50L), eq(ErpAuditStatus.APPROVE.getStatus()));
+        verify(purchaseOrderService).updatePurchaseOrderInCount(eq(50L), eq(inCountMap));
     }
 
     @Test
@@ -369,7 +387,7 @@ public class ErpPurchaseInServiceImplTest extends BaseMockitoUnitTest {
                 .thenReturn(new ErpSupplierDO().setId(99L).setName("芋道供应商"));
         when(autoVoucherBuilder.buildPurchaseInItems(any(), eq("芋道供应商")))
                 .thenReturn(Collections.singletonList(new ErpVoucherItemDO()));
-        when(purchaseInMapper.selectListByOrderIdAndStatus(eq(50L), eq(ErpAuditStatus.APPROVE.getStatus())))
+        when(purchaseInMapper.selectListByOrderId(eq(50L)))
                 .thenReturn(Collections.singletonList(new ErpPurchaseInDO().setId(10L).setOrderId(50L)
                         .setStatus(ErpAuditStatus.APPROVE.getStatus())));
         Map<Long, BigDecimal> inCountMap = Collections.singletonMap(1000L, new BigDecimal("5"));
@@ -664,6 +682,128 @@ public class ErpPurchaseInServiceImplTest extends BaseMockitoUnitTest {
         verify(purchaseInItemMapper, never()).selectListByInIds(any());
     }
 
+    @Test
+    public void testGetTransferOutCountMapByInItemIds_delegatesToMapper() {
+        List<Long> itemIds = Arrays.asList(1L, 2L);
+        Map<Long, BigDecimal> movedCountMap = new HashMap<>();
+        movedCountMap.put(1L, new BigDecimal("2.5"));
+        movedCountMap.put(2L, new BigDecimal("3"));
+        when(stockMoveItemMapper.selectMovedCountMapBySourceInItemIds(eq(itemIds)))
+                .thenReturn(movedCountMap);
+
+        Map<Long, BigDecimal> result = purchaseInService.getTransferOutCountMapByInItemIds(itemIds);
+
+        assertSame(movedCountMap, result);
+        verify(stockMoveItemMapper).selectMovedCountMapBySourceInItemIds(eq(itemIds));
+    }
+
+    @Test
+    public void testGetTransferOutCountMapByInItemIds_emptyInput_returnsEmpty() {
+        Map<Long, BigDecimal> result = purchaseInService.getTransferOutCountMapByInItemIds(Collections.emptyList());
+
+        assertTrue(result.isEmpty());
+        verify(stockMoveItemMapper, never()).selectMovedCountMapBySourceInItemIds(any());
+    }
+
+    // ========== createTransferOutFromPurchaseIn ==========
+
+    @Test
+    public void testCreateTransferOutFromPurchaseIn_groupsBySourceWarehouse() {
+        ErpPurchaseInDO purchaseIn = new ErpPurchaseInDO().setId(10L).setNo("CGRK001").setDeptId(9L)
+                .setStatus(ErpAuditStatus.APPROVE.getStatus());
+        List<ErpPurchaseInItemDO> sourceItems = Arrays.asList(
+                new ErpPurchaseInItemDO().setId(101L).setInId(10L).setWarehouseId(1L).setProductId(1001L)
+                        .setCount(new BigDecimal("5")).setProductPrice(new BigDecimal("10")),
+                new ErpPurchaseInItemDO().setId(102L).setInId(10L).setWarehouseId(2L).setProductId(1002L)
+                        .setCount(new BigDecimal("6")).setProductPrice(new BigDecimal("20")),
+                new ErpPurchaseInItemDO().setId(103L).setInId(10L).setWarehouseId(1L).setProductId(1003L)
+                        .setCount(new BigDecimal("7")).setProductPrice(new BigDecimal("30")));
+        when(purchaseInMapper.selectById(10L)).thenReturn(purchaseIn);
+        when(purchaseInItemMapper.selectListByInId(10L)).thenReturn(sourceItems);
+        when(stockMoveItemMapper.selectMovedCountMapBySourceInItemIds(any())).thenReturn(Collections.emptyMap());
+        when(stockMoveService.createStockMove(any())).thenReturn(10001L, 10002L);
+
+        ErpPurchaseInCreateTransferOutReqVO reqVO = buildTransferOutReqVO(10L,
+                buildTransferOutItem(101L, 11L, "2"),
+                buildTransferOutItem(102L, 12L, "3"),
+                buildTransferOutItem(103L, 13L, "4"));
+        ErpPurchaseInCreateTransferOutRespVO result = purchaseInService.createTransferOutFromPurchaseIn(reqVO);
+
+        ArgumentCaptor<ErpStockMoveSaveReqVO> captor = ArgumentCaptor.forClass(ErpStockMoveSaveReqVO.class);
+        verify(stockMoveService, times(2)).createStockMove(captor.capture());
+        List<ErpStockMoveSaveReqVO> moveRequests = captor.getAllValues();
+        assertEquals(Arrays.asList(10001L, 10002L), result.getIds());
+        assertEquals(Long.valueOf(10001L), result.getId());
+        assertEquals(2, moveRequests.get(0).getItems().size());
+        assertTrue(moveRequests.get(0).getItems().stream()
+                .allMatch(item -> Long.valueOf(1L).equals(item.getFromWarehouseId())));
+        assertEquals(1, moveRequests.get(1).getItems().size());
+        assertEquals(Long.valueOf(2L), moveRequests.get(1).getItems().get(0).getFromWarehouseId());
+        assertTrue(moveRequests.stream().allMatch(move -> Long.valueOf(10L).equals(move.getSourceId())));
+    }
+
+    @Test
+    public void testCreateTransferOutFromPurchaseIn_rejectsCumulativeExceededCount() {
+        ErpPurchaseInDO purchaseIn = new ErpPurchaseInDO().setId(10L).setNo("CGRK001")
+                .setStatus(ErpAuditStatus.APPROVE.getStatus());
+        ErpPurchaseInItemDO sourceItem = new ErpPurchaseInItemDO().setId(101L).setInId(10L)
+                .setWarehouseId(1L).setProductId(1001L).setCount(new BigDecimal("5"));
+        when(purchaseInMapper.selectById(10L)).thenReturn(purchaseIn);
+        when(purchaseInItemMapper.selectListByInId(10L)).thenReturn(Collections.singletonList(sourceItem));
+        when(stockMoveItemMapper.selectMovedCountMapBySourceInItemIds(any()))
+                .thenReturn(Collections.singletonMap(101L, new BigDecimal("3")));
+        ErpPurchaseInCreateTransferOutReqVO reqVO = buildTransferOutReqVO(10L,
+                buildTransferOutItem(101L, 11L, "2.01"));
+
+        ServiceException exception = assertThrows(ServiceException.class,
+                () -> purchaseInService.createTransferOutFromPurchaseIn(reqVO));
+        assertEquals(PURCHASE_IN_TRANSFER_OUT_EXCEED_AVAILABLE.getCode(), exception.getCode());
+        verify(stockMoveService, never()).createStockMove(any());
+    }
+
+    @Test
+    public void testCreateTransferOutFromPurchaseIn_propagatesGroupCreationFailure() {
+        ErpPurchaseInDO purchaseIn = new ErpPurchaseInDO().setId(10L).setNo("CGRK001")
+                .setStatus(ErpAuditStatus.APPROVE.getStatus());
+        List<ErpPurchaseInItemDO> sourceItems = Arrays.asList(
+                new ErpPurchaseInItemDO().setId(101L).setInId(10L).setWarehouseId(1L).setProductId(1001L)
+                        .setCount(new BigDecimal("5")),
+                new ErpPurchaseInItemDO().setId(102L).setInId(10L).setWarehouseId(2L).setProductId(1002L)
+                        .setCount(new BigDecimal("6")));
+        when(purchaseInMapper.selectById(10L)).thenReturn(purchaseIn);
+        when(purchaseInItemMapper.selectListByInId(10L)).thenReturn(sourceItems);
+        when(stockMoveItemMapper.selectMovedCountMapBySourceInItemIds(any())).thenReturn(Collections.emptyMap());
+        when(stockMoveService.createStockMove(any())).thenReturn(10001L)
+                .thenThrow(new IllegalStateException("second group failed"));
+        ErpPurchaseInCreateTransferOutReqVO reqVO = buildTransferOutReqVO(10L,
+                buildTransferOutItem(101L, 11L, "2"),
+                buildTransferOutItem(102L, 12L, "3"));
+
+        IllegalStateException exception = assertThrows(IllegalStateException.class,
+                () -> purchaseInService.createTransferOutFromPurchaseIn(reqVO));
+
+        assertEquals("second group failed", exception.getMessage());
+        verify(stockMoveService, times(2)).createStockMove(any());
+    }
+
+    private ErpPurchaseInCreateTransferOutReqVO buildTransferOutReqVO(
+            Long sourceInId, ErpPurchaseInCreateTransferOutReqVO.Item... items) {
+        ErpPurchaseInCreateTransferOutReqVO reqVO = new ErpPurchaseInCreateTransferOutReqVO();
+        reqVO.setSourceInId(sourceInId);
+        reqVO.setMoveTime(LocalDateTime.of(2026, 7, 22, 10, 0));
+        reqVO.setItems(Arrays.asList(items));
+        return reqVO;
+    }
+
+    private ErpPurchaseInCreateTransferOutReqVO.Item buildTransferOutItem(
+            Long sourceInItemId, Long toWarehouseId, String count) {
+        ErpPurchaseInCreateTransferOutReqVO.Item item = new ErpPurchaseInCreateTransferOutReqVO.Item();
+        item.setSourceInItemId(sourceInItemId);
+        item.setToWarehouseId(toWarehouseId);
+        item.setCount(new BigDecimal(count));
+        return item;
+    }
+
     // ========== getReturnableItemsByInId ==========
 
     @Test
@@ -756,12 +896,19 @@ public class ErpPurchaseInServiceImplTest extends BaseMockitoUnitTest {
         when(productService.validProductList(any())).thenReturn(Collections.singletonList(
                 new ErpProductDO().setId(200L).setUnitId(1L)));
         when(purchaseInMapper.selectByNo(any())).thenReturn(null);
-        when(purchaseInMapper.selectListByOrderIdAndStatus(eq(50L), eq(ErpAuditStatus.APPROVE.getStatus())))
+        when(purchaseInMapper.selectListByOrderId(eq(50L)))
                 .thenReturn(Collections.emptyList());
         when(purchaseInItemMapper.selectOrderItemCountSumMapByInIds(any())).thenReturn(Collections.emptyMap());
 
         // 自动审批后会再次 selectById（updatePurchaseInStatus 内部调用）
         // 让插入后的 selectById 也能拿到记录
+        when(purchaseInMapper.selectListByOrderId(eq(50L)))
+                .thenReturn(Collections.singletonList(new ErpPurchaseInDO().setId(10L).setOrderId(50L)
+                        .setStatus(ErpAuditStatus.PROCESS.getStatus())));
+        Map<Long, BigDecimal> generatedInCountMap = new HashMap<>();
+        generatedInCountMap.put(101L, new BigDecimal("3"));
+        when(purchaseInItemMapper.selectOrderItemCountSumMapByInIds(any())).thenReturn(generatedInCountMap);
+
         ErpPurchaseInFromOrderReqVO reqVO = new ErpPurchaseInFromOrderReqVO();
         reqVO.setOrderId(50L);
         reqVO.setInTime(LocalDateTime.of(2026, 5, 20, 10, 0, 0));
@@ -801,6 +948,12 @@ public class ErpPurchaseInServiceImplTest extends BaseMockitoUnitTest {
     public void testCreatePurchaseInFromOrder_countExceedsInable_throwException() {
         when(purchaseOrderService.validatePurchaseOrder(eq(50L)))
                 .thenReturn(new ErpPurchaseOrderDO().setId(50L));
+        when(purchaseInMapper.selectListByOrderId(eq(50L)))
+                .thenReturn(Collections.singletonList(new ErpPurchaseInDO().setId(10L).setOrderId(50L)
+                        .setStatus(ErpAuditStatus.PROCESS.getStatus())));
+        Map<Long, BigDecimal> generatedInCountMap = new HashMap<>();
+        generatedInCountMap.put(101L, new BigDecimal("8"));
+        when(purchaseInItemMapper.selectOrderItemCountSumMapByInIds(any())).thenReturn(generatedInCountMap);
         ErpPurchaseOrderItemDO orderItem = new ErpPurchaseOrderItemDO()
                 .setId(101L).setProductId(200L)
                 .setCount(new BigDecimal("10")).setInCount(new BigDecimal("8")); // 可入库=2
@@ -823,6 +976,37 @@ public class ErpPurchaseInServiceImplTest extends BaseMockitoUnitTest {
     }
 
     @Test
+    public void testCreatePurchaseInFromOrder_pendingInOccupiesAll_throwException() {
+        when(purchaseOrderService.validatePurchaseOrder(eq(50L)))
+                .thenReturn(new ErpPurchaseOrderDO().setId(50L));
+        when(purchaseInMapper.selectListByOrderId(eq(50L)))
+                .thenReturn(Collections.singletonList(new ErpPurchaseInDO().setId(10L).setOrderId(50L)
+                        .setStatus(ErpAuditStatus.PROCESS.getStatus())));
+        Map<Long, BigDecimal> generatedInCountMap = new HashMap<>();
+        generatedInCountMap.put(101L, new BigDecimal("10"));
+        when(purchaseInItemMapper.selectOrderItemCountSumMapByInIds(any())).thenReturn(generatedInCountMap);
+        ErpPurchaseOrderItemDO orderItem = new ErpPurchaseOrderItemDO()
+                .setId(101L).setProductId(200L)
+                .setCount(new BigDecimal("10")).setInCount(BigDecimal.ZERO);
+        when(purchaseOrderService.getPurchaseOrderItemListByOrderId(eq(50L)))
+                .thenReturn(Collections.singletonList(orderItem));
+        when(productService.getProduct(eq(200L))).thenReturn(new ErpProductDO()
+                .setId(200L).setName("P200"));
+
+        ErpPurchaseInFromOrderReqVO reqVO = new ErpPurchaseInFromOrderReqVO();
+        reqVO.setOrderId(50L);
+        ErpPurchaseInFromOrderReqVO.Item reqItem = new ErpPurchaseInFromOrderReqVO.Item();
+        reqItem.setOrderItemId(101L);
+        reqItem.setCount(BigDecimal.ONE);
+        reqItem.setWarehouseId(10L);
+        reqVO.setItems(Collections.singletonList(reqItem));
+
+        assertServiceException(() -> purchaseInService.createPurchaseInFromOrder(reqVO),
+                PURCHASE_ORDER_IN_EXCEED_INABLE, "P200", BigDecimal.ZERO, BigDecimal.ONE);
+        verify(purchaseInMapper, never()).insert(any(ErpPurchaseInDO.class));
+    }
+
+    @Test
     public void testCreatePurchaseInFromOrder_giftForcesZeroPrice() {
         ErpPurchaseOrderDO order = new ErpPurchaseOrderDO().setId(50L).setNo("CGDD001").setSupplierId(999L);
         when(purchaseOrderService.validatePurchaseOrder(eq(50L))).thenReturn(order);
@@ -836,7 +1020,7 @@ public class ErpPurchaseInServiceImplTest extends BaseMockitoUnitTest {
         when(productService.validProductList(any())).thenReturn(Collections.singletonList(
                 new ErpProductDO().setId(200L).setUnitId(1L)));
         when(purchaseInMapper.selectByNo(any())).thenReturn(null);
-        when(purchaseInMapper.selectListByOrderIdAndStatus(eq(50L), eq(ErpAuditStatus.APPROVE.getStatus())))
+        when(purchaseInMapper.selectListByOrderId(eq(50L)))
                 .thenReturn(Collections.emptyList());
         when(purchaseInItemMapper.selectOrderItemCountSumMapByInIds(any())).thenReturn(Collections.emptyMap());
         // 后续 updatePurchaseInStatus 链路

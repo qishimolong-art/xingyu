@@ -18,6 +18,7 @@ import cn.iocoder.yudao.module.erp.controller.admin.product.vo.unit.ErpProductUn
 import cn.iocoder.yudao.module.erp.controller.admin.product.vo.unit.ErpProductUnitSaveReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.product.ErpProductUnitDO;
 import cn.iocoder.yudao.module.erp.dal.mysql.product.ErpProductUnitMapper;
+import cn.iocoder.yudao.module.erp.service.common.ErpOperateLogService;
 import cn.iocoder.yudao.module.system.api.permission.PermissionApi;
 import com.google.common.annotations.VisibleForTesting;
 import org.springframework.context.annotation.Lazy;
@@ -40,7 +41,9 @@ import java.util.Set;
 import java.util.stream.Collectors;
 
 import static cn.iocoder.yudao.framework.common.exception.util.ServiceExceptionUtil.exception;
+import static cn.iocoder.yudao.framework.security.core.util.SecurityFrameworkUtils.getLoginUserDeptId;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.*;
+import static cn.iocoder.yudao.module.erp.enums.LogRecordConstants.*;
 
 /**
  * ERP 产品单位 Service 实现类
@@ -57,6 +60,8 @@ public class ErpProductUnitServiceImpl implements ErpProductUnitService {
     private ErpProductUnitMapper productUnitMapper;
     @Resource
     private PermissionApi permissionApi;
+    @Resource
+    private ErpOperateLogService operateLogService;
 
     @Resource
     @Lazy // 延迟加载，避免循环依赖
@@ -70,7 +75,11 @@ public class ErpProductUnitServiceImpl implements ErpProductUnitService {
         validateProductUnitNameUnique(null, createReqVO.getName());
         // 2. 插入
         ErpProductUnitDO unit = BeanUtils.toBean(createReqVO, ErpProductUnitDO.class);
+        if (unit.getDeptId() == null) {
+            unit.setDeptId(getLoginUserDeptId());
+        }
         productUnitMapper.insert(unit);
+        operateLogService.recordCreate(ERP_PRODUCT_UNIT_TYPE, unit.getId(), unit, unit.getName());
         return unit.getId();
     }
 
@@ -84,7 +93,10 @@ public class ErpProductUnitServiceImpl implements ErpProductUnitService {
         validateProductUnitNameUnique(updateReqVO.getId(), updateReqVO.getName());
         // 2. 更新
         ErpProductUnitDO updateObj = BeanUtils.toBean(updateReqVO, ErpProductUnitDO.class);
+        updateObj.setDeptId(existing.getDeptId());
         productUnitMapper.updateById(updateObj);
+        operateLogService.recordUpdate(ERP_PRODUCT_UNIT_TYPE, updateReqVO.getId(), existing,
+                productUnitMapper.selectById(updateReqVO.getId()), updateObj.getName());
     }
 
     @Override
@@ -99,11 +111,13 @@ public class ErpProductUnitServiceImpl implements ErpProductUnitService {
             throw new IllegalArgumentException("无权批量修改单位状态");
         }
         for (Long id : updateReqVO.getIds()) {
-            validateProductUnitExists(id);
+            ErpProductUnitDO existing = validateProductUnitExists(id);
             ErpProductUnitDO updateObj = new ErpProductUnitDO();
             updateObj.setId(id);
             updateObj.setStatus(updateReqVO.getStatus());
             productUnitMapper.updateById(updateObj);
+            operateLogService.recordUpdate(ERP_PRODUCT_UNIT_TYPE, id, existing,
+                    productUnitMapper.selectById(id), existing.getName());
         }
     }
 
@@ -125,13 +139,14 @@ public class ErpProductUnitServiceImpl implements ErpProductUnitService {
     @Override
     public void deleteProductUnit(Long id) {
         // 1.1 校验存在
-        validateProductUnitExists(id);
+        ErpProductUnitDO unit = validateProductUnitExists(id);
         // 1.2 校验产品是否使用
         if (productService.getProductCountByUnitId(id) > 0) {
             throw exception(PRODUCT_UNIT_EXITS_PRODUCT);
         }
         // 2. 删除
         productUnitMapper.deleteById(id);
+        operateLogService.recordDelete(ERP_PRODUCT_UNIT_TYPE, id, unit, unit.getName());
     }
 
     @Override

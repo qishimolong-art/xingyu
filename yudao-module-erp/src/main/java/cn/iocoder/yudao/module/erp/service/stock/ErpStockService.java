@@ -2,12 +2,15 @@ package cn.iocoder.yudao.module.erp.service.stock;
 
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.stock.ErpStockAdjustReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.stock.ErpStockBatchNoRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.stock.ErpStockPageReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.stock.ErpStockUpdateReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockDO;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.Collection;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -47,6 +50,31 @@ public interface ErpStockService {
     BigDecimal getStockCount(Long productId, Long warehouseId);
 
     /**
+     * 鑾峰緱浜у搧鍦ㄦ寚瀹氫粨搴撶殑鍙敤鎵规鍙峰垪琛?
+     *
+     * @param productId 浜у搧缂栧彿
+     * @param warehouseId 浠撳簱缂栧彿
+     * @return 鎵规鍙峰垪琛?
+     */
+    List<ErpStockBatchNoRespVO> getAvailableBatchNoList(Long productId, Long warehouseId);
+
+    /**
+     * 批量获得产品在指定仓库的可用批次号列表
+     *
+     * @param stocks 库存记录集合
+     * @return key：productId_warehouseId；value：批次号列表
+     */
+    Map<String, List<ErpStockBatchNoRespVO>> getAvailableBatchNoListMap(Collection<ErpStockDO> stocks);
+
+    /**
+     * 按库存流水汇总产品、仓库下的批次余额，用于产品库存批次展开视图。
+     *
+     * @param stocks 已通过库存查看权限过滤的库存记录
+     * @return key：productId_warehouseId；value：流水批次余额列表
+     */
+    Map<String, List<ErpStockBatchNoRespVO>> getStockBatchBalanceListMap(Collection<ErpStockDO> stocks);
+
+    /**
      * 批量获得产品库存数量（所有仓库合计）
      *
      * @param productIds 产品编号集合
@@ -63,12 +91,40 @@ public interface ErpStockService {
     Map<Long, BigDecimal> getStockLockCountMap(Collection<Long> productIds);
 
     /**
+     * Get dynamically occupied quantities by product and warehouse.
+     *
+     * @return key: productId_warehouseId, value: occupied quantity
+     */
+    Map<String, BigDecimal> getOccupiedCountMap(Collection<Long> productIds, Collection<Long> warehouseIds);
+
+    /**
      * 获得产品库存分页
      *
      * @param pageReqVO 分页查询
      * @return 库存分页
      */
     PageResult<ErpStockDO> getStockPage(ErpStockPageReqVO pageReqVO);
+
+    /**
+     * Ensures the product/warehouse stock row exists without changing its quantity or cost.
+     */
+    void ensureStockExists(Long productId, Long warehouseId);
+
+    /**
+     * Update shelf locations by stock row.
+     *
+     * @param stockIds stock row ids
+     * @param shelf shelf location, blank values clear the shelf
+     */
+    void updateStockShelf(Collection<Long> stockIds, String shelf);
+
+    /**
+     * Update editable stock-row fields.
+     *
+     * @param reqVO update request
+     * @return updated stock row
+     */
+    ErpStockDO updateStockEditableFields(ErpStockUpdateReqVO reqVO);
 
     /**
      * 增量更新产品库存数量
@@ -89,7 +145,8 @@ public interface ErpStockService {
      * @param unitPrice 本次单价；入库必填（进价），出库可为 null
      * @return StockUpdateResult(totalCount, costPrice) — 更新后的库存量与成本均价
      */
-    StockUpdateResult updateStockCountAndCost(Long productId, Long warehouseId, BigDecimal count, BigDecimal unitPrice);
+    StockUpdateResult updateStockCountAndCost(Long productId, Long warehouseId, BigDecimal count,
+                                              BigDecimal unitPrice, Integer bizType);
 
     /**
      * 手动调整库存数量（生成一条盘点调整流水）
@@ -127,6 +184,11 @@ public interface ErpStockService {
                                Long bizId, String bizNo, LocalDateTime bizDate);
 
     /**
+     * 直接设置库存成本价，成本金额按当前库存数量重算。
+     */
+    StockUpdateResult updateStockCostPrice(Long productId, Long warehouseId, BigDecimal costPrice);
+
+    /**
      * 库存更新结果
      */
     @lombok.Data
@@ -136,6 +198,7 @@ public interface ErpStockService {
         private BigDecimal totalCount;
         /** 变更后成本均价（如果是出库或 oldQty+inQty=0，则返回变更前的 costPrice；如果全部出光，返回 BigDecimal.ZERO） */
         private BigDecimal costPrice;
+        private BigDecimal costAmount;
     }
 
 }

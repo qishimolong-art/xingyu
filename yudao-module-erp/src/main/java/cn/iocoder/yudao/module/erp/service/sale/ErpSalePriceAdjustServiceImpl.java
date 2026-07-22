@@ -3,7 +3,9 @@ package cn.iocoder.yudao.module.erp.service.sale;
 import cn.hutool.core.collection.CollUtil;
 import cn.hutool.core.util.StrUtil;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
+import cn.iocoder.yudao.framework.common.util.collection.MapUtils;
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
+import cn.iocoder.yudao.framework.datapermission.core.util.DataPermissionUtils;
 import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpProductRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.priceadjust.ErpSaleOutItemForAdjustRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.priceadjust.ErpSalePriceAdjustImportExcelVO;
@@ -17,6 +19,7 @@ import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleOutDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleOutItemDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockRecordDO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpWarehouseDO;
 import cn.iocoder.yudao.module.erp.dal.mysql.product.ErpProductMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpSalePriceAdjustItemMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpSalePriceAdjustMapper;
@@ -29,6 +32,9 @@ import cn.iocoder.yudao.module.erp.enums.ErpAuditStatus;
 import cn.iocoder.yudao.module.erp.enums.stock.ErpStockRecordBizTypeEnum;
 import cn.iocoder.yudao.module.erp.service.common.ErpOperateLogService;
 import cn.iocoder.yudao.module.erp.service.product.ErpProductService;
+import cn.iocoder.yudao.module.erp.service.stock.ErpWarehouseService;
+import cn.iocoder.yudao.module.system.api.dept.DeptApi;
+import cn.iocoder.yudao.module.system.api.dept.dto.DeptRespDTO;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -42,6 +48,7 @@ import java.util.stream.Collectors;
 
 import static cn.iocoder.yudao.framework.common.exception.util.ServiceExceptionUtil.exception;
 import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.convertMap;
+import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.convertSet;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.*;
 import static cn.iocoder.yudao.module.erp.enums.LogRecordConstants.ERP_SALE_PRICE_ADJUST_TYPE;
 
@@ -80,6 +87,10 @@ public class ErpSalePriceAdjustServiceImpl implements ErpSalePriceAdjustService 
     private ErpSaleDocumentDefaultService saleDocumentDefaultService;
     @Resource
     private ErpOperateLogService operateLogService;
+    @Resource
+    private ErpWarehouseService warehouseService;
+    @Resource
+    private DeptApi deptApi;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -96,6 +107,7 @@ public class ErpSalePriceAdjustServiceImpl implements ErpSalePriceAdjustService 
         // 计算调价总金额
         BigDecimal totalAdjustPrice = BigDecimal.ZERO;
         List<ErpSalePriceAdjustItemDO> items = BeanUtils.toBean(createReqVO.getItems(), ErpSalePriceAdjustItemDO.class);
+        fillItemDeptIdFromSaleOutItems(items);
         validateSalePriceAdjustItemsNotAdjusted(items, null);
         for (ErpSalePriceAdjustItemDO item : items) {
             BigDecimal adjustPrice = calculateAdjustPrice(item);
@@ -130,6 +142,7 @@ public class ErpSalePriceAdjustServiceImpl implements ErpSalePriceAdjustService 
         updateDO.setAdjustDate(existDO.getAdjustDate());
         BigDecimal totalAdjustPrice = BigDecimal.ZERO;
         List<ErpSalePriceAdjustItemDO> items = BeanUtils.toBean(updateReqVO.getItems(), ErpSalePriceAdjustItemDO.class);
+        fillItemDeptIdFromSaleOutItems(items);
         validateSalePriceAdjustItemsNotAdjusted(items, updateReqVO.getId());
         for (ErpSalePriceAdjustItemDO item : items) {
             BigDecimal adjustPrice = calculateAdjustPrice(item);
@@ -234,13 +247,21 @@ public class ErpSalePriceAdjustServiceImpl implements ErpSalePriceAdjustService 
         if (CollUtil.isEmpty(allItems)) {
             return Collections.emptyList();
         }
+        final List<ErpSaleOutItemDO> filteredItems = allItems;
         // 3. 批量加载产品信息
-        Set<Long> productIds = allItems.stream().map(ErpSaleOutItemDO::getProductId).collect(Collectors.toSet());
-        Map<Long, ErpProductRespVO> productMap = productService.getProductVOMap(productIds);
+        Set<Long> productIds = filteredItems.stream().map(ErpSaleOutItemDO::getProductId).collect(Collectors.toSet());
+        Map<Long, ErpProductRespVO> productMap = DataPermissionUtils.executeIgnore(() ->
+                productService.getProductVOMap(productIds));
+        Map<Long, ErpWarehouseDO> warehouseMap = DataPermissionUtils.executeIgnore(() ->
+                warehouseService.getWarehouseMap(convertSet(filteredItems, ErpSaleOutItemDO::getWarehouseId)));
+        Set<Long> warehouseDeptIds = convertSet(warehouseMap.values(), ErpWarehouseDO::getDeptId);
+        warehouseDeptIds.remove(null);
+        Map<Long, DeptRespDTO> deptMap = CollUtil.isEmpty(warehouseDeptIds)
+                ? Collections.emptyMap() : deptApi.getDeptMap(warehouseDeptIds);
         // 4. 拼装结果
         Map<Long, ErpSaleOutDO> outMap = convertMap(saleOuts, ErpSaleOutDO::getId);
         List<ErpSaleOutItemForAdjustRespVO> result = new ArrayList<>();
-        for (ErpSaleOutItemDO item : allItems) {
+        for (ErpSaleOutItemDO item : filteredItems) {
             ErpSaleOutDO out = outMap.get(item.getOutId());
             if (out == null) continue;
             ErpSaleOutItemForAdjustRespVO vo = new ErpSaleOutItemForAdjustRespVO();
@@ -252,6 +273,15 @@ public class ErpSalePriceAdjustServiceImpl implements ErpSalePriceAdjustService 
             vo.setCount(item.getCount());
             vo.setProductPrice(item.getProductPrice());
             vo.setAdjusted(item.getAdjusted());
+            vo.setDeptId(item.getDeptId());
+            vo.setWarehouseId(item.getWarehouseId());
+            ErpWarehouseDO warehouse = warehouseMap.get(item.getWarehouseId());
+            if (warehouse != null) {
+                vo.setWarehouseName(warehouse.getName());
+                vo.setWarehouseDeptId(warehouse.getDeptId());
+                MapUtils.findAndThen(deptMap, warehouse.getDeptId(),
+                        dept -> vo.setWarehouseDeptName(dept.getName()));
+            }
             ErpProductRespVO product = productMap.get(item.getProductId());
             if (product != null) {
                 vo.setProductCode(product.getCode());
@@ -280,12 +310,12 @@ public class ErpSalePriceAdjustServiceImpl implements ErpSalePriceAdjustService 
                 .collect(Collectors.toSet());
         Map<String, ErpProductDO> productMap = productCodes.isEmpty()
                 ? new HashMap<>()
-                : productMapper.selectListByCodes(productCodes).stream()
+                : DataPermissionUtils.executeIgnore(() -> productMapper.selectListByCodes(productCodes)).stream()
                 .collect(Collectors.toMap(ErpProductDO::getCode, item -> item, (a, b) -> a));
         Map<Long, ErpProductRespVO> productVOMap = productMap.isEmpty()
                 ? new HashMap<>()
-                : productService.getProductVOMap(productMap.values().stream()
-                .map(ErpProductDO::getId).collect(Collectors.toSet()));
+                : DataPermissionUtils.executeIgnore(() -> productService.getProductVOMap(productMap.values().stream()
+                .map(ErpProductDO::getId).collect(Collectors.toSet())));
 
         Long importCustomerId = null;
         Set<String> usedKeys = new HashSet<>();
@@ -365,6 +395,8 @@ public class ErpSalePriceAdjustServiceImpl implements ErpSalePriceAdjustService 
                 item.setBrand(outItem.getBrand());
                 item.setVehicleModel(outItem.getVehicleModel());
                 item.setOriginPlace(outItem.getOriginPlace());
+                item.setDeptId(outItem.getDeptId());
+                item.setWarehouseId(outItem.getWarehouseId());
                 item.setOutCount(outItem.getCount());
                 item.setOldPrice(outItem.getProductPrice());
                 item.setNewPrice(row.getNewPrice());
@@ -496,6 +528,23 @@ public class ErpSalePriceAdjustServiceImpl implements ErpSalePriceAdjustService 
         }
     }
 
+    private void fillItemDeptIdFromSaleOutItems(List<ErpSalePriceAdjustItemDO> items) {
+        Set<Long> saleOutItemIds = convertSet(items, ErpSalePriceAdjustItemDO::getSaleOutItemId);
+        if (CollUtil.isEmpty(saleOutItemIds)) {
+            return;
+        }
+        Map<Long, ErpSaleOutItemDO> saleOutItemMap = convertMap(
+                saleOutItemMapper.selectListByIds(saleOutItemIds), ErpSaleOutItemDO::getId);
+        for (ErpSalePriceAdjustItemDO item : items) {
+            if (item.getDeptId() == null && item.getSaleOutItemId() != null) {
+                ErpSaleOutItemDO saleOutItem = saleOutItemMap.get(item.getSaleOutItemId());
+                if (saleOutItem != null) {
+                    item.setDeptId(saleOutItem.getDeptId());
+                }
+            }
+        }
+    }
+
     private ErpSalePriceAdjustItemDO findAdjustItem(List<ErpSalePriceAdjustItemDO> adjustItems, Long saleOutItemId) {
         if (saleOutItemId == null || CollUtil.isEmpty(adjustItems)) {
             return null;
@@ -550,7 +599,8 @@ public class ErpSalePriceAdjustServiceImpl implements ErpSalePriceAdjustService 
             return;
         }
 
-        ErpStockDO stock = stockMapper.selectByProductIdAndWarehouseId(saleOutItem.getProductId(), saleOutItem.getWarehouseId());
+        ErpStockDO stock = DataPermissionUtils.executeIgnore(() ->
+                stockMapper.selectByProductIdAndWarehouseId(saleOutItem.getProductId(), saleOutItem.getWarehouseId()));
         BigDecimal totalCount = stock != null && stock.getCount() != null ? stock.getCount() : BigDecimal.ZERO;
         BigDecimal costPrice = stock != null && stock.getCostPrice() != null ? stock.getCostPrice() : BigDecimal.ZERO;
         BigDecimal costAmount = stock != null && stock.getCostAmount() != null ? stock.getCostAmount() : BigDecimal.ZERO;

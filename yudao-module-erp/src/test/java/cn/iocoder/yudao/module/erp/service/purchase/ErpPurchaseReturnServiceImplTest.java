@@ -672,6 +672,7 @@ public class ErpPurchaseReturnServiceImplTest extends BaseMockitoUnitTest {
 
         verify(purchaseReturnMapper).deleteById(eq(10L));
         verify(purchaseReturnItemMapper).deleteByReturnId(eq(10L));
+        verify(purchaseOrderService, never()).updatePurchaseOrderReturnCount(anyLong(), any());
     }
 
     @Test

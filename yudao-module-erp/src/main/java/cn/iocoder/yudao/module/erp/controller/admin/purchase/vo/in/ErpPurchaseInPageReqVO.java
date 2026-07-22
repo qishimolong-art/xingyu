@@ -38,6 +38,12 @@ public class ErpPurchaseInPageReqVO extends PageParam {
     @Schema(description = "备注", example = "你猜")
     private String remark;
 
+    @Schema(description = "采购员")
+    private String purchaser;
+
+    @Schema(description = "经手人")
+    private String handler;
+
     @Schema(description = "入库状态", example = "2")
     private Integer status;
 

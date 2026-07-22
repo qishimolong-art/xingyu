@@ -4,6 +4,7 @@ import cn.iocoder.yudao.framework.common.pojo.PageParam;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.common.util.number.MoneyUtils;
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
+import cn.iocoder.yudao.framework.datapermission.core.util.DataPermissionUtils;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.record.ErpStockRecordPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.record.ErpStockRecordSummaryVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.product.ErpProductDO;
@@ -17,6 +18,7 @@ import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockInItemDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockMoveItemDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockOutItemDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockRecordDO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpWarehouseDO;
 import cn.iocoder.yudao.module.erp.dal.mysql.product.ErpProductMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.purchase.ErpPurchaseInItemMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.purchase.ErpPurchaseReturnItemMapper;
@@ -32,6 +34,7 @@ import cn.iocoder.yudao.module.erp.service.stock.bo.ErpStockRecordCreateReqBO;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
 import org.springframework.validation.annotation.Validated;
 
 import javax.annotation.Resource;
@@ -40,9 +43,11 @@ import java.math.RoundingMode;
 import java.time.LocalDateTime;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
 /**
@@ -59,6 +64,8 @@ public class ErpStockRecordServiceImpl implements ErpStockRecordService {
 
     @Resource
     private ErpStockService stockService;
+    @Resource
+    private ErpWarehouseService warehouseService;
 
     @Resource
     private ErpProductMapper productMapper;
@@ -91,14 +98,58 @@ public class ErpStockRecordServiceImpl implements ErpStockRecordService {
 
     @Override
     public PageResult<ErpStockRecordDO> getStockRecordPage(ErpStockRecordPageReqVO pageReqVO) {
-        Collection<Long> productIdFilter = resolveProductIdFilter(pageReqVO);
-        PageResult<ErpStockRecordDO> pageResult = stockRecordMapper.selectPageWithProductFilter(pageReqVO, productIdFilter);
-        fillAmount(pageResult.getList());
-        return pageResult;
+        validateBatchRequest(pageReqVO);
+        return executeStockViewRead(pageReqVO, () -> {
+            Collection<Long> productIdFilter = resolveProductIdFilter(pageReqVO);
+            PageResult<ErpStockRecordDO> pageResult =
+                    stockRecordMapper.selectPageWithProductFilter(pageReqVO, productIdFilter);
+            fillAmount(pageResult.getList());
+            fillBatchRunningBalance(pageReqVO, pageResult.getList());
+            return pageResult;
+        });
+    }
+
+    private void fillBatchRunningBalance(ErpStockRecordPageReqVO reqVO, List<ErpStockRecordDO> pageRecords) {
+        if (!Boolean.TRUE.equals(reqVO.getStockView()) || pageRecords == null || pageRecords.isEmpty()) {
+            return;
+        }
+        boolean unassignedBatch = Boolean.TRUE.equals(reqVO.getUnassignedBatch());
+        boolean namedBatch = StringUtils.hasText(reqVO.getBatchNo());
+        if (!unassignedBatch && !namedBatch) {
+            return;
+        }
+        List<ErpStockRecordDO> allBatchRecords = stockRecordMapper.selectBatchRunningBalanceRecords(
+                reqVO.getProductId(), reqVO.getWarehouseId(), reqVO.getBatchNo(), reqVO.getUnassignedBatch());
+        Map<Long, BigDecimal> runningBalanceMap = new HashMap<>();
+        BigDecimal runningBalance = BigDecimal.ZERO;
+        for (ErpStockRecordDO record : allBatchRecords) {
+            runningBalance = runningBalance.add(record.getCount() != null ? record.getCount() : BigDecimal.ZERO);
+            runningBalanceMap.put(record.getId(), runningBalance);
+        }
+        for (ErpStockRecordDO record : pageRecords) {
+            BigDecimal batchBalance = runningBalanceMap.get(record.getId());
+            if (batchBalance == null) {
+                continue;
+            }
+            record.setTotalCount(batchBalance);
+            record.setCostAmount(record.getCostPrice() != null
+                    ? record.getCostPrice().multiply(batchBalance) : BigDecimal.ZERO);
+        }
     }
 
     @Override
     public ErpStockRecordSummaryVO getStockRecordSummary(ErpStockRecordPageReqVO reqVO) {
+        validateBatchRequest(reqVO);
+        return executeStockViewRead(reqVO, () -> getStockRecordSummaryInternal(reqVO));
+    }
+
+    private void validateBatchRequest(ErpStockRecordPageReqVO reqVO) {
+        if (Boolean.TRUE.equals(reqVO.getUnassignedBatch()) && StringUtils.hasText(reqVO.getBatchNo())) {
+            throw new IllegalArgumentException("batchNo and unassignedBatch cannot be used together");
+        }
+    }
+
+    private ErpStockRecordSummaryVO getStockRecordSummaryInternal(ErpStockRecordPageReqVO reqVO) {
         ErpStockRecordSummaryVO summary = new ErpStockRecordSummaryVO();
         Collection<Long> productIdFilter = resolveProductIdFilter(reqVO);
         // 若产品维度条件命中 0 条，直接返回空汇总
@@ -113,6 +164,7 @@ public class ErpStockRecordServiceImpl implements ErpStockRecordService {
         try {
             PageResult<ErpStockRecordDO> page = stockRecordMapper.selectPageWithProductFilter(reqVO, productIdFilter);
             fillAmount(page.getList());
+            Map<String, ErpStockRecordDO> latestRecordMap = new HashMap<>();
             for (ErpStockRecordDO r : page.getList()) {
                 BigDecimal count = r.getCount() != null ? r.getCount() : BigDecimal.ZERO;
                 BigDecimal unitPrice = r.getUnitPrice() != null ? r.getUnitPrice() : BigDecimal.ZERO;
@@ -130,6 +182,18 @@ public class ErpStockRecordServiceImpl implements ErpStockRecordService {
                             ? totalPrice.abs() : abs.multiply(unitPrice);
                     summary.setTotalOutAmount(summary.getTotalOutAmount().add(outAmount));
                 }
+                String stockKey = r.getProductId() + "_" + r.getWarehouseId();
+                latestRecordMap.putIfAbsent(stockKey, r);
+            }
+            if (isBatchStockView(reqVO)) {
+                fillBatchSummaryBalance(reqVO, summary);
+            } else {
+                for (ErpStockRecordDO record : latestRecordMap.values()) {
+                    summary.setBalanceCount(summary.getBalanceCount().add(
+                            record.getTotalCount() != null ? record.getTotalCount() : BigDecimal.ZERO));
+                    summary.setBalanceAmount(summary.getBalanceAmount().add(
+                            record.getCostAmount() != null ? record.getCostAmount() : BigDecimal.ZERO));
+                }
             }
             summary.setRecordCount((long) page.getList().size());
         } finally {
@@ -137,6 +201,37 @@ public class ErpStockRecordServiceImpl implements ErpStockRecordService {
             reqVO.setPageNo(origPageNo);
         }
         return summary;
+    }
+
+    private <T> T executeStockViewRead(ErpStockRecordPageReqVO reqVO, Supplier<T> supplier) {
+        if (!Boolean.TRUE.equals(reqVO.getStockView())) {
+            return supplier.get();
+        }
+        if (reqVO.getProductId() == null || reqVO.getWarehouseId() == null) {
+            throw new IllegalArgumentException("Product and warehouse are required for product stock record view");
+        }
+        warehouseService.validateCurrentUserStockWarehousePermission(
+                Collections.singleton(reqVO.getWarehouseId()));
+        return DataPermissionUtils.executeIgnore(supplier::get);
+    }
+
+    private boolean isBatchStockView(ErpStockRecordPageReqVO reqVO) {
+        return Boolean.TRUE.equals(reqVO.getStockView())
+                && (Boolean.TRUE.equals(reqVO.getUnassignedBatch()) || StringUtils.hasText(reqVO.getBatchNo()));
+    }
+
+    private void fillBatchSummaryBalance(ErpStockRecordPageReqVO reqVO, ErpStockRecordSummaryVO summary) {
+        List<ErpStockRecordDO> records = stockRecordMapper.selectBatchRunningBalanceRecords(
+                reqVO.getProductId(), reqVO.getWarehouseId(), reqVO.getBatchNo(), reqVO.getUnassignedBatch());
+        BigDecimal balance = BigDecimal.ZERO;
+        ErpStockRecordDO latest = null;
+        for (ErpStockRecordDO record : records) {
+            balance = balance.add(record.getCount() != null ? record.getCount() : BigDecimal.ZERO);
+            latest = record;
+        }
+        summary.setBalanceCount(balance);
+        summary.setBalanceAmount(latest != null && latest.getCostPrice() != null
+                ? latest.getCostPrice().multiply(balance) : BigDecimal.ZERO);
     }
 
     private void fillAmount(List<ErpStockRecordDO> records) {
@@ -303,28 +398,40 @@ public class ErpStockRecordServiceImpl implements ErpStockRecordService {
         // 3. 更新库存 + 成本均价（走移动加权平均算法）
         ErpStockService.StockUpdateResult result = stockService.updateStockCountAndCost(
                 createReqBO.getProductId(), createReqBO.getWarehouseId(),
-                createReqBO.getCount(), createReqBO.getUnitPrice());
+                createReqBO.getCount(), createReqBO.getUnitPrice(), createReqBO.getBizType());
 
         // 4. 计算本次业务金额
         BigDecimal totalPrice = businessUnitPrice == null ? null
                 : MoneyUtils.priceMultiply(businessUnitPrice, createReqBO.getCount());
 
         // 5. 计算结存金额
-        BigDecimal costAmount = result.getCostPrice() == null ? BigDecimal.ZERO
-                : MoneyUtils.priceMultiply(result.getCostPrice(), result.getTotalCount());
+        BigDecimal costAmount = result.getCostAmount() != null ? result.getCostAmount()
+                : (result.getCostPrice() == null ? BigDecimal.ZERO
+                : MoneyUtils.priceMultiply(result.getCostPrice(), result.getTotalCount()));
         if (costAmount == null) {
             costAmount = BigDecimal.ZERO;
         }
 
         // 6. 落流水
         ErpStockRecordDO stockRecord = BeanUtils.toBean(createReqBO, ErpStockRecordDO.class)
+                .setBatchNo(StringUtils.hasText(createReqBO.getBatchNo()) ? createReqBO.getBatchNo().trim() : null)
                 .setTotalCount(result.getTotalCount())
                 .setUnitPrice(businessUnitPrice)
                 .setTotalPrice(totalPrice)
                 .setCostPrice(result.getCostPrice())
                 .setCostAmount(costAmount)
+                .setDeptId(resolveStockDeptId(createReqBO.getProductId(), createReqBO.getWarehouseId()))
                 .setBizDate(bizDate);
         stockRecordMapper.insert(stockRecord);
+    }
+
+    private Long resolveStockDeptId(Long productId, Long warehouseId) {
+        ErpStockDO stock = DataPermissionUtils.executeIgnore(() -> stockService.getStock(productId, warehouseId));
+        if (stock != null && stock.getDeptId() != null) {
+            return stock.getDeptId();
+        }
+        ErpWarehouseDO warehouse = DataPermissionUtils.executeIgnore(() -> warehouseService.getWarehouse(warehouseId));
+        return warehouse != null ? warehouse.getDeptId() : null;
     }
 
 }

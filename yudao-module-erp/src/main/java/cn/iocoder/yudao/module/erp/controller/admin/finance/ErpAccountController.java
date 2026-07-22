@@ -10,11 +10,13 @@ import cn.iocoder.yudao.framework.common.util.collection.MapUtils;
 import cn.iocoder.yudao.framework.common.util.number.NumberUtils;
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
 import cn.iocoder.yudao.framework.excel.core.util.ExcelUtils;
+import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.account.ErpAccountImportExcelVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.account.ErpAccountPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.account.ErpAccountRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.account.ErpAccountSaveReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.account.ErpAccountTransactionPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.account.ErpAccountTransactionRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.imports.ErpFinanceImportRespVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.ErpAccountDO;
 import cn.iocoder.yudao.module.erp.service.finance.ErpAccountService;
 import cn.iocoder.yudao.module.erp.service.finance.ErpFinanceBillService;
@@ -38,6 +40,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.multipart.MultipartFile;
 
 import javax.annotation.Resource;
 import javax.servlet.http.HttpServletResponse;
@@ -53,6 +56,8 @@ import static cn.iocoder.yudao.framework.common.pojo.CommonResult.success;
 import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.convertList;
 import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.convertListByFlatMap;
 import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.convertSet;
+import static cn.iocoder.yudao.module.erp.controller.admin.finance.vo.imports.ErpFinanceImportUtils.allBlank;
+import static cn.iocoder.yudao.module.erp.controller.admin.finance.vo.imports.ErpFinanceImportUtils.failureReason;
 
 @Tag(name = "管理后台 - ERP 结算账户")
 @RestController
@@ -181,6 +186,36 @@ public class ErpAccountController {
         List<ErpAccountRespVO> rows = BeanUtils.toBean(list, ErpAccountRespVO.class);
         fillAccountNames(rows);
         ExcelUtils.write(response, "结算账户.xls", "数据", ErpAccountRespVO.class, rows);
+    }
+
+    @GetMapping("/get-import-template")
+    @Operation(summary = "获得结算账户导入模板")
+    @PreAuthorize("@ss.hasPermission('erp:account:import')")
+    public void getImportTemplate(HttpServletResponse response) throws IOException {
+        ExcelUtils.writeImportTemplate(response, "结算账户导入模板.xls", "结算账户",
+                ErpAccountImportExcelVO.class, Collections.singletonList(new ErpAccountImportExcelVO()));
+    }
+
+    @PostMapping("/import")
+    @Operation(summary = "导入结算账户")
+    @PreAuthorize("@ss.hasPermission('erp:account:import')")
+    public CommonResult<ErpFinanceImportRespVO> importAccount(@RequestParam("file") MultipartFile file) throws Exception {
+        List<ErpAccountImportExcelVO> list = ExcelUtils.read(file, ErpAccountImportExcelVO.class);
+        ErpFinanceImportRespVO result = new ErpFinanceImportRespVO();
+        for (int i = 0; i < list.size(); i++) {
+            ErpAccountImportExcelVO row = list.get(i);
+            if (row == null || allBlank(row.getName(), row.getAccountType(), row.getBankName(), row.getBankAccount(),
+                    row.getNo(), row.getDeptId(), row.getRemark(), row.getStatus(), row.getSort())) {
+                continue;
+            }
+            try {
+                accountService.createAccount(BeanUtils.toBean(row, ErpAccountSaveReqVO.class));
+                result.addCreated();
+            } catch (Exception ex) {
+                result.addFailure(i + 2, row.getName(), failureReason(ex));
+            }
+        }
+        return success(result);
     }
 
     private void fillAccountNames(List<ErpAccountRespVO> rows) {

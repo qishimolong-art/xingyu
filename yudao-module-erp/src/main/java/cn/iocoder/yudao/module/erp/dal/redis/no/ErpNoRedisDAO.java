@@ -23,6 +23,8 @@ public class ErpNoRedisDAO {
     public static final String STOCK_OUT_BILL_NO_PREFIX = "CCD";
     public static final String STOCK_OUT_NO_PREFIX = "QCKD";
     public static final String STOCK_MOVE_NO_PREFIX = "QCDB";
+    public static final String STOCK_TRANSFER_IN_NO_PREFIX = "QDRK";
+    public static final String WAREHOUSE_MOVE_NO_PREFIX = "YH";
     public static final String STOCK_CHECK_NO_PREFIX = "QCPD";
     public static final String SALE_ORDER_NO_PREFIX = "XSDD";
     public static final String SALE_QUOTE_NO_PREFIX = "XSBJ";
@@ -49,6 +51,7 @@ public class ErpNoRedisDAO {
     public static final String CUSTOMER_NO_PREFIX = "C";
     public static final String MEMBER_NO_PREFIX = "M";
     public static final String PLATFORM_NO_PREFIX = "P";
+    public static final String WAREHOUSE_CODE_PREFIX = "WH";
 
     @Resource
     private StringRedisTemplate stringRedisTemplate;

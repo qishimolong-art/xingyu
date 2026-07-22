@@ -8,6 +8,7 @@ import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleOutItemDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockOutBillDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockOutBillItemDO;
 
+import java.util.Collection;
 import java.util.List;
 
 public interface ErpStockOutBillService {
@@ -16,7 +17,15 @@ public interface ErpStockOutBillService {
 
     ErpStockOutBillDO getStockOutBill(Long id);
 
+    List<ErpStockOutBillDO> getStockOutBillList(List<Long> ids);
+
     List<ErpStockOutBillItemDO> getStockOutBillItemList(Long billId);
+
+    List<ErpStockOutBillItemDO> getStockOutBillItemListByBillIds(Collection<Long> billIds);
+
+    List<ErpStockOutBillDO> getStockOutBillListBySaleOutId(Long saleOutId);
+
+    List<ErpStockOutBillDO> getStockOutBillListBySaleOutIds(Collection<Long> saleOutIds);
 
     List<ErpStockOutBillItemDO> getSaleOutSourceItemList(Long saleOutId);
 

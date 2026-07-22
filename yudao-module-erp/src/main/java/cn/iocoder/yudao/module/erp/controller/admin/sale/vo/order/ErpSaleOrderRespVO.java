@@ -156,6 +156,11 @@ public class ErpSaleOrderRespVO {
 
         @Schema(description = "产品单位单位", requiredMode = Schema.RequiredMode.REQUIRED, example = "3113")
         private Long productUnitId;
+        private Long warehouseId;
+        private String warehouseName;
+        private Long warehouseDeptId;
+        private String warehouseDeptName;
+        private Long deptId;
 
         // ========== 销售出库 ==========
 

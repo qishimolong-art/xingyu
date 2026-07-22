@@ -4,9 +4,11 @@ import cn.hutool.core.collection.CollUtil;
 import cn.hutool.core.util.ObjectUtil;
 import cn.hutool.core.util.StrUtil;
 import cn.iocoder.yudao.framework.common.enums.CommonStatusEnum;
+import cn.iocoder.yudao.framework.common.exception.ServiceException;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.common.util.number.MoneyUtils;
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
+import cn.iocoder.yudao.framework.datapermission.core.util.DataPermissionUtils;
 import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpProductRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.imports.ErpPurchaseImportResultRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.in.ErpPurchaseInForAdjustRespVO;
@@ -14,27 +16,43 @@ import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.in.ErpPurchaseIn
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.in.ErpPurchaseInImportRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.in.ErpPurchaseInItemForAdjustRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.in.ErpPurchaseInOrderImportExcelVO;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.in.ErpPurchaseInCreateSaleCartReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.in.ErpPurchaseInCreateSaleCartRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.in.ErpPurchaseInCreateTransferOutReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.in.ErpPurchaseInCreateTransferOutRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.in.ErpPurchaseInPageReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.in.ErpPurchaseInSaleCartableItemRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.in.ErpPurchaseInSaveReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.in.ErpPurchaseInTransferOutableItemRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.order.ErpPurchaseInFromOrderReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.returns.ErpPurchaseReturnableItemRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartSaveReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartSubmitRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.supplier.ErpSupplierPageReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.move.ErpStockMoveSaveReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.product.ErpProductDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseInDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseInItemDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseOrderDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseOrderItemDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpSupplierDO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleCartItemDO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleConvertRecordDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpWarehouseDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.accounting.ErpVoucherItemDO;
 import cn.iocoder.yudao.module.erp.dal.mysql.product.ErpProductMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.purchase.ErpPurchaseInItemMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.purchase.ErpPurchaseInMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.purchase.ErpPurchaseReturnItemMapper;
+import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpSaleConvertRecordMapper;
+import cn.iocoder.yudao.module.erp.dal.mysql.stock.ErpStockMoveItemMapper;
 import cn.iocoder.yudao.module.erp.dal.redis.no.ErpNoRedisDAO;
 import cn.iocoder.yudao.module.erp.enums.ErpAuditStatus;
+import cn.iocoder.yudao.module.erp.enums.common.ErpBizTypeEnum;
 import cn.iocoder.yudao.module.erp.enums.finance.accounting.ErpVoucherTypeEnum;
 import cn.iocoder.yudao.module.erp.enums.finance.accounting.ErpVoucherSourceBizTypeEnum;
+import cn.iocoder.yudao.module.erp.enums.sale.ErpSaleBizSourceTypeEnum;
+import cn.iocoder.yudao.module.erp.enums.sale.ErpSaleConvertTypeEnum;
 import cn.iocoder.yudao.module.erp.enums.stock.ErpStockRecordBizTypeEnum;
 import cn.iocoder.yudao.module.erp.service.common.ErpOperateLogService;
 import cn.iocoder.yudao.module.erp.service.finance.accounting.ErpAutoVoucherBuilder;
@@ -42,12 +60,16 @@ import cn.iocoder.yudao.module.erp.service.finance.accounting.ErpBookOpenService
 import cn.iocoder.yudao.module.erp.service.finance.accounting.ErpVoucherService;
 import cn.iocoder.yudao.module.erp.service.product.ErpProductBatchNoValidator;
 import cn.iocoder.yudao.module.erp.service.product.ErpProductService;
+import cn.iocoder.yudao.module.erp.service.sale.ErpSaleCartService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpStockRecordService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpStockInBillService;
+import cn.iocoder.yudao.module.erp.service.stock.ErpStockMoveService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpWarehouseService;
 import cn.iocoder.yudao.module.erp.service.stock.bo.ErpStockRecordCreateReqBO;
+import cn.iocoder.yudao.module.system.api.dept.DeptApi;
 import cn.iocoder.yudao.module.system.api.user.AdminUserApi;
 import cn.iocoder.yudao.module.system.api.user.dto.AdminUserRespDTO;
+import cn.iocoder.yudao.module.system.api.permission.PermissionApi;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
@@ -68,18 +90,20 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
 
 import static cn.iocoder.yudao.framework.common.exception.util.ServiceExceptionUtil.exception;
 import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.*;
+import static cn.iocoder.yudao.framework.security.core.util.SecurityFrameworkUtils.getLoginUserId;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.*;
 import static cn.iocoder.yudao.module.erp.enums.LogRecordConstants.*;
 
-// TODO 芋艿：记录操作日志
+// TODO 芋艿：记录操作日�?
 
 /**
- * ERP 采购入库 Service 实现类
+ * ERP 采购入库 Service 实现�?
  *
  * @author 芋道源码
  */
@@ -94,6 +118,10 @@ public class ErpPurchaseInServiceImpl implements ErpPurchaseInService {
     @Resource
     private ErpPurchaseReturnItemMapper purchaseReturnItemMapper;
     @Resource
+    private ErpStockMoveItemMapper stockMoveItemMapper;
+    @Resource
+    private ErpSaleConvertRecordMapper saleConvertRecordMapper;
+    @Resource
     private ErpProductMapper productMapper;
 
     @Resource
@@ -102,12 +130,16 @@ public class ErpPurchaseInServiceImpl implements ErpPurchaseInService {
     @Resource
     private ErpProductService productService;
     @Resource
-    @Lazy // 延迟加载，避免循环依赖
+    @Lazy // 延迟加载，避免循环依�?
     private ErpPurchaseOrderService purchaseOrderService;
     @Resource
     private ErpStockRecordService stockRecordService;
     @Resource
     private ErpStockInBillService stockInBillService;
+    @Resource
+    private ErpStockMoveService stockMoveService;
+    @Resource
+    private ErpSaleCartService saleCartService;
     @Resource
     private ErpSupplierService supplierService;
     @Resource
@@ -115,6 +147,10 @@ public class ErpPurchaseInServiceImpl implements ErpPurchaseInService {
 
     @Resource
     private AdminUserApi adminUserApi;
+    @Resource
+    private DeptApi deptApi;
+    @Resource
+    private PermissionApi permissionApi;
     @Resource
     private ErpOperateLogService operateLogService;
     @Resource
@@ -125,23 +161,23 @@ public class ErpPurchaseInServiceImpl implements ErpPurchaseInService {
     @Resource
     private ErpAutoVoucherBuilder autoVoucherBuilder;
     @Resource
-    @Lazy // 延迟加载，避免循环依赖
+    @Lazy // 延迟加载，避免循环依�?
     private ErpVoucherService voucherService;
     @Resource
     private ErpBookOpenService bookOpenService;
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Long createPurchaseIn(ErpPurchaseInSaveReqVO createReqVO) {
-        // 1.1 校验采购订单已审核（如果填写了 orderId）
+        // 1.1 校验采购订单已审核（如果填写�?orderId�?
         ErpPurchaseOrderDO purchaseOrder = null;
         if (createReqVO.getOrderId() != null) {
             purchaseOrder = purchaseOrderService.validatePurchaseOrder(createReqVO.getOrderId());
         } else {
             supplierService.validateSupplier(createReqVO.getSupplierId());
         }
-        // 1.2 校验入库项的有效性
+        // 1.2 校验入库项的有效�?
         List<ErpPurchaseInItemDO> purchaseInItems = validatePurchaseInItems(createReqVO.getItems());
-        // 1.3 生成入库单号，并校验唯一性
+        // 1.3 生成入库单号，并校验唯一�?
         String no = noRedisDAO.generate(ErpNoRedisDAO.PURCHASE_IN_NO_PREFIX);
         if (purchaseInMapper.selectByNo(no) != null) {
             throw exception(PURCHASE_IN_NO_EXISTS);
@@ -158,7 +194,7 @@ public class ErpPurchaseInServiceImpl implements ErpPurchaseInService {
             purchaseIn.setSupplierId(createReqVO.getSupplierId()).setOrderNo(StrUtil.EMPTY);
         }
         purchaseDocumentDefaultService.fillCreateDefaults(purchaseIn);
-        // （当 orderId 为空时，supplierId 由 createReqVO 传进来；若未传，则在主表 supplierId 为 null，业务允许）
+        // （当 orderId 为空时，supplierId �?createReqVO 传进来；若未传，则在主表 supplierId �?null，业务允许）
         calculateTotalPrice(purchaseIn, purchaseInItems);
         purchaseDocumentDefaultService.fillCreateAuditDefaults(purchaseIn);
         purchaseInMapper.insert(purchaseIn);
@@ -167,7 +203,7 @@ public class ErpPurchaseInServiceImpl implements ErpPurchaseInService {
         purchaseDocumentDefaultService.fillCreateAuditDefaults(purchaseInItems);
         purchaseInItemMapper.insertBatch(purchaseInItems);
 
-        // 3. 仅在有 orderId 时更新采购订单的入库数量
+        // 3. 仅在�?orderId 时更新采购订单的入库数量
         if (createReqVO.getOrderId() != null) {
             updatePurchaseOrderInCount(createReqVO.getOrderId());
         }
@@ -183,14 +219,14 @@ public class ErpPurchaseInServiceImpl implements ErpPurchaseInService {
         if (ErpAuditStatus.APPROVE.getStatus().equals(purchaseIn.getStatus())) {
             throw exception(PURCHASE_IN_UPDATE_FAIL_APPROVE, purchaseIn.getNo());
         }
-        // 1.2 校验采购订单已审核（如果填写了 orderId）
+        // 1.2 校验采购订单已审核（如果填写�?orderId�?
         ErpPurchaseOrderDO purchaseOrder = null;
         if (updateReqVO.getOrderId() != null) {
             purchaseOrder = purchaseOrderService.validatePurchaseOrder(updateReqVO.getOrderId());
         } else {
             supplierService.validateSupplier(updateReqVO.getSupplierId());
         }
-        // 1.3 校验订单项的有效性
+        // 1.3 校验订单项的有效�?
         List<ErpPurchaseInItemDO> purchaseInItems = validatePurchaseInItems(updateReqVO.getItems());
 
         // 2.1 更新入库
@@ -208,10 +244,10 @@ public class ErpPurchaseInServiceImpl implements ErpPurchaseInService {
         purchaseDocumentDefaultService.fillCreateDefaults(updateObj);
         calculateTotalPrice(updateObj, purchaseInItems);
         purchaseInMapper.updateById(updateObj);
-        // 2.2 更新入库项
+        // 2.2 更新入库�?
         updatePurchaseInItemList(updateReqVO.getId(), purchaseInItems);
 
-        // 3.1 更新采购订单的入库数量（新 orderId 非空时）
+        // 3.1 更新采购订单的入库数量（�?orderId 非空时）
         if (updateObj.getOrderId() != null) {
             updatePurchaseOrderInCount(updateObj.getOrderId());
         }
@@ -245,14 +281,19 @@ public class ErpPurchaseInServiceImpl implements ErpPurchaseInService {
     }
 
     private void updatePurchaseOrderInCount(Long orderId) {
-        // 1.1 查询采购订单对应的采购入库单列表
-        List<ErpPurchaseInDO> purchaseIns = purchaseInMapper.selectListByOrderIdAndStatus(orderId,
-                ErpAuditStatus.APPROVE.getStatus());
-        // 1.2 查询对应的采购订单项的入库数量
-        Map<Long, BigDecimal> returnCountMap = purchaseInItemMapper.selectOrderItemCountSumMapByInIds(
-                convertList(purchaseIns, ErpPurchaseInDO::getId));
-        // 2. 更新采购订单的入库数量
+        Map<Long, BigDecimal> returnCountMap = getPurchaseOrderGeneratedInCountMap(orderId);
+        // 2. 更新采购订单的入库数�?
         purchaseOrderService.updatePurchaseOrderInCount(orderId, returnCountMap);
+    }
+
+    private Map<Long, BigDecimal> getPurchaseOrderGeneratedInCountMap(Long orderId) {
+        // 已生成的采购入库单都会占用采购订单可入库数量，审批状态不影响占用。
+        List<ErpPurchaseInDO> purchaseIns = purchaseInMapper.selectListByOrderId(orderId);
+        if (CollUtil.isEmpty(purchaseIns)) {
+            return Collections.emptyMap();
+        }
+        return purchaseInItemMapper.selectOrderItemCountSumMapByInIds(
+                convertList(purchaseIns, ErpPurchaseInDO::getId));
     }
 
     @Override
@@ -263,12 +304,12 @@ public class ErpPurchaseInServiceImpl implements ErpPurchaseInService {
         }
         // 1.1 校验存在
         ErpPurchaseInDO purchaseIn = validatePurchaseInExists(id);
-        // 1.2 校验状态
+        // Validate status.
         if (!ErpAuditStatus.PROCESS.getStatus().equals(purchaseIn.getStatus())) {
             throw exception(PURCHASE_IN_APPROVE_FAIL);
         }
 
-        // 2. 更新状态
+        // Update status.
         int updateCount = purchaseInMapper.updateByIdAndStatus(id, purchaseIn.getStatus(),
                 new ErpPurchaseInDO().setStatus(ErpAuditStatus.APPROVE.getStatus()));
         if (updateCount == 0) {
@@ -292,7 +333,7 @@ public class ErpPurchaseInServiceImpl implements ErpPurchaseInService {
                 .collect(Collectors.toList());
         directStockItems.forEach(purchaseInItem -> {
             stockRecordService.createStockRecord(new ErpStockRecordCreateReqBO(
-                    purchaseInItem.getProductId(), purchaseInItem.getWarehouseId(), purchaseInItem.getCount(),
+                    purchaseInItem.getProductId(), purchaseInItem.getWarehouseId(), purchaseInItem.getBatchNo(), purchaseInItem.getCount(),
                     ErpStockRecordBizTypeEnum.PURCHASE_IN.getType(), purchaseInItem.getInId(), purchaseInItem.getId(), purchaseIn.getNo(),
                     purchaseInItem.getProductPrice(), purchaseIn.getInTime()));
         });
@@ -342,13 +383,13 @@ public class ErpPurchaseInServiceImpl implements ErpPurchaseInService {
     }
 
     private List<ErpPurchaseInItemDO> validatePurchaseInItems(List<ErpPurchaseInSaveReqVO.Item> list) {
-        // 0. 校验每项的入库数量和入库价格必须大于 0（赠品行单价允许 0）
+        // 0. 校验每项的入库数量和入库价格必须大于 0（赠品行单价允许 0�?
         if (CollUtil.isNotEmpty(list)) {
             for (ErpPurchaseInSaveReqVO.Item item : list) {
                 if (item.getCount() == null || item.getCount().compareTo(BigDecimal.ZERO) <= 0) {
                     throw exception(PURCHASE_IN_ITEM_COUNT_POSITIVE);
                 }
-                // 校验单价：单价为 null 或 <0 直接报错；=0 仅允许赠品（orderItemId 关联的订单行是赠品由服务端预置为 0，这里只拦截负值/空值）
+                // 校验单价：单价为 null �?<0 直接报错�?0 仅允许赠品（orderItemId 关联的订单行是赠品由服务端预置为 0，这里只拦截负�?空值）
                 if (item.getProductPrice() == null || item.getProductPrice().compareTo(BigDecimal.ZERO) < 0) {
                     throw exception(PURCHASE_IN_ITEM_PRICE_POSITIVE);
                 }
@@ -365,19 +406,21 @@ public class ErpPurchaseInServiceImpl implements ErpPurchaseInService {
             }
         }
         // 1. 校验产品存在
-        List<ErpProductDO> productList = productService.validProductList(
-                convertSet(list, ErpPurchaseInSaveReqVO.Item::getProductId));
+        List<ErpProductDO> productList = DataPermissionUtils.executeIgnore(() -> productService.validProductList(
+                convertSet(list, ErpPurchaseInSaveReqVO.Item::getProductId)));
         Map<Long, ErpProductDO> productMap = convertMap(productList, ErpProductDO::getId);
-        productBatchNoValidator.validateBatchNoRequired(list, productMap,
+        productBatchNoValidator.validateBatchNoAllowed(list, productMap,
                 ErpPurchaseInSaveReqVO.Item::getProductId, ErpPurchaseInSaveReqVO.Item::getBatchNo);
         Set<Long> warehouseIds = convertSet(list, ErpPurchaseInSaveReqVO.Item::getWarehouseId);
         warehouseService.validPurchaseWarehouseList(warehouseIds);
-        // 2. 转化为 ErpPurchaseInItemDO 列表
+        Map<Long, ErpWarehouseDO> warehouseMap = warehouseService.getWarehouseMap(warehouseIds);
+        // 2. 转化�?ErpPurchaseInItemDO 列表
         return convertList(list, o -> BeanUtils.toBean(o, ErpPurchaseInItemDO.class, item -> {
             ErpProductDO product = productMap.get(item.getProductId());
             item.setProductUnitId(product.getUnitId());
+            fillDeptIdFromWarehouse(item, warehouseMap);
 
-            // 包装数：优先用 VO 传来的；为空或非正数 → 用产品资料 packageQty；再为空 → 默认 1
+            // 包装数：优先�?VO 传来的；为空或非正数 �?用产品资�?packageQty；再为空 �?默认 1
             Integer packageQty = item.getPackageQty();
             if (packageQty == null || packageQty <= 0) {
                 packageQty = product.getPackageQty() != null && product.getPackageQty() > 0
@@ -385,7 +428,7 @@ public class ErpPurchaseInServiceImpl implements ErpPurchaseInService {
                 item.setPackageQty(packageQty);
             }
 
-            // 整件数有值 → count = wholeQty × packageQty，覆盖 VO 传的 count
+            // 整件数有�?�?count = wholeQty × packageQty，覆�?VO 传的 count
             if (item.getWholeQty() != null) {
                 item.setCount(new BigDecimal(item.getWholeQty()).multiply(new BigDecimal(packageQty)));
             }
@@ -396,13 +439,20 @@ public class ErpPurchaseInServiceImpl implements ErpPurchaseInService {
         }));
     }
 
+    private void fillDeptIdFromWarehouse(ErpPurchaseInItemDO item, Map<Long, ErpWarehouseDO> warehouseMap) {
+        if (item.getDeptId() == null && item.getWarehouseId() != null) {
+            ErpWarehouseDO warehouse = warehouseMap.get(item.getWarehouseId());
+            item.setDeptId(warehouse == null ? null : warehouse.getDeptId());
+        }
+    }
+
     private void updatePurchaseInItemList(Long id, List<ErpPurchaseInItemDO> newList) {
         // 第一步，对比新老数据，获得添加、修改、删除的列表
         List<ErpPurchaseInItemDO> oldList = purchaseInItemMapper.selectListByInId(id);
         List<List<ErpPurchaseInItemDO>> diffList = diffList(oldList, newList, // id 不同，就认为是不同的记录
                 (oldVal, newVal) -> oldVal.getId().equals(newVal.getId()));
 
-        // 第二步，批量添加、修改、删除
+        // Batch insert, update and delete items.
         if (CollUtil.isNotEmpty(diffList.get(0))) {
             diffList.get(0).forEach(o -> o.setInId(id));
             purchaseDocumentDefaultService.fillCreateAuditDefaults(diffList.get(0));
@@ -434,10 +484,10 @@ public class ErpPurchaseInServiceImpl implements ErpPurchaseInService {
         purchaseIns.forEach(purchaseIn -> {
             // 2.1 删除订单
             purchaseInMapper.deleteById(purchaseIn.getId());
-            // 2.2 删除订单项
+            // 2.2 删除订单�?
             purchaseInItemMapper.deleteByInId(purchaseIn.getId());
 
-            // 2.3 更新采购订单的入库数量
+            // 2.3 更新采购订单的入库数�?
             if (purchaseIn.getOrderId() != null) {
                 updatePurchaseOrderInCount(purchaseIn.getOrderId());
             }
@@ -481,7 +531,7 @@ public class ErpPurchaseInServiceImpl implements ErpPurchaseInService {
         return purchaseInMapper.selectByIds(ids);
     }
 
-    // ==================== 采购入库项 ====================
+    // ==================== 采购入库�?====================
 
     @Override
     public List<ErpPurchaseInItemDO> getPurchaseInItemListByInId(Long inId) {
@@ -505,8 +555,16 @@ public class ErpPurchaseInServiceImpl implements ErpPurchaseInService {
     }
 
     @Override
+    public Map<Long, BigDecimal> getTransferOutCountMapByInItemIds(Collection<Long> inItemIds) {
+        if (CollUtil.isEmpty(inItemIds)) {
+            return Collections.emptyMap();
+        }
+        return stockMoveItemMapper.selectMovedCountMapBySourceInItemIds(inItemIds);
+    }
+
+    @Override
     public List<ErpPurchaseReturnableItemRespVO> getReturnableItemsByInId(Long inId) {
-        // 1. 校验入库单存在且已审批
+        // 1. 校验入库单存在且已审�?
         ErpPurchaseInDO purchaseIn = validatePurchaseIn(inId);
 
         // 2. 查入库项列表
@@ -522,7 +580,7 @@ public class ErpPurchaseInServiceImpl implements ErpPurchaseInService {
         // 4. 批量查产品信息（名称、编码）
         Set<Long> productIds = convertSet(items, ErpPurchaseInItemDO::getProductId);
         Map<Long, ErpProductDO> productMap = convertMap(
-                productService.validProductList(productIds), ErpProductDO::getId);
+                DataPermissionUtils.executeIgnore(() -> productService.validProductList(productIds)), ErpProductDO::getId);
 
         // 5. 组装结果：可退数量 = 入库数量 - 已退
         return items.stream().map(item -> {
@@ -533,6 +591,7 @@ public class ErpPurchaseInServiceImpl implements ErpPurchaseInService {
             vo.setProductId(item.getProductId());
             vo.setProductUnitId(item.getProductUnitId());
             vo.setWarehouseId(item.getWarehouseId());
+            vo.setDeptId(item.getDeptId());
             vo.setProductPrice(item.getProductPrice());
             vo.setInCount(item.getCount());
             BigDecimal returned = returnedMap.getOrDefault(item.getId(), BigDecimal.ZERO);
@@ -566,14 +625,415 @@ public class ErpPurchaseInServiceImpl implements ErpPurchaseInService {
     }
 
     @Override
+    public List<ErpPurchaseInTransferOutableItemRespVO> getTransferOutableItemsByInId(Long inId) {
+        ErpPurchaseInDO purchaseIn = validatePurchaseIn(inId);
+        List<ErpPurchaseInItemDO> items = purchaseInItemMapper.selectListByInId(inId);
+        if (CollUtil.isEmpty(items)) {
+            return Collections.emptyList();
+        }
+
+        Set<Long> itemIds = convertSet(items, ErpPurchaseInItemDO::getId);
+        Set<Long> productIds = convertSet(items, ErpPurchaseInItemDO::getProductId);
+        Map<Long, BigDecimal> movedMap = stockMoveItemMapper.selectMovedCountMapBySourceInItemIds(itemIds);
+        Map<Long, ErpProductDO> productMap = convertMap(
+                DataPermissionUtils.executeIgnore(() -> productService.validProductList(productIds)),
+                ErpProductDO::getId);
+        Map<Long, ErpProductRespVO> productVOMap = DataPermissionUtils.executeIgnore(() ->
+                productService.getProductVOMap(productIds));
+        Map<Long, ErpWarehouseDO> warehouseMap = DataPermissionUtils.executeIgnore(() ->
+                warehouseService.getWarehouseMap(convertSet(items, ErpPurchaseInItemDO::getWarehouseId)));
+
+        return items.stream().map(item -> {
+            BigDecimal movedCount = movedMap.getOrDefault(item.getId(), BigDecimal.ZERO);
+            BigDecimal transferOutableCount = safeCount(item.getCount()).subtract(movedCount);
+            if (transferOutableCount.compareTo(BigDecimal.ZERO) < 0) {
+                transferOutableCount = BigDecimal.ZERO;
+            }
+            ErpPurchaseInTransferOutableItemRespVO vo = new ErpPurchaseInTransferOutableItemRespVO();
+            vo.setSourceInId(purchaseIn.getId());
+            vo.setSourceInItemId(item.getId());
+            vo.setSourceInNo(purchaseIn.getNo());
+            vo.setProductId(item.getProductId());
+            vo.setProductUnitId(item.getProductUnitId());
+            vo.setFromWarehouseId(item.getWarehouseId());
+            vo.setInCount(item.getCount());
+            vo.setMovedCount(movedCount);
+            vo.setTransferOutableCount(transferOutableCount);
+            vo.setProductPrice(item.getProductPrice());
+            vo.setWarehousePosition(item.getWarehousePosition());
+            vo.setBatchNo(item.getBatchNo());
+            vo.setBarCode(item.getBarCode());
+            vo.setBrand(item.getBrand());
+            vo.setVehicleModel(item.getVehicleModel());
+            vo.setOriginPlace(item.getOriginPlace());
+            vo.setBusinessEntity(item.getBusinessEntity());
+            vo.setRemark(item.getRemark());
+            ErpProductDO product = productMap.get(item.getProductId());
+            if (product != null) {
+                vo.setProductName(product.getName());
+                vo.setProductCode(product.getCode());
+                vo.setBatchNoEnabled(product.getBatchNoEnabled());
+            }
+            ErpProductRespVO productVO = productVOMap.get(item.getProductId());
+            if (productVO != null) {
+                vo.setProductUnitName(productVO.getUnitName());
+            }
+            ErpWarehouseDO warehouse = warehouseMap.get(item.getWarehouseId());
+            if (warehouse != null) {
+                vo.setFromWarehouseName(warehouse.getName());
+                vo.setFromWarehouseDeptId(warehouse.getDeptId());
+                vo.setFromWarehouseDeptName(resolveDeptName(warehouse.getDeptId()));
+            }
+            return vo;
+        }).collect(Collectors.toList());
+    }
+
+    @Override
+    public List<ErpPurchaseInSaleCartableItemRespVO> getSaleCartableItemsByInId(Long inId) {
+        ErpPurchaseInDO purchaseIn = validatePurchaseIn(inId);
+        List<ErpPurchaseInItemDO> items = purchaseInItemMapper.selectListByInId(inId);
+        if (CollUtil.isEmpty(items)) {
+            return Collections.emptyList();
+        }
+
+        Set<Long> itemIds = convertSet(items, ErpPurchaseInItemDO::getId);
+        Set<Long> productIds = convertSet(items, ErpPurchaseInItemDO::getProductId);
+        Map<Long, BigDecimal> convertedMap = saleConvertRecordMapper.selectPurchaseInToCartCountMapBySourceItemIds(itemIds);
+        Map<Long, ErpProductDO> productMap = convertMap(
+                DataPermissionUtils.executeIgnore(() -> productService.validProductList(productIds)),
+                ErpProductDO::getId);
+        Map<Long, ErpProductRespVO> productVOMap = DataPermissionUtils.executeIgnore(() ->
+                productService.getProductVOMap(productIds));
+        Map<Long, ErpWarehouseDO> warehouseMap = DataPermissionUtils.executeIgnore(() ->
+                warehouseService.getWarehouseMap(convertSet(items, ErpPurchaseInItemDO::getWarehouseId)));
+
+        return items.stream().map(item -> {
+            BigDecimal convertedCount = convertedMap.getOrDefault(item.getId(), BigDecimal.ZERO);
+            BigDecimal saleCartableCount = safeCount(item.getCount()).subtract(convertedCount);
+            if (saleCartableCount.compareTo(BigDecimal.ZERO) < 0) {
+                saleCartableCount = BigDecimal.ZERO;
+            }
+            ErpPurchaseInSaleCartableItemRespVO vo = new ErpPurchaseInSaleCartableItemRespVO();
+            vo.setSourceInId(purchaseIn.getId());
+            vo.setSourceInItemId(item.getId());
+            vo.setSourceInNo(purchaseIn.getNo());
+            vo.setProductId(item.getProductId());
+            vo.setProductUnitId(item.getProductUnitId());
+            vo.setWarehouseId(item.getWarehouseId());
+            vo.setInCount(item.getCount());
+            vo.setConvertedCount(convertedCount);
+            vo.setSaleCartableCount(saleCartableCount);
+            vo.setPurchasePrice(item.getProductPrice());
+            vo.setWarehousePosition(item.getWarehousePosition());
+            vo.setBatchNo(item.getBatchNo());
+            vo.setBarCode(item.getBarCode());
+            vo.setBrand(item.getBrand());
+            vo.setVehicleModel(item.getVehicleModel());
+            vo.setOriginPlace(item.getOriginPlace());
+            vo.setBusinessEntity(item.getBusinessEntity());
+            vo.setRemark(item.getRemark());
+            ErpProductDO product = productMap.get(item.getProductId());
+            if (product != null) {
+                vo.setProductName(product.getName());
+                vo.setProductCode(product.getCode());
+                vo.setBatchNoEnabled(product.getBatchNoEnabled());
+                vo.setSalePrice(resolveDefaultSalePrice(product));
+                vo.setStandard(product.getStandard());
+            }
+            ErpProductRespVO productVO = productVOMap.get(item.getProductId());
+            if (productVO != null) {
+                vo.setProductUnitName(productVO.getUnitName());
+            }
+            ErpWarehouseDO warehouse = warehouseMap.get(item.getWarehouseId());
+            if (warehouse != null) {
+                vo.setWarehouseName(warehouse.getName());
+                vo.setWarehouseDeptId(warehouse.getDeptId());
+                vo.setWarehouseDeptName(resolveDeptName(warehouse.getDeptId()));
+            }
+            return vo;
+        }).collect(Collectors.toList());
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public ErpPurchaseInCreateTransferOutRespVO createTransferOutFromPurchaseIn(
+            ErpPurchaseInCreateTransferOutReqVO reqVO) {
+        validateStockTransferOutCreatePermission();
+        ErpPurchaseInDO purchaseIn = validatePurchaseIn(reqVO.getSourceInId());
+        List<ErpPurchaseInItemDO> sourceItems = purchaseInItemMapper.selectListByInId(purchaseIn.getId());
+        if (CollUtil.isEmpty(sourceItems)) {
+            throw exception(PURCHASE_IN_TRANSFER_OUT_ITEMS_EMPTY);
+        }
+        Map<Long, ErpPurchaseInItemDO> sourceItemMap = convertMap(sourceItems, ErpPurchaseInItemDO::getId);
+        Map<Long, BigDecimal> requestCountMap = buildTransferOutRequestCountMap(reqVO, sourceItemMap);
+        Map<Long, BigDecimal> movedMap = stockMoveItemMapper.selectMovedCountMapBySourceInItemIds(requestCountMap.keySet());
+        validateTransferOutableCounts(requestCountMap, sourceItemMap, movedMap);
+
+        Long defaultToWarehouseId = reqVO.getToWarehouseId();
+        Map<Long, List<ErpStockMoveSaveReqVO.Item>> moveItemGroups = new LinkedHashMap<>();
+        for (ErpPurchaseInCreateTransferOutReqVO.Item reqItem : reqVO.getItems()) {
+            ErpPurchaseInItemDO sourceItem = sourceItemMap.get(reqItem.getSourceInItemId());
+            Long toWarehouseId = reqItem.getToWarehouseId() != null ? reqItem.getToWarehouseId() : defaultToWarehouseId;
+            if (toWarehouseId == null) {
+                throw exception(STOCK_MOVE_WAREHOUSE_REQUIRED);
+            }
+            if (Objects.equals(sourceItem.getWarehouseId(), toWarehouseId)) {
+                throw exception(STOCK_MOVE_WAREHOUSE_SAME);
+            }
+            ErpStockMoveSaveReqVO.Item moveItem = new ErpStockMoveSaveReqVO.Item();
+            moveItem.setFromWarehouseId(sourceItem.getWarehouseId());
+            moveItem.setToWarehouseId(toWarehouseId);
+            moveItem.setProductId(sourceItem.getProductId());
+            moveItem.setProductPrice(sourceItem.getProductPrice());
+            moveItem.setCount(reqItem.getCount());
+            moveItem.setRemark(reqItem.getRemark());
+            moveItem.setFromShelf(sourceItem.getWarehousePosition());
+            moveItem.setBatchNo(sourceItem.getBatchNo());
+            moveItem.setSourceInId(purchaseIn.getId());
+            moveItem.setSourceInItemId(sourceItem.getId());
+            moveItem.setSourceInNo(purchaseIn.getNo());
+            moveItem.setSourceCount(sourceItem.getCount());
+            moveItemGroups.computeIfAbsent(sourceItem.getWarehouseId(), key -> new ArrayList<>()).add(moveItem);
+        }
+
+        List<Long> moveIds = new ArrayList<>(moveItemGroups.size());
+        moveItemGroups.values().forEach(moveItems -> {
+            ErpStockMoveSaveReqVO moveReqVO = new ErpStockMoveSaveReqVO();
+            moveReqVO.setDeptId(purchaseIn.getDeptId());
+            moveReqVO.setToDeptId(reqVO.getToDeptId());
+            moveReqVO.setMoveTime(reqVO.getMoveTime());
+            moveReqVO.setSourceType(ErpBizTypeEnum.PURCHASE_IN.getType());
+            moveReqVO.setSourceId(purchaseIn.getId());
+            moveReqVO.setSourceNo(purchaseIn.getNo());
+            moveReqVO.setRemark(StrUtil.blankToDefault(reqVO.getRemark(),
+                    "由采购入库单 " + purchaseIn.getNo() + " 生成"));
+            moveReqVO.setItems(moveItems);
+            moveIds.add(stockMoveService.createStockMove(moveReqVO));
+        });
+        return new ErpPurchaseInCreateTransferOutRespVO(moveIds.get(0), moveIds);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public ErpPurchaseInCreateSaleCartRespVO createSaleCartFromPurchaseIn(ErpPurchaseInCreateSaleCartReqVO reqVO) {
+        validateSaleCartCreatePermission();
+        ErpPurchaseInDO purchaseIn = validatePurchaseIn(reqVO.getSourceInId());
+        List<ErpPurchaseInItemDO> sourceItems = purchaseInItemMapper.selectListByInId(purchaseIn.getId());
+        if (CollUtil.isEmpty(sourceItems)) {
+            throw exception(PURCHASE_IN_TRANSFER_OUT_ITEMS_EMPTY);
+        }
+        Map<Long, ErpPurchaseInItemDO> sourceItemMap = convertMap(sourceItems, ErpPurchaseInItemDO::getId);
+        Map<Long, BigDecimal> requestCountMap = buildSaleCartRequestCountMap(reqVO, sourceItemMap);
+        Map<Long, BigDecimal> convertedMap = saleConvertRecordMapper.selectPurchaseInToCartCountMapBySourceItemIds(requestCountMap.keySet());
+        validateSaleCartableCounts(requestCountMap, sourceItemMap, convertedMap);
+
+        ErpSaleCartSaveReqVO saleCartReqVO = buildSaleCartReqVO(reqVO, purchaseIn, sourceItemMap);
+        ErpSaleCartSubmitRespVO submitRespVO = saleCartService.createAndSubmitSaleCartFromPurchaseIn(saleCartReqVO);
+        List<ErpSaleCartItemDO> saleCartItems = saleCartService.getSaleCartItemListByCartId(submitRespVO.getId());
+        saleConvertRecordMapper.insertBatch(buildPurchaseInToCartRecords(purchaseIn, reqVO, sourceItemMap, submitRespVO, saleCartItems));
+        return new ErpPurchaseInCreateSaleCartRespVO(submitRespVO.getId(), submitRespVO.getNo(), submitRespVO.getStatus());
+    }
+
+    private void validateStockTransferOutCreatePermission() {
+        Long loginUserId = getLoginUserId();
+        if (loginUserId == null) {
+            return;
+        }
+        if (!permissionApi.hasAnyPermissions(loginUserId,
+                "erp:stock-transfer-out:create", "erp:stock-move:create")) {
+            throw exception(STOCK_MOVE_CREATE_PERMISSION_DENIED);
+        }
+    }
+
+    private void validateSaleCartCreatePermission() {
+        Long loginUserId = getLoginUserId();
+        if (loginUserId == null) {
+            return;
+        }
+        if (!permissionApi.hasAnyPermissions(loginUserId, "erp:sale-cart:create")) {
+            throw new ServiceException(STOCK_MOVE_CREATE_PERMISSION_DENIED.getCode(),
+                    "Current user has no permission to create sale cart");
+        }
+    }
+
+    private Map<Long, BigDecimal> buildTransferOutRequestCountMap(ErpPurchaseInCreateTransferOutReqVO reqVO,
+                                                                  Map<Long, ErpPurchaseInItemDO> sourceItemMap) {
+        Map<Long, BigDecimal> requestCountMap = new LinkedHashMap<>();
+        for (ErpPurchaseInCreateTransferOutReqVO.Item item : reqVO.getItems()) {
+            if (!sourceItemMap.containsKey(item.getSourceInItemId())) {
+                throw exception(PURCHASE_IN_TRANSFER_OUT_SOURCE_ITEM_NOT_EXISTS);
+            }
+            if (item.getCount() == null || item.getCount().compareTo(BigDecimal.ZERO) <= 0) {
+                throw exception(PURCHASE_IN_TRANSFER_OUT_COUNT_POSITIVE);
+            }
+            requestCountMap.merge(item.getSourceInItemId(), item.getCount(), BigDecimal::add);
+        }
+        return requestCountMap;
+    }
+
+    private void validateTransferOutableCounts(Map<Long, BigDecimal> requestCountMap,
+                                               Map<Long, ErpPurchaseInItemDO> sourceItemMap,
+                                               Map<Long, BigDecimal> movedMap) {
+        for (Map.Entry<Long, BigDecimal> entry : requestCountMap.entrySet()) {
+            ErpPurchaseInItemDO sourceItem = sourceItemMap.get(entry.getKey());
+            BigDecimal movedCount = movedMap.getOrDefault(entry.getKey(), BigDecimal.ZERO);
+            BigDecimal availableCount = safeCount(sourceItem.getCount()).subtract(movedCount);
+            if (availableCount.compareTo(BigDecimal.ZERO) < 0) {
+                availableCount = BigDecimal.ZERO;
+            }
+            if (entry.getValue().compareTo(availableCount) > 0) {
+                throw exception(PURCHASE_IN_TRANSFER_OUT_EXCEED_AVAILABLE,
+                        entry.getKey(), entry.getValue(), availableCount);
+            }
+        }
+    }
+
+    private Map<Long, BigDecimal> buildSaleCartRequestCountMap(ErpPurchaseInCreateSaleCartReqVO reqVO,
+                                                               Map<Long, ErpPurchaseInItemDO> sourceItemMap) {
+        Map<Long, BigDecimal> requestCountMap = new LinkedHashMap<>();
+        for (ErpPurchaseInCreateSaleCartReqVO.Item item : reqVO.getItems()) {
+            if (!sourceItemMap.containsKey(item.getSourceInItemId())) {
+                throw exception(PURCHASE_IN_TRANSFER_OUT_SOURCE_ITEM_NOT_EXISTS);
+            }
+            if (item.getCount() == null || item.getCount().compareTo(BigDecimal.ZERO) <= 0) {
+                throw exception(PURCHASE_IN_TRANSFER_OUT_COUNT_POSITIVE);
+            }
+            requestCountMap.merge(item.getSourceInItemId(), item.getCount(), BigDecimal::add);
+        }
+        return requestCountMap;
+    }
+
+    private void validateSaleCartableCounts(Map<Long, BigDecimal> requestCountMap,
+                                            Map<Long, ErpPurchaseInItemDO> sourceItemMap,
+                                            Map<Long, BigDecimal> convertedMap) {
+        for (Map.Entry<Long, BigDecimal> entry : requestCountMap.entrySet()) {
+            ErpPurchaseInItemDO sourceItem = sourceItemMap.get(entry.getKey());
+            BigDecimal convertedCount = convertedMap.getOrDefault(entry.getKey(), BigDecimal.ZERO);
+            BigDecimal availableCount = safeCount(sourceItem.getCount()).subtract(convertedCount);
+            if (availableCount.compareTo(BigDecimal.ZERO) < 0) {
+                availableCount = BigDecimal.ZERO;
+            }
+            if (entry.getValue().compareTo(availableCount) > 0) {
+                throw exception(PURCHASE_IN_TRANSFER_OUT_EXCEED_AVAILABLE,
+                        entry.getKey(), entry.getValue(), availableCount);
+            }
+        }
+    }
+
+    private ErpSaleCartSaveReqVO buildSaleCartReqVO(ErpPurchaseInCreateSaleCartReqVO reqVO,
+                                                    ErpPurchaseInDO purchaseIn,
+                                                    Map<Long, ErpPurchaseInItemDO> sourceItemMap) {
+        ErpSaleCartSaveReqVO cartReqVO = new ErpSaleCartSaveReqVO();
+        cartReqVO.setCustomerId(reqVO.getCustomerId());
+        cartReqVO.setAccountId(reqVO.getAccountId());
+        cartReqVO.setSaleUserId(reqVO.getSaleUserId());
+        cartReqVO.setDeptId(reqVO.getDeptId());
+        cartReqVO.setCartTime(reqVO.getCartTime());
+        cartReqVO.setSettleMethod(reqVO.getSettleMethod());
+        cartReqVO.setInvoiceType(reqVO.getInvoiceType());
+        cartReqVO.setDeliveryMethod(reqVO.getDeliveryMethod());
+        cartReqVO.setSourceType(ErpSaleBizSourceTypeEnum.PURCHASE_IN.getType());
+        cartReqVO.setSourceId(purchaseIn.getId());
+        cartReqVO.setSourceNo(purchaseIn.getNo());
+        cartReqVO.setRemark(StrUtil.blankToDefault(reqVO.getRemark(),
+                "由采购入库单 " + purchaseIn.getNo() + " 生成"));
+        cartReqVO.setOtherPrice(BigDecimal.ZERO);
+        cartReqVO.setFeeAmount(BigDecimal.ZERO);
+        cartReqVO.setItems(convertList(reqVO.getItems(), item -> {
+            ErpPurchaseInItemDO sourceItem = sourceItemMap.get(item.getSourceInItemId());
+            ErpSaleCartSaveReqVO.Item cartItem = new ErpSaleCartSaveReqVO.Item();
+            cartItem.setProductId(sourceItem.getProductId());
+            cartItem.setWarehouseId(item.getWarehouseId());
+            cartItem.setDeptId(item.getDeptId() != null ? item.getDeptId() : reqVO.getDeptId());
+            cartItem.setProductPrice(Boolean.TRUE.equals(item.getGiftFlag()) ? BigDecimal.ZERO : item.getProductPrice());
+            cartItem.setCount(item.getCount());
+            cartItem.setGiftFlag(Boolean.TRUE.equals(item.getGiftFlag()));
+            cartItem.setBatchNo(StrUtil.blankToDefault(item.getBatchNo(), sourceItem.getBatchNo()));
+            cartItem.setWarehousePosition(sourceItem.getWarehousePosition());
+            cartItem.setDrawingNo(sourceItem.getDrawingNo());
+            cartItem.setBarCode(sourceItem.getBarCode());
+            cartItem.setBrand(sourceItem.getBrand());
+            cartItem.setVehicleModel(sourceItem.getVehicleModel());
+            cartItem.setOriginPlace(sourceItem.getOriginPlace());
+            cartItem.setRemark(item.getRemark());
+            return cartItem;
+        }));
+        return cartReqVO;
+    }
+
+    private List<ErpSaleConvertRecordDO> buildPurchaseInToCartRecords(ErpPurchaseInDO purchaseIn,
+                                                                      ErpPurchaseInCreateSaleCartReqVO reqVO,
+                                                                      Map<Long, ErpPurchaseInItemDO> sourceItemMap,
+                                                                      ErpSaleCartSubmitRespVO submitRespVO,
+                                                                      List<ErpSaleCartItemDO> saleCartItems) {
+        Map<String, List<ErpSaleCartItemDO>> targetItemMap = saleCartItems.stream()
+                .collect(Collectors.groupingBy(this::buildSaleCartTargetItemKey, LinkedHashMap::new, Collectors.toList()));
+        return convertList(reqVO.getItems(), reqItem -> {
+            ErpPurchaseInItemDO sourceItem = sourceItemMap.get(reqItem.getSourceInItemId());
+            ErpSaleCartItemDO targetItem = pollFirst(targetItemMap.get(buildSaleCartTargetItemKey(reqItem, sourceItem)));
+            return new ErpSaleConvertRecordDO()
+                    .setConvertType(ErpSaleConvertTypeEnum.PURCHASE_IN_TO_CART.getType())
+                    .setSourceType(ErpSaleBizSourceTypeEnum.PURCHASE_IN.getType())
+                    .setSourceId(purchaseIn.getId()).setSourceNo(purchaseIn.getNo()).setSourceItemId(sourceItem.getId())
+                    .setTargetType(ErpSaleBizSourceTypeEnum.CART.getType())
+                    .setTargetId(submitRespVO.getId()).setTargetNo(submitRespVO.getNo())
+                    .setTargetItemId(targetItem != null ? targetItem.getId() : null)
+                    .setProductId(sourceItem.getProductId()).setWarehouseId(reqItem.getWarehouseId()).setCount(reqItem.getCount());
+        });
+    }
+
+    private String buildSaleCartTargetItemKey(ErpSaleCartItemDO item) {
+        return item.getProductId() + "|" + item.getWarehouseId() + "|" + Boolean.TRUE.equals(item.getGiftFlag())
+                + "|" + formatKeyCount(item.getCount()) + "|" + StrUtil.blankToDefault(item.getBatchNo(), "");
+    }
+
+    private String buildSaleCartTargetItemKey(ErpPurchaseInCreateSaleCartReqVO.Item reqItem, ErpPurchaseInItemDO sourceItem) {
+        return sourceItem.getProductId() + "|" + reqItem.getWarehouseId() + "|" + Boolean.TRUE.equals(reqItem.getGiftFlag())
+                + "|" + formatKeyCount(reqItem.getCount()) + "|" + StrUtil.blankToDefault(StrUtil.blankToDefault(reqItem.getBatchNo(), sourceItem.getBatchNo()), "");
+    }
+
+    private String formatKeyCount(BigDecimal count) {
+        return count == null ? "0" : count.stripTrailingZeros().toPlainString();
+    }
+
+    private ErpSaleCartItemDO pollFirst(List<ErpSaleCartItemDO> items) {
+        if (CollUtil.isEmpty(items)) {
+            return null;
+        }
+        return items.remove(0);
+    }
+
+    private BigDecimal resolveDefaultSalePrice(ErpProductDO product) {
+        if (product.getSalePrice() != null) {
+            return product.getSalePrice();
+        }
+        if (product.getRetailPrice() != null) {
+            return product.getRetailPrice();
+        }
+        return product.getReferencePrice();
+    }
+
+    private BigDecimal safeCount(BigDecimal count) {
+        return count != null ? count : BigDecimal.ZERO;
+    }
+
+    private String resolveDeptName(Long deptId) {
+        if (deptId == null) {
+            return null;
+        }
+        cn.iocoder.yudao.module.system.api.dept.dto.DeptRespDTO dept = deptApi.getDept(deptId);
+        return dept == null ? null : dept.getName();
+    }
+
+    @Override
     @Transactional(rollbackFor = Exception.class)
     public Long createPurchaseInFromOrder(ErpPurchaseInFromOrderReqVO reqVO) {
-        // 1. 校验采购订单已审批
+        // 1. 校验采购订单已审�?
         ErpPurchaseOrderDO purchaseOrder = purchaseOrderService.validatePurchaseOrder(reqVO.getOrderId());
         // 2. 查询订单子表
         List<ErpPurchaseOrderItemDO> orderItems = purchaseOrderService.getPurchaseOrderItemListByOrderId(reqVO.getOrderId());
         Map<Long, ErpPurchaseOrderItemDO> orderItemMap = convertMap(orderItems, ErpPurchaseOrderItemDO::getId);
-        // 3. 同一采购订单项可能拆到多个仓库入库，先按订单项汇总后再校验可入库数量。
+        // 3. 同一采购订单项可能拆到多个仓库入库，先按订单项汇总后再校验可入库数量
         Map<Long, BigDecimal> requestCountMap = new LinkedHashMap<>();
         for (ErpPurchaseInFromOrderReqVO.Item reqItem : reqVO.getItems()) {
             if (reqItem.getOrderItemId() == null) {
@@ -584,14 +1044,15 @@ public class ErpPurchaseInServiceImpl implements ErpPurchaseInService {
             }
             requestCountMap.merge(reqItem.getOrderItemId(), reqItem.getCount(), BigDecimal::add);
         }
+        Map<Long, BigDecimal> generatedInCountMap = getPurchaseOrderGeneratedInCountMap(reqVO.getOrderId());
         for (Map.Entry<Long, BigDecimal> entry : requestCountMap.entrySet()) {
             ErpPurchaseOrderItemDO orderItem = orderItemMap.get(entry.getKey());
             if (orderItem == null) {
                 throw exception(PURCHASE_ORDER_NOT_EXISTS);
             }
             BigDecimal orderCount = orderItem.getCount() != null ? orderItem.getCount() : BigDecimal.ZERO;
-            BigDecimal inCount = orderItem.getInCount() != null ? orderItem.getInCount() : BigDecimal.ZERO;
-            BigDecimal inableCount = orderCount.subtract(inCount);
+            BigDecimal inCount = generatedInCountMap.getOrDefault(orderItem.getId(), BigDecimal.ZERO);
+            BigDecimal inableCount = orderCount.subtract(inCount).max(BigDecimal.ZERO);
             BigDecimal requestCount = entry.getValue() != null ? entry.getValue() : BigDecimal.ZERO;
             if (requestCount.compareTo(inableCount) > 0) {
                 ErpProductDO product = productService.getProduct(orderItem.getProductId());
@@ -610,16 +1071,18 @@ public class ErpPurchaseInServiceImpl implements ErpPurchaseInService {
             ErpPurchaseInSaveReqVO.Item inItem = new ErpPurchaseInSaveReqVO.Item();
             inItem.setOrderItemId(orderItem.getId());
             inItem.setWarehouseId(reqItem.getWarehouseId());
+            inItem.setDeptId(reqItem.getDeptId() != null ? reqItem.getDeptId() : orderItem.getDeptId());
             inItem.setProductId(orderItem.getProductId());
             inItem.setProductUnitId(orderItem.getProductUnitId());
-            // 赠品行 productPrice=0
+            // 赠品�?productPrice=0
             inItem.setProductPrice(Boolean.TRUE.equals(orderItem.getGift()) ? BigDecimal.ZERO : orderItem.getProductPrice());
             inItem.setCount(reqItem.getCount());
+            inItem.setBatchNo(orderItem.getBatchNo());
 
             inItem.setRemark(orderItem.getRemark());
             inItems.add(inItem);
         }
-        // 4. 构造 ErpPurchaseInSaveReqVO
+        // 4. 构�?ErpPurchaseInSaveReqVO
         ErpPurchaseInSaveReqVO saveReqVO = new ErpPurchaseInSaveReqVO();
         saveReqVO.setOrderId(reqVO.getOrderId());
         saveReqVO.setInTime(reqVO.getInTime() != null ? reqVO.getInTime() : java.time.LocalDateTime.now());
@@ -648,13 +1111,13 @@ public class ErpPurchaseInServiceImpl implements ErpPurchaseInService {
             return Collections.emptyList();
         }
 
-        // 2. 批量查入库项（只需要统计条数，用 inId 分组）
+        // 2. 批量查入库项（只需要统计条数，�?inId 分组�?
         Set<Long> inIds = convertSet(purchaseIns, ErpPurchaseInDO::getId);
         List<ErpPurchaseInItemDO> itemList = purchaseInItemMapper.selectListByInIds(inIds);
         Map<Long, Long> itemCountMap = itemList.stream()
                 .collect(Collectors.groupingBy(ErpPurchaseInItemDO::getInId, Collectors.counting()));
 
-        // 3. 批量查供应商 + 审核人信息
+        // 3. 批量查供应商 + 审核人信�?
         Map<Long, ErpSupplierDO> supplierMap = supplierService.getSupplierMap(Collections.singleton(supplierId));
         Set<Long> updaterIds = purchaseIns.stream()
                 .map(in -> parseLongSafely(in.getUpdater()))
@@ -672,7 +1135,7 @@ public class ErpPurchaseInServiceImpl implements ErpPurchaseInService {
             if (supplier != null) {
                 vo.setSupplierName(supplier.getName());
             }
-            // 近似：审核人 = updater，审批时间 = updateTime
+            // 近似：审核人 = updater，审批时�?= updateTime
             Long updaterId = parseLongSafely(in.getUpdater());
             if (updaterId != null) {
                 vo.setAuditorId(updaterId);
@@ -691,7 +1154,7 @@ public class ErpPurchaseInServiceImpl implements ErpPurchaseInService {
         if (supplierId == null) {
             return Collections.emptyList();
         }
-        // 1. 查该供应商下所有已审批的入库单（用于拼 inNo / inTime）
+        // 1. 查该供应商下所有已审批的入库单（用于拼 inNo / inTime�?
         List<ErpPurchaseInDO> purchaseIns = purchaseInMapper.selectList(new LambdaQueryWrapper<ErpPurchaseInDO>()
                 .eq(ErpPurchaseInDO::getSupplierId, supplierId)
                 .eq(ErpPurchaseInDO::getStatus, ErpAuditStatus.APPROVE.getStatus()));
@@ -715,11 +1178,12 @@ public class ErpPurchaseInServiceImpl implements ErpPurchaseInService {
             }
         }
 
-        // 4. 批量查产品（产品资料里有 code / name / unitName / vehicleModel / standard / featureCode / originPlace / brand / drawingNo）
+        // 4. 批量查产品（产品资料里有 code / name / unitName / vehicleModel / standard / featureCode / originPlace / brand / drawingNo�?
         Set<Long> productIds = convertSet(items, ErpPurchaseInItemDO::getProductId);
-        Map<Long, ErpProductRespVO> productMap = productService.getProductVOMap(productIds);
+        Map<Long, ErpProductRespVO> productMap = DataPermissionUtils.executeIgnore(() ->
+                productService.getProductVOMap(productIds));
 
-        // 5. 批量查仓库
+        // 5. 批量查仓�?
         Set<Long> warehouseIds = convertSet(items, ErpPurchaseInItemDO::getWarehouseId);
         Map<Long, ErpWarehouseDO> warehouseMap = warehouseService.getWarehouseMap(warehouseIds);
 
@@ -743,7 +1207,7 @@ public class ErpPurchaseInServiceImpl implements ErpPurchaseInService {
             vo.setDrawingNo(item.getDrawingNo());
             vo.setWarehousePosition(item.getWarehousePosition());
             vo.setAdjusted(item.getAdjusted());
-            // 产品资料字段（优先从产品资料补齐，item 自身也有一部分冗余字段）
+            // 产品资料字段（优先从产品资料补齐，item 自身也有一部分冗余字段�?
             ErpProductRespVO product = productMap.get(item.getProductId());
             if (product != null) {
                 vo.setProductCode(product.getCode());
@@ -751,7 +1215,7 @@ public class ErpPurchaseInServiceImpl implements ErpPurchaseInService {
                 vo.setProductUnitName(product.getUnitName());
                 vo.setStandard(product.getStandard());
                 vo.setFeatureCode(product.getFeatureCode());
-                // 车型 / 品牌 / 产地：item 自身有冗余（随入库时快照），优先用 item 的
+                // 车型 / 品牌 / 产地：item 自身有冗余（随入库时快照），优先�?item �?
                 vo.setVehicleModel(ObjectUtil.defaultIfNull(item.getVehicleModel(), product.getVehicleModel()));
                 vo.setBrand(ObjectUtil.defaultIfNull(item.getBrand(), product.getBrand()));
                 vo.setOriginPlace(ObjectUtil.defaultIfNull(item.getOriginPlace(), product.getOriginPlace()));
@@ -770,7 +1234,7 @@ public class ErpPurchaseInServiceImpl implements ErpPurchaseInService {
     }
 
     /**
-     * 安全地把 creator / updater（字符串）转成 Long；失败返回 null
+     * 安全地把 creator / updater（字符串）转�?Long；失败返�?null
      */
     private static Long parseLongSafely(String value) {
         if (value == null || value.isEmpty()) {
@@ -809,7 +1273,7 @@ public class ErpPurchaseInServiceImpl implements ErpPurchaseInService {
                 item.setProductId(product.getId());
                 item.setProductUnitId(product.getUnitId());
                 item.setWarehouseId(warehouse.getId());
-                item.setCount(requirePositiveCount(row.getCount(), "入库数量不能为空且必须大于 0"));
+                item.setCount(requirePositiveCount(row.getCount(), "入库数量不能为空且必须大�?0"));
                 item.setProductPrice(defaultPurchaseInPrice(row.getProductPrice(), product.getPurchasePrice()));
                 item.setPackageQty(defaultPackageQty(product.getPackageQty()));
                 item.setWholeQty(row.getWholeQty());
@@ -861,15 +1325,15 @@ public class ErpPurchaseInServiceImpl implements ErpPurchaseInService {
                 String orderNo = resolvePurchaseInOrderNo(rowNo, row);
                 String supplierName = trimToNull(row.getSupplierName());
                 if (supplierName == null) {
-                    addImportFailure(respVO, rowNo, orderNo, null, "供应商不能为空");
+                    addImportFailure(respVO, rowNo, orderNo, null, "Supplier is required");
                 } else if (supplier == null) {
-                    addImportFailure(respVO, rowNo, orderNo, null, "供应商不存在：" + supplierName);
+                    addImportFailure(respVO, rowNo, orderNo, null, "Supplier not found: " + supplierName);
                 } else if (CommonStatusEnum.isDisable(supplier.getStatus())) {
-                    addImportFailure(respVO, rowNo, orderNo, null, "供应商(" + supplier.getName() + ")未启用");
+                    addImportFailure(respVO, rowNo, orderNo, null, "Supplier(" + supplier.getName() + ") is disabled");
                 }
                 validateImportDate(respVO, rowNo, orderNo, null, "入库时间", row.getInTime());
             } else if (hasDetail && currentGroup == null) {
-                addImportFailure(respVO, rowNo, null, trimToNull(row.getProductCode()), "明细行前缺少入库单主表信息");
+                addImportFailure(respVO, rowNo, null, trimToNull(row.getProductCode()), "Missing purchase inbound header before item row");
                 continue;
             }
             if (!hasDetail) {
@@ -884,7 +1348,7 @@ public class ErpPurchaseInServiceImpl implements ErpPurchaseInService {
                 addImportFailure(respVO, rowNo, orderNo, productCode, "产品编码不能为空");
                 valid = false;
             } else if (product == null) {
-                addImportFailure(respVO, rowNo, orderNo, productCode, "产品不存在");
+                addImportFailure(respVO, rowNo, orderNo, productCode, "Product not found");
                 valid = false;
             }
             if (trimToNull(row.getWarehouseName()) == null) {
@@ -910,7 +1374,7 @@ public class ErpPurchaseInServiceImpl implements ErpPurchaseInService {
         for (PurchaseInOrderImportGroup group : groups) {
             if (CollUtil.isEmpty(group.getRows())) {
                 addImportFailure(respVO, group.getRowNo(), resolvePurchaseInOrderNo(group.getRowNo(), group.getMainRow()), null,
-                        "采购入库单至少需要一行明细");
+                        "Purchase inbound requires at least one item");
             }
         }
         if (respVO.getFailureCount() > 0) {
@@ -1040,7 +1504,7 @@ public class ErpPurchaseInServiceImpl implements ErpPurchaseInService {
         if (supplierName != null) {
             return supplierName;
         }
-        return "第 " + rowNo + " 行";
+        return "row " + rowNo;
     }
 
     private boolean validateImportDate(ErpPurchaseImportResultRespVO respVO, Integer rowNo, String orderNo,
@@ -1052,7 +1516,7 @@ public class ErpPurchaseInServiceImpl implements ErpPurchaseInService {
             parseImportDate(value, null);
             return true;
         } catch (IllegalArgumentException ignored) {
-            addImportFailure(respVO, rowNo, orderNo, productCode, label + "格式不正确，请使用 yyyy-MM-dd 或 yyyy-MM-dd HH:mm:ss");
+            addImportFailure(respVO, rowNo, orderNo, productCode, label + "格式不正确，请使�?yyyy-MM-dd �?yyyy-MM-dd HH:mm:ss");
             return false;
         }
     }

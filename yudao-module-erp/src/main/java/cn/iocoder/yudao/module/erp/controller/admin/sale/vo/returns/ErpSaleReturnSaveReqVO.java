@@ -106,6 +106,9 @@ public class ErpSaleReturnSaveReqVO {
     @Schema(description = "开发员编号", example = "1")
     private Long developerUserId;
 
+    @Schema(description = "制单人（用户ID）", example = "1")
+    private Long handler;
+
     @Schema(description = "退货清单列表")
     private List<Item> items;
 
@@ -124,6 +127,7 @@ public class ErpSaleReturnSaveReqVO {
         @Schema(description = "仓库编号", requiredMode = Schema.RequiredMode.REQUIRED, example = "3113")
         @NotNull(message = "仓库编号不能为空")
         private Long warehouseId;
+        private Long deptId;
 
         @Schema(description = "产品编号", requiredMode = Schema.RequiredMode.REQUIRED, example = "3113")
         @NotNull(message = "产品编号不能为空")

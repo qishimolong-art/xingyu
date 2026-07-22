@@ -5,7 +5,9 @@ import cn.iocoder.yudao.framework.mybatis.core.query.LambdaQueryWrapperX;
 import cn.iocoder.yudao.framework.mybatis.core.mapper.BaseMapperX;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.supplier.ErpSupplierPageReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpSupplierDO;
+import cn.iocoder.yudao.module.erp.dal.mysql.common.ErpKeywordQuery;
 import cn.hutool.core.collection.CollUtil;
+import cn.hutool.core.util.StrUtil;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.toolkit.support.SFunction;
 import org.apache.ibatis.annotations.Mapper;
@@ -14,7 +16,7 @@ import java.util.Collection;
 import java.util.List;
 
 /**
- * ERP 供应商 Mapper
+ * ERP 供应�?Mapper
  *
  * @author 芋道源码
  */
@@ -22,25 +24,60 @@ import java.util.List;
 public interface ErpSupplierMapper extends BaseMapperX<ErpSupplierDO> {
 
     default PageResult<ErpSupplierDO> selectPage(ErpSupplierPageReqVO reqVO) {
-        LambdaQueryWrapperX<ErpSupplierDO> wrapper = new LambdaQueryWrapperX<ErpSupplierDO>()
-                .likeIfPresent(ErpSupplierDO::getName, reqVO.getName())
-                .likeIfPresent(ErpSupplierDO::getMobile, reqVO.getMobile())
-                .likeIfPresent(ErpSupplierDO::getTelephone, reqVO.getTelephone())
-                .eqIfPresent(ErpSupplierDO::getDeptId, reqVO.getDeptId());
+        LambdaQueryWrapperX<ErpSupplierDO> wrapper = buildPageQuery(reqVO);
+        wrapper.ne(ErpSupplierDO::getMergedFlag, Boolean.TRUE);
         orderByIfPresent(wrapper, reqVO);
         return selectPage(reqVO, wrapper);
     }
 
     default PageResult<ErpSupplierDO> selectVisiblePage(ErpSupplierPageReqVO reqVO, Collection<Long> deptIds,
                                                        Long selfUserId, boolean all) {
-        LambdaQueryWrapperX<ErpSupplierDO> wrapper = new LambdaQueryWrapperX<ErpSupplierDO>()
-                .likeIfPresent(ErpSupplierDO::getName, reqVO.getName())
-                .likeIfPresent(ErpSupplierDO::getMobile, reqVO.getMobile())
-                .likeIfPresent(ErpSupplierDO::getTelephone, reqVO.getTelephone())
-                .eqIfPresent(ErpSupplierDO::getDeptId, reqVO.getDeptId());
+        LambdaQueryWrapperX<ErpSupplierDO> wrapper = buildPageQuery(reqVO);
+        wrapper.ne(ErpSupplierDO::getMergedFlag, Boolean.TRUE);
         applyVisibleScope(wrapper, deptIds, selfUserId, all);
         orderByIfPresent(wrapper, reqVO);
         return selectPage(reqVO, wrapper);
+    }
+
+    static LambdaQueryWrapperX<ErpSupplierDO> buildPageQuery(ErpSupplierPageReqVO reqVO) {
+        LambdaQueryWrapperX<ErpSupplierDO> wrapper = new LambdaQueryWrapperX<ErpSupplierDO>()
+                .likeIfPresent(ErpSupplierDO::getCode, reqVO.getCode())
+                .likeIfPresent(ErpSupplierDO::getName, reqVO.getName())
+                .likeIfPresent(ErpSupplierDO::getMobile, reqVO.getMobile())
+                .likeIfPresent(ErpSupplierDO::getTelephone, reqVO.getTelephone())
+                .eqIfPresent(ErpSupplierDO::getDeptId, reqVO.getDeptId())
+                .likeIfPresent(ErpSupplierDO::getRegion, reqVO.getRegion())
+                .eqIfPresent(ErpSupplierDO::getSettleMethod, reqVO.getSettleMethod())
+                .eqIfPresent(ErpSupplierDO::getPurchaser, reqVO.getPurchaser())
+                .eqIfPresent(ErpSupplierDO::getCategory, reqVO.getCategory())
+                .likeIfPresent(ErpSupplierDO::getAddress, reqVO.getAddress())
+                .likeIfPresent(ErpSupplierDO::getRemark, reqVO.getRemark())
+                .eqIfPresent(ErpSupplierDO::getCreator, reqVO.getCreator());
+        if (StrUtil.isNotBlank(reqVO.getContactInfo())) {
+            wrapper.and(contact -> contact
+                    .like(ErpSupplierDO::getMobile, reqVO.getContactInfo())
+                    .or()
+                    .like(ErpSupplierDO::getTelephone, reqVO.getContactInfo()));
+        }
+        ErpKeywordQuery.appendWithDeptName(wrapper, reqVO.getKeyword(),
+                ErpSupplierDO::getCode, ErpSupplierDO::getName, ErpSupplierDO::getShortName,
+                ErpSupplierDO::getOldCode, ErpSupplierDO::getForeignName, ErpSupplierDO::getContact,
+                ErpSupplierDO::getMobile, ErpSupplierDO::getTelephone, ErpSupplierDO::getEmail,
+                ErpSupplierDO::getFax, ErpSupplierDO::getRegion, ErpSupplierDO::getCategory,
+                ErpSupplierDO::getAccount, ErpSupplierDO::getSettleMethod, ErpSupplierDO::getSupplierType,
+                ErpSupplierDO::getTransportMethod, ErpSupplierDO::getFreightType, ErpSupplierDO::getWubiCode,
+                ErpSupplierDO::getPinyinCode, ErpSupplierDO::getPurchaser, ErpSupplierDO::getCompanyNature,
+                ErpSupplierDO::getInvoiceType, ErpSupplierDO::getLogisticsCompany, ErpSupplierDO::getArrivalPoint,
+                ErpSupplierDO::getPostalCode, ErpSupplierDO::getAddress, ErpSupplierDO::getProvince,
+                ErpSupplierDO::getCity, ErpSupplierDO::getDistrict, ErpSupplierDO::getWebsite,
+                ErpSupplierDO::getLegalPerson, ErpSupplierDO::getCreditCode, ErpSupplierDO::getPurchaseControl,
+                ErpSupplierDO::getFloatUpdateLastPrice, ErpSupplierDO::getTaxpayerId, ErpSupplierDO::getTaxNo,
+                ErpSupplierDO::getBankName, ErpSupplierDO::getBankAccount, ErpSupplierDO::getBankAddress,
+                ErpSupplierDO::getInvoiceBank, ErpSupplierDO::getInvoiceBankAccount,
+                ErpSupplierDO::getInvoiceAddress, ErpSupplierDO::getInvoicePhone,
+                ErpSupplierDO::getInvoiceCompany, ErpSupplierDO::getFinancePhone,
+                ErpSupplierDO::getPerformanceProfitRef, ErpSupplierDO::getRemark);
+        return wrapper;
     }
 
     static void orderByIfPresent(LambdaQueryWrapperX<ErpSupplierDO> wrapper, ErpSupplierPageReqVO reqVO) {
@@ -91,12 +128,15 @@ public interface ErpSupplierMapper extends BaseMapperX<ErpSupplierDO> {
     }
 
     default List<ErpSupplierDO> selectListByStatus(Integer status) {
-        return selectList(ErpSupplierDO::getStatus, status);
+        return selectList(new LambdaQueryWrapperX<ErpSupplierDO>()
+                .eq(ErpSupplierDO::getStatus, status)
+                .ne(ErpSupplierDO::getMergedFlag, Boolean.TRUE));
     }
 
     default List<ErpSupplierDO> selectVisibleListByStatus(Integer status, Collection<Long> deptIds, Long selfUserId, boolean all) {
         LambdaQueryWrapperX<ErpSupplierDO> wrapper = new LambdaQueryWrapperX<>();
         wrapper.eqIfPresent(ErpSupplierDO::getStatus, status);
+        wrapper.ne(ErpSupplierDO::getMergedFlag, Boolean.TRUE);
         applyVisibleScope(wrapper, deptIds, selfUserId, all);
         wrapper.orderByDesc(ErpSupplierDO::getId);
         return selectList(wrapper);
@@ -132,12 +172,14 @@ public interface ErpSupplierMapper extends BaseMapperX<ErpSupplierDO> {
 
     default List<ErpSupplierDO> selectListByNameLike(String name) {
         return selectList(new LambdaQueryWrapperX<ErpSupplierDO>()
-                .like(ErpSupplierDO::getName, name));
+                .like(ErpSupplierDO::getName, name)
+                .ne(ErpSupplierDO::getMergedFlag, Boolean.TRUE));
     }
 
     default List<ErpSupplierDO> selectVisibleListByNameLike(String name, Collection<Long> deptIds, Long selfUserId, boolean all) {
         LambdaQueryWrapperX<ErpSupplierDO> wrapper = new LambdaQueryWrapperX<>();
         wrapper.like(ErpSupplierDO::getName, name);
+        wrapper.ne(ErpSupplierDO::getMergedFlag, Boolean.TRUE);
         applyVisibleScope(wrapper, deptIds, selfUserId, all);
         return selectList(wrapper);
     }

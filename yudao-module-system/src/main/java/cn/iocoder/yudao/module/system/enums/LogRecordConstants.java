@@ -19,6 +19,9 @@ public interface LogRecordConstants {
     String SYSTEM_USER_DELETE_SUCCESS = "删除了用户【{{#user.nickname}}】";
     String SYSTEM_USER_UPDATE_PASSWORD_SUB_TYPE = "重置用户密码";
     String SYSTEM_USER_UPDATE_PASSWORD_SUCCESS = "将用户【{{#user.nickname}}】的密码从【{{#user.password}}】重置为【{{#newPassword}}】";
+    String SYSTEM_USER_BATCH_UPDATE_SUB_TYPE = "批量更新用户";
+    String SYSTEM_USER_UPDATE_STATUS_SUB_TYPE = "更新用户状态";
+    String SYSTEM_USER_BATCH_DELETE_SUB_TYPE = "批量删除用户";
 
     // ======================= SYSTEM_ROLE 角色 =======================
 
@@ -29,5 +32,18 @@ public interface LogRecordConstants {
     String SYSTEM_ROLE_UPDATE_SUCCESS = "更新了角色【{{#role.name}}】: {_DIFF{#updateReqVO}}";
     String SYSTEM_ROLE_DELETE_SUB_TYPE = "删除角色";
     String SYSTEM_ROLE_DELETE_SUCCESS = "删除了角色【{{#role.name}}】";
+    String SYSTEM_ROLE_UPDATE_DATA_SCOPE_SUB_TYPE = "更新角色数据权限";
+    String SYSTEM_ROLE_BATCH_DELETE_SUB_TYPE = "批量删除角色";
+
+    // ======================= SYSTEM_DEPT 部门 =======================
+
+    String SYSTEM_DEPT_TYPE = "SYSTEM 部门";
+    String SYSTEM_DEPT_CREATE_SUB_TYPE = "创建部门";
+    String SYSTEM_DEPT_UPDATE_SUB_TYPE = "更新部门";
+    String SYSTEM_DEPT_DELETE_SUB_TYPE = "删除部门";
+    String SYSTEM_DEPT_BATCH_UPDATE_SUB_TYPE = "批量更新部门";
+    String SYSTEM_DEPT_BATCH_DELETE_SUB_TYPE = "批量删除部门";
+    String SYSTEM_DEPT_UPDATE_SORT_SUB_TYPE = "更新部门排序";
+    String SYSTEM_DEPT_IMPORT_SUB_TYPE = "导入部门";
 
 }

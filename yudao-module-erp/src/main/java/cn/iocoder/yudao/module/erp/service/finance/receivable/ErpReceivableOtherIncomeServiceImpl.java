@@ -19,6 +19,7 @@ import cn.iocoder.yudao.module.system.api.user.AdminUserApi;
 import cn.iocoder.yudao.module.system.api.user.dto.AdminUserRespDTO;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
 import org.springframework.validation.annotation.Validated;
 
 import javax.annotation.Resource;
@@ -162,6 +163,15 @@ public class ErpReceivableOtherIncomeServiceImpl implements ErpReceivableOtherIn
 
     @Override
     public PageResult<ErpReceivableOtherIncomeDO> getOtherIncomePage(ErpReceivableOtherIncomePageReqVO pageReqVO) {
+        if (hasItemFilter(pageReqVO)) {
+            List<Long> incomeIds = convertList(
+                    otherIncomeItemMapper.selectListByItemNameOrInvoiceNo(pageReqVO.getItemName(), pageReqVO.getInvoiceNo()),
+                    ErpReceivableOtherIncomeItemDO::getIncomeId);
+            if (CollUtil.isEmpty(incomeIds)) {
+                return PageResult.empty();
+            }
+            pageReqVO.setIds(incomeIds);
+        }
         return otherIncomeMapper.selectPage(pageReqVO);
     }
 
@@ -241,5 +251,9 @@ public class ErpReceivableOtherIncomeServiceImpl implements ErpReceivableOtherIn
                 .map(ErpReceivableOtherIncomeSaveReqVO.Item::getAmount)
                 .filter(Objects::nonNull)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
+    }
+
+    private boolean hasItemFilter(ErpReceivableOtherIncomePageReqVO pageReqVO) {
+        return StringUtils.hasText(pageReqVO.getItemName()) || StringUtils.hasText(pageReqVO.getInvoiceNo());
     }
 }

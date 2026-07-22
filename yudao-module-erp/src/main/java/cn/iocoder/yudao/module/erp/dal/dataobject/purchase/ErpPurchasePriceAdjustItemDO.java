@@ -54,6 +54,7 @@ public class ErpPurchasePriceAdjustItemDO extends BaseDO {
      * 仓库编号
      */
     private Long warehouseId;
+    private Long deptId;
     /**
      * 调价前单价（= 当前 inItem.productPrice）
      */

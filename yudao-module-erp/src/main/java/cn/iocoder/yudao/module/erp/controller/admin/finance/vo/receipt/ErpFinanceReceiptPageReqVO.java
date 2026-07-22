@@ -52,4 +52,10 @@ public class ErpFinanceReceiptPageReqVO extends PageParam {
     @Schema(description = "勾选导出的收款单编号数组", example = "[1,2,3]")
     private List<Long> ids;
 
+    @Schema(description = "排序字段")
+    private String orderField;
+
+    @Schema(description = "排序方向（asc/desc）")
+    private String orderDirection;
+
 }

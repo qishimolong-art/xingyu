@@ -7,12 +7,15 @@ import cn.iocoder.yudao.module.erp.dal.dataobject.product.ErpProductDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpCustomerDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleOrderDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleOrderItemDO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpWarehouseDO;
 import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpSaleOrderItemMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpSaleOrderMapper;
 import cn.iocoder.yudao.module.erp.dal.redis.no.ErpNoRedisDAO;
 import cn.iocoder.yudao.module.erp.enums.ErpAuditStatus;
+import cn.iocoder.yudao.module.erp.service.common.ErpOperateLogService;
 import cn.iocoder.yudao.module.erp.service.finance.ErpAccountService;
 import cn.iocoder.yudao.module.erp.service.product.ErpProductService;
+import cn.iocoder.yudao.module.erp.service.stock.ErpWarehouseService;
 import cn.iocoder.yudao.module.system.api.user.AdminUserApi;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -55,6 +58,14 @@ public class ErpSaleOrderServiceImplTest extends BaseMockitoUnitTest {
     private ErpAccountService accountService;
     @Mock
     private AdminUserApi adminUserApi;
+    @Mock
+    private ErpWarehouseService warehouseService;
+    @Mock
+    private ErpSaleFieldPermissionMasker fieldPermissionMasker;
+    @Mock
+    private ErpSaleDocumentDefaultService saleDocumentDefaultService;
+    @Mock
+    private ErpOperateLogService operateLogService;
 
     @BeforeEach
     public void setUp() {
@@ -64,6 +75,14 @@ public class ErpSaleOrderServiceImplTest extends BaseMockitoUnitTest {
                 return prefix + "20260520000001";
             }
         });
+        lenient().when(warehouseService.validSaleWarehouseList(anyCollection()))
+                .thenAnswer(invocation -> buildWarehouseList(invocation.getArgument(0)));
+        lenient().when(warehouseService.getWarehouseMap(anyCollection()))
+                .thenAnswer(invocation -> {
+                    Map<Long, ErpWarehouseDO> map = new HashMap<>();
+                    buildWarehouseList(invocation.getArgument(0)).forEach(warehouse -> map.put(warehouse.getId(), warehouse));
+                    return map;
+                });
     }
 
     // ==================== create 类 ====================
@@ -79,8 +98,8 @@ public class ErpSaleOrderServiceImplTest extends BaseMockitoUnitTest {
 
         // mock 行为
         when(productService.validProductList(anyCollection())).thenReturn(Collections.singletonList(
-                new ErpProductDO().setId(200L).setUnitId(400L).setName("螺丝刀")));
-        when(customerService.validateCustomer(eq(20L))).thenReturn(new ErpCustomerDO().setId(20L));
+                new ErpProductDO().setId(200L).setUnitId(400L).setDefaultWarehouseId(300L).setName("螺丝刀")));
+        when(customerService.validateCustomerForSale(eq(20L))).thenReturn(new ErpCustomerDO().setId(20L));
         when(accountService.validateAccount(eq(30L))).thenReturn(new ErpAccountDO());
         when(saleOrderMapper.selectByNo(anyString())).thenReturn(null);
         doAnswer(invocation -> {
@@ -96,7 +115,7 @@ public class ErpSaleOrderServiceImplTest extends BaseMockitoUnitTest {
         assertNotNull(id);
         assertEquals(99L, id);
         // 验证依赖调用
-        verify(customerService).validateCustomer(eq(20L));
+        verify(customerService).validateCustomerForSale(eq(20L));
         verify(accountService).validateAccount(eq(30L));
         verify(adminUserApi).validateUser(eq(40L));
         verify(saleOrderMapper).insert(argThat((ErpSaleOrderDO order) ->
@@ -115,8 +134,8 @@ public class ErpSaleOrderServiceImplTest extends BaseMockitoUnitTest {
 
         // mock 行为：产品 OK，但客户校验抛 CUSTOMER_NOT_EXISTS
         when(productService.validProductList(anyCollection())).thenReturn(Collections.singletonList(
-                new ErpProductDO().setId(200L).setUnitId(400L)));
-        doThrow(exceptionOf(CUSTOMER_NOT_EXISTS)).when(customerService).validateCustomer(eq(20L));
+                new ErpProductDO().setId(200L).setUnitId(400L).setDefaultWarehouseId(300L)));
+        doThrow(exceptionOf(CUSTOMER_NOT_EXISTS)).when(customerService).validateCustomerForSale(eq(20L));
 
         // 调用 + 断言
         assertServiceException(() -> saleOrderService.createSaleOrder(reqVO), CUSTOMER_NOT_EXISTS);
@@ -138,7 +157,7 @@ public class ErpSaleOrderServiceImplTest extends BaseMockitoUnitTest {
         // 调用 + 断言
         assertServiceException(() -> saleOrderService.createSaleOrder(reqVO), PRODUCT_NOT_EXISTS);
         // 验证未走到客户校验
-        verify(customerService, never()).validateCustomer(anyLong());
+        verify(customerService, never()).validateCustomerForSale(anyLong());
         verify(saleOrderMapper, never()).insert(any(ErpSaleOrderDO.class));
     }
 
@@ -158,8 +177,8 @@ public class ErpSaleOrderServiceImplTest extends BaseMockitoUnitTest {
         when(saleOrderMapper.selectById(eq(99L))).thenReturn(new ErpSaleOrderDO()
                 .setId(99L).setNo("XSDD001").setStatus(ErpAuditStatus.PROCESS.getStatus()));
         when(productService.validProductList(anyCollection())).thenReturn(Collections.singletonList(
-                new ErpProductDO().setId(200L).setUnitId(400L)));
-        when(customerService.validateCustomer(eq(20L))).thenReturn(new ErpCustomerDO().setId(20L));
+                new ErpProductDO().setId(200L).setUnitId(400L).setDefaultWarehouseId(300L)));
+        when(customerService.validateCustomerForSale(eq(20L))).thenReturn(new ErpCustomerDO().setId(20L));
         when(accountService.validateAccount(eq(30L))).thenReturn(new ErpAccountDO());
         when(saleOrderItemMapper.selectListByOrderId(eq(99L))).thenReturn(Collections.emptyList());
 
@@ -400,6 +419,19 @@ public class ErpSaleOrderServiceImplTest extends BaseMockitoUnitTest {
         item.setCount(count);
         item.setTaxPercent(BigDecimal.ZERO);
         return item;
+    }
+
+    private List<ErpWarehouseDO> buildWarehouseList(Iterable<Long> warehouseIds) {
+        java.util.ArrayList<ErpWarehouseDO> warehouses = new java.util.ArrayList<>();
+        if (warehouseIds == null) {
+            return warehouses;
+        }
+        for (Long warehouseId : warehouseIds) {
+            if (warehouseId != null) {
+                warehouses.add(new ErpWarehouseDO().setId(warehouseId).setDeptId(warehouseId + 1000));
+            }
+        }
+        return warehouses;
     }
 
     private static cn.iocoder.yudao.framework.common.exception.ServiceException exceptionOf(

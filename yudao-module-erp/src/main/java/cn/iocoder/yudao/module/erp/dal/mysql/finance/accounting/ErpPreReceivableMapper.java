@@ -5,6 +5,7 @@ import cn.iocoder.yudao.framework.mybatis.core.mapper.BaseMapperX;
 import cn.iocoder.yudao.framework.mybatis.core.query.LambdaQueryWrapperX;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.accounting.vo.prereceivable.ErpPreReceivablePageReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.accounting.ErpPreReceivableDO;
+import cn.iocoder.yudao.module.erp.dal.mysql.common.ErpKeywordQuery;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import org.apache.ibatis.annotations.Mapper;
 
@@ -15,7 +16,7 @@ import org.apache.ibatis.annotations.Mapper;
 public interface ErpPreReceivableMapper extends BaseMapperX<ErpPreReceivableDO> {
 
     default PageResult<ErpPreReceivableDO> selectPage(ErpPreReceivablePageReqVO reqVO) {
-        return selectPage(reqVO, new LambdaQueryWrapperX<ErpPreReceivableDO>()
+        LambdaQueryWrapperX<ErpPreReceivableDO> wrapper = new LambdaQueryWrapperX<ErpPreReceivableDO>()
                 .likeIfPresent(ErpPreReceivableDO::getNo, reqVO.getNo())
                 .betweenIfPresent(ErpPreReceivableDO::getBizTime, reqVO.getBizTime())
                 .eqIfPresent(ErpPreReceivableDO::getPartyType, reqVO.getPartyType())
@@ -23,7 +24,12 @@ public interface ErpPreReceivableMapper extends BaseMapperX<ErpPreReceivableDO> 
                 .likeIfPresent(ErpPreReceivableDO::getPartyName, reqVO.getPartyName())
                 .eqIfPresent(ErpPreReceivableDO::getAccountId, reqVO.getAccountId())
                 .eqIfPresent(ErpPreReceivableDO::getStatus, reqVO.getStatus())
-                .orderByDesc(ErpPreReceivableDO::getId));
+                .orderByDesc(ErpPreReceivableDO::getId);
+        ErpKeywordQuery.appendWithDeptName(wrapper, reqVO.getKeyword(),
+                ErpPreReceivableDO::getNo,
+                ErpPreReceivableDO::getPartyName,
+                ErpPreReceivableDO::getRemark);
+        return selectPage(reqVO, wrapper);
     }
 
     default int updateByIdAndStatus(Long id, Integer status, ErpPreReceivableDO updateObj) {

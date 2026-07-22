@@ -1,7 +1,6 @@
 package cn.iocoder.yudao.module.erp.service.stock.bo;
 
 import javax.validation.constraints.NotNull;
-import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
@@ -15,7 +14,6 @@ import java.time.LocalDateTime;
  */
 @Data
 @NoArgsConstructor
-@AllArgsConstructor
 public class ErpStockRecordCreateReqBO {
 
     /**
@@ -28,6 +26,10 @@ public class ErpStockRecordCreateReqBO {
      */
     @NotNull(message = "仓库编号不能为空")
     private Long warehouseId;
+    /**
+     * 批次号
+     */
+    private String batchNo;
     /**
      * 出入库数量
      *
@@ -73,6 +75,27 @@ public class ErpStockRecordCreateReqBO {
     public ErpStockRecordCreateReqBO(Long productId, Long warehouseId, BigDecimal count,
                                      Integer bizType, Long bizId, Long bizItemId, String bizNo) {
         this(productId, warehouseId, count, bizType, bizId, bizItemId, bizNo, null, null);
+    }
+
+    public ErpStockRecordCreateReqBO(Long productId, Long warehouseId, BigDecimal count,
+                                     Integer bizType, Long bizId, Long bizItemId, String bizNo,
+                                     BigDecimal unitPrice, LocalDateTime bizDate) {
+        this.productId = productId;
+        this.warehouseId = warehouseId;
+        this.count = count;
+        this.bizType = bizType;
+        this.bizId = bizId;
+        this.bizItemId = bizItemId;
+        this.bizNo = bizNo;
+        this.unitPrice = unitPrice;
+        this.bizDate = bizDate;
+    }
+
+    public ErpStockRecordCreateReqBO(Long productId, Long warehouseId, String batchNo, BigDecimal count,
+                                     Integer bizType, Long bizId, Long bizItemId, String bizNo,
+                                     BigDecimal unitPrice, LocalDateTime bizDate) {
+        this(productId, warehouseId, count, bizType, bizId, bizItemId, bizNo, unitPrice, bizDate);
+        this.batchNo = batchNo;
     }
 
 }

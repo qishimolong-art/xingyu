@@ -30,6 +30,24 @@ public class ErpWarehousePageReqVO extends PageParam {
     @Schema(description = "所属部门", example = "100")
     private Long deptId;
 
+    @Schema(description = "销售启用", example = "true")
+    private Boolean saleEnabled;
+
+    @Schema(description = "采购启用", example = "true")
+    private Boolean purchaseEnabled;
+
+    @Schema(description = "入出仓单", example = "true")
+    private Boolean stockBillEnabled;
+
+    @Schema(description = "扫码管控", example = "true")
+    private Boolean scanControl;
+
+    @Schema(description = "是否拆单", example = "true")
+    private Boolean splitOrder;
+
+    @Schema(description = "备注", example = "随便")
+    private String remark;
+
     @Schema(description = "排序字段", example = "name")
     private String orderField;
 

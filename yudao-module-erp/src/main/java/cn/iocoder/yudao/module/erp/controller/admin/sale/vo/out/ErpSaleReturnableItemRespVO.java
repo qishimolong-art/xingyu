@@ -18,10 +18,19 @@ public class ErpSaleReturnableItemRespVO {
 
     @Schema(description = "产品编号", example = "10001")
     private Long productId;
+    private String productCode;
+    private String productName;
+    private String productBarCode;
+    private String productUnitName;
     @Schema(description = "产品单位编号", example = "1")
     private Long productUnitId;
     @Schema(description = "仓库编号", example = "2")
     private Long warehouseId;
+    private String warehouseName;
+    private Long warehouseDeptId;
+    private String warehouseDeptName;
+    private Long deptId;
+    private String deptName;
 
     @Schema(description = "原销售单价", example = "12.34")
     private BigDecimal productPrice;
