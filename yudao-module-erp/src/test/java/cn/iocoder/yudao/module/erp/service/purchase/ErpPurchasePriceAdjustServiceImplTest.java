@@ -4,6 +4,7 @@ import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.test.core.ut.BaseMockitoUnitTest;
 import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpProductRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.priceadjust.ErpPurchasePriceAdjustPageReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.priceadjust.ErpPurchasePriceAdjustDraftSaveReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.priceadjust.ErpPurchasePriceAdjustSaveReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseInDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseInItemDO;
@@ -16,8 +17,11 @@ import cn.iocoder.yudao.module.erp.dal.mysql.purchase.ErpPurchasePriceAdjustMapp
 import cn.iocoder.yudao.module.erp.dal.redis.no.ErpNoRedisDAO;
 import cn.iocoder.yudao.module.erp.enums.ErpAuditStatus;
 import cn.iocoder.yudao.module.erp.enums.purchase.ErpPurchasePriceAdjustTypeEnum;
+import cn.iocoder.yudao.module.erp.enums.purchase.ErpPurchasePriceAdjustStatusEnum;
+import cn.iocoder.yudao.module.erp.service.common.ErpOperateLogService;
 import cn.iocoder.yudao.module.erp.service.product.ErpProductService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpStockService;
+import cn.iocoder.yudao.module.erp.service.stock.ErpWarehouseService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -37,12 +41,14 @@ import java.util.Map;
 import static cn.iocoder.yudao.framework.test.core.util.AssertUtils.assertServiceException;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PURCHASE_PRICE_ADJUST_APPROVE_FAIL;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PURCHASE_PRICE_ADJUST_DELETE_FAIL_APPROVE;
+import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PURCHASE_PRICE_ADJUST_DRAFT_UPDATE_FAIL;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PURCHASE_PRICE_ADJUST_ITEM_ADJUSTED;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PURCHASE_PRICE_ADJUST_ITEM_EMPTY;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PURCHASE_PRICE_ADJUST_ITEM_NOT_EXISTS;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PURCHASE_PRICE_ADJUST_NEW_PRICE_NEGATIVE;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PURCHASE_PRICE_ADJUST_NOT_EXISTS;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PURCHASE_PRICE_ADJUST_PROCESS_FAIL;
+import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PURCHASE_PRICE_ADJUST_SUBMIT_SUPPLIER_REQUIRED;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PURCHASE_PRICE_ADJUST_TYPE_INVALID;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PURCHASE_PRICE_ADJUST_UPDATE_FAIL_APPROVE;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -79,6 +85,14 @@ public class ErpPurchasePriceAdjustServiceImplTest extends BaseMockitoUnitTest {
     private ErpProductService productService;
     @Mock
     private ErpStockService stockService;
+    @Mock
+    private ErpWarehouseService warehouseService;
+    @Mock
+    private ErpPurchaseDocumentDefaultService purchaseDocumentDefaultService;
+    @Mock
+    private ErpPurchaseFieldPermissionMasker fieldPermissionMasker;
+    @Mock
+    private ErpOperateLogService operateLogService;
 
     @BeforeEach
     public void setUp() {
@@ -137,6 +151,86 @@ public class ErpPurchasePriceAdjustServiceImplTest extends BaseMockitoUnitTest {
     }
 
     // ========== createPurchasePriceAdjust ==========
+
+    @Test
+    public void testCreatePurchasePriceAdjustDraft_rejectsEmptyItems() {
+        ErpPurchasePriceAdjustDraftSaveReqVO reqVO = new ErpPurchasePriceAdjustDraftSaveReqVO();
+        reqVO.setRemark("未完成草稿");
+        reqVO.setItems(Collections.emptyList());
+
+        assertServiceException(() -> priceAdjustService.createPurchasePriceAdjustDraft(reqVO),
+                PURCHASE_PRICE_ADJUST_ITEM_EMPTY);
+        verify(priceAdjustMapper, never()).insert(any(ErpPurchasePriceAdjustDO.class));
+        verify(priceAdjustItemMapper, never()).insertBatch(anyList());
+    }
+
+    @Test
+    public void testUpdatePurchasePriceAdjustDraft_rejectsNonDraft() {
+        ErpPurchasePriceAdjustDraftSaveReqVO reqVO = new ErpPurchasePriceAdjustDraftSaveReqVO();
+        reqVO.setId(10L);
+        when(priceAdjustMapper.selectById(10L)).thenReturn(new ErpPurchasePriceAdjustDO()
+                .setId(10L).setNo("CGTJ10").setStatus(ErpAuditStatus.PROCESS.getStatus()));
+
+        assertServiceException(() -> priceAdjustService.updatePurchasePriceAdjustDraft(reqVO),
+                PURCHASE_PRICE_ADJUST_DRAFT_UPDATE_FAIL, "CGTJ10");
+        verify(priceAdjustMapper, never()).updateById(any(ErpPurchasePriceAdjustDO.class));
+    }
+
+    @Test
+    public void testUpdatePurchasePriceAdjustDraft_usesStatusGuard() {
+        ErpPurchasePriceAdjustDraftSaveReqVO reqVO = new ErpPurchasePriceAdjustDraftSaveReqVO();
+        reqVO.setId(10L);
+        reqVO.setAdjustType(ErpPurchasePriceAdjustTypeEnum.BY_ITEM.getType());
+        reqVO.setRemark("继续编辑");
+        reqVO.setItems(Collections.emptyList());
+        ErpPurchasePriceAdjustDO draft = new ErpPurchasePriceAdjustDO()
+                .setId(10L).setNo("CGTJ10")
+                .setStatus(ErpPurchasePriceAdjustStatusEnum.DRAFT.getStatus())
+                .setAdjustTime(LocalDateTime.of(2026, 5, 20, 10, 0));
+        when(priceAdjustMapper.selectById(10L)).thenReturn(draft);
+        when(priceAdjustItemMapper.selectListByAdjustId(10L)).thenReturn(Collections.emptyList());
+        when(priceAdjustMapper.updateByIdAndStatus(eq(10L),
+                eq(ErpPurchasePriceAdjustStatusEnum.DRAFT.getStatus()), any())).thenReturn(1);
+
+        priceAdjustService.updatePurchasePriceAdjustDraft(reqVO);
+
+        verify(priceAdjustMapper).updateByIdAndStatus(eq(10L),
+                eq(ErpPurchasePriceAdjustStatusEnum.DRAFT.getStatus()), any());
+        verify(priceAdjustItemMapper).deleteByAdjustId(10L);
+    }
+
+    @Test
+    public void testUpdatePurchasePriceAdjustDraft_rejectsConcurrentSubmit() {
+        ErpPurchasePriceAdjustDraftSaveReqVO reqVO = new ErpPurchasePriceAdjustDraftSaveReqVO();
+        reqVO.setId(10L);
+        reqVO.setAdjustType(ErpPurchasePriceAdjustTypeEnum.BY_ITEM.getType());
+        reqVO.setItems(Collections.emptyList());
+        ErpPurchasePriceAdjustDO draft = new ErpPurchasePriceAdjustDO()
+                .setId(10L).setNo("CGTJ10")
+                .setStatus(ErpPurchasePriceAdjustStatusEnum.DRAFT.getStatus());
+        when(priceAdjustMapper.selectById(10L)).thenReturn(draft);
+        when(priceAdjustItemMapper.selectListByAdjustId(10L)).thenReturn(Collections.emptyList());
+        when(priceAdjustMapper.updateByIdAndStatus(eq(10L),
+                eq(ErpPurchasePriceAdjustStatusEnum.DRAFT.getStatus()), any())).thenReturn(0);
+
+        assertServiceException(() -> priceAdjustService.updatePurchasePriceAdjustDraft(reqVO),
+                PURCHASE_PRICE_ADJUST_DRAFT_UPDATE_FAIL, "CGTJ10");
+        verify(priceAdjustItemMapper, never()).deleteByAdjustId(any());
+    }
+
+    @Test
+    public void testSubmitPurchasePriceAdjust_requiresSupplier() {
+        Long adjustId = 10L;
+        when(priceAdjustMapper.selectById(adjustId)).thenReturn(new ErpPurchasePriceAdjustDO()
+                .setId(adjustId).setNo("CGTJ10")
+                .setStatus(ErpPurchasePriceAdjustStatusEnum.DRAFT.getStatus())
+                .setAdjustType(ErpPurchasePriceAdjustTypeEnum.BY_ITEM.getType()));
+        when(priceAdjustItemMapper.selectListByAdjustId(adjustId)).thenReturn(Collections.emptyList());
+
+        assertServiceException(() -> priceAdjustService.submitPurchasePriceAdjust(adjustId),
+                PURCHASE_PRICE_ADJUST_SUBMIT_SUPPLIER_REQUIRED);
+        verify(priceAdjustMapper, never()).updateByIdAndStatus(any(), any(), any());
+    }
 
     @Test
     public void testCreatePurchasePriceAdjust_success() {
@@ -312,21 +406,16 @@ public class ErpPurchasePriceAdjustServiceImplTest extends BaseMockitoUnitTest {
     }
 
     @Test
-    public void testCreatePurchasePriceAdjust_supplierIdNull_skipsValidation() {
-        Long inItemId = 500L;
-        ErpPurchasePriceAdjustSaveReqVO.Item voItem = buildVOItem(800L, inItemId, 200L, new BigDecimal("13"));
+    public void testCreatePurchasePriceAdjust_supplierIdNull_throwException() {
+        ErpPurchasePriceAdjustSaveReqVO.Item voItem = buildVOItem(800L, 500L, 200L, new BigDecimal("13"));
         ErpPurchasePriceAdjustSaveReqVO reqVO = buildBaseReqVO(
                 ErpPurchasePriceAdjustTypeEnum.BY_IN_ORDER.getType(), voItem);
         reqVO.setSupplierId(null);
 
-        ErpPurchaseInItemDO inItem = buildInItem(inItemId, 800L, 200L, 7L,
-                new BigDecimal("10"), new BigDecimal("5"));
-        when(purchaseInItemMapper.selectById(eq(inItemId))).thenReturn(inItem);
-        when(productService.getProductVOMap(any())).thenReturn(new HashMap<>());
-
-        priceAdjustService.createPurchasePriceAdjust(reqVO);
-
+        assertServiceException(() -> priceAdjustService.createPurchasePriceAdjust(reqVO),
+                PURCHASE_PRICE_ADJUST_SUBMIT_SUPPLIER_REQUIRED);
         verify(supplierService, never()).validateSupplier(any());
+        verify(priceAdjustMapper, never()).insert(any(ErpPurchasePriceAdjustDO.class));
     }
 
     @Test

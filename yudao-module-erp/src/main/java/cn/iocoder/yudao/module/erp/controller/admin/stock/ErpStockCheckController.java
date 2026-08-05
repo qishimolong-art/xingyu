@@ -11,6 +11,9 @@ import cn.iocoder.yudao.framework.datapermission.core.util.DataPermissionUtils;
 import cn.iocoder.yudao.framework.excel.core.util.ExcelUtils;
 import cn.iocoder.yudao.module.erp.controller.admin.common.ErpAuditStatusRequestValidator;
 import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpProductRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.ErpStockUpdateRemarkReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.check.ErpStockCheckDraftCreateReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.check.ErpStockCheckDraftUpdateReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.check.ErpStockCheckPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.check.ErpStockCheckRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.check.ErpStockCheckSaveReqVO;
@@ -99,11 +102,53 @@ public class ErpStockCheckController {
         return success(stockCheckService.createStockCheck(createReqVO));
     }
 
+    @PostMapping("/create-draft")
+    @Operation(summary = "Create stock check draft")
+    @PreAuthorize("@ss.hasPermission('erp:stock-check:create')")
+    public CommonResult<Long> createStockCheckDraft(@RequestBody ErpStockCheckDraftCreateReqVO createReqVO) {
+        return success(stockCheckService.createStockCheckDraft(createReqVO));
+    }
+
     @PutMapping("/update")
     @Operation(summary = "Update stock check")
     @PreAuthorize("@ss.hasPermission('erp:stock-check:update')")
     public CommonResult<Boolean> updateStockCheck(@Valid @RequestBody ErpStockCheckSaveReqVO updateReqVO) {
         stockCheckService.updateStockCheck(updateReqVO);
+        return success(true);
+    }
+
+    @PutMapping("/update-draft")
+    @Operation(summary = "Update stock check draft")
+    @PreAuthorize("@ss.hasPermission('erp:stock-check:update')")
+    public CommonResult<Boolean> updateStockCheckDraft(@RequestBody ErpStockCheckDraftUpdateReqVO updateReqVO) {
+        stockCheckService.updateStockCheckDraft(updateReqVO);
+        return success(true);
+    }
+
+    @PutMapping("/update-and-submit")
+    @Operation(summary = "Update and submit stock check draft")
+    @PreAuthorize("@ss.hasPermission('erp:stock-check:update') and " +
+            "@ss.hasPermission('erp:stock-check:update-status')")
+    public CommonResult<Boolean> updateAndSubmitStockCheckDraft(
+            @Valid @RequestBody ErpStockCheckSaveReqVO updateReqVO) {
+        stockCheckService.updateAndSubmitStockCheckDraft(updateReqVO);
+        return success(true);
+    }
+
+    @PutMapping("/submit")
+    @Operation(summary = "Submit stock check draft")
+    @PreAuthorize("@ss.hasPermission('erp:stock-check:update-status')")
+    public CommonResult<Boolean> submitStockCheck(@RequestParam("id") Long id) {
+        stockCheckService.submitStockCheck(id);
+        return success(true);
+    }
+
+    @PutMapping("/update-remark")
+    @Operation(summary = "Update stock check remark")
+    @PreAuthorize("@ss.hasPermission('erp:stock-check:update')")
+    public CommonResult<Boolean> updateStockCheckRemark(
+            @Valid @RequestBody ErpStockUpdateRemarkReqVO updateReqVO) {
+        stockCheckService.updateStockCheckRemark(updateReqVO);
         return success(true);
     }
 

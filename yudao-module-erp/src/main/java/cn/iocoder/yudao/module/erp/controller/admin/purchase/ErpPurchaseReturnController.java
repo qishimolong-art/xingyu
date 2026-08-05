@@ -12,7 +12,10 @@ import cn.iocoder.yudao.framework.excel.core.util.ExcelUtils;
 import cn.iocoder.yudao.module.erp.controller.admin.common.ErpAuditStatusRequestValidator;
 import cn.iocoder.yudao.module.erp.controller.admin.common.vo.ErpExportFieldRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpProductRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.ErpPurchaseUpdateRemarkReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.imports.ErpPurchaseImportResultRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.returns.ErpPurchaseReturnDraftCreateReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.returns.ErpPurchaseReturnDraftUpdateReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.returns.ErpPurchaseReturnExportRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.returns.ErpPurchaseReturnImportExcelVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.returns.ErpPurchaseReturnImportRespVO;
@@ -137,11 +140,55 @@ public class ErpPurchaseReturnController {
         return success(purchaseReturnService.createPurchaseReturn(createReqVO));
     }
 
+    @PostMapping("/create-draft")
+    @Operation(summary = "创建采购退货草稿")
+    @PreAuthorize("@ss.hasPermission('erp:purchase-return:create')")
+    public CommonResult<Long> createPurchaseReturnDraft(
+            @RequestBody ErpPurchaseReturnDraftCreateReqVO createReqVO) {
+        return success(purchaseReturnService.createPurchaseReturnDraft(createReqVO));
+    }
+
     @PutMapping("/update")
     @Operation(summary = "更新采购退货")
     @PreAuthorize("@ss.hasPermission('erp:purchase-return:update')")
     public CommonResult<Boolean> updatePurchaseReturn(@Valid @RequestBody ErpPurchaseReturnSaveReqVO updateReqVO) {
         purchaseReturnService.updatePurchaseReturn(updateReqVO);
+        return success(true);
+    }
+
+    @PutMapping("/update-draft")
+    @Operation(summary = "保存采购退货草稿")
+    @PreAuthorize("@ss.hasPermission('erp:purchase-return:update')")
+    public CommonResult<Boolean> updatePurchaseReturnDraft(
+            @RequestBody ErpPurchaseReturnDraftUpdateReqVO updateReqVO) {
+        purchaseReturnService.updatePurchaseReturnDraft(updateReqVO);
+        return success(true);
+    }
+
+    @PutMapping("/update-and-submit")
+    @Operation(summary = "更新并提交采购退货草稿")
+    @PreAuthorize("@ss.hasPermission('erp:purchase-return:update') and " +
+            "@ss.hasPermission('erp:purchase-return:update-status')")
+    public CommonResult<Boolean> updateAndSubmitPurchaseReturnDraft(
+            @Valid @RequestBody ErpPurchaseReturnDraftUpdateReqVO updateReqVO) {
+        purchaseReturnService.updateAndSubmitPurchaseReturnDraft(updateReqVO);
+        return success(true);
+    }
+
+    @PutMapping("/submit")
+    @Operation(summary = "提交采购退货草稿")
+    @PreAuthorize("@ss.hasPermission('erp:purchase-return:update-status')")
+    public CommonResult<Boolean> submitPurchaseReturn(@RequestParam("id") Long id) {
+        purchaseReturnService.submitPurchaseReturn(id);
+        return success(true);
+    }
+
+    @PutMapping("/update-remark")
+    @Operation(summary = "修改采购退货备注")
+    @PreAuthorize("@ss.hasPermission('erp:purchase-return:update')")
+    public CommonResult<Boolean> updatePurchaseReturnRemark(
+            @Valid @RequestBody ErpPurchaseUpdateRemarkReqVO updateReqVO) {
+        purchaseReturnService.updatePurchaseReturnRemark(updateReqVO);
         return success(true);
     }
 

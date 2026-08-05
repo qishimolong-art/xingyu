@@ -4,6 +4,8 @@ import cn.iocoder.yudao.framework.common.pojo.CommonResult;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.test.core.ut.BaseMockitoUnitTest;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartConvertQuoteReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartDraftCreateReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartDraftUpdateReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartFirstApproveConfigRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartFirstApproveConfigSaveReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartPageReqVO;
@@ -39,6 +41,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.verify;
@@ -78,19 +81,24 @@ public class ErpSaleCartControllerTest extends BaseMockitoUnitTest {
 
     @Test
     public void testCreateSaleCart_paramPassThrough() {
-        ErpSaleCartSaveReqVO reqVO = new ErpSaleCartSaveReqVO();
+        ErpSaleCartDraftCreateReqVO reqVO = new ErpSaleCartDraftCreateReqVO();
+        reqVO.setCustomerId(21L);
+        reqVO.setItems(Collections.emptyList());
         when(saleCartService.createSaleCart(any())).thenReturn(101L);
 
         CommonResult<Long> result = controller.createSaleCart(reqVO);
 
         assertEquals(0, result.getCode());
         assertEquals(101L, result.getData());
-        verify(saleCartService).createSaleCart(eq(reqVO));
+        verify(saleCartService).createSaleCart(argThat(request ->
+                Long.valueOf(21L).equals(request.getCustomerId())
+                        && request.getItems().isEmpty()));
     }
 
     @Test
     public void testCreateSaleCart_hasPreAuthorize() throws NoSuchMethodException {
-        Method method = ErpSaleCartController.class.getMethod("createSaleCart", ErpSaleCartSaveReqVO.class);
+        Method method = ErpSaleCartController.class.getMethod(
+                "createSaleCart", ErpSaleCartDraftCreateReqVO.class);
         PreAuthorize anno = method.getAnnotation(PreAuthorize.class);
         assertNotNull(anno);
         assertTrue(anno.value().contains("erp:sale-cart:create"));
@@ -113,6 +121,29 @@ public class ErpSaleCartControllerTest extends BaseMockitoUnitTest {
     @Test
     public void testUpdateSaleCart_hasPreAuthorize() throws NoSuchMethodException {
         Method method = ErpSaleCartController.class.getMethod("updateSaleCart", ErpSaleCartSaveReqVO.class);
+        PreAuthorize anno = method.getAnnotation(PreAuthorize.class);
+        assertNotNull(anno);
+        assertTrue(anno.value().contains("erp:sale-cart:update"));
+    }
+
+    @Test
+    public void testUpdateSaleCartDraft_paramPassThrough() {
+        ErpSaleCartDraftUpdateReqVO reqVO = new ErpSaleCartDraftUpdateReqVO();
+        reqVO.setId(20L);
+        reqVO.setItems(Collections.emptyList());
+
+        CommonResult<Boolean> result = controller.updateSaleCartDraft(reqVO);
+
+        assertEquals(0, result.getCode());
+        assertEquals(Boolean.TRUE, result.getData());
+        verify(saleCartService).updateSaleCartDraft(argThat(request ->
+                Long.valueOf(20L).equals(request.getId()) && request.getItems().isEmpty()));
+    }
+
+    @Test
+    public void testUpdateSaleCartDraft_hasPreAuthorize() throws NoSuchMethodException {
+        Method method = ErpSaleCartController.class.getMethod(
+                "updateSaleCartDraft", ErpSaleCartDraftUpdateReqVO.class);
         PreAuthorize anno = method.getAnnotation(PreAuthorize.class);
         assertNotNull(anno);
         assertTrue(anno.value().contains("erp:sale-cart:update"));

@@ -1,6 +1,9 @@
 package cn.iocoder.yudao.module.erp.service.stock;
 
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
+import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.ErpStockUpdateRemarkReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.warehousemove.ErpWarehouseMoveDraftCreateReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.warehousemove.ErpWarehouseMoveDraftUpdateReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.warehousemove.ErpWarehouseMovePageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.warehousemove.ErpWarehouseMoveSaveReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.warehousemove.ErpWarehouseMoveSummaryRespVO;
@@ -15,7 +18,17 @@ public interface ErpWarehouseMoveService {
 
     Long createWarehouseMove(@Valid ErpWarehouseMoveSaveReqVO createReqVO);
 
+    Long createWarehouseMoveDraft(ErpWarehouseMoveDraftCreateReqVO createReqVO);
+
     void updateWarehouseMove(@Valid ErpWarehouseMoveSaveReqVO updateReqVO);
+
+    void updateWarehouseMoveDraft(ErpWarehouseMoveDraftUpdateReqVO updateReqVO);
+
+    void updateAndSubmitWarehouseMoveDraft(@Valid ErpWarehouseMoveSaveReqVO updateReqVO);
+
+    void submitWarehouseMove(Long id);
+
+    void updateWarehouseMoveRemark(@Valid ErpStockUpdateRemarkReqVO updateReqVO);
 
     void updateWarehouseMoveStatus(Long id, Integer status);
 

@@ -8,7 +8,9 @@ import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.out.ErpSaleOutPageRe
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleOutDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleOutItemDO;
 import cn.iocoder.yudao.module.erp.dal.mysql.common.ErpKeywordQuery;
+import cn.iocoder.yudao.module.erp.dal.mysql.finance.ErpFinanceReceiptItemMapper;
 import cn.iocoder.yudao.module.erp.enums.ErpAuditStatus;
+import cn.iocoder.yudao.module.erp.enums.common.ErpBizTypeEnum;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.core.toolkit.support.SFunction;
 import org.apache.ibatis.annotations.Mapper;
@@ -25,6 +27,19 @@ import java.util.Objects;
  */
 @Mapper
 public interface ErpSaleOutMapper extends BaseMapperX<ErpSaleOutDO> {
+
+    String EFFECTIVE_RECEIPT_PRICE_EXPRESSION = ErpFinanceReceiptItemMapper.effectiveReceiptPriceSql(
+            ErpBizTypeEnum.SALE_OUT.getType());
+
+    String ORIGINAL_SETTLEMENT_TOTAL_EXPRESSION = "(CASE WHEN EXISTS (SELECT 1 FROM erp_sale_out_items ssi "
+            + "WHERE ssi.deleted = 0 AND ssi.tenant_id = t.tenant_id AND ssi.out_id = t.id "
+            + "AND ssi.original_product_price IS NOT NULL) THEN "
+            + "(COALESCE((SELECT SUM(ROUND(COALESCE(ssi.original_product_price, ssi.product_price) * ssi.count, 2)) "
+            + "FROM erp_sale_out_items ssi WHERE ssi.deleted = 0 AND ssi.tenant_id = t.tenant_id "
+            + "AND ssi.out_id = t.id), 0) - ROUND(COALESCE((SELECT SUM(ROUND(COALESCE(ssi.original_product_price, "
+            + "ssi.product_price) * ssi.count, 2)) FROM erp_sale_out_items ssi WHERE ssi.deleted = 0 "
+            + "AND ssi.tenant_id = t.tenant_id AND ssi.out_id = t.id), 0) * COALESCE(t.discount_percent, 0) / 100, 2) "
+            + "+ COALESCE(t.fee_amount, t.other_price, t.extra_fee, 0)) ELSE t.total_price END)";
 
     default PageResult<ErpSaleOutDO> selectPage(ErpSaleOutPageReqVO reqVO) {
         MPJLambdaWrapperX<ErpSaleOutDO> query = new MPJLambdaWrapperX<ErpSaleOutDO>()
@@ -44,15 +59,16 @@ public interface ErpSaleOutMapper extends BaseMapperX<ErpSaleOutDO> {
                 .inIfPresent(ErpSaleOutDO::getId, reqVO.getIds());
         // 收款状态。为什么需�?t. 的原因，是因为联表查询时，需要指定表名，不然会报字段不存在的错误
         if (Objects.equals(reqVO.getReceiptStatus(), ErpSaleOutPageReqVO.RECEIPT_STATUS_NONE)) {
-            query.eq(ErpSaleOutDO::getReceiptPrice, 0);
+            query.apply(EFFECTIVE_RECEIPT_PRICE_EXPRESSION + " = 0");
         } else if (Objects.equals(reqVO.getReceiptStatus(), ErpSaleOutPageReqVO.RECEIPT_STATUS_PART)) {
-            query.gt(ErpSaleOutDO::getReceiptPrice, 0).apply("t.receipt_price < t.total_price");
+            query.apply(EFFECTIVE_RECEIPT_PRICE_EXPRESSION + " > 0")
+                    .apply(EFFECTIVE_RECEIPT_PRICE_EXPRESSION + " < " + ORIGINAL_SETTLEMENT_TOTAL_EXPRESSION);
         } else if (Objects.equals(reqVO.getReceiptStatus(), ErpSaleOutPageReqVO.RECEIPT_STATUS_ALL)) {
-            query.apply("t.receipt_price = t.total_price");
+            query.apply(EFFECTIVE_RECEIPT_PRICE_EXPRESSION + " >= " + ORIGINAL_SETTLEMENT_TOTAL_EXPRESSION);
         }
         if (Boolean.TRUE.equals(reqVO.getReceiptEnable())) {
             query.eq(ErpSaleOutDO::getStatus, ErpAuditStatus.APPROVE.getStatus())
-                    .apply("t.receipt_price < t.total_price");
+                    .apply(EFFECTIVE_RECEIPT_PRICE_EXPRESSION + " < " + ORIGINAL_SETTLEMENT_TOTAL_EXPRESSION);
         }
         if (reqVO.getWarehouseId() != null || reqVO.getProductId() != null) {
             query.leftJoin(ErpSaleOutItemDO.class, ErpSaleOutItemDO::getOutId, ErpSaleOutDO::getId)

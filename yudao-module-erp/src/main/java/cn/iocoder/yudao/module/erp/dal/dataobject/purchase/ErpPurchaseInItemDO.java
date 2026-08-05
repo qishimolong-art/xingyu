@@ -68,6 +68,12 @@ public class ErpPurchaseInItemDO extends BaseDO {
      */
     private BigDecimal productPrice;
     /**
+     * 是否赠品
+     *
+     * 赠品行的单价和金额强制为 0
+     */
+    private Boolean gift;
+    /**
      * 数量
      */
     private BigDecimal count;

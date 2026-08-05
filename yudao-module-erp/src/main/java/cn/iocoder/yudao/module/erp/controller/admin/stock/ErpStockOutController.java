@@ -11,6 +11,7 @@ import cn.iocoder.yudao.framework.datapermission.core.util.DataPermissionUtils;
 import cn.iocoder.yudao.framework.excel.core.util.ExcelUtils;
 import cn.iocoder.yudao.module.erp.controller.admin.common.ErpAuditStatusRequestValidator;
 import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpProductRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.ErpStockUpdateRemarkReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.imports.ErpStockImportExcelVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.imports.ErpStockImportResultRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.out.ErpStockOutPageReqVO;
@@ -106,6 +107,15 @@ public class ErpStockOutController {
     @PreAuthorize("@ss.hasPermission('erp:stock-out:update')")
     public CommonResult<Boolean> updateStockOut(@Valid @RequestBody ErpStockOutSaveReqVO updateReqVO) {
         stockOutService.updateStockOut(updateReqVO);
+        return success(true);
+    }
+
+    @PutMapping("/update-remark")
+    @Operation(summary = "Update stock out remark")
+    @PreAuthorize("@ss.hasPermission('erp:stock-out:update')")
+    public CommonResult<Boolean> updateStockOutRemark(
+            @Valid @RequestBody ErpStockUpdateRemarkReqVO updateReqVO) {
+        stockOutService.updateStockOutRemark(updateReqVO);
         return success(true);
     }
 

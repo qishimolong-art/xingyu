@@ -6,7 +6,9 @@ import cn.iocoder.yudao.framework.mybatis.core.query.LambdaQueryWrapperX;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.account.ErpAccountPageReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.ErpAccountDO;
 import cn.iocoder.yudao.module.erp.dal.mysql.common.ErpKeywordQuery;
+import cn.iocoder.yudao.module.erp.enums.finance.ErpAccountDocumentStatusEnum;
 import cn.iocoder.yudao.module.erp.service.finance.bo.ErpAccountBalanceBO;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Select;
 
@@ -26,22 +28,54 @@ public interface ErpAccountMapper extends BaseMapperX<ErpAccountDO> {
                 .eqIfPresent(ErpAccountDO::getAccountType, reqVO.getAccountType())
                 .eqIfPresent(ErpAccountDO::getDeptId, reqVO.getDeptId())
                 .eqIfPresent(ErpAccountDO::getStatus, reqVO.getStatus())
+                .eqIfPresent(ErpAccountDO::getDocumentStatus, reqVO.getDocumentStatus())
                 .likeIfPresent(ErpAccountDO::getRemark, reqVO.getRemark());
         ErpKeywordQuery.appendWithDeptName(wrapper, reqVO.getKeyword(),
                 ErpAccountDO::getName, ErpAccountDO::getNo, ErpAccountDO::getBankName,
                 ErpAccountDO::getBankAccount, ErpAccountDO::getRemark);
         ErpFinanceSortUtils.apply(wrapper, reqVO.getOrderField(), reqVO.getOrderDirection(), "erp_account",
                 "no", "name", "accountType", "bankName", "bankAccount", "deptId", "status",
-                "defaultStatus", "sort", "createTime", "updateTime");
+                "documentStatus", "defaultStatus", "sort", "createTime", "updateTime");
         return selectPage(reqVO, wrapper);
     }
 
     default ErpAccountDO selectByDefaultStatus() {
-        return selectOne(ErpAccountDO::getDefaultStatus, true);
+        return selectOne(new LambdaQueryWrapperX<ErpAccountDO>()
+                .eq(ErpAccountDO::getDefaultStatus, true)
+                .eq(ErpAccountDO::getDocumentStatus,
+                        ErpAccountDocumentStatusEnum.SUBMITTED.getStatus()));
     }
 
     default List<ErpAccountDO> selectListByStatus(Integer status) {
-        return selectList(ErpAccountDO::getStatus, status);
+        return selectList(new LambdaQueryWrapperX<ErpAccountDO>()
+                .eq(ErpAccountDO::getStatus, status)
+                .eq(ErpAccountDO::getDocumentStatus,
+                        ErpAccountDocumentStatusEnum.SUBMITTED.getStatus()));
+    }
+
+    default int updateByIdAndDocumentStatus(Long id, Integer documentStatus, ErpAccountDO updateObj) {
+        return update(updateObj, new LambdaUpdateWrapper<ErpAccountDO>()
+                .eq(ErpAccountDO::getId, id)
+                .eq(ErpAccountDO::getDocumentStatus, documentStatus));
+    }
+
+    /**
+     * 按草稿页面快照更新全部可编辑字段。显式 set 允许用户清空草稿中的可选字段。
+     */
+    default int updateDraftByIdAndDocumentStatus(Long id, Integer documentStatus, ErpAccountDO updateObj) {
+        return update(null, new LambdaUpdateWrapper<ErpAccountDO>()
+                .set(ErpAccountDO::getName, updateObj.getName())
+                .set(ErpAccountDO::getAccountType, updateObj.getAccountType())
+                .set(ErpAccountDO::getBankName, updateObj.getBankName())
+                .set(ErpAccountDO::getBankAccount, updateObj.getBankAccount())
+                .set(ErpAccountDO::getNo, updateObj.getNo())
+                .set(ErpAccountDO::getDeptId, updateObj.getDeptId())
+                .set(ErpAccountDO::getRemark, updateObj.getRemark())
+                .set(ErpAccountDO::getStatus, updateObj.getStatus())
+                .set(ErpAccountDO::getSort, updateObj.getSort())
+                .set(ErpAccountDO::getDefaultStatus, updateObj.getDefaultStatus())
+                .eq(ErpAccountDO::getId, id)
+                .eq(ErpAccountDO::getDocumentStatus, documentStatus));
     }
 
     @Select({

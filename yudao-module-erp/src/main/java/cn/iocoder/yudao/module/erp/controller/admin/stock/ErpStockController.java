@@ -24,6 +24,7 @@ import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpWarehouseDO;
 import cn.iocoder.yudao.module.erp.dal.mysql.purchase.ErpPurchaseOrderItemMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpSaleCartItemMapper;
+import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpSaleOutItemMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.stock.ErpStockBatchQuantityMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.stock.ErpStockMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.stock.ErpStockOccupiedDetailMapper;
@@ -34,10 +35,12 @@ import cn.iocoder.yudao.module.erp.enums.stock.ErpStockCheckTypeEnum;
 import cn.iocoder.yudao.module.erp.enums.stock.ErpStockTransferDirectionEnum;
 import cn.iocoder.yudao.module.erp.service.product.ErpProductPriceSystemService;
 import cn.iocoder.yudao.module.erp.service.product.ErpProductService;
+import cn.iocoder.yudao.module.erp.service.config.ErpStockSelectPriceConfigService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpStockService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpWarehouseService;
 import cn.iocoder.yudao.module.system.api.dept.DeptApi;
 import cn.iocoder.yudao.module.system.api.dept.dto.DeptRespDTO;
+import cn.iocoder.yudao.module.system.api.permission.PermissionApi;
 import cn.iocoder.yudao.module.system.api.user.AdminUserApi;
 import cn.iocoder.yudao.module.system.api.user.dto.AdminUserRespDTO;
 import io.swagger.v3.oas.annotations.Operation;
@@ -80,9 +83,9 @@ import static cn.iocoder.yudao.framework.security.core.util.SecurityFrameworkUti
 public class ErpStockController {
 
     private static final Set<String> STOCK_PRICE_ORDER_FIELDS = new LinkedHashSet<>(Arrays.asList(
-            "costPrice", "costAmount", "purchasePrice", "lastPurchasePrice", "salePrice",
-            "referencePrice", "retailPrice", "backupPrice1", "wholesalePrice", "currentPrice",
-            "currentPriceAmount"));
+            "costPrice", "costAmount", "purchasePrice", "productPurchasePrice", "lastPurchasePrice",
+            "lastSalePrice", "salePrice", "minPrice", "referencePrice", "retailPrice", "grossProfitRate",
+            "backupPrice1", "wholesalePrice", "sharePrice", "currentPrice", "currentPriceAmount"));
 
     @Resource
     private ErpStockService stockService;
@@ -103,11 +106,17 @@ public class ErpStockController {
     @Resource
     private ErpSaleCartItemMapper saleCartItemMapper;
     @Resource
+    private ErpSaleOutItemMapper saleOutItemMapper;
+    @Resource
     private ErpProductPriceSystemService productPriceSystemService;
     @Resource
     private DeptApi deptApi;
     @Resource
     private AdminUserApi adminUserApi;
+    @Resource
+    private PermissionApi permissionApi;
+    @Resource
+    private ErpStockSelectPriceConfigService stockSelectPriceConfigService;
 
     @GetMapping("/get")
     @Operation(summary = "获得产品库存")
@@ -307,7 +316,9 @@ public class ErpStockController {
     }
 
     private PageResult<ErpStockRespVO> buildStockVOPageResult(PageResult<ErpStockDO> pageResult, Long priceSystemId) {
-        return buildStockVOPageResult(pageResult, priceSystemId, true);
+        Long pricePermissionDeptId = getLoginUserDeptId();
+        return buildStockVOPageResult(pageResult, priceSystemId, true, pricePermissionDeptId,
+                getHiddenPriceFieldSet(pricePermissionDeptId));
     }
 
     private PageResult<ErpStockRespVO> getStockVOPageResult(ErpStockPageReqVO pageReqVO) {
@@ -316,78 +327,49 @@ public class ErpStockController {
 
     private PageResult<ErpStockRespVO> getStockVOPageResult(ErpStockPageReqVO pageReqVO,
                                                             boolean includeBatchNoSummary) {
-        sanitizeSalePriceSort(pageReqVO);
+        Long pricePermissionDeptId = resolvePricePermissionDeptId(pageReqVO);
+        Set<String> hiddenPriceFields = getHiddenPriceFieldSet(
+                pricePermissionDeptId, pageReqVO.getBizType());
+        sanitizePriceSort(pageReqVO, hiddenPriceFields);
         PageResult<ErpStockRespVO> result;
         if (Boolean.TRUE.equals(pageReqVO.getShowBatchNo())) {
-            result = buildBatchStockVOPageResult(pageReqVO);
+            result = buildBatchStockVOPageResult(pageReqVO, pricePermissionDeptId, hiddenPriceFields);
         } else {
             result = buildStockVOPageResult(stockService.getStockPage(pageReqVO), pageReqVO.getPriceSystemId(),
-                    includeBatchNoSummary);
+                    includeBatchNoSummary, pricePermissionDeptId, hiddenPriceFields);
         }
-        applySalePriceVisibility(result, pageReqVO);
+        result.getList().forEach(stock -> stock.setPriceVisible(true));
         return result;
     }
 
-    private void sanitizeSalePriceSort(ErpStockPageReqVO pageReqVO) {
-        if (isSalePriceRestricted(pageReqVO)
-                && STOCK_PRICE_ORDER_FIELDS.contains(pageReqVO.getOrderField())) {
+    private void sanitizePriceSort(ErpStockPageReqVO pageReqVO, Set<String> hiddenPriceFields) {
+        String orderField = pageReqVO.getOrderField();
+        if (STOCK_PRICE_ORDER_FIELDS.contains(orderField)
+                && isStockPriceFieldHidden(hiddenPriceFields, orderField)) {
             pageReqVO.setOrderField(null);
             pageReqVO.setOrderDirection(null);
         }
     }
 
-    private void applySalePriceVisibility(PageResult<ErpStockRespVO> pageResult,
-                                          ErpStockPageReqVO pageReqVO) {
-        if (CollUtil.isEmpty(pageResult.getList())) {
-            return;
-        }
-        boolean restrictExternalWarehousePrice = isSalePriceRestricted(pageReqVO);
-        Long salePriceDeptId = resolveSalePriceDeptId(pageReqVO);
-        pageResult.getList().forEach(stock -> {
-            boolean priceVisible = !restrictExternalWarehousePrice
-                    || java.util.Objects.equals(salePriceDeptId, stock.getDeptId());
-            stock.setPriceVisible(priceVisible);
-            if (!priceVisible) {
-                clearStockPrice(stock);
-            }
-        });
-    }
-
-    private boolean isSalePriceRestricted(ErpStockPageReqVO pageReqVO) {
-        return isSaleBizType(pageReqVO.getBizType()) && resolveSalePriceDeptId(pageReqVO) != null;
-    }
-
-    /**
-     * 销售库存遮价优先使用单据所属部门；新增单据尚未完成部门回填时，回退登录部门，
-     * 避免因客户端漏传 saleDeptId 导致跨部门仓库价格短暂暴露。
-     */
     private Long resolveSalePriceDeptId(ErpStockPageReqVO pageReqVO) {
         return pageReqVO.getSaleDeptId() != null ? pageReqVO.getSaleDeptId() : getLoginUserDeptId();
     }
 
-    private void clearStockPrice(ErpStockRespVO stock) {
-        stock.setCostPrice(null)
-                .setCostAmount(null)
-                .setPurchasePrice(null)
-                .setLastPurchasePrice(null)
-                .setSalePrice(null)
-                .setReferencePrice(null)
-                .setRetailPrice(null)
-                .setBackupPrice1(null)
-                .setWholesalePrice(null)
-                .setCurrentPrice(null)
-                .setCurrentPriceAmount(null);
+    private Long resolvePricePermissionDeptId(ErpStockPageReqVO pageReqVO) {
+        return isSaleBizType(pageReqVO.getBizType())
+                ? resolveSalePriceDeptId(pageReqVO) : getLoginUserDeptId();
     }
 
     /**
      * 批次展开视图仍复用原库存查询的产品、仓库与权限过滤，仅将数量条件延后到批次行应用。
      * 批次余额来自库存流水；流水无法识别的差额统一归入“未指定批次”，保证批次行合计等于库存主表。
      */
-    private PageResult<ErpStockRespVO> buildBatchStockVOPageResult(ErpStockPageReqVO pageReqVO) {
+    private PageResult<ErpStockRespVO> buildBatchStockVOPageResult(ErpStockPageReqVO pageReqVO,
+                                                                  Long pricePermissionDeptId,
+                                                                  Set<String> hiddenPriceFields) {
         ErpStockPageReqVO baseReqVO = BeanUtils.toBean(pageReqVO, ErpStockPageReqVO.class);
         baseReqVO.setPageNo(1);
         baseReqVO.setPageSize(PageParam.PAGE_SIZE_NONE);
-        baseReqVO.setShowBatchNo(false);
         clearBatchCountFilters(baseReqVO);
         PageResult<ErpStockDO> stockPageResult = stockService.getStockPage(baseReqVO);
         if (CollUtil.isEmpty(stockPageResult.getList())) {
@@ -396,7 +378,7 @@ public class ErpStockController {
         Map<String, List<ErpStockBatchNoRespVO>> batchBalanceMap =
                 stockService.getStockBatchBalanceListMap(stockPageResult.getList());
         PageResult<ErpStockRespVO> aggregatePageResult = buildStockVOPageResult(
-                stockPageResult, pageReqVO.getPriceSystemId(), false);
+                stockPageResult, pageReqVO.getPriceSystemId(), false, pricePermissionDeptId, hiddenPriceFields);
         Set<Long> productIds = convertSet(stockPageResult.getList(), ErpStockDO::getProductId);
         Set<Long> warehouseIds = convertSet(stockPageResult.getList(), ErpStockDO::getWarehouseId);
         List<ErpStockBatchQuantityDO> occupiedList = DataPermissionUtils.executeIgnore(() ->
@@ -637,14 +619,18 @@ public class ErpStockController {
     }
 
     private PageResult<ErpStockRespVO> buildStockVOPageResult(PageResult<ErpStockDO> pageResult, Long priceSystemId,
-                                                             boolean includeBatchNo) {
+                                                             boolean includeBatchNo,
+                                                             Long pricePermissionDeptId,
+                                                             Set<String> hiddenPriceFields) {
         if (CollUtil.isEmpty(pageResult.getList())) {
             return PageResult.empty(pageResult.getTotal());
         }
         Set<Long> productIds = convertSet(pageResult.getList(), ErpStockDO::getProductId);
         Set<Long> warehouseIds = convertSet(pageResult.getList(), ErpStockDO::getWarehouseId);
-        Map<Long, ErpProductRespVO> productMap = DataPermissionUtils.executeIgnore(
-                () -> productService.getProductVOMap(productIds));
+        Map<Long, ErpProductRespVO> productMap = DataPermissionUtils.executeIgnore(() ->
+                pricePermissionDeptId != null
+                        ? productService.getProductVOMap(productIds, pricePermissionDeptId)
+                        : productService.getProductVOMap(productIds));
         Map<Long, ErpWarehouseDO> warehouseMap = DataPermissionUtils.executeIgnore(
                 () -> warehouseService.getWarehouseMap(warehouseIds));
         // 库存主列表已按当前业务可见仓库完成过滤；这里必须沿用同一批仓库，避免跨部门授权仓库
@@ -661,6 +647,8 @@ public class ErpStockController {
         Map<String, BigDecimal> inTransitMap = DataPermissionUtils.executeIgnore(
                 () -> purchaseOrderItemMapper.selectInTransitCountMap(productIds, warehouseIds,
                         Collections.singletonList(ErpAuditStatus.APPROVE.getStatus())));
+        Map<Long, BigDecimal> lastSalePriceMap = DataPermissionUtils.executeIgnore(
+                () -> saleOutItemMapper.selectLatestSalePriceMap(productIds));
         Map<String, List<ErpStockBatchNoRespVO>> batchNoListMap = includeBatchNo
                 ? DataPermissionUtils.executeIgnore(() ->
                 stockService.getAvailableBatchNoListMap(pageResult.getList())) : Collections.emptyMap();
@@ -668,7 +656,6 @@ public class ErpStockController {
         Map<Long, BigDecimal> priceMap = priceSystemId != null
                 ? productPriceSystemService.getProductPriceMap(productIds, priceSystemId)
                 : Collections.emptyMap();
-
         return BeanUtils.toBean(pageResult, ErpStockRespVO.class, stock -> {
             stock.setRowKey(buildStockRowKey(stock)).setBatchRow(false);
             MapUtils.findAndThen(productMap, stock.getProductId(), product -> {
@@ -687,15 +674,21 @@ public class ErpStockController {
                         .setCategoryId(product.getCategoryId())
                         .setPurchasePrice(stock.getPurchasePrice() != null
                                 ? stock.getPurchasePrice() : product.getLastPurchasePrice())
+                        .setProductPurchasePrice(product.getPurchasePrice())
                         .setLastPurchasePrice(product.getLastPurchasePrice())
+                        .setLastSalePrice(lastSalePriceMap.get(stock.getProductId()))
                         .setOeNumber(product.getOeNumber())
                         .setFactoryCode(product.getFactoryCode())
                         .setProductBarCode(product.getBarCode())
                         .setSalePrice(product.getSalePrice())
+                        .setMinPrice(product.getMinPrice())
                         .setReferencePrice(product.getReferencePrice())
                         .setRetailPrice(product.getRetailPrice())
+                        .setGrossProfitRate(product.getGrossProfitRate())
                         .setBackupPrice1(product.getBackupPrice1())
                         .setWholesalePrice(product.getWholesalePrice())
+                        .setSharePrice(product.getSharePrice())
+                        .setCustomFields(copyVisibleCustomFields(product.getCustomFields(), hiddenPriceFields))
                         .setStockMax(product.getStockMax())
                         .setStockMin(product.getStockMin())
                         .setStockStandard(product.getStockStandard())
@@ -733,7 +726,112 @@ public class ErpStockController {
                     stock.setCurrentPriceAmount(unitPrice.multiply(stock.getCount()));
                 }
             }
+            clearConfiguredStockPrices(stock, hiddenPriceFields);
         });
+    }
+
+    private Set<String> getHiddenPriceFieldSet(Long pricePermissionDeptId) {
+        return getHiddenPriceFieldSet(pricePermissionDeptId, null);
+    }
+
+    private Set<String> getHiddenPriceFieldSet(Long pricePermissionDeptId, String bizType) {
+        List<String> hiddenFields = pricePermissionDeptId != null
+                ? permissionApi.getCurrentUserHiddenFields("erp_product", pricePermissionDeptId)
+                : permissionApi.getCurrentUserHiddenFields("erp_product");
+        Set<String> result = CollUtil.isEmpty(hiddenFields)
+                ? new LinkedHashSet<>() : new LinkedHashSet<>(hiddenFields);
+        result.addAll(stockSelectPriceConfigService.getSceneHiddenPriceFields(bizType));
+        return result;
+    }
+
+    private boolean isConfiguredFieldHidden(Set<String> hiddenFields, String fieldKey) {
+        return hiddenFields.contains(fieldKey) || hiddenFields.contains("col_" + fieldKey);
+    }
+
+    private boolean isStockPriceFieldHidden(Set<String> hiddenFields, String stockField) {
+        switch (stockField) {
+            case "costPrice":
+            case "costAmount":
+            case "lastPurchasePrice":
+                return isConfiguredFieldHidden(hiddenFields, "lastPurchasePrice");
+            case "purchasePrice":
+                return isConfiguredFieldHidden(hiddenFields, "purchasePrice")
+                        || isConfiguredFieldHidden(hiddenFields, "lastPurchasePrice");
+            case "productPurchasePrice":
+                return isConfiguredFieldHidden(hiddenFields, "purchasePrice");
+            case "lastSalePrice":
+                return isConfiguredFieldHidden(hiddenFields, "lastSalePrice")
+                        || isConfiguredFieldHidden(hiddenFields, "salePrice");
+            case "salePrice":
+                return isConfiguredFieldHidden(hiddenFields, "salePrice");
+            case "minPrice":
+                return isConfiguredFieldHidden(hiddenFields, "minPrice");
+            case "referencePrice":
+                return isConfiguredFieldHidden(hiddenFields, "referencePrice");
+            case "retailPrice":
+                return isConfiguredFieldHidden(hiddenFields, "retailPrice");
+            case "backupPrice1":
+            case "currentPrice":
+            case "currentPriceAmount":
+                return isConfiguredFieldHidden(hiddenFields, "backupPrice1");
+            case "wholesalePrice":
+                return isConfiguredFieldHidden(hiddenFields, "wholesalePrice");
+            case "grossProfitRate":
+                return isConfiguredFieldHidden(hiddenFields, "grossProfitRate");
+            case "sharePrice":
+                return isConfiguredFieldHidden(hiddenFields, "sharePrice");
+            default:
+                return false;
+        }
+    }
+
+    private void clearConfiguredStockPrices(ErpStockRespVO stock, Set<String> hiddenFields) {
+        if (isStockPriceFieldHidden(hiddenFields, "costPrice")) {
+            stock.setCostPrice(null).setCostAmount(null).setLastPurchasePrice(null);
+        }
+        if (isStockPriceFieldHidden(hiddenFields, "purchasePrice")) {
+            stock.setPurchasePrice(null);
+        }
+        if (isStockPriceFieldHidden(hiddenFields, "productPurchasePrice")) {
+            stock.setProductPurchasePrice(null);
+        }
+        if (isStockPriceFieldHidden(hiddenFields, "salePrice")) {
+            stock.setSalePrice(null);
+        }
+        if (isStockPriceFieldHidden(hiddenFields, "lastSalePrice")) {
+            stock.setLastSalePrice(null);
+        }
+        if (isStockPriceFieldHidden(hiddenFields, "minPrice")) {
+            stock.setMinPrice(null);
+        }
+        if (isStockPriceFieldHidden(hiddenFields, "referencePrice")) {
+            stock.setReferencePrice(null);
+        }
+        if (isStockPriceFieldHidden(hiddenFields, "retailPrice")) {
+            stock.setRetailPrice(null);
+        }
+        if (isStockPriceFieldHidden(hiddenFields, "backupPrice1")) {
+            stock.setBackupPrice1(null).setCurrentPrice(null).setCurrentPriceAmount(null);
+        }
+        if (isStockPriceFieldHidden(hiddenFields, "wholesalePrice")) {
+            stock.setWholesalePrice(null);
+        }
+        if (isStockPriceFieldHidden(hiddenFields, "grossProfitRate")) {
+            stock.setGrossProfitRate(null);
+        }
+        if (isStockPriceFieldHidden(hiddenFields, "sharePrice")) {
+            stock.setSharePrice(null);
+        }
+    }
+
+    private Map<String, Object> copyVisibleCustomFields(Map<String, Object> customFields,
+                                                         Set<String> hiddenFields) {
+        if (customFields == null) {
+            return null;
+        }
+        Map<String, Object> visibleFields = new LinkedHashMap<>(customFields);
+        visibleFields.keySet().removeIf(fieldKey -> isConfiguredFieldHidden(hiddenFields, fieldKey));
+        return visibleFields;
     }
 
     private ErpStockSummaryRespVO buildStockSummary(PageResult<ErpStockRespVO> pageResult,

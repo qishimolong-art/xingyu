@@ -3,6 +3,7 @@ package cn.iocoder.yudao.module.erp.controller.admin.finance.receivable;
 import cn.iocoder.yudao.framework.common.pojo.CommonResult;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.test.core.ut.BaseMockitoUnitTest;
+import cn.iocoder.yudao.module.erp.controller.admin.finance.receivable.vo.otherreceivable.ErpReceivableOtherDraftSaveReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.receivable.vo.otherreceivable.ErpReceivableOtherPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.receivable.vo.otherreceivable.ErpReceivableOtherRespVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.receivable.ErpReceivableOtherDO;
@@ -26,6 +27,7 @@ import java.util.Map;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class ErpReceivableOtherControllerTest extends BaseMockitoUnitTest {
@@ -43,6 +45,36 @@ class ErpReceivableOtherControllerTest extends BaseMockitoUnitTest {
     private DeptApi deptApi;
     @Mock
     private ErpFinanceFieldPermissionMasker fieldPermissionMasker;
+
+    @Test
+    void createDraft_delegatesToDraftService() {
+        ErpReceivableOtherDraftSaveReqVO reqVO =
+                new ErpReceivableOtherDraftSaveReqVO().setRemark("未完成");
+        when(receivableOtherService.createReceivableOtherDraft(reqVO)).thenReturn(9L);
+
+        CommonResult<Long> result = controller.createDraft(reqVO);
+
+        assertEquals(9L, result.getData());
+        verify(receivableOtherService).createReceivableOtherDraft(reqVO);
+    }
+
+    @Test
+    void page_allowsDraftWithoutCustomer() {
+        ErpReceivableOtherDO row = new ErpReceivableOtherDO();
+        row.setId(9L);
+        row.setStatus(0);
+        when(receivableOtherService.getReceivableOtherPage(any()))
+                .thenReturn(new PageResult<>(Collections.singletonList(row), 1L));
+        when(customerService.getCustomerMap(any())).thenReturn(Collections.emptyMap());
+        when(adminUserApi.getUserMap(any())).thenReturn(Collections.emptyMap());
+        when(deptApi.getDeptMap(any())).thenReturn(Collections.emptyMap());
+
+        CommonResult<PageResult<ErpReceivableOtherRespVO>> result =
+                controller.page(new ErpReceivableOtherPageReqVO());
+
+        assertNotNull(result.getData());
+        assertEquals(0, result.getData().getList().get(0).getStatus());
+    }
 
     @Test
     void page_fillsCustomerSalespersonAndAuditFields() {

@@ -20,6 +20,7 @@ import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartConv
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartSaveReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartSubmitRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartUpdateBasicReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.ErpSaleUpdateRemarkReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.out.ErpSaleOutSaveReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.move.ErpStockMoveSaveReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.product.ErpProductDO;
@@ -48,6 +49,9 @@ import cn.iocoder.yudao.module.erp.enums.sale.ErpSaleConvertTypeEnum;
 import cn.iocoder.yudao.module.erp.enums.sale.ErpSaleQuoteStatusEnum;
 import cn.iocoder.yudao.module.erp.service.common.ErpOperateLogService;
 import cn.iocoder.yudao.module.erp.service.finance.ErpAccountService;
+import cn.iocoder.yudao.module.erp.service.finance.bo.ErpSaleCartFreightDraftCreateReqBO;
+import cn.iocoder.yudao.module.erp.service.finance.payable.ErpPayableExpenseService;
+import cn.iocoder.yudao.module.erp.service.finance.receivable.ErpReceivableOtherService;
 import cn.iocoder.yudao.module.erp.service.product.ErpProductBatchNoValidator;
 import cn.iocoder.yudao.module.erp.service.product.ErpProductService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpStockService;
@@ -62,6 +66,7 @@ import cn.iocoder.yudao.framework.tenant.core.context.TenantContextHolder;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
 import org.springframework.validation.annotation.Validated;
 
 import javax.annotation.Resource;
@@ -98,6 +103,8 @@ public class ErpSaleCartServiceImpl implements ErpSaleCartService {
     private static final String FIRST_APPROVE_DEPT_CONFIG_TYPE = "SALE_CART_FIRST_APPROVE_DEPT";
     private static final String FIRST_APPROVE_DEPT_CODE_PREFIX = "DEPT_";
     private static final int TRANSFER_DIRECTION_OUT = 10;
+    private static final String FREIGHT_TYPE_CUSTOMER_ADVANCE = "代客户付";
+    private static final String FREIGHT_TYPE_SELF_PAY = "我方自付";
 
     @Resource
     private ErpSaleCartMapper saleCartMapper;
@@ -121,6 +128,10 @@ public class ErpSaleCartServiceImpl implements ErpSaleCartService {
     private ErpProductService productService;
     @Resource
     private ErpAccountService accountService;
+    @Resource
+    private ErpReceivableOtherService receivableOtherService;
+    @Resource
+    private ErpPayableExpenseService payableExpenseService;
     @Resource
     private ErpStockService stockService;
     @Resource
@@ -147,7 +158,9 @@ public class ErpSaleCartServiceImpl implements ErpSaleCartService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Long createSaleCart(ErpSaleCartSaveReqVO createReqVO) {
-        return createAndSubmitSaleCart(createReqVO).getId();
+        CreatedSaleCart created = createSaleCart(createReqVO, ErpSaleCartStatusEnum.PROCESS.getStatus());
+        recordCreate(created.cart.getId(), created.cart.getNo());
+        return created.cart.getId();
     }
 
     @Override
@@ -186,12 +199,15 @@ public class ErpSaleCartServiceImpl implements ErpSaleCartService {
     }
 
     private CreatedSaleCart createSaleCart(ErpSaleCartSaveReqVO createReqVO, Integer status, boolean preserveSource) {
+        boolean draft = ErpSaleCartStatusEnum.PROCESS.getStatus().equals(status);
         Integer sourceType = createReqVO.getSourceType();
         Long sourceId = createReqVO.getSourceId();
         String sourceNo = createReqVO.getSourceNo();
         clearHiddenFields(createReqVO);
         clearHiddenItemFields(createReqVO.getItems());
-        customerService.validateCustomerForSale(createReqVO.getCustomerId());
+        if (createReqVO.getCustomerId() != null) {
+            customerService.validateCustomerForSale(createReqVO.getCustomerId());
+        }
         if (createReqVO.getAccountId() != null) {
             accountService.validateAccount(createReqVO.getAccountId());
         }
@@ -212,24 +228,63 @@ public class ErpSaleCartServiceImpl implements ErpSaleCartService {
         }
         saleDocumentDefaultService.fillCreateDefaults(cart);
         cart.setStatus(status != null ? status : getSubmitTargetStatus(cart.getDeptId()));
-        List<ErpSaleCartItemDO> items = validateSaleCartItems(createReqVO.getItems(), cart.getDeptId());
+        List<ErpSaleCartSaveReqVO.Item> itemReqs = createReqVO.getItems();
+        if (draft) {
+            itemReqs = filterDraftItems(itemReqs);
+            if (CollUtil.isEmpty(itemReqs)) {
+                throw exception(SALE_CART_DRAFT_ITEMS_REQUIRED);
+            }
+        }
+        List<ErpSaleCartItemDO> items = CollUtil.isEmpty(itemReqs)
+                ? Collections.emptyList() : (draft
+                ? validateSaleCartDraftItems(itemReqs, cart.getDeptId())
+                : validateSaleCartItems(itemReqs, cart.getDeptId()));
         calculateTotalPrice(cart, items);
+        if (!draft) {
+            validateFreightFinanceFields(cart);
+        }
         saleCartMapper.insert(cart);
-        items.forEach(item -> item.setCartId(cart.getId()));
-        saleCartItemMapper.insertBatch(items);
+        if (CollUtil.isNotEmpty(items)) {
+            items.forEach(item -> item.setCartId(cart.getId()));
+            saleCartItemMapper.insertBatch(items);
+        }
         return new CreatedSaleCart(cart, items);
     }
 
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void updateSaleCart(ErpSaleCartSaveReqVO updateReqVO) {
+        updateSaleCart(updateReqVO, false);
+    }
+
+    @Override
+    public void updateSaleCartRemark(ErpSaleUpdateRemarkReqVO updateReqVO) {
         ErpSaleCartDO cart = validateSaleCartExists(updateReqVO.getId());
-        if (!isBeforeFirstApprove(cart.getStatus())) {
+        saleCartMapper.updateById(new ErpSaleCartDO()
+                .setId(updateReqVO.getId())
+                .setRemark(updateReqVO.getRemark()));
+        recordUpdate(updateReqVO.getId(), cart.getNo());
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void updateSaleCartDraft(ErpSaleCartSaveReqVO updateReqVO) {
+        updateSaleCart(updateReqVO, true);
+    }
+
+    private void updateSaleCart(ErpSaleCartSaveReqVO updateReqVO, boolean draft) {
+        ErpSaleCartDO cart = validateSaleCartExists(updateReqVO.getId());
+        if (draft
+                ? !ErpSaleCartStatusEnum.PROCESS.getStatus().equals(cart.getStatus())
+                : !isBeforeFirstApprove(cart.getStatus())) {
             throw exception(SALE_CART_UPDATE_FAIL_NOT_PROCESS, cart.getNo());
         }
         preserveHiddenFields(updateReqVO, cart);
-        preserveHiddenItemFields(updateReqVO.getItems(), saleCartItemMapper.selectListByCartId(updateReqVO.getId()));
-        customerService.validateCustomerForSale(updateReqVO.getCustomerId());
+        List<ErpSaleCartSaveReqVO.Item> itemReqs = updateReqVO.getItems();
+        preserveHiddenItemFields(itemReqs, saleCartItemMapper.selectListByCartId(updateReqVO.getId()));
+        if (!draft || updateReqVO.getCustomerId() != null) {
+            customerService.validateCustomerForSale(updateReqVO.getCustomerId());
+        }
         if (updateReqVO.getAccountId() != null) {
             accountService.validateAccount(updateReqVO.getAccountId());
         }
@@ -242,15 +297,26 @@ public class ErpSaleCartServiceImpl implements ErpSaleCartService {
         updateObj.setNo(cart.getNo());
         updateObj.setStatus(cart.getStatus());
         updateObj.setDeptId(saleDeptId);
-        List<ErpSaleCartItemDO> items = validateSaleCartItems(updateReqVO.getItems(), saleDeptId);
+        if (draft && CollUtil.isNotEmpty(itemReqs)) {
+            itemReqs = filterDraftItems(itemReqs);
+        }
+        List<ErpSaleCartItemDO> items = CollUtil.isEmpty(itemReqs)
+                ? Collections.emptyList() : (draft
+                ? validateSaleCartDraftItems(itemReqs, saleDeptId)
+                : validateSaleCartItems(itemReqs, saleDeptId));
         calculateTotalPrice(updateObj, items);
+        if (!draft) {
+            validateFreightFinanceFields(updateObj);
+        }
         saleCartMapper.updateById(updateObj);
         saleCartItemMapper.deleteByCartId(updateReqVO.getId());
         items.forEach(item -> {
             item.setId(null);
             item.setCartId(updateReqVO.getId());
         });
-        saleCartItemMapper.insertBatch(items);
+        if (CollUtil.isNotEmpty(items)) {
+            saleCartItemMapper.insertBatch(items);
+        }
         if (ErpSaleCartStatusEnum.SUBMITTED.getStatus().equals(cart.getStatus())) {
             validateStockEnoughRealtime(items);
         }
@@ -349,6 +415,7 @@ public class ErpSaleCartServiceImpl implements ErpSaleCartService {
         // The cart has already been claimed as FINAL_APPROVE, so it is no longer included in occupied stock.
         List<ErpSaleCartItemDO> finalItems = resolveFinalSaleItems(cart, items);
         validateStockEnoughRealtime(finalItems, false, cart.getDeptId());
+        validateFreightFinanceFields(cart);
         Set<Long> warehouseIds = convertSet(finalItems, ErpSaleCartItemDO::getWarehouseId);
         Map<Long, ErpWarehouseDO> warehouseMap = convertMap(
                 warehouseService.validSaleWarehouseListForDept(warehouseIds, cart.getDeptId()), ErpWarehouseDO::getId);
@@ -356,6 +423,7 @@ public class ErpSaleCartServiceImpl implements ErpSaleCartService {
                 .anyMatch(warehouse -> Boolean.TRUE.equals(warehouse.getStockBillEnabled()));
         Long saleOutId = saleOutService.createGeneratedSaleOut(buildSaleOutReqVO(cart, finalItems),
                 ErpSaleBizSourceTypeEnum.CART.getType(), cart.getId(), cart.getNo(), stockBillEnabled);
+        createFreightFinanceDraft(cart);
         if (stockBillEnabled) {
             // 出库凭证已接管待出库占用，释放手推车库存锁，避免重复占用。
             stockLockService.unlockStock(ErpSaleBizSourceTypeEnum.CART.getType(), cart.getId());
@@ -386,6 +454,55 @@ public class ErpSaleCartServiceImpl implements ErpSaleCartService {
         }
         recordStatus(id, cart.getNo(), true);
         return saleOutIds;
+    }
+
+    private void createFreightFinanceDraft(ErpSaleCartDO cart) {
+        if (!FREIGHT_TYPE_CUSTOMER_ADVANCE.equals(cart.getFreightType())
+                && !FREIGHT_TYPE_SELF_PAY.equals(cart.getFreightType())) {
+            return;
+        }
+        validateFreightFinanceFields(cart);
+        BigDecimal financeAmount = resolveFreightFinanceAmount(cart);
+        ErpSaleCartFreightDraftCreateReqBO createReqBO = new ErpSaleCartFreightDraftCreateReqBO()
+                .setCartId(cart.getId())
+                .setCartNo(cart.getNo())
+                .setBizTime(cart.getCartTime().toLocalDate())
+                .setCustomerId(cart.getCustomerId())
+                .setSettleMethod(cart.getSettleMethod())
+                .setAccountId(cart.getAccountId())
+                .setDeptId(cart.getDeptId())
+                .setHandlerId(cart.getSaleUserId())
+                .setParty(cart.getLogisticsCompany())
+                .setAmount(financeAmount);
+        if (FREIGHT_TYPE_CUSTOMER_ADVANCE.equals(cart.getFreightType())) {
+            receivableOtherService.createFromSaleCartFreight(createReqBO);
+        } else {
+            payableExpenseService.createFromSaleCartFreight(createReqBO);
+        }
+    }
+
+    private void validateFreightFinanceFields(ErpSaleCartDO cart) {
+        if (!FREIGHT_TYPE_CUSTOMER_ADVANCE.equals(cart.getFreightType())
+                && !FREIGHT_TYPE_SELF_PAY.equals(cart.getFreightType())) {
+            return;
+        }
+        BigDecimal financeAmount = resolveFreightFinanceAmount(cart);
+        if (financeAmount == null || financeAmount.compareTo(BigDecimal.ZERO) <= 0) {
+            throw exception(SALE_CART_FREIGHT_AMOUNT_INVALID);
+        }
+        if (FREIGHT_TYPE_SELF_PAY.equals(cart.getFreightType())
+                && (!StringUtils.hasText(cart.getSettleMethod())
+                || cart.getAccountId() == null || cart.getSaleUserId() == null)) {
+            throw exception(SALE_CART_SELF_PAY_INFO_REQUIRED);
+        }
+    }
+
+    private BigDecimal resolveFreightFinanceAmount(ErpSaleCartDO cart) {
+        BigDecimal feeAmount = resolveFeeAmount(cart.getFeeAmount(), cart.getOtherPrice());
+        if (feeAmount.compareTo(BigDecimal.ZERO) > 0) {
+            return feeAmount;
+        }
+        return cart.getTotalFreight();
     }
 
     @Override
@@ -542,7 +659,7 @@ public class ErpSaleCartServiceImpl implements ErpSaleCartService {
     @Transactional(rollbackFor = Exception.class)
     public Long convertToQuote(ErpSaleCartConvertQuoteReqVO reqVO) {
         ErpSaleCartDO cart = validateSaleCartExists(reqVO.getCartId());
-        if (!ErpSaleCartStatusEnum.PROCESS.getStatus().equals(cart.getStatus())) {
+        if (!isBeforeFirstApprove(cart.getStatus())) {
             throw exception(SALE_CART_CONVERT_QUOTE_FAIL);
         }
 
@@ -641,11 +758,15 @@ public class ErpSaleCartServiceImpl implements ErpSaleCartService {
         reqVO.setDiscountPercent(cart.getDiscountPercent());
         reqVO.setFeeAmount(cart.getFeeAmount());
         reqVO.setOtherPrice(cart.getOtherPrice());
+        reqVO.setDeliveryMethod(cart.getDeliveryMethod());
+        reqVO.setVin(cart.getVin());
         reqVO.setRemark(cart.getRemark());
         reqVO.setItems(convertList(items, item -> {
             ErpSaleOutSaveReqVO.Item outItem = new ErpSaleOutSaveReqVO.Item();
             outItem.setWarehouseId(item.getWarehouseId());
             outItem.setDeptId(item.getDeptId());
+            outItem.setSourceWarehouseId(item.getSourceWarehouseId());
+            outItem.setSourceDeptId(item.getSourceDeptId());
             outItem.setProductId(item.getProductId());
             outItem.setProductUnitId(item.getProductUnitId());
             outItem.setProductPrice(Boolean.TRUE.equals(item.getGiftFlag()) ? BigDecimal.ZERO : item.getProductPrice());
@@ -691,6 +812,49 @@ public class ErpSaleCartServiceImpl implements ErpSaleCartService {
             ErpStockDO stock = getStockIgnoreDataPermission(item.getProductId(), item.getWarehouseId());
             item.setStockCount(stock != null ? stock.getCount() : BigDecimal.ZERO);
         }));
+    }
+
+    private List<ErpSaleCartItemDO> validateSaleCartDraftItems(List<ErpSaleCartSaveReqVO.Item> list, Long saleDeptId) {
+        List<ErpProductDO> productList = DataPermissionUtils.executeIgnore(() ->
+                productService.validProductList(convertSet(list, ErpSaleCartSaveReqVO.Item::getProductId)));
+        Map<Long, ErpProductDO> productMap = convertMap(productList, ErpProductDO::getId);
+        productBatchNoValidator.validateBatchNoAllowed(list, productMap,
+                ErpSaleCartSaveReqVO.Item::getProductId, ErpSaleCartSaveReqVO.Item::getBatchNo);
+        Map<Long, ErpWarehouseDO> warehouseMap = convertMap(warehouseService.validSaleWarehouseList(
+                convertSet(list, ErpSaleCartSaveReqVO.Item::getWarehouseId)), ErpWarehouseDO::getId);
+        list.forEach(item -> {
+            if (item.getCount() == null || item.getCount().compareTo(BigDecimal.ZERO) <= 0) {
+                throw exception(SALE_CART_ITEM_COUNT_POSITIVE);
+            }
+        });
+        return convertList(list, o -> BeanUtils.toBean(o, ErpSaleCartItemDO.class, item -> {
+            item.setId(null);
+            item.setProductUnitId(productMap.get(item.getProductId()).getUnitId());
+            fillDeptIdFromSaleDept(item, saleDeptId, warehouseMap);
+            validateSaleDeptWarehousePermission(item);
+            item.setGiftFlag(Boolean.TRUE.equals(item.getGiftFlag()));
+            if (Boolean.TRUE.equals(item.getGiftFlag())
+                    || item.getProductPrice() == null
+                    || item.getProductPrice().compareTo(BigDecimal.ZERO) < 0) {
+                item.setProductPrice(BigDecimal.ZERO);
+            }
+            item.setTaxPercent(null);
+            item.setTaxPrice(BigDecimal.ZERO);
+            item.setTotalPrice(MoneyUtils.priceMultiply(item.getProductPrice(), item.getCount()));
+            ErpStockDO stock = getStockIgnoreDataPermission(item.getProductId(), item.getWarehouseId());
+            item.setStockCount(stock != null ? stock.getCount() : BigDecimal.ZERO);
+        }));
+    }
+
+    private List<ErpSaleCartSaveReqVO.Item> filterDraftItems(List<ErpSaleCartSaveReqVO.Item> itemReqs) {
+        if (CollUtil.isEmpty(itemReqs)) {
+            return Collections.emptyList();
+        }
+        return itemReqs.stream()
+                .filter(item -> item != null && item.getProductId() != null
+                        && item.getWarehouseId() != null && item.getCount() != null
+                        && item.getCount().compareTo(BigDecimal.ZERO) > 0)
+                .collect(Collectors.toList());
     }
 
     private void fillDeptIdFromSaleDept(ErpSaleCartItemDO item, Long saleDeptId, Map<Long, ErpWarehouseDO> warehouseMap) {
@@ -755,7 +919,7 @@ public class ErpSaleCartServiceImpl implements ErpSaleCartService {
         reqVO.setSourceType(ErpSaleBizSourceTypeEnum.CART.getType());
         reqVO.setSourceId(cart.getId());
         reqVO.setSourceNo(cart.getNo());
-        reqVO.setRemark("销售手推车初审自动生成调拨出仓单，调入仓库默认为直发仓");
+        reqVO.setRemark("销售手推车初审自动生成调拨出仓单，调入仓库为销售部门对应的直发仓");
         Map<String, ErpSaleCartItemDO> mergedItems = new LinkedHashMap<>();
         transferItems.forEach(item -> {
             String key = item.getProductId() + "-" + item.getWarehouseId();
@@ -841,7 +1005,10 @@ public class ErpSaleCartServiceImpl implements ErpSaleCartService {
                 throw exception(SALE_WAREHOUSE_TRANSFER_NOT_APPROVED);
             }
             return BeanUtils.toBean(item, ErpSaleCartItemDO.class,
-                    finalItem -> finalItem.setWarehouseId(targetWarehouseId).setDeptId(cart.getDeptId()));
+                    finalItem -> finalItem.setWarehouseId(targetWarehouseId)
+                            .setDeptId(cart.getDeptId())
+                            .setSourceWarehouseId(item.getWarehouseId())
+                            .setSourceDeptId(sourceWarehouse.getDeptId()));
         });
     }
 

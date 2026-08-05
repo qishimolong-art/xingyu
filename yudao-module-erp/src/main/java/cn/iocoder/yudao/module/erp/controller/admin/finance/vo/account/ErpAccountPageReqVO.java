@@ -32,6 +32,9 @@ public class ErpAccountPageReqVO extends PageParam {
     @Schema(description = "状态", example = "1")
     private Integer status;
 
+    @Schema(description = "提交状态：0-草稿 10-正式", example = "10")
+    private Integer documentStatus;
+
     @Schema(description = "备注", example = "备注")
     private String remark;
 

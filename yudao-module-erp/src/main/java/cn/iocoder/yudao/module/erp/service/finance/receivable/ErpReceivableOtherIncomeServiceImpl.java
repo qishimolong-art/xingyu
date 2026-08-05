@@ -3,6 +3,8 @@ package cn.iocoder.yudao.module.erp.service.finance.receivable;
 import cn.hutool.core.collection.CollUtil;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
+import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.ErpFinanceUpdateRemarkReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.finance.receivable.vo.otherincome.ErpReceivableOtherIncomeDraftSaveReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.receivable.vo.otherincome.ErpReceivableOtherIncomePageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.receivable.vo.otherincome.ErpReceivableOtherIncomeSaveReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.receivable.ErpReceivableOtherIncomeDO;
@@ -11,6 +13,7 @@ import cn.iocoder.yudao.module.erp.dal.mysql.finance.receivable.ErpReceivableOth
 import cn.iocoder.yudao.module.erp.dal.mysql.finance.receivable.ErpReceivableOtherIncomeMapper;
 import cn.iocoder.yudao.module.erp.dal.redis.no.ErpNoRedisDAO;
 import cn.iocoder.yudao.module.erp.enums.ErpAuditStatus;
+import cn.iocoder.yudao.module.erp.enums.finance.ErpReceivableOtherIncomeStatusEnum;
 import cn.iocoder.yudao.module.erp.service.common.ErpOperateLogService;
 import cn.iocoder.yudao.module.erp.service.finance.ErpAccountService;
 import cn.iocoder.yudao.module.erp.service.finance.ErpFinanceFieldPermissionMasker;
@@ -24,10 +27,12 @@ import org.springframework.validation.annotation.Validated;
 
 import javax.annotation.Resource;
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
+import java.util.stream.Collectors;
 
 import static cn.iocoder.yudao.framework.common.exception.util.ServiceExceptionUtil.exception;
 import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.convertList;
@@ -38,11 +43,16 @@ import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.OTHER_RECEIVA
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.OTHER_RECEIVABLE_PROCESS_FAIL;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.OTHER_RECEIVABLE_UPDATE_FAIL_APPROVE;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.OTHER_RECEIVABLE_UPDATE_FAIL_STATUS_CHANGED;
+import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.OTHER_INCOME_DRAFT_SUBMIT_FAIL;
+import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.OTHER_INCOME_DRAFT_ITEMS_REQUIRED;
+import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.OTHER_INCOME_DRAFT_UPDATE_FAIL;
 import static cn.iocoder.yudao.module.erp.enums.LogRecordConstants.ERP_RECEIVABLE_OTHER_INCOME_TYPE;
 
 @Service
 @Validated
 public class ErpReceivableOtherIncomeServiceImpl implements ErpReceivableOtherIncomeService {
+
+    private static final LocalDateTime MIN_VALID_BIZ_TIME = LocalDateTime.of(1970, 1, 2, 0, 0);
 
     private static final String FIELD_PERMISSION_MODULE = "erp_finance_receivable_other_income";
 
@@ -86,6 +96,40 @@ public class ErpReceivableOtherIncomeServiceImpl implements ErpReceivableOtherIn
 
     @Override
     @Transactional(rollbackFor = Exception.class)
+    public Long createOtherIncomeDraft(ErpReceivableOtherIncomeDraftSaveReqVO createReqVO) {
+        normalizeDraftBizTime(createReqVO, null);
+        List<ErpReceivableOtherIncomeDraftSaveReqVO.Item> items = safeDraftItems(createReqVO.getItems());
+        if (CollUtil.isEmpty(items)) {
+            throw exception(OTHER_INCOME_DRAFT_ITEMS_REQUIRED);
+        }
+        validateRefs(createReqVO.getAccountId(), createReqVO.getHandlerId(), createReqVO.getDeptId());
+        items.forEach(item -> validateRefs(null, item.getHandlerId(), item.getDeptId()));
+
+        String no = noRedisDAO.generate(ErpNoRedisDAO.OTHER_INCOME_NO_PREFIX);
+        ErpReceivableOtherIncomeDO db = BeanUtils.toBean(createReqVO, ErpReceivableOtherIncomeDO.class,
+                obj -> obj.setId(null).setNo(no)
+                        .setStatus(ErpReceivableOtherIncomeStatusEnum.DRAFT.getStatus()));
+        fieldPermissionMasker.clearHiddenFields(FIELD_PERMISSION_MODULE, db);
+        db.setTotalAmount(sumDraftAmount(items));
+        otherIncomeMapper.insert(db);
+        List<ErpReceivableOtherIncomeItemDO> incomeItems = BeanUtils.toBean(items,
+                ErpReceivableOtherIncomeItemDO.class, item -> item.setId(null).setIncomeId(db.getId()));
+        fieldPermissionMasker.clearHiddenItemFields(FIELD_PERMISSION_MODULE, incomeItems);
+        if (CollUtil.isNotEmpty(incomeItems)) {
+            otherIncomeItemMapper.insertBatch(incomeItems);
+        }
+        operateLogService.recordCreate(ERP_RECEIVABLE_OTHER_INCOME_TYPE, db.getId(), db.getNo());
+        return db.getId();
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public Long createOtherIncomeAndSubmit(ErpReceivableOtherIncomeSaveReqVO createReqVO) {
+        return createOtherIncome(createReqVO);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
     public void updateOtherIncome(ErpReceivableOtherIncomeSaveReqVO updateReqVO) {
         ErpReceivableOtherIncomeDO db = validateExists(updateReqVO.getId());
         if (ErpAuditStatus.APPROVE.getStatus().equals(db.getStatus())) {
@@ -121,10 +165,92 @@ public class ErpReceivableOtherIncomeServiceImpl implements ErpReceivableOtherIn
 
     @Override
     @Transactional(rollbackFor = Exception.class)
+    public void updateOtherIncomeDraft(ErpReceivableOtherIncomeDraftSaveReqVO updateReqVO) {
+        ErpReceivableOtherIncomeDO db = validateExists(updateReqVO.getId());
+        if (!ErpReceivableOtherIncomeStatusEnum.DRAFT.getStatus().equals(db.getStatus())) {
+            throw exception(OTHER_INCOME_DRAFT_UPDATE_FAIL, db.getNo());
+        }
+        normalizeDraftBizTime(updateReqVO, db.getBizTime());
+        List<ErpReceivableOtherIncomeItemDO> oldItems =
+                otherIncomeItemMapper.selectListByIncomeId(updateReqVO.getId());
+        fieldPermissionMasker.preserveHiddenFields(FIELD_PERMISSION_MODULE, updateReqVO, db);
+        List<ErpReceivableOtherIncomeDraftSaveReqVO.Item> items = safeDraftItems(updateReqVO.getItems());
+        if (fieldPermissionMasker.isFieldHidden(FIELD_PERMISSION_MODULE, "items")) {
+            items = BeanUtils.toBean(oldItems, ErpReceivableOtherIncomeDraftSaveReqVO.Item.class);
+        } else {
+            fieldPermissionMasker.preserveOrClearHiddenItemFields(FIELD_PERMISSION_MODULE, items, oldItems);
+        }
+        if (updateReqVO.getDeptId() == null) {
+            updateReqVO.setDeptId(db.getDeptId());
+        }
+        validateRefs(updateReqVO.getAccountId(), updateReqVO.getHandlerId(), updateReqVO.getDeptId());
+        items.forEach(item -> validateRefs(null, item.getHandlerId(), item.getDeptId()));
+
+        ErpReceivableOtherIncomeDO updateObj = BeanUtils.toBean(updateReqVO,
+                ErpReceivableOtherIncomeDO.class);
+        updateObj.setId(updateReqVO.getId());
+        updateObj.setNo(db.getNo());
+        updateObj.setStatus(ErpReceivableOtherIncomeStatusEnum.DRAFT.getStatus());
+        updateObj.setTotalAmount(sumDraftAmount(items));
+        if (otherIncomeMapper.updateByIdAndStatus(updateReqVO.getId(),
+                ErpReceivableOtherIncomeStatusEnum.DRAFT.getStatus(), updateObj) == 0) {
+            throw exception(OTHER_INCOME_DRAFT_UPDATE_FAIL, db.getNo());
+        }
+        otherIncomeItemMapper.deleteByIncomeId(updateReqVO.getId());
+        if (CollUtil.isNotEmpty(items)) {
+            otherIncomeItemMapper.insertBatch(BeanUtils.toBean(items,
+                    ErpReceivableOtherIncomeItemDO.class,
+                    item -> item.setId(null).setIncomeId(updateReqVO.getId())));
+        }
+        operateLogService.recordUpdate(ERP_RECEIVABLE_OTHER_INCOME_TYPE, db.getId(), db.getNo());
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void updateOtherIncomeDraftAndSubmit(ErpReceivableOtherIncomeDraftSaveReqVO updateReqVO) {
+        updateOtherIncomeDraft(updateReqVO);
+        submitOtherIncome(updateReqVO.getId());
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void submitOtherIncome(Long id) {
+        ErpReceivableOtherIncomeDO db = otherIncomeMapper.selectByIdForUpdate(id);
+        if (db == null) {
+            throw exception(OTHER_RECEIVABLE_NOT_EXISTS);
+        }
+        if (!ErpReceivableOtherIncomeStatusEnum.DRAFT.getStatus().equals(db.getStatus())) {
+            throw exception(OTHER_INCOME_DRAFT_SUBMIT_FAIL, "单据不是草稿或状态已变化");
+        }
+        List<ErpReceivableOtherIncomeItemDO> items = otherIncomeItemMapper.selectListByIncomeId(id);
+        validateOtherIncomeForSubmit(db, items);
+        if (otherIncomeMapper.updateByIdAndStatus(id,
+                ErpReceivableOtherIncomeStatusEnum.DRAFT.getStatus(),
+                ErpReceivableOtherIncomeDO.builder()
+                        .status(ErpReceivableOtherIncomeStatusEnum.PROCESS.getStatus())
+                        .totalAmount(items.stream()
+                                .map(ErpReceivableOtherIncomeItemDO::getAmount)
+                                .reduce(BigDecimal.ZERO, BigDecimal::add))
+                        .build()) == 0) {
+            throw exception(OTHER_INCOME_DRAFT_SUBMIT_FAIL, "状态已变化，请刷新后重试");
+        }
+        operateLogService.recordStatus(ERP_RECEIVABLE_OTHER_INCOME_TYPE, id, db.getNo(), true);
+    }
+
+    @Override
+    public void updateOtherIncomeRemark(ErpFinanceUpdateRemarkReqVO updateReqVO) {
+        ErpReceivableOtherIncomeDO db = validateExists(updateReqVO.getId());
+        otherIncomeMapper.updateById(new ErpReceivableOtherIncomeDO()
+                .setId(updateReqVO.getId()).setRemark(updateReqVO.getRemark()));
+        operateLogService.recordUpdate(ERP_RECEIVABLE_OTHER_INCOME_TYPE, db.getId(), db.getNo());
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
     public void updateOtherIncomeStatus(Long id, Integer status) {
         ErpReceivableOtherIncomeDO db = validateExists(id);
         if (!ErpAuditStatus.APPROVE.getStatus().equals(status)
-                || ErpAuditStatus.APPROVE.getStatus().equals(db.getStatus())) {
+                || !ErpReceivableOtherIncomeStatusEnum.PROCESS.getStatus().equals(db.getStatus())) {
             throw exception(OTHER_RECEIVABLE_PROCESS_FAIL);
         }
         if (otherIncomeMapper.updateByIdAndStatus(id, db.getStatus(),
@@ -251,6 +377,70 @@ public class ErpReceivableOtherIncomeServiceImpl implements ErpReceivableOtherIn
                 .map(ErpReceivableOtherIncomeSaveReqVO.Item::getAmount)
                 .filter(Objects::nonNull)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
+    }
+
+    private List<ErpReceivableOtherIncomeDraftSaveReqVO.Item> safeDraftItems(
+            List<ErpReceivableOtherIncomeDraftSaveReqVO.Item> items) {
+        return items == null ? Collections.emptyList() : items.stream()
+                .filter(Objects::nonNull)
+                .filter(item -> StringUtils.hasText(item.getItemName()) && item.getAmount() != null)
+                .collect(Collectors.toList());
+    }
+
+    private BigDecimal sumDraftAmount(List<ErpReceivableOtherIncomeDraftSaveReqVO.Item> items) {
+        return items.stream()
+                .filter(Objects::nonNull)
+                .map(ErpReceivableOtherIncomeDraftSaveReqVO.Item::getAmount)
+                .filter(Objects::nonNull)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+    }
+
+    private void normalizeDraftBizTime(ErpReceivableOtherIncomeDraftSaveReqVO reqVO,
+                                       LocalDateTime persistedBizTime) {
+        LocalDateTime bizTime = reqVO.getBizTime();
+        if (bizTime != null && bizTime.isAfter(MIN_VALID_BIZ_TIME)) {
+            return;
+        }
+        if (persistedBizTime != null && persistedBizTime.isAfter(MIN_VALID_BIZ_TIME)) {
+            reqVO.setBizTime(persistedBizTime);
+            return;
+        }
+        reqVO.setBizTime(LocalDateTime.now());
+    }
+
+    private void validateOtherIncomeForSubmit(ErpReceivableOtherIncomeDO db,
+                                              List<ErpReceivableOtherIncomeItemDO> items) {
+        if (db.getBizTime() == null) {
+            throw exception(OTHER_INCOME_DRAFT_SUBMIT_FAIL, "日期不能为空");
+        }
+        if (!StringUtils.hasText(db.getSettleMethod())) {
+            throw exception(OTHER_INCOME_DRAFT_SUBMIT_FAIL, "结算方式不能为空");
+        }
+        if (db.getAccountId() == null) {
+            throw exception(OTHER_INCOME_DRAFT_SUBMIT_FAIL, "账户不能为空");
+        }
+        if (!StringUtils.hasText(db.getIncomeType())) {
+            throw exception(OTHER_INCOME_DRAFT_SUBMIT_FAIL, "收入类型不能为空");
+        }
+        if (db.getHandlerId() == null) {
+            throw exception(OTHER_INCOME_DRAFT_SUBMIT_FAIL, "经手人不能为空");
+        }
+        if (CollUtil.isEmpty(items)) {
+            throw exception(OTHER_INCOME_DRAFT_SUBMIT_FAIL, "至少需要一条收入明细");
+        }
+        for (int i = 0; i < items.size(); i++) {
+            ErpReceivableOtherIncomeItemDO item = items.get(i);
+            if (item == null || !StringUtils.hasText(item.getItemName())) {
+                throw exception(OTHER_INCOME_DRAFT_SUBMIT_FAIL,
+                        "第 " + (i + 1) + " 条明细的项目名称不能为空");
+            }
+            if (item.getAmount() == null) {
+                throw exception(OTHER_INCOME_DRAFT_SUBMIT_FAIL,
+                        "第 " + (i + 1) + " 条明细的金额不能为空");
+            }
+        }
+        validateRefs(db.getAccountId(), db.getHandlerId(), db.getDeptId());
+        items.forEach(item -> validateRefs(null, item.getHandlerId(), item.getDeptId()));
     }
 
     private boolean hasItemFilter(ErpReceivableOtherIncomePageReqVO pageReqVO) {

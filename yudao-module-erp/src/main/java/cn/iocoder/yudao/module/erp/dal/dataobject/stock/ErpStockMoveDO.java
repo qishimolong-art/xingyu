@@ -60,7 +60,8 @@ public class ErpStockMoveDO extends BaseDO {
     private BigDecimal totalPrice;
 
     /**
-     * See {@link cn.iocoder.yudao.module.erp.enums.ErpAuditStatus}.
+     * Transfer-out records use
+     * {@link cn.iocoder.yudao.module.erp.enums.stock.ErpStockTransferOutStatusEnum}.
      */
     private Integer status;
 

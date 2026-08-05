@@ -10,6 +10,7 @@ import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
 import cn.iocoder.yudao.framework.datapermission.core.util.DataPermissionUtils;
 import cn.iocoder.yudao.framework.excel.core.util.ExcelUtils;
 import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpProductRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.ErpStockUpdateRemarkReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.imports.ErpStockImportResultRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.move.ErpStockMovePageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.move.ErpStockMoveRespVO;
@@ -56,6 +57,8 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 import static cn.iocoder.yudao.framework.apilog.core.enums.OperateTypeEnum.EXPORT;
 import static cn.iocoder.yudao.framework.common.exception.util.ServiceExceptionUtil.exception;
@@ -102,6 +105,15 @@ public class ErpStockMoveController {
     @PreAuthorize("@ss.hasPermission('erp:stock-move:update')")
     public CommonResult<Boolean> updateStockMove(@Valid @RequestBody ErpStockMoveSaveReqVO updateReqVO) {
         throw exception(STOCK_MOVE_LEGACY_READ_ONLY);
+    }
+
+    @PutMapping("/update-remark")
+    @Operation(summary = "Update stock move remark")
+    @PreAuthorize("@ss.hasPermission('erp:stock-move:update')")
+    public CommonResult<Boolean> updateStockMoveRemark(
+            @Valid @RequestBody ErpStockUpdateRemarkReqVO updateReqVO) {
+        stockMoveService.updateStockMoveRemark(updateReqVO);
+        return success(true);
     }
 
     @PutMapping("/update-status")
@@ -163,6 +175,7 @@ public class ErpStockMoveController {
             }));
             vo.setProductNames(CollUtil.join(vo.getItems(), ", ", ErpStockMoveRespVO.Item::getProductName));
             vo.setProductCodes(CollUtil.join(vo.getItems(), ", ", ErpStockMoveRespVO.Item::getProductCode));
+            fillWarehouseNames(vo);
             MapUtils.findAndThen(deptMap, vo.getDeptId(), dept -> vo.setDeptName(dept.getName()));
             fillMoveDeptNames(vo, deptMap);
             fillApprovePermission(vo, stockMove, itemList);
@@ -264,6 +277,7 @@ public class ErpStockMoveController {
                     }));
             vo.setProductNames(CollUtil.join(vo.getItems(), ", ", ErpStockMoveRespVO.Item::getProductName));
             vo.setProductCodes(CollUtil.join(vo.getItems(), ", ", ErpStockMoveRespVO.Item::getProductCode));
+            fillWarehouseNames(vo);
             MapUtils.findAndThen(deptMap, vo.getDeptId(), dept -> vo.setDeptName(dept.getName()));
             MapUtils.findAndThen(stockMoveMap, vo.getId(), stockMove -> {
                 List<ErpStockMoveItemDO> stockMoveItems = itemMap.get(vo.getId());
@@ -280,6 +294,25 @@ public class ErpStockMoveController {
     private void fillMoveDeptNames(ErpStockMoveRespVO vo, Map<Long, DeptRespDTO> deptMap) {
         MapUtils.findAndThen(deptMap, vo.getFromDeptId(), dept -> vo.setFromDeptName(dept.getName()));
         MapUtils.findAndThen(deptMap, vo.getToDeptId(), dept -> vo.setToDeptName(dept.getName()));
+    }
+
+    private void fillWarehouseNames(ErpStockMoveRespVO vo) {
+        vo.setFromWarehouseNames(joinDistinctItemValues(
+                vo.getItems(), ErpStockMoveRespVO.Item::getFromWarehouseName));
+        vo.setToWarehouseNames(joinDistinctItemValues(
+                vo.getItems(), ErpStockMoveRespVO.Item::getToWarehouseName));
+    }
+
+    private String joinDistinctItemValues(List<ErpStockMoveRespVO.Item> items,
+                                          Function<ErpStockMoveRespVO.Item, String> getter) {
+        if (CollUtil.isEmpty(items)) {
+            return "";
+        }
+        return items.stream()
+                .map(getter)
+                .filter(value -> value != null && !value.trim().isEmpty())
+                .distinct()
+                .collect(Collectors.joining("、"));
     }
 
     private void fillItemDeptNames(ErpStockMoveRespVO.Item item, Map<Long, DeptRespDTO> deptMap) {

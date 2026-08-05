@@ -5,6 +5,9 @@ import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.common.util.number.MoneyUtils;
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
 import cn.iocoder.yudao.framework.datapermission.core.util.DataPermissionUtils;
+import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.ErpStockUpdateRemarkReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.check.ErpStockCheckDraftCreateReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.check.ErpStockCheckDraftUpdateReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.check.ErpStockCheckPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.check.ErpStockCheckSaveReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.stock.ErpStockAdjustReqVO;
@@ -17,8 +20,8 @@ import cn.iocoder.yudao.module.erp.dal.mysql.stock.ErpStockMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.stock.ErpStockCheckItemMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.stock.ErpStockCheckMapper;
 import cn.iocoder.yudao.module.erp.dal.redis.no.ErpNoRedisDAO;
-import cn.iocoder.yudao.module.erp.enums.ErpAuditStatus;
 import cn.iocoder.yudao.module.erp.enums.stock.ErpStockCheckTypeEnum;
+import cn.iocoder.yudao.module.erp.enums.stock.ErpStockCheckStatusEnum;
 import cn.iocoder.yudao.module.erp.enums.stock.ErpStockRecordBizTypeEnum;
 import cn.iocoder.yudao.module.erp.service.common.ErpOperateLogService;
 import cn.iocoder.yudao.module.erp.service.product.ErpProductService;
@@ -93,13 +96,45 @@ public class ErpStockCheckServiceImpl implements ErpStockCheckService {
         }
 
         ErpStockCheckDO stockCheck = BeanUtils.toBean(createReqVO, ErpStockCheckDO.class, in -> in
-                .setNo(no).setStatus(ErpAuditStatus.PROCESS.getStatus())
+                .setNo(no).setStatus(ErpStockCheckStatusEnum.PROCESS.getStatus())
                 .setTotalCount(getSumValue(stockCheckItems, ErpStockCheckItemDO::getCount, BigDecimal::add))
                 .setTotalPrice(getSumValue(stockCheckItems, ErpStockCheckItemDO::getTotalPrice, BigDecimal::add, BigDecimal.ZERO)));
         stockCheckMapper.insert(stockCheck);
         // 2.2 鎻掑叆鐩樼偣鍗曢」
         stockCheckItems.forEach(o -> o.setCheckId(stockCheck.getId()));
         stockCheckItemMapper.insertBatch(stockCheckItems);
+        operateLogService.recordCreate(ERP_STOCK_CHECK_TYPE, stockCheck.getId(), stockCheck.getNo());
+        return stockCheck.getId();
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public Long createStockCheckDraft(ErpStockCheckDraftCreateReqVO createReqVO) {
+        Integer checkType = ErpStockCheckTypeEnum.defaultIfNull(createReqVO.getCheckType());
+        createReqVO.setCheckType(checkType);
+        List<ErpStockCheckSaveReqVO.Item> itemReqs = filterDraftItems(createReqVO.getItems(), checkType);
+        if (CollUtil.isEmpty(itemReqs)) {
+            throw exception(STOCK_CHECK_DRAFT_ITEMS_REQUIRED);
+        }
+        List<ErpStockCheckItemDO> stockCheckItems = CollUtil.isEmpty(itemReqs)
+                ? Collections.emptyList() : validateStockCheckItems(itemReqs, checkType);
+        String no = noRedisDAO.generate(ErpNoRedisDAO.STOCK_CHECK_NO_PREFIX);
+        if (stockCheckMapper.selectByNo(no) != null) {
+            throw exception(STOCK_CHECK_NO_EXISTS);
+        }
+        if (createReqVO.getDeptId() == null) {
+            createReqVO.setDeptId(getLoginUserDeptId());
+        }
+        ErpStockCheckDO stockCheck = BeanUtils.toBean(createReqVO, ErpStockCheckDO.class, target -> target
+                .setNo(no)
+                .setStatus(ErpStockCheckStatusEnum.DRAFT.getStatus())
+                .setCheckTime(createReqVO.getCheckTime() != null ? createReqVO.getCheckTime() : LocalDateTime.now())
+                .setTotalCount(getSumValue(stockCheckItems, ErpStockCheckItemDO::getCount,
+                        BigDecimal::add, BigDecimal.ZERO))
+                .setTotalPrice(getSumValue(stockCheckItems, ErpStockCheckItemDO::getTotalPrice,
+                        BigDecimal::add, BigDecimal.ZERO)));
+        stockCheckMapper.insert(stockCheck);
+        replaceStockCheckItems(stockCheck.getId(), stockCheckItems);
         operateLogService.recordCreate(ERP_STOCK_CHECK_TYPE, stockCheck.getId(), stockCheck.getNo());
         return stockCheck.getId();
     }
@@ -135,7 +170,7 @@ public class ErpStockCheckServiceImpl implements ErpStockCheckService {
         createReqVO.setRemark(remark);
         createReqVO.setItems(new ArrayList<>(Collections.singletonList(item)));
         Long checkId = createStockCheck(createReqVO);
-        updateStockCheckStatus(checkId, ErpAuditStatus.APPROVE.getStatus());
+        updateStockCheckStatus(checkId, ErpStockCheckStatusEnum.APPROVE.getStatus());
         return actualCount;
     }
 
@@ -144,7 +179,7 @@ public class ErpStockCheckServiceImpl implements ErpStockCheckService {
     public void updateStockCheck(ErpStockCheckSaveReqVO updateReqVO) {
         // 1.1 鏍￠獙瀛樺湪
         ErpStockCheckDO stockCheck = validateStockCheckExists(updateReqVO.getId());
-        if (ErpAuditStatus.APPROVE.getStatus().equals(stockCheck.getStatus())) {
+        if (ErpStockCheckStatusEnum.APPROVE.getStatus().equals(stockCheck.getStatus())) {
             throw exception(STOCK_CHECK_UPDATE_FAIL_APPROVE, stockCheck.getNo());
         }
         fieldPermissionMasker.preserveHiddenFields(FIELD_PERMISSION_MODULE, updateReqVO, stockCheck);
@@ -168,8 +203,83 @@ public class ErpStockCheckServiceImpl implements ErpStockCheckService {
 
     @Override
     @Transactional(rollbackFor = Exception.class)
+    public void updateStockCheckDraft(ErpStockCheckDraftUpdateReqVO updateReqVO) {
+        ErpStockCheckDO stockCheck = validateStockCheckExists(updateReqVO.getId());
+        if (!ErpStockCheckStatusEnum.DRAFT.getStatus().equals(stockCheck.getStatus())) {
+            throw exception(STOCK_CHECK_UPDATE_FAIL_NOT_DRAFT, stockCheck.getNo());
+        }
+        List<ErpStockCheckItemDO> oldItems = stockCheckItemMapper.selectListByCheckId(updateReqVO.getId());
+        if (updateReqVO.getItems() == null) {
+            updateReqVO.setItems(Collections.emptyList());
+        }
+        fieldPermissionMasker.preserveHiddenFields(FIELD_PERMISSION_MODULE, updateReqVO, stockCheck);
+        fieldPermissionMasker.preserveHiddenItemFields(FIELD_PERMISSION_MODULE, updateReqVO.getItems(), oldItems);
+        Integer checkType = ErpStockCheckTypeEnum.defaultIfNull(updateReqVO.getCheckType());
+        updateReqVO.setCheckType(checkType);
+        List<ErpStockCheckSaveReqVO.Item> itemReqs = filterDraftItems(updateReqVO.getItems(), checkType);
+        List<ErpStockCheckItemDO> stockCheckItems = CollUtil.isEmpty(itemReqs)
+                ? Collections.emptyList() : validateStockCheckItems(itemReqs, checkType);
+
+        ErpStockCheckDO updateObj = BeanUtils.toBean(updateReqVO, ErpStockCheckDO.class, target -> target
+                .setCheckTime(updateReqVO.getCheckTime() != null ? updateReqVO.getCheckTime() : stockCheck.getCheckTime())
+                .setDeptId(updateReqVO.getDeptId() != null ? updateReqVO.getDeptId() : stockCheck.getDeptId())
+                .setTotalCount(getSumValue(stockCheckItems, ErpStockCheckItemDO::getCount,
+                        BigDecimal::add, BigDecimal.ZERO))
+                .setTotalPrice(getSumValue(stockCheckItems, ErpStockCheckItemDO::getTotalPrice,
+                        BigDecimal::add, BigDecimal.ZERO)));
+        stockCheckMapper.updateById(updateObj);
+        replaceStockCheckItems(updateReqVO.getId(), stockCheckItems);
+        operateLogService.recordUpdate(ERP_STOCK_CHECK_TYPE, stockCheck.getId(), stockCheck.getNo());
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void updateAndSubmitStockCheckDraft(ErpStockCheckSaveReqVO updateReqVO) {
+        ErpStockCheckDO stockCheck = validateStockCheckExists(updateReqVO.getId());
+        if (!ErpStockCheckStatusEnum.DRAFT.getStatus().equals(stockCheck.getStatus())) {
+            throw exception(STOCK_CHECK_UPDATE_FAIL_NOT_DRAFT, stockCheck.getNo());
+        }
+        updateStockCheck(updateReqVO);
+        submitStockCheck(updateReqVO.getId());
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void submitStockCheck(Long id) {
+        ErpStockCheckDO stockCheck = validateStockCheckExists(id);
+        if (!ErpStockCheckStatusEnum.DRAFT.getStatus().equals(stockCheck.getStatus())) {
+            throw exception(STOCK_CHECK_SUBMIT_FAIL);
+        }
+        if (stockCheck.getCheckTime() == null) {
+            throw exception(STOCK_CHECK_SUBMIT_TIME_REQUIRED);
+        }
+        List<ErpStockCheckItemDO> items = stockCheckItemMapper.selectListByCheckId(id);
+        if (CollUtil.isEmpty(items)) {
+            throw exception(STOCK_CHECK_SUBMIT_ITEMS_REQUIRED);
+        }
+        Integer checkType = ErpStockCheckTypeEnum.defaultIfNull(stockCheck.getCheckType());
+        validateStockCheckItems(BeanUtils.toBean(items, ErpStockCheckSaveReqVO.Item.class), checkType);
+        int updateCount = stockCheckMapper.updateByIdAndStatus(id,
+                ErpStockCheckStatusEnum.DRAFT.getStatus(),
+                new ErpStockCheckDO().setStatus(ErpStockCheckStatusEnum.PROCESS.getStatus()));
+        if (updateCount == 0) {
+            throw exception(STOCK_CHECK_SUBMIT_FAIL);
+        }
+        operateLogService.recordUpdate(ERP_STOCK_CHECK_TYPE, stockCheck.getId(), stockCheck.getNo());
+    }
+
+    @Override
+    public void updateStockCheckRemark(ErpStockUpdateRemarkReqVO updateReqVO) {
+        ErpStockCheckDO stockCheck = validateStockCheckExists(updateReqVO.getId());
+        stockCheckMapper.updateById(new ErpStockCheckDO()
+                .setId(updateReqVO.getId()).setRemark(updateReqVO.getRemark()));
+        operateLogService.recordUpdate(ERP_STOCK_CHECK_TYPE, stockCheck.getId(), stockCheck.getNo());
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
     public void updateStockCheckStatus(Long id, Integer status) {
-        if (!ErpAuditStatus.APPROVE.getStatus().equals(status)) {
+        if (!ErpStockCheckStatusEnum.APPROVE.getStatus().equals(status)) {
             throw exception(STOCK_CHECK_PROCESS_FAIL);
         }
         // 1.1 鏍￠獙瀛樺湪
@@ -254,6 +364,44 @@ public class ErpStockCheckServiceImpl implements ErpStockCheckService {
         }));
     }
 
+    private List<ErpStockCheckSaveReqVO.Item> filterDraftItems(
+            List<ErpStockCheckSaveReqVO.Item> items, Integer checkType) {
+        if (CollUtil.isEmpty(items)) {
+            return Collections.emptyList();
+        }
+        List<ErpStockCheckSaveReqVO.Item> result = new ArrayList<>();
+        for (ErpStockCheckSaveReqVO.Item source : items) {
+            if (source == null || source.getProductId() == null || source.getWarehouseId() == null) {
+                continue;
+            }
+            ErpStockCheckSaveReqVO.Item item = BeanUtils.toBean(source, ErpStockCheckSaveReqVO.Item.class);
+            if (item.getProductPrice() == null) {
+                item.setProductPrice(BigDecimal.ZERO);
+            }
+            if (item.getStockCount() == null) {
+                item.setStockCount(BigDecimal.ZERO);
+            }
+            if (ErpStockCheckTypeEnum.isCost(checkType)) {
+                if (item.getTotalPrice() == null) {
+                    continue;
+                }
+            } else if (item.getCount() == null) {
+                continue;
+            }
+            result.add(item);
+        }
+        return result;
+    }
+
+    private void replaceStockCheckItems(Long id, List<ErpStockCheckItemDO> items) {
+        stockCheckItemMapper.deleteByCheckId(id);
+        if (CollUtil.isEmpty(items)) {
+            return;
+        }
+        items.forEach(item -> item.setId(null).setCheckId(id));
+        stockCheckItemMapper.insertBatch(items);
+    }
+
     private BigDecimal getStockAdjustProductPrice(ErpStockDO stock, ErpProductDO product) {
         if (stock != null && stock.getCostPrice() != null) {
             return stock.getCostPrice();
@@ -315,7 +463,7 @@ public class ErpStockCheckServiceImpl implements ErpStockCheckService {
             return;
         }
         stockChecks.forEach(stockCheck -> {
-            if (ErpAuditStatus.APPROVE.getStatus().equals(stockCheck.getStatus())) {
+            if (ErpStockCheckStatusEnum.APPROVE.getStatus().equals(stockCheck.getStatus())) {
                 throw exception(STOCK_CHECK_DELETE_FAIL_APPROVE, stockCheck.getNo());
             }
         });

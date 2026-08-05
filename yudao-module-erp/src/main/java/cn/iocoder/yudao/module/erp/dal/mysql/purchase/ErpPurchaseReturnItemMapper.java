@@ -10,6 +10,7 @@ import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
 
 import java.math.BigDecimal;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
@@ -100,6 +101,27 @@ public interface ErpPurchaseReturnItemMapper extends BaseMapperX<ErpPurchaseRetu
                 obj -> (BigDecimal) obj.get("sum_count"));
     }
 
+    /**
+     * 按 source_in_item_id 分组，查询指定状态退货单的累计退货数量。
+     */
+    default Map<Long, BigDecimal> selectReturnedCountMapBySourceInItemIdsExcludeReturnAndStatuses(
+            Collection<Long> sourceInItemIds, Long excludeReturnId, Collection<Integer> statuses) {
+        if (CollUtil.isEmpty(sourceInItemIds) || CollUtil.isEmpty(statuses)) {
+            return Collections.emptyMap();
+        }
+        List<Map<String, Object>> result = selectReturnedCountListBySourceInItemIdsExcludeReturnAndStatuses(
+                sourceInItemIds, excludeReturnId, statuses);
+        return convertMap(result,
+                obj -> (Long) obj.get("source_in_item_id"),
+                obj -> (BigDecimal) obj.get("sum_count"));
+    }
+
+    default Map<Long, BigDecimal> selectProcessingAndApprovedReturnedCountMapBySourceInItemIdsExcludeReturn(
+            Collection<Long> sourceInItemIds, Long excludeReturnId) {
+        return selectReturnedCountMapBySourceInItemIdsExcludeReturnAndStatuses(sourceInItemIds, excludeReturnId,
+                Arrays.asList(ErpAuditStatus.PROCESS.getStatus(), ErpAuditStatus.APPROVE.getStatus()));
+    }
+
     @Select({
             "<script>",
             "SELECT pri.source_in_item_id, SUM(pri.count) AS sum_count",
@@ -121,5 +143,30 @@ public interface ErpPurchaseReturnItemMapper extends BaseMapperX<ErpPurchaseRetu
             @Param("sourceInItemIds") Collection<Long> sourceInItemIds,
             @Param("excludeReturnId") Long excludeReturnId,
             @Param("status") Integer status);
+
+    @Select({
+            "<script>",
+            "SELECT pri.source_in_item_id, SUM(pri.count) AS sum_count",
+            "  FROM erp_purchase_return_items pri",
+            " INNER JOIN erp_purchase_return pr ON pr.id = pri.return_id",
+            "   AND pr.deleted = 0 AND pr.status IN",
+            " <foreach collection='statuses' item='status' open='(' separator=',' close=')'>",
+            "   #{status}",
+            " </foreach>",
+            " WHERE pri.deleted = 0",
+            "   AND pri.source_in_item_id IN",
+            " <foreach collection='sourceInItemIds' item='sourceInItemId' open='(' separator=',' close=')'>",
+            "   #{sourceInItemId}",
+            " </foreach>",
+            " <if test='excludeReturnId != null'>",
+            "   AND pri.return_id != #{excludeReturnId}",
+            " </if>",
+            " GROUP BY pri.source_in_item_id",
+            "</script>"
+    })
+    List<Map<String, Object>> selectReturnedCountListBySourceInItemIdsExcludeReturnAndStatuses(
+            @Param("sourceInItemIds") Collection<Long> sourceInItemIds,
+            @Param("excludeReturnId") Long excludeReturnId,
+            @Param("statuses") Collection<Integer> statuses);
 
 }

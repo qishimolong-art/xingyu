@@ -191,6 +191,13 @@ public class ErpProductController {
         return success(productService.getProductVOPage(pageReqVO));
     }
 
+    @GetMapping("/price-adjust-page")
+    @Operation(summary = "获得配件价格调整列表")
+    @PreAuthorize("@ss.hasPermission('erp:product:query')")
+    public CommonResult<PageResult<ErpProductRespVO>> getPartsPriceAdjustPage(@Valid ErpProductPageReqVO pageReqVO) {
+        return success(productService.getProductVOPage(pageReqVO, false));
+    }
+
     @GetMapping("/simple-list")
     @Operation(summary = "获得产品精简列表")
     public CommonResult<List<ErpProductRespVO>> getProductSimpleList() {

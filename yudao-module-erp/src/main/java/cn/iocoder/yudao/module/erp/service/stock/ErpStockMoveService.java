@@ -1,8 +1,11 @@
 package cn.iocoder.yudao.module.erp.service.stock;
 
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
+import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.ErpStockUpdateRemarkReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.move.ErpStockMovePageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.move.ErpStockMoveSaveReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.move.ErpStockTransferOutDraftCreateReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.move.ErpStockTransferOutDraftUpdateReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockMoveDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockMoveItemDO;
 import cn.iocoder.yudao.module.erp.service.stock.bo.ErpStockMoveApprovePermission;
@@ -28,6 +31,16 @@ public interface ErpStockMoveService {
      * @return 编号
      */
     Long createStockMove(@Valid ErpStockMoveSaveReqVO createReqVO);
+
+    /**
+     * 创建用户尚未正式提交的调拨出库草稿。
+     */
+    Long createStockTransferOutDraft(ErpStockTransferOutDraftCreateReqVO createReqVO);
+
+    /**
+     * 严格校验并创建待审批调拨出库单。
+     */
+    Long createAndSubmitStockTransferOut(@Valid ErpStockMoveSaveReqVO createReqVO);
 
     /**
      * 创建 ERP 库存调拨草稿
@@ -160,6 +173,25 @@ public interface ErpStockMoveService {
     void updateStockMove(@Valid ErpStockMoveSaveReqVO updateReqVO);
 
     /**
+     * 保存已有调拨出库草稿。
+     */
+    void updateStockTransferOutDraft(ErpStockTransferOutDraftUpdateReqVO updateReqVO);
+
+    /**
+     * 保存已有草稿的当前编辑内容并正式提交。
+     */
+    void updateAndSubmitStockTransferOutDraft(@Valid ErpStockMoveSaveReqVO updateReqVO);
+
+    /**
+     * 将持久化的只读草稿正式提交为待审批状态。
+     */
+    void submitStockTransferOutDraft(Long id);
+
+    void updateStockMoveRemark(@Valid ErpStockUpdateRemarkReqVO updateReqVO);
+
+    void updateStockTransferOutRemark(@Valid ErpStockUpdateRemarkReqVO updateReqVO);
+
+    /**
      * 更新库存调拨单
      *
      * @param updateReqVO 更新信息
@@ -251,6 +283,11 @@ public interface ErpStockMoveService {
      * @return transfer-out permission scope; {@code null} only for an internal call without a login user
      */
     ErpStockTransferOutPermissionScope getTransferOutPermissionScope();
+
+    /**
+     * Gets the transfer-in permission scope for reuse in one query request.
+     */
+    ErpStockTransferOutPermissionScope getTransferInPermissionScope();
 
     /**
      * Gets a visible transfer-out page with a scope already loaded for this request.

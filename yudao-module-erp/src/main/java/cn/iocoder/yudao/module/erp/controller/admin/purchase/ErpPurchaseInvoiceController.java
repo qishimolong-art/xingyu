@@ -12,7 +12,10 @@ import cn.iocoder.yudao.framework.excel.core.util.ExcelUtils;
 import cn.iocoder.yudao.module.erp.controller.admin.common.ErpAuditStatusRequestValidator;
 import cn.iocoder.yudao.module.erp.controller.admin.common.vo.ErpExportFieldRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpProductRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.ErpPurchaseUpdateRemarkReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.imports.ErpPurchaseImportResultRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.invoice.ErpPurchaseInvoiceDraftCreateReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.invoice.ErpPurchaseInvoiceDraftUpdateReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.invoice.ErpPurchaseInvoiceExportRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.invoice.ErpPurchaseInvoiceImportExcelVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.invoice.ErpPurchaseInvoicePageReqVO;
@@ -129,11 +132,55 @@ public class ErpPurchaseInvoiceController {
         return success(purchaseInvoiceService.createPurchaseInvoice(createReqVO));
     }
 
+    @PostMapping("/create-draft")
+    @Operation(summary = "创建采购票据草稿")
+    @PreAuthorize("@ss.hasPermission('erp:purchase-invoice:create')")
+    public CommonResult<Long> createPurchaseInvoiceDraft(
+            @RequestBody ErpPurchaseInvoiceDraftCreateReqVO createReqVO) {
+        return success(purchaseInvoiceService.createPurchaseInvoiceDraft(createReqVO));
+    }
+
     @PutMapping("/update")
     @Operation(summary = "更新采购票据")
     @PreAuthorize("@ss.hasPermission('erp:purchase-invoice:update')")
     public CommonResult<Boolean> updatePurchaseInvoice(@Valid @RequestBody ErpPurchaseInvoiceSaveReqVO updateReqVO) {
         purchaseInvoiceService.updatePurchaseInvoice(updateReqVO);
+        return success(true);
+    }
+
+    @PutMapping("/update-draft")
+    @Operation(summary = "保存采购票据草稿")
+    @PreAuthorize("@ss.hasPermission('erp:purchase-invoice:update')")
+    public CommonResult<Boolean> updatePurchaseInvoiceDraft(
+            @RequestBody ErpPurchaseInvoiceDraftUpdateReqVO updateReqVO) {
+        purchaseInvoiceService.updatePurchaseInvoiceDraft(updateReqVO);
+        return success(true);
+    }
+
+    @PutMapping("/update-and-submit")
+    @Operation(summary = "更新并提交采购票据草稿")
+    @PreAuthorize("@ss.hasPermission('erp:purchase-invoice:update') and " +
+            "@ss.hasPermission('erp:purchase-invoice:update-status')")
+    public CommonResult<Boolean> updateAndSubmitPurchaseInvoiceDraft(
+            @Valid @RequestBody ErpPurchaseInvoiceDraftUpdateReqVO updateReqVO) {
+        purchaseInvoiceService.updateAndSubmitPurchaseInvoiceDraft(updateReqVO);
+        return success(true);
+    }
+
+    @PutMapping("/submit")
+    @Operation(summary = "提交采购票据草稿")
+    @PreAuthorize("@ss.hasPermission('erp:purchase-invoice:update-status')")
+    public CommonResult<Boolean> submitPurchaseInvoice(@RequestParam("id") Long id) {
+        purchaseInvoiceService.submitPurchaseInvoice(id);
+        return success(true);
+    }
+
+    @PutMapping("/update-remark")
+    @Operation(summary = "修改采购票据备注")
+    @PreAuthorize("@ss.hasPermission('erp:purchase-invoice:update')")
+    public CommonResult<Boolean> updatePurchaseInvoiceRemark(
+            @Valid @RequestBody ErpPurchaseUpdateRemarkReqVO updateReqVO) {
+        purchaseInvoiceService.updatePurchaseInvoiceRemark(updateReqVO);
         return success(true);
     }
 
@@ -212,8 +259,9 @@ public class ErpPurchaseInvoiceController {
         Map<Long, ErpProductRespVO> productMap = DataPermissionUtils.executeIgnore(() ->
                 productService.getProductVOMap(convertSet(itemList, ErpPurchaseInvoiceItemDO::getProductId)));
         Map<Long, ErpPurchaseInItemDO> sourceInItemMap = getSourceInItemMap(itemList);
-        Map<Long, ErpSupplierDO> supplierMap = supplierService.getSupplierMap(
-                Collections.singleton(purchaseInvoice.getSupplierId()));
+        Map<Long, ErpSupplierDO> supplierMap = purchaseInvoice.getSupplierId() == null
+                ? Collections.emptyMap()
+                : supplierService.getSupplierMap(Collections.singleton(purchaseInvoice.getSupplierId()));
         DeptRespDTO dept = purchaseInvoice.getDeptId() == null ? null : deptApi.getDept(purchaseInvoice.getDeptId());
         Map<Long, AdminUserRespDTO> userMap = adminUserApi.getUserMap(
                 collectUserIds(Collections.singletonList(purchaseInvoice)));
@@ -283,8 +331,9 @@ public class ErpPurchaseInvoiceController {
         Map<Long, ErpProductRespVO> productMap = DataPermissionUtils.executeIgnore(() ->
                 productService.getProductVOMap(convertSet(itemList, ErpPurchaseInvoiceItemDO::getProductId)));
         Map<Long, ErpPurchaseInItemDO> sourceInItemMap = getSourceInItemMap(itemList);
-        Map<Long, ErpSupplierDO> supplierMap = supplierService.getSupplierMap(
-                convertSet(pageResult.getList(), ErpPurchaseInvoiceDO::getSupplierId));
+        Set<Long> supplierIds = convertSet(pageResult.getList(), ErpPurchaseInvoiceDO::getSupplierId);
+        supplierIds.remove(null);
+        Map<Long, ErpSupplierDO> supplierMap = supplierService.getSupplierMap(supplierIds);
         Map<Long, DeptRespDTO> deptMap = deptApi.getDeptMap(convertSet(pageResult.getList(), ErpPurchaseInvoiceDO::getDeptId));
         Map<Long, AdminUserRespDTO> userMap = adminUserApi.getUserMap(collectUserIds(pageResult.getList()));
 

@@ -1,19 +1,25 @@
 package cn.iocoder.yudao.module.erp.service.sale;
 
 import cn.iocoder.yudao.framework.test.core.ut.BaseMockitoUnitTest;
+import cn.iocoder.yudao.framework.common.pojo.PageResult;
+import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
 import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpProductRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.priceadjust.ErpSaleOutItemForAdjustRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.priceadjust.ErpSalePriceAdjustPageReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.priceadjust.ErpSalePriceAdjustDraftSaveReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.priceadjust.ErpSalePriceAdjustSaveReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSalePriceAdjustDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSalePriceAdjustItemDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleOutDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleOutItemDO;
 import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpSalePriceAdjustItemMapper;
+import cn.iocoder.yudao.module.erp.dal.mysql.finance.ErpFinanceReceiptItemMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpSalePriceAdjustMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpSaleOutItemMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpSaleOutMapper;
 import cn.iocoder.yudao.module.erp.dal.redis.no.ErpNoRedisDAO;
 import cn.iocoder.yudao.module.erp.enums.ErpAuditStatus;
+import cn.iocoder.yudao.module.erp.enums.sale.ErpSalePriceAdjustStatusEnum;
 import cn.iocoder.yudao.module.erp.service.product.ErpProductService;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import org.junit.jupiter.api.BeforeEach;
@@ -34,9 +40,13 @@ import java.util.Map;
 import static cn.iocoder.yudao.framework.test.core.util.AssertUtils.assertServiceException;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.SALE_PRICE_ADJUST_APPROVE_FAIL;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.SALE_PRICE_ADJUST_DELETE_FAIL_APPROVE;
+import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.SALE_PRICE_ADJUST_DRAFT_ITEMS_REQUIRED;
+import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.SALE_PRICE_ADJUST_DRAFT_UPDATE_FAIL;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.SALE_PRICE_ADJUST_ITEM_ADJUSTED;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.SALE_PRICE_ADJUST_ITEM_DUPLICATE;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.SALE_PRICE_ADJUST_PROCESS_FAIL;
+import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.SALE_PRICE_ADJUST_SUBMIT_CUSTOMER_REQUIRED;
+import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.SALE_PRICE_ADJUST_SUBMIT_ITEMS_REQUIRED;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.SALE_PRICE_ADJUST_UPDATE_FAIL_APPROVE;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -66,6 +76,8 @@ public class ErpSalePriceAdjustServiceImplTest extends BaseMockitoUnitTest {
     private ErpSalePriceAdjustMapper salePriceAdjustMapper;
     @Mock
     private ErpSalePriceAdjustItemMapper salePriceAdjustItemMapper;
+    @Mock
+    private ErpFinanceReceiptItemMapper financeReceiptItemMapper;
     @Mock
     private ErpSaleOutMapper saleOutMapper;
     @Mock
@@ -132,18 +144,9 @@ public class ErpSalePriceAdjustServiceImplTest extends BaseMockitoUnitTest {
         reqVO.setItems(Collections.singletonList(buildItem("XSCK002",
                 new BigDecimal("1"), new BigDecimal("5.00"), new BigDecimal("8.00"))));
 
-        doAnswer(invocation -> {
-            ErpSalePriceAdjustDO arg = invocation.getArgument(0);
-            arg.setId(101L);
-            return 1;
-        }).when(salePriceAdjustMapper).insert(any(ErpSalePriceAdjustDO.class));
-
-        Long id = salePriceAdjustService.createSalePriceAdjust(reqVO);
-
-        assertEquals(101L, id);
-        verify(salePriceAdjustMapper).insert(ArgumentMatchers.<ErpSalePriceAdjustDO>argThat(d ->
-                d.getCustomerId() == null
-                        && ErpAuditStatus.PROCESS.getStatus().equals(d.getStatus())));
+        assertServiceException(() -> salePriceAdjustService.createSalePriceAdjust(reqVO),
+                SALE_PRICE_ADJUST_SUBMIT_CUSTOMER_REQUIRED);
+        verify(salePriceAdjustMapper, never()).insert(any(ErpSalePriceAdjustDO.class));
     }
 
     @Test
@@ -155,22 +158,10 @@ public class ErpSalePriceAdjustServiceImplTest extends BaseMockitoUnitTest {
         item.setSaleOutItemId(99999L); // 模拟"不存在的出库项 ID"
         reqVO.setItems(Collections.singletonList(item));
 
-        doAnswer(invocation -> {
-            ErpSalePriceAdjustDO arg = invocation.getArgument(0);
-            arg.setId(102L);
-            return 1;
-        }).when(salePriceAdjustMapper).insert(any(ErpSalePriceAdjustDO.class));
-
-        Long id = salePriceAdjustService.createSalePriceAdjust(reqVO);
-
-        assertEquals(102L, id);
+        assertServiceException(() -> salePriceAdjustService.createSalePriceAdjust(reqVO),
+                SALE_PRICE_ADJUST_SUBMIT_ITEMS_REQUIRED);
         // totalAdjustPrice 应为 0（因为 item 的几个关键金额字段为 null）
-        verify(salePriceAdjustMapper).insert(ArgumentMatchers.<ErpSalePriceAdjustDO>argThat(d ->
-                BigDecimal.ZERO.compareTo(d.getTotalAdjustPrice()) == 0));
-        verify(salePriceAdjustItemMapper).insertBatch(argThat(items -> {
-            List<ErpSalePriceAdjustItemDO> list = new java.util.ArrayList<>(items);
-            return list.size() == 1 && BigDecimal.ZERO.compareTo(list.get(0).getAdjustPrice()) == 0;
-        }));
+        verify(salePriceAdjustMapper, never()).insert(any(ErpSalePriceAdjustDO.class));
     }
 
     // ============================================================
@@ -475,6 +466,22 @@ public class ErpSalePriceAdjustServiceImplTest extends BaseMockitoUnitTest {
     }
 
     @Test
+    public void testGetSalePriceAdjustPage_usesEffectiveReceiptPrice() {
+        ErpSalePriceAdjustPageReqVO reqVO = new ErpSalePriceAdjustPageReqVO();
+        reqVO.setReceiptEnable(true);
+        when(salePriceAdjustMapper.selectPage(reqVO)).thenReturn(new PageResult<>(
+                Collections.singletonList(new ErpSalePriceAdjustDO()
+                        .setId(70L).setTotalAdjustPrice(new BigDecimal("-140"))), 1L));
+        when(financeReceiptItemMapper.selectReceiptPriceSumMapByBizIdsAndBizType(any(), eq(23)))
+                .thenReturn(Collections.singletonMap(70L, new BigDecimal("-40")));
+
+        PageResult<ErpSalePriceAdjustDO> result =
+                salePriceAdjustService.getSalePriceAdjustPage(reqVO);
+
+        assertEquals(new BigDecimal("-40"), result.getList().get(0).getReceiptPrice());
+    }
+
+    @Test
     public void testGetAdjustableItemsByCustomerId_excludeAdjustedDefault() {
         Long customerId = 902L;
         Long saleOutId = 1002L;
@@ -524,6 +531,53 @@ public class ErpSalePriceAdjustServiceImplTest extends BaseMockitoUnitTest {
         verify(salePriceAdjustMapper, never()).insert(any(ErpSalePriceAdjustDO.class));
     }
 
+    @Test
+    public void testCreateSalePriceAdjustDraft_withoutValidItems_throwException() {
+        ErpSalePriceAdjustDraftSaveReqVO reqVO = new ErpSalePriceAdjustDraftSaveReqVO();
+        reqVO.setRemark("临时草稿");
+        reqVO.setItems(Collections.emptyList());
+
+        assertServiceException(() -> salePriceAdjustService.createSalePriceAdjustDraft(reqVO),
+                SALE_PRICE_ADJUST_DRAFT_ITEMS_REQUIRED);
+
+        verify(salePriceAdjustMapper, never()).insert(any(ErpSalePriceAdjustDO.class));
+        verify(salePriceAdjustItemMapper, never()).insertBatch(any());
+    }
+
+    @Test
+    public void testUpdateSalePriceAdjustDraft_rejectsNonDraft() {
+        when(salePriceAdjustMapper.selectById(911L)).thenReturn(new ErpSalePriceAdjustDO()
+                .setId(911L).setNo("XSTJ911")
+                .setStatus(ErpSalePriceAdjustStatusEnum.PROCESS.getStatus()));
+        ErpSalePriceAdjustDraftSaveReqVO reqVO = new ErpSalePriceAdjustDraftSaveReqVO();
+        reqVO.setId(911L);
+
+        assertServiceException(() -> salePriceAdjustService.updateSalePriceAdjustDraft(reqVO),
+                SALE_PRICE_ADJUST_DRAFT_UPDATE_FAIL, "XSTJ911");
+    }
+
+    @Test
+    public void testSubmitSalePriceAdjust_movesDraftToProcess() {
+        ErpSalePriceAdjustDO draft = new ErpSalePriceAdjustDO()
+                .setId(912L).setNo("XSTJ912")
+                .setStatus(ErpSalePriceAdjustStatusEnum.DRAFT.getStatus())
+                .setCustomerId(20L).setAdjustUserId(40L)
+                .setSettleMethod("挂账").setDeliveryMethod("自提");
+        ErpSalePriceAdjustItemDO item = BeanUtils.toBean(
+                buildItem("XSCK912", BigDecimal.ONE, BigDecimal.TEN, new BigDecimal("12")),
+                ErpSalePriceAdjustItemDO.class);
+        when(salePriceAdjustMapper.selectById(912L)).thenReturn(draft);
+        when(salePriceAdjustItemMapper.selectListByAdjustId(912L))
+                .thenReturn(Collections.singletonList(item));
+        when(salePriceAdjustMapper.updateByIdAndStatus(eq(912L), eq(0), any(ErpSalePriceAdjustDO.class)))
+                .thenReturn(1);
+
+        salePriceAdjustService.submitSalePriceAdjust(912L);
+
+        verify(salePriceAdjustMapper).updateByIdAndStatus(eq(912L), eq(0),
+                argThat(update -> ErpSalePriceAdjustStatusEnum.PROCESS.getStatus().equals(update.getStatus())));
+    }
+
     // ============================================================
     // 测试数据构造辅助方法
     // ============================================================
@@ -536,6 +590,8 @@ public class ErpSalePriceAdjustServiceImplTest extends BaseMockitoUnitTest {
         reqVO.setAdjustUserId(40L);
         reqVO.setAdjustType(1);
         reqVO.setRemark("test");
+        reqVO.setSettleMethod("挂账");
+        reqVO.setDeliveryMethod("自提");
         return reqVO;
     }
 

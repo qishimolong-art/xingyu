@@ -26,10 +26,12 @@ import cn.iocoder.yudao.module.erp.dal.mysql.stock.ErpStockPendingInDetailMapper
 import cn.iocoder.yudao.module.erp.enums.ErpAuditStatus;
 import cn.iocoder.yudao.module.erp.service.product.ErpProductPriceSystemService;
 import cn.iocoder.yudao.module.erp.service.product.ErpProductService;
+import cn.iocoder.yudao.module.erp.service.config.ErpStockSelectPriceConfigService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpStockService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpWarehouseService;
 import cn.iocoder.yudao.module.system.api.dept.DeptApi;
 import cn.iocoder.yudao.module.system.api.dept.dto.DeptRespDTO;
+import cn.iocoder.yudao.module.system.api.permission.PermissionApi;
 import cn.iocoder.yudao.module.system.api.user.AdminUserApi;
 import cn.iocoder.yudao.module.system.api.user.dto.AdminUserRespDTO;
 import org.junit.jupiter.api.Test;
@@ -53,6 +55,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -91,6 +94,10 @@ public class ErpStockControllerTest extends BaseMockitoUnitTest {
     private DeptApi deptApi;
     @Mock
     private AdminUserApi adminUserApi;
+    @Mock
+    private PermissionApi permissionApi;
+    @Mock
+    private ErpStockSelectPriceConfigService stockSelectPriceConfigService;
 
     @BeforeEach
     public void setUpPendingChangeSummary() {
@@ -132,7 +139,7 @@ public class ErpStockControllerTest extends BaseMockitoUnitTest {
     }
 
     @Test
-    public void testGetStockPage_saleWithoutDeptFallsBackToLoginDeptAndClearsExternalPrices() {
+    public void testGetStockPage_saleWithoutDeptShowsExternalPricesAllowedForSaleDept() {
         ErpStockPageReqVO reqVO = new ErpStockPageReqVO();
         reqVO.setBizType("sale");
         reqVO.setPriceSystemId(9L);
@@ -146,15 +153,20 @@ public class ErpStockControllerTest extends BaseMockitoUnitTest {
                 .setCount(new BigDecimal("8")).setCostPrice(new BigDecimal("5.00"))
                 .setCostAmount(new BigDecimal("40.00")).setPurchasePrice(new BigDecimal("6.00"));
         ErpProductRespVO product = new ErpProductRespVO().setId(10L).setName("P1").setCode("P001")
+                .setPurchasePrice(new BigDecimal("6.20"))
                 .setLastPurchasePrice(new BigDecimal("6.50")).setSalePrice(new BigDecimal("10.00"))
+                .setMinPrice(new BigDecimal("8.00")).setGrossProfitRate(25)
                 .setReferencePrice(new BigDecimal("11.00")).setRetailPrice(new BigDecimal("12.00"))
-                .setBackupPrice1(new BigDecimal("13.00")).setWholesalePrice(new BigDecimal("9.00"));
+                .setBackupPrice1(new BigDecimal("13.00")).setWholesalePrice(new BigDecimal("9.00"))
+                .setSharePrice(new BigDecimal("8.80"))
+                .setCustomFields(Collections.singletonMap("vipPrice", new BigDecimal("7.70")));
         ErpWarehouseDO ownWarehouse = new ErpWarehouseDO().setId(20L).setName("Own").setDeptId(30L);
         ErpWarehouseDO externalWarehouse = new ErpWarehouseDO().setId(21L).setName("External").setDeptId(31L);
 
         when(stockService.getStockPage(any(ErpStockPageReqVO.class)))
                 .thenReturn(new PageResult<>(Arrays.asList(ownStock, externalStock), 2L));
-        when(productService.getProductVOMap(any())).thenReturn(Collections.singletonMap(10L, product));
+        when(productService.getProductVOMap(any(), eq(30L)))
+                .thenReturn(Collections.singletonMap(10L, product));
         Map<Long, ErpWarehouseDO> warehouseMap = new HashMap<>();
         warehouseMap.put(20L, ownWarehouse);
         warehouseMap.put(21L, externalWarehouse);
@@ -180,23 +192,140 @@ public class ErpStockControllerTest extends BaseMockitoUnitTest {
         assertEquals(new BigDecimal("14.00"), ownRow.getCurrentPrice());
 
         ErpStockRespVO externalRow = result.getList().get(1);
-        assertFalse(externalRow.getPriceVisible());
-        assertNull(externalRow.getCostPrice());
-        assertNull(externalRow.getCostAmount());
-        assertNull(externalRow.getPurchasePrice());
-        assertNull(externalRow.getLastPurchasePrice());
-        assertNull(externalRow.getSalePrice());
-        assertNull(externalRow.getReferencePrice());
-        assertNull(externalRow.getRetailPrice());
-        assertNull(externalRow.getBackupPrice1());
-        assertNull(externalRow.getWholesalePrice());
-        assertNull(externalRow.getCurrentPrice());
-        assertNull(externalRow.getCurrentPriceAmount());
+        assertTrue(externalRow.getPriceVisible());
+        assertEquals(new BigDecimal("5.00"), externalRow.getCostPrice());
+        assertEquals(new BigDecimal("40.00"), externalRow.getCostAmount());
+        assertEquals(new BigDecimal("6.00"), externalRow.getPurchasePrice());
+        assertEquals(new BigDecimal("6.20"), externalRow.getProductPurchasePrice());
+        assertEquals(new BigDecimal("6.50"), externalRow.getLastPurchasePrice());
+        assertEquals(new BigDecimal("10.00"), externalRow.getSalePrice());
+        assertEquals(new BigDecimal("8.00"), externalRow.getMinPrice());
+        assertEquals(new BigDecimal("11.00"), externalRow.getReferencePrice());
+        assertEquals(new BigDecimal("12.00"), externalRow.getRetailPrice());
+        assertEquals(25, externalRow.getGrossProfitRate());
+        assertEquals(new BigDecimal("13.00"), externalRow.getBackupPrice1());
+        assertEquals(new BigDecimal("9.00"), externalRow.getWholesalePrice());
+        assertEquals(new BigDecimal("8.80"), externalRow.getSharePrice());
+        assertEquals(new BigDecimal("7.70"), externalRow.getCustomFields().get("vipPrice"));
+        assertEquals(new BigDecimal("14.00"), externalRow.getCurrentPrice());
+        assertEquals(new BigDecimal("112.00"), externalRow.getCurrentPriceAmount());
         assertEquals(new BigDecimal("8"), externalRow.getCount());
         assertEquals(new BigDecimal("3"), externalRow.getOccupiedCount());
         assertEquals(new BigDecimal("5"), externalRow.getAvailableCount());
+        assertEquals("salePrice", reqVO.getOrderField());
+        assertEquals("desc", reqVO.getOrderDirection());
+    }
+
+    @Test
+    public void testGetStockPage_usesSaleDepartmentForConfiguredPriceMaskingAndSort() {
+        ErpStockPageReqVO reqVO = new ErpStockPageReqVO();
+        reqVO.setBizType("sale");
+        reqVO.setSaleDeptId(40L);
+        reqVO.setPriceSystemId(9L);
+        reqVO.setOrderField("referencePrice");
+        reqVO.setOrderDirection("asc");
+
+        ErpStockDO stock = new ErpStockDO().setId(3L).setProductId(11L).setWarehouseId(22L)
+                .setCount(new BigDecimal("2")).setCostPrice(new BigDecimal("5.00"))
+                .setCostAmount(new BigDecimal("10.00")).setPurchasePrice(new BigDecimal("6.00"));
+        Map<String, Object> customFields = new HashMap<>();
+        customFields.put("vipPrice", new BigDecimal("7.70"));
+        customFields.put("internalPrice", new BigDecimal("6.60"));
+        ErpProductRespVO product = new ErpProductRespVO().setId(11L).setName("P2")
+                .setPurchasePrice(new BigDecimal("6.20")).setSalePrice(new BigDecimal("10.00"))
+                .setMinPrice(new BigDecimal("8.00")).setReferencePrice(new BigDecimal("11.00"))
+                .setGrossProfitRate(25).setBackupPrice1(new BigDecimal("13.00"))
+                .setSharePrice(new BigDecimal("8.80"))
+                .setCustomFields(customFields);
+        ErpWarehouseDO warehouse = new ErpWarehouseDO().setId(22L).setName("Own").setDeptId(40L);
+
+        when(permissionApi.getCurrentUserHiddenFields("erp_product", 40L))
+                .thenReturn(Arrays.asList("referencePrice", "col_referencePrice", "backupPrice1",
+                        "purchasePrice", "minPrice", "grossProfitRate", "sharePrice", "internalPrice"));
+        when(stockSelectPriceConfigService.getSceneHiddenPriceFields("sale"))
+                .thenReturn(new java.util.LinkedHashSet<>(Arrays.asList(
+                        "salePrice", "col_salePrice", "vipPrice", "col_vipPrice")));
+        when(stockService.getStockPage(any(ErpStockPageReqVO.class)))
+                .thenReturn(new PageResult<>(Collections.singletonList(stock), 1L));
+        when(productService.getProductVOMap(any(), eq(40L)))
+                .thenReturn(Collections.singletonMap(11L, product));
+        when(warehouseService.getWarehouseMap(any())).thenReturn(Collections.singletonMap(22L, warehouse));
+        when(deptApi.getDeptMap(any())).thenReturn(Collections.emptyMap());
+        when(purchaseOrderItemMapper.selectInTransitCountMap(any(), any(), any()))
+                .thenReturn(Collections.emptyMap());
+        when(stockService.getAvailableBatchNoListMap(any())).thenReturn(Collections.emptyMap());
+        when(productPriceSystemService.getProductPriceMap(any(), eq(9L)))
+                .thenReturn(Collections.singletonMap(11L, new BigDecimal("14.00")));
+
+        ErpStockRespVO row = controller.getStockPage(reqVO).getData().getList().get(0);
+
+        assertTrue(row.getPriceVisible());
+        assertEquals(new BigDecimal("5.00"), row.getCostPrice());
+        assertNull(row.getSalePrice());
+        assertNull(row.getProductPurchasePrice());
+        assertNull(row.getMinPrice());
+        assertNull(row.getReferencePrice());
+        assertNull(row.getGrossProfitRate());
+        assertNull(row.getBackupPrice1());
+        assertNull(row.getSharePrice());
+        assertTrue(row.getCustomFields().isEmpty());
+        assertNull(row.getCurrentPrice());
+        assertNull(row.getCurrentPriceAmount());
         assertNull(reqVO.getOrderField());
         assertNull(reqVO.getOrderDirection());
+        verify(productService).getProductVOMap(any(), eq(40L));
+        verify(stockSelectPriceConfigService).getSceneHiddenPriceFields("sale");
+    }
+
+    @Test
+    public void testGetStockPage_purchaseUsesLoginDepartmentForConfiguredPriceMasking() {
+        ErpStockPageReqVO reqVO = new ErpStockPageReqVO();
+        reqVO.setBizType("purchase");
+
+        ErpStockDO stock = new ErpStockDO().setId(4L).setProductId(12L).setWarehouseId(23L)
+                .setCount(new BigDecimal("3")).setPurchasePrice(new BigDecimal("6.00"));
+        Map<String, Object> customFields = new HashMap<>();
+        customFields.put("vipPrice", new BigDecimal("7.70"));
+        customFields.put("internalPrice", new BigDecimal("6.60"));
+        ErpProductRespVO product = new ErpProductRespVO().setId(12L).setName("Purchase Product")
+                .setPurchasePrice(new BigDecimal("6.20")).setSalePrice(new BigDecimal("10.00"))
+                .setMinPrice(new BigDecimal("8.00")).setReferencePrice(new BigDecimal("11.00"))
+                .setRetailPrice(new BigDecimal("12.00")).setGrossProfitRate(25)
+                .setBackupPrice1(new BigDecimal("13.00")).setWholesalePrice(new BigDecimal("9.00"))
+                .setSharePrice(new BigDecimal("8.80")).setCustomFields(customFields);
+        ErpWarehouseDO warehouse = new ErpWarehouseDO().setId(23L).setName("Purchase").setDeptId(41L);
+
+        when(permissionApi.getCurrentUserHiddenFields("erp_product", 41L))
+                .thenReturn(Arrays.asList("purchasePrice", "minPrice", "grossProfitRate",
+                        "sharePrice", "internalPrice"));
+        when(stockService.getStockPage(any(ErpStockPageReqVO.class)))
+                .thenReturn(new PageResult<>(Collections.singletonList(stock), 1L));
+        when(productService.getProductVOMap(any(), eq(41L)))
+                .thenReturn(Collections.singletonMap(12L, product));
+        when(warehouseService.getWarehouseMap(any())).thenReturn(Collections.singletonMap(23L, warehouse));
+        when(deptApi.getDeptMap(any())).thenReturn(Collections.emptyMap());
+        when(purchaseOrderItemMapper.selectInTransitCountMap(any(), any(), any()))
+                .thenReturn(Collections.emptyMap());
+        when(stockService.getAvailableBatchNoListMap(any())).thenReturn(Collections.emptyMap());
+
+        ErpStockRespVO row;
+        try (MockedStatic<SecurityFrameworkUtils> security = mockStatic(SecurityFrameworkUtils.class)) {
+            security.when(SecurityFrameworkUtils::getLoginUserDeptId).thenReturn(41L);
+            row = controller.getStockPage(reqVO).getData().getList().get(0);
+        }
+
+        assertNull(row.getProductPurchasePrice());
+        assertNull(row.getMinPrice());
+        assertNull(row.getGrossProfitRate());
+        assertNull(row.getSharePrice());
+        assertEquals(new BigDecimal("10.00"), row.getSalePrice());
+        assertEquals(new BigDecimal("11.00"), row.getReferencePrice());
+        assertEquals(new BigDecimal("12.00"), row.getRetailPrice());
+        assertEquals(new BigDecimal("13.00"), row.getBackupPrice1());
+        assertEquals(new BigDecimal("9.00"), row.getWholesalePrice());
+        assertEquals(Collections.singletonMap("vipPrice", new BigDecimal("7.70")), row.getCustomFields());
+        verify(permissionApi).getCurrentUserHiddenFields("erp_product", 41L);
+        verify(productService).getProductVOMap(any(), eq(41L));
     }
 
     @Test
@@ -664,6 +793,7 @@ public class ErpStockControllerTest extends BaseMockitoUnitTest {
     public void testGetStockPage_showBatchNo_splitsRowsAndKeepsUnassignedResidual() {
         ErpStockPageReqVO reqVO = new ErpStockPageReqVO();
         reqVO.setShowBatchNo(true);
+        reqVO.setKeyword("PC202607");
         reqVO.setPageNo(1);
         reqVO.setPageSize(2);
         ErpStockDO stock = new ErpStockDO()
@@ -686,7 +816,9 @@ public class ErpStockControllerTest extends BaseMockitoUnitTest {
                 new ErpStockBatchNoRespVO().setBatchNo("PC20260715")
                         .setAvailableCount(new BigDecimal("15")));
 
-        when(stockService.getStockPage(any(ErpStockPageReqVO.class)))
+        when(stockService.getStockPage(argThat(
+                request -> Boolean.TRUE.equals(request.getShowBatchNo())
+                        && "PC202607".equals(request.getKeyword()))))
                 .thenReturn(new PageResult<>(Collections.singletonList(stock), 1L));
         when(stockService.getStockBatchBalanceListMap(any()))
                 .thenReturn(Collections.singletonMap("161_261", balances));

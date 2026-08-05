@@ -28,6 +28,19 @@ class ErpAccountAllocatedAmountTest {
     }
 
     @Test
+    void payableWriteOffRowDoesNotChangeRunningBalance() {
+        ErpPayableAccountServiceImpl service = new ErpPayableAccountServiceImpl();
+        ErpPayableDetailRespVO row = ReflectionTestUtils.invokeMethod(service, "buildRow",
+                "writeoff", 11, 1L, LocalDateTime.now(), "PI-1",
+                new BigDecimal("-40"), true);
+
+        assertThat(row).isNotNull();
+        assertThat(row.getWriteOffAmount()).isEqualByComparingTo("40");
+        assertThat((BigDecimal) ReflectionTestUtils.invokeMethod(service, "getChangeAmount", row))
+                .isEqualByComparingTo("0");
+    }
+
+    @Test
     void receivableAllocationIsShownWithoutReducingBalanceTwice() {
         ErpReceivableAccountServiceImpl service = new ErpReceivableAccountServiceImpl();
         ErpReceivableDetailRespVO row = ReflectionTestUtils.invokeMethod(service, "buildAllocatedRow",
@@ -38,5 +51,18 @@ class ErpAccountAllocatedAmountTest {
         assertThat(row.getAllocatedAmount()).isEqualByComparingTo("100");
         assertThat((BigDecimal) ReflectionTestUtils.invokeMethod(service, "getChangeAmount", row))
                 .isEqualByComparingTo("100");
+    }
+
+    @Test
+    void receivableWriteOffRowDoesNotChangeRunningBalance() {
+        ErpReceivableAccountServiceImpl service = new ErpReceivableAccountServiceImpl();
+        ErpReceivableDetailRespVO row = ReflectionTestUtils.invokeMethod(service, "buildRow",
+                "writeoff", 21, 2L, LocalDateTime.now(), "SO-1",
+                new BigDecimal("-40"), true);
+
+        assertThat(row).isNotNull();
+        assertThat(row.getWriteOffAmount()).isEqualByComparingTo("40");
+        assertThat((BigDecimal) ReflectionTestUtils.invokeMethod(service, "getChangeAmount", row))
+                .isEqualByComparingTo("0");
     }
 }

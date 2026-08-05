@@ -12,6 +12,9 @@ import cn.iocoder.yudao.framework.excel.core.util.ExcelUtils;
 import cn.iocoder.yudao.module.erp.controller.admin.common.ErpAuditStatusRequestValidator;
 import cn.iocoder.yudao.module.erp.controller.admin.common.vo.ErpExportFieldRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpProductRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.ErpStockUpdateRemarkReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.warehousemove.ErpWarehouseMoveDraftCreateReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.warehousemove.ErpWarehouseMoveDraftUpdateReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.warehousemove.ErpWarehouseMovePageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.warehousemove.ErpWarehouseMoveRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.warehousemove.ErpWarehouseMoveSaveReqVO;
@@ -92,11 +95,55 @@ public class ErpWarehouseMoveController {
         return success(warehouseMoveService.createWarehouseMove(createReqVO));
     }
 
+    @PostMapping("/create-draft")
+    @Operation(summary = "创建仓库移货单草稿")
+    @PreAuthorize("@ss.hasPermission('erp:warehouse-move:create')")
+    public CommonResult<Long> createWarehouseMoveDraft(
+            @RequestBody ErpWarehouseMoveDraftCreateReqVO createReqVO) {
+        return success(warehouseMoveService.createWarehouseMoveDraft(createReqVO));
+    }
+
     @PutMapping("/update")
     @Operation(summary = "Update warehouse move")
     @PreAuthorize("@ss.hasPermission('erp:warehouse-move:update')")
     public CommonResult<Boolean> updateWarehouseMove(@Valid @RequestBody ErpWarehouseMoveSaveReqVO updateReqVO) {
         warehouseMoveService.updateWarehouseMove(updateReqVO);
+        return success(true);
+    }
+
+    @PutMapping("/update-draft")
+    @Operation(summary = "保存仓库移货单草稿")
+    @PreAuthorize("@ss.hasPermission('erp:warehouse-move:update')")
+    public CommonResult<Boolean> updateWarehouseMoveDraft(
+            @RequestBody ErpWarehouseMoveDraftUpdateReqVO updateReqVO) {
+        warehouseMoveService.updateWarehouseMoveDraft(updateReqVO);
+        return success(true);
+    }
+
+    @PutMapping("/update-and-submit")
+    @Operation(summary = "更新并提交仓库移货单草稿")
+    @PreAuthorize("@ss.hasPermission('erp:warehouse-move:update') and " +
+            "@ss.hasPermission('erp:warehouse-move:update-status')")
+    public CommonResult<Boolean> updateAndSubmitWarehouseMoveDraft(
+            @Valid @RequestBody ErpWarehouseMoveSaveReqVO updateReqVO) {
+        warehouseMoveService.updateAndSubmitWarehouseMoveDraft(updateReqVO);
+        return success(true);
+    }
+
+    @PutMapping("/submit")
+    @Operation(summary = "提交仓库移货单草稿")
+    @PreAuthorize("@ss.hasPermission('erp:warehouse-move:update-status')")
+    public CommonResult<Boolean> submitWarehouseMove(@RequestParam("id") Long id) {
+        warehouseMoveService.submitWarehouseMove(id);
+        return success(true);
+    }
+
+    @PutMapping("/update-remark")
+    @Operation(summary = "Update warehouse move remark")
+    @PreAuthorize("@ss.hasPermission('erp:warehouse-move:update')")
+    public CommonResult<Boolean> updateWarehouseMoveRemark(
+            @Valid @RequestBody ErpStockUpdateRemarkReqVO updateReqVO) {
+        warehouseMoveService.updateWarehouseMoveRemark(updateReqVO);
         return success(true);
     }
 

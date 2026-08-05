@@ -1,5 +1,6 @@
 package cn.iocoder.yudao.module.erp.controller.admin.finance.payable;
 
+import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.ErpFinanceUpdateRemarkReqVO;
 import cn.hutool.core.collection.CollUtil;
 import cn.iocoder.yudao.framework.apilog.core.annotation.ApiAccessLog;
 import cn.iocoder.yudao.framework.common.pojo.CommonResult;
@@ -13,6 +14,7 @@ import cn.iocoder.yudao.module.erp.controller.admin.common.ErpAuditStatusRequest
 import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.imports.ErpFinanceImportRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.payable.vo.other.ErpPayableOtherExportRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.payable.vo.other.ErpPayableOtherImportExcelVO;
+import cn.iocoder.yudao.module.erp.controller.admin.finance.payable.vo.other.ErpPayableOtherDraftSaveReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.payable.vo.other.ErpPayableOtherPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.payable.vo.other.ErpPayableOtherRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.payable.vo.other.ErpPayableOtherSaveReqVO;
@@ -82,11 +84,59 @@ public class ErpPayableOtherController {
         return success(payableOtherService.createPayableOther(reqVO));
     }
 
+    @PostMapping("/create-draft")
+    @Operation(summary = "创建其他应付草稿")
+    @PreAuthorize("@ss.hasPermission('erp:payable-other:create')")
+    public CommonResult<Long> createDraft(@RequestBody ErpPayableOtherDraftSaveReqVO reqVO) {
+        return success(payableOtherService.createPayableOtherDraft(reqVO));
+    }
+
+    @PostMapping("/create-and-submit")
+    @Operation(summary = "创建并提交其他应付")
+    @PreAuthorize("@ss.hasPermission('erp:payable-other:create') and " +
+            "@ss.hasPermission('erp:payable-other:update-status')")
+    public CommonResult<Long> createAndSubmit(@Valid @RequestBody ErpPayableOtherSaveReqVO reqVO) {
+        return success(payableOtherService.createAndSubmitPayableOther(reqVO));
+    }
+
     @PutMapping("/update")
     @Operation(summary = "修改其他应付")
     @PreAuthorize("@ss.hasPermission('erp:payable-other:update')")
     public CommonResult<Boolean> update(@Valid @RequestBody ErpPayableOtherSaveReqVO reqVO) {
         payableOtherService.updatePayableOther(reqVO);
+        return success(true);
+    }
+
+    @PutMapping("/update-draft")
+    @Operation(summary = "更新其他应付草稿")
+    @PreAuthorize("@ss.hasPermission('erp:payable-other:update')")
+    public CommonResult<Boolean> updateDraft(@RequestBody ErpPayableOtherDraftSaveReqVO reqVO) {
+        payableOtherService.updatePayableOtherDraft(reqVO);
+        return success(true);
+    }
+
+    @PutMapping("/update-and-submit")
+    @Operation(summary = "更新并提交其他应付草稿")
+    @PreAuthorize("@ss.hasPermission('erp:payable-other:update') and " +
+            "@ss.hasPermission('erp:payable-other:update-status')")
+    public CommonResult<Boolean> updateAndSubmit(@Valid @RequestBody ErpPayableOtherSaveReqVO reqVO) {
+        payableOtherService.updateAndSubmitPayableOther(reqVO);
+        return success(true);
+    }
+
+    @PutMapping("/submit")
+    @Operation(summary = "提交其他应付草稿")
+    @PreAuthorize("@ss.hasPermission('erp:payable-other:update-status')")
+    public CommonResult<Boolean> submit(@RequestParam("id") Long id) {
+        payableOtherService.submitPayableOther(id);
+        return success(true);
+    }
+
+    @PutMapping("/update-remark")
+    @Operation(summary = "更新其他应付单备注")
+    @PreAuthorize("@ss.hasPermission('erp:payable-other:update')")
+    public CommonResult<Boolean> updateRemark(@Valid @RequestBody ErpFinanceUpdateRemarkReqVO reqVO) {
+        payableOtherService.updatePayableOtherRemark(reqVO);
         return success(true);
     }
 

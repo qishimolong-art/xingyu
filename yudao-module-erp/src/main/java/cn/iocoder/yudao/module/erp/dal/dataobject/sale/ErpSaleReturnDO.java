@@ -37,7 +37,7 @@ public class ErpSaleReturnDO extends BaseDO {
     /**
      * 退货状态
      *
-     * 枚举 {@link cn.iocoder.yudao.module.erp.enums.ErpAuditStatus}
+     * 枚举 {@link cn.iocoder.yudao.module.erp.enums.sale.ErpSaleReturnStatusEnum}
      */
     private Integer status;
     /**

@@ -4,6 +4,8 @@ import cn.hutool.core.collection.CollUtil;
 import cn.hutool.core.util.StrUtil;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
+import cn.iocoder.yudao.module.erp.controller.admin.finance.payable.vo.expense.ErpPayableExpenseDraftSaveReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.ErpFinanceUpdateRemarkReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.payable.vo.expense.ErpPayableExpensePageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.payable.vo.expense.ErpPayableExpenseSaveReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.payable.ErpPayableExpenseDO;
@@ -12,9 +14,11 @@ import cn.iocoder.yudao.module.erp.dal.mysql.finance.payable.ErpPayableExpenseIt
 import cn.iocoder.yudao.module.erp.dal.mysql.finance.payable.ErpPayableExpenseMapper;
 import cn.iocoder.yudao.module.erp.dal.redis.no.ErpNoRedisDAO;
 import cn.iocoder.yudao.module.erp.enums.ErpAuditStatus;
+import cn.iocoder.yudao.module.erp.enums.finance.ErpPayableExpenseStatusEnum;
 import cn.iocoder.yudao.module.erp.service.common.ErpOperateLogService;
 import cn.iocoder.yudao.module.erp.service.finance.ErpAccountService;
 import cn.iocoder.yudao.module.erp.service.finance.ErpFinanceFieldPermissionMasker;
+import cn.iocoder.yudao.module.erp.service.finance.bo.ErpSaleCartFreightDraftCreateReqBO;
 import cn.iocoder.yudao.module.system.api.dept.DeptApi;
 import cn.iocoder.yudao.module.system.api.user.AdminUserApi;
 import cn.iocoder.yudao.module.system.api.user.dto.AdminUserRespDTO;
@@ -25,6 +29,7 @@ import org.springframework.validation.annotation.Validated;
 
 import javax.annotation.Resource;
 import java.math.BigDecimal;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
@@ -35,6 +40,9 @@ import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.
 import static cn.iocoder.yudao.framework.security.core.util.SecurityFrameworkUtils.getLoginUserId;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PAYABLE_EXPENSE_APPROVE_FAIL;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PAYABLE_EXPENSE_DELETE_FAIL_APPROVE;
+import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PAYABLE_EXPENSE_DRAFT_SUBMIT_FAIL;
+import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PAYABLE_EXPENSE_DRAFT_ITEMS_REQUIRED;
+import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PAYABLE_EXPENSE_DRAFT_UPDATE_FAIL;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PAYABLE_EXPENSE_NOT_EXISTS;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PAYABLE_EXPENSE_NO_EXISTS;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PAYABLE_EXPENSE_PROCESS_FAIL;
@@ -47,6 +55,7 @@ import static cn.iocoder.yudao.module.erp.enums.LogRecordConstants.ERP_PAYABLE_E
 public class ErpPayableExpenseServiceImpl implements ErpPayableExpenseService {
 
     private static final String FIELD_PERMISSION_MODULE = "erp_finance_payable_expense";
+    private static final String SALE_CART_SOURCE_TYPE = "销售手推车";
 
     @Resource
     private ErpPayableExpenseMapper payableExpenseMapper;
@@ -96,8 +105,91 @@ public class ErpPayableExpenseServiceImpl implements ErpPayableExpenseService {
 
     @Override
     @Transactional(rollbackFor = Exception.class)
+    public Long createPayableExpenseDraft(ErpPayableExpenseDraftSaveReqVO createReqVO) {
+        fieldPermissionMasker.clearHiddenFields(FIELD_PERMISSION_MODULE, createReqVO);
+        fieldPermissionMasker.clearHiddenItemFields(FIELD_PERMISSION_MODULE, createReqVO.getItems());
+        fillDraftDefaultDeptId(createReqVO);
+        List<ErpPayableExpenseItemDO> expenseItems = buildDraftItems(createReqVO.getItems());
+        if (CollUtil.isEmpty(expenseItems)) {
+            throw exception(PAYABLE_EXPENSE_DRAFT_ITEMS_REQUIRED);
+        }
+        String no = noRedisDAO.generate("FYZF");
+        if (payableExpenseMapper.selectByNo(no) != null) {
+            throw exception(PAYABLE_EXPENSE_NO_EXISTS);
+        }
+        ErpPayableExpenseDO db = BeanUtils.toBean(createReqVO, ErpPayableExpenseDO.class)
+                .setId(null)
+                .setNo(no)
+                .setStatus(ErpPayableExpenseStatusEnum.DRAFT.getStatus())
+                .setTotalAmount(sumItemAmount(expenseItems));
+        normalizeMain(db);
+        payableExpenseMapper.insert(db);
+        replaceItems(db.getId(), expenseItems);
+        operateLogService.recordCreate(ERP_PAYABLE_EXPENSE_TYPE, db.getId(), db.getNo());
+        return db.getId();
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public Long createAndSubmitPayableExpense(ErpPayableExpenseSaveReqVO createReqVO) {
+        return createPayableExpense(createReqVO);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public Long createFromSaleCartFreight(ErpSaleCartFreightDraftCreateReqBO createReqBO) {
+        ErpPayableExpenseDO existing = payableExpenseMapper.selectBySource(
+                SALE_CART_SOURCE_TYPE, createReqBO.getCartId());
+        if (existing != null) {
+            return existing.getId();
+        }
+        validateRefs(createReqBO.getAccountId(), createReqBO.getHandlerId(), createReqBO.getDeptId());
+        String no = noRedisDAO.generate("FYZF");
+        if (payableExpenseMapper.selectByNo(no) != null) {
+            throw exception(PAYABLE_EXPENSE_NO_EXISTS);
+        }
+        ErpPayableExpenseDO db = new ErpPayableExpenseDO()
+                .setNo(no)
+                .setStatus(ErpAuditStatus.PROCESS.getStatus())
+                .setBizTime(createReqBO.getBizTime())
+                .setSettleMethod(createReqBO.getSettleMethod())
+                .setAccountId(createReqBO.getAccountId())
+                .setExpenseType("运费")
+                .setTotalAmount(createReqBO.getAmount())
+                .setDeptId(createReqBO.getDeptId())
+                .setHandlerId(createReqBO.getHandlerId())
+                .setParty(createReqBO.getParty())
+                .setRelatedBiz("销售手推车：" + createReqBO.getCartNo())
+                .setSourceType(SALE_CART_SOURCE_TYPE)
+                .setSourceId(createReqBO.getCartId())
+                .setSourceNo(createReqBO.getCartNo())
+                .setRemark("销售手推车终审自动生成，来源单号：" + createReqBO.getCartNo());
+        normalizeMain(db);
+        payableExpenseMapper.insert(db);
+        ErpPayableExpenseItemDO item = new ErpPayableExpenseItemDO()
+                .setExpenseId(db.getId())
+                .setItemName("销售运费")
+                .setAmount(createReqBO.getAmount())
+                .setParty(createReqBO.getParty())
+                .setDeptId(createReqBO.getDeptId())
+                .setBizDate(createReqBO.getBizTime())
+                .setHandlerId(createReqBO.getHandlerId())
+                .setQty(1)
+                .setExpenseCategory("运费")
+                .setRemark("销售手推车：" + createReqBO.getCartNo());
+        normalizeItem(item);
+        payableExpenseItemMapper.insertBatch(Collections.singletonList(item));
+        operateLogService.recordCreate(ERP_PAYABLE_EXPENSE_TYPE, db.getId(), db.getNo());
+        return db.getId();
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
     public void updatePayableExpense(ErpPayableExpenseSaveReqVO updateReqVO) {
         ErpPayableExpenseDO db = validateExists(updateReqVO.getId());
+        if (ErpPayableExpenseStatusEnum.DRAFT.getStatus().equals(db.getStatus())) {
+            throw exception(PAYABLE_EXPENSE_DRAFT_UPDATE_FAIL, db.getNo());
+        }
         if (ErpAuditStatus.APPROVE.getStatus().equals(db.getStatus())) {
             throw exception(PAYABLE_EXPENSE_UPDATE_FAIL_APPROVE, db.getNo());
         }
@@ -115,6 +207,11 @@ public class ErpPayableExpenseServiceImpl implements ErpPayableExpenseService {
         validateRefs(updateReqVO.getAccountId(), updateReqVO.getHandlerId(), updateReqVO.getDeptId());
         validateItemRefs(updateReqVO.getItems());
         ErpPayableExpenseDO updateObj = BeanUtils.toBean(updateReqVO, ErpPayableExpenseDO.class);
+        if (db.getSourceId() != null) {
+            updateObj.setSourceType(db.getSourceType());
+            updateObj.setSourceId(db.getSourceId());
+            updateObj.setSourceNo(db.getSourceNo());
+        }
         normalizeMain(updateObj);
         updateObj.setTotalAmount(sumAmount(updateReqVO.getItems()));
         if (payableExpenseMapper.updateByIdAndStatus(updateReqVO.getId(),
@@ -133,17 +230,106 @@ public class ErpPayableExpenseServiceImpl implements ErpPayableExpenseService {
 
     @Override
     @Transactional(rollbackFor = Exception.class)
+    public void updatePayableExpenseDraft(ErpPayableExpenseDraftSaveReqVO updateReqVO) {
+        ErpPayableExpenseDO db = validateExists(updateReqVO.getId());
+        if (!ErpPayableExpenseStatusEnum.DRAFT.getStatus().equals(db.getStatus())) {
+            throw exception(PAYABLE_EXPENSE_DRAFT_UPDATE_FAIL, db.getNo());
+        }
+        List<ErpPayableExpenseItemDO> oldItems =
+                payableExpenseItemMapper.selectListByExpenseId(updateReqVO.getId());
+        fieldPermissionMasker.preserveHiddenFields(FIELD_PERMISSION_MODULE, updateReqVO, db);
+        if (fieldPermissionMasker.isFieldHidden(FIELD_PERMISSION_MODULE, "items")) {
+            updateReqVO.setItems(BeanUtils.toBean(oldItems, ErpPayableExpenseSaveReqVO.Item.class));
+        } else {
+            if (updateReqVO.getItems() == null) {
+                updateReqVO.setItems(Collections.emptyList());
+            }
+            fieldPermissionMasker.preserveHiddenItemFields(
+                    FIELD_PERMISSION_MODULE, updateReqVO.getItems(), oldItems);
+        }
+        List<ErpPayableExpenseItemDO> expenseItems = buildDraftItems(updateReqVO.getItems());
+        ErpPayableExpenseDO updateObj = BeanUtils.toBean(updateReqVO, ErpPayableExpenseDO.class)
+                .setId(db.getId())
+                .setNo(db.getNo())
+                .setStatus(db.getStatus())
+                .setDeptId(updateReqVO.getDeptId() != null ? updateReqVO.getDeptId() : db.getDeptId())
+                .setSourceType(db.getSourceType())
+                .setSourceId(db.getSourceId())
+                .setSourceNo(db.getSourceNo())
+                .setTotalAmount(sumItemAmount(expenseItems));
+        normalizeMain(updateObj);
+        if (payableExpenseMapper.updateByIdAndStatus(db.getId(),
+                ErpPayableExpenseStatusEnum.DRAFT.getStatus(), updateObj) == 0) {
+            throw exception(PAYABLE_EXPENSE_DRAFT_UPDATE_FAIL, db.getNo());
+        }
+        replaceItems(db.getId(), expenseItems);
+        operateLogService.recordUpdate(ERP_PAYABLE_EXPENSE_TYPE, db.getId(), db.getNo());
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void updateAndSubmitPayableExpense(ErpPayableExpenseSaveReqVO updateReqVO) {
+        updatePayableExpenseDraft(BeanUtils.toBean(updateReqVO, ErpPayableExpenseDraftSaveReqVO.class));
+        submitPayableExpense(updateReqVO.getId());
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void submitPayableExpense(Long id) {
+        ErpPayableExpenseDO db = payableExpenseMapper.selectByIdForUpdate(id);
+        if (db == null) {
+            throw exception(PAYABLE_EXPENSE_NOT_EXISTS);
+        }
+        if (!ErpPayableExpenseStatusEnum.DRAFT.getStatus().equals(db.getStatus())) {
+            throw exception(PAYABLE_EXPENSE_DRAFT_SUBMIT_FAIL, "当前状态不是草稿");
+        }
+        validateDraftForSubmit(db);
+        List<ErpPayableExpenseItemDO> items = payableExpenseItemMapper.selectListByExpenseId(id);
+        if (CollUtil.isEmpty(items)) {
+            throw exception(PAYABLE_EXPENSE_DRAFT_SUBMIT_FAIL, "请至少添加一条费用明细");
+        }
+        List<ErpPayableExpenseSaveReqVO.Item> itemReqs =
+                BeanUtils.toBean(items, ErpPayableExpenseSaveReqVO.Item.class);
+        for (ErpPayableExpenseSaveReqVO.Item item : itemReqs) {
+            if (!StringUtils.hasText(item.getItemName()) || item.getAmount() == null) {
+                throw exception(PAYABLE_EXPENSE_DRAFT_SUBMIT_FAIL, "费用项目和金额不能为空");
+            }
+        }
+        validateItemRefs(itemReqs);
+        BigDecimal totalAmount = sumAmount(itemReqs);
+        ErpPayableExpenseDO statusUpdate = new ErpPayableExpenseDO()
+                .setStatus(ErpPayableExpenseStatusEnum.PROCESS.getStatus())
+                .setTotalAmount(totalAmount);
+        if (payableExpenseMapper.updateByIdAndStatus(id,
+                ErpPayableExpenseStatusEnum.DRAFT.getStatus(), statusUpdate) == 0) {
+            throw exception(PAYABLE_EXPENSE_DRAFT_SUBMIT_FAIL, "状态已变化，请刷新后重试");
+        }
+        operateLogService.recordUpdate(ERP_PAYABLE_EXPENSE_TYPE, id, db.getNo());
+    }
+
+    @Override
+    public void updatePayableExpenseRemark(ErpFinanceUpdateRemarkReqVO updateReqVO) {
+        ErpPayableExpenseDO db = validateExists(updateReqVO.getId());
+        payableExpenseMapper.updateById(new ErpPayableExpenseDO()
+                .setId(updateReqVO.getId()).setRemark(updateReqVO.getRemark()));
+        operateLogService.recordUpdate(ERP_PAYABLE_EXPENSE_TYPE, db.getId(), db.getNo());
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
     public void updatePayableExpenseStatus(Long id, Integer status) {
+        if (!ErpPayableExpenseStatusEnum.APPROVE.getStatus().equals(status)) {
+            throw exception(PAYABLE_EXPENSE_PROCESS_FAIL);
+        }
         ErpPayableExpenseDO db = validateExists(id);
-        boolean approve = ErpAuditStatus.APPROVE.getStatus().equals(status);
-        if (db.getStatus().equals(status)) {
-            throw exception(approve ? PAYABLE_EXPENSE_APPROVE_FAIL : PAYABLE_EXPENSE_PROCESS_FAIL);
+        if (!ErpPayableExpenseStatusEnum.PROCESS.getStatus().equals(db.getStatus())) {
+            throw exception(PAYABLE_EXPENSE_APPROVE_FAIL);
         }
         if (payableExpenseMapper.updateByIdAndStatus(id, db.getStatus(),
                 ErpPayableExpenseDO.builder().status(status).build()) == 0) {
-            throw exception(approve ? PAYABLE_EXPENSE_APPROVE_FAIL : PAYABLE_EXPENSE_PROCESS_FAIL);
+            throw exception(PAYABLE_EXPENSE_APPROVE_FAIL);
         }
-        operateLogService.recordStatus(ERP_PAYABLE_EXPENSE_TYPE, id, db.getNo(), approve);
+        operateLogService.recordStatus(ERP_PAYABLE_EXPENSE_TYPE, id, db.getNo(), true);
     }
 
     @Override
@@ -270,6 +456,70 @@ public class ErpPayableExpenseServiceImpl implements ErpPayableExpenseService {
                 .map(ErpPayableExpenseSaveReqVO.Item::getAmount)
                 .filter(Objects::nonNull)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
+    }
+
+    private List<ErpPayableExpenseItemDO> buildDraftItems(
+            List<ErpPayableExpenseSaveReqVO.Item> items) {
+        if (CollUtil.isEmpty(items)) {
+            return Collections.emptyList();
+        }
+        List<ErpPayableExpenseItemDO> result = new ArrayList<>();
+        for (ErpPayableExpenseSaveReqVO.Item source : items) {
+            if (source == null || !StringUtils.hasText(source.getItemName()) || source.getAmount() == null) {
+                continue;
+            }
+            ErpPayableExpenseItemDO item = BeanUtils.toBean(source, ErpPayableExpenseItemDO.class);
+            item.setId(null);
+            normalizeItem(item);
+            result.add(item);
+        }
+        return result;
+    }
+
+    private void replaceItems(Long expenseId, List<ErpPayableExpenseItemDO> items) {
+        payableExpenseItemMapper.deleteByExpenseId(expenseId);
+        if (CollUtil.isEmpty(items)) {
+            return;
+        }
+        items.forEach(item -> item.setId(null).setExpenseId(expenseId));
+        payableExpenseItemMapper.insertBatch(items);
+    }
+
+    private BigDecimal sumItemAmount(List<ErpPayableExpenseItemDO> items) {
+        return items.stream()
+                .map(ErpPayableExpenseItemDO::getAmount)
+                .filter(Objects::nonNull)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+    }
+
+    private void fillDraftDefaultDeptId(ErpPayableExpenseDraftSaveReqVO reqVO) {
+        Long deptId = getLoginUserDeptId();
+        if (deptId == null) {
+            return;
+        }
+        if (reqVO.getDeptId() == null) {
+            reqVO.setDeptId(deptId);
+        }
+        fillDefaultItemDeptId(reqVO.getItems(), deptId);
+    }
+
+    private void validateDraftForSubmit(ErpPayableExpenseDO db) {
+        if (db.getBizTime() == null) {
+            throw exception(PAYABLE_EXPENSE_DRAFT_SUBMIT_FAIL, "单据日期不能为空");
+        }
+        if (!StringUtils.hasText(db.getSettleMethod())) {
+            throw exception(PAYABLE_EXPENSE_DRAFT_SUBMIT_FAIL, "结算方式不能为空");
+        }
+        if (db.getAccountId() == null) {
+            throw exception(PAYABLE_EXPENSE_DRAFT_SUBMIT_FAIL, "结算账户不能为空");
+        }
+        if (!StringUtils.hasText(db.getExpenseType())) {
+            throw exception(PAYABLE_EXPENSE_DRAFT_SUBMIT_FAIL, "费用类型不能为空");
+        }
+        if (db.getHandlerId() == null) {
+            throw exception(PAYABLE_EXPENSE_DRAFT_SUBMIT_FAIL, "申请人不能为空");
+        }
+        validateRefs(db.getAccountId(), db.getHandlerId(), db.getDeptId());
     }
 
     private void normalizeMain(ErpPayableExpenseDO db) {

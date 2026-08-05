@@ -145,6 +145,28 @@ public interface ErpPurchaseInvoiceMapper extends BaseMapperX<ErpPurchaseInvoice
                 .eq(ErpPurchaseInvoiceDO::getStatus, status));
     }
 
+    /**
+     * 按页面快照保存草稿。显式 set 允许用户清空草稿中的可选字段，
+     * 同时不覆盖单号、状态、创建人等系统字段。
+     */
+    default int updateDraftByIdAndStatus(Long id, Integer status, ErpPurchaseInvoiceDO updateObj) {
+        return update(null, new LambdaUpdateWrapper<ErpPurchaseInvoiceDO>()
+                .set(ErpPurchaseInvoiceDO::getSupplierId, updateObj.getSupplierId())
+                .set(ErpPurchaseInvoiceDO::getInvoiceDate, updateObj.getInvoiceDate())
+                .set(ErpPurchaseInvoiceDO::getInvoiceType, updateObj.getInvoiceType())
+                .set(ErpPurchaseInvoiceDO::getInvoiceNo, updateObj.getInvoiceNo())
+                .set(ErpPurchaseInvoiceDO::getInvoiceCount, updateObj.getInvoiceCount())
+                .set(ErpPurchaseInvoiceDO::getTaxExclusiveAmount, updateObj.getTaxExclusiveAmount())
+                .set(ErpPurchaseInvoiceDO::getTaxAmount, updateObj.getTaxAmount())
+                .set(ErpPurchaseInvoiceDO::getTotalAmount, updateObj.getTotalAmount())
+                .set(ErpPurchaseInvoiceDO::getDeptId, updateObj.getDeptId())
+                .set(ErpPurchaseInvoiceDO::getHandlerId, updateObj.getHandlerId())
+                .set(ErpPurchaseInvoiceDO::getRemark, updateObj.getRemark())
+                .set(ErpPurchaseInvoiceDO::getFileUrl, updateObj.getFileUrl())
+                .eq(ErpPurchaseInvoiceDO::getId, id)
+                .eq(ErpPurchaseInvoiceDO::getStatus, status));
+    }
+
     default ErpPurchaseInvoiceDO selectByNo(String no) {
         return selectOne(ErpPurchaseInvoiceDO::getNo, no);
     }

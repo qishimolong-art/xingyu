@@ -5,6 +5,7 @@ import lombok.Data;
 
 import javax.validation.constraints.NotNull;
 import java.math.BigDecimal;
+import java.util.Map;
 
 @Schema(description = "管理后台 - 配件列表直接编辑保存单条 Request VO")
 @Data
@@ -43,5 +44,8 @@ public class ErpPartsBatchUpdatePriceFieldsReqVO {
 
     @Schema(description = "标准库存")
     private Integer stockStandard;
+
+    @Schema(description = "自定义价格字段值，key 为字段编码")
+    private Map<String, Object> customFields;
 
 }

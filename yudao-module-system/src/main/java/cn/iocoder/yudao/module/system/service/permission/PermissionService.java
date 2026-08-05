@@ -93,6 +93,29 @@ public interface PermissionService {
 
     List<String> getCurrentUserHiddenFields(String module);
 
+    /**
+     * Gets the hidden fields for the current user, evaluating department-level
+     * product price permissions against the specified business department.
+     *
+     * @param module module key
+     * @param businessDeptId business document department; {@code null} falls back to the login department
+     * @return hidden field keys
+     */
+    List<String> getCurrentUserHiddenFields(String module, Long businessDeptId);
+
+    /**
+     * Gets hidden fields for the current user and optionally skips product
+     * price view permissions. Skipping is used by product master data detail
+     * pages, where only role field permissions should hide fields.
+     *
+     * @param module module key
+     * @param businessDeptId business document department
+     * @param includeProductPricePermission whether to include product price view permissions
+     * @return hidden field keys
+     */
+    List<String> getCurrentUserHiddenFields(String module, Long businessDeptId,
+                                            boolean includeProductPricePermission);
+
     void createOrUpdateFieldDefinitions(List<FieldDefinitionCreateOrUpdateReqDTO> definitions);
 
     void deleteFieldDefinitions(String module, List<String> fieldKeys);

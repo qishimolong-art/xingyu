@@ -1,7 +1,10 @@
 package cn.iocoder.yudao.module.erp.service.purchase;
 
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.ErpPurchaseUpdateRemarkReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.imports.ErpPurchaseImportResultRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.returns.ErpPurchaseReturnDraftCreateReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.returns.ErpPurchaseReturnDraftUpdateReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.returns.ErpPurchaseReturnImportExcelVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.returns.ErpPurchaseReturnImportRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.returns.ErpPurchaseReturnOrderImportExcelVO;
@@ -31,11 +34,38 @@ public interface ErpPurchaseReturnService {
     Long createPurchaseReturn(@Valid ErpPurchaseReturnSaveReqVO createReqVO);
 
     /**
+     * 创建采购退货草稿
+     */
+    Long createPurchaseReturnDraft(ErpPurchaseReturnDraftCreateReqVO createReqVO);
+
+    /**
      * 更新采购退货
      *
      * @param updateReqVO 更新信息
      */
     void updatePurchaseReturn(@Valid ErpPurchaseReturnSaveReqVO updateReqVO);
+
+    /**
+     * 保存采购退货草稿
+     */
+    void updatePurchaseReturnDraft(ErpPurchaseReturnDraftUpdateReqVO updateReqVO);
+
+    /**
+     * 更新并提交采购退货草稿
+     */
+    void updateAndSubmitPurchaseReturnDraft(@Valid ErpPurchaseReturnDraftUpdateReqVO updateReqVO);
+
+    /**
+     * 提交采购退货草稿
+     */
+    void submitPurchaseReturn(Long id);
+
+    /**
+     * 修改采购退货备注，不受审批状态限制
+     *
+     * @param updateReqVO 备注信息
+     */
+    void updatePurchaseReturnRemark(@Valid ErpPurchaseUpdateRemarkReqVO updateReqVO);
 
     /**
      * 更新采购退货的状态

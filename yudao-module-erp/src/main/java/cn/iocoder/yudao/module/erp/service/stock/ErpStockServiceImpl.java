@@ -9,6 +9,7 @@ import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.stock.ErpStockPageR
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.stock.ErpStockUpdateReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.product.ErpProductDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockDO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockBatchQuantityDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockLockDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockRecordDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpWarehouseDO;
@@ -16,9 +17,13 @@ import cn.iocoder.yudao.module.erp.dal.mysql.product.ErpProductMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.purchase.ErpPurchaseInItemMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.stock.ErpStockLockMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.stock.ErpStockMapper;
+import cn.iocoder.yudao.module.erp.dal.mysql.stock.ErpStockBatchQuantityMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.stock.ErpStockRecordMapper;
 import cn.iocoder.yudao.module.erp.enums.ErpAuditStatus;
+import cn.iocoder.yudao.module.erp.enums.sale.ErpSaleCartStatusEnum;
+import cn.iocoder.yudao.module.erp.enums.stock.ErpStockCheckTypeEnum;
 import cn.iocoder.yudao.module.erp.enums.stock.ErpStockRecordBizTypeEnum;
+import cn.iocoder.yudao.module.erp.enums.stock.ErpStockTransferDirectionEnum;
 import cn.iocoder.yudao.module.erp.service.product.ErpProductService;
 import cn.iocoder.yudao.module.erp.service.stock.bo.ErpProductStockPermissionScope;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
@@ -35,6 +40,7 @@ import java.math.RoundingMode;
 import java.sql.Timestamp;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Date;
@@ -88,6 +94,8 @@ public class ErpStockServiceImpl implements ErpStockService {
     private ErpProductMapper productMapper;
     @Resource
     private ErpStockRecordMapper stockRecordMapper;
+    @Resource
+    private ErpStockBatchQuantityMapper stockBatchQuantityMapper;
     @Resource
     private ErpPurchaseInItemMapper purchaseInItemMapper;
 
@@ -304,28 +312,97 @@ public class ErpStockServiceImpl implements ErpStockService {
         }
         Collection<Long> keywordProductIdFilter = null;
         Collection<Long> keywordWarehouseIdFilter = null;
+        Map<Long, Set<Long>> batchKeywordStockKeyMap = null;
         if (StringUtils.hasText(pageReqVO.getKeyword())) {
             keywordProductIdFilter = DataPermissionUtils.executeIgnore(() ->
                     productMapper.selectIdsByKeyword(pageReqVO));
             keywordWarehouseIdFilter = warehouseService.getWarehousePage(buildKeywordWarehouseReqVO(pageReqVO)).getList().stream()
                     .map(ErpWarehouseDO::getId)
                     .collect(Collectors.toList());
+            if (Boolean.TRUE.equals(pageReqVO.getShowBatchNo())) {
+                Collection<Long> finalVisibleWarehouseIds = warehouseIdFilter;
+                batchKeywordStockKeyMap = new LinkedHashMap<>(DataPermissionUtils.executeIgnore(() ->
+                        stockRecordMapper.selectStockKeyMapByBatchNoKeyword(
+                                pageReqVO.getKeyword(), finalVisibleWarehouseIds)));
+                List<ErpStockBatchQuantityDO> associatedBatchKeys = DataPermissionUtils.executeIgnore(() ->
+                        stockBatchQuantityMapper.selectAssociatedBatchKeywordStockKeyList(
+                                pageReqVO.getKeyword().trim().replaceAll("\\s+", "%"),
+                                finalVisibleWarehouseIds,
+                                ErpAuditStatus.PROCESS.getStatus(),
+                                Arrays.asList(ErpSaleCartStatusEnum.PROCESS.getStatus(),
+                                        ErpSaleCartStatusEnum.SUBMITTED.getStatus(),
+                                        ErpSaleCartStatusEnum.FIRST_APPROVE.getStatus()),
+                                ErpStockCheckTypeEnum.COUNT.getType(),
+                                ErpStockTransferDirectionEnum.TRANSFER_OUT.getDirection(),
+                                ErpStockTransferDirectionEnum.TRANSFER_IN.getDirection(),
+                                Collections.singletonList(ErpAuditStatus.APPROVE.getStatus())));
+                mergeBatchKeywordStockKeys(batchKeywordStockKeyMap, associatedBatchKeys);
+            }
         }
         Collection<Long> finalProductIdFilter = productIdFilter;
         Collection<Long> finalWarehouseIdFilter = warehouseIdFilter;
         Collection<Long> finalKeywordProductIdFilter = keywordProductIdFilter;
         Collection<Long> finalKeywordWarehouseIdFilter = keywordWarehouseIdFilter;
+        Map<Long, Set<Long>> finalBatchKeywordStockKeyMap = batchKeywordStockKeyMap;
         ErpProductStockPermissionScope finalProductStockScope = productStockScope;
         return DataPermissionUtils.executeIgnore(() ->
                 finalProductStockScope == null || finalProductStockScope.isAll()
-                        ? stockMapper.selectPage(pageReqVO, finalProductIdFilter, finalWarehouseIdFilter,
-                        finalKeywordProductIdFilter, finalKeywordWarehouseIdFilter)
-                        : stockMapper.selectPage(pageReqVO, finalProductIdFilter, finalWarehouseIdFilter,
-                        finalKeywordProductIdFilter, finalKeywordWarehouseIdFilter,
+                        ? selectStockPage(pageReqVO, finalProductIdFilter, finalWarehouseIdFilter,
+                        finalKeywordProductIdFilter, finalKeywordWarehouseIdFilter, finalBatchKeywordStockKeyMap)
+                        : selectStockPageWithPermission(pageReqVO, finalProductIdFilter, finalWarehouseIdFilter,
+                        finalKeywordProductIdFilter, finalKeywordWarehouseIdFilter, finalBatchKeywordStockKeyMap,
                         finalProductStockScope.getDepartmentWarehouseIds(),
                         finalProductStockScope.getSelfWarehouseIds(),
                         finalProductStockScope.getUserId() != null
                                 ? String.valueOf(finalProductStockScope.getUserId()) : ""));
+    }
+
+    private PageResult<ErpStockDO> selectStockPage(ErpStockPageReqVO pageReqVO,
+                                                   Collection<Long> productIdFilter,
+                                                   Collection<Long> warehouseIdFilter,
+                                                   Collection<Long> keywordProductIdFilter,
+                                                   Collection<Long> keywordWarehouseIdFilter,
+                                                   Map<Long, Set<Long>> batchKeywordStockKeyMap) {
+        if (batchKeywordStockKeyMap == null) {
+            return stockMapper.selectPage(pageReqVO, productIdFilter, warehouseIdFilter,
+                    keywordProductIdFilter, keywordWarehouseIdFilter);
+        }
+        return stockMapper.selectPage(pageReqVO, productIdFilter, warehouseIdFilter,
+                keywordProductIdFilter, keywordWarehouseIdFilter, batchKeywordStockKeyMap);
+    }
+
+    private PageResult<ErpStockDO> selectStockPageWithPermission(
+            ErpStockPageReqVO pageReqVO,
+            Collection<Long> productIdFilter,
+            Collection<Long> warehouseIdFilter,
+            Collection<Long> keywordProductIdFilter,
+            Collection<Long> keywordWarehouseIdFilter,
+            Map<Long, Set<Long>> batchKeywordStockKeyMap,
+            Collection<Long> departmentWarehouseIds,
+            Collection<Long> selfWarehouseIds,
+            String selfCreator) {
+        if (batchKeywordStockKeyMap == null) {
+            return stockMapper.selectPage(pageReqVO, productIdFilter, warehouseIdFilter,
+                    keywordProductIdFilter, keywordWarehouseIdFilter,
+                    departmentWarehouseIds, selfWarehouseIds, selfCreator);
+        }
+        return stockMapper.selectPage(pageReqVO, productIdFilter, warehouseIdFilter,
+                keywordProductIdFilter, keywordWarehouseIdFilter, batchKeywordStockKeyMap,
+                departmentWarehouseIds, selfWarehouseIds, selfCreator);
+    }
+
+    private void mergeBatchKeywordStockKeys(Map<Long, Set<Long>> stockKeyMap,
+                                            Collection<ErpStockBatchQuantityDO> stockKeys) {
+        if (stockKeyMap == null || stockKeys == null) {
+            return;
+        }
+        for (ErpStockBatchQuantityDO stockKey : stockKeys) {
+            if (stockKey.getProductId() == null || stockKey.getWarehouseId() == null) {
+                continue;
+            }
+            stockKeyMap.computeIfAbsent(stockKey.getProductId(), key -> new LinkedHashSet<>())
+                    .add(stockKey.getWarehouseId());
+        }
     }
 
     @Override

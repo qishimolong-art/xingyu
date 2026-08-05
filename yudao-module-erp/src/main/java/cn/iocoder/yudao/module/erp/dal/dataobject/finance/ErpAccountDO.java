@@ -1,6 +1,7 @@
 package cn.iocoder.yudao.module.erp.dal.dataobject.finance;
 
 import cn.iocoder.yudao.framework.mybatis.core.dataobject.BaseDO;
+import cn.iocoder.yudao.module.erp.enums.finance.ErpAccountDocumentStatusEnum;
 import com.baomidou.mybatisplus.annotation.KeySequence;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
@@ -66,6 +67,13 @@ public class ErpAccountDO extends BaseDO {
      * 状态
      */
     private Integer status;
+
+    /**
+     * 提交状态
+     *
+     * 枚举 {@link ErpAccountDocumentStatusEnum}
+     */
+    private Integer documentStatus;
 
     /**
      * 排序

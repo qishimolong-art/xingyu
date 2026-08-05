@@ -13,8 +13,11 @@ import org.springframework.util.StringUtils;
 
 import java.util.Collection;
 import java.util.Collections;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
@@ -89,6 +92,45 @@ public interface ErpStockRecordMapper extends BaseMapperX<ErpStockRecordDO> {
                 .or().apply("EXISTS (SELECT 1 FROM system_dept d WHERE d.id = dept_id "
                         + "AND d.deleted = b'0' AND d.name LIKE {0})", "%" + value + "%")
                 .or().apply("DATE_FORMAT(create_time, '%Y-%m-%d %H:%i:%s') LIKE {0}", "%" + value + "%"));
+    }
+
+    /**
+     * 一次扫描批次流水，返回命中批次号的产品、仓库组合，避免库存分页对流水表执行相关子查询。
+     */
+    default Map<Long, Set<Long>> selectStockKeyMapByBatchNoKeyword(
+            String keyword, Collection<Long> warehouseIdFilter) {
+        if (!StringUtils.hasText(keyword)) {
+            return Collections.emptyMap();
+        }
+        if (warehouseIdFilter != null && warehouseIdFilter.isEmpty()) {
+            return Collections.emptyMap();
+        }
+        QueryWrapper<ErpStockRecordDO> wrapper =
+                buildBatchNoKeywordStockKeyWrapper(keyword, warehouseIdFilter);
+        Map<Long, Set<Long>> result = new LinkedHashMap<>();
+        for (ErpStockRecordDO record : selectList(wrapper)) {
+            if (record.getProductId() == null || record.getWarehouseId() == null) {
+                continue;
+            }
+            result.computeIfAbsent(record.getProductId(), key -> new LinkedHashSet<>())
+                    .add(record.getWarehouseId());
+        }
+        return result;
+    }
+
+    static QueryWrapper<ErpStockRecordDO> buildBatchNoKeywordStockKeyWrapper(
+            String keyword, Collection<Long> warehouseIdFilter) {
+        String value = keyword.trim().replaceAll("\\s+", "%");
+        QueryWrapper<ErpStockRecordDO> wrapper = new QueryWrapper<ErpStockRecordDO>()
+                .select("product_id", "warehouse_id")
+                .isNotNull("batch_no")
+                .ne("batch_no", "")
+                .apply("TRIM(batch_no) LIKE {0}", "%" + value + "%")
+                .groupBy("product_id", "warehouse_id");
+        if (warehouseIdFilter != null) {
+            wrapper.in("warehouse_id", warehouseIdFilter);
+        }
+        return wrapper;
     }
 
     static void orderByIfPresent(QueryWrapperX<ErpStockRecordDO> wrapper, ErpStockRecordPageReqVO reqVO) {

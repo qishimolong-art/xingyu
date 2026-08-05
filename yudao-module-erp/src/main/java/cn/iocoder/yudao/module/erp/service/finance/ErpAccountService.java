@@ -1,6 +1,7 @@
 package cn.iocoder.yudao.module.erp.service.finance;
 
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
+import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.account.ErpAccountDraftSaveReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.account.ErpAccountPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.account.ErpAccountSaveReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.ErpAccountDO;
@@ -29,11 +30,48 @@ public interface ErpAccountService {
     Long createAccount(@Valid ErpAccountSaveReqVO createReqVO);
 
     /**
+     * 创建结算账户草稿
+     *
+     * @param createReqVO 草稿信息
+     * @return 编号
+     */
+    Long createAccountDraft(@Valid ErpAccountDraftSaveReqVO createReqVO);
+
+    /**
+     * 创建并正式提交结算账户
+     *
+     * @param createReqVO 创建信息
+     * @return 编号
+     */
+    Long createAndSubmitAccount(@Valid ErpAccountSaveReqVO createReqVO);
+
+    /**
      * 更新ERP 结算账户
      *
      * @param updateReqVO 更新信息
      */
     void updateAccount(@Valid ErpAccountSaveReqVO updateReqVO);
+
+    /**
+     * 保存结算账户草稿
+     *
+     * @param updateReqVO 草稿信息
+     */
+    void updateAccountDraft(@Valid ErpAccountDraftSaveReqVO updateReqVO);
+
+    /**
+     * 更新并正式提交结算账户草稿
+     *
+     * @param updateReqVO 更新信息
+     */
+    void updateAndSubmitAccountDraft(@Valid ErpAccountSaveReqVO updateReqVO);
+
+    /**
+     * 直接提交已持久化的结算账户草稿
+     *
+     * @param id 编号
+     */
+    void submitAccountDraft(Long id);
 
     /**
      * 更新结算账户默认状态

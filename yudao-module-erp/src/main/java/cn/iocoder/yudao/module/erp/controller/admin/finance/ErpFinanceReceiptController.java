@@ -11,7 +11,9 @@ import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
 import cn.iocoder.yudao.framework.excel.core.util.ExcelUtils;
 import cn.iocoder.yudao.framework.mybatis.core.query.LambdaQueryWrapperX;
 import cn.iocoder.yudao.module.erp.controller.admin.common.ErpAuditStatusRequestValidator;
+import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.ErpFinanceUpdateRemarkReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.imports.ErpFinanceImportRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.receipt.ErpFinanceReceiptDraftSaveReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.receipt.ErpFinanceReceiptExportRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.receipt.ErpFinanceReceiptImportExcelVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.receipt.ErpFinanceReceiptPageReqVO;
@@ -89,9 +91,27 @@ public class ErpFinanceReceiptController {
 
     @PostMapping("/create")
     @Operation(summary = "创建收款单")
-    @PreAuthorize("@ss.hasPermission('erp:finance-receipt:create')")
+    @PreAuthorize("@ss.hasPermission('erp:finance-receipt:create') and " +
+            "@ss.hasPermission('erp:finance-receipt:update-status')")
     public CommonResult<Long> createFinanceReceipt(@Valid @RequestBody ErpFinanceReceiptSaveReqVO createReqVO) {
         return success(financeReceiptService.createFinanceReceipt(createReqVO));
+    }
+
+    @PostMapping("/create-draft")
+    @Operation(summary = "创建收款单草稿")
+    @PreAuthorize("@ss.hasPermission('erp:finance-receipt:create')")
+    public CommonResult<Long> createFinanceReceiptDraft(
+            @RequestBody ErpFinanceReceiptDraftSaveReqVO createReqVO) {
+        return success(financeReceiptService.createFinanceReceiptDraft(createReqVO));
+    }
+
+    @PostMapping("/create-and-submit")
+    @Operation(summary = "创建并提交收款单")
+    @PreAuthorize("@ss.hasPermission('erp:finance-receipt:create') and " +
+            "@ss.hasPermission('erp:finance-receipt:update-status')")
+    public CommonResult<Long> createAndSubmitFinanceReceipt(
+            @Valid @RequestBody ErpFinanceReceiptSaveReqVO createReqVO) {
+        return success(financeReceiptService.createAndSubmitFinanceReceipt(createReqVO));
     }
 
     @PutMapping("/update")
@@ -99,6 +119,42 @@ public class ErpFinanceReceiptController {
     @PreAuthorize("@ss.hasPermission('erp:finance-receipt:update')")
     public CommonResult<Boolean> updateFinanceReceipt(@Valid @RequestBody ErpFinanceReceiptSaveReqVO updateReqVO) {
         financeReceiptService.updateFinanceReceipt(updateReqVO);
+        return success(true);
+    }
+
+    @PutMapping("/update-draft")
+    @Operation(summary = "更新收款单草稿")
+    @PreAuthorize("@ss.hasPermission('erp:finance-receipt:update')")
+    public CommonResult<Boolean> updateFinanceReceiptDraft(
+            @RequestBody ErpFinanceReceiptDraftSaveReqVO updateReqVO) {
+        financeReceiptService.updateFinanceReceiptDraft(updateReqVO);
+        return success(true);
+    }
+
+    @PutMapping("/update-and-submit")
+    @Operation(summary = "更新并提交收款单草稿")
+    @PreAuthorize("@ss.hasPermission('erp:finance-receipt:update') and " +
+            "@ss.hasPermission('erp:finance-receipt:update-status')")
+    public CommonResult<Boolean> updateAndSubmitFinanceReceipt(
+            @Valid @RequestBody ErpFinanceReceiptSaveReqVO updateReqVO) {
+        financeReceiptService.updateAndSubmitFinanceReceipt(updateReqVO);
+        return success(true);
+    }
+
+    @PutMapping("/submit")
+    @Operation(summary = "提交收款单草稿")
+    @PreAuthorize("@ss.hasPermission('erp:finance-receipt:update-status')")
+    public CommonResult<Boolean> submitFinanceReceipt(@RequestParam("id") Long id) {
+        financeReceiptService.submitFinanceReceipt(id);
+        return success(true);
+    }
+
+    @PutMapping("/update-remark")
+    @Operation(summary = "更新收款单备注")
+    @PreAuthorize("@ss.hasPermission('erp:finance-receipt:update')")
+    public CommonResult<Boolean> updateFinanceReceiptRemark(
+            @Valid @RequestBody ErpFinanceUpdateRemarkReqVO updateReqVO) {
+        financeReceiptService.updateFinanceReceiptRemark(updateReqVO);
         return success(true);
     }
 
@@ -206,7 +262,8 @@ public class ErpFinanceReceiptController {
 
     @PostMapping("/import")
     @Operation(summary = "导入收款单")
-    @PreAuthorize("@ss.hasPermission('erp:finance-receipt:import')")
+    @PreAuthorize("@ss.hasPermission('erp:finance-receipt:import') and " +
+            "@ss.hasPermission('erp:finance-receipt:update-status')")
     public CommonResult<ErpFinanceImportRespVO> importFinanceReceipt(@RequestParam("file") MultipartFile file)
             throws Exception {
         List<ErpFinanceReceiptImportExcelVO> list = ExcelUtils.read(file, ErpFinanceReceiptImportExcelVO.class);

@@ -3,6 +3,7 @@ package cn.iocoder.yudao.module.erp.dal.mysql.config;
 import cn.iocoder.yudao.framework.mybatis.core.mapper.BaseMapperX;
 import cn.iocoder.yudao.framework.mybatis.core.query.LambdaQueryWrapperX;
 import cn.iocoder.yudao.module.erp.dal.dataobject.config.ErpFieldConfigDO;
+import com.baomidou.mybatisplus.annotation.InterceptorIgnore;
 import org.apache.ibatis.annotations.Delete;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
@@ -26,6 +27,14 @@ public interface ErpFieldConfigMapper extends BaseMapperX<ErpFieldConfigDO> {
                 .eq(ErpFieldConfigDO::getModuleKey, moduleKey)
                 .eq(ErpFieldConfigDO::getFieldName, fieldName));
     }
+
+    @InterceptorIgnore(tenantLine = "true")
+    @Select("SELECT * FROM erp_field_config "
+            + "WHERE tenant_id = #{tenantId} AND module_key = #{moduleKey} AND field_group = #{fieldGroup} "
+            + "AND deleted = b'0' FOR UPDATE")
+    List<ErpFieldConfigDO> selectListByModuleAndGroupForUpdate(@Param("tenantId") Long tenantId,
+                                                               @Param("moduleKey") String moduleKey,
+                                                               @Param("fieldGroup") String fieldGroup);
 
     /**
      * 物理删除：绕过 MyBatis-Plus 逻辑删除，直接 DELETE FROM

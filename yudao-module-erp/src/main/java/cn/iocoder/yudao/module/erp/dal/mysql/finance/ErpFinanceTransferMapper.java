@@ -45,4 +45,10 @@ public interface ErpFinanceTransferMapper extends BaseMapperX<ErpFinanceTransfer
         return selectOne(ErpFinanceTransferDO::getNo, no);
     }
 
+    default ErpFinanceTransferDO selectByIdForUpdate(Long id) {
+        return selectOne(new LambdaQueryWrapperX<ErpFinanceTransferDO>()
+                .eq(ErpFinanceTransferDO::getId, id)
+                .last("FOR UPDATE"));
+    }
+
 }

@@ -1,6 +1,8 @@
 package cn.iocoder.yudao.module.erp.service.finance;
 
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
+import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.ErpFinanceUpdateRemarkReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.payment.ErpFinancePaymentDraftSaveReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.payment.ErpFinancePaymentPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.payment.ErpFinancePaymentSaveReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.payment.ErpFinancePaymentWriteOffCandidateRespVO;
@@ -28,12 +30,24 @@ public interface ErpFinancePaymentService {
      */
     Long createFinancePayment(@Valid ErpFinancePaymentSaveReqVO createReqVO);
 
+    Long createFinancePaymentDraft(ErpFinancePaymentDraftSaveReqVO createReqVO);
+
+    Long createAndSubmitFinancePayment(@Valid ErpFinancePaymentSaveReqVO createReqVO);
+
     /**
      * 更新付款单
      *
      * @param updateReqVO 更新信息
      */
     void updateFinancePayment(@Valid ErpFinancePaymentSaveReqVO updateReqVO);
+
+    void updateFinancePaymentDraft(ErpFinancePaymentDraftSaveReqVO updateReqVO);
+
+    void updateAndSubmitFinancePayment(@Valid ErpFinancePaymentSaveReqVO updateReqVO);
+
+    void submitFinancePayment(Long id);
+
+    void updateFinancePaymentRemark(@Valid ErpFinanceUpdateRemarkReqVO updateReqVO);
 
     /**
      * 审核付款单

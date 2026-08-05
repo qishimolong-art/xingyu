@@ -19,6 +19,10 @@ public interface ErpReceivableOtherIncomeItemMapper extends BaseMapperX<ErpRecei
         return selectList(ErpReceivableOtherIncomeItemDO::getIncomeId, incomeIds);
     }
 
+    default int deleteByIncomeId(Long incomeId) {
+        return delete(ErpReceivableOtherIncomeItemDO::getIncomeId, incomeId);
+    }
+
     default List<ErpReceivableOtherIncomeItemDO> selectListByItemNameOrInvoiceNo(String itemName, String invoiceNo) {
         return selectList(new LambdaQueryWrapperX<ErpReceivableOtherIncomeItemDO>()
                 .likeIfPresent(ErpReceivableOtherIncomeItemDO::getItemName, itemName)

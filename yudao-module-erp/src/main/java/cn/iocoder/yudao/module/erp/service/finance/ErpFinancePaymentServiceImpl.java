@@ -7,6 +7,8 @@ import cn.iocoder.yudao.framework.mybatis.core.query.LambdaQueryWrapperX;
 import cn.iocoder.yudao.framework.security.core.util.SecurityFrameworkUtils;
 import cn.iocoder.yudao.framework.common.util.collection.CollectionUtils;
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
+import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.ErpFinanceUpdateRemarkReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.payment.ErpFinancePaymentDraftSaveReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.payment.ErpFinancePaymentPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.payment.ErpFinancePaymentSaveReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.payment.ErpFinancePaymentWriteOffCandidateRespVO;
@@ -15,6 +17,7 @@ import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.payment.ErpFinanc
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.ErpFinancePaymentDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.ErpFinancePaymentItemDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseInDO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseInItemDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchasePriceAdjustDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseReturnDO;
 import cn.iocoder.yudao.module.erp.dal.mysql.finance.ErpFinancePaymentItemMapper;
@@ -25,8 +28,10 @@ import cn.iocoder.yudao.module.erp.dal.mysql.purchase.ErpPurchaseReturnMapper;
 import cn.iocoder.yudao.module.erp.dal.redis.no.ErpNoRedisDAO;
 import cn.iocoder.yudao.module.erp.enums.ErpAuditStatus;
 import cn.iocoder.yudao.module.erp.enums.common.ErpBizTypeEnum;
+import cn.iocoder.yudao.module.erp.enums.finance.ErpFinancePaymentStatusEnum;
 import cn.iocoder.yudao.module.erp.enums.finance.ErpFinanceWriteOffStatusEnum;
 import cn.iocoder.yudao.module.erp.service.common.ErpOperateLogService;
+import cn.iocoder.yudao.module.erp.service.common.ErpOriginalSettlementAmountUtils;
 import cn.iocoder.yudao.module.erp.service.purchase.ErpPurchaseInService;
 import cn.iocoder.yudao.module.erp.service.purchase.ErpPurchasePriceAdjustService;
 import cn.iocoder.yudao.module.erp.service.purchase.ErpPurchaseReturnService;
@@ -53,6 +58,7 @@ import static cn.iocoder.yudao.framework.common.exception.util.ServiceExceptionU
 import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.*;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.*;
 import static cn.iocoder.yudao.module.erp.enums.LogRecordConstants.*;
+import static cn.iocoder.yudao.module.erp.service.common.ErpFinanceAmountUtils.normalize;
 
 // TODO 芋艿：记录操作日志
 
@@ -104,6 +110,8 @@ public class ErpFinancePaymentServiceImpl implements ErpFinancePaymentService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Long createFinancePayment(ErpFinancePaymentSaveReqVO createReqVO) {
+        fieldPermissionMasker.clearHiddenFields(FIELD_PERMISSION_MODULE, createReqVO);
+        fieldPermissionMasker.clearHiddenItemFields(FIELD_PERMISSION_MODULE, createReqVO.getItems());
         // 1.1 校验订单项的有效性
         List<ErpFinancePaymentItemDO> paymentItems = validateFinancePaymentItems(
                 createReqVO.getSupplierId(), createReqVO.getItems());
@@ -142,9 +150,47 @@ public class ErpFinancePaymentServiceImpl implements ErpFinancePaymentService {
 
     @Override
     @Transactional(rollbackFor = Exception.class)
+    public Long createFinancePaymentDraft(ErpFinancePaymentDraftSaveReqVO createReqVO) {
+        fieldPermissionMasker.clearHiddenFields(FIELD_PERMISSION_MODULE, createReqVO);
+        fieldPermissionMasker.clearHiddenItemFields(FIELD_PERMISSION_MODULE, createReqVO.getItems());
+        List<ErpFinancePaymentItemDO> paymentItems = buildFinancePaymentDraftItems(createReqVO.getItems());
+        if (CollUtil.isEmpty(paymentItems)) {
+            throw exception(FINANCE_PAYMENT_DRAFT_ITEMS_REQUIRED);
+        }
+        String no = noRedisDAO.generate(ErpNoRedisDAO.FINANCE_PAYMENT_NO_PREFIX);
+        if (financePaymentMapper.selectByNo(no) != null) {
+            throw exception(FINANCE_PAYMENT_NO_EXISTS);
+        }
+        ErpFinancePaymentDO payment = BeanUtils.toBean(createReqVO, ErpFinancePaymentDO.class)
+                .setId(null)
+                .setNo(no)
+                .setStatus(ErpFinancePaymentStatusEnum.DRAFT.getStatus())
+                .setTotalPrice(createReqVO.getTotalPrice())
+                .setDiscountPrice(createReqVO.getDiscountPrice())
+                .setPaymentTime(createReqVO.getPaymentTime() != null
+                        ? createReqVO.getPaymentTime() : LocalDateTime.now());
+        fillDraftAmounts(payment, paymentItems);
+        permissionFieldFiller.fillCreateFields(payment);
+        financePaymentMapper.insert(payment);
+        insertFinancePaymentDraftItems(payment.getId(), paymentItems);
+        operateLogService.recordCreate(ERP_FINANCE_PAYMENT_TYPE, payment.getId(), payment.getNo());
+        return payment.getId();
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public Long createAndSubmitFinancePayment(ErpFinancePaymentSaveReqVO createReqVO) {
+        return createFinancePayment(createReqVO);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
     public void updateFinancePayment(ErpFinancePaymentSaveReqVO updateReqVO) {
         // 1.1 校验存在
         ErpFinancePaymentDO payment = validateFinancePaymentExists(updateReqVO.getId());
+        if (ErpFinancePaymentStatusEnum.DRAFT.getStatus().equals(payment.getStatus())) {
+            throw exception(FINANCE_PAYMENT_DRAFT_UPDATE_FAIL, payment.getNo());
+        }
         if (ErpAuditStatus.APPROVE.getStatus().equals(payment.getStatus())) {
             throw exception(FINANCE_PAYMENT_UPDATE_FAIL_APPROVE, payment.getNo());
         }
@@ -182,14 +228,97 @@ public class ErpFinancePaymentServiceImpl implements ErpFinancePaymentService {
         recordUpdate(payment, updateObj);
     }
 
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void updateFinancePaymentDraft(ErpFinancePaymentDraftSaveReqVO updateReqVO) {
+        ErpFinancePaymentDO payment = validateFinancePaymentExists(updateReqVO.getId());
+        if (!ErpFinancePaymentStatusEnum.DRAFT.getStatus().equals(payment.getStatus())) {
+            throw exception(FINANCE_PAYMENT_DRAFT_UPDATE_FAIL, payment.getNo());
+        }
+        List<ErpFinancePaymentItemDO> oldPaymentItems =
+                financePaymentItemMapper.selectListByPaymentId(updateReqVO.getId());
+        fieldPermissionMasker.preserveHiddenFields(FIELD_PERMISSION_MODULE, updateReqVO, payment);
+        if (fieldPermissionMasker.isFieldHidden(FIELD_PERMISSION_MODULE, "items")) {
+            updateReqVO.setItems(BeanUtils.toBean(oldPaymentItems, ErpFinancePaymentSaveReqVO.Item.class));
+        } else {
+            fieldPermissionMasker.preserveHiddenItemFields(
+                    FIELD_PERMISSION_MODULE, updateReqVO.getItems(), oldPaymentItems);
+        }
+        List<ErpFinancePaymentItemDO> paymentItems = buildFinancePaymentDraftItems(updateReqVO.getItems());
+        ErpFinancePaymentDO updateObj = BeanUtils.toBean(updateReqVO, ErpFinancePaymentDO.class)
+                .setId(payment.getId())
+                .setNo(payment.getNo())
+                .setStatus(payment.getStatus())
+                .setTotalPrice(updateReqVO.getTotalPrice())
+                .setDiscountPrice(updateReqVO.getDiscountPrice())
+                .setPaymentTime(updateReqVO.getPaymentTime() != null
+                        ? updateReqVO.getPaymentTime() : payment.getPaymentTime());
+        fillDraftAmounts(updateObj, paymentItems);
+        if (financePaymentMapper.updateByIdAndStatus(payment.getId(),
+                ErpFinancePaymentStatusEnum.DRAFT.getStatus(), updateObj) == 0) {
+            throw exception(FINANCE_PAYMENT_DRAFT_UPDATE_FAIL, payment.getNo());
+        }
+        financePaymentItemMapper.deleteByPaymentId(payment.getId());
+        insertFinancePaymentDraftItems(payment.getId(), paymentItems);
+        recordUpdate(payment, updateObj);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void updateAndSubmitFinancePayment(ErpFinancePaymentSaveReqVO updateReqVO) {
+        ErpFinancePaymentDraftSaveReqVO draftReqVO =
+                BeanUtils.toBean(updateReqVO, ErpFinancePaymentDraftSaveReqVO.class);
+        updateFinancePaymentDraft(draftReqVO);
+        submitFinancePayment(updateReqVO.getId());
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void submitFinancePayment(Long id) {
+        ErpFinancePaymentDO payment = financePaymentMapper.selectByIdForUpdate(id);
+        if (payment == null) {
+            throw exception(FINANCE_PAYMENT_NOT_EXISTS);
+        }
+        if (!ErpFinancePaymentStatusEnum.DRAFT.getStatus().equals(payment.getStatus())) {
+            throw exception(FINANCE_PAYMENT_DRAFT_SUBMIT_FAIL, "当前状态不是草稿");
+        }
+        validateFinancePaymentDraftForSubmit(payment);
+        List<ErpFinancePaymentItemDO> paymentItems = validateFinancePaymentItems(
+                payment.getSupplierId(),
+                BeanUtils.toBean(financePaymentItemMapper.selectListByPaymentId(id),
+                        ErpFinancePaymentSaveReqVO.Item.class));
+        fillDefaultAmount(payment);
+        preparePendingItems(payment, paymentItems);
+        ErpFinancePaymentDO statusUpdate = new ErpFinancePaymentDO()
+                .setStatus(ErpFinancePaymentStatusEnum.PROCESS.getStatus())
+                .setTotalPrice(payment.getTotalPrice())
+                .setDiscountPrice(payment.getDiscountPrice())
+                .setPaymentPrice(payment.getPaymentPrice());
+        if (financePaymentMapper.updateByIdAndStatus(id,
+                ErpFinancePaymentStatusEnum.DRAFT.getStatus(), statusUpdate) == 0) {
+            throw exception(FINANCE_PAYMENT_DRAFT_SUBMIT_FAIL, "状态已变化，请刷新后重试");
+        }
+        financePaymentItemMapper.deleteByPaymentId(id);
+        insertFinancePaymentDraftItems(id, paymentItems);
+        operateLogService.recordUpdate(ERP_FINANCE_PAYMENT_TYPE, id, payment.getNo());
+    }
+
+    @Override
+    public void updateFinancePaymentRemark(ErpFinanceUpdateRemarkReqVO updateReqVO) {
+        ErpFinancePaymentDO payment = validateFinancePaymentExists(updateReqVO.getId());
+        financePaymentMapper.updateById(new ErpFinancePaymentDO()
+                .setId(updateReqVO.getId()).setRemark(updateReqVO.getRemark()));
+        operateLogService.recordUpdate(ERP_FINANCE_PAYMENT_TYPE, payment.getId(), payment.getNo());
+    }
+
     private void fillDefaultAmount(ErpFinancePaymentDO payment) {
-        payment.setDiscountPrice(getZeroIfNull(payment.getDiscountPrice()));
-        BigDecimal totalPrice = getZeroIfNull(payment.getTotalPrice());
+        payment.setDiscountPrice(normalize(getZeroIfNull(payment.getDiscountPrice())));
+        BigDecimal totalPrice = normalize(getZeroIfNull(payment.getTotalPrice()));
         BigDecimal paymentPrice = totalPrice.subtract(payment.getDiscountPrice());
         if (paymentPrice.compareTo(BigDecimal.ZERO) <= 0) {
             throw exception(FINANCE_PAYMENT_WRITEOFF_AMOUNT_INVALID, "实际付款金额必须大于 0");
         }
-        payment.setPaymentPrice(paymentPrice);
+        payment.setTotalPrice(totalPrice).setPaymentPrice(normalize(paymentPrice));
     }
 
     @Override
@@ -199,7 +328,7 @@ public class ErpFinancePaymentServiceImpl implements ErpFinancePaymentService {
         if (payment == null) {
             throw exception(FINANCE_PAYMENT_NOT_EXISTS);
         }
-        if (ErpAuditStatus.APPROVE.getStatus().equals(payment.getStatus())) {
+        if (!ErpFinancePaymentStatusEnum.PROCESS.getStatus().equals(payment.getStatus())) {
             throw exception(FINANCE_PAYMENT_APPROVE_FAIL);
         }
         List<ErpFinancePaymentItemDO> pendingItems = financePaymentItemMapper.selectListByPaymentId(id).stream()
@@ -235,7 +364,9 @@ public class ErpFinancePaymentServiceImpl implements ErpFinancePaymentService {
                 if (!Objects.equals(purchaseIn.getSupplierId(), supplierId)) {
                     throw exception(FINANCE_PAYMENT_WRITEOFF_BIZ_INVALID, "供应商必须相同");
                 }
-                item.setTotalPrice(purchaseIn.getTotalPrice()).setBizNo(purchaseIn.getNo());
+                item.setTotalPrice(ErpOriginalSettlementAmountUtils.calculatePurchaseIn(purchaseIn,
+                        purchaseInService.getPurchaseInItemListByInIds(Collections.singleton(item.getBizId()))))
+                        .setBizNo(purchaseIn.getNo());
             } else if (ObjectUtil.equal(item.getBizType(), ErpBizTypeEnum.PURCHASE_RETURN.getType())) {
                 ErpPurchaseReturnDO purchaseReturn = purchaseReturnService.validatePurchaseReturn(item.getBizId());
                 if (!Objects.equals(purchaseReturn.getSupplierId(), supplierId)) {
@@ -253,6 +384,75 @@ public class ErpFinancePaymentServiceImpl implements ErpFinancePaymentService {
             }
             item.setWriteOffStatus(ErpFinanceWriteOffStatusEnum.PENDING.getStatus());
         }));
+    }
+
+    private List<ErpFinancePaymentItemDO> buildFinancePaymentDraftItems(
+            List<ErpFinancePaymentSaveReqVO.Item> list) {
+        if (CollUtil.isEmpty(list)) {
+            return Collections.emptyList();
+        }
+        return list.stream()
+                .filter(Objects::nonNull)
+                .filter(item -> item.getBizType() != null
+                        && item.getBizId() != null
+                        && item.getPaymentPrice() != null)
+                .filter(item -> ObjectUtil.equal(item.getBizType(), ErpBizTypeEnum.PURCHASE_IN.getType())
+                        || ObjectUtil.equal(item.getBizType(), ErpBizTypeEnum.PURCHASE_RETURN.getType())
+                        || ObjectUtil.equal(item.getBizType(), ErpBizTypeEnum.PURCHASE_PRICE_ADJUST.getType()))
+                .map(item -> {
+                    ErpFinancePaymentItemDO draftItem =
+                            BeanUtils.toBean(item, ErpFinancePaymentItemDO.class);
+                    draftItem.setId(null)
+                            .setTotalPrice(normalize(getZeroIfNull(item.getTotalPrice())))
+                            .setPaidPrice(normalize(getZeroIfNull(item.getPaidPrice())))
+                            .setPaymentPrice(normalize(item.getPaymentPrice()))
+                            .setWriteOffStatus(ErpFinanceWriteOffStatusEnum.PENDING.getStatus())
+                            .setWriteOffTime(null)
+                            .setWriteOffUserId(null)
+                            .setReverseTime(null)
+                            .setReverseUserId(null)
+                            .setReverseReason(null);
+                    return draftItem;
+                })
+                .collect(Collectors.toList());
+    }
+
+    private void fillDraftAmounts(ErpFinancePaymentDO payment, List<ErpFinancePaymentItemDO> paymentItems) {
+        BigDecimal totalPrice = CollUtil.isEmpty(paymentItems)
+                ? normalize(getZeroIfNull(payment.getTotalPrice()))
+                : normalize(paymentItems.stream()
+                    .map(ErpFinancePaymentItemDO::getPaymentPrice)
+                    .filter(Objects::nonNull)
+                    .reduce(BigDecimal.ZERO, BigDecimal::add));
+        BigDecimal discountPrice = normalize(getZeroIfNull(payment.getDiscountPrice()));
+        payment.setTotalPrice(totalPrice)
+                .setDiscountPrice(discountPrice)
+                .setPaymentPrice(normalize(totalPrice.subtract(discountPrice)).max(BigDecimal.ZERO));
+    }
+
+    private void insertFinancePaymentDraftItems(Long paymentId, List<ErpFinancePaymentItemDO> paymentItems) {
+        if (CollUtil.isEmpty(paymentItems)) {
+            return;
+        }
+        paymentItems.forEach(item -> item.setId(null).setPaymentId(paymentId));
+        financePaymentItemMapper.insertBatch(paymentItems);
+    }
+
+    private void validateFinancePaymentDraftForSubmit(ErpFinancePaymentDO payment) {
+        if (payment.getPaymentTime() == null) {
+            throw exception(FINANCE_PAYMENT_DRAFT_SUBMIT_FAIL, "付款时间不能为空");
+        }
+        if (payment.getSupplierId() == null) {
+            throw exception(FINANCE_PAYMENT_DRAFT_SUBMIT_FAIL, "供应商不能为空");
+        }
+        if (payment.getAccountId() == null) {
+            throw exception(FINANCE_PAYMENT_DRAFT_SUBMIT_FAIL, "付款账户不能为空");
+        }
+        supplierService.validateSupplier(payment.getSupplierId());
+        accountService.validateAccount(payment.getAccountId());
+        if (payment.getFinanceUserId() != null) {
+            adminUserApi.validateUser(payment.getFinanceUserId());
+        }
     }
 
     private void updateFinancePaymentItemList(Long id, List<ErpFinancePaymentItemDO> newList) {
@@ -320,10 +520,12 @@ public class ErpFinancePaymentServiceImpl implements ErpFinancePaymentService {
             PaymentBizSnapshot biz = lockPaymentBiz(item.getBizType(), item.getBizId(), payment);
             BigDecimal allocatedPrice = financePaymentItemMapper.selectPaymentPriceSumByBizIdAndBizType(
                     item.getBizId(), item.getBizType());
-            BigDecimal remainingPrice = biz.totalPrice.subtract(allocatedPrice);
-            validatePaymentWriteOffAmount(item.getPaymentPrice(), remainingPrice);
+            BigDecimal paymentPrice = normalize(item.getPaymentPrice());
+            BigDecimal remainingPrice = normalize(biz.totalPrice.subtract(allocatedPrice));
+            validatePaymentWriteOffAmount(paymentPrice, remainingPrice);
+            item.setPaymentPrice(paymentPrice);
             item.setBizNo(biz.bizNo).setTotalPrice(biz.totalPrice).setPaidPrice(allocatedPrice);
-            allocationAmount = allocationAmount.add(item.getPaymentPrice());
+            allocationAmount = normalize(allocationAmount.add(paymentPrice));
         }
         BigDecimal currentAllocatedPrice = payment.getId() == null ? BigDecimal.ZERO
                 : financePaymentItemMapper.selectEffectivePriceSumMapByPaymentIds(
@@ -346,10 +548,16 @@ public class ErpFinancePaymentServiceImpl implements ErpFinancePaymentService {
             inQuery.eq(ErpPurchaseInDO::getDeptId, payment.getDeptId());
         }
         List<ErpPurchaseInDO> purchaseIns = purchaseInMapper.selectList(inQuery);
+        Map<Long, List<ErpPurchaseInItemDO>> purchaseInItemMap = CollUtil.isEmpty(purchaseIns)
+                ? Collections.emptyMap()
+                : convertMultiMap(purchaseInService.getPurchaseInItemListByInIds(
+                        convertSet(purchaseIns, ErpPurchaseInDO::getId)), ErpPurchaseInItemDO::getInId);
         Map<Long, BigDecimal> inAllocated = financePaymentItemMapper.selectPaymentPriceSumMapByBizIdsAndBizType(
                 convertSet(purchaseIns, ErpPurchaseInDO::getId), ErpBizTypeEnum.PURCHASE_IN.getType());
         purchaseIns.forEach(row -> addPaymentCandidate(result, ErpBizTypeEnum.PURCHASE_IN, row.getId(), row.getNo(),
-                row.getInTime(), getZeroIfNull(row.getTotalPrice()), inAllocated.getOrDefault(row.getId(), BigDecimal.ZERO)));
+                row.getInTime(), ErpOriginalSettlementAmountUtils.calculatePurchaseIn(row,
+                        purchaseInItemMap.getOrDefault(row.getId(), Collections.emptyList())),
+                inAllocated.getOrDefault(row.getId(), BigDecimal.ZERO)));
 
         LambdaQueryWrapperX<ErpPurchaseReturnDO> returnQuery = new LambdaQueryWrapperX<ErpPurchaseReturnDO>()
                 .eq(ErpPurchaseReturnDO::getSupplierId, payment.getSupplierId())
@@ -421,11 +629,12 @@ public class ErpFinancePaymentServiceImpl implements ErpFinancePaymentService {
             PaymentBizSnapshot biz = lockPaymentBiz(reqItem.getBizType(), reqItem.getBizId(), payment);
             BigDecimal allocatedPrice = financePaymentItemMapper.selectPaymentPriceSumByBizIdAndBizType(
                     reqItem.getBizId(), reqItem.getBizType());
-            validatePaymentWriteOffAmount(reqItem.getWriteOffAmount(), biz.totalPrice.subtract(allocatedPrice));
+            BigDecimal writeOffAmount = normalize(reqItem.getWriteOffAmount());
+            validatePaymentWriteOffAmount(writeOffAmount, normalize(biz.totalPrice.subtract(allocatedPrice)));
             return new ErpFinancePaymentItemDO().setPaymentId(payment.getId())
                     .setBizType(reqItem.getBizType()).setBizId(reqItem.getBizId()).setBizNo(biz.bizNo)
                     .setTotalPrice(biz.totalPrice).setPaidPrice(allocatedPrice)
-                    .setPaymentPrice(reqItem.getWriteOffAmount()).setRemark(reqItem.getRemark())
+                    .setPaymentPrice(writeOffAmount).setRemark(reqItem.getRemark())
                     .setWriteOffStatus(ErpFinanceWriteOffStatusEnum.EFFECTIVE.getStatus())
                     .setWriteOffTime(now).setWriteOffUserId(loginUserId);
         }).collect(Collectors.toList());
@@ -471,7 +680,8 @@ public class ErpFinancePaymentServiceImpl implements ErpFinancePaymentService {
             ErpPurchaseInDO row = purchaseInMapper.selectOne(new LambdaQueryWrapperX<ErpPurchaseInDO>()
                     .eq(ErpPurchaseInDO::getId, bizId).last("FOR UPDATE"));
             result = row == null ? null : new PaymentBizSnapshot(row.getSupplierId(), row.getDeptId(), row.getStatus(),
-                    row.getNo(), getZeroIfNull(row.getTotalPrice()));
+                    row.getNo(), ErpOriginalSettlementAmountUtils.calculatePurchaseIn(row,
+                    purchaseInService.getPurchaseInItemListByInIds(Collections.singleton(bizId))));
         } else if (ObjectUtil.equal(bizType, ErpBizTypeEnum.PURCHASE_RETURN.getType())) {
             ErpPurchaseReturnDO row = purchaseReturnMapper.selectOne(new LambdaQueryWrapperX<ErpPurchaseReturnDO>()
                     .eq(ErpPurchaseReturnDO::getId, bizId).last("FOR UPDATE"));
@@ -516,8 +726,9 @@ public class ErpFinancePaymentServiceImpl implements ErpFinancePaymentService {
     }
 
     private void validatePaymentAllocationLimit(ErpFinancePaymentDO payment, BigDecimal allocatedPrice) {
-        if (allocatedPrice.compareTo(BigDecimal.ZERO) < 0
-                || allocatedPrice.compareTo(getZeroIfNull(payment.getTotalPrice())) > 0) {
+        BigDecimal normalizedAllocatedPrice = normalize(allocatedPrice);
+        if (normalizedAllocatedPrice.compareTo(BigDecimal.ZERO) < 0
+                || normalizedAllocatedPrice.compareTo(normalize(getZeroIfNull(payment.getTotalPrice()))) > 0) {
             throw exception(FINANCE_PAYMENT_WRITEOFF_AMOUNT_EXCEED);
         }
     }

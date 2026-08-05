@@ -11,7 +11,9 @@ import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
 import cn.iocoder.yudao.framework.excel.core.util.ExcelUtils;
 import cn.iocoder.yudao.framework.mybatis.core.query.LambdaQueryWrapperX;
 import cn.iocoder.yudao.module.erp.controller.admin.common.ErpAuditStatusRequestValidator;
+import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.ErpFinanceUpdateRemarkReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.payment.ErpFinancePaymentExportRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.payment.ErpFinancePaymentDraftSaveReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.imports.ErpFinanceImportRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.payment.ErpFinancePaymentImportExcelVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.payment.ErpFinancePaymentPageReqVO;
@@ -89,9 +91,27 @@ public class ErpFinancePaymentController {
 
     @PostMapping("/create")
     @Operation(summary = "创建付款单")
-    @PreAuthorize("@ss.hasPermission('erp:finance-payment:create')")
+    @PreAuthorize("@ss.hasPermission('erp:finance-payment:create') and " +
+            "@ss.hasPermission('erp:finance-payment:update-status')")
     public CommonResult<Long> createFinancePayment(@Valid @RequestBody ErpFinancePaymentSaveReqVO createReqVO) {
         return success(financePaymentService.createFinancePayment(createReqVO));
+    }
+
+    @PostMapping("/create-draft")
+    @Operation(summary = "创建付款单草稿")
+    @PreAuthorize("@ss.hasPermission('erp:finance-payment:create')")
+    public CommonResult<Long> createFinancePaymentDraft(
+            @RequestBody ErpFinancePaymentDraftSaveReqVO createReqVO) {
+        return success(financePaymentService.createFinancePaymentDraft(createReqVO));
+    }
+
+    @PostMapping("/create-and-submit")
+    @Operation(summary = "创建并提交付款单")
+    @PreAuthorize("@ss.hasPermission('erp:finance-payment:create') and " +
+            "@ss.hasPermission('erp:finance-payment:update-status')")
+    public CommonResult<Long> createAndSubmitFinancePayment(
+            @Valid @RequestBody ErpFinancePaymentSaveReqVO createReqVO) {
+        return success(financePaymentService.createAndSubmitFinancePayment(createReqVO));
     }
 
     @PutMapping("/update")
@@ -99,6 +119,42 @@ public class ErpFinancePaymentController {
     @PreAuthorize("@ss.hasPermission('erp:finance-payment:update')")
     public CommonResult<Boolean> updateFinancePayment(@Valid @RequestBody ErpFinancePaymentSaveReqVO updateReqVO) {
         financePaymentService.updateFinancePayment(updateReqVO);
+        return success(true);
+    }
+
+    @PutMapping("/update-draft")
+    @Operation(summary = "更新付款单草稿")
+    @PreAuthorize("@ss.hasPermission('erp:finance-payment:update')")
+    public CommonResult<Boolean> updateFinancePaymentDraft(
+            @RequestBody ErpFinancePaymentDraftSaveReqVO updateReqVO) {
+        financePaymentService.updateFinancePaymentDraft(updateReqVO);
+        return success(true);
+    }
+
+    @PutMapping("/update-and-submit")
+    @Operation(summary = "更新并提交付款单草稿")
+    @PreAuthorize("@ss.hasPermission('erp:finance-payment:update') and " +
+            "@ss.hasPermission('erp:finance-payment:update-status')")
+    public CommonResult<Boolean> updateAndSubmitFinancePayment(
+            @Valid @RequestBody ErpFinancePaymentSaveReqVO updateReqVO) {
+        financePaymentService.updateAndSubmitFinancePayment(updateReqVO);
+        return success(true);
+    }
+
+    @PutMapping("/submit")
+    @Operation(summary = "提交付款单草稿")
+    @PreAuthorize("@ss.hasPermission('erp:finance-payment:update-status')")
+    public CommonResult<Boolean> submitFinancePayment(@RequestParam("id") Long id) {
+        financePaymentService.submitFinancePayment(id);
+        return success(true);
+    }
+
+    @PutMapping("/update-remark")
+    @Operation(summary = "更新付款单备注")
+    @PreAuthorize("@ss.hasPermission('erp:finance-payment:update')")
+    public CommonResult<Boolean> updateFinancePaymentRemark(
+            @Valid @RequestBody ErpFinanceUpdateRemarkReqVO updateReqVO) {
+        financePaymentService.updateFinancePaymentRemark(updateReqVO);
         return success(true);
     }
 

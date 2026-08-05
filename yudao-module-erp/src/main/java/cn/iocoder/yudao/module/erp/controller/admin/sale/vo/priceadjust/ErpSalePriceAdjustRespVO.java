@@ -50,6 +50,9 @@ public class ErpSalePriceAdjustRespVO {
     @Schema(description = "调价总金额")
     private BigDecimal totalAdjustPrice;
 
+    @Schema(description = "Effective receipted amount")
+    private BigDecimal receiptPrice;
+
     @Schema(description = "结算方式")
     private String settleMethod;
 

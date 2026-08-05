@@ -13,8 +13,8 @@ public class ErpFieldConfigCreateCustomReqVO {
     @NotEmpty(message = "模块标识不能为空")
     private String moduleKey;
 
-    @Schema(description = "逻辑字段编码", requiredMode = Schema.RequiredMode.REQUIRED, example = "hello")
-    @NotEmpty(message = "字段编码不能为空")
+    @Deprecated
+    @Schema(description = "字段编码由系统生成，请求值不生效", example = "hello")
     private String fieldName;
 
     @Schema(description = "字段名称", requiredMode = Schema.RequiredMode.REQUIRED, example = "测试字段")

@@ -117,6 +117,7 @@ FROM (
     SELECT 'sale_out', 'vin', 'VIN', b'0', 210 UNION ALL
     SELECT 'sale_out', 'settleMethod', '结算方式', b'0', 220 UNION ALL
     SELECT 'sale_out', 'freight', '运费', b'0', 230 UNION ALL
+    SELECT 'sale_out', 'freightType', '运费类型', b'0', 235 UNION ALL
     SELECT 'sale_out', 'billType', '票据类型', b'0', 240 UNION ALL
     SELECT 'sale_out', 'billNo', '票据号', b'0', 250 UNION ALL
     SELECT 'sale_out', 'invoiceAmount', '开票金额', b'0', 260 UNION ALL

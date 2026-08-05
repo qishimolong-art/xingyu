@@ -3,12 +3,15 @@ package cn.iocoder.yudao.module.erp.service.finance.payable;
 import cn.hutool.core.util.StrUtil;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
+import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.ErpFinanceUpdateRemarkReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.finance.payable.vo.other.ErpPayableOtherDraftSaveReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.payable.vo.other.ErpPayableOtherPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.payable.vo.other.ErpPayableOtherSaveReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.payable.ErpPayableOtherDO;
 import cn.iocoder.yudao.module.erp.dal.mysql.finance.payable.ErpPayableOtherMapper;
 import cn.iocoder.yudao.module.erp.dal.redis.no.ErpNoRedisDAO;
 import cn.iocoder.yudao.module.erp.enums.ErpAuditStatus;
+import cn.iocoder.yudao.module.erp.enums.finance.ErpPayableOtherStatusEnum;
 import cn.iocoder.yudao.module.erp.service.common.ErpOperateLogService;
 import cn.iocoder.yudao.module.erp.service.finance.ErpFinanceFieldPermissionMasker;
 import cn.iocoder.yudao.module.erp.service.purchase.ErpSupplierService;
@@ -26,9 +29,10 @@ import static cn.iocoder.yudao.framework.common.exception.util.ServiceExceptionU
 import static cn.iocoder.yudao.framework.security.core.util.SecurityFrameworkUtils.getLoginUserId;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.OTHER_PAYABLE_APPROVE_FAIL;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.OTHER_PAYABLE_DELETE_FAIL_APPROVE;
+import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.OTHER_PAYABLE_DRAFT_SUBMIT_FAIL;
+import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.OTHER_PAYABLE_DRAFT_UPDATE_FAIL;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.OTHER_PAYABLE_NOT_EXISTS;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.OTHER_PAYABLE_NO_EXISTS;
-import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.OTHER_PAYABLE_PROCESS_FAIL;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.OTHER_PAYABLE_UPDATE_FAIL_APPROVE;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.OTHER_PAYABLE_UPDATE_FAIL_STATUS_CHANGED;
 import static cn.iocoder.yudao.module.erp.enums.LogRecordConstants.ERP_PAYABLE_OTHER_TYPE;
@@ -77,8 +81,37 @@ public class ErpPayableOtherServiceImpl implements ErpPayableOtherService {
 
     @Override
     @Transactional(rollbackFor = Exception.class)
+    public Long createPayableOtherDraft(ErpPayableOtherDraftSaveReqVO createReqVO) {
+        fieldPermissionMasker.clearHiddenFields(FIELD_PERMISSION_MODULE, createReqVO);
+        String no = noRedisDAO.generate("QTFK");
+        if (payableOtherMapper.selectByNo(no) != null) {
+            throw exception(OTHER_PAYABLE_NO_EXISTS);
+        }
+        ErpPayableOtherDO doObj = BeanUtils.toBean(createReqVO, ErpPayableOtherDO.class)
+                .setId(null)
+                .setNo(no)
+                .setStatus(ErpPayableOtherStatusEnum.DRAFT.getStatus())
+                .setSourceType(StrUtil.blankToDefault(createReqVO.getSourceType(), "调账"));
+        fillCreateDeptId(doObj);
+        normalizeDraft(doObj);
+        payableOtherMapper.insert(doObj);
+        operateLogService.recordCreate(ERP_PAYABLE_OTHER_TYPE, doObj.getId(), doObj.getNo());
+        return doObj.getId();
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public Long createAndSubmitPayableOther(ErpPayableOtherSaveReqVO createReqVO) {
+        return createPayableOther(createReqVO);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
     public void updatePayableOther(ErpPayableOtherSaveReqVO updateReqVO) {
         ErpPayableOtherDO db = validatePayableOtherExists(updateReqVO.getId());
+        if (ErpPayableOtherStatusEnum.DRAFT.getStatus().equals(db.getStatus())) {
+            throw exception(OTHER_PAYABLE_DRAFT_UPDATE_FAIL, db.getNo());
+        }
         if (ErpAuditStatus.APPROVE.getStatus().equals(db.getStatus())) {
             throw exception(OTHER_PAYABLE_UPDATE_FAIL_APPROVE, db.getNo());
         }
@@ -103,18 +136,78 @@ public class ErpPayableOtherServiceImpl implements ErpPayableOtherService {
 
     @Override
     @Transactional(rollbackFor = Exception.class)
+    public void updatePayableOtherDraft(ErpPayableOtherDraftSaveReqVO updateReqVO) {
+        ErpPayableOtherDO db = validatePayableOtherExists(updateReqVO.getId());
+        if (!ErpPayableOtherStatusEnum.DRAFT.getStatus().equals(db.getStatus())) {
+            throw exception(OTHER_PAYABLE_DRAFT_UPDATE_FAIL, db.getNo());
+        }
+        fieldPermissionMasker.preserveHiddenFields(FIELD_PERMISSION_MODULE, updateReqVO, db);
+        ErpPayableOtherDO updateObj = BeanUtils.toBean(updateReqVO, ErpPayableOtherDO.class)
+                .setId(db.getId())
+                .setNo(db.getNo())
+                .setStatus(db.getStatus());
+        if (StrUtil.isBlank(updateObj.getSourceType())) {
+            updateObj.setSourceType(StrUtil.blankToDefault(db.getSourceType(), "调账"));
+        }
+        if (updateObj.getDeptId() == null) {
+            updateObj.setDeptId(db.getDeptId());
+        }
+        normalizeDraft(updateObj);
+        if (payableOtherMapper.updateByIdAndStatus(db.getId(),
+                ErpPayableOtherStatusEnum.DRAFT.getStatus(), updateObj) == 0) {
+            throw exception(OTHER_PAYABLE_DRAFT_UPDATE_FAIL, db.getNo());
+        }
+        operateLogService.recordUpdate(ERP_PAYABLE_OTHER_TYPE, db.getId(), db.getNo());
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void updateAndSubmitPayableOther(ErpPayableOtherSaveReqVO updateReqVO) {
+        updatePayableOtherDraft(BeanUtils.toBean(updateReqVO, ErpPayableOtherDraftSaveReqVO.class));
+        submitPayableOther(updateReqVO.getId());
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void submitPayableOther(Long id) {
+        ErpPayableOtherDO db = payableOtherMapper.selectByIdForUpdate(id);
+        if (db == null) {
+            throw exception(OTHER_PAYABLE_NOT_EXISTS);
+        }
+        if (!ErpPayableOtherStatusEnum.DRAFT.getStatus().equals(db.getStatus())) {
+            throw exception(OTHER_PAYABLE_DRAFT_SUBMIT_FAIL, "当前状态不是草稿");
+        }
+        validateDraftForSubmit(db);
+        if (payableOtherMapper.updateByIdAndStatus(id,
+                ErpPayableOtherStatusEnum.DRAFT.getStatus(),
+                new ErpPayableOtherDO().setStatus(ErpPayableOtherStatusEnum.PROCESS.getStatus())) == 0) {
+            throw exception(OTHER_PAYABLE_DRAFT_SUBMIT_FAIL, "状态已变化，请刷新后重试");
+        }
+        operateLogService.recordUpdate(ERP_PAYABLE_OTHER_TYPE, db.getId(), db.getNo());
+    }
+
+    @Override
+    public void updatePayableOtherRemark(ErpFinanceUpdateRemarkReqVO updateReqVO) {
+        ErpPayableOtherDO db = validatePayableOtherExists(updateReqVO.getId());
+        payableOtherMapper.updateById(new ErpPayableOtherDO()
+                .setId(updateReqVO.getId()).setRemark(updateReqVO.getRemark()));
+        operateLogService.recordUpdate(ERP_PAYABLE_OTHER_TYPE, db.getId(), db.getNo());
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
     public void updatePayableOtherStatus(Long id, Integer status) {
-        boolean approve = ErpAuditStatus.APPROVE.getStatus().equals(status);
         ErpPayableOtherDO db = validatePayableOtherExists(id);
-        if (db.getStatus().equals(status)) {
-            throw exception(approve ? OTHER_PAYABLE_APPROVE_FAIL : OTHER_PAYABLE_PROCESS_FAIL);
+        if (!ErpAuditStatus.APPROVE.getStatus().equals(status)
+                || !ErpPayableOtherStatusEnum.PROCESS.getStatus().equals(db.getStatus())) {
+            throw exception(OTHER_PAYABLE_APPROVE_FAIL);
         }
         int affected = payableOtherMapper.updateByIdAndStatus(id, db.getStatus(),
                 ErpPayableOtherDO.builder().status(status).build());
         if (affected == 0) {
-            throw exception(approve ? OTHER_PAYABLE_APPROVE_FAIL : OTHER_PAYABLE_PROCESS_FAIL);
+            throw exception(OTHER_PAYABLE_APPROVE_FAIL);
         }
-        operateLogService.recordStatus(ERP_PAYABLE_OTHER_TYPE, id, db.getNo(), approve);
+        operateLogService.recordStatus(ERP_PAYABLE_OTHER_TYPE, id, db.getNo(), true);
     }
 
     @Override
@@ -170,6 +263,28 @@ public class ErpPayableOtherServiceImpl implements ErpPayableOtherService {
     private void normalize(ErpPayableOtherDO doObj) {
         doObj.setVoucherNo(StrUtil.blankToDefault(doObj.getVoucherNo(), ""));
         doObj.setSettledAmount(doObj.getSettledAmount() == null ? BigDecimal.ZERO : doObj.getSettledAmount());
+    }
+
+    private void normalizeDraft(ErpPayableOtherDO doObj) {
+        doObj.setVoucherNo(StrUtil.blankToDefault(doObj.getVoucherNo(), ""));
+        doObj.setSettledAmount(doObj.getSettledAmount() == null ? BigDecimal.ZERO : doObj.getSettledAmount());
+    }
+
+    private void validateDraftForSubmit(ErpPayableOtherDO doObj) {
+        if (doObj.getBizTime() == null) {
+            throw exception(OTHER_PAYABLE_DRAFT_SUBMIT_FAIL, "业务日期不能为空");
+        }
+        if (doObj.getSupplierId() == null) {
+            throw exception(OTHER_PAYABLE_DRAFT_SUBMIT_FAIL, "供应商不能为空");
+        }
+        if (doObj.getPayableAmount() == null) {
+            throw exception(OTHER_PAYABLE_DRAFT_SUBMIT_FAIL, "应付金额不能为空");
+        }
+        if (StrUtil.isBlank(doObj.getRemark())) {
+            throw exception(OTHER_PAYABLE_DRAFT_SUBMIT_FAIL, "调账原因备注不能为空");
+        }
+        supplierService.validateSupplier(doObj.getSupplierId());
+        validateRefs(doObj.getHandlerId(), doObj.getDeptId());
     }
 
 }

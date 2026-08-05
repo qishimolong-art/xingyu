@@ -1,9 +1,12 @@
 package cn.iocoder.yudao.module.erp.service.sale;
 
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.ErpSaleUpdateRemarkReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnImportExcelVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnImportRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnPageReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnDraftCreateReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnDraftUpdateReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnSaveReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleReturnDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleReturnItemDO;
@@ -28,12 +31,20 @@ public interface ErpSaleReturnService {
      */
     Long createSaleReturn(@Valid ErpSaleReturnSaveReqVO createReqVO);
 
+    Long createSaleReturnDraft(ErpSaleReturnDraftCreateReqVO createReqVO);
+
     /**
      * 更新销售退货
      *
      * @param updateReqVO 更新信息
      */
     void updateSaleReturn(@Valid ErpSaleReturnSaveReqVO updateReqVO);
+
+    void updateSaleReturnDraft(ErpSaleReturnDraftUpdateReqVO updateReqVO);
+
+    void submitSaleReturn(Long id);
+
+    void updateSaleReturnRemark(@Valid ErpSaleUpdateRemarkReqVO updateReqVO);
 
     /**
      * 更新销售退货的状态

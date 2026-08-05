@@ -70,6 +70,12 @@ public class ErpFinanceReceiptSaveReqVO {
         @NotNull(message = "业务编号不能为空")
         private Long bizId;
 
+        @Schema(description = "业务单号（草稿展示使用）", example = "XSCK202607270001")
+        private String bizNo;
+
+        @Schema(description = "应收金额（草稿展示使用）", example = "10000")
+        private BigDecimal totalPrice;
+
         @Schema(description = "已收金额，单位：分", requiredMode = Schema.RequiredMode.REQUIRED, example = "10000")
         @NotNull(message = "已收金额不能为空")
         private BigDecimal receiptedPrice;

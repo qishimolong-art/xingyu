@@ -278,6 +278,17 @@ public class PermissionServiceImpl implements PermissionService {
 
     @Override
     public List<String> getCurrentUserHiddenFields(String module) {
+        return getCurrentUserHiddenFields(module, null);
+    }
+
+    @Override
+    public List<String> getCurrentUserHiddenFields(String module, Long businessDeptId) {
+        return getCurrentUserHiddenFields(module, businessDeptId, true);
+    }
+
+    @Override
+    public List<String> getCurrentUserHiddenFields(String module, Long businessDeptId,
+                                                   boolean includeProductPricePermission) {
         Long userId = SecurityFrameworkUtils.getLoginUserId();
         if (userId == null) {
             return Collections.emptyList();
@@ -297,14 +308,15 @@ public class PermissionServiceImpl implements PermissionService {
                         .collect(Collectors.toList()));
             }
         }
-        if (ERP_PRODUCT_FIELD_PERMISSION_MODULE.equals(module)) {
+        if (includeProductPricePermission && ERP_PRODUCT_FIELD_PERMISSION_MODULE.equals(module)) {
             if (!superAdmin) {
-                Set<Long> userDeptIds = userService.getUserDeptIdListByUserId(userId);
-                Set<Long> enabledDeptIds = CollUtil.isEmpty(userDeptIds) ? Collections.emptySet()
-                        : deptService.getDeptList(userDeptIds).stream()
-                                .filter(dept -> CommonStatusEnum.ENABLE.getStatus().equals(dept.getStatus()))
-                                .map(DeptDO::getId)
-                                .collect(Collectors.toSet());
+                Long pricePermissionDeptId = businessDeptId != null
+                        ? businessDeptId : SecurityFrameworkUtils.getLoginUserDeptId();
+                DeptDO pricePermissionDept = pricePermissionDeptId != null
+                        ? deptService.getDept(pricePermissionDeptId) : null;
+                Set<Long> enabledDeptIds = pricePermissionDept != null
+                        && CommonStatusEnum.ENABLE.getStatus().equals(pricePermissionDept.getStatus())
+                        ? Collections.singleton(pricePermissionDept.getId()) : Collections.emptySet();
                 hiddenFields.addAll(deptPriceFieldService.getHiddenPriceFields(enabledDeptIds));
             }
             hiddenFields.addAll(userPriceFieldService.getHiddenProductPriceFields(userId));

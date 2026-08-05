@@ -11,7 +11,9 @@ import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
 import cn.iocoder.yudao.framework.excel.core.util.ExcelUtils;
 import cn.iocoder.yudao.framework.mybatis.core.query.LambdaQueryWrapperX;
 import cn.iocoder.yudao.module.erp.controller.admin.common.ErpAuditStatusRequestValidator;
+import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.ErpFinanceUpdateRemarkReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.imports.ErpFinanceImportRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.transfer.ErpFinanceTransferDraftSaveReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.transfer.ErpFinanceTransferImportExcelVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.transfer.ErpFinanceTransferPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.transfer.ErpFinanceTransferRespVO;
@@ -83,9 +85,27 @@ public class ErpFinanceTransferController {
 
     @PostMapping("/create")
     @Operation(summary = "创建银行转账单")
-    @PreAuthorize("@ss.hasPermission('erp:finance-transfer:create')")
+    @PreAuthorize("@ss.hasPermission('erp:finance-transfer:create') && "
+            + "@ss.hasPermission('erp:finance-transfer:update-status')")
     public CommonResult<Long> createFinanceTransfer(@Valid @RequestBody ErpFinanceTransferSaveReqVO createReqVO) {
         return success(financeTransferService.createFinanceTransfer(createReqVO));
+    }
+
+    @PostMapping("/create-draft")
+    @Operation(summary = "创建银行转账草稿")
+    @PreAuthorize("@ss.hasPermission('erp:finance-transfer:create')")
+    public CommonResult<Long> createFinanceTransferDraft(
+            @Valid @RequestBody ErpFinanceTransferDraftSaveReqVO createReqVO) {
+        return success(financeTransferService.createFinanceTransferDraft(createReqVO));
+    }
+
+    @PostMapping("/create-and-submit")
+    @Operation(summary = "创建并提交银行转账单")
+    @PreAuthorize("@ss.hasPermission('erp:finance-transfer:create') && "
+            + "@ss.hasPermission('erp:finance-transfer:update-status')")
+    public CommonResult<Long> createFinanceTransferAndSubmit(
+            @Valid @RequestBody ErpFinanceTransferSaveReqVO createReqVO) {
+        return success(financeTransferService.createFinanceTransferAndSubmit(createReqVO));
     }
 
     @PutMapping("/update")
@@ -93,6 +113,42 @@ public class ErpFinanceTransferController {
     @PreAuthorize("@ss.hasPermission('erp:finance-transfer:update')")
     public CommonResult<Boolean> updateFinanceTransfer(@Valid @RequestBody ErpFinanceTransferSaveReqVO updateReqVO) {
         financeTransferService.updateFinanceTransfer(updateReqVO);
+        return success(true);
+    }
+
+    @PutMapping("/update-draft")
+    @Operation(summary = "更新银行转账草稿")
+    @PreAuthorize("@ss.hasPermission('erp:finance-transfer:update')")
+    public CommonResult<Boolean> updateFinanceTransferDraft(
+            @Valid @RequestBody ErpFinanceTransferDraftSaveReqVO updateReqVO) {
+        financeTransferService.updateFinanceTransferDraft(updateReqVO);
+        return success(true);
+    }
+
+    @PutMapping("/update-and-submit")
+    @Operation(summary = "更新并提交银行转账草稿")
+    @PreAuthorize("@ss.hasPermission('erp:finance-transfer:update') && "
+            + "@ss.hasPermission('erp:finance-transfer:update-status')")
+    public CommonResult<Boolean> updateFinanceTransferDraftAndSubmit(
+            @Valid @RequestBody ErpFinanceTransferDraftSaveReqVO updateReqVO) {
+        financeTransferService.updateFinanceTransferDraftAndSubmit(updateReqVO);
+        return success(true);
+    }
+
+    @PutMapping("/submit")
+    @Operation(summary = "提交银行转账草稿")
+    @PreAuthorize("@ss.hasPermission('erp:finance-transfer:update-status')")
+    public CommonResult<Boolean> submitFinanceTransfer(@RequestParam("id") Long id) {
+        financeTransferService.submitFinanceTransfer(id);
+        return success(true);
+    }
+
+    @PutMapping("/update-remark")
+    @Operation(summary = "更新银行转账单备注")
+    @PreAuthorize("@ss.hasPermission('erp:finance-transfer:update')")
+    public CommonResult<Boolean> updateFinanceTransferRemark(
+            @Valid @RequestBody ErpFinanceUpdateRemarkReqVO updateReqVO) {
+        financeTransferService.updateFinanceTransferRemark(updateReqVO);
         return success(true);
     }
 
@@ -194,13 +250,22 @@ public class ErpFinanceTransferController {
         if (CollUtil.isEmpty(pageResult.getList())) {
             return PageResult.empty(pageResult.getTotal());
         }
-        Map<Long, ErpAccountDO> accountMap = accountService.getAccountMap(convertListByFlatMap(pageResult.getList(),
-                transfer -> Stream.of(transfer.getOutAccountId(), transfer.getInAccountId())));
-        Map<Long, AdminUserRespDTO> userMap = adminUserApi.getUserMap(convertListByFlatMap(pageResult.getList(),
+        List<Long> accountIds = convertListByFlatMap(pageResult.getList(),
+                transfer -> Stream.of(transfer.getOutAccountId(), transfer.getInAccountId()));
+        accountIds.remove(null);
+        Map<Long, ErpAccountDO> accountMap = accountIds.isEmpty()
+                ? Collections.emptyMap() : accountService.getAccountMap(accountIds);
+        List<Long> userIds = convertListByFlatMap(pageResult.getList(),
                 transfer -> Stream.of(NumberUtils.parseLong(transfer.getCreator()), NumberUtils.parseLong(transfer.getUpdater()),
-                        transfer.getFinanceUserId())));
-        Map<Long, DeptRespDTO> deptMap = deptApi.getDeptMap(convertListByFlatMap(pageResult.getList(),
-                transfer -> Stream.of(transfer.getDeptId())));
+                        transfer.getFinanceUserId()));
+        userIds.remove(null);
+        Map<Long, AdminUserRespDTO> userMap = userIds.isEmpty()
+                ? Collections.emptyMap() : adminUserApi.getUserMap(userIds);
+        List<Long> deptIds = convertListByFlatMap(pageResult.getList(),
+                transfer -> Stream.of(transfer.getDeptId()));
+        deptIds.remove(null);
+        Map<Long, DeptRespDTO> deptMap = deptIds.isEmpty()
+                ? Collections.emptyMap() : deptApi.getDeptMap(deptIds);
         Map<Long, String> voucherNoMap = new HashMap<>();
         List<ErpVoucherDO> vouchers = voucherMapper.selectList(new LambdaQueryWrapperX<ErpVoucherDO>()
                 .eq(ErpVoucherDO::getSourceBizType, ErpVoucherSourceBizTypeEnum.BANK_TRANSFER.getType())

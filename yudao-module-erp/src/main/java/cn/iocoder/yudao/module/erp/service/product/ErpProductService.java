@@ -160,6 +160,16 @@ public interface ErpProductService {
     List<ErpProductRespVO> getProductVOList(Collection<Long> ids);
 
     /**
+     * Gets product VOs while evaluating department-level price visibility
+     * against the business document department.
+     *
+     * @param ids product ids
+     * @param businessDeptId business document department
+     * @return product VOs
+     */
+    List<ErpProductRespVO> getProductVOList(Collection<Long> ids, Long businessDeptId);
+
+    /**
      * 获得产品 VO Map
      *
      * @param ids 编号数组
@@ -169,6 +179,10 @@ public interface ErpProductService {
         return convertMap(getProductVOList(ids), ErpProductRespVO::getId);
     }
 
+    default Map<Long, ErpProductRespVO> getProductVOMap(Collection<Long> ids, Long businessDeptId) {
+        return convertMap(getProductVOList(ids, businessDeptId), ErpProductRespVO::getId);
+    }
+
     /**
      * 获得产品 VO 分页
      *
@@ -176,6 +190,16 @@ public interface ErpProductService {
      * @return 产品分页
      */
     PageResult<ErpProductRespVO> getProductVOPage(ErpProductPageReqVO pageReqVO);
+
+    /**
+     * Gets product VOs with optional product price-view permission masking.
+     *
+     * @param pageReqVO page query
+     * @param includeProductPricePermission whether to apply product price-view permission masking
+     * @return product page
+     */
+    PageResult<ErpProductRespVO> getProductVOPage(ErpProductPageReqVO pageReqVO,
+                                                  boolean includeProductPricePermission);
 
     /**
      * 基于产品分类编号，获得产品数量

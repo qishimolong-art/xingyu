@@ -11,6 +11,7 @@ import cn.iocoder.yudao.module.erp.enums.config.ErpFieldConfigFieldTypeEnum;
 import cn.iocoder.yudao.module.erp.enums.config.ErpFieldConfigModuleEnum;
 import cn.iocoder.yudao.module.system.api.permission.PermissionApi;
 import cn.iocoder.yudao.module.system.api.permission.dto.FieldDefinitionCreateOrUpdateReqDTO;
+import com.baomidou.mybatisplus.core.toolkit.IdWorker;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -30,6 +31,7 @@ import java.util.stream.Collectors;
 
 import static cn.iocoder.yudao.framework.common.exception.util.ServiceExceptionUtil.exception;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.FIELD_CONFIG_DUPLICATE;
+import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.FIELD_CONFIG_FIELD_NAME_GENERATE_FAILED;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.FIELD_CONFIG_FIELD_NAME_EMPTY;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.FIELD_CONFIG_MODULE_KEY_INVALID;
 
@@ -45,6 +47,7 @@ public class ErpFieldConfigServiceImpl implements ErpFieldConfigService {
     private static final String ERP_PRODUCT_MODULE = "erp_product";
     private static final String ERP_PRODUCT_TABLE = "erp_product";
     private static final String CUSTOM_COLUMN_PREFIX = "ext_";
+    private static final int CUSTOM_FIELD_NAME_GENERATE_MAX_RETRY = 3;
     private static final Pattern FIELD_NAME_PATTERN = Pattern.compile("^[A-Za-z][A-Za-z0-9_]{0,63}$");
     private static final Pattern PHYSICAL_COLUMN_PATTERN = Pattern.compile("^ext_[a-z][a-z0-9_]{0,63}$");
     private static final Set<String> FIELD_GROUPS = new HashSet<>(Arrays.asList(
@@ -54,6 +57,8 @@ public class ErpFieldConfigServiceImpl implements ErpFieldConfigService {
     private ErpFieldConfigMapper fieldConfigMapper;
     @Resource
     private PermissionApi permissionApi;
+    @Resource
+    private ErpStockSelectPriceConfigService stockSelectPriceConfigService;
 
     @Override
     public List<ErpFieldConfigDO> getFieldConfigListByModule(String moduleKey) {
@@ -148,25 +153,32 @@ public class ErpFieldConfigServiceImpl implements ErpFieldConfigService {
         if (!ERP_PRODUCT_MODULE.equals(moduleKey)) {
             throw exception(FIELD_CONFIG_MODULE_KEY_INVALID, moduleKey);
         }
-        String fieldName = normalize(reqVO.getFieldName());
-        validateCustomFieldName(fieldName);
-        if (fieldConfigMapper.selectByModuleKeyAndFieldName(moduleKey, fieldName) != null) {
-            throw exception(FIELD_CONFIG_DUPLICATE, moduleKey, fieldName);
-        }
-
         String fieldType = normalize(reqVO.getFieldType());
         if (!ErpFieldConfigFieldTypeEnum.isValid(fieldType)) {
             throw exception(FIELD_CONFIG_MODULE_KEY_INVALID, fieldType);
         }
-        String physicalColumn = buildPhysicalColumn(fieldName);
-        if (!PHYSICAL_COLUMN_PATTERN.matcher(physicalColumn).matches()) {
-            throw exception(FIELD_CONFIG_FIELD_NAME_EMPTY);
+        String fieldName = null;
+        String physicalColumn = null;
+        for (int i = 0; i < CUSTOM_FIELD_NAME_GENERATE_MAX_RETRY; i++) {
+            String candidateFieldName = generateCustomFieldName();
+            validateCustomFieldName(candidateFieldName);
+            String candidatePhysicalColumn = buildPhysicalColumn(candidateFieldName);
+            if (!PHYSICAL_COLUMN_PATTERN.matcher(candidatePhysicalColumn).matches()) {
+                continue;
+            }
+            if (fieldConfigMapper.selectByModuleKeyAndFieldName(moduleKey, candidateFieldName) != null) {
+                continue;
+            }
+            if (Objects.equals(fieldConfigMapper.selectColumnCount(ERP_PRODUCT_TABLE, candidatePhysicalColumn), 0L)) {
+                fieldName = candidateFieldName;
+                physicalColumn = candidatePhysicalColumn;
+                break;
+            }
         }
-        if (Objects.equals(fieldConfigMapper.selectColumnCount(ERP_PRODUCT_TABLE, physicalColumn), 0L)) {
-            fieldConfigMapper.addColumn(ERP_PRODUCT_TABLE, physicalColumn, buildColumnDefinition(reqVO, fieldType));
-        } else {
-            throw exception(FIELD_CONFIG_DUPLICATE, moduleKey, physicalColumn);
+        if (!StringUtils.hasText(fieldName) || !StringUtils.hasText(physicalColumn)) {
+            throw exception(FIELD_CONFIG_FIELD_NAME_GENERATE_FAILED);
         }
+        fieldConfigMapper.addColumn(ERP_PRODUCT_TABLE, physicalColumn, buildColumnDefinition(reqVO, fieldType));
 
         ErpFieldConfigDO config = BeanUtils.toBean(reqVO, ErpFieldConfigDO.class);
         config.setModuleKey(moduleKey);
@@ -295,6 +307,7 @@ public class ErpFieldConfigServiceImpl implements ErpFieldConfigService {
             fieldKeys.add("col_" + config.getFieldName());
         }
         permissionApi.deleteFieldDefinitions(moduleKey, fieldKeys);
+        stockSelectPriceConfigService.deleteByFieldKeys(fieldNames);
     }
 
     private void validateCustomFieldName(String fieldName) {
@@ -302,6 +315,10 @@ public class ErpFieldConfigServiceImpl implements ErpFieldConfigService {
                 || fieldName.startsWith("ext_") || fieldName.startsWith("col_")) {
             throw exception(FIELD_CONFIG_FIELD_NAME_EMPTY);
         }
+    }
+
+    private String generateCustomFieldName() {
+        return "custom_" + IdWorker.getId();
     }
 
     private String buildPhysicalColumn(String fieldName) {

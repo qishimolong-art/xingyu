@@ -38,7 +38,7 @@ public class ErpFinanceTransferDO extends BaseDO {
     /**
      * 状态
      *
-     * 枚举 {@link cn.iocoder.yudao.module.erp.enums.ErpAuditStatus}
+     * 枚举 {@link cn.iocoder.yudao.module.erp.enums.finance.ErpFinanceTransferStatusEnum}
      */
     private Integer status;
 

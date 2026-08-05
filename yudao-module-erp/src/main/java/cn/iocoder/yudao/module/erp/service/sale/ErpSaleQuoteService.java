@@ -1,8 +1,11 @@
 package cn.iocoder.yudao.module.erp.service.sale;
 
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.ErpSaleUpdateRemarkReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.imports.ErpSaleImportResultRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.quote.ErpSaleQuoteConvertCartReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.quote.ErpSaleQuoteDraftCreateReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.quote.ErpSaleQuoteDraftUpdateReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.quote.ErpSaleQuoteImportExcelVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.quote.ErpSaleQuoteImportRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.quote.ErpSaleQuoteOrderImportExcelVO;
@@ -22,7 +25,15 @@ public interface ErpSaleQuoteService {
 
     Long createSaleQuote(@Valid ErpSaleQuoteSaveReqVO createReqVO);
 
+    Long createSaleQuoteDraft(ErpSaleQuoteDraftCreateReqVO createReqVO);
+
     void updateSaleQuote(@Valid ErpSaleQuoteSaveReqVO updateReqVO);
+
+    void updateSaleQuoteDraft(ErpSaleQuoteDraftUpdateReqVO updateReqVO);
+
+    void submitSaleQuote(Long id);
+
+    void updateSaleQuoteRemark(@Valid ErpSaleUpdateRemarkReqVO updateReqVO);
 
     void deleteSaleQuote(List<Long> ids);
 

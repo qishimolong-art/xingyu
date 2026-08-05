@@ -33,6 +33,9 @@ public class ErpWarehouseRespVO {
     @ExcelProperty("所属部门")
     private String deptName;
 
+    @Schema(description = "是否直发仓")
+    private Boolean directWarehouse;
+
     @Schema(description = "仓库地址", example = "上海陆家嘴")
     @ExcelProperty("仓库地址")
     private String address;

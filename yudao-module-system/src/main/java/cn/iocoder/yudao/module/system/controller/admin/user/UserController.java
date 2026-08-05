@@ -21,9 +21,9 @@ import cn.iocoder.yudao.module.system.service.dept.DeptService;
 import cn.iocoder.yudao.module.system.service.permission.MenuService;
 import cn.iocoder.yudao.module.system.service.permission.PermissionService;
 import cn.iocoder.yudao.module.system.service.permission.RoleService;
-import cn.iocoder.yudao.module.system.dal.dataobject.user.UserPriceFieldDO;
 import cn.iocoder.yudao.module.system.service.user.AdminUserService;
 import cn.iocoder.yudao.module.system.service.user.UserPriceFieldService;
+import cn.iocoder.yudao.module.system.service.user.dto.UserPriceFieldConfigDTO;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.Parameters;
@@ -541,13 +541,15 @@ public class UserController {
     @Parameter(name = "userId", description = "用户编号", required = true)
     @PreAuthorize("@ss.hasPermission('system:user:query')")
     public CommonResult<List<UserPriceFieldRespVO>> getUserPriceFields(@RequestParam("userId") Long userId) {
-        List<UserPriceFieldDO> list = userPriceFieldService.getUserPriceFields(userId);
+        List<UserPriceFieldConfigDTO> list = userPriceFieldService.getUserPriceFieldConfigs(userId);
         List<UserPriceFieldRespVO> result = list.stream().map(item -> {
             UserPriceFieldRespVO vo = new UserPriceFieldRespVO();
             vo.setId(item.getId());
             vo.setUserId(item.getUserId());
             vo.setPriceFieldCode(item.getPriceFieldCode());
+            vo.setPriceFieldLabel(item.getPriceFieldLabel());
             vo.setVisible(item.getVisible());
+            vo.setSort(item.getSort());
             return vo;
         }).collect(Collectors.toList());
         return success(result);

@@ -1672,7 +1672,7 @@ public class ErpProductServiceImpl implements ErpProductService {
             return null;
         }
         ErpProductRespVO result = list.get(0);
-        applyProductFieldPermissions(Collections.singletonList(result));
+        applyProductFieldPermissions(Collections.singletonList(result), null, false);
         return result;
     }
 
@@ -1840,18 +1840,29 @@ public class ErpProductServiceImpl implements ErpProductService {
 
     @Override
     public List<ErpProductRespVO> getProductVOList(Collection<Long> ids) {
+        return getProductVOList(ids, null);
+    }
+
+    @Override
+    public List<ErpProductRespVO> getProductVOList(Collection<Long> ids, Long businessDeptId) {
         if (CollUtil.isEmpty(ids)) {
             return Collections.emptyList();
         }
         List<ErpProductDO> list = productMapper.selectByIds(ids);
         List<ErpProductRespVO> result = buildProductVOList(list);
-        applyProductFieldPermissions(result);
+        applyProductFieldPermissions(result, businessDeptId);
         return result;
     }
 
     @Override
     public PageResult<ErpProductRespVO> getProductVOPage(ErpProductPageReqVO pageReqVO) {
-        Set<String> hiddenFieldSet = getHiddenFieldSet();
+        return getProductVOPage(pageReqVO, true);
+    }
+
+    @Override
+    public PageResult<ErpProductRespVO> getProductVOPage(ErpProductPageReqVO pageReqVO,
+                                                         boolean includeProductPricePermission) {
+        Set<String> hiddenFieldSet = getHiddenFieldSet(includeProductPricePermission);
         boolean includeSaleDistributedArchive = Boolean.TRUE.equals(
                 pageReqVO.getIncludeSaleDistributedArchive());
         if (includeSaleDistributedArchive) {
@@ -1865,7 +1876,7 @@ public class ErpProductServiceImpl implements ErpProductService {
                         buildCustomKeywordSearchColumns(hiddenFieldSet)));
         List<ErpProductRespVO> result = buildProductVOList(
                 pageResult.getList(), includeSaleDistributedArchive);
-        applyProductFieldPermissions(result);
+        applyProductFieldPermissions(result, null, includeProductPricePermission);
         return new PageResult<>(result, pageResult.getTotal());
     }
 
@@ -2575,7 +2586,23 @@ public class ErpProductServiceImpl implements ErpProductService {
     }
 
     private void applyProductFieldPermissions(List<ErpProductRespVO> list) {
-        List<String> hiddenFields = permissionApi.getCurrentUserHiddenFields(FIELD_PERMISSION_MODULE);
+        applyProductFieldPermissions(list, null);
+    }
+
+    private void applyProductFieldPermissions(List<ErpProductRespVO> list, Long businessDeptId) {
+        applyProductFieldPermissions(list, businessDeptId, true);
+    }
+
+    private void applyProductFieldPermissions(List<ErpProductRespVO> list, Long businessDeptId,
+                                              boolean includeProductPricePermission) {
+        List<String> hiddenFields;
+        if (businessDeptId != null) {
+            hiddenFields = permissionApi.getCurrentUserHiddenFields(FIELD_PERMISSION_MODULE, businessDeptId);
+        } else if (includeProductPricePermission) {
+            hiddenFields = permissionApi.getCurrentUserHiddenFields(FIELD_PERMISSION_MODULE);
+        } else {
+            hiddenFields = permissionApi.getCurrentUserHiddenFields(FIELD_PERMISSION_MODULE, null, false);
+        }
         if (CollUtil.isEmpty(hiddenFields)) {
             return;
         }
@@ -2710,7 +2737,13 @@ public class ErpProductServiceImpl implements ErpProductService {
     }
 
     private Set<String> getHiddenFieldSet() {
-        List<String> hiddenFields = permissionApi.getCurrentUserHiddenFields(FIELD_PERMISSION_MODULE);
+        return getHiddenFieldSet(true);
+    }
+
+    private Set<String> getHiddenFieldSet(boolean includeProductPricePermission) {
+        List<String> hiddenFields = includeProductPricePermission
+                ? permissionApi.getCurrentUserHiddenFields(FIELD_PERMISSION_MODULE)
+                : permissionApi.getCurrentUserHiddenFields(FIELD_PERMISSION_MODULE, null, false);
         return CollUtil.isEmpty(hiddenFields) ? Collections.emptySet() : new HashSet<>(hiddenFields);
     }
 
@@ -3476,6 +3509,9 @@ public class ErpProductServiceImpl implements ErpProductService {
                 .map(cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpPartsBatchUpdatePriceFieldsReqVO::getId)
                 .collect(Collectors.toList()));
         Set<String> hiddenFieldSet = getHiddenFieldSet();
+        Map<String, ErpFieldConfigDO> customPriceFieldMap = getCustomFieldConfigs().stream()
+                .filter(config -> "price_info".equals(config.getFieldGroup()))
+                .collect(Collectors.toMap(ErpFieldConfigDO::getFieldName, config -> config, (a, b) -> a));
         for (cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpPartsBatchUpdatePriceFieldsReqVO req : reqList) {
             validateBatchWritableField(hiddenFieldSet, "backupPrice1", "备用价1", req.getBackupPrice1());
             validateBatchWritableField(hiddenFieldSet, "referencePrice", "参考价", req.getReferencePrice());
@@ -3496,10 +3532,41 @@ public class ErpProductServiceImpl implements ErpProductService {
             if (req.getStockMax() != null) update.setStockMax(req.getStockMax());
             if (req.getStockMin() != null) update.setStockMin(req.getStockMin());
             if (req.getStockStandard() != null) update.setStockStandard(req.getStockStandard());
+            updateCustomPriceFields(req.getId(), req.getCustomFields(), customPriceFieldMap, hiddenFieldSet);
             productMapper.updateById(update);
             ProductLogSnapshot after = loadProductLogSnapshot(req.getId());
             recordProductLog(ERP_UPDATE_SUB_TYPE, req.getId(),
                     buildProductLogAction("列表编辑配件价格/库存", before, after));
+        }
+    }
+
+    private void updateCustomPriceFields(Long productId, Map<String, Object> requestValues,
+                                         Map<String, ErpFieldConfigDO> customPriceFieldMap,
+                                         Set<String> hiddenFieldSet) {
+        if (CollUtil.isEmpty(requestValues)) {
+            return;
+        }
+        Map<String, Object> updateValues = new LinkedHashMap<>();
+        for (Map.Entry<String, Object> entry : requestValues.entrySet()) {
+            ErpFieldConfigDO config = customPriceFieldMap.get(entry.getKey());
+            if (config == null || Boolean.FALSE.equals(config.getVisible())
+                    || Boolean.TRUE.equals(config.getReadonly())
+                    || !StringUtils.hasText(config.getPhysicalColumn())) {
+                throw exception(PRODUCT_FIELD_NO_PERMISSION, entry.getKey());
+            }
+            if (isFieldHidden(hiddenFieldSet, config.getFieldName())) {
+                throw exception(PRODUCT_FIELD_NO_PERMISSION,
+                        StringUtils.hasText(config.getFieldLabel()) ? config.getFieldLabel() : config.getFieldName());
+            }
+            Object value = entry.getValue();
+            if (Boolean.TRUE.equals(config.getRequired())
+                    && (value == null || !StringUtils.hasText(String.valueOf(value)))) {
+                throw exception(FIELD_CONFIG_FIELD_NAME_EMPTY);
+            }
+            updateValues.put(config.getPhysicalColumn(), convertCustomFieldValue(value, config));
+        }
+        if (!updateValues.isEmpty()) {
+            productMapper.updateCustomFields(productId, updateValues);
         }
     }
 
@@ -3525,10 +3592,8 @@ public class ErpProductServiceImpl implements ErpProductService {
             for (ErpProductDO product : products) {
                 ProductLogSnapshot before = loadProductLogSnapshot(product.getId());
                 BigDecimal sourcePrice = getSourcePrice(product, reqVO.getSourcePriceType());
-                if (sourcePrice == null) {
-                    continue;
-                }
-                BigDecimal newPrice = calcAdjustedPrice(sourcePrice, reqVO.getAdjustMethod(),
+                BigDecimal newPrice = calcAdjustedPrice(sourcePrice == null ? BigDecimal.ZERO : sourcePrice,
+                        reqVO.getAdjustMethod(),
                         reqVO.getAdjustCoefficient(), reqVO.getDecimalPlaces());
                 if (newPrice == null || newPrice.compareTo(BigDecimal.ZERO) < 0) {
                     continue;

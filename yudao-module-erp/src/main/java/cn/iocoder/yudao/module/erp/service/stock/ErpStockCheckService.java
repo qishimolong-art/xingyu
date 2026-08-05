@@ -1,6 +1,9 @@
 package cn.iocoder.yudao.module.erp.service.stock;
 
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
+import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.ErpStockUpdateRemarkReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.check.ErpStockCheckDraftCreateReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.check.ErpStockCheckDraftUpdateReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.check.ErpStockCheckPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.check.ErpStockCheckSaveReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.stock.ErpStockAdjustReqVO;
@@ -27,6 +30,8 @@ public interface ErpStockCheckService {
      */
     Long createStockCheck(@Valid ErpStockCheckSaveReqVO createReqVO);
 
+    Long createStockCheckDraft(ErpStockCheckDraftCreateReqVO createReqVO);
+
     /**
      * 库存浏览页手动调整库存：自动生成盘点单并审批。
      *
@@ -41,6 +46,14 @@ public interface ErpStockCheckService {
      * @param updateReqVO 更新信息
      */
     void updateStockCheck(@Valid ErpStockCheckSaveReqVO updateReqVO);
+
+    void updateStockCheckDraft(ErpStockCheckDraftUpdateReqVO updateReqVO);
+
+    void updateAndSubmitStockCheckDraft(@Valid ErpStockCheckSaveReqVO updateReqVO);
+
+    void submitStockCheck(Long id);
+
+    void updateStockCheckRemark(@Valid ErpStockUpdateRemarkReqVO updateReqVO);
 
     /**
      * 更新库存盘点单的状态

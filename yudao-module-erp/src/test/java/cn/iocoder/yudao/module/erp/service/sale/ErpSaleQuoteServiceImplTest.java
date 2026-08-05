@@ -4,6 +4,8 @@ import cn.iocoder.yudao.framework.common.exception.ServiceException;
 import cn.iocoder.yudao.framework.datapermission.core.aop.DataPermissionContextHolder;
 import cn.iocoder.yudao.framework.test.core.ut.BaseMockitoUnitTest;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.quote.ErpSaleQuoteConvertCartReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.quote.ErpSaleQuoteDraftCreateReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.quote.ErpSaleQuoteDraftUpdateReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.quote.ErpSaleQuoteSaveReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.product.ErpProductDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleQuoteDO;
@@ -47,10 +49,13 @@ import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.CUSTOMER_SALE
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PRODUCT_NOT_EXISTS;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.SALE_OUT_NOT_EXISTS;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.SALE_QUOTE_APPROVE_FAIL;
+import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.SALE_QUOTE_CONVERT_CART_FAIL;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.SALE_QUOTE_CONVERT_COUNT_EXCEED;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.SALE_QUOTE_DELETE_FAIL_GENERATED;
+import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.SALE_QUOTE_DRAFT_ITEMS_REQUIRED;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.SALE_QUOTE_ITEM_DUPLICATE;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.SALE_QUOTE_ITEM_PRODUCT_PRICE_POSITIVE;
+import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.SALE_QUOTE_SUBMIT_FAIL;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.SALE_QUOTE_UPDATE_FAIL_GENERATED;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -757,6 +762,152 @@ public class ErpSaleQuoteServiceImplTest extends BaseMockitoUnitTest {
         verify(saleQuoteItemMapper).updateById(ArgumentMatchers.<ErpSaleQuoteItemDO>argThat(
                 update -> item.getId().equals(update.getId())
                         && new BigDecimal("10").compareTo(update.getConvertedCount()) == 0));
+    }
+
+    // ==================== draft ====================
+
+    @Test
+    public void testCreateSaleQuoteDraft_withoutValidItems_throwException() {
+        ErpSaleQuoteDraftCreateReqVO reqVO = new ErpSaleQuoteDraftCreateReqVO();
+        reqVO.setSaleUserId(70L);
+        reqVO.setItems(Collections.singletonList(new ErpSaleQuoteSaveReqVO.Item()));
+
+        assertServiceException(() -> saleQuoteService.createSaleQuoteDraft(reqVO),
+                SALE_QUOTE_DRAFT_ITEMS_REQUIRED);
+
+        verify(saleQuoteMapper, never()).insert(any(ErpSaleQuoteDO.class));
+        verify(saleQuoteItemMapper, never()).insertBatch(any());
+        verify(customerService, never()).validateCustomerForSale(any());
+    }
+
+    @Test
+    public void testCreateSaleQuoteDraft_zeroProductPrice_success() {
+        ErpSaleQuoteDraftCreateReqVO reqVO = new ErpSaleQuoteDraftCreateReqVO();
+        reqVO.setDeptId(80L);
+        ErpSaleQuoteSaveReqVO.Item itemVO = new ErpSaleQuoteSaveReqVO.Item();
+        itemVO.setProductId(501L);
+        itemVO.setWarehouseId(601L);
+        itemVO.setProductPrice(BigDecimal.ZERO);
+        itemVO.setCount(BigDecimal.ONE);
+        itemVO.setGiftFlag(Boolean.FALSE);
+        reqVO.setItems(Collections.singletonList(itemVO));
+
+        when(productService.validProductList(eq(Collections.singleton(501L))))
+                .thenReturn(Collections.singletonList(new ErpProductDO().setId(501L).setUnitId(701L)));
+        when(saleQuoteMapper.selectByNo(anyString())).thenReturn(null);
+        when(saleQuoteMapper.insert(ArgumentMatchers.<ErpSaleQuoteDO>any()))
+                .thenAnswer(invocation -> {
+                    ErpSaleQuoteDO quote = invocation.getArgument(0);
+                    quote.setId(901L);
+                    return 1;
+                });
+
+        Long quoteId = saleQuoteService.createSaleQuoteDraft(reqVO);
+
+        assertEquals(901L, quoteId);
+        verify(saleQuoteMapper).insert(ArgumentMatchers.<ErpSaleQuoteDO>argThat(quote ->
+                ErpSaleQuoteStatusEnum.DRAFT.getStatus().equals(quote.getStatus())
+                        && BigDecimal.ZERO.compareTo(quote.getTotalProductPrice()) == 0
+                        && BigDecimal.ONE.compareTo(quote.getTotalCount()) == 0));
+        verify(saleQuoteItemMapper).insertBatch(argThat(items -> {
+            List<ErpSaleQuoteItemDO> list = new ArrayList<>(items);
+            return list.size() == 1
+                    && Long.valueOf(501L).equals(list.get(0).getProductId())
+                    && Long.valueOf(601L).equals(list.get(0).getWarehouseId())
+                    && Long.valueOf(701L).equals(list.get(0).getProductUnitId())
+                    && BigDecimal.ZERO.compareTo(list.get(0).getProductPrice()) == 0
+                    && BigDecimal.ZERO.compareTo(list.get(0).getTotalPrice()) == 0;
+        }));
+    }
+
+    @Test
+    public void testUpdateSaleQuoteDraft_replacesItemsAndPreservesStatus() {
+        Long quoteId = 102L;
+        ErpSaleQuoteDO quote = new ErpSaleQuoteDO()
+                .setId(quoteId)
+                .setNo("BJ-DRAFT-102")
+                .setDeptId(80L)
+                .setStatus(ErpSaleQuoteStatusEnum.DRAFT.getStatus());
+        when(saleQuoteMapper.selectById(quoteId)).thenReturn(quote);
+        when(saleQuoteItemMapper.selectListByQuoteId(quoteId)).thenReturn(Collections.emptyList());
+        ErpSaleQuoteDraftUpdateReqVO reqVO = new ErpSaleQuoteDraftUpdateReqVO();
+        reqVO.setId(quoteId);
+        reqVO.setItems(Collections.emptyList());
+
+        saleQuoteService.updateSaleQuoteDraft(reqVO);
+
+        verify(saleQuoteMapper).updateById(ArgumentMatchers.<ErpSaleQuoteDO>argThat(update ->
+                quoteId.equals(update.getId())
+                        && quote.getNo().equals(update.getNo())
+                        && ErpSaleQuoteStatusEnum.DRAFT.getStatus().equals(update.getStatus())
+                        && quote.getDeptId().equals(update.getDeptId())));
+        verify(saleQuoteItemMapper).deleteByQuoteId(quoteId);
+        verify(saleQuoteItemMapper, never()).insertBatch(any());
+    }
+
+    @Test
+    public void testSubmitSaleQuote_draftBecomesProcess() {
+        Long quoteId = 103L;
+        ErpSaleQuoteDO quote = new ErpSaleQuoteDO()
+                .setId(quoteId)
+                .setNo("BJ-DRAFT-103")
+                .setCustomerId(90L)
+                .setDeptId(80L)
+                .setStatus(ErpSaleQuoteStatusEnum.DRAFT.getStatus());
+        ErpSaleQuoteItemDO item = new ErpSaleQuoteItemDO()
+                .setId(203L)
+                .setQuoteId(quoteId)
+                .setProductId(303L)
+                .setWarehouseId(403L)
+                .setProductPrice(new BigDecimal("12.00"))
+                .setCount(BigDecimal.ONE)
+                .setGiftFlag(Boolean.FALSE);
+        when(saleQuoteMapper.selectById(quoteId)).thenReturn(quote);
+        when(saleQuoteItemMapper.selectListByQuoteId(quoteId))
+                .thenReturn(Collections.singletonList(item));
+        when(customerService.getCustomerSaleDeptIds(90L)).thenReturn(Collections.singletonList(80L));
+        when(productService.validProductList(eq(Collections.singleton(303L))))
+                .thenReturn(Collections.singletonList(new ErpProductDO().setId(303L).setUnitId(503L)));
+        when(saleQuoteMapper.updateByIdAndStatus(eq(quoteId), eq(ErpSaleQuoteStatusEnum.DRAFT.getStatus()),
+                argThat(update -> ErpSaleQuoteStatusEnum.PROCESS.getStatus().equals(update.getStatus()))))
+                .thenReturn(1);
+
+        saleQuoteService.submitSaleQuote(quoteId);
+
+        verify(customerService).validateCustomerForSale(90L);
+        verify(customerService).validateCustomerSaleDept(90L, 80L);
+        verify(saleQuoteMapper).updateByIdAndStatus(eq(quoteId),
+                eq(ErpSaleQuoteStatusEnum.DRAFT.getStatus()),
+                argThat(update -> ErpSaleQuoteStatusEnum.PROCESS.getStatus().equals(update.getStatus())
+                        && Long.valueOf(80L).equals(update.getDeptId())));
+    }
+
+    @Test
+    public void testSubmitSaleQuote_nonDraftRejected() {
+        Long quoteId = 104L;
+        when(saleQuoteMapper.selectById(quoteId)).thenReturn(new ErpSaleQuoteDO()
+                .setId(quoteId)
+                .setStatus(ErpSaleQuoteStatusEnum.PROCESS.getStatus()));
+
+        assertServiceException(() -> saleQuoteService.submitSaleQuote(quoteId),
+                SALE_QUOTE_SUBMIT_FAIL);
+        verify(saleQuoteMapper, never()).updateByIdAndStatus(any(), any(), any());
+    }
+
+    @Test
+    public void testConvertToCart_draftRejected() {
+        Long quoteId = 105L;
+        when(saleQuoteMapper.selectById(quoteId)).thenReturn(new ErpSaleQuoteDO()
+                .setId(quoteId)
+                .setStatus(ErpSaleQuoteStatusEnum.DRAFT.getStatus()));
+        ErpSaleQuoteConvertCartReqVO reqVO = new ErpSaleQuoteConvertCartReqVO();
+        reqVO.setQuoteId(quoteId);
+        reqVO.setItems(Collections.emptyList());
+
+        assertServiceException(() -> saleQuoteService.convertToCart(reqVO),
+                SALE_QUOTE_CONVERT_CART_FAIL);
+        verify(saleQuoteItemMapper, never()).selectListByQuoteId(any());
+        verify(saleCartMapper, never()).insert(ArgumentMatchers.<cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleCartDO>any());
     }
 
     // ==================== delete ====================

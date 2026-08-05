@@ -19,7 +19,13 @@ public class UserPriceFieldRespVO {
     @Schema(description = "价格字段编码")
     private String priceFieldCode;
 
+    @Schema(description = "价格字段名称")
+    private String priceFieldLabel;
+
     @Schema(description = "是否可见")
     private Boolean visible;
+
+    @Schema(description = "排序")
+    private Integer sort;
 
 }

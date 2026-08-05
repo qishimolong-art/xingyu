@@ -15,6 +15,7 @@ import org.apache.ibatis.annotations.Mapper;
 import org.springframework.util.StringUtils;
 
 import java.util.Collection;
+import java.util.Collections;
 import java.util.List;
 
 /**
@@ -42,12 +43,38 @@ public interface ErpStockMoveMapper extends BaseMapperX<ErpStockMoveDO> {
 
     default PageResult<ErpStockMoveDO> selectTransferInPage(ErpStockMovePageReqVO reqVO,
                                                             Collection<Long> deptIds,
-                                                            Long creatorUserId,
                                                             boolean all) {
         MPJLambdaWrapperX<ErpStockMoveDO> query = buildPageQuery(reqVO);
-        applyTransferInVisibleScope(query, deptIds, creatorUserId, all);
+        applyTransferInVisibleScope(query, deptIds, all);
         orderBy(query, reqVO);
         return selectJoinPage(reqVO, ErpStockMoveDO.class, query);
+    }
+
+    default List<ErpStockMoveDO> selectTransferOutList(ErpStockMovePageReqVO reqVO,
+                                                       Collection<Long> deptIds,
+                                                       boolean all) {
+        MPJLambdaWrapperX<ErpStockMoveDO> query = buildPageQuery(reqVO);
+        applyTransferOutVisibleScope(query, deptIds, all);
+        query.orderByDesc(ErpStockMoveDO::getMoveTime).orderByDesc(ErpStockMoveDO::getId);
+        return selectList(query);
+    }
+
+    default List<ErpStockMoveDO> selectTransferInList(ErpStockMovePageReqVO reqVO,
+                                                      Collection<Long> deptIds,
+                                                      boolean all) {
+        MPJLambdaWrapperX<ErpStockMoveDO> query = buildPageQuery(reqVO);
+        applyTransferInVisibleScope(query, deptIds, all);
+        query.orderByDesc(ErpStockMoveDO::getMoveTime).orderByDesc(ErpStockMoveDO::getId);
+        return selectList(query);
+    }
+
+    default List<ErpStockMoveDO> selectLedgerRelatedList(Collection<Long> moveIds) {
+        if (CollUtil.isEmpty(moveIds)) {
+            return Collections.emptyList();
+        }
+        return selectList(new LambdaQueryWrapperX<ErpStockMoveDO>()
+                .and(query -> query.in(ErpStockMoveDO::getId, moveIds)
+                        .or().in(ErpStockMoveDO::getRelatedMoveId, moveIds)));
     }
 
     default ErpStockMoveDO selectVisibleTransferOutById(Long id, Collection<Long> deptIds,
@@ -70,11 +97,11 @@ public interface ErpStockMoveMapper extends BaseMapperX<ErpStockMoveDO> {
     }
 
     default ErpStockMoveDO selectVisibleTransferInById(Long id, Collection<Long> deptIds,
-                                                       Long creatorUserId, boolean all) {
+                                                       boolean all) {
         MPJLambdaWrapperX<ErpStockMoveDO> query = new MPJLambdaWrapperX<ErpStockMoveDO>()
                 .eq(ErpStockMoveDO::getId, id);
         appendTransferDirection(query, 20);
-        applyTransferInVisibleScope(query, deptIds, creatorUserId, all);
+        applyTransferInVisibleScope(query, deptIds, all);
         return selectOne(query);
     }
 
@@ -139,7 +166,6 @@ public interface ErpStockMoveMapper extends BaseMapperX<ErpStockMoveDO> {
 
     static void applyTransferInVisibleScope(MPJLambdaWrapperX<ErpStockMoveDO> query,
                                             Collection<Long> deptIds,
-                                            Long creatorUserId,
                                             boolean all) {
         if (all) {
             return;
@@ -154,9 +180,6 @@ public interface ErpStockMoveMapper extends BaseMapperX<ErpStockMoveDO> {
                                         + buildIndexedPlaceholders(parameters.length) + ")))", parameters));
             } else {
                 scope.apply("1 = 0");
-            }
-            if (creatorUserId != null) {
-                scope.or().eq(ErpStockMoveDO::getCreator, String.valueOf(creatorUserId));
             }
         });
     }

@@ -50,6 +50,17 @@ public interface ErpReceivableOtherMapper extends BaseMapperX<ErpReceivableOther
         return selectOne(ErpReceivableOtherDO::getNo, no);
     }
 
+    default ErpReceivableOtherDO selectByIdForUpdate(Long id) {
+        return selectOne(new LambdaQueryWrapperX<ErpReceivableOtherDO>()
+                .eq(ErpReceivableOtherDO::getId, id)
+                .last("FOR UPDATE"));
+    }
+
+    default ErpReceivableOtherDO selectBySource(String sourceType, Long sourceId) {
+        return selectOne(ErpReceivableOtherDO::getSourceType, sourceType,
+                ErpReceivableOtherDO::getSourceId, sourceId);
+    }
+
     default Long selectCountByCustomerId(Long customerId) {
         return selectCount(ErpReceivableOtherDO::getCustomerId, customerId);
     }

@@ -1,8 +1,10 @@
 package cn.iocoder.yudao.module.erp.service.purchase;
 
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.ErpPurchaseUpdateRemarkReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.imports.ErpPurchaseImportResultRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.priceadjust.ErpPurchasePriceAdjustImportExcelVO;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.priceadjust.ErpPurchasePriceAdjustDraftSaveReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.priceadjust.ErpPurchasePriceAdjustImportRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.priceadjust.ErpPurchasePriceAdjustOrderImportExcelVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.priceadjust.ErpPurchasePriceAdjustPageReqVO;
@@ -30,12 +32,29 @@ public interface ErpPurchasePriceAdjustService {
      */
     Long createPurchasePriceAdjust(@Valid ErpPurchasePriceAdjustSaveReqVO reqVO);
 
+    Long createPurchasePriceAdjustDraft(ErpPurchasePriceAdjustDraftSaveReqVO reqVO);
+
+    Long createAndSubmitPurchasePriceAdjust(@Valid ErpPurchasePriceAdjustSaveReqVO reqVO);
+
     /**
      * 更新采购调价单（未审核状态下）
      *
      * @param reqVO 更新请求
      */
     void updatePurchasePriceAdjust(@Valid ErpPurchasePriceAdjustSaveReqVO reqVO);
+
+    void updatePurchasePriceAdjustDraft(ErpPurchasePriceAdjustDraftSaveReqVO reqVO);
+
+    void updateAndSubmitPurchasePriceAdjust(@Valid ErpPurchasePriceAdjustSaveReqVO reqVO);
+
+    void submitPurchasePriceAdjust(Long id);
+
+    /**
+     * 修改采购调价单备注，不受审批状态限制
+     *
+     * @param reqVO 备注信息
+     */
+    void updatePurchasePriceAdjustRemark(@Valid ErpPurchaseUpdateRemarkReqVO reqVO);
 
     /**
      * 更新采购调价单状态（仅支持审核通过）

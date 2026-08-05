@@ -1,5 +1,6 @@
 package cn.iocoder.yudao.module.erp.service.sale;
 
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.ErpSaleUpdateRemarkReqVO;
 import cn.hutool.core.collection.CollUtil;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.common.enums.CommonStatusEnum;
@@ -12,6 +13,8 @@ import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.quote.ErpSaleQuoteIm
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.quote.ErpSaleQuoteImportRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.quote.ErpSaleQuoteOrderImportExcelVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.quote.ErpSaleQuoteRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.quote.ErpSaleQuoteDraftCreateReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.quote.ErpSaleQuoteDraftUpdateReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.out.ErpSaleOutSaveReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.quote.ErpSaleQuoteConvertCartReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.quote.ErpSaleQuotePageReqVO;
@@ -160,6 +163,45 @@ public class ErpSaleQuoteServiceImpl implements ErpSaleQuoteService {
 
     @Override
     @Transactional(rollbackFor = Exception.class)
+    public Long createSaleQuoteDraft(ErpSaleQuoteDraftCreateReqVO createReqVO) {
+        clearHiddenFields(createReqVO);
+        clearHiddenItemFields(createReqVO.getItems());
+        List<ErpSaleQuoteSaveReqVO.Item> itemReqs = filterDraftItems(createReqVO.getItems());
+        if (CollUtil.isEmpty(itemReqs)) {
+            throw exception(SALE_QUOTE_DRAFT_ITEMS_REQUIRED);
+        }
+        Long quoteDeptId = createReqVO.getDeptId();
+        if (createReqVO.getCustomerId() != null) {
+            quoteDeptId = prepareSaleQuoteDept(createReqVO);
+        }
+        List<ErpSaleQuoteItemDO> items = validateSaleQuoteDraftItems(itemReqs, quoteDeptId);
+        if (createReqVO.getAccountId() != null) {
+            accountService.validateAccount(createReqVO.getAccountId());
+        }
+        if (createReqVO.getSaleUserId() != null) {
+            adminUserApi.validateUser(createReqVO.getSaleUserId());
+        }
+        String no = noRedisDAO.generate(ErpNoRedisDAO.SALE_QUOTE_NO_PREFIX);
+        if (saleQuoteMapper.selectByNo(no) != null) {
+            throw exception(SALE_QUOTE_NO_EXISTS);
+        }
+        ErpSaleQuoteDO quote = BeanUtils.toBean(createReqVO, ErpSaleQuoteDO.class,
+                in -> in.setNo(no)
+                        .setStatus(ErpSaleQuoteStatusEnum.DRAFT.getStatus())
+                        .setQuoteTime(LocalDateTime.now()));
+        calculateTotalPrice(quote, items);
+        saleDocumentDefaultService.fillCreateDefaults(quote);
+        saleQuoteMapper.insert(quote);
+        if (CollUtil.isNotEmpty(items)) {
+            items.forEach(item -> item.setQuoteId(quote.getId()));
+            saleQuoteItemMapper.insertBatch(items);
+        }
+        recordCreate(quote.getId(), quote.getNo());
+        return quote.getId();
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
     public void updateSaleQuote(ErpSaleQuoteSaveReqVO updateReqVO) {
         ErpSaleQuoteDO quote = validateSaleQuoteExists(updateReqVO.getId());
         if (ErpSaleQuoteStatusEnum.GENERATED_SALE_OUT.getStatus().equals(quote.getStatus())) {
@@ -190,6 +232,86 @@ public class ErpSaleQuoteServiceImpl implements ErpSaleQuoteService {
         saleQuoteItemMapper.deleteByQuoteId(updateReqVO.getId());
         items.forEach(item -> item.setQuoteId(updateReqVO.getId()));
         saleQuoteItemMapper.insertBatch(items);
+        recordUpdate(updateReqVO.getId(), quote.getNo());
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void updateSaleQuoteDraft(ErpSaleQuoteDraftUpdateReqVO updateReqVO) {
+        ErpSaleQuoteDO quote = validateSaleQuoteExists(updateReqVO.getId());
+        if (!ErpSaleQuoteStatusEnum.DRAFT.getStatus().equals(quote.getStatus())) {
+            throw exception(SALE_QUOTE_UPDATE_FAIL_NOT_DRAFT, quote.getNo());
+        }
+        preserveHiddenFields(updateReqVO, quote);
+        List<ErpSaleQuoteItemDO> existingItems = saleQuoteItemMapper.selectListByQuoteId(updateReqVO.getId());
+        preserveHiddenItemFields(updateReqVO.getItems(), existingItems);
+        List<ErpSaleQuoteSaveReqVO.Item> itemReqs = filterDraftItems(updateReqVO.getItems());
+        Long quoteDeptId = updateReqVO.getDeptId() != null ? updateReqVO.getDeptId() : quote.getDeptId();
+        if (updateReqVO.getCustomerId() != null) {
+            quoteDeptId = prepareSaleQuoteDept(updateReqVO);
+        }
+        List<ErpSaleQuoteItemDO> items = validateSaleQuoteDraftItems(itemReqs, quoteDeptId);
+        if (updateReqVO.getAccountId() != null) {
+            accountService.validateAccount(updateReqVO.getAccountId());
+        }
+        if (updateReqVO.getSaleUserId() != null) {
+            adminUserApi.validateUser(updateReqVO.getSaleUserId());
+        }
+        ErpSaleQuoteDO updateObj = BeanUtils.toBean(updateReqVO, ErpSaleQuoteDO.class);
+        updateObj.setNo(quote.getNo());
+        updateObj.setStatus(quote.getStatus());
+        updateObj.setDeptId(quoteDeptId);
+        updateObj.setQuoteTime(LocalDateTime.now());
+        calculateTotalPrice(updateObj, items);
+        saleQuoteMapper.updateById(updateObj);
+        saleQuoteItemMapper.deleteByQuoteId(updateReqVO.getId());
+        if (CollUtil.isNotEmpty(items)) {
+            items.forEach(item -> item.setQuoteId(updateReqVO.getId()));
+            saleQuoteItemMapper.insertBatch(items);
+        }
+        recordUpdate(updateReqVO.getId(), quote.getNo());
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void submitSaleQuote(Long id) {
+        ErpSaleQuoteDO quote = validateSaleQuoteExists(id);
+        if (!ErpSaleQuoteStatusEnum.DRAFT.getStatus().equals(quote.getStatus())) {
+            throw exception(SALE_QUOTE_SUBMIT_FAIL);
+        }
+        if (quote.getCustomerId() == null) {
+            throw exception(SALE_QUOTE_SUBMIT_CUSTOMER_REQUIRED);
+        }
+        List<ErpSaleQuoteItemDO> persistedItems = saleQuoteItemMapper.selectListByQuoteId(id);
+        if (CollUtil.isEmpty(persistedItems)) {
+            throw exception(SALE_QUOTE_SUBMIT_ITEMS_REQUIRED);
+        }
+        ErpSaleQuoteSaveReqVO submitReqVO = BeanUtils.toBean(quote, ErpSaleQuoteSaveReqVO.class);
+        submitReqVO.setItems(BeanUtils.toBean(persistedItems, ErpSaleQuoteSaveReqVO.Item.class));
+        Long quoteDeptId = prepareSaleQuoteDept(submitReqVO);
+        validateSaleQuoteItems(submitReqVO.getItems(), quoteDeptId);
+        if (submitReqVO.getAccountId() != null) {
+            accountService.validateAccount(submitReqVO.getAccountId());
+        }
+        if (submitReqVO.getSaleUserId() != null) {
+            adminUserApi.validateUser(submitReqVO.getSaleUserId());
+        }
+        int updateCount = saleQuoteMapper.updateByIdAndStatus(id, ErpSaleQuoteStatusEnum.DRAFT.getStatus(),
+                new ErpSaleQuoteDO()
+                        .setStatus(ErpSaleQuoteStatusEnum.PROCESS.getStatus())
+                        .setDeptId(quoteDeptId));
+        if (updateCount == 0) {
+            throw exception(SALE_QUOTE_SUBMIT_FAIL);
+        }
+        record(id, "提交", "提交报价订单，单据编号：" + quote.getNo(), quote.getNo());
+    }
+
+    @Override
+    public void updateSaleQuoteRemark(ErpSaleUpdateRemarkReqVO updateReqVO) {
+        ErpSaleQuoteDO quote = validateSaleQuoteExists(updateReqVO.getId());
+        saleQuoteMapper.updateById(new ErpSaleQuoteDO()
+                .setId(updateReqVO.getId())
+                .setRemark(updateReqVO.getRemark()));
         recordUpdate(updateReqVO.getId(), quote.getNo());
     }
 
@@ -240,6 +362,11 @@ public class ErpSaleQuoteServiceImpl implements ErpSaleQuoteService {
     @Transactional(rollbackFor = Exception.class)
     public Long convertToCart(ErpSaleQuoteConvertCartReqVO reqVO) {
         ErpSaleQuoteDO quote = validateSaleQuoteExists(reqVO.getQuoteId());
+        if (!ErpSaleQuoteStatusEnum.PROCESS.getStatus().equals(quote.getStatus())
+                && !ErpSaleQuoteStatusEnum.APPROVE.getStatus().equals(quote.getStatus())
+                && !ErpSaleQuoteStatusEnum.PART_CONVERTED_CART.getStatus().equals(quote.getStatus())) {
+            throw exception(SALE_QUOTE_CONVERT_CART_FAIL);
+        }
         List<ErpSaleQuoteItemDO> quoteItems = saleQuoteItemMapper.selectListByQuoteId(reqVO.getQuoteId());
         Map<Long, ErpSaleQuoteItemDO> quoteItemMap = convertMap(quoteItems, ErpSaleQuoteItemDO::getId);
         Map<Long, BigDecimal> convertCountMap = new LinkedHashMap<>();
@@ -450,6 +577,53 @@ public class ErpSaleQuoteServiceImpl implements ErpSaleQuoteService {
             item.setConvertedCount(BigDecimal.ZERO);
             item.setGiftFlag(Boolean.TRUE.equals(item.getGiftFlag()));
             if (Boolean.TRUE.equals(item.getGiftFlag())) {
+                item.setProductPrice(BigDecimal.ZERO);
+            }
+            item.setTotalPrice(MoneyUtils.priceMultiply(item.getProductPrice(), item.getCount()));
+            if (item.getTotalPrice() != null && item.getTaxPercent() != null) {
+                item.setTaxPrice(MoneyUtils.priceMultiplyPercent(item.getTotalPrice(), item.getTaxPercent()));
+            }
+        }));
+    }
+
+    private List<ErpSaleQuoteSaveReqVO.Item> filterDraftItems(List<ErpSaleQuoteSaveReqVO.Item> items) {
+        if (CollUtil.isEmpty(items)) {
+            return Collections.emptyList();
+        }
+        return items.stream()
+                .filter(item -> item != null && item.getProductId() != null
+                        && item.getWarehouseId() != null && item.getCount() != null
+                        && item.getCount().compareTo(BigDecimal.ZERO) > 0)
+                .collect(Collectors.toList());
+    }
+
+    private List<ErpSaleQuoteItemDO> validateSaleQuoteDraftItems(List<ErpSaleQuoteSaveReqVO.Item> list, Long quoteDeptId) {
+        if (CollUtil.isEmpty(list)) {
+            return Collections.emptyList();
+        }
+        validateDuplicateSaleQuoteItems(list);
+        List<ErpProductDO> productList = DataPermissionUtils.executeIgnore(() ->
+                productService.validProductList(convertSet(list, ErpSaleQuoteSaveReqVO.Item::getProductId)));
+        Map<Long, ErpProductDO> productMap = convertMap(productList, ErpProductDO::getId);
+        productBatchNoValidator.validateBatchNoAllowed(list, productMap,
+                ErpSaleQuoteSaveReqVO.Item::getProductId, ErpSaleQuoteSaveReqVO.Item::getBatchNo);
+        Set<Long> warehouseIds = convertSet(list, ErpSaleQuoteSaveReqVO.Item::getWarehouseId);
+        Map<Long, ErpWarehouseDO> warehouseMap = convertMap(warehouseService.validSaleWarehouseList(warehouseIds),
+                ErpWarehouseDO::getId);
+        if (quoteDeptId != null) {
+            validateSaleQuoteWarehouseIdsAllowed(warehouseIds, quoteDeptId);
+        }
+        return convertList(list, o -> BeanUtils.toBean(o, ErpSaleQuoteItemDO.class, item -> {
+            item.setId(null); // Clear stale id returned from frontend before insertBatch.
+            ErpProductDO product = productMap.get(item.getProductId());
+            item.setProductUnitId(product.getUnitId());
+            item.setDeptId(resolveQuoteItemDeptId(item.getProductId(), item.getWarehouseId(),
+                    item.getDeptId(), warehouseMap));
+            item.setConvertedCount(BigDecimal.ZERO);
+            item.setGiftFlag(Boolean.TRUE.equals(item.getGiftFlag()));
+            if (Boolean.TRUE.equals(item.getGiftFlag())
+                    || item.getProductPrice() == null
+                    || item.getProductPrice().compareTo(BigDecimal.ZERO) < 0) {
                 item.setProductPrice(BigDecimal.ZERO);
             }
             item.setTotalPrice(MoneyUtils.priceMultiply(item.getProductPrice(), item.getCount()));

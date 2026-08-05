@@ -3,6 +3,7 @@ package cn.iocoder.yudao.module.system.api.permission;
 import cn.iocoder.yudao.framework.common.biz.system.permission.PermissionCommonApi;
 import cn.iocoder.yudao.framework.common.biz.system.permission.dto.DeptDataPermissionRespDTO;
 import cn.iocoder.yudao.module.system.api.permission.dto.FieldDefinitionCreateOrUpdateReqDTO;
+import cn.iocoder.yudao.module.system.api.permission.dto.FieldDefinitionRespDTO;
 
 import java.util.Collection;
 import java.util.List;
@@ -31,9 +32,36 @@ public interface PermissionApi extends PermissionCommonApi {
      */
     List<String> getCurrentUserHiddenFields(String module);
 
+    /**
+     * Gets hidden fields using the business document department for the
+     * department-level product price permission layer.
+     *
+     * @param module module key
+     * @param businessDeptId business document department; {@code null} falls back to the login department
+     * @return hidden field keys
+     */
+    List<String> getCurrentUserHiddenFields(String module, Long businessDeptId);
+
+    /**
+     * Gets hidden fields and optionally skips the product price view permission
+     * layer.
+     *
+     * @param module module key
+     * @param businessDeptId business document department
+     * @param includeProductPricePermission whether to include product price view permissions
+     * @return hidden field keys
+     */
+    List<String> getCurrentUserHiddenFields(String module, Long businessDeptId,
+                                            boolean includeProductPricePermission);
+
     void createOrUpdateFieldDefinitions(List<FieldDefinitionCreateOrUpdateReqDTO> definitions);
 
     void deleteFieldDefinitions(String module, List<String> fieldKeys);
+
+    /**
+     * 获得指定模块和分组的有效字段目录。
+     */
+    List<FieldDefinitionRespDTO> getFieldDefinitions(String module, String fieldGroup);
 
     /**
      * 获得用户真实关联的部门编号集合。

@@ -1,5 +1,6 @@
 package cn.iocoder.yudao.module.erp.controller.admin.sale;
 
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.ErpSaleUpdateRemarkReqVO;
 import cn.hutool.core.collection.CollUtil;
 import cn.iocoder.yudao.framework.apilog.core.annotation.ApiAccessLog;
 import cn.iocoder.yudao.framework.common.pojo.CommonResult;
@@ -13,6 +14,8 @@ import cn.iocoder.yudao.module.erp.controller.admin.common.ErpAuditStatusRequest
 import cn.iocoder.yudao.module.erp.controller.admin.common.vo.ErpExportFieldRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpProductRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnExportRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnDraftCreateReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnDraftUpdateReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnImportExcelVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnImportRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnPageReqVO;
@@ -110,11 +113,43 @@ public class ErpSaleReturnController {
         return success(saleReturnService.createSaleReturn(createReqVO));
     }
 
+    @PostMapping("/create-draft")
+    @Operation(summary = "创建销售退货草稿")
+    @PreAuthorize("@ss.hasPermission('erp:sale-return:create')")
+    public CommonResult<Long> createSaleReturnDraft(@RequestBody ErpSaleReturnDraftCreateReqVO createReqVO) {
+        return success(saleReturnService.createSaleReturnDraft(createReqVO));
+    }
+
     @PutMapping("/update")
     @Operation(summary = "更新销售退货")
     @PreAuthorize("@ss.hasPermission('erp:sale-return:update')")
     public CommonResult<Boolean> updateSaleReturn(@Valid @RequestBody ErpSaleReturnSaveReqVO updateReqVO) {
         saleReturnService.updateSaleReturn(updateReqVO);
+        return success(true);
+    }
+
+    @PutMapping("/update-draft")
+    @Operation(summary = "更新销售退货草稿")
+    @PreAuthorize("@ss.hasPermission('erp:sale-return:update')")
+    public CommonResult<Boolean> updateSaleReturnDraft(@RequestBody ErpSaleReturnDraftUpdateReqVO updateReqVO) {
+        saleReturnService.updateSaleReturnDraft(updateReqVO);
+        return success(true);
+    }
+
+    @PutMapping("/submit")
+    @Operation(summary = "提交销售退货草稿")
+    @PreAuthorize("@ss.hasPermission('erp:sale-return:update-status')")
+    public CommonResult<Boolean> submitSaleReturn(@RequestParam("id") Long id) {
+        saleReturnService.submitSaleReturn(id);
+        return success(true);
+    }
+
+    @PutMapping("/update-remark")
+    @Operation(summary = "修改销售退货备注")
+    @PreAuthorize("@ss.hasPermission('erp:sale-return:update')")
+    public CommonResult<Boolean> updateSaleReturnRemark(
+            @Valid @RequestBody ErpSaleUpdateRemarkReqVO updateReqVO) {
+        saleReturnService.updateSaleReturnRemark(updateReqVO);
         return success(true);
     }
 

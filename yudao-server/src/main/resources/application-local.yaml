@@ -229,9 +229,9 @@ wx:
 yudao:
   file:
     local:
-      enabled: true
-      base-path: files
-      domain: http://localhost:48080
+      enabled: ${YUDAO_FILE_LOCAL_ENABLED:true}
+      base-path: ${YUDAO_FILE_LOCAL_BASE_PATH:files}
+      domain: ${YUDAO_FILE_LOCAL_DOMAIN:http://localhost:48080}
   captcha:
     enable: false # 本地环境，暂时关闭图片验证码，方便登录等接口的测试；
   security:
@@ -242,6 +242,8 @@ yudao:
     transfer-notify-url: https://yutou.mynatapp.cc/admin-api/pay/notify/transfer # 支付渠道的【转账】回调地址
   access-log: # 访问日志的配置项
     enable: false
+  api-encrypt:
+    enable: false # 本地环境关闭 API 加密，避免老 JDK 8 校验 BC provider 失败导致启动退出
   demo: false # 关闭演示模式
   wxa-code:
     env-version: develop # 小程序版本: 正式版为 "release"；体验版为 "trial"；开发版为 "develop"

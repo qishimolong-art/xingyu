@@ -1,6 +1,7 @@
 package cn.iocoder.yudao.module.erp.service.sale;
 
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.ErpSaleUpdateRemarkReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartConvertQuoteReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartFirstApproveConfigRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartFirstApproveConfigSaveReqVO;
@@ -23,13 +24,17 @@ import java.util.Map;
  */
 public interface ErpSaleCartService {
 
-    Long createSaleCart(@Valid ErpSaleCartSaveReqVO createReqVO);
+    Long createSaleCart(ErpSaleCartSaveReqVO createReqVO);
 
     ErpSaleCartSubmitRespVO createAndSubmitSaleCart(@Valid ErpSaleCartSaveReqVO createReqVO);
 
     ErpSaleCartSubmitRespVO createAndSubmitSaleCartFromPurchaseIn(@Valid ErpSaleCartSaveReqVO createReqVO);
 
     void updateSaleCart(@Valid ErpSaleCartSaveReqVO updateReqVO);
+
+    void updateSaleCartRemark(@Valid ErpSaleUpdateRemarkReqVO updateReqVO);
+
+    void updateSaleCartDraft(ErpSaleCartSaveReqVO updateReqVO);
 
     void updateSaleCartBasic(@Valid ErpSaleCartUpdateBasicReqVO updateReqVO);
 

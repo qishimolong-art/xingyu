@@ -12,8 +12,10 @@ import cn.iocoder.yudao.framework.excel.core.util.ExcelUtils;
 import cn.iocoder.yudao.module.erp.controller.admin.common.ErpAuditStatusRequestValidator;
 import cn.iocoder.yudao.module.erp.controller.admin.common.vo.ErpExportFieldRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpProductRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.ErpPurchaseUpdateRemarkReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.imports.ErpPurchaseImportResultRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.priceadjust.ErpPurchasePriceAdjustExportRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.priceadjust.ErpPurchasePriceAdjustDraftSaveReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.priceadjust.ErpPurchasePriceAdjustImportExcelVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.priceadjust.ErpPurchasePriceAdjustImportRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.priceadjust.ErpPurchasePriceAdjustOrderImportExcelVO;
@@ -120,9 +122,27 @@ public class ErpPurchasePriceAdjustController {
 
     @PostMapping("/create")
     @Operation(summary = "创建采购调价单")
-    @PreAuthorize("@ss.hasPermission('erp:purchase-price-adjust:create')")
+    @PreAuthorize("@ss.hasPermission('erp:purchase-price-adjust:create') and " +
+            "@ss.hasPermission('erp:purchase-price-adjust:update-status')")
     public CommonResult<Long> createPurchasePriceAdjust(@Valid @RequestBody ErpPurchasePriceAdjustSaveReqVO reqVO) {
         return success(priceAdjustService.createPurchasePriceAdjust(reqVO));
+    }
+
+    @PostMapping("/create-draft")
+    @Operation(summary = "创建采购调价单草稿")
+    @PreAuthorize("@ss.hasPermission('erp:purchase-price-adjust:create')")
+    public CommonResult<Long> createPurchasePriceAdjustDraft(
+            @RequestBody ErpPurchasePriceAdjustDraftSaveReqVO reqVO) {
+        return success(priceAdjustService.createPurchasePriceAdjustDraft(reqVO));
+    }
+
+    @PostMapping("/create-and-submit")
+    @Operation(summary = "创建并提交采购调价单")
+    @PreAuthorize("@ss.hasPermission('erp:purchase-price-adjust:create') and " +
+            "@ss.hasPermission('erp:purchase-price-adjust:update-status')")
+    public CommonResult<Long> createAndSubmitPurchasePriceAdjust(
+            @Valid @RequestBody ErpPurchasePriceAdjustSaveReqVO reqVO) {
+        return success(priceAdjustService.createAndSubmitPurchasePriceAdjust(reqVO));
     }
 
     @PutMapping("/update")
@@ -130,6 +150,42 @@ public class ErpPurchasePriceAdjustController {
     @PreAuthorize("@ss.hasPermission('erp:purchase-price-adjust:update')")
     public CommonResult<Boolean> updatePurchasePriceAdjust(@Valid @RequestBody ErpPurchasePriceAdjustSaveReqVO reqVO) {
         priceAdjustService.updatePurchasePriceAdjust(reqVO);
+        return success(true);
+    }
+
+    @PutMapping("/update-draft")
+    @Operation(summary = "更新采购调价单草稿")
+    @PreAuthorize("@ss.hasPermission('erp:purchase-price-adjust:update')")
+    public CommonResult<Boolean> updatePurchasePriceAdjustDraft(
+            @RequestBody ErpPurchasePriceAdjustDraftSaveReqVO reqVO) {
+        priceAdjustService.updatePurchasePriceAdjustDraft(reqVO);
+        return success(true);
+    }
+
+    @PutMapping("/update-and-submit")
+    @Operation(summary = "更新并提交采购调价单草稿")
+    @PreAuthorize("@ss.hasPermission('erp:purchase-price-adjust:update') and " +
+            "@ss.hasPermission('erp:purchase-price-adjust:update-status')")
+    public CommonResult<Boolean> updateAndSubmitPurchasePriceAdjust(
+            @Valid @RequestBody ErpPurchasePriceAdjustSaveReqVO reqVO) {
+        priceAdjustService.updateAndSubmitPurchasePriceAdjust(reqVO);
+        return success(true);
+    }
+
+    @PutMapping("/submit")
+    @Operation(summary = "提交采购调价单草稿")
+    @PreAuthorize("@ss.hasPermission('erp:purchase-price-adjust:update-status')")
+    public CommonResult<Boolean> submitPurchasePriceAdjust(@RequestParam("id") Long id) {
+        priceAdjustService.submitPurchasePriceAdjust(id);
+        return success(true);
+    }
+
+    @PutMapping("/update-remark")
+    @Operation(summary = "修改采购调价单备注")
+    @PreAuthorize("@ss.hasPermission('erp:purchase-price-adjust:update')")
+    public CommonResult<Boolean> updatePurchasePriceAdjustRemark(
+            @Valid @RequestBody ErpPurchaseUpdateRemarkReqVO reqVO) {
+        priceAdjustService.updatePurchasePriceAdjustRemark(reqVO);
         return success(true);
     }
 
@@ -144,7 +200,8 @@ public class ErpPurchasePriceAdjustController {
 
     @PostMapping("/import-order")
     @Operation(summary = "Import purchase price adjust order")
-    @PreAuthorize("@ss.hasPermission('erp:purchase-price-adjust:create')")
+    @PreAuthorize("@ss.hasPermission('erp:purchase-price-adjust:create') and " +
+            "@ss.hasPermission('erp:purchase-price-adjust:update-status')")
     public CommonResult<ErpPurchaseImportResultRespVO> importPurchasePriceAdjustOrder(@RequestParam("file") MultipartFile file)
             throws Exception {
         List<ErpPurchasePriceAdjustOrderImportExcelVO> list = ExcelUtils.read(file, ErpPurchasePriceAdjustOrderImportExcelVO.class);

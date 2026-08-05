@@ -7,11 +7,14 @@ import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.excel.core.util.ExcelUtils;
 import cn.iocoder.yudao.module.erp.controller.admin.common.ErpAuditStatusRequestValidator;
 import cn.iocoder.yudao.module.erp.controller.admin.common.vo.ErpExportFieldRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.ErpStockUpdateRemarkReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.imports.ErpStockImportExcelVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.imports.ErpStockImportResultRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.move.ErpStockMovePageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.move.ErpStockMoveRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.move.ErpStockMoveSaveReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.move.ErpStockTransferOutDraftCreateReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.move.ErpStockTransferOutDraftUpdateReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockMoveDO;
 import cn.iocoder.yudao.module.erp.enums.ErpAuditStatus;
 import cn.iocoder.yudao.module.erp.framework.excel.ErpExportFieldUtils;
@@ -92,12 +95,67 @@ public class ErpStockTransferOutController {
         return success(stockMoveService.createStockMove(createReqVO));
     }
 
+    @PostMapping("/create-draft")
+    @Operation(summary = "保存调拨出库单草稿")
+    @PreAuthorize("@ss.hasPermission('erp:stock-transfer-out:create')")
+    public CommonResult<Long> createStockTransferOutDraft(
+            @RequestBody ErpStockTransferOutDraftCreateReqVO createReqVO) {
+        createReqVO.setTransferDirection(TRANSFER_DIRECTION_OUT);
+        return success(stockMoveService.createStockTransferOutDraft(createReqVO));
+    }
+
+    @PostMapping("/create-and-submit")
+    @Operation(summary = "创建并提交调拨出库单")
+    @PreAuthorize("@ss.hasPermission('erp:stock-transfer-out:create')")
+    public CommonResult<Long> createAndSubmitStockTransferOut(
+            @Valid @RequestBody ErpStockMoveSaveReqVO createReqVO) {
+        createReqVO.setTransferDirection(TRANSFER_DIRECTION_OUT);
+        return success(stockMoveService.createAndSubmitStockTransferOut(createReqVO));
+    }
+
     @PutMapping("/update")
     @Operation(summary = "Update stock transfer-out draft")
     @PreAuthorize("@ss.hasPermission('erp:stock-transfer-out:update')")
     public CommonResult<Boolean> updateStockTransferOut(@Valid @RequestBody ErpStockMoveSaveReqVO updateReqVO) {
         updateReqVO.setTransferDirection(TRANSFER_DIRECTION_OUT);
         stockMoveService.updateStockMove(updateReqVO, FIELD_PERMISSION_MODULE);
+        return success(true);
+    }
+
+    @PutMapping("/update-draft")
+    @Operation(summary = "保存调拨出库单草稿修改")
+    @PreAuthorize("@ss.hasPermission('erp:stock-transfer-out:update')")
+    public CommonResult<Boolean> updateStockTransferOutDraft(
+            @RequestBody ErpStockTransferOutDraftUpdateReqVO updateReqVO) {
+        updateReqVO.setTransferDirection(TRANSFER_DIRECTION_OUT);
+        stockMoveService.updateStockTransferOutDraft(updateReqVO);
+        return success(true);
+    }
+
+    @PutMapping("/update-and-submit")
+    @Operation(summary = "更新并提交调拨出库单草稿")
+    @PreAuthorize("@ss.hasPermission('erp:stock-transfer-out:update')")
+    public CommonResult<Boolean> updateAndSubmitStockTransferOutDraft(
+            @Valid @RequestBody ErpStockMoveSaveReqVO updateReqVO) {
+        updateReqVO.setTransferDirection(TRANSFER_DIRECTION_OUT);
+        stockMoveService.updateAndSubmitStockTransferOutDraft(updateReqVO);
+        return success(true);
+    }
+
+    @PutMapping("/submit")
+    @Operation(summary = "提交调拨出库单草稿")
+    @PreAuthorize("@ss.hasPermission('erp:stock-transfer-out:update')")
+    public CommonResult<Boolean> submitStockTransferOutDraft(@RequestParam("id") Long id) {
+        stockMoveService.submitStockTransferOutDraft(id);
+        return success(true);
+    }
+
+    @PutMapping("/update-remark")
+    @Operation(summary = "Update stock transfer-out remark")
+    @PreAuthorize("@ss.hasPermission('erp:stock-transfer-out:update')")
+    public CommonResult<Boolean> updateStockTransferOutRemark(
+            @Valid @RequestBody ErpStockUpdateRemarkReqVO updateReqVO) {
+        stockMoveService.updateStockTransferOutRemark(updateReqVO);
         return success(true);
     }
 

@@ -199,6 +199,9 @@ public class ErpPurchaseOrderRespVO {
         @Schema(description = "产品单价", example = "100.00")
         private BigDecimal productPrice;
 
+        @Schema(description = "最后采购价（只读参考）", example = "100.00")
+        private BigDecimal lastPurchasePrice;
+
         @Schema(description = "产品数量", requiredMode = Schema.RequiredMode.REQUIRED, example = "100.00")
         @NotNull(message = "产品数量不能为空")
         private BigDecimal count;

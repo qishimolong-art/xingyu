@@ -52,4 +52,15 @@ public interface ErpPayableExpenseMapper extends BaseMapperX<ErpPayableExpenseDO
         return selectOne(ErpPayableExpenseDO::getNo, no);
     }
 
+    default ErpPayableExpenseDO selectBySource(String sourceType, Long sourceId) {
+        return selectOne(ErpPayableExpenseDO::getSourceType, sourceType,
+                ErpPayableExpenseDO::getSourceId, sourceId);
+    }
+
+    default ErpPayableExpenseDO selectByIdForUpdate(Long id) {
+        return selectOne(new LambdaQueryWrapperX<ErpPayableExpenseDO>()
+                .eq(ErpPayableExpenseDO::getId, id)
+                .last("FOR UPDATE"));
+    }
+
 }

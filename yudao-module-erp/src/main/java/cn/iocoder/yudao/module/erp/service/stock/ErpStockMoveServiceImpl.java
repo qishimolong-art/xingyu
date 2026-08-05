@@ -6,8 +6,11 @@ import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.common.util.number.MoneyUtils;
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
 import cn.iocoder.yudao.framework.datapermission.core.util.DataPermissionUtils;
+import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.ErpStockUpdateRemarkReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.move.ErpStockMovePageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.move.ErpStockMoveSaveReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.move.ErpStockTransferOutDraftCreateReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.move.ErpStockTransferOutDraftUpdateReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseInItemDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.product.ErpProductDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockDO;
@@ -21,6 +24,7 @@ import cn.iocoder.yudao.module.erp.dal.redis.no.ErpNoRedisDAO;
 import cn.iocoder.yudao.module.erp.enums.ErpAuditStatus;
 import cn.iocoder.yudao.module.erp.enums.sale.ErpSaleBizSourceTypeEnum;
 import cn.iocoder.yudao.module.erp.enums.stock.ErpStockRecordBizTypeEnum;
+import cn.iocoder.yudao.module.erp.enums.stock.ErpStockTransferOutStatusEnum;
 import cn.iocoder.yudao.module.erp.service.common.ErpOperateLogService;
 import cn.iocoder.yudao.module.erp.service.product.ErpProductService;
 import cn.iocoder.yudao.module.erp.service.stock.bo.ErpStockRecordCreateReqBO;
@@ -69,6 +73,7 @@ import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.*;
 public class ErpStockMoveServiceImpl implements ErpStockMoveService {
 
     private static final String FIELD_PERMISSION_MODULE = "erp_stock_move";
+    private static final String TRANSFER_OUT_FIELD_PERMISSION_MODULE = "erp_stock_transfer_out";
     private static final String TRANSFER_OUT_DATA_PERMISSION_FORM = "erp_stock_transfer_out";
     private static final String TRANSFER_IN_DATA_PERMISSION_FORM = "erp_stock_transfer_in";
     private static final int TRANSFER_DIRECTION_OUT = 10;
@@ -108,6 +113,49 @@ public class ErpStockMoveServiceImpl implements ErpStockMoveService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Long createStockMove(ErpStockMoveSaveReqVO createReqVO) {
+        return doCreateStockMove(createReqVO, true);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public Long createStockTransferOutDraft(ErpStockTransferOutDraftCreateReqVO createReqVO) {
+        createReqVO.setTransferDirection(TRANSFER_DIRECTION_OUT);
+        fieldPermissionMasker.clearHiddenFields(TRANSFER_OUT_FIELD_PERMISSION_MODULE, createReqVO);
+        fieldPermissionMasker.clearHiddenItemFields(TRANSFER_OUT_FIELD_PERMISSION_MODULE, createReqVO.getItems());
+        List<ErpStockMoveItemDO> stockMoveItems = buildStockTransferOutDraftItems(createReqVO);
+        if (CollUtil.isEmpty(stockMoveItems)) {
+            throw exception(STOCK_MOVE_DRAFT_ITEMS_REQUIRED);
+        }
+        String no = noRedisDAO.generate(ErpNoRedisDAO.STOCK_MOVE_NO_PREFIX);
+        if (stockMoveMapper.selectByNo(no) != null) {
+            throw exception(STOCK_MOVE_NO_EXISTS);
+        }
+        ErpStockMoveDO stockMove = BeanUtils.toBean(createReqVO, ErpStockMoveDO.class, target -> target
+                .setNo(no)
+                .setTransferDirection(TRANSFER_DIRECTION_OUT)
+                .setRelatedMoveId(null)
+                .setRelatedMoveNo(null)
+                .setSourceType(null)
+                .setSourceId(null)
+                .setSourceNo(null)
+                .setStatus(ErpStockTransferOutStatusEnum.DRAFT.getStatus())
+                .setApproveUserId(null)
+                .setApproveTime(null)
+                .setTotalCount(getSumValue(stockMoveItems, ErpStockMoveItemDO::getCount,
+                        BigDecimal::add, BigDecimal.ZERO))
+                .setTotalPrice(getSumValue(stockMoveItems, ErpStockMoveItemDO::getTotalPrice,
+                        BigDecimal::add, BigDecimal.ZERO)));
+        fillDeptSnapshots(stockMove, stockMoveItems);
+        stockMoveMapper.insert(stockMove);
+        replaceStockMoveItems(stockMove.getId(), stockMoveItems);
+        operateLogService.recordCreate(ERP_STOCK_MOVE_TYPE, stockMove.getId(), stockMove.getNo());
+        return stockMove.getId();
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public Long createAndSubmitStockTransferOut(ErpStockMoveSaveReqVO createReqVO) {
+        createReqVO.setTransferDirection(TRANSFER_DIRECTION_OUT);
         return doCreateStockMove(createReqVO, true);
     }
 
@@ -419,6 +467,10 @@ public class ErpStockMoveServiceImpl implements ErpStockMoveService {
         List<ErpStockMoveItemDO> stockMoveItems = validateStockMoveItems(createReqVO.getItems(), requireWarehouses,
                 isSaleCartSource(createReqVO.getSourceType()), createReqVO.getDeptId());
         validatePurchaseInSourceMoveCounts(stockMoveItems, null);
+        if (requireWarehouses) {
+            validateStockMoveItemsReadyForApprove(
+                    stockMoveItems, isSaleCartSource(createReqVO.getSourceType()), createReqVO.getDeptId());
+        }
         // 1.2 鐢熸垚璋冩嫧鍗曞彿锛屽苟鏍￠獙鍞竴鎬?
         String no = noRedisDAO.generate(ErpNoRedisDAO.STOCK_MOVE_NO_PREFIX);
         if (stockMoveMapper.selectByNo(no) != null) {
@@ -459,10 +511,159 @@ public class ErpStockMoveServiceImpl implements ErpStockMoveService {
         DataPermissionUtils.executeIgnore(() -> doUpdateStockMove(updateReqVO, fieldPermissionModule));
     }
 
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void updateStockTransferOutDraft(ErpStockTransferOutDraftUpdateReqVO updateReqVO) {
+        ErpStockTransferOutPermissionScope scope = getTransferOutPermissionScope();
+        validateStockTransferOutVisible(updateReqVO.getId(), scope);
+        if (scope == null) {
+            doUpdateStockTransferOutDraft(updateReqVO);
+            return;
+        }
+        DataPermissionUtils.executeIgnore(() -> doUpdateStockTransferOutDraft(updateReqVO));
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void updateAndSubmitStockTransferOutDraft(ErpStockMoveSaveReqVO updateReqVO) {
+        ErpStockTransferOutPermissionScope scope = getTransferOutPermissionScope();
+        validateStockTransferOutVisible(updateReqVO.getId(), scope);
+        Runnable action = () -> {
+            doUpdateStockTransferOutDraft(updateReqVO);
+            doSubmitStockTransferOutDraft(updateReqVO.getId());
+        };
+        if (scope == null) {
+            action.run();
+            return;
+        }
+        DataPermissionUtils.executeIgnore(action);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void submitStockTransferOutDraft(Long id) {
+        ErpStockTransferOutPermissionScope scope = getTransferOutPermissionScope();
+        validateStockTransferOutVisible(id, scope);
+        if (scope == null) {
+            doSubmitStockTransferOutDraft(id);
+            return;
+        }
+        DataPermissionUtils.executeIgnore(() -> doSubmitStockTransferOutDraft(id));
+    }
+
+    @Override
+    public void updateStockMoveRemark(ErpStockUpdateRemarkReqVO updateReqVO) {
+        doUpdateStockMoveRemark(updateReqVO);
+    }
+
+    @Override
+    public void updateStockTransferOutRemark(ErpStockUpdateRemarkReqVO updateReqVO) {
+        ErpStockTransferOutPermissionScope scope = getTransferOutPermissionScope();
+        validateStockTransferOutVisible(updateReqVO.getId(), scope);
+        if (scope == null) {
+            doUpdateStockMoveRemark(updateReqVO);
+            return;
+        }
+        DataPermissionUtils.executeIgnore(() -> doUpdateStockMoveRemark(updateReqVO));
+    }
+
+    private void doUpdateStockMoveRemark(ErpStockUpdateRemarkReqVO updateReqVO) {
+        ErpStockMoveDO stockMove = validateStockMoveExists(updateReqVO.getId());
+        stockMoveMapper.updateById(new ErpStockMoveDO()
+                .setId(updateReqVO.getId()).setRemark(updateReqVO.getRemark()));
+        operateLogService.recordUpdate(ERP_STOCK_MOVE_TYPE, stockMove.getId(), stockMove.getNo());
+    }
+
+    private void doUpdateStockTransferOutDraft(ErpStockMoveSaveReqVO updateReqVO) {
+        ErpStockMoveDO stockMove = validateStockMoveExists(updateReqVO.getId());
+        validateTransferOut(stockMove);
+        if (!ErpStockTransferOutStatusEnum.DRAFT.getStatus().equals(stockMove.getStatus())) {
+            throw exception(STOCK_MOVE_UPDATE_FAIL_NOT_DRAFT, stockMove.getNo());
+        }
+        List<ErpStockMoveItemDO> oldItems = stockMoveItemMapper.selectListByMoveId(updateReqVO.getId());
+        fieldPermissionMasker.preserveHiddenFields(TRANSFER_OUT_FIELD_PERMISSION_MODULE, updateReqVO, stockMove);
+        fieldPermissionMasker.preserveHiddenItemFields(
+                TRANSFER_OUT_FIELD_PERMISSION_MODULE, updateReqVO.getItems(), oldItems);
+        List<ErpStockMoveItemDO> stockMoveItems = buildStockTransferOutDraftItems(updateReqVO);
+        ErpStockMoveDO updateObj = BeanUtils.toBean(updateReqVO, ErpStockMoveDO.class, target -> target
+                .setNo(stockMove.getNo())
+                .setDeptId(updateReqVO.getDeptId() != null ? updateReqVO.getDeptId() : stockMove.getDeptId())
+                .setTransferDirection(TRANSFER_DIRECTION_OUT)
+                .setRelatedMoveId(stockMove.getRelatedMoveId())
+                .setRelatedMoveNo(stockMove.getRelatedMoveNo())
+                .setFromDeptId(stockMove.getFromDeptId())
+                .setToDeptId(stockMove.getToDeptId())
+                .setSourceType(stockMove.getSourceType())
+                .setSourceId(stockMove.getSourceId())
+                .setSourceNo(stockMove.getSourceNo())
+                .setStatus(ErpStockTransferOutStatusEnum.DRAFT.getStatus())
+                .setApproveUserId(stockMove.getApproveUserId())
+                .setApproveTime(stockMove.getApproveTime())
+                .setTotalCount(getSumValue(stockMoveItems, ErpStockMoveItemDO::getCount,
+                        BigDecimal::add, BigDecimal.ZERO))
+                .setTotalPrice(getSumValue(stockMoveItems, ErpStockMoveItemDO::getTotalPrice,
+                        BigDecimal::add, BigDecimal.ZERO)));
+        fillDeptSnapshots(updateObj, stockMoveItems);
+        int updateCount = stockMoveMapper.updateByIdAndStatus(updateReqVO.getId(),
+                ErpStockTransferOutStatusEnum.DRAFT.getStatus(), updateObj);
+        if (updateCount == 0) {
+            throw exception(STOCK_MOVE_UPDATE_FAIL_NOT_DRAFT, stockMove.getNo());
+        }
+        replaceStockMoveItems(updateReqVO.getId(), stockMoveItems);
+        operateLogService.recordUpdate(ERP_STOCK_MOVE_TYPE, stockMove.getId(), stockMove.getNo());
+    }
+
+    private void doSubmitStockTransferOutDraft(Long id) {
+        ErpStockMoveDO stockMove = validateStockMoveExists(id);
+        validateTransferOut(stockMove);
+        if (!ErpStockTransferOutStatusEnum.DRAFT.getStatus().equals(stockMove.getStatus())) {
+            throw exception(STOCK_MOVE_SUBMIT_FAIL);
+        }
+        if (stockMove.getMoveTime() == null) {
+            throw exception(STOCK_MOVE_SUBMIT_TIME_REQUIRED);
+        }
+        List<ErpStockMoveItemDO> persistedItems = stockMoveItemMapper.selectListByMoveId(id);
+        if (CollUtil.isEmpty(persistedItems)) {
+            throw exception(STOCK_MOVE_SUBMIT_ITEMS_REQUIRED);
+        }
+        ErpStockMoveSaveReqVO submitReqVO = BeanUtils.toBean(stockMove, ErpStockMoveSaveReqVO.class);
+        submitReqVO.setItems(BeanUtils.toBean(persistedItems, ErpStockMoveSaveReqVO.Item.class));
+        List<ErpStockMoveItemDO> normalizedItems = validateStockMoveItems(
+                submitReqVO.getItems(), true, isSaleCartSource(stockMove.getSourceType()), stockMove.getDeptId());
+        validatePurchaseInSourceMoveCounts(normalizedItems, stockMove.getId());
+        validateStockMoveItemsReadyForApprove(
+                normalizedItems, isSaleCartSource(stockMove.getSourceType()), stockMove.getDeptId());
+        ErpStockMoveDO updateObj = new ErpStockMoveDO()
+                .setStatus(ErpStockTransferOutStatusEnum.PROCESS.getStatus())
+                .setTotalCount(getSumValue(normalizedItems, ErpStockMoveItemDO::getCount,
+                        BigDecimal::add, BigDecimal.ZERO))
+                .setTotalPrice(getSumValue(normalizedItems, ErpStockMoveItemDO::getTotalPrice,
+                        BigDecimal::add, BigDecimal.ZERO))
+                .setFromDeptId(stockMove.getFromDeptId())
+                .setToDeptId(stockMove.getToDeptId());
+        fillDeptSnapshots(updateObj, normalizedItems);
+        int updateCount = stockMoveMapper.updateByIdAndStatus(id,
+                ErpStockTransferOutStatusEnum.DRAFT.getStatus(), updateObj);
+        if (updateCount == 0) {
+            throw exception(STOCK_MOVE_SUBMIT_FAIL);
+        }
+        replaceStockMoveItems(id, normalizedItems);
+        stockMove.setStatus(ErpStockTransferOutStatusEnum.PROCESS.getStatus())
+                .setTotalCount(updateObj.getTotalCount())
+                .setTotalPrice(updateObj.getTotalPrice())
+                .setFromDeptId(updateObj.getFromDeptId())
+                .setToDeptId(updateObj.getToDeptId());
+        syncTransferInMirror(stockMove, stockMoveItemMapper.selectListByMoveId(id), null);
+        operateLogService.recordUpdate(ERP_STOCK_MOVE_TYPE, stockMove.getId(), stockMove.getNo());
+    }
+
     private void doUpdateStockMove(ErpStockMoveSaveReqVO updateReqVO, String fieldPermissionModule) {
         // 1.1 ??????
         ErpStockMoveDO stockMove = validateStockMoveExists(updateReqVO.getId());
         validateTransferOut(stockMove);
+        if (ErpStockTransferOutStatusEnum.DRAFT.getStatus().equals(stockMove.getStatus())) {
+            throw exception(STOCK_MOVE_FORMAL_UPDATE_FAIL_DRAFT, stockMove.getNo());
+        }
         if (ErpAuditStatus.APPROVE.getStatus().equals(stockMove.getStatus())) {
             throw exception(STOCK_MOVE_UPDATE_FAIL_APPROVE, stockMove.getNo());
         }
@@ -527,7 +728,7 @@ public class ErpStockMoveServiceImpl implements ErpStockMoveService {
         // 1.1 鏍￠獙瀛樺湪
         ErpStockMoveDO stockMove = validateStockMoveExists(id);
         validateTransferOut(stockMove);
-        if (stockMove.getStatus().equals(status)) {
+        if (!ErpStockTransferOutStatusEnum.PROCESS.getStatus().equals(stockMove.getStatus())) {
             throw exception(STOCK_MOVE_APPROVE_FAIL);
         }
         boolean saleCartTransferOut = isSaleCartSource(stockMove.getSourceType());
@@ -780,6 +981,41 @@ public class ErpStockMoveServiceImpl implements ErpStockMoveService {
 
     private int getTransferDirection(ErpStockMoveDO stockMove) {
         return stockMove.getTransferDirection() != null ? stockMove.getTransferDirection() : TRANSFER_DIRECTION_OUT;
+    }
+
+    private List<ErpStockMoveItemDO> buildStockTransferOutDraftItems(ErpStockMoveSaveReqVO reqVO) {
+        if (reqVO == null || CollUtil.isEmpty(reqVO.getItems())) {
+            return Collections.emptyList();
+        }
+        List<ErpStockMoveSaveReqVO.Item> validItems = new ArrayList<>();
+        Set<String> itemKeys = new HashSet<>();
+        for (ErpStockMoveSaveReqVO.Item item : reqVO.getItems()) {
+            if (item == null || item.getProductId() == null
+                    || item.getFromWarehouseId() == null
+                    || item.getCount() == null || item.getCount().compareTo(BigDecimal.ZERO) <= 0) {
+                continue;
+            }
+            String itemKey = item.getProductId() + "-" + item.getFromWarehouseId() + "-"
+                    + (item.getToWarehouseId() != null ? item.getToWarehouseId() : "");
+            if (!itemKeys.add(itemKey)) {
+                continue;
+            }
+            ErpStockMoveSaveReqVO.Item validItem = BeanUtils.toBean(item, ErpStockMoveSaveReqVO.Item.class);
+            if (validItem.getProductPrice() == null) {
+                validItem.setProductPrice(BigDecimal.ZERO);
+            }
+            validItems.add(validItem);
+        }
+        if (CollUtil.isEmpty(validItems)) {
+            return Collections.emptyList();
+        }
+        List<ErpProductDO> productList = validProductList(
+                convertSet(validItems, ErpStockMoveSaveReqVO.Item::getProductId), true);
+        Map<Long, ErpProductDO> productMap = convertMap(productList, ErpProductDO::getId);
+        validateStockMoveItemWarehouses(validItems, false, false, reqVO.getDeptId());
+        return convertList(validItems, itemReq -> BeanUtils.toBean(itemReq, ErpStockMoveItemDO.class, item -> item
+                .setProductUnitId(productMap.get(item.getProductId()).getUnitId())
+                .setTotalPrice(MoneyUtils.priceMultiply(item.getProductPrice(), item.getCount()))));
     }
 
     private List<ErpStockMoveItemDO> validateStockMoveItems(List<ErpStockMoveSaveReqVO.Item> list,
@@ -1279,14 +1515,23 @@ public class ErpStockMoveServiceImpl implements ErpStockMoveService {
         }
     }
 
+    private void replaceStockMoveItems(Long id, List<ErpStockMoveItemDO> items) {
+        stockMoveItemMapper.deleteByMoveId(id);
+        if (CollUtil.isEmpty(items)) {
+            return;
+        }
+        items.forEach(item -> item.setId(null).setMoveId(id));
+        stockMoveItemMapper.insertBatch(items);
+    }
+
     @Override
     public ErpStockMoveDO getVisibleStockTransferIn(Long id) {
-        TransferInVisibleScope scope = getTransferInVisibleScope();
+        ErpStockTransferOutPermissionScope scope = getTransferInPermissionScope();
         if (scope == null) {
             return stockMoveMapper.selectById(id);
         }
         return DataPermissionUtils.executeIgnore(() -> stockMoveMapper.selectVisibleTransferInById(
-                id, scope.getDeptIds(), scope.getCreatorUserId(), scope.isAll()));
+                id, scope.getDeptIds(), scope.isAll()));
     }
 
     @Override
@@ -1321,12 +1566,12 @@ public class ErpStockMoveServiceImpl implements ErpStockMoveService {
     @Override
     public PageResult<ErpStockMoveDO> getVisibleStockTransferInPage(ErpStockMovePageReqVO pageReqVO) {
         pageReqVO.setTransferDirection(TRANSFER_DIRECTION_IN);
-        TransferInVisibleScope scope = getTransferInVisibleScope();
+        ErpStockTransferOutPermissionScope scope = getTransferInPermissionScope();
         if (scope == null) {
             return stockMoveMapper.selectPage(pageReqVO);
         }
         return DataPermissionUtils.executeIgnore(() -> stockMoveMapper.selectTransferInPage(pageReqVO,
-                scope.getDeptIds(), scope.getCreatorUserId(), scope.isAll()));
+                scope.getDeptIds(), scope.isAll()));
     }
 
     @Override
@@ -1344,7 +1589,8 @@ public class ErpStockMoveServiceImpl implements ErpStockMoveService {
                 permission.getDeptIds());
     }
 
-    private TransferInVisibleScope getTransferInVisibleScope() {
+    @Override
+    public ErpStockTransferOutPermissionScope getTransferInPermissionScope() {
         Long loginUserId = getLoginUserId();
         if (loginUserId == null || permissionApi == null) {
             return null;
@@ -1352,10 +1598,9 @@ public class ErpStockMoveServiceImpl implements ErpStockMoveService {
         DeptDataPermissionRespDTO permission = permissionApi.getDeptDataPermission(
                 loginUserId, TRANSFER_IN_DATA_PERMISSION_FORM);
         if (permission == null) {
-            return new TransferInVisibleScope(false, Collections.emptySet(), loginUserId);
+            return new ErpStockTransferOutPermissionScope(false, Collections.emptySet());
         }
-        return new TransferInVisibleScope(Boolean.TRUE.equals(permission.getAll()), permission.getDeptIds(),
-                loginUserId);
+        return new ErpStockTransferOutPermissionScope(Boolean.TRUE.equals(permission.getAll()), permission.getDeptIds());
     }
 
     // ==================== 鍑哄簱椤?====================
@@ -1397,31 +1642,6 @@ public class ErpStockMoveServiceImpl implements ErpStockMoveService {
 
         private Long getLoginDeptId() {
             return loginDeptId;
-        }
-    }
-
-    private static final class TransferInVisibleScope {
-
-        private final boolean all;
-        private final Set<Long> deptIds;
-        private final Long creatorUserId;
-
-        private TransferInVisibleScope(boolean all, Collection<Long> deptIds, Long creatorUserId) {
-            this.all = all;
-            this.deptIds = deptIds == null ? Collections.emptySet() : new HashSet<>(deptIds);
-            this.creatorUserId = creatorUserId;
-        }
-
-        private boolean isAll() {
-            return all;
-        }
-
-        private Set<Long> getDeptIds() {
-            return deptIds;
-        }
-
-        private Long getCreatorUserId() {
-            return creatorUserId;
         }
     }
 

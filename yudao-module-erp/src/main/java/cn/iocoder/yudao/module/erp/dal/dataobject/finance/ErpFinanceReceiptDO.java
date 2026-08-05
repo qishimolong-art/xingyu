@@ -37,7 +37,7 @@ public class ErpFinanceReceiptDO extends BaseDO {
     /**
      * 收款状态
      *
-     * 枚举 {@link cn.iocoder.yudao.module.erp.enums.ErpAuditStatus}
+     * 枚举 {@link cn.iocoder.yudao.module.erp.enums.finance.ErpFinanceReceiptStatusEnum}
      */
     private Integer status;
     /**

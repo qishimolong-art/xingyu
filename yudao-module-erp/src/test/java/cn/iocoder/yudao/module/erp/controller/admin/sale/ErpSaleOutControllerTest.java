@@ -9,15 +9,23 @@ import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.out.ErpSaleOutRespVO
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.out.ErpSaleOutSaveReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.out.ErpSaleOutUpdateExpressFileReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.out.ErpSaleReturnableItemRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpProductRespVO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleCartDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleOutDO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleOutItemDO;
+import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpSaleCartMapper;
+import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpWarehouseDO;
 import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpSaleReturnItemMapper;
+import cn.iocoder.yudao.module.erp.enums.sale.ErpSaleBizSourceTypeEnum;
 import cn.iocoder.yudao.module.erp.service.product.ErpProductService;
 import cn.iocoder.yudao.module.erp.service.sale.ErpCustomerService;
 import cn.iocoder.yudao.module.erp.service.sale.ErpSaleFieldPermissionMasker;
 import cn.iocoder.yudao.module.erp.service.sale.ErpSaleOutService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpStockService;
+import cn.iocoder.yudao.module.erp.service.stock.ErpStockOutBillService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpWarehouseService;
 import cn.iocoder.yudao.module.system.api.dept.DeptApi;
+import cn.iocoder.yudao.module.system.api.dept.dto.DeptRespDTO;
 import cn.iocoder.yudao.module.system.api.user.AdminUserApi;
 import org.junit.jupiter.api.Test;
 import org.mockito.InjectMocks;
@@ -28,10 +36,13 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.lang.reflect.Method;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -60,6 +71,8 @@ public class ErpSaleOutControllerTest extends BaseMockitoUnitTest {
     @Mock
     private ErpStockService stockService;
     @Mock
+    private ErpStockOutBillService stockOutBillService;
+    @Mock
     private ErpProductService productService;
     @Mock
     private ErpCustomerService customerService;
@@ -67,6 +80,8 @@ public class ErpSaleOutControllerTest extends BaseMockitoUnitTest {
     private ErpWarehouseService warehouseService;
     @Mock
     private ErpSaleReturnItemMapper saleReturnItemMapper;
+    @Mock
+    private ErpSaleCartMapper saleCartMapper;
     @Mock
     private AdminUserApi adminUserApi;
     @Mock
@@ -235,6 +250,59 @@ public class ErpSaleOutControllerTest extends BaseMockitoUnitTest {
         assertEquals(0, result.getCode());
         assertNull(result.getData());
         verify(saleOutService).getSaleOut(eq(1024L));
+    }
+
+    @Test
+    public void testGetSaleOut_crossDeptItem_enrichesSourceWarehouseAndDept() {
+        ErpSaleOutDO saleOut = new ErpSaleOutDO().setId(1025L);
+        ErpSaleOutItemDO item = new ErpSaleOutItemDO().setId(11L).setOutId(1025L)
+                .setProductId(201L).setWarehouseId(888L).setDeptId(100L)
+                .setSourceWarehouseId(401L).setSourceDeptId(200L);
+        when(saleOutService.getSaleOut(1025L)).thenReturn(saleOut);
+        when(saleOutService.getSaleOutItemListByOutId(1025L)).thenReturn(Collections.singletonList(item));
+        when(productService.getProductVOMap(any())).thenReturn(Collections.singletonMap(201L,
+                new ErpProductRespVO().setId(201L).setName("产品")));
+        Map<Long, ErpWarehouseDO> warehouseMap = new HashMap<>();
+        warehouseMap.put(888L, new ErpWarehouseDO().setId(888L).setName("销售部门直发仓").setDeptId(100L));
+        warehouseMap.put(401L, new ErpWarehouseDO().setId(401L).setName("来源部门仓库").setDeptId(200L));
+        when(warehouseService.getWarehouseMap(any())).thenReturn(warehouseMap);
+        Map<Long, DeptRespDTO> deptMap = new HashMap<>();
+        deptMap.put(100L, new DeptRespDTO().setId(100L).setName("销售部门"));
+        deptMap.put(200L, new DeptRespDTO().setId(200L).setName("来源部门"));
+        when(deptApi.getDeptMap(any())).thenReturn(deptMap);
+        when(saleReturnItemMapper.selectReturnedCountMapBySourceOutItemIds(any()))
+                .thenReturn(Collections.emptyMap());
+        when(stockOutBillService.getStockOutBillListBySaleOutId(1025L)).thenReturn(Collections.emptyList());
+
+        ErpSaleOutRespVO.Item result = controller.getSaleOut(1025L).getData().getItems().get(0);
+
+        assertEquals("销售部门直发仓", result.getWarehouseName());
+        assertEquals("来源部门仓库", result.getSourceWarehouseName());
+        assertEquals("来源部门", result.getSourceDeptName());
+        assertEquals(Boolean.TRUE, result.getCrossDept());
+        verify(warehouseService).getWarehouseMap(argThat(ids ->
+                ids.contains(888L) && ids.contains(401L) && ids.size() == 2));
+    }
+
+    @Test
+    public void testGetSaleOut_fillsFreightTypeFromSourceCart() {
+        LocalDateTime sourceCreateTime = LocalDateTime.of(2026, 7, 28, 10, 51, 14);
+        ErpSaleOutDO saleOut = new ErpSaleOutDO().setId(1026L)
+                .setSourceType(ErpSaleBizSourceTypeEnum.CART.getType()).setSourceId(900L);
+        ErpSaleCartDO cart = new ErpSaleCartDO().setId(900L).setFreightType("self-pay");
+        cart.setCreateTime(sourceCreateTime);
+        when(saleOutService.getSaleOut(1026L)).thenReturn(saleOut);
+        when(saleOutService.getSaleOutItemListByOutId(1026L)).thenReturn(Collections.emptyList());
+        when(saleReturnItemMapper.selectReturnedCountMapBySourceOutItemIds(any()))
+                .thenReturn(Collections.emptyMap());
+        when(saleCartMapper.selectBatchIds(any())).thenReturn(Collections.singletonList(cart));
+        when(stockOutBillService.getStockOutBillListBySaleOutId(1026L)).thenReturn(Collections.emptyList());
+
+        ErpSaleOutRespVO result = controller.getSaleOut(1026L).getData();
+
+        assertEquals("self-pay", result.getFreightType());
+        assertEquals(sourceCreateTime, result.getSourceCreateTime());
+        verify(saleCartMapper).selectBatchIds(argThat(ids -> ids.contains(900L) && ids.size() == 1));
     }
 
     @Test

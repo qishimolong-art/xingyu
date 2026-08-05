@@ -7,7 +7,9 @@ import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.returns.ErpPurch
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseReturnDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseReturnItemDO;
 import cn.iocoder.yudao.module.erp.dal.mysql.common.ErpKeywordQuery;
+import cn.iocoder.yudao.module.erp.dal.mysql.finance.ErpFinancePaymentItemMapper;
 import cn.iocoder.yudao.module.erp.enums.ErpAuditStatus;
+import cn.iocoder.yudao.module.erp.enums.common.ErpBizTypeEnum;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.core.toolkit.support.SFunction;
 import org.apache.ibatis.annotations.Mapper;
@@ -22,6 +24,9 @@ import java.util.Objects;
  */
 @Mapper
 public interface ErpPurchaseReturnMapper extends BaseMapperX<ErpPurchaseReturnDO> {
+
+    String EFFECTIVE_REFUND_PRICE_EXPRESSION = "ABS("
+            + ErpFinancePaymentItemMapper.effectivePaymentPriceSql(ErpBizTypeEnum.PURCHASE_RETURN.getType()) + ")";
 
     default PageResult<ErpPurchaseReturnDO> selectPage(ErpPurchaseReturnPageReqVO reqVO) {
         MPJLambdaWrapperX<ErpPurchaseReturnDO> query = new MPJLambdaWrapperX<ErpPurchaseReturnDO>()
@@ -38,15 +43,16 @@ public interface ErpPurchaseReturnMapper extends BaseMapperX<ErpPurchaseReturnDO
                 .likeIfPresent(ErpPurchaseReturnDO::getOrderNo, reqVO.getOrderNo());
         // 退款状态。为什么需�?t. 的原因，是因为联表查询时，需要指定表名，不然会报字段不存在的错误
         if (Objects.equals(reqVO.getRefundStatus(), ErpPurchaseReturnPageReqVO.REFUND_STATUS_NONE)) {
-            query.eq(ErpPurchaseReturnDO::getRefundPrice, 0);
+            query.apply(EFFECTIVE_REFUND_PRICE_EXPRESSION + " = 0");
         } else if (Objects.equals(reqVO.getRefundStatus(), ErpPurchaseReturnPageReqVO.REFUND_STATUS_PART)) {
-            query.gt(ErpPurchaseReturnDO::getRefundPrice, 0).apply("t.refund_price < t.total_price");
+            query.apply(EFFECTIVE_REFUND_PRICE_EXPRESSION + " > 0")
+                    .apply(EFFECTIVE_REFUND_PRICE_EXPRESSION + " < t.total_price");
         } else if (Objects.equals(reqVO.getRefundStatus(), ErpPurchaseReturnPageReqVO.REFUND_STATUS_ALL)) {
-            query.apply("t.refund_price = t.total_price");
+            query.apply(EFFECTIVE_REFUND_PRICE_EXPRESSION + " >= t.total_price");
         }
         if (Boolean.TRUE.equals(reqVO.getRefundEnable())) {
             query.eq(ErpPurchaseReturnDO::getStatus, ErpAuditStatus.APPROVE.getStatus())
-                    .apply("t.refund_price < t.total_price");
+                    .apply(EFFECTIVE_REFUND_PRICE_EXPRESSION + " < t.total_price");
         }
         boolean hasSourceInNo = reqVO.getSourceInNo() != null && !reqVO.getSourceInNo().trim().isEmpty();
         if (reqVO.getWarehouseId() != null || reqVO.getProductId() != null || hasSourceInNo) {

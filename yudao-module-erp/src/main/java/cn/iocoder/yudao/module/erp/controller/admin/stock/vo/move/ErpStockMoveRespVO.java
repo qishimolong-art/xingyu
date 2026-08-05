@@ -131,6 +131,12 @@ public class ErpStockMoveRespVO {
     @ExcelProperty("产品编码")
     private String productCodes;
 
+    @Schema(description = "Distinct from warehouse names")
+    private String fromWarehouseNames;
+
+    @Schema(description = "Distinct to warehouse names")
+    private String toWarehouseNames;
+
     @Schema(description = "Whether current user can approve")
     private Boolean approveAllowed;
 

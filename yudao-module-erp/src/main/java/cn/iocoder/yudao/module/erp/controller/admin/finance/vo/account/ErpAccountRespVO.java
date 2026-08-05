@@ -55,6 +55,10 @@ public class ErpAccountRespVO {
     @DictFormat(cn.iocoder.yudao.module.system.enums.DictTypeConstants.COMMON_STATUS)
     private Integer status;
 
+    @Schema(description = "提交状态：0-草稿 10-正式", requiredMode = Schema.RequiredMode.REQUIRED, example = "10")
+    @ExcelProperty("提交状态")
+    private Integer documentStatus;
+
     @Schema(description = "排序", requiredMode = Schema.RequiredMode.REQUIRED, example = "1")
     @ExcelProperty("排序")
     private Integer sort;

@@ -211,6 +211,9 @@ public class ErpSaleOutRespVO {
     @Schema(description = "运费")
     private BigDecimal freight;
 
+    @Schema(description = "运费类型")
+    private String freightType;
+
     @Schema(description = "票据类型")
     private String billType;
 
@@ -330,6 +333,12 @@ public class ErpSaleOutRespVO {
         private Long warehouseId;
         private Long deptId;
 
+        @Schema(description = "跨部门销售调拨前的来源仓库编号")
+        private Long sourceWarehouseId;
+
+        @Schema(description = "跨部门销售调拨前的来源部门编号")
+        private Long sourceDeptId;
+
         @Schema(description = "产品编号", requiredMode = Schema.RequiredMode.REQUIRED, example = "3113")
         private Long productId;
 
@@ -376,6 +385,15 @@ public class ErpSaleOutRespVO {
         private String warehouseName;
         private Long warehouseDeptId;
         private String warehouseDeptName;
+
+        @Schema(description = "跨部门销售调拨前的来源仓库名称")
+        private String sourceWarehouseName;
+
+        @Schema(description = "跨部门销售调拨前的来源部门名称")
+        private String sourceDeptName;
+
+        @Schema(description = "是否为跨部门销售明细")
+        private Boolean crossDept;
 
         @Schema(description = "部门名称")
         private String deptName;

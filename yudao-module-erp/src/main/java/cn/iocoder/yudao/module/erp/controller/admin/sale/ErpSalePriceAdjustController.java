@@ -1,5 +1,6 @@
 package cn.iocoder.yudao.module.erp.controller.admin.sale;
 
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.ErpSaleUpdateRemarkReqVO;
 import cn.hutool.core.collection.CollUtil;
 import cn.iocoder.yudao.framework.apilog.core.annotation.ApiAccessLog;
 import cn.iocoder.yudao.framework.common.pojo.CommonResult;
@@ -17,6 +18,7 @@ import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.priceadjust.ErpSaleP
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.priceadjust.ErpSalePriceAdjustPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.priceadjust.ErpSalePriceAdjustRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.priceadjust.ErpSalePriceAdjustSaveReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.priceadjust.ErpSalePriceAdjustDraftSaveReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpCustomerDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSalePriceAdjustDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSalePriceAdjustItemDO;
@@ -106,11 +108,45 @@ public class ErpSalePriceAdjustController {
         return success(salePriceAdjustService.createSalePriceAdjust(createReqVO));
     }
 
+    @PostMapping("/create-draft")
+    @Operation(summary = "创建销售调价单草稿")
+    @PreAuthorize("@ss.hasPermission('erp:sale-price-adjust:create')")
+    public CommonResult<Long> createSalePriceAdjustDraft(
+            @RequestBody ErpSalePriceAdjustDraftSaveReqVO createReqVO) {
+        return success(salePriceAdjustService.createSalePriceAdjustDraft(createReqVO));
+    }
+
     @PutMapping("/update")
     @Operation(summary = "更新销售调价单")
     @PreAuthorize("@ss.hasPermission('erp:sale-price-adjust:update')")
     public CommonResult<Boolean> updateSalePriceAdjust(@Valid @RequestBody ErpSalePriceAdjustSaveReqVO updateReqVO) {
         salePriceAdjustService.updateSalePriceAdjust(updateReqVO);
+        return success(true);
+    }
+
+    @PutMapping("/update-draft")
+    @Operation(summary = "更新销售调价单草稿")
+    @PreAuthorize("@ss.hasPermission('erp:sale-price-adjust:update')")
+    public CommonResult<Boolean> updateSalePriceAdjustDraft(
+            @RequestBody ErpSalePriceAdjustDraftSaveReqVO updateReqVO) {
+        salePriceAdjustService.updateSalePriceAdjustDraft(updateReqVO);
+        return success(true);
+    }
+
+    @PutMapping("/submit")
+    @Operation(summary = "提交销售调价单草稿")
+    @PreAuthorize("@ss.hasPermission('erp:sale-price-adjust:update-status')")
+    public CommonResult<Boolean> submitSalePriceAdjust(@RequestParam("id") Long id) {
+        salePriceAdjustService.submitSalePriceAdjust(id);
+        return success(true);
+    }
+
+    @PutMapping("/update-remark")
+    @Operation(summary = "修改销售调价单备注")
+    @PreAuthorize("@ss.hasPermission('erp:sale-price-adjust:update')")
+    public CommonResult<Boolean> updateSalePriceAdjustRemark(
+            @Valid @RequestBody ErpSaleUpdateRemarkReqVO updateReqVO) {
+        salePriceAdjustService.updateSalePriceAdjustRemark(updateReqVO);
         return success(true);
     }
 

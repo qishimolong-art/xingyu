@@ -8,6 +8,7 @@ import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.order.ErpPurchas
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.order.ErpPurchaseOrderInableItemRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.order.ErpPurchaseOrderPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.order.ErpPurchaseOrderSaveReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.order.ErpPurchaseOrderUpdateRemarkReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseOrderDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseOrderItemDO;
 
@@ -32,12 +33,29 @@ public interface ErpPurchaseOrderService {
      */
     Long createPurchaseOrder(@Valid ErpPurchaseOrderSaveReqVO createReqVO);
 
+    Long createPurchaseOrderDraft(ErpPurchaseOrderSaveReqVO createReqVO);
+
+    Long createAndSubmitPurchaseOrder(@Valid ErpPurchaseOrderSaveReqVO createReqVO);
+
     /**
      * 更新采购订单
      *
      * @param updateReqVO 更新信息
      */
     void updatePurchaseOrder(@Valid ErpPurchaseOrderSaveReqVO updateReqVO);
+
+    void updatePurchaseOrderDraft(ErpPurchaseOrderSaveReqVO updateReqVO);
+
+    void updateAndSubmitPurchaseOrder(@Valid ErpPurchaseOrderSaveReqVO updateReqVO);
+
+    void submitPurchaseOrderDraft(Long id);
+
+    /**
+     * 修改采购订单备注，不受审批状态限制
+     *
+     * @param updateReqVO 备注信息
+     */
+    void updatePurchaseOrderRemark(@Valid ErpPurchaseOrderUpdateRemarkReqVO updateReqVO);
 
     /**
      * 更新采购订单的状态

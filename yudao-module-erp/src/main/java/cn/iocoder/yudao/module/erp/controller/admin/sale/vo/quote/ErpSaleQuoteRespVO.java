@@ -110,6 +110,8 @@ public class ErpSaleQuoteRespVO {
         private BigDecimal convertedCount;
         @ExcelProperty("单价")
         private BigDecimal productPrice;
+        private BigDecimal salePrice;
+        private BigDecimal lastSalePrice;
         @ExcelProperty("金额")
         private BigDecimal totalPrice;
         @ExcelProperty("税率")

@@ -6,11 +6,13 @@ import cn.iocoder.yudao.framework.test.core.ut.BaseMockitoUnitTest;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.stock.ErpStockBatchNoRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.stock.ErpStockPageReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockDO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockBatchQuantityDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockRecordDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpWarehouseDO;
 import cn.iocoder.yudao.module.erp.dal.mysql.product.ErpProductMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.stock.ErpStockLockMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.stock.ErpStockMapper;
+import cn.iocoder.yudao.module.erp.dal.mysql.stock.ErpStockBatchQuantityMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.stock.ErpStockRecordMapper;
 import cn.iocoder.yudao.module.erp.enums.stock.ErpStockRecordBizTypeEnum;
 import cn.iocoder.yudao.module.erp.service.product.ErpProductService;
@@ -29,6 +31,7 @@ import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -57,6 +60,8 @@ public class ErpStockServiceImplTest extends BaseMockitoUnitTest {
     private ErpProductMapper productMapper;
     @Mock
     private ErpStockRecordMapper stockRecordMapper;
+    @Mock
+    private ErpStockBatchQuantityMapper stockBatchQuantityMapper;
     @Mock
     private ErpStockCheckService stockCheckService;
 
@@ -401,6 +406,41 @@ public class ErpStockServiceImplTest extends BaseMockitoUnitTest {
                 eq(new LinkedHashSet<>(Collections.singletonList(20L))),
                 org.mockito.ArgumentMatchers.<Collection<Long>>isNull(),
                 org.mockito.ArgumentMatchers.<Collection<Long>>isNull());
+    }
+
+    @Test
+    public void testGetStockPage_batchKeywordPreselectsStockKeys() {
+        ErpStockPageReqVO reqVO = new ErpStockPageReqVO();
+        reqVO.setKeyword("BATCH-202607");
+        reqVO.setShowBatchNo(true);
+        Set<Long> visibleWarehouseIds = new LinkedHashSet<>(Arrays.asList(20L, 30L));
+        Map<Long, Set<Long>> batchKeywordStockKeyMap =
+                Collections.singletonMap(10L, Collections.singleton(20L));
+        PageResult<ErpStockDO> pageResult = new PageResult<>(Collections.emptyList(), 0L);
+        when(warehouseService.getCurrentUserProductStockPermissionScope()).thenReturn(
+                new ErpProductStockPermissionScope(true, visibleWarehouseIds, Collections.emptySet(), 1L));
+        when(productMapper.selectIdsByKeyword(reqVO)).thenReturn(Collections.emptyList());
+        when(warehouseService.getWarehousePage(any())).thenReturn(PageResult.empty(0L));
+        when(stockRecordMapper.selectStockKeyMapByBatchNoKeyword(
+                "BATCH-202607", visibleWarehouseIds)).thenReturn(batchKeywordStockKeyMap);
+        when(stockBatchQuantityMapper.selectAssociatedBatchKeywordStockKeyList(
+                eq("BATCH-202607"), eq(visibleWarehouseIds), any(), any(), any(), any(), any(), any()))
+                .thenReturn(Collections.singletonList(new ErpStockBatchQuantityDO()
+                        .setProductId(11L).setWarehouseId(30L)));
+        Map<Long, Set<Long>> expectedStockKeyMap = new HashMap<>(batchKeywordStockKeyMap);
+        expectedStockKeyMap.put(11L, new LinkedHashSet<>(Collections.singletonList(30L)));
+        when(stockMapper.selectPage(eq(reqVO), org.mockito.ArgumentMatchers.<Collection<Long>>isNull(),
+                eq(visibleWarehouseIds), eq(Collections.emptyList()), eq(Collections.emptyList()),
+                eq(expectedStockKeyMap))).thenReturn(pageResult);
+
+        PageResult<ErpStockDO> result = stockService.getStockPage(reqVO);
+
+        assertSame(pageResult, result);
+        verify(stockRecordMapper).selectStockKeyMapByBatchNoKeyword(
+                "BATCH-202607", visibleWarehouseIds);
+        verify(stockMapper).selectPage(eq(reqVO), org.mockito.ArgumentMatchers.<Collection<Long>>isNull(),
+                eq(visibleWarehouseIds), eq(Collections.emptyList()), eq(Collections.emptyList()),
+                eq(expectedStockKeyMap));
     }
 
     @Test

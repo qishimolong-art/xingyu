@@ -1,5 +1,6 @@
 package cn.iocoder.yudao.module.erp.controller.admin.sale;
 
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.ErpSaleUpdateRemarkReqVO;
 import cn.hutool.core.collection.CollUtil;
 import cn.iocoder.yudao.framework.apilog.core.annotation.ApiAccessLog;
 import cn.iocoder.yudao.framework.common.pojo.CommonResult;
@@ -107,6 +108,15 @@ public class ErpSaleOrderController {
     @PreAuthorize("@ss.hasPermission('erp:sale-order:update')")
     public CommonResult<Boolean> updateSaleOrder(@Valid @RequestBody ErpSaleOrderSaveReqVO updateReqVO) {
         saleOrderService.updateSaleOrder(updateReqVO);
+        return success(true);
+    }
+
+    @PutMapping("/update-remark")
+    @Operation(summary = "修改销售订单备注")
+    @PreAuthorize("@ss.hasPermission('erp:sale-order:update')")
+    public CommonResult<Boolean> updateSaleOrderRemark(
+            @Valid @RequestBody ErpSaleUpdateRemarkReqVO updateReqVO) {
+        saleOrderService.updateSaleOrderRemark(updateReqVO);
         return success(true);
     }
 

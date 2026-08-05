@@ -8,7 +8,9 @@ import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.in.ErpPurchaseIn
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseInDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseInItemDO;
 import cn.iocoder.yudao.module.erp.dal.mysql.common.ErpKeywordQuery;
+import cn.iocoder.yudao.module.erp.dal.mysql.finance.ErpFinancePaymentItemMapper;
 import cn.iocoder.yudao.module.erp.enums.ErpAuditStatus;
+import cn.iocoder.yudao.module.erp.enums.common.ErpBizTypeEnum;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.core.toolkit.support.SFunction;
 import org.apache.ibatis.annotations.Mapper;
@@ -24,9 +26,23 @@ import java.util.Objects;
 @Mapper
 public interface ErpPurchaseInMapper extends BaseMapperX<ErpPurchaseInDO> {
 
+    String EFFECTIVE_PAYMENT_PRICE_EXPRESSION = ErpFinancePaymentItemMapper.effectivePaymentPriceSql(
+            ErpBizTypeEnum.PURCHASE_IN.getType());
+
+    String ORIGINAL_SETTLEMENT_TOTAL_EXPRESSION = "(CASE WHEN EXISTS (SELECT 1 FROM erp_purchase_in_items psi "
+            + "WHERE psi.deleted = 0 AND psi.tenant_id = t.tenant_id AND psi.in_id = t.id "
+            + "AND psi.original_product_price IS NOT NULL) THEN "
+            + "(COALESCE((SELECT SUM(ROUND(COALESCE(psi.original_product_price, psi.product_price) * psi.count, 2)) "
+            + "FROM erp_purchase_in_items psi WHERE psi.deleted = 0 AND psi.tenant_id = t.tenant_id "
+            + "AND psi.in_id = t.id), 0) - ROUND(COALESCE((SELECT SUM(ROUND(COALESCE(psi.original_product_price, "
+            + "psi.product_price) * psi.count, 2)) FROM erp_purchase_in_items psi WHERE psi.deleted = 0 "
+            + "AND psi.tenant_id = t.tenant_id AND psi.in_id = t.id), 0) * COALESCE(t.discount_percent, 0) / 100, 2) "
+            + "+ COALESCE(t.fee_amount, t.other_price, 0)) ELSE t.total_price END)";
+
     default PageResult<ErpPurchaseInDO> selectPage(ErpPurchaseInPageReqVO reqVO) {
         MPJLambdaWrapperX<ErpPurchaseInDO> query = new MPJLambdaWrapperX<ErpPurchaseInDO>()
                 .likeIfPresent(ErpPurchaseInDO::getNo, reqVO.getNo())
+                .likeIfPresent(ErpPurchaseInDO::getFactoryOrderNo, reqVO.getFactoryOrderNo())
                 .eqIfPresent(ErpPurchaseInDO::getSupplierId, reqVO.getSupplierId())
                 .eqIfPresent(ErpPurchaseInDO::getDeptId, reqVO.getDeptId())
                 .betweenIfPresent(ErpPurchaseInDO::getInTime, reqVO.getInTime())
@@ -39,15 +55,16 @@ public interface ErpPurchaseInMapper extends BaseMapperX<ErpPurchaseInDO> {
                 .likeIfPresent(ErpPurchaseInDO::getOrderNo, reqVO.getOrderNo());
         // 付款状态。为什么需�?t. 的原因，是因为联表查询时，需要指定表名，不然会报字段不存在的错误
         if (Objects.equals(reqVO.getPaymentStatus(), ErpPurchaseInPageReqVO.PAYMENT_STATUS_NONE)) {
-            query.eq(ErpPurchaseInDO::getPaymentPrice, 0);
+            query.apply(EFFECTIVE_PAYMENT_PRICE_EXPRESSION + " = 0");
         } else if (Objects.equals(reqVO.getPaymentStatus(), ErpPurchaseInPageReqVO.PAYMENT_STATUS_PART)) {
-            query.gt(ErpPurchaseInDO::getPaymentPrice, 0).apply("t.payment_price < t.total_price");
+            query.apply(EFFECTIVE_PAYMENT_PRICE_EXPRESSION + " > 0")
+                    .apply(EFFECTIVE_PAYMENT_PRICE_EXPRESSION + " < " + ORIGINAL_SETTLEMENT_TOTAL_EXPRESSION);
         } else if (Objects.equals(reqVO.getPaymentStatus(), ErpPurchaseInPageReqVO.PAYMENT_STATUS_ALL)) {
-            query.apply("t.payment_price = t.total_price");
+            query.apply(EFFECTIVE_PAYMENT_PRICE_EXPRESSION + " >= " + ORIGINAL_SETTLEMENT_TOTAL_EXPRESSION);
         }
         if (Boolean.TRUE.equals(reqVO.getPaymentEnable())) {
             query.eq(ErpPurchaseInDO::getStatus, ErpAuditStatus.APPROVE.getStatus())
-                    .apply("t.payment_price < t.total_price");
+                    .apply(EFFECTIVE_PAYMENT_PRICE_EXPRESSION + " < " + ORIGINAL_SETTLEMENT_TOTAL_EXPRESSION);
         }
         if (Boolean.TRUE.equals(reqVO.getInvoiceEnable()) || Boolean.TRUE.equals(reqVO.getExcludeInvoiced())) {
             query.eq(ErpPurchaseInDO::getStatus, ErpAuditStatus.APPROVE.getStatus())
@@ -125,7 +142,7 @@ public interface ErpPurchaseInMapper extends BaseMapperX<ErpPurchaseInDO> {
         switch (orderField.trim()) {
             case "paymentStatus":
                 return "(CASE WHEN COALESCE(t.payment_price, 0) = 0 THEN 0 "
-                        + "WHEN t.payment_price = t.total_price THEN 2 ELSE 1 END)";
+                        + "WHEN t.payment_price >= " + ORIGINAL_SETTLEMENT_TOTAL_EXPRESSION + " THEN 2 ELSE 1 END)";
             case "itemCount":
                 return "(SELECT COUNT(1) FROM erp_purchase_in_items pii "
                         + "WHERE pii.deleted = 0 AND pii.tenant_id = t.tenant_id AND pii.in_id = t.id)";

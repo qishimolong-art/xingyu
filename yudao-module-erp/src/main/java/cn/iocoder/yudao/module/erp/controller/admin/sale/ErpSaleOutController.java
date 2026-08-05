@@ -1,5 +1,6 @@
 package cn.iocoder.yudao.module.erp.controller.admin.sale;
 
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.ErpSaleUpdateRemarkReqVO;
 import cn.hutool.core.collection.CollUtil;
 import cn.iocoder.yudao.framework.apilog.core.annotation.ApiAccessLog;
 import cn.iocoder.yudao.framework.common.pojo.CommonResult;
@@ -37,6 +38,7 @@ import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpSaleQuoteMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpSaleReturnItemMapper;
 import cn.iocoder.yudao.module.erp.enums.sale.ErpSaleBizSourceTypeEnum;
 import cn.iocoder.yudao.module.erp.service.product.ErpProductService;
+import cn.iocoder.yudao.module.erp.service.common.ErpOriginalSettlementAmountUtils;
 import cn.iocoder.yudao.module.erp.service.sale.ErpCustomerService;
 import cn.iocoder.yudao.module.erp.service.sale.ErpSaleFieldPermissionMasker;
 import cn.iocoder.yudao.module.erp.service.sale.ErpSaleOutService;
@@ -69,6 +71,7 @@ import static cn.iocoder.yudao.framework.apilog.core.enums.OperateTypeEnum.EXPOR
 import static cn.iocoder.yudao.framework.common.exception.util.ServiceExceptionUtil.exception;
 import static cn.iocoder.yudao.framework.common.pojo.CommonResult.success;
 import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.convertMultiMap;
+import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.convertMap;
 import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.convertSet;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.SALE_OUT_EXPRESS_FILE_EMPTY;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.SALE_OUT_EXPRESS_FILE_SIZE_EXCEEDED;
@@ -85,10 +88,12 @@ public class ErpSaleOutController {
 
         private final String creator;
         private final LocalDateTime createTime;
+        private final String freightType;
 
-        private SourceDocumentMeta(String creator, LocalDateTime createTime) {
+        private SourceDocumentMeta(String creator, LocalDateTime createTime, String freightType) {
             this.creator = creator;
             this.createTime = createTime;
+            this.freightType = freightType;
         }
     }
 
@@ -136,6 +141,15 @@ public class ErpSaleOutController {
     @PreAuthorize("@ss.hasPermission('erp:sale-out:update')")
     public CommonResult<Boolean> updateSaleOut(@Valid @RequestBody ErpSaleOutSaveReqVO updateReqVO) {
         saleOutService.updateSaleOut(updateReqVO);
+        return success(true);
+    }
+
+    @PutMapping("/update-remark")
+    @Operation(summary = "修改销售出库备注")
+    @PreAuthorize("@ss.hasPermission('erp:sale-out:update')")
+    public CommonResult<Boolean> updateSaleOutRemark(
+            @Valid @RequestBody ErpSaleUpdateRemarkReqVO updateReqVO) {
+        saleOutService.updateSaleOutRemark(updateReqVO);
         return success(true);
     }
 
@@ -196,9 +210,12 @@ public class ErpSaleOutController {
         Map<Long, ErpProductRespVO> productMap = getProductVOMapIgnoreDataPermission(
                 convertSet(saleOutItemList, ErpSaleOutItemDO::getProductId));
         // 仓库信息
-        Map<Long, ErpWarehouseDO> warehouseMap = getWarehouseMapIgnoreDataPermission(
-                convertSet(saleOutItemList, ErpSaleOutItemDO::getWarehouseId));
+        Set<Long> warehouseIds = convertSet(saleOutItemList, ErpSaleOutItemDO::getWarehouseId);
+        warehouseIds.addAll(convertSet(saleOutItemList, ErpSaleOutItemDO::getSourceWarehouseId));
+        warehouseIds.remove(null);
+        Map<Long, ErpWarehouseDO> warehouseMap = getWarehouseMapIgnoreDataPermission(warehouseIds);
         Set<Long> deptIds = convertSet(saleOutItemList, ErpSaleOutItemDO::getDeptId);
+        deptIds.addAll(convertSet(saleOutItemList, ErpSaleOutItemDO::getSourceDeptId));
         deptIds.addAll(convertSet(warehouseMap.values(), ErpWarehouseDO::getDeptId));
         deptIds.remove(null);
         Map<Long, DeptRespDTO> itemDeptMap = CollUtil.isEmpty(deptIds) ? Collections.emptyMap() : deptApi.getDeptMap(deptIds);
@@ -228,6 +245,12 @@ public class ErpSaleOutController {
                                 MapUtils.findAndThen(itemDeptMap, warehouse.getDeptId(),
                                         dept -> item.setWarehouseDeptName(dept.getName()));
                             });
+                    MapUtils.findAndThen(warehouseMap, item.getSourceWarehouseId(),
+                            warehouse -> item.setSourceWarehouseName(warehouse.getName()));
+                    MapUtils.findAndThen(itemDeptMap, item.getSourceDeptId(),
+                            dept -> item.setSourceDeptName(dept.getName()));
+                    item.setCrossDept(item.getSourceWarehouseId() != null
+                            && !Objects.equals(item.getSourceWarehouseId(), item.getWarehouseId()));
                     MapUtils.findAndThen(itemDeptMap, item.getDeptId(),
                             dept -> item.setDeptName(dept.getName()));
                     // 计算产品金额
@@ -277,13 +300,15 @@ public class ErpSaleOutController {
         if (CollUtil.isNotEmpty(sourceIds)) {
             putSourceDocumentMeta(result, ErpSaleBizSourceTypeEnum.QUOTE.getType(),
                     saleQuoteMapper.selectBatchIds(sourceIds), ErpSaleQuoteDO::getId,
-                    ErpSaleQuoteDO::getCreator, ErpSaleQuoteDO::getCreateTime);
+                    ErpSaleQuoteDO::getCreator, ErpSaleQuoteDO::getCreateTime,
+                    ErpSaleQuoteDO::getFreightType);
         }
         sourceIds = getSourceIds(saleOuts, ErpSaleBizSourceTypeEnum.CART.getType());
         if (CollUtil.isNotEmpty(sourceIds)) {
             putSourceDocumentMeta(result, ErpSaleBizSourceTypeEnum.CART.getType(),
                     saleCartMapper.selectBatchIds(sourceIds), ErpSaleCartDO::getId,
-                    ErpSaleCartDO::getCreator, ErpSaleCartDO::getCreateTime);
+                    ErpSaleCartDO::getCreator, ErpSaleCartDO::getCreateTime,
+                    ErpSaleCartDO::getFreightType);
         }
         sourceIds = getSourceIds(saleOuts, ErpSaleBizSourceTypeEnum.PRICE_ADJUST.getType());
         if (CollUtil.isNotEmpty(sourceIds)) {
@@ -317,12 +342,24 @@ public class ErpSaleOutController {
                                            Function<T, Long> idGetter,
                                            Function<T, String> creatorGetter,
                                            Function<T, LocalDateTime> createTimeGetter) {
+        putSourceDocumentMeta(result, sourceType, documents, idGetter, creatorGetter, createTimeGetter,
+                document -> null);
+    }
+
+    private <T> void putSourceDocumentMeta(Map<Integer, Map<Long, SourceDocumentMeta>> result,
+                                           Integer sourceType,
+                                           Collection<T> documents,
+                                           Function<T, Long> idGetter,
+                                           Function<T, String> creatorGetter,
+                                           Function<T, LocalDateTime> createTimeGetter,
+                                           Function<T, String> freightTypeGetter) {
         if (CollUtil.isEmpty(documents)) {
             return;
         }
         result.put(sourceType, documents.stream().collect(Collectors.toMap(
                 idGetter,
-                document -> new SourceDocumentMeta(creatorGetter.apply(document), createTimeGetter.apply(document)),
+                document -> new SourceDocumentMeta(creatorGetter.apply(document), createTimeGetter.apply(document),
+                        freightTypeGetter.apply(document)),
                 (first, second) -> first)));
     }
 
@@ -367,6 +404,9 @@ public class ErpSaleOutController {
                 buildSourceDocumentMetaMap(Collections.singletonList(saleOut)), saleOut);
         if (sourceDocumentMeta != null && respVO.getSourceCreateTime() == null) {
             respVO.setSourceCreateTime(sourceDocumentMeta.createTime);
+        }
+        if (sourceDocumentMeta != null && respVO.getFreightType() == null) {
+            respVO.setFreightType(sourceDocumentMeta.freightType);
         }
         // 客户
         if (saleOut.getCustomerId() != null) {
@@ -431,7 +471,8 @@ public class ErpSaleOutController {
     @PreAuthorize("@ss.hasPermission('erp:sale-out:query')")
     public CommonResult<PageResult<ErpSaleOutRespVO>> getSaleOutPage(@Valid ErpSaleOutPageReqVO pageReqVO) {
         PageResult<ErpSaleOutDO> pageResult = saleOutService.getSaleOutPage(pageReqVO);
-        PageResult<ErpSaleOutRespVO> respResult = buildSaleOutVOPageResult(pageResult);
+        PageResult<ErpSaleOutRespVO> respResult = buildSaleOutVOPageResult(pageResult,
+                Boolean.TRUE.equals(pageReqVO.getReceiptEnable()));
         fieldPermissionMasker.maskFormsWithItems(FIELD_PERMISSION_MODULE, respResult.getList());
         return success(respResult);
     }
@@ -482,7 +523,8 @@ public class ErpSaleOutController {
         ExcelUtils.write(response, "销售单.xls", "数据", ErpSaleOutExportRespVO.class, rows);
     }
 
-    private PageResult<ErpSaleOutRespVO> buildSaleOutVOPageResult(PageResult<ErpSaleOutDO> pageResult) {
+    private PageResult<ErpSaleOutRespVO> buildSaleOutVOPageResult(PageResult<ErpSaleOutDO> pageResult,
+                                                                  boolean useOriginalSettlementAmount) {
         if (CollUtil.isEmpty(pageResult.getList())) {
             return PageResult.empty(pageResult.getTotal());
         }
@@ -490,6 +532,7 @@ public class ErpSaleOutController {
         List<ErpSaleOutItemDO> saleOutItemList = saleOutService.getSaleOutItemListByOutIds(
                 convertSet(pageResult.getList(), ErpSaleOutDO::getId));
         Map<Long, List<ErpSaleOutItemDO>> saleOutItemMap = convertMultiMap(saleOutItemList, ErpSaleOutItemDO::getOutId);
+        Map<Long, ErpSaleOutDO> saleOutMap = convertMap(pageResult.getList(), ErpSaleOutDO::getId);
         // 1.2 产品信息
         Map<Long, ErpProductRespVO> productMap = getProductVOMapIgnoreDataPermission(
                 convertSet(saleOutItemList, ErpSaleOutItemDO::getProductId));
@@ -522,9 +565,12 @@ public class ErpSaleOutController {
         Map<Long, AdminUserRespDTO> userMap = CollUtil.isEmpty(userIds)
                 ? Collections.emptyMap() : adminUserApi.getUserMap(userIds);
         Map<Long, DeptRespDTO> deptMap = deptApi.getDeptMap(convertSet(pageResult.getList(), ErpSaleOutDO::getDeptId));
-        Map<Long, ErpWarehouseDO> warehouseMap = getWarehouseMapIgnoreDataPermission(
-                convertSet(saleOutItemList, ErpSaleOutItemDO::getWarehouseId));
+        Set<Long> warehouseIds = convertSet(saleOutItemList, ErpSaleOutItemDO::getWarehouseId);
+        warehouseIds.addAll(convertSet(saleOutItemList, ErpSaleOutItemDO::getSourceWarehouseId));
+        warehouseIds.remove(null);
+        Map<Long, ErpWarehouseDO> warehouseMap = getWarehouseMapIgnoreDataPermission(warehouseIds);
         Set<Long> itemDeptIds = convertSet(saleOutItemList, ErpSaleOutItemDO::getDeptId);
+        itemDeptIds.addAll(convertSet(saleOutItemList, ErpSaleOutItemDO::getSourceDeptId));
         itemDeptIds.addAll(convertSet(warehouseMap.values(), ErpWarehouseDO::getDeptId));
         itemDeptIds.remove(null);
         Map<Long, DeptRespDTO> itemDeptMap = CollUtil.isEmpty(itemDeptIds) ? Collections.emptyMap() : deptApi.getDeptMap(itemDeptIds);
@@ -539,7 +585,12 @@ public class ErpSaleOutController {
         Map<Long, BigDecimal> returnedCountMap = saleReturnItemMapper.selectReturnedCountMapBySourceOutItemIds(allOutItemIds);
         // 2. 开始拼接
         return BeanUtils.toBean(pageResult, ErpSaleOutRespVO.class, saleOut -> {
-            saleOut.setItems(BeanUtils.toBean(saleOutItemMap.get(saleOut.getId()), ErpSaleOutRespVO.Item.class,
+            List<ErpSaleOutItemDO> items = saleOutItemMap.getOrDefault(saleOut.getId(), Collections.emptyList());
+            if (useOriginalSettlementAmount) {
+                saleOut.setTotalPrice(ErpOriginalSettlementAmountUtils.calculateSaleOut(
+                        saleOutMap.get(saleOut.getId()), items));
+            }
+            saleOut.setItems(BeanUtils.toBean(items, ErpSaleOutRespVO.Item.class,
                     item -> {
                         MapUtils.findAndThen(productMap, item.getProductId(), product -> item.setProductName(product.getName())
                                 .setProductBarCode(product.getBarCode()).setProductUnitName(product.getUnitName()));
@@ -549,6 +600,12 @@ public class ErpSaleOutController {
                             MapUtils.findAndThen(itemDeptMap, warehouse.getDeptId(),
                                     dept -> item.setWarehouseDeptName(dept.getName()));
                         });
+                        MapUtils.findAndThen(warehouseMap, item.getSourceWarehouseId(),
+                                warehouse -> item.setSourceWarehouseName(warehouse.getName()));
+                        MapUtils.findAndThen(itemDeptMap, item.getSourceDeptId(),
+                                dept -> item.setSourceDeptName(dept.getName()));
+                        item.setCrossDept(item.getSourceWarehouseId() != null
+                                && !Objects.equals(item.getSourceWarehouseId(), item.getWarehouseId()));
                         MapUtils.findAndThen(itemDeptMap, item.getDeptId(), dept -> item.setDeptName(dept.getName()));
                     }));
             saleOut.setProductNames(CollUtil.join(saleOut.getItems(), "，", ErpSaleOutRespVO.Item::getProductName));
@@ -577,6 +634,9 @@ public class ErpSaleOutController {
             if (sourceDocumentMeta != null) {
                 if (saleOut.getSourceCreateTime() == null) {
                     saleOut.setSourceCreateTime(sourceDocumentMeta.createTime);
+                }
+                if (saleOut.getFreightType() == null) {
+                    saleOut.setFreightType(sourceDocumentMeta.freightType);
                 }
                 Long sourceCreatorId = parseUserId(sourceDocumentMeta.creator);
                 if (sourceCreatorId != null) {

@@ -1,9 +1,11 @@
 package cn.iocoder.yudao.module.erp.service.sale;
 
 import cn.iocoder.yudao.framework.common.exception.ServiceException;
+import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.test.core.ut.BaseMockitoUnitTest;
 import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpProductRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.out.ErpSaleOutSaveReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.out.ErpSaleOutPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.out.ErpSaleOutUpdateExpressFileReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.out.ErpSaleReturnableItemRespVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.ErpAccountDO;
@@ -16,6 +18,7 @@ import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpWarehouseDO;
 import cn.iocoder.yudao.module.erp.dal.mysql.finance.accounting.ErpVoucherItemMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.finance.accounting.ErpVoucherMapper;
+import cn.iocoder.yudao.module.erp.dal.mysql.finance.ErpFinanceReceiptItemMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpSaleOutItemMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpSaleOutMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpSaleReturnItemMapper;
@@ -87,6 +90,8 @@ public class ErpSaleOutServiceImplTest extends BaseMockitoUnitTest {
     @Mock
     private ErpSaleOutMapper saleOutMapper;
     @Mock
+    private ErpFinanceReceiptItemMapper financeReceiptItemMapper;
+    @Mock
     private ErpSaleOutItemMapper saleOutItemMapper;
     @Mock
     private ErpSaleReturnItemMapper saleReturnItemMapper;
@@ -128,6 +133,43 @@ public class ErpSaleOutServiceImplTest extends BaseMockitoUnitTest {
     private ErpVoucherMapper voucherMapper;
     @Mock
     private ErpVoucherItemMapper voucherItemMapper;
+
+    @Test
+    public void testGetSaleOutPage_usesEffectiveReceiptPrice() {
+        ErpSaleOutPageReqVO reqVO = new ErpSaleOutPageReqVO();
+        PageResult<ErpSaleOutDO> page = new PageResult<>(
+                Collections.singletonList(new ErpSaleOutDO().setId(60L)), 1L);
+        when(saleOutMapper.selectPage(reqVO)).thenReturn(page);
+        when(financeReceiptItemMapper.selectReceiptPriceSumMapByBizIdsAndBizType(any(), eq(21)))
+                .thenReturn(Collections.singletonMap(60L, new BigDecimal("110")));
+
+        PageResult<ErpSaleOutDO> result = saleOutService.getSaleOutPage(reqVO);
+
+        assertEquals(new BigDecimal("110"), result.getList().get(0).getReceiptPrice());
+    }
+
+    @Test
+    public void testGetSaleOutPage_receiptEnableUsesOriginalSettlementPrice() {
+        ErpSaleOutPageReqVO reqVO = new ErpSaleOutPageReqVO();
+        reqVO.setReceiptEnable(true);
+        ErpSaleOutDO saleOut = new ErpSaleOutDO().setId(61L)
+                .setTotalPrice(new BigDecimal("560"))
+                .setDiscountPercent(BigDecimal.ZERO)
+                .setFeeAmount(BigDecimal.ZERO);
+        when(saleOutMapper.selectPage(reqVO)).thenReturn(
+                new PageResult<>(Collections.singletonList(saleOut), 1L));
+        when(financeReceiptItemMapper.selectReceiptPriceSumMapByBizIdsAndBizType(any(), eq(21)))
+                .thenReturn(Collections.singletonMap(61L, new BigDecimal("560")));
+        when(saleOutItemMapper.selectListByOutIds(anyCollection())).thenReturn(Collections.singletonList(
+                new ErpSaleOutItemDO().setOutId(61L).setCount(BigDecimal.ONE)
+                        .setProductPrice(new BigDecimal("560"))
+                        .setOriginalProductPrice(new BigDecimal("700"))));
+
+        PageResult<ErpSaleOutDO> result = saleOutService.getSaleOutPage(reqVO);
+
+        assertEquals(0, new BigDecimal("700").compareTo(result.getList().get(0).getTotalPrice()));
+        assertEquals(new BigDecimal("560"), result.getList().get(0).getReceiptPrice());
+    }
     @Mock
     private FileApi fileApi;
 
@@ -263,7 +305,10 @@ public class ErpSaleOutServiceImplTest extends BaseMockitoUnitTest {
         ErpSaleOutSaveReqVO reqVO = buildBaseReq();
         reqVO.setCustomerId(20L);
         reqVO.setDeptId(102L);
-        reqVO.setItems(Collections.singletonList(buildItem(new BigDecimal("2"))));
+        ErpSaleOutSaveReqVO.Item item = buildItem(new BigDecimal("2"));
+        item.setSourceWarehouseId(401L);
+        item.setSourceDeptId(201L);
+        reqVO.setItems(Collections.singletonList(item));
 
         when(customerService.validateCustomerForGeneratedSale(eq(20L), eq(102L)))
                 .thenReturn(new ErpCustomerDO().setId(20L));
@@ -286,6 +331,11 @@ public class ErpSaleOutServiceImplTest extends BaseMockitoUnitTest {
                         && "CART001".equals(saleOut.getSourceNo())));
         verify(warehouseService, never()).validSaleWarehouseList(anyCollection());
         verify(warehouseService).validSaleWarehouseListForDept(anyCollection(), eq(102L));
+        verify(saleOutItemMapper).insertBatch(argThat((List<ErpSaleOutItemDO> items) ->
+                items.size() == 1
+                        && Long.valueOf(401L).equals(items.get(0).getSourceWarehouseId())
+                        && Long.valueOf(201L).equals(items.get(0).getSourceDeptId())
+                        && Long.valueOf(400L).equals(items.get(0).getWarehouseId())));
     }
 
     @Test

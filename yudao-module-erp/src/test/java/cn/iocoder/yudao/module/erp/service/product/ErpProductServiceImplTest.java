@@ -9,20 +9,32 @@ import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpPartsB
 import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpPartsBatchUpdatePriceFieldsReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpProductPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpProductRespVO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.config.ErpFieldConfigDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.product.ErpProductDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpWarehouseDO;
+import cn.iocoder.yudao.module.erp.dal.mysql.product.ErpProductDeptMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.product.ErpProductMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.product.ErpProductUniversalMapper;
+import cn.iocoder.yudao.module.erp.dal.mysql.stock.ErpStockLockMapper;
+import cn.iocoder.yudao.module.erp.dal.mysql.stock.ErpStockMapper;
 import cn.iocoder.yudao.module.erp.dal.redis.no.ErpNoRedisDAO;
+import cn.iocoder.yudao.module.erp.service.common.ErpOperateLogService;
 import cn.iocoder.yudao.module.erp.service.config.ErpFieldConfigService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpWarehouseService;
 import cn.iocoder.yudao.module.infra.api.config.ConfigApi;
+import cn.iocoder.yudao.module.system.api.dept.DeptApi;
 import cn.iocoder.yudao.module.system.api.dept.dto.DeptRespDTO;
 import cn.iocoder.yudao.module.system.api.permission.PermissionApi;
+import cn.iocoder.yudao.module.system.api.user.AdminUserApi;
 import cn.iocoder.yudao.module.system.api.user.dto.AdminUserRespDTO;
+import com.baomidou.mybatisplus.core.MybatisConfiguration;
+import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
+import org.apache.ibatis.builder.MapperBuilderAssistant;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.BeforeEach;
 import org.mockito.InjectMocks;
+import org.mockito.ArgumentCaptor;
 import org.mockito.MockedStatic;
 import org.mockito.Mock;
 import org.springframework.test.util.ReflectionTestUtils;
@@ -58,7 +70,13 @@ class ErpProductServiceImplTest extends BaseMockitoUnitTest {
     @Mock
     private ErpProductMapper productMapper;
     @Mock
+    private ErpProductDeptMapper productDeptMapper;
+    @Mock
     private ErpProductUniversalMapper productUniversalMapper;
+    @Mock
+    private ErpStockMapper stockMapper;
+    @Mock
+    private ErpStockLockMapper stockLockMapper;
     @Mock
     private ErpNoRedisDAO noRedisDAO;
     @Mock
@@ -66,9 +84,27 @@ class ErpProductServiceImplTest extends BaseMockitoUnitTest {
     @Mock
     private PermissionApi permissionApi;
     @Mock
+    private DeptApi deptApi;
+    @Mock
+    private AdminUserApi adminUserApi;
+    @Mock
     private ErpWarehouseService warehouseService;
     @Mock
+    private ErpProductCategoryService productCategoryService;
+    @Mock
+    private ErpProductUnitService productUnitService;
+    @Mock
     private ErpFieldConfigService fieldConfigService;
+    @Mock
+    private ErpOperateLogService operateLogService;
+
+    @BeforeAll
+    static void initMybatisPlusCache() {
+        MybatisConfiguration configuration = new MybatisConfiguration();
+        MapperBuilderAssistant assistant = new MapperBuilderAssistant(configuration, "");
+        assistant.setCurrentNamespace(ErpProductMapper.class.getName());
+        TableInfoHelper.initTableInfo(assistant, ErpProductDO.class);
+    }
 
     @BeforeEach
     void setUp() {
@@ -224,6 +260,81 @@ class ErpProductServiceImplTest extends BaseMockitoUnitTest {
     }
 
     @Test
+    void getProductVOPage_whenSkippingPriceViewPermission_keepsPriceFieldsButAppliesRoleHiddenFields() {
+        mockProductPermission(104L, Collections.singleton(200L));
+        when(permissionApi.getCurrentUserHiddenFields("erp_product", null, false))
+                .thenReturn(Collections.singletonList("name"));
+        when(fieldConfigService.getFieldConfigListByModule("erp_product")).thenReturn(Collections.emptyList());
+        when(warehouseService.getCurrentUserAuthorizedWarehouseIds())
+                .thenReturn(new LinkedHashSet<>(Collections.singletonList(11L)));
+        when(productMapper.selectPage(any(ErpProductPageReqVO.class), anyCollection(), anyCollection()))
+                .thenReturn(new PageResult<>(Collections.singletonList(ErpProductDO.builder()
+                        .id(1L)
+                        .name("刹车片")
+                        .retailPrice(BigDecimal.TEN)
+                        .build()), 1L));
+        when(productCategoryService.getProductCategoryMap(anyCollection())).thenReturn(Collections.emptyMap());
+        when(productUnitService.getProductUnitMap(anyCollection())).thenReturn(Collections.emptyMap());
+        when(productDeptMapper.selectListByProductIds(anyCollection())).thenReturn(Collections.emptyList());
+        when(stockMapper.selectListByProductIds(anyCollection())).thenReturn(Collections.emptyList());
+        when(adminUserApi.getUserMap(anyCollection())).thenReturn(Collections.emptyMap());
+        when(stockMapper.selectSumMapByProductIds(anyCollection())).thenReturn(Collections.emptyMap());
+        when(stockLockMapper.selectList(any())).thenReturn(Collections.emptyList());
+        when(productUniversalMapper.selectListByProductIds(anyCollection())).thenReturn(Collections.emptyList());
+
+        PageResult<ErpProductRespVO> result;
+        try (MockedStatic<SecurityFrameworkUtils> security = mockStatic(SecurityFrameworkUtils.class)) {
+            security.when(SecurityFrameworkUtils::getLoginUserId).thenReturn(104L);
+
+            result = productService.getProductVOPage(new ErpProductPageReqVO(), false);
+        }
+
+        assertEquals(1L, result.getTotal());
+        assertEquals(BigDecimal.TEN, result.getList().get(0).getRetailPrice());
+        assertEquals(null, result.getList().get(0).getName());
+        verify(permissionApi, never()).getCurrentUserHiddenFields("erp_product");
+    }
+
+    @Test
+    void getProductDetail_skipsProductPriceViewPermissionMasking() {
+        mockProductPermission(104L, Collections.singleton(200L));
+        when(warehouseService.getCurrentUserAuthorizedWarehouseIds())
+                .thenReturn(new LinkedHashSet<>(Collections.singletonList(11L)));
+        ErpProductDO product = ErpProductDO.builder()
+                .id(1L)
+                .deptId(20L)
+                .categoryId(2L)
+                .unitId(3L)
+                .name("閰嶄欢")
+                .retailPrice(BigDecimal.TEN)
+                .build();
+        when(productMapper.selectVisibleById(eq(1L), any(ErpProductPageReqVO.class))).thenReturn(product);
+        when(productCategoryService.getProductCategoryMap(anyCollection())).thenReturn(Collections.emptyMap());
+        when(productUnitService.getProductUnitMap(anyCollection())).thenReturn(Collections.emptyMap());
+        when(productDeptMapper.selectListByProductIds(anyCollection())).thenReturn(Collections.emptyList());
+        when(stockMapper.selectListByProductIds(anyCollection())).thenReturn(Collections.emptyList());
+        when(adminUserApi.getUserMap(anyCollection())).thenReturn(Collections.emptyMap());
+        when(deptApi.getDeptMap(anyCollection())).thenReturn(Collections.emptyMap());
+        when(stockMapper.selectSumMapByProductIds(anyCollection())).thenReturn(Collections.emptyMap());
+        when(stockLockMapper.selectList(any())).thenReturn(Collections.emptyList());
+        when(productUniversalMapper.selectListByProductIds(anyCollection())).thenReturn(Collections.emptyList());
+        when(fieldConfigService.getFieldConfigListByModule("erp_product")).thenReturn(Collections.emptyList());
+        when(permissionApi.getCurrentUserHiddenFields("erp_product", null, false)).thenReturn(Collections.emptyList());
+
+        ErpProductRespVO detail;
+        try (MockedStatic<SecurityFrameworkUtils> security = mockStatic(SecurityFrameworkUtils.class)) {
+            security.when(SecurityFrameworkUtils::getLoginUserId).thenReturn(104L);
+
+            detail = productService.getProductDetail(1L);
+        }
+
+        assertEquals(BigDecimal.TEN, detail.getRetailPrice());
+        verify(permissionApi).getCurrentUserHiddenFields("erp_product", null, false);
+        verify(permissionApi, never()).getCurrentUserHiddenFields("erp_product", 20L);
+        verify(permissionApi, never()).getCurrentUserHiddenFields("erp_product");
+    }
+
+    @Test
     void getSaleDistributedReadonlyProductIds_keepsBaseVisibleProductEditable() {
         mockProductPermission(104L, Collections.singleton(200L));
         when(warehouseService.getCurrentUserAuthorizedWarehouseIds())
@@ -289,6 +400,63 @@ class ErpProductServiceImplTest extends BaseMockitoUnitTest {
     }
 
     @Test
+    void batchUpdatePriceFields_whenCustomPriceSubmitted_thenUpdatesPhysicalColumn() {
+        mockProductPermission(104L, Collections.singleton(200L));
+        when(warehouseService.getCurrentUserAuthorizedWarehouseIds())
+                .thenReturn(new LinkedHashSet<>(Collections.singletonList(11L)));
+        when(productMapper.selectVisibleById(eq(1L), any()))
+                .thenReturn(ErpProductDO.builder().id(1L).build());
+        when(permissionApi.getCurrentUserHiddenFields("erp_product"))
+                .thenReturn(Collections.emptyList());
+        when(fieldConfigService.getFieldConfigListByModule("erp_product"))
+                .thenReturn(Collections.singletonList(customPriceField()));
+        ErpPartsBatchUpdatePriceFieldsReqVO reqVO = new ErpPartsBatchUpdatePriceFieldsReqVO();
+        reqVO.setId(1L);
+        reqVO.setCustomFields(Collections.singletonMap("vipPrice", "12.340"));
+
+        try (MockedStatic<SecurityFrameworkUtils> security = mockStatic(SecurityFrameworkUtils.class)) {
+            security.when(SecurityFrameworkUtils::getLoginUserId).thenReturn(104L);
+
+            productService.batchUpdatePriceFields(Collections.singletonList(reqVO));
+        }
+
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<Map<String, Object>> valuesCaptor = ArgumentCaptor.forClass(Map.class);
+        verify(productMapper).updateCustomFields(eq(1L), valuesCaptor.capture());
+        assertEquals(new BigDecimal("12.340"), valuesCaptor.getValue().get("ext_vip_price"));
+        verify(productMapper).updateById(any(ErpProductDO.class));
+    }
+
+    @Test
+    void batchUpdatePriceFields_whenCustomPriceHidden_thenRejectsEvenNullWrite() {
+        mockProductPermission(104L, Collections.singleton(200L));
+        when(warehouseService.getCurrentUserAuthorizedWarehouseIds())
+                .thenReturn(new LinkedHashSet<>(Collections.singletonList(11L)));
+        when(productMapper.selectVisibleById(eq(1L), any()))
+                .thenReturn(ErpProductDO.builder().id(1L).build());
+        when(permissionApi.getCurrentUserHiddenFields("erp_product"))
+                .thenReturn(Collections.singletonList("col_vipPrice"));
+        when(fieldConfigService.getFieldConfigListByModule("erp_product"))
+                .thenReturn(Collections.singletonList(customPriceField()));
+        Map<String, Object> customFields = new HashMap<>();
+        customFields.put("vipPrice", null);
+        ErpPartsBatchUpdatePriceFieldsReqVO reqVO = new ErpPartsBatchUpdatePriceFieldsReqVO();
+        reqVO.setId(1L);
+        reqVO.setCustomFields(customFields);
+
+        try (MockedStatic<SecurityFrameworkUtils> security = mockStatic(SecurityFrameworkUtils.class)) {
+            security.when(SecurityFrameworkUtils::getLoginUserId).thenReturn(104L);
+
+            ServiceException ex = assertThrows(ServiceException.class,
+                    () -> productService.batchUpdatePriceFields(Collections.singletonList(reqVO)));
+
+            assertEquals(PRODUCT_FIELD_NO_PERMISSION.getCode(), ex.getCode());
+        }
+        verify(productMapper, never()).updateCustomFields(any(), any());
+        verify(productMapper, never()).updateById(any(ErpProductDO.class));
+    }
+
+    @Test
     void batchAdjustPrice_whenSourcePriceHidden_thenRejectsBeforeQuery() {
         when(permissionApi.getCurrentUserHiddenFields("erp_product"))
                 .thenReturn(Collections.singletonList("referencePrice"));
@@ -303,12 +471,68 @@ class ErpProductServiceImplTest extends BaseMockitoUnitTest {
         verify(productMapper, never()).selectMaps(any());
     }
 
+    @Test
+    void batchAdjustPrice_whenSourcePriceIsNull_thenTreatsAsZero() {
+        mockProductPermission(104L, Collections.singleton(200L));
+        when(warehouseService.getCurrentUserAuthorizedWarehouseIds())
+                .thenReturn(new LinkedHashSet<>(Collections.singletonList(11L)));
+        when(permissionApi.getCurrentUserHiddenFields("erp_product"))
+                .thenReturn(Collections.emptyList());
+        when(productMapper.selectMaps(any()))
+                .thenReturn(Collections.singletonList(Collections.singletonMap("id", 1L)));
+        ErpProductDO product = ErpProductDO.builder()
+                .id(1L)
+                .referencePrice(null)
+                .build();
+        when(productMapper.selectByIds(any()))
+                .thenReturn(Collections.singletonList(product));
+        when(productMapper.selectById(1L))
+                .thenReturn(ErpProductDO.builder().id(1L).referencePrice(null).build());
+        when(fieldConfigService.getFieldConfigListByModule("erp_product"))
+                .thenReturn(Collections.emptyList());
+        when(productUniversalMapper.selectListByProductId(1L))
+                .thenReturn(Collections.emptyList());
+
+        ErpPartsBatchAdjustPriceReqVO reqVO = new ErpPartsBatchAdjustPriceReqVO();
+        reqVO.setSourcePriceType("REFERENCE_PRICE");
+        reqVO.setTargetPriceType("RETAIL_PRICE");
+        reqVO.setAdjustMethod("ADD");
+        reqVO.setAdjustCoefficient(new BigDecimal("5.12"));
+        reqVO.setDecimalPlaces(2);
+
+        int adjusted;
+        try (MockedStatic<SecurityFrameworkUtils> security = mockStatic(SecurityFrameworkUtils.class)) {
+            security.when(SecurityFrameworkUtils::getLoginUserId).thenReturn(104L);
+
+            adjusted = productService.batchAdjustPrice(reqVO);
+        }
+
+        assertEquals(1, adjusted);
+        ArgumentCaptor<ErpProductDO> productCaptor = ArgumentCaptor.forClass(ErpProductDO.class);
+        verify(productMapper).updateById(productCaptor.capture());
+        assertEquals(new BigDecimal("5.12"), productCaptor.getValue().getRetailPrice());
+    }
+
     private void mockProductPermission(Long loginUserId, Set<Long> deptIds) {
         DeptDataPermissionRespDTO permission = new DeptDataPermissionRespDTO();
         permission.setAll(false);
         permission.setSelf(false);
         permission.setDeptIds(deptIds);
         when(permissionApi.getDeptDataPermission(loginUserId, "erp_product")).thenReturn(permission);
+    }
+
+    private static ErpFieldConfigDO customPriceField() {
+        return ErpFieldConfigDO.builder()
+                .fieldName("vipPrice")
+                .fieldLabel("会员价")
+                .fieldSource("CUSTOM")
+                .fieldType("DECIMAL")
+                .fieldGroup("price_info")
+                .physicalColumn("ext_vip_price")
+                .visible(true)
+                .readonly(false)
+                .required(false)
+                .build();
     }
 
     private static DeptRespDTO buildDept(Long id, String name, Long parentId) {

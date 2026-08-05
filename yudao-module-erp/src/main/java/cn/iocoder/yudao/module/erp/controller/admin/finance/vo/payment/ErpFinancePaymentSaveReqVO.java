@@ -70,6 +70,12 @@ public class ErpFinancePaymentSaveReqVO {
         @NotNull(message = "业务编号不能为空")
         private Long bizId;
 
+        @Schema(description = "业务单据编号")
+        private String bizNo;
+
+        @Schema(description = "应付金额")
+        private BigDecimal totalPrice;
+
         @Schema(description = "已付金额，单位：分", requiredMode = Schema.RequiredMode.REQUIRED, example = "10000")
         @NotNull(message = "已付金额不能为空")
         private BigDecimal paidPrice;

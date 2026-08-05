@@ -5,6 +5,7 @@ import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.common.util.number.MoneyUtils;
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
 import cn.iocoder.yudao.framework.datapermission.core.util.DataPermissionUtils;
+import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.ErpStockUpdateRemarkReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.out.ErpStockOutPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.out.ErpStockOutSaveReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.accounting.ErpVoucherItemDO;
@@ -139,6 +140,14 @@ public class ErpStockOutServiceImpl implements ErpStockOutService {
         stockOutMapper.updateById(updateObj);
         // 2.2 更新出库单项
         updateStockOutItemList(updateReqVO.getId(), stockOutItems);
+        operateLogService.recordUpdate(ERP_STOCK_OUT_TYPE, stockOut.getId(), stockOut.getNo());
+    }
+
+    @Override
+    public void updateStockOutRemark(ErpStockUpdateRemarkReqVO updateReqVO) {
+        ErpStockOutDO stockOut = validateStockOutExists(updateReqVO.getId());
+        stockOutMapper.updateById(new ErpStockOutDO()
+                .setId(updateReqVO.getId()).setRemark(updateReqVO.getRemark()));
         operateLogService.recordUpdate(ERP_STOCK_OUT_TYPE, stockOut.getId(), stockOut.getNo());
     }
 

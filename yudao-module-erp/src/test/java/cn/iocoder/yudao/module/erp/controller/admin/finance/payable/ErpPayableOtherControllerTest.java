@@ -3,6 +3,7 @@ package cn.iocoder.yudao.module.erp.controller.admin.finance.payable;
 import cn.iocoder.yudao.framework.common.pojo.CommonResult;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.test.core.ut.BaseMockitoUnitTest;
+import cn.iocoder.yudao.module.erp.controller.admin.finance.payable.vo.other.ErpPayableOtherDraftSaveReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.payable.vo.other.ErpPayableOtherPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.payable.vo.other.ErpPayableOtherRespVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.payable.ErpPayableOtherDO;
@@ -26,6 +27,7 @@ import java.util.Map;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class ErpPayableOtherControllerTest extends BaseMockitoUnitTest {
@@ -43,6 +45,36 @@ class ErpPayableOtherControllerTest extends BaseMockitoUnitTest {
     private DeptApi deptApi;
     @Mock
     private ErpFinanceFieldPermissionMasker fieldPermissionMasker;
+
+    @Test
+    void createDraft_delegatesToDraftService() {
+        ErpPayableOtherDraftSaveReqVO reqVO =
+                new ErpPayableOtherDraftSaveReqVO().setRemark("未完成");
+        when(payableOtherService.createPayableOtherDraft(reqVO)).thenReturn(9L);
+
+        CommonResult<Long> result = controller.createDraft(reqVO);
+
+        assertEquals(9L, result.getData());
+        verify(payableOtherService).createPayableOtherDraft(reqVO);
+    }
+
+    @Test
+    void page_allowsDraftWithoutSupplier() {
+        ErpPayableOtherDO row = new ErpPayableOtherDO();
+        row.setId(9L);
+        row.setStatus(0);
+        when(payableOtherService.getPayableOtherPage(any()))
+                .thenReturn(new PageResult<>(Collections.singletonList(row), 1L));
+        when(supplierService.getSupplierMap(any())).thenReturn(Collections.emptyMap());
+        when(adminUserApi.getUserMap(any())).thenReturn(Collections.emptyMap());
+        when(deptApi.getDeptMap(any())).thenReturn(Collections.emptyMap());
+
+        CommonResult<PageResult<ErpPayableOtherRespVO>> result =
+                controller.page(new ErpPayableOtherPageReqVO());
+
+        assertNotNull(result.getData());
+        assertEquals(0, result.getData().getList().get(0).getStatus());
+    }
 
     @Test
     void page_fillsSupplierAndAuditFields() {

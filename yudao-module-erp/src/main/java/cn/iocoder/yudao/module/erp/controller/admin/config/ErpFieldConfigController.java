@@ -64,7 +64,7 @@ public class ErpFieldConfigController {
     }
 
     @PostMapping("/create-custom-field")
-    @Operation(summary = "新增自定义字段")
+    @Operation(summary = "新增自定义字段，字段编码由系统生成")
     @PreAuthorize("@ss.hasPermission('erp:field-config:create-custom-field')")
     public CommonResult<ErpFieldConfigRespVO> createCustomField(
             @Valid @RequestBody ErpFieldConfigCreateCustomReqVO reqVO) {

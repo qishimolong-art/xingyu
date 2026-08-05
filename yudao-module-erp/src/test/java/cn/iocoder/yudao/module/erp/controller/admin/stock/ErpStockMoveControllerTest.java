@@ -126,6 +126,8 @@ class ErpStockMoveControllerTest extends BaseMockitoUnitTest {
 
         assertEquals(2, result.getList().size());
         assertEquals("dept-20", result.getList().get(0).getFromDeptName());
+        assertEquals("warehouse-1001", result.getList().get(0).getFromWarehouseNames());
+        assertEquals("warehouse-1002", result.getList().get(0).getToWarehouseNames());
         assertEquals("dept-40", result.getList().get(0).getItems().get(0).getFromWarehouseDeptName());
         assertTrue(result.getList().get(0).getApproveAllowed());
         assertFalse(result.getList().get(1).getApproveAllowed());

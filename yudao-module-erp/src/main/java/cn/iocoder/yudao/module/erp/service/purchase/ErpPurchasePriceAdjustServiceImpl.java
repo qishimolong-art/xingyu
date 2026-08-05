@@ -9,6 +9,8 @@ import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
 import cn.iocoder.yudao.framework.datapermission.core.util.DataPermissionUtils;
 import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpProductRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.imports.ErpPurchaseImportResultRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.ErpPurchaseUpdateRemarkReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.priceadjust.ErpPurchasePriceAdjustDraftSaveReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.priceadjust.ErpPurchasePriceAdjustImportExcelVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.priceadjust.ErpPurchasePriceAdjustImportRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.priceadjust.ErpPurchasePriceAdjustOrderImportExcelVO;
@@ -32,6 +34,7 @@ import cn.iocoder.yudao.module.erp.dal.redis.no.ErpNoRedisDAO;
 import cn.iocoder.yudao.module.erp.enums.ErpAuditStatus;
 import cn.iocoder.yudao.module.erp.enums.common.ErpBizTypeEnum;
 import cn.iocoder.yudao.module.erp.enums.purchase.ErpPurchasePriceAdjustTypeEnum;
+import cn.iocoder.yudao.module.erp.enums.purchase.ErpPurchasePriceAdjustStatusEnum;
 import cn.iocoder.yudao.module.erp.service.common.ErpOperateLogService;
 import cn.iocoder.yudao.module.erp.service.product.ErpProductService;
 import cn.iocoder.yudao.module.erp.service.price.ErpPriceHistoryService;
@@ -49,6 +52,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -84,6 +88,8 @@ import static cn.iocoder.yudao.module.erp.enums.LogRecordConstants.ERP_PURCHASE_
 @Validated
 public class ErpPurchasePriceAdjustServiceImpl implements ErpPurchasePriceAdjustService {
 
+    private static final String FIELD_PERMISSION_MODULE = "erp_purchase_price_adjust";
+
     @Resource
     private ErpPurchasePriceAdjustMapper priceAdjustMapper;
     @Resource
@@ -111,6 +117,8 @@ public class ErpPurchasePriceAdjustServiceImpl implements ErpPurchasePriceAdjust
     @Resource
     private ErpPurchaseDocumentDefaultService purchaseDocumentDefaultService;
     @Resource
+    private ErpPurchaseFieldPermissionMasker fieldPermissionMasker;
+    @Resource
     private ErpOperateLogService operateLogService;
 
     @Resource
@@ -120,6 +128,8 @@ public class ErpPurchasePriceAdjustServiceImpl implements ErpPurchasePriceAdjust
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Long createPurchasePriceAdjust(ErpPurchasePriceAdjustSaveReqVO reqVO) {
+        fieldPermissionMasker.clearHiddenFields(FIELD_PERMISSION_MODULE, reqVO);
+        fieldPermissionMasker.clearHiddenItemFields(FIELD_PERMISSION_MODULE, reqVO.getItems());
         // 1. 主表 + 子表校验 + 回填
         validateMainForm(reqVO);
         List<ErpPurchasePriceAdjustItemDO> items = buildAndValidateItems(reqVO, null);
@@ -156,9 +166,41 @@ public class ErpPurchasePriceAdjustServiceImpl implements ErpPurchasePriceAdjust
 
     @Override
     @Transactional(rollbackFor = Exception.class)
+    public Long createPurchasePriceAdjustDraft(ErpPurchasePriceAdjustDraftSaveReqVO reqVO) {
+        fieldPermissionMasker.clearHiddenFields(FIELD_PERMISSION_MODULE, reqVO);
+        fieldPermissionMasker.clearHiddenItemFields(FIELD_PERMISSION_MODULE, reqVO.getItems());
+        List<ErpPurchasePriceAdjustItemDO> items = buildDraftItems(reqVO.getAdjustType(), reqVO.getItems());
+        if (CollUtil.isEmpty(items)) {
+            throw exception(PURCHASE_PRICE_ADJUST_ITEM_EMPTY);
+        }
+        ErpPurchasePriceAdjustDO adjustDO = BeanUtils.toBean(reqVO, ErpPurchasePriceAdjustDO.class);
+        adjustDO.setId(null);
+        adjustDO.setNo(noRedisDAO.generate(ErpNoRedisDAO.PURCHASE_PRICE_ADJUST_NO_PREFIX));
+        adjustDO.setStatus(ErpPurchasePriceAdjustStatusEnum.DRAFT.getStatus());
+        adjustDO.setAdjustTime(reqVO.getAdjustTime() != null ? reqVO.getAdjustTime() : LocalDateTime.now());
+        adjustDO.setTotalAdjustPrice(sumAdjustPrice(items));
+        fillDeptIdFromPurchaseIn(adjustDO, items);
+        purchaseDocumentDefaultService.fillCreateDefaults(adjustDO);
+        priceAdjustMapper.insert(adjustDO);
+        insertDraftItems(adjustDO.getId(), items);
+        operateLogService.recordCreate(ERP_PURCHASE_PRICE_ADJUST_TYPE, adjustDO.getId(), adjustDO.getNo());
+        return adjustDO.getId();
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public Long createAndSubmitPurchasePriceAdjust(ErpPurchasePriceAdjustSaveReqVO reqVO) {
+        return createPurchasePriceAdjust(reqVO);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
     public void updatePurchasePriceAdjust(ErpPurchasePriceAdjustSaveReqVO reqVO) {
         // 1. 校验存在 + 未审批
         ErpPurchasePriceAdjustDO existDO = validateExists(reqVO.getId());
+        if (ErpPurchasePriceAdjustStatusEnum.DRAFT.getStatus().equals(existDO.getStatus())) {
+            throw exception(PURCHASE_PRICE_ADJUST_DRAFT_UPDATE_FAIL, existDO.getNo());
+        }
         if (ErpAuditStatus.APPROVE.getStatus().equals(existDO.getStatus())) {
             throw exception(PURCHASE_PRICE_ADJUST_UPDATE_FAIL_APPROVE);
         }
@@ -195,6 +237,88 @@ public class ErpPurchasePriceAdjustServiceImpl implements ErpPurchasePriceAdjust
         purchaseDocumentDefaultService.fillCreateAuditDefaults(items);
         priceAdjustItemMapper.insertBatch(items);
         operateLogService.recordUpdate(ERP_PURCHASE_PRICE_ADJUST_TYPE, reqVO.getId(), existDO.getNo());
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void updatePurchasePriceAdjustDraft(ErpPurchasePriceAdjustDraftSaveReqVO reqVO) {
+        ErpPurchasePriceAdjustDO existDO = validateExists(reqVO.getId());
+        if (!ErpPurchasePriceAdjustStatusEnum.DRAFT.getStatus().equals(existDO.getStatus())) {
+            throw exception(PURCHASE_PRICE_ADJUST_DRAFT_UPDATE_FAIL, existDO.getNo());
+        }
+        fieldPermissionMasker.preserveHiddenFields(FIELD_PERMISSION_MODULE, reqVO, existDO);
+        fieldPermissionMasker.preserveHiddenItemFields(FIELD_PERMISSION_MODULE, reqVO.getItems(),
+                priceAdjustItemMapper.selectListByAdjustId(reqVO.getId()));
+        List<ErpPurchasePriceAdjustItemDO> items = buildDraftItems(reqVO.getAdjustType(), reqVO.getItems());
+        ErpPurchasePriceAdjustDO updateDO = BeanUtils.toBean(reqVO, ErpPurchasePriceAdjustDO.class);
+        updateDO.setId(existDO.getId());
+        updateDO.setNo(existDO.getNo());
+        updateDO.setStatus(existDO.getStatus());
+        if (updateDO.getAdjustTime() == null) {
+            updateDO.setAdjustTime(existDO.getAdjustTime());
+        }
+        updateDO.setTotalAdjustPrice(sumAdjustPrice(items));
+        if (updateDO.getDeptId() == null) {
+            updateDO.setDeptId(existDO.getDeptId());
+        }
+        if (updateDO.getAdjuster() == null) {
+            updateDO.setAdjuster(existDO.getAdjuster());
+        }
+        if (priceAdjustMapper.updateByIdAndStatus(existDO.getId(),
+                ErpPurchasePriceAdjustStatusEnum.DRAFT.getStatus(), updateDO) == 0) {
+            throw exception(PURCHASE_PRICE_ADJUST_DRAFT_UPDATE_FAIL, existDO.getNo());
+        }
+        priceAdjustItemMapper.deleteByAdjustId(existDO.getId());
+        insertDraftItems(existDO.getId(), items);
+        operateLogService.recordUpdate(ERP_PURCHASE_PRICE_ADJUST_TYPE, existDO.getId(), existDO.getNo());
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void updateAndSubmitPurchasePriceAdjust(ErpPurchasePriceAdjustSaveReqVO reqVO) {
+        ErpPurchasePriceAdjustDraftSaveReqVO draftReqVO =
+                BeanUtils.toBean(reqVO, ErpPurchasePriceAdjustDraftSaveReqVO.class);
+        updatePurchasePriceAdjustDraft(draftReqVO);
+        submitPurchasePriceAdjust(reqVO.getId());
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void submitPurchasePriceAdjust(Long id) {
+        ErpPurchasePriceAdjustDO adjustDO = validateExists(id);
+        if (!ErpPurchasePriceAdjustStatusEnum.DRAFT.getStatus().equals(adjustDO.getStatus())) {
+            throw exception(PURCHASE_PRICE_ADJUST_DRAFT_SUBMIT_FAIL);
+        }
+        ErpPurchasePriceAdjustSaveReqVO reqVO = BeanUtils.toBean(adjustDO, ErpPurchasePriceAdjustSaveReqVO.class);
+        reqVO.setItems(BeanUtils.toBean(priceAdjustItemMapper.selectListByAdjustId(id),
+                ErpPurchasePriceAdjustSaveReqVO.Item.class));
+        validateMainForm(reqVO);
+        List<ErpPurchasePriceAdjustItemDO> items = buildAndValidateItems(reqVO, id);
+        BigDecimal totalAdjustPrice = sumAdjustPrice(items);
+        ErpPurchasePriceAdjustDO statusUpdate = new ErpPurchasePriceAdjustDO()
+                .setStatus(ErpPurchasePriceAdjustStatusEnum.PROCESS.getStatus())
+                .setTotalAdjustPrice(totalAdjustPrice);
+        if (priceAdjustMapper.updateByIdAndStatus(id, ErpPurchasePriceAdjustStatusEnum.DRAFT.getStatus(),
+                statusUpdate) == 0) {
+            throw exception(PURCHASE_PRICE_ADJUST_DRAFT_SUBMIT_FAIL);
+        }
+        priceAdjustItemMapper.deleteByAdjustId(id);
+        items.forEach(item -> {
+            item.setId(null);
+            item.setAdjustId(id);
+        });
+        purchaseDocumentDefaultService.fillCreateAuditDefaults(items);
+        priceAdjustItemMapper.insertBatch(items);
+        operateLogService.recordUpdate(ERP_PURCHASE_PRICE_ADJUST_TYPE, id, adjustDO.getNo());
+    }
+
+    @Override
+    public void updatePurchasePriceAdjustRemark(ErpPurchaseUpdateRemarkReqVO reqVO) {
+        ErpPurchasePriceAdjustDO adjustDO = validateExists(reqVO.getId());
+        priceAdjustMapper.updateById(new ErpPurchasePriceAdjustDO()
+                .setId(reqVO.getId())
+                .setRemark(reqVO.getRemark()));
+        operateLogService.recordUpdate(ERP_PURCHASE_PRICE_ADJUST_TYPE, reqVO.getId(), adjustDO.getNo());
     }
 
     @Override
@@ -648,9 +772,10 @@ public class ErpPurchasePriceAdjustServiceImpl implements ErpPurchasePriceAdjust
 
     private void validateMainForm(ErpPurchasePriceAdjustSaveReqVO reqVO) {
         // 校验供应商
-        if (reqVO.getSupplierId() != null) {
-            supplierService.validateSupplier(reqVO.getSupplierId());
+        if (reqVO.getSupplierId() == null) {
+            throw exception(PURCHASE_PRICE_ADJUST_SUBMIT_SUPPLIER_REQUIRED);
         }
+        supplierService.validateSupplier(reqVO.getSupplierId());
         // 校验子表非空
         if (CollUtil.isEmpty(reqVO.getItems())) {
             throw exception(PURCHASE_PRICE_ADJUST_ITEM_EMPTY);
@@ -670,6 +795,42 @@ public class ErpPurchasePriceAdjustServiceImpl implements ErpPurchasePriceAdjust
      * @param reqVO           请求 VO
      * @param excludeAdjustId 更新场景排除自己的已存在子项（用于将来扩展；当前实现按重建策略，未用到）
      */
+    private List<ErpPurchasePriceAdjustItemDO> buildDraftItems(Integer adjustType,
+                                                               List<ErpPurchasePriceAdjustSaveReqVO.Item> itemReqs) {
+        if (CollUtil.isEmpty(itemReqs)) {
+            return Collections.emptyList();
+        }
+        boolean byInOrder = ErpPurchasePriceAdjustTypeEnum.isByInOrder(adjustType);
+        return itemReqs.stream()
+                .filter(item -> item != null && item.getProductId() != null && item.getCount() != null
+                        && item.getCount().compareTo(BigDecimal.ZERO) > 0 && item.getNewPrice() != null
+                        && (!byInOrder || (item.getInId() != null && item.getInItemId() != null)))
+                .map(item -> {
+                    ErpPurchasePriceAdjustItemDO draftItem =
+                            BeanUtils.toBean(item, ErpPurchasePriceAdjustItemDO.class);
+                    draftItem.setId(null);
+                    BigDecimal oldPrice = draftItem.getOldPrice() != null
+                            ? draftItem.getOldPrice() : BigDecimal.ZERO;
+                    draftItem.setOldPrice(oldPrice);
+                    draftItem.setAdjustPrice(draftItem.getNewPrice().subtract(oldPrice)
+                            .multiply(draftItem.getCount()).setScale(2, RoundingMode.HALF_UP));
+                    return draftItem;
+                })
+                .collect(Collectors.toList());
+    }
+
+    private void insertDraftItems(Long adjustId, List<ErpPurchasePriceAdjustItemDO> items) {
+        if (CollUtil.isEmpty(items)) {
+            return;
+        }
+        items.forEach(item -> {
+            item.setId(null);
+            item.setAdjustId(adjustId);
+        });
+        purchaseDocumentDefaultService.fillCreateAuditDefaults(items);
+        priceAdjustItemMapper.insertBatch(items);
+    }
+
     private List<ErpPurchasePriceAdjustItemDO> buildAndValidateItems(ErpPurchasePriceAdjustSaveReqVO reqVO,
                                                                     Long excludeAdjustId) {
         Integer adjustType = reqVO.getAdjustType();

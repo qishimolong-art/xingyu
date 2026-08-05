@@ -50,6 +50,7 @@ public interface ErpSaleCartMapper extends BaseMapperX<ErpSaleCartDO> {
                 ErpSaleCartDO::getOrderType, ErpSaleCartDO::getBillingMethod,
                 ErpSaleCartDO::getSettleMethod, ErpSaleCartDO::getInvoiceType,
                 ErpSaleCartDO::getDeliveryMethod, ErpSaleCartDO::getFreightType,
+                ErpSaleCartDO::getVin,
                 ErpSaleCartDO::getPriority, ErpSaleCartDO::getPriceType,
                 ErpSaleCartDO::getLogisticsCompany, ErpSaleCartDO::getContactPerson,
                 ErpSaleCartDO::getContactPhone, ErpSaleCartDO::getDeliveryAddress,
@@ -103,6 +104,8 @@ public interface ErpSaleCartMapper extends BaseMapperX<ErpSaleCartDO> {
                 return ErpSaleCartDO::getSettleMethod;
             case "deliveryMethod":
                 return ErpSaleCartDO::getDeliveryMethod;
+            case "vin":
+                return ErpSaleCartDO::getVin;
             case "logisticsCompany":
                 return ErpSaleCartDO::getLogisticsCompany;
             case "saleUserId":

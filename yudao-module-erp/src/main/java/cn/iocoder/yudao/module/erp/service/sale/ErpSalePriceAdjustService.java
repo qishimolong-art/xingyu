@@ -1,9 +1,11 @@
 package cn.iocoder.yudao.module.erp.service.sale;
 
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.ErpSaleUpdateRemarkReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.priceadjust.ErpSaleOutItemForAdjustRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.priceadjust.ErpSalePriceAdjustImportExcelVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.priceadjust.ErpSalePriceAdjustImportRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.priceadjust.ErpSalePriceAdjustDraftSaveReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.priceadjust.ErpSalePriceAdjustPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.priceadjust.ErpSalePriceAdjustSaveReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSalePriceAdjustDO;
@@ -23,7 +25,15 @@ public interface ErpSalePriceAdjustService {
 
     Long createSalePriceAdjust(@Valid ErpSalePriceAdjustSaveReqVO createReqVO);
 
+    Long createSalePriceAdjustDraft(ErpSalePriceAdjustDraftSaveReqVO createReqVO);
+
     void updateSalePriceAdjust(@Valid ErpSalePriceAdjustSaveReqVO updateReqVO);
+
+    void updateSalePriceAdjustDraft(ErpSalePriceAdjustDraftSaveReqVO updateReqVO);
+
+    void submitSalePriceAdjust(Long id);
+
+    void updateSalePriceAdjustRemark(@Valid ErpSaleUpdateRemarkReqVO updateReqVO);
 
     void updateSalePriceAdjustStatus(Long id, Integer status);
 

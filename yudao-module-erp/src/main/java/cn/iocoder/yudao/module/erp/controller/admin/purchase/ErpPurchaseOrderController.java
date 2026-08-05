@@ -13,6 +13,8 @@ import cn.iocoder.yudao.module.erp.controller.admin.common.ErpAuditStatusRequest
 import cn.iocoder.yudao.module.erp.controller.admin.common.vo.ErpExportFieldRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpProductRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.order.ErpPurchaseOrderDetailImportExcelVO;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.order.ErpPurchaseOrderDraftCreateReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.order.ErpPurchaseOrderDraftUpdateReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.order.ErpPurchaseOrderExportRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.order.ErpPurchaseOrderImportExcelVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.order.ErpPurchaseOrderImportResultRespVO;
@@ -21,6 +23,7 @@ import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.order.ErpPurchas
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.order.ErpPurchaseOrderPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.order.ErpPurchaseOrderRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.order.ErpPurchaseOrderSaveReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.order.ErpPurchaseOrderUpdateRemarkReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseOrderDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseOrderItemDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpSupplierDO;
@@ -129,11 +132,65 @@ public class ErpPurchaseOrderController {
         return success(purchaseOrderService.createPurchaseOrder(createReqVO));
     }
 
+    @PostMapping("/create-draft")
+    @Operation(summary = "创建采购订单草稿")
+    @PreAuthorize("@ss.hasPermission('erp:purchase-order:create')")
+    public CommonResult<Long> createPurchaseOrderDraft(@RequestBody ErpPurchaseOrderDraftCreateReqVO createReqVO) {
+        return success(purchaseOrderService.createPurchaseOrderDraft(
+                BeanUtils.toBean(createReqVO, ErpPurchaseOrderSaveReqVO.class)));
+    }
+
+    @PostMapping("/create-and-submit")
+    @Operation(summary = "创建并提交采购订单")
+    @PreAuthorize("@ss.hasPermission('erp:purchase-order:create') and " +
+            "@ss.hasPermission('erp:purchase-order:update-status')")
+    public CommonResult<Long> createAndSubmitPurchaseOrder(
+            @Valid @RequestBody ErpPurchaseOrderSaveReqVO createReqVO) {
+        return success(purchaseOrderService.createAndSubmitPurchaseOrder(createReqVO));
+    }
+
     @PutMapping("/update")
     @Operation(summary = "更新采购订单")
     @PreAuthorize("@ss.hasPermission('erp:purchase-order:update')")
     public CommonResult<Boolean> updatePurchaseOrder(@Valid @RequestBody ErpPurchaseOrderSaveReqVO updateReqVO) {
         purchaseOrderService.updatePurchaseOrder(updateReqVO);
+        return success(true);
+    }
+
+    @PutMapping("/update-draft")
+    @Operation(summary = "保存采购订单草稿")
+    @PreAuthorize("@ss.hasPermission('erp:purchase-order:update')")
+    public CommonResult<Boolean> updatePurchaseOrderDraft(
+            @RequestBody ErpPurchaseOrderDraftUpdateReqVO updateReqVO) {
+        purchaseOrderService.updatePurchaseOrderDraft(
+                BeanUtils.toBean(updateReqVO, ErpPurchaseOrderSaveReqVO.class));
+        return success(true);
+    }
+
+    @PutMapping("/update-and-submit")
+    @Operation(summary = "更新并提交采购订单草稿")
+    @PreAuthorize("@ss.hasPermission('erp:purchase-order:update') and " +
+            "@ss.hasPermission('erp:purchase-order:update-status')")
+    public CommonResult<Boolean> updateAndSubmitPurchaseOrder(
+            @Valid @RequestBody ErpPurchaseOrderSaveReqVO updateReqVO) {
+        purchaseOrderService.updateAndSubmitPurchaseOrder(updateReqVO);
+        return success(true);
+    }
+
+    @PutMapping("/submit")
+    @Operation(summary = "提交采购订单草稿")
+    @PreAuthorize("@ss.hasPermission('erp:purchase-order:update-status')")
+    public CommonResult<Boolean> submitPurchaseOrderDraft(@RequestParam("id") Long id) {
+        purchaseOrderService.submitPurchaseOrderDraft(id);
+        return success(true);
+    }
+
+    @PutMapping("/update-remark")
+    @Operation(summary = "修改采购订单备注")
+    @PreAuthorize("@ss.hasPermission('erp:purchase-order:update')")
+    public CommonResult<Boolean> updatePurchaseOrderRemark(
+            @Valid @RequestBody ErpPurchaseOrderUpdateRemarkReqVO updateReqVO) {
+        purchaseOrderService.updatePurchaseOrderRemark(updateReqVO);
         return success(true);
     }
 
@@ -182,7 +239,8 @@ public class ErpPurchaseOrderController {
                 item.setStockCount(stockCount != null ? stockCount : BigDecimal.ZERO);
                 MapUtils.findAndThen(productMap, item.getProductId(), product -> item.setProductName(product.getName())
                         .setProductBarCode(product.getBarCode()).setProductUnitName(product.getUnitName())
-                        .setProductCode(product.getCode()).setBatchNoEnabled(product.getBatchNoEnabled()));
+                        .setProductCode(product.getCode()).setBatchNoEnabled(product.getBatchNoEnabled())
+                        .setLastPurchasePrice(product.getLastPurchasePrice()));
             }));
             if (dept != null) {
                 purchaseOrderVO.setDeptName(dept.getName());
@@ -366,7 +424,8 @@ public class ErpPurchaseOrderController {
                     ErpPurchaseOrderRespVO.Item.class, item ->
                             MapUtils.findAndThen(productMap, item.getProductId(), product -> item.setProductName(product.getName())
                                     .setProductBarCode(product.getBarCode()).setProductUnitName(product.getUnitName())
-                                    .setProductCode(product.getCode()).setBatchNoEnabled(product.getBatchNoEnabled()))));
+                                    .setProductCode(product.getCode()).setBatchNoEnabled(product.getBatchNoEnabled())
+                                    .setLastPurchasePrice(product.getLastPurchasePrice()))));
             purchaseOrder.setProductNames(CollUtil.join(purchaseOrder.getItems(), "，",
                     ErpPurchaseOrderRespVO.Item::getProductName));
             MapUtils.findAndThen(supplierMap, purchaseOrder.getSupplierId(),

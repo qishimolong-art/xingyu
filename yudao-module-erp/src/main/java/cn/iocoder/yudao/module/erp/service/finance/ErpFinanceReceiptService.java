@@ -1,6 +1,8 @@
 package cn.iocoder.yudao.module.erp.service.finance;
 
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
+import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.ErpFinanceUpdateRemarkReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.receipt.ErpFinanceReceiptDraftSaveReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.receipt.ErpFinanceReceiptPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.receipt.ErpFinanceReceiptSaveReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.receipt.ErpFinanceReceiptWriteOffCandidateRespVO;
@@ -28,12 +30,24 @@ public interface ErpFinanceReceiptService {
      */
     Long createFinanceReceipt(@Valid ErpFinanceReceiptSaveReqVO createReqVO);
 
+    Long createFinanceReceiptDraft(ErpFinanceReceiptDraftSaveReqVO createReqVO);
+
+    Long createAndSubmitFinanceReceipt(@Valid ErpFinanceReceiptSaveReqVO createReqVO);
+
     /**
      * 更新收款单
      *
      * @param updateReqVO 更新信息
      */
     void updateFinanceReceipt(@Valid ErpFinanceReceiptSaveReqVO updateReqVO);
+
+    void updateFinanceReceiptDraft(ErpFinanceReceiptDraftSaveReqVO updateReqVO);
+
+    void updateAndSubmitFinanceReceipt(@Valid ErpFinanceReceiptSaveReqVO updateReqVO);
+
+    void submitFinanceReceipt(Long id);
+
+    void updateFinanceReceiptRemark(@Valid ErpFinanceUpdateRemarkReqVO updateReqVO);
 
     /**
      * 审核收款单

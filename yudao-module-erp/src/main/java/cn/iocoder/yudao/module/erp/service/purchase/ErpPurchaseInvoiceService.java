@@ -1,7 +1,10 @@
 package cn.iocoder.yudao.module.erp.service.purchase;
 
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.ErpPurchaseUpdateRemarkReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.imports.ErpPurchaseImportResultRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.invoice.ErpPurchaseInvoiceDraftCreateReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.invoice.ErpPurchaseInvoiceDraftUpdateReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.invoice.ErpPurchaseInvoiceImportExcelVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.invoice.ErpPurchaseInvoicePageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.invoice.ErpPurchaseInvoiceSaveReqVO;
@@ -16,7 +19,17 @@ public interface ErpPurchaseInvoiceService {
 
     Long createPurchaseInvoice(@Valid ErpPurchaseInvoiceSaveReqVO createReqVO);
 
+    Long createPurchaseInvoiceDraft(ErpPurchaseInvoiceDraftCreateReqVO createReqVO);
+
     void updatePurchaseInvoice(@Valid ErpPurchaseInvoiceSaveReqVO updateReqVO);
+
+    void updatePurchaseInvoiceDraft(ErpPurchaseInvoiceDraftUpdateReqVO updateReqVO);
+
+    void updateAndSubmitPurchaseInvoiceDraft(@Valid ErpPurchaseInvoiceDraftUpdateReqVO updateReqVO);
+
+    void submitPurchaseInvoice(Long id);
+
+    void updatePurchaseInvoiceRemark(@Valid ErpPurchaseUpdateRemarkReqVO updateReqVO);
 
     void updatePurchaseInvoiceStatus(Long id, Integer status);
 

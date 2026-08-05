@@ -4,17 +4,20 @@ import cn.iocoder.yudao.framework.common.exception.ServiceException;
 import cn.iocoder.yudao.framework.test.core.ut.BaseMockitoUnitTest;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.order.ErpPurchaseOrderInableItemRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.order.ErpPurchaseOrderSaveReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.order.ErpPurchaseOrderUpdateRemarkReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpProductRespVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.product.ErpProductDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseInDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseOrderDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseOrderItemDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpSupplierDO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpWarehouseDO;
 import cn.iocoder.yudao.module.erp.dal.mysql.purchase.ErpPurchaseInMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.purchase.ErpPurchaseOrderItemMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.purchase.ErpPurchaseOrderMapper;
 import cn.iocoder.yudao.module.erp.dal.redis.no.ErpNoRedisDAO;
 import cn.iocoder.yudao.module.erp.enums.ErpAuditStatus;
+import cn.iocoder.yudao.module.erp.enums.purchase.ErpPurchaseOrderStatusEnum;
 import cn.iocoder.yudao.module.erp.service.common.ErpOperateLogService;
 import cn.iocoder.yudao.module.erp.service.finance.ErpAccountService;
 import cn.iocoder.yudao.module.erp.service.product.ErpProductBatchNoValidator;
@@ -48,7 +51,9 @@ import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PURCHASE_ORDE
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PURCHASE_ORDER_PROCESS_FAIL;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PURCHASE_ORDER_PROCESS_FAIL_EXISTS_IN;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PURCHASE_ORDER_PROCESS_FAIL_EXISTS_RETURN;
+import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PURCHASE_ORDER_SUBMIT_ITEMS_REQUIRED;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PURCHASE_ORDER_UPDATE_FAIL_APPROVE;
+import static cn.iocoder.yudao.module.erp.enums.LogRecordConstants.ERP_PURCHASE_ORDER_TYPE;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -210,6 +215,104 @@ public class ErpPurchaseOrderServiceImplTest extends BaseMockitoUnitTest {
         verify(accountService).validateAccount(eq(50L));
     }
 
+    @Test
+    public void testCreatePurchaseOrderDraft_withoutItems_throwException() {
+        ErpPurchaseOrderSaveReqVO reqVO = buildBaseReqVO(null);
+
+        ServiceException ex = assertThrows(ServiceException.class,
+                () -> purchaseOrderService.createPurchaseOrderDraft(reqVO));
+
+        assertEquals(PURCHASE_ORDER_SUBMIT_ITEMS_REQUIRED.getCode(), ex.getCode());
+        verify(purchaseOrderMapper, never()).insert(any(ErpPurchaseOrderDO.class));
+        verify(purchaseOrderItemMapper, never()).insertBatch(anyList());
+    }
+
+    @Test
+    public void testCreatePurchaseOrderDraft_priceZero_keepsSelectedStockItem() {
+        ErpPurchaseOrderSaveReqVO.Item item = buildItem(200L, new BigDecimal("2"), BigDecimal.ZERO);
+        item.setWarehouseId(7L);
+        ErpPurchaseOrderSaveReqVO reqVO = buildBaseReqVO(null, item);
+
+        when(productService.validProductList(any())).thenReturn(Collections.singletonList(
+                new ErpProductDO().setId(200L).setUnitId(1L)));
+        when(warehouseService.getWarehouseMap(any())).thenReturn(Collections.singletonMap(
+                7L, new ErpWarehouseDO().setId(7L).setDeptId(3L)));
+        when(purchaseOrderMapper.selectByNo(any())).thenReturn(null);
+
+        purchaseOrderService.createPurchaseOrderDraft(reqVO);
+
+        ArgumentCaptor<ErpPurchaseOrderDO> orderCaptor = ArgumentCaptor.forClass(ErpPurchaseOrderDO.class);
+        verify(purchaseOrderMapper).insert(orderCaptor.capture());
+        ErpPurchaseOrderDO inserted = orderCaptor.getValue();
+        assertEquals(ErpPurchaseOrderStatusEnum.DRAFT.getStatus(), inserted.getStatus());
+        assertEquals(0, inserted.getTotalCount().compareTo(new BigDecimal("2")));
+        assertEquals(0, inserted.getTotalProductPrice().compareTo(BigDecimal.ZERO));
+
+        ArgumentCaptor<List<ErpPurchaseOrderItemDO>> itemsCaptor = ArgumentCaptor.forClass(List.class);
+        verify(purchaseOrderItemMapper).insertBatch(itemsCaptor.capture());
+        ErpPurchaseOrderItemDO insertedItem = itemsCaptor.getValue().get(0);
+        assertEquals(200L, insertedItem.getProductId());
+        assertEquals(7L, insertedItem.getWarehouseId());
+        assertEquals(0, insertedItem.getProductPrice().compareTo(BigDecimal.ZERO));
+        assertEquals(0, insertedItem.getTotalPrice().compareTo(BigDecimal.ZERO));
+    }
+
+    @Test
+    public void testUpdatePurchaseOrderDraft_withoutItems_setsZeroTotals() {
+        ErpPurchaseOrderDO existing = new ErpPurchaseOrderDO()
+                .setId(10L).setNo("CGDD001").setStatus(ErpPurchaseOrderStatusEnum.DRAFT.getStatus())
+                .setOrderTime(LocalDateTime.of(2026, 5, 20, 10, 0, 0));
+        when(purchaseOrderMapper.selectById(eq(10L))).thenReturn(existing);
+        when(purchaseOrderMapper.updateByIdAndStatus(eq(10L), eq(ErpPurchaseOrderStatusEnum.DRAFT.getStatus()),
+                any(ErpPurchaseOrderDO.class))).thenReturn(1);
+
+        ErpPurchaseOrderSaveReqVO reqVO = buildBaseReqVO(null);
+        reqVO.setId(10L);
+
+        purchaseOrderService.updatePurchaseOrderDraft(reqVO);
+
+        ArgumentCaptor<ErpPurchaseOrderDO> orderCaptor = ArgumentCaptor.forClass(ErpPurchaseOrderDO.class);
+        verify(purchaseOrderMapper).updateByIdAndStatus(eq(10L), eq(ErpPurchaseOrderStatusEnum.DRAFT.getStatus()),
+                orderCaptor.capture());
+        ErpPurchaseOrderDO updated = orderCaptor.getValue();
+        assertEquals(0, updated.getTotalCount().compareTo(BigDecimal.ZERO));
+        assertEquals(0, updated.getTotalProductPrice().compareTo(BigDecimal.ZERO));
+        assertEquals(0, updated.getTotalTaxPrice().compareTo(BigDecimal.ZERO));
+        assertEquals(0, updated.getTotalPrice().compareTo(BigDecimal.ZERO));
+        verify(purchaseOrderItemMapper).deleteByOrderId(eq(10L));
+        verify(purchaseOrderItemMapper, never()).insertBatch(anyList());
+    }
+
+    @Test
+    public void testUpdateAndSubmitPurchaseOrderDraft_movesToProcessNotApprove() {
+        ErpPurchaseOrderDO existing = new ErpPurchaseOrderDO()
+                .setId(10L).setNo("CGDD001").setStatus(ErpPurchaseOrderStatusEnum.DRAFT.getStatus())
+                .setSupplierId(100L).setOrderTime(LocalDateTime.of(2026, 5, 20, 10, 0, 0))
+                .setInCount(BigDecimal.ZERO).setReturnCount(BigDecimal.ZERO);
+        when(purchaseOrderMapper.selectById(eq(10L))).thenReturn(existing);
+        when(productService.validProductList(any())).thenReturn(Collections.singletonList(
+                new ErpProductDO().setId(200L).setUnitId(1L)));
+        when(purchaseOrderMapper.updateByIdAndStatus(eq(10L), eq(ErpPurchaseOrderStatusEnum.DRAFT.getStatus()),
+                any(ErpPurchaseOrderDO.class))).thenReturn(1);
+        ErpPurchaseOrderItemDO persistedItem = new ErpPurchaseOrderItemDO()
+                .setId(1L).setProductId(200L).setWarehouseId(7L)
+                .setCount(new BigDecimal("2")).setProductPrice(new BigDecimal("5"));
+        when(purchaseOrderItemMapper.selectListByOrderId(eq(10L)))
+                .thenReturn(Collections.emptyList(), Collections.emptyList(), Collections.singletonList(persistedItem));
+
+        ErpPurchaseOrderSaveReqVO.Item item = buildItem(200L, new BigDecimal("2"), new BigDecimal("5"));
+        item.setWarehouseId(7L);
+        ErpPurchaseOrderSaveReqVO reqVO = buildBaseReqVO(100L, item);
+        reqVO.setId(10L);
+
+        purchaseOrderService.updateAndSubmitPurchaseOrder(reqVO);
+
+        ArgumentCaptor<ErpPurchaseOrderDO> statusCaptor = ArgumentCaptor.forClass(ErpPurchaseOrderDO.class);
+        verify(purchaseOrderMapper).updateByIdAndStatus(eq(10L),
+                eq(ErpPurchaseOrderStatusEnum.DRAFT.getStatus()), statusCaptor.capture());
+        assertEquals(ErpPurchaseOrderStatusEnum.PROCESS.getStatus(), statusCaptor.getValue().getStatus());
+    }
+
     // ========== updatePurchaseOrder ==========
 
     @Test
@@ -265,14 +368,75 @@ public class ErpPurchaseOrderServiceImplTest extends BaseMockitoUnitTest {
         assertEquals(PURCHASE_ORDER_ITEM_GIFT_MODIFY_FAIL_HAS_IN.getCode(), ex.getCode());
     }
 
+    // ========== updatePurchaseOrderRemark ==========
+
+    @Test
+    public void testUpdatePurchaseOrderRemark_approvedSuccess() {
+        ErpPurchaseOrderDO existing = new ErpPurchaseOrderDO()
+                .setId(10L).setNo("CGDD001").setStatus(ErpAuditStatus.APPROVE.getStatus())
+                .setSupplierId(100L).setTotalPrice(new BigDecimal("50.00"));
+        when(purchaseOrderMapper.selectById(eq(10L))).thenReturn(existing);
+        ErpPurchaseOrderUpdateRemarkReqVO reqVO = new ErpPurchaseOrderUpdateRemarkReqVO();
+        reqVO.setId(10L);
+        reqVO.setRemark("审批后补充备注");
+
+        purchaseOrderService.updatePurchaseOrderRemark(reqVO);
+
+        ArgumentCaptor<ErpPurchaseOrderDO> captor = ArgumentCaptor.forClass(ErpPurchaseOrderDO.class);
+        verify(purchaseOrderMapper).updateById(captor.capture());
+        ErpPurchaseOrderDO updateObj = captor.getValue();
+        assertEquals(10L, updateObj.getId());
+        assertEquals("审批后补充备注", updateObj.getRemark());
+        assertNull(updateObj.getStatus());
+        assertNull(updateObj.getSupplierId());
+        assertNull(updateObj.getTotalPrice());
+        verify(operateLogService).recordUpdate(ERP_PURCHASE_ORDER_TYPE, 10L, "CGDD001");
+    }
+
+    @Test
+    public void testUpdatePurchaseOrderRemark_clearSuccess() {
+        ErpPurchaseOrderDO existing = new ErpPurchaseOrderDO()
+                .setId(10L).setNo("CGDD001").setStatus(ErpAuditStatus.PROCESS.getStatus());
+        when(purchaseOrderMapper.selectById(eq(10L))).thenReturn(existing);
+        ErpPurchaseOrderUpdateRemarkReqVO reqVO = new ErpPurchaseOrderUpdateRemarkReqVO();
+        reqVO.setId(10L);
+        reqVO.setRemark("");
+
+        purchaseOrderService.updatePurchaseOrderRemark(reqVO);
+
+        ArgumentCaptor<ErpPurchaseOrderDO> captor = ArgumentCaptor.forClass(ErpPurchaseOrderDO.class);
+        verify(purchaseOrderMapper).updateById(captor.capture());
+        assertEquals("", captor.getValue().getRemark());
+    }
+
+    @Test
+    public void testUpdatePurchaseOrderRemark_notExists_throwException() {
+        when(purchaseOrderMapper.selectById(eq(10L))).thenReturn(null);
+        ErpPurchaseOrderUpdateRemarkReqVO reqVO = new ErpPurchaseOrderUpdateRemarkReqVO();
+        reqVO.setId(10L);
+        reqVO.setRemark("备注");
+
+        ServiceException ex = assertThrows(ServiceException.class,
+                () -> purchaseOrderService.updatePurchaseOrderRemark(reqVO));
+
+        assertEquals(PURCHASE_ORDER_NOT_EXISTS.getCode(), ex.getCode());
+        verify(purchaseOrderMapper, never()).updateById(any(ErpPurchaseOrderDO.class));
+    }
+
     // ========== updatePurchaseOrderStatus ==========
 
     @Test
     public void testUpdatePurchaseOrderStatus_approveSuccess() {
         ErpPurchaseOrderDO existing = new ErpPurchaseOrderDO()
                 .setId(10L).setStatus(ErpAuditStatus.PROCESS.getStatus())
+                .setSupplierId(100L).setOrderTime(LocalDateTime.of(2026, 5, 20, 10, 0, 0))
                 .setInCount(BigDecimal.ZERO).setReturnCount(BigDecimal.ZERO);
         when(purchaseOrderMapper.selectById(eq(10L))).thenReturn(existing);
+        when(purchaseOrderItemMapper.selectListByOrderId(eq(10L))).thenReturn(Collections.singletonList(
+                new ErpPurchaseOrderItemDO().setId(1L).setProductId(200L).setCount(new BigDecimal("10"))
+                        .setProductPrice(new BigDecimal("5"))));
+        when(productService.validProductList(any())).thenReturn(Collections.singletonList(
+                new ErpProductDO().setId(200L).setUnitId(1L)));
         when(purchaseOrderMapper.updateByIdAndStatus(eq(10L),
                 eq(ErpAuditStatus.PROCESS.getStatus()), any(ErpPurchaseOrderDO.class))).thenReturn(1);
 
@@ -368,8 +532,14 @@ public class ErpPurchaseOrderServiceImplTest extends BaseMockitoUnitTest {
     public void testUpdatePurchaseOrderStatus_approveLostByOptimisticLock_throwException() {
         ErpPurchaseOrderDO existing = new ErpPurchaseOrderDO()
                 .setId(10L).setStatus(ErpAuditStatus.PROCESS.getStatus())
+                .setSupplierId(100L).setOrderTime(LocalDateTime.of(2026, 5, 20, 10, 0, 0))
                 .setInCount(BigDecimal.ZERO).setReturnCount(BigDecimal.ZERO);
         when(purchaseOrderMapper.selectById(eq(10L))).thenReturn(existing);
+        when(purchaseOrderItemMapper.selectListByOrderId(eq(10L))).thenReturn(Collections.singletonList(
+                new ErpPurchaseOrderItemDO().setId(1L).setProductId(200L).setCount(new BigDecimal("10"))
+                        .setProductPrice(new BigDecimal("5"))));
+        when(productService.validProductList(any())).thenReturn(Collections.singletonList(
+                new ErpProductDO().setId(200L).setUnitId(1L)));
         when(purchaseOrderMapper.updateByIdAndStatus(any(), any(), any())).thenReturn(0);
 
         ServiceException ex = assertThrows(ServiceException.class,

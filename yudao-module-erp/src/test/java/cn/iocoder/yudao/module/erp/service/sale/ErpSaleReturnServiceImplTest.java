@@ -2,8 +2,12 @@ package cn.iocoder.yudao.module.erp.service.sale;
 
 import cn.iocoder.yudao.framework.common.exception.ErrorCode;
 import cn.iocoder.yudao.framework.common.exception.ServiceException;
+import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.test.core.ut.BaseMockitoUnitTest;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnSaveReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnDraftCreateReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnDraftUpdateReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnPageReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.ErpAccountDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.product.ErpProductDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpCustomerDO;
@@ -15,6 +19,7 @@ import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleReturnItemDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockOutBillItemDO;
 import cn.iocoder.yudao.module.erp.dal.mysql.finance.accounting.ErpVoucherItemMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.finance.accounting.ErpVoucherMapper;
+import cn.iocoder.yudao.module.erp.dal.mysql.finance.ErpFinanceReceiptItemMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpSaleOutItemMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpSaleOutMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpSaleReturnItemMapper;
@@ -24,6 +29,7 @@ import cn.iocoder.yudao.module.erp.enums.ErpAuditStatus;
 import cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants;
 import cn.iocoder.yudao.module.erp.enums.finance.accounting.ErpVoucherTypeEnum;
 import cn.iocoder.yudao.module.erp.enums.sale.ErpSaleReturnModeEnum;
+import cn.iocoder.yudao.module.erp.enums.sale.ErpSaleReturnStatusEnum;
 import cn.iocoder.yudao.module.erp.enums.stock.ErpStockRecordBizTypeEnum;
 import cn.iocoder.yudao.module.erp.service.common.ErpOperateLogService;
 import cn.iocoder.yudao.module.erp.service.finance.ErpAccountService;
@@ -66,6 +72,8 @@ public class ErpSaleReturnServiceImplTest extends BaseMockitoUnitTest {
 
     @Mock
     private ErpSaleReturnMapper saleReturnMapper;
+    @Mock
+    private ErpFinanceReceiptItemMapper financeReceiptItemMapper;
     @Mock
     private ErpSaleReturnItemMapper saleReturnItemMapper;
     @Mock
@@ -117,6 +125,20 @@ public class ErpSaleReturnServiceImplTest extends BaseMockitoUnitTest {
                 return prefix + "20260510000001";
             }
         });
+    }
+
+    @Test
+    public void testGetSaleReturnPage_usesAbsoluteEffectiveReceiptPrice() {
+        ErpSaleReturnPageReqVO reqVO = new ErpSaleReturnPageReqVO();
+        PageResult<ErpSaleReturnDO> page = new PageResult<>(
+                Collections.singletonList(new ErpSaleReturnDO().setId(70L)), 1L);
+        when(saleReturnMapper.selectPage(reqVO)).thenReturn(page);
+        when(financeReceiptItemMapper.selectReceiptPriceSumMapByBizIdsAndBizType(any(), eq(22)))
+                .thenReturn(Collections.singletonMap(70L, new BigDecimal("-80")));
+
+        PageResult<ErpSaleReturnDO> result = saleReturnService.getSaleReturnPage(reqVO);
+
+        assertEquals(new BigDecimal("80"), result.getList().get(0).getRefundPrice());
     }
 
     // ==================== createSaleReturn ====================
@@ -343,6 +365,77 @@ public class ErpSaleReturnServiceImplTest extends BaseMockitoUnitTest {
     }
 
     // ==================== updateSaleReturn ====================
+
+    @Test
+    public void testCreateDraft_withoutCustomerOrItems_throwException() {
+        ErpSaleReturnDraftCreateReqVO reqVO = new ErpSaleReturnDraftCreateReqVO();
+        reqVO.setReturnMode(ErpSaleReturnModeEnum.BY_STOCK.getMode());
+        reqVO.setItems(Collections.emptyList());
+
+        assertException(() -> saleReturnService.createSaleReturnDraft(reqVO),
+                ErrorCodeConstants.SALE_RETURN_DRAFT_ITEMS_REQUIRED);
+
+        verify(saleReturnMapper, never()).insert(any(ErpSaleReturnDO.class));
+        verify(saleReturnItemMapper, never()).insertBatch(any());
+        verify(stockRecordService, never()).createStockRecord(any());
+    }
+
+    @Test
+    public void testUpdateDraft_nonDraft_rejected() {
+        ErpSaleReturnDraftUpdateReqVO reqVO = new ErpSaleReturnDraftUpdateReqVO();
+        reqVO.setId(191L);
+        when(saleReturnMapper.selectById(191L)).thenReturn(new ErpSaleReturnDO()
+                .setId(191L).setNo("XTH191").setStatus(ErpSaleReturnStatusEnum.PROCESS.getStatus()));
+
+        assertException(() -> saleReturnService.updateSaleReturnDraft(reqVO),
+                ErrorCodeConstants.SALE_RETURN_UPDATE_FAIL_NOT_DRAFT, "XTH191");
+        verify(saleReturnMapper, never()).updateById(any(ErpSaleReturnDO.class));
+    }
+
+    @Test
+    public void testSubmitDraft_validStockReturn_movesToProcessWithoutStockSideEffect() {
+        Long id = 192L;
+        ErpSaleReturnDO draft = new ErpSaleReturnDO()
+                .setId(id).setNo("XTH192")
+                .setStatus(ErpSaleReturnStatusEnum.DRAFT.getStatus())
+                .setReturnMode(ErpSaleReturnModeEnum.BY_STOCK.getMode())
+                .setCustomerId(20L)
+                .setReturnTime(LocalDateTime.of(2026, 7, 27, 10, 0));
+        ErpSaleReturnItemDO item = new ErpSaleReturnItemDO()
+                .setId(1L).setReturnId(id).setProductId(200L).setProductUnitId(400L)
+                .setWarehouseId(300L).setProductPrice(new BigDecimal("10"))
+                .setCount(new BigDecimal("2"));
+        when(saleReturnMapper.selectById(id)).thenReturn(draft);
+        when(saleReturnItemMapper.selectListByReturnId(id))
+                .thenReturn(Collections.singletonList(item));
+        when(customerService.validateCustomer(20L)).thenReturn(new ErpCustomerDO().setId(20L));
+        mockProduct();
+        when(saleReturnMapper.updateByIdAndStatus(eq(id),
+                eq(ErpSaleReturnStatusEnum.DRAFT.getStatus()),
+                argThat((ErpSaleReturnDO value) ->
+                        ErpSaleReturnStatusEnum.PROCESS.getStatus().equals(value.getStatus()))))
+                .thenReturn(1);
+
+        saleReturnService.submitSaleReturn(id);
+
+        verify(saleReturnMapper).updateByIdAndStatus(eq(id),
+                eq(ErpSaleReturnStatusEnum.DRAFT.getStatus()), any());
+        verify(stockRecordService, never()).createStockRecord(any());
+        verify(voucherService, never()).createVoucherFromBiz(
+                anyInt(), anyLong(), anyString(), any(), any(), anyString(), any());
+    }
+
+    @Test
+    public void testSubmitDraft_withoutItems_rejectedAndStatusUnchanged() {
+        Long id = 193L;
+        when(saleReturnMapper.selectById(id)).thenReturn(new ErpSaleReturnDO()
+                .setId(id).setNo("XTH193").setStatus(ErpSaleReturnStatusEnum.DRAFT.getStatus()));
+        when(saleReturnItemMapper.selectListByReturnId(id)).thenReturn(Collections.emptyList());
+
+        assertException(() -> saleReturnService.submitSaleReturn(id),
+                ErrorCodeConstants.SALE_RETURN_SUBMIT_ITEMS_REQUIRED);
+        verify(saleReturnMapper, never()).updateByIdAndStatus(anyLong(), any(), any());
+    }
 
     @Test
     public void testUpdateSaleReturn_processStatus_success() {

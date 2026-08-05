@@ -92,8 +92,14 @@ public class PermissionController {
 
     @GetMapping("/get-current-user-hidden-fields")
     @Operation(summary = "Get current user hidden fields")
-    public CommonResult<List<String>> getCurrentUserHiddenFields(@RequestParam("module") String module) {
-        return success(permissionService.getCurrentUserHiddenFields(module));
+    public CommonResult<List<String>> getCurrentUserHiddenFields(@RequestParam("module") String module,
+                                                                 @RequestParam(value = "businessDeptId", required = false)
+                                                                 Long businessDeptId,
+                                                                 @RequestParam(value = "includeProductPricePermission",
+                                                                         required = false, defaultValue = "true")
+                                                                 boolean includeProductPricePermission) {
+        return success(permissionService.getCurrentUserHiddenFields(module, businessDeptId,
+                includeProductPricePermission));
     }
 
     @Operation(summary = "Get admin role ids")

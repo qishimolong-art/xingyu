@@ -49,6 +49,8 @@ public class ErpReceivableOtherDO extends BaseDO {
 
     private String sourceType;
 
+    private Long sourceId;
+
     private Long handlerId;
 
     private String receivableType;

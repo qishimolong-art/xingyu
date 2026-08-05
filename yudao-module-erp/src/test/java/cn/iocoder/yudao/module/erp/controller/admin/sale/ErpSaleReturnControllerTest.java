@@ -5,6 +5,8 @@ import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.test.core.ut.BaseMockitoUnitTest;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnDraftCreateReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnDraftUpdateReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnSaveReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpCustomerDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleReturnDO;
@@ -159,6 +161,32 @@ public class ErpSaleReturnControllerTest extends BaseMockitoUnitTest {
         assertEquals(0, result.getCode());
         assertNull(result.getData());
         verify(saleReturnService).getSaleReturn(eq(1024L));
+    }
+
+    @Test
+    public void testDraftEndpoints_passThroughAndKeepPermissions() throws NoSuchMethodException {
+        ErpSaleReturnDraftCreateReqVO createReqVO = new ErpSaleReturnDraftCreateReqVO();
+        when(saleReturnService.createSaleReturnDraft(eq(createReqVO))).thenReturn(203L);
+        assertEquals(203L, controller.createSaleReturnDraft(createReqVO).getData());
+        verify(saleReturnService).createSaleReturnDraft(eq(createReqVO));
+
+        ErpSaleReturnDraftUpdateReqVO updateReqVO = new ErpSaleReturnDraftUpdateReqVO();
+        updateReqVO.setId(203L);
+        assertEquals(Boolean.TRUE, controller.updateSaleReturnDraft(updateReqVO).getData());
+        verify(saleReturnService).updateSaleReturnDraft(eq(updateReqVO));
+
+        assertEquals(Boolean.TRUE, controller.submitSaleReturn(203L).getData());
+        verify(saleReturnService).submitSaleReturn(eq(203L));
+
+        assertTrue(ErpSaleReturnController.class
+                .getMethod("createSaleReturnDraft", ErpSaleReturnDraftCreateReqVO.class)
+                .getAnnotation(PreAuthorize.class).value().contains("erp:sale-return:create"));
+        assertTrue(ErpSaleReturnController.class
+                .getMethod("updateSaleReturnDraft", ErpSaleReturnDraftUpdateReqVO.class)
+                .getAnnotation(PreAuthorize.class).value().contains("erp:sale-return:update"));
+        assertTrue(ErpSaleReturnController.class
+                .getMethod("submitSaleReturn", Long.class)
+                .getAnnotation(PreAuthorize.class).value().contains("erp:sale-return:update-status"));
     }
 
     @Test

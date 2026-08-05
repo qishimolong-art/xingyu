@@ -58,7 +58,7 @@ public class ErpStockCheckDO extends BaseDO {
     /**
      * 状态
      *
-     * 枚举 {@link cn.iocoder.yudao.module.erp.enums.ErpAuditStatus}
+     * 枚举 {@link cn.iocoder.yudao.module.erp.enums.stock.ErpStockCheckStatusEnum}
      */
     private Integer status;
     /**

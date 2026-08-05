@@ -51,4 +51,10 @@ public interface ErpReceivableOtherIncomeMapper extends BaseMapperX<ErpReceivabl
     default ErpReceivableOtherIncomeDO selectByNo(String no) {
         return selectOne(ErpReceivableOtherIncomeDO::getNo, no);
     }
+
+    default ErpReceivableOtherIncomeDO selectByIdForUpdate(Long id) {
+        return selectOne(new LambdaQueryWrapperX<ErpReceivableOtherIncomeDO>()
+                .eq(ErpReceivableOtherIncomeDO::getId, id)
+                .last("FOR UPDATE"));
+    }
 }

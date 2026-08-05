@@ -51,7 +51,6 @@ INSERT INTO erp_field_config (module_key, field_name, field_label, required, sor
 ('sale_cart', 'cartTime', '开单时间', 1, 2, 1, '1', '1', 0),
 ('sale_cart', 'customerId', '客户', 1, 3, 1, '1', '1', 0),
 ('sale_cart', 'saleUserId', '销售人员', 0, 4, 1, '1', '1', 0),
-('sale_cart', 'accountId', '结算账户', 0, 5, 1, '1', '1', 0),
 ('sale_cart', 'businessType', '业务类型', 0, 6, 1, '1', '1', 0),
 ('sale_cart', 'orderType', '订单类型', 0, 7, 1, '1', '1', 0),
 ('sale_cart', 'billingMethod', '开单方式', 0, 8, 1, '1', '1', 0),

@@ -25,6 +25,9 @@ public class ErpPurchaseInPageReqVO extends PageParam {
     @Schema(description = "采购单编号", example = "XS001")
     private String no;
 
+    @Schema(description = "厂家单号，模糊匹配", example = "F20260508")
+    private String factoryOrderNo;
+
     @Schema(description = "供应商编号", example = "1724")
     private Long supplierId;
 

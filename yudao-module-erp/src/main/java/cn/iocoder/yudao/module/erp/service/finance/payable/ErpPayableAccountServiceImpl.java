@@ -122,14 +122,16 @@ public class ErpPayableAccountServiceImpl implements ErpPayableAccountService {
         }
         ErpPayableDetailReqVO balanceReqVO = new ErpPayableDetailReqVO();
         balanceReqVO.setSupplierId(reqVO.getSupplierId());
-        BigDecimal balance = DataPermissionUtils.executeIgnore(() -> buildRows(balanceReqVO, scope).stream()
-                .map(this::getChangeAmount).reduce(BigDecimal.ZERO, BigDecimal::add));
+        List<ErpPayableDetailRespVO> balanceRows = DataPermissionUtils.executeIgnore(() ->
+                buildRows(balanceReqVO, scope));
+        BigDecimal balance = balanceRows.stream().map(this::getChangeAmount).reduce(BigDecimal.ZERO, BigDecimal::add);
         if (balance.compareTo(BigDecimal.ZERO) <= 0) {
             throw exception(PAYABLE_WRITEOFF_BALANCE_EMPTY);
         }
         if (reqVO.getWriteOffAmount().compareTo(balance) > 0) {
             throw exception(PAYABLE_WRITEOFF_AMOUNT_EXCEED, reqVO.getWriteOffAmount(), balance);
         }
+        validatePayableWriteOffAvailable(reqVO, balanceRows);
         ErpPayableWriteOffDO writeOff = new ErpPayableWriteOffDO();
         writeOff.setSupplierId(reqVO.getSupplierId());
         writeOff.setBizType(reqVO.getBizType());
@@ -148,6 +150,37 @@ public class ErpPayableAccountServiceImpl implements ErpPayableAccountService {
                         + (reqVO.getBizNo() == null ? "" : "，单据号：" + reqVO.getBizNo())
                         + "，核销金额：" + reqVO.getWriteOffAmount(), String.valueOf(writeOff.getId()));
         return writeOff.getId();
+    }
+
+    private void validatePayableWriteOffAvailable(ErpPayableWriteOffReqVO reqVO,
+                                                  List<ErpPayableDetailRespVO> rows) {
+        if (reqVO.getBizType() == null || reqVO.getBizId() == null) {
+            return;
+        }
+        BigDecimal documentAmount = rows.stream()
+                .filter(row -> reqVO.getBizType().equals(row.getBizType()))
+                .filter(row -> reqVO.getBizId().equals(row.getBizId()))
+                .map(row -> row.getIncreaseAmount() == null ? BigDecimal.ZERO : row.getIncreaseAmount())
+                .filter(amount -> amount.compareTo(BigDecimal.ZERO) > 0)
+                .findFirst()
+                .orElse(BigDecimal.ZERO);
+        BigDecimal allocatedAmount = rows.stream()
+                .filter(row -> reqVO.getBizType().equals(row.getBizType()))
+                .filter(row -> reqVO.getBizId().equals(row.getBizId()))
+                .map(row -> row.getAllocatedAmount() == null ? BigDecimal.ZERO : row.getAllocatedAmount().abs())
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal writtenOffAmount = rows.stream()
+                .filter(row -> reqVO.getBizType().equals(row.getBizType()))
+                .filter(row -> reqVO.getBizId().equals(row.getBizId()))
+                .map(row -> row.getWriteOffAmount() == null ? BigDecimal.ZERO : row.getWriteOffAmount())
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal available = documentAmount.subtract(allocatedAmount).subtract(writtenOffAmount);
+        if (available.compareTo(BigDecimal.ZERO) <= 0) {
+            throw exception(PAYABLE_WRITEOFF_BALANCE_EMPTY);
+        }
+        if (reqVO.getWriteOffAmount().compareTo(available) > 0) {
+            throw exception(PAYABLE_WRITEOFF_AMOUNT_EXCEED, reqVO.getWriteOffAmount(), available);
+        }
     }
 
     private Long resolveWriteOffDeptId(ErpPayableWriteOffReqVO reqVO, AdminUserRespDTO loginUser) {
@@ -310,8 +343,7 @@ public class ErpPayableAccountServiceImpl implements ErpPayableAccountService {
     private BigDecimal getChangeAmount(ErpPayableDetailRespVO row) {
         BigDecimal increaseAmount = row.getIncreaseAmount() == null ? BigDecimal.ZERO : row.getIncreaseAmount();
         BigDecimal paymentAmount = row.getPaymentAmount() == null ? BigDecimal.ZERO : row.getPaymentAmount();
-        BigDecimal writeOffAmount = row.getWriteOffAmount() == null ? BigDecimal.ZERO : row.getWriteOffAmount();
-        return increaseAmount.subtract(paymentAmount).subtract(writeOffAmount);
+        return increaseAmount.subtract(paymentAmount);
     }
 
     private SupplierVisibleScope getSupplierVisibleScope() {

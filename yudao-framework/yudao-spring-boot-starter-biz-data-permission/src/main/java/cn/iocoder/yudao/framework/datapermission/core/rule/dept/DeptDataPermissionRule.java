@@ -27,6 +27,7 @@ import net.sf.jsqlparser.expression.operators.relational.ParenthesedExpressionLi
 
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Collection;
 import java.util.Map;
 import java.util.Set;
 
@@ -81,10 +82,19 @@ public class DeptDataPermissionRule implements DataPermissionRule {
      * 所有表名，是 {@link #deptColumns} 和 {@link #userColumns} 的合集
      */
     private final Set<String> TABLE_NAMES = new HashSet<>();
+    /**
+     * Tables handled by a more specific data-permission rule.
+     */
+    private final Set<String> excludeTableNames = new HashSet<>();
 
     @Override
     public Set<String> getTableNames() {
-        return TABLE_NAMES;
+        if (CollUtil.isEmpty(excludeTableNames)) {
+            return TABLE_NAMES;
+        }
+        Set<String> tableNames = new HashSet<>(TABLE_NAMES);
+        tableNames.removeAll(excludeTableNames);
+        return tableNames;
     }
 
     @Override
@@ -215,6 +225,13 @@ public class DeptDataPermissionRule implements DataPermissionRule {
     public void addUserColumn(String tableName, String columnName) {
         userColumns.put(tableName, columnName);
         TABLE_NAMES.add(tableName);
+    }
+
+    public void setExcludeTableNames(Collection<String> tableNames) {
+        excludeTableNames.clear();
+        if (CollUtil.isNotEmpty(tableNames)) {
+            excludeTableNames.addAll(tableNames);
+        }
     }
 
 }

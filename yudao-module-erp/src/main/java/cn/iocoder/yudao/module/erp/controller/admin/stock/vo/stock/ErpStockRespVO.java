@@ -8,6 +8,7 @@ import lombok.Data;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 
 @Schema(description = "管理后台 - ERP 库存 Response VO")
 @Data
@@ -93,11 +94,15 @@ public class ErpStockRespVO {
     private String shelf;
     @Schema(description = "库存行维护的进价")
     private BigDecimal purchasePrice;
+    @Schema(description = "产品采购价")
+    private BigDecimal productPurchasePrice;
     @Schema(description = "产品分类编号")
     private Long categoryId;
     @Schema(description = "最近采购价")
     @ExcelProperty("进价")
     private BigDecimal lastPurchasePrice;
+    @Schema(description = "最近销售价")
+    private BigDecimal lastSalePrice;
     @Schema(description = "OE 编号")
     private String oeNumber;
     @Schema(description = "厂家编码")
@@ -106,6 +111,8 @@ public class ErpStockRespVO {
     private String productBarCode;
     @Schema(description = "销售价")
     private BigDecimal salePrice;
+    @Schema(description = "最低价")
+    private BigDecimal minPrice;
     @Schema(description = "参考价")
     private BigDecimal referencePrice;
     @Schema(description = "零售价")
@@ -114,6 +121,12 @@ public class ErpStockRespVO {
     private BigDecimal backupPrice1;
     @Schema(description = "批发价")
     private BigDecimal wholesalePrice;
+    @Schema(description = "毛利率（百分比整数）")
+    private Integer grossProfitRate;
+    @Schema(description = "股份价")
+    private BigDecimal sharePrice;
+    @Schema(description = "产品自定义字段值，key 为字段编码")
+    private Map<String, Object> customFields;
     @Schema(description = "库存上限")
     private Integer stockMax;
     @Schema(description = "库存下限")

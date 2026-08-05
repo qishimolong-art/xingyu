@@ -2,6 +2,7 @@ package cn.iocoder.yudao.module.erp.dal.dataobject.sale;
 
 import cn.iocoder.yudao.framework.mybatis.core.dataobject.BaseDO;
 import com.baomidou.mybatisplus.annotation.KeySequence;
+import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.*;
@@ -62,6 +63,12 @@ public class ErpSalePriceAdjustDO extends BaseDO {
      * 调价总金额
      */
     private BigDecimal totalAdjustPrice;
+
+    /**
+     * Effective receipted amount, dynamically aggregated from approved receipt items.
+     */
+    @TableField(exist = false)
+    private BigDecimal receiptPrice;
 
     /**
      * 原销售单编号

@@ -3,6 +3,8 @@ package cn.iocoder.yudao.module.system.api.permission;
 import cn.iocoder.yudao.framework.common.biz.system.permission.dto.DeptDataPermissionRespDTO;
 import cn.iocoder.yudao.framework.common.util.collection.CollectionUtils;
 import cn.iocoder.yudao.module.system.api.permission.dto.FieldDefinitionCreateOrUpdateReqDTO;
+import cn.iocoder.yudao.module.system.api.permission.dto.FieldDefinitionRespDTO;
+import cn.iocoder.yudao.module.system.dal.mysql.permission.FieldDefinitionMapper;
 import cn.iocoder.yudao.module.system.dal.dataobject.user.AdminUserDO;
 import cn.iocoder.yudao.module.system.service.permission.PermissionService;
 import cn.iocoder.yudao.module.system.service.user.AdminUserService;
@@ -25,6 +27,8 @@ public class PermissionApiImpl implements PermissionApi {
     private PermissionService permissionService;
     @Resource
     private AdminUserService adminUserService;
+    @Resource
+    private FieldDefinitionMapper fieldDefinitionMapper;
 
     @Override
     public Set<Long> getUserRoleIdListByRoleIds(Collection<Long> roleIds) {
@@ -37,6 +41,17 @@ public class PermissionApiImpl implements PermissionApi {
     }
 
     @Override
+    public List<String> getCurrentUserHiddenFields(String module, Long businessDeptId) {
+        return permissionService.getCurrentUserHiddenFields(module, businessDeptId);
+    }
+
+    @Override
+    public List<String> getCurrentUserHiddenFields(String module, Long businessDeptId,
+                                                   boolean includeProductPricePermission) {
+        return permissionService.getCurrentUserHiddenFields(module, businessDeptId, includeProductPricePermission);
+    }
+
+    @Override
     public void createOrUpdateFieldDefinitions(List<FieldDefinitionCreateOrUpdateReqDTO> definitions) {
         permissionService.createOrUpdateFieldDefinitions(definitions);
     }
@@ -44,6 +59,19 @@ public class PermissionApiImpl implements PermissionApi {
     @Override
     public void deleteFieldDefinitions(String module, List<String> fieldKeys) {
         permissionService.deleteFieldDefinitions(module, fieldKeys);
+    }
+
+    @Override
+    public List<FieldDefinitionRespDTO> getFieldDefinitions(String module, String fieldGroup) {
+        return CollectionUtils.convertList(
+                fieldDefinitionMapper.selectListByModuleAndGroup(module, fieldGroup),
+                definition -> {
+                    FieldDefinitionRespDTO result = new FieldDefinitionRespDTO();
+                    result.setFieldKey(definition.getFieldKey());
+                    result.setFieldLabel(definition.getFieldLabel());
+                    result.setSort(definition.getSort());
+                    return result;
+                });
     }
 
     @Override

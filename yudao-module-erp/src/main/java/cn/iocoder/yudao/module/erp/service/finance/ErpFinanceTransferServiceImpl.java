@@ -4,12 +4,15 @@ import cn.hutool.core.collection.CollUtil;
 import cn.hutool.core.util.ObjectUtil;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
+import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.ErpFinanceUpdateRemarkReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.transfer.ErpFinanceTransferDraftSaveReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.transfer.ErpFinanceTransferPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.transfer.ErpFinanceTransferSaveReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.ErpFinanceTransferDO;
 import cn.iocoder.yudao.module.erp.dal.mysql.finance.ErpFinanceTransferMapper;
 import cn.iocoder.yudao.module.erp.dal.redis.no.ErpNoRedisDAO;
 import cn.iocoder.yudao.module.erp.enums.ErpAuditStatus;
+import cn.iocoder.yudao.module.erp.enums.finance.ErpFinanceTransferStatusEnum;
 import cn.iocoder.yudao.module.erp.service.common.ErpOperateLogService;
 import cn.iocoder.yudao.module.system.api.user.AdminUserApi;
 import cn.iocoder.yudao.module.system.api.user.dto.AdminUserRespDTO;
@@ -26,9 +29,12 @@ import static cn.iocoder.yudao.framework.common.exception.util.ServiceExceptionU
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.FINANCE_TRANSFER_ACCOUNTS_SAME;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.FINANCE_TRANSFER_APPROVE_FAIL;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.FINANCE_TRANSFER_DELETE_FAIL_APPROVE;
+import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.FINANCE_TRANSFER_DRAFT_SUBMIT_FAIL;
+import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.FINANCE_TRANSFER_DRAFT_UPDATE_FAIL;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.FINANCE_TRANSFER_NOT_EXISTS;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.FINANCE_TRANSFER_NO_EXISTS;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.FINANCE_TRANSFER_UPDATE_FAIL_APPROVE;
+import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.FINANCE_TRANSFER_UPDATE_FAIL_STATUS_CHANGED;
 import static cn.iocoder.yudao.module.erp.enums.LogRecordConstants.ERP_DELETE_SUB_TYPE;
 import static cn.iocoder.yudao.module.erp.enums.LogRecordConstants.ERP_FINANCE_TRANSFER_TYPE;
 import static cn.iocoder.yudao.module.erp.enums.LogRecordConstants.ERP_UPDATE_SUB_TYPE;
@@ -60,19 +66,44 @@ public class ErpFinanceTransferServiceImpl implements ErpFinanceTransferService 
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Long createFinanceTransfer(ErpFinanceTransferSaveReqVO createReqVO) {
-        validateTransferAccounts(createReqVO.getOutAccountId(), createReqVO.getInAccountId());
-        validateFinanceUser(createReqVO.getFinanceUserId());
+        ErpFinanceTransferDO transfer = BeanUtils.toBean(createReqVO, ErpFinanceTransferDO.class);
+        validateFinanceTransferForSubmit(transfer);
+        String no = noRedisDAO.generateMonthSequence(ErpNoRedisDAO.FINANCE_TRANSFER_NO_PREFIX);
+        if (financeTransferMapper.selectByNo(no) != null) {
+            throw exception(FINANCE_TRANSFER_NO_EXISTS);
+        }
+        transfer.setId(null);
+        transfer.setNo(no);
+        transfer.setStatus(ErpFinanceTransferStatusEnum.PROCESS.getStatus());
+        permissionFieldFiller.fillCreateFields(transfer);
+        financeTransferMapper.insert(transfer);
+        recordCreate(transfer);
+        return transfer.getId();
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public Long createFinanceTransferDraft(ErpFinanceTransferDraftSaveReqVO createReqVO) {
+        validateDraftReferences(createReqVO.getOutAccountId(), createReqVO.getInAccountId(),
+                createReqVO.getFinanceUserId());
         String no = noRedisDAO.generateMonthSequence(ErpNoRedisDAO.FINANCE_TRANSFER_NO_PREFIX);
         if (financeTransferMapper.selectByNo(no) != null) {
             throw exception(FINANCE_TRANSFER_NO_EXISTS);
         }
         ErpFinanceTransferDO transfer = BeanUtils.toBean(createReqVO, ErpFinanceTransferDO.class, in -> in
+                .setId(null)
                 .setNo(no)
-                .setStatus(ErpAuditStatus.PROCESS.getStatus()));
+                .setStatus(ErpFinanceTransferStatusEnum.DRAFT.getStatus()));
         permissionFieldFiller.fillCreateFields(transfer);
         financeTransferMapper.insert(transfer);
         recordCreate(transfer);
         return transfer.getId();
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public Long createFinanceTransferAndSubmit(ErpFinanceTransferSaveReqVO createReqVO) {
+        return createFinanceTransfer(createReqVO);
     }
 
     @Override
@@ -82,15 +113,78 @@ public class ErpFinanceTransferServiceImpl implements ErpFinanceTransferService 
         if (ErpAuditStatus.APPROVE.getStatus().equals(transfer.getStatus())) {
             throw exception(FINANCE_TRANSFER_UPDATE_FAIL_APPROVE, transfer.getNo());
         }
+        if (!ErpFinanceTransferStatusEnum.PROCESS.getStatus().equals(transfer.getStatus())) {
+            throw exception(FINANCE_TRANSFER_UPDATE_FAIL_STATUS_CHANGED, transfer.getNo());
+        }
         fieldPermissionMasker.preserveHiddenFields(FIELD_PERMISSION_MODULE, updateReqVO, transfer);
-        validateTransferAccounts(updateReqVO.getOutAccountId(), updateReqVO.getInAccountId());
-        validateFinanceUser(updateReqVO.getFinanceUserId());
         ErpFinanceTransferDO updateObj = BeanUtils.toBean(updateReqVO, ErpFinanceTransferDO.class);
         if (updateObj.getDeptId() == null) {
             updateObj.setDeptId(transfer.getDeptId());
         }
-        financeTransferMapper.updateById(updateObj);
+        validateFinanceTransferForSubmit(updateObj);
+        if (financeTransferMapper.updateByIdAndStatus(updateReqVO.getId(),
+                ErpFinanceTransferStatusEnum.PROCESS.getStatus(), updateObj) == 0) {
+            throw exception(FINANCE_TRANSFER_UPDATE_FAIL_STATUS_CHANGED, transfer.getNo());
+        }
         recordUpdate(transfer, updateObj);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void updateFinanceTransferDraft(ErpFinanceTransferDraftSaveReqVO updateReqVO) {
+        ErpFinanceTransferDO transfer = validateFinanceTransferExists(updateReqVO.getId());
+        if (!ErpFinanceTransferStatusEnum.DRAFT.getStatus().equals(transfer.getStatus())) {
+            throw exception(FINANCE_TRANSFER_DRAFT_UPDATE_FAIL, transfer.getNo());
+        }
+        fieldPermissionMasker.preserveHiddenFields(FIELD_PERMISSION_MODULE, updateReqVO, transfer);
+        validateDraftReferences(updateReqVO.getOutAccountId(), updateReqVO.getInAccountId(),
+                updateReqVO.getFinanceUserId());
+        ErpFinanceTransferDO updateObj = BeanUtils.toBean(updateReqVO, ErpFinanceTransferDO.class);
+        updateObj.setId(transfer.getId());
+        updateObj.setNo(transfer.getNo());
+        updateObj.setStatus(ErpFinanceTransferStatusEnum.DRAFT.getStatus());
+        if (updateObj.getDeptId() == null) {
+            updateObj.setDeptId(transfer.getDeptId());
+        }
+        if (financeTransferMapper.updateByIdAndStatus(transfer.getId(),
+                ErpFinanceTransferStatusEnum.DRAFT.getStatus(), updateObj) == 0) {
+            throw exception(FINANCE_TRANSFER_DRAFT_UPDATE_FAIL, transfer.getNo());
+        }
+        recordUpdate(transfer, updateObj);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void updateFinanceTransferDraftAndSubmit(ErpFinanceTransferDraftSaveReqVO updateReqVO) {
+        updateFinanceTransferDraft(updateReqVO);
+        submitFinanceTransfer(updateReqVO.getId());
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void submitFinanceTransfer(Long id) {
+        ErpFinanceTransferDO transfer = financeTransferMapper.selectByIdForUpdate(id);
+        if (transfer == null) {
+            throw exception(FINANCE_TRANSFER_NOT_EXISTS);
+        }
+        if (!ErpFinanceTransferStatusEnum.DRAFT.getStatus().equals(transfer.getStatus())) {
+            throw exception(FINANCE_TRANSFER_DRAFT_SUBMIT_FAIL, "单据不是草稿或状态已变化");
+        }
+        validateFinanceTransferForSubmit(transfer);
+        if (financeTransferMapper.updateByIdAndStatus(id,
+                ErpFinanceTransferStatusEnum.DRAFT.getStatus(),
+                new ErpFinanceTransferDO().setStatus(ErpFinanceTransferStatusEnum.PROCESS.getStatus())) == 0) {
+            throw exception(FINANCE_TRANSFER_DRAFT_SUBMIT_FAIL, "状态已变化，请刷新后重试");
+        }
+        operateLogService.recordStatus(ERP_FINANCE_TRANSFER_TYPE, id, transfer.getNo(), true);
+    }
+
+    @Override
+    public void updateFinanceTransferRemark(ErpFinanceUpdateRemarkReqVO updateReqVO) {
+        ErpFinanceTransferDO transfer = validateFinanceTransferExists(updateReqVO.getId());
+        financeTransferMapper.updateById(new ErpFinanceTransferDO()
+                .setId(updateReqVO.getId()).setRemark(updateReqVO.getRemark()));
+        operateLogService.recordUpdate(ERP_FINANCE_TRANSFER_TYPE, transfer.getId(), transfer.getNo());
     }
 
     @Override
@@ -101,11 +195,12 @@ public class ErpFinanceTransferServiceImpl implements ErpFinanceTransferService 
             throw exception(FINANCE_TRANSFER_APPROVE_FAIL);
         }
         ErpFinanceTransferDO transfer = validateFinanceTransferExists(id);
-        if (transfer.getStatus().equals(status)) {
+        if (!ErpFinanceTransferStatusEnum.PROCESS.getStatus().equals(transfer.getStatus())) {
             throw exception(FINANCE_TRANSFER_APPROVE_FAIL);
         }
         validateTransferAccounts(transfer.getOutAccountId(), transfer.getInAccountId());
-        int updateCount = financeTransferMapper.updateByIdAndStatus(id, transfer.getStatus(),
+        int updateCount = financeTransferMapper.updateByIdAndStatus(id,
+                ErpFinanceTransferStatusEnum.PROCESS.getStatus(),
                 new ErpFinanceTransferDO().setStatus(status));
         if (updateCount == 0) {
             throw exception(FINANCE_TRANSFER_APPROVE_FAIL);
@@ -170,6 +265,36 @@ public class ErpFinanceTransferServiceImpl implements ErpFinanceTransferService 
         if (financeUserId != null) {
             adminUserApi.validateUser(financeUserId);
         }
+    }
+
+    private void validateDraftReferences(Long outAccountId, Long inAccountId, Long financeUserId) {
+        if (outAccountId != null && inAccountId != null && ObjectUtil.equal(outAccountId, inAccountId)) {
+            throw exception(FINANCE_TRANSFER_ACCOUNTS_SAME);
+        }
+        if (outAccountId != null) {
+            accountService.validateAccount(outAccountId);
+        }
+        if (inAccountId != null) {
+            accountService.validateAccount(inAccountId);
+        }
+        validateFinanceUser(financeUserId);
+    }
+
+    private void validateFinanceTransferForSubmit(ErpFinanceTransferDO transfer) {
+        if (transfer.getTransferTime() == null) {
+            throw exception(FINANCE_TRANSFER_DRAFT_SUBMIT_FAIL, "转账时间不能为空");
+        }
+        if (transfer.getOutAccountId() == null) {
+            throw exception(FINANCE_TRANSFER_DRAFT_SUBMIT_FAIL, "转出账户不能为空");
+        }
+        if (transfer.getInAccountId() == null) {
+            throw exception(FINANCE_TRANSFER_DRAFT_SUBMIT_FAIL, "转入账户不能为空");
+        }
+        if (transfer.getTransferPrice() == null) {
+            throw exception(FINANCE_TRANSFER_DRAFT_SUBMIT_FAIL, "转账金额不能为空");
+        }
+        validateTransferAccounts(transfer.getOutAccountId(), transfer.getInAccountId());
+        validateFinanceUser(transfer.getFinanceUserId());
     }
 
     private void recordCreate(ErpFinanceTransferDO transfer) {

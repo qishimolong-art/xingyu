@@ -2,6 +2,7 @@ package cn.iocoder.yudao.module.erp.dal.dataobject.sale;
 
 import cn.iocoder.yudao.framework.mybatis.core.dataobject.BaseDO;
 import com.baomidou.mybatisplus.annotation.KeySequence;
+import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.*;
@@ -28,6 +29,16 @@ public class ErpSaleCartItemDO extends BaseDO {
     private Long productUnitId;
     private Long warehouseId;
     private Long deptId;
+    /**
+     * 跨部门销售转换时的原始仓库，仅用于生成销售单，不落销售手推车明细表。
+     */
+    @TableField(exist = false)
+    private Long sourceWarehouseId;
+    /**
+     * 跨部门销售转换时的原始仓库部门快照，仅用于生成销售单。
+     */
+    @TableField(exist = false)
+    private Long sourceDeptId;
     private BigDecimal productPrice;
     private BigDecimal count;
     /**

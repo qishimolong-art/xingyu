@@ -308,6 +308,9 @@ public class ErpPurchaseInRespVO {
         @Schema(description = "产品单价", example = "100.00")
         private BigDecimal productPrice;
 
+        @Schema(description = "是否赠品", example = "false")
+        private Boolean gift;
+
         @Schema(description = "调价前原价快照（首次调价前为 null）", example = "80.00")
         private BigDecimal originalProductPrice;
 

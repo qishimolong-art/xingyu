@@ -22,6 +22,15 @@ import java.util.Map;
 @Mapper
 public interface ErpFinancePaymentItemMapper extends BaseMapperX<ErpFinancePaymentItemDO> {
 
+    static String effectivePaymentPriceSql(int bizType) {
+        return "COALESCE((SELECT SUM(fpi.payment_price) FROM erp_finance_payment_item fpi "
+                + "INNER JOIN erp_finance_payment fp ON fp.id = fpi.payment_id "
+                + "AND fp.deleted = 0 AND fp.status = 20 AND fp.tenant_id = t.tenant_id "
+                + "WHERE fpi.deleted = 0 AND fpi.write_off_status = 1 "
+                + "AND fpi.tenant_id = t.tenant_id AND fpi.biz_type = " + bizType
+                + " AND fpi.biz_id = t.id), 0)";
+    }
+
     default List<ErpFinancePaymentItemDO> selectListByPaymentId(Long paymentId) {
         return selectList(new LambdaQueryWrapperX<ErpFinancePaymentItemDO>()
                 .eq(ErpFinancePaymentItemDO::getPaymentId, paymentId)
@@ -30,6 +39,10 @@ public interface ErpFinancePaymentItemMapper extends BaseMapperX<ErpFinancePayme
 
     default List<ErpFinancePaymentItemDO> selectListByPaymentIds(Collection<Long> paymentIds) {
         return selectList(ErpFinancePaymentItemDO::getPaymentId, paymentIds);
+    }
+
+    default int deleteByPaymentId(Long paymentId) {
+        return delete(ErpFinancePaymentItemDO::getPaymentId, paymentId);
     }
 
     default BigDecimal selectPaymentPriceSumByBizIdAndBizType(Long bizId, Integer bizType) {

@@ -22,6 +22,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * ERP 产品库存 Mapper
@@ -49,13 +50,34 @@ public interface ErpStockMapper extends BaseMapperX<ErpStockDO> {
                                              Collection<Long> keywordProductIdFilter,
                                              Collection<Long> keywordWarehouseIdFilter) {
         return selectPage(reqVO, productIdFilter, warehouseIdFilter, keywordProductIdFilter,
-                keywordWarehouseIdFilter, null, null, null);
+                keywordWarehouseIdFilter, null, null, null, null);
     }
 
     default PageResult<ErpStockDO> selectPage(ErpStockPageReqVO reqVO, Collection<Long> productIdFilter,
                                              Collection<Long> warehouseIdFilter,
                                              Collection<Long> keywordProductIdFilter,
                                              Collection<Long> keywordWarehouseIdFilter,
+                                             Map<Long, Set<Long>> batchKeywordStockKeyMap) {
+        return selectPage(reqVO, productIdFilter, warehouseIdFilter, keywordProductIdFilter,
+                keywordWarehouseIdFilter, batchKeywordStockKeyMap, null, null, null);
+    }
+
+    default PageResult<ErpStockDO> selectPage(ErpStockPageReqVO reqVO, Collection<Long> productIdFilter,
+                                             Collection<Long> warehouseIdFilter,
+                                             Collection<Long> keywordProductIdFilter,
+                                             Collection<Long> keywordWarehouseIdFilter,
+                                             Collection<Long> departmentWarehouseIds,
+                                             Collection<Long> selfWarehouseIds,
+                                             String selfCreator) {
+        return selectPage(reqVO, productIdFilter, warehouseIdFilter, keywordProductIdFilter,
+                keywordWarehouseIdFilter, null, departmentWarehouseIds, selfWarehouseIds, selfCreator);
+    }
+
+    default PageResult<ErpStockDO> selectPage(ErpStockPageReqVO reqVO, Collection<Long> productIdFilter,
+                                             Collection<Long> warehouseIdFilter,
+                                             Collection<Long> keywordProductIdFilter,
+                                             Collection<Long> keywordWarehouseIdFilter,
+                                             Map<Long, Set<Long>> batchKeywordStockKeyMap,
                                              Collection<Long> departmentWarehouseIds,
                                              Collection<Long> selfWarehouseIds,
                                              String selfCreator) {
@@ -79,22 +101,10 @@ public interface ErpStockMapper extends BaseMapperX<ErpStockDO> {
             wrapper.in("warehouse_id", warehouseIdFilter);
         }
         if (keywordProductIdFilter != null || keywordWarehouseIdFilter != null) {
-            if (isEmpty(keywordProductIdFilter) && isEmpty(keywordWarehouseIdFilter)) {
+            if (!appendKeywordCondition(wrapper, keywordProductIdFilter, keywordWarehouseIdFilter,
+                    batchKeywordStockKeyMap)) {
                 return PageResult.empty(0L);
             }
-            wrapper.and(w -> {
-                boolean hasCondition = false;
-                if (!isEmpty(keywordProductIdFilter)) {
-                    w.in("product_id", keywordProductIdFilter);
-                    hasCondition = true;
-                }
-                if (!isEmpty(keywordWarehouseIdFilter)) {
-                    if (hasCondition) {
-                        w.or();
-                    }
-                    w.in("warehouse_id", keywordWarehouseIdFilter);
-                }
-            });
         }
         if (selfCreator != null) {
             if (isEmpty(departmentWarehouseIds) && isEmpty(selfWarehouseIds)) {
@@ -138,6 +148,55 @@ public interface ErpStockMapper extends BaseMapperX<ErpStockDO> {
         }
         orderByIfPresent(wrapper, reqVO);
         return selectPage(reqVO, wrapper);
+    }
+
+    /**
+     * 关键词命中产品、仓库，或在批次展开模式下命中库存流水中的批次号。
+     */
+    static boolean appendKeywordCondition(QueryWrapperX<ErpStockDO> wrapper,
+                                          Collection<Long> keywordProductIdFilter,
+                                          Collection<Long> keywordWarehouseIdFilter,
+                                          Map<Long, Set<Long>> batchKeywordStockKeyMap) {
+        boolean hasProductKeyword = !isEmpty(keywordProductIdFilter);
+        boolean hasWarehouseKeyword = !isEmpty(keywordWarehouseIdFilter);
+        boolean hasBatchKeyword = batchKeywordStockKeyMap != null && !batchKeywordStockKeyMap.isEmpty();
+        if (!hasProductKeyword && !hasWarehouseKeyword && !hasBatchKeyword) {
+            return false;
+        }
+        wrapper.and(w -> {
+            boolean hasCondition = false;
+            if (hasProductKeyword) {
+                w.in("product_id", keywordProductIdFilter);
+                hasCondition = true;
+            }
+            if (hasWarehouseKeyword) {
+                if (hasCondition) {
+                    w.or();
+                }
+                w.in("warehouse_id", keywordWarehouseIdFilter);
+                hasCondition = true;
+            }
+            if (hasBatchKeyword) {
+                if (hasCondition) {
+                    w.or();
+                }
+                w.nested(batch -> {
+                    boolean hasBatchPair = false;
+                    for (Map.Entry<Long, Set<Long>> entry : batchKeywordStockKeyMap.entrySet()) {
+                        if (entry.getKey() == null || isEmpty(entry.getValue())) {
+                            continue;
+                        }
+                        if (hasBatchPair) {
+                            batch.or();
+                        }
+                        batch.nested(pair -> pair.eq("product_id", entry.getKey())
+                                .in("warehouse_id", entry.getValue()));
+                        hasBatchPair = true;
+                    }
+                });
+            }
+        });
+        return true;
     }
 
     static void orderByIfPresent(QueryWrapperX<ErpStockDO> wrapper, ErpStockPageReqVO reqVO) {

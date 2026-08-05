@@ -29,7 +29,8 @@ public class ErpPurchaseInvoiceSaveReqVO {
     @NotBlank(message = "票据类型不能为空")
     private String invoiceType;
 
-    @Schema(description = "发票号", example = "033001900111")
+    @Schema(description = "发票号", requiredMode = Schema.RequiredMode.REQUIRED, example = "033001900111")
+    @NotBlank(message = "发票号不能为空")
     private String invoiceNo;
 
     @Schema(description = "发票张数", example = "1")

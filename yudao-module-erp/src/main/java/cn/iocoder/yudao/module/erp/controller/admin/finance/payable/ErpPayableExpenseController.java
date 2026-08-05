@@ -1,5 +1,6 @@
 package cn.iocoder.yudao.module.erp.controller.admin.finance.payable;
 
+import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.ErpFinanceUpdateRemarkReqVO;
 import cn.hutool.core.collection.CollUtil;
 import cn.iocoder.yudao.framework.apilog.core.annotation.ApiAccessLog;
 import cn.iocoder.yudao.framework.common.pojo.CommonResult;
@@ -12,6 +13,7 @@ import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
 import cn.iocoder.yudao.framework.excel.core.util.ExcelUtils;
 import cn.iocoder.yudao.module.erp.controller.admin.common.ErpAuditStatusRequestValidator;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.imports.ErpFinanceImportRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.finance.payable.vo.expense.ErpPayableExpenseDraftSaveReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.payable.vo.expense.ErpPayableExpenseExportRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.payable.vo.expense.ErpPayableExpenseImportExcelVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.payable.vo.expense.ErpPayableExpensePageReqVO;
@@ -88,11 +90,59 @@ public class ErpPayableExpenseController {
         return success(payableExpenseService.createPayableExpense(reqVO));
     }
 
+    @PostMapping("/create-draft")
+    @Operation(summary = "创建费用支付草稿")
+    @PreAuthorize("@ss.hasPermission('erp:payable-expense:create')")
+    public CommonResult<Long> createDraft(@RequestBody ErpPayableExpenseDraftSaveReqVO reqVO) {
+        return success(payableExpenseService.createPayableExpenseDraft(reqVO));
+    }
+
+    @PostMapping("/create-and-submit")
+    @Operation(summary = "创建并提交费用支付")
+    @PreAuthorize("@ss.hasPermission('erp:payable-expense:create')"
+            + " and @ss.hasPermission('erp:payable-expense:update-status')")
+    public CommonResult<Long> createAndSubmit(@Valid @RequestBody ErpPayableExpenseSaveReqVO reqVO) {
+        return success(payableExpenseService.createAndSubmitPayableExpense(reqVO));
+    }
+
     @PutMapping("/update")
     @Operation(summary = "修改费用支付")
     @PreAuthorize("@ss.hasPermission('erp:payable-expense:update')")
     public CommonResult<Boolean> update(@Valid @RequestBody ErpPayableExpenseSaveReqVO reqVO) {
         payableExpenseService.updatePayableExpense(reqVO);
+        return success(true);
+    }
+
+    @PutMapping("/update-draft")
+    @Operation(summary = "修改费用支付草稿")
+    @PreAuthorize("@ss.hasPermission('erp:payable-expense:update')")
+    public CommonResult<Boolean> updateDraft(@RequestBody ErpPayableExpenseDraftSaveReqVO reqVO) {
+        payableExpenseService.updatePayableExpenseDraft(reqVO);
+        return success(true);
+    }
+
+    @PutMapping("/update-and-submit")
+    @Operation(summary = "修改并提交费用支付草稿")
+    @PreAuthorize("@ss.hasPermission('erp:payable-expense:update')"
+            + " and @ss.hasPermission('erp:payable-expense:update-status')")
+    public CommonResult<Boolean> updateAndSubmit(@Valid @RequestBody ErpPayableExpenseSaveReqVO reqVO) {
+        payableExpenseService.updateAndSubmitPayableExpense(reqVO);
+        return success(true);
+    }
+
+    @PutMapping("/submit")
+    @Operation(summary = "提交费用支付草稿")
+    @PreAuthorize("@ss.hasPermission('erp:payable-expense:update-status')")
+    public CommonResult<Boolean> submit(@RequestParam("id") Long id) {
+        payableExpenseService.submitPayableExpense(id);
+        return success(true);
+    }
+
+    @PutMapping("/update-remark")
+    @Operation(summary = "更新支出单备注")
+    @PreAuthorize("@ss.hasPermission('erp:payable-expense:update')")
+    public CommonResult<Boolean> updateRemark(@Valid @RequestBody ErpFinanceUpdateRemarkReqVO reqVO) {
+        payableExpenseService.updatePayableExpenseRemark(reqVO);
         return success(true);
     }
 

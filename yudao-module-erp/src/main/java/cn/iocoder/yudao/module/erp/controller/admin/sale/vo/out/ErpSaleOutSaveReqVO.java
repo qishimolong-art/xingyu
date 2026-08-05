@@ -144,6 +144,12 @@ public class ErpSaleOutSaveReqVO {
         private Long warehouseId;
         private Long deptId;
 
+        @Schema(description = "跨部门销售调拨前的来源仓库编号（系统生成，只读）", accessMode = Schema.AccessMode.READ_ONLY)
+        private Long sourceWarehouseId;
+
+        @Schema(description = "跨部门销售调拨前的来源部门编号（系统生成，只读）", accessMode = Schema.AccessMode.READ_ONLY)
+        private Long sourceDeptId;
+
         @Schema(description = "产品编号", requiredMode = Schema.RequiredMode.REQUIRED, example = "3113")
         @NotNull(message = "产品编号不能为空")
         private Long productId;

@@ -5,6 +5,8 @@ import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.test.core.ut.BaseMockitoUnitTest;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.move.ErpStockMovePageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.move.ErpStockMoveRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.move.ErpStockMoveSaveReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.move.ErpStockTransferOutDraftCreateReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockMoveDO;
 import cn.iocoder.yudao.module.erp.enums.ErpAuditStatus;
 import cn.iocoder.yudao.module.erp.service.sale.ErpSaleCartService;
@@ -60,6 +62,41 @@ class ErpStockTransferOutControllerTest extends BaseMockitoUnitTest {
 
         assertTrue(result.getData());
         verify(stockMoveService).updateStockTransferOutStatus(302L, ErpAuditStatus.APPROVE.getStatus());
+    }
+
+    @Test
+    void createStockTransferOutDraft_delegatesWithoutFormalValidation() {
+        ErpStockTransferOutDraftCreateReqVO request = new ErpStockTransferOutDraftCreateReqVO();
+        when(stockMoveService.createStockTransferOutDraft(request)).thenReturn(303L);
+
+        CommonResult<Long> result = controller.createStockTransferOutDraft(request);
+
+        assertEquals(303L, result.getData());
+        assertEquals(10, request.getTransferDirection());
+        verify(stockMoveService).createStockTransferOutDraft(request);
+    }
+
+    @Test
+    void updateAndSubmitStockTransferOutDraft_delegatesCurrentEdit() {
+        ErpStockMoveSaveReqVO request = new ErpStockMoveSaveReqVO();
+
+        CommonResult<Boolean> result = controller.updateAndSubmitStockTransferOutDraft(request);
+
+        assertTrue(result.getData());
+        assertEquals(10, request.getTransferDirection());
+        verify(stockMoveService).updateAndSubmitStockTransferOutDraft(request);
+    }
+
+    @Test
+    void submitStockTransferOutDraft_delegatesAndUsesUpdatePermission() throws Exception {
+        CommonResult<Boolean> result = controller.submitStockTransferOutDraft(304L);
+
+        assertTrue(result.getData());
+        verify(stockMoveService).submitStockTransferOutDraft(304L);
+        Method method = ErpStockTransferOutController.class
+                .getMethod("submitStockTransferOutDraft", Long.class);
+        PreAuthorize annotation = method.getAnnotation(PreAuthorize.class);
+        assertEquals("@ss.hasPermission('erp:stock-transfer-out:update')", annotation.value());
     }
 
     @Test

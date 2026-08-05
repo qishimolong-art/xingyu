@@ -72,6 +72,30 @@ public class ErpStockFieldPermissionMasker {
         maskWithPrefix(module, list, "report_");
     }
 
+    public void clearHiddenFields(String module, Object target) {
+        if (target == null) {
+            return;
+        }
+        Set<String> hiddenFieldSet = getHiddenFieldSet(module);
+        if (CollUtil.isEmpty(hiddenFieldSet)) {
+            return;
+        }
+        maskBean(target, hiddenFieldSet, "");
+    }
+
+    public void clearHiddenItemFields(String module, Collection<?> targetItems) {
+        if (CollUtil.isEmpty(targetItems)) {
+            return;
+        }
+        Set<String> hiddenFieldSet = getHiddenFieldSet(module);
+        if (CollUtil.isEmpty(hiddenFieldSet)) {
+            return;
+        }
+        for (Object targetItem : targetItems) {
+            maskBean(targetItem, hiddenFieldSet, "item_");
+        }
+    }
+
     public void preserveHiddenFields(String module, Object target, Object source) {
         if (target == null || source == null) {
             return;

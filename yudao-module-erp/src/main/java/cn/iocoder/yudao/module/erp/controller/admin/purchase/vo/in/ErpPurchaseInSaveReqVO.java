@@ -171,6 +171,9 @@ public class ErpPurchaseInSaveReqVO {
         @Schema(description = "产品单价", example = "100.00")
         private BigDecimal productPrice;
 
+        @Schema(description = "是否赠品", example = "false")
+        private Boolean gift;
+
         @Schema(description = "产品数量", example = "100.00")
         private BigDecimal count;
 

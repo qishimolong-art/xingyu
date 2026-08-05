@@ -12,8 +12,11 @@ import cn.iocoder.yudao.framework.excel.core.util.ExcelUtils;
 import cn.iocoder.yudao.module.erp.controller.admin.common.ErpAuditStatusRequestValidator;
 import cn.iocoder.yudao.module.erp.controller.admin.common.vo.ErpExportFieldRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpProductRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.ErpPurchaseUpdateRemarkReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.imports.ErpPurchaseImportResultRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.in.ErpPurchaseInExportRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.in.ErpPurchaseInDraftCreateReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.in.ErpPurchaseInDraftUpdateReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.in.ErpPurchaseInForAdjustRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.in.ErpPurchaseInImportExcelVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.in.ErpPurchaseInImportRespVO;
@@ -44,6 +47,7 @@ import cn.iocoder.yudao.module.erp.framework.excel.ErpExportFieldUtils;
 import cn.iocoder.yudao.module.erp.framework.excel.ErpImportTemplateRequiredFieldUtils;
 import cn.iocoder.yudao.module.erp.service.config.ErpFieldConfigService;
 import cn.iocoder.yudao.module.erp.service.finance.ErpAccountService;
+import cn.iocoder.yudao.module.erp.service.common.ErpOriginalSettlementAmountUtils;
 import cn.iocoder.yudao.module.erp.service.product.ErpProductService;
 import cn.iocoder.yudao.module.erp.service.purchase.ErpPurchaseFieldPermissionMasker;
 import cn.iocoder.yudao.module.erp.service.purchase.ErpPurchaseInService;
@@ -89,6 +93,7 @@ import java.util.stream.Collectors;
 import static cn.iocoder.yudao.framework.apilog.core.enums.OperateTypeEnum.EXPORT;
 import static cn.iocoder.yudao.framework.common.pojo.CommonResult.success;
 import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.convertMultiMap;
+import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.convertMap;
 import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.convertSet;
 
 @Tag(name = "Admin - ERP Purchase In")
@@ -169,11 +174,53 @@ public class ErpPurchaseInController {
         return success(purchaseInService.createPurchaseIn(createReqVO));
     }
 
+    @PostMapping("/create-draft")
+    @Operation(summary = "创建采购入库草稿")
+    @PreAuthorize("@ss.hasPermission('erp:purchase-in:create')")
+    public CommonResult<Long> createPurchaseInDraft(@RequestBody ErpPurchaseInDraftCreateReqVO createReqVO) {
+        return success(purchaseInService.createPurchaseInDraft(createReqVO));
+    }
+
     @PutMapping("/update")
     @Operation(summary = "Update purchase in")
     @PreAuthorize("@ss.hasPermission('erp:purchase-in:update')")
     public CommonResult<Boolean> updatePurchaseIn(@Valid @RequestBody ErpPurchaseInSaveReqVO updateReqVO) {
         purchaseInService.updatePurchaseIn(updateReqVO);
+        return success(true);
+    }
+
+    @PutMapping("/update-draft")
+    @Operation(summary = "保存采购入库草稿")
+    @PreAuthorize("@ss.hasPermission('erp:purchase-in:update')")
+    public CommonResult<Boolean> updatePurchaseInDraft(@RequestBody ErpPurchaseInDraftUpdateReqVO updateReqVO) {
+        purchaseInService.updatePurchaseInDraft(updateReqVO);
+        return success(true);
+    }
+
+    @PutMapping("/update-and-submit")
+    @Operation(summary = "更新并提交采购入库草稿")
+    @PreAuthorize("@ss.hasPermission('erp:purchase-in:update') and " +
+            "@ss.hasPermission('erp:purchase-in:update-status')")
+    public CommonResult<Boolean> updateAndSubmitPurchaseInDraft(
+            @Valid @RequestBody ErpPurchaseInDraftUpdateReqVO updateReqVO) {
+        purchaseInService.updateAndSubmitPurchaseInDraft(updateReqVO);
+        return success(true);
+    }
+
+    @PutMapping("/submit")
+    @Operation(summary = "提交采购入库草稿")
+    @PreAuthorize("@ss.hasPermission('erp:purchase-in:update-status')")
+    public CommonResult<Boolean> submitPurchaseIn(@RequestParam("id") Long id) {
+        purchaseInService.submitPurchaseIn(id);
+        return success(true);
+    }
+
+    @PutMapping("/update-remark")
+    @Operation(summary = "修改采购入库备注")
+    @PreAuthorize("@ss.hasPermission('erp:purchase-in:update')")
+    public CommonResult<Boolean> updatePurchaseInRemark(
+            @Valid @RequestBody ErpPurchaseUpdateRemarkReqVO updateReqVO) {
+        purchaseInService.updatePurchaseInRemark(updateReqVO);
         return success(true);
     }
 
@@ -338,7 +385,7 @@ public class ErpPurchaseInController {
     @PreAuthorize("@ss.hasPermission('erp:purchase-in:query')")
     public CommonResult<PageResult<ErpPurchaseInRespVO>> getPurchaseInPage(@Valid ErpPurchaseInPageReqVO pageReqVO) {
         PageResult<ErpPurchaseInDO> pageResult = purchaseInService.getPurchaseInPage(pageReqVO);
-        return success(buildPurchaseInVOPageResult(pageResult));
+        return success(buildPurchaseInVOPageResult(pageResult, Boolean.TRUE.equals(pageReqVO.getPaymentEnable())));
     }
 
     @GetMapping("/returnable-items")
@@ -459,7 +506,8 @@ public class ErpPurchaseInController {
                 fieldPermissionMasker.getHiddenFieldSet(FIELD_PERMISSION_MODULE), EXPORT_FIELD_PERMISSION_MAP));
     }
 
-    private PageResult<ErpPurchaseInRespVO> buildPurchaseInVOPageResult(PageResult<ErpPurchaseInDO> pageResult) {
+    private PageResult<ErpPurchaseInRespVO> buildPurchaseInVOPageResult(PageResult<ErpPurchaseInDO> pageResult,
+                                                                        boolean useOriginalSettlementAmount) {
         if (CollUtil.isEmpty(pageResult.getList())) {
             return PageResult.empty(pageResult.getTotal());
         }
@@ -468,6 +516,7 @@ public class ErpPurchaseInController {
                 convertSet(pageResult.getList(), ErpPurchaseInDO::getId));
         Map<Long, List<ErpPurchaseInItemDO>> purchaseInItemMap = convertMultiMap(
                 purchaseInItemList, ErpPurchaseInItemDO::getInId);
+        Map<Long, ErpPurchaseInDO> purchaseInMap = convertMap(pageResult.getList(), ErpPurchaseInDO::getId);
         Map<Long, ErpProductRespVO> productMap = DataPermissionUtils.executeIgnore(() ->
                 productService.getProductVOMap(convertSet(purchaseInItemList, ErpPurchaseInItemDO::getProductId)));
         Map<Long, BigDecimal> returnCountMap = getApprovedReturnCountMap(purchaseInItemList);
@@ -480,6 +529,10 @@ public class ErpPurchaseInController {
         Map<Long, AdminUserRespDTO> userMap = adminUserApi.getUserMap(userIds);
         PageResult<ErpPurchaseInRespVO> respResult = BeanUtils.toBean(pageResult, ErpPurchaseInRespVO.class, purchaseIn -> {
             List<ErpPurchaseInItemDO> items = purchaseInItemMap.getOrDefault(purchaseIn.getId(), Collections.emptyList());
+            if (useOriginalSettlementAmount) {
+                purchaseIn.setTotalPrice(ErpOriginalSettlementAmountUtils.calculatePurchaseIn(
+                        purchaseInMap.get(purchaseIn.getId()), items));
+            }
             purchaseIn.setItems(BeanUtils.toBean(items, ErpPurchaseInRespVO.Item.class,
                     item -> {
                         MapUtils.findAndThen(productMap, item.getProductId(), product -> item.setProductName(product.getName())

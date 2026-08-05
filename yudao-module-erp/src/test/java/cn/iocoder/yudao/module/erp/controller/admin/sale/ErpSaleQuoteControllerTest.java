@@ -4,6 +4,8 @@ import cn.iocoder.yudao.framework.common.pojo.CommonResult;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.test.core.ut.BaseMockitoUnitTest;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.quote.ErpSaleQuoteConvertCartReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.quote.ErpSaleQuoteDraftCreateReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.quote.ErpSaleQuoteDraftUpdateReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.quote.ErpSaleQuoteExportRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.quote.ErpSaleQuotePageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.quote.ErpSaleQuoteRespVO;
@@ -17,6 +19,7 @@ import cn.iocoder.yudao.module.erp.service.product.ErpProductService;
 import cn.iocoder.yudao.module.erp.service.sale.ErpCustomerService;
 import cn.iocoder.yudao.module.erp.service.sale.ErpSaleFieldPermissionMasker;
 import cn.iocoder.yudao.module.erp.service.sale.ErpSaleQuoteService;
+import cn.iocoder.yudao.module.erp.service.stock.ErpWarehouseService;
 import cn.iocoder.yudao.module.system.api.dept.DeptApi;
 import cn.iocoder.yudao.module.system.api.dept.dto.DeptRespDTO;
 import cn.iocoder.yudao.module.system.api.user.AdminUserApi;
@@ -40,6 +43,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -67,6 +71,8 @@ public class ErpSaleQuoteControllerTest extends BaseMockitoUnitTest {
     private DeptApi deptApi;
     @Mock
     private ErpFieldConfigService fieldConfigService;
+    @Mock
+    private ErpWarehouseService warehouseService;
 
     // ==================== createSaleQuote ====================
 
@@ -199,7 +205,6 @@ public class ErpSaleQuoteControllerTest extends BaseMockitoUnitTest {
         quote.setStatus(10);
         when(saleQuoteService.getSaleQuote(eq(50L))).thenReturn(quote);
         when(saleQuoteService.getSaleQuoteItemListByQuoteId(eq(50L))).thenReturn(Collections.emptyList());
-        when(productService.getProductVOMap(any())).thenReturn(Collections.emptyMap());
         when(customerService.getCustomerMap(any())).thenReturn(Collections.emptyMap());
 
         CommonResult<ErpSaleQuoteRespVO> result = controller.getSaleQuote(50L);
@@ -207,6 +212,31 @@ public class ErpSaleQuoteControllerTest extends BaseMockitoUnitTest {
         assertEquals(0, result.getCode());
         assertNotNull(result.getData());
         assertEquals(50L, result.getData().getId());
+    }
+
+    @Test
+    public void testDraftEndpoints_passThroughAndReuseExistingPermissions() throws NoSuchMethodException {
+        ErpSaleQuoteDraftCreateReqVO createReqVO = new ErpSaleQuoteDraftCreateReqVO();
+        when(saleQuoteService.createSaleQuoteDraft(createReqVO)).thenReturn(88L);
+        assertEquals(88L, controller.createSaleQuoteDraft(createReqVO).getData());
+        verify(saleQuoteService).createSaleQuoteDraft(createReqVO);
+
+        ErpSaleQuoteDraftUpdateReqVO updateReqVO = new ErpSaleQuoteDraftUpdateReqVO();
+        updateReqVO.setId(88L);
+        assertEquals(Boolean.TRUE, controller.updateSaleQuoteDraft(updateReqVO).getData());
+        verify(saleQuoteService).updateSaleQuoteDraft(updateReqVO);
+
+        assertEquals(Boolean.TRUE, controller.submitSaleQuote(88L).getData());
+        verify(saleQuoteService).submitSaleQuote(88L);
+
+        Method createMethod = ErpSaleQuoteController.class.getMethod(
+                "createSaleQuoteDraft", ErpSaleQuoteDraftCreateReqVO.class);
+        Method updateMethod = ErpSaleQuoteController.class.getMethod(
+                "updateSaleQuoteDraft", ErpSaleQuoteDraftUpdateReqVO.class);
+        Method submitMethod = ErpSaleQuoteController.class.getMethod("submitSaleQuote", Long.class);
+        assertTrue(createMethod.getAnnotation(PreAuthorize.class).value().contains("erp:sale-quote:create"));
+        assertTrue(updateMethod.getAnnotation(PreAuthorize.class).value().contains("erp:sale-quote:update"));
+        assertTrue(submitMethod.getAnnotation(PreAuthorize.class).value().contains("erp:sale-quote:create"));
     }
 
     @Test
@@ -237,6 +267,7 @@ public class ErpSaleQuoteControllerTest extends BaseMockitoUnitTest {
         when(saleQuoteService.getSaleQuote(eq(50L))).thenReturn(quote);
         when(saleQuoteService.getSaleQuoteItemListByQuoteId(eq(50L))).thenReturn(Collections.singletonList(item));
         when(productService.getProductVOMap(any())).thenReturn(Collections.singletonMap(100L, product));
+        when(warehouseService.getWarehouseMap(any())).thenReturn(Collections.emptyMap());
         Map<Long, DeptRespDTO> deptMap = new HashMap<>();
         deptMap.put(10L, mainDept);
         deptMap.put(30L, itemDept);
@@ -285,7 +316,6 @@ public class ErpSaleQuoteControllerTest extends BaseMockitoUnitTest {
         PageResult<ErpSaleQuoteDO> pageResult = new PageResult<>(singletonList(quote), 1L);
         when(saleQuoteService.getSaleQuotePage(eq(pageReqVO))).thenReturn(pageResult);
         when(saleQuoteService.getSaleQuoteItemListByQuoteIds(any())).thenReturn(Collections.emptyList());
-        when(productService.getProductVOMap(any())).thenReturn(Collections.emptyMap());
         when(customerService.getCustomerMap(any())).thenReturn(Collections.emptyMap());
 
         CommonResult<PageResult<ErpSaleQuoteRespVO>> result = controller.getSaleQuotePage(pageReqVO);
@@ -294,6 +324,24 @@ public class ErpSaleQuoteControllerTest extends BaseMockitoUnitTest {
         assertEquals(1L, result.getData().getTotal());
         assertEquals(1, result.getData().getList().size());
         assertEquals(70L, result.getData().getList().get(0).getId());
+    }
+
+    @Test
+    public void testGetSaleQuotePage_draftWithoutCustomer() {
+        ErpSaleQuotePageReqVO pageReqVO = new ErpSaleQuotePageReqVO();
+        ErpSaleQuoteDO draft = new ErpSaleQuoteDO()
+                .setId(72L)
+                .setStatus(0);
+        when(saleQuoteService.getSaleQuotePage(pageReqVO))
+                .thenReturn(new PageResult<>(singletonList(draft), 1L));
+        when(saleQuoteService.getSaleQuoteItemListByQuoteIds(any()))
+                .thenReturn(Collections.emptyList());
+
+        CommonResult<PageResult<ErpSaleQuoteRespVO>> result = controller.getSaleQuotePage(pageReqVO);
+
+        assertEquals(1, result.getData().getList().size());
+        assertNull(result.getData().getList().get(0).getCustomerId());
+        verify(customerService, never()).getCustomerMap(any());
     }
 
     @Test

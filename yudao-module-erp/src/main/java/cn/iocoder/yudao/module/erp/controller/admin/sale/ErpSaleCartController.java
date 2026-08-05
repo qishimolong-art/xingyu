@@ -12,6 +12,8 @@ import cn.iocoder.yudao.framework.excel.core.util.ExcelUtils;
 import cn.iocoder.yudao.module.erp.controller.admin.common.vo.ErpExportFieldRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpProductRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartConvertQuoteReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartDraftCreateReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartDraftUpdateReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartExportRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartFirstApproveConfigRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartFirstApproveConfigSaveReqVO;
@@ -22,6 +24,8 @@ import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartResp
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartSaveReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartSubmitRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartUpdateBasicReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.ErpSaleUpdateRemarkReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.vin.ErpVinRecognizeRespVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpCustomerDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleCartDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleCartItemDO;
@@ -37,6 +41,7 @@ import cn.iocoder.yudao.module.erp.service.product.ErpProductService;
 import cn.iocoder.yudao.module.erp.service.sale.ErpCustomerService;
 import cn.iocoder.yudao.module.erp.service.sale.ErpSaleCartService;
 import cn.iocoder.yudao.module.erp.service.sale.ErpSaleFieldPermissionMasker;
+import cn.iocoder.yudao.module.erp.service.sale.ErpVinRecognizeService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpWarehouseService;
 import cn.iocoder.yudao.module.system.api.dept.DeptApi;
 import cn.iocoder.yudao.module.system.api.dept.dto.DeptRespDTO;
@@ -88,6 +93,8 @@ public class ErpSaleCartController {
     @Resource
     private ErpSaleCartService saleCartService;
     @Resource
+    private ErpVinRecognizeService vinRecognizeService;
+    @Resource
     private ErpCustomerService customerService;
     @Resource
     private ErpProductService productService;
@@ -107,8 +114,9 @@ public class ErpSaleCartController {
     @PostMapping("/create")
     @Operation(summary = "创建销售手推车")
     @PreAuthorize("@ss.hasPermission('erp:sale-cart:create')")
-    public CommonResult<Long> createSaleCart(@Valid @RequestBody ErpSaleCartSaveReqVO createReqVO) {
-        return success(saleCartService.createSaleCart(createReqVO));
+    public CommonResult<Long> createSaleCart(@RequestBody ErpSaleCartDraftCreateReqVO createReqVO) {
+        return success(saleCartService.createSaleCart(
+                BeanUtils.toBean(createReqVO, ErpSaleCartSaveReqVO.class)));
     }
 
     @PostMapping("/create-and-submit")
@@ -123,6 +131,23 @@ public class ErpSaleCartController {
     @PreAuthorize("@ss.hasPermission('erp:sale-cart:update')")
     public CommonResult<Boolean> updateSaleCart(@Valid @RequestBody ErpSaleCartSaveReqVO updateReqVO) {
         saleCartService.updateSaleCart(updateReqVO);
+        return success(true);
+    }
+
+    @PutMapping("/update-remark")
+    @Operation(summary = "修改销售手推车备注")
+    @PreAuthorize("@ss.hasPermission('erp:sale-cart:update')")
+    public CommonResult<Boolean> updateSaleCartRemark(
+            @Valid @RequestBody ErpSaleUpdateRemarkReqVO updateReqVO) {
+        saleCartService.updateSaleCartRemark(updateReqVO);
+        return success(true);
+    }
+
+    @PutMapping("/update-draft")
+    @Operation(summary = "更新销售手推车草稿")
+    @PreAuthorize("@ss.hasPermission('erp:sale-cart:update')")
+    public CommonResult<Boolean> updateSaleCartDraft(@RequestBody ErpSaleCartDraftUpdateReqVO updateReqVO) {
+        saleCartService.updateSaleCartDraft(BeanUtils.toBean(updateReqVO, ErpSaleCartSaveReqVO.class));
         return success(true);
     }
 
@@ -217,6 +242,13 @@ public class ErpSaleCartController {
         return success(respVO);
     }
 
+    @GetMapping("/recognize-vin")
+    @Operation(summary = "VIN码识别")
+    @PreAuthorize("@ss.hasPermission('erp:sale-cart:query')")
+    public CommonResult<ErpVinRecognizeRespVO> recognizeVin(@RequestParam("vin") String vin) {
+        return success(vinRecognizeService.recognize(vin));
+    }
+
     @GetMapping("/page")
     @Operation(summary = "获得销售手推车分页")
     @PreAuthorize("@ss.hasPermission('erp:sale-cart:query')")
@@ -295,8 +327,10 @@ public class ErpSaleCartController {
         Map<Long, ErpWarehouseDO> warehouseMap = CollUtil.isEmpty(itemList)
                 ? Collections.emptyMap()
                 : getWarehouseMapIgnoreDataPermission(convertSet(itemList, ErpSaleCartItemDO::getWarehouseId));
-        Map<Long, ErpCustomerDO> customerMap = customerService.getCustomerMap(
-                convertSet(pageResult.getList(), ErpSaleCartDO::getCustomerId));
+        Set<Long> customerIds = convertSet(pageResult.getList(), ErpSaleCartDO::getCustomerId);
+        customerIds.remove(null);
+        Map<Long, ErpCustomerDO> customerMap = CollUtil.isEmpty(customerIds)
+                ? Collections.emptyMap() : customerService.getCustomerMap(customerIds);
         Set<Long> quoteIds = convertSet(pageResult.getList(), cart ->
                 ErpSaleBizSourceTypeEnum.QUOTE.getType().equals(cart.getSourceType()) ? cart.getSourceId() : null);
         quoteIds.remove(null);

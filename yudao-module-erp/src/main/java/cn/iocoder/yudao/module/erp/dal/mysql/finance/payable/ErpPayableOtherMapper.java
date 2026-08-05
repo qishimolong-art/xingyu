@@ -9,6 +9,7 @@ import cn.iocoder.yudao.module.erp.dal.mysql.common.ErpKeywordQuery;
 import cn.iocoder.yudao.module.erp.dal.mysql.finance.ErpFinanceSortUtils;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import org.apache.ibatis.annotations.Mapper;
+import org.apache.ibatis.annotations.Select;
 
 @Mapper
 public interface ErpPayableOtherMapper extends BaseMapperX<ErpPayableOtherDO> {
@@ -46,5 +47,8 @@ public interface ErpPayableOtherMapper extends BaseMapperX<ErpPayableOtherDO> {
     default ErpPayableOtherDO selectByNo(String no) {
         return selectOne(ErpPayableOtherDO::getNo, no);
     }
+
+    @Select("SELECT * FROM erp_payable_other WHERE id = #{id} AND deleted = 0 FOR UPDATE")
+    ErpPayableOtherDO selectByIdForUpdate(Long id);
 
 }

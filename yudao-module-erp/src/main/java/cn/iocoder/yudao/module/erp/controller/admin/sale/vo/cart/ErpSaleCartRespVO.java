@@ -67,6 +67,7 @@ public class ErpSaleCartRespVO {
     private String invoiceType;
     private String deliveryMethod;
     private String freightType;
+    private String vin;
     private String priority;
     private String priceType;
     private String logisticsCompany;

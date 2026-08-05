@@ -46,6 +46,9 @@ public class ErpSalePriceAdjustPageReqVO extends PageParam {
     @Schema(description = "备注", example = "客户议价")
     private String remark;
 
+    @Schema(description = "Only query approved price adjustments with an outstanding receipt amount")
+    private Boolean receiptEnable;
+
     @Schema(description = "调价单编号数组")
     private List<Long> ids;
 

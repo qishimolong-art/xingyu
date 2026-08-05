@@ -1,5 +1,6 @@
 package cn.iocoder.yudao.module.erp.service.sale;
 
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.ErpSaleUpdateRemarkReqVO;
 import cn.hutool.core.collection.CollUtil;
 import cn.hutool.core.util.StrUtil;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
@@ -12,6 +13,7 @@ import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.priceadjust.ErpSaleP
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.priceadjust.ErpSalePriceAdjustImportRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.priceadjust.ErpSalePriceAdjustPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.priceadjust.ErpSalePriceAdjustSaveReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.priceadjust.ErpSalePriceAdjustDraftSaveReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.product.ErpProductDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSalePriceAdjustDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSalePriceAdjustItemDO;
@@ -21,6 +23,7 @@ import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockRecordDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpWarehouseDO;
 import cn.iocoder.yudao.module.erp.dal.mysql.product.ErpProductMapper;
+import cn.iocoder.yudao.module.erp.dal.mysql.finance.ErpFinanceReceiptItemMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpSalePriceAdjustItemMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpSalePriceAdjustMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpSaleOutItemMapper;
@@ -29,6 +32,8 @@ import cn.iocoder.yudao.module.erp.dal.mysql.stock.ErpStockMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.stock.ErpStockRecordMapper;
 import cn.iocoder.yudao.module.erp.dal.redis.no.ErpNoRedisDAO;
 import cn.iocoder.yudao.module.erp.enums.ErpAuditStatus;
+import cn.iocoder.yudao.module.erp.enums.common.ErpBizTypeEnum;
+import cn.iocoder.yudao.module.erp.enums.sale.ErpSalePriceAdjustStatusEnum;
 import cn.iocoder.yudao.module.erp.enums.stock.ErpStockRecordBizTypeEnum;
 import cn.iocoder.yudao.module.erp.service.common.ErpOperateLogService;
 import cn.iocoder.yudao.module.erp.service.product.ErpProductService;
@@ -67,6 +72,8 @@ public class ErpSalePriceAdjustServiceImpl implements ErpSalePriceAdjustService 
     private ErpSalePriceAdjustMapper salePriceAdjustMapper;
     @Resource
     private ErpSalePriceAdjustItemMapper salePriceAdjustItemMapper;
+    @Resource
+    private ErpFinanceReceiptItemMapper financeReceiptItemMapper;
     @Resource
     private ErpSaleOutMapper saleOutMapper;
     @Resource
@@ -107,6 +114,7 @@ public class ErpSalePriceAdjustServiceImpl implements ErpSalePriceAdjustService 
         // 计算调价总金额
         BigDecimal totalAdjustPrice = BigDecimal.ZERO;
         List<ErpSalePriceAdjustItemDO> items = BeanUtils.toBean(createReqVO.getItems(), ErpSalePriceAdjustItemDO.class);
+        validateFormalSubmit(adjustDO, items);
         fillItemDeptIdFromSaleOutItems(items);
         validateSalePriceAdjustItemsNotAdjusted(items, null);
         for (ErpSalePriceAdjustItemDO item : items) {
@@ -128,9 +136,33 @@ public class ErpSalePriceAdjustServiceImpl implements ErpSalePriceAdjustService 
 
     @Override
     @Transactional(rollbackFor = Exception.class)
+    public Long createSalePriceAdjustDraft(ErpSalePriceAdjustDraftSaveReqVO createReqVO) {
+        fieldPermissionMasker.clearHiddenFields(FIELD_PERMISSION_MODULE, createReqVO);
+        fieldPermissionMasker.clearHiddenItemFields(FIELD_PERMISSION_MODULE, createReqVO.getItems());
+        ErpSalePriceAdjustDO adjustDO = BeanUtils.toBean(createReqVO, ErpSalePriceAdjustDO.class);
+        adjustDO.setNo(noRedisDAO.generate(ErpNoRedisDAO.SALE_PRICE_ADJUST_NO_PREFIX));
+        adjustDO.setStatus(ErpSalePriceAdjustStatusEnum.DRAFT.getStatus());
+        adjustDO.setAdjustDate(LocalDateTime.now());
+        List<ErpSalePriceAdjustItemDO> items = buildDraftItems(createReqVO.getItems());
+        if (CollUtil.isEmpty(items)) {
+            throw exception(SALE_PRICE_ADJUST_DRAFT_ITEMS_REQUIRED);
+        }
+        calculateDraftTotal(adjustDO, items);
+        saleDocumentDefaultService.fillCreateDefaults(adjustDO);
+        salePriceAdjustMapper.insert(adjustDO);
+        insertDraftItems(adjustDO.getId(), items);
+        recordCreate(adjustDO.getId(), adjustDO.getNo());
+        return adjustDO.getId();
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
     public void updateSalePriceAdjust(ErpSalePriceAdjustSaveReqVO updateReqVO) {
         // 1. 校验存在
         ErpSalePriceAdjustDO existDO = validateSalePriceAdjustExists(updateReqVO.getId());
+        if (ErpSalePriceAdjustStatusEnum.DRAFT.getStatus().equals(existDO.getStatus())) {
+            throw exception(SALE_PRICE_ADJUST_DRAFT_UPDATE_FAIL, existDO.getNo());
+        }
         if (ErpAuditStatus.APPROVE.getStatus().equals(existDO.getStatus())) {
             throw exception(SALE_PRICE_ADJUST_UPDATE_FAIL_APPROVE);
         }
@@ -142,6 +174,7 @@ public class ErpSalePriceAdjustServiceImpl implements ErpSalePriceAdjustService 
         updateDO.setAdjustDate(existDO.getAdjustDate());
         BigDecimal totalAdjustPrice = BigDecimal.ZERO;
         List<ErpSalePriceAdjustItemDO> items = BeanUtils.toBean(updateReqVO.getItems(), ErpSalePriceAdjustItemDO.class);
+        validateFormalSubmit(updateDO, items);
         fillItemDeptIdFromSaleOutItems(items);
         validateSalePriceAdjustItemsNotAdjusted(items, updateReqVO.getId());
         for (ErpSalePriceAdjustItemDO item : items) {
@@ -158,6 +191,61 @@ public class ErpSalePriceAdjustServiceImpl implements ErpSalePriceAdjustService 
             item.setAdjustId(updateReqVO.getId());
         }
         salePriceAdjustItemMapper.insertBatch(items);
+        recordUpdate(updateReqVO.getId(), existDO.getNo());
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void updateSalePriceAdjustDraft(ErpSalePriceAdjustDraftSaveReqVO updateReqVO) {
+        ErpSalePriceAdjustDO existDO = validateSalePriceAdjustExists(updateReqVO.getId());
+        if (!ErpSalePriceAdjustStatusEnum.DRAFT.getStatus().equals(existDO.getStatus())) {
+            throw exception(SALE_PRICE_ADJUST_DRAFT_UPDATE_FAIL, existDO.getNo());
+        }
+        fieldPermissionMasker.preserveHiddenFields(FIELD_PERMISSION_MODULE, updateReqVO, existDO);
+        fieldPermissionMasker.preserveHiddenItemFields(FIELD_PERMISSION_MODULE, updateReqVO.getItems(),
+                salePriceAdjustItemMapper.selectListByAdjustId(updateReqVO.getId()));
+        List<ErpSalePriceAdjustItemDO> items = buildDraftItems(updateReqVO.getItems());
+        ErpSalePriceAdjustDO updateDO = BeanUtils.toBean(updateReqVO, ErpSalePriceAdjustDO.class);
+        updateDO.setId(existDO.getId());
+        updateDO.setNo(existDO.getNo());
+        updateDO.setStatus(existDO.getStatus());
+        updateDO.setAdjustDate(existDO.getAdjustDate());
+        if (updateDO.getDeptId() == null) {
+            updateDO.setDeptId(existDO.getDeptId());
+        }
+        calculateDraftTotal(updateDO, items);
+        salePriceAdjustMapper.updateById(updateDO);
+        salePriceAdjustItemMapper.deleteByAdjustId(existDO.getId());
+        insertDraftItems(existDO.getId(), items);
+        recordUpdate(existDO.getId(), existDO.getNo());
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void submitSalePriceAdjust(Long id) {
+        ErpSalePriceAdjustDO adjustDO = validateSalePriceAdjustExists(id);
+        if (!ErpSalePriceAdjustStatusEnum.DRAFT.getStatus().equals(adjustDO.getStatus())) {
+            throw exception(SALE_PRICE_ADJUST_DRAFT_SUBMIT_FAIL);
+        }
+        List<ErpSalePriceAdjustItemDO> items = salePriceAdjustItemMapper.selectListByAdjustId(id);
+        validateFormalSubmit(adjustDO, items);
+        fillItemDeptIdFromSaleOutItems(items);
+        validateSalePriceAdjustItemsNotAdjusted(items, id);
+        int updateCount = salePriceAdjustMapper.updateByIdAndStatus(id,
+                ErpSalePriceAdjustStatusEnum.DRAFT.getStatus(),
+                new ErpSalePriceAdjustDO().setStatus(ErpSalePriceAdjustStatusEnum.PROCESS.getStatus()));
+        if (updateCount == 0) {
+            throw exception(SALE_PRICE_ADJUST_DRAFT_SUBMIT_FAIL);
+        }
+        recordUpdate(id, adjustDO.getNo());
+    }
+
+    @Override
+    public void updateSalePriceAdjustRemark(ErpSaleUpdateRemarkReqVO updateReqVO) {
+        ErpSalePriceAdjustDO existDO = validateSalePriceAdjustExists(updateReqVO.getId());
+        salePriceAdjustMapper.updateById(new ErpSalePriceAdjustDO()
+                .setId(updateReqVO.getId())
+                .setRemark(updateReqVO.getRemark()));
         recordUpdate(updateReqVO.getId(), existDO.getNo());
     }
 
@@ -210,7 +298,13 @@ public class ErpSalePriceAdjustServiceImpl implements ErpSalePriceAdjustService 
 
     @Override
     public PageResult<ErpSalePriceAdjustDO> getSalePriceAdjustPage(ErpSalePriceAdjustPageReqVO pageReqVO) {
-        return salePriceAdjustMapper.selectPage(pageReqVO);
+        PageResult<ErpSalePriceAdjustDO> pageResult = salePriceAdjustMapper.selectPage(pageReqVO);
+        Map<Long, BigDecimal> receiptPriceMap = financeReceiptItemMapper.selectReceiptPriceSumMapByBizIdsAndBizType(
+                convertSet(pageResult.getList(), ErpSalePriceAdjustDO::getId),
+                ErpBizTypeEnum.SALE_PRICE_ADJUST.getType());
+        pageResult.getList().forEach(item -> item.setReceiptPrice(
+                receiptPriceMap.getOrDefault(item.getId(), BigDecimal.ZERO)));
+        return pageResult;
     }
 
     @Override
@@ -555,6 +649,70 @@ public class ErpSalePriceAdjustServiceImpl implements ErpSalePriceAdjustService 
             }
         }
         return null;
+    }
+
+    private List<ErpSalePriceAdjustItemDO> buildDraftItems(List<ErpSalePriceAdjustSaveReqVO.Item> itemReqs) {
+        if (CollUtil.isEmpty(itemReqs)) {
+            return Collections.emptyList();
+        }
+        List<ErpSalePriceAdjustItemDO> items = itemReqs.stream()
+                .filter(Objects::nonNull)
+                .filter(item -> item.getSaleOutItemId() != null
+                        && item.getProductId() != null
+                        && item.getOutCount() != null)
+                .map(item -> BeanUtils.toBean(item, ErpSalePriceAdjustItemDO.class))
+                .collect(Collectors.toList());
+        fillItemDeptIdFromSaleOutItems(items);
+        return items;
+    }
+
+    private void calculateDraftTotal(ErpSalePriceAdjustDO adjustDO, List<ErpSalePriceAdjustItemDO> items) {
+        BigDecimal totalAdjustPrice = BigDecimal.ZERO;
+        for (ErpSalePriceAdjustItemDO item : items) {
+            BigDecimal adjustPrice = calculateAdjustPrice(item);
+            item.setAdjustPrice(adjustPrice);
+            totalAdjustPrice = totalAdjustPrice.add(adjustPrice);
+        }
+        adjustDO.setTotalAdjustPrice(totalAdjustPrice);
+    }
+
+    private void insertDraftItems(Long adjustId, List<ErpSalePriceAdjustItemDO> items) {
+        if (CollUtil.isEmpty(items)) {
+            return;
+        }
+        items.forEach(item -> {
+            item.setId(null);
+            item.setAdjustId(adjustId);
+        });
+        salePriceAdjustItemMapper.insertBatch(items);
+    }
+
+    private void validateFormalSubmit(ErpSalePriceAdjustDO adjustDO, List<ErpSalePriceAdjustItemDO> items) {
+        if (adjustDO.getCustomerId() == null) {
+            throw exception(SALE_PRICE_ADJUST_SUBMIT_CUSTOMER_REQUIRED);
+        }
+        if (adjustDO.getAdjustUserId() == null) {
+            throw exception(SALE_PRICE_ADJUST_SUBMIT_USER_REQUIRED);
+        }
+        if (StrUtil.isBlank(adjustDO.getSettleMethod())) {
+            throw exception(SALE_PRICE_ADJUST_SUBMIT_SETTLE_METHOD_REQUIRED);
+        }
+        if (StrUtil.isBlank(adjustDO.getDeliveryMethod())) {
+            throw exception(SALE_PRICE_ADJUST_SUBMIT_DELIVERY_METHOD_REQUIRED);
+        }
+        if (CollUtil.isEmpty(items)) {
+            throw exception(SALE_PRICE_ADJUST_SUBMIT_ITEMS_REQUIRED);
+        }
+        boolean invalidItem = items.stream().anyMatch(item -> item == null
+                || item.getSaleOutId() == null
+                || item.getSaleOutItemId() == null
+                || item.getProductId() == null
+                || item.getOutCount() == null
+                || item.getOldPrice() == null
+                || item.getNewPrice() == null);
+        if (invalidItem) {
+            throw exception(SALE_PRICE_ADJUST_SUBMIT_ITEMS_REQUIRED);
+        }
     }
 
     private String buildAdjustItemLabel(ErpSalePriceAdjustItemDO item) {

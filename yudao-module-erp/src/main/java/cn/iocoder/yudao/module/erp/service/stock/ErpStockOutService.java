@@ -1,6 +1,7 @@
 package cn.iocoder.yudao.module.erp.service.stock;
 
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
+import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.ErpStockUpdateRemarkReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.out.ErpStockOutPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.out.ErpStockOutSaveReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockOutDO;
@@ -31,6 +32,8 @@ public interface ErpStockOutService {
      * @param updateReqVO 更新信息
      */
     void updateStockOut(@Valid ErpStockOutSaveReqVO updateReqVO);
+
+    void updateStockOutRemark(@Valid ErpStockUpdateRemarkReqVO updateReqVO);
 
     /**
      * 更新其它出库单的状态

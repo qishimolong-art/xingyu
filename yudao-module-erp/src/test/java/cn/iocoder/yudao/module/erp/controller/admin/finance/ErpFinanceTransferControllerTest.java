@@ -75,9 +75,7 @@ class ErpFinanceTransferControllerTest extends BaseMockitoUnitTest {
 
         when(financeTransferService.getFinanceTransferPage(any()))
                 .thenReturn(new PageResult<>(Collections.singletonList(transfer), 1L));
-        when(accountService.getAccountMap(any())).thenReturn(Collections.emptyMap());
         when(adminUserApi.getUserMap(any())).thenReturn(userMap);
-        when(deptApi.getDeptMap(any())).thenReturn(Collections.emptyMap());
         when(voucherMapper.selectList(any())).thenReturn(Collections.singletonList(voucher));
 
         CommonResult<PageResult<ErpFinanceTransferRespVO>> result =

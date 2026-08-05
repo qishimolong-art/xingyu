@@ -1,5 +1,6 @@
 package cn.iocoder.yudao.module.erp.controller.admin.finance.receivable;
 
+import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.ErpFinanceUpdateRemarkReqVO;
 import cn.hutool.core.collection.CollUtil;
 import cn.iocoder.yudao.framework.apilog.core.annotation.ApiAccessLog;
 import cn.iocoder.yudao.framework.common.pojo.CommonResult;
@@ -12,6 +13,7 @@ import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
 import cn.iocoder.yudao.framework.excel.core.util.ExcelUtils;
 import cn.iocoder.yudao.module.erp.controller.admin.common.ErpAuditStatusRequestValidator;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.imports.ErpFinanceImportRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.finance.receivable.vo.otherincome.ErpReceivableOtherIncomeDraftSaveReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.receivable.vo.otherincome.ErpReceivableOtherIncomeImportExcelVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.receivable.vo.otherincome.ErpReceivableOtherIncomePageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.receivable.vo.otherincome.ErpReceivableOtherIncomeExportRespVO;
@@ -83,9 +85,25 @@ public class ErpReceivableOtherIncomeController {
 
     @PostMapping("/create")
     @Operation(summary = "创建其他收入")
-    @PreAuthorize("@ss.hasPermission('erp:receivable-other-income:create')")
+    @PreAuthorize("@ss.hasPermission('erp:receivable-other-income:create') && "
+            + "@ss.hasPermission('erp:receivable-other-income:update-status')")
     public CommonResult<Long> create(@Valid @RequestBody ErpReceivableOtherIncomeSaveReqVO reqVO) {
         return success(otherIncomeService.createOtherIncome(reqVO));
+    }
+
+    @PostMapping("/create-draft")
+    @Operation(summary = "创建其他收入草稿")
+    @PreAuthorize("@ss.hasPermission('erp:receivable-other-income:create')")
+    public CommonResult<Long> createDraft(@RequestBody ErpReceivableOtherIncomeDraftSaveReqVO reqVO) {
+        return success(otherIncomeService.createOtherIncomeDraft(reqVO));
+    }
+
+    @PostMapping("/create-and-submit")
+    @Operation(summary = "创建并提交其他收入")
+    @PreAuthorize("@ss.hasPermission('erp:receivable-other-income:create') && "
+            + "@ss.hasPermission('erp:receivable-other-income:update-status')")
+    public CommonResult<Long> createAndSubmit(@Valid @RequestBody ErpReceivableOtherIncomeSaveReqVO reqVO) {
+        return success(otherIncomeService.createOtherIncomeAndSubmit(reqVO));
     }
 
     @PutMapping("/update")
@@ -93,6 +111,40 @@ public class ErpReceivableOtherIncomeController {
     @PreAuthorize("@ss.hasPermission('erp:receivable-other-income:update')")
     public CommonResult<Boolean> update(@Valid @RequestBody ErpReceivableOtherIncomeSaveReqVO reqVO) {
         otherIncomeService.updateOtherIncome(reqVO);
+        return success(true);
+    }
+
+    @PutMapping("/update-draft")
+    @Operation(summary = "修改其他收入草稿")
+    @PreAuthorize("@ss.hasPermission('erp:receivable-other-income:update')")
+    public CommonResult<Boolean> updateDraft(@RequestBody ErpReceivableOtherIncomeDraftSaveReqVO reqVO) {
+        otherIncomeService.updateOtherIncomeDraft(reqVO);
+        return success(true);
+    }
+
+    @PutMapping("/update-and-submit")
+    @Operation(summary = "修改并提交其他收入草稿")
+    @PreAuthorize("@ss.hasPermission('erp:receivable-other-income:update') && "
+            + "@ss.hasPermission('erp:receivable-other-income:update-status')")
+    public CommonResult<Boolean> updateAndSubmit(
+            @RequestBody ErpReceivableOtherIncomeDraftSaveReqVO reqVO) {
+        otherIncomeService.updateOtherIncomeDraftAndSubmit(reqVO);
+        return success(true);
+    }
+
+    @PutMapping("/submit")
+    @Operation(summary = "提交其他收入草稿")
+    @PreAuthorize("@ss.hasPermission('erp:receivable-other-income:update-status')")
+    public CommonResult<Boolean> submit(@RequestParam("id") Long id) {
+        otherIncomeService.submitOtherIncome(id);
+        return success(true);
+    }
+
+    @PutMapping("/update-remark")
+    @Operation(summary = "更新其他收入单备注")
+    @PreAuthorize("@ss.hasPermission('erp:receivable-other-income:update')")
+    public CommonResult<Boolean> updateRemark(@Valid @RequestBody ErpFinanceUpdateRemarkReqVO reqVO) {
+        otherIncomeService.updateOtherIncomeRemark(reqVO);
         return success(true);
     }
 

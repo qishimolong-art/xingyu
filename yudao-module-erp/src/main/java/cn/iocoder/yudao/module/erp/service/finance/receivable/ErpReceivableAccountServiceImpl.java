@@ -125,14 +125,16 @@ public class ErpReceivableAccountServiceImpl implements ErpReceivableAccountServ
         }
         ErpReceivableDetailReqVO balanceReqVO = new ErpReceivableDetailReqVO();
         balanceReqVO.setCustomerId(reqVO.getCustomerId());
-        BigDecimal balance = DataPermissionUtils.executeIgnore(() -> buildRows(balanceReqVO, scope).stream()
-                .map(this::getChangeAmount).reduce(BigDecimal.ZERO, BigDecimal::add));
+        List<ErpReceivableDetailRespVO> balanceRows = DataPermissionUtils.executeIgnore(() ->
+                buildRows(balanceReqVO, scope));
+        BigDecimal balance = balanceRows.stream().map(this::getChangeAmount).reduce(BigDecimal.ZERO, BigDecimal::add);
         if (balance.compareTo(BigDecimal.ZERO) <= 0) {
             throw exception(RECEIVABLE_WRITEOFF_BALANCE_EMPTY);
         }
         if (reqVO.getWriteOffAmount().compareTo(balance) > 0) {
             throw exception(RECEIVABLE_WRITEOFF_AMOUNT_EXCEED, reqVO.getWriteOffAmount(), balance);
         }
+        validateReceivableWriteOffAvailable(reqVO, balanceRows);
         ErpReceivableWriteOffDO writeOff = new ErpReceivableWriteOffDO();
         writeOff.setCustomerId(reqVO.getCustomerId());
         writeOff.setBizType(reqVO.getBizType());
@@ -151,6 +153,37 @@ public class ErpReceivableAccountServiceImpl implements ErpReceivableAccountServ
                         + (reqVO.getBizNo() == null ? "" : "，单据号：" + reqVO.getBizNo())
                         + "，核销金额：" + reqVO.getWriteOffAmount(), String.valueOf(writeOff.getId()));
         return writeOff.getId();
+    }
+
+    private void validateReceivableWriteOffAvailable(ErpReceivableWriteOffReqVO reqVO,
+                                                     List<ErpReceivableDetailRespVO> rows) {
+        if (reqVO.getBizType() == null || reqVO.getBizId() == null) {
+            return;
+        }
+        BigDecimal documentAmount = rows.stream()
+                .filter(row -> reqVO.getBizType().equals(row.getBizType()))
+                .filter(row -> reqVO.getBizId().equals(row.getBizId()))
+                .map(row -> row.getIncreaseAmount() == null ? BigDecimal.ZERO : row.getIncreaseAmount())
+                .filter(amount -> amount.compareTo(BigDecimal.ZERO) > 0)
+                .findFirst()
+                .orElse(BigDecimal.ZERO);
+        BigDecimal allocatedAmount = rows.stream()
+                .filter(row -> reqVO.getBizType().equals(row.getBizType()))
+                .filter(row -> reqVO.getBizId().equals(row.getBizId()))
+                .map(row -> row.getAllocatedAmount() == null ? BigDecimal.ZERO : row.getAllocatedAmount().abs())
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal writtenOffAmount = rows.stream()
+                .filter(row -> reqVO.getBizType().equals(row.getBizType()))
+                .filter(row -> reqVO.getBizId().equals(row.getBizId()))
+                .map(row -> row.getWriteOffAmount() == null ? BigDecimal.ZERO : row.getWriteOffAmount())
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal available = documentAmount.subtract(allocatedAmount).subtract(writtenOffAmount);
+        if (available.compareTo(BigDecimal.ZERO) <= 0) {
+            throw exception(RECEIVABLE_WRITEOFF_BALANCE_EMPTY);
+        }
+        if (reqVO.getWriteOffAmount().compareTo(available) > 0) {
+            throw exception(RECEIVABLE_WRITEOFF_AMOUNT_EXCEED, reqVO.getWriteOffAmount(), available);
+        }
     }
 
     private Long resolveWriteOffDeptId(ErpReceivableWriteOffReqVO reqVO, AdminUserRespDTO loginUser) {
@@ -315,8 +348,7 @@ public class ErpReceivableAccountServiceImpl implements ErpReceivableAccountServ
     private BigDecimal getChangeAmount(ErpReceivableDetailRespVO row) {
         BigDecimal increaseAmount = row.getIncreaseAmount() == null ? BigDecimal.ZERO : row.getIncreaseAmount();
         BigDecimal receiptAmount = row.getReceiptAmount() == null ? BigDecimal.ZERO : row.getReceiptAmount();
-        BigDecimal writeOffAmount = row.getWriteOffAmount() == null ? BigDecimal.ZERO : row.getWriteOffAmount();
-        return increaseAmount.subtract(receiptAmount).subtract(writeOffAmount);
+        return increaseAmount.subtract(receiptAmount);
     }
 
     private CustomerVisibleScope getCustomerVisibleScope() {

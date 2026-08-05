@@ -5,6 +5,7 @@ import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.common.util.number.MoneyUtils;
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
 import cn.iocoder.yudao.framework.datapermission.core.util.DataPermissionUtils;
+import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.ErpStockUpdateRemarkReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.in.ErpStockInPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.in.ErpStockInSaveReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.accounting.ErpVoucherItemDO;
@@ -135,6 +136,14 @@ public class ErpStockInServiceImpl implements ErpStockInService {
         stockInMapper.updateById(updateObj);
         // 2.2 更新入库单项
         updateStockInItemList(updateReqVO.getId(), stockInItems);
+        operateLogService.recordUpdate(ERP_STOCK_IN_TYPE, stockIn.getId(), stockIn.getNo());
+    }
+
+    @Override
+    public void updateStockInRemark(ErpStockUpdateRemarkReqVO updateReqVO) {
+        ErpStockInDO stockIn = validateStockInExists(updateReqVO.getId());
+        stockInMapper.updateById(new ErpStockInDO()
+                .setId(updateReqVO.getId()).setRemark(updateReqVO.getRemark()));
         operateLogService.recordUpdate(ERP_STOCK_IN_TYPE, stockIn.getId(), stockIn.getNo());
     }
 

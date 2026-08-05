@@ -1,5 +1,6 @@
 package cn.iocoder.yudao.module.erp.service.sale;
 
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.ErpSaleUpdateRemarkReqVO;
 import cn.hutool.core.collection.CollUtil;
 import cn.hutool.core.util.ObjectUtil;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
@@ -155,6 +156,15 @@ public class ErpSaleOrderServiceImpl implements ErpSaleOrderService {
         saleOrderMapper.updateById(updateObj);
         // 2.2 更新订单项
         updateSaleOrderItemList(updateReqVO.getId(), saleOrderItems);
+        operateLogService.recordUpdate(ERP_SALE_ORDER_TYPE, updateReqVO.getId(), saleOrder.getNo());
+    }
+
+    @Override
+    public void updateSaleOrderRemark(ErpSaleUpdateRemarkReqVO updateReqVO) {
+        ErpSaleOrderDO saleOrder = validateSaleOrderExists(updateReqVO.getId());
+        saleOrderMapper.updateById(new ErpSaleOrderDO()
+                .setId(updateReqVO.getId())
+                .setRemark(updateReqVO.getRemark()));
         operateLogService.recordUpdate(ERP_SALE_ORDER_TYPE, updateReqVO.getId(), saleOrder.getNo());
     }
 

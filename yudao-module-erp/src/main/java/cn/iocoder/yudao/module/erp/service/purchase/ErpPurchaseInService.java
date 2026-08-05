@@ -1,9 +1,12 @@
 package cn.iocoder.yudao.module.erp.service.purchase;
 
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.ErpPurchaseUpdateRemarkReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.imports.ErpPurchaseImportResultRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.in.ErpPurchaseInImportExcelVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.in.ErpPurchaseInImportRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.in.ErpPurchaseInDraftCreateReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.in.ErpPurchaseInDraftUpdateReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.in.ErpPurchaseInForAdjustRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.in.ErpPurchaseInItemForAdjustRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.in.ErpPurchaseInOrderImportExcelVO;
@@ -40,12 +43,27 @@ public interface ErpPurchaseInService {
      */
     Long createPurchaseIn(@Valid ErpPurchaseInSaveReqVO createReqVO);
 
+    Long createPurchaseInDraft(ErpPurchaseInDraftCreateReqVO createReqVO);
+
     /**
      * 更新采购入库
      *
      * @param updateReqVO 更新信息
      */
     void updatePurchaseIn(@Valid ErpPurchaseInSaveReqVO updateReqVO);
+
+    void updatePurchaseInDraft(ErpPurchaseInDraftUpdateReqVO updateReqVO);
+
+    void updateAndSubmitPurchaseInDraft(@Valid ErpPurchaseInDraftUpdateReqVO updateReqVO);
+
+    void submitPurchaseIn(Long id);
+
+    /**
+     * 修改采购入库备注，不受审批状态限制
+     *
+     * @param updateReqVO 备注信息
+     */
+    void updatePurchaseInRemark(@Valid ErpPurchaseUpdateRemarkReqVO updateReqVO);
 
     /**
      * 更新采购入库的状态

@@ -121,6 +121,25 @@ public interface ErpWarehouseMoveMapper extends BaseMapperX<ErpWarehouseMoveDO> 
                 .eq(ErpWarehouseMoveDO::getId, id).eq(ErpWarehouseMoveDO::getStatus, status));
     }
 
+    default int updateDraftByIdAndStatus(Long id, Integer status, ErpWarehouseMoveDO updateObj) {
+        return update(null, new LambdaUpdateWrapper<ErpWarehouseMoveDO>()
+                .eq(ErpWarehouseMoveDO::getId, id)
+                .eq(ErpWarehouseMoveDO::getStatus, status)
+                .set(ErpWarehouseMoveDO::getDeptId, updateObj.getDeptId())
+                .set(ErpWarehouseMoveDO::getMoveTime, updateObj.getMoveTime())
+                .set(ErpWarehouseMoveDO::getFromWarehouseId, updateObj.getFromWarehouseId())
+                .set(ErpWarehouseMoveDO::getToWarehouseId, updateObj.getToWarehouseId())
+                .set(ErpWarehouseMoveDO::getHandlerId, updateObj.getHandlerId())
+                .set(ErpWarehouseMoveDO::getSourceType, updateObj.getSourceType())
+                .set(ErpWarehouseMoveDO::getSourceId, updateObj.getSourceId())
+                .set(ErpWarehouseMoveDO::getSourceNo, updateObj.getSourceNo())
+                .set(ErpWarehouseMoveDO::getTotalCount, updateObj.getTotalCount())
+                .set(ErpWarehouseMoveDO::getTotalPrice, updateObj.getTotalPrice())
+                .set(ErpWarehouseMoveDO::getTotalCostAmount, updateObj.getTotalCostAmount())
+                .set(ErpWarehouseMoveDO::getRemark, updateObj.getRemark())
+                .set(ErpWarehouseMoveDO::getFileUrl, updateObj.getFileUrl()));
+    }
+
     default ErpWarehouseMoveDO selectByNo(String no) {
         return selectOne(ErpWarehouseMoveDO::getNo, no);
     }

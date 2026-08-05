@@ -12,7 +12,10 @@ import cn.iocoder.yudao.framework.excel.core.util.ExcelUtils;
 import cn.iocoder.yudao.module.erp.controller.admin.common.vo.ErpExportFieldRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpProductRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.imports.ErpSaleImportResultRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.ErpSaleUpdateRemarkReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.quote.ErpSaleQuoteExportRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.quote.ErpSaleQuoteDraftCreateReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.quote.ErpSaleQuoteDraftUpdateReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.quote.ErpSaleQuoteImportExcelVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.quote.ErpSaleQuoteImportRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.quote.ErpSaleQuoteConvertCartReqVO;
@@ -26,6 +29,7 @@ import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleQuoteDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleQuoteItemDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpWarehouseDO;
 import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpSaleOutMapper;
+import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpSaleOutItemMapper;
 import cn.iocoder.yudao.module.erp.enums.config.ErpFieldConfigModuleEnum;
 import cn.iocoder.yudao.module.erp.enums.sale.ErpSaleBizSourceTypeEnum;
 import cn.iocoder.yudao.module.erp.enums.sale.ErpSaleQuoteStatusEnum;
@@ -100,6 +104,8 @@ public class ErpSaleQuoteController {
     @Resource
     private ErpSaleOutMapper saleOutMapper;
     @Resource
+    private ErpSaleOutItemMapper saleOutItemMapper;
+    @Resource
     private ErpSaleFieldPermissionMasker fieldPermissionMasker;
     @Resource
     private ErpWarehouseService warehouseService;
@@ -117,11 +123,43 @@ public class ErpSaleQuoteController {
         return success(saleQuoteService.createSaleQuote(createReqVO));
     }
 
+    @PostMapping("/create-draft")
+    @Operation(summary = "创建报价订单草稿")
+    @PreAuthorize("@ss.hasPermission('erp:sale-quote:create')")
+    public CommonResult<Long> createSaleQuoteDraft(@RequestBody ErpSaleQuoteDraftCreateReqVO createReqVO) {
+        return success(saleQuoteService.createSaleQuoteDraft(createReqVO));
+    }
+
     @PutMapping("/update")
     @Operation(summary = "更新报价订单")
     @PreAuthorize("@ss.hasPermission('erp:sale-quote:update')")
     public CommonResult<Boolean> updateSaleQuote(@Valid @RequestBody ErpSaleQuoteSaveReqVO updateReqVO) {
         saleQuoteService.updateSaleQuote(updateReqVO);
+        return success(true);
+    }
+
+    @PutMapping("/update-draft")
+    @Operation(summary = "更新报价订单草稿")
+    @PreAuthorize("@ss.hasPermission('erp:sale-quote:update')")
+    public CommonResult<Boolean> updateSaleQuoteDraft(@RequestBody ErpSaleQuoteDraftUpdateReqVO updateReqVO) {
+        saleQuoteService.updateSaleQuoteDraft(updateReqVO);
+        return success(true);
+    }
+
+    @PutMapping("/submit")
+    @Operation(summary = "提交报价订单草稿")
+    @PreAuthorize("@ss.hasPermission('erp:sale-quote:create')")
+    public CommonResult<Boolean> submitSaleQuote(@RequestParam("id") Long id) {
+        saleQuoteService.submitSaleQuote(id);
+        return success(true);
+    }
+
+    @PutMapping("/update-remark")
+    @Operation(summary = "修改销售报价单备注")
+    @PreAuthorize("@ss.hasPermission('erp:sale-quote:update')")
+    public CommonResult<Boolean> updateSaleQuoteRemark(
+            @Valid @RequestBody ErpSaleUpdateRemarkReqVO updateReqVO) {
+        saleQuoteService.updateSaleQuoteRemark(updateReqVO);
         return success(true);
     }
 
@@ -264,8 +302,10 @@ public class ErpSaleQuoteController {
         Map<Long, ErpWarehouseDO> warehouseMap = CollUtil.isEmpty(itemList)
                 ? Collections.emptyMap()
                 : getWarehouseMapIgnoreDataPermission(convertSet(itemList, ErpSaleQuoteItemDO::getWarehouseId));
-        Map<Long, ErpCustomerDO> customerMap = customerService.getCustomerMap(
-                convertSet(pageResult.getList(), ErpSaleQuoteDO::getCustomerId));
+        Set<Long> customerIds = convertSet(pageResult.getList(), ErpSaleQuoteDO::getCustomerId);
+        customerIds.remove(null);
+        Map<Long, ErpCustomerDO> customerMap = CollUtil.isEmpty(customerIds)
+                ? Collections.emptyMap() : customerService.getCustomerMap(customerIds);
         Set<Long> userIds = convertSet(pageResult.getList(), quote -> parseLongSafely(quote.getCreator()));
         userIds.addAll(convertSet(pageResult.getList(), quote -> parseLongSafely(quote.getUpdater())));
         userIds.addAll(convertSet(pageResult.getList(), ErpSaleQuoteDO::getSaleUserId));
@@ -352,11 +392,22 @@ public class ErpSaleQuoteController {
                               Map<Long, DeptRespDTO> deptMap,
                               Map<Long, ErpSaleOutDO> saleOutMap) {
         List<ErpSaleQuoteItemDO> safeItems = CollUtil.isEmpty(items) ? Collections.emptyList() : items;
+        Map<Long, BigDecimal> lastSalePriceMap = DataPermissionUtils.executeIgnore(
+                () -> saleOutItemMapper.selectLatestSalePriceMap(convertSet(safeItems, ErpSaleQuoteItemDO::getProductId)));
+        boolean hidePrice = isQuoteItemPriceHidden();
+        Integer customerPriceLevel = vo.getCustomerId() == null || customerMap.get(vo.getCustomerId()) == null
+                ? null : customerMap.get(vo.getCustomerId()).getPriceLevel();
         List<ErpSaleQuoteRespVO.Item> respItems = BeanUtils.toBean(safeItems, ErpSaleQuoteRespVO.Item.class,
                 item -> {
-                    MapUtils.findAndThen(productMap, item.getProductId(), product -> item.setProductName(product.getName())
-                            .setProductCode(product.getCode()).setProductBarCode(product.getBarCode())
-                            .setProductUnitName(product.getUnitName()).setBatchNoEnabled(product.getBatchNoEnabled()));
+                    item.setLastSalePrice(hidePrice ? null : lastSalePriceMap.get(item.getProductId()));
+                    MapUtils.findAndThen(productMap, item.getProductId(), product -> {
+                        if (!hidePrice) {
+                            item.setSalePrice(resolveCustomerSalePrice(product, customerPriceLevel));
+                        }
+                        item.setProductName(product.getName())
+                                .setProductCode(product.getCode()).setProductBarCode(product.getBarCode())
+                                .setProductUnitName(product.getUnitName()).setBatchNoEnabled(product.getBatchNoEnabled());
+                    });
                     MapUtils.findAndThen(warehouseMap, item.getWarehouseId(), warehouse -> {
                         item.setWarehouseName(warehouse.getName());
                         item.setWarehouseDeptId(warehouse.getDeptId());
@@ -395,6 +446,46 @@ public class ErpSaleQuoteController {
                 vo.setGeneratedSaleOutNo(saleOut.getNo());
             }
         }
+    }
+
+    private boolean isQuoteItemPriceHidden() {
+        Set<String> hiddenFields = fieldPermissionMasker.getHiddenFieldSet(FIELD_PERMISSION_MODULE);
+        return hiddenFields.contains("item_productPrice")
+                || hiddenFields.contains("col_item_productPrice")
+                || hiddenFields.contains("productPrice")
+                || hiddenFields.contains("col_productPrice");
+    }
+
+    private BigDecimal resolveCustomerSalePrice(ErpProductRespVO product, Integer customerPriceLevel) {
+        if (product == null) {
+            return null;
+        }
+        switch (customerPriceLevel == null ? 0 : customerPriceLevel) {
+            case 1:
+                return firstNonNull(product.getBackupPrice1(), BigDecimal.ZERO);
+            case 2:
+                return firstNonNull(product.getReferencePrice(), BigDecimal.ZERO);
+            case 3:
+                return firstNonNull(product.getRetailPrice(), BigDecimal.ZERO);
+            case 4:
+                return firstNonNull(product.getWholesalePrice(), BigDecimal.ZERO);
+            case 5:
+                return firstNonNull(product.getLastPurchasePrice(), product.getPurchasePrice(), BigDecimal.ZERO);
+            case 6:
+                return firstNonNull(product.getPurchasePrice(), product.getLastPurchasePrice(), BigDecimal.ZERO);
+            default:
+                return firstNonNull(product.getSalePrice(), product.getRetailPrice(),
+                        product.getReferencePrice(), BigDecimal.ZERO);
+        }
+    }
+
+    private BigDecimal firstNonNull(BigDecimal... values) {
+        for (BigDecimal value : values) {
+            if (value != null) {
+                return value;
+            }
+        }
+        return null;
     }
 
     private static Long parseLongSafely(String value) {

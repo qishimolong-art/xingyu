@@ -5,6 +5,9 @@ import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.common.util.number.MoneyUtils;
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
 import cn.iocoder.yudao.framework.datapermission.core.util.DataPermissionUtils;
+import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.ErpStockUpdateRemarkReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.warehousemove.ErpWarehouseMoveDraftCreateReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.warehousemove.ErpWarehouseMoveDraftUpdateReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.warehousemove.ErpWarehouseMovePageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.warehousemove.ErpWarehouseMoveSaveReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.warehousemove.ErpWarehouseMoveSummaryRespVO;
@@ -17,6 +20,7 @@ import cn.iocoder.yudao.module.erp.dal.mysql.stock.ErpWarehouseMoveMapper;
 import cn.iocoder.yudao.module.erp.dal.redis.no.ErpNoRedisDAO;
 import cn.iocoder.yudao.module.erp.enums.ErpAuditStatus;
 import cn.iocoder.yudao.module.erp.enums.stock.ErpStockRecordBizTypeEnum;
+import cn.iocoder.yudao.module.erp.enums.stock.ErpWarehouseMoveStatusEnum;
 import cn.iocoder.yudao.module.erp.service.common.ErpOperateLogService;
 import cn.iocoder.yudao.module.erp.service.product.ErpProductService;
 import cn.iocoder.yudao.module.erp.service.stock.bo.ErpStockRecordCreateReqBO;
@@ -28,6 +32,7 @@ import javax.annotation.Resource;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -82,6 +87,32 @@ public class ErpWarehouseMoveServiceImpl implements ErpWarehouseMoveService {
 
     @Override
     @Transactional(rollbackFor = Exception.class)
+    public Long createWarehouseMoveDraft(ErpWarehouseMoveDraftCreateReqVO createReqVO) {
+        List<ErpWarehouseMoveItemDO> items = buildDraftItems(createReqVO);
+        if (CollUtil.isEmpty(items)) {
+            throw exception(WAREHOUSE_MOVE_DRAFT_ITEMS_REQUIRED);
+        }
+        String no = noRedisDAO.generate(ErpNoRedisDAO.WAREHOUSE_MOVE_NO_PREFIX);
+        if (warehouseMoveMapper.selectByNo(no) != null) {
+            throw exception(WAREHOUSE_MOVE_NO_EXISTS);
+        }
+        ErpWarehouseMoveDO warehouseMove = BeanUtils.toBean(createReqVO, ErpWarehouseMoveDO.class, target -> target
+                .setNo(no)
+                .setStatus(ErpWarehouseMoveStatusEnum.DRAFT.getStatus())
+                .setTotalCount(getSumValue(items, ErpWarehouseMoveItemDO::getCount,
+                        BigDecimal::add, BigDecimal.ZERO))
+                .setTotalPrice(getSumValue(items, ErpWarehouseMoveItemDO::getTotalPrice,
+                        BigDecimal::add, BigDecimal.ZERO))
+                .setTotalCostAmount(getSumValue(items, ErpWarehouseMoveItemDO::getCostAmount,
+                        BigDecimal::add, BigDecimal.ZERO)));
+        warehouseMoveMapper.insert(warehouseMove);
+        replaceWarehouseMoveItems(warehouseMove.getId(), items);
+        operateLogService.recordCreate(ERP_WAREHOUSE_MOVE_TYPE, warehouseMove.getId(), warehouseMove.getNo());
+        return warehouseMove.getId();
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
     public void updateWarehouseMove(ErpWarehouseMoveSaveReqVO updateReqVO) {
         ErpWarehouseMoveDO warehouseMove = validateWarehouseMoveExists(updateReqVO.getId());
         if (ErpAuditStatus.APPROVE.getStatus().equals(warehouseMove.getStatus())) {
@@ -102,12 +133,85 @@ public class ErpWarehouseMoveServiceImpl implements ErpWarehouseMoveService {
 
     @Override
     @Transactional(rollbackFor = Exception.class)
+    public void updateWarehouseMoveDraft(ErpWarehouseMoveDraftUpdateReqVO updateReqVO) {
+        ErpWarehouseMoveDO warehouseMove = validateWarehouseMoveExists(updateReqVO.getId());
+        if (!ErpWarehouseMoveStatusEnum.DRAFT.getStatus().equals(warehouseMove.getStatus())) {
+            throw exception(WAREHOUSE_MOVE_UPDATE_FAIL_NOT_DRAFT, warehouseMove.getNo());
+        }
+        List<ErpWarehouseMoveItemDO> items = buildDraftItems(updateReqVO);
+        ErpWarehouseMoveDO updateObj = BeanUtils.toBean(updateReqVO, ErpWarehouseMoveDO.class, target -> target
+                .setDeptId(updateReqVO.getDeptId() != null ? updateReqVO.getDeptId() : warehouseMove.getDeptId())
+                .setTotalCount(getSumValue(items, ErpWarehouseMoveItemDO::getCount,
+                        BigDecimal::add, BigDecimal.ZERO))
+                .setTotalPrice(getSumValue(items, ErpWarehouseMoveItemDO::getTotalPrice,
+                        BigDecimal::add, BigDecimal.ZERO))
+                .setTotalCostAmount(getSumValue(items, ErpWarehouseMoveItemDO::getCostAmount,
+                        BigDecimal::add, BigDecimal.ZERO)));
+        int updateCount = warehouseMoveMapper.updateDraftByIdAndStatus(updateReqVO.getId(),
+                ErpWarehouseMoveStatusEnum.DRAFT.getStatus(), updateObj);
+        if (updateCount == 0) {
+            throw exception(WAREHOUSE_MOVE_UPDATE_FAIL_NOT_DRAFT, warehouseMove.getNo());
+        }
+        replaceWarehouseMoveItems(updateReqVO.getId(), items);
+        operateLogService.recordUpdate(ERP_WAREHOUSE_MOVE_TYPE, warehouseMove.getId(), warehouseMove.getNo());
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void updateAndSubmitWarehouseMoveDraft(ErpWarehouseMoveSaveReqVO updateReqVO) {
+        ErpWarehouseMoveDO warehouseMove = validateWarehouseMoveExists(updateReqVO.getId());
+        if (!ErpWarehouseMoveStatusEnum.DRAFT.getStatus().equals(warehouseMove.getStatus())) {
+            throw exception(WAREHOUSE_MOVE_UPDATE_FAIL_NOT_DRAFT, warehouseMove.getNo());
+        }
+        updateWarehouseMove(updateReqVO);
+        submitWarehouseMove(updateReqVO.getId());
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void submitWarehouseMove(Long id) {
+        ErpWarehouseMoveDO warehouseMove = validateWarehouseMoveExists(id);
+        if (!ErpWarehouseMoveStatusEnum.DRAFT.getStatus().equals(warehouseMove.getStatus())) {
+            throw exception(WAREHOUSE_MOVE_SUBMIT_FAIL);
+        }
+        if (warehouseMove.getMoveTime() == null) {
+            throw exception(WAREHOUSE_MOVE_SUBMIT_TIME_REQUIRED);
+        }
+        if (warehouseMove.getFromWarehouseId() == null || warehouseMove.getToWarehouseId() == null) {
+            throw exception(WAREHOUSE_MOVE_WAREHOUSE_REQUIRED);
+        }
+        List<ErpWarehouseMoveItemDO> items = warehouseMoveItemMapper.selectListByMoveId(id);
+        if (CollUtil.isEmpty(items)) {
+            throw exception(WAREHOUSE_MOVE_SUBMIT_ITEMS_REQUIRED);
+        }
+        ErpWarehouseMoveSaveReqVO reqVO = BeanUtils.toBean(warehouseMove, ErpWarehouseMoveSaveReqVO.class);
+        reqVO.setItems(BeanUtils.toBean(items, ErpWarehouseMoveSaveReqVO.Item.class));
+        validateWarehouseMoveItems(reqVO);
+        int updateCount = warehouseMoveMapper.updateByIdAndStatus(id,
+                ErpWarehouseMoveStatusEnum.DRAFT.getStatus(),
+                new ErpWarehouseMoveDO().setStatus(ErpWarehouseMoveStatusEnum.PROCESS.getStatus()));
+        if (updateCount == 0) {
+            throw exception(WAREHOUSE_MOVE_SUBMIT_FAIL);
+        }
+        operateLogService.recordUpdate(ERP_WAREHOUSE_MOVE_TYPE, warehouseMove.getId(), warehouseMove.getNo());
+    }
+
+    @Override
+    public void updateWarehouseMoveRemark(ErpStockUpdateRemarkReqVO updateReqVO) {
+        ErpWarehouseMoveDO warehouseMove = validateWarehouseMoveExists(updateReqVO.getId());
+        warehouseMoveMapper.updateById(new ErpWarehouseMoveDO()
+                .setId(updateReqVO.getId()).setRemark(updateReqVO.getRemark()));
+        operateLogService.recordUpdate(ERP_WAREHOUSE_MOVE_TYPE, warehouseMove.getId(), warehouseMove.getNo());
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
     public void updateWarehouseMoveStatus(Long id, Integer status) {
         if (!ErpAuditStatus.APPROVE.getStatus().equals(status)) {
             throw exception(WAREHOUSE_MOVE_PROCESS_FAIL);
         }
         ErpWarehouseMoveDO warehouseMove = validateWarehouseMoveExists(id);
-        if (warehouseMove.getStatus().equals(status)) {
+        if (!ErpWarehouseMoveStatusEnum.PROCESS.getStatus().equals(warehouseMove.getStatus())) {
             throw exception(WAREHOUSE_MOVE_APPROVE_FAIL);
         }
         List<ErpWarehouseMoveItemDO> items = warehouseMoveItemMapper.selectListByMoveId(id);
@@ -177,6 +281,28 @@ public class ErpWarehouseMoveServiceImpl implements ErpWarehouseMoveService {
         });
     }
 
+    private List<ErpWarehouseMoveItemDO> buildDraftItems(ErpWarehouseMoveSaveReqVO reqVO) {
+        if (reqVO.getFromWarehouseId() == null || reqVO.getToWarehouseId() == null
+                || reqVO.getFromWarehouseId().equals(reqVO.getToWarehouseId())
+                || CollUtil.isEmpty(reqVO.getItems())) {
+            return Collections.emptyList();
+        }
+        List<ErpWarehouseMoveSaveReqVO.Item> validItems = convertList(reqVO.getItems(), item -> {
+            if (item == null || item.getProductId() == null || item.getCount() == null
+                    || item.getCount().compareTo(BigDecimal.ZERO) <= 0) {
+                return null;
+            }
+            return item;
+        });
+        validItems.removeIf(java.util.Objects::isNull);
+        if (CollUtil.isEmpty(validItems)) {
+            return Collections.emptyList();
+        }
+        ErpWarehouseMoveSaveReqVO validReqVO = BeanUtils.toBean(reqVO, ErpWarehouseMoveSaveReqVO.class);
+        validReqVO.setItems(validItems);
+        return validateWarehouseMoveItems(validReqVO);
+    }
+
     private void validateWarehouseMoveItemsReadyForApprove(ErpWarehouseMoveDO warehouseMove,
                                                            List<ErpWarehouseMoveItemDO> items) {
         if (CollUtil.isEmpty(items)) {
@@ -189,7 +315,8 @@ public class ErpWarehouseMoveServiceImpl implements ErpWarehouseMoveService {
         DataPermissionUtils.executeIgnore(() -> warehouseService.validWarehouseList(warehouseIds));
         warehouseService.validateCurrentUserStockMoveFromWarehousePermission(java.util.Collections.singleton(warehouseMove.getFromWarehouseId()));
         warehouseService.validateCurrentUserWarehousePermission(java.util.Collections.singleton(warehouseMove.getToWarehouseId()));
-        productService.validProductList(convertSet(items, ErpWarehouseMoveItemDO::getProductId));
+        DataPermissionUtils.executeIgnore(() ->
+                productService.validProductList(convertSet(items, ErpWarehouseMoveItemDO::getProductId)));
         for (ErpWarehouseMoveItemDO item : items) {
             ErpStockDO stock = DataPermissionUtils.executeIgnore(() ->
                     stockService.getStock(item.getProductId(), item.getFromWarehouseId()));
@@ -249,6 +376,15 @@ public class ErpWarehouseMoveServiceImpl implements ErpWarehouseMoveService {
         if (CollUtil.isNotEmpty(diffList.get(2))) {
             warehouseMoveItemMapper.deleteByIds(convertList(diffList.get(2), ErpWarehouseMoveItemDO::getId));
         }
+    }
+
+    private void replaceWarehouseMoveItems(Long id, List<ErpWarehouseMoveItemDO> items) {
+        warehouseMoveItemMapper.deleteByMoveId(id);
+        if (CollUtil.isEmpty(items)) {
+            return;
+        }
+        items.forEach(item -> item.setId(null).setMoveId(id));
+        warehouseMoveItemMapper.insertBatch(items);
     }
 
     @Override

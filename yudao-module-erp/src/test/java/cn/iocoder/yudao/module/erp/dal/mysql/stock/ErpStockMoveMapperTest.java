@@ -93,7 +93,7 @@ class ErpStockMoveMapperTest {
     void applyTransferInVisibleScope_departmentScope_requiresAllToDepartments() {
         MPJLambdaWrapperX<ErpStockMoveDO> wrapper = new MPJLambdaWrapperX<>();
 
-        ErpStockMoveMapper.applyTransferInVisibleScope(wrapper, Arrays.asList(10L, 20L), null, false);
+        ErpStockMoveMapper.applyTransferInVisibleScope(wrapper, Arrays.asList(10L, 20L), false);
 
         String sqlSegment = wrapper.getSqlSegment();
         assertTrue(sqlSegment.contains("to_dept_id"));
@@ -106,33 +106,22 @@ class ErpStockMoveMapperTest {
     }
 
     @Test
-    void applyTransferInVisibleScope_creatorScope_usesCreator() {
-        MPJLambdaWrapperX<ErpStockMoveDO> wrapper = new MPJLambdaWrapperX<>();
-
-        ErpStockMoveMapper.applyTransferInVisibleScope(wrapper, Collections.emptySet(), 88L, false);
-
-        String sqlSegment = wrapper.getSqlSegment();
-        assertTrue(sqlSegment.contains("1 = 0"));
-        assertTrue(sqlSegment.contains("creator"));
-        assertTrue(sqlSegment.contains("OR"));
-    }
-
-    @Test
     void applyTransferInVisibleScope_noScope_deniesAll() {
         MPJLambdaWrapperX<ErpStockMoveDO> wrapper = new MPJLambdaWrapperX<>();
 
-        ErpStockMoveMapper.applyTransferInVisibleScope(wrapper, Collections.emptySet(), null, false);
+        ErpStockMoveMapper.applyTransferInVisibleScope(wrapper, Collections.emptySet(), false);
 
         String sqlSegment = wrapper.getSqlSegment();
         assertTrue(sqlSegment.contains("1 = 0"));
         assertFalse(sqlSegment.contains("creator"));
+        assertFalse(sqlSegment.contains("OR"));
     }
 
     @Test
     void applyTransferInVisibleScope_allScope_addsNoFilter() {
         MPJLambdaWrapperX<ErpStockMoveDO> wrapper = new MPJLambdaWrapperX<>();
 
-        ErpStockMoveMapper.applyTransferInVisibleScope(wrapper, Collections.singleton(10L), 88L, true);
+        ErpStockMoveMapper.applyTransferInVisibleScope(wrapper, Collections.singleton(10L), true);
 
         assertTrue(wrapper.getSqlSegment().isEmpty());
     }

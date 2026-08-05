@@ -5,7 +5,7 @@ import cn.iocoder.yudao.framework.common.validation.InEnum;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Data;
 
-import javax.validation.constraints.NotEmpty;
+import javax.validation.constraints.NotBlank;
 import javax.validation.constraints.NotNull;
 import javax.validation.constraints.Size;
 
@@ -17,7 +17,7 @@ public class ErpAccountSaveReqVO {
     private Long id;
 
     @Schema(description = "账户名称", requiredMode = Schema.RequiredMode.REQUIRED, example = "基本户")
-    @NotEmpty(message = "账户名称不能为空")
+    @NotBlank(message = "账户名称不能为空")
     private String name;
 
     @Schema(description = "账户类型", requiredMode = Schema.RequiredMode.REQUIRED, example = "1")
@@ -49,5 +49,8 @@ public class ErpAccountSaveReqVO {
     @Schema(description = "排序", requiredMode = Schema.RequiredMode.REQUIRED, example = "1")
     @NotNull(message = "排序不能为空")
     private Integer sort;
+
+    @Schema(description = "是否默认", example = "false")
+    private Boolean defaultStatus;
 
 }

@@ -1,9 +1,12 @@
 package cn.iocoder.yudao.module.erp.service.finance.receivable;
 
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
+import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.ErpFinanceUpdateRemarkReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.finance.receivable.vo.otherreceivable.ErpReceivableOtherDraftSaveReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.receivable.vo.otherreceivable.ErpReceivableOtherPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.receivable.vo.otherreceivable.ErpReceivableOtherSaveReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.receivable.ErpReceivableOtherDO;
+import cn.iocoder.yudao.module.erp.service.finance.bo.ErpSaleCartFreightDraftCreateReqBO;
 
 import javax.validation.Valid;
 
@@ -11,7 +14,21 @@ public interface ErpReceivableOtherService {
 
     Long createReceivableOther(@Valid ErpReceivableOtherSaveReqVO createReqVO);
 
+    Long createReceivableOtherDraft(ErpReceivableOtherDraftSaveReqVO createReqVO);
+
+    Long createAndSubmitReceivableOther(@Valid ErpReceivableOtherSaveReqVO createReqVO);
+
+    Long createFromSaleCartFreight(ErpSaleCartFreightDraftCreateReqBO createReqBO);
+
     void updateReceivableOther(@Valid ErpReceivableOtherSaveReqVO updateReqVO);
+
+    void updateReceivableOtherDraft(ErpReceivableOtherDraftSaveReqVO updateReqVO);
+
+    void updateAndSubmitReceivableOther(@Valid ErpReceivableOtherSaveReqVO updateReqVO);
+
+    void submitReceivableOther(Long id);
+
+    void updateReceivableOtherRemark(@Valid ErpFinanceUpdateRemarkReqVO updateReqVO);
 
     void updateReceivableOtherStatus(Long id, Integer status);
 

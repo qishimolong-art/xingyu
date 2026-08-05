@@ -19,6 +19,10 @@ public interface ErpPayableExpenseItemMapper extends BaseMapperX<ErpPayableExpen
         return selectList(ErpPayableExpenseItemDO::getExpenseId, expenseIds);
     }
 
+    default void deleteByExpenseId(Long expenseId) {
+        delete(ErpPayableExpenseItemDO::getExpenseId, expenseId);
+    }
+
     default List<ErpPayableExpenseItemDO> selectListByItemNameOrInvoiceNo(String itemName, String invoiceNo) {
         return selectList(new LambdaQueryWrapperX<ErpPayableExpenseItemDO>()
                 .likeIfPresent(ErpPayableExpenseItemDO::getItemName, itemName)

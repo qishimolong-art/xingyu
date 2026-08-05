@@ -1,6 +1,7 @@
 package cn.iocoder.yudao.module.erp.service.sale;
 
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.ErpSaleUpdateRemarkReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.order.ErpSaleOrderImportExcelVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.order.ErpSaleOrderImportRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.order.ErpSaleOrderPageReqVO;
@@ -35,6 +36,8 @@ public interface ErpSaleOrderService {
      * @param updateReqVO 更新信息
      */
     void updateSaleOrder(@Valid ErpSaleOrderSaveReqVO updateReqVO);
+
+    void updateSaleOrderRemark(@Valid ErpSaleUpdateRemarkReqVO updateReqVO);
 
     /**
      * 更新销售订单的状态

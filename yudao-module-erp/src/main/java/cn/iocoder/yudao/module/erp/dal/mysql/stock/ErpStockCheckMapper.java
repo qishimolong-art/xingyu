@@ -21,6 +21,7 @@ public interface ErpStockCheckMapper extends BaseMapperX<ErpStockCheckDO> {
 
     default PageResult<ErpStockCheckDO> selectPage(ErpStockCheckPageReqVO reqVO) {
         MPJLambdaWrapperX<ErpStockCheckDO> query = new MPJLambdaWrapperX<ErpStockCheckDO>()
+                .inIfPresent(ErpStockCheckDO::getId, reqVO.getIds())
                 .likeIfPresent(ErpStockCheckDO::getNo, reqVO.getNo())
                 .betweenIfPresent(ErpStockCheckDO::getCheckTime, reqVO.getCheckTime())
                 .eqIfPresent(ErpStockCheckDO::getCheckType, reqVO.getCheckType())

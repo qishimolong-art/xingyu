@@ -22,6 +22,15 @@ import java.util.Map;
 @Mapper
 public interface ErpFinanceReceiptItemMapper extends BaseMapperX<ErpFinanceReceiptItemDO> {
 
+    static String effectiveReceiptPriceSql(int bizType) {
+        return "COALESCE((SELECT SUM(fri.receipt_price) FROM erp_finance_receipt_item fri "
+                + "INNER JOIN erp_finance_receipt fr ON fr.id = fri.receipt_id "
+                + "AND fr.deleted = 0 AND fr.status = 20 AND fr.tenant_id = t.tenant_id "
+                + "WHERE fri.deleted = 0 AND fri.write_off_status = 1 "
+                + "AND fri.tenant_id = t.tenant_id AND fri.biz_type = " + bizType
+                + " AND fri.biz_id = t.id), 0)";
+    }
+
     default List<ErpFinanceReceiptItemDO> selectListByReceiptId(Long receiptId) {
         return selectList(new LambdaQueryWrapperX<ErpFinanceReceiptItemDO>()
                 .eq(ErpFinanceReceiptItemDO::getReceiptId, receiptId)
@@ -30,6 +39,10 @@ public interface ErpFinanceReceiptItemMapper extends BaseMapperX<ErpFinanceRecei
 
     default List<ErpFinanceReceiptItemDO> selectListByReceiptIds(Collection<Long> receiptIds) {
         return selectList(ErpFinanceReceiptItemDO::getReceiptId, receiptIds);
+    }
+
+    default int deleteByReceiptId(Long receiptId) {
+        return delete(ErpFinanceReceiptItemDO::getReceiptId, receiptId);
     }
 
     default BigDecimal selectReceiptPriceSumByBizIdAndBizType(Long bizId, Integer bizType) {

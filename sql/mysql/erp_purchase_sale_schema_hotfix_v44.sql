@@ -289,6 +289,7 @@ CALL add_erp_column_if_missing('erp_sale_cart', 'settle_method', '`settle_method
 CALL add_erp_column_if_missing('erp_sale_cart', 'invoice_type', '`invoice_type` VARCHAR(64) DEFAULT NULL COMMENT ''invoice type''');
 CALL add_erp_column_if_missing('erp_sale_cart', 'delivery_method', '`delivery_method` VARCHAR(64) DEFAULT NULL COMMENT ''delivery method''');
 CALL add_erp_column_if_missing('erp_sale_cart', 'freight_type', '`freight_type` VARCHAR(64) DEFAULT NULL COMMENT ''freight type''');
+CALL add_erp_column_if_missing('erp_sale_cart', 'vin', '`vin` VARCHAR(64) DEFAULT NULL COMMENT ''vin''');
 CALL add_erp_column_if_missing('erp_sale_cart', 'priority', '`priority` VARCHAR(64) DEFAULT NULL COMMENT ''priority''');
 CALL add_erp_column_if_missing('erp_sale_cart', 'price_type', '`price_type` VARCHAR(64) DEFAULT NULL COMMENT ''price type''');
 CALL add_erp_column_if_missing('erp_sale_cart', 'logistics_company', '`logistics_company` VARCHAR(128) DEFAULT NULL COMMENT ''logistics company''');

@@ -9,9 +9,12 @@ import cn.iocoder.yudao.framework.tenant.core.context.TenantContextHolder;
 import cn.iocoder.yudao.module.system.dal.dataobject.dept.DeptDO;
 import cn.iocoder.yudao.module.system.dal.dataobject.permission.MenuDO;
 import cn.iocoder.yudao.module.system.dal.dataobject.permission.RoleDO;
+import cn.iocoder.yudao.module.system.dal.dataobject.permission.FieldDefinitionDO;
+import cn.iocoder.yudao.module.system.dal.dataobject.permission.RoleFieldPermissionDO;
 import cn.iocoder.yudao.module.system.dal.dataobject.permission.RoleMenuDO;
 import cn.iocoder.yudao.module.system.dal.dataobject.permission.UserRoleDO;
 import cn.iocoder.yudao.module.system.dal.mysql.permission.RoleMenuMapper;
+import cn.iocoder.yudao.module.system.dal.mysql.permission.RoleFieldPermissionMapper;
 import cn.iocoder.yudao.module.system.dal.mysql.permission.FieldDefinitionMapper;
 import cn.iocoder.yudao.module.system.dal.mysql.permission.UserRoleMapper;
 import cn.iocoder.yudao.module.system.enums.permission.DataScopeEnum;
@@ -37,6 +40,7 @@ import static cn.iocoder.yudao.framework.test.core.util.AssertUtils.assertServic
 import static cn.iocoder.yudao.framework.test.core.util.RandomUtils.randomLongId;
 import static cn.iocoder.yudao.framework.test.core.util.RandomUtils.randomPojo;
 import static cn.iocoder.yudao.module.system.enums.ErrorCodeConstants.ROLE_DATA_SCOPE_DEPT_IDS_EMPTY;
+import static java.util.Collections.emptySet;
 import static java.util.Collections.singleton;
 import static java.util.Collections.singletonList;
 import static org.junit.jupiter.api.Assertions.*;
@@ -51,6 +55,8 @@ public class PermissionServiceTest extends BaseDbUnitTest {
 
     @Resource
     private RoleMenuMapper roleMenuMapper;
+    @Resource
+    private RoleFieldPermissionMapper roleFieldPermissionMapper;
     @Resource
     private UserRoleMapper userRoleMapper;
 
@@ -70,7 +76,85 @@ public class PermissionServiceTest extends BaseDbUnitTest {
     private FieldDefinitionMapper fieldDefinitionMapper;
 
     @Test
-    public void testGetCurrentUserHiddenFields_ProductMergeDepartmentAndPersonal() {
+    public void testGetCurrentUserHiddenFields_ProductUsesLoginDepartmentAndPersonal() {
+        try (MockedStatic<SpringUtil> springUtilMockedStatic = mockStatic(SpringUtil.class);
+             MockedStatic<SecurityFrameworkUtils> securityMockedStatic = mockStatic(SecurityFrameworkUtils.class)) {
+            springUtilMockedStatic.when(() -> SpringUtil.getBean(eq(PermissionServiceImpl.class)))
+                    .thenReturn(permissionService);
+            securityMockedStatic.when(SecurityFrameworkUtils::getLoginUserId).thenReturn(1L);
+            securityMockedStatic.when(SecurityFrameworkUtils::getLoginUserDeptId).thenReturn(10L);
+            userRoleMapper.insert(randomPojo(UserRoleDO.class).setUserId(1L).setRoleId(100L));
+            RoleDO role = randomPojo(RoleDO.class, item -> item.setId(100L)
+                    .setStatus(CommonStatusEnum.ENABLE.getStatus()));
+            when(roleService.getRoleListFromCache(eq(singleton(100L)))).thenReturn(toList(role));
+            when(roleService.hasAnySuperAdmin(eq(singleton(100L)))).thenReturn(false);
+            DeptDO enabledDept = randomPojo(DeptDO.class, item -> item.setId(10L)
+                    .setStatus(CommonStatusEnum.ENABLE.getStatus()));
+            when(deptService.getDept(10L)).thenReturn(enabledDept);
+            when(deptPriceFieldService.getHiddenPriceFields(eq(singleton(10L))))
+                    .thenReturn(toList("referencePrice", "col_referencePrice"));
+            when(userPriceFieldService.getHiddenProductPriceFields(1L)).thenReturn(toList("retailPrice"));
+
+            List<String> result = permissionService.getCurrentUserHiddenFields("erp_product");
+
+            assertEquals(toList("referencePrice", "col_referencePrice", "retailPrice"), result);
+            verify(userService, never()).getUserDeptIdListByUserId(anyLong());
+        }
+    }
+
+    @Test
+    public void testGetCurrentUserHiddenFields_ProductUsesBusinessDepartmentOverride() {
+        try (MockedStatic<SpringUtil> springUtilMockedStatic = mockStatic(SpringUtil.class);
+             MockedStatic<SecurityFrameworkUtils> securityMockedStatic = mockStatic(SecurityFrameworkUtils.class)) {
+            springUtilMockedStatic.when(() -> SpringUtil.getBean(eq(PermissionServiceImpl.class)))
+                    .thenReturn(permissionService);
+            securityMockedStatic.when(SecurityFrameworkUtils::getLoginUserId).thenReturn(1L);
+            securityMockedStatic.when(SecurityFrameworkUtils::getLoginUserDeptId).thenReturn(10L);
+            userRoleMapper.insert(randomPojo(UserRoleDO.class).setUserId(1L).setRoleId(100L));
+            RoleDO role = randomPojo(RoleDO.class, item -> item.setId(100L)
+                    .setStatus(CommonStatusEnum.ENABLE.getStatus()));
+            when(roleService.getRoleListFromCache(eq(singleton(100L)))).thenReturn(toList(role));
+            when(roleService.hasAnySuperAdmin(eq(singleton(100L)))).thenReturn(false);
+            DeptDO businessDept = randomPojo(DeptDO.class, item -> item.setId(20L)
+                    .setStatus(CommonStatusEnum.ENABLE.getStatus()));
+            when(deptService.getDept(20L)).thenReturn(businessDept);
+            when(deptPriceFieldService.getHiddenPriceFields(eq(singleton(20L))))
+                    .thenReturn(toList("salePrice", "col_salePrice"));
+            when(userPriceFieldService.getHiddenProductPriceFields(1L)).thenReturn(toList("retailPrice"));
+
+            List<String> result = permissionService.getCurrentUserHiddenFields("erp_product", 20L);
+
+            assertEquals(toList("salePrice", "col_salePrice", "retailPrice"), result);
+            verify(deptService).getDept(20L);
+            verify(deptService, never()).getDept(10L);
+        }
+    }
+
+    @Test
+    public void testGetCurrentUserHiddenFields_ProductWithoutDepartmentHidesConfiguredPrices() {
+        try (MockedStatic<SpringUtil> springUtilMockedStatic = mockStatic(SpringUtil.class);
+             MockedStatic<SecurityFrameworkUtils> securityMockedStatic = mockStatic(SecurityFrameworkUtils.class)) {
+            springUtilMockedStatic.when(() -> SpringUtil.getBean(eq(PermissionServiceImpl.class)))
+                    .thenReturn(permissionService);
+            securityMockedStatic.when(SecurityFrameworkUtils::getLoginUserId).thenReturn(1L);
+            securityMockedStatic.when(SecurityFrameworkUtils::getLoginUserDeptId).thenReturn(null);
+            userRoleMapper.insert(randomPojo(UserRoleDO.class).setUserId(1L).setRoleId(100L));
+            RoleDO role = randomPojo(RoleDO.class, item -> item.setId(100L)
+                    .setStatus(CommonStatusEnum.ENABLE.getStatus()));
+            when(roleService.getRoleListFromCache(eq(singleton(100L)))).thenReturn(toList(role));
+            when(roleService.hasAnySuperAdmin(eq(singleton(100L)))).thenReturn(false);
+            when(deptPriceFieldService.getHiddenPriceFields(eq(emptySet())))
+                    .thenReturn(toList("referencePrice", "col_referencePrice"));
+
+            List<String> result = permissionService.getCurrentUserHiddenFields("erp_product");
+
+            assertEquals(toList("referencePrice", "col_referencePrice"), result);
+            verify(deptService, never()).getDept(anyLong());
+        }
+    }
+
+    @Test
+    public void testGetCurrentUserHiddenFields_ProductDisabledBusinessDepartmentHidesConfiguredPrices() {
         try (MockedStatic<SpringUtil> springUtilMockedStatic = mockStatic(SpringUtil.class);
              MockedStatic<SecurityFrameworkUtils> securityMockedStatic = mockStatic(SecurityFrameworkUtils.class)) {
             springUtilMockedStatic.when(() -> SpringUtil.getBean(eq(PermissionServiceImpl.class)))
@@ -81,19 +165,15 @@ public class PermissionServiceTest extends BaseDbUnitTest {
                     .setStatus(CommonStatusEnum.ENABLE.getStatus()));
             when(roleService.getRoleListFromCache(eq(singleton(100L)))).thenReturn(toList(role));
             when(roleService.hasAnySuperAdmin(eq(singleton(100L)))).thenReturn(false);
-            when(userService.getUserDeptIdListByUserId(1L)).thenReturn(asSet(10L, 20L));
-            DeptDO enabledDept = randomPojo(DeptDO.class, item -> item.setId(10L)
-                    .setStatus(CommonStatusEnum.ENABLE.getStatus()));
             DeptDO disabledDept = randomPojo(DeptDO.class, item -> item.setId(20L)
                     .setStatus(CommonStatusEnum.DISABLE.getStatus()));
-            when(deptService.getDeptList(eq(asSet(10L, 20L)))).thenReturn(toList(enabledDept, disabledDept));
-            when(deptPriceFieldService.getHiddenPriceFields(eq(singleton(10L))))
-                    .thenReturn(toList("referencePrice", "col_referencePrice"));
-            when(userPriceFieldService.getHiddenProductPriceFields(1L)).thenReturn(toList("retailPrice"));
+            when(deptService.getDept(20L)).thenReturn(disabledDept);
+            when(deptPriceFieldService.getHiddenPriceFields(eq(emptySet())))
+                    .thenReturn(toList("salePrice", "col_salePrice"));
 
-            List<String> result = permissionService.getCurrentUserHiddenFields("erp_product");
+            List<String> result = permissionService.getCurrentUserHiddenFields("erp_product", 20L);
 
-            assertEquals(toList("referencePrice", "col_referencePrice", "retailPrice"), result);
+            assertEquals(toList("salePrice", "col_salePrice"), result);
         }
     }
 
@@ -116,6 +196,36 @@ public class PermissionServiceTest extends BaseDbUnitTest {
             assertEquals(toList("retailPrice"), result);
             verify(deptPriceFieldService, never()).getHiddenPriceFields(anySet());
             verify(userService, never()).getUserDeptIdListByUserId(anyLong());
+        }
+    }
+
+    @Test
+    public void testGetCurrentUserHiddenFields_ProductSkipsPriceViewPermissionWhenExcluded() {
+        try (MockedStatic<SpringUtil> springUtilMockedStatic = mockStatic(SpringUtil.class);
+             MockedStatic<SecurityFrameworkUtils> securityMockedStatic = mockStatic(SecurityFrameworkUtils.class)) {
+            springUtilMockedStatic.when(() -> SpringUtil.getBean(eq(PermissionServiceImpl.class)))
+                    .thenReturn(permissionService);
+            securityMockedStatic.when(SecurityFrameworkUtils::getLoginUserId).thenReturn(1L);
+            securityMockedStatic.when(SecurityFrameworkUtils::getLoginUserDeptId).thenReturn(10L);
+            userRoleMapper.insert(randomPojo(UserRoleDO.class).setUserId(1L).setRoleId(100L));
+            RoleDO role = randomPojo(RoleDO.class, item -> item.setId(100L)
+                    .setStatus(CommonStatusEnum.ENABLE.getStatus()));
+            when(roleService.getRoleListFromCache(eq(singleton(100L)))).thenReturn(toList(role));
+            when(roleService.hasAnySuperAdmin(eq(singleton(100L)))).thenReturn(false);
+            when(fieldDefinitionMapper.selectListByModule("erp_product"))
+                    .thenReturn(toList(new FieldDefinitionDO().setId(200L)
+                            .setModule("erp_product").setFieldKey("referencePrice")));
+            roleFieldPermissionMapper.insert(randomPojo(RoleFieldPermissionDO.class,
+                    item -> item.setRoleId(100L).setFieldId(200L).setHidden(true)));
+            when(deptPriceFieldService.getHiddenPriceFields(anySet()))
+                    .thenReturn(toList("retailPrice"));
+            when(userPriceFieldService.getHiddenProductPriceFields(1L)).thenReturn(toList("salePrice"));
+
+            List<String> result = permissionService.getCurrentUserHiddenFields("erp_product", null, false);
+
+            assertEquals(toList("referencePrice"), result);
+            verify(deptPriceFieldService, never()).getHiddenPriceFields(anySet());
+            verify(userPriceFieldService, never()).getHiddenProductPriceFields(anyLong());
         }
     }
 

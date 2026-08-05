@@ -52,6 +52,14 @@ public class ErpSaleOutItemDO extends BaseDO {
     private Long warehouseId;
     private Long deptId;
     /**
+     * 跨部门销售调拨前的来源仓库编号；同部门销售为空。
+     */
+    private Long sourceWarehouseId;
+    /**
+     * 跨部门销售调拨前的来源部门快照；同部门销售为空。
+     */
+    private Long sourceDeptId;
+    /**
      * 产品编号
      *
      * 关联 {@link ErpProductDO#getId()}

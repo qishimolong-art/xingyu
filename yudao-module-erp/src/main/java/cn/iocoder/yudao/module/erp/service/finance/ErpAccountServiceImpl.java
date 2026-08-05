@@ -5,6 +5,8 @@ import cn.hutool.core.util.StrUtil;
 import cn.iocoder.yudao.framework.common.enums.CommonStatusEnum;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
+import cn.iocoder.yudao.framework.common.util.validation.ValidationUtils;
+import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.account.ErpAccountDraftSaveReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.account.ErpAccountPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.account.ErpAccountSaveReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.ErpAccountDO;
@@ -19,10 +21,12 @@ import cn.iocoder.yudao.module.erp.dal.mysql.finance.ErpFinanceReceiptMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.finance.ErpFinanceTransferMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.finance.payable.ErpPayableExpenseMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.finance.receivable.ErpReceivableOtherIncomeMapper;
+import cn.iocoder.yudao.module.erp.enums.finance.ErpAccountDocumentStatusEnum;
 import cn.iocoder.yudao.module.erp.service.base.ErpBaseArchiveReferenceService;
 import cn.iocoder.yudao.module.erp.service.common.ErpOperateLogService;
 import cn.iocoder.yudao.module.erp.service.finance.bo.ErpAccountBalanceBO;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.validation.annotation.Validated;
 
 import javax.annotation.Resource;
@@ -30,12 +34,17 @@ import java.math.BigDecimal;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
+import java.util.Objects;
 
 import static cn.iocoder.yudao.framework.common.exception.util.ServiceExceptionUtil.exception;
 import static cn.iocoder.yudao.module.erp.enums.LogRecordConstants.ERP_ACCOUNT_TYPE;
+import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.ACCOUNT_DRAFT_SUBMIT_FAIL;
+import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.ACCOUNT_DRAFT_UPDATE_FAIL;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.ACCOUNT_NOT_ENABLE;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.ACCOUNT_NOT_EXISTS;
+import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.ACCOUNT_NOT_SUBMITTED;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.ACCOUNT_DELETE_FAIL_REFERENCED;
+import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.ACCOUNT_FORMAL_UPDATE_FAIL_DRAFT;
 
 /**
  * ERP 结算账户 Service 实现类
@@ -69,10 +78,28 @@ public class ErpAccountServiceImpl implements ErpAccountService {
     private ErpOperateLogService operateLogService;
 
     @Override
+    @Transactional(rollbackFor = Exception.class)
     public Long createAccount(ErpAccountSaveReqVO createReqVO) {
+        ValidationUtils.validate(createReqVO);
         ErpAccountDO account = BeanUtils.toBean(createReqVO, ErpAccountDO.class);
         fieldPermissionMasker.clearHiddenFields(FIELD_PERMISSION_MODULE, account);
         permissionFieldFiller.fillCreateFields(account);
+        applyAccountDefaults(account);
+        account.setDocumentStatus(ErpAccountDocumentStatusEnum.SUBMITTED.getStatus());
+        normalizeAccount(account);
+        clearOtherDefaultAccountIfNeeded(account);
+        accountMapper.insert(account);
+        operateLogService.recordCreate(ERP_ACCOUNT_TYPE, account.getId(), account, account.getNo());
+        return account.getId();
+    }
+
+    @Override
+    public Long createAccountDraft(ErpAccountDraftSaveReqVO createReqVO) {
+        ErpAccountDO account = BeanUtils.toBean(createReqVO, ErpAccountDO.class);
+        fieldPermissionMasker.clearHiddenFields(FIELD_PERMISSION_MODULE, account);
+        permissionFieldFiller.fillCreateFields(account);
+        applyAccountDefaults(account);
+        account.setDocumentStatus(ErpAccountDocumentStatusEnum.DRAFT.getStatus());
         normalizeAccount(account);
         accountMapper.insert(account);
         operateLogService.recordCreate(ERP_ACCOUNT_TYPE, account.getId(), account, account.getNo());
@@ -80,32 +107,118 @@ public class ErpAccountServiceImpl implements ErpAccountService {
     }
 
     @Override
+    public Long createAndSubmitAccount(ErpAccountSaveReqVO createReqVO) {
+        return createAccount(createReqVO);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
     public void updateAccount(ErpAccountSaveReqVO updateReqVO) {
+        ValidationUtils.validate(updateReqVO);
         ErpAccountDO account = accountMapper.selectById(updateReqVO.getId());
         if (account == null) {
             throw exception(ACCOUNT_NOT_EXISTS);
+        }
+        if (ErpAccountDocumentStatusEnum.DRAFT.getStatus().equals(account.getDocumentStatus())) {
+            throw exception(ACCOUNT_FORMAL_UPDATE_FAIL_DRAFT);
         }
         ErpAccountDO updateObj = BeanUtils.toBean(updateReqVO, ErpAccountDO.class);
         fieldPermissionMasker.preserveHiddenFields(FIELD_PERMISSION_MODULE, updateObj, account);
         if (updateObj.getDeptId() == null) {
             updateObj.setDeptId(account.getDeptId());
         }
+        if (updateObj.getDefaultStatus() == null) {
+            updateObj.setDefaultStatus(account.getDefaultStatus());
+        }
+        applyAccountDefaults(updateObj);
         normalizeAccount(updateObj);
+        clearOtherDefaultAccountIfNeeded(updateObj);
         accountMapper.updateById(updateObj);
         operateLogService.recordUpdate(ERP_ACCOUNT_TYPE, updateObj.getId(), account,
                 accountMapper.selectById(updateObj.getId()), account.getNo());
     }
 
     @Override
+    public void updateAccountDraft(ErpAccountDraftSaveReqVO updateReqVO) {
+        if (updateReqVO.getId() == null) {
+            throw exception(ACCOUNT_NOT_EXISTS);
+        }
+        ErpAccountDO account = accountMapper.selectById(updateReqVO.getId());
+        if (account == null) {
+            throw exception(ACCOUNT_NOT_EXISTS);
+        }
+        if (!ErpAccountDocumentStatusEnum.DRAFT.getStatus().equals(account.getDocumentStatus())) {
+            throw exception(ACCOUNT_DRAFT_UPDATE_FAIL, "当前账户不是草稿");
+        }
+        ErpAccountDO updateObj = BeanUtils.toBean(updateReqVO, ErpAccountDO.class);
+        fieldPermissionMasker.preserveHiddenFields(FIELD_PERMISSION_MODULE, updateObj, account);
+        if (updateObj.getAccountType() == null) {
+            updateObj.setAccountType(account.getAccountType());
+        }
+        if (updateObj.getStatus() == null) {
+            updateObj.setStatus(account.getStatus());
+        }
+        if (updateObj.getSort() == null) {
+            updateObj.setSort(account.getSort());
+        }
+        if (updateObj.getDefaultStatus() == null) {
+            updateObj.setDefaultStatus(account.getDefaultStatus());
+        }
+        applyAccountDefaults(updateObj);
+        normalizeAccount(updateObj);
+        if (accountMapper.updateDraftByIdAndDocumentStatus(updateReqVO.getId(),
+                ErpAccountDocumentStatusEnum.DRAFT.getStatus(), updateObj) == 0) {
+            throw exception(ACCOUNT_DRAFT_UPDATE_FAIL, "状态已变化，请刷新后重试");
+        }
+        operateLogService.recordUpdate(ERP_ACCOUNT_TYPE, updateReqVO.getId(), account,
+                accountMapper.selectById(updateReqVO.getId()), account.getNo());
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void updateAndSubmitAccountDraft(ErpAccountSaveReqVO updateReqVO) {
+        if (updateReqVO.getId() == null) {
+            throw exception(ACCOUNT_NOT_EXISTS);
+        }
+        ErpAccountDO account = validateAccountExists(updateReqVO.getId());
+        if (!ErpAccountDocumentStatusEnum.DRAFT.getStatus().equals(account.getDocumentStatus())) {
+            throw exception(ACCOUNT_DRAFT_UPDATE_FAIL, "当前账户不是草稿");
+        }
+        ValidationUtils.validate(updateReqVO);
+        updateAccountDraft(BeanUtils.toBean(updateReqVO, ErpAccountDraftSaveReqVO.class));
+        submitAccountDraft(updateReqVO.getId());
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void submitAccountDraft(Long id) {
+        ErpAccountDO account = validateAccountExists(id);
+        if (!ErpAccountDocumentStatusEnum.DRAFT.getStatus().equals(account.getDocumentStatus())) {
+            throw exception(ACCOUNT_DRAFT_SUBMIT_FAIL, "当前账户不是草稿");
+        }
+        if (StrUtil.isBlank(account.getName())) {
+            throw exception(ACCOUNT_DRAFT_SUBMIT_FAIL, "账户名称不能为空");
+        }
+        ValidationUtils.validate(BeanUtils.toBean(account, ErpAccountSaveReqVO.class));
+        clearOtherDefaultAccountIfNeeded(account);
+        if (accountMapper.updateByIdAndDocumentStatus(id,
+                ErpAccountDocumentStatusEnum.DRAFT.getStatus(),
+                new ErpAccountDO().setDocumentStatus(
+                        ErpAccountDocumentStatusEnum.SUBMITTED.getStatus())) == 0) {
+            throw exception(ACCOUNT_DRAFT_SUBMIT_FAIL, "状态已变化，请刷新后重试");
+        }
+        operateLogService.recordUpdate(ERP_ACCOUNT_TYPE, id, account,
+                accountMapper.selectById(id), account.getNo());
+    }
+
+    @Override
     public void updateAccountDefaultStatus(Long id, Boolean defaultStatus) {
         ErpAccountDO oldAccount = validateAccountExists(id);
+        if (!ErpAccountDocumentStatusEnum.SUBMITTED.getStatus().equals(oldAccount.getDocumentStatus())) {
+            throw exception(ACCOUNT_NOT_SUBMITTED, oldAccount.getName());
+        }
         if (Boolean.TRUE.equals(defaultStatus)) {
-            ErpAccountDO account = accountMapper.selectByDefaultStatus();
-            if (account != null) {
-                accountMapper.updateById(new ErpAccountDO().setId(account.getId()).setDefaultStatus(false));
-                operateLogService.recordUpdate(ERP_ACCOUNT_TYPE, account.getId(), account,
-                        accountMapper.selectById(account.getId()), account.getNo());
-            }
+            clearOtherDefaultAccount(id);
         }
         accountMapper.updateById(new ErpAccountDO().setId(id).setDefaultStatus(defaultStatus));
         operateLogService.recordUpdate(ERP_ACCOUNT_TYPE, id, oldAccount, accountMapper.selectById(id), oldAccount.getNo());
@@ -167,6 +280,9 @@ public class ErpAccountServiceImpl implements ErpAccountService {
         if (account == null) {
             throw exception(ACCOUNT_NOT_EXISTS);
         }
+        if (!ErpAccountDocumentStatusEnum.SUBMITTED.getStatus().equals(account.getDocumentStatus())) {
+            throw exception(ACCOUNT_NOT_SUBMITTED, account.getName());
+        }
         if (CommonStatusEnum.isDisable(account.getStatus())) {
             throw exception(ACCOUNT_NOT_ENABLE, account.getName());
         }
@@ -219,6 +335,37 @@ public class ErpAccountServiceImpl implements ErpAccountService {
         }
         account.setBankName(null);
         account.setBankAccount(null);
+    }
+
+    private void applyAccountDefaults(ErpAccountDO account) {
+        if (account.getAccountType() == null) {
+            account.setAccountType(BANK_ACCOUNT_TYPE);
+        }
+        if (account.getStatus() == null) {
+            account.setStatus(CommonStatusEnum.ENABLE.getStatus());
+        }
+        if (account.getSort() == null) {
+            account.setSort(0);
+        }
+        if (account.getDefaultStatus() == null) {
+            account.setDefaultStatus(false);
+        }
+    }
+
+    private void clearOtherDefaultAccountIfNeeded(ErpAccountDO account) {
+        if (Boolean.TRUE.equals(account.getDefaultStatus())) {
+            clearOtherDefaultAccount(account.getId());
+        }
+    }
+
+    private void clearOtherDefaultAccount(Long excludeId) {
+        ErpAccountDO currentDefault = accountMapper.selectByDefaultStatus();
+        if (currentDefault == null || Objects.equals(currentDefault.getId(), excludeId)) {
+            return;
+        }
+        accountMapper.updateById(new ErpAccountDO().setId(currentDefault.getId()).setDefaultStatus(false));
+        operateLogService.recordUpdate(ERP_ACCOUNT_TYPE, currentDefault.getId(), currentDefault,
+                accountMapper.selectById(currentDefault.getId()), currentDefault.getNo());
     }
 
 }

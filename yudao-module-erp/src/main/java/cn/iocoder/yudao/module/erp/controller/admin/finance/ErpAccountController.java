@@ -10,6 +10,7 @@ import cn.iocoder.yudao.framework.common.util.collection.MapUtils;
 import cn.iocoder.yudao.framework.common.util.number.NumberUtils;
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
 import cn.iocoder.yudao.framework.excel.core.util.ExcelUtils;
+import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.account.ErpAccountDraftSaveReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.account.ErpAccountImportExcelVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.account.ErpAccountPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.account.ErpAccountRespVO;
@@ -83,11 +84,53 @@ public class ErpAccountController {
         return success(accountService.createAccount(createReqVO));
     }
 
+    @PostMapping("/create-draft")
+    @Operation(summary = "创建结算账户草稿")
+    @PreAuthorize("@ss.hasPermission('erp:account:create')")
+    public CommonResult<Long> createAccountDraft(
+            @Valid @RequestBody ErpAccountDraftSaveReqVO createReqVO) {
+        return success(accountService.createAccountDraft(createReqVO));
+    }
+
+    @PostMapping("/create-and-submit")
+    @Operation(summary = "创建并正式提交结算账户")
+    @PreAuthorize("@ss.hasPermission('erp:account:create')")
+    public CommonResult<Long> createAndSubmitAccount(
+            @Valid @RequestBody ErpAccountSaveReqVO createReqVO) {
+        return success(accountService.createAndSubmitAccount(createReqVO));
+    }
+
     @PutMapping("/update")
     @Operation(summary = "更新结算账户")
     @PreAuthorize("@ss.hasPermission('erp:account:update')")
     public CommonResult<Boolean> updateAccount(@Valid @RequestBody ErpAccountSaveReqVO updateReqVO) {
         accountService.updateAccount(updateReqVO);
+        return success(true);
+    }
+
+    @PutMapping("/update-draft")
+    @Operation(summary = "保存结算账户草稿")
+    @PreAuthorize("@ss.hasPermission('erp:account:update')")
+    public CommonResult<Boolean> updateAccountDraft(
+            @Valid @RequestBody ErpAccountDraftSaveReqVO updateReqVO) {
+        accountService.updateAccountDraft(updateReqVO);
+        return success(true);
+    }
+
+    @PutMapping("/update-and-submit")
+    @Operation(summary = "更新并正式提交结算账户草稿")
+    @PreAuthorize("@ss.hasPermission('erp:account:update')")
+    public CommonResult<Boolean> updateAndSubmitAccountDraft(
+            @Valid @RequestBody ErpAccountSaveReqVO updateReqVO) {
+        accountService.updateAndSubmitAccountDraft(updateReqVO);
+        return success(true);
+    }
+
+    @PutMapping("/submit")
+    @Operation(summary = "提交结算账户草稿")
+    @PreAuthorize("@ss.hasPermission('erp:account:update')")
+    public CommonResult<Boolean> submitAccountDraft(@RequestParam("id") Long id) {
+        accountService.submitAccountDraft(id);
         return success(true);
     }
 
