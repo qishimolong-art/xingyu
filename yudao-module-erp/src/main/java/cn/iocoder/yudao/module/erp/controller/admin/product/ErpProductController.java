@@ -65,7 +65,7 @@ import static cn.iocoder.yudao.module.erp.enums.LogRecordConstants.ERP_PRODUCT_T
 public class ErpProductController {
 
     private static final Set<String> PRODUCT_IMPORT_TEMPLATE_FIELDS = new LinkedHashSet<>(Arrays.asList(
-            "code", "name", "barCode", "categoryName", "batchNoEnabled", "unitName", "status", "defaultWarehouseName", "vehicleModel", "factoryCode",
+            "code", "name", "barCode", "categoryCode", "batchNoEnabled", "unitName", "status", "defaultWarehouseName", "vehicleModel", "factoryCode",
             "purchasePrice", "salePrice", "minPrice", "standard", "remark", "expiryDay", "weight",
             "referencePrice", "retailPrice", "lastPurchasePrice", "grossProfitRate", "backupPrice1",
             "wholesalePrice", "sharePrice", "stockMax", "stockMin", "stockStandard", "packageQty", "mainImage",
@@ -270,6 +270,7 @@ public class ErpProductController {
         switch (excelField) {
             case "productCode": return "code";
             case "deptName": return "deptIds";
+            case "categoryCode":
             case "categoryName": return "categoryId";
             case "unitName": return "unitId";
             default: return excelField;

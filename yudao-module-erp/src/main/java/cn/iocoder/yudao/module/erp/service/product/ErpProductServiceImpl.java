@@ -1095,6 +1095,7 @@ public class ErpProductServiceImpl implements ErpProductService {
             product.setCreateDeptId(productDeptIds.get(0));
         }
         prepareProductCode(product, createReqVO.getCode(), null);
+        normalizeProductOptionalFields(product);
         insertProduct(product);
         saveProductCustomFields(product.getId(), createReqVO, getHiddenFieldSet(), true);
         initProductStock(product.getId(), createReqVO.getDefaultWarehouseId());
@@ -1184,6 +1185,7 @@ public class ErpProductServiceImpl implements ErpProductService {
         updateObj.setDeptId(existing.getDeptId());
         updateObj.setCreateDeptId(existing.getCreateDeptId());
         updateObj.setDefaultWarehouseId(targetDefaultWarehouseId);
+        normalizeProductOptionalFields(updateObj);
         if (updateObj.getBatchNoEnabled() == null) {
             updateObj.setBatchNoEnabled(Boolean.TRUE.equals(existing.getBatchNoEnabled()));
         }
@@ -1387,6 +1389,10 @@ public class ErpProductServiceImpl implements ErpProductService {
         } catch (DuplicateKeyException ex) {
             throw exception(PRODUCT_CODE_DUPLICATE, product.getCode());
         }
+    }
+
+    private void normalizeProductOptionalFields(ErpProductDO product) {
+        product.setBarCode(trimToNull(product.getBarCode()));
     }
 
     @Override
@@ -3248,7 +3254,7 @@ public class ErpProductServiceImpl implements ErpProductService {
             return respVO;
         }
 
-        Map<String, ErpProductCategoryDO> categoryMap = buildCategoryNameMap();
+        Map<String, ErpProductCategoryDO> categoryMap = buildCategoryCodeMap();
         Map<String, ErpProductUnitDO> unitMap = buildUnitNameMap();
         Map<String, ErpWarehouseDO> warehouseMap = buildWarehouseNameMap();
         Map<String, ErpProductDO> existedMap = buildExistedProductMap(list);
@@ -3296,7 +3302,7 @@ public class ErpProductServiceImpl implements ErpProductService {
             item.setCode(trimToNull(readCsvValue(row, "配件编码", "产品编码")));
             item.setName(trimToNull(readCsvValue(row, "产品名称")));
             item.setBarCode(trimToNull(readCsvValue(row, "产品条码")));
-            item.setCategoryName(trimToNull(readCsvValue(row, "商品分类", "产品分类", "分类")));
+            item.setCategoryCode(trimToNull(readCsvValue(row, "配件分类编码", "配件分类", "商品分类", "产品分类", "分类")));
             item.setBatchNoEnabled(parseBoolean(readCsvValue(row, "开启批次号", "是否开启批次号管理", "批次号管理")));
             item.setUnitName(trimToNull(readCsvValue(row, "单位")));
             item.setStatus(parseInteger(readCsvValue(row, "状态")));
@@ -3328,10 +3334,10 @@ public class ErpProductServiceImpl implements ErpProductService {
         return result;
     }
 
-    private Map<String, ErpProductCategoryDO> buildCategoryNameMap() {
+    private Map<String, ErpProductCategoryDO> buildCategoryCodeMap() {
         return productCategoryService.getProductCategoryList(new ErpProductCategoryListReqVO()).stream()
-                .filter(item -> StringUtils.hasText(item.getName()))
-                .collect(Collectors.toMap(ErpProductCategoryDO::getName, item -> item, (a, b) -> a, LinkedHashMap::new));
+                .filter(item -> StringUtils.hasText(item.getCode()))
+                .collect(Collectors.toMap(ErpProductCategoryDO::getCode, item -> item, (a, b) -> a, LinkedHashMap::new));
     }
 
     private Map<String, ErpProductUnitDO> buildUnitNameMap() {
@@ -3368,7 +3374,7 @@ public class ErpProductServiceImpl implements ErpProductService {
         reqVO.setCode(trimToNull(row.getCode()));
         reqVO.setName(trimToNull(row.getName()));
         reqVO.setBarCode(trimToNull(row.getBarCode()));
-        reqVO.setCategoryId(resolveCategoryId(row.getCategoryName(), categoryMap));
+        reqVO.setCategoryId(resolveCategoryId(row.getCategoryCode(), categoryMap));
         reqVO.setBatchNoEnabled(Boolean.TRUE.equals(row.getBatchNoEnabled()));
         reqVO.setUnitId(resolveUnitId(row.getUnitName(), unitMap));
         reqVO.setDefaultWarehouseId(resolveWarehouseIdIfPresent(row.getDefaultWarehouseName(), warehouseMap));
@@ -3398,10 +3404,10 @@ public class ErpProductServiceImpl implements ErpProductService {
         return reqVO;
     }
 
-    private Long resolveCategoryId(String categoryName, Map<String, ErpProductCategoryDO> categoryMap) {
-        ErpProductCategoryDO category = categoryMap.get(trimToNull(categoryName));
+    private Long resolveCategoryId(String categoryCode, Map<String, ErpProductCategoryDO> categoryMap) {
+        ErpProductCategoryDO category = categoryMap.get(trimToNull(categoryCode));
         if (category == null) {
-            throw new IllegalArgumentException("商品分类不存在：" + categoryName);
+            throw new IllegalArgumentException("配件分类编码不存在：" + categoryCode);
         }
         return category.getId();
     }
@@ -3446,6 +3452,20 @@ public class ErpProductServiceImpl implements ErpProductService {
 
     private String readCsvValue(CsvRow row, String header) {
         return row.getByName(header);
+    }
+
+    private String readCsvValue(CsvRow row, String header, String... fallbackHeaders) {
+        String value = readCsvValue(row, header);
+        if (value != null) {
+            return value;
+        }
+        for (String fallbackHeader : fallbackHeaders) {
+            value = readCsvValue(row, fallbackHeader);
+            if (value != null) {
+                return value;
+            }
+        }
+        return null;
     }
 
     private String readCsvValue(CsvRow row, String header, String fallbackHeader) {

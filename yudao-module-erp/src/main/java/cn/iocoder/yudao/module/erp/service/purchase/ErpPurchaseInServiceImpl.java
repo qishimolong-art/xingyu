@@ -740,6 +740,14 @@ public class ErpPurchaseInServiceImpl implements ErpPurchaseInService {
         return purchaseInMapper.selectByIds(ids);
     }
 
+    @Override
+    public List<ErpPurchaseInDO> getPurchaseInListByFactoryOrderNos(Collection<String> factoryOrderNos) {
+        if (CollUtil.isEmpty(factoryOrderNos)) {
+            return Collections.emptyList();
+        }
+        return purchaseInMapper.selectListByFactoryOrderNos(factoryOrderNos);
+    }
+
     // ==================== 采购入库�?====================
 
     @Override

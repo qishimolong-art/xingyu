@@ -164,7 +164,7 @@ FROM (
     SELECT 'erp_product', 'categoryId', '配件分类', b'1', 80, 'base_info', b'0' UNION ALL
     SELECT 'erp_product', 'batchNoEnabled', '是否开启批次号管理', b'0', 90, 'base_info', b'0' UNION ALL
     SELECT 'erp_product', 'deptIds', '所属部门', b'0', 100, 'base_info', b'0' UNION ALL
-    SELECT 'erp_product', 'barCode', '条形码', b'1', 110, 'base_info', b'0' UNION ALL
+    SELECT 'erp_product', 'barCode', '条形码', b'0', 110, 'base_info', b'0' UNION ALL
     SELECT 'erp_product', 'factoryCode', '厂家编码', b'0', 120, 'base_info', b'0' UNION ALL
     SELECT 'erp_product', 'status', '状态', b'0', 130, 'base_info', b'0' UNION ALL
     SELECT 'erp_product', 'remark', '备注', b'0', 140, 'base_info', b'0' UNION ALL

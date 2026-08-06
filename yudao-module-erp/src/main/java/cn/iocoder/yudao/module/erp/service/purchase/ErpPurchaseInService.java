@@ -114,6 +114,14 @@ public interface ErpPurchaseInService {
 
     List<ErpPurchaseInDO> getPurchaseInList(Collection<Long> ids);
 
+    /**
+     * 按厂家单号精确查询采购入库。
+     *
+     * @param factoryOrderNos 厂家单号集合
+     * @return 采购入库列表
+     */
+    List<ErpPurchaseInDO> getPurchaseInListByFactoryOrderNos(Collection<String> factoryOrderNos);
+
     // ==================== 采购入库项 ====================
 
     /**

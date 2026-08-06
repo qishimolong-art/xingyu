@@ -236,6 +236,17 @@ yudao:
     enable: false # 本地环境，暂时关闭图片验证码，方便登录等接口的测试；
   security:
     mock-enable: true
+  erp:
+    business-license-ocr:
+      endpoint: ${ERP_BUSINESS_LICENSE_OCR_ENDPOINT:https://bizlicense.market.alicloudapi.com/rest/160601/ocr/ocr_business_license.json}
+      app-code: ${ERP_BUSINESS_LICENSE_OCR_APP_CODE:${yudao.erp.vin.app-code:}}
+      timeout: ${ERP_BUSINESS_LICENSE_OCR_TIMEOUT:8000}
+    purchase-invoice-ocr:
+      endpoint: ${ERP_PURCHASE_INVOICE_OCR_ENDPOINT:https://dgfp.market.alicloudapi.com/ocrservice/invoice}
+      app-code: ${ERP_PURCHASE_INVOICE_OCR_APP_CODE:0e8fb38236264814b7ac414f5dd0d5dd}
+      timeout: ${ERP_PURCHASE_INVOICE_OCR_TIMEOUT:8000}
+      file-url-expiration-seconds: ${ERP_PURCHASE_INVOICE_OCR_FILE_URL_EXPIRATION_SECONDS:300}
+      amount-tolerance: ${ERP_PURCHASE_INVOICE_OCR_AMOUNT_TOLERANCE:0.01}
   pay:
     order-notify-url: https://yutou.mynatapp.cc/admin-api/pay/notify/order # 支付渠道的【支付】回调地址
     refund-notify-url: https://yutou.mynatapp.cc/admin-api/pay/notify/refund # 支付渠道的【退款】回调地址

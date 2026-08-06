@@ -114,6 +114,32 @@ ErrorCode PURCHASE_ORDER_ITEM_RETURN_FAIL_IN_EXCEED = new ErrorCode(1_030_101_00
             "提交采购票据草稿时票据类型不能为空");
     ErrorCode PURCHASE_INVOICE_SUBMIT_NO_REQUIRED = new ErrorCode(1_030_104_017,
             "提交采购票据草稿时发票号不能为空");
+    ErrorCode PURCHASE_INVOICE_OCR_BATCH_NOT_EXISTS = new ErrorCode(1_030_104_100,
+            "采购发票识别批次不存在");
+    ErrorCode PURCHASE_INVOICE_OCR_APP_CODE_NOT_CONFIGURED = new ErrorCode(1_030_104_101,
+            "采购发票识别未配置 AppCode，请配置 yudao.erp.purchase-invoice-ocr.app-code");
+    ErrorCode PURCHASE_INVOICE_OCR_RECOGNIZE_STATUS_NOT_SUPPORT = new ErrorCode(1_030_104_102,
+            "采购发票识别批次当前状态不支持重新识别");
+    ErrorCode PURCHASE_INVOICE_OCR_MATCH_STATUS_NOT_SUPPORT = new ErrorCode(1_030_104_103,
+            "采购发票识别批次当前状态不支持匹配");
+    ErrorCode PURCHASE_INVOICE_OCR_NO_MATCHABLE_ITEMS = new ErrorCode(1_030_104_104,
+            "采购发票识别批次没有可匹配的发票明细");
+    ErrorCode PURCHASE_INVOICE_OCR_CONFIRM_STATUS_NOT_SUPPORT = new ErrorCode(1_030_104_105,
+            "采购发票识别批次当前状态不支持确认生成采购票据");
+    ErrorCode PURCHASE_INVOICE_OCR_NO_CONFIRMED_ITEMS = new ErrorCode(1_030_104_106,
+            "采购发票识别批次没有可确认生成采购票据的明细");
+    ErrorCode PURCHASE_INVOICE_OCR_CONFIRM_PURCHASE_IN_CHANGED = new ErrorCode(1_030_104_107,
+            "厂家单号({})匹配的采购入库单已变化或不可开票，请重新匹配");
+    ErrorCode PURCHASE_INVOICE_OCR_CONFIRM_SUPPLIER_NOT_UNIQUE = new ErrorCode(1_030_104_108,
+            "厂家单号({})匹配到多个供应商，无法自动生成采购票据");
+    ErrorCode PURCHASE_INVOICE_OCR_CONFIRM_INVOICE_FIELD_REQUIRED = new ErrorCode(1_030_104_109,
+            "厂家单号({})缺少发票日期、发票类型或发票号，无法自动生成采购票据");
+    ErrorCode PURCHASE_INVOICE_OCR_ITEM_NOT_EXISTS = new ErrorCode(1_030_104_110,
+            "采购发票识别明细不存在");
+    ErrorCode PURCHASE_INVOICE_OCR_UPDATE_FACTORY_ORDER_NO_NOT_SUPPORT = new ErrorCode(1_030_104_111,
+            "采购发票识别明细当前状态不支持修改厂家单号");
+    ErrorCode PURCHASE_INVOICE_OCR_FACTORY_ORDER_NO_INVALID = new ErrorCode(1_030_104_112,
+            "厂家单号必须以 S 开头");
 
     // ========== ERP 客户（1-030-200-000）==========
     ErrorCode CUSTOMER_NOT_EXISTS = new ErrorCode(1_020_200_000, "客户不存在");

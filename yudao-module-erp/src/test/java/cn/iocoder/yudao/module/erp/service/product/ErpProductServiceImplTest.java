@@ -5,12 +5,18 @@ import cn.iocoder.yudao.framework.common.exception.ServiceException;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.security.core.util.SecurityFrameworkUtils;
 import cn.iocoder.yudao.framework.test.core.ut.BaseMockitoUnitTest;
+import cn.iocoder.yudao.module.erp.controller.admin.product.vo.category.ErpProductCategoryListReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpPartsBatchAdjustPriceReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpPartsBatchUpdatePriceFieldsReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpProductImportExcelVO;
+import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpProductImportRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpProductPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpProductRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ProductSaveReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.config.ErpFieldConfigDO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.product.ErpProductCategoryDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.product.ErpProductDO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.product.ErpProductUnitDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpWarehouseDO;
 import cn.iocoder.yudao.module.erp.dal.mysql.product.ErpProductDeptMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.product.ErpProductMapper;
@@ -49,6 +55,7 @@ import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -198,6 +205,142 @@ class ErpProductServiceImplTest extends BaseMockitoUnitTest {
         String code = ReflectionTestUtils.invokeMethod(productService, "generateProductCode", 0);
 
         assertEquals("P000124", code);
+    }
+
+    @Test
+    void createProduct_whenBarCodeBlank_thenStoresNullBarCode() {
+        ProductSaveReqVO reqVO = new ProductSaveReqVO();
+        reqVO.setCode("P-CREATE-001");
+        reqVO.setName("Brake Pad");
+        reqVO.setBarCode("   ");
+        reqVO.setCategoryId(102L);
+        reqVO.setUnitId(201L);
+        reqVO.setDefaultWarehouseId(301L);
+        reqVO.setStatus(0);
+
+        ErpProductCategoryDO category = ErpProductCategoryDO.builder().id(102L).name("Parts").build();
+        ErpWarehouseDO warehouse = ErpWarehouseDO.builder().id(301L).name("Main").deptId(401L).build();
+
+        when(permissionApi.getCurrentUserHiddenFields("erp_product")).thenReturn(Collections.emptyList());
+        when(fieldConfigService.getFieldConfigListByModule("erp_product")).thenReturn(Collections.emptyList());
+        when(productCategoryService.getProductCategory(102L)).thenReturn(category);
+        when(productCategoryService.getProductCategoryChildCount(102L)).thenReturn(0L);
+        when(warehouseService.getWarehouse(301L)).thenReturn(warehouse);
+        when(stockMapper.selectByProductIdAndWarehouseId(501L, 301L)).thenReturn(null);
+        when(stockMapper.selectListByProductId(501L)).thenReturn(Collections.emptyList());
+        when(productUniversalMapper.selectListByProductId(501L)).thenReturn(Collections.emptyList());
+        when(productMapper.selectById(501L)).thenReturn(ErpProductDO.builder()
+                .id(501L)
+                .code("P-CREATE-001")
+                .name("Brake Pad")
+                .categoryId(102L)
+                .unitId(201L)
+                .defaultWarehouseId(301L)
+                .status(0)
+                .build());
+        when(productMapper.insert(any(ErpProductDO.class))).thenAnswer(invocation -> {
+            ErpProductDO product = invocation.getArgument(0);
+            product.setId(501L);
+            return 1;
+        });
+
+        try (MockedStatic<SecurityFrameworkUtils> security = mockStatic(SecurityFrameworkUtils.class)) {
+            security.when(SecurityFrameworkUtils::getLoginUserDeptId).thenReturn(401L);
+
+            Long productId = productService.createProduct(reqVO);
+
+            assertEquals(501L, productId);
+        }
+        ArgumentCaptor<ErpProductDO> productCaptor = ArgumentCaptor.forClass(ErpProductDO.class);
+        verify(productMapper).insert(productCaptor.capture());
+        assertNull(productCaptor.getValue().getBarCode());
+    }
+
+    @Test
+    void importProductList_whenCategoryNamesDuplicated_thenMatchesByCategoryCode() {
+        ErpProductImportExcelVO row = new ErpProductImportExcelVO();
+        row.setCode("P-001");
+        row.setName("刹车片");
+        row.setCategoryCode("CAT-B");
+        row.setUnitName("个");
+        row.setDefaultWarehouseName("主仓");
+
+        ErpProductCategoryDO firstCategory = ErpProductCategoryDO.builder()
+                .id(101L)
+                .name("保养件")
+                .code("CAT-A")
+                .build();
+        ErpProductCategoryDO secondCategory = ErpProductCategoryDO.builder()
+                .id(102L)
+                .name("保养件")
+                .code("CAT-B")
+                .build();
+        ErpProductUnitDO unit = ErpProductUnitDO.builder()
+                .id(201L)
+                .name("个")
+                .build();
+        ErpWarehouseDO warehouse = ErpWarehouseDO.builder()
+                .id(301L)
+                .name("主仓")
+                .deptId(401L)
+                .build();
+
+        when(productCategoryService.getProductCategoryList(any(ErpProductCategoryListReqVO.class)))
+                .thenReturn(Arrays.asList(firstCategory, secondCategory));
+        when(productUnitService.getProductUnitListByStatus(any())).thenReturn(Collections.singletonList(unit));
+        when(warehouseService.getWarehouseListByStatus(any())).thenReturn(Collections.singletonList(warehouse));
+        when(productMapper.selectListByCodes(any())).thenReturn(Collections.emptyList());
+        when(productCategoryService.getProductCategory(102L)).thenReturn(secondCategory);
+        when(productCategoryService.getProductCategoryChildCount(102L)).thenReturn(0L);
+        when(warehouseService.getWarehouse(301L)).thenReturn(warehouse);
+        when(permissionApi.getCurrentUserHiddenFields("erp_product")).thenReturn(Collections.emptyList());
+        when(stockMapper.selectByProductIdAndWarehouseId(500L, 301L)).thenReturn(null);
+        when(stockMapper.selectListByProductId(500L)).thenReturn(Collections.emptyList());
+        when(productMapper.insert(any(ErpProductDO.class))).thenAnswer(invocation -> {
+            ErpProductDO product = invocation.getArgument(0);
+            product.setId(500L);
+            return 1;
+        });
+
+        ErpProductImportRespVO result;
+        try (MockedStatic<SecurityFrameworkUtils> security = mockStatic(SecurityFrameworkUtils.class)) {
+            security.when(SecurityFrameworkUtils::getLoginUserDeptId).thenReturn(401L);
+
+            result = productService.importProductList(Collections.singletonList(row));
+        }
+
+        assertEquals(1, result.getSuccessCount());
+        assertEquals(1, result.getCreateCount());
+        assertEquals(0, result.getFailureCount());
+        ArgumentCaptor<ErpProductDO> productCaptor = ArgumentCaptor.forClass(ErpProductDO.class);
+        verify(productMapper).insert(productCaptor.capture());
+        assertEquals(102L, productCaptor.getValue().getCategoryId());
+    }
+
+    @Test
+    void importProductList_whenCategoryCodeMissing_thenRecordsFailure() {
+        ErpProductImportExcelVO row = new ErpProductImportExcelVO();
+        row.setCode("P-002");
+        row.setName("机油滤芯");
+        row.setBarCode("BC-002");
+        row.setCategoryCode("CAT-MISSING");
+        row.setUnitName("个");
+        row.setDefaultWarehouseName("主仓");
+
+        when(productCategoryService.getProductCategoryList(any(ErpProductCategoryListReqVO.class))).thenReturn(Collections.singletonList(
+                ErpProductCategoryDO.builder().id(101L).name("保养件").code("CAT-A").build()));
+        when(productUnitService.getProductUnitListByStatus(any())).thenReturn(Collections.singletonList(
+                ErpProductUnitDO.builder().id(201L).name("个").build()));
+        when(warehouseService.getWarehouseListByStatus(any())).thenReturn(Collections.singletonList(
+                ErpWarehouseDO.builder().id(301L).name("主仓").build()));
+        when(productMapper.selectListByCodes(any())).thenReturn(Collections.emptyList());
+
+        ErpProductImportRespVO result = productService.importProductList(Collections.singletonList(row));
+
+        assertEquals(0, result.getSuccessCount());
+        assertEquals(1, result.getFailureCount());
+        assertEquals("配件分类编码不存在：CAT-MISSING", result.getFailureDetails().get(0).getReason());
+        verify(productMapper, never()).insert(any(ErpProductDO.class));
     }
 
     @Test

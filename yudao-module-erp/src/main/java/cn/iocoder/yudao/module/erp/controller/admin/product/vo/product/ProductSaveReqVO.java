@@ -30,8 +30,7 @@ public class ProductSaveReqVO {
     @Schema(description = "所属部门编号列表", example = "[100, 101]")
     private List<Long> deptIds;
 
-    @Schema(description = "产品条码", requiredMode = Schema.RequiredMode.REQUIRED, example = "X110")
-    @NotEmpty(message = "产品条码不能为空")
+    @Schema(description = "产品条码", example = "X110")
     private String barCode;
 
     @Schema(description = "商品分类编号", requiredMode = Schema.RequiredMode.REQUIRED, example = "11161")

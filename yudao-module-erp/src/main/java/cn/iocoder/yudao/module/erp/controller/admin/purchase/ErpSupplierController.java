@@ -12,6 +12,8 @@ import cn.iocoder.yudao.framework.datapermission.core.util.DataPermissionUtils;
 import cn.iocoder.yudao.framework.excel.core.util.ExcelUtils;
 import cn.iocoder.yudao.module.erp.controller.admin.common.vo.ErpExportFieldRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.common.vo.ErpArchiveMergeReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.businesslicense.ErpCustomerBusinessLicenseOcrReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.businesslicense.ErpCustomerBusinessLicenseOcrRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.supplier.ErpSupplierBatchDisableReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.supplier.ErpSupplierBatchUpdateReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.supplier.ErpSupplierDeptDistributionRespVO;
@@ -28,6 +30,7 @@ import cn.iocoder.yudao.module.erp.service.common.ErpExportCaptchaService;
 import cn.iocoder.yudao.module.erp.service.config.ErpFieldConfigService;
 import cn.iocoder.yudao.module.erp.service.purchase.ErpPurchaseFieldPermissionMasker;
 import cn.iocoder.yudao.module.erp.service.purchase.ErpSupplierService;
+import cn.iocoder.yudao.module.erp.service.sale.ErpCustomerBusinessLicenseOcrService;
 import cn.iocoder.yudao.module.system.api.dept.DeptApi;
 import cn.iocoder.yudao.module.system.api.dept.dto.DeptRespDTO;
 import cn.iocoder.yudao.module.system.api.user.AdminUserApi;
@@ -71,6 +74,8 @@ public class ErpSupplierController {
     @Resource
     private ErpSupplierService supplierService;
     @Resource
+    private ErpCustomerBusinessLicenseOcrService customerBusinessLicenseOcrService;
+    @Resource
     private DeptApi deptApi;
     @Resource
     private AdminUserApi adminUserApi;
@@ -86,6 +91,14 @@ public class ErpSupplierController {
     @PreAuthorize("@ss.hasPermission('erp:supplier:create')")
     public CommonResult<Long> createSupplier(@Valid @RequestBody ErpSupplierSaveReqVO createReqVO) {
         return success(supplierService.createSupplier(createReqVO));
+    }
+
+    @PostMapping("/business-license/recognize")
+    @Operation(summary = "识别供应商营业执照")
+    @PreAuthorize("@ss.hasPermission('erp:supplier:create')")
+    public CommonResult<ErpCustomerBusinessLicenseOcrRespVO> recognizeBusinessLicense(
+            @Valid @RequestBody ErpCustomerBusinessLicenseOcrReqVO reqVO) {
+        return success(customerBusinessLicenseOcrService.recognize(reqVO));
     }
 
     @PutMapping("/update")

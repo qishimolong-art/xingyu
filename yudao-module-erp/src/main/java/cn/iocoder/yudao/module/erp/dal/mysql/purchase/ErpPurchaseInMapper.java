@@ -15,6 +15,7 @@ import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.core.toolkit.support.SFunction;
 import org.apache.ibatis.annotations.Mapper;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Objects;
 
@@ -238,6 +239,13 @@ public interface ErpPurchaseInMapper extends BaseMapperX<ErpPurchaseInDO> {
         return selectList(new MPJLambdaWrapperX<ErpPurchaseInDO>()
                 .eq(ErpPurchaseInDO::getOrderId, orderId)
                 .eq(ErpPurchaseInDO::getStatus, status));
+    }
+
+    default List<ErpPurchaseInDO> selectListByFactoryOrderNos(Collection<String> factoryOrderNos) {
+        return selectList(new MPJLambdaWrapperX<ErpPurchaseInDO>()
+                .in(ErpPurchaseInDO::getFactoryOrderNo, factoryOrderNos)
+                .orderByAsc(ErpPurchaseInDO::getFactoryOrderNo)
+                .orderByDesc(ErpPurchaseInDO::getId));
     }
 
 }

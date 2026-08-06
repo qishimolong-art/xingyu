@@ -265,6 +265,16 @@ yudao:
     vin:
       app-code: ${ERP_VIN_APP_CODE:0e8fb38236264814b7ac414f5dd0d5dd}
       timeout: 8000
+    business-license-ocr:
+      endpoint: ${ERP_BUSINESS_LICENSE_OCR_ENDPOINT:https://bizlicense.market.alicloudapi.com/rest/160601/ocr/ocr_business_license.json}
+      app-code: ${ERP_BUSINESS_LICENSE_OCR_APP_CODE:}
+      timeout: ${ERP_BUSINESS_LICENSE_OCR_TIMEOUT:8000}
+    purchase-invoice-ocr:
+      endpoint: ${ERP_PURCHASE_INVOICE_OCR_ENDPOINT:https://dgfp.market.alicloudapi.com/ocrservice/invoice}
+      app-code: ${ERP_PURCHASE_INVOICE_OCR_APP_CODE:}
+      timeout: ${ERP_PURCHASE_INVOICE_OCR_TIMEOUT:8000}
+      file-url-expiration-seconds: ${ERP_PURCHASE_INVOICE_OCR_FILE_URL_EXPIRATION_SECONDS:300}
+      amount-tolerance: ${ERP_PURCHASE_INVOICE_OCR_AMOUNT_TOLERANCE:0.01}
   web:
     admin-ui:
       url: http://dashboard.yudao.iocoder.cn # Admin 管理后台 UI 的地址

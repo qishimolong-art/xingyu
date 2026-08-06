@@ -18,12 +18,15 @@ import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.customer.ErpCustomer
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.customer.ErpCustomerRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.customer.ErpCustomerSaleDeptRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.customer.ErpCustomerSaveReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.businesslicense.ErpCustomerBusinessLicenseOcrReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.businesslicense.ErpCustomerBusinessLicenseOcrRespVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpCustomerDO;
 import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpSaleOutMapper;
 import cn.iocoder.yudao.module.erp.enums.config.ErpFieldConfigModuleEnum;
 import cn.iocoder.yudao.module.erp.framework.excel.ErpExportFieldUtils;
 import cn.iocoder.yudao.module.erp.framework.excel.ErpImportTemplateRequiredFieldUtils;
 import cn.iocoder.yudao.module.erp.service.common.ErpExportCaptchaService;
+import cn.iocoder.yudao.module.erp.service.sale.ErpCustomerBusinessLicenseOcrService;
 import cn.iocoder.yudao.module.erp.service.config.ErpFieldConfigService;
 import cn.iocoder.yudao.module.erp.service.sale.ErpCustomerService;
 import cn.iocoder.yudao.module.erp.service.sale.ErpSaleFieldPermissionMasker;
@@ -68,6 +71,8 @@ public class ErpCustomerController {
 
     @Resource
     private ErpCustomerService customerService;
+    @Resource
+    private ErpCustomerBusinessLicenseOcrService customerBusinessLicenseOcrService;
 
     @Resource
     private ErpSaleOutMapper saleOutMapper;
@@ -85,6 +90,14 @@ public class ErpCustomerController {
     @PreAuthorize("@ss.hasPermission('erp:customer:create')")
     public CommonResult<Long> createCustomer(@Valid @RequestBody ErpCustomerSaveReqVO createReqVO) {
         return success(customerService.createCustomer(createReqVO));
+    }
+
+    @PostMapping("/business-license/recognize")
+    @Operation(summary = "识别客户营业执照")
+    @PreAuthorize("@ss.hasPermission('erp:customer:create')")
+    public CommonResult<ErpCustomerBusinessLicenseOcrRespVO> recognizeBusinessLicense(
+            @Valid @RequestBody ErpCustomerBusinessLicenseOcrReqVO reqVO) {
+        return success(customerBusinessLicenseOcrService.recognize(reqVO));
     }
 
     @PutMapping("/update")

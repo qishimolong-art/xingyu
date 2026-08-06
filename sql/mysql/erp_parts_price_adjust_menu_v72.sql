@@ -1,5 +1,5 @@
 -- 配件价格调整菜单（v72）
--- 挂在系统配置下，含查询/更新/批量调价权限
+-- 挂在基础数据 / 配件基本信息下，含查询/更新/批量调价权限
 -- 菜单 ID：900150-900153（避开数据库已有最大 ID 900144）
 
 SET NAMES utf8mb4 COLLATE utf8mb4_unicode_ci;
@@ -8,7 +8,7 @@ SET NAMES utf8mb4 COLLATE utf8mb4_unicode_ci;
 -- 配件价格调整菜单（900150-900153）
 -- =====================================================
 
--- 动态查询 ERP / 系统配置父菜单 ID
+-- 动态查询 ERP / 基础数据 / 配件基本信息父菜单 ID
 SET @erp_parent_id := (
   SELECT `id` FROM `system_menu`
   WHERE `name` = 'ERP 系统' AND `type` = 1 AND `deleted` = b'0'
@@ -16,9 +16,9 @@ SET @erp_parent_id := (
   LIMIT 1
 );
 
-SET @system_config_parent_id := (
+SET @base_parent_id := (
   SELECT `id` FROM `system_menu`
-  WHERE `name` = '系统配置'
+  WHERE `name` = '基础数据'
     AND `type` = 1
     AND `deleted` = b'0'
     AND (@erp_parent_id IS NULL OR `parent_id` = @erp_parent_id)
@@ -30,18 +30,48 @@ INSERT INTO `system_menu`
 (`name`, `permission`, `type`, `sort`, `parent_id`, `path`, `icon`, `component`, `component_name`,
  `status`, `visible`, `keep_alive`, `always_show`, `creator`, `create_time`, `updater`, `update_time`, `deleted`)
 SELECT
-  '系统配置', '', 1, 90, @erp_parent_id, 'system', 'ep:setting',
+  '基础数据', '', 1, 5, @erp_parent_id, 'base', 'ep:data-analysis',
   '', '',
   0, b'1', b'1', b'1', '1', NOW(), '1', NOW(), b'0'
 WHERE @erp_parent_id IS NOT NULL
-  AND @system_config_parent_id IS NULL;
+  AND @base_parent_id IS NULL;
 
-SET @system_config_parent_id := (
+SET @base_parent_id := (
   SELECT `id` FROM `system_menu`
-  WHERE `name` = '系统配置'
+  WHERE `name` = '基础数据'
     AND `type` = 1
     AND `deleted` = b'0'
     AND (@erp_parent_id IS NULL OR `parent_id` = @erp_parent_id)
+  ORDER BY `id` DESC
+  LIMIT 1
+);
+
+SET @parts_basic_menu_id := (
+  SELECT `id` FROM `system_menu`
+  WHERE `name` = '配件基本信息'
+    AND `type` = 1
+    AND `deleted` = b'0'
+    AND (@base_parent_id IS NULL OR `parent_id` = @base_parent_id)
+  ORDER BY `id` DESC
+  LIMIT 1
+);
+
+INSERT INTO `system_menu`
+(`name`, `permission`, `type`, `sort`, `parent_id`, `path`, `icon`, `component`, `component_name`,
+ `status`, `visible`, `keep_alive`, `always_show`, `creator`, `create_time`, `updater`, `update_time`, `deleted`)
+SELECT
+  '配件基本信息', '', 1, 30, @base_parent_id, 'parts-basic', 'fa-solid:tools',
+  '', '',
+  0, b'1', b'1', b'1', '1', NOW(), '1', NOW(), b'0'
+WHERE @base_parent_id IS NOT NULL
+  AND @parts_basic_menu_id IS NULL;
+
+SET @parts_basic_menu_id := (
+  SELECT `id` FROM `system_menu`
+  WHERE `name` = '配件基本信息'
+    AND `type` = 1
+    AND `deleted` = b'0'
+    AND (@base_parent_id IS NULL OR `parent_id` = @base_parent_id)
   ORDER BY `id` DESC
   LIMIT 1
 );
@@ -51,10 +81,10 @@ INSERT INTO `system_menu`
 (`id`, `name`, `permission`, `type`, `sort`, `parent_id`, `path`, `icon`, `component`,
  `component_name`, `status`, `visible`, `keep_alive`, `always_show`, `creator`, `create_time`,
  `updater`, `update_time`, `deleted`)
-SELECT 900150, '配件价格调整', '', 2, 20, @system_config_parent_id, 'price-adjust', 'ep:price-tag',
+SELECT 900150, '配件价格调整', '', 2, 40, @parts_basic_menu_id, 'price-adjust', 'ep:price-tag',
        'erp/purchase/price-adjust/index', 'ErpPurchasePriceAdjust',
        0, b'1', b'1', b'1', '1', NOW(), '1', NOW(), b'0'
-WHERE @system_config_parent_id IS NOT NULL
+WHERE @parts_basic_menu_id IS NOT NULL
   AND NOT EXISTS (
     SELECT 1
     FROM `system_menu`
@@ -72,13 +102,14 @@ SET @parts_price_adjust_menu_id := (
 );
 
 UPDATE `system_menu`
-SET `parent_id` = @system_config_parent_id,
+SET `parent_id` = @parts_basic_menu_id,
+    `sort` = 40,
     `updater` = '1',
     `update_time` = NOW()
-WHERE @system_config_parent_id IS NOT NULL
+WHERE @parts_basic_menu_id IS NOT NULL
   AND `id` = @parts_price_adjust_menu_id
   AND `deleted` = b'0'
-  AND `parent_id` <> @system_config_parent_id;
+  AND (`parent_id` <> @parts_basic_menu_id OR `sort` <> 40);
 
 -- 查询权限
 INSERT INTO `system_menu`
@@ -115,14 +146,15 @@ WHERE @parts_price_adjust_menu_id = 900150
 -- =====================================================
 INSERT INTO `system_role_menu`
 (`role_id`, `menu_id`, `creator`, `create_time`, `updater`, `update_time`, `deleted`, `tenant_id`)
-SELECT 1, @system_config_parent_id, '1', NOW(), '1', NOW(), b'0', 1
-FROM DUAL
-WHERE @system_config_parent_id IS NOT NULL
+SELECT 1, target_menu.`id`, '1', NOW(), '1', NOW(), b'0', 1
+FROM `system_menu` target_menu
+WHERE target_menu.`id` IN (@base_parent_id, @parts_basic_menu_id)
+  AND target_menu.`deleted` = b'0'
   AND NOT EXISTS (
     SELECT 1
     FROM `system_role_menu` target
     WHERE target.`role_id` = 1
-      AND target.`menu_id` = @system_config_parent_id
+      AND target.`menu_id` = target_menu.`id`
       AND target.`tenant_id` = 1
       AND target.`deleted` = b'0'
   );
@@ -151,6 +183,6 @@ WHERE NOT EXISTS (
 
 -- 执行后：
 -- 1. 系统管理 → 菜单管理 → 刷新缓存，或重启后端服务
--- 2. 登录后导航到"系统配置 → 配件价格调整"
+-- 2. 登录后导航到"基础数据 → 配件基本信息 → 配件价格调整"
 -- 3. 请及时修改 infra_config 表中 erp.parts.adjustPassword 的值为复杂口令
 -- 4. 配置位置：基础设施 → 配置管理 → 搜索 erp.parts.adjustPassword

@@ -21,8 +21,8 @@ public class ErpProductImportExcelVO {
     private String barCode;
 
     @ExcelRequired
-    @ExcelProperty("商品分类")
-    private String categoryName;
+    @ExcelProperty("配件分类编码")
+    private String categoryCode;
 
     @ExcelProperty("开启批次号")
     private Boolean batchNoEnabled;

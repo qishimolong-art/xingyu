@@ -40,6 +40,17 @@ SET @base_parent_id := (
   LIMIT 1
 );
 
+SET @parts_basic_menu_id := (
+  SELECT menu.`id`
+  FROM `system_menu` menu
+  WHERE menu.`name` = '配件基本信息'
+    AND menu.`type` = 1
+    AND menu.`deleted` = b'0'
+    AND (@base_parent_id IS NULL OR menu.`parent_id` = @base_parent_id)
+  ORDER BY menu.`id` DESC
+  LIMIT 1
+);
+
 SET @purchase_parent_id := (
   SELECT menu.`id`
   FROM `system_menu` menu
@@ -80,6 +91,28 @@ SET @system_config_parent_id := (
     AND menu.`type` = 1
     AND menu.`deleted` = b'0'
     AND (@erp_root_id IS NULL OR menu.`parent_id` = @erp_root_id)
+  ORDER BY menu.`id` DESC
+  LIMIT 1
+);
+
+INSERT INTO `system_menu` (
+  `name`, `permission`, `type`, `sort`, `parent_id`, `path`, `icon`, `component`,
+  `component_name`, `status`, `visible`, `keep_alive`, `always_show`, `creator`, `create_time`,
+  `updater`, `update_time`, `deleted`
+)
+SELECT '配件基本信息', '', 1, 30, @base_parent_id, 'parts-basic', 'fa-solid:tools',
+       '', '', 0, b'1', b'1', b'1', '1', NOW(), '1', NOW(), b'0'
+FROM DUAL
+WHERE @base_parent_id IS NOT NULL
+  AND @parts_basic_menu_id IS NULL;
+
+SET @parts_basic_menu_id := (
+  SELECT menu.`id`
+  FROM `system_menu` menu
+  WHERE menu.`name` = '配件基本信息'
+    AND menu.`type` = 1
+    AND menu.`deleted` = b'0'
+    AND (@base_parent_id IS NULL OR menu.`parent_id` = @base_parent_id)
   ORDER BY menu.`id` DESC
   LIMIT 1
 );
@@ -192,11 +225,11 @@ INSERT INTO `system_menu` (
   `component_name`, `status`, `visible`, `keep_alive`, `always_show`, `creator`, `create_time`,
   `updater`, `update_time`, `deleted`
 )
-SELECT '配件价格调整', '', 2, 20, @system_config_parent_id, 'price-adjust', 'ep:price-tag',
+SELECT '配件价格调整', '', 2, 40, @parts_basic_menu_id, 'price-adjust', 'ep:price-tag',
        'erp/purchase/price-adjust/index', 'ErpPurchasePriceAdjust',
        0, b'1', b'1', b'1', '1', NOW(), '1', NOW(), b'0'
 FROM DUAL
-WHERE @system_config_parent_id IS NOT NULL
+WHERE @parts_basic_menu_id IS NOT NULL
   AND NOT EXISTS (
     SELECT 1
     FROM `system_menu`
@@ -215,19 +248,21 @@ SET @parts_price_adjust_menu_id := (
 
 UPDATE `system_menu`
 SET `name` = '配件价格调整',
-    `parent_id` = @system_config_parent_id,
+    `parent_id` = @parts_basic_menu_id,
+    `sort` = 40,
     `path` = 'price-adjust',
     `component_name` = 'ErpPurchasePriceAdjust',
     `status` = 0,
     `visible` = b'1',
     `updater` = '1',
     `update_time` = NOW()
-WHERE @system_config_parent_id IS NOT NULL
+WHERE @parts_basic_menu_id IS NOT NULL
   AND `id` = @parts_price_adjust_menu_id
   AND `deleted` = b'0'
   AND (
     `name` <> '配件价格调整'
-    OR `parent_id` <> @system_config_parent_id
+    OR `parent_id` <> @parts_basic_menu_id
+    OR `sort` <> 40
     OR `path` <> 'price-adjust'
     OR IFNULL(`component_name`, '') <> 'ErpPurchasePriceAdjust'
     OR `status` <> 0
@@ -475,10 +510,12 @@ WHERE m.`deleted` = b'0'
   );
 
 INSERT IGNORE INTO tmp_role_permission_form_fix_targets_v74 (form_key, group_key, menu_id)
-SELECT 'erp_parts_price_adjust', 'erp_system', m.`id`
+SELECT 'erp_parts_price_adjust', 'parts_basic', m.`id`
 FROM `system_menu` m
 WHERE m.`deleted` = b'0'
   AND (
+    m.`id` = @parts_basic_menu_id
+    OR
     m.`id` = @parts_price_adjust_menu_id
     OR (m.`parent_id` = @parts_price_adjust_menu_id AND m.`permission` IN ('erp:product:query', 'erp:product:update'))
     OR (m.`permission` = 'erp:parts:adjust-price')
@@ -529,6 +566,41 @@ FROM (
         WHERE base_child.`parent_id` = @base_parent_id
           AND base_child.`deleted` = b'0'
           AND JSON_CONTAINS(tenant_package.`menu_ids`, CAST(base_child.`id` AS CHAR), '$')
+      )
+    )
+    AND NOT JSON_CONTAINS(tenant_package.`menu_ids`, CAST(target.menu_id AS CHAR), '$')
+) package_menu
+GROUP BY package_menu.package_id
+ON DUPLICATE KEY UPDATE
+  missing_menu_ids = JSON_MERGE_PRESERVE(missing_menu_ids, VALUES(missing_menu_ids));
+
+INSERT INTO tmp_role_permission_form_fix_package_append_v74 (package_id, missing_menu_ids)
+SELECT package_menu.package_id, JSON_ARRAYAGG(package_menu.menu_id)
+FROM (
+  SELECT DISTINCT tenant_package.`id` AS package_id, target.menu_id
+  FROM `system_tenant_package` tenant_package
+  JOIN tmp_role_permission_form_fix_targets_v74 target
+    ON target.group_key = 'parts_basic'
+  WHERE @parts_basic_menu_id IS NOT NULL
+    AND tenant_package.`deleted` = b'0'
+    AND JSON_VALID(tenant_package.`menu_ids`)
+    AND CHAR_LENGTH(tenant_package.`menu_ids`) < 4000
+    AND (
+      JSON_CONTAINS(tenant_package.`menu_ids`, CAST(@parts_basic_menu_id AS CHAR), '$')
+      OR EXISTS (
+        SELECT 1
+        FROM `system_menu` parts_child
+        WHERE parts_child.`deleted` = b'0'
+          AND (
+            parts_child.`parent_id` = @parts_basic_menu_id
+            OR parts_child.`component` IN (
+              'erp/product/product/index',
+              'erp/product/category/index',
+              'erp/product/unit/index',
+              'erp/purchase/price-adjust/index'
+            )
+          )
+          AND JSON_CONTAINS(tenant_package.`menu_ids`, CAST(parts_child.`id` AS CHAR), '$')
       )
     )
     AND NOT JSON_CONTAINS(tenant_package.`menu_ids`, CAST(target.menu_id AS CHAR), '$')
@@ -618,6 +690,23 @@ FROM (
       OR owned_menu.`parent_id` = @base_parent_id
     )
   UNION
+  SELECT role_menu.`role_id`, role_menu.`tenant_id`, 'parts_basic' AS group_key
+  FROM `system_role_menu` role_menu
+  JOIN `system_menu` owned_menu
+    ON owned_menu.`id` = role_menu.`menu_id`
+   AND owned_menu.`deleted` = b'0'
+  WHERE role_menu.`deleted` = b'0'
+    AND (
+      owned_menu.`id` = @parts_basic_menu_id
+      OR owned_menu.`parent_id` = @parts_basic_menu_id
+      OR owned_menu.`component` IN (
+        'erp/product/product/index',
+        'erp/product/category/index',
+        'erp/product/unit/index',
+        'erp/purchase/price-adjust/index'
+      )
+    )
+  UNION
   SELECT role_menu.`role_id`, role_menu.`tenant_id`, 'erp_system' AS group_key
   FROM `system_role_menu` role_menu
   JOIN `system_menu` owned_menu
@@ -641,6 +730,12 @@ FROM (
     )
   UNION
   SELECT role.`id`, role.`tenant_id`, 'base' AS group_key
+  FROM `system_role` role
+  WHERE role.`code` = 'super_admin'
+    AND role.`deleted` = b'0'
+    AND role.`status` = 0
+  UNION
+  SELECT role.`id`, role.`tenant_id`, 'parts_basic' AS group_key
   FROM `system_role` role
   WHERE role.`code` = 'super_admin'
     AND role.`deleted` = b'0'
