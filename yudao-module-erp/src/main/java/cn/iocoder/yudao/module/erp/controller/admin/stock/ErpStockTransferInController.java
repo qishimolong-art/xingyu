@@ -10,8 +10,10 @@ import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.move.ErpStockMovePa
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.move.ErpStockMoveRespVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockMoveDO;
 import cn.iocoder.yudao.module.erp.framework.excel.ErpExportFieldUtils;
+import cn.iocoder.yudao.module.erp.service.base.ErpDataPermissionDeptService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpStockFieldPermissionMasker;
 import cn.iocoder.yudao.module.erp.service.stock.ErpStockMoveService;
+import cn.iocoder.yudao.module.system.controller.admin.dept.vo.dept.DeptSimpleRespVO;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -56,6 +58,8 @@ public class ErpStockTransferInController {
     private ErpStockMoveController stockMoveController;
     @Resource
     private ErpStockFieldPermissionMasker fieldPermissionMasker;
+    @Resource
+    private ErpDataPermissionDeptService dataPermissionDeptService;
 
     @GetMapping("/page")
     @Operation(summary = "Get stock transfer-in page")
@@ -77,6 +81,20 @@ public class ErpStockTransferInController {
             throw exception(STOCK_MOVE_NOT_EXISTS);
         }
         return stockMoveController.buildStockMoveDetail(stockMove, FIELD_PERMISSION_MODULE);
+    }
+
+    @GetMapping("/from-dept-simple-list")
+    @Operation(summary = "Get visible stock transfer-in from department simple list")
+    @PreAuthorize("@ss.hasPermission('erp:stock-transfer-in:query')")
+    public CommonResult<List<DeptSimpleRespVO>> getFromDeptSimpleList() {
+        return success(stockMoveService.getVisibleStockTransferInFromDeptSimpleList());
+    }
+
+    @GetMapping("/to-dept-simple-list")
+    @Operation(summary = "Get visible stock transfer-in to department simple list")
+    @PreAuthorize("@ss.hasPermission('erp:stock-transfer-in:query')")
+    public CommonResult<List<DeptSimpleRespVO>> getToDeptSimpleList() {
+        return success(dataPermissionDeptService.getDeptSimpleList(FIELD_PERMISSION_MODULE));
     }
 
     @GetMapping("/export-excel")

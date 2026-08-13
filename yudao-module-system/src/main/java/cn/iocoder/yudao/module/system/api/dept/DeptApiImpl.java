@@ -3,6 +3,7 @@ package cn.iocoder.yudao.module.system.api.dept;
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
 import cn.iocoder.yudao.framework.datapermission.core.annotation.DataPermission;
 import cn.iocoder.yudao.module.system.api.dept.dto.DeptRespDTO;
+import cn.iocoder.yudao.module.system.controller.admin.dept.vo.dept.DeptListReqVO;
 import cn.iocoder.yudao.module.system.dal.dataobject.dept.DeptDO;
 import cn.iocoder.yudao.module.system.service.dept.DeptService;
 import org.springframework.stereotype.Service;
@@ -34,6 +35,13 @@ public class DeptApiImpl implements DeptApi {
     @DataPermission(enable = false)
     public List<DeptRespDTO> getDeptList(Collection<Long> ids) {
         List<DeptDO> depts = deptService.getDeptList(ids);
+        return BeanUtils.toBean(depts, DeptRespDTO.class);
+    }
+
+    @Override
+    @DataPermission(enable = false)
+    public List<DeptRespDTO> getDeptListByStatus(Integer status) {
+        List<DeptDO> depts = deptService.getDeptList(new DeptListReqVO().setStatus(status));
         return BeanUtils.toBean(depts, DeptRespDTO.class);
     }
 

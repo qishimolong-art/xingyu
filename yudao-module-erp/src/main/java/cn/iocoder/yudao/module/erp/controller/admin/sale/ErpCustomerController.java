@@ -11,6 +11,8 @@ import cn.iocoder.yudao.module.erp.controller.admin.common.vo.ErpExportFieldResp
 import cn.iocoder.yudao.module.erp.controller.admin.common.vo.ErpArchiveMergeReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.customer.ErpCustomerBatchDisableReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.customer.ErpCustomerBatchUpdateReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.customer.ErpCustomerDeptCreditRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.customer.ErpCustomerDeptCreditSaveReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.customer.ErpCustomerDeptDistributionRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.customer.ErpCustomerDeptDistributionSaveReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.customer.ErpCustomerImportExcelVO;
@@ -20,7 +22,9 @@ import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.customer.ErpCustomer
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.customer.ErpCustomerSaveReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.businesslicense.ErpCustomerBusinessLicenseOcrReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.businesslicense.ErpCustomerBusinessLicenseOcrRespVO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpCustomerBusinessInfoDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpCustomerDO;
+import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpCustomerBusinessInfoMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpSaleOutMapper;
 import cn.iocoder.yudao.module.erp.enums.config.ErpFieldConfigModuleEnum;
 import cn.iocoder.yudao.module.erp.framework.excel.ErpExportFieldUtils;
@@ -56,6 +60,7 @@ import static cn.iocoder.yudao.framework.apilog.core.enums.OperateTypeEnum.EXPOR
 import static cn.iocoder.yudao.framework.common.pojo.CommonResult.success;
 import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.convertList;
 import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.convertMap;
+import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.convertSet;
 
 import cn.hutool.core.collection.CollUtil;
 
@@ -77,6 +82,8 @@ public class ErpCustomerController {
     @Resource
     private ErpSaleOutMapper saleOutMapper;
     @Resource
+    private ErpCustomerBusinessInfoMapper customerBusinessInfoMapper;
+    @Resource
     private ErpSaleFieldPermissionMasker fieldPermissionMasker;
     @Resource
     private ErpFieldConfigService fieldConfigService;
@@ -94,7 +101,7 @@ public class ErpCustomerController {
 
     @PostMapping("/business-license/recognize")
     @Operation(summary = "识别客户营业执照")
-    @PreAuthorize("@ss.hasPermission('erp:customer:create')")
+    @PreAuthorize("@ss.hasPermission('erp:customer:update')")
     public CommonResult<ErpCustomerBusinessLicenseOcrRespVO> recognizeBusinessLicense(
             @Valid @RequestBody ErpCustomerBusinessLicenseOcrReqVO reqVO) {
         return success(customerBusinessLicenseOcrService.recognize(reqVO));
@@ -122,6 +129,22 @@ public class ErpCustomerController {
     public CommonResult<Boolean> updateCustomerDeptDistribution(
             @Valid @RequestBody ErpCustomerDeptDistributionSaveReqVO reqVO) {
         customerService.updateCustomerDeptDistribution(reqVO);
+        return success(true);
+    }
+
+    @GetMapping("/dept-credit")
+    @Operation(summary = "获得客户部门授信")
+    @Parameter(name = "id", description = "客户编号", required = true, example = "1024")
+    @PreAuthorize("@ss.hasPermission('erp:customer:dept-credit')")
+    public CommonResult<ErpCustomerDeptCreditRespVO> getCustomerDeptCredit(@RequestParam("id") Long id) {
+        return success(customerService.getCustomerDeptCredit(id));
+    }
+
+    @PutMapping("/dept-credit")
+    @Operation(summary = "更新客户部门授信")
+    @PreAuthorize("@ss.hasPermission('erp:customer:dept-credit')")
+    public CommonResult<Boolean> updateCustomerDeptCredit(@Valid @RequestBody ErpCustomerDeptCreditSaveReqVO reqVO) {
+        customerService.updateCustomerDeptCredit(reqVO);
         return success(true);
     }
 
@@ -192,6 +215,7 @@ public class ErpCustomerController {
             respResult.getList().forEach(vo -> applyCreditStatus(vo, creditStatusMap.get(vo.getId())));
         }
         fieldPermissionMasker.maskForms(FIELD_PERMISSION_MODULE, respResult.getList());
+        fillBusinessInfoSynced(respResult.getList());
         return success(respResult);
     }
 
@@ -406,6 +430,17 @@ public class ErpCustomerController {
         vo.setCreditBlocked(status.getBlocked());
         vo.setCreditBlockedReason(status.getBlockedReason());
         vo.setDisabled(Boolean.TRUE.equals(status.getBlocked()));
+    }
+
+    private void fillBusinessInfoSynced(List<ErpCustomerRespVO> list) {
+        if (CollUtil.isEmpty(list)) {
+            return;
+        }
+        Set<Long> customerIds = convertSet(list, ErpCustomerRespVO::getId);
+        Set<Long> syncedCustomerIds = convertSet(
+                customerBusinessInfoMapper.selectListByCustomerIds(customerIds),
+                ErpCustomerBusinessInfoDO::getCustomerId);
+        list.forEach(customer -> customer.setBusinessInfoSynced(syncedCustomerIds.contains(customer.getId())));
     }
 
 }

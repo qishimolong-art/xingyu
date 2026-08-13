@@ -1,6 +1,7 @@
 package cn.iocoder.yudao.module.erp.controller.admin.stock;
 
 import cn.iocoder.yudao.framework.common.pojo.CommonResult;
+import cn.iocoder.yudao.framework.common.pojo.PageParam;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.datapermission.core.aop.DataPermissionContextHolder;
 import cn.iocoder.yudao.framework.security.core.util.SecurityFrameworkUtils;
@@ -19,6 +20,7 @@ import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpWarehouseDO;
 import cn.iocoder.yudao.module.erp.dal.mysql.purchase.ErpPurchaseInItemMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.purchase.ErpPurchaseOrderItemMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpSaleCartItemMapper;
+import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpSaleOutItemMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.stock.ErpStockBatchQuantityMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.stock.ErpStockMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.stock.ErpStockOccupiedDetailMapper;
@@ -59,8 +61,10 @@ import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mockStatic;
+import static org.mockito.Mockito.never;
 
 @MockitoSettings(strictness = Strictness.LENIENT)
 public class ErpStockControllerTest extends BaseMockitoUnitTest {
@@ -89,6 +93,8 @@ public class ErpStockControllerTest extends BaseMockitoUnitTest {
     @Mock
     private ErpSaleCartItemMapper saleCartItemMapper;
     @Mock
+    private ErpSaleOutItemMapper saleOutItemMapper;
+    @Mock
     private ErpProductPriceSystemService productPriceSystemService;
     @Mock
     private DeptApi deptApi;
@@ -103,6 +109,10 @@ public class ErpStockControllerTest extends BaseMockitoUnitTest {
     public void setUpPendingChangeSummary() {
         lenient().when(stockMapper.selectOccupiedCountMap(any(), any())).thenReturn(Collections.emptyMap());
         lenient().when(stockMapper.selectPendingInCountMap(any(), any())).thenReturn(Collections.emptyMap());
+        lenient().when(purchaseOrderItemMapper.selectInTransitCountMap(any(), any(), any()))
+                .thenReturn(Collections.emptyMap());
+        lenient().when(saleOutItemMapper.selectLatestSalePriceMap(any())).thenReturn(Collections.emptyMap());
+        lenient().when(stockService.getAvailableBatchNoListMap(any())).thenReturn(Collections.emptyMap());
         lenient().when(stockBatchQuantityMapper.selectOccupiedList(any(), any(), any(), any(), any(), any()))
                 .thenReturn(Collections.emptyList());
         lenient().when(stockBatchQuantityMapper.selectPendingInList(any(), any(), any(), any(), any()))
@@ -790,7 +800,7 @@ public class ErpStockControllerTest extends BaseMockitoUnitTest {
     }
 
     @Test
-    public void testGetStockPage_showBatchNo_splitsRowsAndKeepsUnassignedResidual() {
+    public void testGetStockPage_showBatchNo_expandsCurrentStockPageWithoutFullScan() {
         ErpStockPageReqVO reqVO = new ErpStockPageReqVO();
         reqVO.setShowBatchNo(true);
         reqVO.setKeyword("PC202607");
@@ -842,8 +852,8 @@ public class ErpStockControllerTest extends BaseMockitoUnitTest {
 
         PageResult<ErpStockRespVO> firstPage = controller.getStockPage(reqVO).getData();
 
-        assertEquals(3L, firstPage.getTotal());
-        assertEquals(2, firstPage.getList().size());
+        assertEquals(1L, firstPage.getTotal());
+        assertEquals(3, firstPage.getList().size());
         assertEquals("PC20260701", firstPage.getList().get(0).getBatchNo());
         assertEquals(new BigDecimal("10"), firstPage.getList().get(0).getCount());
         assertEquals(new BigDecimal("20"), firstPage.getList().get(0).getCostAmount());
@@ -853,19 +863,21 @@ public class ErpStockControllerTest extends BaseMockitoUnitTest {
         assertEquals(new BigDecimal("4"), firstPage.getList().get(0).getInTransitCount());
         assertTrue(firstPage.getList().get(0).getBatchRow());
         assertEquals("PC20260715", firstPage.getList().get(1).getBatchNo());
-
-        reqVO.setPageNo(2);
-        PageResult<ErpStockRespVO> secondPage = controller.getStockPage(reqVO).getData();
-        assertEquals(1, secondPage.getList().size());
-        assertNull(secondPage.getList().get(0).getBatchNo());
-        assertEquals(new BigDecimal("5"), secondPage.getList().get(0).getCount());
-        assertTrue(secondPage.getList().get(0).getRowKey().contains("__UNASSIGNED__"));
+        assertNull(firstPage.getList().get(2).getBatchNo());
+        assertEquals(new BigDecimal("5"), firstPage.getList().get(2).getCount());
+        assertTrue(firstPage.getList().get(2).getRowKey().contains("__UNASSIGNED__"));
 
         reqVO.setPageNo(1);
         reqVO.setCountMin(new BigDecimal("12"));
         PageResult<ErpStockRespVO> filteredPage = controller.getStockPage(reqVO).getData();
         assertEquals(1L, filteredPage.getTotal());
         assertEquals("PC20260715", filteredPage.getList().get(0).getBatchNo());
+        verify(stockService, atLeastOnce()).getStockPage(argThat(request ->
+                Integer.valueOf(1).equals(request.getPageNo())
+                        && Integer.valueOf(2).equals(request.getPageSize())
+                        && request.getCountMin() == null));
+        verify(stockService, never()).getStockPage(argThat(request ->
+                PageParam.PAGE_SIZE_NONE.equals(request.getPageSize())));
     }
 
     @Test

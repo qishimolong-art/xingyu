@@ -410,6 +410,8 @@ public class ErpSalePriceAdjustServiceImpl implements ErpSalePriceAdjustService 
                 ? new HashMap<>()
                 : DataPermissionUtils.executeIgnore(() -> productService.getProductVOMap(productMap.values().stream()
                 .map(ErpProductDO::getId).collect(Collectors.toSet())));
+        Map<String, ErpWarehouseDO> warehouseMap = warehouseService.getCurrentUserVisibleSaleWarehouseList().stream()
+                .collect(Collectors.toMap(item -> normalizeKey(item.getName()), item -> item, (a, b) -> a));
 
         Long importCustomerId = null;
         Set<String> usedKeys = new HashSet<>();
@@ -420,16 +422,6 @@ public class ErpSalePriceAdjustServiceImpl implements ErpSalePriceAdjustService 
                 if (row == null || isEmptyImportRow(row)) {
                     continue;
                 }
-                Long customerId = row.getCustomerId();
-                if (customerId == null) {
-                    throw new IllegalArgumentException("客户编号不能为空");
-                }
-                if (importCustomerId == null) {
-                    importCustomerId = customerId;
-                    respVO.setCustomerId(customerId);
-                } else if (!importCustomerId.equals(customerId)) {
-                    throw new IllegalArgumentException("导入文件中客户编号必须保持一致");
-                }
                 String saleOutNo = trimToNull(row.getSaleOutNo());
                 if (saleOutNo == null) {
                     throw new IllegalArgumentException("销售单号不能为空");
@@ -437,6 +429,14 @@ public class ErpSalePriceAdjustServiceImpl implements ErpSalePriceAdjustService 
                 String productCode = trimToNull(row.getProductCode());
                 if (productCode == null) {
                     throw new IllegalArgumentException("产品编码不能为空");
+                }
+                String warehouseName = trimToNull(row.getWarehouseName());
+                if (warehouseName == null) {
+                    throw new IllegalArgumentException("所属仓库不能为空");
+                }
+                ErpWarehouseDO warehouse = warehouseMap.get(normalizeKey(warehouseName));
+                if (warehouse == null) {
+                    throw new IllegalArgumentException("所属仓库不存在：" + row.getWarehouseName());
                 }
                 if (row.getNewPrice() == null || row.getNewPrice().compareTo(BigDecimal.ZERO) < 0) {
                     throw new IllegalArgumentException("调后价不能小于 0");
@@ -446,8 +446,15 @@ public class ErpSalePriceAdjustServiceImpl implements ErpSalePriceAdjustService 
                 if (saleOut == null) {
                     throw new IllegalArgumentException("销售单不存在");
                 }
-                if (!customerId.equals(saleOut.getCustomerId())) {
-                    throw new IllegalArgumentException("销售单与客户编号不匹配");
+                Long customerId = saleOut.getCustomerId();
+                if (customerId == null) {
+                    throw new IllegalArgumentException("销售单未关联客户");
+                }
+                if (importCustomerId == null) {
+                    importCustomerId = customerId;
+                    respVO.setCustomerId(customerId);
+                } else if (!importCustomerId.equals(customerId)) {
+                    throw new IllegalArgumentException("导入文件中销售单客户必须保持一致");
                 }
                 ErpProductDO product = productMap.get(productCode);
                 if (product == null) {
@@ -456,12 +463,13 @@ public class ErpSalePriceAdjustServiceImpl implements ErpSalePriceAdjustService 
 
                 List<ErpSaleOutItemDO> matchedItems = saleOutItemMapper.selectListByOutId(saleOut.getId()).stream()
                         .filter(item -> product.getId().equals(item.getProductId()))
+                        .filter(item -> warehouse.getId().equals(item.getWarehouseId()))
                         .collect(Collectors.toList());
                 if (matchedItems.isEmpty()) {
-                    throw new IllegalArgumentException("销售单中不存在该产品");
+                    throw new IllegalArgumentException("销售单中不存在该产品或所属仓库不匹配");
                 }
                 if (matchedItems.size() > 1) {
-                    throw new IllegalArgumentException("销售单中该产品存在多条明细，暂不支持导入，请手动选择");
+                    throw new IllegalArgumentException("销售单中该产品和所属仓库存在多条明细，暂不支持导入，请手动选择");
                 }
 
                 ErpSaleOutItemDO outItem = matchedItems.get(0);
@@ -491,6 +499,8 @@ public class ErpSalePriceAdjustServiceImpl implements ErpSalePriceAdjustService 
                 item.setOriginPlace(outItem.getOriginPlace());
                 item.setDeptId(outItem.getDeptId());
                 item.setWarehouseId(outItem.getWarehouseId());
+                item.setWarehouseName(warehouse.getName());
+                item.setWarehouseDeptId(warehouse.getDeptId());
                 item.setOutCount(outItem.getCount());
                 item.setOldPrice(outItem.getProductPrice());
                 item.setNewPrice(row.getNewPrice());
@@ -783,9 +793,14 @@ public class ErpSalePriceAdjustServiceImpl implements ErpSalePriceAdjustService 
 
     private boolean isEmptyImportRow(ErpSalePriceAdjustImportExcelVO row) {
         return row == null
-                || row.getCustomerId() == null
-                && StrUtil.isAllBlank(row.getSaleOutNo(), row.getProductCode(), row.getAdjustReason(), row.getItemRemark())
+                || StrUtil.isAllBlank(row.getSaleOutNo(), row.getProductCode(), row.getWarehouseName(),
+                row.getAdjustReason(), row.getItemRemark())
                 && row.getNewPrice() == null;
+    }
+
+    private String normalizeKey(String value) {
+        String trimmed = trimToNull(value);
+        return trimmed == null ? null : trimmed.replaceAll("\\s+", "").toLowerCase(Locale.ROOT);
     }
 
     private String trimToNull(String value) {

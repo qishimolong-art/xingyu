@@ -5,6 +5,7 @@ import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.ErpPurchaseUpdat
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.imports.ErpPurchaseImportResultRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.in.ErpPurchaseInImportExcelVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.in.ErpPurchaseInImportRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.in.ErpPurchaseInItemBatchUpdateReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.in.ErpPurchaseInDraftCreateReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.in.ErpPurchaseInDraftUpdateReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.in.ErpPurchaseInForAdjustRespVO;
@@ -21,6 +22,7 @@ import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.in.ErpPurchaseIn
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.order.ErpPurchaseInFromOrderReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseInDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseInItemDO;
+import cn.iocoder.yudao.module.system.controller.admin.dept.vo.dept.DeptSimpleRespVO;
 
 import javax.validation.Valid;
 import java.math.BigDecimal;
@@ -66,6 +68,13 @@ public interface ErpPurchaseInService {
     void updatePurchaseInRemark(@Valid ErpPurchaseUpdateRemarkReqVO updateReqVO);
 
     /**
+     * 批量修改采购入库明细的仓库和部门。
+     *
+     * @param updateReqVO 修改信息
+     */
+    void batchUpdatePurchaseInItems(@Valid ErpPurchaseInItemBatchUpdateReqVO updateReqVO);
+
+    /**
      * 更新采购入库的状态
      *
      * @param id 编号
@@ -103,6 +112,22 @@ public interface ErpPurchaseInService {
      * @return 采购入库
      */
     ErpPurchaseInDO validatePurchaseIn(Long id);
+
+    /**
+     * 获得当前用户对指定供应商可用的采购入库部门列表
+     *
+     * @param supplierId 供应商编号
+     * @return 部门精简列表
+     */
+    List<DeptSimpleRespVO> getSupplierAvailableDeptSimpleList(Long supplierId);
+
+    /**
+     * 获得目标采购仓库对当前用户可用的业务部门列表。
+     *
+     * @param warehouseId 仓库编号
+     * @return 部门精简列表
+     */
+    List<DeptSimpleRespVO> getWarehouseAvailableDeptSimpleList(Long warehouseId);
 
     /**
      * 获得采购入库分页

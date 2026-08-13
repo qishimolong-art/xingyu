@@ -1,5 +1,6 @@
 package cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart;
 
+import cn.idev.excel.annotation.ExcelIgnoreUnannotated;
 import cn.idev.excel.annotation.ExcelProperty;
 import cn.iocoder.yudao.framework.excel.core.annotations.ExcelRequired;
 import lombok.Data;
@@ -7,6 +8,7 @@ import lombok.Data;
 import java.math.BigDecimal;
 
 @Data
+@ExcelIgnoreUnannotated
 public class ErpSaleCartImportExcelVO {
 
     @ExcelRequired
@@ -14,7 +16,7 @@ public class ErpSaleCartImportExcelVO {
     private String productCode;
 
     @ExcelRequired
-    @ExcelProperty("仓库名称")
+    @ExcelProperty("所属仓库")
     private String warehouseName;
 
     @ExcelRequired
@@ -24,18 +26,10 @@ public class ErpSaleCartImportExcelVO {
     @ExcelProperty("单价")
     private BigDecimal productPrice;
 
-    @ExcelProperty("是否为赠品")
+    @ExcelProperty("赠品")
     private Boolean giftFlag;
-
-    @ExcelProperty("品牌")
-    private String brand;
-
-    @ExcelProperty("车型")
-    private String vehicleModel;
-
-    @ExcelProperty("规格")
-    private String standard;
 
     @ExcelProperty("备注")
     private String remark;
+
 }

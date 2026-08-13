@@ -5,6 +5,7 @@ import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.mybatis.core.mapper.BaseMapperX;
 import cn.iocoder.yudao.framework.mybatis.core.query.MPJLambdaWrapperX;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.in.ErpPurchaseInPageReqVO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.product.ErpProductDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseInDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseInItemDO;
 import cn.iocoder.yudao.module.erp.dal.mysql.common.ErpKeywordQuery;
@@ -14,6 +15,7 @@ import cn.iocoder.yudao.module.erp.enums.common.ErpBizTypeEnum;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.core.toolkit.support.SFunction;
 import org.apache.ibatis.annotations.Mapper;
+import org.springframework.util.StringUtils;
 
 import java.util.Collection;
 import java.util.List;
@@ -78,10 +80,27 @@ public interface ErpPurchaseInMapper extends BaseMapperX<ErpPurchaseInDO> {
                             + "AND pii.source_in_id = t.id AND pi.status = {0})",
                             ErpAuditStatus.APPROVE.getStatus());
         }
-        if (reqVO.getWarehouseId() != null || reqVO.getProductId() != null) {
+        if (reqVO.getWarehouseId() != null || reqVO.getProductId() != null
+                || StringUtils.hasText(reqVO.getProductKeyword())) {
             query.leftJoin(ErpPurchaseInItemDO.class, ErpPurchaseInItemDO::getInId, ErpPurchaseInDO::getId)
+                    .leftJoin(ErpProductDO.class, ErpProductDO::getId, ErpPurchaseInItemDO::getProductId)
                     .eq(reqVO.getWarehouseId() != null, ErpPurchaseInItemDO::getWarehouseId, reqVO.getWarehouseId())
                     .eq(reqVO.getProductId() != null, ErpPurchaseInItemDO::getProductId, reqVO.getProductId())
+                    .and(StringUtils.hasText(reqVO.getProductKeyword()), w -> {
+                        String productKeyword = ErpKeywordQuery.normalize(reqVO.getProductKeyword());
+                        w.like(ErpProductDO::getCode, productKeyword)
+                                .or().like(ErpProductDO::getName, productKeyword)
+                                .or().like(ErpProductDO::getBarCode, productKeyword)
+                                .or().like(ErpProductDO::getVehicleModel, productKeyword)
+                                .or().like(ErpProductDO::getFactoryCode, productKeyword)
+                                .or().like(ErpProductDO::getStandard, productKeyword)
+                                .or().like(ErpProductDO::getBrand, productKeyword)
+                                .or().like(ErpProductDO::getDrawingNo, productKeyword)
+                                .or().like(ErpPurchaseInItemDO::getBarCode, productKeyword)
+                                .or().like(ErpPurchaseInItemDO::getVehicleModel, productKeyword)
+                                .or().like(ErpPurchaseInItemDO::getDrawingNo, productKeyword)
+                                .or().like(ErpPurchaseInItemDO::getBrand, productKeyword);
+                    })
                     .groupBy(ErpPurchaseInDO::getId); // 避免 1 对多查询，产生相同的 1
         }
         ErpKeywordQuery.appendWithDeptName(query, reqVO.getKeyword(),

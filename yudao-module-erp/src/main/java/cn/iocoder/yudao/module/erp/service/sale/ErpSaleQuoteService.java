@@ -8,11 +8,13 @@ import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.quote.ErpSaleQuoteDr
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.quote.ErpSaleQuoteDraftUpdateReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.quote.ErpSaleQuoteImportExcelVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.quote.ErpSaleQuoteImportRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.quote.ErpSaleQuoteItemBatchUpdateReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.quote.ErpSaleQuoteOrderImportExcelVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.quote.ErpSaleQuotePageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.quote.ErpSaleQuoteSaveReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleQuoteDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleQuoteItemDO;
+import cn.iocoder.yudao.module.system.controller.admin.dept.vo.dept.DeptSimpleRespVO;
 
 import javax.validation.Valid;
 import java.util.Collection;
@@ -31,6 +33,8 @@ public interface ErpSaleQuoteService {
 
     void updateSaleQuoteDraft(ErpSaleQuoteDraftUpdateReqVO updateReqVO);
 
+    void batchUpdateSaleQuoteItems(@Valid ErpSaleQuoteItemBatchUpdateReqVO updateReqVO);
+
     void submitSaleQuote(Long id);
 
     void updateSaleQuoteRemark(@Valid ErpSaleUpdateRemarkReqVO updateReqVO);
@@ -48,6 +52,8 @@ public interface ErpSaleQuoteService {
     List<ErpSaleQuoteItemDO> getSaleQuoteItemListByQuoteId(Long quoteId);
 
     List<ErpSaleQuoteItemDO> getSaleQuoteItemListByQuoteIds(Collection<Long> quoteIds);
+
+    List<DeptSimpleRespVO> getWarehouseAvailableDeptSimpleList(Long warehouseId);
 
     ErpSaleQuoteImportRespVO parseImportData(List<ErpSaleQuoteImportExcelVO> list);
 

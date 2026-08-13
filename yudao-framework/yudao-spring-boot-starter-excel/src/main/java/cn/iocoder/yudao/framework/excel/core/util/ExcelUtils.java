@@ -3,6 +3,9 @@ package cn.iocoder.yudao.framework.excel.core.util;
 import cn.idev.excel.FastExcelFactory;
 import cn.idev.excel.annotation.ExcelProperty;
 import cn.idev.excel.converters.longconverter.LongStringConverter;
+import cn.idev.excel.exception.ExcelAnalysisException;
+import cn.idev.excel.exception.ExcelDataConvertException;
+import cn.idev.excel.metadata.property.ExcelContentProperty;
 import cn.idev.excel.write.builder.ExcelWriterBuilder;
 import cn.hutool.core.io.IoUtil;
 import cn.iocoder.yudao.framework.common.util.http.HttpUtils;
@@ -157,9 +160,20 @@ public class ExcelUtils {
         // 参考 https://t.zsxq.com/zM77F 帖子，增加 try 处理，兼容 windows 场景
         try (InputStream inputStream = file.getInputStream();
              InputStream normalizedInputStream = normalizeRequiredHeaders(inputStream, head)) {
-            List<T> rows = FastExcelFactory.read(normalizedInputStream, head, null)
-                    .autoCloseStream(false) // 不要自动关闭，交给 Servlet 自己处理
-                    .doReadAllSync();
+            List<T> rows;
+            try {
+                rows = FastExcelFactory.read(normalizedInputStream, head, null)
+                        .autoCloseStream(false) // 不要自动关闭，交给 Servlet 自己处理
+                        .doReadAllSync();
+            } catch (ExcelDataConvertException ex) {
+                throw new IllegalArgumentException(formatReadConvertError(ex), ex);
+            } catch (ExcelAnalysisException ex) {
+                ExcelDataConvertException convertException = findCause(ex, ExcelDataConvertException.class);
+                if (convertException != null) {
+                    throw new IllegalArgumentException(formatReadConvertError(convertException), ex);
+                }
+                throw ex;
+            }
             LAST_OPERATION.set(new ExcelOperationContext("READ",
                     file == null ? null : file.getOriginalFilename(), rows == null ? 0 : rows.size(), null));
             return rows;
@@ -238,7 +252,43 @@ public class ExcelUtils {
     private static Map<String, String> buildHeaderAliases() {
         Map<String, String> aliases = new HashMap<>();
         aliases.put("供应商名称", "供应商");
+        aliases.put("仓库", "所属仓库");
         return aliases;
+    }
+
+    private static String formatReadConvertError(ExcelDataConvertException ex) {
+        Integer rowIndex = ex.getRowIndex();
+        Integer columnIndex = ex.getColumnIndex();
+        String rowText = rowIndex == null ? "未知行" : "第 " + (rowIndex + 1) + " 行";
+        String columnText = resolveHeaderName(ex.getExcelContentProperty());
+        if (columnText == null && columnIndex != null) {
+            columnText = "第 " + (columnIndex + 1) + " 列";
+        }
+        String fieldText = columnText == null ? "" : "，字段【" + columnText + "】";
+        return rowText + fieldText + "格式不正确，请检查单元格内容；日期请使用 yyyy-MM-dd 或 yyyy-MM-dd HH:mm:ss";
+    }
+
+    private static String resolveHeaderName(ExcelContentProperty contentProperty) {
+        if (contentProperty == null || contentProperty.getField() == null) {
+            return null;
+        }
+        ExcelProperty excelProperty = contentProperty.getField().getAnnotation(ExcelProperty.class);
+        if (excelProperty == null || excelProperty.value().length == 0) {
+            return contentProperty.getField().getName();
+        }
+        String[] values = excelProperty.value();
+        return values[values.length - 1];
+    }
+
+    private static <T extends Throwable> T findCause(Throwable throwable, Class<T> targetClass) {
+        Throwable current = throwable;
+        while (current != null) {
+            if (targetClass.isInstance(current)) {
+                return targetClass.cast(current);
+            }
+            current = current.getCause();
+        }
+        return null;
     }
 
     public static class ExcelOperationContext {

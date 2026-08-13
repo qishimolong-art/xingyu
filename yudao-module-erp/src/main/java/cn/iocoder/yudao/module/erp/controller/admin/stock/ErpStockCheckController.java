@@ -14,14 +14,16 @@ import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpProduc
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.ErpStockUpdateRemarkReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.check.ErpStockCheckDraftCreateReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.check.ErpStockCheckDraftUpdateReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.check.ErpStockCheckImportExcelVO;
+import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.check.ErpStockCheckItemBatchUpdateReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.check.ErpStockCheckPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.check.ErpStockCheckRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.check.ErpStockCheckSaveReqVO;
-import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.imports.ErpStockImportExcelVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.imports.ErpStockImportResultRespVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockCheckDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockCheckItemDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpWarehouseDO;
+import cn.iocoder.yudao.module.erp.service.base.ErpDataPermissionDeptService;
 import cn.iocoder.yudao.module.erp.service.product.ErpProductService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpStockCheckService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpStockFieldPermissionMasker;
@@ -31,6 +33,7 @@ import cn.iocoder.yudao.module.system.api.dept.DeptApi;
 import cn.iocoder.yudao.module.system.api.dept.dto.DeptRespDTO;
 import cn.iocoder.yudao.module.system.api.user.AdminUserApi;
 import cn.iocoder.yudao.module.system.api.user.dto.AdminUserRespDTO;
+import cn.iocoder.yudao.module.system.controller.admin.dept.vo.dept.DeptSimpleRespVO;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -77,8 +80,8 @@ public class ErpStockCheckController {
             "单次最多导出 5000 条盘点单，请缩小筛选范围后重试");
     private static final String FIELD_PERMISSION_MODULE = "erp_stock_check";
     private static final Set<String> IMPORT_TEMPLATE_FIELDS = new LinkedHashSet<>(Arrays.asList(
-            "orderNo", "bizTime", "checkTypeName", "warehouseName", "productCode", "productPrice", "stockCount",
-            "actualCount", "remark", "itemRemark"));
+            "checkTypeName", "warehouseName", "productCode", "batchNo", "actualCount",
+            "productPrice", "totalPrice", "remark", "itemRemark"));
 
     @Resource
     private ErpStockCheckService stockCheckService;
@@ -90,6 +93,8 @@ public class ErpStockCheckController {
     private ErpWarehouseService warehouseService;
     @Resource
     private ErpStockFieldPermissionMasker fieldPermissionMasker;
+    @Resource
+    private ErpDataPermissionDeptService dataPermissionDeptService;
     @Resource
     private DeptApi deptApi;
     @Resource
@@ -115,6 +120,22 @@ public class ErpStockCheckController {
     public CommonResult<Boolean> updateStockCheck(@Valid @RequestBody ErpStockCheckSaveReqVO updateReqVO) {
         stockCheckService.updateStockCheck(updateReqVO);
         return success(true);
+    }
+
+    @PutMapping("/batch-update-items")
+    @Operation(summary = "Batch update stock check item warehouse")
+    @PreAuthorize("@ss.hasPermission('erp:stock-check:update')")
+    public CommonResult<Boolean> batchUpdateStockCheckItems(
+            @Valid @RequestBody ErpStockCheckItemBatchUpdateReqVO updateReqVO) {
+        stockCheckService.batchUpdateStockCheckItems(updateReqVO);
+        return success(true);
+    }
+
+    @GetMapping("/warehouse-dept-simple-list")
+    @Operation(summary = "Get available department list for stock check item warehouse")
+    @PreAuthorize("@ss.hasPermission('erp:stock-check:update')")
+    public CommonResult<List<DeptSimpleRespVO>> getWarehouseDeptSimpleList(@RequestParam("warehouseId") Long warehouseId) {
+        return success(stockCheckService.getWarehouseDeptSimpleList(warehouseId));
     }
 
     @PutMapping("/update-draft")
@@ -215,6 +236,13 @@ public class ErpStockCheckController {
         return success(buildStockCheckVOPageResult(stockCheckService.getStockCheckPage(pageReqVO)));
     }
 
+    @GetMapping("/dept-simple-list")
+    @Operation(summary = "Get visible department list for stock check filter")
+    @PreAuthorize("@ss.hasPermission('erp:stock-check:query')")
+    public CommonResult<List<DeptSimpleRespVO>> getVisibleDeptSimpleList() {
+        return success(dataPermissionDeptService.getDeptSimpleList(FIELD_PERMISSION_MODULE));
+    }
+
     @GetMapping("/export-excel")
     @Operation(summary = "Export stock check")
     @PreAuthorize("@ss.hasPermission('erp:stock-check:export')")
@@ -235,27 +263,22 @@ public class ErpStockCheckController {
     @Operation(summary = "Get stock check import template")
     @PreAuthorize("@ss.hasPermission('erp:stock-check:import')")
     public void getImportTemplate(HttpServletResponse response) throws IOException {
-        ErpStockImportExcelVO first = new ErpStockImportExcelVO();
-        first.setOrderNo("CHECK-001");
-        first.setBizTime("2026-07-01 09:00:00");
+        ErpStockCheckImportExcelVO first = new ErpStockCheckImportExcelVO();
         first.setCheckTypeName("盘数量");
         first.setWarehouseName("示例仓库");
         first.setProductCode("P0001");
-        first.setProductPrice(new BigDecimal("100.00"));
-        first.setStockCount(new BigDecimal("10"));
+        first.setBatchNo("BATCH-001");
         first.setActualCount(new BigDecimal("12"));
+        first.setProductPrice(new BigDecimal("100.00"));
         first.setRemark("单据备注");
         first.setItemRemark("明细备注");
-        ErpStockImportExcelVO second = new ErpStockImportExcelVO();
-        second.setOrderNo("CHECK-001");
-        second.setCheckTypeName("盘数量");
+        ErpStockCheckImportExcelVO second = new ErpStockCheckImportExcelVO();
         second.setWarehouseName("示例仓库");
         second.setProductCode("P0002");
-        second.setProductPrice(new BigDecimal("50.00"));
-        second.setStockCount(new BigDecimal("20"));
         second.setActualCount(new BigDecimal("18"));
+        second.setProductPrice(new BigDecimal("50.00"));
         ExcelUtils.writeImportTemplate(response, "库存盘点导入模板.xls", "库存盘点",
-                ErpStockImportExcelVO.class, Arrays.asList(first, second), IMPORT_TEMPLATE_FIELDS);
+                ErpStockCheckImportExcelVO.class, Arrays.asList(first, second), IMPORT_TEMPLATE_FIELDS);
     }
 
     @PostMapping("/import")
@@ -263,7 +286,7 @@ public class ErpStockCheckController {
     @PreAuthorize("@ss.hasPermission('erp:stock-check:import')")
     public CommonResult<ErpStockImportResultRespVO> importStockCheck(@RequestParam("file") MultipartFile file)
             throws Exception {
-        return success(stockImportService.importStockCheckList(ExcelUtils.read(file, ErpStockImportExcelVO.class)));
+        return success(stockImportService.importStockCheckList(ExcelUtils.read(file, ErpStockCheckImportExcelVO.class)));
     }
 
     private PageResult<ErpStockCheckRespVO> buildStockCheckVOPageResult(PageResult<ErpStockCheckDO> pageResult) {

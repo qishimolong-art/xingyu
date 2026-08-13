@@ -6,6 +6,7 @@ import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.transferledger.ErpS
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.transferledger.ErpStockTransferLedgerPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.transferledger.ErpStockTransferLedgerSummaryRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.transferledger.ErpStockTransferLedgerTotalRespVO;
+import cn.iocoder.yudao.module.system.controller.admin.dept.vo.dept.DeptSimpleRespVO;
 
 import java.util.List;
 
@@ -18,5 +19,9 @@ public interface ErpStockTransferLedgerService {
     PageResult<ErpStockTransferLedgerDetailRespVO> getDetailPage(ErpStockTransferLedgerDetailPageReqVO reqVO);
 
     List<ErpStockTransferLedgerDetailRespVO> getExportList(ErpStockTransferLedgerPageReqVO reqVO);
+
+    List<DeptSimpleRespVO> getVisibleFromDeptSimpleList();
+
+    List<DeptSimpleRespVO> getVisibleToDeptSimpleList();
 
 }

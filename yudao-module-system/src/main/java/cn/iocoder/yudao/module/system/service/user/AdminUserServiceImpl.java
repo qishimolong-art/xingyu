@@ -124,7 +124,6 @@ public class AdminUserServiceImpl implements AdminUserService {
             }
         });
         normalizeUserDept(createReqVO);
-        validateUserDataScope(createReqVO);
         normalizeUserDataScope(createReqVO, false);
         syncUsernameWithMobile(createReqVO);
         // 1.2 校验正确性
@@ -178,7 +177,10 @@ public class AdminUserServiceImpl implements AdminUserService {
         List<String> hiddenFields = permissionService.getCurrentUserHiddenFields(FIELD_PERMISSION_MODULE);
         preserveHiddenFields(updateReqVO, hiddenFields);
         boolean dataScopeHidden = isFieldHidden(hiddenFields, "dataScope");
-        if (!dataScopeHidden) {
+        if (updateReqVO.getDataScope() == null) {
+            preserveUserDataScope(updateReqVO);
+            dataScopeHidden = true;
+        } else if (!dataScopeHidden) {
             validateUserDataScope(updateReqVO);
         }
         normalizeUserDataScope(updateReqVO, dataScopeHidden);
@@ -393,6 +395,18 @@ public class AdminUserServiceImpl implements AdminUserService {
 
     private boolean isFieldHidden(Collection<String> hiddenFields, String fieldKey) {
         return hiddenFields != null && (hiddenFields.contains(fieldKey) || hiddenFields.contains("col_" + fieldKey));
+    }
+
+    private void preserveUserDataScope(UserSaveReqVO reqVO) {
+        if (reqVO.getId() == null) {
+            return;
+        }
+        AdminUserDO oldUser = userMapper.selectById(reqVO.getId());
+        if (oldUser == null) {
+            return;
+        }
+        reqVO.setDataScope(oldUser.getDataScope());
+        reqVO.setDataScopeDeptIds(oldUser.getDataScopeDeptIds());
     }
 
     private void insertUserDept(Long userId, Set<Long> deptIds) {

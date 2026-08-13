@@ -75,6 +75,19 @@ public class PermissionApiImpl implements PermissionApi {
     }
 
     @Override
+    public List<FieldDefinitionRespDTO> getFieldDefinitions(String module) {
+        return CollectionUtils.convertList(
+                fieldDefinitionMapper.selectListByModule(module),
+                definition -> {
+                    FieldDefinitionRespDTO result = new FieldDefinitionRespDTO();
+                    result.setFieldKey(definition.getFieldKey());
+                    result.setFieldLabel(definition.getFieldLabel());
+                    result.setSort(definition.getSort());
+                    return result;
+                });
+    }
+
+    @Override
     public boolean hasAnyPermissions(Long userId, String... permissions) {
         return permissionService.hasAnyPermissions(userId, permissions);
     }

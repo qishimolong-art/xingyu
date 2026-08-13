@@ -46,6 +46,13 @@ public interface ErpPurchaseReturnItemMapper extends BaseMapperX<ErpPurchaseRetu
         return selectCount(ErpPurchaseReturnItemDO::getWarehouseId, warehouseId);
     }
 
+    default Long selectCountByOrderItemIds(Collection<Long> orderItemIds) {
+        if (CollUtil.isEmpty(orderItemIds)) {
+            return 0L;
+        }
+        return selectCount(new QueryWrapper<ErpPurchaseReturnItemDO>().in("order_item_id", orderItemIds));
+    }
+
     /**
      * 基于采购订单编号，查询每个采购订单项的退货数量之和
      *

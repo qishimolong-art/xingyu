@@ -158,6 +158,11 @@ public class ErpStockFieldPermissionMasker {
         return new HashSet<>(hiddenFields);
     }
 
+    public boolean isFieldHidden(String module, String fieldKey) {
+        Set<String> hiddenFieldSet = getHiddenFieldSet(module);
+        return hiddenFieldSet.contains(fieldKey) || hiddenFieldSet.contains("col_" + fieldKey);
+    }
+
     private void copyHiddenFields(Object target, Object source, Set<String> hiddenFields, String prefix) {
         Class<?> current = target.getClass();
         while (current != null && current != Object.class) {

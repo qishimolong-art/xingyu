@@ -2,10 +2,12 @@ package cn.iocoder.yudao.module.erp.service.stock;
 
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.ErpStockUpdateRemarkReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.in.ErpStockInItemBatchUpdateReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.in.ErpStockInPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.in.ErpStockInSaveReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockInDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockInItemDO;
+import cn.iocoder.yudao.module.system.controller.admin.dept.vo.dept.DeptSimpleRespVO;
 
 import javax.validation.Valid;
 import java.util.Collection;
@@ -32,6 +34,10 @@ public interface ErpStockInService {
      * @param updateReqVO 更新信息
      */
     void updateStockIn(@Valid ErpStockInSaveReqVO updateReqVO);
+
+    void batchUpdateStockInItems(@Valid ErpStockInItemBatchUpdateReqVO updateReqVO);
+
+    List<DeptSimpleRespVO> getWarehouseDeptSimpleList(Long warehouseId);
 
     void updateStockInRemark(@Valid ErpStockUpdateRemarkReqVO updateReqVO);
 

@@ -21,11 +21,14 @@ import cn.iocoder.yudao.module.erp.dal.mysql.finance.ErpFinancePaymentMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.finance.ErpFinancePaymentItemMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.finance.payable.ErpPayableAccountMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.finance.payable.ErpPayableWriteOffMapper;
+import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseInItemDO;
 import cn.iocoder.yudao.module.erp.dal.mysql.purchase.ErpPurchaseInMapper;
+import cn.iocoder.yudao.module.erp.dal.mysql.purchase.ErpPurchaseInItemMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.purchase.ErpPurchasePriceAdjustMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.purchase.ErpPurchaseReturnMapper;
 import cn.iocoder.yudao.module.erp.enums.ErpAuditStatus;
 import cn.iocoder.yudao.module.erp.enums.common.ErpBizTypeEnum;
+import cn.iocoder.yudao.module.erp.service.common.ErpOriginalSettlementAmountUtils;
 import cn.iocoder.yudao.module.erp.service.common.ErpOperateLogService;
 import cn.iocoder.yudao.module.erp.service.finance.ErpFinanceVisibleScope;
 import cn.iocoder.yudao.module.erp.service.purchase.ErpSupplierService;
@@ -60,6 +63,8 @@ public class ErpPayableAccountServiceImpl implements ErpPayableAccountService {
     private ErpPayableAccountMapper payableAccountMapper;
     @Resource
     private ErpPurchaseInMapper purchaseInMapper;
+    @Resource
+    private ErpPurchaseInItemMapper purchaseInItemMapper;
     @Resource
     private ErpPurchaseReturnMapper purchaseReturnMapper;
     @Resource
@@ -243,9 +248,15 @@ public class ErpPayableAccountServiceImpl implements ErpPayableAccountService {
         Map<Long, BigDecimal> purchaseInAllocated = financePaymentItemMapper
                 .selectPaymentPriceSumMapByBizIdsAndBizType(purchaseIns.stream().map(ErpPurchaseInDO::getId)
                         .collect(Collectors.toSet()), ErpBizTypeEnum.PURCHASE_IN.getType());
+        Map<Long, List<ErpPurchaseInItemDO>> purchaseInItemMap = purchaseIns.isEmpty() ? Collections.emptyMap()
+                : purchaseInItemMapper.selectListByInIds(purchaseIns.stream().map(ErpPurchaseInDO::getId)
+                        .collect(Collectors.toSet())).stream()
+                .collect(Collectors.groupingBy(ErpPurchaseInItemDO::getInId));
         purchaseIns.forEach(item -> rows.add(buildAllocatedRow("采购入库",
                 ErpBizTypeEnum.PURCHASE_IN.getType(), item.getId(), item.getInTime(), item.getNo(),
-                item.getTotalPrice(), purchaseInAllocated.get(item.getId()))));
+                item.getTotalPrice(), purchaseInAllocated.get(item.getId()),
+                ErpOriginalSettlementAmountUtils.calculatePurchaseIn(item,
+                        purchaseInItemMap.getOrDefault(item.getId(), Collections.emptyList())))));
 
         LambdaQueryWrapperX<ErpPurchaseReturnDO> purchaseReturnQuery = new LambdaQueryWrapperX<ErpPurchaseReturnDO>()
                 .eq(ErpPurchaseReturnDO::getSupplierId, reqVO.getSupplierId())
@@ -281,9 +292,12 @@ public class ErpPayableAccountServiceImpl implements ErpPayableAccountService {
                 .geIfPresent(ErpFinancePaymentDO::getPaymentTime, reqVO.getStartTime())
                 .ltIfPresent(ErpFinancePaymentDO::getPaymentTime, reqVO.getEndTime());
         applyScope(paymentQuery, scope, ErpFinancePaymentDO::getDeptId, ErpFinancePaymentDO::getFinanceUserId);
-        financePaymentMapper.selectList(paymentQuery)
-                .forEach(item -> rows.add(buildRow("付款单", null, item.getId(),
-                        item.getPaymentTime(), item.getNo(), negateAmount(item.getTotalPrice()), false)));
+        List<ErpFinancePaymentDO> payments = financePaymentMapper.selectList(paymentQuery);
+        Map<Long, BigDecimal> paymentAllocated = financePaymentItemMapper
+                .selectEffectivePriceSumMapByPaymentIds(payments.stream().map(ErpFinancePaymentDO::getId)
+                        .collect(Collectors.toSet()));
+        payments.forEach(item -> rows.add(buildAllocatedRow("付款单", null, item.getId(),
+                item.getPaymentTime(), item.getNo(), negateAmount(item.getTotalPrice()), paymentAllocated.get(item.getId()))));
 
         payableWriteOffMapper.selectListBySupplierId(reqVO.getSupplierId(), reqVO.getStartTime(), reqVO.getEndTime(),
                         scope.getDeptIds(), scope.getSelfUserId(), scope.isAll())
@@ -329,14 +343,22 @@ public class ErpPayableAccountServiceImpl implements ErpPayableAccountService {
         row.setIncreaseAmount(actualAmount.compareTo(BigDecimal.ZERO) > 0 ? actualAmount : BigDecimal.ZERO);
         row.setPaymentAmount(actualAmount.compareTo(BigDecimal.ZERO) < 0 && !writeOff ? actualAmount.abs() : BigDecimal.ZERO);
         row.setWriteOffAmount(actualAmount.compareTo(BigDecimal.ZERO) < 0 && writeOff ? actualAmount.abs() : BigDecimal.ZERO);
+        row.setWriteOffBaseAmount(actualAmount.abs());
         return row;
     }
 
     private ErpPayableDetailRespVO buildAllocatedRow(String docType, Integer bizType, Long bizId,
                                                      LocalDateTime docDate, String docNo, BigDecimal amount,
                                                      BigDecimal allocatedAmount) {
+        return buildAllocatedRow(docType, bizType, bizId, docDate, docNo, amount, allocatedAmount, amount);
+    }
+
+    private ErpPayableDetailRespVO buildAllocatedRow(String docType, Integer bizType, Long bizId,
+                                                     LocalDateTime docDate, String docNo, BigDecimal amount,
+                                                     BigDecimal allocatedAmount, BigDecimal writeOffBaseAmount) {
         ErpPayableDetailRespVO row = buildRow(docType, bizType, bizId, docDate, docNo, amount, false);
         row.setAllocatedAmount(defaultAmount(allocatedAmount).abs());
+        row.setWriteOffBaseAmount(defaultAmount(writeOffBaseAmount).abs());
         return row;
     }
 

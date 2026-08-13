@@ -47,6 +47,8 @@ public class ErpCustomerRespVO {
     @Schema(description = "企业匹配状态")
     @ExcelProperty("企业匹配")
     private Integer enterpriseMatchStatus;
+    @Schema(description = "企业匹配是否已同步")
+    private Boolean businessInfoSynced;
 
     @Schema(description = "联系人", example = "老王")
     @ExcelProperty("联系人")

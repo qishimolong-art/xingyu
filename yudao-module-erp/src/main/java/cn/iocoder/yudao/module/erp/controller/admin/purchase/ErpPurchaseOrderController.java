@@ -20,7 +20,9 @@ import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.order.ErpPurchas
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.order.ErpPurchaseOrderImportResultRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.order.ErpPurchaseOrderImportRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.order.ErpPurchaseOrderInableItemRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.order.ErpPurchaseOrderItemBatchUpdateReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.order.ErpPurchaseOrderPageReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.order.ErpPurchaseOrderPrintDataRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.order.ErpPurchaseOrderRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.order.ErpPurchaseOrderSaveReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.order.ErpPurchaseOrderUpdateRemarkReqVO;
@@ -31,13 +33,16 @@ import cn.iocoder.yudao.module.erp.enums.config.ErpFieldConfigModuleEnum;
 import cn.iocoder.yudao.module.erp.framework.excel.ErpExportFieldUtils;
 import cn.iocoder.yudao.module.erp.framework.excel.ErpImportTemplateRequiredFieldUtils;
 import cn.iocoder.yudao.module.erp.service.config.ErpFieldConfigService;
+import cn.iocoder.yudao.module.erp.service.common.ErpPrintService;
 import cn.iocoder.yudao.module.erp.service.product.ErpProductService;
 import cn.iocoder.yudao.module.erp.service.purchase.ErpPurchaseFieldPermissionMasker;
 import cn.iocoder.yudao.module.erp.service.purchase.ErpPurchaseOrderService;
+import cn.iocoder.yudao.module.erp.service.purchase.ErpSupplierDeptPermissionService;
 import cn.iocoder.yudao.module.erp.service.purchase.ErpSupplierService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpStockService;
 import cn.iocoder.yudao.module.system.api.dept.DeptApi;
 import cn.iocoder.yudao.module.system.api.dept.dto.DeptRespDTO;
+import cn.iocoder.yudao.module.system.controller.admin.dept.vo.dept.DeptSimpleRespVO;
 import cn.iocoder.yudao.module.system.api.user.AdminUserApi;
 import cn.iocoder.yudao.module.system.api.user.dto.AdminUserRespDTO;
 import io.swagger.v3.oas.annotations.Operation;
@@ -60,6 +65,8 @@ import javax.servlet.http.HttpServletResponse;
 import javax.validation.Valid;
 import java.io.IOException;
 import java.math.BigDecimal;
+import java.math.RoundingMode;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -73,6 +80,9 @@ import static cn.iocoder.yudao.framework.apilog.core.enums.OperateTypeEnum.EXPOR
 import static cn.iocoder.yudao.framework.common.pojo.CommonResult.success;
 import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.convertMultiMap;
 import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.convertSet;
+import static cn.iocoder.yudao.framework.common.util.number.MoneyUtils.priceMultiply;
+import static cn.iocoder.yudao.framework.security.core.util.SecurityFrameworkUtils.getLoginUserId;
+import static cn.iocoder.yudao.module.erp.service.common.ErpPrintServiceImpl.MODULE_PURCHASE_ORDER;
 
 @Tag(name = "管理后台 - ERP 采购订单")
 @RestController
@@ -86,17 +96,17 @@ public class ErpPurchaseOrderController {
     private static final Map<String, String> ORDER_IMPORT_FIELD_ALIAS_MAP = ErpImportTemplateRequiredFieldUtils.aliasMap(
             "supplierId", "supplierName",
             "supplierName", "supplierName",
-            "orderTime", "orderTime",
             "factoryOrderNo", "factoryOrderNo",
             "remark", "remark",
             "productId", "productCode",
             "productCode", "productCode",
+            "warehouseId", "warehouseName",
+            "warehouseName", "warehouseName",
+            "warehouse_name", "warehouseName",
             "count", "itemCount",
             "item_count", "itemCount",
             "itemCount", "itemCount",
             "productPrice", "productPrice",
-            "taxPercent", "itemTaxPercent",
-            "itemTaxPercent", "itemTaxPercent",
             "item_remark", "itemRemark",
             "itemRemark", "itemRemark");
     private static final Map<String, String> DETAIL_IMPORT_FIELD_ALIAS_MAP = ErpImportTemplateRequiredFieldUtils.aliasMap(
@@ -111,6 +121,8 @@ public class ErpPurchaseOrderController {
     @Resource
     private ErpPurchaseOrderService purchaseOrderService;
     @Resource
+    private ErpSupplierDeptPermissionService supplierDeptPermissionService;
+    @Resource
     private ErpStockService stockService;
     @Resource
     private ErpProductService productService;
@@ -124,6 +136,8 @@ public class ErpPurchaseOrderController {
     private ErpPurchaseFieldPermissionMasker fieldPermissionMasker;
     @Resource
     private ErpFieldConfigService fieldConfigService;
+    @Resource
+    private ErpPrintService printService;
 
     @PostMapping("/create")
     @Operation(summary = "创建采购订单")
@@ -194,6 +208,15 @@ public class ErpPurchaseOrderController {
         return success(true);
     }
 
+    @PutMapping("/batch-update-items")
+    @Operation(summary = "批量修改采购订单明细仓库和部门")
+    @PreAuthorize("@ss.hasPermission('erp:purchase-order:update')")
+    public CommonResult<Boolean> batchUpdatePurchaseOrderItems(
+            @Valid @RequestBody ErpPurchaseOrderItemBatchUpdateReqVO updateReqVO) {
+        purchaseOrderService.batchUpdatePurchaseOrderItems(updateReqVO);
+        return success(true);
+    }
+
     @PutMapping("/update-status")
     @Operation(summary = "采购订单下订/反下订")
     @PreAuthorize("@ss.hasPermission('erp:purchase-order:update-status')")
@@ -251,7 +274,59 @@ public class ErpPurchaseOrderController {
             fillUserNames(purchaseOrderVO, userMap);
         });
         fieldPermissionMasker.mask("erp_purchase_order", respVO);
+        fillPrintInfo(Collections.singletonList(respVO));
         return success(respVO);
+    }
+
+    @GetMapping("/print-data")
+    @Operation(summary = "获得采购订单打印数据")
+    @Parameter(name = "id", description = "编号", required = true, example = "1024")
+    @PreAuthorize("@ss.hasPermission('erp:purchase-order:print')")
+    public CommonResult<ErpPurchaseOrderPrintDataRespVO> getPurchaseOrderPrintData(@RequestParam("id") Long id) {
+        ErpPurchaseOrderDO purchaseOrder = purchaseOrderService.getPurchaseOrder(id);
+        if (purchaseOrder == null) {
+            return success(null);
+        }
+        List<ErpPurchaseOrderItemDO> purchaseOrderItemList = purchaseOrderService.getPurchaseOrderItemListByOrderId(id);
+        Map<Long, ErpProductRespVO> productMap = DataPermissionUtils.executeIgnore(() ->
+                productService.getProductVOMap(convertSet(purchaseOrderItemList, ErpPurchaseOrderItemDO::getProductId)));
+        ErpSupplierDO supplier = purchaseOrder.getSupplierId() == null
+                ? null : supplierService.getSupplier(purchaseOrder.getSupplierId());
+        DeptRespDTO dept = purchaseOrder.getDeptId() == null ? null : deptApi.getDept(purchaseOrder.getDeptId());
+        AdminUserRespDTO purchaser = purchaseOrder.getPurchaser() == null
+                ? null : adminUserApi.getUser(purchaseOrder.getPurchaser());
+        AdminUserRespDTO currentUser = getLoginUserId() == null ? null : adminUserApi.getUser(getLoginUserId());
+
+        ErpPurchaseOrderPrintDataRespVO respVO = new ErpPurchaseOrderPrintDataRespVO();
+        respVO.setMain(buildPurchaseOrderPrintMain(purchaseOrder, supplier, dept, purchaser));
+        respVO.setItems(buildPurchaseOrderPrintItems(purchaseOrder, purchaseOrderItemList, productMap));
+        respVO.setSystem(buildPurchaseOrderPrintSystem(currentUser));
+        return success(respVO);
+    }
+
+    @GetMapping("/supplier-dept-simple-list")
+    @Operation(summary = "获得供应商对当前用户可用的采购部门精简列表")
+    @Parameter(name = "supplierId", description = "供应商编号", required = true, example = "1024")
+    @PreAuthorize("@ss.hasPermission('erp:purchase-order:query')")
+    public CommonResult<List<DeptSimpleRespVO>> getSupplierAvailableDeptSimpleList(
+            @RequestParam("supplierId") Long supplierId) {
+        return success(purchaseOrderService.getSupplierAvailableDeptSimpleList(supplierId));
+    }
+
+    @GetMapping("/dept-simple-list")
+    @Operation(summary = "鑾峰緱褰撳墠鐢ㄦ埛鍙煡璇㈢殑閲囪喘璁㈠崟閮ㄩ棬绮剧畝鍒楄〃")
+    @PreAuthorize("@ss.hasPermission('erp:purchase-order:query')")
+    public CommonResult<List<DeptSimpleRespVO>> getVisibleDeptSimpleList() {
+        return success(supplierDeptPermissionService.getDataPermissionDeptSimpleList(FIELD_PERMISSION_MODULE));
+    }
+
+    @GetMapping("/warehouse-dept-simple-list")
+    @Operation(summary = "获得目标采购仓库对当前用户可用的业务部门精简列表")
+    @Parameter(name = "warehouseId", description = "仓库编号", required = true, example = "1024")
+    @PreAuthorize("@ss.hasPermission('erp:purchase-order:update')")
+    public CommonResult<List<DeptSimpleRespVO>> getWarehouseAvailableDeptSimpleList(
+            @RequestParam("warehouseId") Long warehouseId) {
+        return success(purchaseOrderService.getWarehouseAvailableDeptSimpleList(warehouseId));
     }
 
     @GetMapping("/page")
@@ -292,45 +367,31 @@ public class ErpPurchaseOrderController {
         ErpPurchaseOrderImportExcelVO example = new ErpPurchaseOrderImportExcelVO();
         example.setFactoryOrderNo("FACTORY-001");
         example.setSupplierName("示例供应商");
-        example.setOrderTime("2024-06-01 09:00:00");
         example.setRemark("整单备注");
         example.setProductCode("P0001");
-        example.setProductName("示例产品一");
-        example.setProductUnitName("个");
+        example.setWarehouseName("主仓库");
         example.setItemCount(BigDecimal.ONE);
         example.setProductPrice(new BigDecimal("100.00"));
         example.setGift("否");
-        example.setItemTotalPrice(new BigDecimal("100.00"));
-        example.setItemTaxPercent(BigDecimal.ZERO);
-        example.setItemTaxPrice(BigDecimal.ZERO);
         example.setItemRemark("明细备注");
 
         ErpPurchaseOrderImportExcelVO secondItem = new ErpPurchaseOrderImportExcelVO();
         secondItem.setProductCode("P0002");
-        secondItem.setProductName("示例产品二");
-        secondItem.setProductUnitName("个");
+        secondItem.setWarehouseName("主仓库");
         secondItem.setItemCount(new BigDecimal("2"));
         secondItem.setProductPrice(new BigDecimal("50.00"));
         secondItem.setGift("否");
-        secondItem.setItemTotalPrice(new BigDecimal("100.00"));
-        secondItem.setItemTaxPercent(BigDecimal.ZERO);
-        secondItem.setItemTaxPrice(BigDecimal.ZERO);
         secondItem.setItemRemark("第二行明细");
 
         ErpPurchaseOrderImportExcelVO nextOrder = new ErpPurchaseOrderImportExcelVO();
         nextOrder.setFactoryOrderNo("FACTORY-002");
         nextOrder.setSupplierName("另一供应商");
-        nextOrder.setOrderTime("2024-06-02 09:00:00");
         nextOrder.setRemark("下一张订单备注");
         nextOrder.setProductCode("P0003");
-        nextOrder.setProductName("示例产品三");
-        nextOrder.setProductUnitName("个");
+        nextOrder.setWarehouseName("主仓库");
         nextOrder.setItemCount(BigDecimal.ONE);
         nextOrder.setProductPrice(new BigDecimal("80.00"));
         nextOrder.setGift("否");
-        nextOrder.setItemTotalPrice(new BigDecimal("80.00"));
-        nextOrder.setItemTaxPercent(BigDecimal.ZERO);
-        nextOrder.setItemTaxPrice(BigDecimal.ZERO);
         nextOrder.setItemRemark("下一张订单明细");
         ExcelUtils.writeImportTemplate(response, "采购订单导入模板.xls", "采购订单",
                 ErpPurchaseOrderImportExcelVO.class, Arrays.asList(example, secondItem, nextOrder), null,
@@ -437,7 +498,96 @@ public class ErpPurchaseOrderController {
             purchaseOrder.setReturnStatus(calcStatus(purchaseOrder.getReturnCount(), purchaseOrder.getTotalCount()));
         });
         fieldPermissionMasker.maskList(FIELD_PERMISSION_MODULE, respResult.getList());
+        fillPrintInfo(respResult.getList());
         return respResult;
+    }
+
+    private Map<String, Object> buildPurchaseOrderPrintMain(ErpPurchaseOrderDO purchaseOrder, ErpSupplierDO supplier,
+                                                            DeptRespDTO dept, AdminUserRespDTO purchaser) {
+        Map<String, Object> main = new LinkedHashMap<>();
+        main.put("order.no", purchaseOrder.getNo());
+        main.put("supplier.name", supplier == null ? null : supplier.getName());
+        main.put("purchaser.nickname", purchaser == null ? null : purchaser.getNickname());
+        main.put("dept.name", dept == null ? null : dept.getName());
+        main.put("order.totalCount", formatDecimal(purchaseOrder.getTotalCount()));
+        main.put("order.totalPrice", formatDecimal(purchaseOrder.getTotalPrice()));
+        main.put("order.totalPriceUpper", formatAmountUpper(purchaseOrder.getTotalPrice()));
+        main.put("order.orderDate", formatDateTime(firstNonNull(purchaseOrder.getOrderDate(), purchaseOrder.getOrderTime())));
+        main.put("order.arrivalDate", formatDateTime(purchaseOrder.getArrivalDate()));
+        main.put("order.receiveAddress", purchaseOrder.getReceiveAddress());
+        main.put("order.settleMethod", purchaseOrder.getSettleMethod());
+        main.put("order.remark", purchaseOrder.getRemark());
+        return main;
+    }
+
+    private List<Map<String, Object>> buildPurchaseOrderPrintItems(ErpPurchaseOrderDO purchaseOrder,
+                                                                   List<ErpPurchaseOrderItemDO> items,
+                                                                   Map<Long, ErpProductRespVO> productMap) {
+        List<Map<String, Object>> rows = new ArrayList<>();
+        if (CollUtil.isEmpty(items)) {
+            return rows;
+        }
+        for (int i = 0; i < items.size(); i++) {
+            ErpPurchaseOrderItemDO item = items.get(i);
+            ErpProductRespVO product = productMap.get(item.getProductId());
+            Map<String, Object> row = new LinkedHashMap<>();
+            row.put("items.seq", i + 1);
+            row.put("items.productName", product == null ? null : product.getName());
+            row.put("items.standard", item.getStandard());
+            row.put("items.brand", item.getBrand());
+            row.put("items.productUnitName", product == null ? null : product.getUnitName());
+            row.put("items.count", formatDecimal(item.getCount()));
+            row.put("items.productPrice", formatDecimal(item.getProductPrice()));
+            row.put("items.totalPrice", formatDecimal(firstNonNull(item.getTotalPrice(),
+                    priceMultiply(item.getProductPrice(), item.getCount()))));
+            row.put("items.arrivalDate", formatDateTime(purchaseOrder.getArrivalDate()));
+            rows.add(row);
+        }
+        return rows;
+    }
+
+    private Map<String, Object> buildPurchaseOrderPrintSystem(AdminUserRespDTO currentUser) {
+        Map<String, Object> system = new LinkedHashMap<>();
+        system.put("print.now", formatDateTime(LocalDateTime.now()));
+        system.put("currentUser.nickname", currentUser == null ? null : currentUser.getNickname());
+        return system;
+    }
+
+    private void fillPrintInfo(List<ErpPurchaseOrderRespVO> list) {
+        if (CollUtil.isEmpty(list)) {
+            return;
+        }
+        Set<Long> ids = convertSet(list, ErpPurchaseOrderRespVO::getId);
+        Map<Long, Long> countMap = printService.getPrintCountMap(MODULE_PURCHASE_ORDER, ids);
+        Map<Long, LocalDateTime> lastPrintTimeMap = printService.getLastPrintTimeMap(MODULE_PURCHASE_ORDER, ids);
+        list.forEach(order -> {
+            Long count = countMap.get(order.getId());
+            order.setPrintFrequency(count == null ? 0 : count.intValue());
+            order.setPrintTime(lastPrintTimeMap.get(order.getId()));
+        });
+    }
+
+    private String formatDateTime(LocalDateTime time) {
+        if (time == null) {
+            return "";
+        }
+        return time.toLocalDate().toString();
+    }
+
+    private String formatDecimal(BigDecimal value) {
+        return value == null ? "" : value.stripTrailingZeros().toPlainString();
+    }
+
+    private String formatAmountUpper(BigDecimal value) {
+        if (value == null) {
+            return "";
+        }
+        BigDecimal amount = value.setScale(2, RoundingMode.HALF_UP);
+        return amount.toPlainString();
+    }
+
+    private <T> T firstNonNull(T first, T second) {
+        return first != null ? first : second;
     }
 
     private List<ErpPurchaseOrderExportRespVO> buildPurchaseOrderExportList(PageResult<ErpPurchaseOrderDO> pageResult) {

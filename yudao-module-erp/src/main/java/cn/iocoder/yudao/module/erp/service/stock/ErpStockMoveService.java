@@ -11,6 +11,7 @@ import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockMoveItemDO;
 import cn.iocoder.yudao.module.erp.service.stock.bo.ErpStockMoveApprovePermission;
 import cn.iocoder.yudao.module.erp.service.stock.bo.ErpStockMoveOperationPermission;
 import cn.iocoder.yudao.module.erp.service.stock.bo.ErpStockTransferOutPermissionScope;
+import cn.iocoder.yudao.module.system.controller.admin.dept.vo.dept.DeptSimpleRespVO;
 
 import javax.validation.Valid;
 import java.util.Collection;
@@ -306,6 +307,16 @@ public interface ErpStockMoveService {
      * @return 调拨入库单分页
      */
     PageResult<ErpStockMoveDO> getVisibleStockTransferInPage(ErpStockMovePageReqVO pageReqVO);
+
+    /**
+     * Gets enabled transfer-in departments that appear in current user's visible transfer-out documents.
+     */
+    List<DeptSimpleRespVO> getVisibleStockTransferOutToDeptSimpleList();
+
+    /**
+     * Gets enabled transfer-out departments that appear in current user's visible transfer-in documents.
+     */
+    List<DeptSimpleRespVO> getVisibleStockTransferInFromDeptSimpleList();
 
     // ==================== 调拨项 ====================
 

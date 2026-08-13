@@ -15,6 +15,8 @@ import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpProduc
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.ErpStockUpdateRemarkReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.warehousemove.ErpWarehouseMoveDraftCreateReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.warehousemove.ErpWarehouseMoveDraftUpdateReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.imports.ErpStockImportResultRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.warehousemove.ErpWarehouseMoveImportExcelVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.warehousemove.ErpWarehouseMovePageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.warehousemove.ErpWarehouseMoveRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.warehousemove.ErpWarehouseMoveSaveReqVO;
@@ -24,8 +26,10 @@ import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpWarehouseDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpWarehouseMoveDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpWarehouseMoveItemDO;
 import cn.iocoder.yudao.module.erp.framework.excel.ErpExportFieldUtils;
+import cn.iocoder.yudao.module.erp.service.base.ErpDataPermissionDeptService;
 import cn.iocoder.yudao.module.erp.service.product.ErpProductService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpStockFieldPermissionMasker;
+import cn.iocoder.yudao.module.erp.service.stock.ErpStockImportService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpStockService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpWarehouseMoveService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpWarehouseService;
@@ -33,6 +37,7 @@ import cn.iocoder.yudao.module.system.api.dept.DeptApi;
 import cn.iocoder.yudao.module.system.api.dept.dto.DeptRespDTO;
 import cn.iocoder.yudao.module.system.api.user.AdminUserApi;
 import cn.iocoder.yudao.module.system.api.user.dto.AdminUserRespDTO;
+import cn.iocoder.yudao.module.system.controller.admin.dept.vo.dept.DeptSimpleRespVO;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -46,20 +51,24 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.multipart.MultipartFile;
 
 import javax.annotation.Resource;
 import javax.servlet.http.HttpServletResponse;
 import javax.validation.Valid;
 import java.io.IOException;
 import java.math.BigDecimal;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
 import static cn.iocoder.yudao.framework.apilog.core.enums.OperateTypeEnum.EXPORT;
+import static cn.iocoder.yudao.framework.apilog.core.enums.OperateTypeEnum.IMPORT;
 import static cn.iocoder.yudao.framework.common.pojo.CommonResult.success;
 import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.*;
 
@@ -70,11 +79,16 @@ import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.
 public class ErpWarehouseMoveController {
 
     private static final String FIELD_PERMISSION_MODULE = "erp_warehouse_move";
+    private static final Set<String> IMPORT_TEMPLATE_FIELDS = new LinkedHashSet<>(Arrays.asList(
+            "fromWarehouseName", "toWarehouseName", "productCode", "count", "fromShelf",
+            "toShelf", "batchNo", "productPrice", "remark", "itemRemark"));
     private static final Map<String, String> EXPORT_FIELD_GROUP_MAP = buildExportFieldGroupMap();
     private static final Map<String, String> EXPORT_FIELD_PERMISSION_MAP = buildExportFieldPermissionMap();
 
     @Resource
     private ErpWarehouseMoveService warehouseMoveService;
+    @Resource
+    private ErpStockImportService stockImportService;
     @Resource
     private ErpProductService productService;
     @Resource
@@ -83,6 +97,8 @@ public class ErpWarehouseMoveController {
     private ErpStockService stockService;
     @Resource
     private ErpStockFieldPermissionMasker fieldPermissionMasker;
+    @Resource
+    private ErpDataPermissionDeptService dataPermissionDeptService;
     @Resource
     private DeptApi deptApi;
     @Resource
@@ -186,6 +202,13 @@ public class ErpWarehouseMoveController {
         return success(buildWarehouseMoveVOPageResult(warehouseMoveService.getWarehouseMovePage(pageReqVO)));
     }
 
+    @GetMapping("/dept-simple-list")
+    @Operation(summary = "Get visible department list for warehouse move filter")
+    @PreAuthorize("@ss.hasPermission('erp:warehouse-move:query')")
+    public CommonResult<List<DeptSimpleRespVO>> getVisibleDeptSimpleList() {
+        return success(dataPermissionDeptService.getDeptSimpleList(FIELD_PERMISSION_MODULE));
+    }
+
     @GetMapping("/summary")
     @Operation(summary = "Get warehouse move summary")
     @PreAuthorize("@ss.hasPermission('erp:warehouse-move:query')")
@@ -216,6 +239,42 @@ public class ErpWarehouseMoveController {
     public CommonResult<List<ErpExportFieldRespVO>> getWarehouseMoveExportFields() {
         return success(ErpExportFieldUtils.listFields(ErpWarehouseMoveRespVO.class, EXPORT_FIELD_GROUP_MAP,
                 fieldPermissionMasker.getHiddenFieldSet(FIELD_PERMISSION_MODULE), EXPORT_FIELD_PERMISSION_MAP));
+    }
+
+    @GetMapping("/get-import-template")
+    @Operation(summary = "Get warehouse move import template")
+    @PreAuthorize("@ss.hasPermission('erp:warehouse-move:create')")
+    public void getWarehouseMoveImportTemplate(HttpServletResponse response) throws IOException {
+        ErpWarehouseMoveImportExcelVO first = new ErpWarehouseMoveImportExcelVO();
+        first.setFromWarehouseName("示例移出仓库");
+        first.setToWarehouseName("示例移入仓库");
+        first.setProductCode("P0001");
+        first.setCount(BigDecimal.ONE);
+        first.setFromShelf("A-01");
+        first.setToShelf("B-01");
+        first.setBatchNo("BATCH-001");
+        first.setProductPrice(new BigDecimal("100.00"));
+        first.setRemark("单据备注");
+        first.setItemRemark("明细备注");
+        ErpWarehouseMoveImportExcelVO second = new ErpWarehouseMoveImportExcelVO();
+        second.setProductCode("P0002");
+        second.setCount(new BigDecimal("2"));
+        second.setFromShelf("A-02");
+        second.setToShelf("B-02");
+        second.setProductPrice(new BigDecimal("50.00"));
+        second.setItemRemark("第二行明细备注");
+        ExcelUtils.writeImportTemplate(response, "仓库移货导入模板.xls", "仓库移货",
+                ErpWarehouseMoveImportExcelVO.class, Arrays.asList(first, second), IMPORT_TEMPLATE_FIELDS);
+    }
+
+    @PostMapping("/import")
+    @Operation(summary = "Import warehouse move")
+    @PreAuthorize("@ss.hasPermission('erp:warehouse-move:create')")
+    @ApiAccessLog(operateType = IMPORT)
+    public CommonResult<ErpStockImportResultRespVO> importWarehouseMove(@RequestParam("file") MultipartFile file)
+            throws Exception {
+        return success(stockImportService.importWarehouseMoveList(
+                ExcelUtils.read(file, ErpWarehouseMoveImportExcelVO.class)));
     }
 
     private PageResult<ErpWarehouseMoveRespVO> buildWarehouseMoveVOPageResult(PageResult<ErpWarehouseMoveDO> pageResult) {

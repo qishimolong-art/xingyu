@@ -4,6 +4,7 @@ import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.mybatis.core.mapper.BaseMapperX;
 import cn.iocoder.yudao.framework.mybatis.core.query.MPJLambdaWrapperX;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.order.ErpPurchaseOrderPageReqVO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.product.ErpProductDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseOrderDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseOrderItemDO;
 import cn.iocoder.yudao.module.erp.dal.mysql.common.ErpKeywordQuery;
@@ -60,9 +61,23 @@ public interface ErpPurchaseOrderMapper extends BaseMapperX<ErpPurchaseOrderDO> 
             query.eq(ErpPurchaseOrderDO::getStatus, ErpAuditStatus.APPROVE.getStatus())
                     .apply("t.return_count < t.in_count");
         }
-        if (reqVO.getProductId() != null) {
+        if (reqVO.getProductId() != null || StringUtils.hasText(reqVO.getProductKeyword())) {
             query.leftJoin(ErpPurchaseOrderItemDO.class, ErpPurchaseOrderItemDO::getOrderId, ErpPurchaseOrderDO::getId)
+                    .leftJoin(ErpProductDO.class, ErpProductDO::getId, ErpPurchaseOrderItemDO::getProductId)
                     .eq(reqVO.getProductId() != null, ErpPurchaseOrderItemDO::getProductId, reqVO.getProductId())
+                    .and(StringUtils.hasText(reqVO.getProductKeyword()), w -> {
+                        String productKeyword = normalizeLikeValue(reqVO.getProductKeyword());
+                        w.like(ErpProductDO::getCode, productKeyword)
+                                .or().like(ErpProductDO::getName, productKeyword)
+                                .or().like(ErpProductDO::getBarCode, productKeyword)
+                                .or().like(ErpProductDO::getVehicleModel, productKeyword)
+                                .or().like(ErpProductDO::getFactoryCode, productKeyword)
+                                .or().like(ErpProductDO::getStandard, productKeyword)
+                                .or().like(ErpPurchaseOrderItemDO::getVehicleModel, productKeyword)
+                                .or().like(ErpPurchaseOrderItemDO::getFactoryCode, productKeyword)
+                                .or().like(ErpPurchaseOrderItemDO::getDrawingNo, productKeyword)
+                                .or().like(ErpPurchaseOrderItemDO::getBrand, productKeyword);
+                    })
                     .groupBy(ErpPurchaseOrderDO::getId); // 避免 1 对多查询，产生相同的 1
         }
         ErpKeywordQuery.appendWithDeptName(query, reqVO.getKeyword(),

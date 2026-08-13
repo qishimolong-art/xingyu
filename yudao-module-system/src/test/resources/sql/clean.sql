@@ -3,6 +3,7 @@ DELETE FROM "system_dict_data";
 DELETE FROM "system_role";
 DELETE FROM "system_role_menu";
 DELETE FROM "system_role_field_permission";
+DELETE FROM "system_role_form_data_scope";
 DELETE FROM "system_menu";
 DELETE FROM "system_user_role";
 DELETE FROM "system_user_dept";

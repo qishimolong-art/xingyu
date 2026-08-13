@@ -7,11 +7,13 @@ import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.returns.ErpPurch
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.returns.ErpPurchaseReturnDraftUpdateReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.returns.ErpPurchaseReturnImportExcelVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.returns.ErpPurchaseReturnImportRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.returns.ErpPurchaseReturnItemBatchUpdateReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.returns.ErpPurchaseReturnOrderImportExcelVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.returns.ErpPurchaseReturnPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.returns.ErpPurchaseReturnSaveReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseReturnDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseReturnItemDO;
+import cn.iocoder.yudao.module.system.controller.admin.dept.vo.dept.DeptSimpleRespVO;
 
 import javax.validation.Valid;
 import java.math.BigDecimal;
@@ -44,6 +46,13 @@ public interface ErpPurchaseReturnService {
      * @param updateReqVO 更新信息
      */
     void updatePurchaseReturn(@Valid ErpPurchaseReturnSaveReqVO updateReqVO);
+
+    /**
+     * 批量修改采购退货明细仓库/部门
+     *
+     * @param updateReqVO 批量修改信息
+     */
+    void batchUpdatePurchaseReturnItems(@Valid ErpPurchaseReturnItemBatchUpdateReqVO updateReqVO);
 
     /**
      * 保存采购退货草稿
@@ -133,6 +142,14 @@ public interface ErpPurchaseReturnService {
      * @return 采购退货项 List
      */
     List<ErpPurchaseReturnItemDO> getPurchaseReturnItemListByReturnIds(Collection<Long> returnIds);
+
+    /**
+     * 获取采购退货目标仓库可用部门列表
+     *
+     * @param warehouseId 仓库编号
+     * @return 部门列表
+     */
+    List<DeptSimpleRespVO> getWarehouseAvailableDeptSimpleList(Long warehouseId);
 
     /**
      * 解析采购退货导入明细

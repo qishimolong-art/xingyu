@@ -33,6 +33,7 @@ import cn.iocoder.yudao.module.erp.enums.finance.ErpFinanceWriteOffStatusEnum;
 import cn.iocoder.yudao.module.erp.service.common.ErpOperateLogService;
 import cn.iocoder.yudao.module.erp.service.common.ErpOriginalSettlementAmountUtils;
 import cn.iocoder.yudao.module.erp.service.sale.ErpCustomerService;
+import cn.iocoder.yudao.module.erp.service.sale.ErpCustomerDeptPermissionService;
 import cn.iocoder.yudao.module.erp.service.sale.ErpSaleOutService;
 import cn.iocoder.yudao.module.erp.service.sale.ErpSalePriceAdjustService;
 import cn.iocoder.yudao.module.erp.service.sale.ErpSaleReturnService;
@@ -90,6 +91,8 @@ public class ErpFinanceReceiptServiceImpl implements ErpFinanceReceiptService {
     @Resource
     private ErpCustomerService customerService;
     @Resource
+    private ErpCustomerDeptPermissionService customerDeptPermissionService;
+    @Resource
     private ErpAccountService accountService;
     @Resource
     private ErpSaleOutService saleOutService;
@@ -135,6 +138,7 @@ public class ErpFinanceReceiptServiceImpl implements ErpFinanceReceiptService {
         ErpFinanceReceiptDO receipt = BeanUtils.toBean(createReqVO, ErpFinanceReceiptDO.class, in -> in
                 .setNo(no).setStatus(ErpFinanceReceiptStatusEnum.PROCESS.getStatus()));
         permissionFieldFiller.fillCreateFields(receipt);
+        validateReceiptCustomerDept(receipt, false);
         fillDefaultAmount(receipt);
         preparePendingItems(receipt, receiptItems);
         financeReceiptMapper.insert(receipt);
@@ -169,6 +173,7 @@ public class ErpFinanceReceiptServiceImpl implements ErpFinanceReceiptService {
                         ? createReqVO.getReceiptTime() : LocalDateTime.now());
         fillDraftAmounts(receipt, receiptItems);
         permissionFieldFiller.fillCreateFields(receipt);
+        validateReceiptCustomerDept(receipt, true);
         financeReceiptMapper.insert(receipt);
         insertFinanceReceiptDraftItems(receipt.getId(), receiptItems);
         operateLogService.recordCreate(ERP_FINANCE_RECEIPT_TYPE, receipt.getId(), receipt.getNo());
@@ -218,6 +223,7 @@ public class ErpFinanceReceiptServiceImpl implements ErpFinanceReceiptService {
         if (updateObj.getDeptId() == null) {
             updateObj.setDeptId(receipt.getDeptId());
         }
+        validateReceiptCustomerDept(updateObj, false);
         fillDefaultAmount(updateObj);
         preparePendingItems(updateObj, receiptItems);
         financeReceiptMapper.updateById(updateObj);
@@ -250,6 +256,7 @@ public class ErpFinanceReceiptServiceImpl implements ErpFinanceReceiptService {
                 .setReceiptTime(updateReqVO.getReceiptTime() != null
                         ? updateReqVO.getReceiptTime() : receipt.getReceiptTime());
         fillDraftAmounts(updateObj, receiptItems);
+        validateReceiptCustomerDept(updateObj, true);
         if (financeReceiptMapper.updateByIdAndStatus(receipt.getId(),
                 ErpFinanceReceiptStatusEnum.DRAFT.getStatus(), updateObj) == 0) {
             throw exception(FINANCE_RECEIPT_DRAFT_UPDATE_FAIL, receipt.getNo());
@@ -279,6 +286,7 @@ public class ErpFinanceReceiptServiceImpl implements ErpFinanceReceiptService {
             throw exception(FINANCE_RECEIPT_DRAFT_SUBMIT_FAIL, "当前状态不是草稿");
         }
         validateFinanceReceiptDraftForSubmit(receipt);
+        validateReceiptCustomerDept(receipt, false);
         List<ErpFinanceReceiptItemDO> receiptItems = validateFinanceReceiptItems(
                 receipt.getCustomerId(),
                 BeanUtils.toBean(financeReceiptItemMapper.selectListByReceiptId(id),
@@ -315,6 +323,16 @@ public class ErpFinanceReceiptServiceImpl implements ErpFinanceReceiptService {
             throw exception(FINANCE_RECEIPT_WRITEOFF_AMOUNT_INVALID, "实际收款金额必须大于 0");
         }
         receipt.setTotalPrice(totalPrice).setReceiptPrice(normalize(receiptPrice));
+    }
+
+    private void validateReceiptCustomerDept(ErpFinanceReceiptDO receipt, boolean draft) {
+        if (receipt == null || receipt.getDeptId() == null || (draft && receipt.getCustomerId() == null)) {
+            return;
+        }
+        if (!customerDeptPermissionService.hasAvailableDept(
+                receipt.getCustomerId(), receipt.getDeptId(), FIELD_PERMISSION_MODULE)) {
+            throw exception(FINANCE_RECEIPT_CUSTOMER_DEPT_NOT_ALLOWED);
+        }
     }
 
     @Override

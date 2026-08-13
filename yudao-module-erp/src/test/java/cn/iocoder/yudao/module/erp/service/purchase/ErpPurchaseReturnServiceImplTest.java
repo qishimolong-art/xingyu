@@ -1,10 +1,14 @@
 package cn.iocoder.yudao.module.erp.service.purchase;
 
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
+import cn.iocoder.yudao.framework.common.enums.CommonStatusEnum;
 import cn.iocoder.yudao.framework.test.core.ut.BaseMockitoUnitTest;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.imports.ErpPurchaseImportResultRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.returns.ErpPurchaseReturnOrderImportExcelVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.returns.ErpPurchaseReturnPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.returns.ErpPurchaseReturnDraftCreateReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.returns.ErpPurchaseReturnDraftUpdateReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.returns.ErpPurchaseReturnItemBatchUpdateReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.returns.ErpPurchaseReturnSaveReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.accounting.ErpVoucherDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.product.ErpProductDO;
@@ -13,9 +17,11 @@ import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseOrderDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseReturnDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseReturnItemDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpSupplierDO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpWarehouseDO;
 import cn.iocoder.yudao.module.erp.dal.mysql.finance.accounting.ErpVoucherItemMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.finance.accounting.ErpVoucherMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.finance.ErpFinancePaymentItemMapper;
+import cn.iocoder.yudao.module.erp.dal.mysql.product.ErpProductMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.purchase.ErpPurchaseInItemMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.purchase.ErpPurchaseReturnItemMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.purchase.ErpPurchaseReturnMapper;
@@ -33,6 +39,7 @@ import cn.iocoder.yudao.module.erp.service.finance.accounting.ErpVoucherService;
 import cn.iocoder.yudao.module.erp.service.product.ErpProductService;
 import cn.iocoder.yudao.module.erp.service.product.ErpProductBatchNoValidator;
 import cn.iocoder.yudao.module.erp.service.stock.ErpStockRecordService;
+import cn.iocoder.yudao.module.erp.service.stock.ErpStockService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpWarehouseService;
 import cn.iocoder.yudao.module.erp.service.stock.bo.ErpStockRecordCreateReqBO;
 import org.junit.jupiter.api.BeforeEach;
@@ -58,7 +65,11 @@ import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PURCHASE_RETU
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PURCHASE_RETURN_DELETE_FAIL_APPROVE;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PURCHASE_RETURN_EXCEED_RETURNABLE;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PURCHASE_RETURN_FAIL_REFUND_PRICE_EXCEED;
+import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PURCHASE_RETURN_ITEM_BATCH_UPDATE_FAIL_APPROVE;
+import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PURCHASE_RETURN_ITEM_BATCH_UPDATE_WAREHOUSE_DEPT_NOT_ALLOWED;
+import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PURCHASE_RETURN_ITEM_BATCH_UPDATE_WAREHOUSE_NOT_ALLOWED_BY_ORDER;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PURCHASE_RETURN_ITEM_COUNT_POSITIVE;
+import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PURCHASE_RETURN_ITEM_DUPLICATE;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PURCHASE_RETURN_ITEM_PRICE_POSITIVE;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PURCHASE_RETURN_MODE_INVALID;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PURCHASE_RETURN_NOT_APPROVE;
@@ -96,6 +107,8 @@ public class ErpPurchaseReturnServiceImplTest extends BaseMockitoUnitTest {
     @Mock
     private ErpPurchaseReturnMapper purchaseReturnMapper;
     @Mock
+    private ErpProductMapper productMapper;
+    @Mock
     private ErpFinancePaymentItemMapper financePaymentItemMapper;
     @Mock
     private ErpPurchaseReturnItemMapper purchaseReturnItemMapper;
@@ -117,6 +130,8 @@ public class ErpPurchaseReturnServiceImplTest extends BaseMockitoUnitTest {
     private ErpBookOpenService bookOpenService;
     @Mock
     private ErpWarehouseService warehouseService;
+    @Mock
+    private ErpStockService stockService;
     @Mock
     private ErpProductBatchNoValidator productBatchNoValidator;
     @Mock
@@ -182,6 +197,113 @@ public class ErpPurchaseReturnServiceImplTest extends BaseMockitoUnitTest {
 
     private ErpPurchaseInItemDO buildInItem(Long id, BigDecimal count) {
         return new ErpPurchaseInItemDO().setId(id).setCount(count);
+    }
+
+    // ==================== batchUpdatePurchaseReturnItems ====================
+
+    @Test
+    public void testBatchUpdatePurchaseReturnItems_success() {
+        ErpPurchaseReturnDO purchaseReturn = new ErpPurchaseReturnDO()
+                .setId(10L).setNo("CGTH001").setStatus(ErpPurchaseReturnStatusEnum.PROCESS.getStatus())
+                .setReturnMode(ErpPurchaseReturnModeEnum.BY_STOCK.getMode());
+        when(purchaseReturnMapper.selectById(10L)).thenReturn(purchaseReturn);
+        ErpPurchaseReturnItemDO item = new ErpPurchaseReturnItemDO()
+                .setId(20L).setReturnId(10L).setProductId(200L).setWarehouseId(7L).setDeptId(70L);
+        when(purchaseReturnItemMapper.selectListByReturnId(10L)).thenReturn(Collections.singletonList(item));
+        when(warehouseService.validPurchaseWarehouseList(Collections.singleton(8L))).thenReturn(Collections.singletonList(
+                new ErpWarehouseDO().setId(8L).setDeptId(80L)));
+        when(warehouseService.getWarehouseSaleDeptIds(8L)).thenReturn(Collections.emptySet());
+
+        ErpPurchaseReturnItemBatchUpdateReqVO reqVO = new ErpPurchaseReturnItemBatchUpdateReqVO();
+        reqVO.setReturnId(10L);
+        reqVO.setItemIds(Collections.singletonList(20L));
+        reqVO.setWarehouseId(8L);
+        purchaseReturnService.batchUpdatePurchaseReturnItems(reqVO);
+
+        verify(stockService).ensureStockExists(200L, 8L);
+        ArgumentCaptor<ErpPurchaseReturnItemDO> captor = ArgumentCaptor.forClass(ErpPurchaseReturnItemDO.class);
+        verify(purchaseReturnItemMapper).updateById(captor.capture());
+        assertEquals(Long.valueOf(20L), captor.getValue().getId());
+        assertEquals(Long.valueOf(8L), captor.getValue().getWarehouseId());
+        assertEquals(Long.valueOf(80L), captor.getValue().getDeptId());
+        verify(operateLogService).recordUpdate(any(), eq(10L), eq("CGTH001"));
+    }
+
+    @Test
+    public void testBatchUpdatePurchaseReturnItems_approved_throwException() {
+        when(purchaseReturnMapper.selectById(10L)).thenReturn(new ErpPurchaseReturnDO()
+                .setId(10L).setNo("CGTH001").setStatus(ErpAuditStatus.APPROVE.getStatus())
+                .setReturnMode(ErpPurchaseReturnModeEnum.BY_STOCK.getMode()));
+        ErpPurchaseReturnItemBatchUpdateReqVO reqVO = new ErpPurchaseReturnItemBatchUpdateReqVO();
+        reqVO.setReturnId(10L);
+        reqVO.setItemIds(Collections.singletonList(20L));
+        reqVO.setDeptId(80L);
+
+        assertServiceException(() -> purchaseReturnService.batchUpdatePurchaseReturnItems(reqVO),
+                PURCHASE_RETURN_ITEM_BATCH_UPDATE_FAIL_APPROVE, "CGTH001");
+        verify(purchaseReturnItemMapper, never()).updateById(any(ErpPurchaseReturnItemDO.class));
+    }
+
+    @Test
+    public void testBatchUpdatePurchaseReturnItems_byOrderWarehouse_throwException() {
+        when(purchaseReturnMapper.selectById(10L)).thenReturn(new ErpPurchaseReturnDO()
+                .setId(10L).setNo("CGTH001").setStatus(ErpPurchaseReturnStatusEnum.PROCESS.getStatus())
+                .setReturnMode(ErpPurchaseReturnModeEnum.BY_ORDER.getMode()));
+        ErpPurchaseReturnItemBatchUpdateReqVO reqVO = new ErpPurchaseReturnItemBatchUpdateReqVO();
+        reqVO.setReturnId(10L);
+        reqVO.setItemIds(Collections.singletonList(20L));
+        reqVO.setWarehouseId(8L);
+
+        assertServiceException(() -> purchaseReturnService.batchUpdatePurchaseReturnItems(reqVO),
+                PURCHASE_RETURN_ITEM_BATCH_UPDATE_WAREHOUSE_NOT_ALLOWED_BY_ORDER);
+        verify(purchaseReturnItemMapper, never()).updateById(any(ErpPurchaseReturnItemDO.class));
+    }
+
+    @Test
+    public void testBatchUpdatePurchaseReturnItems_deptNotAllowed_throwException() {
+        when(purchaseReturnMapper.selectById(10L)).thenReturn(new ErpPurchaseReturnDO()
+                .setId(10L).setNo("CGTH001").setStatus(ErpPurchaseReturnStatusEnum.PROCESS.getStatus())
+                .setReturnMode(ErpPurchaseReturnModeEnum.BY_STOCK.getMode()));
+        ErpPurchaseReturnItemDO item = new ErpPurchaseReturnItemDO()
+                .setId(20L).setReturnId(10L).setProductId(200L).setWarehouseId(7L).setDeptId(70L);
+        when(purchaseReturnItemMapper.selectListByReturnId(10L)).thenReturn(Collections.singletonList(item));
+        when(warehouseService.validPurchaseWarehouseList(Collections.singleton(8L))).thenReturn(Collections.singletonList(
+                new ErpWarehouseDO().setId(8L).setDeptId(80L)));
+        when(warehouseService.getWarehouseSaleDeptIds(8L)).thenReturn(Collections.emptySet());
+        ErpPurchaseReturnItemBatchUpdateReqVO reqVO = new ErpPurchaseReturnItemBatchUpdateReqVO();
+        reqVO.setReturnId(10L);
+        reqVO.setItemIds(Collections.singletonList(20L));
+        reqVO.setWarehouseId(8L);
+        reqVO.setDeptId(81L);
+
+        assertServiceException(() -> purchaseReturnService.batchUpdatePurchaseReturnItems(reqVO),
+                PURCHASE_RETURN_ITEM_BATCH_UPDATE_WAREHOUSE_DEPT_NOT_ALLOWED);
+        verify(stockService, never()).ensureStockExists(anyLong(), anyLong());
+        verify(purchaseReturnItemMapper, never()).updateById(any(ErpPurchaseReturnItemDO.class));
+    }
+
+    @Test
+    public void testBatchUpdatePurchaseReturnItems_duplicateAfterWarehouseChange_throwException() {
+        when(purchaseReturnMapper.selectById(10L)).thenReturn(new ErpPurchaseReturnDO()
+                .setId(10L).setNo("CGTH001").setStatus(ErpPurchaseReturnStatusEnum.PROCESS.getStatus())
+                .setReturnMode(ErpPurchaseReturnModeEnum.BY_STOCK.getMode()));
+        ErpPurchaseReturnItemDO selected = new ErpPurchaseReturnItemDO()
+                .setId(20L).setReturnId(10L).setProductId(200L).setWarehouseId(7L).setDeptId(70L);
+        ErpPurchaseReturnItemDO existed = new ErpPurchaseReturnItemDO()
+                .setId(21L).setReturnId(10L).setProductId(200L).setWarehouseId(8L).setDeptId(80L);
+        when(purchaseReturnItemMapper.selectListByReturnId(10L)).thenReturn(Arrays.asList(selected, existed));
+        when(warehouseService.validPurchaseWarehouseList(Collections.singleton(8L))).thenReturn(Collections.singletonList(
+                new ErpWarehouseDO().setId(8L).setDeptId(80L)));
+        when(warehouseService.getWarehouseSaleDeptIds(8L)).thenReturn(Collections.emptySet());
+        ErpPurchaseReturnItemBatchUpdateReqVO reqVO = new ErpPurchaseReturnItemBatchUpdateReqVO();
+        reqVO.setReturnId(10L);
+        reqVO.setItemIds(Collections.singletonList(20L));
+        reqVO.setWarehouseId(8L);
+
+        assertServiceException(() -> purchaseReturnService.batchUpdatePurchaseReturnItems(reqVO),
+                PURCHASE_RETURN_ITEM_DUPLICATE, "200");
+        verify(stockService, never()).ensureStockExists(anyLong(), anyLong());
+        verify(purchaseReturnItemMapper, never()).updateById(any(ErpPurchaseReturnItemDO.class));
     }
 
     // ==================== createPurchaseReturn ====================
@@ -602,6 +724,38 @@ public class ErpPurchaseReturnServiceImplTest extends BaseMockitoUnitTest {
     }
 
     // ==================== updatePurchaseReturnStatus ====================
+
+    @Test
+    public void testImportPurchaseReturnOrderList_invalidReturnTime_returnsReadableMessage() {
+        ErpPurchaseReturnOrderImportExcelVO row = new ErpPurchaseReturnOrderImportExcelVO();
+        row.setNo("CGTH20260811000002");
+        row.setSupplierName("芋道供应商");
+        row.setReturnTime("2026/08/11");
+        row.setProductCode("P000001");
+        row.setWarehouseName("主仓库");
+        row.setItemCount(BigDecimal.ONE);
+        row.setProductPrice(BigDecimal.ONE);
+
+        when(supplierService.getSupplierPage(any())).thenReturn(new PageResult<>(
+                Collections.singletonList(new ErpSupplierDO().setId(100L).setName("芋道供应商")
+                        .setStatus(CommonStatusEnum.ENABLE.getStatus())), 1L));
+        when(productMapper.selectListByCodes(any())).thenReturn(Collections.singletonList(
+                new ErpProductDO().setId(200L).setCode("P000001").setName("产品1").setUnitId(1L)
+                        .setPurchasePrice(BigDecimal.ONE)));
+        when(warehouseService.getPurchaseWarehouseListByStatus(eq(CommonStatusEnum.ENABLE.getStatus())))
+                .thenReturn(Collections.singletonList(new ErpWarehouseDO().setId(10L).setName("主仓库")));
+        when(productService.getProductVOMap(any())).thenReturn(Collections.emptyMap());
+
+        ErpPurchaseImportResultRespVO result = purchaseReturnService.importPurchaseReturnOrderList(
+                Collections.singletonList(row));
+
+        assertEquals(0, result.getSuccessCount());
+        assertEquals(1, result.getFailureCount());
+        assertEquals(Integer.valueOf(2), result.getFailureDetails().get(0).getRowNo());
+        assertEquals("CGTH20260811000002", result.getFailureDetails().get(0).getOrderNo());
+        assertEquals("退货时间格式不正确，请使用 yyyy-MM-dd 或 yyyy-MM-dd HH:mm:ss",
+                result.getFailureDetails().get(0).getReason());
+    }
 
     @Test
     public void testUpdatePurchaseReturnStatus_approveSuccess() {

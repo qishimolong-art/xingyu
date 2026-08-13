@@ -5,9 +5,12 @@ import cn.iocoder.yudao.framework.common.exception.ServiceException;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.test.core.ut.BaseMockitoUnitTest;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnSaveReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnImportExcelVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnImportRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnDraftCreateReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnDraftUpdateReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnPageReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpProductRespVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.ErpAccountDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.product.ErpProductDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpCustomerDO;
@@ -16,10 +19,12 @@ import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleOutDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleOutItemDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleReturnDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleReturnItemDO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpWarehouseDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockOutBillItemDO;
 import cn.iocoder.yudao.module.erp.dal.mysql.finance.accounting.ErpVoucherItemMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.finance.accounting.ErpVoucherMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.finance.ErpFinanceReceiptItemMapper;
+import cn.iocoder.yudao.module.erp.dal.mysql.product.ErpProductMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpSaleOutItemMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpSaleOutMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpSaleReturnItemMapper;
@@ -76,6 +81,8 @@ public class ErpSaleReturnServiceImplTest extends BaseMockitoUnitTest {
     private ErpFinanceReceiptItemMapper financeReceiptItemMapper;
     @Mock
     private ErpSaleReturnItemMapper saleReturnItemMapper;
+    @Mock
+    private ErpProductMapper productMapper;
     @Mock
     private ErpProductService productService;
     @Mock
@@ -139,6 +146,46 @@ public class ErpSaleReturnServiceImplTest extends BaseMockitoUnitTest {
         PageResult<ErpSaleReturnDO> result = saleReturnService.getSaleReturnPage(reqVO);
 
         assertEquals(new BigDecimal("80"), result.getList().get(0).getRefundPrice());
+    }
+
+    // ==================== parseImportData ====================
+
+    @Test
+    public void testParseImportData_validWarehouse_success() {
+        ErpSaleReturnImportExcelVO row = buildImportRow();
+        ErpProductDO product = new ErpProductDO()
+                .setId(200L).setCode("P0001").setName("测试产品").setUnitId(400L).setSalePrice(new BigDecimal("99"));
+        when(productMapper.selectListByCodes(anyCollection())).thenReturn(Collections.singletonList(product));
+        when(productService.getProductVOMap(anyCollection())).thenReturn(Collections.singletonMap(200L,
+                new ErpProductRespVO().setId(200L).setUnitName("件")));
+        when(warehouseService.getCurrentUserVisibleSaleWarehouseList()).thenReturn(Collections.singletonList(
+                new ErpWarehouseDO().setId(300L).setName("默认仓")));
+
+        ErpSaleReturnImportRespVO result = saleReturnService.parseImportData(Collections.singletonList(row));
+
+        assertEquals(1, result.getSuccessCount());
+        assertEquals(0, result.getFailureCount());
+        assertEquals(1, result.getItems().size());
+        assertEquals(300L, result.getItems().get(0).getWarehouseId());
+        assertEquals("默认仓", result.getItems().get(0).getWarehouseName());
+        assertEquals("质量问题", result.getItems().get(0).getReturnReason());
+    }
+
+    @Test
+    public void testParseImportData_blankWarehouse_failure() {
+        ErpSaleReturnImportExcelVO row = buildImportRow();
+        row.setWarehouseName(null);
+        when(productMapper.selectListByCodes(anyCollection())).thenReturn(Collections.singletonList(new ErpProductDO()
+                .setId(200L).setCode("P0001").setName("测试产品").setUnitId(400L)));
+        when(productService.getProductVOMap(anyCollection())).thenReturn(Collections.emptyMap());
+        when(warehouseService.getCurrentUserVisibleSaleWarehouseList()).thenReturn(Collections.singletonList(
+                new ErpWarehouseDO().setId(300L).setName("默认仓")));
+
+        ErpSaleReturnImportRespVO result = saleReturnService.parseImportData(Collections.singletonList(row));
+
+        assertEquals(0, result.getSuccessCount());
+        assertEquals(1, result.getFailureCount());
+        assertEquals("所属仓库不能为空", result.getFailureDetails().get(0).getReason());
     }
 
     // ==================== createSaleReturn ====================
@@ -623,6 +670,17 @@ public class ErpSaleReturnServiceImplTest extends BaseMockitoUnitTest {
         item.setCount(count);
         item.setTaxPercent(BigDecimal.ZERO);
         return item;
+    }
+
+    private ErpSaleReturnImportExcelVO buildImportRow() {
+        ErpSaleReturnImportExcelVO row = new ErpSaleReturnImportExcelVO();
+        row.setProductCode("P0001");
+        row.setWarehouseName("默认仓");
+        row.setCount(BigDecimal.ONE);
+        row.setProductPrice(new BigDecimal("100"));
+        row.setReturnReason("质量问题");
+        row.setRemark("备注");
+        return row;
     }
 
     private void mockProduct() {

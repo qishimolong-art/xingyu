@@ -10,7 +10,9 @@ import cn.iocoder.yudao.module.erp.controller.admin.finance.payable.vo.account.E
 import cn.iocoder.yudao.module.erp.controller.admin.finance.payable.vo.account.ErpPayableDetailRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.payable.vo.account.ErpPayableWriteOffReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.payable.ErpPayableAccountDO;
+import cn.iocoder.yudao.module.erp.service.base.ErpDataPermissionDeptService;
 import cn.iocoder.yudao.module.erp.service.finance.payable.ErpPayableAccountService;
+import cn.iocoder.yudao.module.system.controller.admin.dept.vo.dept.DeptSimpleRespVO;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -35,6 +37,8 @@ public class ErpPayableAccountController {
 
     @Resource
     private ErpPayableAccountService payableAccountService;
+    @Resource
+    private ErpDataPermissionDeptService dataPermissionDeptService;
 
     @GetMapping("/page")
     @Operation(summary = "获取应付账款分页")
@@ -45,6 +49,13 @@ public class ErpPayableAccountController {
             return success(PageResult.empty(pageResult.getTotal()));
         }
         return success(BeanUtils.toBean(pageResult, ErpPayableAccountRespVO.class));
+    }
+
+    @GetMapping("/dept-simple-list")
+    @Operation(summary = "获取应付账款可搜索部门精简信息列表")
+    @PreAuthorize("@ss.hasPermission('erp:payable-account:query')")
+    public CommonResult<List<DeptSimpleRespVO>> getPayableAccountDeptSimpleList() {
+        return success(dataPermissionDeptService.getDeptSimpleList("erp_finance_payable_account"));
     }
 
     @GetMapping("/detail")

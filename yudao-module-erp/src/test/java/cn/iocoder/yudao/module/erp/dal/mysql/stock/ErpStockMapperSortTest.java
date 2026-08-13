@@ -13,6 +13,8 @@ class ErpStockMapperSortTest {
         assertTrue(ErpStockMapper.getOrderExpression("warehouseName", null).contains("erp_warehouse"));
         assertTrue(ErpStockMapper.getOrderExpression("deptName", null).contains("system_dept"));
         assertNotNull(ErpStockMapper.getOrderExpression("pendingInCount", null));
+        assertTrue(ErpStockMapper.getOrderExpression("availableCount", null).contains("erp_sale_cart_items"));
+        assertTrue(ErpStockMapper.getOrderExpression("availableCount", null).contains("erp_stock.count"));
         assertNotNull(ErpStockMapper.getOrderExpression("lastPurchasePrice", null));
         assertNotNull(ErpStockMapper.getOrderExpression("retailPrice", null));
         assertNull(ErpStockMapper.getOrderExpression("id desc; delete from erp_stock", null));

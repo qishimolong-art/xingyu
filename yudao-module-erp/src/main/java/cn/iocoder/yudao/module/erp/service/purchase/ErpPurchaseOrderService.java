@@ -6,11 +6,13 @@ import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.order.ErpPurchas
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.order.ErpPurchaseOrderImportResultRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.order.ErpPurchaseOrderImportRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.order.ErpPurchaseOrderInableItemRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.order.ErpPurchaseOrderItemBatchUpdateReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.order.ErpPurchaseOrderPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.order.ErpPurchaseOrderSaveReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.order.ErpPurchaseOrderUpdateRemarkReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseOrderDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseOrderItemDO;
+import cn.iocoder.yudao.module.system.controller.admin.dept.vo.dept.DeptSimpleRespVO;
 
 import javax.validation.Valid;
 import java.math.BigDecimal;
@@ -58,6 +60,13 @@ public interface ErpPurchaseOrderService {
     void updatePurchaseOrderRemark(@Valid ErpPurchaseOrderUpdateRemarkReqVO updateReqVO);
 
     /**
+     * 批量修改采购订单明细仓库和部门，不受审批状态限制，但不允许修改已有下游业务的明细。
+     *
+     * @param updateReqVO 批量修改信息
+     */
+    void batchUpdatePurchaseOrderItems(@Valid ErpPurchaseOrderItemBatchUpdateReqVO updateReqVO);
+
+    /**
      * 更新采购订单的状态
      *
      * @param id 编号
@@ -103,6 +112,22 @@ public interface ErpPurchaseOrderService {
      * @return 采购订单
      */
     ErpPurchaseOrderDO validatePurchaseOrder(Long id);
+
+    /**
+     * 获得当前用户对指定供应商可用的采购部门列表
+     *
+     * @param supplierId 供应商编号
+     * @return 部门精简列表
+     */
+    List<DeptSimpleRespVO> getSupplierAvailableDeptSimpleList(Long supplierId);
+
+    /**
+     * 获得当前用户对指定采购仓库可用的业务部门列表。
+     *
+     * @param warehouseId 仓库编号
+     * @return 部门精简列表
+     */
+    List<DeptSimpleRespVO> getWarehouseAvailableDeptSimpleList(Long warehouseId);
 
     /**
      * 获得采购订单分页

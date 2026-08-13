@@ -30,6 +30,8 @@ public interface DeptApi {
      */
     List<DeptRespDTO> getDeptList(Collection<Long> ids);
 
+    List<DeptRespDTO> getDeptListByStatus(Integer status);
+
     /**
      * 获得指定名称的部门信息数组
      *

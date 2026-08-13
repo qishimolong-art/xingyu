@@ -18,6 +18,7 @@ import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleRetur
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnDraftUpdateReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnImportExcelVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnImportRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnItemBatchUpdateReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnSaveReqVO;
@@ -38,6 +39,7 @@ import cn.iocoder.yudao.module.erp.service.stock.ErpStockService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpWarehouseService;
 import cn.iocoder.yudao.module.system.api.dept.DeptApi;
 import cn.iocoder.yudao.module.system.api.dept.dto.DeptRespDTO;
+import cn.iocoder.yudao.module.system.controller.admin.dept.vo.dept.DeptSimpleRespVO;
 import cn.iocoder.yudao.module.system.api.user.AdminUserApi;
 import cn.iocoder.yudao.module.system.api.user.dto.AdminUserRespDTO;
 import io.swagger.v3.oas.annotations.Operation;
@@ -136,6 +138,15 @@ public class ErpSaleReturnController {
         return success(true);
     }
 
+    @PutMapping("/batch-update-items")
+    @Operation(summary = "批量修改销售退货明细仓库/部门")
+    @PreAuthorize("@ss.hasPermission('erp:sale-return:update')")
+    public CommonResult<Boolean> batchUpdateSaleReturnItems(
+            @Valid @RequestBody ErpSaleReturnItemBatchUpdateReqVO updateReqVO) {
+        saleReturnService.batchUpdateSaleReturnItems(updateReqVO);
+        return success(true);
+    }
+
     @PutMapping("/submit")
     @Operation(summary = "提交销售退货草稿")
     @PreAuthorize("@ss.hasPermission('erp:sale-return:update-status')")
@@ -226,6 +237,14 @@ public class ErpSaleReturnController {
         return success(respVO);
     }
 
+    @GetMapping("/warehouse-dept-simple-list")
+    @Operation(summary = "获取销售退货批量修改仓库可用部门精简列表")
+    @PreAuthorize("@ss.hasPermission('erp:sale-return:update')")
+    public CommonResult<List<DeptSimpleRespVO>> getWarehouseAvailableDeptSimpleList(
+            @RequestParam("warehouseId") Long warehouseId) {
+        return success(saleReturnService.getWarehouseAvailableDeptSimpleList(warehouseId));
+    }
+
     @GetMapping("/page")
     @Operation(summary = "获得销售退货分页")
     @PreAuthorize("@ss.hasPermission('erp:sale-return:query')")
@@ -267,9 +286,9 @@ public class ErpSaleReturnController {
     public void exportImportTemplate(HttpServletResponse response) throws IOException {
         ErpSaleReturnImportExcelVO example = new ErpSaleReturnImportExcelVO();
         example.setProductCode("P0001");
+        example.setWarehouseName("默认仓");
         example.setCount(BigDecimal.ONE);
         example.setProductPrice(new BigDecimal("100.00"));
-        example.setWarehouseName("默认仓");
         example.setReturnReason("质量问题");
         example.setRemark("备注");
         ExcelUtils.writeImportTemplate(response, "销售退货导入模板.xls", "销售退货",

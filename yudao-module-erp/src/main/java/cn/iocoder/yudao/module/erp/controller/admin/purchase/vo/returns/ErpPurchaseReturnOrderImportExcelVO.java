@@ -27,7 +27,7 @@ public class ErpPurchaseReturnOrderImportExcelVO {
     private String productCode;
 
     @ExcelRequired
-    @ExcelProperty("仓库名称")
+    @ExcelProperty("所属仓库")
     private String warehouseName;
 
     @ExcelRequired
@@ -36,6 +36,9 @@ public class ErpPurchaseReturnOrderImportExcelVO {
 
     @ExcelProperty("退货单价")
     private BigDecimal productPrice;
+
+    @ExcelProperty("批次号")
+    private String batchNo;
 
     @ExcelProperty("明细备注")
     private String itemRemark;

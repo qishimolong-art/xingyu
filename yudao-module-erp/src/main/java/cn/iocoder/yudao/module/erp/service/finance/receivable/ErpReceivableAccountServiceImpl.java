@@ -13,6 +13,7 @@ import cn.iocoder.yudao.module.erp.dal.dataobject.finance.receivable.ErpReceivab
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.receivable.ErpReceivableOtherDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.receivable.ErpReceivableWriteOffDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleOutDO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleOutItemDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSalePriceAdjustDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleReturnDO;
 import cn.iocoder.yudao.module.erp.dal.mysql.finance.ErpFinanceReceiptMapper;
@@ -20,12 +21,14 @@ import cn.iocoder.yudao.module.erp.dal.mysql.finance.ErpFinanceReceiptItemMapper
 import cn.iocoder.yudao.module.erp.dal.mysql.finance.receivable.ErpReceivableAccountMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.finance.receivable.ErpReceivableOtherMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.finance.receivable.ErpReceivableWriteOffMapper;
+import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpSaleOutItemMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpSaleOutMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpSalePriceAdjustMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpSaleReturnMapper;
 import cn.iocoder.yudao.module.erp.enums.ErpAuditStatus;
 import cn.iocoder.yudao.module.erp.enums.common.ErpBizTypeEnum;
 import cn.iocoder.yudao.framework.security.core.util.SecurityFrameworkUtils;
+import cn.iocoder.yudao.module.erp.service.common.ErpOriginalSettlementAmountUtils;
 import cn.iocoder.yudao.module.erp.service.common.ErpOperateLogService;
 import cn.iocoder.yudao.module.erp.service.finance.ErpFinanceVisibleScope;
 import cn.iocoder.yudao.module.erp.service.sale.ErpCustomerService;
@@ -60,6 +63,8 @@ public class ErpReceivableAccountServiceImpl implements ErpReceivableAccountServ
     private ErpReceivableAccountMapper receivableAccountMapper;
     @Resource
     private ErpSaleOutMapper saleOutMapper;
+    @Resource
+    private ErpSaleOutItemMapper saleOutItemMapper;
     @Resource
     private ErpSaleReturnMapper saleReturnMapper;
     @Resource
@@ -252,9 +257,15 @@ public class ErpReceivableAccountServiceImpl implements ErpReceivableAccountServ
         Map<Long, BigDecimal> saleOutAllocated = financeReceiptItemMapper
                 .selectReceiptPriceSumMapByBizIdsAndBizType(saleOuts.stream().map(ErpSaleOutDO::getId)
                         .collect(Collectors.toSet()), ErpBizTypeEnum.SALE_OUT.getType());
+        Map<Long, List<ErpSaleOutItemDO>> saleOutItemMap = saleOuts.isEmpty() ? Collections.emptyMap()
+                : saleOutItemMapper.selectListByOutIds(saleOuts.stream().map(ErpSaleOutDO::getId)
+                        .collect(Collectors.toSet())).stream()
+                .collect(Collectors.groupingBy(ErpSaleOutItemDO::getOutId));
         saleOuts.forEach(item -> rows.add(buildAllocatedRow("销售出库", ErpBizTypeEnum.SALE_OUT.getType(),
                 item.getId(), item.getOutTime(), item.getNo(), item.getTotalPrice(),
-                saleOutAllocated.get(item.getId()))));
+                saleOutAllocated.get(item.getId()),
+                ErpOriginalSettlementAmountUtils.calculateSaleOut(item,
+                        saleOutItemMap.getOrDefault(item.getId(), Collections.emptyList())))));
 
         LambdaQueryWrapperX<ErpSaleReturnDO> saleReturnQuery = new LambdaQueryWrapperX<ErpSaleReturnDO>()
                 .eq(ErpSaleReturnDO::getCustomerId, reqVO.getCustomerId())
@@ -290,9 +301,13 @@ public class ErpReceivableAccountServiceImpl implements ErpReceivableAccountServ
                 .geIfPresent(ErpFinanceReceiptDO::getReceiptTime, reqVO.getStartTime())
                 .ltIfPresent(ErpFinanceReceiptDO::getReceiptTime, reqVO.getEndTime());
         applyScope(receiptQuery, scope, ErpFinanceReceiptDO::getDeptId, ErpFinanceReceiptDO::getFinanceUserId);
-        financeReceiptMapper.selectList(receiptQuery)
-                .forEach(item -> rows.add(buildRow("收款单", null, item.getId(),
-                        item.getReceiptTime(), item.getNo(), negateAmount(item.getTotalPrice()), false)));
+        List<ErpFinanceReceiptDO> receipts = financeReceiptMapper.selectList(receiptQuery);
+        Map<Long, BigDecimal> receiptAllocated = financeReceiptItemMapper
+                .selectEffectivePriceSumMapByReceiptIds(receipts.stream().map(ErpFinanceReceiptDO::getId)
+                        .collect(Collectors.toSet()));
+        receipts.forEach(item -> rows.add(buildAllocatedRow("收款单", null, item.getId(),
+                item.getReceiptTime(), item.getNo(), negateAmount(item.getTotalPrice()),
+                receiptAllocated.get(item.getId()))));
 
         receivableWriteOffMapper.selectListByCustomerId(reqVO.getCustomerId(), reqVO.getStartTime(), reqVO.getEndTime(),
                         scope.getDeptIds(), scope.getSelfUserId(), scope.isAll())
@@ -334,14 +349,22 @@ public class ErpReceivableAccountServiceImpl implements ErpReceivableAccountServ
         row.setIncreaseAmount(actualAmount.compareTo(BigDecimal.ZERO) > 0 ? actualAmount : BigDecimal.ZERO);
         row.setReceiptAmount(actualAmount.compareTo(BigDecimal.ZERO) < 0 && !writeOff ? actualAmount.abs() : BigDecimal.ZERO);
         row.setWriteOffAmount(actualAmount.compareTo(BigDecimal.ZERO) < 0 && writeOff ? actualAmount.abs() : BigDecimal.ZERO);
+        row.setWriteOffBaseAmount(actualAmount.abs());
         return row;
     }
 
     private ErpReceivableDetailRespVO buildAllocatedRow(String docType, Integer bizType, Long bizId,
                                                         LocalDateTime docDate, String docNo, BigDecimal amount,
                                                         BigDecimal allocatedAmount) {
+        return buildAllocatedRow(docType, bizType, bizId, docDate, docNo, amount, allocatedAmount, amount);
+    }
+
+    private ErpReceivableDetailRespVO buildAllocatedRow(String docType, Integer bizType, Long bizId,
+                                                        LocalDateTime docDate, String docNo, BigDecimal amount,
+                                                        BigDecimal allocatedAmount, BigDecimal writeOffBaseAmount) {
         ErpReceivableDetailRespVO row = buildRow(docType, bizType, bizId, docDate, docNo, amount, false);
         row.setAllocatedAmount(allocatedAmount == null ? BigDecimal.ZERO : allocatedAmount.abs());
+        row.setWriteOffBaseAmount(writeOffBaseAmount == null ? BigDecimal.ZERO : writeOffBaseAmount.abs());
         return row;
     }
 

@@ -14,6 +14,7 @@ import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpProduc
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.ErpStockUpdateRemarkReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.imports.ErpStockImportExcelVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.imports.ErpStockImportResultRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.out.ErpStockOutItemBatchUpdateReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.out.ErpStockOutPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.out.ErpStockOutRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.out.ErpStockOutSaveReqVO;
@@ -21,6 +22,7 @@ import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpCustomerDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockOutDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockOutItemDO;
+import cn.iocoder.yudao.module.erp.service.base.ErpDataPermissionDeptService;
 import cn.iocoder.yudao.module.erp.service.product.ErpProductService;
 import cn.iocoder.yudao.module.erp.service.sale.ErpCustomerService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpStockFieldPermissionMasker;
@@ -31,6 +33,7 @@ import cn.iocoder.yudao.module.system.api.dept.DeptApi;
 import cn.iocoder.yudao.module.system.api.dept.dto.DeptRespDTO;
 import cn.iocoder.yudao.module.system.api.user.AdminUserApi;
 import cn.iocoder.yudao.module.system.api.user.dto.AdminUserRespDTO;
+import cn.iocoder.yudao.module.system.controller.admin.dept.vo.dept.DeptSimpleRespVO;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -91,6 +94,8 @@ public class ErpStockOutController {
     @Resource
     private ErpStockFieldPermissionMasker fieldPermissionMasker;
     @Resource
+    private ErpDataPermissionDeptService dataPermissionDeptService;
+    @Resource
     private DeptApi deptApi;
     @Resource
     private AdminUserApi adminUserApi;
@@ -108,6 +113,22 @@ public class ErpStockOutController {
     public CommonResult<Boolean> updateStockOut(@Valid @RequestBody ErpStockOutSaveReqVO updateReqVO) {
         stockOutService.updateStockOut(updateReqVO);
         return success(true);
+    }
+
+    @PutMapping("/batch-update-items")
+    @Operation(summary = "Batch update stock out item warehouse")
+    @PreAuthorize("@ss.hasPermission('erp:stock-out:update')")
+    public CommonResult<Boolean> batchUpdateStockOutItems(
+            @Valid @RequestBody ErpStockOutItemBatchUpdateReqVO updateReqVO) {
+        stockOutService.batchUpdateStockOutItems(updateReqVO);
+        return success(true);
+    }
+
+    @GetMapping("/warehouse-dept-simple-list")
+    @Operation(summary = "Get available department list for stock out item warehouse")
+    @PreAuthorize("@ss.hasPermission('erp:stock-out:update')")
+    public CommonResult<List<DeptSimpleRespVO>> getWarehouseDeptSimpleList(@RequestParam("warehouseId") Long warehouseId) {
+        return success(stockOutService.getWarehouseDeptSimpleList(warehouseId));
     }
 
     @PutMapping("/update-remark")
@@ -179,6 +200,13 @@ public class ErpStockOutController {
     @PreAuthorize("@ss.hasPermission('erp:stock-out:query')")
     public CommonResult<PageResult<ErpStockOutRespVO>> getStockOutPage(@Valid ErpStockOutPageReqVO pageReqVO) {
         return success(buildStockOutVOPageResult(stockOutService.getStockOutPage(pageReqVO)));
+    }
+
+    @GetMapping("/dept-simple-list")
+    @Operation(summary = "Get visible department list for stock out filter")
+    @PreAuthorize("@ss.hasPermission('erp:stock-out:query')")
+    public CommonResult<List<DeptSimpleRespVO>> getVisibleDeptSimpleList() {
+        return success(dataPermissionDeptService.getDeptSimpleList(FIELD_PERMISSION_MODULE));
     }
 
     @GetMapping("/export-excel")

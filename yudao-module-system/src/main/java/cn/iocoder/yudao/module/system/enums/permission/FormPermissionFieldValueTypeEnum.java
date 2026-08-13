@@ -14,7 +14,12 @@ public enum FormPermissionFieldValueTypeEnum {
     private final String code;
 
     public static boolean contains(String code) {
-        return SINGLE_ID.getCode().equals(code);
+        for (FormPermissionFieldValueTypeEnum value : values()) {
+            if (value.getCode().equals(code)) {
+                return true;
+            }
+        }
+        return false;
     }
 
 }

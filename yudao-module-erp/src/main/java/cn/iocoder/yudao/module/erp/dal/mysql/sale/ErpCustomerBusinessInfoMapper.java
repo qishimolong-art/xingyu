@@ -1,5 +1,6 @@
 package cn.iocoder.yudao.module.erp.dal.mysql.sale;
 
+import cn.hutool.core.collection.CollUtil;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.mybatis.core.mapper.BaseMapperX;
 import cn.iocoder.yudao.framework.mybatis.core.query.LambdaQueryWrapperX;
@@ -8,6 +9,8 @@ import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpCustomerBusinessInfoDO
 import cn.iocoder.yudao.module.erp.dal.mysql.common.ErpKeywordQuery;
 import org.apache.ibatis.annotations.Mapper;
 
+import java.util.Collection;
+import java.util.Collections;
 import java.util.List;
 
 @Mapper
@@ -31,6 +34,14 @@ public interface ErpCustomerBusinessInfoMapper extends BaseMapperX<ErpCustomerBu
         return selectList(new LambdaQueryWrapperX<ErpCustomerBusinessInfoDO>()
                 .eq(ErpCustomerBusinessInfoDO::getCustomerId, customerId)
                 .orderByDesc(ErpCustomerBusinessInfoDO::getId));
+    }
+
+    default List<ErpCustomerBusinessInfoDO> selectListByCustomerIds(Collection<Long> customerIds) {
+        if (CollUtil.isEmpty(customerIds)) {
+            return Collections.emptyList();
+        }
+        return selectList(new LambdaQueryWrapperX<ErpCustomerBusinessInfoDO>()
+                .in(ErpCustomerBusinessInfoDO::getCustomerId, customerIds));
     }
 
 }

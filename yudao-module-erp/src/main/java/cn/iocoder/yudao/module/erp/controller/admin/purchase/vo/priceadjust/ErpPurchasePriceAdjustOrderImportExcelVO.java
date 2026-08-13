@@ -26,7 +26,7 @@ public class ErpPurchasePriceAdjustOrderImportExcelVO {
     @ExcelProperty("产品编码")
     private String productCode;
 
-    @ExcelProperty("仓库名称")
+    @ExcelProperty("所属仓库")
     private String warehouseName;
 
     @ExcelRequired

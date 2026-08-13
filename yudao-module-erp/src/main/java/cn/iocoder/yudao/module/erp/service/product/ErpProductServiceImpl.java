@@ -1838,10 +1838,27 @@ public class ErpProductServiceImpl implements ErpProductService {
     public List<ErpProductRespVO> getProductVOListByStatus(Integer status) {
         ErpProductPageReqVO visibleReqVO = buildCurrentUserVisibleReqVO();
         List<ErpProductDO> list = DataPermissionUtils.executeIgnore(() ->
-                productMapper.selectVisibleListByStatus(status, visibleReqVO));
-        List<ErpProductRespVO> result = buildProductVOList(list);
+                productMapper.selectVisibleSimpleListByStatus(status, visibleReqVO));
+        List<ErpProductRespVO> result = buildProductSimpleVOList(list);
         applyProductFieldPermissions(result);
         return result;
+    }
+
+    private List<ErpProductRespVO> buildProductSimpleVOList(List<ErpProductDO> list) {
+        if (CollUtil.isEmpty(list)) {
+            return Collections.emptyList();
+        }
+        Map<Long, ErpProductCategoryDO> categoryMap = productCategoryService.getProductCategoryMap(
+                convertSet(list, ErpProductDO::getCategoryId));
+        Map<Long, ErpProductUnitDO> unitMap = productUnitService.getProductUnitMap(
+                convertSet(list, ErpProductDO::getUnitId));
+        return BeanUtils.toBean(list, ErpProductRespVO.class, vo -> {
+            vo.setProductCode(vo.getCode());
+            MapUtils.findAndThen(categoryMap, vo.getCategoryId(),
+                    category -> vo.setCategoryName(category.getName()));
+            MapUtils.findAndThen(unitMap, vo.getUnitId(),
+                    unit -> vo.setUnitName(unit.getName()));
+        });
     }
 
     @Override

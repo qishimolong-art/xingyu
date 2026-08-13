@@ -1,5 +1,6 @@
 package cn.iocoder.yudao.module.erp.controller.admin.sale.vo.quote;
 
+import cn.idev.excel.annotation.ExcelIgnoreUnannotated;
 import cn.idev.excel.annotation.ExcelProperty;
 import cn.iocoder.yudao.framework.excel.core.annotations.ExcelRequired;
 import lombok.Data;
@@ -7,26 +8,12 @@ import lombok.Data;
 import java.math.BigDecimal;
 
 @Data
+@ExcelIgnoreUnannotated
 public class ErpSaleQuoteOrderImportExcelVO {
-
-    @ExcelProperty("导入单号")
-    private String importNo;
 
     @ExcelRequired
     @ExcelProperty("客户名称")
     private String customerName;
-
-    @ExcelProperty("报价时间")
-    private String quoteTime;
-
-    @ExcelProperty("业务员")
-    private String saleUserName;
-
-    @ExcelProperty("优先级")
-    private String priority;
-
-    @ExcelProperty("送货方式")
-    private String deliveryMethod;
 
     @ExcelProperty("备注")
     private String remark;
@@ -35,7 +22,7 @@ public class ErpSaleQuoteOrderImportExcelVO {
     @ExcelProperty("产品编码")
     private String productCode;
 
-    @ExcelProperty("仓库名称")
+    @ExcelProperty("所属仓库")
     private String warehouseName;
 
     @ExcelRequired
@@ -44,6 +31,9 @@ public class ErpSaleQuoteOrderImportExcelVO {
 
     @ExcelProperty("单价")
     private BigDecimal productPrice;
+
+    @ExcelProperty("赠品")
+    private Boolean giftFlag;
 
     private BigDecimal taxPercent;
 

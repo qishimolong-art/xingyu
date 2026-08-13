@@ -61,9 +61,13 @@ class ErpStockMoveMapperTest {
 
         String sqlSegment = wrapper.getSqlSegment();
         assertTrue(sqlSegment.contains("from_dept_id"));
+        assertTrue(sqlSegment.contains("EXISTS"));
         assertTrue(sqlSegment.contains("NOT EXISTS"));
         assertTrue(sqlSegment.contains("erp_stock_move_item"));
+        assertTrue(sqlSegment.contains("i.from_dept_id IN"));
         assertTrue(sqlSegment.contains("NOT IN"));
+        assertTrue(sqlSegment.contains("i.from_dept_id IS NULL"));
+        assertFalse(sqlSegment.contains("t.from_dept_id"));
         assertFalse(sqlSegment.contains("t.dept_id"));
         assertFalse(sqlSegment.contains("creator"));
     }
@@ -97,11 +101,15 @@ class ErpStockMoveMapperTest {
 
         String sqlSegment = wrapper.getSqlSegment();
         assertTrue(sqlSegment.contains("to_dept_id"));
+        assertTrue(sqlSegment.contains("EXISTS"));
         assertTrue(sqlSegment.contains("NOT EXISTS"));
         assertTrue(sqlSegment.contains("erp_stock_move_item"));
+        assertTrue(sqlSegment.contains("i.to_dept_id IN"));
         assertTrue(sqlSegment.contains("NOT IN"));
+        assertTrue(sqlSegment.contains("i.to_dept_id IS NULL"));
         assertFalse(sqlSegment.contains("t.dept_id"));
-        assertFalse(sqlSegment.contains("from_dept_id"));
+        assertFalse(sqlSegment.contains("t.to_dept_id"));
+        assertFalse(sqlSegment.contains("i.from_dept_id"));
         assertFalse(sqlSegment.contains("creator"));
     }
 

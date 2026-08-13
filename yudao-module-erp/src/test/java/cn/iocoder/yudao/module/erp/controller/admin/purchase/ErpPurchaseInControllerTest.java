@@ -14,6 +14,7 @@ import cn.iocoder.yudao.module.erp.service.stock.ErpStockInBillService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpStockService;
 import cn.iocoder.yudao.module.system.api.dept.DeptApi;
 import cn.iocoder.yudao.module.system.api.user.AdminUserApi;
+import cn.iocoder.yudao.module.system.controller.admin.dept.vo.dept.DeptSimpleRespVO;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.InjectMocks;
@@ -28,6 +29,7 @@ import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
@@ -88,6 +90,19 @@ class ErpPurchaseInControllerTest extends BaseMockitoUnitTest {
         assertNotNull(data);
         assertEquals(0, BigDecimal.ZERO.compareTo(data.getTransferOutCount()));
         assertEquals(Integer.valueOf(0), data.getTransferOutStatus());
+    }
+
+    @Test
+    void getSupplierAvailableDeptSimpleListDelegatesToPurchaseInService() {
+        List<DeptSimpleRespVO> depts = Collections.singletonList(
+                new DeptSimpleRespVO(20L, "采购二部", 0L));
+        when(purchaseInService.getSupplierAvailableDeptSimpleList(eq(100L))).thenReturn(depts);
+
+        controller.getPurchaseIn(10L);
+        CommonResult<List<DeptSimpleRespVO>> result = controller.getSupplierAvailableDeptSimpleList(100L);
+
+        assertSame(depts, result.getData());
+        verify(purchaseInService).getSupplierAvailableDeptSimpleList(eq(100L));
     }
 
     @Test

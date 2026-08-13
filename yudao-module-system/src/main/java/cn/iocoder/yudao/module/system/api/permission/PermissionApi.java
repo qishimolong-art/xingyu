@@ -64,6 +64,11 @@ public interface PermissionApi extends PermissionCommonApi {
     List<FieldDefinitionRespDTO> getFieldDefinitions(String module, String fieldGroup);
 
     /**
+     * 获得指定模块的有效字段目录。
+     */
+    List<FieldDefinitionRespDTO> getFieldDefinitions(String module);
+
+    /**
      * 获得用户真实关联的部门编号集合。
      *
      * @param userId 用户编号

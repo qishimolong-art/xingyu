@@ -5,6 +5,8 @@ import cn.iocoder.yudao.framework.common.biz.system.permission.dto.DeptDataPermi
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.customer.ErpCustomerBatchUpdateReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.customer.ErpCustomerDeptCreditRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.customer.ErpCustomerDeptCreditSaveReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.customer.ErpCustomerDeptDistributionRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.customer.ErpCustomerDeptDistributionSaveReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.customer.ErpCustomerImportExcelVO;
@@ -13,6 +15,8 @@ import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.customer.ErpCustomer
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.ErpFinanceReceiptDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.receivable.ErpReceivableAccountDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.receivable.ErpReceivableOtherDO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.finance.receivable.ErpReceivableWriteOffDO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpCustomerDeptCreditDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpCustomerDeptDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpCustomerDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleOutDO;
@@ -22,6 +26,7 @@ import cn.iocoder.yudao.module.erp.dal.mysql.finance.ErpFinanceReceiptMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.finance.receivable.ErpReceivableAccountMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.finance.receivable.ErpReceivableOtherMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.finance.receivable.ErpReceivableWriteOffMapper;
+import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpCustomerDeptCreditMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpCustomerDeptMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpCustomerMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpSaleCartMapper;
@@ -72,6 +77,8 @@ import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.CUSTOMER_CODE
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.CUSTOMER_CREDIT_BLOCKED;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.CUSTOMER_CREDIT_CONFIG_REQUIRED;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.CUSTOMER_CREDIT_VALUE_INVALID;
+import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.CUSTOMER_DEPT_CREDIT_DEPT_NOT_ALLOWED;
+import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.CUSTOMER_DEPT_CREDIT_DUPLICATE_DEPT;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.CUSTOMER_DELETE_FAIL_REFERENCED;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.CUSTOMER_DISABLE_FAIL_RECEIVABLE_NOT_CLEAR;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.ARCHIVE_MERGE_SAME_ID;
@@ -96,6 +103,8 @@ public class ErpCustomerServiceImpl implements ErpCustomerService {
     private ErpCustomerMapper customerMapper;
     @Resource
     private ErpCustomerDeptMapper customerDeptMapper;
+    @Resource
+    private ErpCustomerDeptCreditMapper customerDeptCreditMapper;
     @Resource
     private ErpSaleQuoteMapper saleQuoteMapper;
     @Resource
@@ -265,6 +274,53 @@ public class ErpCustomerServiceImpl implements ErpCustomerService {
     }
 
     @Override
+    public ErpCustomerDeptCreditRespVO getCustomerDeptCredit(Long id) {
+        ErpCustomerDO customer = DataPermissionUtils.executeIgnore(() -> customerMapper.selectById(id));
+        if (customer == null) {
+            throw exception(CUSTOMER_NOT_EXISTS);
+        }
+        List<Long> saleDeptIds = getCustomerSaleDeptIds(customer);
+        Map<Long, String> deptNameMap = buildDeptNameMap(saleDeptIds);
+        List<ErpCustomerDeptCreditDO> credits = customerDeptCreditMapper.selectListByCustomerId(id);
+        Map<Long, ErpCustomerDeptCreditDO> creditMap = (credits == null ? Collections.<ErpCustomerDeptCreditDO>emptyList() : credits).stream()
+                .filter(credit -> credit.getDeptId() != null)
+                .collect(Collectors.toMap(ErpCustomerDeptCreditDO::getDeptId, credit -> credit,
+                        (first, second) -> first, LinkedHashMap::new));
+        List<ErpCustomerDeptCreditRespVO.Item> items = saleDeptIds.stream()
+                .map(deptId -> buildDeptCreditItem(deptId, deptNameMap.get(deptId), creditMap.get(deptId)))
+                .collect(Collectors.toList());
+
+        ErpCustomerDeptCreditRespVO respVO = BeanUtils.toBean(customer, ErpCustomerDeptCreditRespVO.class);
+        respVO.setDeptIds(saleDeptIds);
+        respVO.setDeptNameMap(deptNameMap);
+        respVO.setItems(items);
+        return respVO;
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void updateCustomerDeptCredit(ErpCustomerDeptCreditSaveReqVO reqVO) {
+        ErpCustomerDO customer = validateCustomerExists(reqVO.getId());
+        List<ErpCustomerDeptCreditSaveReqVO.Item> items = reqVO.getItems() == null
+                ? Collections.emptyList() : reqVO.getItems();
+        validateDeptCreditItems(customer, items);
+
+        customerDeptCreditMapper.deleteByCustomerId(reqVO.getId());
+        if (CollUtil.isEmpty(items)) {
+            return;
+        }
+        List<ErpCustomerDeptCreditDO> creditList = items.stream()
+                .filter(item -> item != null && item.getDeptId() != null)
+                .map(item -> buildDeptCreditDO(reqVO.getId(), item))
+                .collect(Collectors.toList());
+        if (CollUtil.isEmpty(creditList)) {
+            return;
+        }
+        customerDeptCreditMapper.insertBatch(creditList);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
     public void deleteCustomer(Long id) {
         // 校验存在
         ErpCustomerDO customer = validateCustomerExists(id);
@@ -272,6 +328,7 @@ public class ErpCustomerServiceImpl implements ErpCustomerService {
         // 删除
         customerMapper.deleteById(id);
         customerDeptMapper.deleteByCustomerId(id);
+        customerDeptCreditMapper.deleteByCustomerId(id);
         recordDelete(customer);
     }
 
@@ -380,20 +437,47 @@ public class ErpCustomerServiceImpl implements ErpCustomerService {
     }
 
     @Override
+    public ErpCustomerDO validateCustomerForSale(Long id, Long saleDeptId) {
+        ErpCustomerDO customer = validateCustomer(id);
+        validateCustomerCredit(customer, saleDeptId);
+        return customer;
+    }
+
+    @Override
     public ErpCustomerDO validateCustomerForGeneratedSale(Long id, Long saleDeptId) {
         ErpCustomerDO customer = validateCustomerExists(id);
         if (CommonStatusEnum.isDisable(customer.getStatus())) {
             throw exception(CUSTOMER_NOT_ENABLE, customer.getName());
         }
-        validateCustomerCredit(customer);
         if (saleDeptId != null && !getCustomerSaleDeptIds(customer).contains(saleDeptId)) {
             throw exception(CUSTOMER_SALE_DEPT_NOT_ALLOWED);
         }
+        validateCustomerCredit(customer, saleDeptId);
         return customer;
     }
 
     private void validateCustomerCredit(ErpCustomerDO customer) {
         ErpCustomerCreditStatusBO creditStatus = buildCustomerCreditStatus(customer);
+        if (Boolean.TRUE.equals(creditStatus.getBlocked())) {
+            throw exception(CUSTOMER_CREDIT_BLOCKED, customer.getName(), creditStatus.getBlockedReason());
+        }
+    }
+
+    private void validateCustomerCredit(ErpCustomerDO customer, Long saleDeptId) {
+        if (saleDeptId == null) {
+            validateCustomerCredit(customer);
+            return;
+        }
+        ErpCustomerDeptCreditDO deptCredit =
+                customerDeptCreditMapper.selectByCustomerIdAndDeptId(customer.getId(), saleDeptId);
+        if (deptCredit == null) {
+            validateCustomerCredit(customer);
+            return;
+        }
+        if (!Boolean.TRUE.equals(deptCredit.getCreditEnabled())) {
+            return;
+        }
+        ErpCustomerCreditStatusBO creditStatus = buildCustomerCreditStatus(customer, deptCredit, saleDeptId);
         if (Boolean.TRUE.equals(creditStatus.getBlocked())) {
             throw exception(CUSTOMER_CREDIT_BLOCKED, customer.getName(), creditStatus.getBlockedReason());
         }
@@ -680,6 +764,68 @@ public class ErpCustomerServiceImpl implements ErpCustomerService {
         }
     }
 
+    private void validateDeptCreditItems(ErpCustomerDO customer, List<ErpCustomerDeptCreditSaveReqVO.Item> items) {
+        if (CollUtil.isEmpty(items)) {
+            return;
+        }
+        Set<Long> allowedDeptIds = new LinkedHashSet<>(getCustomerSaleDeptIds(customer));
+        Set<Long> deptIds = new LinkedHashSet<>();
+        for (ErpCustomerDeptCreditSaveReqVO.Item item : items) {
+            if (item == null || item.getDeptId() == null) {
+                continue;
+            }
+            if (!deptIds.add(item.getDeptId())) {
+                throw exception(CUSTOMER_DEPT_CREDIT_DUPLICATE_DEPT);
+            }
+            if (!allowedDeptIds.contains(item.getDeptId())) {
+                throw exception(CUSTOMER_DEPT_CREDIT_DEPT_NOT_ALLOWED);
+            }
+            validateDeptCreditConfig(item);
+        }
+        if (CollUtil.isNotEmpty(deptIds)) {
+            deptApi.validateDeptList(deptIds);
+        }
+    }
+
+    private void validateDeptCreditConfig(ErpCustomerDeptCreditSaveReqVO.Item item) {
+        if (item.getCreditLimit() != null && item.getCreditLimit().compareTo(BigDecimal.ZERO) < 0
+                || item.getCreditTermDays() != null && item.getCreditTermDays() < 0) {
+            throw exception(CUSTOMER_CREDIT_VALUE_INVALID);
+        }
+        if (Boolean.TRUE.equals(item.getCreditEnabled())
+                && item.getCreditLimit() == null && item.getCreditTermDays() == null) {
+            throw exception(CUSTOMER_CREDIT_CONFIG_REQUIRED);
+        }
+    }
+
+    private ErpCustomerDeptCreditDO buildDeptCreditDO(Long customerId, ErpCustomerDeptCreditSaveReqVO.Item item) {
+        ErpCustomerDeptCreditDO credit = BeanUtils.toBean(item, ErpCustomerDeptCreditDO.class);
+        credit.setCustomerId(customerId);
+        normalizeDeptCreditConfig(credit);
+        return credit;
+    }
+
+    private ErpCustomerDeptCreditRespVO.Item buildDeptCreditItem(Long deptId, String deptName,
+                                                                 ErpCustomerDeptCreditDO credit) {
+        ErpCustomerDeptCreditRespVO.Item item = credit == null
+                ? new ErpCustomerDeptCreditRespVO.Item()
+                : BeanUtils.toBean(credit, ErpCustomerDeptCreditRespVO.Item.class);
+        item.setDeptId(deptId);
+        item.setDeptName(deptName);
+        if (item.getCreditEnabled() == null) {
+            item.setCreditEnabled(false);
+        }
+        return item;
+    }
+
+    private void normalizeDeptCreditConfig(ErpCustomerDeptCreditDO credit) {
+        if (!Boolean.TRUE.equals(credit.getCreditEnabled())) {
+            credit.setCreditEnabled(false);
+            credit.setCreditLimit(null);
+            credit.setCreditTermDays(null);
+        }
+    }
+
     private void normalizeCreditConfig(ErpCustomerDO customer) {
         if (customer == null) {
             return;
@@ -692,24 +838,39 @@ public class ErpCustomerServiceImpl implements ErpCustomerService {
     }
 
     private ErpCustomerCreditStatusBO buildCustomerCreditStatus(ErpCustomerDO customer) {
-        BigDecimal balance = getReceivableBalance(customer.getId());
+        return buildCustomerCreditStatus(customer, customer.getCreditEnabled(), customer.getCreditLimit(),
+                customer.getCreditTermDays(), null);
+    }
+
+    private ErpCustomerCreditStatusBO buildCustomerCreditStatus(ErpCustomerDO customer,
+                                                               ErpCustomerDeptCreditDO deptCredit,
+                                                               Long saleDeptId) {
+        return buildCustomerCreditStatus(customer, deptCredit.getCreditEnabled(), deptCredit.getCreditLimit(),
+                deptCredit.getCreditTermDays(), saleDeptId);
+    }
+
+    private ErpCustomerCreditStatusBO buildCustomerCreditStatus(ErpCustomerDO customer, Boolean creditEnabledFlag,
+                                                               BigDecimal creditLimit, Integer creditTermDays,
+                                                               Long saleDeptId) {
+        BigDecimal balance = getReceivableBalance(customer.getId(), saleDeptId);
         LocalDate earliestUnpaidDate = balance.compareTo(BigDecimal.ZERO) > 0
-                ? findEarliestUnpaidDate(customer.getId(), balance) : null;
+                ? findEarliestUnpaidDate(customer.getId(), saleDeptId, balance) : null;
         Integer debtDays = earliestUnpaidDate == null ? null
                 : Math.toIntExact(ChronoUnit.DAYS.between(earliestUnpaidDate, LocalDate.now()));
 
-        boolean creditEnabled = Boolean.TRUE.equals(customer.getCreditEnabled());
-        boolean amountExceeded = creditEnabled && customer.getCreditLimit() != null
-                && balance.compareTo(BigDecimal.ZERO) > 0 && balance.compareTo(customer.getCreditLimit()) >= 0;
-        boolean termExceeded = creditEnabled && customer.getCreditTermDays() != null
-                && debtDays != null && debtDays > customer.getCreditTermDays();
-        String blockedReason = buildCreditBlockedReason(customer, balance, debtDays, amountExceeded, termExceeded);
+        boolean creditEnabled = Boolean.TRUE.equals(creditEnabledFlag);
+        boolean amountExceeded = creditEnabled && creditLimit != null
+                && balance.compareTo(BigDecimal.ZERO) > 0 && balance.compareTo(creditLimit) >= 0;
+        boolean termExceeded = creditEnabled && creditTermDays != null
+                && debtDays != null && debtDays > creditTermDays;
+        String blockedReason = buildCreditBlockedReason(creditLimit, creditTermDays, balance, debtDays,
+                amountExceeded, termExceeded);
 
         return new ErpCustomerCreditStatusBO()
                 .setCustomerId(customer.getId())
-                .setCreditEnabled(customer.getCreditEnabled())
-                .setCreditLimit(customer.getCreditLimit())
-                .setCreditTermDays(customer.getCreditTermDays())
+                .setCreditEnabled(creditEnabledFlag)
+                .setCreditLimit(creditLimit)
+                .setCreditTermDays(creditTermDays)
                 .setReceivableBalance(balance)
                 .setEarliestUnpaidDate(earliestUnpaidDate)
                 .setDebtDays(debtDays)
@@ -720,25 +881,32 @@ public class ErpCustomerServiceImpl implements ErpCustomerService {
     }
 
     private BigDecimal getReceivableBalance(Long customerId) {
-        ErpReceivableAccountDO account = receivableAccountMapper.selectByCustomerId(customerId);
+        return getReceivableBalance(customerId, null);
+    }
+
+    private BigDecimal getReceivableBalance(Long customerId, Long saleDeptId) {
+        ErpReceivableAccountDO account = saleDeptId == null
+                ? receivableAccountMapper.selectByCustomerId(customerId)
+                : receivableAccountMapper.selectByCustomerIdAndDeptId(customerId, saleDeptId);
         return account == null || account.getReceivableBalance() == null
                 ? BigDecimal.ZERO : account.getReceivableBalance();
     }
 
-    private String buildCreditBlockedReason(ErpCustomerDO customer, BigDecimal balance, Integer debtDays,
+    private String buildCreditBlockedReason(BigDecimal creditLimit, Integer creditTermDays,
+                                            BigDecimal balance, Integer debtDays,
                                             boolean amountExceeded, boolean termExceeded) {
         List<String> reasons = new ArrayList<>();
         if (amountExceeded) {
-            reasons.add("欠款金额 " + balance + " 已达到授信金额 " + customer.getCreditLimit());
+            reasons.add("欠款金额 " + balance + " 已达到授信金额 " + creditLimit);
         }
         if (termExceeded) {
-            reasons.add("欠款天数 " + debtDays + " 天已超过授信期限 " + customer.getCreditTermDays() + " 天");
+            reasons.add("欠款天数 " + debtDays + " 天已超过授信期限 " + creditTermDays + " 天");
         }
         return String.join("；", reasons);
     }
 
-    private LocalDate findEarliestUnpaidDate(Long customerId, BigDecimal currentBalance) {
-        List<ReceivableTimelineRow> rows = buildReceivableTimelineRows(customerId);
+    private LocalDate findEarliestUnpaidDate(Long customerId, Long saleDeptId, BigDecimal currentBalance) {
+        List<ReceivableTimelineRow> rows = buildReceivableTimelineRows(customerId, saleDeptId);
         BigDecimal remaining = currentBalance;
         LocalDate earliest = null;
         for (int i = rows.size() - 1; i >= 0 && remaining.compareTo(BigDecimal.ZERO) > 0; i--) {
@@ -752,28 +920,35 @@ public class ErpCustomerServiceImpl implements ErpCustomerService {
         return earliest;
     }
 
-    private List<ReceivableTimelineRow> buildReceivableTimelineRows(Long customerId) {
+    private List<ReceivableTimelineRow> buildReceivableTimelineRows(Long customerId, Long saleDeptId) {
         List<ReceivableTimelineRow> rows = new ArrayList<>();
         saleOutMapper.selectList(new LambdaQueryWrapperX<ErpSaleOutDO>()
                 .eq(ErpSaleOutDO::getCustomerId, customerId)
+                .eqIfPresent(ErpSaleOutDO::getDeptId, saleDeptId)
                 .eq(ErpSaleOutDO::getStatus, ErpAuditStatus.APPROVE.getStatus()))
                 .forEach(item -> rows.add(new ReceivableTimelineRow(item.getOutTime(), nullToZero(item.getTotalPrice()))));
         saleReturnMapper.selectList(new LambdaQueryWrapperX<ErpSaleReturnDO>()
                 .eq(ErpSaleReturnDO::getCustomerId, customerId)
+                .eqIfPresent(ErpSaleReturnDO::getDeptId, saleDeptId)
                 .eq(ErpSaleReturnDO::getStatus, ErpAuditStatus.APPROVE.getStatus()))
                 .forEach(item -> rows.add(new ReceivableTimelineRow(item.getReturnTime(), negateAmount(item.getTotalPrice()))));
         salePriceAdjustMapper.selectList(new LambdaQueryWrapperX<ErpSalePriceAdjustDO>()
                 .eq(ErpSalePriceAdjustDO::getCustomerId, customerId)
+                .eqIfPresent(ErpSalePriceAdjustDO::getDeptId, saleDeptId)
                 .eq(ErpSalePriceAdjustDO::getStatus, ErpAuditStatus.APPROVE.getStatus()))
                 .forEach(item -> rows.add(new ReceivableTimelineRow(item.getAdjustDate(), nullToZero(item.getTotalAdjustPrice()))));
         financeReceiptMapper.selectList(new LambdaQueryWrapperX<ErpFinanceReceiptDO>()
                 .eq(ErpFinanceReceiptDO::getCustomerId, customerId)
+                .eqIfPresent(ErpFinanceReceiptDO::getDeptId, saleDeptId)
                 .eq(ErpFinanceReceiptDO::getStatus, ErpAuditStatus.APPROVE.getStatus()))
                 .forEach(item -> rows.add(new ReceivableTimelineRow(item.getReceiptTime(), negateAmount(item.getTotalPrice()))));
-        receivableWriteOffMapper.selectListByCustomerId(customerId, null, null)
+        receivableWriteOffMapper.selectList(new LambdaQueryWrapperX<ErpReceivableWriteOffDO>()
+                .eq(ErpReceivableWriteOffDO::getCustomerId, customerId)
+                .eqIfPresent(ErpReceivableWriteOffDO::getDeptId, saleDeptId))
                 .forEach(item -> rows.add(new ReceivableTimelineRow(item.getWriteOffTime(), negateAmount(item.getWriteOffAmount()))));
         receivableOtherMapper.selectList(new LambdaQueryWrapperX<ErpReceivableOtherDO>()
                 .eq(ErpReceivableOtherDO::getCustomerId, customerId)
+                .eqIfPresent(ErpReceivableOtherDO::getDeptId, saleDeptId)
                 .eq(ErpReceivableOtherDO::getStatus, ErpAuditStatus.APPROVE.getStatus()))
                 .forEach(item -> rows.add(new ReceivableTimelineRow(
                         item.getBizTime() == null ? null : item.getBizTime().atStartOfDay(),

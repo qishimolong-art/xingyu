@@ -4,6 +4,7 @@ import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.mybatis.core.mapper.BaseMapperX;
 import cn.iocoder.yudao.framework.mybatis.core.query.MPJLambdaWrapperX;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.returns.ErpPurchaseReturnPageReqVO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.product.ErpProductDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseReturnDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseReturnItemDO;
 import cn.iocoder.yudao.module.erp.dal.mysql.common.ErpKeywordQuery;
@@ -13,6 +14,7 @@ import cn.iocoder.yudao.module.erp.enums.common.ErpBizTypeEnum;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.core.toolkit.support.SFunction;
 import org.apache.ibatis.annotations.Mapper;
+import org.springframework.util.StringUtils;
 
 import java.util.List;
 import java.util.Objects;
@@ -55,11 +57,30 @@ public interface ErpPurchaseReturnMapper extends BaseMapperX<ErpPurchaseReturnDO
                     .apply(EFFECTIVE_REFUND_PRICE_EXPRESSION + " < t.total_price");
         }
         boolean hasSourceInNo = reqVO.getSourceInNo() != null && !reqVO.getSourceInNo().trim().isEmpty();
-        if (reqVO.getWarehouseId() != null || reqVO.getProductId() != null || hasSourceInNo) {
+        if (reqVO.getWarehouseId() != null || reqVO.getProductId() != null || hasSourceInNo
+                || StringUtils.hasText(reqVO.getProductKeyword())) {
             query.leftJoin(ErpPurchaseReturnItemDO.class, ErpPurchaseReturnItemDO::getReturnId, ErpPurchaseReturnDO::getId)
+                    .leftJoin(ErpProductDO.class, ErpProductDO::getId, ErpPurchaseReturnItemDO::getProductId)
                     .eq(reqVO.getWarehouseId() != null, ErpPurchaseReturnItemDO::getWarehouseId, reqVO.getWarehouseId())
                     .eq(reqVO.getProductId() != null, ErpPurchaseReturnItemDO::getProductId, reqVO.getProductId())
                     .likeIfPresent(ErpPurchaseReturnItemDO::getSourceInNo, reqVO.getSourceInNo())
+                    .and(StringUtils.hasText(reqVO.getProductKeyword()), w -> {
+                        String productKeyword = ErpKeywordQuery.normalize(reqVO.getProductKeyword());
+                        w.like(ErpProductDO::getCode, productKeyword)
+                                .or().like(ErpProductDO::getName, productKeyword)
+                                .or().like(ErpProductDO::getBarCode, productKeyword)
+                                .or().like(ErpProductDO::getVehicleModel, productKeyword)
+                                .or().like(ErpProductDO::getFactoryCode, productKeyword)
+                                .or().like(ErpProductDO::getStandard, productKeyword)
+                                .or().like(ErpProductDO::getBrand, productKeyword)
+                                .or().like(ErpProductDO::getDrawingNo, productKeyword)
+                                .or().like(ErpPurchaseReturnItemDO::getPartCode, productKeyword)
+                                .or().like(ErpPurchaseReturnItemDO::getPartName, productKeyword)
+                                .or().like(ErpPurchaseReturnItemDO::getBarCode, productKeyword)
+                                .or().like(ErpPurchaseReturnItemDO::getVehicleModel, productKeyword)
+                                .or().like(ErpPurchaseReturnItemDO::getDrawingNo, productKeyword)
+                                .or().like(ErpPurchaseReturnItemDO::getBrand, productKeyword);
+                    })
                     .groupBy(ErpPurchaseReturnDO::getId); // 避免 1 对多查询，产生相同的 1
         }
         ErpKeywordQuery.appendWithDeptName(query, reqVO.getKeyword(),

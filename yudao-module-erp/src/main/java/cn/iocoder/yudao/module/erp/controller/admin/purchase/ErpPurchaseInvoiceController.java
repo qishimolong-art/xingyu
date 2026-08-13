@@ -35,12 +35,14 @@ import cn.iocoder.yudao.module.erp.service.config.ErpFieldConfigService;
 import cn.iocoder.yudao.module.erp.service.product.ErpProductService;
 import cn.iocoder.yudao.module.erp.service.purchase.ErpPurchaseFieldPermissionMasker;
 import cn.iocoder.yudao.module.erp.service.purchase.ErpPurchaseInvoiceService;
+import cn.iocoder.yudao.module.erp.service.purchase.ErpSupplierDeptPermissionService;
 import cn.iocoder.yudao.module.erp.service.purchase.ErpSupplierService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpStockService;
 import cn.iocoder.yudao.module.system.api.dept.DeptApi;
 import cn.iocoder.yudao.module.system.api.dept.dto.DeptRespDTO;
 import cn.iocoder.yudao.module.system.api.user.AdminUserApi;
 import cn.iocoder.yudao.module.system.api.user.dto.AdminUserRespDTO;
+import cn.iocoder.yudao.module.system.controller.admin.dept.vo.dept.DeptSimpleRespVO;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -95,7 +97,6 @@ public class ErpPurchaseInvoiceController {
             "invoiceCount", "invoiceCount",
             "remark", "remark",
             "sourceInNo", "sourceInNo",
-            "sourceInItemId", "sourceInItemId",
             "productId", "productCode",
             "productCode", "productCode",
             "item_productId", "productCode",
@@ -108,6 +109,8 @@ public class ErpPurchaseInvoiceController {
 
     @Resource
     private ErpPurchaseInvoiceService purchaseInvoiceService;
+    @Resource
+    private ErpSupplierDeptPermissionService supplierDeptPermissionService;
     @Resource
     private ErpStockService stockService;
     @Resource
@@ -218,23 +221,20 @@ public class ErpPurchaseInvoiceController {
     @PreAuthorize("@ss.hasPermission('erp:purchase-invoice:import')")
     public void getImportTemplate(HttpServletResponse response) throws IOException {
         ErpPurchaseInvoiceImportExcelVO example = new ErpPurchaseInvoiceImportExcelVO();
-        example.setNo("CGPJ-IMPORT-001");
-        example.setSupplierName("Example Supplier");
+        example.setSupplierName("示例供应商");
         example.setInvoiceDate("2026-07-02");
         example.setInvoiceType("增值税专用发票");
         example.setInvoiceNo("INV-20260702-001");
         example.setInvoiceCount(1);
-        example.setRemark("Invoice remark");
+        example.setRemark("整单备注");
         example.setSourceInNo("CGRK202607020001");
-        example.setSourceInItemId(10001L);
         example.setProductCode("P000001");
         example.setCount(BigDecimal.ONE);
         example.setProductPrice(new BigDecimal("10.00"));
-        example.setItemRemark("Item remark");
+        example.setItemRemark("明细备注");
 
         ErpPurchaseInvoiceImportExcelVO secondItem = new ErpPurchaseInvoiceImportExcelVO();
         secondItem.setSourceInNo("CGRK202607020001");
-        secondItem.setSourceInItemId(10002L);
         secondItem.setProductCode("P000002");
         secondItem.setCount(new BigDecimal("2"));
         secondItem.setProductPrice(new BigDecimal("20.00"));
@@ -287,6 +287,13 @@ public class ErpPurchaseInvoiceController {
     public CommonResult<PageResult<ErpPurchaseInvoiceRespVO>> getPurchaseInvoicePage(@Valid ErpPurchaseInvoicePageReqVO pageReqVO) {
         PageResult<ErpPurchaseInvoiceDO> pageResult = purchaseInvoiceService.getPurchaseInvoicePage(pageReqVO);
         return success(buildPurchaseInvoiceVOPageResult(pageResult));
+    }
+
+    @GetMapping("/dept-simple-list")
+    @Operation(summary = "鑾峰緱褰撳墠鐢ㄦ埛鍙煡璇㈢殑閲囪喘绁ㄦ嵁閮ㄩ棬绮剧畝鍒楄〃")
+    @PreAuthorize("@ss.hasPermission('erp:purchase-invoice:query')")
+    public CommonResult<List<DeptSimpleRespVO>> getVisibleDeptSimpleList() {
+        return success(supplierDeptPermissionService.getDataPermissionDeptSimpleList(FIELD_PERMISSION_MODULE));
     }
 
     @GetMapping("/export-excel")

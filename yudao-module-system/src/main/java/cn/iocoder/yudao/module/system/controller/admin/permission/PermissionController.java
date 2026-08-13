@@ -2,9 +2,8 @@ package cn.iocoder.yudao.module.system.controller.admin.permission;
 
 import cn.hutool.core.collection.CollUtil;
 import cn.iocoder.yudao.framework.common.pojo.CommonResult;
-import cn.iocoder.yudao.module.system.controller.admin.permission.vo.permission.PermissionAssignRoleDataScopeReqVO;
-import cn.iocoder.yudao.module.system.controller.admin.permission.vo.permission.PermissionAssignRoleFieldReqVO;
 import cn.iocoder.yudao.module.system.controller.admin.permission.vo.permission.PermissionAssignRoleFormDataScopeReqVO;
+import cn.iocoder.yudao.module.system.controller.admin.permission.vo.permission.PermissionAssignRoleFieldReqVO;
 import cn.iocoder.yudao.module.system.controller.admin.permission.vo.permission.PermissionAssignRoleMenuReqVO;
 import cn.iocoder.yudao.module.system.controller.admin.permission.vo.permission.PermissionAssignUserRoleReqVO;
 import cn.iocoder.yudao.module.system.controller.admin.permission.vo.permission.RoleFormDataScopeRespVO;
@@ -46,7 +45,8 @@ public class PermissionController {
     @Operation(summary = "Get role menu ids")
     @Parameter(name = "roleId", description = "Role id", required = true)
     @GetMapping("/list-role-menus")
-    @PreAuthorize("@ss.hasPermission('system:permission:assign-role-menu')")
+    @PreAuthorize("@ss.hasAnyPermissions('system:permission:assign-role-menu', "
+            + "'system:permission:assign-role-field-permission', 'system:permission:assign-role-data-scope')")
     public CommonResult<Set<Long>> getRoleMenuList(@RequestParam("roleId") Long roleId) {
         return success(permissionService.getRoleMenuListByRoleId(roleId));
     }
@@ -57,14 +57,6 @@ public class PermissionController {
     public CommonResult<Boolean> assignRoleMenu(@Validated @RequestBody PermissionAssignRoleMenuReqVO reqVO) {
         tenantService.handleTenantMenu(menuIds -> reqVO.getMenuIds().removeIf(menuId -> !CollUtil.contains(menuIds, menuId)));
         permissionService.assignRoleMenu(reqVO.getRoleId(), reqVO.getMenuIds());
-        return success(true);
-    }
-
-    @PostMapping("/assign-role-data-scope")
-    @Operation(summary = "Assign role data scope")
-    @PreAuthorize("@ss.hasPermission('system:permission:assign-role-data-scope')")
-    public CommonResult<Boolean> assignRoleDataScope(@Valid @RequestBody PermissionAssignRoleDataScopeReqVO reqVO) {
-        permissionService.assignRoleDataScope(reqVO.getRoleId(), reqVO.getDataScope(), reqVO.getDataScopeDeptIds());
         return success(true);
     }
 
@@ -87,6 +79,23 @@ public class PermissionController {
     public CommonResult<Boolean> assignRoleFieldPermission(
             @Valid @RequestBody PermissionAssignRoleFieldReqVO reqVO) {
         permissionService.assignRoleFieldPermission(reqVO.getRoleId(), reqVO.getModule(), reqVO.getHiddenFieldIds());
+        return success(true);
+    }
+
+    @GetMapping("/list-role-form-data-scopes")
+    @Operation(summary = "Get role form data scopes")
+    @PreAuthorize("@ss.hasPermission('system:permission:assign-role-data-scope')")
+    public CommonResult<List<RoleFormDataScopeRespVO>> listRoleFormDataScopes(@RequestParam("roleId") Long roleId) {
+        return success(permissionService.getRoleFormDataScopeList(roleId));
+    }
+
+    @PostMapping("/assign-role-form-data-scope")
+    @Operation(summary = "Assign role form data scope")
+    @PreAuthorize("@ss.hasPermission('system:permission:assign-role-data-scope')")
+    public CommonResult<Boolean> assignRoleFormDataScope(
+            @Valid @RequestBody PermissionAssignRoleFormDataScopeReqVO reqVO) {
+        permissionService.assignRoleFormDataScope(reqVO.getRoleId(), reqVO.getFormKey(), reqVO.getDataScope(),
+                reqVO.getDataScopeDeptIds());
         return success(true);
     }
 
@@ -115,23 +124,6 @@ public class PermissionController {
     @PreAuthorize("@ss.hasPermission('system:permission:assign-user-role')")
     public CommonResult<Boolean> assignUserRole(@Validated @RequestBody PermissionAssignUserRoleReqVO reqVO) {
         permissionService.assignUserRole(reqVO.getUserId(), reqVO.getRoleIds());
-        return success(true);
-    }
-
-    @GetMapping("/list-role-form-data-scopes")
-    @Operation(summary = "获得角色的表单级数据权限列表")
-    @PreAuthorize("@ss.hasPermission('system:permission:assign-role-data-scope')")
-    public CommonResult<List<RoleFormDataScopeRespVO>> getRoleFormDataScopeList(
-            @RequestParam("roleId") Long roleId) {
-        return success(permissionService.getRoleFormDataScopeList(roleId));
-    }
-
-    @PostMapping("/assign-role-form-data-scope")
-    @Operation(summary = "设置角色的表单级数据权限")
-    @PreAuthorize("@ss.hasPermission('system:permission:assign-role-data-scope')")
-    public CommonResult<Boolean> assignRoleFormDataScope(
-            @Valid @RequestBody PermissionAssignRoleFormDataScopeReqVO reqVO) {
-        permissionService.assignRoleFormDataScope(reqVO.getRoleId(), reqVO.getItems());
         return success(true);
     }
 

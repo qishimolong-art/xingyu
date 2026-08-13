@@ -37,6 +37,9 @@ public class ErpPurchasePriceAdjustPageReqVO extends PageParam {
     @Schema(description = "产品编号", example = "1")
     private Long productId;
 
+    @Schema(description = "Product keyword for purchase price adjustment item filtering", example = "P0001")
+    private String productKeyword;
+
     @Schema(description = "调价日期区间")
     @DateTimeFormat(pattern = FORMAT_YEAR_MONTH_DAY_HOUR_MINUTE_SECOND)
     private LocalDateTime[] adjustTime;

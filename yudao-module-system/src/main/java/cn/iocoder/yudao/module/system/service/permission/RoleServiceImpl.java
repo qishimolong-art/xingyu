@@ -105,22 +105,6 @@ public class RoleServiceImpl implements RoleService {
     }
 
     @Override
-    @CacheEvict(value = RedisKeyConstants.ROLE, key = "#id")
-    public void updateRoleDataScope(Long id, Integer dataScope, Set<Long> dataScopeDeptIds) {
-        // 校验是否可以更新
-        RoleDO oldRole = validateRoleForUpdate(id);
-
-        // 更新数据范围
-        RoleDO updateObject = new RoleDO();
-        updateObject.setId(id);
-        updateObject.setDataScope(dataScope);
-        updateObject.setDataScopeDeptIds(dataScopeDeptIds);
-        roleMapper.updateById(updateObject);
-        operateLogService.recordUpdate(SYSTEM_ROLE_TYPE, SYSTEM_ROLE_UPDATE_DATA_SCOPE_SUB_TYPE,
-                id, oldRole, roleMapper.selectById(id));
-    }
-
-    @Override
     @Transactional(rollbackFor = Exception.class)
     @CacheEvict(value = RedisKeyConstants.ROLE, key = "#id")
     @LogRecord(type = SYSTEM_ROLE_TYPE, subType = SYSTEM_ROLE_DELETE_SUB_TYPE, bizNo = "{{#id}}",

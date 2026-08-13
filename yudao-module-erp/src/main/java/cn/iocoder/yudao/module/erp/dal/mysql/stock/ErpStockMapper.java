@@ -247,6 +247,8 @@ public interface ErpStockMapper extends BaseMapperX<ErpStockDO> {
                 return productField("retail_price");
             case "occupiedCount":
                 return "COALESCE(" + occupiedCountExpression() + ", 0)";
+            case "availableCount":
+                return availableCountExpression();
             case "pendingInCount":
                 return "COALESCE(" + pendingInCountExpression() + ", 0)";
             case "inTransitCount":
@@ -351,6 +353,10 @@ public interface ErpStockMapper extends BaseMapperX<ErpStockDO> {
                 + "WHERE sobi.deleted = b'0' AND sobi.product_id = erp_stock.product_id "
                 + "AND sobi.warehouse_id = erp_stock.warehouse_id)";
         return addNullableCounts(cart, saleOut, purchaseReturn, stockOut, transferOut, warehouseMove, checkLess, outBill);
+    }
+
+    static String availableCountExpression() {
+        return "(COALESCE(erp_stock.count, 0) - COALESCE(" + occupiedCountExpression() + ", 0))";
     }
 
     static String pendingInCountExpression() {

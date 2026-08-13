@@ -10,7 +10,6 @@ import lombok.Data;
 
 import javax.validation.constraints.NotBlank;
 import java.time.LocalDateTime;
-import java.util.Set;
 
 @Schema(description = "管理后台 - 角色信息 Response VO")
 @Data
@@ -25,8 +24,8 @@ public class RoleRespVO {
     @ExcelProperty("角色名称")
     private String name;
 
-    @Schema(description = "角色标志", requiredMode = Schema.RequiredMode.REQUIRED, example = "admin")
-    @NotBlank(message = "角色标志不能为空")
+    @Schema(description = "角色标识", requiredMode = Schema.RequiredMode.REQUIRED, example = "admin")
+    @NotBlank(message = "角色标识不能为空")
     private String code;
 
     @Schema(description = "显示顺序", requiredMode = Schema.RequiredMode.REQUIRED, example = "1024")
@@ -42,13 +41,6 @@ public class RoleRespVO {
 
     @Schema(description = "备注", example = "我是一个角色")
     private String remark;
-
-    @Schema(description = "数据范围，参见 DataScopeEnum 枚举类", requiredMode = Schema.RequiredMode.REQUIRED, example = "1")
-    @DictFormat(DictTypeConstants.DATA_SCOPE)
-    private Integer dataScope;
-
-    @Schema(description = "数据范围(指定部门数组)", example = "1")
-    private Set<Long> dataScopeDeptIds;
 
     @Schema(description = "创建时间", requiredMode = Schema.RequiredMode.REQUIRED, example = "时间戳格式")
     private LocalDateTime createTime;

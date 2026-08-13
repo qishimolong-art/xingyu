@@ -1,15 +1,21 @@
 package cn.iocoder.yudao.module.erp.service.purchase;
 
-import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.common.exception.ServiceException;
+import cn.iocoder.yudao.framework.common.pojo.PageResult;
+import cn.iocoder.yudao.framework.common.biz.system.permission.dto.DeptDataPermissionRespDTO;
+import cn.iocoder.yudao.framework.common.enums.CommonStatusEnum;
+import cn.iocoder.yudao.framework.security.core.util.SecurityFrameworkUtils;
 import cn.iocoder.yudao.framework.test.core.ut.BaseMockitoUnitTest;
 import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpProductRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.imports.ErpPurchaseImportResultRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.in.ErpPurchaseInForAdjustRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.in.ErpPurchaseInDraftCreateReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.in.ErpPurchaseInDraftUpdateReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.in.ErpPurchaseInCreateTransferOutReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.in.ErpPurchaseInCreateTransferOutRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.in.ErpPurchaseInItemBatchUpdateReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.in.ErpPurchaseInItemForAdjustRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.in.ErpPurchaseInOrderImportExcelVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.in.ErpPurchaseInPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.in.ErpPurchaseInSaveReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.order.ErpPurchaseInFromOrderReqVO;
@@ -27,9 +33,12 @@ import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpWarehouseDO;
 import cn.iocoder.yudao.module.erp.dal.mysql.finance.accounting.ErpVoucherItemMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.finance.accounting.ErpVoucherMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.finance.ErpFinancePaymentItemMapper;
+import cn.iocoder.yudao.module.erp.dal.mysql.product.ErpProductMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.purchase.ErpPurchaseInItemMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.purchase.ErpPurchaseInMapper;
+import cn.iocoder.yudao.module.erp.dal.mysql.purchase.ErpPurchaseInvoiceItemMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.purchase.ErpPurchaseReturnItemMapper;
+import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpSaleConvertRecordMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.stock.ErpStockMoveItemMapper;
 import cn.iocoder.yudao.module.erp.dal.redis.no.ErpNoRedisDAO;
 import cn.iocoder.yudao.module.erp.enums.ErpAuditStatus;
@@ -46,9 +55,14 @@ import cn.iocoder.yudao.module.erp.service.product.ErpProductBatchNoValidator;
 import cn.iocoder.yudao.module.erp.service.stock.ErpStockInBillService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpStockMoveService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpStockRecordService;
+import cn.iocoder.yudao.module.erp.service.stock.ErpStockService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpWarehouseService;
 import cn.iocoder.yudao.module.erp.service.stock.bo.ErpStockRecordCreateReqBO;
+import cn.iocoder.yudao.module.system.api.dept.DeptApi;
+import cn.iocoder.yudao.module.system.api.dept.dto.DeptRespDTO;
+import cn.iocoder.yudao.module.system.api.permission.PermissionApi;
 import cn.iocoder.yudao.module.system.api.user.AdminUserApi;
+import cn.iocoder.yudao.module.system.controller.admin.dept.vo.dept.DeptSimpleRespVO;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -56,6 +70,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.InOrder;
 import org.mockito.Mock;
+import org.mockito.MockedStatic;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.math.BigDecimal;
@@ -64,6 +79,8 @@ import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 
@@ -72,6 +89,11 @@ import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.BIZ_PROCESS_F
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PURCHASE_IN_APPROVE_FAIL;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PURCHASE_IN_DELETE_FAIL_APPROVE;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PURCHASE_IN_FAIL_PAYMENT_PRICE_EXCEED;
+import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PURCHASE_IN_ITEM_BATCH_UPDATE_FAIL_APPROVE;
+import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PURCHASE_IN_ITEM_BATCH_UPDATE_FAIL_HAS_RETURN;
+import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PURCHASE_IN_ITEM_BATCH_UPDATE_FIELD_REQUIRED;
+import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PURCHASE_IN_ITEM_BATCH_UPDATE_WAREHOUSE_DEPT_NOT_ALLOWED;
+import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PURCHASE_IN_ITEM_DUPLICATE;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PURCHASE_IN_ITEM_COUNT_POSITIVE;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PURCHASE_IN_ITEM_PRICE_POSITIVE;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PURCHASE_IN_NO_EXISTS;
@@ -80,6 +102,7 @@ import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PURCHASE_IN_N
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PURCHASE_IN_PROCESS_FAIL_EXISTS_PAYMENT;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PURCHASE_IN_SUBMIT_FAIL;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PURCHASE_IN_SUBMIT_ITEMS_REQUIRED;
+import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PURCHASE_IN_SUPPLIER_DEPT_NOT_ALLOWED;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PURCHASE_IN_UPDATE_FAIL_APPROVE;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PURCHASE_IN_TRANSFER_OUT_EXCEED_AVAILABLE;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PURCHASE_ORDER_IN_EXCEED_INABLE;
@@ -96,6 +119,7 @@ import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.inOrder;
+import static org.mockito.Mockito.mockStatic;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -107,6 +131,8 @@ public class ErpPurchaseInServiceImplTest extends BaseMockitoUnitTest {
 
     @InjectMocks
     private ErpPurchaseInServiceImpl purchaseInService;
+    @InjectMocks
+    private ErpSupplierDeptPermissionService supplierDeptPermissionService;
 
     @Mock
     private ErpPurchaseInMapper purchaseInMapper;
@@ -117,15 +143,23 @@ public class ErpPurchaseInServiceImplTest extends BaseMockitoUnitTest {
     @Mock
     private ErpPurchaseReturnItemMapper purchaseReturnItemMapper;
     @Mock
+    private ErpPurchaseInvoiceItemMapper purchaseInvoiceItemMapper;
+    @Mock
     private ErpStockMoveItemMapper stockMoveItemMapper;
     @Mock
+    private ErpSaleConvertRecordMapper saleConvertRecordMapper;
+    @Mock
     private ErpProductService productService;
+    @Mock
+    private ErpProductMapper productMapper;
     @Mock
     private ErpPurchaseOrderService purchaseOrderService;
     @Mock
     private ErpStockRecordService stockRecordService;
     @Mock
     private ErpStockInBillService stockInBillService;
+    @Mock
+    private ErpStockService stockService;
     @Mock
     private ErpStockMoveService stockMoveService;
     @Mock
@@ -134,6 +168,10 @@ public class ErpPurchaseInServiceImplTest extends BaseMockitoUnitTest {
     private ErpWarehouseService warehouseService;
     @Mock
     private AdminUserApi adminUserApi;
+    @Mock
+    private DeptApi deptApi;
+    @Mock
+    private PermissionApi permissionApi;
     @Mock
     private ErpAutoVoucherBuilder autoVoucherBuilder;
     @Mock
@@ -162,6 +200,8 @@ public class ErpPurchaseInServiceImplTest extends BaseMockitoUnitTest {
                 return prefix + "20260520000001";
             }
         });
+        ReflectionTestUtils.setField(purchaseInService, "supplierDeptPermissionService",
+                supplierDeptPermissionService);
     }
 
     private ErpPurchaseInSaveReqVO.Item buildItem(Long productId, BigDecimal count, BigDecimal price) {
@@ -180,6 +220,114 @@ public class ErpPurchaseInServiceImplTest extends BaseMockitoUnitTest {
         vo.setInTime(LocalDateTime.of(2026, 5, 20, 10, 0, 0));
         vo.setItems(Arrays.asList(items));
         return vo;
+    }
+
+    private DeptRespDTO buildDept(Long id, String name, Long parentId, Integer status) {
+        DeptRespDTO dept = new DeptRespDTO();
+        dept.setId(id);
+        dept.setName(name);
+        dept.setParentId(parentId);
+        dept.setStatus(status);
+        return dept;
+    }
+
+    private DeptDataPermissionRespDTO buildAllDeptPermission() {
+        DeptDataPermissionRespDTO permission = new DeptDataPermissionRespDTO();
+        permission.setAll(true);
+        return permission;
+    }
+
+    private DeptDataPermissionRespDTO buildDeptPermission(Long... deptIds) {
+        DeptDataPermissionRespDTO permission = new DeptDataPermissionRespDTO();
+        permission.setDeptIds(new HashSet<>(Arrays.asList(deptIds)));
+        return permission;
+    }
+
+    // ========== getSupplierAvailableDeptSimpleList ==========
+
+    @Test
+    public void testGetSupplierAvailableDeptSimpleList_intersection() {
+        Long supplierId = 100L;
+        Long loginUserId = 104L;
+        when(supplierService.validateSupplier(eq(supplierId)))
+                .thenReturn(new ErpSupplierDO().setId(supplierId).setDeptId(10L));
+        when(supplierService.getSupplierDeptMap(eq(Collections.singleton(supplierId))))
+                .thenReturn(Collections.singletonMap(supplierId, Arrays.asList(10L, 20L)));
+        when(permissionApi.getDeptDataPermission(eq(loginUserId), eq("erp_purchase_in")))
+                .thenReturn(buildDeptPermission(20L));
+        when(deptApi.getDeptList(eq(new LinkedHashSet<>(Collections.singletonList(20L)))))
+                .thenReturn(Collections.singletonList(buildDept(20L, "采购二部", 0L,
+                        CommonStatusEnum.ENABLE.getStatus())));
+
+        try (MockedStatic<SecurityFrameworkUtils> security = mockStatic(SecurityFrameworkUtils.class)) {
+            security.when(SecurityFrameworkUtils::getLoginUserId).thenReturn(loginUserId);
+
+            List<DeptSimpleRespVO> result = purchaseInService.getSupplierAvailableDeptSimpleList(supplierId);
+
+            assertEquals(1, result.size());
+            assertEquals(20L, result.get(0).getId());
+            assertEquals("采购二部", result.get(0).getName());
+        }
+    }
+
+    @Test
+    public void testGetSupplierAvailableDeptSimpleList_allPermissionFiltersDisabledDept() {
+        Long supplierId = 100L;
+        Long loginUserId = 104L;
+        when(supplierService.validateSupplier(eq(supplierId)))
+                .thenReturn(new ErpSupplierDO().setId(supplierId).setDeptId(10L));
+        when(supplierService.getSupplierDeptMap(eq(Collections.singleton(supplierId))))
+                .thenReturn(Collections.singletonMap(supplierId, Arrays.asList(10L, 20L)));
+        when(permissionApi.getDeptDataPermission(eq(loginUserId), eq("erp_purchase_in")))
+                .thenReturn(buildAllDeptPermission());
+        when(deptApi.getDeptList(eq(new LinkedHashSet<>(Arrays.asList(10L, 20L)))))
+                .thenReturn(Arrays.asList(
+                        buildDept(10L, "采购一部", 0L, CommonStatusEnum.ENABLE.getStatus()),
+                        buildDept(20L, "采购二部", 0L, CommonStatusEnum.DISABLE.getStatus())));
+
+        try (MockedStatic<SecurityFrameworkUtils> security = mockStatic(SecurityFrameworkUtils.class)) {
+            security.when(SecurityFrameworkUtils::getLoginUserId).thenReturn(loginUserId);
+
+            List<DeptSimpleRespVO> result = purchaseInService.getSupplierAvailableDeptSimpleList(supplierId);
+
+            assertEquals(1, result.size());
+            assertEquals(10L, result.get(0).getId());
+        }
+    }
+
+    @Test
+    public void testGetSupplierAvailableDeptSimpleList_noIntersection() {
+        Long supplierId = 100L;
+        Long loginUserId = 104L;
+        when(supplierService.validateSupplier(eq(supplierId)))
+                .thenReturn(new ErpSupplierDO().setId(supplierId).setDeptId(10L));
+        when(supplierService.getSupplierDeptMap(eq(Collections.singleton(supplierId))))
+                .thenReturn(Collections.singletonMap(supplierId, Collections.singletonList(20L)));
+        when(permissionApi.getDeptDataPermission(eq(loginUserId), eq("erp_purchase_in")))
+                .thenReturn(buildDeptPermission(30L));
+
+        try (MockedStatic<SecurityFrameworkUtils> security = mockStatic(SecurityFrameworkUtils.class)) {
+            security.when(SecurityFrameworkUtils::getLoginUserId).thenReturn(loginUserId);
+
+            List<DeptSimpleRespVO> result = purchaseInService.getSupplierAvailableDeptSimpleList(supplierId);
+
+            assertTrue(result.isEmpty());
+            verify(deptApi, never()).getDeptList(any());
+        }
+    }
+
+    @Test
+    public void testGetSupplierAvailableDeptSimpleList_validateSupplierException() {
+        Long supplierId = 100L;
+        ServiceException exception = new ServiceException(1, "供应商不存在");
+        when(supplierService.validateSupplier(eq(supplierId))).thenThrow(exception);
+
+        ServiceException result = assertThrows(ServiceException.class,
+                () -> purchaseInService.getSupplierAvailableDeptSimpleList(supplierId));
+
+        assertEquals(exception, result);
+        verify(permissionApi, never()).getDeptDataPermission(any(), any());
+        verify(deptApi, never()).getDeptList(any());
     }
 
     // ========== createPurchaseIn ==========
@@ -213,6 +361,35 @@ public class ErpPurchaseInServiceImplTest extends BaseMockitoUnitTest {
         assertEquals(null, inserted.getOrderId());
         verify(supplierService).validateSupplier(eq(99L));
         verify(purchaseOrderService, never()).updatePurchaseOrderInCount(anyLong(), any());
+    }
+
+    @Test
+    public void testCreatePurchaseIn_supplierDeptNotAllowed_throwException() {
+        Long loginUserId = 104L;
+        ErpPurchaseInSaveReqVO.Item item = buildItem(200L, new BigDecimal("10"), new BigDecimal("5"));
+        ErpPurchaseInSaveReqVO reqVO = buildBaseReqVO(item);
+        reqVO.setSupplierId(100L);
+        reqVO.setDeptId(30L);
+        when(supplierService.validateSupplier(eq(100L)))
+                .thenReturn(new ErpSupplierDO().setId(100L).setDeptId(10L));
+        when(productService.validProductList(any())).thenReturn(Collections.singletonList(
+                new ErpProductDO().setId(200L).setUnitId(1L)));
+        when(purchaseInMapper.selectByNo(any())).thenReturn(null);
+        when(supplierService.getSupplierDeptMap(eq(Collections.singleton(100L))))
+                .thenReturn(Collections.emptyMap());
+        when(permissionApi.getDeptDataPermission(eq(loginUserId), eq("erp_purchase_in")))
+                .thenReturn(buildAllDeptPermission());
+        when(deptApi.getDeptList(eq(new LinkedHashSet<>(Collections.singletonList(10L)))))
+                .thenReturn(Collections.singletonList(buildDept(10L, "采购一部", 0L,
+                        CommonStatusEnum.ENABLE.getStatus())));
+
+        try (MockedStatic<SecurityFrameworkUtils> security = mockStatic(SecurityFrameworkUtils.class)) {
+            security.when(SecurityFrameworkUtils::getLoginUserId).thenReturn(loginUserId);
+
+            assertServiceException(() -> purchaseInService.createPurchaseIn(reqVO),
+                    PURCHASE_IN_SUPPLIER_DEPT_NOT_ALLOWED);
+        }
+        verify(purchaseInMapper, never()).insert(any(ErpPurchaseInDO.class));
     }
 
     @Test
@@ -403,6 +580,158 @@ public class ErpPurchaseInServiceImplTest extends BaseMockitoUnitTest {
         verify(purchaseInMapper, never()).updateById(any(ErpPurchaseInDO.class));
     }
 
+    // ========== batchUpdatePurchaseInItems ==========
+
+    @Test
+    public void testBatchUpdatePurchaseInItems_success() {
+        ErpPurchaseInDO purchaseIn = new ErpPurchaseInDO()
+                .setId(10L).setNo("CGRK001").setStatus(ErpAuditStatus.PROCESS.getStatus());
+        ErpPurchaseInItemDO item = new ErpPurchaseInItemDO()
+                .setId(1L).setInId(10L).setProductId(100L).setWarehouseId(11L).setDeptId(101L)
+                .setGift(false);
+        when(purchaseInMapper.selectById(eq(10L))).thenReturn(purchaseIn);
+        when(purchaseInItemMapper.selectListByInId(eq(10L))).thenReturn(Collections.singletonList(item));
+        when(purchaseReturnItemMapper.selectReturnedCountMapBySourceInItemIds(any()))
+                .thenReturn(Collections.emptyMap());
+        when(stockMoveItemMapper.selectMovedCountMapBySourceInItemIds(any()))
+                .thenReturn(Collections.emptyMap());
+        when(saleConvertRecordMapper.selectPurchaseInToCartCountMapBySourceItemIds(any()))
+                .thenReturn(Collections.emptyMap());
+        when(purchaseInvoiceItemMapper.selectListBySourceInId(eq(10L))).thenReturn(Collections.emptyList());
+        when(stockInBillService.getPurchaseInSourceItemList(eq(10L))).thenReturn(Collections.emptyList());
+        when(warehouseService.validPurchaseWarehouseList(eq(Collections.singleton(30L))))
+                .thenReturn(Collections.singletonList(new ErpWarehouseDO().setId(30L).setDeptId(300L)));
+        when(warehouseService.getWarehouseSaleDeptIds(eq(30L))).thenReturn(Collections.emptySet());
+        ErpPurchaseInItemBatchUpdateReqVO reqVO = new ErpPurchaseInItemBatchUpdateReqVO();
+        reqVO.setInId(10L);
+        reqVO.setItemIds(Collections.singletonList(1L));
+        reqVO.setWarehouseId(30L);
+        reqVO.setDeptId(300L);
+
+        purchaseInService.batchUpdatePurchaseInItems(reqVO);
+
+        verify(stockService).ensureStockExists(eq(100L), eq(30L));
+        ArgumentCaptor<ErpPurchaseInItemDO> itemCaptor = ArgumentCaptor.forClass(ErpPurchaseInItemDO.class);
+        verify(purchaseInItemMapper).updateById(itemCaptor.capture());
+        assertEquals(Long.valueOf(1L), itemCaptor.getValue().getId());
+        assertEquals(Long.valueOf(30L), itemCaptor.getValue().getWarehouseId());
+        assertEquals(Long.valueOf(300L), itemCaptor.getValue().getDeptId());
+        verify(operateLogService).recordUpdate(eq("采购入库"), eq(10L), eq("CGRK001"));
+    }
+
+    @Test
+    public void testBatchUpdatePurchaseInItems_fieldRequired_throwException() {
+        when(purchaseInMapper.selectById(eq(10L))).thenReturn(new ErpPurchaseInDO()
+                .setId(10L).setNo("CGRK001").setStatus(ErpAuditStatus.PROCESS.getStatus()));
+        ErpPurchaseInItemBatchUpdateReqVO reqVO = new ErpPurchaseInItemBatchUpdateReqVO();
+        reqVO.setInId(10L);
+        reqVO.setItemIds(Collections.singletonList(1L));
+
+        assertServiceException(() -> purchaseInService.batchUpdatePurchaseInItems(reqVO),
+                PURCHASE_IN_ITEM_BATCH_UPDATE_FIELD_REQUIRED);
+
+        verify(purchaseInItemMapper, never()).updateById(any(ErpPurchaseInItemDO.class));
+    }
+
+    @Test
+    public void testBatchUpdatePurchaseInItems_approved_throwException() {
+        when(purchaseInMapper.selectById(eq(10L))).thenReturn(new ErpPurchaseInDO()
+                .setId(10L).setNo("CGRK001").setStatus(ErpAuditStatus.APPROVE.getStatus()));
+        ErpPurchaseInItemBatchUpdateReqVO reqVO = new ErpPurchaseInItemBatchUpdateReqVO();
+        reqVO.setInId(10L);
+        reqVO.setItemIds(Collections.singletonList(1L));
+        reqVO.setDeptId(300L);
+
+        assertServiceException(() -> purchaseInService.batchUpdatePurchaseInItems(reqVO),
+                PURCHASE_IN_ITEM_BATCH_UPDATE_FAIL_APPROVE, "CGRK001");
+
+        verify(purchaseInItemMapper, never()).updateById(any(ErpPurchaseInItemDO.class));
+    }
+
+    @Test
+    public void testBatchUpdatePurchaseInItems_hasReturn_throwException() {
+        when(purchaseInMapper.selectById(eq(10L))).thenReturn(new ErpPurchaseInDO()
+                .setId(10L).setNo("CGRK001").setStatus(ErpAuditStatus.PROCESS.getStatus()));
+        when(purchaseInItemMapper.selectListByInId(eq(10L))).thenReturn(Collections.singletonList(
+                new ErpPurchaseInItemDO().setId(1L).setInId(10L).setProductId(100L)
+                        .setWarehouseId(11L).setDeptId(101L).setGift(false)));
+        Map<Long, BigDecimal> returnCountMap = new HashMap<>();
+        returnCountMap.put(1L, BigDecimal.ONE);
+        when(purchaseReturnItemMapper.selectReturnedCountMapBySourceInItemIds(any()))
+                .thenReturn(returnCountMap);
+        ErpPurchaseInItemBatchUpdateReqVO reqVO = new ErpPurchaseInItemBatchUpdateReqVO();
+        reqVO.setInId(10L);
+        reqVO.setItemIds(Collections.singletonList(1L));
+        reqVO.setDeptId(300L);
+
+        assertServiceException(() -> purchaseInService.batchUpdatePurchaseInItems(reqVO),
+                PURCHASE_IN_ITEM_BATCH_UPDATE_FAIL_HAS_RETURN);
+
+        verify(purchaseInItemMapper, never()).updateById(any(ErpPurchaseInItemDO.class));
+    }
+
+    @Test
+    public void testBatchUpdatePurchaseInItems_deptNotAllowed_throwException() {
+        when(purchaseInMapper.selectById(eq(10L))).thenReturn(new ErpPurchaseInDO()
+                .setId(10L).setNo("CGRK001").setStatus(ErpAuditStatus.PROCESS.getStatus()));
+        when(purchaseInItemMapper.selectListByInId(eq(10L))).thenReturn(Collections.singletonList(
+                new ErpPurchaseInItemDO().setId(1L).setInId(10L).setProductId(100L)
+                        .setWarehouseId(11L).setDeptId(101L).setGift(false)));
+        when(purchaseReturnItemMapper.selectReturnedCountMapBySourceInItemIds(any()))
+                .thenReturn(Collections.emptyMap());
+        when(stockMoveItemMapper.selectMovedCountMapBySourceInItemIds(any()))
+                .thenReturn(Collections.emptyMap());
+        when(saleConvertRecordMapper.selectPurchaseInToCartCountMapBySourceItemIds(any()))
+                .thenReturn(Collections.emptyMap());
+        when(purchaseInvoiceItemMapper.selectListBySourceInId(eq(10L))).thenReturn(Collections.emptyList());
+        when(stockInBillService.getPurchaseInSourceItemList(eq(10L))).thenReturn(Collections.emptyList());
+        when(warehouseService.validPurchaseWarehouseList(eq(Collections.singleton(11L))))
+                .thenReturn(Collections.singletonList(new ErpWarehouseDO().setId(11L).setDeptId(101L)));
+        when(warehouseService.getWarehouseSaleDeptIds(eq(11L))).thenReturn(Collections.emptySet());
+        ErpPurchaseInItemBatchUpdateReqVO reqVO = new ErpPurchaseInItemBatchUpdateReqVO();
+        reqVO.setInId(10L);
+        reqVO.setItemIds(Collections.singletonList(1L));
+        reqVO.setDeptId(999L);
+
+        assertServiceException(() -> purchaseInService.batchUpdatePurchaseInItems(reqVO),
+                PURCHASE_IN_ITEM_BATCH_UPDATE_WAREHOUSE_DEPT_NOT_ALLOWED);
+
+        verify(purchaseInItemMapper, never()).updateById(any(ErpPurchaseInItemDO.class));
+    }
+
+    @Test
+    public void testBatchUpdatePurchaseInItems_duplicateAfterWarehouseChange_throwException() {
+        when(purchaseInMapper.selectById(eq(10L))).thenReturn(new ErpPurchaseInDO()
+                .setId(10L).setNo("CGRK001").setStatus(ErpAuditStatus.PROCESS.getStatus()));
+        when(purchaseInItemMapper.selectListByInId(eq(10L))).thenReturn(Arrays.asList(
+                new ErpPurchaseInItemDO().setId(1L).setInId(10L).setProductId(100L)
+                        .setWarehouseId(11L).setDeptId(101L).setGift(false),
+                new ErpPurchaseInItemDO().setId(2L).setInId(10L).setProductId(100L)
+                        .setWarehouseId(30L).setDeptId(300L).setGift(false)));
+        when(purchaseReturnItemMapper.selectReturnedCountMapBySourceInItemIds(any()))
+                .thenReturn(Collections.emptyMap());
+        when(stockMoveItemMapper.selectMovedCountMapBySourceInItemIds(any()))
+                .thenReturn(Collections.emptyMap());
+        when(saleConvertRecordMapper.selectPurchaseInToCartCountMapBySourceItemIds(any()))
+                .thenReturn(Collections.emptyMap());
+        when(purchaseInvoiceItemMapper.selectListBySourceInId(eq(10L))).thenReturn(Collections.emptyList());
+        when(stockInBillService.getPurchaseInSourceItemList(eq(10L))).thenReturn(Collections.emptyList());
+        when(warehouseService.validPurchaseWarehouseList(eq(Collections.singleton(30L))))
+                .thenReturn(Collections.singletonList(new ErpWarehouseDO().setId(30L).setDeptId(300L)));
+        when(warehouseService.getWarehouseSaleDeptIds(eq(30L))).thenReturn(Collections.emptySet());
+        ErpPurchaseInItemBatchUpdateReqVO reqVO = new ErpPurchaseInItemBatchUpdateReqVO();
+        reqVO.setInId(10L);
+        reqVO.setItemIds(Collections.singletonList(1L));
+        reqVO.setWarehouseId(30L);
+        reqVO.setDeptId(300L);
+
+        assertServiceException(() -> purchaseInService.batchUpdatePurchaseInItems(reqVO),
+                PURCHASE_IN_ITEM_DUPLICATE, "100");
+
+        verify(purchaseInItemMapper, never()).updateById(any(ErpPurchaseInItemDO.class));
+        verify(stockService, never()).ensureStockExists(anyLong(), anyLong());
+    }
+
     // ========== updatePurchaseInStatus ==========
 
     @Test
@@ -534,6 +863,38 @@ public class ErpPurchaseInServiceImplTest extends BaseMockitoUnitTest {
                 org.mockito.ArgumentMatchers.argThat(update ->
                         ErpAuditStatus.PROCESS.getStatus().equals(update.getStatus())));
         verify(stockRecordService, never()).createStockRecord(any());
+    }
+
+    @Test
+    public void testSubmitPurchaseIn_disabledSupplierDept_throwException() {
+        Long loginUserId = 104L;
+        ErpPurchaseInDO draft = new ErpPurchaseInDO()
+                .setId(10L).setNo("CGRK001").setSupplierId(99L).setDeptId(30L)
+                .setInTime(LocalDateTime.of(2026, 5, 20, 10, 0))
+                .setStatus(0);
+        ErpPurchaseInItemDO item = new ErpPurchaseInItemDO()
+                .setId(11L).setInId(10L).setProductId(200L).setProductUnitId(1L)
+                .setWarehouseId(10L).setCount(BigDecimal.ONE).setProductPrice(BigDecimal.TEN);
+        when(purchaseInMapper.selectById(eq(10L))).thenReturn(draft);
+        when(purchaseInItemMapper.selectListByInId(eq(10L)))
+                .thenReturn(Collections.singletonList(item));
+        when(supplierService.validateSupplier(eq(99L)))
+                .thenReturn(new ErpSupplierDO().setId(99L).setDeptId(30L));
+        when(supplierService.getSupplierDeptMap(eq(Collections.singleton(99L))))
+                .thenReturn(Collections.emptyMap());
+        when(permissionApi.getDeptDataPermission(eq(loginUserId), eq("erp_purchase_in")))
+                .thenReturn(buildAllDeptPermission());
+        when(deptApi.getDeptList(eq(new LinkedHashSet<>(Collections.singletonList(30L)))))
+                .thenReturn(Collections.singletonList(buildDept(30L, "采购三部", 0L,
+                        CommonStatusEnum.DISABLE.getStatus())));
+
+        try (MockedStatic<SecurityFrameworkUtils> security = mockStatic(SecurityFrameworkUtils.class)) {
+            security.when(SecurityFrameworkUtils::getLoginUserId).thenReturn(loginUserId);
+
+            assertServiceException(() -> purchaseInService.submitPurchaseIn(10L),
+                    PURCHASE_IN_SUPPLIER_DEPT_NOT_ALLOWED);
+        }
+        verify(purchaseInMapper, never()).updateByIdAndStatus(anyLong(), any(), any());
     }
 
     @Test
@@ -725,7 +1086,7 @@ public class ErpPurchaseInServiceImplTest extends BaseMockitoUnitTest {
 
         verify(voucherService, never()).createVoucherFromBiz(any(), any(), any(), any(), any(), any(), any());
         verify(autoVoucherBuilder, never()).buildPurchaseInItems(any(), any());
-        verify(supplierService, never()).validateSupplier(any());
+        verify(supplierService).validateSupplier(eq(99L));
     }
 
     @Test
@@ -1138,8 +1499,6 @@ public class ErpPurchaseInServiceImplTest extends BaseMockitoUnitTest {
         when(productService.validProductList(any())).thenReturn(Collections.singletonList(
                 new ErpProductDO().setId(200L).setUnitId(1L)));
         when(purchaseInMapper.selectByNo(any())).thenReturn(null);
-        when(purchaseInMapper.selectListByOrderId(eq(50L)))
-                .thenReturn(Collections.emptyList());
         when(purchaseInItemMapper.selectOrderItemCountSumMapByInIds(any())).thenReturn(Collections.emptyMap());
 
         // 自动审批后会再次 selectById（updatePurchaseInStatus 内部调用）
@@ -1419,6 +1778,38 @@ public class ErpPurchaseInServiceImplTest extends BaseMockitoUnitTest {
         assertEquals("大众-朗逸", vo.getVehicleModel());
         assertEquals("博世", vo.getBrand());
         assertEquals("德国", vo.getOriginPlace());
+    }
+
+    @Test
+    public void testImportPurchaseInOrderList_invalidInTime_returnsReadableMessage() {
+        ErpPurchaseInOrderImportExcelVO row = new ErpPurchaseInOrderImportExcelVO();
+        row.setNo("CGRK20260811000002");
+        row.setSupplierName("芋道供应商");
+        row.setInTime("2026/08/11");
+        row.setProductCode("P000001");
+        row.setWarehouseName("主仓库");
+        row.setItemCount(BigDecimal.ONE);
+        row.setProductPrice(BigDecimal.ONE);
+
+        when(supplierService.getSupplierPage(any())).thenReturn(new PageResult<>(
+                Collections.singletonList(new ErpSupplierDO().setId(100L).setName("芋道供应商")
+                        .setStatus(CommonStatusEnum.ENABLE.getStatus())), 1L));
+        when(productMapper.selectListByCodes(any())).thenReturn(Collections.singletonList(
+                new ErpProductDO().setId(200L).setCode("P000001").setName("产品1").setUnitId(1L)
+                        .setPurchasePrice(BigDecimal.ONE)));
+        when(warehouseService.getPurchaseWarehouseListByStatus(eq(CommonStatusEnum.ENABLE.getStatus())))
+                .thenReturn(Collections.singletonList(new ErpWarehouseDO().setId(10L).setName("主仓库")));
+        when(productService.getProductVOMap(any())).thenReturn(Collections.emptyMap());
+
+        ErpPurchaseImportResultRespVO result = purchaseInService.importPurchaseInOrderList(
+                Collections.singletonList(row));
+
+        assertEquals(0, result.getSuccessCount());
+        assertEquals(1, result.getFailureCount());
+        assertEquals(Integer.valueOf(2), result.getFailureDetails().get(0).getRowNo());
+        assertEquals("CGRK20260811000002", result.getFailureDetails().get(0).getOrderNo());
+        assertEquals("入库时间格式不正确，请使用 yyyy-MM-dd 或 yyyy-MM-dd HH:mm:ss",
+                result.getFailureDetails().get(0).getReason());
     }
 
 }

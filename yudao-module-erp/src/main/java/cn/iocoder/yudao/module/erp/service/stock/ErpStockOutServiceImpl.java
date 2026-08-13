@@ -6,6 +6,7 @@ import cn.iocoder.yudao.framework.common.util.number.MoneyUtils;
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
 import cn.iocoder.yudao.framework.datapermission.core.util.DataPermissionUtils;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.ErpStockUpdateRemarkReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.out.ErpStockOutItemBatchUpdateReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.out.ErpStockOutPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.out.ErpStockOutSaveReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.accounting.ErpVoucherItemDO;
@@ -13,6 +14,7 @@ import cn.iocoder.yudao.module.erp.dal.dataobject.product.ErpProductDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockOutDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockOutItemDO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpWarehouseDO;
 import cn.iocoder.yudao.module.erp.dal.mysql.stock.ErpStockOutItemMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.stock.ErpStockOutMapper;
 import cn.iocoder.yudao.module.erp.dal.redis.no.ErpNoRedisDAO;
@@ -27,6 +29,7 @@ import cn.iocoder.yudao.module.erp.service.common.ErpOperateLogService;
 import cn.iocoder.yudao.module.erp.service.product.ErpProductService;
 import cn.iocoder.yudao.module.erp.service.sale.ErpCustomerService;
 import cn.iocoder.yudao.module.erp.service.stock.bo.ErpStockRecordCreateReqBO;
+import cn.iocoder.yudao.module.system.controller.admin.dept.vo.dept.DeptSimpleRespVO;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.validation.annotation.Validated;
@@ -36,6 +39,7 @@ import java.math.BigDecimal;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -80,6 +84,8 @@ public class ErpStockOutServiceImpl implements ErpStockOutService {
     private ErpStockService stockService;
     @Resource
     private ErpOperateLogService operateLogService;
+    @Resource
+    private ErpStockItemBatchUpdateSupport batchUpdateSupport;
 
     @Resource
     private ErpAutoVoucherBuilder autoVoucherBuilder;
@@ -141,6 +147,38 @@ public class ErpStockOutServiceImpl implements ErpStockOutService {
         // 2.2 更新出库单项
         updateStockOutItemList(updateReqVO.getId(), stockOutItems);
         operateLogService.recordUpdate(ERP_STOCK_OUT_TYPE, stockOut.getId(), stockOut.getNo());
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void batchUpdateStockOutItems(ErpStockOutItemBatchUpdateReqVO updateReqVO) {
+        batchUpdateSupport.validateFieldPermission(FIELD_PERMISSION_MODULE, STOCK_OUT_ITEM_BATCH_UPDATE_FIELD_REQUIRED);
+        ErpStockOutDO stockOut = validateStockOutExists(updateReqVO.getOutId());
+        if (ErpAuditStatus.APPROVE.getStatus().equals(stockOut.getStatus())) {
+            throw exception(STOCK_OUT_UPDATE_FAIL_APPROVE, stockOut.getNo());
+        }
+        ErpWarehouseDO targetWarehouse = batchUpdateSupport.validateTargetWarehouse(updateReqVO.getWarehouseId());
+        batchUpdateSupport.validateDocumentDeptAllowed(stockOut.getDeptId(), targetWarehouse, FIELD_PERMISSION_MODULE,
+                STOCK_OUT_ITEM_BATCH_UPDATE_WAREHOUSE_DEPT_NOT_ALLOWED);
+
+        List<ErpStockOutItemDO> stockOutItems = stockOutItemMapper.selectListByOutId(updateReqVO.getOutId());
+        Set<Long> selectedItemIds = new LinkedHashSet<>(updateReqVO.getItemIds());
+        List<ErpStockOutItemDO> selectedItems = stockOutItems.stream()
+                .filter(item -> selectedItemIds.contains(item.getId()))
+                .collect(java.util.stream.Collectors.toList());
+        if (selectedItems.size() != selectedItemIds.size()) {
+            throw exception(STOCK_OUT_ITEM_BATCH_UPDATE_ITEM_NOT_EXISTS);
+        }
+        validateBatchUpdateStockOutNoDuplicate(stockOutItems, selectedItemIds, targetWarehouse.getId());
+
+        selectedItems.forEach(item -> item.setWarehouseId(targetWarehouse.getId()));
+        stockOutItemMapper.updateBatch(selectedItems);
+        operateLogService.recordUpdate(ERP_STOCK_OUT_TYPE, stockOut.getId(), stockOut.getNo());
+    }
+
+    @Override
+    public List<DeptSimpleRespVO> getWarehouseDeptSimpleList(Long warehouseId) {
+        return batchUpdateSupport.getWarehouseAvailableDeptSimpleList(warehouseId, FIELD_PERMISSION_MODULE);
     }
 
     @Override
@@ -234,6 +272,19 @@ public class ErpStockOutServiceImpl implements ErpStockOutService {
         Set<String> keys = new HashSet<>();
         for (ErpStockOutSaveReqVO.Item item : list) {
             String key = item.getProductId() + "-" + item.getWarehouseId();
+            if (!keys.add(key)) {
+                throw exception(STOCK_OUT_ITEM_DUPLICATE, key);
+            }
+        }
+    }
+
+    private void validateBatchUpdateStockOutNoDuplicate(List<ErpStockOutItemDO> stockOutItems,
+                                                        Set<Long> selectedItemIds,
+                                                        Long targetWarehouseId) {
+        Set<String> keys = new HashSet<>();
+        for (ErpStockOutItemDO item : stockOutItems) {
+            Long warehouseId = selectedItemIds.contains(item.getId()) ? targetWarehouseId : item.getWarehouseId();
+            String key = item.getProductId() + "-" + warehouseId;
             if (!keys.add(key)) {
                 throw exception(STOCK_OUT_ITEM_DUPLICATE, key);
             }

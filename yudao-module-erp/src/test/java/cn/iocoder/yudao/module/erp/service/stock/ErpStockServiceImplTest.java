@@ -207,41 +207,47 @@ public class ErpStockServiceImplTest extends BaseMockitoUnitTest {
     }
 
     @Test
-    public void testGetStockPage_purchaseBizType_usesOnlyAuthorizedPurchaseWarehouses() {
+    public void testGetStockPage_purchaseBizType_usesProductStockDepartmentAndSelfScope() {
         ErpStockPageReqVO reqVO = new ErpStockPageReqVO();
         reqVO.setBizType("purchase");
         PageResult<ErpStockDO> pageResult = new PageResult<>(Collections.emptyList(), 0L);
-        when(warehouseService.hasCurrentUserAllWarehousePermission()).thenReturn(false);
-        when(warehouseService.getCurrentUserAuthorizedPurchaseWarehouseList()).thenReturn(Collections.singletonList(
-                new ErpWarehouseDO().setId(10L)));
+        when(warehouseService.getCurrentUserProductStockPermissionScope()).thenReturn(
+                new ErpProductStockPermissionScope(false,
+                        new LinkedHashSet<>(Collections.singletonList(10L)),
+                        new LinkedHashSet<>(Collections.singletonList(20L)), 104L));
         when(stockMapper.selectPage(eq(reqVO), org.mockito.ArgumentMatchers.<Collection<Long>>isNull(),
-                eq(new LinkedHashSet<>(Collections.singletonList(10L))),
+                eq(new LinkedHashSet<>(Arrays.asList(10L, 20L))),
                 org.mockito.ArgumentMatchers.<Collection<Long>>isNull(),
-                org.mockito.ArgumentMatchers.<Collection<Long>>isNull()))
+                org.mockito.ArgumentMatchers.<Collection<Long>>isNull(),
+                eq(new LinkedHashSet<>(Collections.singletonList(10L))),
+                eq(new LinkedHashSet<>(Collections.singletonList(20L))), eq("104")))
                 .thenReturn(pageResult);
 
         PageResult<ErpStockDO> result = stockService.getStockPage(reqVO);
 
         assertSame(pageResult, result);
-        verify(warehouseService).getCurrentUserAuthorizedPurchaseWarehouseList();
+        verify(warehouseService).getCurrentUserProductStockPermissionScope();
+        verify(warehouseService, never()).getCurrentUserAuthorizedPurchaseWarehouseList();
         verify(warehouseService, never()).getCurrentUserVisibleSaleWarehouseList();
         verify(warehouseService, never()).getCurrentUserStockVisibleWarehouseList();
         verify(stockMapper).selectPage(eq(reqVO), org.mockito.ArgumentMatchers.<Collection<Long>>isNull(),
-                eq(new LinkedHashSet<>(Collections.singletonList(10L))),
+                eq(new LinkedHashSet<>(Arrays.asList(10L, 20L))),
                 org.mockito.ArgumentMatchers.<Collection<Long>>isNull(),
-                org.mockito.ArgumentMatchers.<Collection<Long>>isNull());
+                org.mockito.ArgumentMatchers.<Collection<Long>>isNull(),
+                eq(new LinkedHashSet<>(Collections.singletonList(10L))),
+                eq(new LinkedHashSet<>(Collections.singletonList(20L))), eq("104"));
     }
 
     @Test
-    public void testGetStockPage_purchaseBizType_allWarehousePermissionStillFiltersPurchaseEnabledWarehouses() {
+    public void testGetStockPage_purchaseBizType_allStockScopeUsesStockVisibleWarehouses() {
         ErpStockPageReqVO reqVO = new ErpStockPageReqVO();
         reqVO.setBizType("purchase");
         PageResult<ErpStockDO> pageResult = new PageResult<>(Collections.emptyList(), 0L);
-        when(warehouseService.hasCurrentUserAllWarehousePermission()).thenReturn(true);
-        when(warehouseService.getCurrentUserAuthorizedPurchaseWarehouseList()).thenReturn(Collections.singletonList(
-                new ErpWarehouseDO().setId(10L)));
+        when(warehouseService.getCurrentUserProductStockPermissionScope()).thenReturn(
+                new ErpProductStockPermissionScope(true,
+                        new LinkedHashSet<>(Arrays.asList(10L, 30L)), Collections.emptySet(), 104L));
         when(stockMapper.selectPage(eq(reqVO), org.mockito.ArgumentMatchers.<Collection<Long>>isNull(),
-                eq(new LinkedHashSet<>(Collections.singletonList(10L))),
+                eq(new LinkedHashSet<>(Arrays.asList(10L, 30L))),
                 org.mockito.ArgumentMatchers.<Collection<Long>>isNull(),
                 org.mockito.ArgumentMatchers.<Collection<Long>>isNull()))
                 .thenReturn(pageResult);
@@ -249,39 +255,46 @@ public class ErpStockServiceImplTest extends BaseMockitoUnitTest {
         PageResult<ErpStockDO> result = stockService.getStockPage(reqVO);
 
         assertSame(pageResult, result);
-        verify(warehouseService).getCurrentUserAuthorizedPurchaseWarehouseList();
+        verify(warehouseService).getCurrentUserProductStockPermissionScope();
+        verify(warehouseService, never()).getCurrentUserAuthorizedPurchaseWarehouseList();
         verify(stockMapper).selectPage(eq(reqVO), org.mockito.ArgumentMatchers.<Collection<Long>>isNull(),
-                eq(new LinkedHashSet<>(Collections.singletonList(10L))),
+                eq(new LinkedHashSet<>(Arrays.asList(10L, 30L))),
                 org.mockito.ArgumentMatchers.<Collection<Long>>isNull(),
                 org.mockito.ArgumentMatchers.<Collection<Long>>isNull());
     }
 
     @Test
-    public void testGetStockPage_purchaseBizType_deptFilterIntersectsAuthorizedPurchaseWarehouses() {
+    public void testGetStockPage_purchaseBizType_deptFilterIntersectsProductStockScope() {
         ErpStockPageReqVO reqVO = new ErpStockPageReqVO();
         reqVO.setBizType("purchase");
         reqVO.setDeptId(30L);
         PageResult<ErpStockDO> pageResult = new PageResult<>(Collections.emptyList(), 0L);
         when(warehouseService.getWarehouseListByDeptId(30L)).thenReturn(Arrays.asList(
                 new ErpWarehouseDO().setId(10L), new ErpWarehouseDO().setId(20L)));
-        when(warehouseService.hasCurrentUserAllWarehousePermission()).thenReturn(false);
-        when(warehouseService.getCurrentUserAuthorizedPurchaseWarehouseList()).thenReturn(Collections.singletonList(
-                new ErpWarehouseDO().setId(20L)));
+        when(warehouseService.getCurrentUserProductStockPermissionScope()).thenReturn(
+                new ErpProductStockPermissionScope(false,
+                        new LinkedHashSet<>(Collections.singletonList(20L)),
+                        Collections.emptySet(), 104L));
         when(stockMapper.selectPage(eq(reqVO), org.mockito.ArgumentMatchers.<Collection<Long>>isNull(),
                 eq(new LinkedHashSet<>(Collections.singletonList(20L))),
                 org.mockito.ArgumentMatchers.<Collection<Long>>isNull(),
-                org.mockito.ArgumentMatchers.<Collection<Long>>isNull()))
+                org.mockito.ArgumentMatchers.<Collection<Long>>isNull(),
+                eq(new LinkedHashSet<>(Collections.singletonList(20L))),
+                eq(Collections.emptySet()), eq("104")))
                 .thenReturn(pageResult);
 
         PageResult<ErpStockDO> result = stockService.getStockPage(reqVO);
 
         assertSame(pageResult, result);
         verify(warehouseService).getWarehouseListByDeptId(30L);
-        verify(warehouseService).getCurrentUserAuthorizedPurchaseWarehouseList();
+        verify(warehouseService).getCurrentUserProductStockPermissionScope();
+        verify(warehouseService, never()).getCurrentUserAuthorizedPurchaseWarehouseList();
         verify(stockMapper).selectPage(eq(reqVO), org.mockito.ArgumentMatchers.<Collection<Long>>isNull(),
                 eq(new LinkedHashSet<>(Collections.singletonList(20L))),
                 org.mockito.ArgumentMatchers.<Collection<Long>>isNull(),
-                org.mockito.ArgumentMatchers.<Collection<Long>>isNull());
+                org.mockito.ArgumentMatchers.<Collection<Long>>isNull(),
+                eq(new LinkedHashSet<>(Collections.singletonList(20L))),
+                eq(Collections.emptySet()), eq("104"));
     }
 
     @Test

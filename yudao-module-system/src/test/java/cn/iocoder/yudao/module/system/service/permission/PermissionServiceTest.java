@@ -11,11 +11,13 @@ import cn.iocoder.yudao.module.system.dal.dataobject.permission.MenuDO;
 import cn.iocoder.yudao.module.system.dal.dataobject.permission.RoleDO;
 import cn.iocoder.yudao.module.system.dal.dataobject.permission.FieldDefinitionDO;
 import cn.iocoder.yudao.module.system.dal.dataobject.permission.RoleFieldPermissionDO;
+import cn.iocoder.yudao.module.system.dal.dataobject.permission.RoleFormDataScopeDO;
 import cn.iocoder.yudao.module.system.dal.dataobject.permission.RoleMenuDO;
 import cn.iocoder.yudao.module.system.dal.dataobject.permission.UserRoleDO;
 import cn.iocoder.yudao.module.system.dal.mysql.permission.RoleMenuMapper;
 import cn.iocoder.yudao.module.system.dal.mysql.permission.RoleFieldPermissionMapper;
 import cn.iocoder.yudao.module.system.dal.mysql.permission.FieldDefinitionMapper;
+import cn.iocoder.yudao.module.system.dal.mysql.permission.RoleFormDataScopeMapper;
 import cn.iocoder.yudao.module.system.dal.mysql.permission.UserRoleMapper;
 import cn.iocoder.yudao.module.system.enums.permission.DataScopeEnum;
 import cn.iocoder.yudao.module.system.service.dept.DeptService;
@@ -39,7 +41,6 @@ import static cn.iocoder.yudao.framework.test.core.util.AssertUtils.assertPojoEq
 import static cn.iocoder.yudao.framework.test.core.util.AssertUtils.assertServiceException;
 import static cn.iocoder.yudao.framework.test.core.util.RandomUtils.randomLongId;
 import static cn.iocoder.yudao.framework.test.core.util.RandomUtils.randomPojo;
-import static cn.iocoder.yudao.module.system.enums.ErrorCodeConstants.ROLE_DATA_SCOPE_DEPT_IDS_EMPTY;
 import static java.util.Collections.emptySet;
 import static java.util.Collections.singleton;
 import static java.util.Collections.singletonList;
@@ -59,6 +60,8 @@ public class PermissionServiceTest extends BaseDbUnitTest {
     private RoleFieldPermissionMapper roleFieldPermissionMapper;
     @Resource
     private UserRoleMapper userRoleMapper;
+    @Resource
+    private RoleFormDataScopeMapper roleFormDataScopeMapper;
 
     @MockBean
     private RoleService roleService;
@@ -376,13 +379,16 @@ public class PermissionServiceTest extends BaseDbUnitTest {
         Long roleId = 100L;
         // mock 方法
         when(roleService.hasAnySuperAdmin(eq(singleton(100L)))).thenReturn(true);
-        List<MenuDO> menuList = singletonList(randomPojo(MenuDO.class).setId(1L));
+        List<MenuDO> menuList = toList(randomPojo(MenuDO.class).setId(1L),
+                randomPojo(MenuDO.class).setId(2L).setStatus(CommonStatusEnum.DISABLE.getStatus()));
         when(menuService.getMenuList()).thenReturn(menuList);
+        when(menuService.filterDisableMenus(eq(menuList))).thenReturn(singletonList(menuList.get(0)));
 
         // 调用
         Set<Long> menuIds = permissionService.getRoleMenuListByRoleId(roleId);
         // 断言
         assertEquals(singleton(1L), menuIds);
+        verify(menuService).filterDisableMenus(eq(menuList));
     }
 
     @Test
@@ -552,31 +558,6 @@ public class PermissionServiceTest extends BaseDbUnitTest {
     // ========== 用户-部门的相关方法  ==========
 
     @Test
-    public void testAssignRoleDataScope() {
-        // 准备参数
-        Long roleId = 1L;
-        Integer dataScope = DataScopeEnum.DEPT_CUSTOM.getScope();
-        Set<Long> dataScopeDeptIds = asSet(10L, 20L);
-
-        // 调用
-        permissionService.assignRoleDataScope(roleId, dataScope, dataScopeDeptIds);
-        // 断言
-        verify(roleService).updateRoleDataScope(eq(roleId), eq(dataScope), eq(dataScopeDeptIds));
-    }
-
-    @Test
-    public void testAssignRoleDataScope_DeptCustomEmpty() {
-        // 准备参数
-        Long roleId = 1L;
-        Integer dataScope = DataScopeEnum.DEPT_CUSTOM.getScope();
-
-        // 调用，并断言异常
-        assertServiceException(() -> permissionService.assignRoleDataScope(roleId, dataScope, new HashSet<>()),
-                ROLE_DATA_SCOPE_DEPT_IDS_EMPTY);
-        verify(roleService, never()).updateRoleDataScope(anyLong(), anyInt(), anySet());
-    }
-
-    @Test
     public void testGetDeptDataPermission_All() {
         try (MockedStatic<SpringUtil> springUtilMockedStatic = mockStatic(SpringUtil.class)) {
             springUtilMockedStatic.when(() -> SpringUtil.getBean(eq(PermissionServiceImpl.class)))
@@ -645,6 +626,71 @@ public class PermissionServiceTest extends BaseDbUnitTest {
             assertTrue(CollUtil.isEmpty(result.getDeptIds()));
             verify(userService, never()).getUserDeptIdListByUserId(eq(userId));
         }
+    }
+
+    @Test
+    public void testGetDeptDataPermission_RoleDataScopeIgnoresLegacyUserDataScope() {
+        Long userId = 1L;
+        userRoleMapper.insert(randomPojo(UserRoleDO.class).setUserId(userId).setRoleId(2L));
+        RoleDO roleDO = randomPojo(RoleDO.class, o -> o.setId(2L)
+                .setDataScope(DataScopeEnum.DEPT_CUSTOM.getScope())
+                .setDataScopeDeptIds(asSet(10L, 20L))
+                .setStatus(CommonStatusEnum.ENABLE.getStatus()));
+        when(roleService.getRoleList(eq(singleton(2L)))).thenReturn(toList(roleDO));
+
+        DeptDataPermissionRespDTO result = permissionService.getDeptDataPermission(userId);
+
+        assertFalse(result.getAll());
+        assertFalse(result.getSelf());
+        assertEquals(asSet(10L, 20L), result.getDeptIds());
+        verify(userService, never()).getUserDeptIdListByUserId(eq(userId));
+    }
+
+    @Test
+    public void testGetDeptDataPermission_FormKeyRoleFormDataScopeOverridesRoleDefault() {
+        Long userId = 1L;
+        userRoleMapper.insert(randomPojo(UserRoleDO.class).setUserId(userId).setRoleId(2L));
+        RoleDO roleDO = randomPojo(RoleDO.class, o -> o.setId(2L)
+                .setDataScope(DataScopeEnum.SELF.getScope())
+                .setStatus(CommonStatusEnum.ENABLE.getStatus()));
+        when(roleService.getRoleList(eq(singleton(2L)))).thenReturn(toList(roleDO));
+        roleFormDataScopeMapper.insert(randomPojo(RoleFormDataScopeDO.class, o -> o.setRoleId(2L)
+                .setFormKey("erp_sale_cart")
+                .setDataScope(DataScopeEnum.ALL.getScope())
+                .setDataScopeDeptIds(emptySet())));
+
+        DeptDataPermissionRespDTO result = permissionService.getDeptDataPermission(userId, "erp_sale_cart");
+
+        assertTrue(result.getAll());
+        assertFalse(result.getSelf());
+        assertTrue(CollUtil.isEmpty(result.getDeptIds()));
+        verify(userService, never()).getUserDeptIdListByUserId(eq(userId));
+    }
+
+    @Test
+    public void testAssignRoleFormDataScope_createUpdateAndInheritDelete() {
+        Long roleId = 2L;
+        String formKey = "erp_sale_cart";
+        Set<Long> deptIds = asSet(10L, 20L);
+
+        permissionService.assignRoleFormDataScope(roleId, formKey, DataScopeEnum.DEPT_CUSTOM.getScope(), deptIds);
+
+        RoleFormDataScopeDO created = roleFormDataScopeMapper.selectByRoleIdAndFormKey(roleId, formKey);
+        assertEquals(DataScopeEnum.DEPT_CUSTOM.getScope(), created.getDataScope());
+        assertEquals(deptIds, created.getDataScopeDeptIds());
+        assertEquals(1, permissionService.getRoleFormDataScopeList(roleId).size());
+        verify(roleService, times(1)).validateRoleList(eq(singleton(roleId)));
+        verify(deptService, times(1)).validateDeptList(eq(deptIds));
+
+        permissionService.assignRoleFormDataScope(roleId, formKey, DataScopeEnum.SELF.getScope(), emptySet());
+
+        RoleFormDataScopeDO updated = roleFormDataScopeMapper.selectByRoleIdAndFormKey(roleId, formKey);
+        assertEquals(DataScopeEnum.SELF.getScope(), updated.getDataScope());
+        assertTrue(CollUtil.isEmpty(updated.getDataScopeDeptIds()));
+
+        permissionService.assignRoleFormDataScope(roleId, formKey, 0, emptySet());
+
+        assertNull(roleFormDataScopeMapper.selectByRoleIdAndFormKey(roleId, formKey));
     }
 
     @Test

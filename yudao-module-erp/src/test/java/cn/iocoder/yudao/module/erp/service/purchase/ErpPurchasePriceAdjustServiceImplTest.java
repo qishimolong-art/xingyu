@@ -1,15 +1,22 @@
 package cn.iocoder.yudao.module.erp.service.purchase;
 
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
+import cn.iocoder.yudao.framework.common.enums.CommonStatusEnum;
 import cn.iocoder.yudao.framework.test.core.ut.BaseMockitoUnitTest;
 import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpProductRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.imports.ErpPurchaseImportResultRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.priceadjust.ErpPurchasePriceAdjustOrderImportExcelVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.priceadjust.ErpPurchasePriceAdjustPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.priceadjust.ErpPurchasePriceAdjustDraftSaveReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.priceadjust.ErpPurchasePriceAdjustSaveReqVO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.product.ErpProductDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseInDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseInItemDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchasePriceAdjustDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchasePriceAdjustItemDO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpSupplierDO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpWarehouseDO;
+import cn.iocoder.yudao.module.erp.dal.mysql.product.ErpProductMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.purchase.ErpPurchaseInItemMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.purchase.ErpPurchaseInMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.purchase.ErpPurchasePriceAdjustItemMapper;
@@ -83,6 +90,8 @@ public class ErpPurchasePriceAdjustServiceImplTest extends BaseMockitoUnitTest {
     private ErpSupplierService supplierService;
     @Mock
     private ErpProductService productService;
+    @Mock
+    private ErpProductMapper productMapper;
     @Mock
     private ErpStockService stockService;
     @Mock
@@ -1035,6 +1044,38 @@ public class ErpPurchasePriceAdjustServiceImplTest extends BaseMockitoUnitTest {
         when(priceAdjustItemMapper.selectListByAdjustIds(eq(ids))).thenReturn(items);
 
         assertSame(items, priceAdjustService.getPurchasePriceAdjustItemListByAdjustIds(ids));
+    }
+
+    @Test
+    public void testImportPurchasePriceAdjustOrderList_invalidAdjustTime_returnsReadableMessage() {
+        ErpPurchasePriceAdjustOrderImportExcelVO row = new ErpPurchasePriceAdjustOrderImportExcelVO();
+        row.setNo("CGTJ20260811000002");
+        row.setSupplierName("芋道供应商");
+        row.setAdjustTime("2026/08/11");
+        row.setProductCode("P000001");
+        row.setWarehouseName("主仓库");
+        row.setItemCount(BigDecimal.ONE);
+        row.setNewPrice(BigDecimal.ONE);
+
+        when(supplierService.getSupplierPage(any())).thenReturn(new PageResult<>(
+                Collections.singletonList(new ErpSupplierDO().setId(100L).setName("芋道供应商")
+                        .setStatus(CommonStatusEnum.ENABLE.getStatus())), 1L));
+        when(productMapper.selectListByCodes(any())).thenReturn(Collections.singletonList(
+                new ErpProductDO().setId(200L).setCode("P000001").setName("产品1").setUnitId(1L)
+                        .setPurchasePrice(BigDecimal.ONE)));
+        when(productService.getProductVOMap(any())).thenReturn(Collections.emptyMap());
+        when(warehouseService.getPurchaseWarehouseListByStatus(eq(CommonStatusEnum.ENABLE.getStatus())))
+                .thenReturn(Collections.singletonList(new ErpWarehouseDO().setId(10L).setName("主仓库")));
+
+        ErpPurchaseImportResultRespVO result = priceAdjustService.importPurchasePriceAdjustOrderList(
+                Collections.singletonList(row));
+
+        assertEquals(0, result.getSuccessCount());
+        assertEquals(1, result.getFailureCount());
+        assertEquals(Integer.valueOf(2), result.getFailureDetails().get(0).getRowNo());
+        assertEquals("CGTJ20260811000002", result.getFailureDetails().get(0).getOrderNo());
+        assertEquals("调价时间格式不正确，请使用 yyyy-MM-dd 或 yyyy-MM-dd HH:mm:ss",
+                result.getFailureDetails().get(0).getReason());
     }
 
 }

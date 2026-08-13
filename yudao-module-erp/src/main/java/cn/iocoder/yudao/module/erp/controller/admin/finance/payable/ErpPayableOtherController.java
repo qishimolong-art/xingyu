@@ -21,6 +21,7 @@ import cn.iocoder.yudao.module.erp.controller.admin.finance.payable.vo.other.Erp
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.payable.ErpPayableOtherDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpSupplierDO;
 import cn.iocoder.yudao.module.erp.enums.ErpAuditStatus;
+import cn.iocoder.yudao.module.erp.service.base.ErpDataPermissionDeptService;
 import cn.iocoder.yudao.module.erp.service.finance.ErpFinanceFieldPermissionMasker;
 import cn.iocoder.yudao.module.erp.service.finance.payable.ErpPayableOtherService;
 import cn.iocoder.yudao.module.erp.service.purchase.ErpSupplierService;
@@ -28,6 +29,7 @@ import cn.iocoder.yudao.module.system.api.dept.DeptApi;
 import cn.iocoder.yudao.module.system.api.dept.dto.DeptRespDTO;
 import cn.iocoder.yudao.module.system.api.user.AdminUserApi;
 import cn.iocoder.yudao.module.system.api.user.dto.AdminUserRespDTO;
+import cn.iocoder.yudao.module.system.controller.admin.dept.vo.dept.DeptSimpleRespVO;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -76,6 +78,8 @@ public class ErpPayableOtherController {
     private DeptApi deptApi;
     @Resource
     private ErpFinanceFieldPermissionMasker fieldPermissionMasker;
+    @Resource
+    private ErpDataPermissionDeptService dataPermissionDeptService;
 
     @PostMapping("/create")
     @Operation(summary = "创建其他应付")
@@ -179,6 +183,13 @@ public class ErpPayableOtherController {
     public CommonResult<PageResult<ErpPayableOtherRespVO>> page(@Valid ErpPayableOtherPageReqVO reqVO) {
         PageResult<ErpPayableOtherDO> pageResult = payableOtherService.getPayableOtherPage(reqVO);
         return success(maskPageResult(buildPageResult(pageResult)));
+    }
+
+    @GetMapping("/dept-simple-list")
+    @Operation(summary = "Get payable other data permission dept simple list")
+    @PreAuthorize("@ss.hasPermission('erp:payable-other:query')")
+    public CommonResult<java.util.List<DeptSimpleRespVO>> getPayableOtherDeptSimpleList() {
+        return success(dataPermissionDeptService.getDeptSimpleList("erp_payable_other"));
     }
 
     @GetMapping("/export-excel")

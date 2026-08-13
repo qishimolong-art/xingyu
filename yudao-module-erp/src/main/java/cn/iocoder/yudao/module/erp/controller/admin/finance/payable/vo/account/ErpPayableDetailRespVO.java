@@ -51,6 +51,9 @@ public class ErpPayableDetailRespVO {
     @ExcelProperty("已核销金额")
     private BigDecimal allocatedAmount;
 
+    @Schema(description = "核销状态判断的单据基准金额")
+    private BigDecimal writeOffBaseAmount;
+
     @Schema(description = "余额")
     @ExcelProperty("余额")
     private BigDecimal balance;

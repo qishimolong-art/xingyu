@@ -41,6 +41,8 @@ public class ErpReceivableDetailRespVO {
     @ExcelProperty("已核销金额")
     private BigDecimal allocatedAmount;
 
+    private BigDecimal writeOffBaseAmount;
+
     @ExcelProperty("余额")
     private BigDecimal balance;
 }

@@ -11,6 +11,7 @@ import cn.iocoder.yudao.framework.datapermission.core.util.DataPermissionUtils;
 import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpProductRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnImportExcelVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnImportRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnItemBatchUpdateReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnDraftCreateReqVO;
@@ -51,6 +52,7 @@ import cn.iocoder.yudao.module.erp.service.stock.ErpStockRecordService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpStockService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpWarehouseService;
 import cn.iocoder.yudao.module.erp.service.stock.bo.ErpStockRecordCreateReqBO;
+import cn.iocoder.yudao.module.system.controller.admin.dept.vo.dept.DeptSimpleRespVO;
 import cn.iocoder.yudao.module.system.api.user.AdminUserApi;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
@@ -68,6 +70,7 @@ import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import static cn.iocoder.yudao.framework.common.exception.util.ServiceExceptionUtil.exception;
 import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.*;
@@ -124,6 +127,8 @@ public class ErpSaleReturnServiceImpl implements ErpSaleReturnService {
     private ErpStockOutBillService stockOutBillService;
     @Resource
     private ErpSaleFieldPermissionMasker fieldPermissionMasker;
+    @Resource
+    private ErpSaleItemBatchUpdateSupport batchUpdateSupport;
     @Resource
     private ErpSaleDocumentDefaultService saleDocumentDefaultService;
     @Resource
@@ -313,6 +318,59 @@ public class ErpSaleReturnServiceImpl implements ErpSaleReturnService {
             saleReturnItemMapper.insertBatch(items);
         }
         operateLogService.recordUpdate(ERP_SALE_RETURN_TYPE, updateReqVO.getId(), oldSaleReturn.getNo());
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void batchUpdateSaleReturnItems(ErpSaleReturnItemBatchUpdateReqVO updateReqVO) {
+        if (updateReqVO.getWarehouseId() == null && updateReqVO.getDeptId() == null) {
+            throw exception(SALE_RETURN_ITEM_BATCH_UPDATE_EMPTY);
+        }
+        batchUpdateSupport.validateFieldPermission(FIELD_PERMISSION_MODULE,
+                updateReqVO.getWarehouseId() != null, updateReqVO.getDeptId() != null,
+                SALE_RETURN_ITEM_BATCH_UPDATE_FIELD_DENIED);
+        ErpSaleReturnDO saleReturn = validateSaleReturnExists(updateReqVO.getReturnId());
+        if (ErpSaleReturnStatusEnum.APPROVE.getStatus().equals(saleReturn.getStatus())) {
+            throw exception(SALE_RETURN_UPDATE_FAIL_APPROVE, saleReturn.getNo());
+        }
+        boolean byStock = ErpSaleReturnModeEnum.isByStock(saleReturn.getReturnMode());
+        if (!byStock && updateReqVO.getWarehouseId() != null) {
+            throw exception(SALE_RETURN_ITEM_BATCH_UPDATE_WAREHOUSE_READONLY);
+        }
+
+        List<ErpSaleReturnItemDO> returnItems = saleReturnItemMapper.selectListByReturnId(updateReqVO.getReturnId());
+        Map<Long, ErpSaleReturnItemDO> itemMap = convertMap(returnItems, ErpSaleReturnItemDO::getId);
+        List<ErpSaleReturnItemDO> selectedItems = new ArrayList<>();
+        for (Long itemId : new LinkedHashSet<>(updateReqVO.getItemIds())) {
+            ErpSaleReturnItemDO item = itemMap.get(itemId);
+            if (item == null) {
+                throw exception(SALE_RETURN_ITEM_BATCH_UPDATE_NOT_EXISTS, itemId);
+            }
+            selectedItems.add(item);
+        }
+
+        ErpWarehouseDO targetWarehouse = byStock
+                ? batchUpdateSupport.validateTargetWarehouse(updateReqVO.getWarehouseId()) : null;
+        Long targetDeptId = batchUpdateSupport.resolveTargetDeptId(targetWarehouse, updateReqVO.getDeptId(),
+                FIELD_PERMISSION_MODULE, SALE_RETURN_ITEM_BATCH_UPDATE_WAREHOUSE_DEPT_NOT_ALLOWED);
+        for (ErpSaleReturnItemDO item : selectedItems) {
+            Long finalWarehouseId = targetWarehouse != null ? targetWarehouse.getId() : item.getWarehouseId();
+            batchUpdateSupport.validateWarehouseDept(finalWarehouseId, targetDeptId, FIELD_PERMISSION_MODULE,
+                    SALE_RETURN_ITEM_BATCH_UPDATE_WAREHOUSE_DEPT_NOT_ALLOWED);
+        }
+        if (targetWarehouse != null) {
+            validateBatchUpdateSaleReturnNoDuplicate(returnItems, updateReqVO.getItemIds(), targetWarehouse);
+        }
+
+        selectedItems.forEach(item -> {
+            if (targetWarehouse != null) {
+                item.setWarehouseId(targetWarehouse.getId());
+                stockService.ensureStockExists(item.getProductId(), targetWarehouse.getId());
+            }
+            item.setDeptId(targetDeptId);
+        });
+        saleReturnItemMapper.updateBatch(selectedItems);
+        operateLogService.recordUpdate(ERP_SALE_RETURN_TYPE, updateReqVO.getReturnId(), saleReturn.getNo());
     }
 
     @Override
@@ -668,6 +726,22 @@ public class ErpSaleReturnServiceImpl implements ErpSaleReturnService {
         }
     }
 
+    private void validateBatchUpdateSaleReturnNoDuplicate(List<ErpSaleReturnItemDO> returnItems,
+                                                          List<Long> selectedItemIds,
+                                                          ErpWarehouseDO targetWarehouse) {
+        Set<Long> selectedItemIdSet = new LinkedHashSet<>(selectedItemIds);
+        Set<String> itemKeySet = new LinkedHashSet<>();
+        for (ErpSaleReturnItemDO item : returnItems) {
+            boolean selected = selectedItemIdSet.contains(item.getId());
+            Long finalWarehouseId = selected ? targetWarehouse.getId() : item.getWarehouseId();
+            String itemKey = item.getProductId() + "|" + finalWarehouseId;
+            if (!itemKeySet.add(itemKey)) {
+                throw exception(SALE_RETURN_ITEM_DUPLICATE,
+                        "productId=" + item.getProductId() + ", warehouseId=" + finalWarehouseId);
+            }
+        }
+    }
+
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void deleteSaleReturn(List<Long> ids) {
@@ -735,6 +809,11 @@ public class ErpSaleReturnServiceImpl implements ErpSaleReturnService {
     }
 
     @Override
+    public List<DeptSimpleRespVO> getWarehouseAvailableDeptSimpleList(Long warehouseId) {
+        return batchUpdateSupport.getWarehouseAvailableDeptSimpleList(warehouseId, FIELD_PERMISSION_MODULE);
+    }
+
+    @Override
     public ErpSaleReturnImportRespVO parseImportData(List<ErpSaleReturnImportExcelVO> list) {
         ErpSaleReturnImportRespVO respVO = new ErpSaleReturnImportRespVO();
         if (CollUtil.isEmpty(list)) {
@@ -771,10 +850,14 @@ public class ErpSaleReturnServiceImpl implements ErpSaleReturnService {
                 respVO.setFailureCount(respVO.getFailureCount() + 1);
                 continue;
             }
-            ErpWarehouseDO warehouse = row.getWarehouseName() == null || row.getWarehouseName().isEmpty()
-                    ? null : warehouseMap.get(row.getWarehouseName());
-            if (row.getWarehouseName() != null && !row.getWarehouseName().isEmpty() && warehouse == null) {
-                respVO.getFailureDetails().add(new ErpSaleReturnImportRespVO.FailureItem(rowNo, row.getProductCode(), "仓库不存在"));
+            if (row.getWarehouseName() == null || row.getWarehouseName().isEmpty()) {
+                respVO.getFailureDetails().add(new ErpSaleReturnImportRespVO.FailureItem(rowNo, row.getProductCode(), "所属仓库不能为空"));
+                respVO.setFailureCount(respVO.getFailureCount() + 1);
+                continue;
+            }
+            ErpWarehouseDO warehouse = warehouseMap.get(row.getWarehouseName());
+            if (warehouse == null) {
+                respVO.getFailureDetails().add(new ErpSaleReturnImportRespVO.FailureItem(rowNo, row.getProductCode(), "所属仓库不存在"));
                 respVO.setFailureCount(respVO.getFailureCount() + 1);
                 continue;
             }
@@ -784,8 +867,8 @@ public class ErpSaleReturnServiceImpl implements ErpSaleReturnService {
             item.setProductName(product.getName());
             item.setProductUnitId(product.getUnitId());
             item.setProductUnitName(productVOMap.get(product.getId()) == null ? null : productVOMap.get(product.getId()).getUnitName());
-            item.setWarehouseId(warehouse == null ? product.getDefaultWarehouseId() : warehouse.getId());
-            item.setWarehouseName(warehouse == null ? null : warehouse.getName());
+            item.setWarehouseId(warehouse.getId());
+            item.setWarehouseName(warehouse.getName());
             item.setProductPrice(row.getProductPrice() != null ? row.getProductPrice() : product.getSalePrice());
             item.setCount(row.getCount());
             item.setReturnReason(row.getReturnReason());

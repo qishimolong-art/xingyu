@@ -25,8 +25,8 @@ import javax.annotation.Resource;
 import java.util.*;
 
 import static cn.iocoder.yudao.framework.common.exception.util.ServiceExceptionUtil.exception;
-import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.convertList;
 import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.convertMap;
+import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.convertSet;
 import static cn.iocoder.yudao.module.system.dal.dataobject.permission.MenuDO.ID_ROOT;
 import static cn.iocoder.yudao.module.system.enums.ErrorCodeConstants.*;
 
@@ -191,7 +191,17 @@ public class MenuServiceImpl implements MenuService {
     @Cacheable(value = RedisKeyConstants.PERMISSION_MENU_ID_LIST, key = "#permission")
     public List<Long> getMenuIdListByPermissionFromCache(String permission) {
         List<MenuDO> menus = menuMapper.selectListByPermission(permission);
-        return convertList(menus, MenuDO::getId);
+        if (CollUtil.isEmpty(menus)) {
+            return Collections.emptyList();
+        }
+        Set<Long> enabledMenuIds = convertSet(filterDisableMenus(menuMapper.selectList()), MenuDO::getId);
+        List<Long> result = new ArrayList<>();
+        for (MenuDO menu : menus) {
+            if (enabledMenuIds.contains(menu.getId())) {
+                result.add(menu.getId());
+            }
+        }
+        return result;
     }
 
     @Override

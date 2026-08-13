@@ -4,16 +4,20 @@ import cn.iocoder.yudao.framework.common.enums.CommonStatusEnum;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.test.core.ut.BaseMockitoUnitTest;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.customer.ErpCustomerBatchUpdateReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.customer.ErpCustomerDeptCreditRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.customer.ErpCustomerDeptCreditSaveReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.customer.ErpCustomerImportExcelVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.customer.ErpCustomerPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.customer.ErpCustomerSaveReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.receivable.ErpReceivableAccountDO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpCustomerDeptCreditDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpCustomerDeptDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpCustomerDO;
 import cn.iocoder.yudao.module.erp.dal.mysql.finance.ErpFinanceReceiptMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.finance.receivable.ErpReceivableAccountMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.finance.receivable.ErpReceivableOtherMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.finance.receivable.ErpReceivableWriteOffMapper;
+import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpCustomerDeptCreditMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpCustomerDeptMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpCustomerMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpSaleOutMapper;
@@ -22,6 +26,8 @@ import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpSaleReturnMapper;
 import cn.iocoder.yudao.module.erp.dal.redis.no.ErpNoRedisDAO;
 import cn.iocoder.yudao.module.erp.service.base.ErpBaseArchiveReferenceService;
 import cn.iocoder.yudao.module.erp.service.common.ErpOperateLogService;
+import cn.iocoder.yudao.module.system.api.dept.DeptApi;
+import cn.iocoder.yudao.module.system.api.dept.dto.DeptRespDTO;
 import com.baomidou.mybatisplus.core.MybatisConfiguration;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
@@ -36,12 +42,18 @@ import org.springframework.test.util.ReflectionTestUtils;
 
 import java.math.BigDecimal;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 import static cn.iocoder.yudao.framework.test.core.util.AssertUtils.assertServiceException;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.CUSTOMER_CODE_DUPLICATE;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.CUSTOMER_CREDIT_BLOCKED;
+import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.CUSTOMER_CREDIT_CONFIG_REQUIRED;
+import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.CUSTOMER_DEPT_CREDIT_DEPT_NOT_ALLOWED;
+import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.CUSTOMER_DEPT_CREDIT_DUPLICATE_DEPT;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.CUSTOMER_NOT_ENABLE;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.CUSTOMER_NOT_EXISTS;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.CUSTOMER_SALE_DEPT_NOT_ALLOWED;
@@ -70,6 +82,8 @@ public class ErpCustomerServiceImplTest extends BaseMockitoUnitTest {
     @Mock
     private ErpCustomerDeptMapper customerDeptMapper;
     @Mock
+    private ErpCustomerDeptCreditMapper customerDeptCreditMapper;
+    @Mock
     private ErpSaleOutMapper saleOutMapper;
     @Mock
     private ErpSaleReturnMapper saleReturnMapper;
@@ -89,6 +103,8 @@ public class ErpCustomerServiceImplTest extends BaseMockitoUnitTest {
     private ErpOperateLogService operateLogService;
     @Mock
     private ErpReceivableAccountMapper receivableAccountMapper;
+    @Mock
+    private DeptApi deptApi;
 
     /**
      * 在测试类加载时初始化 MyBatis-Plus 的 TableInfo 缓存（含 lambda 缓存）。
@@ -182,12 +198,203 @@ public class ErpCustomerServiceImplTest extends BaseMockitoUnitTest {
         when(saleReturnMapper.selectList(any())).thenReturn(Collections.emptyList());
         when(salePriceAdjustMapper.selectList(any())).thenReturn(Collections.emptyList());
         when(financeReceiptMapper.selectList(any())).thenReturn(Collections.emptyList());
-        when(receivableWriteOffMapper.selectListByCustomerId(eq(14L),
-                ArgumentMatchers.isNull(), ArgumentMatchers.isNull())).thenReturn(Collections.emptyList());
+        when(receivableWriteOffMapper.selectList(any())).thenReturn(Collections.emptyList());
         when(receivableOtherMapper.selectList(any())).thenReturn(Collections.emptyList());
 
         assertServiceException(() -> customerService.validateCustomerForGeneratedSale(14L, 102L),
                 CUSTOMER_CREDIT_BLOCKED, "授信超限客户", "欠款金额 100 已达到授信金额 100");
+    }
+
+    @Test
+    public void testValidateCustomerForSale_deptCreditDisabled_bypassGlobalCredit() {
+        ErpCustomerDO customer = new ErpCustomerDO().setId(14L).setName("部门授信关闭客户")
+                .setStatus(CommonStatusEnum.ENABLE.getStatus()).setDeptId(102L)
+                .setCreditEnabled(true).setCreditLimit(new BigDecimal("100"));
+        when(customerMapper.selectById(14L)).thenReturn(customer);
+        when(customerDeptCreditMapper.selectByCustomerIdAndDeptId(14L, 102L)).thenReturn(
+                new ErpCustomerDeptCreditDO().setCustomerId(14L).setDeptId(102L).setCreditEnabled(false));
+
+        assertSame(customer, customerService.validateCustomerForSale(14L, 102L));
+
+        verify(receivableAccountMapper, never()).selectByCustomerId(any());
+        verify(receivableAccountMapper, never()).selectByCustomerIdAndDeptId(any(), any());
+    }
+
+    @Test
+    public void testValidateCustomerForSale_withoutDeptCredit_fallbackGlobalCredit() {
+        ErpCustomerDO customer = new ErpCustomerDO().setId(14L).setName("全局授信客户")
+                .setStatus(CommonStatusEnum.ENABLE.getStatus()).setDeptId(102L)
+                .setCreditEnabled(true).setCreditLimit(new BigDecimal("100"));
+        when(customerMapper.selectById(14L)).thenReturn(customer);
+        when(customerDeptCreditMapper.selectByCustomerIdAndDeptId(14L, 102L)).thenReturn(null);
+        when(receivableAccountMapper.selectByCustomerId(14L)).thenReturn(
+                new ErpReceivableAccountDO().setReceivableBalance(new BigDecimal("100")));
+        when(saleOutMapper.selectList(any())).thenReturn(Collections.emptyList());
+        when(saleReturnMapper.selectList(any())).thenReturn(Collections.emptyList());
+        when(salePriceAdjustMapper.selectList(any())).thenReturn(Collections.emptyList());
+        when(financeReceiptMapper.selectList(any())).thenReturn(Collections.emptyList());
+        when(receivableWriteOffMapper.selectList(any())).thenReturn(Collections.emptyList());
+        when(receivableOtherMapper.selectList(any())).thenReturn(Collections.emptyList());
+
+        assertServiceException(() -> customerService.validateCustomerForSale(14L, 102L),
+                CUSTOMER_CREDIT_BLOCKED, "全局授信客户", "欠款金额 100 已达到授信金额 100");
+        verify(receivableAccountMapper).selectByCustomerId(14L);
+        verify(receivableAccountMapper, never()).selectByCustomerIdAndDeptId(any(), any());
+    }
+
+    @Test
+    public void testValidateCustomerForSale_deptCreditEnabled_useDeptBalance() {
+        ErpCustomerDO customer = new ErpCustomerDO().setId(14L).setName("部门授信客户")
+                .setStatus(CommonStatusEnum.ENABLE.getStatus()).setDeptId(102L)
+                .setCreditEnabled(false);
+        when(customerMapper.selectById(14L)).thenReturn(customer);
+        when(customerDeptCreditMapper.selectByCustomerIdAndDeptId(14L, 102L)).thenReturn(
+                new ErpCustomerDeptCreditDO().setCustomerId(14L).setDeptId(102L)
+                        .setCreditEnabled(true).setCreditLimit(new BigDecimal("100")));
+        when(receivableAccountMapper.selectByCustomerIdAndDeptId(14L, 102L)).thenReturn(
+                new ErpReceivableAccountDO().setReceivableBalance(new BigDecimal("100")));
+        when(saleOutMapper.selectList(any())).thenReturn(Collections.emptyList());
+        when(saleReturnMapper.selectList(any())).thenReturn(Collections.emptyList());
+        when(salePriceAdjustMapper.selectList(any())).thenReturn(Collections.emptyList());
+        when(financeReceiptMapper.selectList(any())).thenReturn(Collections.emptyList());
+        when(receivableWriteOffMapper.selectList(any())).thenReturn(Collections.emptyList());
+        when(receivableOtherMapper.selectList(any())).thenReturn(Collections.emptyList());
+
+        assertServiceException(() -> customerService.validateCustomerForSale(14L, 102L),
+                CUSTOMER_CREDIT_BLOCKED, "部门授信客户", "欠款金额 100 已达到授信金额 100");
+        verify(receivableAccountMapper).selectByCustomerIdAndDeptId(14L, 102L);
+        verify(receivableAccountMapper, never()).selectByCustomerId(any());
+    }
+
+    // ==================== department credit ====================
+
+    @Test
+    public void testGetCustomerDeptCredit_returnAssignedDeptItems() {
+        ErpCustomerDO customer = new ErpCustomerDO().setId(14L).setName("部门授信客户")
+                .setStatus(CommonStatusEnum.ENABLE.getStatus()).setDeptId(128L).setAllowMultiDept(true);
+        when(customerMapper.selectById(14L)).thenReturn(customer);
+        when(customerDeptMapper.selectListByCustomerId(14L)).thenReturn(Arrays.asList(
+                new ErpCustomerDeptDO().setCustomerId(14L).setDeptId(128L),
+                new ErpCustomerDeptDO().setCustomerId(14L).setDeptId(102L)));
+        when(customerDeptCreditMapper.selectListByCustomerId(14L)).thenReturn(Collections.singletonList(
+                new ErpCustomerDeptCreditDO().setId(900L).setCustomerId(14L).setDeptId(102L)
+                        .setCreditEnabled(true).setCreditLimit(new BigDecimal("5000"))
+                        .setCreditTermDays(30).setRemark("重点部门")));
+        Map<Long, DeptRespDTO> deptMap = new LinkedHashMap<>();
+        deptMap.put(128L, buildDept(128L, "总部"));
+        deptMap.put(102L, buildDept(102L, "销售一部"));
+        when(deptApi.getDeptMap(any())).thenReturn(deptMap);
+
+        ErpCustomerDeptCreditRespVO result = customerService.getCustomerDeptCredit(14L);
+
+        assertEquals(14L, result.getId());
+        assertEquals(Arrays.asList(128L, 102L), result.getDeptIds());
+        assertEquals(2, result.getItems().size());
+        assertEquals(128L, result.getItems().get(0).getDeptId());
+        assertEquals(false, result.getItems().get(0).getCreditEnabled());
+        assertEquals(102L, result.getItems().get(1).getDeptId());
+        assertEquals(900L, result.getItems().get(1).getId());
+        assertEquals(new BigDecimal("5000"), result.getItems().get(1).getCreditLimit());
+        assertEquals("销售一部", result.getItems().get(1).getDeptName());
+    }
+
+    @Test
+    public void testUpdateCustomerDeptCredit_replaceConfigs() {
+        ErpCustomerDO customer = new ErpCustomerDO().setId(14L).setName("部门授信客户")
+                .setStatus(CommonStatusEnum.ENABLE.getStatus()).setDeptId(128L).setAllowMultiDept(true);
+        when(customerMapper.selectById(14L)).thenReturn(customer);
+        when(customerDeptMapper.selectListByCustomerId(14L)).thenReturn(Arrays.asList(
+                new ErpCustomerDeptDO().setCustomerId(14L).setDeptId(128L),
+                new ErpCustomerDeptDO().setCustomerId(14L).setDeptId(102L)));
+        ErpCustomerDeptCreditSaveReqVO reqVO = new ErpCustomerDeptCreditSaveReqVO();
+        reqVO.setId(14L);
+        ErpCustomerDeptCreditSaveReqVO.Item enabledItem = new ErpCustomerDeptCreditSaveReqVO.Item();
+        enabledItem.setDeptId(102L);
+        enabledItem.setCreditEnabled(true);
+        enabledItem.setCreditLimit(new BigDecimal("5000"));
+        enabledItem.setCreditTermDays(30);
+        ErpCustomerDeptCreditSaveReqVO.Item disabledItem = new ErpCustomerDeptCreditSaveReqVO.Item();
+        disabledItem.setDeptId(128L);
+        disabledItem.setCreditEnabled(false);
+        disabledItem.setCreditLimit(new BigDecimal("999"));
+        disabledItem.setCreditTermDays(10);
+        reqVO.setItems(Arrays.asList(enabledItem, disabledItem));
+
+        customerService.updateCustomerDeptCredit(reqVO);
+
+        verify(deptApi).validateDeptList(argThat(deptIds -> deptIds.containsAll(Arrays.asList(102L, 128L))
+                && deptIds.size() == 2));
+        verify(customerDeptCreditMapper).deleteByCustomerId(14L);
+        verify(customerDeptCreditMapper).insertBatch(ArgumentMatchers.<Collection<ErpCustomerDeptCreditDO>>argThat(credits -> {
+            List<ErpCustomerDeptCreditDO> list = Arrays.asList(credits.toArray(new ErpCustomerDeptCreditDO[0]));
+            ErpCustomerDeptCreditDO enabled = list.stream()
+                    .filter(credit -> Long.valueOf(102L).equals(credit.getDeptId()))
+                    .findFirst().orElse(null);
+            ErpCustomerDeptCreditDO disabled = list.stream()
+                    .filter(credit -> Long.valueOf(128L).equals(credit.getDeptId()))
+                    .findFirst().orElse(null);
+            return list.size() == 2
+                    && enabled != null
+                    && Long.valueOf(14L).equals(enabled.getCustomerId())
+                    && Boolean.TRUE.equals(enabled.getCreditEnabled())
+                    && new BigDecimal("5000").equals(enabled.getCreditLimit())
+                    && Integer.valueOf(30).equals(enabled.getCreditTermDays())
+                    && disabled != null
+                    && Boolean.FALSE.equals(disabled.getCreditEnabled())
+                    && disabled.getCreditLimit() == null
+                    && disabled.getCreditTermDays() == null;
+        }));
+    }
+
+    @Test
+    public void testUpdateCustomerDeptCredit_duplicateDept_throwException() {
+        ErpCustomerDO customer = new ErpCustomerDO().setId(14L).setDeptId(128L).setAllowMultiDept(false);
+        when(customerMapper.selectById(14L)).thenReturn(customer);
+        ErpCustomerDeptCreditSaveReqVO reqVO = new ErpCustomerDeptCreditSaveReqVO();
+        reqVO.setId(14L);
+        ErpCustomerDeptCreditSaveReqVO.Item first = new ErpCustomerDeptCreditSaveReqVO.Item();
+        first.setDeptId(128L);
+        ErpCustomerDeptCreditSaveReqVO.Item second = new ErpCustomerDeptCreditSaveReqVO.Item();
+        second.setDeptId(128L);
+        reqVO.setItems(Arrays.asList(first, second));
+
+        assertServiceException(() -> customerService.updateCustomerDeptCredit(reqVO),
+                CUSTOMER_DEPT_CREDIT_DUPLICATE_DEPT);
+        verify(customerDeptCreditMapper, never()).deleteByCustomerId(any());
+        verify(customerDeptCreditMapper, never()).insertBatch(any());
+    }
+
+    @Test
+    public void testUpdateCustomerDeptCredit_deptNotAllowed_throwException() {
+        ErpCustomerDO customer = new ErpCustomerDO().setId(14L).setDeptId(128L).setAllowMultiDept(false);
+        when(customerMapper.selectById(14L)).thenReturn(customer);
+        ErpCustomerDeptCreditSaveReqVO reqVO = new ErpCustomerDeptCreditSaveReqVO();
+        reqVO.setId(14L);
+        ErpCustomerDeptCreditSaveReqVO.Item item = new ErpCustomerDeptCreditSaveReqVO.Item();
+        item.setDeptId(999L);
+        reqVO.setItems(Collections.singletonList(item));
+
+        assertServiceException(() -> customerService.updateCustomerDeptCredit(reqVO),
+                CUSTOMER_DEPT_CREDIT_DEPT_NOT_ALLOWED);
+        verify(customerDeptCreditMapper, never()).deleteByCustomerId(any());
+        verify(customerDeptCreditMapper, never()).insertBatch(any());
+    }
+
+    @Test
+    public void testUpdateCustomerDeptCredit_enabledWithoutConfig_throwException() {
+        ErpCustomerDO customer = new ErpCustomerDO().setId(14L).setDeptId(128L).setAllowMultiDept(false);
+        when(customerMapper.selectById(14L)).thenReturn(customer);
+        ErpCustomerDeptCreditSaveReqVO reqVO = new ErpCustomerDeptCreditSaveReqVO();
+        reqVO.setId(14L);
+        ErpCustomerDeptCreditSaveReqVO.Item item = new ErpCustomerDeptCreditSaveReqVO.Item();
+        item.setDeptId(128L);
+        item.setCreditEnabled(true);
+        reqVO.setItems(Collections.singletonList(item));
+
+        assertServiceException(() -> customerService.updateCustomerDeptCredit(reqVO),
+                CUSTOMER_CREDIT_CONFIG_REQUIRED);
+        verify(customerDeptCreditMapper, never()).deleteByCustomerId(any());
+        verify(customerDeptCreditMapper, never()).insertBatch(any());
     }
 
     // ==================== create ====================
@@ -547,6 +754,15 @@ public class ErpCustomerServiceImplTest extends BaseMockitoUnitTest {
 
         verify(customerMapper).update(eq(null),
                 ArgumentMatchers.<LambdaUpdateWrapper<ErpCustomerDO>>any());
+    }
+
+    private DeptRespDTO buildDept(Long id, String name) {
+        DeptRespDTO dept = new DeptRespDTO();
+        dept.setId(id);
+        dept.setName(name);
+        dept.setParentId(0L);
+        dept.setStatus(CommonStatusEnum.ENABLE.getStatus());
+        return dept;
     }
 
 }

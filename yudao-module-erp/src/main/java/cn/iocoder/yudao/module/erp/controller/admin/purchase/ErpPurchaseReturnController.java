@@ -19,6 +19,7 @@ import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.returns.ErpPurch
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.returns.ErpPurchaseReturnExportRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.returns.ErpPurchaseReturnImportExcelVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.returns.ErpPurchaseReturnImportRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.returns.ErpPurchaseReturnItemBatchUpdateReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.returns.ErpPurchaseReturnOrderImportExcelVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.returns.ErpPurchaseReturnPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.returns.ErpPurchaseReturnRespVO;
@@ -38,6 +39,7 @@ import cn.iocoder.yudao.module.erp.service.config.ErpFieldConfigService;
 import cn.iocoder.yudao.module.erp.service.product.ErpProductService;
 import cn.iocoder.yudao.module.erp.service.purchase.ErpPurchaseFieldPermissionMasker;
 import cn.iocoder.yudao.module.erp.service.purchase.ErpPurchaseReturnService;
+import cn.iocoder.yudao.module.erp.service.purchase.ErpSupplierDeptPermissionService;
 import cn.iocoder.yudao.module.erp.service.purchase.ErpSupplierService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpStockService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpWarehouseService;
@@ -45,6 +47,7 @@ import cn.iocoder.yudao.module.system.api.dept.DeptApi;
 import cn.iocoder.yudao.module.system.api.dept.dto.DeptRespDTO;
 import cn.iocoder.yudao.module.system.api.user.AdminUserApi;
 import cn.iocoder.yudao.module.system.api.user.dto.AdminUserRespDTO;
+import cn.iocoder.yudao.module.system.controller.admin.dept.vo.dept.DeptSimpleRespVO;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -98,19 +101,23 @@ public class ErpPurchaseReturnController {
     private static final Map<String, String> ORDER_IMPORT_FIELD_ALIAS_MAP = ErpImportTemplateRequiredFieldUtils.aliasMap(
             "supplierId", "supplierName",
             "supplierName", "supplierName",
-            "returnTime", "returnTime",
             "remark", "remark",
             "productId", "productCode",
             "warehouseId", "warehouseName",
+            "warehouseName", "warehouseName",
             "count", "itemCount",
             "item_count", "itemCount",
             "itemCount", "itemCount",
             "productPrice", "productPrice",
+            "batchNo", "batchNo",
+            "item_batchNo", "batchNo",
             "item_remark", "itemRemark",
             "itemRemark", "itemRemark");
 
     @Resource
     private ErpPurchaseReturnService purchaseReturnService;
+    @Resource
+    private ErpSupplierDeptPermissionService supplierDeptPermissionService;
     @Resource
     private ErpStockService stockService;
     @Resource
@@ -154,6 +161,30 @@ public class ErpPurchaseReturnController {
     public CommonResult<Boolean> updatePurchaseReturn(@Valid @RequestBody ErpPurchaseReturnSaveReqVO updateReqVO) {
         purchaseReturnService.updatePurchaseReturn(updateReqVO);
         return success(true);
+    }
+
+    @PutMapping("/batch-update-items")
+    @Operation(summary = "批量修改采购退货明细仓库/部门")
+    @PreAuthorize("@ss.hasPermission('erp:purchase-return:update')")
+    public CommonResult<Boolean> batchUpdatePurchaseReturnItems(
+            @Valid @RequestBody ErpPurchaseReturnItemBatchUpdateReqVO updateReqVO) {
+        purchaseReturnService.batchUpdatePurchaseReturnItems(updateReqVO);
+        return success(true);
+    }
+
+    @GetMapping("/warehouse-dept-simple-list")
+    @Operation(summary = "获得采购退货目标仓库可用部门列表")
+    @PreAuthorize("@ss.hasPermission('erp:purchase-return:update')")
+    public CommonResult<List<DeptSimpleRespVO>> getWarehouseAvailableDeptSimpleList(
+            @RequestParam("warehouseId") Long warehouseId) {
+        return success(purchaseReturnService.getWarehouseAvailableDeptSimpleList(warehouseId));
+    }
+
+    @GetMapping("/dept-simple-list")
+    @Operation(summary = "鑾峰緱褰撳墠鐢ㄦ埛鍙煡璇㈢殑閲囪喘閫€璐ч儴闂ㄧ簿绠€鍒楄〃")
+    @PreAuthorize("@ss.hasPermission('erp:purchase-return:query')")
+    public CommonResult<List<DeptSimpleRespVO>> getVisibleDeptSimpleList() {
+        return success(supplierDeptPermissionService.getDataPermissionDeptSimpleList(FIELD_PERMISSION_MODULE));
     }
 
     @PutMapping("/update-draft")
@@ -249,19 +280,20 @@ public class ErpPurchaseReturnController {
     @PreAuthorize("@ss.hasPermission('erp:purchase-return:create')")
     public void getOrderImportTemplate(HttpServletResponse response) throws IOException {
         ErpPurchaseReturnOrderImportExcelVO example = new ErpPurchaseReturnOrderImportExcelVO();
-        example.setNo("TH-IMPORT-001");
-        example.setSupplierName("Example Supplier");
-        example.setReturnTime("2026-06-05 09:00:00");
-        example.setRemark("Order remark");
+        example.setNo("CGTH20260811000002");
+        example.setSupplierName("示例供应商");
+        example.setReturnTime("2026-08-11");
+        example.setRemark("整单备注");
         example.setProductCode("P000001");
-        example.setWarehouseName("Main Warehouse");
+        example.setWarehouseName("主仓库");
         example.setItemCount(BigDecimal.ONE);
         example.setProductPrice(new BigDecimal("10.00"));
-        example.setItemRemark("Item remark");
+        example.setBatchNo("BATCH-001");
+        example.setItemRemark("明细备注");
 
         ErpPurchaseReturnOrderImportExcelVO secondItem = new ErpPurchaseReturnOrderImportExcelVO();
         secondItem.setProductCode("P000002");
-        secondItem.setWarehouseName("Main Warehouse");
+        secondItem.setWarehouseName("主仓库");
         secondItem.setItemCount(new BigDecimal("2"));
         secondItem.setProductPrice(new BigDecimal("20.00"));
 

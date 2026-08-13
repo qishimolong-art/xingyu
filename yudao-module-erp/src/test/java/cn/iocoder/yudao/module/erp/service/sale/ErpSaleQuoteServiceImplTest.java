@@ -6,6 +6,8 @@ import cn.iocoder.yudao.framework.test.core.ut.BaseMockitoUnitTest;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.quote.ErpSaleQuoteConvertCartReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.quote.ErpSaleQuoteDraftCreateReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.quote.ErpSaleQuoteDraftUpdateReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.quote.ErpSaleQuoteImportExcelVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.quote.ErpSaleQuoteImportRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.quote.ErpSaleQuoteSaveReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.product.ErpProductDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleQuoteDO;
@@ -18,6 +20,7 @@ import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpSaleConvertRecordMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpSaleOutMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpSaleQuoteItemMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpSaleQuoteMapper;
+import cn.iocoder.yudao.module.erp.dal.mysql.product.ErpProductMapper;
 import cn.iocoder.yudao.module.erp.dal.redis.no.ErpNoRedisDAO;
 import cn.iocoder.yudao.module.erp.enums.sale.ErpSaleBizSourceTypeEnum;
 import cn.iocoder.yudao.module.erp.enums.sale.ErpSaleQuoteStatusEnum;
@@ -61,9 +64,11 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyCollection;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.nullable;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
@@ -89,6 +94,8 @@ public class ErpSaleQuoteServiceImplTest extends BaseMockitoUnitTest {
     private ErpSaleOutMapper saleOutMapper;
     @Mock
     private ErpSaleOutService saleOutService;
+    @Mock
+    private ErpProductMapper productMapper;
     @Mock
     private ErpSaleCartService saleCartService;
     @Mock
@@ -137,6 +144,28 @@ public class ErpSaleQuoteServiceImplTest extends BaseMockitoUnitTest {
             }
         }
         return warehouses;
+    }
+
+    @Test
+    public void testParseImportData_missingDefaultWarehouse_returnsReadableMessage() {
+        ErpSaleQuoteImportExcelVO row = new ErpSaleQuoteImportExcelVO();
+        row.setProductCode("P0001");
+        row.setCount(BigDecimal.ONE);
+        ErpProductDO product = new ErpProductDO()
+                .setId(10L)
+                .setCode("P0001")
+                .setUnitId(20L)
+                .setSalePrice(new BigDecimal("100.00"));
+        when(productMapper.selectListByCodes(anyCollection())).thenReturn(Collections.singletonList(product));
+        when(productService.getProductVOMap(anyCollection())).thenReturn(Collections.emptyMap());
+
+        ErpSaleQuoteImportRespVO respVO = saleQuoteService.parseImportData(Collections.singletonList(row));
+
+        assertEquals(0, respVO.getSuccessCount());
+        assertEquals(1, respVO.getFailureCount());
+        assertEquals(2, respVO.getFailureDetails().get(0).getRowNo());
+        assertEquals("P0001", respVO.getFailureDetails().get(0).getProductCode());
+        assertEquals("产品默认仓库不能为空", respVO.getFailureDetails().get(0).getReason());
     }
 
     @Test
@@ -392,7 +421,7 @@ public class ErpSaleQuoteServiceImplTest extends BaseMockitoUnitTest {
         assertNotNull(resultId);
         assertEquals(999L, resultId);
         // 校验依赖调用
-        verify(customerService).validateCustomerForSale(eq(50L));
+        verify(customerService).validateCustomerForSale(eq(50L), eq(80L));
         verify(customerService).validateCustomerSaleDept(eq(50L), eq(80L));
         verify(accountService).validateAccount(eq(60L));
         verify(adminUserApi).validateUser(eq(70L));
@@ -481,7 +510,7 @@ public class ErpSaleQuoteServiceImplTest extends BaseMockitoUnitTest {
         assertServiceException(() -> saleQuoteService.createSaleQuote(reqVO),
                 SALE_QUOTE_ITEM_PRODUCT_PRICE_POSITIVE, 1);
         verify(productService, never()).validProductList(any());
-        verify(customerService, never()).validateCustomerForSale(any());
+        verify(customerService, never()).validateCustomerForSale(anyLong(), nullable(Long.class));
         verify(saleQuoteMapper, never()).insert(ArgumentMatchers.<ErpSaleQuoteDO>any());
     }
 
@@ -502,7 +531,7 @@ public class ErpSaleQuoteServiceImplTest extends BaseMockitoUnitTest {
         when(productService.validProductList(any()))
                 .thenReturn(Collections.singletonList(product));
         doThrow(new ServiceException(CUSTOMER_NOT_EXISTS))
-                .when(customerService).validateCustomerForSale(eq(51L));
+                .when(customerService).validateCustomerForSale(eq(51L), nullable(Long.class));
 
         // 执行 & 断言
         assertServiceException(() -> saleQuoteService.createSaleQuote(reqVO), CUSTOMER_NOT_EXISTS);
@@ -529,7 +558,7 @@ public class ErpSaleQuoteServiceImplTest extends BaseMockitoUnitTest {
         // 执行 & 断言
         assertServiceException(() -> saleQuoteService.createSaleQuote(reqVO), PRODUCT_NOT_EXISTS);
         // 校验：未走到客户校验和 insert
-        verify(customerService, never()).validateCustomerForSale(any());
+        verify(customerService, never()).validateCustomerForSale(anyLong(), nullable(Long.class));
         verify(saleQuoteMapper, never()).insert(ArgumentMatchers.<ErpSaleQuoteDO>any());
     }
 
@@ -555,7 +584,7 @@ public class ErpSaleQuoteServiceImplTest extends BaseMockitoUnitTest {
         assertServiceException(() -> saleQuoteService.createSaleQuote(reqVO),
                 SALE_QUOTE_ITEM_DUPLICATE, "productId=503, warehouseId=603, giftFlag=false");
         verify(productService, never()).validProductList(any());
-        verify(customerService, never()).validateCustomerForSale(any());
+        verify(customerService, never()).validateCustomerForSale(anyLong(), nullable(Long.class));
         verify(saleQuoteMapper, never()).insert(ArgumentMatchers.<ErpSaleQuoteDO>any());
     }
 
@@ -777,7 +806,7 @@ public class ErpSaleQuoteServiceImplTest extends BaseMockitoUnitTest {
 
         verify(saleQuoteMapper, never()).insert(any(ErpSaleQuoteDO.class));
         verify(saleQuoteItemMapper, never()).insertBatch(any());
-        verify(customerService, never()).validateCustomerForSale(any());
+        verify(customerService, never()).validateCustomerForSale(anyLong(), nullable(Long.class));
     }
 
     @Test
@@ -874,7 +903,7 @@ public class ErpSaleQuoteServiceImplTest extends BaseMockitoUnitTest {
 
         saleQuoteService.submitSaleQuote(quoteId);
 
-        verify(customerService).validateCustomerForSale(90L);
+        verify(customerService).validateCustomerForSale(90L, 80L);
         verify(customerService).validateCustomerSaleDept(90L, 80L);
         verify(saleQuoteMapper).updateByIdAndStatus(eq(quoteId),
                 eq(ErpSaleQuoteStatusEnum.DRAFT.getStatus()),

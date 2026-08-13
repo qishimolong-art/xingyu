@@ -8,7 +8,6 @@ import cn.iocoder.yudao.module.system.dal.dataobject.permission.RoleDO;
 import javax.validation.Valid;
 import java.util.Collection;
 import java.util.List;
-import java.util.Set;
 
 /**
  * 角色 Service 接口
@@ -46,23 +45,12 @@ public interface RoleService {
      * @param ids 角色编号数组
      */
     void deleteRoleList(List<Long> ids);
-
     /**
-     * 设置角色的数据权限
+     * Get role by id.
      *
-     * @param id 角色编号
-     * @param dataScope 数据范围
-     * @param dataScopeDeptIds 部门编号数组
-     */
-    void updateRoleDataScope(Long id, Integer dataScope, Set<Long> dataScopeDeptIds);
-
-    /**
-     * 获得角色
-     *
-     * @param id 角色编号
-     * @return 角色
-     */
-    RoleDO getRole(Long id);
+     * @param id role id
+     * @return role
+     */    RoleDO getRole(Long id);
 
     /**
      * 获得角色，从缓存中

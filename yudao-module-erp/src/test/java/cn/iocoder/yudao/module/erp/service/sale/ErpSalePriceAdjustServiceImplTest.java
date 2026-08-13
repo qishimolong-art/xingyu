@@ -5,13 +5,18 @@ import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
 import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpProductRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.priceadjust.ErpSaleOutItemForAdjustRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.priceadjust.ErpSalePriceAdjustImportExcelVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.priceadjust.ErpSalePriceAdjustImportRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.priceadjust.ErpSalePriceAdjustPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.priceadjust.ErpSalePriceAdjustDraftSaveReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.priceadjust.ErpSalePriceAdjustSaveReqVO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.product.ErpProductDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSalePriceAdjustDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSalePriceAdjustItemDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleOutDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleOutItemDO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpWarehouseDO;
+import cn.iocoder.yudao.module.erp.dal.mysql.product.ErpProductMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpSalePriceAdjustItemMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.finance.ErpFinanceReceiptItemMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpSalePriceAdjustMapper;
@@ -21,6 +26,7 @@ import cn.iocoder.yudao.module.erp.dal.redis.no.ErpNoRedisDAO;
 import cn.iocoder.yudao.module.erp.enums.ErpAuditStatus;
 import cn.iocoder.yudao.module.erp.enums.sale.ErpSalePriceAdjustStatusEnum;
 import cn.iocoder.yudao.module.erp.service.product.ErpProductService;
+import cn.iocoder.yudao.module.erp.service.stock.ErpWarehouseService;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -84,6 +90,10 @@ public class ErpSalePriceAdjustServiceImplTest extends BaseMockitoUnitTest {
     private ErpSaleOutItemMapper saleOutItemMapper;
     @Mock
     private ErpProductService productService;
+    @Mock
+    private ErpProductMapper productMapper;
+    @Mock
+    private ErpWarehouseService warehouseService;
     @Mock
     private ErpSaleFieldPermissionMasker fieldPermissionMasker;
 
@@ -479,6 +489,70 @@ public class ErpSalePriceAdjustServiceImplTest extends BaseMockitoUnitTest {
                 salePriceAdjustService.getSalePriceAdjustPage(reqVO);
 
         assertEquals(new BigDecimal("-40"), result.getList().get(0).getReceiptPrice());
+    }
+
+    @Test
+    public void testImportSalePriceAdjustItems_infersCustomerAndMatchesWarehouse() {
+        ErpSalePriceAdjustImportExcelVO row = new ErpSalePriceAdjustImportExcelVO();
+        row.setSaleOutNo("XSCK-IMPORT-001");
+        row.setProductCode("P001");
+        row.setWarehouseName("一号仓");
+        row.setNewPrice(new BigDecimal("12.50"));
+        row.setAdjustReason("协议调价");
+        row.setItemRemark("导入备注");
+
+        ErpProductDO product = new ErpProductDO()
+                .setId(600L)
+                .setCode("P001")
+                .setName("刹车片");
+        when(productMapper.selectListByCodes(eq(Collections.singleton("P001"))))
+                .thenReturn(Collections.singletonList(product));
+
+        ErpProductRespVO productVO = new ErpProductRespVO();
+        productVO.setId(600L);
+        productVO.setUnitName("个");
+        when(productService.getProductVOMap(eq(Collections.singleton(600L))))
+                .thenReturn(Collections.singletonMap(600L, productVO));
+
+        when(warehouseService.getCurrentUserVisibleSaleWarehouseList())
+                .thenReturn(Collections.singletonList(new ErpWarehouseDO()
+                        .setId(30L)
+                        .setName("一号仓")
+                        .setDeptId(300L)));
+        when(saleOutMapper.selectByNo("XSCK-IMPORT-001"))
+                .thenReturn(new ErpSaleOutDO()
+                        .setId(400L)
+                        .setNo("XSCK-IMPORT-001")
+                        .setCustomerId(20L));
+        when(saleOutItemMapper.selectListByOutId(400L))
+                .thenReturn(Collections.singletonList(new ErpSaleOutItemDO()
+                        .setId(500L)
+                        .setOutId(400L)
+                        .setProductId(600L)
+                        .setWarehouseId(30L)
+                        .setCount(new BigDecimal("2"))
+                        .setProductPrice(new BigDecimal("10.00"))));
+
+        ErpSalePriceAdjustImportRespVO resp =
+                salePriceAdjustService.importSalePriceAdjustItems(Collections.singletonList(row));
+
+        assertEquals(20L, resp.getCustomerId());
+        assertEquals(1, resp.getSuccessCount());
+        assertEquals(0, resp.getFailureCount());
+        assertEquals(1, resp.getItems().size());
+        ErpSalePriceAdjustSaveReqVO.Item item = resp.getItems().get(0);
+        assertEquals(400L, item.getSaleOutId());
+        assertEquals(500L, item.getSaleOutItemId());
+        assertEquals(600L, item.getProductId());
+        assertEquals(30L, item.getWarehouseId());
+        assertEquals("一号仓", item.getWarehouseName());
+        assertEquals(300L, item.getWarehouseDeptId());
+        assertEquals("P001", item.getPartCode());
+        assertEquals("刹车片", item.getPartName());
+        assertEquals("个", item.getUnit());
+        assertEquals(0, new BigDecimal("12.50").compareTo(item.getNewPrice()));
+        assertEquals("协议调价", item.getAdjustReason());
+        assertEquals("导入备注", item.getItemRemark());
     }
 
     @Test

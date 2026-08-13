@@ -23,18 +23,22 @@ import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.supplier.ErpSupp
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.supplier.ErpSupplierRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.supplier.ErpSupplierSaveReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.config.ErpFieldConfigDO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpSupplierBusinessInfoDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpSupplierDO;
+import cn.iocoder.yudao.module.erp.dal.mysql.purchase.ErpSupplierBusinessInfoMapper;
 import cn.iocoder.yudao.module.erp.enums.config.ErpFieldConfigModuleEnum;
 import cn.iocoder.yudao.module.erp.framework.excel.ErpExportFieldUtils;
 import cn.iocoder.yudao.module.erp.service.common.ErpExportCaptchaService;
 import cn.iocoder.yudao.module.erp.service.config.ErpFieldConfigService;
 import cn.iocoder.yudao.module.erp.service.purchase.ErpPurchaseFieldPermissionMasker;
+import cn.iocoder.yudao.module.erp.service.purchase.ErpSupplierDeptPermissionService;
 import cn.iocoder.yudao.module.erp.service.purchase.ErpSupplierService;
 import cn.iocoder.yudao.module.erp.service.sale.ErpCustomerBusinessLicenseOcrService;
 import cn.iocoder.yudao.module.system.api.dept.DeptApi;
 import cn.iocoder.yudao.module.system.api.dept.dto.DeptRespDTO;
 import cn.iocoder.yudao.module.system.api.user.AdminUserApi;
 import cn.iocoder.yudao.module.system.api.user.dto.AdminUserRespDTO;
+import cn.iocoder.yudao.module.system.controller.admin.dept.vo.dept.DeptSimpleRespVO;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -74,6 +78,8 @@ public class ErpSupplierController {
     @Resource
     private ErpSupplierService supplierService;
     @Resource
+    private ErpSupplierDeptPermissionService supplierDeptPermissionService;
+    @Resource
     private ErpCustomerBusinessLicenseOcrService customerBusinessLicenseOcrService;
     @Resource
     private DeptApi deptApi;
@@ -85,6 +91,8 @@ public class ErpSupplierController {
     private ErpFieldConfigService fieldConfigService;
     @Resource
     private ErpExportCaptchaService exportCaptchaService;
+    @Resource
+    private ErpSupplierBusinessInfoMapper supplierBusinessInfoMapper;
 
     @PostMapping("/create")
     @Operation(summary = "创建供应商")
@@ -202,7 +210,15 @@ public class ErpSupplierController {
         PageResult<ErpSupplierRespVO> respPage = BeanUtils.toBean(pageResult, ErpSupplierRespVO.class);
         fillSupplierExtra(respPage.getList());
         maskSupplierFields(respPage.getList());
+        fillBusinessInfoSynced(respPage.getList());
         return success(respPage);
+    }
+
+    @GetMapping("/dept-simple-list")
+    @Operation(summary = "鑾峰緱褰撳墠鐢ㄦ埛鍙煡璇㈢殑渚涘簲鍟嗛儴闂ㄧ簿绠€鍒楄〃")
+    @PreAuthorize("@ss.hasPermission('erp:supplier:query')")
+    public CommonResult<List<DeptSimpleRespVO>> getVisibleDeptSimpleList() {
+        return success(supplierDeptPermissionService.getDataPermissionDeptSimpleList(FIELD_PERMISSION_MODULE));
     }
 
     @GetMapping("/simple-list")
@@ -394,6 +410,17 @@ public class ErpSupplierController {
             return;
         }
         list.forEach(supplier -> fieldPermissionMasker.mask(FIELD_PERMISSION_MODULE, supplier));
+    }
+
+    private void fillBusinessInfoSynced(List<ErpSupplierRespVO> list) {
+        if (CollUtil.isEmpty(list)) {
+            return;
+        }
+        Set<Long> supplierIds = convertSet(list, ErpSupplierRespVO::getId);
+        Set<Long> syncedSupplierIds = convertSet(
+                supplierBusinessInfoMapper.selectListBySupplierIds(supplierIds),
+                ErpSupplierBusinessInfoDO::getSupplierId);
+        list.forEach(supplier -> supplier.setBusinessInfoSynced(syncedSupplierIds.contains(supplier.getId())));
     }
 
     private static Map<String, String> buildExportFieldPermissionMap() {

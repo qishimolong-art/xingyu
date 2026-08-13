@@ -75,10 +75,11 @@ public class ErpSalePriceAdjustController {
     private static final Map<String, String> EXPORT_FIELD_GROUP_MAP = buildExportFieldGroupMap();
     private static final Map<String, String> EXPORT_FIELD_PERMISSION_MAP = buildExportFieldPermissionMap();
     private static final Map<String, String> DETAIL_IMPORT_FIELD_ALIAS_MAP = ErpImportTemplateRequiredFieldUtils.aliasMap(
-            "customerId", "customerId",
             "saleOutNo", "saleOutNo",
             "productId", "productCode",
             "productCode", "productCode",
+            "warehouseId", "warehouseName",
+            "warehouseName", "warehouseName",
             "newPrice", "newPrice",
             "adjustReason", "adjustReason",
             "remark", "itemRemark",
@@ -164,9 +165,9 @@ public class ErpSalePriceAdjustController {
     @PreAuthorize("@ss.hasPermission('erp:sale-price-adjust:create')")
     public void getImportTemplate(HttpServletResponse response) throws IOException {
         ErpSalePriceAdjustImportExcelVO example = new ErpSalePriceAdjustImportExcelVO();
-        example.setCustomerId(1L);
         example.setSaleOutNo("SO202405270001");
         example.setProductCode("P000001");
+        example.setWarehouseName("默认仓");
         example.setNewPrice(new BigDecimal("100.00"));
         example.setAdjustReason("客户议价");
         example.setItemRemark("批量导入");

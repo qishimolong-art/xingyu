@@ -209,8 +209,10 @@ public class FormPermissionConfigServiceImpl implements FormPermissionConfigServ
         if (CollUtil.isNotEmpty(reqVO.getFields())) {
             for (FormPermissionFieldConfigSaveReqVO fieldReqVO : reqVO.getFields()) {
                 FormPermissionIdentifierUtils.checkIdentifier(fieldReqVO.getColumnName(), "列名");
-                if (!FormPermissionFieldValueTypeEnum.contains(fieldReqVO.getValueType())) {
-                    throw new IllegalArgumentException("不支持的值类型: " + fieldReqVO.getValueType());
+                String valueType = StringUtils.hasText(fieldReqVO.getValueType())
+                        ? fieldReqVO.getValueType() : FormPermissionFieldValueTypeEnum.SINGLE_ID.getCode();
+                if (!FormPermissionFieldValueTypeEnum.contains(valueType)) {
+                    throw new IllegalArgumentException("不支持的值类型: " + valueType);
                 }
                 FormPermissionCandidateColumnRespVO column = columnMap.get(fieldReqVO.getColumnName());
                 if (column == null) {
@@ -221,7 +223,7 @@ public class FormPermissionConfigServiceImpl implements FormPermissionConfigServ
                 }
                 FormPermissionFieldConfigDO fieldConfig = BeanUtils.toBean(fieldReqVO, FormPermissionFieldConfigDO.class);
                 fieldConfig.setFormType(reqVO.getFormType());
-                fieldConfig.setValueType(FormPermissionFieldValueTypeEnum.SINGLE_ID.getCode());
+                fieldConfig.setValueType(valueType);
                 if (fieldConfig.getColumnDesc() == null) {
                     fieldConfig.setColumnDesc(column.getColumnDesc());
                 }

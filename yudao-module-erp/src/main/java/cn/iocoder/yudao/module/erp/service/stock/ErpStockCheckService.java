@@ -4,11 +4,13 @@ import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.ErpStockUpdateRemarkReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.check.ErpStockCheckDraftCreateReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.check.ErpStockCheckDraftUpdateReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.check.ErpStockCheckItemBatchUpdateReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.check.ErpStockCheckPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.check.ErpStockCheckSaveReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.stock.ErpStockAdjustReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockCheckDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockCheckItemDO;
+import cn.iocoder.yudao.module.system.controller.admin.dept.vo.dept.DeptSimpleRespVO;
 
 import javax.validation.Valid;
 import java.math.BigDecimal;
@@ -46,6 +48,10 @@ public interface ErpStockCheckService {
      * @param updateReqVO 更新信息
      */
     void updateStockCheck(@Valid ErpStockCheckSaveReqVO updateReqVO);
+
+    void batchUpdateStockCheckItems(@Valid ErpStockCheckItemBatchUpdateReqVO updateReqVO);
+
+    List<DeptSimpleRespVO> getWarehouseDeptSimpleList(Long warehouseId);
 
     void updateStockCheckDraft(ErpStockCheckDraftUpdateReqVO updateReqVO);
 

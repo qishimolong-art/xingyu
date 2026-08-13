@@ -13,6 +13,7 @@ import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.transferledger.ErpS
 import cn.iocoder.yudao.module.erp.framework.excel.ErpExportFieldUtils;
 import cn.iocoder.yudao.module.erp.service.stock.ErpStockFieldPermissionMasker;
 import cn.iocoder.yudao.module.erp.service.stock.ErpStockTransferLedgerService;
+import cn.iocoder.yudao.module.system.controller.admin.dept.vo.dept.DeptSimpleRespVO;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -80,6 +81,20 @@ public class ErpStockTransferLedgerController {
         PageResult<ErpStockTransferLedgerDetailRespVO> result = transferLedgerService.getDetailPage(reqVO);
         fieldPermissionMasker.maskReportColumns(FIELD_PERMISSION_MODULE, result.getList());
         return success(result);
+    }
+
+    @GetMapping("/from-dept-simple-list")
+    @Operation(summary = "鑾峰緱褰撳墠鐢ㄦ埛鍙璋冩嫧鍙拌处璋冨嚭閮ㄩ棬绮剧畝鍒楄〃")
+    @PreAuthorize("@ss.hasPermission('erp:stock-transfer-ledger:query')")
+    public CommonResult<List<DeptSimpleRespVO>> getFromDeptSimpleList() {
+        return success(transferLedgerService.getVisibleFromDeptSimpleList());
+    }
+
+    @GetMapping("/to-dept-simple-list")
+    @Operation(summary = "鑾峰緱褰撳墠鐢ㄦ埛鍙璋冩嫧鍙拌处璋冨叆閮ㄩ棬绮剧畝鍒楄〃")
+    @PreAuthorize("@ss.hasPermission('erp:stock-transfer-ledger:query')")
+    public CommonResult<List<DeptSimpleRespVO>> getToDeptSimpleList() {
+        return success(transferLedgerService.getVisibleToDeptSimpleList());
     }
 
     @GetMapping("/export-excel")

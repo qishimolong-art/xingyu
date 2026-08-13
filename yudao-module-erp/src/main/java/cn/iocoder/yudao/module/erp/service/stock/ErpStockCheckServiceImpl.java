@@ -8,6 +8,7 @@ import cn.iocoder.yudao.framework.datapermission.core.util.DataPermissionUtils;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.ErpStockUpdateRemarkReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.check.ErpStockCheckDraftCreateReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.check.ErpStockCheckDraftUpdateReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.check.ErpStockCheckItemBatchUpdateReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.check.ErpStockCheckPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.check.ErpStockCheckSaveReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.stock.ErpStockAdjustReqVO;
@@ -26,6 +27,7 @@ import cn.iocoder.yudao.module.erp.enums.stock.ErpStockRecordBizTypeEnum;
 import cn.iocoder.yudao.module.erp.service.common.ErpOperateLogService;
 import cn.iocoder.yudao.module.erp.service.product.ErpProductService;
 import cn.iocoder.yudao.module.erp.service.stock.bo.ErpStockRecordCreateReqBO;
+import cn.iocoder.yudao.module.system.controller.admin.dept.vo.dept.DeptSimpleRespVO;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.validation.annotation.Validated;
@@ -37,6 +39,7 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -80,6 +83,8 @@ public class ErpStockCheckServiceImpl implements ErpStockCheckService {
     private ErpStockService stockService;
     @Resource
     private ErpOperateLogService operateLogService;
+    @Resource
+    private ErpStockItemBatchUpdateSupport batchUpdateSupport;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -199,6 +204,53 @@ public class ErpStockCheckServiceImpl implements ErpStockCheckService {
         // 2.2 鏇存柊鐩樼偣鍗曢」
         updateStockCheckItemList(updateReqVO.getId(), stockCheckItems);
         operateLogService.recordUpdate(ERP_STOCK_CHECK_TYPE, stockCheck.getId(), stockCheck.getNo());
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void batchUpdateStockCheckItems(ErpStockCheckItemBatchUpdateReqVO updateReqVO) {
+        batchUpdateSupport.validateFieldPermission(FIELD_PERMISSION_MODULE, STOCK_CHECK_ITEM_BATCH_UPDATE_FIELD_REQUIRED);
+        ErpStockCheckDO stockCheck = validateStockCheckExists(updateReqVO.getCheckId());
+        if (ErpStockCheckStatusEnum.APPROVE.getStatus().equals(stockCheck.getStatus())) {
+            throw exception(STOCK_CHECK_UPDATE_FAIL_APPROVE, stockCheck.getNo());
+        }
+        ErpWarehouseDO targetWarehouse = batchUpdateSupport.validateTargetWarehouse(updateReqVO.getWarehouseId());
+        batchUpdateSupport.validateDocumentDeptAllowed(stockCheck.getDeptId(), targetWarehouse, FIELD_PERMISSION_MODULE,
+                STOCK_CHECK_ITEM_BATCH_UPDATE_WAREHOUSE_DEPT_NOT_ALLOWED);
+
+        List<ErpStockCheckItemDO> stockCheckItems = stockCheckItemMapper.selectListByCheckId(updateReqVO.getCheckId());
+        Set<Long> selectedItemIds = new LinkedHashSet<>(updateReqVO.getItemIds());
+        List<ErpStockCheckItemDO> selectedItems = stockCheckItems.stream()
+                .filter(item -> selectedItemIds.contains(item.getId()))
+                .collect(java.util.stream.Collectors.toList());
+        if (selectedItems.size() != selectedItemIds.size()) {
+            throw exception(STOCK_CHECK_ITEM_BATCH_UPDATE_ITEM_NOT_EXISTS);
+        }
+        validateBatchUpdateStockCheckNoDuplicate(stockCheckItems, selectedItemIds, targetWarehouse.getId());
+
+        for (ErpStockCheckItemDO item : selectedItems) {
+            item.setWarehouseId(targetWarehouse.getId());
+            item.setBatchNo(null);
+            item.setStockCount(stockService.getStockCount(item.getProductId(), targetWarehouse.getId()));
+        }
+        Integer checkType = ErpStockCheckTypeEnum.defaultIfNull(stockCheck.getCheckType());
+        List<ErpStockCheckItemDO> validatedItems = validateStockCheckItems(
+                BeanUtils.toBean(stockCheckItems, ErpStockCheckSaveReqVO.Item.class), checkType);
+        Map<Long, ErpStockCheckItemDO> validatedItemMap = convertMap(validatedItems, ErpStockCheckItemDO::getId);
+        List<ErpStockCheckItemDO> updateItems = selectedItems.stream()
+                .map(item -> validatedItemMap.get(item.getId()))
+                .collect(java.util.stream.Collectors.toList());
+        stockCheckMapper.updateById(new ErpStockCheckDO()
+                .setId(stockCheck.getId())
+                .setTotalCount(getSumValue(validatedItems, ErpStockCheckItemDO::getCount, BigDecimal::add, BigDecimal.ZERO))
+                .setTotalPrice(getSumValue(validatedItems, ErpStockCheckItemDO::getTotalPrice, BigDecimal::add, BigDecimal.ZERO)));
+        stockCheckItemMapper.updateBatch(updateItems);
+        operateLogService.recordUpdate(ERP_STOCK_CHECK_TYPE, stockCheck.getId(), stockCheck.getNo());
+    }
+
+    @Override
+    public List<DeptSimpleRespVO> getWarehouseDeptSimpleList(Long warehouseId) {
+        return batchUpdateSupport.getWarehouseAvailableDeptSimpleList(warehouseId, FIELD_PERMISSION_MODULE);
     }
 
     @Override
@@ -429,6 +481,21 @@ public class ErpStockCheckServiceImpl implements ErpStockCheckService {
         for (ErpStockCheckSaveReqVO.Item item : list) {
             String batchNo = item.getBatchNo() == null ? "" : item.getBatchNo().trim();
             String key = item.getProductId() + "-" + item.getWarehouseId() + "-" + batchNo;
+            if (!keys.add(key)) {
+                throw exception(STOCK_CHECK_ITEM_DUPLICATE, key);
+            }
+        }
+    }
+
+    private void validateBatchUpdateStockCheckNoDuplicate(List<ErpStockCheckItemDO> stockCheckItems,
+                                                          Set<Long> selectedItemIds,
+                                                          Long targetWarehouseId) {
+        Set<String> keys = new HashSet<>();
+        for (ErpStockCheckItemDO item : stockCheckItems) {
+            Long warehouseId = selectedItemIds.contains(item.getId()) ? targetWarehouseId : item.getWarehouseId();
+            String batchNo = selectedItemIds.contains(item.getId()) || item.getBatchNo() == null
+                    ? "" : item.getBatchNo().trim();
+            String key = item.getProductId() + "-" + warehouseId + "-" + batchNo;
             if (!keys.add(key)) {
                 throw exception(STOCK_CHECK_ITEM_DUPLICATE, key);
             }

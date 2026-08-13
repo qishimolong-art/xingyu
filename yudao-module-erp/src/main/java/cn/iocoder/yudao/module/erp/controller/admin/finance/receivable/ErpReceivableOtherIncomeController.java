@@ -22,6 +22,7 @@ import cn.iocoder.yudao.module.erp.controller.admin.finance.receivable.vo.otheri
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.ErpAccountDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.receivable.ErpReceivableOtherIncomeDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.receivable.ErpReceivableOtherIncomeItemDO;
+import cn.iocoder.yudao.module.erp.service.base.ErpDataPermissionDeptService;
 import cn.iocoder.yudao.module.erp.service.finance.ErpAccountService;
 import cn.iocoder.yudao.module.erp.service.finance.ErpFinanceFieldPermissionMasker;
 import cn.iocoder.yudao.module.erp.service.finance.receivable.ErpReceivableOtherIncomeService;
@@ -29,6 +30,7 @@ import cn.iocoder.yudao.module.system.api.dept.DeptApi;
 import cn.iocoder.yudao.module.system.api.dept.dto.DeptRespDTO;
 import cn.iocoder.yudao.module.system.api.user.AdminUserApi;
 import cn.iocoder.yudao.module.system.api.user.dto.AdminUserRespDTO;
+import cn.iocoder.yudao.module.system.controller.admin.dept.vo.dept.DeptSimpleRespVO;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -82,6 +84,8 @@ public class ErpReceivableOtherIncomeController {
     private DeptApi deptApi;
     @Resource
     private ErpFinanceFieldPermissionMasker fieldPermissionMasker;
+    @Resource
+    private ErpDataPermissionDeptService dataPermissionDeptService;
 
     @PostMapping("/create")
     @Operation(summary = "创建其他收入")
@@ -189,6 +193,13 @@ public class ErpReceivableOtherIncomeController {
     public CommonResult<PageResult<ErpReceivableOtherIncomeRespVO>> page(@Valid ErpReceivableOtherIncomePageReqVO pageReqVO) {
         PageResult<ErpReceivableOtherIncomeDO> pageResult = otherIncomeService.getOtherIncomePage(pageReqVO);
         return success(buildPageResult(pageResult));
+    }
+
+    @GetMapping("/dept-simple-list")
+    @Operation(summary = "Get receivable other income data permission dept simple list")
+    @PreAuthorize("@ss.hasPermission('erp:receivable-other-income:query')")
+    public CommonResult<List<DeptSimpleRespVO>> getReceivableOtherIncomeDeptSimpleList() {
+        return success(dataPermissionDeptService.getDeptSimpleList("erp_receivable_other_income"));
     }
 
     private PageResult<ErpReceivableOtherIncomeRespVO> buildPageResult(PageResult<ErpReceivableOtherIncomeDO> pageResult) {

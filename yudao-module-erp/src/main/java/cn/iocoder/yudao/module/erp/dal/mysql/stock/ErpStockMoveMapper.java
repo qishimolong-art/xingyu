@@ -17,6 +17,8 @@ import org.springframework.util.StringUtils;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
+import java.util.Objects;
+import java.util.stream.Collectors;
 
 /**
  * ERP 库存调拨�?Mapper
@@ -66,6 +68,54 @@ public interface ErpStockMoveMapper extends BaseMapperX<ErpStockMoveDO> {
         applyTransferInVisibleScope(query, deptIds, all);
         query.orderByDesc(ErpStockMoveDO::getMoveTime).orderByDesc(ErpStockMoveDO::getId);
         return selectList(query);
+    }
+
+    default List<Long> selectTransferOutVisibleFromDeptIdList(Collection<Long> deptIds, boolean all) {
+        MPJLambdaWrapperX<ErpStockMoveDO> query = new MPJLambdaWrapperX<>();
+        query.select("DISTINCT t.from_dept_id AS fromDeptId");
+        query.isNotNull(ErpStockMoveDO::getFromDeptId);
+        appendTransferDirection(query, 10);
+        applyTransferOutVisibleScope(query, deptIds, all);
+        return selectJoinList(ErpStockMoveDO.class, query).stream()
+                .map(ErpStockMoveDO::getFromDeptId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toList());
+    }
+
+    default List<Long> selectTransferOutVisibleToDeptIdList(Collection<Long> deptIds, boolean all) {
+        MPJLambdaWrapperX<ErpStockMoveDO> query = new MPJLambdaWrapperX<>();
+        query.select("DISTINCT t.to_dept_id AS toDeptId");
+        query.isNotNull(ErpStockMoveDO::getToDeptId);
+        appendTransferDirection(query, 10);
+        applyTransferOutVisibleScope(query, deptIds, all);
+        return selectJoinList(ErpStockMoveDO.class, query).stream()
+                .map(ErpStockMoveDO::getToDeptId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toList());
+    }
+
+    default List<Long> selectTransferInVisibleFromDeptIdList(Collection<Long> deptIds, boolean all) {
+        MPJLambdaWrapperX<ErpStockMoveDO> query = new MPJLambdaWrapperX<>();
+        query.select("DISTINCT t.from_dept_id AS fromDeptId");
+        query.isNotNull(ErpStockMoveDO::getFromDeptId);
+        appendTransferDirection(query, 20);
+        applyTransferInVisibleScope(query, deptIds, all);
+        return selectJoinList(ErpStockMoveDO.class, query).stream()
+                .map(ErpStockMoveDO::getFromDeptId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toList());
+    }
+
+    default List<Long> selectTransferInVisibleToDeptIdList(Collection<Long> deptIds, boolean all) {
+        MPJLambdaWrapperX<ErpStockMoveDO> query = new MPJLambdaWrapperX<>();
+        query.select("DISTINCT t.to_dept_id AS toDeptId");
+        query.isNotNull(ErpStockMoveDO::getToDeptId);
+        appendTransferDirection(query, 20);
+        applyTransferInVisibleScope(query, deptIds, all);
+        return selectJoinList(ErpStockMoveDO.class, query).stream()
+                .map(ErpStockMoveDO::getToDeptId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toList());
     }
 
     default List<ErpStockMoveDO> selectLedgerRelatedList(Collection<Long> moveIds) {
@@ -142,11 +192,14 @@ public interface ErpStockMoveMapper extends BaseMapperX<ErpStockMoveDO> {
         query.and(scope -> {
             if (CollUtil.isNotEmpty(deptIds)) {
                 Object[] parameters = deptIds.toArray();
-                scope.and(deptScope -> deptScope.in(ErpStockMoveDO::getFromDeptId, deptIds)
+                String placeholders = buildIndexedPlaceholders(parameters.length);
+                scope.apply("EXISTS (SELECT 1 FROM erp_stock_move_item i "
+                                + "WHERE i.move_id = t.id AND i.deleted = b'0' "
+                                + "AND i.from_dept_id IN (" + placeholders + "))", parameters)
                         .apply("NOT EXISTS (SELECT 1 FROM erp_stock_move_item i "
-                                        + "WHERE i.move_id = t.id AND i.deleted = b'0' "
-                                        + "AND (i.from_dept_id IS NULL OR i.from_dept_id NOT IN ("
-                                        + buildIndexedPlaceholders(parameters.length) + ")))", parameters));
+                                + "WHERE i.move_id = t.id AND i.deleted = b'0' "
+                                + "AND (i.from_dept_id IS NULL OR i.from_dept_id NOT IN ("
+                                + placeholders + ")))", parameters);
             } else {
                 scope.apply("1 = 0");
             }
@@ -173,11 +226,14 @@ public interface ErpStockMoveMapper extends BaseMapperX<ErpStockMoveDO> {
         query.and(scope -> {
             if (CollUtil.isNotEmpty(deptIds)) {
                 Object[] parameters = deptIds.toArray();
-                scope.and(deptScope -> deptScope.in(ErpStockMoveDO::getToDeptId, deptIds)
+                String placeholders = buildIndexedPlaceholders(parameters.length);
+                scope.apply("EXISTS (SELECT 1 FROM erp_stock_move_item i "
+                                + "WHERE i.move_id = t.id AND i.deleted = b'0' "
+                                + "AND i.to_dept_id IN (" + placeholders + "))", parameters)
                         .apply("NOT EXISTS (SELECT 1 FROM erp_stock_move_item i "
-                                        + "WHERE i.move_id = t.id AND i.deleted = b'0' "
-                                        + "AND (i.to_dept_id IS NULL OR i.to_dept_id NOT IN ("
-                                        + buildIndexedPlaceholders(parameters.length) + ")))", parameters));
+                                + "WHERE i.move_id = t.id AND i.deleted = b'0' "
+                                + "AND (i.to_dept_id IS NULL OR i.to_dept_id NOT IN ("
+                                + placeholders + ")))", parameters);
             } else {
                 scope.apply("1 = 0");
             }

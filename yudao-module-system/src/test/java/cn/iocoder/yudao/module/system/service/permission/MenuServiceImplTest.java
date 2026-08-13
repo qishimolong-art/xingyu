@@ -129,9 +129,11 @@ public class MenuServiceImplTest extends BaseDbUnitTest {
     @Test
     public void testGetMenuList_all() {
         // mock 数据
-        MenuDO menu100 = randomPojo(MenuDO.class);
+        MenuDO menu100 = randomPojo(MenuDO.class, o -> o.setStatus(CommonStatusEnum.ENABLE.getStatus())
+                .setParentId(ID_ROOT));
         menuMapper.insert(menu100);
-        MenuDO menu101 = randomPojo(MenuDO.class);
+        MenuDO menu101 = randomPojo(MenuDO.class, o -> o.setStatus(CommonStatusEnum.ENABLE.getStatus())
+                .setParentId(ID_ROOT));
         menuMapper.insert(menu101);
         // 准备参数
 
@@ -190,9 +192,11 @@ public class MenuServiceImplTest extends BaseDbUnitTest {
     @Test
     public void testGetMenuIdListByPermissionFromCache() {
         // mock 数据
-        MenuDO menu100 = randomPojo(MenuDO.class);
+        MenuDO menu100 = randomPojo(MenuDO.class, o -> o.setStatus(CommonStatusEnum.ENABLE.getStatus())
+                .setParentId(ID_ROOT));
         menuMapper.insert(menu100);
-        MenuDO menu101 = randomPojo(MenuDO.class);
+        MenuDO menu101 = randomPojo(MenuDO.class, o -> o.setStatus(CommonStatusEnum.ENABLE.getStatus())
+                .setParentId(ID_ROOT));
         menuMapper.insert(menu101);
         // 准备参数
         String permission = menu100.getPermission();
@@ -202,6 +206,28 @@ public class MenuServiceImplTest extends BaseDbUnitTest {
         // 断言
         assertEquals(1, ids.size());
         assertEquals(menu100.getId(), ids.get(0));
+    }
+
+    @Test
+    public void testGetMenuIdListByPermissionFromCache_filterDisabledMenus() {
+        String permission = "system:permission:assign-role-data-scope";
+        MenuDO enabledMenu = randomPojo(MenuDO.class, o -> o.setPermission(permission)
+                .setStatus(CommonStatusEnum.ENABLE.getStatus()).setParentId(ID_ROOT));
+        menuMapper.insert(enabledMenu);
+        MenuDO disabledMenu = randomPojo(MenuDO.class, o -> o.setPermission(permission)
+                .setStatus(CommonStatusEnum.DISABLE.getStatus()).setParentId(ID_ROOT));
+        menuMapper.insert(disabledMenu);
+        MenuDO disabledParent = randomPojo(MenuDO.class, o -> o.setStatus(CommonStatusEnum.DISABLE.getStatus())
+                .setParentId(ID_ROOT));
+        menuMapper.insert(disabledParent);
+        MenuDO childOfDisabledParent = randomPojo(MenuDO.class, o -> o.setPermission(permission)
+                .setStatus(CommonStatusEnum.ENABLE.getStatus()).setParentId(disabledParent.getId()));
+        menuMapper.insert(childOfDisabledParent);
+
+        List<Long> ids = menuService.getMenuIdListByPermissionFromCache(permission);
+
+        assertEquals(1, ids.size());
+        assertEquals(enabledMenu.getId(), ids.get(0));
     }
 
     @Test

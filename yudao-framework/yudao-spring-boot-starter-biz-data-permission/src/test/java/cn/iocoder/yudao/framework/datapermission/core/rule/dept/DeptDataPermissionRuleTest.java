@@ -74,7 +74,7 @@ class DeptDataPermissionRuleTest extends BaseMockitoUnitTest {
                     .setUserType(UserTypeEnum.ADMIN.getValue()));
             securityFrameworkUtilsMock.when(SecurityFrameworkUtils::getLoginUser).thenReturn(loginUser);
             // mock 方法（permissionApi 返回 null）
-            when(permissionApi.getDeptDataPermission(eq(loginUser.getId()))).thenReturn(null);
+            when(permissionApi.getDeptDataPermission(eq(loginUser.getId()), eq(tableName))).thenReturn(null);
 
             // 调用
             NullPointerException exception = assertThrows(NullPointerException.class,
@@ -97,13 +97,13 @@ class DeptDataPermissionRuleTest extends BaseMockitoUnitTest {
             securityFrameworkUtilsMock.when(SecurityFrameworkUtils::getLoginUser).thenReturn(loginUser);
             // mock 方法（DeptDataPermissionRespDTO）
             DeptDataPermissionRespDTO deptDataPermission = new DeptDataPermissionRespDTO().setAll(true);
-            when(permissionApi.getDeptDataPermission(same(1L))).thenReturn(deptDataPermission);
+            when(permissionApi.getDeptDataPermission(same(1L), eq(tableName))).thenReturn(deptDataPermission);
 
             // 调用
             Expression expression = rule.getExpression(tableName, tableAlias);
             // 断言
             assertNull(expression);
-            assertSame(deptDataPermission, loginUser.getContext(DeptDataPermissionRule.CONTEXT_KEY, DeptDataPermissionRespDTO.class));
+            assertSame(deptDataPermission, loginUser.getContext(DeptDataPermissionRule.CONTEXT_KEY + ":" + tableName, DeptDataPermissionRespDTO.class));
         }
     }
 
@@ -120,13 +120,13 @@ class DeptDataPermissionRuleTest extends BaseMockitoUnitTest {
             securityFrameworkUtilsMock.when(SecurityFrameworkUtils::getLoginUser).thenReturn(loginUser);
             // mock 方法（DeptDataPermissionRespDTO）
             DeptDataPermissionRespDTO deptDataPermission = new DeptDataPermissionRespDTO();
-            when(permissionApi.getDeptDataPermission(same(1L))).thenReturn(deptDataPermission);
+            when(permissionApi.getDeptDataPermission(same(1L), eq(tableName))).thenReturn(deptDataPermission);
 
             // 调用
             Expression expression = rule.getExpression(tableName, tableAlias);
             // 断言
             assertEquals("null = null", expression.toString());
-            assertSame(deptDataPermission, loginUser.getContext(DeptDataPermissionRule.CONTEXT_KEY, DeptDataPermissionRespDTO.class));
+            assertSame(deptDataPermission, loginUser.getContext(DeptDataPermissionRule.CONTEXT_KEY + ":" + tableName, DeptDataPermissionRespDTO.class));
         }
     }
 
@@ -144,13 +144,13 @@ class DeptDataPermissionRuleTest extends BaseMockitoUnitTest {
             // mock 方法（DeptDataPermissionRespDTO）
             DeptDataPermissionRespDTO deptDataPermission = new DeptDataPermissionRespDTO()
                     .setDeptIds(SetUtils.asSet(10L, 20L)).setSelf(true);
-            when(permissionApi.getDeptDataPermission(same(1L))).thenReturn(deptDataPermission);
+            when(permissionApi.getDeptDataPermission(same(1L), eq(tableName))).thenReturn(deptDataPermission);
 
             // 调用
             Expression expression = rule.getExpression(tableName, tableAlias);
             // 断言
             assertEquals("null = null", expression.toString());
-            assertSame(deptDataPermission, loginUser.getContext(DeptDataPermissionRule.CONTEXT_KEY, DeptDataPermissionRespDTO.class));
+            assertSame(deptDataPermission, loginUser.getContext(DeptDataPermissionRule.CONTEXT_KEY + ":" + tableName, DeptDataPermissionRespDTO.class));
         }
     }
 
@@ -168,7 +168,7 @@ class DeptDataPermissionRuleTest extends BaseMockitoUnitTest {
             // mock 方法（DeptDataPermissionRespDTO）
             DeptDataPermissionRespDTO deptDataPermission = new DeptDataPermissionRespDTO()
                     .setSelf(true);
-            when(permissionApi.getDeptDataPermission(same(1L))).thenReturn(deptDataPermission);
+            when(permissionApi.getDeptDataPermission(same(1L), eq(tableName))).thenReturn(deptDataPermission);
             // 添加 user 字段配置
             rule.addUserColumn("t_user", "id");
 
@@ -176,7 +176,7 @@ class DeptDataPermissionRuleTest extends BaseMockitoUnitTest {
             Expression expression = rule.getExpression(tableName, tableAlias);
             // 断言
             assertEquals("u.id = 1", expression.toString());
-            assertSame(deptDataPermission, loginUser.getContext(DeptDataPermissionRule.CONTEXT_KEY, DeptDataPermissionRespDTO.class));
+            assertSame(deptDataPermission, loginUser.getContext(DeptDataPermissionRule.CONTEXT_KEY + ":" + tableName, DeptDataPermissionRespDTO.class));
         }
     }
 
@@ -191,7 +191,7 @@ class DeptDataPermissionRuleTest extends BaseMockitoUnitTest {
             securityFrameworkUtilsMock.when(SecurityFrameworkUtils::getLoginUser).thenReturn(loginUser);
             DeptDataPermissionRespDTO deptDataPermission = new DeptDataPermissionRespDTO()
                     .setDeptIds(CollUtil.newLinkedHashSet(10L, 20L)).setSelf(false);
-            when(permissionApi.getDeptDataPermission(same(1L))).thenReturn(deptDataPermission);
+            when(permissionApi.getDeptDataPermission(same(1L), eq(tableName))).thenReturn(deptDataPermission);
             when(permissionApi.getUserIdsByDeptIds(eq(CollUtil.newLinkedHashSet(10L, 20L))))
                     .thenReturn(CollUtil.newLinkedHashSet(100L, 200L));
             rule.addUserColumn(tableName, "purchaser");
@@ -216,7 +216,7 @@ class DeptDataPermissionRuleTest extends BaseMockitoUnitTest {
             // mock 方法（DeptDataPermissionRespDTO）
             DeptDataPermissionRespDTO deptDataPermission = new DeptDataPermissionRespDTO()
                     .setDeptIds(CollUtil.newLinkedHashSet(10L, 20L));
-            when(permissionApi.getDeptDataPermission(same(1L))).thenReturn(deptDataPermission);
+            when(permissionApi.getDeptDataPermission(same(1L), eq(tableName))).thenReturn(deptDataPermission);
             // 添加 dept 字段配置
             rule.addDeptColumn("t_user", "dept_id");
 
@@ -224,7 +224,7 @@ class DeptDataPermissionRuleTest extends BaseMockitoUnitTest {
             Expression expression = rule.getExpression(tableName, tableAlias);
             // 断言
             assertEquals("u.dept_id IN (10, 20)", expression.toString());
-            assertSame(deptDataPermission, loginUser.getContext(DeptDataPermissionRule.CONTEXT_KEY, DeptDataPermissionRespDTO.class));
+            assertSame(deptDataPermission, loginUser.getContext(DeptDataPermissionRule.CONTEXT_KEY + ":" + tableName, DeptDataPermissionRespDTO.class));
         }
     }
 
@@ -242,7 +242,7 @@ class DeptDataPermissionRuleTest extends BaseMockitoUnitTest {
             // mock 方法（DeptDataPermissionRespDTO）
             DeptDataPermissionRespDTO deptDataPermission = new DeptDataPermissionRespDTO()
                     .setDeptIds(CollUtil.newLinkedHashSet(10L, 20L)).setSelf(true);
-            when(permissionApi.getDeptDataPermission(same(1L))).thenReturn(deptDataPermission);
+            when(permissionApi.getDeptDataPermission(same(1L), eq(tableName))).thenReturn(deptDataPermission);
             // 添加 user 字段配置
             rule.addUserColumn("t_user", "id");
             // 添加 dept 字段配置
@@ -252,7 +252,7 @@ class DeptDataPermissionRuleTest extends BaseMockitoUnitTest {
             Expression expression = rule.getExpression(tableName, tableAlias);
             // 断言
             assertEquals("(u.dept_id IN (10, 20) OR u.id = 1)", expression.toString());
-            assertSame(deptDataPermission, loginUser.getContext(DeptDataPermissionRule.CONTEXT_KEY, DeptDataPermissionRespDTO.class));
+            assertSame(deptDataPermission, loginUser.getContext(DeptDataPermissionRule.CONTEXT_KEY + ":" + tableName, DeptDataPermissionRespDTO.class));
         }
     }
 

@@ -1,5 +1,6 @@
 package cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns;
 
+import cn.idev.excel.annotation.ExcelIgnoreUnannotated;
 import cn.idev.excel.annotation.ExcelProperty;
 import cn.iocoder.yudao.framework.excel.core.annotations.ExcelRequired;
 import lombok.Data;
@@ -7,6 +8,7 @@ import lombok.Data;
 import java.math.BigDecimal;
 
 @Data
+@ExcelIgnoreUnannotated
 public class ErpSaleReturnImportExcelVO {
 
     @ExcelRequired
@@ -20,7 +22,8 @@ public class ErpSaleReturnImportExcelVO {
     @ExcelProperty("退货单价")
     private BigDecimal productPrice;
 
-    @ExcelProperty("仓库名称")
+    @ExcelRequired
+    @ExcelProperty("所属仓库")
     private String warehouseName;
 
     @ExcelProperty("退货原因")

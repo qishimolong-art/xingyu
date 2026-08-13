@@ -32,14 +32,17 @@ import cn.iocoder.yudao.module.erp.enums.ErpAuditStatus;
 import cn.iocoder.yudao.module.erp.enums.common.ErpBizTypeEnum;
 import cn.iocoder.yudao.module.erp.enums.finance.accounting.ErpVoucherSourceBizTypeEnum;
 import cn.iocoder.yudao.module.erp.enums.finance.ErpFinanceWriteOffStatusEnum;
+import cn.iocoder.yudao.module.erp.service.base.ErpDataPermissionDeptService;
 import cn.iocoder.yudao.module.erp.service.finance.ErpAccountService;
 import cn.iocoder.yudao.module.erp.service.finance.ErpFinanceFieldPermissionMasker;
 import cn.iocoder.yudao.module.erp.service.finance.ErpFinanceReceiptService;
+import cn.iocoder.yudao.module.erp.service.sale.ErpCustomerDeptPermissionService;
 import cn.iocoder.yudao.module.erp.service.sale.ErpCustomerService;
 import cn.iocoder.yudao.module.system.api.dept.DeptApi;
 import cn.iocoder.yudao.module.system.api.dept.dto.DeptRespDTO;
 import cn.iocoder.yudao.module.system.api.user.AdminUserApi;
 import cn.iocoder.yudao.module.system.api.user.dto.AdminUserRespDTO;
+import cn.iocoder.yudao.module.system.controller.admin.dept.vo.dept.DeptSimpleRespVO;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -88,6 +91,10 @@ public class ErpFinanceReceiptController {
     private ErpFinanceFieldPermissionMasker fieldPermissionMasker;
     @Resource
     private ErpVoucherMapper voucherMapper;
+    @Resource
+    private ErpDataPermissionDeptService dataPermissionDeptService;
+    @Resource
+    private ErpCustomerDeptPermissionService customerDeptPermissionService;
 
     @PostMapping("/create")
     @Operation(summary = "创建收款单")
@@ -228,6 +235,22 @@ public class ErpFinanceReceiptController {
     public CommonResult<PageResult<ErpFinanceReceiptRespVO>> getFinanceReceiptPage(@Valid ErpFinanceReceiptPageReqVO pageReqVO) {
         PageResult<ErpFinanceReceiptDO> pageResult = financeReceiptService.getFinanceReceiptPage(pageReqVO);
         return success(buildFinanceReceiptVOPageResult(pageResult));
+    }
+
+    @GetMapping("/dept-simple-list")
+    @Operation(summary = "Get finance receipt data permission dept simple list")
+    @PreAuthorize("@ss.hasPermission('erp:finance-receipt:query')")
+    public CommonResult<List<DeptSimpleRespVO>> getFinanceReceiptDeptSimpleList() {
+        return success(dataPermissionDeptService.getDeptSimpleList("erp_finance_receipt"));
+    }
+
+    @GetMapping("/customer-dept-simple-list")
+    @Operation(summary = "获取客户对当前用户可用的收款部门精简列表")
+    @Parameter(name = "customerId", description = "客户编号", required = true, example = "1024")
+    @PreAuthorize("@ss.hasPermission('erp:finance-receipt:query')")
+    public CommonResult<List<DeptSimpleRespVO>> getCustomerAvailableDeptSimpleList(
+            @RequestParam("customerId") Long customerId) {
+        return success(customerDeptPermissionService.getAvailableDeptSimpleList(customerId, "erp_finance_receipt"));
     }
 
     @GetMapping("/export-excel")

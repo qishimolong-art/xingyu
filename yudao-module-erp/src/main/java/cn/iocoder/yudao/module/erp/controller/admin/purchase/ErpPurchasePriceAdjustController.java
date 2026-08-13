@@ -34,12 +34,14 @@ import cn.iocoder.yudao.module.erp.service.config.ErpFieldConfigService;
 import cn.iocoder.yudao.module.erp.service.product.ErpProductService;
 import cn.iocoder.yudao.module.erp.service.purchase.ErpPurchaseFieldPermissionMasker;
 import cn.iocoder.yudao.module.erp.service.purchase.ErpPurchasePriceAdjustService;
+import cn.iocoder.yudao.module.erp.service.purchase.ErpSupplierDeptPermissionService;
 import cn.iocoder.yudao.module.erp.service.purchase.ErpSupplierService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpWarehouseService;
 import cn.iocoder.yudao.module.system.api.dept.DeptApi;
 import cn.iocoder.yudao.module.system.api.dept.dto.DeptRespDTO;
 import cn.iocoder.yudao.module.system.api.user.AdminUserApi;
 import cn.iocoder.yudao.module.system.api.user.dto.AdminUserRespDTO;
+import cn.iocoder.yudao.module.system.controller.admin.dept.vo.dept.DeptSimpleRespVO;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -90,12 +92,14 @@ public class ErpPurchasePriceAdjustController {
             "newPrice", "newPrice",
             "adjustPrice", "newPrice");
     private static final Map<String, String> ORDER_IMPORT_FIELD_ALIAS_MAP = ErpImportTemplateRequiredFieldUtils.aliasMap(
+            "no", "no",
             "supplierId", "supplierName",
             "supplierName", "supplierName",
             "adjustTime", "adjustTime",
             "remark", "remark",
             "productId", "productCode",
             "warehouseId", "warehouseName",
+            "warehouseName", "warehouseName",
             "count", "itemCount",
             "item_count", "itemCount",
             "itemCount", "itemCount",
@@ -104,6 +108,8 @@ public class ErpPurchasePriceAdjustController {
 
     @Resource
     private ErpPurchasePriceAdjustService priceAdjustService;
+    @Resource
+    private ErpSupplierDeptPermissionService supplierDeptPermissionService;
     @Resource
     private ErpProductService productService;
     @Resource
@@ -228,18 +234,18 @@ public class ErpPurchasePriceAdjustController {
     @PreAuthorize("@ss.hasPermission('erp:purchase-price-adjust:create')")
     public void getOrderImportTemplate(HttpServletResponse response) throws IOException {
         ErpPurchasePriceAdjustOrderImportExcelVO example = new ErpPurchasePriceAdjustOrderImportExcelVO();
-        example.setNo("TJ-IMPORT-001");
-        example.setSupplierName("Example Supplier");
-        example.setAdjustTime("2026-06-05 09:00:00");
-        example.setRemark("Order remark");
+        example.setNo("CGTJ20260811000002");
+        example.setSupplierName("示例供应商");
+        example.setAdjustTime("2026-08-11");
+        example.setRemark("整单备注");
         example.setProductCode("P000001");
-        example.setWarehouseName("Main Warehouse");
+        example.setWarehouseName("主仓库");
         example.setItemCount(BigDecimal.ONE);
         example.setNewPrice(new BigDecimal("10.00"));
 
         ErpPurchasePriceAdjustOrderImportExcelVO secondItem = new ErpPurchasePriceAdjustOrderImportExcelVO();
         secondItem.setProductCode("P000002");
-        secondItem.setWarehouseName("Main Warehouse");
+        secondItem.setWarehouseName("主仓库");
         secondItem.setItemCount(new BigDecimal("2"));
         secondItem.setNewPrice(new BigDecimal("20.00"));
 
@@ -341,6 +347,13 @@ public class ErpPurchasePriceAdjustController {
             @Valid ErpPurchasePriceAdjustPageReqVO pageReqVO) {
         PageResult<ErpPurchasePriceAdjustDO> pageResult = priceAdjustService.getPurchasePriceAdjustPage(pageReqVO);
         return success(buildVOPageResult(pageResult));
+    }
+
+    @GetMapping("/dept-simple-list")
+    @Operation(summary = "鑾峰緱褰撳墠鐢ㄦ埛鍙煡璇㈢殑閲囪喘璋冧环閮ㄩ棬绮剧畝鍒楄〃")
+    @PreAuthorize("@ss.hasPermission('erp:purchase-price-adjust:query')")
+    public CommonResult<List<DeptSimpleRespVO>> getVisibleDeptSimpleList() {
+        return success(supplierDeptPermissionService.getDataPermissionDeptSimpleList(FIELD_PERMISSION_MODULE));
     }
 
     @GetMapping("/export-excel")

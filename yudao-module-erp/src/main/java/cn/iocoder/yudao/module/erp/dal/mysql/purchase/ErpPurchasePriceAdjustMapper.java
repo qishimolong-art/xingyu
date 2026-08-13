@@ -4,6 +4,7 @@ import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.mybatis.core.mapper.BaseMapperX;
 import cn.iocoder.yudao.framework.mybatis.core.query.MPJLambdaWrapperX;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.priceadjust.ErpPurchasePriceAdjustPageReqVO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.product.ErpProductDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchasePriceAdjustDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchasePriceAdjustItemDO;
 import cn.iocoder.yudao.module.erp.dal.mysql.common.ErpKeywordQuery;
@@ -12,6 +13,7 @@ import cn.iocoder.yudao.module.erp.enums.common.ErpBizTypeEnum;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.core.toolkit.support.SFunction;
 import org.apache.ibatis.annotations.Mapper;
+import org.springframework.util.StringUtils;
 
 import java.util.Objects;
 
@@ -34,10 +36,29 @@ public interface ErpPurchasePriceAdjustMapper extends BaseMapperX<ErpPurchasePri
                 .eqIfPresent(ErpPurchasePriceAdjustDO::getCreator, reqVO.getCreator())
                 .eqIfPresent(ErpPurchasePriceAdjustDO::getDeptId, reqVO.getDeptId())
                 .eqIfPresent(ErpPurchasePriceAdjustDO::getAdjuster, reqVO.getAdjuster());
-        if (reqVO.getProductId() != null) {
+        if (reqVO.getProductId() != null || StringUtils.hasText(reqVO.getProductKeyword())) {
             query.leftJoin(ErpPurchasePriceAdjustItemDO.class,
                             ErpPurchasePriceAdjustItemDO::getAdjustId, ErpPurchasePriceAdjustDO::getId)
-                    .eq(ErpPurchasePriceAdjustItemDO::getProductId, reqVO.getProductId())
+                    .leftJoin(ErpProductDO.class, ErpProductDO::getId, ErpPurchasePriceAdjustItemDO::getProductId)
+                    .eq(reqVO.getProductId() != null, ErpPurchasePriceAdjustItemDO::getProductId, reqVO.getProductId())
+                    .and(StringUtils.hasText(reqVO.getProductKeyword()), w -> {
+                        String productKeyword = ErpKeywordQuery.normalize(reqVO.getProductKeyword());
+                        w.like(ErpProductDO::getCode, productKeyword)
+                                .or().like(ErpProductDO::getName, productKeyword)
+                                .or().like(ErpProductDO::getBarCode, productKeyword)
+                                .or().like(ErpProductDO::getVehicleModel, productKeyword)
+                                .or().like(ErpProductDO::getFactoryCode, productKeyword)
+                                .or().like(ErpProductDO::getStandard, productKeyword)
+                                .or().like(ErpProductDO::getBrand, productKeyword)
+                                .or().like(ErpProductDO::getDrawingNo, productKeyword)
+                                .or().like(ErpPurchasePriceAdjustItemDO::getProductCode, productKeyword)
+                                .or().like(ErpPurchasePriceAdjustItemDO::getProductName, productKeyword)
+                                .or().like(ErpPurchasePriceAdjustItemDO::getVehicleModel, productKeyword)
+                                .or().like(ErpPurchasePriceAdjustItemDO::getStandard, productKeyword)
+                                .or().like(ErpPurchasePriceAdjustItemDO::getFeatureCode, productKeyword)
+                                .or().like(ErpPurchasePriceAdjustItemDO::getBrand, productKeyword)
+                                .or().like(ErpPurchasePriceAdjustItemDO::getDrawingNo, productKeyword);
+                    })
                     .groupBy(ErpPurchasePriceAdjustDO::getId);
         }
         if (Objects.equals(reqVO.getPaymentStatus(), ErpPurchasePriceAdjustPageReqVO.PAYMENT_STATUS_NONE)) {

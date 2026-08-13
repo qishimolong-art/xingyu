@@ -22,6 +22,7 @@ import cn.iocoder.yudao.module.erp.controller.admin.finance.payable.vo.expense.E
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.ErpAccountDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.payable.ErpPayableExpenseDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.payable.ErpPayableExpenseItemDO;
+import cn.iocoder.yudao.module.erp.service.base.ErpDataPermissionDeptService;
 import cn.iocoder.yudao.module.erp.service.finance.ErpAccountService;
 import cn.iocoder.yudao.module.erp.service.finance.ErpFinanceFieldPermissionMasker;
 import cn.iocoder.yudao.module.erp.service.finance.payable.ErpPayableExpenseService;
@@ -29,6 +30,7 @@ import cn.iocoder.yudao.module.system.api.dept.DeptApi;
 import cn.iocoder.yudao.module.system.api.dept.dto.DeptRespDTO;
 import cn.iocoder.yudao.module.system.api.user.AdminUserApi;
 import cn.iocoder.yudao.module.system.api.user.dto.AdminUserRespDTO;
+import cn.iocoder.yudao.module.system.controller.admin.dept.vo.dept.DeptSimpleRespVO;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -82,6 +84,8 @@ public class ErpPayableExpenseController {
     private DeptApi deptApi;
     @Resource
     private ErpFinanceFieldPermissionMasker fieldPermissionMasker;
+    @Resource
+    private ErpDataPermissionDeptService dataPermissionDeptService;
 
     @PostMapping("/create")
     @Operation(summary = "创建费用支付")
@@ -187,6 +191,13 @@ public class ErpPayableExpenseController {
     public CommonResult<PageResult<ErpPayableExpenseRespVO>> page(@Valid ErpPayableExpensePageReqVO reqVO) {
         PageResult<ErpPayableExpenseDO> pageResult = payableExpenseService.getPayableExpensePage(reqVO);
         return success(maskPageResult(buildPageResult(pageResult)));
+    }
+
+    @GetMapping("/dept-simple-list")
+    @Operation(summary = "Get payable expense data permission dept simple list")
+    @PreAuthorize("@ss.hasPermission('erp:payable-expense:query')")
+    public CommonResult<List<DeptSimpleRespVO>> getPayableExpenseDeptSimpleList() {
+        return success(dataPermissionDeptService.getDeptSimpleList("erp_payable_expense"));
     }
 
     @GetMapping("/export-excel")

@@ -2,6 +2,8 @@ package cn.iocoder.yudao.module.erp.service.sale;
 
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.customer.ErpCustomerBatchUpdateReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.customer.ErpCustomerDeptCreditRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.customer.ErpCustomerDeptCreditSaveReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.customer.ErpCustomerDeptDistributionRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.customer.ErpCustomerDeptDistributionSaveReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.customer.ErpCustomerImportExcelVO;
@@ -43,6 +45,10 @@ public interface ErpCustomerService {
 
     void updateCustomerDeptDistribution(@Valid ErpCustomerDeptDistributionSaveReqVO reqVO);
 
+    ErpCustomerDeptCreditRespVO getCustomerDeptCredit(Long id);
+
+    void updateCustomerDeptCredit(@Valid ErpCustomerDeptCreditSaveReqVO reqVO);
+
     /**
      * 删除客户
      *
@@ -74,6 +80,8 @@ public interface ErpCustomerService {
     ErpCustomerDO validateCustomer(Long id);
 
     ErpCustomerDO validateCustomerForSale(Long id);
+
+    ErpCustomerDO validateCustomerForSale(Long id, Long saleDeptId);
 
     /**
      * 校验系统自动生成销售单据时使用的客户。

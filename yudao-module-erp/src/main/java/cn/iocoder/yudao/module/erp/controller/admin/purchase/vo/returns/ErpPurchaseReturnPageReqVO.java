@@ -53,6 +53,9 @@ public class ErpPurchaseReturnPageReqVO extends PageParam {
     @Schema(description = "产品编号", example = "1")
     private Long productId;
 
+    @Schema(description = "Product keyword for purchase return item filtering", example = "P0001")
+    private String productKeyword;
+
     @Schema(description = "仓库编号", example = "1")
     private Long warehouseId;
 

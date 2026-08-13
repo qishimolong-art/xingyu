@@ -99,8 +99,12 @@ public class DeptDataPermissionRule implements DataPermissionRule {
 
     @Override
     public Expression getExpression(String tableName, Alias tableAlias) {
-        // 只有有登陆用户的情况下，才进行数据权限的处理
         LoginUser loginUser = SecurityFrameworkUtils.getLoginUser();
+        return buildExpression(tableName, tableAlias, loginUser);
+    }
+
+    public Expression buildExpression(String tableName, Alias tableAlias, LoginUser loginUser) {
+        // 只有有登陆用户的情况下，才进行数据权限的处理
         if (loginUser == null) {
             return null;
         }
@@ -118,7 +122,7 @@ public class DeptDataPermissionRule implements DataPermissionRule {
             if (deptDataPermission == null) {
                 log.error("[getExpression][LoginUser({}) 获取数据权限为 null]", JsonUtils.toJsonString(loginUser));
                 throw new NullPointerException(String.format("LoginUser(%d) Table(%s/%s) 未返回数据权限",
-                        loginUser.getId(), tableName, tableAlias.getName()));
+                        loginUser.getId(), tableName, tableAlias != null ? tableAlias.getName() : tableName));
             }
             // 添加到上下文中，避免重复计算
             loginUser.setContext(cacheKey, deptDataPermission);

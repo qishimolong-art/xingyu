@@ -40,10 +40,13 @@ public class FormPermissionSyncInterceptor implements Interceptor {
     @Override
     public Object intercept(Invocation invocation) throws Throwable {
         MappedStatement ms = (MappedStatement) invocation.getArgs()[0];
+        Object result = invocation.proceed();
+        if (!isAffected(result)) {
+            return result;
+        }
         Object entity = resolveEntity(invocation.getArgs()[1]);
         TableContext context = buildContext(ms.getSqlCommandType(), entity);
-        Object result = invocation.proceed();
-        if (context != null && isAffected(result)) {
+        if (context != null) {
             sync(context);
         }
         return result;

@@ -4,6 +4,7 @@ import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.mybatis.core.mapper.BaseMapperX;
 import cn.iocoder.yudao.framework.mybatis.core.query.MPJLambdaWrapperX;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.invoice.ErpPurchaseInvoicePageReqVO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.product.ErpProductDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseInvoiceDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseInvoiceItemDO;
 import cn.iocoder.yudao.module.erp.dal.mysql.common.ErpKeywordQuery;
@@ -11,6 +12,7 @@ import cn.iocoder.yudao.module.erp.enums.ErpAuditStatus;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.core.toolkit.support.SFunction;
 import org.apache.ibatis.annotations.Mapper;
+import org.springframework.util.StringUtils;
 
 @Mapper
 public interface ErpPurchaseInvoiceMapper extends BaseMapperX<ErpPurchaseInvoiceDO> {
@@ -32,10 +34,24 @@ public interface ErpPurchaseInvoiceMapper extends BaseMapperX<ErpPurchaseInvoice
         } else if (Integer.valueOf(1).equals(reqVO.getInvoiceStatus())) {
             query.eq(ErpPurchaseInvoiceDO::getStatus, ErpAuditStatus.APPROVE.getStatus());
         }
-        if (reqVO.getProductId() != null || reqVO.getSourceInNo() != null) {
+        if (reqVO.getProductId() != null || reqVO.getSourceInNo() != null
+                || StringUtils.hasText(reqVO.getProductKeyword())) {
             query.leftJoin(ErpPurchaseInvoiceItemDO.class, ErpPurchaseInvoiceItemDO::getInvoiceId, ErpPurchaseInvoiceDO::getId)
+                    .leftJoin(ErpProductDO.class, ErpProductDO::getId, ErpPurchaseInvoiceItemDO::getProductId)
                     .eq(reqVO.getProductId() != null, ErpPurchaseInvoiceItemDO::getProductId, reqVO.getProductId())
                     .likeIfPresent(ErpPurchaseInvoiceItemDO::getSourceInNo, reqVO.getSourceInNo())
+                    .and(StringUtils.hasText(reqVO.getProductKeyword()), w -> {
+                        String productKeyword = ErpKeywordQuery.normalize(reqVO.getProductKeyword());
+                        w.like(ErpProductDO::getCode, productKeyword)
+                                .or().like(ErpProductDO::getName, productKeyword)
+                                .or().like(ErpProductDO::getBarCode, productKeyword)
+                                .or().like(ErpProductDO::getVehicleModel, productKeyword)
+                                .or().like(ErpProductDO::getFactoryCode, productKeyword)
+                                .or().like(ErpProductDO::getStandard, productKeyword)
+                                .or().like(ErpProductDO::getBrand, productKeyword)
+                                .or().like(ErpProductDO::getDrawingNo, productKeyword)
+                                .or().like(ErpPurchaseInvoiceItemDO::getProductBarCode, productKeyword);
+                    })
                     .groupBy(ErpPurchaseInvoiceDO::getId);
         }
         ErpKeywordQuery.appendWithDeptName(query, reqVO.getKeyword(),

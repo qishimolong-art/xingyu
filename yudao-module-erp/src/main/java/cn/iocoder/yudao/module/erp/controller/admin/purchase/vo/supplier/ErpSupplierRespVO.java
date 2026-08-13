@@ -259,6 +259,9 @@ public class ErpSupplierRespVO {
     @Schema(description = "绩效考核利润参考依据", example = "毛利率")
     private String performanceProfitRef;
 
+    @Schema(description = "企业匹配是否已同步，存在工商信息记录时为 true")
+    private Boolean businessInfoSynced;
+
     @Schema(description = "创建时间", requiredMode = Schema.RequiredMode.REQUIRED)
     @ExcelProperty("创建时间")
     private LocalDateTime createTime;

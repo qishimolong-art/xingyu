@@ -101,6 +101,8 @@ public class ErpArchiveMergeService {
                 Collections.emptyList(), operatorId);
         updateUniqueLong(result, "erp_customer_dept", "customer_id", sourceId, keepId,
                 Collections.singletonList("dept_id"), operatorId);
+        updateUniqueLong(result, "erp_customer_dept_credit", "customer_id", sourceId, keepId,
+                Collections.singletonList("dept_id"), operatorId);
         updateParty(result, "erp_pre_receipt", sourceId, keepId, PARTY_TYPE_CUSTOMER, operatorId);
         updateParty(result, "erp_pre_receivable", sourceId, keepId, PARTY_TYPE_CUSTOMER, operatorId);
         updateParty(result, "erp_other_receivable", sourceId, keepId, PARTY_TYPE_CUSTOMER, operatorId);

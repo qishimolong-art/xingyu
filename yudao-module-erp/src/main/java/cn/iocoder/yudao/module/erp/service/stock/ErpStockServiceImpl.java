@@ -298,16 +298,13 @@ public class ErpStockServiceImpl implements ErpStockService {
                     .collect(Collectors.toList());
         }
         boolean saleBizType = isSaleBizType(pageReqVO);
-        boolean purchaseBizType = isPurchaseBizType(pageReqVO);
-        boolean allWarehousePermission = warehouseService.hasCurrentUserAllWarehousePermission();
         ErpProductStockPermissionScope productStockScope = null;
-        if (!saleBizType && !purchaseBizType) {
+        if (!saleBizType) {
             productStockScope = warehouseService.getCurrentUserProductStockPermissionScope();
             warehouseIdFilter = intersectWarehouseIds(warehouseIdFilter,
                     productStockScope.getVisibleWarehouseIds());
         } else {
-            Collection<Long> visibleWarehouseIds = getVisibleWarehouseIdsForStockPage(pageReqVO, saleBizType,
-                    purchaseBizType, allWarehousePermission);
+            Collection<Long> visibleWarehouseIds = getVisibleWarehouseIdsForSaleStockPage(pageReqVO);
             warehouseIdFilter = intersectWarehouseIds(warehouseIdFilter, visibleWarehouseIds);
         }
         Collection<Long> keywordProductIdFilter = null;
@@ -448,10 +445,9 @@ public class ErpStockServiceImpl implements ErpStockService {
                 .collect(Collectors.toCollection(LinkedHashSet::new));
     }
 
-    private Collection<Long> getVisibleWarehouseIdsForStockPage(ErpStockPageReqVO pageReqVO, boolean saleBizType,
-                                                                boolean purchaseBizType,
-                                                                boolean allWarehousePermission) {
-        if (saleBizType && pageReqVO.getSaleDeptId() != null) {
+    private Collection<Long> getVisibleWarehouseIdsForSaleStockPage(ErpStockPageReqVO pageReqVO) {
+        boolean allWarehousePermission = warehouseService.hasCurrentUserAllWarehousePermission();
+        if (pageReqVO.getSaleDeptId() != null) {
             Collection<Long> saleDeptWarehouseIds = warehouseService.getSaleWarehouseListByDeptId(pageReqVO.getSaleDeptId())
                     .stream()
                     .map(ErpWarehouseDO::getId)
@@ -465,14 +461,7 @@ public class ErpStockServiceImpl implements ErpStockService {
                     .collect(Collectors.toCollection(LinkedHashSet::new));
             return intersectWarehouseIds(saleDeptWarehouseIds, currentVisibleWarehouseIds);
         }
-        List<ErpWarehouseDO> visibleWarehouses;
-        if (saleBizType) {
-            visibleWarehouses = warehouseService.getCurrentUserVisibleSaleWarehouseList();
-        } else if (purchaseBizType) {
-            visibleWarehouses = warehouseService.getCurrentUserAuthorizedPurchaseWarehouseList();
-        } else {
-            visibleWarehouses = warehouseService.getCurrentUserStockVisibleWarehouseList();
-        }
+        List<ErpWarehouseDO> visibleWarehouses = warehouseService.getCurrentUserVisibleSaleWarehouseList();
         Collection<Long> visibleWarehouseIds = visibleWarehouses.stream()
                 .map(ErpWarehouseDO::getId)
                 .collect(Collectors.toCollection(LinkedHashSet::new));
@@ -488,10 +477,6 @@ public class ErpStockServiceImpl implements ErpStockService {
 
     private boolean isSaleBizType(ErpStockPageReqVO pageReqVO) {
         return pageReqVO != null && "sale".equalsIgnoreCase(pageReqVO.getBizType());
-    }
-
-    private boolean isPurchaseBizType(ErpStockPageReqVO pageReqVO) {
-        return pageReqVO != null && "purchase".equalsIgnoreCase(pageReqVO.getBizType());
     }
 
     @Override

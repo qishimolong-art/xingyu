@@ -32,7 +32,6 @@ public interface LogRecordConstants {
     String SYSTEM_ROLE_UPDATE_SUCCESS = "更新了角色【{{#role.name}}】: {_DIFF{#updateReqVO}}";
     String SYSTEM_ROLE_DELETE_SUB_TYPE = "删除角色";
     String SYSTEM_ROLE_DELETE_SUCCESS = "删除了角色【{{#role.name}}】";
-    String SYSTEM_ROLE_UPDATE_DATA_SCOPE_SUB_TYPE = "更新角色数据权限";
     String SYSTEM_ROLE_BATCH_DELETE_SUB_TYPE = "批量删除角色";
 
     // ======================= SYSTEM_DEPT 部门 =======================

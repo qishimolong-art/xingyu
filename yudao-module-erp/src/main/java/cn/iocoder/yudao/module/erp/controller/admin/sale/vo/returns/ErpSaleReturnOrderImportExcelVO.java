@@ -1,5 +1,6 @@
 package cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns;
 
+import cn.idev.excel.annotation.ExcelIgnoreUnannotated;
 import cn.idev.excel.annotation.ExcelProperty;
 import cn.iocoder.yudao.framework.excel.core.annotations.ExcelRequired;
 import lombok.Data;
@@ -7,24 +8,12 @@ import lombok.Data;
 import java.math.BigDecimal;
 
 @Data
+@ExcelIgnoreUnannotated
 public class ErpSaleReturnOrderImportExcelVO {
-
-    @ExcelProperty("导入单号")
-    private String importNo;
 
     @ExcelRequired
     @ExcelProperty("客户名称")
     private String customerName;
-
-    @ExcelRequired
-    @ExcelProperty("退货时间")
-    private String returnTime;
-
-    @ExcelProperty("退货模式")
-    private Integer returnMode;
-
-    @ExcelProperty("销售人员")
-    private String saleUserName;
 
     @ExcelProperty("备注")
     private String remark;
@@ -34,7 +23,7 @@ public class ErpSaleReturnOrderImportExcelVO {
     private String productCode;
 
     @ExcelRequired
-    @ExcelProperty("仓库名称")
+    @ExcelProperty("所属仓库")
     private String warehouseName;
 
     @ExcelRequired

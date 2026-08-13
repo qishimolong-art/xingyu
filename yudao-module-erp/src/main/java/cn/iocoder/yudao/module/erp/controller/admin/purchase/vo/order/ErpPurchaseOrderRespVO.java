@@ -89,6 +89,12 @@ public class ErpPurchaseOrderRespVO {
     @Schema(description = "修改时间")
     private LocalDateTime updateTime;
 
+    @Schema(description = "打印次数", example = "3")
+    private Integer printFrequency;
+
+    @Schema(description = "最近打印时间")
+    private LocalDateTime printTime;
+
     @Schema(description = "订单项列表", requiredMode = Schema.RequiredMode.REQUIRED)
     private List<Item> items;
 

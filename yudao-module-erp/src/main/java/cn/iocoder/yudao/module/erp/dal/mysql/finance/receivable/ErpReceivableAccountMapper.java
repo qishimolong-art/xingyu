@@ -331,4 +331,50 @@ public interface ErpReceivableAccountMapper extends BaseMapperX<ErpReceivableAcc
     })
     ErpReceivableAccountDO selectByCustomerId(@Param("customerId") Long customerId);
 
+    @Select({
+            "<script>",
+            "SELECT c.id AS customerId,",
+            "       c.name AS customerName,",
+            "       c.dept_id AS deptId,",
+            "       IFNULL(so.saleOutAmount, 0) AS saleOutAmount,",
+            "       IFNULL(sr.saleReturnAmount, 0) AS saleReturnAmount,",
+            "       IFNULL(pa.priceAdjustAmount, 0) AS priceAdjustAmount,",
+            "       IFNULL(rc.receiptAmount, 0) AS receiptAmount,",
+            "       IFNULL(wo.writeOffAmount, 0) AS writeOffAmount,",
+            "       IFNULL(ro.otherReceivableAmount, 0) AS otherReceivableAmount,",
+            "       IFNULL(so.saleOutAmount, 0) + IFNULL(pa.priceAdjustAmount, 0) + IFNULL(ro.otherReceivableAmount, 0) - IFNULL(sr.saleReturnAmount, 0) AS receivableAmount,",
+            "       IFNULL(rc.receiptAmount, 0) AS receivedAmount,",
+            "       IFNULL(so.saleOutAmount, 0) + IFNULL(pa.priceAdjustAmount, 0) + IFNULL(ro.otherReceivableAmount, 0) - IFNULL(sr.saleReturnAmount, 0) - IFNULL(rc.receiptAmount, 0) AS unreceivedAmount,",
+            "       IFNULL(so.saleOutAmount, 0) + IFNULL(pa.priceAdjustAmount, 0) + IFNULL(ro.otherReceivableAmount, 0) - IFNULL(sr.saleReturnAmount, 0) - IFNULL(rc.receiptAmount, 0) AS receivableBalance,",
+            "       lastBiz.lastBizTime AS lastBizTime",
+            "  FROM erp_customer c",
+            "  LEFT JOIN (SELECT customer_id, SUM(total_price) AS saleOutAmount, MAX(out_time) AS lastBizTime FROM erp_sale_out WHERE deleted = 0 AND status = 20 AND customer_id = #{customerId} AND dept_id = #{deptId} GROUP BY customer_id) so ON so.customer_id = c.id",
+            "  LEFT JOIN (SELECT customer_id, SUM(total_price) AS saleReturnAmount FROM erp_sale_return WHERE deleted = 0 AND status = 20 AND customer_id = #{customerId} AND dept_id = #{deptId} GROUP BY customer_id) sr ON sr.customer_id = c.id",
+            "  LEFT JOIN (SELECT customer_id, SUM(total_adjust_price) AS priceAdjustAmount FROM erp_sale_price_adjust WHERE deleted = 0 AND status = 20 AND customer_id = #{customerId} AND dept_id = #{deptId} GROUP BY customer_id) pa ON pa.customer_id = c.id",
+            "  LEFT JOIN (SELECT customer_id, SUM(total_price) AS receiptAmount FROM erp_finance_receipt WHERE deleted = 0 AND status = 20 AND customer_id = #{customerId} AND dept_id = #{deptId} GROUP BY customer_id) rc ON rc.customer_id = c.id",
+            "  LEFT JOIN (SELECT customer_id, SUM(write_off_amount) AS writeOffAmount FROM erp_receivable_writeoff WHERE deleted = 0 AND customer_id = #{customerId} AND dept_id = #{deptId} GROUP BY customer_id) wo ON wo.customer_id = c.id",
+            "  LEFT JOIN (SELECT customer_id, SUM(receivable_amount) AS otherReceivableAmount FROM erp_receivable_other WHERE deleted = 0 AND status = 20 AND customer_id = #{customerId} AND dept_id = #{deptId} GROUP BY customer_id) ro ON ro.customer_id = c.id",
+            "  LEFT JOIN (",
+            "       SELECT customer_id, MAX(last_biz_time) AS lastBizTime",
+            "         FROM (",
+            "               SELECT customer_id, MAX(out_time) AS last_biz_time FROM erp_sale_out WHERE deleted = 0 AND status = 20 AND customer_id = #{customerId} AND dept_id = #{deptId} GROUP BY customer_id",
+            "               UNION ALL",
+            "               SELECT customer_id, MAX(return_time) AS last_biz_time FROM erp_sale_return WHERE deleted = 0 AND status = 20 AND customer_id = #{customerId} AND dept_id = #{deptId} GROUP BY customer_id",
+            "               UNION ALL",
+            "               SELECT customer_id, MAX(adjust_date) AS last_biz_time FROM erp_sale_price_adjust WHERE deleted = 0 AND status = 20 AND customer_id = #{customerId} AND dept_id = #{deptId} GROUP BY customer_id",
+            "               UNION ALL",
+            "               SELECT customer_id, MAX(receipt_time) AS last_biz_time FROM erp_finance_receipt WHERE deleted = 0 AND status = 20 AND customer_id = #{customerId} AND dept_id = #{deptId} GROUP BY customer_id",
+            "               UNION ALL",
+            "               SELECT customer_id, MAX(write_off_time) AS last_biz_time FROM erp_receivable_writeoff WHERE deleted = 0 AND customer_id = #{customerId} AND dept_id = #{deptId} GROUP BY customer_id",
+            "               UNION ALL",
+            "               SELECT customer_id, MAX(biz_time) AS last_biz_time FROM erp_receivable_other WHERE deleted = 0 AND status = 20 AND customer_id = #{customerId} AND dept_id = #{deptId} GROUP BY customer_id",
+            "         ) t",
+            "        GROUP BY customer_id",
+            "  ) lastBiz ON lastBiz.customer_id = c.id",
+            " WHERE c.deleted = 0 AND c.id = #{customerId}",
+            "</script>"
+    })
+    ErpReceivableAccountDO selectByCustomerIdAndDeptId(@Param("customerId") Long customerId,
+                                                       @Param("deptId") Long deptId);
+
 }

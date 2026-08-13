@@ -10,6 +10,7 @@ import cn.iocoder.yudao.module.system.dal.dataobject.permission.RoleDO;
 import cn.iocoder.yudao.module.system.dal.mysql.permission.RoleMapper;
 import cn.iocoder.yudao.module.system.enums.permission.DataScopeEnum;
 import cn.iocoder.yudao.module.system.enums.permission.RoleTypeEnum;
+import cn.iocoder.yudao.module.system.service.logger.SystemOperateLogService;
 import org.junit.jupiter.api.Test;
 import org.mockito.MockedStatic;
 import org.springframework.boot.test.mock.mockito.MockBean;
@@ -19,9 +20,7 @@ import javax.annotation.Resource;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.List;
-import java.util.Set;
 
-import static cn.hutool.core.util.RandomUtil.randomEle;
 import static cn.iocoder.yudao.framework.common.util.date.LocalDateTimeUtils.buildBetweenTime;
 import static cn.iocoder.yudao.framework.common.util.date.LocalDateTimeUtils.buildTime;
 import static cn.iocoder.yudao.framework.common.util.object.ObjectUtils.cloneIgnoreId;
@@ -47,6 +46,8 @@ public class RoleServiceImplTest extends BaseDbUnitTest {
 
     @MockBean
     private PermissionService permissionService;
+    @MockBean
+    private SystemOperateLogService operateLogService;
 
     @Test
     public void testCreateRole() {
@@ -125,24 +126,6 @@ public class RoleServiceImplTest extends BaseDbUnitTest {
         assertEquals("old_code", newRoleDO.getCode());
         assertEquals(reqVO.getName(), newRoleDO.getName());
         assertEquals(reqVO.getStatus(), newRoleDO.getStatus());
-    }
-
-    @Test
-    public void testUpdateRoleDataScope() {
-        // mock 数据
-        RoleDO roleDO = randomPojo(RoleDO.class, o -> o.setType(RoleTypeEnum.CUSTOM.getType()));
-        roleMapper.insert(roleDO);
-        // 准备参数
-        Long id = roleDO.getId();
-        Integer dataScope = randomEle(DataScopeEnum.values()).getScope();
-        Set<Long> dataScopeRoleIds = randomSet(Long.class);
-
-        // 调用
-        roleService.updateRoleDataScope(id, dataScope, dataScopeRoleIds);
-        // 断言
-        RoleDO dbRoleDO = roleMapper.selectById(id);
-        assertEquals(dataScope, dbRoleDO.getDataScope());
-        assertEquals(dataScopeRoleIds, dbRoleDO.getDataScopeDeptIds());
     }
 
     @Test

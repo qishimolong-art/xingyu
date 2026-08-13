@@ -53,6 +53,9 @@ public class ErpPurchaseInvoicePageReqVO extends PageParam {
     @Schema(description = "产品编号", example = "1")
     private Long productId;
 
+    @Schema(description = "Product keyword for purchase invoice item filtering", example = "P0001")
+    private String productKeyword;
+
     @Schema(description = "来源入库单号", example = "CGRK202605270001")
     private String sourceInNo;
 

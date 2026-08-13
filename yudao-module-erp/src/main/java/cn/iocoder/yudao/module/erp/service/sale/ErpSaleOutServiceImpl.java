@@ -77,10 +77,10 @@ import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.*;
 import static cn.iocoder.yudao.module.erp.enums.LogRecordConstants.*;
 
-// TODO 芋艿：记录操作日�?
+// TODO 芋艿：记录操作日志
 
 /**
- * ERP 销售出�?Service 实现�?
+ * ERP 销售出库 Service 实现类
  *
  * @author 芋道源码
  */
@@ -113,7 +113,7 @@ public class ErpSaleOutServiceImpl implements ErpSaleOutService {
     @Resource
     private ErpProductService productService;
     @Resource
-    @Lazy // 延迟加载，避免循环依�?
+    @Lazy // 延迟加载，避免循环依赖
     private ErpSaleOrderService saleOrderService;
     @Resource
     private ErpCustomerService customerService;
@@ -160,16 +160,16 @@ public class ErpSaleOutServiceImpl implements ErpSaleOutService {
         clearItemSourceSnapshots(createReqVO.getItems());
         // 1.1 校验销售订单已审核
         ErpSaleOrderDO saleOrder = saleOrderService.validateSaleOrder(createReqVO.getOrderId());
-        customerService.validateCustomerForSale(saleOrder.getCustomerId());
-        // 1.2 校验出库项的有效�?
+        customerService.validateCustomerForSale(saleOrder.getCustomerId(), saleOrder.getDeptId());
+        // 1.2 校验出库项的有效性
         List<ErpSaleOutItemDO> saleOutItems = validateSaleOutItems(createReqVO.getItems(), createReqVO.getOrderId());
         // 1.3 校验结算账户
         accountService.validateAccount(createReqVO.getAccountId());
-        // 1.4 校验销售人�?
+        // 1.4 校验销售人员
         if (createReqVO.getSaleUserId() != null) {
             adminUserApi.validateUser(createReqVO.getSaleUserId());
         }
-        // 1.5 生成出库单号，并校验唯一�?
+        // 1.5 生成出库单号，并校验唯一性
         String no = noRedisDAO.generate(ErpNoRedisDAO.SALE_OUT_NO_PREFIX);
         if (saleOutMapper.selectByNo(no) != null) {
             throw exception(SALE_OUT_NO_EXISTS);
@@ -222,7 +222,7 @@ public class ErpSaleOutServiceImpl implements ErpSaleOutService {
             throw exception(SALE_OUT_NO_EXISTS);
         }
 
-        // 2. 插入销售单，并保留来源单据用于追溯�?
+        // 2. 插入销售单，并保留来源单据用于追溯
         ErpSaleOutDO saleOut = BeanUtils.toBean(createReqVO, ErpSaleOutDO.class, in -> in
                 .setNo(no).setStatus(ErpAuditStatus.PROCESS.getStatus())
                 .setSourceType(sourceType).setSourceId(sourceId).setSourceNo(sourceNo)
@@ -243,7 +243,7 @@ public class ErpSaleOutServiceImpl implements ErpSaleOutService {
         saleOutItems.forEach(o -> o.setOutId(saleOut.getId()).setOrderItemId(null));
         saleOutItemMapper.insertBatch(saleOutItems);
 
-        // 3. 自动审核，复用现有销售出库扣库存流水�?
+        // 3. 自动审核，复用现有销售出库扣库存流水
         Long generatedSaleOutId = saleOutId;
         if (Boolean.TRUE.equals(deferStockOutBill)) {
             DataPermissionUtils.executeIgnore(
@@ -282,14 +282,14 @@ public class ErpSaleOutServiceImpl implements ErpSaleOutService {
         preserveItemSourceSnapshots(updateReqVO.getItems(), existingItems);
         // 1.2 校验销售订单已审核
         ErpSaleOrderDO saleOrder = saleOrderService.validateSaleOrder(updateReqVO.getOrderId());
-        customerService.validateCustomerForSale(saleOrder.getCustomerId());
+        customerService.validateCustomerForSale(saleOrder.getCustomerId(), saleOrder.getDeptId());
         // 1.3 校验结算账户
         accountService.validateAccount(updateReqVO.getAccountId());
-        // 1.4 校验销售人�?
+        // 1.4 校验销售人员
         if (updateReqVO.getSaleUserId() != null) {
             adminUserApi.validateUser(updateReqVO.getSaleUserId());
         }
-        // 1.5 校验订单项的有效�?
+        // 1.5 校验订单项的有效性
         List<ErpSaleOutItemDO> saleOutItems = validateSaleOutItems(updateReqVO.getItems(), updateReqVO.getOrderId());
 
         // 2.1 更新出库
@@ -297,7 +297,7 @@ public class ErpSaleOutServiceImpl implements ErpSaleOutService {
                 .setOrderNo(saleOrder.getNo()).setCustomerId(saleOrder.getCustomerId());
         calculateTotalPrice(updateObj, saleOutItems);
         saleOutMapper.updateById(updateObj);
-        // 2.2 更新出库�?
+        // 2.2 更新出库项
         updateSaleOutItemList(updateReqVO.getId(), saleOutItems);
 
         // 3.1 更新销售订单的出库数量
@@ -411,7 +411,7 @@ public class ErpSaleOutServiceImpl implements ErpSaleOutService {
     private void updateSaleOrderOutCount(Long orderId) {
         // 1.1 查询销售订单对应的销售出库单列表
         List<ErpSaleOutDO> saleOuts = saleOutMapper.selectListByOrderId(orderId);
-        // 1.2 查询对应的销售订单项的出库数�?
+        // 1.2 查询对应的销售订单项的出库数量
         Map<Long, BigDecimal> returnCountMap = saleOutItemMapper.selectOrderItemCountSumMapByOutIds(
                 convertList(saleOuts, ErpSaleOutDO::getId));
         // 2. 更新销售订单的出库数量
@@ -479,7 +479,7 @@ public class ErpSaleOutServiceImpl implements ErpSaleOutService {
             stockLockService.deductStock(ErpSaleBizSourceTypeEnum.CART.getType(), saleOut.getSourceId());
         }
 
-        // 4. 审批通过且已开账：生成销售凭�?
+        // 4. 审批通过且已开账：生成销售凭证
         if (enableVoucher) {
             ErpCustomerDO customer = customerService.getCustomer(saleOut.getCustomerId());
             String customerName = customer != null ? customer.getName() : "";
@@ -491,7 +491,7 @@ public class ErpSaleOutServiceImpl implements ErpSaleOutService {
                     saleOut.getNo(),
                     saleOut.getTotalPrice(),
                     saleOut.getOutTime().toLocalDate(),
-                    "销售出�?- " + customerName,
+                    "销售出库 - " + customerName,
                     voucherItems);
         }
         recordStatus(id, saleOut.getNo(), true);
@@ -538,7 +538,7 @@ public class ErpSaleOutServiceImpl implements ErpSaleOutService {
                         : warehouseService.validSaleWarehouseList(warehouseIds),
                 ErpWarehouseDO::getId);
         Map<Long, Boolean> orderItemGiftFlagMap = buildOrderItemGiftFlagMap(orderId);
-        // 2. 转化�?ErpSaleOutItemDO 列表
+        // 2. 转化成 ErpSaleOutItemDO 列表
         return convertList(list, o -> BeanUtils.toBean(o, ErpSaleOutItemDO.class, item -> {
             item.setProductUnitId(productMap.get(item.getProductId()).getUnitId());
             fillDeptIdFromWarehouse(item, warehouseMap);
@@ -650,7 +650,7 @@ public class ErpSaleOutServiceImpl implements ErpSaleOutService {
         List<List<ErpSaleOutItemDO>> diffList = diffList(oldList, newList, // id 不同，就认为是不同的记录
                 (oldVal, newVal) -> oldVal.getId().equals(newVal.getId()));
 
-        // 第二步，批量添加、修改、删�?
+        // 第二步，批量添加、修改、删除
         if (CollUtil.isNotEmpty(diffList.get(0))) {
             diffList.get(0).forEach(o -> o.setOutId(id));
             saleOutItemMapper.insertBatch(diffList.get(0));
@@ -681,7 +681,7 @@ public class ErpSaleOutServiceImpl implements ErpSaleOutService {
         saleOuts.forEach(saleOut -> {
             // 2.1 删除订单
             saleOutMapper.deleteById(saleOut.getId());
-            // 2.2 删除订单�?
+            // 2.2 删除订单项
             saleOutItemMapper.deleteByOutId(saleOut.getId());
 
             // 2.3 更新销售订单的出库数量

@@ -10,7 +10,9 @@ import cn.iocoder.yudao.module.erp.controller.admin.finance.receivable.vo.accoun
 import cn.iocoder.yudao.module.erp.controller.admin.finance.receivable.vo.account.ErpReceivableDetailRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.receivable.vo.account.ErpReceivableWriteOffReqVO;
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
+import cn.iocoder.yudao.module.erp.service.base.ErpDataPermissionDeptService;
 import cn.iocoder.yudao.module.erp.service.finance.receivable.ErpReceivableAccountService;
+import cn.iocoder.yudao.module.system.controller.admin.dept.vo.dept.DeptSimpleRespVO;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -38,12 +40,21 @@ public class ErpReceivableAccountController {
 
     @Resource
     private ErpReceivableAccountService receivableAccountService;
+    @Resource
+    private ErpDataPermissionDeptService dataPermissionDeptService;
 
     @GetMapping("/page")
     @Operation(summary = "获得应收账款分页")
     @PreAuthorize("@ss.hasPermission('erp:receivable-account:query')")
     public CommonResult<PageResult<ErpReceivableAccountRespVO>> getReceivableAccountPage(@Valid ErpReceivableAccountPageReqVO pageReqVO) {
         return success(BeanUtils.toBean(receivableAccountService.getReceivableAccountPage(pageReqVO), ErpReceivableAccountRespVO.class));
+    }
+
+    @GetMapping("/dept-simple-list")
+    @Operation(summary = "获取应收账款可搜索部门精简信息列表")
+    @PreAuthorize("@ss.hasPermission('erp:receivable-account:query')")
+    public CommonResult<List<DeptSimpleRespVO>> getReceivableAccountDeptSimpleList() {
+        return success(dataPermissionDeptService.getDeptSimpleList("erp_finance_receivable_account"));
     }
 
     @GetMapping("/detail")

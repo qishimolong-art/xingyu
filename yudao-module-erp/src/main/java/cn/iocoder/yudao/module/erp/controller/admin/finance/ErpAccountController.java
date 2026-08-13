@@ -19,6 +19,7 @@ import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.account.ErpAccoun
 import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.account.ErpAccountTransactionRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.imports.ErpFinanceImportRespVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.ErpAccountDO;
+import cn.iocoder.yudao.module.erp.service.base.ErpDataPermissionDeptService;
 import cn.iocoder.yudao.module.erp.service.finance.ErpAccountService;
 import cn.iocoder.yudao.module.erp.service.finance.ErpFinanceBillService;
 import cn.iocoder.yudao.module.erp.service.finance.ErpFinanceFieldPermissionMasker;
@@ -27,6 +28,7 @@ import cn.iocoder.yudao.module.system.api.dept.DeptApi;
 import cn.iocoder.yudao.module.system.api.dept.dto.DeptRespDTO;
 import cn.iocoder.yudao.module.system.api.user.AdminUserApi;
 import cn.iocoder.yudao.module.system.api.user.dto.AdminUserRespDTO;
+import cn.iocoder.yudao.module.system.controller.admin.dept.vo.dept.DeptSimpleRespVO;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.Parameters;
@@ -76,6 +78,8 @@ public class ErpAccountController {
     private AdminUserApi adminUserApi;
     @Resource
     private DeptApi deptApi;
+    @Resource
+    private ErpDataPermissionDeptService dataPermissionDeptService;
 
     @PostMapping("/create")
     @Operation(summary = "创建结算账户")
@@ -203,6 +207,13 @@ public class ErpAccountController {
                         : null));
         fillAccountNames(result.getList());
         return success(result);
+    }
+
+    @GetMapping("/dept-simple-list")
+    @Operation(summary = "Get account data permission dept simple list")
+    @PreAuthorize("@ss.hasPermission('erp:account:query')")
+    public CommonResult<List<DeptSimpleRespVO>> getAccountDeptSimpleList() {
+        return success(dataPermissionDeptService.getDeptSimpleList("erp_account"));
     }
 
     @GetMapping("/transaction-page")

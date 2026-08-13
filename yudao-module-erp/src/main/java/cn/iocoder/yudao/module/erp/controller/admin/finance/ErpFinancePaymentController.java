@@ -32,6 +32,7 @@ import cn.iocoder.yudao.module.erp.enums.ErpAuditStatus;
 import cn.iocoder.yudao.module.erp.enums.common.ErpBizTypeEnum;
 import cn.iocoder.yudao.module.erp.enums.finance.accounting.ErpVoucherSourceBizTypeEnum;
 import cn.iocoder.yudao.module.erp.enums.finance.ErpFinanceWriteOffStatusEnum;
+import cn.iocoder.yudao.module.erp.service.base.ErpDataPermissionDeptService;
 import cn.iocoder.yudao.module.erp.service.finance.ErpAccountService;
 import cn.iocoder.yudao.module.erp.service.finance.ErpFinanceFieldPermissionMasker;
 import cn.iocoder.yudao.module.erp.service.finance.ErpFinancePaymentService;
@@ -40,6 +41,7 @@ import cn.iocoder.yudao.module.system.api.dept.DeptApi;
 import cn.iocoder.yudao.module.system.api.dept.dto.DeptRespDTO;
 import cn.iocoder.yudao.module.system.api.user.AdminUserApi;
 import cn.iocoder.yudao.module.system.api.user.dto.AdminUserRespDTO;
+import cn.iocoder.yudao.module.system.controller.admin.dept.vo.dept.DeptSimpleRespVO;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -88,6 +90,8 @@ public class ErpFinancePaymentController {
     private ErpFinanceFieldPermissionMasker fieldPermissionMasker;
     @Resource
     private ErpVoucherMapper voucherMapper;
+    @Resource
+    private ErpDataPermissionDeptService dataPermissionDeptService;
 
     @PostMapping("/create")
     @Operation(summary = "创建付款单")
@@ -228,6 +232,13 @@ public class ErpFinancePaymentController {
     public CommonResult<PageResult<ErpFinancePaymentRespVO>> getFinancePaymentPage(@Valid ErpFinancePaymentPageReqVO pageReqVO) {
         PageResult<ErpFinancePaymentDO> pageResult = financePaymentService.getFinancePaymentPage(pageReqVO);
         return success(buildFinancePaymentVOPageResult(pageResult));
+    }
+
+    @GetMapping("/dept-simple-list")
+    @Operation(summary = "Get finance payment data permission dept simple list")
+    @PreAuthorize("@ss.hasPermission('erp:finance-payment:query')")
+    public CommonResult<List<DeptSimpleRespVO>> getFinancePaymentDeptSimpleList() {
+        return success(dataPermissionDeptService.getDeptSimpleList("erp_finance_payment"));
     }
 
     @GetMapping("/export-excel")

@@ -12,6 +12,7 @@ import cn.iocoder.yudao.framework.common.biz.system.permission.dto.DeptDataPermi
 import cn.iocoder.yudao.framework.security.core.util.SecurityFrameworkUtils;
 import cn.iocoder.yudao.framework.tenant.core.context.TenantContextHolder;
 import cn.iocoder.yudao.module.system.api.permission.dto.FieldDefinitionCreateOrUpdateReqDTO;
+import cn.iocoder.yudao.module.system.controller.admin.permission.vo.permission.RoleFormDataScopeRespVO;
 import cn.iocoder.yudao.module.system.dal.dataobject.permission.FieldDefinitionDO;
 import cn.iocoder.yudao.module.system.dal.dataobject.permission.MenuDO;
 import cn.iocoder.yudao.module.system.dal.dataobject.permission.RoleDO;
@@ -19,8 +20,6 @@ import cn.iocoder.yudao.module.system.dal.dataobject.permission.RoleFieldPermiss
 import cn.iocoder.yudao.module.system.dal.dataobject.permission.RoleMenuDO;
 import cn.iocoder.yudao.module.system.dal.dataobject.permission.UserRoleDO;
 import cn.iocoder.yudao.module.system.dal.dataobject.dept.DeptDO;
-import cn.iocoder.yudao.module.system.controller.admin.permission.vo.permission.PermissionAssignRoleFormDataScopeReqVO;
-import cn.iocoder.yudao.module.system.controller.admin.permission.vo.permission.RoleFormDataScopeRespVO;
 import cn.iocoder.yudao.module.system.dal.dataobject.permission.RoleFormDataScopeDO;
 import cn.iocoder.yudao.module.system.dal.mysql.permission.FieldDefinitionMapper;
 import cn.iocoder.yudao.module.system.dal.mysql.permission.RoleFieldPermissionMapper;
@@ -29,7 +28,6 @@ import cn.iocoder.yudao.module.system.dal.mysql.permission.RoleMenuMapper;
 import cn.iocoder.yudao.module.system.dal.mysql.permission.UserPermissionDenyMapper;
 import cn.iocoder.yudao.module.system.dal.mysql.permission.UserRoleMapper;
 import cn.iocoder.yudao.module.system.dal.dataobject.permission.UserPermissionDenyDO;
-import cn.iocoder.yudao.module.system.dal.dataobject.user.AdminUserDO;
 import cn.iocoder.yudao.module.system.dal.redis.RedisKeyConstants;
 import cn.iocoder.yudao.module.system.enums.permission.DataScopeEnum;
 import cn.iocoder.yudao.module.system.enums.permission.MenuTypeEnum;
@@ -55,9 +53,8 @@ import java.util.stream.Collectors;
 
 import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.convertSet;
 import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.convertMultiMap2;
+import static cn.iocoder.yudao.framework.common.exception.util.ServiceExceptionUtil.invalidParamException;
 import static cn.iocoder.yudao.framework.common.util.json.JsonUtils.toJsonString;
-import static cn.iocoder.yudao.framework.common.exception.util.ServiceExceptionUtil.exception;
-import static cn.iocoder.yudao.module.system.enums.ErrorCodeConstants.ROLE_DATA_SCOPE_DEPT_IDS_EMPTY;
 
 /**
  * 鏉冮檺 Service 瀹炵幇绫? *
@@ -67,7 +64,6 @@ import static cn.iocoder.yudao.module.system.enums.ErrorCodeConstants.ROLE_DATA_
 @Slf4j
 public class PermissionServiceImpl implements PermissionService {
 
-    private static final String SYSTEM_DEPT_FORM_KEY = "system_dept";
     private static final String ERP_PRODUCT_FIELD_PERMISSION_MODULE = "erp_product";
 
     @Resource
@@ -232,7 +228,7 @@ public class PermissionServiceImpl implements PermissionService {
 
         // 濡傛灉鏄鐞嗗憳鐨勬儏鍐典笅锛岃幏鍙栧叏閮ㄨ彍鍗曠紪鍙?
         if (roleService.hasAnySuperAdmin(roleIds)) {
-            return convertSet(menuService.getMenuList(), MenuDO::getId);
+            return convertSet(menuService.filterDisableMenus(menuService.getMenuList()), MenuDO::getId);
         }
         // 濡傛灉鏄潪绠＄悊鍛樼殑鎯呭喌涓嬶紝鑾峰緱鎷ユ湁鐨勮彍鍗曠紪鍙?
         return convertSet(roleMenuMapper.selectListByRoleId(roleIds), RoleMenuDO::getMenuId);
@@ -399,6 +395,66 @@ public class PermissionServiceImpl implements PermissionService {
         for (Long fieldId : hiddenFieldIdSet) {
             roleFieldPermissionMapper.insertIgnore(roleId, fieldId, tenantId);
         }
+    }
+
+    @Override
+    public List<RoleFormDataScopeRespVO> getRoleFormDataScopeList(Long roleId) {
+        return roleFormDataScopeMapper.selectListByRoleId(roleId).stream()
+                .map(scope -> {
+                    RoleFormDataScopeRespVO respVO = new RoleFormDataScopeRespVO();
+                    respVO.setRoleId(scope.getRoleId());
+                    respVO.setFormKey(scope.getFormKey());
+                    respVO.setDataScope(scope.getDataScope());
+                    respVO.setDataScopeDeptIds(scope.getDataScopeDeptIds());
+                    return respVO;
+                })
+                .collect(Collectors.toList());
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void assignRoleFormDataScope(Long roleId, String formKey, Integer dataScope, Set<Long> dataScopeDeptIds) {
+        roleService.validateRoleList(Collections.singleton(roleId));
+        validateRoleFormDataScope(dataScope, dataScopeDeptIds);
+        RoleFormDataScopeDO existing = roleFormDataScopeMapper.selectByRoleIdAndFormKey(roleId, formKey);
+        if (Objects.equals(dataScope, 0)) {
+            if (existing != null) {
+                roleFormDataScopeMapper.deleteById(existing.getId());
+            }
+            return;
+        }
+
+        Set<Long> normalizedDeptIds = Objects.equals(dataScope, DataScopeEnum.DEPT_CUSTOM.getScope())
+                ? CollUtil.emptyIfNull(dataScopeDeptIds).stream().filter(Objects::nonNull).collect(Collectors.toSet())
+                : Collections.emptySet();
+        if (existing == null) {
+            RoleFormDataScopeDO create = new RoleFormDataScopeDO();
+            create.setRoleId(roleId);
+            create.setFormKey(formKey);
+            create.setDataScope(dataScope);
+            create.setDataScopeDeptIds(normalizedDeptIds);
+            roleFormDataScopeMapper.insert(create);
+            return;
+        }
+
+        existing.setDataScope(dataScope);
+        existing.setDataScopeDeptIds(normalizedDeptIds);
+        roleFormDataScopeMapper.updateById(existing);
+    }
+
+    private void validateRoleFormDataScope(Integer dataScope, Set<Long> dataScopeDeptIds) {
+        boolean validScope = Objects.equals(dataScope, 0)
+                || Arrays.stream(DataScopeEnum.values()).anyMatch(item -> item.getScope().equals(dataScope));
+        if (!validScope) {
+            throw invalidParamException("数据范围不正确");
+        }
+        if (!Objects.equals(dataScope, DataScopeEnum.DEPT_CUSTOM.getScope())) {
+            return;
+        }
+        if (CollUtil.isEmpty(dataScopeDeptIds)) {
+            throw invalidParamException("指定部门数据范围时，部门不能为空");
+        }
+        deptService.validateDeptList(dataScopeDeptIds);
     }
 
     @Override
@@ -591,29 +647,8 @@ public class PermissionServiceImpl implements PermissionService {
     // ========== 鐢ㄦ埛-閮ㄩ棬鐨勭浉鍏虫柟娉? ==========
 
     @Override
-    public void assignRoleDataScope(Long roleId, Integer dataScope, Set<Long> dataScopeDeptIds) {
-        validateRoleDataScope(dataScope, dataScopeDeptIds);
-        roleService.updateRoleDataScope(roleId, dataScope, dataScopeDeptIds);
-    }
-
-    private void validateRoleDataScope(Integer dataScope, Set<Long> dataScopeDeptIds) {
-        if (Objects.equals(dataScope, DataScopeEnum.DEPT_CUSTOM.getScope())
-                && CollUtil.isEmpty(dataScopeDeptIds)) {
-            throw exception(ROLE_DATA_SCOPE_DEPT_IDS_EMPTY);
-        }
-    }
-
-    @Override
     @DataPermission(enable = false) // 鍏抽棴鏁版嵁鏉冮檺锛屼笉鐒跺氨浼氬嚭鐜伴€掑綊鑾峰彇鏁版嵁鏉冮檺鐨勯棶棰?
     public DeptDataPermissionRespDTO getDeptDataPermission(Long userId) {
-        AdminUserDO user = userService.getUser(userId);
-        if (user != null && user.getDataScope() != null && !Objects.equals(user.getDataScope(), 0)) {
-            Supplier<Set<Long>> userDeptIds = Suppliers.memoize(() -> {
-                Set<Long> deptIds = userService.getUserDeptIdListByUserId(userId);
-                return deptIds == null ? Collections.emptySet() : deptIds;
-            });
-            return buildDeptDataPermission(user.getDataScope(), user.getDataScopeDeptIds(), userDeptIds);
-        }
         // 鑾峰緱鐢ㄦ埛鐨勮鑹?
         List<RoleDO> roles = getEnableUserRoleListByUserId(userId);
 
@@ -703,10 +738,6 @@ public class PermissionServiceImpl implements PermissionService {
     @Override
     @DataPermission(enable = false)
     public DeptDataPermissionRespDTO getDeptDataPermission(Long userId, String formKey) {
-        DeptDataPermissionRespDTO userPermission = getUserLevelDeptDataPermission(userId);
-        if (userPermission != null) {
-            return userPermission;
-        }
         List<RoleDO> roles = getEnableUserRoleListByUserId(userId);
         if (CollUtil.isEmpty(roles)) {
             DeptDataPermissionRespDTO r = new DeptDataPermissionRespDTO();
@@ -763,18 +794,6 @@ public class PermissionServiceImpl implements PermissionService {
         return result;
     }
 
-    private DeptDataPermissionRespDTO getUserLevelDeptDataPermission(Long userId) {
-        AdminUserDO user = userService.getUser(userId);
-        if (user == null || user.getDataScope() == null || Objects.equals(user.getDataScope(), 0)) {
-            return null;
-        }
-        Supplier<Set<Long>> userDeptIds = Suppliers.memoize(() -> {
-            Set<Long> deptIds = userService.getUserDeptIdListByUserId(userId);
-            return deptIds == null ? Collections.emptySet() : deptIds;
-        });
-        return buildDeptDataPermission(user.getDataScope(), user.getDataScopeDeptIds(), userDeptIds);
-    }
-
     private DeptDataPermissionRespDTO buildDeptDataPermission(Integer dataScope, Set<Long> dataScopeDeptIds,
                                                               Supplier<Set<Long>> userDeptIds) {
         DeptDataPermissionRespDTO result = new DeptDataPermissionRespDTO();
@@ -809,64 +828,6 @@ public class PermissionServiceImpl implements PermissionService {
     }
 
     // ========== 瑙掕壊-琛ㄥ崟鏁版嵁鏉冮檺鐨勭浉鍏虫柟娉?==========
-
-    @Override
-    public List<RoleFormDataScopeRespVO> getRoleFormDataScopeList(Long roleId) {
-        return CollectionUtils.convertList(
-            roleFormDataScopeMapper.selectListByRoleId(roleId),
-            item -> {
-                RoleFormDataScopeRespVO vo = new RoleFormDataScopeRespVO();
-                vo.setFormKey(item.getFormKey());
-                vo.setDataScope(item.getDataScope());
-                vo.setDataScopeDeptIds(
-                    CollUtil.defaultIfEmpty(item.getDataScopeDeptIds(), Collections.emptySet()));
-                return vo;
-            });
-    }
-
-    @Override
-    @Transactional(rollbackFor = Exception.class)
-    public void assignRoleFormDataScope(Long roleId,
-            List<PermissionAssignRoleFormDataScopeReqVO.FormDataScopeItem> items) {
-        roleFormDataScopeMapper.deleteListByRoleId(roleId, TenantContextHolder.getRequiredTenantId());
-        if (CollUtil.isEmpty(items)) {
-            return;
-        }
-        Set<Integer> validDataScopes = Arrays.stream(DataScopeEnum.ARRAYS).collect(Collectors.toSet());
-        Map<String, PermissionAssignRoleFormDataScopeReqVO.FormDataScopeItem> itemMap = new LinkedHashMap<>();
-        for (PermissionAssignRoleFormDataScopeReqVO.FormDataScopeItem item : items) {
-            if (item == null || item.getFormKey() == null || item.getDataScope() == null
-                    || !validDataScopes.contains(item.getDataScope())) {
-                continue;
-            }
-            if (SYSTEM_DEPT_FORM_KEY.equals(item.getFormKey())
-                    && Objects.equals(item.getDataScope(), DataScopeEnum.SELF.getScope())) {
-                continue;
-            }
-            itemMap.put(item.getFormKey(), item);
-        }
-        if (CollUtil.isEmpty(itemMap)) {
-            return;
-        }
-        List<RoleFormDataScopeDO> entities = CollectionUtils.convertList(itemMap.values(), item -> {
-            RoleFormDataScopeDO entity = new RoleFormDataScopeDO();
-            entity.setRoleId(roleId);
-            entity.setFormKey(item.getFormKey());
-            entity.setDataScope(item.getDataScope());
-            entity.setDataScopeDeptIds(
-                    Objects.equals(item.getDataScope(), DataScopeEnum.DEPT_CUSTOM.getScope())
-                            ? CollUtil.defaultIfEmpty(item.getDataScopeDeptIds(), Collections.emptySet())
-                            : Collections.emptySet());
-            return entity;
-        });
-        for (RoleFormDataScopeDO entity : entities) {
-            try {
-                roleFormDataScopeMapper.insert(entity);
-            } catch (DuplicateKeyException ignored) {
-                roleFormDataScopeMapper.updateByRoleIdAndFormKey(entity);
-            }
-        }
-    }
 
     /**
      * 鑾峰緱鑷韩鐨勪唬鐞嗗璞★紝瑙ｅ喅 AOP 鐢熸晥闂

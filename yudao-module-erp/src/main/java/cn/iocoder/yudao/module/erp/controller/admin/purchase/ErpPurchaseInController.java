@@ -20,6 +20,7 @@ import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.in.ErpPurchaseIn
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.in.ErpPurchaseInForAdjustRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.in.ErpPurchaseInImportExcelVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.in.ErpPurchaseInImportRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.in.ErpPurchaseInItemBatchUpdateReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.in.ErpPurchaseInItemForAdjustRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.in.ErpPurchaseInOrderImportExcelVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.in.ErpPurchaseInCreateSaleCartReqVO;
@@ -52,6 +53,7 @@ import cn.iocoder.yudao.module.erp.service.product.ErpProductService;
 import cn.iocoder.yudao.module.erp.service.purchase.ErpPurchaseFieldPermissionMasker;
 import cn.iocoder.yudao.module.erp.service.purchase.ErpPurchaseInService;
 import cn.iocoder.yudao.module.erp.service.purchase.ErpPurchaseInvoiceService;
+import cn.iocoder.yudao.module.erp.service.purchase.ErpSupplierDeptPermissionService;
 import cn.iocoder.yudao.module.erp.service.purchase.ErpSupplierService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpStockInBillService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpStockService;
@@ -60,6 +62,7 @@ import cn.iocoder.yudao.module.system.api.dept.DeptApi;
 import cn.iocoder.yudao.module.system.api.dept.dto.DeptRespDTO;
 import cn.iocoder.yudao.module.system.api.user.AdminUserApi;
 import cn.iocoder.yudao.module.system.api.user.dto.AdminUserRespDTO;
+import cn.iocoder.yudao.module.system.controller.admin.dept.vo.dept.DeptSimpleRespVO;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -123,6 +126,7 @@ public class ErpPurchaseInController {
             "item_remark", "remark",
             "itemRemark", "remark");
     private static final Map<String, String> ORDER_IMPORT_FIELD_ALIAS_MAP = ErpImportTemplateRequiredFieldUtils.aliasMap(
+            "no", "no",
             "supplierId", "supplierName",
             "supplierName", "supplierName",
             "inTime", "inTime",
@@ -136,7 +140,7 @@ public class ErpPurchaseInController {
             "item_count", "itemCount",
             "itemCount", "itemCount",
             "productPrice", "productPrice",
-            "wholeQty", "wholeQty",
+            "gift", "gift",
             "warehousePosition", "warehousePosition",
             "batchNo", "batchNo",
             "item_remark", "itemRemark",
@@ -144,6 +148,8 @@ public class ErpPurchaseInController {
 
     @Resource
     private ErpPurchaseInService purchaseInService;
+    @Resource
+    private ErpSupplierDeptPermissionService supplierDeptPermissionService;
     @Resource
     private ErpPurchaseInvoiceService purchaseInvoiceService;
     @Resource
@@ -224,6 +230,15 @@ public class ErpPurchaseInController {
         return success(true);
     }
 
+    @PutMapping("/batch-update-items")
+    @Operation(summary = "批量修改采购入库明细仓库和部门")
+    @PreAuthorize("@ss.hasPermission('erp:purchase-in:update')")
+    public CommonResult<Boolean> batchUpdatePurchaseInItems(
+            @Valid @RequestBody ErpPurchaseInItemBatchUpdateReqVO updateReqVO) {
+        purchaseInService.batchUpdatePurchaseInItems(updateReqVO);
+        return success(true);
+    }
+
     @PutMapping("/update-status")
     @Operation(summary = "Update purchase in status")
     @PreAuthorize("@ss.hasPermission('erp:purchase-in:update-status')")
@@ -284,25 +299,26 @@ public class ErpPurchaseInController {
     @PreAuthorize("@ss.hasPermission('erp:purchase-in:create')")
     public void getOrderImportTemplate(HttpServletResponse response) throws IOException {
         ErpPurchaseInOrderImportExcelVO example = new ErpPurchaseInOrderImportExcelVO();
-        example.setNo("RK-IMPORT-001");
-        example.setSupplierName("Example Supplier");
-        example.setInTime("2026-06-05 09:00:00");
+        example.setNo("CGRK20260811000002");
+        example.setSupplierName("示例供应商");
+        example.setInTime("2026-08-11");
         example.setFactoryOrderNo("FACTORY-001");
-        example.setRemark("Order remark");
+        example.setRemark("整单备注");
         example.setProductCode("P000001");
-        example.setWarehouseName("Main Warehouse");
+        example.setWarehouseName("主仓库");
         example.setItemCount(BigDecimal.ONE);
         example.setProductPrice(new BigDecimal("10.00"));
-        example.setWholeQty(1);
+        example.setGift("否");
         example.setWarehousePosition("A-01-01");
         example.setBatchNo("B20260605");
-        example.setItemRemark("Item remark");
+        example.setItemRemark("明细备注");
 
         ErpPurchaseInOrderImportExcelVO secondItem = new ErpPurchaseInOrderImportExcelVO();
         secondItem.setProductCode("P000002");
-        secondItem.setWarehouseName("Main Warehouse");
+        secondItem.setWarehouseName("主仓库");
         secondItem.setItemCount(new BigDecimal("2"));
-        secondItem.setProductPrice(new BigDecimal("20.00"));
+        secondItem.setProductPrice(BigDecimal.ZERO);
+        secondItem.setGift("是");
 
         ExcelUtils.writeImportTemplate(response, "采购入库导入模板.xls", "采购入库",
                 ErpPurchaseInOrderImportExcelVO.class, java.util.Arrays.asList(example, secondItem), null,
@@ -378,6 +394,31 @@ public class ErpPurchaseInController {
                         .setBatchNoEnabled(product.getBatchNoEnabled())));
         items.forEach(item -> fillPurchaseInItemReturnInfo(item, returnCountMap));
         return success(items);
+    }
+
+    @GetMapping("/supplier-dept-simple-list")
+    @Operation(summary = "获得供应商对当前用户可用的采购入库部门精简列表")
+    @Parameter(name = "supplierId", description = "供应商编号", required = true, example = "1024")
+    @PreAuthorize("@ss.hasPermission('erp:purchase-in:query')")
+    public CommonResult<List<DeptSimpleRespVO>> getSupplierAvailableDeptSimpleList(
+            @RequestParam("supplierId") Long supplierId) {
+        return success(purchaseInService.getSupplierAvailableDeptSimpleList(supplierId));
+    }
+
+    @GetMapping("/dept-simple-list")
+    @Operation(summary = "鑾峰緱褰撳墠鐢ㄦ埛鍙煡璇㈢殑閲囪喘鍏ュ簱閮ㄩ棬绮剧畝鍒楄〃")
+    @PreAuthorize("@ss.hasPermission('erp:purchase-in:query')")
+    public CommonResult<List<DeptSimpleRespVO>> getVisibleDeptSimpleList() {
+        return success(supplierDeptPermissionService.getDataPermissionDeptSimpleList(FIELD_PERMISSION_MODULE));
+    }
+
+    @GetMapping("/warehouse-dept-simple-list")
+    @Operation(summary = "获得目标采购仓库对当前用户可用的业务部门精简列表")
+    @Parameter(name = "warehouseId", description = "仓库编号", required = true, example = "1024")
+    @PreAuthorize("@ss.hasPermission('erp:purchase-in:update')")
+    public CommonResult<List<DeptSimpleRespVO>> getWarehouseAvailableDeptSimpleList(
+            @RequestParam("warehouseId") Long warehouseId) {
+        return success(purchaseInService.getWarehouseAvailableDeptSimpleList(warehouseId));
     }
 
     @GetMapping("/page")

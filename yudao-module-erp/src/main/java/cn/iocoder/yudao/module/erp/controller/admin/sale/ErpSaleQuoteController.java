@@ -18,6 +18,7 @@ import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.quote.ErpSaleQuoteDr
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.quote.ErpSaleQuoteDraftUpdateReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.quote.ErpSaleQuoteImportExcelVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.quote.ErpSaleQuoteImportRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.quote.ErpSaleQuoteItemBatchUpdateReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.quote.ErpSaleQuoteConvertCartReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.quote.ErpSaleQuoteOrderImportExcelVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.quote.ErpSaleQuotePageReqVO;
@@ -35,6 +36,7 @@ import cn.iocoder.yudao.module.erp.enums.sale.ErpSaleBizSourceTypeEnum;
 import cn.iocoder.yudao.module.erp.enums.sale.ErpSaleQuoteStatusEnum;
 import cn.iocoder.yudao.module.erp.framework.excel.ErpExportFieldUtils;
 import cn.iocoder.yudao.module.erp.framework.excel.ErpImportTemplateRequiredFieldUtils;
+import cn.iocoder.yudao.module.erp.service.base.ErpDataPermissionDeptService;
 import cn.iocoder.yudao.module.erp.service.config.ErpFieldConfigService;
 import cn.iocoder.yudao.module.erp.service.product.ErpProductService;
 import cn.iocoder.yudao.module.erp.service.sale.ErpCustomerService;
@@ -43,6 +45,7 @@ import cn.iocoder.yudao.module.erp.service.sale.ErpSaleQuoteService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpWarehouseService;
 import cn.iocoder.yudao.module.system.api.dept.DeptApi;
 import cn.iocoder.yudao.module.system.api.dept.dto.DeptRespDTO;
+import cn.iocoder.yudao.module.system.controller.admin.dept.vo.dept.DeptSimpleRespVO;
 import cn.iocoder.yudao.module.system.api.user.AdminUserApi;
 import cn.iocoder.yudao.module.system.api.user.dto.AdminUserRespDTO;
 import io.swagger.v3.oas.annotations.Operation;
@@ -82,18 +85,27 @@ public class ErpSaleQuoteController {
     private static final Map<String, String> EXPORT_FIELD_PERMISSION_MAP = buildExportFieldPermissionMap();
     private static final Map<String, String> ORDER_IMPORT_FIELD_ALIAS_MAP = ErpImportTemplateRequiredFieldUtils.aliasMap(
             "customerId", "customerName",
-            "quoteTime", "quoteTime",
-            "saleUserId", "saleUserName",
+            "customerName", "customerName",
             "productId", "productCode",
+            "productCode", "productCode",
             "warehouseId", "warehouseName",
+            "warehouseName", "warehouseName",
+            "warehouse_name", "warehouseName",
             "count", "itemCount",
+            "item_count", "itemCount",
+            "itemCount", "itemCount",
             "productPrice", "productPrice",
+            "giftFlag", "giftFlag",
             "taxPercent", "taxPercent",
-            "remark", "remark");
+            "remark", "remark",
+            "item_remark", "itemRemark",
+            "itemRemark", "itemRemark");
     private static final Map<String, String> DETAIL_IMPORT_FIELD_ALIAS_MAP = ErpImportTemplateRequiredFieldUtils.aliasMap(
             "productId", "productCode",
+            "productCode", "productCode",
             "count", "count",
-            "productPrice", "productPrice");
+            "productPrice", "productPrice",
+            "giftFlag", "giftFlag");
 
     @Resource
     private ErpSaleQuoteService saleQuoteService;
@@ -115,6 +127,8 @@ public class ErpSaleQuoteController {
     private DeptApi deptApi;
     @Resource
     private ErpFieldConfigService fieldConfigService;
+    @Resource
+    private ErpDataPermissionDeptService dataPermissionDeptService;
 
     @PostMapping("/create")
     @Operation(summary = "创建报价订单")
@@ -143,6 +157,15 @@ public class ErpSaleQuoteController {
     @PreAuthorize("@ss.hasPermission('erp:sale-quote:update')")
     public CommonResult<Boolean> updateSaleQuoteDraft(@RequestBody ErpSaleQuoteDraftUpdateReqVO updateReqVO) {
         saleQuoteService.updateSaleQuoteDraft(updateReqVO);
+        return success(true);
+    }
+
+    @PutMapping("/batch-update-items")
+    @Operation(summary = "批量修改报价订单明细仓库/部门")
+    @PreAuthorize("@ss.hasPermission('erp:sale-quote:update')")
+    public CommonResult<Boolean> batchUpdateSaleQuoteItems(
+            @Valid @RequestBody ErpSaleQuoteItemBatchUpdateReqVO updateReqVO) {
+        saleQuoteService.batchUpdateSaleQuoteItems(updateReqVO);
         return success(true);
     }
 
@@ -199,6 +222,21 @@ public class ErpSaleQuoteController {
         return success(respVO);
     }
 
+    @GetMapping("/warehouse-dept-simple-list")
+    @Operation(summary = "获取报价订单批量修改仓库可用部门精简列表")
+    @PreAuthorize("@ss.hasPermission('erp:sale-quote:update')")
+    public CommonResult<List<DeptSimpleRespVO>> getWarehouseAvailableDeptSimpleList(
+            @RequestParam("warehouseId") Long warehouseId) {
+        return success(saleQuoteService.getWarehouseAvailableDeptSimpleList(warehouseId));
+    }
+
+    @GetMapping("/dept-simple-list")
+    @Operation(summary = "获取报价订单可见部门精简列表")
+    @PreAuthorize("@ss.hasPermission('erp:sale-quote:query')")
+    public CommonResult<List<DeptSimpleRespVO>> getVisibleDeptSimpleList() {
+        return success(dataPermissionDeptService.getDeptSimpleList(FIELD_PERMISSION_MODULE));
+    }
+
     @GetMapping("/page")
     @Operation(summary = "获得报价订单分页")
     @PreAuthorize("@ss.hasPermission('erp:sale-quote:query')")
@@ -243,6 +281,7 @@ public class ErpSaleQuoteController {
         example.setProductCode("P0001");
         example.setCount(BigDecimal.ONE);
         example.setProductPrice(new BigDecimal("100.00"));
+        example.setGiftFlag(Boolean.FALSE);
         ExcelUtils.writeImportTemplate(response, "报价订单导入模板.xls", "报价订单",
                 ErpSaleQuoteImportExcelVO.class, Collections.singletonList(example), null,
                 ErpImportTemplateRequiredFieldUtils.getRequiredFields(fieldConfigService,
@@ -254,19 +293,21 @@ public class ErpSaleQuoteController {
     @Operation(summary = "获得报价订单整单导入模板")
     public void getOrderImportTemplate(HttpServletResponse response) throws IOException {
         ErpSaleQuoteOrderImportExcelVO example = new ErpSaleQuoteOrderImportExcelVO();
-        example.setImportNo("Q-001");
-        example.setCustomerName("example customer");
-        example.setQuoteTime("2026-06-05 09:00:00");
+        example.setCustomerName("示例客户");
+        example.setRemark("整单备注");
         example.setProductCode("P0001");
-        example.setWarehouseName("default");
+        example.setWarehouseName("默认仓库");
         example.setItemCount(BigDecimal.ONE);
         example.setProductPrice(new BigDecimal("100.00"));
+        example.setGiftFlag(Boolean.FALSE);
+        example.setItemRemark("明细备注");
         ErpSaleQuoteOrderImportExcelVO secondItem = new ErpSaleQuoteOrderImportExcelVO();
-        secondItem.setImportNo("Q-001");
         secondItem.setProductCode("P0002");
+        secondItem.setWarehouseName("默认仓库");
         secondItem.setItemCount(BigDecimal.ONE);
         secondItem.setProductPrice(new BigDecimal("50.00"));
-        ExcelUtils.writeImportTemplate(response, "sale-quote-order-import-template.xls", "sale_quote",
+        secondItem.setGiftFlag(Boolean.FALSE);
+        ExcelUtils.writeImportTemplate(response, "报价订单导入模板.xls", "报价订单",
                 ErpSaleQuoteOrderImportExcelVO.class, Arrays.asList(example, secondItem), null,
                 ErpImportTemplateRequiredFieldUtils.getRequiredFields(fieldConfigService,
                         ErpFieldConfigModuleEnum.SALE_QUOTE, ErpSaleQuoteOrderImportExcelVO.class,

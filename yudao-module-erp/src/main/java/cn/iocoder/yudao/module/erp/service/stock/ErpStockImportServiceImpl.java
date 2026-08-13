@@ -4,17 +4,23 @@ import cn.hutool.core.collection.CollUtil;
 import cn.hutool.core.util.StrUtil;
 import cn.iocoder.yudao.framework.common.enums.CommonStatusEnum;
 import cn.iocoder.yudao.framework.common.util.number.MoneyUtils;
+import cn.iocoder.yudao.framework.datapermission.core.util.DataPermissionUtils;
+import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.check.ErpStockCheckImportExcelVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.check.ErpStockCheckSaveReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.imports.ErpStockImportExcelVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.imports.ErpStockImportResultRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.in.ErpStockInSaveReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.move.ErpStockMoveSaveReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.out.ErpStockOutSaveReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.warehousemove.ErpWarehouseMoveImportExcelVO;
+import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.warehousemove.ErpWarehouseMoveSaveReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.product.ErpProductDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpSupplierDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpCustomerDO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpWarehouseDO;
 import cn.iocoder.yudao.module.erp.dal.mysql.product.ErpProductMapper;
+import cn.iocoder.yudao.module.erp.dal.mysql.stock.ErpStockMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.stock.ErpWarehouseMapper;
 import cn.iocoder.yudao.module.erp.enums.stock.ErpStockCheckTypeEnum;
 import cn.iocoder.yudao.module.erp.service.purchase.ErpSupplierService;
@@ -49,9 +55,13 @@ public class ErpStockImportServiceImpl implements ErpStockImportService {
     @Resource
     private ErpStockCheckService stockCheckService;
     @Resource
+    private ErpWarehouseMoveService warehouseMoveService;
+    @Resource
     private ErpProductMapper productMapper;
     @Resource
     private ErpWarehouseMapper warehouseMapper;
+    @Resource
+    private ErpStockMapper stockMapper;
     @Resource
     private ErpSupplierService supplierService;
     @Resource
@@ -146,28 +156,38 @@ public class ErpStockImportServiceImpl implements ErpStockImportService {
     }
 
     @Override
-    public ErpStockImportResultRespVO importStockCheckList(List<ErpStockImportExcelVO> list) {
-        return importGroups(list, "库存盘点", group -> {
-            ErpStockImportExcelVO mainRow = group.getMainRow();
+    public ErpStockImportResultRespVO importStockCheckList(List<ErpStockCheckImportExcelVO> list) {
+        return importStockCheckGroups(list, "库存盘点", group -> {
+            ErpStockCheckImportExcelVO mainRow = group.getMainRow();
             ErpStockCheckSaveReqVO reqVO = new ErpStockCheckSaveReqVO();
-            reqVO.setCheckTime(parseBizTime(mainRow.getBizTime()));
+            reqVO.setCheckTime(LocalDateTime.now());
             Integer checkType = resolveCheckType(mainRow.getCheckTypeName());
             reqVO.setCheckType(checkType);
             reqVO.setRemark(trimToNull(mainRow.getRemark()));
             List<ErpStockCheckSaveReqVO.Item> items = new ArrayList<>();
-            for (ErpStockImportExcelVO row : group.getRows()) {
-                BigDecimal stockCount = requireNotNull(row.getStockCount(), "账面库存");
-                BigDecimal actualCount = ErpStockCheckTypeEnum.isCost(checkType) ? stockCount : requireNotNull(row.getActualCount(), "实际库存");
-                BigDecimal productPrice = requireNotNull(row.getProductPrice(), "单价");
+            for (ErpStockCheckImportExcelVO row : group.getRows()) {
+                ErpProductDO product = resolveProduct(row.getProductCode());
+                ErpWarehouseDO warehouse = resolveWarehouse(row.getWarehouseName(), "所属仓库");
+                ErpStockDO stock = DataPermissionUtils.executeIgnore(() ->
+                        stockMapper.selectByProductIdAndWarehouseId(product.getId(), warehouse.getId()));
+                BigDecimal stockCount = stock != null && stock.getCount() != null ? stock.getCount() : BigDecimal.ZERO;
+                BigDecimal productPrice = resolveStockCheckProductPrice(row.getProductPrice(), stock, product);
                 ErpStockCheckSaveReqVO.Item item = new ErpStockCheckSaveReqVO.Item();
-                item.setWarehouseId(resolveWarehouse(row.getWarehouseName(), "仓库名称").getId());
-                item.setProductId(resolveProductId(row.getProductCode()));
+                item.setWarehouseId(warehouse.getId());
+                item.setProductId(product.getId());
+                item.setBatchNo(trimToNull(row.getBatchNo()));
                 item.setProductPrice(productPrice);
                 item.setStockCount(stockCount);
-                item.setActualCount(actualCount);
-                item.setCount(actualCount.subtract(stockCount));
                 if (ErpStockCheckTypeEnum.isCost(checkType)) {
-                    item.setTotalPrice(MoneyUtils.priceMultiply(productPrice, stockCount));
+                    item.setActualCount(stockCount);
+                    item.setCount(BigDecimal.ZERO);
+                    item.setTotalPrice(row.getTotalPrice() != null
+                            ? requireNotNegative(row.getTotalPrice(), "盘点金额")
+                            : MoneyUtils.priceMultiply(productPrice, stockCount));
+                } else {
+                    BigDecimal actualCount = requireNotNull(row.getActualCount(), "实际库存");
+                    item.setActualCount(actualCount);
+                    item.setCount(actualCount.subtract(stockCount));
                 }
                 item.setRemark(trimToNull(row.getItemRemark()));
                 items.add(item);
@@ -175,6 +195,152 @@ public class ErpStockImportServiceImpl implements ErpStockImportService {
             reqVO.setItems(items);
             stockCheckService.createStockCheck(reqVO);
         });
+    }
+
+    @Override
+    public ErpStockImportResultRespVO importWarehouseMoveList(List<ErpWarehouseMoveImportExcelVO> list) {
+        return importWarehouseMoveGroups(list, "仓库移货", group -> {
+            ErpWarehouseMoveImportExcelVO mainRow = group.getMainRow();
+            ErpWarehouseDO fromWarehouse = resolveWarehouse(mainRow.getFromWarehouseName(), "移出仓库");
+            ErpWarehouseDO toWarehouse = resolveWarehouse(mainRow.getToWarehouseName(), "移入仓库");
+            ErpWarehouseMoveSaveReqVO reqVO = new ErpWarehouseMoveSaveReqVO();
+            reqVO.setMoveTime(LocalDateTime.now());
+            reqVO.setFromWarehouseId(fromWarehouse.getId());
+            reqVO.setToWarehouseId(toWarehouse.getId());
+            reqVO.setRemark(trimToNull(mainRow.getRemark()));
+            List<ErpWarehouseMoveSaveReqVO.Item> items = new ArrayList<>();
+            for (ErpWarehouseMoveImportExcelVO row : group.getRows()) {
+                ErpWarehouseMoveSaveReqVO.Item item = new ErpWarehouseMoveSaveReqVO.Item();
+                item.setProductId(resolveProductId(row.getProductCode()));
+                item.setCount(requirePositive(row.getCount(), "移货数量"));
+                item.setProductPrice(row.getProductPrice());
+                item.setFromShelf(trimToNull(row.getFromShelf()));
+                item.setToShelf(trimToNull(row.getToShelf()));
+                item.setBatchNo(trimToNull(row.getBatchNo()));
+                item.setRemark(trimToNull(row.getItemRemark()));
+                items.add(item);
+            }
+            reqVO.setItems(items);
+            warehouseMoveService.createWarehouseMove(reqVO);
+        });
+    }
+
+    private ErpStockImportResultRespVO importStockCheckGroups(List<ErpStockCheckImportExcelVO> list,
+                                                             String moduleName,
+                                                             StockCheckGroupImporter importer) {
+        ErpStockImportResultRespVO result = new ErpStockImportResultRespVO();
+        if (CollUtil.isEmpty(list)) {
+            return result;
+        }
+        List<StockCheckImportGroup> groups = buildStockCheckGroups(list);
+        for (StockCheckImportGroup group : groups) {
+            try {
+                importer.importGroup(group);
+                result.addSuccess();
+            } catch (Exception ex) {
+                result.addFailure(group.getRowNo(), null, group.getFirstProductCode(),
+                        moduleName + "导入失败：" + resolveFailureReason(ex));
+            }
+        }
+        return result;
+    }
+
+    private List<StockCheckImportGroup> buildStockCheckGroups(List<ErpStockCheckImportExcelVO> list) {
+        List<StockCheckImportGroup> groups = new ArrayList<>();
+        StockCheckImportGroup currentGroup = null;
+        for (int i = 0; i < list.size(); i++) {
+            ErpStockCheckImportExcelVO row = list.get(i);
+            int rowNo = i + 2;
+            if (isBlankStockCheckRow(row)) {
+                continue;
+            }
+            StockCheckImportGroup group;
+            if (hasStockCheckMainFields(row) || currentGroup == null) {
+                group = new StockCheckImportGroup(rowNo, row);
+                groups.add(group);
+                currentGroup = group;
+            } else {
+                group = currentGroup;
+            }
+            group.addRow(row);
+        }
+        return groups;
+    }
+
+    private boolean isBlankStockCheckRow(ErpStockCheckImportExcelVO row) {
+        return row == null || StrUtil.isAllBlank(row.getCheckTypeName(), row.getWarehouseName(),
+                row.getProductCode(), row.getBatchNo(), row.getRemark(), row.getItemRemark())
+                && row.getActualCount() == null && row.getProductPrice() == null && row.getTotalPrice() == null;
+    }
+
+    private boolean hasStockCheckMainFields(ErpStockCheckImportExcelVO row) {
+        return StrUtil.isNotBlank(trimToNull(row.getCheckTypeName()))
+                || StrUtil.isNotBlank(trimToNull(row.getRemark()));
+    }
+
+    private ErpStockImportResultRespVO importWarehouseMoveGroups(List<ErpWarehouseMoveImportExcelVO> list,
+                                                                String moduleName,
+                                                                WarehouseMoveGroupImporter importer) {
+        ErpStockImportResultRespVO result = new ErpStockImportResultRespVO();
+        if (CollUtil.isEmpty(list)) {
+            return result;
+        }
+        List<WarehouseMoveImportGroup> groups = buildWarehouseMoveGroups(list);
+        for (WarehouseMoveImportGroup group : groups) {
+            try {
+                importer.importGroup(group);
+                result.addSuccess();
+            } catch (Exception ex) {
+                result.addFailure(group.getRowNo(), null, group.getFirstProductCode(),
+                        moduleName + "导入失败：" + resolveFailureReason(ex));
+            }
+        }
+        return result;
+    }
+
+    private List<WarehouseMoveImportGroup> buildWarehouseMoveGroups(List<ErpWarehouseMoveImportExcelVO> list) {
+        List<WarehouseMoveImportGroup> groups = new ArrayList<>();
+        WarehouseMoveImportGroup currentGroup = null;
+        for (int i = 0; i < list.size(); i++) {
+            ErpWarehouseMoveImportExcelVO row = list.get(i);
+            int rowNo = i + 2;
+            if (isBlankWarehouseMoveRow(row)) {
+                continue;
+            }
+            if (currentGroup == null || isNewWarehouseMoveGroup(currentGroup.getMainRow(), row)) {
+                currentGroup = new WarehouseMoveImportGroup(rowNo, row);
+                groups.add(currentGroup);
+            }
+            currentGroup.addRow(row);
+        }
+        return groups;
+    }
+
+    private boolean isBlankWarehouseMoveRow(ErpWarehouseMoveImportExcelVO row) {
+        return row == null || StrUtil.isAllBlank(row.getFromWarehouseName(), row.getToWarehouseName(),
+                row.getProductCode(), row.getFromShelf(), row.getToShelf(), row.getBatchNo(),
+                row.getRemark(), row.getItemRemark())
+                && row.getCount() == null && row.getProductPrice() == null;
+    }
+
+    private boolean isNewWarehouseMoveGroup(ErpWarehouseMoveImportExcelVO mainRow,
+                                            ErpWarehouseMoveImportExcelVO row) {
+        String rowFromWarehouseName = trimToNull(row.getFromWarehouseName());
+        String rowToWarehouseName = trimToNull(row.getToWarehouseName());
+        String rowRemark = trimToNull(row.getRemark());
+        if (StrUtil.isAllBlank(rowFromWarehouseName, rowToWarehouseName, rowRemark)) {
+            return false;
+        }
+        String mainFromWarehouseName = trimToNull(mainRow.getFromWarehouseName());
+        String mainToWarehouseName = trimToNull(mainRow.getToWarehouseName());
+        String mainRemark = trimToNull(mainRow.getRemark());
+        if (rowFromWarehouseName != null && !Objects.equals(mainFromWarehouseName, rowFromWarehouseName)) {
+            return true;
+        }
+        if (rowToWarehouseName != null && !Objects.equals(mainToWarehouseName, rowToWarehouseName)) {
+            return true;
+        }
+        return rowRemark != null && !Objects.equals(mainRemark, rowRemark);
     }
 
     private ErpStockImportResultRespVO importGroups(List<ErpStockImportExcelVO> list, String moduleName,
@@ -262,6 +428,10 @@ public class ErpStockImportServiceImpl implements ErpStockImportService {
     }
 
     private Long resolveProductId(String productCode) {
+        return resolveProduct(productCode).getId();
+    }
+
+    private ErpProductDO resolveProduct(String productCode) {
         String code = trimToNull(productCode);
         if (code == null) {
             throw new IllegalArgumentException("产品编码不能为空");
@@ -273,7 +443,7 @@ public class ErpStockImportServiceImpl implements ErpStockImportService {
         if (!CommonStatusEnum.ENABLE.getStatus().equals(product.getStatus())) {
             throw new IllegalArgumentException("产品未启用：" + code);
         }
-        return product.getId();
+        return product;
     }
 
     private ErpWarehouseDO resolveWarehouse(String warehouseName, String label) {
@@ -401,6 +571,32 @@ public class ErpStockImportServiceImpl implements ErpStockImportService {
         return value;
     }
 
+    private BigDecimal requireNotNegative(BigDecimal value, String label) {
+        if (value == null) {
+            throw new IllegalArgumentException(label + "不能为空");
+        }
+        if (value.compareTo(BigDecimal.ZERO) < 0) {
+            throw new IllegalArgumentException(label + "不能为负");
+        }
+        return value;
+    }
+
+    private BigDecimal resolveStockCheckProductPrice(BigDecimal importPrice, ErpStockDO stock, ErpProductDO product) {
+        if (importPrice != null) {
+            return requireNotNegative(importPrice, "盘点单价");
+        }
+        if (stock != null && stock.getCostPrice() != null) {
+            return stock.getCostPrice();
+        }
+        if (product != null && product.getLastPurchasePrice() != null) {
+            return product.getLastPurchasePrice();
+        }
+        if (product != null && product.getPurchasePrice() != null) {
+            return product.getPurchasePrice();
+        }
+        return BigDecimal.ZERO;
+    }
+
     private BigDecimal defaultZero(BigDecimal value) {
         return value == null ? BigDecimal.ZERO : value;
     }
@@ -418,8 +614,84 @@ public class ErpStockImportServiceImpl implements ErpStockImportService {
     }
 
     @FunctionalInterface
+    private interface StockCheckGroupImporter {
+        void importGroup(StockCheckImportGroup group);
+    }
+
+    @FunctionalInterface
+    private interface WarehouseMoveGroupImporter {
+        void importGroup(WarehouseMoveImportGroup group);
+    }
+
+    @FunctionalInterface
     private interface GroupImporter {
         void importGroup(ImportGroup group);
+    }
+
+    private static class StockCheckImportGroup {
+
+        private final Integer rowNo;
+        private final ErpStockCheckImportExcelVO mainRow;
+        private final List<ErpStockCheckImportExcelVO> rows = new ArrayList<>();
+
+        StockCheckImportGroup(Integer rowNo, ErpStockCheckImportExcelVO mainRow) {
+            this.rowNo = rowNo;
+            this.mainRow = mainRow;
+        }
+
+        void addRow(ErpStockCheckImportExcelVO row) {
+            rows.add(row);
+        }
+
+        Integer getRowNo() {
+            return rowNo;
+        }
+
+        ErpStockCheckImportExcelVO getMainRow() {
+            return mainRow;
+        }
+
+        List<ErpStockCheckImportExcelVO> getRows() {
+            return rows;
+        }
+
+        String getFirstProductCode() {
+            return rows.isEmpty() ? null : rows.get(0).getProductCode();
+        }
+
+    }
+
+    private static class WarehouseMoveImportGroup {
+
+        private final Integer rowNo;
+        private final ErpWarehouseMoveImportExcelVO mainRow;
+        private final List<ErpWarehouseMoveImportExcelVO> rows = new ArrayList<>();
+
+        WarehouseMoveImportGroup(Integer rowNo, ErpWarehouseMoveImportExcelVO mainRow) {
+            this.rowNo = rowNo;
+            this.mainRow = mainRow;
+        }
+
+        void addRow(ErpWarehouseMoveImportExcelVO row) {
+            rows.add(row);
+        }
+
+        Integer getRowNo() {
+            return rowNo;
+        }
+
+        ErpWarehouseMoveImportExcelVO getMainRow() {
+            return mainRow;
+        }
+
+        List<ErpWarehouseMoveImportExcelVO> getRows() {
+            return rows;
+        }
+
+        String getFirstProductCode() {
+            return rows.isEmpty() ? null : rows.get(0).getProductCode();
+        }
+
     }
 
     private static class ImportGroup {

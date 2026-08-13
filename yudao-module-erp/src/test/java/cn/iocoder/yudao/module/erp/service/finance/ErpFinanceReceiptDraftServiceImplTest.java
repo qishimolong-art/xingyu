@@ -11,6 +11,7 @@ import cn.iocoder.yudao.module.erp.enums.ErpAuditStatus;
 import cn.iocoder.yudao.module.erp.enums.common.ErpBizTypeEnum;
 import cn.iocoder.yudao.module.erp.enums.finance.ErpFinanceReceiptStatusEnum;
 import cn.iocoder.yudao.module.erp.service.common.ErpOperateLogService;
+import cn.iocoder.yudao.module.erp.service.sale.ErpCustomerDeptPermissionService;
 import cn.iocoder.yudao.module.erp.service.sale.ErpCustomerService;
 import cn.iocoder.yudao.module.system.api.user.AdminUserApi;
 import org.junit.jupiter.api.Test;
@@ -25,6 +26,7 @@ import java.util.Collections;
 
 import static cn.iocoder.yudao.framework.test.core.util.AssertUtils.assertServiceException;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.FINANCE_RECEIPT_APPROVE_FAIL;
+import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.FINANCE_RECEIPT_CUSTOMER_DEPT_NOT_ALLOWED;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.FINANCE_RECEIPT_DRAFT_ITEMS_REQUIRED;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.FINANCE_RECEIPT_DRAFT_SUBMIT_FAIL;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.FINANCE_RECEIPT_DRAFT_UPDATE_FAIL;
@@ -56,6 +58,8 @@ class ErpFinanceReceiptDraftServiceImplTest extends BaseMockitoUnitTest {
     @Mock
     private ErpCustomerService customerService;
     @Mock
+    private ErpCustomerDeptPermissionService customerDeptPermissionService;
+    @Mock
     private ErpAccountService accountService;
     @Mock
     private AdminUserApi adminUserApi;
@@ -73,6 +77,43 @@ class ErpFinanceReceiptDraftServiceImplTest extends BaseMockitoUnitTest {
         verify(noRedisDAO, never()).generate(any());
         verify(receiptMapper, never()).insert(any(ErpFinanceReceiptDO.class));
         verify(receiptItemMapper, never()).insertBatch(any());
+    }
+
+    @Test
+    void createDraft_withCustomerDeptNotAllowed_throwException() {
+        when(noRedisDAO.generate(ErpNoRedisDAO.FINANCE_RECEIPT_NO_PREFIX)).thenReturn("SK001");
+        ErpFinanceReceiptSaveReqVO.Item validItem = new ErpFinanceReceiptSaveReqVO.Item()
+                .setBizType(ErpBizTypeEnum.SALE_OUT.getType()).setBizId(10L)
+                .setBizNo("XS001").setTotalPrice(new BigDecimal("80"))
+                .setReceiptedPrice(new BigDecimal("20")).setReceiptPrice(new BigDecimal("50"));
+        ErpFinanceReceiptDraftSaveReqVO request = new ErpFinanceReceiptDraftSaveReqVO()
+                .setCustomerId(2L).setDeptId(99L).setDiscountPrice(new BigDecimal("5"))
+                .setItems(Collections.singletonList(validItem));
+        when(customerDeptPermissionService.hasAvailableDept(2L, 99L, "erp_finance_receipt")).thenReturn(false);
+
+        assertServiceException(() -> receiptService.createFinanceReceiptDraft(request),
+                FINANCE_RECEIPT_CUSTOMER_DEPT_NOT_ALLOWED);
+
+        verify(receiptMapper, never()).insert(any(ErpFinanceReceiptDO.class));
+        verify(receiptItemMapper, never()).insertBatch(any());
+    }
+
+    @Test
+    void createDraft_withoutCustomerOrDept_skipsCustomerDeptValidation() {
+        when(noRedisDAO.generate(ErpNoRedisDAO.FINANCE_RECEIPT_NO_PREFIX)).thenReturn("SK001");
+        ErpFinanceReceiptSaveReqVO.Item validItem = new ErpFinanceReceiptSaveReqVO.Item()
+                .setBizType(ErpBizTypeEnum.SALE_OUT.getType()).setBizId(10L)
+                .setBizNo("XS001").setTotalPrice(new BigDecimal("80"))
+                .setReceiptedPrice(new BigDecimal("20")).setReceiptPrice(new BigDecimal("50"));
+        ErpFinanceReceiptDraftSaveReqVO request = new ErpFinanceReceiptDraftSaveReqVO()
+                .setDiscountPrice(new BigDecimal("5"))
+                .setItems(Collections.singletonList(validItem));
+
+        receiptService.createFinanceReceiptDraft(request);
+
+        verify(customerDeptPermissionService, never()).hasAvailableDept(any(), any(), any());
+        verify(receiptMapper).insert(any(ErpFinanceReceiptDO.class));
+        verify(receiptItemMapper).insertBatch(any());
     }
 
 

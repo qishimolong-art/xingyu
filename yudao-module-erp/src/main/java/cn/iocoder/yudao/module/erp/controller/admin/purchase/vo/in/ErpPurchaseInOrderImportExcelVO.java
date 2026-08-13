@@ -40,8 +40,8 @@ public class ErpPurchaseInOrderImportExcelVO {
     @ExcelProperty("入库单价")
     private BigDecimal productPrice;
 
-    @ExcelProperty("整件数")
-    private Integer wholeQty;
+    @ExcelProperty("赠品")
+    private String gift;
 
     @ExcelProperty("货架位")
     private String warehousePosition;

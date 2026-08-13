@@ -356,6 +356,19 @@ public interface ErpProductMapper extends BaseMapperX<ErpProductDO> {
         return selectList(wrapper);
     }
 
+    default List<ErpProductDO> selectVisibleSimpleListByStatus(Integer status, ErpProductPageReqVO reqVO) {
+        LambdaQueryWrapperX<ErpProductDO> wrapper = new LambdaQueryWrapperX<>();
+        wrapper.select(ErpProductDO::getId, ErpProductDO::getCode, ErpProductDO::getName,
+                ErpProductDO::getBarCode, ErpProductDO::getCategoryId, ErpProductDO::getUnitId,
+                ErpProductDO::getPurchasePrice, ErpProductDO::getSalePrice, ErpProductDO::getMinPrice,
+                ErpProductDO::getSharePrice);
+        wrapper.eq(ErpProductDO::getStatus, status);
+        wrapper.ne(ErpProductDO::getMergedFlag, Boolean.TRUE);
+        wrapper.orderByDesc(ErpProductDO::getId);
+        applyVisibleScope(wrapper, reqVO);
+        return selectList(wrapper);
+    }
+
     default ErpProductDO selectVisibleById(Long id, ErpProductPageReqVO reqVO) {
         LambdaQueryWrapperX<ErpProductDO> wrapper = new LambdaQueryWrapperX<>();
         wrapper.eq(ErpProductDO::getId, id);

@@ -19,6 +19,7 @@ import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartFirs
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartFirstApproveConfigSaveReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartImportExcelVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartImportRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartItemBatchUpdateReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartSaveReqVO;
@@ -36,6 +37,7 @@ import cn.iocoder.yudao.module.erp.enums.config.ErpFieldConfigModuleEnum;
 import cn.iocoder.yudao.module.erp.enums.sale.ErpSaleBizSourceTypeEnum;
 import cn.iocoder.yudao.module.erp.framework.excel.ErpExportFieldUtils;
 import cn.iocoder.yudao.module.erp.framework.excel.ErpImportTemplateRequiredFieldUtils;
+import cn.iocoder.yudao.module.erp.service.base.ErpDataPermissionDeptService;
 import cn.iocoder.yudao.module.erp.service.config.ErpFieldConfigService;
 import cn.iocoder.yudao.module.erp.service.product.ErpProductService;
 import cn.iocoder.yudao.module.erp.service.sale.ErpCustomerService;
@@ -45,6 +47,7 @@ import cn.iocoder.yudao.module.erp.service.sale.ErpVinRecognizeService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpWarehouseService;
 import cn.iocoder.yudao.module.system.api.dept.DeptApi;
 import cn.iocoder.yudao.module.system.api.dept.dto.DeptRespDTO;
+import cn.iocoder.yudao.module.system.controller.admin.dept.vo.dept.DeptSimpleRespVO;
 import cn.iocoder.yudao.module.system.api.user.AdminUserApi;
 import cn.iocoder.yudao.module.system.api.user.dto.AdminUserRespDTO;
 import io.swagger.v3.oas.annotations.Operation;
@@ -88,6 +91,8 @@ public class ErpSaleCartController {
             "count", "count",
             "itemCount", "count",
             "productPrice", "productPrice",
+            "giftFlag", "giftFlag",
+            "item_giftFlag", "giftFlag",
             "remark", "remark");
 
     @Resource
@@ -110,6 +115,8 @@ public class ErpSaleCartController {
     private ErpFieldConfigService fieldConfigService;
     @Resource
     private DeptApi deptApi;
+    @Resource
+    private ErpDataPermissionDeptService dataPermissionDeptService;
 
     @PostMapping("/create")
     @Operation(summary = "创建销售手推车")
@@ -148,6 +155,15 @@ public class ErpSaleCartController {
     @PreAuthorize("@ss.hasPermission('erp:sale-cart:update')")
     public CommonResult<Boolean> updateSaleCartDraft(@RequestBody ErpSaleCartDraftUpdateReqVO updateReqVO) {
         saleCartService.updateSaleCartDraft(BeanUtils.toBean(updateReqVO, ErpSaleCartSaveReqVO.class));
+        return success(true);
+    }
+
+    @PutMapping("/batch-update-items")
+    @Operation(summary = "批量修改销售手推车明细仓库/部门")
+    @PreAuthorize("@ss.hasPermission('erp:sale-cart:update')")
+    public CommonResult<Boolean> batchUpdateSaleCartItems(
+            @Valid @RequestBody ErpSaleCartItemBatchUpdateReqVO updateReqVO) {
+        saleCartService.batchUpdateSaleCartItems(updateReqVO);
         return success(true);
     }
 
@@ -242,6 +258,21 @@ public class ErpSaleCartController {
         return success(respVO);
     }
 
+    @GetMapping("/warehouse-dept-simple-list")
+    @Operation(summary = "获取销售手推车批量修改仓库可用部门精简列表")
+    @PreAuthorize("@ss.hasPermission('erp:sale-cart:update')")
+    public CommonResult<List<DeptSimpleRespVO>> getWarehouseAvailableDeptSimpleList(
+            @RequestParam("warehouseId") Long warehouseId) {
+        return success(saleCartService.getWarehouseAvailableDeptSimpleList(warehouseId));
+    }
+
+    @GetMapping("/dept-simple-list")
+    @Operation(summary = "获取销售手推车可见部门精简列表")
+    @PreAuthorize("@ss.hasPermission('erp:sale-cart:query')")
+    public CommonResult<List<DeptSimpleRespVO>> getVisibleDeptSimpleList() {
+        return success(dataPermissionDeptService.getDeptSimpleList(FIELD_PERMISSION_MODULE));
+    }
+
     @GetMapping("/recognize-vin")
     @Operation(summary = "VIN码识别")
     @PreAuthorize("@ss.hasPermission('erp:sale-cart:query')")
@@ -294,9 +325,7 @@ public class ErpSaleCartController {
         example.setWarehouseName("默认仓");
         example.setCount(BigDecimal.ONE);
         example.setProductPrice(new BigDecimal("100.00"));
-        example.setBrand("品牌");
-        example.setVehicleModel("车型");
-        example.setStandard("规格");
+        example.setGiftFlag(false);
         example.setRemark("备注");
         ExcelUtils.writeImportTemplate(response, "销售手推车导入模板.xls", "销售手推车",
                 ErpSaleCartImportExcelVO.class, Collections.singletonList(example), null,

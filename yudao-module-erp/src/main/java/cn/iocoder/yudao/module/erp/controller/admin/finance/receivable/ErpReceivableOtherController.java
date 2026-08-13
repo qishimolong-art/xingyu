@@ -21,6 +21,7 @@ import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.imports.ErpFinanc
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.receivable.ErpReceivableOtherDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpCustomerDO;
 import cn.iocoder.yudao.module.erp.enums.ErpAuditStatus;
+import cn.iocoder.yudao.module.erp.service.base.ErpDataPermissionDeptService;
 import cn.iocoder.yudao.module.erp.service.finance.ErpFinanceFieldPermissionMasker;
 import cn.iocoder.yudao.module.erp.service.finance.receivable.ErpReceivableOtherService;
 import cn.iocoder.yudao.module.erp.service.sale.ErpCustomerService;
@@ -28,6 +29,7 @@ import cn.iocoder.yudao.module.system.api.dept.DeptApi;
 import cn.iocoder.yudao.module.system.api.dept.dto.DeptRespDTO;
 import cn.iocoder.yudao.module.system.api.user.AdminUserApi;
 import cn.iocoder.yudao.module.system.api.user.dto.AdminUserRespDTO;
+import cn.iocoder.yudao.module.system.controller.admin.dept.vo.dept.DeptSimpleRespVO;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -79,6 +81,8 @@ public class ErpReceivableOtherController {
     private DeptApi deptApi;
     @Resource
     private ErpFinanceFieldPermissionMasker fieldPermissionMasker;
+    @Resource
+    private ErpDataPermissionDeptService dataPermissionDeptService;
 
     @PostMapping("/create")
     @Operation(summary = "创建其他应收")
@@ -191,6 +195,13 @@ public class ErpReceivableOtherController {
         return success(maskPageResult(BeanUtils.toBean(pageResult, ErpReceivableOtherRespVO.class, vo -> {
             fillExtend(vo, customerMap, userMap, deptMap);
         })));
+    }
+
+    @GetMapping("/dept-simple-list")
+    @Operation(summary = "Get receivable other data permission dept simple list")
+    @PreAuthorize("@ss.hasPermission('erp:receivable-other:query')")
+    public CommonResult<List<DeptSimpleRespVO>> getReceivableOtherDeptSimpleList() {
+        return success(dataPermissionDeptService.getDeptSimpleList("erp_receivable_other"));
     }
 
     @GetMapping("/export-excel")

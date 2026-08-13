@@ -7,9 +7,11 @@ import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleRetur
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnDraftCreateReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnDraftUpdateReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnItemBatchUpdateReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnSaveReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleReturnDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleReturnItemDO;
+import cn.iocoder.yudao.module.system.controller.admin.dept.vo.dept.DeptSimpleRespVO;
 
 import javax.validation.Valid;
 import java.math.BigDecimal;
@@ -41,6 +43,8 @@ public interface ErpSaleReturnService {
     void updateSaleReturn(@Valid ErpSaleReturnSaveReqVO updateReqVO);
 
     void updateSaleReturnDraft(ErpSaleReturnDraftUpdateReqVO updateReqVO);
+
+    void batchUpdateSaleReturnItems(@Valid ErpSaleReturnItemBatchUpdateReqVO updateReqVO);
 
     void submitSaleReturn(Long id);
 
@@ -110,6 +114,8 @@ public interface ErpSaleReturnService {
      * @return 销售退货项 List
      */
     List<ErpSaleReturnItemDO> getSaleReturnItemListByReturnIds(Collection<Long> returnIds);
+
+    List<DeptSimpleRespVO> getWarehouseAvailableDeptSimpleList(Long warehouseId);
 
     ErpSaleReturnImportRespVO parseImportData(List<ErpSaleReturnImportExcelVO> list);
 

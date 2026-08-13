@@ -50,6 +50,8 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -62,8 +64,6 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
-import java.time.format.DateTimeFormatter;
-import java.time.format.DateTimeParseException;
 import java.util.stream.Collectors;
 
 import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.convertSet;
@@ -517,7 +517,11 @@ public class ErpPurchasePriceAdjustServiceImpl implements ErpPurchasePriceAdjust
                 } else if (CommonStatusEnum.isDisable(supplier.getStatus())) {
                     addImportFailure(respVO, rowNo, orderNo, null, "供应商(" + supplier.getName() + ")未启用");
                 }
-                validateImportDate(respVO, rowNo, orderNo, null, "调价时间", row.getAdjustTime());
+                try {
+                    parsePurchasePriceAdjustImportTime(row.getAdjustTime(), null);
+                } catch (IllegalArgumentException ex) {
+                    addImportFailure(respVO, rowNo, orderNo, null, ex.getMessage());
+                }
             } else if (hasDetail && currentGroup == null) {
                 addImportFailure(respVO, rowNo, null, trimToNull(row.getProductCode()), "明细行前缺少调价单主表信息");
                 continue;
@@ -579,7 +583,7 @@ public class ErpPurchasePriceAdjustServiceImpl implements ErpPurchasePriceAdjust
         ErpPurchasePriceAdjustSaveReqVO saveReqVO = new ErpPurchasePriceAdjustSaveReqVO();
         saveReqVO.setSupplierId(group.getSupplier().getId());
         saveReqVO.setAdjustType(ErpPurchasePriceAdjustTypeEnum.BY_ITEM.getType());
-        saveReqVO.setAdjustTime(parseImportDate(mainRow.getAdjustTime(), LocalDateTime.now()));
+        saveReqVO.setAdjustTime(parsePurchasePriceAdjustImportTime(mainRow.getAdjustTime(), LocalDateTime.now()));
         saveReqVO.setRemark(trimToNull(mainRow.getRemark()));
         saveReqVO.setItems(group.getRows().stream()
                 .map(row -> buildPurchasePriceAdjustOrderItem(row, productVOMap))
@@ -689,39 +693,20 @@ public class ErpPurchasePriceAdjustServiceImpl implements ErpPurchasePriceAdjust
         return "第 " + rowNo + " 行";
     }
 
-    private boolean validateImportDate(ErpPurchaseImportResultRespVO respVO, Integer rowNo, String orderNo,
-                                       String productCode, String label, String value) {
-        if (StrUtil.isBlank(trimToNull(value))) {
-            return true;
-        }
-        try {
-            parseImportDate(value, null);
-            return true;
-        } catch (IllegalArgumentException ignored) {
-            addImportFailure(respVO, rowNo, orderNo, productCode, label + "格式不正确，请使用 yyyy-MM-dd 或 yyyy-MM-dd HH:mm:ss");
-            return false;
-        }
-    }
-
-    private LocalDateTime parseImportDate(String value, LocalDateTime defaultValue) {
-        String normalized = trimToNull(value);
-        if (normalized == null) {
+    private LocalDateTime parsePurchasePriceAdjustImportTime(String value, LocalDateTime defaultValue) {
+        String text = trimToNull(value);
+        if (text == null) {
             return defaultValue;
         }
-        for (DateTimeFormatter formatter : new DateTimeFormatter[]{
-                DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"),
-                DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm"),
-        }) {
-            try {
-                return LocalDateTime.parse(normalized, formatter);
-            } catch (DateTimeParseException ignored) {
-                // Try next format.
-            }
+        try {
+            return LocalDateTime.parse(text, DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
+        } catch (DateTimeParseException ignored) {
+            // Try date-only format below.
         }
         try {
-            return LocalDate.parse(normalized, DateTimeFormatter.ofPattern("yyyy-MM-dd")).atStartOfDay();
+            return LocalDate.parse(text, DateTimeFormatter.ofPattern("yyyy-MM-dd")).atStartOfDay();
         } catch (DateTimeParseException ignored) {
-            throw new IllegalArgumentException("Invalid date format: " + value);
+            throw new IllegalArgumentException("调价时间格式不正确，请使用 yyyy-MM-dd 或 yyyy-MM-dd HH:mm:ss");
         }
     }
 

@@ -367,9 +367,12 @@ public class ErpStockController {
     private PageResult<ErpStockRespVO> buildBatchStockVOPageResult(ErpStockPageReqVO pageReqVO,
                                                                   Long pricePermissionDeptId,
                                                                   Set<String> hiddenPriceFields) {
+        boolean fullBatchPage = PageParam.PAGE_SIZE_NONE.equals(pageReqVO.getPageSize());
         ErpStockPageReqVO baseReqVO = BeanUtils.toBean(pageReqVO, ErpStockPageReqVO.class);
-        baseReqVO.setPageNo(1);
-        baseReqVO.setPageSize(PageParam.PAGE_SIZE_NONE);
+        if (fullBatchPage) {
+            baseReqVO.setPageNo(1);
+            baseReqVO.setPageSize(PageParam.PAGE_SIZE_NONE);
+        }
         clearBatchCountFilters(baseReqVO);
         PageResult<ErpStockDO> stockPageResult = stockService.getStockPage(baseReqVO);
         if (CollUtil.isEmpty(stockPageResult.getList())) {
@@ -450,6 +453,9 @@ public class ErpStockController {
             }
         }
         sortBatchRowsIfNecessary(rows, pageReqVO);
+        if (!fullBatchPage) {
+            return new PageResult<>(rows, stockPageResult.getTotal());
+        }
         return paginateBatchRows(rows, pageReqVO);
     }
 
@@ -549,7 +555,7 @@ public class ErpStockController {
         String field = reqVO.getOrderField();
         if (field == null || !("batchNo".equals(field) || "batchNoSummary".equals(field)
                 || "count".equals(field) || "costAmount".equals(field)
-                || "currentPriceAmount".equals(field))) {
+                || "availableCount".equals(field) || "currentPriceAmount".equals(field))) {
             return;
         }
         boolean descending = "desc".equalsIgnoreCase(reqVO.getOrderDirection());
@@ -576,6 +582,8 @@ public class ErpStockController {
                 return row.getCount();
             case "costAmount":
                 return row.getCostAmount();
+            case "availableCount":
+                return row.getAvailableCount();
             case "currentPriceAmount":
                 return row.getCurrentPriceAmount();
             default:

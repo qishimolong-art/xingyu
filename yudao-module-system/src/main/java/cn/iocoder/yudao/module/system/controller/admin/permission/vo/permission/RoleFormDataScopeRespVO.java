@@ -5,17 +5,21 @@ import lombok.Data;
 
 import java.util.Set;
 
-@Schema(description = "管理后台 - 角色表单级数据权限 Response VO")
+@Schema(description = "管理后台 - 角色表单数据权限 Response VO")
 @Data
 public class RoleFormDataScopeRespVO {
 
-    @Schema(description = "表单标识")
+    @Schema(description = "角色编号", requiredMode = Schema.RequiredMode.REQUIRED, example = "1")
+    private Long roleId;
+
+    @Schema(description = "表单标识", requiredMode = Schema.RequiredMode.REQUIRED, example = "erp_sale_cart")
     private String formKey;
 
-    @Schema(description = "数据范围，参见 DataScopeEnum")
+    @Schema(description = "数据范围，0 表示继承角色默认数据权限，其它值见 DataScopeEnum", requiredMode = Schema.RequiredMode.REQUIRED,
+            example = "1")
     private Integer dataScope;
 
-    @Schema(description = "自定义部门编号列表")
+    @Schema(description = "指定部门编号列表，仅自定义部门时使用", example = "1,2")
     private Set<Long> dataScopeDeptIds;
 
 }

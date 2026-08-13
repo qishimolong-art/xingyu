@@ -17,10 +17,12 @@ import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpWarehouseDO;
 import cn.iocoder.yudao.module.erp.dal.mysql.stock.ErpStockMoveItemMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.stock.ErpStockMoveMapper;
 import cn.iocoder.yudao.module.erp.enums.ErpAuditStatus;
+import cn.iocoder.yudao.module.erp.service.base.ErpDataPermissionDeptService;
 import cn.iocoder.yudao.module.erp.service.product.ErpProductService;
 import cn.iocoder.yudao.module.erp.service.stock.bo.ErpStockTransferOutPermissionScope;
 import cn.iocoder.yudao.module.system.api.dept.DeptApi;
 import cn.iocoder.yudao.module.system.api.dept.dto.DeptRespDTO;
+import cn.iocoder.yudao.module.system.controller.admin.dept.vo.dept.DeptSimpleRespVO;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 import org.springframework.validation.annotation.Validated;
@@ -72,6 +74,8 @@ public class ErpStockTransferLedgerServiceImpl implements ErpStockTransferLedger
     private ErpWarehouseService warehouseService;
     @Resource
     private DeptApi deptApi;
+    @Resource
+    private ErpDataPermissionDeptService dataPermissionDeptService;
 
     @Override
     public PageResult<ErpStockTransferLedgerSummaryRespVO> getSummaryPage(
@@ -115,6 +119,41 @@ public class ErpStockTransferLedgerServiceImpl implements ErpStockTransferLedger
                 .flatMap(group -> group.getRows().stream())
                 .sorted(detailComparator())
                 .collect(Collectors.toList());
+    }
+
+    @Override
+    public List<DeptSimpleRespVO> getVisibleFromDeptSimpleList() {
+        return dataPermissionDeptService.getEnabledDeptSimpleList(collectVisibleLedgerDeptIds(true));
+    }
+
+    @Override
+    public List<DeptSimpleRespVO> getVisibleToDeptSimpleList() {
+        return dataPermissionDeptService.getEnabledDeptSimpleList(collectVisibleLedgerDeptIds(false));
+    }
+
+    private List<Long> collectVisibleLedgerDeptIds(boolean fromDept) {
+        ErpStockTransferOutPermissionScope outScope = stockMoveService.getTransferOutPermissionScope();
+        ErpStockTransferOutPermissionScope inScope = stockMoveService.getTransferInPermissionScope();
+        Set<Long> deptIds = new LinkedHashSet<>();
+        DataPermissionUtils.executeIgnore(() -> {
+            if (fromDept) {
+                deptIds.addAll(stockMoveMapper.selectTransferOutVisibleFromDeptIdList(
+                        outScope == null ? Collections.emptySet() : outScope.getDeptIds(),
+                        outScope == null || outScope.isAll()));
+                deptIds.addAll(stockMoveMapper.selectTransferInVisibleFromDeptIdList(
+                        inScope == null ? Collections.emptySet() : inScope.getDeptIds(),
+                        inScope == null || inScope.isAll()));
+            } else {
+                deptIds.addAll(stockMoveMapper.selectTransferOutVisibleToDeptIdList(
+                        outScope == null ? Collections.emptySet() : outScope.getDeptIds(),
+                        outScope == null || outScope.isAll()));
+                deptIds.addAll(stockMoveMapper.selectTransferInVisibleToDeptIdList(
+                        inScope == null ? Collections.emptySet() : inScope.getDeptIds(),
+                        inScope == null || inScope.isAll()));
+            }
+            return null;
+        });
+        return new ArrayList<>(deptIds);
     }
 
     private List<ComputedGroup> computeGroups(ErpStockTransferLedgerPageReqVO reqVO) {

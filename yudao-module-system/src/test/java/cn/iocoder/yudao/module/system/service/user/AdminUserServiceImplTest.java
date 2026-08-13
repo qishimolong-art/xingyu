@@ -32,6 +32,7 @@ import cn.iocoder.yudao.module.system.dal.mysql.user.AdminUserMapper;
 import cn.iocoder.yudao.module.system.enums.common.SexEnum;
 import cn.iocoder.yudao.module.system.enums.permission.DataScopeEnum;
 import cn.iocoder.yudao.module.system.service.dept.DeptService;
+import cn.iocoder.yudao.module.system.service.logger.SystemOperateLogService;
 import cn.iocoder.yudao.module.system.service.oauth2.OAuth2TokenService;
 import cn.iocoder.yudao.module.system.service.permission.PermissionService;
 import cn.iocoder.yudao.module.system.service.permission.RoleService;
@@ -110,6 +111,8 @@ public class AdminUserServiceImplTest extends BaseDbUnitTest {
     @MockBean
     private OAuth2TokenService oauth2TokenService;
     @MockBean
+    private SystemOperateLogService operateLogService;
+    @MockBean
     private AdminUserBatchUpdateExtension batchUpdateExtension;
 
     @BeforeEach
@@ -155,6 +158,33 @@ public class AdminUserServiceImplTest extends BaseDbUnitTest {
         assertEquals("yudaoyuanma", user.getPassword());
         assertEquals(CommonStatusEnum.ENABLE.getStatus(), user.getStatus());
         assertTrue(userPostMapper.selectListByUserId(user.getId()).isEmpty());
+    }
+
+    @Test
+    public void testCreateUser_withoutUserDataScope() {
+        UserSaveReqVO reqVO = randomPojo(UserSaveReqVO.class, o -> {
+            o.setSex(RandomUtil.randomEle(SexEnum.values()).getSex());
+            o.setMobile(randomString());
+            o.setDataScope(null);
+            o.setDataScopeDeptIds(null);
+        }).setId(null);
+        TenantDO tenant = randomPojo(TenantDO.class, o -> o.setAccountCount(1));
+        doNothing().when(tenantService).handleTenantInfo(argThat(handler -> {
+            handler.handle(tenant);
+            return true;
+        }));
+        DeptDO dept = randomPojo(DeptDO.class, o -> {
+            o.setId(reqVO.getDeptId());
+            o.setStatus(CommonStatusEnum.ENABLE.getStatus());
+        });
+        when(deptService.getDept(eq(dept.getId()))).thenReturn(dept);
+        when(passwordEncoder.encode(eq(reqVO.getPassword()))).thenReturn("yudaoyuanma");
+
+        Long userId = userService.createUser(reqVO);
+
+        AdminUserDO user = userMapper.selectById(userId);
+        assertNull(user.getDataScope());
+        assertTrue(user.getDataScopeDeptIds() == null || user.getDataScopeDeptIds().isEmpty());
     }
 
     @Test

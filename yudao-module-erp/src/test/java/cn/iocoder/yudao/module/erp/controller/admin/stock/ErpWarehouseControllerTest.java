@@ -12,7 +12,9 @@ import cn.iocoder.yudao.module.system.api.user.AdminUserApi;
 import org.junit.jupiter.api.Test;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import org.springframework.security.access.prepost.PreAuthorize;
 
+import java.lang.reflect.Method;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -22,6 +24,7 @@ import java.util.stream.Collectors;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -59,6 +62,22 @@ public class ErpWarehouseControllerTest extends BaseMockitoUnitTest {
     }
 
     @Test
+    public void testGetWarehouseSimpleList_purchaseUsesAuthorizedPurchaseWarehouses() {
+        when(warehouseService.getCurrentUserAuthorizedPurchaseWarehouseList()).thenReturn(Arrays.asList(
+                new ErpWarehouseDO().setId(10L).setName("WJ").setDeptId(1L),
+                new ErpWarehouseDO().setId(20L).setName("HY").setDeptId(2L)));
+        when(deptApi.getDeptMap(any())).thenReturn(Collections.emptyMap());
+
+        CommonResult<List<ErpWarehouseRespVO>> result = controller.getWarehouseSimpleList("purchase", null);
+
+        assertEquals(Arrays.asList(10L, 20L), result.getData().stream()
+                .map(ErpWarehouseRespVO::getId)
+                .collect(Collectors.toList()));
+        verify(warehouseService).getCurrentUserAuthorizedPurchaseWarehouseList();
+        verify(warehouseService, never()).getCurrentUserStockVisibleWarehouseList();
+    }
+
+    @Test
     public void testGetWarehouseSimpleList_saleDeptFilterIntersectsCurrentUserVisibleWarehouses() {
         when(warehouseService.getSaleWarehouseListByDeptId(30L)).thenReturn(Arrays.asList(
                 new ErpWarehouseDO().setId(10L).setName("WJ").setDeptId(1L),
@@ -93,5 +112,49 @@ public class ErpWarehouseControllerTest extends BaseMockitoUnitTest {
                 .map(DeptRespDTO::getId)
                 .collect(Collectors.toList()));
         verify(warehouseService).getCurrentUserAuthorizedPurchaseWarehouseList();
+        verify(warehouseService, never()).getCurrentUserStockVisibleWarehouseList();
+    }
+
+    @Test
+    public void testGetStockWarehouseOwnerDeptSimpleList_usesProductStockVisibleWarehouses() {
+        when(warehouseService.getCurrentUserStockVisibleWarehouseList()).thenReturn(Arrays.asList(
+                new ErpWarehouseDO().setId(10L).setDeptId(1L),
+                new ErpWarehouseDO().setId(20L).setDeptId(2L),
+                new ErpWarehouseDO().setId(30L).setDeptId(1L),
+                new ErpWarehouseDO().setId(40L)));
+        Map<Long, DeptRespDTO> deptMap = new LinkedHashMap<>();
+        deptMap.put(1L, new DeptRespDTO().setId(1L).setName("Dayi Branch"));
+        deptMap.put(2L, new DeptRespDTO().setId(2L).setName("Qionglai Branch"));
+        when(deptApi.getDeptMap(any())).thenReturn(deptMap);
+
+        CommonResult<List<DeptRespDTO>> result = controller.getStockWarehouseOwnerDeptSimpleList();
+
+        assertEquals(Arrays.asList(1L, 2L), result.getData().stream()
+                .map(DeptRespDTO::getId)
+                .collect(Collectors.toList()));
+        verify(warehouseService).getCurrentUserStockVisibleWarehouseList();
+        verify(warehouseService, never()).getCurrentUserVisibleSaleWarehouseList();
+    }
+
+    @Test
+    public void testGetStockWarehouseOwnerDeptSimpleList_emptyWhenNoOwnerDept() {
+        when(warehouseService.getCurrentUserStockVisibleWarehouseList()).thenReturn(Arrays.asList(
+                new ErpWarehouseDO().setId(10L),
+                new ErpWarehouseDO().setId(20L)));
+
+        CommonResult<List<DeptRespDTO>> result = controller.getStockWarehouseOwnerDeptSimpleList();
+
+        assertEquals(Collections.emptyList(), result.getData());
+        verify(warehouseService).getCurrentUserStockVisibleWarehouseList();
+        verify(deptApi, never()).getDeptMap(any());
+    }
+
+    @Test
+    public void testGetStockWarehouseOwnerDeptSimpleList_usesStockQueryPermission() throws Exception {
+        Method method = ErpWarehouseController.class.getMethod("getStockWarehouseOwnerDeptSimpleList");
+
+        PreAuthorize annotation = method.getAnnotation(PreAuthorize.class);
+
+        assertEquals("@ss.hasPermission('erp:stock:query')", annotation.value());
     }
 }

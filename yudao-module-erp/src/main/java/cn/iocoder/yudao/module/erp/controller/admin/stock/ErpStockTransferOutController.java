@@ -18,11 +18,13 @@ import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.move.ErpStockTransf
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockMoveDO;
 import cn.iocoder.yudao.module.erp.enums.ErpAuditStatus;
 import cn.iocoder.yudao.module.erp.framework.excel.ErpExportFieldUtils;
+import cn.iocoder.yudao.module.erp.service.base.ErpDataPermissionDeptService;
 import cn.iocoder.yudao.module.erp.service.sale.ErpSaleCartService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpStockFieldPermissionMasker;
 import cn.iocoder.yudao.module.erp.service.stock.ErpStockImportService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpStockMoveService;
 import cn.iocoder.yudao.module.erp.service.stock.bo.ErpStockTransferOutPermissionScope;
+import cn.iocoder.yudao.module.system.controller.admin.dept.vo.dept.DeptSimpleRespVO;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -86,6 +88,8 @@ public class ErpStockTransferOutController {
     private ErpStockFieldPermissionMasker fieldPermissionMasker;
     @Resource
     private ErpSaleCartService saleCartService;
+    @Resource
+    private ErpDataPermissionDeptService dataPermissionDeptService;
 
     @PostMapping("/create")
     @Operation(summary = "Create stock transfer-out draft")
@@ -219,6 +223,20 @@ public class ErpStockTransferOutController {
                 FIELD_PERMISSION_MODULE, permissionScope));
     }
 
+    @GetMapping("/from-dept-simple-list")
+    @Operation(summary = "Get visible stock transfer-out from department simple list")
+    @PreAuthorize("@ss.hasPermission('erp:stock-transfer-out:query')")
+    public CommonResult<List<DeptSimpleRespVO>> getFromDeptSimpleList() {
+        return success(dataPermissionDeptService.getDeptSimpleList(FIELD_PERMISSION_MODULE));
+    }
+
+    @GetMapping("/to-dept-simple-list")
+    @Operation(summary = "Get visible stock transfer-out to department simple list")
+    @PreAuthorize("@ss.hasPermission('erp:stock-transfer-out:query')")
+    public CommonResult<List<DeptSimpleRespVO>> getToDeptSimpleList() {
+        return success(stockMoveService.getVisibleStockTransferOutToDeptSimpleList());
+    }
+
     @GetMapping("/export-excel")
     @Operation(summary = "Export stock transfer-out")
     @PreAuthorize("@ss.hasPermission('erp:stock-transfer-out:export')")
@@ -274,7 +292,7 @@ public class ErpStockTransferOutController {
         second.setProductCode("P0002");
         second.setCount(new BigDecimal("2"));
         second.setProductPrice(new BigDecimal("50.00"));
-        ExcelUtils.writeImportTemplate(response, "stock-transfer-out-import-template.xls", "stock-transfer-out",
+        ExcelUtils.writeImportTemplate(response, "调拨出库导入模板.xls", "调拨出库",
                 ErpStockImportExcelVO.class, Arrays.asList(first, second), IMPORT_TEMPLATE_FIELDS,
                 IMPORT_REQUIRED_FIELDS);
     }

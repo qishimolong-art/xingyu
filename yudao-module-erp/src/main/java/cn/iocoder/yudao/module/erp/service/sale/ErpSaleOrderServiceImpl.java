@@ -44,6 +44,7 @@ import java.util.Set;
 
 import static cn.iocoder.yudao.framework.common.exception.util.ServiceExceptionUtil.exception;
 import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.*;
+import static cn.iocoder.yudao.framework.security.core.util.SecurityFrameworkUtils.getLoginUserDeptId;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.*;
 import static cn.iocoder.yudao.module.erp.enums.LogRecordConstants.*;
 
@@ -98,7 +99,7 @@ public class ErpSaleOrderServiceImpl implements ErpSaleOrderService {
         // 1.1 校验订单项的有效性
         List<ErpSaleOrderItemDO> saleOrderItems = validateSaleOrderItems(createReqVO.getItems());
         // 1.2 校验客户
-        customerService.validateCustomerForSale(createReqVO.getCustomerId());
+        customerService.validateCustomerForSale(createReqVO.getCustomerId(), resolveSaleDeptId(createReqVO.getDeptId()));
         // 1.3 校验结算账户
         if (createReqVO.getAccountId() != null) {
             accountService.validateAccount(createReqVO.getAccountId());
@@ -138,7 +139,8 @@ public class ErpSaleOrderServiceImpl implements ErpSaleOrderService {
         fieldPermissionMasker.preserveHiddenItemFields(FIELD_PERMISSION_MODULE, updateReqVO.getItems(),
                 saleOrderItemMapper.selectListByOrderId(updateReqVO.getId()));
         // 1.2 校验客户
-        customerService.validateCustomerForSale(updateReqVO.getCustomerId());
+        customerService.validateCustomerForSale(updateReqVO.getCustomerId(),
+                updateReqVO.getDeptId() != null ? updateReqVO.getDeptId() : saleOrder.getDeptId());
         // 1.3 校验结算账户
         if (updateReqVO.getAccountId() != null) {
             accountService.validateAccount(updateReqVO.getAccountId());
@@ -181,6 +183,10 @@ public class ErpSaleOrderServiceImpl implements ErpSaleOrderService {
         saleOrder.setFeeAmount(feeAmount);
         saleOrder.setDiscountPrice(MoneyUtils.priceMultiplyPercent(saleOrder.getTotalPrice(), saleOrder.getDiscountPercent()));
         saleOrder.setTotalPrice(saleOrder.getTotalPrice().subtract(saleOrder.getDiscountPrice()).add(feeAmount));
+    }
+
+    private Long resolveSaleDeptId(Long deptId) {
+        return deptId != null ? deptId : getLoginUserDeptId();
     }
 
     @Override

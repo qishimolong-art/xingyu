@@ -25,6 +25,7 @@ import cn.iocoder.yudao.module.erp.enums.ErpAuditStatus;
 import cn.iocoder.yudao.module.erp.enums.sale.ErpSaleBizSourceTypeEnum;
 import cn.iocoder.yudao.module.erp.enums.stock.ErpStockRecordBizTypeEnum;
 import cn.iocoder.yudao.module.erp.enums.stock.ErpStockTransferOutStatusEnum;
+import cn.iocoder.yudao.module.erp.service.base.ErpDataPermissionDeptService;
 import cn.iocoder.yudao.module.erp.service.common.ErpOperateLogService;
 import cn.iocoder.yudao.module.erp.service.product.ErpProductService;
 import cn.iocoder.yudao.module.erp.service.stock.bo.ErpStockRecordCreateReqBO;
@@ -34,6 +35,7 @@ import cn.iocoder.yudao.module.erp.service.stock.bo.ErpStockTransferOutPermissio
 import cn.iocoder.yudao.module.system.api.dept.DeptApi;
 import cn.iocoder.yudao.module.system.api.dept.dto.DeptRespDTO;
 import cn.iocoder.yudao.module.system.api.permission.PermissionApi;
+import cn.iocoder.yudao.module.system.controller.admin.dept.vo.dept.DeptSimpleRespVO;
 import org.springframework.stereotype.Service;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.transaction.annotation.Transactional;
@@ -107,6 +109,8 @@ public class ErpStockMoveServiceImpl implements ErpStockMoveService {
     private DeptApi deptApi;
     @Resource
     private PermissionApi permissionApi;
+    @Resource
+    private ErpDataPermissionDeptService dataPermissionDeptService;
     @Resource
     private ApplicationEventPublisher eventPublisher;
 
@@ -1572,6 +1576,22 @@ public class ErpStockMoveServiceImpl implements ErpStockMoveService {
         }
         return DataPermissionUtils.executeIgnore(() -> stockMoveMapper.selectTransferInPage(pageReqVO,
                 scope.getDeptIds(), scope.isAll()));
+    }
+
+    @Override
+    public List<DeptSimpleRespVO> getVisibleStockTransferOutToDeptSimpleList() {
+        ErpStockTransferOutPermissionScope scope = getTransferOutPermissionScope();
+        List<Long> deptIds = DataPermissionUtils.executeIgnore(() -> stockMoveMapper.selectTransferOutVisibleToDeptIdList(
+                scope == null ? Collections.emptySet() : scope.getDeptIds(), scope == null || scope.isAll()));
+        return dataPermissionDeptService.getEnabledDeptSimpleList(deptIds);
+    }
+
+    @Override
+    public List<DeptSimpleRespVO> getVisibleStockTransferInFromDeptSimpleList() {
+        ErpStockTransferOutPermissionScope scope = getTransferInPermissionScope();
+        List<Long> deptIds = DataPermissionUtils.executeIgnore(() -> stockMoveMapper.selectTransferInVisibleFromDeptIdList(
+                scope == null ? Collections.emptySet() : scope.getDeptIds(), scope == null || scope.isAll()));
+        return dataPermissionDeptService.getEnabledDeptSimpleList(deptIds);
     }
 
     @Override

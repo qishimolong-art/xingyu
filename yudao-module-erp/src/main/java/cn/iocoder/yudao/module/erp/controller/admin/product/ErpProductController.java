@@ -20,6 +20,9 @@ import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ProductSa
 import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpPartsBatchUpdatePriceFieldsReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpPartsBatchAdjustPriceReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpPartsBatchAdjustStockLimitsReqVO;
+import cn.iocoder.yudao.module.erp.enums.config.ErpFieldConfigModuleEnum;
+import cn.iocoder.yudao.module.erp.framework.excel.ErpImportTemplateRequiredFieldUtils;
+import cn.iocoder.yudao.module.erp.service.config.ErpFieldConfigService;
 import cn.iocoder.yudao.module.erp.service.common.ErpExportCaptchaService;
 import cn.iocoder.yudao.module.erp.service.common.ErpOperateLogService;
 import cn.iocoder.yudao.module.erp.service.product.ErpProductService;
@@ -48,6 +51,7 @@ import java.util.Collections;
 import java.util.LinkedHashSet;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 import static cn.iocoder.yudao.framework.apilog.core.enums.OperateTypeEnum.EXPORT;
@@ -75,6 +79,10 @@ public class ErpProductController {
             "unitName", "status", "standard", "remark", "expiryDay", "weight", "purchasePrice", "salePrice",
             "minPrice", "vehicleModel", "factoryCode", "sharePrice", "currentStock", "lockCount", "createTime",
             "creatorName", "updateTime", "updaterName"));
+    private static final Map<String, String> PRODUCT_IMPORT_FIELD_ALIAS_MAP = ErpImportTemplateRequiredFieldUtils.aliasMap(
+            "categoryId", "categoryCode",
+            "unitId", "unitName",
+            "defaultWarehouseId", "defaultWarehouseName");
 
     @Resource
     private ErpProductService productService;
@@ -84,6 +92,8 @@ public class ErpProductController {
     private ErpOperateLogService operateLogService;
     @Resource
     private PermissionApi permissionApi;
+    @Resource
+    private ErpFieldConfigService fieldConfigService;
 
     @PostMapping("/create")
     @Operation(summary = "创建产品")
@@ -240,7 +250,10 @@ public class ErpProductController {
     public void getImportTemplate(HttpServletResponse response) throws IOException {
         ExcelUtils.writeImportTemplate(response, "产品导入模板.xls", "产品", ErpProductImportExcelVO.class,
                 Collections.singletonList(new ErpProductImportExcelVO()),
-                filterVisibleExcelFields(PRODUCT_IMPORT_TEMPLATE_FIELDS));
+                filterVisibleExcelFields(PRODUCT_IMPORT_TEMPLATE_FIELDS),
+                ErpImportTemplateRequiredFieldUtils.getRequiredFields(fieldConfigService,
+                        ErpFieldConfigModuleEnum.ERP_PRODUCT, ErpProductImportExcelVO.class,
+                        PRODUCT_IMPORT_FIELD_ALIAS_MAP));
     }
 
     @PostMapping("/import")
@@ -273,6 +286,7 @@ public class ErpProductController {
             case "categoryCode":
             case "categoryName": return "categoryId";
             case "unitName": return "unitId";
+            case "defaultWarehouseName": return "defaultWarehouseId";
             default: return excelField;
         }
     }

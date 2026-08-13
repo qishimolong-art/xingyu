@@ -6,12 +6,14 @@ import cn.iocoder.yudao.framework.common.util.number.MoneyUtils;
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
 import cn.iocoder.yudao.framework.datapermission.core.util.DataPermissionUtils;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.ErpStockUpdateRemarkReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.in.ErpStockInItemBatchUpdateReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.in.ErpStockInPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.in.ErpStockInSaveReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.accounting.ErpVoucherItemDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.product.ErpProductDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockInDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockInItemDO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpWarehouseDO;
 import cn.iocoder.yudao.module.erp.dal.mysql.stock.ErpStockInItemMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.stock.ErpStockInMapper;
 import cn.iocoder.yudao.module.erp.dal.redis.no.ErpNoRedisDAO;
@@ -26,6 +28,7 @@ import cn.iocoder.yudao.module.erp.service.common.ErpOperateLogService;
 import cn.iocoder.yudao.module.erp.service.product.ErpProductService;
 import cn.iocoder.yudao.module.erp.service.purchase.ErpSupplierService;
 import cn.iocoder.yudao.module.erp.service.stock.bo.ErpStockRecordCreateReqBO;
+import cn.iocoder.yudao.module.system.controller.admin.dept.vo.dept.DeptSimpleRespVO;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.validation.annotation.Validated;
@@ -35,6 +38,7 @@ import java.math.BigDecimal;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -75,7 +79,11 @@ public class ErpStockInServiceImpl implements ErpStockInService {
     @Resource
     private ErpStockRecordService stockRecordService;
     @Resource
+    private ErpStockService stockService;
+    @Resource
     private ErpOperateLogService operateLogService;
+    @Resource
+    private ErpStockItemBatchUpdateSupport batchUpdateSupport;
 
     @Resource
     private ErpAutoVoucherBuilder autoVoucherBuilder;
@@ -137,6 +145,41 @@ public class ErpStockInServiceImpl implements ErpStockInService {
         // 2.2 更新入库单项
         updateStockInItemList(updateReqVO.getId(), stockInItems);
         operateLogService.recordUpdate(ERP_STOCK_IN_TYPE, stockIn.getId(), stockIn.getNo());
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void batchUpdateStockInItems(ErpStockInItemBatchUpdateReqVO updateReqVO) {
+        batchUpdateSupport.validateFieldPermission(FIELD_PERMISSION_MODULE, STOCK_IN_ITEM_BATCH_UPDATE_FIELD_REQUIRED);
+        ErpStockInDO stockIn = validateStockInExists(updateReqVO.getInId());
+        if (ErpAuditStatus.APPROVE.getStatus().equals(stockIn.getStatus())) {
+            throw exception(STOCK_IN_UPDATE_FAIL_APPROVE, stockIn.getNo());
+        }
+        ErpWarehouseDO targetWarehouse = batchUpdateSupport.validateTargetWarehouse(updateReqVO.getWarehouseId());
+        batchUpdateSupport.validateDocumentDeptAllowed(stockIn.getDeptId(), targetWarehouse, FIELD_PERMISSION_MODULE,
+                STOCK_IN_ITEM_BATCH_UPDATE_WAREHOUSE_DEPT_NOT_ALLOWED);
+
+        List<ErpStockInItemDO> stockInItems = stockInItemMapper.selectListByInId(updateReqVO.getInId());
+        Set<Long> selectedItemIds = new LinkedHashSet<>(updateReqVO.getItemIds());
+        List<ErpStockInItemDO> selectedItems = stockInItems.stream()
+                .filter(item -> selectedItemIds.contains(item.getId()))
+                .collect(java.util.stream.Collectors.toList());
+        if (selectedItems.size() != selectedItemIds.size()) {
+            throw exception(STOCK_IN_ITEM_BATCH_UPDATE_ITEM_NOT_EXISTS);
+        }
+        validateBatchUpdateStockInNoDuplicate(stockInItems, selectedItemIds, targetWarehouse.getId());
+
+        for (ErpStockInItemDO item : selectedItems) {
+            item.setWarehouseId(targetWarehouse.getId());
+            stockService.ensureStockExists(item.getProductId(), targetWarehouse.getId());
+        }
+        stockInItemMapper.updateBatch(selectedItems);
+        operateLogService.recordUpdate(ERP_STOCK_IN_TYPE, stockIn.getId(), stockIn.getNo());
+    }
+
+    @Override
+    public List<DeptSimpleRespVO> getWarehouseDeptSimpleList(Long warehouseId) {
+        return batchUpdateSupport.getWarehouseAvailableDeptSimpleList(warehouseId, FIELD_PERMISSION_MODULE);
     }
 
     @Override
@@ -217,6 +260,19 @@ public class ErpStockInServiceImpl implements ErpStockInService {
         Set<String> keys = new HashSet<>();
         for (ErpStockInSaveReqVO.Item item : list) {
             String key = item.getProductId() + "-" + item.getWarehouseId();
+            if (!keys.add(key)) {
+                throw exception(STOCK_IN_ITEM_DUPLICATE, key);
+            }
+        }
+    }
+
+    private void validateBatchUpdateStockInNoDuplicate(List<ErpStockInItemDO> stockInItems,
+                                                       Set<Long> selectedItemIds,
+                                                       Long targetWarehouseId) {
+        Set<String> keys = new HashSet<>();
+        for (ErpStockInItemDO item : stockInItems) {
+            Long warehouseId = selectedItemIds.contains(item.getId()) ? targetWarehouseId : item.getWarehouseId();
+            String key = item.getProductId() + "-" + warehouseId;
             if (!keys.add(key)) {
                 throw exception(STOCK_IN_ITEM_DUPLICATE, key);
             }

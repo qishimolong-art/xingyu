@@ -24,6 +24,7 @@ import cn.iocoder.yudao.module.erp.dal.dataobject.finance.accounting.ErpVoucherD
 import cn.iocoder.yudao.module.erp.dal.mysql.finance.accounting.ErpVoucherMapper;
 import cn.iocoder.yudao.module.erp.enums.ErpAuditStatus;
 import cn.iocoder.yudao.module.erp.enums.finance.accounting.ErpVoucherSourceBizTypeEnum;
+import cn.iocoder.yudao.module.erp.service.base.ErpDataPermissionDeptService;
 import cn.iocoder.yudao.module.erp.service.finance.ErpAccountService;
 import cn.iocoder.yudao.module.erp.service.finance.ErpFinanceFieldPermissionMasker;
 import cn.iocoder.yudao.module.erp.service.finance.ErpFinanceTransferService;
@@ -31,6 +32,7 @@ import cn.iocoder.yudao.module.system.api.dept.DeptApi;
 import cn.iocoder.yudao.module.system.api.dept.dto.DeptRespDTO;
 import cn.iocoder.yudao.module.system.api.user.AdminUserApi;
 import cn.iocoder.yudao.module.system.api.user.dto.AdminUserRespDTO;
+import cn.iocoder.yudao.module.system.controller.admin.dept.vo.dept.DeptSimpleRespVO;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -82,6 +84,8 @@ public class ErpFinanceTransferController {
     private ErpFinanceFieldPermissionMasker fieldPermissionMasker;
     @Resource
     private ErpVoucherMapper voucherMapper;
+    @Resource
+    private ErpDataPermissionDeptService dataPermissionDeptService;
 
     @PostMapping("/create")
     @Operation(summary = "创建银行转账单")
@@ -191,6 +195,13 @@ public class ErpFinanceTransferController {
     public CommonResult<PageResult<ErpFinanceTransferRespVO>> getFinanceTransferPage(@Valid ErpFinanceTransferPageReqVO pageReqVO) {
         PageResult<ErpFinanceTransferDO> pageResult = financeTransferService.getFinanceTransferPage(pageReqVO);
         return success(buildFinanceTransferVOPageResult(pageResult));
+    }
+
+    @GetMapping("/dept-simple-list")
+    @Operation(summary = "Get finance transfer data permission dept simple list")
+    @PreAuthorize("@ss.hasPermission('erp:finance-transfer:query')")
+    public CommonResult<List<DeptSimpleRespVO>> getFinanceTransferDeptSimpleList() {
+        return success(dataPermissionDeptService.getDeptSimpleList("erp_finance_transfer"));
     }
 
     @GetMapping("/export-excel")
