@@ -120,6 +120,18 @@ public class ErpPurchaseInServiceImpl implements ErpPurchaseInService {
     private static final int DRAFT_STATUS = 0;
     private static final String FIELD_PERMISSION_MODULE = "erp_purchase_in";
     private static final String DEPT_SELECTION_PERMISSION_FORM_KEY = "system_dept";
+    private static final DateTimeFormatter[] PURCHASE_IN_IMPORT_DATE_TIME_FORMATTERS = new DateTimeFormatter[]{
+            DateTimeFormatter.ofPattern("yyyy-M-d HH:mm:ss"),
+            DateTimeFormatter.ofPattern("yyyy-M-d HH:mm"),
+            DateTimeFormatter.ofPattern("yyyy/M/d HH:mm:ss"),
+            DateTimeFormatter.ofPattern("yyyy/M/d HH:mm")
+    };
+    private static final DateTimeFormatter[] PURCHASE_IN_IMPORT_DATE_FORMATTERS = new DateTimeFormatter[]{
+            DateTimeFormatter.ofPattern("yyyy-M-d"),
+            DateTimeFormatter.ofPattern("yyyy/M/d")
+    };
+    private static final String PURCHASE_IN_IMPORT_TIME_ERROR =
+            "入库时间格式不正确，请使用 yyyy-MM-dd、yyyy/M/d 或常见日期时间格式";
 
     @Resource
     private ErpPurchaseInMapper purchaseInMapper;
@@ -1984,16 +1996,21 @@ public class ErpPurchaseInServiceImpl implements ErpPurchaseInService {
         if (text == null) {
             return defaultValue;
         }
-        try {
-            return LocalDateTime.parse(text, DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
-        } catch (DateTimeParseException ignored) {
-            // Try date-only format below.
+        for (DateTimeFormatter formatter : PURCHASE_IN_IMPORT_DATE_TIME_FORMATTERS) {
+            try {
+                return LocalDateTime.parse(text, formatter);
+            } catch (DateTimeParseException ignored) {
+                // Try next supported date-time format.
+            }
         }
-        try {
-            return LocalDate.parse(text, DateTimeFormatter.ofPattern("yyyy-MM-dd")).atStartOfDay();
-        } catch (DateTimeParseException ignored) {
-            throw new IllegalArgumentException("入库时间格式不正确，请使用 yyyy-MM-dd 或 yyyy-MM-dd HH:mm:ss");
+        for (DateTimeFormatter formatter : PURCHASE_IN_IMPORT_DATE_FORMATTERS) {
+            try {
+                return LocalDate.parse(text, formatter).atStartOfDay();
+            } catch (DateTimeParseException ignored) {
+                // Try next supported date format.
+            }
         }
+        throw new IllegalArgumentException(PURCHASE_IN_IMPORT_TIME_ERROR);
     }
 
     private void addImportFailure(ErpPurchaseImportResultRespVO respVO, Integer rowNo, String orderNo,

@@ -2045,11 +2045,39 @@ public class ErpPurchaseInServiceImplTest extends BaseMockitoUnitTest {
     }
 
     @Test
+    public void testParsePurchaseInImportTime_acceptsCommonYearFirstFormats() {
+        assertPurchaseInImportTime("2026/8/1", LocalDateTime.of(2026, 8, 1, 0, 0));
+        assertPurchaseInImportTime("2026/08/01", LocalDateTime.of(2026, 8, 1, 0, 0));
+        assertPurchaseInImportTime("2026-8-1", LocalDateTime.of(2026, 8, 1, 0, 0));
+        assertPurchaseInImportTime("2026-08-11", LocalDateTime.of(2026, 8, 11, 0, 0));
+        assertPurchaseInImportTime("2026/8/1 09:05", LocalDateTime.of(2026, 8, 1, 9, 5));
+        assertPurchaseInImportTime("2026/8/1 09:05:30", LocalDateTime.of(2026, 8, 1, 9, 5, 30));
+        assertPurchaseInImportTime("2026-08-11 09:05:30", LocalDateTime.of(2026, 8, 11, 9, 5, 30));
+        assertPurchaseInImportTime(" 2026/8/1 ", LocalDateTime.of(2026, 8, 1, 0, 0));
+    }
+
+    @Test
+    public void testParsePurchaseInImportTime_blankReturnsDefaultValue() {
+        LocalDateTime defaultValue = LocalDateTime.of(2026, 8, 28, 10, 30);
+
+        LocalDateTime actual = ReflectionTestUtils.invokeMethod(purchaseInService,
+                "parsePurchaseInImportTime", " ", defaultValue);
+
+        assertEquals(defaultValue, actual);
+    }
+
+    @Test
+    public void testParsePurchaseInImportTime_rejectsAmbiguousAndCompactFormats() {
+        assertInvalidPurchaseInImportTime("08/11/2026");
+        assertInvalidPurchaseInImportTime("20260811");
+    }
+
+    @Test
     public void testImportPurchaseInOrderList_invalidInTime_returnsReadableMessage() {
         ErpPurchaseInOrderImportExcelVO row = new ErpPurchaseInOrderImportExcelVO();
         row.setNo("CGRK20260811000002");
         row.setSupplierName("芋道供应商");
-        row.setInTime("2026/08/11");
+        row.setInTime("08/11/2026");
         row.setProductCode("P000001");
         row.setWarehouseName("主仓库");
         row.setItemCount(BigDecimal.ONE);
@@ -2072,8 +2100,21 @@ public class ErpPurchaseInServiceImplTest extends BaseMockitoUnitTest {
         assertEquals(1, result.getFailureCount());
         assertEquals(Integer.valueOf(2), result.getFailureDetails().get(0).getRowNo());
         assertEquals("CGRK20260811000002", result.getFailureDetails().get(0).getOrderNo());
-        assertEquals("入库时间格式不正确，请使用 yyyy-MM-dd 或 yyyy-MM-dd HH:mm:ss",
+        assertEquals("入库时间格式不正确，请使用 yyyy-MM-dd、yyyy/M/d 或常见日期时间格式",
                 result.getFailureDetails().get(0).getReason());
+    }
+
+    private void assertPurchaseInImportTime(String value, LocalDateTime expected) {
+        LocalDateTime actual = ReflectionTestUtils.invokeMethod(purchaseInService,
+                "parsePurchaseInImportTime", value, null);
+        assertEquals(expected, actual);
+    }
+
+    private void assertInvalidPurchaseInImportTime(String value) {
+        IllegalArgumentException exception = assertThrows(IllegalArgumentException.class,
+                () -> ReflectionTestUtils.invokeMethod(purchaseInService, "parsePurchaseInImportTime", value, null));
+        assertEquals("入库时间格式不正确，请使用 yyyy-MM-dd、yyyy/M/d 或常见日期时间格式",
+                exception.getMessage());
     }
 
 }
