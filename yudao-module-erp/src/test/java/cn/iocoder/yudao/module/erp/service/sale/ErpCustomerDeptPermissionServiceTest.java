@@ -16,6 +16,7 @@ import org.mockito.MockedStatic;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -86,6 +87,20 @@ class ErpCustomerDeptPermissionServiceTest extends BaseMockitoUnitTest {
 
             assertThat(result).extracting(DeptSimpleRespVO::getId).containsExactly(100L, 200L);
         }
+    }
+
+    @Test
+    void getCustomerAppAvailableDeptList_keepsEnabledCustomerDepartmentsWithoutAdminPermission() {
+        when(customerService.getCustomerSaleDeptIdsIgnoreDataPermission(10L))
+                .thenReturn(Arrays.asList(100L, 200L, 300L));
+        when(deptApi.getDeptList(new LinkedHashSet<>(Arrays.asList(100L, 200L, 300L)))).thenReturn(Arrays.asList(
+                dept(100L, "A", CommonStatusEnum.ENABLE.getStatus()),
+                dept(200L, "B", CommonStatusEnum.DISABLE.getStatus()),
+                dept(300L, "C", CommonStatusEnum.ENABLE.getStatus())));
+
+        List<DeptRespDTO> result = customerDeptPermissionService.getCustomerAppAvailableDeptList(10L);
+
+        assertThat(result).extracting(DeptRespDTO::getId).containsExactly(100L, 300L);
     }
 
     private DeptRespDTO dept(Long id, String name, Integer status) {

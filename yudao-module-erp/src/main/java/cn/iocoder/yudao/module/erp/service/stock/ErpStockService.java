@@ -4,6 +4,7 @@ import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.stock.ErpStockAdjustReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.stock.ErpStockBatchNoRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.stock.ErpStockPageReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.stock.ErpStockSummaryRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.stock.ErpStockUpdateReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockDO;
 
@@ -104,6 +105,14 @@ public interface ErpStockService {
      * @return 库存分页
      */
     PageResult<ErpStockDO> getStockPage(ErpStockPageReqVO pageReqVO);
+
+    /**
+     * 获得当前查询条件下的产品库存汇总。
+     *
+     * @param pageReqVO 查询条件
+     * @return 库存汇总
+     */
+    ErpStockSummaryRespVO getStockSummary(ErpStockPageReqVO pageReqVO);
 
     /**
      * Ensures the product/warehouse stock row exists without changing its quantity or cost.

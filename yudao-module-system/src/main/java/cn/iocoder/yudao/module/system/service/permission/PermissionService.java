@@ -115,6 +115,19 @@ public interface PermissionService {
     List<String> getCurrentUserHiddenFields(String module, Long businessDeptId,
                                             boolean includeProductPricePermission);
 
+    /**
+     * Gets hidden fields and evaluates sale price related fields by the
+     * selected customer's price level when provided.
+     *
+     * @param module module key
+     * @param businessDeptId business document department
+     * @param includeProductPricePermission whether to include product price view permissions
+     * @param customerPriceLevel customer price level used by sale documents
+     * @return hidden field keys
+     */
+    List<String> getCurrentUserHiddenFields(String module, Long businessDeptId,
+                                            boolean includeProductPricePermission, Integer customerPriceLevel);
+
     void createOrUpdateFieldDefinitions(List<FieldDefinitionCreateOrUpdateReqDTO> definitions);
 
     void deleteFieldDefinitions(String module, List<String> fieldKeys);

@@ -4,8 +4,9 @@ import cn.hutool.core.util.StrUtil;
 import cn.iocoder.yudao.framework.tenant.core.context.TenantContextHolder;
 import cn.iocoder.yudao.module.system.dal.dataobject.permission.FieldDefinitionDO;
 import cn.iocoder.yudao.module.system.dal.dataobject.user.UserPriceFieldDO;
-import cn.iocoder.yudao.module.system.dal.mysql.permission.FieldDefinitionMapper;
 import cn.iocoder.yudao.module.system.dal.mysql.user.UserPriceFieldMapper;
+import cn.iocoder.yudao.module.system.service.permission.ProductPriceFieldKeys;
+import cn.iocoder.yudao.module.system.service.permission.ProductPriceFieldCatalogService;
 import cn.iocoder.yudao.module.system.service.user.dto.UserPriceFieldConfigDTO;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -13,13 +14,10 @@ import org.springframework.transaction.annotation.Transactional;
 import javax.annotation.Resource;
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.Comparator;
-import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -29,36 +27,10 @@ import java.util.stream.Collectors;
 @Service
 public class UserPriceFieldServiceImpl implements UserPriceFieldService {
 
-    private static final String PRODUCT_MODULE = "erp_product";
-    private static final String PRICE_FIELD_GROUP = "price_info";
-
-    private static final Map<String, String> LEGACY_PRICE_FIELD_CODE_MAP = new LinkedHashMap<String, String>() {{
-        put("branch_price", "referencePrice");
-        put("wholesale_price", "wholesalePrice");
-        put("retail_price", "retailPrice");
-        put("cost_price", "purchasePrice");
-        put("last_purchase_price", "lastPurchasePrice");
-        put("gross_profit_rate", "grossProfitRate");
-        put("backup_price1", "backupPrice1");
-    }};
-
-    private static final Map<String, String> DEFAULT_PRICE_FIELD_LABEL_MAP = new LinkedHashMap<String, String>() {{
-        put("purchasePrice", "采购价");
-        put("salePrice", "销售价");
-        put("minPrice", "最低价");
-        put("referencePrice", "参考价");
-        put("retailPrice", "零售价");
-        put("lastPurchasePrice", "最后一次采购价");
-        put("grossProfitRate", "毛利率");
-        put("backupPrice1", "备用价1");
-        put("wholesalePrice", "批发价");
-        put("sharePrice", "股份价");
-    }};
-
     @Resource
     private UserPriceFieldMapper userPriceFieldMapper;
     @Resource
-    private FieldDefinitionMapper fieldDefinitionMapper;
+    private ProductPriceFieldCatalogService productPriceFieldCatalogService;
 
     @Override
     public List<UserPriceFieldDO> getUserPriceFields(Long userId) {
@@ -72,17 +44,19 @@ public class UserPriceFieldServiceImpl implements UserPriceFieldService {
         Map<String, UserPriceFieldDO> savedFieldMap = buildSavedFieldMap(savedFields, definitions);
         Set<String> visibleCodes = savedFields.isEmpty() ? definitions.stream()
                 .map(FieldDefinitionDO::getFieldKey)
+                .map(this::normalizePriceFieldCode)
                 .collect(Collectors.toCollection(LinkedHashSet::new))
                 : getVisibleProductFieldKeys(savedFields, definitions);
 
         return definitions.stream().map(definition -> {
-            UserPriceFieldDO savedField = savedFieldMap.get(definition.getFieldKey());
+            String fieldKey = normalizePriceFieldCode(definition.getFieldKey());
+            UserPriceFieldDO savedField = savedFieldMap.get(fieldKey);
             UserPriceFieldConfigDTO dto = new UserPriceFieldConfigDTO();
             dto.setId(savedField != null ? savedField.getId() : null);
             dto.setUserId(userId);
-            dto.setPriceFieldCode(definition.getFieldKey());
+            dto.setPriceFieldCode(fieldKey);
             dto.setPriceFieldLabel(definition.getFieldLabel());
-            dto.setVisible(visibleCodes.contains(definition.getFieldKey()));
+            dto.setVisible(visibleCodes.contains(fieldKey));
             dto.setSort(definition.getSort());
             return dto;
         }).collect(Collectors.toList());
@@ -96,6 +70,7 @@ public class UserPriceFieldServiceImpl implements UserPriceFieldService {
         List<FieldDefinitionDO> definitions = getProductPriceDefinitions();
         Set<String> catalogCodes = definitions.stream()
                 .map(FieldDefinitionDO::getFieldKey)
+                .map(this::normalizePriceFieldCode)
                 .collect(Collectors.toSet());
         Set<String> visibleCodes = fieldCodes == null ? Collections.emptySet() : fieldCodes.stream()
                 .map(this::normalizePriceFieldCode)
@@ -103,11 +78,14 @@ public class UserPriceFieldServiceImpl implements UserPriceFieldService {
                 .filter(catalogCodes::contains)
                 .collect(Collectors.toSet());
         List<UserPriceFieldDO> records = definitions.stream()
-                .map(definition -> UserPriceFieldDO.builder()
-                        .userId(userId)
-                        .priceFieldCode(definition.getFieldKey())
-                        .visible(visibleCodes.contains(definition.getFieldKey()))
-                        .build())
+                .map(definition -> {
+                    String fieldKey = normalizePriceFieldCode(definition.getFieldKey());
+                    return UserPriceFieldDO.builder()
+                            .userId(userId)
+                            .priceFieldCode(fieldKey)
+                            .visible(visibleCodes.contains(fieldKey))
+                            .build();
+                })
                 .collect(Collectors.toList());
         records.forEach(userPriceFieldMapper::insert);
     }
@@ -122,10 +100,9 @@ public class UserPriceFieldServiceImpl implements UserPriceFieldService {
         Set<String> visibleCodes = getVisibleProductFieldKeys(priceFields, definitions);
         List<String> hiddenFields = new ArrayList<>();
         definitions.forEach(definition -> {
-            String fieldKey = definition.getFieldKey();
+            String fieldKey = normalizePriceFieldCode(definition.getFieldKey());
             if (!visibleCodes.contains(fieldKey)) {
-                hiddenFields.add(fieldKey);
-                hiddenFields.add("col_" + fieldKey);
+                ProductPriceFieldKeys.addHiddenField(hiddenFields, fieldKey);
             }
         });
         return hiddenFields.stream().distinct().collect(Collectors.toList());
@@ -135,6 +112,7 @@ public class UserPriceFieldServiceImpl implements UserPriceFieldService {
                                                    List<FieldDefinitionDO> definitions) {
         Set<String> catalogCodes = definitions.stream()
                 .map(FieldDefinitionDO::getFieldKey)
+                .map(this::normalizePriceFieldCode)
                 .collect(Collectors.toSet());
         return priceFields.stream()
                 .filter(item -> Boolean.TRUE.equals(item.getVisible()))
@@ -149,6 +127,7 @@ public class UserPriceFieldServiceImpl implements UserPriceFieldService {
                                                              List<FieldDefinitionDO> definitions) {
         Set<String> catalogCodes = definitions.stream()
                 .map(FieldDefinitionDO::getFieldKey)
+                .map(this::normalizePriceFieldCode)
                 .collect(Collectors.toSet());
         Map<String, UserPriceFieldDO> savedFieldMap = new LinkedHashMap<>();
         savedFields.forEach(item -> {
@@ -164,43 +143,11 @@ public class UserPriceFieldServiceImpl implements UserPriceFieldService {
         if (StrUtil.isBlank(code)) {
             return null;
         }
-        String trimmedCode = StrUtil.trim(code);
-        return LEGACY_PRICE_FIELD_CODE_MAP.getOrDefault(trimmedCode, trimmedCode);
+        return ProductPriceFieldKeys.normalize(code);
     }
 
     private List<FieldDefinitionDO> getProductPriceDefinitions() {
-        List<FieldDefinitionDO> definitions = fieldDefinitionMapper.selectListByModuleAndGroup(
-                PRODUCT_MODULE, PRICE_FIELD_GROUP);
-        if (definitions == null || definitions.isEmpty()) {
-            return buildDefaultPriceDefinitions();
-        }
-        return definitions.stream()
-                .filter(Objects::nonNull)
-                .filter(item -> StrUtil.isNotBlank(item.getFieldKey()))
-                .sorted(Comparator
-                        .comparing(FieldDefinitionDO::getSort, Comparator.nullsLast(Integer::compareTo))
-                        .thenComparing(FieldDefinitionDO::getId, Comparator.nullsLast(Long::compareTo)))
-                .collect(Collectors.collectingAndThen(Collectors.toList(), items -> {
-                    Set<String> seenKeys = new HashSet<>();
-                    return items.stream()
-                            .filter(item -> seenKeys.add(item.getFieldKey()))
-                            .collect(Collectors.toList());
-                }));
-    }
-
-    private List<FieldDefinitionDO> buildDefaultPriceDefinitions() {
-        List<FieldDefinitionDO> definitions = new ArrayList<>();
-        int sort = 1;
-        for (Map.Entry<String, String> entry : DEFAULT_PRICE_FIELD_LABEL_MAP.entrySet()) {
-            FieldDefinitionDO definition = new FieldDefinitionDO();
-            definition.setModule(PRODUCT_MODULE);
-            definition.setFieldGroup(PRICE_FIELD_GROUP);
-            definition.setFieldKey(entry.getKey());
-            definition.setFieldLabel(entry.getValue());
-            definition.setSort(sort++);
-            definitions.add(definition);
-        }
-        return definitions;
+        return productPriceFieldCatalogService.getPriceFields();
     }
 
 }

@@ -39,6 +39,8 @@ public class ErpSaleCartItemDO extends BaseDO {
      */
     @TableField(exist = false)
     private Long sourceDeptId;
+    private BigDecimal weight;
+    private Integer packageQty;
     private BigDecimal productPrice;
     private BigDecimal count;
     /**

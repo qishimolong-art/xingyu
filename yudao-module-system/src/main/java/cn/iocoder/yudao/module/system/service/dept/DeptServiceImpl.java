@@ -111,6 +111,12 @@ public class DeptServiceImpl implements DeptService {
                     .set(DeptDO::getParentId, updateObj.getParentId())
                     .set(DeptDO::getSort, updateObj.getSort())
                     .set(DeptDO::getLeaderUserId, null)
+                    .set(DeptDO::getPhone, updateObj.getPhone())
+                    .set(DeptDO::getAddress, updateObj.getAddress())
+                    .set(DeptDO::getLongitude, updateObj.getLongitude())
+                    .set(DeptDO::getLatitude, updateObj.getLatitude())
+                    .set(DeptDO::getMapName, updateObj.getMapName())
+                    .set(DeptDO::getEmail, updateObj.getEmail())
                     .set(DeptDO::getStatus, updateObj.getStatus());
             deptMapper.update(null, updateWrapper);
             operateLogService.recordUpdate(SYSTEM_DEPT_TYPE, SYSTEM_DEPT_UPDATE_SUB_TYPE,

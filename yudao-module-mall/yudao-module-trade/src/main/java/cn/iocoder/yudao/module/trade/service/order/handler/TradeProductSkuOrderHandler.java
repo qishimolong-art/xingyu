@@ -1,6 +1,7 @@
 package cn.iocoder.yudao.module.trade.service.order.handler;
 
 import cn.hutool.core.collection.CollUtil;
+import cn.iocoder.yudao.framework.common.util.collection.CollectionUtils;
 import cn.iocoder.yudao.module.product.api.sku.ProductSkuApi;
 import cn.iocoder.yudao.module.trade.convert.order.TradeOrderConvert;
 import cn.iocoder.yudao.module.trade.dal.dataobject.order.TradeOrderDO;
@@ -25,6 +26,10 @@ public class TradeProductSkuOrderHandler implements TradeOrderHandler {
 
     @Override
     public void beforeOrderCreate(TradeOrderDO order, List<TradeOrderItemDO> orderItems) {
+        orderItems = filterMallSkuStockOrderItems(orderItems);
+        if (CollUtil.isEmpty(orderItems)) {
+            return;
+        }
         productSkuApi.updateSkuStock(TradeOrderConvert.INSTANCE.convertNegative(orderItems));
     }
 
@@ -32,6 +37,7 @@ public class TradeProductSkuOrderHandler implements TradeOrderHandler {
     public void afterCancelOrder(TradeOrderDO order, List<TradeOrderItemDO> orderItems) {
         // 售后的订单项，已经在 afterCancelOrderItem 回滚库存，所以这里不需要重复回滚
         orderItems = filterOrderItemListByNoneAfterSale(orderItems);
+        orderItems = filterMallSkuStockOrderItems(orderItems);
         if (CollUtil.isEmpty(orderItems)) {
             return;
         }
@@ -40,7 +46,15 @@ public class TradeProductSkuOrderHandler implements TradeOrderHandler {
 
     @Override
     public void afterCancelOrderItem(TradeOrderDO order, TradeOrderItemDO orderItem) {
+        if (orderItem.getStockId() != null) {
+            return;
+        }
         productSkuApi.updateSkuStock(TradeOrderConvert.INSTANCE.convert(singletonList(orderItem)));
+    }
+
+    private List<TradeOrderItemDO> filterMallSkuStockOrderItems(List<TradeOrderItemDO> orderItems) {
+        // 小程序普通购买已选择 ERP 仓库库存时，只校验 ERP 库存并创建 ERP 销售手推车草稿，不再扣减商城 SKU 旧库存。
+        return CollectionUtils.filterList(orderItems, item -> item.getStockId() == null);
     }
 
 }

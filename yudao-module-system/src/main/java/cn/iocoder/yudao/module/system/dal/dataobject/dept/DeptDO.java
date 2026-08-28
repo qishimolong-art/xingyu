@@ -9,6 +9,8 @@ import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 
+import java.math.BigDecimal;
+
 /**
  * 部门表
  *
@@ -52,6 +54,22 @@ public class DeptDO extends TenantBaseDO {
      * 联系电话
      */
     private String phone;
+    /**
+     * 详细地址
+     */
+    private String address;
+    /**
+     * 经度
+     */
+    private BigDecimal longitude;
+    /**
+     * 纬度
+     */
+    private BigDecimal latitude;
+    /**
+     * 地图显示名称
+     */
+    private String mapName;
     /**
      * 邮箱
      */

@@ -67,6 +67,18 @@ public class TradeOrderItemDO extends BaseDO {
      */
     private Long skuId;
     /**
+     * ERP 库存记录编号
+     */
+    private Long stockId;
+    /**
+     * ERP 产品编号
+     */
+    private Long erpProductId;
+    /**
+     * ERP 仓库编号
+     */
+    private Long warehouseId;
+    /**
      * 属性数组，JSON 格式
      *
      * 冗余 ProductSkuDO 的 properties 字段
@@ -208,4 +220,3 @@ public class TradeOrderItemDO extends BaseDO {
     }
 
 }
-

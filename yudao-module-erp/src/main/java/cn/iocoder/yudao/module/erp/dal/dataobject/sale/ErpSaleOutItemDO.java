@@ -142,6 +142,10 @@ public class ErpSaleOutItemDO extends BaseDO {
      */
     private BigDecimal unitWeight;
     /**
+     * 包装数
+     */
+    private Integer packageQty;
+    /**
      * 总重
      */
     private BigDecimal totalWeight;

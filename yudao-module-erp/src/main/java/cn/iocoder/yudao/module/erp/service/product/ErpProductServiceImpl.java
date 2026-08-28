@@ -45,6 +45,7 @@ import cn.iocoder.yudao.module.erp.service.base.ErpBaseArchiveReferenceService;
 import cn.iocoder.yudao.module.erp.service.base.ErpArchiveMergeService;
 import cn.iocoder.yudao.module.erp.service.common.ErpOperateLogService;
 import cn.iocoder.yudao.module.erp.service.config.ErpFieldConfigService;
+import cn.iocoder.yudao.module.erp.service.mall.ErpMallProductSyncPublisher;
 import cn.iocoder.yudao.module.infra.api.config.ConfigApi;
 import cn.iocoder.yudao.module.system.api.dept.DeptApi;
 import cn.iocoder.yudao.module.system.api.dept.dto.DeptRespDTO;
@@ -165,6 +166,8 @@ public class ErpProductServiceImpl implements ErpProductService {
     private ErpArchiveMergeService archiveMergeService;
     @Resource
     private ErpFieldConfigService fieldConfigService;
+    @Resource
+    private ErpMallProductSyncPublisher mallProductSyncPublisher;
 
     @Resource
     private ErpNoRedisDAO noRedisDAO;
@@ -1107,6 +1110,7 @@ public class ErpProductServiceImpl implements ErpProductService {
 
         ProductLogSnapshot after = loadProductLogSnapshot(product.getId());
         recordProductLog(ERP_CREATE_SUB_TYPE, product.getId(), buildProductLogAction("新增配件信息", after));
+        mallProductSyncPublisher.publishProductSync(product.getId());
         return product.getId();
     }
 
@@ -1206,6 +1210,7 @@ public class ErpProductServiceImpl implements ErpProductService {
         saveUniversals(updateReqVO.getId(), updateReqVO.getUniversals());
         ProductLogSnapshot after = loadProductLogSnapshot(updateReqVO.getId());
         recordProductLog(ERP_UPDATE_SUB_TYPE, updateReqVO.getId(), buildProductLogAction("修改配件信息", before, after));
+        mallProductSyncPublisher.publishProductSync(updateReqVO.getId());
     }
 
     @Override
@@ -1260,6 +1265,7 @@ public class ErpProductServiceImpl implements ErpProductService {
             initProductStock(id, defaultWarehouseId);
             ProductLogSnapshot after = loadProductLogSnapshot(id);
             recordProductLog(ERP_UPDATE_SUB_TYPE, id, buildProductLogAction("批量修改配件信息", before, after));
+            mallProductSyncPublisher.publishProductSync(id);
         }
     }
 
@@ -1284,6 +1290,7 @@ public class ErpProductServiceImpl implements ErpProductService {
             productMapper.updateById(updateObj);
             ProductLogSnapshot after = loadProductLogSnapshot(id);
             recordProductLog(ERP_UPDATE_SUB_TYPE, id, buildProductLogAction("停用配件信息", before, after));
+            mallProductSyncPublisher.publishProductSync(id);
         }
     }
 
@@ -1310,6 +1317,7 @@ public class ErpProductServiceImpl implements ErpProductService {
                     .set(ErpProductDO::getDisabledTime, null));
             ProductLogSnapshot after = loadProductLogSnapshot(id);
             recordProductLog(ERP_UPDATE_SUB_TYPE, id, buildProductLogAction("还原配件信息", before, after));
+            mallProductSyncPublisher.publishProductSync(id);
         }
     }
 
@@ -1439,6 +1447,7 @@ public class ErpProductServiceImpl implements ErpProductService {
         recordProductLog(ERP_UPDATE_SUB_TYPE, sourceId,
                 limitLogAction(buildProductLogAction("合并配件信息", before, after)
                         + "；合并到：" + buildProductIdentityText(keepSnapshot)));
+        mallProductSyncPublisher.publishProductSync(sourceId);
     }
 
     @Override
@@ -1678,7 +1687,7 @@ public class ErpProductServiceImpl implements ErpProductService {
             return null;
         }
         ErpProductRespVO result = list.get(0);
-        applyProductFieldPermissions(Collections.singletonList(result), null, false);
+        applyProductFieldPermissions(Collections.singletonList(result));
         return result;
     }
 
@@ -1868,12 +1877,18 @@ public class ErpProductServiceImpl implements ErpProductService {
 
     @Override
     public List<ErpProductRespVO> getProductVOList(Collection<Long> ids, Long businessDeptId) {
+        return getProductVOList(ids, businessDeptId, true);
+    }
+
+    @Override
+    public List<ErpProductRespVO> getProductVOList(Collection<Long> ids, Long businessDeptId,
+                                                   boolean includeProductPricePermission) {
         if (CollUtil.isEmpty(ids)) {
             return Collections.emptyList();
         }
         List<ErpProductDO> list = productMapper.selectByIds(ids);
         List<ErpProductRespVO> result = buildProductVOList(list);
-        applyProductFieldPermissions(result, businessDeptId);
+        applyProductFieldPermissions(result, businessDeptId, includeProductPricePermission);
         return result;
     }
 
@@ -2619,10 +2634,12 @@ public class ErpProductServiceImpl implements ErpProductService {
     private void applyProductFieldPermissions(List<ErpProductRespVO> list, Long businessDeptId,
                                               boolean includeProductPricePermission) {
         List<String> hiddenFields;
-        if (businessDeptId != null) {
+        if (businessDeptId != null && includeProductPricePermission) {
             hiddenFields = permissionApi.getCurrentUserHiddenFields(FIELD_PERMISSION_MODULE, businessDeptId);
         } else if (includeProductPricePermission) {
             hiddenFields = permissionApi.getCurrentUserHiddenFields(FIELD_PERMISSION_MODULE);
+        } else if (businessDeptId != null) {
+            hiddenFields = permissionApi.getCurrentUserHiddenFields(FIELD_PERMISSION_MODULE, businessDeptId, false);
         } else {
             hiddenFields = permissionApi.getCurrentUserHiddenFields(FIELD_PERMISSION_MODULE, null, false);
         }
@@ -3551,10 +3568,12 @@ public class ErpProductServiceImpl implements ErpProductService {
                 .collect(Collectors.toMap(ErpFieldConfigDO::getFieldName, config -> config, (a, b) -> a));
         for (cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpPartsBatchUpdatePriceFieldsReqVO req : reqList) {
             validateBatchWritableField(hiddenFieldSet, "backupPrice1", "备用价1", req.getBackupPrice1());
+            validateBatchWritableField(hiddenFieldSet, "purchasePrice", "采购价格", req.getPurchasePrice());
             validateBatchWritableField(hiddenFieldSet, "referencePrice", "参考价", req.getReferencePrice());
             validateBatchWritableField(hiddenFieldSet, "retailPrice", "零售价", req.getRetailPrice());
             validateBatchWritableField(hiddenFieldSet, "wholesalePrice", "批发价", req.getWholesalePrice());
             validateBatchWritableField(hiddenFieldSet, "sharePrice", "股份价", req.getSharePrice());
+            validateBatchWritableField(hiddenFieldSet, "salePrice", "销售价格", req.getSalePrice());
             validateBatchWritableField(hiddenFieldSet, "stockMax", "库存上限", req.getStockMax());
             validateBatchWritableField(hiddenFieldSet, "stockMin", "库存下限", req.getStockMin());
             validateBatchWritableField(hiddenFieldSet, "stockStandard", "标准库存", req.getStockStandard());
@@ -3562,10 +3581,12 @@ public class ErpProductServiceImpl implements ErpProductService {
             ErpProductDO update = new ErpProductDO();
             update.setId(req.getId());
             if (req.getBackupPrice1() != null) update.setBackupPrice1(req.getBackupPrice1());
+            if (req.getPurchasePrice() != null) update.setPurchasePrice(req.getPurchasePrice());
             if (req.getReferencePrice() != null) update.setReferencePrice(req.getReferencePrice());
             if (req.getRetailPrice() != null) update.setRetailPrice(req.getRetailPrice());
             if (req.getWholesalePrice() != null) update.setWholesalePrice(req.getWholesalePrice());
             if (req.getSharePrice() != null) update.setSharePrice(req.getSharePrice());
+            if (req.getSalePrice() != null) update.setSalePrice(req.getSalePrice());
             if (req.getStockMax() != null) update.setStockMax(req.getStockMax());
             if (req.getStockMin() != null) update.setStockMin(req.getStockMin());
             if (req.getStockStandard() != null) update.setStockStandard(req.getStockStandard());

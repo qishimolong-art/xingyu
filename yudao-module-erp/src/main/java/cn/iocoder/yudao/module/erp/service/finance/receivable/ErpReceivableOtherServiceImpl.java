@@ -335,9 +335,6 @@ public class ErpReceivableOtherServiceImpl implements ErpReceivableOtherService 
         if (doObj.getReceivableAmount() == null) {
             throw exception(OTHER_RECEIVABLE_DRAFT_SUBMIT_FAIL, "应收金额不能为空");
         }
-        if (StrUtil.isBlank(doObj.getRemark())) {
-            throw exception(OTHER_RECEIVABLE_DRAFT_SUBMIT_FAIL, "调账原因备注不能为空");
-        }
         customerService.validateCustomer(doObj.getCustomerId());
         validateRefs(doObj.getHandlerId(), doObj.getDeptId());
     }

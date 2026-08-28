@@ -72,6 +72,18 @@ public class AppTradeOrderSettlementRespVO {
         @Schema(description = "购物车编号", requiredMode = Schema.RequiredMode.REQUIRED, example = "100")
         private Long cartId;
 
+        @Schema(description = "ERP 库存记录编号", example = "2048")
+        private Long stockId;
+
+        @Schema(description = "ERP 产品编号", example = "2048")
+        private Long erpProductId;
+
+        @Schema(description = "ERP 仓库编号", example = "1")
+        private Long warehouseId;
+
+        @Schema(description = "ERP 仓库名称", example = "主仓")
+        private String warehouseName;
+
         @Schema(description = "购买数量", requiredMode = Schema.RequiredMode.REQUIRED, example = "1")
         private Integer count;
 

@@ -4,8 +4,8 @@ import cn.iocoder.yudao.framework.tenant.core.context.TenantContextHolder;
 import cn.iocoder.yudao.framework.test.core.ut.BaseMockitoUnitTest;
 import cn.iocoder.yudao.module.system.dal.dataobject.permission.FieldDefinitionDO;
 import cn.iocoder.yudao.module.system.dal.dataobject.user.UserPriceFieldDO;
-import cn.iocoder.yudao.module.system.dal.mysql.permission.FieldDefinitionMapper;
 import cn.iocoder.yudao.module.system.dal.mysql.user.UserPriceFieldMapper;
+import cn.iocoder.yudao.module.system.service.permission.ProductPriceFieldCatalogService;
 import cn.iocoder.yudao.module.system.service.user.dto.UserPriceFieldConfigDTO;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -31,7 +31,7 @@ class UserPriceFieldServiceImplTest extends BaseMockitoUnitTest {
     @Mock
     private UserPriceFieldMapper userPriceFieldMapper;
     @Mock
-    private FieldDefinitionMapper fieldDefinitionMapper;
+    private ProductPriceFieldCatalogService productPriceFieldCatalogService;
 
     @BeforeEach
     void setUpTenant() {
@@ -45,7 +45,7 @@ class UserPriceFieldServiceImplTest extends BaseMockitoUnitTest {
 
     @Test
     void getUserPriceFieldConfigs_shouldUseProductPriceDefinitionsAndLegacyCodes() {
-        when(fieldDefinitionMapper.selectListByModuleAndGroup("erp_product", "price_info"))
+        when(productPriceFieldCatalogService.getPriceFields())
                 .thenReturn(Arrays.asList(field("referencePrice", "参考价", 1),
                         field("sharePrice", "股份价", 2)));
         when(userPriceFieldMapper.selectListByUserId(10L))
@@ -63,26 +63,36 @@ class UserPriceFieldServiceImplTest extends BaseMockitoUnitTest {
 
     @Test
     void saveUserPriceFields_shouldPersistEveryProductPriceDefinition() {
-        when(fieldDefinitionMapper.selectListByModuleAndGroup("erp_product", "price_info"))
-                .thenReturn(Arrays.asList(field("referencePrice", "参考价", 1),
-                        field("sharePrice", "股份价", 2)));
+        when(productPriceFieldCatalogService.getPriceFields())
+                .thenReturn(Arrays.asList(field("purchasePrice", "采购价", 1),
+                        field("salePrice", "销售价", 2),
+                        field("minPrice", "最低价", 3),
+                        field("referencePrice", "参考价", 4),
+                        field("sharePrice", "股份价", 5)));
 
-        service.saveUserPriceFields(10L, Arrays.asList("branch_price", "sharePrice", "unknown"));
+        service.saveUserPriceFields(10L, Arrays.asList("purchase_price", "salePrice", "branch_price",
+                "sharePrice", "unknown"));
 
         verify(userPriceFieldMapper).deleteByUserId(10L, 1L);
         ArgumentCaptor<UserPriceFieldDO> captor = ArgumentCaptor.forClass(UserPriceFieldDO.class);
-        verify(userPriceFieldMapper, times(2)).insert(captor.capture());
-        assertEquals(Arrays.asList("referencePrice", "sharePrice"),
+        verify(userPriceFieldMapper, times(5)).insert(captor.capture());
+        assertEquals(Arrays.asList("purchasePrice", "salePrice", "minPrice", "referencePrice", "sharePrice"),
                 Arrays.asList(captor.getAllValues().get(0).getPriceFieldCode(),
-                        captor.getAllValues().get(1).getPriceFieldCode()));
-        assertEquals(Arrays.asList(true, true),
+                        captor.getAllValues().get(1).getPriceFieldCode(),
+                        captor.getAllValues().get(2).getPriceFieldCode(),
+                        captor.getAllValues().get(3).getPriceFieldCode(),
+                        captor.getAllValues().get(4).getPriceFieldCode()));
+        assertEquals(Arrays.asList(true, true, false, true, true),
                 Arrays.asList(captor.getAllValues().get(0).getVisible(),
-                        captor.getAllValues().get(1).getVisible()));
+                        captor.getAllValues().get(1).getVisible(),
+                        captor.getAllValues().get(2).getVisible(),
+                        captor.getAllValues().get(3).getVisible(),
+                        captor.getAllValues().get(4).getVisible()));
     }
 
     @Test
     void getHiddenProductPriceFields_shouldHideUnsavedNewDefinitions() {
-        when(fieldDefinitionMapper.selectListByModuleAndGroup("erp_product", "price_info"))
+        when(productPriceFieldCatalogService.getPriceFields())
                 .thenReturn(Arrays.asList(field("referencePrice", "参考价", 1),
                         field("sharePrice", "股份价", 2)));
         when(userPriceFieldMapper.selectListByUserId(10L))

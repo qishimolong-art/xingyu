@@ -265,7 +265,7 @@ public class ErpSaleOutController {
         fillSaleOutStockOutBillInfo(respVO, id);
         // 退货状态
         respVO.setReturnStatus(calculateReturnStatus(saleOutItemList, returnedCountMap));
-        fieldPermissionMasker.maskFormWithItems(FIELD_PERMISSION_MODULE, respVO);
+        fieldPermissionMasker.maskSaleDetailFormWithItems(FIELD_PERMISSION_MODULE, respVO);
         return success(respVO);
     }
 
@@ -473,7 +473,7 @@ public class ErpSaleOutController {
         PageResult<ErpSaleOutDO> pageResult = saleOutService.getSaleOutPage(pageReqVO);
         PageResult<ErpSaleOutRespVO> respResult = buildSaleOutVOPageResult(pageResult,
                 Boolean.TRUE.equals(pageReqVO.getReceiptEnable()));
-        fieldPermissionMasker.maskFormsWithItems(FIELD_PERMISSION_MODULE, respResult.getList());
+        fieldPermissionMasker.maskSaleDetailFormsWithItems(FIELD_PERMISSION_MODULE, respResult.getList());
         return success(respResult);
     }
 
@@ -483,7 +483,7 @@ public class ErpSaleOutController {
     @PreAuthorize("@ss.hasPermission('erp:sale-return:create')")
     public CommonResult<List<ErpSaleReturnableItemRespVO>> getReturnableItems(@RequestParam("outId") Long outId) {
         List<ErpSaleReturnableItemRespVO> list = saleOutService.getReturnableItemsByOutId(outId);
-        fieldPermissionMasker.maskExportRows(FIELD_PERMISSION_MODULE, list);
+        fieldPermissionMasker.maskSaleDetailExportRows(FIELD_PERMISSION_MODULE, list);
         return success(list);
     }
 
@@ -519,7 +519,7 @@ public class ErpSaleOutController {
                 convertSet(saleOutItemList, ErpSaleOutItemDO::getWarehouseId));
         List<ErpSaleOutExportRespVO> rows = buildSaleOutExportList(
                 pageResult.getList(), saleOutItemMap, productMap, customerMap, userMap, warehouseMap);
-        fieldPermissionMasker.maskExportRows(FIELD_PERMISSION_MODULE, rows);
+        fieldPermissionMasker.maskSaleDetailExportRows(FIELD_PERMISSION_MODULE, rows);
         ExcelUtils.write(response, "销售单.xls", "数据", ErpSaleOutExportRespVO.class, rows);
     }
 
@@ -811,6 +811,7 @@ public class ErpSaleOutController {
         ErpSaleOutExportRespVO row = fillMainFields
                 ? BeanUtils.toBean(saleOut, ErpSaleOutExportRespVO.class)
                 : new ErpSaleOutExportRespVO();
+        row.setCustomerId(saleOut.getCustomerId());
         row.setCustomerName(fillMainFields && customer != null ? customer.getName() : null);
         row.setCreatorName(fillMainFields && creator != null ? creator.getNickname() : null);
         row.setSaleUserName(fillMainFields && saleUser != null ? saleUser.getNickname() : null);
@@ -820,6 +821,9 @@ public class ErpSaleOutController {
         row.setProductCode(product != null ? product.getCode() : null);
         row.setProductName(product != null ? product.getName() : null);
         row.setProductUnitName(product != null ? product.getUnitName() : null);
+        row.setUnitWeight(item.getUnitWeight());
+        row.setPackageQty(item.getPackageQty());
+        row.setTotalWeight(item.getTotalWeight());
         row.setWarehouseName(warehouse != null ? warehouse.getName() : null);
         row.setItemCount(item.getCount());
         row.setProductPrice(item.getProductPrice());

@@ -57,6 +57,9 @@ public class ErpPurchasePriceAdjustSaveReqVO {
         @Schema(description = "采购入库项编号", example = "1")
         private Long inItemId;
 
+        @Schema(description = "批次号")
+        private String batchNo;
+
         @Schema(description = "产品编号", requiredMode = Schema.RequiredMode.REQUIRED, example = "1")
         @NotNull(message = "产品不能为空")
         private Long productId;
@@ -89,6 +92,12 @@ public class ErpPurchasePriceAdjustSaveReqVO {
 
         @Schema(description = "单位名称")
         private String productUnitName;
+
+        @Schema(description = "产品重量")
+        private BigDecimal weight;
+
+        @Schema(description = "包装数")
+        private Integer packageQty;
 
         @Schema(description = "车型")
         private String vehicleModel;

@@ -23,10 +23,10 @@ public class ErpBookOpenRespVO {
     @Schema(description = "会计年度", requiredMode = Schema.RequiredMode.REQUIRED, example = "2026")
     private Integer fiscalYear;
 
-    @Schema(description = "开账期间（1-12 月）", requiredMode = Schema.RequiredMode.REQUIRED, example = "5")
+    @Schema(description = "开账期间（兼容旧字段；年度开账固定为 1）", requiredMode = Schema.RequiredMode.REQUIRED, example = "1")
     private Integer period;
 
-    @Schema(description = "期间开始时间", requiredMode = Schema.RequiredMode.REQUIRED, example = "2026-05-01")
+    @Schema(description = "期间开始时间", requiredMode = Schema.RequiredMode.REQUIRED, example = "2026-01-01")
     private LocalDate startDate;
 
     @Schema(description = "是否开账", requiredMode = Schema.RequiredMode.REQUIRED, example = "true")

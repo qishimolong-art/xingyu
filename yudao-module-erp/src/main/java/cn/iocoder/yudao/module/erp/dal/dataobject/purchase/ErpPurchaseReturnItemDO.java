@@ -111,6 +111,12 @@ public class ErpPurchaseReturnItemDO extends BaseDO {
      */
     private String originPlace;
     /**
+     * 重量
+     *
+     * 从商品资料 {@link ErpProductDO#getWeight()} 带出
+     */
+    private BigDecimal weight;
+    /**
      * 包装数
      *
      * 从商品资料 {@link ErpProductDO#getPackageQty()} 带出

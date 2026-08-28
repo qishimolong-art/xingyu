@@ -19,7 +19,9 @@ import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockMoveDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockMoveItemDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpWarehouseDO;
+import cn.iocoder.yudao.module.erp.enums.print.ErpPrintModuleEnum;
 import cn.iocoder.yudao.module.erp.service.base.ErpDataPermissionDeptService;
+import cn.iocoder.yudao.module.erp.service.common.ErpPrintService;
 import cn.iocoder.yudao.module.erp.service.product.ErpProductService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpStockFieldPermissionMasker;
 import cn.iocoder.yudao.module.erp.service.stock.ErpStockMoveService;
@@ -53,6 +55,7 @@ import javax.servlet.http.HttpServletResponse;
 import javax.validation.Valid;
 import java.io.IOException;
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashSet;
@@ -80,8 +83,11 @@ public class ErpStockMoveController {
     private static final ErrorCode EXPORT_COUNT_EXCEEDED = new ErrorCode(1_030_590_004,
             "单次最多导出 5000 条调拨单，请缩小筛选范围后重试");
     private static final String FIELD_PERMISSION_MODULE = "erp_stock_move";
+    private static final String FIELD_PERMISSION_MODULE_STOCK_TRANSFER_OUT = "erp_stock_transfer_out";
     @Resource
     private ErpStockMoveService stockMoveService;
+    @Resource
+    private ErpPrintService printService;
     @Resource
     private ErpStockService stockService;
     @Resource
@@ -187,6 +193,7 @@ public class ErpStockMoveController {
             fillUnlockCartPermission(vo, stockMove, itemList);
             fillUserNames(vo, userMap);
         });
+        fillPrintInfoIfStockTransferOut(fieldPermissionModule, Collections.singletonList(respVO));
         fieldPermissionMasker.maskFormWithItems(fieldPermissionModule, respVO);
         return success(respVO);
     }
@@ -298,8 +305,25 @@ public class ErpStockMoveController {
             fillMoveDeptNames(vo, deptMap);
             fillUserNames(vo, userMap);
         });
+        fillPrintInfoIfStockTransferOut(fieldPermissionModule, result.getList());
         fieldPermissionMasker.maskListColumns(fieldPermissionModule, result.getList());
         return result;
+    }
+
+    private void fillPrintInfoIfStockTransferOut(String fieldPermissionModule, List<ErpStockMoveRespVO> list) {
+        if (!FIELD_PERMISSION_MODULE_STOCK_TRANSFER_OUT.equals(fieldPermissionModule) || CollUtil.isEmpty(list)) {
+            return;
+        }
+        Set<Long> ids = convertSet(list, ErpStockMoveRespVO::getId);
+        Map<Long, Long> countMap = printService.getPrintCountMap(
+                ErpPrintModuleEnum.STOCK_TRANSFER_OUT.getKey(), ids);
+        Map<Long, LocalDateTime> lastPrintTimeMap = printService.getLastPrintTimeMap(
+                ErpPrintModuleEnum.STOCK_TRANSFER_OUT.getKey(), ids);
+        list.forEach(vo -> {
+            Long printCount = countMap.get(vo.getId());
+            vo.setPrintCount(printCount == null ? 0 : printCount.intValue());
+            vo.setLastPrintTime(lastPrintTimeMap.get(vo.getId()));
+        });
     }
 
     private void fillMoveDeptNames(ErpStockMoveRespVO vo, Map<Long, DeptRespDTO> deptMap) {

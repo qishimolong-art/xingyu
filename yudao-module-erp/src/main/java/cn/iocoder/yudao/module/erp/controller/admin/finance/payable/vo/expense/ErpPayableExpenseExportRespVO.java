@@ -30,19 +30,22 @@ public class ErpPayableExpenseExportRespVO {
     @ExcelProperty("凭证号")
     private String voucherNo;
 
-    @ExcelProperty("费用类型")
+    @ExcelProperty("类型")
+    private String expenseBizType;
+
+    @ExcelProperty("支出类型")
     private String expenseType;
 
     @ExcelProperty("总金额")
     private BigDecimal totalAmount;
 
-    @ExcelProperty("申请部门")
+    @ExcelProperty("开单部门")
     private String deptName;
 
-    @ExcelProperty("申请人")
+    @ExcelProperty("经手人")
     private String handlerName;
 
-    @ExcelProperty("收款对象")
+    @ExcelProperty("对象")
     private String party;
 
     @ExcelProperty("相关业务")
@@ -60,7 +63,7 @@ public class ErpPayableExpenseExportRespVO {
     @ExcelProperty("创建时间")
     private LocalDateTime createTime;
 
-    @ExcelProperty("费用项目")
+    @ExcelProperty("项目名称")
     private String itemName;
 
     @ExcelProperty("金额")
@@ -69,7 +72,7 @@ public class ErpPayableExpenseExportRespVO {
     @ExcelProperty("发票号")
     private String itemInvoiceNo;
 
-    @ExcelProperty("明细收款对象")
+    @ExcelProperty("明细对象")
     private String itemParty;
 
     @ExcelProperty("明细部门")
@@ -78,7 +81,7 @@ public class ErpPayableExpenseExportRespVO {
     @ExcelProperty("发生日期")
     private LocalDate itemBizDate;
 
-    @ExcelProperty("明细申请人")
+    @ExcelProperty("明细经手人")
     private String itemHandlerName;
 
     @ExcelProperty("数量")

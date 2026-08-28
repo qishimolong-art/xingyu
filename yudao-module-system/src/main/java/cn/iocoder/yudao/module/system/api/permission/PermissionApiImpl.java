@@ -52,6 +52,13 @@ public class PermissionApiImpl implements PermissionApi {
     }
 
     @Override
+    public List<String> getCurrentUserHiddenFields(String module, Long businessDeptId,
+                                                   boolean includeProductPricePermission, Integer customerPriceLevel) {
+        return permissionService.getCurrentUserHiddenFields(module, businessDeptId,
+                includeProductPricePermission, customerPriceLevel);
+    }
+
+    @Override
     public void createOrUpdateFieldDefinitions(List<FieldDefinitionCreateOrUpdateReqDTO> definitions) {
         permissionService.createOrUpdateFieldDefinitions(definitions);
     }

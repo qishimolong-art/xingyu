@@ -128,6 +128,8 @@ public class ErpSaleReturnSaveReqVO {
         @NotNull(message = "仓库编号不能为空")
         private Long warehouseId;
         private Long deptId;
+        @Schema(description = "批次号", example = "BATCH20260818001")
+        private String batchNo;
 
         @Schema(description = "产品编号", requiredMode = Schema.RequiredMode.REQUIRED, example = "3113")
         @NotNull(message = "产品编号不能为空")
@@ -136,6 +138,12 @@ public class ErpSaleReturnSaveReqVO {
         @Schema(description = "产品单位单位", requiredMode = Schema.RequiredMode.REQUIRED, example = "3113")
         @NotNull(message = "产品单位单位不能为空")
         private Long productUnitId;
+
+        @Schema(description = "重量")
+        private BigDecimal weight;
+
+        @Schema(description = "包装数")
+        private Integer packageQty;
 
         @Schema(description = "产品单价", example = "100.00")
         private BigDecimal productPrice;

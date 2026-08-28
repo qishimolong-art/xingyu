@@ -126,6 +126,12 @@ public class ErpSaleOrderRespVO {
         @ExcelProperty("产品单位")
         private String productUnitName;
 
+        @ExcelProperty("重量")
+        private BigDecimal weight;
+
+        @ExcelProperty("包装数")
+        private Integer packageQty;
+
         @ExcelProperty("数量")
         @NotNull(message = "产品数量不能为空")
         private BigDecimal count;
@@ -161,6 +167,9 @@ public class ErpSaleOrderRespVO {
         private Long warehouseDeptId;
         private String warehouseDeptName;
         private Long deptId;
+        @Schema(description = "批次号", example = "BATCH20260818001")
+        @ExcelProperty("批次号")
+        private String batchNo;
 
         // ========== 销售出库 ==========
 

@@ -6,6 +6,7 @@ import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
 import cn.iocoder.yudao.framework.security.core.util.SecurityFrameworkUtils;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.inbill.ErpStockInBillPickupReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.inbill.ErpStockInBillPageReqVO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.product.ErpProductDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseInDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseInItemDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockInBillDO;
@@ -17,6 +18,7 @@ import cn.iocoder.yudao.module.erp.dal.mysql.stock.ErpStockInBillItemMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.stock.ErpStockInBillPickupRecordMapper;
 import cn.iocoder.yudao.module.erp.dal.redis.no.ErpNoRedisDAO;
 import cn.iocoder.yudao.module.erp.enums.stock.ErpStockRecordBizTypeEnum;
+import cn.iocoder.yudao.module.erp.service.product.ErpProductService;
 import cn.iocoder.yudao.module.erp.service.stock.bo.ErpStockRecordCreateReqBO;
 import cn.iocoder.yudao.module.system.api.user.AdminUserApi;
 import cn.iocoder.yudao.module.system.api.user.dto.AdminUserRespDTO;
@@ -66,6 +68,10 @@ public class ErpStockInBillServiceImpl implements ErpStockInBillService {
     private ErpWarehouseService warehouseService;
     @Resource
     private ErpStockRecordService stockRecordService;
+    @Resource
+    private ErpProductService productService;
+    @Resource
+    private ErpStockItemSnapshotSupport snapshotSupport;
     @Resource
     private AdminUserApi adminUserApi;
 
@@ -159,14 +165,17 @@ public class ErpStockInBillServiceImpl implements ErpStockInBillService {
             bill.setRemark(purchaseIn.getRemark());
         }
         stockInBillMapper.insert(bill);
+        Map<Long, ErpProductDO> productMap = convertMap(productService.validProductList(
+                convertSet(purchaseInItems, ErpPurchaseInItemDO::getProductId)), ErpProductDO::getId);
         List<ErpStockInBillItemDO> billItems = purchaseInItems.stream()
-                .map(item -> buildBillItem(bill, purchaseIn, item))
+                .map(item -> buildBillItem(bill, purchaseIn, item, productMap.get(item.getProductId())))
                 .collect(Collectors.toList());
         stockInBillItemMapper.insertBatch(billItems);
     }
 
     private ErpStockInBillItemDO buildBillItem(ErpStockInBillDO bill, ErpPurchaseInDO purchaseIn,
-                                               ErpPurchaseInItemDO item) {
+                                               ErpPurchaseInItemDO item, ErpProductDO product) {
+        BigDecimal weight = snapshotSupport.resolveWeight(null, product);
         return BeanUtils.toBean(item, ErpStockInBillItemDO.class)
                 .setId(null)
                 .setBillId(bill.getId())
@@ -174,6 +183,9 @@ public class ErpStockInBillServiceImpl implements ErpStockInBillService {
                 .setSourceItemId(item.getId())
                 .setSourceNo(purchaseIn.getNo())
                 .setPickedCount(BigDecimal.ZERO)
+                .setPackageQty(snapshotSupport.resolvePackageQty(item.getPackageQty(), product))
+                .setWeight(weight)
+                .setTotalWeight(snapshotSupport.calculateTotalWeight(weight, item.getCount()))
                 .setStatus(STATUS_WAIT_PICKUP);
     }
 
@@ -202,7 +214,10 @@ public class ErpStockInBillServiceImpl implements ErpStockInBillService {
                         billItem.getId(), reqItem.getPickupCount(), remainCount);
             }
             stockRecordService.createStockRecord(new ErpStockRecordCreateReqBO(
-                    billItem.getProductId(), billItem.getWarehouseId(), billItem.getBatchNo(), reqItem.getPickupCount(),
+                    billItem.getProductId(), billItem.getWarehouseId(), billItem.getBatchNo(),
+                    billItem.getProductUnitId(), billItem.getPackageQty(), billItem.getWeight(),
+                    snapshotSupport.calculateTotalWeight(billItem.getWeight(), reqItem.getPickupCount()),
+                    reqItem.getPickupCount(),
                     ErpStockRecordBizTypeEnum.PURCHASE_IN.getType(), bill.getSourceId(), billItem.getSourceItemId(), bill.getSourceNo(),
                     billItem.getProductPrice(), pickupTime));
             BigDecimal pickedCount = nullToZero(billItem.getPickedCount()).add(reqItem.getPickupCount());

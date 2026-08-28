@@ -101,7 +101,6 @@ public class ErpStockItemBatchUpdateSupport {
         if (warehouse.getDeptId() != null) {
             deptIds.add(warehouse.getDeptId());
         }
-        deptIds.addAll(warehouseService.getWarehouseSaleDeptIds(warehouse.getId()));
         return deptIds;
     }
 

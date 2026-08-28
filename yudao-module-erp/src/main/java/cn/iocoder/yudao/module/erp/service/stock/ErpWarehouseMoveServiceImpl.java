@@ -64,6 +64,8 @@ public class ErpWarehouseMoveServiceImpl implements ErpWarehouseMoveService {
     private ErpStockRecordService stockRecordService;
     @Resource
     private ErpOperateLogService operateLogService;
+    @Resource
+    private ErpStockItemSnapshotSupport snapshotSupport;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -227,11 +229,14 @@ public class ErpWarehouseMoveServiceImpl implements ErpWarehouseMoveService {
 
         items.forEach(item -> {
             stockRecordService.createStockRecord(new ErpStockRecordCreateReqBO(
-                    item.getProductId(), item.getFromWarehouseId(), item.getBatchNo(), item.getCount().negate(),
+                    item.getProductId(), item.getFromWarehouseId(), item.getBatchNo(), item.getProductUnitId(),
+                    item.getPackageQty(), item.getWeight(),
+                    item.getTotalWeight() == null ? null : item.getTotalWeight().negate(), item.getCount().negate(),
                     ErpStockRecordBizTypeEnum.WAREHOUSE_MOVE_OUT.getType(), item.getMoveId(), item.getId(),
                     warehouseMove.getNo(), null, warehouseMove.getMoveTime()));
             stockRecordService.createStockRecord(new ErpStockRecordCreateReqBO(
-                    item.getProductId(), item.getToWarehouseId(), item.getBatchNo(), item.getCount(),
+                    item.getProductId(), item.getToWarehouseId(), item.getBatchNo(), item.getProductUnitId(),
+                    item.getPackageQty(), item.getWeight(), item.getTotalWeight(), item.getCount(),
                     ErpStockRecordBizTypeEnum.WAREHOUSE_MOVE_IN.getType(), item.getMoveId(), item.getId(),
                     warehouseMove.getNo(), resolveMoveInUnitPrice(item), warehouseMove.getMoveTime()));
         });
@@ -271,7 +276,8 @@ public class ErpWarehouseMoveServiceImpl implements ErpWarehouseMoveService {
             return BeanUtils.toBean(itemReq, ErpWarehouseMoveItemDO.class, item -> item
                     .setFromWarehouseId(reqVO.getFromWarehouseId())
                     .setToWarehouseId(reqVO.getToWarehouseId())
-                    .setProductUnitId(product == null ? null : product.getUnitId())
+                    .setProductUnitId(snapshotSupport.resolveProductUnitId(item.getProductUnitId(), product))
+                    .setPackageQty(snapshotSupport.resolvePackageQty(itemReq.getPackageQty(), product))
                     .setProductPrice(productPrice)
                     .setTotalPrice(MoneyUtils.priceMultiply(productPrice, itemReq.getCount()))
                     .setCostPrice(finalCostPrice)

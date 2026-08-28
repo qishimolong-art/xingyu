@@ -63,6 +63,21 @@ public class ErpFinanceTransferDO extends BaseDO {
     private BigDecimal transferPrice;
 
     /**
+     * 汇率
+     */
+    private BigDecimal exchangeRate;
+
+    /**
+     * 手续费
+     */
+    private BigDecimal feePrice;
+
+    /**
+     * 费用项目
+     */
+    private String feeExpenseCategory;
+
+    /**
      * 财务人员编号
      */
     private Long financeUserId;

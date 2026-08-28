@@ -98,6 +98,12 @@ public class ErpStockInBillExportRespVO {
     @ExcelProperty("包装数")
     private Integer packageQty;
 
+    @ExcelProperty("单重")
+    private BigDecimal weight;
+
+    @ExcelProperty("明细总重")
+    private BigDecimal itemTotalWeight;
+
     @ExcelProperty("明细整件数")
     private Integer itemWholeQty;
 

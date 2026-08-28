@@ -100,6 +100,7 @@ public interface ErpProductMapper extends BaseMapperX<ErpProductDO> {
                 .likeIfPresent(ErpProductDO::getVehicleModel, fuzzyKeyword(reqVO.getVehicleModel()))
                 .likeIfPresent(ErpProductDO::getFactoryCode, fuzzyKeyword(reqVO.getFactoryCode()))
                 .eqIfPresent(ErpProductDO::getCategoryId, reqVO.getCategoryId())
+                .inIfPresent(ErpProductDO::getCategoryId, reqVO.getCategoryIds())
                 .eqIfPresent(ErpProductDO::getStatus, reqVO.getStatus())
                 .eqIfPresent(ErpProductDO::getDefaultWarehouseId, reqVO.getWarehouseId())
                 .betweenIfPresent(ErpProductDO::getCreateTime, reqVO.getCreateTime());

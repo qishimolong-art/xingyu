@@ -39,6 +39,18 @@ public class ProductSpuSaveReqVO {
     @NotNull(message = "商品品牌不能为空")
     private Long brandId;
 
+    @Schema(description = "配件编码", example = "LTY1451")
+    private String code;
+
+    @Schema(description = "配件规格", example = "08雅阁后")
+    private String standard;
+
+    @Schema(description = "配件特征码", example = "后片")
+    private String featureCode;
+
+    @Schema(description = "适用车型", example = "易损件")
+    private String vehicleModel;
+
     @Schema(description = "商品封面图", requiredMode = Schema.RequiredMode.REQUIRED, example = "https://www.iocoder.cn/xx.png")
     @NotEmpty(message = "商品封面图不能为空")
     private String picUrl;

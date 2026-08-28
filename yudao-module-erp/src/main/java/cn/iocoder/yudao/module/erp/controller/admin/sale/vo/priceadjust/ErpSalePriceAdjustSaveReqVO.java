@@ -75,6 +75,12 @@ public class ErpSalePriceAdjustSaveReqVO {
         @Schema(description = "单位")
         private String unit;
 
+        @Schema(description = "重量")
+        private BigDecimal weight;
+
+        @Schema(description = "包装数")
+        private Integer packageQty;
+
         @Schema(description = "出库数")
         private BigDecimal outCount;
 
@@ -89,6 +95,9 @@ public class ErpSalePriceAdjustSaveReqVO {
 
         @Schema(description = "仓库所属部门名称")
         private String warehouseDeptName;
+
+        @Schema(description = "批次号", example = "BATCH20260818001")
+        private String batchNo;
 
         @Schema(description = "原售价")
         private BigDecimal oldPrice;

@@ -12,7 +12,6 @@ import cn.iocoder.yudao.module.system.dal.dataobject.dept.DeptDO;
 import cn.iocoder.yudao.module.system.dal.dataobject.permission.DeptPriceFieldDO;
 import cn.iocoder.yudao.module.system.dal.dataobject.permission.FieldDefinitionDO;
 import cn.iocoder.yudao.module.system.dal.mysql.permission.DeptPriceFieldMapper;
-import cn.iocoder.yudao.module.system.dal.mysql.permission.FieldDefinitionMapper;
 import cn.iocoder.yudao.module.system.service.dept.DeptService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -40,13 +39,10 @@ import static cn.iocoder.yudao.module.system.enums.ErrorCodeConstants.DEPT_PRICE
 @Service
 public class DeptPriceFieldServiceImpl implements DeptPriceFieldService {
 
-    public static final String PRODUCT_MODULE = "erp_product";
-    public static final String PRICE_FIELD_GROUP = "price_info";
-
     @Resource
     private DeptPriceFieldMapper deptPriceFieldMapper;
     @Resource
-    private FieldDefinitionMapper fieldDefinitionMapper;
+    private ProductPriceFieldCatalogService productPriceFieldCatalogService;
     @Resource
     private DeptService deptService;
 
@@ -60,8 +56,7 @@ public class DeptPriceFieldServiceImpl implements DeptPriceFieldService {
     public void updateConfig(DeptPriceFieldUpdateReqVO reqVO) {
         Long tenantId = TenantContextHolder.getRequiredTenantId();
         // 锁住本租户价格字段目录，使并发保存串行校验配置摘要，避免后提交者静默覆盖。
-        List<FieldDefinitionDO> lockedDefinitions = fieldDefinitionMapper.selectListByModuleAndGroupForUpdate(
-                tenantId, PRODUCT_MODULE, PRICE_FIELD_GROUP);
+        List<FieldDefinitionDO> lockedDefinitions = productPriceFieldCatalogService.getPriceFieldsForUpdate(tenantId);
         ConfigSnapshot snapshot = loadSnapshot(lockedDefinitions);
         if (!Objects.equals(reqVO.getConfigVersion(), calculateVersion(snapshot))) {
             throw exception(DEPT_PRICE_FIELD_CONFIG_CHANGED);
@@ -71,13 +66,13 @@ public class DeptPriceFieldServiceImpl implements DeptPriceFieldService {
         }
 
         Map<String, FieldDefinitionDO> definitionMap = snapshot.definitions.stream()
-                .collect(Collectors.toMap(FieldDefinitionDO::getFieldKey, item -> item, (a, b) -> a,
-                        LinkedHashMap::new));
+                .collect(Collectors.toMap(item -> ProductPriceFieldKeys.normalize(item.getFieldKey()),
+                        item -> item, (a, b) -> a, LinkedHashMap::new));
         Set<String> submittedFieldKeys = new HashSet<>();
         Map<String, Set<Long>> desiredDeptIdsByField = new LinkedHashMap<>();
         Set<Long> allSubmittedDeptIds = new LinkedHashSet<>();
         for (DeptPriceFieldUpdateReqVO.Item item : reqVO.getItems()) {
-            String fieldKey = StrUtil.trim(item.getFieldKey());
+            String fieldKey = ProductPriceFieldKeys.normalize(item.getFieldKey());
             if (!submittedFieldKeys.add(fieldKey)) {
                 throw exception(DEPT_PRICE_FIELD_DUPLICATE_FIELD, fieldKey);
             }
@@ -93,8 +88,9 @@ public class DeptPriceFieldServiceImpl implements DeptPriceFieldService {
         validateDeptIds(allSubmittedDeptIds);
 
         Map<String, Set<Long>> existingDeptIdsByField = snapshot.relations.stream()
-                .filter(item -> submittedFieldKeys.contains(item.getFieldKey()))
-                .collect(Collectors.groupingBy(DeptPriceFieldDO::getFieldKey, LinkedHashMap::new,
+                .filter(item -> submittedFieldKeys.contains(ProductPriceFieldKeys.normalize(item.getFieldKey())))
+                .collect(Collectors.groupingBy(item -> ProductPriceFieldKeys.normalize(item.getFieldKey()),
+                        LinkedHashMap::new,
                         Collectors.mapping(DeptPriceFieldDO::getDeptId, Collectors.toSet())));
         Long loginUserId = SecurityFrameworkUtils.getLoginUserId();
         String operator = String.valueOf(loginUserId != null ? loginUserId : 0L);
@@ -116,8 +112,7 @@ public class DeptPriceFieldServiceImpl implements DeptPriceFieldService {
 
     @Override
     public List<String> getHiddenPriceFields(Collection<Long> enabledDeptIds) {
-        List<FieldDefinitionDO> definitions = fieldDefinitionMapper.selectListByModuleAndGroup(
-                PRODUCT_MODULE, PRICE_FIELD_GROUP);
+        List<FieldDefinitionDO> definitions = productPriceFieldCatalogService.getPriceFields();
         if (CollUtil.isEmpty(definitions)) {
             return Collections.emptyList();
         }
@@ -125,12 +120,13 @@ public class DeptPriceFieldServiceImpl implements DeptPriceFieldService {
                 ? Collections.emptySet()
                 : deptPriceFieldMapper.selectListByDeptIds(enabledDeptIds).stream()
                         .map(DeptPriceFieldDO::getFieldKey)
+                        .map(ProductPriceFieldKeys::normalize)
                         .collect(Collectors.toSet());
         List<String> hiddenFields = new ArrayList<>();
         for (FieldDefinitionDO definition : definitions) {
-            if (!allowedFieldKeys.contains(definition.getFieldKey())) {
-                hiddenFields.add(definition.getFieldKey());
-                hiddenFields.add("col_" + definition.getFieldKey());
+            String fieldKey = ProductPriceFieldKeys.normalize(definition.getFieldKey());
+            if (!allowedFieldKeys.contains(fieldKey)) {
+                ProductPriceFieldKeys.addHiddenField(hiddenFields, fieldKey);
             }
         }
         return hiddenFields;
@@ -168,7 +164,7 @@ public class DeptPriceFieldServiceImpl implements DeptPriceFieldService {
 
     private ConfigSnapshot loadSnapshot(List<FieldDefinitionDO> definitions) {
         List<FieldDefinitionDO> priceDefinitions = new ArrayList<>(definitions != null ? definitions
-                : fieldDefinitionMapper.selectListByModuleAndGroup(PRODUCT_MODULE, PRICE_FIELD_GROUP));
+                : productPriceFieldCatalogService.getPriceFields());
         priceDefinitions.sort(Comparator
                 .comparing(FieldDefinitionDO::getSort, Comparator.nullsLast(Integer::compareTo))
                 .thenComparing(FieldDefinitionDO::getId, Comparator.nullsLast(Long::compareTo)));
@@ -188,14 +184,16 @@ public class DeptPriceFieldServiceImpl implements DeptPriceFieldService {
 
     private DeptPriceFieldConfigRespVO buildConfig(ConfigSnapshot snapshot) {
         Map<String, List<Long>> deptIdsByField = snapshot.relations.stream()
-                .collect(Collectors.groupingBy(DeptPriceFieldDO::getFieldKey, LinkedHashMap::new,
+                .collect(Collectors.groupingBy(item -> ProductPriceFieldKeys.normalize(item.getFieldKey()),
+                        LinkedHashMap::new,
                         Collectors.mapping(DeptPriceFieldDO::getDeptId, Collectors.toList())));
         List<DeptPriceFieldConfigRespVO.Field> fields = snapshot.definitions.stream().map(definition -> {
+            String fieldKey = ProductPriceFieldKeys.normalize(definition.getFieldKey());
             List<Long> deptIds = new ArrayList<>(deptIdsByField.getOrDefault(
-                    definition.getFieldKey(), Collections.emptyList()));
+                    fieldKey, Collections.emptyList()));
             Collections.sort(deptIds);
             DeptPriceFieldConfigRespVO.Field field = new DeptPriceFieldConfigRespVO.Field();
-            field.setFieldKey(definition.getFieldKey());
+            field.setFieldKey(fieldKey);
             field.setFieldLabel(definition.getFieldLabel());
             field.setSort(definition.getSort());
             field.setDeptIds(deptIds);

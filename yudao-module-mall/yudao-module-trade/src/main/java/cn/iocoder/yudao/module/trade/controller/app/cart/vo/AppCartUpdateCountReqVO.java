@@ -19,4 +19,8 @@ public class AppCartUpdateCountReqVO {
     @Min(message = "数量必须大于 0", value = 1L)
     private Integer count;
 
+    @Schema(description = "部门编号", requiredMode = Schema.RequiredMode.REQUIRED, example = "1")
+    @NotNull(message = "部门不能为空")
+    private Long deptId;
+
 }

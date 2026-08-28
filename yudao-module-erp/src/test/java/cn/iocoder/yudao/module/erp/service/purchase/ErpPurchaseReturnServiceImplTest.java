@@ -1,7 +1,9 @@
 package cn.iocoder.yudao.module.erp.service.purchase;
 
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
+import cn.iocoder.yudao.framework.common.biz.system.permission.dto.DeptDataPermissionRespDTO;
 import cn.iocoder.yudao.framework.common.enums.CommonStatusEnum;
+import cn.iocoder.yudao.framework.security.core.util.SecurityFrameworkUtils;
 import cn.iocoder.yudao.framework.test.core.ut.BaseMockitoUnitTest;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.imports.ErpPurchaseImportResultRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.returns.ErpPurchaseReturnOrderImportExcelVO;
@@ -42,12 +44,17 @@ import cn.iocoder.yudao.module.erp.service.stock.ErpStockRecordService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpStockService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpWarehouseService;
 import cn.iocoder.yudao.module.erp.service.stock.bo.ErpStockRecordCreateReqBO;
+import cn.iocoder.yudao.module.system.api.dept.DeptApi;
+import cn.iocoder.yudao.module.system.api.dept.dto.DeptRespDTO;
+import cn.iocoder.yudao.module.system.api.permission.PermissionApi;
+import cn.iocoder.yudao.module.system.controller.admin.dept.vo.dept.DeptSimpleRespVO;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InOrder;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import org.mockito.MockedStatic;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.math.BigDecimal;
@@ -55,6 +62,8 @@ import java.time.LocalDateTime;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 
@@ -66,6 +75,7 @@ import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PURCHASE_RETU
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PURCHASE_RETURN_EXCEED_RETURNABLE;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PURCHASE_RETURN_FAIL_REFUND_PRICE_EXCEED;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PURCHASE_RETURN_ITEM_BATCH_UPDATE_FAIL_APPROVE;
+import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PURCHASE_RETURN_ITEM_BATCH_UPDATE_FIELD_REQUIRED;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PURCHASE_RETURN_ITEM_BATCH_UPDATE_WAREHOUSE_DEPT_NOT_ALLOWED;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PURCHASE_RETURN_ITEM_BATCH_UPDATE_WAREHOUSE_NOT_ALLOWED_BY_ORDER;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PURCHASE_RETURN_ITEM_COUNT_POSITIVE;
@@ -91,6 +101,7 @@ import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.inOrder;
+import static org.mockito.Mockito.mockStatic;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -130,6 +141,10 @@ public class ErpPurchaseReturnServiceImplTest extends BaseMockitoUnitTest {
     private ErpBookOpenService bookOpenService;
     @Mock
     private ErpWarehouseService warehouseService;
+    @Mock
+    private DeptApi deptApi;
+    @Mock
+    private PermissionApi permissionApi;
     @Mock
     private ErpStockService stockService;
     @Mock
@@ -199,7 +214,46 @@ public class ErpPurchaseReturnServiceImplTest extends BaseMockitoUnitTest {
         return new ErpPurchaseInItemDO().setId(id).setCount(count);
     }
 
+    private DeptRespDTO buildDept(Long id, String name, Long parentId, Integer status) {
+        DeptRespDTO dept = new DeptRespDTO();
+        dept.setId(id);
+        dept.setName(name);
+        dept.setParentId(parentId);
+        dept.setStatus(status);
+        return dept;
+    }
+
+    private DeptDataPermissionRespDTO buildDeptPermission(Long... deptIds) {
+        DeptDataPermissionRespDTO permission = new DeptDataPermissionRespDTO();
+        permission.setDeptIds(new HashSet<>(Arrays.asList(deptIds)));
+        return permission;
+    }
+
     // ==================== batchUpdatePurchaseReturnItems ====================
+
+    @Test
+    public void testGetWarehouseAvailableDeptSimpleList_usesSystemDeptPermissionOnly() {
+        Long warehouseId = 8L;
+        Long loginUserId = 104L;
+        when(warehouseService.validPurchaseWarehouseList(Collections.singleton(warehouseId)))
+                .thenReturn(Collections.singletonList(new ErpWarehouseDO().setId(warehouseId).setDeptId(80L)));
+        when(permissionApi.getDeptDataPermission(eq(loginUserId), eq("system_dept")))
+                .thenReturn(buildDeptPermission(80L));
+        when(deptApi.getDeptList(eq(new LinkedHashSet<>(Collections.singletonList(80L)))))
+                .thenReturn(Collections.singletonList(buildDept(80L, "采购退货部", 0L,
+                        CommonStatusEnum.ENABLE.getStatus())));
+
+        try (MockedStatic<SecurityFrameworkUtils> security = mockStatic(SecurityFrameworkUtils.class)) {
+            security.when(SecurityFrameworkUtils::getLoginUserId).thenReturn(loginUserId);
+
+            List<DeptSimpleRespVO> result = purchaseReturnService.getWarehouseAvailableDeptSimpleList(warehouseId);
+
+            assertEquals(1, result.size());
+            assertEquals(80L, result.get(0).getId());
+            verify(permissionApi).getDeptDataPermission(eq(loginUserId), eq("system_dept"));
+            verify(permissionApi, never()).getDeptDataPermission(eq(loginUserId), eq("erp_purchase_return"));
+        }
+    }
 
     @Test
     public void testBatchUpdatePurchaseReturnItems_success() {
@@ -212,7 +266,6 @@ public class ErpPurchaseReturnServiceImplTest extends BaseMockitoUnitTest {
         when(purchaseReturnItemMapper.selectListByReturnId(10L)).thenReturn(Collections.singletonList(item));
         when(warehouseService.validPurchaseWarehouseList(Collections.singleton(8L))).thenReturn(Collections.singletonList(
                 new ErpWarehouseDO().setId(8L).setDeptId(80L)));
-        when(warehouseService.getWarehouseSaleDeptIds(8L)).thenReturn(Collections.emptySet());
 
         ErpPurchaseReturnItemBatchUpdateReqVO reqVO = new ErpPurchaseReturnItemBatchUpdateReqVO();
         reqVO.setReturnId(10L);
@@ -227,6 +280,47 @@ public class ErpPurchaseReturnServiceImplTest extends BaseMockitoUnitTest {
         assertEquals(Long.valueOf(8L), captor.getValue().getWarehouseId());
         assertEquals(Long.valueOf(80L), captor.getValue().getDeptId());
         verify(operateLogService).recordUpdate(any(), eq(10L), eq("CGTH001"));
+    }
+
+    @Test
+    public void testBatchUpdatePurchaseReturnItems_fieldRequired_throwException() {
+        when(purchaseReturnMapper.selectById(10L)).thenReturn(new ErpPurchaseReturnDO()
+                .setId(10L).setNo("CGTH001").setStatus(ErpPurchaseReturnStatusEnum.PROCESS.getStatus())
+                .setReturnMode(ErpPurchaseReturnModeEnum.BY_STOCK.getMode()));
+        ErpPurchaseReturnItemBatchUpdateReqVO reqVO = new ErpPurchaseReturnItemBatchUpdateReqVO();
+        reqVO.setReturnId(10L);
+        reqVO.setItemIds(Collections.singletonList(20L));
+
+        assertServiceException(() -> purchaseReturnService.batchUpdatePurchaseReturnItems(reqVO),
+                PURCHASE_RETURN_ITEM_BATCH_UPDATE_FIELD_REQUIRED);
+
+        verify(purchaseReturnItemMapper, never()).updateById(any(ErpPurchaseReturnItemDO.class));
+    }
+
+    @Test
+    public void testBatchUpdatePurchaseReturnItems_byOrderDeptOnlySuccess() {
+        ErpPurchaseReturnDO purchaseReturn = new ErpPurchaseReturnDO()
+                .setId(10L).setNo("CGTH001").setStatus(ErpPurchaseReturnStatusEnum.PROCESS.getStatus())
+                .setReturnMode(ErpPurchaseReturnModeEnum.BY_ORDER.getMode());
+        when(purchaseReturnMapper.selectById(10L)).thenReturn(purchaseReturn);
+        ErpPurchaseReturnItemDO item = new ErpPurchaseReturnItemDO()
+                .setId(20L).setReturnId(10L).setProductId(200L).setWarehouseId(7L).setDeptId(70L);
+        when(purchaseReturnItemMapper.selectListByReturnId(10L)).thenReturn(Collections.singletonList(item));
+        when(warehouseService.validPurchaseWarehouseList(Collections.singleton(7L))).thenReturn(Collections.singletonList(
+                new ErpWarehouseDO().setId(7L).setDeptId(80L)));
+        ErpPurchaseReturnItemBatchUpdateReqVO reqVO = new ErpPurchaseReturnItemBatchUpdateReqVO();
+        reqVO.setReturnId(10L);
+        reqVO.setItemIds(Collections.singletonList(20L));
+        reqVO.setDeptId(80L);
+
+        purchaseReturnService.batchUpdatePurchaseReturnItems(reqVO);
+
+        verify(stockService, never()).ensureStockExists(anyLong(), anyLong());
+        ArgumentCaptor<ErpPurchaseReturnItemDO> captor = ArgumentCaptor.forClass(ErpPurchaseReturnItemDO.class);
+        verify(purchaseReturnItemMapper).updateById(captor.capture());
+        assertEquals(Long.valueOf(20L), captor.getValue().getId());
+        assertEquals(Long.valueOf(7L), captor.getValue().getWarehouseId());
+        assertEquals(Long.valueOf(80L), captor.getValue().getDeptId());
     }
 
     @Test
@@ -269,7 +363,6 @@ public class ErpPurchaseReturnServiceImplTest extends BaseMockitoUnitTest {
         when(purchaseReturnItemMapper.selectListByReturnId(10L)).thenReturn(Collections.singletonList(item));
         when(warehouseService.validPurchaseWarehouseList(Collections.singleton(8L))).thenReturn(Collections.singletonList(
                 new ErpWarehouseDO().setId(8L).setDeptId(80L)));
-        when(warehouseService.getWarehouseSaleDeptIds(8L)).thenReturn(Collections.emptySet());
         ErpPurchaseReturnItemBatchUpdateReqVO reqVO = new ErpPurchaseReturnItemBatchUpdateReqVO();
         reqVO.setReturnId(10L);
         reqVO.setItemIds(Collections.singletonList(20L));
@@ -294,7 +387,6 @@ public class ErpPurchaseReturnServiceImplTest extends BaseMockitoUnitTest {
         when(purchaseReturnItemMapper.selectListByReturnId(10L)).thenReturn(Arrays.asList(selected, existed));
         when(warehouseService.validPurchaseWarehouseList(Collections.singleton(8L))).thenReturn(Collections.singletonList(
                 new ErpWarehouseDO().setId(8L).setDeptId(80L)));
-        when(warehouseService.getWarehouseSaleDeptIds(8L)).thenReturn(Collections.emptySet());
         ErpPurchaseReturnItemBatchUpdateReqVO reqVO = new ErpPurchaseReturnItemBatchUpdateReqVO();
         reqVO.setReturnId(10L);
         reqVO.setItemIds(Collections.singletonList(20L));

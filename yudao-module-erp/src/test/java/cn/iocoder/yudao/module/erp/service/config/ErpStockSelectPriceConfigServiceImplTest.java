@@ -1,6 +1,7 @@
 package cn.iocoder.yudao.module.erp.service.config;
 
 import cn.iocoder.yudao.framework.test.core.ut.BaseMockitoUnitTest;
+import cn.iocoder.yudao.module.erp.controller.admin.config.vo.ErpStockSelectPriceConfigRespVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.config.ErpFieldConfigDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.config.ErpStockSelectPriceConfigDO;
 import cn.iocoder.yudao.module.erp.dal.mysql.config.ErpFieldConfigMapper;
@@ -55,7 +56,7 @@ class ErpStockSelectPriceConfigServiceImplTest extends BaseMockitoUnitTest {
         mockPriceFields();
         when(stockSelectPriceConfigMapper.selectListByBizType("sale")).thenReturn(Arrays.asList(
                 relation("salePrice", "sale"), relation("vipPrice", "sale")));
-        when(permissionApi.getCurrentUserHiddenFields("erp_product"))
+        when(permissionApi.getCurrentUserHiddenFields("erp_product", 20L))
                 .thenReturn(Arrays.asList("salePrice", "col_salePrice"));
 
         List<String> result = service.getEffectiveVisibleFields("sale", 20L);
@@ -68,12 +69,46 @@ class ErpStockSelectPriceConfigServiceImplTest extends BaseMockitoUnitTest {
         mockPriceFields();
         when(stockSelectPriceConfigMapper.selectListByBizType("purchase")).thenReturn(Arrays.asList(
                 relation("salePrice", "purchase"), relation("vipPrice", "purchase")));
-        when(permissionApi.getCurrentUserHiddenFields("erp_product"))
+        when(permissionApi.getCurrentUserHiddenFields("erp_product", 999L))
                 .thenReturn(Collections.singletonList("vipPrice"));
 
         List<String> result = service.getEffectiveVisibleFields("purchase", 999L);
 
         assertEquals(Collections.singletonList("salePrice"), result);
+    }
+
+    @Test
+    void getEffectiveVisibleFields_shouldNormalizeLegacyPurchasePriceKey() {
+        when(permissionApi.getFieldDefinitions("erp_product", "price_info")).thenReturn(Arrays.asList(
+                definition("purchase_price", "采购价", 10),
+                definition("salePrice", "销售价", 20)));
+        when(fieldConfigMapper.selectListByModuleKey("erp_product")).thenReturn(Arrays.asList(
+                field(1L, "purchasePrice", "采购价", "SYSTEM", 10),
+                field(2L, "salePrice", "销售价", "SYSTEM", 20)));
+        when(stockSelectPriceConfigMapper.selectListByBizType("purchase")).thenReturn(Arrays.asList(
+                relation("purchase_price", "purchase"), relation("salePrice", "purchase")));
+        when(permissionApi.getCurrentUserHiddenFields("erp_product")).thenReturn(Collections.emptyList());
+
+        List<String> result = service.getEffectiveVisibleFields("purchase", null);
+
+        assertEquals(Arrays.asList("purchasePrice", "salePrice"), result);
+    }
+
+    @Test
+    void getConfig_shouldNormalizeLegacyPurchasePriceRelation() {
+        when(permissionApi.getFieldDefinitions("erp_product", "price_info")).thenReturn(Collections.singletonList(
+                definition("purchase_price", "采购价", 10)));
+        when(fieldConfigMapper.selectListByModuleKey("erp_product")).thenReturn(Collections.singletonList(
+                field(1L, "purchasePrice", "采购价", "SYSTEM", 10)));
+        when(stockSelectPriceConfigMapper.selectListByBizType("sale")).thenReturn(Collections.emptyList());
+        when(stockSelectPriceConfigMapper.selectListByBizType("purchase"))
+                .thenReturn(Collections.singletonList(relation("purchase_price", "purchase")));
+
+        ErpStockSelectPriceConfigRespVO result = service.getConfig();
+
+        assertEquals(1, result.getFields().size());
+        assertEquals("purchasePrice", result.getFields().get(0).getFieldKey());
+        assertTrue(result.getFields().get(0).getPurchaseVisible());
     }
 
     @Test

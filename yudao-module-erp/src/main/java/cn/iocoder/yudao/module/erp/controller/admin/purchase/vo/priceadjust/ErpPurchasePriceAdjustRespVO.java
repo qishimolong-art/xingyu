@@ -104,6 +104,9 @@ public class ErpPurchasePriceAdjustRespVO {
         @Schema(description = "采购入库项编号")
         private Long inItemId;
 
+        @Schema(description = "批次号")
+        private String batchNo;
+
         @Schema(description = "产品编号")
         private Long productId;
 
@@ -134,6 +137,12 @@ public class ErpPurchasePriceAdjustRespVO {
 
         @Schema(description = "单位名称")
         private String productUnitName;
+
+        @Schema(description = "产品重量")
+        private BigDecimal weight;
+
+        @Schema(description = "包装数")
+        private Integer packageQty;
 
         @Schema(description = "车型")
         private String vehicleModel;

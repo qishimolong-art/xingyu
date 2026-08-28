@@ -102,7 +102,7 @@ public interface ErpAccountMapper extends BaseMapperX<ErpAccountDO> {
             "         WHERE deleted = 0 AND status = 20",
             "         GROUP BY account_id",
             "        UNION ALL",
-            "        SELECT out_account_id AS account_id, -SUM(transfer_price) AS amount",
+            "        SELECT out_account_id AS account_id, -SUM(transfer_price + COALESCE(fee_price, 0)) AS amount",
             "          FROM erp_finance_transfer",
             "         WHERE status = 20",
             "         GROUP BY out_account_id",

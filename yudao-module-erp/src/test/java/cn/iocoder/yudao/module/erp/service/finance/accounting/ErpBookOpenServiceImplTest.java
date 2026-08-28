@@ -77,7 +77,7 @@ import static org.mockito.Mockito.when;
  * {@link ErpBookOpenServiceImpl} 单元测试。
  *
  * 覆盖：
- *  - createBookOpen：单号生成 / 三元组重复校验 / 默认 11 条 voucher_config / 扫描失败吞噬
+ *  - createBookOpen：单号生成 / 年度重复校验 / 默认 11 条 voucher_config / 扫描失败吞噬
  *  - updateBookOpen：存在性校验 / no 字段保护 / 不重置 voucher_config
  *  - deleteBookOpen：级联删除 + 不存在抛错
  *  - isVoucherTypeEnabled：5 种分支（启用/未启用 cfg/未启用 BookOpen/无 BookOpen/无 cfg）
@@ -85,7 +85,7 @@ import static org.mockito.Mockito.when;
  *
  * 重点 Bug 暴露：
  *  - S5：scanAndGenerateVouchersAfterCreate 异常被静默吞掉，主流程仍提示开账成功
- *  - S6：BookOpen 的三元组校验依赖 chainName，相同 (fiscalYear, period) 不同 chainName 可重复开账
+ *  - S6：BookOpen 的重复校验按年度控制，相同 fiscalYear 不同 chainName 也不可重复开账
  *  - S7：默认 voucher_config 11 条，新增 ErpVoucherTypeEnum 时需手动同步（虽用 values() 但 enabled=true 是硬编码默认）
  */
 @DisplayName("ErpBookOpenServiceImpl 单元测试")
@@ -156,7 +156,7 @@ public class ErpBookOpenServiceImplTest extends BaseMockitoUnitTest {
 
     // ---------- 公共构造工具 ----------
 
-    /** 构造 SaveReqVO 基础对象（2026-05 总部） */
+    /** 构造 SaveReqVO 基础对象（旧客户端即使传 2026-05，后端也会归一化为年度开账） */
     private ErpBookOpenSaveReqVO buildBaseReq() {
         ErpBookOpenSaveReqVO req = new ErpBookOpenSaveReqVO();
         req.setChainName("总部");
@@ -191,9 +191,8 @@ public class ErpBookOpenServiceImplTest extends BaseMockitoUnitTest {
     @Test
     @DisplayName("createBookOpen：正常创建 - 生成单号 + 默认 11 条 voucher_config + 操作人回填")
     public void testCreate_normalCase() {
-        // mock 三元组不重复
-        when(bookOpenMapper.selectByChainNameAndYearAndPeriod(eq("总部"), eq(2026), eq(5)))
-                .thenReturn(null);
+        // mock 年度不重复
+        when(bookOpenMapper.selectListByYear(eq(2026))).thenReturn(Collections.emptyList());
         mockNoGeneration("KZ20260514000001");
         when(adminUserApi.getUser(eq(99L))).thenReturn(new AdminUserRespDTO().setNickname("admin"));
         mockInsertReturnId(1000L);
@@ -213,6 +212,9 @@ public class ErpBookOpenServiceImplTest extends BaseMockitoUnitTest {
         ErpBookOpenDO captured = insertCaptor.getValue();
         assertEquals("KZ20260514000001", captured.getNo());
         assertEquals("总部", captured.getChainName());
+        assertEquals(2026, captured.getFiscalYear());
+        assertEquals(1, captured.getPeriod());
+        assertEquals(LocalDate.of(2026, 1, 1), captured.getStartDate());
         assertEquals(Boolean.TRUE, captured.getOpened());
         assertEquals(99L, captured.getOperatorUserId());
         assertEquals("admin", captured.getOperator());
@@ -224,7 +226,7 @@ public class ErpBookOpenServiceImplTest extends BaseMockitoUnitTest {
     @Test
     @DisplayName("createBookOpen：默认 opened=true（DO 仅有 opened 字段，无 currentPeriod 设计）")
     public void testCreate_setOpenedTrueByDefault() {
-        when(bookOpenMapper.selectByChainNameAndYearAndPeriod(any(), any(), any())).thenReturn(null);
+        when(bookOpenMapper.selectListByYear(any())).thenReturn(Collections.emptyList());
         mockNoGeneration("KZ20260514000002");
         lenient().when(adminUserApi.getUser(anyLong())).thenReturn(new AdminUserRespDTO().setNickname("admin"));
         mockInsertReturnId(1001L);
@@ -257,49 +259,46 @@ public class ErpBookOpenServiceImplTest extends BaseMockitoUnitTest {
     }
 
     @Test
-    @DisplayName("createBookOpen：period 越界（如 13）- 已修复 S5，应抛 BOOK_OPEN_PERIOD_INVALID")
-    public void testCreate_invalidPeriod() {
+    @DisplayName("createBookOpen：忽略外部传入 period/startDate - 固定归一化为年度开账")
+    public void testCreate_ignoreClientPeriodAndStartDate() {
         ErpBookOpenSaveReqVO req = buildBaseReq();
         req.setPeriod(13);
+        req.setStartDate(LocalDate.of(2026, 12, 31));
 
-        assertServiceException(() -> bookOpenService.createBookOpen(req),
-                BOOK_OPEN_PERIOD_INVALID);
-
-        verify(bookOpenMapper, never()).insert(any(ErpBookOpenDO.class));
-    }
-
-    @Test
-    @DisplayName("createBookOpen：Bug S6 暴露 - 三元组校验依赖 chainName，相同 (year, period) 不同 chainName 允许重复开账")
-    public void testCreate_duplicatePeriod_silentlyAllowed_bugS6() {
-        // 已有 chainName=分部A + 2026-05 的开账记录；
-        // 现在新建 chainName=分部B + 2026-05；
-        // selectByChainNameAndYearAndPeriod("分部B", 2026, 5) 因 chainName 不同返回 null，校验放行；
-        // 暴露 Bug S6：当前实现按 (chainName, year, period) 三元组判重，不限制同期间多连锁开账。
-        // TODO 若客户期望整月只允许 1 个 BookOpen（不区分 chainName），需在 validateBookOpenDuplicate 内
-        //      改用 selectByYearAndPeriod（已存在该方法）做强校验。
-        ErpBookOpenSaveReqVO req = buildBaseReq();
-        req.setChainName("分部B");
-
-        when(bookOpenMapper.selectByChainNameAndYearAndPeriod(eq("分部B"), eq(2026), eq(5)))
-                .thenReturn(null); // 不同 chainName 查不出已有记录
-        mockNoGeneration("KZ20260514000005");
+        when(bookOpenMapper.selectListByYear(eq(2026))).thenReturn(Collections.emptyList());
+        mockNoGeneration("KZ20260514000004");
         lenient().when(adminUserApi.getUser(anyLong())).thenReturn(new AdminUserRespDTO().setNickname("admin"));
-        mockInsertReturnId(1004L);
+        mockInsertReturnId(1003L);
         mockSkipScan();
 
         try (MockedStatic<SecurityFrameworkUtils> mock = mockStatic(SecurityFrameworkUtils.class)) {
             mock.when(SecurityFrameworkUtils::getLoginUserId).thenReturn(99L);
-            Long id = bookOpenService.createBookOpen(req);
-            // Bug S6：未拦截，返回新 ID（如客户期望严格唯一，此处应抛 BOOK_OPEN_DUPLICATE）
-            assertNotNull(id);
-            assertEquals(1004L, id);
+            bookOpenService.createBookOpen(req);
         }
+
+        ArgumentCaptor<ErpBookOpenDO> captor = ArgumentCaptor.forClass(ErpBookOpenDO.class);
+        verify(bookOpenMapper).insert(captor.capture());
+        assertEquals(1, captor.getValue().getPeriod());
+        assertEquals(LocalDate.of(2026, 1, 1), captor.getValue().getStartDate());
+    }
+
+    @Test
+    @DisplayName("createBookOpen：年度重复 - 相同 fiscalYear 不同 chainName 也抛 BOOK_OPEN_DUPLICATE")
+    public void testCreate_duplicateYearDifferentChain_throwDuplicate() {
+        ErpBookOpenSaveReqVO req = buildBaseReq();
+        req.setChainName("分部B");
+
+        when(bookOpenMapper.selectListByYear(eq(2026)))
+                .thenReturn(Collections.singletonList(new ErpBookOpenDO().setId(2000L).setFiscalYear(2026)));
+
+        assertServiceException(() -> bookOpenService.createBookOpen(req), BOOK_OPEN_DUPLICATE);
+        verify(bookOpenMapper, never()).insert(any(ErpBookOpenDO.class));
     }
 
     @Test
     @DisplayName("createBookOpen：Bug S5 暴露 - 凭证扫描中 voucherService 抛异常被静默吞噬，主流程仍返回成功 ID")
     public void testCreate_scanThrowsButMainFlowSuccessful_bugS5() {
-        when(bookOpenMapper.selectByChainNameAndYearAndPeriod(any(), any(), any())).thenReturn(null);
+        when(bookOpenMapper.selectListByYear(any())).thenReturn(Collections.emptyList());
         mockNoGeneration("KZ20260514000006");
         lenient().when(adminUserApi.getUser(anyLong())).thenReturn(new AdminUserRespDTO().setNickname("admin"));
         mockInsertReturnId(1005L);
@@ -344,6 +343,11 @@ public class ErpBookOpenServiceImplTest extends BaseMockitoUnitTest {
         // 确实尝试过生成凭证（抛异常被吞）
         verify(voucherService, times(1))
                 .createVoucherFromBiz(any(), anyLong(), anyString(), any(), any(), anyString(), any());
+
+        LocalDateTime[] annualRange = ErpBookOpenServiceImpl.buildAnnualScanRange(2026);
+        assertThat(annualRange).containsExactly(
+                LocalDateTime.of(2026, 1, 1, 0, 0),
+                LocalDateTime.of(2026, 12, 31, 23, 59, 59));
     }
 
     @Test
@@ -352,7 +356,7 @@ public class ErpBookOpenServiceImplTest extends BaseMockitoUnitTest {
         // Bug S7：当前实现用 ErpVoucherTypeEnum.values() 遍历生成默认 cfg，
         //        默认 enabled=true 是硬编码。今后若枚举新增类型，默认勾选行为需复核。
         //        本测试固化"开账时初始化与枚举值数等长的 cfg 列表"行为，便于回归。
-        when(bookOpenMapper.selectByChainNameAndYearAndPeriod(any(), any(), any())).thenReturn(null);
+        when(bookOpenMapper.selectListByYear(any())).thenReturn(Collections.emptyList());
         mockNoGeneration("KZ20260514000007");
         lenient().when(adminUserApi.getUser(anyLong())).thenReturn(new AdminUserRespDTO().setNickname("admin"));
         mockInsertReturnId(1006L);
@@ -384,7 +388,7 @@ public class ErpBookOpenServiceImplTest extends BaseMockitoUnitTest {
     @Test
     @DisplayName("createBookOpen：单号前缀使用 BOOK_OPEN_NO_PREFIX (KZ)")
     public void testCreate_noPrefixGenerate_useFixedNo() {
-        when(bookOpenMapper.selectByChainNameAndYearAndPeriod(any(), any(), any())).thenReturn(null);
+        when(bookOpenMapper.selectListByYear(any())).thenReturn(Collections.emptyList());
         mockNoGeneration("KZ20260514000008");
         lenient().when(adminUserApi.getUser(anyLong())).thenReturn(new AdminUserRespDTO().setNickname("admin"));
         mockInsertReturnId(1007L);
@@ -403,14 +407,13 @@ public class ErpBookOpenServiceImplTest extends BaseMockitoUnitTest {
     // ==================== updateBookOpen ====================
 
     @Test
-    @DisplayName("updateBookOpen：正常更新 - 校验存在 + 校验三元组 + updateById")
+    @DisplayName("updateBookOpen：正常更新 - 校验存在 + 校验年度 + updateById")
     public void testUpdate_normalCase() {
         ErpBookOpenSaveReqVO req = buildBaseReq();
         req.setId(1000L);
 
         when(bookOpenMapper.selectById(eq(1000L))).thenReturn(new ErpBookOpenDO().setId(1000L));
-        when(bookOpenMapper.selectByChainNameAndYearAndPeriod(eq("总部"), eq(2026), eq(5)))
-                .thenReturn(null);
+        when(bookOpenMapper.selectListByYear(eq(2026))).thenReturn(Collections.emptyList());
 
         bookOpenService.updateBookOpen(req);
 
@@ -418,6 +421,8 @@ public class ErpBookOpenServiceImplTest extends BaseMockitoUnitTest {
         verify(bookOpenMapper).updateById(captor.capture());
         assertEquals(1000L, captor.getValue().getId());
         assertEquals("总部", captor.getValue().getChainName());
+        assertEquals(1, captor.getValue().getPeriod());
+        assertEquals(LocalDate.of(2026, 1, 1), captor.getValue().getStartDate());
     }
 
     @Test
@@ -433,23 +438,22 @@ public class ErpBookOpenServiceImplTest extends BaseMockitoUnitTest {
     }
 
     @Test
-    @DisplayName("updateBookOpen：三元组冲突（其他 BookOpen 占用相同 chainName+year+period）- 抛 BOOK_OPEN_DUPLICATE")
+    @DisplayName("updateBookOpen：年度冲突（其他 BookOpen 占用相同 fiscalYear）- 抛 BOOK_OPEN_DUPLICATE")
     public void testUpdate_currentPeriodTrue_clearOthers() {
-        // DO 不含 currentPeriod 字段；该用例改为校验三元组冲突场景（最贴近"切换当前期会顶替别人"语义）
         ErpBookOpenSaveReqVO req = buildBaseReq();
         req.setId(1000L);
 
         when(bookOpenMapper.selectById(eq(1000L))).thenReturn(new ErpBookOpenDO().setId(1000L));
-        // 已有 id=2000 的同三元组记录占位
-        when(bookOpenMapper.selectByChainNameAndYearAndPeriod(eq("总部"), eq(2026), eq(5)))
-                .thenReturn(new ErpBookOpenDO().setId(2000L));
+        // 已有 id=2000 的同年度记录占位
+        when(bookOpenMapper.selectListByYear(eq(2026)))
+                .thenReturn(Collections.singletonList(new ErpBookOpenDO().setId(2000L)));
 
         assertServiceException(() -> bookOpenService.updateBookOpen(req), BOOK_OPEN_DUPLICATE);
         verify(bookOpenMapper, never()).updateById(any(ErpBookOpenDO.class));
     }
 
     @Test
-    @DisplayName("updateBookOpen：改 fiscalYear / period - Service 层允许，且不重置 voucher_config")
+    @DisplayName("updateBookOpen：改 fiscalYear 时 period/startDate 归一化，且不重置 voucher_config")
     public void testUpdate_changeFiscalYearOrPeriod() {
         ErpBookOpenSaveReqVO req = buildBaseReq();
         req.setId(1000L);
@@ -458,15 +462,15 @@ public class ErpBookOpenServiceImplTest extends BaseMockitoUnitTest {
 
         when(bookOpenMapper.selectById(eq(1000L))).thenReturn(new ErpBookOpenDO()
                 .setId(1000L).setFiscalYear(2026).setPeriod(5));
-        when(bookOpenMapper.selectByChainNameAndYearAndPeriod(eq("总部"), eq(2027), eq(8)))
-                .thenReturn(null);
+        when(bookOpenMapper.selectListByYear(eq(2027))).thenReturn(Collections.emptyList());
 
         bookOpenService.updateBookOpen(req);
 
         ArgumentCaptor<ErpBookOpenDO> captor = ArgumentCaptor.forClass(ErpBookOpenDO.class);
         verify(bookOpenMapper).updateById(captor.capture());
         assertEquals(2027, captor.getValue().getFiscalYear());
-        assertEquals(8, captor.getValue().getPeriod());
+        assertEquals(1, captor.getValue().getPeriod());
+        assertEquals(LocalDate.of(2027, 1, 1), captor.getValue().getStartDate());
         // 不重置 voucher_config（与 createBookOpen 的初始化分开）
         verify(voucherConfigMapper, never()).deleteByBookOpenId(anyLong());
         verify(voucherConfigMapper, never()).insertBatch(any(Collection.class));
@@ -482,7 +486,7 @@ public class ErpBookOpenServiceImplTest extends BaseMockitoUnitTest {
 
         when(bookOpenMapper.selectById(eq(1000L))).thenReturn(
                 new ErpBookOpenDO().setId(1000L).setNo("KZ20260101000001"));
-        when(bookOpenMapper.selectByChainNameAndYearAndPeriod(any(), any(), any())).thenReturn(null);
+        when(bookOpenMapper.selectListByYear(any())).thenReturn(Collections.emptyList());
 
         bookOpenService.updateBookOpen(req);
 
@@ -534,7 +538,7 @@ public class ErpBookOpenServiceImplTest extends BaseMockitoUnitTest {
     @DisplayName("isVoucherTypeEnabled：BookOpen 启用 + 凭证类型启用 - 返回 true")
     public void testIsVoucherTypeEnabled_normalEnabled() {
         LocalDate bizDate = LocalDate.of(2026, 5, 15);
-        when(bookOpenMapper.selectByYearAndPeriod(eq(2026), eq(5))).thenReturn(
+        when(bookOpenMapper.selectLatestByYear(eq(2026))).thenReturn(
                 new ErpBookOpenDO().setId(1000L).setOpened(true));
         when(voucherConfigMapper.selectByBookOpenIdAndVoucherType(eq(1000L), eq(7)))
                 .thenReturn(ErpBookOpenVoucherConfigDO.builder().enabled(true).build());
@@ -548,7 +552,7 @@ public class ErpBookOpenServiceImplTest extends BaseMockitoUnitTest {
     @DisplayName("isVoucherTypeEnabled：凭证类型已关闭 - 返回 false")
     public void testIsVoucherTypeEnabled_disabled() {
         LocalDate bizDate = LocalDate.of(2026, 5, 15);
-        when(bookOpenMapper.selectByYearAndPeriod(eq(2026), eq(5))).thenReturn(
+        when(bookOpenMapper.selectLatestByYear(eq(2026))).thenReturn(
                 new ErpBookOpenDO().setId(1000L).setOpened(true));
         when(voucherConfigMapper.selectByBookOpenIdAndVoucherType(eq(1000L), eq(7)))
                 .thenReturn(ErpBookOpenVoucherConfigDO.builder().enabled(false).build());
@@ -559,10 +563,10 @@ public class ErpBookOpenServiceImplTest extends BaseMockitoUnitTest {
     }
 
     @Test
-    @DisplayName("isVoucherTypeEnabled：该期间未开账 - 返回 false（warn 日志，不抛）")
+    @DisplayName("isVoucherTypeEnabled：该年度未开账 - 返回 false（warn 日志，不抛）")
     public void testIsVoucherTypeEnabled_noBookOpenForDate() {
         LocalDate bizDate = LocalDate.of(2027, 8, 20);
-        when(bookOpenMapper.selectByYearAndPeriod(eq(2027), eq(8))).thenReturn(null);
+        when(bookOpenMapper.selectLatestByYear(eq(2027))).thenReturn(null);
 
         boolean result = bookOpenService.isVoucherTypeEnabled(bizDate, 7);
 
@@ -574,7 +578,7 @@ public class ErpBookOpenServiceImplTest extends BaseMockitoUnitTest {
     @DisplayName("isVoucherTypeEnabled：cfg 表无对应类型 - 返回 false")
     public void testIsVoucherTypeEnabled_configNotExists() {
         LocalDate bizDate = LocalDate.of(2026, 5, 15);
-        when(bookOpenMapper.selectByYearAndPeriod(eq(2026), eq(5))).thenReturn(
+        when(bookOpenMapper.selectLatestByYear(eq(2026))).thenReturn(
                 new ErpBookOpenDO().setId(1000L).setOpened(true));
         when(voucherConfigMapper.selectByBookOpenIdAndVoucherType(eq(1000L), eq(99)))
                 .thenReturn(null);
@@ -588,7 +592,7 @@ public class ErpBookOpenServiceImplTest extends BaseMockitoUnitTest {
     @DisplayName("isVoucherTypeEnabled：BookOpen.opened=false 未启用 - 返回 false")
     public void testIsVoucherTypeEnabled_bookOpenInactive() {
         LocalDate bizDate = LocalDate.of(2026, 5, 15);
-        when(bookOpenMapper.selectByYearAndPeriod(eq(2026), eq(5))).thenReturn(
+        when(bookOpenMapper.selectLatestByYear(eq(2026))).thenReturn(
                 new ErpBookOpenDO().setId(1000L).setOpened(false));
 
         boolean result = bookOpenService.isVoucherTypeEnabled(bizDate, 7);

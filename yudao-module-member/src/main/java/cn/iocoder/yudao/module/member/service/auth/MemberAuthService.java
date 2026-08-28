@@ -53,6 +53,15 @@ public interface MemberAuthService {
     AppAuthLoginRespVO weixinMiniAppLogin(AppAuthWeixinMiniAppLoginReqVO reqVO);
 
     /**
+     * 微信小程序静默登录
+     *
+     * @param reqVO 登录信息
+     * @return 登录结果
+     */
+    AppAuthWeixinMiniAppSilentLoginRespVO weixinMiniAppSilentLogin(
+            @Valid AppAuthWeixinMiniAppSilentLoginReqVO reqVO);
+
+    /**
      * 获得社交认证 URL
      *
      * @param type 社交平台类型

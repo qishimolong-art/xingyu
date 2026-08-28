@@ -21,42 +21,65 @@ public interface CartMapper extends BaseMapperX<CartDO> {
                 CartDO::getSkuId, skuId);
     }
 
-    default Integer selectSumByUserId(Long userId) {
+    default CartDO selectByScopeAndSkuIdAndStockId(Long userId, Long customerId, Long deptId, Long skuId,
+                                                   Long stockId) {
+        return selectOne(new LambdaQueryWrapper<CartDO>()
+                .eq(CartDO::getUserId, userId)
+                .eq(CartDO::getCustomerId, customerId)
+                .eq(CartDO::getDeptId, deptId)
+                .eq(CartDO::getSkuId, skuId)
+                .eq(CartDO::getStockId, stockId));
+    }
+
+    default Integer selectSumByScope(Long userId, Long customerId, Long deptId) {
         // SQL sum 查询
         List<Map<String, Object>> result = selectMaps(new QueryWrapper<CartDO>()
                 .select("SUM(count) AS sumCount")
                 .eq("user_id", userId)
+                .eq("customer_id", customerId)
+                .eq("dept_id", deptId)
                 .eq("selected", true)); // 只计算选中的
         // 获得数量
         return CollUtil.getFirst(result) != null ? MapUtil.getInt(result.get(0), "sumCount") : 0;
     }
 
-    default CartDO selectById(Long id, Long userId) {
-        return selectOne(CartDO::getId, id,
-                CartDO::getUserId, userId);
+    default CartDO selectById(Long id, Long userId, Long customerId, Long deptId) {
+        return selectOne(new LambdaQueryWrapper<CartDO>()
+                .eq(CartDO::getId, id)
+                .eq(CartDO::getUserId, userId)
+                .eq(CartDO::getCustomerId, customerId)
+                .eq(CartDO::getDeptId, deptId));
     }
 
-    default List<CartDO> selectListByIds(Collection<Long> ids, Long userId) {
+    default List<CartDO> selectListByIds(Collection<Long> ids, Long userId, Long customerId, Long deptId) {
         return selectList(new LambdaQueryWrapper<CartDO>()
                 .in(CartDO::getId, ids)
-                .eq(CartDO::getUserId, userId));
+                .eq(CartDO::getUserId, userId)
+                .eq(CartDO::getCustomerId, customerId)
+                .eq(CartDO::getDeptId, deptId));
     }
 
-    default List<CartDO> selectListByUserId(Long userId) {
-        return selectList(new LambdaQueryWrapper<CartDO>()
-                .eq(CartDO::getUserId, userId));
-    }
-
-    default List<CartDO> selectListByUserId(Long userId, Set<Long> ids) {
+    default List<CartDO> selectListByScope(Long userId, Long customerId, Long deptId) {
         return selectList(new LambdaQueryWrapper<CartDO>()
                 .eq(CartDO::getUserId, userId)
+                .eq(CartDO::getCustomerId, customerId)
+                .eq(CartDO::getDeptId, deptId));
+    }
+
+    default List<CartDO> selectListByScope(Long userId, Long customerId, Long deptId, Set<Long> ids) {
+        return selectList(new LambdaQueryWrapper<CartDO>()
+                .eq(CartDO::getUserId, userId)
+                .eq(CartDO::getCustomerId, customerId)
+                .eq(CartDO::getDeptId, deptId)
                 .in(CartDO::getId, ids));
     }
 
-    default void updateByIds(Collection<Long> ids, Long userId, CartDO updateObj) {
+    default void updateByIds(Collection<Long> ids, Long userId, Long customerId, Long deptId, CartDO updateObj) {
         update(updateObj, new LambdaQueryWrapper<CartDO>()
                 .in(CartDO::getId, ids)
-                .eq(CartDO::getUserId, userId));
+                .eq(CartDO::getUserId, userId)
+                .eq(CartDO::getCustomerId, customerId)
+                .eq(CartDO::getDeptId, deptId));
     }
 
 }

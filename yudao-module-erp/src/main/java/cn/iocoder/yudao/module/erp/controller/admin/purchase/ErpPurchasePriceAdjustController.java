@@ -24,8 +24,10 @@ import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.priceadjust.ErpP
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.priceadjust.ErpPurchasePriceAdjustSaveReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchasePriceAdjustDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchasePriceAdjustItemDO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseInItemDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpSupplierDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpWarehouseDO;
+import cn.iocoder.yudao.module.erp.dal.mysql.purchase.ErpPurchaseInItemMapper;
 import cn.iocoder.yudao.module.erp.enums.config.ErpFieldConfigModuleEnum;
 import cn.iocoder.yudao.module.erp.enums.purchase.ErpPurchasePriceAdjustTypeEnum;
 import cn.iocoder.yudao.module.erp.framework.excel.ErpExportFieldUtils;
@@ -73,6 +75,7 @@ import java.util.Set;
 import static cn.iocoder.yudao.framework.apilog.core.enums.OperateTypeEnum.EXPORT;
 import static cn.iocoder.yudao.framework.common.pojo.CommonResult.success;
 import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.convertMultiMap;
+import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.convertMap;
 import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.convertSet;
 
 @Tag(name = "管理后台 - ERP 采购调价单")
@@ -82,6 +85,7 @@ import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.
 public class ErpPurchasePriceAdjustController {
 
     private static final String FIELD_PERMISSION_MODULE = "erp_purchase_price_adjust";
+    private static final String DEPT_SELECTION_PERMISSION_FORM_KEY = "system_dept";
     private static final Map<String, String> EXPORT_FIELD_GROUP_MAP = buildExportFieldGroupMap();
     private static final Map<String, String> EXPORT_FIELD_PERMISSION_MAP = buildExportFieldPermissionMap();
     private static final Map<String, String> DETAIL_IMPORT_FIELD_ALIAS_MAP = ErpImportTemplateRequiredFieldUtils.aliasMap(
@@ -117,6 +121,8 @@ public class ErpPurchasePriceAdjustController {
     @Resource
     private ErpWarehouseService warehouseService;
 
+    @Resource
+    private ErpPurchaseInItemMapper purchaseInItemMapper;
     @Resource
     private AdminUserApi adminUserApi;
     @Resource
@@ -279,7 +285,8 @@ public class ErpPurchasePriceAdjustController {
     @Operation(summary = "获得采购调价单")
     @Parameter(name = "id", description = "编号", required = true, example = "1024")
     @PreAuthorize("@ss.hasPermission('erp:purchase-price-adjust:query')")
-    public CommonResult<ErpPurchasePriceAdjustRespVO> getPurchasePriceAdjust(@RequestParam("id") Long id) {
+    public CommonResult<ErpPurchasePriceAdjustRespVO> getPurchasePriceAdjust(@RequestParam("id") Long id,
+                                                                             @RequestParam(value = "mask", defaultValue = "true") Boolean mask) {
         ErpPurchasePriceAdjustDO adjust = priceAdjustService.getPurchasePriceAdjust(id);
         if (adjust == null) {
             return success(null);
@@ -288,6 +295,7 @@ public class ErpPurchasePriceAdjustController {
         ErpPurchasePriceAdjustRespVO respVO = BeanUtils.toBean(adjust, ErpPurchasePriceAdjustRespVO.class);
         respVO.setItems(BeanUtils.toBean(items, ErpPurchasePriceAdjustRespVO.Item.class));
         fillItemProductSnapshots(respVO.getItems());
+        fillItemBatchNos(respVO.getItems());
         fillTotalPrices(respVO, items);
         if (adjust.getSupplierId() != null) {
             ErpSupplierDO supplier = supplierService.getSupplier(adjust.getSupplierId());
@@ -336,7 +344,9 @@ public class ErpPurchasePriceAdjustController {
             }
         }
         fillApproverName(respVO, userMap);
-        fieldPermissionMasker.mask("erp_purchase_price_adjust", respVO);
+        if (Boolean.TRUE.equals(mask)) {
+            fieldPermissionMasker.mask("erp_purchase_price_adjust", respVO);
+        }
         return success(respVO);
     }
 
@@ -353,7 +363,8 @@ public class ErpPurchasePriceAdjustController {
     @Operation(summary = "鑾峰緱褰撳墠鐢ㄦ埛鍙煡璇㈢殑閲囪喘璋冧环閮ㄩ棬绮剧畝鍒楄〃")
     @PreAuthorize("@ss.hasPermission('erp:purchase-price-adjust:query')")
     public CommonResult<List<DeptSimpleRespVO>> getVisibleDeptSimpleList() {
-        return success(supplierDeptPermissionService.getDataPermissionDeptSimpleList(FIELD_PERMISSION_MODULE));
+        return success(supplierDeptPermissionService.getDataPermissionDeptSimpleList(
+                DEPT_SELECTION_PERMISSION_FORM_KEY));
     }
 
     @GetMapping("/export-excel")
@@ -445,6 +456,7 @@ public class ErpPurchasePriceAdjustController {
             }
             fillApproverName(respVO, userMap);
         });
+        fillAllItemBatchNos(respResult.getList());
         fieldPermissionMasker.maskList(FIELD_PERMISSION_MODULE, respResult.getList());
         return respResult;
     }
@@ -494,6 +506,12 @@ public class ErpPurchasePriceAdjustController {
                 if (item.getProductUnitName() == null) {
                     item.setProductUnitName(product.getUnitName());
                 }
+                if (item.getWeight() == null) {
+                    item.setWeight(product.getWeight());
+                }
+                if (item.getPackageQty() == null) {
+                    item.setPackageQty(product.getPackageQty());
+                }
                 if (item.getVehicleModel() == null) {
                     item.setVehicleModel(product.getVehicleModel());
                 }
@@ -513,6 +531,35 @@ public class ErpPurchasePriceAdjustController {
                     item.setDrawingNo(product.getDrawingNo());
                 }
             });
+        }
+    }
+
+    private void fillAllItemBatchNos(List<ErpPurchasePriceAdjustRespVO> adjusts) {
+        if (CollUtil.isEmpty(adjusts)) {
+            return;
+        }
+        List<ErpPurchasePriceAdjustRespVO.Item> items = new ArrayList<>();
+        for (ErpPurchasePriceAdjustRespVO adjust : adjusts) {
+            if (CollUtil.isNotEmpty(adjust.getItems())) {
+                items.addAll(adjust.getItems());
+            }
+        }
+        fillItemBatchNos(items);
+    }
+
+    private void fillItemBatchNos(List<ErpPurchasePriceAdjustRespVO.Item> items) {
+        if (CollUtil.isEmpty(items)) {
+            return;
+        }
+        Set<Long> inItemIds = convertSet(items, ErpPurchasePriceAdjustRespVO.Item::getInItemId);
+        inItemIds.remove(null);
+        if (CollUtil.isEmpty(inItemIds)) {
+            return;
+        }
+        Map<Long, ErpPurchaseInItemDO> inItemMap = convertMap(
+                purchaseInItemMapper.selectBatchIds(inItemIds), ErpPurchaseInItemDO::getId);
+        for (ErpPurchasePriceAdjustRespVO.Item item : items) {
+            MapUtils.findAndThen(inItemMap, item.getInItemId(), inItem -> item.setBatchNo(inItem.getBatchNo()));
         }
     }
 
@@ -583,7 +630,10 @@ public class ErpPurchasePriceAdjustController {
         }
         row.setProductCode(item.getProductCode());
         row.setProductName(item.getProductName());
+        row.setBatchNo(item.getBatchNo());
         row.setProductUnitName(item.getProductUnitName());
+        row.setWeight(item.getWeight());
+        row.setPackageQty(item.getPackageQty());
         row.setVehicleModel(item.getVehicleModel());
         row.setStandard(item.getStandard());
         row.setFeatureCode(item.getFeatureCode());
@@ -621,7 +671,10 @@ public class ErpPurchasePriceAdjustController {
         map.put("remark", "main");
         map.put("productCode", "detail");
         map.put("productName", "detail");
+        map.put("batchNo", "detail");
         map.put("productUnitName", "detail");
+        map.put("weight", "detail");
+        map.put("packageQty", "detail");
         map.put("vehicleModel", "detail");
         map.put("standard", "detail");
         map.put("featureCode", "detail");
@@ -646,7 +699,10 @@ public class ErpPurchasePriceAdjustController {
         map.put("adjusterName", "adjuster");
         map.put("productCode", "item_productCode");
         map.put("productName", "item_productName");
+        map.put("batchNo", "item_batchNo");
         map.put("productUnitName", "item_productUnitName");
+        map.put("weight", "item_weight");
+        map.put("packageQty", "item_packageQty");
         map.put("vehicleModel", "item_vehicleModel");
         map.put("standard", "item_standard");
         map.put("featureCode", "item_featureCode");

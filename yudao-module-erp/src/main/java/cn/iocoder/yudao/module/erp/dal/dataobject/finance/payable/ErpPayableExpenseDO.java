@@ -41,6 +41,8 @@ public class ErpPayableExpenseDO extends BaseDO {
 
     private String voucherNo;
 
+    private String expenseBizType;
+
     private String expenseType;
 
     private BigDecimal totalAmount;

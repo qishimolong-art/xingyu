@@ -21,6 +21,7 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import org.mockito.Spy;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.math.BigDecimal;
@@ -64,6 +65,8 @@ class ErpStockCheckServiceImplTest extends BaseMockitoUnitTest {
     private ErpStockRecordService stockRecordService;
     @Mock
     private ErpStockService stockService;
+    @Spy
+    private ErpStockItemSnapshotSupport snapshotSupport = new ErpStockItemSnapshotSupport();
     @Mock
     private ErpOperateLogService operateLogService;
     @Mock

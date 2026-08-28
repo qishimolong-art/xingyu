@@ -248,6 +248,18 @@ public class DeptController {
         if (isFieldHidden(hiddenFields, "phone")) {
             reqVO.setPhone(oldDept.getPhone());
         }
+        if (isFieldHidden(hiddenFields, "address")) {
+            reqVO.setAddress(oldDept.getAddress());
+        }
+        if (isFieldHidden(hiddenFields, "longitude")) {
+            reqVO.setLongitude(oldDept.getLongitude());
+        }
+        if (isFieldHidden(hiddenFields, "latitude")) {
+            reqVO.setLatitude(oldDept.getLatitude());
+        }
+        if (isFieldHidden(hiddenFields, "mapName")) {
+            reqVO.setMapName(oldDept.getMapName());
+        }
         if (isFieldHidden(hiddenFields, "email")) {
             reqVO.setEmail(oldDept.getEmail());
         }
@@ -283,6 +295,18 @@ public class DeptController {
         }
         if (isFieldHidden(hiddenFields, "phone")) {
             respVO.setPhone(null);
+        }
+        if (isFieldHidden(hiddenFields, "address")) {
+            respVO.setAddress(null);
+        }
+        if (isFieldHidden(hiddenFields, "longitude")) {
+            respVO.setLongitude(null);
+        }
+        if (isFieldHidden(hiddenFields, "latitude")) {
+            respVO.setLatitude(null);
+        }
+        if (isFieldHidden(hiddenFields, "mapName")) {
+            respVO.setMapName(null);
         }
         if (isFieldHidden(hiddenFields, "email")) {
             respVO.setEmail(null);

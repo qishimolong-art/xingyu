@@ -40,6 +40,15 @@ public class ErpStockInRespVO {
     @ExcelProperty("供应商名称")
     private String supplierName;
 
+    @Schema(description = "仓库名称，多个仓库逗号分隔")
+    private String warehouseNames;
+
+    @Schema(description = "打印次数")
+    private Integer printCount;
+
+    @Schema(description = "最后打印时间")
+    private LocalDateTime lastPrintTime;
+
     @Schema(description = "入库时间", requiredMode = Schema.RequiredMode.REQUIRED)
     @ExcelProperty("入库时间")
     private LocalDateTime inTime;
@@ -109,6 +118,21 @@ public class ErpStockInRespVO {
 
         @Schema(description = "产品数量", requiredMode = Schema.RequiredMode.REQUIRED, example = "100.00")
         private BigDecimal count;
+
+        @Schema(description = "批次号", example = "BATCH-001")
+        private String batchNo;
+
+        @Schema(description = "产品单位编号")
+        private Long productUnitId;
+
+        @Schema(description = "包装数", example = "12")
+        private Integer packageQty;
+
+        @Schema(description = "单重", example = "1.25")
+        private BigDecimal weight;
+
+        @Schema(description = "总重", example = "125.00")
+        private BigDecimal totalWeight;
 
         @Schema(description = "备注", example = "随便")
         private String remark;

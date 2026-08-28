@@ -39,6 +39,8 @@ public class ErpWarehouseMoveItemDO extends BaseDO {
 
     private Long productUnitId;
 
+    private Integer packageQty;
+
     private BigDecimal productPrice;
 
     private BigDecimal count;

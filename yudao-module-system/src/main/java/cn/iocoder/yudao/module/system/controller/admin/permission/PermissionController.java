@@ -106,9 +106,12 @@ public class PermissionController {
                                                                  Long businessDeptId,
                                                                  @RequestParam(value = "includeProductPricePermission",
                                                                          required = false, defaultValue = "true")
-                                                                 boolean includeProductPricePermission) {
+                                                                 boolean includeProductPricePermission,
+                                                                 @RequestParam(value = "customerPriceLevel",
+                                                                         required = false)
+                                                                 Integer customerPriceLevel) {
         return success(permissionService.getCurrentUserHiddenFields(module, businessDeptId,
-                includeProductPricePermission));
+                includeProductPricePermission, customerPriceLevel));
     }
 
     @Operation(summary = "Get admin role ids")

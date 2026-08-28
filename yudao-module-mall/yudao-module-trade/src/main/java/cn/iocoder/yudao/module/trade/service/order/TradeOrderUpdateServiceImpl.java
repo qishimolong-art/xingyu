@@ -15,6 +15,14 @@ import cn.iocoder.yudao.framework.common.util.json.JsonUtils;
 import cn.iocoder.yudao.framework.common.util.number.MoneyUtils;
 import cn.iocoder.yudao.module.member.api.address.MemberAddressApi;
 import cn.iocoder.yudao.module.member.api.address.dto.MemberAddressRespDTO;
+import cn.iocoder.yudao.module.erp.api.sale.ErpCustomerMemberApi;
+import cn.iocoder.yudao.module.erp.api.sale.ErpSaleCartApi;
+import cn.iocoder.yudao.module.erp.api.sale.dto.ErpCustomerMemberAuthRespDTO;
+import cn.iocoder.yudao.module.erp.api.sale.dto.ErpSaleCartDraftCreateReqDTO;
+import cn.iocoder.yudao.module.erp.api.sale.dto.ErpSaleCartDraftCreateRespDTO;
+import cn.iocoder.yudao.module.erp.enums.sale.ErpSaleBizSourceTypeEnum;
+import cn.iocoder.yudao.module.erp.service.stock.ErpMallStockService;
+import cn.iocoder.yudao.module.erp.service.stock.bo.ErpMallStockOptionBO;
 import cn.iocoder.yudao.module.pay.api.order.PayOrderApi;
 import cn.iocoder.yudao.module.pay.api.order.dto.PayOrderCreateReqDTO;
 import cn.iocoder.yudao.module.pay.api.order.dto.PayOrderRespDTO;
@@ -35,6 +43,7 @@ import cn.iocoder.yudao.module.trade.controller.admin.order.vo.TradeOrderRemarkR
 import cn.iocoder.yudao.module.trade.controller.admin.order.vo.TradeOrderUpdateAddressReqVO;
 import cn.iocoder.yudao.module.trade.controller.admin.order.vo.TradeOrderUpdatePriceReqVO;
 import cn.iocoder.yudao.module.trade.controller.app.order.vo.AppTradeOrderCreateReqVO;
+import cn.iocoder.yudao.module.trade.controller.app.order.vo.AppTradeOrderCreateRespVO;
 import cn.iocoder.yudao.module.trade.controller.app.order.vo.AppTradeOrderSettlementReqVO;
 import cn.iocoder.yudao.module.trade.controller.app.order.vo.AppTradeOrderSettlementRespVO;
 import cn.iocoder.yudao.module.trade.controller.app.order.vo.item.AppTradeOrderItemCommentCreateReqVO;
@@ -69,11 +78,13 @@ import org.springframework.transaction.annotation.Transactional;
 
 import javax.annotation.Resource;
 import javax.validation.constraints.NotNull;
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 import static cn.iocoder.yudao.framework.common.exception.util.ServiceExceptionUtil.exception;
 import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.*;
@@ -107,6 +118,12 @@ public class TradeOrderUpdateServiceImpl implements TradeOrderUpdateService {
     private CartService cartService;
     @Resource
     private TradePriceService tradePriceService;
+    @Resource
+    private ErpMallStockService mallStockService;
+    @Resource
+    private ErpCustomerMemberApi customerMemberApi;
+    @Resource
+    private ErpSaleCartApi saleCartApi;
     @Resource
     private DeliveryExpressService deliveryExpressService;
     @Resource
@@ -169,23 +186,42 @@ public class TradeOrderUpdateServiceImpl implements TradeOrderUpdateService {
      * @return 订单价格
      */
     private TradePriceCalculateRespBO calculatePrice(Long userId, AppTradeOrderSettlementReqVO settlementReqVO) {
+        return calculatePriceWithCustomerAuth(userId, settlementReqVO).getCalculateRespBO();
+    }
+
+    private OrderCreateContext calculatePriceWithCustomerAuth(Long userId, AppTradeOrderSettlementReqVO settlementReqVO) {
+        ErpCustomerMemberAuthRespDTO customerAuth = customerMemberApi.validateCustomerMemberAuth(userId,
+                settlementReqVO.getDeptId());
         // 1. 如果来自购物车，则获得购物车的商品
-        List<CartDO> cartList = cartService.getCartList(userId,
+        List<CartDO> cartList = cartService.getCartList(userId, settlementReqVO.getDeptId(),
                 convertSet(settlementReqVO.getItems(), AppTradeOrderSettlementReqVO.Item::getCartId));
 
         // 2. 计算价格
         TradePriceCalculateReqBO calculateReqBO = TradeOrderConvert.INSTANCE.convert(userId, settlementReqVO, cartList);
         calculateReqBO.getItems().forEach(item -> Assert.isTrue(item.getSelected(), // 防御性编程，保证都是选中的
                 "商品({}) 未设置为选中", item.getSkuId()));
-        return tradePriceService.calculateOrderPrice(calculateReqBO);
+        TradePriceCalculateRespBO calculateRespBO = tradePriceService.calculateOrderPrice(calculateReqBO);
+        validateAndFillMallStock(calculateRespBO);
+        return new OrderCreateContext(customerAuth, calculateRespBO);
+    }
+
+    private void validateAndFillMallStock(TradePriceCalculateRespBO calculateRespBO) {
+        for (TradePriceCalculateRespBO.OrderItem item : calculateRespBO.getItems()) {
+            ErpMallStockOptionBO stockOption = mallStockService.validateMallStock(
+                    item.getSpuId(), item.getSkuId(), item.getStockId(), item.getCount());
+            item.setErpProductId(stockOption.getErpProductId())
+                    .setWarehouseId(stockOption.getWarehouseId())
+                    .setWarehouseName(stockOption.getWarehouseName());
+        }
     }
 
     @Override
     @Transactional(rollbackFor = Exception.class)
     @TradeOrderLog(operateType = TradeOrderOperateTypeEnum.MEMBER_CREATE)
-    public TradeOrderDO createOrder(Long userId, AppTradeOrderCreateReqVO createReqVO) {
+    public AppTradeOrderCreateRespVO createOrder(Long userId, AppTradeOrderCreateReqVO createReqVO) {
         // 1.1 价格计算
-        TradePriceCalculateRespBO calculateRespBO = calculatePrice(userId, createReqVO);
+        OrderCreateContext orderCreateContext = calculatePriceWithCustomerAuth(userId, createReqVO);
+        TradePriceCalculateRespBO calculateRespBO = orderCreateContext.getCalculateRespBO();
         // 1.2 构建订单
         TradeOrderDO order = buildTradeOrder(userId, createReqVO, calculateRespBO);
         List<TradeOrderItemDO> orderItems = buildTradeOrderItems(order, calculateRespBO);
@@ -198,9 +234,13 @@ public class TradeOrderUpdateServiceImpl implements TradeOrderUpdateService {
         orderItems.forEach(orderItem -> orderItem.setOrderId(order.getId()));
         tradeOrderItemMapper.insertBatch(orderItems);
 
-        // 4. 订单创建后的逻辑
+        // 4. 创建 ERP 销售手推车草稿
+        ErpSaleCartDraftCreateRespDTO saleCart = createSaleCartDraft(order, orderItems,
+                orderCreateContext.getCustomerAuth(), createReqVO);
+
+        // 5. 订单创建后的逻辑
         afterCreateTradeOrder(order, orderItems, createReqVO);
-        return order;
+        return buildCreateOrderResp(order, saleCart);
     }
 
     private TradeOrderDO buildTradeOrder(Long userId, AppTradeOrderCreateReqVO createReqVO,
@@ -250,22 +290,63 @@ public class TradeOrderUpdateServiceImpl implements TradeOrderUpdateService {
         // 1. 执行订单创建后置处理器
         tradeOrderHandlers.forEach(handler -> handler.afterOrderCreate(order, orderItems));
 
-        // 2. 删除购物车商品
-        Set<Long> cartIds = convertSet(createReqVO.getItems(), AppTradeOrderSettlementReqVO.Item::getCartId);
-        if (CollUtil.isNotEmpty(cartIds)) {
-            cartService.deleteCart(order.getUserId(), cartIds);
-        }
-
-        // 3. 生成预支付
+        // 2. 生成预支付
         // 特殊情况：积分兑换时，可能支付金额为零
         if (order.getPayPrice() > 0) {
             createPayOrder(order, orderItems);
+        }
+
+        // 3. 删除购物车商品
+        Set<Long> cartIds = createReqVO.getItems().stream()
+                .map(AppTradeOrderSettlementReqVO.Item::getCartId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+        if (CollUtil.isNotEmpty(cartIds)) {
+            cartService.deleteCart(order.getUserId(), createReqVO.getDeptId(), cartIds);
         }
 
         // 4. 插入订单日志
         TradeOrderLogUtils.setOrderInfo(order.getId(), null, order.getStatus());
 
         // TODO @LeeYan9: 是可以思考下, 订单的营销优惠记录, 应该记录在哪里, 微信讨论起来!
+    }
+
+    private ErpSaleCartDraftCreateRespDTO createSaleCartDraft(TradeOrderDO order, List<TradeOrderItemDO> orderItems,
+                                                               ErpCustomerMemberAuthRespDTO customerAuth,
+                                                               AppTradeOrderCreateReqVO createReqVO) {
+        ErpSaleCartDraftCreateReqDTO createReqDTO = new ErpSaleCartDraftCreateReqDTO()
+                .setCustomerId(customerAuth.getCustomerId())
+                .setDeptId(createReqVO.getDeptId())
+                .setSourceType(ErpSaleBizSourceTypeEnum.MALL_ORDER.getType())
+                .setSourceId(order.getId())
+                .setSourceNo(order.getNo())
+                .setRemark(createReqVO.getRemark())
+                .setItems(convertList(orderItems, item -> buildSaleCartDraftItem(item, createReqVO.getDeptId())));
+        return saleCartApi.createSaleCartDraft(createReqDTO);
+    }
+
+    private ErpSaleCartDraftCreateReqDTO.Item buildSaleCartDraftItem(TradeOrderItemDO orderItem, Long deptId) {
+        Assert.notNull(orderItem.getErpProductId(), "订单项({}) ERP 产品编号不能为空", orderItem.getSkuId());
+        Assert.notNull(orderItem.getWarehouseId(), "订单项({}) ERP 仓库编号不能为空", orderItem.getSkuId());
+        Assert.notNull(orderItem.getPrice(), "订单项({}) 价格不能为空", orderItem.getSkuId());
+        Assert.isTrue(orderItem.getCount() != null && orderItem.getCount() > 0,
+                "订单项({}) 数量必须大于 0", orderItem.getSkuId());
+        return new ErpSaleCartDraftCreateReqDTO.Item()
+                .setProductId(orderItem.getErpProductId())
+                .setWarehouseId(orderItem.getWarehouseId())
+                .setDeptId(deptId)
+                .setCount(BigDecimal.valueOf(orderItem.getCount()))
+                .setProductPrice(MoneyUtils.fenToYuan(orderItem.getPrice()));
+    }
+
+    private AppTradeOrderCreateRespVO buildCreateOrderResp(TradeOrderDO order, ErpSaleCartDraftCreateRespDTO saleCart) {
+        return new AppTradeOrderCreateRespVO()
+                .setId(order.getId())
+                .setNo(order.getNo())
+                .setPayOrderId(order.getPayOrderId())
+                .setSaleCartId(saleCart.getId())
+                .setSaleCartNo(saleCart.getNo())
+                .setSaleCartStatus(saleCart.getStatus());
     }
 
     private void createPayOrder(TradeOrderDO order, List<TradeOrderItemDO> orderItems) {
@@ -1039,6 +1120,28 @@ public class TradeOrderUpdateServiceImpl implements TradeOrderUpdateService {
     }
 
     // =================== 营销相关的操作 ===================
+
+    private static class OrderCreateContext {
+
+        private final ErpCustomerMemberAuthRespDTO customerAuth;
+
+        private final TradePriceCalculateRespBO calculateRespBO;
+
+        OrderCreateContext(ErpCustomerMemberAuthRespDTO customerAuth,
+                           TradePriceCalculateRespBO calculateRespBO) {
+            this.customerAuth = customerAuth;
+            this.calculateRespBO = calculateRespBO;
+        }
+
+        ErpCustomerMemberAuthRespDTO getCustomerAuth() {
+            return customerAuth;
+        }
+
+        TradePriceCalculateRespBO getCalculateRespBO() {
+            return calculateRespBO;
+        }
+
+    }
 
     /**
      * 获得自身的代理对象，解决 AOP 生效问题

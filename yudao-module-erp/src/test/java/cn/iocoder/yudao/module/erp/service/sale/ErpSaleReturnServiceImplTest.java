@@ -41,6 +41,7 @@ import cn.iocoder.yudao.module.erp.service.finance.ErpAccountService;
 import cn.iocoder.yudao.module.erp.service.finance.accounting.ErpAutoVoucherBuilder;
 import cn.iocoder.yudao.module.erp.service.finance.accounting.ErpBookOpenService;
 import cn.iocoder.yudao.module.erp.service.finance.accounting.ErpVoucherService;
+import cn.iocoder.yudao.module.erp.service.product.ErpProductBatchNoValidator;
 import cn.iocoder.yudao.module.erp.service.product.ErpProductService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpStockOutBillService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpStockRecordService;
@@ -86,6 +87,8 @@ public class ErpSaleReturnServiceImplTest extends BaseMockitoUnitTest {
     @Mock
     private ErpProductService productService;
     @Mock
+    private ErpProductBatchNoValidator productBatchNoValidator;
+    @Mock
     private ErpSaleOrderService saleOrderService;
     @Mock
     private ErpSaleOutService saleOutService;
@@ -119,6 +122,8 @@ public class ErpSaleReturnServiceImplTest extends BaseMockitoUnitTest {
     private ErpWarehouseService warehouseService;
     @Mock
     private ErpSaleFieldPermissionMasker fieldPermissionMasker;
+    @Mock
+    private ErpSaleItemBatchUpdateSupport batchUpdateSupport;
     @Mock
     private ErpOperateLogService operateLogService;
     @Mock
@@ -274,7 +279,7 @@ public class ErpSaleReturnServiceImplTest extends BaseMockitoUnitTest {
     public void testCreateBySaleOut_normalCase_createReturn() {
         ErpSaleReturnSaveReqVO reqVO = buildBaseReq(ErpSaleReturnModeEnum.BY_SALE_OUT.getMode());
         reqVO.setSourceOutId(10L);
-        reqVO.setItems(Collections.singletonList(buildItem(new BigDecimal("3")).setSourceOutItemId(100L)));
+        reqVO.setItems(Collections.singletonList(buildItem(new BigDecimal("3")).setId(2L).setSourceOutItemId(100L)));
 
         when(saleOutService.validateSaleOut(eq(10L))).thenReturn(new ErpSaleOutDO()
                 .setId(10L).setNo("XSCK001").setCustomerId(20L));
@@ -302,7 +307,10 @@ public class ErpSaleReturnServiceImplTest extends BaseMockitoUnitTest {
                 && saleReturn.getOrderNo() == null
                 && ErpSaleReturnModeEnum.BY_SALE_OUT.getMode().equals(saleReturn.getReturnMode())
                 && ErpAuditStatus.PROCESS.getStatus().equals(saleReturn.getStatus())));
-        verify(saleReturnItemMapper).insertBatch(argThat(items -> items.iterator().next().getSourceOutItemId().equals(100L)));
+        verify(saleReturnItemMapper).insertBatch(argThat(items -> {
+            ErpSaleReturnItemDO item = items.iterator().next();
+            return item.getId() == null && item.getSourceOutItemId().equals(100L);
+        }));
     }
 
     @Test
@@ -437,6 +445,29 @@ public class ErpSaleReturnServiceImplTest extends BaseMockitoUnitTest {
         assertException(() -> saleReturnService.updateSaleReturnDraft(reqVO),
                 ErrorCodeConstants.SALE_RETURN_UPDATE_FAIL_NOT_DRAFT, "XTH191");
         verify(saleReturnMapper, never()).updateById(any(ErpSaleReturnDO.class));
+    }
+
+    @Test
+    public void testUpdateDraft_reinsertItems_clearItemIds() {
+        Long id = 191L;
+        ErpSaleReturnDraftUpdateReqVO reqVO = new ErpSaleReturnDraftUpdateReqVO();
+        reqVO.setId(id);
+        reqVO.setReturnMode(ErpSaleReturnModeEnum.BY_STOCK.getMode());
+        reqVO.setCustomerId(20L);
+        reqVO.setItems(Collections.singletonList(buildItem(new BigDecimal("2")).setId(2L)));
+        when(saleReturnMapper.selectById(id)).thenReturn(new ErpSaleReturnDO()
+                .setId(id).setNo("XTH191").setStatus(ErpSaleReturnStatusEnum.DRAFT.getStatus())
+                .setDeptId(30L).setReturnTime(LocalDateTime.of(2026, 5, 10, 10, 0)));
+        when(customerService.validateCustomer(20L)).thenReturn(new ErpCustomerDO().setId(20L));
+        mockProduct();
+
+        saleReturnService.updateSaleReturnDraft(reqVO);
+
+        verify(saleReturnItemMapper).deleteByReturnId(id);
+        verify(saleReturnItemMapper).insertBatch(argThat(items -> {
+            ErpSaleReturnItemDO item = items.iterator().next();
+            return item.getId() == null && id.equals(item.getReturnId());
+        }));
     }
 
     @Test

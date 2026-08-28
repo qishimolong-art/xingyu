@@ -76,6 +76,10 @@ public class ErpSaleItemBatchUpdateSupport {
     }
 
     public void validateWarehouseDept(Long warehouseId, Long deptId, String module, ErrorCode errorCode) {
+        if (isCurrentUserSelectableWarehouseOwnerDept(warehouseId, deptId)) {
+            validateDeptEnabled(deptId, errorCode);
+            return;
+        }
         validateDeptVisible(deptId, module, errorCode);
         warehouseService.validateWarehouseSaleAllowedForDept(warehouseId, deptId);
     }
@@ -98,11 +102,7 @@ public class ErpSaleItemBatchUpdateSupport {
     }
 
     private Set<Long> getAvailableDeptIds(ErpWarehouseDO warehouse, String module) {
-        Set<Long> availableDeptIds = getWarehouseAllowedDeptIds(warehouse);
-        if (CollUtil.isEmpty(availableDeptIds)) {
-            return Collections.emptySet();
-        }
-        applyDeptDataPermission(availableDeptIds, module);
+        Set<Long> availableDeptIds = getWarehouseAllowedDeptIds(warehouse, module);
         if (CollUtil.isEmpty(availableDeptIds)) {
             return Collections.emptySet();
         }
@@ -114,7 +114,7 @@ public class ErpSaleItemBatchUpdateSupport {
         return availableDeptIds;
     }
 
-    private Set<Long> getWarehouseAllowedDeptIds(ErpWarehouseDO warehouse) {
+    private Set<Long> getWarehouseAllowedDeptIds(ErpWarehouseDO warehouse, String module) {
         if (warehouse == null) {
             return Collections.emptySet();
         }
@@ -122,7 +122,11 @@ public class ErpSaleItemBatchUpdateSupport {
         if (warehouse.getDeptId() != null) {
             deptIds.add(warehouse.getDeptId());
         }
-        deptIds.addAll(warehouseService.getWarehouseSaleDeptIds(warehouse.getId()));
+        Set<Long> saleDeptIds = getWarehouseSaleDeptIds(warehouse);
+        if (CollUtil.isNotEmpty(saleDeptIds)) {
+            applyDeptDataPermission(saleDeptIds, module);
+            deptIds.addAll(saleDeptIds);
+        }
         return deptIds;
     }
 
@@ -136,10 +140,34 @@ public class ErpSaleItemBatchUpdateSupport {
         if (!availableDeptIds.contains(deptId)) {
             throw exception(errorCode);
         }
+        validateDeptEnabled(deptId, errorCode);
+    }
+
+    private void validateDeptEnabled(Long deptId, ErrorCode errorCode) {
         DeptRespDTO dept = CollUtil.getFirst(deptApi.getDeptList(Collections.singleton(deptId)));
         if (dept == null || !CommonStatusEnum.ENABLE.getStatus().equals(dept.getStatus())) {
             throw exception(errorCode);
         }
+    }
+
+    private boolean isCurrentUserSelectableWarehouseOwnerDept(Long warehouseId, Long deptId) {
+        if (warehouseId == null || deptId == null) {
+            return false;
+        }
+        ErpWarehouseDO warehouse;
+        try {
+            warehouse = CollUtil.getFirst(warehouseService.validSaleWarehouseList(Collections.singleton(warehouseId)));
+        } catch (IllegalArgumentException ignored) {
+            return false;
+        }
+        return warehouse != null && deptId.equals(warehouse.getDeptId());
+    }
+
+    private Set<Long> getWarehouseSaleDeptIds(ErpWarehouseDO warehouse) {
+        if (warehouse.getId() == null) {
+            return Collections.emptySet();
+        }
+        return new LinkedHashSet<>(warehouseService.getWarehouseSaleDeptIds(warehouse.getId()));
     }
 
     private void applyDeptDataPermission(Set<Long> deptIds, String module) {

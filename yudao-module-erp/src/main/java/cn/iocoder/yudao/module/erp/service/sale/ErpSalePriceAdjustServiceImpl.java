@@ -102,8 +102,8 @@ public class ErpSalePriceAdjustServiceImpl implements ErpSalePriceAdjustService 
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Long createSalePriceAdjust(ErpSalePriceAdjustSaveReqVO createReqVO) {
-        fieldPermissionMasker.clearHiddenFields(FIELD_PERMISSION_MODULE, createReqVO);
-        fieldPermissionMasker.clearHiddenItemFields(FIELD_PERMISSION_MODULE, createReqVO.getItems());
+        fieldPermissionMasker.clearSaleDetailHiddenFields(FIELD_PERMISSION_MODULE, createReqVO);
+        fieldPermissionMasker.clearSaleDetailHiddenItemFields(FIELD_PERMISSION_MODULE, createReqVO, createReqVO.getItems());
         // 1. 生成调价单号
         String no = noRedisDAO.generate(ErpNoRedisDAO.SALE_PRICE_ADJUST_NO_PREFIX);
         // 2. 插入调价单
@@ -115,7 +115,7 @@ public class ErpSalePriceAdjustServiceImpl implements ErpSalePriceAdjustService 
         BigDecimal totalAdjustPrice = BigDecimal.ZERO;
         List<ErpSalePriceAdjustItemDO> items = BeanUtils.toBean(createReqVO.getItems(), ErpSalePriceAdjustItemDO.class);
         validateFormalSubmit(adjustDO, items);
-        fillItemDeptIdFromSaleOutItems(items);
+        fillItemSnapshotsFromSaleOutItems(items);
         validateSalePriceAdjustItemsNotAdjusted(items, null);
         for (ErpSalePriceAdjustItemDO item : items) {
             BigDecimal adjustPrice = calculateAdjustPrice(item);
@@ -137,8 +137,8 @@ public class ErpSalePriceAdjustServiceImpl implements ErpSalePriceAdjustService 
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Long createSalePriceAdjustDraft(ErpSalePriceAdjustDraftSaveReqVO createReqVO) {
-        fieldPermissionMasker.clearHiddenFields(FIELD_PERMISSION_MODULE, createReqVO);
-        fieldPermissionMasker.clearHiddenItemFields(FIELD_PERMISSION_MODULE, createReqVO.getItems());
+        fieldPermissionMasker.clearSaleDetailHiddenFields(FIELD_PERMISSION_MODULE, createReqVO);
+        fieldPermissionMasker.clearSaleDetailHiddenItemFields(FIELD_PERMISSION_MODULE, createReqVO, createReqVO.getItems());
         ErpSalePriceAdjustDO adjustDO = BeanUtils.toBean(createReqVO, ErpSalePriceAdjustDO.class);
         adjustDO.setNo(noRedisDAO.generate(ErpNoRedisDAO.SALE_PRICE_ADJUST_NO_PREFIX));
         adjustDO.setStatus(ErpSalePriceAdjustStatusEnum.DRAFT.getStatus());
@@ -166,8 +166,8 @@ public class ErpSalePriceAdjustServiceImpl implements ErpSalePriceAdjustService 
         if (ErpAuditStatus.APPROVE.getStatus().equals(existDO.getStatus())) {
             throw exception(SALE_PRICE_ADJUST_UPDATE_FAIL_APPROVE);
         }
-        fieldPermissionMasker.preserveHiddenFields(FIELD_PERMISSION_MODULE, updateReqVO, existDO);
-        fieldPermissionMasker.preserveHiddenItemFields(FIELD_PERMISSION_MODULE, updateReqVO.getItems(),
+        fieldPermissionMasker.preserveSaleDetailHiddenFields(FIELD_PERMISSION_MODULE, updateReqVO, existDO);
+        fieldPermissionMasker.preserveSaleDetailHiddenItemFields(FIELD_PERMISSION_MODULE, updateReqVO, updateReqVO.getItems(),
                 salePriceAdjustItemMapper.selectListByAdjustId(updateReqVO.getId()));
         // 2. 更新调价单
         ErpSalePriceAdjustDO updateDO = BeanUtils.toBean(updateReqVO, ErpSalePriceAdjustDO.class);
@@ -175,7 +175,7 @@ public class ErpSalePriceAdjustServiceImpl implements ErpSalePriceAdjustService 
         BigDecimal totalAdjustPrice = BigDecimal.ZERO;
         List<ErpSalePriceAdjustItemDO> items = BeanUtils.toBean(updateReqVO.getItems(), ErpSalePriceAdjustItemDO.class);
         validateFormalSubmit(updateDO, items);
-        fillItemDeptIdFromSaleOutItems(items);
+        fillItemSnapshotsFromSaleOutItems(items);
         validateSalePriceAdjustItemsNotAdjusted(items, updateReqVO.getId());
         for (ErpSalePriceAdjustItemDO item : items) {
             BigDecimal adjustPrice = calculateAdjustPrice(item);
@@ -201,8 +201,8 @@ public class ErpSalePriceAdjustServiceImpl implements ErpSalePriceAdjustService 
         if (!ErpSalePriceAdjustStatusEnum.DRAFT.getStatus().equals(existDO.getStatus())) {
             throw exception(SALE_PRICE_ADJUST_DRAFT_UPDATE_FAIL, existDO.getNo());
         }
-        fieldPermissionMasker.preserveHiddenFields(FIELD_PERMISSION_MODULE, updateReqVO, existDO);
-        fieldPermissionMasker.preserveHiddenItemFields(FIELD_PERMISSION_MODULE, updateReqVO.getItems(),
+        fieldPermissionMasker.preserveSaleDetailHiddenFields(FIELD_PERMISSION_MODULE, updateReqVO, existDO);
+        fieldPermissionMasker.preserveSaleDetailHiddenItemFields(FIELD_PERMISSION_MODULE, updateReqVO, updateReqVO.getItems(),
                 salePriceAdjustItemMapper.selectListByAdjustId(updateReqVO.getId()));
         List<ErpSalePriceAdjustItemDO> items = buildDraftItems(updateReqVO.getItems());
         ErpSalePriceAdjustDO updateDO = BeanUtils.toBean(updateReqVO, ErpSalePriceAdjustDO.class);
@@ -229,7 +229,7 @@ public class ErpSalePriceAdjustServiceImpl implements ErpSalePriceAdjustService 
         }
         List<ErpSalePriceAdjustItemDO> items = salePriceAdjustItemMapper.selectListByAdjustId(id);
         validateFormalSubmit(adjustDO, items);
-        fillItemDeptIdFromSaleOutItems(items);
+        fillItemSnapshotsFromSaleOutItems(items);
         validateSalePriceAdjustItemsNotAdjusted(items, id);
         int updateCount = salePriceAdjustMapper.updateByIdAndStatus(id,
                 ErpSalePriceAdjustStatusEnum.DRAFT.getStatus(),
@@ -361,6 +361,7 @@ public class ErpSalePriceAdjustServiceImpl implements ErpSalePriceAdjustService 
             ErpSaleOutItemForAdjustRespVO vo = new ErpSaleOutItemForAdjustRespVO();
             vo.setSaleOutId(out.getId());
             vo.setSaleOutNo(out.getNo());
+            vo.setCustomerId(out.getCustomerId());
             vo.setOutTime(out.getOutTime());
             vo.setProductId(item.getProductId());
             vo.setSaleOutItemId(item.getId());
@@ -368,7 +369,10 @@ public class ErpSalePriceAdjustServiceImpl implements ErpSalePriceAdjustService 
             vo.setProductPrice(item.getProductPrice());
             vo.setAdjusted(item.getAdjusted());
             vo.setDeptId(item.getDeptId());
+            vo.setWeight(item.getUnitWeight());
+            vo.setPackageQty(item.getPackageQty());
             vo.setWarehouseId(item.getWarehouseId());
+            vo.setBatchNo(item.getBatchNo());
             ErpWarehouseDO warehouse = warehouseMap.get(item.getWarehouseId());
             if (warehouse != null) {
                 vo.setWarehouseName(warehouse.getName());
@@ -497,10 +501,13 @@ public class ErpSalePriceAdjustServiceImpl implements ErpSalePriceAdjustService 
                 item.setBrand(outItem.getBrand());
                 item.setVehicleModel(outItem.getVehicleModel());
                 item.setOriginPlace(outItem.getOriginPlace());
+                item.setWeight(outItem.getUnitWeight());
+                item.setPackageQty(outItem.getPackageQty());
                 item.setDeptId(outItem.getDeptId());
                 item.setWarehouseId(outItem.getWarehouseId());
                 item.setWarehouseName(warehouse.getName());
                 item.setWarehouseDeptId(warehouse.getDeptId());
+                item.setBatchNo(outItem.getBatchNo());
                 item.setOutCount(outItem.getCount());
                 item.setOldPrice(outItem.getProductPrice());
                 item.setNewPrice(row.getNewPrice());
@@ -632,7 +639,7 @@ public class ErpSalePriceAdjustServiceImpl implements ErpSalePriceAdjustService 
         }
     }
 
-    private void fillItemDeptIdFromSaleOutItems(List<ErpSalePriceAdjustItemDO> items) {
+    private void fillItemSnapshotsFromSaleOutItems(List<ErpSalePriceAdjustItemDO> items) {
         Set<Long> saleOutItemIds = convertSet(items, ErpSalePriceAdjustItemDO::getSaleOutItemId);
         if (CollUtil.isEmpty(saleOutItemIds)) {
             return;
@@ -645,6 +652,16 @@ public class ErpSalePriceAdjustServiceImpl implements ErpSalePriceAdjustService 
                 if (saleOutItem != null) {
                     item.setDeptId(saleOutItem.getDeptId());
                 }
+            }
+            ErpSaleOutItemDO saleOutItem = item.getSaleOutItemId() == null ? null : saleOutItemMap.get(item.getSaleOutItemId());
+            if (saleOutItem == null) {
+                continue;
+            }
+            if (item.getWeight() == null) {
+                item.setWeight(saleOutItem.getUnitWeight());
+            }
+            if (item.getPackageQty() == null) {
+                item.setPackageQty(saleOutItem.getPackageQty());
             }
         }
     }
@@ -672,7 +689,7 @@ public class ErpSalePriceAdjustServiceImpl implements ErpSalePriceAdjustService 
                         && item.getOutCount() != null)
                 .map(item -> BeanUtils.toBean(item, ErpSalePriceAdjustItemDO.class))
                 .collect(Collectors.toList());
-        fillItemDeptIdFromSaleOutItems(items);
+        fillItemSnapshotsFromSaleOutItems(items);
         return items;
     }
 

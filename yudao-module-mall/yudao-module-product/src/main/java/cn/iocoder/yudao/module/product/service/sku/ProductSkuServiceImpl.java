@@ -275,4 +275,9 @@ public class ProductSkuServiceImpl implements ProductSkuService {
         productSpuService.updateSpuStock(spuStockIncrCounts);
     }
 
+    @Override
+    public void updateSkuStockCount(Long id, Integer stock) {
+        productSkuMapper.updateStockCount(id, stock);
+    }
+
 }

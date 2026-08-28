@@ -47,7 +47,7 @@ public class ErpSupplierDeptPermissionService {
             return toDeptSimpleRespVOList(deptApi.getDeptListByStatus(CommonStatusEnum.ENABLE.getStatus()));
         }
 
-        Set<Long> permissionDeptIds = permission != null ? permission.getDeptIds() : Collections.emptySet();
+        Set<Long> permissionDeptIds = resolvePermissionDeptIds(permission);
         if (CollUtil.isEmpty(permissionDeptIds)) {
             return Collections.emptyList();
         }
@@ -82,7 +82,7 @@ public class ErpSupplierDeptPermissionService {
         Set<Long> availableDeptIds = new LinkedHashSet<>(supplierDeptIds);
         DeptDataPermissionRespDTO permission = permissionApi.getDeptDataPermission(getLoginUserId(), formKey);
         if (!Boolean.TRUE.equals(permission != null ? permission.getAll() : null)) {
-            Set<Long> permissionDeptIds = permission != null ? permission.getDeptIds() : Collections.emptySet();
+            Set<Long> permissionDeptIds = resolvePermissionDeptIds(permission);
             if (CollUtil.isEmpty(permissionDeptIds)) {
                 return Collections.emptyList();
             }
@@ -103,6 +103,27 @@ public class ErpSupplierDeptPermissionService {
         return depts.stream()
                 .map(dept -> new DeptSimpleRespVO(dept.getId(), dept.getName(), dept.getParentId()))
                 .collect(Collectors.toList());
+    }
+
+    private Set<Long> resolvePermissionDeptIds(DeptDataPermissionRespDTO permission) {
+        if (permission == null) {
+            return Collections.emptySet();
+        }
+        Set<Long> deptIds = new LinkedHashSet<>();
+        if (permission.getDeptIds() != null) {
+            deptIds.addAll(permission.getDeptIds());
+        }
+        if (!Boolean.TRUE.equals(permission.getSelf())) {
+            return deptIds;
+        }
+        Long loginUserId = getLoginUserId();
+        if (loginUserId != null) {
+            Set<Long> userDeptIds = permissionApi.getDeptIdsByUserId(loginUserId);
+            if (userDeptIds != null) {
+                deptIds.addAll(userDeptIds);
+            }
+        }
+        return deptIds;
     }
 
 }

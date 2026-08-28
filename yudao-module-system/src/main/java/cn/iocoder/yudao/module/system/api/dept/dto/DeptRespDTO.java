@@ -3,6 +3,8 @@ package cn.iocoder.yudao.module.system.api.dept.dto;
 import cn.iocoder.yudao.framework.common.enums.CommonStatusEnum;
 import lombok.Data;
 
+import java.math.BigDecimal;
+
 /**
  * 部门 Response DTO
  *
@@ -27,6 +29,26 @@ public class DeptRespDTO {
      * 负责人的用户编号
      */
     private Long leaderUserId;
+    /**
+     * 联系电话
+     */
+    private String phone;
+    /**
+     * 详细地址
+     */
+    private String address;
+    /**
+     * 经度
+     */
+    private BigDecimal longitude;
+    /**
+     * 纬度
+     */
+    private BigDecimal latitude;
+    /**
+     * 地图显示名称
+     */
+    private String mapName;
     /**
      * 部门状态
      *

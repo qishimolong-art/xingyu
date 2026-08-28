@@ -3,7 +3,6 @@ package cn.iocoder.yudao.module.erp.controller.admin.finance.receivable.vo.other
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Data;
 
-import javax.validation.constraints.NotBlank;
 import javax.validation.constraints.NotNull;
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -29,7 +28,8 @@ public class ErpReceivableOtherSaveReqVO {
     @Schema(description = "已结金额")
     private BigDecimal settledAmount;
 
-    @Schema(description = "部门编号")
+    @Schema(description = "部门编号", requiredMode = Schema.RequiredMode.REQUIRED)
+    @NotNull(message = "部门不能为空")
     private Long deptId;
 
     @Schema(description = "应收金额", requiredMode = Schema.RequiredMode.REQUIRED)
@@ -51,8 +51,7 @@ public class ErpReceivableOtherSaveReqVO {
     @Schema(description = "成本金额")
     private BigDecimal costAmount;
 
-    @Schema(description = "调账原因备注", requiredMode = Schema.RequiredMode.REQUIRED)
-    @NotBlank(message = "调账原因备注不能为空")
+    @Schema(description = "调账原因备注")
     private String remark;
 
     @Schema(description = "是否纸质单据")

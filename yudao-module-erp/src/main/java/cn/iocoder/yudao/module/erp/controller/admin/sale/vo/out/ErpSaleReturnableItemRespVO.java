@@ -15,6 +15,8 @@ public class ErpSaleReturnableItemRespVO {
     private Long sourceOutItemId;
     @Schema(description = "来源销售单号", example = "XSCK20260510001")
     private String sourceOutNo;
+    @Schema(description = "客户编号", example = "1724")
+    private Long customerId;
 
     @Schema(description = "产品编号", example = "10001")
     private Long productId;
@@ -24,6 +26,10 @@ public class ErpSaleReturnableItemRespVO {
     private String productUnitName;
     @Schema(description = "产品单位编号", example = "1")
     private Long productUnitId;
+    @Schema(description = "重量")
+    private BigDecimal weight;
+    @Schema(description = "包装数")
+    private Integer packageQty;
     @Schema(description = "仓库编号", example = "2")
     private Long warehouseId;
     private String warehouseName;
@@ -31,6 +37,8 @@ public class ErpSaleReturnableItemRespVO {
     private String warehouseDeptName;
     private Long deptId;
     private String deptName;
+    @Schema(description = "批次号", example = "BATCH20260818001")
+    private String batchNo;
 
     @Schema(description = "原销售单价", example = "12.34")
     private BigDecimal productPrice;

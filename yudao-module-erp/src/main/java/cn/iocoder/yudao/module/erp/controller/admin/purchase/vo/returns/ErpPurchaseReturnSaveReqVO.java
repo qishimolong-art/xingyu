@@ -97,6 +97,9 @@ public class ErpPurchaseReturnSaveReqVO {
         @Schema(description = "产品单位名称", example = "件")
         private String productUnitName;
 
+        @Schema(description = "产品重量", example = "1.00")
+        private BigDecimal weight;
+
         @Schema(description = "产品单价", example = "100.00")
         private BigDecimal productPrice;
 

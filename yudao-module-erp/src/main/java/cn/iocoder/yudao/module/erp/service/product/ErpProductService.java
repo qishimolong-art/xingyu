@@ -169,6 +169,9 @@ public interface ErpProductService {
      */
     List<ErpProductRespVO> getProductVOList(Collection<Long> ids, Long businessDeptId);
 
+    List<ErpProductRespVO> getProductVOList(Collection<Long> ids, Long businessDeptId,
+                                            boolean includeProductPricePermission);
+
     /**
      * 获得产品 VO Map
      *
@@ -181,6 +184,12 @@ public interface ErpProductService {
 
     default Map<Long, ErpProductRespVO> getProductVOMap(Collection<Long> ids, Long businessDeptId) {
         return convertMap(getProductVOList(ids, businessDeptId), ErpProductRespVO::getId);
+    }
+
+    default Map<Long, ErpProductRespVO> getProductVOMap(Collection<Long> ids, Long businessDeptId,
+                                                        boolean includeProductPricePermission) {
+        return convertMap(getProductVOList(ids, businessDeptId, includeProductPricePermission),
+                ErpProductRespVO::getId);
     }
 
     /**

@@ -271,17 +271,14 @@ public class ErpPayableOtherServiceImpl implements ErpPayableOtherService {
     }
 
     private void validateDraftForSubmit(ErpPayableOtherDO doObj) {
-        if (doObj.getBizTime() == null) {
-            throw exception(OTHER_PAYABLE_DRAFT_SUBMIT_FAIL, "业务日期不能为空");
-        }
         if (doObj.getSupplierId() == null) {
             throw exception(OTHER_PAYABLE_DRAFT_SUBMIT_FAIL, "供应商不能为空");
         }
         if (doObj.getPayableAmount() == null) {
             throw exception(OTHER_PAYABLE_DRAFT_SUBMIT_FAIL, "应付金额不能为空");
         }
-        if (StrUtil.isBlank(doObj.getRemark())) {
-            throw exception(OTHER_PAYABLE_DRAFT_SUBMIT_FAIL, "调账原因备注不能为空");
+        if (doObj.getDeptId() == null) {
+            throw exception(OTHER_PAYABLE_DRAFT_SUBMIT_FAIL, "部门不能为空");
         }
         supplierService.validateSupplier(doObj.getSupplierId());
         validateRefs(doObj.getHandlerId(), doObj.getDeptId());

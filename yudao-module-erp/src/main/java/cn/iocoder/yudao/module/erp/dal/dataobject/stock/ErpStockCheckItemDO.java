@@ -58,6 +58,18 @@ public class ErpStockCheckItemDO extends BaseDO {
      */
     private String batchNo;
     /**
+     * 包装数
+     */
+    private Integer packageQty;
+    /**
+     * 单重
+     */
+    private BigDecimal weight;
+    /**
+     * 总重
+     */
+    private BigDecimal totalWeight;
+    /**
      * 产品单价
      */
     private BigDecimal productPrice;

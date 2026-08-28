@@ -22,6 +22,7 @@ import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpCustomerDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockOutDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockOutItemDO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpWarehouseDO;
 import cn.iocoder.yudao.module.erp.service.base.ErpDataPermissionDeptService;
 import cn.iocoder.yudao.module.erp.service.product.ErpProductService;
 import cn.iocoder.yudao.module.erp.service.sale.ErpCustomerService;
@@ -29,6 +30,7 @@ import cn.iocoder.yudao.module.erp.service.stock.ErpStockFieldPermissionMasker;
 import cn.iocoder.yudao.module.erp.service.stock.ErpStockImportService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpStockOutService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpStockService;
+import cn.iocoder.yudao.module.erp.service.stock.ErpWarehouseService;
 import cn.iocoder.yudao.module.system.api.dept.DeptApi;
 import cn.iocoder.yudao.module.system.api.dept.dto.DeptRespDTO;
 import cn.iocoder.yudao.module.system.api.user.AdminUserApi;
@@ -87,6 +89,8 @@ public class ErpStockOutController {
     private ErpStockImportService stockImportService;
     @Resource
     private ErpStockService stockService;
+    @Resource
+    private ErpWarehouseService warehouseService;
     @Resource
     private ErpProductService productService;
     @Resource
@@ -171,6 +175,8 @@ public class ErpStockOutController {
         List<ErpStockOutItemDO> itemList = stockOutService.getStockOutItemListByOutId(id);
         Map<Long, ErpProductRespVO> productMap = DataPermissionUtils.executeIgnore(() -> productService.getProductVOMap(
                 convertSet(itemList, ErpStockOutItemDO::getProductId)));
+        Map<Long, ErpWarehouseDO> warehouseMap = DataPermissionUtils.executeIgnore(() ->
+                warehouseService.getWarehouseMap(convertSet(itemList, ErpStockOutItemDO::getWarehouseId)));
         Set<Long> userIds = new HashSet<>();
         addUserId(userIds, stockOut.getCreator());
         addUserId(userIds, stockOut.getUpdater());
@@ -186,6 +192,7 @@ public class ErpStockOutController {
             }));
             vo.setProductNames(CollUtil.join(vo.getItems(), ", ", ErpStockOutRespVO.Item::getProductName));
             vo.setProductCodes(CollUtil.join(vo.getItems(), ", ", ErpStockOutRespVO.Item::getProductCode));
+            fillListSummary(vo, itemList, warehouseMap);
             if (dept != null) {
                 vo.setDeptName(dept.getName());
             }
@@ -266,6 +273,8 @@ public class ErpStockOutController {
         Map<Long, List<ErpStockOutItemDO>> itemMap = convertMultiMap(itemList, ErpStockOutItemDO::getOutId);
         Map<Long, ErpProductRespVO> productMap = DataPermissionUtils.executeIgnore(() -> productService.getProductVOMap(
                 convertSet(itemList, ErpStockOutItemDO::getProductId)));
+        Map<Long, ErpWarehouseDO> warehouseMap = DataPermissionUtils.executeIgnore(() ->
+                warehouseService.getWarehouseMap(convertSet(itemList, ErpStockOutItemDO::getWarehouseId)));
         Map<Long, ErpCustomerDO> customerMap = customerService.getCustomerMap(
                 convertSet(pageResult.getList(), ErpStockOutDO::getCustomerId));
         Map<Long, DeptRespDTO> deptMap = deptApi.getDeptMap(convertSet(pageResult.getList(), ErpStockOutDO::getDeptId));
@@ -281,10 +290,29 @@ public class ErpStockOutController {
                     item -> fillProduct(item, productMap.get(item.getProductId()))));
             vo.setProductNames(CollUtil.join(vo.getItems(), ", ", ErpStockOutRespVO.Item::getProductName));
             vo.setProductCodes(CollUtil.join(vo.getItems(), ", ", ErpStockOutRespVO.Item::getProductCode));
+            fillListSummary(vo, itemMap.get(vo.getId()), warehouseMap);
             MapUtils.findAndThen(customerMap, vo.getCustomerId(), customer -> vo.setCustomerName(customer.getName()));
             MapUtils.findAndThen(deptMap, vo.getDeptId(), dept -> vo.setDeptName(dept.getName()));
             fillUserNames(vo, userMap);
         });
+    }
+
+    private void fillListSummary(ErpStockOutRespVO vo, List<ErpStockOutItemDO> items,
+                                 Map<Long, ErpWarehouseDO> warehouseMap) {
+        if (CollUtil.isEmpty(items)) {
+            vo.setWarehouseNames("");
+            vo.setItemCount(0);
+            return;
+        }
+        vo.setItemCount(items.size());
+        Set<String> warehouseNames = new LinkedHashSet<>();
+        items.forEach(item -> {
+            ErpWarehouseDO warehouse = warehouseMap.get(item.getWarehouseId());
+            if (warehouse != null && warehouse.getName() != null && !warehouse.getName().trim().isEmpty()) {
+                warehouseNames.add(warehouse.getName());
+            }
+        });
+        vo.setWarehouseNames(String.join("、", warehouseNames));
     }
 
     private void fillProduct(ErpStockOutRespVO.Item item, ErpProductRespVO product) {

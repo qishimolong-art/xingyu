@@ -78,21 +78,20 @@ public class ErpWarehouseControllerTest extends BaseMockitoUnitTest {
     }
 
     @Test
-    public void testGetWarehouseSimpleList_saleDeptFilterIntersectsCurrentUserVisibleWarehouses() {
-        when(warehouseService.getSaleWarehouseListByDeptId(30L)).thenReturn(Arrays.asList(
+    public void testGetWarehouseSimpleList_saleDeptFilterUsesSelectableWarehouses() {
+        when(warehouseService.getCurrentUserSaleSelectableWarehouseListByDept(30L)).thenReturn(Arrays.asList(
                 new ErpWarehouseDO().setId(10L).setName("WJ").setDeptId(1L),
                 new ErpWarehouseDO().setId(20L).setName("HY").setDeptId(2L)));
-        when(warehouseService.getCurrentUserVisibleSaleWarehouseList()).thenReturn(Collections.singletonList(
-                new ErpWarehouseDO().setId(10L).setName("WJ").setDeptId(1L)));
         when(deptApi.getDeptMap(any())).thenReturn(Collections.emptyMap());
 
         CommonResult<List<ErpWarehouseRespVO>> result = controller.getWarehouseSimpleList("sale", 30L);
 
-        assertEquals(Collections.singletonList(10L), result.getData().stream()
+        assertEquals(Arrays.asList(10L, 20L), result.getData().stream()
                 .map(ErpWarehouseRespVO::getId)
                 .collect(Collectors.toList()));
-        verify(warehouseService).getSaleWarehouseListByDeptId(30L);
-        verify(warehouseService).getCurrentUserVisibleSaleWarehouseList();
+        verify(warehouseService).getCurrentUserSaleSelectableWarehouseListByDept(30L);
+        verify(warehouseService, never()).getSaleWarehouseListByDeptId(30L);
+        verify(warehouseService, never()).getCurrentUserVisibleSaleWarehouseList();
     }
 
     @Test

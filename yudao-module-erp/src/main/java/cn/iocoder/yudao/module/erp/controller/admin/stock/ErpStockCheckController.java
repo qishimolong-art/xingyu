@@ -23,7 +23,9 @@ import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.imports.ErpStockImp
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockCheckDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockCheckItemDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpWarehouseDO;
+import cn.iocoder.yudao.module.erp.enums.print.ErpPrintModuleEnum;
 import cn.iocoder.yudao.module.erp.service.base.ErpDataPermissionDeptService;
+import cn.iocoder.yudao.module.erp.service.common.ErpPrintService;
 import cn.iocoder.yudao.module.erp.service.product.ErpProductService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpStockCheckService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpStockFieldPermissionMasker;
@@ -54,6 +56,7 @@ import javax.servlet.http.HttpServletResponse;
 import javax.validation.Valid;
 import java.io.IOException;
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
@@ -99,6 +102,8 @@ public class ErpStockCheckController {
     private DeptApi deptApi;
     @Resource
     private AdminUserApi adminUserApi;
+    @Resource
+    private ErpPrintService printService;
 
     @PostMapping("/create")
     @Operation(summary = "Create stock check")
@@ -310,6 +315,10 @@ public class ErpStockCheckController {
             addUserId(userIds, stockCheck.getUpdater());
         });
         Map<Long, AdminUserRespDTO> userMap = adminUserApi.getUserMap(userIds);
+        Set<Long> ids = convertSet(pageResult.getList(), ErpStockCheckDO::getId);
+        Map<Long, Long> printCountMap = printService.getPrintCountMap(ErpPrintModuleEnum.STOCK_CHECK.getKey(), ids);
+        Map<Long, LocalDateTime> printTimeMap = printService.getLastPrintTimeMap(
+                ErpPrintModuleEnum.STOCK_CHECK.getKey(), ids);
 
         return BeanUtils.toBean(pageResult, ErpStockCheckRespVO.class, vo -> {
             vo.setItems(BeanUtils.toBean(itemMap.get(vo.getId()), ErpStockCheckRespVO.Item.class,
@@ -318,6 +327,9 @@ public class ErpStockCheckController {
             vo.setProductCodes(CollUtil.join(vo.getItems(), ", ", ErpStockCheckRespVO.Item::getProductCode));
             MapUtils.findAndThen(deptMap, vo.getDeptId(), dept -> vo.setDeptName(dept.getName()));
             fillUserNames(vo, userMap);
+            Long printCount = printCountMap.get(vo.getId());
+            vo.setPrintCount(printCount == null ? 0 : printCount.intValue());
+            vo.setPrintTime(printTimeMap.get(vo.getId()));
         });
     }
 
@@ -335,6 +347,7 @@ public class ErpStockCheckController {
                                   Map<Long, DeptRespDTO> deptMap) {
         fillProduct(item, product);
         MapUtils.findAndThen(warehouseMap, item.getWarehouseId(), warehouse -> {
+            item.setWarehouseName(warehouse.getName());
             item.setWarehouseDeptId(warehouse.getDeptId());
             MapUtils.findAndThen(deptMap, warehouse.getDeptId(), dept -> item.setWarehouseDeptName(dept.getName()));
         });

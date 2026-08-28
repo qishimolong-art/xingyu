@@ -18,4 +18,8 @@ public class AppCartUpdateSelectedReqVO {
     @NotNull(message = "是否选中不能为空")
     private Boolean selected;
 
+    @Schema(description = "部门编号", requiredMode = Schema.RequiredMode.REQUIRED, example = "1")
+    @NotNull(message = "部门不能为空")
+    private Long deptId;
+
 }

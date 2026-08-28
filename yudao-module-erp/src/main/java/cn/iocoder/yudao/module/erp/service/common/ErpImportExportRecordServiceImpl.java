@@ -7,6 +7,7 @@ import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
 import cn.iocoder.yudao.framework.security.core.util.SecurityFrameworkUtils;
 import cn.iocoder.yudao.module.erp.controller.admin.common.vo.ErpImportExportRecordDetailPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.common.vo.ErpImportExportRecordDetailRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.common.vo.ErpImportExportRecordFailureDetailExportRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.common.vo.ErpImportExportRecordPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.common.vo.ErpImportExportRecordRespVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.common.ErpImportExportRecordDO;
@@ -86,6 +87,12 @@ public class ErpImportExportRecordServiceImpl implements ErpImportExportRecordSe
     @Override
     public PageResult<ErpImportExportRecordDetailRespVO> getDetailPage(ErpImportExportRecordDetailPageReqVO reqVO) {
         return BeanUtils.toBean(detailMapper.selectPage(reqVO), ErpImportExportRecordDetailRespVO.class);
+    }
+
+    @Override
+    public List<ErpImportExportRecordFailureDetailExportRespVO> getFailureDetailList(Long recordId) {
+        return BeanUtils.toBean(detailMapper.selectListByRecordId(recordId),
+                ErpImportExportRecordFailureDetailExportRespVO.class);
     }
 
     private void insertFailureDetails(Long recordId, List<ErpImportExportFailureDetailBO> failureDetails) {

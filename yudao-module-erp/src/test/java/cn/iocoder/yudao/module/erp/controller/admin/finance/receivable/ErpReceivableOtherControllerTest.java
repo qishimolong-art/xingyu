@@ -1,9 +1,11 @@
 package cn.iocoder.yudao.module.erp.controller.admin.finance.receivable;
 
+import cn.idev.excel.annotation.ExcelProperty;
 import cn.iocoder.yudao.framework.common.pojo.CommonResult;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.test.core.ut.BaseMockitoUnitTest;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.receivable.vo.otherreceivable.ErpReceivableOtherDraftSaveReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.finance.receivable.vo.otherreceivable.ErpReceivableOtherExportRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.receivable.vo.otherreceivable.ErpReceivableOtherPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.receivable.vo.otherreceivable.ErpReceivableOtherRespVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.receivable.ErpReceivableOtherDO;
@@ -20,9 +22,13 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 
 import java.time.LocalDateTime;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.stream.Collectors;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -120,6 +126,36 @@ class ErpReceivableOtherControllerTest extends BaseMockitoUnitTest {
         assertEquals(auditTime, vo.getAuditTime());
         assertEquals("经手人", vo.getHandlerName());
         assertEquals("财务部", vo.getDeptName());
+    }
+
+    @Test
+    void exportColumns_alignsOtherReceivableListContract() {
+        List<String> titles = Arrays.stream(ErpReceivableOtherExportRespVO.class.getDeclaredFields())
+                .map(field -> field.getAnnotation(ExcelProperty.class))
+                .filter(Objects::nonNull)
+                .map(annotation -> annotation.value()[0])
+                .collect(Collectors.toList());
+
+        assertEquals(Arrays.asList(
+                "单号",
+                "日期",
+                "应收金额",
+                "增加应收",
+                "已结金额",
+                "来源类型",
+                "状态",
+                "凭证号",
+                "客户名称",
+                "业务员",
+                "创建人",
+                "创建时间",
+                "审核人",
+                "审核时间",
+                "经手人",
+                "备注",
+                "项目",
+                "所属部门"
+        ), titles);
     }
 
     private static AdminUserRespDTO user(String nickname) {

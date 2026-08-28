@@ -120,6 +120,14 @@ public class ErpStockMoveRespVO {
     @Schema(description = "Update time")
     private LocalDateTime updateTime;
 
+    @Schema(description = "Print count")
+    @ExcelProperty("打印次数")
+    private Integer printCount;
+
+    @Schema(description = "Last print time")
+    @ExcelProperty("打印时间")
+    private LocalDateTime lastPrintTime;
+
     @Schema(description = "Move items", requiredMode = Schema.RequiredMode.REQUIRED)
     private List<Item> items;
 
@@ -205,6 +213,18 @@ public class ErpStockMoveRespVO {
 
         @Schema(description = "Product count", requiredMode = Schema.RequiredMode.REQUIRED, example = "100.00")
         private BigDecimal count;
+
+        @Schema(description = "Product unit id")
+        private Long productUnitId;
+
+        @Schema(description = "Package quantity", example = "12")
+        private Integer packageQty;
+
+        @Schema(description = "Unit weight", example = "1.25")
+        private BigDecimal weight;
+
+        @Schema(description = "Total weight", example = "125.00")
+        private BigDecimal totalWeight;
 
         @Schema(description = "Remark", example = "remark")
         private String remark;

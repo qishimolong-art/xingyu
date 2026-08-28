@@ -41,9 +41,27 @@ public class ProductSpuRespVO {
     @ExcelProperty("商品分类编号")
     private Long categoryId;
 
+    @Schema(description = "商品分类名称", example = "刹车片")
+    private String categoryName;
+
     @Schema(description = "商品品牌编号", requiredMode = Schema.RequiredMode.REQUIRED, example = "1")
     @ExcelProperty("商品品牌编号")
     private Long brandId;
+
+    @Schema(description = "商品品牌名称", example = "路通源")
+    private String brandName;
+
+    @Schema(description = "配件编码", example = "LTY1451")
+    private String code;
+
+    @Schema(description = "配件规格", example = "08雅阁后")
+    private String standard;
+
+    @Schema(description = "配件特征码", example = "后片")
+    private String featureCode;
+
+    @Schema(description = "适用车型", example = "易损件")
+    private String vehicleModel;
 
     @Schema(description = "商品封面图", requiredMode = Schema.RequiredMode.REQUIRED, example = "https://www.iocoder.cn/xx.png")
     @ExcelProperty("商品封面图")

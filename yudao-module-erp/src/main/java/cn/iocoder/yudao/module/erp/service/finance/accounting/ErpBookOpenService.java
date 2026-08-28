@@ -24,7 +24,7 @@ public interface ErpBookOpenService {
     Long createBookOpen(@Valid ErpBookOpenSaveReqVO createReqVO);
 
     /**
-     * 更新开账主表（仅基础信息：连锁名称 / 会计年度 / 期间 / 期初日期）
+     * 更新开账主表（年度开账：期间固定为 1 月，期初日期固定为当年 1 月 1 日）
      */
     void updateBookOpen(@Valid ErpBookOpenSaveReqVO updateReqVO);
 
@@ -59,7 +59,7 @@ public interface ErpBookOpenService {
     void updateBookOpenVoucherConfigs(@Valid ErpBookOpenVoucherConfigSaveReqVO reqVO);
 
     /**
-     * 判断指定日期、指定凭证类型是否已开账并启用。
+     * 判断指定日期所属年度、指定凭证类型是否已开账并启用。
      *
      * 用于业务单据审核时判断是否触发自动生成凭证。
      * 静默策略：未开账或未启用直接返回 false（log warn，不抛异常）。

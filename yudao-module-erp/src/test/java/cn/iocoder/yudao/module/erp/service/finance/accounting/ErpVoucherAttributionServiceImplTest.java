@@ -14,6 +14,9 @@ import cn.iocoder.yudao.module.erp.dal.dataobject.finance.ErpFinancePaymentDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.ErpFinanceReceiptDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.accounting.ErpOtherPayableDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.accounting.ErpOtherReceivableDO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.finance.accounting.ErpPrePaymentDO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.finance.accounting.ErpPreReceivableDO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.finance.accounting.ErpPreReceiptDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.accounting.ErpVoucherDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.accounting.ErpVoucherAttributionDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.accounting.ErpVoucherItemDO;
@@ -30,6 +33,9 @@ import cn.iocoder.yudao.module.erp.dal.mysql.finance.ErpFinancePaymentMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.finance.ErpFinanceReceiptMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.finance.accounting.ErpOtherPayableMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.finance.accounting.ErpOtherReceivableMapper;
+import cn.iocoder.yudao.module.erp.dal.mysql.finance.accounting.ErpPrePaymentMapper;
+import cn.iocoder.yudao.module.erp.dal.mysql.finance.accounting.ErpPreReceivableMapper;
+import cn.iocoder.yudao.module.erp.dal.mysql.finance.accounting.ErpPreReceiptMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.finance.accounting.ErpVoucherAttributionMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.purchase.ErpPurchaseInMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.purchase.ErpPurchaseReturnMapper;
@@ -134,6 +140,12 @@ public class ErpVoucherAttributionServiceImplTest extends BaseMockitoUnitTest {
     private ErpFinanceReceiptMapper financeReceiptMapper;
     @Mock
     private ErpFinancePaymentMapper financePaymentMapper;
+    @Mock
+    private ErpPreReceiptMapper preReceiptMapper;
+    @Mock
+    private ErpPrePaymentMapper prePaymentMapper;
+    @Mock
+    private ErpPreReceivableMapper preReceivableMapper;
     @Mock
     private ErpStockInMapper stockInMapper;
     @Mock
@@ -747,6 +759,81 @@ public class ErpVoucherAttributionServiceImplTest extends BaseMockitoUnitTest {
         assertEquals(new BigDecimal("50.00"), result.getList().get(0).getBizAmount());
         // 其他应收无需查 customerService（partyName 是表内字段，可走 SQL 模糊）
         verifyNoInteractions(customerService);
+    }
+
+    @Test
+    @DisplayName("searchSourceBizPage：单据类型为空 - 聚合可生成凭证的业务单据")
+    public void testSearchSourceBiz_sourceBizTypeNull_searchAllGeneratable() {
+        ErpVoucherAttributionSearchSourceBizReqVO reqVO = new ErpVoucherAttributionSearchSourceBizReqVO();
+        reqVO.setPageNo(1);
+        reqVO.setPageSize(10);
+
+        when(saleReturnMapper.selectPage(any(ErpVoucherAttributionSearchSourceBizReqVO.class), any(Wrapper.class)))
+                .thenReturn(new PageResult<>(Collections.emptyList(), 0L));
+        when(otherReceivableMapper.selectPage(any(ErpVoucherAttributionSearchSourceBizReqVO.class), any(Wrapper.class)))
+                .thenReturn(new PageResult<>(Collections.emptyList(), 0L));
+        when(purchaseInMapper.selectPage(any(ErpVoucherAttributionSearchSourceBizReqVO.class), any(Wrapper.class)))
+                .thenReturn(new PageResult<>(Collections.emptyList(), 0L));
+        when(purchaseReturnMapper.selectPage(any(ErpVoucherAttributionSearchSourceBizReqVO.class), any(Wrapper.class)))
+                .thenReturn(new PageResult<>(Collections.emptyList(), 0L));
+        when(otherPayableMapper.selectPage(any(ErpVoucherAttributionSearchSourceBizReqVO.class), any(Wrapper.class)))
+                .thenReturn(new PageResult<>(Collections.emptyList(), 0L));
+        when(stockOutMapper.selectPage(any(ErpVoucherAttributionSearchSourceBizReqVO.class), any(Wrapper.class)))
+                .thenReturn(new PageResult<>(Collections.emptyList(), 0L));
+        when(stockInMapper.selectPage(any(ErpVoucherAttributionSearchSourceBizReqVO.class), any(Wrapper.class)))
+                .thenReturn(new PageResult<>(Collections.emptyList(), 0L));
+        when(preReceiptMapper.selectPage(any(ErpVoucherAttributionSearchSourceBizReqVO.class), any(Wrapper.class)))
+                .thenReturn(new PageResult<>(Collections.emptyList(), 0L));
+        when(preReceivableMapper.selectPage(any(ErpVoucherAttributionSearchSourceBizReqVO.class), any(Wrapper.class)))
+                .thenReturn(new PageResult<>(Collections.emptyList(), 0L));
+
+        ErpSaleOutDO sale = new ErpSaleOutDO()
+                .setId(11L).setNo("XSCK202605000001")
+                .setCustomerId(20L)
+                .setOutTime(LocalDateTime.of(2026, 5, 14, 10, 0))
+                .setTotalPrice(new BigDecimal("200.00"));
+        when(saleOutMapper.selectPage(any(ErpVoucherAttributionSearchSourceBizReqVO.class), any(Wrapper.class)))
+                .thenReturn(new PageResult<>(Collections.singletonList(sale), 1L));
+        Map<Long, ErpCustomerDO> customerMap = new HashMap<>();
+        customerMap.put(20L, new ErpCustomerDO().setId(20L).setName("客户甲"));
+        when(customerService.getCustomerMap(anyCollection())).thenReturn(customerMap);
+
+        ErpPrePaymentDO prePayment = new ErpPrePaymentDO()
+                .setId(22L).setNo("YFK202605000001")
+                .setBizTime(LocalDateTime.of(2026, 5, 15, 9, 0))
+                .setActualAmount(new BigDecimal("60.00"))
+                .setPartyName("供应商乙");
+        when(prePaymentMapper.selectPage(any(ErpVoucherAttributionSearchSourceBizReqVO.class), any(Wrapper.class)))
+                .thenReturn(new PageResult<>(Collections.singletonList(prePayment), 1L));
+
+        PageResult<ErpVoucherAttributionRespVO> result = attributionService.searchSourceBizPage(reqVO);
+
+        assertEquals(2L, result.getTotal());
+        assertThat(result.getList()).hasSize(2);
+        assertEquals(ErpVoucherSourceBizTypeEnum.PRE_PAYMENT.getType(), result.getList().get(0).getBizType());
+        assertEquals(ErpVoucherSourceBizTypeEnum.SALE_OUT.getType(), result.getList().get(1).getBizType());
+    }
+
+    @Test
+    @DisplayName("searchSourceBizPage：预付款(type=22) - 返回可生成凭证的资金单据")
+    public void testSearchSourceBiz_prePayment_normal() {
+        ErpVoucherAttributionSearchSourceBizReqVO reqVO = new ErpVoucherAttributionSearchSourceBizReqVO();
+        reqVO.setSourceBizType(ErpVoucherSourceBizTypeEnum.PRE_PAYMENT.getType());
+
+        ErpPrePaymentDO prePayment = new ErpPrePaymentDO()
+                .setId(22L).setNo("YFK202605000001")
+                .setBizTime(LocalDateTime.of(2026, 5, 15, 9, 0))
+                .setActualAmount(new BigDecimal("60.00"))
+                .setPartyName("供应商乙");
+        when(prePaymentMapper.selectPage(eq(reqVO), any(Wrapper.class)))
+                .thenReturn(new PageResult<>(Collections.singletonList(prePayment), 1L));
+
+        PageResult<ErpVoucherAttributionRespVO> result = attributionService.searchSourceBizPage(reqVO);
+
+        assertEquals(1L, result.getTotal());
+        assertEquals(ErpVoucherSourceBizTypeEnum.PRE_PAYMENT.getType(), result.getList().get(0).getBizType());
+        assertEquals(new BigDecimal("60.00"), result.getList().get(0).getBizAmount());
+        assertEquals("供应商乙", result.getList().get(0).getTransactionParty());
     }
 
     @Test

@@ -63,6 +63,12 @@ public class ErpStockOutBillItemRespVO {
     @Schema(description = "包装数")
     private Integer packageQty;
 
+    @Schema(description = "单重")
+    private BigDecimal weight;
+
+    @Schema(description = "总重")
+    private BigDecimal totalWeight;
+
     @Schema(description = "整件数")
     private Integer wholeQty;
 

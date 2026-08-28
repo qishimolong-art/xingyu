@@ -52,6 +52,14 @@ public class ErpStockTransferLedgerDetailRespVO {
     private String toWarehouseName;
     @ExcelProperty("批次号")
     private String batchNo;
+    @ExcelProperty("单位")
+    private String productUnitName;
+    @ExcelProperty("包装数")
+    private Integer packageQty;
+    @ExcelProperty("单重")
+    private BigDecimal weight;
+    @ExcelProperty("总重")
+    private BigDecimal totalWeight;
 
     @ExcelProperty("出库数量")
     private BigDecimal transferOutCount;

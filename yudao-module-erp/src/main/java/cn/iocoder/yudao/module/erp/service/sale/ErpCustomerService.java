@@ -96,6 +96,16 @@ public interface ErpCustomerService {
 
     List<Long> getCustomerSaleDeptIds(Long customerId);
 
+    /**
+     * 获得客户销售部门，不使用当前后台操作人的客户数据范围。
+     *
+     * <p>用于小程序会员等非后台用户上下文，仍会校验客户存在与启用状态。</p>
+     *
+     * @param customerId 客户编号
+     * @return 销售部门编号列表
+     */
+    List<Long> getCustomerSaleDeptIdsIgnoreDataPermission(Long customerId);
+
     void validateCustomerSaleDept(Long customerId, Long deptId);
 
     ErpCustomerCreditStatusBO getCustomerCreditStatus(Long customerId);

@@ -55,7 +55,8 @@ class ErpPayableExpenseControllerTest extends BaseMockitoUnitTest {
     @Test
     void page_allowsDraftWithoutAccountOrItems() {
         ErpPayableExpenseDO row = new ErpPayableExpenseDO()
-                .setId(9L).setStatus(0);
+                .setId(9L).setStatus(0)
+                .setExpenseBizType("一般费用");
         when(payableExpenseService.getPayableExpensePage(any()))
                 .thenReturn(new PageResult<>(Collections.singletonList(row), 1L));
         when(payableExpenseService.getPayableExpenseItemListByExpenseIds(any()))
@@ -68,6 +69,7 @@ class ErpPayableExpenseControllerTest extends BaseMockitoUnitTest {
 
         assertNotNull(result.getData());
         assertEquals(0, result.getData().getList().get(0).getStatus());
+        assertEquals("一般费用", result.getData().getList().get(0).getExpenseBizType());
     }
 
 }

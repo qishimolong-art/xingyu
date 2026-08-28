@@ -126,6 +126,10 @@ public class ErpVoucherDO extends BaseDO {
      */
     private String bookkeeper;
     /**
+     * 登账日期
+     */
+    private LocalDateTime bookkeeperTime;
+    /**
      * 出纳
      */
     private String cashier;

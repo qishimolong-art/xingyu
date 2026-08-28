@@ -5,6 +5,7 @@ import cn.iocoder.yudao.module.trade.controller.admin.order.vo.TradeOrderRemarkR
 import cn.iocoder.yudao.module.trade.controller.admin.order.vo.TradeOrderUpdateAddressReqVO;
 import cn.iocoder.yudao.module.trade.controller.admin.order.vo.TradeOrderUpdatePriceReqVO;
 import cn.iocoder.yudao.module.trade.controller.app.order.vo.AppTradeOrderCreateReqVO;
+import cn.iocoder.yudao.module.trade.controller.app.order.vo.AppTradeOrderCreateRespVO;
 import cn.iocoder.yudao.module.trade.controller.app.order.vo.AppTradeOrderSettlementReqVO;
 import cn.iocoder.yudao.module.trade.controller.app.order.vo.AppTradeOrderSettlementRespVO;
 import cn.iocoder.yudao.module.trade.controller.app.order.vo.item.AppTradeOrderItemCommentCreateReqVO;
@@ -37,9 +38,9 @@ public interface TradeOrderUpdateService {
      *
      * @param userId      登录用户
      * @param createReqVO 创建交易订单请求模型
-     * @return 交易订单的
+     * @return 交易订单创建结果
      */
-    TradeOrderDO createOrder(Long userId, AppTradeOrderCreateReqVO createReqVO);
+    AppTradeOrderCreateRespVO createOrder(Long userId, AppTradeOrderCreateReqVO createReqVO);
 
     /**
      * 更新交易订单已支付

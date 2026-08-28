@@ -149,6 +149,16 @@ public interface ErpWarehouseService {
     List<ErpWarehouseDO> validSaleWarehouseListForDept(Collection<Long> ids, Long deptId);
 
     /**
+     * Validates sale warehouses selectable in a sales department workflow.
+     * Includes warehouses allowed to the sales department and warehouses directly assigned to current user.
+     *
+     * @param ids warehouse ids
+     * @param deptId sales department id
+     * @return warehouse list
+     */
+    List<ErpWarehouseDO> validSaleSelectableWarehouseListForDept(Collection<Long> ids, Long deptId);
+
+    /**
      * 获得指定状态的仓库列表
      *
      * @param status 状态
@@ -216,6 +226,14 @@ public interface ErpWarehouseService {
     List<ErpWarehouseDO> getCurrentUserVisibleSaleWarehouseList();
 
     /**
+     * Gets sale warehouses selectable by current user in the given sales department workflow.
+     *
+     * @param deptId sales department id
+     * @return warehouse list
+     */
+    List<ErpWarehouseDO> getCurrentUserSaleSelectableWarehouseListByDept(Long deptId);
+
+    /**
      * Gets enabled warehouse list visible to current login user on the product stock page.
      * Includes directly authorized warehouses and sale-department distributed warehouses.
      *
@@ -267,6 +285,23 @@ public interface ErpWarehouseService {
      * @param deptId sales department id
      */
     void validateWarehouseSaleAllowedForDept(Long warehouseId, Long deptId);
+
+    /**
+     * Validates the warehouse can be selected in the given sales department workflow.
+     *
+     * @param warehouseId warehouse id
+     * @param deptId sales department id
+     */
+    void validateWarehouseSaleSelectableForDept(Long warehouseId, Long deptId);
+
+    /**
+     * Returns whether the warehouse is allowed by the given sales department rule.
+     *
+     * @param warehouseId warehouse id
+     * @param deptId sales department id
+     * @return true if allowed by owner/distributed department
+     */
+    boolean isWarehouseSaleAllowedForDept(Long warehouseId, Long deptId);
 
     /**
      * Gets authorized warehouse ids by user id.

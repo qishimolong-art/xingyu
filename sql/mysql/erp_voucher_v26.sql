@@ -29,6 +29,7 @@ CREATE TABLE IF NOT EXISTS `erp_voucher` (
     `maker_user_id`          BIGINT          DEFAULT NULL COMMENT '制单人 ID',
     `maker_user_name`        VARCHAR(32)     DEFAULT NULL COMMENT '制单人姓名',
     `bookkeeper`             VARCHAR(32)     DEFAULT NULL COMMENT '记账人',
+    `bookkeeper_time`        DATETIME        DEFAULT NULL COMMENT '登账日期',
     `cashier`                VARCHAR(32)     DEFAULT NULL COMMENT '出纳',
     `supervisor`             VARCHAR(32)     DEFAULT NULL COMMENT '主管',
     `auditor_user_id`        BIGINT          DEFAULT NULL COMMENT '审核人 ID',

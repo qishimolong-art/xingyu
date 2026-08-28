@@ -39,6 +39,20 @@ public class ErpCustomerDeptPermissionService {
         return toDeptSimpleRespVOList(getAvailableDeptList(customerId, formKey));
     }
 
+    public List<DeptRespDTO> getCustomerAppAvailableDeptList(Long customerId) {
+        Set<Long> availableDeptIds = new LinkedHashSet<>(
+                customerService.getCustomerSaleDeptIdsIgnoreDataPermission(customerId));
+        if (CollUtil.isEmpty(availableDeptIds)) {
+            return Collections.emptyList();
+        }
+
+        Map<Long, DeptRespDTO> deptMap = convertMap(deptApi.getDeptList(availableDeptIds), DeptRespDTO::getId);
+        return availableDeptIds.stream()
+                .map(deptMap::get)
+                .filter(dept -> dept != null && CommonStatusEnum.ENABLE.getStatus().equals(dept.getStatus()))
+                .collect(Collectors.toList());
+    }
+
     public boolean hasAvailableDept(Long customerId, Long deptId, String formKey) {
         if (customerId == null || deptId == null) {
             return true;

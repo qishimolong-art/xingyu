@@ -185,7 +185,11 @@ public class ErpSaleOutServiceImplTest extends BaseMockitoUnitTest {
                 new ErpWarehouseDO().setId(400L)));
         lenient().when(warehouseService.validSaleWarehouseListForDept(anyCollection(), any())).thenReturn(
                 Collections.singletonList(new ErpWarehouseDO().setId(400L).setDeptId(10L)));
+        lenient().when(warehouseService.validSaleSelectableWarehouseListForDept(anyCollection(), any())).thenReturn(
+                Collections.singletonList(new ErpWarehouseDO().setId(400L).setDeptId(10L)));
         lenient().doNothing().when(warehouseService).validateWarehouseSaleAllowedForDept(any(), any());
+        lenient().doNothing().when(warehouseService).validateWarehouseSaleSelectableForDept(any(), any());
+        lenient().when(warehouseService.isWarehouseSaleAllowedForDept(any(), any())).thenReturn(true);
         lenient().when(productService.getProductVOMap(anyCollection())).thenReturn(Collections.emptyMap());
         lenient().when(warehouseService.getWarehouseMap(anyCollection())).thenReturn(Collections.emptyMap());
         lenient().when(deptApi.getDeptMap(anyCollection())).thenReturn(Collections.emptyMap());
@@ -330,7 +334,7 @@ public class ErpSaleOutServiceImplTest extends BaseMockitoUnitTest {
                         && Long.valueOf(666L).equals(saleOut.getSourceId())
                         && "CART001".equals(saleOut.getSourceNo())));
         verify(warehouseService, never()).validSaleWarehouseList(anyCollection());
-        verify(warehouseService).validSaleWarehouseListForDept(anyCollection(), eq(102L));
+        verify(warehouseService).validSaleSelectableWarehouseListForDept(anyCollection(), eq(102L));
         verify(saleOutItemMapper).insertBatch(argThat((List<ErpSaleOutItemDO> items) ->
                 items.size() == 1
                         && Long.valueOf(401L).equals(items.get(0).getSourceWarehouseId())

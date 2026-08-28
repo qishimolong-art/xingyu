@@ -3,6 +3,7 @@ package cn.iocoder.yudao.module.erp.controller.admin.finance.vo.transfer;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Data;
 
+import javax.validation.constraints.DecimalMin;
 import javax.validation.constraints.NotNull;
 import javax.validation.constraints.Size;
 import java.math.BigDecimal;
@@ -29,12 +30,25 @@ public class ErpFinanceTransferSaveReqVO {
 
     @Schema(description = "转账金额", requiredMode = Schema.RequiredMode.REQUIRED, example = "100.00")
     @NotNull(message = "转账金额不能为空")
+    @DecimalMin(value = "0", inclusive = false, message = "转账金额必须大于 0")
     private BigDecimal transferPrice;
 
-    @Schema(description = "财务人员编号", example = "100")
+    @Schema(description = "汇率", requiredMode = Schema.RequiredMode.REQUIRED, example = "1")
+    @DecimalMin(value = "0", inclusive = false, message = "汇率必须大于 0")
+    private BigDecimal exchangeRate;
+
+    @Schema(description = "手续费", example = "1.00")
+    @DecimalMin(value = "0", message = "手续费不能小于 0")
+    private BigDecimal feePrice;
+
+    @Schema(description = "费用项目", example = "银行手续费")
+    @Size(max = 64, message = "费用项目长度不能超过 64 个字符")
+    private String feeExpenseCategory;
+
+    @Schema(description = "财务人员编号", requiredMode = Schema.RequiredMode.REQUIRED, example = "100")
     private Long financeUserId;
 
-    @Schema(description = "所属部门编号", example = "100")
+    @Schema(description = "所属部门编号", requiredMode = Schema.RequiredMode.REQUIRED, example = "100")
     private Long deptId;
 
     @Schema(description = "备注", example = "同行转账")

@@ -18,6 +18,7 @@ public class ErpPayableExpenseRespVO {
     private Long accountId;
     private String accountName;
     private String voucherNo;
+    private String expenseBizType;
     private String expenseType;
     private BigDecimal totalAmount;
     private Long deptId;

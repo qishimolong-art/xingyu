@@ -820,6 +820,18 @@ public class ErpWarehouseServiceImpl implements ErpWarehouseService {
         return list;
     }
 
+    @Override
+    public List<ErpWarehouseDO> validSaleSelectableWarehouseListForDept(Collection<Long> ids, Long deptId) {
+        if (deptId == null) {
+            return validSaleWarehouseList(ids);
+        }
+        List<ErpWarehouseDO> list = DataPermissionUtils.executeIgnore(() -> validWarehouseList(ids));
+        for (ErpWarehouseDO warehouse : list) {
+            validateWarehouseSaleSelectableForDept(warehouse, deptId);
+        }
+        return list;
+    }
+
     private void validateCurrentUserSaleWarehousePermission(Collection<Long> warehouseIds) {
         if (CollUtil.isEmpty(warehouseIds) || hasCurrentUserAllWarehousePermission()) {
             return;
@@ -973,6 +985,22 @@ public class ErpWarehouseServiceImpl implements ErpWarehouseService {
     }
 
     @Override
+    public List<ErpWarehouseDO> getCurrentUserSaleSelectableWarehouseListByDept(Long deptId) {
+        if (deptId == null) {
+            return getCurrentUserVisibleSaleWarehouseList();
+        }
+        List<ErpWarehouseDO> list = new ArrayList<>(getSaleWarehouseListByDeptId(deptId));
+        Set<Long> warehouseIds = list.stream()
+                .map(ErpWarehouseDO::getId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toCollection(LinkedHashSet::new));
+        getCurrentUserDirectAuthorizedSaleWarehouseList().stream()
+                .filter(warehouse -> warehouse.getId() != null && warehouseIds.add(warehouse.getId()))
+                .forEach(list::add);
+        return list;
+    }
+
+    @Override
     public List<ErpWarehouseDO> getCurrentUserStockVisibleWarehouseList() {
         Set<Long> warehouseIds = getCurrentUserProductStockPermissionScope().getVisibleWarehouseIds();
         return DataPermissionUtils.executeIgnore(() -> warehouseMapper.selectListByStatusAndIds(
@@ -1096,6 +1124,21 @@ public class ErpWarehouseServiceImpl implements ErpWarehouseService {
         validateWarehouseSaleAllowedForDept(warehouse, deptId);
     }
 
+    @Override
+    public void validateWarehouseSaleSelectableForDept(Long warehouseId, Long deptId) {
+        ErpWarehouseDO warehouse = DataPermissionUtils.executeIgnore(() -> validateWarehouseExists(warehouseId));
+        validateWarehouseSaleSelectableForDept(warehouse, deptId);
+    }
+
+    @Override
+    public boolean isWarehouseSaleAllowedForDept(Long warehouseId, Long deptId) {
+        if (warehouseId == null || deptId == null) {
+            return false;
+        }
+        ErpWarehouseDO warehouse = DataPermissionUtils.executeIgnore(() -> warehouseMapper.selectById(warehouseId));
+        return warehouse != null && isWarehouseSaleAllowedForDept(warehouse, deptId);
+    }
+
     private void validateWarehouseSaleAllowedForDept(ErpWarehouseDO warehouse, Long deptId) {
         if (CommonStatusEnum.isDisable(warehouse.getStatus())) {
             throw exception(WAREHOUSE_NOT_ENABLE, warehouse.getName());
@@ -1103,16 +1146,50 @@ public class ErpWarehouseServiceImpl implements ErpWarehouseService {
         if (!isSaleEnabled(warehouse)) {
             throw exception(WAREHOUSE_SALE_NOT_ENABLE, warehouse.getName());
         }
-        if (deptId == null || Objects.equals(warehouse.getDeptId(), deptId)) {
-            if (deptId != null) {
-                return;
-            }
-            throw exception(WAREHOUSE_SALE_DEPT_PERMISSION_DENIED, warehouse.getName());
-        }
-        if (warehouseSaleDeptPermissionMapper.selectCountByWarehouseIdAndDeptId(warehouse.getId(), deptId) > 0) {
+        if (isWarehouseSaleAllowedForDept(warehouse, deptId)) {
             return;
         }
         throw exception(WAREHOUSE_SALE_DEPT_PERMISSION_DENIED, warehouse.getName());
+    }
+
+    private void validateWarehouseSaleSelectableForDept(ErpWarehouseDO warehouse, Long deptId) {
+        if (CommonStatusEnum.isDisable(warehouse.getStatus())) {
+            throw exception(WAREHOUSE_NOT_ENABLE, warehouse.getName());
+        }
+        if (!isSaleEnabled(warehouse)) {
+            throw exception(WAREHOUSE_SALE_NOT_ENABLE, warehouse.getName());
+        }
+        if (isWarehouseSaleAllowedForDept(warehouse, deptId) || isCurrentUserDirectAuthorizedWarehouse(warehouse.getId())) {
+            return;
+        }
+        throw exception(WAREHOUSE_SALE_DEPT_PERMISSION_DENIED, warehouse.getName());
+    }
+
+    private boolean isWarehouseSaleAllowedForDept(ErpWarehouseDO warehouse, Long deptId) {
+        if (warehouse == null || deptId == null) {
+            return false;
+        }
+        if (Objects.equals(warehouse.getDeptId(), deptId)) {
+            return true;
+        }
+        return warehouse.getId() != null
+                && warehouseSaleDeptPermissionMapper.selectCountByWarehouseIdAndDeptId(warehouse.getId(), deptId) > 0;
+    }
+
+    private List<ErpWarehouseDO> getCurrentUserDirectAuthorizedSaleWarehouseList() {
+        Set<Long> warehouseIds = getCurrentUserAuthorizedWarehouseIds();
+        if (CollUtil.isEmpty(warehouseIds)) {
+            return Collections.emptyList();
+        }
+        return DataPermissionUtils.executeIgnore(() -> warehouseMapper.selectListByStatusAndIds(
+                        CommonStatusEnum.ENABLE.getStatus(), warehouseIds))
+                .stream()
+                .filter(this::isSaleEnabled)
+                .collect(Collectors.toList());
+    }
+
+    private boolean isCurrentUserDirectAuthorizedWarehouse(Long warehouseId) {
+        return warehouseId != null && getCurrentUserAuthorizedWarehouseIds().contains(warehouseId);
     }
 
     private Set<Long> expandDeptIds(Collection<Long> deptIds) {

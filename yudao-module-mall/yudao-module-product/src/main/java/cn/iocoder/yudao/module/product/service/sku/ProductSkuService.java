@@ -79,6 +79,14 @@ public interface ProductSkuService {
     void updateSkuStock(ProductSkuUpdateStockReqDTO updateStockReqDTO);
 
     /**
+     * 设置 SKU 库存为目标数量。
+     *
+     * @param id SKU 编号
+     * @param stock 目标库存
+     */
+    void updateSkuStockCount(Long id, Integer stock);
+
+    /**
      * 获得商品 SKU 集合
      *
      * @param spuId spu 编号

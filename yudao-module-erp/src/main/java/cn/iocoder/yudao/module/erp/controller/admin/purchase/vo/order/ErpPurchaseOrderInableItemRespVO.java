@@ -39,6 +39,9 @@ public class ErpPurchaseOrderInableItemRespVO {
     @Schema(description = "仓库编号", example = "1")
     private Long warehouseId;
 
+    @Schema(description = "部门 ID", example = "100")
+    private Long deptId;
+
     @Schema(description = "是否赠品", example = "false")
     private Boolean gift;
 

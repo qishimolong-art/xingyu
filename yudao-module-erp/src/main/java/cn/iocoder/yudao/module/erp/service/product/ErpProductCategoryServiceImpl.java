@@ -12,6 +12,7 @@ import cn.iocoder.yudao.module.erp.controller.admin.product.vo.category.ErpProdu
 import cn.iocoder.yudao.module.erp.dal.dataobject.product.ErpProductCategoryDO;
 import cn.iocoder.yudao.module.erp.dal.mysql.product.ErpProductCategoryMapper;
 import cn.iocoder.yudao.module.erp.service.common.ErpOperateLogService;
+import cn.iocoder.yudao.module.erp.service.mall.ErpMallProductSyncPublisher;
 import cn.iocoder.yudao.module.system.api.permission.PermissionApi;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
@@ -50,6 +51,8 @@ public class ErpProductCategoryServiceImpl implements ErpProductCategoryService 
     private PermissionApi permissionApi;
     @Resource
     private ErpOperateLogService operateLogService;
+    @Resource
+    private ErpMallProductSyncPublisher mallProductSyncPublisher;
 
     @Resource
     @Lazy // 延迟加载，避免循环依赖
@@ -71,6 +74,7 @@ public class ErpProductCategoryServiceImpl implements ErpProductCategoryService 
         }
         erpProductCategoryMapper.insert(category);
         operateLogService.recordCreate(ERP_PRODUCT_CATEGORY_TYPE, category.getId(), category, category.getCode());
+        mallProductSyncPublisher.publishCategorySync(category.getId());
         // 返回
         return category.getId();
     }
@@ -95,6 +99,7 @@ public class ErpProductCategoryServiceImpl implements ErpProductCategoryService 
         erpProductCategoryMapper.updateById(updateObj);
         operateLogService.recordUpdate(ERP_PRODUCT_CATEGORY_TYPE, updateReqVO.getId(), existing,
                 erpProductCategoryMapper.selectById(updateReqVO.getId()), updateObj.getCode());
+        mallProductSyncPublisher.publishCategorySync(updateReqVO.getId());
     }
 
     @Override
@@ -107,6 +112,7 @@ public class ErpProductCategoryServiceImpl implements ErpProductCategoryService 
             erpProductCategoryMapper.updateById(updateObj);
             operateLogService.recordUpdate(ERP_PRODUCT_CATEGORY_TYPE, id, existing,
                     erpProductCategoryMapper.selectById(id), existing.getCode());
+            mallProductSyncPublisher.publishCategorySync(id);
         }
     }
 

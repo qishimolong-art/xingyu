@@ -194,7 +194,24 @@ public class ErpSaleCartServiceImplTest extends BaseMockitoUnitTest {
             }
             return warehouses;
         });
+        lenient().when(warehouseService.validSaleSelectableWarehouseListForDept(anyCollection(), any())).thenAnswer(invocation -> {
+            Collection<Long> ids = invocation.getArgument(0);
+            Long deptId = invocation.getArgument(1);
+            List<ErpWarehouseDO> warehouses = new ArrayList<>();
+            for (Long id : ids) {
+                if (id != null) {
+                    warehouses.add(new ErpWarehouseDO().setId(id).setDeptId(deptId).setStockBillEnabled(false));
+                }
+            }
+            return warehouses;
+        });
         lenient().doNothing().when(warehouseService).validateWarehouseSaleAllowedForDept(any(), any());
+        lenient().doNothing().when(warehouseService).validateWarehouseSaleSelectableForDept(any(), any());
+        lenient().when(warehouseService.isWarehouseSaleAllowedForDept(any(), any())).thenAnswer(invocation -> {
+            Long warehouseId = invocation.getArgument(0);
+            Long deptId = invocation.getArgument(1);
+            return deptId == null || !Long.valueOf(401L).equals(warehouseId);
+        });
         lenient().when(warehouseService.resolveDirectWarehouseId(any())).thenReturn(888L);
         lenient().when(saleCartMapper.updateByIdAndStatus(any(), any(), any())).thenReturn(1);
         lenient().when(stockService.getStock(any(), any()))
@@ -332,7 +349,7 @@ public class ErpSaleCartServiceImplTest extends BaseMockitoUnitTest {
         ErpSaleCartItemDO item = buildCartItem(cartId, 201L, 301L, new BigDecimal("3"));
         when(saleCartMapper.selectById(cartId)).thenReturn(cart);
         when(saleCartItemMapper.selectListByCartId(cartId)).thenReturn(Collections.singletonList(item));
-        when(warehouseService.validSaleWarehouseListForDept(anyCollection(), eq(10L))).thenAnswer(invocation -> {
+        when(warehouseService.validSaleSelectableWarehouseListForDept(anyCollection(), eq(10L))).thenAnswer(invocation -> {
             Collection<Long> warehouseIds = invocation.getArgument(0);
             List<ErpWarehouseDO> warehouses = new ArrayList<>();
             for (Long warehouseId : warehouseIds) {
@@ -497,9 +514,53 @@ public class ErpSaleCartServiceImplTest extends BaseMockitoUnitTest {
         verify(saleCartMapper).insert(argThat((ErpSaleCartDO cart) ->
                 ErpSaleCartStatusEnum.PROCESS.getStatus().equals(cart.getStatus())
                         && reqVO.getCustomerId().equals(cart.getCustomerId())
-                        && cart.getNo() != null && cart.getNo().startsWith(ErpNoRedisDAO.SALE_CART_NO_PREFIX)));
+                        && cart.getNo() != null && cart.getNo().startsWith(ErpNoRedisDAO.SALE_CART_NO_PREFIX)
+                        && cart.getCreator() == null
+                        && cart.getUpdater() == null));
         verify(saleCartItemMapper).insertBatch(argThat((java.util.List<ErpSaleCartItemDO> items) -> items.size() == 1
                 && items.get(0).getCartId().equals(999L)));
+        verify(customerService).validateCustomerForSale(eq(21L), nullable(Long.class));
+        verify(customerService, never()).validateCustomerForGeneratedSale(anyLong(), nullable(Long.class));
+    }
+
+    @Test
+    public void testCreateSaleCartDraftFromSource_validateCustomerAsGeneratedSale() {
+        ErpSaleCartSaveReqVO reqVO = buildBaseSaveReq();
+        reqVO.setDeptId(10L);
+        reqVO.setCustomerId(21L);
+        reqVO.setSourceType(ErpSaleBizSourceTypeEnum.MALL_ORDER.getType());
+        reqVO.setSourceId(501L);
+        reqVO.setSourceNo("MALL20260827000001");
+        reqVO.setItems(Collections.singletonList(buildItemReq(new BigDecimal("3"), new BigDecimal("15.00"))));
+
+        when(productService.validProductList(anyCollection()))
+                .thenReturn(Collections.singletonList(new ErpProductDO().setId(201L).setUnitId(301L)));
+        when(stockService.getStock(eq(201L), eq(401L)))
+                .thenReturn(new ErpStockDO().setCount(new BigDecimal("100")));
+        when(customerService.validateCustomerForGeneratedSale(eq(21L), eq(10L)))
+                .thenReturn(new ErpCustomerDO().setId(21L));
+        when(saleCartMapper.selectByNo(anyString())).thenReturn(null);
+        doAnswer(invocation -> {
+            ErpSaleCartDO cart = invocation.getArgument(0);
+            cart.setId(999L);
+            return 1;
+        }).when(saleCartMapper).insert(any(ErpSaleCartDO.class));
+
+        Long resultId = saleCartService.createSaleCartDraftFromSource(reqVO);
+
+        assertEquals(999L, resultId);
+        verify(customerService).validateCustomerForGeneratedSale(eq(21L), eq(10L));
+        verify(customerService, never()).validateCustomerForSale(anyLong(), nullable(Long.class));
+        verify(saleCartMapper).insert(argThat((ErpSaleCartDO cart) ->
+                ErpSaleBizSourceTypeEnum.MALL_ORDER.getType().equals(cart.getSourceType())
+                        && Long.valueOf(501L).equals(cart.getSourceId())
+                        && "MALL20260827000001".equals(cart.getSourceNo())
+                        && "121".equals(cart.getCreator())
+                        && "121".equals(cart.getUpdater())));
+        verify(saleCartItemMapper).insertBatch(argThat((java.util.List<ErpSaleCartItemDO> items) -> items.size() == 1
+                && items.get(0).getCartId().equals(999L)
+                && "121".equals(items.get(0).getCreator())
+                && "121".equals(items.get(0).getUpdater())));
     }
 
     @Test
@@ -566,7 +627,7 @@ public class ErpSaleCartServiceImplTest extends BaseMockitoUnitTest {
             }
             return Collections.singletonList(new ErpProductDO().setId(201L).setUnitId(301L));
         });
-        when(warehouseService.validSaleWarehouseList(anyCollection())).thenReturn(Collections.singletonList(
+        lenient().when(warehouseService.validSaleWarehouseList(anyCollection())).thenReturn(Collections.singletonList(
                 new ErpWarehouseDO().setId(401L).setDeptId(20L).setStockBillEnabled(false)));
         when(stockService.getStock(eq(201L), eq(401L)))
                 .thenReturn(new ErpStockDO().setCount(new BigDecimal("2")));
@@ -584,7 +645,7 @@ public class ErpSaleCartServiceImplTest extends BaseMockitoUnitTest {
         verify(saleCartItemMapper).insertBatch(argThat((java.util.List<ErpSaleCartItemDO> items) -> items.size() == 1
                 && Long.valueOf(99L).equals(items.get(0).getDeptId())
                 && new BigDecimal("2").compareTo(items.get(0).getStockCount()) == 0));
-        verify(warehouseService).validateWarehouseSaleAllowedForDept(eq(401L), eq(99L));
+        verify(warehouseService).validateWarehouseSaleSelectableForDept(eq(401L), eq(99L));
     }
 
     @Test
@@ -638,7 +699,8 @@ public class ErpSaleCartServiceImplTest extends BaseMockitoUnitTest {
         // The occupied query already contains the 6 units of the newly inserted cart.
         when(stockService.getOccupiedCountMap(anyCollection(), anyCollection()))
                 .thenReturn(Collections.singletonMap("201_401", new BigDecimal("6")));
-        when(customerService.validateCustomerForSale(eq(21L), nullable(Long.class))).thenReturn(new ErpCustomerDO().setId(21L));
+        when(customerService.validateCustomerForGeneratedSale(eq(21L), nullable(Long.class)))
+                .thenReturn(new ErpCustomerDO().setId(21L));
         when(saleCartMapper.selectByNo(anyString())).thenReturn(null);
         doAnswer(invocation -> {
             ErpSaleCartDO cart = invocation.getArgument(0);
@@ -650,6 +712,8 @@ public class ErpSaleCartServiceImplTest extends BaseMockitoUnitTest {
 
         assertEquals(999L, result.getId());
         assertEquals(ErpSaleCartStatusEnum.SUBMITTED.getStatus(), result.getStatus());
+        verify(customerService).validateCustomerForGeneratedSale(eq(21L), nullable(Long.class));
+        verify(customerService, never()).validateCustomerForSale(anyLong(), nullable(Long.class));
     }
 
     @Test
@@ -693,7 +757,7 @@ public class ErpSaleCartServiceImplTest extends BaseMockitoUnitTest {
         when(warehouseService.validSaleWarehouseList(anyCollection())).thenReturn(Collections.singletonList(
                 new ErpWarehouseDO().setId(401L).setDeptId(20L).setName("CrossDeptWarehouse")
                         .setStockBillEnabled(false)));
-        when(warehouseService.validSaleWarehouseListForDept(anyCollection(), eq(99L))).thenReturn(Collections.singletonList(
+        when(warehouseService.validSaleSelectableWarehouseListForDept(anyCollection(), eq(99L))).thenReturn(Collections.singletonList(
                 new ErpWarehouseDO().setId(401L).setDeptId(20L).setName("CrossDeptWarehouse")
                         .setStockBillEnabled(false)));
         when(stockService.getStock(eq(201L), eq(401L)))
@@ -755,7 +819,7 @@ public class ErpSaleCartServiceImplTest extends BaseMockitoUnitTest {
         verify(saleCartItemMapper).insertBatch(argThat((java.util.List<ErpSaleCartItemDO> items) -> items.size() == 1
                 && Long.valueOf(99L).equals(items.get(0).getDeptId())
                 && Long.valueOf(999L).equals(items.get(0).getCartId())));
-        verify(warehouseService).validateWarehouseSaleAllowedForDept(eq(401L), eq(99L));
+        verify(warehouseService).validateWarehouseSaleSelectableForDept(eq(401L), eq(99L));
         verify(stockMoveService, never()).createOrUpdateTransferOutDraftBySource(ArgumentMatchers.<ErpStockMoveSaveReqVO>argThat(req ->
                 Long.valueOf(99L).equals(req.getDeptId())
                         && ErpSaleBizSourceTypeEnum.CART.getType().equals(req.getSourceType())
@@ -980,7 +1044,7 @@ public class ErpSaleCartServiceImplTest extends BaseMockitoUnitTest {
         when(saleCartItemMapper.selectListByCartId(eq(cartId))).thenReturn(Collections.singletonList(item));
         when(productService.getProductVOMap(anyCollection())).thenReturn(Collections.singletonMap(201L,
                 new ErpProductRespVO().setId(201L).setCode("P001").setName("Product1")));
-        when(warehouseService.validSaleWarehouseListForDept(anyCollection(), eq(99L))).thenReturn(Collections.singletonList(
+        when(warehouseService.validSaleSelectableWarehouseListForDept(anyCollection(), eq(99L))).thenReturn(Collections.singletonList(
                 new ErpWarehouseDO().setId(401L).setDeptId(20L).setName("CrossDeptWarehouse")
                         .setStockBillEnabled(false)));
         lenient().when(warehouseService.getWarehouseMap(anyCollection())).thenReturn(Collections.singletonMap(401L,
@@ -1014,7 +1078,7 @@ public class ErpSaleCartServiceImplTest extends BaseMockitoUnitTest {
         when(saleCartItemMapper.selectListByCartId(eq(cartId))).thenReturn(Collections.singletonList(item));
         when(productService.getProductVOMap(anyCollection())).thenReturn(Collections.singletonMap(201L,
                 new ErpProductRespVO().setId(201L).setCode("P001").setName("Product1")));
-        when(warehouseService.validSaleWarehouseListForDept(anyCollection(), eq(99L))).thenReturn(Collections.singletonList(
+        when(warehouseService.validSaleSelectableWarehouseListForDept(anyCollection(), eq(99L))).thenReturn(Collections.singletonList(
                 new ErpWarehouseDO().setId(401L).setDeptId(20L).setName("CrossDeptWarehouse")
                         .setStockBillEnabled(false)));
         lenient().when(warehouseService.getWarehouseMap(anyCollection())).thenReturn(Collections.singletonMap(401L,
@@ -1026,7 +1090,7 @@ public class ErpSaleCartServiceImplTest extends BaseMockitoUnitTest {
 
         saleCartService.submitSaleCart(cartId);
 
-        assertEquals(99L, item.getDeptId());
+        assertEquals(20L, item.getDeptId());
         verify(stockMoveService, never()).createOrUpdateTransferOutDraftBySource(ArgumentMatchers.<ErpStockMoveSaveReqVO>argThat(req ->
                 cart.getDeptId().equals(req.getDeptId())
                         && cart.getId().equals(req.getSourceId())
@@ -1043,15 +1107,15 @@ public class ErpSaleCartServiceImplTest extends BaseMockitoUnitTest {
         item.setDeptId(20L);
         when(saleCartMapper.selectById(eq(cartId))).thenReturn(cart);
         when(saleCartItemMapper.selectListByCartId(eq(cartId))).thenReturn(Collections.singletonList(item));
-        when(warehouseService.validSaleWarehouseListForDept(anyCollection(), eq(99L))).thenReturn(Collections.singletonList(
+        when(warehouseService.validSaleSelectableWarehouseListForDept(anyCollection(), eq(99L))).thenReturn(Collections.singletonList(
                 new ErpWarehouseDO().setId(401L).setDeptId(20L).setName("CrossDeptWarehouse")
                         .setStockBillEnabled(false)));
         when(warehouseService.resolveDirectWarehouseId(eq(99L))).thenReturn(9999L);
 
         saleCartService.createCrossDeptTransferOutDraftByCartId(cartId);
 
-        assertEquals(99L, item.getDeptId());
-        verify(warehouseService).validateWarehouseSaleAllowedForDept(eq(401L), eq(99L));
+        assertEquals(20L, item.getDeptId());
+        verify(warehouseService).validateWarehouseSaleSelectableForDept(eq(401L), eq(99L));
         verify(warehouseService).resolveDirectWarehouseId(eq(99L));
         verify(stockMoveService).syncTransferOutDraftsBySource(ArgumentMatchers.<List<ErpStockMoveSaveReqVO>>argThat(reqs -> {
             ErpStockMoveSaveReqVO req = reqs.size() == 1 ? reqs.get(0) : null;
@@ -1078,9 +1142,11 @@ public class ErpSaleCartServiceImplTest extends BaseMockitoUnitTest {
         when(saleCartMapper.selectById(eq(cartId))).thenReturn(cart);
         when(saleCartItemMapper.selectListByCartId(eq(cartId)))
                 .thenReturn(java.util.Arrays.asList(crossDeptItem, sameDeptItem));
-        when(warehouseService.validSaleWarehouseListForDept(anyCollection(), eq(10L))).thenReturn(java.util.Arrays.asList(
+        when(warehouseService.validSaleSelectableWarehouseListForDept(anyCollection(), eq(10L))).thenReturn(java.util.Arrays.asList(
                 new ErpWarehouseDO().setId(401L).setDeptId(20L).setStockBillEnabled(false),
                 new ErpWarehouseDO().setId(402L).setDeptId(10L).setStockBillEnabled(false)));
+        when(warehouseService.isWarehouseSaleAllowedForDept(eq(401L), eq(10L))).thenReturn(false);
+        when(warehouseService.isWarehouseSaleAllowedForDept(eq(402L), eq(10L))).thenReturn(true);
         when(warehouseService.resolveDirectWarehouseId(eq(10L))).thenReturn(1010L);
 
         saleCartService.createCrossDeptTransferOutDraftByCartId(cartId);
@@ -1105,10 +1171,13 @@ public class ErpSaleCartServiceImplTest extends BaseMockitoUnitTest {
         when(saleCartMapper.selectById(eq(cartId))).thenReturn(cart);
         when(saleCartItemMapper.selectListByCartId(eq(cartId)))
                 .thenReturn(java.util.Arrays.asList(dept20Item1, dept30Item, dept20Item2));
-        when(warehouseService.validSaleWarehouseListForDept(anyCollection(), eq(10L))).thenReturn(java.util.Arrays.asList(
+        when(warehouseService.validSaleSelectableWarehouseListForDept(anyCollection(), eq(10L))).thenReturn(java.util.Arrays.asList(
                 new ErpWarehouseDO().setId(401L).setDeptId(20L).setStockBillEnabled(false),
                 new ErpWarehouseDO().setId(402L).setDeptId(30L).setStockBillEnabled(false),
                 new ErpWarehouseDO().setId(403L).setDeptId(20L).setStockBillEnabled(false)));
+        when(warehouseService.isWarehouseSaleAllowedForDept(eq(401L), eq(10L))).thenReturn(false);
+        when(warehouseService.isWarehouseSaleAllowedForDept(eq(402L), eq(10L))).thenReturn(false);
+        when(warehouseService.isWarehouseSaleAllowedForDept(eq(403L), eq(10L))).thenReturn(false);
 
         saleCartService.createCrossDeptTransferOutDraftByCartId(cartId);
 
@@ -1204,7 +1273,7 @@ public class ErpSaleCartServiceImplTest extends BaseMockitoUnitTest {
         when(saleCartItemMapper.selectListByCartId(eq(cartId))).thenReturn(Collections.singletonList(item));
         when(warehouseService.validSaleWarehouseList(anyCollection())).thenReturn(Collections.singletonList(
                 new ErpWarehouseDO().setId(401L).setDeptId(20L).setStockBillEnabled(false)));
-        when(warehouseService.validSaleWarehouseListForDept(anyCollection(), eq(99L))).thenReturn(Collections.singletonList(
+        when(warehouseService.validSaleSelectableWarehouseListForDept(anyCollection(), eq(99L))).thenReturn(Collections.singletonList(
                 new ErpWarehouseDO().setId(401L).setDeptId(20L).setStockBillEnabled(false)));
         when(saleCartMapper.updateByIdAndStatus(eq(cartId),
                 eq(ErpSaleCartStatusEnum.SUBMITTED.getStatus()),
@@ -1835,7 +1904,7 @@ public class ErpSaleCartServiceImplTest extends BaseMockitoUnitTest {
         productMap.put(201L, new ErpProductRespVO().setId(201L).setCode("P001").setName("??????1"));
         productMap.put(202L, new ErpProductRespVO().setId(202L).setCode("P002").setName("??????2"));
         lenient().when(productService.getProductVOMap(anyCollection())).thenReturn(productMap);
-        when(warehouseService.validSaleWarehouseListForDept(anyCollection(), eq(cart.getDeptId())))
+        when(warehouseService.validSaleSelectableWarehouseListForDept(anyCollection(), eq(cart.getDeptId())))
                 .thenAnswer(invocation -> {
                     Collection<Long> warehouseIds = invocation.getArgument(0);
                     List<ErpWarehouseDO> warehouses = new ArrayList<>();
@@ -1901,7 +1970,7 @@ public class ErpSaleCartServiceImplTest extends BaseMockitoUnitTest {
         when(saleCartMapper.selectById(eq(cartId))).thenReturn(cart);
         when(saleCartItemMapper.selectListByCartId(eq(cartId)))
                 .thenReturn(java.util.Arrays.asList(crossDeptItem, sameDeptItem));
-        when(warehouseService.validSaleWarehouseListForDept(anyCollection(), eq(cart.getDeptId())))
+        when(warehouseService.validSaleSelectableWarehouseListForDept(anyCollection(), eq(cart.getDeptId())))
                 .thenAnswer(invocation -> {
                     Collection<Long> warehouseIds = invocation.getArgument(0);
                     List<ErpWarehouseDO> warehouses = new ArrayList<>();
@@ -2192,7 +2261,7 @@ public class ErpSaleCartServiceImplTest extends BaseMockitoUnitTest {
         when(saleCartItemMapper.selectListByCartId(eq(cart.getId()))).thenReturn(Collections.singletonList(item));
         lenient().when(productService.getProductVOMap(anyCollection())).thenReturn(Collections.singletonMap(item.getProductId(),
                 new ErpProductRespVO().setId(item.getProductId()).setCode("P001").setName("????????????")));
-        lenient().when(warehouseService.validSaleWarehouseListForDept(anyCollection(), eq(cart.getDeptId())))
+        lenient().when(warehouseService.validSaleSelectableWarehouseListForDept(anyCollection(), eq(cart.getDeptId())))
                 .thenAnswer(invocation -> {
                     Collection<Long> warehouseIds = invocation.getArgument(0);
                     List<ErpWarehouseDO> warehouses = new ArrayList<>();
@@ -2207,6 +2276,8 @@ public class ErpSaleCartServiceImplTest extends BaseMockitoUnitTest {
                 });
         lenient().when(warehouseService.getWarehouseMap(anyCollection())).thenReturn(Collections.singletonMap(item.getWarehouseId(),
                 new ErpWarehouseDO().setId(item.getWarehouseId()).setDeptId(20L).setName("Warehouse1").setStockBillEnabled(false)));
+        lenient().when(warehouseService.isWarehouseSaleAllowedForDept(eq(item.getWarehouseId()), eq(cart.getDeptId())))
+                .thenReturn(false);
         lenient().when(stockService.getStock(eq(item.getProductId()), eq(item.getWarehouseId())))
                 .thenReturn(new ErpStockDO().setCount(new BigDecimal("100")));
     }

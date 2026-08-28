@@ -9,6 +9,8 @@ import cn.iocoder.yudao.module.erp.dal.mysql.common.ErpKeywordQuery;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import org.apache.ibatis.annotations.Mapper;
 
+import java.util.List;
+
 /**
  * ERP 系统开账 Mapper
  *
@@ -22,7 +24,7 @@ public interface ErpBookOpenMapper extends BaseMapperX<ErpBookOpenDO> {
     }
 
     /**
-     * 按 (chainName, fiscalYear, period) 三元组判重
+     * 按 (chainName, fiscalYear, period) 查询旧月度开账记录（兼容旧入口；年度判重不再使用）。
      *
      * @param chainName  连锁名称（可能为 null）
      * @param fiscalYear 会计年度
@@ -51,13 +53,32 @@ public interface ErpBookOpenMapper extends BaseMapperX<ErpBookOpenDO> {
     }
 
     /**
-     * 按 (fiscalYear, period) 查询任一开账记录（用于自动凭证开账判断；不区分 chainName）。
+     * 按 (fiscalYear, period) 查询任一开账记录（兼容旧按月入口；自动凭证判断改走年度查询）。
      * 多条匹配时按 id 倒序取最近一条。
      */
     default ErpBookOpenDO selectByYearAndPeriod(Integer fiscalYear, Integer period) {
         return selectOne(Wrappers.<ErpBookOpenDO>lambdaQuery()
                 .eq(ErpBookOpenDO::getFiscalYear, fiscalYear)
                 .eq(ErpBookOpenDO::getPeriod, period)
+                .orderByDesc(ErpBookOpenDO::getId)
+                .last("limit 1"));
+    }
+
+    /**
+     * 按会计年度查询开账记录。用于年度开账判重；历史同年多月记录暂不做数据迁移。
+     */
+    default List<ErpBookOpenDO> selectListByYear(Integer fiscalYear) {
+        return selectList(Wrappers.<ErpBookOpenDO>lambdaQuery()
+                .eq(ErpBookOpenDO::getFiscalYear, fiscalYear)
+                .orderByDesc(ErpBookOpenDO::getId));
+    }
+
+    /**
+     * 按会计年度查询最近一条开账记录。用于自动凭证开账判断；不区分 chainName/period。
+     */
+    default ErpBookOpenDO selectLatestByYear(Integer fiscalYear) {
+        return selectOne(Wrappers.<ErpBookOpenDO>lambdaQuery()
+                .eq(ErpBookOpenDO::getFiscalYear, fiscalYear)
                 .orderByDesc(ErpBookOpenDO::getId)
                 .last("limit 1"));
     }

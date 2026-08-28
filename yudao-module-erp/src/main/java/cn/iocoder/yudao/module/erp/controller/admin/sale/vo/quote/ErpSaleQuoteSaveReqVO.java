@@ -143,6 +143,12 @@ public class ErpSaleQuoteSaveReqVO {
         @Schema(description = "产品单价")
         private BigDecimal productPrice;
 
+        @Schema(description = "重量")
+        private BigDecimal weight;
+
+        @Schema(description = "包装数")
+        private Integer packageQty;
+
         @Schema(description = "产品数量", requiredMode = Schema.RequiredMode.REQUIRED)
         @NotNull(message = "产品数量不能为空")
         private BigDecimal count;

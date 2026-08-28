@@ -165,6 +165,22 @@ public class TradePriceCalculateRespBO {
          */
         private Long cartId;
         /**
+         * ERP 库存记录编号
+         */
+        private Long stockId;
+        /**
+         * ERP 产品编号
+         */
+        private Long erpProductId;
+        /**
+         * ERP 仓库编号
+         */
+        private Long warehouseId;
+        /**
+         * ERP 仓库名称
+         */
+        private String warehouseName;
+        /**
          * 是否选中
          */
         private Boolean selected;

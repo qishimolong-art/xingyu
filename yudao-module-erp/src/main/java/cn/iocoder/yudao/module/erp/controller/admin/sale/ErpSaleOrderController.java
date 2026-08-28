@@ -185,7 +185,7 @@ public class ErpSaleOrderController {
                             });
                 }));
         });
-        fieldPermissionMasker.maskFormWithItems(FIELD_PERMISSION_MODULE, respVO);
+        fieldPermissionMasker.maskSaleDetailFormWithItems(FIELD_PERMISSION_MODULE, respVO);
         return success(respVO);
     }
 
@@ -195,7 +195,7 @@ public class ErpSaleOrderController {
     public CommonResult<PageResult<ErpSaleOrderRespVO>> getSaleOrderPage(@Valid ErpSaleOrderPageReqVO pageReqVO) {
         PageResult<ErpSaleOrderDO> pageResult = saleOrderService.getSaleOrderPage(pageReqVO);
         PageResult<ErpSaleOrderRespVO> respResult = buildSaleOrderVOPageResult(pageResult);
-        fieldPermissionMasker.maskFormsWithItems(FIELD_PERMISSION_MODULE, respResult.getList());
+        fieldPermissionMasker.maskSaleDetailFormsWithItems(FIELD_PERMISSION_MODULE, respResult.getList());
         return success(respResult);
     }
 
@@ -207,9 +207,9 @@ public class ErpSaleOrderController {
                                     HttpServletResponse response) throws IOException {
         pageReqVO.setPageSize(PageParam.PAGE_SIZE_NONE);
         List<ErpSaleOrderRespVO> list = buildSaleOrderVOPageResult(saleOrderService.getSaleOrderPage(pageReqVO)).getList();
-        fieldPermissionMasker.maskFormsWithItems(FIELD_PERMISSION_MODULE, list);
+        fieldPermissionMasker.maskSaleDetailFormsWithItems(FIELD_PERMISSION_MODULE, list);
         List<ErpSaleOrderExportRespVO> rows = buildSaleOrderExportList(list);
-        fieldPermissionMasker.maskExportRows(FIELD_PERMISSION_MODULE, rows);
+        fieldPermissionMasker.maskSaleDetailExportRows(FIELD_PERMISSION_MODULE, rows);
         ExcelUtils.write(response, "销售订单.xls", "数据", ErpSaleOrderExportRespVO.class, rows);
     }
 
@@ -360,12 +360,16 @@ public class ErpSaleOrderController {
         ErpSaleOrderExportRespVO row = fillMainFields
                 ? BeanUtils.toBean(saleOrder, ErpSaleOrderExportRespVO.class)
                 : new ErpSaleOrderExportRespVO();
+        row.setCustomerId(saleOrder.getCustomerId());
         if (item == null) {
             return row;
         }
         row.setProductCode(item.getProductCode());
         row.setProductName(item.getProductName());
         row.setProductUnitName(item.getProductUnitName());
+        row.setWeight(item.getWeight());
+        row.setPackageQty(item.getPackageQty());
+        row.setBatchNo(item.getBatchNo());
         row.setItemCount(item.getCount());
         row.setProductPrice(item.getProductPrice());
         row.setItemTotalPrice(item.getTotalPrice());

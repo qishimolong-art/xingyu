@@ -133,7 +133,7 @@ public class ErpSaleQuoteServiceImpl implements ErpSaleQuoteService {
     @Transactional(rollbackFor = Exception.class)
     public Long createSaleQuote(ErpSaleQuoteSaveReqVO createReqVO) {
         clearHiddenFields(createReqVO);
-        clearHiddenItemFields(createReqVO.getItems());
+        clearHiddenItemFields(createReqVO, createReqVO.getItems());
         Long reqDeptId = createReqVO.getDeptId();
         List<ErpSaleQuoteItemDO> items = validateSaleQuoteItems(createReqVO.getItems(), reqDeptId);
         Long quoteDeptId = prepareSaleQuoteDept(createReqVO);
@@ -168,7 +168,7 @@ public class ErpSaleQuoteServiceImpl implements ErpSaleQuoteService {
     @Transactional(rollbackFor = Exception.class)
     public Long createSaleQuoteDraft(ErpSaleQuoteDraftCreateReqVO createReqVO) {
         clearHiddenFields(createReqVO);
-        clearHiddenItemFields(createReqVO.getItems());
+        clearHiddenItemFields(createReqVO, createReqVO.getItems());
         List<ErpSaleQuoteSaveReqVO.Item> itemReqs = filterDraftItems(createReqVO.getItems());
         if (CollUtil.isEmpty(itemReqs)) {
             throw exception(SALE_QUOTE_DRAFT_ITEMS_REQUIRED);
@@ -215,7 +215,8 @@ public class ErpSaleQuoteServiceImpl implements ErpSaleQuoteService {
             throw exception(SALE_QUOTE_UPDATE_FAIL_NOT_DRAFT, quote.getNo());
         }
         preserveHiddenFields(updateReqVO, quote);
-        preserveHiddenItemFields(updateReqVO.getItems(), saleQuoteItemMapper.selectListByQuoteId(updateReqVO.getId()));
+        preserveHiddenItemFields(updateReqVO, updateReqVO.getItems(),
+                saleQuoteItemMapper.selectListByQuoteId(updateReqVO.getId()));
         Long reqDeptId = updateReqVO.getDeptId();
         List<ErpSaleQuoteItemDO> items = validateSaleQuoteItems(updateReqVO.getItems(), reqDeptId);
         Long quoteDeptId = prepareSaleQuoteDept(updateReqVO);
@@ -247,7 +248,7 @@ public class ErpSaleQuoteServiceImpl implements ErpSaleQuoteService {
         }
         preserveHiddenFields(updateReqVO, quote);
         List<ErpSaleQuoteItemDO> existingItems = saleQuoteItemMapper.selectListByQuoteId(updateReqVO.getId());
-        preserveHiddenItemFields(updateReqVO.getItems(), existingItems);
+        preserveHiddenItemFields(updateReqVO, updateReqVO.getItems(), existingItems);
         List<ErpSaleQuoteSaveReqVO.Item> itemReqs = filterDraftItems(updateReqVO.getItems());
         Long quoteDeptId = updateReqVO.getDeptId() != null ? updateReqVO.getDeptId() : quote.getDeptId();
         if (updateReqVO.getCustomerId() != null) {
@@ -315,10 +316,12 @@ public class ErpSaleQuoteServiceImpl implements ErpSaleQuoteService {
         selectedItems.forEach(item -> {
             if (targetWarehouse != null) {
                 item.setWarehouseId(targetWarehouse.getId());
+                item.setBatchNo(null);
             }
             item.setDeptId(targetDeptId);
         });
-        saleQuoteItemMapper.updateBatch(selectedItems);
+        saleQuoteItemMapper.updateWarehouseDeptByIds(convertList(selectedItems, ErpSaleQuoteItemDO::getId),
+                targetWarehouse != null ? targetWarehouse.getId() : null, targetDeptId, targetWarehouse != null);
         recordUpdate(updateReqVO.getQuoteId(), quote.getNo());
     }
 
@@ -444,6 +447,8 @@ public class ErpSaleQuoteServiceImpl implements ErpSaleQuoteService {
                     .setTaxPercent(quoteItem.getTaxPercent())
                     .setRemark(quoteItem.getRemark())
                     .setWarehouseId(quoteItem.getWarehouseId())
+                    .setDeptId(quoteItem.getDeptId())
+                    .setBatchNo(quoteItem.getBatchNo())
                     .setProductUnitId(quoteItem.getProductUnitId())
                     .setCount(entry.getValue())
                     .setTotalPrice(MoneyUtils.priceMultiply(productPrice, entry.getValue()))
@@ -566,6 +571,8 @@ public class ErpSaleQuoteServiceImpl implements ErpSaleQuoteService {
             outItem.setDeptId(item.getDeptId());
             outItem.setProductId(item.getProductId());
             outItem.setProductUnitId(item.getProductUnitId());
+            outItem.setUnitWeight(item.getWeight());
+            outItem.setPackageQty(item.getPackageQty());
             outItem.setProductPrice(Boolean.TRUE.equals(item.getGiftFlag()) ? BigDecimal.ZERO : item.getProductPrice());
             outItem.setCount(item.getCount());
             outItem.setTaxPercent(item.getTaxPercent());
@@ -622,6 +629,7 @@ public class ErpSaleQuoteServiceImpl implements ErpSaleQuoteService {
             item.setId(null); // Clear stale id returned from frontend before insertBatch.
             ErpProductDO product = productMap.get(item.getProductId());
             item.setProductUnitId(product.getUnitId());
+            fillProductWeightAndPackage(item, product);
             item.setDeptId(resolveQuoteItemDeptId(item.getProductId(), item.getWarehouseId(),
                     item.getDeptId(), warehouseMap));
             item.setConvertedCount(BigDecimal.ZERO);
@@ -667,6 +675,7 @@ public class ErpSaleQuoteServiceImpl implements ErpSaleQuoteService {
             item.setId(null); // Clear stale id returned from frontend before insertBatch.
             ErpProductDO product = productMap.get(item.getProductId());
             item.setProductUnitId(product.getUnitId());
+            fillProductWeightAndPackage(item, product);
             item.setDeptId(resolveQuoteItemDeptId(item.getProductId(), item.getWarehouseId(),
                     item.getDeptId(), warehouseMap));
             item.setConvertedCount(BigDecimal.ZERO);
@@ -688,6 +697,18 @@ public class ErpSaleQuoteServiceImpl implements ErpSaleQuoteService {
         validateSaleQuoteItemAmounts(list);
     }
 
+    private void fillProductWeightAndPackage(ErpSaleQuoteItemDO item, ErpProductDO product) {
+        if (product == null) {
+            return;
+        }
+        if (item.getWeight() == null) {
+            item.setWeight(product.getWeight());
+        }
+        if (item.getPackageQty() == null) {
+            item.setPackageQty(product.getPackageQty());
+        }
+    }
+
     private void validateSaleQuoteItemWarehousesAllowed(Collection<ErpSaleQuoteItemDO> items, Long quoteDeptId) {
         validateSaleQuoteWarehouseIdsAllowed(convertSet(items, ErpSaleQuoteItemDO::getWarehouseId), quoteDeptId);
     }
@@ -696,7 +717,7 @@ public class ErpSaleQuoteServiceImpl implements ErpSaleQuoteService {
         if (quoteDeptId == null || CollUtil.isEmpty(warehouseIds)) {
             return;
         }
-        warehouseIds.forEach(warehouseId -> warehouseService.validateWarehouseSaleAllowedForDept(warehouseId, quoteDeptId));
+        warehouseIds.forEach(warehouseId -> warehouseService.validateWarehouseSaleSelectableForDept(warehouseId, quoteDeptId));
     }
 
     private Long resolveQuoteItemDeptId(Long productId, Long warehouseId, Long itemDeptId,
@@ -1103,25 +1124,25 @@ public class ErpSaleQuoteServiceImpl implements ErpSaleQuoteService {
 
     private void clearHiddenFields(Object target) {
         if (fieldPermissionMasker != null) {
-            fieldPermissionMasker.clearHiddenFields(FIELD_PERMISSION_MODULE, target);
+            fieldPermissionMasker.clearSaleDetailHiddenFields(FIELD_PERMISSION_MODULE, target);
         }
     }
 
-    private void clearHiddenItemFields(List<?> items) {
+    private void clearHiddenItemFields(Object context, List<?> items) {
         if (fieldPermissionMasker != null) {
-            fieldPermissionMasker.clearHiddenItemFields(FIELD_PERMISSION_MODULE, items);
+            fieldPermissionMasker.clearSaleDetailHiddenItemFields(FIELD_PERMISSION_MODULE, context, items);
         }
     }
 
     private void preserveHiddenFields(Object target, Object existing) {
         if (fieldPermissionMasker != null) {
-            fieldPermissionMasker.preserveHiddenFields(FIELD_PERMISSION_MODULE, target, existing);
+            fieldPermissionMasker.preserveSaleDetailHiddenFields(FIELD_PERMISSION_MODULE, target, existing);
         }
     }
 
-    private void preserveHiddenItemFields(List<?> items, List<?> existingItems) {
+    private void preserveHiddenItemFields(Object context, List<?> items, List<?> existingItems) {
         if (fieldPermissionMasker != null) {
-            fieldPermissionMasker.preserveHiddenItemFields(FIELD_PERMISSION_MODULE, items, existingItems);
+            fieldPermissionMasker.preserveSaleDetailHiddenItemFields(FIELD_PERMISSION_MODULE, context, items, existingItems);
         }
     }
 

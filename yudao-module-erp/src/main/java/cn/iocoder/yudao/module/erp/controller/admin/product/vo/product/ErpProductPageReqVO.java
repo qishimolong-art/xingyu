@@ -21,6 +21,9 @@ public class ErpProductPageReqVO extends PageParam {
     @Schema(description = "商品分类编号", example = "11161")
     private Long categoryId;
 
+    @Schema(description = "内部字段：商品分类编号数组", hidden = true)
+    private Collection<Long> categoryIds;
+
     @Schema(description = "所属部门编号", example = "100")
     private Long deptId;
 

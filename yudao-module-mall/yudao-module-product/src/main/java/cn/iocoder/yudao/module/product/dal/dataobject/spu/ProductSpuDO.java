@@ -67,6 +67,24 @@ public class ProductSpuDO extends BaseDO {
      * 关联 {@link ProductBrandDO#getId()}
      */
     private Long brandId;
+
+    /**
+     * 配件编码
+     */
+    private String code;
+    /**
+     * 配件规格
+     */
+    private String standard;
+    /**
+     * 配件特征码
+     */
+    private String featureCode;
+    /**
+     * 适用车型
+     */
+    private String vehicleModel;
+
     /**
      * 商品封面图
      */

@@ -36,7 +36,7 @@ public interface ErpPayableExpenseMapper extends BaseMapperX<ErpPayableExpenseDO
                 ErpPayableExpenseDO::getDocType,
                 ErpPayableExpenseDO::getRemark);
         ErpFinanceSortUtils.apply(wrapper, reqVO.getOrderField(), reqVO.getOrderDirection(), "erp_payable_expense",
-                "no", "bizTime", "settleMethod", "accountId", "expenseType", "deptId", "handlerId",
+                "no", "bizTime", "settleMethod", "accountId", "expenseBizType", "expenseType", "deptId", "handlerId",
                 "party", "totalAmount", "status", "remark", "creator", "relatedBiz", "updater",
                 "createTime", "updateTime");
         return selectPage(reqVO, wrapper);

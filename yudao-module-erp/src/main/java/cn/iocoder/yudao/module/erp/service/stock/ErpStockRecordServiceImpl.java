@@ -66,6 +66,8 @@ public class ErpStockRecordServiceImpl implements ErpStockRecordService {
     private ErpStockService stockService;
     @Resource
     private ErpWarehouseService warehouseService;
+    @Resource
+    private ErpStockItemSnapshotSupport snapshotSupport;
 
     @Resource
     private ErpProductMapper productMapper;
@@ -411,6 +413,8 @@ public class ErpStockRecordServiceImpl implements ErpStockRecordService {
         if (costAmount == null) {
             costAmount = BigDecimal.ZERO;
         }
+        ErpProductDO product = DataPermissionUtils.executeIgnore(() -> productMapper.selectById(createReqBO.getProductId()));
+        snapshotSupport.fillStockRecordSnapshot(createReqBO, product);
 
         // 6. 落流水
         ErpStockRecordDO stockRecord = BeanUtils.toBean(createReqBO, ErpStockRecordDO.class)

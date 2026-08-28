@@ -40,6 +40,7 @@ import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.
 import static cn.iocoder.yudao.framework.security.core.util.SecurityFrameworkUtils.getLoginUserId;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PAYABLE_EXPENSE_APPROVE_FAIL;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PAYABLE_EXPENSE_DELETE_FAIL_APPROVE;
+import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PAYABLE_EXPENSE_DEPT_REQUIRED;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PAYABLE_EXPENSE_DRAFT_SUBMIT_FAIL;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PAYABLE_EXPENSE_DRAFT_ITEMS_REQUIRED;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PAYABLE_EXPENSE_DRAFT_UPDATE_FAIL;
@@ -78,6 +79,7 @@ public class ErpPayableExpenseServiceImpl implements ErpPayableExpenseService {
     @Transactional(rollbackFor = Exception.class)
     public Long createPayableExpense(ErpPayableExpenseSaveReqVO createReqVO) {
         fillDefaultDeptId(createReqVO);
+        validateFormalDeptId(createReqVO.getDeptId());
         validateRefs(createReqVO.getAccountId(), createReqVO.getHandlerId(), createReqVO.getDeptId());
         validateItemRefs(createReqVO.getItems());
         String no = noRedisDAO.generate("FYZF");
@@ -204,6 +206,7 @@ public class ErpPayableExpenseServiceImpl implements ErpPayableExpenseService {
         if (updateReqVO.getDeptId() == null) {
             updateReqVO.setDeptId(db.getDeptId());
         }
+        validateFormalDeptId(updateReqVO.getDeptId());
         validateRefs(updateReqVO.getAccountId(), updateReqVO.getHandlerId(), updateReqVO.getDeptId());
         validateItemRefs(updateReqVO.getItems());
         ErpPayableExpenseDO updateObj = BeanUtils.toBean(updateReqVO, ErpPayableExpenseDO.class);
@@ -394,6 +397,12 @@ public class ErpPayableExpenseServiceImpl implements ErpPayableExpenseService {
         }
     }
 
+    private void validateFormalDeptId(Long deptId) {
+        if (deptId == null) {
+            throw exception(PAYABLE_EXPENSE_DEPT_REQUIRED);
+        }
+    }
+
     private void validateItemRefs(List<ErpPayableExpenseSaveReqVO.Item> items) {
         items.forEach(item -> {
             if (item.getHandlerId() != null) {
@@ -514,10 +523,13 @@ public class ErpPayableExpenseServiceImpl implements ErpPayableExpenseService {
             throw exception(PAYABLE_EXPENSE_DRAFT_SUBMIT_FAIL, "结算账户不能为空");
         }
         if (!StringUtils.hasText(db.getExpenseType())) {
-            throw exception(PAYABLE_EXPENSE_DRAFT_SUBMIT_FAIL, "费用类型不能为空");
+            throw exception(PAYABLE_EXPENSE_DRAFT_SUBMIT_FAIL, "支出类型不能为空");
+        }
+        if (db.getDeptId() == null) {
+            throw exception(PAYABLE_EXPENSE_DRAFT_SUBMIT_FAIL, "开单部门不能为空");
         }
         if (db.getHandlerId() == null) {
-            throw exception(PAYABLE_EXPENSE_DRAFT_SUBMIT_FAIL, "申请人不能为空");
+            throw exception(PAYABLE_EXPENSE_DRAFT_SUBMIT_FAIL, "经手人不能为空");
         }
         validateRefs(db.getAccountId(), db.getHandlerId(), db.getDeptId());
     }
@@ -525,6 +537,7 @@ public class ErpPayableExpenseServiceImpl implements ErpPayableExpenseService {
     private void normalizeMain(ErpPayableExpenseDO db) {
         db.setSettleMethod(StrUtil.blankToDefault(db.getSettleMethod(), ""));
         db.setVoucherNo(StrUtil.blankToDefault(db.getVoucherNo(), ""));
+        db.setExpenseBizType(StrUtil.blankToDefault(db.getExpenseBizType(), ""));
         db.setExpenseType(StrUtil.blankToDefault(db.getExpenseType(), ""));
         db.setDocType(StrUtil.blankToDefault(db.getDocType(), "正常单据"));
     }

@@ -21,6 +21,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.validation.annotation.Validated;
 
 import javax.annotation.Resource;
+import java.math.BigDecimal;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
@@ -47,6 +48,8 @@ import static cn.iocoder.yudao.module.erp.enums.LogRecordConstants.ERP_UPDATE_SU
 public class ErpFinanceTransferServiceImpl implements ErpFinanceTransferService {
 
     private static final String FIELD_PERMISSION_MODULE = "erp_finance_transfer";
+    private static final BigDecimal DEFAULT_EXCHANGE_RATE = BigDecimal.ONE;
+    private static final BigDecimal DEFAULT_FEE_PRICE = BigDecimal.ZERO;
 
     @Resource
     private ErpFinanceTransferMapper financeTransferMapper;
@@ -67,6 +70,7 @@ public class ErpFinanceTransferServiceImpl implements ErpFinanceTransferService 
     @Transactional(rollbackFor = Exception.class)
     public Long createFinanceTransfer(ErpFinanceTransferSaveReqVO createReqVO) {
         ErpFinanceTransferDO transfer = BeanUtils.toBean(createReqVO, ErpFinanceTransferDO.class);
+        permissionFieldFiller.fillCreateFields(transfer);
         validateFinanceTransferForSubmit(transfer);
         String no = noRedisDAO.generateMonthSequence(ErpNoRedisDAO.FINANCE_TRANSFER_NO_PREFIX);
         if (financeTransferMapper.selectByNo(no) != null) {
@@ -75,7 +79,6 @@ public class ErpFinanceTransferServiceImpl implements ErpFinanceTransferService 
         transfer.setId(null);
         transfer.setNo(no);
         transfer.setStatus(ErpFinanceTransferStatusEnum.PROCESS.getStatus());
-        permissionFieldFiller.fillCreateFields(transfer);
         financeTransferMapper.insert(transfer);
         recordCreate(transfer);
         return transfer.getId();
@@ -280,7 +283,17 @@ public class ErpFinanceTransferServiceImpl implements ErpFinanceTransferService 
         validateFinanceUser(financeUserId);
     }
 
+    private void normalizeFinanceTransfer(ErpFinanceTransferDO transfer) {
+        if (transfer.getExchangeRate() == null) {
+            transfer.setExchangeRate(DEFAULT_EXCHANGE_RATE);
+        }
+        if (transfer.getFeePrice() == null) {
+            transfer.setFeePrice(DEFAULT_FEE_PRICE);
+        }
+    }
+
     private void validateFinanceTransferForSubmit(ErpFinanceTransferDO transfer) {
+        normalizeFinanceTransfer(transfer);
         if (transfer.getTransferTime() == null) {
             throw exception(FINANCE_TRANSFER_DRAFT_SUBMIT_FAIL, "转账时间不能为空");
         }
@@ -292,6 +305,21 @@ public class ErpFinanceTransferServiceImpl implements ErpFinanceTransferService 
         }
         if (transfer.getTransferPrice() == null) {
             throw exception(FINANCE_TRANSFER_DRAFT_SUBMIT_FAIL, "转账金额不能为空");
+        }
+        if (transfer.getTransferPrice().compareTo(BigDecimal.ZERO) <= 0) {
+            throw exception(FINANCE_TRANSFER_DRAFT_SUBMIT_FAIL, "转账金额必须大于 0");
+        }
+        if (transfer.getExchangeRate().compareTo(BigDecimal.ZERO) <= 0) {
+            throw exception(FINANCE_TRANSFER_DRAFT_SUBMIT_FAIL, "汇率必须大于 0");
+        }
+        if (transfer.getFeePrice().compareTo(BigDecimal.ZERO) < 0) {
+            throw exception(FINANCE_TRANSFER_DRAFT_SUBMIT_FAIL, "手续费不能小于 0");
+        }
+        if (transfer.getFinanceUserId() == null) {
+            throw exception(FINANCE_TRANSFER_DRAFT_SUBMIT_FAIL, "经手人不能为空");
+        }
+        if (transfer.getDeptId() == null) {
+            throw exception(FINANCE_TRANSFER_DRAFT_SUBMIT_FAIL, "所属部门不能为空");
         }
         validateTransferAccounts(transfer.getOutAccountId(), transfer.getInAccountId());
         validateFinanceUser(transfer.getFinanceUserId());

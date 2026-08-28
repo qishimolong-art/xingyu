@@ -58,6 +58,14 @@ public class ErpSalePriceAdjustItemDO extends BaseDO {
      */
     private String unit;
     /**
+     * 重量
+     */
+    private BigDecimal weight;
+    /**
+     * 包装数
+     */
+    private Integer packageQty;
+    /**
      * 出库数
      */
     private BigDecimal outCount;

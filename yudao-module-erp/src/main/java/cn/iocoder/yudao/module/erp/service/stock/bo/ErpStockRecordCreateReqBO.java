@@ -31,6 +31,22 @@ public class ErpStockRecordCreateReqBO {
      */
     private String batchNo;
     /**
+     * 产品单位编号快照
+     */
+    private Long productUnitId;
+    /**
+     * 包装数快照
+     */
+    private Integer packageQty;
+    /**
+     * 单重快照
+     */
+    private BigDecimal weight;
+    /**
+     * 本次业务总重
+     */
+    private BigDecimal totalWeight;
+    /**
      * 出入库数量
      *
      * 正数，表示入库；负数，表示出库
@@ -96,6 +112,17 @@ public class ErpStockRecordCreateReqBO {
                                      BigDecimal unitPrice, LocalDateTime bizDate) {
         this(productId, warehouseId, count, bizType, bizId, bizItemId, bizNo, unitPrice, bizDate);
         this.batchNo = batchNo;
+    }
+
+    public ErpStockRecordCreateReqBO(Long productId, Long warehouseId, String batchNo, Long productUnitId,
+                                     Integer packageQty, BigDecimal weight, BigDecimal totalWeight,
+                                     BigDecimal count, Integer bizType, Long bizId, Long bizItemId, String bizNo,
+                                     BigDecimal unitPrice, LocalDateTime bizDate) {
+        this(productId, warehouseId, batchNo, count, bizType, bizId, bizItemId, bizNo, unitPrice, bizDate);
+        this.productUnitId = productUnitId;
+        this.packageQty = packageQty;
+        this.weight = weight;
+        this.totalWeight = totalWeight;
     }
 
 }

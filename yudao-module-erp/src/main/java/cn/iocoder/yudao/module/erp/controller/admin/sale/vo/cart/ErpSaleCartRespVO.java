@@ -96,6 +96,10 @@ public class ErpSaleCartRespVO {
         private String productName;
         @ExcelProperty("产品单位")
         private String productUnitName;
+        @ExcelProperty("重量")
+        private BigDecimal weight;
+        @ExcelProperty("包装数")
+        private Integer packageQty;
         @ExcelProperty("仓库名称")
         private String warehouseName;
         @ExcelProperty("占用数量")

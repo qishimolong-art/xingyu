@@ -73,8 +73,10 @@ public class ErpVoucherController {
             return success(null);
         }
         List<ErpVoucherItemDO> items = voucherService.getVoucherItemListByVoucherId(id);
-        return success(BeanUtils.toBean(voucher, ErpVoucherRespVO.class, vo ->
-                vo.setItems(BeanUtils.toBean(items, ErpVoucherItemRespVO.class))));
+        return success(BeanUtils.toBean(voucher, ErpVoucherRespVO.class, vo -> {
+            fillPeriod(vo);
+            vo.setItems(BeanUtils.toBean(items, ErpVoucherItemRespVO.class));
+        }));
     }
 
     @GetMapping("/page")
@@ -85,7 +87,9 @@ public class ErpVoucherController {
         if (CollUtil.isEmpty(pageResult.getList())) {
             return success(PageResult.empty(pageResult.getTotal()));
         }
-        return success(BeanUtils.toBean(pageResult, ErpVoucherRespVO.class));
+        PageResult<ErpVoucherRespVO> respPageResult = BeanUtils.toBean(pageResult, ErpVoucherRespVO.class);
+        respPageResult.getList().forEach(this::fillPeriod);
+        return success(respPageResult);
     }
 
     @PutMapping("/audit")
@@ -114,7 +118,7 @@ public class ErpVoucherController {
                                     HttpServletResponse response) throws IOException {
         List<ErpVoucherDO> exportList = getVoucherExportList(pageReqVO);
         ExcelUtils.write(response, "凭证.xls", "数据", ErpVoucherRespVO.class,
-                BeanUtils.toBean(exportList, ErpVoucherRespVO.class));
+                BeanUtils.toBean(exportList, ErpVoucherRespVO.class, this::fillPeriod));
     }
 
     private List<ErpVoucherDO> getVoucherExportList(ErpVoucherPageReqVO pageReqVO) {
@@ -123,6 +127,13 @@ public class ErpVoucherController {
         }
         pageReqVO.setPageSize(PageParam.PAGE_SIZE_NONE);
         return voucherService.getVoucherPage(pageReqVO).getList();
+    }
+
+    private void fillPeriod(ErpVoucherRespVO vo) {
+        if (vo.getPeriodYear() == null || vo.getPeriodMonth() == null) {
+            return;
+        }
+        vo.setPeriod(String.format("%d-%02d", vo.getPeriodYear(), vo.getPeriodMonth()));
     }
 
 }

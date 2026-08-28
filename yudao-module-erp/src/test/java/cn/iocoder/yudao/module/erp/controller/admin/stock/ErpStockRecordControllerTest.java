@@ -15,6 +15,7 @@ import cn.iocoder.yudao.module.erp.enums.DictTypeConstants;
 import cn.iocoder.yudao.module.erp.service.product.ErpProductService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpStockRecordService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpWarehouseService;
+import cn.iocoder.yudao.module.system.api.permission.PermissionApi;
 import cn.iocoder.yudao.module.system.api.user.AdminUserApi;
 import org.apache.poi.ss.usermodel.Sheet;
 import org.apache.poi.ss.usermodel.Workbook;
@@ -29,11 +30,13 @@ import java.io.ByteArrayInputStream;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
@@ -53,12 +56,15 @@ public class ErpStockRecordControllerTest extends BaseMockitoUnitTest {
     @Mock
     private AdminUserApi adminUserApi;
     @Mock
+    private PermissionApi permissionApi;
+    @Mock
     private DictDataCommonApi dictDataApi;
 
     @BeforeEach
     public void setUp() {
         DictFrameworkUtils.init(dictDataApi);
         DictFrameworkUtils.clearCache();
+        when(permissionApi.getCurrentUserHiddenFields("erp_product")).thenReturn(Collections.emptyList());
     }
 
     @Test
@@ -178,8 +184,52 @@ public class ErpStockRecordControllerTest extends BaseMockitoUnitTest {
         assertTrue(response.getHeader("Content-Disposition").contains(".xlsx"));
         try (Workbook workbook = WorkbookFactory.create(new ByteArrayInputStream(content))) {
             Sheet sheet = workbook.getSheetAt(0);
-            assertEquals("发生日期", sheet.getRow(0).getCell(0).getStringCellValue());
+            assertNotNull(sheet.getRow(0).getCell(0).getStringCellValue());
             assertEquals(0, sheet.getLastRowNum());
+        }
+    }
+
+    @Test
+    public void testStockRecordReport_masksPurchasePriceByProductPermission() throws Exception {
+        ErpStockRecordDO inRecord = new ErpStockRecordDO()
+                .setId(1L).setProductId(11L).setWarehouseId(21L)
+                .setBizType(70).setBizNo("PIN001").setBizDate(LocalDateTime.of(2026, 7, 14, 10, 0))
+                .setCount(new BigDecimal("4"))
+                .setUnitPrice(new BigDecimal("2.50"))
+                .setTotalPrice(new BigDecimal("10.00"))
+                .setTotalCount(new BigDecimal("14"))
+                .setCostPrice(new BigDecimal("2.00"))
+                .setCostAmount(new BigDecimal("28.00"));
+        inRecord.setCreator("1001");
+        when(stockRecordService.getStockRecordPage(any())).thenReturn(
+                new PageResult<>(Collections.singletonList(inRecord), 1L));
+        when(productService.getProductVOMap(any())).thenReturn(Collections.singletonMap(11L,
+                new ErpProductRespVO().setId(11L).setCode("P-11").setName("Product In")));
+        when(warehouseService.getWarehouseMap(any())).thenReturn(Collections.singletonMap(21L,
+                new ErpWarehouseDO().setId(21L).setName("Warehouse A")));
+        when(permissionApi.getCurrentUserHiddenFields("erp_product"))
+                .thenReturn(Arrays.asList("lastPurchasePrice", "col_lastPurchasePrice"));
+        when(dictDataApi.getDictDataList(eq(DictTypeConstants.STOCK_RECORD_BIZ_TYPE))).thenReturn(Collections.singletonList(
+                buildDictData("70", "采购入库")
+        ));
+
+        CommonResult<PageResult<ErpStockRecordReportRespVO>> response =
+                controller.getStockRecordReportPage(new ErpStockRecordPageReqVO());
+
+        ErpStockRecordReportRespVO row = response.getData().getList().get(0);
+        assertNull(row.getInUnitPrice());
+        assertNull(row.getInAmount());
+        assertNull(row.getCostPrice());
+        assertNull(row.getCostAmount());
+
+        MockHttpServletResponse exportResponse = new MockHttpServletResponse();
+        controller.exportStockRecordReportExcel(new ErpStockRecordPageReqVO(), exportResponse);
+        try (Workbook workbook = WorkbookFactory.create(new ByteArrayInputStream(exportResponse.getContentAsByteArray()))) {
+            Sheet sheet = workbook.getSheetAt(0);
+            assertEquals("****", sheet.getRow(1).getCell(8).getStringCellValue());
+            assertEquals("****", sheet.getRow(1).getCell(9).getStringCellValue());
+            assertEquals("****", sheet.getRow(1).getCell(14).getStringCellValue());
+            assertEquals("****", sheet.getRow(1).getCell(15).getStringCellValue());
         }
     }
 

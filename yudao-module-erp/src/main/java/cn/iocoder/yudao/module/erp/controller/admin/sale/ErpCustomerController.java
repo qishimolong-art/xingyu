@@ -187,6 +187,15 @@ public class ErpCustomerController {
         return success(respVO);
     }
 
+    @GetMapping("/sale-price-level")
+    @Operation(summary = "获得销售单据使用的客户价格级别")
+    @Parameter(name = "id", description = "客户编号", required = true, example = "1024")
+    @PreAuthorize("@ss.hasPermission('erp:customer:query')")
+    public CommonResult<Integer> getCustomerSalePriceLevel(@RequestParam("id") Long id) {
+        ErpCustomerDO customer = customerService.getCustomer(id);
+        return success(customer != null ? customer.getPriceLevel() : null);
+    }
+
     @GetMapping("/page")
     @Operation(summary = "获得客户分页")
     @PreAuthorize("@ss.hasPermission('erp:customer:query')")

@@ -65,6 +65,131 @@ import static cn.iocoder.yudao.framework.common.util.json.JsonUtils.toJsonString
 public class PermissionServiceImpl implements PermissionService {
 
     private static final String ERP_PRODUCT_FIELD_PERMISSION_MODULE = "erp_product";
+    private static final Set<String> PURCHASE_PRICE_PERMISSION_MODULES = new HashSet<>(Arrays.asList(
+            "erp_purchase_order",
+            "erp_purchase_in",
+            "erp_purchase_return",
+            "erp_purchase_invoice",
+            "erp_purchase_price_adjust"));
+    private static final Set<String> SALE_PRICE_PERMISSION_MODULES = new HashSet<>(Arrays.asList(
+            "erp_sale_order",
+            "erp_sale_quote",
+            "erp_sale_cart",
+            "erp_sale_return",
+            "erp_sale_out",
+            "erp_sale_price_adjust"));
+    private static final List<String> PURCHASE_PRICE_RELATED_FIELDS = Arrays.asList(
+            "totalProductPrice",
+            "discountPrice",
+            "totalPrice",
+            "taxPrice",
+            "totalTaxPrice",
+            "productPrice",
+            "lastPurchasePrice",
+            "originalProductPrice",
+            "oldPrice",
+            "newPrice",
+            "adjustPrice",
+            "totalAdjustPrice",
+            "item_productPrice",
+            "item_lastPurchasePrice",
+            "item_totalProductPrice",
+            "item_totalPrice",
+            "item_taxPrice",
+            "item_totalTaxPrice",
+            "item_originalProductPrice",
+            "item_oldPrice",
+            "item_newPrice",
+            "item_adjustPrice",
+            "select_productPrice",
+            "select_lastPurchasePrice",
+            "select_totalProductPrice",
+            "select_totalPrice",
+            "select_taxPrice",
+            "select_col_productPrice",
+            "select_col_lastPurchasePrice",
+            "select_col_totalProductPrice",
+            "select_col_totalPrice",
+            "select_col_taxPrice");
+    private static final List<String> SALE_PRICE_RELATED_FIELDS = Arrays.asList(
+            "productPrice",
+            "salePrice",
+            "totalProductPrice",
+            "discountPrice",
+            "allowancePrice",
+            "reductionAmount",
+            "afterReductionPrice",
+            "afterReductionAmount",
+            "totalPrice",
+            "taxPrice",
+            "totalTaxPrice",
+            "actualSaleAmount",
+            "originalProductPrice",
+            "oldPrice",
+            "newPrice",
+            "totalOriginalPrice",
+            "totalAdjustedPrice",
+            "adjustPrice",
+            "adjustAmount",
+            "totalAdjustPrice",
+            "item_productPrice",
+            "item_salePrice",
+            "item_totalProductPrice",
+            "item_discountPrice",
+            "item_allowancePrice",
+            "item_reductionAmount",
+            "item_afterReductionPrice",
+            "item_afterReductionAmount",
+            "item_totalPrice",
+            "item_taxPrice",
+            "item_totalTaxPrice",
+            "item_actualSaleAmount",
+            "item_originalProductPrice",
+            "item_oldPrice",
+            "item_newPrice",
+            "item_totalOriginalPrice",
+            "item_totalAdjustedPrice",
+            "item_adjustPrice",
+            "item_adjustAmount",
+            "item_totalAdjustPrice",
+            "select_productPrice",
+            "select_salePrice",
+            "select_totalProductPrice",
+            "select_discountPrice",
+            "select_allowancePrice",
+            "select_reductionAmount",
+            "select_afterReductionPrice",
+            "select_afterReductionAmount",
+            "select_totalPrice",
+            "select_taxPrice",
+            "select_totalTaxPrice",
+            "select_actualSaleAmount",
+            "select_oldPrice",
+            "select_newPrice",
+            "select_totalOriginalPrice",
+            "select_totalAdjustedPrice",
+            "select_adjustPrice",
+            "select_adjustAmount",
+            "select_totalAdjustPrice",
+            "select_col_productPrice",
+            "select_col_salePrice",
+            "select_col_totalProductPrice",
+            "select_col_discountPrice",
+            "select_col_allowancePrice",
+            "select_col_reductionAmount",
+            "select_col_afterReductionPrice",
+            "select_col_afterReductionAmount",
+            "select_col_totalPrice",
+            "select_col_taxPrice",
+            "select_col_totalTaxPrice",
+            "select_col_actualSaleAmount",
+            "select_col_oldPrice",
+            "select_col_newPrice",
+            "select_col_totalOriginalPrice",
+            "select_col_totalAdjustedPrice",
+            "select_col_adjustPrice",
+            "select_col_adjustAmount",
+            "select_col_totalAdjustPrice");
 
     @Resource
     private RoleMenuMapper roleMenuMapper;
@@ -285,6 +410,13 @@ public class PermissionServiceImpl implements PermissionService {
     @Override
     public List<String> getCurrentUserHiddenFields(String module, Long businessDeptId,
                                                    boolean includeProductPricePermission) {
+        return getCurrentUserHiddenFields(module, businessDeptId, includeProductPricePermission, null);
+    }
+
+    @Override
+    public List<String> getCurrentUserHiddenFields(String module, Long businessDeptId,
+                                                   boolean includeProductPricePermission,
+                                                   Integer customerPriceLevel) {
         Long userId = SecurityFrameworkUtils.getLoginUserId();
         if (userId == null) {
             return Collections.emptyList();
@@ -304,20 +436,62 @@ public class PermissionServiceImpl implements PermissionService {
                         .collect(Collectors.toList()));
             }
         }
-        if (includeProductPricePermission && ERP_PRODUCT_FIELD_PERMISSION_MODULE.equals(module)) {
-            if (!superAdmin) {
-                Long pricePermissionDeptId = businessDeptId != null
-                        ? businessDeptId : SecurityFrameworkUtils.getLoginUserDeptId();
-                DeptDO pricePermissionDept = pricePermissionDeptId != null
-                        ? deptService.getDept(pricePermissionDeptId) : null;
-                Set<Long> enabledDeptIds = pricePermissionDept != null
-                        && CommonStatusEnum.ENABLE.getStatus().equals(pricePermissionDept.getStatus())
-                        ? Collections.singleton(pricePermissionDept.getId()) : Collections.emptySet();
-                hiddenFields.addAll(deptPriceFieldService.getHiddenPriceFields(enabledDeptIds));
+        if (includeProductPricePermission && shouldIncludeProductPricePermission(module)) {
+            List<String> hiddenProductPriceFields = getHiddenProductPriceFields(userId, businessDeptId, superAdmin);
+            if (ERP_PRODUCT_FIELD_PERMISSION_MODULE.equals(module)) {
+                hiddenFields.addAll(hiddenProductPriceFields);
+            } else {
+                Set<String> hiddenProductPriceFieldSet = new HashSet<>(hiddenProductPriceFields);
+                if (PURCHASE_PRICE_PERMISSION_MODULES.contains(module) && isPurchasePriceHidden(hiddenProductPriceFieldSet)) {
+                    hiddenFields.addAll(PURCHASE_PRICE_RELATED_FIELDS);
+                }
+                if (SALE_PRICE_PERMISSION_MODULES.contains(module)
+                        && isSalePriceSourceHidden(hiddenProductPriceFieldSet, customerPriceLevel)) {
+                    hiddenFields.addAll(SALE_PRICE_RELATED_FIELDS);
+                }
             }
-            hiddenFields.addAll(userPriceFieldService.getHiddenProductPriceFields(userId));
+        }
+        if (ERP_PRODUCT_FIELD_PERMISSION_MODULE.equals(module)) {
+            List<String> expandedFields = new ArrayList<>();
+            hiddenFields.forEach(field -> ProductPriceFieldKeys.addHiddenField(expandedFields, field));
+            hiddenFields = expandedFields;
         }
         return hiddenFields.stream().distinct().collect(Collectors.toList());
+    }
+
+    private boolean shouldIncludeProductPricePermission(String module) {
+        return ERP_PRODUCT_FIELD_PERMISSION_MODULE.equals(module)
+                || PURCHASE_PRICE_PERMISSION_MODULES.contains(module)
+                || SALE_PRICE_PERMISSION_MODULES.contains(module);
+    }
+
+    private List<String> getHiddenProductPriceFields(Long userId, Long businessDeptId, boolean superAdmin) {
+        List<String> hiddenFields = new ArrayList<>();
+        if (!superAdmin) {
+            Long pricePermissionDeptId = businessDeptId != null
+                    ? businessDeptId : SecurityFrameworkUtils.getLoginUserDeptId();
+            DeptDO pricePermissionDept = pricePermissionDeptId != null
+                    ? deptService.getDept(pricePermissionDeptId) : null;
+            Set<Long> enabledDeptIds = pricePermissionDept != null
+                    && CommonStatusEnum.ENABLE.getStatus().equals(pricePermissionDept.getStatus())
+                    ? Collections.singleton(pricePermissionDept.getId()) : Collections.emptySet();
+            hiddenFields.addAll(deptPriceFieldService.getHiddenPriceFields(enabledDeptIds));
+        }
+        hiddenFields.addAll(userPriceFieldService.getHiddenProductPriceFields(userId));
+        List<String> expandedFields = new ArrayList<>();
+        hiddenFields.forEach(field -> ProductPriceFieldKeys.addHiddenField(expandedFields, field));
+        return expandedFields;
+    }
+
+    private boolean isPurchasePriceHidden(Set<String> hiddenFields) {
+        return hiddenFields.contains("lastPurchasePrice")
+                || hiddenFields.contains("col_lastPurchasePrice")
+                || hiddenFields.contains("purchasePrice")
+                || hiddenFields.contains("col_purchasePrice");
+    }
+
+    private boolean isSalePriceSourceHidden(Set<String> hiddenFields, Integer customerPriceLevel) {
+        return SaleCustomerPriceLevelFieldKeys.isHidden(hiddenFields, customerPriceLevel);
     }
 
     @Override

@@ -46,6 +46,7 @@ import cn.iocoder.yudao.module.erp.service.finance.ErpAccountService;
 import cn.iocoder.yudao.module.erp.service.finance.accounting.ErpAutoVoucherBuilder;
 import cn.iocoder.yudao.module.erp.service.finance.accounting.ErpBookOpenService;
 import cn.iocoder.yudao.module.erp.service.finance.accounting.ErpVoucherService;
+import cn.iocoder.yudao.module.erp.service.product.ErpProductBatchNoValidator;
 import cn.iocoder.yudao.module.erp.service.product.ErpProductService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpStockOutBillService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpStockRecordService;
@@ -96,6 +97,8 @@ public class ErpSaleReturnServiceImpl implements ErpSaleReturnService {
     @Resource
     private ErpProductService productService;
     @Resource
+    private ErpProductBatchNoValidator productBatchNoValidator;
+    @Resource
     @Lazy
     private ErpSaleOrderService saleOrderService;
     @Resource
@@ -137,8 +140,8 @@ public class ErpSaleReturnServiceImpl implements ErpSaleReturnService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Long createSaleReturn(ErpSaleReturnSaveReqVO createReqVO) {
-        fieldPermissionMasker.clearHiddenFields(FIELD_PERMISSION_MODULE, createReqVO);
-        fieldPermissionMasker.clearHiddenItemFields(FIELD_PERMISSION_MODULE, createReqVO.getItems());
+        fieldPermissionMasker.clearSaleDetailHiddenFields(FIELD_PERMISSION_MODULE, createReqVO);
+        fieldPermissionMasker.clearSaleDetailHiddenItemFields(FIELD_PERMISSION_MODULE, createReqVO, createReqVO.getItems());
         Integer returnMode = normalizeReturnMode(createReqVO);
         validateDraftReturnMode(returnMode);
         ErpSaleOrderDO saleOrder = null;
@@ -153,7 +156,7 @@ public class ErpSaleReturnServiceImpl implements ErpSaleReturnService {
             throw exception(SALE_RETURN_MODE_INVALID);
         }
 
-        List<ErpSaleReturnItemDO> saleReturnItems = validateSaleReturnItems(createReqVO.getItems());
+        List<ErpSaleReturnItemDO> saleReturnItems = validateSaleReturnItems(createReqVO.getItems(), createReqVO.getDeptId());
         if (createReqVO.getAccountId() != null) {
             accountService.validateAccount(createReqVO.getAccountId());
         }
@@ -173,6 +176,7 @@ public class ErpSaleReturnServiceImpl implements ErpSaleReturnService {
         saleDocumentDefaultService.fillCreateDefaults(saleReturn);
         saleReturnMapper.insert(saleReturn);
         saleReturnItems.forEach(item -> item.setReturnId(saleReturn.getId()));
+        clearSaleReturnItemIds(saleReturnItems);
         saleReturnItemMapper.insertBatch(saleReturnItems);
 
         updateSaleOrderReturnCountIfPresent(saleReturn.getOrderId());
@@ -183,8 +187,8 @@ public class ErpSaleReturnServiceImpl implements ErpSaleReturnService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Long createSaleReturnDraft(ErpSaleReturnDraftCreateReqVO createReqVO) {
-        fieldPermissionMasker.clearHiddenFields(FIELD_PERMISSION_MODULE, createReqVO);
-        fieldPermissionMasker.clearHiddenItemFields(FIELD_PERMISSION_MODULE, createReqVO.getItems());
+        fieldPermissionMasker.clearSaleDetailHiddenFields(FIELD_PERMISSION_MODULE, createReqVO);
+        fieldPermissionMasker.clearSaleDetailHiddenItemFields(FIELD_PERMISSION_MODULE, createReqVO, createReqVO.getItems());
         Integer returnMode = normalizeReturnMode(createReqVO);
         List<ErpSaleReturnSaveReqVO.Item> itemReqs = filterDraftItems(createReqVO.getItems(), returnMode);
         if (CollUtil.isEmpty(itemReqs)) {
@@ -202,7 +206,7 @@ public class ErpSaleReturnServiceImpl implements ErpSaleReturnService {
             customerService.validateCustomer(createReqVO.getCustomerId());
         }
         List<ErpSaleReturnItemDO> items = CollUtil.isEmpty(itemReqs)
-                ? Collections.emptyList() : validateSaleReturnItems(itemReqs);
+                ? Collections.emptyList() : validateSaleReturnItems(itemReqs, createReqVO.getDeptId());
         validateOptionalReferences(createReqVO);
 
         String no = noRedisDAO.generate(ErpNoRedisDAO.SALE_RETURN_NO_PREFIX);
@@ -218,6 +222,7 @@ public class ErpSaleReturnServiceImpl implements ErpSaleReturnService {
         saleReturnMapper.insert(saleReturn);
         if (CollUtil.isNotEmpty(items)) {
             items.forEach(item -> item.setReturnId(saleReturn.getId()));
+            clearSaleReturnItemIds(items);
             saleReturnItemMapper.insertBatch(items);
         }
         operateLogService.recordCreate(ERP_SALE_RETURN_TYPE, saleReturn.getId(), saleReturn.getNo());
@@ -231,8 +236,8 @@ public class ErpSaleReturnServiceImpl implements ErpSaleReturnService {
         if (ErpAuditStatus.APPROVE.getStatus().equals(oldSaleReturn.getStatus())) {
             throw exception(SALE_RETURN_UPDATE_FAIL_APPROVE, oldSaleReturn.getNo());
         }
-        fieldPermissionMasker.preserveHiddenFields(FIELD_PERMISSION_MODULE, updateReqVO, oldSaleReturn);
-        fieldPermissionMasker.preserveHiddenItemFields(FIELD_PERMISSION_MODULE, updateReqVO.getItems(),
+        fieldPermissionMasker.preserveSaleDetailHiddenFields(FIELD_PERMISSION_MODULE, updateReqVO, oldSaleReturn);
+        fieldPermissionMasker.preserveSaleDetailHiddenItemFields(FIELD_PERMISSION_MODULE, updateReqVO, updateReqVO.getItems(),
                 saleReturnItemMapper.selectListByReturnId(updateReqVO.getId()));
 
         Integer returnMode = normalizeReturnMode(updateReqVO);
@@ -255,7 +260,8 @@ public class ErpSaleReturnServiceImpl implements ErpSaleReturnService {
         if (updateReqVO.getSaleUserId() != null) {
             adminUserApi.validateUser(updateReqVO.getSaleUserId());
         }
-        List<ErpSaleReturnItemDO> saleReturnItems = validateSaleReturnItems(updateReqVO.getItems());
+        Long saleDeptId = updateReqVO.getDeptId() != null ? updateReqVO.getDeptId() : oldSaleReturn.getDeptId();
+        List<ErpSaleReturnItemDO> saleReturnItems = validateSaleReturnItems(updateReqVO.getItems(), saleDeptId);
 
         ErpSaleReturnDO updateObj = BeanUtils.toBean(updateReqVO, ErpSaleReturnDO.class)
                 .setReturnMode(returnMode);
@@ -279,8 +285,8 @@ public class ErpSaleReturnServiceImpl implements ErpSaleReturnService {
         if (!ErpSaleReturnStatusEnum.DRAFT.getStatus().equals(oldSaleReturn.getStatus())) {
             throw exception(SALE_RETURN_UPDATE_FAIL_NOT_DRAFT, oldSaleReturn.getNo());
         }
-        fieldPermissionMasker.preserveHiddenFields(FIELD_PERMISSION_MODULE, updateReqVO, oldSaleReturn);
-        fieldPermissionMasker.preserveHiddenItemFields(FIELD_PERMISSION_MODULE, updateReqVO.getItems(),
+        fieldPermissionMasker.preserveSaleDetailHiddenFields(FIELD_PERMISSION_MODULE, updateReqVO, oldSaleReturn);
+        fieldPermissionMasker.preserveSaleDetailHiddenItemFields(FIELD_PERMISSION_MODULE, updateReqVO, updateReqVO.getItems(),
                 saleReturnItemMapper.selectListByReturnId(updateReqVO.getId()));
 
         Integer returnMode = normalizeReturnMode(updateReqVO);
@@ -297,7 +303,8 @@ public class ErpSaleReturnServiceImpl implements ErpSaleReturnService {
             customerService.validateCustomer(updateReqVO.getCustomerId());
         }
         List<ErpSaleReturnItemDO> items = CollUtil.isEmpty(itemReqs)
-                ? Collections.emptyList() : validateSaleReturnItems(itemReqs);
+                ? Collections.emptyList() : validateSaleReturnItems(itemReqs,
+                updateReqVO.getDeptId() != null ? updateReqVO.getDeptId() : oldSaleReturn.getDeptId());
         validateOptionalReferences(updateReqVO);
 
         ErpSaleReturnDO updateObj = BeanUtils.toBean(updateReqVO, ErpSaleReturnDO.class)
@@ -315,6 +322,7 @@ public class ErpSaleReturnServiceImpl implements ErpSaleReturnService {
         saleReturnItemMapper.deleteByReturnId(updateReqVO.getId());
         if (CollUtil.isNotEmpty(items)) {
             items.forEach(item -> item.setReturnId(updateReqVO.getId()));
+            clearSaleReturnItemIds(items);
             saleReturnItemMapper.insertBatch(items);
         }
         operateLogService.recordUpdate(ERP_SALE_RETURN_TYPE, updateReqVO.getId(), oldSaleReturn.getNo());
@@ -506,7 +514,7 @@ public class ErpSaleReturnServiceImpl implements ErpSaleReturnService {
         } else {
             throw exception(SALE_RETURN_MODE_INVALID);
         }
-        validateSaleReturnItems(reqVO.getItems());
+        validateSaleReturnItems(reqVO.getItems(), reqVO.getDeptId());
         validateOptionalReferences(reqVO);
     }
 
@@ -612,7 +620,8 @@ public class ErpSaleReturnServiceImpl implements ErpSaleReturnService {
         Integer bizType = ErpStockRecordBizTypeEnum.SALE_RETURN.getType();
         saleReturnItems.forEach(saleReturnItem -> {
             stockRecordService.createStockRecord(new ErpStockRecordCreateReqBO(
-                    saleReturnItem.getProductId(), saleReturnItem.getWarehouseId(), saleReturnItem.getCount(),
+                    saleReturnItem.getProductId(), saleReturnItem.getWarehouseId(), saleReturnItem.getBatchNo(),
+                    saleReturnItem.getCount(),
                     bizType, saleReturnItem.getReturnId(), saleReturnItem.getId(), saleReturn.getNo(),
                     saleReturnItem.getProductPrice(), saleReturn.getReturnTime()));
         });
@@ -660,7 +669,7 @@ public class ErpSaleReturnServiceImpl implements ErpSaleReturnService {
         saleReturnMapper.updateById(new ErpSaleReturnDO().setId(id).setRefundPrice(refundPrice));
     }
 
-    private List<ErpSaleReturnItemDO> validateSaleReturnItems(List<ErpSaleReturnSaveReqVO.Item> list) {
+    private List<ErpSaleReturnItemDO> validateSaleReturnItems(List<ErpSaleReturnSaveReqVO.Item> list, Long saleDeptId) {
         if (CollUtil.isEmpty(list)) {
             throw exception(SALE_RETURN_ITEMS_EMPTY);
         }
@@ -678,20 +687,38 @@ public class ErpSaleReturnServiceImpl implements ErpSaleReturnService {
         List<ErpProductDO> productList = DataPermissionUtils.executeIgnore(() ->
                 productService.validProductList(convertSet(list, ErpSaleReturnSaveReqVO.Item::getProductId)));
         Map<Long, ErpProductDO> productMap = convertMap(productList, ErpProductDO::getId);
+        productBatchNoValidator.validateBatchNoRequired(list, productMap,
+                ErpSaleReturnSaveReqVO.Item::getProductId, ErpSaleReturnSaveReqVO.Item::getBatchNo);
+        productBatchNoValidator.validateBatchNoAllowed(list, productMap,
+                ErpSaleReturnSaveReqVO.Item::getProductId, ErpSaleReturnSaveReqVO.Item::getBatchNo);
         List<Long> warehouseIds = convertList(list, ErpSaleReturnSaveReqVO.Item::getWarehouseId);
         Map<Long, ErpWarehouseDO> warehouseMap = convertMap(
-                warehouseService.validSaleWarehouseList(warehouseIds), ErpWarehouseDO::getId);
+                warehouseService.validSaleSelectableWarehouseListForDept(warehouseIds, saleDeptId),
+                ErpWarehouseDO::getId);
         return convertList(list, itemVO -> BeanUtils.toBean(itemVO, ErpSaleReturnItemDO.class, item -> {
             ErpProductDO product = productMap.get(item.getProductId());
             if (product == null) {
                 throw exception(SALE_RETURN_ITEM_PRODUCT_REQUIRED);
             }
             item.setProductUnitId(product.getUnitId());
+            fillProductWeightAndPackage(item, product);
             fillDeptIdFromWarehouse(item, warehouseMap);
             item.setTaxPercent(null);
             item.setTaxPrice(BigDecimal.ZERO);
             item.setTotalPrice(MoneyUtils.priceMultiply(item.getProductPrice(), item.getCount()));
         }));
+    }
+
+    private void fillProductWeightAndPackage(ErpSaleReturnItemDO item, ErpProductDO product) {
+        if (product == null) {
+            return;
+        }
+        if (item.getWeight() == null) {
+            item.setWeight(product.getWeight());
+        }
+        if (item.getPackageQty() == null) {
+            item.setPackageQty(product.getPackageQty());
+        }
     }
 
     private void fillDeptIdFromWarehouse(ErpSaleReturnItemDO item, Map<Long, ErpWarehouseDO> warehouseMap) {
@@ -710,12 +737,20 @@ public class ErpSaleReturnServiceImpl implements ErpSaleReturnService {
         return DataPermissionUtils.executeIgnore(() -> stockService.getStock(productId, warehouseId));
     }
 
+    private void clearSaleReturnItemIds(List<ErpSaleReturnItemDO> items) {
+        if (CollUtil.isEmpty(items)) {
+            return;
+        }
+        items.forEach(item -> item.setId(null));
+    }
+
     private void updateSaleReturnItemList(Long id, List<ErpSaleReturnItemDO> newList) {
         List<ErpSaleReturnItemDO> oldList = saleReturnItemMapper.selectListByReturnId(id);
         List<List<ErpSaleReturnItemDO>> diffList = diffList(oldList, newList,
                 (oldVal, newVal) -> oldVal.getId().equals(newVal.getId()));
         if (CollUtil.isNotEmpty(diffList.get(0))) {
             diffList.get(0).forEach(item -> item.setReturnId(id));
+            clearSaleReturnItemIds(diffList.get(0));
             saleReturnItemMapper.insertBatch(diffList.get(0));
         }
         if (CollUtil.isNotEmpty(diffList.get(1))) {
@@ -734,12 +769,17 @@ public class ErpSaleReturnServiceImpl implements ErpSaleReturnService {
         for (ErpSaleReturnItemDO item : returnItems) {
             boolean selected = selectedItemIdSet.contains(item.getId());
             Long finalWarehouseId = selected ? targetWarehouse.getId() : item.getWarehouseId();
-            String itemKey = item.getProductId() + "|" + finalWarehouseId;
+            String itemKey = item.getProductId() + "|" + finalWarehouseId + "|" + normalizeBatchNoKey(item.getBatchNo());
             if (!itemKeySet.add(itemKey)) {
                 throw exception(SALE_RETURN_ITEM_DUPLICATE,
-                        "productId=" + item.getProductId() + ", warehouseId=" + finalWarehouseId);
+                        "productId=" + item.getProductId() + ", warehouseId=" + finalWarehouseId
+                                + ", batchNo=" + item.getBatchNo());
             }
         }
+    }
+
+    private String normalizeBatchNoKey(String batchNo) {
+        return batchNo == null ? "" : batchNo.trim();
     }
 
     @Override

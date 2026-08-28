@@ -2,6 +2,7 @@ package cn.iocoder.yudao.module.erp.dal.mysql.sale;
 
 import cn.iocoder.yudao.framework.mybatis.core.mapper.BaseMapperX;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleQuoteItemDO;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import org.apache.ibatis.annotations.Mapper;
 
 import java.util.Collection;
@@ -31,6 +32,17 @@ public interface ErpSaleQuoteItemMapper extends BaseMapperX<ErpSaleQuoteItemDO> 
 
     default Long selectCountByWarehouseId(Long warehouseId) {
         return selectCount(ErpSaleQuoteItemDO::getWarehouseId, warehouseId);
+    }
+
+    default int updateWarehouseDeptByIds(Collection<Long> ids, Long warehouseId, Long deptId, boolean clearBatchNo) {
+        LambdaUpdateWrapper<ErpSaleQuoteItemDO> wrapper = new LambdaUpdateWrapper<ErpSaleQuoteItemDO>()
+                .in(ErpSaleQuoteItemDO::getId, ids)
+                .set(warehouseId != null, ErpSaleQuoteItemDO::getWarehouseId, warehouseId)
+                .set(ErpSaleQuoteItemDO::getDeptId, deptId);
+        if (clearBatchNo) {
+            wrapper.set(ErpSaleQuoteItemDO::getBatchNo, null);
+        }
+        return update(null, wrapper);
     }
 
 }

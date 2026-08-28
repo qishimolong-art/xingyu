@@ -68,7 +68,6 @@ import javax.annotation.Resource;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.time.YearMonth;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -152,11 +151,11 @@ public class ErpBookOpenServiceImpl implements ErpBookOpenService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Long createBookOpen(ErpBookOpenSaveReqVO createReqVO) {
-        // 1.0 校验期间合法性（S5 修复：period > 12 时 YearMonth.of 抛 DateTimeException）
-        validatePeriod(createReqVO.getFiscalYear(), createReqVO.getPeriod());
-        // 1.1 校验同 (chainName, fiscalYear, period) 不重复
-        validateBookOpenDuplicate(createReqVO.getChainName(), createReqVO.getFiscalYear(),
-                createReqVO.getPeriod(), null);
+        // 1.0 年度开账：前端只传会计年度，月份/开始日期由后端统一归一化
+        validateFiscalYear(createReqVO.getFiscalYear());
+        normalizeAnnualPeriod(createReqVO);
+        // 1.1 校验同一租户同一年度不重复
+        validateBookOpenDuplicate(createReqVO.getFiscalYear(), null);
         // 1.2 生成开账编号
         String no = noRedisDAO.generate(ErpNoRedisDAO.BOOK_OPEN_NO_PREFIX);
         if (bookOpenMapper.selectByNo(no) != null) {
@@ -193,11 +192,11 @@ public class ErpBookOpenServiceImpl implements ErpBookOpenService {
         }
         voucherConfigMapper.insertBatch(configs);
 
-        // 4. 扫描该期间已审核业务单据，批量补生成凭证（失败不阻塞主流程）
+        // 4. 扫描该年度已审核业务单据，批量补生成凭证（失败不阻塞主流程）
         try {
             scanAndGenerateVouchersAfterCreate(bookOpen);
         } catch (Exception ex) {
-            log.error("[createBookOpen][bookOpenId={} 期间扫描生成凭证失败]", bookOpen.getId(), ex);
+            log.error("[createBookOpen][bookOpenId={} 年度扫描生成凭证失败]", bookOpen.getId(), ex);
         }
 
         return bookOpen.getId();
@@ -207,39 +206,48 @@ public class ErpBookOpenServiceImpl implements ErpBookOpenService {
     public void updateBookOpen(ErpBookOpenSaveReqVO updateReqVO) {
         // 1. 校验存在
         validateBookOpen(updateReqVO.getId());
-        // 1.1 校验期间合法性（S5 修复）
-        validatePeriod(updateReqVO.getFiscalYear(), updateReqVO.getPeriod());
-        // 2. 校验三元组不重复（排除自己）
-        validateBookOpenDuplicate(updateReqVO.getChainName(), updateReqVO.getFiscalYear(),
-                updateReqVO.getPeriod(), updateReqVO.getId());
+        // 1.1 年度开账归一化并校验年度合法性
+        validateFiscalYear(updateReqVO.getFiscalYear());
+        normalizeAnnualPeriod(updateReqVO);
+        // 2. 校验年度不重复（排除自己）
+        validateBookOpenDuplicate(updateReqVO.getFiscalYear(), updateReqVO.getId());
         // 3. 更新基础信息
         ErpBookOpenDO updateObj = BeanUtils.toBean(updateReqVO, ErpBookOpenDO.class);
         bookOpenMapper.updateById(updateObj);
     }
 
-    private void validateBookOpenDuplicate(String chainName, Integer fiscalYear, Integer period, Long excludeId) {
-        ErpBookOpenDO exist = bookOpenMapper.selectByChainNameAndYearAndPeriod(chainName, fiscalYear, period);
-        if (exist == null) {
+    private void validateBookOpenDuplicate(Integer fiscalYear, Long excludeId) {
+        List<ErpBookOpenDO> exists = bookOpenMapper.selectListByYear(fiscalYear);
+        if (exists == null || exists.isEmpty()) {
             return;
         }
-        if (excludeId != null && exist.getId().equals(excludeId)) {
-            return;
+        for (ErpBookOpenDO exist : exists) {
+            if (excludeId != null && excludeId.equals(exist.getId())) {
+                continue;
+            }
+            throw exception(BOOK_OPEN_DUPLICATE);
         }
-        throw exception(BOOK_OPEN_DUPLICATE);
     }
 
     /**
-     * 校验会计年/会计期合法性（S5 修复）。
-     * 必须显式校验，否则 period > 12 时 {@link YearMonth#of(int, int)} 会直接抛 DateTimeException。
+     * 年度开账保留 period/startDate 字段兼容旧表结构，新数据统一存 1 月与当年 1 月 1 日。
      */
-    private void validatePeriod(Integer fiscalYear, Integer period) {
-        if (fiscalYear == null || period == null) {
+    private void normalizeAnnualPeriod(ErpBookOpenSaveReqVO reqVO) {
+        if (reqVO.getFiscalYear() == null) {
+            throw exception(BOOK_OPEN_PERIOD_INVALID);
+        }
+        reqVO.setPeriod(1);
+        reqVO.setStartDate(LocalDate.of(reqVO.getFiscalYear(), 1, 1));
+    }
+
+    /**
+     * 校验会计年度合法性。
+     */
+    private void validateFiscalYear(Integer fiscalYear) {
+        if (fiscalYear == null) {
             throw exception(BOOK_OPEN_PERIOD_INVALID);
         }
         if (fiscalYear < 1900 || fiscalYear > 9999) {
-            throw exception(BOOK_OPEN_PERIOD_INVALID);
-        }
-        if (period < 1 || period > 12) {
             throw exception(BOOK_OPEN_PERIOD_INVALID);
         }
     }
@@ -306,10 +314,9 @@ public class ErpBookOpenServiceImpl implements ErpBookOpenService {
         if (bizDate == null || voucherType == null) {
             return false;
         }
-        ErpBookOpenDO bookOpen = bookOpenMapper.selectByYearAndPeriod(bizDate.getYear(), bizDate.getMonthValue());
+        ErpBookOpenDO bookOpen = bookOpenMapper.selectLatestByYear(bizDate.getYear());
         if (bookOpen == null) {
-            log.warn("[isVoucherTypeEnabled][未找到开账记录 fiscalYear={} period={}]",
-                    bizDate.getYear(), bizDate.getMonthValue());
+            log.warn("[isVoucherTypeEnabled][未找到年度开账记录 fiscalYear={}]", bizDate.getYear());
             return false;
         }
         if (!Boolean.TRUE.equals(bookOpen.getOpened())) {
@@ -332,17 +339,17 @@ public class ErpBookOpenServiceImpl implements ErpBookOpenService {
     }
 
     /**
-     * 新增系统开账后，扫描该期间已审核且尚未生成凭证的业务单据，按勾选的凭证类型批量补生成凭证。
+     * 新增系统开账后，扫描该年度已审核且尚未生成凭证的业务单据，按勾选的凭证类型批量补生成凭证。
      * 单条凭证生成失败不影响其他单据；主流程已提交，本方法异常会被外层 try-catch 吞掉只打日志。
      */
     private void scanAndGenerateVouchersAfterCreate(ErpBookOpenDO bookOpen) {
-        if (bookOpen.getFiscalYear() == null || bookOpen.getPeriod() == null) {
+        if (bookOpen.getFiscalYear() == null) {
             return;
         }
-        // 1. 计算期间起止
-        YearMonth ym = YearMonth.of(bookOpen.getFiscalYear(), bookOpen.getPeriod());
-        LocalDateTime periodStart = ym.atDay(1).atStartOfDay();
-        LocalDateTime periodEnd = ym.atEndOfMonth().atTime(23, 59, 59);
+        // 1. 计算年度起止
+        LocalDateTime[] annualRange = buildAnnualScanRange(bookOpen.getFiscalYear());
+        LocalDateTime periodStart = annualRange[0];
+        LocalDateTime periodEnd = annualRange[1];
 
         // 2. 查启用的凭证类型集合
         List<ErpBookOpenVoucherConfigDO> configs = voucherConfigMapper.selectListByBookOpenId(bookOpen.getId());
@@ -385,6 +392,13 @@ public class ErpBookOpenServiceImpl implements ErpBookOpenService {
                 log.error("[scanAndGenerateVouchersAfterCreate][voucherType={} 扫描失败]", vt, ex);
             }
         }
+    }
+
+    static LocalDateTime[] buildAnnualScanRange(Integer fiscalYear) {
+        return new LocalDateTime[]{
+                LocalDate.of(fiscalYear, 1, 1).atStartOfDay(),
+                LocalDate.of(fiscalYear, 12, 31).atTime(23, 59, 59)
+        };
     }
 
     private boolean voucherExists(Integer sourceBizType, Long sourceBizId) {

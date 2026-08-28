@@ -8,7 +8,6 @@ import lombok.EqualsAndHashCode;
 import lombok.ToString;
 import org.springframework.format.annotation.DateTimeFormat;
 
-import javax.validation.constraints.NotNull;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
@@ -18,7 +17,7 @@ import static cn.iocoder.yudao.framework.common.util.date.DateUtils.FORMAT_YEAR_
 /**
  * ERP 凭证生成-按单据来源查询业务单据 Request VO
  *
- * 用于「凭证生成」页面：先选单据类型 + 日期 → 查询，返回对应的业务单据列表（封装为 attribution 形态）。
+ * 用于「凭证生成」页面：按单据类型（可选）+ 业务日期期间 → 查询，返回对应的业务单据列表（封装为 attribution 形态）。
  * 见 刘/财务问题汇总-ds修订版.md 5 节。
  */
 @Schema(description = "管理后台 - ERP 凭证生成-按单据来源查询 Request VO")
@@ -27,8 +26,7 @@ import static cn.iocoder.yudao.framework.common.util.date.DateUtils.FORMAT_YEAR_
 @ToString(callSuper = true)
 public class ErpVoucherAttributionSearchSourceBizReqVO extends PageParam {
 
-    @Schema(description = "单据来源类型（1-20，见 ErpVoucherSourceBizTypeEnum）", requiredMode = Schema.RequiredMode.REQUIRED, example = "8")
-    @NotNull(message = "单据来源类型不能为空")
+    @Schema(description = "单据来源类型（见 ErpVoucherSourceBizTypeEnum），为空时聚合查询可生成凭证的业务单据", example = "8")
     private Integer sourceBizType;
 
     @Schema(description = "业务发生开始日期", example = "2026-05-01")

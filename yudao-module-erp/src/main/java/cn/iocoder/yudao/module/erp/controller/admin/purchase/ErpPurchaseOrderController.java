@@ -26,19 +26,23 @@ import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.order.ErpPurchas
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.order.ErpPurchaseOrderRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.order.ErpPurchaseOrderSaveReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.order.ErpPurchaseOrderUpdateRemarkReqVO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.finance.ErpAccountDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseOrderDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseOrderItemDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpSupplierDO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpWarehouseDO;
 import cn.iocoder.yudao.module.erp.enums.config.ErpFieldConfigModuleEnum;
 import cn.iocoder.yudao.module.erp.framework.excel.ErpExportFieldUtils;
 import cn.iocoder.yudao.module.erp.framework.excel.ErpImportTemplateRequiredFieldUtils;
 import cn.iocoder.yudao.module.erp.service.config.ErpFieldConfigService;
 import cn.iocoder.yudao.module.erp.service.common.ErpPrintService;
+import cn.iocoder.yudao.module.erp.service.finance.ErpAccountService;
 import cn.iocoder.yudao.module.erp.service.product.ErpProductService;
 import cn.iocoder.yudao.module.erp.service.purchase.ErpPurchaseFieldPermissionMasker;
 import cn.iocoder.yudao.module.erp.service.purchase.ErpPurchaseOrderService;
 import cn.iocoder.yudao.module.erp.service.purchase.ErpSupplierDeptPermissionService;
 import cn.iocoder.yudao.module.erp.service.purchase.ErpSupplierService;
+import cn.iocoder.yudao.module.erp.service.stock.ErpWarehouseService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpStockService;
 import cn.iocoder.yudao.module.system.api.dept.DeptApi;
 import cn.iocoder.yudao.module.system.api.dept.dto.DeptRespDTO;
@@ -91,6 +95,7 @@ import static cn.iocoder.yudao.module.erp.service.common.ErpPrintServiceImpl.MOD
 public class ErpPurchaseOrderController {
 
     private static final String FIELD_PERMISSION_MODULE = "erp_purchase_order";
+    private static final String DEPT_SELECTION_PERMISSION_FORM_KEY = "system_dept";
     private static final Map<String, String> EXPORT_FIELD_GROUP_MAP = buildExportFieldGroupMap();
     private static final Map<String, String> EXPORT_FIELD_PERMISSION_MAP = buildExportFieldPermissionMap();
     private static final Map<String, String> ORDER_IMPORT_FIELD_ALIAS_MAP = ErpImportTemplateRequiredFieldUtils.aliasMap(
@@ -107,6 +112,7 @@ public class ErpPurchaseOrderController {
             "item_count", "itemCount",
             "itemCount", "itemCount",
             "productPrice", "productPrice",
+            "batchNo", "batchNo",
             "item_remark", "itemRemark",
             "itemRemark", "itemRemark");
     private static final Map<String, String> DETAIL_IMPORT_FIELD_ALIAS_MAP = ErpImportTemplateRequiredFieldUtils.aliasMap(
@@ -116,6 +122,7 @@ public class ErpPurchaseOrderController {
             "item_count", "count",
             "itemCount", "count",
             "productPrice", "productPrice",
+            "batchNo", "batchNo",
             "gift", "gift");
 
     @Resource
@@ -128,6 +135,10 @@ public class ErpPurchaseOrderController {
     private ErpProductService productService;
     @Resource
     private ErpSupplierService supplierService;
+    @Resource
+    private ErpAccountService accountService;
+    @Resource
+    private ErpWarehouseService warehouseService;
     @Resource
     private DeptApi deptApi;
     @Resource
@@ -240,7 +251,9 @@ public class ErpPurchaseOrderController {
     @Operation(summary = "获得采购订单")
     @Parameter(name = "id", description = "编号", required = true, example = "1024")
     @PreAuthorize("@ss.hasPermission('erp:purchase-order:query')")
-    public CommonResult<ErpPurchaseOrderRespVO> getPurchaseOrder(@RequestParam("id") Long id) {
+    public CommonResult<ErpPurchaseOrderRespVO> getPurchaseOrder(@RequestParam("id") Long id,
+                                                                 @RequestParam(value = "mask", required = false,
+                                                                         defaultValue = "true") Boolean mask) {
         ErpPurchaseOrderDO purchaseOrder = purchaseOrderService.getPurchaseOrder(id);
         if (purchaseOrder == null) {
             return success(null);
@@ -262,6 +275,7 @@ public class ErpPurchaseOrderController {
                 item.setStockCount(stockCount != null ? stockCount : BigDecimal.ZERO);
                 MapUtils.findAndThen(productMap, item.getProductId(), product -> item.setProductName(product.getName())
                         .setProductBarCode(product.getBarCode()).setProductUnitName(product.getUnitName())
+                        .setWeight(product.getWeight()).setPackageQty(product.getPackageQty())
                         .setProductCode(product.getCode()).setBatchNoEnabled(product.getBatchNoEnabled())
                         .setLastPurchasePrice(product.getLastPurchasePrice()));
             }));
@@ -273,7 +287,9 @@ public class ErpPurchaseOrderController {
             }
             fillUserNames(purchaseOrderVO, userMap);
         });
-        fieldPermissionMasker.mask("erp_purchase_order", respVO);
+        if (Boolean.TRUE.equals(mask)) {
+            fieldPermissionMasker.mask("erp_purchase_order", respVO);
+        }
         fillPrintInfo(Collections.singletonList(respVO));
         return success(respVO);
     }
@@ -290,16 +306,23 @@ public class ErpPurchaseOrderController {
         List<ErpPurchaseOrderItemDO> purchaseOrderItemList = purchaseOrderService.getPurchaseOrderItemListByOrderId(id);
         Map<Long, ErpProductRespVO> productMap = DataPermissionUtils.executeIgnore(() ->
                 productService.getProductVOMap(convertSet(purchaseOrderItemList, ErpPurchaseOrderItemDO::getProductId)));
+        Map<Long, ErpWarehouseDO> warehouseMap = DataPermissionUtils.executeIgnore(() ->
+                warehouseService.getWarehouseMap(convertSet(purchaseOrderItemList, ErpPurchaseOrderItemDO::getWarehouseId)));
+        Map<Long, ErpSupplierDO> itemSupplierMap = supplierService.getSupplierMap(
+                convertSet(purchaseOrderItemList, ErpPurchaseOrderItemDO::getSupplierId));
         ErpSupplierDO supplier = purchaseOrder.getSupplierId() == null
                 ? null : supplierService.getSupplier(purchaseOrder.getSupplierId());
+        ErpAccountDO account = purchaseOrder.getAccountId() == null
+                ? null : accountService.getAccount(purchaseOrder.getAccountId());
         DeptRespDTO dept = purchaseOrder.getDeptId() == null ? null : deptApi.getDept(purchaseOrder.getDeptId());
         AdminUserRespDTO purchaser = purchaseOrder.getPurchaser() == null
                 ? null : adminUserApi.getUser(purchaseOrder.getPurchaser());
         AdminUserRespDTO currentUser = getLoginUserId() == null ? null : adminUserApi.getUser(getLoginUserId());
 
         ErpPurchaseOrderPrintDataRespVO respVO = new ErpPurchaseOrderPrintDataRespVO();
-        respVO.setMain(buildPurchaseOrderPrintMain(purchaseOrder, supplier, dept, purchaser));
-        respVO.setItems(buildPurchaseOrderPrintItems(purchaseOrder, purchaseOrderItemList, productMap));
+        respVO.setMain(buildPurchaseOrderPrintMain(purchaseOrder, supplier, dept, purchaser, account));
+        respVO.setItems(buildPurchaseOrderPrintItems(purchaseOrder, purchaseOrderItemList, productMap, warehouseMap,
+                itemSupplierMap));
         respVO.setSystem(buildPurchaseOrderPrintSystem(currentUser));
         return success(respVO);
     }
@@ -317,7 +340,7 @@ public class ErpPurchaseOrderController {
     @Operation(summary = "鑾峰緱褰撳墠鐢ㄦ埛鍙煡璇㈢殑閲囪喘璁㈠崟閮ㄩ棬绮剧畝鍒楄〃")
     @PreAuthorize("@ss.hasPermission('erp:purchase-order:query')")
     public CommonResult<List<DeptSimpleRespVO>> getVisibleDeptSimpleList() {
-        return success(supplierDeptPermissionService.getDataPermissionDeptSimpleList(FIELD_PERMISSION_MODULE));
+        return success(supplierDeptPermissionService.getDataPermissionDeptSimpleList(DEPT_SELECTION_PERMISSION_FORM_KEY));
     }
 
     @GetMapping("/warehouse-dept-simple-list")
@@ -419,6 +442,7 @@ public class ErpPurchaseOrderController {
         example.setProductCode("P0001");
         example.setCount(BigDecimal.ONE);
         example.setProductPrice(new BigDecimal("100.00"));
+        example.setBatchNo("BATCH-001");
         example.setGift("否");
         ExcelUtils.writeImportTemplate(response, "采购订单明细导入模板.xls", "采购订单明细",
                 ErpPurchaseOrderDetailImportExcelVO.class, Arrays.asList(example), null,
@@ -485,6 +509,7 @@ public class ErpPurchaseOrderController {
                     ErpPurchaseOrderRespVO.Item.class, item ->
                             MapUtils.findAndThen(productMap, item.getProductId(), product -> item.setProductName(product.getName())
                                     .setProductBarCode(product.getBarCode()).setProductUnitName(product.getUnitName())
+                                    .setWeight(product.getWeight()).setPackageQty(product.getPackageQty())
                                     .setProductCode(product.getCode()).setBatchNoEnabled(product.getBatchNoEnabled())
                                     .setLastPurchasePrice(product.getLastPurchasePrice()))));
             purchaseOrder.setProductNames(CollUtil.join(purchaseOrder.getItems(), "，",
@@ -503,26 +528,54 @@ public class ErpPurchaseOrderController {
     }
 
     private Map<String, Object> buildPurchaseOrderPrintMain(ErpPurchaseOrderDO purchaseOrder, ErpSupplierDO supplier,
-                                                            DeptRespDTO dept, AdminUserRespDTO purchaser) {
+                                                            DeptRespDTO dept, AdminUserRespDTO purchaser,
+                                                            ErpAccountDO account) {
         Map<String, Object> main = new LinkedHashMap<>();
         main.put("order.no", purchaseOrder.getNo());
+        main.put("order.orderTime", formatDateTime(purchaseOrder.getOrderTime()));
         main.put("supplier.name", supplier == null ? null : supplier.getName());
         main.put("purchaser.nickname", purchaser == null ? null : purchaser.getNickname());
         main.put("dept.name", dept == null ? null : dept.getName());
+        main.put("order.documentType", purchaseOrder.getDocumentType());
+        main.put("order.taxPercent", formatDecimal(purchaseOrder.getTaxPercent()));
         main.put("order.totalCount", formatDecimal(purchaseOrder.getTotalCount()));
+        main.put("order.totalProductPrice", formatDecimal(purchaseOrder.getTotalProductPrice()));
+        main.put("order.totalTaxPrice", formatDecimal(purchaseOrder.getTotalTaxPrice()));
+        main.put("order.discountPercent", formatDecimal(purchaseOrder.getDiscountPercent()));
+        main.put("order.discountPrice", formatDecimal(purchaseOrder.getDiscountPrice()));
+        main.put("order.feeAmount", formatDecimal(purchaseOrder.getFeeAmount()));
+        main.put("order.depositPrice", formatDecimal(purchaseOrder.getDepositPrice()));
         main.put("order.totalPrice", formatDecimal(purchaseOrder.getTotalPrice()));
         main.put("order.totalPriceUpper", formatAmountUpper(purchaseOrder.getTotalPrice()));
         main.put("order.orderDate", formatDateTime(firstNonNull(purchaseOrder.getOrderDate(), purchaseOrder.getOrderTime())));
+        main.put("order.latestOrderDate", formatDateTime(purchaseOrder.getLatestOrderDate()));
+        main.put("order.purchaseCycle", purchaseOrder.getPurchaseCycle());
         main.put("order.arrivalDate", formatDateTime(purchaseOrder.getArrivalDate()));
+        main.put("order.deliveryMethod", purchaseOrder.getDeliveryMethod());
+        main.put("order.purchaseType", purchaseOrder.getPurchaseType());
         main.put("order.receiveAddress", purchaseOrder.getReceiveAddress());
         main.put("order.settleMethod", purchaseOrder.getSettleMethod());
+        main.put("order.invoiceType", purchaseOrder.getInvoiceType());
+        main.put("order.factoryOrderNo", purchaseOrder.getFactoryOrderNo());
+        main.put("order.orderFormula", purchaseOrder.getOrderFormula());
+        main.put("order.sendDate", formatDateTime(purchaseOrder.getSendDate()));
+        main.put("order.latestArrivalDate", formatDateTime(purchaseOrder.getLatestArrivalDate()));
+        main.put("order.saleDateFrom", formatDateTime(purchaseOrder.getSaleDateFrom()));
+        main.put("order.saleDateTo", formatDateTime(purchaseOrder.getSaleDateTo()));
         main.put("order.remark", purchaseOrder.getRemark());
+        main.put("order.fileUrl", purchaseOrder.getFileUrl());
+        main.put("order.accountId", account == null ? null : account.getName());
+        main.put("order.orderCompany", purchaseOrder.getOrderCompany());
+        main.put("order.inCount", formatDecimal(purchaseOrder.getInCount()));
+        main.put("order.returnCount", formatDecimal(purchaseOrder.getReturnCount()));
         return main;
     }
 
     private List<Map<String, Object>> buildPurchaseOrderPrintItems(ErpPurchaseOrderDO purchaseOrder,
                                                                    List<ErpPurchaseOrderItemDO> items,
-                                                                   Map<Long, ErpProductRespVO> productMap) {
+                                                                   Map<Long, ErpProductRespVO> productMap,
+                                                                   Map<Long, ErpWarehouseDO> warehouseMap,
+                                                                   Map<Long, ErpSupplierDO> supplierMap) {
         List<Map<String, Object>> rows = new ArrayList<>();
         if (CollUtil.isEmpty(items)) {
             return rows;
@@ -530,16 +583,40 @@ public class ErpPurchaseOrderController {
         for (int i = 0; i < items.size(); i++) {
             ErpPurchaseOrderItemDO item = items.get(i);
             ErpProductRespVO product = productMap.get(item.getProductId());
+            ErpWarehouseDO warehouse = warehouseMap.get(item.getWarehouseId());
+            ErpSupplierDO supplier = supplierMap.get(item.getSupplierId());
+            String totalPrice = formatDecimal(firstNonNull(item.getTotalPrice(),
+                    priceMultiply(item.getProductPrice(), item.getCount())));
             Map<String, Object> row = new LinkedHashMap<>();
             row.put("items.seq", i + 1);
+            row.put("items.inStatus", formatStatus(calcStatus(item.getInCount(), item.getCount())));
+            row.put("items.gift", Boolean.TRUE.equals(item.getGift()) ? "是" : "否");
+            row.put("items.productCode", product == null ? null : product.getCode());
+            row.put("items.warehouseId", warehouse == null ? null : warehouse.getName());
             row.put("items.productName", product == null ? null : product.getName());
             row.put("items.standard", item.getStandard());
             row.put("items.brand", item.getBrand());
             row.put("items.productUnitName", product == null ? null : product.getUnitName());
+            row.put("items.weight", product == null ? null : formatDecimal(product.getWeight()));
+            row.put("items.packageQty", product == null ? null : product.getPackageQty());
             row.put("items.count", formatDecimal(item.getCount()));
             row.put("items.productPrice", formatDecimal(item.getProductPrice()));
-            row.put("items.totalPrice", formatDecimal(firstNonNull(item.getTotalPrice(),
-                    priceMultiply(item.getProductPrice(), item.getCount()))));
+            row.put("items.vehicleModel", item.getVehicleModel());
+            row.put("items.featureCode", item.getFeatureCode());
+            row.put("items.totalPrice", totalPrice);
+            row.put("items.totalProductPrice", totalPrice);
+            row.put("items.arrivalCount", formatDecimal(item.getArrivalCount()));
+            row.put("items.warehousePosition", item.getWarehousePosition());
+            row.put("items.drawingNo", item.getDrawingNo());
+            row.put("items.batchNo", item.getBatchNo());
+            row.put("items.factoryCode", item.getFactoryCode());
+            row.put("items.remark", item.getRemark());
+            row.put("items.supplierId", supplier == null ? null : supplier.getName());
+            row.put("items.taxPercent", formatDecimal(item.getTaxPercent()));
+            row.put("items.taxPrice", formatDecimal(item.getTaxPrice()));
+            row.put("items.inCount", formatDecimal(item.getInCount()));
+            row.put("items.returnCount", formatDecimal(item.getReturnCount()));
+            row.put("items.originPlace", item.getOriginPlace());
             row.put("items.arrivalDate", formatDateTime(purchaseOrder.getArrivalDate()));
             rows.add(row);
         }
@@ -584,6 +661,17 @@ public class ErpPurchaseOrderController {
         }
         BigDecimal amount = value.setScale(2, RoundingMode.HALF_UP);
         return amount.toPlainString();
+    }
+
+    private String formatStatus(Integer status) {
+        if (status == null) {
+            return "";
+        }
+        return switch (status) {
+            case 1 -> "部分入库";
+            case 2 -> "全部入库";
+            default -> "未入库";
+        };
     }
 
     private <T> T firstNonNull(T first, T second) {
@@ -650,6 +738,8 @@ public class ErpPurchaseOrderController {
         row.setProductCode(product != null ? product.getCode() : null);
         row.setProductName(product != null ? product.getName() : null);
         row.setProductUnitName(product != null ? product.getUnitName() : null);
+        row.setWeight(product != null ? product.getWeight() : null);
+        row.setPackageQty(product != null ? product.getPackageQty() : null);
         row.setItemCount(item.getCount());
         row.setProductPrice(item.getProductPrice());
         row.setGift(Boolean.TRUE.equals(item.getGift()) ? "是" : "否");
@@ -730,8 +820,11 @@ public class ErpPurchaseOrderController {
         map.put("productCode", "detail");
         map.put("productName", "detail");
         map.put("productUnitName", "detail");
+        map.put("weight", "detail");
+        map.put("packageQty", "detail");
         map.put("itemCount", "detail");
         map.put("productPrice", "detail");
+        map.put("batchNo", "detail");
         map.put("gift", "detail");
         map.put("itemTotalPrice", "detail");
         map.put("itemTaxPercent", "detail");
@@ -746,8 +839,11 @@ public class ErpPurchaseOrderController {
         map.put("productCode", "item_productCode");
         map.put("productName", "item_productId");
         map.put("productUnitName", "item_productUnitName");
+        map.put("weight", "item_weight");
+        map.put("packageQty", "item_packageQty");
         map.put("itemCount", "item_count");
         map.put("productPrice", "item_productPrice");
+        map.put("batchNo", "item_batchNo");
         map.put("gift", "item_gift");
         map.put("itemTotalPrice", "item_totalProductPrice");
         map.put("itemRemark", "item_remark");

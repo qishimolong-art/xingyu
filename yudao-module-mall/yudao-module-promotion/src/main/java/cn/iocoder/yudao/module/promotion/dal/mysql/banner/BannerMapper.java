@@ -1,5 +1,6 @@
 package cn.iocoder.yudao.module.promotion.dal.mysql.banner;
 
+import cn.iocoder.yudao.framework.common.enums.CommonStatusEnum;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.mybatis.core.mapper.BaseMapperX;
 import cn.iocoder.yudao.framework.mybatis.core.query.LambdaQueryWrapperX;
@@ -22,6 +23,7 @@ public interface BannerMapper extends BaseMapperX<BannerDO> {
         return selectPage(reqVO, new LambdaQueryWrapperX<BannerDO>()
                 .likeIfPresent(BannerDO::getTitle, reqVO.getTitle())
                 .eqIfPresent(BannerDO::getStatus, reqVO.getStatus())
+                .eqIfPresent(BannerDO::getPosition, reqVO.getPosition())
                 .betweenIfPresent(BannerDO::getCreateTime, reqVO.getCreateTime())
                 .orderByDesc(BannerDO::getSort));
     }
@@ -33,7 +35,10 @@ public interface BannerMapper extends BaseMapperX<BannerDO> {
     }
 
     default List<BannerDO> selectBannerListByPosition(Integer position) {
-        return selectList(new LambdaQueryWrapperX<BannerDO>().eq(BannerDO::getPosition, position));
+        return selectList(new LambdaQueryWrapperX<BannerDO>()
+                .eq(BannerDO::getPosition, position)
+                .eq(BannerDO::getStatus, CommonStatusEnum.ENABLE.getStatus())
+                .orderByDesc(BannerDO::getSort));
     }
 
 }

@@ -13,6 +13,7 @@ import cn.iocoder.yudao.module.erp.service.common.ErpOperateLogService;
 import cn.iocoder.yudao.module.erp.service.finance.ErpAccountService;
 import cn.iocoder.yudao.module.erp.service.finance.ErpFinanceFieldPermissionMasker;
 import cn.iocoder.yudao.module.system.api.dept.DeptApi;
+import cn.iocoder.yudao.module.system.api.dept.dto.DeptRespDTO;
 import cn.iocoder.yudao.module.system.api.user.AdminUserApi;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -25,6 +26,7 @@ import java.util.Collections;
 
 import static cn.iocoder.yudao.framework.test.core.util.AssertUtils.assertServiceException;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PAYABLE_EXPENSE_APPROVE_FAIL;
+import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PAYABLE_EXPENSE_DEPT_REQUIRED;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PAYABLE_EXPENSE_DRAFT_ITEMS_REQUIRED;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PAYABLE_EXPENSE_DRAFT_SUBMIT_FAIL;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PAYABLE_EXPENSE_DRAFT_UPDATE_FAIL;
@@ -56,6 +58,83 @@ class ErpPayableExpenseDraftServiceImplTest extends BaseMockitoUnitTest {
     private ErpFinanceFieldPermissionMasker fieldPermissionMasker;
     @Mock
     private ErpOperateLogService operateLogService;
+
+    @Test
+    void create_requiresDeptIdAfterDefaultFill() {
+        assertServiceException(
+                () -> service.createPayableExpense(new ErpPayableExpenseSaveReqVO()
+                        .setBizTime(LocalDate.of(2026, 8, 17))
+                        .setSettleMethod("现金")
+                        .setAccountId(2L)
+                        .setExpenseType("其他")
+                        .setHandlerId(3L)
+                        .setItems(Collections.singletonList(new ErpPayableExpenseSaveReqVO.Item()
+                                .setItemName("办公用品")
+                                .setAmount(new BigDecimal("12.30"))))),
+                PAYABLE_EXPENSE_DEPT_REQUIRED);
+        verify(noRedisDAO, never()).generate(any());
+    }
+
+    @Test
+    void create_savesExpenseBizType() {
+        when(noRedisDAO.generate("FYZF")).thenReturn("FYZF1");
+        when(deptApi.getDept(4L)).thenReturn(new DeptRespDTO().setId(4L));
+        when(expenseMapper.insert(any(ErpPayableExpenseDO.class))).thenAnswer(invocation -> {
+            ((ErpPayableExpenseDO) invocation.getArgument(0)).setId(1L);
+            return 1;
+        });
+
+        Long id = service.createPayableExpense(new ErpPayableExpenseSaveReqVO()
+                .setBizTime(LocalDate.of(2026, 8, 17))
+                .setSettleMethod("现金")
+                .setAccountId(2L)
+                .setExpenseBizType("一般费用")
+                .setExpenseType("其他")
+                .setDeptId(4L)
+                .setHandlerId(3L)
+                .setItems(Collections.singletonList(new ErpPayableExpenseSaveReqVO.Item()
+                        .setItemName("办公用品")
+                        .setAmount(new BigDecimal("12.30")))));
+
+        assertThat(id).isEqualTo(1L);
+        ArgumentCaptor<ErpPayableExpenseDO> captor =
+                ArgumentCaptor.forClass(ErpPayableExpenseDO.class);
+        verify(expenseMapper).insert(captor.capture());
+        assertThat(captor.getValue().getExpenseBizType()).isEqualTo("一般费用");
+        assertThat(captor.getValue().getDeptId()).isEqualTo(4L);
+        assertThat(captor.getValue().getTotalAmount()).isEqualByComparingTo("12.30");
+    }
+
+    @Test
+    void update_savesExpenseBizType() {
+        when(expenseMapper.selectById(10L)).thenReturn(new ErpPayableExpenseDO()
+                .setId(10L).setNo("FYZF10")
+                .setStatus(ErpPayableExpenseStatusEnum.PROCESS.getStatus()));
+        when(expenseItemMapper.selectListByExpenseId(10L)).thenReturn(
+                Collections.singletonList(new ErpPayableExpenseItemDO().setId(20L)));
+        when(deptApi.getDept(4L)).thenReturn(new DeptRespDTO().setId(4L));
+        when(expenseMapper.updateByIdAndStatus(eq(10L),
+                eq(ErpPayableExpenseStatusEnum.PROCESS.getStatus()), any())).thenReturn(1);
+
+        service.updatePayableExpense(new ErpPayableExpenseSaveReqVO()
+                .setId(10L)
+                .setBizTime(LocalDate.of(2026, 8, 17))
+                .setSettleMethod("现金")
+                .setAccountId(2L)
+                .setExpenseBizType("管理费用")
+                .setExpenseType("其他")
+                .setDeptId(4L)
+                .setHandlerId(3L)
+                .setItems(Collections.singletonList(new ErpPayableExpenseSaveReqVO.Item()
+                        .setItemName("办公用品")
+                        .setAmount(new BigDecimal("20.00")))));
+
+        ArgumentCaptor<ErpPayableExpenseDO> captor =
+                ArgumentCaptor.forClass(ErpPayableExpenseDO.class);
+        verify(expenseMapper).updateByIdAndStatus(eq(10L),
+                eq(ErpPayableExpenseStatusEnum.PROCESS.getStatus()), captor.capture());
+        assertThat(captor.getValue().getExpenseBizType()).isEqualTo("管理费用");
+    }
 
     @Test
     void createDraft_withoutValidItems_throwException() {
@@ -154,10 +233,11 @@ class ErpPayableExpenseDraftServiceImplTest extends BaseMockitoUnitTest {
                 .setStatus(ErpPayableExpenseStatusEnum.DRAFT.getStatus())
                 .setBizTime(LocalDate.of(2026, 7, 27))
                 .setSettleMethod("银行转账").setAccountId(2L)
-                .setExpenseType("办公费").setHandlerId(3L));
+                .setExpenseType("办公费").setDeptId(4L).setHandlerId(3L));
         when(expenseItemMapper.selectListByExpenseId(10L)).thenReturn(
                 Collections.singletonList(new ErpPayableExpenseItemDO()
                         .setItemName("打印耗材").setAmount(new BigDecimal("88.60"))));
+        when(deptApi.getDept(4L)).thenReturn(new DeptRespDTO().setId(4L));
         when(expenseMapper.updateByIdAndStatus(eq(10L),
                 eq(ErpPayableExpenseStatusEnum.DRAFT.getStatus()), any())).thenReturn(1);
 

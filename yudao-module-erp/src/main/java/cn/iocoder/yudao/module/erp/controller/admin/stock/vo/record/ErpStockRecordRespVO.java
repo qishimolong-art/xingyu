@@ -30,6 +30,21 @@ public class ErpStockRecordRespVO {
     @ExcelProperty("批次号")
     private String batchNo;
 
+    @Schema(description = "产品单位编号")
+    private Long productUnitId;
+
+    @Schema(description = "包装数")
+    @ExcelProperty("包装数")
+    private Integer packageQty;
+
+    @Schema(description = "单重")
+    @ExcelProperty("单重")
+    private BigDecimal weight;
+
+    @Schema(description = "总重")
+    @ExcelProperty("总重")
+    private BigDecimal totalWeight;
+
     @Schema(description = "出入库数量", requiredMode = Schema.RequiredMode.REQUIRED, example = "11084")
     @ExcelProperty("出入库数量")
     private BigDecimal count;

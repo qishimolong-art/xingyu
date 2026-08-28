@@ -69,6 +69,14 @@ public interface ProductSpuService {
     List<ProductSpuDO> getSpuList(Collection<Long> ids);
 
     /**
+     * 按配件编码查询商品 SPU 列表。
+     *
+     * @param code 配件编码
+     * @return 商品 SPU 列表
+     */
+    List<ProductSpuDO> getSpuListByPartCode(String code);
+
+    /**
      * 获得商品 SPU Map
      *
      * @param ids 编号数组
@@ -104,11 +112,27 @@ public interface ProductSpuService {
     PageResult<ProductSpuDO> getSpuPage(AppProductSpuPageReqVO pageReqVO);
 
     /**
+     * 获得用户 App 商品 SPU 车型筛选项列表
+     *
+     * @param pageReqVO 查询条件
+     * @return 车型筛选项列表
+     */
+    List<String> getAppVehicleModelList(AppProductSpuPageReqVO pageReqVO);
+
+    /**
      * 更新商品 SPU 库存（增量）
      *
      * @param stockIncrCounts SPU 编号与库存变化（增量）的映射
      */
     void updateSpuStock(Map<Long, Integer> stockIncrCounts);
+
+    /**
+     * 设置商品 SPU 库存为目标数量。
+     *
+     * @param id SPU 编号
+     * @param stock 目标库存
+     */
+    void updateSpuStockCount(Long id, Integer stock);
 
     /**
      * 更新 SPU 状态

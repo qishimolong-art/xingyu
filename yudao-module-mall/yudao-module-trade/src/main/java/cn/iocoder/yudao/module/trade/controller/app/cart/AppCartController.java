@@ -13,6 +13,7 @@ import org.springframework.web.bind.annotation.*;
 
 import javax.annotation.Resource;
 import javax.validation.Valid;
+import javax.validation.constraints.NotNull;
 import java.util.List;
 
 import static cn.iocoder.yudao.framework.common.pojo.CommonResult.success;
@@ -59,21 +60,22 @@ public class AppCartController {
     @DeleteMapping("/delete")
     @Operation(summary = "删除购物车商品")
     @Parameter(name = "ids", description = "购物车商品编号", required = true, example = "1024,2048")
-    public CommonResult<Boolean> deleteCart(@RequestParam("ids") List<Long> ids) {
-        cartService.deleteCart(getLoginUserId(), ids);
+    public CommonResult<Boolean> deleteCart(@RequestParam("ids") List<Long> ids,
+                                            @NotNull(message = "部门不能为空") @RequestParam("deptId") Long deptId) {
+        cartService.deleteCart(getLoginUserId(), deptId, ids);
         return success(true);
     }
 
     @GetMapping("get-count")
     @Operation(summary = "查询用户在购物车中的商品数量")
-    public CommonResult<Integer> getCartCount() {
-        return success(cartService.getCartCount(getLoginUserId()));
+    public CommonResult<Integer> getCartCount(@NotNull(message = "部门不能为空") @RequestParam("deptId") Long deptId) {
+        return success(cartService.getCartCount(getLoginUserId(), deptId));
     }
 
     @GetMapping("/list")
     @Operation(summary = "查询用户的购物车列表")
-    public CommonResult<AppCartListRespVO> getCartList() {
-        return success(cartService.getCartList(getLoginUserId()));
+    public CommonResult<AppCartListRespVO> getCartList(@NotNull(message = "部门不能为空") @RequestParam("deptId") Long deptId) {
+        return success(cartService.getCartList(getLoginUserId(), deptId));
     }
 
 }

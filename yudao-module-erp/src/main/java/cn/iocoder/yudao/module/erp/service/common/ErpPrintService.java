@@ -15,6 +15,8 @@ public interface ErpPrintService {
 
     ErpPrintFieldRespVO getFields(String moduleKey);
 
+    Map<String, Object> getPrintData(String moduleKey, Long businessId);
+
     ErpPrintTemplateRespVO getDefaultTemplate(String moduleKey);
 
     List<ErpPrintTemplateRespVO> getTemplateList(String moduleKey);
@@ -24,6 +26,8 @@ public interface ErpPrintService {
     Long saveTemplate(@Valid ErpPrintTemplateSaveReqVO reqVO);
 
     Long saveAsTemplate(@Valid ErpPrintTemplateSaveReqVO reqVO);
+
+    void setDefaultTemplate(Long id);
 
     void recordPrint(@Valid ErpPrintRecordCreateReqVO reqVO);
 

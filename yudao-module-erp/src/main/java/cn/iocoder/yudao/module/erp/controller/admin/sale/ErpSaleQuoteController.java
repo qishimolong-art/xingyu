@@ -218,7 +218,7 @@ public class ErpSaleQuoteController {
             return success(null);
         }
         ErpSaleQuoteRespVO respVO = buildSaleQuoteRespVO(quote, saleQuoteService.getSaleQuoteItemListByQuoteId(id));
-        fieldPermissionMasker.maskFormWithItems(FIELD_PERMISSION_MODULE, respVO);
+        fieldPermissionMasker.maskSaleDetailFormWithItems(FIELD_PERMISSION_MODULE, respVO);
         return success(respVO);
     }
 
@@ -243,7 +243,7 @@ public class ErpSaleQuoteController {
     public CommonResult<PageResult<ErpSaleQuoteRespVO>> getSaleQuotePage(@Valid ErpSaleQuotePageReqVO pageReqVO) {
         PageResult<ErpSaleQuoteDO> pageResult = saleQuoteService.getSaleQuotePage(pageReqVO);
         PageResult<ErpSaleQuoteRespVO> respResult = buildSaleQuoteVOPageResult(pageResult);
-        fieldPermissionMasker.maskFormsWithItems(FIELD_PERMISSION_MODULE, respResult.getList());
+        fieldPermissionMasker.maskSaleDetailFormsWithItems(FIELD_PERMISSION_MODULE, respResult.getList());
         return success(respResult);
     }
 
@@ -257,12 +257,12 @@ public class ErpSaleQuoteController {
         pageReqVO.setPageSize(PageParam.PAGE_SIZE_NONE);
         List<ErpSaleQuoteRespVO> list = buildSaleQuoteVOPageResult(
                 saleQuoteService.getSaleQuotePage(pageReqVO)).getList();
-        fieldPermissionMasker.maskFormsWithItems(FIELD_PERMISSION_MODULE, list);
+        fieldPermissionMasker.maskSaleDetailFormsWithItems(FIELD_PERMISSION_MODULE, list);
         List<ErpSaleQuoteExportRespVO> rows = buildSaleQuoteExportList(list);
-        fieldPermissionMasker.maskExportRows(FIELD_PERMISSION_MODULE, rows);
+        fieldPermissionMasker.maskSaleDetailExportRows(FIELD_PERMISSION_MODULE, rows);
         Set<String> includeFields = ErpExportFieldUtils.resolveIncludeFields(ErpSaleQuoteExportRespVO.class,
                 ErpExportFieldUtils.parseFieldParam(fields),
-                fieldPermissionMasker.getHiddenFieldSet(FIELD_PERMISSION_MODULE), EXPORT_FIELD_PERMISSION_MAP);
+                fieldPermissionMasker.getHiddenFieldSet(FIELD_PERMISSION_MODULE, false), EXPORT_FIELD_PERMISSION_MAP);
         ExcelUtils.write(response, "报价订单.xls", "数据", ErpSaleQuoteExportRespVO.class, rows, includeFields);
     }
 
@@ -271,7 +271,7 @@ public class ErpSaleQuoteController {
     @PreAuthorize("@ss.hasPermission('erp:sale-quote:export')")
     public CommonResult<List<ErpExportFieldRespVO>> getSaleQuoteExportFields() {
         return success(ErpExportFieldUtils.listFields(ErpSaleQuoteExportRespVO.class, EXPORT_FIELD_GROUP_MAP,
-                fieldPermissionMasker.getHiddenFieldSet(FIELD_PERMISSION_MODULE), EXPORT_FIELD_PERMISSION_MAP));
+                fieldPermissionMasker.getHiddenFieldSet(FIELD_PERMISSION_MODULE, false), EXPORT_FIELD_PERMISSION_MAP));
     }
 
     @GetMapping("/export-import-template")
@@ -435,9 +435,9 @@ public class ErpSaleQuoteController {
         List<ErpSaleQuoteItemDO> safeItems = CollUtil.isEmpty(items) ? Collections.emptyList() : items;
         Map<Long, BigDecimal> lastSalePriceMap = DataPermissionUtils.executeIgnore(
                 () -> saleOutItemMapper.selectLatestSalePriceMap(convertSet(safeItems, ErpSaleQuoteItemDO::getProductId)));
-        boolean hidePrice = isQuoteItemPriceHidden();
         Integer customerPriceLevel = vo.getCustomerId() == null || customerMap.get(vo.getCustomerId()) == null
                 ? null : customerMap.get(vo.getCustomerId()).getPriceLevel();
+        boolean hidePrice = isQuoteItemPriceHidden(customerPriceLevel);
         List<ErpSaleQuoteRespVO.Item> respItems = BeanUtils.toBean(safeItems, ErpSaleQuoteRespVO.Item.class,
                 item -> {
                     item.setLastSalePrice(hidePrice ? null : lastSalePriceMap.get(item.getProductId()));
@@ -489,8 +489,8 @@ public class ErpSaleQuoteController {
         }
     }
 
-    private boolean isQuoteItemPriceHidden() {
-        Set<String> hiddenFields = fieldPermissionMasker.getHiddenFieldSet(FIELD_PERMISSION_MODULE);
+    private boolean isQuoteItemPriceHidden(Integer customerPriceLevel) {
+        Set<String> hiddenFields = fieldPermissionMasker.getHiddenFieldSet(FIELD_PERMISSION_MODULE, customerPriceLevel);
         return hiddenFields.contains("item_productPrice")
                 || hiddenFields.contains("col_item_productPrice")
                 || hiddenFields.contains("productPrice")
@@ -560,12 +560,15 @@ public class ErpSaleQuoteController {
         ErpSaleQuoteExportRespVO row = fillQuoteFields
                 ? BeanUtils.toBean(quote, ErpSaleQuoteExportRespVO.class)
                 : new ErpSaleQuoteExportRespVO();
+        row.setCustomerId(quote.getCustomerId());
         if (item == null) {
             return row;
         }
         row.setProductCode(item.getProductCode());
         row.setProductName(item.getProductName());
         row.setProductUnitName(item.getProductUnitName());
+        row.setWeight(item.getWeight());
+        row.setPackageQty(item.getPackageQty());
         row.setItemCount(item.getCount());
         row.setConvertedCount(item.getConvertedCount());
         row.setProductPrice(item.getProductPrice());
@@ -595,6 +598,8 @@ public class ErpSaleQuoteController {
         map.put("productCode", "detail");
         map.put("productName", "detail");
         map.put("productUnitName", "detail");
+        map.put("weight", "detail");
+        map.put("packageQty", "detail");
         map.put("itemCount", "detail");
         map.put("convertedCount", "detail");
         map.put("productPrice", "detail");
@@ -617,6 +622,8 @@ public class ErpSaleQuoteController {
         map.put("productCode", "item_productCode");
         map.put("productName", "item_productId");
         map.put("productUnitName", "item_productUnitName");
+        map.put("weight", "item_weight");
+        map.put("packageQty", "item_packageQty");
         map.put("itemCount", "item_count");
         map.put("convertedCount", "item_convertedCount");
         map.put("productPrice", "item_productPrice");

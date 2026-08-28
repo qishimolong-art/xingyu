@@ -155,11 +155,12 @@ public class ErpSaleOutServiceImpl implements ErpSaleOutService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Long createSaleOut(ErpSaleOutSaveReqVO createReqVO) {
-        clearHiddenFields(createReqVO);
-        clearHiddenItemFields(createReqVO.getItems());
-        clearItemSourceSnapshots(createReqVO.getItems());
         // 1.1 校验销售订单已审核
         ErpSaleOrderDO saleOrder = saleOrderService.validateSaleOrder(createReqVO.getOrderId());
+        createReqVO.setCustomerId(saleOrder.getCustomerId());
+        clearHiddenFields(createReqVO);
+        clearHiddenItemFields(createReqVO, createReqVO.getItems());
+        clearItemSourceSnapshots(createReqVO.getItems());
         customerService.validateCustomerForSale(saleOrder.getCustomerId(), saleOrder.getDeptId());
         // 1.2 校验出库项的有效性
         List<ErpSaleOutItemDO> saleOutItems = validateSaleOutItems(createReqVO.getItems(), createReqVO.getOrderId());
@@ -205,7 +206,7 @@ public class ErpSaleOutServiceImpl implements ErpSaleOutService {
     public Long createGeneratedSaleOut(ErpSaleOutSaveReqVO createReqVO, Integer sourceType, Long sourceId, String sourceNo,
                                        Boolean deferStockOutBill) {
         clearHiddenFields(createReqVO);
-        clearHiddenItemFields(createReqVO.getItems());
+        clearHiddenItemFields(createReqVO, createReqVO.getItems());
         // 1. Validate base data. The new sale flow does not depend on old sale orders.
         Long saleDeptId = resolveSaleDeptId(createReqVO);
         customerService.validateCustomerForGeneratedSale(createReqVO.getCustomerId(), saleDeptId);
@@ -278,7 +279,7 @@ public class ErpSaleOutServiceImpl implements ErpSaleOutService {
         }
         preserveHiddenFields(updateReqVO, saleOut);
         List<ErpSaleOutItemDO> existingItems = saleOutItemMapper.selectListByOutId(updateReqVO.getId());
-        preserveHiddenItemFields(updateReqVO.getItems(), existingItems);
+        preserveHiddenItemFields(updateReqVO, updateReqVO.getItems(), existingItems);
         preserveItemSourceSnapshots(updateReqVO.getItems(), existingItems);
         // 1.2 校验销售订单已审核
         ErpSaleOrderDO saleOrder = saleOrderService.validateSaleOrder(updateReqVO.getOrderId());
@@ -396,6 +397,7 @@ public class ErpSaleOutServiceImpl implements ErpSaleOutService {
         saleOut.setExtraFee(feeAmount);
         saleOut.setDiscountPrice(MoneyUtils.priceMultiplyPercent(saleOut.getTotalPrice(), saleOut.getDiscountPercent()));
         saleOut.setTotalPrice(saleOut.getTotalPrice().subtract(saleOut.getDiscountPrice()).add(feeAmount));
+        saleOut.setTotalWeight(getSumValue(saleOutItems, ErpSaleOutItemDO::getTotalWeight, BigDecimal::add, BigDecimal.ZERO));
     }
 
     private BigDecimal resolveFeeAmount(BigDecimal feeAmount, BigDecimal otherPrice, BigDecimal extraFee) {
@@ -448,7 +450,7 @@ public class ErpSaleOutServiceImpl implements ErpSaleOutService {
         if (validateCurrentUserWarehousePermission) {
             warehouseService.validSaleWarehouseList(warehouseIds);
         } else {
-            warehouseService.validSaleWarehouseListForDept(
+            warehouseService.validSaleSelectableWarehouseListForDept(
                     warehouseIds, resolveSaleDeptId(saleOut, saleOutItems));
         }
         Integer bizType = ErpStockRecordBizTypeEnum.SALE_OUT.getType();
@@ -534,27 +536,45 @@ public class ErpSaleOutServiceImpl implements ErpSaleOutService {
         List<Long> warehouseIds = convertList(list, ErpSaleOutSaveReqVO.Item::getWarehouseId);
         Map<Long, ErpWarehouseDO> warehouseMap = convertMap(
                 saleDeptId != null
-                        ? warehouseService.validSaleWarehouseListForDept(warehouseIds, saleDeptId)
+                        ? warehouseService.validSaleSelectableWarehouseListForDept(warehouseIds, saleDeptId)
                         : warehouseService.validSaleWarehouseList(warehouseIds),
                 ErpWarehouseDO::getId);
-        Map<Long, Boolean> orderItemGiftFlagMap = buildOrderItemGiftFlagMap(orderId);
+        Map<Long, ErpSaleOrderItemDO> orderItemMap = buildOrderItemMap(orderId);
         // 2. 转化成 ErpSaleOutItemDO 列表
         return convertList(list, o -> BeanUtils.toBean(o, ErpSaleOutItemDO.class, item -> {
-            item.setProductUnitId(productMap.get(item.getProductId()).getUnitId());
-            fillDeptIdFromWarehouse(item, warehouseMap);
-            validateSaleDeptWarehousePermission(item);
-            item.setGiftFlag(resolveGiftFlag(o.getGiftFlag(), item.getOrderItemId(), orderItemGiftFlagMap));
+            ErpProductDO product = productMap.get(item.getProductId());
+            item.setProductUnitId(product.getUnitId());
+            fillDeptIdFromWarehouse(item, warehouseMap, saleDeptId);
+            validateSaleDeptWarehousePermission(item, saleDeptId);
+            fillBatchNoFromOrderItem(item, orderItemMap);
+            fillWeightAndPackageFromOrderItem(item, orderItemMap);
+            fillProductWeightAndPackage(item, product);
+            item.setGiftFlag(resolveGiftFlag(o.getGiftFlag(), item.getOrderItemId(), orderItemMap));
             if (Boolean.TRUE.equals(item.getGiftFlag())) {
                 item.setProductPrice(BigDecimal.ZERO);
                 item.setTotalPrice(BigDecimal.ZERO);
                 item.setTaxPercent(null);
                 item.setTaxPrice(BigDecimal.ZERO);
+                item.setTotalWeight(MoneyUtils.priceMultiply(item.getUnitWeight(), item.getCount()));
                 return;
             }
             item.setTaxPercent(null);
             item.setTaxPrice(BigDecimal.ZERO);
             item.setTotalPrice(MoneyUtils.priceMultiply(item.getProductPrice(), item.getCount()));
+            item.setTotalWeight(MoneyUtils.priceMultiply(item.getUnitWeight(), item.getCount()));
         }));
+    }
+
+    private void fillProductWeightAndPackage(ErpSaleOutItemDO item, ErpProductDO product) {
+        if (product == null) {
+            return;
+        }
+        if (item.getUnitWeight() == null) {
+            item.setUnitWeight(product.getWeight());
+        }
+        if (item.getPackageQty() == null) {
+            item.setPackageQty(product.getPackageQty());
+        }
     }
 
     private Long resolveSaleDeptId(ErpSaleOutSaveReqVO reqVO) {
@@ -585,21 +605,29 @@ public class ErpSaleOutServiceImpl implements ErpSaleOutService {
                 .orElse(null);
     }
 
-    private void fillDeptIdFromWarehouse(ErpSaleOutItemDO item, Map<Long, ErpWarehouseDO> warehouseMap) {
-        if (item.getDeptId() == null && item.getWarehouseId() != null) {
-            ErpWarehouseDO warehouse = warehouseMap.get(item.getWarehouseId());
+    private void fillDeptIdFromWarehouse(ErpSaleOutItemDO item, Map<Long, ErpWarehouseDO> warehouseMap, Long saleDeptId) {
+        if (item.getWarehouseId() == null) {
+            return;
+        }
+        ErpWarehouseDO warehouse = warehouseMap.get(item.getWarehouseId());
+        if (warehouse != null && !warehouseService.isWarehouseSaleAllowedForDept(warehouse.getId(), saleDeptId)) {
+            item.setDeptId(warehouse.getDeptId());
+            return;
+        }
+        if (item.getDeptId() == null) {
             item.setDeptId(warehouse == null ? null : warehouse.getDeptId());
         }
     }
 
-    private void validateSaleDeptWarehousePermission(ErpSaleOutItemDO item) {
+    private void validateSaleDeptWarehousePermission(ErpSaleOutItemDO item, Long saleDeptId) {
         if (item.getDeptId() == null) {
             throw exception(SALE_WAREHOUSE_DEPT_REQUIRED);
         }
-        warehouseService.validateWarehouseSaleAllowedForDept(item.getWarehouseId(), item.getDeptId());
+        warehouseService.validateWarehouseSaleSelectableForDept(item.getWarehouseId(),
+                saleDeptId != null ? saleDeptId : item.getDeptId());
     }
 
-    private Map<Long, Boolean> buildOrderItemGiftFlagMap(Long orderId) {
+    private Map<Long, ErpSaleOrderItemDO> buildOrderItemMap(Long orderId) {
         if (orderId == null) {
             return Collections.emptyMap();
         }
@@ -608,15 +636,42 @@ public class ErpSaleOutServiceImpl implements ErpSaleOutService {
             return Collections.emptyMap();
         }
         return orderItems.stream().collect(Collectors.toMap(ErpSaleOrderItemDO::getId,
-                item -> Boolean.TRUE.equals(item.getGiftFlag()), (oldValue, newValue) -> oldValue));
+                item -> item, (oldValue, newValue) -> oldValue));
     }
 
-    private Boolean resolveGiftFlag(Boolean reqGiftFlag, Long orderItemId, Map<Long, Boolean> orderItemGiftFlagMap) {
+    private void fillBatchNoFromOrderItem(ErpSaleOutItemDO item, Map<Long, ErpSaleOrderItemDO> orderItemMap) {
+        if (item.getBatchNo() != null || item.getOrderItemId() == null) {
+            return;
+        }
+        ErpSaleOrderItemDO orderItem = orderItemMap.get(item.getOrderItemId());
+        if (orderItem != null) {
+            item.setBatchNo(orderItem.getBatchNo());
+        }
+    }
+
+    private void fillWeightAndPackageFromOrderItem(ErpSaleOutItemDO item, Map<Long, ErpSaleOrderItemDO> orderItemMap) {
+        if (item.getOrderItemId() == null) {
+            return;
+        }
+        ErpSaleOrderItemDO orderItem = orderItemMap.get(item.getOrderItemId());
+        if (orderItem == null) {
+            return;
+        }
+        if (item.getUnitWeight() == null) {
+            item.setUnitWeight(orderItem.getWeight());
+        }
+        if (item.getPackageQty() == null) {
+            item.setPackageQty(orderItem.getPackageQty());
+        }
+    }
+
+    private Boolean resolveGiftFlag(Boolean reqGiftFlag, Long orderItemId, Map<Long, ErpSaleOrderItemDO> orderItemMap) {
         if (reqGiftFlag != null) {
             return Boolean.TRUE.equals(reqGiftFlag);
         }
-        if (orderItemId != null && orderItemGiftFlagMap.containsKey(orderItemId)) {
-            return Boolean.TRUE.equals(orderItemGiftFlagMap.get(orderItemId));
+        ErpSaleOrderItemDO orderItem = orderItemId == null ? null : orderItemMap.get(orderItemId);
+        if (orderItem != null) {
+            return Boolean.TRUE.equals(orderItem.getGiftFlag());
         }
         return Boolean.FALSE;
     }
@@ -779,6 +834,7 @@ public class ErpSaleOutServiceImpl implements ErpSaleOutService {
             vo.setSourceOutId(outId);
             vo.setSourceOutItemId(item.getId());
             vo.setSourceOutNo(saleOut.getNo());
+            vo.setCustomerId(saleOut.getCustomerId());
             vo.setProductId(item.getProductId());
             MapUtils.findAndThen(productMap, item.getProductId(), product -> {
                 vo.setProductCode(product.getCode());
@@ -787,6 +843,8 @@ public class ErpSaleOutServiceImpl implements ErpSaleOutService {
                 vo.setProductUnitName(product.getUnitName());
             });
             vo.setProductUnitId(item.getProductUnitId());
+            vo.setWeight(item.getUnitWeight());
+            vo.setPackageQty(item.getPackageQty());
             vo.setWarehouseId(item.getWarehouseId());
             MapUtils.findAndThen(warehouseMap, item.getWarehouseId(), warehouse -> {
                 vo.setWarehouseName(warehouse.getName());
@@ -795,6 +853,7 @@ public class ErpSaleOutServiceImpl implements ErpSaleOutService {
                         dept -> vo.setWarehouseDeptName(dept.getName()));
             });
             vo.setDeptId(item.getDeptId());
+            vo.setBatchNo(item.getBatchNo());
             MapUtils.findAndThen(deptMap, item.getDeptId(), dept -> vo.setDeptName(dept.getName()));
             vo.setProductPrice(item.getProductPrice());
             vo.setOutCount(item.getCount());
@@ -810,25 +869,25 @@ public class ErpSaleOutServiceImpl implements ErpSaleOutService {
 
     private void clearHiddenFields(Object target) {
         if (fieldPermissionMasker != null) {
-            fieldPermissionMasker.clearHiddenFields(FIELD_PERMISSION_MODULE, target);
+            fieldPermissionMasker.clearSaleDetailHiddenFields(FIELD_PERMISSION_MODULE, target);
         }
     }
 
-    private void clearHiddenItemFields(List<?> items) {
+    private void clearHiddenItemFields(Object context, List<?> items) {
         if (fieldPermissionMasker != null) {
-            fieldPermissionMasker.clearHiddenItemFields(FIELD_PERMISSION_MODULE, items);
+            fieldPermissionMasker.clearSaleDetailHiddenItemFields(FIELD_PERMISSION_MODULE, context, items);
         }
     }
 
     private void preserveHiddenFields(Object target, Object existing) {
         if (fieldPermissionMasker != null) {
-            fieldPermissionMasker.preserveHiddenFields(FIELD_PERMISSION_MODULE, target, existing);
+            fieldPermissionMasker.preserveSaleDetailHiddenFields(FIELD_PERMISSION_MODULE, target, existing);
         }
     }
 
-    private void preserveHiddenItemFields(List<?> items, List<?> existingItems) {
+    private void preserveHiddenItemFields(Object context, List<?> items, List<?> existingItems) {
         if (fieldPermissionMasker != null) {
-            fieldPermissionMasker.preserveHiddenItemFields(FIELD_PERMISSION_MODULE, items, existingItems);
+            fieldPermissionMasker.preserveSaleDetailHiddenItemFields(FIELD_PERMISSION_MODULE, context, items, existingItems);
         }
     }
 

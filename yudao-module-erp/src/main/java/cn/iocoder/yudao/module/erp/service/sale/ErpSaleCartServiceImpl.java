@@ -107,6 +107,7 @@ public class ErpSaleCartServiceImpl implements ErpSaleCartService {
     private static final int TRANSFER_DIRECTION_OUT = 10;
     private static final String FREIGHT_TYPE_CUSTOMER_ADVANCE = "代客户付";
     private static final String FREIGHT_TYPE_SELF_PAY = "我方自付";
+    private static final String MALL_DEFAULT_ADMIN_USER_ID = "121";
 
     @Resource
     private ErpSaleCartMapper saleCartMapper;
@@ -169,6 +170,14 @@ public class ErpSaleCartServiceImpl implements ErpSaleCartService {
 
     @Override
     @Transactional(rollbackFor = Exception.class)
+    public Long createSaleCartDraftFromSource(ErpSaleCartSaveReqVO createReqVO) {
+        CreatedSaleCart created = createSaleCart(createReqVO, ErpSaleCartStatusEnum.PROCESS.getStatus(), true);
+        recordCreate(created.cart.getId(), created.cart.getNo());
+        return created.cart.getId();
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
     public ErpSaleCartSubmitRespVO createAndSubmitSaleCart(ErpSaleCartSaveReqVO createReqVO) {
         CreatedSaleCart created = createSaleCart(createReqVO, null);
         return submitCreatedSaleCart(created);
@@ -208,10 +217,10 @@ public class ErpSaleCartServiceImpl implements ErpSaleCartService {
         Long sourceId = createReqVO.getSourceId();
         String sourceNo = createReqVO.getSourceNo();
         clearHiddenFields(createReqVO);
-        clearHiddenItemFields(createReqVO.getItems());
+        clearHiddenItemFields(createReqVO, createReqVO.getItems());
         Long saleDeptId = resolveSaleDeptId(createReqVO.getDeptId());
         if (createReqVO.getCustomerId() != null) {
-            customerService.validateCustomerForSale(createReqVO.getCustomerId(), saleDeptId);
+            validateCustomerForCreate(createReqVO.getCustomerId(), saleDeptId, preserveSource);
         }
         if (createReqVO.getAccountId() != null) {
             accountService.validateAccount(createReqVO.getAccountId());
@@ -248,12 +257,38 @@ public class ErpSaleCartServiceImpl implements ErpSaleCartService {
         if (!draft) {
             validateFreightFinanceFields(cart);
         }
+        if (isMallOrderSource(preserveSource, sourceType)) {
+            fillMallDefaultAuditFields(cart, items);
+        }
         saleCartMapper.insert(cart);
         if (CollUtil.isNotEmpty(items)) {
             items.forEach(item -> item.setCartId(cart.getId()));
             saleCartItemMapper.insertBatch(items);
         }
         return new CreatedSaleCart(cart, items);
+    }
+
+    private boolean isMallOrderSource(boolean preserveSource, Integer sourceType) {
+        return preserveSource && ErpSaleBizSourceTypeEnum.MALL_ORDER.getType().equals(sourceType);
+    }
+
+    private void fillMallDefaultAuditFields(ErpSaleCartDO cart, List<ErpSaleCartItemDO> items) {
+        cart.setCreator(MALL_DEFAULT_ADMIN_USER_ID);
+        cart.setUpdater(MALL_DEFAULT_ADMIN_USER_ID);
+        if (CollUtil.isNotEmpty(items)) {
+            items.forEach(item -> {
+                item.setCreator(MALL_DEFAULT_ADMIN_USER_ID);
+                item.setUpdater(MALL_DEFAULT_ADMIN_USER_ID);
+            });
+        }
+    }
+
+    private void validateCustomerForCreate(Long customerId, Long saleDeptId, boolean preserveSource) {
+        if (preserveSource) {
+            customerService.validateCustomerForGeneratedSale(customerId, saleDeptId);
+            return;
+        }
+        customerService.validateCustomerForSale(customerId, saleDeptId);
     }
 
     @Override
@@ -341,7 +376,7 @@ public class ErpSaleCartServiceImpl implements ErpSaleCartService {
         }
         preserveHiddenFields(updateReqVO, cart);
         List<ErpSaleCartSaveReqVO.Item> itemReqs = updateReqVO.getItems();
-        preserveHiddenItemFields(itemReqs, saleCartItemMapper.selectListByCartId(updateReqVO.getId()));
+        preserveHiddenItemFields(updateReqVO, itemReqs, saleCartItemMapper.selectListByCartId(updateReqVO.getId()));
         ErpSaleCartDO updateObj = BeanUtils.toBean(updateReqVO, ErpSaleCartDO.class);
         updateObj.setCartTime(LocalDateTime.now());
         Long saleDeptId = updateObj.getDeptId() != null ? updateObj.getDeptId() : cart.getDeptId();
@@ -478,7 +513,8 @@ public class ErpSaleCartServiceImpl implements ErpSaleCartService {
         validateFreightFinanceFields(cart);
         Set<Long> warehouseIds = convertSet(finalItems, ErpSaleCartItemDO::getWarehouseId);
         Map<Long, ErpWarehouseDO> warehouseMap = convertMap(
-                warehouseService.validSaleWarehouseListForDept(warehouseIds, cart.getDeptId()), ErpWarehouseDO::getId);
+                warehouseService.validSaleSelectableWarehouseListForDept(warehouseIds, cart.getDeptId()),
+                ErpWarehouseDO::getId);
         boolean stockBillEnabled = warehouseMap.values().stream()
                 .anyMatch(warehouse -> Boolean.TRUE.equals(warehouse.getStockBillEnabled()));
         Long saleOutId = saleOutService.createGeneratedSaleOut(buildSaleOutReqVO(cart, finalItems),
@@ -849,6 +885,8 @@ public class ErpSaleCartServiceImpl implements ErpSaleCartService {
             outItem.setSourceDeptId(item.getSourceDeptId());
             outItem.setProductId(item.getProductId());
             outItem.setProductUnitId(item.getProductUnitId());
+            outItem.setUnitWeight(item.getWeight());
+            outItem.setPackageQty(item.getPackageQty());
             outItem.setProductPrice(Boolean.TRUE.equals(item.getGiftFlag()) ? BigDecimal.ZERO : item.getProductPrice());
             outItem.setCount(item.getCount());
 
@@ -870,8 +908,8 @@ public class ErpSaleCartServiceImpl implements ErpSaleCartService {
         Map<Long, ErpProductDO> productMap = convertMap(productList, ErpProductDO::getId);
         productBatchNoValidator.validateBatchNoAllowed(list, productMap,
                 ErpSaleCartSaveReqVO.Item::getProductId, ErpSaleCartSaveReqVO.Item::getBatchNo);
-        Map<Long, ErpWarehouseDO> warehouseMap = convertMap(warehouseService.validSaleWarehouseList(
-                convertSet(list, ErpSaleCartSaveReqVO.Item::getWarehouseId)), ErpWarehouseDO::getId);
+        Map<Long, ErpWarehouseDO> warehouseMap = convertMap(warehouseService.validSaleSelectableWarehouseListForDept(
+                convertSet(list, ErpSaleCartSaveReqVO.Item::getWarehouseId), saleDeptId), ErpWarehouseDO::getId);
         // 校验数量和价格
         list.forEach(item -> {
             if (item.getCount() == null || item.getCount().compareTo(BigDecimal.ZERO) <= 0) {
@@ -883,9 +921,11 @@ public class ErpSaleCartServiceImpl implements ErpSaleCartService {
             }
         });
         return convertList(list, o -> BeanUtils.toBean(o, ErpSaleCartItemDO.class, item -> {
-            item.setProductUnitId(productMap.get(item.getProductId()).getUnitId());
+            ErpProductDO product = productMap.get(item.getProductId());
+            item.setProductUnitId(product.getUnitId());
+            fillProductWeightAndPackage(item, product);
             fillDeptIdFromSaleDept(item, saleDeptId, warehouseMap);
-            validateSaleDeptWarehousePermission(item);
+            validateSaleDeptWarehousePermission(item, saleDeptId);
             item.setGiftFlag(Boolean.TRUE.equals(item.getGiftFlag()));
             if (Boolean.TRUE.equals(item.getGiftFlag())) {
                 item.setProductPrice(BigDecimal.ZERO);
@@ -904,8 +944,8 @@ public class ErpSaleCartServiceImpl implements ErpSaleCartService {
         Map<Long, ErpProductDO> productMap = convertMap(productList, ErpProductDO::getId);
         productBatchNoValidator.validateBatchNoAllowed(list, productMap,
                 ErpSaleCartSaveReqVO.Item::getProductId, ErpSaleCartSaveReqVO.Item::getBatchNo);
-        Map<Long, ErpWarehouseDO> warehouseMap = convertMap(warehouseService.validSaleWarehouseList(
-                convertSet(list, ErpSaleCartSaveReqVO.Item::getWarehouseId)), ErpWarehouseDO::getId);
+        Map<Long, ErpWarehouseDO> warehouseMap = convertMap(warehouseService.validSaleSelectableWarehouseListForDept(
+                convertSet(list, ErpSaleCartSaveReqVO.Item::getWarehouseId), saleDeptId), ErpWarehouseDO::getId);
         list.forEach(item -> {
             if (item.getCount() == null || item.getCount().compareTo(BigDecimal.ZERO) <= 0) {
                 throw exception(SALE_CART_ITEM_COUNT_POSITIVE);
@@ -913,9 +953,11 @@ public class ErpSaleCartServiceImpl implements ErpSaleCartService {
         });
         return convertList(list, o -> BeanUtils.toBean(o, ErpSaleCartItemDO.class, item -> {
             item.setId(null);
-            item.setProductUnitId(productMap.get(item.getProductId()).getUnitId());
+            ErpProductDO product = productMap.get(item.getProductId());
+            item.setProductUnitId(product.getUnitId());
+            fillProductWeightAndPackage(item, product);
             fillDeptIdFromSaleDept(item, saleDeptId, warehouseMap);
-            validateSaleDeptWarehousePermission(item);
+            validateSaleDeptWarehousePermission(item, saleDeptId);
             item.setGiftFlag(Boolean.TRUE.equals(item.getGiftFlag()));
             if (Boolean.TRUE.equals(item.getGiftFlag())
                     || item.getProductPrice() == null
@@ -943,6 +985,10 @@ public class ErpSaleCartServiceImpl implements ErpSaleCartService {
 
     private void fillDeptIdFromSaleDept(ErpSaleCartItemDO item, Long saleDeptId, Map<Long, ErpWarehouseDO> warehouseMap) {
         ErpWarehouseDO warehouse = item.getWarehouseId() == null ? null : warehouseMap.get(item.getWarehouseId());
+        if (warehouse != null && !warehouseService.isWarehouseSaleAllowedForDept(warehouse.getId(), saleDeptId)) {
+            item.setDeptId(warehouse.getDeptId());
+            return;
+        }
         if (item.getDeptId() == null || (saleDeptId != null && warehouse != null
                 && Objects.equals(item.getDeptId(), warehouse.getDeptId())
                 && !Objects.equals(saleDeptId, warehouse.getDeptId()))) {
@@ -950,23 +996,36 @@ public class ErpSaleCartServiceImpl implements ErpSaleCartService {
         }
     }
 
+    private void fillProductWeightAndPackage(ErpSaleCartItemDO item, ErpProductDO product) {
+        if (product == null) {
+            return;
+        }
+        if (item.getWeight() == null) {
+            item.setWeight(product.getWeight());
+        }
+        if (item.getPackageQty() == null) {
+            item.setPackageQty(product.getPackageQty());
+        }
+    }
+
     private void normalizeItemDeptIdByCartDept(ErpSaleCartDO cart, List<ErpSaleCartItemDO> items) {
         if (cart == null || cart.getDeptId() == null || CollUtil.isEmpty(items)) {
             return;
         }
-        Map<Long, ErpWarehouseDO> warehouseMap = convertMap(warehouseService.validSaleWarehouseListForDept(
+        Map<Long, ErpWarehouseDO> warehouseMap = convertMap(warehouseService.validSaleSelectableWarehouseListForDept(
                 convertSet(items, ErpSaleCartItemDO::getWarehouseId), cart.getDeptId()), ErpWarehouseDO::getId);
         items.forEach(item -> {
             fillDeptIdFromSaleDept(item, cart.getDeptId(), warehouseMap);
-            validateSaleDeptWarehousePermission(item);
+            validateSaleDeptWarehousePermission(item, cart.getDeptId());
         });
     }
 
-    private void validateSaleDeptWarehousePermission(ErpSaleCartItemDO item) {
+    private void validateSaleDeptWarehousePermission(ErpSaleCartItemDO item, Long saleDeptId) {
         if (item.getDeptId() == null) {
             throw exception(SALE_WAREHOUSE_DEPT_REQUIRED);
         }
-        warehouseService.validateWarehouseSaleAllowedForDept(item.getWarehouseId(), item.getDeptId());
+        warehouseService.validateWarehouseSaleSelectableForDept(item.getWarehouseId(),
+                saleDeptId != null ? saleDeptId : item.getDeptId());
     }
 
     private void createTransferOutDraft(ErpSaleCartDO cart, List<ErpSaleCartItemDO> items) {
@@ -1122,7 +1181,7 @@ public class ErpSaleCartServiceImpl implements ErpSaleCartService {
 
     private Map<Long, ErpWarehouseDO> getCartSourceWarehouseMap(ErpSaleCartDO cart,
                                                                 List<ErpSaleCartItemDO> items) {
-        return convertMap(warehouseService.validSaleWarehouseListForDept(
+        return convertMap(warehouseService.validSaleSelectableWarehouseListForDept(
                 convertSet(items, ErpSaleCartItemDO::getWarehouseId), cart.getDeptId()), ErpWarehouseDO::getId);
     }
 
@@ -1265,7 +1324,7 @@ public class ErpSaleCartServiceImpl implements ErpSaleCartService {
         Set<Long> warehouseIds = convertSet(items, ErpSaleCartItemDO::getWarehouseId);
         Map<Long, ErpWarehouseDO> warehouseMap = convertMap(
                 saleDeptId != null
-                        ? warehouseService.validSaleWarehouseListForDept(warehouseIds, saleDeptId)
+                        ? warehouseService.validSaleSelectableWarehouseListForDept(warehouseIds, saleDeptId)
                         : warehouseService.validSaleWarehouseList(warehouseIds),
                 ErpWarehouseDO::getId);
         Map<ProductWarehouseKey, BigDecimal> requiredCountMap = new LinkedHashMap<>();
@@ -1505,25 +1564,25 @@ public class ErpSaleCartServiceImpl implements ErpSaleCartService {
 
     private void clearHiddenFields(Object target) {
         if (fieldPermissionMasker != null) {
-            fieldPermissionMasker.clearHiddenFields(FIELD_PERMISSION_MODULE, target);
+            fieldPermissionMasker.clearSaleDetailHiddenFields(FIELD_PERMISSION_MODULE, target);
         }
     }
 
-    private void clearHiddenItemFields(List<?> items) {
+    private void clearHiddenItemFields(Object context, List<?> items) {
         if (fieldPermissionMasker != null) {
-            fieldPermissionMasker.clearHiddenItemFields(FIELD_PERMISSION_MODULE, items);
+            fieldPermissionMasker.clearSaleDetailHiddenItemFields(FIELD_PERMISSION_MODULE, context, items);
         }
     }
 
     private void preserveHiddenFields(Object target, Object existing) {
         if (fieldPermissionMasker != null) {
-            fieldPermissionMasker.preserveHiddenFields(FIELD_PERMISSION_MODULE, target, existing);
+            fieldPermissionMasker.preserveSaleDetailHiddenFields(FIELD_PERMISSION_MODULE, target, existing);
         }
     }
 
-    private void preserveHiddenItemFields(List<?> items, List<?> existingItems) {
+    private void preserveHiddenItemFields(Object context, List<?> items, List<?> existingItems) {
         if (fieldPermissionMasker != null) {
-            fieldPermissionMasker.preserveHiddenItemFields(FIELD_PERMISSION_MODULE, items, existingItems);
+            fieldPermissionMasker.preserveSaleDetailHiddenItemFields(FIELD_PERMISSION_MODULE, context, items, existingItems);
         }
     }
 

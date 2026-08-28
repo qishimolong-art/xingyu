@@ -131,6 +131,7 @@ public interface ErrorCodeConstants {
     // ========== 装修页面 1-013-018-000 ==========
     ErrorCode DIY_PAGE_NOT_EXISTS = new ErrorCode(1_013_018_000, "装修页面不存在");
     ErrorCode DIY_PAGE_NAME_USED = new ErrorCode(1_013_018_001, "装修页面名称({})已经被使用");
+    ErrorCode DIY_HOME_BANNER_NOT_EXISTS = new ErrorCode(1_013_018_002, "首页轮播图不存在");
 
     // ========== 客服会话 1-013-019-000 ==========
     ErrorCode KEFU_CONVERSATION_NOT_EXISTS = new ErrorCode(1_013_019_000, "客服会话不存在");

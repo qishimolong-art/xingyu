@@ -7,6 +7,8 @@ import cn.iocoder.yudao.module.erp.controller.admin.common.vo.ErpImportExportRec
 import cn.iocoder.yudao.module.erp.dal.dataobject.common.ErpImportExportRecordDetailDO;
 import org.apache.ibatis.annotations.Mapper;
 
+import java.util.List;
+
 @Mapper
 public interface ErpImportExportRecordDetailMapper extends BaseMapperX<ErpImportExportRecordDetailDO> {
 
@@ -20,6 +22,13 @@ public interface ErpImportExportRecordDetailMapper extends BaseMapperX<ErpImport
                 ErpImportExportRecordDetailDO::getBizName,
                 ErpImportExportRecordDetailDO::getFailureReason);
         return selectPage(reqVO, wrapper);
+    }
+
+    default List<ErpImportExportRecordDetailDO> selectListByRecordId(Long recordId) {
+        return selectList(new LambdaQueryWrapperX<ErpImportExportRecordDetailDO>()
+                .eq(ErpImportExportRecordDetailDO::getRecordId, recordId)
+                .orderByAsc(ErpImportExportRecordDetailDO::getRowNo)
+                .orderByAsc(ErpImportExportRecordDetailDO::getId));
     }
 
 }

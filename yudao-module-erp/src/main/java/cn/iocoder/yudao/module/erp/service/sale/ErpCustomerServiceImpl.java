@@ -489,6 +489,15 @@ public class ErpCustomerServiceImpl implements ErpCustomerService {
         return getCustomerSaleDeptIds(customer);
     }
 
+    @Override
+    public List<Long> getCustomerSaleDeptIdsIgnoreDataPermission(Long customerId) {
+        ErpCustomerDO customer = validateCustomerExists(customerId);
+        if (CommonStatusEnum.isDisable(customer.getStatus())) {
+            throw exception(CUSTOMER_NOT_ENABLE, customer.getName());
+        }
+        return getCustomerSaleDeptIds(customer);
+    }
+
     private List<Long> getCustomerSaleDeptIds(ErpCustomerDO customer) {
         Set<Long> deptIds = new LinkedHashSet<>();
         if (customer.getDeptId() != null) {

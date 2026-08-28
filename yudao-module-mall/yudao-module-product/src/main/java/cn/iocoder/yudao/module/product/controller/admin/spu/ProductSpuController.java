@@ -7,9 +7,13 @@ import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
 import cn.iocoder.yudao.framework.excel.core.util.ExcelUtils;
 import cn.iocoder.yudao.module.product.controller.admin.spu.vo.*;
 import cn.iocoder.yudao.module.product.convert.spu.ProductSpuConvert;
+import cn.iocoder.yudao.module.product.dal.dataobject.brand.ProductBrandDO;
+import cn.iocoder.yudao.module.product.dal.dataobject.category.ProductCategoryDO;
 import cn.iocoder.yudao.module.product.dal.dataobject.sku.ProductSkuDO;
 import cn.iocoder.yudao.module.product.dal.dataobject.spu.ProductSpuDO;
 import cn.iocoder.yudao.module.product.enums.spu.ProductSpuStatusEnum;
+import cn.iocoder.yudao.module.product.service.brand.ProductBrandService;
+import cn.iocoder.yudao.module.product.service.category.ProductCategoryService;
 import cn.iocoder.yudao.module.product.service.sku.ProductSkuService;
 import cn.iocoder.yudao.module.product.service.spu.ProductSpuService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -42,6 +46,10 @@ public class ProductSpuController {
     private ProductSpuService productSpuService;
     @Resource
     private ProductSkuService productSkuService;
+    @Resource
+    private ProductCategoryService productCategoryService;
+    @Resource
+    private ProductBrandService productBrandService;
 
     @PostMapping("/create")
     @Operation(summary = "创建商品 SPU")
@@ -87,7 +95,9 @@ public class ProductSpuController {
         }
         // 查询商品 SKU
         List<ProductSkuDO> skus = productSkuService.getSkuListBySpuId(spu.getId());
-        return success(ProductSpuConvert.INSTANCE.convert(spu, skus));
+        ProductSpuRespVO respVO = ProductSpuConvert.INSTANCE.convert(spu, skus);
+        fillPartParamNames(respVO);
+        return success(respVO);
     }
 
     @GetMapping("/list-all-simple")
@@ -105,8 +115,10 @@ public class ProductSpuController {
     @Parameter(name = "spuIds", description = "spu 编号列表", required = true, example = "[1,2,3]")
     @PreAuthorize("@ss.hasPermission('product:spu:query')")
     public CommonResult<List<ProductSpuRespVO>> getSpuList(@RequestParam("spuIds") Collection<Long> spuIds) {
-        return success(ProductSpuConvert.INSTANCE.convertForSpuDetailRespListVO(
-                productSpuService.getSpuList(spuIds), productSkuService.getSkuListBySpuId(spuIds)));
+        List<ProductSpuRespVO> list = ProductSpuConvert.INSTANCE.convertForSpuDetailRespListVO(
+                productSpuService.getSpuList(spuIds), productSkuService.getSkuListBySpuId(spuIds));
+        fillPartParamNames(list);
+        return success(list);
     }
 
     @GetMapping("/page")
@@ -114,7 +126,9 @@ public class ProductSpuController {
     @PreAuthorize("@ss.hasPermission('product:spu:query')")
     public CommonResult<PageResult<ProductSpuRespVO>> getSpuPage(@Valid ProductSpuPageReqVO pageVO) {
         PageResult<ProductSpuDO> pageResult = productSpuService.getSpuPage(pageVO);
-        return success(BeanUtils.toBean(pageResult, ProductSpuRespVO.class));
+        PageResult<ProductSpuRespVO> respVO = BeanUtils.toBean(pageResult, ProductSpuRespVO.class);
+        fillPartParamNames(respVO.getList());
+        return success(respVO);
     }
 
     @GetMapping("/get-count")
@@ -133,8 +147,28 @@ public class ProductSpuController {
         reqVO.setPageSize(PAGE_SIZE_NONE);
         List<ProductSpuDO> list = productSpuService.getSpuPage(reqVO).getList();
         // 导出 Excel
+        List<ProductSpuRespVO> respVOList = BeanUtils.toBean(list, ProductSpuRespVO.class);
+        fillPartParamNames(respVOList);
         ExcelUtils.write(response, "商品列表.xls", "数据", ProductSpuRespVO.class,
-                BeanUtils.toBean(list, ProductSpuRespVO.class));
+                respVOList);
+    }
+
+    private void fillPartParamNames(List<ProductSpuRespVO> spuList) {
+        if (spuList == null) {
+            return;
+        }
+        spuList.forEach(this::fillPartParamNames);
+    }
+
+    private void fillPartParamNames(ProductSpuRespVO spu) {
+        ProductCategoryDO category = spu.getCategoryId() == null ? null : productCategoryService.getCategory(spu.getCategoryId());
+        if (category != null) {
+            spu.setCategoryName(category.getName());
+        }
+        ProductBrandDO brand = spu.getBrandId() == null ? null : productBrandService.getBrand(spu.getBrandId());
+        if (brand != null) {
+            spu.setBrandName(brand.getName());
+        }
     }
 
 }

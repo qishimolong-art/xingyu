@@ -157,6 +157,8 @@ public class ErpWarehouseMoveRespVO {
         private String featureCode;
         private String brand;
         private String drawingNo;
+        private Long productUnitId;
+        private Integer packageQty;
         private String fromShelf;
         private String toShelf;
         private BigDecimal productPrice;

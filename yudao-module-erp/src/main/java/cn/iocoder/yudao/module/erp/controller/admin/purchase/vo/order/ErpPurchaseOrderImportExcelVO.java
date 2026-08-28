@@ -38,6 +38,9 @@ public class ErpPurchaseOrderImportExcelVO {
     @ExcelProperty("单价")
     private BigDecimal productPrice;
 
+    @ExcelProperty("批次号")
+    private String batchNo;
+
     @ExcelProperty("赠品")
     private String gift;
 

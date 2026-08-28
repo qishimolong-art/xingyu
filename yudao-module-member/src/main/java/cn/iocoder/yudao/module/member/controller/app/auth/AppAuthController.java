@@ -122,6 +122,14 @@ public class AppAuthController {
         return success(authService.weixinMiniAppLogin(reqVO));
     }
 
+    @PostMapping("/weixin-mini-app-silent-login")
+    @Operation(summary = "微信小程序静默登录")
+    @PermitAll
+    public CommonResult<AppAuthWeixinMiniAppSilentLoginRespVO> weixinMiniAppSilentLogin(
+            @RequestBody @Valid AppAuthWeixinMiniAppSilentLoginReqVO reqVO) {
+        return success(authService.weixinMiniAppSilentLogin(reqVO));
+    }
+
     @PostMapping("/create-weixin-jsapi-signature")
     @Operation(summary = "创建微信 JS SDK 初始化所需的签名",
             description = "参考 https://developers.weixin.qq.com/doc/offiaccount/OA_Web_Apps/JS-SDK.html 文档")

@@ -52,6 +52,18 @@ public class ErpStockInSaveReqVO {
         @NotNull(message = "产品编号不能为空")
         private Long productId;
 
+        @Schema(description = "批次号", example = "BATCH-001")
+        private String batchNo;
+
+        @Schema(description = "包装数", example = "12")
+        private Integer packageQty;
+
+        @Schema(description = "单重", example = "1.25")
+        private BigDecimal weight;
+
+        @Schema(description = "总重", example = "125.00")
+        private BigDecimal totalWeight;
+
         @Schema(description = "产品单价", example = "100.00")
         private BigDecimal productPrice;
 

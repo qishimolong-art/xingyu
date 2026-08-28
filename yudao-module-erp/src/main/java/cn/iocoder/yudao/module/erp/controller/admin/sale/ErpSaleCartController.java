@@ -254,7 +254,7 @@ public class ErpSaleCartController {
             return success(null);
         }
         ErpSaleCartRespVO respVO = buildSaleCartRespVO(cart, saleCartService.getSaleCartItemListByCartId(id));
-        fieldPermissionMasker.maskFormWithItems(FIELD_PERMISSION_MODULE, respVO);
+        fieldPermissionMasker.maskSaleDetailFormWithItems(FIELD_PERMISSION_MODULE, respVO);
         return success(respVO);
     }
 
@@ -286,7 +286,7 @@ public class ErpSaleCartController {
     public CommonResult<PageResult<ErpSaleCartRespVO>> getSaleCartPage(@Valid ErpSaleCartPageReqVO pageReqVO) {
         PageResult<ErpSaleCartDO> pageResult = saleCartService.getSaleCartPage(pageReqVO);
         PageResult<ErpSaleCartRespVO> respResult = buildSaleCartVOPageResult(pageResult);
-        fieldPermissionMasker.maskFormsWithItems(FIELD_PERMISSION_MODULE, respResult.getList());
+        fieldPermissionMasker.maskSaleDetailFormsWithItems(FIELD_PERMISSION_MODULE, respResult.getList());
         return success(respResult);
     }
 
@@ -300,12 +300,12 @@ public class ErpSaleCartController {
         pageReqVO.setPageSize(PageParam.PAGE_SIZE_NONE);
         List<ErpSaleCartRespVO> list = buildSaleCartVOPageResult(
                 saleCartService.getSaleCartPage(pageReqVO)).getList();
-        fieldPermissionMasker.maskFormsWithItems(FIELD_PERMISSION_MODULE, list);
+        fieldPermissionMasker.maskSaleDetailFormsWithItems(FIELD_PERMISSION_MODULE, list);
         List<ErpSaleCartExportRespVO> rows = buildSaleCartExportList(list);
-        fieldPermissionMasker.maskExportRows(FIELD_PERMISSION_MODULE, rows);
+        fieldPermissionMasker.maskSaleDetailExportRows(FIELD_PERMISSION_MODULE, rows);
         Set<String> includeFields = ErpExportFieldUtils.resolveIncludeFields(ErpSaleCartExportRespVO.class,
                 ErpExportFieldUtils.parseFieldParam(fields),
-                fieldPermissionMasker.getHiddenFieldSet(FIELD_PERMISSION_MODULE), EXPORT_FIELD_PERMISSION_MAP);
+                fieldPermissionMasker.getHiddenFieldSet(FIELD_PERMISSION_MODULE, false), EXPORT_FIELD_PERMISSION_MAP);
         ExcelUtils.write(response, "销售手推车.xls", "数据", ErpSaleCartExportRespVO.class, rows, includeFields);
     }
 
@@ -314,7 +314,7 @@ public class ErpSaleCartController {
     @PreAuthorize("@ss.hasPermission('erp:sale-cart:export')")
     public CommonResult<List<ErpExportFieldRespVO>> getSaleCartExportFields() {
         return success(ErpExportFieldUtils.listFields(ErpSaleCartExportRespVO.class, EXPORT_FIELD_GROUP_MAP,
-                fieldPermissionMasker.getHiddenFieldSet(FIELD_PERMISSION_MODULE), EXPORT_FIELD_PERMISSION_MAP));
+                fieldPermissionMasker.getHiddenFieldSet(FIELD_PERMISSION_MODULE, false), EXPORT_FIELD_PERMISSION_MAP));
     }
 
     @GetMapping("/export-import-template")
@@ -515,12 +515,15 @@ public class ErpSaleCartController {
         ErpSaleCartExportRespVO row = fillMainFields
                 ? BeanUtils.toBean(cart, ErpSaleCartExportRespVO.class)
                 : new ErpSaleCartExportRespVO();
+        row.setCustomerId(cart.getCustomerId());
         if (item == null) {
             return row;
         }
         row.setProductCode(item.getProductCode());
         row.setProductName(item.getProductName());
         row.setProductUnitName(item.getProductUnitName());
+        row.setWeight(item.getWeight());
+        row.setPackageQty(item.getPackageQty());
         row.setWarehouseName(item.getWarehouseName());
         row.setLockCount(item.getLockCount());
         row.setItemCount(item.getCount());
@@ -549,6 +552,8 @@ public class ErpSaleCartController {
         map.put("productCode", "detail");
         map.put("productName", "detail");
         map.put("productUnitName", "detail");
+        map.put("weight", "detail");
+        map.put("packageQty", "detail");
         map.put("warehouseName", "detail");
         map.put("lockCount", "detail");
         map.put("itemCount", "detail");
@@ -569,6 +574,8 @@ public class ErpSaleCartController {
         map.put("productCode", "item_productCode");
         map.put("productName", "item_productId");
         map.put("productUnitName", "item_productUnitName");
+        map.put("weight", "item_weight");
+        map.put("packageQty", "item_packageQty");
         map.put("warehouseName", "item_warehouseId");
         map.put("lockCount", "item_lockCount");
         map.put("itemCount", "item_count");

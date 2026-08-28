@@ -21,7 +21,7 @@ public class ErpBookOpenPageReqVO extends PageParam {
     @Schema(description = "会计年度", example = "2026")
     private Integer fiscalYear;
 
-    @Schema(description = "开账期间（1-12 月）", example = "5")
+    @Schema(description = "开账期间（兼容旧查询字段；年度开账固定为 1）", example = "1")
     private Integer period;
 
     @Schema(description = "是否开账", example = "true")

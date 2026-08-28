@@ -168,11 +168,14 @@ FROM (
     SELECT 'erp_product', 'factoryCode', '厂家编码', b'0', 120, 'base_info', b'0' UNION ALL
     SELECT 'erp_product', 'status', '状态', b'0', 130, 'base_info', b'0' UNION ALL
     SELECT 'erp_product', 'remark', '备注', b'0', 140, 'base_info', b'0' UNION ALL
+    SELECT 'erp_product', 'purchasePrice', '采购价', b'0', 180, 'price_info', b'0' UNION ALL
+    SELECT 'erp_product', 'salePrice', '销售价', b'0', 190, 'price_info', b'0' UNION ALL
+    SELECT 'erp_product', 'minPrice', '最低价', b'0', 200, 'price_info', b'0' UNION ALL
     SELECT 'erp_product', 'referencePrice', '参考价', b'0', 210, 'price_info', b'0' UNION ALL
     SELECT 'erp_product', 'retailPrice', '零售价', b'0', 220, 'price_info', b'0' UNION ALL
     SELECT 'erp_product', 'lastPurchasePrice', '最后采购入库价', b'0', 230, 'price_info', b'1' UNION ALL
     SELECT 'erp_product', 'grossProfitRate', '毛利率（%）', b'0', 240, 'price_info', b'0' UNION ALL
-    SELECT 'erp_product', 'backupPrice1', '备用价', b'0', 250, 'price_info', b'0' UNION ALL
+    SELECT 'erp_product', 'backupPrice1', '备用价1', b'0', 250, 'price_info', b'0' UNION ALL
     SELECT 'erp_product', 'wholesalePrice', '批发价', b'0', 260, 'price_info', b'0' UNION ALL
     SELECT 'erp_product', 'sharePrice', '股份价', b'0', 270, 'price_info', b'0' UNION ALL
     SELECT 'erp_product', 'stockMax', '库存上限', b'0', 310, 'extend_info', b'0' UNION ALL

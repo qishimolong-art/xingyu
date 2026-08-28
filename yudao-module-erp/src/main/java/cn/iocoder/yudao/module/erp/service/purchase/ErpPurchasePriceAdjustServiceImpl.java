@@ -89,6 +89,15 @@ import static cn.iocoder.yudao.module.erp.enums.LogRecordConstants.ERP_PURCHASE_
 public class ErpPurchasePriceAdjustServiceImpl implements ErpPurchasePriceAdjustService {
 
     private static final String FIELD_PERMISSION_MODULE = "erp_purchase_price_adjust";
+    private static final Set<String> CREATE_EDIT_PRICE_FIELDS = new HashSet<String>() {{
+        add("oldPrice");
+        add("newPrice");
+        add("adjustPrice");
+        add("totalAdjustPrice");
+        add("item_oldPrice");
+        add("item_newPrice");
+        add("item_adjustPrice");
+    }};
 
     @Resource
     private ErpPurchasePriceAdjustMapper priceAdjustMapper;
@@ -128,8 +137,9 @@ public class ErpPurchasePriceAdjustServiceImpl implements ErpPurchasePriceAdjust
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Long createPurchasePriceAdjust(ErpPurchasePriceAdjustSaveReqVO reqVO) {
-        fieldPermissionMasker.clearHiddenFields(FIELD_PERMISSION_MODULE, reqVO);
-        fieldPermissionMasker.clearHiddenItemFields(FIELD_PERMISSION_MODULE, reqVO.getItems());
+        fieldPermissionMasker.clearHiddenFieldsExcept(FIELD_PERMISSION_MODULE, reqVO, CREATE_EDIT_PRICE_FIELDS);
+        fieldPermissionMasker.clearHiddenItemFieldsExcept(FIELD_PERMISSION_MODULE, reqVO.getItems(),
+                CREATE_EDIT_PRICE_FIELDS);
         // 1. 主表 + 子表校验 + 回填
         validateMainForm(reqVO);
         List<ErpPurchasePriceAdjustItemDO> items = buildAndValidateItems(reqVO, null);
@@ -167,8 +177,9 @@ public class ErpPurchasePriceAdjustServiceImpl implements ErpPurchasePriceAdjust
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Long createPurchasePriceAdjustDraft(ErpPurchasePriceAdjustDraftSaveReqVO reqVO) {
-        fieldPermissionMasker.clearHiddenFields(FIELD_PERMISSION_MODULE, reqVO);
-        fieldPermissionMasker.clearHiddenItemFields(FIELD_PERMISSION_MODULE, reqVO.getItems());
+        fieldPermissionMasker.clearHiddenFieldsExcept(FIELD_PERMISSION_MODULE, reqVO, CREATE_EDIT_PRICE_FIELDS);
+        fieldPermissionMasker.clearHiddenItemFieldsExcept(FIELD_PERMISSION_MODULE, reqVO.getItems(),
+                CREATE_EDIT_PRICE_FIELDS);
         List<ErpPurchasePriceAdjustItemDO> items = buildDraftItems(reqVO.getAdjustType(), reqVO.getItems());
         if (CollUtil.isEmpty(items)) {
             throw exception(PURCHASE_PRICE_ADJUST_ITEM_EMPTY);
@@ -458,6 +469,8 @@ public class ErpPurchasePriceAdjustServiceImpl implements ErpPurchasePriceAdjust
                 item.setProductCode(product.getCode());
                 item.setProductName(product.getName());
                 item.setProductUnitName(product.getUnitName());
+                item.setWeight(product.getWeight());
+                item.setPackageQty(product.getPackageQty());
                 item.setVehicleModel(product.getVehicleModel());
                 item.setStandard(product.getStandard());
                 item.setFeatureCode(product.getFeatureCode());
@@ -603,6 +616,8 @@ public class ErpPurchasePriceAdjustServiceImpl implements ErpPurchasePriceAdjust
         item.setNewPrice(row.getNewPrice());
         item.setProductCode(product.getCode());
         item.setProductName(product.getName());
+        item.setWeight(product.getWeight());
+        item.setPackageQty(product.getPackageQty());
         if (productVO != null) {
             item.setProductUnitName(productVO.getUnitName());
             item.setVehicleModel(productVO.getVehicleModel());
@@ -935,6 +950,8 @@ public class ErpPurchasePriceAdjustServiceImpl implements ErpPurchasePriceAdjust
                 if (item.getProductCode() == null) item.setProductCode(product.getCode());
                 if (item.getProductName() == null) item.setProductName(product.getName());
                 if (item.getProductUnitName() == null) item.setProductUnitName(product.getUnitName());
+                if (item.getWeight() == null) item.setWeight(product.getWeight());
+                if (item.getPackageQty() == null) item.setPackageQty(product.getPackageQty());
                 if (item.getVehicleModel() == null) item.setVehicleModel(product.getVehicleModel());
                 if (item.getStandard() == null) item.setStandard(product.getStandard());
                 if (item.getFeatureCode() == null) item.setFeatureCode(product.getFeatureCode());
@@ -981,6 +998,8 @@ public class ErpPurchasePriceAdjustServiceImpl implements ErpPurchasePriceAdjust
         if (item.getProductCode() == null) item.setProductCode(product.getCode());
         if (item.getProductName() == null) item.setProductName(product.getName());
         if (item.getProductUnitName() == null) item.setProductUnitName(product.getUnitName());
+        if (item.getWeight() == null) item.setWeight(product.getWeight());
+        if (item.getPackageQty() == null) item.setPackageQty(product.getPackageQty());
         if (item.getVehicleModel() == null) item.setVehicleModel(product.getVehicleModel());
         if (item.getStandard() == null) item.setStandard(product.getStandard());
         if (item.getFeatureCode() == null) item.setFeatureCode(product.getFeatureCode());

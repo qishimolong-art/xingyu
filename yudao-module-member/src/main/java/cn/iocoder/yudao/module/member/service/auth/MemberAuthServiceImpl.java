@@ -152,6 +152,34 @@ public class MemberAuthServiceImpl implements MemberAuthService {
         return createTokenAfterLoginSuccess(user, user.getMobile(), LoginLogTypeEnum.LOGIN_SOCIAL, openid);
     }
 
+    @Override
+    @Transactional
+    public AppAuthWeixinMiniAppSilentLoginRespVO weixinMiniAppSilentLogin(
+            AppAuthWeixinMiniAppSilentLoginReqVO reqVO) {
+        SocialUserRespDTO socialUser = socialUserApi.getSocialUserByCode(UserTypeEnum.MEMBER.getValue(),
+                SocialTypeEnum.WECHAT_MINI_PROGRAM.getType(), reqVO.getLoginCode(), reqVO.getState());
+        if (socialUser == null) {
+            throw exception(AUTH_SOCIAL_USER_NOT_FOUND);
+        }
+        if (socialUser.getUserId() == null) {
+            return AppAuthWeixinMiniAppSilentLoginRespVO.needPhoneAuth();
+        }
+
+        MemberUserDO user = userService.getUser(socialUser.getUserId());
+        if (user == null) {
+            throw exception(USER_NOT_EXISTS);
+        }
+        if (CommonStatusEnum.isDisable(user.getStatus())) {
+            createLoginLog(user.getId(), user.getMobile(), LoginLogTypeEnum.LOGIN_SOCIAL,
+                    LoginResultEnum.USER_DISABLED);
+            throw exception(AUTH_LOGIN_USER_DISABLED);
+        }
+
+        AppAuthLoginRespVO loginRespVO = createTokenAfterLoginSuccess(user, user.getMobile(),
+                LoginLogTypeEnum.LOGIN_SOCIAL, socialUser.getOpenid());
+        return AppAuthWeixinMiniAppSilentLoginRespVO.loginSuccess(loginRespVO);
+    }
+
     private AppAuthLoginRespVO createTokenAfterLoginSuccess(MemberUserDO user, String mobile,
                                                             LoginLogTypeEnum logType, String openid) {
         // 插入登陆日志

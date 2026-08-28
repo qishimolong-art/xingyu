@@ -345,6 +345,7 @@ public class ErpStockTransferLedgerServiceImpl implements ErpStockTransferLedger
         ErpStockMoveDO base = group.out != null ? group.out : firstIn;
         BigDecimal outCount = out == null ? BigDecimal.ZERO : out.count;
         BigDecimal inCount = in == null ? BigDecimal.ZERO : in.count;
+        ItemAggregate snapshot = resolveAggregate(out, in);
         String reason = errors.stream().map(EXCEPTION_REASONS::get).filter(Objects::nonNull)
                 .collect(Collectors.joining("；"));
         ErpProductRespVO product = names.products.get(key.productId);
@@ -371,6 +372,10 @@ public class ErpStockTransferLedgerServiceImpl implements ErpStockTransferLedger
                 .setToWarehouseId(key.toWarehouseId)
                 .setToWarehouseName(getWarehouseName(names, key.toWarehouseId))
                 .setBatchNo(key.batchNo)
+                .setProductUnitName(product == null ? null : product.getUnitName())
+                .setPackageQty(snapshot.packageQty)
+                .setWeight(snapshot.weight)
+                .setTotalWeight(snapshot.weight == null ? null : snapshot.weight.multiply(outCount))
                 .setTransferOutCount(outCount)
                 .setTransferInCount(inCount)
                 .setDifferenceCount(outCount.subtract(inCount))
@@ -478,7 +483,7 @@ public class ErpStockTransferLedgerServiceImpl implements ErpStockTransferLedger
         for (ErpStockMoveItemDO item : items) {
             ItemKey key = new ItemKey(item.getProductId(), item.getFromWarehouseId(), item.getToWarehouseId(),
                     item.getBatchNo() == null ? "" : item.getBatchNo().trim());
-            result.computeIfAbsent(key, ignored -> new ItemAggregate()).add(item.getCount());
+            result.computeIfAbsent(key, ignored -> new ItemAggregate()).add(item);
         }
         return result;
     }
@@ -514,6 +519,10 @@ public class ErpStockTransferLedgerServiceImpl implements ErpStockTransferLedger
     private String getWarehouseName(NameContext names, Long id) {
         ErpWarehouseDO warehouse = names.warehouses.get(id);
         return warehouse == null ? null : warehouse.getName();
+    }
+
+    private ItemAggregate resolveAggregate(ItemAggregate out, ItemAggregate in) {
+        return out != null ? out : in != null ? in : new ItemAggregate();
     }
 
     private BigDecimal sum(List<ComputedGroup> groups, Function<ComputedGroup, BigDecimal> getter) {
@@ -626,9 +635,18 @@ public class ErpStockTransferLedgerServiceImpl implements ErpStockTransferLedger
 
     private static final class ItemAggregate {
         private BigDecimal count = BigDecimal.ZERO;
+        private Integer packageQty;
+        private BigDecimal weight;
 
-        private void add(BigDecimal value) {
+        private void add(ErpStockMoveItemDO item) {
+            BigDecimal value = item == null ? null : item.getCount();
             count = count.add(value == null ? BigDecimal.ZERO : value);
+            if (item != null && packageQty == null) {
+                packageQty = item.getPackageQty();
+            }
+            if (item != null && weight == null) {
+                weight = item.getWeight();
+            }
         }
     }
 

@@ -18,6 +18,9 @@ public class ErpPartsBatchUpdatePriceFieldsReqVO {
     @Schema(description = "备用价1")
     private BigDecimal backupPrice1;
 
+    @Schema(description = "采购价格")
+    private BigDecimal purchasePrice;
+
     @Schema(description = "特价（specialPrice 字段，DO 中暂无，预留）")
     private BigDecimal specialPrice;
 
@@ -32,6 +35,9 @@ public class ErpPartsBatchUpdatePriceFieldsReqVO {
 
     @Schema(description = "股份价")
     private BigDecimal sharePrice;
+
+    @Schema(description = "销售价格")
+    private BigDecimal salePrice;
 
     @Schema(description = "批量价（batchPrice 字段，DO 中暂无，预留）")
     private BigDecimal batchPrice;

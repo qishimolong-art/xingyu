@@ -102,6 +102,7 @@ ErrorCode PURCHASE_ORDER_ITEM_RETURN_FAIL_IN_EXCEED = new ErrorCode(1_030_101_00
             "目标仓库可用部门不唯一，请同时选择部门");
     ErrorCode PURCHASE_IN_ITEM_BATCH_UPDATE_WAREHOUSE_DEPT_NOT_ALLOWED = new ErrorCode(1_030_102_038,
             "目标仓库不允许使用所选部门");
+    ErrorCode PURCHASE_IN_DATA_PERMISSION_DENIED = new ErrorCode(1_030_102_039, "没有该数据权限");
 
     // ========== ERP 采购退货（1-030-103-000） ==========
     ErrorCode PURCHASE_RETURN_NOT_EXISTS = new ErrorCode(1_030_103_000, "采购退货单不存在");
@@ -198,6 +199,15 @@ ErrorCode PURCHASE_ORDER_ITEM_RETURN_FAIL_IN_EXCEED = new ErrorCode(1_030_101_00
     ErrorCode CUSTOMER_SALE_DEPT_NOT_ALLOWED = new ErrorCode(1_020_200_009, "客户未分配给当前报价部门，不能保存报价订单");
     ErrorCode CUSTOMER_DEPT_CREDIT_DEPT_NOT_ALLOWED = new ErrorCode(1_020_200_010, "部门不在该客户可用部门范围内，不能配置授信");
     ErrorCode CUSTOMER_DEPT_CREDIT_DUPLICATE_DEPT = new ErrorCode(1_020_200_011, "客户分部门授信中存在重复部门");
+    ErrorCode CUSTOMER_MEMBER_NOT_EXISTS = new ErrorCode(1_020_200_012, "客户小程序授权关系不存在");
+    ErrorCode CUSTOMER_MEMBER_DUPLICATE = new ErrorCode(1_020_200_013, "该客户已绑定该小程序账号");
+    ErrorCode CUSTOMER_MEMBER_USER_BOUND = new ErrorCode(1_020_200_014, "该小程序账号已授权给客户【{}】");
+    ErrorCode CUSTOMER_MEMBER_CUSTOMER_NOT_ENABLE = new ErrorCode(1_020_200_015, "客户已停用，不能启用小程序授权");
+    ErrorCode CUSTOMER_MEMBER_USER_NOT_EXISTS = new ErrorCode(1_020_200_016, "小程序会员用户不存在");
+    ErrorCode CUSTOMER_MEMBER_USER_NOT_ENABLE = new ErrorCode(1_020_200_017, "小程序会员用户已停用，不能启用客户授权");
+    ErrorCode CUSTOMER_MEMBER_AUTH_REQUIRED = new ErrorCode(1_020_200_018, "当前账号暂未开通客户授权，请联系业务人员开通后再操作");
+    ErrorCode CUSTOMER_MEMBER_DEPT_REQUIRED = new ErrorCode(1_020_200_019, "请选择部门");
+    ErrorCode CUSTOMER_MEMBER_DEPT_NOT_ALLOWED = new ErrorCode(1_020_200_020, "当前账号无权使用所选部门");
     ErrorCode CUSTOMER_CONTACT_NOT_EXISTS = new ErrorCode(1_030_207_000, "客户联系人不存在");
     ErrorCode CUSTOMER_CONTRACT_NOT_EXISTS = new ErrorCode(1_030_207_001, "客户合同不存在");
     ErrorCode CUSTOMER_IMAGE_NOT_EXISTS = new ErrorCode(1_030_207_002, "客户图片不存在");
@@ -424,6 +434,8 @@ ErrorCode PURCHASE_ORDER_ITEM_RETURN_FAIL_IN_EXCEED = new ErrorCode(1_030_101_00
     // ========== ERP 库存占用 1-030-405-000 ==========
     ErrorCode STOCK_LOCK_NOT_EXISTS = new ErrorCode(1_030_405_000, "库存占用记录不存在");
     ErrorCode STOCK_LOCK_AVAILABLE_COUNT_NOT_ENOUGH = new ErrorCode(1_030_405_001, "产品({})在仓库({})的可用库存不足，可用：{}，需要：{}");
+    ErrorCode MALL_STOCK_NOT_MATCH = new ErrorCode(1_030_405_002, "请选择有效库存");
+    ErrorCode MALL_STOCK_NOT_AVAILABLE = new ErrorCode(1_030_405_003, "所选库存不足，请重新选择");
 
     // ========== ERP 连锁开单 1-030-700-000 ==========
     ErrorCode CHAIN_ORDER_NOT_EXISTS = new ErrorCode(1_030_700_000, "连锁开单不存在");
@@ -680,9 +692,9 @@ ErrorCode PURCHASE_ORDER_ITEM_RETURN_FAIL_IN_EXCEED = new ErrorCode(1_030_101_00
 
     // ========== ERP 系统开账 1-030-611-000 ==========
     ErrorCode BOOK_OPEN_NOT_EXISTS = new ErrorCode(1_030_611_000, "系统开账记录不存在");
-    ErrorCode BOOK_OPEN_DUPLICATE = new ErrorCode(1_030_611_001, "该期间已开账，请勿重复操作");
+    ErrorCode BOOK_OPEN_DUPLICATE = new ErrorCode(1_030_611_001, "该年度已开账，请勿重复操作");
     ErrorCode BOOK_OPEN_NO_EXISTS = new ErrorCode(1_030_611_002, "生成开账编号失败");
-    ErrorCode BOOK_OPEN_PERIOD_INVALID = new ErrorCode(1_030_611_005, "开账期间不合法：会计年应在 1900~9999 之间，会计期应在 1~12 之间");
+    ErrorCode BOOK_OPEN_PERIOD_INVALID = new ErrorCode(1_030_611_005, "开账年度不合法：会计年应在 1900~9999 之间");
 
     // ========== ERP 凭证 1-030-612-000 ==========
     ErrorCode VOUCHER_NOT_EXISTS = new ErrorCode(1_030_612_000, "凭证不存在");
@@ -701,7 +713,7 @@ ErrorCode PURCHASE_ORDER_ITEM_RETURN_FAIL_IN_EXCEED = new ErrorCode(1_030_101_00
     ErrorCode VOUCHER_ATTRIBUTION_MONTH_INVALID = new ErrorCode(1_030_613_001, "归属月份不能晚于实际制单月份");
     ErrorCode VOUCHER_ATTRIBUTION_ALREADY_GENERATED = new ErrorCode(1_030_613_002, "已生成凭证的单据不可再次归属");
     ErrorCode VOUCHER_ATTRIBUTION_MONTH_BEFORE_BIZ = new ErrorCode(1_030_613_003, "归属月份不能早于业务发生月份");
-    ErrorCode VOUCHER_ATTRIBUTION_BOOK_NOT_OPEN = new ErrorCode(1_030_613_004, "该期间未开账或未启用对应凭证类型");
+    ErrorCode VOUCHER_ATTRIBUTION_BOOK_NOT_OPEN = new ErrorCode(1_030_613_004, "该年度未开账或未启用对应凭证类型");
 
     // ========== ERP 凭证字 1-030-614-000 ==========
     ErrorCode VOUCHER_WORD_NOT_EXISTS = new ErrorCode(1_030_614_000, "凭证字不存在");
@@ -781,6 +793,7 @@ ErrorCode PURCHASE_ORDER_ITEM_RETURN_FAIL_IN_EXCEED = new ErrorCode(1_030_101_00
     ErrorCode PAYABLE_EXPENSE_DRAFT_UPDATE_FAIL = new ErrorCode(1_030_623_007, "费用支付草稿({})保存失败，当前状态不是草稿");
     ErrorCode PAYABLE_EXPENSE_DRAFT_SUBMIT_FAIL = new ErrorCode(1_030_623_008, "费用支付草稿提交失败：{}");
     ErrorCode PAYABLE_EXPENSE_DRAFT_ITEMS_REQUIRED = new ErrorCode(1_030_623_009, "生成费用支付草稿时至少需要一条有效明细");
+    ErrorCode PAYABLE_EXPENSE_DEPT_REQUIRED = new ErrorCode(1_030_623_010, "开单部门不能为空");
 
     // ========== ERP 其他收入 1-030-625-000 ==========
     ErrorCode OTHER_INCOME_DRAFT_UPDATE_FAIL = new ErrorCode(1_030_625_000,

@@ -24,6 +24,7 @@ import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpSaleOrderMapper;
 import cn.iocoder.yudao.module.erp.dal.redis.no.ErpNoRedisDAO;
 import cn.iocoder.yudao.module.erp.enums.ErpAuditStatus;
 import cn.iocoder.yudao.module.erp.service.common.ErpOperateLogService;
+import cn.iocoder.yudao.module.erp.service.product.ErpProductBatchNoValidator;
 import cn.iocoder.yudao.module.erp.service.finance.ErpAccountService;
 import cn.iocoder.yudao.module.erp.service.product.ErpProductService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpStockService;
@@ -74,6 +75,8 @@ public class ErpSaleOrderServiceImpl implements ErpSaleOrderService {
     @Resource
     private ErpProductService productService;
     @Resource
+    private ErpProductBatchNoValidator productBatchNoValidator;
+    @Resource
     private ErpCustomerService customerService;
     @Resource
     private ErpAccountService accountService;
@@ -94,12 +97,13 @@ public class ErpSaleOrderServiceImpl implements ErpSaleOrderService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Long createSaleOrder(ErpSaleOrderSaveReqVO createReqVO) {
-        fieldPermissionMasker.clearHiddenFields(FIELD_PERMISSION_MODULE, createReqVO);
-        fieldPermissionMasker.clearHiddenItemFields(FIELD_PERMISSION_MODULE, createReqVO.getItems());
+        fieldPermissionMasker.clearSaleDetailHiddenFields(FIELD_PERMISSION_MODULE, createReqVO);
+        fieldPermissionMasker.clearSaleDetailHiddenItemFields(FIELD_PERMISSION_MODULE, createReqVO, createReqVO.getItems());
         // 1.1 校验订单项的有效性
-        List<ErpSaleOrderItemDO> saleOrderItems = validateSaleOrderItems(createReqVO.getItems());
+        Long saleDeptId = resolveSaleDeptId(createReqVO.getDeptId());
+        List<ErpSaleOrderItemDO> saleOrderItems = validateSaleOrderItems(createReqVO.getItems(), saleDeptId);
         // 1.2 校验客户
-        customerService.validateCustomerForSale(createReqVO.getCustomerId(), resolveSaleDeptId(createReqVO.getDeptId()));
+        customerService.validateCustomerForSale(createReqVO.getCustomerId(), saleDeptId);
         // 1.3 校验结算账户
         if (createReqVO.getAccountId() != null) {
             accountService.validateAccount(createReqVO.getAccountId());
@@ -135,8 +139,8 @@ public class ErpSaleOrderServiceImpl implements ErpSaleOrderService {
         if (ErpAuditStatus.APPROVE.getStatus().equals(saleOrder.getStatus())) {
             throw exception(SALE_ORDER_UPDATE_FAIL_APPROVE, saleOrder.getNo());
         }
-        fieldPermissionMasker.preserveHiddenFields(FIELD_PERMISSION_MODULE, updateReqVO, saleOrder);
-        fieldPermissionMasker.preserveHiddenItemFields(FIELD_PERMISSION_MODULE, updateReqVO.getItems(),
+        fieldPermissionMasker.preserveSaleDetailHiddenFields(FIELD_PERMISSION_MODULE, updateReqVO, saleOrder);
+        fieldPermissionMasker.preserveSaleDetailHiddenItemFields(FIELD_PERMISSION_MODULE, updateReqVO, updateReqVO.getItems(),
                 saleOrderItemMapper.selectListByOrderId(updateReqVO.getId()));
         // 1.2 校验客户
         customerService.validateCustomerForSale(updateReqVO.getCustomerId(),
@@ -150,7 +154,8 @@ public class ErpSaleOrderServiceImpl implements ErpSaleOrderService {
             adminUserApi.validateUser(updateReqVO.getSaleUserId());
         }
         // 1.5 校验订单项的有效性
-        List<ErpSaleOrderItemDO> saleOrderItems = validateSaleOrderItems(updateReqVO.getItems());
+        Long saleDeptId = updateReqVO.getDeptId() != null ? updateReqVO.getDeptId() : saleOrder.getDeptId();
+        List<ErpSaleOrderItemDO> saleOrderItems = validateSaleOrderItems(updateReqVO.getItems(), saleDeptId);
 
         // 2.1 更新订单
         ErpSaleOrderDO updateObj = BeanUtils.toBean(updateReqVO, ErpSaleOrderDO.class);
@@ -211,11 +216,15 @@ public class ErpSaleOrderServiceImpl implements ErpSaleOrderService {
         operateLogService.recordStatus(ERP_SALE_ORDER_TYPE, id, saleOrder.getNo(), true);
     }
 
-    private List<ErpSaleOrderItemDO> validateSaleOrderItems(List<ErpSaleOrderSaveReqVO.Item> list) {
+    private List<ErpSaleOrderItemDO> validateSaleOrderItems(List<ErpSaleOrderSaveReqVO.Item> list, Long saleDeptId) {
         // 1. 校验产品存在
         List<ErpProductDO> productList = DataPermissionUtils.executeIgnore(() ->
                 productService.validProductList(convertSet(list, ErpSaleOrderSaveReqVO.Item::getProductId)));
         Map<Long, ErpProductDO> productMap = convertMap(productList, ErpProductDO::getId);
+        productBatchNoValidator.validateBatchNoRequired(list, productMap,
+                ErpSaleOrderSaveReqVO.Item::getProductId, ErpSaleOrderSaveReqVO.Item::getBatchNo);
+        productBatchNoValidator.validateBatchNoAllowed(list, productMap,
+                ErpSaleOrderSaveReqVO.Item::getProductId, ErpSaleOrderSaveReqVO.Item::getBatchNo);
         list.forEach(item -> {
             if (item.getWarehouseId() == null && item.getProductId() != null) {
                 ErpProductDO product = productMap.get(item.getProductId());
@@ -224,10 +233,13 @@ public class ErpSaleOrderServiceImpl implements ErpSaleOrderService {
         });
         Set<Long> warehouseIds = convertSet(list, ErpSaleOrderSaveReqVO.Item::getWarehouseId);
         Map<Long, ErpWarehouseDO> warehouseMap = convertMap(
-                warehouseService.validSaleWarehouseList(warehouseIds), ErpWarehouseDO::getId);
+                warehouseService.validSaleSelectableWarehouseListForDept(warehouseIds, saleDeptId),
+                ErpWarehouseDO::getId);
         // 2. 转化为 ErpSaleOrderItemDO 列表
         return convertList(list, o -> BeanUtils.toBean(o, ErpSaleOrderItemDO.class, item -> {
-            item.setProductUnitId(productMap.get(item.getProductId()).getUnitId());
+            ErpProductDO product = productMap.get(item.getProductId());
+            item.setProductUnitId(product.getUnitId());
+            fillProductWeightAndPackage(item, product);
             fillDeptIdFromWarehouse(item, warehouseMap);
             item.setGiftFlag(Boolean.TRUE.equals(item.getGiftFlag()));
             if (item.getGiftFlag()) {
@@ -253,6 +265,18 @@ public class ErpSaleOrderServiceImpl implements ErpSaleOrderService {
             }
             ErpWarehouseDO warehouse = warehouseMap.get(item.getWarehouseId());
             item.setDeptId(warehouse == null ? null : warehouse.getDeptId());
+        }
+    }
+
+    private void fillProductWeightAndPackage(ErpSaleOrderItemDO item, ErpProductDO product) {
+        if (product == null) {
+            return;
+        }
+        if (item.getWeight() == null) {
+            item.setWeight(product.getWeight());
+        }
+        if (item.getPackageQty() == null) {
+            item.setPackageQty(product.getPackageQty());
         }
     }
 

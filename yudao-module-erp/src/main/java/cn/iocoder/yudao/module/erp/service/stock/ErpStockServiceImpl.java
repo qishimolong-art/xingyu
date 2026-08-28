@@ -6,6 +6,7 @@ import cn.iocoder.yudao.framework.datapermission.core.util.DataPermissionUtils;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.stock.ErpStockAdjustReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.stock.ErpStockBatchNoRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.stock.ErpStockPageReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.stock.ErpStockSummaryRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.stock.ErpStockUpdateReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.product.ErpProductDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockDO;
@@ -24,6 +25,7 @@ import cn.iocoder.yudao.module.erp.enums.sale.ErpSaleCartStatusEnum;
 import cn.iocoder.yudao.module.erp.enums.stock.ErpStockCheckTypeEnum;
 import cn.iocoder.yudao.module.erp.enums.stock.ErpStockRecordBizTypeEnum;
 import cn.iocoder.yudao.module.erp.enums.stock.ErpStockTransferDirectionEnum;
+import cn.iocoder.yudao.module.erp.service.mall.ErpMallProductSyncPublisher;
 import cn.iocoder.yudao.module.erp.service.product.ErpProductService;
 import cn.iocoder.yudao.module.erp.service.stock.bo.ErpProductStockPermissionScope;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
@@ -85,6 +87,8 @@ public class ErpStockServiceImpl implements ErpStockService {
     private ErpProductService productService;
     @Resource
     private ErpWarehouseService warehouseService;
+    @Resource
+    private ErpMallProductSyncPublisher mallProductSyncPublisher;
 
     @Resource
     private ErpStockMapper stockMapper;
@@ -121,8 +125,8 @@ public class ErpStockServiceImpl implements ErpStockService {
 
     @Override
     public BigDecimal getStockCount(Long productId, Long warehouseId) {
-        ErpStockDO stock = stockMapper.selectByProductIdAndWarehouseId(productId, warehouseId);
-        return stock != null && stock.getCount() != null ? stock.getCount() : BigDecimal.ZERO;
+        BigDecimal count = stockMapper.selectSumByProductIdAndWarehouseId(productId, warehouseId);
+        return count != null ? count : BigDecimal.ZERO;
     }
 
     @Override
@@ -281,44 +285,58 @@ public class ErpStockServiceImpl implements ErpStockService {
 
     @Override
     public PageResult<ErpStockDO> getStockPage(ErpStockPageReqVO pageReqVO) {
-        // 1. 预先处理"货架位重复/空置"特殊条件
+        StockQueryScope scope = buildStockQueryScope(pageReqVO);
+        return DataPermissionUtils.executeIgnore(() ->
+                isUnrestrictedScope(scope)
+                        ? selectStockPage(pageReqVO, scope.productIdFilter, scope.warehouseIdFilter,
+                        scope.keywordProductIdFilter, scope.keywordWarehouseIdFilter, scope.batchKeywordStockKeyMap)
+                        : selectStockPageWithPermission(pageReqVO, scope.productIdFilter, scope.warehouseIdFilter,
+                        scope.keywordProductIdFilter, scope.keywordWarehouseIdFilter, scope.batchKeywordStockKeyMap,
+                        scope.productStockScope.getDepartmentWarehouseIds(),
+                        scope.productStockScope.getSelfWarehouseIds(), scope.selfCreator()));
+    }
 
-        // 2. 若有任何产品维度条件，先按产品过滤拿 productIds
-        Collection<Long> productIdFilter = null;
+    @Override
+    public ErpStockSummaryRespVO getStockSummary(ErpStockPageReqVO pageReqVO) {
+        StockQueryScope scope = buildStockQueryScope(pageReqVO);
+        return DataPermissionUtils.executeIgnore(() ->
+                stockMapper.selectSummary(pageReqVO, scope.productIdFilter, scope.warehouseIdFilter,
+                        scope.keywordProductIdFilter, scope.keywordWarehouseIdFilter, scope.batchKeywordStockKeyMap,
+                        isUnrestrictedScope(scope) ? null : scope.productStockScope.getDepartmentWarehouseIds(),
+                        isUnrestrictedScope(scope) ? null : scope.productStockScope.getSelfWarehouseIds(),
+                        isUnrestrictedScope(scope) ? null : scope.selfCreator()));
+    }
+
+    private StockQueryScope buildStockQueryScope(ErpStockPageReqVO pageReqVO) {
+        StockQueryScope scope = new StockQueryScope();
         if (hasProductConditionExceptKeyword(pageReqVO)) {
-            productIdFilter = DataPermissionUtils.executeIgnore(() ->
+            scope.productIdFilter = DataPermissionUtils.executeIgnore(() ->
                     selectProductIdsWithoutStockShelfFilters(pageReqVO));
         }
 
-        // 3. 查库存
-        Collection<Long> warehouseIdFilter = null;
         if (pageReqVO.getDeptId() != null) {
-            warehouseIdFilter = getWarehouseListByDeptFilter(pageReqVO).stream()
+            scope.warehouseIdFilter = getWarehouseListByDeptFilter(pageReqVO).stream()
                     .map(ErpWarehouseDO::getId)
                     .collect(Collectors.toList());
         }
-        boolean saleBizType = isSaleBizType(pageReqVO);
-        ErpProductStockPermissionScope productStockScope = null;
-        if (!saleBizType) {
-            productStockScope = warehouseService.getCurrentUserProductStockPermissionScope();
-            warehouseIdFilter = intersectWarehouseIds(warehouseIdFilter,
-                    productStockScope.getVisibleWarehouseIds());
+        if (!isSaleBizType(pageReqVO)) {
+            scope.productStockScope = warehouseService.getCurrentUserProductStockPermissionScope();
+            scope.warehouseIdFilter = intersectWarehouseIds(scope.warehouseIdFilter,
+                    scope.productStockScope.getVisibleWarehouseIds());
         } else {
-            Collection<Long> visibleWarehouseIds = getVisibleWarehouseIdsForSaleStockPage(pageReqVO);
-            warehouseIdFilter = intersectWarehouseIds(warehouseIdFilter, visibleWarehouseIds);
+            scope.warehouseIdFilter = intersectWarehouseIds(scope.warehouseIdFilter,
+                    getVisibleWarehouseIdsForSaleStockPage(pageReqVO));
         }
-        Collection<Long> keywordProductIdFilter = null;
-        Collection<Long> keywordWarehouseIdFilter = null;
-        Map<Long, Set<Long>> batchKeywordStockKeyMap = null;
         if (StringUtils.hasText(pageReqVO.getKeyword())) {
-            keywordProductIdFilter = DataPermissionUtils.executeIgnore(() ->
+            scope.keywordProductIdFilter = DataPermissionUtils.executeIgnore(() ->
                     productMapper.selectIdsByKeyword(pageReqVO));
-            keywordWarehouseIdFilter = warehouseService.getWarehousePage(buildKeywordWarehouseReqVO(pageReqVO)).getList().stream()
+            scope.keywordWarehouseIdFilter = warehouseService.getWarehousePage(buildKeywordWarehouseReqVO(pageReqVO))
+                    .getList().stream()
                     .map(ErpWarehouseDO::getId)
                     .collect(Collectors.toList());
             if (Boolean.TRUE.equals(pageReqVO.getShowBatchNo())) {
-                Collection<Long> finalVisibleWarehouseIds = warehouseIdFilter;
-                batchKeywordStockKeyMap = new LinkedHashMap<>(DataPermissionUtils.executeIgnore(() ->
+                Collection<Long> finalVisibleWarehouseIds = scope.warehouseIdFilter;
+                scope.batchKeywordStockKeyMap = new LinkedHashMap<>(DataPermissionUtils.executeIgnore(() ->
                         stockRecordMapper.selectStockKeyMapByBatchNoKeyword(
                                 pageReqVO.getKeyword(), finalVisibleWarehouseIds)));
                 List<ErpStockBatchQuantityDO> associatedBatchKeys = DataPermissionUtils.executeIgnore(() ->
@@ -333,25 +351,27 @@ public class ErpStockServiceImpl implements ErpStockService {
                                 ErpStockTransferDirectionEnum.TRANSFER_OUT.getDirection(),
                                 ErpStockTransferDirectionEnum.TRANSFER_IN.getDirection(),
                                 Collections.singletonList(ErpAuditStatus.APPROVE.getStatus())));
-                mergeBatchKeywordStockKeys(batchKeywordStockKeyMap, associatedBatchKeys);
+                mergeBatchKeywordStockKeys(scope.batchKeywordStockKeyMap, associatedBatchKeys);
             }
         }
-        Collection<Long> finalProductIdFilter = productIdFilter;
-        Collection<Long> finalWarehouseIdFilter = warehouseIdFilter;
-        Collection<Long> finalKeywordProductIdFilter = keywordProductIdFilter;
-        Collection<Long> finalKeywordWarehouseIdFilter = keywordWarehouseIdFilter;
-        Map<Long, Set<Long>> finalBatchKeywordStockKeyMap = batchKeywordStockKeyMap;
-        ErpProductStockPermissionScope finalProductStockScope = productStockScope;
-        return DataPermissionUtils.executeIgnore(() ->
-                finalProductStockScope == null || finalProductStockScope.isAll()
-                        ? selectStockPage(pageReqVO, finalProductIdFilter, finalWarehouseIdFilter,
-                        finalKeywordProductIdFilter, finalKeywordWarehouseIdFilter, finalBatchKeywordStockKeyMap)
-                        : selectStockPageWithPermission(pageReqVO, finalProductIdFilter, finalWarehouseIdFilter,
-                        finalKeywordProductIdFilter, finalKeywordWarehouseIdFilter, finalBatchKeywordStockKeyMap,
-                        finalProductStockScope.getDepartmentWarehouseIds(),
-                        finalProductStockScope.getSelfWarehouseIds(),
-                        finalProductStockScope.getUserId() != null
-                                ? String.valueOf(finalProductStockScope.getUserId()) : ""));
+        return scope;
+    }
+
+    private boolean isUnrestrictedScope(StockQueryScope scope) {
+        return scope.productStockScope == null || scope.productStockScope.isAll();
+    }
+
+    private static class StockQueryScope {
+        private Collection<Long> productIdFilter;
+        private Collection<Long> warehouseIdFilter;
+        private Collection<Long> keywordProductIdFilter;
+        private Collection<Long> keywordWarehouseIdFilter;
+        private Map<Long, Set<Long>> batchKeywordStockKeyMap;
+        private ErpProductStockPermissionScope productStockScope;
+
+        private String selfCreator() {
+            return productStockScope.getUserId() != null ? String.valueOf(productStockScope.getUserId()) : "";
+        }
     }
 
     private PageResult<ErpStockDO> selectStockPage(ErpStockPageReqVO pageReqVO,
@@ -446,20 +466,11 @@ public class ErpStockServiceImpl implements ErpStockService {
     }
 
     private Collection<Long> getVisibleWarehouseIdsForSaleStockPage(ErpStockPageReqVO pageReqVO) {
-        boolean allWarehousePermission = warehouseService.hasCurrentUserAllWarehousePermission();
         if (pageReqVO.getSaleDeptId() != null) {
-            Collection<Long> saleDeptWarehouseIds = warehouseService.getSaleWarehouseListByDeptId(pageReqVO.getSaleDeptId())
+            return warehouseService.getCurrentUserSaleSelectableWarehouseListByDept(pageReqVO.getSaleDeptId())
                     .stream()
                     .map(ErpWarehouseDO::getId)
                     .collect(Collectors.toCollection(LinkedHashSet::new));
-            if (allWarehousePermission) {
-                return saleDeptWarehouseIds;
-            }
-            Collection<Long> currentVisibleWarehouseIds = warehouseService.getCurrentUserVisibleSaleWarehouseList()
-                    .stream()
-                    .map(ErpWarehouseDO::getId)
-                    .collect(Collectors.toCollection(LinkedHashSet::new));
-            return intersectWarehouseIds(saleDeptWarehouseIds, currentVisibleWarehouseIds);
         }
         List<ErpWarehouseDO> visibleWarehouses = warehouseService.getCurrentUserVisibleSaleWarehouseList();
         Collection<Long> visibleWarehouseIds = visibleWarehouses.stream()
@@ -618,6 +629,7 @@ public class ErpStockServiceImpl implements ErpStockService {
         }
 
         // 3. 返回最新库存
+        mallProductSyncPublisher.publishProductStockSync(productId);
         return stock.getCount().add(count);
     }
 
@@ -706,6 +718,7 @@ public class ErpStockServiceImpl implements ErpStockService {
                     stockMapper.updateCountAndCost(stockId, expectedOldCount, targetCount,
                             targetCost, targetAmount, NEGATIVE_STOCK_COUNT_ENABLE));
             if (updateCount == 1) {
+                mallProductSyncPublisher.publishProductStockSync(productId);
                 return new StockUpdateResult(newCount, newCost, newAmount);
             }
 

@@ -7,6 +7,7 @@ import cn.iocoder.yudao.framework.mybatis.core.mapper.BaseMapperX;
 import cn.iocoder.yudao.framework.mybatis.core.query.LambdaQueryWrapperX;
 import cn.iocoder.yudao.framework.mybatis.core.query.QueryWrapperX;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.stock.ErpStockPageReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.stock.ErpStockSummaryRespVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockDO;
 import cn.iocoder.yudao.module.erp.enums.ErpAuditStatus;
 import cn.iocoder.yudao.module.erp.enums.sale.ErpSaleCartStatusEnum;
@@ -81,6 +82,25 @@ public interface ErpStockMapper extends BaseMapperX<ErpStockDO> {
                                              Collection<Long> departmentWarehouseIds,
                                              Collection<Long> selfWarehouseIds,
                                              String selfCreator) {
+        QueryWrapperX<ErpStockDO> wrapper = buildStockQueryWrapper(reqVO, productIdFilter, warehouseIdFilter,
+                keywordProductIdFilter, keywordWarehouseIdFilter, batchKeywordStockKeyMap,
+                departmentWarehouseIds, selfWarehouseIds, selfCreator);
+        if (wrapper == null) {
+            return PageResult.empty(0L);
+        }
+        orderByIfPresent(wrapper, reqVO);
+        return selectPage(reqVO, wrapper);
+    }
+
+    default QueryWrapperX<ErpStockDO> buildStockQueryWrapper(ErpStockPageReqVO reqVO,
+                                                            Collection<Long> productIdFilter,
+                                                            Collection<Long> warehouseIdFilter,
+                                                            Collection<Long> keywordProductIdFilter,
+                                                            Collection<Long> keywordWarehouseIdFilter,
+                                                            Map<Long, Set<Long>> batchKeywordStockKeyMap,
+                                                            Collection<Long> departmentWarehouseIds,
+                                                            Collection<Long> selfWarehouseIds,
+                                                            String selfCreator) {
         QueryWrapperX<ErpStockDO> wrapper = new QueryWrapperX<ErpStockDO>()
                 .eqIfPresent("product_id", reqVO.getProductId())
                 .eqIfPresent("warehouse_id", reqVO.getWarehouseId())
@@ -89,26 +109,25 @@ public interface ErpStockMapper extends BaseMapperX<ErpStockDO> {
                 .leIfPresent("count", reqVO.getCountMax());
         if (productIdFilter != null) {
             if (productIdFilter.isEmpty()) {
-                // 产品过滤命中 0 条 → 直接返回空分页，而不是查所有
-                return PageResult.empty(0L);
+                return null;
             }
             wrapper.in("product_id", productIdFilter);
         }
         if (warehouseIdFilter != null) {
             if (warehouseIdFilter.isEmpty()) {
-                return PageResult.empty(0L);
+                return null;
             }
             wrapper.in("warehouse_id", warehouseIdFilter);
         }
         if (keywordProductIdFilter != null || keywordWarehouseIdFilter != null) {
             if (!appendKeywordCondition(wrapper, keywordProductIdFilter, keywordWarehouseIdFilter,
                     batchKeywordStockKeyMap)) {
-                return PageResult.empty(0L);
+                return null;
             }
         }
         if (selfCreator != null) {
             if (isEmpty(departmentWarehouseIds) && isEmpty(selfWarehouseIds)) {
-                return PageResult.empty(0L);
+                return null;
             }
             wrapper.and(permission -> {
                 boolean hasDepartmentScope = !isEmpty(departmentWarehouseIds);
@@ -146,8 +165,68 @@ public interface ErpStockMapper extends BaseMapperX<ErpStockDO> {
                             + "AND s2.shelf = erp_stock.shelf "
                             + "AND s2.id <> erp_stock.id");
         }
-        orderByIfPresent(wrapper, reqVO);
-        return selectPage(reqVO, wrapper);
+        return wrapper;
+    }
+
+    default ErpStockSummaryRespVO selectSummary(ErpStockPageReqVO reqVO,
+                                                Collection<Long> productIdFilter,
+                                                Collection<Long> warehouseIdFilter,
+                                                Collection<Long> keywordProductIdFilter,
+                                                Collection<Long> keywordWarehouseIdFilter,
+                                                Map<Long, Set<Long>> batchKeywordStockKeyMap,
+                                                Collection<Long> departmentWarehouseIds,
+                                                Collection<Long> selfWarehouseIds,
+                                                String selfCreator) {
+        QueryWrapperX<ErpStockDO> wrapper = buildStockQueryWrapper(reqVO, productIdFilter, warehouseIdFilter,
+                keywordProductIdFilter, keywordWarehouseIdFilter, batchKeywordStockKeyMap,
+                departmentWarehouseIds, selfWarehouseIds, selfCreator);
+        if (wrapper == null) {
+            return new ErpStockSummaryRespVO();
+        }
+        String currentPriceExpression = reqVO.getPriceSystemId() != null
+                ? currentPriceExpression(reqVO.getPriceSystemId()) : productField("backup_price1");
+        wrapper.select(
+                "COUNT(*) AS total_rows",
+                "COALESCE(SUM(COALESCE(count, 0)), 0) AS total_stock_count",
+                "COALESCE(SUM(COALESCE(cost_amount, 0)), 0) AS total_cost_amount",
+                "COALESCE(SUM(COALESCE(count, 0) * COALESCE(" + currentPriceExpression
+                        + ", 0)), 0) AS total_current_price_amount",
+                "COALESCE(SUM(COALESCE(" + pendingInCountExpression()
+                        + ", 0)), 0) AS total_pending_in_count",
+                "COALESCE(SUM(COALESCE(" + occupiedCountExpression()
+                        + ", 0)), 0) AS total_occupied_count",
+                "COALESCE(SUM(COALESCE(" + inTransitCountExpression()
+                        + ", 0)), 0) AS total_in_transit_count",
+                "COALESCE(SUM(COALESCE(count, 0) * COALESCE(" + productField("weight")
+                        + ", 0)), 0) AS total_weight");
+        List<Map<String, Object>> rows = selectMaps(wrapper);
+        if (CollUtil.isEmpty(rows)) {
+            return new ErpStockSummaryRespVO();
+        }
+        return buildSummary(rows.get(0));
+    }
+
+    static ErpStockSummaryRespVO buildSummary(Map<String, Object> row) {
+        return new ErpStockSummaryRespVO()
+                .setTotalRows(getLong(row, "total_rows"))
+                .setTotalStockCount(getBigDecimal(row, "total_stock_count"))
+                .setTotalCostAmount(getBigDecimal(row, "total_cost_amount"))
+                .setTotalCurrentPriceAmount(getBigDecimal(row, "total_current_price_amount"))
+                .setTotalPendingInCount(getBigDecimal(row, "total_pending_in_count"))
+                .setTotalOccupiedCount(getBigDecimal(row, "total_occupied_count"))
+                .setTotalInTransitCount(getBigDecimal(row, "total_in_transit_count"))
+                .setTotalWeight(getBigDecimal(row, "total_weight"));
+    }
+
+    static Long getLong(Map<String, Object> row, String key) {
+        Object value = row.get(key);
+        return value == null ? 0L : Long.valueOf(value.toString());
+    }
+
+    static BigDecimal getBigDecimal(Map<String, Object> row, String key) {
+        Object value = row.get(key);
+        return value == null ? BigDecimal.ZERO
+                : value instanceof BigDecimal ? (BigDecimal) value : new BigDecimal(value.toString());
     }
 
     /**
@@ -660,6 +739,17 @@ public interface ErpStockMapper extends BaseMapperX<ErpStockDO> {
             return BigDecimal.ZERO;
         }
         return BigDecimal.valueOf(MapUtil.getDouble(result.get(0), "sum_count", 0D));
+    }
+
+    default BigDecimal selectSumByProductIdAndWarehouseId(Long productId, Long warehouseId) {
+        List<Map<String, Object>> result = selectMaps(new QueryWrapper<ErpStockDO>()
+                .select("SUM(count) AS sum_count")
+                .eq("product_id", productId)
+                .eq("warehouse_id", warehouseId));
+        if (CollUtil.isEmpty(result)) {
+            return BigDecimal.ZERO;
+        }
+        return getBigDecimal(result.get(0), "sum_count");
     }
 
     /**

@@ -92,6 +92,12 @@ public class ErpStockOutRespVO {
     @ExcelProperty("产品编码")
     private String productCodes;
 
+    @Schema(description = "仓库名称")
+    private String warehouseNames;
+
+    @Schema(description = "项数")
+    private Integer itemCount;
+
     @Data
     public static class Item {
 
@@ -109,6 +115,21 @@ public class ErpStockOutRespVO {
 
         @Schema(description = "产品数量", requiredMode = Schema.RequiredMode.REQUIRED, example = "100.00")
         private BigDecimal count;
+
+        @Schema(description = "批次号", example = "BATCH-001")
+        private String batchNo;
+
+        @Schema(description = "产品单位编号")
+        private Long productUnitId;
+
+        @Schema(description = "包装数", example = "12")
+        private Integer packageQty;
+
+        @Schema(description = "单重", example = "1.25")
+        private BigDecimal weight;
+
+        @Schema(description = "总重", example = "125.00")
+        private BigDecimal totalWeight;
 
         @Schema(description = "备注", example = "随便")
         private String remark;

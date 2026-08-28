@@ -31,6 +31,7 @@ import cn.iocoder.yudao.module.erp.service.stock.bo.ErpStockRecordCreateReqBO;
 import cn.iocoder.yudao.module.system.controller.admin.dept.vo.dept.DeptSimpleRespVO;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
 import org.springframework.validation.annotation.Validated;
 
 import javax.annotation.Resource;
@@ -84,6 +85,8 @@ public class ErpStockInServiceImpl implements ErpStockInService {
     private ErpOperateLogService operateLogService;
     @Resource
     private ErpStockItemBatchUpdateSupport batchUpdateSupport;
+    @Resource
+    private ErpStockItemSnapshotSupport snapshotSupport;
 
     @Resource
     private ErpAutoVoucherBuilder autoVoucherBuilder;
@@ -217,7 +220,9 @@ public class ErpStockInServiceImpl implements ErpStockInService {
         Integer bizType = ErpStockRecordBizTypeEnum.OTHER_IN.getType();
         stockInItems.forEach(stockInItem -> {
             stockRecordService.createStockRecord(new ErpStockRecordCreateReqBO(
-                    stockInItem.getProductId(), stockInItem.getWarehouseId(), stockInItem.getCount(),
+                    stockInItem.getProductId(), stockInItem.getWarehouseId(), stockInItem.getBatchNo(),
+                    stockInItem.getProductUnitId(), stockInItem.getPackageQty(), stockInItem.getWeight(),
+                    stockInItem.getTotalWeight(), stockInItem.getCount(),
                     bizType, stockInItem.getInId(), stockInItem.getId(), stockIn.getNo(),
                     stockInItem.getProductPrice(), stockIn.getInTime()));
         });
@@ -251,15 +256,22 @@ public class ErpStockInServiceImpl implements ErpStockInService {
         DataPermissionUtils.executeIgnore(() -> warehouseService.validWarehouseList(warehouseIds));
         warehouseService.validateCurrentUserWarehousePermission(warehouseIds);
         // 2. 转化为 ErpStockInItemDO 列表
-        return convertList(list, o -> BeanUtils.toBean(o, ErpStockInItemDO.class, item -> item
-                .setProductUnitId(productMap.get(item.getProductId()).getUnitId())
-                .setTotalPrice(MoneyUtils.priceMultiply(item.getProductPrice(), item.getCount()))));
+        return convertList(list, o -> BeanUtils.toBean(o, ErpStockInItemDO.class, item -> {
+            ErpProductDO product = productMap.get(item.getProductId());
+            BigDecimal weight = snapshotSupport.resolveWeight(o.getWeight(), product);
+            item.setBatchNo(normalizeBatchNo(item.getBatchNo()))
+                    .setProductUnitId(snapshotSupport.resolveProductUnitId(item.getProductUnitId(), product))
+                    .setPackageQty(snapshotSupport.resolvePackageQty(o.getPackageQty(), product))
+                    .setWeight(weight)
+                    .setTotalWeight(snapshotSupport.calculateTotalWeight(weight, item.getCount()))
+                    .setTotalPrice(MoneyUtils.priceMultiply(item.getProductPrice(), item.getCount()));
+        }));
     }
 
     private void validateDuplicateStockInItems(List<ErpStockInSaveReqVO.Item> list) {
         Set<String> keys = new HashSet<>();
         for (ErpStockInSaveReqVO.Item item : list) {
-            String key = item.getProductId() + "-" + item.getWarehouseId();
+            String key = item.getProductId() + "-" + item.getWarehouseId() + "-" + normalizeBatchNo(item.getBatchNo());
             if (!keys.add(key)) {
                 throw exception(STOCK_IN_ITEM_DUPLICATE, key);
             }
@@ -272,11 +284,15 @@ public class ErpStockInServiceImpl implements ErpStockInService {
         Set<String> keys = new HashSet<>();
         for (ErpStockInItemDO item : stockInItems) {
             Long warehouseId = selectedItemIds.contains(item.getId()) ? targetWarehouseId : item.getWarehouseId();
-            String key = item.getProductId() + "-" + warehouseId;
+            String key = item.getProductId() + "-" + warehouseId + "-" + normalizeBatchNo(item.getBatchNo());
             if (!keys.add(key)) {
                 throw exception(STOCK_IN_ITEM_DUPLICATE, key);
             }
         }
+    }
+
+    private String normalizeBatchNo(String batchNo) {
+        return StringUtils.hasText(batchNo) ? batchNo.trim() : "";
     }
 
     private void updateStockInItemList(Long id, List<ErpStockInItemDO> newList) {

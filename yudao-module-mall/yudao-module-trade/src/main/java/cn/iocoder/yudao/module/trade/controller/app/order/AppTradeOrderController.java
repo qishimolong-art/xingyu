@@ -74,8 +74,7 @@ public class AppTradeOrderController {
     @PostMapping("/create")
     @Operation(summary = "创建订单")
     public CommonResult<AppTradeOrderCreateRespVO> createOrder(@Valid @RequestBody AppTradeOrderCreateReqVO createReqVO) {
-        TradeOrderDO order = tradeOrderUpdateService.createOrder(getLoginUserId(), createReqVO);
-        return success(new AppTradeOrderCreateRespVO().setId(order.getId()).setPayOrderId(order.getPayOrderId()));
+        return success(tradeOrderUpdateService.createOrder(getLoginUserId(), createReqVO));
     }
 
     @PostMapping("/update-paid")
@@ -140,7 +139,7 @@ public class AppTradeOrderController {
     @GetMapping("/get-count")
     @Operation(summary = "获得交易订单数量")
     public CommonResult<Map<String, Long>> getOrderCount() {
-        Map<String, Long> orderCount = Maps.newLinkedHashMapWithExpectedSize(5);
+        Map<String, Long> orderCount = Maps.newLinkedHashMapWithExpectedSize(7);
         // 全部
         orderCount.put("allCount", tradeOrderQueryService.getOrderCount(getLoginUserId(), null, null));
         // 待付款（未支付）
@@ -152,6 +151,9 @@ public class AppTradeOrderController {
         // 待收货
         orderCount.put("deliveredCount", tradeOrderQueryService.getOrderCount(getLoginUserId(),
                 TradeOrderStatusEnum.DELIVERED.getStatus(), null));
+        // 已完成
+        orderCount.put("completedCount", tradeOrderQueryService.getOrderCount(getLoginUserId(),
+                TradeOrderStatusEnum.COMPLETED.getStatus(), null));
         // 待评价
         orderCount.put("uncommentedCount", tradeOrderQueryService.getOrderCount(getLoginUserId(),
                 TradeOrderStatusEnum.COMPLETED.getStatus(), false));

@@ -400,6 +400,72 @@ public class ErpWarehouseServiceImplTest extends BaseMockitoUnitTest {
     }
 
     @Test
+    public void testGetCurrentUserSaleSelectableWarehouseListByDept_mergesDeptAndDirectUserWarehouses() {
+        ErpWarehouseDO ownWarehouse = new ErpWarehouseDO().setId(11L).setDeptId(10L)
+                .setStatus(CommonStatusEnum.ENABLE.getStatus()).setSaleEnabled(true);
+        ErpWarehouseDO distributedWarehouse = new ErpWarehouseDO().setId(12L).setDeptId(20L)
+                .setStatus(CommonStatusEnum.ENABLE.getStatus()).setSaleEnabled(true);
+        ErpWarehouseDO directUserWarehouse = new ErpWarehouseDO().setId(13L).setDeptId(30L)
+                .setStatus(CommonStatusEnum.ENABLE.getStatus()).setSaleEnabled(true);
+        ErpWarehouseDO saleDisabledWarehouse = new ErpWarehouseDO().setId(14L).setDeptId(40L)
+                .setStatus(CommonStatusEnum.ENABLE.getStatus()).setSaleEnabled(false);
+        when(warehouseSaleDeptPermissionMapper.selectListByDeptId(eq(10L))).thenReturn(Collections.singletonList(
+                ErpWarehouseSaleDeptPermissionDO.builder().warehouseId(12L).deptId(10L).build()));
+        when(warehouseMapper.selectListByStatusAndDeptIdOrIds(eq(CommonStatusEnum.ENABLE.getStatus()), eq(10L), any()))
+                .thenReturn(Arrays.asList(ownWarehouse, distributedWarehouse));
+        when(userWarehousePermissionMapper.selectListByUserId(104L)).thenReturn(Arrays.asList(
+                ErpUserWarehousePermissionDO.builder().warehouseId(13L).build(),
+                ErpUserWarehousePermissionDO.builder().warehouseId(14L).build()));
+        when(warehouseMapper.selectListByStatusAndIds(eq(CommonStatusEnum.ENABLE.getStatus()), any()))
+                .thenReturn(Arrays.asList(directUserWarehouse, saleDisabledWarehouse));
+
+        try (MockedStatic<SecurityFrameworkUtils> mock = mockStatic(SecurityFrameworkUtils.class)) {
+            mock.when(SecurityFrameworkUtils::getLoginUserId).thenReturn(104L);
+
+            List<ErpWarehouseDO> result = warehouseService.getCurrentUserSaleSelectableWarehouseListByDept(10L);
+
+            assertEquals(Arrays.asList(11L, 12L, 13L), result.stream().map(ErpWarehouseDO::getId)
+                    .collect(java.util.stream.Collectors.toList()));
+        }
+    }
+
+    @Test
+    public void testGetCurrentUserSaleSelectableWarehouseListByDept_allPermissionStillUsesThreeRuleScope() {
+        ErpWarehouseDO ownWarehouse = new ErpWarehouseDO().setId(11L).setDeptId(10L)
+                .setStatus(CommonStatusEnum.ENABLE.getStatus()).setSaleEnabled(true);
+        when(warehouseSaleDeptPermissionMapper.selectListByDeptId(eq(10L))).thenReturn(Collections.emptyList());
+        when(warehouseMapper.selectListByStatusAndDeptIdOrIds(eq(CommonStatusEnum.ENABLE.getStatus()), eq(10L), any()))
+                .thenReturn(Collections.singletonList(ownWarehouse));
+        when(userWarehousePermissionMapper.selectListByUserId(104L)).thenReturn(Collections.emptyList());
+
+        try (MockedStatic<SecurityFrameworkUtils> mock = mockStatic(SecurityFrameworkUtils.class)) {
+            mock.when(SecurityFrameworkUtils::getLoginUserId).thenReturn(104L);
+
+            List<ErpWarehouseDO> result = warehouseService.getCurrentUserSaleSelectableWarehouseListByDept(10L);
+
+            assertEquals(Collections.singletonList(11L), result.stream().map(ErpWarehouseDO::getId)
+                    .collect(java.util.stream.Collectors.toList()));
+            verify(warehouseMapper, never()).selectListByStatus(CommonStatusEnum.ENABLE.getStatus());
+        }
+    }
+
+    @Test
+    public void testValidateWarehouseSaleSelectableForDept_directUserWarehousePassesWithoutDeptDistribution() {
+        ErpWarehouseDO warehouse = new ErpWarehouseDO().setId(11L).setName("A").setDeptId(20L)
+                .setStatus(CommonStatusEnum.ENABLE.getStatus()).setSaleEnabled(true);
+        when(warehouseMapper.selectById(eq(11L))).thenReturn(warehouse);
+        when(warehouseSaleDeptPermissionMapper.selectCountByWarehouseIdAndDeptId(eq(11L), eq(10L))).thenReturn(0L);
+        when(userWarehousePermissionMapper.selectListByUserId(104L)).thenReturn(Collections.singletonList(
+                ErpUserWarehousePermissionDO.builder().warehouseId(11L).build()));
+
+        try (MockedStatic<SecurityFrameworkUtils> mock = mockStatic(SecurityFrameworkUtils.class)) {
+            mock.when(SecurityFrameworkUtils::getLoginUserId).thenReturn(104L);
+
+            warehouseService.validateWarehouseSaleSelectableForDept(11L, 10L);
+        }
+    }
+
+    @Test
     public void testValidateWarehouseSaleAllowedForDept_ownDeptAndDistributedPassUnauthorizedThrows() {
         ErpWarehouseDO warehouse = new ErpWarehouseDO().setId(11L).setName("A").setDeptId(10L)
                 .setStatus(CommonStatusEnum.ENABLE.getStatus()).setSaleEnabled(true);

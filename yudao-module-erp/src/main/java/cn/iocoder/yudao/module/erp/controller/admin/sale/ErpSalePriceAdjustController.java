@@ -263,7 +263,7 @@ public class ErpSalePriceAdjustController {
             }
         }
         fillAdjustSummary(respVO, respVO.getItems());
-        fieldPermissionMasker.maskFormWithItems(FIELD_PERMISSION_MODULE, respVO);
+        fieldPermissionMasker.maskSaleDetailFormWithItems(FIELD_PERMISSION_MODULE, respVO);
         return success(respVO);
     }
 
@@ -273,7 +273,7 @@ public class ErpSalePriceAdjustController {
     public CommonResult<PageResult<ErpSalePriceAdjustRespVO>> getSalePriceAdjustPage(@Valid ErpSalePriceAdjustPageReqVO pageReqVO) {
         PageResult<ErpSalePriceAdjustDO> pageResult = salePriceAdjustService.getSalePriceAdjustPage(pageReqVO);
         PageResult<ErpSalePriceAdjustRespVO> respResult = buildSalePriceAdjustVOPageResult(pageResult);
-        fieldPermissionMasker.maskFormsWithItems(FIELD_PERMISSION_MODULE, respResult.getList());
+        fieldPermissionMasker.maskSaleDetailFormsWithItems(FIELD_PERMISSION_MODULE, respResult.getList());
         return success(respResult);
     }
 
@@ -287,12 +287,12 @@ public class ErpSalePriceAdjustController {
         pageReqVO.setPageSize(PageParam.PAGE_SIZE_NONE);
         List<ErpSalePriceAdjustRespVO> list = buildSalePriceAdjustVOPageResult(
                 salePriceAdjustService.getSalePriceAdjustPage(pageReqVO)).getList();
-        fieldPermissionMasker.maskFormsWithItems(FIELD_PERMISSION_MODULE, list);
+        fieldPermissionMasker.maskSaleDetailFormsWithItems(FIELD_PERMISSION_MODULE, list);
         List<ErpSalePriceAdjustExportRespVO> rows = buildSalePriceAdjustExportList(list);
-        fieldPermissionMasker.maskExportRows(FIELD_PERMISSION_MODULE, rows);
+        fieldPermissionMasker.maskSaleDetailExportRows(FIELD_PERMISSION_MODULE, rows);
         Set<String> includeFields = ErpExportFieldUtils.resolveIncludeFields(ErpSalePriceAdjustExportRespVO.class,
                 ErpExportFieldUtils.parseFieldParam(fields),
-                fieldPermissionMasker.getHiddenFieldSet(FIELD_PERMISSION_MODULE), EXPORT_FIELD_PERMISSION_MAP);
+                fieldPermissionMasker.getHiddenFieldSet(FIELD_PERMISSION_MODULE, false), EXPORT_FIELD_PERMISSION_MAP);
         ExcelUtils.write(response, "销售调价单.xls", "数据", ErpSalePriceAdjustExportRespVO.class, rows, includeFields);
     }
 
@@ -301,7 +301,7 @@ public class ErpSalePriceAdjustController {
     @PreAuthorize("@ss.hasPermission('erp:sale-price-adjust:query')")
     public CommonResult<List<ErpExportFieldRespVO>> getSalePriceAdjustExportFields() {
         return success(ErpExportFieldUtils.listFields(ErpSalePriceAdjustExportRespVO.class, EXPORT_FIELD_GROUP_MAP,
-                fieldPermissionMasker.getHiddenFieldSet(FIELD_PERMISSION_MODULE), EXPORT_FIELD_PERMISSION_MAP));
+                fieldPermissionMasker.getHiddenFieldSet(FIELD_PERMISSION_MODULE, false), EXPORT_FIELD_PERMISSION_MAP));
     }
 
     @GetMapping("/adjustable-items")
@@ -313,7 +313,7 @@ public class ErpSalePriceAdjustController {
             @RequestParam(value = "excludeAdjusted", required = false) Boolean excludeAdjusted) {
         List<ErpSaleOutItemForAdjustRespVO> list = salePriceAdjustService.getAdjustableItemsByCustomerId(
                 customerId, saleOutId, excludeAdjusted);
-        fieldPermissionMasker.maskSelectRows(FIELD_PERMISSION_MODULE, list);
+        fieldPermissionMasker.maskSaleDetailSelectRows(FIELD_PERMISSION_MODULE, list);
         return success(list);
     }
 
@@ -424,6 +424,7 @@ public class ErpSalePriceAdjustController {
         ErpSalePriceAdjustExportRespVO row = fillMainFields
                 ? BeanUtils.toBean(adjust, ErpSalePriceAdjustExportRespVO.class)
                 : new ErpSalePriceAdjustExportRespVO();
+        row.setCustomerId(adjust.getCustomerId());
         if (item == null) {
             return row;
         }
@@ -434,6 +435,9 @@ public class ErpSalePriceAdjustController {
         row.setOriginPlace(item.getOriginPlace());
         row.setBrand(item.getBrand());
         row.setUnit(item.getUnit());
+        row.setWeight(item.getWeight());
+        row.setPackageQty(item.getPackageQty());
+        row.setBatchNo(item.getBatchNo());
         row.setOutCount(item.getOutCount());
         row.setOldPrice(item.getOldPrice());
         row.setNewPrice(item.getNewPrice());
@@ -465,6 +469,13 @@ public class ErpSalePriceAdjustController {
                 return;
             }
             item.setWarehouseId(saleOutItem.getWarehouseId());
+            item.setBatchNo(saleOutItem.getBatchNo());
+            if (item.getWeight() == null) {
+                item.setWeight(saleOutItem.getUnitWeight());
+            }
+            if (item.getPackageQty() == null) {
+                item.setPackageQty(saleOutItem.getPackageQty());
+            }
             MapUtils.findAndThen(warehouseMap, saleOutItem.getWarehouseId(), warehouse -> {
                 item.setWarehouseName(warehouse.getName());
                 item.setWarehouseDeptId(warehouse.getDeptId());
@@ -498,6 +509,9 @@ public class ErpSalePriceAdjustController {
         map.put("originPlace", "detail");
         map.put("brand", "detail");
         map.put("unit", "detail");
+        map.put("weight", "detail");
+        map.put("packageQty", "detail");
+        map.put("batchNo", "detail");
         map.put("outCount", "detail");
         map.put("oldPrice", "detail");
         map.put("newPrice", "detail");
@@ -518,6 +532,9 @@ public class ErpSalePriceAdjustController {
         map.put("originPlace", "item_originPlace");
         map.put("brand", "item_brand");
         map.put("unit", "item_unit");
+        map.put("weight", "item_weight");
+        map.put("packageQty", "item_packageQty");
+        map.put("batchNo", "item_batchNo");
         map.put("outCount", "item_outCount");
         map.put("oldPrice", "item_oldPrice");
         map.put("newPrice", "item_newPrice");

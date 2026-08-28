@@ -106,6 +106,8 @@ public class ErpStockMoveServiceImpl implements ErpStockMoveService {
     @Resource
     private ErpOperateLogService operateLogService;
     @Resource
+    private ErpStockItemSnapshotSupport snapshotSupport;
+    @Resource
     private DeptApi deptApi;
     @Resource
     private PermissionApi permissionApi;
@@ -779,7 +781,9 @@ public class ErpStockMoveServiceImpl implements ErpStockMoveService {
         stockMoveItems.forEach(stockMoveItem -> {
             BigDecimal fromCount = stockMoveItem.getCount().negate();
             stockRecordService.createStockRecord(new ErpStockRecordCreateReqBO(
-                    stockMoveItem.getProductId(), stockMoveItem.getFromWarehouseId(), stockMoveItem.getBatchNo(), fromCount,
+                    stockMoveItem.getProductId(), stockMoveItem.getFromWarehouseId(), stockMoveItem.getBatchNo(),
+                    stockMoveItem.getProductUnitId(), stockMoveItem.getPackageQty(), stockMoveItem.getWeight(),
+                    stockMoveItem.getTotalWeight() == null ? null : stockMoveItem.getTotalWeight().negate(), fromCount,
                     fromBizType, stockMoveItem.getMoveId(), stockMoveItem.getId(), stockMove.getNo(),
                     null, stockMove.getMoveTime()));
         });
@@ -809,7 +813,9 @@ public class ErpStockMoveServiceImpl implements ErpStockMoveService {
             // 调拨入库单价：优先取调出仓库当前成本均价；取不到则回退到明细单价。
             BigDecimal toUnitPrice = resolveStockMoveUnitPrice(stockMoveItem, warehouseMap);
             stockRecordService.createStockRecord(new ErpStockRecordCreateReqBO(
-                    stockMoveItem.getProductId(), stockMoveItem.getToWarehouseId(), stockMoveItem.getBatchNo(), toCount,
+                    stockMoveItem.getProductId(), stockMoveItem.getToWarehouseId(), stockMoveItem.getBatchNo(),
+                    stockMoveItem.getProductUnitId(), stockMoveItem.getPackageQty(), stockMoveItem.getWeight(),
+                    stockMoveItem.getTotalWeight(), toCount,
                     toBizType, inMove.getId(), transferInItem.getId(), inMove.getNo(),
                     toUnitPrice, inMove.getMoveTime()));
         });
@@ -1017,9 +1023,15 @@ public class ErpStockMoveServiceImpl implements ErpStockMoveService {
                 convertSet(validItems, ErpStockMoveSaveReqVO.Item::getProductId), true);
         Map<Long, ErpProductDO> productMap = convertMap(productList, ErpProductDO::getId);
         validateStockMoveItemWarehouses(validItems, false, false, reqVO.getDeptId());
-        return convertList(validItems, itemReq -> BeanUtils.toBean(itemReq, ErpStockMoveItemDO.class, item -> item
-                .setProductUnitId(productMap.get(item.getProductId()).getUnitId())
-                .setTotalPrice(MoneyUtils.priceMultiply(item.getProductPrice(), item.getCount()))));
+        return convertList(validItems, itemReq -> BeanUtils.toBean(itemReq, ErpStockMoveItemDO.class, item -> {
+            ErpProductDO product = productMap.get(item.getProductId());
+            BigDecimal weight = snapshotSupport.resolveWeight(itemReq.getWeight(), product);
+            item.setProductUnitId(snapshotSupport.resolveProductUnitId(item.getProductUnitId(), product))
+                    .setPackageQty(snapshotSupport.resolvePackageQty(itemReq.getPackageQty(), product))
+                    .setWeight(weight)
+                    .setTotalWeight(snapshotSupport.calculateTotalWeight(weight, item.getCount()))
+                    .setTotalPrice(MoneyUtils.priceMultiply(item.getProductPrice(), item.getCount()));
+        }));
     }
 
     private List<ErpStockMoveItemDO> validateStockMoveItems(List<ErpStockMoveSaveReqVO.Item> list,
@@ -1034,9 +1046,15 @@ public class ErpStockMoveServiceImpl implements ErpStockMoveService {
         // 1.2 鏍￠獙浠撳簱瀛樺湪
         validateStockMoveItemWarehouses(list, requireWarehouses, saleCartSource, saleDeptId);
         // 2. 杞寲涓?ErpStockMoveItemDO 鍒楄〃
-        return convertList(list, o -> BeanUtils.toBean(o, ErpStockMoveItemDO.class, item -> item
-                .setProductUnitId(productMap.get(item.getProductId()).getUnitId())
-                .setTotalPrice(MoneyUtils.priceMultiply(item.getProductPrice(), item.getCount()))));
+        return convertList(list, o -> BeanUtils.toBean(o, ErpStockMoveItemDO.class, item -> {
+            ErpProductDO product = productMap.get(item.getProductId());
+            BigDecimal weight = snapshotSupport.resolveWeight(o.getWeight(), product);
+            item.setProductUnitId(snapshotSupport.resolveProductUnitId(item.getProductUnitId(), product))
+                    .setPackageQty(snapshotSupport.resolvePackageQty(o.getPackageQty(), product))
+                    .setWeight(weight)
+                    .setTotalWeight(snapshotSupport.calculateTotalWeight(weight, item.getCount()))
+                    .setTotalPrice(MoneyUtils.priceMultiply(item.getProductPrice(), item.getCount()));
+        }));
     }
 
     private void validatePurchaseInSourceMoveCounts(List<ErpStockMoveItemDO> stockMoveItems, Long excludeMoveId) {

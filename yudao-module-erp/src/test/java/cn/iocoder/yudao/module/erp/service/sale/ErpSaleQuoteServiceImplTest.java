@@ -8,6 +8,7 @@ import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.quote.ErpSaleQuoteDr
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.quote.ErpSaleQuoteDraftUpdateReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.quote.ErpSaleQuoteImportExcelVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.quote.ErpSaleQuoteImportRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.quote.ErpSaleQuoteItemBatchUpdateReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.quote.ErpSaleQuoteSaveReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.product.ErpProductDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleQuoteDO;
@@ -42,6 +43,7 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -114,6 +116,10 @@ public class ErpSaleQuoteServiceImplTest extends BaseMockitoUnitTest {
     private ErpSaleDocumentDefaultService saleDocumentDefaultService;
     @Mock
     private AdminUserApi adminUserApi;
+    @Mock
+    private ErpSaleFieldPermissionMasker fieldPermissionMasker;
+    @Mock
+    private ErpSaleItemBatchUpdateSupport batchUpdateSupport;
 
     @BeforeEach
     public void setUp() {
@@ -226,6 +232,8 @@ public class ErpSaleQuoteServiceImplTest extends BaseMockitoUnitTest {
                 .setProductId(202L)
                 .setProductUnitId(302L)
                 .setWarehouseId(402L)
+                .setDeptId(502L)
+                .setBatchNo("B-NEW")
                 .setProductPrice(new BigDecimal("20.00"))
                 .setCount(new BigDecimal("10"))
                 .setConvertedCount(new BigDecimal("3"));
@@ -255,6 +263,9 @@ public class ErpSaleQuoteServiceImplTest extends BaseMockitoUnitTest {
         verify(saleCartItemMapper).insertBatch(argThat(items -> {
             java.util.List<cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleCartItemDO> list = new ArrayList<>(items);
             return list.size() == 1 && item.getProductId().equals(list.get(0).getProductId())
+                    && item.getWarehouseId().equals(list.get(0).getWarehouseId())
+                    && item.getDeptId().equals(list.get(0).getDeptId())
+                    && item.getBatchNo().equals(list.get(0).getBatchNo())
                     && new BigDecimal("4").compareTo(list.get(0).getCount()) == 0;
         }));
         verify(saleQuoteItemMapper).updateById(ArgumentMatchers.<ErpSaleQuoteItemDO>argThat(update -> item.getId().equals(update.getId())
@@ -265,6 +276,47 @@ public class ErpSaleQuoteServiceImplTest extends BaseMockitoUnitTest {
                     && new BigDecimal("4").compareTo(list.get(0).getCount()) == 0;
         }));
         verify(saleCartService, never()).createCrossDeptTransferOutDraftByCartId(any());
+    }
+
+    @Test
+    public void testBatchUpdateSaleQuoteItems_warehouseDept_persistChangedFieldsAndClearBatchNo() {
+        Long quoteId = 15L;
+        ErpSaleQuoteDO quote = new ErpSaleQuoteDO()
+                .setId(quoteId)
+                .setNo("BJ20260509000005")
+                .setStatus(ErpSaleQuoteStatusEnum.PROCESS.getStatus());
+        ErpSaleQuoteItemDO firstItem = new ErpSaleQuoteItemDO()
+                .setId(105L)
+                .setQuoteId(quoteId)
+                .setProductId(205L)
+                .setWarehouseId(405L)
+                .setDeptId(505L)
+                .setBatchNo("OLD-A");
+        ErpSaleQuoteItemDO secondItem = new ErpSaleQuoteItemDO()
+                .setId(106L)
+                .setQuoteId(quoteId)
+                .setProductId(206L)
+                .setWarehouseId(406L)
+                .setDeptId(506L)
+                .setBatchNo("OLD-B");
+        ErpWarehouseDO targetWarehouse = new ErpWarehouseDO().setId(407L).setDeptId(507L);
+        ErpSaleQuoteItemBatchUpdateReqVO reqVO = new ErpSaleQuoteItemBatchUpdateReqVO();
+        reqVO.setQuoteId(quoteId);
+        reqVO.setItemIds(Arrays.asList(firstItem.getId(), secondItem.getId()));
+        reqVO.setWarehouseId(targetWarehouse.getId());
+        reqVO.setDeptId(607L);
+        when(saleQuoteMapper.selectById(eq(quoteId))).thenReturn(quote);
+        when(saleQuoteItemMapper.selectListByQuoteId(eq(quoteId)))
+                .thenReturn(Arrays.asList(firstItem, secondItem));
+        when(batchUpdateSupport.validateTargetWarehouse(eq(targetWarehouse.getId()))).thenReturn(targetWarehouse);
+        when(batchUpdateSupport.resolveTargetDeptId(eq(targetWarehouse), eq(607L), anyString(), any()))
+                .thenReturn(607L);
+
+        saleQuoteService.batchUpdateSaleQuoteItems(reqVO);
+
+        verify(saleQuoteItemMapper).updateWarehouseDeptByIds(argThat((Collection<Long> ids) ->
+                        ids.size() == 2 && ids.contains(firstItem.getId()) && ids.contains(secondItem.getId())),
+                eq(targetWarehouse.getId()), eq(607L), eq(true));
     }
 
     @Test
@@ -425,7 +477,7 @@ public class ErpSaleQuoteServiceImplTest extends BaseMockitoUnitTest {
         verify(customerService).validateCustomerSaleDept(eq(50L), eq(80L));
         verify(accountService).validateAccount(eq(60L));
         verify(adminUserApi).validateUser(eq(70L));
-        verify(warehouseService).validateWarehouseSaleAllowedForDept(eq(600L), eq(80L));
+        verify(warehouseService).validateWarehouseSaleSelectableForDept(eq(600L), eq(80L));
         verify(saleQuoteMapper).insert(ArgumentMatchers.<ErpSaleQuoteDO>argThat(quote -> ErpSaleQuoteStatusEnum.PROCESS.getStatus().equals(quote.getStatus())
                 && reqVO.getCustomerId().equals(quote.getCustomerId())));
         verify(saleQuoteItemMapper).insertBatch(argThat((List<ErpSaleQuoteItemDO> items) -> items.size() == 1
@@ -465,7 +517,7 @@ public class ErpSaleQuoteServiceImplTest extends BaseMockitoUnitTest {
         Long resultId = saleQuoteService.createSaleQuote(reqVO);
 
         assertEquals(1000L, resultId);
-        verify(warehouseService).validateWarehouseSaleAllowedForDept(eq(606L), eq(80L));
+        verify(warehouseService).validateWarehouseSaleSelectableForDept(eq(606L), eq(80L));
         verify(saleQuoteItemMapper).insertBatch(argThat((List<ErpSaleQuoteItemDO> items) -> items.size() == 1
                 && Long.valueOf(606L).equals(items.get(0).getWarehouseId())
                 && Long.valueOf(2606L).equals(items.get(0).getDeptId())));
@@ -872,6 +924,55 @@ public class ErpSaleQuoteServiceImplTest extends BaseMockitoUnitTest {
                         && quote.getDeptId().equals(update.getDeptId())));
         verify(saleQuoteItemMapper).deleteByQuoteId(quoteId);
         verify(saleQuoteItemMapper, never()).insertBatch(any());
+    }
+
+    @Test
+    public void testUpdateSaleQuoteDraft_usesSaleDetailVisiblePriceMasking() {
+        Long quoteId = 106L;
+        ErpSaleQuoteDO quote = new ErpSaleQuoteDO()
+                .setId(quoteId)
+                .setNo("BJ-DRAFT-106")
+                .setCustomerId(90L)
+                .setDeptId(80L)
+                .setStatus(ErpSaleQuoteStatusEnum.DRAFT.getStatus());
+        ErpSaleQuoteItemDO oldItem = new ErpSaleQuoteItemDO()
+                .setId(206L)
+                .setQuoteId(quoteId)
+                .setProductId(306L)
+                .setWarehouseId(406L)
+                .setProductPrice(BigDecimal.ZERO)
+                .setCount(BigDecimal.ONE)
+                .setGiftFlag(Boolean.FALSE);
+        ErpSaleQuoteDraftUpdateReqVO reqVO = new ErpSaleQuoteDraftUpdateReqVO();
+        reqVO.setId(quoteId);
+        reqVO.setCustomerId(90L);
+        reqVO.setDeptId(80L);
+        ErpSaleQuoteSaveReqVO.Item itemVO = new ErpSaleQuoteSaveReqVO.Item();
+        itemVO.setId(206L);
+        itemVO.setProductId(306L);
+        itemVO.setWarehouseId(406L);
+        itemVO.setProductPrice(new BigDecimal("20.00"));
+        itemVO.setCount(BigDecimal.ONE);
+        itemVO.setGiftFlag(Boolean.FALSE);
+        reqVO.setItems(Collections.singletonList(itemVO));
+
+        when(saleQuoteMapper.selectById(quoteId)).thenReturn(quote);
+        when(saleQuoteItemMapper.selectListByQuoteId(quoteId)).thenReturn(Collections.singletonList(oldItem));
+        when(customerService.getCustomerSaleDeptIds(90L)).thenReturn(Collections.singletonList(80L));
+        when(productService.validProductList(eq(Collections.singleton(306L))))
+                .thenReturn(Collections.singletonList(new ErpProductDO().setId(306L).setUnitId(706L)));
+
+        saleQuoteService.updateSaleQuoteDraft(reqVO);
+
+        verify(fieldPermissionMasker).preserveSaleDetailHiddenFields("erp_sale_quote", reqVO, quote);
+        verify(fieldPermissionMasker).preserveSaleDetailHiddenItemFields("erp_sale_quote", reqVO,
+                reqVO.getItems(), Collections.singletonList(oldItem));
+        verify(saleQuoteItemMapper).insertBatch(argThat(items -> {
+            List<ErpSaleQuoteItemDO> list = new ArrayList<>(items);
+            return list.size() == 1
+                    && new BigDecimal("20.00").compareTo(list.get(0).getProductPrice()) == 0
+                    && new BigDecimal("20.00").compareTo(list.get(0).getTotalPrice()) == 0;
+        }));
     }
 
     @Test

@@ -184,6 +184,9 @@ public class ErpPurchaseReturnRespVO {
         @Schema(description = "产地", example = "德国")
         private String originPlace;
 
+        @Schema(description = "产品重量", example = "1.00")
+        private BigDecimal weight;
+
         @Schema(description = "包装数", example = "1")
         private Integer packageQty;
 

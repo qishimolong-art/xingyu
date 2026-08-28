@@ -52,6 +52,18 @@ public class ErpFinanceTransferRespVO {
     @ExcelProperty("转账金额")
     private BigDecimal transferPrice;
 
+    @Schema(description = "汇率", example = "1")
+    @ExcelProperty("汇率")
+    private BigDecimal exchangeRate;
+
+    @Schema(description = "手续费", example = "1.00")
+    @ExcelProperty("手续费")
+    private BigDecimal feePrice;
+
+    @Schema(description = "费用项目", example = "银行手续费")
+    @ExcelProperty("费用项目")
+    private String feeExpenseCategory;
+
     @Schema(description = "财务人员编号", example = "100")
     private Long financeUserId;
 

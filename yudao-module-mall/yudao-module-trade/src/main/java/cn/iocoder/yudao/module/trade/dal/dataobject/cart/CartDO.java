@@ -31,6 +31,16 @@ public class CartDO extends BaseDO {
      */
     private Long userId;
 
+    /**
+     * ERP 客户编号
+     */
+    private Long customerId;
+
+    /**
+     * 购物车所属部门编号
+     */
+    private Long deptId;
+
     // ========= 商品信息 =========
 
     /**
@@ -45,6 +55,18 @@ public class CartDO extends BaseDO {
      * 关联 ProductSkuDO 的 id 编号
      */
     private Long skuId;
+    /**
+     * ERP 库存记录编号
+     */
+    private Long stockId;
+    /**
+     * ERP 产品编号
+     */
+    private Long erpProductId;
+    /**
+     * ERP 仓库编号
+     */
+    private Long warehouseId;
     /**
      * 商品购买数量
      */

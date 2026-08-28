@@ -54,6 +54,14 @@ public class ErpStockOutBillItemDO extends BaseDO {
     private Integer status;
 
     private Integer packageQty;
+    /**
+     * 单重
+     */
+    private BigDecimal weight;
+    /**
+     * 总重
+     */
+    private BigDecimal totalWeight;
 
     private Integer wholeQty;
 

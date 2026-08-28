@@ -2,6 +2,7 @@ package cn.iocoder.yudao.module.trade.service.price;
 
 import cn.hutool.core.collection.CollUtil;
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
+import cn.iocoder.yudao.module.erp.api.sale.ErpCustomerMemberApi;
 import cn.iocoder.yudao.module.member.api.level.dto.MemberLevelRespDTO;
 import cn.iocoder.yudao.module.product.api.sku.ProductSkuApi;
 import cn.iocoder.yudao.module.product.api.sku.dto.ProductSkuRespDTO;
@@ -29,7 +30,6 @@ import java.util.Map;
 import static cn.iocoder.yudao.framework.common.exception.util.ServiceExceptionUtil.exception;
 import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.*;
 import static cn.iocoder.yudao.module.product.enums.ErrorCodeConstants.SKU_NOT_EXISTS;
-import static cn.iocoder.yudao.module.product.enums.ErrorCodeConstants.SKU_STOCK_NOT_ENOUGH;
 import static cn.iocoder.yudao.module.trade.enums.ErrorCodeConstants.PRICE_CALCULATE_PAY_PRICE_ILLEGAL;
 
 /**
@@ -50,6 +50,8 @@ public class TradePriceServiceImpl implements TradePriceService {
     private DiscountActivityApi discountActivityApi;
     @Resource
     private RewardActivityApi rewardActivityApi;
+    @Resource
+    private ErpCustomerMemberApi customerMemberApi;
 
     @Resource
     private List<TradePriceCalculator> priceCalculators;
@@ -80,18 +82,14 @@ public class TradePriceServiceImpl implements TradePriceService {
 
     private List<ProductSkuRespDTO> checkSkuList(TradePriceCalculateReqBO reqBO) {
         // 获得商品 SKU 数组
-        Map<Long, Integer> skuIdCountMap = convertMap(reqBO.getItems(),
-                TradePriceCalculateReqBO.Item::getSkuId, TradePriceCalculateReqBO.Item::getCount);
-        List<ProductSkuRespDTO> skus = productSkuApi.getSkuList(skuIdCountMap.keySet());
+        List<ProductSkuRespDTO> skus = productSkuApi.getSkuList(convertSet(reqBO.getItems(),
+                TradePriceCalculateReqBO.Item::getSkuId));
+        Map<Long, ProductSkuRespDTO> skuMap = convertMap(skus, ProductSkuRespDTO::getId);
 
         // 校验商品 SKU
-        skus.forEach(sku -> {
-            Integer count = skuIdCountMap.get(sku.getId());
-            if (count == null) {
+        reqBO.getItems().forEach(item -> {
+            if (!skuMap.containsKey(item.getSkuId())) {
                 throw exception(SKU_NOT_EXISTS);
-            }
-            if (count > sku.getStock()) {
-                throw exception(SKU_STOCK_NOT_ENOUGH);
             }
         });
         return skus;
@@ -103,6 +101,9 @@ public class TradePriceServiceImpl implements TradePriceService {
 
     @Override
     public List<AppTradeProductSettlementRespVO> calculateProductPrice(Long userId, List<Long> spuIds) {
+        if (!customerMemberApi.isCustomerMemberAuthorized(userId)) {
+            return buildUnauthorizedProductSettlement(spuIds);
+        }
         // 1.1 获得 SPU 与 SKU 的映射
         List<ProductSkuRespDTO> allSkuList = productSkuApi.getSkuListBySpuId(spuIds);
         Map<Long, List<ProductSkuRespDTO>> spuIdAndSkuListMap = convertMultiMap(allSkuList, ProductSkuRespDTO::getSpuId);
@@ -117,7 +118,9 @@ public class TradePriceServiceImpl implements TradePriceService {
 
         // 2. 价格计算
         return convertList(spuIds, spuId -> {
-            AppTradeProductSettlementRespVO spuVO = new AppTradeProductSettlementRespVO().setSpuId(spuId);
+            AppTradeProductSettlementRespVO spuVO = new AppTradeProductSettlementRespVO()
+                    .setSpuId(spuId)
+                    .setPriceVisible(true);
             // 2.1 优惠价格
             List<ProductSkuRespDTO> skuList = spuIdAndSkuListMap.get(spuId);
             List<AppTradeProductSettlementRespVO.Sku> skuVOList = convertList(skuList, sku -> {
@@ -150,6 +153,16 @@ public class TradePriceServiceImpl implements TradePriceService {
             spuVO.setRewardActivity(BeanUtils.toBean(rewardActivity, AppTradeProductSettlementRespVO.RewardActivity.class));
             return spuVO;
         });
+    }
+
+    private List<AppTradeProductSettlementRespVO> buildUnauthorizedProductSettlement(List<Long> spuIds) {
+        List<ProductSkuRespDTO> allSkuList = productSkuApi.getSkuListBySpuId(spuIds);
+        Map<Long, List<ProductSkuRespDTO>> spuIdAndSkuListMap = convertMultiMap(allSkuList, ProductSkuRespDTO::getSpuId);
+        return convertList(spuIds, spuId -> new AppTradeProductSettlementRespVO()
+                .setSpuId(spuId)
+                .setPriceVisible(false)
+                .setSkus(convertList(spuIdAndSkuListMap.get(spuId),
+                        sku -> new AppTradeProductSettlementRespVO.Sku().setId(sku.getId()))));
     }
 
 }

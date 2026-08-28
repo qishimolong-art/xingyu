@@ -1,6 +1,7 @@
 package cn.iocoder.yudao.module.product.dal.mysql.spu;
 
 import cn.hutool.core.util.ObjectUtil;
+import cn.hutool.core.util.StrUtil;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.mybatis.core.mapper.BaseMapperX;
 import cn.iocoder.yudao.framework.mybatis.core.query.LambdaQueryWrapperX;
@@ -14,6 +15,7 @@ import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.extension.handlers.JacksonTypeHandler;
 import org.apache.ibatis.annotations.*;
 
+import java.util.List;
 import java.util.Objects;
 import java.util.Set;
 
@@ -30,6 +32,15 @@ public interface ProductSpuMapper extends BaseMapperX<ProductSpuDO> {
             @Result(column = "delivery_types", property = "deliveryTypes", typeHandler = IntegerListTypeHandler.class),
     })
     ProductSpuDO selectByIdIncludeDeleted(@Param("id") Long id);
+
+    default List<ProductSpuDO> selectListByPartCode(String code) {
+        return selectList(new LambdaQueryWrapperX<ProductSpuDO>()
+                .ne(ProductSpuDO::getStatus, ProductSpuStatusEnum.RECYCLE.getStatus())
+                .and(wrapper -> wrapper.eq(ProductSpuDO::getCode, code)
+                        .or().like(ProductSpuDO::getIntroduction, "编码：" + code)
+                        .or().like(ProductSpuDO::getDescription, "配件编码：" + code))
+                .orderByAsc(ProductSpuDO::getId));
+    }
 
     /**
      * 获取商品 SPU 分页列表数据
@@ -67,11 +78,19 @@ public interface ProductSpuMapper extends BaseMapperX<ProductSpuDO> {
      * 获得商品 SPU 分页，提供给用户 App 使用
      */
     default PageResult<ProductSpuDO> selectPage(AppProductSpuPageReqVO pageReqVO, Set<Long> categoryIds) {
-        LambdaQueryWrapperX<ProductSpuDO> query = new LambdaQueryWrapperX<ProductSpuDO>()
-                // 关键字匹配，目前只匹配商品名
-                .likeIfPresent(ProductSpuDO::getName, pageReqVO.getKeyword())
-                // 分类
-                .inIfPresent(ProductSpuDO::getCategoryId, categoryIds);
+        LambdaQueryWrapperX<ProductSpuDO> query = new LambdaQueryWrapperX<>();
+        // 关键字匹配商品名称、后台关键词、简介、详情、适用车型、编码
+        query.and(StrUtil.isNotBlank(pageReqVO.getKeyword()), wrapper -> wrapper
+                .like(ProductSpuDO::getName, pageReqVO.getKeyword())
+                .or().like(ProductSpuDO::getKeyword, pageReqVO.getKeyword())
+                .or().like(ProductSpuDO::getIntroduction, pageReqVO.getKeyword())
+                .or().like(ProductSpuDO::getDescription, pageReqVO.getKeyword())
+                .or().like(ProductSpuDO::getVehicleModel, pageReqVO.getKeyword())
+                .or().like(ProductSpuDO::getCode, pageReqVO.getKeyword()));
+        // 车型
+        query.likeIfPresent(ProductSpuDO::getVehicleModel, pageReqVO.getVehicleModel());
+        // 分类
+        query.inIfPresent(ProductSpuDO::getCategoryId, categoryIds);
         // 上架状态 且有库存
         query.eq(ProductSpuDO::getStatus, ProductSpuStatusEnum.ENABLE.getStatus());
 
@@ -89,6 +108,21 @@ public interface ProductSpuMapper extends BaseMapperX<ProductSpuDO> {
             query.orderByDesc(ProductSpuDO::getSort).orderByDesc(ProductSpuDO::getId);
         }
         return selectPage(pageReqVO, query);
+    }
+
+    /**
+     * 获得用户 App 车型筛选项原始列表。
+     */
+    default List<ProductSpuDO> selectVehicleModelList(Set<Long> categoryIds) {
+        LambdaQueryWrapperX<ProductSpuDO> query = new LambdaQueryWrapperX<>();
+        query.select(ProductSpuDO::getVehicleModel);
+        query.eq(ProductSpuDO::getStatus, ProductSpuStatusEnum.ENABLE.getStatus());
+        query.inIfPresent(ProductSpuDO::getCategoryId, categoryIds);
+        query.isNotNull(ProductSpuDO::getVehicleModel)
+                .ne(ProductSpuDO::getVehicleModel, "")
+                .groupBy(ProductSpuDO::getVehicleModel)
+                .orderByAsc(ProductSpuDO::getVehicleModel);
+        return selectList(query);
     }
 
     /**
@@ -111,6 +145,13 @@ public interface ProductSpuMapper extends BaseMapperX<ProductSpuDO> {
         // 执行更新
         LambdaUpdateWrapper<ProductSpuDO> updateWrapper = new LambdaUpdateWrapper<ProductSpuDO>()
                 .setSql(sql)
+                .eq(ProductSpuDO::getId, id);
+        update(null, updateWrapper);
+    }
+
+    default void updateStockCount(Long id, Integer stock) {
+        LambdaUpdateWrapper<ProductSpuDO> updateWrapper = new LambdaUpdateWrapper<ProductSpuDO>()
+                .set(ProductSpuDO::getStock, stock)
                 .eq(ProductSpuDO::getId, id);
         update(null, updateWrapper);
     }

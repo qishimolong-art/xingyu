@@ -226,19 +226,18 @@ public interface TradeOrderConvert {
         // 商品项的构建
         Map<Long, CartDO> cartMap = convertMap(cartList, CartDO::getId);
         for (AppTradeOrderSettlementReqVO.Item item : settlementReqVO.getItems()) {
-            // 情况一：skuId + count
+            // 情况一：cartId，库存来源以后端购物车项为准
+            CartDO cart = cartMap.get(item.getCartId());
+            if (cart != null) {
+                reqBO.getItems().add(new TradePriceCalculateReqBO.Item().setSkuId(cart.getSkuId()).setCount(cart.getCount())
+                        .setCartId(item.getCartId()).setStockId(cart.getStockId()).setSelected(true)); // true 的原因，下单一定选中
+                continue;
+            }
+            // 情况二：skuId + count，库存来源来自前端即时选择
             if (item.getSkuId() != null) {
                 reqBO.getItems().add(new TradePriceCalculateReqBO.Item().setSkuId(item.getSkuId()).setCount(item.getCount())
-                        .setSelected(true)); // true 的原因，下单一定选中
-                continue;
+                        .setStockId(item.getStockId()).setSelected(true)); // true 的原因，下单一定选中
             }
-            // 情况二：cartId
-            CartDO cart = cartMap.get(item.getCartId());
-            if (cart == null) {
-                continue;
-            }
-            reqBO.getItems().add(new TradePriceCalculateReqBO.Item().setSkuId(cart.getSkuId()).setCount(cart.getCount())
-                    .setCartId(item.getCartId()).setSelected(true)); // true 的原因，下单一定选中
         }
         return reqBO;
     }

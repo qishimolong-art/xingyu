@@ -198,6 +198,9 @@ public class ErpSaleOutSaveReqVO {
         @Schema(description = "单重")
         private BigDecimal unitWeight;
 
+        @Schema(description = "包装数")
+        private Integer packageQty;
+
         @Schema(description = "产地")
         private String originPlace;
 

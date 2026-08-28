@@ -233,7 +233,7 @@ public class ErpSaleReturnController {
             });
             saleReturnVO.setItems(emptyIfNull(items));
         });
-        fieldPermissionMasker.maskFormWithItems(FIELD_PERMISSION_MODULE, respVO);
+        fieldPermissionMasker.maskSaleDetailFormWithItems(FIELD_PERMISSION_MODULE, respVO);
         return success(respVO);
     }
 
@@ -251,7 +251,7 @@ public class ErpSaleReturnController {
     public CommonResult<PageResult<ErpSaleReturnRespVO>> getSaleReturnPage(@Valid ErpSaleReturnPageReqVO pageReqVO) {
         PageResult<ErpSaleReturnDO> pageResult = saleReturnService.getSaleReturnPage(pageReqVO);
         PageResult<ErpSaleReturnRespVO> respResult = buildSaleReturnVOPageResult(pageResult);
-        fieldPermissionMasker.maskFormsWithItems(FIELD_PERMISSION_MODULE, respResult.getList());
+        fieldPermissionMasker.maskSaleDetailFormsWithItems(FIELD_PERMISSION_MODULE, respResult.getList());
         return success(respResult);
     }
 
@@ -264,12 +264,12 @@ public class ErpSaleReturnController {
                                     HttpServletResponse response) throws IOException {
         pageReqVO.setPageSize(PageParam.PAGE_SIZE_NONE);
         List<ErpSaleReturnRespVO> list = buildSaleReturnVOPageResult(saleReturnService.getSaleReturnPage(pageReqVO)).getList();
-        fieldPermissionMasker.maskFormsWithItems(FIELD_PERMISSION_MODULE, list);
+        fieldPermissionMasker.maskSaleDetailFormsWithItems(FIELD_PERMISSION_MODULE, list);
         List<ErpSaleReturnExportRespVO> rows = buildSaleReturnExportList(list);
-        fieldPermissionMasker.maskExportRows(FIELD_PERMISSION_MODULE, rows);
+        fieldPermissionMasker.maskSaleDetailExportRows(FIELD_PERMISSION_MODULE, rows);
         Set<String> includeFields = ErpExportFieldUtils.resolveIncludeFields(ErpSaleReturnExportRespVO.class,
                 ErpExportFieldUtils.parseFieldParam(fields),
-                fieldPermissionMasker.getHiddenFieldSet(FIELD_PERMISSION_MODULE), EXPORT_FIELD_PERMISSION_MAP);
+                fieldPermissionMasker.getHiddenFieldSet(FIELD_PERMISSION_MODULE, false), EXPORT_FIELD_PERMISSION_MAP);
         ExcelUtils.write(response, "销售退货.xls", "数据", ErpSaleReturnExportRespVO.class, rows, includeFields);
     }
 
@@ -278,7 +278,7 @@ public class ErpSaleReturnController {
     @PreAuthorize("@ss.hasPermission('erp:sale-return:export')")
     public CommonResult<List<ErpExportFieldRespVO>> getSaleReturnExportFields() {
         return success(ErpExportFieldUtils.listFields(ErpSaleReturnExportRespVO.class, EXPORT_FIELD_GROUP_MAP,
-                fieldPermissionMasker.getHiddenFieldSet(FIELD_PERMISSION_MODULE), EXPORT_FIELD_PERMISSION_MAP));
+                fieldPermissionMasker.getHiddenFieldSet(FIELD_PERMISSION_MODULE, false), EXPORT_FIELD_PERMISSION_MAP));
     }
 
     @GetMapping("/export-import-template")
@@ -403,13 +403,17 @@ public class ErpSaleReturnController {
         ErpSaleReturnExportRespVO row = fillMainFields
                 ? BeanUtils.toBean(saleReturn, ErpSaleReturnExportRespVO.class)
                 : new ErpSaleReturnExportRespVO();
+        row.setCustomerId(saleReturn.getCustomerId());
         if (item == null) {
             return row;
         }
         row.setProductCode(item.getProductCode());
         row.setProductName(item.getProductName());
         row.setProductUnitName(item.getProductUnitName());
+        row.setWeight(item.getWeight());
+        row.setPackageQty(item.getPackageQty());
         row.setWarehouseName(item.getWarehouseName());
+        row.setBatchNo(item.getBatchNo());
         row.setItemCount(item.getCount());
         row.setProductPrice(item.getProductPrice());
         row.setReturnReason(item.getReturnReason());
@@ -480,7 +484,10 @@ public class ErpSaleReturnController {
         map.put("productCode", "detail");
         map.put("productName", "detail");
         map.put("productUnitName", "detail");
+        map.put("weight", "detail");
+        map.put("packageQty", "detail");
         map.put("warehouseName", "detail");
+        map.put("batchNo", "detail");
         map.put("itemCount", "detail");
         map.put("productPrice", "detail");
         map.put("returnReason", "detail");
@@ -495,7 +502,10 @@ public class ErpSaleReturnController {
         map.put("productCode", "item_productCode");
         map.put("productName", "item_productId");
         map.put("productUnitName", "item_productUnitName");
+        map.put("weight", "item_weight");
+        map.put("packageQty", "item_packageQty");
         map.put("warehouseName", "item_warehouseId");
+        map.put("batchNo", "item_batchNo");
         map.put("itemCount", "item_count");
         map.put("productPrice", "item_productPrice");
         map.put("returnReason", "item_returnReason");

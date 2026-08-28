@@ -116,6 +116,11 @@ public class TradePriceCalculateReqBO {
         private Long cartId;
 
         /**
+         * ERP 库存记录编号
+         */
+        private Long stockId;
+
+        /**
          * 是否选中
          */
         @NotNull(message = "是否选中不能为空")

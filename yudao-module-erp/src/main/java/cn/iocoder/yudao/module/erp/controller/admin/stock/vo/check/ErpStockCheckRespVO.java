@@ -80,6 +80,14 @@ public class ErpStockCheckRespVO {
     @Schema(description = "修改时间")
     private LocalDateTime updateTime;
 
+    @Schema(description = "打印次数")
+    @ExcelProperty("打印次数")
+    private Integer printCount;
+
+    @Schema(description = "最后打印时间")
+    @ExcelProperty("打印时间")
+    private LocalDateTime printTime;
+
     @Schema(description = "盘点项列表", requiredMode = Schema.RequiredMode.REQUIRED)
     private List<Item> items;
 
@@ -100,6 +108,9 @@ public class ErpStockCheckRespVO {
         @Schema(description = "仓库编号", requiredMode = Schema.RequiredMode.REQUIRED, example = "3113")
         private Long warehouseId;
 
+        @Schema(description = "仓库名称")
+        private String warehouseName;
+
         @Schema(description = "仓库所属部门 ID", example = "100")
         private Long warehouseDeptId;
 
@@ -118,6 +129,18 @@ public class ErpStockCheckRespVO {
         @Schema(description = "账面数量（当前库存）", requiredMode = Schema.RequiredMode.REQUIRED, example = "100.00")
         @NotNull(message = "账面数量不能为空")
         private BigDecimal stockCount;
+
+        @Schema(description = "产品单位编号")
+        private Long productUnitId;
+
+        @Schema(description = "包装数", example = "12")
+        private Integer packageQty;
+
+        @Schema(description = "单重", example = "1.25")
+        private BigDecimal weight;
+
+        @Schema(description = "总重", example = "125.00")
+        private BigDecimal totalWeight;
 
         @Schema(description = "实际数量（实际库存）", requiredMode = Schema.RequiredMode.REQUIRED, example = "100.00")
         @NotNull(message = "实际数量不能为空")

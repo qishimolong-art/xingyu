@@ -242,7 +242,8 @@ public class ErpFinanceTransferController {
         for (int i = 0; i < list.size(); i++) {
             ErpFinanceTransferImportExcelVO row = list.get(i);
             if (row == null || allBlank(row.getTransferTime(), row.getOutAccountId(), row.getInAccountId(),
-                    row.getTransferPrice(), row.getFinanceUserId(), row.getDeptId(), row.getRemark(), row.getFileUrl())) {
+                    row.getTransferPrice(), row.getExchangeRate(), row.getFeePrice(), row.getFeeExpenseCategory(),
+                    row.getFinanceUserId(), row.getDeptId(), row.getRemark(), row.getFileUrl())) {
                 continue;
             }
             try {

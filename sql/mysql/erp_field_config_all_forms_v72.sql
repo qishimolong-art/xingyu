@@ -312,7 +312,7 @@ FROM (
     SELECT 'erp_accounting_voucher_word', 'remark', '备注', b'0', 50, 'base_info' UNION ALL
 
     SELECT 'erp_accounting_voucher', 'voucherWord', '凭证字', b'1', 10, 'base_info' UNION ALL
-    SELECT 'erp_accounting_voucher', 'voucherNo', '凭证编号', b'0', 20, 'base_info' UNION ALL
+    SELECT 'erp_accounting_voucher', 'voucherNo', '凭证号', b'0', 20, 'base_info' UNION ALL
     SELECT 'erp_accounting_voucher', 'voucherDate', '凭证日期', b'1', 30, 'base_info' UNION ALL
     SELECT 'erp_accounting_voucher', 'attachmentCount', '附件张数', b'0', 40, 'base_info' UNION ALL
     SELECT 'erp_accounting_voucher', 'summary', '摘要', b'0', 50, 'base_info' UNION ALL
@@ -329,10 +329,12 @@ FROM (
     SELECT 'erp_accounting_voucher', 'generateBusinessDoc', '是否产生业务单据', b'0', 160, 'base_info' UNION ALL
     SELECT 'erp_accounting_voucher', 'bizDocType', '业务单据类型', b'0', 170, 'base_info' UNION ALL
     SELECT 'erp_accounting_voucher', 'auditTime', '审核时间', b'0', 180, 'system_info' UNION ALL
-    SELECT 'erp_accounting_voucher', 'subjectId', '会计科目', b'0', 190, 'detail_item' UNION ALL
-    SELECT 'erp_accounting_voucher', 'auxiliaryName', '核算项', b'0', 200, 'detail_item' UNION ALL
-    SELECT 'erp_accounting_voucher', 'debitAmount', '借方金额', b'0', 210, 'detail_item' UNION ALL
-    SELECT 'erp_accounting_voucher', 'creditAmount', '贷方金额', b'0', 220, 'detail_item' UNION ALL
+    SELECT 'erp_accounting_voucher', 'period', '期间', b'0', 190, 'system_info' UNION ALL
+    SELECT 'erp_accounting_voucher', 'bookkeeperTime', '登账日期', b'0', 200, 'system_info' UNION ALL
+    SELECT 'erp_accounting_voucher', 'subjectId', '会计科目', b'0', 210, 'detail_item' UNION ALL
+    SELECT 'erp_accounting_voucher', 'auxiliaryName', '核算项', b'0', 220, 'detail_item' UNION ALL
+    SELECT 'erp_accounting_voucher', 'debitAmount', '借方金额', b'0', 230, 'detail_item' UNION ALL
+    SELECT 'erp_accounting_voucher', 'creditAmount', '贷方金额', b'0', 240, 'detail_item' UNION ALL
 
     SELECT 'erp_accounting_voucher_attribution', 'bizType', '业务单据类型', b'1', 10, 'base_info' UNION ALL
     SELECT 'erp_accounting_voucher_attribution', 'bizNo', '业务单号', b'1', 20, 'base_info' UNION ALL

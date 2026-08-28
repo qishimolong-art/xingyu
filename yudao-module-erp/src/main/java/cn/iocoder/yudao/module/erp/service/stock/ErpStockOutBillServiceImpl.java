@@ -67,6 +67,8 @@ public class ErpStockOutBillServiceImpl implements ErpStockOutBillService {
     @Resource
     private ErpStockRecordService stockRecordService;
     @Resource
+    private ErpStockItemSnapshotSupport snapshotSupport;
+    @Resource
     private AdminUserApi adminUserApi;
 
     @Override
@@ -182,6 +184,8 @@ public class ErpStockOutBillServiceImpl implements ErpStockOutBillService {
                 .setSourceItemId(item.getId())
                 .setSourceNo(saleOut.getNo())
                 .setPickedCount(BigDecimal.ZERO)
+                .setWeight(item.getUnitWeight())
+                .setTotalWeight(item.getTotalWeight())
                 .setStatus(STATUS_WAIT_PICK);
     }
 
@@ -213,7 +217,9 @@ public class ErpStockOutBillServiceImpl implements ErpStockOutBillService {
             }
             BigDecimal pickCount = reqItem.getPickCount().negate();
             stockRecordService.createStockRecord(new ErpStockRecordCreateReqBO(
-                    billItem.getProductId(), billItem.getWarehouseId(), billItem.getBatchNo(), pickCount,
+                    billItem.getProductId(), billItem.getWarehouseId(), billItem.getBatchNo(),
+                    billItem.getProductUnitId(), billItem.getPackageQty(), billItem.getWeight(),
+                    snapshotSupport.calculateTotalWeight(billItem.getWeight(), pickCount), pickCount,
                     ErpStockRecordBizTypeEnum.SALE_OUT.getType(), bill.getSourceId(), billItem.getSourceItemId(), bill.getSourceNo(),
                     billItem.getProductPrice(), pickTime));
             BigDecimal pickedCount = oldPickedCount.add(reqItem.getPickCount());

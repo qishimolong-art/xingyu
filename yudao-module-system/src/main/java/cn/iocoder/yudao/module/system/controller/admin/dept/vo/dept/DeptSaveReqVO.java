@@ -6,9 +6,12 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Data;
 
 import javax.validation.constraints.Email;
+import javax.validation.constraints.DecimalMax;
+import javax.validation.constraints.DecimalMin;
 import javax.validation.constraints.NotBlank;
 import javax.validation.constraints.NotNull;
 import javax.validation.constraints.Size;
+import java.math.BigDecimal;
 
 @Schema(description = "管理后台 - 部门创建/修改 Request VO")
 @Data
@@ -32,8 +35,26 @@ public class DeptSaveReqVO {
     private Long leaderUserId;
 
     @Schema(description = "联系电话", example = "15601691000")
-    @Size(max = 11, message = "联系电话长度不能超过11个字符")
+    @Size(max = 30, message = "联系电话长度不能超过 30 个字符")
     private String phone;
+
+    @Schema(description = "详细地址", example = "四川省成都市高新区天府大道")
+    @Size(max = 255, message = "详细地址长度不能超过 255 个字符")
+    private String address;
+
+    @Schema(description = "经度", example = "104.065735")
+    @DecimalMin(value = "-180", message = "经度不能小于 -180")
+    @DecimalMax(value = "180", message = "经度不能大于 180")
+    private BigDecimal longitude;
+
+    @Schema(description = "纬度", example = "30.659462")
+    @DecimalMin(value = "-90", message = "纬度不能小于 -90")
+    @DecimalMax(value = "90", message = "纬度不能大于 90")
+    private BigDecimal latitude;
+
+    @Schema(description = "地图显示名称", example = "兴宇总部")
+    @Size(max = 100, message = "地图显示名称长度不能超过 100 个字符")
+    private String mapName;
 
     @Schema(description = "邮箱", example = "yudao@iocoder.cn")
     @Email(message = "邮箱格式不正确")

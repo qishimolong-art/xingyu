@@ -39,7 +39,6 @@ import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseInItemDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseInvoiceItemDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpSupplierDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.ErpAccountDO;
-import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockInBillDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockInBillItemDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpWarehouseDO;
@@ -109,6 +108,7 @@ public class ErpPurchaseInController {
     private static final Integer RETURN_STATUS_PART = 1;
     private static final Integer RETURN_STATUS_ALL = 2;
     private static final String FIELD_PERMISSION_MODULE = "erp_purchase_in";
+    private static final String DEPT_SELECTION_PERMISSION_FORM_KEY = "system_dept";
     private static final Map<String, String> EXPORT_FIELD_GROUP_MAP = buildExportFieldGroupMap();
     private static final Map<String, String> EXPORT_FIELD_PERMISSION_MAP = buildExportFieldPermissionMap();
     private static final Map<String, String> DETAIL_IMPORT_FIELD_ALIAS_MAP = ErpImportTemplateRequiredFieldUtils.aliasMap(
@@ -331,7 +331,8 @@ public class ErpPurchaseInController {
     @Operation(summary = "Get purchase in")
     @Parameter(name = "id", description = "ID", required = true, example = "1024")
     @PreAuthorize("@ss.hasPermission('erp:purchase-in:query')")
-    public CommonResult<ErpPurchaseInRespVO> getPurchaseIn(@RequestParam("id") Long id) {
+    public CommonResult<ErpPurchaseInRespVO> getPurchaseIn(@RequestParam("id") Long id,
+                                                           @RequestParam(value = "mask", defaultValue = "true") Boolean mask) {
         ErpPurchaseInDO purchaseIn = purchaseInService.getPurchaseIn(id);
         if (purchaseIn == null) {
             return success(null);
@@ -350,10 +351,10 @@ public class ErpPurchaseInController {
                 ? null : supplierService.getSupplier(purchaseIn.getSupplierId());
         ErpPurchaseInRespVO respVO = BeanUtils.toBean(purchaseIn, ErpPurchaseInRespVO.class, purchaseInVO -> {
             purchaseInVO.setItems(BeanUtils.toBean(purchaseInItemList, ErpPurchaseInRespVO.Item.class, item -> {
-                ErpStockDO stock = stockService.getStock(item.getProductId(), item.getWarehouseId());
-                item.setStockCount(stock != null ? stock.getCount() : BigDecimal.ZERO);
+                item.setStockCount(stockService.getStockCount(item.getProductId(), item.getWarehouseId()));
                 MapUtils.findAndThen(productMap, item.getProductId(), product -> item.setProductName(product.getName())
                         .setProductBarCode(product.getBarCode()).setProductUnitName(product.getUnitName())
+                        .setWeight(product.getWeight())
                         .setProductCode(product.getCode()).setBatchNoEnabled(product.getBatchNoEnabled()));
                 fillPurchaseInItemReturnInfo(item, returnCountMap);
             }));
@@ -369,7 +370,9 @@ public class ErpPurchaseInController {
             }
         });
         fillPurchaseInStockInBillInfo(respVO, id);
-        fieldPermissionMasker.mask("erp_purchase_in", respVO);
+        if (Boolean.TRUE.equals(mask)) {
+            fieldPermissionMasker.mask("erp_purchase_in", respVO);
+        }
         return success(respVO);
     }
 
@@ -390,6 +393,7 @@ public class ErpPurchaseInController {
                 product -> item.setProductName(product.getName())
                         .setProductBarCode(product.getBarCode())
                         .setProductUnitName(product.getUnitName())
+                        .setWeight(product.getWeight())
                         .setProductCode(product.getCode())
                         .setBatchNoEnabled(product.getBatchNoEnabled())));
         items.forEach(item -> fillPurchaseInItemReturnInfo(item, returnCountMap));
@@ -409,7 +413,8 @@ public class ErpPurchaseInController {
     @Operation(summary = "鑾峰緱褰撳墠鐢ㄦ埛鍙煡璇㈢殑閲囪喘鍏ュ簱閮ㄩ棬绮剧畝鍒楄〃")
     @PreAuthorize("@ss.hasPermission('erp:purchase-in:query')")
     public CommonResult<List<DeptSimpleRespVO>> getVisibleDeptSimpleList() {
-        return success(supplierDeptPermissionService.getDataPermissionDeptSimpleList(FIELD_PERMISSION_MODULE));
+        return success(supplierDeptPermissionService.getDataPermissionDeptSimpleList(
+                DEPT_SELECTION_PERMISSION_FORM_KEY));
     }
 
     @GetMapping("/warehouse-dept-simple-list")
@@ -578,6 +583,7 @@ public class ErpPurchaseInController {
                     item -> {
                         MapUtils.findAndThen(productMap, item.getProductId(), product -> item.setProductName(product.getName())
                                 .setProductBarCode(product.getBarCode()).setProductUnitName(product.getUnitName())
+                                .setWeight(product.getWeight())
                                 .setProductCode(product.getCode()).setBatchNoEnabled(product.getBatchNoEnabled()));
                         fillPurchaseInItemReturnInfo(item, returnCountMap);
                     }));

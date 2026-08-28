@@ -96,7 +96,7 @@ import static cn.iocoder.yudao.module.erp.enums.LogRecordConstants.*;
 public class ErpPurchaseReturnServiceImpl implements ErpPurchaseReturnService {
 
     private static final String FIELD_PERMISSION_MODULE = "erp_purchase_return";
-    private static final String DEPT_PERMISSION_FORM_KEY = "erp_purchase_return";
+    private static final String DEPT_SELECTION_PERMISSION_FORM_KEY = "system_dept";
 
     @Resource
     private ErpPurchaseReturnMapper purchaseReturnMapper;
@@ -411,7 +411,6 @@ public class ErpPurchaseReturnServiceImpl implements ErpPurchaseReturnService {
         if (warehouse.getDeptId() != null) {
             deptIds.add(warehouse.getDeptId());
         }
-        deptIds.addAll(warehouseService.getWarehouseSaleDeptIds(warehouse.getId()));
         return deptIds;
     }
 
@@ -616,7 +615,12 @@ public class ErpPurchaseReturnServiceImpl implements ErpPurchaseReturnService {
         Map<Long, cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpWarehouseDO> warehouseMap =
                 warehouseService.getWarehouseMap(warehouseIds);
         return convertList(list, o -> BeanUtils.toBean(o, ErpPurchaseReturnItemDO.class, item -> {
-            item.setProductUnitId(productMap.get(item.getProductId()).getUnitId());
+            ErpProductDO product = productMap.get(item.getProductId());
+            item.setProductUnitId(product.getUnitId());
+            item.setWeight(product.getWeight());
+            if (item.getPackageQty() == null || item.getPackageQty() <= 0) {
+                item.setPackageQty(defaultPackageQty(product.getPackageQty()));
+            }
             fillDeptIdFromWarehouse(item, warehouseMap);
             item.setTaxPercent(null);
             item.setTaxPrice(BigDecimal.ZERO);
@@ -750,7 +754,12 @@ public class ErpPurchaseReturnServiceImpl implements ErpPurchaseReturnService {
         Map<Long, cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpWarehouseDO> warehouseMap = warehouseService.getWarehouseMap(warehouseIds);
         // 2. 转化为 ErpPurchaseReturnItemDO 列表
         return convertList(list, o -> BeanUtils.toBean(o, ErpPurchaseReturnItemDO.class, item -> {
-            item.setProductUnitId(productMap.get(item.getProductId()).getUnitId());
+            ErpProductDO product = productMap.get(item.getProductId());
+            item.setProductUnitId(product.getUnitId());
+            item.setWeight(product.getWeight());
+            if (item.getPackageQty() == null || item.getPackageQty() <= 0) {
+                item.setPackageQty(defaultPackageQty(product.getPackageQty()));
+            }
             fillDeptIdFromWarehouse(item, warehouseMap);
             item.setTaxPercent(null);
             item.setTaxPrice(BigDecimal.ZERO);
@@ -915,7 +924,7 @@ public class ErpPurchaseReturnServiceImpl implements ErpPurchaseReturnService {
         }
         Set<Long> availableDeptIds = new LinkedHashSet<>(allowedDeptIds);
         DeptDataPermissionRespDTO permission = permissionApi.getDeptDataPermission(getLoginUserId(),
-                DEPT_PERMISSION_FORM_KEY);
+                DEPT_SELECTION_PERMISSION_FORM_KEY);
         if (!Boolean.TRUE.equals(permission != null ? permission.getAll() : null)) {
             Set<Long> permissionDeptIds = permission != null ? permission.getDeptIds() : Collections.emptySet();
             if (CollUtil.isEmpty(permissionDeptIds)) {
@@ -997,6 +1006,7 @@ public class ErpPurchaseReturnServiceImpl implements ErpPurchaseReturnService {
                 item.setProductCode(product.getCode());
                 item.setProductName(product.getName());
                 item.setProductUnitId(product.getUnitId());
+                item.setWeight(product.getWeight());
                 item.setWarehouseId(warehouse.getId());
                 item.setWarehouseName(warehouse.getName());
                 item.setCount(requirePositiveReturnCount(row.getCount()));
@@ -1152,6 +1162,7 @@ public class ErpPurchaseReturnServiceImpl implements ErpPurchaseReturnService {
         item.setProductCode(product.getCode());
         item.setProductName(product.getName());
         item.setProductUnitId(product.getUnitId());
+        item.setWeight(product.getWeight());
         item.setWarehouseId(importRow.getWarehouse().getId());
         item.setWarehouseName(importRow.getWarehouse().getName());
         item.setCount(row.getItemCount());

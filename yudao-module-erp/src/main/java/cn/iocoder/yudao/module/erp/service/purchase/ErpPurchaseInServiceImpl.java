@@ -45,7 +45,6 @@ import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleCartItemDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleConvertRecordDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockInBillItemDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpWarehouseDO;
-import cn.iocoder.yudao.module.erp.dal.dataobject.finance.accounting.ErpVoucherItemDO;
 import cn.iocoder.yudao.module.erp.dal.mysql.product.ErpProductMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.finance.ErpFinancePaymentItemMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.purchase.ErpPurchaseInItemMapper;
@@ -57,16 +56,11 @@ import cn.iocoder.yudao.module.erp.dal.mysql.stock.ErpStockMoveItemMapper;
 import cn.iocoder.yudao.module.erp.dal.redis.no.ErpNoRedisDAO;
 import cn.iocoder.yudao.module.erp.enums.ErpAuditStatus;
 import cn.iocoder.yudao.module.erp.enums.common.ErpBizTypeEnum;
-import cn.iocoder.yudao.module.erp.enums.finance.accounting.ErpVoucherTypeEnum;
-import cn.iocoder.yudao.module.erp.enums.finance.accounting.ErpVoucherSourceBizTypeEnum;
 import cn.iocoder.yudao.module.erp.enums.sale.ErpSaleBizSourceTypeEnum;
 import cn.iocoder.yudao.module.erp.enums.sale.ErpSaleConvertTypeEnum;
 import cn.iocoder.yudao.module.erp.enums.stock.ErpStockRecordBizTypeEnum;
 import cn.iocoder.yudao.module.erp.service.common.ErpOperateLogService;
 import cn.iocoder.yudao.module.erp.service.common.ErpOriginalSettlementAmountUtils;
-import cn.iocoder.yudao.module.erp.service.finance.accounting.ErpAutoVoucherBuilder;
-import cn.iocoder.yudao.module.erp.service.finance.accounting.ErpBookOpenService;
-import cn.iocoder.yudao.module.erp.service.finance.accounting.ErpVoucherService;
 import cn.iocoder.yudao.module.erp.service.product.ErpProductBatchNoValidator;
 import cn.iocoder.yudao.module.erp.service.product.ErpProductService;
 import cn.iocoder.yudao.module.erp.service.sale.ErpSaleCartService;
@@ -125,7 +119,7 @@ public class ErpPurchaseInServiceImpl implements ErpPurchaseInService {
 
     private static final int DRAFT_STATUS = 0;
     private static final String FIELD_PERMISSION_MODULE = "erp_purchase_in";
-    private static final String DEPT_PERMISSION_FORM_KEY = "erp_purchase_in";
+    private static final String DEPT_SELECTION_PERMISSION_FORM_KEY = "system_dept";
 
     @Resource
     private ErpPurchaseInMapper purchaseInMapper;
@@ -182,13 +176,6 @@ public class ErpPurchaseInServiceImpl implements ErpPurchaseInService {
     @Resource
     private ErpProductBatchNoValidator productBatchNoValidator;
 
-    @Resource
-    private ErpAutoVoucherBuilder autoVoucherBuilder;
-    @Resource
-    @Lazy // 延迟加载，避免循环依�?
-    private ErpVoucherService voucherService;
-    @Resource
-    private ErpBookOpenService bookOpenService;
     @Resource
     private ErpSupplierDeptPermissionService supplierDeptPermissionService;
 
@@ -600,7 +587,6 @@ public class ErpPurchaseInServiceImpl implements ErpPurchaseInService {
         if (warehouse.getDeptId() != null) {
             deptIds.add(warehouse.getDeptId());
         }
-        deptIds.addAll(warehouseService.getWarehouseSaleDeptIds(warehouse.getId()));
         return deptIds;
     }
 
@@ -715,21 +701,6 @@ public class ErpPurchaseInServiceImpl implements ErpPurchaseInService {
                 .forEach(item -> productService.updateProductLastPurchasePrice(
                         item.getProductId(), item.getProductPrice()));
 
-        // 5. 审批通过：自动生成采购凭证（仅在该月份已开账且启用采购凭证时触发）
-        if (bookOpenService.isVoucherTypeEnabled(
-                purchaseIn.getInTime().toLocalDate(),
-                ErpVoucherTypeEnum.PURCHASE.getType())) {
-            String supplierName = supplier.getName();
-            List<ErpVoucherItemDO> voucherItems = autoVoucherBuilder.buildPurchaseInItems(purchaseIn, supplierName);
-            voucherService.createVoucherFromBiz(
-                    ErpVoucherSourceBizTypeEnum.PURCHASE_IN.getType(),
-                    purchaseIn.getId(),
-                    purchaseIn.getNo(),
-                    purchaseIn.getTotalPrice(),
-                    purchaseIn.getInTime().toLocalDate(),
-                    "采购入库 - " + supplierName,
-                    voucherItems);
-        }
         if (purchaseIn.getOrderId() != null) {
             updatePurchaseOrderInCount(purchaseIn.getOrderId());
         }
@@ -910,7 +881,16 @@ public class ErpPurchaseInServiceImpl implements ErpPurchaseInService {
 
     @Override
     public ErpPurchaseInDO getPurchaseIn(Long id) {
-        return purchaseInMapper.selectById(id);
+        ErpPurchaseInDO purchaseIn = purchaseInMapper.selectById(id);
+        if (purchaseIn != null) {
+            return purchaseIn;
+        }
+        ErpPurchaseInDO ignoredPermissionPurchaseIn =
+                DataPermissionUtils.executeIgnore(() -> purchaseInMapper.selectById(id));
+        if (ignoredPermissionPurchaseIn != null) {
+            throw exception(PURCHASE_IN_DATA_PERMISSION_DENIED);
+        }
+        return null;
     }
 
     @Override
@@ -924,7 +904,8 @@ public class ErpPurchaseInServiceImpl implements ErpPurchaseInService {
 
     @Override
     public List<DeptSimpleRespVO> getSupplierAvailableDeptSimpleList(Long supplierId) {
-        return supplierDeptPermissionService.getAvailableDeptSimpleList(supplierId, DEPT_PERMISSION_FORM_KEY);
+        return supplierDeptPermissionService.getAvailableDeptSimpleList(supplierId,
+                DEPT_SELECTION_PERMISSION_FORM_KEY);
     }
 
     @Override
@@ -943,7 +924,7 @@ public class ErpPurchaseInServiceImpl implements ErpPurchaseInService {
         }
         Set<Long> availableDeptIds = new LinkedHashSet<>(allowedDeptIds);
         DeptDataPermissionRespDTO permission = permissionApi.getDeptDataPermission(getLoginUserId(),
-                DEPT_PERMISSION_FORM_KEY);
+                DEPT_SELECTION_PERMISSION_FORM_KEY);
         if (!Boolean.TRUE.equals(permission != null ? permission.getAll() : null)) {
             Set<Long> permissionDeptIds = permission != null ? permission.getDeptIds() : Collections.emptySet();
             if (CollUtil.isEmpty(permissionDeptIds)) {
@@ -963,7 +944,8 @@ public class ErpPurchaseInServiceImpl implements ErpPurchaseInService {
     }
 
     private void validatePurchaseInSupplierDept(ErpSupplierDO supplier, Long deptId) {
-        if (!supplierDeptPermissionService.hasAvailableDept(supplier, deptId, DEPT_PERMISSION_FORM_KEY)) {
+        if (!supplierDeptPermissionService.hasAvailableDept(supplier, deptId,
+                DEPT_SELECTION_PERMISSION_FORM_KEY)) {
             throw exception(PURCHASE_IN_SUPPLIER_DEPT_NOT_ALLOWED);
         }
     }
@@ -1544,15 +1526,29 @@ public class ErpPurchaseInServiceImpl implements ErpPurchaseInService {
             inItem.setBatchNo(orderItem.getBatchNo());
 
             inItem.setRemark(orderItem.getRemark());
+            inItem.setWarehousePosition(orderItem.getWarehousePosition());
+            inItem.setDrawingNo(orderItem.getDrawingNo());
+            inItem.setBrand(orderItem.getBrand());
+            inItem.setVehicleModel(orderItem.getVehicleModel());
+            inItem.setOriginPlace(orderItem.getOriginPlace());
             inItems.add(inItem);
         }
         // 4. 构�?ErpPurchaseInSaveReqVO
         ErpPurchaseInSaveReqVO saveReqVO = new ErpPurchaseInSaveReqVO();
         saveReqVO.setOrderId(reqVO.getOrderId());
         saveReqVO.setInTime(reqVO.getInTime() != null ? reqVO.getInTime() : java.time.LocalDateTime.now());
-        saveReqVO.setAccountId(reqVO.getAccountId());
+        saveReqVO.setAccountId(reqVO.getAccountId() != null ? reqVO.getAccountId() : purchaseOrder.getAccountId());
         saveReqVO.setDiscountPercent(BigDecimal.ZERO);
+        saveReqVO.setFeeAmount(purchaseOrder.getFeeAmount());
         saveReqVO.setOtherPrice(BigDecimal.ZERO);
+        saveReqVO.setFileUrl(purchaseOrder.getFileUrl());
+        saveReqVO.setRemark(purchaseOrder.getRemark());
+        saveReqVO.setPurchaser(purchaseOrder.getPurchaser() != null ? String.valueOf(purchaseOrder.getPurchaser()) : null);
+        saveReqVO.setInvoiceType(purchaseOrder.getInvoiceType());
+        saveReqVO.setSettleMethod(purchaseOrder.getSettleMethod());
+        saveReqVO.setFactoryOrderNo(purchaseOrder.getFactoryOrderNo());
+        saveReqVO.setTaxRate(purchaseOrder.getTaxPercent());
+        saveReqVO.setDeptId(purchaseOrder.getDeptId());
         saveReqVO.setItems(inItems);
         // 5. 创建入库单
         return createPurchaseIn(saveReqVO);
@@ -1663,10 +1659,13 @@ public class ErpPurchaseInServiceImpl implements ErpPurchaseInService {
             vo.setProductId(item.getProductId());
             vo.setProductUnitId(item.getProductUnitId());
             vo.setWarehouseId(item.getWarehouseId());
+            vo.setDeptId(item.getDeptId());
+            vo.setPackageQty(item.getPackageQty());
             vo.setProductPrice(item.getProductPrice());
             vo.setOriginalProductPrice(item.getOriginalProductPrice());
             vo.setCount(item.getCount());
             vo.setTotalPrice(item.getTotalPrice());
+            vo.setBatchNo(item.getBatchNo());
             vo.setDrawingNo(item.getDrawingNo());
             vo.setWarehousePosition(item.getWarehousePosition());
             vo.setAdjusted(item.getAdjusted());
@@ -1676,6 +1675,10 @@ public class ErpPurchaseInServiceImpl implements ErpPurchaseInService {
                 vo.setProductCode(product.getCode());
                 vo.setProductName(product.getName());
                 vo.setProductUnitName(product.getUnitName());
+                vo.setWeight(product.getWeight());
+                if (vo.getPackageQty() == null || vo.getPackageQty() <= 0) {
+                    vo.setPackageQty(defaultPackageQty(product.getPackageQty()));
+                }
                 vo.setStandard(product.getStandard());
                 vo.setFeatureCode(product.getFeatureCode());
                 // 车型 / 品牌 / 产地：item 自身有冗余（随入库时快照），优先�?item �?

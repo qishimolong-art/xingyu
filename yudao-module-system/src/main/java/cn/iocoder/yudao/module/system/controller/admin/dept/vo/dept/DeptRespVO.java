@@ -3,6 +3,7 @@ package cn.iocoder.yudao.module.system.controller.admin.dept.vo.dept;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Data;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 @Schema(description = "管理后台 - 部门信息 Response VO")
@@ -26,6 +27,18 @@ public class DeptRespVO {
 
     @Schema(description = "联系电话", example = "15601691000")
     private String phone;
+
+    @Schema(description = "详细地址", example = "四川省成都市高新区天府大道")
+    private String address;
+
+    @Schema(description = "经度", example = "104.065735")
+    private BigDecimal longitude;
+
+    @Schema(description = "纬度", example = "30.659462")
+    private BigDecimal latitude;
+
+    @Schema(description = "地图显示名称", example = "兴宇总部")
+    private String mapName;
 
     @Schema(description = "邮箱", example = "yudao@iocoder.cn")
     private String email;

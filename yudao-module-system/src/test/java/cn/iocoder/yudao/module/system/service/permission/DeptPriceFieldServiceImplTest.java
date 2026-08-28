@@ -9,7 +9,6 @@ import cn.iocoder.yudao.module.system.dal.dataobject.dept.DeptDO;
 import cn.iocoder.yudao.module.system.dal.dataobject.permission.DeptPriceFieldDO;
 import cn.iocoder.yudao.module.system.dal.dataobject.permission.FieldDefinitionDO;
 import cn.iocoder.yudao.module.system.dal.mysql.permission.DeptPriceFieldMapper;
-import cn.iocoder.yudao.module.system.dal.mysql.permission.FieldDefinitionMapper;
 import cn.iocoder.yudao.module.system.service.dept.DeptService;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -40,7 +39,7 @@ class DeptPriceFieldServiceImplTest extends BaseMockitoUnitTest {
     @Mock
     private DeptPriceFieldMapper deptPriceFieldMapper;
     @Mock
-    private FieldDefinitionMapper fieldDefinitionMapper;
+    private ProductPriceFieldCatalogService productPriceFieldCatalogService;
     @Mock
     private DeptService deptService;
 
@@ -56,7 +55,7 @@ class DeptPriceFieldServiceImplTest extends BaseMockitoUnitTest {
 
     @Test
     void getHiddenPriceFields_shouldUseUnionAndReturnFormAndColumnKeys() {
-        when(fieldDefinitionMapper.selectListByModuleAndGroup("erp_product", "price_info"))
+        when(productPriceFieldCatalogService.getPriceFields())
                 .thenReturn(Arrays.asList(field("referencePrice", 1), field("retailPrice", 2)));
         when(deptPriceFieldMapper.selectListByDeptIds(eq(asSet(10L, 20L))))
                 .thenReturn(Collections.singletonList(relation(20L, "retailPrice")));
@@ -67,8 +66,20 @@ class DeptPriceFieldServiceImplTest extends BaseMockitoUnitTest {
     }
 
     @Test
+    void getHiddenPriceFields_shouldNormalizeLegacyPriceFieldKeys() {
+        when(productPriceFieldCatalogService.getPriceFields())
+                .thenReturn(Arrays.asList(field("backup_price1", 1), field("last_purchase_price", 2)));
+        when(deptPriceFieldMapper.selectListByDeptIds(eq(Collections.singleton(10L))))
+                .thenReturn(Collections.singletonList(relation(10L, "last_purchase_price")));
+
+        List<String> hiddenFields = service.getHiddenPriceFields(Collections.singleton(10L));
+
+        assertEquals(Arrays.asList("backupPrice1", "col_backupPrice1"), hiddenFields);
+    }
+
+    @Test
     void getHiddenPriceFields_withoutDepartment_shouldHideAllDynamicPrices() {
-        when(fieldDefinitionMapper.selectListByModuleAndGroup("erp_product", "price_info"))
+        when(productPriceFieldCatalogService.getPriceFields())
                 .thenReturn(Collections.singletonList(field("customDealerPrice", 1)));
 
         assertEquals(Arrays.asList("customDealerPrice", "col_customDealerPrice"),
@@ -78,7 +89,7 @@ class DeptPriceFieldServiceImplTest extends BaseMockitoUnitTest {
     @Test
     void updateConfig_shouldRejectStaleVersion() {
         List<FieldDefinitionDO> definitions = Collections.singletonList(field("referencePrice", 1));
-        when(fieldDefinitionMapper.selectListByModuleAndGroupForUpdate(1L, "erp_product", "price_info"))
+        when(productPriceFieldCatalogService.getPriceFieldsForUpdate(1L))
                 .thenReturn(definitions);
         when(deptService.getDeptList(any(DeptListReqVO.class))).thenReturn(Collections.singletonList(dept(10L)));
         when(deptPriceFieldMapper.selectListByFieldKeys(eq(Collections.singleton("referencePrice"))))
@@ -93,9 +104,9 @@ class DeptPriceFieldServiceImplTest extends BaseMockitoUnitTest {
         List<FieldDefinitionDO> definitions = Collections.singletonList(field("referencePrice", 1));
         List<DeptDO> departments = Arrays.asList(dept(10L), dept(20L));
         List<DeptPriceFieldDO> relations = Collections.singletonList(relation(10L, "referencePrice"));
-        when(fieldDefinitionMapper.selectListByModuleAndGroup("erp_product", "price_info"))
+        when(productPriceFieldCatalogService.getPriceFields())
                 .thenReturn(definitions);
-        when(fieldDefinitionMapper.selectListByModuleAndGroupForUpdate(1L, "erp_product", "price_info"))
+        when(productPriceFieldCatalogService.getPriceFieldsForUpdate(1L))
                 .thenReturn(definitions);
         when(deptService.getDeptList(any(DeptListReqVO.class))).thenReturn(departments);
         when(deptService.getDeptList(eq(Collections.singleton(20L))))
@@ -119,9 +130,9 @@ class DeptPriceFieldServiceImplTest extends BaseMockitoUnitTest {
                 field("referencePrice", 1), field("retailPrice", 2));
         List<FieldDefinitionDO> reversedLockedDefinitions = Arrays.asList(
                 field("retailPrice", 2), field("referencePrice", 1));
-        when(fieldDefinitionMapper.selectListByModuleAndGroup("erp_product", "price_info"))
+        when(productPriceFieldCatalogService.getPriceFields())
                 .thenReturn(sortedDefinitions);
-        when(fieldDefinitionMapper.selectListByModuleAndGroupForUpdate(1L, "erp_product", "price_info"))
+        when(productPriceFieldCatalogService.getPriceFieldsForUpdate(1L))
                 .thenReturn(reversedLockedDefinitions);
         when(deptService.getDeptList(any(DeptListReqVO.class))).thenReturn(Collections.singletonList(dept(10L)));
         when(deptPriceFieldMapper.selectListByFieldKeys(eq(asSet("referencePrice", "retailPrice"))))

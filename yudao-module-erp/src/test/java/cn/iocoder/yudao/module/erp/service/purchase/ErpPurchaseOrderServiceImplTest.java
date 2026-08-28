@@ -53,9 +53,9 @@ import java.util.List;
 import java.util.Map;
 
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PURCHASE_ORDER_APPROVE_FAIL;
+import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.ERP_ITEM_BATCH_NO_REQUIRED;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PURCHASE_ORDER_DELETE_FAIL_APPROVE;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PURCHASE_ORDER_IN_EXCEED_INABLE;
-import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PURCHASE_ORDER_ITEM_BATCH_UPDATE_DEPT_REQUIRED;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PURCHASE_ORDER_ITEM_BATCH_UPDATE_FAIL_HAS_IN;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PURCHASE_ORDER_ITEM_COUNT_POSITIVE;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PURCHASE_ORDER_ITEM_DUPLICATE;
@@ -123,6 +123,8 @@ public class ErpPurchaseOrderServiceImplTest extends BaseMockitoUnitTest {
     @Mock
     private ErpProductBatchNoValidator productBatchNoValidator;
     @Mock
+    private ErpPurchaseFieldPermissionMasker fieldPermissionMasker;
+    @Mock
     private DeptApi deptApi;
     @Mock
     private PermissionApi permissionApi;
@@ -138,6 +140,8 @@ public class ErpPurchaseOrderServiceImplTest extends BaseMockitoUnitTest {
         });
         ReflectionTestUtils.setField(purchaseOrderService, "supplierDeptPermissionService",
                 supplierDeptPermissionService);
+        ReflectionTestUtils.setField(purchaseOrderService, "productBatchNoValidator",
+                new ErpProductBatchNoValidator());
     }
 
     private ErpPurchaseOrderSaveReqVO.Item buildItem(Long productId, BigDecimal count, BigDecimal price) {
@@ -189,7 +193,7 @@ public class ErpPurchaseOrderServiceImplTest extends BaseMockitoUnitTest {
                 .thenReturn(Collections.singletonMap(supplierId, Arrays.asList(10L, 20L)));
         DeptDataPermissionRespDTO permission = new DeptDataPermissionRespDTO();
         permission.setDeptIds(new HashSet<>(Collections.singletonList(20L)));
-        when(permissionApi.getDeptDataPermission(eq(loginUserId), eq("erp_purchase_order"))).thenReturn(permission);
+        when(permissionApi.getDeptDataPermission(eq(loginUserId), eq("system_dept"))).thenReturn(permission);
         when(deptApi.getDeptList(eq(new LinkedHashSet<>(Collections.singletonList(20L)))))
                 .thenReturn(Collections.singletonList(buildDept(20L, "采购二部", 0L,
                         CommonStatusEnum.ENABLE.getStatus())));
@@ -215,7 +219,7 @@ public class ErpPurchaseOrderServiceImplTest extends BaseMockitoUnitTest {
                 .thenReturn(Collections.singletonMap(supplierId, Arrays.asList(10L, 20L)));
         DeptDataPermissionRespDTO permission = new DeptDataPermissionRespDTO();
         permission.setAll(true);
-        when(permissionApi.getDeptDataPermission(eq(loginUserId), eq("erp_purchase_order"))).thenReturn(permission);
+        when(permissionApi.getDeptDataPermission(eq(loginUserId), eq("system_dept"))).thenReturn(permission);
         when(deptApi.getDeptList(eq(new LinkedHashSet<>(Arrays.asList(10L, 20L)))))
                 .thenReturn(Arrays.asList(
                         buildDept(10L, "采购一部", 0L, CommonStatusEnum.ENABLE.getStatus()),
@@ -241,7 +245,7 @@ public class ErpPurchaseOrderServiceImplTest extends BaseMockitoUnitTest {
                 .thenReturn(Collections.singletonMap(supplierId, Collections.singletonList(20L)));
         DeptDataPermissionRespDTO permission = new DeptDataPermissionRespDTO();
         permission.setDeptIds(new HashSet<>(Collections.singletonList(30L)));
-        when(permissionApi.getDeptDataPermission(eq(loginUserId), eq("erp_purchase_order"))).thenReturn(permission);
+        when(permissionApi.getDeptDataPermission(eq(loginUserId), eq("system_dept"))).thenReturn(permission);
 
         try (MockedStatic<SecurityFrameworkUtils> security = mockStatic(SecurityFrameworkUtils.class)) {
             security.when(SecurityFrameworkUtils::getLoginUserId).thenReturn(loginUserId);
@@ -250,6 +254,32 @@ public class ErpPurchaseOrderServiceImplTest extends BaseMockitoUnitTest {
 
             assertTrue(result.isEmpty());
             verify(deptApi, never()).getDeptList(any());
+        }
+    }
+
+    @Test
+    public void testGetSupplierAvailableDeptSimpleList_usesSystemDeptPermissionOnly() {
+        Long supplierId = 100L;
+        Long loginUserId = 104L;
+        ErpSupplierDO supplier = new ErpSupplierDO().setId(supplierId).setDeptId(10L);
+        when(supplierService.validateSupplier(eq(supplierId))).thenReturn(supplier);
+        when(supplierService.getSupplierDeptMap(eq(Collections.singleton(supplierId))))
+                .thenReturn(Collections.singletonMap(supplierId, Arrays.asList(10L, 20L)));
+        when(permissionApi.getDeptDataPermission(eq(loginUserId), eq("system_dept")))
+                .thenReturn(buildDeptPermission(20L));
+        when(deptApi.getDeptList(eq(new LinkedHashSet<>(Collections.singletonList(20L)))))
+                .thenReturn(Collections.singletonList(buildDept(20L, "采购二部", 0L,
+                        CommonStatusEnum.ENABLE.getStatus())));
+
+        try (MockedStatic<SecurityFrameworkUtils> security = mockStatic(SecurityFrameworkUtils.class)) {
+            security.when(SecurityFrameworkUtils::getLoginUserId).thenReturn(loginUserId);
+
+            List<DeptSimpleRespVO> result = purchaseOrderService.getSupplierAvailableDeptSimpleList(supplierId);
+
+            assertEquals(1, result.size());
+            assertEquals(20L, result.get(0).getId());
+            verify(permissionApi).getDeptDataPermission(eq(loginUserId), eq("system_dept"));
+            verify(permissionApi, never()).getDeptDataPermission(eq(loginUserId), eq("erp_purchase_order"));
         }
     }
 
@@ -347,6 +377,38 @@ public class ErpPurchaseOrderServiceImplTest extends BaseMockitoUnitTest {
     }
 
     @Test
+    public void testCreatePurchaseOrder_batchNoEnabledWithoutBatchNo_throwException() {
+        ErpPurchaseOrderSaveReqVO.Item item = buildItem(200L, new BigDecimal("5"), new BigDecimal("10"));
+        ErpPurchaseOrderSaveReqVO reqVO = buildBaseReqVO(100L, item);
+
+        when(productService.validProductList(any())).thenReturn(Collections.singletonList(
+                new ErpProductDO().setId(200L).setUnitId(1L).setBatchNoEnabled(true)));
+
+        ServiceException ex = assertThrows(ServiceException.class,
+                () -> purchaseOrderService.createPurchaseOrder(reqVO));
+
+        assertEquals(ERP_ITEM_BATCH_NO_REQUIRED.getCode(), ex.getCode());
+        verify(purchaseOrderMapper, never()).insert(any(ErpPurchaseOrderDO.class));
+    }
+
+    @Test
+    public void testCreatePurchaseOrder_batchNoEnabledWithBatchNo_success() {
+        ErpPurchaseOrderSaveReqVO.Item item = buildItem(200L, new BigDecimal("5"), new BigDecimal("10"));
+        item.setBatchNo("BATCH-001");
+        ErpPurchaseOrderSaveReqVO reqVO = buildBaseReqVO(100L, item);
+
+        when(productService.validProductList(any())).thenReturn(Collections.singletonList(
+                new ErpProductDO().setId(200L).setUnitId(1L).setBatchNoEnabled(true)));
+        when(purchaseOrderMapper.selectByNo(any())).thenReturn(null);
+
+        purchaseOrderService.createPurchaseOrder(reqVO);
+
+        ArgumentCaptor<List<ErpPurchaseOrderItemDO>> itemsCaptor = ArgumentCaptor.forClass(List.class);
+        verify(purchaseOrderItemMapper).insertBatch(itemsCaptor.capture());
+        assertEquals("BATCH-001", itemsCaptor.getValue().get(0).getBatchNo());
+    }
+
+    @Test
     public void testCreatePurchaseOrder_withAccountId_validatesAccount() {
         ErpPurchaseOrderSaveReqVO.Item item = buildItem(200L, new BigDecimal("10"), new BigDecimal("5"));
         ErpPurchaseOrderSaveReqVO reqVO = buildBaseReqVO(100L, item);
@@ -374,7 +436,7 @@ public class ErpPurchaseOrderServiceImplTest extends BaseMockitoUnitTest {
                 new ErpSupplierDO().setId(supplierId).setDeptId(10L));
         when(supplierService.getSupplierDeptMap(eq(Collections.singleton(supplierId))))
                 .thenReturn(Collections.emptyMap());
-        when(permissionApi.getDeptDataPermission(eq(loginUserId), eq("erp_purchase_order")))
+        when(permissionApi.getDeptDataPermission(eq(loginUserId), eq("system_dept")))
                 .thenReturn(buildAllDeptPermission());
         when(deptApi.getDeptList(eq(new LinkedHashSet<>(Collections.singletonList(10L)))))
                 .thenReturn(Collections.singletonList(buildDept(10L, "采购一部", 0L,
@@ -474,7 +536,7 @@ public class ErpPurchaseOrderServiceImplTest extends BaseMockitoUnitTest {
                 new ErpSupplierDO().setId(supplierId).setDeptId(10L));
         when(supplierService.getSupplierDeptMap(eq(Collections.singleton(supplierId))))
                 .thenReturn(Collections.emptyMap());
-        when(permissionApi.getDeptDataPermission(eq(loginUserId), eq("erp_purchase_order")))
+        when(permissionApi.getDeptDataPermission(eq(loginUserId), eq("system_dept")))
                 .thenReturn(buildAllDeptPermission());
         when(deptApi.getDeptList(eq(new LinkedHashSet<>(Collections.singletonList(10L)))))
                 .thenReturn(Collections.singletonList(buildDept(10L, "采购一部", 0L,
@@ -596,7 +658,7 @@ public class ErpPurchaseOrderServiceImplTest extends BaseMockitoUnitTest {
                 new ErpSupplierDO().setId(supplierId).setDeptId(20L));
         when(supplierService.getSupplierDeptMap(eq(Collections.singleton(supplierId))))
                 .thenReturn(Collections.singletonMap(supplierId, Collections.singletonList(20L)));
-        when(permissionApi.getDeptDataPermission(eq(loginUserId), eq("erp_purchase_order")))
+        when(permissionApi.getDeptDataPermission(eq(loginUserId), eq("system_dept")))
                 .thenReturn(buildDeptPermission(10L));
 
         ErpPurchaseOrderSaveReqVO.Item item = buildItem(200L, new BigDecimal("5"), new BigDecimal("10"));
@@ -678,13 +740,11 @@ public class ErpPurchaseOrderServiceImplTest extends BaseMockitoUnitTest {
         Long loginUserId = 104L;
         when(warehouseService.validPurchaseWarehouseList(eq(Collections.singleton(warehouseId))))
                 .thenReturn(Collections.singletonList(new ErpWarehouseDO().setId(warehouseId).setDeptId(10L)));
-        when(warehouseService.getWarehouseSaleDeptIds(eq(warehouseId)))
-                .thenReturn(new LinkedHashSet<>(Arrays.asList(20L, 30L)));
-        when(permissionApi.getDeptDataPermission(eq(loginUserId), eq("erp_purchase_order")))
-                .thenReturn(buildDeptPermission(20L, 30L));
-        when(deptApi.getDeptList(eq(new LinkedHashSet<>(Arrays.asList(20L, 30L)))))
+        when(permissionApi.getDeptDataPermission(eq(loginUserId), eq("system_dept")))
+                .thenReturn(buildDeptPermission(10L, 30L));
+        when(deptApi.getDeptList(eq(new LinkedHashSet<>(Collections.singletonList(10L)))))
                 .thenReturn(Arrays.asList(
-                        buildDept(20L, "采购二部", 0L, CommonStatusEnum.ENABLE.getStatus()),
+                        buildDept(10L, "采购二部", 0L, CommonStatusEnum.ENABLE.getStatus()),
                         buildDept(30L, "采购三部", 0L, CommonStatusEnum.DISABLE.getStatus())));
 
         try (MockedStatic<SecurityFrameworkUtils> security = mockStatic(SecurityFrameworkUtils.class)) {
@@ -693,8 +753,9 @@ public class ErpPurchaseOrderServiceImplTest extends BaseMockitoUnitTest {
             List<DeptSimpleRespVO> result = purchaseOrderService.getWarehouseAvailableDeptSimpleList(warehouseId);
 
             assertEquals(1, result.size());
-            assertEquals(20L, result.get(0).getId());
+            assertEquals(10L, result.get(0).getId());
             assertEquals("采购二部", result.get(0).getName());
+            verify(warehouseService, never()).getWarehouseSaleDeptIds(any());
         }
     }
 
@@ -715,14 +776,11 @@ public class ErpPurchaseOrderServiceImplTest extends BaseMockitoUnitTest {
         when(purchaseReturnItemMapper.selectCountByOrderItemIds(any())).thenReturn(0L);
         when(warehouseService.validPurchaseWarehouseList(eq(Collections.singleton(8L))))
                 .thenReturn(Collections.singletonList(new ErpWarehouseDO().setId(8L).setDeptId(10L)));
-        when(warehouseService.getWarehouseSaleDeptIds(eq(8L)))
-                .thenReturn(new LinkedHashSet<>(Collections.singletonList(20L)));
-
         ErpPurchaseOrderItemBatchUpdateReqVO reqVO = new ErpPurchaseOrderItemBatchUpdateReqVO();
         reqVO.setOrderId(10L);
         reqVO.setItemIds(Arrays.asList(1L, 2L));
         reqVO.setWarehouseId(8L);
-        reqVO.setDeptId(20L);
+        reqVO.setDeptId(10L);
 
         purchaseOrderService.batchUpdatePurchaseOrderItems(reqVO);
 
@@ -732,7 +790,7 @@ public class ErpPurchaseOrderServiceImplTest extends BaseMockitoUnitTest {
         verify(purchaseOrderItemMapper, times(2)).updateById(itemCaptor.capture());
         itemCaptor.getAllValues().forEach(updateItem -> {
             assertEquals(8L, updateItem.getWarehouseId());
-            assertEquals(20L, updateItem.getDeptId());
+            assertEquals(10L, updateItem.getDeptId());
         });
         verify(operateLogService).recordUpdate(ERP_PURCHASE_ORDER_TYPE, 10L, "CGDD001");
     }
@@ -753,13 +811,10 @@ public class ErpPurchaseOrderServiceImplTest extends BaseMockitoUnitTest {
         when(purchaseReturnItemMapper.selectCountByOrderItemIds(any())).thenReturn(0L);
         when(warehouseService.validPurchaseWarehouseList(eq(Collections.singleton(7L))))
                 .thenReturn(Collections.singletonList(new ErpWarehouseDO().setId(7L).setDeptId(3L)));
-        when(warehouseService.getWarehouseSaleDeptIds(eq(7L)))
-                .thenReturn(new LinkedHashSet<>(Collections.singletonList(20L)));
-
         ErpPurchaseOrderItemBatchUpdateReqVO reqVO = new ErpPurchaseOrderItemBatchUpdateReqVO();
         reqVO.setOrderId(10L);
         reqVO.setItemIds(Arrays.asList(1L, 2L));
-        reqVO.setDeptId(20L);
+        reqVO.setDeptId(3L);
 
         purchaseOrderService.batchUpdatePurchaseOrderItems(reqVO);
 
@@ -767,13 +822,13 @@ public class ErpPurchaseOrderServiceImplTest extends BaseMockitoUnitTest {
         verify(purchaseOrderItemMapper, times(2)).updateById(itemCaptor.capture());
         itemCaptor.getAllValues().forEach(updateItem -> {
             assertEquals(7L, updateItem.getWarehouseId());
-            assertEquals(20L, updateItem.getDeptId());
+            assertEquals(3L, updateItem.getDeptId());
         });
         verify(stockService, never()).ensureStockExists(any(), any());
     }
 
     @Test
-    public void testBatchUpdatePurchaseOrderItems_onlyWarehouseMultiDept_throwException() {
+    public void testBatchUpdatePurchaseOrderItems_onlyWarehouseAutoFillsWarehouseDept() {
         when(purchaseOrderMapper.selectById(eq(10L))).thenReturn(
                 new ErpPurchaseOrderDO().setId(10L).setNo("CGDD001"));
         when(purchaseOrderItemMapper.selectListByOrderId(eq(10L))).thenReturn(Collections.singletonList(
@@ -784,20 +839,18 @@ public class ErpPurchaseOrderServiceImplTest extends BaseMockitoUnitTest {
         when(purchaseReturnItemMapper.selectCountByOrderItemIds(any())).thenReturn(0L);
         when(warehouseService.validPurchaseWarehouseList(eq(Collections.singleton(8L))))
                 .thenReturn(Collections.singletonList(new ErpWarehouseDO().setId(8L).setDeptId(10L)));
-        when(warehouseService.getWarehouseSaleDeptIds(eq(8L)))
-                .thenReturn(new LinkedHashSet<>(Collections.singletonList(20L)));
-
         ErpPurchaseOrderItemBatchUpdateReqVO reqVO = new ErpPurchaseOrderItemBatchUpdateReqVO();
         reqVO.setOrderId(10L);
         reqVO.setItemIds(Collections.singletonList(1L));
         reqVO.setWarehouseId(8L);
 
-        ServiceException ex = assertThrows(ServiceException.class,
-                () -> purchaseOrderService.batchUpdatePurchaseOrderItems(reqVO));
+        purchaseOrderService.batchUpdatePurchaseOrderItems(reqVO);
 
-        assertEquals(PURCHASE_ORDER_ITEM_BATCH_UPDATE_DEPT_REQUIRED.getCode(), ex.getCode());
-        verify(purchaseOrderItemMapper, never()).updateById(any(ErpPurchaseOrderItemDO.class));
-        verify(stockService, never()).ensureStockExists(any(), any());
+        verify(stockService).ensureStockExists(eq(200L), eq(8L));
+        ArgumentCaptor<ErpPurchaseOrderItemDO> itemCaptor = ArgumentCaptor.forClass(ErpPurchaseOrderItemDO.class);
+        verify(purchaseOrderItemMapper).updateById(itemCaptor.capture());
+        assertEquals(8L, itemCaptor.getValue().getWarehouseId());
+        assertEquals(10L, itemCaptor.getValue().getDeptId());
     }
 
     @Test
@@ -837,8 +890,6 @@ public class ErpPurchaseOrderServiceImplTest extends BaseMockitoUnitTest {
         when(purchaseReturnItemMapper.selectCountByOrderItemIds(any())).thenReturn(0L);
         when(warehouseService.validPurchaseWarehouseList(eq(Collections.singleton(8L))))
                 .thenReturn(Collections.singletonList(new ErpWarehouseDO().setId(8L).setDeptId(10L)));
-        when(warehouseService.getWarehouseSaleDeptIds(eq(8L))).thenReturn(Collections.emptySet());
-
         ErpPurchaseOrderItemBatchUpdateReqVO reqVO = new ErpPurchaseOrderItemBatchUpdateReqVO();
         reqVO.setOrderId(10L);
         reqVO.setItemIds(Collections.singletonList(1L));
@@ -868,7 +919,7 @@ public class ErpPurchaseOrderServiceImplTest extends BaseMockitoUnitTest {
                 new ErpSupplierDO().setId(supplierId).setDeptId(30L));
         when(supplierService.getSupplierDeptMap(eq(Collections.singleton(supplierId))))
                 .thenReturn(Collections.emptyMap());
-        when(permissionApi.getDeptDataPermission(eq(loginUserId), eq("erp_purchase_order")))
+        when(permissionApi.getDeptDataPermission(eq(loginUserId), eq("system_dept")))
                 .thenReturn(buildAllDeptPermission());
         when(deptApi.getDeptList(eq(new LinkedHashSet<>(Collections.singletonList(30L)))))
                 .thenReturn(Collections.singletonList(buildDept(30L, "采购三部", 0L,
@@ -1197,7 +1248,7 @@ public class ErpPurchaseOrderServiceImplTest extends BaseMockitoUnitTest {
         ErpPurchaseOrderItemDO item1 = new ErpPurchaseOrderItemDO()
                 .setId(1L).setProductId(200L).setProductPrice(new BigDecimal("10"))
                 .setCount(new BigDecimal("10")).setInCount(new BigDecimal("3"))
-                .setWarehouseId(7L);
+                .setWarehouseId(7L).setDeptId(66L);
         ErpPurchaseOrderItemDO itemAllIn = new ErpPurchaseOrderItemDO()
                 .setId(2L).setProductId(201L).setProductPrice(new BigDecimal("20"))
                 .setCount(new BigDecimal("5")).setInCount(new BigDecimal("5"))
@@ -1220,6 +1271,7 @@ public class ErpPurchaseOrderServiceImplTest extends BaseMockitoUnitTest {
         assertNotNull(vo);
         assertEquals(Long.valueOf(1L), vo.getOrderItemId());
         assertEquals(0, vo.getInableCount().compareTo(new BigDecimal("7")));
+        assertEquals(Long.valueOf(66L), vo.getDeptId());
         assertEquals("螺丝", vo.getProductName());
     }
 

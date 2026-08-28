@@ -65,6 +65,9 @@ public interface ErrorCodeConstants {
 
     // ========== Cart 模块 1-011-002-000 ==========
     ErrorCode CARD_ITEM_NOT_FOUND = new ErrorCode(1_011_002_000, "购物车项不存在");
+    ErrorCode CART_STOCK_REQUIRED = new ErrorCode(1_011_002_001, "请选择库存");
+    ErrorCode CART_DEPT_REQUIRED = new ErrorCode(1_011_002_002, "请选择部门");
+    ErrorCode CART_DEPT_NOT_ALLOWED = new ErrorCode(1_011_002_003, "当前账号无权使用所选部门");
 
     // ========== Price 相关 1-011-003-000 ============
     ErrorCode PRICE_CALCULATE_PAY_PRICE_ILLEGAL = new ErrorCode(1_011_003_000, "支付价格计算异常，原因：价格小于等于 0");

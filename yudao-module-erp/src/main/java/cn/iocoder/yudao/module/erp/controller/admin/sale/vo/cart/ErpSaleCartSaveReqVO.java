@@ -85,6 +85,10 @@ public class ErpSaleCartSaveReqVO {
 
         private BigDecimal productPrice;
 
+        private BigDecimal weight;
+
+        private Integer packageQty;
+
         @NotNull(message = "产品数量不能为空")
         private BigDecimal count;
 

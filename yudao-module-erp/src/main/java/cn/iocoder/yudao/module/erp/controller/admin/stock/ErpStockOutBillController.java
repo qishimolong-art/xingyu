@@ -283,6 +283,8 @@ public class ErpStockOutBillController {
         row.setProductName(product != null ? product.getName() : null);
         row.setProductUnitName(product != null ? product.getUnitName() : null);
         row.setPackageQty(item.getPackageQty());
+        row.setWeight(item.getWeight());
+        row.setItemTotalWeight(item.getTotalWeight());
         row.setItemWholeQty(item.getWholeQty());
         row.setItemCount(item.getCount());
         row.setItemPickedCount(item.getPickedCount());
@@ -348,6 +350,8 @@ public class ErpStockOutBillController {
         map.put("productName", "detail");
         map.put("productUnitName", "detail");
         map.put("packageQty", "detail");
+        map.put("weight", "detail");
+        map.put("itemTotalWeight", "detail");
         map.put("itemWholeQty", "detail");
         map.put("itemCount", "detail");
         map.put("itemPickedCount", "detail");
@@ -374,6 +378,8 @@ public class ErpStockOutBillController {
         map.put("productName", "item_productId");
         map.put("productUnitName", "item_productUnitId");
         map.put("packageQty", "item_packageQty");
+        map.put("weight", "item_weight");
+        map.put("itemTotalWeight", "item_totalWeight");
         map.put("itemWholeQty", "item_wholeQty");
         map.put("itemCount", "item_count");
         map.put("itemPickedCount", "item_pickedCount");

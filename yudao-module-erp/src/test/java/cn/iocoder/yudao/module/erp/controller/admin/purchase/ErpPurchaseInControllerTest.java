@@ -32,6 +32,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -75,6 +76,8 @@ class ErpPurchaseInControllerTest extends BaseMockitoUnitTest {
         when(productService.getProductVOMap(any())).thenReturn(Collections.emptyMap());
         when(purchaseInService.getApprovedReturnCountMapByInItemIds(any()))
                 .thenReturn(Collections.emptyMap());
+        when(purchaseInService.getTransferOutCountMapByInItemIds(any()))
+                .thenReturn(Collections.emptyMap());
         when(adminUserApi.getUserMap(any())).thenReturn(Collections.emptyMap());
         when(stockInBillService.getStockInBillListByPurchaseInId(eq(10L)))
                 .thenReturn(Collections.emptyList());
@@ -85,11 +88,29 @@ class ErpPurchaseInControllerTest extends BaseMockitoUnitTest {
         when(purchaseInService.getTransferOutCountMapByInItemIds(any()))
                 .thenReturn(Collections.emptyMap());
 
-        ErpPurchaseInRespVO data = controller.getPurchaseIn(10L).getData();
+        ErpPurchaseInRespVO data = controller.getPurchaseIn(10L, true).getData();
 
         assertNotNull(data);
         assertEquals(0, BigDecimal.ZERO.compareTo(data.getTransferOutCount()));
         assertEquals(Integer.valueOf(0), data.getTransferOutStatus());
+    }
+
+    @Test
+    void getPurchaseInUsesAggregatedStockCountForItems() {
+        when(purchaseInService.getTransferOutCountMapByInItemIds(any()))
+                .thenReturn(Collections.emptyMap());
+        when(stockService.getStockCount(1001L, 1L)).thenReturn(new BigDecimal("12"));
+        when(stockService.getStockCount(1002L, 1L)).thenReturn(new BigDecimal("8"));
+
+        ErpPurchaseInRespVO data = controller.getPurchaseIn(10L, true).getData();
+
+        assertNotNull(data);
+        assertEquals(0, new BigDecimal("12").compareTo(data.getItems().get(0).getStockCount()));
+        assertEquals(0, new BigDecimal("8").compareTo(data.getItems().get(1).getStockCount()));
+        verify(stockService).getStockCount(1001L, 1L);
+        verify(stockService).getStockCount(1002L, 1L);
+        verify(stockService, never()).getStock(eq(1001L), eq(1L));
+        verify(stockService, never()).getStock(eq(1002L), eq(1L));
     }
 
     @Test
@@ -98,7 +119,7 @@ class ErpPurchaseInControllerTest extends BaseMockitoUnitTest {
                 new DeptSimpleRespVO(20L, "采购二部", 0L));
         when(purchaseInService.getSupplierAvailableDeptSimpleList(eq(100L))).thenReturn(depts);
 
-        controller.getPurchaseIn(10L);
+        controller.getPurchaseIn(10L, true);
         CommonResult<List<DeptSimpleRespVO>> result = controller.getSupplierAvailableDeptSimpleList(100L);
 
         assertSame(depts, result.getData());
@@ -112,7 +133,7 @@ class ErpPurchaseInControllerTest extends BaseMockitoUnitTest {
         movedCountMap.put(102L, new BigDecimal("3"));
         when(purchaseInService.getTransferOutCountMapByInItemIds(any())).thenReturn(movedCountMap);
 
-        CommonResult<ErpPurchaseInRespVO> result = controller.getPurchaseIn(10L);
+        CommonResult<ErpPurchaseInRespVO> result = controller.getPurchaseIn(10L, true);
 
         ErpPurchaseInRespVO data = result.getData();
         assertNotNull(data);
@@ -129,7 +150,7 @@ class ErpPurchaseInControllerTest extends BaseMockitoUnitTest {
         movedCountMap.put(102L, new BigDecimal("6"));
         when(purchaseInService.getTransferOutCountMapByInItemIds(any())).thenReturn(movedCountMap);
 
-        ErpPurchaseInRespVO data = controller.getPurchaseIn(10L).getData();
+        ErpPurchaseInRespVO data = controller.getPurchaseIn(10L, true).getData();
 
         assertNotNull(data);
         assertEquals(0, new BigDecimal("10").compareTo(data.getTransferOutCount()));

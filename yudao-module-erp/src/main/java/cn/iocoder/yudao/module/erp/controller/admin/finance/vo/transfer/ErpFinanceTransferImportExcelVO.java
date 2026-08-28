@@ -27,6 +27,16 @@ public class ErpFinanceTransferImportExcelVO {
     @ExcelProperty("转账金额")
     private BigDecimal transferPrice;
 
+    @ExcelRequired
+    @ExcelProperty("汇率")
+    private BigDecimal exchangeRate;
+
+    @ExcelProperty("手续费")
+    private BigDecimal feePrice;
+
+    @ExcelProperty("费用项目")
+    private String feeExpenseCategory;
+
     @ExcelProperty("财务人员ID")
     private Long financeUserId;
 

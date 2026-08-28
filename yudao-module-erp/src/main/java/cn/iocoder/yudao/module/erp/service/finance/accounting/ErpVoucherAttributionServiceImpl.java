@@ -15,6 +15,9 @@ import cn.iocoder.yudao.module.erp.dal.dataobject.finance.ErpFinancePaymentDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.ErpFinanceReceiptDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.accounting.ErpOtherPayableDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.accounting.ErpOtherReceivableDO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.finance.accounting.ErpPrePaymentDO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.finance.accounting.ErpPreReceivableDO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.finance.accounting.ErpPreReceiptDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.accounting.ErpVoucherDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.accounting.ErpVoucherAttributionDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.accounting.ErpVoucherItemDO;
@@ -31,6 +34,9 @@ import cn.iocoder.yudao.module.erp.dal.mysql.finance.ErpFinancePaymentMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.finance.ErpFinanceReceiptMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.finance.accounting.ErpOtherPayableMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.finance.accounting.ErpOtherReceivableMapper;
+import cn.iocoder.yudao.module.erp.dal.mysql.finance.accounting.ErpPrePaymentMapper;
+import cn.iocoder.yudao.module.erp.dal.mysql.finance.accounting.ErpPreReceivableMapper;
+import cn.iocoder.yudao.module.erp.dal.mysql.finance.accounting.ErpPreReceiptMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.finance.accounting.ErpVoucherAttributionMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.purchase.ErpPurchaseInMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.purchase.ErpPurchaseReturnMapper;
@@ -55,6 +61,7 @@ import javax.annotation.Resource;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
@@ -107,6 +114,12 @@ public class ErpVoucherAttributionServiceImpl implements ErpVoucherAttributionSe
     private ErpFinanceReceiptMapper financeReceiptMapper;
     @Resource
     private ErpFinancePaymentMapper financePaymentMapper;
+    @Resource
+    private ErpPreReceiptMapper preReceiptMapper;
+    @Resource
+    private ErpPrePaymentMapper prePaymentMapper;
+    @Resource
+    private ErpPreReceivableMapper preReceivableMapper;
     @Resource
     private ErpStockInMapper stockInMapper;
     @Resource
@@ -323,7 +336,7 @@ public class ErpVoucherAttributionServiceImpl implements ErpVoucherAttributionSe
     public PageResult<ErpVoucherAttributionRespVO> searchSourceBizPage(ErpVoucherAttributionSearchSourceBizReqVO reqVO) {
         Integer sourceBizType = reqVO.getSourceBizType();
         if (sourceBizType == null) {
-            return PageResult.empty();
+            return searchAllSourceBiz(reqVO);
         }
         // 路由到对应业务表
         switch (sourceBizType) {
@@ -333,24 +346,84 @@ public class ErpVoucherAttributionServiceImpl implements ErpVoucherAttributionSe
                 return searchSaleReturn(reqVO);
             case 4:
                 return searchOtherReceivable(reqVO);
-            case 6:
-                return searchFinanceReceipt(reqVO);
             case 8:
                 return searchPurchaseIn(reqVO);
             case 9:
                 return searchPurchaseReturn(reqVO);
             case 10:
                 return searchOtherPayable(reqVO);
-            case 12:
-                return searchFinancePayment(reqVO);
             case 16:
                 return searchStockOut(reqVO);
             case 17:
                 return searchStockIn(reqVO);
-            // 1/5/7/11/13/14/15/18/19/20：暂返回空（凭证类型 / 暂未实现的业务）
+            case 21:
+                return searchPreReceipt(reqVO);
+            case 22:
+                return searchPrePayment(reqVO);
+            case 23:
+                return searchPreReceivable(reqVO);
+            // 未接入生成规则的来源暂返回空，避免查询后批量生成失败。
             default:
                 return PageResult.empty(0L);
         }
+    }
+
+    private PageResult<ErpVoucherAttributionRespVO> searchAllSourceBiz(ErpVoucherAttributionSearchSourceBizReqVO reqVO) {
+        int pageNo = reqVO.getPageNo() == null ? 1 : reqVO.getPageNo();
+        int pageSize = reqVO.getPageSize() == null ? 10 : reqVO.getPageSize();
+        int querySize = pageNo * pageSize;
+        List<Integer> supportedTypes = java.util.Arrays.asList(
+                ErpVoucherSourceBizTypeEnum.SALE_OUT.getType(),
+                ErpVoucherSourceBizTypeEnum.SALE_RETURN.getType(),
+                ErpVoucherSourceBizTypeEnum.OTHER_RECEIVABLE.getType(),
+                ErpVoucherSourceBizTypeEnum.PURCHASE_IN.getType(),
+                ErpVoucherSourceBizTypeEnum.PURCHASE_RETURN.getType(),
+                ErpVoucherSourceBizTypeEnum.OTHER_PAYABLE.getType(),
+                ErpVoucherSourceBizTypeEnum.OTHER_OUT.getType(),
+                ErpVoucherSourceBizTypeEnum.OTHER_IN.getType(),
+                ErpVoucherSourceBizTypeEnum.PRE_RECEIPT.getType(),
+                ErpVoucherSourceBizTypeEnum.PRE_PAYMENT.getType(),
+                ErpVoucherSourceBizTypeEnum.PRE_RECEIVABLE.getType());
+
+        List<ErpVoucherAttributionRespVO> all = new ArrayList<>();
+        long total = 0L;
+        for (Integer type : supportedTypes) {
+            ErpVoucherAttributionSearchSourceBizReqVO typeReqVO = copySearchReq(reqVO, type, 1, querySize);
+            PageResult<ErpVoucherAttributionRespVO> page = searchSourceBizPage(typeReqVO);
+            total += page.getTotal();
+            if (CollUtil.isNotEmpty(page.getList())) {
+                all.addAll(page.getList());
+            }
+        }
+        all.sort(Comparator
+                .comparing(ErpVoucherAttributionRespVO::getBizDate,
+                        Comparator.nullsLast(Comparator.naturalOrder())).reversed()
+                .thenComparing(ErpVoucherAttributionRespVO::getBizType,
+                        Comparator.nullsLast(Comparator.naturalOrder()))
+                .thenComparing(ErpVoucherAttributionRespVO::getBizId,
+                        Comparator.nullsLast(Comparator.naturalOrder())));
+        int from = Math.max(0, (pageNo - 1) * pageSize);
+        if (from >= all.size()) {
+            return new PageResult<>(Collections.emptyList(), total);
+        }
+        int to = Math.min(all.size(), from + pageSize);
+        return new PageResult<>(all.subList(from, to), total);
+    }
+
+    private ErpVoucherAttributionSearchSourceBizReqVO copySearchReq(ErpVoucherAttributionSearchSourceBizReqVO source,
+                                                                     Integer sourceBizType,
+                                                                     Integer pageNo,
+                                                                     Integer pageSize) {
+        ErpVoucherAttributionSearchSourceBizReqVO target = new ErpVoucherAttributionSearchSourceBizReqVO();
+        target.setSourceBizType(sourceBizType);
+        target.setBizDateStart(source.getBizDateStart());
+        target.setBizDateEnd(source.getBizDateEnd());
+        target.setBizNo(source.getBizNo());
+        target.setPartyName(source.getPartyName());
+        target.setPageNo(pageNo);
+        target.setPageSize(pageSize);
+        target.setKeyword(source.getKeyword());
+        return target;
     }
 
     // ---------- 单据来源具体查询实现 ----------
@@ -361,14 +434,16 @@ public class ErpVoucherAttributionServiceImpl implements ErpVoucherAttributionSe
         if (customerIds != null && customerIds.isEmpty()) {
             return PageResult.empty();
         }
-        PageResult<ErpSaleOutDO> page = saleOutMapper.selectPage(reqVO,
-                new LambdaQueryWrapperX<ErpSaleOutDO>()
-                        .eq(ErpSaleOutDO::getStatus, ErpAuditStatus.APPROVE.getStatus())
-                        .likeIfPresent(ErpSaleOutDO::getNo, reqVO.getBizNo())
-                        .geIfPresent(ErpSaleOutDO::getOutTime, reqVO.getBizDateStartTime())
-                        .leIfPresent(ErpSaleOutDO::getOutTime, reqVO.getBizDateEndTime())
-                        .inIfPresent(ErpSaleOutDO::getCustomerId, customerIds)
-                        .orderByDesc(ErpSaleOutDO::getId));
+        LambdaQueryWrapperX<ErpSaleOutDO> wrapper = new LambdaQueryWrapperX<ErpSaleOutDO>()
+                .likeIfPresent(ErpSaleOutDO::getNo, reqVO.getBizNo())
+                .geIfPresent(ErpSaleOutDO::getOutTime, reqVO.getBizDateStartTime())
+                .leIfPresent(ErpSaleOutDO::getOutTime, reqVO.getBizDateEndTime())
+                .inIfPresent(ErpSaleOutDO::getCustomerId, customerIds);
+        wrapper.eq(ErpSaleOutDO::getStatus, ErpAuditStatus.APPROVE.getStatus())
+                .isNotNull(ErpSaleOutDO::getTotalPrice)
+                .ne(ErpSaleOutDO::getTotalPrice, BigDecimal.ZERO)
+                .orderByDesc(ErpSaleOutDO::getId);
+        PageResult<ErpSaleOutDO> page = saleOutMapper.selectPage(reqVO, wrapper);
         if (CollUtil.isEmpty(page.getList())) {
             return new PageResult<>(Collections.emptyList(), page.getTotal());
         }
@@ -389,14 +464,16 @@ public class ErpVoucherAttributionServiceImpl implements ErpVoucherAttributionSe
         if (customerIds != null && customerIds.isEmpty()) {
             return PageResult.empty();
         }
-        PageResult<ErpSaleReturnDO> page = saleReturnMapper.selectPage(reqVO,
-                new LambdaQueryWrapperX<ErpSaleReturnDO>()
-                        .eq(ErpSaleReturnDO::getStatus, ErpAuditStatus.APPROVE.getStatus())
-                        .likeIfPresent(ErpSaleReturnDO::getNo, reqVO.getBizNo())
-                        .geIfPresent(ErpSaleReturnDO::getReturnTime, reqVO.getBizDateStartTime())
-                        .leIfPresent(ErpSaleReturnDO::getReturnTime, reqVO.getBizDateEndTime())
-                        .inIfPresent(ErpSaleReturnDO::getCustomerId, customerIds)
-                        .orderByDesc(ErpSaleReturnDO::getId));
+        LambdaQueryWrapperX<ErpSaleReturnDO> wrapper = new LambdaQueryWrapperX<ErpSaleReturnDO>()
+                .likeIfPresent(ErpSaleReturnDO::getNo, reqVO.getBizNo())
+                .geIfPresent(ErpSaleReturnDO::getReturnTime, reqVO.getBizDateStartTime())
+                .leIfPresent(ErpSaleReturnDO::getReturnTime, reqVO.getBizDateEndTime())
+                .inIfPresent(ErpSaleReturnDO::getCustomerId, customerIds);
+        wrapper.eq(ErpSaleReturnDO::getStatus, ErpAuditStatus.APPROVE.getStatus())
+                .isNotNull(ErpSaleReturnDO::getTotalPrice)
+                .ne(ErpSaleReturnDO::getTotalPrice, BigDecimal.ZERO)
+                .orderByDesc(ErpSaleReturnDO::getId);
+        PageResult<ErpSaleReturnDO> page = saleReturnMapper.selectPage(reqVO, wrapper);
         if (CollUtil.isEmpty(page.getList())) {
             return new PageResult<>(Collections.emptyList(), page.getTotal());
         }
@@ -417,14 +494,16 @@ public class ErpVoucherAttributionServiceImpl implements ErpVoucherAttributionSe
         if (supplierIds != null && supplierIds.isEmpty()) {
             return PageResult.empty();
         }
-        PageResult<ErpPurchaseInDO> page = purchaseInMapper.selectPage(reqVO,
-                new LambdaQueryWrapperX<ErpPurchaseInDO>()
-                        .eq(ErpPurchaseInDO::getStatus, ErpAuditStatus.APPROVE.getStatus())
-                        .likeIfPresent(ErpPurchaseInDO::getNo, reqVO.getBizNo())
-                        .geIfPresent(ErpPurchaseInDO::getInTime, reqVO.getBizDateStartTime())
-                        .leIfPresent(ErpPurchaseInDO::getInTime, reqVO.getBizDateEndTime())
-                        .inIfPresent(ErpPurchaseInDO::getSupplierId, supplierIds)
-                        .orderByDesc(ErpPurchaseInDO::getId));
+        LambdaQueryWrapperX<ErpPurchaseInDO> wrapper = new LambdaQueryWrapperX<ErpPurchaseInDO>()
+                .likeIfPresent(ErpPurchaseInDO::getNo, reqVO.getBizNo())
+                .geIfPresent(ErpPurchaseInDO::getInTime, reqVO.getBizDateStartTime())
+                .leIfPresent(ErpPurchaseInDO::getInTime, reqVO.getBizDateEndTime())
+                .inIfPresent(ErpPurchaseInDO::getSupplierId, supplierIds);
+        wrapper.eq(ErpPurchaseInDO::getStatus, ErpAuditStatus.APPROVE.getStatus())
+                .isNotNull(ErpPurchaseInDO::getTotalPrice)
+                .ne(ErpPurchaseInDO::getTotalPrice, BigDecimal.ZERO)
+                .orderByDesc(ErpPurchaseInDO::getId);
+        PageResult<ErpPurchaseInDO> page = purchaseInMapper.selectPage(reqVO, wrapper);
         if (CollUtil.isEmpty(page.getList())) {
             return new PageResult<>(Collections.emptyList(), page.getTotal());
         }
@@ -445,14 +524,16 @@ public class ErpVoucherAttributionServiceImpl implements ErpVoucherAttributionSe
         if (supplierIds != null && supplierIds.isEmpty()) {
             return PageResult.empty();
         }
-        PageResult<ErpPurchaseReturnDO> page = purchaseReturnMapper.selectPage(reqVO,
-                new LambdaQueryWrapperX<ErpPurchaseReturnDO>()
-                        .eq(ErpPurchaseReturnDO::getStatus, ErpAuditStatus.APPROVE.getStatus())
-                        .likeIfPresent(ErpPurchaseReturnDO::getNo, reqVO.getBizNo())
-                        .geIfPresent(ErpPurchaseReturnDO::getReturnTime, reqVO.getBizDateStartTime())
-                        .leIfPresent(ErpPurchaseReturnDO::getReturnTime, reqVO.getBizDateEndTime())
-                        .inIfPresent(ErpPurchaseReturnDO::getSupplierId, supplierIds)
-                        .orderByDesc(ErpPurchaseReturnDO::getId));
+        LambdaQueryWrapperX<ErpPurchaseReturnDO> wrapper = new LambdaQueryWrapperX<ErpPurchaseReturnDO>()
+                .likeIfPresent(ErpPurchaseReturnDO::getNo, reqVO.getBizNo())
+                .geIfPresent(ErpPurchaseReturnDO::getReturnTime, reqVO.getBizDateStartTime())
+                .leIfPresent(ErpPurchaseReturnDO::getReturnTime, reqVO.getBizDateEndTime())
+                .inIfPresent(ErpPurchaseReturnDO::getSupplierId, supplierIds);
+        wrapper.eq(ErpPurchaseReturnDO::getStatus, ErpAuditStatus.APPROVE.getStatus())
+                .isNotNull(ErpPurchaseReturnDO::getTotalPrice)
+                .ne(ErpPurchaseReturnDO::getTotalPrice, BigDecimal.ZERO)
+                .orderByDesc(ErpPurchaseReturnDO::getId);
+        PageResult<ErpPurchaseReturnDO> page = purchaseReturnMapper.selectPage(reqVO, wrapper);
         if (CollUtil.isEmpty(page.getList())) {
             return new PageResult<>(Collections.emptyList(), page.getTotal());
         }
@@ -469,14 +550,16 @@ public class ErpVoucherAttributionServiceImpl implements ErpVoucherAttributionSe
     }
 
     private PageResult<ErpVoucherAttributionRespVO> searchOtherReceivable(ErpVoucherAttributionSearchSourceBizReqVO reqVO) {
-        PageResult<ErpOtherReceivableDO> page = otherReceivableMapper.selectPage(reqVO,
-                new LambdaQueryWrapperX<ErpOtherReceivableDO>()
-                        .eq(ErpOtherReceivableDO::getStatus, ErpAuditStatus.APPROVE.getStatus())
-                        .likeIfPresent(ErpOtherReceivableDO::getNo, reqVO.getBizNo())
-                        .likeIfPresent(ErpOtherReceivableDO::getPartyName, reqVO.getPartyName())
-                        .geIfPresent(ErpOtherReceivableDO::getBizTime, reqVO.getBizDateStartTime())
-                        .leIfPresent(ErpOtherReceivableDO::getBizTime, reqVO.getBizDateEndTime())
-                        .orderByDesc(ErpOtherReceivableDO::getId));
+        LambdaQueryWrapperX<ErpOtherReceivableDO> wrapper = new LambdaQueryWrapperX<ErpOtherReceivableDO>()
+                .likeIfPresent(ErpOtherReceivableDO::getNo, reqVO.getBizNo())
+                .likeIfPresent(ErpOtherReceivableDO::getPartyName, reqVO.getPartyName())
+                .geIfPresent(ErpOtherReceivableDO::getBizTime, reqVO.getBizDateStartTime())
+                .leIfPresent(ErpOtherReceivableDO::getBizTime, reqVO.getBizDateEndTime());
+        wrapper.eq(ErpOtherReceivableDO::getStatus, ErpAuditStatus.APPROVE.getStatus())
+                .isNotNull(ErpOtherReceivableDO::getActualAmount)
+                .ne(ErpOtherReceivableDO::getActualAmount, BigDecimal.ZERO)
+                .orderByDesc(ErpOtherReceivableDO::getId);
+        PageResult<ErpOtherReceivableDO> page = otherReceivableMapper.selectPage(reqVO, wrapper);
         List<ErpVoucherAttributionRespVO> list = page.getList().stream().map(o ->
                 buildResp(reqVO.getSourceBizType(), o.getId(), o.getNo(), o.getBizTime(),
                         firstNonNull(o.getActualAmount(), o.getTotalAmount()), o.getPartyName(), o.getRemark()))
@@ -485,14 +568,16 @@ public class ErpVoucherAttributionServiceImpl implements ErpVoucherAttributionSe
     }
 
     private PageResult<ErpVoucherAttributionRespVO> searchOtherPayable(ErpVoucherAttributionSearchSourceBizReqVO reqVO) {
-        PageResult<ErpOtherPayableDO> page = otherPayableMapper.selectPage(reqVO,
-                new LambdaQueryWrapperX<ErpOtherPayableDO>()
-                        .eq(ErpOtherPayableDO::getStatus, ErpAuditStatus.APPROVE.getStatus())
-                        .likeIfPresent(ErpOtherPayableDO::getNo, reqVO.getBizNo())
-                        .likeIfPresent(ErpOtherPayableDO::getPartyName, reqVO.getPartyName())
-                        .geIfPresent(ErpOtherPayableDO::getBizTime, reqVO.getBizDateStartTime())
-                        .leIfPresent(ErpOtherPayableDO::getBizTime, reqVO.getBizDateEndTime())
-                        .orderByDesc(ErpOtherPayableDO::getId));
+        LambdaQueryWrapperX<ErpOtherPayableDO> wrapper = new LambdaQueryWrapperX<ErpOtherPayableDO>()
+                .likeIfPresent(ErpOtherPayableDO::getNo, reqVO.getBizNo())
+                .likeIfPresent(ErpOtherPayableDO::getPartyName, reqVO.getPartyName())
+                .geIfPresent(ErpOtherPayableDO::getBizTime, reqVO.getBizDateStartTime())
+                .leIfPresent(ErpOtherPayableDO::getBizTime, reqVO.getBizDateEndTime());
+        wrapper.eq(ErpOtherPayableDO::getStatus, ErpAuditStatus.APPROVE.getStatus())
+                .isNotNull(ErpOtherPayableDO::getActualAmount)
+                .ne(ErpOtherPayableDO::getActualAmount, BigDecimal.ZERO)
+                .orderByDesc(ErpOtherPayableDO::getId);
+        PageResult<ErpOtherPayableDO> page = otherPayableMapper.selectPage(reqVO, wrapper);
         List<ErpVoucherAttributionRespVO> list = page.getList().stream().map(o ->
                 buildResp(reqVO.getSourceBizType(), o.getId(), o.getNo(), o.getBizTime(),
                         firstNonNull(o.getActualAmount(), o.getTotalAmount()), o.getPartyName(), o.getRemark()))
@@ -505,14 +590,14 @@ public class ErpVoucherAttributionServiceImpl implements ErpVoucherAttributionSe
         if (customerIds != null && customerIds.isEmpty()) {
             return PageResult.empty();
         }
-        PageResult<ErpFinanceReceiptDO> page = financeReceiptMapper.selectPage(reqVO,
-                new LambdaQueryWrapperX<ErpFinanceReceiptDO>()
-                        .eq(ErpFinanceReceiptDO::getStatus, ErpAuditStatus.APPROVE.getStatus())
-                        .likeIfPresent(ErpFinanceReceiptDO::getNo, reqVO.getBizNo())
-                        .geIfPresent(ErpFinanceReceiptDO::getReceiptTime, reqVO.getBizDateStartTime())
-                        .leIfPresent(ErpFinanceReceiptDO::getReceiptTime, reqVO.getBizDateEndTime())
-                        .inIfPresent(ErpFinanceReceiptDO::getCustomerId, customerIds)
-                        .orderByDesc(ErpFinanceReceiptDO::getId));
+        LambdaQueryWrapperX<ErpFinanceReceiptDO> wrapper = new LambdaQueryWrapperX<ErpFinanceReceiptDO>()
+                .likeIfPresent(ErpFinanceReceiptDO::getNo, reqVO.getBizNo())
+                .geIfPresent(ErpFinanceReceiptDO::getReceiptTime, reqVO.getBizDateStartTime())
+                .leIfPresent(ErpFinanceReceiptDO::getReceiptTime, reqVO.getBizDateEndTime())
+                .inIfPresent(ErpFinanceReceiptDO::getCustomerId, customerIds);
+        wrapper.eq(ErpFinanceReceiptDO::getStatus, ErpAuditStatus.APPROVE.getStatus())
+                .orderByDesc(ErpFinanceReceiptDO::getId);
+        PageResult<ErpFinanceReceiptDO> page = financeReceiptMapper.selectPage(reqVO, wrapper);
         if (CollUtil.isEmpty(page.getList())) {
             return new PageResult<>(Collections.emptyList(), page.getTotal());
         }
@@ -533,14 +618,14 @@ public class ErpVoucherAttributionServiceImpl implements ErpVoucherAttributionSe
         if (supplierIds != null && supplierIds.isEmpty()) {
             return PageResult.empty();
         }
-        PageResult<ErpFinancePaymentDO> page = financePaymentMapper.selectPage(reqVO,
-                new LambdaQueryWrapperX<ErpFinancePaymentDO>()
-                        .eq(ErpFinancePaymentDO::getStatus, ErpAuditStatus.APPROVE.getStatus())
-                        .likeIfPresent(ErpFinancePaymentDO::getNo, reqVO.getBizNo())
-                        .geIfPresent(ErpFinancePaymentDO::getPaymentTime, reqVO.getBizDateStartTime())
-                        .leIfPresent(ErpFinancePaymentDO::getPaymentTime, reqVO.getBizDateEndTime())
-                        .inIfPresent(ErpFinancePaymentDO::getSupplierId, supplierIds)
-                        .orderByDesc(ErpFinancePaymentDO::getId));
+        LambdaQueryWrapperX<ErpFinancePaymentDO> wrapper = new LambdaQueryWrapperX<ErpFinancePaymentDO>()
+                .likeIfPresent(ErpFinancePaymentDO::getNo, reqVO.getBizNo())
+                .geIfPresent(ErpFinancePaymentDO::getPaymentTime, reqVO.getBizDateStartTime())
+                .leIfPresent(ErpFinancePaymentDO::getPaymentTime, reqVO.getBizDateEndTime())
+                .inIfPresent(ErpFinancePaymentDO::getSupplierId, supplierIds);
+        wrapper.eq(ErpFinancePaymentDO::getStatus, ErpAuditStatus.APPROVE.getStatus())
+                .orderByDesc(ErpFinancePaymentDO::getId);
+        PageResult<ErpFinancePaymentDO> page = financePaymentMapper.selectPage(reqVO, wrapper);
         if (CollUtil.isEmpty(page.getList())) {
             return new PageResult<>(Collections.emptyList(), page.getTotal());
         }
@@ -561,14 +646,16 @@ public class ErpVoucherAttributionServiceImpl implements ErpVoucherAttributionSe
         if (supplierIds != null && supplierIds.isEmpty()) {
             return PageResult.empty();
         }
-        PageResult<ErpStockInDO> page = stockInMapper.selectPage(reqVO,
-                new LambdaQueryWrapperX<ErpStockInDO>()
-                        .eq(ErpStockInDO::getStatus, ErpAuditStatus.APPROVE.getStatus())
-                        .likeIfPresent(ErpStockInDO::getNo, reqVO.getBizNo())
-                        .geIfPresent(ErpStockInDO::getInTime, reqVO.getBizDateStartTime())
-                        .leIfPresent(ErpStockInDO::getInTime, reqVO.getBizDateEndTime())
-                        .inIfPresent(ErpStockInDO::getSupplierId, supplierIds)
-                        .orderByDesc(ErpStockInDO::getId));
+        LambdaQueryWrapperX<ErpStockInDO> wrapper = new LambdaQueryWrapperX<ErpStockInDO>()
+                .likeIfPresent(ErpStockInDO::getNo, reqVO.getBizNo())
+                .geIfPresent(ErpStockInDO::getInTime, reqVO.getBizDateStartTime())
+                .leIfPresent(ErpStockInDO::getInTime, reqVO.getBizDateEndTime())
+                .inIfPresent(ErpStockInDO::getSupplierId, supplierIds);
+        wrapper.eq(ErpStockInDO::getStatus, ErpAuditStatus.APPROVE.getStatus())
+                .isNotNull(ErpStockInDO::getTotalPrice)
+                .ne(ErpStockInDO::getTotalPrice, BigDecimal.ZERO)
+                .orderByDesc(ErpStockInDO::getId);
+        PageResult<ErpStockInDO> page = stockInMapper.selectPage(reqVO, wrapper);
         if (CollUtil.isEmpty(page.getList())) {
             return new PageResult<>(Collections.emptyList(), page.getTotal());
         }
@@ -589,14 +676,16 @@ public class ErpVoucherAttributionServiceImpl implements ErpVoucherAttributionSe
         if (customerIds != null && customerIds.isEmpty()) {
             return PageResult.empty();
         }
-        PageResult<ErpStockOutDO> page = stockOutMapper.selectPage(reqVO,
-                new LambdaQueryWrapperX<ErpStockOutDO>()
-                        .eq(ErpStockOutDO::getStatus, ErpAuditStatus.APPROVE.getStatus())
-                        .likeIfPresent(ErpStockOutDO::getNo, reqVO.getBizNo())
-                        .geIfPresent(ErpStockOutDO::getOutTime, reqVO.getBizDateStartTime())
-                        .leIfPresent(ErpStockOutDO::getOutTime, reqVO.getBizDateEndTime())
-                        .inIfPresent(ErpStockOutDO::getCustomerId, customerIds)
-                        .orderByDesc(ErpStockOutDO::getId));
+        LambdaQueryWrapperX<ErpStockOutDO> wrapper = new LambdaQueryWrapperX<ErpStockOutDO>()
+                .likeIfPresent(ErpStockOutDO::getNo, reqVO.getBizNo())
+                .geIfPresent(ErpStockOutDO::getOutTime, reqVO.getBizDateStartTime())
+                .leIfPresent(ErpStockOutDO::getOutTime, reqVO.getBizDateEndTime())
+                .inIfPresent(ErpStockOutDO::getCustomerId, customerIds);
+        wrapper.eq(ErpStockOutDO::getStatus, ErpAuditStatus.APPROVE.getStatus())
+                .isNotNull(ErpStockOutDO::getTotalPrice)
+                .ne(ErpStockOutDO::getTotalPrice, BigDecimal.ZERO)
+                .orderByDesc(ErpStockOutDO::getId);
+        PageResult<ErpStockOutDO> page = stockOutMapper.selectPage(reqVO, wrapper);
         if (CollUtil.isEmpty(page.getList())) {
             return new PageResult<>(Collections.emptyList(), page.getTotal());
         }
@@ -609,6 +698,60 @@ public class ErpVoucherAttributionServiceImpl implements ErpVoucherAttributionSe
             return buildResp(reqVO.getSourceBizType(), o.getId(), o.getNo(), o.getOutTime(),
                     o.getTotalPrice(), party, o.getRemark());
         }).collect(Collectors.toList());
+        return new PageResult<>(list, page.getTotal());
+    }
+
+    private PageResult<ErpVoucherAttributionRespVO> searchPreReceipt(ErpVoucherAttributionSearchSourceBizReqVO reqVO) {
+        LambdaQueryWrapperX<ErpPreReceiptDO> wrapper = new LambdaQueryWrapperX<ErpPreReceiptDO>()
+                .likeIfPresent(ErpPreReceiptDO::getNo, reqVO.getBizNo())
+                .likeIfPresent(ErpPreReceiptDO::getPartyName, reqVO.getPartyName())
+                .geIfPresent(ErpPreReceiptDO::getBizTime, reqVO.getBizDateStartTime())
+                .leIfPresent(ErpPreReceiptDO::getBizTime, reqVO.getBizDateEndTime());
+        wrapper.eq(ErpPreReceiptDO::getStatus, ErpAuditStatus.APPROVE.getStatus())
+                .isNotNull(ErpPreReceiptDO::getActualAmount)
+                .ne(ErpPreReceiptDO::getActualAmount, BigDecimal.ZERO)
+                .orderByDesc(ErpPreReceiptDO::getId);
+        PageResult<ErpPreReceiptDO> page = preReceiptMapper.selectPage(reqVO, wrapper);
+        List<ErpVoucherAttributionRespVO> list = page.getList().stream().map(o ->
+                buildResp(reqVO.getSourceBizType(), o.getId(), o.getNo(), o.getBizTime(),
+                        o.getActualAmount(), o.getPartyName(), o.getRemark()))
+                .collect(Collectors.toList());
+        return new PageResult<>(list, page.getTotal());
+    }
+
+    private PageResult<ErpVoucherAttributionRespVO> searchPrePayment(ErpVoucherAttributionSearchSourceBizReqVO reqVO) {
+        LambdaQueryWrapperX<ErpPrePaymentDO> wrapper = new LambdaQueryWrapperX<ErpPrePaymentDO>()
+                .likeIfPresent(ErpPrePaymentDO::getNo, reqVO.getBizNo())
+                .likeIfPresent(ErpPrePaymentDO::getPartyName, reqVO.getPartyName())
+                .geIfPresent(ErpPrePaymentDO::getBizTime, reqVO.getBizDateStartTime())
+                .leIfPresent(ErpPrePaymentDO::getBizTime, reqVO.getBizDateEndTime());
+        wrapper.eq(ErpPrePaymentDO::getStatus, ErpAuditStatus.APPROVE.getStatus())
+                .isNotNull(ErpPrePaymentDO::getActualAmount)
+                .ne(ErpPrePaymentDO::getActualAmount, BigDecimal.ZERO)
+                .orderByDesc(ErpPrePaymentDO::getId);
+        PageResult<ErpPrePaymentDO> page = prePaymentMapper.selectPage(reqVO, wrapper);
+        List<ErpVoucherAttributionRespVO> list = page.getList().stream().map(o ->
+                buildResp(reqVO.getSourceBizType(), o.getId(), o.getNo(), o.getBizTime(),
+                        o.getActualAmount(), o.getPartyName(), o.getRemark()))
+                .collect(Collectors.toList());
+        return new PageResult<>(list, page.getTotal());
+    }
+
+    private PageResult<ErpVoucherAttributionRespVO> searchPreReceivable(ErpVoucherAttributionSearchSourceBizReqVO reqVO) {
+        LambdaQueryWrapperX<ErpPreReceivableDO> wrapper = new LambdaQueryWrapperX<ErpPreReceivableDO>()
+                .likeIfPresent(ErpPreReceivableDO::getNo, reqVO.getBizNo())
+                .likeIfPresent(ErpPreReceivableDO::getPartyName, reqVO.getPartyName())
+                .geIfPresent(ErpPreReceivableDO::getBizTime, reqVO.getBizDateStartTime())
+                .leIfPresent(ErpPreReceivableDO::getBizTime, reqVO.getBizDateEndTime());
+        wrapper.eq(ErpPreReceivableDO::getStatus, ErpAuditStatus.APPROVE.getStatus())
+                .isNotNull(ErpPreReceivableDO::getActualAmount)
+                .ne(ErpPreReceivableDO::getActualAmount, BigDecimal.ZERO)
+                .orderByDesc(ErpPreReceivableDO::getId);
+        PageResult<ErpPreReceivableDO> page = preReceivableMapper.selectPage(reqVO, wrapper);
+        List<ErpVoucherAttributionRespVO> list = page.getList().stream().map(o ->
+                buildResp(reqVO.getSourceBizType(), o.getId(), o.getNo(), o.getBizTime(),
+                        o.getActualAmount(), o.getPartyName(), o.getRemark()))
+                .collect(Collectors.toList());
         return new PageResult<>(list, page.getTotal());
     }
 
@@ -755,6 +898,33 @@ public class ErpVoucherAttributionServiceImpl implements ErpVoucherAttributionSe
             List<ErpVoucherItemDO> items = autoVoucherBuilder.buildStockOutItems(doc, firstNonNull(amount, BigDecimal.ZERO));
             return voucherService.createVoucherFromBiz(bizType, doc.getId(), doc.getNo(), amount,
                     voucherDate, "其他出库 - " + doc.getNo(), items);
+        }
+        if (ErpVoucherSourceBizTypeEnum.PRE_RECEIPT.getType().equals(bizType)) {
+            ErpPreReceiptDO doc = preReceiptMapper.selectById(bizId);
+            if (doc == null) {
+                throw exception(VOUCHER_AUTO_GENERATE_FAIL, "预收款单不存在：" + bizId);
+            }
+            List<ErpVoucherItemDO> items = autoVoucherBuilder.buildPreReceiptItems(doc);
+            return voucherService.createVoucherFromBiz(bizType, doc.getId(), doc.getNo(), doc.getActualAmount(),
+                    voucherDate, "预收款 - " + firstNonNull(doc.getPartyName(), ""), items);
+        }
+        if (ErpVoucherSourceBizTypeEnum.PRE_PAYMENT.getType().equals(bizType)) {
+            ErpPrePaymentDO doc = prePaymentMapper.selectById(bizId);
+            if (doc == null) {
+                throw exception(VOUCHER_AUTO_GENERATE_FAIL, "预付款单不存在：" + bizId);
+            }
+            List<ErpVoucherItemDO> items = autoVoucherBuilder.buildPrePaymentItems(doc);
+            return voucherService.createVoucherFromBiz(bizType, doc.getId(), doc.getNo(), doc.getActualAmount(),
+                    voucherDate, "预付款 - " + firstNonNull(doc.getPartyName(), ""), items);
+        }
+        if (ErpVoucherSourceBizTypeEnum.PRE_RECEIVABLE.getType().equals(bizType)) {
+            ErpPreReceivableDO doc = preReceivableMapper.selectById(bizId);
+            if (doc == null) {
+                throw exception(VOUCHER_AUTO_GENERATE_FAIL, "预收账款单不存在：" + bizId);
+            }
+            List<ErpVoucherItemDO> items = autoVoucherBuilder.buildPreReceivableItems(doc);
+            return voucherService.createVoucherFromBiz(bizType, doc.getId(), doc.getNo(), doc.getActualAmount(),
+                    voucherDate, "预收账款 - " + firstNonNull(doc.getPartyName(), ""), items);
         }
         throw exception(VOUCHER_AUTO_GENERATE_FAIL, "暂不支持该单据类型生成凭证：" + bizType);
     }

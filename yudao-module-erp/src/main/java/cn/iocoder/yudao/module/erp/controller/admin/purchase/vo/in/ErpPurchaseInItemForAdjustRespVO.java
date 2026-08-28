@@ -34,11 +34,20 @@ public class ErpPurchaseInItemForAdjustRespVO {
     @Schema(description = "产品名称", example = "博世火花塞")
     private String productName;
 
+    @Schema(description = "批次号", example = "BATCH-001")
+    private String batchNo;
+
     @Schema(description = "产品单位编号", example = "1")
     private Long productUnitId;
 
     @Schema(description = "产品单位名称", example = "件")
     private String productUnitName;
+
+    @Schema(description = "产品重量", example = "1.00")
+    private BigDecimal weight;
+
+    @Schema(description = "包装数", example = "1")
+    private Integer packageQty;
 
     @Schema(description = "仓库编号", example = "101")
     private Long warehouseId;

@@ -21,6 +21,7 @@ import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.imports.ErpFinanc
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.receivable.ErpReceivableOtherDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpCustomerDO;
 import cn.iocoder.yudao.module.erp.enums.ErpAuditStatus;
+import cn.iocoder.yudao.module.erp.enums.finance.ErpReceivableOtherStatusEnum;
 import cn.iocoder.yudao.module.erp.service.base.ErpDataPermissionDeptService;
 import cn.iocoder.yudao.module.erp.service.finance.ErpFinanceFieldPermissionMasker;
 import cn.iocoder.yudao.module.erp.service.finance.receivable.ErpReceivableOtherService;
@@ -213,8 +214,14 @@ public class ErpReceivableOtherController {
         reqVO.setPageSize(PageParam.PAGE_SIZE_NONE);
         PageResult<ErpReceivableOtherDO> pageResult = receivableOtherService.getReceivableOtherPage(reqVO);
         PageResult<ErpReceivableOtherRespVO> voPage = buildPageResult(pageResult);
+        List<ErpReceivableOtherExportRespVO> rows =
+                BeanUtils.toBean(voPage.getList(), ErpReceivableOtherExportRespVO.class);
+        rows.forEach(row -> {
+            row.setIncreaseReceivableAmount(row.getReceivableAmount());
+            row.setStatusName(formatStatusName(row.getStatus()));
+        });
         ExcelUtils.write(response, "其他应收.xls", "数据", ErpReceivableOtherExportRespVO.class,
-                BeanUtils.toBean(voPage.getList(), ErpReceivableOtherExportRespVO.class));
+                rows);
     }
 
     @GetMapping("/get-import-template")
@@ -349,5 +356,14 @@ public class ErpReceivableOtherController {
         }
         vo.setAuditorName(vo.getUpdaterName());
         vo.setAuditTime(vo.getUpdateTime());
+    }
+
+    private String formatStatusName(Integer status) {
+        for (ErpReceivableOtherStatusEnum statusEnum : ErpReceivableOtherStatusEnum.values()) {
+            if (statusEnum.getStatus().equals(status)) {
+                return statusEnum.getName();
+            }
+        }
+        return null;
     }
 }

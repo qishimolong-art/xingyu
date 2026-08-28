@@ -10,6 +10,7 @@ import java.util.Map;
 import java.util.function.Function;
 
 import static cn.iocoder.yudao.framework.common.exception.util.ServiceExceptionUtil.exception;
+import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.ERP_ITEM_BATCH_NO_REQUIRED;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.ERP_ITEM_BATCH_NO_DISABLED;
 
 /**
@@ -35,6 +36,26 @@ public class ErpProductBatchNoValidator {
             ErpProductDO product = productMap.get(productId);
             if (product == null || !Boolean.TRUE.equals(product.getBatchNoEnabled())) {
                 throw exception(ERP_ITEM_BATCH_NO_DISABLED, i + 1);
+            }
+        }
+    }
+
+    public <T> void validateBatchNoRequired(List<T> items,
+                                            Map<Long, ErpProductDO> productMap,
+                                            Function<T, Long> productIdGetter,
+                                            Function<T, String> batchNoGetter) {
+        if (CollUtil.isEmpty(items) || CollUtil.isEmpty(productMap)) {
+            return;
+        }
+        for (int i = 0; i < items.size(); i++) {
+            T item = items.get(i);
+            Long productId = productIdGetter.apply(item);
+            ErpProductDO product = productMap.get(productId);
+            if (product == null || !Boolean.TRUE.equals(product.getBatchNoEnabled())) {
+                continue;
+            }
+            if (StrUtil.isBlank(batchNoGetter.apply(item))) {
+                throw exception(ERP_ITEM_BATCH_NO_REQUIRED, i + 1);
             }
         }
     }

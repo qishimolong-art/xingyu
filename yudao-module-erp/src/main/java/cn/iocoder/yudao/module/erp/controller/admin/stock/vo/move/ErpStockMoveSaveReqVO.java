@@ -92,6 +92,15 @@ public class ErpStockMoveSaveReqVO {
         @NotNull(message = "Product id cannot be empty")
         private Long productId;
 
+        @Schema(description = "Package quantity", example = "12")
+        private Integer packageQty;
+
+        @Schema(description = "Unit weight", example = "1.25")
+        private BigDecimal weight;
+
+        @Schema(description = "Total weight", example = "125.00")
+        private BigDecimal totalWeight;
+
         @Schema(description = "Product price", example = "100.00")
         private BigDecimal productPrice;
 

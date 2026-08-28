@@ -3,6 +3,7 @@ package cn.iocoder.yudao.module.promotion.controller.admin.banner.vo;
 import cn.iocoder.yudao.framework.common.enums.CommonStatusEnum;
 import cn.iocoder.yudao.framework.common.pojo.PageParam;
 import cn.iocoder.yudao.framework.common.validation.InEnum;
+import cn.iocoder.yudao.module.promotion.enums.banner.BannerPositionEnum;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
@@ -25,6 +26,10 @@ public class BannerPageReqVO extends PageParam {
     @Schema(description = "状态", example = "1")
     @InEnum(CommonStatusEnum.class)
     private Integer status;
+
+    @Schema(description = "定位", example = "1")
+    @InEnum(BannerPositionEnum.class)
+    private Integer position;
 
     @DateTimeFormat(pattern = FORMAT_YEAR_MONTH_DAY_HOUR_MINUTE_SECOND)
     @Schema(description = "创建时间")

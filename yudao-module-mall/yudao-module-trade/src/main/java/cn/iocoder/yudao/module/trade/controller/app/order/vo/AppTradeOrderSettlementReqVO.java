@@ -24,6 +24,10 @@ public class AppTradeOrderSettlementReqVO {
     @NotEmpty(message = "商品不能为空")
     private List<Item> items;
 
+    @Schema(description = "部门编号", requiredMode = Schema.RequiredMode.REQUIRED, example = "1")
+    @NotNull(message = "部门不能为空")
+    private Long deptId;
+
     @Schema(description = "优惠劵编号", example = "1024")
     private Long couponId;
 
@@ -92,6 +96,9 @@ public class AppTradeOrderSettlementReqVO {
 
         @Schema(description = "购物车项的编号", example = "1024")
         private Long cartId;
+
+        @Schema(description = "ERP 库存记录编号", example = "2048")
+        private Long stockId;
 
         @AssertTrue(message = "商品不正确")
         @JsonIgnore

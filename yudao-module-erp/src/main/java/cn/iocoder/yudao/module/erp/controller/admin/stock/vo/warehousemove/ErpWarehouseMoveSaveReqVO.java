@@ -92,6 +92,9 @@ public class ErpWarehouseMoveSaveReqVO {
         @Schema(description = "成本单价")
         private BigDecimal costPrice;
 
+        @Schema(description = "包装数")
+        private Integer packageQty;
+
         @Schema(description = "单重")
         private BigDecimal weight;
 

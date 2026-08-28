@@ -327,6 +327,8 @@ public class ErpStockTransferOutController {
         map.put("approveTime", "system");
         map.put("remark", "main");
         map.put("createTime", "system");
+        map.put("lastPrintTime", "system");
+        map.put("printCount", "system");
         map.put("productNames", "detail");
         map.put("productCodes", "detail");
         return map;

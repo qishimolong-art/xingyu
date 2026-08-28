@@ -15,6 +15,9 @@ public class AppTradeProductSettlementRespVO {
     @Schema(description = "SPU 商品编号", requiredMode = Schema.RequiredMode.REQUIRED, example = "1")
     private Long spuId;
 
+    @Schema(description = "是否允许查看价格", requiredMode = Schema.RequiredMode.REQUIRED, example = "true")
+    private Boolean priceVisible;
+
     @Schema(description = "SKU 价格信息数组", requiredMode = Schema.RequiredMode.REQUIRED, example = "1")
     private List<Sku> skus;
 

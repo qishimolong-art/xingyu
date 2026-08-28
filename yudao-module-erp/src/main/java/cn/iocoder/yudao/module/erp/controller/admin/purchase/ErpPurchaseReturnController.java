@@ -87,6 +87,7 @@ import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.
 public class ErpPurchaseReturnController {
 
     private static final String FIELD_PERMISSION_MODULE = "erp_purchase_return";
+    private static final String DEPT_SELECTION_PERMISSION_FORM_KEY = "system_dept";
     private static final Map<String, String> EXPORT_FIELD_GROUP_MAP = buildExportFieldGroupMap();
     private static final Map<String, String> EXPORT_FIELD_PERMISSION_MAP = buildExportFieldPermissionMap();
     private static final Map<String, String> DETAIL_IMPORT_FIELD_ALIAS_MAP = ErpImportTemplateRequiredFieldUtils.aliasMap(
@@ -184,7 +185,8 @@ public class ErpPurchaseReturnController {
     @Operation(summary = "鑾峰緱褰撳墠鐢ㄦ埛鍙煡璇㈢殑閲囪喘閫€璐ч儴闂ㄧ簿绠€鍒楄〃")
     @PreAuthorize("@ss.hasPermission('erp:purchase-return:query')")
     public CommonResult<List<DeptSimpleRespVO>> getVisibleDeptSimpleList() {
-        return success(supplierDeptPermissionService.getDataPermissionDeptSimpleList(FIELD_PERMISSION_MODULE));
+        return success(supplierDeptPermissionService.getDataPermissionDeptSimpleList(
+                DEPT_SELECTION_PERMISSION_FORM_KEY));
     }
 
     @PutMapping("/update-draft")
@@ -308,7 +310,8 @@ public class ErpPurchaseReturnController {
     @Operation(summary = "获得采购退货")
     @Parameter(name = "id", description = "编号", required = true, example = "1024")
     @PreAuthorize("@ss.hasPermission('erp:purchase-return:query')")
-    public CommonResult<ErpPurchaseReturnRespVO> getPurchaseReturn(@RequestParam("id") Long id) {
+    public CommonResult<ErpPurchaseReturnRespVO> getPurchaseReturn(@RequestParam("id") Long id,
+                                                                   @RequestParam(value = "mask", defaultValue = "true") Boolean mask) {
         ErpPurchaseReturnDO purchaseReturn = purchaseReturnService.getPurchaseReturn(id);
         if (purchaseReturn == null) {
             return success(null);
@@ -337,7 +340,10 @@ public class ErpPurchaseReturnController {
                     item.setStockCount(stock != null ? stock.getCount() : BigDecimal.ZERO);
                     MapUtils.findAndThen(productMap, item.getProductId(), product -> item.setProductName(product.getName())
                             .setProductCode(product.getCode()).setProductBarCode(product.getBarCode())
-                            .setProductUnitName(product.getUnitName()).setBatchNoEnabled(product.getBatchNoEnabled()));
+                            .setProductUnitName(product.getUnitName()).setWeight(product.getWeight())
+                            .setPackageQty(item.getPackageQty() == null || item.getPackageQty() <= 0
+                                    ? product.getPackageQty() : item.getPackageQty())
+                            .setBatchNoEnabled(product.getBatchNoEnabled()));
                     if (item.getSourceInItemId() != null) {
                         ErpPurchaseInItemDO inItem = finalInItemMap.get(item.getSourceInItemId());
                         if (inItem != null) {
@@ -356,7 +362,9 @@ public class ErpPurchaseReturnController {
                 }
                 fillUserNames(purchaseReturnVO, userMap);
         });
-        fieldPermissionMasker.mask("erp_purchase_return", respVO);
+        if (Boolean.TRUE.equals(mask)) {
+            fieldPermissionMasker.mask("erp_purchase_return", respVO);
+        }
         return success(respVO);
     }
 
@@ -418,7 +426,10 @@ public class ErpPurchaseReturnController {
             purchaseReturn.setItems(BeanUtils.toBean(itemList, ErpPurchaseReturnRespVO.Item.class,
                     item -> MapUtils.findAndThen(productMap, item.getProductId(), product -> item.setProductName(product.getName())
                             .setProductCode(product.getCode()).setProductBarCode(product.getBarCode())
-                            .setProductUnitName(product.getUnitName()).setBatchNoEnabled(product.getBatchNoEnabled()))));
+                            .setProductUnitName(product.getUnitName()).setWeight(product.getWeight())
+                            .setPackageQty(item.getPackageQty() == null || item.getPackageQty() <= 0
+                                    ? product.getPackageQty() : item.getPackageQty())
+                            .setBatchNoEnabled(product.getBatchNoEnabled()))));
             purchaseReturn.setItemCount(itemList.size());
             purchaseReturn.setProductNames(CollUtil.join(purchaseReturn.getItems(), "，", ErpPurchaseReturnRespVO.Item::getProductName));
             MapUtils.findAndThen(supplierMap, purchaseReturn.getSupplierId(), supplier -> purchaseReturn.setSupplierName(supplier.getName()));
@@ -471,6 +482,8 @@ public class ErpPurchaseReturnController {
         row.setProductCode(item.getProductCode());
         row.setProductName(item.getProductName());
         row.setProductUnitName(item.getProductUnitName());
+        row.setWeight(item.getWeight());
+        row.setPackageQty(item.getPackageQty());
         row.setItemCount(item.getCount());
         row.setProductPrice(item.getProductPrice());
         row.setItemTotalPrice(item.getProductPrice() == null || item.getCount() == null
@@ -542,6 +555,8 @@ public class ErpPurchaseReturnController {
         map.put("productCode", "detail");
         map.put("productName", "detail");
         map.put("productUnitName", "detail");
+        map.put("weight", "detail");
+        map.put("packageQty", "detail");
         map.put("sourceInNo", "detail");
         map.put("itemCount", "detail");
         map.put("productPrice", "detail");
@@ -561,6 +576,8 @@ public class ErpPurchaseReturnController {
         map.put("productCode", "item_productCode");
         map.put("productName", "item_productName");
         map.put("productUnitName", "item_productUnitName");
+        map.put("weight", "item_weight");
+        map.put("packageQty", "item_packageQty");
         map.put("itemCount", "item_count");
         map.put("productPrice", "item_productPrice");
         map.put("itemTotalPrice", "item_totalProductPrice");

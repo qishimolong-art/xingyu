@@ -16,46 +16,52 @@ import java.util.List;
 public class ErpVoucherRespVO {
 
     @Schema(description = "凭证编号", requiredMode = Schema.RequiredMode.REQUIRED, example = "10")
-    @ExcelProperty("凭证编号")
     private Long id;
 
     @Schema(description = "凭证字", requiredMode = Schema.RequiredMode.REQUIRED, example = "记")
-    @ExcelProperty("凭证字")
     private String voucherWord;
 
-    @Schema(description = "凭证号", requiredMode = Schema.RequiredMode.REQUIRED, example = "记-202605-000001")
-    @ExcelProperty("凭证号")
-    private String voucherNo;
+    @Schema(description = "创建时间", requiredMode = Schema.RequiredMode.REQUIRED)
+    @ExcelProperty("制单日期")
+    private LocalDateTime createTime;
 
     @Schema(description = "凭证日期", requiredMode = Schema.RequiredMode.REQUIRED, example = "2026-05-14")
     @ExcelProperty("凭证日期")
     private LocalDate voucherDate;
 
+    @Schema(description = "期间", example = "2026-05")
+    @ExcelProperty("期间")
+    private String period;
+
+    @Schema(description = "凭证号", requiredMode = Schema.RequiredMode.REQUIRED, example = "记-202605-000001")
+    @ExcelProperty("凭证号")
+    private String voucherNo;
+
     @Schema(description = "归属年", example = "2026")
-    @ExcelProperty("归属年")
     private Integer periodYear;
 
     @Schema(description = "归属月", example = "5")
-    @ExcelProperty("归属月")
     private Integer periodMonth;
 
     @Schema(description = "附件张数", example = "1")
     private Integer attachmentCount;
 
     @Schema(description = "摘要", example = "差旅费报销")
-    @ExcelProperty("摘要")
     private String summary;
 
+    @Schema(description = "备注", example = "你猜")
+    @ExcelProperty("备注")
+    private String remark;
+
     @Schema(description = "借方合计", example = "100.00")
-    @ExcelProperty("借方合计")
+    @ExcelProperty("借方金额合计")
     private BigDecimal totalDebit;
 
     @Schema(description = "贷方合计", example = "100.00")
-    @ExcelProperty("贷方合计")
+    @ExcelProperty("贷方金额合计")
     private BigDecimal totalCredit;
 
     @Schema(description = "审核状态", requiredMode = Schema.RequiredMode.REQUIRED, example = "10")
-    @ExcelProperty("审核状态")
     private Integer auditStatus;
 
     @Schema(description = "凭证来源类型", example = "1")
@@ -71,7 +77,6 @@ public class ErpVoucherRespVO {
     private String sourceBizNo;
 
     @Schema(description = "业务单据金额", example = "100.00")
-    @ExcelProperty("业务金额")
     private BigDecimal sourceBizAmount;
 
     @Schema(description = "是否已生成业务单据", example = "false")
@@ -96,15 +101,6 @@ public class ErpVoucherRespVO {
     @ExcelProperty("制单人")
     private String makerUserName;
 
-    @Schema(description = "记账人", example = "张三")
-    private String bookkeeper;
-
-    @Schema(description = "出纳", example = "李四")
-    private String cashier;
-
-    @Schema(description = "主管", example = "王五")
-    private String supervisor;
-
     @Schema(description = "审核人 ID", example = "100")
     private Long auditorUserId;
 
@@ -116,12 +112,19 @@ public class ErpVoucherRespVO {
     @ExcelProperty("审核日期")
     private LocalDateTime auditTime;
 
-    @Schema(description = "备注", example = "你猜")
-    private String remark;
+    @Schema(description = "记账人", example = "张三")
+    @ExcelProperty("登账人")
+    private String bookkeeper;
 
-    @Schema(description = "创建时间", requiredMode = Schema.RequiredMode.REQUIRED)
-    @ExcelProperty("创建时间")
-    private LocalDateTime createTime;
+    @Schema(description = "登账日期")
+    @ExcelProperty("登账日期")
+    private LocalDateTime bookkeeperTime;
+
+    @Schema(description = "出纳", example = "李四")
+    private String cashier;
+
+    @Schema(description = "主管", example = "王五")
+    private String supervisor;
 
     @Schema(description = "凭证分录列表")
     private List<ErpVoucherItemRespVO> items;

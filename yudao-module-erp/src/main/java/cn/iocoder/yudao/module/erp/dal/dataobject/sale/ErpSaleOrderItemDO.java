@@ -49,6 +49,18 @@ public class ErpSaleOrderItemDO extends BaseDO {
     private Long productUnitId;
     private Long warehouseId;
     private Long deptId;
+    /**
+     * 重量
+     */
+    private BigDecimal weight;
+    /**
+     * 包装数
+     */
+    private Integer packageQty;
+    /**
+     * 批次号
+     */
+    private String batchNo;
 
     /**
      * 产品单位单价，单位：元

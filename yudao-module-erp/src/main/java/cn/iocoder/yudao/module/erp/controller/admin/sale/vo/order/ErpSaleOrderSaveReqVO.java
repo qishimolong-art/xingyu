@@ -64,6 +64,12 @@ public class ErpSaleOrderSaveReqVO {
         private Long productUnitId;
         private Long warehouseId;
         private Long deptId;
+        @Schema(description = "重量")
+        private BigDecimal weight;
+        @Schema(description = "包装数")
+        private Integer packageQty;
+        @Schema(description = "批次号", example = "BATCH20260818001")
+        private String batchNo;
 
         @Schema(description = "产品单价", example = "100.00")
         private BigDecimal productPrice;

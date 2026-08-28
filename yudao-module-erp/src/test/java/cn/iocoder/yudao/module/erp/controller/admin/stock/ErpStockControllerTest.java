@@ -175,7 +175,7 @@ public class ErpStockControllerTest extends BaseMockitoUnitTest {
 
         when(stockService.getStockPage(any(ErpStockPageReqVO.class)))
                 .thenReturn(new PageResult<>(Arrays.asList(ownStock, externalStock), 2L));
-        when(productService.getProductVOMap(any(), eq(30L)))
+        when(productService.getProductVOMap(any(), eq(30L), eq(false)))
                 .thenReturn(Collections.singletonMap(10L, product));
         Map<Long, ErpWarehouseDO> warehouseMap = new HashMap<>();
         warehouseMap.put(20L, ownWarehouse);
@@ -227,7 +227,7 @@ public class ErpStockControllerTest extends BaseMockitoUnitTest {
     }
 
     @Test
-    public void testGetStockPage_usesSaleDepartmentForConfiguredPriceMaskingAndSort() {
+    public void testGetStockPage_saleRetainsHiddenPricesForSelectionButSanitizesSort() {
         ErpStockPageReqVO reqVO = new ErpStockPageReqVO();
         reqVO.setBizType("sale");
         reqVO.setSaleDeptId(40L);
@@ -257,7 +257,7 @@ public class ErpStockControllerTest extends BaseMockitoUnitTest {
                         "salePrice", "col_salePrice", "vipPrice", "col_vipPrice")));
         when(stockService.getStockPage(any(ErpStockPageReqVO.class)))
                 .thenReturn(new PageResult<>(Collections.singletonList(stock), 1L));
-        when(productService.getProductVOMap(any(), eq(40L)))
+        when(productService.getProductVOMap(any(), eq(40L), eq(false)))
                 .thenReturn(Collections.singletonMap(11L, product));
         when(warehouseService.getWarehouseMap(any())).thenReturn(Collections.singletonMap(22L, warehouse));
         when(deptApi.getDeptMap(any())).thenReturn(Collections.emptyMap());
@@ -271,19 +271,20 @@ public class ErpStockControllerTest extends BaseMockitoUnitTest {
 
         assertTrue(row.getPriceVisible());
         assertEquals(new BigDecimal("5.00"), row.getCostPrice());
-        assertNull(row.getSalePrice());
-        assertNull(row.getProductPurchasePrice());
-        assertNull(row.getMinPrice());
-        assertNull(row.getReferencePrice());
-        assertNull(row.getGrossProfitRate());
-        assertNull(row.getBackupPrice1());
-        assertNull(row.getSharePrice());
-        assertTrue(row.getCustomFields().isEmpty());
-        assertNull(row.getCurrentPrice());
-        assertNull(row.getCurrentPriceAmount());
+        assertEquals(new BigDecimal("10.00"), row.getSalePrice());
+        assertEquals(new BigDecimal("6.20"), row.getProductPurchasePrice());
+        assertEquals(new BigDecimal("8.00"), row.getMinPrice());
+        assertEquals(new BigDecimal("11.00"), row.getReferencePrice());
+        assertEquals(25, row.getGrossProfitRate());
+        assertEquals(new BigDecimal("13.00"), row.getBackupPrice1());
+        assertEquals(new BigDecimal("8.80"), row.getSharePrice());
+        assertEquals(new BigDecimal("7.70"), row.getCustomFields().get("vipPrice"));
+        assertEquals(new BigDecimal("6.60"), row.getCustomFields().get("internalPrice"));
+        assertEquals(new BigDecimal("14.00"), row.getCurrentPrice());
+        assertEquals(new BigDecimal("28.00"), row.getCurrentPriceAmount());
         assertNull(reqVO.getOrderField());
         assertNull(reqVO.getOrderDirection());
-        verify(productService).getProductVOMap(any(), eq(40L));
+        verify(productService).getProductVOMap(any(), eq(40L), eq(false));
         verify(stockSelectPriceConfigService).getSceneHiddenPriceFields("sale");
     }
 
@@ -310,7 +311,7 @@ public class ErpStockControllerTest extends BaseMockitoUnitTest {
                         "sharePrice", "internalPrice"));
         when(stockService.getStockPage(any(ErpStockPageReqVO.class)))
                 .thenReturn(new PageResult<>(Collections.singletonList(stock), 1L));
-        when(productService.getProductVOMap(any(), eq(41L)))
+        when(productService.getProductVOMap(any(), eq(41L), eq(false)))
                 .thenReturn(Collections.singletonMap(12L, product));
         when(warehouseService.getWarehouseMap(any())).thenReturn(Collections.singletonMap(23L, warehouse));
         when(deptApi.getDeptMap(any())).thenReturn(Collections.emptyMap());
@@ -335,7 +336,42 @@ public class ErpStockControllerTest extends BaseMockitoUnitTest {
         assertEquals(new BigDecimal("9.00"), row.getWholesalePrice());
         assertEquals(Collections.singletonMap("vipPrice", new BigDecimal("7.70")), row.getCustomFields());
         verify(permissionApi).getCurrentUserHiddenFields("erp_product", 41L);
-        verify(productService).getProductVOMap(any(), eq(41L));
+        verify(productService).getProductVOMap(any(), eq(41L), eq(false));
+    }
+
+    @Test
+    public void testGetStockPage_purchaseKeepsProductPurchasePriceWhenFinalPermissionsAllowIt() {
+        ErpStockPageReqVO reqVO = new ErpStockPageReqVO();
+        reqVO.setBizType("purchase");
+
+        ErpStockDO stock = new ErpStockDO().setId(5L).setProductId(13L).setWarehouseId(24L)
+                .setCount(new BigDecimal("2")).setPurchasePrice(new BigDecimal("6.00"));
+        ErpProductRespVO product = new ErpProductRespVO().setId(13L).setName("Allowed Purchase Product")
+                .setPurchasePrice(new BigDecimal("6.20"));
+        ErpWarehouseDO warehouse = new ErpWarehouseDO().setId(24L).setName("Purchase").setDeptId(42L);
+
+        when(permissionApi.getCurrentUserHiddenFields("erp_product", 42L))
+                .thenReturn(Collections.emptyList());
+        when(stockSelectPriceConfigService.getSceneHiddenPriceFields("purchase"))
+                .thenReturn(Collections.emptySet());
+        when(stockService.getStockPage(any(ErpStockPageReqVO.class)))
+                .thenReturn(new PageResult<>(Collections.singletonList(stock), 1L));
+        when(productService.getProductVOMap(any(), eq(42L), eq(false)))
+                .thenReturn(Collections.singletonMap(13L, product));
+        when(warehouseService.getWarehouseMap(any())).thenReturn(Collections.singletonMap(24L, warehouse));
+        when(deptApi.getDeptMap(any())).thenReturn(Collections.emptyMap());
+        when(purchaseOrderItemMapper.selectInTransitCountMap(any(), any(), any()))
+                .thenReturn(Collections.emptyMap());
+        when(stockService.getAvailableBatchNoListMap(any())).thenReturn(Collections.emptyMap());
+
+        ErpStockRespVO row;
+        try (MockedStatic<SecurityFrameworkUtils> security = mockStatic(SecurityFrameworkUtils.class)) {
+            security.when(SecurityFrameworkUtils::getLoginUserDeptId).thenReturn(42L);
+            row = controller.getStockPage(reqVO).getData().getList().get(0);
+        }
+
+        assertEquals(new BigDecimal("6.20"), row.getProductPurchasePrice());
+        verify(productService).getProductVOMap(any(), eq(42L), eq(false));
     }
 
     @Test
@@ -558,35 +594,21 @@ public class ErpStockControllerTest extends BaseMockitoUnitTest {
     @Test
     public void testGetStockSummary_inTransitUsesPurchaseOrderSummaryOnly() {
         ErpStockPageReqVO reqVO = new ErpStockPageReqVO();
-        ErpStockDO stock = new ErpStockDO();
-        stock.setId(5L);
-        stock.setProductId(14L);
-        stock.setWarehouseId(24L);
-        stock.setCount(BigDecimal.TEN);
-        stock.setPendingInCount(new BigDecimal("99"));
-        stock.setInTransitCount(new BigDecimal("88"));
-
-        ErpProductRespVO product = new ErpProductRespVO();
-        product.setId(14L);
-        product.setName("P5");
-        ErpWarehouseDO warehouse = new ErpWarehouseDO();
-        warehouse.setId(24L);
-        warehouse.setName("Warehouse");
-        String key = "14_24";
-
-        when(stockService.getStockPage(reqVO)).thenReturn(new PageResult<>(Collections.singletonList(stock), 1L));
-        when(productService.getProductVOMap(any())).thenReturn(Collections.singletonMap(14L, product));
-        when(warehouseService.getWarehouseMap(any())).thenReturn(Collections.singletonMap(24L, warehouse));
-        when(saleCartItemMapper.selectOccupiedCountMap(any(), any(), any())).thenReturn(Collections.emptyMap());
-        when(stockMapper.selectPendingInCountMap(any(), any()))
-                .thenReturn(Collections.singletonMap(key, new BigDecimal("7")));
-        when(purchaseOrderItemMapper.selectInTransitCountMap(any(), any(), any()))
-                .thenReturn(Collections.singletonMap(key, new BigDecimal("5")));
+        ErpStockSummaryRespVO serviceSummary = new ErpStockSummaryRespVO()
+                .setTotalPendingInCount(new BigDecimal("7"))
+                .setTotalInTransitCount(new BigDecimal("5"));
+        when(stockService.getStockSummary(argThat(request ->
+                Integer.valueOf(1).equals(request.getPageNo())
+                        && PageParam.PAGE_SIZE_NONE.equals(request.getPageSize())
+                        && !Boolean.TRUE.equals(request.getShowBatchNo()))))
+                .thenReturn(serviceSummary);
 
         CommonResult<ErpStockSummaryRespVO> result = controller.getStockSummary(reqVO);
 
-        verify(purchaseOrderItemMapper).selectInTransitCountMap(any(), any(),
-                eq(Collections.singletonList(ErpAuditStatus.APPROVE.getStatus())));
+        verify(stockService).getStockSummary(argThat(request ->
+                Integer.valueOf(1).equals(request.getPageNo())
+                        && PageParam.PAGE_SIZE_NONE.equals(request.getPageSize())
+                        && !Boolean.TRUE.equals(request.getShowBatchNo())));
         assertEquals(new BigDecimal("7"), result.getData().getTotalPendingInCount());
         assertEquals(new BigDecimal("5"), result.getData().getTotalInTransitCount());
     }
@@ -594,56 +616,16 @@ public class ErpStockControllerTest extends BaseMockitoUnitTest {
     @Test
     public void testGetStockSummary_aggregatesAllMatchingRows() {
         ErpStockPageReqVO reqVO = new ErpStockPageReqVO();
-        ErpStockDO firstStock = new ErpStockDO()
-                .setId(51L)
-                .setProductId(101L)
-                .setWarehouseId(201L)
-                .setCount(new BigDecimal("2"))
-                .setCostAmount(new BigDecimal("20"))
-                .setOccupiedCount(new BigDecimal("99"));
-        ErpStockDO secondStock = new ErpStockDO()
-                .setId(52L)
-                .setProductId(102L)
-                .setWarehouseId(202L)
-                .setCount(new BigDecimal("3"))
-                .setCostAmount(new BigDecimal("45"))
-                .setOccupiedCount(new BigDecimal("88"));
-
-        ErpProductRespVO firstProduct = new ErpProductRespVO()
-                .setId(101L)
-                .setName("P101")
-                .setBackupPrice1(new BigDecimal("5"))
-                .setWeight(new BigDecimal("3"));
-        ErpProductRespVO secondProduct = new ErpProductRespVO()
-                .setId(102L)
-                .setName("P102")
-                .setBackupPrice1(new BigDecimal("7"))
-                .setWeight(new BigDecimal("4"));
-        ErpWarehouseDO firstWarehouse = new ErpWarehouseDO().setId(201L).setName("W201");
-        ErpWarehouseDO secondWarehouse = new ErpWarehouseDO().setId(202L).setName("W202");
-
-        when(stockService.getStockPage(reqVO)).thenReturn(
-                new PageResult<>(Arrays.asList(firstStock, secondStock), 2L));
-        Map<Long, ErpProductRespVO> productMap = new HashMap<>();
-        productMap.put(101L, firstProduct);
-        productMap.put(102L, secondProduct);
-        when(productService.getProductVOMap(any())).thenReturn(productMap);
-        Map<Long, ErpWarehouseDO> warehouseMap = new HashMap<>();
-        warehouseMap.put(201L, firstWarehouse);
-        warehouseMap.put(202L, secondWarehouse);
-        when(warehouseService.getWarehouseMap(any())).thenReturn(warehouseMap);
-        Map<String, BigDecimal> occupiedMap = new HashMap<>();
-        occupiedMap.put("101_201", BigDecimal.ONE);
-        occupiedMap.put("102_202", new BigDecimal("2"));
-        when(stockMapper.selectOccupiedCountMap(any(), any())).thenReturn(occupiedMap);
-        Map<String, BigDecimal> pendingInMap = new HashMap<>();
-        pendingInMap.put("101_201", new BigDecimal("4"));
-        pendingInMap.put("102_202", new BigDecimal("5"));
-        when(stockMapper.selectPendingInCountMap(any(), any())).thenReturn(pendingInMap);
-        Map<String, BigDecimal> inTransitMap = new HashMap<>();
-        inTransitMap.put("101_201", new BigDecimal("6"));
-        inTransitMap.put("102_202", new BigDecimal("7"));
-        when(purchaseOrderItemMapper.selectInTransitCountMap(any(), any(), any())).thenReturn(inTransitMap);
+        ErpStockSummaryRespVO serviceSummary = new ErpStockSummaryRespVO()
+                .setTotalStockCount(new BigDecimal("5"))
+                .setTotalCostAmount(new BigDecimal("65"))
+                .setTotalCurrentPriceAmount(new BigDecimal("31"))
+                .setTotalPendingInCount(new BigDecimal("9"))
+                .setTotalOccupiedCount(new BigDecimal("3"))
+                .setTotalInTransitCount(new BigDecimal("13"))
+                .setTotalWeight(new BigDecimal("18"))
+                .setTotalRows(2L);
+        when(stockService.getStockSummary(any(ErpStockPageReqVO.class))).thenReturn(serviceSummary);
 
         ErpStockSummaryRespVO summary = controller.getStockSummary(reqVO).getData();
 
@@ -927,64 +909,33 @@ public class ErpStockControllerTest extends BaseMockitoUnitTest {
     public void testGetStockSummary_showBatchNo_doesNotDuplicateWarehouseAggregates() {
         ErpStockPageReqVO reqVO = new ErpStockPageReqVO();
         reqVO.setShowBatchNo(true);
-        ErpStockDO stock = new ErpStockDO()
-                .setId(62L)
-                .setProductId(162L)
-                .setWarehouseId(262L)
-                .setCount(new BigDecimal("30"))
-                .setCostPrice(new BigDecimal("2"))
-                .setCostAmount(new BigDecimal("60"));
-        ErpProductRespVO product = new ErpProductRespVO()
-                .setId(162L)
-                .setName("测试")
-                .setBatchNoEnabled(true)
-                .setBackupPrice1(new BigDecimal("4"))
-                .setWeight(BigDecimal.ONE);
-        ErpWarehouseDO warehouse = new ErpWarehouseDO().setId(262L).setName("蛟龙港仓");
-        List<ErpStockBatchNoRespVO> balances = Arrays.asList(
-                new ErpStockBatchNoRespVO().setBatchNo("B1").setAvailableCount(new BigDecimal("10")),
-                new ErpStockBatchNoRespVO().setBatchNo("B2").setAvailableCount(new BigDecimal("20")));
-        when(stockService.getStockPage(any(ErpStockPageReqVO.class)))
-                .thenReturn(new PageResult<>(Collections.singletonList(stock), 1L));
-        when(stockService.getStockBatchBalanceListMap(any()))
-                .thenReturn(Collections.singletonMap("162_262", balances));
-        when(productService.getProductVOMap(any())).thenReturn(Collections.singletonMap(162L, product));
-        when(warehouseService.getWarehouseMap(any())).thenReturn(Collections.singletonMap(262L, warehouse));
-        when(warehouseService.hasCurrentUserAllWarehousePermission()).thenReturn(true);
-        when(stockMapper.selectOccupiedCountMap(any(), any()))
-                .thenReturn(Collections.singletonMap("162_262", new BigDecimal("3")));
-        when(stockMapper.selectPendingInCountMap(any(), any()))
-                .thenReturn(Collections.singletonMap("162_262", new BigDecimal("4")));
-        when(purchaseOrderItemMapper.selectInTransitCountMap(any(), any(), any()))
-                .thenReturn(Collections.singletonMap("162_262", new BigDecimal("5")));
-        when(stockBatchQuantityMapper.selectOccupiedList(any(), any(), any(), any(), any(), any()))
-                .thenReturn(Arrays.asList(
-                        new ErpStockBatchQuantityDO().setProductId(162L).setWarehouseId(262L)
-                                .setBatchNo("B1").setCount(BigDecimal.ONE),
-                        new ErpStockBatchQuantityDO().setProductId(162L).setWarehouseId(262L)
-                                .setBatchNo("B2").setCount(new BigDecimal("2"))));
-        when(stockBatchQuantityMapper.selectPendingInList(any(), any(), any(), any(), any()))
-                .thenReturn(Arrays.asList(
-                        new ErpStockBatchQuantityDO().setProductId(162L).setWarehouseId(262L)
-                                .setBatchNo("B1").setCount(BigDecimal.ONE),
-                        new ErpStockBatchQuantityDO().setProductId(162L).setWarehouseId(262L)
-                                .setBatchNo("B2").setCount(new BigDecimal("3"))));
-        when(stockBatchQuantityMapper.selectInTransitList(any(), any(), any()))
-                .thenReturn(Arrays.asList(
-                        new ErpStockBatchQuantityDO().setProductId(162L).setWarehouseId(262L)
-                                .setBatchNo("B1").setCount(new BigDecimal("2")),
-                        new ErpStockBatchQuantityDO().setProductId(162L).setWarehouseId(262L)
-                                .setBatchNo("B2").setCount(new BigDecimal("3"))));
+        ErpStockSummaryRespVO serviceSummary = new ErpStockSummaryRespVO()
+                .setTotalStockCount(new BigDecimal("30"))
+                .setTotalCostAmount(new BigDecimal("60"))
+                .setTotalCurrentPriceAmount(new BigDecimal("120"))
+                .setTotalOccupiedCount(new BigDecimal("3"))
+                .setTotalPendingInCount(new BigDecimal("4"))
+                .setTotalInTransitCount(new BigDecimal("5"))
+                .setTotalRows(1L);
+        when(stockService.getStockSummary(argThat(request ->
+                Integer.valueOf(1).equals(request.getPageNo())
+                        && PageParam.PAGE_SIZE_NONE.equals(request.getPageSize())
+                        && !Boolean.TRUE.equals(request.getShowBatchNo()))))
+                .thenReturn(serviceSummary);
 
         ErpStockSummaryRespVO summary = controller.getStockSummary(reqVO).getData();
 
+        verify(stockService).getStockSummary(argThat(request ->
+                Integer.valueOf(1).equals(request.getPageNo())
+                        && PageParam.PAGE_SIZE_NONE.equals(request.getPageSize())
+                        && !Boolean.TRUE.equals(request.getShowBatchNo())));
         assertEquals(new BigDecimal("30"), summary.getTotalStockCount());
         assertEquals(new BigDecimal("60"), summary.getTotalCostAmount());
         assertEquals(new BigDecimal("120"), summary.getTotalCurrentPriceAmount());
         assertEquals(new BigDecimal("3"), summary.getTotalOccupiedCount());
         assertEquals(new BigDecimal("4"), summary.getTotalPendingInCount());
         assertEquals(new BigDecimal("5"), summary.getTotalInTransitCount());
-        assertEquals(2L, summary.getTotalRows());
+        assertEquals(1L, summary.getTotalRows());
     }
 
 }

@@ -55,6 +55,10 @@ public class ErpSaleReturnItemDO extends BaseDO {
     private Long warehouseId;
     private Long deptId;
     /**
+     * 批次号
+     */
+    private String batchNo;
+    /**
      * 产品编号
      *
      * 关联 {@link ErpProductDO#getId()}
@@ -66,6 +70,15 @@ public class ErpSaleReturnItemDO extends BaseDO {
      * 冗余 {@link ErpProductDO#getUnitId()}
      */
     private Long productUnitId;
+
+    /**
+     * 重量
+     */
+    private BigDecimal weight;
+    /**
+     * 包装数
+     */
+    private Integer packageQty;
 
     /**
      * 产品单位单价，单位：元

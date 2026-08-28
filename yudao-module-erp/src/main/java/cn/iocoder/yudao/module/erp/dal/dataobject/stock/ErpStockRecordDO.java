@@ -52,6 +52,22 @@ public class ErpStockRecordDO extends BaseDO {
      */
     private String batchNo;
     /**
+     * 产品单位编号快照
+     */
+    private Long productUnitId;
+    /**
+     * 包装数快照
+     */
+    private Integer packageQty;
+    /**
+     * 单重快照
+     */
+    private BigDecimal weight;
+    /**
+     * 本次业务总重
+     */
+    private BigDecimal totalWeight;
+    /**
      * 出入库数量
      *
      * 正数，表示入库；负数，表示出库

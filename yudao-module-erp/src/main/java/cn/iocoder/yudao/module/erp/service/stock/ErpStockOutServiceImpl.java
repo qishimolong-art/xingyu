@@ -32,6 +32,7 @@ import cn.iocoder.yudao.module.erp.service.stock.bo.ErpStockRecordCreateReqBO;
 import cn.iocoder.yudao.module.system.controller.admin.dept.vo.dept.DeptSimpleRespVO;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
 import org.springframework.validation.annotation.Validated;
 
 import javax.annotation.Resource;
@@ -86,6 +87,8 @@ public class ErpStockOutServiceImpl implements ErpStockOutService {
     private ErpOperateLogService operateLogService;
     @Resource
     private ErpStockItemBatchUpdateSupport batchUpdateSupport;
+    @Resource
+    private ErpStockItemSnapshotSupport snapshotSupport;
 
     @Resource
     private ErpAutoVoucherBuilder autoVoucherBuilder;
@@ -233,7 +236,9 @@ public class ErpStockOutServiceImpl implements ErpStockOutService {
         Integer bizType = ErpStockRecordBizTypeEnum.OTHER_OUT.getType();
         stockOutItems.forEach(stockOutItem -> {
             stockRecordService.createStockRecord(new ErpStockRecordCreateReqBO(
-                    stockOutItem.getProductId(), stockOutItem.getWarehouseId(), stockOutItem.getCount().negate(),
+                    stockOutItem.getProductId(), stockOutItem.getWarehouseId(), stockOutItem.getBatchNo(),
+                    stockOutItem.getProductUnitId(), stockOutItem.getPackageQty(), stockOutItem.getWeight(),
+                    stockOutItem.getTotalWeight(), stockOutItem.getCount().negate(),
                     bizType, stockOutItem.getOutId(), stockOutItem.getId(), stockOut.getNo(),
                     null, stockOut.getOutTime()));
         });
@@ -263,15 +268,22 @@ public class ErpStockOutServiceImpl implements ErpStockOutService {
         DataPermissionUtils.executeIgnore(() -> warehouseService.validWarehouseList(warehouseIds));
         warehouseService.validateCurrentUserWarehousePermission(warehouseIds);
         // 2. 转化为 ErpStockOutItemDO 列表
-        return convertList(list, o -> BeanUtils.toBean(o, ErpStockOutItemDO.class, item -> item
-                .setProductUnitId(productMap.get(item.getProductId()).getUnitId())
-                .setTotalPrice(MoneyUtils.priceMultiply(item.getProductPrice(), item.getCount()))));
+        return convertList(list, o -> BeanUtils.toBean(o, ErpStockOutItemDO.class, item -> {
+            ErpProductDO product = productMap.get(item.getProductId());
+            BigDecimal weight = snapshotSupport.resolveWeight(o.getWeight(), product);
+            item.setBatchNo(normalizeBatchNo(item.getBatchNo()))
+                    .setProductUnitId(snapshotSupport.resolveProductUnitId(item.getProductUnitId(), product))
+                    .setPackageQty(snapshotSupport.resolvePackageQty(o.getPackageQty(), product))
+                    .setWeight(weight)
+                    .setTotalWeight(snapshotSupport.calculateTotalWeight(weight, item.getCount()))
+                    .setTotalPrice(MoneyUtils.priceMultiply(item.getProductPrice(), item.getCount()));
+        }));
     }
 
     private void validateDuplicateStockOutItems(List<ErpStockOutSaveReqVO.Item> list) {
         Set<String> keys = new HashSet<>();
         for (ErpStockOutSaveReqVO.Item item : list) {
-            String key = item.getProductId() + "-" + item.getWarehouseId();
+            String key = item.getProductId() + "-" + item.getWarehouseId() + "-" + normalizeBatchNo(item.getBatchNo());
             if (!keys.add(key)) {
                 throw exception(STOCK_OUT_ITEM_DUPLICATE, key);
             }
@@ -284,11 +296,15 @@ public class ErpStockOutServiceImpl implements ErpStockOutService {
         Set<String> keys = new HashSet<>();
         for (ErpStockOutItemDO item : stockOutItems) {
             Long warehouseId = selectedItemIds.contains(item.getId()) ? targetWarehouseId : item.getWarehouseId();
-            String key = item.getProductId() + "-" + warehouseId;
+            String key = item.getProductId() + "-" + warehouseId + "-" + normalizeBatchNo(item.getBatchNo());
             if (!keys.add(key)) {
                 throw exception(STOCK_OUT_ITEM_DUPLICATE, key);
             }
         }
+    }
+
+    private String normalizeBatchNo(String batchNo) {
+        return StringUtils.hasText(batchNo) ? batchNo.trim() : "";
     }
 
     private void updateStockOutItemList(Long id, List<ErpStockOutItemDO> newList) {

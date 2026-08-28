@@ -203,8 +203,7 @@ public class ErpWarehouseController {
         } else if ("purchase".equalsIgnoreCase(bizType)) {
             list = warehouseService.getCurrentUserAuthorizedPurchaseWarehouseList();
         } else if ("sale".equalsIgnoreCase(bizType) && deptId != null) {
-            list = intersectWarehouseList(warehouseService.getSaleWarehouseListByDeptId(deptId),
-                    warehouseService.getCurrentUserVisibleSaleWarehouseList());
+            list = warehouseService.getCurrentUserSaleSelectableWarehouseListByDept(deptId);
         } else if ("sale".equalsIgnoreCase(bizType)) {
             list = warehouseService.getCurrentUserVisibleSaleWarehouseList();
         } else {
@@ -213,20 +212,11 @@ public class ErpWarehouseController {
         return success(buildSimpleWarehouseVOList(list));
     }
 
-    private List<ErpWarehouseDO> intersectWarehouseList(List<ErpWarehouseDO> requestWarehouses,
-                                                        List<ErpWarehouseDO> visibleWarehouses) {
-        Set<Long> visibleWarehouseIds = convertSet(visibleWarehouses, ErpWarehouseDO::getId);
-        return requestWarehouses.stream()
-                .filter(warehouse -> visibleWarehouseIds.contains(warehouse.getId()))
-                .collect(Collectors.toList());
-    }
-
     @GetMapping("/sale-list-by-dept")
     @Operation(summary = "Get sale warehouse list by department")
     @Parameter(name = "deptId", description = "sales department id", required = true)
     public CommonResult<List<ErpWarehouseRespVO>> getSaleWarehouseListByDept(@RequestParam("deptId") Long deptId) {
-        List<ErpWarehouseDO> list = intersectWarehouseList(warehouseService.getSaleWarehouseListByDeptId(deptId),
-                warehouseService.getCurrentUserVisibleSaleWarehouseList());
+        List<ErpWarehouseDO> list = warehouseService.getCurrentUserSaleSelectableWarehouseListByDept(deptId);
         return success(buildSimpleWarehouseVOList(list));
     }
 
@@ -235,8 +225,7 @@ public class ErpWarehouseController {
     @Parameter(name = "deptId", description = "sales department id", required = true)
     @DataPermission(enable = false)
     public CommonResult<List<DeptRespDTO>> getSaleWarehouseOwnerDeptSimpleList(@RequestParam("deptId") Long deptId) {
-        Set<Long> ownerDeptIds = intersectWarehouseList(warehouseService.getSaleWarehouseListByDeptId(deptId),
-                warehouseService.getCurrentUserVisibleSaleWarehouseList()).stream()
+        Set<Long> ownerDeptIds = warehouseService.getCurrentUserSaleSelectableWarehouseListByDept(deptId).stream()
                 .map(ErpWarehouseDO::getDeptId)
                 .filter(Objects::nonNull)
                 .collect(Collectors.toCollection(LinkedHashSet::new));

@@ -56,7 +56,7 @@ public interface CartService {
      * @param userId 用户编号
      * @param ids 购物项的编号
      */
-    void deleteCart(Long userId, Collection<Long> ids);
+    void deleteCart(Long userId, Long deptId, Collection<Long> ids);
 
     /**
      * 查询用户在购物车中的商品数量
@@ -64,7 +64,7 @@ public interface CartService {
      * @param userId 用户编号
      * @return 商品数量
      */
-    Integer getCartCount(Long userId);
+    Integer getCartCount(Long userId, Long deptId);
 
     /**
      * 查询用户的购物车列表
@@ -72,7 +72,7 @@ public interface CartService {
      * @param userId 用户编号
      * @return 购物车列表
      */
-    AppCartListRespVO getCartList(Long userId);
+    AppCartListRespVO getCartList(Long userId, Long deptId);
 
     /**
      * 查询用户的购物车列表
@@ -81,6 +81,6 @@ public interface CartService {
      * @param ids 购物项的编号
      * @return 购物车列表
      */
-    List<CartDO> getCartList(Long userId, Set<Long> ids);
+    List<CartDO> getCartList(Long userId, Long deptId, Set<Long> ids);
 
 }

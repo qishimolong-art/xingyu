@@ -17,6 +17,8 @@ public class ErpSaleOrderExportRespVO {
     @ExcelProperty("客户名称")
     private String customerName;
 
+    private Long customerId;
+
     @ExcelProperty("状态")
     private Integer status;
 
@@ -46,6 +48,15 @@ public class ErpSaleOrderExportRespVO {
 
     @ExcelProperty("单位")
     private String productUnitName;
+
+    @ExcelProperty("重量")
+    private BigDecimal weight;
+
+    @ExcelProperty("包装数")
+    private Integer packageQty;
+
+    @ExcelProperty("批次号")
+    private String batchNo;
 
     @ExcelProperty("数量")
     private BigDecimal itemCount;

@@ -206,6 +206,35 @@ public class ErpCustomerServiceImplTest extends BaseMockitoUnitTest {
     }
 
     @Test
+    public void testGetCustomerSaleDeptIdsIgnoreDataPermission_success() {
+        ErpCustomerDO customer = new ErpCustomerDO().setId(14L).setName("小程序客户")
+                .setStatus(CommonStatusEnum.ENABLE.getStatus()).setDeptId(128L).setAllowMultiDept(true);
+        when(customerMapper.selectById(14L)).thenReturn(customer);
+        when(customerDeptMapper.selectListByCustomerId(14L)).thenReturn(Arrays.asList(
+                new ErpCustomerDeptDO().setCustomerId(14L).setDeptId(128L),
+                new ErpCustomerDeptDO().setCustomerId(14L).setDeptId(102L)));
+
+        List<Long> result = customerService.getCustomerSaleDeptIdsIgnoreDataPermission(14L);
+
+        assertEquals(Arrays.asList(128L, 102L), result);
+        verify(customerMapper).selectById(14L);
+        verify(customerDeptMapper).selectListByCustomerId(14L);
+    }
+
+    @Test
+    public void testGetCustomerSaleDeptIdsIgnoreDataPermission_customerInvalid_throwException() {
+        when(customerMapper.selectById(14L)).thenReturn(null);
+        assertServiceException(() -> customerService.getCustomerSaleDeptIdsIgnoreDataPermission(14L),
+                CUSTOMER_NOT_EXISTS);
+
+        ErpCustomerDO disabled = new ErpCustomerDO().setId(15L).setName("停用客户")
+                .setStatus(CommonStatusEnum.DISABLE.getStatus());
+        when(customerMapper.selectById(15L)).thenReturn(disabled);
+        assertServiceException(() -> customerService.getCustomerSaleDeptIdsIgnoreDataPermission(15L),
+                CUSTOMER_NOT_ENABLE, "停用客户");
+    }
+
+    @Test
     public void testValidateCustomerForSale_deptCreditDisabled_bypassGlobalCredit() {
         ErpCustomerDO customer = new ErpCustomerDO().setId(14L).setName("部门授信关闭客户")
                 .setStatus(CommonStatusEnum.ENABLE.getStatus()).setDeptId(102L)

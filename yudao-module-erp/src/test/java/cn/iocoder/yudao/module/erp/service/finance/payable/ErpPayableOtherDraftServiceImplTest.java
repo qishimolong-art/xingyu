@@ -10,6 +10,7 @@ import cn.iocoder.yudao.module.erp.service.common.ErpOperateLogService;
 import cn.iocoder.yudao.module.erp.service.finance.ErpFinanceFieldPermissionMasker;
 import cn.iocoder.yudao.module.erp.service.purchase.ErpSupplierService;
 import cn.iocoder.yudao.module.system.api.dept.DeptApi;
+import cn.iocoder.yudao.module.system.api.dept.dto.DeptRespDTO;
 import cn.iocoder.yudao.module.system.api.user.AdminUserApi;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -114,6 +115,7 @@ class ErpPayableOtherDraftServiceImplTest extends BaseMockitoUnitTest {
                 .setId(10L).setNo("QTFK10")
                 .setStatus(ErpPayableOtherStatusEnum.DRAFT.getStatus())
                 .setBizTime(LocalDate.now())
+                .setDeptId(2L)
                 .setPayableAmount(BigDecimal.ONE)
                 .setRemark("测试"));
 
@@ -123,14 +125,27 @@ class ErpPayableOtherDraftServiceImplTest extends BaseMockitoUnitTest {
     }
 
     @Test
-    void submitDraft_movesToProcessWithStatusGuard() {
+    void submitDraft_requiresDept() {
         when(payableOtherMapper.selectByIdForUpdate(10L)).thenReturn(new ErpPayableOtherDO()
                 .setId(10L).setNo("QTFK10")
                 .setStatus(ErpPayableOtherStatusEnum.DRAFT.getStatus())
-                .setBizTime(LocalDate.now())
                 .setSupplierId(1L)
-                .setPayableAmount(BigDecimal.ONE)
-                .setRemark("测试"));
+                .setPayableAmount(BigDecimal.ONE));
+
+        assertServiceException(() -> service.submitPayableOther(10L),
+                OTHER_PAYABLE_DRAFT_SUBMIT_FAIL, "部门不能为空");
+        verify(payableOtherMapper, never()).updateByIdAndStatus(any(), any(), any());
+    }
+
+    @Test
+    void submitDraft_movesToProcessWithoutBizTimeOrRemark() {
+        when(payableOtherMapper.selectByIdForUpdate(10L)).thenReturn(new ErpPayableOtherDO()
+                .setId(10L).setNo("QTFK10")
+                .setStatus(ErpPayableOtherStatusEnum.DRAFT.getStatus())
+                .setSupplierId(1L)
+                .setDeptId(2L)
+                .setPayableAmount(BigDecimal.ONE));
+        when(deptApi.getDept(2L)).thenReturn(new DeptRespDTO());
         when(payableOtherMapper.updateByIdAndStatus(eq(10L),
                 eq(ErpPayableOtherStatusEnum.DRAFT.getStatus()), any())).thenReturn(1);
 

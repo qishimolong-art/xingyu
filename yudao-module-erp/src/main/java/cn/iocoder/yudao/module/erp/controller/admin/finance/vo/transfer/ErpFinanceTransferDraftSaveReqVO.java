@@ -4,6 +4,7 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Data;
 import lombok.experimental.Accessors;
 
+import javax.validation.constraints.DecimalMin;
 import javax.validation.constraints.Size;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -18,6 +19,16 @@ public class ErpFinanceTransferDraftSaveReqVO {
     private Long outAccountId;
     private Long inAccountId;
     private BigDecimal transferPrice;
+
+    @DecimalMin(value = "0", inclusive = false, message = "汇率必须大于 0")
+    private BigDecimal exchangeRate;
+
+    @DecimalMin(value = "0", message = "手续费不能小于 0")
+    private BigDecimal feePrice;
+
+    @Size(max = 64, message = "费用项目长度不能超过 64 个字符")
+    private String feeExpenseCategory;
+
     private Long financeUserId;
     private Long deptId;
 

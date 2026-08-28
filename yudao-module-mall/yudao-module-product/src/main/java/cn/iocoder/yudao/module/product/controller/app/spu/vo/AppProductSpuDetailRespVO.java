@@ -27,6 +27,24 @@ public class AppProductSpuDetailRespVO {
     @Schema(description = "商品分类编号", requiredMode = Schema.RequiredMode.REQUIRED, example = "1")
     private Long categoryId;
 
+    @Schema(description = "商品分类名称", example = "刹车片")
+    private String categoryName;
+
+    @Schema(description = "商品品牌名称", example = "路通源")
+    private String brandName;
+
+    @Schema(description = "配件编码", example = "LTY1451")
+    private String code;
+
+    @Schema(description = "配件规格", example = "08雅阁后")
+    private String standard;
+
+    @Schema(description = "配件特征码", example = "后片")
+    private String featureCode;
+
+    @Schema(description = "适用车型", example = "易损件")
+    private String vehicleModel;
+
     @Schema(description = "商品封面图", requiredMode = Schema.RequiredMode.REQUIRED)
     private String picUrl;
 
@@ -45,6 +63,9 @@ public class AppProductSpuDetailRespVO {
 
     @Schema(description = "市场价，单位使用：分", requiredMode = Schema.RequiredMode.REQUIRED, example = "1024")
     private Integer marketPrice;
+
+    @Schema(description = "是否允许查看价格", requiredMode = Schema.RequiredMode.REQUIRED, example = "true")
+    private Boolean priceVisible;
 
     @Schema(description = "库存", requiredMode = Schema.RequiredMode.REQUIRED, example = "666")
     private Integer stock;

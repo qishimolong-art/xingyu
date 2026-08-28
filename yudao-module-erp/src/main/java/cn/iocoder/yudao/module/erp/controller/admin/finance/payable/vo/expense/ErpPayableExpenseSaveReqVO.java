@@ -27,12 +27,14 @@ public class ErpPayableExpenseSaveReqVO {
 
     private String voucherNo;
 
-    @NotNull(message = "费用类型不能为空")
+    private String expenseBizType;
+
+    @NotNull(message = "支出类型不能为空")
     private String expenseType;
 
     private Long deptId;
 
-    @NotNull(message = "申请人不能为空")
+    @NotNull(message = "经手人不能为空")
     private Long handlerId;
 
     private String party;
@@ -52,7 +54,7 @@ public class ErpPayableExpenseSaveReqVO {
     @Data
     public static class Item {
         private Long id;
-        @NotNull(message = "费用项目不能为空")
+        @NotNull(message = "项目名称不能为空")
         private String itemName;
         @NotNull(message = "金额不能为空")
         private BigDecimal amount;

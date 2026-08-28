@@ -28,6 +28,8 @@ public interface ErpSaleCartService {
 
     Long createSaleCart(ErpSaleCartSaveReqVO createReqVO);
 
+    Long createSaleCartDraftFromSource(@Valid ErpSaleCartSaveReqVO createReqVO);
+
     ErpSaleCartSubmitRespVO createAndSubmitSaleCart(@Valid ErpSaleCartSaveReqVO createReqVO);
 
     ErpSaleCartSubmitRespVO createAndSubmitSaleCartFromPurchaseIn(@Valid ErpSaleCartSaveReqVO createReqVO);

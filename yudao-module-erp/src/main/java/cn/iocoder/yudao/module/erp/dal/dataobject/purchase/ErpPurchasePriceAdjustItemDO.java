@@ -90,6 +90,14 @@ public class ErpPurchasePriceAdjustItemDO extends BaseDO {
      */
     private String productUnitName;
     /**
+     * 重量
+     */
+    private BigDecimal weight;
+    /**
+     * 包装数
+     */
+    private Integer packageQty;
+    /**
      * 车型
      */
     private String vehicleModel;

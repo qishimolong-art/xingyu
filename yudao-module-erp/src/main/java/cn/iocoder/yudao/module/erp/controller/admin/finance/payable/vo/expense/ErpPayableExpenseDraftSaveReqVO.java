@@ -20,6 +20,8 @@ public class ErpPayableExpenseDraftSaveReqVO {
 
     private String voucherNo;
 
+    private String expenseBizType;
+
     private String expenseType;
 
     private Long deptId;

@@ -32,6 +32,12 @@ public class ErpPurchaseReturnExportRespVO {
     @ExcelProperty("单位")
     private String productUnitName;
 
+    @ExcelProperty("重量")
+    private BigDecimal weight;
+
+    @ExcelProperty("包装数")
+    private Integer packageQty;
+
     @ExcelProperty("原入库单")
     private String sourceInNo;
 

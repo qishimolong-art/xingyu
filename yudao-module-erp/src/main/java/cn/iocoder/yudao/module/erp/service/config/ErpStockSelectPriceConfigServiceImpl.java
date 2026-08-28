@@ -13,6 +13,7 @@ import cn.iocoder.yudao.module.erp.dal.mysql.config.ErpStockSelectPriceConfigMap
 import cn.iocoder.yudao.module.erp.dal.mysql.config.ErpFieldConfigMapper;
 import cn.iocoder.yudao.module.erp.enums.config.ErpFieldConfigFieldSourceEnum;
 import cn.iocoder.yudao.module.system.api.permission.PermissionApi;
+import cn.iocoder.yudao.module.system.service.permission.ProductPriceFieldKeys;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.validation.annotation.Validated;
@@ -74,7 +75,7 @@ public class ErpStockSelectPriceConfigServiceImpl implements ErpStockSelectPrice
         Long loginUserId = SecurityFrameworkUtils.getLoginUserId();
         String operator = String.valueOf(loginUserId != null ? loginUserId : 0L);
         for (ErpStockSelectPriceConfigUpdateReqVO.Item item : reqVO.getItems()) {
-            String fieldKey = StrUtil.trim(item.getFieldKey());
+            String fieldKey = normalizePriceFieldKey(item.getFieldKey());
             if (!submittedKeys.add(fieldKey)) {
                 throw exception(STOCK_SELECT_PRICE_DUPLICATE_FIELD, fieldKey);
             }
@@ -94,6 +95,8 @@ public class ErpStockSelectPriceConfigServiceImpl implements ErpStockSelectPrice
         List<PriceField> fields = getActivePriceFields();
         Set<String> allowedKeys = stockSelectPriceConfigMapper.selectListByBizType(bizType).stream()
                 .map(ErpStockSelectPriceConfigDO::getFieldKey)
+                .map(this::normalizePriceFieldKey)
+                .filter(StrUtil::isNotBlank)
                 .collect(Collectors.toSet());
         Set<String> hiddenFields = new LinkedHashSet<>();
         for (PriceField field : fields) {
@@ -108,9 +111,9 @@ public class ErpStockSelectPriceConfigServiceImpl implements ErpStockSelectPrice
     @Override
     public List<String> getEffectiveVisibleFields(String bizType, Long businessDeptId) {
         validateEffectiveFieldsBizType(bizType);
-        // Stock selection price fields are filtered by the current login user's department.
-        // businessDeptId is the sales/customer business department and must not affect this visibility.
-        List<String> permissionHidden = permissionApi.getCurrentUserHiddenFields(PRODUCT_MODULE);
+        List<String> permissionHidden = businessDeptId != null
+                ? permissionApi.getCurrentUserHiddenFields(PRODUCT_MODULE, businessDeptId)
+                : permissionApi.getCurrentUserHiddenFields(PRODUCT_MODULE);
         Set<String> hiddenFields = new HashSet<>(permissionHidden != null
                 ? permissionHidden : Collections.emptyList());
         hiddenFields.addAll(getSceneHiddenPriceFields(bizType));
@@ -128,7 +131,7 @@ public class ErpStockSelectPriceConfigServiceImpl implements ErpStockSelectPrice
         }
         Set<String> normalizedKeys = fieldKeys.stream()
                 .filter(StrUtil::isNotBlank)
-                .map(StrUtil::trim)
+                .map(this::normalizePriceFieldKey)
                 .filter(key -> !key.startsWith("col_"))
                 .collect(Collectors.toSet());
         if (CollUtil.isNotEmpty(normalizedKeys)) {
@@ -150,9 +153,16 @@ public class ErpStockSelectPriceConfigServiceImpl implements ErpStockSelectPrice
         List<PriceField> fields = getActivePriceFields();
         Set<String> fieldKeys = fields.stream().map(PriceField::getFieldKey)
                 .collect(Collectors.toCollection(LinkedHashSet::new));
-        List<ErpStockSelectPriceConfigDO> relations = fieldKeys.isEmpty()
-                ? new ArrayList<>() : new ArrayList<>(stockSelectPriceConfigMapper.selectListByFieldKeys(fieldKeys));
-        relations.sort(Comparator.comparing(ErpStockSelectPriceConfigDO::getFieldKey)
+        List<ErpStockSelectPriceConfigDO> relations = new ArrayList<>();
+        if (CollUtil.isNotEmpty(fieldKeys)) {
+            relations.addAll(stockSelectPriceConfigMapper.selectListByBizType(BIZ_TYPE_SALE));
+            relations.addAll(stockSelectPriceConfigMapper.selectListByBizType(BIZ_TYPE_PURCHASE));
+            relations = relations.stream()
+                    .filter(relation -> fieldKeys.contains(normalizePriceFieldKey(relation.getFieldKey())))
+                    .collect(Collectors.toList());
+        }
+        relations.sort(Comparator.<ErpStockSelectPriceConfigDO, String>comparing(
+                        relation -> normalizePriceFieldKey(relation.getFieldKey()))
                 .thenComparing(ErpStockSelectPriceConfigDO::getBizType));
         return new ConfigSnapshot(fields, relations);
     }
@@ -160,28 +170,33 @@ public class ErpStockSelectPriceConfigServiceImpl implements ErpStockSelectPrice
     private List<PriceField> getActivePriceFields() {
         Map<String, ErpFieldConfigDO> configMap = fieldConfigMapper
                 .selectListByModuleKey(PRODUCT_MODULE).stream()
-                .collect(Collectors.toMap(ErpFieldConfigDO::getFieldName, item -> item,
+                .collect(Collectors.toMap(item -> normalizePriceFieldKey(item.getFieldName()), item -> item,
                         (a, b) -> a, LinkedHashMap::new));
         return permissionApi.getFieldDefinitions(PRODUCT_MODULE, PRICE_FIELD_GROUP).stream()
+                .filter(definition -> StrUtil.isNotBlank(normalizePriceFieldKey(definition.getFieldKey())))
                 .filter(definition -> {
-                    ErpFieldConfigDO config = configMap.get(definition.getFieldKey());
+                    ErpFieldConfigDO config = configMap.get(normalizePriceFieldKey(definition.getFieldKey()));
                     return config == null || !Boolean.FALSE.equals(config.getVisible());
                 })
                 .map(definition -> {
-                    ErpFieldConfigDO config = configMap.get(definition.getFieldKey());
+                    String fieldKey = normalizePriceFieldKey(definition.getFieldKey());
+                    ErpFieldConfigDO config = configMap.get(fieldKey);
                     String source = config != null
                             && ErpFieldConfigFieldSourceEnum.CUSTOM.getSource().equals(config.getFieldSource())
                             ? ErpFieldConfigFieldSourceEnum.CUSTOM.getSource()
                             : ErpFieldConfigFieldSourceEnum.SYSTEM.getSource();
-                    return new PriceField(definition.getFieldKey(), definition.getFieldLabel(),
+                    return new PriceField(fieldKey, definition.getFieldLabel(),
                             source, definition.getSort());
                 })
+                .collect(Collectors.toMap(PriceField::getFieldKey, item -> item, (a, b) -> a,
+                        LinkedHashMap::new))
+                .values().stream()
                 .collect(Collectors.toList());
     }
 
     private ErpStockSelectPriceConfigRespVO buildConfig(ConfigSnapshot snapshot) {
         Map<String, Set<String>> bizTypesByField = snapshot.relations.stream()
-                .collect(Collectors.groupingBy(ErpStockSelectPriceConfigDO::getFieldKey,
+                .collect(Collectors.groupingBy(relation -> normalizePriceFieldKey(relation.getFieldKey()),
                         LinkedHashMap::new,
                         Collectors.mapping(ErpStockSelectPriceConfigDO::getBizType, Collectors.toSet())));
         List<ErpStockSelectPriceConfigRespVO.Field> fields = snapshot.fields.stream().map(field -> {
@@ -208,10 +223,16 @@ public class ErpStockSelectPriceConfigServiceImpl implements ErpStockSelectPrice
                 .append(StrUtil.nullToEmpty(field.getFieldLabel())).append('|')
                 .append(StrUtil.nullToEmpty(field.getFieldSource())).append('|')
                 .append(field.getSort()).append('\n'));
-        snapshot.relations.forEach(relation -> canonical.append("R|")
-                .append(relation.getFieldKey()).append('|')
-                .append(relation.getBizType()).append('\n'));
+        snapshot.relations.stream()
+                .map(relation -> normalizePriceFieldKey(relation.getFieldKey()) + "|" + relation.getBizType())
+                .distinct()
+                .sorted()
+                .forEach(relationKey -> canonical.append("R|").append(relationKey).append('\n'));
         return DigestUtil.sha256Hex(canonical.toString());
+    }
+
+    private String normalizePriceFieldKey(String fieldKey) {
+        return ProductPriceFieldKeys.normalize(fieldKey);
     }
 
     private boolean isSupportedBizType(String bizType) {

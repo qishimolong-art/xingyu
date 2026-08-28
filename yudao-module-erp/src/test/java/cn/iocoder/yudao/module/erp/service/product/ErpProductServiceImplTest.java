@@ -543,6 +543,38 @@ class ErpProductServiceImplTest extends BaseMockitoUnitTest {
     }
 
     @Test
+    void batchUpdatePriceFields_whenPurchaseAndSaleSubmitted_thenUpdatesBothFields() {
+        mockProductPermission(104L, Collections.singleton(200L));
+        when(warehouseService.getCurrentUserAuthorizedWarehouseIds())
+                .thenReturn(new LinkedHashSet<>(Collections.singletonList(11L)));
+        when(productMapper.selectVisibleById(eq(1L), any()))
+                .thenReturn(ErpProductDO.builder().id(1L).build());
+        when(permissionApi.getCurrentUserHiddenFields("erp_product"))
+                .thenReturn(Collections.emptyList());
+        when(fieldConfigService.getFieldConfigListByModule("erp_product"))
+                .thenReturn(Collections.emptyList());
+        when(productMapper.selectById(1L))
+                .thenReturn(ErpProductDO.builder().id(1L).build());
+        when(productUniversalMapper.selectListByProductId(1L))
+                .thenReturn(Collections.emptyList());
+        ErpPartsBatchUpdatePriceFieldsReqVO reqVO = new ErpPartsBatchUpdatePriceFieldsReqVO();
+        reqVO.setId(1L);
+        reqVO.setPurchasePrice(new BigDecimal("13.50"));
+        reqVO.setSalePrice(new BigDecimal("18.90"));
+
+        try (MockedStatic<SecurityFrameworkUtils> security = mockStatic(SecurityFrameworkUtils.class)) {
+            security.when(SecurityFrameworkUtils::getLoginUserId).thenReturn(104L);
+
+            productService.batchUpdatePriceFields(Collections.singletonList(reqVO));
+        }
+
+        ArgumentCaptor<ErpProductDO> productCaptor = ArgumentCaptor.forClass(ErpProductDO.class);
+        verify(productMapper).updateById(productCaptor.capture());
+        assertEquals(new BigDecimal("13.50"), productCaptor.getValue().getPurchasePrice());
+        assertEquals(new BigDecimal("18.90"), productCaptor.getValue().getSalePrice());
+    }
+
+    @Test
     void batchUpdatePriceFields_whenCustomPriceSubmitted_thenUpdatesPhysicalColumn() {
         mockProductPermission(104L, Collections.singleton(200L));
         when(warehouseService.getCurrentUserAuthorizedWarehouseIds())

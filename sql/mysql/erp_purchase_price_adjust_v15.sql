@@ -46,6 +46,8 @@ CREATE TABLE IF NOT EXISTS `erp_purchase_price_adjust_item` (
     `product_code`        VARCHAR(64)                                  COMMENT '配件编码',
     `product_name`        VARCHAR(128)                                 COMMENT '配件名称',
     `product_unit_name`   VARCHAR(64)                                  COMMENT '单位名称',
+    `weight`              DECIMAL(24,6)                                COMMENT '重量',
+    `package_qty`         INT                                          COMMENT '包装数',
     `vehicle_model`       VARCHAR(128)                                 COMMENT '车型',
     `standard`            VARCHAR(128)                                 COMMENT '规格',
     `feature_code`        VARCHAR(64)                                  COMMENT '特征码',

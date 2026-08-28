@@ -28,6 +28,8 @@ public class ErpSaleQuoteItemDO extends BaseDO {
     private Long productUnitId;
     private Long warehouseId;
     private Long deptId;
+    private BigDecimal weight;
+    private Integer packageQty;
     private BigDecimal productPrice;
     private BigDecimal count;
     /**

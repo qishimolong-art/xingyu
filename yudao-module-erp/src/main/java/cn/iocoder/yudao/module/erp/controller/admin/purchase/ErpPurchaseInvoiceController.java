@@ -86,6 +86,7 @@ import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PURCHASE_INVO
 public class ErpPurchaseInvoiceController {
 
     private static final String FIELD_PERMISSION_MODULE = "erp_purchase_invoice";
+    private static final String DEPT_SELECTION_PERMISSION_FORM_KEY = "system_dept";
     private static final Map<String, String> EXPORT_FIELD_GROUP_MAP = buildExportFieldGroupMap();
     private static final Map<String, String> EXPORT_FIELD_PERMISSION_MAP = buildExportFieldPermissionMap();
     private static final Map<String, String> IMPORT_FIELD_ALIAS_MAP = ErpImportTemplateRequiredFieldUtils.aliasMap(
@@ -250,7 +251,8 @@ public class ErpPurchaseInvoiceController {
     @Operation(summary = "获得采购票据")
     @Parameter(name = "id", description = "编号", required = true, example = "1024")
     @PreAuthorize("@ss.hasPermission('erp:purchase-invoice:query')")
-    public CommonResult<ErpPurchaseInvoiceRespVO> getPurchaseInvoice(@RequestParam("id") Long id) {
+    public CommonResult<ErpPurchaseInvoiceRespVO> getPurchaseInvoice(@RequestParam("id") Long id,
+                                                                     @RequestParam(value = "mask", defaultValue = "true") Boolean mask) {
         ErpPurchaseInvoiceDO purchaseInvoice = purchaseInvoiceService.getPurchaseInvoice(id);
         if (purchaseInvoice == null) {
             return success(null);
@@ -277,7 +279,9 @@ public class ErpPurchaseInvoiceController {
         }
         fillUserNames(respVO, userMap);
         fillAuditInfo(respVO);
-        fieldPermissionMasker.mask("erp_purchase_invoice", respVO);
+        if (Boolean.TRUE.equals(mask)) {
+            fieldPermissionMasker.mask("erp_purchase_invoice", respVO);
+        }
         return success(respVO);
     }
 
@@ -293,7 +297,8 @@ public class ErpPurchaseInvoiceController {
     @Operation(summary = "鑾峰緱褰撳墠鐢ㄦ埛鍙煡璇㈢殑閲囪喘绁ㄦ嵁閮ㄩ棬绮剧畝鍒楄〃")
     @PreAuthorize("@ss.hasPermission('erp:purchase-invoice:query')")
     public CommonResult<List<DeptSimpleRespVO>> getVisibleDeptSimpleList() {
-        return success(supplierDeptPermissionService.getDataPermissionDeptSimpleList(FIELD_PERMISSION_MODULE));
+        return success(supplierDeptPermissionService.getDataPermissionDeptSimpleList(
+                DEPT_SELECTION_PERMISSION_FORM_KEY));
     }
 
     @GetMapping("/export-excel")

@@ -3,7 +3,6 @@ package cn.iocoder.yudao.module.erp.controller.admin.finance.accounting.vo.booko
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Data;
 
-import javax.validation.constraints.Max;
 import javax.validation.constraints.Min;
 import javax.validation.constraints.NotNull;
 import java.time.LocalDate;
@@ -23,14 +22,10 @@ public class ErpBookOpenSaveReqVO {
     @Min(value = 1900, message = "会计年度不合法")
     private Integer fiscalYear;
 
-    @Schema(description = "开账期间（1-12 月）", requiredMode = Schema.RequiredMode.REQUIRED, example = "5")
-    @NotNull(message = "开账期间不能为空")
-    @Min(value = 1, message = "开账期间须在 1-12 之间")
-    @Max(value = 12, message = "开账期间须在 1-12 之间")
+    @Schema(description = "开账期间（兼容旧字段；年度开账固定保存为 1）", example = "1")
     private Integer period;
 
-    @Schema(description = "期间开始时间", requiredMode = Schema.RequiredMode.REQUIRED, example = "2026-05-01")
-    @NotNull(message = "期间开始时间不能为空")
+    @Schema(description = "期间开始时间（兼容旧字段；年度开账固定保存为当年 1 月 1 日）", example = "2026-01-01")
     private LocalDate startDate;
 
 }

@@ -82,6 +82,8 @@ public class ErpStockCheckServiceImpl implements ErpStockCheckService {
     @Resource
     private ErpStockService stockService;
     @Resource
+    private ErpStockItemSnapshotSupport snapshotSupport;
+    @Resource
     private ErpOperateLogService operateLogService;
     @Resource
     private ErpStockItemBatchUpdateSupport batchUpdateSupport;
@@ -359,7 +361,9 @@ public class ErpStockCheckServiceImpl implements ErpStockCheckService {
                 Integer bizType = count.compareTo(BigDecimal.ZERO) > 0 ? ErpStockRecordBizTypeEnum.CHECK_MORE_IN.getType()
                         : ErpStockRecordBizTypeEnum.CHECK_LESS_OUT.getType();
                 stockRecordService.createStockRecord(new ErpStockRecordCreateReqBO(
-                        stockCheckItem.getProductId(), stockCheckItem.getWarehouseId(), stockCheckItem.getBatchNo(), count,
+                        stockCheckItem.getProductId(), stockCheckItem.getWarehouseId(), stockCheckItem.getBatchNo(),
+                        stockCheckItem.getProductUnitId(), stockCheckItem.getPackageQty(), stockCheckItem.getWeight(),
+                        stockCheckItem.getTotalWeight(), count,
                         bizType, stockCheckItem.getCheckId(), stockCheckItem.getId(), stockCheck.getNo(),
                         count.compareTo(BigDecimal.ZERO) > 0 ? stockCheckItem.getProductPrice() : null,
                         stockCheck.getCheckTime()));
@@ -409,7 +413,12 @@ public class ErpStockCheckServiceImpl implements ErpStockCheckService {
                 actualCount = stockCount.add(count);
                 totalPrice = MoneyUtils.priceMultiply(item.getProductPrice(), count);
             }
-            item.setProductUnitId(productMap.get(item.getProductId()).getUnitId());
+            ErpProductDO product = productMap.get(item.getProductId());
+            BigDecimal weight = snapshotSupport.resolveWeight(item.getWeight(), product);
+            item.setProductUnitId(snapshotSupport.resolveProductUnitId(item.getProductUnitId(), product));
+            item.setPackageQty(snapshotSupport.resolvePackageQty(item.getPackageQty(), product));
+            item.setWeight(weight);
+            item.setTotalWeight(snapshotSupport.calculateTotalWeight(weight, count));
             item.setActualCount(actualCount);
             item.setCount(count);
             item.setTotalPrice(totalPrice);

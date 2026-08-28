@@ -39,7 +39,7 @@ public class ErpBookOpenDO extends BaseDO {
      */
     private Integer fiscalYear;
     /**
-     * 开账期间（1-12 月）
+     * 开账期间（兼容旧字段；年度开账固定保存为 1）
      */
     private Integer period;
     /**

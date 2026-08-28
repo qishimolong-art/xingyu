@@ -10,6 +10,7 @@ import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
 import cn.iocoder.yudao.framework.datapermission.core.util.DataPermissionUtils;
 import cn.iocoder.yudao.framework.excel.core.util.ExcelUtils;
 import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpProductRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.stock.ErpMallStockSummaryRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.stock.ErpStockAdjustReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.stock.ErpStockBatchNoRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.stock.ErpStockInTransitDetailRespVO;
@@ -36,6 +37,7 @@ import cn.iocoder.yudao.module.erp.enums.stock.ErpStockTransferDirectionEnum;
 import cn.iocoder.yudao.module.erp.service.product.ErpProductPriceSystemService;
 import cn.iocoder.yudao.module.erp.service.product.ErpProductService;
 import cn.iocoder.yudao.module.erp.service.config.ErpStockSelectPriceConfigService;
+import cn.iocoder.yudao.module.erp.service.stock.ErpMallStockService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpStockService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpWarehouseService;
 import cn.iocoder.yudao.module.system.api.dept.DeptApi;
@@ -72,6 +74,8 @@ import java.util.Set;
 import java.util.stream.Collectors;
 
 import static cn.iocoder.yudao.framework.apilog.core.enums.OperateTypeEnum.EXPORT;
+import static cn.iocoder.yudao.framework.common.exception.enums.GlobalErrorCodeConstants.FORBIDDEN;
+import static cn.iocoder.yudao.framework.common.exception.util.ServiceExceptionUtil.exception;
 import static cn.iocoder.yudao.framework.common.pojo.CommonResult.success;
 import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.convertSet;
 import static cn.iocoder.yudao.framework.security.core.util.SecurityFrameworkUtils.getLoginUserDeptId;
@@ -117,6 +121,8 @@ public class ErpStockController {
     private PermissionApi permissionApi;
     @Resource
     private ErpStockSelectPriceConfigService stockSelectPriceConfigService;
+    @Resource
+    private ErpMallStockService mallStockService;
 
     @GetMapping("/get")
     @Operation(summary = "获得产品库存")
@@ -191,10 +197,22 @@ public class ErpStockController {
     @Operation(summary = "获得产品库存汇总")
     @PreAuthorize("@ss.hasPermission('erp:stock:query')")
     public CommonResult<ErpStockSummaryRespVO> getStockSummary(@Valid ErpStockPageReqVO pageReqVO) {
-        pageReqVO.setPageNo(1);
-        pageReqVO.setPageSize(PageParam.PAGE_SIZE_NONE);
-        PageResult<ErpStockRespVO> pageResult = getStockVOPageResult(pageReqVO, false);
-        return success(buildStockSummary(pageResult, pageReqVO.getPriceSystemId() != null));
+        ErpStockPageReqVO summaryReqVO = BeanUtils.toBean(pageReqVO, ErpStockPageReqVO.class);
+        summaryReqVO.setPageNo(1);
+        summaryReqVO.setPageSize(PageParam.PAGE_SIZE_NONE);
+        summaryReqVO.setShowBatchNo(false);
+        ErpStockSummaryRespVO summary = stockService.getStockSummary(summaryReqVO);
+        clearSummaryHiddenPrices(summary, getHiddenPriceFieldSet(getLoginUserDeptId(), summaryReqVO.getBizType()));
+        return success(summary);
+    }
+
+    @GetMapping("/mall-summary")
+    @Operation(summary = "获得商城商品 ERP 库存汇总")
+    @Parameter(name = "spuId", description = "商城 SPU 编号", required = true, example = "1024")
+    @PreAuthorize("@ss.hasPermission('product:spu:query')")
+    public CommonResult<ErpMallStockSummaryRespVO> getMallStockSummary(@RequestParam("spuId") Long spuId) {
+        return success(BeanUtils.toBean(mallStockService.getMallStockSummaryDetail(spuId),
+                ErpMallStockSummaryRespVO.class));
     }
 
     @GetMapping("/in-transit-details")
@@ -310,6 +328,7 @@ public class ErpStockController {
             throw new IllegalArgumentException("Product stock does not exist or is not accessible");
         }
         warehouseService.validateCurrentUserStockPermission(Collections.singleton(existing));
+        validateStockEditableFieldPermission(reqVO.getFieldName(), getHiddenPriceFieldSet(getLoginUserDeptId()));
         ErpStockDO stock = stockService.updateStockEditableFields(reqVO);
         return success(buildStockVOPageResult(new PageResult<>(Collections.singletonList(stock), 1L), null)
                 .getList().get(0));
@@ -331,12 +350,14 @@ public class ErpStockController {
         Set<String> hiddenPriceFields = getHiddenPriceFieldSet(
                 pricePermissionDeptId, pageReqVO.getBizType());
         sanitizePriceSort(pageReqVO, hiddenPriceFields);
+        boolean retainHiddenPriceValues = isSaleBizType(pageReqVO.getBizType());
         PageResult<ErpStockRespVO> result;
         if (Boolean.TRUE.equals(pageReqVO.getShowBatchNo())) {
-            result = buildBatchStockVOPageResult(pageReqVO, pricePermissionDeptId, hiddenPriceFields);
+            result = buildBatchStockVOPageResult(pageReqVO, pricePermissionDeptId, hiddenPriceFields,
+                    retainHiddenPriceValues);
         } else {
             result = buildStockVOPageResult(stockService.getStockPage(pageReqVO), pageReqVO.getPriceSystemId(),
-                    includeBatchNoSummary, pricePermissionDeptId, hiddenPriceFields);
+                    includeBatchNoSummary, pricePermissionDeptId, hiddenPriceFields, retainHiddenPriceValues);
         }
         result.getList().forEach(stock -> stock.setPriceVisible(true));
         return result;
@@ -366,7 +387,8 @@ public class ErpStockController {
      */
     private PageResult<ErpStockRespVO> buildBatchStockVOPageResult(ErpStockPageReqVO pageReqVO,
                                                                   Long pricePermissionDeptId,
-                                                                  Set<String> hiddenPriceFields) {
+                                                                  Set<String> hiddenPriceFields,
+                                                                  boolean retainHiddenPriceValues) {
         boolean fullBatchPage = PageParam.PAGE_SIZE_NONE.equals(pageReqVO.getPageSize());
         ErpStockPageReqVO baseReqVO = BeanUtils.toBean(pageReqVO, ErpStockPageReqVO.class);
         if (fullBatchPage) {
@@ -381,7 +403,8 @@ public class ErpStockController {
         Map<String, List<ErpStockBatchNoRespVO>> batchBalanceMap =
                 stockService.getStockBatchBalanceListMap(stockPageResult.getList());
         PageResult<ErpStockRespVO> aggregatePageResult = buildStockVOPageResult(
-                stockPageResult, pageReqVO.getPriceSystemId(), false, pricePermissionDeptId, hiddenPriceFields);
+                stockPageResult, pageReqVO.getPriceSystemId(), false, pricePermissionDeptId, hiddenPriceFields,
+                retainHiddenPriceValues);
         Set<Long> productIds = convertSet(stockPageResult.getList(), ErpStockDO::getProductId);
         Set<Long> warehouseIds = convertSet(stockPageResult.getList(), ErpStockDO::getWarehouseId);
         List<ErpStockBatchQuantityDO> occupiedList = DataPermissionUtils.executeIgnore(() ->
@@ -630,6 +653,15 @@ public class ErpStockController {
                                                              boolean includeBatchNo,
                                                              Long pricePermissionDeptId,
                                                              Set<String> hiddenPriceFields) {
+        return buildStockVOPageResult(pageResult, priceSystemId, includeBatchNo, pricePermissionDeptId,
+                hiddenPriceFields, false);
+    }
+
+    private PageResult<ErpStockRespVO> buildStockVOPageResult(PageResult<ErpStockDO> pageResult, Long priceSystemId,
+                                                             boolean includeBatchNo,
+                                                             Long pricePermissionDeptId,
+                                                             Set<String> hiddenPriceFields,
+                                                             boolean retainHiddenPriceValues) {
         if (CollUtil.isEmpty(pageResult.getList())) {
             return PageResult.empty(pageResult.getTotal());
         }
@@ -637,7 +669,7 @@ public class ErpStockController {
         Set<Long> warehouseIds = convertSet(pageResult.getList(), ErpStockDO::getWarehouseId);
         Map<Long, ErpProductRespVO> productMap = DataPermissionUtils.executeIgnore(() ->
                 pricePermissionDeptId != null
-                        ? productService.getProductVOMap(productIds, pricePermissionDeptId)
+                        ? productService.getProductVOMap(productIds, pricePermissionDeptId, false)
                         : productService.getProductVOMap(productIds));
         Map<Long, ErpWarehouseDO> warehouseMap = DataPermissionUtils.executeIgnore(
                 () -> warehouseService.getWarehouseMap(warehouseIds));
@@ -696,7 +728,9 @@ public class ErpStockController {
                         .setBackupPrice1(product.getBackupPrice1())
                         .setWholesalePrice(product.getWholesalePrice())
                         .setSharePrice(product.getSharePrice())
-                        .setCustomFields(copyVisibleCustomFields(product.getCustomFields(), hiddenPriceFields))
+                        .setCustomFields(retainHiddenPriceValues
+                                ? copyCustomFields(product.getCustomFields())
+                                : copyVisibleCustomFields(product.getCustomFields(), hiddenPriceFields))
                         .setStockMax(product.getStockMax())
                         .setStockMin(product.getStockMin())
                         .setStockStandard(product.getStockStandard())
@@ -734,7 +768,9 @@ public class ErpStockController {
                     stock.setCurrentPriceAmount(unitPrice.multiply(stock.getCount()));
                 }
             }
-            clearConfiguredStockPrices(stock, hiddenPriceFields);
+            if (!retainHiddenPriceValues) {
+                clearConfiguredStockPrices(stock, hiddenPriceFields);
+            }
         });
     }
 
@@ -793,6 +829,13 @@ public class ErpStockController {
         }
     }
 
+    private void validateStockEditableFieldPermission(String fieldName, Set<String> hiddenFields) {
+        if (!isStockPriceFieldHidden(hiddenFields, fieldName)) {
+            return;
+        }
+        throw exception(FORBIDDEN);
+    }
+
     private void clearConfiguredStockPrices(ErpStockRespVO stock, Set<String> hiddenFields) {
         if (isStockPriceFieldHidden(hiddenFields, "costPrice")) {
             stock.setCostPrice(null).setCostAmount(null).setLastPurchasePrice(null);
@@ -832,6 +875,18 @@ public class ErpStockController {
         }
     }
 
+    private void clearSummaryHiddenPrices(ErpStockSummaryRespVO summary, Set<String> hiddenFields) {
+        if (summary == null) {
+            return;
+        }
+        if (isStockPriceFieldHidden(hiddenFields, "costPrice")) {
+            summary.setTotalCostAmount(BigDecimal.ZERO);
+        }
+        if (isStockPriceFieldHidden(hiddenFields, "backupPrice1")) {
+            summary.setTotalCurrentPriceAmount(BigDecimal.ZERO);
+        }
+    }
+
     private Map<String, Object> copyVisibleCustomFields(Map<String, Object> customFields,
                                                          Set<String> hiddenFields) {
         if (customFields == null) {
@@ -842,37 +897,8 @@ public class ErpStockController {
         return visibleFields;
     }
 
-    private ErpStockSummaryRespVO buildStockSummary(PageResult<ErpStockRespVO> pageResult,
-                                                    boolean priceSystemSelected) {
-        ErpStockSummaryRespVO summary = new ErpStockSummaryRespVO();
-        summary.setTotalRows(pageResult.getTotal() != null ? pageResult.getTotal() : 0L);
-        if (CollUtil.isEmpty(pageResult.getList())) {
-            return summary;
-        }
-        for (ErpStockRespVO stock : pageResult.getList()) {
-            BigDecimal count = defaultZero(stock.getCount());
-            summary.setTotalStockCount(summary.getTotalStockCount().add(count));
-            summary.setTotalCostAmount(summary.getTotalCostAmount().add(defaultZero(stock.getCostAmount())));
-            summary.setTotalCurrentPriceAmount(summary.getTotalCurrentPriceAmount()
-                    .add(resolveCurrentPriceAmount(stock, count, priceSystemSelected)));
-            summary.setTotalPendingInCount(summary.getTotalPendingInCount()
-                    .add(defaultZero(stock.getPendingInCount())));
-            summary.setTotalOccupiedCount(summary.getTotalOccupiedCount()
-                    .add(defaultZero(stock.getOccupiedCount())));
-            summary.setTotalInTransitCount(summary.getTotalInTransitCount()
-                    .add(defaultZero(stock.getInTransitCount())));
-            summary.setTotalWeight(summary.getTotalWeight().add(count.multiply(defaultZero(stock.getWeight()))));
-        }
-        return summary;
-    }
-
-    private BigDecimal resolveCurrentPriceAmount(ErpStockRespVO stock, BigDecimal count,
-                                                 boolean priceSystemSelected) {
-        if (stock.getCurrentPriceAmount() != null) {
-            return stock.getCurrentPriceAmount();
-        }
-        BigDecimal unitPrice = priceSystemSelected ? stock.getCurrentPrice() : stock.getBackupPrice1();
-        return unitPrice != null ? unitPrice.multiply(count) : BigDecimal.ZERO;
+    private Map<String, Object> copyCustomFields(Map<String, Object> customFields) {
+        return customFields == null ? null : new LinkedHashMap<>(customFields);
     }
 
     private BigDecimal defaultZero(BigDecimal value) {

@@ -2,6 +2,7 @@ package cn.iocoder.yudao.module.product.service.spu;
 
 import cn.hutool.core.collection.CollUtil;
 import cn.hutool.core.util.ObjectUtil;
+import cn.hutool.core.util.StrUtil;
 import cn.iocoder.yudao.framework.common.enums.CommonStatusEnum;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.common.util.collection.CollectionUtils;
@@ -27,6 +28,7 @@ import org.springframework.validation.annotation.Validated;
 
 import javax.annotation.Resource;
 import java.util.*;
+import java.util.stream.Collectors;
 
 import static cn.iocoder.yudao.framework.common.exception.util.ServiceExceptionUtil.exception;
 import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.*;
@@ -208,6 +210,14 @@ public class ProductSpuServiceImpl implements ProductSpuService {
     }
 
     @Override
+    public List<ProductSpuDO> getSpuListByPartCode(String code) {
+        if (StrUtil.isBlank(code)) {
+            return Collections.emptyList();
+        }
+        return productSpuMapper.selectListByPartCode(code.trim());
+    }
+
+    @Override
     public List<ProductSpuDO> getSpuListByStatus(Integer status) {
         return productSpuMapper.selectList(ProductSpuDO::getStatus, status);
     }
@@ -219,6 +229,24 @@ public class ProductSpuServiceImpl implements ProductSpuService {
 
     @Override
     public PageResult<ProductSpuDO> getSpuPage(AppProductSpuPageReqVO pageReqVO) {
+        // 分页查询
+        return productSpuMapper.selectPage(pageReqVO, buildAppCategoryIds(pageReqVO));
+    }
+
+    @Override
+    public List<String> getAppVehicleModelList(AppProductSpuPageReqVO pageReqVO) {
+        return productSpuMapper.selectVehicleModelList(buildAppCategoryIds(pageReqVO)).stream()
+                .map(ProductSpuDO::getVehicleModel)
+                .filter(StrUtil::isNotBlank)
+                .flatMap(vehicleModel -> Arrays.stream(vehicleModel.split("[,，、/;；\\r\\n]+")))
+                .map(String::trim)
+                .filter(StrUtil::isNotBlank)
+                .distinct()
+                .sorted()
+                .collect(Collectors.toList());
+    }
+
+    private Set<Long> buildAppCategoryIds(AppProductSpuPageReqVO pageReqVO) {
         // 查找时，如果查找某个分类编号，则包含它的子分类。因为顶级分类不包含商品
         Set<Long> categoryIds = new HashSet<>();
         if (pageReqVO.getCategoryId() != null && pageReqVO.getCategoryId() > 0) {
@@ -233,14 +261,19 @@ public class ProductSpuServiceImpl implements ProductSpuService {
                     .setStatus(CommonStatusEnum.ENABLE.getStatus()).setParentIds(pageReqVO.getCategoryIds()));
             categoryIds.addAll(convertList(categoryChildren, ProductCategoryDO::getId));
         }
-        // 分页查询
-        return productSpuMapper.selectPage(pageReqVO, categoryIds);
+        return categoryIds;
     }
 
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void updateSpuStock(Map<Long, Integer> stockIncrCounts) {
         stockIncrCounts.forEach((id, incCount) -> productSpuMapper.updateStock(id, incCount));
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void updateSpuStockCount(Long id, Integer stock) {
+        productSpuMapper.updateStockCount(id, stock);
     }
 
     @Override

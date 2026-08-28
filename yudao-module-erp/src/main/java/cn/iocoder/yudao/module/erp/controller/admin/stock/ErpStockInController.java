@@ -22,13 +22,17 @@ import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpSupplierDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockInDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockInItemDO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpWarehouseDO;
+import cn.iocoder.yudao.module.erp.enums.print.ErpPrintModuleEnum;
 import cn.iocoder.yudao.module.erp.service.base.ErpDataPermissionDeptService;
+import cn.iocoder.yudao.module.erp.service.common.ErpPrintService;
 import cn.iocoder.yudao.module.erp.service.product.ErpProductService;
 import cn.iocoder.yudao.module.erp.service.purchase.ErpSupplierService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpStockFieldPermissionMasker;
 import cn.iocoder.yudao.module.erp.service.stock.ErpStockImportService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpStockInService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpStockService;
+import cn.iocoder.yudao.module.erp.service.stock.ErpWarehouseService;
 import cn.iocoder.yudao.module.system.api.dept.DeptApi;
 import cn.iocoder.yudao.module.system.api.dept.dto.DeptRespDTO;
 import cn.iocoder.yudao.module.system.api.user.AdminUserApi;
@@ -54,7 +58,9 @@ import javax.servlet.http.HttpServletResponse;
 import javax.validation.Valid;
 import java.io.IOException;
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -84,9 +90,13 @@ public class ErpStockInController {
     @Resource
     private ErpStockInService stockInService;
     @Resource
+    private ErpPrintService printService;
+    @Resource
     private ErpStockImportService stockImportService;
     @Resource
     private ErpStockService stockService;
+    @Resource
+    private ErpWarehouseService warehouseService;
     @Resource
     private ErpProductService productService;
     @Resource
@@ -171,6 +181,8 @@ public class ErpStockInController {
         List<ErpStockInItemDO> itemList = stockInService.getStockInItemListByInId(id);
         Map<Long, ErpProductRespVO> productMap = DataPermissionUtils.executeIgnore(() -> productService.getProductVOMap(
                 convertSet(itemList, ErpStockInItemDO::getProductId)));
+        Map<Long, ErpWarehouseDO> warehouseMap = DataPermissionUtils.executeIgnore(() -> warehouseService.getWarehouseMap(
+                convertSet(itemList, ErpStockInItemDO::getWarehouseId)));
         Set<Long> userIds = new HashSet<>();
         addUserId(userIds, stockIn.getCreator());
         addUserId(userIds, stockIn.getUpdater());
@@ -184,6 +196,7 @@ public class ErpStockInController {
                 item.setStockCount(stock != null ? stock.getCount() : BigDecimal.ZERO);
                 fillProduct(item, productMap.get(item.getProductId()));
             }));
+            vo.setWarehouseNames(buildWarehouseNames(itemList, warehouseMap));
             vo.setProductNames(CollUtil.join(vo.getItems(), ", ", ErpStockInRespVO.Item::getProductName));
             vo.setProductCodes(CollUtil.join(vo.getItems(), ", ", ErpStockInRespVO.Item::getProductCode));
             if (dept != null) {
@@ -191,6 +204,7 @@ public class ErpStockInController {
             }
             fillUserNames(vo, userMap);
         });
+        fillPrintInfo(Collections.singletonList(respVO));
         fieldPermissionMasker.maskFormWithItems(FIELD_PERMISSION_MODULE, respVO);
         return success(respVO);
     }
@@ -266,6 +280,8 @@ public class ErpStockInController {
         Map<Long, List<ErpStockInItemDO>> itemMap = convertMultiMap(itemList, ErpStockInItemDO::getInId);
         Map<Long, ErpProductRespVO> productMap = DataPermissionUtils.executeIgnore(() -> productService.getProductVOMap(
                 convertSet(itemList, ErpStockInItemDO::getProductId)));
+        Map<Long, ErpWarehouseDO> warehouseMap = DataPermissionUtils.executeIgnore(() -> warehouseService.getWarehouseMap(
+                convertSet(itemList, ErpStockInItemDO::getWarehouseId)));
         Map<Long, ErpSupplierDO> supplierMap = supplierService.getSupplierMap(
                 convertSet(pageResult.getList(), ErpStockInDO::getSupplierId));
         Map<Long, DeptRespDTO> deptMap = deptApi.getDeptMap(convertSet(pageResult.getList(), ErpStockInDO::getDeptId));
@@ -276,15 +292,48 @@ public class ErpStockInController {
         });
         Map<Long, AdminUserRespDTO> userMap = adminUserApi.getUserMap(userIds);
 
-        return BeanUtils.toBean(pageResult, ErpStockInRespVO.class, vo -> {
-            vo.setItems(BeanUtils.toBean(itemMap.get(vo.getId()), ErpStockInRespVO.Item.class,
+        PageResult<ErpStockInRespVO> result = BeanUtils.toBean(pageResult, ErpStockInRespVO.class, vo -> {
+            List<ErpStockInItemDO> stockInItems = itemMap.get(vo.getId());
+            vo.setItems(BeanUtils.toBean(stockInItems, ErpStockInRespVO.Item.class,
                     item -> fillProduct(item, productMap.get(item.getProductId()))));
+            vo.setWarehouseNames(buildWarehouseNames(stockInItems, warehouseMap));
             vo.setProductNames(CollUtil.join(vo.getItems(), ", ", ErpStockInRespVO.Item::getProductName));
             vo.setProductCodes(CollUtil.join(vo.getItems(), ", ", ErpStockInRespVO.Item::getProductCode));
             MapUtils.findAndThen(supplierMap, vo.getSupplierId(), supplier -> vo.setSupplierName(supplier.getName()));
             MapUtils.findAndThen(deptMap, vo.getDeptId(), dept -> vo.setDeptName(dept.getName()));
             fillUserNames(vo, userMap);
         });
+        fillPrintInfo(result.getList());
+        return result;
+    }
+
+    private void fillPrintInfo(List<ErpStockInRespVO> list) {
+        if (CollUtil.isEmpty(list)) {
+            return;
+        }
+        Set<Long> ids = convertSet(list, ErpStockInRespVO::getId);
+        Map<Long, Long> countMap = printService.getPrintCountMap(ErpPrintModuleEnum.STOCK_IN.getKey(), ids);
+        Map<Long, LocalDateTime> lastPrintTimeMap = printService.getLastPrintTimeMap(
+                ErpPrintModuleEnum.STOCK_IN.getKey(), ids);
+        list.forEach(vo -> {
+            Long printCount = countMap.get(vo.getId());
+            vo.setPrintCount(printCount == null ? 0 : printCount.intValue());
+            vo.setLastPrintTime(lastPrintTimeMap.get(vo.getId()));
+        });
+    }
+
+    private String buildWarehouseNames(List<ErpStockInItemDO> itemList, Map<Long, ErpWarehouseDO> warehouseMap) {
+        if (CollUtil.isEmpty(itemList) || CollUtil.isEmpty(warehouseMap)) {
+            return "";
+        }
+        Set<String> warehouseNames = new LinkedHashSet<>();
+        itemList.forEach(item -> {
+            ErpWarehouseDO warehouse = warehouseMap.get(item.getWarehouseId());
+            if (warehouse != null && warehouse.getName() != null) {
+                warehouseNames.add(warehouse.getName());
+            }
+        });
+        return CollUtil.join(warehouseNames, ", ");
     }
 
     private void fillProduct(ErpStockInRespVO.Item item, ErpProductRespVO product) {
