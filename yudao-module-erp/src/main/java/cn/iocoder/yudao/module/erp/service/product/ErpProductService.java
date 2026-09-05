@@ -227,6 +227,14 @@ public interface ErpProductService {
     Long getProductCountByUnitId(Long unitId);
 
     /**
+     * 基于配件品牌，获得产品数量
+     *
+     * @param brand 配件品牌
+     * @return 产品数量
+     */
+    Long getProductCountByBrand(String brand);
+
+    /**
      * 回写产品的最近采购入库价（由采购入库单审批通过时触发）
      *
      * @param productId 产品编号

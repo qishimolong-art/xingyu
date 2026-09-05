@@ -7,8 +7,14 @@ import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleRetur
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnDraftCreateReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnDraftUpdateReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnCreatePurchaseReturnReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnCreateTargetDraftRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnCreateTransferOutReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnItemBatchUpdateReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnItemPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnSaveReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnPurchaseReturnableItemRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnTransferOutableItemRespVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleReturnDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleReturnItemDO;
 import cn.iocoder.yudao.module.system.controller.admin.dept.vo.dept.DeptSimpleRespVO;
@@ -107,6 +113,8 @@ public interface ErpSaleReturnService {
      */
     List<ErpSaleReturnItemDO> getSaleReturnItemListByReturnId(Long returnId);
 
+    PageResult<ErpSaleReturnItemDO> getSaleReturnItemPage(ErpSaleReturnItemPageReqVO pageReqVO);
+
     /**
      * 获得销售退货项 List
      *
@@ -116,6 +124,16 @@ public interface ErpSaleReturnService {
     List<ErpSaleReturnItemDO> getSaleReturnItemListByReturnIds(Collection<Long> returnIds);
 
     List<DeptSimpleRespVO> getWarehouseAvailableDeptSimpleList(Long warehouseId);
+
+    List<ErpSaleReturnTransferOutableItemRespVO> getTransferOutableItemsByReturnId(Long returnId);
+
+    ErpSaleReturnCreateTargetDraftRespVO createTransferOutFromSaleReturn(
+            @Valid ErpSaleReturnCreateTransferOutReqVO reqVO);
+
+    List<ErpSaleReturnPurchaseReturnableItemRespVO> getPurchaseReturnableItemsByReturnId(Long returnId);
+
+    ErpSaleReturnCreateTargetDraftRespVO createPurchaseReturnFromSaleReturn(
+            @Valid ErpSaleReturnCreatePurchaseReturnReqVO reqVO);
 
     ErpSaleReturnImportRespVO parseImportData(List<ErpSaleReturnImportExcelVO> list);
 

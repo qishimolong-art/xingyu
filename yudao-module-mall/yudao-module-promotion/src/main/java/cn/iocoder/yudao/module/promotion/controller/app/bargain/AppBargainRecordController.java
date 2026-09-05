@@ -95,9 +95,11 @@ public class AppBargainRecordController {
         Assert.isTrue(id != null || activityId != null, "砍价记录编号和活动编号不能同时为空");
         BargainRecordDO record = id != null ? bargainRecordService.getBargainRecord(id)
                 : bargainRecordService.getLastBargainRecord(getLoginUserId(), activityId);
-        if (activityId == null || record != null) {
+        if (record != null) {
             activityId = record.getActivityId();
         }
+        BargainActivityDO activity = activityId != null ? bargainActivityService.getBargainActivity(activityId) : null;
+        record = bargainRecordService.refreshBargainRecordStatus(record, activity);
         // 2. 查询助力记录
         Long userId = getLoginUserId();
         Integer helpAction = getHelpAction(userId, record, activityId);

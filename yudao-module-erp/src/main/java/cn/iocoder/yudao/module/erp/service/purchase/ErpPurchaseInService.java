@@ -6,6 +6,7 @@ import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.imports.ErpPurch
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.in.ErpPurchaseInImportExcelVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.in.ErpPurchaseInImportRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.in.ErpPurchaseInItemBatchUpdateReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.in.ErpPurchaseInItemPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.in.ErpPurchaseInDraftCreateReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.in.ErpPurchaseInDraftUpdateReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.in.ErpPurchaseInForAdjustRespVO;
@@ -17,6 +18,7 @@ import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.in.ErpPurchaseIn
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.in.ErpPurchaseInCreateSaleCartRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.in.ErpPurchaseInPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.in.ErpPurchaseInSaveReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.in.ErpPurchaseInSaleCartableItemPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.in.ErpPurchaseInSaleCartableItemRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.in.ErpPurchaseInTransferOutableItemRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.order.ErpPurchaseInFromOrderReqVO;
@@ -158,6 +160,14 @@ public interface ErpPurchaseInService {
     List<ErpPurchaseInItemDO> getPurchaseInItemListByInId(Long inId);
 
     /**
+     * 获得采购入库项分页
+     *
+     * @param pageReqVO 分页查询
+     * @return 采购入库项分页
+     */
+    PageResult<ErpPurchaseInItemDO> getPurchaseInItemPage(ErpPurchaseInItemPageReqVO pageReqVO);
+
+    /**
      * 获得采购入库项 List
      *
      * @param inIds 采购入库编号数组
@@ -198,6 +208,15 @@ public interface ErpPurchaseInService {
      * @return 可转销售手推车明细列表
      */
     List<ErpPurchaseInSaleCartableItemRespVO> getSaleCartableItemsByInId(Long inId);
+
+    /**
+     * 分页查询某采购入库单的可转销售手推车明细。
+     *
+     * @param pageReqVO 分页请求
+     * @return 可转销售手推车明细分页
+     */
+    PageResult<ErpPurchaseInSaleCartableItemRespVO> getSaleCartableItemPage(
+            ErpPurchaseInSaleCartableItemPageReqVO pageReqVO);
 
     /**
      * 由采购入库单生成调拨出库单。

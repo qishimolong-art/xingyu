@@ -16,6 +16,7 @@ import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.imports.ErpFinanc
 import cn.iocoder.yudao.module.erp.controller.admin.finance.payable.vo.expense.ErpPayableExpenseDraftSaveReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.payable.vo.expense.ErpPayableExpenseExportRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.payable.vo.expense.ErpPayableExpenseImportExcelVO;
+import cn.iocoder.yudao.module.erp.controller.admin.finance.payable.vo.expense.ErpPayableExpenseItemPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.payable.vo.expense.ErpPayableExpensePageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.payable.vo.expense.ErpPayableExpenseRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.payable.vo.expense.ErpPayableExpenseSaveReqVO;
@@ -23,6 +24,7 @@ import cn.iocoder.yudao.module.erp.dal.dataobject.finance.ErpAccountDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.payable.ErpPayableExpenseDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.payable.ErpPayableExpenseItemDO;
 import cn.iocoder.yudao.module.erp.service.base.ErpDataPermissionDeptService;
+import cn.iocoder.yudao.module.erp.service.common.ErpImportExportRecordService;
 import cn.iocoder.yudao.module.erp.service.finance.ErpAccountService;
 import cn.iocoder.yudao.module.erp.service.finance.ErpFinanceFieldPermissionMasker;
 import cn.iocoder.yudao.module.erp.service.finance.payable.ErpPayableExpenseService;
@@ -50,8 +52,11 @@ import javax.annotation.Resource;
 import javax.servlet.http.HttpServletResponse;
 import javax.validation.Valid;
 import java.io.IOException;
+import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -73,6 +78,11 @@ import static cn.iocoder.yudao.module.erp.controller.admin.finance.vo.imports.Er
 public class ErpPayableExpenseController {
 
     private static final String FIELD_PERMISSION_MODULE = "erp_finance_payable_expense";
+    public static final Set<String> PAYABLE_EXPENSE_IMPORT_TEMPLATE_FIELDS = Collections.unmodifiableSet(
+            new LinkedHashSet<>(Arrays.asList("settleMethod", "accountId", "voucherNo", "expenseType", "deptId",
+                    "handlerId", "party", "relatedBiz", "docType", "remark", "fileUrl", "itemName", "amount",
+                    "invoiceNo", "itemParty", "itemDeptId", "itemBizDate", "itemHandlerId", "qty",
+                    "expenseCategory", "itemRemark")));
 
     @Resource
     private ErpPayableExpenseService payableExpenseService;
@@ -86,6 +96,8 @@ public class ErpPayableExpenseController {
     private ErpFinanceFieldPermissionMasker fieldPermissionMasker;
     @Resource
     private ErpDataPermissionDeptService dataPermissionDeptService;
+    @Resource
+    private ErpImportExportRecordService importExportRecordService;
 
     @PostMapping("/create")
     @Operation(summary = "创建费用支付")
@@ -172,17 +184,34 @@ public class ErpPayableExpenseController {
     @GetMapping("/get")
     @Operation(summary = "获取费用支付")
     @PreAuthorize("@ss.hasPermission('erp:payable-expense:query')")
-    public CommonResult<ErpPayableExpenseRespVO> get(@RequestParam("id") Long id) {
+    public CommonResult<ErpPayableExpenseRespVO> get(@RequestParam("id") Long id,
+                                                     @RequestParam(value = "includeItems", defaultValue = "true")
+                                                     Boolean includeItems) {
         ErpPayableExpenseDO db = payableExpenseService.getPayableExpense(id);
         if (db == null) {
             return success(null);
         }
         ErpPayableExpenseRespVO vo = BeanUtils.toBean(db, ErpPayableExpenseRespVO.class);
-        vo.setItems(BeanUtils.toBean(payableExpenseService.getPayableExpenseItemListByExpenseId(id),
-                ErpPayableExpenseRespVO.Item.class));
+        vo.setItems(Boolean.FALSE.equals(includeItems) ? Collections.emptyList()
+                : buildPayableExpenseItems(payableExpenseService.getPayableExpenseItemListByExpenseId(id)));
         fillExtend(vo);
         fieldPermissionMasker.maskFormWithItems(FIELD_PERMISSION_MODULE, vo);
         return success(vo);
+    }
+
+    @GetMapping("/item-page")
+    @Operation(summary = "获取费用支付明细分页")
+    @PreAuthorize("@ss.hasPermission('erp:payable-expense:query')")
+    public CommonResult<PageResult<ErpPayableExpenseRespVO.Item>> itemPage(
+            @Valid ErpPayableExpenseItemPageReqVO pageReqVO) {
+        PageResult<ErpPayableExpenseItemDO> pageResult = payableExpenseService.getPayableExpenseItemPage(pageReqVO);
+        PageResult<ErpPayableExpenseRespVO.Item> result = BeanUtils.toBean(pageResult,
+                ErpPayableExpenseRespVO.Item.class);
+        result.setList(buildPayableExpenseItems(pageResult.getList()));
+        if (!Boolean.FALSE.equals(pageReqVO.getMask())) {
+            fieldPermissionMasker.clearHiddenItemFields(FIELD_PERMISSION_MODULE, result.getList());
+        }
+        return success(result);
     }
 
     @GetMapping("/page")
@@ -229,7 +258,8 @@ public class ErpPayableExpenseController {
     public void getImportTemplate(HttpServletResponse response) throws IOException {
         ExcelUtils.writeImportTemplate(response, "费用支付导入模板.xls", "费用支付",
                 ErpPayableExpenseImportExcelVO.class,
-                Collections.singletonList(new ErpPayableExpenseImportExcelVO()));
+                Collections.singletonList(new ErpPayableExpenseImportExcelVO()),
+                PAYABLE_EXPENSE_IMPORT_TEMPLATE_FIELDS);
     }
 
     @PostMapping("/import")
@@ -240,13 +270,13 @@ public class ErpPayableExpenseController {
         ErpFinanceImportRespVO result = new ErpFinanceImportRespVO();
         for (int i = 0; i < list.size(); i++) {
             ErpPayableExpenseImportExcelVO row = list.get(i);
-            if (row == null || allBlank(row.getBizTime(), row.getSettleMethod(), row.getAccountId(),
+            if (row == null || allBlank(row.getSettleMethod(), row.getAccountId(),
                     row.getExpenseType(), row.getHandlerId(), row.getItemName(), row.getAmount())) {
                 continue;
             }
             try {
                 ErpPayableExpenseSaveReqVO reqVO = BeanUtils.toBean(row, ErpPayableExpenseSaveReqVO.class);
-                reqVO.setBizTime(parseDate(row.getBizTime(), null));
+                reqVO.setBizTime(parseDate(row.getBizTime(), LocalDate.now()));
                 ErpPayableExpenseSaveReqVO.Item item = new ErpPayableExpenseSaveReqVO.Item();
                 item.setItemName(row.getItemName());
                 item.setAmount(row.getAmount());
@@ -268,6 +298,14 @@ public class ErpPayableExpenseController {
         return success(result);
     }
 
+    @GetMapping("/import-failure-details/download")
+    @Operation(summary = "下载费用支付导入错误数据")
+    @PreAuthorize("@ss.hasPermission('erp:payable-expense:import')")
+    public void downloadImportFailureDetails(@RequestParam("recordId") Long recordId,
+                                             HttpServletResponse response) throws IOException {
+        importExportRecordService.downloadOwnImportFailureDetails(recordId, "erp_payable_expense", response);
+    }
+
     private PageResult<ErpPayableExpenseRespVO> buildPageResult(PageResult<ErpPayableExpenseDO> pageResult) {
         if (CollUtil.isEmpty(pageResult.getList())) {
             return PageResult.empty(pageResult.getTotal());
@@ -286,7 +324,7 @@ public class ErpPayableExpenseController {
         Map<Long, DeptRespDTO> deptMap = deptApi.getDeptMap(CollectionUtils.convertSet(pageResult.getList(),
                 ErpPayableExpenseDO::getDeptId));
         return BeanUtils.toBean(pageResult, ErpPayableExpenseRespVO.class, vo -> {
-            vo.setItems(BeanUtils.toBean(itemMap.get(vo.getId()), ErpPayableExpenseRespVO.Item.class));
+            vo.setItems(buildPayableExpenseItems(itemMap.get(vo.getId())));
             MapUtils.findAndThen(accountMap, vo.getAccountId(), account -> vo.setAccountName(account.getName()));
             MapUtils.findAndThen(userMap, vo.getHandlerId(), user -> vo.setHandlerName(user.getNickname()));
             MapUtils.findAndThen(userMap, NumberUtils.parseLong(vo.getCreator()), user -> vo.setCreatorName(user.getNickname()));
@@ -299,6 +337,20 @@ public class ErpPayableExpenseController {
     private PageResult<ErpPayableExpenseRespVO> maskPageResult(PageResult<ErpPayableExpenseRespVO> pageResult) {
         pageResult.getList().forEach(item -> fieldPermissionMasker.maskFormWithItems(FIELD_PERMISSION_MODULE, item));
         return pageResult;
+    }
+
+    private List<ErpPayableExpenseRespVO.Item> buildPayableExpenseItems(List<ErpPayableExpenseItemDO> items) {
+        if (CollUtil.isEmpty(items)) {
+            return Collections.emptyList();
+        }
+        Map<Long, DeptRespDTO> deptMap = deptApi.getDeptMap(CollectionUtils.convertSet(items,
+                ErpPayableExpenseItemDO::getDeptId));
+        Map<Long, AdminUserRespDTO> userMap = adminUserApi.getUserMap(CollectionUtils.convertSet(items,
+                ErpPayableExpenseItemDO::getHandlerId));
+        return BeanUtils.toBean(items, ErpPayableExpenseRespVO.Item.class, item -> {
+            MapUtils.findAndThen(deptMap, item.getDeptId(), dept -> item.setDeptName(dept.getName()));
+            MapUtils.findAndThen(userMap, item.getHandlerId(), user -> item.setHandlerName(user.getNickname()));
+        });
     }
 
     private ErpPayableExpenseExportRespVO buildExportRow(ErpPayableExpenseRespVO expense,

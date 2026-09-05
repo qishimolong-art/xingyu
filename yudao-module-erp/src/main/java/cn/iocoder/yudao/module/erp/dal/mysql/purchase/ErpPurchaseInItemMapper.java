@@ -1,11 +1,19 @@
 package cn.iocoder.yudao.module.erp.dal.mysql.purchase;
 
 import cn.hutool.core.collection.CollUtil;
+import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.mybatis.core.mapper.BaseMapperX;
+import cn.iocoder.yudao.framework.mybatis.core.query.LambdaQueryWrapperX;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.in.ErpPurchaseInItemPageReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.in.ErpPurchaseInSaleCartableItemPageReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.invoice.ErpPurchaseInvoiceSourceInItemPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.stock.ErpStockPendingInDetailRespVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseInItemDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockDO;
+import cn.iocoder.yudao.module.erp.enums.sale.ErpSaleBizSourceTypeEnum;
+import cn.iocoder.yudao.module.erp.enums.sale.ErpSaleConvertTypeEnum;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.baomidou.mybatisplus.core.toolkit.support.SFunction;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
@@ -31,6 +39,72 @@ public interface ErpPurchaseInItemMapper extends BaseMapperX<ErpPurchaseInItemDO
         return selectList(ErpPurchaseInItemDO::getInId, inId);
     }
 
+    default PageResult<ErpPurchaseInItemDO> selectPageByInId(ErpPurchaseInItemPageReqVO reqVO) {
+        LambdaQueryWrapperX<ErpPurchaseInItemDO> query = new LambdaQueryWrapperX<ErpPurchaseInItemDO>()
+                .eq(ErpPurchaseInItemDO::getInId, reqVO.getInId());
+        SFunction<ErpPurchaseInItemDO, ?> orderColumn = getOrderColumn(reqVO.getOrderField());
+        if (orderColumn == null) {
+            query.orderByAsc(ErpPurchaseInItemDO::getId);
+        } else if ("desc".equalsIgnoreCase(reqVO.getOrderDirection())) {
+            query.orderByDesc(orderColumn);
+        } else {
+            query.orderByAsc(orderColumn);
+        }
+        if (orderColumn != null && !"id".equals(reqVO.getOrderField().trim())) {
+            query.orderByAsc(ErpPurchaseInItemDO::getId);
+        }
+        return selectPage(reqVO, query);
+    }
+
+    default PageResult<ErpPurchaseInItemDO> selectPageByInIds(ErpPurchaseInvoiceSourceInItemPageReqVO reqVO) {
+        if (CollUtil.isEmpty(reqVO.getSourceInIds())) {
+            return PageResult.empty();
+        }
+        LambdaQueryWrapperX<ErpPurchaseInItemDO> query = new LambdaQueryWrapperX<ErpPurchaseInItemDO>()
+                .in(ErpPurchaseInItemDO::getInId, reqVO.getSourceInIds());
+        SFunction<ErpPurchaseInItemDO, ?> orderColumn = getOrderColumn(reqVO.getOrderField());
+        if (orderColumn == null) {
+            query.orderByAsc(ErpPurchaseInItemDO::getId);
+        } else if ("desc".equalsIgnoreCase(reqVO.getOrderDirection())) {
+            query.orderByDesc(orderColumn);
+        } else {
+            query.orderByAsc(orderColumn);
+        }
+        if (orderColumn != null && !"id".equals(reqVO.getOrderField().trim())) {
+            query.orderByAsc(ErpPurchaseInItemDO::getId);
+        }
+        return selectPage(reqVO, query);
+    }
+
+    default PageResult<ErpPurchaseInItemDO> selectSaleCartablePageByInId(
+            ErpPurchaseInSaleCartableItemPageReqVO reqVO) {
+        QueryWrapper<ErpPurchaseInItemDO> query = new QueryWrapper<ErpPurchaseInItemDO>()
+                .eq("in_id", reqVO.getInId())
+                .apply("COALESCE(count, 0) > COALESCE((SELECT SUM(COALESCE(r.count, 0)) "
+                        + "FROM erp_sale_convert_record r "
+                        + "INNER JOIN erp_sale_cart c ON c.id = r.target_id AND c.deleted = 0 "
+                        + "WHERE r.deleted = 0 "
+                        + "AND r.convert_type = {0} "
+                        + "AND r.source_type = {1} "
+                        + "AND r.target_type = {2} "
+                        + "AND r.source_item_id = erp_purchase_in_items.id), 0)",
+                        ErpSaleConvertTypeEnum.PURCHASE_IN_TO_CART.getType(),
+                        ErpSaleBizSourceTypeEnum.PURCHASE_IN.getType(),
+                        ErpSaleBizSourceTypeEnum.CART.getType());
+        String orderColumn = getSaleCartableOrderColumn(reqVO.getOrderField());
+        if (orderColumn == null) {
+            query.orderByAsc("id");
+        } else if ("desc".equalsIgnoreCase(reqVO.getOrderDirection())) {
+            query.orderByDesc(orderColumn);
+        } else {
+            query.orderByAsc(orderColumn);
+        }
+        if (orderColumn != null && !"id".equals(reqVO.getOrderField().trim())) {
+            query.orderByAsc("id");
+        }
+        return selectPage(reqVO, query);
+    }
+
     default List<ErpPurchaseInItemDO> selectListByInIds(Collection<Long> inIds) {
         return selectList(ErpPurchaseInItemDO::getInId, inIds);
     }
@@ -52,6 +126,89 @@ public interface ErpPurchaseInItemMapper extends BaseMapperX<ErpPurchaseInItemDO
             return 0L;
         }
         return selectCount(new QueryWrapper<ErpPurchaseInItemDO>().in("order_item_id", orderItemIds));
+    }
+
+    static SFunction<ErpPurchaseInItemDO, ?> getOrderColumn(String orderField) {
+        if (orderField == null) {
+            return null;
+        }
+        switch (orderField.trim()) {
+            case "id":
+                return ErpPurchaseInItemDO::getId;
+            case "sourceInId":
+                return ErpPurchaseInItemDO::getInId;
+            case "gift":
+                return ErpPurchaseInItemDO::getGift;
+            case "productId":
+            case "productCode":
+            case "productName":
+            case "productUnitName":
+            case "weight":
+                return ErpPurchaseInItemDO::getProductId;
+            case "warehouseId":
+                return ErpPurchaseInItemDO::getWarehouseId;
+            case "deptId":
+                return ErpPurchaseInItemDO::getDeptId;
+            case "count":
+                return ErpPurchaseInItemDO::getCount;
+            case "productPrice":
+            case "totalProductPrice":
+                return ErpPurchaseInItemDO::getProductPrice;
+            case "totalPrice":
+                return ErpPurchaseInItemDO::getTotalPrice;
+            case "packageQty":
+                return ErpPurchaseInItemDO::getPackageQty;
+            case "wholeQty":
+                return ErpPurchaseInItemDO::getWholeQty;
+            case "vehicleModel":
+                return ErpPurchaseInItemDO::getVehicleModel;
+            case "warehousePosition":
+                return ErpPurchaseInItemDO::getWarehousePosition;
+            case "drawingNo":
+                return ErpPurchaseInItemDO::getDrawingNo;
+            case "batchNo":
+                return ErpPurchaseInItemDO::getBatchNo;
+            case "brand":
+                return ErpPurchaseInItemDO::getBrand;
+            case "remark":
+                return ErpPurchaseInItemDO::getRemark;
+            case "returnStatus":
+            case "stockInBillStatus":
+            default:
+                return null;
+        }
+    }
+
+    static String getSaleCartableOrderColumn(String orderField) {
+        if (orderField == null) {
+            return null;
+        }
+        switch (orderField.trim()) {
+            case "id":
+                return "id";
+            case "productCode":
+            case "productName":
+                return "product_id";
+            case "warehouseId":
+                return "warehouse_id";
+            case "count":
+            case "inCount":
+            case "saleCartableCount":
+                return "count";
+            case "productPrice":
+            case "purchasePrice":
+                return "product_price";
+            case "warehousePosition":
+                return "warehouse_position";
+            case "batchNo":
+                return "batch_no";
+            case "brand":
+                return "brand";
+            case "remark":
+                return "remark";
+            default:
+                return null;
+        }
     }
 
     /**

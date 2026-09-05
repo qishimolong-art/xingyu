@@ -13,7 +13,10 @@ import org.springframework.util.StringUtils;
 import org.springframework.validation.annotation.Validated;
 
 import javax.annotation.Resource;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 import static cn.iocoder.yudao.framework.common.exception.util.ServiceExceptionUtil.exception;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.*;
@@ -119,7 +122,10 @@ public class ErpBaseDataServiceImpl implements ErpBaseDataService {
 
     @Override
     public List<ErpBaseDataDO> getBaseDataSimpleListByType(String type) {
-        return baseDataMapper.selectListByTypeAndStatus(type, CommonStatusEnum.ENABLE.getStatus());
+        List<ErpBaseDataDO> list = baseDataMapper.selectListByTypeAndStatus(type, CommonStatusEnum.ENABLE.getStatus());
+        Map<String, ErpBaseDataDO> deduplicated = new LinkedHashMap<>();
+        list.forEach(item -> deduplicated.putIfAbsent(item.getType() + "\u0000" + item.getName(), item));
+        return new ArrayList<>(deduplicated.values());
     }
 
 }

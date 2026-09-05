@@ -1,6 +1,7 @@
 package cn.iocoder.yudao.module.erp.service.product;
 
 import cn.iocoder.yudao.framework.common.biz.system.permission.dto.DeptDataPermissionRespDTO;
+import cn.iocoder.yudao.framework.common.enums.CommonStatusEnum;
 import cn.iocoder.yudao.framework.common.exception.ServiceException;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.security.core.util.SecurityFrameworkUtils;
@@ -14,6 +15,7 @@ import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpProduc
 import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpProductRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ProductSaveReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.config.ErpFieldConfigDO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.product.ErpProductBrandDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.product.ErpProductCategoryDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.product.ErpProductDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.product.ErpProductUnitDO;
@@ -26,6 +28,7 @@ import cn.iocoder.yudao.module.erp.dal.mysql.stock.ErpStockMapper;
 import cn.iocoder.yudao.module.erp.dal.redis.no.ErpNoRedisDAO;
 import cn.iocoder.yudao.module.erp.service.common.ErpOperateLogService;
 import cn.iocoder.yudao.module.erp.service.config.ErpFieldConfigService;
+import cn.iocoder.yudao.module.erp.service.mall.ErpMallProductSyncPublisher;
 import cn.iocoder.yudao.module.erp.service.stock.ErpWarehouseService;
 import cn.iocoder.yudao.module.infra.api.config.ConfigApi;
 import cn.iocoder.yudao.module.system.api.dept.DeptApi;
@@ -101,9 +104,13 @@ class ErpProductServiceImplTest extends BaseMockitoUnitTest {
     @Mock
     private ErpProductUnitService productUnitService;
     @Mock
+    private ErpProductBrandService productBrandService;
+    @Mock
     private ErpFieldConfigService fieldConfigService;
     @Mock
     private ErpOperateLogService operateLogService;
+    @Mock
+    private ErpMallProductSyncPublisher mallProductSyncPublisher;
 
     @BeforeAll
     static void initMybatisPlusCache() {
@@ -257,6 +264,80 @@ class ErpProductServiceImplTest extends BaseMockitoUnitTest {
     }
 
     @Test
+    void createProduct_whenBrandEnabled_thenStoresBrandName() {
+        ProductSaveReqVO reqVO = new ProductSaveReqVO();
+        reqVO.setCode("P-CREATE-002");
+        reqVO.setName("Oil Filter");
+        reqVO.setBrand("博世");
+        reqVO.setCategoryId(102L);
+        reqVO.setUnitId(201L);
+        reqVO.setDefaultWarehouseId(301L);
+        reqVO.setStatus(0);
+
+        ErpProductCategoryDO category = ErpProductCategoryDO.builder().id(102L).name("Parts").build();
+        ErpWarehouseDO warehouse = ErpWarehouseDO.builder().id(301L).name("Main").deptId(401L).build();
+
+        when(permissionApi.getCurrentUserHiddenFields("erp_product")).thenReturn(Collections.emptyList());
+        when(fieldConfigService.getFieldConfigListByModule("erp_product")).thenReturn(Collections.emptyList());
+        when(productCategoryService.getProductCategory(102L)).thenReturn(category);
+        when(productCategoryService.getProductCategoryChildCount(102L)).thenReturn(0L);
+        when(warehouseService.getWarehouse(301L)).thenReturn(warehouse);
+        when(stockMapper.selectByProductIdAndWarehouseId(502L, 301L)).thenReturn(null);
+        when(stockMapper.selectListByProductId(502L)).thenReturn(Collections.emptyList());
+        when(productUniversalMapper.selectListByProductId(502L)).thenReturn(Collections.emptyList());
+        when(productMapper.selectById(502L)).thenReturn(ErpProductDO.builder()
+                .id(502L)
+                .code("P-CREATE-002")
+                .name("Oil Filter")
+                .brand("博世")
+                .categoryId(102L)
+                .unitId(201L)
+                .defaultWarehouseId(301L)
+                .status(0)
+                .build());
+        when(productMapper.insert(any(ErpProductDO.class))).thenAnswer(invocation -> {
+            ErpProductDO product = invocation.getArgument(0);
+            product.setId(502L);
+            return 1;
+        });
+
+        try (MockedStatic<SecurityFrameworkUtils> security = mockStatic(SecurityFrameworkUtils.class)) {
+            security.when(SecurityFrameworkUtils::getLoginUserDeptId).thenReturn(401L);
+
+            Long productId = productService.createProduct(reqVO);
+
+            assertEquals(502L, productId);
+        }
+        ArgumentCaptor<ErpProductDO> productCaptor = ArgumentCaptor.forClass(ErpProductDO.class);
+        verify(productBrandService).validateEnabledProductBrand("博世");
+        verify(productMapper).insert(productCaptor.capture());
+        assertEquals("博世", productCaptor.getValue().getBrand());
+    }
+
+    @Test
+    void updateProduct_whenBrandFieldHidden_thenKeepsExistingBrandWithoutRevalidating() {
+        ProductSaveReqVO reqVO = new ProductSaveReqVO();
+        reqVO.setId(601L);
+        reqVO.setCode("P-UPDATE-001");
+        reqVO.setName("Brake Pad");
+        reqVO.setBrand("新品牌");
+
+        ErpProductDO existing = ErpProductDO.builder()
+                .id(601L)
+                .code("P-UPDATE-001")
+                .name("Brake Pad")
+                .brand("旧品牌")
+                .build();
+        when(permissionApi.getCurrentUserHiddenFields("erp_product")).thenReturn(Collections.singletonList("brand"));
+
+        ReflectionTestUtils.invokeMethod(productService, "applyProductSaveFieldPermissions", reqVO, existing);
+        ReflectionTestUtils.invokeMethod(productService, "validateProductBrandSelection", reqVO.getBrand(), existing);
+
+        assertEquals("旧品牌", reqVO.getBrand());
+        verify(productBrandService, never()).validateEnabledProductBrand(any());
+    }
+
+    @Test
     void importProductList_whenCategoryNamesDuplicated_thenMatchesByCategoryCode() {
         ErpProductImportExcelVO row = new ErpProductImportExcelVO();
         row.setCode("P-001");
@@ -288,6 +369,7 @@ class ErpProductServiceImplTest extends BaseMockitoUnitTest {
         when(productCategoryService.getProductCategoryList(any(ErpProductCategoryListReqVO.class)))
                 .thenReturn(Arrays.asList(firstCategory, secondCategory));
         when(productUnitService.getProductUnitListByStatus(any())).thenReturn(Collections.singletonList(unit));
+        when(productBrandService.getProductBrandListByStatus(any())).thenReturn(Collections.emptyList());
         when(warehouseService.getWarehouseListByStatus(any())).thenReturn(Collections.singletonList(warehouse));
         when(productMapper.selectListByCodes(any())).thenReturn(Collections.emptyList());
         when(productCategoryService.getProductCategory(102L)).thenReturn(secondCategory);
@@ -318,6 +400,88 @@ class ErpProductServiceImplTest extends BaseMockitoUnitTest {
     }
 
     @Test
+    void importProductList_whenBrandEnabled_thenStoresBrandName() {
+        ErpProductImportExcelVO row = new ErpProductImportExcelVO();
+        row.setCode("P-003");
+        row.setName("雨刮片");
+        row.setCategoryCode("CAT-A");
+        row.setUnitName("个");
+        row.setBrand("博世");
+        row.setDefaultWarehouseName("主仓");
+
+        ErpProductCategoryDO category = ErpProductCategoryDO.builder()
+                .id(101L)
+                .name("保养件")
+                .code("CAT-A")
+                .build();
+        ErpProductUnitDO unit = ErpProductUnitDO.builder()
+                .id(201L)
+                .name("个")
+                .build();
+        ErpProductBrandDO brand = ErpProductBrandDO.builder()
+                .id(301L)
+                .name("博世")
+                .status(CommonStatusEnum.ENABLE.getStatus())
+                .build();
+        ErpWarehouseDO warehouse = ErpWarehouseDO.builder()
+                .id(401L)
+                .name("主仓")
+                .deptId(501L)
+                .build();
+
+        when(productCategoryService.getProductCategoryList(any(ErpProductCategoryListReqVO.class)))
+                .thenReturn(Collections.singletonList(category));
+        when(productUnitService.getProductUnitListByStatus(any())).thenReturn(Collections.singletonList(unit));
+        when(productBrandService.getProductBrandListByStatus(any())).thenReturn(Collections.singletonList(brand));
+        when(warehouseService.getWarehouseListByStatus(any())).thenReturn(Collections.singletonList(warehouse));
+        when(productMapper.selectListByCodes(any())).thenReturn(Collections.emptyList());
+        when(productCategoryService.getProductCategory(101L)).thenReturn(category);
+        when(productCategoryService.getProductCategoryChildCount(101L)).thenReturn(0L);
+        when(warehouseService.getWarehouse(401L)).thenReturn(warehouse);
+        when(stockMapper.selectByProductIdAndWarehouseId(500L, 401L)).thenReturn(null);
+        when(permissionApi.getCurrentUserHiddenFields("erp_product")).thenReturn(Collections.emptyList());
+        when(stockMapper.selectListByProductId(500L)).thenReturn(Collections.emptyList());
+        when(productMapper.insert(any(ErpProductDO.class))).thenAnswer(invocation -> {
+            ErpProductDO product = invocation.getArgument(0);
+            product.setId(500L);
+            return 1;
+        });
+
+        ErpProductImportRespVO result = productService.importProductList(Collections.singletonList(row));
+
+        assertEquals(1, result.getSuccessCount());
+        assertEquals(0, result.getFailureCount());
+        ArgumentCaptor<ErpProductDO> productCaptor = ArgumentCaptor.forClass(ErpProductDO.class);
+        verify(productMapper).insert(productCaptor.capture());
+        assertEquals("博世", productCaptor.getValue().getBrand());
+    }
+
+    @Test
+    void importProductList_whenBrandDisabledOrMissing_thenRecordsFailure() {
+        ErpProductImportExcelVO row = new ErpProductImportExcelVO();
+        row.setCode("P-004");
+        row.setName("雨刮片");
+        row.setCategoryCode("CAT-A");
+        row.setUnitName("个");
+        row.setBrand("停用品牌");
+
+        when(productCategoryService.getProductCategoryList(any(ErpProductCategoryListReqVO.class))).thenReturn(Collections.singletonList(
+                ErpProductCategoryDO.builder().id(101L).name("保养件").code("CAT-A").build()));
+        when(productUnitService.getProductUnitListByStatus(any())).thenReturn(Collections.singletonList(
+                ErpProductUnitDO.builder().id(201L).name("个").build()));
+        when(productBrandService.getProductBrandListByStatus(any())).thenReturn(Collections.emptyList());
+        when(warehouseService.getWarehouseListByStatus(any())).thenReturn(Collections.emptyList());
+        when(productMapper.selectListByCodes(any())).thenReturn(Collections.emptyList());
+
+        ErpProductImportRespVO result = productService.importProductList(Collections.singletonList(row));
+
+        assertEquals(0, result.getSuccessCount());
+        assertEquals(1, result.getFailureCount());
+        assertEquals("配件品牌不存在或已停用：停用品牌", result.getFailureDetails().get(0).getReason());
+        verify(productMapper, never()).insert(any(ErpProductDO.class));
+    }
+
+    @Test
     void importProductList_whenCategoryCodeMissing_thenRecordsFailure() {
         ErpProductImportExcelVO row = new ErpProductImportExcelVO();
         row.setCode("P-002");
@@ -331,6 +495,7 @@ class ErpProductServiceImplTest extends BaseMockitoUnitTest {
                 ErpProductCategoryDO.builder().id(101L).name("保养件").code("CAT-A").build()));
         when(productUnitService.getProductUnitListByStatus(any())).thenReturn(Collections.singletonList(
                 ErpProductUnitDO.builder().id(201L).name("个").build()));
+        when(productBrandService.getProductBrandListByStatus(any())).thenReturn(Collections.emptyList());
         when(warehouseService.getWarehouseListByStatus(any())).thenReturn(Collections.singletonList(
                 ErpWarehouseDO.builder().id(301L).name("主仓").build()));
         when(productMapper.selectListByCodes(any())).thenReturn(Collections.emptyList());
@@ -439,7 +604,7 @@ class ErpProductServiceImplTest extends BaseMockitoUnitTest {
     }
 
     @Test
-    void getProductDetail_skipsProductPriceViewPermissionMasking() {
+    void getProductDetail_appliesDefaultProductFieldPermissionMasking() {
         mockProductPermission(104L, Collections.singleton(200L));
         when(warehouseService.getCurrentUserAuthorizedWarehouseIds())
                 .thenReturn(new LinkedHashSet<>(Collections.singletonList(11L)));
@@ -462,7 +627,7 @@ class ErpProductServiceImplTest extends BaseMockitoUnitTest {
         when(stockLockMapper.selectList(any())).thenReturn(Collections.emptyList());
         when(productUniversalMapper.selectListByProductIds(anyCollection())).thenReturn(Collections.emptyList());
         when(fieldConfigService.getFieldConfigListByModule("erp_product")).thenReturn(Collections.emptyList());
-        when(permissionApi.getCurrentUserHiddenFields("erp_product", null, false)).thenReturn(Collections.emptyList());
+        when(permissionApi.getCurrentUserHiddenFields("erp_product")).thenReturn(Collections.emptyList());
 
         ErpProductRespVO detail;
         try (MockedStatic<SecurityFrameworkUtils> security = mockStatic(SecurityFrameworkUtils.class)) {
@@ -472,9 +637,9 @@ class ErpProductServiceImplTest extends BaseMockitoUnitTest {
         }
 
         assertEquals(BigDecimal.TEN, detail.getRetailPrice());
-        verify(permissionApi).getCurrentUserHiddenFields("erp_product", null, false);
+        verify(permissionApi).getCurrentUserHiddenFields("erp_product");
         verify(permissionApi, never()).getCurrentUserHiddenFields("erp_product", 20L);
-        verify(permissionApi, never()).getCurrentUserHiddenFields("erp_product");
+        verify(permissionApi, never()).getCurrentUserHiddenFields("erp_product", null, false);
     }
 
     @Test

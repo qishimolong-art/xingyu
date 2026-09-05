@@ -206,7 +206,10 @@ public class ProductSpuServiceImpl implements ProductSpuService {
         }
         Map<Long, ProductSpuDO> spuMap = convertMap(productSpuMapper.selectByIds(ids), ProductSpuDO::getId);
         // 需要按照 ids 顺序返回。例如说：店铺装修选择了 [3, 1, 2] 三个商品，返回结果还是 [3, 1, 2]  这样的顺序
-        return convertList(ids, spuMap::get);
+        return ids.stream()
+                .map(spuMap::get)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toList());
     }
 
     @Override

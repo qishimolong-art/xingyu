@@ -2,7 +2,11 @@ package cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart;
 
 import cn.idev.excel.annotation.ExcelIgnoreUnannotated;
 import cn.idev.excel.annotation.ExcelProperty;
+import cn.iocoder.yudao.framework.excel.core.annotations.ExcelChoiceRequired;
+import cn.iocoder.yudao.framework.excel.core.annotations.ExcelColumnSelect;
 import cn.iocoder.yudao.framework.excel.core.annotations.ExcelRequired;
+import cn.iocoder.yudao.framework.excel.core.convert.YesNoBooleanConvert;
+import cn.iocoder.yudao.module.erp.framework.excel.core.ErpYesNoExcelColumnSelectFunction;
 import lombok.Data;
 
 import java.math.BigDecimal;
@@ -11,9 +15,17 @@ import java.math.BigDecimal;
 @ExcelIgnoreUnannotated
 public class ErpSaleCartImportExcelVO {
 
-    @ExcelRequired
-    @ExcelProperty("产品编码")
+    @ExcelChoiceRequired
+    @ExcelProperty("配件编码（三选一）")
     private String productCode;
+
+    @ExcelChoiceRequired
+    @ExcelProperty("配件名称（三选一）")
+    private String productName;
+
+    @ExcelChoiceRequired
+    @ExcelProperty("厂家编码（三选一）")
+    private String factoryCode;
 
     @ExcelRequired
     @ExcelProperty("所属仓库")
@@ -26,7 +38,8 @@ public class ErpSaleCartImportExcelVO {
     @ExcelProperty("单价")
     private BigDecimal productPrice;
 
-    @ExcelProperty("赠品")
+    @ExcelColumnSelect(functionName = ErpYesNoExcelColumnSelectFunction.NAME)
+    @ExcelProperty(value = "赠品", converter = YesNoBooleanConvert.class)
     private Boolean giftFlag;
 
     @ExcelProperty("备注")

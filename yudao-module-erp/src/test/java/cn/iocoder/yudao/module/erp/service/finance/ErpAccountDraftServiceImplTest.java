@@ -9,6 +9,7 @@ import cn.iocoder.yudao.module.erp.dal.mysql.finance.ErpAccountMapper;
 import cn.iocoder.yudao.module.erp.enums.finance.ErpAccountDocumentStatusEnum;
 import cn.iocoder.yudao.module.erp.service.base.ErpBaseArchiveReferenceService;
 import cn.iocoder.yudao.module.erp.service.common.ErpOperateLogService;
+import cn.iocoder.yudao.module.erp.service.finance.accounting.ErpAccountingSubjectService;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
@@ -20,9 +21,11 @@ import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.ACCOUNT_DRAFT
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.ACCOUNT_FORMAL_UPDATE_FAIL_DRAFT;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.ACCOUNT_NOT_SUBMITTED;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -42,6 +45,8 @@ class ErpAccountDraftServiceImplTest extends BaseMockitoUnitTest {
     private ErpBaseArchiveReferenceService baseArchiveReferenceService;
     @Mock
     private ErpOperateLogService operateLogService;
+    @Mock
+    private ErpAccountingSubjectService accountingSubjectService;
 
     @Test
     void createDraft_allowsMissingNameAndUsesSafeDefaults() {
@@ -63,6 +68,7 @@ class ErpAccountDraftServiceImplTest extends BaseMockitoUnitTest {
         assertThat(account.getDefaultStatus()).isFalse();
         assertThat(account.getDocumentStatus())
                 .isEqualTo(ErpAccountDocumentStatusEnum.DRAFT.getStatus());
+        verify(accountingSubjectService, never()).ensureFundAccountSubject(any(), any());
     }
 
     @Test
@@ -84,6 +90,7 @@ class ErpAccountDraftServiceImplTest extends BaseMockitoUnitTest {
         assertThat(captor.getValue().getName()).isEqualTo("基本户");
         assertThat(captor.getValue().getDocumentStatus())
                 .isEqualTo(ErpAccountDocumentStatusEnum.SUBMITTED.getStatus());
+        verify(accountingSubjectService).ensureFundAccountSubject(eq(1), eq("基本户"));
     }
 
     @Test
@@ -123,6 +130,7 @@ class ErpAccountDraftServiceImplTest extends BaseMockitoUnitTest {
         assertThat(captor.getValue().getStatus()).isEqualTo(CommonStatusEnum.DISABLE.getStatus());
         assertThat(captor.getValue().getSort()).isEqualTo(8);
         assertThat(captor.getValue().getRemark()).isEqualTo("草稿备注");
+        verify(accountingSubjectService, never()).ensureFundAccountSubject(any(), any());
     }
 
     @Test
@@ -158,6 +166,26 @@ class ErpAccountDraftServiceImplTest extends BaseMockitoUnitTest {
                 org.mockito.ArgumentMatchers.argThat(update ->
                         ErpAccountDocumentStatusEnum.SUBMITTED.getStatus()
                                 .equals(update.getDocumentStatus())));
+        verify(accountingSubjectService).ensureFundAccountSubject(eq(1), eq("基本户"));
+    }
+
+    @Test
+    void submitDraft_whenSubjectEnsureFails_doesNotTransitionStatus() {
+        ErpAccountDO draft = ErpAccountDO.builder()
+                .id(1L).name("基本户").accountType(1)
+                .status(CommonStatusEnum.ENABLE.getStatus()).sort(0)
+                .defaultStatus(false)
+                .documentStatus(ErpAccountDocumentStatusEnum.DRAFT.getStatus())
+                .build();
+        when(accountMapper.selectById(1L)).thenReturn(draft);
+        doThrow(new IllegalStateException("科目补建失败")).when(accountingSubjectService)
+                .ensureFundAccountSubject(eq(1), eq("基本户"));
+
+        assertThatThrownBy(() -> accountService.submitAccountDraft(1L))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("科目补建失败");
+
+        verify(accountMapper, never()).updateByIdAndDocumentStatus(any(), any(), any());
     }
 
     @Test
@@ -196,6 +224,7 @@ class ErpAccountDraftServiceImplTest extends BaseMockitoUnitTest {
         assertThat(captor.getValue().getName()).isEqualTo("更新账户");
         assertThat(captor.getValue().getAccountType()).isEqualTo(2);
         assertThat(captor.getValue().getDocumentStatus()).isNull();
+        verify(accountingSubjectService).ensureFundAccountSubject(eq(2), eq("更新账户"));
     }
 
     @Test

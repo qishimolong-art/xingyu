@@ -11,6 +11,7 @@ import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpProduc
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.priceadjust.ErpSaleOutItemForAdjustRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.priceadjust.ErpSalePriceAdjustImportExcelVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.priceadjust.ErpSalePriceAdjustImportRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.priceadjust.ErpSalePriceAdjustItemPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.priceadjust.ErpSalePriceAdjustPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.priceadjust.ErpSalePriceAdjustSaveReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.priceadjust.ErpSalePriceAdjustDraftSaveReqVO;
@@ -35,6 +36,7 @@ import cn.iocoder.yudao.module.erp.enums.ErpAuditStatus;
 import cn.iocoder.yudao.module.erp.enums.common.ErpBizTypeEnum;
 import cn.iocoder.yudao.module.erp.enums.sale.ErpSalePriceAdjustStatusEnum;
 import cn.iocoder.yudao.module.erp.enums.stock.ErpStockRecordBizTypeEnum;
+import cn.iocoder.yudao.module.erp.service.common.ErpImportProductResolver;
 import cn.iocoder.yudao.module.erp.service.common.ErpOperateLogService;
 import cn.iocoder.yudao.module.erp.service.product.ErpProductService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpWarehouseService;
@@ -313,6 +315,12 @@ public class ErpSalePriceAdjustServiceImpl implements ErpSalePriceAdjustService 
     }
 
     @Override
+    public PageResult<ErpSalePriceAdjustItemDO> getSalePriceAdjustItemPage(ErpSalePriceAdjustItemPageReqVO pageReqVO) {
+        validateSalePriceAdjustExists(pageReqVO.getAdjustId());
+        return salePriceAdjustItemMapper.selectPageByAdjustId(pageReqVO);
+    }
+
+    @Override
     public List<ErpSalePriceAdjustItemDO> getSalePriceAdjustItemListByAdjustIds(Collection<Long> adjustIds) {
         return salePriceAdjustItemMapper.selectListByAdjustIds(adjustIds);
     }
@@ -401,18 +409,12 @@ public class ErpSalePriceAdjustServiceImpl implements ErpSalePriceAdjustService 
             return respVO;
         }
 
-        Set<String> productCodes = list.stream()
-                .map(ErpSalePriceAdjustImportExcelVO::getProductCode)
-                .map(this::trimToNull)
-                .filter(StrUtil::isNotBlank)
-                .collect(Collectors.toSet());
-        Map<String, ErpProductDO> productMap = productCodes.isEmpty()
+        ErpImportProductResolver productResolver = ErpImportProductResolver.build(list,
+                ErpSalePriceAdjustImportExcelVO::getProductCode, ErpSalePriceAdjustImportExcelVO::getProductName,
+                ErpSalePriceAdjustImportExcelVO::getFactoryCode, productMapper);
+        Map<Long, ErpProductRespVO> productVOMap = CollUtil.isEmpty(productResolver.getResolvedProducts())
                 ? new HashMap<>()
-                : DataPermissionUtils.executeIgnore(() -> productMapper.selectListByCodes(productCodes)).stream()
-                .collect(Collectors.toMap(ErpProductDO::getCode, item -> item, (a, b) -> a));
-        Map<Long, ErpProductRespVO> productVOMap = productMap.isEmpty()
-                ? new HashMap<>()
-                : DataPermissionUtils.executeIgnore(() -> productService.getProductVOMap(productMap.values().stream()
+                : DataPermissionUtils.executeIgnore(() -> productService.getProductVOMap(productResolver.getResolvedProducts().stream()
                 .map(ErpProductDO::getId).collect(Collectors.toSet())));
         Map<String, ErpWarehouseDO> warehouseMap = warehouseService.getCurrentUserVisibleSaleWarehouseList().stream()
                 .collect(Collectors.toMap(item -> normalizeKey(item.getName()), item -> item, (a, b) -> a));
@@ -430,9 +432,10 @@ public class ErpSalePriceAdjustServiceImpl implements ErpSalePriceAdjustService 
                 if (saleOutNo == null) {
                     throw new IllegalArgumentException("销售单号不能为空");
                 }
-                String productCode = trimToNull(row.getProductCode());
-                if (productCode == null) {
-                    throw new IllegalArgumentException("产品编码不能为空");
+                ErpImportProductResolver.ResolveResult productResult =
+                        productResolver.resolve(row.getProductCode(), row.getProductName(), row.getFactoryCode());
+                if (productResult.isFailure()) {
+                    throw new IllegalArgumentException(productResult.getErrorMessage());
                 }
                 String warehouseName = trimToNull(row.getWarehouseName());
                 if (warehouseName == null) {
@@ -460,10 +463,7 @@ public class ErpSalePriceAdjustServiceImpl implements ErpSalePriceAdjustService 
                 } else if (!importCustomerId.equals(customerId)) {
                     throw new IllegalArgumentException("导入文件中销售单客户必须保持一致");
                 }
-                ErpProductDO product = productMap.get(productCode);
-                if (product == null) {
-                    throw new IllegalArgumentException("产品不存在");
-                }
+                ErpProductDO product = productResult.getProduct();
 
                 List<ErpSaleOutItemDO> matchedItems = saleOutItemMapper.selectListByOutId(saleOut.getId()).stream()
                         .filter(item -> product.getId().equals(item.getProductId()))
@@ -518,7 +518,7 @@ public class ErpSalePriceAdjustServiceImpl implements ErpSalePriceAdjustService 
             } catch (Exception ex) {
                 respVO.getFailureDetails().add(new ErpSalePriceAdjustImportRespVO.FailureItem(
                         rowNo,
-                        row != null ? row.getProductCode() : null,
+                        row != null ? ErpImportProductResolver.getIdentifier(row.getProductCode(), row.getProductName(), row.getFactoryCode()) : null,
                         ex.getMessage()));
                 respVO.setFailureCount(respVO.getFailureCount() + 1);
             }
@@ -810,8 +810,9 @@ public class ErpSalePriceAdjustServiceImpl implements ErpSalePriceAdjustService 
 
     private boolean isEmptyImportRow(ErpSalePriceAdjustImportExcelVO row) {
         return row == null
-                || StrUtil.isAllBlank(row.getSaleOutNo(), row.getProductCode(), row.getWarehouseName(),
-                row.getAdjustReason(), row.getItemRemark())
+                || StrUtil.isAllBlank(row.getSaleOutNo(), row.getProductCode(), row.getProductName(),
+                row.getFactoryCode(),
+                row.getWarehouseName(), row.getAdjustReason(), row.getItemRemark())
                 && row.getNewPrice() == null;
     }
 

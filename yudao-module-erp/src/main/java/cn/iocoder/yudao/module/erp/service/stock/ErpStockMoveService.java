@@ -2,6 +2,7 @@ package cn.iocoder.yudao.module.erp.service.stock;
 
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.ErpStockUpdateRemarkReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.move.ErpStockMoveItemPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.move.ErpStockMovePageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.move.ErpStockMoveSaveReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.move.ErpStockTransferOutDraftCreateReqVO;
@@ -327,6 +328,8 @@ public interface ErpStockMoveService {
      * @return 库存调拨单项列表
      */
     List<ErpStockMoveItemDO> getStockMoveItemListByMoveId(Long moveId);
+
+    PageResult<ErpStockMoveItemDO> getStockMoveItemPage(ErpStockMoveItemPageReqVO pageReqVO);
 
     /**
      * 获得库存调拨单项 List

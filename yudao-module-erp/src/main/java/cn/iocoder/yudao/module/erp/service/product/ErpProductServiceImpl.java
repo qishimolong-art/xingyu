@@ -25,6 +25,7 @@ import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpProduc
 import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ProductBatchUpdateReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ProductSaveReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.config.ErpFieldConfigDO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.product.ErpProductBrandDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.product.ErpProductCategoryDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.product.ErpProductDeptDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.product.ErpProductDO;
@@ -157,6 +158,8 @@ public class ErpProductServiceImpl implements ErpProductService {
     @Resource
     private ErpProductUnitService productUnitService;
     @Resource
+    private ErpProductBrandService productBrandService;
+    @Resource
     private ErpWarehouseService warehouseService;
     @Resource
     private ErpProductPriceSystemService productPriceSystemService;
@@ -191,6 +194,7 @@ public class ErpProductServiceImpl implements ErpProductService {
         ignoreReadonlyProductSaveFields(createReqVO);
         ValidationUtils.validate(createReqVO);
         validateProductCategoryLeaf(createReqVO.getCategoryId());
+        validateProductBrandSelection(createReqVO.getBrand(), null);
 
 
 
@@ -1179,6 +1183,7 @@ public class ErpProductServiceImpl implements ErpProductService {
         ignoreReadonlyProductSaveFields(updateReqVO);
         ValidationUtils.validate(updateReqVO);
         validateProductCategoryLeaf(updateReqVO.getCategoryId());
+        validateProductBrandSelection(updateReqVO.getBrand(), existing);
         Long targetDefaultWarehouseId = updateReqVO.getDefaultWarehouseId() != null
                 ? updateReqVO.getDefaultWarehouseId() : existing.getDefaultWarehouseId();
         validateDefaultWarehouseExists(targetDefaultWarehouseId);
@@ -1341,6 +1346,17 @@ public class ErpProductServiceImpl implements ErpProductService {
         }
     }
 
+    private void validateProductBrandSelection(String brand, ErpProductDO existing) {
+        String normalizedBrand = trimToNull(brand);
+        if (!StringUtils.hasText(normalizedBrand)) {
+            return;
+        }
+        if (existing != null && Objects.equals(normalizedBrand, trimToNull(existing.getBrand()))) {
+            return;
+        }
+        productBrandService.validateEnabledProductBrand(normalizedBrand);
+    }
+
     private void validateDefaultWarehouseExists(Long defaultWarehouseId) {
         if (defaultWarehouseId == null) {
             return;
@@ -1401,6 +1417,9 @@ public class ErpProductServiceImpl implements ErpProductService {
 
     private void normalizeProductOptionalFields(ErpProductDO product) {
         product.setBarCode(trimToNull(product.getBarCode()));
+        product.setBrand(trimToNull(product.getBrand()));
+        product.setPinyinCode(trimToNull(product.getPinyinCode()));
+        product.setWubiCode(trimToNull(product.getWubiCode()));
     }
 
     @Override
@@ -3150,6 +3169,12 @@ public class ErpProductServiceImpl implements ErpProductService {
         if (isFieldHidden(hiddenFieldSet, "name")) {
             reqVO.setName(existing == null ? null : existing.getName());
         }
+        if (isFieldHidden(hiddenFieldSet, "pinyinCode")) {
+            reqVO.setPinyinCode(existing == null ? null : existing.getPinyinCode());
+        }
+        if (isFieldHidden(hiddenFieldSet, "wubiCode")) {
+            reqVO.setWubiCode(existing == null ? null : existing.getWubiCode());
+        }
         if (isFieldHidden(hiddenFieldSet, "unitId")) {
             reqVO.setUnitId(existing == null ? null : existing.getUnitId());
         }
@@ -3158,6 +3183,9 @@ public class ErpProductServiceImpl implements ErpProductService {
         }
         if (isFieldHidden(hiddenFieldSet, "vehicleModel")) {
             reqVO.setVehicleModel(existing == null ? null : existing.getVehicleModel());
+        }
+        if (isFieldHidden(hiddenFieldSet, "brand")) {
+            reqVO.setBrand(existing == null ? null : existing.getBrand());
         }
         if (isFieldHidden(hiddenFieldSet, "standard")) {
             reqVO.setStandard(existing == null ? null : existing.getStandard());
@@ -3235,6 +3263,11 @@ public class ErpProductServiceImpl implements ErpProductService {
     }
 
     @Override
+    public Long getProductCountByBrand(String brand) {
+        return productMapper.selectCountByBrand(brand);
+    }
+
+    @Override
     public void updateProductLastPurchasePrice(Long productId, BigDecimal lastPurchasePrice) {
         if (productId == null || lastPurchasePrice == null) {
             return;
@@ -3290,6 +3323,7 @@ public class ErpProductServiceImpl implements ErpProductService {
 
         Map<String, ErpProductCategoryDO> categoryMap = buildCategoryCodeMap();
         Map<String, ErpProductUnitDO> unitMap = buildUnitNameMap();
+        Map<String, ErpProductBrandDO> brandMap = buildBrandNameMap();
         Map<String, ErpWarehouseDO> warehouseMap = buildWarehouseNameMap();
         Map<String, ErpProductDO> existedMap = buildExistedProductMap(list);
 
@@ -3301,7 +3335,7 @@ public class ErpProductServiceImpl implements ErpProductService {
             Integer rowNo = i + 2;
             String code = trimToNull(row.getCode());
             try {
-                ProductSaveReqVO saveReqVO = buildSaveReqVO(row, categoryMap, unitMap, warehouseMap);
+                ProductSaveReqVO saveReqVO = buildSaveReqVO(row, categoryMap, unitMap, brandMap, warehouseMap);
                 if (StringUtils.hasText(code) && existedMap.containsKey(code)) {
                     saveReqVO.setId(existedMap.get(code).getId());
                     updateProduct(saveReqVO);
@@ -3335,6 +3369,8 @@ public class ErpProductServiceImpl implements ErpProductService {
             ErpProductImportExcelVO item = new ErpProductImportExcelVO();
             item.setCode(trimToNull(readCsvValue(row, "配件编码", "产品编码")));
             item.setName(trimToNull(readCsvValue(row, "产品名称")));
+            item.setPinyinCode(trimToNull(readCsvValue(row, "拼音码")));
+            item.setWubiCode(trimToNull(readCsvValue(row, "五笔码")));
             item.setBarCode(trimToNull(readCsvValue(row, "产品条码")));
             item.setCategoryCode(trimToNull(readCsvValue(row, "配件分类编码", "配件分类", "商品分类", "产品分类", "分类")));
             item.setBatchNoEnabled(parseBoolean(readCsvValue(row, "开启批次号", "是否开启批次号管理", "批次号管理")));
@@ -3343,6 +3379,7 @@ public class ErpProductServiceImpl implements ErpProductService {
             item.setDefaultWarehouseName(trimToNull(readCsvValue(row, "默认仓库")));
             item.setVehicleModel(trimToNull(readCsvValue(row, "适用车型")));
             item.setFactoryCode(trimToNull(readCsvValue(row, "厂家编码")));
+            item.setBrand(trimToNull(readCsvValue(row, "品牌", "配件品牌")));
             item.setPurchasePrice(parseBigDecimal(readCsvValue(row, "采购价格")));
             item.setSalePrice(parseBigDecimal(readCsvValue(row, "销售价格")));
             item.setMinPrice(parseBigDecimal(readCsvValue(row, "最低价格")));
@@ -3380,6 +3417,12 @@ public class ErpProductServiceImpl implements ErpProductService {
                 .collect(Collectors.toMap(ErpProductUnitDO::getName, item -> item, (a, b) -> a, LinkedHashMap::new));
     }
 
+    private Map<String, ErpProductBrandDO> buildBrandNameMap() {
+        return productBrandService.getProductBrandListByStatus(CommonStatusEnum.ENABLE.getStatus()).stream()
+                .filter(item -> StringUtils.hasText(item.getName()))
+                .collect(Collectors.toMap(ErpProductBrandDO::getName, item -> item, (a, b) -> a, LinkedHashMap::new));
+    }
+
     private Map<String, ErpWarehouseDO> buildWarehouseNameMap() {
         return warehouseService.getWarehouseListByStatus(CommonStatusEnum.ENABLE.getStatus()).stream()
                 .filter(item -> StringUtils.hasText(item.getName()))
@@ -3403,10 +3446,13 @@ public class ErpProductServiceImpl implements ErpProductService {
     private ProductSaveReqVO buildSaveReqVO(ErpProductImportExcelVO row,
                                             Map<String, ErpProductCategoryDO> categoryMap,
                                             Map<String, ErpProductUnitDO> unitMap,
+                                            Map<String, ErpProductBrandDO> brandMap,
                                             Map<String, ErpWarehouseDO> warehouseMap) {
         ProductSaveReqVO reqVO = new ProductSaveReqVO();
         reqVO.setCode(trimToNull(row.getCode()));
         reqVO.setName(trimToNull(row.getName()));
+        reqVO.setPinyinCode(trimToNull(row.getPinyinCode()));
+        reqVO.setWubiCode(trimToNull(row.getWubiCode()));
         reqVO.setBarCode(trimToNull(row.getBarCode()));
         reqVO.setCategoryId(resolveCategoryId(row.getCategoryCode(), categoryMap));
         reqVO.setBatchNoEnabled(Boolean.TRUE.equals(row.getBatchNoEnabled()));
@@ -3415,6 +3461,7 @@ public class ErpProductServiceImpl implements ErpProductService {
         reqVO.setStatus(row.getStatus() == null ? CommonStatusEnum.ENABLE.getStatus() : row.getStatus());
         reqVO.setVehicleModel(trimToNull(row.getVehicleModel()));
         reqVO.setFactoryCode(trimToNull(row.getFactoryCode()));
+        reqVO.setBrand(resolveBrandIfPresent(row.getBrand(), brandMap));
         reqVO.setPurchasePrice(row.getPurchasePrice());
         reqVO.setSalePrice(row.getSalePrice());
         reqVO.setMinPrice(row.getMinPrice());
@@ -3464,6 +3511,18 @@ public class ErpProductServiceImpl implements ErpProductService {
             throw new IllegalArgumentException("默认仓库不存在：" + warehouseName);
         }
         return warehouse.getId();
+    }
+
+    private String resolveBrandIfPresent(String brandName, Map<String, ErpProductBrandDO> brandMap) {
+        String normalizedName = trimToNull(brandName);
+        if (!StringUtils.hasText(normalizedName)) {
+            return null;
+        }
+        ErpProductBrandDO brand = brandMap.get(normalizedName);
+        if (brand == null) {
+            throw new IllegalArgumentException("配件品牌不存在或已停用：" + brandName);
+        }
+        return brand.getName();
     }
 
     private String getImportFailureReason(Exception ex) {

@@ -6,7 +6,9 @@ import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.common.util.number.MoneyUtils;
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
 import cn.iocoder.yudao.framework.datapermission.core.util.DataPermissionUtils;
+import cn.iocoder.yudao.module.infra.api.config.ConfigApi;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.ErpStockUpdateRemarkReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.move.ErpStockMoveItemPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.move.ErpStockMovePageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.move.ErpStockMoveSaveReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.move.ErpStockTransferOutDraftCreateReqVO;
@@ -78,6 +80,8 @@ public class ErpStockMoveServiceImpl implements ErpStockMoveService {
     private static final String TRANSFER_OUT_FIELD_PERMISSION_MODULE = "erp_stock_transfer_out";
     private static final String TRANSFER_OUT_DATA_PERMISSION_FORM = "erp_stock_transfer_out";
     private static final String TRANSFER_IN_DATA_PERMISSION_FORM = "erp_stock_transfer_in";
+    private static final String UNLOCK_CART_HEAD_DEPT_IDS_CONFIG_KEY =
+            "erp.stock.transferOut.unlockCartHeadDeptIds";
     private static final int TRANSFER_DIRECTION_OUT = 10;
     private static final int TRANSFER_DIRECTION_IN = 20;
 
@@ -111,6 +115,8 @@ public class ErpStockMoveServiceImpl implements ErpStockMoveService {
     private DeptApi deptApi;
     @Resource
     private PermissionApi permissionApi;
+    @Resource
+    private ConfigApi configApi;
     @Resource
     private ErpDataPermissionDeptService dataPermissionDeptService;
     @Resource
@@ -436,8 +442,22 @@ public class ErpStockMoveServiceImpl implements ErpStockMoveService {
         if (!ErpAuditStatus.PROCESS.getStatus().equals(stockMove.getStatus())) {
             return ErpStockMoveOperationPermission.denied("调拨出库单已审核，不能解锁手推车");
         }
-        return getCrossDeptOperationPermission(stockMove, items,
+        return getUnlockCartCrossDeptOperationPermission(stockMove, items,
                 "销售手推车跨部门调拨出库单只能由总公司解锁");
+    }
+
+    private ErpStockMoveOperationPermission getUnlockCartCrossDeptOperationPermission(ErpStockMoveDO stockMove,
+                                                                                     List<ErpStockMoveItemDO> items,
+                                                                                     String deniedReason) {
+        if (!isSaleCartCrossDeptMove(stockMove, items)) {
+            return ErpStockMoveOperationPermission.allowed();
+        }
+        Long loginDeptId = getLoginUserDeptId();
+        if (loginDeptId != null && (isAncestorDept(stockMove.getDeptId(), loginDeptId)
+                || isConfiguredUnlockCartHeadDept(loginDeptId))) {
+            return ErpStockMoveOperationPermission.allowed();
+        }
+        return ErpStockMoveOperationPermission.denied(deniedReason);
     }
 
     private ErpStockMoveOperationPermission getCrossDeptOperationPermission(ErpStockMoveDO stockMove,
@@ -587,6 +607,7 @@ public class ErpStockMoveServiceImpl implements ErpStockMoveService {
             throw exception(STOCK_MOVE_UPDATE_FAIL_NOT_DRAFT, stockMove.getNo());
         }
         List<ErpStockMoveItemDO> oldItems = stockMoveItemMapper.selectListByMoveId(updateReqVO.getId());
+        preserveSourceSaleReturnMoveItems(updateReqVO.getItems(), oldItems);
         fieldPermissionMasker.preserveHiddenFields(TRANSFER_OUT_FIELD_PERMISSION_MODULE, updateReqVO, stockMove);
         fieldPermissionMasker.preserveHiddenItemFields(
                 TRANSFER_OUT_FIELD_PERMISSION_MODULE, updateReqVO.getItems(), oldItems);
@@ -674,9 +695,38 @@ public class ErpStockMoveServiceImpl implements ErpStockMoveService {
             throw exception(STOCK_MOVE_UPDATE_FAIL_APPROVE, stockMove.getNo());
         }
         fieldPermissionMasker.preserveHiddenFields(fieldPermissionModule, updateReqVO, stockMove);
-        fieldPermissionMasker.preserveHiddenItemFields(fieldPermissionModule, updateReqVO.getItems(),
-                stockMoveItemMapper.selectListByMoveId(updateReqVO.getId()));
+        List<ErpStockMoveItemDO> oldItems = stockMoveItemMapper.selectListByMoveId(updateReqVO.getId());
+        preserveSourceSaleReturnMoveItems(updateReqVO.getItems(), oldItems);
+        fieldPermissionMasker.preserveHiddenItemFields(fieldPermissionModule, updateReqVO.getItems(), oldItems);
         doUpdateStockMove(updateReqVO, stockMove, true);
+    }
+
+    private void preserveSourceSaleReturnMoveItems(List<ErpStockMoveSaveReqVO.Item> reqItems,
+                                                   List<ErpStockMoveItemDO> oldItems) {
+        if (CollUtil.isEmpty(reqItems) || CollUtil.isEmpty(oldItems)) {
+            return;
+        }
+        Map<Long, ErpStockMoveItemDO> oldItemMap = convertMap(oldItems, ErpStockMoveItemDO::getId);
+        for (ErpStockMoveSaveReqVO.Item reqItem : reqItems) {
+            if (reqItem.getId() == null) {
+                continue;
+            }
+            ErpStockMoveItemDO oldItem = oldItemMap.get(reqItem.getId());
+            if (oldItem == null || oldItem.getSourceSaleReturnItemId() == null) {
+                continue;
+            }
+            if (reqItem.getSourceSaleReturnItemId() != null
+                    && !Objects.equals(reqItem.getSourceSaleReturnItemId(), oldItem.getSourceSaleReturnItemId())) {
+                throw exception(STOCK_MOVE_SOURCE_SALE_RETURN_CHANGED);
+            }
+            if (reqItem.getProductId() != null && !Objects.equals(reqItem.getProductId(), oldItem.getProductId())) {
+                throw exception(STOCK_MOVE_SOURCE_SALE_RETURN_CHANGED);
+            }
+            reqItem.setSourceSaleReturnId(oldItem.getSourceSaleReturnId());
+            reqItem.setSourceSaleReturnItemId(oldItem.getSourceSaleReturnItemId());
+            reqItem.setSourceSaleReturnNo(oldItem.getSourceSaleReturnNo());
+            reqItem.setProductId(oldItem.getProductId());
+        }
     }
 
     private void doUpdateStockMove(ErpStockMoveSaveReqVO updateReqVO, ErpStockMoveDO stockMove,
@@ -1381,6 +1431,49 @@ public class ErpStockMoveServiceImpl implements ErpStockMoveService {
         return false;
     }
 
+    private boolean isConfiguredUnlockCartHeadDept(Long loginDeptId) {
+        Set<Long> headDeptIds = parsePositiveLongSet(configApi.getConfigValueByKey(
+                UNLOCK_CART_HEAD_DEPT_IDS_CONFIG_KEY));
+        if (CollUtil.isEmpty(headDeptIds)) {
+            return false;
+        }
+        Long currentId = loginDeptId;
+        Set<Long> visited = new HashSet<>();
+        while (currentId != null && currentId > 0 && visited.add(currentId)) {
+            if (headDeptIds.contains(currentId)) {
+                return true;
+            }
+            DeptRespDTO current = deptApi.getDept(currentId);
+            if (current == null || current.getParentId() == null || current.getParentId() <= 0) {
+                return false;
+            }
+            currentId = current.getParentId();
+        }
+        return false;
+    }
+
+    private Set<Long> parsePositiveLongSet(String value) {
+        Set<Long> result = new HashSet<>();
+        if (value == null || value.trim().isEmpty()) {
+            return result;
+        }
+        for (String part : value.split(",")) {
+            String trimmed = part.trim();
+            if (trimmed.isEmpty()) {
+                continue;
+            }
+            try {
+                Long id = Long.valueOf(trimmed);
+                if (id > 0) {
+                    result.add(id);
+                }
+            } catch (NumberFormatException ignored) {
+                // Ignore invalid config fragments so detail permission checks do not fail.
+            }
+        }
+        return result;
+    }
+
     private Map<Long, DeptRespDTO> getDeptHierarchyMap(Set<Long> childDeptIds, Long possibleAncestorDeptId) {
         if (CollUtil.isEmpty(childDeptIds) || possibleAncestorDeptId == null) {
             return Collections.emptyMap();
@@ -1646,6 +1739,12 @@ public class ErpStockMoveServiceImpl implements ErpStockMoveService {
     @Override
     public List<ErpStockMoveItemDO> getStockMoveItemListByMoveId(Long moveId) {
         return stockMoveItemMapper.selectListByMoveId(moveId);
+    }
+
+    @Override
+    public PageResult<ErpStockMoveItemDO> getStockMoveItemPage(ErpStockMoveItemPageReqVO pageReqVO) {
+        validateStockMoveExists(pageReqVO.getMoveId());
+        return stockMoveItemMapper.selectPageByMoveId(pageReqVO);
     }
 
     @Override

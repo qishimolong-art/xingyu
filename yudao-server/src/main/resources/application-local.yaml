@@ -48,7 +48,7 @@ spring:
       primary: master
       datasource:
         master:
-          url: jdbc:mysql://47.109.30.66:3306/ruoyi-vue-pro?useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&nullCatalogMeansCurrent=true&rewriteBatchedStatements=true # MySQL Connector/J 8.X 连接的示例
+          url: jdbc:mysql://47.108.161.110:3306/ruoyi-vue-pro?useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&nullCatalogMeansCurrent=true&rewriteBatchedStatements=true # MySQL Connector/J 8.X 连接的示例
           #          url: jdbc:mysql://127.0.0.1:3306/ruoyi-vue-pro?useSSL=true&allowPublicKeyRetrieval=true&useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia/Shanghai&rewriteBatchedStatements=true # MySQL Connector/J 5.X 连接的示例
           #          url: jdbc:postgresql://127.0.0.1:5432/ruoyi-vue-pro # PostgreSQL 连接的示例
           #          url: jdbc:oracle:thin:@127.0.0.1:1521:xe # Oracle 连接的示例
@@ -56,7 +56,7 @@ spring:
           #          url: jdbc:dm://127.0.0.1:5236?schema=RUOYI_VUE_PRO # DM 连接的示例
           #          url: jdbc:kingbase8://127.0.0.1:54321/test  # 人大金仓 KingbaseES 连接的示例
           #          url: jdbc:postgresql://127.0.0.1:5432/postgres # OpenGauss 连接的示例
-          username: erp
+          username: ruoyi
           password: 123*Abc*
           #          username: sa # SQL Server 连接的示例
           #          password: Yudao@2024 # SQL Server 连接的示例
@@ -66,8 +66,8 @@ spring:
           #          password: Yudao@2024 # OpenGauss 连接的示例
         slave: # 模拟从库，可根据自己需要修改
           lazy: true # 开启懒加载，保证启动速度
-          url: jdbc:mysql://127.0.0.1:3306/ruoyi-vue-pro?useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&rewriteBatchedStatements=true&nullCatalogMeansCurrent=true
-          username: root
+          url: jdbc:mysql://47.108.161.110:3306/ruoyi-vue-pro?useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&rewriteBatchedStatements=true&nullCatalogMeansCurrent=true
+          username: ruoyi
           password: 123*Abc*
 #        tdengine: # IoT 数据库（需要 IoT 物联网再开启噢！）
 #          lazy: true # 开启懒加载，保证启动速度
@@ -80,7 +80,7 @@ spring:
 
   # Redis 配置。Redisson 默认的配置足够使用，一般不需要进行调优
   redis:
-    host: 47.109.30.86 # 地址
+    host: 47.108.161.110 # 地址
     port: 6379 # 端口
     database: 15 # 数据库索引
     password: 123*Abc* # 密码，建议生产环境开启
@@ -229,9 +229,15 @@ yudao:
     local:
       enabled: ${YUDAO_FILE_LOCAL_ENABLED:true}
       base-path: ${YUDAO_FILE_LOCAL_BASE_PATH:files}
-      domain: ${YUDAO_FILE_LOCAL_DOMAIN:http://localhost:48080}
+      # 为空时保存 /admin-api/infra/file/-1/get/... 相对地址，避免把服务器 localhost 写入业务表。
+      domain: ${YUDAO_FILE_LOCAL_DOMAIN:}
   captcha:
     enable: false # 本地环境，暂时关闭图片验证码，方便登录等接口的测试；
+  wecom:
+    enabled: true
+    corp-id: wweadabfc4c1eddf73
+    agent-id: 1000084
+    secret: cWBjL8GZV3s6q7y3CZRLccMyPYkxqKTnpcJZGVWFLv8
   security:
     mock-enable: true
   erp:

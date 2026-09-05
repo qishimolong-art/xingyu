@@ -30,11 +30,13 @@ import static cn.iocoder.yudao.framework.common.exception.util.ServiceExceptionU
 import static cn.iocoder.yudao.framework.security.core.util.SecurityFrameworkUtils.getLoginUserId;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.OTHER_RECEIVABLE_APPROVE_FAIL;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.OTHER_RECEIVABLE_DELETE_FAIL_APPROVE;
+import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.OTHER_RECEIVABLE_DRAFT_SAVE_FAIL;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.OTHER_RECEIVABLE_DRAFT_SUBMIT_FAIL;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.OTHER_RECEIVABLE_DRAFT_UPDATE_FAIL;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.OTHER_RECEIVABLE_NOT_EXISTS;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.OTHER_RECEIVABLE_NO_EXISTS;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.OTHER_RECEIVABLE_PROCESS_FAIL;
+import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.OTHER_RECEIVABLE_SAVE_FAIL;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.OTHER_RECEIVABLE_UPDATE_FAIL_APPROVE;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.OTHER_RECEIVABLE_UPDATE_FAIL_STATUS_CHANGED;
 import static cn.iocoder.yudao.module.erp.enums.LogRecordConstants.ERP_RECEIVABLE_OTHER_TYPE;
@@ -64,6 +66,7 @@ public class ErpReceivableOtherServiceImpl implements ErpReceivableOtherService 
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Long createReceivableOther(ErpReceivableOtherSaveReqVO createReqVO) {
+        validateReceivableAmountNonZero(createReqVO.getReceivableAmount(), false);
         customerService.validateCustomer(createReqVO.getCustomerId());
         String no = noRedisDAO.generate(ErpNoRedisDAO.OTHER_RECEIVABLE_NO_PREFIX);
         if (receivableOtherMapper.selectByNo(no) != null) {
@@ -86,6 +89,7 @@ public class ErpReceivableOtherServiceImpl implements ErpReceivableOtherService 
     @Transactional(rollbackFor = Exception.class)
     public Long createReceivableOtherDraft(ErpReceivableOtherDraftSaveReqVO createReqVO) {
         fieldPermissionMasker.clearHiddenFields(FIELD_PERMISSION_MODULE, createReqVO);
+        validateDraftForSave(createReqVO.getCustomerId());
         String no = noRedisDAO.generate(ErpNoRedisDAO.OTHER_RECEIVABLE_NO_PREFIX);
         if (receivableOtherMapper.selectByNo(no) != null) {
             throw exception(OTHER_RECEIVABLE_NO_EXISTS);
@@ -155,6 +159,7 @@ public class ErpReceivableOtherServiceImpl implements ErpReceivableOtherService 
             throw exception(OTHER_RECEIVABLE_UPDATE_FAIL_APPROVE, db.getNo());
         }
         fieldPermissionMasker.preserveHiddenFields(FIELD_PERMISSION_MODULE, updateReqVO, db);
+        validateReceivableAmountNonZero(updateReqVO.getReceivableAmount(), false);
         customerService.validateCustomer(updateReqVO.getCustomerId());
         ErpReceivableOtherDO updateObj = BeanUtils.toBean(updateReqVO, ErpReceivableOtherDO.class, obj -> {
             if (StrUtil.isBlank(obj.getSourceType())) {
@@ -201,6 +206,7 @@ public class ErpReceivableOtherServiceImpl implements ErpReceivableOtherService 
         if (updateObj.getDeptId() == null) {
             updateObj.setDeptId(db.getDeptId());
         }
+        validateDraftForSave(updateObj.getCustomerId());
         normalizeDraft(updateObj);
         if (receivableOtherMapper.updateByIdAndStatus(db.getId(),
                 ErpReceivableOtherStatusEnum.DRAFT.getStatus(), updateObj) == 0) {
@@ -325,6 +331,13 @@ public class ErpReceivableOtherServiceImpl implements ErpReceivableOtherService 
         doObj.setIsPaperNote(Boolean.TRUE.equals(doObj.getIsPaperNote()));
     }
 
+    private void validateDraftForSave(Long customerId) {
+        if (customerId == null) {
+            throw exception(OTHER_RECEIVABLE_DRAFT_SAVE_FAIL, "客户不能为空");
+        }
+        customerService.validateCustomer(customerId);
+    }
+
     private void validateDraftForSubmit(ErpReceivableOtherDO doObj) {
         if (doObj.getBizTime() == null) {
             throw exception(OTHER_RECEIVABLE_DRAFT_SUBMIT_FAIL, "业务日期不能为空");
@@ -335,7 +348,15 @@ public class ErpReceivableOtherServiceImpl implements ErpReceivableOtherService 
         if (doObj.getReceivableAmount() == null) {
             throw exception(OTHER_RECEIVABLE_DRAFT_SUBMIT_FAIL, "应收金额不能为空");
         }
+        validateReceivableAmountNonZero(doObj.getReceivableAmount(), true);
         customerService.validateCustomer(doObj.getCustomerId());
         validateRefs(doObj.getHandlerId(), doObj.getDeptId());
+    }
+
+    private void validateReceivableAmountNonZero(BigDecimal receivableAmount, boolean draftSubmit) {
+        if (receivableAmount != null && receivableAmount.compareTo(BigDecimal.ZERO) == 0) {
+            throw exception(draftSubmit ? OTHER_RECEIVABLE_DRAFT_SUBMIT_FAIL : OTHER_RECEIVABLE_SAVE_FAIL,
+                    "应收金额不能为 0");
+        }
     }
 }

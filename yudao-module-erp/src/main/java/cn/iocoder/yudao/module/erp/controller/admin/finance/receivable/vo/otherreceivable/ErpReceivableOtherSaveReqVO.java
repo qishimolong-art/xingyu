@@ -3,6 +3,7 @@ package cn.iocoder.yudao.module.erp.controller.admin.finance.receivable.vo.other
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Data;
 
+import javax.validation.constraints.AssertTrue;
 import javax.validation.constraints.NotNull;
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -35,6 +36,11 @@ public class ErpReceivableOtherSaveReqVO {
     @Schema(description = "应收金额", requiredMode = Schema.RequiredMode.REQUIRED)
     @NotNull(message = "应收金额不能为空")
     private BigDecimal receivableAmount;
+
+    @AssertTrue(message = "应收金额不能为 0")
+    public boolean isReceivableAmountNonZero() {
+        return receivableAmount == null || receivableAmount.compareTo(BigDecimal.ZERO) != 0;
+    }
 
     @Schema(description = "调账项目")
     private String project;

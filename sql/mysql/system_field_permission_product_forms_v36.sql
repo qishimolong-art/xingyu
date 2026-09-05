@@ -38,7 +38,7 @@ CREATE TABLE IF NOT EXISTS `system_role_field_permission` (
 DELETE rfp
 FROM `system_role_field_permission` rfp
 JOIN `system_field_definition` fd ON fd.id = rfp.field_id
-WHERE fd.module IN ('erp_product', 'erp_product_category', 'erp_product_unit', 'erp_price_system')
+WHERE fd.module IN ('erp_product', 'erp_product_category', 'erp_product_brand', 'erp_product_unit', 'erp_price_system')
   AND (
     fd.field_group IN ('list_col', 'search_info')
     OR fd.field_key LIKE 'col\_%'
@@ -46,7 +46,7 @@ WHERE fd.module IN ('erp_product', 'erp_product_category', 'erp_product_unit', '
   );
 
 DELETE FROM `system_field_definition`
-WHERE `module` IN ('erp_product', 'erp_product_category', 'erp_product_unit', 'erp_price_system')
+WHERE `module` IN ('erp_product', 'erp_product_category', 'erp_product_brand', 'erp_product_unit', 'erp_price_system')
   AND (
     `field_group` IN ('list_col', 'search_info')
     OR `field_key` LIKE 'col\_%'
@@ -62,6 +62,7 @@ VALUES
 ('erp_product', 'unitId', '单位', 'base_info', 40, '1', NOW(), '1', NOW(), b'0', 1),
 ('erp_product', 'defaultWarehouseId', '默认仓库', 'base_info', 50, '1', NOW(), '1', NOW(), b'0', 1),
 ('erp_product', 'vehicleModel', '适用车型', 'base_info', 60, '1', NOW(), '1', NOW(), b'0', 1),
+('erp_product', 'brand', '品牌', 'base_info', 65, '1', NOW(), '1', NOW(), b'0', 1),
 ('erp_product', 'standard', '规格', 'base_info', 70, '1', NOW(), '1', NOW(), b'0', 1),
 ('erp_product', 'categoryId', '配件分类', 'base_info', 80, '1', NOW(), '1', NOW(), b'0', 1),
 ('erp_product', 'batchNoEnabled', '是否开启批次号管理', 'base_info', 85, '1', NOW(), '1', NOW(), b'0', 1),
@@ -95,6 +96,9 @@ VALUES
 ('erp_product_category', 'status', '状态', 'base_info', 50, '1', NOW(), '1', NOW(), b'0', 1),
 ('erp_product_unit', 'name', '单位名称', 'base_info', 10, '1', NOW(), '1', NOW(), b'0', 1),
 ('erp_product_unit', 'status', '单位状态', 'base_info', 20, '1', NOW(), '1', NOW(), b'0', 1),
+('erp_product_brand', 'name', '品牌名称', 'base_info', 10, '1', NOW(), '1', NOW(), b'0', 1),
+('erp_product_brand', 'status', '品牌状态', 'base_info', 20, '1', NOW(), '1', NOW(), b'0', 1),
+('erp_product_brand', 'sort', '排序', 'base_info', 30, '1', NOW(), '1', NOW(), b'0', 1),
 ('erp_price_system', 'code', '价格体系编码', 'base_info', 10, '1', NOW(), '1', NOW(), b'0', 1),
 ('erp_price_system', 'name', '价格体系名称', 'base_info', 20, '1', NOW(), '1', NOW(), b'0', 1),
 ('erp_price_system', 'status', '状态', 'base_info', 30, '1', NOW(), '1', NOW(), b'0', 1),

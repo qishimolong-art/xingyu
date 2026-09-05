@@ -20,7 +20,7 @@ public class ErpReceivableOtherIncomeSaveReqVO {
     private String voucherNo;
     @NotNull private String incomeType;
     private BigDecimal totalAmount;
-    private Long deptId;
+    @NotNull private Long deptId;
     @NotNull private Long handlerId;
     private String party;
     private String relatedBiz;
@@ -35,6 +35,7 @@ public class ErpReceivableOtherIncomeSaveReqVO {
         @NotNull private BigDecimal amount;
         private String invoiceNo;
         private String party;
+        private Long customerId;
         private Long deptId;
         private LocalDateTime bizDate;
         private Long handlerId;

@@ -40,6 +40,18 @@ public class ErpWarehouseRespVO {
     @ExcelProperty("仓库地址")
     private String address;
 
+    @Schema(description = "地图显示名称", example = "兴宇路通仓库")
+    @ExcelProperty("地图名称")
+    private String mapName;
+
+    @Schema(description = "仓库经度（GCJ-02）", example = "104.066801")
+    @ExcelProperty("经度")
+    private BigDecimal longitude;
+
+    @Schema(description = "仓库纬度（GCJ-02）", example = "30.572269")
+    @ExcelProperty("纬度")
+    private BigDecimal latitude;
+
     @Schema(description = "排序", requiredMode = Schema.RequiredMode.REQUIRED, example = "10")
     @ExcelProperty("排序")
     private Long sort;

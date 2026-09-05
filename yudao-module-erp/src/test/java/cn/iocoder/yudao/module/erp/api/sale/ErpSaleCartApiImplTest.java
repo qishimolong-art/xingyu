@@ -16,6 +16,7 @@ import java.math.BigDecimal;
 import java.util.Collections;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.Mockito.when;
 
@@ -49,6 +50,7 @@ class ErpSaleCartApiImplTest extends BaseMockitoUnitTest {
             assertEquals(30L, reqVO.getSourceId());
             assertEquals("MO-001", reqVO.getSourceNo());
             assertEquals("remark", reqVO.getRemark());
+            assertNull(reqVO.getSaleUserId());
             ErpSaleCartSaveReqVO.Item item = reqVO.getItems().get(0);
             assertEquals(40L, item.getProductId());
             assertEquals(50L, item.getWarehouseId());

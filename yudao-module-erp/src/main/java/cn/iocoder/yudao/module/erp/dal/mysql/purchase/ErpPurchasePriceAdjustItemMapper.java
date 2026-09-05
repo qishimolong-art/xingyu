@@ -1,7 +1,11 @@
 package cn.iocoder.yudao.module.erp.dal.mysql.purchase;
 
+import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.mybatis.core.mapper.BaseMapperX;
+import cn.iocoder.yudao.framework.mybatis.core.query.LambdaQueryWrapperX;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.priceadjust.ErpPurchasePriceAdjustItemPageReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchasePriceAdjustItemDO;
+import com.baomidou.mybatisplus.core.toolkit.support.SFunction;
 import org.apache.ibatis.annotations.Mapper;
 
 import java.util.Collection;
@@ -19,6 +23,23 @@ public interface ErpPurchasePriceAdjustItemMapper extends BaseMapperX<ErpPurchas
         return selectList(ErpPurchasePriceAdjustItemDO::getAdjustId, adjustId);
     }
 
+    default PageResult<ErpPurchasePriceAdjustItemDO> selectPageByAdjustId(ErpPurchasePriceAdjustItemPageReqVO reqVO) {
+        LambdaQueryWrapperX<ErpPurchasePriceAdjustItemDO> query = new LambdaQueryWrapperX<ErpPurchasePriceAdjustItemDO>()
+                .eq(ErpPurchasePriceAdjustItemDO::getAdjustId, reqVO.getAdjustId());
+        SFunction<ErpPurchasePriceAdjustItemDO, ?> orderColumn = getOrderColumn(reqVO.getOrderField());
+        if (orderColumn == null) {
+            query.orderByAsc(ErpPurchasePriceAdjustItemDO::getId);
+        } else if ("desc".equalsIgnoreCase(reqVO.getOrderDirection())) {
+            query.orderByDesc(orderColumn);
+        } else {
+            query.orderByAsc(orderColumn);
+        }
+        if (orderColumn != null && !"id".equals(reqVO.getOrderField().trim())) {
+            query.orderByAsc(ErpPurchasePriceAdjustItemDO::getId);
+        }
+        return selectPage(reqVO, query);
+    }
+
     default List<ErpPurchasePriceAdjustItemDO> selectListByAdjustIds(Collection<Long> adjustIds) {
         return selectList(ErpPurchasePriceAdjustItemDO::getAdjustId, adjustIds);
     }
@@ -29,6 +50,58 @@ public interface ErpPurchasePriceAdjustItemMapper extends BaseMapperX<ErpPurchas
 
     default Long selectCountByWarehouseId(Long warehouseId) {
         return selectCount(ErpPurchasePriceAdjustItemDO::getWarehouseId, warehouseId);
+    }
+
+    static SFunction<ErpPurchasePriceAdjustItemDO, ?> getOrderColumn(String orderField) {
+        if (orderField == null) {
+            return null;
+        }
+        switch (orderField.trim()) {
+            case "id":
+                return ErpPurchasePriceAdjustItemDO::getId;
+            case "inId":
+            case "inNo":
+                return ErpPurchasePriceAdjustItemDO::getInId;
+            case "inItemId":
+                return ErpPurchasePriceAdjustItemDO::getInItemId;
+            case "productId":
+            case "productCode":
+            case "productName":
+            case "productUnitName":
+            case "weight":
+            case "packageQty":
+                return ErpPurchasePriceAdjustItemDO::getProductId;
+            case "warehouseId":
+                return ErpPurchasePriceAdjustItemDO::getWarehouseId;
+            case "deptId":
+                return ErpPurchasePriceAdjustItemDO::getDeptId;
+            case "oldPrice":
+                return ErpPurchasePriceAdjustItemDO::getOldPrice;
+            case "newPrice":
+                return ErpPurchasePriceAdjustItemDO::getNewPrice;
+            case "count":
+                return ErpPurchasePriceAdjustItemDO::getCount;
+            case "adjustRatio":
+                return ErpPurchasePriceAdjustItemDO::getAdjustRatio;
+            case "adjustPrice":
+                return ErpPurchasePriceAdjustItemDO::getAdjustPrice;
+            case "vehicleModel":
+                return ErpPurchasePriceAdjustItemDO::getVehicleModel;
+            case "standard":
+                return ErpPurchasePriceAdjustItemDO::getStandard;
+            case "featureCode":
+                return ErpPurchasePriceAdjustItemDO::getFeatureCode;
+            case "originPlace":
+                return ErpPurchasePriceAdjustItemDO::getOriginPlace;
+            case "brand":
+                return ErpPurchasePriceAdjustItemDO::getBrand;
+            case "drawingNo":
+                return ErpPurchasePriceAdjustItemDO::getDrawingNo;
+            case "warehousePosition":
+                return ErpPurchasePriceAdjustItemDO::getWarehousePosition;
+            default:
+                return null;
+        }
     }
 
     /**

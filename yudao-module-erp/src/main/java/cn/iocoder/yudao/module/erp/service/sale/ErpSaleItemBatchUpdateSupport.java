@@ -38,11 +38,20 @@ public class ErpSaleItemBatchUpdateSupport {
 
     public void validateFieldPermission(String module, boolean updateWarehouse, boolean updateDept,
                                         ErrorCode errorCode) {
+        validateFieldPermission(module, updateWarehouse, updateDept, false, errorCode);
+    }
+
+    public void validateFieldPermission(String module, boolean updateWarehouse, boolean updateDept,
+                                        boolean updateProductPrice, ErrorCode errorCode) {
         if (updateWarehouse && fieldPermissionMasker.isFieldHidden(module, "item_warehouseId")) {
             throw exception(errorCode);
         }
         if (updateDept && (fieldPermissionMasker.isFieldHidden(module, "item_deptId")
                 || fieldPermissionMasker.isFieldHidden(module, "item_warehouseDeptName"))) {
+            throw exception(errorCode);
+        }
+        if (updateProductPrice && (fieldPermissionMasker.isFieldHidden(module, "item_productPrice")
+                || fieldPermissionMasker.isFieldHidden(module, "productPrice"))) {
             throw exception(errorCode);
         }
     }

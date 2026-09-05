@@ -4,6 +4,7 @@ import cn.hutool.core.collection.CollUtil;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
 import cn.iocoder.yudao.framework.security.core.util.SecurityFrameworkUtils;
+import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.outbill.ErpStockOutBillItemPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.outbill.ErpStockOutBillPickReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.outbill.ErpStockOutBillPageReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleOutDO;
@@ -92,6 +93,12 @@ public class ErpStockOutBillServiceImpl implements ErpStockOutBillService {
     @Override
     public List<ErpStockOutBillItemDO> getStockOutBillItemList(Long billId) {
         return stockOutBillItemMapper.selectListByBillId(billId);
+    }
+
+    @Override
+    public PageResult<ErpStockOutBillItemDO> getStockOutBillItemPage(ErpStockOutBillItemPageReqVO pageReqVO) {
+        validateStockOutBillExists(pageReqVO.getBillId());
+        return stockOutBillItemMapper.selectPageByBillId(pageReqVO);
     }
 
     @Override

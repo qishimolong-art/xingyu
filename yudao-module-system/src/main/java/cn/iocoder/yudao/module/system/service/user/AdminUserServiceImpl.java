@@ -605,6 +605,11 @@ public class AdminUserServiceImpl implements AdminUserService {
     }
 
     @Override
+    public List<AdminUserDO> getUserListByMobile(String mobile) {
+        return userMapper.selectListByMobile(mobile);
+    }
+
+    @Override
     public PageResult<AdminUserDO> getUserPage(UserPageReqVO reqVO) {
         // 如果有角色编号，查询角色对应的用户编号
         Set<Long> userIds = null;

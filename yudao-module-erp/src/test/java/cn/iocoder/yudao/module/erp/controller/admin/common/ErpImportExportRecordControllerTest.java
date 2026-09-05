@@ -73,7 +73,7 @@ class ErpImportExportRecordControllerTest extends BaseMockitoUnitTest {
     }
 
     @Test
-    void downloadFailureDetails_exportRecordIsRejected() {
+    void downloadFailureDetails_exportRecordIsRejected() throws Exception {
         Long recordId = 300L;
         ErpImportExportRecordRespVO record = new ErpImportExportRecordRespVO();
         record.setId(recordId);
@@ -83,7 +83,7 @@ class ErpImportExportRecordControllerTest extends BaseMockitoUnitTest {
         assertThrows(AccessDeniedException.class,
                 () -> controller.downloadFailureDetails(recordId, mock(HttpServletResponse.class)));
 
-        verify(importExportRecordService, never()).getFailureDetailList(recordId);
+        verify(importExportRecordService, never()).downloadFailureDetails(any(), any());
     }
 
 }

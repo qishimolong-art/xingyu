@@ -173,4 +173,19 @@ public class ErpPurchaseReturnItemDO extends BaseDO {
      */
     private String sourceInNo;
 
+    /**
+     * 来源销售退货单 ID。
+     */
+    private Long sourceSaleReturnId;
+
+    /**
+     * 来源销售退货明细 ID。
+     */
+    private Long sourceSaleReturnItemId;
+
+    /**
+     * 来源销售退货单号。
+     */
+    private String sourceSaleReturnNo;
+
 }

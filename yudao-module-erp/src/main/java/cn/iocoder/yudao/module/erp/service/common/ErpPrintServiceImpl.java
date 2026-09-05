@@ -57,7 +57,9 @@ import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockCheckItemDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpWarehouseDO;
 import cn.iocoder.yudao.module.erp.dal.mysql.common.ErpPrintRecordMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.common.ErpPrintTemplateMapper;
+import cn.iocoder.yudao.module.erp.enums.ErpAuditStatus;
 import cn.iocoder.yudao.module.erp.enums.print.ErpPrintModuleEnum;
+import cn.iocoder.yudao.module.erp.enums.sale.ErpSaleBizSourceTypeEnum;
 import cn.iocoder.yudao.module.erp.service.finance.ErpAccountService;
 import cn.iocoder.yudao.module.erp.service.finance.ErpFinancePaymentService;
 import cn.iocoder.yudao.module.erp.service.finance.ErpFinanceReceiptService;
@@ -111,6 +113,7 @@ import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.function.Function;
 
@@ -226,8 +229,7 @@ public class ErpPrintServiceImpl implements ErpPrintService {
                     purchasePriceAdjustService.getPurchasePriceAdjustItemListByAdjustId(businessId));
             case SALE_ORDER -> buildPrintData(module, saleOrderService.getSaleOrder(businessId),
                     saleOrderService.getSaleOrderItemListByOrderId(businessId));
-            case SALE_OUT -> buildPrintData(module, saleOutService.getSaleOut(businessId),
-                    saleOutService.getSaleOutItemListByOutId(businessId));
+            case SALE_OUT -> buildSaleOutPrintData(businessId);
             case SALE_RETURN -> buildPrintData(module, saleReturnService.getSaleReturn(businessId),
                     saleReturnService.getSaleReturnItemListByReturnId(businessId));
             case SALE_QUOTE -> buildPrintData(module, saleQuoteService.getSaleQuote(businessId),
@@ -402,6 +404,17 @@ public class ErpPrintServiceImpl implements ErpPrintService {
                 receivableOtherIncomeService.getOtherIncomeItemListByIncomeId(businessId));
     }
 
+    private Map<String, Object> buildSaleOutPrintData(Long businessId) {
+        ErpSaleOutDO saleOut = saleOutService.getSaleOut(businessId);
+        if (saleOut == null) {
+            return null;
+        }
+        Map<String, Object> data = buildPrintData(ErpPrintModuleEnum.SALE_OUT, saleOut,
+                saleOutService.getSaleOutItemListByOutId(businessId));
+        enrichSaleOutPrintData(data, saleOut);
+        return data;
+    }
+
     private Map<String, Object> buildStockTransferOutPrintData(Long businessId) {
         ErpStockMoveDO stockMove = stockMoveService.getVisibleStockTransferOut(businessId);
         if (stockMove == null) {
@@ -555,6 +568,50 @@ public class ErpPrintServiceImpl implements ErpPrintService {
         result.put("currentUser", system);
         result.put("print", system);
         return result;
+    }
+
+    @SuppressWarnings("unchecked")
+    private void enrichSaleOutPrintData(Map<String, Object> data, ErpSaleOutDO saleOut) {
+        if (data == null || saleOut == null) {
+            return;
+        }
+        Map<String, Object> documentMap = (Map<String, Object>) data.get("document");
+        Map<String, Object> mainMap = (Map<String, Object>) data.get("main");
+        if (documentMap == null || mainMap == null) {
+            return;
+        }
+
+        if (saleOut.getCustomerId() != null) {
+            ErpCustomerDO customer = customerService.getCustomer(saleOut.getCustomerId());
+            putDocumentField(documentMap, mainMap, "customerCode", customer == null ? null : customer.getCode());
+        }
+        putDocumentField(documentMap, mainMap, "statusName", formatSaleOutAuditStatus(saleOut.getStatus()));
+        putDocumentField(documentMap, mainMap, "settleStatusName", formatSaleOutSettleStatus(saleOut.getSettleStatus()));
+        putDocumentField(documentMap, mainMap, "feeAmount",
+                firstNonBlank(saleOut.getFeeAmount(), saleOut.getExtraFee(), saleOut.getOtherPrice()));
+        putDocumentField(documentMap, mainMap, "reductionAmount",
+                firstNonBlank(saleOut.getReductionAmount(), saleOut.getDiscountPrice()));
+        putDocumentField(documentMap, mainMap, "afterReductionAmount",
+                firstNonBlank(saleOut.getAfterReductionAmount(), saleOut.getTotalPrice()));
+
+        SaleOutSourceDocumentMeta sourceMeta = getSaleOutSourceDocumentMeta(saleOut);
+        if (sourceMeta == null) {
+            return;
+        }
+        putDocumentField(documentMap, mainMap, "sourceCreateTime",
+                firstNonBlank(saleOut.getSourceCreateTime(), sourceMeta.createTime()));
+        putDocumentField(documentMap, mainMap, "freightType", sourceMeta.freightType());
+        Long sourceCreatorId = parseLong(sourceMeta.creator());
+        AdminUserRespDTO sourceCreator = sourceCreatorId == null ? null : adminUserApi.getUser(sourceCreatorId);
+        putDocumentField(documentMap, mainMap, "sourceCreatorName",
+                sourceCreator == null ? null : sourceCreator.getNickname());
+    }
+
+    private void putDocumentField(Map<String, Object> documentMap, Map<String, Object> mainMap,
+                                  String fieldKey, Object value) {
+        Object formatted = formatPrintValue(value);
+        documentMap.put(fieldKey, formatted);
+        mainMap.put("document." + fieldKey, formatted);
     }
 
     private void enrichMain(Map<String, Object> main, Map<String, Object> documentMap, RelatedMaps relatedMaps) {
@@ -943,6 +1000,20 @@ public class ErpPrintServiceImpl implements ErpPrintService {
                 default -> "order." + lowerFirst(fieldKey);
             };
         }
+        if (module == ErpPrintModuleEnum.SALE_OUT) {
+            return switch (fieldKey) {
+                case "status" -> "document.statusName";
+                case "settleStatus" -> "document.settleStatusName";
+                case "customerId" -> "customer.name";
+                case "deptId" -> "dept.name";
+                case "accountId" -> "account.name";
+                case "saleUserId", "saleUserName" -> "saleUser.nickname";
+                case "auditorId", "auditorName" -> "auditor.nickname";
+                case "creator", "creatorName" -> "creator.nickname";
+                case "updater", "updaterName" -> "updater.nickname";
+                default -> "document." + lowerFirst(fieldKey);
+            };
+        }
         if (module == ErpPrintModuleEnum.ACCOUNTING_VOUCHER) {
             return switch (fieldKey) {
                 case "period" -> "document.period";
@@ -1183,8 +1254,64 @@ public class ErpPrintServiceImpl implements ErpPrintService {
         return "待审核";
     }
 
+    private String formatSaleOutAuditStatus(Integer status) {
+        if (Objects.equals(ErpAuditStatus.APPROVE.getStatus(), status)) {
+            return ErpAuditStatus.APPROVE.getName();
+        }
+        if (Objects.equals(ErpAuditStatus.PROCESS.getStatus(), status)) {
+            return ErpAuditStatus.PROCESS.getName();
+        }
+        return "";
+    }
+
+    private String formatSaleOutSettleStatus(Integer settleStatus) {
+        if (Integer.valueOf(2).equals(settleStatus)) {
+            return "已结算";
+        }
+        if (Integer.valueOf(1).equals(settleStatus)) {
+            return "部分结算";
+        }
+        return "未结算";
+    }
+
+    private SaleOutSourceDocumentMeta getSaleOutSourceDocumentMeta(ErpSaleOutDO saleOut) {
+        if (saleOut.getSourceType() == null || saleOut.getSourceId() == null) {
+            return null;
+        }
+        Long sourceId = saleOut.getSourceId();
+        if (Objects.equals(ErpSaleBizSourceTypeEnum.LEGACY_ORDER.getType(), saleOut.getSourceType())) {
+            ErpSaleOrderDO order = DataPermissionUtils.executeIgnore(() -> saleOrderService.getSaleOrder(sourceId));
+            return order == null ? null : new SaleOutSourceDocumentMeta(order.getCreator(), order.getCreateTime(), null);
+        }
+        if (Objects.equals(ErpSaleBizSourceTypeEnum.QUOTE.getType(), saleOut.getSourceType())) {
+            ErpSaleQuoteDO quote = DataPermissionUtils.executeIgnore(() -> saleQuoteService.getSaleQuote(sourceId));
+            return quote == null ? null
+                    : new SaleOutSourceDocumentMeta(quote.getCreator(), quote.getCreateTime(), quote.getFreightType());
+        }
+        if (Objects.equals(ErpSaleBizSourceTypeEnum.CART.getType(), saleOut.getSourceType())) {
+            ErpSaleCartDO cart = DataPermissionUtils.executeIgnore(() -> saleCartService.getSaleCart(sourceId));
+            return cart == null ? null
+                    : new SaleOutSourceDocumentMeta(cart.getCreator(), cart.getCreateTime(), cart.getFreightType());
+        }
+        if (Objects.equals(ErpSaleBizSourceTypeEnum.PRICE_ADJUST.getType(), saleOut.getSourceType())) {
+            ErpSalePriceAdjustDO adjust = DataPermissionUtils.executeIgnore(
+                    () -> salePriceAdjustService.getSalePriceAdjust(sourceId));
+            return adjust == null ? null
+                    : new SaleOutSourceDocumentMeta(adjust.getCreator(), adjust.getCreateTime(), null);
+        }
+        if (Objects.equals(ErpSaleBizSourceTypeEnum.PURCHASE_IN.getType(), saleOut.getSourceType())) {
+            ErpPurchaseInDO purchaseIn = DataPermissionUtils.executeIgnore(() -> purchaseInService.getPurchaseIn(sourceId));
+            return purchaseIn == null ? null
+                    : new SaleOutSourceDocumentMeta(purchaseIn.getCreator(), purchaseIn.getCreateTime(), null);
+        }
+        return null;
+    }
+
     private ErpPrintFieldRespVO.Field field(String name, String code, String source) {
         return new ErpPrintFieldRespVO.Field(name, code, source);
+    }
+
+    private record SaleOutSourceDocumentMeta(String creator, LocalDateTime createTime, String freightType) {
     }
 
     private static final class RelatedMaps {

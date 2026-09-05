@@ -1,7 +1,10 @@
 package cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.in;
 
 import cn.idev.excel.annotation.ExcelProperty;
+import cn.iocoder.yudao.framework.excel.core.annotations.ExcelChoiceRequired;
+import cn.iocoder.yudao.framework.excel.core.annotations.ExcelColumnSelect;
 import cn.iocoder.yudao.framework.excel.core.annotations.ExcelRequired;
+import cn.iocoder.yudao.module.erp.framework.excel.core.ErpYesNoExcelColumnSelectFunction;
 import lombok.Data;
 
 import java.math.BigDecimal;
@@ -25,9 +28,17 @@ public class ErpPurchaseInOrderImportExcelVO {
     @ExcelProperty("备注")
     private String remark;
 
-    @ExcelRequired
-    @ExcelProperty("产品编码")
+    @ExcelChoiceRequired
+    @ExcelProperty("配件编码（三选一）")
     private String productCode;
+
+    @ExcelChoiceRequired
+    @ExcelProperty("配件名称（三选一）")
+    private String productName;
+
+    @ExcelChoiceRequired
+    @ExcelProperty("厂家编码（三选一）")
+    private String factoryCode;
 
     @ExcelRequired
     @ExcelProperty("仓库名称")
@@ -40,6 +51,7 @@ public class ErpPurchaseInOrderImportExcelVO {
     @ExcelProperty("入库单价")
     private BigDecimal productPrice;
 
+    @ExcelColumnSelect(functionName = ErpYesNoExcelColumnSelectFunction.NAME)
     @ExcelProperty("赠品")
     private String gift;
 

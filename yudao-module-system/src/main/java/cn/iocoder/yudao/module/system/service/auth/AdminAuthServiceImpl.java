@@ -1,13 +1,18 @@
 package cn.iocoder.yudao.module.system.service.auth;
 
+import cn.hutool.core.collection.CollUtil;
+import cn.hutool.core.util.IdUtil;
 import cn.hutool.core.util.ObjectUtil;
+import cn.hutool.core.util.StrUtil;
 import cn.iocoder.yudao.framework.common.enums.CommonStatusEnum;
 import cn.iocoder.yudao.framework.common.enums.UserTypeEnum;
+import cn.iocoder.yudao.framework.common.util.json.JsonUtils;
 import cn.iocoder.yudao.framework.common.util.monitor.TracerUtils;
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
 import cn.iocoder.yudao.framework.common.util.servlet.ServletUtils;
 import cn.iocoder.yudao.framework.common.util.validation.ValidationUtils;
 import cn.iocoder.yudao.framework.datapermission.core.annotation.DataPermission;
+import cn.iocoder.yudao.framework.tenant.core.context.TenantContextHolder;
 import cn.iocoder.yudao.module.system.api.logger.dto.LoginLogCreateReqDTO;
 import cn.iocoder.yudao.module.system.api.sms.SmsCodeApi;
 import cn.iocoder.yudao.module.system.api.sms.dto.code.SmsCodeUseReqDTO;
@@ -17,28 +22,37 @@ import cn.iocoder.yudao.module.system.controller.admin.auth.vo.*;
 import cn.iocoder.yudao.module.system.convert.auth.AuthConvert;
 import cn.iocoder.yudao.module.system.dal.dataobject.oauth2.OAuth2AccessTokenDO;
 import cn.iocoder.yudao.module.system.dal.dataobject.user.AdminUserDO;
+import cn.iocoder.yudao.module.system.dal.redis.RedisKeyConstants;
 import cn.iocoder.yudao.module.system.enums.logger.LoginLogTypeEnum;
 import cn.iocoder.yudao.module.system.enums.logger.LoginResultEnum;
 import cn.iocoder.yudao.module.system.enums.oauth2.OAuth2ClientConstants;
 import cn.iocoder.yudao.module.system.enums.sms.SmsSceneEnum;
+import cn.iocoder.yudao.module.system.framework.wecom.config.WeComProperties;
 import cn.iocoder.yudao.module.system.service.logger.LoginLogService;
 import cn.iocoder.yudao.module.system.service.member.MemberService;
 import cn.iocoder.yudao.module.system.service.oauth2.OAuth2TokenService;
 import cn.iocoder.yudao.module.system.service.social.SocialUserService;
 import cn.iocoder.yudao.module.system.service.user.AdminUserService;
+import cn.iocoder.yudao.module.system.service.wecom.WeComClientService;
 import com.anji.captcha.model.common.ResponseModel;
 import com.anji.captcha.model.vo.CaptchaVO;
 import com.anji.captcha.service.CaptchaService;
 import com.google.common.annotations.VisibleForTesting;
+import lombok.Data;
+import lombok.NoArgsConstructor;
 import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
+import lombok.experimental.Accessors;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import javax.annotation.Resource;
 import javax.validation.Validator;
+import java.util.List;
 import java.util.Objects;
+import java.util.concurrent.TimeUnit;
 
 import static cn.iocoder.yudao.framework.common.exception.util.ServiceExceptionUtil.exception;
 import static cn.iocoder.yudao.framework.common.util.servlet.ServletUtils.getClientIP;
@@ -69,6 +83,12 @@ public class AdminAuthServiceImpl implements AdminAuthService {
     private CaptchaService captchaService;
     @Resource
     private SmsCodeApi smsCodeApi;
+    @Resource
+    private WeComClientService weComClientService;
+    @Resource
+    private WeComProperties weComProperties;
+    @Resource
+    private StringRedisTemplate stringRedisTemplate;
 
     /**
      * 验证码的开关，默认为 true
@@ -147,6 +167,68 @@ public class AdminAuthServiceImpl implements AdminAuthService {
 
         // 创建 Token 令牌，记录登录日志
         return createTokenAfterLoginSuccess(user.getId(), reqVO.getMobile(), LoginLogTypeEnum.LOGIN_MOBILE);
+    }
+
+    @Override
+    public String getWeComAuthorizeUrl(String redirectUri) {
+        if (StrUtil.isBlank(redirectUri)) {
+            throw exception(AUTH_WECOM_API_ERROR, "redirectUri 不能为空");
+        }
+        String state = IdUtil.fastSimpleUUID();
+        WeComAuthState authState = new WeComAuthState()
+                .setTenantId(TenantContextHolder.getTenantId())
+                .setRedirectUri(redirectUri);
+        long timeoutSeconds = weComProperties.getStateTimeout() == null ? 300L
+                : Math.max(60L, weComProperties.getStateTimeout().getSeconds());
+        stringRedisTemplate.opsForValue().set(formatWeComAuthStateKey(state),
+                JsonUtils.toJsonString(authState), timeoutSeconds, TimeUnit.SECONDS);
+        return weComClientService.getAuthorizeUrl(redirectUri, state);
+    }
+
+    @Override
+    public AuthLoginRespVO weComSilentLogin(AuthWeComLoginReqVO reqVO) {
+        validateWeComAuthState(reqVO.getState());
+
+        String mobile = weComClientService.getUserMobileByCode(reqVO.getCode());
+        if (StrUtil.isBlank(mobile)) {
+            throw exception(AUTH_WECOM_MOBILE_EMPTY);
+        }
+
+        List<AdminUserDO> users = userService.getUserListByMobile(StrUtil.trim(mobile));
+        if (CollUtil.isEmpty(users)) {
+            createLoginLog(null, mobile, LoginLogTypeEnum.LOGIN_SOCIAL, LoginResultEnum.BAD_CREDENTIALS);
+            throw exception(AUTH_MOBILE_NOT_EXISTS);
+        }
+        if (users.size() > 1) {
+            createLoginLog(null, mobile, LoginLogTypeEnum.LOGIN_SOCIAL, LoginResultEnum.BAD_CREDENTIALS);
+            throw exception(AUTH_WECOM_MOBILE_DUPLICATE);
+        }
+
+        AdminUserDO user = users.get(0);
+        if (CommonStatusEnum.isDisable(user.getStatus())) {
+            createLoginLog(user.getId(), mobile, LoginLogTypeEnum.LOGIN_SOCIAL, LoginResultEnum.USER_DISABLED);
+            throw exception(AUTH_LOGIN_USER_DISABLED);
+        }
+        return createTokenAfterLoginSuccess(user.getId(), mobile, LoginLogTypeEnum.LOGIN_SOCIAL);
+    }
+
+    private void validateWeComAuthState(String state) {
+        String redisKey = formatWeComAuthStateKey(state);
+        String stateValue = stringRedisTemplate.opsForValue().get(redisKey);
+        if (StrUtil.isBlank(stateValue)) {
+            throw exception(AUTH_WECOM_STATE_INVALID);
+        }
+        stringRedisTemplate.delete(redisKey);
+
+        WeComAuthState authState = JsonUtils.parseObject(stateValue, WeComAuthState.class);
+        Long tenantId = TenantContextHolder.getTenantId();
+        if (authState != null && authState.getTenantId() != null && !Objects.equals(authState.getTenantId(), tenantId)) {
+            throw exception(AUTH_WECOM_STATE_INVALID);
+        }
+    }
+
+    private String formatWeComAuthStateKey(String state) {
+        return String.format(RedisKeyConstants.WECOM_AUTH_STATE, state);
     }
 
     private void createLoginLog(Long userId, String username,
@@ -263,6 +345,17 @@ public class AdminAuthServiceImpl implements AdminAuthService {
 
     private UserTypeEnum getUserType() {
         return UserTypeEnum.ADMIN;
+    }
+
+    @Data
+    @NoArgsConstructor
+    @Accessors(chain = true)
+    private static class WeComAuthState {
+
+        private Long tenantId;
+
+        private String redirectUri;
+
     }
 
     @Override

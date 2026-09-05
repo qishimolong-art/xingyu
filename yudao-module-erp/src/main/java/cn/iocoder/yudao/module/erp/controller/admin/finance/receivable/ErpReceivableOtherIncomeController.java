@@ -15,6 +15,7 @@ import cn.iocoder.yudao.module.erp.controller.admin.common.ErpAuditStatusRequest
 import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.imports.ErpFinanceImportRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.receivable.vo.otherincome.ErpReceivableOtherIncomeDraftSaveReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.receivable.vo.otherincome.ErpReceivableOtherIncomeImportExcelVO;
+import cn.iocoder.yudao.module.erp.controller.admin.finance.receivable.vo.otherincome.ErpReceivableOtherIncomeItemPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.receivable.vo.otherincome.ErpReceivableOtherIncomePageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.receivable.vo.otherincome.ErpReceivableOtherIncomeExportRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.receivable.vo.otherincome.ErpReceivableOtherIncomeRespVO;
@@ -22,10 +23,13 @@ import cn.iocoder.yudao.module.erp.controller.admin.finance.receivable.vo.otheri
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.ErpAccountDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.receivable.ErpReceivableOtherIncomeDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.receivable.ErpReceivableOtherIncomeItemDO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpCustomerDO;
 import cn.iocoder.yudao.module.erp.service.base.ErpDataPermissionDeptService;
+import cn.iocoder.yudao.module.erp.service.common.ErpImportExportRecordService;
 import cn.iocoder.yudao.module.erp.service.finance.ErpAccountService;
 import cn.iocoder.yudao.module.erp.service.finance.ErpFinanceFieldPermissionMasker;
 import cn.iocoder.yudao.module.erp.service.finance.receivable.ErpReceivableOtherIncomeService;
+import cn.iocoder.yudao.module.erp.service.sale.ErpCustomerService;
 import cn.iocoder.yudao.module.system.api.dept.DeptApi;
 import cn.iocoder.yudao.module.system.api.dept.dto.DeptRespDTO;
 import cn.iocoder.yudao.module.system.api.user.AdminUserApi;
@@ -50,8 +54,11 @@ import javax.annotation.Resource;
 import javax.servlet.http.HttpServletResponse;
 import javax.validation.Valid;
 import java.io.IOException;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
+import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.List;
 import java.util.Set;
@@ -73,11 +80,18 @@ import static cn.iocoder.yudao.module.erp.controller.admin.finance.vo.imports.Er
 public class ErpReceivableOtherIncomeController {
 
     private static final String FIELD_PERMISSION_MODULE = "erp_finance_receivable_other_income";
+    public static final Set<String> OTHER_INCOME_IMPORT_TEMPLATE_FIELDS = Collections.unmodifiableSet(
+            new LinkedHashSet<>(Arrays.asList("settleMethod", "accountId", "voucherNo", "incomeType", "deptId",
+                    "handlerId", "party", "relatedBiz", "docType", "remark", "fileUrl", "itemName", "amount",
+                    "invoiceNo", "itemParty", "itemCustomerId", "itemDeptId", "itemBizDate", "itemHandlerId", "qty",
+                    "freightType", "itemRemark")));
 
     @Resource
     private ErpReceivableOtherIncomeService otherIncomeService;
     @Resource
     private ErpAccountService accountService;
+    @Resource
+    private ErpCustomerService customerService;
     @Resource
     private AdminUserApi adminUserApi;
     @Resource
@@ -86,6 +100,8 @@ public class ErpReceivableOtherIncomeController {
     private ErpFinanceFieldPermissionMasker fieldPermissionMasker;
     @Resource
     private ErpDataPermissionDeptService dataPermissionDeptService;
+    @Resource
+    private ErpImportExportRecordService importExportRecordService;
 
     @PostMapping("/create")
     @Operation(summary = "创建其他收入")
@@ -174,17 +190,34 @@ public class ErpReceivableOtherIncomeController {
     @GetMapping("/get")
     @Operation(summary = "获取其他收入")
     @PreAuthorize("@ss.hasPermission('erp:receivable-other-income:query')")
-    public CommonResult<ErpReceivableOtherIncomeRespVO> get(@RequestParam("id") Long id) {
+    public CommonResult<ErpReceivableOtherIncomeRespVO> get(@RequestParam("id") Long id,
+                                                            @RequestParam(value = "includeItems", defaultValue = "true")
+                                                            Boolean includeItems) {
         ErpReceivableOtherIncomeDO db = otherIncomeService.getOtherIncome(id);
         if (db == null) {
             return success(null);
         }
         ErpReceivableOtherIncomeRespVO vo = BeanUtils.toBean(db, ErpReceivableOtherIncomeRespVO.class);
-        vo.setItems(BeanUtils.toBean(otherIncomeService.getOtherIncomeItemListByIncomeId(id),
-                ErpReceivableOtherIncomeRespVO.Item.class));
+        vo.setItems(Boolean.FALSE.equals(includeItems) ? Collections.emptyList()
+                : buildOtherIncomeItems(otherIncomeService.getOtherIncomeItemListByIncomeId(id)));
         fillExtend(vo);
         fieldPermissionMasker.maskFormWithItems(FIELD_PERMISSION_MODULE, vo);
         return success(vo);
+    }
+
+    @GetMapping("/item-page")
+    @Operation(summary = "获取其他收入明细分页")
+    @PreAuthorize("@ss.hasPermission('erp:receivable-other-income:query')")
+    public CommonResult<PageResult<ErpReceivableOtherIncomeRespVO.Item>> itemPage(
+            @Valid ErpReceivableOtherIncomeItemPageReqVO pageReqVO) {
+        PageResult<ErpReceivableOtherIncomeItemDO> pageResult = otherIncomeService.getOtherIncomeItemPage(pageReqVO);
+        PageResult<ErpReceivableOtherIncomeRespVO.Item> result = BeanUtils.toBean(pageResult,
+                ErpReceivableOtherIncomeRespVO.Item.class);
+        result.setList(buildOtherIncomeItems(pageResult.getList()));
+        if (!Boolean.FALSE.equals(pageReqVO.getMask())) {
+            fieldPermissionMasker.clearHiddenItemFields(FIELD_PERMISSION_MODULE, result.getList());
+        }
+        return success(result);
     }
 
     @GetMapping("/page")
@@ -223,10 +256,13 @@ public class ErpReceivableOtherIncomeController {
         deptIds.addAll(CollectionUtils.convertSet(itemList, ErpReceivableOtherIncomeItemDO::getDeptId));
         deptIds.remove(null);
         Map<Long, DeptRespDTO> deptMap = deptApi.getDeptMap(deptIds);
+        Set<Long> customerIds = CollectionUtils.convertSet(itemList, ErpReceivableOtherIncomeItemDO::getCustomerId);
+        customerIds.remove(null);
+        Map<Long, ErpCustomerDO> customerMap = customerIds.isEmpty() ? java.util.Collections.emptyMap()
+                : customerService.getCustomerMap(customerIds);
         PageResult<ErpReceivableOtherIncomeRespVO> result = BeanUtils.toBean(pageResult, ErpReceivableOtherIncomeRespVO.class, vo -> {
             vo.setItems(BeanUtils.toBean(itemMap.get(vo.getId()), ErpReceivableOtherIncomeRespVO.Item.class, item -> {
-                MapUtils.findAndThen(userMap, item.getHandlerId(), user -> item.setHandlerName(user.getNickname()));
-                MapUtils.findAndThen(deptMap, item.getDeptId(), dept -> item.setDeptName(dept.getName()));
+                fillOtherIncomeItemExtend(item, userMap, deptMap, customerMap);
             }));
             MapUtils.findAndThen(accountMap, vo.getAccountId(), account -> vo.setAccountName(account.getName()));
             MapUtils.findAndThen(userMap, vo.getHandlerId(), user -> vo.setHandlerName(user.getNickname()));
@@ -236,6 +272,34 @@ public class ErpReceivableOtherIncomeController {
         });
         result.getList().forEach(item -> fieldPermissionMasker.maskFormWithItems(FIELD_PERMISSION_MODULE, item));
         return result;
+    }
+
+    private List<ErpReceivableOtherIncomeRespVO.Item> buildOtherIncomeItems(List<ErpReceivableOtherIncomeItemDO> items) {
+        if (CollUtil.isEmpty(items)) {
+            return Collections.emptyList();
+        }
+        List<Long> userIds = CollectionUtils.convertList(items, ErpReceivableOtherIncomeItemDO::getHandlerId);
+        userIds.remove(null);
+        Map<Long, AdminUserRespDTO> userMap = adminUserApi.getUserMap(userIds);
+        Set<Long> deptIds = CollectionUtils.convertSet(items, ErpReceivableOtherIncomeItemDO::getDeptId);
+        deptIds.remove(null);
+        Map<Long, DeptRespDTO> deptMap = deptApi.getDeptMap(deptIds);
+        Set<Long> customerIds = convertSet(items, ErpReceivableOtherIncomeItemDO::getCustomerId);
+        customerIds.remove(null);
+        Map<Long, ErpCustomerDO> customerMap = customerIds.isEmpty() ? Collections.emptyMap()
+                : customerService.getCustomerMap(customerIds);
+        return BeanUtils.toBean(items, ErpReceivableOtherIncomeRespVO.Item.class, item -> {
+            fillOtherIncomeItemExtend(item, userMap, deptMap, customerMap);
+        });
+    }
+
+    private void fillOtherIncomeItemExtend(ErpReceivableOtherIncomeRespVO.Item item,
+                                           Map<Long, AdminUserRespDTO> userMap,
+                                           Map<Long, DeptRespDTO> deptMap,
+                                           Map<Long, ErpCustomerDO> customerMap) {
+        MapUtils.findAndThen(userMap, item.getHandlerId(), user -> item.setHandlerName(user.getNickname()));
+        MapUtils.findAndThen(deptMap, item.getDeptId(), dept -> item.setDeptName(dept.getName()));
+        MapUtils.findAndThen(customerMap, item.getCustomerId(), customer -> item.setCustomerName(customer.getName()));
     }
 
     @GetMapping("/export-excel")
@@ -268,7 +332,8 @@ public class ErpReceivableOtherIncomeController {
     public void getImportTemplate(HttpServletResponse response) throws IOException {
         ExcelUtils.writeImportTemplate(response, "其他收入导入模板.xls", "其他收入",
                 ErpReceivableOtherIncomeImportExcelVO.class,
-                Collections.singletonList(new ErpReceivableOtherIncomeImportExcelVO()));
+                Collections.singletonList(new ErpReceivableOtherIncomeImportExcelVO()),
+                OTHER_INCOME_IMPORT_TEMPLATE_FIELDS);
     }
 
     @PostMapping("/import")
@@ -280,19 +345,20 @@ public class ErpReceivableOtherIncomeController {
         ErpFinanceImportRespVO result = new ErpFinanceImportRespVO();
         for (int i = 0; i < list.size(); i++) {
             ErpReceivableOtherIncomeImportExcelVO row = list.get(i);
-            if (row == null || allBlank(row.getBizTime(), row.getSettleMethod(), row.getAccountId(),
+            if (row == null || allBlank(row.getSettleMethod(), row.getAccountId(),
                     row.getIncomeType(), row.getHandlerId(), row.getItemName(), row.getAmount())) {
                 continue;
             }
             try {
                 ErpReceivableOtherIncomeSaveReqVO reqVO = BeanUtils.toBean(row,
                         ErpReceivableOtherIncomeSaveReqVO.class);
-                reqVO.setBizTime(parseDateTime(row.getBizTime(), null));
+                reqVO.setBizTime(parseDateTime(row.getBizTime(), LocalDateTime.now()));
                 ErpReceivableOtherIncomeSaveReqVO.Item item = new ErpReceivableOtherIncomeSaveReqVO.Item();
                 item.setItemName(row.getItemName());
                 item.setAmount(row.getAmount());
                 item.setInvoiceNo(row.getInvoiceNo());
                 item.setParty(row.getItemParty());
+                item.setCustomerId(row.getItemCustomerId());
                 item.setDeptId(row.getItemDeptId());
                 item.setBizDate(parseDateTime(row.getItemBizDate(), null));
                 item.setHandlerId(row.getItemHandlerId());
@@ -309,6 +375,14 @@ public class ErpReceivableOtherIncomeController {
         return success(result);
     }
 
+    @GetMapping("/import-failure-details/download")
+    @Operation(summary = "下载其他收入导入错误数据")
+    @PreAuthorize("@ss.hasPermission('erp:receivable-other-income:import')")
+    public void downloadImportFailureDetails(@RequestParam("recordId") Long recordId,
+                                             HttpServletResponse response) throws IOException {
+        importExportRecordService.downloadOwnImportFailureDetails(recordId, "erp_receivable_other_income", response);
+    }
+
     private ErpReceivableOtherIncomeExportRespVO buildExportRow(ErpReceivableOtherIncomeRespVO income,
                                                                 ErpReceivableOtherIncomeRespVO.Item item,
                                                                 boolean fillMainFields) {
@@ -321,7 +395,7 @@ public class ErpReceivableOtherIncomeController {
         row.setItemName(item.getItemName());
         row.setItemAmount(item.getAmount());
         row.setItemInvoiceNo(item.getInvoiceNo());
-        row.setItemParty(item.getParty());
+        row.setItemParty(item.getCustomerName() != null ? item.getCustomerName() : item.getParty());
         row.setItemDeptName(item.getDeptName());
         row.setItemBizDate(item.getBizDate());
         row.setItemHandlerName(item.getHandlerName());
@@ -369,20 +443,17 @@ public class ErpReceivableOtherIncomeController {
             }
         }
         if (CollUtil.isNotEmpty(vo.getItems())) {
-            vo.getItems().forEach(item -> {
-                if (item.getHandlerId() != null) {
-                    AdminUserRespDTO user = adminUserApi.getUser(item.getHandlerId());
-                    if (user != null) {
-                        item.setHandlerName(user.getNickname());
-                    }
-                }
-                if (item.getDeptId() != null) {
-                    DeptRespDTO dept = deptApi.getDept(item.getDeptId());
-                    if (dept != null) {
-                        item.setDeptName(dept.getName());
-                    }
-                }
-            });
+            Set<Long> customerIds = convertSet(vo.getItems(), ErpReceivableOtherIncomeRespVO.Item::getCustomerId);
+            customerIds.remove(null);
+            Map<Long, ErpCustomerDO> customerMap = customerIds.isEmpty() ? Collections.emptyMap()
+                    : customerService.getCustomerMap(customerIds);
+            List<Long> userIds = CollectionUtils.convertList(vo.getItems(), ErpReceivableOtherIncomeRespVO.Item::getHandlerId);
+            userIds.remove(null);
+            Map<Long, AdminUserRespDTO> userMap = adminUserApi.getUserMap(userIds);
+            Set<Long> deptIds = CollectionUtils.convertSet(vo.getItems(), ErpReceivableOtherIncomeRespVO.Item::getDeptId);
+            deptIds.remove(null);
+            Map<Long, DeptRespDTO> deptMap = deptApi.getDeptMap(deptIds);
+            vo.getItems().forEach(item -> fillOtherIncomeItemExtend(item, userMap, deptMap, customerMap));
         }
     }
 }

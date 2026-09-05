@@ -33,6 +33,8 @@ public interface ErpProductMapper extends BaseMapperX<ErpProductDO> {
 
     String KEYWORD_FIELD_CODE = "code";
     String KEYWORD_FIELD_NAME = "name";
+    String KEYWORD_FIELD_PINYIN_CODE = "pinyinCode";
+    String KEYWORD_FIELD_WUBI_CODE = "wubiCode";
     String KEYWORD_FIELD_BAR_CODE = "barCode";
     String KEYWORD_FIELD_VEHICLE_MODEL = "vehicleModel";
     String KEYWORD_FIELD_FACTORY_CODE = "factoryCode";
@@ -71,6 +73,8 @@ public interface ErpProductMapper extends BaseMapperX<ErpProductDO> {
         return selectPage(reqVO, java.util.Arrays.asList(
                 KEYWORD_FIELD_CODE,
                 KEYWORD_FIELD_NAME,
+                KEYWORD_FIELD_PINYIN_CODE,
+                KEYWORD_FIELD_WUBI_CODE,
                 KEYWORD_FIELD_BAR_CODE,
                 KEYWORD_FIELD_VEHICLE_MODEL,
                 KEYWORD_FIELD_FACTORY_CODE,
@@ -97,6 +101,7 @@ public interface ErpProductMapper extends BaseMapperX<ErpProductDO> {
         wrapper
                 .likeIfPresent(ErpProductDO::getName, fuzzyKeyword(reqVO.getName()))
                 .likeIfPresent(ErpProductDO::getCode, fuzzyKeyword(reqVO.getCode()))
+                .likeIfPresent(ErpProductDO::getBrand, fuzzyKeyword(reqVO.getBrand()))
                 .likeIfPresent(ErpProductDO::getVehicleModel, fuzzyKeyword(reqVO.getVehicleModel()))
                 .likeIfPresent(ErpProductDO::getFactoryCode, fuzzyKeyword(reqVO.getFactoryCode()))
                 .eqIfPresent(ErpProductDO::getCategoryId, reqVO.getCategoryId())
@@ -142,6 +147,14 @@ public interface ErpProductMapper extends BaseMapperX<ErpProductDO> {
             }
             if (keywordFields.contains(KEYWORD_FIELD_NAME)) {
                 appendOr(w, hasCondition).like(ErpProductDO::getName, keyword);
+                hasCondition = true;
+            }
+            if (keywordFields.contains(KEYWORD_FIELD_PINYIN_CODE)) {
+                appendOr(w, hasCondition).like(ErpProductDO::getPinyinCode, keyword);
+                hasCondition = true;
+            }
+            if (keywordFields.contains(KEYWORD_FIELD_WUBI_CODE)) {
+                appendOr(w, hasCondition).like(ErpProductDO::getWubiCode, keyword);
                 hasCondition = true;
             }
             if (keywordFields.contains(KEYWORD_FIELD_BAR_CODE)) {
@@ -286,6 +299,10 @@ public interface ErpProductMapper extends BaseMapperX<ErpProductDO> {
                 return ErpProductDO::getCode;
             case "name":
                 return ErpProductDO::getName;
+            case "pinyinCode":
+                return ErpProductDO::getPinyinCode;
+            case "wubiCode":
+                return ErpProductDO::getWubiCode;
             case "vehicleModel":
                 return ErpProductDO::getVehicleModel;
             case "standard":
@@ -338,6 +355,10 @@ public interface ErpProductMapper extends BaseMapperX<ErpProductDO> {
         return selectCount(ErpProductDO::getUnitId, unitId);
     }
 
+    default Long selectCountByBrand(String brand) {
+        return selectCount(ErpProductDO::getBrand, brand);
+    }
+
     default Long selectCountByDefaultWarehouseId(Long warehouseId) {
         return selectCount(ErpProductDO::getDefaultWarehouseId, warehouseId);
     }
@@ -360,6 +381,7 @@ public interface ErpProductMapper extends BaseMapperX<ErpProductDO> {
     default List<ErpProductDO> selectVisibleSimpleListByStatus(Integer status, ErpProductPageReqVO reqVO) {
         LambdaQueryWrapperX<ErpProductDO> wrapper = new LambdaQueryWrapperX<>();
         wrapper.select(ErpProductDO::getId, ErpProductDO::getCode, ErpProductDO::getName,
+                ErpProductDO::getPinyinCode, ErpProductDO::getWubiCode,
                 ErpProductDO::getBarCode, ErpProductDO::getCategoryId, ErpProductDO::getUnitId,
                 ErpProductDO::getPurchasePrice, ErpProductDO::getSalePrice, ErpProductDO::getMinPrice,
                 ErpProductDO::getSharePrice);
@@ -459,6 +481,22 @@ public interface ErpProductMapper extends BaseMapperX<ErpProductDO> {
         }
         return selectList(new LambdaQueryWrapperX<ErpProductDO>()
                 .in(ErpProductDO::getCode, codes));
+    }
+
+    default List<ErpProductDO> selectListByNames(Collection<String> names) {
+        if (CollUtil.isEmpty(names)) {
+            return Collections.emptyList();
+        }
+        return selectList(new LambdaQueryWrapperX<ErpProductDO>()
+                .in(ErpProductDO::getName, names));
+    }
+
+    default List<ErpProductDO> selectListByFactoryCodes(Collection<String> factoryCodes) {
+        if (CollUtil.isEmpty(factoryCodes)) {
+            return Collections.emptyList();
+        }
+        return selectList(new LambdaQueryWrapperX<ErpProductDO>()
+                .in(ErpProductDO::getFactoryCode, factoryCodes));
     }
 
     /**
@@ -628,6 +666,8 @@ public interface ErpProductMapper extends BaseMapperX<ErpProductDO> {
         }
         w.and(q -> q.like(ErpProductDO::getCode, keyword)
                 .or().like(ErpProductDO::getName, keyword)
+                .or().like(ErpProductDO::getPinyinCode, keyword)
+                .or().like(ErpProductDO::getWubiCode, keyword)
                 .or().like(ErpProductDO::getBarCode, keyword)
                 .or().like(ErpProductDO::getVehicleModel, keyword)
                 .or().like(ErpProductDO::getFactoryCode, keyword)

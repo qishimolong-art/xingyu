@@ -93,6 +93,10 @@ public class ErpWarehouseServiceImpl implements ErpWarehouseService {
     private static final String WAREHOUSE_LOG_UPDATE = "修改";
     private static final String WAREHOUSE_LOG_DELETE = "删除";
     private static final String LOG_EMPTY_VALUE = "空";
+    private static final BigDecimal MIN_LONGITUDE = new BigDecimal("-180");
+    private static final BigDecimal MAX_LONGITUDE = new BigDecimal("180");
+    private static final BigDecimal MIN_LATITUDE = new BigDecimal("-90");
+    private static final BigDecimal MAX_LATITUDE = new BigDecimal("90");
 
     @Resource
     private ErpWarehouseMapper warehouseMapper;
@@ -134,6 +138,7 @@ public class ErpWarehouseServiceImpl implements ErpWarehouseService {
         }
         fillWarehouseEnabledDefaults(warehouse);
         normalizeWarehouseCode(warehouse);
+        validateWarehouseLocation(warehouse);
         if (StrUtil.isBlank(warehouse.getWarehouseCode())) {
             warehouse.setWarehouseCode(generateWarehouseCode());
         }
@@ -154,7 +159,6 @@ public class ErpWarehouseServiceImpl implements ErpWarehouseService {
 
         ErpWarehouseDO updateObj = BeanUtils.toBean(updateReqVO, ErpWarehouseDO.class);
         updateObj.setId(warehouse.getId());
-        updateObj.setAddress(warehouse.getAddress());
         updateObj.setPrincipal(warehouse.getPrincipal());
         updateObj.setWarehousePrice(warehouse.getWarehousePrice());
         updateObj.setTruckagePrice(warehouse.getTruckagePrice());
@@ -176,6 +180,7 @@ public class ErpWarehouseServiceImpl implements ErpWarehouseService {
         updateObj.setStockGroupType(warehouse.getStockGroupType());
         updateObj.setCreditControl(warehouse.getCreditControl());
         updateObj.setRegionId(warehouse.getRegionId());
+        validateWarehouseLocation(updateObj);
         if (Boolean.FALSE.equals(updateObj.getSaleEnabled())) {
             validateWarehouseSaleDisableStockClear(Collections.singleton(warehouse.getId()));
         }
@@ -351,6 +356,9 @@ public class ErpWarehouseServiceImpl implements ErpWarehouseService {
         addWarehouseChange(changes, "名称", before.getName(), after.getName());
         addWarehouseChange(changes, "所属部门", before.getDeptId(), after.getDeptId(), this::formatDeptValue);
         addWarehouseChange(changes, "仓库地址", before.getAddress(), after.getAddress());
+        addWarehouseChange(changes, "地图名称", before.getMapName(), after.getMapName());
+        addWarehouseChange(changes, "经度", before.getLongitude(), after.getLongitude());
+        addWarehouseChange(changes, "纬度", before.getLatitude(), after.getLatitude());
         addWarehouseChange(changes, "排序", before.getSort(), after.getSort());
         addWarehouseChange(changes, "备注", before.getRemark(), after.getRemark());
         addWarehouseChange(changes, "负责人", before.getPrincipal(), after.getPrincipal());
@@ -660,6 +668,7 @@ public class ErpWarehouseServiceImpl implements ErpWarehouseService {
             }
             fillWarehouseEnabledDefaults(importObj);
             normalizeWarehouseCode(importObj);
+            validateWarehouseLocation(importObj);
             if (StrUtil.isBlank(importObj.getWarehouseCode())) {
                 importObj.setWarehouseCode(generateWarehouseCode());
             }
@@ -671,6 +680,7 @@ public class ErpWarehouseServiceImpl implements ErpWarehouseService {
         importObj.setId(existing.getId());
         importObj.setDefaultStatus(existing.getDefaultStatus());
         importObj.setWarehouseCode(existing.getWarehouseCode());
+        validateWarehouseLocation(importObj);
         if (Boolean.FALSE.equals(importObj.getSaleEnabled())) {
             validateWarehouseSaleDisableStockClear(Collections.singleton(existing.getId()));
         }
@@ -717,6 +727,25 @@ public class ErpWarehouseServiceImpl implements ErpWarehouseService {
         ErpWarehouseDO existing = warehouseMapper.selectByWarehouseCode(warehouseCode);
         if (existing != null && !Objects.equals(existing.getId(), id)) {
             throw exception(WAREHOUSE_CODE_EXISTS, warehouseCode);
+        }
+    }
+
+    private void validateWarehouseLocation(ErpWarehouseDO warehouse) {
+        if (warehouse == null) {
+            return;
+        }
+        validateCoordinateRange(warehouse.getLongitude(), MIN_LONGITUDE, MAX_LONGITUDE,
+                "仓库经度必须在 -180 到 180 之间");
+        validateCoordinateRange(warehouse.getLatitude(), MIN_LATITUDE, MAX_LATITUDE,
+                "仓库纬度必须在 -90 到 90 之间");
+    }
+
+    private void validateCoordinateRange(BigDecimal value, BigDecimal min, BigDecimal max, String message) {
+        if (value == null) {
+            return;
+        }
+        if (value.compareTo(min) < 0 || value.compareTo(max) > 0) {
+            throw new IllegalArgumentException(message);
         }
     }
 

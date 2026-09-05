@@ -10,6 +10,7 @@ public class ErpImportExportRecordFinishReqBO {
 
     private String fileName;
     private String fileType;
+    private String templateKey;
     private String status;
     private Integer totalCount;
     private Integer successCount;

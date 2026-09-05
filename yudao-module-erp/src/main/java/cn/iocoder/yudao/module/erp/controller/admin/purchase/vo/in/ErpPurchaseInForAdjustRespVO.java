@@ -63,6 +63,9 @@ public class ErpPurchaseInForAdjustRespVO {
     @Schema(description = "是否被调价过（前端显示\"（调）\"）", example = "false")
     private Boolean adjusted;
 
+    @Schema(description = "是否已完成采购票据开具", example = "false")
+    private Boolean hasInvoice;
+
     @Schema(description = "开票类型", example = "普票")
     private String invoiceType;
 

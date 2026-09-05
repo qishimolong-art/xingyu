@@ -4,7 +4,6 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Data;
 
 import javax.validation.constraints.NotBlank;
-import javax.validation.constraints.NotEmpty;
 import javax.validation.constraints.NotNull;
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -48,8 +47,13 @@ public class ErpPurchaseInvoiceSaveReqVO {
     @Schema(description = "附件地址", example = "https://www.iocoder.cn/demo.pdf")
     private String fileUrl;
 
+    @Schema(description = "来源入库单编号列表，用于大单分页带入明细")
+    private List<Long> sourceInIds;
+
+    @Schema(description = "排除的来源入库单明细编号列表，用于大单分页带入后删除明细")
+    private List<Long> excludedSourceInItemIds;
+
     @Schema(description = "票据明细", requiredMode = Schema.RequiredMode.REQUIRED)
-    @NotEmpty(message = "采购票据明细不能为空")
     private List<Item> items;
 
     @Data

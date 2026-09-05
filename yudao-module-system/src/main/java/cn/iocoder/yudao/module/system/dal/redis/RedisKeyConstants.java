@@ -115,4 +115,12 @@ public interface RedisKeyConstants {
      */
     String WXA_SUBSCRIBE_TEMPLATE = "wxa_subscribe_template";
 
+    /**
+     * 企业微信 H5 免登 state
+     * <p>
+     * KEY 格式：wecom_auth_state:{state}
+     * VALUE 数据格式：String, state 上下文
+     */
+    String WECOM_AUTH_STATE = "wecom_auth_state:%s";
+
 }

@@ -3,6 +3,7 @@ package cn.iocoder.yudao.module.erp.service.sale;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.ErpSaleUpdateRemarkReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.out.ErpSaleOutPageReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.out.ErpSaleOutItemPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.out.ErpSaleReturnableItemRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.out.ErpSaleOutSaveReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.out.ErpSaleOutUpdateExpressFileReqVO;
@@ -125,6 +126,8 @@ public interface ErpSaleOutService {
      * @return 销售出库项列表
      */
     List<ErpSaleOutItemDO> getSaleOutItemListByOutId(Long outId);
+
+    PageResult<ErpSaleOutItemDO> getSaleOutItemPage(ErpSaleOutItemPageReqVO pageReqVO);
 
     /**
      * 获得销售出库项 List

@@ -3,6 +3,7 @@ package cn.iocoder.yudao.module.erp.service.finance.receivable;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.ErpFinanceUpdateRemarkReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.receivable.vo.otherincome.ErpReceivableOtherIncomeDraftSaveReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.finance.receivable.vo.otherincome.ErpReceivableOtherIncomeItemPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.receivable.vo.otherincome.ErpReceivableOtherIncomePageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.receivable.vo.otherincome.ErpReceivableOtherIncomeSaveReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.receivable.ErpReceivableOtherIncomeDO;
@@ -39,6 +40,8 @@ public interface ErpReceivableOtherIncomeService {
     PageResult<ErpReceivableOtherIncomeDO> getOtherIncomePage(ErpReceivableOtherIncomePageReqVO pageReqVO);
 
     List<ErpReceivableOtherIncomeItemDO> getOtherIncomeItemListByIncomeId(Long incomeId);
+
+    PageResult<ErpReceivableOtherIncomeItemDO> getOtherIncomeItemPage(ErpReceivableOtherIncomeItemPageReqVO pageReqVO);
 
     List<ErpReceivableOtherIncomeItemDO> getOtherIncomeItemListByIncomeIds(Collection<Long> incomeIds);
 }

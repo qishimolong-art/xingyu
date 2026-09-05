@@ -305,8 +305,8 @@ public class ErpReceivableAccountServiceImpl implements ErpReceivableAccountServ
         Map<Long, BigDecimal> receiptAllocated = financeReceiptItemMapper
                 .selectEffectivePriceSumMapByReceiptIds(receipts.stream().map(ErpFinanceReceiptDO::getId)
                         .collect(Collectors.toSet()));
-        receipts.forEach(item -> rows.add(buildAllocatedRow("收款单", null, item.getId(),
-                item.getReceiptTime(), item.getNo(), negateAmount(item.getTotalPrice()),
+        receipts.forEach(item -> rows.add(buildReceiptAllocatedRow("收款单", null, item.getId(),
+                item.getReceiptTime(), item.getNo(), item.getTotalPrice(),
                 receiptAllocated.get(item.getId()))));
 
         receivableWriteOffMapper.selectListByCustomerId(reqVO.getCustomerId(), reqVO.getStartTime(), reqVO.getEndTime(),
@@ -322,9 +322,9 @@ public class ErpReceivableAccountServiceImpl implements ErpReceivableAccountServ
                 .leIfPresent(ErpReceivableOtherDO::getBizTime, reqVO.getEndTime() == null ? null : reqVO.getEndTime().toLocalDate());
         applyScope(otherQuery, scope, ErpReceivableOtherDO::getDeptId, ErpReceivableOtherDO::getHandlerId);
         receivableOtherMapper.selectList(otherQuery)
-                .forEach(item -> rows.add(buildRow("其他应收", null, item.getId(),
+                .forEach(item -> rows.add(buildOtherReceivableRow("其他应收", null, item.getId(),
                         item.getBizTime() == null ? null : item.getBizTime().atStartOfDay(),
-                        item.getNo(), item.getReceivableAmount(), false)));
+                        item.getNo(), item.getReceivableAmount())));
 
         rows.sort(Comparator.comparing(ErpReceivableDetailRespVO::getDocDate, Comparator.nullsLast(Comparator.naturalOrder()))
                 .thenComparing(ErpReceivableDetailRespVO::getDocType)
@@ -346,9 +346,20 @@ public class ErpReceivableAccountServiceImpl implements ErpReceivableAccountServ
         row.setBizId(bizId);
         row.setDocDate(docDate);
         row.setDocNo(docNo);
-        row.setIncreaseAmount(actualAmount.compareTo(BigDecimal.ZERO) > 0 ? actualAmount : BigDecimal.ZERO);
-        row.setReceiptAmount(actualAmount.compareTo(BigDecimal.ZERO) < 0 && !writeOff ? actualAmount.abs() : BigDecimal.ZERO);
+        row.setIncreaseAmount(writeOff ? BigDecimal.ZERO : actualAmount);
+        row.setOtherReceivableAmount(BigDecimal.ZERO);
+        row.setReceiptAmount(BigDecimal.ZERO);
         row.setWriteOffAmount(actualAmount.compareTo(BigDecimal.ZERO) < 0 && writeOff ? actualAmount.abs() : BigDecimal.ZERO);
+        row.setWriteOffBaseAmount(actualAmount.abs());
+        return row;
+    }
+
+    private ErpReceivableDetailRespVO buildOtherReceivableRow(String docType, Integer bizType, Long bizId,
+                                                              LocalDateTime docDate, String docNo,
+                                                              BigDecimal amount) {
+        BigDecimal actualAmount = amount == null ? BigDecimal.ZERO : amount;
+        ErpReceivableDetailRespVO row = buildRow(docType, bizType, bizId, docDate, docNo, BigDecimal.ZERO, false);
+        row.setOtherReceivableAmount(actualAmount);
         row.setWriteOffBaseAmount(actualAmount.abs());
         return row;
     }
@@ -368,10 +379,23 @@ public class ErpReceivableAccountServiceImpl implements ErpReceivableAccountServ
         return row;
     }
 
+    private ErpReceivableDetailRespVO buildReceiptAllocatedRow(String docType, Integer bizType, Long bizId,
+                                                               LocalDateTime docDate, String docNo,
+                                                               BigDecimal amount,
+                                                               BigDecimal allocatedAmount) {
+        BigDecimal actualAmount = amount == null ? BigDecimal.ZERO : amount;
+        ErpReceivableDetailRespVO row = buildRow(docType, bizType, bizId, docDate, docNo, BigDecimal.ZERO, false);
+        row.setReceiptAmount(actualAmount.abs());
+        row.setAllocatedAmount(allocatedAmount == null ? BigDecimal.ZERO : allocatedAmount.abs());
+        row.setWriteOffBaseAmount(actualAmount.abs());
+        return row;
+    }
+
     private BigDecimal getChangeAmount(ErpReceivableDetailRespVO row) {
         BigDecimal increaseAmount = row.getIncreaseAmount() == null ? BigDecimal.ZERO : row.getIncreaseAmount();
+        BigDecimal otherReceivableAmount = row.getOtherReceivableAmount() == null ? BigDecimal.ZERO : row.getOtherReceivableAmount();
         BigDecimal receiptAmount = row.getReceiptAmount() == null ? BigDecimal.ZERO : row.getReceiptAmount();
-        return increaseAmount.subtract(receiptAmount);
+        return increaseAmount.add(otherReceivableAmount).subtract(receiptAmount);
     }
 
     private CustomerVisibleScope getCustomerVisibleScope() {

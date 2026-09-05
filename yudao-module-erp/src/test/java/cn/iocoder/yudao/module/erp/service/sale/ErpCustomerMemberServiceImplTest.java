@@ -12,6 +12,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 
@@ -29,6 +30,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -140,6 +142,38 @@ public class ErpCustomerMemberServiceImplTest extends BaseMockitoUnitTest {
         assertServiceException(() -> customerMemberService.createCustomerMember(customerId, memberUserId, null),
                 CUSTOMER_MEMBER_USER_BOUND, "已绑定客户");
         verify(customerMemberMapper, never()).insert(any(ErpCustomerMemberDO.class));
+    }
+
+    @Test
+    void createCustomerMember_sameCustomerDifferentMembers_success() {
+        Long customerId = 10L;
+        Long firstMemberUserId = 20L;
+        Long secondMemberUserId = 21L;
+        when(customerService.validateCustomer(customerId)).thenReturn(buildCustomer(customerId, "星雨客户"));
+        when(memberUserApi.getUser(firstMemberUserId)).thenReturn(
+                buildMemberUser(firstMemberUserId, "13800000001", CommonStatusEnum.ENABLE.getStatus()));
+        when(memberUserApi.getUser(secondMemberUserId)).thenReturn(
+                buildMemberUser(secondMemberUserId, "13800000002", CommonStatusEnum.ENABLE.getStatus()));
+        when(customerMemberMapper.insert(any(ErpCustomerMemberDO.class))).thenAnswer(invocation -> {
+            ErpCustomerMemberDO customerMember = invocation.getArgument(0);
+            customerMember.setId(100L + customerMember.getMemberUserId());
+            return 1;
+        });
+
+        Long firstId = customerMemberService.createCustomerMember(customerId, firstMemberUserId, "第一个微信用户");
+        Long secondId = customerMemberService.createCustomerMember(customerId, secondMemberUserId, "第二个微信用户");
+
+        assertEquals(120L, firstId);
+        assertEquals(121L, secondId);
+        ArgumentCaptor<ErpCustomerMemberDO> captor = ArgumentCaptor.forClass(ErpCustomerMemberDO.class);
+        verify(customerMemberMapper, times(2)).insert(captor.capture());
+        List<ErpCustomerMemberDO> savedList = captor.getAllValues();
+        assertEquals(Arrays.asList(firstMemberUserId, secondMemberUserId),
+                Arrays.asList(savedList.get(0).getMemberUserId(), savedList.get(1).getMemberUserId()));
+        savedList.forEach(saved -> {
+            assertEquals(customerId, saved.getCustomerId());
+            assertEquals(CommonStatusEnum.ENABLE.getStatus(), saved.getStatus());
+        });
     }
 
     @Test

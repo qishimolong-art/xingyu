@@ -6,6 +6,7 @@ import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.module.promotion.api.bargain.dto.BargainValidateJoinRespDTO;
 import cn.iocoder.yudao.module.promotion.controller.admin.bargain.vo.recrod.BargainRecordPageReqVO;
 import cn.iocoder.yudao.module.promotion.controller.app.bargain.vo.record.AppBargainRecordCreateReqVO;
+import cn.iocoder.yudao.module.promotion.dal.dataobject.bargain.BargainActivityDO;
 import cn.iocoder.yudao.module.promotion.dal.dataobject.bargain.BargainRecordDO;
 
 import javax.annotation.Nullable;
@@ -42,6 +43,17 @@ public interface BargainRecordService {
      */
     Boolean updateBargainRecordBargainPrice(Long id, Integer whereBargainPrice,
                                             Integer reducePrice, Boolean success);
+
+    /**
+     * 刷新砍价记录状态。
+     *
+     * 如果当前砍价价格已经到达底价，则将记录修正为砍价成功。
+     *
+     * @param record 砍价记录
+     * @param activity 砍价活动
+     * @return 刷新后的砍价记录
+     */
+    BargainRecordDO refreshBargainRecordStatus(BargainRecordDO record, BargainActivityDO activity);
 
     /**
      * 【下单前】校验是否参与砍价活动

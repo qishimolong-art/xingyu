@@ -16,6 +16,7 @@ import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.check.ErpStockCheck
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.check.ErpStockCheckDraftUpdateReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.check.ErpStockCheckImportExcelVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.check.ErpStockCheckItemBatchUpdateReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.check.ErpStockCheckItemPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.check.ErpStockCheckPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.check.ErpStockCheckRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.check.ErpStockCheckSaveReqVO;
@@ -25,6 +26,7 @@ import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockCheckItemDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpWarehouseDO;
 import cn.iocoder.yudao.module.erp.enums.print.ErpPrintModuleEnum;
 import cn.iocoder.yudao.module.erp.service.base.ErpDataPermissionDeptService;
+import cn.iocoder.yudao.module.erp.service.common.ErpImportExportRecordService;
 import cn.iocoder.yudao.module.erp.service.common.ErpPrintService;
 import cn.iocoder.yudao.module.erp.service.product.ErpProductService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpStockCheckService;
@@ -83,11 +85,13 @@ public class ErpStockCheckController {
             "单次最多导出 5000 条盘点单，请缩小筛选范围后重试");
     private static final String FIELD_PERMISSION_MODULE = "erp_stock_check";
     private static final Set<String> IMPORT_TEMPLATE_FIELDS = new LinkedHashSet<>(Arrays.asList(
-            "checkTypeName", "warehouseName", "productCode", "batchNo", "actualCount",
+            "checkTypeName", "warehouseName", "productCode", "productName", "factoryCode", "batchNo", "actualCount",
             "productPrice", "totalPrice", "remark", "itemRemark"));
 
     @Resource
     private ErpStockCheckService stockCheckService;
+    @Resource
+    private ErpImportExportRecordService importExportRecordService;
     @Resource
     private ErpStockImportService stockImportService;
     @Resource
@@ -201,14 +205,15 @@ public class ErpStockCheckController {
     @Operation(summary = "Get stock check")
     @Parameter(name = "id", description = "id", required = true, example = "1024")
     @PreAuthorize("@ss.hasPermission('erp:stock-check:query')")
-    public CommonResult<ErpStockCheckRespVO> getStockCheck(@RequestParam("id") Long id) {
+    public CommonResult<ErpStockCheckRespVO> getStockCheck(@RequestParam("id") Long id,
+                                                           @RequestParam(value = "includeItems", required = false,
+                                                                   defaultValue = "true") Boolean includeItems) {
         ErpStockCheckDO stockCheck = stockCheckService.getStockCheck(id);
         if (stockCheck == null) {
             return success(null);
         }
-        List<ErpStockCheckItemDO> itemList = stockCheckService.getStockCheckItemListByCheckId(id);
-        Map<Long, ErpProductRespVO> productMap = DataPermissionUtils.executeIgnore(() -> productService.getProductVOMap(
-                convertSet(itemList, ErpStockCheckItemDO::getProductId)));
+        List<ErpStockCheckItemDO> itemList = Boolean.TRUE.equals(includeItems)
+                ? stockCheckService.getStockCheckItemListByCheckId(id) : Collections.emptyList();
         Map<Long, ErpWarehouseDO> warehouseMap = getWarehouseMapIgnoreDataPermission(
                 convertSet(itemList, ErpStockCheckItemDO::getWarehouseId));
         Set<Long> deptIds = new HashSet<>(convertSet(warehouseMap.values(), ErpWarehouseDO::getDeptId));
@@ -223,15 +228,30 @@ public class ErpStockCheckController {
         Map<Long, AdminUserRespDTO> userMap = adminUserApi.getUserMap(userIds);
 
         ErpStockCheckRespVO respVO = BeanUtils.toBean(stockCheck, ErpStockCheckRespVO.class, vo -> {
-            vo.setItems(BeanUtils.toBean(itemList, ErpStockCheckRespVO.Item.class,
-                    item -> fillItemRelation(item, productMap.get(item.getProductId()), warehouseMap, deptMap)));
-            vo.setProductNames(CollUtil.join(vo.getItems(), ", ", ErpStockCheckRespVO.Item::getProductName));
-            vo.setProductCodes(CollUtil.join(vo.getItems(), ", ", ErpStockCheckRespVO.Item::getProductCode));
+            if (Boolean.TRUE.equals(includeItems)) {
+                vo.setItems(buildStockCheckItemVOList(itemList));
+                vo.setProductNames(CollUtil.join(vo.getItems(), ", ", ErpStockCheckRespVO.Item::getProductName));
+                vo.setProductCodes(CollUtil.join(vo.getItems(), ", ", ErpStockCheckRespVO.Item::getProductCode));
+            }
             MapUtils.findAndThen(deptMap, vo.getDeptId(), dept -> vo.setDeptName(dept.getName()));
             fillUserNames(vo, userMap);
         });
         fieldPermissionMasker.maskFormWithItems(FIELD_PERMISSION_MODULE, respVO);
         return success(respVO);
+    }
+
+    @GetMapping("/item-page")
+    @Operation(summary = "Get stock check item page")
+    @PreAuthorize("@ss.hasPermission('erp:stock-check:query')")
+    public CommonResult<PageResult<ErpStockCheckRespVO.Item>> getStockCheckItemPage(
+            @Valid ErpStockCheckItemPageReqVO pageReqVO) {
+        PageResult<ErpStockCheckItemDO> pageResult = stockCheckService.getStockCheckItemPage(pageReqVO);
+        PageResult<ErpStockCheckRespVO.Item> respResult = new PageResult<>(
+                buildStockCheckItemVOList(pageResult.getList()), pageResult.getTotal());
+        if (Boolean.TRUE.equals(pageReqVO.getMask())) {
+            fieldPermissionMasker.clearHiddenItemFields(FIELD_PERMISSION_MODULE, respResult.getList());
+        }
+        return success(respResult);
     }
 
     @GetMapping("/page")
@@ -294,6 +314,14 @@ public class ErpStockCheckController {
         return success(stockImportService.importStockCheckList(ExcelUtils.read(file, ErpStockCheckImportExcelVO.class)));
     }
 
+    @GetMapping("/import-failure-details/download")
+    @Operation(summary = "Download stock check import failure details")
+    @PreAuthorize("@ss.hasPermission('erp:stock-check:import')")
+    public void downloadImportFailureDetails(@RequestParam("recordId") Long recordId,
+                                             HttpServletResponse response) throws IOException {
+        importExportRecordService.downloadOwnImportFailureDetails(recordId, FIELD_PERMISSION_MODULE, response);
+    }
+
     private PageResult<ErpStockCheckRespVO> buildStockCheckVOPageResult(PageResult<ErpStockCheckDO> pageResult) {
         if (CollUtil.isEmpty(pageResult.getList())) {
             return PageResult.empty(pageResult.getTotal());
@@ -331,6 +359,21 @@ public class ErpStockCheckController {
             vo.setPrintCount(printCount == null ? 0 : printCount.intValue());
             vo.setPrintTime(printTimeMap.get(vo.getId()));
         });
+    }
+
+    private List<ErpStockCheckRespVO.Item> buildStockCheckItemVOList(List<ErpStockCheckItemDO> itemList) {
+        if (CollUtil.isEmpty(itemList)) {
+            return Collections.emptyList();
+        }
+        Map<Long, ErpProductRespVO> productMap = DataPermissionUtils.executeIgnore(() -> productService.getProductVOMap(
+                convertSet(itemList, ErpStockCheckItemDO::getProductId)));
+        Map<Long, ErpWarehouseDO> warehouseMap = getWarehouseMapIgnoreDataPermission(
+                convertSet(itemList, ErpStockCheckItemDO::getWarehouseId));
+        Set<Long> deptIds = new HashSet<>(convertSet(warehouseMap.values(), ErpWarehouseDO::getDeptId));
+        deptIds.remove(null);
+        Map<Long, DeptRespDTO> deptMap = CollUtil.isEmpty(deptIds) ? Collections.emptyMap() : deptApi.getDeptMap(deptIds);
+        return BeanUtils.toBean(itemList, ErpStockCheckRespVO.Item.class,
+                item -> fillItemRelation(item, productMap.get(item.getProductId()), warehouseMap, deptMap));
     }
 
     private Map<Long, ErpWarehouseDO> getWarehouseMapIgnoreDataPermission(Collection<Long> warehouseIds) {

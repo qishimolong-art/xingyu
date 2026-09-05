@@ -11,7 +11,6 @@ import java.math.BigDecimal;
 @ExcelIgnoreUnannotated
 public class ErpPayableExpenseImportExcelVO {
 
-    @ExcelRequired
     @ExcelProperty("单据日期")
     private String bizTime;
 

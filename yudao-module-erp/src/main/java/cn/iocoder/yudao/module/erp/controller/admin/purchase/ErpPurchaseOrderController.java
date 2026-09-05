@@ -21,6 +21,7 @@ import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.order.ErpPurchas
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.order.ErpPurchaseOrderImportRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.order.ErpPurchaseOrderInableItemRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.order.ErpPurchaseOrderItemBatchUpdateReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.order.ErpPurchaseOrderItemPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.order.ErpPurchaseOrderPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.order.ErpPurchaseOrderPrintDataRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.order.ErpPurchaseOrderRespVO;
@@ -35,6 +36,7 @@ import cn.iocoder.yudao.module.erp.enums.config.ErpFieldConfigModuleEnum;
 import cn.iocoder.yudao.module.erp.framework.excel.ErpExportFieldUtils;
 import cn.iocoder.yudao.module.erp.framework.excel.ErpImportTemplateRequiredFieldUtils;
 import cn.iocoder.yudao.module.erp.service.config.ErpFieldConfigService;
+import cn.iocoder.yudao.module.erp.service.common.ErpImportExportRecordService;
 import cn.iocoder.yudao.module.erp.service.common.ErpPrintService;
 import cn.iocoder.yudao.module.erp.service.finance.ErpAccountService;
 import cn.iocoder.yudao.module.erp.service.product.ErpProductService;
@@ -105,6 +107,7 @@ public class ErpPurchaseOrderController {
             "remark", "remark",
             "productId", "productCode",
             "productCode", "productCode",
+            "productName", "productName",
             "warehouseId", "warehouseName",
             "warehouseName", "warehouseName",
             "warehouse_name", "warehouseName",
@@ -118,6 +121,7 @@ public class ErpPurchaseOrderController {
     private static final Map<String, String> DETAIL_IMPORT_FIELD_ALIAS_MAP = ErpImportTemplateRequiredFieldUtils.aliasMap(
             "productId", "productCode",
             "productCode", "productCode",
+            "productName", "productName",
             "count", "count",
             "item_count", "count",
             "itemCount", "count",
@@ -149,6 +153,8 @@ public class ErpPurchaseOrderController {
     private ErpFieldConfigService fieldConfigService;
     @Resource
     private ErpPrintService printService;
+    @Resource
+    private ErpImportExportRecordService importExportRecordService;
 
     @PostMapping("/create")
     @Operation(summary = "创建采购订单")
@@ -253,14 +259,13 @@ public class ErpPurchaseOrderController {
     @PreAuthorize("@ss.hasPermission('erp:purchase-order:query')")
     public CommonResult<ErpPurchaseOrderRespVO> getPurchaseOrder(@RequestParam("id") Long id,
                                                                  @RequestParam(value = "mask", required = false,
-                                                                         defaultValue = "true") Boolean mask) {
+                                                                         defaultValue = "true") Boolean mask,
+                                                                 @RequestParam(value = "includeItems", required = false,
+                                                                         defaultValue = "true") Boolean includeItems) {
         ErpPurchaseOrderDO purchaseOrder = purchaseOrderService.getPurchaseOrder(id);
         if (purchaseOrder == null) {
             return success(null);
         }
-        List<ErpPurchaseOrderItemDO> purchaseOrderItemList = purchaseOrderService.getPurchaseOrderItemListByOrderId(id);
-        Map<Long, ErpProductRespVO> productMap = DataPermissionUtils.executeIgnore(() ->
-                productService.getProductVOMap(convertSet(purchaseOrderItemList, ErpPurchaseOrderItemDO::getProductId)));
         Set<Long> userIds = new HashSet<>();
         addUserId(userIds, purchaseOrder.getCreator());
         addUserId(userIds, purchaseOrder.getUpdater());
@@ -270,15 +275,11 @@ public class ErpPurchaseOrderController {
         ErpSupplierDO supplier = purchaseOrder.getSupplierId() == null
                 ? null : supplierService.getSupplier(purchaseOrder.getSupplierId());
         ErpPurchaseOrderRespVO respVO = BeanUtils.toBean(purchaseOrder, ErpPurchaseOrderRespVO.class, purchaseOrderVO -> {
-            purchaseOrderVO.setItems(BeanUtils.toBean(purchaseOrderItemList, ErpPurchaseOrderRespVO.Item.class, item -> {
-                BigDecimal stockCount = stockService.getStockCount(item.getProductId());
-                item.setStockCount(stockCount != null ? stockCount : BigDecimal.ZERO);
-                MapUtils.findAndThen(productMap, item.getProductId(), product -> item.setProductName(product.getName())
-                        .setProductBarCode(product.getBarCode()).setProductUnitName(product.getUnitName())
-                        .setWeight(product.getWeight()).setPackageQty(product.getPackageQty())
-                        .setProductCode(product.getCode()).setBatchNoEnabled(product.getBatchNoEnabled())
-                        .setLastPurchasePrice(product.getLastPurchasePrice()));
-            }));
+            if (Boolean.TRUE.equals(includeItems)) {
+                List<ErpPurchaseOrderItemDO> purchaseOrderItemList =
+                        purchaseOrderService.getPurchaseOrderItemListByOrderId(id);
+                purchaseOrderVO.setItems(buildPurchaseOrderItemVOList(purchaseOrderItemList, true));
+            }
             if (dept != null) {
                 purchaseOrderVO.setDeptName(dept.getName());
             }
@@ -292,6 +293,20 @@ public class ErpPurchaseOrderController {
         }
         fillPrintInfo(Collections.singletonList(respVO));
         return success(respVO);
+    }
+
+    @GetMapping("/item-page")
+    @Operation(summary = "获得采购订单明细分页")
+    @PreAuthorize("@ss.hasPermission('erp:purchase-order:query')")
+    public CommonResult<PageResult<ErpPurchaseOrderRespVO.Item>> getPurchaseOrderItemPage(
+            @Valid ErpPurchaseOrderItemPageReqVO pageReqVO) {
+        PageResult<ErpPurchaseOrderItemDO> pageResult = purchaseOrderService.getPurchaseOrderItemPage(pageReqVO);
+        PageResult<ErpPurchaseOrderRespVO.Item> respResult = new PageResult<>(
+                buildPurchaseOrderItemVOList(pageResult.getList(), true), pageResult.getTotal());
+        if (Boolean.TRUE.equals(pageReqVO.getMask())) {
+            fieldPermissionMasker.clearHiddenItemFields(FIELD_PERMISSION_MODULE, respResult.getList());
+        }
+        return success(respResult);
     }
 
     @GetMapping("/print-data")
@@ -435,6 +450,14 @@ public class ErpPurchaseOrderController {
         return success(purchaseOrderService.importPurchaseOrderList(list));
     }
 
+    @GetMapping("/import-failure-details/download")
+    @Operation(summary = "下载采购订单导入错误数据")
+    @PreAuthorize("@ss.hasPermission('erp:purchase-order:create')")
+    public void downloadImportFailureDetails(@RequestParam("recordId") Long recordId, HttpServletResponse response)
+            throws IOException {
+        importExportRecordService.downloadOwnImportFailureDetails(recordId, FIELD_PERMISSION_MODULE, response);
+    }
+
     @GetMapping("/get-detail-import-template")
     @Operation(summary = "获得采购订单明细导入模板")
     public void getDetailImportTemplate(HttpServletResponse response) throws IOException {
@@ -505,13 +528,8 @@ public class ErpPurchaseOrderController {
         });
         Map<Long, AdminUserRespDTO> userMap = adminUserApi.getUserMap(userIds);
         PageResult<ErpPurchaseOrderRespVO> respResult = BeanUtils.toBean(pageResult, ErpPurchaseOrderRespVO.class, purchaseOrder -> {
-            purchaseOrder.setItems(BeanUtils.toBean(purchaseOrderItemMap.get(purchaseOrder.getId()),
-                    ErpPurchaseOrderRespVO.Item.class, item ->
-                            MapUtils.findAndThen(productMap, item.getProductId(), product -> item.setProductName(product.getName())
-                                    .setProductBarCode(product.getBarCode()).setProductUnitName(product.getUnitName())
-                                    .setWeight(product.getWeight()).setPackageQty(product.getPackageQty())
-                                    .setProductCode(product.getCode()).setBatchNoEnabled(product.getBatchNoEnabled())
-                                    .setLastPurchasePrice(product.getLastPurchasePrice()))));
+            purchaseOrder.setItems(buildPurchaseOrderItemVOList(
+                    purchaseOrderItemMap.get(purchaseOrder.getId()), productMap, false));
             purchaseOrder.setProductNames(CollUtil.join(purchaseOrder.getItems(), "，",
                     ErpPurchaseOrderRespVO.Item::getProductName));
             MapUtils.findAndThen(supplierMap, purchaseOrder.getSupplierId(),
@@ -525,6 +543,38 @@ public class ErpPurchaseOrderController {
         fieldPermissionMasker.maskList(FIELD_PERMISSION_MODULE, respResult.getList());
         fillPrintInfo(respResult.getList());
         return respResult;
+    }
+
+    private List<ErpPurchaseOrderRespVO.Item> buildPurchaseOrderItemVOList(List<ErpPurchaseOrderItemDO> itemList,
+                                                                          boolean includeStockCount) {
+        if (CollUtil.isEmpty(itemList)) {
+            return Collections.emptyList();
+        }
+        Map<Long, ErpProductRespVO> productMap = DataPermissionUtils.executeIgnore(() ->
+                productService.getProductVOMap(convertSet(itemList, ErpPurchaseOrderItemDO::getProductId)));
+        return buildPurchaseOrderItemVOList(itemList, productMap, includeStockCount);
+    }
+
+    private List<ErpPurchaseOrderRespVO.Item> buildPurchaseOrderItemVOList(List<ErpPurchaseOrderItemDO> itemList,
+                                                                          Map<Long, ErpProductRespVO> productMap,
+                                                                          boolean includeStockCount) {
+        if (CollUtil.isEmpty(itemList)) {
+            return Collections.emptyList();
+        }
+        Map<Long, BigDecimal> stockCountMap = includeStockCount
+                ? stockService.getStockCountMap(convertSet(itemList, ErpPurchaseOrderItemDO::getProductId))
+                : Collections.emptyMap();
+        return BeanUtils.toBean(itemList, ErpPurchaseOrderRespVO.Item.class, item -> {
+            if (includeStockCount) {
+                BigDecimal stockCount = stockCountMap.get(item.getProductId());
+                item.setStockCount(stockCount != null ? stockCount : BigDecimal.ZERO);
+            }
+            MapUtils.findAndThen(productMap, item.getProductId(), product -> item.setProductName(product.getName())
+                    .setProductBarCode(product.getBarCode()).setProductUnitName(product.getUnitName())
+                    .setWeight(product.getWeight()).setPackageQty(product.getPackageQty())
+                    .setProductCode(product.getCode()).setBatchNoEnabled(product.getBatchNoEnabled())
+                    .setLastPurchasePrice(product.getLastPurchasePrice()));
+        });
     }
 
     private Map<String, Object> buildPurchaseOrderPrintMain(ErpPurchaseOrderDO purchaseOrder, ErpSupplierDO supplier,

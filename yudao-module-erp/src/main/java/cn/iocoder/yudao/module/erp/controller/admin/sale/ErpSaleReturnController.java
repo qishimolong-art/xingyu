@@ -14,14 +14,20 @@ import cn.iocoder.yudao.module.erp.controller.admin.common.ErpAuditStatusRequest
 import cn.iocoder.yudao.module.erp.controller.admin.common.vo.ErpExportFieldRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpProductRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnExportRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnCreatePurchaseReturnReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnCreateTargetDraftRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnCreateTransferOutReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnDraftCreateReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnDraftUpdateReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnImportExcelVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnImportRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnItemBatchUpdateReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnItemPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnPageReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnPurchaseReturnableItemRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnSaveReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnTransferOutableItemRespVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpCustomerDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleReturnDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleReturnItemDO;
@@ -30,6 +36,7 @@ import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpWarehouseDO;
 import cn.iocoder.yudao.module.erp.enums.config.ErpFieldConfigModuleEnum;
 import cn.iocoder.yudao.module.erp.framework.excel.ErpExportFieldUtils;
 import cn.iocoder.yudao.module.erp.framework.excel.ErpImportTemplateRequiredFieldUtils;
+import cn.iocoder.yudao.module.erp.service.common.ErpImportExportRecordService;
 import cn.iocoder.yudao.module.erp.service.config.ErpFieldConfigService;
 import cn.iocoder.yudao.module.erp.service.product.ErpProductService;
 import cn.iocoder.yudao.module.erp.service.sale.ErpCustomerService;
@@ -78,8 +85,10 @@ public class ErpSaleReturnController {
     private static final Map<String, String> EXPORT_FIELD_GROUP_MAP = buildExportFieldGroupMap();
     private static final Map<String, String> EXPORT_FIELD_PERMISSION_MAP = buildExportFieldPermissionMap();
     private static final Map<String, String> DETAIL_IMPORT_FIELD_ALIAS_MAP = ErpImportTemplateRequiredFieldUtils.aliasMap(
-            "productId", "productCode",
-            "productCode", "productCode",
+            "productId", "productIdentity",
+            "productCode", "productIdentity",
+            "productName", "productIdentity",
+            "factoryCode", "productIdentity",
             "warehouseId", "warehouseName",
             "warehouseName", "warehouseName",
             "count", "count",
@@ -102,6 +111,8 @@ public class ErpSaleReturnController {
     private ErpSaleFieldPermissionMasker fieldPermissionMasker;
     @Resource
     private ErpFieldConfigService fieldConfigService;
+    @Resource
+    private ErpImportExportRecordService importExportRecordService;
 
     @Resource
     private AdminUserApi adminUserApi;
@@ -174,6 +185,38 @@ public class ErpSaleReturnController {
         return success(true);
     }
 
+    @GetMapping("/transfer-outable-items")
+    @Operation(summary = "获得销售退货可转调拨明细")
+    @PreAuthorize("@ss.hasPermission('erp:sale-return:transfer-out')")
+    public CommonResult<List<ErpSaleReturnTransferOutableItemRespVO>> getTransferOutableItems(
+            @RequestParam("returnId") Long returnId) {
+        return success(saleReturnService.getTransferOutableItemsByReturnId(returnId));
+    }
+
+    @PostMapping("/create-transfer-out")
+    @Operation(summary = "由销售退货生成调拨出库草稿")
+    @PreAuthorize("@ss.hasPermission('erp:sale-return:transfer-out')")
+    public CommonResult<ErpSaleReturnCreateTargetDraftRespVO> createTransferOutFromSaleReturn(
+            @Valid @RequestBody ErpSaleReturnCreateTransferOutReqVO reqVO) {
+        return success(saleReturnService.createTransferOutFromSaleReturn(reqVO));
+    }
+
+    @GetMapping("/purchase-returnable-items")
+    @Operation(summary = "获得销售退货可转采购退货明细")
+    @PreAuthorize("@ss.hasPermission('erp:sale-return:purchase-return')")
+    public CommonResult<List<ErpSaleReturnPurchaseReturnableItemRespVO>> getPurchaseReturnableItems(
+            @RequestParam("returnId") Long returnId) {
+        return success(saleReturnService.getPurchaseReturnableItemsByReturnId(returnId));
+    }
+
+    @PostMapping("/create-purchase-return")
+    @Operation(summary = "由销售退货生成采购退货草稿")
+    @PreAuthorize("@ss.hasPermission('erp:sale-return:purchase-return')")
+    public CommonResult<ErpSaleReturnCreateTargetDraftRespVO> createPurchaseReturnFromSaleReturn(
+            @Valid @RequestBody ErpSaleReturnCreatePurchaseReturnReqVO reqVO) {
+        return success(saleReturnService.createPurchaseReturnFromSaleReturn(reqVO));
+    }
+
     @DeleteMapping("/delete")
     @Operation(summary = "删除销售退货")
     @Parameter(name = "ids", description = "编号数组", required = true)
@@ -187,12 +230,15 @@ public class ErpSaleReturnController {
     @Operation(summary = "获得销售退货")
     @Parameter(name = "id", description = "编号", required = true, example = "1024")
     @PreAuthorize("@ss.hasPermission('erp:sale-return:query')")
-    public CommonResult<ErpSaleReturnRespVO> getSaleReturn(@RequestParam("id") Long id) {
+    public CommonResult<ErpSaleReturnRespVO> getSaleReturn(@RequestParam("id") Long id,
+                                                           @RequestParam(value = "includeItems", required = false,
+                                                                   defaultValue = "true") Boolean includeItems) {
         ErpSaleReturnDO saleReturn = saleReturnService.getSaleReturn(id);
         if (saleReturn == null) {
             return success(null);
         }
-        List<ErpSaleReturnItemDO> saleReturnItemList = emptyIfNull(saleReturnService.getSaleReturnItemListByReturnId(id));
+        List<ErpSaleReturnItemDO> saleReturnItemList = Boolean.TRUE.equals(includeItems)
+                ? emptyIfNull(saleReturnService.getSaleReturnItemListByReturnId(id)) : Collections.emptyList();
         Map<Long, ErpProductRespVO> productMap = saleReturnItemList.isEmpty()
                 ? Collections.emptyMap()
                 : getProductVOMapIgnoreDataPermission(convertSet(saleReturnItemList, ErpSaleReturnItemDO::getProductId));
@@ -235,6 +281,55 @@ public class ErpSaleReturnController {
         });
         fieldPermissionMasker.maskSaleDetailFormWithItems(FIELD_PERMISSION_MODULE, respVO);
         return success(respVO);
+    }
+
+    @PreAuthorize("@ss.hasPermission('erp:sale-return:query')")
+    public CommonResult<ErpSaleReturnRespVO> getSaleReturn(Long id) {
+        return getSaleReturn(id, true);
+    }
+
+    @GetMapping("/item-page")
+    @Operation(summary = "获得销售退货明细分页")
+    @PreAuthorize("@ss.hasPermission('erp:sale-return:query')")
+    public CommonResult<PageResult<ErpSaleReturnRespVO.Item>> getSaleReturnItemPage(
+            @Valid ErpSaleReturnItemPageReqVO pageReqVO) {
+        ErpSaleReturnDO saleReturn = saleReturnService.getSaleReturn(pageReqVO.getReturnId());
+        if (saleReturn == null) {
+            return success(PageResult.empty());
+        }
+        PageResult<ErpSaleReturnItemDO> pageResult = saleReturnService.getSaleReturnItemPage(pageReqVO);
+        List<ErpSaleReturnItemDO> itemList = emptyIfNull(pageResult.getList());
+        Map<Long, ErpProductRespVO> productMap = itemList.isEmpty()
+                ? Collections.emptyMap()
+                : getProductVOMapIgnoreDataPermission(convertSet(itemList, ErpSaleReturnItemDO::getProductId));
+        Map<Long, ErpWarehouseDO> warehouseMap = itemList.isEmpty()
+                ? Collections.emptyMap()
+                : getWarehouseMapIgnoreDataPermission(convertSet(itemList, ErpSaleReturnItemDO::getWarehouseId));
+        Set<Long> itemDeptIds = convertSet(itemList, ErpSaleReturnItemDO::getDeptId);
+        itemDeptIds.addAll(convertSet(warehouseMap.values(), ErpWarehouseDO::getDeptId));
+        itemDeptIds.remove(null);
+        Map<Long, DeptRespDTO> itemDeptMap = CollUtil.isEmpty(itemDeptIds)
+                ? Collections.emptyMap() : deptApi.getDeptMap(itemDeptIds);
+        List<ErpSaleReturnRespVO.Item> items = BeanUtils.toBean(itemList, ErpSaleReturnRespVO.Item.class, item -> {
+            ErpStockDO stock = getStockIgnoreDataPermission(item.getProductId(), item.getWarehouseId());
+            item.setStockCount(stock != null ? stock.getCount() : BigDecimal.ZERO);
+            MapUtils.findAndThen(productMap, item.getProductId(), product -> item.setProductName(product.getName())
+                    .setProductBarCode(product.getBarCode()).setProductUnitName(product.getUnitName())
+                    .setProductCode(product.getCode()));
+            MapUtils.findAndThen(warehouseMap, item.getWarehouseId(), warehouse -> {
+                item.setWarehouseName(warehouse.getName());
+                item.setWarehouseDeptId(warehouse.getDeptId());
+                MapUtils.findAndThen(itemDeptMap, warehouse.getDeptId(),
+                        deptResp -> item.setWarehouseDeptName(deptResp.getName()));
+            });
+        });
+        PageResult<ErpSaleReturnRespVO.Item> respResult = new PageResult<>(emptyIfNull(items), pageResult.getTotal());
+        if (Boolean.TRUE.equals(pageReqVO.getMask())) {
+            ErpSaleReturnRespVO context = BeanUtils.toBean(saleReturn, ErpSaleReturnRespVO.class);
+            fieldPermissionMasker.clearSaleDetailHiddenItemFields(FIELD_PERMISSION_MODULE, context,
+                    respResult.getList());
+        }
+        return success(respResult);
     }
 
     @GetMapping("/warehouse-dept-simple-list")
@@ -286,6 +381,7 @@ public class ErpSaleReturnController {
     public void exportImportTemplate(HttpServletResponse response) throws IOException {
         ErpSaleReturnImportExcelVO example = new ErpSaleReturnImportExcelVO();
         example.setProductCode("P0001");
+        example.setProductName("示例配件");
         example.setWarehouseName("默认仓");
         example.setCount(BigDecimal.ONE);
         example.setProductPrice(new BigDecimal("100.00"));
@@ -304,6 +400,14 @@ public class ErpSaleReturnController {
     public CommonResult<ErpSaleReturnImportRespVO> importSaleReturn(@RequestParam("file") MultipartFile file) throws Exception {
         List<ErpSaleReturnImportExcelVO> list = ExcelUtils.read(file, ErpSaleReturnImportExcelVO.class);
         return success(saleReturnService.parseImportData(list));
+    }
+
+    @GetMapping("/import-failure-details/download")
+    @Operation(summary = "下载销售退货导入错误数据")
+    @PreAuthorize("@ss.hasPermission('erp:sale-return:create')")
+    public void downloadImportFailureDetails(@RequestParam("recordId") Long recordId,
+                                             HttpServletResponse response) throws IOException {
+        importExportRecordService.downloadOwnImportFailureDetails(recordId, FIELD_PERMISSION_MODULE, response);
     }
 
     private PageResult<ErpSaleReturnRespVO> buildSaleReturnVOPageResult(PageResult<ErpSaleReturnDO> pageResult) {

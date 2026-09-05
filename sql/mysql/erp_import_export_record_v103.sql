@@ -13,6 +13,7 @@ CREATE TABLE IF NOT EXISTS `erp_import_export_record` (
   `operation_type` varchar(20) NOT NULL COMMENT '操作类型：IMPORT/EXPORT',
   `module_key` varchar(64) NOT NULL COMMENT '模块编码',
   `module_name` varchar(64) NOT NULL COMMENT '模块名称',
+  `template_key` varchar(255) DEFAULT NULL COMMENT '导入模板类标识',
   `file_name` varchar(255) DEFAULT NULL COMMENT '文件名',
   `file_type` varchar(20) DEFAULT NULL COMMENT '文件类型',
   `status` varchar(30) NOT NULL COMMENT '执行状态',
@@ -45,10 +46,12 @@ CREATE TABLE IF NOT EXISTS `erp_import_export_record_detail` (
   `id` bigint NOT NULL AUTO_INCREMENT COMMENT '主键',
   `record_id` bigint NOT NULL COMMENT '主记录编号',
   `row_no` int DEFAULT NULL COMMENT '行号',
+  `group_key` varchar(128) DEFAULT NULL COMMENT '单据组标识',
+  `detail_type` varchar(20) DEFAULT NULL COMMENT '明细类型：FAILURE/CONTEXT',
   `biz_key` varchar(128) DEFAULT NULL COMMENT '业务标识',
   `biz_name` varchar(255) DEFAULT NULL COMMENT '业务名称',
-  `failure_reason` varchar(1000) NOT NULL COMMENT '失败原因',
-  `raw_data` text DEFAULT NULL COMMENT '原始行数据 JSON',
+  `failure_reason` varchar(1000) DEFAULT NULL COMMENT '失败原因',
+  `raw_data` mediumtext DEFAULT NULL COMMENT '原始行数据 JSON',
   `creator` varchar(64) DEFAULT '' COMMENT '创建者',
   `create_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   `updater` varchar(64) DEFAULT '' COMMENT '更新者',
@@ -57,6 +60,7 @@ CREATE TABLE IF NOT EXISTS `erp_import_export_record_detail` (
   `tenant_id` bigint NOT NULL DEFAULT 0 COMMENT '租户编号',
   PRIMARY KEY (`id`),
   KEY `idx_record` (`tenant_id`, `record_id`),
+  KEY `idx_record_group` (`tenant_id`, `record_id`, `group_key`),
   KEY `idx_biz_key` (`tenant_id`, `biz_key`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='ERP 导入导出记录明细';
 

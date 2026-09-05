@@ -9,6 +9,7 @@ import cn.iocoder.yudao.framework.common.util.collection.CollectionUtils;
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.ErpFinanceUpdateRemarkReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.payment.ErpFinancePaymentDraftSaveReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.payment.ErpFinancePaymentItemPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.payment.ErpFinancePaymentPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.payment.ErpFinancePaymentSaveReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.payment.ErpFinancePaymentWriteOffCandidateRespVO;
@@ -106,6 +107,8 @@ public class ErpFinancePaymentServiceImpl implements ErpFinancePaymentService {
     private ErpFinanceFieldPermissionMasker fieldPermissionMasker;
     @Resource
     private ErpOperateLogService operateLogService;
+    @Resource
+    private ErpFinanceAutoWriteOffService financeAutoWriteOffService;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -314,9 +317,15 @@ public class ErpFinancePaymentServiceImpl implements ErpFinancePaymentService {
     private void fillDefaultAmount(ErpFinancePaymentDO payment) {
         payment.setDiscountPrice(normalize(getZeroIfNull(payment.getDiscountPrice())));
         BigDecimal totalPrice = normalize(getZeroIfNull(payment.getTotalPrice()));
+        if (totalPrice.compareTo(BigDecimal.ZERO) == 0) {
+            throw exception(FINANCE_PAYMENT_WRITEOFF_AMOUNT_INVALID, "合计付款不能为 0");
+        }
+        if (payment.getDiscountPrice().compareTo(BigDecimal.ZERO) < 0) {
+            throw exception(FINANCE_PAYMENT_WRITEOFF_AMOUNT_INVALID, "优惠金额不能小于 0");
+        }
         BigDecimal paymentPrice = totalPrice.subtract(payment.getDiscountPrice());
-        if (paymentPrice.compareTo(BigDecimal.ZERO) <= 0) {
-            throw exception(FINANCE_PAYMENT_WRITEOFF_AMOUNT_INVALID, "实际付款金额必须大于 0");
+        if (paymentPrice.compareTo(BigDecimal.ZERO) == 0) {
+            throw exception(FINANCE_PAYMENT_WRITEOFF_AMOUNT_INVALID, "实际付款不能为 0");
         }
         payment.setTotalPrice(totalPrice).setPaymentPrice(normalize(paymentPrice));
     }
@@ -349,6 +358,7 @@ public class ErpFinancePaymentServiceImpl implements ErpFinancePaymentService {
             financePaymentItemMapper.updateBatch(pendingItems);
             updatePurchasePrice(pendingItems);
         }
+        financeAutoWriteOffService.autoWriteOffPayment(id, loginUserId);
         operateLogService.recordStatus(ERP_FINANCE_PAYMENT_TYPE, id, payment.getNo(), true);
     }
 
@@ -427,7 +437,7 @@ public class ErpFinancePaymentServiceImpl implements ErpFinancePaymentService {
         BigDecimal discountPrice = normalize(getZeroIfNull(payment.getDiscountPrice()));
         payment.setTotalPrice(totalPrice)
                 .setDiscountPrice(discountPrice)
-                .setPaymentPrice(normalize(totalPrice.subtract(discountPrice)).max(BigDecimal.ZERO));
+                .setPaymentPrice(normalize(totalPrice.subtract(discountPrice)));
     }
 
     private void insertFinancePaymentDraftItems(Long paymentId, List<ErpFinancePaymentItemDO> paymentItems) {
@@ -727,8 +737,13 @@ public class ErpFinancePaymentServiceImpl implements ErpFinancePaymentService {
 
     private void validatePaymentAllocationLimit(ErpFinancePaymentDO payment, BigDecimal allocatedPrice) {
         BigDecimal normalizedAllocatedPrice = normalize(allocatedPrice);
-        if (normalizedAllocatedPrice.compareTo(BigDecimal.ZERO) < 0
-                || normalizedAllocatedPrice.compareTo(normalize(getZeroIfNull(payment.getTotalPrice()))) > 0) {
+        BigDecimal totalPrice = normalize(getZeroIfNull(payment.getTotalPrice()));
+        if (normalizedAllocatedPrice.compareTo(BigDecimal.ZERO) == 0) {
+            return;
+        }
+        if (totalPrice.compareTo(BigDecimal.ZERO) == 0
+                || normalizedAllocatedPrice.signum() != totalPrice.signum()
+                || normalizedAllocatedPrice.abs().compareTo(totalPrice.abs()) > 0) {
             throw exception(FINANCE_PAYMENT_WRITEOFF_AMOUNT_EXCEED);
         }
     }
@@ -814,6 +829,12 @@ public class ErpFinancePaymentServiceImpl implements ErpFinancePaymentService {
     @Override
     public List<ErpFinancePaymentItemDO> getFinancePaymentItemListByPaymentId(Long paymentId) {
         return financePaymentItemMapper.selectListByPaymentId(paymentId);
+    }
+
+    @Override
+    public PageResult<ErpFinancePaymentItemDO> getFinancePaymentItemPage(ErpFinancePaymentItemPageReqVO pageReqVO) {
+        validateFinancePaymentExists(pageReqVO.getPaymentId());
+        return financePaymentItemMapper.selectPageByPaymentId(pageReqVO);
     }
 
     @Override

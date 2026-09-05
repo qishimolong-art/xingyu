@@ -69,6 +69,8 @@ public interface ErpPurchaseOrderMapper extends BaseMapperX<ErpPurchaseOrderDO> 
                         String productKeyword = normalizeLikeValue(reqVO.getProductKeyword());
                         w.like(ErpProductDO::getCode, productKeyword)
                                 .or().like(ErpProductDO::getName, productKeyword)
+                                .or().like(ErpProductDO::getPinyinCode, productKeyword)
+                                .or().like(ErpProductDO::getWubiCode, productKeyword)
                                 .or().like(ErpProductDO::getBarCode, productKeyword)
                                 .or().like(ErpProductDO::getVehicleModel, productKeyword)
                                 .or().like(ErpProductDO::getFactoryCode, productKeyword)
@@ -80,7 +82,7 @@ public interface ErpPurchaseOrderMapper extends BaseMapperX<ErpPurchaseOrderDO> 
                     })
                     .groupBy(ErpPurchaseOrderDO::getId); // 避免 1 对多查询，产生相同的 1
         }
-        ErpKeywordQuery.appendWithDeptName(query, reqVO.getKeyword(),
+        ErpKeywordQuery.appendWithDeptNameAndPurchaseSupplier(query, reqVO.getKeyword(),
                 ErpPurchaseOrderDO::getNo, ErpPurchaseOrderDO::getFactoryOrderNo,
                 ErpPurchaseOrderDO::getRemark, ErpPurchaseOrderDO::getDeliveryMethod,
                 ErpPurchaseOrderDO::getPurchaseType, ErpPurchaseOrderDO::getOrderFormula,

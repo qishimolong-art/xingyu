@@ -17,6 +17,7 @@ import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.warehousemove.ErpWa
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.warehousemove.ErpWarehouseMoveDraftUpdateReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.imports.ErpStockImportResultRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.warehousemove.ErpWarehouseMoveImportExcelVO;
+import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.warehousemove.ErpWarehouseMoveItemPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.warehousemove.ErpWarehouseMovePageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.warehousemove.ErpWarehouseMoveRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.warehousemove.ErpWarehouseMoveSaveReqVO;
@@ -27,6 +28,7 @@ import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpWarehouseMoveDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpWarehouseMoveItemDO;
 import cn.iocoder.yudao.module.erp.framework.excel.ErpExportFieldUtils;
 import cn.iocoder.yudao.module.erp.service.base.ErpDataPermissionDeptService;
+import cn.iocoder.yudao.module.erp.service.common.ErpImportExportRecordService;
 import cn.iocoder.yudao.module.erp.service.product.ErpProductService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpStockFieldPermissionMasker;
 import cn.iocoder.yudao.module.erp.service.stock.ErpStockImportService;
@@ -80,13 +82,15 @@ public class ErpWarehouseMoveController {
 
     private static final String FIELD_PERMISSION_MODULE = "erp_warehouse_move";
     private static final Set<String> IMPORT_TEMPLATE_FIELDS = new LinkedHashSet<>(Arrays.asList(
-            "fromWarehouseName", "toWarehouseName", "productCode", "count", "fromShelf",
+            "fromWarehouseName", "toWarehouseName", "productCode", "productName", "factoryCode", "count", "fromShelf",
             "toShelf", "batchNo", "productPrice", "remark", "itemRemark"));
     private static final Map<String, String> EXPORT_FIELD_GROUP_MAP = buildExportFieldGroupMap();
     private static final Map<String, String> EXPORT_FIELD_PERMISSION_MAP = buildExportFieldPermissionMap();
 
     @Resource
     private ErpWarehouseMoveService warehouseMoveService;
+    @Resource
+    private ErpImportExportRecordService importExportRecordService;
     @Resource
     private ErpStockImportService stockImportService;
     @Resource
@@ -185,13 +189,30 @@ public class ErpWarehouseMoveController {
     @GetMapping("/get")
     @Operation(summary = "Get warehouse move")
     @PreAuthorize("@ss.hasPermission('erp:warehouse-move:query')")
-    public CommonResult<ErpWarehouseMoveRespVO> getWarehouseMove(@RequestParam("id") Long id) {
+    public CommonResult<ErpWarehouseMoveRespVO> getWarehouseMove(@RequestParam("id") Long id,
+                                                                 @RequestParam(value = "includeItems", required = false,
+                                                                         defaultValue = "true") Boolean includeItems) {
         ErpWarehouseMoveDO warehouseMove = warehouseMoveService.getWarehouseMove(id);
         if (warehouseMove == null) {
             return success(null);
         }
-        List<ErpWarehouseMoveItemDO> itemList = warehouseMoveService.getWarehouseMoveItemListByMoveId(id);
+        List<ErpWarehouseMoveItemDO> itemList = Boolean.TRUE.equals(includeItems)
+                ? warehouseMoveService.getWarehouseMoveItemListByMoveId(id) : Collections.emptyList();
         return success(buildWarehouseMoveVO(warehouseMove, itemList));
+    }
+
+    @GetMapping("/item-page")
+    @Operation(summary = "Get warehouse move item page")
+    @PreAuthorize("@ss.hasPermission('erp:warehouse-move:query')")
+    public CommonResult<PageResult<ErpWarehouseMoveRespVO.Item>> getWarehouseMoveItemPage(
+            @Valid ErpWarehouseMoveItemPageReqVO pageReqVO) {
+        PageResult<ErpWarehouseMoveItemDO> pageResult = warehouseMoveService.getWarehouseMoveItemPage(pageReqVO);
+        PageResult<ErpWarehouseMoveRespVO.Item> respResult = new PageResult<>(
+                buildWarehouseMoveItemVOList(pageResult.getList(), true), pageResult.getTotal());
+        if (Boolean.TRUE.equals(pageReqVO.getMask())) {
+            fieldPermissionMasker.clearHiddenItemFields(FIELD_PERMISSION_MODULE, respResult.getList());
+        }
+        return success(respResult);
     }
 
     @GetMapping("/page")
@@ -277,6 +298,14 @@ public class ErpWarehouseMoveController {
                 ExcelUtils.read(file, ErpWarehouseMoveImportExcelVO.class)));
     }
 
+    @GetMapping("/import-failure-details/download")
+    @Operation(summary = "Download warehouse move import failure details")
+    @PreAuthorize("@ss.hasPermission('erp:warehouse-move:create')")
+    public void downloadImportFailureDetails(@RequestParam("recordId") Long recordId,
+                                             HttpServletResponse response) throws IOException {
+        importExportRecordService.downloadOwnImportFailureDetails(recordId, FIELD_PERMISSION_MODULE, response);
+    }
+
     private PageResult<ErpWarehouseMoveRespVO> buildWarehouseMoveVOPageResult(PageResult<ErpWarehouseMoveDO> pageResult) {
         if (CollUtil.isEmpty(pageResult.getList())) {
             return PageResult.empty(pageResult.getTotal());
@@ -333,6 +362,22 @@ public class ErpWarehouseMoveController {
             }
             fillWarehouse(vo, warehouseMap);
             fillUserNames(vo, userMap);
+        });
+    }
+
+    private List<ErpWarehouseMoveRespVO.Item> buildWarehouseMoveItemVOList(List<ErpWarehouseMoveItemDO> itemList,
+                                                                          boolean includeStockCount) {
+        if (CollUtil.isEmpty(itemList)) {
+            return Collections.emptyList();
+        }
+        Map<Long, ErpProductRespVO> productMap = getProductVOMapIgnoreDataPermission(
+                convertSet(itemList, ErpWarehouseMoveItemDO::getProductId));
+        Map<Long, ErpWarehouseDO> warehouseMap = getWarehouseMapIgnoreDataPermission(collectWarehouseIdsFromItems(itemList));
+        return BeanUtils.toBean(itemList, ErpWarehouseMoveRespVO.Item.class, item -> {
+            fillItem(item, productMap.get(item.getProductId()), warehouseMap);
+            if (includeStockCount) {
+                fillStockCount(item);
+            }
         });
     }
 
@@ -397,6 +442,22 @@ public class ErpWarehouseMoveController {
             }
             if (move.getToWarehouseId() != null) {
                 warehouseIds.add(move.getToWarehouseId());
+            }
+        });
+        return warehouseIds;
+    }
+
+    private Set<Long> collectWarehouseIdsFromItems(List<ErpWarehouseMoveItemDO> items) {
+        Set<Long> warehouseIds = new HashSet<>();
+        if (CollUtil.isEmpty(items)) {
+            return warehouseIds;
+        }
+        items.forEach(item -> {
+            if (item.getFromWarehouseId() != null) {
+                warehouseIds.add(item.getFromWarehouseId());
+            }
+            if (item.getToWarehouseId() != null) {
+                warehouseIds.add(item.getToWarehouseId());
             }
         });
         return warehouseIds;

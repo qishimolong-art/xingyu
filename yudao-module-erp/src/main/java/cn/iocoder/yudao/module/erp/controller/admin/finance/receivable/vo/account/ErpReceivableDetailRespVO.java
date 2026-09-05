@@ -29,16 +29,17 @@ public class ErpReceivableDetailRespVO {
     @ExcelProperty("上笔余额")
     private BigDecimal prevBalance;
 
-    @ExcelProperty("增加金额")
+    @ExcelProperty("增加应收")
     private BigDecimal increaseAmount;
+
+    @ExcelProperty("其他应收")
+    private BigDecimal otherReceivableAmount;
 
     @ExcelProperty("收款金额")
     private BigDecimal receiptAmount;
 
-    @ExcelProperty("核销金额")
     private BigDecimal writeOffAmount;
 
-    @ExcelProperty("已核销金额")
     private BigDecimal allocatedAmount;
 
     private BigDecimal writeOffBaseAmount;

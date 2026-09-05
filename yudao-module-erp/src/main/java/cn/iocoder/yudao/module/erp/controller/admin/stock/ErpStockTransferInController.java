@@ -6,6 +6,7 @@ import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.common.exception.ErrorCode;
 import cn.iocoder.yudao.framework.excel.core.util.ExcelUtils;
 import cn.iocoder.yudao.module.erp.controller.admin.common.vo.ErpExportFieldRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.move.ErpStockMoveItemPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.move.ErpStockMovePageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.move.ErpStockMoveRespVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockMoveDO;
@@ -75,12 +76,34 @@ public class ErpStockTransferInController {
     @Operation(summary = "Get stock transfer-in")
     @Parameter(name = "id", description = "id", required = true, example = "1024")
     @PreAuthorize("@ss.hasPermission('erp:stock-transfer-in:query')")
-    public CommonResult<ErpStockMoveRespVO> getStockTransferIn(@RequestParam("id") Long id) {
+    public CommonResult<ErpStockMoveRespVO> getStockTransferIn(@RequestParam("id") Long id,
+                                                               @RequestParam(value = "includeItems", required = false,
+                                                                       defaultValue = "true") Boolean includeItems) {
+        ErpStockMoveDO stockMove = stockMoveService.getVisibleStockTransferIn(id);
+        if (stockMove == null || !Integer.valueOf(TRANSFER_DIRECTION_IN).equals(stockMove.getTransferDirection())) {
+            throw exception(STOCK_MOVE_NOT_EXISTS);
+        }
+        return stockMoveController.buildStockMoveDetail(stockMove, FIELD_PERMISSION_MODULE, includeItems);
+    }
+
+    public CommonResult<ErpStockMoveRespVO> getStockTransferIn(Long id) {
         ErpStockMoveDO stockMove = stockMoveService.getVisibleStockTransferIn(id);
         if (stockMove == null || !Integer.valueOf(TRANSFER_DIRECTION_IN).equals(stockMove.getTransferDirection())) {
             throw exception(STOCK_MOVE_NOT_EXISTS);
         }
         return stockMoveController.buildStockMoveDetail(stockMove, FIELD_PERMISSION_MODULE);
+    }
+
+    @GetMapping("/item-page")
+    @Operation(summary = "Get stock transfer-in item page")
+    @PreAuthorize("@ss.hasPermission('erp:stock-transfer-in:query')")
+    public CommonResult<PageResult<ErpStockMoveRespVO.Item>> getStockTransferInItemPage(
+            @Valid ErpStockMoveItemPageReqVO pageReqVO) {
+        ErpStockMoveDO stockMove = stockMoveService.getVisibleStockTransferIn(pageReqVO.getMoveId());
+        if (stockMove == null || !Integer.valueOf(TRANSFER_DIRECTION_IN).equals(stockMove.getTransferDirection())) {
+            throw exception(STOCK_MOVE_NOT_EXISTS);
+        }
+        return stockMoveController.getStockMoveItemPage(pageReqVO, FIELD_PERMISSION_MODULE);
     }
 
     @GetMapping("/from-dept-simple-list")

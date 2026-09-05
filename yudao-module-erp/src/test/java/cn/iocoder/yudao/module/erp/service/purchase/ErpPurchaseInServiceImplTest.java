@@ -15,11 +15,16 @@ import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.in.ErpPurchaseIn
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.in.ErpPurchaseInCreateTransferOutRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.in.ErpPurchaseInItemBatchUpdateReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.in.ErpPurchaseInItemForAdjustRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.in.ErpPurchaseInItemPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.in.ErpPurchaseInOrderImportExcelVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.in.ErpPurchaseInPageReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.in.ErpPurchaseInSaleCartableItemPageReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.in.ErpPurchaseInSaleCartableItemRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.in.ErpPurchaseInSaveReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.in.ErpPurchaseInCreateSaleCartReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.order.ErpPurchaseInFromOrderReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.returns.ErpPurchaseReturnableItemRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartSubmitRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.move.ErpStockMoveSaveReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.accounting.ErpVoucherDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.accounting.ErpVoucherItemDO;
@@ -30,6 +35,8 @@ import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseInvoiceIte
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseOrderDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseOrderItemDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpSupplierDO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleCartItemDO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockInBillItemDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpWarehouseDO;
 import cn.iocoder.yudao.module.erp.dal.mysql.finance.accounting.ErpVoucherItemMapper;
@@ -54,6 +61,7 @@ import cn.iocoder.yudao.module.erp.service.finance.accounting.ErpBookOpenService
 import cn.iocoder.yudao.module.erp.service.finance.accounting.ErpVoucherService;
 import cn.iocoder.yudao.module.erp.service.product.ErpProductService;
 import cn.iocoder.yudao.module.erp.service.product.ErpProductBatchNoValidator;
+import cn.iocoder.yudao.module.erp.service.sale.ErpSaleCartService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpStockInBillService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpStockMoveService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpStockRecordService;
@@ -103,7 +111,9 @@ import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PURCHASE_IN_I
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PURCHASE_IN_ITEM_BATCH_UPDATE_WAREHOUSE_DEPT_NOT_ALLOWED;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PURCHASE_IN_ITEM_DUPLICATE;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PURCHASE_IN_ITEM_COUNT_POSITIVE;
+import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PURCHASE_IN_ITEM_OPERATION_INVALID;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PURCHASE_IN_ITEM_PRICE_POSITIVE;
+import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PURCHASE_IN_ITEM_UPDATE_NOT_EXISTS;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PURCHASE_IN_NO_EXISTS;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PURCHASE_IN_NOT_APPROVE;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PURCHASE_IN_NOT_EXISTS;
@@ -113,6 +123,7 @@ import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PURCHASE_IN_S
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PURCHASE_IN_SUPPLIER_DEPT_NOT_ALLOWED;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PURCHASE_IN_UPDATE_FAIL_APPROVE;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PURCHASE_IN_TRANSFER_OUT_EXCEED_AVAILABLE;
+import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PURCHASE_IN_TRANSFER_OUT_SOURCE_ITEM_NOT_EXISTS;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PURCHASE_ORDER_IN_EXCEED_INABLE;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PURCHASE_ORDER_NOT_EXISTS;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -162,6 +173,8 @@ public class ErpPurchaseInServiceImplTest extends BaseMockitoUnitTest {
     private ErpProductMapper productMapper;
     @Mock
     private ErpPurchaseOrderService purchaseOrderService;
+    @Mock
+    private ErpSaleCartService saleCartService;
     @Mock
     private ErpStockRecordService stockRecordService;
     @Mock
@@ -600,18 +613,110 @@ public class ErpPurchaseInServiceImplTest extends BaseMockitoUnitTest {
     public void testUpdatePurchaseIn_success() {
         ErpPurchaseInDO existing = new ErpPurchaseInDO()
                 .setId(10L).setNo("CGRK001").setStatus(ErpAuditStatus.PROCESS.getStatus());
+        ErpPurchaseInItemDO oldItem = new ErpPurchaseInItemDO()
+                .setId(11L).setInId(10L).setProductId(100L).setWarehouseId(10L)
+                .setCount(BigDecimal.ONE).setProductPrice(BigDecimal.TEN)
+                .setTotalPrice(BigDecimal.TEN);
+        ErpPurchaseInItemDO deletedItem = new ErpPurchaseInItemDO()
+                .setId(12L).setInId(10L).setProductId(300L).setWarehouseId(10L)
+                .setCount(new BigDecimal("2")).setProductPrice(new BigDecimal("20"))
+                .setTotalPrice(new BigDecimal("40"));
         when(purchaseInMapper.selectById(eq(10L))).thenReturn(existing);
-        when(productService.validProductList(any())).thenReturn(Collections.singletonList(
+        when(productService.validProductList(any())).thenReturn(Arrays.asList(
+                new ErpProductDO().setId(100L).setUnitId(1L),
                 new ErpProductDO().setId(200L).setUnitId(1L)));
-        when(purchaseInItemMapper.selectListByInId(eq(10L))).thenReturn(Collections.emptyList());
+        when(warehouseService.validPurchaseWarehouseList(any())).thenReturn(Collections.singletonList(
+                new ErpWarehouseDO().setId(10L)));
+        when(warehouseService.getWarehouseMap(any())).thenReturn(Collections.singletonMap(10L,
+                new ErpWarehouseDO().setId(10L)));
+        when(purchaseInItemMapper.selectListByInId(eq(10L))).thenReturn(Arrays.asList(oldItem, deletedItem));
 
-        ErpPurchaseInSaveReqVO reqVO = buildBaseReqVO(
-                buildItem(200L, new BigDecimal("5"), new BigDecimal("10")));
+        ErpPurchaseInSaveReqVO.Item updateItem = buildItem(100L, new BigDecimal("3"), new BigDecimal("10"));
+        updateItem.setId(11L);
+        updateItem.setOperation("update");
+        ErpPurchaseInSaveReqVO.Item insertItem = buildItem(200L, new BigDecimal("5"), new BigDecimal("6"));
+        insertItem.setOperation("insert");
+        ErpPurchaseInSaveReqVO.Item deleteItem = new ErpPurchaseInSaveReqVO.Item();
+        deleteItem.setId(12L);
+        deleteItem.setOperation("delete");
+        ErpPurchaseInSaveReqVO reqVO = buildBaseReqVO(updateItem, insertItem, deleteItem);
         reqVO.setId(10L);
 
         purchaseInService.updatePurchaseIn(reqVO);
 
-        verify(purchaseInMapper).updateById(any(ErpPurchaseInDO.class));
+        ArgumentCaptor<ErpPurchaseInDO> updateCaptor = ArgumentCaptor.forClass(ErpPurchaseInDO.class);
+        verify(purchaseInMapper).updateById(updateCaptor.capture());
+        assertEquals(0, new BigDecimal("8").compareTo(updateCaptor.getValue().getTotalCount()));
+        assertEquals(0, new BigDecimal("60").compareTo(updateCaptor.getValue().getTotalProductPrice()));
+        ArgumentCaptor<List<ErpPurchaseInItemDO>> insertCaptor = ArgumentCaptor.forClass(List.class);
+        verify(purchaseInItemMapper).insertBatch(insertCaptor.capture());
+        assertEquals(1, insertCaptor.getValue().size());
+        assertEquals(200L, insertCaptor.getValue().get(0).getProductId());
+        ArgumentCaptor<List<ErpPurchaseInItemDO>> updateItemCaptor = ArgumentCaptor.forClass(List.class);
+        verify(purchaseInItemMapper).updateBatch(updateItemCaptor.capture());
+        assertEquals(1, updateItemCaptor.getValue().size());
+        assertEquals(11L, updateItemCaptor.getValue().get(0).getId());
+        verify(purchaseInItemMapper).deleteByIds(eq(Collections.singletonList(12L)));
+        verify(purchaseInItemMapper, never()).deleteByInId(anyLong());
+    }
+
+    @Test
+    public void testUpdatePurchaseIn_emptyItems_keepsExistingItems() {
+        ErpPurchaseInDO existing = new ErpPurchaseInDO()
+                .setId(10L).setNo("CGRK001").setStatus(ErpAuditStatus.PROCESS.getStatus());
+        ErpPurchaseInItemDO oldItem = new ErpPurchaseInItemDO()
+                .setId(11L).setInId(10L).setProductId(100L).setWarehouseId(10L)
+                .setCount(new BigDecimal("2")).setProductPrice(new BigDecimal("10"))
+                .setTotalPrice(new BigDecimal("20"));
+        when(purchaseInMapper.selectById(eq(10L))).thenReturn(existing);
+        when(purchaseInItemMapper.selectListByInId(eq(10L))).thenReturn(Collections.singletonList(oldItem));
+
+        ErpPurchaseInSaveReqVO reqVO = buildBaseReqVO();
+        reqVO.setId(10L);
+        reqVO.setItems(Collections.emptyList());
+
+        purchaseInService.updatePurchaseIn(reqVO);
+
+        ArgumentCaptor<ErpPurchaseInDO> updateCaptor = ArgumentCaptor.forClass(ErpPurchaseInDO.class);
+        verify(purchaseInMapper).updateById(updateCaptor.capture());
+        assertEquals(0, new BigDecimal("2").compareTo(updateCaptor.getValue().getTotalCount()));
+        assertEquals(0, new BigDecimal("20").compareTo(updateCaptor.getValue().getTotalProductPrice()));
+        verify(purchaseInItemMapper, never()).deleteByInId(anyLong());
+        verify(purchaseInItemMapper, never()).deleteByIds(anyList());
+        verify(purchaseInItemMapper, never()).insertBatch(anyList());
+        verify(purchaseInItemMapper, never()).updateBatch(anyList());
+    }
+
+    @Test
+    public void testUpdatePurchaseIn_invalidOperation_throwException() {
+        ErpPurchaseInDO existing = new ErpPurchaseInDO()
+                .setId(10L).setNo("CGRK001").setStatus(ErpAuditStatus.PROCESS.getStatus());
+        when(purchaseInMapper.selectById(eq(10L))).thenReturn(existing);
+        when(purchaseInItemMapper.selectListByInId(eq(10L))).thenReturn(Collections.emptyList());
+        ErpPurchaseInSaveReqVO.Item item = buildItem(200L, BigDecimal.ONE, BigDecimal.TEN);
+        ErpPurchaseInSaveReqVO reqVO = buildBaseReqVO(item);
+        reqVO.setId(10L);
+
+        assertServiceException(() -> purchaseInService.updatePurchaseIn(reqVO),
+                PURCHASE_IN_ITEM_OPERATION_INVALID);
+        verify(purchaseInMapper, never()).updateById(any(ErpPurchaseInDO.class));
+    }
+
+    @Test
+    public void testUpdatePurchaseIn_deleteMissingItem_throwException() {
+        ErpPurchaseInDO existing = new ErpPurchaseInDO()
+                .setId(10L).setNo("CGRK001").setStatus(ErpAuditStatus.PROCESS.getStatus());
+        when(purchaseInMapper.selectById(eq(10L))).thenReturn(existing);
+        when(purchaseInItemMapper.selectListByInId(eq(10L))).thenReturn(Collections.emptyList());
+        ErpPurchaseInSaveReqVO.Item deleteItem = new ErpPurchaseInSaveReqVO.Item();
+        deleteItem.setId(99L);
+        deleteItem.setOperation("delete");
+        ErpPurchaseInSaveReqVO reqVO = buildBaseReqVO(deleteItem);
+        reqVO.setId(10L);
+
+        assertServiceException(() -> purchaseInService.updatePurchaseIn(reqVO),
+                PURCHASE_IN_ITEM_UPDATE_NOT_EXISTS);
+        verify(purchaseInMapper, never()).updateById(any(ErpPurchaseInDO.class));
     }
 
     @Test
@@ -1019,12 +1124,16 @@ public class ErpPurchaseInServiceImplTest extends BaseMockitoUnitTest {
     }
 
     @Test
-    public void testUpdatePurchaseInDraft_withoutItems_setsZeroTotals() {
+    public void testUpdatePurchaseInDraft_emptyItems_keepsExistingItems() {
         ErpPurchaseInDO draft = new ErpPurchaseInDO()
                 .setId(10L).setNo("CGRK001").setStatus(0)
                 .setInTime(LocalDateTime.of(2026, 5, 20, 10, 0));
+        ErpPurchaseInItemDO oldItem = new ErpPurchaseInItemDO()
+                .setId(11L).setInId(10L).setProductId(200L).setWarehouseId(10L)
+                .setCount(new BigDecimal("2")).setProductPrice(new BigDecimal("10"))
+                .setTotalPrice(new BigDecimal("20"));
         when(purchaseInMapper.selectById(eq(10L))).thenReturn(draft);
-        when(purchaseInItemMapper.selectListByInId(eq(10L))).thenReturn(Collections.emptyList());
+        when(purchaseInItemMapper.selectListByInId(eq(10L))).thenReturn(Collections.singletonList(oldItem));
         ErpPurchaseInDraftUpdateReqVO reqVO = new ErpPurchaseInDraftUpdateReqVO();
         reqVO.setId(10L);
         reqVO.setItems(Collections.emptyList());
@@ -1034,12 +1143,43 @@ public class ErpPurchaseInServiceImplTest extends BaseMockitoUnitTest {
         ArgumentCaptor<ErpPurchaseInDO> captor = ArgumentCaptor.forClass(ErpPurchaseInDO.class);
         verify(purchaseInMapper).updateById(captor.capture());
         ErpPurchaseInDO updateObj = captor.getValue();
-        assertEquals(0, updateObj.getTotalCount().compareTo(BigDecimal.ZERO));
-        assertEquals(0, updateObj.getTotalProductPrice().compareTo(BigDecimal.ZERO));
+        assertEquals(0, updateObj.getTotalCount().compareTo(new BigDecimal("2")));
+        assertEquals(0, updateObj.getTotalProductPrice().compareTo(new BigDecimal("20")));
         assertEquals(0, updateObj.getTotalTaxPrice().compareTo(BigDecimal.ZERO));
-        assertEquals(0, updateObj.getTotalPrice().compareTo(BigDecimal.ZERO));
-        verify(purchaseInItemMapper).deleteByInId(eq(10L));
+        assertEquals(0, updateObj.getTotalPrice().compareTo(new BigDecimal("20")));
+        verify(purchaseInItemMapper, never()).deleteByInId(anyLong());
+        verify(purchaseInItemMapper, never()).deleteByIds(anyList());
         verify(purchaseInItemMapper, never()).insertBatch(anyList());
+        verify(purchaseInItemMapper, never()).updateBatch(anyList());
+    }
+
+    @Test
+    public void testUpdatePurchaseInDraft_deleteAllItemsByOperation() {
+        ErpPurchaseInDO draft = new ErpPurchaseInDO()
+                .setId(10L).setNo("CGRK001").setStatus(0)
+                .setInTime(LocalDateTime.of(2026, 5, 20, 10, 0));
+        ErpPurchaseInItemDO oldItem = new ErpPurchaseInItemDO()
+                .setId(11L).setInId(10L).setProductId(200L).setWarehouseId(10L)
+                .setCount(new BigDecimal("2")).setProductPrice(new BigDecimal("10"))
+                .setTotalPrice(new BigDecimal("20"));
+        when(purchaseInMapper.selectById(eq(10L))).thenReturn(draft);
+        when(purchaseInItemMapper.selectListByInId(eq(10L))).thenReturn(Collections.singletonList(oldItem));
+        ErpPurchaseInSaveReqVO.Item deleteItem = new ErpPurchaseInSaveReqVO.Item();
+        deleteItem.setId(11L);
+        deleteItem.setOperation("delete");
+        ErpPurchaseInDraftUpdateReqVO reqVO = new ErpPurchaseInDraftUpdateReqVO();
+        reqVO.setId(10L);
+        reqVO.setItems(Collections.singletonList(deleteItem));
+
+        purchaseInService.updatePurchaseInDraft(reqVO);
+
+        ArgumentCaptor<ErpPurchaseInDO> captor = ArgumentCaptor.forClass(ErpPurchaseInDO.class);
+        verify(purchaseInMapper).updateById(captor.capture());
+        assertEquals(0, captor.getValue().getTotalCount().compareTo(BigDecimal.ZERO));
+        assertEquals(0, captor.getValue().getTotalProductPrice().compareTo(BigDecimal.ZERO));
+        assertEquals(0, captor.getValue().getTotalPrice().compareTo(BigDecimal.ZERO));
+        verify(purchaseInItemMapper).deleteByIds(eq(Collections.singletonList(11L)));
+        verify(purchaseInItemMapper, never()).deleteByInId(anyLong());
     }
 
     @Test
@@ -1128,7 +1268,9 @@ public class ErpPurchaseInServiceImplTest extends BaseMockitoUnitTest {
         reqVO.setId(10L);
         reqVO.setSupplierId(99L);
         reqVO.setInTime(LocalDateTime.of(2026, 5, 20, 10, 0));
-        reqVO.setItems(Collections.singletonList(buildItem(200L, BigDecimal.ONE, BigDecimal.TEN)));
+        ErpPurchaseInSaveReqVO.Item insertItem = buildItem(200L, BigDecimal.ONE, BigDecimal.TEN);
+        insertItem.setOperation("insert");
+        reqVO.setItems(Collections.singletonList(insertItem));
         ErpPurchaseInItemDO persistedItem = new ErpPurchaseInItemDO()
                 .setId(11L).setInId(10L).setProductId(200L).setProductUnitId(1L)
                 .setWarehouseId(10L).setCount(BigDecimal.ONE).setProductPrice(BigDecimal.TEN);
@@ -1145,11 +1287,11 @@ public class ErpPurchaseInServiceImplTest extends BaseMockitoUnitTest {
         purchaseInService.updateAndSubmitPurchaseInDraft(reqVO);
 
         InOrder inOrder = inOrder(purchaseInItemMapper, purchaseInMapper);
-        inOrder.verify(purchaseInItemMapper).deleteByInId(10L);
         inOrder.verify(purchaseInItemMapper).insertBatch(anyList());
         inOrder.verify(purchaseInMapper).updateByIdAndStatus(eq(10L), eq(0),
                 org.mockito.ArgumentMatchers.argThat(update ->
                         ErpAuditStatus.PROCESS.getStatus().equals(update.getStatus())));
+        verify(purchaseInItemMapper, never()).deleteByInId(anyLong());
     }
 
     @Test
@@ -1499,6 +1641,29 @@ public class ErpPurchaseInServiceImplTest extends BaseMockitoUnitTest {
     }
 
     @Test
+    public void testGetPurchaseInItemPage_delegatesToMapper() {
+        ErpPurchaseInItemPageReqVO reqVO = new ErpPurchaseInItemPageReqVO();
+        reqVO.setInId(10L);
+        when(purchaseInMapper.selectById(eq(10L))).thenReturn(new ErpPurchaseInDO().setId(10L));
+        PageResult<ErpPurchaseInItemDO> page = new PageResult<>(
+                Collections.singletonList(new ErpPurchaseInItemDO().setId(1L).setInId(10L)), 1L);
+        when(purchaseInItemMapper.selectPageByInId(eq(reqVO))).thenReturn(page);
+
+        assertSame(page, purchaseInService.getPurchaseInItemPage(reqVO));
+        verify(purchaseInItemMapper).selectPageByInId(eq(reqVO));
+    }
+
+    @Test
+    public void testGetPurchaseInItemPage_missingIn_throwException() {
+        ErpPurchaseInItemPageReqVO reqVO = new ErpPurchaseInItemPageReqVO();
+        reqVO.setInId(10L);
+        when(purchaseInMapper.selectById(eq(10L))).thenReturn(null);
+
+        assertServiceException(() -> purchaseInService.getPurchaseInItemPage(reqVO), PURCHASE_IN_NOT_EXISTS);
+        verify(purchaseInItemMapper, never()).selectPageByInId(any());
+    }
+
+    @Test
     public void testGetPurchaseInItemListByInIds_emptyInput_returnsEmpty() {
         List<ErpPurchaseInItemDO> result = purchaseInService.getPurchaseInItemListByInIds(Collections.emptyList());
 
@@ -1702,6 +1867,166 @@ public class ErpPurchaseInServiceImplTest extends BaseMockitoUnitTest {
 
         assertTrue(result.isEmpty());
         verify(purchaseReturnItemMapper, never()).selectReturnedCountMapBySourceInItemIds(any());
+    }
+
+    // ========== getSaleCartableItemsByInId ==========
+
+    @Test
+    public void testGetSaleCartableItemsByInId_includesPriceLevelFields() {
+        ErpPurchaseInDO purchaseIn = new ErpPurchaseInDO().setId(10L).setNo("CGRK001")
+                .setStatus(ErpAuditStatus.APPROVE.getStatus());
+        when(purchaseInMapper.selectById(eq(10L))).thenReturn(purchaseIn);
+        ErpPurchaseInItemDO item = new ErpPurchaseInItemDO()
+                .setId(100L).setInId(10L).setProductId(200L).setProductUnitId(1L).setWarehouseId(5L)
+                .setProductPrice(new BigDecimal("12.34")).setCount(new BigDecimal("10"));
+        when(purchaseInItemMapper.selectListByInId(eq(10L))).thenReturn(Collections.singletonList(item));
+        Map<Long, BigDecimal> convertedMap = new HashMap<>();
+        convertedMap.put(100L, new BigDecimal("3"));
+        when(saleConvertRecordMapper.selectPurchaseInToCartCountMapBySourceItemIds(any())).thenReturn(convertedMap);
+        when(productService.validProductList(any())).thenReturn(Collections.singletonList(
+                new ErpProductDO().setId(200L).setName("螺丝").setCode("P001")
+                        .setPurchasePrice(new BigDecimal("9.50"))
+                        .setSalePrice(new BigDecimal("17.50"))
+                        .setMinPrice(new BigDecimal("11.00"))
+                        .setReferencePrice(new BigDecimal("15.00"))
+                        .setRetailPrice(new BigDecimal("18.00"))
+                        .setLastPurchasePrice(new BigDecimal("8.80"))
+                        .setBackupPrice1(new BigDecimal("16.00"))
+                        .setWholesalePrice(new BigDecimal("13.00"))
+                        .setSharePrice(new BigDecimal("14.00"))));
+        when(productService.getProductVOMap(any())).thenReturn(Collections.singletonMap(200L,
+                new ErpProductRespVO().setId(200L).setUnitName("个")
+                        .setCustomFields(Collections.singletonMap("orderPriceCustom", new BigDecimal("10.20")))));
+        when(warehouseService.getWarehouseMap(any())).thenReturn(Collections.singletonMap(5L,
+                new ErpWarehouseDO().setId(5L).setName("销售仓")));
+        when(stockService.getStockMap(any(), any())).thenReturn(Collections.singletonMap("200_5",
+                new ErpStockDO().setProductId(200L).setWarehouseId(5L).setCostPrice(new BigDecimal("7.25"))));
+
+        List<ErpPurchaseInSaleCartableItemRespVO> result = purchaseInService.getSaleCartableItemsByInId(10L);
+
+        assertEquals(1, result.size());
+        ErpPurchaseInSaleCartableItemRespVO vo = result.get(0);
+        assertEquals(0, vo.getSaleCartableCount().compareTo(new BigDecimal("7")));
+        assertEquals(0, vo.getSalePrice().compareTo(new BigDecimal("17.50")));
+        assertEquals(0, vo.getMinPrice().compareTo(new BigDecimal("11.00")));
+        assertEquals(0, vo.getProductPurchasePrice().compareTo(new BigDecimal("9.50")));
+        assertEquals(0, vo.getCostPrice().compareTo(new BigDecimal("7.25")));
+        assertEquals(0, vo.getReferencePrice().compareTo(new BigDecimal("15.00")));
+        assertEquals(0, vo.getRetailPrice().compareTo(new BigDecimal("18.00")));
+        assertEquals(0, vo.getLastPurchasePrice().compareTo(new BigDecimal("8.80")));
+        assertEquals(0, vo.getBackupPrice1().compareTo(new BigDecimal("16.00")));
+        assertEquals(0, vo.getWholesalePrice().compareTo(new BigDecimal("13.00")));
+        assertEquals(0, vo.getSharePrice().compareTo(new BigDecimal("14.00")));
+        assertEquals(new BigDecimal("10.20"), vo.getCustomFields().get("orderPriceCustom"));
+        assertEquals("螺丝", vo.getProductName());
+        assertEquals("P001", vo.getProductCode());
+    }
+
+    @Test
+    public void testGetSaleCartableItemPage_includesPriceLevelFields() {
+        ErpPurchaseInDO purchaseIn = new ErpPurchaseInDO().setId(10L).setNo("CGRK001")
+                .setStatus(ErpAuditStatus.APPROVE.getStatus());
+        when(purchaseInMapper.selectById(eq(10L))).thenReturn(purchaseIn);
+        ErpPurchaseInItemDO item = new ErpPurchaseInItemDO()
+                .setId(100L).setInId(10L).setProductId(200L).setProductUnitId(1L).setWarehouseId(5L)
+                .setProductPrice(new BigDecimal("12.34")).setCount(new BigDecimal("10"));
+        when(purchaseInItemMapper.selectSaleCartablePageByInId(any())).thenReturn(
+                new PageResult<>(Collections.singletonList(item), 1L));
+        when(saleConvertRecordMapper.selectPurchaseInToCartCountMapBySourceItemIds(any()))
+                .thenReturn(Collections.singletonMap(100L, new BigDecimal("3")));
+        when(productService.validProductList(any())).thenReturn(Collections.singletonList(
+                new ErpProductDO().setId(200L).setName("螺丝").setCode("P001")
+                        .setRetailPrice(new BigDecimal("18.00"))
+                        .setMinPrice(new BigDecimal("11.00"))
+                        .setSharePrice(new BigDecimal("14.00"))));
+        when(productService.getProductVOMap(any())).thenReturn(Collections.singletonMap(200L,
+                new ErpProductRespVO().setId(200L).setUnitName("个")
+                        .setCustomFields(Collections.singletonMap("orderPriceCustom", new BigDecimal("10.20")))));
+        when(warehouseService.getWarehouseMap(any())).thenReturn(Collections.singletonMap(5L,
+                new ErpWarehouseDO().setId(5L).setName("销售仓")));
+        when(stockService.getStockMap(any(), any())).thenReturn(Collections.singletonMap("200_5",
+                new ErpStockDO().setProductId(200L).setWarehouseId(5L).setCostPrice(new BigDecimal("7.25"))));
+
+        ErpPurchaseInSaleCartableItemPageReqVO reqVO = new ErpPurchaseInSaleCartableItemPageReqVO();
+        reqVO.setInId(10L);
+        reqVO.setPageNo(1);
+        reqVO.setPageSize(10);
+        PageResult<ErpPurchaseInSaleCartableItemRespVO> result =
+                purchaseInService.getSaleCartableItemPage(reqVO);
+
+        assertEquals(1L, result.getTotal());
+        assertEquals(1, result.getList().size());
+        assertEquals(0, result.getList().get(0).getSaleCartableCount().compareTo(new BigDecimal("7")));
+        assertEquals(0, result.getList().get(0).getCostPrice().compareTo(new BigDecimal("7.25")));
+        assertEquals(0, result.getList().get(0).getMinPrice().compareTo(new BigDecimal("11.00")));
+        assertEquals(0, result.getList().get(0).getSharePrice().compareTo(new BigDecimal("14.00")));
+        assertEquals(new BigDecimal("10.20"), result.getList().get(0).getCustomFields().get("orderPriceCustom"));
+        verify(purchaseInItemMapper).selectSaleCartablePageByInId(eq(reqVO));
+        verify(stockService).getStockMap(any(), any());
+    }
+
+    @Test
+    public void testCreateSaleCartFromPurchaseIn_queriesRequestedSourceItemsOnly() {
+        ErpPurchaseInDO purchaseIn = new ErpPurchaseInDO().setId(10L).setNo("CGRK001")
+                .setStatus(ErpAuditStatus.APPROVE.getStatus());
+        when(purchaseInMapper.selectById(eq(10L))).thenReturn(purchaseIn);
+        ErpPurchaseInItemDO sourceItem = new ErpPurchaseInItemDO()
+                .setId(100L).setInId(10L).setProductId(200L).setWarehouseId(6L)
+                .setProductPrice(new BigDecimal("12.34")).setCount(new BigDecimal("10"))
+                .setBatchNo("B1");
+        when(purchaseInItemMapper.selectBatchIds(any())).thenReturn(Collections.singletonList(sourceItem));
+        when(saleConvertRecordMapper.selectPurchaseInToCartCountMapBySourceItemIds(any()))
+                .thenReturn(Collections.emptyMap());
+        ErpSaleCartSubmitRespVO submitRespVO = new ErpSaleCartSubmitRespVO();
+        submitRespVO.setId(500L);
+        submitRespVO.setNo("XSTC001");
+        submitRespVO.setStatus(10);
+        when(saleCartService.createAndSubmitSaleCartFromPurchaseIn(any())).thenReturn(submitRespVO);
+        when(saleCartService.getSaleCartItemListByCartId(eq(500L))).thenReturn(Collections.singletonList(
+                new ErpSaleCartItemDO().setId(700L).setProductId(200L).setWarehouseId(6L)
+                        .setCount(new BigDecimal("2")).setGiftFlag(false).setBatchNo("B1")));
+
+        ErpPurchaseInCreateSaleCartReqVO reqVO = new ErpPurchaseInCreateSaleCartReqVO();
+        reqVO.setSourceInId(10L);
+        reqVO.setCustomerId(300L);
+        ErpPurchaseInCreateSaleCartReqVO.Item item = new ErpPurchaseInCreateSaleCartReqVO.Item();
+        item.setSourceInItemId(100L);
+        item.setWarehouseId(6L);
+        item.setCount(new BigDecimal("2"));
+        item.setProductPrice(new BigDecimal("20"));
+        item.setBatchNo("B1");
+        reqVO.setItems(Collections.singletonList(item));
+
+        purchaseInService.createSaleCartFromPurchaseIn(reqVO);
+
+        verify(purchaseInItemMapper).selectBatchIds(any());
+        verify(purchaseInItemMapper, never()).selectListByInId(eq(10L));
+        verify(saleConvertRecordMapper).selectPurchaseInToCartCountMapBySourceItemIds(any());
+    }
+
+    @Test
+    public void testCreateSaleCartFromPurchaseIn_sourceItemNotBelongToIn_throwException() {
+        ErpPurchaseInDO purchaseIn = new ErpPurchaseInDO().setId(10L).setNo("CGRK001")
+                .setStatus(ErpAuditStatus.APPROVE.getStatus());
+        when(purchaseInMapper.selectById(eq(10L))).thenReturn(purchaseIn);
+        when(purchaseInItemMapper.selectBatchIds(any())).thenReturn(Collections.singletonList(
+                new ErpPurchaseInItemDO().setId(100L).setInId(11L).setProductId(200L)
+                        .setWarehouseId(6L).setCount(new BigDecimal("10"))));
+
+        ErpPurchaseInCreateSaleCartReqVO reqVO = new ErpPurchaseInCreateSaleCartReqVO();
+        reqVO.setSourceInId(10L);
+        reqVO.setCustomerId(300L);
+        ErpPurchaseInCreateSaleCartReqVO.Item item = new ErpPurchaseInCreateSaleCartReqVO.Item();
+        item.setSourceInItemId(100L);
+        item.setWarehouseId(6L);
+        item.setCount(new BigDecimal("2"));
+        item.setProductPrice(new BigDecimal("20"));
+        reqVO.setItems(Collections.singletonList(item));
+
+        assertServiceException(() -> purchaseInService.createSaleCartFromPurchaseIn(reqVO),
+                PURCHASE_IN_TRANSFER_OUT_SOURCE_ITEM_NOT_EXISTS);
+        verify(purchaseInItemMapper, never()).selectListByInId(eq(10L));
+        verify(saleCartService, never()).createAndSubmitSaleCartFromPurchaseIn(any());
     }
 
     // ========== createPurchaseInFromOrder ==========
@@ -1961,6 +2286,26 @@ public class ErpPurchaseInServiceImplTest extends BaseMockitoUnitTest {
         assertNotNull(vo.getApproveTime());
     }
 
+    @Test
+    public void testGetApprovedPurchaseInsBySupplier_filtersApprovedInvoice() {
+        ErpPurchaseInDO invoiced = new ErpPurchaseInDO().setId(10L).setNo("CGRK001").setSupplierId(99L)
+                .setStatus(ErpAuditStatus.APPROVE.getStatus());
+        ErpPurchaseInDO available = new ErpPurchaseInDO().setId(11L).setNo("CGRK002").setSupplierId(99L)
+                .setStatus(ErpAuditStatus.APPROVE.getStatus());
+        when(purchaseInMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(Arrays.asList(invoiced, available));
+        when(purchaseInvoiceItemMapper.selectApprovedListBySourceInIds(any()))
+                .thenReturn(Collections.singletonList(new ErpPurchaseInvoiceItemDO().setSourceInId(10L)));
+        when(purchaseInItemMapper.selectListByInIds(any())).thenReturn(Collections.singletonList(
+                new ErpPurchaseInItemDO().setId(2L).setInId(11L)));
+        when(supplierService.getSupplierMap(any())).thenReturn(Collections.emptyMap());
+
+        List<ErpPurchaseInForAdjustRespVO> result = purchaseInService.getApprovedPurchaseInsBySupplier(99L);
+
+        assertEquals(1, result.size());
+        assertEquals(Long.valueOf(11L), result.get(0).getId());
+        assertEquals(Boolean.FALSE, result.get(0).getHasInvoice());
+    }
+
     // ========== getApprovedPurchaseInItemsBySupplier ==========
 
     @Test
@@ -1998,6 +2343,30 @@ public class ErpPurchaseInServiceImplTest extends BaseMockitoUnitTest {
         // 已调价行被过滤掉，仅返回未调价行
         assertEquals(1, result.size());
         assertEquals(Long.valueOf(2L), result.get(0).getId());
+    }
+
+    @Test
+    public void testGetApprovedPurchaseInItemsBySupplier_filtersApprovedInvoice() {
+        ErpPurchaseInDO invoiced = new ErpPurchaseInDO().setId(10L).setNo("CGRK001").setSupplierId(99L)
+                .setStatus(ErpAuditStatus.APPROVE.getStatus());
+        ErpPurchaseInDO available = new ErpPurchaseInDO().setId(11L).setNo("CGRK002").setSupplierId(99L)
+                .setStatus(ErpAuditStatus.APPROVE.getStatus())
+                .setInTime(LocalDateTime.of(2026, 5, 20, 10, 0, 0));
+        when(purchaseInMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(Arrays.asList(invoiced, available));
+        when(purchaseInvoiceItemMapper.selectApprovedListBySourceInIds(any()))
+                .thenReturn(Collections.singletonList(new ErpPurchaseInvoiceItemDO().setSourceInId(10L)));
+        when(purchaseInItemMapper.selectListByInIds(any())).thenReturn(Collections.singletonList(
+                new ErpPurchaseInItemDO().setId(2L).setInId(11L).setProductId(201L).setWarehouseId(5L)
+                        .setProductPrice(new BigDecimal("20")).setCount(new BigDecimal("3"))));
+        when(productService.getProductVOMap(any())).thenReturn(Collections.emptyMap());
+        when(warehouseService.getWarehouseMap(any())).thenReturn(Collections.emptyMap());
+
+        List<ErpPurchaseInItemForAdjustRespVO> result =
+                purchaseInService.getApprovedPurchaseInItemsBySupplier(99L, false);
+
+        assertEquals(1, result.size());
+        assertEquals(Long.valueOf(11L), result.get(0).getInId());
+        assertEquals(Boolean.FALSE, result.get(0).getHasInvoice());
     }
 
     @Test
@@ -2067,6 +2436,16 @@ public class ErpPurchaseInServiceImplTest extends BaseMockitoUnitTest {
     }
 
     @Test
+    public void testImportPurchaseInOrderList_nullInTime_defaultsCurrentTime() {
+        assertImportPurchaseInOrderDefaultsCurrentTime(null);
+    }
+
+    @Test
+    public void testImportPurchaseInOrderList_blankInTime_defaultsCurrentTime() {
+        assertImportPurchaseInOrderDefaultsCurrentTime("   ");
+    }
+
+    @Test
     public void testParsePurchaseInImportTime_rejectsAmbiguousAndCompactFormats() {
         assertInvalidPurchaseInImportTime("08/11/2026");
         assertInvalidPurchaseInImportTime("20260811");
@@ -2078,7 +2457,7 @@ public class ErpPurchaseInServiceImplTest extends BaseMockitoUnitTest {
         row.setNo("CGRK20260811000002");
         row.setSupplierName("芋道供应商");
         row.setInTime("08/11/2026");
-        row.setProductCode("P000001");
+        row.setProductName("产品1");
         row.setWarehouseName("主仓库");
         row.setItemCount(BigDecimal.ONE);
         row.setProductPrice(BigDecimal.ONE);
@@ -2086,7 +2465,7 @@ public class ErpPurchaseInServiceImplTest extends BaseMockitoUnitTest {
         when(supplierService.getSupplierPage(any())).thenReturn(new PageResult<>(
                 Collections.singletonList(new ErpSupplierDO().setId(100L).setName("芋道供应商")
                         .setStatus(CommonStatusEnum.ENABLE.getStatus())), 1L));
-        when(productMapper.selectListByCodes(any())).thenReturn(Collections.singletonList(
+        when(productMapper.selectListByNames(any())).thenReturn(Collections.singletonList(
                 new ErpProductDO().setId(200L).setCode("P000001").setName("产品1").setUnitId(1L)
                         .setPurchasePrice(BigDecimal.ONE)));
         when(warehouseService.getPurchaseWarehouseListByStatus(eq(CommonStatusEnum.ENABLE.getStatus())))
@@ -2115,6 +2494,56 @@ public class ErpPurchaseInServiceImplTest extends BaseMockitoUnitTest {
                 () -> ReflectionTestUtils.invokeMethod(purchaseInService, "parsePurchaseInImportTime", value, null));
         assertEquals("入库时间格式不正确，请使用 yyyy-MM-dd、yyyy/M/d 或常见日期时间格式",
                 exception.getMessage());
+    }
+
+    private void assertImportPurchaseInOrderDefaultsCurrentTime(String inTime) {
+        mockSuccessfulPurchaseInOrderImport();
+        ErpPurchaseInOrderImportExcelVO row = buildPurchaseInOrderImportRow(inTime);
+
+        LocalDateTime before = LocalDateTime.now();
+        ErpPurchaseImportResultRespVO result = purchaseInService.importPurchaseInOrderList(
+                Collections.singletonList(row));
+        LocalDateTime after = LocalDateTime.now();
+
+        assertEquals(1, result.getSuccessCount());
+        assertEquals(0, result.getFailureCount());
+        ArgumentCaptor<ErpPurchaseInDO> captor = ArgumentCaptor.forClass(ErpPurchaseInDO.class);
+        verify(purchaseInMapper).insert(captor.capture());
+        LocalDateTime insertedInTime = captor.getValue().getInTime();
+        assertNotNull(insertedInTime);
+        assertTrue(!insertedInTime.isBefore(before));
+        assertTrue(!insertedInTime.isAfter(after));
+    }
+
+    private void mockSuccessfulPurchaseInOrderImport() {
+        ErpSupplierDO supplier = new ErpSupplierDO().setId(100L).setName("芋道供应商")
+                .setStatus(CommonStatusEnum.ENABLE.getStatus());
+        ErpProductDO product = new ErpProductDO().setId(200L).setCode("P000001").setName("产品1").setUnitId(1L)
+                .setPurchasePrice(BigDecimal.ONE);
+        ErpWarehouseDO warehouse = new ErpWarehouseDO().setId(10L).setName("主仓库");
+        when(supplierService.getSupplierPage(any())).thenReturn(new PageResult<>(
+                Collections.singletonList(supplier), 1L));
+        when(productMapper.selectListByCodes(any())).thenReturn(Collections.singletonList(product));
+        when(warehouseService.getPurchaseWarehouseListByStatus(eq(CommonStatusEnum.ENABLE.getStatus())))
+                .thenReturn(Collections.singletonList(warehouse));
+        when(productService.getProductVOMap(any())).thenReturn(Collections.emptyMap());
+        when(supplierService.validateSupplier(eq(100L))).thenReturn(supplier);
+        when(productService.validProductList(any())).thenReturn(Collections.singletonList(product));
+        when(warehouseService.validPurchaseWarehouseList(any())).thenReturn(Collections.singletonList(warehouse));
+        when(warehouseService.getWarehouseMap(any())).thenReturn(Collections.singletonMap(10L, warehouse));
+        when(purchaseInMapper.selectByNo(any())).thenReturn(null);
+    }
+
+    private ErpPurchaseInOrderImportExcelVO buildPurchaseInOrderImportRow(String inTime) {
+        ErpPurchaseInOrderImportExcelVO row = new ErpPurchaseInOrderImportExcelVO();
+        row.setNo("CGRK20260828000001");
+        row.setSupplierName("芋道供应商");
+        row.setInTime(inTime);
+        row.setProductCode("P000001");
+        row.setWarehouseName("主仓库");
+        row.setItemCount(BigDecimal.ONE);
+        row.setProductPrice(BigDecimal.ONE);
+        return row;
     }
 
 }

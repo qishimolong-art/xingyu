@@ -10,6 +10,9 @@ import java.util.List;
 @Schema(description = "管理后台 - ERP 销售退货导入结果 Response VO")
 public class ErpSaleReturnImportRespVO {
 
+    @Schema(description = "导入记录编号")
+    private Long recordId;
+
     @Schema(description = "退货模式")
     private Integer returnMode = 20;
 

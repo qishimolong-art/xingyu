@@ -4,7 +4,12 @@ import cn.iocoder.yudao.framework.common.pojo.CommonResult;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.test.core.ut.BaseMockitoUnitTest;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnPageReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnCreatePurchaseReturnReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnCreateTargetDraftRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnCreateTransferOutReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnPurchaseReturnableItemRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnTransferOutableItemRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnDraftCreateReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnDraftUpdateReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnSaveReqVO;
@@ -127,6 +132,51 @@ public class ErpSaleReturnControllerTest extends BaseMockitoUnitTest {
         PreAuthorize anno = method.getAnnotation(PreAuthorize.class);
         assertNotNull(anno);
         assertTrue(anno.value().contains("erp:sale-return:update-status"));
+    }
+
+    @Test
+    public void testTransferOutEndpoints_passThroughAndKeepPermissions() throws NoSuchMethodException {
+        List<ErpSaleReturnTransferOutableItemRespVO> items = Collections.singletonList(
+                new ErpSaleReturnTransferOutableItemRespVO().setSourceSaleReturnItemId(301L));
+        when(saleReturnService.getTransferOutableItemsByReturnId(eq(33L))).thenReturn(items);
+        assertEquals(items, controller.getTransferOutableItems(33L).getData());
+        verify(saleReturnService).getTransferOutableItemsByReturnId(eq(33L));
+
+        ErpSaleReturnCreateTransferOutReqVO reqVO = new ErpSaleReturnCreateTransferOutReqVO();
+        ErpSaleReturnCreateTargetDraftRespVO respVO = ErpSaleReturnCreateTargetDraftRespVO.multiple(
+                Collections.singletonList(501L), Collections.singletonList("DBCK001"));
+        when(saleReturnService.createTransferOutFromSaleReturn(eq(reqVO))).thenReturn(respVO);
+        assertEquals(respVO, controller.createTransferOutFromSaleReturn(reqVO).getData());
+        verify(saleReturnService).createTransferOutFromSaleReturn(eq(reqVO));
+
+        assertTrue(ErpSaleReturnController.class
+                .getMethod("getTransferOutableItems", Long.class)
+                .getAnnotation(PreAuthorize.class).value().contains("erp:sale-return:transfer-out"));
+        assertTrue(ErpSaleReturnController.class
+                .getMethod("createTransferOutFromSaleReturn", ErpSaleReturnCreateTransferOutReqVO.class)
+                .getAnnotation(PreAuthorize.class).value().contains("erp:sale-return:transfer-out"));
+    }
+
+    @Test
+    public void testPurchaseReturnEndpoints_passThroughAndKeepPermissions() throws NoSuchMethodException {
+        List<ErpSaleReturnPurchaseReturnableItemRespVO> items = Collections.singletonList(
+                new ErpSaleReturnPurchaseReturnableItemRespVO().setSourceSaleReturnItemId(302L));
+        when(saleReturnService.getPurchaseReturnableItemsByReturnId(eq(34L))).thenReturn(items);
+        assertEquals(items, controller.getPurchaseReturnableItems(34L).getData());
+        verify(saleReturnService).getPurchaseReturnableItemsByReturnId(eq(34L));
+
+        ErpSaleReturnCreatePurchaseReturnReqVO reqVO = new ErpSaleReturnCreatePurchaseReturnReqVO();
+        ErpSaleReturnCreateTargetDraftRespVO respVO = ErpSaleReturnCreateTargetDraftRespVO.single(601L, "CGTH001");
+        when(saleReturnService.createPurchaseReturnFromSaleReturn(eq(reqVO))).thenReturn(respVO);
+        assertEquals(respVO, controller.createPurchaseReturnFromSaleReturn(reqVO).getData());
+        verify(saleReturnService).createPurchaseReturnFromSaleReturn(eq(reqVO));
+
+        assertTrue(ErpSaleReturnController.class
+                .getMethod("getPurchaseReturnableItems", Long.class)
+                .getAnnotation(PreAuthorize.class).value().contains("erp:sale-return:purchase-return"));
+        assertTrue(ErpSaleReturnController.class
+                .getMethod("createPurchaseReturnFromSaleReturn", ErpSaleReturnCreatePurchaseReturnReqVO.class)
+                .getAnnotation(PreAuthorize.class).value().contains("erp:sale-return:purchase-return"));
     }
 
     // ========== deleteSaleReturn ==========

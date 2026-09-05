@@ -42,6 +42,18 @@ public class ErpWarehouseDO extends BaseDO {
      */
     private String address;
     /**
+     * 地图显示名称
+     */
+    private String mapName;
+    /**
+     * 仓库经度（GCJ-02）
+     */
+    private BigDecimal longitude;
+    /**
+     * 仓库纬度（GCJ-02）
+     */
+    private BigDecimal latitude;
+    /**
      * 排序
      */
     private Long sort;

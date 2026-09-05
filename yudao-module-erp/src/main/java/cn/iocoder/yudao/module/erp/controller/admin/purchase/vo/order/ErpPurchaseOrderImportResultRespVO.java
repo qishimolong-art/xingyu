@@ -19,6 +19,9 @@ public class ErpPurchaseOrderImportResultRespVO {
     @Schema(description = "创建成功的采购订单编号")
     private List<Long> orderIds = new ArrayList<>();
 
+    @Schema(description = "导入记录编号，用于下载错误数据")
+    private Long recordId;
+
     @Schema(description = "失败明细")
     private List<FailureItem> failureDetails = new ArrayList<>();
 

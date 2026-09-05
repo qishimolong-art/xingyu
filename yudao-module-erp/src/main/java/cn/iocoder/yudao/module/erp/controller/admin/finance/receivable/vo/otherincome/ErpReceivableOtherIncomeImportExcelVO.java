@@ -11,7 +11,6 @@ import java.math.BigDecimal;
 @ExcelIgnoreUnannotated
 public class ErpReceivableOtherIncomeImportExcelVO {
 
-    @ExcelRequired
     @ExcelProperty("业务时间")
     private String bizTime;
 
@@ -65,6 +64,9 @@ public class ErpReceivableOtherIncomeImportExcelVO {
 
     @ExcelProperty("明细往来单位")
     private String itemParty;
+
+    @ExcelProperty("明细客户ID")
+    private Long itemCustomerId;
 
     @ExcelProperty("明细部门ID")
     private Long itemDeptId;

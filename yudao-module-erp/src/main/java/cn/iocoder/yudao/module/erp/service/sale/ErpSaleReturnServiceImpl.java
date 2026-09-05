@@ -9,38 +9,55 @@ import cn.iocoder.yudao.framework.common.util.number.MoneyUtils;
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
 import cn.iocoder.yudao.framework.datapermission.core.util.DataPermissionUtils;
 import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpProductRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.returns.ErpPurchaseReturnDraftCreateReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.returns.ErpPurchaseReturnSaveReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnCreatePurchaseReturnReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnCreateTargetDraftRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnCreateTransferOutReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnImportExcelVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnImportRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnItemBatchUpdateReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnItemPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnPageReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnPurchaseReturnableItemRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnDraftCreateReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnDraftUpdateReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnSaveReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnTransferOutableItemRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.move.ErpStockTransferOutDraftCreateReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.move.ErpStockMoveSaveReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.accounting.ErpVoucherItemDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.product.ErpProductDO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseReturnDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleOrderDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleOutDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleOutItemDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleReturnDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleReturnItemDO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockMoveDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockOutBillItemDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpWarehouseDO;
 import cn.iocoder.yudao.module.erp.dal.mysql.product.ErpProductMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.finance.ErpFinanceReceiptItemMapper;
+import cn.iocoder.yudao.module.erp.dal.mysql.purchase.ErpPurchaseReturnItemMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpSaleOutItemMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpSaleOutMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpSaleReturnItemMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpSaleReturnMapper;
+import cn.iocoder.yudao.module.erp.dal.mysql.stock.ErpStockMoveItemMapper;
 import cn.iocoder.yudao.module.erp.dal.redis.no.ErpNoRedisDAO;
 import cn.iocoder.yudao.module.erp.enums.ErpAuditStatus;
 import cn.iocoder.yudao.module.erp.enums.common.ErpBizTypeEnum;
 import cn.iocoder.yudao.module.erp.enums.finance.accounting.ErpVoucherSourceBizTypeEnum;
 import cn.iocoder.yudao.module.erp.enums.finance.accounting.ErpVoucherTypeEnum;
+import cn.iocoder.yudao.module.erp.enums.purchase.ErpPurchaseReturnModeEnum;
+import cn.iocoder.yudao.module.erp.enums.sale.ErpSaleBizSourceTypeEnum;
 import cn.iocoder.yudao.module.erp.enums.sale.ErpSaleReturnModeEnum;
 import cn.iocoder.yudao.module.erp.enums.sale.ErpSaleReturnStatusEnum;
 import cn.iocoder.yudao.module.erp.enums.stock.ErpStockRecordBizTypeEnum;
+import cn.iocoder.yudao.module.erp.service.common.ErpImportProductResolver;
 import cn.iocoder.yudao.module.erp.service.common.ErpOperateLogService;
 import cn.iocoder.yudao.module.erp.service.finance.ErpAccountService;
 import cn.iocoder.yudao.module.erp.service.finance.accounting.ErpAutoVoucherBuilder;
@@ -48,11 +65,16 @@ import cn.iocoder.yudao.module.erp.service.finance.accounting.ErpBookOpenService
 import cn.iocoder.yudao.module.erp.service.finance.accounting.ErpVoucherService;
 import cn.iocoder.yudao.module.erp.service.product.ErpProductBatchNoValidator;
 import cn.iocoder.yudao.module.erp.service.product.ErpProductService;
+import cn.iocoder.yudao.module.erp.service.purchase.ErpPurchaseReturnService;
+import cn.iocoder.yudao.module.erp.service.purchase.ErpSupplierService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpStockOutBillService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpStockRecordService;
+import cn.iocoder.yudao.module.erp.service.stock.ErpStockMoveService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpStockService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpWarehouseService;
 import cn.iocoder.yudao.module.erp.service.stock.bo.ErpStockRecordCreateReqBO;
+import cn.iocoder.yudao.module.system.api.dept.DeptApi;
+import cn.iocoder.yudao.module.system.api.dept.dto.DeptRespDTO;
 import cn.iocoder.yudao.module.system.controller.admin.dept.vo.dept.DeptSimpleRespVO;
 import cn.iocoder.yudao.module.system.api.user.AdminUserApi;
 import org.springframework.context.annotation.Lazy;
@@ -68,10 +90,13 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 import static cn.iocoder.yudao.framework.common.exception.util.ServiceExceptionUtil.exception;
 import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.*;
@@ -88,6 +113,10 @@ public class ErpSaleReturnServiceImpl implements ErpSaleReturnService {
     private ErpSaleReturnMapper saleReturnMapper;
     @Resource
     private ErpSaleReturnItemMapper saleReturnItemMapper;
+    @Resource
+    private ErpStockMoveItemMapper stockMoveItemMapper;
+    @Resource
+    private ErpPurchaseReturnItemMapper purchaseReturnItemMapper;
     @Resource
     private ErpProductMapper productMapper;
     @Resource
@@ -136,6 +165,14 @@ public class ErpSaleReturnServiceImpl implements ErpSaleReturnService {
     private ErpSaleDocumentDefaultService saleDocumentDefaultService;
     @Resource
     private ErpOperateLogService operateLogService;
+    @Resource
+    private ErpStockMoveService stockMoveService;
+    @Resource
+    private ErpPurchaseReturnService purchaseReturnService;
+    @Resource
+    private ErpSupplierService supplierService;
+    @Resource
+    private DeptApi deptApi;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -687,8 +724,6 @@ public class ErpSaleReturnServiceImpl implements ErpSaleReturnService {
         List<ErpProductDO> productList = DataPermissionUtils.executeIgnore(() ->
                 productService.validProductList(convertSet(list, ErpSaleReturnSaveReqVO.Item::getProductId)));
         Map<Long, ErpProductDO> productMap = convertMap(productList, ErpProductDO::getId);
-        productBatchNoValidator.validateBatchNoRequired(list, productMap,
-                ErpSaleReturnSaveReqVO.Item::getProductId, ErpSaleReturnSaveReqVO.Item::getBatchNo);
         productBatchNoValidator.validateBatchNoAllowed(list, productMap,
                 ErpSaleReturnSaveReqVO.Item::getProductId, ErpSaleReturnSaveReqVO.Item::getBatchNo);
         List<Long> warehouseIds = convertList(list, ErpSaleReturnSaveReqVO.Item::getWarehouseId);
@@ -841,6 +876,12 @@ public class ErpSaleReturnServiceImpl implements ErpSaleReturnService {
     }
 
     @Override
+    public PageResult<ErpSaleReturnItemDO> getSaleReturnItemPage(ErpSaleReturnItemPageReqVO pageReqVO) {
+        validateSaleReturnExists(pageReqVO.getReturnId());
+        return saleReturnItemMapper.selectPageByReturnId(pageReqVO);
+    }
+
+    @Override
     public List<ErpSaleReturnItemDO> getSaleReturnItemListByReturnIds(Collection<Long> returnIds) {
         if (CollUtil.isEmpty(returnIds)) {
             return Collections.emptyList();
@@ -854,50 +895,352 @@ public class ErpSaleReturnServiceImpl implements ErpSaleReturnService {
     }
 
     @Override
+    public List<ErpSaleReturnTransferOutableItemRespVO> getTransferOutableItemsByReturnId(Long returnId) {
+        ErpSaleReturnDO saleReturn = validateSaleReturn(returnId);
+        List<ErpSaleReturnItemDO> items = saleReturnItemMapper.selectListByReturnId(returnId);
+        if (CollUtil.isEmpty(items)) {
+            return Collections.emptyList();
+        }
+        Map<Long, BigDecimal> transferredCountMap = stockMoveItemMapper.selectMovedCountMapBySourceSaleReturnItemIds(
+                convertSet(items, ErpSaleReturnItemDO::getId), null);
+        Map<Long, ErpProductRespVO> productMap = DataPermissionUtils.executeIgnore(() ->
+                productService.getProductVOMap(convertSet(items, ErpSaleReturnItemDO::getProductId)));
+        Map<Long, ErpProductRespVO> safeProductMap = productMap == null ? Collections.emptyMap() : productMap;
+        Map<Long, ErpWarehouseDO> warehouseMap = DataPermissionUtils.executeIgnore(() ->
+                warehouseService.getWarehouseMap(convertSet(items, ErpSaleReturnItemDO::getWarehouseId)));
+        Map<Long, ErpWarehouseDO> safeWarehouseMap = warehouseMap == null ? Collections.emptyMap() : warehouseMap;
+        Map<Long, DeptRespDTO> deptMap = getDeptMap(items, safeWarehouseMap);
+        return convertList(items, item -> {
+            BigDecimal transferredCount = transferredCountMap.getOrDefault(item.getId(), BigDecimal.ZERO);
+            BigDecimal availableCount = positiveSubtract(item.getCount(), transferredCount);
+            ErpSaleReturnTransferOutableItemRespVO vo = BeanUtils.toBean(item,
+                    ErpSaleReturnTransferOutableItemRespVO.class);
+            vo.setSourceSaleReturnId(saleReturn.getId());
+            vo.setSourceSaleReturnItemId(item.getId());
+            vo.setSourceSaleReturnNo(saleReturn.getNo());
+            vo.setReturnCount(item.getCount());
+            vo.setTransferredCount(transferredCount);
+            vo.setTransferOutableCount(availableCount);
+            ErpProductRespVO product = safeProductMap.get(item.getProductId());
+            if (product != null) {
+                vo.setProductCode(product.getCode());
+                vo.setProductName(product.getName());
+                vo.setProductUnitName(product.getUnitName());
+            }
+            ErpWarehouseDO warehouse = safeWarehouseMap.get(item.getWarehouseId());
+            if (warehouse != null) {
+                vo.setFromWarehouseName(warehouse.getName());
+                if (vo.getFromDeptId() == null) {
+                    vo.setFromDeptId(warehouse.getDeptId());
+                }
+            }
+            DeptRespDTO dept = deptMap.get(vo.getFromDeptId());
+            if (dept != null) {
+                vo.setFromDeptName(dept.getName());
+            }
+            vo.setFromWarehouseId(item.getWarehouseId());
+            return vo;
+        }).stream().filter(item -> item.getTransferOutableCount().compareTo(BigDecimal.ZERO) > 0)
+                .collect(Collectors.toList());
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public ErpSaleReturnCreateTargetDraftRespVO createTransferOutFromSaleReturn(
+            ErpSaleReturnCreateTransferOutReqVO reqVO) {
+        ErpSaleReturnDO saleReturn = validateSaleReturn(reqVO.getReturnId());
+        List<ErpSaleReturnItemDO> sourceItems = saleReturnItemMapper.selectListByReturnId(reqVO.getReturnId());
+        if (CollUtil.isEmpty(sourceItems)) {
+            throw exception(SALE_RETURN_TRANSFER_ITEMS_EMPTY);
+        }
+        Map<Long, ErpSaleReturnItemDO> sourceItemMap = convertMap(sourceItems, ErpSaleReturnItemDO::getId);
+        Map<Long, BigDecimal> requestCountMap = validateTransferOutRequestItems(reqVO, sourceItemMap);
+        validateSaleReturnTransferAvailable(requestCountMap, sourceItemMap,
+                stockMoveItemMapper.selectMovedCountMapBySourceSaleReturnItemIds(requestCountMap.keySet(), null));
+
+        List<ErpWarehouseDO> warehouses = DataPermissionUtils.executeIgnore(() -> warehouseService.validWarehouseList(
+                collectTransferWarehouseIds(reqVO)));
+        Map<Long, ErpWarehouseDO> warehouseMap = convertMap(warehouses, ErpWarehouseDO::getId);
+        Map<Long, List<ErpSaleReturnCreateTransferOutReqVO.Item>> groupMap = reqVO.getItems().stream()
+                .collect(Collectors.groupingBy(ErpSaleReturnCreateTransferOutReqVO.Item::getFromDeptId,
+                        LinkedHashMap::new, Collectors.toList()));
+        List<Long> ids = new ArrayList<>();
+        List<String> nos = new ArrayList<>();
+        for (Map.Entry<Long, List<ErpSaleReturnCreateTransferOutReqVO.Item>> entry : groupMap.entrySet()) {
+            ErpStockTransferOutDraftCreateReqVO draftReqVO = new ErpStockTransferOutDraftCreateReqVO();
+            draftReqVO.setDeptId(entry.getKey());
+            draftReqVO.setFromDeptId(entry.getKey());
+            draftReqVO.setToDeptId(entry.getValue().get(0).getToDeptId());
+            draftReqVO.setMoveTime(reqVO.getMoveTime() != null ? reqVO.getMoveTime() : LocalDateTime.now());
+            draftReqVO.setRemark(reqVO.getRemark());
+            draftReqVO.setSourceType(ErpSaleBizSourceTypeEnum.SALE_RETURN.getType());
+            draftReqVO.setSourceId(saleReturn.getId());
+            draftReqVO.setSourceNo(saleReturn.getNo());
+            draftReqVO.setItems(convertList(entry.getValue(), reqItem -> {
+                ErpSaleReturnItemDO sourceItem = sourceItemMap.get(reqItem.getSourceSaleReturnItemId());
+                ErpStockMoveSaveReqVO.Item item = new ErpStockMoveSaveReqVO.Item();
+                item.setFromDeptId(reqItem.getFromDeptId());
+                item.setFromWarehouseId(reqItem.getFromWarehouseId());
+                item.setToDeptId(reqItem.getToDeptId());
+                item.setToWarehouseId(reqItem.getToWarehouseId());
+                item.setProductId(sourceItem.getProductId());
+                item.setPackageQty(sourceItem.getPackageQty());
+                item.setWeight(sourceItem.getWeight());
+                item.setProductPrice(sourceItem.getProductPrice());
+                item.setCount(reqItem.getCount());
+                item.setBatchNo(sourceItem.getBatchNo());
+                item.setFromShelf(sourceItem.getWarehousePosition());
+                item.setRemark(reqItem.getRemark());
+                item.setSourceSaleReturnId(saleReturn.getId());
+                item.setSourceSaleReturnItemId(sourceItem.getId());
+                item.setSourceSaleReturnNo(saleReturn.getNo());
+                return item;
+            }));
+            validateTransferWarehouses(draftReqVO.getItems(), warehouseMap);
+            Long id = stockMoveService.createStockTransferOutDraft(draftReqVO);
+            ErpStockMoveDO stockMove = stockMoveService.getStockMove(id);
+            ids.add(id);
+            nos.add(stockMove == null ? null : stockMove.getNo());
+        }
+        return ErpSaleReturnCreateTargetDraftRespVO.multiple(ids, nos);
+    }
+
+    @Override
+    public List<ErpSaleReturnPurchaseReturnableItemRespVO> getPurchaseReturnableItemsByReturnId(Long returnId) {
+        ErpSaleReturnDO saleReturn = validateSaleReturn(returnId);
+        List<ErpSaleReturnItemDO> items = saleReturnItemMapper.selectListByReturnId(returnId);
+        if (CollUtil.isEmpty(items)) {
+            return Collections.emptyList();
+        }
+        Map<Long, BigDecimal> purchaseReturnedCountMap =
+                purchaseReturnItemMapper.selectReturnedCountMapBySourceSaleReturnItemIds(
+                        convertSet(items, ErpSaleReturnItemDO::getId), null);
+        Map<Long, ErpProductRespVO> productMap = DataPermissionUtils.executeIgnore(() ->
+                productService.getProductVOMap(convertSet(items, ErpSaleReturnItemDO::getProductId)));
+        Map<Long, ErpProductRespVO> safeProductMap = productMap == null ? Collections.emptyMap() : productMap;
+        Map<Long, ErpWarehouseDO> warehouseMap = DataPermissionUtils.executeIgnore(() ->
+                warehouseService.getWarehouseMap(convertSet(items, ErpSaleReturnItemDO::getWarehouseId)));
+        Map<Long, ErpWarehouseDO> safeWarehouseMap = warehouseMap == null ? Collections.emptyMap() : warehouseMap;
+        Map<Long, DeptRespDTO> deptMap = getDeptMap(items, safeWarehouseMap);
+        return convertList(items, item -> {
+            BigDecimal returnedCount = purchaseReturnedCountMap.getOrDefault(item.getId(), BigDecimal.ZERO);
+            BigDecimal availableCount = positiveSubtract(item.getCount(), returnedCount);
+            ErpSaleReturnPurchaseReturnableItemRespVO vo = BeanUtils.toBean(item,
+                    ErpSaleReturnPurchaseReturnableItemRespVO.class);
+            vo.setSourceSaleReturnId(saleReturn.getId());
+            vo.setSourceSaleReturnItemId(item.getId());
+            vo.setSourceSaleReturnNo(saleReturn.getNo());
+            vo.setReturnCount(item.getCount());
+            vo.setPurchaseReturnedCount(returnedCount);
+            vo.setPurchaseReturnableCount(availableCount);
+            ErpProductRespVO product = safeProductMap.get(item.getProductId());
+            if (product != null) {
+                vo.setProductCode(product.getCode());
+                vo.setProductName(product.getName());
+                vo.setProductUnitName(product.getUnitName());
+            }
+            ErpWarehouseDO warehouse = safeWarehouseMap.get(item.getWarehouseId());
+            if (warehouse != null) {
+                vo.setWarehouseName(warehouse.getName());
+                if (vo.getDeptId() == null) {
+                    vo.setDeptId(warehouse.getDeptId());
+                }
+            }
+            DeptRespDTO dept = deptMap.get(vo.getDeptId());
+            if (dept != null) {
+                vo.setDeptName(dept.getName());
+            }
+            return vo;
+        }).stream().filter(item -> item.getPurchaseReturnableCount().compareTo(BigDecimal.ZERO) > 0)
+                .collect(Collectors.toList());
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public ErpSaleReturnCreateTargetDraftRespVO createPurchaseReturnFromSaleReturn(
+            ErpSaleReturnCreatePurchaseReturnReqVO reqVO) {
+        ErpSaleReturnDO saleReturn = validateSaleReturn(reqVO.getReturnId());
+        if (reqVO.getSupplierId() == null) {
+            throw exception(SALE_RETURN_TRANSFER_SUPPLIER_REQUIRED);
+        }
+        if (reqVO.getDeptId() == null) {
+            throw exception(SALE_RETURN_TRANSFER_DEPT_REQUIRED);
+        }
+        supplierService.validateSupplier(reqVO.getSupplierId());
+        List<ErpSaleReturnItemDO> sourceItems = saleReturnItemMapper.selectListByReturnId(reqVO.getReturnId());
+        if (CollUtil.isEmpty(sourceItems)) {
+            throw exception(SALE_RETURN_TRANSFER_ITEMS_EMPTY);
+        }
+        Map<Long, ErpSaleReturnItemDO> sourceItemMap = convertMap(sourceItems, ErpSaleReturnItemDO::getId);
+        Map<Long, BigDecimal> requestCountMap = validatePurchaseReturnRequestItems(reqVO, sourceItemMap);
+        validateSaleReturnTransferAvailable(requestCountMap, sourceItemMap,
+                purchaseReturnItemMapper.selectReturnedCountMapBySourceSaleReturnItemIds(requestCountMap.keySet(), null));
+
+        ErpPurchaseReturnDraftCreateReqVO draftReqVO = new ErpPurchaseReturnDraftCreateReqVO();
+        draftReqVO.setSupplierId(reqVO.getSupplierId());
+        draftReqVO.setDeptId(reqVO.getDeptId());
+        draftReqVO.setReturnMode(ErpPurchaseReturnModeEnum.BY_STOCK.getMode());
+        draftReqVO.setReturnTime(reqVO.getReturnTime() != null ? reqVO.getReturnTime() : LocalDateTime.now());
+        draftReqVO.setRemark(reqVO.getRemark());
+        draftReqVO.setItems(convertList(reqVO.getItems(), reqItem -> {
+            ErpSaleReturnItemDO sourceItem = sourceItemMap.get(reqItem.getSourceSaleReturnItemId());
+            ErpPurchaseReturnSaveReqVO.Item item = new ErpPurchaseReturnSaveReqVO.Item();
+            item.setProductId(sourceItem.getProductId());
+            item.setProductCode(null);
+            item.setProductUnitId(sourceItem.getProductUnitId());
+            item.setWarehouseId(sourceItem.getWarehouseId());
+            item.setDeptId(sourceItem.getDeptId());
+            item.setProductPrice(reqItem.getProductPrice() != null ? reqItem.getProductPrice()
+                    : sourceItem.getProductPrice());
+            item.setCount(reqItem.getCount());
+            item.setWeight(sourceItem.getWeight());
+            item.setPackageQty(sourceItem.getPackageQty());
+            item.setWarehousePosition(sourceItem.getWarehousePosition());
+            item.setBatchNo(sourceItem.getBatchNo());
+            item.setRemark(reqItem.getRemark());
+            item.setSourceSaleReturnId(saleReturn.getId());
+            item.setSourceSaleReturnItemId(sourceItem.getId());
+            item.setSourceSaleReturnNo(saleReturn.getNo());
+            return item;
+        }));
+        Long id = purchaseReturnService.createPurchaseReturnDraft(draftReqVO);
+        ErpPurchaseReturnDO purchaseReturn = purchaseReturnService.getPurchaseReturn(id);
+        return ErpSaleReturnCreateTargetDraftRespVO.single(id, purchaseReturn == null ? null : purchaseReturn.getNo());
+    }
+
+    private Map<Long, DeptRespDTO> getDeptMap(List<ErpSaleReturnItemDO> items, Map<Long, ErpWarehouseDO> warehouseMap) {
+        Set<Long> deptIds = convertSet(items, ErpSaleReturnItemDO::getDeptId);
+        deptIds.addAll(convertSet(warehouseMap.values(), ErpWarehouseDO::getDeptId));
+        deptIds.remove(null);
+        return CollUtil.isEmpty(deptIds) ? Collections.emptyMap() : deptApi.getDeptMap(deptIds);
+    }
+
+    private BigDecimal positiveSubtract(BigDecimal total, BigDecimal used) {
+        BigDecimal result = (total == null ? BigDecimal.ZERO : total).subtract(
+                used == null ? BigDecimal.ZERO : used);
+        return result.compareTo(BigDecimal.ZERO) < 0 ? BigDecimal.ZERO : result;
+    }
+
+    private Map<Long, BigDecimal> validateTransferOutRequestItems(ErpSaleReturnCreateTransferOutReqVO reqVO,
+                                                                  Map<Long, ErpSaleReturnItemDO> sourceItemMap) {
+        if (CollUtil.isEmpty(reqVO.getItems())) {
+            throw exception(SALE_RETURN_TRANSFER_ITEMS_EMPTY);
+        }
+        Map<Long, BigDecimal> requestCountMap = new HashMap<>();
+        for (ErpSaleReturnCreateTransferOutReqVO.Item item : reqVO.getItems()) {
+            ErpSaleReturnItemDO sourceItem = sourceItemMap.get(item.getSourceSaleReturnItemId());
+            if (sourceItem == null) {
+                throw exception(SALE_RETURN_TRANSFER_SOURCE_ITEM_NOT_EXISTS);
+            }
+            if (item.getCount() == null || item.getCount().compareTo(BigDecimal.ZERO) <= 0) {
+                throw exception(SALE_RETURN_TRANSFER_COUNT_POSITIVE);
+            }
+            if (Objects.equals(item.getFromWarehouseId(), item.getToWarehouseId())) {
+                throw exception(SALE_RETURN_TRANSFER_WAREHOUSE_SAME);
+            }
+            requestCountMap.merge(item.getSourceSaleReturnItemId(), item.getCount(), BigDecimal::add);
+        }
+        return requestCountMap;
+    }
+
+    private Map<Long, BigDecimal> validatePurchaseReturnRequestItems(ErpSaleReturnCreatePurchaseReturnReqVO reqVO,
+                                                                     Map<Long, ErpSaleReturnItemDO> sourceItemMap) {
+        if (CollUtil.isEmpty(reqVO.getItems())) {
+            throw exception(SALE_RETURN_TRANSFER_ITEMS_EMPTY);
+        }
+        Map<Long, BigDecimal> requestCountMap = new HashMap<>();
+        for (ErpSaleReturnCreatePurchaseReturnReqVO.Item item : reqVO.getItems()) {
+            if (!sourceItemMap.containsKey(item.getSourceSaleReturnItemId())) {
+                throw exception(SALE_RETURN_TRANSFER_SOURCE_ITEM_NOT_EXISTS);
+            }
+            if (item.getCount() == null || item.getCount().compareTo(BigDecimal.ZERO) <= 0) {
+                throw exception(SALE_RETURN_TRANSFER_COUNT_POSITIVE);
+            }
+            requestCountMap.merge(item.getSourceSaleReturnItemId(), item.getCount(), BigDecimal::add);
+        }
+        return requestCountMap;
+    }
+
+    private void validateSaleReturnTransferAvailable(Map<Long, BigDecimal> requestCountMap,
+                                                     Map<Long, ErpSaleReturnItemDO> sourceItemMap,
+                                                     Map<Long, BigDecimal> usedCountMap) {
+        for (Map.Entry<Long, BigDecimal> entry : requestCountMap.entrySet()) {
+            ErpSaleReturnItemDO sourceItem = sourceItemMap.get(entry.getKey());
+            if (sourceItem == null) {
+                throw exception(SALE_RETURN_TRANSFER_SOURCE_ITEM_NOT_EXISTS);
+            }
+            BigDecimal available = positiveSubtract(sourceItem.getCount(),
+                    usedCountMap.getOrDefault(entry.getKey(), BigDecimal.ZERO));
+            if (entry.getValue().compareTo(available) > 0) {
+                throw exception(SALE_RETURN_TRANSFER_EXCEED_AVAILABLE,
+                        entry.getKey(), entry.getValue(), available);
+            }
+        }
+    }
+
+    private Set<Long> collectTransferWarehouseIds(ErpSaleReturnCreateTransferOutReqVO reqVO) {
+        Set<Long> warehouseIds = new LinkedHashSet<>();
+        reqVO.getItems().forEach(item -> {
+            warehouseIds.add(item.getFromWarehouseId());
+            warehouseIds.add(item.getToWarehouseId());
+        });
+        warehouseIds.remove(null);
+        return warehouseIds;
+    }
+
+    private void validateTransferWarehouses(List<ErpStockMoveSaveReqVO.Item> items,
+                                            Map<Long, ErpWarehouseDO> warehouseMap) {
+        for (ErpStockTransferOutDraftCreateReqVO.Item item : items) {
+            ErpWarehouseDO fromWarehouse = warehouseMap.get(item.getFromWarehouseId());
+            ErpWarehouseDO toWarehouse = warehouseMap.get(item.getToWarehouseId());
+            if (fromWarehouse == null || toWarehouse == null
+                    || !Objects.equals(fromWarehouse.getDeptId(), item.getFromDeptId())
+                    || !Objects.equals(toWarehouse.getDeptId(), item.getToDeptId())) {
+                throw exception(SALE_RETURN_ITEM_BATCH_UPDATE_WAREHOUSE_DEPT_NOT_ALLOWED);
+            }
+        }
+    }
+
+    @Override
     public ErpSaleReturnImportRespVO parseImportData(List<ErpSaleReturnImportExcelVO> list) {
         ErpSaleReturnImportRespVO respVO = new ErpSaleReturnImportRespVO();
         if (CollUtil.isEmpty(list)) {
             return respVO;
         }
-        LinkedHashSet<String> productCodes = new LinkedHashSet<>();
-        list.forEach(row -> {
-            if (row.getProductCode() != null && !row.getProductCode().isEmpty()) {
-                productCodes.add(row.getProductCode());
-            }
-        });
-        Map<String, ErpProductDO> productMap = convertMap(
-                DataPermissionUtils.executeIgnore(() -> productMapper.selectListByCodes(productCodes)), ErpProductDO::getCode);
+        ErpImportProductResolver productResolver = ErpImportProductResolver.build(list,
+                ErpSaleReturnImportExcelVO::getProductCode, ErpSaleReturnImportExcelVO::getProductName, ErpSaleReturnImportExcelVO::getFactoryCode, productMapper);
         Map<Long, ErpProductRespVO> productVOMap = DataPermissionUtils.executeIgnore(() ->
-                productService.getProductVOMap(convertList(productMap.values(), ErpProductDO::getId)));
+                productService.getProductVOMap(convertList(productResolver.getResolvedProducts(), ErpProductDO::getId)));
         Map<String, ErpWarehouseDO> warehouseMap = convertMap(
                 warehouseService.getCurrentUserVisibleSaleWarehouseList(), ErpWarehouseDO::getName);
         for (int i = 0; i < list.size(); i++) {
             ErpSaleReturnImportExcelVO row = list.get(i);
             int rowNo = i + 2;
-            if (row.getProductCode() == null || row.getProductCode().isEmpty()) {
-                respVO.getFailureDetails().add(new ErpSaleReturnImportRespVO.FailureItem(rowNo, null, "产品编码不能为空"));
+            ErpImportProductResolver.ResolveResult productResult =
+                    productResolver.resolve(row.getProductCode(), row.getProductName(), row.getFactoryCode());
+            if (productResult.isFailure()) {
+                respVO.getFailureDetails().add(new ErpSaleReturnImportRespVO.FailureItem(
+                        rowNo, productResult.getIdentifier(), productResult.getErrorMessage()));
                 respVO.setFailureCount(respVO.getFailureCount() + 1);
                 continue;
             }
-            ErpProductDO product = productMap.get(row.getProductCode());
-            if (product == null) {
-                respVO.getFailureDetails().add(new ErpSaleReturnImportRespVO.FailureItem(rowNo, row.getProductCode(), "产品不存在"));
-                respVO.setFailureCount(respVO.getFailureCount() + 1);
-                continue;
-            }
+            ErpProductDO product = productResult.getProduct();
             if (row.getCount() == null || row.getCount().compareTo(BigDecimal.ZERO) <= 0) {
-                respVO.getFailureDetails().add(new ErpSaleReturnImportRespVO.FailureItem(rowNo, row.getProductCode(), "退货数量必须大于 0"));
+                respVO.getFailureDetails().add(new ErpSaleReturnImportRespVO.FailureItem(
+                        rowNo, productResult.getIdentifier(), "退货数量必须大于 0"));
                 respVO.setFailureCount(respVO.getFailureCount() + 1);
                 continue;
             }
             if (row.getWarehouseName() == null || row.getWarehouseName().isEmpty()) {
-                respVO.getFailureDetails().add(new ErpSaleReturnImportRespVO.FailureItem(rowNo, row.getProductCode(), "所属仓库不能为空"));
+                respVO.getFailureDetails().add(new ErpSaleReturnImportRespVO.FailureItem(
+                        rowNo, productResult.getIdentifier(), "所属仓库不能为空"));
                 respVO.setFailureCount(respVO.getFailureCount() + 1);
                 continue;
             }
             ErpWarehouseDO warehouse = warehouseMap.get(row.getWarehouseName());
             if (warehouse == null) {
-                respVO.getFailureDetails().add(new ErpSaleReturnImportRespVO.FailureItem(rowNo, row.getProductCode(), "所属仓库不存在"));
+                respVO.getFailureDetails().add(new ErpSaleReturnImportRespVO.FailureItem(
+                        rowNo, productResult.getIdentifier(), "所属仓库不存在"));
                 respVO.setFailureCount(respVO.getFailureCount() + 1);
                 continue;
             }

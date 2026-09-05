@@ -12,6 +12,7 @@ import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartFirs
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartFirstApproveConfigSaveReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartImportExcelVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartImportRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartItemBatchUpdateReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartSaveReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartSubmitRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.move.ErpStockMoveSaveReqVO;
@@ -159,6 +160,10 @@ public class ErpSaleCartServiceImplTest extends BaseMockitoUnitTest {
     @Mock
     private ErpSaleDocumentDefaultService saleDocumentDefaultService;
     @Mock
+    private ErpSaleItemBatchUpdateSupport batchUpdateSupport;
+    @Mock
+    private ErpSalePriceLevelPricePicker priceLevelPricePicker;
+    @Mock
     private AdminUserApi adminUserApi;
     @Mock
     private DeptApi deptApi;
@@ -227,11 +232,33 @@ public class ErpSaleCartServiceImplTest extends BaseMockitoUnitTest {
     }
 
     @Test
-    public void testParseImportData_missingProductCode_returnsReadableMessage() {
+    public void testParseImportData_onlyFactoryCode_success() {
+        ErpSaleCartImportExcelVO row = new ErpSaleCartImportExcelVO();
+        row.setWarehouseName("默认仓库");
+        row.setFactoryCode("F001");
+        row.setCount(BigDecimal.ONE);
+        row.setProductPrice(new BigDecimal("12.00"));
+        ErpProductDO product = new ErpProductDO()
+                .setId(201L).setCode("P001").setName("机油滤芯").setFactoryCode("F001")
+                .setUnitId(1L).setSalePrice(new BigDecimal("10.00"));
+        when(productMapper.selectListByFactoryCodes(anyCollection())).thenReturn(Collections.singletonList(product));
+        when(productService.getProductVOMap(anyCollection())).thenReturn(Collections.emptyMap());
+        when(warehouseService.getCurrentUserVisibleSaleWarehouseList()).thenReturn(Collections.singletonList(
+                new ErpWarehouseDO().setId(301L).setName("默认仓库")));
+
+        ErpSaleCartImportRespVO respVO = saleCartService.parseImportData(Collections.singletonList(row));
+
+        assertEquals(1, respVO.getSuccessCount());
+        assertEquals(0, respVO.getFailureCount());
+        assertEquals(Long.valueOf(201L), respVO.getItems().get(0).getProductId());
+        assertEquals("P001", respVO.getItems().get(0).getProductCode());
+    }
+
+    @Test
+    public void testParseImportData_missingProductIdentity_returnsReadableMessage() {
         ErpSaleCartImportExcelVO row = new ErpSaleCartImportExcelVO();
         row.setWarehouseName("默认仓库");
         row.setCount(BigDecimal.ONE);
-        when(productMapper.selectListByCodes(anyCollection())).thenReturn(Collections.emptyList());
         when(productService.getProductVOMap(anyCollection())).thenReturn(Collections.emptyMap());
         when(warehouseService.getCurrentUserVisibleSaleWarehouseList()).thenReturn(Collections.emptyList());
 
@@ -240,7 +267,8 @@ public class ErpSaleCartServiceImplTest extends BaseMockitoUnitTest {
         assertEquals(0, respVO.getSuccessCount());
         assertEquals(1, respVO.getFailureCount());
         assertEquals(2, respVO.getFailureDetails().get(0).getRowNo());
-        assertEquals("产品编码不能为空", respVO.getFailureDetails().get(0).getReason());
+        assertEquals("配件编码、配件名称和厂家编码为三选一字段，请至少填写其中一个",
+                respVO.getFailureDetails().get(0).getReason());
     }
 
     // ==================== ???????????????????????????====================
@@ -555,6 +583,7 @@ public class ErpSaleCartServiceImplTest extends BaseMockitoUnitTest {
                 ErpSaleBizSourceTypeEnum.MALL_ORDER.getType().equals(cart.getSourceType())
                         && Long.valueOf(501L).equals(cart.getSourceId())
                         && "MALL20260827000001".equals(cart.getSourceNo())
+                        && Long.valueOf(121L).equals(cart.getSaleUserId())
                         && "121".equals(cart.getCreator())
                         && "121".equals(cart.getUpdater())));
         verify(saleCartItemMapper).insertBatch(argThat((java.util.List<ErpSaleCartItemDO> items) -> items.size() == 1
@@ -2202,6 +2231,69 @@ public class ErpSaleCartServiceImplTest extends BaseMockitoUnitTest {
                 config.getConfigValue().contains("\"enabled\":false")
                         && config.getConfigValue().contains("\"deptAuthEnabled\":true")));
         verify(saleConfigMapper, never()).insertBatch(any());
+    }
+
+    @Test
+    public void testBatchUpdateSaleCartItems_priceLevel_updatesSelectedPricesAndTotals() {
+        Long cartId = 17L;
+        ErpSaleCartDO cart = new ErpSaleCartDO()
+                .setId(cartId)
+                .setNo("ST20260509000017")
+                .setStatus(ErpSaleCartStatusEnum.PROCESS.getStatus())
+                .setDiscountPercent(BigDecimal.ZERO)
+                .setFeeAmount(BigDecimal.ZERO);
+        ErpSaleCartItemDO normalItem = new ErpSaleCartItemDO()
+                .setId(117L)
+                .setCartId(cartId)
+                .setProductId(217L)
+                .setCount(new BigDecimal("2"))
+                .setGiftFlag(false)
+                .setProductPrice(new BigDecimal("10.00"))
+                .setTotalPrice(new BigDecimal("20.00"));
+        ErpSaleCartItemDO giftItem = new ErpSaleCartItemDO()
+                .setId(118L)
+                .setCartId(cartId)
+                .setProductId(218L)
+                .setCount(new BigDecimal("3"))
+                .setGiftFlag(true)
+                .setProductPrice(new BigDecimal("99.00"))
+                .setTotalPrice(new BigDecimal("297.00"));
+        ErpSaleCartItemDO untouchedItem = new ErpSaleCartItemDO()
+                .setId(119L)
+                .setCartId(cartId)
+                .setProductId(219L)
+                .setCount(BigDecimal.ONE)
+                .setGiftFlag(false)
+                .setProductPrice(new BigDecimal("5.00"))
+                .setTotalPrice(new BigDecimal("5.00"));
+        ErpSaleCartItemBatchUpdateReqVO reqVO = new ErpSaleCartItemBatchUpdateReqVO();
+        reqVO.setCartId(cartId);
+        List<Long> itemIds = new ArrayList<>();
+        itemIds.add(normalItem.getId());
+        itemIds.add(giftItem.getId());
+        reqVO.setItemIds(itemIds);
+        reqVO.setPriceLevel(10);
+        Map<Long, BigDecimal> priceMap = new LinkedHashMap<>();
+        priceMap.put(normalItem.getProductId(), new BigDecimal("12.50"));
+        priceMap.put(giftItem.getProductId(), new BigDecimal("88.00"));
+        when(saleCartMapper.selectById(eq(cartId))).thenReturn(cart);
+        when(saleCartItemMapper.selectListByCartId(eq(cartId)))
+                .thenReturn(List.of(normalItem, giftItem, untouchedItem));
+        when(priceLevelPricePicker.pickProductPriceMap(anyCollection(), eq(10))).thenReturn(priceMap);
+
+        saleCartService.batchUpdateSaleCartItems(reqVO);
+
+        verify(saleCartItemMapper).updateBatch(ArgumentMatchers.<Collection<ErpSaleCartItemDO>>argThat(items -> {
+            List<ErpSaleCartItemDO> list = new ArrayList<>(items);
+            return list.size() == 2
+                    && list.get(0).getProductPrice().compareTo(new BigDecimal("12.50")) == 0
+                    && list.get(0).getTotalPrice().compareTo(new BigDecimal("25.00")) == 0
+                    && list.get(1).getProductPrice().compareTo(BigDecimal.ZERO) == 0
+                    && list.get(1).getTotalPrice().compareTo(BigDecimal.ZERO) == 0;
+        }));
+        verify(saleCartMapper).updateById(ArgumentMatchers.<ErpSaleCartDO>argThat(update ->
+                update.getId().equals(cartId)
+                        && update.getTotalProductPrice().compareTo(new BigDecimal("30.00")) == 0));
     }
 
     private ErpSaleCartSaveReqVO buildBaseSaveReq() {

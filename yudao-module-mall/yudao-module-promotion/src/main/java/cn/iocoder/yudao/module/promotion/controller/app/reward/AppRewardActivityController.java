@@ -1,7 +1,10 @@
 package cn.iocoder.yudao.module.promotion.controller.app.reward;
 
+import cn.iocoder.yudao.framework.common.enums.CommonStatusEnum;
 import cn.iocoder.yudao.framework.common.pojo.CommonResult;
+import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
+import cn.iocoder.yudao.module.promotion.controller.admin.reward.vo.RewardActivityPageReqVO;
 import cn.iocoder.yudao.module.promotion.controller.app.reward.vo.AppRewardActivityRespVO;
 import cn.iocoder.yudao.module.promotion.dal.dataobject.reward.RewardActivityDO;
 import cn.iocoder.yudao.module.promotion.service.reward.RewardActivityService;
@@ -16,6 +19,8 @@ import org.springframework.web.bind.annotation.RestController;
 
 import javax.annotation.Resource;
 import javax.annotation.security.PermitAll;
+import javax.validation.Valid;
+import java.util.stream.Collectors;
 
 import static cn.iocoder.yudao.framework.common.pojo.CommonResult.success;
 
@@ -37,14 +42,33 @@ public class AppRewardActivityController {
         if (activity == null) {
             return success(null);
         }
-        // 拼接 Rule 描述
+        return success(convertRewardActivity(activity));
+    }
+
+    @GetMapping("/page")
+    @Operation(summary = "获得满减送活动分页")
+    @PermitAll
+    public CommonResult<PageResult<AppRewardActivityRespVO>> getRewardActivityPage(@Valid RewardActivityPageReqVO pageVO) {
+        pageVO.setStatus(CommonStatusEnum.ENABLE.getStatus());
+        PageResult<RewardActivityDO> pageResult = rewardActivityService.getRewardActivityPage(pageVO);
+        PageResult<AppRewardActivityRespVO> result = BeanUtils.toBean(pageResult, AppRewardActivityRespVO.class);
+        result.setList(pageResult.getList().stream()
+                .map(this::convertRewardActivity)
+                .collect(Collectors.toList()));
+        return success(result);
+    }
+
+    private AppRewardActivityRespVO convertRewardActivity(RewardActivityDO activity) {
         AppRewardActivityRespVO activityVO = BeanUtils.toBean(activity, AppRewardActivityRespVO.class);
-        for (int i = 0; i < activityVO.getRules().size(); i++) {
+        if (activityVO.getRules() == null || activity.getRules() == null) {
+            return activityVO;
+        }
+        for (int i = 0; i < activityVO.getRules().size() && i < activity.getRules().size(); i++) {
             AppRewardActivityRespVO.Rule ruleVO = activityVO.getRules().get(i);
             RewardActivityDO.Rule rule = activity.getRules().get(i);
             ruleVO.setDescription(rewardActivityService.getRewardActivityRuleDescription(activity.getConditionType(), rule));
         }
-        return success(activityVO);
+        return activityVO;
     }
 
 }

@@ -12,6 +12,8 @@ public class ErpImportExportRecordDetailRespVO {
     private Long id;
     private Long recordId;
     private Integer rowNo;
+    private String groupKey;
+    private String detailType;
     private String bizKey;
     private String bizName;
     private String failureReason;

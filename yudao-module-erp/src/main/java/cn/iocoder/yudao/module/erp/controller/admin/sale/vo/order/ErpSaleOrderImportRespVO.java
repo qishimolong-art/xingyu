@@ -10,6 +10,9 @@ import java.util.List;
 @Schema(description = "管理后台 - ERP 销售订单导入结果 Response VO")
 public class ErpSaleOrderImportRespVO {
 
+    @Schema(description = "导入记录编号")
+    private Long recordId;
+
     @Schema(description = "成功条数")
     private Integer successCount = 0;
 

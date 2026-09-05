@@ -17,8 +17,12 @@ import org.mockito.Mock;
 import org.springframework.security.access.prepost.PreAuthorize;
 
 import java.lang.reflect.Method;
+import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -127,6 +131,39 @@ public class ErpCustomerMemberControllerTest extends BaseMockitoUnitTest {
         assertEquals("测试客户", result.getData().get(0).getCustomerName());
         assertEquals("小程序会员", result.getData().get(0).getMemberNickname());
         assertEquals("15601691300", result.getData().get(0).getMobile());
+    }
+
+    @Test
+    public void testGetCustomerMemberListByCustomer_fillMultipleMembers() {
+        ErpCustomerMemberDO first = new ErpCustomerMemberDO()
+                .setId(1L)
+                .setCustomerId(10L)
+                .setMemberUserId(20L)
+                .setMobile("15601691300")
+                .setStatus(0);
+        ErpCustomerMemberDO second = new ErpCustomerMemberDO()
+                .setId(2L)
+                .setCustomerId(10L)
+                .setMemberUserId(21L)
+                .setMobile("15601691301")
+                .setStatus(0);
+        when(customerMemberService.getCustomerMemberListByCustomerId(eq(10L)))
+                .thenReturn(Arrays.asList(first, second));
+        when(customerService.getCustomerMap(eq(Collections.singleton(10L))))
+                .thenReturn(Collections.singletonMap(10L, new ErpCustomerDO().setId(10L).setName("测试客户")));
+        Map<Long, MemberUserRespDTO> memberUserMap = new HashMap<>();
+        memberUserMap.put(20L, new MemberUserRespDTO().setId(20L).setNickname("微信用户A"));
+        memberUserMap.put(21L, new MemberUserRespDTO().setId(21L).setNickname("微信用户B"));
+        when(memberUserApi.getUserMap(eq(new HashSet<>(Arrays.asList(20L, 21L)))))
+                .thenReturn(memberUserMap);
+
+        CommonResult<List<ErpCustomerMemberRespVO>> result = controller.getCustomerMemberListByCustomer(10L);
+
+        assertEquals(0, result.getCode());
+        assertEquals(2, result.getData().size());
+        assertEquals("测试客户", result.getData().get(0).getCustomerName());
+        assertEquals("微信用户A", result.getData().get(0).getMemberNickname());
+        assertEquals("微信用户B", result.getData().get(1).getMemberNickname());
     }
 
     @Test

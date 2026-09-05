@@ -16,6 +16,9 @@ public class ErpPurchaseImportResultRespVO {
     @Schema(description = "失败行数")
     private Integer failureCount = 0;
 
+    @Schema(description = "导入记录编号")
+    private Long recordId;
+
     @Schema(description = "创建成功的单据编号")
     private List<Long> documentIds = new ArrayList<>();
 

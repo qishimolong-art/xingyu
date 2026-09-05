@@ -3,10 +3,16 @@ package cn.iocoder.yudao.module.erp.service.purchase;
 import cn.iocoder.yudao.framework.common.biz.system.permission.dto.DeptDataPermissionRespDTO;
 import cn.iocoder.yudao.framework.common.enums.CommonStatusEnum;
 import cn.iocoder.yudao.framework.common.exception.ServiceException;
+import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.security.core.util.SecurityFrameworkUtils;
 import cn.iocoder.yudao.framework.test.core.ut.BaseMockitoUnitTest;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.order.ErpPurchaseOrderDetailImportExcelVO;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.order.ErpPurchaseOrderImportExcelVO;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.order.ErpPurchaseOrderImportResultRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.order.ErpPurchaseOrderImportRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.order.ErpPurchaseOrderInableItemRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.order.ErpPurchaseOrderItemBatchUpdateReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.order.ErpPurchaseOrderItemPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.order.ErpPurchaseOrderSaveReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.order.ErpPurchaseOrderUpdateRemarkReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpProductRespVO;
@@ -21,6 +27,7 @@ import cn.iocoder.yudao.module.erp.dal.mysql.purchase.ErpPurchaseInMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.purchase.ErpPurchaseOrderItemMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.purchase.ErpPurchaseOrderMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.purchase.ErpPurchaseReturnItemMapper;
+import cn.iocoder.yudao.module.erp.dal.mysql.product.ErpProductMapper;
 import cn.iocoder.yudao.module.erp.dal.redis.no.ErpNoRedisDAO;
 import cn.iocoder.yudao.module.erp.enums.ErpAuditStatus;
 import cn.iocoder.yudao.module.erp.enums.purchase.ErpPurchaseOrderStatusEnum;
@@ -53,7 +60,7 @@ import java.util.List;
 import java.util.Map;
 
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PURCHASE_ORDER_APPROVE_FAIL;
-import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.ERP_ITEM_BATCH_NO_REQUIRED;
+import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.ERP_ITEM_BATCH_NO_DISABLED;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PURCHASE_ORDER_DELETE_FAIL_APPROVE;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PURCHASE_ORDER_IN_EXCEED_INABLE;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PURCHASE_ORDER_ITEM_BATCH_UPDATE_FAIL_HAS_IN;
@@ -73,6 +80,7 @@ import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PURCHASE_ORDE
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PURCHASE_ORDER_UPDATE_FAIL_APPROVE;
 import static cn.iocoder.yudao.module.erp.enums.LogRecordConstants.ERP_PURCHASE_ORDER_TYPE;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -106,6 +114,8 @@ public class ErpPurchaseOrderServiceImplTest extends BaseMockitoUnitTest {
     private ErpPurchaseInItemMapper purchaseInItemMapper;
     @Mock
     private ErpPurchaseReturnItemMapper purchaseReturnItemMapper;
+    @Mock
+    private ErpProductMapper productMapper;
     @Mock
     private ErpProductService productService;
     @Mock
@@ -142,6 +152,18 @@ public class ErpPurchaseOrderServiceImplTest extends BaseMockitoUnitTest {
                 supplierDeptPermissionService);
         ReflectionTestUtils.setField(purchaseOrderService, "productBatchNoValidator",
                 new ErpProductBatchNoValidator());
+    }
+
+    @Test
+    public void testParseGiftFlag_whenChineseYesNo_thenConvertCorrectly() {
+        assertTrue(Boolean.TRUE.equals(ReflectionTestUtils.invokeMethod(purchaseOrderService,
+                "parseGiftFlag", "是")));
+        assertTrue(Boolean.TRUE.equals(ReflectionTestUtils.invokeMethod(purchaseOrderService,
+                "parseGiftFlag", "赠品")));
+        assertFalse(Boolean.TRUE.equals(ReflectionTestUtils.invokeMethod(purchaseOrderService,
+                "parseGiftFlag", "否")));
+        assertFalse(Boolean.TRUE.equals(ReflectionTestUtils.invokeMethod(purchaseOrderService,
+                "parseGiftFlag", "")));
     }
 
     private ErpPurchaseOrderSaveReqVO.Item buildItem(Long productId, BigDecimal count, BigDecimal price) {
@@ -377,18 +399,19 @@ public class ErpPurchaseOrderServiceImplTest extends BaseMockitoUnitTest {
     }
 
     @Test
-    public void testCreatePurchaseOrder_batchNoEnabledWithoutBatchNo_throwException() {
+    public void testCreatePurchaseOrder_batchNoEnabledWithoutBatchNo_success() {
         ErpPurchaseOrderSaveReqVO.Item item = buildItem(200L, new BigDecimal("5"), new BigDecimal("10"));
         ErpPurchaseOrderSaveReqVO reqVO = buildBaseReqVO(100L, item);
 
         when(productService.validProductList(any())).thenReturn(Collections.singletonList(
                 new ErpProductDO().setId(200L).setUnitId(1L).setBatchNoEnabled(true)));
+        when(purchaseOrderMapper.selectByNo(any())).thenReturn(null);
 
-        ServiceException ex = assertThrows(ServiceException.class,
-                () -> purchaseOrderService.createPurchaseOrder(reqVO));
+        purchaseOrderService.createPurchaseOrder(reqVO);
 
-        assertEquals(ERP_ITEM_BATCH_NO_REQUIRED.getCode(), ex.getCode());
-        verify(purchaseOrderMapper, never()).insert(any(ErpPurchaseOrderDO.class));
+        ArgumentCaptor<List<ErpPurchaseOrderItemDO>> itemsCaptor = ArgumentCaptor.forClass(List.class);
+        verify(purchaseOrderItemMapper).insertBatch(itemsCaptor.capture());
+        assertNull(itemsCaptor.getValue().get(0).getBatchNo());
     }
 
     @Test
@@ -406,6 +429,22 @@ public class ErpPurchaseOrderServiceImplTest extends BaseMockitoUnitTest {
         ArgumentCaptor<List<ErpPurchaseOrderItemDO>> itemsCaptor = ArgumentCaptor.forClass(List.class);
         verify(purchaseOrderItemMapper).insertBatch(itemsCaptor.capture());
         assertEquals("BATCH-001", itemsCaptor.getValue().get(0).getBatchNo());
+    }
+
+    @Test
+    public void testCreatePurchaseOrder_batchNoDisabledWithBatchNo_throwException() {
+        ErpPurchaseOrderSaveReqVO.Item item = buildItem(200L, new BigDecimal("5"), new BigDecimal("10"));
+        item.setBatchNo("BATCH-001");
+        ErpPurchaseOrderSaveReqVO reqVO = buildBaseReqVO(100L, item);
+
+        when(productService.validProductList(any())).thenReturn(Collections.singletonList(
+                new ErpProductDO().setId(200L).setUnitId(1L).setBatchNoEnabled(false)));
+
+        ServiceException ex = assertThrows(ServiceException.class,
+                () -> purchaseOrderService.createPurchaseOrder(reqVO));
+
+        assertEquals(ERP_ITEM_BATCH_NO_DISABLED.getCode(), ex.getCode());
+        verify(purchaseOrderMapper, never()).insert(any(ErpPurchaseOrderDO.class));
     }
 
     @Test
@@ -493,6 +532,25 @@ public class ErpPurchaseOrderServiceImplTest extends BaseMockitoUnitTest {
         assertEquals(7L, insertedItem.getWarehouseId());
         assertEquals(0, insertedItem.getProductPrice().compareTo(BigDecimal.ZERO));
         assertEquals(0, insertedItem.getTotalPrice().compareTo(BigDecimal.ZERO));
+    }
+
+    @Test
+    public void testCreatePurchaseOrderDraft_batchNoEnabledWithoutBatchNo_success() {
+        ErpPurchaseOrderSaveReqVO.Item item = buildItem(200L, new BigDecimal("2"), BigDecimal.ZERO);
+        item.setWarehouseId(7L);
+        ErpPurchaseOrderSaveReqVO reqVO = buildBaseReqVO(null, item);
+
+        when(productService.validProductList(any())).thenReturn(Collections.singletonList(
+                new ErpProductDO().setId(200L).setUnitId(1L).setBatchNoEnabled(true)));
+        when(warehouseService.getWarehouseMap(any())).thenReturn(Collections.singletonMap(
+                7L, new ErpWarehouseDO().setId(7L).setDeptId(3L)));
+        when(purchaseOrderMapper.selectByNo(any())).thenReturn(null);
+
+        purchaseOrderService.createPurchaseOrderDraft(reqVO);
+
+        ArgumentCaptor<List<ErpPurchaseOrderItemDO>> itemsCaptor = ArgumentCaptor.forClass(List.class);
+        verify(purchaseOrderItemMapper).insertBatch(itemsCaptor.capture());
+        assertNull(itemsCaptor.getValue().get(0).getBatchNo());
     }
 
     @Test
@@ -937,6 +995,181 @@ public class ErpPurchaseOrderServiceImplTest extends BaseMockitoUnitTest {
     }
 
     @Test
+    public void testParseImportData_batchNoEnabledWithoutBatchNo_success() {
+        ErpProductDO product = new ErpProductDO()
+                .setId(200L).setCode("P001").setUnitId(1L).setDefaultWarehouseId(7L)
+                .setBatchNoEnabled(true);
+        when(productMapper.selectListByCodes(any())).thenReturn(Collections.singletonList(product));
+        when(productService.getProductVOMap(any())).thenReturn(Collections.emptyMap());
+
+        ErpPurchaseOrderDetailImportExcelVO row = new ErpPurchaseOrderDetailImportExcelVO();
+        row.setProductCode("P001");
+        row.setCount(new BigDecimal("2"));
+        row.setProductPrice(new BigDecimal("10"));
+
+        ErpPurchaseOrderImportRespVO respVO = purchaseOrderService.parseImportData(Collections.singletonList(row));
+
+        assertEquals(1, respVO.getSuccessCount());
+        assertEquals(0, respVO.getFailureCount());
+        assertEquals(1, respVO.getItems().size());
+        assertNull(respVO.getItems().get(0).getBatchNo());
+    }
+
+    @Test
+    public void testParseImportData_onlyProductName_success() {
+        ErpProductDO product = new ErpProductDO()
+                .setId(200L).setCode("P001").setName("机油滤芯").setUnitId(1L)
+                .setDefaultWarehouseId(7L).setPurchasePrice(new BigDecimal("8"));
+        when(productMapper.selectListByNames(any())).thenReturn(Collections.singletonList(product));
+        when(productService.getProductVOMap(any())).thenReturn(Collections.emptyMap());
+
+        ErpPurchaseOrderDetailImportExcelVO row = new ErpPurchaseOrderDetailImportExcelVO();
+        row.setProductName("机油滤芯");
+        row.setCount(new BigDecimal("2"));
+        row.setProductPrice(new BigDecimal("10"));
+
+        ErpPurchaseOrderImportRespVO respVO = purchaseOrderService.parseImportData(Collections.singletonList(row));
+
+        assertEquals(1, respVO.getSuccessCount());
+        assertEquals(0, respVO.getFailureCount());
+        assertEquals(Long.valueOf(200L), respVO.getItems().get(0).getProductId());
+        assertEquals("P001", respVO.getItems().get(0).getProductCode());
+    }
+
+    @Test
+    public void testParseImportData_onlyFactoryCode_success() {
+        ErpProductDO product = new ErpProductDO()
+                .setId(200L).setCode("P001").setName("机油滤芯").setFactoryCode("F001")
+                .setUnitId(1L).setDefaultWarehouseId(7L).setPurchasePrice(new BigDecimal("8"));
+        when(productMapper.selectListByFactoryCodes(any())).thenReturn(Collections.singletonList(product));
+        when(productService.getProductVOMap(any())).thenReturn(Collections.emptyMap());
+
+        ErpPurchaseOrderDetailImportExcelVO row = new ErpPurchaseOrderDetailImportExcelVO();
+        row.setFactoryCode("F001");
+        row.setCount(new BigDecimal("2"));
+        row.setProductPrice(new BigDecimal("10"));
+
+        ErpPurchaseOrderImportRespVO respVO = purchaseOrderService.parseImportData(Collections.singletonList(row));
+
+        assertEquals(1, respVO.getSuccessCount());
+        assertEquals(0, respVO.getFailureCount());
+        assertEquals(Long.valueOf(200L), respVO.getItems().get(0).getProductId());
+        assertEquals("P001", respVO.getItems().get(0).getProductCode());
+    }
+
+    @Test
+    public void testParseImportData_missingProductIdentity_failure() {
+        ErpPurchaseOrderDetailImportExcelVO row = new ErpPurchaseOrderDetailImportExcelVO();
+        row.setCount(new BigDecimal("2"));
+        row.setProductPrice(new BigDecimal("10"));
+
+        ErpPurchaseOrderImportRespVO respVO = purchaseOrderService.parseImportData(Collections.singletonList(row));
+
+        assertEquals(0, respVO.getSuccessCount());
+        assertEquals(1, respVO.getFailureCount());
+        assertEquals("配件编码、配件名称和厂家编码为三选一字段，请至少填写其中一个",
+                respVO.getFailureDetails().get(0).getReason());
+    }
+
+    @Test
+    public void testImportPurchaseOrderList_batchNoEnabledWithoutBatchNo_success() {
+        ErpSupplierDO supplier = new ErpSupplierDO()
+                .setId(100L).setName("测试供应商").setStatus(CommonStatusEnum.ENABLE.getStatus());
+        ErpProductDO product = new ErpProductDO()
+                .setId(200L).setCode("P001").setUnitId(1L).setDefaultWarehouseId(7L)
+                .setBatchNoEnabled(true);
+        when(supplierService.getSupplierPage(any())).thenReturn(new PageResult<>(
+                Collections.singletonList(supplier), 1L));
+        when(productMapper.selectListByCodes(any())).thenReturn(Collections.singletonList(product));
+        when(warehouseService.getCurrentUserAuthorizedPurchaseWarehouseList()).thenReturn(Collections.emptyList());
+        when(productService.getProductVOMap(any())).thenReturn(Collections.emptyMap());
+        when(productService.validProductList(any())).thenReturn(Collections.singletonList(product));
+        when(supplierService.validateSupplier(eq(100L))).thenReturn(supplier);
+        when(warehouseService.getWarehouseMap(any())).thenReturn(Collections.singletonMap(
+                7L, new ErpWarehouseDO().setId(7L)));
+        when(purchaseOrderMapper.selectByNo(any())).thenReturn(null);
+
+        ErpPurchaseOrderImportExcelVO row = new ErpPurchaseOrderImportExcelVO();
+        row.setSupplierName("测试供应商");
+        row.setProductCode("P001");
+        row.setItemCount(new BigDecimal("2"));
+        row.setProductPrice(new BigDecimal("10"));
+
+        ErpPurchaseOrderImportResultRespVO respVO = purchaseOrderService.importPurchaseOrderList(
+                Collections.singletonList(row));
+
+        assertEquals(1, respVO.getSuccessCount());
+        assertEquals(0, respVO.getFailureCount());
+        ArgumentCaptor<List<ErpPurchaseOrderItemDO>> itemsCaptor = ArgumentCaptor.forClass(List.class);
+        verify(purchaseOrderItemMapper).insertBatch(itemsCaptor.capture());
+        assertNull(itemsCaptor.getValue().get(0).getBatchNo());
+    }
+
+    @Test
+    public void testImportPurchaseOrderList_onlyProductName_success() {
+        ErpSupplierDO supplier = new ErpSupplierDO()
+                .setId(100L).setName("测试供应商").setStatus(CommonStatusEnum.ENABLE.getStatus());
+        ErpProductDO product = new ErpProductDO()
+                .setId(200L).setCode("P001").setName("机油滤芯").setUnitId(1L)
+                .setDefaultWarehouseId(7L).setPurchasePrice(new BigDecimal("8"));
+        when(supplierService.getSupplierPage(any())).thenReturn(new PageResult<>(
+                Collections.singletonList(supplier), 1L));
+        when(productMapper.selectListByNames(any())).thenReturn(Collections.singletonList(product));
+        when(warehouseService.getCurrentUserAuthorizedPurchaseWarehouseList()).thenReturn(Collections.emptyList());
+        when(productService.getProductVOMap(any())).thenReturn(Collections.emptyMap());
+        when(productService.validProductList(any())).thenReturn(Collections.singletonList(product));
+        when(supplierService.validateSupplier(eq(100L))).thenReturn(supplier);
+        when(warehouseService.getWarehouseMap(any())).thenReturn(Collections.singletonMap(
+                7L, new ErpWarehouseDO().setId(7L)));
+        when(purchaseOrderMapper.selectByNo(any())).thenReturn(null);
+
+        ErpPurchaseOrderImportExcelVO row = new ErpPurchaseOrderImportExcelVO();
+        row.setSupplierName("测试供应商");
+        row.setProductName("机油滤芯");
+        row.setItemCount(new BigDecimal("2"));
+        row.setProductPrice(new BigDecimal("10"));
+
+        ErpPurchaseOrderImportResultRespVO respVO = purchaseOrderService.importPurchaseOrderList(
+                Collections.singletonList(row));
+
+        assertEquals(1, respVO.getSuccessCount());
+        assertEquals(0, respVO.getFailureCount());
+        ArgumentCaptor<List<ErpPurchaseOrderItemDO>> itemsCaptor = ArgumentCaptor.forClass(List.class);
+        verify(purchaseOrderItemMapper).insertBatch(itemsCaptor.capture());
+        assertEquals(Long.valueOf(200L), itemsCaptor.getValue().get(0).getProductId());
+    }
+
+    @Test
+    public void testImportPurchaseOrderList_batchNoDisabledWithBatchNo_failure() {
+        ErpSupplierDO supplier = new ErpSupplierDO()
+                .setId(100L).setName("测试供应商").setStatus(CommonStatusEnum.ENABLE.getStatus());
+        ErpProductDO product = new ErpProductDO()
+                .setId(200L).setCode("P001").setUnitId(1L).setDefaultWarehouseId(7L)
+                .setBatchNoEnabled(false);
+        when(supplierService.getSupplierPage(any())).thenReturn(new PageResult<>(
+                Collections.singletonList(supplier), 1L));
+        when(productMapper.selectListByCodes(any())).thenReturn(Collections.singletonList(product));
+        when(warehouseService.getCurrentUserAuthorizedPurchaseWarehouseList()).thenReturn(Collections.emptyList());
+        when(productService.getProductVOMap(any())).thenReturn(Collections.emptyMap());
+
+        ErpPurchaseOrderImportExcelVO row = new ErpPurchaseOrderImportExcelVO();
+        row.setSupplierName("测试供应商");
+        row.setProductCode("P001");
+        row.setItemCount(new BigDecimal("2"));
+        row.setProductPrice(new BigDecimal("10"));
+        row.setBatchNo("BATCH-001");
+
+        ErpPurchaseOrderImportResultRespVO respVO = purchaseOrderService.importPurchaseOrderList(
+                Collections.singletonList(row));
+
+        assertEquals(0, respVO.getSuccessCount());
+        assertTrue(respVO.getFailureCount() >= 1);
+        assertTrue(respVO.getFailureDetails().stream()
+                .anyMatch(item -> item.getReason().contains("未开启批次号管理")));
+        verify(purchaseOrderMapper, never()).insert(any(ErpPurchaseOrderDO.class));
+    }
+
+    @Test
     public void testUpdatePurchaseOrderStatus_approveSuccess() {
         ErpPurchaseOrderDO existing = new ErpPurchaseOrderDO()
                 .setId(10L).setStatus(ErpAuditStatus.PROCESS.getStatus())
@@ -1237,6 +1470,39 @@ public class ErpPurchaseOrderServiceImplTest extends BaseMockitoUnitTest {
                 .getPurchaseOrderItemListByOrderIds(Collections.singletonList(10L));
 
         assertEquals(1, result.size());
+    }
+
+    @Test
+    public void testGetPurchaseOrderItemPage_delegatesToMapperAfterOrderValidation() {
+        ErpPurchaseOrderItemPageReqVO reqVO = new ErpPurchaseOrderItemPageReqVO();
+        reqVO.setOrderId(10L);
+        reqVO.setPageNo(1);
+        reqVO.setPageSize(20);
+        PageResult<ErpPurchaseOrderItemDO> pageResult = new PageResult<>(
+                Collections.singletonList(new ErpPurchaseOrderItemDO().setId(1L).setOrderId(10L)), 1L);
+        when(purchaseOrderMapper.selectById(eq(10L))).thenReturn(new ErpPurchaseOrderDO().setId(10L));
+        when(purchaseOrderItemMapper.selectPageByOrderId(eq(reqVO))).thenReturn(pageResult);
+
+        PageResult<ErpPurchaseOrderItemDO> result = purchaseOrderService.getPurchaseOrderItemPage(reqVO);
+
+        assertEquals(pageResult, result);
+        verify(purchaseOrderMapper).selectById(eq(10L));
+        verify(purchaseOrderItemMapper).selectPageByOrderId(eq(reqVO));
+    }
+
+    @Test
+    public void testGetPurchaseOrderItemPage_orderNotExists_throwException() {
+        ErpPurchaseOrderItemPageReqVO reqVO = new ErpPurchaseOrderItemPageReqVO();
+        reqVO.setOrderId(10L);
+        reqVO.setPageNo(1);
+        reqVO.setPageSize(20);
+        when(purchaseOrderMapper.selectById(eq(10L))).thenReturn(null);
+
+        ServiceException ex = assertThrows(ServiceException.class,
+                () -> purchaseOrderService.getPurchaseOrderItemPage(reqVO));
+
+        assertEquals(PURCHASE_ORDER_NOT_EXISTS.getCode(), ex.getCode());
+        verify(purchaseOrderItemMapper, never()).selectPageByOrderId(any());
     }
 
     // ========== getInableItemsByOrderId ==========

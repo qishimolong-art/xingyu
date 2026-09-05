@@ -4,7 +4,6 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Data;
 
 import javax.validation.Valid;
-import javax.validation.constraints.DecimalMin;
 import javax.validation.constraints.NotNull;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -41,12 +40,10 @@ public class ErpFinancePaymentSaveReqVO {
 
     @Schema(description = "合计金额，单位：元", requiredMode = Schema.RequiredMode.REQUIRED, example = "10000")
     @NotNull(message = "合计金额不能为空")
-    @DecimalMin(value = "0", inclusive = false, message = "合计金额必须大于 0")
     private BigDecimal totalPrice;
 
     @Schema(description = "实际付款金额，单位：元", requiredMode = Schema.RequiredMode.REQUIRED, example = "10000")
     @NotNull(message = "实际付款金额不能为空")
-    @DecimalMin(value = "0", inclusive = false, message = "实际付款金额必须大于 0")
     private BigDecimal paymentPrice;
 
     @Schema(description = "备注", example = "你猜")

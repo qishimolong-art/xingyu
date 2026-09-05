@@ -4,6 +4,8 @@ import cn.idev.excel.annotation.ExcelProperty;
 import cn.iocoder.yudao.framework.excel.core.annotations.ExcelRequired;
 import lombok.Data;
 
+import java.math.BigDecimal;
+
 @Data
 public class ErpWarehouseImportExcelVO {
 
@@ -19,6 +21,18 @@ public class ErpWarehouseImportExcelVO {
 
     @ExcelProperty("所属部门ID")
     private Long deptId;
+
+    @ExcelProperty("仓库地址")
+    private String address;
+
+    @ExcelProperty("地图名称")
+    private String mapName;
+
+    @ExcelProperty("经度")
+    private BigDecimal longitude;
+
+    @ExcelProperty("纬度")
+    private BigDecimal latitude;
 
     @ExcelProperty("仓库类型")
     private Integer warehouseType;

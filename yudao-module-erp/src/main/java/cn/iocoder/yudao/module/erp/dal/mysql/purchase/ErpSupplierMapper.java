@@ -171,17 +171,33 @@ public interface ErpSupplierMapper extends BaseMapperX<ErpSupplierDO> {
     }
 
     default List<ErpSupplierDO> selectListByNameLike(String name) {
-        return selectList(new LambdaQueryWrapperX<ErpSupplierDO>()
-                .like(ErpSupplierDO::getName, name)
-                .ne(ErpSupplierDO::getMergedFlag, Boolean.TRUE));
+        LambdaQueryWrapperX<ErpSupplierDO> wrapper = new LambdaQueryWrapperX<>();
+        appendSimpleKeyword(wrapper, name);
+        wrapper.ne(ErpSupplierDO::getMergedFlag, Boolean.TRUE);
+        return selectList(wrapper);
     }
 
     default List<ErpSupplierDO> selectVisibleListByNameLike(String name, Collection<Long> deptIds, Long selfUserId, boolean all) {
         LambdaQueryWrapperX<ErpSupplierDO> wrapper = new LambdaQueryWrapperX<>();
-        wrapper.like(ErpSupplierDO::getName, name);
+        appendSimpleKeyword(wrapper, name);
         wrapper.ne(ErpSupplierDO::getMergedFlag, Boolean.TRUE);
         applyVisibleScope(wrapper, deptIds, selfUserId, all);
         return selectList(wrapper);
+    }
+
+    static void appendSimpleKeyword(LambdaQueryWrapperX<ErpSupplierDO> wrapper, String keyword) {
+        String value = ErpKeywordQuery.normalize(keyword);
+        if (StrUtil.isBlank(value)) {
+            return;
+        }
+        wrapper.and(w -> w.like(ErpSupplierDO::getName, value)
+                .or().like(ErpSupplierDO::getCode, value)
+                .or().like(ErpSupplierDO::getShortName, value)
+                .or().like(ErpSupplierDO::getContact, value)
+                .or().like(ErpSupplierDO::getMobile, value)
+                .or().like(ErpSupplierDO::getTelephone, value)
+                .or().like(ErpSupplierDO::getPinyinCode, value)
+                .or().like(ErpSupplierDO::getWubiCode, value));
     }
 
     static void applyVisibleScope(LambdaQueryWrapper<ErpSupplierDO> wrapper, Collection<Long> deptIds, Long selfUserId, boolean all) {

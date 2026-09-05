@@ -262,6 +262,15 @@ public class ErpStockMoveRespVO {
         @Schema(description = "Source purchase in count", example = "100.00")
         private BigDecimal sourceCount;
 
+        @Schema(description = "Source sale return id", example = "1024")
+        private Long sourceSaleReturnId;
+
+        @Schema(description = "Source sale return item id", example = "2048")
+        private Long sourceSaleReturnItemId;
+
+        @Schema(description = "Source sale return no", example = "XSTH202607140001")
+        private String sourceSaleReturnNo;
+
     }
 
 }

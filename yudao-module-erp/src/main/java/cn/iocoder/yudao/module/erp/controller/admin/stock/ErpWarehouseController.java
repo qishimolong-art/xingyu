@@ -24,6 +24,7 @@ import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.warehouse.ErpUserWa
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.warehouse.ErpUserWarehousePermissionSaveReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpWarehouseDO;
 import cn.iocoder.yudao.module.erp.service.base.ErpDataPermissionDeptService;
+import cn.iocoder.yudao.module.erp.service.common.ErpImportExportRecordService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpStockFieldPermissionMasker;
 import cn.iocoder.yudao.module.erp.service.stock.ErpWarehouseService;
 import cn.iocoder.yudao.module.system.api.dept.DeptApi;
@@ -77,11 +78,14 @@ public class ErpWarehouseController {
 
     private static final String FIELD_PERMISSION_MODULE = "erp_warehouse";
     private static final Set<String> WAREHOUSE_IMPORT_TEMPLATE_FIELDS = new LinkedHashSet<>(Arrays.asList(
-            "name", "warehouseCode", "deptName", "warehouseType", "status", "saleEnabled", "purchaseEnabled",
-            "stockBillEnabled", "scanControl", "splitOrder", "sort", "remark"));
+            "name", "warehouseCode", "deptName", "address", "mapName", "longitude", "latitude",
+            "warehouseType", "status", "saleEnabled", "purchaseEnabled", "stockBillEnabled", "scanControl",
+            "splitOrder", "sort", "remark"));
 
     @Resource
     private ErpWarehouseService warehouseService;
+    @Resource
+    private ErpImportExportRecordService importExportRecordService;
     @Resource
     private ErpStockFieldPermissionMasker fieldPermissionMasker;
     @Resource
@@ -180,7 +184,9 @@ public class ErpWarehouseController {
     @PreAuthorize("@ss.hasPermission('erp:warehouse:query')")
     public CommonResult<PageResult<ErpWarehouseRespVO>> getWarehousePage(@Valid ErpWarehousePageReqVO pageReqVO) {
         PageResult<ErpWarehouseDO> pageResult = warehouseService.getWarehousePage(pageReqVO);
-        return success(new PageResult<>(buildWarehouseVOList(pageResult.getList(), true), pageResult.getTotal()));
+        List<ErpWarehouseRespVO> list = buildWarehouseVOList(pageResult.getList(), true);
+        fieldPermissionMasker.maskListColumns(FIELD_PERMISSION_MODULE, list);
+        return success(new PageResult<>(list, pageResult.getTotal()));
     }
 
     @GetMapping("/dept-simple-list")
@@ -373,6 +379,7 @@ public class ErpWarehouseController {
                                      HttpServletResponse response) throws IOException {
         pageReqVO.setPageSize(PageParam.PAGE_SIZE_NONE);
         List<ErpWarehouseRespVO> list = buildWarehouseVOList(warehouseService.getWarehousePage(pageReqVO).getList());
+        fieldPermissionMasker.maskListColumns(FIELD_PERMISSION_MODULE, list);
         ExcelUtils.write(response, "warehouse.xls", "data", ErpWarehouseRespVO.class, list);
     }
 
@@ -392,6 +399,14 @@ public class ErpWarehouseController {
         return success(warehouseService.importWarehouseList(list));
     }
 
+    @GetMapping("/import-failure-details/download")
+    @Operation(summary = "Download warehouse import failure details")
+    @PreAuthorize("@ss.hasPermission('erp:warehouse:import')")
+    public void downloadImportFailureDetails(@RequestParam("recordId") Long recordId,
+                                             HttpServletResponse response) throws IOException {
+        importExportRecordService.downloadOwnImportFailureDetails(recordId, FIELD_PERMISSION_MODULE, response);
+    }
+
     private List<ErpWarehouseRespVO> buildWarehouseVOList(List<ErpWarehouseDO> list) {
         return buildWarehouseVOList(list, false);
     }
@@ -401,6 +416,8 @@ public class ErpWarehouseController {
         return convertList(list, warehouse -> {
             ErpWarehouseRespVO vo = new ErpWarehouseRespVO().setId(warehouse.getId())
                     .setName(warehouse.getName()).setDeptId(warehouse.getDeptId())
+                    .setAddress(warehouse.getAddress()).setMapName(warehouse.getMapName())
+                    .setLongitude(warehouse.getLongitude()).setLatitude(warehouse.getLatitude())
                     .setDirectWarehouse(DIRECT_WAREHOUSE_NAME.equals(warehouse.getName()))
                     .setDefaultStatus(warehouse.getDefaultStatus());
             MapUtils.findAndThen(deptMap, warehouse.getDeptId(), dept -> vo.setDeptName(dept.getName()));

@@ -9,6 +9,7 @@ import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.ErpStockUpdateRemar
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.check.ErpStockCheckDraftCreateReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.check.ErpStockCheckDraftUpdateReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.check.ErpStockCheckItemBatchUpdateReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.check.ErpStockCheckItemPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.check.ErpStockCheckPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.check.ErpStockCheckSaveReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.stock.ErpStockAdjustReqVO;
@@ -577,6 +578,12 @@ public class ErpStockCheckServiceImpl implements ErpStockCheckService {
     @Override
     public List<ErpStockCheckItemDO> getStockCheckItemListByCheckId(Long checkId) {
         return stockCheckItemMapper.selectListByCheckId(checkId);
+    }
+
+    @Override
+    public PageResult<ErpStockCheckItemDO> getStockCheckItemPage(ErpStockCheckItemPageReqVO pageReqVO) {
+        validateStockCheckExists(pageReqVO.getCheckId());
+        return stockCheckItemMapper.selectPageByCheckId(pageReqVO);
     }
 
     @Override

@@ -1,8 +1,12 @@
 package cn.iocoder.yudao.module.erp.controller.admin.purchase;
 
 import cn.iocoder.yudao.framework.common.pojo.CommonResult;
+import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.test.core.ut.BaseMockitoUnitTest;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.in.ErpPurchaseInItemPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.in.ErpPurchaseInRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.in.ErpPurchaseInSaleCartableItemPageReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.in.ErpPurchaseInSaleCartableItemRespVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseInDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseInItemDO;
 import cn.iocoder.yudao.module.erp.service.product.ErpProductService;
@@ -81,6 +85,8 @@ class ErpPurchaseInControllerTest extends BaseMockitoUnitTest {
         when(adminUserApi.getUserMap(any())).thenReturn(Collections.emptyMap());
         when(stockInBillService.getStockInBillListByPurchaseInId(eq(10L)))
                 .thenReturn(Collections.emptyList());
+        org.mockito.Mockito.lenient().when(stockInBillService.getPurchaseInSourceItemList(eq(10L)))
+                .thenReturn(Collections.emptyList());
     }
 
     @Test
@@ -88,7 +94,7 @@ class ErpPurchaseInControllerTest extends BaseMockitoUnitTest {
         when(purchaseInService.getTransferOutCountMapByInItemIds(any()))
                 .thenReturn(Collections.emptyMap());
 
-        ErpPurchaseInRespVO data = controller.getPurchaseIn(10L, true).getData();
+        ErpPurchaseInRespVO data = controller.getPurchaseIn(10L, true, true).getData();
 
         assertNotNull(data);
         assertEquals(0, BigDecimal.ZERO.compareTo(data.getTransferOutCount()));
@@ -102,7 +108,7 @@ class ErpPurchaseInControllerTest extends BaseMockitoUnitTest {
         when(stockService.getStockCount(1001L, 1L)).thenReturn(new BigDecimal("12"));
         when(stockService.getStockCount(1002L, 1L)).thenReturn(new BigDecimal("8"));
 
-        ErpPurchaseInRespVO data = controller.getPurchaseIn(10L, true).getData();
+        ErpPurchaseInRespVO data = controller.getPurchaseIn(10L, true, true).getData();
 
         assertNotNull(data);
         assertEquals(0, new BigDecimal("12").compareTo(data.getItems().get(0).getStockCount()));
@@ -119,7 +125,7 @@ class ErpPurchaseInControllerTest extends BaseMockitoUnitTest {
                 new DeptSimpleRespVO(20L, "采购二部", 0L));
         when(purchaseInService.getSupplierAvailableDeptSimpleList(eq(100L))).thenReturn(depts);
 
-        controller.getPurchaseIn(10L, true);
+        controller.getPurchaseIn(10L, true, true);
         CommonResult<List<DeptSimpleRespVO>> result = controller.getSupplierAvailableDeptSimpleList(100L);
 
         assertSame(depts, result.getData());
@@ -133,7 +139,7 @@ class ErpPurchaseInControllerTest extends BaseMockitoUnitTest {
         movedCountMap.put(102L, new BigDecimal("3"));
         when(purchaseInService.getTransferOutCountMapByInItemIds(any())).thenReturn(movedCountMap);
 
-        CommonResult<ErpPurchaseInRespVO> result = controller.getPurchaseIn(10L, true);
+        CommonResult<ErpPurchaseInRespVO> result = controller.getPurchaseIn(10L, true, true);
 
         ErpPurchaseInRespVO data = result.getData();
         assertNotNull(data);
@@ -150,11 +156,64 @@ class ErpPurchaseInControllerTest extends BaseMockitoUnitTest {
         movedCountMap.put(102L, new BigDecimal("6"));
         when(purchaseInService.getTransferOutCountMapByInItemIds(any())).thenReturn(movedCountMap);
 
-        ErpPurchaseInRespVO data = controller.getPurchaseIn(10L, true).getData();
+        ErpPurchaseInRespVO data = controller.getPurchaseIn(10L, true, true).getData();
 
         assertNotNull(data);
         assertEquals(0, new BigDecimal("10").compareTo(data.getTransferOutCount()));
         assertEquals(Integer.valueOf(2), data.getTransferOutStatus());
+    }
+
+    @Test
+    void getPurchaseInCanSkipItemsForFastMainDetailLoad() {
+        ErpPurchaseInRespVO data = controller.getPurchaseIn(10L, true, false).getData();
+
+        assertNotNull(data);
+        verify(purchaseInService, never()).getPurchaseInItemListByInId(eq(10L));
+        verify(fieldPermissionMasker).mask(eq("erp_purchase_in"), eq(data));
+    }
+
+    @Test
+    void getPurchaseInItemPageBuildsPagedItemsAndMasksHiddenFields() {
+        when(purchaseInService.getPurchaseInItemPage(any())).thenReturn(new PageResult<>(items, 2L));
+        when(stockService.getStockCount(1001L, 1L)).thenReturn(new BigDecimal("12"));
+        when(stockService.getStockCount(1002L, 1L)).thenReturn(new BigDecimal("8"));
+
+        ErpPurchaseInItemPageReqVO reqVO = new ErpPurchaseInItemPageReqVO();
+        reqVO.setInId(10L);
+        reqVO.setPageNo(1);
+        reqVO.setPageSize(20);
+        reqVO.setMask(true);
+        PageResult<ErpPurchaseInRespVO.Item> data = controller.getPurchaseInItemPage(reqVO).getData();
+
+        assertNotNull(data);
+        assertEquals(2L, data.getTotal());
+        assertEquals(2, data.getList().size());
+        assertEquals(0, new BigDecimal("12").compareTo(data.getList().get(0).getStockCount()));
+        assertEquals(0, new BigDecimal("8").compareTo(data.getList().get(1).getStockCount()));
+        verify(purchaseInService).getPurchaseInItemPage(eq(reqVO));
+        verify(fieldPermissionMasker).clearHiddenItemFields(eq("erp_purchase_in"), eq(data.getList()));
+    }
+
+    @Test
+    void getSaleCartableItemPageReturnsServicePage() {
+        controller.getPurchaseIn(10L, true, true);
+
+        ErpPurchaseInSaleCartableItemPageReqVO reqVO = new ErpPurchaseInSaleCartableItemPageReqVO();
+        reqVO.setInId(10L);
+        reqVO.setPageNo(1);
+        reqVO.setPageSize(10);
+        ErpPurchaseInSaleCartableItemRespVO item = new ErpPurchaseInSaleCartableItemRespVO();
+        item.setSourceInItemId(100L);
+        PageResult<ErpPurchaseInSaleCartableItemRespVO> pageResult = new PageResult<>(
+                Collections.singletonList(item), 1L);
+        when(purchaseInService.getSaleCartableItemPage(eq(reqVO))).thenReturn(pageResult);
+
+        CommonResult<PageResult<ErpPurchaseInSaleCartableItemRespVO>> result =
+                controller.getSaleCartableItemPage(reqVO);
+
+        assertSame(pageResult, result.getData());
+        assertEquals(1L, result.getData().getTotal());
+        verify(purchaseInService).getSaleCartableItemPage(eq(reqVO));
     }
 
 }

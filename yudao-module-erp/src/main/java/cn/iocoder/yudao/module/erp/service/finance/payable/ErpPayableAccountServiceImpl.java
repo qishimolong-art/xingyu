@@ -296,8 +296,8 @@ public class ErpPayableAccountServiceImpl implements ErpPayableAccountService {
         Map<Long, BigDecimal> paymentAllocated = financePaymentItemMapper
                 .selectEffectivePriceSumMapByPaymentIds(payments.stream().map(ErpFinancePaymentDO::getId)
                         .collect(Collectors.toSet()));
-        payments.forEach(item -> rows.add(buildAllocatedRow("付款单", null, item.getId(),
-                item.getPaymentTime(), item.getNo(), negateAmount(item.getTotalPrice()), paymentAllocated.get(item.getId()))));
+        payments.forEach(item -> rows.add(buildPaymentAllocatedRow("付款单", null, item.getId(),
+                item.getPaymentTime(), item.getNo(), item.getTotalPrice(), paymentAllocated.get(item.getId()))));
 
         payableWriteOffMapper.selectListBySupplierId(reqVO.getSupplierId(), reqVO.getStartTime(), reqVO.getEndTime(),
                         scope.getDeptIds(), scope.getSelfUserId(), scope.isAll())
@@ -340,8 +340,8 @@ public class ErpPayableAccountServiceImpl implements ErpPayableAccountService {
         row.setBizId(bizId);
         row.setDocDate(docDate);
         row.setDocNo(docNo);
-        row.setIncreaseAmount(actualAmount.compareTo(BigDecimal.ZERO) > 0 ? actualAmount : BigDecimal.ZERO);
-        row.setPaymentAmount(actualAmount.compareTo(BigDecimal.ZERO) < 0 && !writeOff ? actualAmount.abs() : BigDecimal.ZERO);
+        row.setIncreaseAmount(writeOff ? BigDecimal.ZERO : actualAmount);
+        row.setPaymentAmount(BigDecimal.ZERO);
         row.setWriteOffAmount(actualAmount.compareTo(BigDecimal.ZERO) < 0 && writeOff ? actualAmount.abs() : BigDecimal.ZERO);
         row.setWriteOffBaseAmount(actualAmount.abs());
         return row;
@@ -359,6 +359,17 @@ public class ErpPayableAccountServiceImpl implements ErpPayableAccountService {
         ErpPayableDetailRespVO row = buildRow(docType, bizType, bizId, docDate, docNo, amount, false);
         row.setAllocatedAmount(defaultAmount(allocatedAmount).abs());
         row.setWriteOffBaseAmount(defaultAmount(writeOffBaseAmount).abs());
+        return row;
+    }
+
+    private ErpPayableDetailRespVO buildPaymentAllocatedRow(String docType, Integer bizType, Long bizId,
+                                                            LocalDateTime docDate, String docNo, BigDecimal amount,
+                                                            BigDecimal allocatedAmount) {
+        BigDecimal actualAmount = defaultAmount(amount);
+        ErpPayableDetailRespVO row = buildRow(docType, bizType, bizId, docDate, docNo, BigDecimal.ZERO, false);
+        row.setPaymentAmount(actualAmount.abs());
+        row.setAllocatedAmount(defaultAmount(allocatedAmount).abs());
+        row.setWriteOffBaseAmount(actualAmount.abs());
         return row;
     }
 

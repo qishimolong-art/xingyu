@@ -210,6 +210,104 @@ public class ErpAccountingSubjectServiceImplTest extends BaseMockitoUnitTest {
         assertEquals("1002", insertCaptor.getValue().getParentCode());
     }
 
+    // ==================== ensureFundAccountSubject ====================
+
+    @Test
+    @DisplayName("ensureFundAccountSubject：银行账户 - 在 1002 下按点号尾号最大值加一创建子科目")
+    public void testEnsureFundAccountSubject_bankAccountCreateNextDottedChild() {
+        ErpAccountingSubjectDO parent = new ErpAccountingSubjectDO()
+                .setId(10L).setSubjectCode("1002").setSubjectLevel(1)
+                .setIsLeaf(true).setVoucherType(2);
+        when(subjectMapper.selectBySubjectCode(eq("1002"))).thenReturn(parent);
+        when(subjectMapper.selectListByParentCode(eq("1002"))).thenReturn(Arrays.asList(
+                new ErpAccountingSubjectDO().setId(11L).setSubjectCode("1002.01").setSubjectName("中国银行"),
+                new ErpAccountingSubjectDO().setId(12L).setSubjectCode("1002.03").setSubjectName("工商银行"),
+                new ErpAccountingSubjectDO().setId(13L).setSubjectCode("1002.99").setSubjectName("第三方平台")));
+        when(subjectMapper.insert(any(ErpAccountingSubjectDO.class))).thenAnswer(inv -> {
+            ((ErpAccountingSubjectDO) inv.getArgument(0)).setId(100L);
+            return 1;
+        });
+
+        Long id = subjectService.ensureFundAccountSubject(1, " 基本户 ");
+
+        assertEquals(100L, id);
+        ArgumentCaptor<ErpAccountingSubjectDO> updateCaptor = ArgumentCaptor.forClass(ErpAccountingSubjectDO.class);
+        verify(subjectMapper).updateById(updateCaptor.capture());
+        assertEquals(10L, updateCaptor.getValue().getId());
+        assertEquals(Boolean.FALSE, updateCaptor.getValue().getIsLeaf());
+        ArgumentCaptor<ErpAccountingSubjectDO> insertCaptor = ArgumentCaptor.forClass(ErpAccountingSubjectDO.class);
+        verify(subjectMapper).insert(insertCaptor.capture());
+        ErpAccountingSubjectDO subject = insertCaptor.getValue();
+        assertEquals("1002.100", subject.getSubjectCode());
+        assertEquals("基本户", subject.getSubjectName());
+        assertEquals("基本户", subject.getShortName());
+        assertEquals(1, subject.getSubjectCategory());
+        assertEquals("1002", subject.getParentCode());
+        assertEquals(2, subject.getSubjectLevel());
+        assertEquals(Boolean.TRUE, subject.getIsLeaf());
+        assertEquals(1, subject.getBalanceDirection());
+        assertEquals(2, subject.getVoucherType());
+        assertEquals(0, subject.getOpeningBalance().compareTo(BigDecimal.ZERO));
+        verify(subjectAuxiliaryService, never()).saveSubjectAuxiliary(anyLong(), anyString(), anyCollection());
+    }
+
+    @Test
+    @DisplayName("ensureFundAccountSubject：现金账户 - 在 1001 下从 01 创建子科目")
+    public void testEnsureFundAccountSubject_cashAccountCreateFirstChild() {
+        when(subjectMapper.selectBySubjectCode(eq("1001"))).thenReturn(
+                new ErpAccountingSubjectDO().setId(10L).setSubjectCode("1001")
+                        .setSubjectLevel(1).setIsLeaf(false));
+        when(subjectMapper.selectListByParentCode(eq("1001"))).thenReturn(Collections.emptyList());
+        when(subjectMapper.insert(any(ErpAccountingSubjectDO.class))).thenAnswer(inv -> {
+            ((ErpAccountingSubjectDO) inv.getArgument(0)).setId(101L);
+            return 1;
+        });
+
+        Long id = subjectService.ensureFundAccountSubject(2, "门店现金");
+
+        assertEquals(101L, id);
+        ArgumentCaptor<ErpAccountingSubjectDO> insertCaptor = ArgumentCaptor.forClass(ErpAccountingSubjectDO.class);
+        verify(subjectMapper).insert(insertCaptor.capture());
+        assertEquals("1001.01", insertCaptor.getValue().getSubjectCode());
+        assertEquals("1001", insertCaptor.getValue().getParentCode());
+        verify(subjectMapper, never()).updateById(any(ErpAccountingSubjectDO.class));
+    }
+
+    @Test
+    @DisplayName("ensureFundAccountSubject：同父科目下已有同名子科目 - 复用不新增")
+    public void testEnsureFundAccountSubject_existingSameNameReuse() {
+        when(subjectMapper.selectBySubjectCode(eq("1002"))).thenReturn(
+                new ErpAccountingSubjectDO().setId(10L).setSubjectCode("1002").setSubjectLevel(1));
+        when(subjectMapper.selectListByParentCode(eq("1002"))).thenReturn(Collections.singletonList(
+                new ErpAccountingSubjectDO().setId(200L).setSubjectCode("1002.01").setSubjectName("基本户")));
+
+        Long id = subjectService.ensureFundAccountSubject(1, " 基本户 ");
+
+        assertEquals(200L, id);
+        verify(subjectMapper, never()).insert(any(ErpAccountingSubjectDO.class));
+        verify(subjectMapper, never()).updateById(any(ErpAccountingSubjectDO.class));
+    }
+
+    @Test
+    @DisplayName("ensureFundAccountSubject：父科目不存在 - 抛 ACCOUNTING_SUBJECT_NOT_EXISTS")
+    public void testEnsureFundAccountSubject_parentMissing() {
+        when(subjectMapper.selectBySubjectCode(eq("1001"))).thenReturn(null);
+
+        assertServiceException(() -> subjectService.ensureFundAccountSubject(2, "门店现金"),
+                ACCOUNTING_SUBJECT_NOT_EXISTS);
+        verify(subjectMapper, never()).insert(any(ErpAccountingSubjectDO.class));
+    }
+
+    @Test
+    @DisplayName("ensureFundAccountSubject：其他账户或空名称 - 不生成科目")
+    public void testEnsureFundAccountSubject_otherAccountOrBlankNameSkip() {
+        assertNull(subjectService.ensureFundAccountSubject(3, "其他账户"));
+        assertNull(subjectService.ensureFundAccountSubject(1, " "));
+
+        verify(subjectMapper, never()).selectBySubjectCode(anyString());
+        verify(subjectMapper, never()).insert(any(ErpAccountingSubjectDO.class));
+    }
+
     // ==================== updateSubject ====================
 
     @Test

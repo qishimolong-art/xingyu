@@ -146,6 +146,8 @@ public class ErpSettlementOffsetServiceImpl implements ErpSettlementOffsetServic
             comparator = comparing(ErpReceivableDetailRespVO::getPrevBalance, ascending);
         } else if ("increaseAmount".equals(orderField)) {
             comparator = comparing(ErpReceivableDetailRespVO::getIncreaseAmount, ascending);
+        } else if ("otherReceivableAmount".equals(orderField)) {
+            comparator = comparing(ErpReceivableDetailRespVO::getOtherReceivableAmount, ascending);
         } else if ("receiptAmount".equals(orderField)) {
             comparator = comparing(ErpReceivableDetailRespVO::getReceiptAmount, ascending);
         } else if ("writeOffAmount".equals(orderField)) {
@@ -208,13 +210,14 @@ public class ErpSettlementOffsetServiceImpl implements ErpSettlementOffsetServic
 
     private BigDecimal sumReceivable(List<ErpReceivableDetailRespVO> rows) {
         return rows.stream().map(row -> defaultAmount(row.getIncreaseAmount())
-                .subtract(defaultAmount(row.getReceiptAmount())).subtract(defaultAmount(row.getWriteOffAmount())))
+                .add(defaultAmount(row.getOtherReceivableAmount()))
+                .subtract(defaultAmount(row.getReceiptAmount())))
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
     }
 
     private BigDecimal sumPayable(List<ErpPayableDetailRespVO> rows) {
         return rows.stream().map(row -> defaultAmount(row.getIncreaseAmount())
-                .subtract(defaultAmount(row.getPaymentAmount())).subtract(defaultAmount(row.getWriteOffAmount())))
+                .subtract(defaultAmount(row.getPaymentAmount())))
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
     }
 

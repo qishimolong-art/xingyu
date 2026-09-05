@@ -32,6 +32,7 @@ public class ErpImportExportRecordDO extends BaseDO {
     private String operationType;
     private String moduleKey;
     private String moduleName;
+    private String templateKey;
     private String fileName;
     private String fileType;
     private String status;

@@ -14,6 +14,7 @@ public enum ErpFieldConfigModuleEnum {
 
     ERP_PRODUCT("erp_product", "erp_product"),
     ERP_PRODUCT_CATEGORY("erp_product_category", "erp_product_category"),
+    ERP_PRODUCT_BRAND("erp_product_brand", "erp_product_brand"),
     ERP_PRODUCT_UNIT("erp_product_unit", "erp_product_unit"),
     ERP_PRICE_SYSTEM("erp_price_system", "erp_price_system"),
     ERP_BASE_DATA("erp_base_data", "erp_base_data"),

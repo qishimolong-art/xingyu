@@ -15,6 +15,7 @@ import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpProduc
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.order.ErpSaleOrderExportRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.order.ErpSaleOrderImportExcelVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.order.ErpSaleOrderImportRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.order.ErpSaleOrderItemPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.order.ErpSaleOrderPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.order.ErpSaleOrderRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.order.ErpSaleOrderSaveReqVO;
@@ -24,6 +25,7 @@ import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleOrderItemDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpWarehouseDO;
 import cn.iocoder.yudao.module.erp.enums.config.ErpFieldConfigModuleEnum;
 import cn.iocoder.yudao.module.erp.framework.excel.ErpImportTemplateRequiredFieldUtils;
+import cn.iocoder.yudao.module.erp.service.common.ErpImportExportRecordService;
 import cn.iocoder.yudao.module.erp.service.config.ErpFieldConfigService;
 import cn.iocoder.yudao.module.erp.service.product.ErpProductService;
 import cn.iocoder.yudao.module.erp.service.sale.ErpCustomerService;
@@ -68,8 +70,10 @@ public class ErpSaleOrderController {
 
     private static final String FIELD_PERMISSION_MODULE = "erp_sale_order";
     private static final Map<String, String> DETAIL_IMPORT_FIELD_ALIAS_MAP = ErpImportTemplateRequiredFieldUtils.aliasMap(
-            "productId", "productCode",
-            "productCode", "productCode",
+            "productId", "productIdentity",
+            "productCode", "productIdentity",
+            "productName", "productIdentity",
+            "factoryCode", "productIdentity",
             "count", "count",
             "itemCount", "count",
             "productPrice", "productPrice",
@@ -90,6 +94,8 @@ public class ErpSaleOrderController {
     private ErpSaleFieldPermissionMasker fieldPermissionMasker;
     @Resource
     private ErpFieldConfigService fieldConfigService;
+    @Resource
+    private ErpImportExportRecordService importExportRecordService;
 
     @Resource
     private AdminUserApi adminUserApi;
@@ -143,12 +149,15 @@ public class ErpSaleOrderController {
     @Operation(summary = "获得销售订单")
     @Parameter(name = "id", description = "编号", required = true, example = "1024")
     @PreAuthorize("@ss.hasPermission('erp:sale-order:query')")
-    public CommonResult<ErpSaleOrderRespVO> getSaleOrder(@RequestParam("id") Long id) {
+    public CommonResult<ErpSaleOrderRespVO> getSaleOrder(@RequestParam("id") Long id,
+                                                         @RequestParam(value = "includeItems", required = false,
+                                                                 defaultValue = "true") Boolean includeItems) {
         ErpSaleOrderDO saleOrder = saleOrderService.getSaleOrder(id);
         if (saleOrder == null) {
             return success(null);
         }
-        List<ErpSaleOrderItemDO> saleOrderItemList = saleOrderService.getSaleOrderItemListByOrderId(id);
+        List<ErpSaleOrderItemDO> saleOrderItemList = Boolean.TRUE.equals(includeItems)
+                ? saleOrderService.getSaleOrderItemListByOrderId(id) : Collections.emptyList();
         Map<Long, ErpProductRespVO> productMap = getProductVOMapIgnoreDataPermission(
                 convertSet(saleOrderItemList, ErpSaleOrderItemDO::getProductId));
         Map<Long, ErpWarehouseDO> warehouseMap = getWarehouseMapIgnoreDataPermission(
@@ -189,6 +198,55 @@ public class ErpSaleOrderController {
         return success(respVO);
     }
 
+    @PreAuthorize("@ss.hasPermission('erp:sale-order:query')")
+    public CommonResult<ErpSaleOrderRespVO> getSaleOrder(Long id) {
+        return getSaleOrder(id, true);
+    }
+
+    @GetMapping("/item-page")
+    @Operation(summary = "获得销售订单明细分页")
+    @PreAuthorize("@ss.hasPermission('erp:sale-order:query')")
+    public CommonResult<PageResult<ErpSaleOrderRespVO.Item>> getSaleOrderItemPage(
+            @Valid ErpSaleOrderItemPageReqVO pageReqVO) {
+        ErpSaleOrderDO saleOrder = saleOrderService.getSaleOrder(pageReqVO.getOrderId());
+        if (saleOrder == null) {
+            return success(PageResult.empty());
+        }
+        PageResult<ErpSaleOrderItemDO> pageResult = saleOrderService.getSaleOrderItemPage(pageReqVO);
+        List<ErpSaleOrderItemDO> itemList = pageResult.getList();
+        Map<Long, ErpProductRespVO> productMap = getProductVOMapIgnoreDataPermission(
+                convertSet(itemList, ErpSaleOrderItemDO::getProductId));
+        Map<Long, ErpWarehouseDO> warehouseMap = getWarehouseMapIgnoreDataPermission(
+                convertSet(itemList, ErpSaleOrderItemDO::getWarehouseId));
+        Set<Long> deptIds = convertSet(itemList, ErpSaleOrderItemDO::getDeptId);
+        deptIds.addAll(convertSet(warehouseMap.values(), ErpWarehouseDO::getDeptId));
+        deptIds.remove(null);
+        Map<Long, DeptRespDTO> itemDeptMap = CollUtil.isEmpty(deptIds)
+                ? Collections.emptyMap() : deptApi.getDeptMap(deptIds);
+        Map<Long, BigDecimal> stockCountMap = getStockCountMapIgnoreDataPermission(
+                convertSet(itemList, ErpSaleOrderItemDO::getProductId));
+        List<ErpSaleOrderRespVO.Item> items = BeanUtils.toBean(itemList, ErpSaleOrderRespVO.Item.class, item -> {
+            BigDecimal stockCount = stockCountMap.get(item.getProductId());
+            item.setStockCount(stockCount != null ? stockCount : BigDecimal.ZERO);
+            MapUtils.findAndThen(productMap, item.getProductId(), product -> item.setProductName(product.getName())
+                    .setProductBarCode(product.getBarCode()).setProductUnitName(product.getUnitName())
+                    .setProductCode(product.getCode()));
+            MapUtils.findAndThen(warehouseMap, item.getWarehouseId(), warehouse -> {
+                item.setWarehouseName(warehouse.getName());
+                item.setWarehouseDeptId(warehouse.getDeptId());
+                MapUtils.findAndThen(itemDeptMap, warehouse.getDeptId(),
+                        deptResp -> item.setWarehouseDeptName(deptResp.getName()));
+            });
+        });
+        PageResult<ErpSaleOrderRespVO.Item> respResult = new PageResult<>(items, pageResult.getTotal());
+        if (Boolean.TRUE.equals(pageReqVO.getMask())) {
+            ErpSaleOrderRespVO context = BeanUtils.toBean(saleOrder, ErpSaleOrderRespVO.class);
+            fieldPermissionMasker.clearSaleDetailHiddenItemFields(FIELD_PERMISSION_MODULE, context,
+                    respResult.getList());
+        }
+        return success(respResult);
+    }
+
     @GetMapping("/page")
     @Operation(summary = "获得销售订单分页")
     @PreAuthorize("@ss.hasPermission('erp:sale-order:query')")
@@ -218,6 +276,7 @@ public class ErpSaleOrderController {
     public void exportImportTemplate(HttpServletResponse response) throws IOException {
         ErpSaleOrderImportExcelVO example = new ErpSaleOrderImportExcelVO();
         example.setProductCode("P0001");
+        example.setProductName("示例配件");
         example.setCount(BigDecimal.ONE);
         example.setProductPrice(new BigDecimal("100.00"));
         example.setTaxPercent(BigDecimal.ZERO);
@@ -235,6 +294,14 @@ public class ErpSaleOrderController {
     public CommonResult<ErpSaleOrderImportRespVO> importSaleOrder(@RequestParam("file") MultipartFile file) throws Exception {
         List<ErpSaleOrderImportExcelVO> list = ExcelUtils.read(file, ErpSaleOrderImportExcelVO.class);
         return success(saleOrderService.parseImportData(list));
+    }
+
+    @GetMapping("/import-failure-details/download")
+    @Operation(summary = "下载销售订单导入错误数据")
+    @PreAuthorize("@ss.hasPermission('erp:sale-order:create')")
+    public void downloadImportFailureDetails(@RequestParam("recordId") Long recordId,
+                                             HttpServletResponse response) throws IOException {
+        importExportRecordService.downloadOwnImportFailureDetails(recordId, FIELD_PERMISSION_MODULE, response);
     }
 
     private PageResult<ErpSaleOrderRespVO> buildSaleOrderVOPageResult(PageResult<ErpSaleOrderDO> pageResult) {
@@ -309,6 +376,13 @@ public class ErpSaleOrderController {
 
     private BigDecimal getStockCountIgnoreDataPermission(Long productId) {
         return DataPermissionUtils.executeIgnore(() -> stockService.getStockCount(productId));
+    }
+
+    private Map<Long, BigDecimal> getStockCountMapIgnoreDataPermission(Set<Long> productIds) {
+        if (CollUtil.isEmpty(productIds)) {
+            return Collections.emptyMap();
+        }
+        return DataPermissionUtils.executeIgnore(() -> stockService.getStockCountMap(productIds));
     }
 
     private void fillAuditNames(ErpSaleOrderRespVO saleOrder, Map<Long, AdminUserRespDTO> userMap) {

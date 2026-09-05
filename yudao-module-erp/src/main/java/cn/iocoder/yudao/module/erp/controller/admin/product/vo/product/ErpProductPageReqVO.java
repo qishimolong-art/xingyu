@@ -33,6 +33,9 @@ public class ErpProductPageReqVO extends PageParam {
     @Schema(description = "适用车型", example = "宝马 X5")
     private String vehicleModel;
 
+    @Schema(description = "品牌", example = "博世")
+    private String brand;
+
     @Schema(description = "厂家编码", example = "FCT-001")
     private String factoryCode;
 

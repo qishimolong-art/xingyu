@@ -1,11 +1,14 @@
 package cn.iocoder.yudao.module.erp.dal.mysql.finance;
 
 import cn.hutool.core.collection.CollUtil;
+import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.mybatis.core.mapper.BaseMapperX;
 import cn.iocoder.yudao.framework.mybatis.core.query.LambdaQueryWrapperX;
+import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.payment.ErpFinancePaymentItemPageReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.ErpFinancePaymentItemDO;
 import cn.iocoder.yudao.module.erp.enums.finance.ErpFinanceWriteOffStatusEnum;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.baomidou.mybatisplus.core.toolkit.support.SFunction;
 import org.apache.ibatis.annotations.Mapper;
 
 import java.math.BigDecimal;
@@ -35,6 +38,23 @@ public interface ErpFinancePaymentItemMapper extends BaseMapperX<ErpFinancePayme
         return selectList(new LambdaQueryWrapperX<ErpFinancePaymentItemDO>()
                 .eq(ErpFinancePaymentItemDO::getPaymentId, paymentId)
                 .orderByAsc(ErpFinancePaymentItemDO::getId));
+    }
+
+    default PageResult<ErpFinancePaymentItemDO> selectPageByPaymentId(ErpFinancePaymentItemPageReqVO reqVO) {
+        LambdaQueryWrapperX<ErpFinancePaymentItemDO> query = new LambdaQueryWrapperX<ErpFinancePaymentItemDO>()
+                .eq(ErpFinancePaymentItemDO::getPaymentId, reqVO.getPaymentId());
+        SFunction<ErpFinancePaymentItemDO, ?> orderColumn = getOrderColumn(reqVO.getOrderField());
+        if (orderColumn == null) {
+            query.orderByAsc(ErpFinancePaymentItemDO::getId);
+        } else if ("desc".equalsIgnoreCase(reqVO.getOrderDirection())) {
+            query.orderByDesc(orderColumn);
+        } else {
+            query.orderByAsc(orderColumn);
+        }
+        if (orderColumn != null && !"id".equals(reqVO.getOrderField().trim())) {
+            query.orderByAsc(ErpFinancePaymentItemDO::getId);
+        }
+        return selectPage(reqVO, query);
     }
 
     default List<ErpFinancePaymentItemDO> selectListByPaymentIds(Collection<Long> paymentIds) {
@@ -116,6 +136,34 @@ public interface ErpFinancePaymentItemMapper extends BaseMapperX<ErpFinancePayme
             return (BigDecimal) value;
         }
         return new BigDecimal(value.toString());
+    }
+
+    static SFunction<ErpFinancePaymentItemDO, ?> getOrderColumn(String orderField) {
+        if (orderField == null) {
+            return null;
+        }
+        switch (orderField.trim()) {
+            case "id":
+                return ErpFinancePaymentItemDO::getId;
+            case "bizType":
+                return ErpFinancePaymentItemDO::getBizType;
+            case "bizId":
+                return ErpFinancePaymentItemDO::getBizId;
+            case "bizNo":
+                return ErpFinancePaymentItemDO::getBizNo;
+            case "totalPrice":
+                return ErpFinancePaymentItemDO::getTotalPrice;
+            case "paidPrice":
+                return ErpFinancePaymentItemDO::getPaidPrice;
+            case "paymentPrice":
+                return ErpFinancePaymentItemDO::getPaymentPrice;
+            case "writeOffStatus":
+                return ErpFinancePaymentItemDO::getWriteOffStatus;
+            case "remark":
+                return ErpFinancePaymentItemDO::getRemark;
+            default:
+                return null;
+        }
     }
 
 }

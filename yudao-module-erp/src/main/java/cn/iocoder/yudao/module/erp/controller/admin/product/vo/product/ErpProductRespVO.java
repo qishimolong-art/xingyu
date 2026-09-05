@@ -53,6 +53,14 @@ public class ErpProductRespVO {
     @ExcelProperty("产品名称")
     private String name;
 
+    @Schema(description = "拼音码", example = "LS")
+    @ExcelProperty("拼音码")
+    private String pinyinCode;
+
+    @Schema(description = "五笔码", example = "SB")
+    @ExcelProperty("五笔码")
+    private String wubiCode;
+
     @Schema(description = "产品条码", requiredMode = Schema.RequiredMode.REQUIRED, example = "X110")
     @ExcelProperty("产品条码")
     private String barCode;
@@ -121,6 +129,7 @@ public class ErpProductRespVO {
 
     // ========== 汽配扩展字段（与 DO 对齐） ==========
     @Schema(description = "品牌", example = "博世")
+    @ExcelProperty("品牌")
     private String brand;
     @Schema(description = "OE 编号", example = "OE-001")
     private String oeNumber;

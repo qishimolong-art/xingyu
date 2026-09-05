@@ -30,6 +30,7 @@ import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.FINANCE_RECEI
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.FINANCE_RECEIPT_DRAFT_ITEMS_REQUIRED;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.FINANCE_RECEIPT_DRAFT_SUBMIT_FAIL;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.FINANCE_RECEIPT_DRAFT_UPDATE_FAIL;
+import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.FINANCE_RECEIPT_WRITEOFF_AMOUNT_INVALID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
@@ -162,6 +163,31 @@ class ErpFinanceReceiptDraftServiceImplTest extends BaseMockitoUnitTest {
     }
 
     @Test
+    void updateDraft_preservesNegativeReceiptAmount() {
+        when(receiptMapper.selectById(1L)).thenReturn(ErpFinanceReceiptDO.builder()
+                .id(1L).no("SK001").status(ErpFinanceReceiptStatusEnum.DRAFT.getStatus())
+                .receiptTime(LocalDateTime.now()).build());
+        when(receiptItemMapper.selectListByReceiptId(1L)).thenReturn(Collections.emptyList());
+        when(receiptMapper.updateByIdAndStatus(eq(1L),
+                eq(ErpFinanceReceiptStatusEnum.DRAFT.getStatus()), any())).thenReturn(1);
+        ErpFinanceReceiptSaveReqVO.Item returnItem = new ErpFinanceReceiptSaveReqVO.Item()
+                .setBizType(ErpBizTypeEnum.SALE_RETURN.getType()).setBizId(10L)
+                .setBizNo("XSTH001").setTotalPrice(new BigDecimal("-80"))
+                .setReceiptedPrice(new BigDecimal("-20")).setReceiptPrice(new BigDecimal("-50"));
+        ErpFinanceReceiptDraftSaveReqVO request = new ErpFinanceReceiptDraftSaveReqVO()
+                .setId(1L).setDiscountPrice(BigDecimal.ZERO)
+                .setItems(Collections.singletonList(returnItem));
+
+        receiptService.updateFinanceReceiptDraft(request);
+
+        ArgumentCaptor<ErpFinanceReceiptDO> captor = ArgumentCaptor.forClass(ErpFinanceReceiptDO.class);
+        verify(receiptMapper).updateByIdAndStatus(eq(1L),
+                eq(ErpFinanceReceiptStatusEnum.DRAFT.getStatus()), captor.capture());
+        assertThat(captor.getValue().getTotalPrice()).isEqualByComparingTo("-50");
+        assertThat(captor.getValue().getReceiptPrice()).isEqualByComparingTo("-50");
+    }
+
+    @Test
     void submitDraft_strictlyValidatesAndTransitionsToProcess() {
         ErpFinanceReceiptDO receipt = ErpFinanceReceiptDO.builder()
                 .id(1L).no("SK001").status(ErpFinanceReceiptStatusEnum.DRAFT.getStatus())
@@ -183,6 +209,75 @@ class ErpFinanceReceiptDraftServiceImplTest extends BaseMockitoUnitTest {
                         ErpFinanceReceiptStatusEnum.PROCESS.getStatus().equals(update.getStatus())
                                 && new BigDecimal("95").compareTo(update.getReceiptPrice()) == 0));
         verify(receiptItemMapper).deleteByReceiptId(1L);
+    }
+
+    @Test
+    void submitDraft_allowsNegativeTotalAndReceiptPrice() {
+        ErpFinanceReceiptDO receipt = ErpFinanceReceiptDO.builder()
+                .id(1L).no("SK001").status(ErpFinanceReceiptStatusEnum.DRAFT.getStatus())
+                .receiptTime(LocalDateTime.now()).customerId(2L).accountId(3L)
+                .totalPrice(new BigDecimal("-100")).discountPrice(BigDecimal.ZERO)
+                .receiptPrice(new BigDecimal("-100")).build();
+        when(receiptMapper.selectByIdForUpdate(1L)).thenReturn(receipt);
+        when(receiptItemMapper.selectListByReceiptId(1L)).thenReturn(Collections.emptyList());
+        when(receiptMapper.updateByIdAndStatus(eq(1L),
+                eq(ErpFinanceReceiptStatusEnum.DRAFT.getStatus()), any())).thenReturn(1);
+
+        receiptService.submitFinanceReceipt(1L);
+
+        verify(receiptMapper).updateByIdAndStatus(eq(1L),
+                eq(ErpFinanceReceiptStatusEnum.DRAFT.getStatus()),
+                org.mockito.ArgumentMatchers.argThat(update ->
+                        ErpFinanceReceiptStatusEnum.PROCESS.getStatus().equals(update.getStatus())
+                                && new BigDecimal("-100").compareTo(update.getReceiptPrice()) == 0));
+    }
+
+    @Test
+    void submitDraft_rejectsZeroTotalPrice() {
+        ErpFinanceReceiptDO receipt = ErpFinanceReceiptDO.builder()
+                .id(1L).no("SK001").status(ErpFinanceReceiptStatusEnum.DRAFT.getStatus())
+                .receiptTime(LocalDateTime.now()).customerId(2L).accountId(3L)
+                .totalPrice(BigDecimal.ZERO).discountPrice(BigDecimal.ZERO)
+                .receiptPrice(BigDecimal.ZERO).build();
+        when(receiptMapper.selectByIdForUpdate(1L)).thenReturn(receipt);
+        when(receiptItemMapper.selectListByReceiptId(1L)).thenReturn(Collections.emptyList());
+
+        assertServiceException(() -> receiptService.submitFinanceReceipt(1L),
+                FINANCE_RECEIPT_WRITEOFF_AMOUNT_INVALID, "合计收款不能为 0");
+
+        verify(receiptMapper, never()).updateByIdAndStatus(any(), any(), any());
+    }
+
+    @Test
+    void submitDraft_rejectsNegativeDiscountPrice() {
+        ErpFinanceReceiptDO receipt = ErpFinanceReceiptDO.builder()
+                .id(1L).no("SK001").status(ErpFinanceReceiptStatusEnum.DRAFT.getStatus())
+                .receiptTime(LocalDateTime.now()).customerId(2L).accountId(3L)
+                .totalPrice(BigDecimal.TEN).discountPrice(new BigDecimal("-1"))
+                .receiptPrice(new BigDecimal("11")).build();
+        when(receiptMapper.selectByIdForUpdate(1L)).thenReturn(receipt);
+        when(receiptItemMapper.selectListByReceiptId(1L)).thenReturn(Collections.emptyList());
+
+        assertServiceException(() -> receiptService.submitFinanceReceipt(1L),
+                FINANCE_RECEIPT_WRITEOFF_AMOUNT_INVALID, "优惠金额不能小于 0");
+
+        verify(receiptMapper, never()).updateByIdAndStatus(any(), any(), any());
+    }
+
+    @Test
+    void submitDraft_rejectsZeroReceiptPrice() {
+        ErpFinanceReceiptDO receipt = ErpFinanceReceiptDO.builder()
+                .id(1L).no("SK001").status(ErpFinanceReceiptStatusEnum.DRAFT.getStatus())
+                .receiptTime(LocalDateTime.now()).customerId(2L).accountId(3L)
+                .totalPrice(BigDecimal.TEN).discountPrice(BigDecimal.TEN)
+                .receiptPrice(BigDecimal.ZERO).build();
+        when(receiptMapper.selectByIdForUpdate(1L)).thenReturn(receipt);
+        when(receiptItemMapper.selectListByReceiptId(1L)).thenReturn(Collections.emptyList());
+
+        assertServiceException(() -> receiptService.submitFinanceReceipt(1L),
+                FINANCE_RECEIPT_WRITEOFF_AMOUNT_INVALID, "实际收款不能为 0");
+
+        verify(receiptMapper, never()).updateByIdAndStatus(any(), any(), any());
     }
 
     @Test

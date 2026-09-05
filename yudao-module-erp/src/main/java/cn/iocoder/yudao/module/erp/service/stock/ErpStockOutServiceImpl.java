@@ -7,6 +7,7 @@ import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
 import cn.iocoder.yudao.framework.datapermission.core.util.DataPermissionUtils;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.ErpStockUpdateRemarkReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.out.ErpStockOutItemBatchUpdateReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.out.ErpStockOutItemPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.out.ErpStockOutPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.out.ErpStockOutSaveReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.accounting.ErpVoucherItemDO;
@@ -373,6 +374,12 @@ public class ErpStockOutServiceImpl implements ErpStockOutService {
     @Override
     public List<ErpStockOutItemDO> getStockOutItemListByOutId(Long outId) {
         return stockOutItemMapper.selectListByOutId(outId);
+    }
+
+    @Override
+    public PageResult<ErpStockOutItemDO> getStockOutItemPage(ErpStockOutItemPageReqVO pageReqVO) {
+        validateStockOutExists(pageReqVO.getOutId());
+        return stockOutItemMapper.selectPageByOutId(pageReqVO);
     }
 
     @Override

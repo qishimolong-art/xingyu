@@ -14,6 +14,7 @@ import cn.iocoder.yudao.module.erp.dal.redis.no.ErpNoRedisDAO;
 import cn.iocoder.yudao.module.erp.enums.ErpAuditStatus;
 import cn.iocoder.yudao.module.erp.service.common.ErpOperateLogService;
 import cn.iocoder.yudao.module.erp.service.finance.ErpAccountService;
+import cn.iocoder.yudao.module.erp.service.product.ErpProductBatchNoValidator;
 import cn.iocoder.yudao.module.erp.service.product.ErpProductService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpStockService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpWarehouseService;
@@ -78,6 +79,8 @@ public class ErpSaleOrderServiceImplTest extends BaseMockitoUnitTest {
                 return prefix + "20260520000001";
             }
         });
+        ReflectionTestUtils.setField(saleOrderService, "productBatchNoValidator",
+                new ErpProductBatchNoValidator());
         lenient().when(warehouseService.validSaleWarehouseList(anyCollection()))
                 .thenAnswer(invocation -> buildWarehouseList(invocation.getArgument(0)));
         lenient().when(warehouseService.getWarehouseMap(anyCollection()))
@@ -128,6 +131,70 @@ public class ErpSaleOrderServiceImplTest extends BaseMockitoUnitTest {
                         && reqVO.getCustomerId().equals(order.getCustomerId())
                         && order.getNo().startsWith(ErpNoRedisDAO.SALE_ORDER_NO_PREFIX)));
         verify(saleOrderItemMapper).insertBatch(argThat(items -> items.iterator().next().getOrderId().equals(99L)));
+    }
+
+    @Test
+    public void testCreateSaleOrder_batchNoEnabledBlankBatchNo_success() {
+        ErpSaleOrderSaveReqVO reqVO = buildBaseReq();
+        reqVO.setCustomerId(20L);
+        reqVO.setItems(Collections.singletonList(buildItem(200L, new BigDecimal("10.00"), new BigDecimal("2"))));
+        when(productService.validProductList(anyCollection())).thenReturn(Collections.singletonList(
+                new ErpProductDO().setId(200L).setUnitId(400L).setDefaultWarehouseId(300L)
+                        .setBatchNoEnabled(true)));
+        when(customerService.validateCustomerForSale(eq(20L), nullable(Long.class)))
+                .thenReturn(new ErpCustomerDO().setId(20L));
+        when(saleOrderMapper.selectByNo(anyString())).thenReturn(null);
+        doAnswer(invocation -> {
+            ErpSaleOrderDO order = invocation.getArgument(0);
+            order.setId(100L);
+            return 1;
+        }).when(saleOrderMapper).insert(any(ErpSaleOrderDO.class));
+
+        Long id = saleOrderService.createSaleOrder(reqVO);
+
+        assertEquals(100L, id);
+        verify(saleOrderItemMapper).insertBatch(argThat(items -> items.iterator().next().getBatchNo() == null));
+    }
+
+    @Test
+    public void testCreateSaleOrder_batchNoEnabledWithBatchNo_success() {
+        ErpSaleOrderSaveReqVO reqVO = buildBaseReq();
+        reqVO.setCustomerId(20L);
+        ErpSaleOrderSaveReqVO.Item item = buildItem(200L, new BigDecimal("10.00"), new BigDecimal("2"));
+        item.setBatchNo("BN001");
+        reqVO.setItems(Collections.singletonList(item));
+        when(productService.validProductList(anyCollection())).thenReturn(Collections.singletonList(
+                new ErpProductDO().setId(200L).setUnitId(400L).setDefaultWarehouseId(300L)
+                        .setBatchNoEnabled(true)));
+        when(customerService.validateCustomerForSale(eq(20L), nullable(Long.class)))
+                .thenReturn(new ErpCustomerDO().setId(20L));
+        when(saleOrderMapper.selectByNo(anyString())).thenReturn(null);
+        doAnswer(invocation -> {
+            ErpSaleOrderDO order = invocation.getArgument(0);
+            order.setId(101L);
+            return 1;
+        }).when(saleOrderMapper).insert(any(ErpSaleOrderDO.class));
+
+        Long id = saleOrderService.createSaleOrder(reqVO);
+
+        assertEquals(101L, id);
+        verify(saleOrderItemMapper).insertBatch(argThat(items -> "BN001".equals(items.iterator().next().getBatchNo())));
+    }
+
+    @Test
+    public void testCreateSaleOrder_batchNoDisabledWithBatchNo_throwException() {
+        ErpSaleOrderSaveReqVO reqVO = buildBaseReq();
+        reqVO.setCustomerId(20L);
+        ErpSaleOrderSaveReqVO.Item item = buildItem(200L, new BigDecimal("10.00"), new BigDecimal("2"));
+        item.setBatchNo("BN001");
+        reqVO.setItems(Collections.singletonList(item));
+        when(productService.validProductList(anyCollection())).thenReturn(Collections.singletonList(
+                new ErpProductDO().setId(200L).setUnitId(400L).setDefaultWarehouseId(300L)
+                        .setBatchNoEnabled(false)));
+
+        assertServiceException(() -> saleOrderService.createSaleOrder(reqVO), ERP_ITEM_BATCH_NO_DISABLED, 1);
+        verify(saleOrderMapper, never()).insert(any(ErpSaleOrderDO.class));
+        verify(saleOrderItemMapper, never()).insertBatch(anyCollection());
     }
 
     @Test

@@ -52,6 +52,13 @@ public interface ErpAccountingSubjectService {
     ErpAccountingSubjectDO getSubjectByCode(String subjectCode);
 
     /**
+     * 确保银行/现金结算账户有对应的会计科目子科目。
+     *
+     * @return 已存在或新建的科目编号；非银行/现金账户返回 null
+     */
+    Long ensureFundAccountSubject(Integer accountType, String accountName);
+
+    /**
      * 按编号集合查询
      */
     List<ErpAccountingSubjectDO> getSubjectList(Collection<Long> ids);

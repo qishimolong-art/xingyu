@@ -1,6 +1,7 @@
 package cn.iocoder.yudao.module.erp.service.finance.accounting;
 
 import cn.hutool.core.collection.CollUtil;
+import cn.hutool.core.util.StrUtil;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.common.util.collection.CollectionUtils;
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
@@ -14,7 +15,11 @@ import cn.iocoder.yudao.module.erp.dal.dataobject.finance.accounting.ErpAccounti
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.accounting.ErpSubjectAuxiliaryDO;
 import cn.iocoder.yudao.module.erp.dal.mysql.finance.accounting.ErpAccountingSubjectMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.finance.accounting.ErpVoucherItemMapper;
+import cn.iocoder.yudao.module.erp.enums.finance.accounting.ErpAccountingSubjectCodeConstants;
+import cn.iocoder.yudao.module.erp.enums.finance.accounting.ErpSubjectCategoryEnum;
+import cn.iocoder.yudao.module.erp.enums.finance.accounting.ErpSubjectVoucherTypeEnum;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.validation.annotation.Validated;
@@ -44,6 +49,11 @@ import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.ACCOUNTING_SU
 @Service
 @Validated
 public class ErpAccountingSubjectServiceImpl implements ErpAccountingSubjectService {
+
+    private static final Integer BANK_ACCOUNT_TYPE = 1;
+    private static final Integer CASH_ACCOUNT_TYPE = 2;
+    private static final int FUND_ACCOUNT_SUBJECT_CREATE_MAX_ATTEMPTS = 3;
+    private static final String SUBJECT_CODE_SEPARATOR = ".";
 
     @Resource
     private ErpAccountingSubjectMapper subjectMapper;
@@ -193,6 +203,44 @@ public class ErpAccountingSubjectServiceImpl implements ErpAccountingSubjectServ
             return null;
         }
         return subjectMapper.selectBySubjectCode(subjectCode);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public Long ensureFundAccountSubject(Integer accountType, String accountName) {
+        String parentCode = resolveFundAccountParentCode(accountType);
+        if (parentCode == null || StrUtil.isBlank(accountName)) {
+            return null;
+        }
+        String normalizedName = StrUtil.trim(accountName);
+        for (int attempt = 0; attempt < FUND_ACCOUNT_SUBJECT_CREATE_MAX_ATTEMPTS; attempt++) {
+            ErpAccountingSubjectDO parent = subjectMapper.selectBySubjectCode(parentCode);
+            if (parent == null) {
+                throw exception(ACCOUNTING_SUBJECT_NOT_EXISTS);
+            }
+            List<ErpAccountingSubjectDO> children = subjectMapper.selectListByParentCode(parentCode);
+            for (ErpAccountingSubjectDO child : children) {
+                if (normalizedName.equals(StrUtil.trim(child.getSubjectName()))) {
+                    return child.getId();
+                }
+            }
+            ErpAccountingSubjectDO subject = buildFundAccountSubject(parent, normalizedName,
+                    generateNextFundAccountSubjectCode(parentCode, children));
+            try {
+                if (Boolean.TRUE.equals(parent.getIsLeaf())) {
+                    subjectMapper.updateById(new ErpAccountingSubjectDO()
+                            .setId(parent.getId())
+                            .setIsLeaf(false));
+                }
+                subjectMapper.insert(subject);
+                return subject.getId();
+            } catch (DuplicateKeyException ex) {
+                if (attempt == FUND_ACCOUNT_SUBJECT_CREATE_MAX_ATTEMPTS - 1) {
+                    throw ex;
+                }
+            }
+        }
+        return null;
     }
 
     @Override
@@ -490,6 +538,60 @@ public class ErpAccountingSubjectServiceImpl implements ErpAccountingSubjectServ
             default:
                 try { return Integer.parseInt(t); } catch (Exception ignored) { return null; }
         }
+    }
+
+    private String resolveFundAccountParentCode(Integer accountType) {
+        if (BANK_ACCOUNT_TYPE.equals(accountType)) {
+            return ErpAccountingSubjectCodeConstants.BANK;
+        }
+        if (CASH_ACCOUNT_TYPE.equals(accountType)) {
+            return ErpAccountingSubjectCodeConstants.CASH;
+        }
+        return null;
+    }
+
+    private ErpAccountingSubjectDO buildFundAccountSubject(ErpAccountingSubjectDO parent, String accountName,
+                                                           String subjectCode) {
+        return ErpAccountingSubjectDO.builder()
+                .subjectCode(subjectCode)
+                .subjectName(accountName)
+                .shortName(accountName)
+                .subjectCategory(ErpSubjectCategoryEnum.ASSET.getCategory())
+                .parentCode(parent.getSubjectCode())
+                .subjectLevel(parent.getSubjectLevel() != null ? parent.getSubjectLevel() + 1 : 2)
+                .isLeaf(true)
+                .balanceDirection(1)
+                .voucherType(parent.getVoucherType() != null
+                        ? parent.getVoucherType()
+                        : ErpSubjectVoucherTypeEnum.CUSTOMER.getType())
+                .openingBalance(BigDecimal.ZERO)
+                .enable(true)
+                .sort(0)
+                .build();
+    }
+
+    private String generateNextFundAccountSubjectCode(String parentCode, List<ErpAccountingSubjectDO> children) {
+        String prefix = parentCode + SUBJECT_CODE_SEPARATOR;
+        int maxSuffix = 0;
+        if (children != null) {
+            for (ErpAccountingSubjectDO child : children) {
+                String code = child.getSubjectCode();
+                if (code == null || !code.startsWith(prefix)) {
+                    continue;
+                }
+                String suffix = code.substring(prefix.length());
+                if (!suffix.chars().allMatch(Character::isDigit)) {
+                    continue;
+                }
+                try {
+                    maxSuffix = Math.max(maxSuffix, Integer.parseInt(suffix));
+                } catch (NumberFormatException ignored) {
+                    // 非常规超长尾号不参与资金账户科目自增。
+                }
+            }
+        }
+        int next = maxSuffix + 1;
+        return prefix + (next < 100 ? String.format("%02d", next) : String.valueOf(next));
     }
 
     // ============== 私有辅助方法 ==============

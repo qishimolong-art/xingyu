@@ -8,6 +8,7 @@ import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.returns.ErpPurch
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.returns.ErpPurchaseReturnImportExcelVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.returns.ErpPurchaseReturnImportRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.returns.ErpPurchaseReturnItemBatchUpdateReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.returns.ErpPurchaseReturnItemPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.returns.ErpPurchaseReturnOrderImportExcelVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.returns.ErpPurchaseReturnPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.returns.ErpPurchaseReturnSaveReqVO;
@@ -134,6 +135,8 @@ public interface ErpPurchaseReturnService {
      * @return 采购退货项列表
      */
     List<ErpPurchaseReturnItemDO> getPurchaseReturnItemListByReturnId(Long returnId);
+
+    PageResult<ErpPurchaseReturnItemDO> getPurchaseReturnItemPage(ErpPurchaseReturnItemPageReqVO pageReqVO);
 
     /**
      * 获得采购退货项 List

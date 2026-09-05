@@ -1,5 +1,6 @@
 package cn.iocoder.yudao.module.erp.service.stock;
 
+import cn.hutool.core.collection.CollUtil;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.common.util.number.MoneyUtils;
 import cn.iocoder.yudao.framework.datapermission.core.util.DataPermissionUtils;
@@ -115,6 +116,19 @@ public class ErpStockServiceImpl implements ErpStockService {
     @Override
     public ErpStockDO getStock(Long productId, Long warehouseId) {
         return stockMapper.selectByProductIdAndWarehouseId(productId, warehouseId);
+    }
+
+    @Override
+    public Map<String, ErpStockDO> getStockMap(Collection<Long> productIds, Collection<Long> warehouseIds) {
+        if (CollUtil.isEmpty(productIds) || CollUtil.isEmpty(warehouseIds)) {
+            return Collections.emptyMap();
+        }
+        return stockMapper.selectListByProductIdsAndWarehouseIds(productIds, warehouseIds).stream()
+                .collect(Collectors.toMap(
+                        stock -> buildStockBatchNoMapKey(stock.getProductId(), stock.getWarehouseId()),
+                        stock -> stock,
+                        (first, second) -> first,
+                        LinkedHashMap::new));
     }
 
     @Override

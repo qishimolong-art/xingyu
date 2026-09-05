@@ -28,6 +28,7 @@ import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.FINANCE_PAYME
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.FINANCE_PAYMENT_DRAFT_ITEMS_REQUIRED;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.FINANCE_PAYMENT_DRAFT_SUBMIT_FAIL;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.FINANCE_PAYMENT_DRAFT_UPDATE_FAIL;
+import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.FINANCE_PAYMENT_WRITEOFF_AMOUNT_INVALID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
@@ -133,6 +134,76 @@ class ErpFinancePaymentDraftServiceImplTest extends BaseMockitoUnitTest {
     }
 
     @Test
+    void createFinancePayment_allowsNegativeAmount() {
+        when(noRedisDAO.generate(ErpNoRedisDAO.FINANCE_PAYMENT_NO_PREFIX)).thenReturn("FKD-NEG-1");
+        when(paymentMapper.insert(any(ErpFinancePaymentDO.class))).thenAnswer(invocation -> {
+            ((ErpFinancePaymentDO) invocation.getArgument(0)).setId(4L);
+            return 1;
+        });
+
+        Long id = service.createFinancePayment(new ErpFinancePaymentSaveReqVO()
+                .setPaymentTime(LocalDateTime.now())
+                .setSupplierId(1L)
+                .setAccountId(2L)
+                .setDiscountPrice(BigDecimal.ZERO)
+                .setTotalPrice(new BigDecimal("-20"))
+                .setPaymentPrice(new BigDecimal("-20")));
+
+        assertThat(id).isEqualTo(4L);
+        ArgumentCaptor<ErpFinancePaymentDO> captor = ArgumentCaptor.forClass(ErpFinancePaymentDO.class);
+        verify(paymentMapper).insert(captor.capture());
+        assertThat(captor.getValue().getTotalPrice()).isEqualByComparingTo("-20.00");
+        assertThat(captor.getValue().getPaymentPrice()).isEqualByComparingTo("-20.00");
+        assertThat(captor.getValue().getStatus()).isEqualTo(ErpFinancePaymentStatusEnum.PROCESS.getStatus());
+    }
+
+    @Test
+    void createAndSubmitFinancePayment_allowsNegativeAmount() {
+        when(noRedisDAO.generate(ErpNoRedisDAO.FINANCE_PAYMENT_NO_PREFIX)).thenReturn("FKD-NEG-2");
+        when(paymentMapper.insert(any(ErpFinancePaymentDO.class))).thenAnswer(invocation -> {
+            ((ErpFinancePaymentDO) invocation.getArgument(0)).setId(5L);
+            return 1;
+        });
+
+        Long id = service.createAndSubmitFinancePayment(new ErpFinancePaymentSaveReqVO()
+                .setPaymentTime(LocalDateTime.now())
+                .setSupplierId(1L)
+                .setAccountId(2L)
+                .setDiscountPrice(BigDecimal.ZERO)
+                .setTotalPrice(new BigDecimal("-30"))
+                .setPaymentPrice(new BigDecimal("-30")));
+
+        assertThat(id).isEqualTo(5L);
+        ArgumentCaptor<ErpFinancePaymentDO> captor = ArgumentCaptor.forClass(ErpFinancePaymentDO.class);
+        verify(paymentMapper).insert(captor.capture());
+        assertThat(captor.getValue().getTotalPrice()).isEqualByComparingTo("-30.00");
+        assertThat(captor.getValue().getPaymentPrice()).isEqualByComparingTo("-30.00");
+    }
+
+    @Test
+    void createDraft_preservesNegativeItemAmount() {
+        when(noRedisDAO.generate(ErpNoRedisDAO.FINANCE_PAYMENT_NO_PREFIX)).thenReturn("FKD-DRAFT-NEG");
+        when(paymentMapper.insert(any(ErpFinancePaymentDO.class))).thenAnswer(invocation -> {
+            ((ErpFinancePaymentDO) invocation.getArgument(0)).setId(6L);
+            return 1;
+        });
+
+        service.createFinancePaymentDraft(new ErpFinancePaymentDraftSaveReqVO()
+                .setDiscountPrice(BigDecimal.ZERO)
+                .setItems(Collections.singletonList(new ErpFinancePaymentSaveReqVO.Item()
+                        .setBizType(ErpBizTypeEnum.PURCHASE_RETURN.getType())
+                        .setBizId(22L)
+                        .setTotalPrice(new BigDecimal("-80"))
+                        .setPaidPrice(BigDecimal.ZERO)
+                        .setPaymentPrice(new BigDecimal("-80")))));
+
+        ArgumentCaptor<ErpFinancePaymentDO> captor = ArgumentCaptor.forClass(ErpFinancePaymentDO.class);
+        verify(paymentMapper).insert(captor.capture());
+        assertThat(captor.getValue().getTotalPrice()).isEqualByComparingTo("-80.00");
+        assertThat(captor.getValue().getPaymentPrice()).isEqualByComparingTo("-80.00");
+    }
+
+    @Test
     void updateDraft_rejectsNonDraft() {
         when(paymentMapper.selectById(10L)).thenReturn(new ErpFinancePaymentDO()
                 .setId(10L).setNo("FKD10").setStatus(ErpFinancePaymentStatusEnum.PROCESS.getStatus()));
@@ -183,6 +254,28 @@ class ErpFinancePaymentDraftServiceImplTest extends BaseMockitoUnitTest {
     }
 
     @Test
+    void updateDraft_preservesNegativeManualTotalWhenThereAreNoItems() {
+        LocalDateTime paymentTime = LocalDateTime.now();
+        when(paymentMapper.selectById(10L)).thenReturn(new ErpFinancePaymentDO()
+                .setId(10L).setNo("FKD10").setStatus(ErpFinancePaymentStatusEnum.DRAFT.getStatus())
+                .setPaymentTime(paymentTime));
+        when(paymentItemMapper.selectListByPaymentId(10L)).thenReturn(Collections.emptyList());
+        when(paymentMapper.updateByIdAndStatus(eq(10L),
+                eq(ErpFinancePaymentStatusEnum.DRAFT.getStatus()), any())).thenReturn(1);
+
+        service.updateFinancePaymentDraft(new ErpFinancePaymentDraftSaveReqVO()
+                .setId(10L)
+                .setTotalPrice(new BigDecimal("-100"))
+                .setDiscountPrice(BigDecimal.ZERO));
+
+        ArgumentCaptor<ErpFinancePaymentDO> captor = ArgumentCaptor.forClass(ErpFinancePaymentDO.class);
+        verify(paymentMapper).updateByIdAndStatus(eq(10L),
+                eq(ErpFinancePaymentStatusEnum.DRAFT.getStatus()), captor.capture());
+        assertThat(captor.getValue().getTotalPrice()).isEqualByComparingTo("-100.00");
+        assertThat(captor.getValue().getPaymentPrice()).isEqualByComparingTo("-100.00");
+    }
+
+    @Test
     void submitDraft_requiresSupplier() {
         when(paymentMapper.selectByIdForUpdate(10L)).thenReturn(new ErpFinancePaymentDO()
                 .setId(10L).setNo("FKD10").setStatus(ErpFinancePaymentStatusEnum.DRAFT.getStatus())
@@ -211,6 +304,64 @@ class ErpFinancePaymentDraftServiceImplTest extends BaseMockitoUnitTest {
                 eq(ErpFinancePaymentStatusEnum.DRAFT.getStatus()), captor.capture());
         assertThat(captor.getValue().getStatus()).isEqualTo(ErpFinancePaymentStatusEnum.PROCESS.getStatus());
         verify(paymentItemMapper).deleteByPaymentId(10L);
+    }
+
+    @Test
+    void submitDraft_allowsNegativeAmount() {
+        when(paymentMapper.selectByIdForUpdate(10L)).thenReturn(new ErpFinancePaymentDO()
+                .setId(10L).setNo("FKD10").setStatus(ErpFinancePaymentStatusEnum.DRAFT.getStatus())
+                .setPaymentTime(LocalDateTime.now()).setSupplierId(1L).setAccountId(2L)
+                .setTotalPrice(new BigDecimal("-100")).setDiscountPrice(BigDecimal.ZERO));
+        when(paymentItemMapper.selectListByPaymentId(10L)).thenReturn(Collections.emptyList());
+        when(paymentMapper.updateByIdAndStatus(eq(10L),
+                eq(ErpFinancePaymentStatusEnum.DRAFT.getStatus()), any())).thenReturn(1);
+
+        service.submitFinancePayment(10L);
+
+        ArgumentCaptor<ErpFinancePaymentDO> captor = ArgumentCaptor.forClass(ErpFinancePaymentDO.class);
+        verify(paymentMapper).updateByIdAndStatus(eq(10L),
+                eq(ErpFinancePaymentStatusEnum.DRAFT.getStatus()), captor.capture());
+        assertThat(captor.getValue().getTotalPrice()).isEqualByComparingTo("-100.00");
+        assertThat(captor.getValue().getPaymentPrice()).isEqualByComparingTo("-100.00");
+    }
+
+    @Test
+    void submitDraft_rejectsZeroTotalPrice() {
+        when(paymentMapper.selectByIdForUpdate(10L)).thenReturn(new ErpFinancePaymentDO()
+                .setId(10L).setNo("FKD10").setStatus(ErpFinancePaymentStatusEnum.DRAFT.getStatus())
+                .setPaymentTime(LocalDateTime.now()).setSupplierId(1L).setAccountId(2L)
+                .setTotalPrice(BigDecimal.ZERO).setDiscountPrice(BigDecimal.ZERO));
+        when(paymentItemMapper.selectListByPaymentId(10L)).thenReturn(Collections.emptyList());
+
+        assertServiceException(() -> service.submitFinancePayment(10L),
+                FINANCE_PAYMENT_WRITEOFF_AMOUNT_INVALID, "合计付款不能为 0");
+        verify(paymentMapper, never()).updateByIdAndStatus(any(), any(), any());
+    }
+
+    @Test
+    void submitDraft_rejectsZeroPaymentPrice() {
+        when(paymentMapper.selectByIdForUpdate(10L)).thenReturn(new ErpFinancePaymentDO()
+                .setId(10L).setNo("FKD10").setStatus(ErpFinancePaymentStatusEnum.DRAFT.getStatus())
+                .setPaymentTime(LocalDateTime.now()).setSupplierId(1L).setAccountId(2L)
+                .setTotalPrice(new BigDecimal("10")).setDiscountPrice(new BigDecimal("10")));
+        when(paymentItemMapper.selectListByPaymentId(10L)).thenReturn(Collections.emptyList());
+
+        assertServiceException(() -> service.submitFinancePayment(10L),
+                FINANCE_PAYMENT_WRITEOFF_AMOUNT_INVALID, "实际付款不能为 0");
+        verify(paymentMapper, never()).updateByIdAndStatus(any(), any(), any());
+    }
+
+    @Test
+    void submitDraft_rejectsNegativeDiscountPrice() {
+        when(paymentMapper.selectByIdForUpdate(10L)).thenReturn(new ErpFinancePaymentDO()
+                .setId(10L).setNo("FKD10").setStatus(ErpFinancePaymentStatusEnum.DRAFT.getStatus())
+                .setPaymentTime(LocalDateTime.now()).setSupplierId(1L).setAccountId(2L)
+                .setTotalPrice(new BigDecimal("10")).setDiscountPrice(new BigDecimal("-1")));
+        when(paymentItemMapper.selectListByPaymentId(10L)).thenReturn(Collections.emptyList());
+
+        assertServiceException(() -> service.submitFinancePayment(10L),
+                FINANCE_PAYMENT_WRITEOFF_AMOUNT_INVALID, "优惠金额不能小于 0");
+        verify(paymentMapper, never()).updateByIdAndStatus(any(), any(), any());
     }
 
     @Test

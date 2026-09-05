@@ -2,11 +2,9 @@ package cn.iocoder.yudao.module.erp.controller.admin.common;
 
 import cn.iocoder.yudao.framework.common.pojo.CommonResult;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
-import cn.iocoder.yudao.framework.excel.core.util.ExcelUtils;
 import cn.iocoder.yudao.framework.security.core.util.SecurityFrameworkUtils;
 import cn.iocoder.yudao.module.erp.controller.admin.common.vo.ErpImportExportRecordDetailPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.common.vo.ErpImportExportRecordDetailRespVO;
-import cn.iocoder.yudao.module.erp.controller.admin.common.vo.ErpImportExportRecordFailureDetailExportRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.common.vo.ErpImportExportRecordPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.common.vo.ErpImportExportRecordRespVO;
 import cn.iocoder.yudao.module.erp.enums.common.ErpImportExportOperationTypeEnum;
@@ -87,10 +85,7 @@ public class ErpImportExportRecordController {
         } else {
             validateQueryPermission(SecurityFrameworkUtils.getLoginUserId(), IMPORT_QUERY_PERMISSION);
         }
-        String moduleName = record == null || record.getModuleName() == null ? "导入" : record.getModuleName();
-        ExcelUtils.write(response, moduleName + "失败明细.xls", "失败明细",
-                ErpImportExportRecordFailureDetailExportRespVO.class,
-                importExportRecordService.getFailureDetailList(recordId));
+        importExportRecordService.downloadFailureDetails(recordId, response);
     }
 
     private void validateOperationPermission(String operationType) {

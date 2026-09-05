@@ -26,6 +26,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.lang.reflect.Field;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -88,9 +89,36 @@ public class ExcelUtils {
         FastExcelFactory.write(response.getOutputStream(), head)
                 .autoCloseStream(false)
                 .registerWriteHandler(new ColumnWidthMatchStyleStrategy())
-                .registerWriteHandler(new SelectSheetWriteHandler(head))
+                .registerWriteHandler(new SelectSheetWriteHandler(head, includeColumnFieldNames))
                 .registerConverter(new LongStringConverter())
                 .includeColumnFieldNames(includeColumnFieldNames)
+                .sheet(sheetName).doWrite(data);
+        response.addHeader("Content-Disposition", "attachment;filename=" + HttpUtils.encodeUtf8(filename));
+        response.setContentType("application/vnd.ms-excel;charset=UTF-8");
+    }
+
+    /**
+     * 使用动态表头导出 Excel，适合在原模板列后追加运行时列。
+     */
+    public static void writeDynamic(HttpServletResponse response, String filename, String sheetName,
+                                    List<List<String>> head, List<List<Object>> data) throws IOException {
+        setLastWriteOperation(filename, data, null);
+        if (response != null) {
+            ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
+            FastExcelFactory.write(outputStream)
+                    .head(head)
+                    .autoCloseStream(false)
+                    .registerWriteHandler(new ColumnWidthMatchStyleStrategy())
+                    .registerConverter(new LongStringConverter())
+                    .sheet(sheetName).doWrite(data);
+            writeResponse(response, filename, outputStream.toByteArray());
+            return;
+        }
+        FastExcelFactory.write(response.getOutputStream())
+                .head(head)
+                .autoCloseStream(false)
+                .registerWriteHandler(new ColumnWidthMatchStyleStrategy())
+                .registerConverter(new LongStringConverter())
                 .sheet(sheetName).doWrite(data);
         response.addHeader("Content-Disposition", "attachment;filename=" + HttpUtils.encodeUtf8(filename));
         response.setContentType("application/vnd.ms-excel;charset=UTF-8");
@@ -120,7 +148,7 @@ public class ExcelUtils {
         cn.idev.excel.write.builder.ExcelWriterBuilder builder = FastExcelFactory.write(response.getOutputStream(), head)
                 .autoCloseStream(false)
                 .registerWriteHandler(new ColumnWidthMatchStyleStrategy())
-                .registerWriteHandler(new SelectSheetWriteHandler(head))
+                .registerWriteHandler(new SelectSheetWriteHandler(head, includeColumnFieldNames))
                 .registerWriteHandler(new RequiredHeaderStyleWriteHandler(requiredColumnFieldNames))
                 .registerConverter(new LongStringConverter());
         if (includeColumnFieldNames != null && !includeColumnFieldNames.isEmpty()) {
@@ -138,7 +166,7 @@ public class ExcelUtils {
         ExcelWriterBuilder builder = FastExcelFactory.write(outputStream, head)
                 .autoCloseStream(false)
                 .registerWriteHandler(new ColumnWidthMatchStyleStrategy())
-                .registerWriteHandler(new SelectSheetWriteHandler(head))
+                .registerWriteHandler(new SelectSheetWriteHandler(head, includeColumnFieldNames))
                 .registerConverter(new LongStringConverter());
         if (importTemplate) {
             builder.registerWriteHandler(new RequiredHeaderStyleWriteHandler(requiredColumnFieldNames));
@@ -175,8 +203,30 @@ public class ExcelUtils {
                 throw ex;
             }
             LAST_OPERATION.set(new ExcelOperationContext("READ",
-                    file == null ? null : file.getOriginalFilename(), rows == null ? 0 : rows.size(), null));
+                    file == null ? null : file.getOriginalFilename(), rows == null ? 0 : rows.size(), null,
+                    head == null ? null : head.getName(), rows == null ? null : new ArrayList<>(rows)));
             return rows;
+        }
+    }
+
+    public static int countFirstSheetDataRows(MultipartFile file, int headRowNumber) throws IOException {
+        if (file == null) {
+            return 0;
+        }
+        try (InputStream inputStream = file.getInputStream();
+             Workbook workbook = WorkbookFactory.create(inputStream)) {
+            if (workbook.getNumberOfSheets() <= 0) {
+                return 0;
+            }
+            Sheet sheet = workbook.getSheetAt(0);
+            int firstDataRowIndex = Math.max(headRowNumber, 0);
+            int lastNonBlankRowIndex = -1;
+            for (int rowIndex = firstDataRowIndex; rowIndex <= sheet.getLastRowNum(); rowIndex++) {
+                if (hasNonBlankCell(sheet.getRow(rowIndex))) {
+                    lastNonBlankRowIndex = rowIndex;
+                }
+            }
+            return lastNonBlankRowIndex < firstDataRowIndex ? 0 : lastNonBlankRowIndex - firstDataRowIndex + 1;
         }
     }
 
@@ -223,14 +273,59 @@ public class ExcelUtils {
             return;
         }
         String normalizedValue = REQUIRED_HEADER_PREFIX_PATTERN.matcher(value).replaceFirst("");
-        if (expectedHeaders.contains(normalizedValue)) {
-            cell.setCellValue(normalizedValue);
-            return;
+        String matchedHeader = resolveExpectedHeader(normalizedValue, expectedHeaders);
+        if (matchedHeader != null) {
+            cell.setCellValue(matchedHeader);
         }
-        String alias = HEADER_ALIASES.get(normalizedValue);
+    }
+
+    private static String resolveExpectedHeader(String header, Set<String> expectedHeaders) {
+        if (expectedHeaders.contains(header)) {
+            return header;
+        }
+        String alias = HEADER_ALIASES.get(header);
         if (alias != null && expectedHeaders.contains(alias)) {
-            cell.setCellValue(alias);
+            return alias;
         }
+        if (alias != null) {
+            String choiceAlias = findChoiceHeader(alias, expectedHeaders);
+            if (choiceAlias != null) {
+                return choiceAlias;
+            }
+        }
+        return findChoiceHeader(header, expectedHeaders);
+    }
+
+    private static String findChoiceHeader(String header, Set<String> expectedHeaders) {
+        String choiceHeader = header + "\uff08\u4e09\u9009\u4e00\uff09";
+        if (expectedHeaders.contains(choiceHeader)) {
+            return choiceHeader;
+        }
+        choiceHeader = header + "\uff08\u4e8c\u9009\u4e00\uff09";
+        if (expectedHeaders.contains(choiceHeader)) {
+            return choiceHeader;
+        }
+        return null;
+    }
+
+    private static boolean hasNonBlankCell(Row row) {
+        if (row == null || row.getFirstCellNum() < 0 || row.getLastCellNum() < 0) {
+            return false;
+        }
+        for (int i = row.getFirstCellNum(); i < row.getLastCellNum(); i++) {
+            Cell cell = row.getCell(i);
+            if (!isBlankCell(cell)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static boolean isBlankCell(Cell cell) {
+        if (cell == null || cell.getCellType() == CellType.BLANK) {
+            return true;
+        }
+        return cell.getCellType() == CellType.STRING && cell.getStringCellValue().trim().isEmpty();
     }
 
     private static Set<String> getExcelHeaderNames(Class<?> head) {
@@ -253,6 +348,20 @@ public class ExcelUtils {
         Map<String, String> aliases = new HashMap<>();
         aliases.put("供应商名称", "供应商");
         aliases.put("仓库", "所属仓库");
+        aliases.put("产品编码", "配件编码");
+        aliases.put("产品名称", "配件名称");
+        aliases.put("配件编码", "产品编码");
+        aliases.put("配件名称", "产品名称");
+        aliases.put("产品编码\uff08\u4e8c\u9009\u4e00\uff09", "配件编码");
+        aliases.put("产品名称\uff08\u4e8c\u9009\u4e00\uff09", "配件名称");
+        aliases.put("配件编码\uff08\u4e8c\u9009\u4e00\uff09", "配件编码");
+        aliases.put("配件名称\uff08\u4e8c\u9009\u4e00\uff09", "配件名称");
+        aliases.put("产品编码\uff08\u4e09\u9009\u4e00\uff09", "配件编码");
+        aliases.put("产品名称\uff08\u4e09\u9009\u4e00\uff09", "配件名称");
+        aliases.put("配件编码\uff08\u4e09\u9009\u4e00\uff09", "配件编码");
+        aliases.put("配件名称\uff08\u4e09\u9009\u4e00\uff09", "配件名称");
+        aliases.put("厂家编码\uff08\u4e8c\u9009\u4e00\uff09", "厂家编码");
+        aliases.put("厂家编码\uff08\u4e09\u9009\u4e00\uff09", "厂家编码");
         return aliases;
     }
 
@@ -297,13 +406,22 @@ public class ExcelUtils {
         private final String filename;
         private final Integer dataCount;
         private final Set<String> includeColumnFieldNames;
+        private final String headClassName;
+        private final List<?> readRows;
 
         public ExcelOperationContext(String operation, String filename, Integer dataCount,
                                      Set<String> includeColumnFieldNames) {
+            this(operation, filename, dataCount, includeColumnFieldNames, null, null);
+        }
+
+        public ExcelOperationContext(String operation, String filename, Integer dataCount,
+                                     Set<String> includeColumnFieldNames, String headClassName, List<?> readRows) {
             this.operation = operation;
             this.filename = filename;
             this.dataCount = dataCount;
             this.includeColumnFieldNames = includeColumnFieldNames;
+            this.headClassName = headClassName;
+            this.readRows = readRows;
         }
 
         public String getOperation() {
@@ -320,6 +438,14 @@ public class ExcelUtils {
 
         public Set<String> getIncludeColumnFieldNames() {
             return includeColumnFieldNames;
+        }
+
+        public String getHeadClassName() {
+            return headClassName;
+        }
+
+        public List<?> getReadRows() {
+            return readRows;
         }
 
     }

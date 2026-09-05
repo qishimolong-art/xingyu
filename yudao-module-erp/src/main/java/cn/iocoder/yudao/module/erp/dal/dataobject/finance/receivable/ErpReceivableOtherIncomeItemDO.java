@@ -26,6 +26,7 @@ public class ErpReceivableOtherIncomeItemDO extends BaseDO {
     private BigDecimal amount;
     private String invoiceNo;
     private String party;
+    private Long customerId;
     private Long deptId;
     private LocalDateTime bizDate;
     private Long handlerId;

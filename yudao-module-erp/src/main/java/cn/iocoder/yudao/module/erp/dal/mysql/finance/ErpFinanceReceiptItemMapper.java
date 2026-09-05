@@ -1,11 +1,14 @@
 package cn.iocoder.yudao.module.erp.dal.mysql.finance;
 
 import cn.hutool.core.collection.CollUtil;
+import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.mybatis.core.mapper.BaseMapperX;
 import cn.iocoder.yudao.framework.mybatis.core.query.LambdaQueryWrapperX;
+import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.receipt.ErpFinanceReceiptItemPageReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.ErpFinanceReceiptItemDO;
 import cn.iocoder.yudao.module.erp.enums.finance.ErpFinanceWriteOffStatusEnum;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.baomidou.mybatisplus.core.toolkit.support.SFunction;
 import org.apache.ibatis.annotations.Mapper;
 
 import java.math.BigDecimal;
@@ -35,6 +38,23 @@ public interface ErpFinanceReceiptItemMapper extends BaseMapperX<ErpFinanceRecei
         return selectList(new LambdaQueryWrapperX<ErpFinanceReceiptItemDO>()
                 .eq(ErpFinanceReceiptItemDO::getReceiptId, receiptId)
                 .orderByAsc(ErpFinanceReceiptItemDO::getId));
+    }
+
+    default PageResult<ErpFinanceReceiptItemDO> selectPageByReceiptId(ErpFinanceReceiptItemPageReqVO reqVO) {
+        LambdaQueryWrapperX<ErpFinanceReceiptItemDO> query = new LambdaQueryWrapperX<ErpFinanceReceiptItemDO>()
+                .eq(ErpFinanceReceiptItemDO::getReceiptId, reqVO.getReceiptId());
+        SFunction<ErpFinanceReceiptItemDO, ?> orderColumn = getOrderColumn(reqVO.getOrderField());
+        if (orderColumn == null) {
+            query.orderByAsc(ErpFinanceReceiptItemDO::getId);
+        } else if ("desc".equalsIgnoreCase(reqVO.getOrderDirection())) {
+            query.orderByDesc(orderColumn);
+        } else {
+            query.orderByAsc(orderColumn);
+        }
+        if (orderColumn != null && !"id".equals(reqVO.getOrderField().trim())) {
+            query.orderByAsc(ErpFinanceReceiptItemDO::getId);
+        }
+        return selectPage(reqVO, query);
     }
 
     default List<ErpFinanceReceiptItemDO> selectListByReceiptIds(Collection<Long> receiptIds) {
@@ -113,6 +133,34 @@ public interface ErpFinanceReceiptItemMapper extends BaseMapperX<ErpFinanceRecei
             return (BigDecimal) value;
         }
         return new BigDecimal(value.toString());
+    }
+
+    static SFunction<ErpFinanceReceiptItemDO, ?> getOrderColumn(String orderField) {
+        if (orderField == null) {
+            return null;
+        }
+        switch (orderField.trim()) {
+            case "id":
+                return ErpFinanceReceiptItemDO::getId;
+            case "bizType":
+                return ErpFinanceReceiptItemDO::getBizType;
+            case "bizId":
+                return ErpFinanceReceiptItemDO::getBizId;
+            case "bizNo":
+                return ErpFinanceReceiptItemDO::getBizNo;
+            case "totalPrice":
+                return ErpFinanceReceiptItemDO::getTotalPrice;
+            case "receiptedPrice":
+                return ErpFinanceReceiptItemDO::getReceiptedPrice;
+            case "receiptPrice":
+                return ErpFinanceReceiptItemDO::getReceiptPrice;
+            case "writeOffStatus":
+                return ErpFinanceReceiptItemDO::getWriteOffStatus;
+            case "remark":
+                return ErpFinanceReceiptItemDO::getRemark;
+            default:
+                return null;
+        }
     }
 
 }

@@ -10,6 +10,7 @@ import cn.iocoder.yudao.module.erp.controller.admin.common.vo.ErpExportFieldResp
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.ErpStockUpdateRemarkReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.imports.ErpStockImportExcelVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.imports.ErpStockImportResultRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.move.ErpStockMoveItemPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.move.ErpStockMovePageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.move.ErpStockMoveRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.move.ErpStockMoveSaveReqVO;
@@ -19,6 +20,7 @@ import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockMoveDO;
 import cn.iocoder.yudao.module.erp.enums.ErpAuditStatus;
 import cn.iocoder.yudao.module.erp.framework.excel.ErpExportFieldUtils;
 import cn.iocoder.yudao.module.erp.service.base.ErpDataPermissionDeptService;
+import cn.iocoder.yudao.module.erp.service.common.ErpImportExportRecordService;
 import cn.iocoder.yudao.module.erp.service.sale.ErpSaleCartService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpStockFieldPermissionMasker;
 import cn.iocoder.yudao.module.erp.service.stock.ErpStockImportService;
@@ -71,10 +73,10 @@ public class ErpStockTransferOutController {
     private static final String FIELD_PERMISSION_MODULE = "erp_stock_transfer_out";
     private static final int TRANSFER_DIRECTION_OUT = 10;
     private static final Set<String> IMPORT_TEMPLATE_FIELDS = new LinkedHashSet<>(Arrays.asList(
-            "orderNo", "bizTime", "toDeptName", "fromWarehouseName", "toWarehouseName", "productCode", "count",
+            "orderNo", "toDeptName", "fromWarehouseName", "toWarehouseName", "productCode", "productName", "factoryCode", "count",
             "productPrice", "remark", "itemRemark"));
     private static final Set<String> IMPORT_REQUIRED_FIELDS = new LinkedHashSet<>(Arrays.asList(
-            "toDeptName", "fromWarehouseName", "toWarehouseName", "productCode", "count", "productPrice"));
+            "toDeptName", "fromWarehouseName", "toWarehouseName", "count", "productPrice"));
     private static final Map<String, String> EXPORT_FIELD_GROUP_MAP = buildExportFieldGroupMap();
     private static final Map<String, String> EXPORT_FIELD_PERMISSION_MAP = buildExportFieldPermissionMap();
 
@@ -82,6 +84,8 @@ public class ErpStockTransferOutController {
     private ErpStockMoveService stockMoveService;
     @Resource
     private ErpStockMoveController stockMoveController;
+    @Resource
+    private ErpImportExportRecordService importExportRecordService;
     @Resource
     private ErpStockImportService stockImportService;
     @Resource
@@ -204,12 +208,34 @@ public class ErpStockTransferOutController {
     @Operation(summary = "Get stock transfer-out")
     @Parameter(name = "id", description = "id", required = true, example = "1024")
     @PreAuthorize("@ss.hasPermission('erp:stock-transfer-out:query')")
-    public CommonResult<ErpStockMoveRespVO> getStockTransferOut(@RequestParam("id") Long id) {
+    public CommonResult<ErpStockMoveRespVO> getStockTransferOut(@RequestParam("id") Long id,
+                                                                @RequestParam(value = "includeItems", required = false,
+                                                                        defaultValue = "true") Boolean includeItems) {
+        ErpStockMoveDO stockMove = stockMoveService.getVisibleStockTransferOut(id);
+        if (stockMove == null || TRANSFER_DIRECTION_OUT != getTransferDirection(stockMove)) {
+            throw exception(STOCK_MOVE_NOT_EXISTS);
+        }
+        return stockMoveController.buildStockMoveDetail(stockMove, FIELD_PERMISSION_MODULE, includeItems);
+    }
+
+    public CommonResult<ErpStockMoveRespVO> getStockTransferOut(Long id) {
         ErpStockMoveDO stockMove = stockMoveService.getVisibleStockTransferOut(id);
         if (stockMove == null || TRANSFER_DIRECTION_OUT != getTransferDirection(stockMove)) {
             throw exception(STOCK_MOVE_NOT_EXISTS);
         }
         return stockMoveController.buildStockMoveDetail(stockMove, FIELD_PERMISSION_MODULE);
+    }
+
+    @GetMapping("/item-page")
+    @Operation(summary = "Get stock transfer-out item page")
+    @PreAuthorize("@ss.hasPermission('erp:stock-transfer-out:query')")
+    public CommonResult<PageResult<ErpStockMoveRespVO.Item>> getStockTransferOutItemPage(
+            @Valid ErpStockMoveItemPageReqVO pageReqVO) {
+        ErpStockMoveDO stockMove = stockMoveService.getVisibleStockTransferOut(pageReqVO.getMoveId());
+        if (stockMove == null || TRANSFER_DIRECTION_OUT != getTransferDirection(stockMove)) {
+            throw exception(STOCK_MOVE_NOT_EXISTS);
+        }
+        return stockMoveController.getStockMoveItemPage(pageReqVO, FIELD_PERMISSION_MODULE);
     }
 
     @GetMapping("/page")
@@ -275,7 +301,6 @@ public class ErpStockTransferOutController {
     public void getStockTransferOutImportTemplate(HttpServletResponse response) throws IOException {
         ErpStockImportExcelVO first = new ErpStockImportExcelVO();
         first.setOrderNo("STO-001");
-        first.setBizTime("2026-07-01 09:00:00");
         first.setToDeptName("示例调入部门");
         first.setFromWarehouseName("示例调出仓库");
         first.setToWarehouseName("示例调入仓库");
@@ -304,6 +329,14 @@ public class ErpStockTransferOutController {
     public CommonResult<ErpStockImportResultRespVO> importStockTransferOut(@RequestParam("file") MultipartFile file)
             throws Exception {
         return success(stockImportService.importStockTransferOutList(ExcelUtils.read(file, ErpStockImportExcelVO.class)));
+    }
+
+    @GetMapping("/import-failure-details/download")
+    @Operation(summary = "Download stock transfer-out import failure details")
+    @PreAuthorize("@ss.hasPermission('erp:stock-transfer-out:import')")
+    public void downloadImportFailureDetails(@RequestParam("recordId") Long recordId,
+                                             HttpServletResponse response) throws IOException {
+        importExportRecordService.downloadOwnImportFailureDetails(recordId, FIELD_PERMISSION_MODULE, response);
     }
 
     private int getTransferDirection(ErpStockMoveDO stockMove) {

@@ -3,6 +3,7 @@ package cn.iocoder.yudao.module.erp.service.finance;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.ErpFinanceUpdateRemarkReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.payment.ErpFinancePaymentDraftSaveReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.payment.ErpFinancePaymentItemPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.payment.ErpFinancePaymentPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.payment.ErpFinancePaymentSaveReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.payment.ErpFinancePaymentWriteOffCandidateRespVO;
@@ -96,6 +97,8 @@ public interface ErpFinancePaymentService {
      * @return 付款单项列表
      */
     List<ErpFinancePaymentItemDO> getFinancePaymentItemListByPaymentId(Long paymentId);
+
+    PageResult<ErpFinancePaymentItemDO> getFinancePaymentItemPage(ErpFinancePaymentItemPageReqVO pageReqVO);
 
     /**
      * 获得付款单项 List

@@ -1,10 +1,14 @@
 package cn.iocoder.yudao.module.erp.dal.mysql.sale;
 
 import cn.hutool.core.collection.CollUtil;
+import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.mybatis.core.mapper.BaseMapperX;
+import cn.iocoder.yudao.framework.mybatis.core.query.LambdaQueryWrapperX;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.out.ErpSaleOutItemPageReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleOutItemDO;
 import cn.iocoder.yudao.module.erp.enums.ErpAuditStatus;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.baomidou.mybatisplus.core.toolkit.support.SFunction;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
@@ -30,6 +34,23 @@ public interface ErpSaleOutItemMapper extends BaseMapperX<ErpSaleOutItemDO> {
         return selectList(ErpSaleOutItemDO::getOutId, outId);
     }
 
+    default PageResult<ErpSaleOutItemDO> selectPageByOutId(ErpSaleOutItemPageReqVO reqVO) {
+        LambdaQueryWrapperX<ErpSaleOutItemDO> query = new LambdaQueryWrapperX<ErpSaleOutItemDO>()
+                .eq(ErpSaleOutItemDO::getOutId, reqVO.getOutId());
+        SFunction<ErpSaleOutItemDO, ?> orderColumn = getOrderColumn(reqVO.getOrderField());
+        if (orderColumn == null) {
+            query.orderByAsc(ErpSaleOutItemDO::getId);
+        } else if ("desc".equalsIgnoreCase(reqVO.getOrderDirection())) {
+            query.orderByDesc(orderColumn);
+        } else {
+            query.orderByAsc(orderColumn);
+        }
+        if (orderColumn != null && !"id".equals(reqVO.getOrderField().trim())) {
+            query.orderByAsc(ErpSaleOutItemDO::getId);
+        }
+        return selectPage(reqVO, query);
+    }
+
     default List<ErpSaleOutItemDO> selectListByOutIds(Collection<Long> outIds) {
         return selectList(ErpSaleOutItemDO::getOutId, outIds);
     }
@@ -40,6 +61,65 @@ public interface ErpSaleOutItemMapper extends BaseMapperX<ErpSaleOutItemDO> {
 
     default int deleteByOutId(Long outId) {
         return delete(ErpSaleOutItemDO::getOutId, outId);
+    }
+
+    static SFunction<ErpSaleOutItemDO, ?> getOrderColumn(String orderField) {
+        if (orderField == null) {
+            return null;
+        }
+        switch (orderField.trim()) {
+            case "id":
+                return ErpSaleOutItemDO::getId;
+            case "orderItemId":
+                return ErpSaleOutItemDO::getOrderItemId;
+            case "productId":
+            case "productCode":
+            case "productName":
+            case "productUnitName":
+                return ErpSaleOutItemDO::getProductId;
+            case "warehouseId":
+                return ErpSaleOutItemDO::getWarehouseId;
+            case "deptId":
+                return ErpSaleOutItemDO::getDeptId;
+            case "count":
+                return ErpSaleOutItemDO::getCount;
+            case "productPrice":
+                return ErpSaleOutItemDO::getProductPrice;
+            case "totalPrice":
+                return ErpSaleOutItemDO::getTotalPrice;
+            case "taxPercent":
+                return ErpSaleOutItemDO::getTaxPercent;
+            case "taxPrice":
+                return ErpSaleOutItemDO::getTaxPrice;
+            case "giftFlag":
+                return ErpSaleOutItemDO::getGiftFlag;
+            case "vehicleModel":
+                return ErpSaleOutItemDO::getVehicleModel;
+            case "standard":
+                return ErpSaleOutItemDO::getStandard;
+            case "featureCode":
+                return ErpSaleOutItemDO::getFeatureCode;
+            case "brand":
+                return ErpSaleOutItemDO::getBrand;
+            case "drawingNo":
+                return ErpSaleOutItemDO::getDrawingNo;
+            case "batchNo":
+                return ErpSaleOutItemDO::getBatchNo;
+            case "warehousePosition":
+                return ErpSaleOutItemDO::getWarehousePosition;
+            case "unitWeight":
+                return ErpSaleOutItemDO::getUnitWeight;
+            case "packageQty":
+                return ErpSaleOutItemDO::getPackageQty;
+            case "totalWeight":
+                return ErpSaleOutItemDO::getTotalWeight;
+            case "originPlace":
+                return ErpSaleOutItemDO::getOriginPlace;
+            case "remark":
+                return ErpSaleOutItemDO::getRemark;
+            default:
+                return null;
+        }
     }
 
     default Long selectCountByProductId(Long productId) {

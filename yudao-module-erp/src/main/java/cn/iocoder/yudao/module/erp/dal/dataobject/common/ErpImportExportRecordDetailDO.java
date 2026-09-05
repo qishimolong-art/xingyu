@@ -29,6 +29,8 @@ public class ErpImportExportRecordDetailDO extends BaseDO {
 
     private Long recordId;
     private Integer rowNo;
+    private String groupKey;
+    private String detailType;
     private String bizKey;
     private String bizName;
     private String failureReason;

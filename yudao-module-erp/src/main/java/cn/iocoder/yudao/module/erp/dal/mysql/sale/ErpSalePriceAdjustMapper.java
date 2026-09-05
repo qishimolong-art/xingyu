@@ -114,6 +114,10 @@ public interface ErpSalePriceAdjustMapper extends BaseMapperX<ErpSalePriceAdjust
         return selectCount(ErpSalePriceAdjustDO::getCustomerId, customerId);
     }
 
+    default ErpSalePriceAdjustDO selectByNo(String no) {
+        return selectOne(ErpSalePriceAdjustDO::getNo, no);
+    }
+
     default int updateByIdAndStatus(Long id, Integer status, ErpSalePriceAdjustDO updateObj) {
         return update(updateObj, new LambdaUpdateWrapper<ErpSalePriceAdjustDO>()
                 .eq(ErpSalePriceAdjustDO::getId, id)

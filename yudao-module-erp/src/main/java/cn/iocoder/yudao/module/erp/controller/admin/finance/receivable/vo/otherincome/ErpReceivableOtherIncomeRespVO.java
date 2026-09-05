@@ -43,6 +43,8 @@ public class ErpReceivableOtherIncomeRespVO {
         private BigDecimal amount;
         private String invoiceNo;
         private String party;
+        private Long customerId;
+        private String customerName;
         private Long deptId;
         private String deptName;
         private LocalDateTime bizDate;

@@ -7,6 +7,7 @@ import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
 import cn.iocoder.yudao.framework.datapermission.core.util.DataPermissionUtils;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.ErpStockUpdateRemarkReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.in.ErpStockInItemBatchUpdateReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.in.ErpStockInItemPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.in.ErpStockInPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.in.ErpStockInSaveReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.accounting.ErpVoucherItemDO;
@@ -361,6 +362,12 @@ public class ErpStockInServiceImpl implements ErpStockInService {
     @Override
     public List<ErpStockInItemDO> getStockInItemListByInId(Long inId) {
         return stockInItemMapper.selectListByInId(inId);
+    }
+
+    @Override
+    public PageResult<ErpStockInItemDO> getStockInItemPage(ErpStockInItemPageReqVO pageReqVO) {
+        validateStockInExists(pageReqVO.getInId());
+        return stockInItemMapper.selectPageByInId(pageReqVO);
     }
 
     @Override

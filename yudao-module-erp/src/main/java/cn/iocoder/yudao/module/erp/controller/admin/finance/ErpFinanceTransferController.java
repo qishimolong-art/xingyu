@@ -25,6 +25,7 @@ import cn.iocoder.yudao.module.erp.dal.mysql.finance.accounting.ErpVoucherMapper
 import cn.iocoder.yudao.module.erp.enums.ErpAuditStatus;
 import cn.iocoder.yudao.module.erp.enums.finance.accounting.ErpVoucherSourceBizTypeEnum;
 import cn.iocoder.yudao.module.erp.service.base.ErpDataPermissionDeptService;
+import cn.iocoder.yudao.module.erp.service.common.ErpImportExportRecordService;
 import cn.iocoder.yudao.module.erp.service.finance.ErpAccountService;
 import cn.iocoder.yudao.module.erp.service.finance.ErpFinanceFieldPermissionMasker;
 import cn.iocoder.yudao.module.erp.service.finance.ErpFinanceTransferService;
@@ -52,10 +53,14 @@ import javax.annotation.Resource;
 import javax.servlet.http.HttpServletResponse;
 import javax.validation.Valid;
 import java.io.IOException;
+import java.time.LocalDateTime;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.stream.Stream;
 
 import static cn.iocoder.yudao.framework.apilog.core.enums.OperateTypeEnum.EXPORT;
@@ -72,6 +77,10 @@ import static cn.iocoder.yudao.module.erp.controller.admin.finance.vo.imports.Er
 @Validated
 public class ErpFinanceTransferController {
 
+    public static final Set<String> TRANSFER_IMPORT_TEMPLATE_FIELDS = Collections.unmodifiableSet(new LinkedHashSet<>(
+            Arrays.asList("outAccountId", "inAccountId", "transferPrice", "exchangeRate", "feePrice",
+                    "feeExpenseCategory", "financeUserId", "deptId", "remark", "fileUrl")));
+
     @Resource
     private ErpFinanceTransferService financeTransferService;
     @Resource
@@ -86,6 +95,8 @@ public class ErpFinanceTransferController {
     private ErpVoucherMapper voucherMapper;
     @Resource
     private ErpDataPermissionDeptService dataPermissionDeptService;
+    @Resource
+    private ErpImportExportRecordService importExportRecordService;
 
     @PostMapping("/create")
     @Operation(summary = "创建银行转账单")
@@ -229,7 +240,8 @@ public class ErpFinanceTransferController {
     public void getImportTemplate(HttpServletResponse response) throws IOException {
         ExcelUtils.writeImportTemplate(response, "银行转账导入模板.xls", "银行转账",
                 ErpFinanceTransferImportExcelVO.class,
-                Collections.singletonList(new ErpFinanceTransferImportExcelVO()));
+                Collections.singletonList(new ErpFinanceTransferImportExcelVO()),
+                TRANSFER_IMPORT_TEMPLATE_FIELDS);
     }
 
     @PostMapping("/import")
@@ -241,14 +253,14 @@ public class ErpFinanceTransferController {
         ErpFinanceImportRespVO result = new ErpFinanceImportRespVO();
         for (int i = 0; i < list.size(); i++) {
             ErpFinanceTransferImportExcelVO row = list.get(i);
-            if (row == null || allBlank(row.getTransferTime(), row.getOutAccountId(), row.getInAccountId(),
+            if (row == null || allBlank(row.getOutAccountId(), row.getInAccountId(),
                     row.getTransferPrice(), row.getExchangeRate(), row.getFeePrice(), row.getFeeExpenseCategory(),
                     row.getFinanceUserId(), row.getDeptId(), row.getRemark(), row.getFileUrl())) {
                 continue;
             }
             try {
                 ErpFinanceTransferSaveReqVO reqVO = BeanUtils.toBean(row, ErpFinanceTransferSaveReqVO.class);
-                reqVO.setTransferTime(parseDateTime(row.getTransferTime(), null));
+                reqVO.setTransferTime(parseDateTime(row.getTransferTime(), LocalDateTime.now()));
                 financeTransferService.createFinanceTransfer(reqVO);
                 result.addCreated();
             } catch (Exception ex) {
@@ -256,6 +268,14 @@ public class ErpFinanceTransferController {
             }
         }
         return success(result);
+    }
+
+    @GetMapping("/import-failure-details/download")
+    @Operation(summary = "下载银行转账导入错误数据")
+    @PreAuthorize("@ss.hasPermission('erp:finance-transfer:import')")
+    public void downloadImportFailureDetails(@RequestParam("recordId") Long recordId,
+                                             HttpServletResponse response) throws IOException {
+        importExportRecordService.downloadOwnImportFailureDetails(recordId, "erp_finance_transfer", response);
     }
 
     private PageResult<ErpFinanceTransferRespVO> buildFinanceTransferVOPageResult(PageResult<ErpFinanceTransferDO> pageResult) {

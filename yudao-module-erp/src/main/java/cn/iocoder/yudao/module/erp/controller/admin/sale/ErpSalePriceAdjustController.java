@@ -15,6 +15,7 @@ import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.priceadjust.ErpSaleO
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.priceadjust.ErpSalePriceAdjustExportRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.priceadjust.ErpSalePriceAdjustImportExcelVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.priceadjust.ErpSalePriceAdjustImportRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.priceadjust.ErpSalePriceAdjustItemPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.priceadjust.ErpSalePriceAdjustPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.priceadjust.ErpSalePriceAdjustRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.priceadjust.ErpSalePriceAdjustSaveReqVO;
@@ -28,6 +29,7 @@ import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpSaleOutItemMapper;
 import cn.iocoder.yudao.module.erp.enums.config.ErpFieldConfigModuleEnum;
 import cn.iocoder.yudao.module.erp.framework.excel.ErpExportFieldUtils;
 import cn.iocoder.yudao.module.erp.framework.excel.ErpImportTemplateRequiredFieldUtils;
+import cn.iocoder.yudao.module.erp.service.common.ErpImportExportRecordService;
 import cn.iocoder.yudao.module.erp.service.config.ErpFieldConfigService;
 import cn.iocoder.yudao.module.erp.service.sale.ErpCustomerService;
 import cn.iocoder.yudao.module.erp.service.sale.ErpSaleFieldPermissionMasker;
@@ -76,8 +78,10 @@ public class ErpSalePriceAdjustController {
     private static final Map<String, String> EXPORT_FIELD_PERMISSION_MAP = buildExportFieldPermissionMap();
     private static final Map<String, String> DETAIL_IMPORT_FIELD_ALIAS_MAP = ErpImportTemplateRequiredFieldUtils.aliasMap(
             "saleOutNo", "saleOutNo",
-            "productId", "productCode",
-            "productCode", "productCode",
+            "productId", "productIdentity",
+            "productCode", "productIdentity",
+            "productName", "productIdentity",
+            "factoryCode", "productIdentity",
             "warehouseId", "warehouseName",
             "warehouseName", "warehouseName",
             "newPrice", "newPrice",
@@ -101,6 +105,8 @@ public class ErpSalePriceAdjustController {
     private ErpSaleOutItemMapper saleOutItemMapper;
     @Resource
     private ErpWarehouseService warehouseService;
+    @Resource
+    private ErpImportExportRecordService importExportRecordService;
 
     @PostMapping("/create")
     @Operation(summary = "创建销售调价单")
@@ -160,6 +166,14 @@ public class ErpSalePriceAdjustController {
         return success(salePriceAdjustService.importSalePriceAdjustItems(list));
     }
 
+    @GetMapping("/import-failure-details/download")
+    @Operation(summary = "下载销售调价导入错误数据")
+    @PreAuthorize("@ss.hasPermission('erp:sale-price-adjust:create')")
+    public void downloadImportFailureDetails(@RequestParam("recordId") Long recordId,
+                                             HttpServletResponse response) throws IOException {
+        importExportRecordService.downloadOwnImportFailureDetails(recordId, FIELD_PERMISSION_MODULE, response);
+    }
+
     @GetMapping("/get-import-template")
     @Operation(summary = "获取销售调价导入模板")
     @PreAuthorize("@ss.hasPermission('erp:sale-price-adjust:create')")
@@ -167,6 +181,7 @@ public class ErpSalePriceAdjustController {
         ErpSalePriceAdjustImportExcelVO example = new ErpSalePriceAdjustImportExcelVO();
         example.setSaleOutNo("SO202405270001");
         example.setProductCode("P000001");
+        example.setProductName("示例配件");
         example.setWarehouseName("默认仓");
         example.setNewPrice(new BigDecimal("100.00"));
         example.setAdjustReason("客户议价");
@@ -201,12 +216,17 @@ public class ErpSalePriceAdjustController {
     @Operation(summary = "获得销售调价单")
     @Parameter(name = "id", description = "编号", required = true, example = "1024")
     @PreAuthorize("@ss.hasPermission('erp:sale-price-adjust:query')")
-    public CommonResult<ErpSalePriceAdjustRespVO> getSalePriceAdjust(@RequestParam("id") Long id) {
+    public CommonResult<ErpSalePriceAdjustRespVO> getSalePriceAdjust(@RequestParam("id") Long id,
+                                                                     @RequestParam(value = "includeItems",
+                                                                             required = false,
+                                                                             defaultValue = "true")
+                                                                     Boolean includeItems) {
         ErpSalePriceAdjustDO adjust = salePriceAdjustService.getSalePriceAdjust(id);
         if (adjust == null) {
             return success(null);
         }
-        List<ErpSalePriceAdjustItemDO> items = salePriceAdjustService.getSalePriceAdjustItemListByAdjustId(id);
+        List<ErpSalePriceAdjustItemDO> items = Boolean.TRUE.equals(includeItems)
+                ? salePriceAdjustService.getSalePriceAdjustItemListByAdjustId(id) : Collections.emptyList();
         ErpSalePriceAdjustRespVO respVO = BeanUtils.toBean(adjust, ErpSalePriceAdjustRespVO.class);
         respVO.setItems(BeanUtils.toBean(items, ErpSalePriceAdjustRespVO.Item.class));
         fillItemWarehouseSnapshots(respVO.getItems());
@@ -262,9 +282,38 @@ public class ErpSalePriceAdjustController {
                 }
             }
         }
-        fillAdjustSummary(respVO, respVO.getItems());
+        if (Boolean.TRUE.equals(includeItems)) {
+            fillAdjustSummary(respVO, respVO.getItems());
+        }
         fieldPermissionMasker.maskSaleDetailFormWithItems(FIELD_PERMISSION_MODULE, respVO);
         return success(respVO);
+    }
+
+    @PreAuthorize("@ss.hasPermission('erp:sale-price-adjust:query')")
+    public CommonResult<ErpSalePriceAdjustRespVO> getSalePriceAdjust(Long id) {
+        return getSalePriceAdjust(id, true);
+    }
+
+    @GetMapping("/item-page")
+    @Operation(summary = "获得销售调价明细分页")
+    @PreAuthorize("@ss.hasPermission('erp:sale-price-adjust:query')")
+    public CommonResult<PageResult<ErpSalePriceAdjustRespVO.Item>> getSalePriceAdjustItemPage(
+            @Valid ErpSalePriceAdjustItemPageReqVO pageReqVO) {
+        ErpSalePriceAdjustDO adjust = salePriceAdjustService.getSalePriceAdjust(pageReqVO.getAdjustId());
+        if (adjust == null) {
+            return success(PageResult.empty());
+        }
+        PageResult<ErpSalePriceAdjustItemDO> pageResult = salePriceAdjustService.getSalePriceAdjustItemPage(pageReqVO);
+        List<ErpSalePriceAdjustRespVO.Item> items = BeanUtils.toBean(pageResult.getList(),
+                ErpSalePriceAdjustRespVO.Item.class);
+        fillItemWarehouseSnapshots(items);
+        PageResult<ErpSalePriceAdjustRespVO.Item> respResult = new PageResult<>(items, pageResult.getTotal());
+        if (Boolean.TRUE.equals(pageReqVO.getMask())) {
+            ErpSalePriceAdjustRespVO context = BeanUtils.toBean(adjust, ErpSalePriceAdjustRespVO.class);
+            fieldPermissionMasker.clearSaleDetailHiddenItemFields(FIELD_PERMISSION_MODULE, context,
+                    respResult.getList());
+        }
+        return success(respResult);
     }
 
     @GetMapping("/page")

@@ -12,6 +12,7 @@ import cn.iocoder.yudao.framework.excel.core.util.ExcelUtils;
 import cn.iocoder.yudao.module.erp.controller.admin.common.vo.ErpExportFieldRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.inbill.ErpStockInBillExportRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.inbill.ErpStockInBillPageReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.inbill.ErpStockInBillItemPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.inbill.ErpStockInBillItemRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.inbill.ErpStockInBillPickupReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.inbill.ErpStockInBillRespVO;
@@ -106,23 +107,21 @@ public class ErpStockInBillController {
     @PreAuthorize("@ss.hasPermission('erp:stock-in-bill:query')")
     public CommonResult<List<ErpStockInBillItemRespVO>> getStockInBillItems(@RequestParam("id") Long id) {
         List<ErpStockInBillItemDO> items = stockInBillService.getStockInBillItemList(id);
-        Map<Long, ErpWarehouseDO> warehouseMap = CollUtil.isEmpty(items) ? Collections.emptyMap()
-                : DataPermissionUtils.executeIgnore(() ->
-                warehouseService.getWarehouseMap(convertSet(items, ErpStockInBillItemDO::getWarehouseId)));
-        Map<Long, ErpProductRespVO> productMap = CollUtil.isEmpty(items) ? Collections.emptyMap()
-                : DataPermissionUtils.executeIgnore(() ->
-                productService.getProductVOMap(convertSet(items, ErpStockInBillItemDO::getProductId)));
-        return success(BeanUtils.toBean(items, ErpStockInBillItemRespVO.class, vo -> {
-            MapUtils.findAndThen(warehouseMap, vo.getWarehouseId(),
-                    warehouse -> vo.setWarehouseName(warehouse.getName()));
-            MapUtils.findAndThen(productMap, vo.getProductId(), product -> {
-                vo.setProductCode(product.getCode());
-                vo.setProductName(product.getName());
-                vo.setProductUnitId(product.getUnitId());
-                vo.setProductUnitName(product.getUnitName());
-            });
-            vo.setRemainCount(nullToZero(vo.getCount()).subtract(nullToZero(vo.getPickedCount())));
-        }));
+        return success(buildStockInBillItemVOList(items));
+    }
+
+    @GetMapping("/item-page")
+    @Operation(summary = "获得入仓单明细分页")
+    @PreAuthorize("@ss.hasPermission('erp:stock-in-bill:query')")
+    public CommonResult<PageResult<ErpStockInBillItemRespVO>> getStockInBillItemPage(
+            @Valid ErpStockInBillItemPageReqVO pageReqVO) {
+        PageResult<ErpStockInBillItemDO> pageResult = stockInBillService.getStockInBillItemPage(pageReqVO);
+        PageResult<ErpStockInBillItemRespVO> respResult = new PageResult<>(
+                buildStockInBillItemVOList(pageResult.getList()), pageResult.getTotal());
+        if (Boolean.TRUE.equals(pageReqVO.getMask())) {
+            fieldPermissionMasker.clearHiddenItemFields(FIELD_PERMISSION_MODULE, respResult.getList());
+        }
+        return success(respResult);
     }
 
     @PutMapping("/pickup")
@@ -210,6 +209,26 @@ public class ErpStockInBillController {
 
     private java.math.BigDecimal nullToZero(java.math.BigDecimal value) {
         return value != null ? value : java.math.BigDecimal.ZERO;
+    }
+
+    private List<ErpStockInBillItemRespVO> buildStockInBillItemVOList(List<ErpStockInBillItemDO> items) {
+        Map<Long, ErpWarehouseDO> warehouseMap = CollUtil.isEmpty(items) ? Collections.emptyMap()
+                : DataPermissionUtils.executeIgnore(() ->
+                warehouseService.getWarehouseMap(convertSet(items, ErpStockInBillItemDO::getWarehouseId)));
+        Map<Long, ErpProductRespVO> productMap = CollUtil.isEmpty(items) ? Collections.emptyMap()
+                : DataPermissionUtils.executeIgnore(() ->
+                productService.getProductVOMap(convertSet(items, ErpStockInBillItemDO::getProductId)));
+        return BeanUtils.toBean(items, ErpStockInBillItemRespVO.class, vo -> {
+            MapUtils.findAndThen(warehouseMap, vo.getWarehouseId(),
+                    warehouse -> vo.setWarehouseName(warehouse.getName()));
+            MapUtils.findAndThen(productMap, vo.getProductId(), product -> {
+                vo.setProductCode(product.getCode());
+                vo.setProductName(product.getName());
+                vo.setProductUnitId(product.getUnitId());
+                vo.setProductUnitName(product.getUnitName());
+            });
+            vo.setRemainCount(nullToZero(vo.getCount()).subtract(nullToZero(vo.getPickedCount())));
+        });
     }
 
     private void fillUserNames(ErpStockInBillRespVO vo, Map<Long, AdminUserRespDTO> userMap) {

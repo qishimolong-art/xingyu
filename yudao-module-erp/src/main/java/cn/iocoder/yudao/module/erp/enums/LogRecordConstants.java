@@ -22,6 +22,7 @@ public interface LogRecordConstants {
     String ERP_SALE_PRICE_ADJUST_TYPE = "销售调价";
     String ERP_CUSTOMER_TYPE = "客户";
     String ERP_PRODUCT_TYPE = "配件信息";
+    String ERP_PRODUCT_BRAND_TYPE = "配件品牌";
     String ERP_PRODUCT_CATEGORY_TYPE = "配件分类";
     String ERP_PRODUCT_UNIT_TYPE = "配件单位";
     String ERP_ACCOUNT_TYPE = "银行账户";

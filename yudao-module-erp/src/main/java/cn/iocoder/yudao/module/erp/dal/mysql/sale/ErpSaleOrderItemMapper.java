@@ -1,9 +1,13 @@
 package cn.iocoder.yudao.module.erp.dal.mysql.sale;
 
 import cn.hutool.core.collection.CollUtil;
+import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.mybatis.core.mapper.BaseMapperX;
+import cn.iocoder.yudao.framework.mybatis.core.query.LambdaQueryWrapperX;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.order.ErpSaleOrderItemPageReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleOrderItemDO;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.baomidou.mybatisplus.core.toolkit.support.SFunction;
 import org.apache.ibatis.annotations.Mapper;
 
 import java.math.BigDecimal;
@@ -25,12 +29,74 @@ public interface ErpSaleOrderItemMapper extends BaseMapperX<ErpSaleOrderItemDO> 
         return selectList(ErpSaleOrderItemDO::getOrderId, orderId);
     }
 
+    default PageResult<ErpSaleOrderItemDO> selectPageByOrderId(ErpSaleOrderItemPageReqVO reqVO) {
+        LambdaQueryWrapperX<ErpSaleOrderItemDO> query = new LambdaQueryWrapperX<ErpSaleOrderItemDO>()
+                .eq(ErpSaleOrderItemDO::getOrderId, reqVO.getOrderId());
+        SFunction<ErpSaleOrderItemDO, ?> orderColumn = getOrderColumn(reqVO.getOrderField());
+        if (orderColumn == null) {
+            query.orderByAsc(ErpSaleOrderItemDO::getId);
+        } else if ("desc".equalsIgnoreCase(reqVO.getOrderDirection())) {
+            query.orderByDesc(orderColumn);
+        } else {
+            query.orderByAsc(orderColumn);
+        }
+        if (orderColumn != null && !"id".equals(reqVO.getOrderField().trim())) {
+            query.orderByAsc(ErpSaleOrderItemDO::getId);
+        }
+        return selectPage(reqVO, query);
+    }
+
     default List<ErpSaleOrderItemDO> selectListByOrderIds(Collection<Long> orderIds) {
         return selectList(ErpSaleOrderItemDO::getOrderId, orderIds);
     }
 
     default int deleteByOrderId(Long orderId) {
         return delete(ErpSaleOrderItemDO::getOrderId, orderId);
+    }
+
+    static SFunction<ErpSaleOrderItemDO, ?> getOrderColumn(String orderField) {
+        if (orderField == null) {
+            return null;
+        }
+        switch (orderField.trim()) {
+            case "id":
+                return ErpSaleOrderItemDO::getId;
+            case "giftFlag":
+                return ErpSaleOrderItemDO::getGiftFlag;
+            case "productId":
+            case "productCode":
+            case "productName":
+            case "productUnitName":
+                return ErpSaleOrderItemDO::getProductId;
+            case "warehouseId":
+                return ErpSaleOrderItemDO::getWarehouseId;
+            case "deptId":
+                return ErpSaleOrderItemDO::getDeptId;
+            case "count":
+                return ErpSaleOrderItemDO::getCount;
+            case "productPrice":
+                return ErpSaleOrderItemDO::getProductPrice;
+            case "totalPrice":
+                return ErpSaleOrderItemDO::getTotalPrice;
+            case "taxPercent":
+                return ErpSaleOrderItemDO::getTaxPercent;
+            case "taxPrice":
+                return ErpSaleOrderItemDO::getTaxPrice;
+            case "weight":
+                return ErpSaleOrderItemDO::getWeight;
+            case "packageQty":
+                return ErpSaleOrderItemDO::getPackageQty;
+            case "batchNo":
+                return ErpSaleOrderItemDO::getBatchNo;
+            case "outCount":
+                return ErpSaleOrderItemDO::getOutCount;
+            case "returnCount":
+                return ErpSaleOrderItemDO::getReturnCount;
+            case "remark":
+                return ErpSaleOrderItemDO::getRemark;
+            default:
+                return null;
+        }
     }
 
     default Long selectCountByProductId(Long productId) {

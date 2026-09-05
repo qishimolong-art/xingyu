@@ -1,9 +1,13 @@
 package cn.iocoder.yudao.module.erp.dal.mysql.sale;
 
 import cn.hutool.core.collection.CollUtil;
+import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.mybatis.core.mapper.BaseMapperX;
+import cn.iocoder.yudao.framework.mybatis.core.query.LambdaQueryWrapperX;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartItemPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.stock.ErpStockOccupiedDetailRespVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleCartItemDO;
+import com.baomidou.mybatisplus.core.toolkit.support.SFunction;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
@@ -25,12 +29,82 @@ public interface ErpSaleCartItemMapper extends BaseMapperX<ErpSaleCartItemDO> {
         return selectList(ErpSaleCartItemDO::getCartId, cartId);
     }
 
+    default PageResult<ErpSaleCartItemDO> selectPageByCartId(ErpSaleCartItemPageReqVO reqVO) {
+        LambdaQueryWrapperX<ErpSaleCartItemDO> query = new LambdaQueryWrapperX<ErpSaleCartItemDO>()
+                .eq(ErpSaleCartItemDO::getCartId, reqVO.getCartId());
+        SFunction<ErpSaleCartItemDO, ?> orderColumn = getOrderColumn(reqVO.getOrderField());
+        if (orderColumn == null) {
+            query.orderByAsc(ErpSaleCartItemDO::getId);
+        } else if ("desc".equalsIgnoreCase(reqVO.getOrderDirection())) {
+            query.orderByDesc(orderColumn);
+        } else {
+            query.orderByAsc(orderColumn);
+        }
+        if (orderColumn != null && !"id".equals(reqVO.getOrderField().trim())) {
+            query.orderByAsc(ErpSaleCartItemDO::getId);
+        }
+        return selectPage(reqVO, query);
+    }
+
     default List<ErpSaleCartItemDO> selectListByCartIds(Collection<Long> cartIds) {
         return selectList(ErpSaleCartItemDO::getCartId, cartIds);
     }
 
     default int deleteByCartId(Long cartId) {
         return delete(ErpSaleCartItemDO::getCartId, cartId);
+    }
+
+    static SFunction<ErpSaleCartItemDO, ?> getOrderColumn(String orderField) {
+        if (orderField == null) {
+            return null;
+        }
+        switch (orderField.trim()) {
+            case "id":
+                return ErpSaleCartItemDO::getId;
+            case "giftFlag":
+                return ErpSaleCartItemDO::getGiftFlag;
+            case "productId":
+            case "productCode":
+            case "productName":
+            case "productUnitName":
+                return ErpSaleCartItemDO::getProductId;
+            case "warehouseId":
+                return ErpSaleCartItemDO::getWarehouseId;
+            case "deptId":
+                return ErpSaleCartItemDO::getDeptId;
+            case "count":
+                return ErpSaleCartItemDO::getCount;
+            case "productPrice":
+                return ErpSaleCartItemDO::getProductPrice;
+            case "totalPrice":
+                return ErpSaleCartItemDO::getTotalPrice;
+            case "taxPercent":
+                return ErpSaleCartItemDO::getTaxPercent;
+            case "taxPrice":
+                return ErpSaleCartItemDO::getTaxPrice;
+            case "vehicleModel":
+                return ErpSaleCartItemDO::getVehicleModel;
+            case "standard":
+                return ErpSaleCartItemDO::getStandard;
+            case "weight":
+                return ErpSaleCartItemDO::getWeight;
+            case "packageQty":
+                return ErpSaleCartItemDO::getPackageQty;
+            case "warehousePosition":
+                return ErpSaleCartItemDO::getWarehousePosition;
+            case "drawingNo":
+                return ErpSaleCartItemDO::getDrawingNo;
+            case "batchNo":
+                return ErpSaleCartItemDO::getBatchNo;
+            case "brand":
+                return ErpSaleCartItemDO::getBrand;
+            case "originPlace":
+                return ErpSaleCartItemDO::getOriginPlace;
+            case "remark":
+                return ErpSaleCartItemDO::getRemark;
+            default:
+                return null;
+        }
     }
 
     default Long selectCountByProductId(Long productId) {

@@ -105,6 +105,7 @@ class ErpSettlementOffsetServiceImplTest extends BaseMockitoUnitTest {
                 .thenReturn(Collections.singletonList(ErpSupplierDO.builder().id(13L).build()));
         ErpReceivableDetailRespVO receivable = new ErpReceivableDetailRespVO();
         receivable.setIncreaseAmount(new BigDecimal("100"));
+        receivable.setOtherReceivableAmount(new BigDecimal("15"));
         receivable.setReceiptAmount(new BigDecimal("20"));
         receivable.setWriteOffAmount(new BigDecimal("10"));
         when(receivableAccountService.getReceivableDetailList(any(ErpReceivableDetailReqVO.class),
@@ -120,9 +121,9 @@ class ErpSettlementOffsetServiceImplTest extends BaseMockitoUnitTest {
 
         assertThat(result.getList()).containsExactly(candidate);
         assertThat(result.getTotal()).isEqualTo(1L);
-        assertThat(candidate.getReceivableBalance()).isEqualByComparingTo("70");
-        assertThat(candidate.getPayableBalance()).isEqualByComparingTo("40");
-        assertThat(candidate.getOffsetBalance()).isEqualByComparingTo("30");
+        assertThat(candidate.getReceivableBalance()).isEqualByComparingTo("95");
+        assertThat(candidate.getPayableBalance()).isEqualByComparingTo("45");
+        assertThat(candidate.getOffsetBalance()).isEqualByComparingTo("50");
         assertThat(reqVO.getShowZeroBalance()).isFalse();
         verify(receivableAccountService).getReceivableDetailList(any(ErpReceivableDetailReqVO.class),
                 any(ErpFinanceVisibleScope.class));
@@ -180,12 +181,14 @@ class ErpSettlementOffsetServiceImplTest extends BaseMockitoUnitTest {
         ErpSettlementOffsetDetailReqVO reqVO = new ErpSettlementOffsetDetailReqVO();
         reqVO.setCustomerId(1L);
         reqVO.setSupplierId(11L);
-        reqVO.setReceivableOrderField("increaseAmount");
+        reqVO.setReceivableOrderField("otherReceivableAmount");
         reqVO.setReceivableOrderDirection("asc");
         reqVO.setPayableOrderField("docNo");
         reqVO.setPayableOrderDirection("desc");
         ErpReceivableDetailRespVO receivableA = createReceivableDetail(1L, "YS-1", "10");
+        receivableA.setOtherReceivableAmount(new BigDecimal("10"));
         ErpReceivableDetailRespVO receivableB = createReceivableDetail(2L, "YS-2", "2");
+        receivableB.setOtherReceivableAmount(new BigDecimal("2"));
         ErpReceivableDetailRespVO receivableBlank = createReceivableDetail(3L, "YS-3", null);
         when(receivableAccountService.getReceivableDetailList(any(ErpReceivableDetailReqVO.class),
                 any(ErpFinanceVisibleScope.class))).thenReturn(Arrays.asList(receivableA, receivableBlank, receivableB));

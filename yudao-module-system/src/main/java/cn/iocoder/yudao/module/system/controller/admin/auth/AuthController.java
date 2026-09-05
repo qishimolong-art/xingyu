@@ -144,6 +144,23 @@ public class AuthController {
         return success(true);
     }
 
+    // ========== 企业微信 H5 免登相关 ==========
+
+    @GetMapping("/wecom-authorize-url")
+    @PermitAll
+    @Operation(summary = "企业微信 H5 免登授权地址")
+    @Parameter(name = "redirectUri", description = "回调路径", required = true)
+    public CommonResult<String> getWeComAuthorizeUrl(@RequestParam("redirectUri") String redirectUri) {
+        return success(authService.getWeComAuthorizeUrl(redirectUri));
+    }
+
+    @PostMapping("/wecom-silent-login")
+    @PermitAll
+    @Operation(summary = "企业微信 H5 免登，使用 code 授权码")
+    public CommonResult<AuthLoginRespVO> weComSilentLogin(@RequestBody @Valid AuthWeComLoginReqVO reqVO) {
+        return success(authService.weComSilentLogin(reqVO));
+    }
+
     @PostMapping("/reset-password")
     @PermitAll
     @Operation(summary = "重置密码")

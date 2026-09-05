@@ -4,6 +4,7 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Data;
 
 import java.math.BigDecimal;
+import java.util.Map;
 
 @Schema(description = "Admin - ERP purchase in sale-cartable item Response VO")
 @Data
@@ -59,6 +60,36 @@ public class ErpPurchaseInSaleCartableItemRespVO {
 
     @Schema(description = "Default sale price")
     private BigDecimal salePrice;
+
+    @Schema(description = "Minimum sale price")
+    private BigDecimal minPrice;
+
+    @Schema(description = "Product purchase price")
+    private BigDecimal productPurchasePrice;
+
+    @Schema(description = "Stock cost price")
+    private BigDecimal costPrice;
+
+    @Schema(description = "Reference price")
+    private BigDecimal referencePrice;
+
+    @Schema(description = "Retail price")
+    private BigDecimal retailPrice;
+
+    @Schema(description = "Last purchase price")
+    private BigDecimal lastPurchasePrice;
+
+    @Schema(description = "Backup price 1")
+    private BigDecimal backupPrice1;
+
+    @Schema(description = "Wholesale price")
+    private BigDecimal wholesalePrice;
+
+    @Schema(description = "Share price")
+    private BigDecimal sharePrice;
+
+    @Schema(description = "Product custom field values, keyed by field code")
+    private Map<String, Object> customFields;
 
     @Schema(description = "Warehouse position")
     private String warehousePosition;

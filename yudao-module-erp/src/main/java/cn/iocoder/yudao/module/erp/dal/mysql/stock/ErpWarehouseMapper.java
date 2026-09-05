@@ -36,8 +36,8 @@ public interface ErpWarehouseMapper extends BaseMapperX<ErpWarehouseDO> {
                 .likeIfPresent(ErpWarehouseDO::getRemark, reqVO.getRemark());
         ErpKeywordQuery.appendWithDeptName(wrapper, reqVO.getKeyword(),
                 ErpWarehouseDO::getName, ErpWarehouseDO::getWarehouseCode, ErpWarehouseDO::getAddress,
-                ErpWarehouseDO::getPrincipal, ErpWarehouseDO::getGoodsToBranch, ErpWarehouseDO::getDept,
-                ErpWarehouseDO::getWarehouseLocation, ErpWarehouseDO::getRemark);
+                ErpWarehouseDO::getMapName, ErpWarehouseDO::getPrincipal, ErpWarehouseDO::getGoodsToBranch,
+                ErpWarehouseDO::getDept, ErpWarehouseDO::getWarehouseLocation, ErpWarehouseDO::getRemark);
         orderByIfPresent(wrapper, reqVO);
         return selectPage(reqVO, wrapper);
     }
@@ -61,8 +61,8 @@ public interface ErpWarehouseMapper extends BaseMapperX<ErpWarehouseDO> {
                 .in(ErpWarehouseDO::getId, ids);
         ErpKeywordQuery.appendWithDeptName(wrapper, reqVO.getKeyword(),
                 ErpWarehouseDO::getName, ErpWarehouseDO::getWarehouseCode, ErpWarehouseDO::getAddress,
-                ErpWarehouseDO::getPrincipal, ErpWarehouseDO::getGoodsToBranch, ErpWarehouseDO::getDept,
-                ErpWarehouseDO::getWarehouseLocation, ErpWarehouseDO::getRemark);
+                ErpWarehouseDO::getMapName, ErpWarehouseDO::getPrincipal, ErpWarehouseDO::getGoodsToBranch,
+                ErpWarehouseDO::getDept, ErpWarehouseDO::getWarehouseLocation, ErpWarehouseDO::getRemark);
         orderByIfPresent(wrapper, reqVO);
         return selectPage(reqVO, wrapper);
     }
@@ -93,6 +93,14 @@ public interface ErpWarehouseMapper extends BaseMapperX<ErpWarehouseDO> {
                 return ErpWarehouseDO::getName;
             case "warehouseCode":
                 return ErpWarehouseDO::getWarehouseCode;
+            case "address":
+                return ErpWarehouseDO::getAddress;
+            case "mapName":
+                return ErpWarehouseDO::getMapName;
+            case "longitude":
+                return ErpWarehouseDO::getLongitude;
+            case "latitude":
+                return ErpWarehouseDO::getLatitude;
             case "deptId":
                 return ErpWarehouseDO::getDeptId;
             case "warehouseType":

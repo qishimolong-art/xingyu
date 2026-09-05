@@ -145,6 +145,13 @@ public class ErpPurchaseReturnRespVO {
         @Schema(description = "原采购入库单号", example = "RKD20260101001")
         private String sourceInNo;
 
+        @Schema(description = "来源销售退货单 ID", example = "17386")
+        private Long sourceSaleReturnId;
+        @Schema(description = "来源销售退货项 ID", example = "11756")
+        private Long sourceSaleReturnItemId;
+        @Schema(description = "来源销售退货单号", example = "XSTH20260101001")
+        private String sourceSaleReturnNo;
+
         @Schema(description = "仓库编号", requiredMode = Schema.RequiredMode.REQUIRED, example = "3113")
         private Long warehouseId;
         private Long deptId;

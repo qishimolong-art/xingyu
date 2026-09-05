@@ -16,6 +16,7 @@ import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.returns.ErpPurch
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.returns.ErpPurchaseReturnImportExcelVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.returns.ErpPurchaseReturnImportRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.returns.ErpPurchaseReturnItemBatchUpdateReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.returns.ErpPurchaseReturnItemPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.returns.ErpPurchaseReturnOrderImportExcelVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.returns.ErpPurchaseReturnPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.returns.ErpPurchaseReturnSaveReqVO;
@@ -40,6 +41,7 @@ import cn.iocoder.yudao.module.erp.enums.finance.accounting.ErpVoucherSourceBizT
 import cn.iocoder.yudao.module.erp.enums.purchase.ErpPurchaseReturnModeEnum;
 import cn.iocoder.yudao.module.erp.enums.purchase.ErpPurchaseReturnStatusEnum;
 import cn.iocoder.yudao.module.erp.enums.stock.ErpStockRecordBizTypeEnum;
+import cn.iocoder.yudao.module.erp.service.common.ErpImportProductResolver;
 import cn.iocoder.yudao.module.erp.service.common.ErpOperateLogService;
 import cn.iocoder.yudao.module.erp.service.finance.accounting.ErpAutoVoucherBuilder;
 import cn.iocoder.yudao.module.erp.service.finance.accounting.ErpBookOpenService;
@@ -240,6 +242,7 @@ public class ErpPurchaseReturnServiceImpl implements ErpPurchaseReturnService {
             throw exception(PURCHASE_RETURN_UPDATE_FAIL_APPROVE, purchaseReturn.getNo());
         }
         List<ErpPurchaseReturnItemDO> oldItems = purchaseReturnItemMapper.selectListByReturnId(updateReqVO.getId());
+        preserveSourceSaleReturnItems(updateReqVO.getItems(), oldItems);
         fieldPermissionMasker.preserveHiddenFields(FIELD_PERMISSION_MODULE, updateReqVO, purchaseReturn);
         fieldPermissionMasker.preserveHiddenItemFields(FIELD_PERMISSION_MODULE, updateReqVO.getItems(), oldItems);
         // 1.2 校验退货模�?
@@ -437,6 +440,7 @@ public class ErpPurchaseReturnServiceImpl implements ErpPurchaseReturnService {
             throw exception(PURCHASE_RETURN_UPDATE_FAIL_NOT_DRAFT, purchaseReturn.getNo());
         }
         List<ErpPurchaseReturnItemDO> oldItems = purchaseReturnItemMapper.selectListByReturnId(updateReqVO.getId());
+        preserveSourceSaleReturnItems(updateReqVO.getItems(), oldItems);
         fieldPermissionMasker.preserveHiddenFields(FIELD_PERMISSION_MODULE, updateReqVO, purchaseReturn);
         fieldPermissionMasker.preserveHiddenItemFields(FIELD_PERMISSION_MODULE, updateReqVO.getItems(), oldItems);
 
@@ -600,7 +604,7 @@ public class ErpPurchaseReturnServiceImpl implements ErpPurchaseReturnService {
         Set<String> itemKeySet = new LinkedHashSet<>();
         for (ErpPurchaseReturnSaveReqVO.Item item : list) {
             String productKey = StrUtil.blankToDefault(item.getProductCode(), String.valueOf(item.getProductId()));
-            String itemKey = item.getProductId() + "|" + item.getWarehouseId() + "|0";
+            String itemKey = buildPurchaseReturnDuplicateKey(item);
             if (!itemKeySet.add(itemKey)) {
                 throw exception(PURCHASE_RETURN_ITEM_DUPLICATE, productKey);
             }
@@ -737,7 +741,7 @@ public class ErpPurchaseReturnServiceImpl implements ErpPurchaseReturnService {
         if (CollUtil.isNotEmpty(list)) {
             for (ErpPurchaseReturnSaveReqVO.Item item : list) {
                 String productKey = StrUtil.blankToDefault(item.getProductCode(), String.valueOf(item.getProductId()));
-                String itemKey = item.getProductId() + "|" + item.getWarehouseId() + "|0";
+                String itemKey = buildPurchaseReturnDuplicateKey(item);
                 if (!itemKeySet.add(itemKey)) {
                     throw exception(PURCHASE_RETURN_ITEM_DUPLICATE, productKey);
                 }
@@ -772,6 +776,41 @@ public class ErpPurchaseReturnServiceImpl implements ErpPurchaseReturnService {
         if (item.getDeptId() == null && item.getWarehouseId() != null) {
             cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpWarehouseDO warehouse = warehouseMap.get(item.getWarehouseId());
             item.setDeptId(warehouse == null ? null : warehouse.getDeptId());
+        }
+    }
+
+    private String buildPurchaseReturnDuplicateKey(ErpPurchaseReturnSaveReqVO.Item item) {
+        if (item.getSourceSaleReturnItemId() != null) {
+            return "sale-return|" + item.getSourceSaleReturnItemId();
+        }
+        return item.getProductId() + "|" + item.getWarehouseId() + "|0";
+    }
+
+    private void preserveSourceSaleReturnItems(List<ErpPurchaseReturnSaveReqVO.Item> reqItems,
+                                               List<ErpPurchaseReturnItemDO> oldItems) {
+        if (CollUtil.isEmpty(reqItems) || CollUtil.isEmpty(oldItems)) {
+            return;
+        }
+        Map<Long, ErpPurchaseReturnItemDO> oldItemMap = convertMap(oldItems, ErpPurchaseReturnItemDO::getId);
+        for (ErpPurchaseReturnSaveReqVO.Item reqItem : reqItems) {
+            if (reqItem.getId() == null) {
+                continue;
+            }
+            ErpPurchaseReturnItemDO oldItem = oldItemMap.get(reqItem.getId());
+            if (oldItem == null || oldItem.getSourceSaleReturnItemId() == null) {
+                continue;
+            }
+            if (reqItem.getSourceSaleReturnItemId() != null
+                    && !Objects.equals(reqItem.getSourceSaleReturnItemId(), oldItem.getSourceSaleReturnItemId())) {
+                throw exception(SALE_RETURN_TRANSFER_SOURCE_CHANGED);
+            }
+            if (reqItem.getProductId() != null && !Objects.equals(reqItem.getProductId(), oldItem.getProductId())) {
+                throw exception(SALE_RETURN_TRANSFER_SOURCE_CHANGED);
+            }
+            reqItem.setSourceSaleReturnId(oldItem.getSourceSaleReturnId());
+            reqItem.setSourceSaleReturnItemId(oldItem.getSourceSaleReturnItemId());
+            reqItem.setSourceSaleReturnNo(oldItem.getSourceSaleReturnNo());
+            reqItem.setProductId(oldItem.getProductId());
         }
     }
 
@@ -970,6 +1009,12 @@ public class ErpPurchaseReturnServiceImpl implements ErpPurchaseReturnService {
     }
 
     @Override
+    public PageResult<ErpPurchaseReturnItemDO> getPurchaseReturnItemPage(ErpPurchaseReturnItemPageReqVO pageReqVO) {
+        validatePurchaseReturnExists(pageReqVO.getReturnId());
+        return purchaseReturnItemMapper.selectPageByReturnId(pageReqVO);
+    }
+
+    @Override
     public List<ErpPurchaseReturnItemDO> getPurchaseReturnItemListByReturnIds(Collection<Long> returnIds) {
         if (CollUtil.isEmpty(returnIds)) {
             return Collections.emptyList();
@@ -984,13 +1029,14 @@ public class ErpPurchaseReturnServiceImpl implements ErpPurchaseReturnService {
             return respVO;
         }
 
-        Map<String, ErpProductDO> productMap = productMapper.selectListByCodes(extractPurchaseReturnCodes(list)).stream()
-                .collect(Collectors.toMap(ErpProductDO::getCode, product -> product, (a, b) -> a));
+        ErpImportProductResolver productResolver = ErpImportProductResolver.build(list,
+                ErpPurchaseReturnImportExcelVO::getProductCode, ErpPurchaseReturnImportExcelVO::getProductName,
+                ErpPurchaseReturnImportExcelVO::getFactoryCode, productMapper);
         Map<String, cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpWarehouseDO> enabledWarehouseMap = cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.convertMap(
                 warehouseService.getPurchaseWarehouseListByStatus(CommonStatusEnum.ENABLE.getStatus()),
                 cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpWarehouseDO::getName);
         Map<Long, cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpProductRespVO> productVOMap = productService.getProductVOMap(
-                convertSet(productMap.values(), ErpProductDO::getId));
+                convertSet(productResolver.getResolvedProducts(), ErpProductDO::getId));
 
         for (int i = 0; i < list.size(); i++) {
             ErpPurchaseReturnImportExcelVO row = list.get(i);
@@ -998,7 +1044,12 @@ public class ErpPurchaseReturnServiceImpl implements ErpPurchaseReturnService {
                 continue;
             }
             try {
-                ErpProductDO product = getPurchaseReturnProduct(row, productMap);
+                ErpImportProductResolver.ResolveResult productResult =
+                        productResolver.resolve(row.getProductCode(), row.getProductName(), row.getFactoryCode());
+                if (productResult.isFailure()) {
+                    throw new IllegalArgumentException(productResult.getErrorMessage());
+                }
+                ErpProductDO product = productResult.getProduct();
                 cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpWarehouseDO warehouse =
                         getPurchaseReturnWarehouse(row, enabledWarehouseMap);
                 ErpPurchaseReturnSaveReqVO.Item item = new ErpPurchaseReturnSaveReqVO.Item();
@@ -1026,7 +1077,9 @@ public class ErpPurchaseReturnServiceImpl implements ErpPurchaseReturnService {
                 respVO.setSuccessCount(respVO.getSuccessCount() + 1);
             } catch (Exception ex) {
                 respVO.getFailureDetails().add(new ErpPurchaseReturnImportRespVO.FailureItem(
-                        i + 2, row.getProductCode(), ex.getMessage()));
+                        i + 2, row == null ? null :
+                                ErpImportProductResolver.getIdentifier(row.getProductCode(), row.getProductName(), row.getFactoryCode()),
+                        ex.getMessage()));
                 respVO.setFailureCount(respVO.getFailureCount() + 1);
             }
         }
@@ -1042,14 +1095,15 @@ public class ErpPurchaseReturnServiceImpl implements ErpPurchaseReturnService {
         }
 
         Map<String, cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpSupplierDO> supplierMap = buildSupplierMap();
-        Map<String, ErpProductDO> productMap = productMapper.selectListByCodes(extractPurchaseReturnOrderProductCodes(list)).stream()
-                .collect(Collectors.toMap(ErpProductDO::getCode, product -> product, (a, b) -> a));
+        ErpImportProductResolver productResolver = ErpImportProductResolver.build(list,
+                ErpPurchaseReturnOrderImportExcelVO::getProductCode,
+                ErpPurchaseReturnOrderImportExcelVO::getProductName, ErpPurchaseReturnOrderImportExcelVO::getFactoryCode, productMapper);
         Map<String, cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpWarehouseDO> warehouseMap =
                 warehouseService.getPurchaseWarehouseListByStatus(CommonStatusEnum.ENABLE.getStatus()).stream()
                         .collect(Collectors.toMap(cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpWarehouseDO::getName,
                                 warehouse -> warehouse, (a, b) -> a));
         Map<Long, cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpProductRespVO> productVOMap =
-                productService.getProductVOMap(convertSet(productMap.values(), ErpProductDO::getId));
+                productService.getProductVOMap(convertSet(productResolver.getResolvedProducts(), ErpProductDO::getId));
 
         List<PurchaseReturnOrderImportGroup> groups = new ArrayList<>();
         PurchaseReturnOrderImportGroup currentGroup = null;
@@ -1081,22 +1135,23 @@ public class ErpPurchaseReturnServiceImpl implements ErpPurchaseReturnService {
                     addImportFailure(respVO, rowNo, orderNo, null, ex.getMessage());
                 }
             } else if (hasDetail && currentGroup == null) {
-                addImportFailure(respVO, rowNo, null, trimToNull(row.getProductCode()), "明细行前缺少退货单主表信息");
+                addImportFailure(respVO, rowNo, null,
+                        ErpImportProductResolver.getIdentifier(row.getProductCode(), row.getProductName(), row.getFactoryCode()),
+                        "明细行前缺少退货单主表信息");
                 continue;
             }
             if (!hasDetail) {
                 continue;
             }
             String orderNo = currentGroup == null ? null : resolvePurchaseReturnOrderNo(currentGroup.getRowNo(), currentGroup.getMainRow());
-            String productCode = trimToNull(row.getProductCode());
+            ErpImportProductResolver.ResolveResult productResult =
+                    productResolver.resolve(row.getProductCode(), row.getProductName(), row.getFactoryCode());
+            String productCode = productResult.getIdentifier();
             boolean valid = true;
-            ErpProductDO product = productMap.get(productCode);
+            ErpProductDO product = productResult.getProduct();
             cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpWarehouseDO warehouse = warehouseMap.get(trimToNull(row.getWarehouseName()));
-            if (productCode == null) {
-                addImportFailure(respVO, rowNo, orderNo, productCode, "产品编码不能为空");
-                valid = false;
-            } else if (product == null) {
-                addImportFailure(respVO, rowNo, orderNo, productCode, "产品不存在：" + productCode);
+            if (productResult.isFailure()) {
+                addImportFailure(respVO, rowNo, orderNo, productCode, productResult.getErrorMessage());
                 valid = false;
             }
             if (trimToNull(row.getWarehouseName()) == null) {
@@ -1218,20 +1273,6 @@ public class ErpPurchaseReturnServiceImpl implements ErpPurchaseReturnService {
         return StrUtil.cleanBlank(normalized).toLowerCase(Locale.ROOT);
     }
 
-    private static Set<String> extractPurchaseReturnOrderProductCodes(List<ErpPurchaseReturnOrderImportExcelVO> list) {
-        Set<String> codes = new LinkedHashSet<>();
-        for (ErpPurchaseReturnOrderImportExcelVO row : list) {
-            if (row == null) {
-                continue;
-            }
-            String code = trimToNull(row.getProductCode());
-            if (code != null) {
-                codes.add(code);
-            }
-        }
-        return codes;
-    }
-
     private boolean isBlankPurchaseReturnOrderRow(ErpPurchaseReturnOrderImportExcelVO row) {
         return row == null || !hasPurchaseReturnOrderMainFields(row) && !hasPurchaseReturnOrderDetailFields(row);
     }
@@ -1243,6 +1284,8 @@ public class ErpPurchaseReturnServiceImpl implements ErpPurchaseReturnService {
 
     private boolean hasPurchaseReturnOrderDetailFields(ErpPurchaseReturnOrderImportExcelVO row) {
         return StrUtil.isNotBlank(trimToNull(row.getProductCode()))
+                || StrUtil.isNotBlank(trimToNull(row.getProductName()))
+                || StrUtil.isNotBlank(trimToNull(row.getFactoryCode()))
                 || StrUtil.isNotBlank(trimToNull(row.getWarehouseName()))
                 || row.getItemCount() != null
                 || row.getProductPrice() != null
@@ -1286,32 +1329,10 @@ public class ErpPurchaseReturnServiceImpl implements ErpPurchaseReturnService {
         respVO.setFailureCount(respVO.getFailureCount() + 1);
     }
 
-    private static Set<String> extractPurchaseReturnCodes(List<ErpPurchaseReturnImportExcelVO> list) {
-        Set<String> codes = new LinkedHashSet<>();
-        for (ErpPurchaseReturnImportExcelVO row : list) {
-            String code = trimToNull(row.getProductCode());
-            if (code != null) {
-                codes.add(code);
-            }
-        }
-        return codes;
-    }
-
     private boolean isEmptyPurchaseReturnRow(ErpPurchaseReturnImportExcelVO row) {
-        return row == null || StrUtil.isAllBlank(row.getProductCode(), row.getWarehouseName(), row.getRemark())
+        return row == null || StrUtil.isAllBlank(row.getProductCode(), row.getProductName(), row.getFactoryCode(),
+                row.getWarehouseName(), row.getRemark())
                 && row.getCount() == null && row.getProductPrice() == null;
-    }
-
-    private ErpProductDO getPurchaseReturnProduct(ErpPurchaseReturnImportExcelVO row, Map<String, ErpProductDO> productMap) {
-        String code = trimToNull(row.getProductCode());
-        if (code == null) {
-            throw new IllegalArgumentException("产品编码不能为空");
-        }
-        ErpProductDO product = productMap.get(code);
-        if (product == null) {
-            throw new IllegalArgumentException("产品不存在：" + code);
-        }
-        return product;
     }
 
     private cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpWarehouseDO getPurchaseReturnWarehouse(

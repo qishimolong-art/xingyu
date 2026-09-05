@@ -120,6 +120,8 @@ public class ErpSaleQuoteServiceImplTest extends BaseMockitoUnitTest {
     private ErpSaleFieldPermissionMasker fieldPermissionMasker;
     @Mock
     private ErpSaleItemBatchUpdateSupport batchUpdateSupport;
+    @Mock
+    private ErpSalePriceLevelPricePicker priceLevelPricePicker;
 
     @BeforeEach
     public void setUp() {
@@ -317,6 +319,68 @@ public class ErpSaleQuoteServiceImplTest extends BaseMockitoUnitTest {
         verify(saleQuoteItemMapper).updateWarehouseDeptByIds(argThat((Collection<Long> ids) ->
                         ids.size() == 2 && ids.contains(firstItem.getId()) && ids.contains(secondItem.getId())),
                 eq(targetWarehouse.getId()), eq(607L), eq(true));
+    }
+
+    @Test
+    public void testBatchUpdateSaleQuoteItems_priceLevel_updatesSelectedPricesAndTotals() {
+        Long quoteId = 16L;
+        ErpSaleQuoteDO quote = new ErpSaleQuoteDO()
+                .setId(quoteId)
+                .setNo("BJ20260509000006")
+                .setStatus(ErpSaleQuoteStatusEnum.PROCESS.getStatus())
+                .setDiscountPercent(BigDecimal.ZERO)
+                .setFeeAmount(BigDecimal.ZERO);
+        ErpSaleQuoteItemDO normalItem = new ErpSaleQuoteItemDO()
+                .setId(107L)
+                .setQuoteId(quoteId)
+                .setProductId(207L)
+                .setCount(new BigDecimal("2"))
+                .setGiftFlag(false)
+                .setProductPrice(new BigDecimal("10.00"))
+                .setTotalPrice(new BigDecimal("20.00"))
+                .setTaxPercent(new BigDecimal("10"));
+        ErpSaleQuoteItemDO giftItem = new ErpSaleQuoteItemDO()
+                .setId(108L)
+                .setQuoteId(quoteId)
+                .setProductId(208L)
+                .setCount(new BigDecimal("3"))
+                .setGiftFlag(true)
+                .setProductPrice(new BigDecimal("99.00"))
+                .setTotalPrice(new BigDecimal("297.00"))
+                .setTaxPercent(new BigDecimal("10"));
+        ErpSaleQuoteItemDO untouchedItem = new ErpSaleQuoteItemDO()
+                .setId(109L)
+                .setQuoteId(quoteId)
+                .setProductId(209L)
+                .setCount(BigDecimal.ONE)
+                .setGiftFlag(false)
+                .setProductPrice(new BigDecimal("5.00"))
+                .setTotalPrice(new BigDecimal("5.00"));
+        ErpSaleQuoteItemBatchUpdateReqVO reqVO = new ErpSaleQuoteItemBatchUpdateReqVO();
+        reqVO.setQuoteId(quoteId);
+        reqVO.setItemIds(Arrays.asList(normalItem.getId(), giftItem.getId()));
+        reqVO.setPriceLevel(10);
+        Map<Long, BigDecimal> priceMap = new HashMap<>();
+        priceMap.put(normalItem.getProductId(), new BigDecimal("12.50"));
+        priceMap.put(giftItem.getProductId(), new BigDecimal("88.00"));
+        when(saleQuoteMapper.selectById(eq(quoteId))).thenReturn(quote);
+        when(saleQuoteItemMapper.selectListByQuoteId(eq(quoteId)))
+                .thenReturn(Arrays.asList(normalItem, giftItem, untouchedItem));
+        when(priceLevelPricePicker.pickProductPriceMap(anyCollection(), eq(10))).thenReturn(priceMap);
+
+        saleQuoteService.batchUpdateSaleQuoteItems(reqVO);
+
+        verify(saleQuoteItemMapper).updateBatch(ArgumentMatchers.<Collection<ErpSaleQuoteItemDO>>argThat(items -> {
+            List<ErpSaleQuoteItemDO> list = new ArrayList<>(items);
+            return list.size() == 2
+                    && list.get(0).getProductPrice().compareTo(new BigDecimal("12.50")) == 0
+                    && list.get(0).getTotalPrice().compareTo(new BigDecimal("25.00")) == 0
+                    && list.get(1).getProductPrice().compareTo(BigDecimal.ZERO) == 0
+                    && list.get(1).getTotalPrice().compareTo(BigDecimal.ZERO) == 0;
+        }));
+        verify(saleQuoteMapper).updateById(ArgumentMatchers.<ErpSaleQuoteDO>argThat(update ->
+                update.getId().equals(quoteId)
+                        && update.getTotalProductPrice().compareTo(new BigDecimal("30.00")) == 0));
     }
 
     @Test

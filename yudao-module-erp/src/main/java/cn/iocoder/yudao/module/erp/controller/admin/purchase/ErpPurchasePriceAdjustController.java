@@ -18,6 +18,7 @@ import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.priceadjust.ErpP
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.priceadjust.ErpPurchasePriceAdjustDraftSaveReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.priceadjust.ErpPurchasePriceAdjustImportExcelVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.priceadjust.ErpPurchasePriceAdjustImportRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.priceadjust.ErpPurchasePriceAdjustItemPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.priceadjust.ErpPurchasePriceAdjustOrderImportExcelVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.priceadjust.ErpPurchasePriceAdjustPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.priceadjust.ErpPurchasePriceAdjustRespVO;
@@ -33,6 +34,7 @@ import cn.iocoder.yudao.module.erp.enums.purchase.ErpPurchasePriceAdjustTypeEnum
 import cn.iocoder.yudao.module.erp.framework.excel.ErpExportFieldUtils;
 import cn.iocoder.yudao.module.erp.framework.excel.ErpImportTemplateRequiredFieldUtils;
 import cn.iocoder.yudao.module.erp.service.config.ErpFieldConfigService;
+import cn.iocoder.yudao.module.erp.service.common.ErpImportExportRecordService;
 import cn.iocoder.yudao.module.erp.service.product.ErpProductService;
 import cn.iocoder.yudao.module.erp.service.purchase.ErpPurchaseFieldPermissionMasker;
 import cn.iocoder.yudao.module.erp.service.purchase.ErpPurchasePriceAdjustService;
@@ -65,9 +67,11 @@ import javax.validation.Valid;
 import java.io.IOException;
 import java.math.BigDecimal;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -90,6 +94,7 @@ public class ErpPurchasePriceAdjustController {
     private static final Map<String, String> EXPORT_FIELD_PERMISSION_MAP = buildExportFieldPermissionMap();
     private static final Map<String, String> DETAIL_IMPORT_FIELD_ALIAS_MAP = ErpImportTemplateRequiredFieldUtils.aliasMap(
             "productId", "productCode",
+            "productName", "productName",
             "count", "count",
             "item_count", "count",
             "itemCount", "count",
@@ -102,6 +107,7 @@ public class ErpPurchasePriceAdjustController {
             "adjustTime", "adjustTime",
             "remark", "remark",
             "productId", "productCode",
+            "productName", "productName",
             "warehouseId", "warehouseName",
             "warehouseName", "warehouseName",
             "count", "itemCount",
@@ -109,6 +115,8 @@ public class ErpPurchasePriceAdjustController {
             "itemCount", "itemCount",
             "newPrice", "newPrice",
             "adjustPrice", "newPrice");
+    private static final Set<String> ORDER_IMPORT_TEMPLATE_FIELDS = new LinkedHashSet<>(Arrays.asList(
+            "no", "supplierName", "remark", "productCode", "productName", "factoryCode", "warehouseName", "itemCount", "newPrice"));
 
     @Resource
     private ErpPurchasePriceAdjustService priceAdjustService;
@@ -131,6 +139,8 @@ public class ErpPurchasePriceAdjustController {
     private ErpPurchaseFieldPermissionMasker fieldPermissionMasker;
     @Resource
     private ErpFieldConfigService fieldConfigService;
+    @Resource
+    private ErpImportExportRecordService importExportRecordService;
 
     @PostMapping("/create")
     @Operation(summary = "创建采购调价单")
@@ -220,6 +230,15 @@ public class ErpPurchasePriceAdjustController {
         return success(priceAdjustService.importPurchasePriceAdjustOrderList(list));
     }
 
+    @GetMapping("/import-failure-details/download")
+    @Operation(summary = "下载采购调价导入错误数据")
+    @PreAuthorize("@ss.hasPermission('erp:purchase-price-adjust:create') and "
+            + "@ss.hasPermission('erp:purchase-price-adjust:update-status')")
+    public void downloadImportFailureDetails(@RequestParam("recordId") Long recordId, HttpServletResponse response)
+            throws IOException {
+        importExportRecordService.downloadOwnImportFailureDetails(recordId, FIELD_PERMISSION_MODULE, response);
+    }
+
     @GetMapping("/get-import-template")
     @Operation(summary = "获取采购调价导入模板")
     @PreAuthorize("@ss.hasPermission('erp:purchase-price-adjust:create')")
@@ -256,7 +275,8 @@ public class ErpPurchasePriceAdjustController {
         secondItem.setNewPrice(new BigDecimal("20.00"));
 
         ExcelUtils.writeImportTemplate(response, "采购调价导入模板.xls", "采购调价",
-                ErpPurchasePriceAdjustOrderImportExcelVO.class, java.util.Arrays.asList(example, secondItem), null,
+                ErpPurchasePriceAdjustOrderImportExcelVO.class, java.util.Arrays.asList(example, secondItem),
+                ORDER_IMPORT_TEMPLATE_FIELDS,
                 ErpImportTemplateRequiredFieldUtils.getRequiredFields(fieldConfigService,
                         ErpFieldConfigModuleEnum.PURCHASE_PRICE_ADJUST, ErpPurchasePriceAdjustOrderImportExcelVO.class,
                         ORDER_IMPORT_FIELD_ALIAS_MAP));
@@ -286,17 +306,19 @@ public class ErpPurchasePriceAdjustController {
     @Parameter(name = "id", description = "编号", required = true, example = "1024")
     @PreAuthorize("@ss.hasPermission('erp:purchase-price-adjust:query')")
     public CommonResult<ErpPurchasePriceAdjustRespVO> getPurchasePriceAdjust(@RequestParam("id") Long id,
-                                                                             @RequestParam(value = "mask", defaultValue = "true") Boolean mask) {
+                                                                             @RequestParam(value = "mask", defaultValue = "true") Boolean mask,
+                                                                             @RequestParam(value = "includeItems", required = false,
+                                                                                     defaultValue = "true") Boolean includeItems) {
         ErpPurchasePriceAdjustDO adjust = priceAdjustService.getPurchasePriceAdjust(id);
         if (adjust == null) {
             return success(null);
         }
-        List<ErpPurchasePriceAdjustItemDO> items = priceAdjustService.getPurchasePriceAdjustItemListByAdjustId(id);
         ErpPurchasePriceAdjustRespVO respVO = BeanUtils.toBean(adjust, ErpPurchasePriceAdjustRespVO.class);
-        respVO.setItems(BeanUtils.toBean(items, ErpPurchasePriceAdjustRespVO.Item.class));
-        fillItemProductSnapshots(respVO.getItems());
-        fillItemBatchNos(respVO.getItems());
-        fillTotalPrices(respVO, items);
+        if (Boolean.TRUE.equals(includeItems)) {
+            List<ErpPurchasePriceAdjustItemDO> items = priceAdjustService.getPurchasePriceAdjustItemListByAdjustId(id);
+            respVO.setItems(buildPurchasePriceAdjustItemVOList(items));
+            fillTotalPrices(respVO, items);
+        }
         if (adjust.getSupplierId() != null) {
             ErpSupplierDO supplier = supplierService.getSupplier(adjust.getSupplierId());
             if (supplier != null) {
@@ -348,6 +370,21 @@ public class ErpPurchasePriceAdjustController {
             fieldPermissionMasker.mask("erp_purchase_price_adjust", respVO);
         }
         return success(respVO);
+    }
+
+    @GetMapping("/item-page")
+    @Operation(summary = "获得采购调价明细分页")
+    @PreAuthorize("@ss.hasPermission('erp:purchase-price-adjust:query')")
+    public CommonResult<PageResult<ErpPurchasePriceAdjustRespVO.Item>> getPurchasePriceAdjustItemPage(
+            @Valid ErpPurchasePriceAdjustItemPageReqVO pageReqVO) {
+        PageResult<ErpPurchasePriceAdjustItemDO> pageResult =
+                priceAdjustService.getPurchasePriceAdjustItemPage(pageReqVO);
+        PageResult<ErpPurchasePriceAdjustRespVO.Item> respResult = new PageResult<>(
+                buildPurchasePriceAdjustItemVOList(pageResult.getList()), pageResult.getTotal());
+        if (Boolean.TRUE.equals(pageReqVO.getMask())) {
+            fieldPermissionMasker.clearHiddenItemFields(FIELD_PERMISSION_MODULE, respResult.getList());
+        }
+        return success(respResult);
     }
 
     @GetMapping("/page")
@@ -473,6 +510,18 @@ public class ErpPurchasePriceAdjustController {
         }
         respVO.setOriginalTotalPrice(originalTotalPrice);
         respVO.setAdjustedTotalPrice(adjustedTotalPrice);
+    }
+
+    private List<ErpPurchasePriceAdjustRespVO.Item> buildPurchasePriceAdjustItemVOList(
+            List<ErpPurchasePriceAdjustItemDO> items) {
+        List<ErpPurchasePriceAdjustRespVO.Item> respItems =
+                BeanUtils.toBean(items, ErpPurchasePriceAdjustRespVO.Item.class);
+        if (respItems == null) {
+            respItems = new ArrayList<>();
+        }
+        fillItemProductSnapshots(respItems);
+        fillItemBatchNos(respItems);
+        return respItems;
     }
 
     private void fillItemProductSnapshots(List<ErpPurchasePriceAdjustRespVO.Item> items) {

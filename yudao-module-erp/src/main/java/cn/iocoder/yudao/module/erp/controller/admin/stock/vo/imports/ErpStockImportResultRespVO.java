@@ -10,6 +10,8 @@ import java.util.List;
 @Data
 public class ErpStockImportResultRespVO {
 
+    private Long recordId;
+
     private Integer successCount = 0;
 
     private Integer createCount = 0;

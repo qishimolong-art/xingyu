@@ -9,6 +9,7 @@ import cn.iocoder.yudao.framework.common.util.collection.CollectionUtils;
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.ErpFinanceUpdateRemarkReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.receipt.ErpFinanceReceiptDraftSaveReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.receipt.ErpFinanceReceiptItemPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.receipt.ErpFinanceReceiptPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.receipt.ErpFinanceReceiptSaveReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.receipt.ErpFinanceReceiptWriteOffCandidateRespVO;
@@ -109,6 +110,8 @@ public class ErpFinanceReceiptServiceImpl implements ErpFinanceReceiptService {
     private ErpFinanceFieldPermissionMasker fieldPermissionMasker;
     @Resource
     private ErpOperateLogService operateLogService;
+    @Resource
+    private ErpFinanceAutoWriteOffService financeAutoWriteOffService;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -318,9 +321,15 @@ public class ErpFinanceReceiptServiceImpl implements ErpFinanceReceiptService {
     private void fillDefaultAmount(ErpFinanceReceiptDO receipt) {
         receipt.setDiscountPrice(normalize(getZeroIfNull(receipt.getDiscountPrice())));
         BigDecimal totalPrice = normalize(getZeroIfNull(receipt.getTotalPrice()));
+        if (totalPrice.compareTo(BigDecimal.ZERO) == 0) {
+            throw exception(FINANCE_RECEIPT_WRITEOFF_AMOUNT_INVALID, "合计收款不能为 0");
+        }
+        if (receipt.getDiscountPrice().compareTo(BigDecimal.ZERO) < 0) {
+            throw exception(FINANCE_RECEIPT_WRITEOFF_AMOUNT_INVALID, "优惠金额不能小于 0");
+        }
         BigDecimal receiptPrice = totalPrice.subtract(receipt.getDiscountPrice());
-        if (receiptPrice.compareTo(BigDecimal.ZERO) <= 0) {
-            throw exception(FINANCE_RECEIPT_WRITEOFF_AMOUNT_INVALID, "实际收款金额必须大于 0");
+        if (receiptPrice.compareTo(BigDecimal.ZERO) == 0) {
+            throw exception(FINANCE_RECEIPT_WRITEOFF_AMOUNT_INVALID, "实际收款不能为 0");
         }
         receipt.setTotalPrice(totalPrice).setReceiptPrice(normalize(receiptPrice));
     }
@@ -368,6 +377,7 @@ public class ErpFinanceReceiptServiceImpl implements ErpFinanceReceiptService {
             financeReceiptItemMapper.updateBatch(pendingItems);
             updateSalePrice(pendingItems);
         }
+        financeAutoWriteOffService.autoWriteOffReceipt(id, loginUserId);
         operateLogService.recordStatus(ERP_FINANCE_RECEIPT_TYPE, id, receipt.getNo(), true);
     }
 
@@ -441,7 +451,7 @@ public class ErpFinanceReceiptServiceImpl implements ErpFinanceReceiptService {
         BigDecimal discountPrice = normalize(getZeroIfNull(receipt.getDiscountPrice()));
         receipt.setTotalPrice(totalPrice)
                 .setDiscountPrice(discountPrice)
-                .setReceiptPrice(normalize(totalPrice.subtract(discountPrice)).max(BigDecimal.ZERO));
+                .setReceiptPrice(normalize(totalPrice.subtract(discountPrice)));
     }
 
     private void insertFinanceReceiptDraftItems(Long receiptId, List<ErpFinanceReceiptItemDO> receiptItems) {
@@ -740,8 +750,13 @@ public class ErpFinanceReceiptServiceImpl implements ErpFinanceReceiptService {
 
     private void validateReceiptAllocationLimit(ErpFinanceReceiptDO receipt, BigDecimal allocatedPrice) {
         BigDecimal normalizedAllocatedPrice = normalize(allocatedPrice);
-        if (normalizedAllocatedPrice.compareTo(BigDecimal.ZERO) < 0
-                || normalizedAllocatedPrice.compareTo(normalize(getZeroIfNull(receipt.getTotalPrice()))) > 0) {
+        BigDecimal totalPrice = normalize(getZeroIfNull(receipt.getTotalPrice()));
+        if (normalizedAllocatedPrice.compareTo(BigDecimal.ZERO) == 0) {
+            return;
+        }
+        if (totalPrice.compareTo(BigDecimal.ZERO) == 0
+                || normalizedAllocatedPrice.signum() != totalPrice.signum()
+                || normalizedAllocatedPrice.abs().compareTo(totalPrice.abs()) > 0) {
             throw exception(FINANCE_RECEIPT_WRITEOFF_AMOUNT_EXCEED);
         }
     }
@@ -827,6 +842,12 @@ public class ErpFinanceReceiptServiceImpl implements ErpFinanceReceiptService {
     @Override
     public List<ErpFinanceReceiptItemDO> getFinanceReceiptItemListByReceiptId(Long receiptId) {
         return financeReceiptItemMapper.selectListByReceiptId(receiptId);
+    }
+
+    @Override
+    public PageResult<ErpFinanceReceiptItemDO> getFinanceReceiptItemPage(ErpFinanceReceiptItemPageReqVO pageReqVO) {
+        validateFinanceReceiptExists(pageReqVO.getReceiptId());
+        return financeReceiptItemMapper.selectPageByReceiptId(pageReqVO);
     }
 
     @Override

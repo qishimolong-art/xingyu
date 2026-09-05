@@ -66,6 +66,7 @@ CREATE TABLE IF NOT EXISTS `erp_receivable_other_income_item` (
   `amount` decimal(24,6) NOT NULL DEFAULT 0,
   `invoice_no` varchar(64) DEFAULT NULL,
   `party` varchar(128) DEFAULT NULL,
+  `customer_id` bigint DEFAULT NULL COMMENT '客户ID',
   `dept_id` bigint DEFAULT NULL,
   `biz_date` datetime DEFAULT NULL,
   `handler_id` bigint DEFAULT NULL,
@@ -80,7 +81,8 @@ CREATE TABLE IF NOT EXISTS `erp_receivable_other_income_item` (
   `deleted` bit(1) DEFAULT b'0',
   `tenant_id` bigint NOT NULL DEFAULT 1,
   PRIMARY KEY (`id`),
-  KEY `idx_income_id` (`income_id`)
+  KEY `idx_income_id` (`income_id`),
+  KEY `idx_customer_id` (`customer_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='ERP 其他收入明细';
 
 INSERT IGNORE INTO `system_menu`

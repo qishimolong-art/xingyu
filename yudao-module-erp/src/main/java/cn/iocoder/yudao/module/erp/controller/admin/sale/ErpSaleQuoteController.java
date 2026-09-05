@@ -19,6 +19,7 @@ import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.quote.ErpSaleQuoteDr
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.quote.ErpSaleQuoteImportExcelVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.quote.ErpSaleQuoteImportRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.quote.ErpSaleQuoteItemBatchUpdateReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.quote.ErpSaleQuoteItemPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.quote.ErpSaleQuoteConvertCartReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.quote.ErpSaleQuoteOrderImportExcelVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.quote.ErpSaleQuotePageReqVO;
@@ -37,6 +38,7 @@ import cn.iocoder.yudao.module.erp.enums.sale.ErpSaleQuoteStatusEnum;
 import cn.iocoder.yudao.module.erp.framework.excel.ErpExportFieldUtils;
 import cn.iocoder.yudao.module.erp.framework.excel.ErpImportTemplateRequiredFieldUtils;
 import cn.iocoder.yudao.module.erp.service.base.ErpDataPermissionDeptService;
+import cn.iocoder.yudao.module.erp.service.common.ErpImportExportRecordService;
 import cn.iocoder.yudao.module.erp.service.config.ErpFieldConfigService;
 import cn.iocoder.yudao.module.erp.service.product.ErpProductService;
 import cn.iocoder.yudao.module.erp.service.sale.ErpCustomerService;
@@ -86,8 +88,10 @@ public class ErpSaleQuoteController {
     private static final Map<String, String> ORDER_IMPORT_FIELD_ALIAS_MAP = ErpImportTemplateRequiredFieldUtils.aliasMap(
             "customerId", "customerName",
             "customerName", "customerName",
-            "productId", "productCode",
-            "productCode", "productCode",
+            "productId", "productIdentity",
+            "productCode", "productIdentity",
+            "productName", "productIdentity",
+            "factoryCode", "productIdentity",
             "warehouseId", "warehouseName",
             "warehouseName", "warehouseName",
             "warehouse_name", "warehouseName",
@@ -101,8 +105,10 @@ public class ErpSaleQuoteController {
             "item_remark", "itemRemark",
             "itemRemark", "itemRemark");
     private static final Map<String, String> DETAIL_IMPORT_FIELD_ALIAS_MAP = ErpImportTemplateRequiredFieldUtils.aliasMap(
-            "productId", "productCode",
-            "productCode", "productCode",
+            "productId", "productIdentity",
+            "productCode", "productIdentity",
+            "productName", "productIdentity",
+            "factoryCode", "productIdentity",
             "count", "count",
             "productPrice", "productPrice",
             "giftFlag", "giftFlag");
@@ -129,6 +135,8 @@ public class ErpSaleQuoteController {
     private ErpFieldConfigService fieldConfigService;
     @Resource
     private ErpDataPermissionDeptService dataPermissionDeptService;
+    @Resource
+    private ErpImportExportRecordService importExportRecordService;
 
     @PostMapping("/create")
     @Operation(summary = "创建报价订单")
@@ -212,14 +220,41 @@ public class ErpSaleQuoteController {
     @GetMapping("/get")
     @Operation(summary = "获得报价订单")
     @PreAuthorize("@ss.hasPermission('erp:sale-quote:query')")
-    public CommonResult<ErpSaleQuoteRespVO> getSaleQuote(@RequestParam("id") Long id) {
+    public CommonResult<ErpSaleQuoteRespVO> getSaleQuote(@RequestParam("id") Long id,
+                                                         @RequestParam(value = "includeItems", required = false,
+                                                                 defaultValue = "true") Boolean includeItems) {
         ErpSaleQuoteDO quote = saleQuoteService.getSaleQuote(id);
         if (quote == null) {
             return success(null);
         }
-        ErpSaleQuoteRespVO respVO = buildSaleQuoteRespVO(quote, saleQuoteService.getSaleQuoteItemListByQuoteId(id));
+        List<ErpSaleQuoteItemDO> items = Boolean.TRUE.equals(includeItems)
+                ? saleQuoteService.getSaleQuoteItemListByQuoteId(id) : Collections.emptyList();
+        ErpSaleQuoteRespVO respVO = buildSaleQuoteRespVO(quote, items);
         fieldPermissionMasker.maskSaleDetailFormWithItems(FIELD_PERMISSION_MODULE, respVO);
         return success(respVO);
+    }
+
+    @PreAuthorize("@ss.hasPermission('erp:sale-quote:query')")
+    public CommonResult<ErpSaleQuoteRespVO> getSaleQuote(Long id) {
+        return getSaleQuote(id, true);
+    }
+
+    @GetMapping("/item-page")
+    @Operation(summary = "获得报价订单明细分页")
+    @PreAuthorize("@ss.hasPermission('erp:sale-quote:query')")
+    public CommonResult<PageResult<ErpSaleQuoteRespVO.Item>> getSaleQuoteItemPage(
+            @Valid ErpSaleQuoteItemPageReqVO pageReqVO) {
+        ErpSaleQuoteDO quote = saleQuoteService.getSaleQuote(pageReqVO.getQuoteId());
+        if (quote == null) {
+            return success(PageResult.empty());
+        }
+        PageResult<ErpSaleQuoteItemDO> pageResult = saleQuoteService.getSaleQuoteItemPage(pageReqVO);
+        ErpSaleQuoteRespVO respVO = buildSaleQuoteRespVO(quote, pageResult.getList());
+        PageResult<ErpSaleQuoteRespVO.Item> respResult = new PageResult<>(respVO.getItems(), pageResult.getTotal());
+        if (Boolean.TRUE.equals(pageReqVO.getMask())) {
+            fieldPermissionMasker.clearSaleDetailHiddenItemFields(FIELD_PERMISSION_MODULE, respVO, respResult.getList());
+        }
+        return success(respResult);
     }
 
     @GetMapping("/warehouse-dept-simple-list")
@@ -279,6 +314,7 @@ public class ErpSaleQuoteController {
     public void exportImportTemplate(HttpServletResponse response) throws IOException {
         ErpSaleQuoteImportExcelVO example = new ErpSaleQuoteImportExcelVO();
         example.setProductCode("P0001");
+        example.setProductName("示例配件");
         example.setCount(BigDecimal.ONE);
         example.setProductPrice(new BigDecimal("100.00"));
         example.setGiftFlag(Boolean.FALSE);
@@ -296,6 +332,7 @@ public class ErpSaleQuoteController {
         example.setCustomerName("示例客户");
         example.setRemark("整单备注");
         example.setProductCode("P0001");
+        example.setProductName("示例配件一");
         example.setWarehouseName("默认仓库");
         example.setItemCount(BigDecimal.ONE);
         example.setProductPrice(new BigDecimal("100.00"));
@@ -303,6 +340,7 @@ public class ErpSaleQuoteController {
         example.setItemRemark("明细备注");
         ErpSaleQuoteOrderImportExcelVO secondItem = new ErpSaleQuoteOrderImportExcelVO();
         secondItem.setProductCode("P0002");
+        secondItem.setProductName("示例配件二");
         secondItem.setWarehouseName("默认仓库");
         secondItem.setItemCount(BigDecimal.ONE);
         secondItem.setProductPrice(new BigDecimal("50.00"));
@@ -328,6 +366,14 @@ public class ErpSaleQuoteController {
     public CommonResult<ErpSaleImportResultRespVO> importSaleQuoteOrder(@RequestParam("file") MultipartFile file) throws Exception {
         return success(saleQuoteService.importSaleQuoteOrderList(
                 ExcelUtils.read(file, ErpSaleQuoteOrderImportExcelVO.class)));
+    }
+
+    @GetMapping("/import-failure-details/download")
+    @Operation(summary = "下载报价订单导入错误数据")
+    @PreAuthorize("@ss.hasPermission('erp:sale-quote:create')")
+    public void downloadImportFailureDetails(@RequestParam("recordId") Long recordId,
+                                             HttpServletResponse response) throws IOException {
+        importExportRecordService.downloadOwnImportFailureDetails(recordId, FIELD_PERMISSION_MODULE, response);
     }
 
     private PageResult<ErpSaleQuoteRespVO> buildSaleQuoteVOPageResult(PageResult<ErpSaleQuoteDO> pageResult) {
@@ -433,8 +479,10 @@ public class ErpSaleQuoteController {
                               Map<Long, DeptRespDTO> deptMap,
                               Map<Long, ErpSaleOutDO> saleOutMap) {
         List<ErpSaleQuoteItemDO> safeItems = CollUtil.isEmpty(items) ? Collections.emptyList() : items;
-        Map<Long, BigDecimal> lastSalePriceMap = DataPermissionUtils.executeIgnore(
-                () -> saleOutItemMapper.selectLatestSalePriceMap(convertSet(safeItems, ErpSaleQuoteItemDO::getProductId)));
+        Set<Long> productIds = convertSet(safeItems, ErpSaleQuoteItemDO::getProductId);
+        Map<Long, BigDecimal> lastSalePriceMap = saleOutItemMapper == null || CollUtil.isEmpty(productIds)
+                ? Collections.emptyMap()
+                : DataPermissionUtils.executeIgnore(() -> saleOutItemMapper.selectLatestSalePriceMap(productIds));
         Integer customerPriceLevel = vo.getCustomerId() == null || customerMap.get(vo.getCustomerId()) == null
                 ? null : customerMap.get(vo.getCustomerId()).getPriceLevel();
         boolean hidePrice = isQuoteItemPriceHidden(customerPriceLevel);

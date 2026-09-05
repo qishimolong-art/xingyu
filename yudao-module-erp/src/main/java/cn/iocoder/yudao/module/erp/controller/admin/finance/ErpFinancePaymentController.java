@@ -16,6 +16,7 @@ import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.payment.ErpFinanc
 import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.payment.ErpFinancePaymentDraftSaveReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.imports.ErpFinanceImportRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.payment.ErpFinancePaymentImportExcelVO;
+import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.payment.ErpFinancePaymentItemPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.payment.ErpFinancePaymentPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.payment.ErpFinancePaymentRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.payment.ErpFinancePaymentSaveReqVO;
@@ -33,6 +34,7 @@ import cn.iocoder.yudao.module.erp.enums.common.ErpBizTypeEnum;
 import cn.iocoder.yudao.module.erp.enums.finance.accounting.ErpVoucherSourceBizTypeEnum;
 import cn.iocoder.yudao.module.erp.enums.finance.ErpFinanceWriteOffStatusEnum;
 import cn.iocoder.yudao.module.erp.service.base.ErpDataPermissionDeptService;
+import cn.iocoder.yudao.module.erp.service.common.ErpImportExportRecordService;
 import cn.iocoder.yudao.module.erp.service.finance.ErpAccountService;
 import cn.iocoder.yudao.module.erp.service.finance.ErpFinanceFieldPermissionMasker;
 import cn.iocoder.yudao.module.erp.service.finance.ErpFinancePaymentService;
@@ -56,10 +58,13 @@ import javax.validation.Valid;
 import java.io.IOException;
 import java.math.BigDecimal;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.stream.Stream;
 
 import static cn.iocoder.yudao.framework.apilog.core.enums.OperateTypeEnum.EXPORT;
@@ -67,14 +72,17 @@ import static cn.iocoder.yudao.framework.common.pojo.CommonResult.success;
 import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.*;
 import static cn.iocoder.yudao.module.erp.controller.admin.finance.vo.imports.ErpFinanceImportUtils.allBlank;
 import static cn.iocoder.yudao.module.erp.controller.admin.finance.vo.imports.ErpFinanceImportUtils.failureReason;
-import static cn.iocoder.yudao.module.erp.controller.admin.finance.vo.imports.ErpFinanceImportUtils.parseDateTime;
-import static cn.iocoder.yudao.module.erp.controller.admin.finance.vo.imports.ErpFinanceImportUtils.zeroIfNull;
 
 @Tag(name = "管理后台 - ERP 付款单")
 @RestController
 @RequestMapping("/erp/finance-payment")
 @Validated
 public class ErpFinancePaymentController {
+
+    public static final Set<String> PAYMENT_IMPORT_TEMPLATE_FIELDS = Collections.unmodifiableSet(new LinkedHashSet<>(
+            Arrays.asList("financeUserName", "deptName", "supplierName", "accountName",
+                    "discountPrice", "totalPrice", "paymentPrice", "remark", "bizType", "bizNo", "paidPrice",
+                    "itemPaymentPrice", "itemRemark")));
 
     @Resource
     private ErpFinancePaymentService financePaymentService;
@@ -92,6 +100,10 @@ public class ErpFinancePaymentController {
     private ErpVoucherMapper voucherMapper;
     @Resource
     private ErpDataPermissionDeptService dataPermissionDeptService;
+    @Resource
+    private ErpFinanceSettlementImportResolver settlementImportResolver;
+    @Resource
+    private ErpImportExportRecordService importExportRecordService;
 
     @PostMapping("/create")
     @Operation(summary = "创建付款单")
@@ -211,19 +223,37 @@ public class ErpFinancePaymentController {
     @Operation(summary = "获得付款单")
     @Parameter(name = "id", description = "编号", required = true, example = "1024")
     @PreAuthorize("@ss.hasPermission('erp:finance-payment:query')")
-    public CommonResult<ErpFinancePaymentRespVO> getFinancePayment(@RequestParam("id") Long id) {
+    public CommonResult<ErpFinancePaymentRespVO> getFinancePayment(@RequestParam("id") Long id,
+                                                                   @RequestParam(value = "includeItems", defaultValue = "true")
+                                                                   Boolean includeItems) {
         ErpFinancePaymentDO payment = financePaymentService.getFinancePayment(id);
         if (payment == null) {
             return success(null);
         }
-        List<ErpFinancePaymentItemDO> paymentItemList = financePaymentService.getFinancePaymentItemListByPaymentId(id);
+        List<ErpFinancePaymentItemDO> paymentItemList = Boolean.FALSE.equals(includeItems)
+                ? Collections.emptyList() : financePaymentService.getFinancePaymentItemListByPaymentId(id);
         ErpFinancePaymentRespVO respVO = BeanUtils.toBean(payment, ErpFinancePaymentRespVO.class,
-                financePaymentVO -> financePaymentVO.setItems(
-                        BeanUtils.toBean(paymentItemList, ErpFinancePaymentRespVO.Item.class)));
-        fillWriteOffSummary(Collections.singletonList(respVO));
+                financePaymentVO -> financePaymentVO.setItems(buildFinancePaymentItems(paymentItemList)));
+        if (!Boolean.FALSE.equals(includeItems)) {
+            fillWriteOffSummary(Collections.singletonList(respVO));
+        }
         fillFinancePaymentNames(Collections.singletonList(respVO));
         fieldPermissionMasker.maskFormWithItems("erp_finance_payment", respVO);
         return success(respVO);
+    }
+
+    @GetMapping("/item-page")
+    @Operation(summary = "获得付款单明细分页")
+    @PreAuthorize("@ss.hasPermission('erp:finance-payment:query')")
+    public CommonResult<PageResult<ErpFinancePaymentRespVO.Item>> getFinancePaymentItemPage(
+            @Valid ErpFinancePaymentItemPageReqVO pageReqVO) {
+        PageResult<ErpFinancePaymentRespVO.Item> result = BeanUtils.toBean(
+                financePaymentService.getFinancePaymentItemPage(pageReqVO),
+                ErpFinancePaymentRespVO.Item.class);
+        if (!Boolean.FALSE.equals(pageReqVO.getMask())) {
+            fieldPermissionMasker.clearHiddenItemFields("erp_finance_payment", result.getList());
+        }
+        return success(result);
     }
 
     @GetMapping("/page")
@@ -268,7 +298,8 @@ public class ErpFinancePaymentController {
     public void getImportTemplate(HttpServletResponse response) throws IOException {
         ExcelUtils.writeImportTemplate(response, "付款单导入模板.xls", "付款单",
                 ErpFinancePaymentImportExcelVO.class,
-                Collections.singletonList(new ErpFinancePaymentImportExcelVO()));
+                Collections.singletonList(new ErpFinancePaymentImportExcelVO()),
+                PAYMENT_IMPORT_TEMPLATE_FIELDS);
     }
 
     @PostMapping("/import")
@@ -278,31 +309,33 @@ public class ErpFinancePaymentController {
             throws Exception {
         List<ErpFinancePaymentImportExcelVO> list = ExcelUtils.read(file, ErpFinancePaymentImportExcelVO.class);
         ErpFinanceImportRespVO result = new ErpFinanceImportRespVO();
+        ErpFinanceSettlementImportResolver.PaymentImportContext importContext =
+                settlementImportResolver.buildPaymentContext();
         for (int i = 0; i < list.size(); i++) {
             ErpFinancePaymentImportExcelVO row = list.get(i);
-            if (row == null || allBlank(row.getPaymentTime(), row.getSupplierId(), row.getAccountId(),
-                    row.getTotalPrice(), row.getPaymentPrice(), row.getBizType(), row.getBizId(),
-                    row.getItemPaymentPrice())) {
+            if (row == null || allBlank(row.getFinanceUserName(), row.getFinanceUserId(),
+                    row.getDeptName(), row.getDeptId(), row.getSupplierName(), row.getSupplierId(),
+                    row.getAccountName(), row.getAccountId(), row.getTotalPrice(), row.getPaymentPrice(),
+                    row.getBizType(), row.getBizNo(), row.getBizId(), row.getItemPaymentPrice())) {
                 continue;
             }
             try {
-                ErpFinancePaymentSaveReqVO reqVO = BeanUtils.toBean(row, ErpFinancePaymentSaveReqVO.class);
-                reqVO.setPaymentTime(parseDateTime(row.getPaymentTime(), null));
-                reqVO.setDiscountPrice(zeroIfNull(row.getDiscountPrice()));
-                ErpFinancePaymentSaveReqVO.Item item = new ErpFinancePaymentSaveReqVO.Item();
-                item.setBizType(row.getBizType());
-                item.setBizId(row.getBizId());
-                item.setPaidPrice(zeroIfNull(row.getPaidPrice()));
-                item.setPaymentPrice(row.getItemPaymentPrice());
-                item.setRemark(row.getItemRemark());
-                reqVO.setItems(Collections.singletonList(item));
-                financePaymentService.createFinancePayment(reqVO);
+                financePaymentService.createFinancePayment(
+                        settlementImportResolver.buildPaymentSaveReqVO(row, importContext));
                 result.addCreated();
             } catch (Exception ex) {
                 result.addFailure(i + 2, row.getPaymentTime(), failureReason(ex));
             }
         }
         return success(result);
+    }
+
+    @GetMapping("/import-failure-details/download")
+    @Operation(summary = "下载付款单导入错误数据")
+    @PreAuthorize("@ss.hasPermission('erp:finance-payment:import')")
+    public void downloadImportFailureDetails(@RequestParam("recordId") Long recordId,
+                                             HttpServletResponse response) throws IOException {
+        importExportRecordService.downloadOwnImportFailureDetails(recordId, "erp_finance_payment", response);
     }
 
     private PageResult<ErpFinancePaymentRespVO> buildFinancePaymentVOPageResult(PageResult<ErpFinancePaymentDO> pageResult) {
@@ -315,11 +348,15 @@ public class ErpFinancePaymentController {
                 ErpFinancePaymentItemDO::getPaymentId);
         PageResult<ErpFinancePaymentRespVO> result = BeanUtils.toBean(pageResult,
                 ErpFinancePaymentRespVO.class, payment -> {
-            payment.setItems(BeanUtils.toBean(financePaymentItemMap.get(payment.getId()), ErpFinancePaymentRespVO.Item.class));
+            payment.setItems(buildFinancePaymentItems(financePaymentItemMap.get(payment.getId())));
         });
         fillFinancePaymentNames(result.getList());
         fillWriteOffSummary(result.getList());
         return result;
+    }
+
+    private List<ErpFinancePaymentRespVO.Item> buildFinancePaymentItems(List<ErpFinancePaymentItemDO> items) {
+        return BeanUtils.toBean(items, ErpFinancePaymentRespVO.Item.class);
     }
 
     private void fillWriteOffSummary(List<ErpFinancePaymentRespVO> rows) {
@@ -337,11 +374,14 @@ public class ErpFinancePaymentController {
                     .setWriteOffCount((int) items.stream()
                             .filter(item -> ErpFinanceWriteOffStatusEnum.EFFECTIVE.getStatus()
                                     .equals(item.getWriteOffStatus())).count());
-            if (allocatedPrice.compareTo(BigDecimal.ZERO) < 0 || allocatedPrice.compareTo(totalPrice) > 0) {
+            if (allocatedPrice.compareTo(BigDecimal.ZERO) != 0
+                    && (totalPrice.compareTo(BigDecimal.ZERO) == 0
+                    || allocatedPrice.signum() != totalPrice.signum()
+                    || allocatedPrice.abs().compareTo(totalPrice.abs()) > 0)) {
                 row.setWriteOffStatus(3);
             } else if (allocatedPrice.compareTo(BigDecimal.ZERO) == 0) {
                 row.setWriteOffStatus(0);
-            } else if (allocatedPrice.compareTo(totalPrice) == 0) {
+            } else if (allocatedPrice.abs().compareTo(totalPrice.abs()) == 0) {
                 row.setWriteOffStatus(2);
             } else {
                 row.setWriteOffStatus(1);

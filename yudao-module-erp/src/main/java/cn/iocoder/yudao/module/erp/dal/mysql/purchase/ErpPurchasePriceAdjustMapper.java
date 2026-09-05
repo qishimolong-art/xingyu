@@ -45,6 +45,8 @@ public interface ErpPurchasePriceAdjustMapper extends BaseMapperX<ErpPurchasePri
                         String productKeyword = ErpKeywordQuery.normalize(reqVO.getProductKeyword());
                         w.like(ErpProductDO::getCode, productKeyword)
                                 .or().like(ErpProductDO::getName, productKeyword)
+                                .or().like(ErpProductDO::getPinyinCode, productKeyword)
+                                .or().like(ErpProductDO::getWubiCode, productKeyword)
                                 .or().like(ErpProductDO::getBarCode, productKeyword)
                                 .or().like(ErpProductDO::getVehicleModel, productKeyword)
                                 .or().like(ErpProductDO::getFactoryCode, productKeyword)
@@ -73,7 +75,7 @@ public interface ErpPurchasePriceAdjustMapper extends BaseMapperX<ErpPurchasePri
             query.eq(ErpPurchasePriceAdjustDO::getStatus, ErpAuditStatus.APPROVE.getStatus())
                     .apply("ABS(" + paymentPriceSql() + ") < ABS(t.total_adjust_price)");
         }
-        ErpKeywordQuery.appendWithDeptName(query, reqVO.getKeyword(),
+        ErpKeywordQuery.appendWithDeptNameAndPurchaseSupplier(query, reqVO.getKeyword(),
                 ErpPurchasePriceAdjustDO::getNo, ErpPurchasePriceAdjustDO::getRemark);
         orderByIfPresent(query, reqVO);
         return selectJoinPage(reqVO, ErpPurchasePriceAdjustDO.class, query);

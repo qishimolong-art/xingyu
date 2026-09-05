@@ -12,6 +12,7 @@ import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.imports.ErpSaleImpor
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.quote.ErpSaleQuoteImportExcelVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.quote.ErpSaleQuoteImportRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.quote.ErpSaleQuoteItemBatchUpdateReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.quote.ErpSaleQuoteItemPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.quote.ErpSaleQuoteOrderImportExcelVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.quote.ErpSaleQuoteRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.quote.ErpSaleQuoteDraftCreateReqVO;
@@ -42,6 +43,7 @@ import cn.iocoder.yudao.module.erp.enums.sale.ErpSaleBizSourceTypeEnum;
 import cn.iocoder.yudao.module.erp.enums.sale.ErpSaleCartStatusEnum;
 import cn.iocoder.yudao.module.erp.enums.sale.ErpSaleConvertTypeEnum;
 import cn.iocoder.yudao.module.erp.enums.sale.ErpSaleQuoteStatusEnum;
+import cn.iocoder.yudao.module.erp.service.common.ErpImportProductResolver;
 import cn.iocoder.yudao.module.erp.service.common.ErpOperateLogService;
 import cn.iocoder.yudao.module.erp.service.finance.ErpAccountService;
 import cn.iocoder.yudao.module.erp.service.product.ErpProductBatchNoValidator;
@@ -120,6 +122,8 @@ public class ErpSaleQuoteServiceImpl implements ErpSaleQuoteService {
     private ErpSaleFieldPermissionMasker fieldPermissionMasker;
     @Resource
     private ErpSaleItemBatchUpdateSupport batchUpdateSupport;
+    @Resource
+    private ErpSalePriceLevelPricePicker priceLevelPricePicker;
     @Resource
     private ErpSaleDocumentDefaultService saleDocumentDefaultService;
     @Resource
@@ -279,11 +283,14 @@ public class ErpSaleQuoteServiceImpl implements ErpSaleQuoteService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void batchUpdateSaleQuoteItems(ErpSaleQuoteItemBatchUpdateReqVO updateReqVO) {
-        if (updateReqVO.getWarehouseId() == null && updateReqVO.getDeptId() == null) {
+        boolean updateWarehouse = updateReqVO.getWarehouseId() != null;
+        boolean updateDept = updateReqVO.getDeptId() != null;
+        boolean updatePrice = updateReqVO.getPriceLevel() != null;
+        if (!updateWarehouse && !updateDept && !updatePrice) {
             throw exception(SALE_QUOTE_ITEM_BATCH_UPDATE_EMPTY);
         }
         batchUpdateSupport.validateFieldPermission(FIELD_PERMISSION_MODULE,
-                updateReqVO.getWarehouseId() != null, updateReqVO.getDeptId() != null,
+                updateWarehouse, updateDept, updatePrice,
                 SALE_QUOTE_ITEM_BATCH_UPDATE_FIELD_DENIED);
         ErpSaleQuoteDO quote = validateSaleQuoteExists(updateReqVO.getQuoteId());
         if (!ErpSaleQuoteStatusEnum.DRAFT.getStatus().equals(quote.getStatus())
@@ -303,25 +310,55 @@ public class ErpSaleQuoteServiceImpl implements ErpSaleQuoteService {
             selectedItems.add(item);
         }
 
-        ErpWarehouseDO targetWarehouse = batchUpdateSupport.validateTargetWarehouse(updateReqVO.getWarehouseId());
-        Long targetDeptId = batchUpdateSupport.resolveTargetDeptId(targetWarehouse, updateReqVO.getDeptId(),
-                FIELD_PERMISSION_MODULE, SALE_QUOTE_ITEM_BATCH_UPDATE_WAREHOUSE_DEPT_NOT_ALLOWED);
-        for (ErpSaleQuoteItemDO item : selectedItems) {
-            Long finalWarehouseId = targetWarehouse != null ? targetWarehouse.getId() : item.getWarehouseId();
-            batchUpdateSupport.validateWarehouseDept(finalWarehouseId, targetDeptId, FIELD_PERMISSION_MODULE,
-                    SALE_QUOTE_ITEM_BATCH_UPDATE_WAREHOUSE_DEPT_NOT_ALLOWED);
+        ErpWarehouseDO targetWarehouse = null;
+        Long targetDeptId = null;
+        if (updateWarehouse || updateDept) {
+            targetWarehouse = batchUpdateSupport.validateTargetWarehouse(updateReqVO.getWarehouseId());
+            targetDeptId = batchUpdateSupport.resolveTargetDeptId(targetWarehouse, updateReqVO.getDeptId(),
+                    FIELD_PERMISSION_MODULE, SALE_QUOTE_ITEM_BATCH_UPDATE_WAREHOUSE_DEPT_NOT_ALLOWED);
+            for (ErpSaleQuoteItemDO item : selectedItems) {
+                Long finalWarehouseId = targetWarehouse != null ? targetWarehouse.getId() : item.getWarehouseId();
+                batchUpdateSupport.validateWarehouseDept(finalWarehouseId, targetDeptId, FIELD_PERMISSION_MODULE,
+                        SALE_QUOTE_ITEM_BATCH_UPDATE_WAREHOUSE_DEPT_NOT_ALLOWED);
+            }
+            validateBatchUpdateSaleQuoteNoDuplicate(quoteItems, updateReqVO.getItemIds(), targetWarehouse);
         }
-        validateBatchUpdateSaleQuoteNoDuplicate(quoteItems, updateReqVO.getItemIds(), targetWarehouse);
 
+        Map<Long, BigDecimal> productPriceMap = updatePrice
+                ? priceLevelPricePicker.pickProductPriceMap(convertSet(selectedItems, ErpSaleQuoteItemDO::getProductId),
+                updateReqVO.getPriceLevel()) : Collections.emptyMap();
+        ErpWarehouseDO finalTargetWarehouse = targetWarehouse;
+        Long finalTargetDeptId = targetDeptId;
         selectedItems.forEach(item -> {
-            if (targetWarehouse != null) {
-                item.setWarehouseId(targetWarehouse.getId());
+            if (finalTargetWarehouse != null) {
+                item.setWarehouseId(finalTargetWarehouse.getId());
                 item.setBatchNo(null);
             }
-            item.setDeptId(targetDeptId);
+            if (updateDept || finalTargetWarehouse != null) {
+                item.setDeptId(finalTargetDeptId);
+            }
+            if (updatePrice) {
+                BigDecimal productPrice = Boolean.TRUE.equals(item.getGiftFlag())
+                        ? BigDecimal.ZERO : productPriceMap.getOrDefault(item.getProductId(), BigDecimal.ZERO);
+                item.setProductPrice(productPrice);
+                item.setTotalPrice(MoneyUtils.priceMultiply(productPrice, item.getCount()));
+                item.setTaxPrice(item.getTotalPrice() != null && item.getTaxPercent() != null
+                        ? MoneyUtils.priceMultiplyPercent(item.getTotalPrice(), item.getTaxPercent()) : BigDecimal.ZERO);
+            }
         });
-        saleQuoteItemMapper.updateWarehouseDeptByIds(convertList(selectedItems, ErpSaleQuoteItemDO::getId),
-                targetWarehouse != null ? targetWarehouse.getId() : null, targetDeptId, targetWarehouse != null);
+        if (updatePrice) {
+            saleQuoteItemMapper.updateBatch(selectedItems);
+            ErpSaleQuoteDO totalUpdate = new ErpSaleQuoteDO()
+                    .setId(updateReqVO.getQuoteId())
+                    .setDiscountPercent(quote.getDiscountPercent())
+                    .setFeeAmount(quote.getFeeAmount())
+                    .setOtherPrice(quote.getOtherPrice());
+            calculateTotalPrice(totalUpdate, quoteItems);
+            saleQuoteMapper.updateById(totalUpdate);
+        } else {
+            saleQuoteItemMapper.updateWarehouseDeptByIds(convertList(selectedItems, ErpSaleQuoteItemDO::getId),
+                    targetWarehouse != null ? targetWarehouse.getId() : null, targetDeptId, targetWarehouse != null);
+        }
         recordUpdate(updateReqVO.getQuoteId(), quote.getNo());
     }
 
@@ -830,6 +867,12 @@ public class ErpSaleQuoteServiceImpl implements ErpSaleQuoteService {
     }
 
     @Override
+    public PageResult<ErpSaleQuoteItemDO> getSaleQuoteItemPage(ErpSaleQuoteItemPageReqVO pageReqVO) {
+        validateSaleQuoteExists(pageReqVO.getQuoteId());
+        return saleQuoteItemMapper.selectPageByQuoteId(pageReqVO);
+    }
+
+    @Override
     public List<ErpSaleQuoteItemDO> getSaleQuoteItemListByQuoteIds(Collection<Long> quoteIds) {
         if (CollUtil.isEmpty(quoteIds)) {
             return Collections.emptyList();
@@ -848,37 +891,31 @@ public class ErpSaleQuoteServiceImpl implements ErpSaleQuoteService {
         if (CollUtil.isEmpty(list)) {
             return respVO;
         }
-        LinkedHashSet<String> productCodes = new LinkedHashSet<>();
-        list.forEach(row -> {
-            if (row.getProductCode() != null && !row.getProductCode().isEmpty()) {
-                productCodes.add(row.getProductCode());
-            }
-        });
-        Map<String, ErpProductDO> productMap = convertMap(
-                DataPermissionUtils.executeIgnore(() -> productMapper.selectListByCodes(productCodes)), ErpProductDO::getCode);
+        ErpImportProductResolver productResolver = ErpImportProductResolver.build(list,
+                ErpSaleQuoteImportExcelVO::getProductCode, ErpSaleQuoteImportExcelVO::getProductName, ErpSaleQuoteImportExcelVO::getFactoryCode, productMapper);
         Map<Long, ErpProductRespVO> productVOMap = DataPermissionUtils.executeIgnore(() ->
-                productService.getProductVOMap(convertList(productMap.values(), ErpProductDO::getId)));
+                productService.getProductVOMap(convertList(productResolver.getResolvedProducts(), ErpProductDO::getId)));
         list.forEach((row) -> {
             int rowNo = respVO.getSuccessCount() + respVO.getFailureCount() + 2;
-            if (row.getProductCode() == null || row.getProductCode().isEmpty()) {
-                respVO.getFailureDetails().add(new ErpSaleQuoteImportRespVO.FailureItem(rowNo, null, "产品编码不能为空"));
+            ErpImportProductResolver.ResolveResult productResult =
+                    productResolver.resolve(row.getProductCode(), row.getProductName(), row.getFactoryCode());
+            if (productResult.isFailure()) {
+                respVO.getFailureDetails().add(new ErpSaleQuoteImportRespVO.FailureItem(
+                        rowNo, productResult.getIdentifier(), productResult.getErrorMessage()));
                 respVO.setFailureCount(respVO.getFailureCount() + 1);
                 return;
             }
-            ErpProductDO product = productMap.get(row.getProductCode());
-            if (product == null) {
-                respVO.getFailureDetails().add(new ErpSaleQuoteImportRespVO.FailureItem(rowNo, row.getProductCode(), "产品不存在"));
-                respVO.setFailureCount(respVO.getFailureCount() + 1);
-                return;
-            }
+            ErpProductDO product = productResult.getProduct();
             if (product.getDefaultWarehouseId() == null) {
-                respVO.getFailureDetails().add(new ErpSaleQuoteImportRespVO.FailureItem(rowNo, row.getProductCode(), "产品默认仓库不能为空"));
+                respVO.getFailureDetails().add(new ErpSaleQuoteImportRespVO.FailureItem(
+                        rowNo, productResult.getIdentifier(), "产品默认仓库不能为空"));
                 respVO.setFailureCount(respVO.getFailureCount() + 1);
                 return;
             }
             BigDecimal count = row.getCount() == null ? BigDecimal.ZERO : row.getCount();
             if (count.compareTo(BigDecimal.ZERO) <= 0) {
-                respVO.getFailureDetails().add(new ErpSaleQuoteImportRespVO.FailureItem(rowNo, row.getProductCode(), "数量必须大于 0"));
+                respVO.getFailureDetails().add(new ErpSaleQuoteImportRespVO.FailureItem(
+                        rowNo, productResult.getIdentifier(), "数量必须大于 0"));
                 respVO.setFailureCount(respVO.getFailureCount() + 1);
                 return;
             }
@@ -906,9 +943,9 @@ public class ErpSaleQuoteServiceImpl implements ErpSaleQuoteService {
             return respVO;
         }
         Map<String, ErpCustomerDO> customerMap = buildCustomerMap();
-        Map<String, ErpProductDO> productMap = DataPermissionUtils.executeIgnore(() ->
-                        productMapper.selectListByCodes(extractQuoteOrderProductCodes(list))).stream()
-                .collect(Collectors.toMap(ErpProductDO::getCode, product -> product, (a, b) -> a));
+        ErpImportProductResolver productResolver = ErpImportProductResolver.build(list,
+                ErpSaleQuoteOrderImportExcelVO::getProductCode, ErpSaleQuoteOrderImportExcelVO::getProductName,
+                ErpSaleQuoteOrderImportExcelVO::getFactoryCode, productMapper);
         Map<String, cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpWarehouseDO> warehouseMap =
                 warehouseService.getCurrentUserVisibleSaleWarehouseList().stream()
                         .collect(Collectors.toMap(item -> normalizeKey(item.getName()), item -> item, (a, b) -> a));
@@ -934,35 +971,36 @@ public class ErpSaleQuoteServiceImpl implements ErpSaleQuoteService {
                     addImportFailure(respVO, rowNo, orderNo, null, "客户未启用：" + customer.getName());
                 }
             } else if (hasQuoteOrderDetailFields(row) && currentGroup == null) {
-                addImportFailure(respVO, rowNo, null, trimToNull(row.getProductCode()), "明细行前缺少报价订单主表信息");
+                addImportFailure(respVO, rowNo, null,
+                        ErpImportProductResolver.getIdentifier(row.getProductCode(), row.getProductName(), row.getFactoryCode()),
+                        "明细行前缺少报价订单主表信息");
                 continue;
             }
             if (!hasQuoteOrderDetailFields(row)) {
                 continue;
             }
             String orderNo = currentGroup == null ? null : resolveQuoteImportNo(currentGroup.getRowNo(), currentGroup.getMainRow());
-            String productCode = trimToNull(row.getProductCode());
-            ErpProductDO product = productMap.get(productCode);
+            ErpImportProductResolver.ResolveResult productResult =
+                    productResolver.resolve(row.getProductCode(), row.getProductName(), row.getFactoryCode());
+            String productIdentifier = productResult.getIdentifier();
+            ErpProductDO product = productResult.getProduct();
             cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpWarehouseDO warehouse =
                     trimToNull(row.getWarehouseName()) == null ? null : warehouseMap.get(normalizeKey(row.getWarehouseName()));
             boolean valid = true;
-            if (productCode == null) {
-                addImportFailure(respVO, rowNo, orderNo, null, "产品编码不能为空");
-                valid = false;
-            } else if (product == null) {
-                addImportFailure(respVO, rowNo, orderNo, productCode, "产品不存在");
+            if (productResult.isFailure()) {
+                addImportFailure(respVO, rowNo, orderNo, productIdentifier, productResult.getErrorMessage());
                 valid = false;
             }
             if (row.getItemCount() == null || row.getItemCount().compareTo(BigDecimal.ZERO) <= 0) {
-                addImportFailure(respVO, rowNo, orderNo, productCode, "数量必须大于 0");
+                addImportFailure(respVO, rowNo, orderNo, productIdentifier, "数量必须大于 0");
                 valid = false;
             }
             if (row.getProductPrice() != null && row.getProductPrice().compareTo(BigDecimal.ZERO) < 0) {
-                addImportFailure(respVO, rowNo, orderNo, productCode, "单价不能小于 0");
+                addImportFailure(respVO, rowNo, orderNo, productIdentifier, "单价不能小于 0");
                 valid = false;
             }
             if (trimToNull(row.getWarehouseName()) != null && warehouse == null) {
-                addImportFailure(respVO, rowNo, orderNo, productCode, "仓库不存在：" + row.getWarehouseName());
+                addImportFailure(respVO, rowNo, orderNo, productIdentifier, "仓库不存在：" + row.getWarehouseName());
                 valid = false;
             }
             if (valid && currentGroup != null) {
@@ -1054,6 +1092,8 @@ public class ErpSaleQuoteServiceImpl implements ErpSaleQuoteService {
 
     private boolean hasQuoteOrderDetailFields(ErpSaleQuoteOrderImportExcelVO row) {
         return trimToNull(row.getProductCode()) != null
+                || trimToNull(row.getProductName()) != null
+                || trimToNull(row.getFactoryCode()) != null
                 || trimToNull(row.getWarehouseName()) != null
                 || row.getItemCount() != null
                 || row.getProductPrice() != null

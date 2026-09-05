@@ -16,7 +16,7 @@ public class FileProperties {
 
         private String basePath = "file";
 
-        private String domain = "http://127.0.0.1:48080";
+        private String domain = "";
 
     }
 

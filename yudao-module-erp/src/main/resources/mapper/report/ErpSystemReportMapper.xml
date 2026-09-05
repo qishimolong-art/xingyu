@@ -1,0 +1,750 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="cn.iocoder.yudao.module.erp.dal.mysql.report.ErpSystemReportMapper">
+
+    <sql id="SupplierScope">
+        <if test="!partyAll">
+            AND (
+            <choose>
+                <when test="partyDeptIds != null and partyDeptIds.size() > 0">
+                    (s.dept_id IN
+                    <foreach collection="partyDeptIds" item="id" open="(" separator="," close=")">#{id}</foreach>
+                    OR (s.allow_multi_dept = true AND EXISTS (
+                    SELECT 1 FROM erp_supplier_dept esd_scope
+                    WHERE esd_scope.supplier_id = s.id AND esd_scope.deleted = b'0'
+                    AND esd_scope.tenant_id = s.tenant_id AND esd_scope.dept_id IN
+                    <foreach collection="partyDeptIds" item="id" open="(" separator="," close=")">#{id}</foreach>
+                    )))
+                    <if test="partySelfUserId != null"> OR s.creator = #{partySelfUserId}</if>
+                </when>
+                <when test="partySelfUserId != null">s.creator = #{partySelfUserId}</when>
+                <otherwise>1 = 0</otherwise>
+            </choose>
+            )
+        </if>
+    </sql>
+
+    <sql id="CustomerScope">
+        <if test="!partyAll">
+            AND (
+            <choose>
+                <when test="partyDeptIds != null and partyDeptIds.size() > 0">
+                    (c.dept_id IN
+                    <foreach collection="partyDeptIds" item="id" open="(" separator="," close=")">#{id}</foreach>
+                    OR (c.allow_multi_dept = true AND EXISTS (
+                    SELECT 1 FROM erp_customer_dept ecd_scope
+                    WHERE ecd_scope.customer_id = c.id AND ecd_scope.deleted = b'0'
+                    AND ecd_scope.tenant_id = c.tenant_id AND ecd_scope.dept_id IN
+                    <foreach collection="partyDeptIds" item="id" open="(" separator="," close=")">#{id}</foreach>
+                    )))
+                    <if test="partySelfUserId != null"> OR c.creator = #{partySelfUserId}</if>
+                </when>
+                <when test="partySelfUserId != null">c.creator = #{partySelfUserId}</when>
+                <otherwise>1 = 0</otherwise>
+            </choose>
+            )
+        </if>
+    </sql>
+
+    <sql id="PurchaseDocScope">
+        <if test="!documentAll">
+            AND (
+            <choose>
+                <when test="documentDeptIds != null and documentDeptIds.size() > 0">
+                    ${alias}.dept_id IN
+                    <foreach collection="documentDeptIds" item="id" open="(" separator="," close=")">#{id}</foreach>
+                    <if test="documentSelfUserId != null"> OR ${alias}.creator = #{documentSelfUserId}</if>
+                </when>
+                <when test="documentSelfUserId != null">${alias}.creator = #{documentSelfUserId}</when>
+                <otherwise>1 = 0</otherwise>
+            </choose>
+            )
+        </if>
+    </sql>
+
+    <sql id="SaleDocScope">
+        <if test="!documentAll">
+            AND (
+            <choose>
+                <when test="documentDeptIds != null and documentDeptIds.size() > 0">
+                    ${alias}.dept_id IN
+                    <foreach collection="documentDeptIds" item="id" open="(" separator="," close=")">#{id}</foreach>
+                    <if test="documentSelfUserId != null"> OR ${alias}.creator = #{documentSelfUserId}</if>
+                </when>
+                <when test="documentSelfUserId != null">${alias}.creator = #{documentSelfUserId}</when>
+                <otherwise>1 = 0</otherwise>
+            </choose>
+            )
+        </if>
+    </sql>
+
+    <sql id="PurchaseInFilters">
+        <if test="reqVO.supplierId != null">AND pi.supplier_id = #{reqVO.supplierId}</if>
+        <if test="reqVO.purchaser != null and reqVO.purchaser != ''">AND pi.purchaser = #{reqVO.purchaser}</if>
+        <if test="reqVO.deptId != null">
+            AND (pi.dept_id = #{reqVO.deptId} OR s.dept_id = #{reqVO.deptId}
+            OR (s.allow_multi_dept = true AND EXISTS (
+            SELECT 1 FROM erp_supplier_dept esd
+            WHERE esd.supplier_id = s.id AND esd.deleted = b'0'
+            AND esd.tenant_id = s.tenant_id AND esd.dept_id = #{reqVO.deptId})))
+        </if>
+        <if test="reqVO.startTime != null">AND pi.in_time &gt;= #{reqVO.startTime}</if>
+        <if test="reqVO.endTime != null">AND pi.in_time &lt;= #{reqVO.endTime}</if>
+    </sql>
+
+    <sql id="PurchaseReturnFilters">
+        <if test="reqVO.supplierId != null">AND pr.supplier_id = #{reqVO.supplierId}</if>
+        <if test="reqVO.purchaser != null and reqVO.purchaser != ''">AND pr.purchaser = #{reqVO.purchaser}</if>
+        <if test="reqVO.deptId != null">
+            AND (pr.dept_id = #{reqVO.deptId} OR s.dept_id = #{reqVO.deptId}
+            OR (s.allow_multi_dept = true AND EXISTS (
+            SELECT 1 FROM erp_supplier_dept esd
+            WHERE esd.supplier_id = s.id AND esd.deleted = b'0'
+            AND esd.tenant_id = s.tenant_id AND esd.dept_id = #{reqVO.deptId})))
+        </if>
+        <if test="reqVO.startTime != null">AND pr.return_time &gt;= #{reqVO.startTime}</if>
+        <if test="reqVO.endTime != null">AND pr.return_time &lt;= #{reqVO.endTime}</if>
+    </sql>
+
+    <sql id="PurchaseOrderFilters">
+        <if test="reqVO.supplierId != null">AND po.supplier_id = #{reqVO.supplierId}</if>
+        <if test="reqVO.purchaser != null and reqVO.purchaser != ''">AND po.purchaser = #{reqVO.purchaser}</if>
+        <if test="reqVO.deptId != null">
+            AND (po.dept_id = #{reqVO.deptId} OR s.dept_id = #{reqVO.deptId}
+            OR (s.allow_multi_dept = true AND EXISTS (
+            SELECT 1 FROM erp_supplier_dept esd
+            WHERE esd.supplier_id = s.id AND esd.deleted = b'0'
+            AND esd.tenant_id = s.tenant_id AND esd.dept_id = #{reqVO.deptId})))
+        </if>
+        <if test="reqVO.startTime != null">AND po.order_time &gt;= #{reqVO.startTime}</if>
+        <if test="reqVO.endTime != null">AND po.order_time &lt;= #{reqVO.endTime}</if>
+    </sql>
+
+    <sql id="PurchaseKeyword">
+        <if test="reqVO.keyword != null and reqVO.keyword != ''">
+            AND (
+            d.no LIKE CONCAT('%', #{reqVO.keyword}, '%')
+            OR d.partyName LIKE CONCAT('%', #{reqVO.keyword}, '%')
+            OR d.deptName LIKE CONCAT('%', #{reqVO.keyword}, '%')
+            OR d.userName LIKE CONCAT('%', #{reqVO.keyword}, '%')
+            OR d.productCode LIKE CONCAT('%', #{reqVO.keyword}, '%')
+            OR d.productName LIKE CONCAT('%', #{reqVO.keyword}, '%')
+            OR d.brand LIKE CONCAT('%', #{reqVO.keyword}, '%')
+            OR d.standard LIKE CONCAT('%', #{reqVO.keyword}, '%')
+            OR d.drawingNo LIKE CONCAT('%', #{reqVO.keyword}, '%')
+            )
+        </if>
+    </sql>
+
+    <sql id="PurchaseDocRows">
+        SELECT CONCAT('in-', pi.id) AS rowKey, s.id AS partyId, s.name AS partyName,
+               COALESCE(pi.dept_id, s.dept_id) AS deptId, sd.name AS deptName,
+               pi.purchaser AS userId, su.nickname AS userName,
+               NULL AS productId, NULL AS productCode, NULL AS productName, NULL AS brand, NULL AS standard,
+               NULL AS drawingNo, pi.no AS no, pi.in_time AS bizDate, '采购入库' AS docType, 1 AS bizType,
+               IFNULL(pi.total_count, 0) AS inCount, IFNULL(pi.total_price, 0) AS inAmount,
+               0 AS returnCount, 0 AS returnAmount, IFNULL(pi.total_price, 0) AS netAmount, 0 AS pendingQty
+        FROM erp_purchase_in pi
+        INNER JOIN erp_supplier s ON s.id = pi.supplier_id AND s.deleted = 0
+        LEFT JOIN system_dept sd ON sd.id = COALESCE(pi.dept_id, s.dept_id)
+        LEFT JOIN system_users su ON su.id = pi.purchaser AND su.deleted = b'0'
+        WHERE pi.deleted = 0 AND pi.status = 20
+        <include refid="PurchaseInFilters"/>
+        <include refid="SupplierScope"/>
+        <bind name="alias" value="'pi'"/>
+        <include refid="PurchaseDocScope"/>
+        UNION ALL
+        SELECT CONCAT('return-', pr.id) AS rowKey, s.id AS partyId, s.name AS partyName,
+               COALESCE(pr.dept_id, s.dept_id) AS deptId, sd.name AS deptName,
+               pr.purchaser AS userId, su.nickname AS userName,
+               NULL AS productId, NULL AS productCode, NULL AS productName, NULL AS brand, NULL AS standard,
+               NULL AS drawingNo, pr.no AS no, pr.return_time AS bizDate, '采购退货' AS docType, 2 AS bizType,
+               0 AS inCount, 0 AS inAmount,
+               IFNULL(pr.total_count, 0) AS returnCount, IFNULL(pr.total_price, 0) AS returnAmount,
+               -IFNULL(pr.total_price, 0) AS netAmount, 0 AS pendingQty
+        FROM erp_purchase_return pr
+        INNER JOIN erp_supplier s ON s.id = pr.supplier_id AND s.deleted = 0
+        LEFT JOIN system_dept sd ON sd.id = COALESCE(pr.dept_id, s.dept_id)
+        LEFT JOIN system_users su ON su.id = pr.purchaser AND su.deleted = b'0'
+        WHERE pr.deleted = 0 AND pr.status = 20
+        <include refid="PurchaseReturnFilters"/>
+        <include refid="SupplierScope"/>
+        <bind name="alias" value="'pr'"/>
+        <include refid="PurchaseDocScope"/>
+    </sql>
+
+    <sql id="PurchaseItemRows">
+        SELECT CONCAT('in-', pi.id, '-', pii.id) AS rowKey, s.id AS partyId, s.name AS partyName,
+               COALESCE(pii.dept_id, pi.dept_id, s.dept_id) AS deptId, sd.name AS deptName,
+               pi.purchaser AS userId, su.nickname AS userName,
+               p.id AS productId, p.code AS productCode, p.name AS productName,
+               COALESCE(pii.brand, p.brand) AS brand, p.standard AS standard, COALESCE(pii.drawing_no, p.drawing_no) AS drawingNo,
+               pi.no AS no, pi.in_time AS bizDate, '采购入库' AS docType, 1 AS bizType,
+               IFNULL(pii.count, 0) AS inCount, IFNULL(pii.total_price, 0) AS inAmount,
+               0 AS returnCount, 0 AS returnAmount, IFNULL(pii.total_price, 0) AS netAmount, 0 AS pendingQty
+        FROM erp_purchase_in_items pii
+        INNER JOIN erp_purchase_in pi ON pi.id = pii.in_id AND pi.deleted = 0 AND pi.status = 20
+        INNER JOIN erp_supplier s ON s.id = pi.supplier_id AND s.deleted = 0
+        LEFT JOIN erp_product p ON p.id = pii.product_id AND p.deleted = 0
+        LEFT JOIN system_dept sd ON sd.id = COALESCE(pii.dept_id, pi.dept_id, s.dept_id)
+        LEFT JOIN system_users su ON su.id = pi.purchaser AND su.deleted = b'0'
+        WHERE pii.deleted = 0
+        <include refid="PurchaseInFilters"/>
+        <include refid="SupplierScope"/>
+        <bind name="alias" value="'pi'"/>
+        <include refid="PurchaseDocScope"/>
+        UNION ALL
+        SELECT CONCAT('return-', pr.id, '-', pri.id) AS rowKey, s.id AS partyId, s.name AS partyName,
+               COALESCE(pri.dept_id, pr.dept_id, s.dept_id) AS deptId, sd.name AS deptName,
+               pr.purchaser AS userId, su.nickname AS userName,
+               p.id AS productId, p.code AS productCode, p.name AS productName,
+               COALESCE(pri.brand, p.brand) AS brand, p.standard AS standard, COALESCE(pri.drawing_no, p.drawing_no) AS drawingNo,
+               pr.no AS no, pr.return_time AS bizDate, '采购退货' AS docType, 2 AS bizType,
+               0 AS inCount, 0 AS inAmount,
+               IFNULL(pri.count, 0) AS returnCount, IFNULL(pri.total_price, 0) AS returnAmount,
+               -IFNULL(pri.total_price, 0) AS netAmount, 0 AS pendingQty
+        FROM erp_purchase_return_items pri
+        INNER JOIN erp_purchase_return pr ON pr.id = pri.return_id AND pr.deleted = 0 AND pr.status = 20
+        INNER JOIN erp_supplier s ON s.id = pr.supplier_id AND s.deleted = 0
+        LEFT JOIN erp_product p ON p.id = pri.product_id AND p.deleted = 0
+        LEFT JOIN system_dept sd ON sd.id = COALESCE(pri.dept_id, pr.dept_id, s.dept_id)
+        LEFT JOIN system_users su ON su.id = pr.purchaser AND su.deleted = b'0'
+        WHERE pri.deleted = 0
+        <include refid="PurchaseReturnFilters"/>
+        <include refid="SupplierScope"/>
+        <bind name="alias" value="'pr'"/>
+        <include refid="PurchaseDocScope"/>
+    </sql>
+
+    <sql id="PurchasePendingRows">
+        SELECT CONCAT('order-', po.id, '-', poi.id) AS rowKey, s.id AS partyId, s.name AS partyName,
+               COALESCE(poi.dept_id, po.dept_id, s.dept_id) AS deptId, sd.name AS deptName,
+               po.purchaser AS userId, su.nickname AS userName,
+               p.id AS productId, p.code AS productCode, p.name AS productName,
+               COALESCE(poi.brand, p.brand) AS brand, p.standard AS standard, COALESCE(poi.drawing_no, p.drawing_no) AS drawingNo,
+               po.no AS no, po.order_time AS bizDate, '采购订单' AS docType, 3 AS bizType,
+               0 AS inCount, 0 AS inAmount, 0 AS returnCount, 0 AS returnAmount, 0 AS netAmount,
+               GREATEST(IFNULL(poi.count, 0) - IFNULL(poi.in_count, 0), 0) AS pendingQty
+        FROM erp_purchase_order_items poi
+        INNER JOIN erp_purchase_order po ON po.id = poi.order_id AND po.deleted = 0 AND po.status = 20
+        INNER JOIN erp_supplier s ON s.id = po.supplier_id AND s.deleted = 0
+        LEFT JOIN erp_product p ON p.id = poi.product_id AND p.deleted = 0
+        LEFT JOIN system_dept sd ON sd.id = COALESCE(poi.dept_id, po.dept_id, s.dept_id)
+        LEFT JOIN system_users su ON su.id = po.purchaser AND su.deleted = b'0'
+        WHERE poi.deleted = 0
+        <include refid="PurchaseOrderFilters"/>
+        <include refid="SupplierScope"/>
+        <bind name="alias" value="'po'"/>
+        <include refid="PurchaseDocScope"/>
+    </sql>
+
+    <select id="selectSupplierOptions" resultType="java.util.HashMap">
+        SELECT s.id AS value, s.name AS label
+        FROM erp_supplier s
+        WHERE s.deleted = 0
+        <if test="reqVO.keyword != null and reqVO.keyword != ''">
+            AND s.name LIKE CONCAT('%', #{reqVO.keyword}, '%')
+        </if>
+        <include refid="SupplierScope"/>
+        ORDER BY s.id DESC
+        LIMIT 50
+    </select>
+
+    <select id="selectCustomerOptions" resultType="java.util.HashMap">
+        SELECT c.id AS value, c.name AS label
+        FROM erp_customer c
+        WHERE c.deleted = 0
+        <if test="reqVO.keyword != null and reqVO.keyword != ''">
+            AND c.name LIKE CONCAT('%', #{reqVO.keyword}, '%')
+        </if>
+        <include refid="CustomerScope"/>
+        ORDER BY c.id DESC
+        LIMIT 50
+    </select>
+
+    <select id="selectWarehouseOptions" resultType="java.util.HashMap">
+        SELECT w.id AS value, w.name AS label
+        FROM erp_warehouse w
+        WHERE w.deleted = 0 AND w.status = 0
+        <if test="warehouseIds != null">
+            AND w.id IN <foreach collection="warehouseIds" item="id" open="(" separator="," close=")">#{id}</foreach>
+        </if>
+        <if test="reqVO.keyword != null and reqVO.keyword != ''">
+            AND w.name LIKE CONCAT('%', #{reqVO.keyword}, '%')
+        </if>
+        ORDER BY w.id DESC
+        LIMIT 50
+    </select>
+
+    <select id="selectCategoryOptions" resultType="java.util.HashMap">
+        SELECT pc.id AS value, pc.name AS label
+        FROM erp_stock st
+        LEFT JOIN erp_product p ON p.id = st.product_id AND p.deleted = 0
+        INNER JOIN erp_product_category pc ON pc.id = p.category_id AND pc.deleted = b'0'
+        LEFT JOIN erp_warehouse w ON w.id = st.warehouse_id AND w.deleted = 0
+        WHERE st.deleted = b'0' AND pc.status = 0
+        <if test="warehouseIds != null">
+            AND st.warehouse_id IN <foreach collection="warehouseIds" item="id" open="(" separator="," close=")">#{id}</foreach>
+        </if>
+        <if test="reqVO.warehouseId != null">AND st.warehouse_id = #{reqVO.warehouseId}</if>
+        <if test="reqVO.keyword != null and reqVO.keyword != ''">
+            AND (pc.name LIKE CONCAT('%', #{reqVO.keyword}, '%')
+            OR p.code LIKE CONCAT('%', #{reqVO.keyword}, '%')
+            OR p.name LIKE CONCAT('%', #{reqVO.keyword}, '%'))
+        </if>
+        GROUP BY pc.id, pc.name
+        ORDER BY MAX(pc.sort) ASC, pc.id DESC
+        LIMIT 50
+    </select>
+
+    <select id="selectPurchaseSummary" resultType="cn.iocoder.yudao.module.erp.controller.admin.report.vo.system.ErpSystemReportSummaryRespVO">
+        SELECT COUNT(DISTINCT x.partyId) AS supplierCount,
+               COUNT(DISTINCT CASE WHEN x.bizType IN (1, 2) THEN x.rowKey END) AS docCount,
+               COALESCE(SUM(x.inCount), 0) AS inCount,
+               COALESCE(SUM(x.inAmount), 0) AS inAmount,
+               COALESCE(SUM(x.returnCount), 0) AS returnCount,
+               COALESCE(SUM(x.returnAmount), 0) AS returnAmount,
+               COALESCE(SUM(x.netAmount), 0) AS netAmount,
+               COALESCE(SUM(x.pendingQty), 0) AS pendingQty,
+               COALESCE(SUM(x.inAmount), 0) AS purchaseAmount,
+               COALESCE(SUM(x.inCount), 0) AS purchaseCount
+        FROM (
+            <include refid="PurchaseDocRows"/>
+            UNION ALL
+            <include refid="PurchasePendingRows"/>
+        ) x
+        <where>
+            <if test="reqVO.keyword != null and reqVO.keyword != ''">
+                (x.no LIKE CONCAT('%', #{reqVO.keyword}, '%')
+                OR x.partyName LIKE CONCAT('%', #{reqVO.keyword}, '%')
+                OR x.deptName LIKE CONCAT('%', #{reqVO.keyword}, '%')
+                OR x.userName LIKE CONCAT('%', #{reqVO.keyword}, '%')
+                OR x.productCode LIKE CONCAT('%', #{reqVO.keyword}, '%')
+                OR x.productName LIKE CONCAT('%', #{reqVO.keyword}, '%'))
+            </if>
+        </where>
+    </select>
+
+    <select id="selectPurchaseTrend" resultType="cn.iocoder.yudao.module.erp.controller.admin.report.vo.system.ErpSystemReportTrendRespVO">
+        SELECT ${periodExpr} AS period,
+               COUNT(DISTINCT d.rowKey) AS docCount,
+               COALESCE(SUM(d.inCount), 0) AS inCount,
+               COALESCE(SUM(d.inAmount), 0) AS inAmount,
+               COALESCE(SUM(d.returnCount), 0) AS returnCount,
+               COALESCE(SUM(d.returnAmount), 0) AS returnAmount,
+               COALESCE(SUM(d.netAmount), 0) AS netAmount,
+               COALESCE(SUM(d.inAmount), 0) AS purchaseAmount,
+               COALESCE(SUM(d.inCount), 0) AS purchaseCount
+        FROM (<include refid="PurchaseDocRows"/>) d
+        WHERE 1 = 1
+        <include refid="PurchaseKeyword"/>
+        GROUP BY ${periodExpr}
+        ORDER BY period ASC
+    </select>
+
+    <select id="selectPurchaseRank" resultType="cn.iocoder.yudao.module.erp.controller.admin.report.vo.system.ErpSystemReportRankRespVO">
+        SELECT r.id, r.name, r.code, SUM(r.inAmount) AS inAmount, SUM(r.returnAmount) AS returnAmount,
+               SUM(r.netAmount) AS netAmount, SUM(r.pendingQty) AS pendingQty, COUNT(*) AS count,
+               ${orderBy} AS value
+        FROM (
+            SELECT partyId AS id, partyName AS name, NULL AS code, inAmount, returnAmount, netAmount, pendingQty
+            FROM (<include refid="PurchaseItemRows"/> UNION ALL <include refid="PurchasePendingRows"/>) d
+            WHERE 1 = 1 <include refid="PurchaseKeyword"/>
+        ) r
+        GROUP BY r.id, r.name, r.code
+        ORDER BY ${orderBy} DESC, r.id DESC
+        LIMIT #{limit}
+    </select>
+
+    <sql id="PurchaseGroupedSelect">
+        <choose>
+            <when test="dimension == 'product'">
+                SELECT productId AS id, MAX(productCode) AS code, MAX(productName) AS name, MAX(brand) AS brand,
+                       MAX(standard) AS standard, MAX(drawingNo) AS drawingNo, COUNT(DISTINCT partyId) AS supplierCount,
+                       SUM(inCount) AS inCount, SUM(inAmount) AS inAmount, SUM(returnCount) AS returnCount,
+                       SUM(returnAmount) AS returnAmount, SUM(netAmount) AS netAmount, SUM(pendingQty) AS pendingQty
+                FROM (<include refid="PurchaseItemRows"/> UNION ALL <include refid="PurchasePendingRows"/>) d
+                WHERE productId IS NOT NULL <include refid="PurchaseKeyword"/>
+                GROUP BY productId
+            </when>
+            <when test="dimension == 'dept'">
+                SELECT deptId AS id, COALESCE(MAX(deptName), '未设置部门') AS name, COUNT(DISTINCT partyId) AS supplierCount,
+                       SUM(inCount) AS inCount, SUM(inAmount) AS inAmount, SUM(returnCount) AS returnCount,
+                       SUM(returnAmount) AS returnAmount, SUM(netAmount) AS netAmount, SUM(pendingQty) AS pendingQty
+                FROM (<include refid="PurchaseItemRows"/> UNION ALL <include refid="PurchasePendingRows"/>) d
+                WHERE 1 = 1 <include refid="PurchaseKeyword"/>
+                GROUP BY deptId
+            </when>
+            <when test="dimension == 'document'">
+                SELECT rowKey, partyName AS supplierName, deptName, userName, docType, no AS docNo, bizDate AS docDate,
+                       inCount + returnCount AS bizCount, inAmount, returnAmount, netAmount, pendingQty
+                FROM (<include refid="PurchaseDocRows"/> UNION ALL <include refid="PurchasePendingRows"/>) d
+                WHERE 1 = 1 <include refid="PurchaseKeyword"/>
+            </when>
+            <otherwise>
+                SELECT partyId AS id, MAX(partyName) AS name, MAX(userName) AS userName, MAX(deptName) AS deptName,
+                       SUM(inCount) AS inCount, SUM(inAmount) AS inAmount, SUM(returnCount) AS returnCount,
+                       SUM(returnAmount) AS returnAmount, SUM(netAmount) AS netAmount, SUM(pendingQty) AS pendingQty
+                FROM (<include refid="PurchaseItemRows"/> UNION ALL <include refid="PurchasePendingRows"/>) d
+                WHERE 1 = 1 <include refid="PurchaseKeyword"/>
+                GROUP BY partyId
+            </otherwise>
+        </choose>
+    </sql>
+
+    <select id="countPurchasePage" resultType="java.lang.Long">
+        SELECT COUNT(*) FROM (<include refid="PurchaseGroupedSelect"/>) page_count
+    </select>
+
+    <select id="selectPurchasePage" resultType="java.util.HashMap">
+        SELECT * FROM (<include refid="PurchaseGroupedSelect"/>) page_rows
+        ORDER BY ${orderBy}
+        LIMIT #{limit} OFFSET #{offset}
+    </select>
+
+    <sql id="SaleOutFilters">
+        <if test="reqVO.customerId != null">AND so.customer_id = #{reqVO.customerId}</if>
+        <if test="reqVO.saleUserId != null">AND so.sale_user_id = #{reqVO.saleUserId}</if>
+        <if test="reqVO.deptId != null">AND (so.dept_id = #{reqVO.deptId} OR c.dept_id = #{reqVO.deptId})</if>
+        <if test="reqVO.startTime != null">AND so.out_time &gt;= #{reqVO.startTime}</if>
+        <if test="reqVO.endTime != null">AND so.out_time &lt;= #{reqVO.endTime}</if>
+    </sql>
+
+    <sql id="SaleReturnFilters">
+        <if test="reqVO.customerId != null">AND sr.customer_id = #{reqVO.customerId}</if>
+        <if test="reqVO.saleUserId != null">AND sr.sale_user_id = #{reqVO.saleUserId}</if>
+        <if test="reqVO.deptId != null">AND (sr.dept_id = #{reqVO.deptId} OR c.dept_id = #{reqVO.deptId})</if>
+        <if test="reqVO.startTime != null">AND sr.return_time &gt;= #{reqVO.startTime}</if>
+        <if test="reqVO.endTime != null">AND sr.return_time &lt;= #{reqVO.endTime}</if>
+    </sql>
+
+    <sql id="SaleKeyword">
+        <if test="reqVO.keyword != null and reqVO.keyword != ''">
+            AND (d.no LIKE CONCAT('%', #{reqVO.keyword}, '%')
+            OR d.partyName LIKE CONCAT('%', #{reqVO.keyword}, '%')
+            OR d.deptName LIKE CONCAT('%', #{reqVO.keyword}, '%')
+            OR d.userName LIKE CONCAT('%', #{reqVO.keyword}, '%')
+            OR d.productCode LIKE CONCAT('%', #{reqVO.keyword}, '%')
+            OR d.productName LIKE CONCAT('%', #{reqVO.keyword}, '%'))
+        </if>
+    </sql>
+
+    <sql id="SaleDocRows">
+        SELECT CONCAT('out-', so.id) AS rowKey, c.id AS partyId, c.name AS partyName,
+               COALESCE(so.dept_id, c.dept_id) AS deptId, sd.name AS deptName,
+               so.sale_user_id AS userId, su.nickname AS userName,
+               NULL AS productId, NULL AS productCode, NULL AS productName, NULL AS brand, NULL AS standard,
+               so.no AS no, so.out_time AS bizDate, '销售出库' AS docType, 1 AS bizType,
+               IFNULL(so.total_count, 0) AS saleCount, IFNULL(so.total_price, 0) AS saleAmount,
+               0 AS returnCount, 0 AS returnAmount, IFNULL(so.total_price, 0) AS netAmount
+        FROM erp_sale_out so
+        INNER JOIN erp_customer c ON c.id = so.customer_id AND c.deleted = 0
+        LEFT JOIN system_dept sd ON sd.id = COALESCE(so.dept_id, c.dept_id)
+        LEFT JOIN system_users su ON su.id = so.sale_user_id
+        WHERE so.deleted = 0 AND so.status = 20
+        <include refid="SaleOutFilters"/>
+        <include refid="CustomerScope"/>
+        <bind name="alias" value="'so'"/>
+        <include refid="SaleDocScope"/>
+        UNION ALL
+        SELECT CONCAT('return-', sr.id) AS rowKey, c.id AS partyId, c.name AS partyName,
+               COALESCE(sr.dept_id, c.dept_id) AS deptId, sd.name AS deptName,
+               sr.sale_user_id AS userId, su.nickname AS userName,
+               NULL AS productId, NULL AS productCode, NULL AS productName, NULL AS brand, NULL AS standard,
+               sr.no AS no, sr.return_time AS bizDate, '销售退货' AS docType, 2 AS bizType,
+               0 AS saleCount, 0 AS saleAmount,
+               IFNULL(sr.total_count, 0) AS returnCount, IFNULL(sr.total_price, 0) AS returnAmount,
+               -IFNULL(sr.total_price, 0) AS netAmount
+        FROM erp_sale_return sr
+        INNER JOIN erp_customer c ON c.id = sr.customer_id AND c.deleted = 0
+        LEFT JOIN system_dept sd ON sd.id = COALESCE(sr.dept_id, c.dept_id)
+        LEFT JOIN system_users su ON su.id = sr.sale_user_id
+        WHERE sr.deleted = 0 AND sr.status = 20
+        <include refid="SaleReturnFilters"/>
+        <include refid="CustomerScope"/>
+        <bind name="alias" value="'sr'"/>
+        <include refid="SaleDocScope"/>
+    </sql>
+
+    <sql id="SaleItemRows">
+        SELECT CONCAT('out-', so.id, '-', soi.id) AS rowKey, c.id AS partyId, c.name AS partyName,
+               COALESCE(soi.dept_id, so.dept_id, c.dept_id) AS deptId, sd.name AS deptName,
+               so.sale_user_id AS userId, su.nickname AS userName,
+               p.id AS productId, p.code AS productCode, p.name AS productName, COALESCE(soi.brand, p.brand) AS brand,
+               p.standard AS standard, so.no AS no, so.out_time AS bizDate, '销售出库' AS docType, 1 AS bizType,
+               IFNULL(soi.count, 0) AS saleCount, IFNULL(soi.total_price, 0) AS saleAmount,
+               0 AS returnCount, 0 AS returnAmount, IFNULL(soi.total_price, 0) AS netAmount
+        FROM erp_sale_out_items soi
+        INNER JOIN erp_sale_out so ON so.id = soi.out_id AND so.deleted = 0 AND so.status = 20
+        INNER JOIN erp_customer c ON c.id = so.customer_id AND c.deleted = 0
+        LEFT JOIN erp_product p ON p.id = soi.product_id AND p.deleted = 0
+        LEFT JOIN system_dept sd ON sd.id = COALESCE(soi.dept_id, so.dept_id, c.dept_id)
+        LEFT JOIN system_users su ON su.id = so.sale_user_id
+        WHERE soi.deleted = 0
+        <include refid="SaleOutFilters"/>
+        <include refid="CustomerScope"/>
+        <bind name="alias" value="'so'"/>
+        <include refid="SaleDocScope"/>
+        UNION ALL
+        SELECT CONCAT('return-', sr.id, '-', sri.id) AS rowKey, c.id AS partyId, c.name AS partyName,
+               COALESCE(sri.dept_id, sr.dept_id, c.dept_id) AS deptId, sd.name AS deptName,
+               sr.sale_user_id AS userId, su.nickname AS userName,
+               p.id AS productId, p.code AS productCode, p.name AS productName, COALESCE(sri.brand, p.brand) AS brand,
+               p.standard AS standard, sr.no AS no, sr.return_time AS bizDate, '销售退货' AS docType, 2 AS bizType,
+               0 AS saleCount, 0 AS saleAmount,
+               IFNULL(sri.count, 0) AS returnCount, IFNULL(sri.total_price, 0) AS returnAmount,
+               -IFNULL(sri.total_price, 0) AS netAmount
+        FROM erp_sale_return_items sri
+        INNER JOIN erp_sale_return sr ON sr.id = sri.return_id AND sr.deleted = 0 AND sr.status = 20
+        INNER JOIN erp_customer c ON c.id = sr.customer_id AND c.deleted = 0
+        LEFT JOIN erp_product p ON p.id = sri.product_id AND p.deleted = 0
+        LEFT JOIN system_dept sd ON sd.id = COALESCE(sri.dept_id, sr.dept_id, c.dept_id)
+        LEFT JOIN system_users su ON su.id = sr.sale_user_id
+        WHERE sri.deleted = 0
+        <include refid="SaleReturnFilters"/>
+        <include refid="CustomerScope"/>
+        <bind name="alias" value="'sr'"/>
+        <include refid="SaleDocScope"/>
+    </sql>
+
+    <select id="selectSaleSummary" resultType="cn.iocoder.yudao.module.erp.controller.admin.report.vo.system.ErpSystemReportSummaryRespVO">
+        SELECT COUNT(DISTINCT d.partyId) AS customerCount, COUNT(DISTINCT d.rowKey) AS docCount,
+               COALESCE(SUM(d.saleCount), 0) AS saleCount, COALESCE(SUM(d.saleAmount), 0) AS saleAmount,
+               COALESCE(SUM(d.returnCount), 0) AS returnCount, COALESCE(SUM(d.returnAmount), 0) AS returnAmount,
+               COALESCE(SUM(d.netAmount), 0) AS netAmount
+        FROM (<include refid="SaleDocRows"/>) d
+        WHERE 1 = 1 <include refid="SaleKeyword"/>
+    </select>
+
+    <select id="selectSaleTrend" resultType="cn.iocoder.yudao.module.erp.controller.admin.report.vo.system.ErpSystemReportTrendRespVO">
+        SELECT ${periodExpr} AS period, COUNT(DISTINCT d.rowKey) AS docCount,
+               COALESCE(SUM(d.saleCount), 0) AS saleCount, COALESCE(SUM(d.saleAmount), 0) AS saleAmount,
+               COALESCE(SUM(d.returnCount), 0) AS returnCount, COALESCE(SUM(d.returnAmount), 0) AS returnAmount,
+               COALESCE(SUM(d.netAmount), 0) AS netAmount
+        FROM (<include refid="SaleDocRows"/>) d
+        WHERE 1 = 1 <include refid="SaleKeyword"/>
+        GROUP BY ${periodExpr}
+        ORDER BY period ASC
+    </select>
+
+    <select id="selectSaleRank" resultType="cn.iocoder.yudao.module.erp.controller.admin.report.vo.system.ErpSystemReportRankRespVO">
+        SELECT r.id, r.name, r.code, SUM(r.saleAmount) AS saleAmount, SUM(r.returnAmount) AS returnAmount,
+               SUM(r.netAmount) AS netAmount, COUNT(*) AS count, ${orderBy} AS value
+        FROM (
+            SELECT partyId AS id, partyName AS name, NULL AS code, saleAmount, returnAmount, netAmount
+            FROM (<include refid="SaleItemRows"/>) d
+            WHERE 1 = 1 <include refid="SaleKeyword"/>
+        ) r
+        GROUP BY r.id, r.name, r.code
+        ORDER BY ${orderBy} DESC, r.id DESC
+        LIMIT #{limit}
+    </select>
+
+    <sql id="SaleGroupedSelect">
+        <choose>
+            <when test="dimension == 'product'">
+                SELECT productId AS id, MAX(productCode) AS code, MAX(productName) AS name, MAX(brand) AS brand,
+                       MAX(standard) AS standard, SUM(saleCount) AS saleCount, SUM(saleAmount) AS saleAmount,
+                       SUM(returnCount) AS returnCount, SUM(returnAmount) AS returnAmount, SUM(netAmount) AS netAmount
+                FROM (<include refid="SaleItemRows"/>) d
+                WHERE productId IS NOT NULL <include refid="SaleKeyword"/>
+                GROUP BY productId
+            </when>
+            <when test="dimension == 'dept'">
+                SELECT deptId AS id, COALESCE(MAX(deptName), '未设置部门') AS name, COUNT(DISTINCT partyId) AS customerCount,
+                       SUM(saleCount) AS saleCount, SUM(saleAmount) AS saleAmount,
+                       SUM(returnCount) AS returnCount, SUM(returnAmount) AS returnAmount, SUM(netAmount) AS netAmount
+                FROM (<include refid="SaleItemRows"/>) d
+                WHERE 1 = 1 <include refid="SaleKeyword"/>
+                GROUP BY deptId
+            </when>
+            <when test="dimension == 'user'">
+                SELECT userId AS id, COALESCE(MAX(userName), '未设置业务员') AS name, COUNT(DISTINCT partyId) AS customerCount,
+                       SUM(saleCount) AS saleCount, SUM(saleAmount) AS saleAmount,
+                       SUM(returnCount) AS returnCount, SUM(returnAmount) AS returnAmount, SUM(netAmount) AS netAmount
+                FROM (<include refid="SaleItemRows"/>) d
+                WHERE 1 = 1 <include refid="SaleKeyword"/>
+                GROUP BY userId
+            </when>
+            <when test="dimension == 'document'">
+                SELECT rowKey, partyName AS customerName, deptName, userName, docType, no AS docNo, bizDate AS docDate,
+                       saleCount + returnCount AS bizCount, saleAmount, returnAmount, netAmount
+                FROM (<include refid="SaleDocRows"/>) d
+                WHERE 1 = 1 <include refid="SaleKeyword"/>
+            </when>
+            <otherwise>
+                SELECT partyId AS id, MAX(partyName) AS name, MAX(userName) AS userName, MAX(deptName) AS deptName,
+                       SUM(saleCount) AS saleCount, SUM(saleAmount) AS saleAmount,
+                       SUM(returnCount) AS returnCount, SUM(returnAmount) AS returnAmount, SUM(netAmount) AS netAmount
+                FROM (<include refid="SaleItemRows"/>) d
+                WHERE 1 = 1 <include refid="SaleKeyword"/>
+                GROUP BY partyId
+            </otherwise>
+        </choose>
+    </sql>
+
+    <select id="countSalePage" resultType="java.lang.Long">
+        SELECT COUNT(*) FROM (<include refid="SaleGroupedSelect"/>) page_count
+    </select>
+
+    <select id="selectSalePage" resultType="java.util.HashMap">
+        SELECT * FROM (<include refid="SaleGroupedSelect"/>) page_rows
+        ORDER BY ${orderBy}
+        LIMIT #{limit} OFFSET #{offset}
+    </select>
+
+    <sql id="StockFilters">
+        <if test="warehouseIds != null">
+            AND st.warehouse_id IN <foreach collection="warehouseIds" item="id" open="(" separator="," close=")">#{id}</foreach>
+        </if>
+        <if test="reqVO.warehouseId != null">AND st.warehouse_id = #{reqVO.warehouseId}</if>
+        <if test="reqVO.deptId != null">AND COALESCE(st.dept_id, w.dept_id) = #{reqVO.deptId}</if>
+        <if test="reqVO.categoryId != null">AND p.category_id = #{reqVO.categoryId}</if>
+        <if test="reqVO.keyword != null and reqVO.keyword != ''">
+            AND (p.code LIKE CONCAT('%', #{reqVO.keyword}, '%')
+            OR p.name LIKE CONCAT('%', #{reqVO.keyword}, '%')
+            OR p.brand LIKE CONCAT('%', #{reqVO.keyword}, '%')
+            OR p.standard LIKE CONCAT('%', #{reqVO.keyword}, '%')
+            OR p.drawing_no LIKE CONCAT('%', #{reqVO.keyword}, '%')
+            OR w.name LIKE CONCAT('%', #{reqVO.keyword}, '%'))
+        </if>
+        <if test="reqVO.stockStatus != null and reqVO.stockStatus != ''">
+            <choose>
+                <when test="reqVO.stockStatus == 'low'">AND IFNULL(st.count, 0) &gt;= 0 AND p.stock_min IS NOT NULL AND IFNULL(st.count, 0) &lt; p.stock_min</when>
+                <when test="reqVO.stockStatus == 'zero'">AND IFNULL(st.count, 0) = 0</when>
+                <when test="reqVO.stockStatus == 'negative'">AND IFNULL(st.count, 0) &lt; 0</when>
+                <when test="reqVO.stockStatus == 'normal'">AND IFNULL(st.count, 0) &gt;= IFNULL(p.stock_min, 0)</when>
+            </choose>
+        </if>
+    </sql>
+
+    <sql id="StockBaseRows">
+        SELECT st.id AS stockId, st.product_id AS productId, p.code AS productCode, p.name AS productName,
+               p.brand AS brand, p.standard AS standard, p.drawing_no AS drawingNo, p.category_id AS categoryId,
+               pc.name AS categoryName, st.warehouse_id AS warehouseId, w.name AS warehouseName,
+               COALESCE(st.dept_id, w.dept_id) AS deptId, sd.name AS deptName,
+               IFNULL(st.count, 0) AS stockQty, IFNULL(st.cost_amount, 0) AS stockAmount,
+               IFNULL(st.occupied_count, 0) AS occupiedQty,
+               IFNULL(st.count, 0) - IFNULL(st.occupied_count, 0) AS availableQty,
+               IFNULL(st.in_transit_count, IFNULL(st.pending_in_count, 0)) AS inTransitQty,
+               p.stock_min AS stockMin,
+               GREATEST(IFNULL(p.stock_min, 0) - IFNULL(st.count, 0), 0) AS gapQty,
+               CASE
+                   WHEN IFNULL(st.count, 0) &lt; 0 THEN '负库存'
+                   WHEN IFNULL(st.count, 0) = 0 THEN '零库存'
+                   WHEN p.stock_min IS NOT NULL AND IFNULL(st.count, 0) &lt; p.stock_min THEN '低库存'
+                   ELSE '正常'
+               END AS risk
+        FROM erp_stock st
+        LEFT JOIN erp_product p ON p.id = st.product_id AND p.deleted = 0
+        LEFT JOIN erp_product_category pc ON pc.id = p.category_id AND pc.deleted = 0
+        LEFT JOIN erp_warehouse w ON w.id = st.warehouse_id AND w.deleted = 0
+        LEFT JOIN system_dept sd ON sd.id = COALESCE(st.dept_id, w.dept_id)
+        WHERE st.deleted = b'0'
+        <include refid="StockFilters"/>
+    </sql>
+
+    <select id="selectStockSummary" resultType="cn.iocoder.yudao.module.erp.controller.admin.report.vo.system.ErpSystemReportSummaryRespVO">
+        SELECT COUNT(DISTINCT x.productId) AS skuCount,
+               COALESCE(SUM(x.stockQty), 0) AS stockQty,
+               COALESCE(SUM(x.stockAmount), 0) AS stockAmount,
+               COALESCE(SUM(x.occupiedQty), 0) AS occupiedQty,
+               COALESCE(SUM(x.availableQty), 0) AS availableQty,
+               COALESCE(SUM(x.inTransitQty), 0) AS inTransitQty,
+               COUNT(DISTINCT CASE WHEN x.risk = '低库存' THEN x.productId END) AS lowStockSku,
+               COUNT(DISTINCT CASE WHEN x.risk = '零库存' THEN x.productId END) AS zeroStockSku,
+               COUNT(DISTINCT CASE WHEN x.risk = '负库存' THEN x.productId END) AS negativeStockSku
+        FROM (<include refid="StockBaseRows"/>) x
+    </select>
+
+    <select id="selectStockTrend" resultType="cn.iocoder.yudao.module.erp.controller.admin.report.vo.system.ErpSystemReportTrendRespVO">
+        SELECT ${periodExpr} AS period,
+               COALESCE(SUM(CASE WHEN IFNULL(sr.count, 0) &gt; 0 THEN sr.count ELSE 0 END), 0) AS inCount,
+               COALESCE(SUM(CASE WHEN IFNULL(sr.count, 0) &gt; 0 THEN ABS(sr.total_price) ELSE 0 END), 0) AS inAmount,
+               COALESCE(SUM(CASE WHEN IFNULL(sr.count, 0) &lt; 0 THEN ABS(sr.count) ELSE 0 END), 0) AS outCount,
+               COALESCE(SUM(CASE WHEN IFNULL(sr.count, 0) &lt; 0 THEN ABS(sr.total_price) ELSE 0 END), 0) AS outAmount
+        FROM erp_stock_record sr
+        LEFT JOIN erp_stock st ON st.product_id = sr.product_id AND st.warehouse_id = sr.warehouse_id AND st.deleted = b'0'
+        LEFT JOIN erp_product p ON p.id = sr.product_id AND p.deleted = 0
+        LEFT JOIN erp_warehouse w ON w.id = sr.warehouse_id AND w.deleted = 0
+        WHERE sr.deleted = b'0'
+        <if test="warehouseIds != null">
+            AND sr.warehouse_id IN <foreach collection="warehouseIds" item="id" open="(" separator="," close=")">#{id}</foreach>
+        </if>
+        <if test="reqVO.warehouseId != null">AND sr.warehouse_id = #{reqVO.warehouseId}</if>
+        <if test="reqVO.categoryId != null">AND p.category_id = #{reqVO.categoryId}</if>
+        <if test="reqVO.startTime != null">AND sr.biz_date &gt;= #{reqVO.startTime}</if>
+        <if test="reqVO.endTime != null">AND sr.biz_date &lt;= #{reqVO.endTime}</if>
+        <if test="reqVO.keyword != null and reqVO.keyword != ''">
+            AND (p.code LIKE CONCAT('%', #{reqVO.keyword}, '%') OR p.name LIKE CONCAT('%', #{reqVO.keyword}, '%')
+            OR w.name LIKE CONCAT('%', #{reqVO.keyword}, '%') OR sr.biz_no LIKE CONCAT('%', #{reqVO.keyword}, '%'))
+        </if>
+        GROUP BY ${periodExpr}
+        ORDER BY period ASC
+    </select>
+
+    <select id="selectStockRank" resultType="cn.iocoder.yudao.module.erp.controller.admin.report.vo.system.ErpSystemReportRankRespVO">
+        SELECT r.id, r.name, SUM(r.stockQty) AS stockQty, SUM(r.stockAmount) AS stockAmount,
+               COUNT(DISTINCT r.productId) AS count, ${orderBy} AS value
+        FROM (
+            SELECT warehouseId AS id, warehouseName AS name, productId, stockQty, stockAmount
+            FROM (<include refid="StockBaseRows"/>) stock_rank_base
+        ) r
+        GROUP BY r.id, r.name
+        ORDER BY ${orderBy} DESC, r.id DESC
+        LIMIT #{limit}
+    </select>
+
+    <sql id="StockGroupedSelect">
+        <choose>
+            <when test="dimension == 'warehouse'">
+                SELECT warehouseId AS id, MAX(warehouseName) AS name, MAX(deptName) AS deptName,
+                       COUNT(DISTINCT productId) AS skuCount, SUM(stockQty) AS stockQty, SUM(stockAmount) AS stockAmount,
+                       SUM(occupiedQty) AS occupiedQty, SUM(availableQty) AS availableQty,
+                       COUNT(DISTINCT CASE WHEN risk = '低库存' THEN productId END) AS lowStockSku
+                FROM (<include refid="StockBaseRows"/>) d
+                GROUP BY warehouseId
+            </when>
+            <when test="dimension == 'category'">
+                SELECT categoryId AS id, COALESCE(MAX(categoryName), '未设置分类') AS name,
+                       COUNT(DISTINCT productId) AS skuCount, SUM(stockQty) AS stockQty, SUM(stockAmount) AS stockAmount,
+                       COUNT(DISTINCT CASE WHEN risk = '低库存' THEN productId END) AS lowStockSku
+                FROM (<include refid="StockBaseRows"/>) d
+                GROUP BY categoryId
+            </when>
+            <when test="dimension == 'risk'">
+                SELECT stockId AS id, productCode AS code, productName AS name, warehouseName, categoryName,
+                       stockQty, stockAmount, stockMin, gapQty, risk
+                FROM (<include refid="StockBaseRows"/>) d
+                WHERE risk != '正常'
+            </when>
+            <otherwise>
+                SELECT productId AS id, MAX(productCode) AS code, MAX(productName) AS name, MAX(brand) AS brand,
+                       MAX(standard) AS standard, MAX(categoryName) AS categoryName,
+                       COUNT(DISTINCT warehouseId) AS warehouseCount, SUM(stockQty) AS stockQty,
+                       SUM(stockAmount) AS stockAmount, SUM(occupiedQty) AS occupiedQty, SUM(availableQty) AS availableQty,
+                       MAX(stockMin) AS stockMin, GREATEST(MAX(stockMin) - SUM(stockQty), 0) AS gapQty,
+                       CASE
+                           WHEN SUM(stockQty) &lt; 0 THEN '负库存'
+                           WHEN SUM(stockQty) = 0 THEN '零库存'
+                           WHEN MAX(stockMin) IS NOT NULL AND SUM(stockQty) &lt; MAX(stockMin) THEN '低库存'
+                           ELSE '正常'
+                       END AS risk
+                FROM (<include refid="StockBaseRows"/>) d
+                GROUP BY productId
+            </otherwise>
+        </choose>
+    </sql>
+
+    <select id="countStockPage" resultType="java.lang.Long">
+        SELECT COUNT(*) FROM (<include refid="StockGroupedSelect"/>) page_count
+    </select>
+
+    <select id="selectStockPage" resultType="java.util.HashMap">
+        SELECT * FROM (<include refid="StockGroupedSelect"/>) page_rows
+        ORDER BY ${orderBy}
+        LIMIT #{limit} OFFSET #{offset}
+    </select>
+
+</mapper>

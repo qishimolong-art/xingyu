@@ -1,10 +1,14 @@
 package cn.iocoder.yudao.module.erp.dal.mysql.purchase;
 
 import cn.hutool.core.collection.CollUtil;
+import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.mybatis.core.mapper.BaseMapperX;
+import cn.iocoder.yudao.framework.mybatis.core.query.LambdaQueryWrapperX;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.order.ErpPurchaseOrderItemPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.stock.ErpStockInTransitDetailRespVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseOrderItemDO;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.baomidou.mybatisplus.core.toolkit.support.SFunction;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
@@ -28,12 +32,82 @@ public interface ErpPurchaseOrderItemMapper extends BaseMapperX<ErpPurchaseOrder
         return selectList(ErpPurchaseOrderItemDO::getOrderId, orderId);
     }
 
+    default PageResult<ErpPurchaseOrderItemDO> selectPageByOrderId(ErpPurchaseOrderItemPageReqVO reqVO) {
+        LambdaQueryWrapperX<ErpPurchaseOrderItemDO> query = new LambdaQueryWrapperX<ErpPurchaseOrderItemDO>()
+                .eq(ErpPurchaseOrderItemDO::getOrderId, reqVO.getOrderId());
+        SFunction<ErpPurchaseOrderItemDO, ?> orderColumn = getOrderColumn(reqVO.getOrderField());
+        if (orderColumn == null) {
+            query.orderByAsc(ErpPurchaseOrderItemDO::getId);
+        } else if ("desc".equalsIgnoreCase(reqVO.getOrderDirection())) {
+            query.orderByDesc(orderColumn);
+        } else {
+            query.orderByAsc(orderColumn);
+        }
+        if (orderColumn != null && !"id".equals(reqVO.getOrderField().trim())) {
+            query.orderByAsc(ErpPurchaseOrderItemDO::getId);
+        }
+        return selectPage(reqVO, query);
+    }
+
     default List<ErpPurchaseOrderItemDO> selectListByOrderIds(Collection<Long> orderIds) {
         return selectList(ErpPurchaseOrderItemDO::getOrderId, orderIds);
     }
 
     default int deleteByOrderId(Long orderId) {
         return delete(ErpPurchaseOrderItemDO::getOrderId, orderId);
+    }
+
+    static SFunction<ErpPurchaseOrderItemDO, ?> getOrderColumn(String orderField) {
+        if (orderField == null) {
+            return null;
+        }
+        switch (orderField.trim()) {
+            case "id":
+                return ErpPurchaseOrderItemDO::getId;
+            case "gift":
+                return ErpPurchaseOrderItemDO::getGift;
+            case "productId":
+            case "productCode":
+            case "productName":
+            case "lastPurchasePrice":
+            case "productUnitName":
+            case "weight":
+            case "packageQty":
+                return ErpPurchaseOrderItemDO::getProductId;
+            case "warehouseId":
+                return ErpPurchaseOrderItemDO::getWarehouseId;
+            case "deptId":
+                return ErpPurchaseOrderItemDO::getDeptId;
+            case "count":
+                return ErpPurchaseOrderItemDO::getCount;
+            case "productPrice":
+            case "totalProductPrice":
+                return ErpPurchaseOrderItemDO::getProductPrice;
+            case "arrivalCount":
+                return ErpPurchaseOrderItemDO::getArrivalCount;
+            case "vehicleModel":
+                return ErpPurchaseOrderItemDO::getVehicleModel;
+            case "standard":
+                return ErpPurchaseOrderItemDO::getStandard;
+            case "featureCode":
+                return ErpPurchaseOrderItemDO::getFeatureCode;
+            case "warehousePosition":
+                return ErpPurchaseOrderItemDO::getWarehousePosition;
+            case "drawingNo":
+                return ErpPurchaseOrderItemDO::getDrawingNo;
+            case "batchNo":
+                return ErpPurchaseOrderItemDO::getBatchNo;
+            case "factoryCode":
+                return ErpPurchaseOrderItemDO::getFactoryCode;
+            case "brand":
+                return ErpPurchaseOrderItemDO::getBrand;
+            case "remark":
+                return ErpPurchaseOrderItemDO::getRemark;
+            case "inStatus":
+                return ErpPurchaseOrderItemDO::getInCount;
+            default:
+                return null;
+        }
     }
 
     default Long selectCountByProductId(Long productId) {

@@ -16,6 +16,12 @@ public interface ErrorCodeConstants {
     ErrorCode AUTH_THIRD_LOGIN_NOT_BIND = new ErrorCode(1_002_000_005, "未绑定账号，需要进行绑定");
     ErrorCode AUTH_MOBILE_NOT_EXISTS = new ErrorCode(1_002_000_007, "手机号不存在");
     ErrorCode AUTH_REGISTER_CAPTCHA_CODE_ERROR = new ErrorCode(1_002_000_008, "验证码不正确，原因：{}");
+    ErrorCode AUTH_WECOM_DISABLED = new ErrorCode(1_002_000_009, "企业微信免登未开启");
+    ErrorCode AUTH_WECOM_CONFIG_ERROR = new ErrorCode(1_002_000_010, "企业微信免登配置不完整");
+    ErrorCode AUTH_WECOM_STATE_INVALID = new ErrorCode(1_002_000_011, "企业微信免登 state 无效或已过期");
+    ErrorCode AUTH_WECOM_API_ERROR = new ErrorCode(1_002_000_012, "企业微信免登失败，原因：{}");
+    ErrorCode AUTH_WECOM_MOBILE_EMPTY = new ErrorCode(1_002_000_013, "企业微信免登失败，企业微信用户未返回手机号");
+    ErrorCode AUTH_WECOM_MOBILE_DUPLICATE = new ErrorCode(1_002_000_014, "企业微信免登失败，手机号匹配到多个后台用户");
 
     // ========== 菜单模块 1-002-001-000 ==========
     ErrorCode MENU_NAME_DUPLICATE = new ErrorCode(1_002_001_000, "已经存在该名字的菜单");

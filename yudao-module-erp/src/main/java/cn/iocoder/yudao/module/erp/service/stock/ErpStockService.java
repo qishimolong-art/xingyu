@@ -39,6 +39,13 @@ public interface ErpStockService {
     ErpStockDO getStock(Long productId, Long warehouseId);
 
     /**
+     * Batch get product stock rows by product and warehouse.
+     *
+     * @return key: productId_warehouseId, value: stock row
+     */
+    Map<String, ErpStockDO> getStockMap(Collection<Long> productIds, Collection<Long> warehouseIds);
+
+    /**
      * 获得产品库存数量
      *
      * 如果不存在库存记录，则返回 0

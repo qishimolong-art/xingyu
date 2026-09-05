@@ -2,7 +2,10 @@ package cn.iocoder.yudao.module.erp.controller.admin.stock.vo.check;
 
 import cn.idev.excel.annotation.ExcelIgnoreUnannotated;
 import cn.idev.excel.annotation.ExcelProperty;
+import cn.iocoder.yudao.framework.excel.core.annotations.ExcelChoiceRequired;
+import cn.iocoder.yudao.framework.excel.core.annotations.ExcelColumnSelect;
 import cn.iocoder.yudao.framework.excel.core.annotations.ExcelRequired;
+import cn.iocoder.yudao.module.erp.framework.excel.core.ErpStockCheckTypeExcelColumnSelectFunction;
 import lombok.Data;
 
 import java.math.BigDecimal;
@@ -11,6 +14,7 @@ import java.math.BigDecimal;
 @ExcelIgnoreUnannotated
 public class ErpStockCheckImportExcelVO {
 
+    @ExcelColumnSelect(functionName = ErpStockCheckTypeExcelColumnSelectFunction.NAME)
     @ExcelProperty("盘点类型")
     private String checkTypeName;
 
@@ -18,9 +22,17 @@ public class ErpStockCheckImportExcelVO {
     @ExcelProperty("所属仓库")
     private String warehouseName;
 
-    @ExcelRequired
-    @ExcelProperty("产品编码")
+    @ExcelChoiceRequired
+    @ExcelProperty("配件编码（三选一）")
     private String productCode;
+
+    @ExcelChoiceRequired
+    @ExcelProperty("配件名称（三选一）")
+    private String productName;
+
+    @ExcelChoiceRequired
+    @ExcelProperty("厂家编码（三选一）")
+    private String factoryCode;
 
     @ExcelProperty("批次号")
     private String batchNo;

@@ -10,6 +10,7 @@ import cn.iocoder.yudao.framework.datapermission.core.util.DataPermissionUtils;
 import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpProductRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.order.ErpSaleOrderImportExcelVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.order.ErpSaleOrderImportRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.order.ErpSaleOrderItemPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.order.ErpSaleOrderPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.order.ErpSaleOrderRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.order.ErpSaleOrderSaveReqVO;
@@ -23,6 +24,7 @@ import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpSaleOrderItemMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpSaleOrderMapper;
 import cn.iocoder.yudao.module.erp.dal.redis.no.ErpNoRedisDAO;
 import cn.iocoder.yudao.module.erp.enums.ErpAuditStatus;
+import cn.iocoder.yudao.module.erp.service.common.ErpImportProductResolver;
 import cn.iocoder.yudao.module.erp.service.common.ErpOperateLogService;
 import cn.iocoder.yudao.module.erp.service.product.ErpProductBatchNoValidator;
 import cn.iocoder.yudao.module.erp.service.finance.ErpAccountService;
@@ -221,8 +223,6 @@ public class ErpSaleOrderServiceImpl implements ErpSaleOrderService {
         List<ErpProductDO> productList = DataPermissionUtils.executeIgnore(() ->
                 productService.validProductList(convertSet(list, ErpSaleOrderSaveReqVO.Item::getProductId)));
         Map<Long, ErpProductDO> productMap = convertMap(productList, ErpProductDO::getId);
-        productBatchNoValidator.validateBatchNoRequired(list, productMap,
-                ErpSaleOrderSaveReqVO.Item::getProductId, ErpSaleOrderSaveReqVO.Item::getBatchNo);
         productBatchNoValidator.validateBatchNoAllowed(list, productMap,
                 ErpSaleOrderSaveReqVO.Item::getProductId, ErpSaleOrderSaveReqVO.Item::getBatchNo);
         list.forEach(item -> {
@@ -403,6 +403,12 @@ public class ErpSaleOrderServiceImpl implements ErpSaleOrderService {
     }
 
     @Override
+    public PageResult<ErpSaleOrderItemDO> getSaleOrderItemPage(ErpSaleOrderItemPageReqVO pageReqVO) {
+        validateSaleOrderExists(pageReqVO.getOrderId());
+        return saleOrderItemMapper.selectPageByOrderId(pageReqVO);
+    }
+
+    @Override
     public List<ErpSaleOrderItemDO> getSaleOrderItemListByOrderIds(Collection<Long> orderIds) {
         if (CollUtil.isEmpty(orderIds)) {
             return Collections.emptyList();
@@ -416,32 +422,25 @@ public class ErpSaleOrderServiceImpl implements ErpSaleOrderService {
         if (CollUtil.isEmpty(list)) {
             return respVO;
         }
-        LinkedHashSet<String> productCodes = new LinkedHashSet<>();
-        list.forEach(row -> {
-            if (row.getProductCode() != null && !row.getProductCode().isEmpty()) {
-                productCodes.add(row.getProductCode());
-            }
-        });
-        Map<String, ErpProductDO> productMap = convertMap(
-                DataPermissionUtils.executeIgnore(() -> productMapper.selectListByCodes(productCodes)), ErpProductDO::getCode);
+        ErpImportProductResolver productResolver = ErpImportProductResolver.build(list,
+                ErpSaleOrderImportExcelVO::getProductCode, ErpSaleOrderImportExcelVO::getProductName, ErpSaleOrderImportExcelVO::getFactoryCode, productMapper);
         Map<Long, ErpProductRespVO> productVOMap = DataPermissionUtils.executeIgnore(() ->
-                productService.getProductVOMap(convertList(productMap.values(), ErpProductDO::getId)));
+                productService.getProductVOMap(convertList(productResolver.getResolvedProducts(), ErpProductDO::getId)));
         for (int i = 0; i < list.size(); i++) {
             ErpSaleOrderImportExcelVO row = list.get(i);
             int rowNo = i + 2;
-            if (row.getProductCode() == null || row.getProductCode().isEmpty()) {
-                respVO.getFailureDetails().add(new ErpSaleOrderImportRespVO.FailureItem(rowNo, null, "产品编码不能为空"));
+            ErpImportProductResolver.ResolveResult productResult =
+                    productResolver.resolve(row.getProductCode(), row.getProductName(), row.getFactoryCode());
+            if (productResult.isFailure()) {
+                respVO.getFailureDetails().add(new ErpSaleOrderImportRespVO.FailureItem(
+                        rowNo, productResult.getIdentifier(), productResult.getErrorMessage()));
                 respVO.setFailureCount(respVO.getFailureCount() + 1);
                 continue;
             }
-            ErpProductDO product = productMap.get(row.getProductCode());
-            if (product == null) {
-                respVO.getFailureDetails().add(new ErpSaleOrderImportRespVO.FailureItem(rowNo, row.getProductCode(), "产品不存在"));
-                respVO.setFailureCount(respVO.getFailureCount() + 1);
-                continue;
-            }
+            ErpProductDO product = productResult.getProduct();
             if (row.getCount() == null || row.getCount().compareTo(BigDecimal.ZERO) <= 0) {
-                respVO.getFailureDetails().add(new ErpSaleOrderImportRespVO.FailureItem(rowNo, row.getProductCode(), "数量必须大于 0"));
+                respVO.getFailureDetails().add(new ErpSaleOrderImportRespVO.FailureItem(
+                        rowNo, productResult.getIdentifier(), "数量必须大于 0"));
                 respVO.setFailureCount(respVO.getFailureCount() + 1);
                 continue;
             }

@@ -22,6 +22,7 @@ import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.in.ErpPurchaseIn
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.in.ErpPurchaseInImportRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.in.ErpPurchaseInItemBatchUpdateReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.in.ErpPurchaseInItemForAdjustRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.in.ErpPurchaseInItemPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.in.ErpPurchaseInOrderImportExcelVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.in.ErpPurchaseInCreateSaleCartReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.in.ErpPurchaseInCreateSaleCartRespVO;
@@ -29,6 +30,7 @@ import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.in.ErpPurchaseIn
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.in.ErpPurchaseInCreateTransferOutRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.in.ErpPurchaseInPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.in.ErpPurchaseInRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.in.ErpPurchaseInSaleCartableItemPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.in.ErpPurchaseInSaleCartableItemRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.in.ErpPurchaseInSaveReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.in.ErpPurchaseInTransferOutableItemRespVO;
@@ -46,6 +48,7 @@ import cn.iocoder.yudao.module.erp.enums.config.ErpFieldConfigModuleEnum;
 import cn.iocoder.yudao.module.erp.framework.excel.ErpExportFieldUtils;
 import cn.iocoder.yudao.module.erp.framework.excel.ErpImportTemplateRequiredFieldUtils;
 import cn.iocoder.yudao.module.erp.service.config.ErpFieldConfigService;
+import cn.iocoder.yudao.module.erp.service.common.ErpImportExportRecordService;
 import cn.iocoder.yudao.module.erp.service.finance.ErpAccountService;
 import cn.iocoder.yudao.module.erp.service.common.ErpOriginalSettlementAmountUtils;
 import cn.iocoder.yudao.module.erp.service.product.ErpProductService;
@@ -83,8 +86,10 @@ import javax.validation.Valid;
 import java.io.IOException;
 import java.math.BigDecimal;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -113,8 +118,10 @@ public class ErpPurchaseInController {
     private static final Map<String, String> EXPORT_FIELD_PERMISSION_MAP = buildExportFieldPermissionMap();
     private static final Map<String, String> DETAIL_IMPORT_FIELD_ALIAS_MAP = ErpImportTemplateRequiredFieldUtils.aliasMap(
             "productId", "productCode",
+            "productName", "productName",
             "warehouseId", "warehouseName",
             "item_productId", "productCode",
+            "item_productName", "productName",
             "item_warehouseId", "warehouseName",
             "count", "count",
             "item_count", "count",
@@ -133,8 +140,10 @@ public class ErpPurchaseInController {
             "factoryOrderNo", "factoryOrderNo",
             "remark", "remark",
             "productId", "productCode",
+            "productName", "productName",
             "warehouseId", "warehouseName",
             "item_productId", "productCode",
+            "item_productName", "productName",
             "item_warehouseId", "warehouseName",
             "count", "itemCount",
             "item_count", "itemCount",
@@ -145,6 +154,9 @@ public class ErpPurchaseInController {
             "batchNo", "batchNo",
             "item_remark", "itemRemark",
             "itemRemark", "itemRemark");
+    private static final Set<String> ORDER_IMPORT_TEMPLATE_FIELDS = new LinkedHashSet<>(Arrays.asList(
+            "no", "supplierName", "factoryOrderNo", "remark", "productCode", "productName", "factoryCode", "warehouseName", "itemCount",
+            "productPrice", "gift", "warehousePosition", "batchNo", "itemRemark"));
 
     @Resource
     private ErpPurchaseInService purchaseInService;
@@ -172,6 +184,8 @@ public class ErpPurchaseInController {
     private ErpPurchaseFieldPermissionMasker fieldPermissionMasker;
     @Resource
     private ErpFieldConfigService fieldConfigService;
+    @Resource
+    private ErpImportExportRecordService importExportRecordService;
 
     @PostMapping("/create")
     @Operation(summary = "Create purchase in")
@@ -274,6 +288,14 @@ public class ErpPurchaseInController {
         return success(purchaseInService.importPurchaseInOrderList(list));
     }
 
+    @GetMapping("/import-failure-details/download")
+    @Operation(summary = "下载采购入库导入错误数据")
+    @PreAuthorize("@ss.hasPermission('erp:purchase-in:create')")
+    public void downloadImportFailureDetails(@RequestParam("recordId") Long recordId, HttpServletResponse response)
+            throws IOException {
+        importExportRecordService.downloadOwnImportFailureDetails(recordId, FIELD_PERMISSION_MODULE, response);
+    }
+
     @GetMapping("/get-import-template")
     @Operation(summary = "获得采购入库明细导入模板")
     @PreAuthorize("@ss.hasPermission('erp:purchase-in:create')")
@@ -321,7 +343,8 @@ public class ErpPurchaseInController {
         secondItem.setGift("是");
 
         ExcelUtils.writeImportTemplate(response, "采购入库导入模板.xls", "采购入库",
-                ErpPurchaseInOrderImportExcelVO.class, java.util.Arrays.asList(example, secondItem), null,
+                ErpPurchaseInOrderImportExcelVO.class, java.util.Arrays.asList(example, secondItem),
+                ORDER_IMPORT_TEMPLATE_FIELDS,
                 ErpImportTemplateRequiredFieldUtils.getRequiredFields(fieldConfigService,
                         ErpFieldConfigModuleEnum.PURCHASE_IN, ErpPurchaseInOrderImportExcelVO.class,
                         ORDER_IMPORT_FIELD_ALIAS_MAP));
@@ -332,17 +355,18 @@ public class ErpPurchaseInController {
     @Parameter(name = "id", description = "ID", required = true, example = "1024")
     @PreAuthorize("@ss.hasPermission('erp:purchase-in:query')")
     public CommonResult<ErpPurchaseInRespVO> getPurchaseIn(@RequestParam("id") Long id,
-                                                           @RequestParam(value = "mask", defaultValue = "true") Boolean mask) {
+                                                           @RequestParam(value = "mask", defaultValue = "true") Boolean mask,
+                                                           @RequestParam(value = "includeItems", required = false,
+                                                                   defaultValue = "true") Boolean includeItems) {
         ErpPurchaseInDO purchaseIn = purchaseInService.getPurchaseIn(id);
         if (purchaseIn == null) {
             return success(null);
         }
         markHasInvoice(purchaseIn);
-        List<ErpPurchaseInItemDO> purchaseInItemList = purchaseInService.getPurchaseInItemListByInId(id);
-        Map<Long, ErpProductRespVO> productMap = DataPermissionUtils.executeIgnore(() ->
-                productService.getProductVOMap(convertSet(purchaseInItemList, ErpPurchaseInItemDO::getProductId)));
-        Map<Long, BigDecimal> returnCountMap = getApprovedReturnCountMap(purchaseInItemList);
-        Map<Long, BigDecimal> transferOutCountMap = getTransferOutCountMap(purchaseInItemList);
+        List<ErpPurchaseInItemDO> purchaseInItemList = Boolean.TRUE.equals(includeItems)
+                ? purchaseInService.getPurchaseInItemListByInId(id) : Collections.emptyList();
+        Map<Long, BigDecimal> transferOutCountMap = Boolean.TRUE.equals(includeItems)
+                ? getTransferOutCountMap(purchaseInItemList) : Collections.emptyMap();
         Set<Long> userIds = new HashSet<>();
         collectUserIds(userIds, purchaseIn);
         Map<Long, AdminUserRespDTO> userMap = adminUserApi.getUserMap(userIds);
@@ -350,17 +374,12 @@ public class ErpPurchaseInController {
         ErpSupplierDO supplier = purchaseIn.getSupplierId() == null
                 ? null : supplierService.getSupplier(purchaseIn.getSupplierId());
         ErpPurchaseInRespVO respVO = BeanUtils.toBean(purchaseIn, ErpPurchaseInRespVO.class, purchaseInVO -> {
-            purchaseInVO.setItems(BeanUtils.toBean(purchaseInItemList, ErpPurchaseInRespVO.Item.class, item -> {
-                item.setStockCount(stockService.getStockCount(item.getProductId(), item.getWarehouseId()));
-                MapUtils.findAndThen(productMap, item.getProductId(), product -> item.setProductName(product.getName())
-                        .setProductBarCode(product.getBarCode()).setProductUnitName(product.getUnitName())
-                        .setWeight(product.getWeight())
-                        .setProductCode(product.getCode()).setBatchNoEnabled(product.getBatchNoEnabled()));
-                fillPurchaseInItemReturnInfo(item, returnCountMap);
-            }));
-            purchaseInVO.setItemCount(CollUtil.size(purchaseInItemList));
-            fillPurchaseInReturnInfo(purchaseInVO);
-            fillPurchaseInTransferOutInfo(purchaseInVO, transferOutCountMap);
+            if (Boolean.TRUE.equals(includeItems)) {
+                purchaseInVO.setItems(buildPurchaseInItemVOList(purchaseInItemList, true));
+                purchaseInVO.setItemCount(CollUtil.size(purchaseInItemList));
+                fillPurchaseInReturnInfo(purchaseInVO);
+                fillPurchaseInTransferOutInfo(purchaseInVO, transferOutCountMap);
+            }
             fillUserNames(purchaseInVO, userMap);
             if (dept != null) {
                 purchaseInVO.setDeptName(dept.getName());
@@ -376,27 +395,28 @@ public class ErpPurchaseInController {
         return success(respVO);
     }
 
+    @GetMapping("/item-page")
+    @Operation(summary = "获得采购入库明细分页")
+    @PreAuthorize("@ss.hasPermission('erp:purchase-in:query')")
+    public CommonResult<PageResult<ErpPurchaseInRespVO.Item>> getPurchaseInItemPage(
+            @Valid ErpPurchaseInItemPageReqVO pageReqVO) {
+        PageResult<ErpPurchaseInItemDO> pageResult = purchaseInService.getPurchaseInItemPage(pageReqVO);
+        PageResult<ErpPurchaseInRespVO.Item> respResult = new PageResult<>(
+                buildPurchaseInItemVOList(pageResult.getList(), true), pageResult.getTotal());
+        fillPurchaseInItemStockInBillInfo(respResult.getList(), pageReqVO.getInId());
+        if (Boolean.TRUE.equals(pageReqVO.getMask())) {
+            fieldPermissionMasker.clearHiddenItemFields(FIELD_PERMISSION_MODULE, respResult.getList());
+        }
+        return success(respResult);
+    }
+
     @GetMapping("/list-items")
     @Operation(summary = "Get purchase in items")
     @Parameter(name = "inId", description = "Purchase in ID", required = true, example = "1024")
     @PreAuthorize("@ss.hasPermission('erp:purchase-in:query')")
     public CommonResult<List<ErpPurchaseInRespVO.Item>> getPurchaseInItems(@RequestParam("inId") Long inId) {
         List<ErpPurchaseInItemDO> purchaseInItemList = purchaseInService.getPurchaseInItemListByInId(inId);
-        Map<Long, ErpProductRespVO> productMap = DataPermissionUtils.executeIgnore(() ->
-                productService.getProductVOMap(convertSet(purchaseInItemList, ErpPurchaseInItemDO::getProductId)));
-        List<ErpPurchaseInRespVO.Item> items = BeanUtils.toBean(purchaseInItemList, ErpPurchaseInRespVO.Item.class);
-        if (items == null) {
-            return success(Collections.emptyList());
-        }
-        Map<Long, BigDecimal> returnCountMap = getApprovedReturnCountMap(purchaseInItemList);
-        items.forEach(item -> MapUtils.findAndThen(productMap, item.getProductId(),
-                product -> item.setProductName(product.getName())
-                        .setProductBarCode(product.getBarCode())
-                        .setProductUnitName(product.getUnitName())
-                        .setWeight(product.getWeight())
-                        .setProductCode(product.getCode())
-                        .setBatchNoEnabled(product.getBatchNoEnabled())));
-        items.forEach(item -> fillPurchaseInItemReturnInfo(item, returnCountMap));
+        List<ErpPurchaseInRespVO.Item> items = buildPurchaseInItemVOList(purchaseInItemList, false);
         return success(items);
     }
 
@@ -458,6 +478,14 @@ public class ErpPurchaseInController {
     public CommonResult<List<ErpPurchaseInSaleCartableItemRespVO>> getSaleCartableItems(
             @RequestParam("inId") Long inId) {
         return success(purchaseInService.getSaleCartableItemsByInId(inId));
+    }
+
+    @GetMapping("/sale-cartable-item-page")
+    @Operation(summary = "Get sale-cartable item page by purchase in")
+    @PreAuthorize("@ss.hasPermission('erp:purchase-in:to-sale-cart')")
+    public CommonResult<PageResult<ErpPurchaseInSaleCartableItemRespVO>> getSaleCartableItemPage(
+            @Valid ErpPurchaseInSaleCartableItemPageReqVO pageReqVO) {
+        return success(purchaseInService.getSaleCartableItemPage(pageReqVO));
     }
 
     @PostMapping("/create-transfer-out")
@@ -602,6 +630,26 @@ public class ErpPurchaseInController {
         return respResult;
     }
 
+    private List<ErpPurchaseInRespVO.Item> buildPurchaseInItemVOList(List<ErpPurchaseInItemDO> itemList,
+                                                                     boolean includeStockCount) {
+        if (CollUtil.isEmpty(itemList)) {
+            return Collections.emptyList();
+        }
+        Map<Long, ErpProductRespVO> productMap = DataPermissionUtils.executeIgnore(() ->
+                productService.getProductVOMap(convertSet(itemList, ErpPurchaseInItemDO::getProductId)));
+        Map<Long, BigDecimal> returnCountMap = getApprovedReturnCountMap(itemList);
+        return BeanUtils.toBean(itemList, ErpPurchaseInRespVO.Item.class, item -> {
+            if (includeStockCount) {
+                item.setStockCount(stockService.getStockCount(item.getProductId(), item.getWarehouseId()));
+            }
+            MapUtils.findAndThen(productMap, item.getProductId(), product -> item.setProductName(product.getName())
+                    .setProductBarCode(product.getBarCode()).setProductUnitName(product.getUnitName())
+                    .setWeight(product.getWeight())
+                    .setProductCode(product.getCode()).setBatchNoEnabled(product.getBatchNoEnabled()));
+            fillPurchaseInItemReturnInfo(item, returnCountMap);
+        });
+    }
+
     private void markHasInvoice(List<ErpPurchaseInDO> purchaseIns) {
         if (CollUtil.isEmpty(purchaseIns)) {
             return;
@@ -711,14 +759,30 @@ public class ErpPurchaseInController {
             return brief;
         }).collect(Collectors.toList()));
 
+        fillPurchaseInItemStockInBillInfo(respVO.getItems(), purchaseInId, billMap);
+    }
+
+    private void fillPurchaseInItemStockInBillInfo(List<ErpPurchaseInRespVO.Item> items, Long purchaseInId) {
+        if (CollUtil.isEmpty(items)) {
+            return;
+        }
+        List<ErpStockInBillDO> bills = stockInBillService.getStockInBillListByPurchaseInId(purchaseInId);
+        Map<Long, ErpStockInBillDO> billMap = bills.stream()
+                .collect(Collectors.toMap(ErpStockInBillDO::getId, bill -> bill, (first, second) -> first));
+        fillPurchaseInItemStockInBillInfo(items, purchaseInId, billMap);
+    }
+
+    private void fillPurchaseInItemStockInBillInfo(List<ErpPurchaseInRespVO.Item> items,
+                                                   Long purchaseInId,
+                                                   Map<Long, ErpStockInBillDO> billMap) {
+        if (CollUtil.isEmpty(items)) {
+            return;
+        }
         List<ErpStockInBillItemDO> billItems = stockInBillService.getPurchaseInSourceItemList(purchaseInId);
         Map<Long, List<ErpStockInBillItemDO>> billItemMap = billItems.stream()
                 .filter(item -> item.getSourceItemId() != null)
                 .collect(Collectors.groupingBy(ErpStockInBillItemDO::getSourceItemId));
-        if (CollUtil.isEmpty(respVO.getItems())) {
-            return;
-        }
-        respVO.getItems().forEach(item -> fillPurchaseInItemStockInBillInfo(item, billItemMap.get(item.getId()), billMap));
+        items.forEach(item -> fillPurchaseInItemStockInBillInfo(item, billItemMap.get(item.getId()), billMap));
     }
 
     private void fillPurchaseInItemStockInBillInfo(ErpPurchaseInRespVO.Item item,

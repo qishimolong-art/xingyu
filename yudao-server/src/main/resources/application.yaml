@@ -262,6 +262,8 @@ yudao:
     version: 1.0.0
     base-package: cn.iocoder.yudao
   erp:
+    import:
+      max-rows: ${ERP_IMPORT_MAX_ROWS:3000}
     vin:
       app-code: ${ERP_VIN_APP_CODE:0e8fb38236264814b7ac414f5dd0d5dd}
       timeout: 8000

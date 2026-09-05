@@ -6,6 +6,7 @@ import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.move.ErpStockMovePa
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.move.ErpStockMoveSaveReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.move.ErpStockTransferOutDraftCreateReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.move.ErpStockTransferOutDraftUpdateReqVO;
+import cn.iocoder.yudao.module.infra.api.config.ConfigApi;
 import cn.iocoder.yudao.module.erp.dal.mysql.purchase.ErpPurchaseInItemMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.stock.ErpStockMoveItemMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.stock.ErpStockMoveMapper;
@@ -30,6 +31,7 @@ import cn.iocoder.yudao.module.system.api.dept.DeptApi;
 import cn.iocoder.yudao.module.system.api.dept.dto.DeptRespDTO;
 import cn.iocoder.yudao.module.system.api.permission.PermissionApi;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.BeforeEach;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
@@ -72,6 +74,7 @@ import static org.mockito.Mockito.mockStatic;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.lenient;
 
 class ErpStockMoveServiceImplTest extends BaseMockitoUnitTest {
 
@@ -84,6 +87,8 @@ class ErpStockMoveServiceImplTest extends BaseMockitoUnitTest {
     private DeptApi deptApi;
     @Mock
     private PermissionApi permissionApi;
+    @Mock
+    private ConfigApi configApi;
     @Mock
     private ErpStockMoveMapper stockMoveMapper;
     @Mock
@@ -101,11 +106,23 @@ class ErpStockMoveServiceImplTest extends BaseMockitoUnitTest {
     @Mock
     private ErpStockLockService stockLockService;
     @Mock
+    private ErpStockItemSnapshotSupport snapshotSupport;
+    @Mock
     private ErpOperateLogService operateLogService;
     @Mock
     private ErpNoRedisDAO noRedisDAO;
     @Mock
     private ApplicationEventPublisher eventPublisher;
+
+    @BeforeEach
+    void setUp() {
+        lenient().when(snapshotSupport.resolveWeight(any(), any())).thenAnswer(invocation -> {
+            BigDecimal requestWeight = invocation.getArgument(0);
+            ErpProductDO product = invocation.getArgument(1);
+            return requestWeight != null ? requestWeight : product == null ? null : product.getWeight();
+        });
+        lenient().when(snapshotSupport.calculateTotalWeight(any(), any())).thenCallRealMethod();
+    }
 
     @Test
     void createStockTransferOutDraft_withoutValidItems_throwException() {
@@ -753,6 +770,91 @@ class ErpStockMoveServiceImplTest extends BaseMockitoUnitTest {
                     stockMove, Collections.singletonList(item));
 
             assertTrue(permission.getAllowed());
+        }
+    }
+
+    @Test
+    void getUnlockCartPermission_crossDept_sameLevelDeniedByDefault() {
+        mockWarehouseMap(200L, 300L);
+        when(deptApi.getDept(100L)).thenReturn(dept(100L, 10L));
+        when(deptApi.getDept(10L)).thenReturn(dept(10L, 0L));
+        ErpStockMoveDO stockMove = saleCartStockMove(100L)
+                .setSourceId(72L)
+                .setTransferDirection(10)
+                .setStatus(ErpAuditStatus.PROCESS.getStatus());
+        ErpStockMoveItemDO item = stockMoveItem(1L, 2L);
+
+        try (MockedStatic<SecurityFrameworkUtils> security = mockLoginDept(20L)) {
+            ErpStockMoveOperationPermission permission = stockMoveService.getUnlockCartPermission(
+                    stockMove, Collections.singletonList(item));
+
+            assertFalse(permission.getAllowed());
+            assertEquals("销售手推车跨部门调拨出库单只能由总公司解锁", permission.getDisabledReason());
+        }
+    }
+
+    @Test
+    void getUnlockCartPermission_crossDept_configuredHeadDeptAllowed() {
+        mockWarehouseMap(200L, 300L);
+        when(configApi.getConfigValueByKey("erp.stock.transferOut.unlockCartHeadDeptIds"))
+                .thenReturn("20");
+        when(deptApi.getDept(100L)).thenReturn(dept(100L, 10L));
+        when(deptApi.getDept(10L)).thenReturn(dept(10L, 0L));
+        ErpStockMoveDO stockMove = saleCartStockMove(100L)
+                .setSourceId(72L)
+                .setTransferDirection(10)
+                .setStatus(ErpAuditStatus.PROCESS.getStatus());
+        ErpStockMoveItemDO item = stockMoveItem(1L, 2L);
+
+        try (MockedStatic<SecurityFrameworkUtils> security = mockLoginDept(20L)) {
+            ErpStockMoveOperationPermission permission = stockMoveService.getUnlockCartPermission(
+                    stockMove, Collections.singletonList(item));
+
+            assertTrue(permission.getAllowed());
+        }
+    }
+
+    @Test
+    void getUnlockCartPermission_crossDept_configuredHeadChildDeptAllowed() {
+        mockWarehouseMap(200L, 300L);
+        when(configApi.getConfigValueByKey("erp.stock.transferOut.unlockCartHeadDeptIds"))
+                .thenReturn("20");
+        when(deptApi.getDept(100L)).thenReturn(dept(100L, 10L));
+        when(deptApi.getDept(10L)).thenReturn(dept(10L, 0L));
+        when(deptApi.getDept(21L)).thenReturn(dept(21L, 20L));
+        ErpStockMoveDO stockMove = saleCartStockMove(100L)
+                .setSourceId(72L)
+                .setTransferDirection(10)
+                .setStatus(ErpAuditStatus.PROCESS.getStatus());
+        ErpStockMoveItemDO item = stockMoveItem(1L, 2L);
+
+        try (MockedStatic<SecurityFrameworkUtils> security = mockLoginDept(21L)) {
+            ErpStockMoveOperationPermission permission = stockMoveService.getUnlockCartPermission(
+                    stockMove, Collections.singletonList(item));
+
+            assertTrue(permission.getAllowed());
+        }
+    }
+
+    @Test
+    void getUnlockCartPermission_crossDept_invalidConfiguredHeadDeptIgnored() {
+        mockWarehouseMap(200L, 300L);
+        when(configApi.getConfigValueByKey("erp.stock.transferOut.unlockCartHeadDeptIds"))
+                .thenReturn(" , abc, -2, 0 ");
+        when(deptApi.getDept(100L)).thenReturn(dept(100L, 10L));
+        when(deptApi.getDept(10L)).thenReturn(dept(10L, 0L));
+        ErpStockMoveDO stockMove = saleCartStockMove(100L)
+                .setSourceId(72L)
+                .setTransferDirection(10)
+                .setStatus(ErpAuditStatus.PROCESS.getStatus());
+        ErpStockMoveItemDO item = stockMoveItem(1L, 2L);
+
+        try (MockedStatic<SecurityFrameworkUtils> security = mockLoginDept(20L)) {
+            ErpStockMoveOperationPermission permission = stockMoveService.getUnlockCartPermission(
+                    stockMove, Collections.singletonList(item));
+
+            assertFalse(permission.getAllowed());
+            assertEquals("销售手推车跨部门调拨出库单只能由总公司解锁", permission.getDisabledReason());
         }
     }
 

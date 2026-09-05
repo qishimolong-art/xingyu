@@ -3,11 +3,14 @@ package cn.iocoder.yudao.module.erp.controller.admin.finance.receivable;
 import cn.idev.excel.annotation.ExcelProperty;
 import cn.iocoder.yudao.framework.common.pojo.CommonResult;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
+import cn.iocoder.yudao.framework.common.util.validation.ValidationUtils;
 import cn.iocoder.yudao.framework.test.core.ut.BaseMockitoUnitTest;
+import cn.iocoder.yudao.module.erp.controller.admin.finance.receivable.vo.otherreceivable.ErpReceivableOtherSaveReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.receivable.vo.otherreceivable.ErpReceivableOtherDraftSaveReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.receivable.vo.otherreceivable.ErpReceivableOtherExportRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.receivable.vo.otherreceivable.ErpReceivableOtherPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.receivable.vo.otherreceivable.ErpReceivableOtherRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.imports.ErpFinanceImportRespVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.receivable.ErpReceivableOtherDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpCustomerDO;
 import cn.iocoder.yudao.module.erp.service.finance.ErpFinanceFieldPermissionMasker;
@@ -17,10 +20,20 @@ import cn.iocoder.yudao.module.system.api.dept.DeptApi;
 import cn.iocoder.yudao.module.system.api.dept.dto.DeptRespDTO;
 import cn.iocoder.yudao.module.system.api.user.AdminUserApi;
 import cn.iocoder.yudao.module.system.api.user.dto.AdminUserRespDTO;
+import org.apache.poi.hssf.usermodel.HSSFWorkbook;
+import org.apache.poi.ss.usermodel.Row;
+import org.apache.poi.ss.usermodel.Sheet;
+import org.apache.poi.ss.usermodel.Workbook;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import org.springframework.mock.web.MockMultipartFile;
 
+import javax.validation.ConstraintViolationException;
+import java.io.ByteArrayOutputStream;
+import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.Arrays;
 import java.util.Collections;
@@ -30,8 +43,11 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.stream.Collectors;
 
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -51,6 +67,16 @@ class ErpReceivableOtherControllerTest extends BaseMockitoUnitTest {
     private DeptApi deptApi;
     @Mock
     private ErpFinanceFieldPermissionMasker fieldPermissionMasker;
+
+    @Test
+    void saveReqVO_rejectsZeroReceivableAmountButAllowsNegative() {
+        ConstraintViolationException exception = assertThrows(ConstraintViolationException.class,
+                () -> ValidationUtils.validate(saveReqVO(BigDecimal.ZERO)));
+        assertTrue(exception.getConstraintViolations().stream()
+                .anyMatch(violation -> "应收金额不能为 0".equals(violation.getMessage())));
+
+        assertDoesNotThrow(() -> ValidationUtils.validate(saveReqVO(new BigDecimal("-1.00"))));
+    }
 
     @Test
     void createDraft_delegatesToDraftService() {
@@ -156,6 +182,51 @@ class ErpReceivableOtherControllerTest extends BaseMockitoUnitTest {
                 "项目",
                 "所属部门"
         ), titles);
+    }
+
+    @Test
+    void importExcel_blankBizTimeDefaultsToToday() throws Exception {
+        when(receivableOtherService.createReceivableOther(any())).thenReturn(1L);
+
+        CommonResult<ErpFinanceImportRespVO> result = controller.importExcel(excelFile(
+                new String[]{"客户ID", "应收金额", "调账原因备注"},
+                new Object[]{10L, new BigDecimal("88.00"), "调账"}));
+
+        ArgumentCaptor<ErpReceivableOtherSaveReqVO> captor =
+                ArgumentCaptor.forClass(ErpReceivableOtherSaveReqVO.class);
+        verify(receivableOtherService).createReceivableOther(captor.capture());
+        assertEquals(1, result.getData().getSuccessCount());
+        assertEquals(LocalDate.now(), captor.getValue().getBizTime());
+    }
+
+    private MockMultipartFile excelFile(String[] headers, Object[] values) throws Exception {
+        try (Workbook workbook = new HSSFWorkbook(); ByteArrayOutputStream out = new ByteArrayOutputStream()) {
+            Sheet sheet = workbook.createSheet("数据");
+            Row headerRow = sheet.createRow(0);
+            for (int i = 0; i < headers.length; i++) {
+                headerRow.createCell(i).setCellValue(headers[i]);
+            }
+            Row dataRow = sheet.createRow(1);
+            for (int i = 0; i < values.length; i++) {
+                Object value = values[i];
+                if (value instanceof Number) {
+                    dataRow.createCell(i).setCellValue(((Number) value).doubleValue());
+                } else if (value != null) {
+                    dataRow.createCell(i).setCellValue(value.toString());
+                }
+            }
+            workbook.write(out);
+            return new MockMultipartFile("file", "receivable-other.xls", "application/vnd.ms-excel",
+                    out.toByteArray());
+        }
+    }
+
+    private static ErpReceivableOtherSaveReqVO saveReqVO(BigDecimal receivableAmount) {
+        return new ErpReceivableOtherSaveReqVO()
+                .setBizTime(LocalDate.of(2026, 9, 2))
+                .setCustomerId(1L)
+                .setDeptId(2L)
+                .setReceivableAmount(receivableAmount);
     }
 
     private static AdminUserRespDTO user(String nickname) {

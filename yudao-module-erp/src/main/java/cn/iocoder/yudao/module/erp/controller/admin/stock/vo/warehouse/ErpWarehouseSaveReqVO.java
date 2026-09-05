@@ -3,6 +3,8 @@ package cn.iocoder.yudao.module.erp.controller.admin.stock.vo.warehouse;
 import cn.iocoder.yudao.framework.common.enums.CommonStatusEnum;
 import cn.iocoder.yudao.framework.common.validation.InEnum;
 import io.swagger.v3.oas.annotations.media.Schema;
+import javax.validation.constraints.DecimalMax;
+import javax.validation.constraints.DecimalMin;
 import javax.validation.constraints.NotEmpty;
 import javax.validation.constraints.NotNull;
 import lombok.Data;
@@ -26,6 +28,19 @@ public class ErpWarehouseSaveReqVO {
 
     @Schema(description = "仓库地址", example = "上海陆家嘴")
     private String address;
+
+    @Schema(description = "地图显示名称", example = "兴宇路通仓库")
+    private String mapName;
+
+    @Schema(description = "仓库经度（GCJ-02）", example = "104.066801")
+    @DecimalMin(value = "-180", message = "仓库经度必须在 -180 到 180 之间")
+    @DecimalMax(value = "180", message = "仓库经度必须在 -180 到 180 之间")
+    private BigDecimal longitude;
+
+    @Schema(description = "仓库纬度（GCJ-02）", example = "30.572269")
+    @DecimalMin(value = "-90", message = "仓库纬度必须在 -90 到 90 之间")
+    @DecimalMax(value = "90", message = "仓库纬度必须在 -90 到 90 之间")
+    private BigDecimal latitude;
 
     @Schema(description = "排序", example = "10")
     private Long sort;

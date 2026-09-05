@@ -10,6 +10,9 @@ import java.util.List;
 @Data
 public class ErpSaleImportResultRespVO {
 
+    @Schema(description = "Import record id")
+    private Long recordId;
+
     @Schema(description = "Success document count")
     private Integer successCount = 0;
 

@@ -44,6 +44,8 @@ public interface ErpPurchaseInvoiceMapper extends BaseMapperX<ErpPurchaseInvoice
                         String productKeyword = ErpKeywordQuery.normalize(reqVO.getProductKeyword());
                         w.like(ErpProductDO::getCode, productKeyword)
                                 .or().like(ErpProductDO::getName, productKeyword)
+                                .or().like(ErpProductDO::getPinyinCode, productKeyword)
+                                .or().like(ErpProductDO::getWubiCode, productKeyword)
                                 .or().like(ErpProductDO::getBarCode, productKeyword)
                                 .or().like(ErpProductDO::getVehicleModel, productKeyword)
                                 .or().like(ErpProductDO::getFactoryCode, productKeyword)
@@ -54,7 +56,7 @@ public interface ErpPurchaseInvoiceMapper extends BaseMapperX<ErpPurchaseInvoice
                     })
                     .groupBy(ErpPurchaseInvoiceDO::getId);
         }
-        ErpKeywordQuery.appendWithDeptName(query, reqVO.getKeyword(),
+        ErpKeywordQuery.appendWithDeptNameAndPurchaseSupplier(query, reqVO.getKeyword(),
                 ErpPurchaseInvoiceDO::getNo, ErpPurchaseInvoiceDO::getInvoiceNo,
                 ErpPurchaseInvoiceDO::getInvoiceType, ErpPurchaseInvoiceDO::getRemark);
         orderByIfPresent(query, reqVO);

@@ -13,6 +13,7 @@ import cn.iocoder.yudao.framework.excel.core.util.ExcelUtils;
 import cn.iocoder.yudao.module.erp.controller.admin.common.ErpAuditStatusRequestValidator;
 import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpProductRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.out.ErpSaleOutExportRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.out.ErpSaleOutItemPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.out.ErpSaleOutPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.out.ErpSaleOutRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.out.ErpSaleReturnableItemRespVO;
@@ -201,12 +202,15 @@ public class ErpSaleOutController {
     @Operation(summary = "获得销售出库")
     @Parameter(name = "id", description = "编号", required = true, example = "1024")
     @PreAuthorize("@ss.hasPermission('erp:sale-out:query')")
-    public CommonResult<ErpSaleOutRespVO> getSaleOut(@RequestParam("id") Long id) {
+    public CommonResult<ErpSaleOutRespVO> getSaleOut(@RequestParam("id") Long id,
+                                                     @RequestParam(value = "includeItems", required = false,
+                                                             defaultValue = "true") Boolean includeItems) {
         ErpSaleOutDO saleOut = saleOutService.getSaleOut(id);
         if (saleOut == null) {
             return success(null);
         }
-        List<ErpSaleOutItemDO> saleOutItemList = saleOutService.getSaleOutItemListByOutId(id);
+        List<ErpSaleOutItemDO> saleOutItemList = Boolean.TRUE.equals(includeItems)
+                ? saleOutService.getSaleOutItemListByOutId(id) : Collections.emptyList();
         Map<Long, ErpProductRespVO> productMap = getProductVOMapIgnoreDataPermission(
                 convertSet(saleOutItemList, ErpSaleOutItemDO::getProductId));
         // 仓库信息
@@ -264,9 +268,84 @@ public class ErpSaleOutController {
         fillSaleOutRelationFields(respVO, saleOut);
         fillSaleOutStockOutBillInfo(respVO, id);
         // 退货状态
-        respVO.setReturnStatus(calculateReturnStatus(saleOutItemList, returnedCountMap));
+        if (Boolean.TRUE.equals(includeItems)) {
+            respVO.setReturnStatus(calculateReturnStatus(saleOutItemList, returnedCountMap));
+        }
         fieldPermissionMasker.maskSaleDetailFormWithItems(FIELD_PERMISSION_MODULE, respVO);
         return success(respVO);
+    }
+
+    @PreAuthorize("@ss.hasPermission('erp:sale-out:query')")
+    public CommonResult<ErpSaleOutRespVO> getSaleOut(Long id) {
+        return getSaleOut(id, true);
+    }
+
+    @GetMapping("/item-page")
+    @Operation(summary = "获得销售出库明细分页")
+    @PreAuthorize("@ss.hasPermission('erp:sale-out:query')")
+    public CommonResult<PageResult<ErpSaleOutRespVO.Item>> getSaleOutItemPage(
+            @Valid ErpSaleOutItemPageReqVO pageReqVO) {
+        ErpSaleOutDO saleOut = saleOutService.getSaleOut(pageReqVO.getOutId());
+        if (saleOut == null) {
+            return success(PageResult.empty());
+        }
+        PageResult<ErpSaleOutItemDO> pageResult = saleOutService.getSaleOutItemPage(pageReqVO);
+        List<ErpSaleOutItemDO> itemList = pageResult.getList() == null
+                ? Collections.emptyList() : pageResult.getList();
+        Map<Long, ErpProductRespVO> productMap = getProductVOMapIgnoreDataPermission(
+                convertSet(itemList, ErpSaleOutItemDO::getProductId));
+        Set<Long> warehouseIds = convertSet(itemList, ErpSaleOutItemDO::getWarehouseId);
+        warehouseIds.addAll(convertSet(itemList, ErpSaleOutItemDO::getSourceWarehouseId));
+        warehouseIds.remove(null);
+        Map<Long, ErpWarehouseDO> warehouseMap = getWarehouseMapIgnoreDataPermission(warehouseIds);
+        Set<Long> deptIds = convertSet(itemList, ErpSaleOutItemDO::getDeptId);
+        deptIds.addAll(convertSet(itemList, ErpSaleOutItemDO::getSourceDeptId));
+        deptIds.addAll(convertSet(warehouseMap.values(), ErpWarehouseDO::getDeptId));
+        deptIds.remove(null);
+        Map<Long, DeptRespDTO> itemDeptMap = CollUtil.isEmpty(deptIds)
+                ? Collections.emptyMap() : deptApi.getDeptMap(deptIds);
+        Map<Long, BigDecimal> returnedCountMap = saleReturnItemMapper.selectReturnedCountMapBySourceOutItemIds(
+                convertSet(itemList, ErpSaleOutItemDO::getId));
+        List<ErpSaleOutRespVO.Item> items = BeanUtils.toBean(itemList, ErpSaleOutRespVO.Item.class, item -> {
+            ErpStockDO stock = getStockIgnoreDataPermission(item.getProductId(), item.getWarehouseId());
+            item.setStockCount(stock != null ? stock.getCount() : BigDecimal.ZERO);
+            MapUtils.findAndThen(productMap, item.getProductId(), product -> {
+                item.setProductName(product.getName())
+                        .setProductBarCode(product.getBarCode()).setProductUnitName(product.getUnitName());
+                item.setProductCode(product.getCode());
+                item.setVehicleModel(product.getVehicleModel());
+                item.setStandard(product.getStandard());
+                item.setFeatureCode(product.getFeatureCode());
+                item.setBrand(product.getBrand());
+                item.setDrawingNo(product.getDrawingNo());
+                item.setOriginPlace(product.getOriginPlace());
+            });
+            MapUtils.findAndThen(warehouseMap, item.getWarehouseId(), warehouse -> {
+                item.setWarehouseName(warehouse.getName());
+                item.setWarehouseDeptId(warehouse.getDeptId());
+                MapUtils.findAndThen(itemDeptMap, warehouse.getDeptId(),
+                        dept -> item.setWarehouseDeptName(dept.getName()));
+            });
+            MapUtils.findAndThen(warehouseMap, item.getSourceWarehouseId(),
+                    warehouse -> item.setSourceWarehouseName(warehouse.getName()));
+            MapUtils.findAndThen(itemDeptMap, item.getSourceDeptId(),
+                    dept -> item.setSourceDeptName(dept.getName()));
+            item.setCrossDept(item.getSourceWarehouseId() != null
+                    && !Objects.equals(item.getSourceWarehouseId(), item.getWarehouseId()));
+            MapUtils.findAndThen(itemDeptMap, item.getDeptId(), dept -> item.setDeptName(dept.getName()));
+            if (item.getProductPrice() != null && item.getCount() != null) {
+                item.setTotalProductPrice(item.getProductPrice().multiply(item.getCount()));
+            }
+            item.setReturnedCount(returnedCountMap.get(item.getId()));
+        });
+        fillSaleOutItemStockOutBillInfo(pageReqVO.getOutId(), items);
+        PageResult<ErpSaleOutRespVO.Item> respResult = new PageResult<>(items, pageResult.getTotal());
+        if (Boolean.TRUE.equals(pageReqVO.getMask())) {
+            ErpSaleOutRespVO context = BeanUtils.toBean(saleOut, ErpSaleOutRespVO.class);
+            fieldPermissionMasker.clearSaleDetailHiddenItemFields(FIELD_PERMISSION_MODULE, context,
+                    respResult.getList());
+        }
+        return success(respResult);
     }
 
     private Map<Long, ErpProductRespVO> getProductVOMapIgnoreDataPermission(Set<Long> productIds) {
@@ -702,6 +781,24 @@ public class ErpSaleOutController {
             return;
         }
         respVO.getItems().forEach(item -> fillSaleOutItemStockOutBillInfo(item, billItemMap.get(item.getId()), billMap));
+    }
+
+    private void fillSaleOutItemStockOutBillInfo(Long saleOutId, List<ErpSaleOutRespVO.Item> items) {
+        if (CollUtil.isEmpty(items)) {
+            return;
+        }
+        List<ErpStockOutBillDO> bills = stockOutBillService.getStockOutBillListBySaleOutId(saleOutId);
+        if (CollUtil.isEmpty(bills)) {
+            items.forEach(item -> item.setHasStockOutBill(false));
+            return;
+        }
+        Map<Long, ErpStockOutBillDO> billMap = bills.stream()
+                .collect(Collectors.toMap(ErpStockOutBillDO::getId, bill -> bill, (first, second) -> first));
+        List<ErpStockOutBillItemDO> billItems = stockOutBillService.getSaleOutSourceItemList(saleOutId);
+        Map<Long, List<ErpStockOutBillItemDO>> billItemMap = billItems.stream()
+                .filter(item -> item.getSourceItemId() != null)
+                .collect(Collectors.groupingBy(ErpStockOutBillItemDO::getSourceItemId));
+        items.forEach(item -> fillSaleOutItemStockOutBillInfo(item, billItemMap.get(item.getId()), billMap));
     }
 
     private List<ErpSaleOutRespVO.StockOutBillBrief> toStockOutBillBriefs(List<ErpStockOutBillDO> bills) {

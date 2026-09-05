@@ -40,6 +40,7 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.MockedStatic;
 
+import java.math.BigDecimal;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
@@ -193,6 +194,81 @@ public class ErpWarehouseServiceImplTest extends BaseMockitoUnitTest {
     }
 
     @Test
+    public void testCreateWarehouse_locationFields_success() {
+        ErpWarehouseSaveReqVO reqVO = new ErpWarehouseSaveReqVO();
+        reqVO.setName("A");
+        reqVO.setWarehouseCode("WH001");
+        reqVO.setAddress("成都市高新区");
+        reqVO.setMapName("兴宇路通仓库");
+        reqVO.setLongitude(new BigDecimal("104.066801"));
+        reqVO.setLatitude(new BigDecimal("30.572269"));
+        when(warehouseMapper.insert(any(ErpWarehouseDO.class))).thenAnswer(invocation -> {
+            ErpWarehouseDO warehouse = invocation.getArgument(0);
+            warehouse.setId(100L);
+            return 1;
+        });
+
+        Long id = warehouseService.createWarehouse(reqVO);
+
+        assertEquals(100L, id);
+        ArgumentCaptor<ErpWarehouseDO> captor = ArgumentCaptor.forClass(ErpWarehouseDO.class);
+        verify(warehouseMapper).insert(captor.capture());
+        assertEquals("成都市高新区", captor.getValue().getAddress());
+        assertEquals("兴宇路通仓库", captor.getValue().getMapName());
+        assertEquals(0, new BigDecimal("104.066801").compareTo(captor.getValue().getLongitude()));
+        assertEquals(0, new BigDecimal("30.572269").compareTo(captor.getValue().getLatitude()));
+    }
+
+    @Test
+    public void testCreateWarehouse_nullLocationFields_success() {
+        ErpWarehouseSaveReqVO reqVO = new ErpWarehouseSaveReqVO();
+        reqVO.setName("A");
+        reqVO.setWarehouseCode("WH001");
+        when(warehouseMapper.insert(any(ErpWarehouseDO.class))).thenAnswer(invocation -> {
+            ErpWarehouseDO warehouse = invocation.getArgument(0);
+            warehouse.setId(100L);
+            return 1;
+        });
+
+        Long id = warehouseService.createWarehouse(reqVO);
+
+        assertEquals(100L, id);
+        ArgumentCaptor<ErpWarehouseDO> captor = ArgumentCaptor.forClass(ErpWarehouseDO.class);
+        verify(warehouseMapper).insert(captor.capture());
+        assertNull(captor.getValue().getLongitude());
+        assertNull(captor.getValue().getLatitude());
+        assertNull(captor.getValue().getMapName());
+    }
+
+    @Test
+    public void testCreateWarehouse_invalidLongitude_throwException() {
+        ErpWarehouseSaveReqVO reqVO = new ErpWarehouseSaveReqVO();
+        reqVO.setName("A");
+        reqVO.setWarehouseCode("WH001");
+        reqVO.setLongitude(new BigDecimal("181"));
+
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+                () -> warehouseService.createWarehouse(reqVO));
+
+        assertEquals("仓库经度必须在 -180 到 180 之间", ex.getMessage());
+        verify(warehouseMapper, never()).insert(any(ErpWarehouseDO.class));
+    }
+
+    @Test
+    public void testCreateWarehouse_invalidLatitude_throwException() {
+        ErpWarehouseSaveReqVO reqVO = new ErpWarehouseSaveReqVO();
+        reqVO.setName("A");
+        reqVO.setWarehouseCode("WH001");
+        reqVO.setLatitude(new BigDecimal("-91"));
+
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+                () -> warehouseService.createWarehouse(reqVO));
+
+        assertEquals("仓库纬度必须在 -90 到 90 之间", ex.getMessage());
+        verify(warehouseMapper, never()).insert(any(ErpWarehouseDO.class));
+    }
+
+    @Test
     public void testCreateWarehouse_duplicateManualCode_throwException() {
         ErpWarehouseSaveReqVO reqVO = new ErpWarehouseSaveReqVO();
         reqVO.setName("A");
@@ -223,6 +299,51 @@ public class ErpWarehouseServiceImplTest extends BaseMockitoUnitTest {
         ArgumentCaptor<ErpWarehouseDO> captor = ArgumentCaptor.forClass(ErpWarehouseDO.class);
         verify(warehouseMapper).updateById(captor.capture());
         assertEquals("WH001", captor.getValue().getWarehouseCode());
+    }
+
+    @Test
+    public void testUpdateWarehouse_locationFields_success() {
+        ErpWarehouseDO warehouse = new ErpWarehouseDO().setId(1L).setName("A仓").setWarehouseCode("WH001")
+                .setDeptId(10L).setAddress("旧地址").setMapName("旧地图")
+                .setLongitude(new BigDecimal("100.000000")).setLatitude(new BigDecimal("20.000000"))
+                .setSaleEnabled(true);
+        when(warehouseMapper.selectById(eq(1L))).thenReturn(warehouse);
+        ErpWarehouseSaveReqVO reqVO = new ErpWarehouseSaveReqVO();
+        reqVO.setId(1L);
+        reqVO.setName("A仓");
+        reqVO.setDeptId(10L);
+        reqVO.setAddress("新地址");
+        reqVO.setMapName("新地图");
+        reqVO.setLongitude(new BigDecimal("104.066801"));
+        reqVO.setLatitude(new BigDecimal("30.572269"));
+        reqVO.setSaleEnabled(true);
+
+        warehouseService.updateWarehouse(reqVO);
+
+        ArgumentCaptor<ErpWarehouseDO> captor = ArgumentCaptor.forClass(ErpWarehouseDO.class);
+        verify(warehouseMapper).updateById(captor.capture());
+        assertEquals("新地址", captor.getValue().getAddress());
+        assertEquals("新地图", captor.getValue().getMapName());
+        assertEquals(0, new BigDecimal("104.066801").compareTo(captor.getValue().getLongitude()));
+        assertEquals(0, new BigDecimal("30.572269").compareTo(captor.getValue().getLatitude()));
+    }
+
+    @Test
+    public void testUpdateWarehouse_invalidLatitude_throwException() {
+        ErpWarehouseDO warehouse = new ErpWarehouseDO().setId(1L).setName("A仓").setWarehouseCode("WH001")
+                .setDeptId(10L).setSaleEnabled(true);
+        when(warehouseMapper.selectById(eq(1L))).thenReturn(warehouse);
+        ErpWarehouseSaveReqVO reqVO = new ErpWarehouseSaveReqVO();
+        reqVO.setId(1L);
+        reqVO.setName("A仓");
+        reqVO.setDeptId(10L);
+        reqVO.setLatitude(new BigDecimal("90.000001"));
+
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+                () -> warehouseService.updateWarehouse(reqVO));
+
+        assertEquals("仓库纬度必须在 -90 到 90 之间", ex.getMessage());
+        verify(warehouseMapper, never()).updateById(any(ErpWarehouseDO.class));
     }
 
     @Test
@@ -1013,6 +1134,52 @@ public class ErpWarehouseServiceImplTest extends BaseMockitoUnitTest {
         assertEquals(null, updateCaptor.getValue().getStatus());
         assertEquals(null, updateCaptor.getValue().getSort());
         verify(stockMapper).updateDeptIdByWarehouseId(eq(2L), eq(20L));
+    }
+
+    @Test
+    public void testImportWarehouseList_createWithLocationFields() {
+        ErpWarehouseImportExcelVO row = new ErpWarehouseImportExcelVO();
+        row.setName("新增仓");
+        row.setWarehouseCode("WH001");
+        row.setAddress("成都市高新区");
+        row.setMapName("兴宇路通仓库");
+        row.setLongitude(new BigDecimal("104.066801"));
+        row.setLatitude(new BigDecimal("30.572269"));
+
+        ErpWarehouseImportRespVO result = warehouseService.importWarehouseList(Collections.singletonList(row));
+
+        assertEquals(1, result.getSuccessCount(), result.getFailureDetails().toString());
+        assertEquals(1, result.getCreateCount());
+        ArgumentCaptor<ErpWarehouseDO> insertCaptor = ArgumentCaptor.forClass(ErpWarehouseDO.class);
+        verify(warehouseMapper).insert(insertCaptor.capture());
+        assertEquals("成都市高新区", insertCaptor.getValue().getAddress());
+        assertEquals("兴宇路通仓库", insertCaptor.getValue().getMapName());
+        assertEquals(0, new BigDecimal("104.066801").compareTo(insertCaptor.getValue().getLongitude()));
+        assertEquals(0, new BigDecimal("30.572269").compareTo(insertCaptor.getValue().getLatitude()));
+    }
+
+    @Test
+    public void testImportWarehouseList_updateWithLocationFields() {
+        ErpWarehouseImportExcelVO row = new ErpWarehouseImportExcelVO();
+        row.setName("更新仓");
+        row.setWarehouseCode("WH002");
+        row.setAddress("新地址");
+        row.setMapName("新地图");
+        row.setLongitude(new BigDecimal("104.066801"));
+        row.setLatitude(new BigDecimal("30.572269"));
+        ErpWarehouseDO existing = new ErpWarehouseDO().setId(2L).setName("旧仓").setWarehouseCode("WH002").setDeptId(10L);
+        when(warehouseMapper.selectByWarehouseCode(eq("WH002"))).thenReturn(existing);
+
+        ErpWarehouseImportRespVO result = warehouseService.importWarehouseList(Collections.singletonList(row));
+
+        assertEquals(1, result.getSuccessCount(), result.getFailureDetails().toString());
+        assertEquals(1, result.getUpdateCount());
+        ArgumentCaptor<ErpWarehouseDO> updateCaptor = ArgumentCaptor.forClass(ErpWarehouseDO.class);
+        verify(warehouseMapper).updateById(updateCaptor.capture());
+        assertEquals("新地址", updateCaptor.getValue().getAddress());
+        assertEquals("新地图", updateCaptor.getValue().getMapName());
+        assertEquals(0, new BigDecimal("104.066801").compareTo(updateCaptor.getValue().getLongitude()));
+        assertEquals(0, new BigDecimal("30.572269").compareTo(updateCaptor.getValue().getLatitude()));
     }
 
     @Test

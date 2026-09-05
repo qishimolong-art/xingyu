@@ -68,6 +68,8 @@ public interface ErpPurchaseReturnMapper extends BaseMapperX<ErpPurchaseReturnDO
                         String productKeyword = ErpKeywordQuery.normalize(reqVO.getProductKeyword());
                         w.like(ErpProductDO::getCode, productKeyword)
                                 .or().like(ErpProductDO::getName, productKeyword)
+                                .or().like(ErpProductDO::getPinyinCode, productKeyword)
+                                .or().like(ErpProductDO::getWubiCode, productKeyword)
                                 .or().like(ErpProductDO::getBarCode, productKeyword)
                                 .or().like(ErpProductDO::getVehicleModel, productKeyword)
                                 .or().like(ErpProductDO::getFactoryCode, productKeyword)
@@ -83,7 +85,7 @@ public interface ErpPurchaseReturnMapper extends BaseMapperX<ErpPurchaseReturnDO
                     })
                     .groupBy(ErpPurchaseReturnDO::getId); // 避免 1 对多查询，产生相同的 1
         }
-        ErpKeywordQuery.appendWithDeptName(query, reqVO.getKeyword(),
+        ErpKeywordQuery.appendWithDeptNameAndPurchaseSupplier(query, reqVO.getKeyword(),
                 ErpPurchaseReturnDO::getNo, ErpPurchaseReturnDO::getOrderNo,
                 ErpPurchaseReturnDO::getRemark, ErpPurchaseReturnDO::getReturnType,
                 ErpPurchaseReturnDO::getPurchaser, ErpPurchaseReturnDO::getInvoiceType,

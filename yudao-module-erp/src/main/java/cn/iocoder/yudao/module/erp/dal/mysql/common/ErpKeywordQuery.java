@@ -18,6 +18,10 @@ public final class ErpKeywordQuery {
             + "WHERE d.id = dept_id AND d.deleted = b'0' AND d.name LIKE {0})";
     private static final String JOIN_DEPT_NAME_LIKE_SQL = "EXISTS (SELECT 1 FROM system_dept d "
             + "WHERE d.id = t.dept_id AND d.deleted = b'0' AND d.name LIKE {0})";
+    private static final String JOIN_PURCHASE_SUPPLIER_LIKE_SQL = "EXISTS (SELECT 1 FROM erp_supplier s "
+            + "WHERE s.id = t.supplier_id AND s.deleted = b'0' AND s.tenant_id = t.tenant_id "
+            + "AND (s.code LIKE {0} OR s.name LIKE {1} OR s.short_name LIKE {2} OR s.contact LIKE {3} "
+            + "OR s.mobile LIKE {4} OR s.telephone LIKE {5} OR s.pinyin_code LIKE {6} OR s.wubi_code LIKE {7}))";
 
     private ErpKeywordQuery() {
     }
@@ -58,6 +62,16 @@ public final class ErpKeywordQuery {
         wrapper.and(w -> appendJoinLikeGroup(w, value, true, columns));
     }
 
+    @SafeVarargs
+    public static <T> void appendWithDeptNameAndPurchaseSupplier(MPJLambdaWrapperX<T> wrapper, String keyword,
+                                                                 SFunction<T, ?>... columns) {
+        String value = normalize(keyword);
+        if (!StringUtils.hasText(value) || columns == null || columns.length == 0) {
+            return;
+        }
+        wrapper.and(w -> appendJoinLikeGroup(w, value, true, true, columns));
+    }
+
     public static String normalize(String keyword) {
         if (!StringUtils.hasText(keyword)) {
             return null;
@@ -86,6 +100,13 @@ public final class ErpKeywordQuery {
     @SafeVarargs
     private static <T> void appendJoinLikeGroup(MPJLambdaWrapper<T> wrapper, String keyword,
                                                 boolean includeDeptName, SFunction<T, ?>... columns) {
+        appendJoinLikeGroup(wrapper, keyword, includeDeptName, false, columns);
+    }
+
+    @SafeVarargs
+    private static <T> void appendJoinLikeGroup(MPJLambdaWrapper<T> wrapper, String keyword,
+                                                boolean includeDeptName, boolean includePurchaseSupplier,
+                                                SFunction<T, ?>... columns) {
         boolean hasCondition = false;
         for (SFunction<T, ?> column : columns) {
             if (column == null) {
@@ -98,6 +119,7 @@ public final class ErpKeywordQuery {
             hasCondition = true;
         }
         hasCondition = appendJoinDeptNameCondition(wrapper, includeDeptName, hasCondition, keyword);
+        hasCondition = appendJoinPurchaseSupplierCondition(wrapper, includePurchaseSupplier, hasCondition, keyword);
         appendJoinCreateTimeCondition(wrapper, hasCondition, keyword);
     }
 
@@ -126,6 +148,23 @@ public final class ErpKeywordQuery {
             wrapper.or();
         }
         wrapper.apply(JOIN_DEPT_NAME_LIKE_SQL, "%" + keyword + "%");
+        return true;
+    }
+
+    private static <T> boolean appendJoinPurchaseSupplierCondition(MPJLambdaWrapper<T> wrapper,
+                                                                   boolean includePurchaseSupplier,
+                                                                   boolean hasCondition,
+                                                                   String keyword) {
+        if (!includePurchaseSupplier) {
+            return hasCondition;
+        }
+        if (hasCondition) {
+            wrapper.or();
+        }
+        String likeValue = "%" + keyword + "%";
+        wrapper.apply(JOIN_PURCHASE_SUPPLIER_LIKE_SQL,
+                likeValue, likeValue, likeValue, likeValue,
+                likeValue, likeValue, likeValue, likeValue);
         return true;
     }
 

@@ -25,4 +25,7 @@ public class ErpSaleCartItemBatchUpdateReqVO {
     @Schema(description = "目标部门编号", example = "100")
     private Long deptId;
 
+    @Schema(description = "价格级别", example = "3")
+    private Integer priceLevel;
+
 }

@@ -31,24 +31,22 @@ public class ErpPayableDetailRespVO {
     @ExcelProperty("单据编号")
     private String docNo;
 
-    @Schema(description = "上笔余额")
-    @ExcelProperty("上笔余额")
+    @Schema(description = "上次余额")
+    @ExcelProperty("上次余额")
     private BigDecimal prevBalance;
 
-    @Schema(description = "增加金额")
-    @ExcelProperty("增加金额")
+    @Schema(description = "应付款")
+    @ExcelProperty("应付款")
     private BigDecimal increaseAmount;
 
-    @Schema(description = "减少金额")
+    @Schema(description = "付款金额")
     @ExcelProperty("付款金额")
     private BigDecimal paymentAmount;
 
     @Schema(description = "核销金额")
-    @ExcelProperty("核销金额")
     private BigDecimal writeOffAmount;
 
     @Schema(description = "业务单据已关联的有效付款核销金额")
-    @ExcelProperty("已核销金额")
     private BigDecimal allocatedAmount;
 
     @Schema(description = "核销状态判断的单据基准金额")

@@ -14,6 +14,7 @@ import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.ErpPurchaseUpdat
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.invoice.ErpPurchaseInvoiceDraftCreateReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.invoice.ErpPurchaseInvoiceDraftUpdateReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.invoice.ErpPurchaseInvoiceImportExcelVO;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.invoice.ErpPurchaseInvoiceItemPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.invoice.ErpPurchaseInvoicePageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.invoice.ErpPurchaseInvoiceSaveReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.supplier.ErpSupplierPageReqVO;
@@ -24,11 +25,13 @@ import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseInvoiceDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseInvoiceItemDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpSupplierDO;
 import cn.iocoder.yudao.module.erp.dal.mysql.product.ErpProductMapper;
+import cn.iocoder.yudao.module.erp.dal.mysql.purchase.ErpPurchaseInItemMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.purchase.ErpPurchaseInMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.purchase.ErpPurchaseInvoiceItemMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.purchase.ErpPurchaseInvoiceMapper;
 import cn.iocoder.yudao.module.erp.dal.redis.no.ErpNoRedisDAO;
 import cn.iocoder.yudao.module.erp.enums.ErpAuditStatus;
+import cn.iocoder.yudao.module.erp.service.common.ErpImportProductResolver;
 import cn.iocoder.yudao.module.erp.service.common.ErpOperateLogService;
 import cn.iocoder.yudao.module.erp.service.product.ErpProductService;
 import org.springframework.stereotype.Service;
@@ -75,6 +78,8 @@ import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PURCHASE_INVO
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PURCHASE_INVOICE_SUPPLIER_REQUIRED;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PURCHASE_INVOICE_UPDATE_FAIL_NOT_DRAFT;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PURCHASE_INVOICE_UPDATE_FAIL_APPROVE;
+import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PURCHASE_IN_NOT_APPROVE;
+import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PURCHASE_IN_NOT_EXISTS;
 import static cn.iocoder.yudao.module.erp.enums.LogRecordConstants.ERP_PURCHASE_INVOICE_TYPE;
 
 @Service
@@ -100,6 +105,8 @@ public class ErpPurchaseInvoiceServiceImpl implements ErpPurchaseInvoiceService 
     @Resource
     private ErpPurchaseInMapper purchaseInMapper;
     @Resource
+    private ErpPurchaseInItemMapper purchaseInItemMapper;
+    @Resource
     private ErpPurchaseDocumentDefaultService purchaseDocumentDefaultService;
     @Resource
     private ErpOperateLogService operateLogService;
@@ -110,6 +117,7 @@ public class ErpPurchaseInvoiceServiceImpl implements ErpPurchaseInvoiceService 
     @Transactional(rollbackFor = Exception.class)
     public Long createPurchaseInvoice(ErpPurchaseInvoiceSaveReqVO createReqVO) {
         validateFormalMainFields(createReqVO);
+        mergeSourceInItems(createReqVO, null, Collections.emptyList());
         List<ErpPurchaseInvoiceItemDO> items = validatePurchaseInvoiceItems(createReqVO.getItems(), null);
         String no = noRedisDAO.generate(ErpNoRedisDAO.PURCHASE_INVOICE_NO_PREFIX);
         if (purchaseInvoiceMapper.selectByNo(no) != null) {
@@ -135,6 +143,7 @@ public class ErpPurchaseInvoiceServiceImpl implements ErpPurchaseInvoiceService 
     @Transactional(rollbackFor = Exception.class)
     public Long createPurchaseInvoiceDraft(ErpPurchaseInvoiceDraftCreateReqVO createReqVO) {
         validateOptionalDraftReferences(createReqVO);
+        mergeSourceInItems(createReqVO, null, Collections.emptyList());
         List<ErpPurchaseInvoiceItemDO> items = buildDraftPurchaseInvoiceItems(createReqVO.getItems(), null);
         if (CollUtil.isEmpty(items)) {
             throw exception(PURCHASE_INVOICE_ITEM_EMPTY);
@@ -166,6 +175,7 @@ public class ErpPurchaseInvoiceServiceImpl implements ErpPurchaseInvoiceService 
         }
         List<ErpPurchaseInvoiceItemDO> oldItems =
                 purchaseInvoiceItemMapper.selectListByInvoiceId(updateReqVO.getId());
+        mergeSourceInItems(updateReqVO, updateReqVO.getId(), oldItems);
         fieldPermissionMasker.preserveHiddenFields(FIELD_PERMISSION_MODULE, updateReqVO, purchaseInvoice);
         fieldPermissionMasker.preserveHiddenItemFields(FIELD_PERMISSION_MODULE, updateReqVO.getItems(), oldItems);
         validateFormalMainFields(updateReqVO);
@@ -195,6 +205,7 @@ public class ErpPurchaseInvoiceServiceImpl implements ErpPurchaseInvoiceService 
         }
         List<ErpPurchaseInvoiceItemDO> oldItems =
                 purchaseInvoiceItemMapper.selectListByInvoiceId(updateReqVO.getId());
+        mergeSourceInItems(updateReqVO, updateReqVO.getId(), oldItems);
         fieldPermissionMasker.preserveHiddenFields(FIELD_PERMISSION_MODULE, updateReqVO, purchaseInvoice);
         fieldPermissionMasker.preserveHiddenItemFields(FIELD_PERMISSION_MODULE, updateReqVO.getItems(), oldItems);
         validateOptionalDraftReferences(updateReqVO);
@@ -337,8 +348,22 @@ public class ErpPurchaseInvoiceServiceImpl implements ErpPurchaseInvoiceService 
     }
 
     @Override
+    public List<ErpPurchaseInDO> getPurchaseInList(Collection<Long> ids) {
+        if (CollUtil.isEmpty(ids)) {
+            return Collections.emptyList();
+        }
+        return purchaseInMapper.selectBatchIds(ids);
+    }
+
+    @Override
     public List<ErpPurchaseInvoiceItemDO> getPurchaseInvoiceItemListByInvoiceId(Long invoiceId) {
         return purchaseInvoiceItemMapper.selectListByInvoiceId(invoiceId);
+    }
+
+    @Override
+    public PageResult<ErpPurchaseInvoiceItemDO> getPurchaseInvoiceItemPage(ErpPurchaseInvoiceItemPageReqVO pageReqVO) {
+        validatePurchaseInvoiceExists(pageReqVO.getInvoiceId());
+        return purchaseInvoiceItemMapper.selectPageByInvoiceId(pageReqVO);
     }
 
     @Override
@@ -366,8 +391,9 @@ public class ErpPurchaseInvoiceServiceImpl implements ErpPurchaseInvoiceService 
         }
 
         Map<String, ErpSupplierDO> supplierMap = buildSupplierMap();
-        Map<String, ErpProductDO> productMap = productMapper.selectListByCodes(extractInvoiceProductCodes(list)).stream()
-                .collect(Collectors.toMap(ErpProductDO::getCode, product -> product, (a, b) -> a));
+        ErpImportProductResolver productResolver = ErpImportProductResolver.build(list,
+                ErpPurchaseInvoiceImportExcelVO::getProductCode, ErpPurchaseInvoiceImportExcelVO::getProductName,
+                ErpPurchaseInvoiceImportExcelVO::getFactoryCode, productMapper);
         Map<String, ErpPurchaseInDO> purchaseInMap = getPurchaseInMapByNos(extractInvoiceSourceInNos(list)).stream()
                 .collect(Collectors.toMap(ErpPurchaseInDO::getNo, purchaseIn -> purchaseIn, (a, b) -> a));
 
@@ -394,9 +420,6 @@ public class ErpPurchaseInvoiceServiceImpl implements ErpPurchaseInvoiceService 
                 } else if (CommonStatusEnum.isDisable(supplier.getStatus())) {
                     addImportFailure(respVO, rowNo, invoiceNo, null, "供应商(" + supplier.getName() + ")未启用");
                 }
-                if (trimToNull(row.getInvoiceDate()) == null) {
-                    addImportFailure(respVO, rowNo, invoiceNo, null, "开票日期不能为空");
-                }
                 if (trimToNull(row.getInvoiceType()) == null) {
                     addImportFailure(respVO, rowNo, invoiceNo, null, "票据类型不能为空");
                 }
@@ -405,21 +428,22 @@ public class ErpPurchaseInvoiceServiceImpl implements ErpPurchaseInvoiceService 
                 }
                 validateImportDate(respVO, rowNo, invoiceNo, null, "开票日期", row.getInvoiceDate());
             } else if (hasDetail && currentGroup == null) {
-                addImportFailure(respVO, rowNo, null, trimToNull(row.getProductCode()), "明细行前缺少采购票据主表信息");
+                addImportFailure(respVO, rowNo, null,
+                        ErpImportProductResolver.getIdentifier(row.getProductCode(), row.getProductName(), row.getFactoryCode()),
+                        "明细行前缺少采购票据主表信息");
                 continue;
             }
             if (!hasDetail) {
                 continue;
             }
             String invoiceNo = currentGroup == null ? null : resolveInvoiceImportNo(currentGroup.getRowNo(), currentGroup.getMainRow());
-            String productCode = trimToNull(row.getProductCode());
+            ErpImportProductResolver.ResolveResult productResult =
+                    productResolver.resolve(row.getProductCode(), row.getProductName(), row.getFactoryCode());
+            String productCode = productResult.getIdentifier();
             boolean valid = true;
-            ErpProductDO product = productMap.get(productCode);
-            if (productCode == null) {
-                addImportFailure(respVO, rowNo, invoiceNo, productCode, "产品编码不能为空");
-                valid = false;
-            } else if (product == null) {
-                addImportFailure(respVO, rowNo, invoiceNo, productCode, "产品不存在");
+            ErpProductDO product = productResult.getProduct();
+            if (productResult.isFailure()) {
+                addImportFailure(respVO, rowNo, invoiceNo, productCode, productResult.getErrorMessage());
                 valid = false;
             }
             if (row.getCount() == null || row.getCount().compareTo(BigDecimal.ZERO) <= 0) {
@@ -449,7 +473,7 @@ public class ErpPurchaseInvoiceServiceImpl implements ErpPurchaseInvoiceService 
         }
 
         Map<Long, ErpProductRespVO> productVOMap = productService.getProductVOMap(
-                convertSet(productMap.values(), ErpProductDO::getId));
+                convertSet(productResolver.getResolvedProducts(), ErpProductDO::getId));
         for (PurchaseInvoiceImportGroup group : groups) {
             ErpPurchaseInvoiceSaveReqVO saveReqVO = buildPurchaseInvoiceImportSaveReq(group, productVOMap);
             Long id = createPurchaseInvoice(saveReqVO);
@@ -506,6 +530,98 @@ public class ErpPurchaseInvoiceServiceImpl implements ErpPurchaseInvoiceService 
             throw exception(PURCHASE_INVOICE_NOT_EXISTS);
         }
         return purchaseInvoice;
+    }
+
+    private void mergeSourceInItems(ErpPurchaseInvoiceSaveReqVO reqVO, Long currentInvoiceId,
+                                    List<ErpPurchaseInvoiceItemDO> oldItems) {
+        if (CollUtil.isEmpty(reqVO.getSourceInIds())) {
+            return;
+        }
+        Set<Long> sourceInIds = new LinkedHashSet<>(reqVO.getSourceInIds());
+        sourceInIds.remove(null);
+        if (CollUtil.isEmpty(sourceInIds)) {
+            return;
+        }
+        List<ErpPurchaseInDO> purchaseIns = purchaseInMapper.selectBatchIds(sourceInIds);
+        Map<Long, ErpPurchaseInDO> purchaseInMap = convertMap(purchaseIns, ErpPurchaseInDO::getId);
+        for (Long sourceInId : sourceInIds) {
+            ErpPurchaseInDO purchaseIn = purchaseInMap.get(sourceInId);
+            if (purchaseIn == null) {
+                throw exception(PURCHASE_IN_NOT_EXISTS);
+            }
+            if (!ErpAuditStatus.APPROVE.getStatus().equals(purchaseIn.getStatus())) {
+                throw exception(PURCHASE_IN_NOT_APPROVE);
+            }
+        }
+
+        Set<Long> excludedSourceInItemIds = CollUtil.isEmpty(reqVO.getExcludedSourceInItemIds())
+                ? Collections.emptySet() : new LinkedHashSet<>(reqVO.getExcludedSourceInItemIds());
+        Map<Long, ErpPurchaseInvoiceSaveReqVO.Item> submittedSourceItemMap = new LinkedHashMap<>();
+        List<ErpPurchaseInvoiceSaveReqVO.Item> manualItems = new ArrayList<>();
+        for (ErpPurchaseInvoiceSaveReqVO.Item item : CollUtil.emptyIfNull(reqVO.getItems())) {
+            if (item == null) {
+                continue;
+            }
+            if (item.getSourceInItemId() == null) {
+                manualItems.add(item);
+                continue;
+            }
+            submittedSourceItemMap.put(item.getSourceInItemId(), item);
+        }
+        Map<Long, ErpPurchaseInvoiceItemDO> oldSourceItemMap = CollUtil.emptyIfNull(oldItems).stream()
+                .filter(item -> item.getSourceInItemId() != null)
+                .collect(Collectors.toMap(ErpPurchaseInvoiceItemDO::getSourceInItemId,
+                        item -> item, (a, b) -> a, LinkedHashMap::new));
+
+        List<ErpPurchaseInItemDO> sourceItems = purchaseInItemMapper.selectListByInIds(sourceInIds);
+        sourceItems.sort((a, b) -> {
+            if (a.getId() == null && b.getId() == null) {
+                return 0;
+            }
+            if (a.getId() == null) {
+                return -1;
+            }
+            if (b.getId() == null) {
+                return 1;
+            }
+            return a.getId().compareTo(b.getId());
+        });
+        List<ErpPurchaseInvoiceSaveReqVO.Item> mergedItems = new ArrayList<>();
+        for (ErpPurchaseInItemDO sourceItem : sourceItems) {
+            if (sourceItem.getId() != null && excludedSourceInItemIds.contains(sourceItem.getId())) {
+                continue;
+            }
+            mergedItems.add(buildInvoiceItemFromSourceInItem(sourceItem, purchaseInMap.get(sourceItem.getInId()),
+                    submittedSourceItemMap.get(sourceItem.getId()), oldSourceItemMap.get(sourceItem.getId())));
+        }
+        mergedItems.addAll(manualItems);
+        validateSourceInNotInvoiced(mergedItems, currentInvoiceId);
+        reqVO.setItems(mergedItems);
+    }
+
+    private ErpPurchaseInvoiceSaveReqVO.Item buildInvoiceItemFromSourceInItem(
+            ErpPurchaseInItemDO sourceItem, ErpPurchaseInDO purchaseIn,
+            ErpPurchaseInvoiceSaveReqVO.Item submittedItem, ErpPurchaseInvoiceItemDO oldItem) {
+        ErpPurchaseInvoiceSaveReqVO.Item item = new ErpPurchaseInvoiceSaveReqVO.Item();
+        item.setId(submittedItem == null ? null : submittedItem.getId());
+        if (item.getId() == null && oldItem != null) {
+            item.setId(oldItem.getId());
+        }
+        item.setSourceInId(sourceItem.getInId());
+        item.setSourceInNo(purchaseIn == null ? null : purchaseIn.getNo());
+        item.setSourceInItemId(sourceItem.getId());
+        item.setProductId(sourceItem.getProductId());
+        item.setCount(sourceItem.getCount());
+        item.setProductPrice(sourceItem.getProductPrice());
+        item.setTaxPercent(null);
+        item.setRemark(sourceItem.getRemark());
+        if (submittedItem != null) {
+            item.setCount(submittedItem.getCount());
+            item.setProductPrice(submittedItem.getProductPrice());
+            item.setTaxPercent(submittedItem.getTaxPercent());
+            item.setRemark(submittedItem.getRemark());
+        }
+        return item;
     }
 
     private void fillDeptIdFromSourceIn(ErpPurchaseInvoiceDO purchaseInvoice, List<ErpPurchaseInvoiceItemDO> items) {
@@ -772,20 +888,6 @@ public class ErpPurchaseInvoiceServiceImpl implements ErpPurchaseInvoiceService 
         return StrUtil.cleanBlank(normalized).toLowerCase(Locale.ROOT);
     }
 
-    private static Set<String> extractInvoiceProductCodes(List<ErpPurchaseInvoiceImportExcelVO> list) {
-        Set<String> codes = new LinkedHashSet<>();
-        for (ErpPurchaseInvoiceImportExcelVO row : list) {
-            if (row == null) {
-                continue;
-            }
-            String code = trimToNull(row.getProductCode());
-            if (code != null) {
-                codes.add(code);
-            }
-        }
-        return codes;
-    }
-
     private static Set<String> extractInvoiceSourceInNos(List<ErpPurchaseInvoiceImportExcelVO> list) {
         Set<String> nos = new LinkedHashSet<>();
         for (ErpPurchaseInvoiceImportExcelVO row : list) {
@@ -816,6 +918,8 @@ public class ErpPurchaseInvoiceServiceImpl implements ErpPurchaseInvoiceService 
     private boolean hasInvoiceDetailFields(ErpPurchaseInvoiceImportExcelVO row) {
         return StrUtil.isNotBlank(trimToNull(row.getSourceInNo()))
                 || StrUtil.isNotBlank(trimToNull(row.getProductCode()))
+                || StrUtil.isNotBlank(trimToNull(row.getProductName()))
+                || StrUtil.isNotBlank(trimToNull(row.getFactoryCode()))
                 || row.getCount() != null
                 || row.getProductPrice() != null
                 || StrUtil.isNotBlank(trimToNull(row.getItemRemark()));

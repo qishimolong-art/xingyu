@@ -128,6 +128,14 @@ public interface AdminUserService {
     AdminUserDO getUserByMobile(String mobile);
 
     /**
+     * 通过手机号获取用户列表
+     *
+     * @param mobile 手机号
+     * @return 用户列表
+     */
+    List<AdminUserDO> getUserListByMobile(String mobile);
+
+    /**
      * 获得用户分页列表
      *
      * @param reqVO 分页条件

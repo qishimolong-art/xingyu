@@ -24,9 +24,11 @@ import org.apache.poi.ss.util.CellRangeAddressList;
 import java.lang.reflect.Field;
 import java.lang.reflect.Modifier;
 import java.util.Comparator;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.convertList;
 
@@ -57,6 +59,10 @@ public class SelectSheetWriteHandler implements SheetWriteHandler {
     private final Map<Integer, List<String>> selectMap = new HashMap<>();
 
     public SelectSheetWriteHandler(Class<?> head) {
+        this(head, null);
+    }
+
+    public SelectSheetWriteHandler(Class<?> head, Set<String> includeColumnFieldNames) {
         // 解析下拉数据
         int colIndex = 0;
         boolean ignoreUnannotated = head.isAnnotationPresent(ExcelIgnoreUnannotated.class);
@@ -71,11 +77,14 @@ public class SelectSheetWriteHandler implements SheetWriteHandler {
                     || field.isAnnotationPresent(ExcelIgnore.class)) {
                 continue;
             }
+            if (CollUtil.isNotEmpty(includeColumnFieldNames) && !includeColumnFieldNames.contains(field.getName())) {
+                continue;
+            }
 
             // 2. 核心：处理有 ExcelColumnSelect 注解的字段
             if (field.isAnnotationPresent(ExcelColumnSelect.class)) {
                 ExcelProperty excelProperty = field.getAnnotation(ExcelProperty.class);
-                if (excelProperty != null && excelProperty.index() != -1) {
+                if (CollUtil.isEmpty(includeColumnFieldNames) && excelProperty != null && excelProperty.index() != -1) {
                     colIndex = excelProperty.index();
                 }
                 getSelectDataList(colIndex, field);
@@ -112,7 +121,7 @@ public class SelectSheetWriteHandler implements SheetWriteHandler {
 
         // 情况一：使用 dictType 获得下拉数据
         if (StrUtil.isNotEmpty(dictType)) { // 情况一： 字典数据 （默认）
-            selectMap.put(colIndex, DictFrameworkUtils.getDictDataLabelList(dictType));
+            putSelectDataList(colIndex, field, DictFrameworkUtils.getDictDataLabelList(dictType));
             return;
         }
 
@@ -120,7 +129,19 @@ public class SelectSheetWriteHandler implements SheetWriteHandler {
         Map<String, ExcelColumnSelectFunction> functionMap = SpringUtil.getApplicationContext().getBeansOfType(ExcelColumnSelectFunction.class);
         ExcelColumnSelectFunction function = CollUtil.findOne(functionMap.values(), item -> item.getName().equals(functionName));
         Assert.notNull(function, "未找到对应的 function({})", functionName);
-        selectMap.put(colIndex, function.getOptions());
+        putSelectDataList(colIndex, field, function.getOptions());
+    }
+
+    private void putSelectDataList(int colIndex, Field field, List<String> options) {
+        List<String> filteredOptions = options == null ? Collections.emptyList() : options.stream()
+                .filter(StrUtil::isNotBlank)
+                .distinct()
+                .collect(java.util.stream.Collectors.toList());
+        if (CollUtil.isEmpty(filteredOptions)) {
+            log.warn("[getSelectDataList][field({}) 下拉选项为空，跳过生成单元格下拉限制]", field.getName());
+            return;
+        }
+        selectMap.put(colIndex, filteredOptions);
     }
 
     @Override
@@ -150,6 +171,7 @@ public class SelectSheetWriteHandler implements SheetWriteHandler {
             // 2.2 设置单元格下拉选择
             setColumnSelect(writeSheetHolder, workbook, helper, keyValue);
         }
+        workbook.setSheetHidden(workbook.getSheetIndex(dictSheet), true);
     }
 
     /**

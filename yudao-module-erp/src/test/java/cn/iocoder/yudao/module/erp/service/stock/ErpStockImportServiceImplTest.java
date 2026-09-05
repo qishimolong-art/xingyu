@@ -6,6 +6,8 @@ import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.check.ErpStockCheck
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.check.ErpStockCheckSaveReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.imports.ErpStockImportExcelVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.imports.ErpStockImportResultRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.in.ErpStockInSaveReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.out.ErpStockOutSaveReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.warehousemove.ErpWarehouseMoveImportExcelVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.warehousemove.ErpWarehouseMoveSaveReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.product.ErpProductDO;
@@ -18,6 +20,7 @@ import cn.iocoder.yudao.module.erp.enums.stock.ErpStockCheckTypeEnum;
 import cn.iocoder.yudao.module.erp.service.purchase.ErpSupplierService;
 import cn.iocoder.yudao.module.erp.service.sale.ErpCustomerService;
 import cn.iocoder.yudao.module.system.api.dept.DeptApi;
+import cn.iocoder.yudao.module.system.api.dept.dto.DeptRespDTO;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
@@ -31,6 +34,7 @@ import java.util.Collections;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyCollection;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -63,6 +67,150 @@ class ErpStockImportServiceImplTest extends BaseMockitoUnitTest {
     private DeptApi deptApi;
 
     @Test
+    void importStockInList_blankBizTime_usesCurrentTime() {
+        ErpStockImportExcelVO row = new ErpStockImportExcelVO();
+        row.setOrderNo("IN-001");
+        row.setBizTime(" ");
+        row.setWarehouseName("默认仓");
+        row.setProductCode("P0001");
+        row.setCount(BigDecimal.ONE);
+
+        when(warehouseMapper.selectByName("默认仓")).thenReturn(new ErpWarehouseDO()
+                .setId(200L).setName("默认仓").setStatus(CommonStatusEnum.ENABLE.getStatus()));
+        when(productMapper.selectListByCodes(anyCollection())).thenReturn(Collections.singletonList(new ErpProductDO()
+                .setId(100L).setCode("P0001").setName("机油滤芯")
+                .setStatus(CommonStatusEnum.ENABLE.getStatus())));
+        when(stockInService.createStockIn(any())).thenReturn(1L);
+
+        LocalDateTime before = LocalDateTime.now().minusSeconds(1);
+        ErpStockImportResultRespVO result = stockImportService.importStockInList(Collections.singletonList(row));
+        LocalDateTime after = LocalDateTime.now().plusSeconds(1);
+
+        assertEquals(1, result.getSuccessCount(), result.getFailureDetails().toString());
+        assertEquals(1, result.getCreateCount());
+        assertEquals(0, result.getFailureCount());
+
+        ArgumentCaptor<ErpStockInSaveReqVO> captor = ArgumentCaptor.forClass(ErpStockInSaveReqVO.class);
+        verify(stockInService).createStockIn(captor.capture());
+        ErpStockInSaveReqVO request = captor.getValue();
+        assertFalse(request.getInTime().isBefore(before));
+        assertFalse(request.getInTime().isAfter(after));
+        assertEquals(1, request.getItems().size());
+        assertEquals(200L, request.getItems().get(0).getWarehouseId());
+        assertEquals(100L, request.getItems().get(0).getProductId());
+    }
+
+    @Test
+    void importStockOutList_blankBizTime_usesCurrentTime() {
+        ErpStockImportExcelVO row = new ErpStockImportExcelVO();
+        row.setOrderNo("OUT-001");
+        row.setWarehouseName("默认仓");
+        row.setProductCode("P0001");
+        row.setCount(BigDecimal.ONE);
+
+        when(warehouseMapper.selectByName("默认仓")).thenReturn(new ErpWarehouseDO()
+                .setId(200L).setName("默认仓").setStatus(CommonStatusEnum.ENABLE.getStatus()));
+        when(productMapper.selectListByCodes(anyCollection())).thenReturn(Collections.singletonList(new ErpProductDO()
+                .setId(100L).setCode("P0001").setName("机油滤芯")
+                .setStatus(CommonStatusEnum.ENABLE.getStatus())));
+        when(stockOutService.createStockOut(any())).thenReturn(1L);
+
+        LocalDateTime before = LocalDateTime.now().minusSeconds(1);
+        ErpStockImportResultRespVO result = stockImportService.importStockOutList(Collections.singletonList(row));
+        LocalDateTime after = LocalDateTime.now().plusSeconds(1);
+
+        assertEquals(1, result.getSuccessCount(), result.getFailureDetails().toString());
+        assertEquals(1, result.getCreateCount());
+        assertEquals(0, result.getFailureCount());
+
+        ArgumentCaptor<ErpStockOutSaveReqVO> captor = ArgumentCaptor.forClass(ErpStockOutSaveReqVO.class);
+        verify(stockOutService).createStockOut(captor.capture());
+        ErpStockOutSaveReqVO request = captor.getValue();
+        assertFalse(request.getOutTime().isBefore(before));
+        assertFalse(request.getOutTime().isAfter(after));
+        assertEquals(1, request.getItems().size());
+        assertEquals(200L, request.getItems().get(0).getWarehouseId());
+        assertEquals(100L, request.getItems().get(0).getProductId());
+    }
+
+    @Test
+    void importStockOutList_onlyProductName_success() {
+        ErpStockImportExcelVO row = new ErpStockImportExcelVO();
+        row.setOrderNo("OUT-001");
+        row.setWarehouseName("默认仓");
+        row.setProductName("机油滤芯");
+        row.setCount(BigDecimal.ONE);
+
+        when(productMapper.selectListByNames(anyCollection())).thenReturn(Collections.singletonList(new ErpProductDO()
+                .setId(100L).setCode("P0001").setName("机油滤芯")
+                .setStatus(CommonStatusEnum.ENABLE.getStatus())));
+        when(warehouseMapper.selectByName("默认仓")).thenReturn(new ErpWarehouseDO()
+                .setId(200L).setName("默认仓").setStatus(CommonStatusEnum.ENABLE.getStatus()));
+        when(stockOutService.createStockOut(any())).thenReturn(1L);
+
+        ErpStockImportResultRespVO result = stockImportService.importStockOutList(Collections.singletonList(row));
+
+        assertEquals(1, result.getSuccessCount(), result.getFailureDetails().toString());
+        ArgumentCaptor<ErpStockOutSaveReqVO> captor = ArgumentCaptor.forClass(ErpStockOutSaveReqVO.class);
+        verify(stockOutService).createStockOut(captor.capture());
+        assertEquals(100L, captor.getValue().getItems().get(0).getProductId());
+    }
+
+    @Test
+    void importStockMoveList_onlyProductName_success() {
+        ErpStockImportExcelVO row = new ErpStockImportExcelVO();
+        row.setOrderNo("MOVE-001");
+        row.setFromWarehouseName("调出仓");
+        row.setToWarehouseName("调入仓");
+        row.setProductName("机油滤芯");
+        row.setCount(BigDecimal.ONE);
+
+        when(productMapper.selectListByNames(anyCollection())).thenReturn(Collections.singletonList(new ErpProductDO()
+                .setId(100L).setCode("P0001").setName("机油滤芯")
+                .setStatus(CommonStatusEnum.ENABLE.getStatus())));
+        when(warehouseMapper.selectByName("调出仓")).thenReturn(new ErpWarehouseDO()
+                .setId(200L).setName("调出仓").setStatus(CommonStatusEnum.ENABLE.getStatus()));
+        when(warehouseMapper.selectByName("调入仓")).thenReturn(new ErpWarehouseDO()
+                .setId(201L).setName("调入仓").setStatus(CommonStatusEnum.ENABLE.getStatus()));
+        when(stockMoveService.createStockMove(any())).thenReturn(1L);
+
+        ErpStockImportResultRespVO result = stockImportService.importStockMoveList(Collections.singletonList(row));
+
+        assertEquals(1, result.getSuccessCount(), result.getFailureDetails().toString());
+    }
+
+    @Test
+    void importStockTransferOutList_onlyProductName_success() {
+        ErpStockImportExcelVO row = new ErpStockImportExcelVO();
+        row.setOrderNo("STO-001");
+        row.setToDeptName("售后部");
+        row.setFromWarehouseName("调出仓");
+        row.setToWarehouseName("调入仓");
+        row.setProductName("机油滤芯");
+        row.setCount(BigDecimal.ONE);
+        row.setProductPrice(BigDecimal.ONE);
+
+        DeptRespDTO dept = new DeptRespDTO();
+        dept.setId(300L);
+        dept.setName("售后部");
+        dept.setStatus(CommonStatusEnum.ENABLE.getStatus());
+        when(deptApi.getDeptListByName("售后部")).thenReturn(Collections.singletonList(dept));
+        when(productMapper.selectListByNames(anyCollection())).thenReturn(Collections.singletonList(new ErpProductDO()
+                .setId(100L).setCode("P0001").setName("机油滤芯")
+                .setStatus(CommonStatusEnum.ENABLE.getStatus())));
+        when(warehouseMapper.selectByName("调出仓")).thenReturn(new ErpWarehouseDO()
+                .setId(200L).setName("调出仓").setStatus(CommonStatusEnum.ENABLE.getStatus()));
+        when(warehouseMapper.selectByName("调入仓")).thenReturn(new ErpWarehouseDO()
+                .setId(201L).setName("调入仓").setDeptId(300L).setStatus(CommonStatusEnum.ENABLE.getStatus()));
+        when(stockMoveService.createStockMove(any())).thenReturn(1L);
+
+        ErpStockImportResultRespVO result = stockImportService.importStockTransferOutList(
+                Collections.singletonList(row));
+
+        assertEquals(1, result.getSuccessCount(), result.getFailureDetails().toString());
+    }
+
+    @Test
     void importStockInList_invalidBizTime_returnsReadableMessage() {
         ErpStockImportExcelVO row = new ErpStockImportExcelVO();
         row.setOrderNo("IN-001");
@@ -76,6 +224,162 @@ class ErpStockImportServiceImplTest extends BaseMockitoUnitTest {
         assertEquals(1, result.getFailureCount());
         assertEquals(1, result.getFailureDetails().size());
         assertEquals("其它入库导入失败：业务时间格式不正确，请使用 yyyy-MM-dd 或 yyyy-MM-dd HH:mm:ss",
+                result.getFailureDetails().get(0).getReason());
+    }
+
+    @Test
+    void importStockInList_onlyProductName_success() {
+        ErpStockImportExcelVO row = new ErpStockImportExcelVO();
+        row.setOrderNo("IN-001");
+        row.setWarehouseName("默认仓");
+        row.setProductName("机油滤芯");
+        row.setCount(BigDecimal.ONE);
+
+        when(productMapper.selectListByNames(anyCollection())).thenReturn(Collections.singletonList(new ErpProductDO()
+                .setId(100L).setCode("P0001").setName("机油滤芯")
+                .setStatus(CommonStatusEnum.ENABLE.getStatus())));
+        when(warehouseMapper.selectByName("默认仓")).thenReturn(new ErpWarehouseDO()
+                .setId(200L).setName("默认仓").setStatus(CommonStatusEnum.ENABLE.getStatus()));
+        when(stockInService.createStockIn(any())).thenReturn(1L);
+
+        ErpStockImportResultRespVO result = stockImportService.importStockInList(Collections.singletonList(row));
+
+        assertEquals(1, result.getSuccessCount(), result.getFailureDetails().toString());
+        ArgumentCaptor<ErpStockInSaveReqVO> captor = ArgumentCaptor.forClass(ErpStockInSaveReqVO.class);
+        verify(stockInService).createStockIn(captor.capture());
+        assertEquals(100L, captor.getValue().getItems().get(0).getProductId());
+    }
+
+    @Test
+    void importStockInList_onlyFactoryCode_success() {
+        ErpStockImportExcelVO row = new ErpStockImportExcelVO();
+        row.setOrderNo("IN-001");
+        row.setWarehouseName("默认仓");
+        row.setFactoryCode("F0001");
+        row.setCount(BigDecimal.ONE);
+
+        when(productMapper.selectListByFactoryCodes(anyCollection())).thenReturn(Collections.singletonList(new ErpProductDO()
+                .setId(100L).setCode("P0001").setName("机油滤芯").setFactoryCode("F0001")
+                .setStatus(CommonStatusEnum.ENABLE.getStatus())));
+        when(warehouseMapper.selectByName("默认仓")).thenReturn(new ErpWarehouseDO()
+                .setId(200L).setName("默认仓").setStatus(CommonStatusEnum.ENABLE.getStatus()));
+        when(stockInService.createStockIn(any())).thenReturn(1L);
+
+        ErpStockImportResultRespVO result = stockImportService.importStockInList(Collections.singletonList(row));
+
+        assertEquals(1, result.getSuccessCount(), result.getFailureDetails().toString());
+        ArgumentCaptor<ErpStockInSaveReqVO> captor = ArgumentCaptor.forClass(ErpStockInSaveReqVO.class);
+        verify(stockInService).createStockIn(captor.capture());
+        assertEquals(100L, captor.getValue().getItems().get(0).getProductId());
+    }
+
+    @Test
+    void importStockInList_missingProductIdentity_returnsReadableMessage() {
+        ErpStockImportExcelVO row = new ErpStockImportExcelVO();
+        row.setOrderNo("IN-001");
+        row.setWarehouseName("默认仓");
+        row.setCount(BigDecimal.ONE);
+
+        when(warehouseMapper.selectByName("默认仓")).thenReturn(new ErpWarehouseDO()
+                .setId(200L).setName("默认仓").setStatus(CommonStatusEnum.ENABLE.getStatus()));
+
+        ErpStockImportResultRespVO result = stockImportService.importStockInList(Collections.singletonList(row));
+
+        assertEquals(0, result.getSuccessCount());
+        assertEquals(1, result.getFailureCount());
+        assertEquals("其它入库导入失败：配件编码、配件名称和厂家编码为三选一字段，请至少填写其中一个",
+                result.getFailureDetails().get(0).getReason());
+    }
+
+    @Test
+    void importStockInList_duplicateProductName_returnsReadableMessage() {
+        ErpStockImportExcelVO row = new ErpStockImportExcelVO();
+        row.setOrderNo("IN-001");
+        row.setWarehouseName("默认仓");
+        row.setProductName("机油滤芯");
+        row.setCount(BigDecimal.ONE);
+
+        when(productMapper.selectListByNames(anyCollection())).thenReturn(Arrays.asList(
+                new ErpProductDO().setId(100L).setCode("P0001").setName("机油滤芯"),
+                new ErpProductDO().setId(101L).setCode("P0002").setName("机油滤芯")));
+        when(warehouseMapper.selectByName("默认仓")).thenReturn(new ErpWarehouseDO()
+                .setId(200L).setName("默认仓").setStatus(CommonStatusEnum.ENABLE.getStatus()));
+
+        ErpStockImportResultRespVO result = stockImportService.importStockInList(Collections.singletonList(row));
+
+        assertEquals(0, result.getSuccessCount());
+        assertEquals(1, result.getFailureCount());
+        assertEquals("机油滤芯", result.getFailureDetails().get(0).getCode());
+        assertEquals("其它入库导入失败：配件名称存在重复，请填写配件编码：机油滤芯",
+                result.getFailureDetails().get(0).getReason());
+    }
+
+    @Test
+    void importStockInList_productCodeAndNameMismatch_returnsReadableMessage() {
+        ErpStockImportExcelVO row = new ErpStockImportExcelVO();
+        row.setOrderNo("IN-001");
+        row.setWarehouseName("默认仓");
+        row.setProductCode("P0001");
+        row.setProductName("空气滤芯");
+        row.setCount(BigDecimal.ONE);
+
+        when(productMapper.selectListByCodes(anyCollection())).thenReturn(Collections.singletonList(
+                new ErpProductDO().setId(100L).setCode("P0001").setName("机油滤芯")));
+        when(productMapper.selectListByNames(anyCollection())).thenReturn(Collections.singletonList(
+                new ErpProductDO().setId(101L).setCode("P0002").setName("空气滤芯")));
+        when(warehouseMapper.selectByName("默认仓")).thenReturn(new ErpWarehouseDO()
+                .setId(200L).setName("默认仓").setStatus(CommonStatusEnum.ENABLE.getStatus()));
+
+        ErpStockImportResultRespVO result = stockImportService.importStockInList(Collections.singletonList(row));
+
+        assertEquals(0, result.getSuccessCount());
+        assertEquals(1, result.getFailureCount());
+        assertEquals("P0001", result.getFailureDetails().get(0).getCode());
+        assertEquals("其它入库导入失败：配件编码、配件名称和厂家编码不一致",
+                result.getFailureDetails().get(0).getReason());
+    }
+
+    @Test
+    void importStockInList_productNameMatchesMergedProduct_returnsReadableMessage() {
+        ErpStockImportExcelVO row = new ErpStockImportExcelVO();
+        row.setOrderNo("IN-001");
+        row.setWarehouseName("默认仓");
+        row.setProductName("机油滤芯");
+        row.setCount(BigDecimal.ONE);
+
+        when(productMapper.selectListByNames(anyCollection())).thenReturn(Collections.singletonList(new ErpProductDO()
+                .setId(100L).setCode("P0001").setName("机油滤芯").setMergedFlag(true)
+                .setStatus(CommonStatusEnum.ENABLE.getStatus())));
+        when(warehouseMapper.selectByName("默认仓")).thenReturn(new ErpWarehouseDO()
+                .setId(200L).setName("默认仓").setStatus(CommonStatusEnum.ENABLE.getStatus()));
+
+        ErpStockImportResultRespVO result = stockImportService.importStockInList(Collections.singletonList(row));
+
+        assertEquals(0, result.getSuccessCount());
+        assertEquals(1, result.getFailureCount());
+        assertEquals("其它入库导入失败：配件不存在：机油滤芯",
+                result.getFailureDetails().get(0).getReason());
+    }
+
+    @Test
+    void importStockInList_productNameMatchesDisabledProduct_returnsReadableMessage() {
+        ErpStockImportExcelVO row = new ErpStockImportExcelVO();
+        row.setOrderNo("IN-001");
+        row.setWarehouseName("默认仓");
+        row.setProductName("机油滤芯");
+        row.setCount(BigDecimal.ONE);
+
+        when(productMapper.selectListByNames(anyCollection())).thenReturn(Collections.singletonList(new ErpProductDO()
+                .setId(100L).setCode("P0001").setName("机油滤芯")
+                .setStatus(CommonStatusEnum.DISABLE.getStatus())));
+        when(warehouseMapper.selectByName("默认仓")).thenReturn(new ErpWarehouseDO()
+                .setId(200L).setName("默认仓").setStatus(CommonStatusEnum.ENABLE.getStatus()));
+
+        ErpStockImportResultRespVO result = stockImportService.importStockInList(Collections.singletonList(row));
+
+        assertEquals(0, result.getSuccessCount());
+        assertEquals(1, result.getFailureCount());
+        assertEquals("其它入库导入失败：配件未启用：机油滤芯",
                 result.getFailureDetails().get(0).getReason());
     }
 
@@ -124,8 +428,7 @@ class ErpStockImportServiceImplTest extends BaseMockitoUnitTest {
                 .setStatus(CommonStatusEnum.ENABLE.getStatus());
         ErpWarehouseDO warehouse = new ErpWarehouseDO()
                 .setId(200L).setName("默认仓").setStatus(CommonStatusEnum.ENABLE.getStatus());
-        when(productMapper.selectByCode("P0001")).thenReturn(firstProduct);
-        when(productMapper.selectByCode("P0002")).thenReturn(secondProduct);
+        when(productMapper.selectListByCodes(anyCollection())).thenReturn(Arrays.asList(firstProduct, secondProduct));
         when(warehouseMapper.selectByName("默认仓")).thenReturn(warehouse);
         when(stockMapper.selectByProductIdAndWarehouseId(100L, 200L)).thenReturn(new ErpStockDO()
                 .setProductId(100L).setWarehouseId(200L).setCount(new BigDecimal("10"))
@@ -170,6 +473,58 @@ class ErpStockImportServiceImplTest extends BaseMockitoUnitTest {
     }
 
     @Test
+    void importStockCheckList_numericCheckTypeTwo_usesCostCheckType() {
+        ErpStockCheckImportExcelVO row = new ErpStockCheckImportExcelVO();
+        row.setCheckTypeName("2");
+        row.setWarehouseName("默认仓");
+        row.setProductCode("P0001");
+        row.setProductPrice(new BigDecimal("8.80"));
+
+        when(productMapper.selectListByCodes(anyCollection())).thenReturn(Collections.singletonList(new ErpProductDO()
+                .setId(100L).setCode("P0001").setName("机油滤芯").setUnitId(1L)
+                .setStatus(CommonStatusEnum.ENABLE.getStatus())));
+        when(warehouseMapper.selectByName("默认仓")).thenReturn(new ErpWarehouseDO()
+                .setId(200L).setName("默认仓").setStatus(CommonStatusEnum.ENABLE.getStatus()));
+        when(stockMapper.selectByProductIdAndWarehouseId(100L, 200L)).thenReturn(new ErpStockDO()
+                .setProductId(100L).setWarehouseId(200L).setCount(new BigDecimal("10"))
+                .setCostPrice(new BigDecimal("7.77")));
+        when(stockCheckService.createStockCheck(any())).thenReturn(1L);
+
+        ErpStockImportResultRespVO result = stockImportService.importStockCheckList(Collections.singletonList(row));
+
+        assertEquals(1, result.getSuccessCount(), result.getFailureDetails().toString());
+        ArgumentCaptor<ErpStockCheckSaveReqVO> captor = ArgumentCaptor.forClass(ErpStockCheckSaveReqVO.class);
+        verify(stockCheckService).createStockCheck(captor.capture());
+        ErpStockCheckSaveReqVO request = captor.getValue();
+        assertEquals(ErpStockCheckTypeEnum.COST.getType(), request.getCheckType());
+        assertEquals(new BigDecimal("10"), request.getItems().get(0).getActualCount());
+        assertEquals(BigDecimal.ZERO, request.getItems().get(0).getCount());
+    }
+
+    @Test
+    void importStockCheckList_onlyProductName_success() {
+        ErpStockCheckImportExcelVO row = new ErpStockCheckImportExcelVO();
+        row.setCheckTypeName("盘数量");
+        row.setWarehouseName("默认仓");
+        row.setProductName("机油滤芯");
+        row.setActualCount(new BigDecimal("12"));
+
+        when(productMapper.selectListByNames(anyCollection())).thenReturn(Collections.singletonList(new ErpProductDO()
+                .setId(100L).setCode("P0001").setName("机油滤芯").setUnitId(1L)
+                .setStatus(CommonStatusEnum.ENABLE.getStatus())));
+        when(warehouseMapper.selectByName("默认仓")).thenReturn(new ErpWarehouseDO()
+                .setId(200L).setName("默认仓").setStatus(CommonStatusEnum.ENABLE.getStatus()));
+        when(stockMapper.selectByProductIdAndWarehouseId(100L, 200L)).thenReturn(new ErpStockDO()
+                .setProductId(100L).setWarehouseId(200L).setCount(new BigDecimal("10"))
+                .setCostPrice(new BigDecimal("7.77")));
+        when(stockCheckService.createStockCheck(any())).thenReturn(1L);
+
+        ErpStockImportResultRespVO result = stockImportService.importStockCheckList(Collections.singletonList(row));
+
+        assertEquals(1, result.getSuccessCount(), result.getFailureDetails().toString());
+    }
+
+    @Test
     void importWarehouseMoveList_autoFillsTimeAndGroupsRepeatedWarehouses() {
         ErpWarehouseMoveImportExcelVO first = new ErpWarehouseMoveImportExcelVO();
         first.setFromWarehouseName("移出仓");
@@ -195,10 +550,11 @@ class ErpStockImportServiceImplTest extends BaseMockitoUnitTest {
                 .setId(200L).setName("移出仓").setStatus(CommonStatusEnum.ENABLE.getStatus()));
         when(warehouseMapper.selectByName("移入仓")).thenReturn(new ErpWarehouseDO()
                 .setId(201L).setName("移入仓").setStatus(CommonStatusEnum.ENABLE.getStatus()));
-        when(productMapper.selectByCode("P0001")).thenReturn(new ErpProductDO()
-                .setId(100L).setCode("P0001").setStatus(CommonStatusEnum.ENABLE.getStatus()));
-        when(productMapper.selectByCode("P0002")).thenReturn(new ErpProductDO()
-                .setId(101L).setCode("P0002").setStatus(CommonStatusEnum.ENABLE.getStatus()));
+        when(productMapper.selectListByCodes(anyCollection())).thenReturn(Arrays.asList(
+                new ErpProductDO().setId(100L).setCode("P0001").setName("机油滤芯")
+                        .setStatus(CommonStatusEnum.ENABLE.getStatus()),
+                new ErpProductDO().setId(101L).setCode("P0002").setName("空气滤芯")
+                        .setStatus(CommonStatusEnum.ENABLE.getStatus())));
         when(warehouseMoveService.createWarehouseMove(any())).thenReturn(1L);
 
         LocalDateTime before = LocalDateTime.now().minusSeconds(1);
@@ -233,6 +589,28 @@ class ErpStockImportServiceImplTest extends BaseMockitoUnitTest {
         assertEquals(new BigDecimal("5"), secondItem.getCount());
         assertEquals("A-02", secondItem.getFromShelf());
         assertEquals("B-02", secondItem.getToShelf());
+    }
+
+    @Test
+    void importWarehouseMoveList_onlyProductName_success() {
+        ErpWarehouseMoveImportExcelVO row = new ErpWarehouseMoveImportExcelVO();
+        row.setFromWarehouseName("移出仓");
+        row.setToWarehouseName("移入仓");
+        row.setProductName("机油滤芯");
+        row.setCount(BigDecimal.ONE);
+
+        when(productMapper.selectListByNames(anyCollection())).thenReturn(Collections.singletonList(new ErpProductDO()
+                .setId(100L).setCode("P0001").setName("机油滤芯")
+                .setStatus(CommonStatusEnum.ENABLE.getStatus())));
+        when(warehouseMapper.selectByName("移出仓")).thenReturn(new ErpWarehouseDO()
+                .setId(200L).setName("移出仓").setStatus(CommonStatusEnum.ENABLE.getStatus()));
+        when(warehouseMapper.selectByName("移入仓")).thenReturn(new ErpWarehouseDO()
+                .setId(201L).setName("移入仓").setStatus(CommonStatusEnum.ENABLE.getStatus()));
+        when(warehouseMoveService.createWarehouseMove(any())).thenReturn(1L);
+
+        ErpStockImportResultRespVO result = stockImportService.importWarehouseMoveList(Collections.singletonList(row));
+
+        assertEquals(1, result.getSuccessCount(), result.getFailureDetails().toString());
     }
 
 }

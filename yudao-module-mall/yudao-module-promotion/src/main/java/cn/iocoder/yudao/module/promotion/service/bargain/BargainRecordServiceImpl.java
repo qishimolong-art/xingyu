@@ -18,6 +18,7 @@ import org.springframework.validation.annotation.Validated;
 
 import javax.annotation.Nullable;
 import javax.annotation.Resource;
+import java.time.LocalDateTime;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
@@ -58,10 +59,12 @@ public class BargainRecordServiceImpl implements BargainRecordService {
         }
 
         // 3. 创建砍价记录
+        boolean success = isRecordReachedMinPrice(activity.getBargainFirstPrice(), activity);
         BargainRecordDO record = BargainRecordDO.builder().userId(userId)
                 .activityId(reqVO.getActivityId()).spuId(activity.getSpuId()).skuId(activity.getSkuId())
                 .bargainFirstPrice(activity.getBargainFirstPrice()).bargainPrice(activity.getBargainFirstPrice())
-                .status(BargainRecordStatusEnum.IN_PROGRESS.getStatus()).build();
+                .status(success ? BargainRecordStatusEnum.SUCCESS.getStatus() : BargainRecordStatusEnum.IN_PROGRESS.getStatus())
+                .endTime(success ? LocalDateTime.now() : null).build();
         bargainRecordMapper.insert(record);
         return record.getId();
     }
@@ -77,26 +80,46 @@ public class BargainRecordServiceImpl implements BargainRecordService {
     }
 
     @Override
+    public BargainRecordDO refreshBargainRecordStatus(BargainRecordDO record, BargainActivityDO activity) {
+        if (record == null || activity == null
+                || ObjUtil.equal(record.getStatus(), BargainRecordStatusEnum.SUCCESS.getStatus())
+                || ObjUtil.notEqual(record.getStatus(), BargainRecordStatusEnum.IN_PROGRESS.getStatus())
+                || !isRecordReachedMinPrice(record.getBargainPrice(), activity)) {
+            return record;
+        }
+        BargainRecordDO updateObj = new BargainRecordDO().setId(record.getId())
+                .setStatus(BargainRecordStatusEnum.SUCCESS.getStatus()).setEndTime(LocalDateTime.now());
+        bargainRecordMapper.updateById(updateObj);
+        return bargainRecordMapper.selectById(record.getId());
+    }
+
+    @Override
     public BargainValidateJoinRespDTO validateJoinBargain(Long userId, Long bargainRecordId, Long skuId) {
         // 1.1 砍价记录不存在
         BargainRecordDO record = bargainRecordMapper.selectByIdAndUserId(bargainRecordId, userId);
         if (record == null) {
             throw exception(BARGAIN_RECORD_NOT_EXISTS);
         }
-        // 1.2 砍价记录未在进行中
+        // 1.2 校验砍价活动（包括库存）
+        BargainActivityDO activity = bargainActivityService.validateBargainActivityCanJoin(record.getActivityId());
+        record = refreshBargainRecordStatus(record, activity);
+        // 1.3 砍价记录未成功
         if (ObjUtil.notEqual(record.getStatus(), BargainRecordStatusEnum.SUCCESS.getStatus())) {
             throw exception(BARGAIN_JOIN_RECORD_NOT_SUCCESS);
         }
-        // 1.3 砍价记录已经下单
+        // 1.4 砍价记录已经下单
         if (record.getOrderId() != null) {
             throw exception(BARGAIN_JOIN_RECORD_ALREADY_ORDER);
         }
 
-        // 2.1 校验砍价活动（包括库存）
-        BargainActivityDO activity = bargainActivityService.validateBargainActivityCanJoin(record.getActivityId());
         Assert.isTrue(Objects.equals(skuId, activity.getSkuId()), "砍价商品不匹配"); // 防御性校验
         return new BargainValidateJoinRespDTO().setActivityId(activity.getId()).setName(activity.getName())
                 .setBargainPrice(record.getBargainPrice());
+    }
+
+    private boolean isRecordReachedMinPrice(Integer bargainPrice, BargainActivityDO activity) {
+        return bargainPrice != null && activity.getBargainMinPrice() != null
+                && bargainPrice <= activity.getBargainMinPrice();
     }
 
     @Override

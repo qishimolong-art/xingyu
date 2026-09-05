@@ -23,6 +23,7 @@ import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpCustomerDO;
 import cn.iocoder.yudao.module.erp.enums.ErpAuditStatus;
 import cn.iocoder.yudao.module.erp.enums.finance.ErpReceivableOtherStatusEnum;
 import cn.iocoder.yudao.module.erp.service.base.ErpDataPermissionDeptService;
+import cn.iocoder.yudao.module.erp.service.common.ErpImportExportRecordService;
 import cn.iocoder.yudao.module.erp.service.finance.ErpFinanceFieldPermissionMasker;
 import cn.iocoder.yudao.module.erp.service.finance.receivable.ErpReceivableOtherService;
 import cn.iocoder.yudao.module.erp.service.sale.ErpCustomerService;
@@ -50,7 +51,11 @@ import javax.annotation.Resource;
 import javax.servlet.http.HttpServletResponse;
 import javax.validation.Valid;
 import java.io.IOException;
+import java.time.LocalDate;
+import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -71,6 +76,10 @@ import static cn.iocoder.yudao.module.erp.controller.admin.finance.vo.imports.Er
 public class ErpReceivableOtherController {
 
     private static final String FIELD_PERMISSION_MODULE = "erp_finance_receivable_other";
+    public static final Set<String> RECEIVABLE_OTHER_IMPORT_TEMPLATE_FIELDS = Collections.unmodifiableSet(
+            new LinkedHashSet<>(Arrays.asList("customerId", "voucherNo", "settledAmount", "deptId",
+                    "receivableAmount", "project", "sourceType", "handlerId", "receivableType", "costAmount",
+                    "remark", "isPaperNote", "paperNoteDesc", "sourceNo", "fileUrl")));
 
     @Resource
     private ErpReceivableOtherService receivableOtherService;
@@ -84,6 +93,8 @@ public class ErpReceivableOtherController {
     private ErpFinanceFieldPermissionMasker fieldPermissionMasker;
     @Resource
     private ErpDataPermissionDeptService dataPermissionDeptService;
+    @Resource
+    private ErpImportExportRecordService importExportRecordService;
 
     @PostMapping("/create")
     @Operation(summary = "创建其他应收")
@@ -230,7 +241,8 @@ public class ErpReceivableOtherController {
     public void getImportTemplate(HttpServletResponse response) throws IOException {
         ExcelUtils.writeImportTemplate(response, "其他应收导入模板.xls", "其他应收",
                 ErpReceivableOtherImportExcelVO.class,
-                java.util.Collections.singletonList(new ErpReceivableOtherImportExcelVO()));
+                Collections.singletonList(new ErpReceivableOtherImportExcelVO()),
+                RECEIVABLE_OTHER_IMPORT_TEMPLATE_FIELDS);
     }
 
     @PostMapping("/import")
@@ -241,12 +253,12 @@ public class ErpReceivableOtherController {
         ErpFinanceImportRespVO result = new ErpFinanceImportRespVO();
         for (int i = 0; i < list.size(); i++) {
             ErpReceivableOtherImportExcelVO row = list.get(i);
-            if (row == null || allBlank(row.getBizTime(), row.getCustomerId(), row.getReceivableAmount(), row.getRemark())) {
+            if (row == null || allBlank(row.getCustomerId(), row.getReceivableAmount(), row.getRemark())) {
                 continue;
             }
             try {
                 ErpReceivableOtherSaveReqVO reqVO = BeanUtils.toBean(row, ErpReceivableOtherSaveReqVO.class);
-                reqVO.setBizTime(parseDate(row.getBizTime(), null));
+                reqVO.setBizTime(parseDate(row.getBizTime(), LocalDate.now()));
                 receivableOtherService.createReceivableOther(reqVO);
                 result.addCreated();
             } catch (Exception ex) {
@@ -254,6 +266,14 @@ public class ErpReceivableOtherController {
             }
         }
         return success(result);
+    }
+
+    @GetMapping("/import-failure-details/download")
+    @Operation(summary = "下载其他应收导入错误数据")
+    @PreAuthorize("@ss.hasPermission('erp:receivable-other:import')")
+    public void downloadImportFailureDetails(@RequestParam("recordId") Long recordId,
+                                             HttpServletResponse response) throws IOException {
+        importExportRecordService.downloadOwnImportFailureDetails(recordId, "erp_receivable_other", response);
     }
 
     private void fillExtend(ErpReceivableOtherRespVO vo) {

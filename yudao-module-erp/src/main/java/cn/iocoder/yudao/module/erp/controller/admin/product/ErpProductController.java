@@ -69,15 +69,15 @@ import static cn.iocoder.yudao.module.erp.enums.LogRecordConstants.ERP_PRODUCT_T
 public class ErpProductController {
 
     private static final Set<String> PRODUCT_IMPORT_TEMPLATE_FIELDS = new LinkedHashSet<>(Arrays.asList(
-            "code", "name", "barCode", "categoryCode", "batchNoEnabled", "unitName", "status", "defaultWarehouseName", "vehicleModel", "factoryCode",
-            "purchasePrice", "salePrice", "minPrice", "standard", "remark", "expiryDay", "weight",
+            "code", "name", "pinyinCode", "wubiCode", "barCode", "categoryCode", "batchNoEnabled", "unitName", "status", "defaultWarehouseName", "vehicleModel", "factoryCode",
+            "brand", "purchasePrice", "salePrice", "minPrice", "standard", "remark", "expiryDay", "weight",
             "referencePrice", "retailPrice", "lastPurchasePrice", "grossProfitRate", "backupPrice1",
             "wholesalePrice", "sharePrice", "stockMax", "stockMin", "stockStandard", "packageQty", "mainImage",
             "detailContent"));
     private static final Set<String> PRODUCT_EXPORT_FIELDS = new LinkedHashSet<>(Arrays.asList(
-            "id", "code", "deptName", "productCode", "name", "barCode", "categoryName", "batchNoEnabled",
+            "id", "code", "deptName", "productCode", "name", "pinyinCode", "wubiCode", "barCode", "categoryName", "batchNoEnabled",
             "unitName", "status", "standard", "remark", "expiryDay", "weight", "purchasePrice", "salePrice",
-            "minPrice", "vehicleModel", "factoryCode", "sharePrice", "currentStock", "lockCount", "createTime",
+            "minPrice", "vehicleModel", "factoryCode", "brand", "sharePrice", "currentStock", "lockCount", "createTime",
             "creatorName", "updateTime", "updaterName"));
     private static final Map<String, String> PRODUCT_IMPORT_FIELD_ALIAS_MAP = ErpImportTemplateRequiredFieldUtils.aliasMap(
             "categoryId", "categoryCode",
@@ -216,6 +216,8 @@ public class ErpProductController {
                 .setCode(product.getCode())
                 .setProductCode(product.getCode())
                 .setName(product.getName())
+                .setPinyinCode(product.getPinyinCode())
+                .setWubiCode(product.getWubiCode())
                 .setBarCode(product.getBarCode())
                 .setCategoryId(product.getCategoryId())
                 .setCategoryName(product.getCategoryName())

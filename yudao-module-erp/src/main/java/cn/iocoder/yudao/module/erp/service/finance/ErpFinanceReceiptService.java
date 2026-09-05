@@ -3,6 +3,7 @@ package cn.iocoder.yudao.module.erp.service.finance;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.ErpFinanceUpdateRemarkReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.receipt.ErpFinanceReceiptDraftSaveReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.receipt.ErpFinanceReceiptItemPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.receipt.ErpFinanceReceiptPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.receipt.ErpFinanceReceiptSaveReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.receipt.ErpFinanceReceiptWriteOffCandidateRespVO;
@@ -96,6 +97,8 @@ public interface ErpFinanceReceiptService {
      * @return 收款单项列表
      */
     List<ErpFinanceReceiptItemDO> getFinanceReceiptItemListByReceiptId(Long receiptId);
+
+    PageResult<ErpFinanceReceiptItemDO> getFinanceReceiptItemPage(ErpFinanceReceiptItemPageReqVO pageReqVO);
 
     /**
      * 获得收款单项 List

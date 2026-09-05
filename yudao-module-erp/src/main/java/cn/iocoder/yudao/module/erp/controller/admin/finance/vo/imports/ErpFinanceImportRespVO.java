@@ -10,6 +10,9 @@ import java.util.List;
 @Data
 public class ErpFinanceImportRespVO {
 
+    @Schema(description = "导入记录编号")
+    private Long recordId;
+
     @Schema(description = "成功条数")
     private Integer successCount = 0;
 

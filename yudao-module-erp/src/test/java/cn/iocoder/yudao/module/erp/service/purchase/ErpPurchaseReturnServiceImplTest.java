@@ -823,7 +823,7 @@ public class ErpPurchaseReturnServiceImplTest extends BaseMockitoUnitTest {
         row.setNo("CGTH20260811000002");
         row.setSupplierName("芋道供应商");
         row.setReturnTime("2026/08/11");
-        row.setProductCode("P000001");
+        row.setProductName("产品1");
         row.setWarehouseName("主仓库");
         row.setItemCount(BigDecimal.ONE);
         row.setProductPrice(BigDecimal.ONE);
@@ -831,7 +831,7 @@ public class ErpPurchaseReturnServiceImplTest extends BaseMockitoUnitTest {
         when(supplierService.getSupplierPage(any())).thenReturn(new PageResult<>(
                 Collections.singletonList(new ErpSupplierDO().setId(100L).setName("芋道供应商")
                         .setStatus(CommonStatusEnum.ENABLE.getStatus())), 1L));
-        when(productMapper.selectListByCodes(any())).thenReturn(Collections.singletonList(
+        when(productMapper.selectListByNames(any())).thenReturn(Collections.singletonList(
                 new ErpProductDO().setId(200L).setCode("P000001").setName("产品1").setUnitId(1L)
                         .setPurchasePrice(BigDecimal.ONE)));
         when(warehouseService.getPurchaseWarehouseListByStatus(eq(CommonStatusEnum.ENABLE.getStatus())))

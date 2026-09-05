@@ -11,7 +11,6 @@ import java.math.BigDecimal;
 @ExcelIgnoreUnannotated
 public class ErpFinanceTransferImportExcelVO {
 
-    @ExcelRequired
     @ExcelProperty("转账时间")
     private String transferTime;
 

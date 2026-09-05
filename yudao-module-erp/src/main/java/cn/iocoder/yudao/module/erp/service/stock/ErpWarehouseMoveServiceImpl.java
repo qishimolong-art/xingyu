@@ -8,6 +8,7 @@ import cn.iocoder.yudao.framework.datapermission.core.util.DataPermissionUtils;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.ErpStockUpdateRemarkReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.warehousemove.ErpWarehouseMoveDraftCreateReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.warehousemove.ErpWarehouseMoveDraftUpdateReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.warehousemove.ErpWarehouseMoveItemPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.warehousemove.ErpWarehouseMovePageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.warehousemove.ErpWarehouseMoveSaveReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.warehousemove.ErpWarehouseMoveSummaryRespVO;
@@ -446,6 +447,12 @@ public class ErpWarehouseMoveServiceImpl implements ErpWarehouseMoveService {
     @Override
     public List<ErpWarehouseMoveItemDO> getWarehouseMoveItemListByMoveId(Long moveId) {
         return warehouseMoveItemMapper.selectListByMoveId(moveId);
+    }
+
+    @Override
+    public PageResult<ErpWarehouseMoveItemDO> getWarehouseMoveItemPage(ErpWarehouseMoveItemPageReqVO pageReqVO) {
+        validateWarehouseMoveExists(pageReqVO.getMoveId());
+        return warehouseMoveItemMapper.selectPageByMoveId(pageReqVO);
     }
 
     @Override

@@ -55,6 +55,22 @@ public interface AdminAuthService {
     AuthLoginRespVO smsLogin(AuthSmsLoginReqVO reqVO);
 
     /**
+     * 获得企业微信 H5 免登授权地址
+     *
+     * @param redirectUri 回调地址
+     * @return 授权地址
+     */
+    String getWeComAuthorizeUrl(String redirectUri);
+
+    /**
+     * 企业微信 H5 免登
+     *
+     * @param reqVO 登录信息
+     * @return 登录结果
+     */
+    AuthLoginRespVO weComSilentLogin(@Valid AuthWeComLoginReqVO reqVO);
+
+    /**
      * 社交快捷登录，使用 code 授权码
      *
      * @param reqVO 登录信息

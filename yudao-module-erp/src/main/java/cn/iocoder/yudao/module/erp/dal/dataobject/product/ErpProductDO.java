@@ -42,6 +42,14 @@ public class ErpProductDO extends BaseDO {
      */
     private String name;
     /**
+     * 拼音码
+     */
+    private String pinyinCode;
+    /**
+     * 五笔码
+     */
+    private String wubiCode;
+    /**
      * 产品条码
      */
     private String barCode;

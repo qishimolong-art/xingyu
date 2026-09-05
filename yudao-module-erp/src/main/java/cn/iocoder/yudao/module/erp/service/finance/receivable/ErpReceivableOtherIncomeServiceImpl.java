@@ -5,18 +5,22 @@ import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.ErpFinanceUpdateRemarkReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.receivable.vo.otherincome.ErpReceivableOtherIncomeDraftSaveReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.finance.receivable.vo.otherincome.ErpReceivableOtherIncomeItemPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.receivable.vo.otherincome.ErpReceivableOtherIncomePageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.receivable.vo.otherincome.ErpReceivableOtherIncomeSaveReqVO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.base.ErpBaseDataDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.receivable.ErpReceivableOtherIncomeDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.receivable.ErpReceivableOtherIncomeItemDO;
 import cn.iocoder.yudao.module.erp.dal.mysql.finance.receivable.ErpReceivableOtherIncomeItemMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.finance.receivable.ErpReceivableOtherIncomeMapper;
+import cn.iocoder.yudao.module.erp.service.base.ErpBaseDataService;
 import cn.iocoder.yudao.module.erp.dal.redis.no.ErpNoRedisDAO;
 import cn.iocoder.yudao.module.erp.enums.ErpAuditStatus;
 import cn.iocoder.yudao.module.erp.enums.finance.ErpReceivableOtherIncomeStatusEnum;
 import cn.iocoder.yudao.module.erp.service.common.ErpOperateLogService;
 import cn.iocoder.yudao.module.erp.service.finance.ErpAccountService;
 import cn.iocoder.yudao.module.erp.service.finance.ErpFinanceFieldPermissionMasker;
+import cn.iocoder.yudao.module.erp.service.sale.ErpCustomerService;
 import cn.iocoder.yudao.module.system.api.dept.DeptApi;
 import cn.iocoder.yudao.module.system.api.user.AdminUserApi;
 import cn.iocoder.yudao.module.system.api.user.dto.AdminUserRespDTO;
@@ -30,8 +34,10 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 import static cn.iocoder.yudao.framework.common.exception.util.ServiceExceptionUtil.exception;
@@ -46,6 +52,8 @@ import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.OTHER_RECEIVA
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.OTHER_INCOME_DRAFT_SUBMIT_FAIL;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.OTHER_INCOME_DRAFT_ITEMS_REQUIRED;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.OTHER_INCOME_DRAFT_UPDATE_FAIL;
+import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.OTHER_INCOME_DEPT_REQUIRED;
+import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.OTHER_INCOME_OPTION_INVALID;
 import static cn.iocoder.yudao.module.erp.enums.LogRecordConstants.ERP_RECEIVABLE_OTHER_INCOME_TYPE;
 
 @Service
@@ -55,6 +63,10 @@ public class ErpReceivableOtherIncomeServiceImpl implements ErpReceivableOtherIn
     private static final LocalDateTime MIN_VALID_BIZ_TIME = LocalDateTime.of(1970, 1, 2, 0, 0);
 
     private static final String FIELD_PERMISSION_MODULE = "erp_finance_receivable_other_income";
+    private static final String SETTLE_METHOD_TYPE = "settle_method";
+    private static final String OTHER_INCOME_TYPE = "receivable_other_income_type";
+    private static final String OTHER_INCOME_DOC_TYPE = "receivable_other_income_doc_type";
+    private static final String OTHER_INCOME_ITEM_PROJECT = "receivable_other_income_item_project";
 
     @Resource
     private ErpReceivableOtherIncomeMapper otherIncomeMapper;
@@ -64,6 +76,10 @@ public class ErpReceivableOtherIncomeServiceImpl implements ErpReceivableOtherIn
     private ErpNoRedisDAO noRedisDAO;
     @Resource
     private ErpAccountService accountService;
+    @Resource
+    private ErpBaseDataService baseDataService;
+    @Resource
+    private ErpCustomerService customerService;
     @Resource
     private AdminUserApi adminUserApi;
     @Resource
@@ -77,8 +93,10 @@ public class ErpReceivableOtherIncomeServiceImpl implements ErpReceivableOtherIn
     @Transactional(rollbackFor = Exception.class)
     public Long createOtherIncome(ErpReceivableOtherIncomeSaveReqVO createReqVO) {
         fillDefaultDeptId(createReqVO);
+        validateFormalDeptId(createReqVO.getDeptId());
+        validateSaveOptions(createReqVO);
         validateRefs(createReqVO.getAccountId(), createReqVO.getHandlerId(), createReqVO.getDeptId());
-        createReqVO.getItems().forEach(item -> validateRefs(null, item.getHandlerId(), item.getDeptId()));
+        createReqVO.getItems().forEach(this::validateSaveItemRefs);
 
         String no = noRedisDAO.generate(ErpNoRedisDAO.OTHER_INCOME_NO_PREFIX);
         ErpReceivableOtherIncomeDO db = BeanUtils.toBean(createReqVO, ErpReceivableOtherIncomeDO.class,
@@ -102,8 +120,9 @@ public class ErpReceivableOtherIncomeServiceImpl implements ErpReceivableOtherIn
         if (CollUtil.isEmpty(items)) {
             throw exception(OTHER_INCOME_DRAFT_ITEMS_REQUIRED);
         }
+        validateDraftOptions(createReqVO, items);
         validateRefs(createReqVO.getAccountId(), createReqVO.getHandlerId(), createReqVO.getDeptId());
-        items.forEach(item -> validateRefs(null, item.getHandlerId(), item.getDeptId()));
+        items.forEach(this::validateDraftItemRefs);
 
         String no = noRedisDAO.generate(ErpNoRedisDAO.OTHER_INCOME_NO_PREFIX);
         ErpReceivableOtherIncomeDO db = BeanUtils.toBean(createReqVO, ErpReceivableOtherIncomeDO.class,
@@ -146,8 +165,10 @@ public class ErpReceivableOtherIncomeServiceImpl implements ErpReceivableOtherIn
         if (updateReqVO.getDeptId() == null) {
             updateReqVO.setDeptId(db.getDeptId());
         }
+        validateFormalDeptId(updateReqVO.getDeptId());
+        validateSaveOptions(updateReqVO);
         validateRefs(updateReqVO.getAccountId(), updateReqVO.getHandlerId(), updateReqVO.getDeptId());
-        updateReqVO.getItems().forEach(item -> validateRefs(null, item.getHandlerId(), item.getDeptId()));
+        updateReqVO.getItems().forEach(this::validateSaveItemRefs);
 
         ErpReceivableOtherIncomeDO updateObj = BeanUtils.toBean(updateReqVO, ErpReceivableOtherIncomeDO.class);
         updateObj.setTotalAmount(sumAmount(updateReqVO.getItems()));
@@ -183,8 +204,9 @@ public class ErpReceivableOtherIncomeServiceImpl implements ErpReceivableOtherIn
         if (updateReqVO.getDeptId() == null) {
             updateReqVO.setDeptId(db.getDeptId());
         }
+        validateDraftOptions(updateReqVO, items);
         validateRefs(updateReqVO.getAccountId(), updateReqVO.getHandlerId(), updateReqVO.getDeptId());
-        items.forEach(item -> validateRefs(null, item.getHandlerId(), item.getDeptId()));
+        items.forEach(this::validateDraftItemRefs);
 
         ErpReceivableOtherIncomeDO updateObj = BeanUtils.toBean(updateReqVO,
                 ErpReceivableOtherIncomeDO.class);
@@ -253,6 +275,7 @@ public class ErpReceivableOtherIncomeServiceImpl implements ErpReceivableOtherIn
                 || !ErpReceivableOtherIncomeStatusEnum.PROCESS.getStatus().equals(db.getStatus())) {
             throw exception(OTHER_RECEIVABLE_PROCESS_FAIL);
         }
+        validateFormalDeptId(db.getDeptId());
         if (otherIncomeMapper.updateByIdAndStatus(id, db.getStatus(),
                 ErpReceivableOtherIncomeDO.builder().status(status).build()) == 0) {
             throw exception(OTHER_RECEIVABLE_APPROVE_FAIL);
@@ -307,6 +330,12 @@ public class ErpReceivableOtherIncomeServiceImpl implements ErpReceivableOtherIn
     }
 
     @Override
+    public PageResult<ErpReceivableOtherIncomeItemDO> getOtherIncomeItemPage(ErpReceivableOtherIncomeItemPageReqVO pageReqVO) {
+        validateExists(pageReqVO.getIncomeId());
+        return otherIncomeItemMapper.selectPageByIncomeId(pageReqVO);
+    }
+
+    @Override
     public List<ErpReceivableOtherIncomeItemDO> getOtherIncomeItemListByIncomeIds(Collection<Long> incomeIds) {
         if (CollUtil.isEmpty(incomeIds)) {
             return Collections.emptyList();
@@ -331,6 +360,12 @@ public class ErpReceivableOtherIncomeServiceImpl implements ErpReceivableOtherIn
         }
         if (deptId != null && deptApi.getDept(deptId) == null) {
             throw exception(OTHER_RECEIVABLE_NOT_EXISTS);
+        }
+    }
+
+    private void validateFormalDeptId(Long deptId) {
+        if (deptId == null) {
+            throw exception(OTHER_INCOME_DEPT_REQUIRED);
         }
     }
 
@@ -422,6 +457,9 @@ public class ErpReceivableOtherIncomeServiceImpl implements ErpReceivableOtherIn
         if (!StringUtils.hasText(db.getIncomeType())) {
             throw exception(OTHER_INCOME_DRAFT_SUBMIT_FAIL, "收入类型不能为空");
         }
+        if (db.getDeptId() == null) {
+            throw exception(OTHER_INCOME_DRAFT_SUBMIT_FAIL, "开单部门不能为空");
+        }
         if (db.getHandlerId() == null) {
             throw exception(OTHER_INCOME_DRAFT_SUBMIT_FAIL, "经手人不能为空");
         }
@@ -440,10 +478,107 @@ public class ErpReceivableOtherIncomeServiceImpl implements ErpReceivableOtherIn
             }
         }
         validateRefs(db.getAccountId(), db.getHandlerId(), db.getDeptId());
-        items.forEach(item -> validateRefs(null, item.getHandlerId(), item.getDeptId()));
+        validateSubmitOptions(db, items);
+        items.forEach(this::validateDbItemRefs);
     }
 
     private boolean hasItemFilter(ErpReceivableOtherIncomePageReqVO pageReqVO) {
         return StringUtils.hasText(pageReqVO.getItemName()) || StringUtils.hasText(pageReqVO.getInvoiceNo());
+    }
+
+    private void validateSaveOptions(ErpReceivableOtherIncomeSaveReqVO reqVO) {
+        validateRequiredOption("结算方式", SETTLE_METHOD_TYPE, reqVO.getSettleMethod());
+        validateRequiredOption("收入类型", OTHER_INCOME_TYPE, reqVO.getIncomeType());
+        validateOptionalOption("单据类型", OTHER_INCOME_DOC_TYPE, reqVO.getDocType());
+        validateRequiredItemNames(reqVO.getItems());
+    }
+
+    private void validateDraftOptions(ErpReceivableOtherIncomeDraftSaveReqVO reqVO,
+                                      List<ErpReceivableOtherIncomeDraftSaveReqVO.Item> items) {
+        validateOptionalOption("结算方式", SETTLE_METHOD_TYPE, reqVO.getSettleMethod());
+        validateOptionalOption("收入类型", OTHER_INCOME_TYPE, reqVO.getIncomeType());
+        validateOptionalOption("单据类型", OTHER_INCOME_DOC_TYPE, reqVO.getDocType());
+        validateDraftItemNames(items);
+    }
+
+    private void validateSubmitOptions(ErpReceivableOtherIncomeDO db,
+                                       List<ErpReceivableOtherIncomeItemDO> items) {
+        validateRequiredOption("结算方式", SETTLE_METHOD_TYPE, db.getSettleMethod());
+        validateRequiredOption("收入类型", OTHER_INCOME_TYPE, db.getIncomeType());
+        validateOptionalOption("单据类型", OTHER_INCOME_DOC_TYPE, db.getDocType());
+        Set<String> validItemNames = getEnabledOptionNames(OTHER_INCOME_ITEM_PROJECT);
+        for (int i = 0; i < items.size(); i++) {
+            String itemName = items.get(i).getItemName();
+            if (!validItemNames.contains(itemName)) {
+                throw exception(OTHER_INCOME_OPTION_INVALID,
+                        "第 " + (i + 1) + " 条明细的项目名称", itemName);
+            }
+        }
+    }
+
+    private void validateRequiredItemNames(List<ErpReceivableOtherIncomeSaveReqVO.Item> items) {
+        Set<String> validItemNames = getEnabledOptionNames(OTHER_INCOME_ITEM_PROJECT);
+        for (int i = 0; i < items.size(); i++) {
+            String itemName = items.get(i).getItemName();
+            if (!StringUtils.hasText(itemName) || !validItemNames.contains(itemName)) {
+                throw exception(OTHER_INCOME_OPTION_INVALID,
+                        "第 " + (i + 1) + " 条明细的项目名称", itemName);
+            }
+        }
+    }
+
+    private void validateDraftItemNames(List<ErpReceivableOtherIncomeDraftSaveReqVO.Item> items) {
+        Set<String> validItemNames = getEnabledOptionNames(OTHER_INCOME_ITEM_PROJECT);
+        for (int i = 0; i < items.size(); i++) {
+            String itemName = items.get(i).getItemName();
+            if (StringUtils.hasText(itemName) && !validItemNames.contains(itemName)) {
+                throw exception(OTHER_INCOME_OPTION_INVALID,
+                        "第 " + (i + 1) + " 条明细的项目名称", itemName);
+            }
+        }
+    }
+
+    private void validateRequiredOption(String label, String type, String value) {
+        if (!StringUtils.hasText(value) || !getEnabledOptionNames(type).contains(value)) {
+            throw exception(OTHER_INCOME_OPTION_INVALID, label, value);
+        }
+    }
+
+    private void validateOptionalOption(String label, String type, String value) {
+        if (StringUtils.hasText(value) && !getEnabledOptionNames(type).contains(value)) {
+            throw exception(OTHER_INCOME_OPTION_INVALID, label, value);
+        }
+    }
+
+    private Set<String> getEnabledOptionNames(String type) {
+        List<ErpBaseDataDO> options = baseDataService.getBaseDataSimpleListByType(type);
+        if (options == null) {
+            return Collections.emptySet();
+        }
+        return options.stream()
+                .map(ErpBaseDataDO::getName)
+                .filter(StringUtils::hasText)
+                .collect(Collectors.toCollection(HashSet::new));
+    }
+
+    private void validateSaveItemRefs(ErpReceivableOtherIncomeSaveReqVO.Item item) {
+        validateRefs(null, item.getHandlerId(), item.getDeptId());
+        if (item.getCustomerId() != null) {
+            customerService.validateCustomer(item.getCustomerId());
+        }
+    }
+
+    private void validateDraftItemRefs(ErpReceivableOtherIncomeDraftSaveReqVO.Item item) {
+        validateRefs(null, item.getHandlerId(), item.getDeptId());
+        if (item.getCustomerId() != null) {
+            customerService.validateCustomer(item.getCustomerId());
+        }
+    }
+
+    private void validateDbItemRefs(ErpReceivableOtherIncomeItemDO item) {
+        validateRefs(null, item.getHandlerId(), item.getDeptId());
+        if (item.getCustomerId() != null) {
+            customerService.validateCustomer(item.getCustomerId());
+        }
     }
 }

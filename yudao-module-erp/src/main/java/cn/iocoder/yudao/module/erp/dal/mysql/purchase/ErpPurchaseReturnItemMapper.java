@@ -1,10 +1,14 @@
 package cn.iocoder.yudao.module.erp.dal.mysql.purchase;
 
 import cn.hutool.core.collection.CollUtil;
+import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.mybatis.core.mapper.BaseMapperX;
+import cn.iocoder.yudao.framework.mybatis.core.query.LambdaQueryWrapperX;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.returns.ErpPurchaseReturnItemPageReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseReturnItemDO;
 import cn.iocoder.yudao.module.erp.enums.ErpAuditStatus;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.baomidou.mybatisplus.core.toolkit.support.SFunction;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
@@ -30,6 +34,23 @@ public interface ErpPurchaseReturnItemMapper extends BaseMapperX<ErpPurchaseRetu
         return selectList(ErpPurchaseReturnItemDO::getReturnId, returnId);
     }
 
+    default PageResult<ErpPurchaseReturnItemDO> selectPageByReturnId(ErpPurchaseReturnItemPageReqVO reqVO) {
+        LambdaQueryWrapperX<ErpPurchaseReturnItemDO> query = new LambdaQueryWrapperX<ErpPurchaseReturnItemDO>()
+                .eq(ErpPurchaseReturnItemDO::getReturnId, reqVO.getReturnId());
+        SFunction<ErpPurchaseReturnItemDO, ?> orderColumn = getOrderColumn(reqVO.getOrderField());
+        if (orderColumn == null) {
+            query.orderByAsc(ErpPurchaseReturnItemDO::getId);
+        } else if ("desc".equalsIgnoreCase(reqVO.getOrderDirection())) {
+            query.orderByDesc(orderColumn);
+        } else {
+            query.orderByAsc(orderColumn);
+        }
+        if (orderColumn != null && !"id".equals(reqVO.getOrderField().trim())) {
+            query.orderByAsc(ErpPurchaseReturnItemDO::getId);
+        }
+        return selectPage(reqVO, query);
+    }
+
     default List<ErpPurchaseReturnItemDO> selectListByReturnIds(Collection<Long> returnIds) {
         return selectList(ErpPurchaseReturnItemDO::getReturnId, returnIds);
     }
@@ -51,6 +72,52 @@ public interface ErpPurchaseReturnItemMapper extends BaseMapperX<ErpPurchaseRetu
             return 0L;
         }
         return selectCount(new QueryWrapper<ErpPurchaseReturnItemDO>().in("order_item_id", orderItemIds));
+    }
+
+    static SFunction<ErpPurchaseReturnItemDO, ?> getOrderColumn(String orderField) {
+        if (orderField == null) {
+            return null;
+        }
+        switch (orderField.trim()) {
+            case "id":
+                return ErpPurchaseReturnItemDO::getId;
+            case "productId":
+            case "productCode":
+            case "productName":
+            case "productUnitName":
+            case "weight":
+            case "packageQty":
+                return ErpPurchaseReturnItemDO::getProductId;
+            case "warehouseId":
+                return ErpPurchaseReturnItemDO::getWarehouseId;
+            case "deptId":
+                return ErpPurchaseReturnItemDO::getDeptId;
+            case "count":
+                return ErpPurchaseReturnItemDO::getCount;
+            case "productPrice":
+            case "totalPrice":
+                return ErpPurchaseReturnItemDO::getProductPrice;
+            case "taxPercent":
+                return ErpPurchaseReturnItemDO::getTaxPercent;
+            case "batchNo":
+                return ErpPurchaseReturnItemDO::getBatchNo;
+            case "vehicleModel":
+                return ErpPurchaseReturnItemDO::getVehicleModel;
+            case "originPlace":
+                return ErpPurchaseReturnItemDO::getOriginPlace;
+            case "wholeQty":
+                return ErpPurchaseReturnItemDO::getWholeQty;
+            case "warehousePosition":
+                return ErpPurchaseReturnItemDO::getWarehousePosition;
+            case "drawingNo":
+                return ErpPurchaseReturnItemDO::getDrawingNo;
+            case "brand":
+                return ErpPurchaseReturnItemDO::getBrand;
+            case "remark":
+                return ErpPurchaseReturnItemDO::getRemark;
+            default:
+                return null;
+        }
     }
 
     /**
@@ -129,6 +196,18 @@ public interface ErpPurchaseReturnItemMapper extends BaseMapperX<ErpPurchaseRetu
                 Arrays.asList(ErpAuditStatus.PROCESS.getStatus(), ErpAuditStatus.APPROVE.getStatus()));
     }
 
+    default Map<Long, BigDecimal> selectReturnedCountMapBySourceSaleReturnItemIds(
+            Collection<Long> sourceSaleReturnItemIds, Long excludeReturnId) {
+        if (CollUtil.isEmpty(sourceSaleReturnItemIds)) {
+            return Collections.emptyMap();
+        }
+        List<Map<String, Object>> result = selectReturnedCountListBySourceSaleReturnItemIds(
+                sourceSaleReturnItemIds, excludeReturnId);
+        return convertMap(result,
+                obj -> (Long) obj.get("source_sale_return_item_id"),
+                obj -> (BigDecimal) obj.get("sum_count"));
+    }
+
     @Select({
             "<script>",
             "SELECT pri.source_in_item_id, SUM(pri.count) AS sum_count",
@@ -175,5 +254,26 @@ public interface ErpPurchaseReturnItemMapper extends BaseMapperX<ErpPurchaseRetu
             @Param("sourceInItemIds") Collection<Long> sourceInItemIds,
             @Param("excludeReturnId") Long excludeReturnId,
             @Param("statuses") Collection<Integer> statuses);
+
+    @Select({
+            "<script>",
+            "SELECT pri.source_sale_return_item_id, SUM(pri.count) AS sum_count",
+            "  FROM erp_purchase_return_items pri",
+            " INNER JOIN erp_purchase_return pr ON pr.id = pri.return_id",
+            "   AND pr.deleted = 0",
+            " WHERE pri.deleted = 0",
+            "   AND pri.source_sale_return_item_id IN",
+            " <foreach collection='sourceSaleReturnItemIds' item='sourceSaleReturnItemId' open='(' separator=',' close=')'>",
+            "   #{sourceSaleReturnItemId}",
+            " </foreach>",
+            " <if test='excludeReturnId != null'>",
+            "   AND pri.return_id != #{excludeReturnId}",
+            " </if>",
+            " GROUP BY pri.source_sale_return_item_id",
+            "</script>"
+    })
+    List<Map<String, Object>> selectReturnedCountListBySourceSaleReturnItemIds(
+            @Param("sourceSaleReturnItemIds") Collection<Long> sourceSaleReturnItemIds,
+            @Param("excludeReturnId") Long excludeReturnId);
 
 }

@@ -5,9 +5,11 @@ import cn.hutool.core.util.StrUtil;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.payable.vo.expense.ErpPayableExpenseDraftSaveReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.finance.payable.vo.expense.ErpPayableExpenseItemPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.ErpFinanceUpdateRemarkReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.payable.vo.expense.ErpPayableExpensePageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.payable.vo.expense.ErpPayableExpenseSaveReqVO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.base.ErpBaseDataDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.payable.ErpPayableExpenseDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.payable.ErpPayableExpenseItemDO;
 import cn.iocoder.yudao.module.erp.dal.mysql.finance.payable.ErpPayableExpenseItemMapper;
@@ -15,6 +17,7 @@ import cn.iocoder.yudao.module.erp.dal.mysql.finance.payable.ErpPayableExpenseMa
 import cn.iocoder.yudao.module.erp.dal.redis.no.ErpNoRedisDAO;
 import cn.iocoder.yudao.module.erp.enums.ErpAuditStatus;
 import cn.iocoder.yudao.module.erp.enums.finance.ErpPayableExpenseStatusEnum;
+import cn.iocoder.yudao.module.erp.service.base.ErpBaseDataService;
 import cn.iocoder.yudao.module.erp.service.common.ErpOperateLogService;
 import cn.iocoder.yudao.module.erp.service.finance.ErpAccountService;
 import cn.iocoder.yudao.module.erp.service.finance.ErpFinanceFieldPermissionMasker;
@@ -32,8 +35,11 @@ import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 import static cn.iocoder.yudao.framework.common.exception.util.ServiceExceptionUtil.exception;
 import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.convertList;
@@ -46,6 +52,7 @@ import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PAYABLE_EXPEN
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PAYABLE_EXPENSE_DRAFT_UPDATE_FAIL;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PAYABLE_EXPENSE_NOT_EXISTS;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PAYABLE_EXPENSE_NO_EXISTS;
+import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PAYABLE_EXPENSE_OPTION_INVALID;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PAYABLE_EXPENSE_PROCESS_FAIL;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PAYABLE_EXPENSE_UPDATE_FAIL_APPROVE;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PAYABLE_EXPENSE_UPDATE_FAIL_STATUS_CHANGED;
@@ -57,6 +64,13 @@ public class ErpPayableExpenseServiceImpl implements ErpPayableExpenseService {
 
     private static final String FIELD_PERMISSION_MODULE = "erp_finance_payable_expense";
     private static final String SALE_CART_SOURCE_TYPE = "销售手推车";
+    private static final String SETTLE_METHOD_TYPE = "settle_method";
+    private static final String PAYABLE_EXPENSE_BIZ_TYPE = "payable_expense_biz_type";
+    private static final String PAYABLE_EXPENSE_TYPE = "payable_expense_type";
+    private static final String PAYABLE_EXPENSE_DOC_TYPE = "payable_expense_doc_type";
+    private static final String PAYABLE_EXPENSE_ITEM_PROJECT = "payable_expense_item_project";
+    private static final String DEFAULT_EXPENSE_TYPE = "其他";
+    private static final String SALE_CART_FREIGHT_ITEM_PROJECT = "销售产生运费";
 
     @Resource
     private ErpPayableExpenseMapper payableExpenseMapper;
@@ -66,6 +80,8 @@ public class ErpPayableExpenseServiceImpl implements ErpPayableExpenseService {
     private ErpNoRedisDAO noRedisDAO;
     @Resource
     private ErpAccountService accountService;
+    @Resource
+    private ErpBaseDataService baseDataService;
     @Resource
     private AdminUserApi adminUserApi;
     @Resource
@@ -80,6 +96,7 @@ public class ErpPayableExpenseServiceImpl implements ErpPayableExpenseService {
     public Long createPayableExpense(ErpPayableExpenseSaveReqVO createReqVO) {
         fillDefaultDeptId(createReqVO);
         validateFormalDeptId(createReqVO.getDeptId());
+        validateSaveOptions(createReqVO);
         validateRefs(createReqVO.getAccountId(), createReqVO.getHandlerId(), createReqVO.getDeptId());
         validateItemRefs(createReqVO.getItems());
         String no = noRedisDAO.generate("FYZF");
@@ -115,6 +132,7 @@ public class ErpPayableExpenseServiceImpl implements ErpPayableExpenseService {
         if (CollUtil.isEmpty(expenseItems)) {
             throw exception(PAYABLE_EXPENSE_DRAFT_ITEMS_REQUIRED);
         }
+        validateDraftOptions(createReqVO, BeanUtils.toBean(expenseItems, ErpPayableExpenseSaveReqVO.Item.class));
         String no = noRedisDAO.generate("FYZF");
         if (payableExpenseMapper.selectByNo(no) != null) {
             throw exception(PAYABLE_EXPENSE_NO_EXISTS);
@@ -145,6 +163,9 @@ public class ErpPayableExpenseServiceImpl implements ErpPayableExpenseService {
         if (existing != null) {
             return existing.getId();
         }
+        validateRequiredOption("结算方式", SETTLE_METHOD_TYPE, createReqBO.getSettleMethod());
+        validateRequiredOption("支出类型", PAYABLE_EXPENSE_TYPE, DEFAULT_EXPENSE_TYPE);
+        validateRequiredOption("第 1 条明细的项目名称", PAYABLE_EXPENSE_ITEM_PROJECT, SALE_CART_FREIGHT_ITEM_PROJECT);
         validateRefs(createReqBO.getAccountId(), createReqBO.getHandlerId(), createReqBO.getDeptId());
         String no = noRedisDAO.generate("FYZF");
         if (payableExpenseMapper.selectByNo(no) != null) {
@@ -156,7 +177,7 @@ public class ErpPayableExpenseServiceImpl implements ErpPayableExpenseService {
                 .setBizTime(createReqBO.getBizTime())
                 .setSettleMethod(createReqBO.getSettleMethod())
                 .setAccountId(createReqBO.getAccountId())
-                .setExpenseType("运费")
+                .setExpenseType(DEFAULT_EXPENSE_TYPE)
                 .setTotalAmount(createReqBO.getAmount())
                 .setDeptId(createReqBO.getDeptId())
                 .setHandlerId(createReqBO.getHandlerId())
@@ -170,7 +191,7 @@ public class ErpPayableExpenseServiceImpl implements ErpPayableExpenseService {
         payableExpenseMapper.insert(db);
         ErpPayableExpenseItemDO item = new ErpPayableExpenseItemDO()
                 .setExpenseId(db.getId())
-                .setItemName("销售运费")
+                .setItemName(SALE_CART_FREIGHT_ITEM_PROJECT)
                 .setAmount(createReqBO.getAmount())
                 .setParty(createReqBO.getParty())
                 .setDeptId(createReqBO.getDeptId())
@@ -207,6 +228,7 @@ public class ErpPayableExpenseServiceImpl implements ErpPayableExpenseService {
             updateReqVO.setDeptId(db.getDeptId());
         }
         validateFormalDeptId(updateReqVO.getDeptId());
+        validateSaveOptions(updateReqVO);
         validateRefs(updateReqVO.getAccountId(), updateReqVO.getHandlerId(), updateReqVO.getDeptId());
         validateItemRefs(updateReqVO.getItems());
         ErpPayableExpenseDO updateObj = BeanUtils.toBean(updateReqVO, ErpPayableExpenseDO.class);
@@ -251,6 +273,7 @@ public class ErpPayableExpenseServiceImpl implements ErpPayableExpenseService {
                     FIELD_PERMISSION_MODULE, updateReqVO.getItems(), oldItems);
         }
         List<ErpPayableExpenseItemDO> expenseItems = buildDraftItems(updateReqVO.getItems());
+        validateDraftOptions(updateReqVO, BeanUtils.toBean(expenseItems, ErpPayableExpenseSaveReqVO.Item.class));
         ErpPayableExpenseDO updateObj = BeanUtils.toBean(updateReqVO, ErpPayableExpenseDO.class)
                 .setId(db.getId())
                 .setNo(db.getNo())
@@ -298,6 +321,7 @@ public class ErpPayableExpenseServiceImpl implements ErpPayableExpenseService {
                 throw exception(PAYABLE_EXPENSE_DRAFT_SUBMIT_FAIL, "费用项目和金额不能为空");
             }
         }
+        validateSubmitOptions(db, items);
         validateItemRefs(itemReqs);
         BigDecimal totalAmount = sumAmount(itemReqs);
         ErpPayableExpenseDO statusUpdate = new ErpPayableExpenseDO()
@@ -375,6 +399,12 @@ public class ErpPayableExpenseServiceImpl implements ErpPayableExpenseService {
     @Override
     public List<ErpPayableExpenseItemDO> getPayableExpenseItemListByExpenseId(Long expenseId) {
         return payableExpenseItemMapper.selectListByExpenseId(expenseId);
+    }
+
+    @Override
+    public PageResult<ErpPayableExpenseItemDO> getPayableExpenseItemPage(ErpPayableExpenseItemPageReqVO pageReqVO) {
+        validateExists(pageReqVO.getExpenseId());
+        return payableExpenseItemMapper.selectPageByExpenseId(pageReqVO);
     }
 
     @Override
@@ -549,6 +579,84 @@ public class ErpPayableExpenseServiceImpl implements ErpPayableExpenseService {
 
     private boolean hasItemFilter(ErpPayableExpensePageReqVO pageReqVO) {
         return StringUtils.hasText(pageReqVO.getItemName()) || StringUtils.hasText(pageReqVO.getInvoiceNo());
+    }
+
+    private void validateSaveOptions(ErpPayableExpenseSaveReqVO reqVO) {
+        validateRequiredOption("结算方式", SETTLE_METHOD_TYPE, reqVO.getSettleMethod());
+        validateOptionalOption("类型", PAYABLE_EXPENSE_BIZ_TYPE, reqVO.getExpenseBizType());
+        validateRequiredOption("支出类型", PAYABLE_EXPENSE_TYPE, reqVO.getExpenseType());
+        validateOptionalOption("单据类型", PAYABLE_EXPENSE_DOC_TYPE, reqVO.getDocType());
+        validateRequiredItemNames(reqVO.getItems());
+    }
+
+    private void validateDraftOptions(ErpPayableExpenseDraftSaveReqVO reqVO,
+                                      List<ErpPayableExpenseSaveReqVO.Item> items) {
+        validateOptionalOption("结算方式", SETTLE_METHOD_TYPE, reqVO.getSettleMethod());
+        validateOptionalOption("类型", PAYABLE_EXPENSE_BIZ_TYPE, reqVO.getExpenseBizType());
+        validateOptionalOption("支出类型", PAYABLE_EXPENSE_TYPE, reqVO.getExpenseType());
+        validateOptionalOption("单据类型", PAYABLE_EXPENSE_DOC_TYPE, reqVO.getDocType());
+        validateDraftItemNames(items);
+    }
+
+    private void validateSubmitOptions(ErpPayableExpenseDO db,
+                                       List<ErpPayableExpenseItemDO> items) {
+        validateRequiredOption("结算方式", SETTLE_METHOD_TYPE, db.getSettleMethod());
+        validateOptionalOption("类型", PAYABLE_EXPENSE_BIZ_TYPE, db.getExpenseBizType());
+        validateRequiredOption("支出类型", PAYABLE_EXPENSE_TYPE, db.getExpenseType());
+        validateOptionalOption("单据类型", PAYABLE_EXPENSE_DOC_TYPE, db.getDocType());
+        Set<String> validItemNames = getEnabledOptionNames(PAYABLE_EXPENSE_ITEM_PROJECT);
+        for (int i = 0; i < items.size(); i++) {
+            String itemName = items.get(i).getItemName();
+            if (!validItemNames.contains(itemName)) {
+                throw exception(PAYABLE_EXPENSE_OPTION_INVALID,
+                        "第 " + (i + 1) + " 条明细的项目名称", itemName);
+            }
+        }
+    }
+
+    private void validateRequiredItemNames(List<ErpPayableExpenseSaveReqVO.Item> items) {
+        Set<String> validItemNames = getEnabledOptionNames(PAYABLE_EXPENSE_ITEM_PROJECT);
+        for (int i = 0; i < items.size(); i++) {
+            String itemName = items.get(i).getItemName();
+            if (!StringUtils.hasText(itemName) || !validItemNames.contains(itemName)) {
+                throw exception(PAYABLE_EXPENSE_OPTION_INVALID,
+                        "第 " + (i + 1) + " 条明细的项目名称", itemName);
+            }
+        }
+    }
+
+    private void validateDraftItemNames(List<ErpPayableExpenseSaveReqVO.Item> items) {
+        Set<String> validItemNames = getEnabledOptionNames(PAYABLE_EXPENSE_ITEM_PROJECT);
+        for (int i = 0; i < items.size(); i++) {
+            String itemName = items.get(i).getItemName();
+            if (StringUtils.hasText(itemName) && !validItemNames.contains(itemName)) {
+                throw exception(PAYABLE_EXPENSE_OPTION_INVALID,
+                        "第 " + (i + 1) + " 条明细的项目名称", itemName);
+            }
+        }
+    }
+
+    private void validateRequiredOption(String label, String type, String value) {
+        if (!StringUtils.hasText(value) || !getEnabledOptionNames(type).contains(value)) {
+            throw exception(PAYABLE_EXPENSE_OPTION_INVALID, label, value);
+        }
+    }
+
+    private void validateOptionalOption(String label, String type, String value) {
+        if (StringUtils.hasText(value) && !getEnabledOptionNames(type).contains(value)) {
+            throw exception(PAYABLE_EXPENSE_OPTION_INVALID, label, value);
+        }
+    }
+
+    private Set<String> getEnabledOptionNames(String type) {
+        List<ErpBaseDataDO> options = baseDataService.getBaseDataSimpleListByType(type);
+        if (options == null) {
+            return Collections.emptySet();
+        }
+        return options.stream()
+                .map(ErpBaseDataDO::getName)
+                .filter(StringUtils::hasText)
+                .collect(Collectors.toCollection(HashSet::new));
     }
 
 }

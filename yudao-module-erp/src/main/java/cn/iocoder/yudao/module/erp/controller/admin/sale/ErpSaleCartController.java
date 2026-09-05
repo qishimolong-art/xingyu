@@ -20,6 +20,7 @@ import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartFirs
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartImportExcelVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartImportRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartItemBatchUpdateReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartItemPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartSaveReqVO;
@@ -38,6 +39,7 @@ import cn.iocoder.yudao.module.erp.enums.sale.ErpSaleBizSourceTypeEnum;
 import cn.iocoder.yudao.module.erp.framework.excel.ErpExportFieldUtils;
 import cn.iocoder.yudao.module.erp.framework.excel.ErpImportTemplateRequiredFieldUtils;
 import cn.iocoder.yudao.module.erp.service.base.ErpDataPermissionDeptService;
+import cn.iocoder.yudao.module.erp.service.common.ErpImportExportRecordService;
 import cn.iocoder.yudao.module.erp.service.config.ErpFieldConfigService;
 import cn.iocoder.yudao.module.erp.service.product.ErpProductService;
 import cn.iocoder.yudao.module.erp.service.sale.ErpCustomerService;
@@ -84,8 +86,10 @@ public class ErpSaleCartController {
     private static final Map<String, String> EXPORT_FIELD_GROUP_MAP = buildExportFieldGroupMap();
     private static final Map<String, String> EXPORT_FIELD_PERMISSION_MAP = buildExportFieldPermissionMap();
     private static final Map<String, String> DETAIL_IMPORT_FIELD_ALIAS_MAP = ErpImportTemplateRequiredFieldUtils.aliasMap(
-            "productId", "productCode",
-            "productCode", "productCode",
+            "productId", "productIdentity",
+            "productCode", "productIdentity",
+            "productName", "productIdentity",
+            "factoryCode", "productIdentity",
             "warehouseId", "warehouseName",
             "warehouseName", "warehouseName",
             "count", "count",
@@ -117,6 +121,8 @@ public class ErpSaleCartController {
     private DeptApi deptApi;
     @Resource
     private ErpDataPermissionDeptService dataPermissionDeptService;
+    @Resource
+    private ErpImportExportRecordService importExportRecordService;
 
     @PostMapping("/create")
     @Operation(summary = "创建销售手推车")
@@ -248,14 +254,41 @@ public class ErpSaleCartController {
     @GetMapping("/get")
     @Operation(summary = "获得销售手推车")
     @PreAuthorize("@ss.hasPermission('erp:sale-cart:query')")
-    public CommonResult<ErpSaleCartRespVO> getSaleCart(@RequestParam("id") Long id) {
+    public CommonResult<ErpSaleCartRespVO> getSaleCart(@RequestParam("id") Long id,
+                                                       @RequestParam(value = "includeItems", required = false,
+                                                               defaultValue = "true") Boolean includeItems) {
         ErpSaleCartDO cart = saleCartService.getSaleCart(id);
         if (cart == null) {
             return success(null);
         }
-        ErpSaleCartRespVO respVO = buildSaleCartRespVO(cart, saleCartService.getSaleCartItemListByCartId(id));
+        List<ErpSaleCartItemDO> items = Boolean.TRUE.equals(includeItems)
+                ? saleCartService.getSaleCartItemListByCartId(id) : Collections.emptyList();
+        ErpSaleCartRespVO respVO = buildSaleCartRespVO(cart, items);
         fieldPermissionMasker.maskSaleDetailFormWithItems(FIELD_PERMISSION_MODULE, respVO);
         return success(respVO);
+    }
+
+    @PreAuthorize("@ss.hasPermission('erp:sale-cart:query')")
+    public CommonResult<ErpSaleCartRespVO> getSaleCart(Long id) {
+        return getSaleCart(id, true);
+    }
+
+    @GetMapping("/item-page")
+    @Operation(summary = "获得销售手推车明细分页")
+    @PreAuthorize("@ss.hasPermission('erp:sale-cart:query')")
+    public CommonResult<PageResult<ErpSaleCartRespVO.Item>> getSaleCartItemPage(
+            @Valid ErpSaleCartItemPageReqVO pageReqVO) {
+        ErpSaleCartDO cart = saleCartService.getSaleCart(pageReqVO.getCartId());
+        if (cart == null) {
+            return success(PageResult.empty());
+        }
+        PageResult<ErpSaleCartItemDO> pageResult = saleCartService.getSaleCartItemPage(pageReqVO);
+        ErpSaleCartRespVO respVO = buildSaleCartRespVO(cart, pageResult.getList());
+        PageResult<ErpSaleCartRespVO.Item> respResult = new PageResult<>(respVO.getItems(), pageResult.getTotal());
+        if (Boolean.TRUE.equals(pageReqVO.getMask())) {
+            fieldPermissionMasker.clearSaleDetailHiddenItemFields(FIELD_PERMISSION_MODULE, respVO, respResult.getList());
+        }
+        return success(respResult);
     }
 
     @GetMapping("/warehouse-dept-simple-list")
@@ -322,6 +355,7 @@ public class ErpSaleCartController {
     public void exportImportTemplate(HttpServletResponse response) throws IOException {
         ErpSaleCartImportExcelVO example = new ErpSaleCartImportExcelVO();
         example.setProductCode("P0001");
+        example.setProductName("示例配件");
         example.setWarehouseName("默认仓");
         example.setCount(BigDecimal.ONE);
         example.setProductPrice(new BigDecimal("100.00"));
@@ -340,6 +374,14 @@ public class ErpSaleCartController {
     public CommonResult<ErpSaleCartImportRespVO> importSaleCart(@RequestParam("file") MultipartFile file) throws Exception {
         List<ErpSaleCartImportExcelVO> list = ExcelUtils.read(file, ErpSaleCartImportExcelVO.class);
         return success(saleCartService.parseImportData(list));
+    }
+
+    @GetMapping("/import-failure-details/download")
+    @Operation(summary = "下载销售手推车导入错误数据")
+    @PreAuthorize("@ss.hasPermission('erp:sale-cart:create')")
+    public void downloadImportFailureDetails(@RequestParam("recordId") Long recordId,
+                                             HttpServletResponse response) throws IOException {
+        importExportRecordService.downloadOwnImportFailureDetails(recordId, FIELD_PERMISSION_MODULE, response);
     }
 
     private PageResult<ErpSaleCartRespVO> buildSaleCartVOPageResult(PageResult<ErpSaleCartDO> pageResult) {

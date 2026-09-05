@@ -11,23 +11,22 @@ import java.math.BigDecimal;
 @ExcelIgnoreUnannotated
 public class ErpFinancePaymentImportExcelVO {
 
-    @ExcelRequired
     @ExcelProperty("付款时间")
     private String paymentTime;
 
-    @ExcelProperty("财务人员ID")
-    private Long financeUserId;
+    @ExcelProperty("财务人员")
+    private String financeUserName;
 
-    @ExcelProperty("所属部门ID")
-    private Long deptId;
-
-    @ExcelRequired
-    @ExcelProperty("供应商ID")
-    private Long supplierId;
+    @ExcelProperty("所属部门")
+    private String deptName;
 
     @ExcelRequired
-    @ExcelProperty("付款账户ID")
-    private Long accountId;
+    @ExcelProperty("供应商")
+    private String supplierName;
+
+    @ExcelRequired
+    @ExcelProperty("付款账户")
+    private String accountName;
 
     @ExcelProperty("优惠金额")
     private BigDecimal discountPrice;
@@ -43,21 +42,33 @@ public class ErpFinancePaymentImportExcelVO {
     @ExcelProperty("备注")
     private String remark;
 
-    @ExcelRequired
     @ExcelProperty("业务类型")
-    private Integer bizType;
+    private String bizType;
 
-    @ExcelRequired
-    @ExcelProperty("业务ID")
-    private Long bizId;
+    @ExcelProperty("业务单号")
+    private String bizNo;
 
     @ExcelProperty("已付金额")
     private BigDecimal paidPrice;
 
-    @ExcelRequired
     @ExcelProperty("本次付款")
     private BigDecimal itemPaymentPrice;
 
     @ExcelProperty("明细备注")
     private String itemRemark;
+
+    @ExcelProperty("财务人员ID")
+    private Long financeUserId;
+
+    @ExcelProperty("所属部门ID")
+    private Long deptId;
+
+    @ExcelProperty("供应商ID")
+    private Long supplierId;
+
+    @ExcelProperty("付款账户ID")
+    private Long accountId;
+
+    @ExcelProperty("业务ID")
+    private Long bizId;
 }

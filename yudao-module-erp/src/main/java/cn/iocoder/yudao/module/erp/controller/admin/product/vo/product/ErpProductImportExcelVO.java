@@ -1,7 +1,10 @@
 package cn.iocoder.yudao.module.erp.controller.admin.product.vo.product;
 
 import cn.idev.excel.annotation.ExcelProperty;
+import cn.iocoder.yudao.framework.excel.core.annotations.ExcelColumnSelect;
 import cn.iocoder.yudao.framework.excel.core.annotations.ExcelRequired;
+import cn.iocoder.yudao.module.erp.framework.excel.core.ErpProductCategoryCodeExcelColumnSelectFunction;
+import cn.iocoder.yudao.module.erp.framework.excel.core.ErpProductUnitNameExcelColumnSelectFunction;
 import lombok.Data;
 
 import java.math.BigDecimal;
@@ -17,10 +20,17 @@ public class ErpProductImportExcelVO {
     @ExcelProperty("产品名称")
     private String name;
 
+    @ExcelProperty("拼音码")
+    private String pinyinCode;
+
+    @ExcelProperty("五笔码")
+    private String wubiCode;
+
     @ExcelProperty("产品条码")
     private String barCode;
 
     @ExcelRequired
+    @ExcelColumnSelect(functionName = ErpProductCategoryCodeExcelColumnSelectFunction.NAME)
     @ExcelProperty("配件分类编码")
     private String categoryCode;
 
@@ -28,6 +38,7 @@ public class ErpProductImportExcelVO {
     private Boolean batchNoEnabled;
 
     @ExcelRequired
+    @ExcelColumnSelect(functionName = ErpProductUnitNameExcelColumnSelectFunction.NAME)
     @ExcelProperty("单位")
     private String unitName;
 
@@ -42,6 +53,9 @@ public class ErpProductImportExcelVO {
 
     @ExcelProperty("厂家编码")
     private String factoryCode;
+
+    @ExcelProperty("品牌")
+    private String brand;
 
     @ExcelProperty("采购价格")
     private BigDecimal purchasePrice;

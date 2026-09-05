@@ -6,6 +6,7 @@ import lombok.Data;
 import javax.validation.Valid;
 import javax.validation.constraints.NotEmpty;
 import javax.validation.constraints.NotNull;
+import javax.validation.constraints.Size;
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.Map;
@@ -23,6 +24,14 @@ public class ProductSaveReqVO {
 
     @Schema(description = "配件编码", example = "P000001")
     private String code;
+
+    @Schema(description = "拼音码", example = "CSCP")
+    @Size(max = 64, message = "拼音码长度不能超过 64 个字符")
+    private String pinyinCode;
+
+    @Schema(description = "五笔码", example = "IYAH")
+    @Size(max = 32, message = "五笔码长度不能超过 32 个字符")
+    private String wubiCode;
 
     @Schema(description = "所属部门编号", example = "100")
     private Long deptId;
@@ -75,6 +84,10 @@ public class ProductSaveReqVO {
 
     @Schema(description = "适用车型", example = "宝马 X5")
     private String vehicleModel;
+
+    @Schema(description = "品牌", example = "博世")
+    @Size(max = 64, message = "品牌长度不能超过 64 个字符")
+    private String brand;
 
     @Schema(description = "厂家编码", example = "FCT-001")
     private String factoryCode;

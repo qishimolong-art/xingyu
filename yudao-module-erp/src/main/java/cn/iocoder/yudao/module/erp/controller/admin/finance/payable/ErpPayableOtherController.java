@@ -22,6 +22,7 @@ import cn.iocoder.yudao.module.erp.dal.dataobject.finance.payable.ErpPayableOthe
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpSupplierDO;
 import cn.iocoder.yudao.module.erp.enums.ErpAuditStatus;
 import cn.iocoder.yudao.module.erp.service.base.ErpDataPermissionDeptService;
+import cn.iocoder.yudao.module.erp.service.common.ErpImportExportRecordService;
 import cn.iocoder.yudao.module.erp.service.finance.ErpFinanceFieldPermissionMasker;
 import cn.iocoder.yudao.module.erp.service.finance.payable.ErpPayableOtherService;
 import cn.iocoder.yudao.module.erp.service.purchase.ErpSupplierService;
@@ -49,7 +50,12 @@ import javax.annotation.Resource;
 import javax.servlet.http.HttpServletResponse;
 import javax.validation.Valid;
 import java.io.IOException;
+import java.time.LocalDate;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.LinkedHashSet;
 import java.util.Map;
+import java.util.Set;
 import java.util.stream.Stream;
 
 import static cn.iocoder.yudao.framework.apilog.core.enums.OperateTypeEnum.EXPORT;
@@ -67,6 +73,9 @@ import static cn.iocoder.yudao.module.erp.controller.admin.finance.vo.imports.Er
 public class ErpPayableOtherController {
 
     private static final String FIELD_PERMISSION_MODULE = "erp_finance_payable_other";
+    public static final Set<String> PAYABLE_OTHER_IMPORT_TEMPLATE_FIELDS = Collections.unmodifiableSet(
+            new LinkedHashSet<>(Arrays.asList("supplierId", "voucherNo", "settledAmount", "deptId",
+                    "payableAmount", "project", "sourceType", "handlerId", "remark", "fileUrl")));
 
     @Resource
     private ErpPayableOtherService payableOtherService;
@@ -80,6 +89,8 @@ public class ErpPayableOtherController {
     private ErpFinanceFieldPermissionMasker fieldPermissionMasker;
     @Resource
     private ErpDataPermissionDeptService dataPermissionDeptService;
+    @Resource
+    private ErpImportExportRecordService importExportRecordService;
 
     @PostMapping("/create")
     @Operation(summary = "创建其他应付")
@@ -209,7 +220,8 @@ public class ErpPayableOtherController {
     @PreAuthorize("@ss.hasPermission('erp:payable-other:import')")
     public void getImportTemplate(HttpServletResponse response) throws IOException {
         ExcelUtils.writeImportTemplate(response, "其他应付导入模板.xls", "其他应付",
-                ErpPayableOtherImportExcelVO.class, java.util.Collections.singletonList(new ErpPayableOtherImportExcelVO()));
+                ErpPayableOtherImportExcelVO.class, Collections.singletonList(new ErpPayableOtherImportExcelVO()),
+                PAYABLE_OTHER_IMPORT_TEMPLATE_FIELDS);
     }
 
     @PostMapping("/import")
@@ -220,12 +232,12 @@ public class ErpPayableOtherController {
         ErpFinanceImportRespVO result = new ErpFinanceImportRespVO();
         for (int i = 0; i < list.size(); i++) {
             ErpPayableOtherImportExcelVO row = list.get(i);
-            if (row == null || allBlank(row.getBizTime(), row.getSupplierId(), row.getPayableAmount(), row.getRemark())) {
+            if (row == null || allBlank(row.getSupplierId(), row.getPayableAmount(), row.getRemark())) {
                 continue;
             }
             try {
                 ErpPayableOtherSaveReqVO reqVO = BeanUtils.toBean(row, ErpPayableOtherSaveReqVO.class);
-                reqVO.setBizTime(parseDate(row.getBizTime(), null));
+                reqVO.setBizTime(parseDate(row.getBizTime(), LocalDate.now()));
                 payableOtherService.createPayableOther(reqVO);
                 result.addCreated();
             } catch (Exception ex) {
@@ -233,6 +245,14 @@ public class ErpPayableOtherController {
             }
         }
         return success(result);
+    }
+
+    @GetMapping("/import-failure-details/download")
+    @Operation(summary = "下载其他应付导入错误数据")
+    @PreAuthorize("@ss.hasPermission('erp:payable-other:import')")
+    public void downloadImportFailureDetails(@RequestParam("recordId") Long recordId,
+                                             HttpServletResponse response) throws IOException {
+        importExportRecordService.downloadOwnImportFailureDetails(recordId, "erp_payable_other", response);
     }
 
     private PageResult<ErpPayableOtherRespVO> buildPageResult(PageResult<ErpPayableOtherDO> pageResult) {

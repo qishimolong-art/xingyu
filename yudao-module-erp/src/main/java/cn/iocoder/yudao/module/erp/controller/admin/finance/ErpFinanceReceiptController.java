@@ -16,6 +16,7 @@ import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.imports.ErpFinanc
 import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.receipt.ErpFinanceReceiptDraftSaveReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.receipt.ErpFinanceReceiptExportRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.receipt.ErpFinanceReceiptImportExcelVO;
+import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.receipt.ErpFinanceReceiptItemPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.receipt.ErpFinanceReceiptPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.receipt.ErpFinanceReceiptRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.receipt.ErpFinanceReceiptSaveReqVO;
@@ -33,6 +34,7 @@ import cn.iocoder.yudao.module.erp.enums.common.ErpBizTypeEnum;
 import cn.iocoder.yudao.module.erp.enums.finance.accounting.ErpVoucherSourceBizTypeEnum;
 import cn.iocoder.yudao.module.erp.enums.finance.ErpFinanceWriteOffStatusEnum;
 import cn.iocoder.yudao.module.erp.service.base.ErpDataPermissionDeptService;
+import cn.iocoder.yudao.module.erp.service.common.ErpImportExportRecordService;
 import cn.iocoder.yudao.module.erp.service.finance.ErpAccountService;
 import cn.iocoder.yudao.module.erp.service.finance.ErpFinanceFieldPermissionMasker;
 import cn.iocoder.yudao.module.erp.service.finance.ErpFinanceReceiptService;
@@ -57,10 +59,13 @@ import javax.validation.Valid;
 import java.io.IOException;
 import java.math.BigDecimal;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.stream.Stream;
 
 import static cn.iocoder.yudao.framework.apilog.core.enums.OperateTypeEnum.EXPORT;
@@ -68,14 +73,17 @@ import static cn.iocoder.yudao.framework.common.pojo.CommonResult.success;
 import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.*;
 import static cn.iocoder.yudao.module.erp.controller.admin.finance.vo.imports.ErpFinanceImportUtils.allBlank;
 import static cn.iocoder.yudao.module.erp.controller.admin.finance.vo.imports.ErpFinanceImportUtils.failureReason;
-import static cn.iocoder.yudao.module.erp.controller.admin.finance.vo.imports.ErpFinanceImportUtils.parseDateTime;
-import static cn.iocoder.yudao.module.erp.controller.admin.finance.vo.imports.ErpFinanceImportUtils.zeroIfNull;
 
 @Tag(name = "管理后台 - ERP 收款单")
 @RestController
 @RequestMapping("/erp/finance-receipt")
 @Validated
 public class ErpFinanceReceiptController {
+
+    public static final Set<String> RECEIPT_IMPORT_TEMPLATE_FIELDS = Collections.unmodifiableSet(new LinkedHashSet<>(
+            Arrays.asList("financeUserName", "deptName", "customerName", "accountName",
+                    "discountPrice", "totalPrice", "receiptPrice", "remark", "bizType", "bizNo",
+                    "receiptedPrice", "itemReceiptPrice", "itemRemark")));
 
     @Resource
     private ErpFinanceReceiptService financeReceiptService;
@@ -95,6 +103,10 @@ public class ErpFinanceReceiptController {
     private ErpDataPermissionDeptService dataPermissionDeptService;
     @Resource
     private ErpCustomerDeptPermissionService customerDeptPermissionService;
+    @Resource
+    private ErpFinanceSettlementImportResolver settlementImportResolver;
+    @Resource
+    private ErpImportExportRecordService importExportRecordService;
 
     @PostMapping("/create")
     @Operation(summary = "创建收款单")
@@ -214,19 +226,37 @@ public class ErpFinanceReceiptController {
     @Operation(summary = "获得收款单")
     @Parameter(name = "id", description = "编号", required = true, example = "1024")
     @PreAuthorize("@ss.hasPermission('erp:finance-receipt:query')")
-    public CommonResult<ErpFinanceReceiptRespVO> getFinanceReceipt(@RequestParam("id") Long id) {
+    public CommonResult<ErpFinanceReceiptRespVO> getFinanceReceipt(@RequestParam("id") Long id,
+                                                                   @RequestParam(value = "includeItems", defaultValue = "true")
+                                                                   Boolean includeItems) {
         ErpFinanceReceiptDO receipt = financeReceiptService.getFinanceReceipt(id);
         if (receipt == null) {
             return success(null);
         }
-        List<ErpFinanceReceiptItemDO> receiptItemList = financeReceiptService.getFinanceReceiptItemListByReceiptId(id);
+        List<ErpFinanceReceiptItemDO> receiptItemList = Boolean.FALSE.equals(includeItems)
+                ? Collections.emptyList() : financeReceiptService.getFinanceReceiptItemListByReceiptId(id);
         ErpFinanceReceiptRespVO respVO = BeanUtils.toBean(receipt, ErpFinanceReceiptRespVO.class,
-                financeReceiptVO -> financeReceiptVO.setItems(
-                        BeanUtils.toBean(receiptItemList, ErpFinanceReceiptRespVO.Item.class)));
-        fillWriteOffSummary(Collections.singletonList(respVO));
+                financeReceiptVO -> financeReceiptVO.setItems(buildFinanceReceiptItems(receiptItemList)));
+        if (!Boolean.FALSE.equals(includeItems)) {
+            fillWriteOffSummary(Collections.singletonList(respVO));
+        }
         fillFinanceReceiptNames(Collections.singletonList(respVO));
         fieldPermissionMasker.maskFormWithItems("erp_finance_receipt", respVO);
         return success(respVO);
+    }
+
+    @GetMapping("/item-page")
+    @Operation(summary = "获得收款单明细分页")
+    @PreAuthorize("@ss.hasPermission('erp:finance-receipt:query')")
+    public CommonResult<PageResult<ErpFinanceReceiptRespVO.Item>> getFinanceReceiptItemPage(
+            @Valid ErpFinanceReceiptItemPageReqVO pageReqVO) {
+        PageResult<ErpFinanceReceiptRespVO.Item> result = BeanUtils.toBean(
+                financeReceiptService.getFinanceReceiptItemPage(pageReqVO),
+                ErpFinanceReceiptRespVO.Item.class);
+        if (!Boolean.FALSE.equals(pageReqVO.getMask())) {
+            fieldPermissionMasker.clearHiddenItemFields("erp_finance_receipt", result.getList());
+        }
+        return success(result);
     }
 
     @GetMapping("/page")
@@ -280,7 +310,8 @@ public class ErpFinanceReceiptController {
     public void getImportTemplate(HttpServletResponse response) throws IOException {
         ExcelUtils.writeImportTemplate(response, "收款单导入模板.xls", "收款单",
                 ErpFinanceReceiptImportExcelVO.class,
-                Collections.singletonList(new ErpFinanceReceiptImportExcelVO()));
+                Collections.singletonList(new ErpFinanceReceiptImportExcelVO()),
+                RECEIPT_IMPORT_TEMPLATE_FIELDS);
     }
 
     @PostMapping("/import")
@@ -291,31 +322,34 @@ public class ErpFinanceReceiptController {
             throws Exception {
         List<ErpFinanceReceiptImportExcelVO> list = ExcelUtils.read(file, ErpFinanceReceiptImportExcelVO.class);
         ErpFinanceImportRespVO result = new ErpFinanceImportRespVO();
+        ErpFinanceSettlementImportResolver.ReceiptImportContext importContext =
+                settlementImportResolver.buildReceiptContext();
         for (int i = 0; i < list.size(); i++) {
             ErpFinanceReceiptImportExcelVO row = list.get(i);
-            if (row == null || allBlank(row.getReceiptTime(), row.getCustomerId(), row.getAccountId(),
-                    row.getTotalPrice(), row.getReceiptPrice(), row.getBizType(), row.getBizId(),
-                    row.getItemReceiptPrice())) {
+            if (row == null || allBlank(row.getFinanceUserName(), row.getFinanceUserId(),
+                    row.getDeptName(), row.getDeptId(), row.getCustomerName(), row.getCustomerId(),
+                    row.getAccountName(), row.getAccountId(), row.getTotalPrice(), row.getReceiptPrice(),
+                    row.getBizType(), row.getBizNo(), row.getBizId(), row.getItemReceiptPrice())) {
                 continue;
             }
             try {
-                ErpFinanceReceiptSaveReqVO reqVO = BeanUtils.toBean(row, ErpFinanceReceiptSaveReqVO.class);
-                reqVO.setReceiptTime(parseDateTime(row.getReceiptTime(), null));
-                reqVO.setDiscountPrice(zeroIfNull(row.getDiscountPrice()));
-                ErpFinanceReceiptSaveReqVO.Item item = new ErpFinanceReceiptSaveReqVO.Item();
-                item.setBizType(row.getBizType());
-                item.setBizId(row.getBizId());
-                item.setReceiptedPrice(zeroIfNull(row.getReceiptedPrice()));
-                item.setReceiptPrice(row.getItemReceiptPrice());
-                item.setRemark(row.getItemRemark());
-                reqVO.setItems(Collections.singletonList(item));
-                financeReceiptService.createFinanceReceipt(reqVO);
+                financeReceiptService.createFinanceReceipt(
+                        settlementImportResolver.buildReceiptSaveReqVO(row, importContext));
                 result.addCreated();
             } catch (Exception ex) {
                 result.addFailure(i + 2, row.getReceiptTime(), failureReason(ex));
             }
         }
         return success(result);
+    }
+
+    @GetMapping("/import-failure-details/download")
+    @Operation(summary = "下载收款单导入错误数据")
+    @PreAuthorize("@ss.hasPermission('erp:finance-receipt:import') and " +
+            "@ss.hasPermission('erp:finance-receipt:update-status')")
+    public void downloadImportFailureDetails(@RequestParam("recordId") Long recordId,
+                                             HttpServletResponse response) throws IOException {
+        importExportRecordService.downloadOwnImportFailureDetails(recordId, "erp_finance_receipt", response);
     }
 
     private PageResult<ErpFinanceReceiptRespVO> buildFinanceReceiptVOPageResult(PageResult<ErpFinanceReceiptDO> pageResult) {
@@ -328,11 +362,15 @@ public class ErpFinanceReceiptController {
                 ErpFinanceReceiptItemDO::getReceiptId);
         PageResult<ErpFinanceReceiptRespVO> result = BeanUtils.toBean(pageResult,
                 ErpFinanceReceiptRespVO.class, receipt -> {
-            receipt.setItems(BeanUtils.toBean(financeReceiptItemMap.get(receipt.getId()), ErpFinanceReceiptRespVO.Item.class));
+            receipt.setItems(buildFinanceReceiptItems(financeReceiptItemMap.get(receipt.getId())));
         });
         fillFinanceReceiptNames(result.getList());
         fillWriteOffSummary(result.getList());
         return result;
+    }
+
+    private List<ErpFinanceReceiptRespVO.Item> buildFinanceReceiptItems(List<ErpFinanceReceiptItemDO> items) {
+        return BeanUtils.toBean(items, ErpFinanceReceiptRespVO.Item.class);
     }
 
     private void fillWriteOffSummary(List<ErpFinanceReceiptRespVO> rows) {
@@ -350,11 +388,14 @@ public class ErpFinanceReceiptController {
                     .setWriteOffCount((int) items.stream()
                             .filter(item -> ErpFinanceWriteOffStatusEnum.EFFECTIVE.getStatus()
                                     .equals(item.getWriteOffStatus())).count());
-            if (allocatedPrice.compareTo(BigDecimal.ZERO) < 0 || allocatedPrice.compareTo(totalPrice) > 0) {
+            if (allocatedPrice.compareTo(BigDecimal.ZERO) != 0
+                    && (totalPrice.compareTo(BigDecimal.ZERO) == 0
+                    || allocatedPrice.signum() != totalPrice.signum()
+                    || allocatedPrice.abs().compareTo(totalPrice.abs()) > 0)) {
                 row.setWriteOffStatus(3);
             } else if (allocatedPrice.compareTo(BigDecimal.ZERO) == 0) {
                 row.setWriteOffStatus(0);
-            } else if (allocatedPrice.compareTo(totalPrice) == 0) {
+            } else if (allocatedPrice.abs().compareTo(totalPrice.abs()) == 0) {
                 row.setWriteOffStatus(2);
             } else {
                 row.setWriteOffStatus(1);

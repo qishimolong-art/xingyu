@@ -13,6 +13,7 @@ import org.aspectj.lang.ProceedingJoinPoint;
 import org.aspectj.lang.annotation.Around;
 import org.aspectj.lang.annotation.Aspect;
 import org.aspectj.lang.reflect.MethodSignature;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -24,16 +25,26 @@ import javax.annotation.Resource;
 import javax.servlet.ServletRequest;
 import javax.servlet.ServletResponse;
 import java.lang.annotation.Annotation;
+import java.io.IOException;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
+
+import static cn.iocoder.yudao.framework.common.exception.util.ServiceExceptionUtil.exception;
+import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.ERP_IMPORT_ROW_LIMIT_EXCEEDED;
 
 /**
  * Records ERP business import/export executions without changing each controller's core logic.
@@ -45,17 +56,48 @@ public class ErpImportExportRecordAspect {
 
     private static final String UNKNOWN_MODULE_KEY = "erp_unknown";
     private static final String DEFAULT_EXPORT_FIELDS = "默认导出字段";
+    private static final String DETAIL_TYPE_FAILURE = "FAILURE";
+    private static final String DETAIL_TYPE_CONTEXT = "CONTEXT";
+    private static final Set<String> GROUPED_IMPORT_TEMPLATES = new HashSet<>(Arrays.asList(
+            "ErpPurchaseOrderImportExcelVO",
+            "ErpPurchaseInOrderImportExcelVO",
+            "ErpPurchaseReturnOrderImportExcelVO",
+            "ErpPurchaseInvoiceImportExcelVO",
+            "ErpPurchasePriceAdjustOrderImportExcelVO",
+            "ErpSaleOrderOrderImportExcelVO",
+            "ErpSaleCartOrderImportExcelVO",
+            "ErpSaleQuoteOrderImportExcelVO",
+            "ErpSaleReturnOrderImportExcelVO",
+            "ErpSalePriceAdjustOrderImportExcelVO",
+            "ErpStockImportExcelVO",
+            "ErpStockCheckImportExcelVO",
+            "ErpWarehouseMoveImportExcelVO",
+            "ErpFinanceReceiptImportExcelVO",
+            "ErpFinancePaymentImportExcelVO",
+            "ErpPayableExpenseImportExcelVO",
+            "ErpReceivableOtherIncomeImportExcelVO"));
+    private static final Set<String> GROUP_KEY_FIELD_NAMES = new HashSet<>(Arrays.asList(
+            "groupKey", "groupNo", "orderNo", "no", "importNo", "invoiceNo", "saleOutNo", "sourceNo"));
+    private static final Set<String> MAIN_FIELD_NAMES = new HashSet<>(Arrays.asList(
+            "supplierName", "customerName", "bizTime", "inTime", "outTime", "returnTime", "orderTime",
+            "receiptTime", "paymentTime", "adjustTime", "invoiceDate", "factoryOrderNo", "remark",
+            "financeUserId", "deptId", "accountId", "discountPrice", "totalPrice", "receiptPrice",
+            "paymentPrice", "settleMethod", "voucherNo", "expenseType", "incomeType", "handlerId", "party",
+            "relatedBiz", "docType", "fileUrl", "checkTypeName", "fromWarehouseName", "toWarehouseName"));
 
     @Resource
     private ErpImportExportRecordService importExportRecordService;
     @Resource
     private ErpExportCaptchaService exportCaptchaService;
+    @Value("${yudao.erp.import.max-rows:3000}")
+    private int importMaxRows;
 
     @Around("within(cn.iocoder.yudao.module.erp.controller.admin..*)")
     public Object around(ProceedingJoinPoint joinPoint) throws Throwable {
         Method method = ((MethodSignature) joinPoint.getSignature()).getMethod();
         OperationMeta meta = resolveOperationMeta(joinPoint, method);
         if (meta == null) {
+            validateImportRowLimitIfNeeded(method, joinPoint.getArgs());
             return joinPoint.proceed();
         }
         validateExportCaptchaBeforeRecording(meta, method, joinPoint.getArgs());
@@ -63,7 +105,9 @@ public class ErpImportExportRecordAspect {
         long startMillis = System.currentTimeMillis();
         Long recordId = createRecordSafely(buildCreateReq(meta, joinPoint.getArgs()));
         try {
+            validateImportRowLimitIfNeeded(method, joinPoint.getArgs());
             Object result = joinPoint.proceed();
+            fillRecordIdIfPresent(result, recordId);
             finishRecordSafely(recordId, buildSuccessFinishReq(meta, result, startMillis, joinPoint.getArgs()));
             return result;
         } catch (Throwable ex) {
@@ -116,6 +160,29 @@ public class ErpImportExportRecordAspect {
                 || methodName.startsWith("import");
     }
 
+    private void validateImportRowLimitIfNeeded(Method method, Object[] args) throws IOException {
+        if (!isImportRowLimitMethod(method)) {
+            return;
+        }
+        MultipartFile file = findArg(args, MultipartFile.class);
+        if (file == null || file.isEmpty()) {
+            return;
+        }
+        int dataRowCount = ExcelUtils.countFirstSheetDataRows(file, 1);
+        if (dataRowCount > importMaxRows) {
+            throw exception(ERP_IMPORT_ROW_LIMIT_EXCEEDED, dataRowCount, importMaxRows);
+        }
+    }
+
+    private boolean isImportRowLimitMethod(Method method) {
+        if (method.getAnnotation(PostMapping.class) == null) {
+            return false;
+        }
+        String methodName = method.getName().toLowerCase(Locale.ROOT);
+        String normalizedPath = normalizePath(getMethodPath(method));
+        return methodName.contains("import") || normalizedPath.contains("import");
+    }
+
     private ErpImportExportRecordCreateReqBO buildCreateReq(OperationMeta meta, Object[] args) {
         ErpImportExportRecordCreateReqBO reqBO = new ErpImportExportRecordCreateReqBO();
         reqBO.setOperationType(meta.operationType);
@@ -158,7 +225,9 @@ public class ErpImportExportRecordAspect {
         reqBO.setFailureCount(importResult.failureCount);
         reqBO.setCreateCount(importResult.createCount);
         reqBO.setUpdateCount(importResult.updateCount);
-        reqBO.setFailureDetails(importResult.failureDetails);
+        ExcelUtils.ExcelOperationContext context = ExcelUtils.getLastOperation();
+        reqBO.setTemplateKey(context == null ? null : context.getHeadClassName());
+        reqBO.setFailureDetails(buildFailureDetailsWithImportRows(importResult.failureDetails, context));
         return reqBO;
     }
 
@@ -221,14 +290,199 @@ public class ErpImportExportRecordAspect {
         }
         List<ErpImportExportFailureDetailBO> list = new ArrayList<>();
         for (Object item : (Collection<?>) details) {
-            list.add(new ErpImportExportFailureDetailBO(
-                    integerValue(firstFieldValue(item, "rowNo", "rowNum")),
-                    stringValue(firstFieldValue(item, "code", "productCode", "subjectCode", "name", "orderNo")),
-                    stringValue(firstFieldValue(item, "name", "bizName")),
-                    stringValue(firstFieldValue(item, "reason", "failureReason", "message")),
-                    item));
+            ErpImportExportFailureDetailBO detail = new ErpImportExportFailureDetailBO();
+            detail.setRowNo(integerValue(firstFieldValue(item, "rowNo", "rowNum")));
+            detail.setGroupKey(trimToNull(stringValue(firstFieldValue(item,
+                    "groupKey", "groupNo", "orderNo", "no", "importNo"))));
+            detail.setDetailType(DETAIL_TYPE_FAILURE);
+            detail.setBizKey(stringValue(firstFieldValue(item, "code", "productCode", "subjectCode", "name", "orderNo")));
+            detail.setBizName(stringValue(firstFieldValue(item, "name", "bizName")));
+            detail.setFailureReason(stringValue(firstFieldValue(item, "reason", "failureReason", "message")));
+            detail.setRawData(item);
+            list.add(detail);
         }
         return list;
+    }
+
+    private List<ErpImportExportFailureDetailBO> buildFailureDetailsWithImportRows(
+            List<ErpImportExportFailureDetailBO> failureDetails, ExcelUtils.ExcelOperationContext context) {
+        if (failureDetails == null || failureDetails.isEmpty()) {
+            return failureDetails;
+        }
+        List<ImportRawRow> importRows = buildImportRawRows(context);
+        if (importRows.isEmpty()) {
+            return normalizeLegacyFailureDetails(failureDetails);
+        }
+        Map<Integer, ImportRawRow> rowMap = new HashMap<>();
+        for (ImportRawRow row : importRows) {
+            rowMap.put(row.rowNo, row);
+        }
+        Map<Integer, List<ErpImportExportFailureDetailBO>> failuresByRowNo = new LinkedHashMap<>();
+        List<ErpImportExportFailureDetailBO> unmatchedFailures = new ArrayList<>();
+        Set<String> failedGroupKeys = new LinkedHashSet<>();
+        for (ErpImportExportFailureDetailBO failure : failureDetails) {
+            failure.setDetailType(DETAIL_TYPE_FAILURE);
+            ImportRawRow rawRow = failure.getRowNo() == null ? null : rowMap.get(failure.getRowNo());
+            if (rawRow == null) {
+                unmatchedFailures.add(normalizeLegacyFailure(failure));
+                continue;
+            }
+            failuresByRowNo.computeIfAbsent(rawRow.rowNo, key -> new ArrayList<>()).add(failure);
+            failedGroupKeys.add(rawRow.groupKey);
+        }
+        if (failedGroupKeys.isEmpty()) {
+            return normalizeLegacyFailureDetails(failureDetails);
+        }
+        List<ErpImportExportFailureDetailBO> result = new ArrayList<>();
+        for (ImportRawRow row : importRows) {
+            if (!failedGroupKeys.contains(row.groupKey)) {
+                continue;
+            }
+            List<ErpImportExportFailureDetailBO> rowFailures = failuresByRowNo.get(row.rowNo);
+            ErpImportExportFailureDetailBO detail = new ErpImportExportFailureDetailBO();
+            detail.setRowNo(row.rowNo);
+            detail.setGroupKey(row.groupKey);
+            detail.setDetailType(rowFailures == null || rowFailures.isEmpty() ? DETAIL_TYPE_CONTEXT : DETAIL_TYPE_FAILURE);
+            detail.setBizKey(resolveRowBizKey(rowFailures, row));
+            detail.setBizName(resolveRowBizName(rowFailures));
+            detail.setFailureReason(rowFailures == null || rowFailures.isEmpty() ? "" : mergeFailureReasons(rowFailures));
+            detail.setRawData(row.data);
+            result.add(detail);
+        }
+        result.addAll(unmatchedFailures);
+        return result;
+    }
+
+    private List<ErpImportExportFailureDetailBO> normalizeLegacyFailureDetails(
+            List<ErpImportExportFailureDetailBO> failureDetails) {
+        List<ErpImportExportFailureDetailBO> result = new ArrayList<>();
+        for (ErpImportExportFailureDetailBO failureDetail : failureDetails) {
+            result.add(normalizeLegacyFailure(failureDetail));
+        }
+        return result;
+    }
+
+    private ErpImportExportFailureDetailBO normalizeLegacyFailure(ErpImportExportFailureDetailBO failureDetail) {
+        failureDetail.setDetailType(DETAIL_TYPE_FAILURE);
+        if (trimToNull(failureDetail.getGroupKey()) == null) {
+            failureDetail.setGroupKey(trimToNull(failureDetail.getBizKey()));
+        }
+        return failureDetail;
+    }
+
+    private List<ImportRawRow> buildImportRawRows(ExcelUtils.ExcelOperationContext context) {
+        if (context == null || context.getReadRows() == null || context.getReadRows().isEmpty()) {
+            return Collections.emptyList();
+        }
+        List<ImportRawRow> rows = new ArrayList<>();
+        boolean grouped = isGroupedImportTemplate(context.getHeadClassName());
+        boolean identityGrouped = isIdentityGroupedImportTemplate(context.getHeadClassName());
+        String currentGroupKey = null;
+        String currentGroupIdentity = null;
+        for (int i = 0; i < context.getReadRows().size(); i++) {
+            Object row = context.getReadRows().get(i);
+            int rowNo = i + 2;
+            if (!grouped) {
+                rows.add(new ImportRawRow(rowNo, "ROW-" + rowNo, row));
+                continue;
+            }
+            String explicitGroupKey = resolveExplicitGroupKey(row);
+            String groupIdentity = resolveGroupIdentity(row);
+            if (explicitGroupKey != null) {
+                currentGroupKey = explicitGroupKey;
+                currentGroupIdentity = groupIdentity;
+            } else if (currentGroupKey == null || shouldStartNewGroup(identityGrouped, groupIdentity, currentGroupIdentity)) {
+                currentGroupKey = "GROUP-" + rowNo;
+                currentGroupIdentity = groupIdentity;
+            }
+            rows.add(new ImportRawRow(rowNo, currentGroupKey, row));
+        }
+        return rows;
+    }
+
+    private boolean isGroupedImportTemplate(String headClassName) {
+        if (headClassName == null) {
+            return false;
+        }
+        int index = headClassName.lastIndexOf('.');
+        String simpleName = index < 0 ? headClassName : headClassName.substring(index + 1);
+        return GROUPED_IMPORT_TEMPLATES.contains(simpleName);
+    }
+
+    private boolean isIdentityGroupedImportTemplate(String headClassName) {
+        if (headClassName == null) {
+            return false;
+        }
+        return headClassName.endsWith(".ErpWarehouseMoveImportExcelVO");
+    }
+
+    private boolean shouldStartNewGroup(boolean identityGrouped, String groupIdentity, String currentGroupIdentity) {
+        if (groupIdentity == null) {
+            return false;
+        }
+        return identityGrouped ? !Objects.equals(groupIdentity, currentGroupIdentity) : true;
+    }
+
+    private String resolveExplicitGroupKey(Object row) {
+        for (String fieldName : GROUP_KEY_FIELD_NAMES) {
+            String value = trimToNull(stringValue(fieldValue(row, fieldName)));
+            if (value != null) {
+                return fieldName + ":" + value;
+            }
+        }
+        return null;
+    }
+
+    private String resolveGroupIdentity(Object row) {
+        StringBuilder identity = new StringBuilder();
+        for (String fieldName : MAIN_FIELD_NAMES) {
+            Object value = fieldValue(row, fieldName);
+            String text = trimToNull(stringValue(value));
+            if (text != null) {
+                if (identity.length() > 0) {
+                    identity.append('|');
+                }
+                identity.append(fieldName).append('=').append(text);
+            }
+        }
+        return identity.length() == 0 ? null : identity.toString();
+    }
+
+    private String resolveRowBizKey(List<ErpImportExportFailureDetailBO> rowFailures, ImportRawRow row) {
+        if (rowFailures != null) {
+            for (ErpImportExportFailureDetailBO failure : rowFailures) {
+                String bizKey = trimToNull(failure.getBizKey());
+                if (bizKey != null) {
+                    return bizKey;
+                }
+            }
+        }
+        String productCode = trimToNull(stringValue(fieldValue(row.data, "productCode")));
+        return productCode == null ? row.groupKey : productCode;
+    }
+
+    private String resolveRowBizName(List<ErpImportExportFailureDetailBO> rowFailures) {
+        if (rowFailures == null) {
+            return null;
+        }
+        for (ErpImportExportFailureDetailBO failure : rowFailures) {
+            String bizName = trimToNull(failure.getBizName());
+            if (bizName != null) {
+                return bizName;
+            }
+        }
+        return null;
+    }
+
+    private String mergeFailureReasons(List<ErpImportExportFailureDetailBO> rowFailures) {
+        Set<String> reasons = new LinkedHashSet<>();
+        for (ErpImportExportFailureDetailBO failure : rowFailures) {
+            String reason = trimToNull(failure.getFailureReason());
+            if (reason != null) {
+                reasons.add(reason);
+            }
+        }
+        return String.join("；", reasons);
     }
 
     private Object unwrapCommonResultData(Object result) {
@@ -236,6 +490,26 @@ public class ErpImportExportRecordAspect {
             return ((CommonResult<?>) result).getData();
         }
         return result;
+    }
+
+    private void fillRecordIdIfPresent(Object result, Long recordId) {
+        if (recordId == null) {
+            return;
+        }
+        Object data = unwrapCommonResultData(result);
+        if (data == null) {
+            return;
+        }
+        try {
+            Field field = data.getClass().getDeclaredField("recordId");
+            field.setAccessible(true);
+            field.set(data, recordId);
+        } catch (NoSuchFieldException ignored) {
+            // Only import result VOs that declare recordId need the callback id.
+        } catch (Exception ex) {
+            log.warn("[fillRecordIdIfPresent][recordId({}) class({}) error]",
+                    recordId, data.getClass().getName(), ex);
+        }
     }
 
     private String resolveFileName(OperationMeta meta, Object[] args) {
@@ -442,6 +716,14 @@ public class ErpImportExportRecordAspect {
         return value == null ? null : String.valueOf(value);
     }
 
+    private String trimToNull(String value) {
+        if (value == null) {
+            return null;
+        }
+        String trimValue = value.trim();
+        return trimValue.isEmpty() ? null : trimValue;
+    }
+
     private boolean containsAny(String value, String... targets) {
         String lower = value == null ? "" : value.toLowerCase(Locale.ROOT);
         for (String target : targets) {
@@ -511,5 +793,18 @@ public class ErpImportExportRecordAspect {
         private int createCount;
         private int updateCount;
         private List<ErpImportExportFailureDetailBO> failureDetails;
+    }
+
+    private static class ImportRawRow {
+
+        private final Integer rowNo;
+        private final String groupKey;
+        private final Object data;
+
+        private ImportRawRow(Integer rowNo, String groupKey, Object data) {
+            this.rowNo = rowNo;
+            this.groupKey = groupKey;
+            this.data = data;
+        }
     }
 }

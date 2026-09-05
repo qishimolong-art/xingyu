@@ -219,11 +219,17 @@ public interface ErpStockMapper extends BaseMapperX<ErpStockDO> {
     }
 
     static Long getLong(Map<String, Object> row, String key) {
+        if (row == null) {
+            return 0L;
+        }
         Object value = row.get(key);
         return value == null ? 0L : Long.valueOf(value.toString());
     }
 
     static BigDecimal getBigDecimal(Map<String, Object> row, String key) {
+        if (row == null) {
+            return BigDecimal.ZERO;
+        }
         Object value = row.get(key);
         return value == null ? BigDecimal.ZERO
                 : value instanceof BigDecimal ? (BigDecimal) value : new BigDecimal(value.toString());
@@ -566,6 +572,16 @@ public interface ErpStockMapper extends BaseMapperX<ErpStockDO> {
     default ErpStockDO selectByProductIdAndWarehouseId(Long productId, Long warehouseId) {
         return selectOne(ErpStockDO::getProductId, productId,
                 ErpStockDO::getWarehouseId, warehouseId);
+    }
+
+    default List<ErpStockDO> selectListByProductIdsAndWarehouseIds(Collection<Long> productIds,
+                                                                   Collection<Long> warehouseIds) {
+        if (CollUtil.isEmpty(productIds) || CollUtil.isEmpty(warehouseIds)) {
+            return Collections.emptyList();
+        }
+        return selectList(new LambdaQueryWrapperX<ErpStockDO>()
+                .in(ErpStockDO::getProductId, productIds)
+                .in(ErpStockDO::getWarehouseId, warehouseIds));
     }
 
     default List<ErpStockDO> selectListByProductId(Long productId) {

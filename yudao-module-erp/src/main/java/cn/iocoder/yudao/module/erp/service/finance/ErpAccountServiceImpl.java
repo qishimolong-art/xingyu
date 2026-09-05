@@ -24,6 +24,7 @@ import cn.iocoder.yudao.module.erp.dal.mysql.finance.receivable.ErpReceivableOth
 import cn.iocoder.yudao.module.erp.enums.finance.ErpAccountDocumentStatusEnum;
 import cn.iocoder.yudao.module.erp.service.base.ErpBaseArchiveReferenceService;
 import cn.iocoder.yudao.module.erp.service.common.ErpOperateLogService;
+import cn.iocoder.yudao.module.erp.service.finance.accounting.ErpAccountingSubjectService;
 import cn.iocoder.yudao.module.erp.service.finance.bo.ErpAccountBalanceBO;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -76,6 +77,8 @@ public class ErpAccountServiceImpl implements ErpAccountService {
     private ErpBaseArchiveReferenceService baseArchiveReferenceService;
     @Resource
     private ErpOperateLogService operateLogService;
+    @Resource
+    private ErpAccountingSubjectService accountingSubjectService;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -89,6 +92,7 @@ public class ErpAccountServiceImpl implements ErpAccountService {
         normalizeAccount(account);
         clearOtherDefaultAccountIfNeeded(account);
         accountMapper.insert(account);
+        ensureFundAccountSubject(account);
         operateLogService.recordCreate(ERP_ACCOUNT_TYPE, account.getId(), account, account.getNo());
         return account.getId();
     }
@@ -134,6 +138,7 @@ public class ErpAccountServiceImpl implements ErpAccountService {
         normalizeAccount(updateObj);
         clearOtherDefaultAccountIfNeeded(updateObj);
         accountMapper.updateById(updateObj);
+        ensureFundAccountSubject(updateObj);
         operateLogService.recordUpdate(ERP_ACCOUNT_TYPE, updateObj.getId(), account,
                 accountMapper.selectById(updateObj.getId()), account.getNo());
     }
@@ -201,6 +206,7 @@ public class ErpAccountServiceImpl implements ErpAccountService {
         }
         ValidationUtils.validate(BeanUtils.toBean(account, ErpAccountSaveReqVO.class));
         clearOtherDefaultAccountIfNeeded(account);
+        ensureFundAccountSubject(account);
         if (accountMapper.updateByIdAndDocumentStatus(id,
                 ErpAccountDocumentStatusEnum.DRAFT.getStatus(),
                 new ErpAccountDO().setDocumentStatus(
@@ -322,6 +328,13 @@ public class ErpAccountServiceImpl implements ErpAccountService {
     @Override
     public PageResult<ErpAccountDO> getAccountPage(ErpAccountPageReqVO pageReqVO) {
         return accountMapper.selectPage(pageReqVO);
+    }
+
+    private void ensureFundAccountSubject(ErpAccountDO account) {
+        if (account == null) {
+            return;
+        }
+        accountingSubjectService.ensureFundAccountSubject(account.getAccountType(), account.getName());
     }
 
     private void normalizeAccount(ErpAccountDO account) {

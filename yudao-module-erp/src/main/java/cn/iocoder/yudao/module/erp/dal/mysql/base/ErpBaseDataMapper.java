@@ -73,7 +73,8 @@ public interface ErpBaseDataMapper extends BaseMapperX<ErpBaseDataDO> {
         return selectList(new LambdaQueryWrapperX<ErpBaseDataDO>()
                 .eq(ErpBaseDataDO::getType, type)
                 .eq(ErpBaseDataDO::getStatus, status)
-                .orderByAsc(ErpBaseDataDO::getSort));
+                .orderByAsc(ErpBaseDataDO::getSort)
+                .orderByAsc(ErpBaseDataDO::getId));
     }
 
     default ErpBaseDataDO selectByTypeAndName(String type, String name) {
