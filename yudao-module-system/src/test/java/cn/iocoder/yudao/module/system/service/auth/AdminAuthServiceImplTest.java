@@ -3,6 +3,7 @@ package cn.iocoder.yudao.module.system.service.auth;
 import cn.hutool.core.util.ReflectUtil;
 import cn.iocoder.yudao.framework.common.enums.CommonStatusEnum;
 import cn.iocoder.yudao.framework.common.enums.UserTypeEnum;
+import cn.iocoder.yudao.framework.tenant.config.TenantProperties;
 import cn.iocoder.yudao.framework.tenant.core.context.TenantContextHolder;
 import cn.iocoder.yudao.framework.test.core.ut.BaseDbUnitTest;
 import cn.iocoder.yudao.module.system.api.sms.SmsCodeApi;
@@ -79,6 +80,8 @@ public class AdminAuthServiceImplTest extends BaseDbUnitTest {
     @MockBean
     private StringRedisTemplate stringRedisTemplate;
     @MockBean
+    private TenantProperties tenantProperties;
+    @MockBean
     private ValueOperations<String, String> valueOperations;
 
     @BeforeEach
@@ -89,6 +92,7 @@ public class AdminAuthServiceImplTest extends BaseDbUnitTest {
                 Validation.buildDefaultValidatorFactory().getValidator());
         when(stringRedisTemplate.opsForValue()).thenReturn(valueOperations);
         when(weComProperties.getStateTimeout()).thenReturn(Duration.ofMinutes(5));
+        when(tenantProperties.getEnable()).thenReturn(true);
         TenantContextHolder.clear();
     }
 
@@ -262,7 +266,7 @@ public class AdminAuthServiceImplTest extends BaseDbUnitTest {
         String redirectUri = "https://example.com/auth/wecom-login?tenantId=1&redirect=/";
         String authorizeUrl = randomString();
         TenantContextHolder.setTenantId(1L);
-        when(weComClientService.getAuthorizeUrl(eq(redirectUri), anyString())).thenReturn(authorizeUrl);
+        when(weComClientService.getAuthorizeUrl(eq(redirectUri), anyString(), isNull())).thenReturn(authorizeUrl);
 
         // 调用，并断言
         assertEquals(authorizeUrl, authService.getWeComAuthorizeUrl(redirectUri));
@@ -272,16 +276,77 @@ public class AdminAuthServiceImplTest extends BaseDbUnitTest {
     }
 
     @Test
+    public void testGetWeComAuthorizeUrl_clientKey() {
+        // 准备参数
+        String redirectUri = "https://example.com/auth/wecom-login?tenantId=1&workbench=sale-pick";
+        String authorizeUrl = randomString();
+        TenantContextHolder.setTenantId(1L);
+        when(weComClientService.getAuthorizeUrl(eq(redirectUri), anyString(), eq("sale-pick"))).thenReturn(authorizeUrl);
+
+        // 调用，并断言
+        assertEquals(authorizeUrl, authService.getWeComAuthorizeUrl(redirectUri, "sale-pick"));
+        verify(valueOperations).set(argThat(key -> key.startsWith("wecom_auth_state:")),
+                argThat(value -> value.contains("\"tenantId\":1") && value.contains(redirectUri)
+                        && value.contains("\"clientKey\":\"sale-pick\"")),
+                eq(300L), eq(TimeUnit.SECONDS));
+    }
+
+    @Test
+    public void testGetWeComAuthorizeUrl_tenantEmpty() {
+        // 准备参数
+        String redirectUri = "https://example.com/auth/wecom-login?redirect=/";
+
+        // 调用，并断言异常
+        assertServiceException(() -> authService.getWeComAuthorizeUrl(redirectUri),
+                AUTH_WECOM_API_ERROR, "租户编号不能为空");
+        verify(valueOperations, never()).set(anyString(), anyString(), anyLong(), any());
+        verify(weComClientService, never()).getAuthorizeUrl(anyString(), anyString(), any());
+    }
+
+    @Test
     public void testWeComSilentLogin_success() {
         // 准备参数
         String code = randomString();
         String state = randomString();
         String mobile = "13800138000";
         String stateKey = String.format(RedisKeyConstants.WECOM_AUTH_STATE, state);
-        TenantContextHolder.setTenantId(1L);
         when(valueOperations.get(eq(stateKey)))
                 .thenReturn("{\"tenantId\":1,\"redirectUri\":\"https://example.com/auth/wecom-login\"}");
-        when(weComClientService.getUserMobileByCode(eq(code))).thenReturn(mobile);
+        when(weComClientService.getUserMobileByCode(eq(code), isNull())).thenReturn(mobile);
+        AdminUserDO user = randomPojo(AdminUserDO.class, o -> o.setId(1L).setMobile(mobile)
+                .setStatus(CommonStatusEnum.ENABLE.getStatus()));
+        when(userService.getUserListByMobile(eq(mobile))).thenAnswer(invocation -> {
+            assertEquals(1L, TenantContextHolder.getTenantId());
+            return Collections.singletonList(user);
+        });
+        OAuth2AccessTokenDO accessTokenDO = randomPojo(OAuth2AccessTokenDO.class, o -> o.setUserId(1L)
+                .setUserType(UserTypeEnum.ADMIN.getValue()));
+        when(oauth2TokenService.createAccessToken(eq(1L), eq(UserTypeEnum.ADMIN.getValue()), eq("default"), isNull()))
+                .thenReturn(accessTokenDO);
+
+        // 调用，并断言
+        AuthLoginRespVO loginRespVO = authService.weComSilentLogin(new AuthWeComLoginReqVO(code, state));
+        assertPojoEquals(accessTokenDO, loginRespVO);
+        verify(stringRedisTemplate).delete(eq(stateKey));
+        verify(weComClientService).getUserMobileByCode(eq(code), isNull());
+        verify(loginLogService).createLoginLog(
+                argThat(o -> o.getLogType().equals(LoginLogTypeEnum.LOGIN_SOCIAL.getType())
+                        && o.getResult().equals(LoginResultEnum.SUCCESS.getResult())
+                        && o.getUserId().equals(user.getId()))
+        );
+    }
+
+    @Test
+    public void testWeComSilentLogin_clientKey() {
+        // 准备参数
+        String code = randomString();
+        String state = randomString();
+        String mobile = "13800138000";
+        String stateKey = String.format(RedisKeyConstants.WECOM_AUTH_STATE, state);
+        when(valueOperations.get(eq(stateKey)))
+                .thenReturn("{\"tenantId\":1,\"redirectUri\":\"https://example.com/auth/wecom-login\","
+                        + "\"clientKey\":\"sale-pick\"}");
+        when(weComClientService.getUserMobileByCode(eq(code), eq("sale-pick"))).thenReturn(mobile);
         AdminUserDO user = randomPojo(AdminUserDO.class, o -> o.setId(1L).setMobile(mobile)
                 .setStatus(CommonStatusEnum.ENABLE.getStatus()));
         when(userService.getUserListByMobile(eq(mobile))).thenReturn(Collections.singletonList(user));
@@ -294,11 +359,24 @@ public class AdminAuthServiceImplTest extends BaseDbUnitTest {
         AuthLoginRespVO loginRespVO = authService.weComSilentLogin(new AuthWeComLoginReqVO(code, state));
         assertPojoEquals(accessTokenDO, loginRespVO);
         verify(stringRedisTemplate).delete(eq(stateKey));
-        verify(loginLogService).createLoginLog(
-                argThat(o -> o.getLogType().equals(LoginLogTypeEnum.LOGIN_SOCIAL.getType())
-                        && o.getResult().equals(LoginResultEnum.SUCCESS.getResult())
-                        && o.getUserId().equals(user.getId()))
-        );
+        verify(weComClientService).getUserMobileByCode(eq(code), eq("sale-pick"));
+    }
+
+    @Test
+    public void testWeComSilentLogin_tenantMismatch() {
+        // 准备参数
+        String code = randomString();
+        String state = randomString();
+        String stateKey = String.format(RedisKeyConstants.WECOM_AUTH_STATE, state);
+        TenantContextHolder.setTenantId(2L);
+        when(valueOperations.get(eq(stateKey)))
+                .thenReturn("{\"tenantId\":1,\"redirectUri\":\"https://example.com/auth/wecom-login\"}");
+
+        // 调用，并断言异常
+        assertServiceException(() -> authService.weComSilentLogin(new AuthWeComLoginReqVO(code, state)),
+                AUTH_WECOM_STATE_INVALID);
+        verify(stringRedisTemplate).delete(eq(stateKey));
+        verify(weComClientService, never()).getUserMobileByCode(anyString(), any());
     }
 
     @Test
@@ -310,7 +388,7 @@ public class AdminAuthServiceImplTest extends BaseDbUnitTest {
         // 调用，并断言异常
         assertServiceException(() -> authService.weComSilentLogin(new AuthWeComLoginReqVO(randomString(), state)),
                 AUTH_WECOM_STATE_INVALID);
-        verify(weComClientService, never()).getUserMobileByCode(anyString());
+        verify(weComClientService, never()).getUserMobileByCode(anyString(), any());
     }
 
     @Test
@@ -321,8 +399,8 @@ public class AdminAuthServiceImplTest extends BaseDbUnitTest {
         String mobile = "13800138000";
         String stateKey = String.format(RedisKeyConstants.WECOM_AUTH_STATE, state);
         when(valueOperations.get(eq(stateKey)))
-                .thenReturn("{\"redirectUri\":\"https://example.com/auth/wecom-login\"}");
-        when(weComClientService.getUserMobileByCode(eq(code))).thenReturn(mobile);
+                .thenReturn("{\"tenantId\":1,\"redirectUri\":\"https://example.com/auth/wecom-login\"}");
+        when(weComClientService.getUserMobileByCode(eq(code), isNull())).thenReturn(mobile);
         AdminUserDO user = randomPojo(AdminUserDO.class, o -> o.setId(1L).setMobile(mobile)
                 .setStatus(CommonStatusEnum.DISABLE.getStatus()));
         when(userService.getUserListByMobile(eq(mobile))).thenReturn(Collections.singletonList(user));
@@ -346,8 +424,8 @@ public class AdminAuthServiceImplTest extends BaseDbUnitTest {
         String state = randomString();
         String stateKey = String.format(RedisKeyConstants.WECOM_AUTH_STATE, state);
         when(valueOperations.get(eq(stateKey)))
-                .thenReturn("{\"redirectUri\":\"https://example.com/auth/wecom-login\"}");
-        when(weComClientService.getUserMobileByCode(eq(code))).thenReturn("");
+                .thenReturn("{\"tenantId\":1,\"redirectUri\":\"https://example.com/auth/wecom-login\"}");
+        when(weComClientService.getUserMobileByCode(eq(code), isNull())).thenReturn("");
 
         // 调用，并断言异常
         assertServiceException(() -> authService.weComSilentLogin(new AuthWeComLoginReqVO(code, state)),
@@ -364,8 +442,8 @@ public class AdminAuthServiceImplTest extends BaseDbUnitTest {
         String mobile = "13800138000";
         String stateKey = String.format(RedisKeyConstants.WECOM_AUTH_STATE, state);
         when(valueOperations.get(eq(stateKey)))
-                .thenReturn("{\"redirectUri\":\"https://example.com/auth/wecom-login\"}");
-        when(weComClientService.getUserMobileByCode(eq(code))).thenReturn(mobile);
+                .thenReturn("{\"tenantId\":1,\"redirectUri\":\"https://example.com/auth/wecom-login\"}");
+        when(weComClientService.getUserMobileByCode(eq(code), isNull())).thenReturn(mobile);
         when(userService.getUserListByMobile(eq(mobile))).thenReturn(Collections.emptyList());
 
         // 调用，并断言异常
@@ -383,8 +461,8 @@ public class AdminAuthServiceImplTest extends BaseDbUnitTest {
         String mobile = "13800138000";
         String stateKey = String.format(RedisKeyConstants.WECOM_AUTH_STATE, state);
         when(valueOperations.get(eq(stateKey)))
-                .thenReturn("{\"redirectUri\":\"https://example.com/auth/wecom-login\"}");
-        when(weComClientService.getUserMobileByCode(eq(code))).thenReturn(mobile);
+                .thenReturn("{\"tenantId\":1,\"redirectUri\":\"https://example.com/auth/wecom-login\"}");
+        when(weComClientService.getUserMobileByCode(eq(code), isNull())).thenReturn(mobile);
         when(userService.getUserListByMobile(eq(mobile))).thenReturn(Arrays.asList(
                 randomPojo(AdminUserDO.class, o -> o.setId(1L).setMobile(mobile)),
                 randomPojo(AdminUserDO.class, o -> o.setId(2L).setMobile(mobile))));

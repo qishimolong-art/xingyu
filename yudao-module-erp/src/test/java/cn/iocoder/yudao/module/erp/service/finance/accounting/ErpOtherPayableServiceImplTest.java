@@ -331,17 +331,14 @@ class ErpOtherPayableServiceImplTest extends BaseMockitoUnitTest {
         when(otherPayableMapper.selectById(100L)).thenReturn(payable);
         when(otherPayableMapper.updateByIdAndStatus(eq(100L), eq(ErpAuditStatus.PROCESS.getStatus()), any()))
                 .thenReturn(1);
-        when(bookOpenService.isVoucherTypeEnabled(LocalDate.of(2026, 5, 10), VT)).thenReturn(true);
-        when(autoVoucherBuilder.buildOtherPayableItems(payable)).thenReturn(singletonList(new ErpVoucherItemDO()));
+
 
         // 调用
         otherPayableService.updateOtherPayableStatus(100L, ErpAuditStatus.APPROVE.getStatus());
 
         // 断言
         verify(otherPayableMapper).updateByIdAndStatus(eq(100L), eq(ErpAuditStatus.PROCESS.getStatus()), any());
-        verify(voucherService).createVoucherFromBiz(
-                eq(ErpVoucherSourceBizTypeEnum.OTHER_PAYABLE.getType()), eq(100L), eq("QTYF100"),
-                any(), eq(LocalDate.of(2026, 5, 10)), eq("其他应付 - 供应商B"), anyList());
+        org.mockito.Mockito.verifyNoInteractions(voucherService);
     }
 
     @Test
@@ -354,7 +351,7 @@ class ErpOtherPayableServiceImplTest extends BaseMockitoUnitTest {
         when(otherPayableMapper.selectById(100L)).thenReturn(payable);
         when(otherPayableMapper.updateByIdAndStatus(eq(100L), eq(ErpAuditStatus.PROCESS.getStatus()), any()))
                 .thenReturn(1);
-        when(bookOpenService.isVoucherTypeEnabled(LocalDate.of(2026, 5, 10), VT)).thenReturn(false);
+
 
         otherPayableService.updateOtherPayableStatus(100L, ErpAuditStatus.APPROVE.getStatus());
 
@@ -371,11 +368,11 @@ class ErpOtherPayableServiceImplTest extends BaseMockitoUnitTest {
         when(otherPayableMapper.selectById(100L)).thenReturn(payable);
         when(otherPayableMapper.updateByIdAndStatus(eq(100L), eq(ErpAuditStatus.PROCESS.getStatus()), any()))
                 .thenReturn(1);
-        when(bookOpenService.isVoucherTypeEnabled(any(LocalDate.class), eq(VT))).thenReturn(false);
+
 
         otherPayableService.updateOtherPayableStatus(100L, ErpAuditStatus.APPROVE.getStatus());
 
-        verify(bookOpenService).isVoucherTypeEnabled(any(LocalDate.class), eq(VT));
+        org.mockito.Mockito.verifyNoInteractions(bookOpenService);
     }
 
     @Test

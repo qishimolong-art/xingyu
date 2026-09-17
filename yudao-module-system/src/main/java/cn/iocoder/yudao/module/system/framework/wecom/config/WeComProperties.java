@@ -5,6 +5,8 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.stereotype.Component;
 
 import java.time.Duration;
+import java.util.HashMap;
+import java.util.Map;
 
 /**
  * 企业微信 H5 免登配置。
@@ -35,6 +37,11 @@ public class WeComProperties {
     private String secret;
 
     /**
+     * 多企业微信应用配置，key 由前端入口传入，例如 sale-pick、sale-delivery。
+     */
+    private Map<String, ClientProperties> clients = new HashMap<>();
+
+    /**
      * OAuth state 有效期。
      */
     private Duration stateTimeout = Duration.ofMinutes(5);
@@ -46,6 +53,26 @@ public class WeComProperties {
 
     public boolean isEnabled() {
         return Boolean.TRUE.equals(enabled);
+    }
+
+    @Data
+    public static class ClientProperties {
+
+        /**
+         * 企业 ID。为空时使用外层 corpId。
+         */
+        private String corpId;
+
+        /**
+         * 应用 AgentId。
+         */
+        private String agentId;
+
+        /**
+         * 应用 Secret。
+         */
+        private String secret;
+
     }
 
 }

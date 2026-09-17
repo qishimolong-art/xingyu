@@ -76,4 +76,11 @@ public interface ProductSkuMapper extends BaseMapperX<ProductSkuDO> {
         update(null, updateWrapper);
     }
 
+    default void updatePriceBySpuId(Long spuId, Integer price) {
+        LambdaUpdateWrapper<ProductSkuDO> updateWrapper = new LambdaUpdateWrapper<ProductSkuDO>()
+                .set(ProductSkuDO::getPrice, price)
+                .eq(ProductSkuDO::getSpuId, spuId);
+        update(null, updateWrapper);
+    }
+
 }

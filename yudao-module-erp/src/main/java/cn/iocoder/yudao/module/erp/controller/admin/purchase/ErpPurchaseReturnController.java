@@ -2,6 +2,7 @@ package cn.iocoder.yudao.module.erp.controller.admin.purchase;
 
 import cn.hutool.core.collection.CollUtil;
 import cn.iocoder.yudao.framework.apilog.core.annotation.ApiAccessLog;
+import cn.iocoder.yudao.framework.common.enums.CommonStatusEnum;
 import cn.iocoder.yudao.framework.common.pojo.CommonResult;
 import cn.iocoder.yudao.framework.common.pojo.PageParam;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
@@ -23,6 +24,7 @@ import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.returns.ErpPurch
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.returns.ErpPurchaseReturnItemPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.returns.ErpPurchaseReturnOrderImportExcelVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.returns.ErpPurchaseReturnPageReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.returns.ErpPurchaseReturnRefundSummaryRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.returns.ErpPurchaseReturnRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.returns.ErpPurchaseReturnSaveReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseInItemDO;
@@ -31,15 +33,19 @@ import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseReturnItem
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpSupplierDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpWarehouseDO;
+import cn.iocoder.yudao.module.erp.dal.mysql.finance.ErpFinancePaymentItemMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.purchase.ErpPurchaseInItemMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.purchase.ErpPurchaseReturnItemMapper;
+import cn.iocoder.yudao.module.erp.enums.common.ErpBizTypeEnum;
 import cn.iocoder.yudao.module.erp.enums.config.ErpFieldConfigModuleEnum;
 import cn.iocoder.yudao.module.erp.framework.excel.ErpExportFieldUtils;
 import cn.iocoder.yudao.module.erp.framework.excel.ErpImportTemplateRequiredFieldUtils;
+import cn.iocoder.yudao.module.erp.service.base.ErpDataPermissionDeptService;
 import cn.iocoder.yudao.module.erp.service.config.ErpFieldConfigService;
 import cn.iocoder.yudao.module.erp.service.common.ErpImportExportRecordService;
 import cn.iocoder.yudao.module.erp.service.product.ErpProductService;
 import cn.iocoder.yudao.module.erp.service.purchase.ErpPurchaseFieldPermissionMasker;
+import cn.iocoder.yudao.module.erp.service.purchase.ErpPurchaseItemPriceReferenceFiller;
 import cn.iocoder.yudao.module.erp.service.purchase.ErpPurchaseReturnService;
 import cn.iocoder.yudao.module.erp.service.purchase.ErpSupplierDeptPermissionService;
 import cn.iocoder.yudao.module.erp.service.purchase.ErpSupplierService;
@@ -50,6 +56,7 @@ import cn.iocoder.yudao.module.system.api.dept.dto.DeptRespDTO;
 import cn.iocoder.yudao.module.system.api.user.AdminUserApi;
 import cn.iocoder.yudao.module.system.api.user.dto.AdminUserRespDTO;
 import cn.iocoder.yudao.module.system.controller.admin.dept.vo.dept.DeptSimpleRespVO;
+import cn.iocoder.yudao.module.system.controller.admin.user.vo.user.UserSimpleRespVO;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -77,6 +84,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 import static cn.iocoder.yudao.framework.apilog.core.enums.OperateTypeEnum.EXPORT;
 import static cn.iocoder.yudao.framework.common.pojo.CommonResult.success;
@@ -128,6 +136,8 @@ public class ErpPurchaseReturnController {
     @Resource
     private ErpSupplierDeptPermissionService supplierDeptPermissionService;
     @Resource
+    private ErpDataPermissionDeptService dataPermissionDeptService;
+    @Resource
     private ErpStockService stockService;
     @Resource
     private ErpProductService productService;
@@ -139,6 +149,8 @@ public class ErpPurchaseReturnController {
     private ErpPurchaseInItemMapper purchaseInItemMapper;
     @Resource
     private ErpPurchaseReturnItemMapper purchaseReturnItemMapper;
+    @Resource
+    private ErpFinancePaymentItemMapper financePaymentItemMapper;
 
     @Resource
     private DeptApi deptApi;
@@ -146,6 +158,8 @@ public class ErpPurchaseReturnController {
     private AdminUserApi adminUserApi;
     @Resource
     private ErpPurchaseFieldPermissionMasker fieldPermissionMasker;
+    @Resource
+    private ErpPurchaseItemPriceReferenceFiller itemPriceReferenceFiller;
     @Resource
     private ErpFieldConfigService fieldConfigService;
     @Resource
@@ -191,12 +205,34 @@ public class ErpPurchaseReturnController {
         return success(purchaseReturnService.getWarehouseAvailableDeptSimpleList(warehouseId));
     }
 
+    @GetMapping("/warehouse-dept-simple-page")
+    @Operation(summary = "获得采购退货目标仓库可用部门分页")
+    @PreAuthorize("@ss.hasPermission('erp:purchase-return:update')")
+    public CommonResult<PageResult<DeptSimpleRespVO>> getWarehouseAvailableDeptSimplePage(
+            @RequestParam("warehouseId") Long warehouseId, @Valid PageParam pageReqVO) {
+        return success(purchaseReturnService.getWarehouseAvailableDeptSimplePage(warehouseId, pageReqVO));
+    }
+
     @GetMapping("/dept-simple-list")
     @Operation(summary = "鑾峰緱褰撳墠鐢ㄦ埛鍙煡璇㈢殑閲囪喘閫€璐ч儴闂ㄧ簿绠€鍒楄〃")
     @PreAuthorize("@ss.hasPermission('erp:purchase-return:query')")
     public CommonResult<List<DeptSimpleRespVO>> getVisibleDeptSimpleList() {
         return success(supplierDeptPermissionService.getDataPermissionDeptSimpleList(
                 DEPT_SELECTION_PERMISSION_FORM_KEY));
+    }
+
+    @GetMapping("/dept-simple-page")
+    @Operation(summary = "获得当前用户可查询的采购退货部门精简分页")
+    @PreAuthorize("@ss.hasPermission('erp:purchase-return:query')")
+    public CommonResult<PageResult<DeptSimpleRespVO>> getVisibleDeptSimplePage(@Valid PageParam pageReqVO) {
+        return success(dataPermissionDeptService.getDeptSimplePage(DEPT_SELECTION_PERMISSION_FORM_KEY, pageReqVO));
+    }
+
+    @GetMapping("/user-simple-page")
+    @Operation(summary = "获得采购退货用户精简分页")
+    @PreAuthorize("@ss.hasPermission('erp:purchase-return:query')")
+    public CommonResult<PageResult<UserSimpleRespVO>> getUserSimplePage(@Valid PageParam pageReqVO) {
+        return success(buildUserSimplePage(pageReqVO));
     }
 
     @PutMapping("/update-draft")
@@ -362,6 +398,45 @@ public class ErpPurchaseReturnController {
         return success(respVO);
     }
 
+    @GetMapping("/payment-summary")
+    @Operation(summary = "获得采购退货退款核销摘要")
+    @Parameter(name = "id", description = "采购退货编号", required = true, example = "1024")
+    @PreAuthorize("@ss.hasPermission('erp:purchase-return:query')")
+    public CommonResult<ErpPurchaseReturnRefundSummaryRespVO> getPurchaseReturnPaymentSummary(
+            @RequestParam("id") Long id) {
+        ErpPurchaseReturnDO purchaseReturn = purchaseReturnService.getPurchaseReturn(id);
+        if (purchaseReturn == null) {
+            return success(null);
+        }
+        BigDecimal refundableAmount = zeroIfNull(purchaseReturn.getTotalPrice());
+        BigDecimal refundedAmount = zeroIfNull(financePaymentItemMapper.selectPaymentPriceSumByBizIdAndBizType(
+                id, ErpBizTypeEnum.PURCHASE_RETURN.getType())).abs();
+        BigDecimal unrefundedAmount = refundableAmount.subtract(refundedAmount);
+        return success(new ErpPurchaseReturnRefundSummaryRespVO()
+                .setId(id)
+                .setRefundableAmount(refundableAmount)
+                .setRefundedAmount(refundedAmount)
+                .setUnrefundedAmount(unrefundedAmount)
+                .setRefundStatus(calculatePurchaseReturnRefundStatus(refundableAmount, refundedAmount)));
+    }
+
+    private Integer calculatePurchaseReturnRefundStatus(BigDecimal refundableAmount, BigDecimal refundedAmount) {
+        BigDecimal normalizedRefundableAmount = zeroIfNull(refundableAmount).abs();
+        BigDecimal normalizedRefundedAmount = zeroIfNull(refundedAmount).abs();
+        if (normalizedRefundedAmount.compareTo(BigDecimal.ZERO) == 0) {
+            return 0;
+        }
+        if (normalizedRefundableAmount.compareTo(BigDecimal.ZERO) == 0
+                || normalizedRefundedAmount.compareTo(normalizedRefundableAmount) < 0) {
+            return 1;
+        }
+        return 2;
+    }
+
+    private BigDecimal zeroIfNull(BigDecimal value) {
+        return value == null ? BigDecimal.ZERO : value;
+    }
+
     @GetMapping("/item-page")
     @Operation(summary = "获得采购退货明细分页")
     @PreAuthorize("@ss.hasPermission('erp:purchase-return:query')")
@@ -381,7 +456,9 @@ public class ErpPurchaseReturnController {
     @PreAuthorize("@ss.hasPermission('erp:purchase-return:query')")
     public CommonResult<PageResult<ErpPurchaseReturnRespVO>> getPurchaseReturnPage(@Valid ErpPurchaseReturnPageReqVO pageReqVO) {
         PageResult<ErpPurchaseReturnDO> pageResult = purchaseReturnService.getPurchaseReturnPage(pageReqVO);
-        return success(buildPurchaseReturnVOPageResult(pageResult));
+        return success(Boolean.FALSE.equals(pageReqVO.getIncludeItems())
+                ? buildPurchaseReturnVOPageResultWithoutItems(pageResult)
+                : buildPurchaseReturnVOPageResult(pageResult));
     }
 
     @GetMapping("/export-excel")
@@ -431,13 +508,15 @@ public class ErpPurchaseReturnController {
         Map<Long, AdminUserRespDTO> userMap = adminUserApi.getUserMap(collectUserIds(pageResult.getList()));
         PageResult<ErpPurchaseReturnRespVO> respResult = BeanUtils.toBean(pageResult, ErpPurchaseReturnRespVO.class, purchaseReturn -> {
             List<ErpPurchaseReturnItemDO> itemList = purchaseReturnItemMap.getOrDefault(purchaseReturn.getId(), java.util.Collections.emptyList());
-            purchaseReturn.setItems(BeanUtils.toBean(itemList, ErpPurchaseReturnRespVO.Item.class,
+            List<ErpPurchaseReturnRespVO.Item> respItems = BeanUtils.toBean(itemList, ErpPurchaseReturnRespVO.Item.class,
                     item -> MapUtils.findAndThen(productMap, item.getProductId(), product -> item.setProductName(product.getName())
                             .setProductCode(product.getCode()).setProductBarCode(product.getBarCode())
                             .setProductUnitName(product.getUnitName()).setWeight(product.getWeight())
                             .setPackageQty(item.getPackageQty() == null || item.getPackageQty() <= 0
                                     ? product.getPackageQty() : item.getPackageQty())
-                            .setBatchNoEnabled(product.getBatchNoEnabled()))));
+                            .setBatchNoEnabled(product.getBatchNoEnabled())));
+            itemPriceReferenceFiller.fill(respItems);
+            purchaseReturn.setItems(respItems);
             purchaseReturn.setItemCount(itemList.size());
             purchaseReturn.setProductNames(CollUtil.join(purchaseReturn.getItems(), "，", ErpPurchaseReturnRespVO.Item::getProductName));
             MapUtils.findAndThen(supplierMap, purchaseReturn.getSupplierId(), supplier -> purchaseReturn.setSupplierName(supplier.getName()));
@@ -446,6 +525,40 @@ public class ErpPurchaseReturnController {
         });
         fieldPermissionMasker.maskList(FIELD_PERMISSION_MODULE, respResult.getList());
         return respResult;
+    }
+
+    private PageResult<ErpPurchaseReturnRespVO> buildPurchaseReturnVOPageResultWithoutItems(
+            PageResult<ErpPurchaseReturnDO> pageResult) {
+        if (CollUtil.isEmpty(pageResult.getList())) {
+            return PageResult.empty(pageResult.getTotal());
+        }
+        Set<Long> returnIds = convertSet(pageResult.getList(), ErpPurchaseReturnDO::getId);
+        Map<Long, Integer> itemCountMap = purchaseReturnItemMapper.selectItemCountMapByReturnIds(returnIds);
+        Map<Long, ErpSupplierDO> supplierMap = supplierService.getSupplierMap(
+                convertSet(pageResult.getList(), ErpPurchaseReturnDO::getSupplierId));
+        Map<Long, DeptRespDTO> deptMap = deptApi.getDeptMap(
+                convertSet(pageResult.getList(), ErpPurchaseReturnDO::getDeptId));
+        Map<Long, AdminUserRespDTO> userMap = adminUserApi.getUserMap(collectUserIds(pageResult.getList()));
+        PageResult<ErpPurchaseReturnRespVO> respResult = BeanUtils.toBean(pageResult, ErpPurchaseReturnRespVO.class,
+                purchaseReturn -> {
+                    purchaseReturn.setItemCount(itemCountMap.getOrDefault(purchaseReturn.getId(), 0));
+                    MapUtils.findAndThen(supplierMap, purchaseReturn.getSupplierId(),
+                            supplier -> purchaseReturn.setSupplierName(supplier.getName()));
+                    MapUtils.findAndThen(deptMap, purchaseReturn.getDeptId(),
+                            dept -> purchaseReturn.setDeptName(dept.getName()));
+                    fillUserNames(purchaseReturn, userMap);
+                });
+        fieldPermissionMasker.maskList(FIELD_PERMISSION_MODULE, respResult.getList());
+        return respResult;
+    }
+
+    private PageResult<UserSimpleRespVO> buildUserSimplePage(PageParam pageReqVO) {
+        PageResult<AdminUserRespDTO> page = adminUserApi.getUserSimplePage(
+                CommonStatusEnum.ENABLE.getStatus(), pageReqVO.getKeyword(), pageReqVO);
+        List<UserSimpleRespVO> list = page.getList().stream()
+                .map(user -> new UserSimpleRespVO(user.getId(), user.getNickname(), user.getDeptId(), null))
+                .collect(Collectors.toList());
+        return new PageResult<>(list, page.getTotal());
     }
 
     private List<ErpPurchaseReturnRespVO.Item> buildPurchaseReturnItemVOList(List<ErpPurchaseReturnItemDO> itemList,
@@ -468,7 +581,7 @@ public class ErpPurchaseReturnController {
         }
         Map<Long, ErpPurchaseInItemDO> finalInItemMap = inItemMap;
         Map<Long, BigDecimal> finalReturnedMap = returnedMap;
-        return BeanUtils.toBean(itemList, ErpPurchaseReturnRespVO.Item.class, item -> {
+        List<ErpPurchaseReturnRespVO.Item> respItems = BeanUtils.toBean(itemList, ErpPurchaseReturnRespVO.Item.class, item -> {
             ErpStockDO stock = stockService.getStock(item.getProductId(), item.getWarehouseId());
             item.setStockCount(stock != null ? stock.getCount() : BigDecimal.ZERO);
             MapUtils.findAndThen(productMap, item.getProductId(), product -> item.setProductName(product.getName())
@@ -486,6 +599,8 @@ public class ErpPurchaseReturnController {
                 }
             }
         });
+        itemPriceReferenceFiller.fill(respItems);
+        return respItems;
     }
 
     private List<ErpPurchaseReturnExportRespVO> buildPurchaseReturnExportList(List<ErpPurchaseReturnRespVO> list) {

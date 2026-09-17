@@ -1,6 +1,7 @@
 package cn.iocoder.yudao.module.erp.service.sale;
 
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
+import cn.iocoder.yudao.framework.common.pojo.PageParam;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.ErpSaleUpdateRemarkReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.imports.ErpSaleImportResultRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.quote.ErpSaleQuoteConvertCartReqVO;
@@ -57,6 +58,8 @@ public interface ErpSaleQuoteService {
     List<ErpSaleQuoteItemDO> getSaleQuoteItemListByQuoteIds(Collection<Long> quoteIds);
 
     List<DeptSimpleRespVO> getWarehouseAvailableDeptSimpleList(Long warehouseId);
+
+    PageResult<DeptSimpleRespVO> getWarehouseAvailableDeptSimplePage(Long warehouseId, PageParam pageParam);
 
     ErpSaleQuoteImportRespVO parseImportData(List<ErpSaleQuoteImportExcelVO> list);
 

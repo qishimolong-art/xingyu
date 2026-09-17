@@ -277,7 +277,7 @@ public class ErpStockTransferLedgerServiceImpl implements ErpStockTransferLedger
         LinkedHashSet<String> groupErrors = getDocumentErrors(group);
         List<ErpStockTransferLedgerDetailRespVO> rows = new ArrayList<>();
         for (ItemKey key : keys) {
-            if (!matchesItemFilters(key, reqVO)) continue;
+            if (!matchesItemFilters(key, names, reqVO)) continue;
             ItemAggregate out = outMap.get(key);
             ItemAggregate in = inMap.get(key);
             LinkedHashSet<String> errors = new LinkedHashSet<>(groupErrors);
@@ -426,10 +426,23 @@ public class ErpStockTransferLedgerServiceImpl implements ErpStockTransferLedger
         return true;
     }
 
-    private boolean matchesItemFilters(ItemKey key, ErpStockTransferLedgerPageReqVO req) {
+    private boolean matchesItemFilters(ItemKey key, NameContext names, ErpStockTransferLedgerPageReqVO req) {
         return (req.getProductId() == null || Objects.equals(key.productId, req.getProductId()))
+                && matchesProductKeyword(names.products.get(key.productId), req.getProductKeyword())
                 && (req.getFromWarehouseId() == null || Objects.equals(key.fromWarehouseId, req.getFromWarehouseId()))
                 && (req.getToWarehouseId() == null || Objects.equals(key.toWarehouseId, req.getToWarehouseId()));
+    }
+
+    private boolean matchesProductKeyword(ErpProductRespVO product, String keyword) {
+        if (!StringUtils.hasText(keyword)) return true;
+        if (product == null) return false;
+        String value = keyword.trim().toLowerCase(Locale.ROOT);
+        return java.util.stream.Stream.of(product.getCode(), product.getName(), product.getPinyinCode(),
+                        product.getWubiCode(), product.getBarCode(), product.getVehicleModel(),
+                        product.getFactoryCode(), product.getStandard(), product.getBrand(), product.getDrawingNo())
+                .filter(Objects::nonNull)
+                .map(text -> text.toLowerCase(Locale.ROOT))
+                .anyMatch(text -> text.contains(value));
     }
 
     private boolean matchesResultFilters(ComputedGroup group, ErpStockTransferLedgerPageReqVO req) {

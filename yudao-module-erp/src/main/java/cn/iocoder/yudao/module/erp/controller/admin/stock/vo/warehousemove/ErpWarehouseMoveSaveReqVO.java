@@ -7,8 +7,6 @@ import lombok.Data;
 
 import javax.validation.Valid;
 import javax.validation.constraints.AssertTrue;
-import javax.validation.constraints.DecimalMin;
-import javax.validation.constraints.NotEmpty;
 import javax.validation.constraints.NotNull;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -55,7 +53,6 @@ public class ErpWarehouseMoveSaveReqVO {
     private String fileUrl;
 
     @Schema(description = "移货明细", requiredMode = Schema.RequiredMode.REQUIRED)
-    @NotEmpty(message = "移货明细不能为空")
     @Valid
     private List<Item> items;
 
@@ -71,16 +68,16 @@ public class ErpWarehouseMoveSaveReqVO {
         @Schema(description = "移货明细 ID")
         private Long id;
 
+        @Schema(description = "明细操作类型：insert 新增，update 修改，delete 删除")
+        private String operation;
+
         @Schema(description = "产品 ID", requiredMode = Schema.RequiredMode.REQUIRED)
-        @NotNull(message = "产品不能为空")
         private Long productId;
 
         @Schema(description = "移货单价")
         private BigDecimal productPrice;
 
         @Schema(description = "移货数量", requiredMode = Schema.RequiredMode.REQUIRED)
-        @NotNull(message = "移货数量不能为空")
-        @DecimalMin(value = "0", inclusive = false, message = "移货数量必须大于 0")
         private BigDecimal count;
 
         @Schema(description = "移出货架")

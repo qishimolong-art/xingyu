@@ -19,6 +19,7 @@ import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.account.ErpAccoun
 import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.account.ErpAccountTransactionRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.imports.ErpFinanceImportRespVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.ErpAccountDO;
+import cn.iocoder.yudao.module.erp.enums.finance.ErpAccountDocumentStatusEnum;
 import cn.iocoder.yudao.module.erp.service.base.ErpDataPermissionDeptService;
 import cn.iocoder.yudao.module.erp.service.finance.ErpAccountService;
 import cn.iocoder.yudao.module.erp.service.finance.ErpFinanceBillService;
@@ -194,6 +195,26 @@ public class ErpAccountController {
                         : null)));
     }
 
+    @GetMapping("/simple-page")
+    @Operation(summary = "获得结算账户精简分页", description = "只包含已启用且已正式提交的结算账户，主要用于前端列表筛选下拉选择")
+    public CommonResult<PageResult<ErpAccountRespVO>> getAccountSimplePage(@Valid PageParam pageReqVO) {
+        ErpAccountPageReqVO reqVO = new ErpAccountPageReqVO();
+        reqVO.setPageNo(pageReqVO.getPageNo());
+        reqVO.setPageSize(pageReqVO.getPageSize());
+        reqVO.setKeyword(pageReqVO.getKeyword());
+        reqVO.setStatus(CommonStatusEnum.ENABLE.getStatus());
+        reqVO.setDocumentStatus(ErpAccountDocumentStatusEnum.SUBMITTED.getStatus());
+        PageResult<ErpAccountDO> pageResult = accountService.getAccountPage(reqVO);
+        Map<Long, ErpAccountBalanceBO> balanceMap = accountService.getAccountBalanceMap(
+                convertSet(pageResult.getList(), ErpAccountDO::getId));
+        PageResult<ErpAccountRespVO> result = BeanUtils.toBean(pageResult, ErpAccountRespVO.class, account -> {
+            account.setCurrentBalance(balanceMap.containsKey(account.getId())
+                    ? balanceMap.get(account.getId()).getCurrentBalance()
+                    : null);
+        });
+        return success(result);
+    }
+
     @GetMapping("/page")
     @Operation(summary = "获得结算账户分页")
     @PreAuthorize("@ss.hasPermission('erp:account:query')")
@@ -214,6 +235,13 @@ public class ErpAccountController {
     @PreAuthorize("@ss.hasPermission('erp:account:query')")
     public CommonResult<List<DeptSimpleRespVO>> getAccountDeptSimpleList() {
         return success(dataPermissionDeptService.getDeptSimpleList("erp_account"));
+    }
+
+    @GetMapping("/dept-simple-page")
+    @Operation(summary = "Get account data permission dept simple page")
+    @PreAuthorize("@ss.hasPermission('erp:account:query')")
+    public CommonResult<PageResult<DeptSimpleRespVO>> getAccountDeptSimplePage(@Valid PageParam pageReqVO) {
+        return success(dataPermissionDeptService.getDeptSimplePage("erp_account", pageReqVO));
     }
 
     @GetMapping("/transaction-page")

@@ -65,7 +65,9 @@ import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PURCHASE_INVO
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PURCHASE_INVOICE_DELETE_FAIL_APPROVE;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PURCHASE_INVOICE_ITEM_COUNT_POSITIVE;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PURCHASE_INVOICE_ITEM_EMPTY;
+import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PURCHASE_INVOICE_ITEM_OPERATION_INVALID;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PURCHASE_INVOICE_ITEM_PRICE_NEGATIVE;
+import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PURCHASE_INVOICE_ITEM_UPDATE_NOT_EXISTS;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PURCHASE_INVOICE_NOT_APPROVE;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PURCHASE_INVOICE_NOT_EXISTS;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PURCHASE_INVOICE_NO_EXISTS;
@@ -174,12 +176,27 @@ public class ErpPurchaseInvoiceServiceImpl implements ErpPurchaseInvoiceService 
             throw exception(PURCHASE_INVOICE_UPDATE_FAIL_APPROVE, purchaseInvoice.getNo());
         }
         List<ErpPurchaseInvoiceItemDO> oldItems =
-                purchaseInvoiceItemMapper.selectListByInvoiceId(updateReqVO.getId());
+                purchaseInvoiceItemMapper.selectListByInvoiceIdForUpdate(updateReqVO.getId());
         mergeSourceInItems(updateReqVO, updateReqVO.getId(), oldItems);
         fieldPermissionMasker.preserveHiddenFields(FIELD_PERMISSION_MODULE, updateReqVO, purchaseInvoice);
         fieldPermissionMasker.preserveHiddenItemFields(FIELD_PERMISSION_MODULE, updateReqVO.getItems(), oldItems);
+        boolean incrementalItems = ErpPurchaseItemOperationHelper.useIncrementalItems(updateReqVO.getItems(),
+                ErpPurchaseInvoiceSaveReqVO.Item::getOperation, PURCHASE_INVOICE_ITEM_OPERATION_INVALID);
+        ErpPurchaseItemOperationHelper.RequestChangeSet<ErpPurchaseInvoiceSaveReqVO.Item> itemChangeSet = null;
+        List<ErpPurchaseInvoiceSaveReqVO.Item> itemReqs = updateReqVO.getItems();
+        if (incrementalItems) {
+            itemChangeSet = ErpPurchaseItemOperationHelper.buildRequestChangeSet(updateReqVO.getItems(), oldItems,
+                    ErpPurchaseInvoiceSaveReqVO.Item.class,
+                    ErpPurchaseInvoiceSaveReqVO.Item::getId,
+                    ErpPurchaseInvoiceSaveReqVO.Item::setId,
+                    ErpPurchaseInvoiceSaveReqVO.Item::getOperation,
+                    ErpPurchaseInvoiceItemDO::getId,
+                    PURCHASE_INVOICE_ITEM_OPERATION_INVALID,
+                    PURCHASE_INVOICE_ITEM_UPDATE_NOT_EXISTS);
+            itemReqs = itemChangeSet.getFinalItems();
+        }
         validateFormalMainFields(updateReqVO);
-        List<ErpPurchaseInvoiceItemDO> items = validatePurchaseInvoiceItems(updateReqVO.getItems(), updateReqVO.getId());
+        List<ErpPurchaseInvoiceItemDO> items = validatePurchaseInvoiceItems(itemReqs, updateReqVO.getId());
         ErpPurchaseInvoiceDO updateObj = BeanUtils.toBean(updateReqVO, ErpPurchaseInvoiceDO.class);
         fillDeptIdFromSourceIn(updateObj, items);
         if (updateObj.getHandlerId() == null) {
@@ -192,7 +209,11 @@ public class ErpPurchaseInvoiceServiceImpl implements ErpPurchaseInvoiceService 
         normalizeInvoiceCount(updateObj);
         calculateTotalPrice(updateObj, items);
         purchaseInvoiceMapper.updateById(updateObj);
-        updatePurchaseInvoiceItemList(updateReqVO.getId(), items);
+        if (incrementalItems) {
+            applyPurchaseInvoiceItemChangeSet(updateReqVO.getId(), itemChangeSet, items);
+        } else {
+            updatePurchaseInvoiceItemList(updateReqVO.getId(), items);
+        }
         operateLogService.recordUpdate(ERP_PURCHASE_INVOICE_TYPE, updateReqVO.getId(), purchaseInvoice.getNo());
     }
 
@@ -204,13 +225,28 @@ public class ErpPurchaseInvoiceServiceImpl implements ErpPurchaseInvoiceService 
             throw exception(PURCHASE_INVOICE_UPDATE_FAIL_NOT_DRAFT, purchaseInvoice.getNo());
         }
         List<ErpPurchaseInvoiceItemDO> oldItems =
-                purchaseInvoiceItemMapper.selectListByInvoiceId(updateReqVO.getId());
+                purchaseInvoiceItemMapper.selectListByInvoiceIdForUpdate(updateReqVO.getId());
         mergeSourceInItems(updateReqVO, updateReqVO.getId(), oldItems);
         fieldPermissionMasker.preserveHiddenFields(FIELD_PERMISSION_MODULE, updateReqVO, purchaseInvoice);
         fieldPermissionMasker.preserveHiddenItemFields(FIELD_PERMISSION_MODULE, updateReqVO.getItems(), oldItems);
         validateOptionalDraftReferences(updateReqVO);
+        boolean incrementalItems = ErpPurchaseItemOperationHelper.useIncrementalItems(updateReqVO.getItems(),
+                ErpPurchaseInvoiceSaveReqVO.Item::getOperation, PURCHASE_INVOICE_ITEM_OPERATION_INVALID);
+        ErpPurchaseItemOperationHelper.RequestChangeSet<ErpPurchaseInvoiceSaveReqVO.Item> itemChangeSet = null;
+        List<ErpPurchaseInvoiceSaveReqVO.Item> itemReqs = updateReqVO.getItems();
+        if (incrementalItems) {
+            itemChangeSet = ErpPurchaseItemOperationHelper.buildRequestChangeSet(updateReqVO.getItems(), oldItems,
+                    ErpPurchaseInvoiceSaveReqVO.Item.class,
+                    ErpPurchaseInvoiceSaveReqVO.Item::getId,
+                    ErpPurchaseInvoiceSaveReqVO.Item::setId,
+                    ErpPurchaseInvoiceSaveReqVO.Item::getOperation,
+                    ErpPurchaseInvoiceItemDO::getId,
+                    PURCHASE_INVOICE_ITEM_OPERATION_INVALID,
+                    PURCHASE_INVOICE_ITEM_UPDATE_NOT_EXISTS);
+            itemReqs = itemChangeSet.getFinalItems();
+        }
         List<ErpPurchaseInvoiceItemDO> items =
-                buildDraftPurchaseInvoiceItems(updateReqVO.getItems(), updateReqVO.getId());
+                buildDraftPurchaseInvoiceItems(itemReqs, updateReqVO.getId());
 
         ErpPurchaseInvoiceDO updateObj = BeanUtils.toBean(updateReqVO, ErpPurchaseInvoiceDO.class);
         fillDeptIdFromSourceIn(updateObj, items);
@@ -227,7 +263,11 @@ public class ErpPurchaseInvoiceServiceImpl implements ErpPurchaseInvoiceService 
         if (updateCount == 0) {
             throw exception(PURCHASE_INVOICE_UPDATE_FAIL_NOT_DRAFT, purchaseInvoice.getNo());
         }
-        replacePurchaseInvoiceItems(updateReqVO.getId(), items);
+        if (incrementalItems) {
+            applyPurchaseInvoiceItemChangeSet(updateReqVO.getId(), itemChangeSet, items);
+        } else {
+            replacePurchaseInvoiceItems(updateReqVO.getId(), items);
+        }
         operateLogService.recordUpdate(ERP_PURCHASE_INVOICE_TYPE, updateReqVO.getId(), purchaseInvoice.getNo());
     }
 
@@ -776,6 +816,29 @@ public class ErpPurchaseInvoiceServiceImpl implements ErpPurchaseInvoiceService 
         items.forEach(item -> item.setId(null).setInvoiceId(invoiceId));
         purchaseDocumentDefaultService.fillCreateAuditDefaults(items);
         purchaseInvoiceItemMapper.insertBatch(items);
+    }
+
+    private void applyPurchaseInvoiceItemChangeSet(Long invoiceId,
+            ErpPurchaseItemOperationHelper.RequestChangeSet<ErpPurchaseInvoiceSaveReqVO.Item> changeSet,
+            List<ErpPurchaseInvoiceItemDO> finalItems) {
+        if (CollUtil.isNotEmpty(changeSet.getDeleteIds())) {
+            purchaseInvoiceItemMapper.deleteByIds(changeSet.getDeleteIds());
+        }
+        List<ErpPurchaseInvoiceItemDO> insertList = finalItems.stream()
+                .filter(item -> item.getId() == null)
+                .collect(Collectors.toList());
+        if (CollUtil.isNotEmpty(insertList)) {
+            insertList.forEach(item -> item.setId(null).setInvoiceId(invoiceId));
+            purchaseDocumentDefaultService.fillCreateAuditDefaults(insertList);
+            purchaseInvoiceItemMapper.insertBatch(insertList);
+        }
+        List<ErpPurchaseInvoiceItemDO> updateList = finalItems.stream()
+                .filter(item -> item.getId() != null && changeSet.getUpdateIds().contains(item.getId()))
+                .collect(Collectors.toList());
+        if (CollUtil.isNotEmpty(updateList)) {
+            updateList.forEach(item -> item.setInvoiceId(invoiceId));
+            purchaseInvoiceItemMapper.updateBatch(updateList);
+        }
     }
 
     private void normalizeInvoiceCount(ErpPurchaseInvoiceDO purchaseInvoice) {

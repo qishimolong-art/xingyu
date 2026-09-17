@@ -86,6 +86,8 @@ public class ErpSaleOutServiceImplTest extends BaseMockitoUnitTest {
 
     @InjectMocks
     private ErpSaleOutServiceImpl saleOutService;
+    @Mock
+    private cn.iocoder.yudao.module.erp.service.report.trade.ErpTradeSnapshotService tradeSnapshotService;
 
     @Mock
     private ErpSaleOutMapper saleOutMapper;
@@ -175,6 +177,16 @@ public class ErpSaleOutServiceImplTest extends BaseMockitoUnitTest {
 
     @BeforeEach
     public void setUp() {
+        // 既有业务夹具沿用原来源数据；真实锁与竞争由独立数据库/SourceLock测试验证。
+        lenient().when(saleOutMapper.selectByIdForUpdate(anyLong())).thenAnswer(invocation -> {
+            Long id = invocation.getArgument(0);
+            ErpSaleOutDO source = saleOutMapper.selectById(id);
+            if (source != null) return source;
+            return saleOutMapper.selectByIds(Collections.singletonList(id)).stream()
+                    .filter(item -> id.equals(item.getId())).findFirst().orElse(null);
+        });
+        lenient().when(saleOutItemMapper.selectListByOutIdForUpdate(anyLong()))
+                .thenAnswer(invocation -> new java.util.ArrayList<>(saleOutItemMapper.selectListByOutId(invocation.getArgument(0))));
         ReflectionTestUtils.setField(saleOutService, "noRedisDAO", new ErpNoRedisDAO() {
             @Override
             public String generate(String prefix) {
@@ -187,8 +199,11 @@ public class ErpSaleOutServiceImplTest extends BaseMockitoUnitTest {
                 Collections.singletonList(new ErpWarehouseDO().setId(400L).setDeptId(10L)));
         lenient().when(warehouseService.validSaleSelectableWarehouseListForDept(anyCollection(), any())).thenReturn(
                 Collections.singletonList(new ErpWarehouseDO().setId(400L).setDeptId(10L)));
+        lenient().when(warehouseService.validSaleSelectableWarehouseListForDept(anyCollection(), any(), any())).thenReturn(
+                Collections.singletonList(new ErpWarehouseDO().setId(400L).setDeptId(10L)));
         lenient().doNothing().when(warehouseService).validateWarehouseSaleAllowedForDept(any(), any());
         lenient().doNothing().when(warehouseService).validateWarehouseSaleSelectableForDept(any(), any());
+        lenient().doNothing().when(warehouseService).validateWarehouseSaleSelectableForDept(any(), any(), any());
         lenient().when(warehouseService.isWarehouseSaleAllowedForDept(any(), any())).thenReturn(true);
         lenient().when(productService.getProductVOMap(anyCollection())).thenReturn(Collections.emptyMap());
         lenient().when(warehouseService.getWarehouseMap(anyCollection())).thenReturn(Collections.emptyMap());
@@ -334,7 +349,8 @@ public class ErpSaleOutServiceImplTest extends BaseMockitoUnitTest {
                         && Long.valueOf(666L).equals(saleOut.getSourceId())
                         && "CART001".equals(saleOut.getSourceNo())));
         verify(warehouseService, never()).validSaleWarehouseList(anyCollection());
-        verify(warehouseService).validSaleSelectableWarehouseListForDept(anyCollection(), eq(102L));
+        verify(warehouseService).validSaleSelectableWarehouseListForDept(anyCollection(), eq(102L),
+                eq(ErpWarehouseService.SALE_OUT_ALL_PRODUCT_PERMISSION));
         verify(saleOutItemMapper).insertBatch(argThat((List<ErpSaleOutItemDO> items) ->
                 items.size() == 1
                         && Long.valueOf(401L).equals(items.get(0).getSourceWarehouseId())
@@ -518,7 +534,7 @@ public class ErpSaleOutServiceImplTest extends BaseMockitoUnitTest {
                 .setCount(new BigDecimal("5")).setProductPrice(new BigDecimal("10"));
         when(saleOutItemMapper.selectListByOutId(eq(20L))).thenReturn(Collections.singletonList(item));
         // 未开账：跳过凭证生成
-        when(bookOpenService.isVoucherTypeEnabled(any(), anyInt())).thenReturn(false);
+
 
         // 执行：审核通过
         saleOutService.updateSaleOutStatus(20L, ErpAuditStatus.APPROVE.getStatus());

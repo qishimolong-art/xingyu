@@ -2,6 +2,7 @@ package cn.iocoder.yudao.module.erp.controller.admin.finance;
 
 import cn.hutool.core.collection.CollUtil;
 import cn.iocoder.yudao.framework.apilog.core.annotation.ApiAccessLog;
+import cn.iocoder.yudao.framework.common.enums.CommonStatusEnum;
 import cn.iocoder.yudao.framework.common.pojo.CommonResult;
 import cn.iocoder.yudao.framework.common.pojo.PageParam;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
@@ -13,8 +14,11 @@ import cn.iocoder.yudao.framework.mybatis.core.query.LambdaQueryWrapperX;
 import cn.iocoder.yudao.module.erp.controller.admin.common.ErpAuditStatusRequestValidator;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.ErpFinanceUpdateRemarkReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.imports.ErpFinanceImportRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.receipt.ErpFinanceReceiptBizWriteOffItemRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.receipt.ErpFinanceReceiptDraftSaveReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.receipt.ErpFinanceReceiptExportRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.receipt.ErpFinanceReceiptFormCandidateReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.receipt.ErpFinanceReceiptFormCandidateRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.receipt.ErpFinanceReceiptImportExcelVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.receipt.ErpFinanceReceiptItemPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.receipt.ErpFinanceReceiptPageReqVO;
@@ -45,6 +49,7 @@ import cn.iocoder.yudao.module.system.api.dept.dto.DeptRespDTO;
 import cn.iocoder.yudao.module.system.api.user.AdminUserApi;
 import cn.iocoder.yudao.module.system.api.user.dto.AdminUserRespDTO;
 import cn.iocoder.yudao.module.system.controller.admin.dept.vo.dept.DeptSimpleRespVO;
+import cn.iocoder.yudao.module.system.controller.admin.user.vo.user.UserSimpleRespVO;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -195,6 +200,14 @@ public class ErpFinanceReceiptController {
         return success(financeReceiptService.getWriteOffCandidates(receiptId));
     }
 
+    @GetMapping("/form-candidates")
+    @Operation(summary = "获得新增/编辑收款单候选业务单据")
+    @PreAuthorize("@ss.hasAnyPermissions('erp:finance-receipt:create', 'erp:finance-receipt:update')")
+    public CommonResult<List<ErpFinanceReceiptFormCandidateRespVO>> getFormCandidates(
+            @Valid ErpFinanceReceiptFormCandidateReqVO reqVO) {
+        return success(financeReceiptService.getFormCandidates(reqVO));
+    }
+
     @PostMapping("/writeoff")
     @Operation(summary = "收款单后续核销")
     @PreAuthorize("@ss.hasPermission('erp:finance-receipt:writeoff')")
@@ -211,6 +224,26 @@ public class ErpFinanceReceiptController {
             @Valid @RequestBody ErpFinanceReceiptWriteOffReverseReqVO reqVO) {
         financeReceiptService.reverseFinanceReceiptWriteOff(reqVO);
         return success(true);
+    }
+
+    @GetMapping("/writeoff-items")
+    @Operation(summary = "获得收款单按业务单据核销明细")
+    @PreAuthorize("@ss.hasPermission('erp:finance-receipt:query')")
+    public CommonResult<List<ErpFinanceReceiptBizWriteOffItemRespVO>> getWriteOffItemsByBiz(
+            @RequestParam("bizType") Integer bizType,
+            @RequestParam("bizId") Long bizId) {
+        List<ErpFinanceReceiptItemDO> items = financeReceiptService.getFinanceReceiptItemListByBiz(bizType, bizId);
+        if (CollUtil.isEmpty(items)) {
+            return success(Collections.emptyList());
+        }
+        List<ErpFinanceReceiptDO> receipts = financeReceiptService.getFinanceReceiptList(
+                convertSet(items, ErpFinanceReceiptItemDO::getReceiptId));
+        Map<Long, ErpFinanceReceiptDO> receiptMap = convertMap(receipts, ErpFinanceReceiptDO::getId);
+        Map<Long, ErpAccountDO> accountMap = accountService.getAccountMap(
+                convertSet(receipts, ErpFinanceReceiptDO::getAccountId));
+        Map<Long, AdminUserRespDTO> userMap = adminUserApi.getUserMap(
+                convertSet(receipts, ErpFinanceReceiptDO::getFinanceUserId));
+        return success(convertList(items, item -> buildBizWriteOffItem(item, receiptMap, accountMap, userMap)));
     }
 
     @DeleteMapping("/delete")
@@ -264,7 +297,9 @@ public class ErpFinanceReceiptController {
     @PreAuthorize("@ss.hasPermission('erp:finance-receipt:query')")
     public CommonResult<PageResult<ErpFinanceReceiptRespVO>> getFinanceReceiptPage(@Valid ErpFinanceReceiptPageReqVO pageReqVO) {
         PageResult<ErpFinanceReceiptDO> pageResult = financeReceiptService.getFinanceReceiptPage(pageReqVO);
-        return success(buildFinanceReceiptVOPageResult(pageResult));
+        return success(Boolean.FALSE.equals(pageReqVO.getIncludeItems())
+                ? buildFinanceReceiptVOPageResultWithoutItems(pageResult)
+                : buildFinanceReceiptVOPageResult(pageResult));
     }
 
     @GetMapping("/dept-simple-list")
@@ -272,6 +307,24 @@ public class ErpFinanceReceiptController {
     @PreAuthorize("@ss.hasPermission('erp:finance-receipt:query')")
     public CommonResult<List<DeptSimpleRespVO>> getFinanceReceiptDeptSimpleList() {
         return success(dataPermissionDeptService.getDeptSimpleList("erp_finance_receipt"));
+    }
+
+    @GetMapping("/dept-simple-page")
+    @Operation(summary = "Get finance receipt data permission dept simple page")
+    @PreAuthorize("@ss.hasPermission('erp:finance-receipt:query')")
+    public CommonResult<PageResult<DeptSimpleRespVO>> getFinanceReceiptDeptSimplePage(@Valid PageParam pageReqVO) {
+        return success(dataPermissionDeptService.getDeptSimplePage("erp_finance_receipt", pageReqVO));
+    }
+
+    @GetMapping("/user-simple-page")
+    @Operation(summary = "Get finance receipt user simple page")
+    @PreAuthorize("@ss.hasPermission('erp:finance-receipt:query')")
+    public CommonResult<PageResult<UserSimpleRespVO>> getFinanceReceiptUserSimplePage(@Valid PageParam pageReqVO) {
+        PageResult<AdminUserRespDTO> page = adminUserApi.getUserSimplePage(
+                CommonStatusEnum.ENABLE.getStatus(), pageReqVO.getKeyword(), pageReqVO);
+        List<UserSimpleRespVO> list = convertList(page.getList(), user ->
+                new UserSimpleRespVO(user.getId(), user.getNickname(), user.getDeptId(), null));
+        return success(new PageResult<>(list, page.getTotal()));
     }
 
     @GetMapping("/customer-dept-simple-list")
@@ -369,8 +422,39 @@ public class ErpFinanceReceiptController {
         return result;
     }
 
+    private PageResult<ErpFinanceReceiptRespVO> buildFinanceReceiptVOPageResultWithoutItems(PageResult<ErpFinanceReceiptDO> pageResult) {
+        if (CollUtil.isEmpty(pageResult.getList())) {
+            return PageResult.empty(pageResult.getTotal());
+        }
+        PageResult<ErpFinanceReceiptRespVO> result = BeanUtils.toBean(pageResult,
+                ErpFinanceReceiptRespVO.class, receipt -> receipt.setItems(Collections.emptyList()));
+        fillFinanceReceiptNames(result.getList());
+        fillWriteOffSummaryByAggregate(result.getList());
+        return result;
+    }
+
     private List<ErpFinanceReceiptRespVO.Item> buildFinanceReceiptItems(List<ErpFinanceReceiptItemDO> items) {
         return BeanUtils.toBean(items, ErpFinanceReceiptRespVO.Item.class);
+    }
+
+    private ErpFinanceReceiptBizWriteOffItemRespVO buildBizWriteOffItem(
+            ErpFinanceReceiptItemDO item,
+            Map<Long, ErpFinanceReceiptDO> receiptMap,
+            Map<Long, ErpAccountDO> accountMap,
+            Map<Long, AdminUserRespDTO> userMap) {
+        ErpFinanceReceiptBizWriteOffItemRespVO result = BeanUtils.toBean(item,
+                ErpFinanceReceiptBizWriteOffItemRespVO.class);
+        result.setReceiptItemId(item.getId()).setReceiptId(item.getReceiptId());
+        ErpFinanceReceiptDO receipt = receiptMap.get(item.getReceiptId());
+        if (receipt == null) {
+            return result;
+        }
+        result.setReceiptNo(receipt.getNo()).setReceiptTime(receipt.getReceiptTime());
+        MapUtils.findAndThen(accountMap, receipt.getAccountId(),
+                account -> result.setAccountName(account.getName()));
+        MapUtils.findAndThen(userMap, receipt.getFinanceUserId(),
+                user -> result.setFinanceUserName(user.getNickname()));
+        return result;
     }
 
     private void fillWriteOffSummary(List<ErpFinanceReceiptRespVO> rows) {
@@ -388,6 +472,34 @@ public class ErpFinanceReceiptController {
                     .setWriteOffCount((int) items.stream()
                             .filter(item -> ErpFinanceWriteOffStatusEnum.EFFECTIVE.getStatus()
                                     .equals(item.getWriteOffStatus())).count());
+            if (allocatedPrice.compareTo(BigDecimal.ZERO) != 0
+                    && (totalPrice.compareTo(BigDecimal.ZERO) == 0
+                    || allocatedPrice.signum() != totalPrice.signum()
+                    || allocatedPrice.abs().compareTo(totalPrice.abs()) > 0)) {
+                row.setWriteOffStatus(3);
+            } else if (allocatedPrice.compareTo(BigDecimal.ZERO) == 0) {
+                row.setWriteOffStatus(0);
+            } else if (allocatedPrice.abs().compareTo(totalPrice.abs()) == 0) {
+                row.setWriteOffStatus(2);
+            } else {
+                row.setWriteOffStatus(1);
+            }
+        }
+    }
+
+    private void fillWriteOffSummaryByAggregate(List<ErpFinanceReceiptRespVO> rows) {
+        if (CollUtil.isEmpty(rows)) {
+            return;
+        }
+        Set<Long> receiptIds = convertSet(rows, ErpFinanceReceiptRespVO::getId);
+        Map<Long, BigDecimal> allocatedMap = financeReceiptService.getEffectiveReceiptPriceSumMapByReceiptIds(receiptIds);
+        Map<Long, Long> countMap = financeReceiptService.getEffectiveReceiptItemCountMapByReceiptIds(receiptIds);
+        for (ErpFinanceReceiptRespVO row : rows) {
+            BigDecimal allocatedPrice = allocatedMap.getOrDefault(row.getId(), BigDecimal.ZERO);
+            BigDecimal totalPrice = row.getTotalPrice() == null ? BigDecimal.ZERO : row.getTotalPrice();
+            BigDecimal unallocatedPrice = totalPrice.subtract(allocatedPrice);
+            row.setAllocatedPrice(allocatedPrice).setUnallocatedPrice(unallocatedPrice)
+                    .setWriteOffCount(countMap.getOrDefault(row.getId(), 0L).intValue());
             if (allocatedPrice.compareTo(BigDecimal.ZERO) != 0
                     && (totalPrice.compareTo(BigDecimal.ZERO) == 0
                     || allocatedPrice.signum() != totalPrice.signum()

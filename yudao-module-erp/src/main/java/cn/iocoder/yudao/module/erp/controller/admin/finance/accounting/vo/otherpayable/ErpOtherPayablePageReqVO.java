@@ -42,4 +42,7 @@ public class ErpOtherPayablePageReqVO extends PageParam {
     @Schema(description = "备注")
     private String remark;
 
+    @Schema(description = "是否返回明细，默认 true 保持兼容")
+    private Boolean includeItems;
+
 }

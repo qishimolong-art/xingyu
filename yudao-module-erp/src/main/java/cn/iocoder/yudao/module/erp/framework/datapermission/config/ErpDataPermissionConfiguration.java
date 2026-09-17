@@ -105,11 +105,13 @@ public class ErpDataPermissionConfiguration {
             rule.addDeptColumn("erp_other_payable", "dept_id");
             rule.addDeptColumn("erp_payable_expense", "dept_id");
             rule.addDeptColumn("erp_payable_expense_item", "dept_id");
+            rule.addDeptColumn("erp_payable_misc", "dept_id");
             rule.addDeptColumn("erp_payable_other", "dept_id");
             rule.addDeptColumn("erp_pre_payment", "dept_id");
             rule.addUserColumn("erp_other_payable", "creator");
             rule.addUserColumn("erp_payable_expense", "handler_id");
             rule.addUserColumn("erp_payable_expense_item", "handler_id");
+            rule.addUserColumn("erp_payable_misc", "handler_id");
             rule.addUserColumn("erp_payable_other", "handler_id");
             rule.addUserColumn("erp_pre_payment", "creator");
 
@@ -117,6 +119,7 @@ public class ErpDataPermissionConfiguration {
             rule.addDeptColumn("erp_other_receivable", "dept_id");
             rule.addDeptColumn("erp_pre_receipt", "dept_id");
             rule.addDeptColumn("erp_pre_receivable", "dept_id");
+            rule.addDeptColumn("erp_receivable_misc", "dept_id");
             rule.addDeptColumn("erp_receivable_other", "dept_id");
             rule.addDeptColumn("erp_receivable_other_income", "dept_id");
             rule.addDeptColumn("erp_receivable_other_income_item", "dept_id");
@@ -126,6 +129,7 @@ public class ErpDataPermissionConfiguration {
             rule.addUserColumn("erp_other_receivable", "creator");
             rule.addUserColumn("erp_pre_receipt", "creator");
             rule.addUserColumn("erp_pre_receivable", "creator");
+            rule.addUserColumn("erp_receivable_misc", "handler_id");
             rule.addUserColumn("erp_receivable_other", "handler_id");
             rule.addUserColumn("erp_receivable_other_income", "handler_id");
             rule.addUserColumn("erp_receivable_other_income_item", "handler_id");

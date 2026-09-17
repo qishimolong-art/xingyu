@@ -25,7 +25,8 @@ public interface ErpChainOrderMapper extends BaseMapperX<ErpChainOrderDO> {
                 .eqIfPresent(ErpChainOrderDO::getBranchType, reqVO.getBranchType())
                 .betweenIfPresent(ErpChainOrderDO::getOrderTime, reqVO.getOrderTime())
                 .orderByDesc(ErpChainOrderDO::getId);
-        ErpKeywordQuery.appendWithDeptName(wrapper, reqVO.getKeyword(),
+        ErpKeywordQuery.appendWithDeptNameAndCustomerAndProductItems(wrapper, reqVO.getKeyword(),
+                "erp_chain_order", "erp_chain_order_item", "chain_order_id",
                 ErpChainOrderDO::getNo,
                 ErpChainOrderDO::getRemark);
         return selectPage(reqVO, wrapper);

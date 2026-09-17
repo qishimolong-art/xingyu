@@ -1,5 +1,6 @@
 package cn.iocoder.yudao.module.erp.service.purchase;
 
+import cn.iocoder.yudao.framework.common.pojo.PageParam;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.ErpPurchaseUpdateRemarkReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.imports.ErpPurchaseImportResultRespVO;
@@ -153,6 +154,15 @@ public interface ErpPurchaseReturnService {
      * @return 部门列表
      */
     List<DeptSimpleRespVO> getWarehouseAvailableDeptSimpleList(Long warehouseId);
+
+    /**
+     * 获取采购退货目标仓库可用部门分页
+     *
+     * @param warehouseId 仓库编号
+     * @param pageParam 分页参数
+     * @return 部门分页
+     */
+    PageResult<DeptSimpleRespVO> getWarehouseAvailableDeptSimplePage(Long warehouseId, PageParam pageParam);
 
     /**
      * 解析采购退货导入明细

@@ -3,6 +3,7 @@ package cn.iocoder.yudao.module.erp.controller.admin.sale;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.ErpSaleUpdateRemarkReqVO;
 import cn.hutool.core.collection.CollUtil;
 import cn.iocoder.yudao.framework.apilog.core.annotation.ApiAccessLog;
+import cn.iocoder.yudao.framework.common.enums.CommonStatusEnum;
 import cn.iocoder.yudao.framework.common.pojo.CommonResult;
 import cn.iocoder.yudao.framework.common.pojo.PageParam;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
@@ -15,8 +16,10 @@ import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.priceadjust.ErpSaleO
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.priceadjust.ErpSalePriceAdjustExportRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.priceadjust.ErpSalePriceAdjustImportExcelVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.priceadjust.ErpSalePriceAdjustImportRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.priceadjust.ErpSalePriceAdjustableItemPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.priceadjust.ErpSalePriceAdjustItemPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.priceadjust.ErpSalePriceAdjustPageReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.priceadjust.ErpSalePriceAdjustSettlementSummaryRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.priceadjust.ErpSalePriceAdjustRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.priceadjust.ErpSalePriceAdjustSaveReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.priceadjust.ErpSalePriceAdjustDraftSaveReqVO;
@@ -25,20 +28,28 @@ import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSalePriceAdjustDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSalePriceAdjustItemDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleOutItemDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpWarehouseDO;
+import cn.iocoder.yudao.module.erp.dal.mysql.finance.ErpFinanceReceiptItemMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpSaleOutItemMapper;
+import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpSalePriceAdjustItemMapper;
+import cn.iocoder.yudao.module.erp.enums.common.ErpBizTypeEnum;
 import cn.iocoder.yudao.module.erp.enums.config.ErpFieldConfigModuleEnum;
 import cn.iocoder.yudao.module.erp.framework.excel.ErpExportFieldUtils;
 import cn.iocoder.yudao.module.erp.framework.excel.ErpImportTemplateRequiredFieldUtils;
+import cn.iocoder.yudao.module.erp.service.base.ErpDataPermissionDeptService;
 import cn.iocoder.yudao.module.erp.service.common.ErpImportExportRecordService;
 import cn.iocoder.yudao.module.erp.service.config.ErpFieldConfigService;
+import cn.iocoder.yudao.module.erp.service.sale.ErpCustomerDeptPermissionService;
 import cn.iocoder.yudao.module.erp.service.sale.ErpCustomerService;
 import cn.iocoder.yudao.module.erp.service.sale.ErpSaleFieldPermissionMasker;
+import cn.iocoder.yudao.module.erp.service.sale.ErpSaleItemPriceReferenceFiller;
 import cn.iocoder.yudao.module.erp.service.sale.ErpSalePriceAdjustService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpWarehouseService;
 import cn.iocoder.yudao.module.system.api.dept.DeptApi;
 import cn.iocoder.yudao.module.system.api.dept.dto.DeptRespDTO;
 import cn.iocoder.yudao.module.system.api.user.AdminUserApi;
 import cn.iocoder.yudao.module.system.api.user.dto.AdminUserRespDTO;
+import cn.iocoder.yudao.module.system.controller.admin.dept.vo.dept.DeptSimpleRespVO;
+import cn.iocoder.yudao.module.system.controller.admin.user.vo.user.UserSimpleRespVO;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -63,6 +74,7 @@ import java.util.Set;
 
 import static cn.iocoder.yudao.framework.apilog.core.enums.OperateTypeEnum.EXPORT;
 import static cn.iocoder.yudao.framework.common.pojo.CommonResult.success;
+import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.convertList;
 import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.convertMap;
 import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.convertMultiMap;
 import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.convertSet;
@@ -98,6 +110,8 @@ public class ErpSalePriceAdjustController {
     @Resource
     private ErpSaleFieldPermissionMasker fieldPermissionMasker;
     @Resource
+    private ErpSaleItemPriceReferenceFiller itemPriceReferenceFiller;
+    @Resource
     private AdminUserApi adminUserApi;
     @Resource
     private ErpFieldConfigService fieldConfigService;
@@ -106,7 +120,15 @@ public class ErpSalePriceAdjustController {
     @Resource
     private ErpWarehouseService warehouseService;
     @Resource
+    private ErpFinanceReceiptItemMapper financeReceiptItemMapper;
+    @Resource
     private ErpImportExportRecordService importExportRecordService;
+    @Resource
+    private ErpDataPermissionDeptService dataPermissionDeptService;
+    @Resource
+    private ErpSalePriceAdjustItemMapper salePriceAdjustItemMapper;
+    @Resource
+    private ErpCustomerDeptPermissionService customerDeptPermissionService;
 
     @PostMapping("/create")
     @Operation(summary = "创建销售调价单")
@@ -230,6 +252,7 @@ public class ErpSalePriceAdjustController {
         ErpSalePriceAdjustRespVO respVO = BeanUtils.toBean(adjust, ErpSalePriceAdjustRespVO.class);
         respVO.setItems(BeanUtils.toBean(items, ErpSalePriceAdjustRespVO.Item.class));
         fillItemWarehouseSnapshots(respVO.getItems());
+        itemPriceReferenceFiller.fill(respVO.getItems());
 
         // 客户名称
         if (adjust.getCustomerId() != null) {
@@ -294,6 +317,45 @@ public class ErpSalePriceAdjustController {
         return getSalePriceAdjust(id, true);
     }
 
+    @GetMapping("/settlement-summary")
+    @Operation(summary = "获得销售调价结算核销摘要")
+    @Parameter(name = "id", description = "销售调价编号", required = true, example = "1024")
+    @PreAuthorize("@ss.hasPermission('erp:sale-price-adjust:query')")
+    public CommonResult<ErpSalePriceAdjustSettlementSummaryRespVO> getSalePriceAdjustSettlementSummary(
+            @RequestParam("id") Long id) {
+        ErpSalePriceAdjustDO adjust = salePriceAdjustService.getSalePriceAdjust(id);
+        if (adjust == null) {
+            return success(null);
+        }
+        BigDecimal settlementAmount = zeroIfNull(adjust.getTotalAdjustPrice());
+        BigDecimal writtenOffAmount = zeroIfNull(financeReceiptItemMapper.selectReceiptPriceSumByBizIdAndBizType(
+                id, ErpBizTypeEnum.SALE_PRICE_ADJUST.getType()));
+        BigDecimal unwrittenOffAmount = settlementAmount.subtract(writtenOffAmount);
+        return success(new ErpSalePriceAdjustSettlementSummaryRespVO()
+                .setId(id)
+                .setSettlementAmount(settlementAmount)
+                .setWrittenOffAmount(writtenOffAmount)
+                .setUnwrittenOffAmount(unwrittenOffAmount)
+                .setSettlementStatus(calculateSalePriceAdjustSettlementStatus(settlementAmount, writtenOffAmount)));
+    }
+
+    private Integer calculateSalePriceAdjustSettlementStatus(BigDecimal settlementAmount, BigDecimal writtenOffAmount) {
+        BigDecimal normalizedSettlementAmount = zeroIfNull(settlementAmount).abs();
+        BigDecimal normalizedWrittenOffAmount = zeroIfNull(writtenOffAmount).abs();
+        if (normalizedWrittenOffAmount.compareTo(BigDecimal.ZERO) == 0) {
+            return 0;
+        }
+        if (normalizedSettlementAmount.compareTo(BigDecimal.ZERO) == 0
+                || normalizedWrittenOffAmount.compareTo(normalizedSettlementAmount) < 0) {
+            return 1;
+        }
+        return 2;
+    }
+
+    private BigDecimal zeroIfNull(BigDecimal value) {
+        return value == null ? BigDecimal.ZERO : value;
+    }
+
     @GetMapping("/item-page")
     @Operation(summary = "获得销售调价明细分页")
     @PreAuthorize("@ss.hasPermission('erp:sale-price-adjust:query')")
@@ -307,6 +369,7 @@ public class ErpSalePriceAdjustController {
         List<ErpSalePriceAdjustRespVO.Item> items = BeanUtils.toBean(pageResult.getList(),
                 ErpSalePriceAdjustRespVO.Item.class);
         fillItemWarehouseSnapshots(items);
+        itemPriceReferenceFiller.fill(items);
         PageResult<ErpSalePriceAdjustRespVO.Item> respResult = new PageResult<>(items, pageResult.getTotal());
         if (Boolean.TRUE.equals(pageReqVO.getMask())) {
             ErpSalePriceAdjustRespVO context = BeanUtils.toBean(adjust, ErpSalePriceAdjustRespVO.class);
@@ -316,12 +379,36 @@ public class ErpSalePriceAdjustController {
         return success(respResult);
     }
 
+    @GetMapping("/dept-simple-page")
+    @Operation(summary = "获取销售调价可见部门精简分页")
+    @PreAuthorize("@ss.hasPermission('erp:sale-price-adjust:query')")
+    public CommonResult<PageResult<DeptSimpleRespVO>> getVisibleDeptSimplePage(@Valid PageParam pageReqVO) {
+        return success(dataPermissionDeptService.getDeptSimplePage(FIELD_PERMISSION_MODULE, pageReqVO));
+    }
+
+    @GetMapping("/customer-dept-simple-page")
+    @Operation(summary = "获取销售调价客户可用部门分页")
+    @PreAuthorize("@ss.hasPermission('erp:sale-price-adjust:query')")
+    public CommonResult<PageResult<DeptSimpleRespVO>> getCustomerAvailableDeptSimplePage(
+            @RequestParam("customerId") Long customerId, @Valid PageParam pageReqVO) {
+        return success(customerDeptPermissionService.getAvailableDeptSimplePage(customerId, FIELD_PERMISSION_MODULE, pageReqVO));
+    }
+
+    @GetMapping("/user-simple-page")
+    @Operation(summary = "获取销售调价用户精简分页")
+    @PreAuthorize("@ss.hasPermission('erp:sale-price-adjust:query')")
+    public CommonResult<PageResult<UserSimpleRespVO>> getUserSimplePage(@Valid PageParam pageReqVO) {
+        return success(buildUserSimplePage(pageReqVO));
+    }
+
     @GetMapping("/page")
     @Operation(summary = "获得销售调价单分页")
     @PreAuthorize("@ss.hasPermission('erp:sale-price-adjust:query')")
     public CommonResult<PageResult<ErpSalePriceAdjustRespVO>> getSalePriceAdjustPage(@Valid ErpSalePriceAdjustPageReqVO pageReqVO) {
         PageResult<ErpSalePriceAdjustDO> pageResult = salePriceAdjustService.getSalePriceAdjustPage(pageReqVO);
-        PageResult<ErpSalePriceAdjustRespVO> respResult = buildSalePriceAdjustVOPageResult(pageResult);
+        PageResult<ErpSalePriceAdjustRespVO> respResult = Boolean.FALSE.equals(pageReqVO.getIncludeItems())
+                ? buildSalePriceAdjustVOPageResultWithoutItems(pageResult)
+                : buildSalePriceAdjustVOPageResult(pageResult);
         fieldPermissionMasker.maskSaleDetailFormsWithItems(FIELD_PERMISSION_MODULE, respResult.getList());
         return success(respResult);
     }
@@ -366,6 +453,17 @@ public class ErpSalePriceAdjustController {
         return success(list);
     }
 
+    @GetMapping("/adjustable-item-page")
+    @Operation(summary = "获取客户可调价明细分页")
+    @PreAuthorize("@ss.hasPermission('erp:sale-price-adjust:query')")
+    public CommonResult<PageResult<ErpSaleOutItemForAdjustRespVO>> getAdjustableItemPage(
+            @Valid ErpSalePriceAdjustableItemPageReqVO pageReqVO) {
+        PageResult<ErpSaleOutItemForAdjustRespVO> pageResult =
+                salePriceAdjustService.getAdjustableItemPage(pageReqVO);
+        fieldPermissionMasker.maskSaleDetailSelectRows(FIELD_PERMISSION_MODULE, pageResult.getList());
+        return success(pageResult);
+    }
+
     private PageResult<ErpSalePriceAdjustRespVO> buildSalePriceAdjustVOPageResult(PageResult<ErpSalePriceAdjustDO> pageResult) {
         if (CollUtil.isEmpty(pageResult.getList())) {
             return PageResult.empty(pageResult.getTotal());
@@ -405,6 +503,7 @@ public class ErpSalePriceAdjustController {
         return BeanUtils.toBean(pageResult, ErpSalePriceAdjustRespVO.class, respVO -> {
             respVO.setItems(BeanUtils.toBean(itemMap.get(respVO.getId()), ErpSalePriceAdjustRespVO.Item.class));
             fillItemWarehouseSnapshots(respVO.getItems());
+            itemPriceReferenceFiller.fill(respVO.getItems());
             MapUtils.findAndThen(customerMap, respVO.getCustomerId(), customer -> respVO.setCustomerName(customer.getName()));
             MapUtils.findAndThen(deptMap, respVO.getDeptId(), d -> respVO.setDeptName(d.getName()));
             if (respVO.getAdjustUserId() != null) {
@@ -426,6 +525,80 @@ public class ErpSalePriceAdjustController {
             }
             fillAdjustSummary(respVO, respVO.getItems());
         });
+    }
+
+    private PageResult<ErpSalePriceAdjustRespVO> buildSalePriceAdjustVOPageResultWithoutItems(
+            PageResult<ErpSalePriceAdjustDO> pageResult) {
+        if (CollUtil.isEmpty(pageResult.getList())) {
+            return PageResult.empty(pageResult.getTotal());
+        }
+        Set<Long> adjustIds = convertSet(pageResult.getList(), ErpSalePriceAdjustDO::getId);
+        Map<Long, List<ErpSalePriceAdjustItemDO>> itemMap = convertMultiMap(
+                salePriceAdjustItemMapper.selectSummaryListByAdjustIds(adjustIds),
+                ErpSalePriceAdjustItemDO::getAdjustId);
+        Map<Long, ErpCustomerDO> customerMap = customerService.getCustomerMap(
+                convertSet(pageResult.getList(), ErpSalePriceAdjustDO::getCustomerId));
+        Set<Long> userIds = new HashSet<>();
+        for (ErpSalePriceAdjustDO adjust : pageResult.getList()) {
+            if (adjust.getAdjustUserId() != null) {
+                userIds.add(adjust.getAdjustUserId());
+            }
+            addUserId(userIds, adjust.getCreator());
+            addUserId(userIds, adjust.getUpdater());
+        }
+        Map<Long, AdminUserRespDTO> userMap = userIds.isEmpty()
+                ? new HashMap<>() : adminUserApi.getUserMap(userIds);
+        Set<Long> deptIds = convertSet(pageResult.getList(), ErpSalePriceAdjustDO::getDeptId);
+        deptIds.remove(null);
+        Map<Long, DeptRespDTO> deptMap = deptIds.isEmpty() ? new HashMap<>() : deptApi.getDeptMap(deptIds);
+        return BeanUtils.toBean(pageResult, ErpSalePriceAdjustRespVO.class, respVO -> {
+            MapUtils.findAndThen(customerMap, respVO.getCustomerId(), customer -> respVO.setCustomerName(customer.getName()));
+            MapUtils.findAndThen(deptMap, respVO.getDeptId(), d -> respVO.setDeptName(d.getName()));
+            fillUserNames(respVO, userMap);
+            fillAdjustSummary(respVO, BeanUtils.toBean(itemMap.get(respVO.getId()), ErpSalePriceAdjustRespVO.Item.class));
+        });
+    }
+
+    private PageResult<UserSimpleRespVO> buildUserSimplePage(PageParam pageReqVO) {
+        PageResult<AdminUserRespDTO> page = adminUserApi.getUserSimplePage(
+                CommonStatusEnum.ENABLE.getStatus(), pageReqVO.getKeyword(), pageReqVO);
+        List<UserSimpleRespVO> list = convertList(page.getList(), user ->
+                new UserSimpleRespVO(user.getId(), user.getNickname(), user.getDeptId(), null));
+        return new PageResult<>(list, page.getTotal());
+    }
+
+    private void fillUserNames(ErpSalePriceAdjustRespVO respVO, Map<Long, AdminUserRespDTO> userMap) {
+        if (respVO.getAdjustUserId() != null) {
+            MapUtils.findAndThen(userMap, respVO.getAdjustUserId(), u -> respVO.setAdjustUserName(u.getNickname()));
+        }
+        addUserName(userMap, respVO.getCreator(), user -> respVO.setCreatorName(user.getNickname()));
+        addUserName(userMap, respVO.getUpdater(), user -> respVO.setUpdaterName(user.getNickname()));
+    }
+
+    private void addUserId(Set<Long> userIds, String userId) {
+        Long parsedUserId = parseLongSafely(userId);
+        if (parsedUserId != null) {
+            userIds.add(parsedUserId);
+        }
+    }
+
+    private void addUserName(Map<Long, AdminUserRespDTO> userMap, String userId,
+                             java.util.function.Consumer<AdminUserRespDTO> consumer) {
+        Long parsedUserId = parseLongSafely(userId);
+        if (parsedUserId != null) {
+            MapUtils.findAndThen(userMap, parsedUserId, consumer);
+        }
+    }
+
+    private Long parseLongSafely(String userId) {
+        if (userId == null) {
+            return null;
+        }
+        try {
+            return Long.parseLong(userId);
+        } catch (NumberFormatException ignored) {
+            return null;
+        }
     }
 
     private void fillAdjustSummary(ErpSalePriceAdjustRespVO respVO, List<ErpSalePriceAdjustRespVO.Item> items) {

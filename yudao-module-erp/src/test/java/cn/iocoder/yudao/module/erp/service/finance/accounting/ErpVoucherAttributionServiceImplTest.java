@@ -1,5 +1,7 @@
 package cn.iocoder.yudao.module.erp.service.finance.accounting;
 
+import cn.iocoder.yudao.module.erp.service.finance.accounting.rule.*;
+import cn.iocoder.yudao.module.erp.service.finance.accounting.rule.ErpVoucherRuleModels.*;
 import cn.iocoder.yudao.framework.common.pojo.PageParam;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.test.core.ut.BaseMockitoUnitTest;
@@ -115,6 +117,9 @@ import static org.mockito.Mockito.when;
 @DisplayName("ErpVoucherAttributionServiceImpl 单元测试")
 public class ErpVoucherAttributionServiceImplTest extends BaseMockitoUnitTest {
 
+    @Mock private ErpVoucherGenerationService generationService;
+    @Mock private ErpVoucherSourceReader ruleSourceReader;
+
     @InjectMocks
     private ErpVoucherAttributionServiceImpl attributionService;
 
@@ -161,6 +166,8 @@ public class ErpVoucherAttributionServiceImplTest extends BaseMockitoUnitTest {
 
     @org.junit.jupiter.api.BeforeEach
     public void setUp() {
+        lenient().when(generationService.previewOne(any())).thenReturn(new Preview().setStatus("INCOMPLETE"));
+        lenient().when(ruleSourceReader.page(any(), any(), any(), any())).thenReturn(PageResult.empty());
         // H3 修复后 generateVouchers 强制校验 isVoucherTypeEnabled；默认放行，单测可按需覆盖为 false
         lenient().when(bookOpenService.isVoucherTypeEnabled(any(), any())).thenReturn(true);
     }
@@ -479,182 +486,32 @@ public class ErpVoucherAttributionServiceImplTest extends BaseMockitoUnitTest {
     // ====================================================================
 
     @Test
-    @DisplayName("generateVouchers：正常 - 按真实采购入库单生成凭证 + 回写 voucherId + status=GENERATED")
-    public void testGenerateVouchers_normalCase() {
-        ErpVoucherAttributionDO d1 = buildExistingDO(501L, ErpAttributionStatusEnum.ATTRIBUTED.getStatus());
-        ErpVoucherAttributionDO d2 = buildExistingDO(502L, ErpAttributionStatusEnum.ATTRIBUTED.getStatus());
-        when(attributionMapper.selectByIds(eq(Arrays.asList(501L, 502L))))
-                .thenReturn(Arrays.asList(d1, d2));
-        mockPurchaseInVoucher();
-        when(voucherService.createVoucherFromBiz(any(), any(), any(), any(), any(), any(), anyList()))
-                .thenReturn(7001L)
-                .thenReturn(7002L);
-
-        ErpVoucherAttributionGenerateReqVO reqVO = new ErpVoucherAttributionGenerateReqVO();
-        reqVO.setIds(Arrays.asList(501L, 502L));
-
-        List<Long> voucherIds = attributionService.generateVouchers(reqVO);
-
-        assertThat(voucherIds).containsExactly(7001L, 7002L);
-        verify(voucherService, times(2)).createVoucherFromBiz(eq(8), eq(1024L), eq("CGRK202605000001"),
-                eq(new BigDecimal("113.00")), eq(LocalDate.of(2026, 5, 1)), eq("采购入库 - 供应商A"), anyList());
-
-        ArgumentCaptor<ErpVoucherAttributionDO> updateCaptor = ArgumentCaptor.forClass(ErpVoucherAttributionDO.class);
-        verify(attributionMapper, times(2)).updateById(updateCaptor.capture());
-        assertThat(updateCaptor.getAllValues()).allSatisfy(updated -> {
-            assertEquals(ErpAttributionStatusEnum.GENERATED.getStatus(), updated.getAttributionStatus());
-            assertNotNull(updated.getVoucherId());
-        });
+    @DisplayName("旧生成接口将来源、实际日期和预览令牌完整交给统一服务")
+    public void testGenerateDelegatesWithPreviewToken() {
+        when(attributionMapper.selectById(501L)).thenReturn(buildExistingDO(501L, 20));
+        when(generationService.generate(any())).thenReturn(Collections.singletonList(7001L));
+        ErpVoucherAttributionGenerateReqVO req = new ErpVoucherAttributionGenerateReqVO();
+        req.setIds(Collections.singletonList(501L));
+        req.setPreviewTokens(Collections.singletonMap(501L, "preview-v1"));
+        assertThat(attributionService.generateVouchers(req)).containsExactly(7001L);
+        ArgumentCaptor<Batch> captor = ArgumentCaptor.forClass(Batch.class);
+        verify(generationService).generate(captor.capture());
+        Request item = captor.getValue().getItems().get(0);
+        assertEquals(8, item.getBizType());
+        assertEquals(1024L, item.getBizId());
+        assertEquals(LocalDate.of(2026, 5, 14), item.getVoucherDate());
+        assertEquals("preview-v1", item.getPreviewToken());
+        assertEquals(5, item.getAttributionMonth());
+        verifyNoInteractions(voucherService, autoVoucherBuilder);
     }
 
     @Test
-    @DisplayName("generateVouchers：H3 已修复 - BookOpen 未启用对应凭证类型时，抛 VOUCHER_ATTRIBUTION_BOOK_NOT_OPEN")
-    public void testGenerateVouchers_skipBookOpenCheck_bugH3() {
-        // H3 修复：generateVouchers 头部校验 bookOpenService.isVoucherTypeEnabled
-        // 未开账或未勾选对应凭证类型时阻断，避免无开账期凭证创建
-        ErpVoucherAttributionDO d1 = buildExistingDO(601L, ErpAttributionStatusEnum.ATTRIBUTED.getStatus());
-        when(attributionMapper.selectByIds(eq(Collections.singletonList(601L))))
-                .thenReturn(Collections.singletonList(d1));
-        // 覆盖 @BeforeEach 默认放行：返回 false 触发 H3 拦截
-        when(bookOpenService.isVoucherTypeEnabled(any(), any())).thenReturn(false);
-
-        ErpVoucherAttributionGenerateReqVO reqVO = new ErpVoucherAttributionGenerateReqVO();
-        reqVO.setIds(Collections.singletonList(601L));
-
-        assertServiceException(() -> attributionService.generateVouchers(reqVO),
-                VOUCHER_ATTRIBUTION_BOOK_NOT_OPEN);
-        verify(voucherService, never()).createVoucherFromBiz(any(), any(), any(), any(), any(), any(), anyList());
+    public void testGenerateMissingAttribution() {
+        ErpVoucherAttributionGenerateReqVO req = new ErpVoucherAttributionGenerateReqVO();
+        req.setIds(Collections.singletonList(999L));
+        assertServiceException(() -> attributionService.generateVouchers(req), VOUCHER_ATTRIBUTION_NOT_EXISTS);
+        verifyNoInteractions(generationService, voucherService);
     }
-
-    @Test
-    @DisplayName("generateVouchers：真实生成 - 不再创建 0.01 占位空壳分录")
-    public void testGenerateVouchers_emptyItems_byDesign() {
-        ErpVoucherAttributionDO d1 = buildExistingDO(701L, ErpAttributionStatusEnum.ATTRIBUTED.getStatus());
-        when(attributionMapper.selectByIds(eq(Collections.singletonList(701L))))
-                .thenReturn(Collections.singletonList(d1));
-        mockPurchaseInVoucher();
-        when(voucherService.createVoucherFromBiz(any(), any(), any(), any(), any(), any(), anyList())).thenReturn(7200L);
-
-        ErpVoucherAttributionGenerateReqVO reqVO = new ErpVoucherAttributionGenerateReqVO();
-        reqVO.setIds(Collections.singletonList(701L));
-
-        attributionService.generateVouchers(reqVO);
-
-        verify(autoVoucherBuilder).buildPurchaseInItems(any(ErpPurchaseInDO.class), eq("供应商A"));
-        verify(voucherService).createVoucherFromBiz(eq(8), eq(1024L), eq("CGRK202605000001"),
-                eq(new BigDecimal("113.00")), eq(LocalDate.of(2026, 5, 1)), eq("采购入库 - 供应商A"), anyList());
-    }
-
-    @Test
-    @DisplayName("generateVouchers sale out uses stock record cost")
-    public void testGenerateVouchers_saleOut_usesStockRecordCost() {
-        ErpVoucherAttributionDO attribution = new ErpVoucherAttributionDO()
-                .setId(711L)
-                .setBizType(ErpVoucherSourceBizTypeEnum.SALE_OUT.getType())
-                .setBizId(11L)
-                .setBizNo("XSCK202605000001")
-                .setBizDate(LocalDateTime.of(2026, 5, 14, 10, 0))
-                .setBizAmount(new BigDecimal("200.00"))
-                .setVoucherMakeDate(LocalDate.of(2026, 5, 14))
-                .setAttributionYear(2026)
-                .setAttributionMonth(5)
-                .setAttributionStatus(ErpAttributionStatusEnum.ATTRIBUTED.getStatus());
-        when(attributionMapper.selectByIds(eq(Collections.singletonList(711L))))
-                .thenReturn(Collections.singletonList(attribution));
-        ErpSaleOutDO saleOut = new ErpSaleOutDO()
-                .setId(11L)
-                .setNo("XSCK202605000001")
-                .setCustomerId(20L)
-                .setOutTime(LocalDateTime.of(2026, 5, 14, 10, 0))
-                .setTotalPrice(new BigDecimal("200.00"));
-        when(saleOutMapper.selectById(eq(11L))).thenReturn(saleOut);
-        when(customerService.getCustomer(eq(20L))).thenReturn(new ErpCustomerDO().setId(20L).setName("customer-a"));
-        when(stockRecordMapper.selectListByBiz(eq(ErpStockRecordBizTypeEnum.SALE_OUT.getType()), eq(11L)))
-                .thenReturn(Arrays.asList(
-                        new ErpStockRecordDO().setTotalPrice(new BigDecimal("-120.00")),
-                        new ErpStockRecordDO().setTotalPrice(new BigDecimal("-30.00"))));
-        when(autoVoucherBuilder.buildSaleOutItems(eq(saleOut), eq("customer-a"), eq(new BigDecimal("150.00"))))
-                .thenReturn(buildVoucherItems());
-        when(voucherService.createVoucherFromBiz(any(), any(), any(), any(), any(), any(), anyList())).thenReturn(7201L);
-
-        ErpVoucherAttributionGenerateReqVO reqVO = new ErpVoucherAttributionGenerateReqVO();
-        reqVO.setIds(Collections.singletonList(711L));
-
-        attributionService.generateVouchers(reqVO);
-
-        verify(autoVoucherBuilder).buildSaleOutItems(eq(saleOut), eq("customer-a"), eq(new BigDecimal("150.00")));
-        verify(voucherService).createVoucherFromBiz(eq(ErpVoucherSourceBizTypeEnum.SALE_OUT.getType()), eq(11L),
-                eq("XSCK202605000001"), eq(new BigDecimal("200.00")), eq(LocalDate.of(2026, 5, 1)),
-                eq("销售出库 - customer-a"), anyList());
-    }
-
-    @Test
-    @DisplayName("generateVouchers already approved - block regenerate")
-    public void testGenerateVouchers_someAlreadyGenerated_skip() {
-        ErpVoucherAttributionDO d1 = buildExistingDO(801L, ErpAttributionStatusEnum.ATTRIBUTED.getStatus());
-        ErpVoucherAttributionDO d2 = buildExistingDO(802L, ErpAttributionStatusEnum.GENERATED.getStatus())
-                .setVoucherId(7777L);
-        when(attributionMapper.selectByIds(eq(Arrays.asList(802L, 801L))))
-                .thenReturn(Arrays.asList(d2, d1));
-        when(voucherService.getVoucher(eq(7777L))).thenReturn(new ErpVoucherDO()
-                .setId(7777L).setAuditStatus(ErpVoucherAuditStatusEnum.APPROVE.getStatus()).setSourceBizNo("CGRK202605000001"));
-
-        ErpVoucherAttributionGenerateReqVO reqVO = new ErpVoucherAttributionGenerateReqVO();
-        reqVO.setIds(Arrays.asList(802L, 801L));
-
-        assertServiceException(() -> attributionService.generateVouchers(reqVO),
-                VOUCHER_BIZ_APPROVED_EXISTS, "CGRK202605000001");
-        verify(voucherService, never()).createVoucherFromBiz(any(), any(), any(), any(), any(), any(), anyList());
-    }
-
-    @Test
-    @DisplayName("generateVouchers：归属年月为空 - 按 voucherMakeDate 推断（year/month 兜底为 make 当月）")
-    public void testGenerateVouchers_noAttributionMonth_fail() {
-        // 未归属 (year=null, month=null) 时按制单月默认 - 不会失败
-        ErpVoucherAttributionDO d1 = buildExistingDO(901L, ErpAttributionStatusEnum.UNATTRIBUTED.getStatus())
-                .setAttributionYear(null)
-                .setAttributionMonth(null)
-                .setVoucherMakeDate(LocalDate.of(2026, 7, 20));
-        when(attributionMapper.selectByIds(eq(Collections.singletonList(901L))))
-                .thenReturn(Collections.singletonList(d1));
-        mockPurchaseInVoucher();
-        ArgumentCaptor<LocalDate> voucherDateCaptor = ArgumentCaptor.forClass(LocalDate.class);
-        when(voucherService.createVoucherFromBiz(any(), any(), any(), any(), voucherDateCaptor.capture(), any(), anyList())).thenReturn(7300L);
-
-        ErpVoucherAttributionGenerateReqVO reqVO = new ErpVoucherAttributionGenerateReqVO();
-        reqVO.setIds(Collections.singletonList(901L));
-
-        attributionService.generateVouchers(reqVO);
-
-        // 验证年月兜底为 make 当月 7 月
-        assertEquals(LocalDate.of(2026, 7, 1), voucherDateCaptor.getValue());
-    }
-
-    @Test
-    @DisplayName("generateVouchers：voucherService.createVoucher 被调用以生成月度凭证号（透传到凭证 Service）")
-    public void testGenerateVouchers_voucherNoMonthly() {
-        // 验证：generateVouchers 不直接调用 noRedisDAO（凭证号在 createVoucher 内部生成），
-        // 而是把生成请求委托给 voucherService.createVoucher，符合分层。
-        ErpVoucherAttributionDO d1 = buildExistingDO(1001L, ErpAttributionStatusEnum.ATTRIBUTED.getStatus())
-                .setAttributionYear(2026).setAttributionMonth(5)
-                .setVoucherMakeDate(LocalDate.of(2026, 5, 14));
-        when(attributionMapper.selectByIds(eq(Collections.singletonList(1001L))))
-                .thenReturn(Collections.singletonList(d1));
-        mockPurchaseInVoucher();
-        when(voucherService.createVoucherFromBiz(any(), any(), any(), any(), any(), any(), anyList())).thenReturn(7400L);
-
-        ErpVoucherAttributionGenerateReqVO reqVO = new ErpVoucherAttributionGenerateReqVO();
-        reqVO.setIds(Collections.singletonList(1001L));
-
-        List<Long> result = attributionService.generateVouchers(reqVO);
-
-        assertThat(result).containsExactly(7400L);
-        verify(voucherService, atLeastOnce()).createVoucherFromBiz(any(), any(), any(), any(), any(), any(), anyList());
-    }
-
-    // ====================================================================
-    // searchSourceBizPage（8 用例，含 H8 Bug）
-    // ====================================================================
 
     @Test
     @DisplayName("searchSourceBizPage：销售出库(type=2) - 透传到 saleOutMapper + 客户名回填")
@@ -837,20 +694,28 @@ public class ErpVoucherAttributionServiceImplTest extends BaseMockitoUnitTest {
     }
 
     @Test
-    @DisplayName("searchSourceBizPage：未实现类型(type=1 销售凭证) - 返回 PageResult.empty(0)")
-    public void testSearchSourceBiz_unimplementedType_returnEmpty() {
-        ErpVoucherAttributionSearchSourceBizReqVO reqVO = new ErpVoucherAttributionSearchSourceBizReqVO();
-        reqVO.setSourceBizType(1); // 销售凭证：暂未实现
+    @DisplayName("未接入的来源明确报错，不能显示为没有单据")
+    public void testSearchSourceBiz_unimplementedType_explainsReason() {
+        ErpVoucherAttributionSearchSourceBizReqVO req = new ErpVoucherAttributionSearchSourceBizReqVO();
+        req.setSourceBizType(1);
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> attributionService.searchSourceBizPage(req))
+                .hasMessageContaining("尚未接入");
+        verifyNoInteractions(saleOutMapper, purchaseInMapper);
+    }
 
-        PageResult<ErpVoucherAttributionRespVO> result = attributionService.searchSourceBizPage(reqVO);
-
-        assertNotNull(result);
-        assertEquals(0L, result.getTotal());
-        assertThat(result.getList()).isEmpty();
-        // 确认未调用任何业务 mapper
-        verifyNoInteractions(saleOutMapper, saleReturnMapper, purchaseInMapper, purchaseReturnMapper,
-                otherReceivableMapper, otherPayableMapper, financeReceiptMapper, financePaymentMapper,
-                stockInMapper, stockOutMapper);
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(ints = {6, 12, 18})
+    void searchNewFundSources(int type) {
+        Map<String,Object> header = new HashMap<>();
+        header.put("id", 66L); header.put("no", "FUND66");
+        header.put(type == 6 ? "receiptTime" : type == 12 ? "paymentTime" : "transferTime", LocalDateTime.of(2026,5,14,10,0));
+        header.put(type == 6 ? "receiptPrice" : type == 12 ? "paymentPrice" : "transferPrice", new BigDecimal("100.00"));
+        when(ruleSourceReader.page(any(), any(), any(), any())).thenReturn(new PageResult<>(Collections.singletonList(header), 1L));
+        ErpVoucherAttributionSearchSourceBizReqVO req = new ErpVoucherAttributionSearchSourceBizReqVO(); req.setSourceBizType(type);
+        ErpVoucherAttributionRespVO row = attributionService.searchSourceBizPage(req).getList().get(0);
+        assertEquals(type, row.getBizType()); assertEquals(66L, row.getBizId());
+        assertEquals(new BigDecimal("100.00"), row.getBizAmount());
+        assertEquals("INCOMPLETE", row.getGenerationStatus());
     }
 
     @Test

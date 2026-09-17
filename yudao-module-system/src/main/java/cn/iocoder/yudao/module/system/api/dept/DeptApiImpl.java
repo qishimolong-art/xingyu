@@ -1,5 +1,7 @@
 package cn.iocoder.yudao.module.system.api.dept;
 
+import cn.iocoder.yudao.framework.common.pojo.PageParam;
+import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
 import cn.iocoder.yudao.framework.datapermission.core.annotation.DataPermission;
 import cn.iocoder.yudao.module.system.api.dept.dto.DeptRespDTO;
@@ -43,6 +45,14 @@ public class DeptApiImpl implements DeptApi {
     public List<DeptRespDTO> getDeptListByStatus(Integer status) {
         List<DeptDO> depts = deptService.getDeptList(new DeptListReqVO().setStatus(status));
         return BeanUtils.toBean(depts, DeptRespDTO.class);
+    }
+
+    @Override
+    @DataPermission(enable = false)
+    public PageResult<DeptRespDTO> getDeptSimplePage(Integer status, String keyword,
+                                                     Collection<Long> deptIds, PageParam pageParam) {
+        PageResult<DeptDO> page = deptService.getDeptSimplePage(status, keyword, deptIds, pageParam);
+        return new PageResult<>(BeanUtils.toBean(page.getList(), DeptRespDTO.class), page.getTotal());
     }
 
     @Override

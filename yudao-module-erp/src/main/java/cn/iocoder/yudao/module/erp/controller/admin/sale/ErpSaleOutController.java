@@ -3,6 +3,7 @@ package cn.iocoder.yudao.module.erp.controller.admin.sale;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.ErpSaleUpdateRemarkReqVO;
 import cn.hutool.core.collection.CollUtil;
 import cn.iocoder.yudao.framework.apilog.core.annotation.ApiAccessLog;
+import cn.iocoder.yudao.framework.common.enums.CommonStatusEnum;
 import cn.iocoder.yudao.framework.common.pojo.CommonResult;
 import cn.iocoder.yudao.framework.common.pojo.PageParam;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
@@ -15,10 +16,18 @@ import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpProduc
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.out.ErpSaleOutExportRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.out.ErpSaleOutItemPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.out.ErpSaleOutPageReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.out.ErpSaleOutPickDeliveryDetailRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.out.ErpSaleOutPickDeliveryFilePageReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.out.ErpSaleOutPickDeliveryFileRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.out.ErpSaleOutPickDeliveryItemPageReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.out.ErpSaleOutReceiptSummaryRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.out.ErpSaleOutRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.out.ErpSaleOutReturnableItemPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.out.ErpSaleReturnableItemRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.out.ErpSaleOutSaveReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.out.ErpSaleOutUpdateExpressFileReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.pickdelivery.ErpSalePickDeliveryItemRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.pickdelivery.ErpSalePickDeliverySummaryRespVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseInDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpCustomerDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleCartDO;
@@ -32,17 +41,24 @@ import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockOutBillDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockOutBillItemDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpWarehouseDO;
 import cn.iocoder.yudao.module.erp.dal.mysql.purchase.ErpPurchaseInMapper;
+import cn.iocoder.yudao.module.erp.dal.mysql.finance.ErpFinanceReceiptItemMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpSaleCartMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpSaleOrderMapper;
+import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpSaleOutItemMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpSalePriceAdjustMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpSaleQuoteMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpSaleReturnItemMapper;
 import cn.iocoder.yudao.module.erp.enums.sale.ErpSaleBizSourceTypeEnum;
+import cn.iocoder.yudao.module.erp.enums.common.ErpBizTypeEnum;
+import cn.iocoder.yudao.module.erp.service.base.ErpDataPermissionDeptService;
 import cn.iocoder.yudao.module.erp.service.product.ErpProductService;
 import cn.iocoder.yudao.module.erp.service.common.ErpOriginalSettlementAmountUtils;
+import cn.iocoder.yudao.module.erp.service.sale.ErpCustomerDeptPermissionService;
 import cn.iocoder.yudao.module.erp.service.sale.ErpCustomerService;
 import cn.iocoder.yudao.module.erp.service.sale.ErpSaleFieldPermissionMasker;
+import cn.iocoder.yudao.module.erp.service.sale.ErpSaleItemPriceReferenceFiller;
 import cn.iocoder.yudao.module.erp.service.sale.ErpSaleOutService;
+import cn.iocoder.yudao.module.erp.service.sale.ErpSalePickDeliveryService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpStockOutBillService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpStockService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpWarehouseService;
@@ -50,6 +66,8 @@ import cn.iocoder.yudao.module.system.api.dept.DeptApi;
 import cn.iocoder.yudao.module.system.api.dept.dto.DeptRespDTO;
 import cn.iocoder.yudao.module.system.api.user.AdminUserApi;
 import cn.iocoder.yudao.module.system.api.user.dto.AdminUserRespDTO;
+import cn.iocoder.yudao.module.system.controller.admin.dept.vo.dept.DeptSimpleRespVO;
+import cn.iocoder.yudao.module.system.controller.admin.user.vo.user.UserSimpleRespVO;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -71,6 +89,7 @@ import java.util.stream.Collectors;
 import static cn.iocoder.yudao.framework.apilog.core.enums.OperateTypeEnum.EXPORT;
 import static cn.iocoder.yudao.framework.common.exception.util.ServiceExceptionUtil.exception;
 import static cn.iocoder.yudao.framework.common.pojo.CommonResult.success;
+import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.convertList;
 import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.convertMultiMap;
 import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.convertMap;
 import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.convertSet;
@@ -84,6 +103,9 @@ import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.SALE_OUT_EXPR
 public class ErpSaleOutController {
 
     private static final String FIELD_PERMISSION_MODULE = "erp_sale_out";
+    private static final Integer ADJUST_STATUS_NONE = 0;
+    private static final Integer ADJUST_STATUS_PART = 1;
+    private static final Integer ADJUST_STATUS_ALL = 2;
 
     private static final class SourceDocumentMeta {
 
@@ -101,6 +123,8 @@ public class ErpSaleOutController {
     @Resource
     private ErpSaleOutService saleOutService;
     @Resource
+    private ErpSalePickDeliveryService salePickDeliveryService;
+    @Resource
     private ErpStockService stockService;
     @Resource
     private ErpStockOutBillService stockOutBillService;
@@ -113,6 +137,8 @@ public class ErpSaleOutController {
     @Resource
     private ErpSaleReturnItemMapper saleReturnItemMapper;
     @Resource
+    private ErpSaleOutItemMapper saleOutItemMapper;
+    @Resource
     private ErpSaleOrderMapper saleOrderMapper;
     @Resource
     private ErpSaleQuoteMapper saleQuoteMapper;
@@ -123,7 +149,15 @@ public class ErpSaleOutController {
     @Resource
     private ErpPurchaseInMapper purchaseInMapper;
     @Resource
+    private ErpFinanceReceiptItemMapper financeReceiptItemMapper;
+    @Resource
     private ErpSaleFieldPermissionMasker fieldPermissionMasker;
+    @Resource
+    private ErpSaleItemPriceReferenceFiller itemPriceReferenceFiller;
+    @Resource
+    private ErpDataPermissionDeptService dataPermissionDeptService;
+    @Resource
+    private ErpCustomerDeptPermissionService customerDeptPermissionService;
 
     @Resource
     private AdminUserApi adminUserApi;
@@ -264,9 +298,11 @@ public class ErpSaleOutController {
                     // 已退数量
                     item.setReturnedCount(returnedCountMap.get(item.getId()));
                 })));
+        itemPriceReferenceFiller.fill(respVO.getItems());
         // 填充主表关联字段
         fillSaleOutRelationFields(respVO, saleOut);
         fillSaleOutStockOutBillInfo(respVO, id);
+        fillSaleOutPickDeliverySummary(respVO, salePickDeliveryService.getSummaryMapBySaleOutIds(Collections.singleton(id)).get(id));
         // 退货状态
         if (Boolean.TRUE.equals(includeItems)) {
             respVO.setReturnStatus(calculateReturnStatus(saleOutItemList, returnedCountMap));
@@ -278,6 +314,83 @@ public class ErpSaleOutController {
     @PreAuthorize("@ss.hasPermission('erp:sale-out:query')")
     public CommonResult<ErpSaleOutRespVO> getSaleOut(Long id) {
         return getSaleOut(id, true);
+    }
+
+    @GetMapping("/receipt-summary")
+    @Operation(summary = "获得销售出库收款核销摘要")
+    @Parameter(name = "id", description = "销售出库编号", required = true, example = "1024")
+    @PreAuthorize("@ss.hasPermission('erp:sale-out:query')")
+    public CommonResult<ErpSaleOutReceiptSummaryRespVO> getSaleOutReceiptSummary(@RequestParam("id") Long id) {
+        ErpSaleOutDO saleOut = saleOutService.getSaleOut(id);
+        if (saleOut == null) {
+            return success(null);
+        }
+        BigDecimal receivableAmount = zeroIfNull(ErpOriginalSettlementAmountUtils.calculateSaleOut(
+                saleOut, saleOutService.getSaleOutItemListByOutId(id)));
+        BigDecimal receivedAmount = zeroIfNull(financeReceiptItemMapper.selectReceiptPriceSumByBizIdAndBizType(
+                id, ErpBizTypeEnum.SALE_OUT.getType()));
+        BigDecimal unreceivedAmount = receivableAmount.subtract(receivedAmount);
+        return success(new ErpSaleOutReceiptSummaryRespVO()
+                .setId(id)
+                .setReceivableAmount(receivableAmount)
+                .setReceivedAmount(receivedAmount)
+                .setUnreceivedAmount(unreceivedAmount)
+                .setReceiptStatus(calculateSaleOutReceiptStatus(receivableAmount, receivedAmount)));
+    }
+
+    @GetMapping("/pick-delivery-detail")
+    @Operation(summary = "获得销售出库拣货送货详情")
+    @Parameter(name = "outId", description = "销售出库编号", required = true, example = "1024")
+    @PreAuthorize("@ss.hasPermission('erp:sale-out:query')")
+    public CommonResult<ErpSaleOutPickDeliveryDetailRespVO> getSaleOutPickDeliveryDetail(
+            @RequestParam("outId") Long outId) {
+        ErpSaleOutDO saleOut = saleOutService.getSaleOut(outId);
+        if (saleOut == null) {
+            return success(null);
+        }
+        return success(salePickDeliveryService.getSaleOutPickDeliveryDetail(outId));
+    }
+
+    @GetMapping("/pick-delivery-item-page")
+    @Operation(summary = "获得销售出库拣货送货明细分页")
+    @PreAuthorize("@ss.hasPermission('erp:sale-out:query')")
+    public CommonResult<PageResult<ErpSalePickDeliveryItemRespVO>> getSaleOutPickDeliveryItemPage(
+            @Valid ErpSaleOutPickDeliveryItemPageReqVO pageReqVO) {
+        ErpSaleOutDO saleOut = saleOutService.getSaleOut(pageReqVO.getOutId());
+        if (saleOut == null) {
+            return success(PageResult.empty());
+        }
+        return success(salePickDeliveryService.getSaleOutPickDeliveryItemPage(pageReqVO.getOutId(), pageReqVO));
+    }
+
+    @GetMapping("/pick-delivery-file-page")
+    @Operation(summary = "获得销售出库拣货送货图片凭证分页")
+    @PreAuthorize("@ss.hasPermission('erp:sale-out:query')")
+    public CommonResult<PageResult<ErpSaleOutPickDeliveryFileRespVO>> getSaleOutPickDeliveryFilePage(
+            @Valid ErpSaleOutPickDeliveryFilePageReqVO pageReqVO) {
+        ErpSaleOutDO saleOut = saleOutService.getSaleOut(pageReqVO.getOutId());
+        if (saleOut == null) {
+            return success(PageResult.empty());
+        }
+        return success(salePickDeliveryService.getSaleOutPickDeliveryFilePage(
+                pageReqVO.getOutId(), pageReqVO.getType(), pageReqVO));
+    }
+
+    private Integer calculateSaleOutReceiptStatus(BigDecimal receivableAmount, BigDecimal receivedAmount) {
+        BigDecimal normalizedReceivableAmount = zeroIfNull(receivableAmount).abs();
+        BigDecimal normalizedReceivedAmount = zeroIfNull(receivedAmount).abs();
+        if (normalizedReceivedAmount.compareTo(BigDecimal.ZERO) == 0) {
+            return 0;
+        }
+        if (normalizedReceivableAmount.compareTo(BigDecimal.ZERO) == 0
+                || normalizedReceivedAmount.compareTo(normalizedReceivableAmount) < 0) {
+            return 1;
+        }
+        return 2;
+    }
+
+    private BigDecimal zeroIfNull(BigDecimal value) {
+        return value == null ? BigDecimal.ZERO : value;
     }
 
     @GetMapping("/item-page")
@@ -339,6 +452,7 @@ public class ErpSaleOutController {
             item.setReturnedCount(returnedCountMap.get(item.getId()));
         });
         fillSaleOutItemStockOutBillInfo(pageReqVO.getOutId(), items);
+        itemPriceReferenceFiller.fill(items);
         PageResult<ErpSaleOutRespVO.Item> respResult = new PageResult<>(items, pageResult.getTotal());
         if (Boolean.TRUE.equals(pageReqVO.getMask())) {
             ErpSaleOutRespVO context = BeanUtils.toBean(saleOut, ErpSaleOutRespVO.class);
@@ -545,13 +659,38 @@ public class ErpSaleOutController {
         }
     }
 
+    @GetMapping("/dept-simple-page")
+    @Operation(summary = "获取销售出库可见部门精简分页")
+    @PreAuthorize("@ss.hasPermission('erp:sale-out:query')")
+    public CommonResult<PageResult<DeptSimpleRespVO>> getVisibleDeptSimplePage(@Valid PageParam pageReqVO) {
+        return success(dataPermissionDeptService.getDeptSimplePage(FIELD_PERMISSION_MODULE, pageReqVO));
+    }
+
+    @GetMapping("/customer-dept-simple-page")
+    @Operation(summary = "获取销售出库客户可用部门分页")
+    @PreAuthorize("@ss.hasPermission('erp:sale-out:query')")
+    public CommonResult<PageResult<DeptSimpleRespVO>> getCustomerAvailableDeptSimplePage(
+            @RequestParam("customerId") Long customerId, @Valid PageParam pageReqVO) {
+        return success(customerDeptPermissionService.getAvailableDeptSimplePage(customerId, FIELD_PERMISSION_MODULE, pageReqVO));
+    }
+
+    @GetMapping("/user-simple-page")
+    @Operation(summary = "获取销售出库用户精简分页")
+    @PreAuthorize("@ss.hasPermission('erp:sale-out:query')")
+    public CommonResult<PageResult<UserSimpleRespVO>> getUserSimplePage(@Valid PageParam pageReqVO) {
+        return success(buildUserSimplePage(pageReqVO));
+    }
+
     @GetMapping("/page")
     @Operation(summary = "获得销售出库分页")
     @PreAuthorize("@ss.hasPermission('erp:sale-out:query')")
     public CommonResult<PageResult<ErpSaleOutRespVO>> getSaleOutPage(@Valid ErpSaleOutPageReqVO pageReqVO) {
         PageResult<ErpSaleOutDO> pageResult = saleOutService.getSaleOutPage(pageReqVO);
-        PageResult<ErpSaleOutRespVO> respResult = buildSaleOutVOPageResult(pageResult,
-                Boolean.TRUE.equals(pageReqVO.getReceiptEnable()));
+        boolean useOriginalSettlementAmount = Boolean.TRUE.equals(pageReqVO.getReceiptEnable());
+        PageResult<ErpSaleOutRespVO> respResult = Boolean.FALSE.equals(pageReqVO.getIncludeItems())
+                && !useOriginalSettlementAmount
+                ? buildSaleOutVOPageResultWithoutItems(pageResult)
+                : buildSaleOutVOPageResult(pageResult, useOriginalSettlementAmount);
         fieldPermissionMasker.maskSaleDetailFormsWithItems(FIELD_PERMISSION_MODULE, respResult.getList());
         return success(respResult);
     }
@@ -564,6 +703,16 @@ public class ErpSaleOutController {
         List<ErpSaleReturnableItemRespVO> list = saleOutService.getReturnableItemsByOutId(outId);
         fieldPermissionMasker.maskSaleDetailExportRows(FIELD_PERMISSION_MODULE, list);
         return success(list);
+    }
+
+    @GetMapping("/returnable-item-page")
+    @Operation(summary = "获取销售单的可退明细分页（按销售单退货使用）")
+    @PreAuthorize("@ss.hasPermission('erp:sale-return:create')")
+    public CommonResult<PageResult<ErpSaleReturnableItemRespVO>> getReturnableItemPage(
+            @Valid ErpSaleOutReturnableItemPageReqVO pageReqVO) {
+        PageResult<ErpSaleReturnableItemRespVO> pageResult = saleOutService.getReturnableItemPage(pageReqVO);
+        fieldPermissionMasker.maskSaleDetailExportRows(FIELD_PERMISSION_MODULE, pageResult.getList());
+        return success(pageResult);
     }
 
     @GetMapping("/export-excel")
@@ -659,6 +808,8 @@ public class ErpSaleOutController {
                 ? Collections.emptyMap()
                 : stockOutBills.stream().filter(bill -> bill.getSourceId() != null)
                 .collect(Collectors.groupingBy(ErpStockOutBillDO::getSourceId));
+        Map<Long, ErpSalePickDeliverySummaryRespVO> pickDeliverySummaryMap =
+                salePickDeliveryService.getSummaryMapBySaleOutIds(convertSet(pageResult.getList(), ErpSaleOutDO::getId));
         // 1.5 退货状态：按 sourceOutItemId 聚合已退数量
         Set<Long> allOutItemIds = convertSet(saleOutItemList, ErpSaleOutItemDO::getId);
         Map<Long, BigDecimal> returnedCountMap = saleReturnItemMapper.selectReturnedCountMapBySourceOutItemIds(allOutItemIds);
@@ -687,6 +838,7 @@ public class ErpSaleOutController {
                                 && !Objects.equals(item.getSourceWarehouseId(), item.getWarehouseId()));
                         MapUtils.findAndThen(itemDeptMap, item.getDeptId(), dept -> item.setDeptName(dept.getName()));
                     }));
+            itemPriceReferenceFiller.fill(saleOut.getItems());
             saleOut.setProductNames(CollUtil.join(saleOut.getItems(), "，", ErpSaleOutRespVO.Item::getProductName));
             MapUtils.findAndThen(customerMap, saleOut.getCustomerId(), customer -> {
                 saleOut.setCustomerName(customer.getName());
@@ -728,9 +880,149 @@ public class ErpSaleOutController {
                     saleOut.getId(), Collections.emptyList());
             saleOut.setHasStockOutBill(CollUtil.isNotEmpty(saleOutBills));
             saleOut.setStockOutBills(toStockOutBillBriefs(saleOutBills));
+            saleOut.setAdjustStatus(calculateAdjustStatus(saleOut, items));
             // 退货状态计算
             saleOut.setReturnStatus(calculateReturnStatus(saleOutItemMap.get(saleOut.getId()), returnedCountMap));
+            fillSaleOutPickDeliverySummary(saleOut, pickDeliverySummaryMap.get(saleOut.getId()));
         });
+    }
+
+    private PageResult<ErpSaleOutRespVO> buildSaleOutVOPageResultWithoutItems(PageResult<ErpSaleOutDO> pageResult) {
+        if (CollUtil.isEmpty(pageResult.getList())) {
+            return PageResult.empty(pageResult.getTotal());
+        }
+        Set<Long> outIds = convertSet(pageResult.getList(), ErpSaleOutDO::getId);
+        List<ErpSaleOutItemDO> saleOutItemList = saleOutItemMapper.selectLightListByOutIds(outIds);
+        Map<Long, List<ErpSaleOutItemDO>> saleOutItemMap = convertMultiMap(saleOutItemList, ErpSaleOutItemDO::getOutId);
+        Map<Long, ErpCustomerDO> customerMap = customerService.getCustomerMap(
+                convertSet(pageResult.getList(), ErpSaleOutDO::getCustomerId));
+        Map<Integer, Map<Long, SourceDocumentMeta>> sourceDocumentMetaMap =
+                buildSourceDocumentMetaMap(pageResult.getList());
+        Set<Long> userIds = new HashSet<>();
+        pageResult.getList().forEach(out -> {
+            addUserId(userIds, out.getCreator());
+            addUserId(userIds, out.getUpdater());
+            if (out.getSaleUserId() != null) {
+                userIds.add(out.getSaleUserId());
+            }
+            if (out.getAuditorId() != null) {
+                userIds.add(out.getAuditorId());
+            }
+            SourceDocumentMeta sourceDocumentMeta = getSourceDocumentMeta(sourceDocumentMetaMap, out);
+            Long sourceCreatorId = sourceDocumentMeta != null ? parseUserId(sourceDocumentMeta.creator) : null;
+            if (sourceCreatorId != null) {
+                userIds.add(sourceCreatorId);
+            }
+        });
+        Map<Long, AdminUserRespDTO> userMap = CollUtil.isEmpty(userIds)
+                ? Collections.emptyMap() : adminUserApi.getUserMap(userIds);
+        Set<Long> deptIds = convertSet(pageResult.getList(), ErpSaleOutDO::getDeptId);
+        deptIds.remove(null);
+        Map<Long, DeptRespDTO> deptMap = CollUtil.isEmpty(deptIds)
+                ? Collections.emptyMap() : deptApi.getDeptMap(deptIds);
+        List<ErpStockOutBillDO> stockOutBills = stockOutBillService.getStockOutBillListBySaleOutIds(outIds);
+        Map<Long, List<ErpStockOutBillDO>> stockOutBillMap = CollUtil.isEmpty(stockOutBills)
+                ? Collections.emptyMap()
+                : stockOutBills.stream().filter(bill -> bill.getSourceId() != null)
+                .collect(Collectors.groupingBy(ErpStockOutBillDO::getSourceId));
+        Map<Long, ErpSalePickDeliverySummaryRespVO> pickDeliverySummaryMap =
+                salePickDeliveryService.getSummaryMapBySaleOutIds(outIds);
+        Set<Long> allOutItemIds = convertSet(saleOutItemList, ErpSaleOutItemDO::getId);
+        Map<Long, BigDecimal> returnedCountMap = saleReturnItemMapper.selectReturnedCountMapBySourceOutItemIds(allOutItemIds);
+        return BeanUtils.toBean(pageResult, ErpSaleOutRespVO.class, saleOut -> {
+            MapUtils.findAndThen(customerMap, saleOut.getCustomerId(), customer -> {
+                saleOut.setCustomerName(customer.getName());
+                saleOut.setCustomerCode(customer.getCode());
+            });
+            fillSaleOutUserNames(saleOut, userMap);
+            SourceDocumentMeta sourceDocumentMeta = getSourceDocumentMeta(sourceDocumentMetaMap, saleOut);
+            if (sourceDocumentMeta != null) {
+                if (saleOut.getSourceCreateTime() == null) {
+                    saleOut.setSourceCreateTime(sourceDocumentMeta.createTime);
+                }
+                if (saleOut.getFreightType() == null) {
+                    saleOut.setFreightType(sourceDocumentMeta.freightType);
+                }
+                Long sourceCreatorId = parseUserId(sourceDocumentMeta.creator);
+                if (sourceCreatorId != null) {
+                    MapUtils.findAndThen(userMap, sourceCreatorId,
+                            user -> saleOut.setSourceCreatorName(user.getNickname()));
+                }
+            }
+            MapUtils.findAndThen(deptMap, saleOut.getDeptId(), dept -> saleOut.setDeptName(dept.getName()));
+            List<ErpStockOutBillDO> saleOutBills = stockOutBillMap.getOrDefault(
+                    saleOut.getId(), Collections.emptyList());
+            saleOut.setHasStockOutBill(CollUtil.isNotEmpty(saleOutBills));
+            saleOut.setStockOutBills(toStockOutBillBriefs(saleOutBills));
+            List<ErpSaleOutItemDO> items = saleOutItemMap.getOrDefault(saleOut.getId(), Collections.emptyList());
+            saleOut.setAdjustStatus(calculateAdjustStatus(saleOut, items));
+            saleOut.setReturnStatus(calculateReturnStatus(items, returnedCountMap));
+            fillSaleOutPickDeliverySummary(saleOut, pickDeliverySummaryMap.get(saleOut.getId()));
+        });
+    }
+
+    private PageResult<UserSimpleRespVO> buildUserSimplePage(PageParam pageReqVO) {
+        PageResult<AdminUserRespDTO> page = adminUserApi.getUserSimplePage(
+                CommonStatusEnum.ENABLE.getStatus(), pageReqVO.getKeyword(), pageReqVO);
+        List<UserSimpleRespVO> list = convertList(page.getList(), user ->
+                new UserSimpleRespVO(user.getId(), user.getNickname(), user.getDeptId(), null));
+        return new PageResult<>(list, page.getTotal());
+    }
+
+    private void fillSaleOutUserNames(ErpSaleOutRespVO saleOut, Map<Long, AdminUserRespDTO> userMap) {
+        if (saleOut.getCreator() != null) {
+            MapUtils.findAndThen(userMap, parseUserId(saleOut.getCreator()),
+                    user -> saleOut.setCreatorName(user.getNickname()));
+        }
+        if (saleOut.getUpdater() != null) {
+            MapUtils.findAndThen(userMap, parseUserId(saleOut.getUpdater()),
+                    user -> saleOut.setUpdaterName(user.getNickname()));
+        }
+        if (saleOut.getSaleUserId() != null) {
+            MapUtils.findAndThen(userMap, saleOut.getSaleUserId(), user -> saleOut.setSaleUserName(user.getNickname()));
+        }
+        if (saleOut.getAuditorId() != null) {
+            MapUtils.findAndThen(userMap, saleOut.getAuditorId(), user -> saleOut.setAuditorName(user.getNickname()));
+        }
+    }
+
+    private void addUserId(Set<Long> userIds, String userId) {
+        Long parsedUserId = parseUserId(userId);
+        if (parsedUserId != null) {
+            userIds.add(parsedUserId);
+        }
+    }
+
+    private void fillSaleOutPickDeliverySummary(ErpSaleOutRespVO respVO,
+                                                ErpSalePickDeliverySummaryRespVO summary) {
+        if (summary == null) {
+            return;
+        }
+        respVO.setPickDeliveryOrderId(summary.getOrderId());
+        respVO.setPickStatus(summary.getPickStatus());
+        respVO.setDeliveryStatus(summary.getDeliveryStatus());
+        respVO.setPickDeliveryTotalItemCount(summary.getTotalItemCount());
+        respVO.setPickedItemCount(summary.getPickedItemCount());
+        respVO.setDeliveredItemCount(summary.getDeliveredItemCount());
+        respVO.setPickProgress(summary.getPickProgress());
+        respVO.setDeliveryProgress(summary.getDeliveryProgress());
+        respVO.setLatestPickTime(summary.getLatestPickTime());
+        respVO.setLatestDeliveryTime(summary.getLatestDeliveryTime());
+        respVO.setPickCompleteTime(summary.getPickCompleteTime());
+        respVO.setDeliveryCompleteTime(summary.getDeliveryCompleteTime());
+    }
+
+    private Integer calculateAdjustStatus(ErpSaleOutRespVO saleOut, List<ErpSaleOutItemDO> items) {
+        if (CollUtil.isEmpty(items)) {
+            return Boolean.TRUE.equals(saleOut.getAdjusted()) ? ADJUST_STATUS_ALL : ADJUST_STATUS_NONE;
+        }
+        long adjustedCount = items.stream()
+                .filter(item -> Boolean.TRUE.equals(item.getAdjusted()))
+                .count();
+        if (adjustedCount <= 0) {
+            return ADJUST_STATUS_NONE;
+        }
+        return adjustedCount >= items.size() ? ADJUST_STATUS_ALL : ADJUST_STATUS_PART;
     }
 
     /**

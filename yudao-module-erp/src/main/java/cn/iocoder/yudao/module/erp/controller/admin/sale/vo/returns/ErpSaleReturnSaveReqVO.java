@@ -118,6 +118,9 @@ public class ErpSaleReturnSaveReqVO {
         @Schema(description = "退货项编号", example = "11756")
         private Long id;
 
+        @Schema(description = "明细操作类型：insert 新增，update 修改，delete 删除")
+        private String operation;
+
         @Schema(description = "销售订单项编号", requiredMode = Schema.RequiredMode.REQUIRED, example = "11756")
         private Long orderItemId;
 

@@ -11,7 +11,9 @@ import cn.iocoder.yudao.module.erp.controller.admin.finance.payable.vo.report.Er
 import cn.iocoder.yudao.module.erp.controller.admin.finance.payable.vo.report.ErpPayableReportRespVO;
 import cn.iocoder.yudao.module.erp.service.base.ErpDataPermissionDeptService;
 import cn.iocoder.yudao.module.erp.service.finance.payable.ErpPayableReportService;
+import cn.iocoder.yudao.module.system.api.user.AdminUserApi;
 import cn.iocoder.yudao.module.system.controller.admin.dept.vo.dept.DeptSimpleRespVO;
+import cn.iocoder.yudao.module.system.controller.admin.user.vo.user.UserSimpleRespVO;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -28,6 +30,7 @@ import java.util.List;
 
 import static cn.iocoder.yudao.framework.apilog.core.enums.OperateTypeEnum.EXPORT;
 import static cn.iocoder.yudao.framework.common.pojo.CommonResult.success;
+import static cn.iocoder.yudao.module.erp.controller.admin.finance.ErpFinanceSimplePageUtils.buildUserSimplePage;
 
 @Tag(name = "ERP 应付报表")
 @RestController
@@ -39,6 +42,8 @@ public class ErpPayableReportController {
     private ErpPayableReportService payableReportService;
     @Resource
     private ErpDataPermissionDeptService dataPermissionDeptService;
+    @Resource
+    private AdminUserApi adminUserApi;
 
     @GetMapping("/page")
     @Operation(summary = "获得应付报表分页")
@@ -53,6 +58,20 @@ public class ErpPayableReportController {
     @PreAuthorize("@ss.hasPermission('erp:payable-report:query')")
     public CommonResult<List<DeptSimpleRespVO>> getPayableReportDeptSimpleList() {
         return success(dataPermissionDeptService.getDeptSimpleList("erp_finance_payable_report"));
+    }
+
+    @GetMapping("/dept-simple-page")
+    @Operation(summary = "获得应付报表可搜索部门精简分页")
+    @PreAuthorize("@ss.hasPermission('erp:payable-report:query')")
+    public CommonResult<PageResult<DeptSimpleRespVO>> getPayableReportDeptSimplePage(@Valid PageParam pageReqVO) {
+        return success(dataPermissionDeptService.getDeptSimplePage("erp_finance_payable_report", pageReqVO));
+    }
+
+    @GetMapping("/user-simple-page")
+    @Operation(summary = "获得应付报表用户精简分页")
+    @PreAuthorize("@ss.hasPermission('erp:payable-report:query')")
+    public CommonResult<PageResult<UserSimpleRespVO>> getUserSimplePage(@Valid PageParam pageReqVO) {
+        return success(buildUserSimplePage(adminUserApi, pageReqVO));
     }
 
     @GetMapping("/detail")

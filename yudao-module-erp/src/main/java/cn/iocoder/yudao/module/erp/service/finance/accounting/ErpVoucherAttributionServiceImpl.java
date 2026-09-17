@@ -95,7 +95,10 @@ public class ErpVoucherAttributionServiceImpl implements ErpVoucherAttributionSe
     @Lazy
     private ErpVoucherService voucherService;
     @Resource
-    private ErpAutoVoucherBuilder autoVoucherBuilder;
+    private cn.iocoder.yudao.module.erp.service.finance.accounting.rule.ErpVoucherGenerationService generationService;
+    @Resource
+    private cn.iocoder.yudao.module.erp.service.finance.accounting.rule.ErpVoucherSourceReader ruleSourceReader;
+
 
     // ========== 凭证生成-单据来源查询所需 Mapper ==========
     @Resource
@@ -237,52 +240,16 @@ public class ErpVoucherAttributionServiceImpl implements ErpVoucherAttributionSe
     @Override
     @Transactional(rollbackFor = Exception.class)
     public List<Long> generateVouchers(ErpVoucherAttributionGenerateReqVO reqVO) {
-        List<ErpVoucherAttributionDO> attributions = attributionMapper.selectByIds(reqVO.getIds());
-        if (CollUtil.isEmpty(attributions) || attributions.size() != reqVO.getIds().size()) {
-            throw exception(VOUCHER_ATTRIBUTION_NOT_EXISTS);
-        }
-        // 1. 校验期间已开账；已生成凭证允许重生成，由旧凭证审核状态决定是否阻止
-        for (ErpVoucherAttributionDO attribution : attributions) {
-            Integer voucherType = mapBizTypeToVoucherType(attribution.getBizType());
-            if (voucherType != null && attribution.getBizDate() != null) {
-                if (!bookOpenService.isVoucherTypeEnabled(attribution.getBizDate().toLocalDate(), voucherType)) {
-                    throw exception(VOUCHER_ATTRIBUTION_BOOK_NOT_OPEN);
-                }
-            }
-        }
-
-        // 2. 顺次从真实业务单据生成凭证分录并回写
-        List<Long> voucherIds = new ArrayList<>(attributions.size());
+        cn.iocoder.yudao.module.erp.service.finance.accounting.rule.ErpVoucherRuleModels.Batch batch = new cn.iocoder.yudao.module.erp.service.finance.accounting.rule.ErpVoucherRuleModels.Batch();
         for (Long id : reqVO.getIds()) {
-            ErpVoucherAttributionDO attribution = attributions.stream()
-                    .filter(a -> a.getId().equals(id)).findFirst().orElseThrow(() -> exception(VOUCHER_ATTRIBUTION_NOT_EXISTS));
-            deleteOldAttributionVoucherIfNecessary(attribution);
-
-            Integer year = attribution.getAttributionYear();
-            Integer month = attribution.getAttributionMonth();
-            LocalDate makeDate = attribution.getVoucherMakeDate() != null
-                    ? attribution.getVoucherMakeDate()
-                    : (attribution.getBizDate() != null ? attribution.getBizDate().toLocalDate() : LocalDate.now());
-            if (year == null) {
-                year = makeDate.getYear();
-            }
-            if (month == null) {
-                month = makeDate.getMonthValue();
-            }
-            LocalDate voucherDate = LocalDate.of(year, month, 1);
-
-            Long voucherId = createRealVoucherFromAttribution(attribution, voucherDate);
-            voucherIds.add(voucherId);
-
-            ErpVoucherAttributionDO update = new ErpVoucherAttributionDO()
-                    .setId(attribution.getId())
-                    .setAttributionYear(year)
-                    .setAttributionMonth(month)
-                    .setAttributionStatus(ErpAttributionStatusEnum.GENERATED.getStatus())
-                    .setVoucherId(voucherId);
-            attributionMapper.updateById(update);
+            ErpVoucherAttributionDO a = attributionMapper.selectById(id);
+            if (a == null) throw exception(VOUCHER_ATTRIBUTION_NOT_EXISTS);
+            cn.iocoder.yudao.module.erp.service.finance.accounting.rule.ErpVoucherRuleModels.Request r = new cn.iocoder.yudao.module.erp.service.finance.accounting.rule.ErpVoucherRuleModels.Request();
+            r.setBizType(a.getBizType()); r.setBizId(a.getBizId()); r.setVoucherDate(a.getVoucherMakeDate());
+            r.setAttributionYear(a.getAttributionYear()); r.setAttributionMonth(a.getAttributionMonth());
+            r.setPreviewToken(reqVO.getPreviewTokens() == null ? null : reqVO.getPreviewTokens().get(id)); batch.getItems().add(r);
         }
-        return voucherIds;
+        return generationService.generate(batch);
     }
 
     // ==================== 凭证生成-单据来源分页查询 ====================
@@ -290,44 +257,13 @@ public class ErpVoucherAttributionServiceImpl implements ErpVoucherAttributionSe
     @Override
     @Transactional(rollbackFor = Exception.class)
     public List<Long> generateVouchersFromBiz(ErpVoucherAttributionGenerateFromBizReqVO reqVO) {
-        // 1. 逐条落 attribution（bizType+bizId 已存在则复用，避免重复）
-        List<Long> attributionIds = new ArrayList<>(reqVO.getItems().size());
+        cn.iocoder.yudao.module.erp.service.finance.accounting.rule.ErpVoucherRuleModels.Batch batch = new cn.iocoder.yudao.module.erp.service.finance.accounting.rule.ErpVoucherRuleModels.Batch();
         for (ErpVoucherAttributionGenerateFromBizReqVO.BizItem item : reqVO.getItems()) {
-            ErpVoucherAttributionDO existing = attributionMapper.selectOne(
-                    new LambdaQueryWrapperX<ErpVoucherAttributionDO>()
-                            .eq(ErpVoucherAttributionDO::getBizType, item.getBizType())
-                            .eq(ErpVoucherAttributionDO::getBizId, item.getBizId()));
-            if (existing != null) {
-                // 更新归属年月 + 制单日期
-                ErpVoucherAttributionDO update = new ErpVoucherAttributionDO()
-                        .setId(existing.getId())
-                        .setAttributionYear(reqVO.getAttributionYear())
-                        .setAttributionMonth(reqVO.getAttributionMonth())
-                        .setVoucherMakeDate(reqVO.getVoucherMakeDate())
-                        .setAttributionStatus(ErpAttributionStatusEnum.ATTRIBUTED.getStatus());
-                attributionMapper.updateById(update);
-                attributionIds.add(existing.getId());
-            } else {
-                ErpVoucherAttributionDO insert = new ErpVoucherAttributionDO()
-                        .setBizType(item.getBizType())
-                        .setBizId(item.getBizId())
-                        .setBizNo(item.getBizNo())
-                        .setBizDate(item.getBizDate())
-                        .setBizAmount(item.getBizAmount())
-                        .setTransactionParty(item.getTransactionParty())
-                        .setRemark(item.getRemark())
-                        .setVoucherMakeDate(reqVO.getVoucherMakeDate())
-                        .setAttributionYear(reqVO.getAttributionYear())
-                        .setAttributionMonth(reqVO.getAttributionMonth())
-                        .setAttributionStatus(ErpAttributionStatusEnum.ATTRIBUTED.getStatus());
-                attributionMapper.insert(insert);
-                attributionIds.add(insert.getId());
-            }
+            cn.iocoder.yudao.module.erp.service.finance.accounting.rule.ErpVoucherRuleModels.Request r = new cn.iocoder.yudao.module.erp.service.finance.accounting.rule.ErpVoucherRuleModels.Request();
+            r.setBizType(item.getBizType()); r.setBizId(item.getBizId()); r.setVoucherDate(reqVO.getVoucherMakeDate());
+            r.setAttributionYear(reqVO.getAttributionYear()); r.setAttributionMonth(reqVO.getAttributionMonth());r.setPreviewToken(item.getPreviewToken());batch.getItems().add(r);
         }
-        // 2. 复用现有生成凭证逻辑
-        ErpVoucherAttributionGenerateReqVO generateReq = new ErpVoucherAttributionGenerateReqVO();
-        generateReq.setIds(attributionIds);
-        return generateVouchers(generateReq);
+        return generationService.generate(batch);
     }
 
     // ==================== 凭证生成-单据来源分页查询（业务单据快照查询） ====================
@@ -340,6 +276,8 @@ public class ErpVoucherAttributionServiceImpl implements ErpVoucherAttributionSe
         }
         // 路由到对应业务表
         switch (sourceBizType) {
+            case 6: case 12: case 18:
+                return searchFundSource(reqVO);
             case 2:
                 return searchSaleOut(reqVO);
             case 3:
@@ -362,17 +300,44 @@ public class ErpVoucherAttributionServiceImpl implements ErpVoucherAttributionSe
                 return searchPrePayment(reqVO);
             case 23:
                 return searchPreReceivable(reqVO);
-            // 未接入生成规则的来源暂返回空，避免查询后批量生成失败。
+            // 未接入来源明确说明，不能伪装成没有单据。
             default:
-                return PageResult.empty(0L);
+                throw cn.iocoder.yudao.module.erp.service.finance.accounting.rule.ErpVoucherSourceReader.problem("此来源尚未接入凭证生成，请人工处理");
         }
+    }
+
+    private PageResult<ErpVoucherAttributionRespVO> searchFundSource(ErpVoucherAttributionSearchSourceBizReqVO req) {
+        int type=req.getSourceBizType();
+        String bean=type==6?"erpFinanceReceiptMapper":type==12?"erpFinancePaymentMapper":"erpFinanceTransferMapper";
+        String time=type==6?"receipt_time":type==12?"payment_time":"transfer_time";
+        com.baomidou.mybatisplus.core.conditions.query.QueryWrapper<Object> q=new com.baomidou.mybatisplus.core.conditions.query.QueryWrapper<>();
+        q.eq("status",20);
+        if(req.getBizNo()!=null&&!req.getBizNo().isEmpty())q.like("no",req.getBizNo());
+        if(req.getBizDateStartTime()!=null)q.ge(time,req.getBizDateStartTime());
+        if(req.getBizDateEndTime()!=null)q.le(time,req.getBizDateEndTime());
+        if(req.getPartyName()!=null&&!req.getPartyName().isEmpty()) {
+            List<Long> parties=type==6?resolveCustomerIdsByName(req.getPartyName()):type==12?resolveSupplierIdsByName(req.getPartyName()):Collections.emptyList();
+            if(parties==null||parties.isEmpty())return PageResult.empty();q.in(type==6?"customer_id":"supplier_id",parties);
+        }
+        PageResult<Map<String,Object>> page=ruleSourceReader.page(bean,q,req.getPageNo(),req.getPageSize());
+        List<ErpVoucherAttributionRespVO> rows=new ArrayList<>();
+        for(Map<String,Object> h:page.getList()) {
+            String party="";
+            if(type==6||type==12) {
+                Long partyId=cn.iocoder.yudao.module.erp.service.finance.accounting.rule.ErpVoucherSourceReader.longValue(h,type==6?"customerId":"supplierId");
+                if(partyId!=null)party=String.valueOf(ruleSourceReader.one(type==6?"erpCustomerMapper":"erpSupplierMapper",partyId).get("name"));
+            }
+            rows.add(buildResp(type,(Long)h.get("id"),(String)h.get("no"),(java.time.LocalDateTime)h.get(type==6?"receiptTime":type==12?"paymentTime":"transferTime"),
+                (BigDecimal)h.get(type==6?"receiptPrice":type==12?"paymentPrice":"transferPrice"),party,(String)h.get("remark")));
+        }
+        return new PageResult<>(rows,page.getTotal());
     }
 
     private PageResult<ErpVoucherAttributionRespVO> searchAllSourceBiz(ErpVoucherAttributionSearchSourceBizReqVO reqVO) {
         int pageNo = reqVO.getPageNo() == null ? 1 : reqVO.getPageNo();
         int pageSize = reqVO.getPageSize() == null ? 10 : reqVO.getPageSize();
         int querySize = pageNo * pageSize;
-        List<Integer> supportedTypes = java.util.Arrays.asList(
+        List<Integer> supportedTypes = java.util.Arrays.asList(6, 12, 18,
                 ErpVoucherSourceBizTypeEnum.SALE_OUT.getType(),
                 ErpVoucherSourceBizTypeEnum.SALE_RETURN.getType(),
                 ErpVoucherSourceBizTypeEnum.OTHER_RECEIVABLE.getType(),
@@ -441,7 +406,6 @@ public class ErpVoucherAttributionServiceImpl implements ErpVoucherAttributionSe
                 .inIfPresent(ErpSaleOutDO::getCustomerId, customerIds);
         wrapper.eq(ErpSaleOutDO::getStatus, ErpAuditStatus.APPROVE.getStatus())
                 .isNotNull(ErpSaleOutDO::getTotalPrice)
-                .ne(ErpSaleOutDO::getTotalPrice, BigDecimal.ZERO)
                 .orderByDesc(ErpSaleOutDO::getId);
         PageResult<ErpSaleOutDO> page = saleOutMapper.selectPage(reqVO, wrapper);
         if (CollUtil.isEmpty(page.getList())) {
@@ -471,7 +435,6 @@ public class ErpVoucherAttributionServiceImpl implements ErpVoucherAttributionSe
                 .inIfPresent(ErpSaleReturnDO::getCustomerId, customerIds);
         wrapper.eq(ErpSaleReturnDO::getStatus, ErpAuditStatus.APPROVE.getStatus())
                 .isNotNull(ErpSaleReturnDO::getTotalPrice)
-                .ne(ErpSaleReturnDO::getTotalPrice, BigDecimal.ZERO)
                 .orderByDesc(ErpSaleReturnDO::getId);
         PageResult<ErpSaleReturnDO> page = saleReturnMapper.selectPage(reqVO, wrapper);
         if (CollUtil.isEmpty(page.getList())) {
@@ -501,7 +464,6 @@ public class ErpVoucherAttributionServiceImpl implements ErpVoucherAttributionSe
                 .inIfPresent(ErpPurchaseInDO::getSupplierId, supplierIds);
         wrapper.eq(ErpPurchaseInDO::getStatus, ErpAuditStatus.APPROVE.getStatus())
                 .isNotNull(ErpPurchaseInDO::getTotalPrice)
-                .ne(ErpPurchaseInDO::getTotalPrice, BigDecimal.ZERO)
                 .orderByDesc(ErpPurchaseInDO::getId);
         PageResult<ErpPurchaseInDO> page = purchaseInMapper.selectPage(reqVO, wrapper);
         if (CollUtil.isEmpty(page.getList())) {
@@ -531,7 +493,6 @@ public class ErpVoucherAttributionServiceImpl implements ErpVoucherAttributionSe
                 .inIfPresent(ErpPurchaseReturnDO::getSupplierId, supplierIds);
         wrapper.eq(ErpPurchaseReturnDO::getStatus, ErpAuditStatus.APPROVE.getStatus())
                 .isNotNull(ErpPurchaseReturnDO::getTotalPrice)
-                .ne(ErpPurchaseReturnDO::getTotalPrice, BigDecimal.ZERO)
                 .orderByDesc(ErpPurchaseReturnDO::getId);
         PageResult<ErpPurchaseReturnDO> page = purchaseReturnMapper.selectPage(reqVO, wrapper);
         if (CollUtil.isEmpty(page.getList())) {
@@ -557,7 +518,6 @@ public class ErpVoucherAttributionServiceImpl implements ErpVoucherAttributionSe
                 .leIfPresent(ErpOtherReceivableDO::getBizTime, reqVO.getBizDateEndTime());
         wrapper.eq(ErpOtherReceivableDO::getStatus, ErpAuditStatus.APPROVE.getStatus())
                 .isNotNull(ErpOtherReceivableDO::getActualAmount)
-                .ne(ErpOtherReceivableDO::getActualAmount, BigDecimal.ZERO)
                 .orderByDesc(ErpOtherReceivableDO::getId);
         PageResult<ErpOtherReceivableDO> page = otherReceivableMapper.selectPage(reqVO, wrapper);
         List<ErpVoucherAttributionRespVO> list = page.getList().stream().map(o ->
@@ -575,7 +535,6 @@ public class ErpVoucherAttributionServiceImpl implements ErpVoucherAttributionSe
                 .leIfPresent(ErpOtherPayableDO::getBizTime, reqVO.getBizDateEndTime());
         wrapper.eq(ErpOtherPayableDO::getStatus, ErpAuditStatus.APPROVE.getStatus())
                 .isNotNull(ErpOtherPayableDO::getActualAmount)
-                .ne(ErpOtherPayableDO::getActualAmount, BigDecimal.ZERO)
                 .orderByDesc(ErpOtherPayableDO::getId);
         PageResult<ErpOtherPayableDO> page = otherPayableMapper.selectPage(reqVO, wrapper);
         List<ErpVoucherAttributionRespVO> list = page.getList().stream().map(o ->
@@ -653,7 +612,6 @@ public class ErpVoucherAttributionServiceImpl implements ErpVoucherAttributionSe
                 .inIfPresent(ErpStockInDO::getSupplierId, supplierIds);
         wrapper.eq(ErpStockInDO::getStatus, ErpAuditStatus.APPROVE.getStatus())
                 .isNotNull(ErpStockInDO::getTotalPrice)
-                .ne(ErpStockInDO::getTotalPrice, BigDecimal.ZERO)
                 .orderByDesc(ErpStockInDO::getId);
         PageResult<ErpStockInDO> page = stockInMapper.selectPage(reqVO, wrapper);
         if (CollUtil.isEmpty(page.getList())) {
@@ -683,7 +641,6 @@ public class ErpVoucherAttributionServiceImpl implements ErpVoucherAttributionSe
                 .inIfPresent(ErpStockOutDO::getCustomerId, customerIds);
         wrapper.eq(ErpStockOutDO::getStatus, ErpAuditStatus.APPROVE.getStatus())
                 .isNotNull(ErpStockOutDO::getTotalPrice)
-                .ne(ErpStockOutDO::getTotalPrice, BigDecimal.ZERO)
                 .orderByDesc(ErpStockOutDO::getId);
         PageResult<ErpStockOutDO> page = stockOutMapper.selectPage(reqVO, wrapper);
         if (CollUtil.isEmpty(page.getList())) {
@@ -709,7 +666,6 @@ public class ErpVoucherAttributionServiceImpl implements ErpVoucherAttributionSe
                 .leIfPresent(ErpPreReceiptDO::getBizTime, reqVO.getBizDateEndTime());
         wrapper.eq(ErpPreReceiptDO::getStatus, ErpAuditStatus.APPROVE.getStatus())
                 .isNotNull(ErpPreReceiptDO::getActualAmount)
-                .ne(ErpPreReceiptDO::getActualAmount, BigDecimal.ZERO)
                 .orderByDesc(ErpPreReceiptDO::getId);
         PageResult<ErpPreReceiptDO> page = preReceiptMapper.selectPage(reqVO, wrapper);
         List<ErpVoucherAttributionRespVO> list = page.getList().stream().map(o ->
@@ -727,7 +683,6 @@ public class ErpVoucherAttributionServiceImpl implements ErpVoucherAttributionSe
                 .leIfPresent(ErpPrePaymentDO::getBizTime, reqVO.getBizDateEndTime());
         wrapper.eq(ErpPrePaymentDO::getStatus, ErpAuditStatus.APPROVE.getStatus())
                 .isNotNull(ErpPrePaymentDO::getActualAmount)
-                .ne(ErpPrePaymentDO::getActualAmount, BigDecimal.ZERO)
                 .orderByDesc(ErpPrePaymentDO::getId);
         PageResult<ErpPrePaymentDO> page = prePaymentMapper.selectPage(reqVO, wrapper);
         List<ErpVoucherAttributionRespVO> list = page.getList().stream().map(o ->
@@ -745,7 +700,6 @@ public class ErpVoucherAttributionServiceImpl implements ErpVoucherAttributionSe
                 .leIfPresent(ErpPreReceivableDO::getBizTime, reqVO.getBizDateEndTime());
         wrapper.eq(ErpPreReceivableDO::getStatus, ErpAuditStatus.APPROVE.getStatus())
                 .isNotNull(ErpPreReceivableDO::getActualAmount)
-                .ne(ErpPreReceivableDO::getActualAmount, BigDecimal.ZERO)
                 .orderByDesc(ErpPreReceivableDO::getId);
         PageResult<ErpPreReceivableDO> page = preReceivableMapper.selectPage(reqVO, wrapper);
         List<ErpVoucherAttributionRespVO> list = page.getList().stream().map(o ->
@@ -770,6 +724,11 @@ public class ErpVoucherAttributionServiceImpl implements ErpVoucherAttributionSe
         vo.setTransactionParty(transactionParty);
         vo.setAttributionStatus(ErpAttributionStatusEnum.UNATTRIBUTED.getStatus());
         vo.setRemark(remark);
+        cn.iocoder.yudao.module.erp.service.finance.accounting.rule.ErpVoucherRuleModels.Request r = new cn.iocoder.yudao.module.erp.service.finance.accounting.rule.ErpVoucherRuleModels.Request();
+        r.setBizType(bizType); r.setBizId(bizId);
+        cn.iocoder.yudao.module.erp.service.finance.accounting.rule.ErpVoucherRuleModels.Preview p = generationService.previewOne(r);
+        vo.setGenerationStatus(p.getStatus());vo.setGenerationIssues(p.getIssues());vo.setVoucherId(p.getVoucherId());
+        if ("GENERATED".equals(p.getStatus())) vo.setAttributionStatus(30);
         return vo;
     }
 
@@ -796,137 +755,11 @@ public class ErpVoucherAttributionServiceImpl implements ErpVoucherAttributionSe
     // ==================== 私有辅助 ====================
 
     private void deleteOldAttributionVoucherIfNecessary(ErpVoucherAttributionDO attribution) {
-        if (attribution.getVoucherId() == null) {
-            return;
-        }
-        ErpVoucherDO oldVoucher = voucherService.getVoucher(attribution.getVoucherId());
-        if (oldVoucher == null) {
-            return;
-        }
-        if (ErpVoucherAuditStatusEnum.APPROVE.getStatus().equals(oldVoucher.getAuditStatus())) {
-            throw exception(VOUCHER_BIZ_APPROVED_EXISTS,
-                    firstNonNull(attribution.getBizNo(), oldVoucher.getSourceBizNo()));
-        }
-        voucherService.deleteVoucher(oldVoucher.getId());
+        // 普通生成不替换历史凭证。
     }
 
     private Long createRealVoucherFromAttribution(ErpVoucherAttributionDO attribution, LocalDate voucherDate) {
-        Integer bizType = attribution.getBizType();
-        Long bizId = attribution.getBizId();
-        if (ErpVoucherSourceBizTypeEnum.SALE_OUT.getType().equals(bizType)) {
-            ErpSaleOutDO doc = saleOutMapper.selectById(bizId);
-            if (doc == null) {
-                throw exception(VOUCHER_AUTO_GENERATE_FAIL, "销售出库单不存在：" + bizId);
-            }
-            ErpCustomerDO customer = doc.getCustomerId() != null ? customerService.getCustomer(doc.getCustomerId()) : null;
-            String customerName = customer != null ? customer.getName() : "";
-            BigDecimal sumCost = sumStockRecordAmount(ErpStockRecordBizTypeEnum.SALE_OUT.getType(), bizId);
-            List<ErpVoucherItemDO> items = autoVoucherBuilder.buildSaleOutItems(doc, customerName, sumCost);
-            return voucherService.createVoucherFromBiz(bizType, doc.getId(), doc.getNo(), doc.getTotalPrice(),
-                    voucherDate, "销售出库 - " + customerName, items);
-        }
-        if (ErpVoucherSourceBizTypeEnum.SALE_RETURN.getType().equals(bizType)) {
-            ErpSaleReturnDO doc = saleReturnMapper.selectById(bizId);
-            if (doc == null) {
-                throw exception(VOUCHER_AUTO_GENERATE_FAIL, "销售退货单不存在：" + bizId);
-            }
-            ErpCustomerDO customer = doc.getCustomerId() != null ? customerService.getCustomer(doc.getCustomerId()) : null;
-            String customerName = customer != null ? customer.getName() : "";
-            BigDecimal sumCost = sumStockRecordAmount(ErpStockRecordBizTypeEnum.SALE_RETURN.getType(), bizId);
-            List<ErpVoucherItemDO> items = autoVoucherBuilder.buildSaleReturnItems(doc, customerName, sumCost);
-            return voucherService.createVoucherFromBiz(bizType, doc.getId(), doc.getNo(), doc.getTotalPrice(),
-                    voucherDate, "销售退货 - " + customerName, items);
-        }
-        if (ErpVoucherSourceBizTypeEnum.PURCHASE_IN.getType().equals(bizType)) {
-            ErpPurchaseInDO doc = purchaseInMapper.selectById(bizId);
-            if (doc == null) {
-                throw exception(VOUCHER_AUTO_GENERATE_FAIL, "采购入库单不存在：" + bizId);
-            }
-            ErpSupplierDO supplier = doc.getSupplierId() != null ? supplierService.getSupplier(doc.getSupplierId()) : null;
-            String supplierName = supplier != null ? supplier.getName() : "";
-            List<ErpVoucherItemDO> items = autoVoucherBuilder.buildPurchaseInItems(doc, supplierName);
-            return voucherService.createVoucherFromBiz(bizType, doc.getId(), doc.getNo(), doc.getTotalPrice(),
-                    voucherDate, "采购入库 - " + supplierName, items);
-        }
-        if (ErpVoucherSourceBizTypeEnum.PURCHASE_RETURN.getType().equals(bizType)) {
-            ErpPurchaseReturnDO doc = purchaseReturnMapper.selectById(bizId);
-            if (doc == null) {
-                throw exception(VOUCHER_AUTO_GENERATE_FAIL, "采购退货单不存在：" + bizId);
-            }
-            ErpSupplierDO supplier = doc.getSupplierId() != null ? supplierService.getSupplier(doc.getSupplierId()) : null;
-            String supplierName = supplier != null ? supplier.getName() : "";
-            List<ErpVoucherItemDO> items = autoVoucherBuilder.buildPurchaseReturnItems(doc, supplierName);
-            return voucherService.createVoucherFromBiz(bizType, doc.getId(), doc.getNo(), doc.getTotalPrice(),
-                    voucherDate, "采购退货 - " + supplierName, items);
-        }
-        if (ErpVoucherSourceBizTypeEnum.OTHER_RECEIVABLE.getType().equals(bizType)) {
-            ErpOtherReceivableDO doc = otherReceivableMapper.selectById(bizId);
-            if (doc == null) {
-                throw exception(VOUCHER_AUTO_GENERATE_FAIL, "其他应收单不存在：" + bizId);
-            }
-            List<ErpVoucherItemDO> items = autoVoucherBuilder.buildOtherReceivableItems(doc);
-            return voucherService.createVoucherFromBiz(bizType, doc.getId(), doc.getNo(),
-                    firstNonNull(doc.getActualAmount(), doc.getTotalAmount()),
-                    voucherDate, "其他应收 - " + firstNonNull(doc.getPartyName(), ""), items);
-        }
-        if (ErpVoucherSourceBizTypeEnum.OTHER_PAYABLE.getType().equals(bizType)) {
-            ErpOtherPayableDO doc = otherPayableMapper.selectById(bizId);
-            if (doc == null) {
-                throw exception(VOUCHER_AUTO_GENERATE_FAIL, "其他应付单不存在：" + bizId);
-            }
-            List<ErpVoucherItemDO> items = autoVoucherBuilder.buildOtherPayableItems(doc);
-            return voucherService.createVoucherFromBiz(bizType, doc.getId(), doc.getNo(),
-                    firstNonNull(doc.getActualAmount(), doc.getTotalAmount()),
-                    voucherDate, "其他应付 - " + firstNonNull(doc.getPartyName(), ""), items);
-        }
-        if (ErpVoucherSourceBizTypeEnum.OTHER_IN.getType().equals(bizType)) {
-            ErpStockInDO doc = stockInMapper.selectById(bizId);
-            if (doc == null) {
-                throw exception(VOUCHER_AUTO_GENERATE_FAIL, "其他入库单不存在：" + bizId);
-            }
-            BigDecimal amount = firstNonNull(doc.getTotalPrice(), attribution.getBizAmount());
-            List<ErpVoucherItemDO> items = autoVoucherBuilder.buildStockInItems(doc, firstNonNull(amount, BigDecimal.ZERO));
-            return voucherService.createVoucherFromBiz(bizType, doc.getId(), doc.getNo(), amount,
-                    voucherDate, "其他入库 - " + doc.getNo(), items);
-        }
-        if (ErpVoucherSourceBizTypeEnum.OTHER_OUT.getType().equals(bizType)) {
-            ErpStockOutDO doc = stockOutMapper.selectById(bizId);
-            if (doc == null) {
-                throw exception(VOUCHER_AUTO_GENERATE_FAIL, "其他出库单不存在：" + bizId);
-            }
-            BigDecimal amount = firstNonNull(doc.getTotalPrice(), attribution.getBizAmount());
-            List<ErpVoucherItemDO> items = autoVoucherBuilder.buildStockOutItems(doc, firstNonNull(amount, BigDecimal.ZERO));
-            return voucherService.createVoucherFromBiz(bizType, doc.getId(), doc.getNo(), amount,
-                    voucherDate, "其他出库 - " + doc.getNo(), items);
-        }
-        if (ErpVoucherSourceBizTypeEnum.PRE_RECEIPT.getType().equals(bizType)) {
-            ErpPreReceiptDO doc = preReceiptMapper.selectById(bizId);
-            if (doc == null) {
-                throw exception(VOUCHER_AUTO_GENERATE_FAIL, "预收款单不存在：" + bizId);
-            }
-            List<ErpVoucherItemDO> items = autoVoucherBuilder.buildPreReceiptItems(doc);
-            return voucherService.createVoucherFromBiz(bizType, doc.getId(), doc.getNo(), doc.getActualAmount(),
-                    voucherDate, "预收款 - " + firstNonNull(doc.getPartyName(), ""), items);
-        }
-        if (ErpVoucherSourceBizTypeEnum.PRE_PAYMENT.getType().equals(bizType)) {
-            ErpPrePaymentDO doc = prePaymentMapper.selectById(bizId);
-            if (doc == null) {
-                throw exception(VOUCHER_AUTO_GENERATE_FAIL, "预付款单不存在：" + bizId);
-            }
-            List<ErpVoucherItemDO> items = autoVoucherBuilder.buildPrePaymentItems(doc);
-            return voucherService.createVoucherFromBiz(bizType, doc.getId(), doc.getNo(), doc.getActualAmount(),
-                    voucherDate, "预付款 - " + firstNonNull(doc.getPartyName(), ""), items);
-        }
-        if (ErpVoucherSourceBizTypeEnum.PRE_RECEIVABLE.getType().equals(bizType)) {
-            ErpPreReceivableDO doc = preReceivableMapper.selectById(bizId);
-            if (doc == null) {
-                throw exception(VOUCHER_AUTO_GENERATE_FAIL, "预收账款单不存在：" + bizId);
-            }
-            List<ErpVoucherItemDO> items = autoVoucherBuilder.buildPreReceivableItems(doc);
-            return voucherService.createVoucherFromBiz(bizType, doc.getId(), doc.getNo(), doc.getActualAmount(),
-                    voucherDate, "预收账款 - " + firstNonNull(doc.getPartyName(), ""), items);
-        }
-        throw exception(VOUCHER_AUTO_GENERATE_FAIL, "暂不支持该单据类型生成凭证：" + bizType);
+        throw new IllegalStateException("请使用统一预览生成服务");
     }
 
     /**

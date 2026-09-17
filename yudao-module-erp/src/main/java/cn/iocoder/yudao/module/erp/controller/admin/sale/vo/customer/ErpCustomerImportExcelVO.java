@@ -17,6 +17,12 @@ public class ErpCustomerImportExcelVO {
     @ExcelProperty("客户编码")
     private String code;
 
+    @ExcelProperty("所属部门")
+    private String deptName;
+
+    @ExcelProperty("适用部门")
+    private String deptNames;
+
     @ExcelProperty("联系人")
     private String contact;
 

@@ -3,6 +3,8 @@ package cn.iocoder.yudao.module.erp.service.finance;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.ErpFinanceUpdateRemarkReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.receipt.ErpFinanceReceiptDraftSaveReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.receipt.ErpFinanceReceiptFormCandidateReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.receipt.ErpFinanceReceiptFormCandidateRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.receipt.ErpFinanceReceiptItemPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.receipt.ErpFinanceReceiptPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.receipt.ErpFinanceReceiptSaveReqVO;
@@ -13,8 +15,10 @@ import cn.iocoder.yudao.module.erp.dal.dataobject.finance.ErpFinanceReceiptDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.ErpFinanceReceiptItemDO;
 
 import javax.validation.Valid;
+import java.math.BigDecimal;
 import java.util.Collection;
 import java.util.List;
+import java.util.Map;
 
 /**
  * ERP 收款单 Service 接口
@@ -82,6 +86,8 @@ public interface ErpFinanceReceiptService {
      */
     PageResult<ErpFinanceReceiptDO> getFinanceReceiptPage(ErpFinanceReceiptPageReqVO pageReqVO);
 
+    List<ErpFinanceReceiptFormCandidateRespVO> getFormCandidates(ErpFinanceReceiptFormCandidateReqVO reqVO);
+
     List<ErpFinanceReceiptWriteOffCandidateRespVO> getWriteOffCandidates(Long receiptId);
 
     void writeOffFinanceReceipt(@Valid ErpFinanceReceiptWriteOffReqVO reqVO);
@@ -100,6 +106,8 @@ public interface ErpFinanceReceiptService {
 
     PageResult<ErpFinanceReceiptItemDO> getFinanceReceiptItemPage(ErpFinanceReceiptItemPageReqVO pageReqVO);
 
+    List<ErpFinanceReceiptItemDO> getFinanceReceiptItemListByBiz(Integer bizType, Long bizId);
+
     /**
      * 获得收款单项 List
      *
@@ -107,5 +115,9 @@ public interface ErpFinanceReceiptService {
      * @return 收款单项 List
      */
     List<ErpFinanceReceiptItemDO> getFinanceReceiptItemListByReceiptIds(Collection<Long> receiptIds);
+
+    Map<Long, BigDecimal> getEffectiveReceiptPriceSumMapByReceiptIds(Collection<Long> receiptIds);
+
+    Map<Long, Long> getEffectiveReceiptItemCountMapByReceiptIds(Collection<Long> receiptIds);
 
 }

@@ -22,8 +22,15 @@ public class ErpStockPageReqVO extends PageParam {
     private Long deptId;
     @Schema(description = "Sale business department id, used when bizType=sale")
     private Long saleDeptId;
+    @Schema(description = "是否申请销售表单全部商品销售权限", example = "false")
+    private Boolean allSaleProduct;
+    @Schema(description = "销售表单全部商品销售权限标识")
+    private String allSaleProductPermission;
     @Schema(description = "Business type: purchase or sale")
     private String bizType;
+
+    @Schema(description = "产品关键词，匹配编码、名称、拼音码、五笔码等")
+    private String productKeyword;
 
     // ========== 模糊搜索条件 ==========
     @Schema(description = "零件编码（产品 code）")

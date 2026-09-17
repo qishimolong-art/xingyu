@@ -87,6 +87,14 @@ public interface ProductSkuService {
     void updateSkuStockCount(Long id, Integer stock);
 
     /**
+     * 设置 SPU 下所有 SKU 小程序展示价。
+     *
+     * @param spuId SPU 编号
+     * @param price 展示价，单位：分
+     */
+    void updateSkuPriceBySpuId(Long spuId, Integer price);
+
+    /**
      * 获得商品 SKU 集合
      *
      * @param spuId spu 编号

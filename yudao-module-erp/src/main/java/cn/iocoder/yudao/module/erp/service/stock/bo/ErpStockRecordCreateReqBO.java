@@ -85,6 +85,28 @@ public class ErpStockRecordCreateReqBO {
      */
     private LocalDateTime bizDate;
 
+    /** 新口径业务核算部门，独立于库存归属部门。 */
+    private Long accountingDeptId;
+    /** 同一业务动作的稳定标识；反审核再审核必须由来源状态流提供新动作标识。 */
+    private String postingActionKey;
+    private BigDecimal financialUnitCost;
+    private BigDecimal settlementUnitCost;
+    /** 已确认发生总额为真值，禁止以展示单价回乘重算。 */
+    private BigDecimal financialMovementAmount;
+    private BigDecimal settlementMovementAmount;
+    private Long costConfirmationId;
+    private Integer costConfirmationRevision;
+    /** 只有来源业务完成不含税成本及分摊确认才能设为 true。 */
+    private Boolean costBasisConfirmed;
+    /** 原业务录入价格口径；含税待确认不得自动转换成未税成本。 */
+    private String sourcePriceBasis;
+    private Integer sourceBizType;
+    private Long sourceBizId;
+    private Long sourceBizItemId;
+    private Long reversalPostingId;
+    /** 在已锁定来源单的审批事务内准备的不可变交易快照，仅内部流转。 */
+    private cn.iocoder.yudao.module.erp.service.report.trade.ErpTradeSnapshotService.PreparedTradeContext tradeContext;
+
     /**
      * 兼容老调用的 7 参构造：unitPrice / bizDate 保持 null，由 Service 内部决定如何处理
      */

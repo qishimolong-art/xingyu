@@ -38,6 +38,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 import static cn.iocoder.yudao.framework.common.exception.util.ServiceExceptionUtil.exception;
 import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.*;
@@ -121,7 +122,22 @@ public class ErpWarehouseMoveServiceImpl implements ErpWarehouseMoveService {
         if (ErpAuditStatus.APPROVE.getStatus().equals(warehouseMove.getStatus())) {
             throw exception(WAREHOUSE_MOVE_UPDATE_FAIL_APPROVE, warehouseMove.getNo());
         }
-        List<ErpWarehouseMoveItemDO> items = validateWarehouseMoveItems(updateReqVO);
+        List<ErpWarehouseMoveItemDO> oldItems = warehouseMoveItemMapper.selectListByMoveIdForUpdate(updateReqVO.getId());
+        boolean incrementalItems = ErpStockItemOperationHelper.useIncrementalItems(updateReqVO.getItems(),
+                ErpWarehouseMoveSaveReqVO.Item::getOperation, WAREHOUSE_MOVE_ITEM_OPERATION_INVALID);
+        ErpStockItemOperationHelper.RequestChangeSet<ErpWarehouseMoveSaveReqVO.Item> itemChangeSet = null;
+        List<ErpWarehouseMoveSaveReqVO.Item> itemReqs = updateReqVO.getItems();
+        if (incrementalItems) {
+            itemChangeSet = ErpStockItemOperationHelper.buildRequestChangeSet(updateReqVO.getItems(), oldItems,
+                    ErpWarehouseMoveSaveReqVO.Item.class, ErpWarehouseMoveSaveReqVO.Item::getId,
+                    ErpWarehouseMoveSaveReqVO.Item::setId, ErpWarehouseMoveSaveReqVO.Item::getOperation,
+                    ErpWarehouseMoveItemDO::getId, WAREHOUSE_MOVE_ITEM_OPERATION_INVALID,
+                    WAREHOUSE_MOVE_ITEM_UPDATE_NOT_EXISTS);
+            itemReqs = itemChangeSet.getFinalItems();
+        }
+        ErpWarehouseMoveSaveReqVO finalReqVO = BeanUtils.toBean(updateReqVO, ErpWarehouseMoveSaveReqVO.class);
+        finalReqVO.setItems(itemReqs);
+        List<ErpWarehouseMoveItemDO> items = validateWarehouseMoveItems(finalReqVO);
         ErpWarehouseMoveDO updateObj = BeanUtils.toBean(updateReqVO, ErpWarehouseMoveDO.class, in -> in
                 .setTotalCount(getSumValue(items, ErpWarehouseMoveItemDO::getCount, BigDecimal::add, BigDecimal.ZERO))
                 .setTotalPrice(getSumValue(items, ErpWarehouseMoveItemDO::getTotalPrice, BigDecimal::add, BigDecimal.ZERO))
@@ -130,7 +146,11 @@ public class ErpWarehouseMoveServiceImpl implements ErpWarehouseMoveService {
             updateObj.setDeptId(warehouseMove.getDeptId());
         }
         warehouseMoveMapper.updateById(updateObj);
-        updateWarehouseMoveItemList(updateReqVO.getId(), items);
+        if (incrementalItems) {
+            applyWarehouseMoveItemChangeSet(updateReqVO.getId(), itemChangeSet, items);
+        } else {
+            updateWarehouseMoveItemList(updateReqVO.getId(), items);
+        }
         operateLogService.recordUpdate(ERP_WAREHOUSE_MOVE_TYPE, warehouseMove.getId(), warehouseMove.getNo());
     }
 
@@ -141,7 +161,22 @@ public class ErpWarehouseMoveServiceImpl implements ErpWarehouseMoveService {
         if (!ErpWarehouseMoveStatusEnum.DRAFT.getStatus().equals(warehouseMove.getStatus())) {
             throw exception(WAREHOUSE_MOVE_UPDATE_FAIL_NOT_DRAFT, warehouseMove.getNo());
         }
-        List<ErpWarehouseMoveItemDO> items = buildDraftItems(updateReqVO);
+        List<ErpWarehouseMoveItemDO> oldItems = warehouseMoveItemMapper.selectListByMoveIdForUpdate(updateReqVO.getId());
+        boolean incrementalItems = ErpStockItemOperationHelper.useIncrementalItems(updateReqVO.getItems(),
+                ErpWarehouseMoveSaveReqVO.Item::getOperation, WAREHOUSE_MOVE_ITEM_OPERATION_INVALID);
+        ErpStockItemOperationHelper.RequestChangeSet<ErpWarehouseMoveSaveReqVO.Item> itemChangeSet = null;
+        List<ErpWarehouseMoveSaveReqVO.Item> itemReqs = updateReqVO.getItems();
+        if (incrementalItems) {
+            itemChangeSet = ErpStockItemOperationHelper.buildRequestChangeSet(updateReqVO.getItems(), oldItems,
+                    ErpWarehouseMoveSaveReqVO.Item.class, ErpWarehouseMoveSaveReqVO.Item::getId,
+                    ErpWarehouseMoveSaveReqVO.Item::setId, ErpWarehouseMoveSaveReqVO.Item::getOperation,
+                    ErpWarehouseMoveItemDO::getId, WAREHOUSE_MOVE_ITEM_OPERATION_INVALID,
+                    WAREHOUSE_MOVE_ITEM_UPDATE_NOT_EXISTS);
+            itemReqs = itemChangeSet.getFinalItems();
+        }
+        ErpWarehouseMoveSaveReqVO finalReqVO = BeanUtils.toBean(updateReqVO, ErpWarehouseMoveSaveReqVO.class);
+        finalReqVO.setItems(itemReqs);
+        List<ErpWarehouseMoveItemDO> items = buildDraftItems(finalReqVO);
         ErpWarehouseMoveDO updateObj = BeanUtils.toBean(updateReqVO, ErpWarehouseMoveDO.class, target -> target
                 .setDeptId(updateReqVO.getDeptId() != null ? updateReqVO.getDeptId() : warehouseMove.getDeptId())
                 .setTotalCount(getSumValue(items, ErpWarehouseMoveItemDO::getCount,
@@ -155,7 +190,11 @@ public class ErpWarehouseMoveServiceImpl implements ErpWarehouseMoveService {
         if (updateCount == 0) {
             throw exception(WAREHOUSE_MOVE_UPDATE_FAIL_NOT_DRAFT, warehouseMove.getNo());
         }
-        replaceWarehouseMoveItems(updateReqVO.getId(), items);
+        if (incrementalItems) {
+            applyWarehouseMoveItemChangeSet(updateReqVO.getId(), itemChangeSet, items);
+        } else {
+            replaceWarehouseMoveItems(updateReqVO.getId(), items);
+        }
         operateLogService.recordUpdate(ERP_WAREHOUSE_MOVE_TYPE, warehouseMove.getId(), warehouseMove.getNo());
     }
 
@@ -250,6 +289,10 @@ public class ErpWarehouseMoveServiceImpl implements ErpWarehouseMoveService {
         if (reqVO.getFromWarehouseId().equals(reqVO.getToWarehouseId())) {
             throw exception(WAREHOUSE_MOVE_WAREHOUSE_SAME);
         }
+        if (CollUtil.isEmpty(reqVO.getItems())) {
+            throw exception(WAREHOUSE_MOVE_SUBMIT_ITEMS_REQUIRED);
+        }
+        validateWarehouseMoveItemRequiredFields(reqVO.getItems());
         validateDuplicateWarehouseMoveItems(reqVO);
         Set<Long> warehouseIds = new HashSet<>();
         warehouseIds.add(reqVO.getFromWarehouseId());
@@ -286,6 +329,14 @@ public class ErpWarehouseMoveServiceImpl implements ErpWarehouseMoveService {
                     .setWeight(weight)
                     .setTotalWeight(MoneyUtils.priceMultiply(weight, itemReq.getCount())));
         });
+    }
+
+    private void validateWarehouseMoveItemRequiredFields(List<ErpWarehouseMoveSaveReqVO.Item> items) {
+        for (ErpWarehouseMoveSaveReqVO.Item item : items) {
+            if (item == null || item.getProductId() == null) {
+                throw exception(WAREHOUSE_MOVE_SUBMIT_ITEMS_REQUIRED);
+            }
+        }
     }
 
     private List<ErpWarehouseMoveItemDO> buildDraftItems(ErpWarehouseMoveSaveReqVO reqVO) {
@@ -382,6 +433,28 @@ public class ErpWarehouseMoveServiceImpl implements ErpWarehouseMoveService {
         }
         if (CollUtil.isNotEmpty(diffList.get(2))) {
             warehouseMoveItemMapper.deleteByIds(convertList(diffList.get(2), ErpWarehouseMoveItemDO::getId));
+        }
+    }
+
+    private void applyWarehouseMoveItemChangeSet(Long moveId,
+            ErpStockItemOperationHelper.RequestChangeSet<ErpWarehouseMoveSaveReqVO.Item> changeSet,
+            List<ErpWarehouseMoveItemDO> finalItems) {
+        if (CollUtil.isNotEmpty(changeSet.getDeleteIds())) {
+            warehouseMoveItemMapper.deleteByIds(changeSet.getDeleteIds());
+        }
+        List<ErpWarehouseMoveItemDO> insertList = finalItems.stream()
+                .filter(item -> item.getId() == null)
+                .collect(Collectors.toList());
+        if (CollUtil.isNotEmpty(insertList)) {
+            insertList.forEach(item -> item.setMoveId(moveId));
+            warehouseMoveItemMapper.insertBatch(insertList);
+        }
+        List<ErpWarehouseMoveItemDO> updateList = finalItems.stream()
+                .filter(item -> item.getId() != null && changeSet.getUpdateIds().contains(item.getId()))
+                .collect(Collectors.toList());
+        if (CollUtil.isNotEmpty(updateList)) {
+            updateList.forEach(item -> item.setMoveId(moveId));
+            warehouseMoveItemMapper.updateBatch(updateList);
         }
     }
 

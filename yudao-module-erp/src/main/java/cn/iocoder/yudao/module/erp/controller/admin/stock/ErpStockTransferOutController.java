@@ -3,6 +3,7 @@ package cn.iocoder.yudao.module.erp.controller.admin.stock;
 import cn.iocoder.yudao.framework.apilog.core.annotation.ApiAccessLog;
 import cn.iocoder.yudao.framework.common.exception.ErrorCode;
 import cn.iocoder.yudao.framework.common.pojo.CommonResult;
+import cn.iocoder.yudao.framework.common.pojo.PageParam;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.excel.core.util.ExcelUtils;
 import cn.iocoder.yudao.module.erp.controller.admin.common.ErpAuditStatusRequestValidator;
@@ -27,6 +28,7 @@ import cn.iocoder.yudao.module.erp.service.stock.ErpStockImportService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpStockMoveService;
 import cn.iocoder.yudao.module.erp.service.stock.bo.ErpStockTransferOutPermissionScope;
 import cn.iocoder.yudao.module.system.controller.admin.dept.vo.dept.DeptSimpleRespVO;
+import cn.iocoder.yudao.module.system.controller.admin.user.vo.user.UserSimpleRespVO;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -48,6 +50,7 @@ import javax.validation.Valid;
 import java.io.IOException;
 import java.math.BigDecimal;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -235,7 +238,7 @@ public class ErpStockTransferOutController {
         if (stockMove == null || TRANSFER_DIRECTION_OUT != getTransferDirection(stockMove)) {
             throw exception(STOCK_MOVE_NOT_EXISTS);
         }
-        return stockMoveController.getStockMoveItemPage(pageReqVO, FIELD_PERMISSION_MODULE);
+        return stockMoveController.getStockMoveItemPageAfterVisibleCheck(pageReqVO, FIELD_PERMISSION_MODULE);
     }
 
     @GetMapping("/page")
@@ -246,7 +249,28 @@ public class ErpStockTransferOutController {
         ErpStockTransferOutPermissionScope permissionScope = stockMoveService.getTransferOutPermissionScope();
         return success(stockMoveController.buildStockMoveVOPageResult(
                 stockMoveService.getVisibleStockTransferOutPage(pageReqVO, permissionScope),
-                FIELD_PERMISSION_MODULE, permissionScope));
+                FIELD_PERMISSION_MODULE, permissionScope, pageReqVO.getIncludeItems()));
+    }
+
+    @GetMapping("/from-dept-simple-page")
+    @Operation(summary = "Get visible stock transfer-out from department page")
+    @PreAuthorize("@ss.hasPermission('erp:stock-transfer-out:query')")
+    public CommonResult<PageResult<DeptSimpleRespVO>> getFromDeptSimplePage(@Valid PageParam pageReqVO) {
+        return success(dataPermissionDeptService.getDeptSimplePage(FIELD_PERMISSION_MODULE, pageReqVO));
+    }
+
+    @GetMapping("/to-dept-simple-page")
+    @Operation(summary = "Get visible stock transfer-out to department page")
+    @PreAuthorize("@ss.hasPermission('erp:stock-transfer-out:query')")
+    public CommonResult<PageResult<DeptSimpleRespVO>> getToDeptSimplePage(@Valid PageParam pageReqVO) {
+        return success(pageDeptSimpleList(stockMoveService.getVisibleStockTransferOutToDeptSimpleList(), pageReqVO));
+    }
+
+    @GetMapping("/user-simple-page")
+    @Operation(summary = "Get user page for stock transfer-out filter")
+    @PreAuthorize("@ss.hasPermission('erp:stock-transfer-out:query')")
+    public CommonResult<PageResult<UserSimpleRespVO>> getUserSimplePage(@Valid PageParam pageReqVO) {
+        return success(stockMoveController.buildUserSimplePage(pageReqVO));
     }
 
     @GetMapping("/from-dept-simple-list")
@@ -343,6 +367,22 @@ public class ErpStockTransferOutController {
         return stockMove.getTransferDirection() != null ? stockMove.getTransferDirection() : TRANSFER_DIRECTION_OUT;
     }
 
+    private PageResult<DeptSimpleRespVO> pageDeptSimpleList(List<DeptSimpleRespVO> list, PageParam pageReqVO) {
+        if (list == null || list.isEmpty()) {
+            return PageResult.empty();
+        }
+        String keyword = pageReqVO.getKeyword() == null ? null : pageReqVO.getKeyword().trim();
+        List<DeptSimpleRespVO> filtered = keyword == null || keyword.isEmpty() ? list : list.stream()
+                .filter(dept -> dept.getName() != null && dept.getName().contains(keyword))
+                .collect(java.util.stream.Collectors.toList());
+        int fromIndex = Math.max(0, (pageReqVO.getPageNo() - 1) * pageReqVO.getPageSize());
+        if (fromIndex >= filtered.size()) {
+            return new PageResult<>(Collections.emptyList(), (long) filtered.size());
+        }
+        int toIndex = Math.min(filtered.size(), fromIndex + pageReqVO.getPageSize());
+        return new PageResult<>(filtered.subList(fromIndex, toIndex), (long) filtered.size());
+    }
+
     private static Map<String, String> buildExportFieldGroupMap() {
         Map<String, String> map = new LinkedHashMap<>();
         map.put("id", "system");
@@ -353,6 +393,7 @@ public class ErpStockTransferOutController {
         map.put("toDeptName", "main");
         map.put("moveTime", "main");
         map.put("sourceNo", "main");
+        map.put("directCustomerName", "main");
         map.put("totalCount", "main");
         map.put("totalPrice", "main");
         map.put("status", "main");
@@ -374,6 +415,7 @@ public class ErpStockTransferOutController {
         map.put("fromDeptName", "fromDeptId");
         map.put("toDeptName", "toDeptId");
         map.put("sourceNo", "sourceNo");
+        map.put("directCustomerName", "directCustomerName");
         map.put("approveUserName", "approveUserName");
         map.put("productNames", "item_productId");
         map.put("productCodes", "item_productId");

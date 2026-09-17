@@ -25,7 +25,7 @@ public interface ErpPreReceiptMapper extends BaseMapperX<ErpPreReceiptDO> {
                 .eqIfPresent(ErpPreReceiptDO::getAccountId, reqVO.getAccountId())
                 .eqIfPresent(ErpPreReceiptDO::getStatus, reqVO.getStatus())
                 .orderByDesc(ErpPreReceiptDO::getId);
-        ErpKeywordQuery.appendWithDeptName(wrapper, reqVO.getKeyword(),
+        ErpKeywordQuery.appendWithDeptNameAndParty(wrapper, reqVO.getKeyword(),
                 ErpPreReceiptDO::getNo,
                 ErpPreReceiptDO::getPartyName,
                 ErpPreReceiptDO::getRemark);

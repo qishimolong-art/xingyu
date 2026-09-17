@@ -4,6 +4,8 @@ import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.mybatis.core.mapper.BaseMapperX;
 import cn.iocoder.yudao.framework.mybatis.core.query.MPJLambdaWrapperX;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartPageReqVO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.product.ErpProductDO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.product.ErpProductUnitDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleCartDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleCartItemDO;
 import cn.iocoder.yudao.module.erp.dal.mysql.common.ErpKeywordQuery;
@@ -12,6 +14,7 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.core.toolkit.support.SFunction;
 import org.apache.ibatis.annotations.Mapper;
+import org.springframework.util.StringUtils;
 
 /**
  * ERP 销售手推车 Mapper
@@ -39,12 +42,17 @@ public interface ErpSaleCartMapper extends BaseMapperX<ErpSaleCartDO> {
                     ErpSaleCartStatusEnum.FINAL_APPROVE.getStatus(),
                     ErpSaleCartStatusEnum.GENERATED_SALE_OUT.getStatus());
         }
-        if (reqVO.getProductId() != null) {
+        if (reqVO.getProductId() != null || StringUtils.hasText(reqVO.getProductKeyword())) {
             queryWrapper.leftJoin(ErpSaleCartItemDO.class, ErpSaleCartItemDO::getCartId, ErpSaleCartDO::getId)
-                    .eq(ErpSaleCartItemDO::getProductId, reqVO.getProductId())
+                    .leftJoin(ErpProductDO.class, ErpProductDO::getId, ErpSaleCartItemDO::getProductId)
+                    .leftJoin(ErpProductUnitDO.class, ErpProductUnitDO::getId, ErpSaleCartItemDO::getProductUnitId)
+                    .eq(reqVO.getProductId() != null, ErpSaleCartItemDO::getProductId, reqVO.getProductId())
+                    .and(StringUtils.hasText(reqVO.getProductKeyword()),
+                            w -> ErpKeywordQuery.appendProductKeyword(w, reqVO.getProductKeyword()))
                     .groupBy(ErpSaleCartDO::getId);
         }
-        ErpKeywordQuery.appendWithDeptName(queryWrapper, reqVO.getKeyword(),
+        ErpKeywordQuery.appendWithDeptNameAndSaleCustomerAndProductItemTokens(queryWrapper, reqVO.getKeyword(),
+                "erp_sale_cart_items", "cart_id",
                 ErpSaleCartDO::getNo, ErpSaleCartDO::getSourceNo,
                 ErpSaleCartDO::getRemark, ErpSaleCartDO::getBusinessType,
                 ErpSaleCartDO::getOrderType, ErpSaleCartDO::getBillingMethod,

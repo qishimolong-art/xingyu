@@ -31,6 +31,7 @@ import static org.springframework.test.web.client.response.MockRestResponseCreat
 public class WeComClientServiceImplTest extends BaseMockitoUnitTest {
 
     private static final String ACCESS_TOKEN_KEY = "wecom_access_token:ww123:1000002";
+    private static final String SALE_PICK_ACCESS_TOKEN_KEY = "wecom_access_token:ww123:1000085";
 
     private WeComClientServiceImpl weComClientService;
     private MockRestServiceServer mockServer;
@@ -48,6 +49,10 @@ public class WeComClientServiceImplTest extends BaseMockitoUnitTest {
         properties.setAgentId("1000002");
         properties.setSecret("secret");
         properties.setAccessTokenAheadRefresh(Duration.ofSeconds(120));
+        WeComProperties.ClientProperties salePick = new WeComProperties.ClientProperties();
+        salePick.setAgentId("1000085");
+        salePick.setSecret("pick-secret");
+        properties.getClients().put("sale-pick", salePick);
 
         RestTemplate restTemplate = new RestTemplate();
         mockServer = MockRestServiceServer.bindTo(restTemplate).build();
@@ -64,6 +69,17 @@ public class WeComClientServiceImplTest extends BaseMockitoUnitTest {
 
         assertTrue(authorizeUrl.contains("appid=ww123"));
         assertTrue(authorizeUrl.contains("agentid=1000002"));
+        assertTrue(authorizeUrl.contains("scope=snsapi_privateinfo"));
+        assertTrue(authorizeUrl.endsWith("#wechat_redirect"));
+    }
+
+    @Test
+    public void testGetAuthorizeUrl_clientKey() {
+        String authorizeUrl = weComClientService.getAuthorizeUrl("https://example.com/auth/wecom-login", "state",
+                "sale-pick");
+
+        assertTrue(authorizeUrl.contains("appid=ww123"));
+        assertTrue(authorizeUrl.contains("agentid=1000085"));
         assertTrue(authorizeUrl.contains("scope=snsapi_privateinfo"));
         assertTrue(authorizeUrl.endsWith("#wechat_redirect"));
     }
@@ -87,6 +103,29 @@ public class WeComClientServiceImplTest extends BaseMockitoUnitTest {
 
         assertEquals("13800138000", mobile);
         verify(valueOperations).set(eq(ACCESS_TOKEN_KEY), eq("access-token"), eq(7080L), eq(TimeUnit.SECONDS));
+        mockServer.verify();
+    }
+
+    @Test
+    public void testGetUserMobileByCode_clientKeyAccessTokenCacheMiss() {
+        mockValueOperations();
+        when(valueOperations.get(eq(SALE_PICK_ACCESS_TOKEN_KEY))).thenReturn(null);
+        mockServer.expect(requestTo("https://qyapi.weixin.qq.com/cgi-bin/gettoken?corpid=ww123&corpsecret=pick-secret"))
+                .andRespond(withSuccess("{\"errcode\":0,\"access_token\":\"pick-access-token\",\"expires_in\":7200}",
+                        MediaType.APPLICATION_JSON));
+        mockServer.expect(requestTo("https://qyapi.weixin.qq.com/cgi-bin/auth/getuserinfo?access_token=pick-access-token&code=auth-code"))
+                .andRespond(withSuccess("{\"errcode\":0,\"UserId\":\"zhangsan\",\"user_ticket\":\"ticket\"}",
+                        MediaType.APPLICATION_JSON));
+        mockServer.expect(requestTo("https://qyapi.weixin.qq.com/cgi-bin/auth/getuserdetail?access_token=pick-access-token"))
+                .andExpect(method(HttpMethod.POST))
+                .andRespond(withSuccess("{\"errcode\":0,\"userid\":\"zhangsan\",\"mobile\":\"13800138000\"}",
+                        MediaType.APPLICATION_JSON));
+
+        String mobile = weComClientService.getUserMobileByCode("auth-code", "sale-pick");
+
+        assertEquals("13800138000", mobile);
+        verify(valueOperations).set(eq(SALE_PICK_ACCESS_TOKEN_KEY), eq("pick-access-token"), eq(7080L),
+                eq(TimeUnit.SECONDS));
         mockServer.verify();
     }
 

@@ -4,6 +4,7 @@ import cn.hutool.core.date.DatePattern;
 import cn.hutool.core.date.DateUtil;
 import cn.iocoder.yudao.module.erp.dal.redis.RedisKeyConstants;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.stereotype.Repository;
 
 import javax.annotation.Resource;
@@ -11,6 +12,7 @@ import java.time.Duration;
 import java.time.LocalDateTime;
 import java.time.YearMonth;
 import java.time.format.DateTimeFormatter;
+import java.util.Collections;
 
 /**
  * Erp 单号 Redis DAO
@@ -52,6 +54,12 @@ public class ErpNoRedisDAO {
     public static final String MEMBER_NO_PREFIX = "M";
     public static final String PLATFORM_NO_PREFIX = "P";
     public static final String WAREHOUSE_CODE_PREFIX = "WH";
+    private static final DefaultRedisScript<Long> GENERATE_PLAIN_AFTER_SCRIPT = new DefaultRedisScript<>(
+            "local current = redis.call('GET', KEYS[1]); "
+                    + "local min = tonumber(ARGV[1]); "
+                    + "if (not current) or tonumber(current) < min then redis.call('SET', KEYS[1], min); end; "
+                    + "return redis.call('INCR', KEYS[1]);",
+            Long.class);
 
     @Resource
     private StringRedisTemplate stringRedisTemplate;
@@ -75,6 +83,19 @@ public class ErpNoRedisDAO {
         Long no = stringRedisTemplate.opsForValue().increment(key);
         if (no == null) {
             no = 1L;
+        }
+        return prefix + String.format("%06d", no);
+    }
+
+    /**
+     * 生成大于指定流水的纯流水号，用于 Redis 流水落后于数据库已有编号时追平。
+     */
+    public String generatePlainAfter(String prefix, long minSequence) {
+        String key = RedisKeyConstants.NO + prefix;
+        Long no = stringRedisTemplate.execute(GENERATE_PLAIN_AFTER_SCRIPT, Collections.singletonList(key),
+                String.valueOf(Math.max(0L, minSequence)));
+        if (no == null) {
+            no = minSequence + 1;
         }
         return prefix + String.format("%06d", no);
     }

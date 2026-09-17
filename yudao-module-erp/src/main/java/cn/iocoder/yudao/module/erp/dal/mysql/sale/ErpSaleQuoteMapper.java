@@ -4,12 +4,15 @@ import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.mybatis.core.mapper.BaseMapperX;
 import cn.iocoder.yudao.framework.mybatis.core.query.MPJLambdaWrapperX;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.quote.ErpSaleQuotePageReqVO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.product.ErpProductDO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.product.ErpProductUnitDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleQuoteDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleQuoteItemDO;
 import cn.iocoder.yudao.module.erp.dal.mysql.common.ErpKeywordQuery;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.core.toolkit.support.SFunction;
 import org.apache.ibatis.annotations.Mapper;
+import org.springframework.util.StringUtils;
 
 /**
  * ERP 报价订单 Mapper
@@ -28,12 +31,17 @@ public interface ErpSaleQuoteMapper extends BaseMapperX<ErpSaleQuoteDO> {
                 .likeIfPresent(ErpSaleQuoteDO::getRemark, reqVO.getRemark())
                 .likeIfPresent(ErpSaleQuoteDO::getVin, reqVO.getVin())
                 .inIfPresent(ErpSaleQuoteDO::getId, reqVO.getIds());
-        if (reqVO.getProductId() != null) {
+        if (reqVO.getProductId() != null || StringUtils.hasText(reqVO.getProductKeyword())) {
             wrapper.leftJoin(ErpSaleQuoteItemDO.class, ErpSaleQuoteItemDO::getQuoteId, ErpSaleQuoteDO::getId)
-                    .eq(ErpSaleQuoteItemDO::getProductId, reqVO.getProductId())
+                    .leftJoin(ErpProductDO.class, ErpProductDO::getId, ErpSaleQuoteItemDO::getProductId)
+                    .leftJoin(ErpProductUnitDO.class, ErpProductUnitDO::getId, ErpSaleQuoteItemDO::getProductUnitId)
+                    .eq(reqVO.getProductId() != null, ErpSaleQuoteItemDO::getProductId, reqVO.getProductId())
+                    .and(StringUtils.hasText(reqVO.getProductKeyword()),
+                            w -> ErpKeywordQuery.appendProductKeyword(w, reqVO.getProductKeyword()))
                     .groupBy(ErpSaleQuoteDO::getId);
         }
-        ErpKeywordQuery.appendWithDeptName(wrapper, reqVO.getKeyword(),
+        ErpKeywordQuery.appendWithDeptNameAndSaleCustomerAndProductItemTokens(wrapper, reqVO.getKeyword(),
+                "erp_sale_quote_items", "quote_id",
                 ErpSaleQuoteDO::getNo, ErpSaleQuoteDO::getSourceNo,
                 ErpSaleQuoteDO::getRemark, ErpSaleQuoteDO::getOrderType,
                 ErpSaleQuoteDO::getSettleMethod, ErpSaleQuoteDO::getPriority,
@@ -121,6 +129,14 @@ public interface ErpSaleQuoteMapper extends BaseMapperX<ErpSaleQuoteDO> {
 
     default Long selectCountByCustomerId(Long customerId) {
         return selectCount(ErpSaleQuoteDO::getCustomerId, customerId);
+    }
+
+    static String normalizeLikeValue(String value) {
+        if (value == null) {
+            return null;
+        }
+        String normalized = value.trim().replaceAll("\\s+", "%");
+        return normalized.isEmpty() ? null : normalized;
     }
 
     default int updateByIdAndStatus(Long id, Integer status, ErpSaleQuoteDO updateObj) {

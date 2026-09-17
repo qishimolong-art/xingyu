@@ -116,6 +116,11 @@ public interface ErpStockMoveService {
      */
     List<ErpStockMoveDO> getTransferOutListBySource(Integer sourceType, Long sourceId);
 
+    /** 审核事务内使用：先持手推车父锁，再当前读关联调拨。 */
+    List<ErpStockMoveDO> getCartTransferOutListForUpdate(Long cartId);
+
+    List<ErpStockMoveItemDO> getStockMoveItemsForUpdate(Long moveId);
+
     /**
      * Gets whether current login user can approve the stock move.
      *
@@ -330,6 +335,17 @@ public interface ErpStockMoveService {
     List<ErpStockMoveItemDO> getStockMoveItemListByMoveId(Long moveId);
 
     PageResult<ErpStockMoveItemDO> getStockMoveItemPage(ErpStockMoveItemPageReqVO pageReqVO);
+
+    /**
+     * 获得库存调拨单项分页，不重复校验主表可见性。
+     *
+     * <p>仅供已完成专用单据可见性校验的入口使用。</p>
+     *
+     * @param pageReqVO 分页查询
+     * @return 库存调拨单项分页
+     */
+    PageResult<ErpStockMoveItemDO> getStockMoveItemPageWithoutMoveValidation(
+            ErpStockMoveItemPageReqVO pageReqVO);
 
     /**
      * 获得库存调拨单项 List

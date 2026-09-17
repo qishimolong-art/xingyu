@@ -53,8 +53,6 @@ public class ErpOtherReceivableServiceImpl implements ErpOtherReceivableService 
     @Resource
     private ErpVoucherItemMapper voucherItemMapper;
     @Resource
-    private ErpAutoVoucherBuilder autoVoucherBuilder;
-    @Resource
     private ErpVoucherService voucherService;
     @Resource
     private ErpBookOpenService bookOpenService;
@@ -145,19 +143,8 @@ public class ErpOtherReceivableServiceImpl implements ErpOtherReceivableService 
         }
 
         // 3. 审批通过：自动生成凭证
-        if (approve && receivable.getBizTime() != null
-                && bookOpenService.isVoucherTypeEnabled(receivable.getBizTime().toLocalDate(),
-                ErpVoucherTypeEnum.OTHER_RECEIVABLE.getType())) {
-            List<ErpVoucherItemDO> voucherItems = autoVoucherBuilder.buildOtherReceivableItems(receivable);
-            voucherService.createVoucherFromBiz(
-                    ErpVoucherSourceBizTypeEnum.OTHER_RECEIVABLE.getType(),
-                    receivable.getId(),
-                    receivable.getNo(),
-                    receivable.getActualAmount() != null ? receivable.getActualAmount() : receivable.getTotalAmount(),
-                    receivable.getBizTime().toLocalDate(),
-                    "其他应收 - " + (receivable.getPartyName() == null ? "" : receivable.getPartyName()),
-                    voucherItems);
-        }
+        // 业务审核仅更新业务状态；凭证由财务统一预览生成。
+
     }
 
     @Override

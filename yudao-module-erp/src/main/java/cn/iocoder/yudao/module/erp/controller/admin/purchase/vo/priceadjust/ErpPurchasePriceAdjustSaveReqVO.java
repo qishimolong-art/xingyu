@@ -4,7 +4,6 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Data;
 
 import javax.validation.Valid;
-import javax.validation.constraints.NotEmpty;
 import javax.validation.constraints.NotNull;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -38,7 +37,6 @@ public class ErpPurchasePriceAdjustSaveReqVO {
     private String remark;
 
     @Schema(description = "调价明细列表", requiredMode = Schema.RequiredMode.REQUIRED)
-    @NotEmpty(message = "调价明细不能为空")
     @Valid
     private List<Item> items;
 
@@ -47,6 +45,9 @@ public class ErpPurchasePriceAdjustSaveReqVO {
 
         @Schema(description = "调价项编号", example = "1")
         private Long id;
+
+        @Schema(description = "明细操作类型：insert 新增，update 修改，delete 删除", example = "update")
+        private String operation;
 
         @Schema(description = "采购入库单编号", example = "1")
         private Long inId;
@@ -61,7 +62,6 @@ public class ErpPurchasePriceAdjustSaveReqVO {
         private String batchNo;
 
         @Schema(description = "产品编号", requiredMode = Schema.RequiredMode.REQUIRED, example = "1")
-        @NotNull(message = "产品不能为空")
         private Long productId;
 
         @Schema(description = "仓库编号", example = "1")
@@ -69,15 +69,12 @@ public class ErpPurchasePriceAdjustSaveReqVO {
         private Long deptId;
 
         @Schema(description = "调价前单价", requiredMode = Schema.RequiredMode.REQUIRED, example = "12.5")
-        @NotNull(message = "调价前单价不能为空")
         private BigDecimal oldPrice;
 
         @Schema(description = "调价后单价", requiredMode = Schema.RequiredMode.REQUIRED, example = "13.5")
-        @NotNull(message = "调价后单价不能为空")
         private BigDecimal newPrice;
 
         @Schema(description = "入库数量快照", requiredMode = Schema.RequiredMode.REQUIRED, example = "100")
-        @NotNull(message = "入库数量不能为空")
         private BigDecimal count;
 
         @Schema(description = "调价比率（按入库单方式填；添加明细方式为空）", example = "1.08")

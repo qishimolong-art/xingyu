@@ -27,7 +27,7 @@ public interface ErpOtherPayableMapper extends BaseMapperX<ErpOtherPayableDO> {
                 .betweenIfPresent(ErpOtherPayableDO::getBizTime, reqVO.getBizTime())
                 .likeIfPresent(ErpOtherPayableDO::getRemark, reqVO.getRemark())
                 .orderByDesc(ErpOtherPayableDO::getId);
-        ErpKeywordQuery.appendWithDeptName(wrapper, reqVO.getKeyword(),
+        ErpKeywordQuery.appendWithDeptNameAndParty(wrapper, reqVO.getKeyword(),
                 ErpOtherPayableDO::getNo,
                 ErpOtherPayableDO::getPartyName,
                 ErpOtherPayableDO::getRemark);

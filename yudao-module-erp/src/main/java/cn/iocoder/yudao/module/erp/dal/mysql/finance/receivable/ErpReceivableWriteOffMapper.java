@@ -19,10 +19,21 @@ public interface ErpReceivableWriteOffMapper extends BaseMapperX<ErpReceivableWr
 
     default List<ErpReceivableWriteOffDO> selectListByCustomerId(Long customerId, LocalDateTime startTime,
             LocalDateTime endTime, Collection<Long> deptIds, Long selfUserId, boolean all) {
+        return selectListByCustomerId(customerId, startTime, endTime, deptIds, selfUserId, all, null, false);
+    }
+
+    default List<ErpReceivableWriteOffDO> selectListByCustomerId(Long customerId, LocalDateTime startTime,
+            LocalDateTime endTime, Collection<Long> deptIds, Long selfUserId, boolean all, Long detailDeptId,
+            boolean detailDeptUnassigned) {
         LambdaQueryWrapperX<ErpReceivableWriteOffDO> query = new LambdaQueryWrapperX<ErpReceivableWriteOffDO>()
                 .eq(ErpReceivableWriteOffDO::getCustomerId, customerId)
                 .geIfPresent(ErpReceivableWriteOffDO::getWriteOffTime, startTime)
                 .ltIfPresent(ErpReceivableWriteOffDO::getWriteOffTime, endTime);
+        if (detailDeptUnassigned) {
+            query.isNull(ErpReceivableWriteOffDO::getDeptId);
+        } else {
+            query.eqIfPresent(ErpReceivableWriteOffDO::getDeptId, detailDeptId);
+        }
         if (!all) {
             if (deptIds != null && !deptIds.isEmpty() && selfUserId != null) {
                 query.and(wrapper -> wrapper.in(ErpReceivableWriteOffDO::getDeptId, deptIds)

@@ -4,7 +4,6 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Data;
 
 import javax.validation.Valid;
-import javax.validation.constraints.NotEmpty;
 import javax.validation.constraints.NotNull;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -27,12 +26,13 @@ public class ErpReceivableOtherIncomeSaveReqVO {
     private String docType;
     private String remark;
     private String fileUrl;
-    @NotEmpty @Valid private List<Item> items;
+    @Valid private List<Item> items;
     @Data
     public static class Item {
         private Long id;
-        @NotNull private String itemName;
-        @NotNull private BigDecimal amount;
+        private String operation;
+        private String itemName;
+        private BigDecimal amount;
         private String invoiceNo;
         private String party;
         private Long customerId;

@@ -45,4 +45,5 @@ public class ErpVoucherItemRespVO {
     @Schema(description = "贷方金额", example = "100.00")
     private BigDecimal creditAmount;
 
+    private java.util.List<cn.iocoder.yudao.module.erp.service.finance.accounting.rule.ErpVoucherRuleModels.Auxiliary> auxiliaries;
 }

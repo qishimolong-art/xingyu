@@ -58,6 +58,8 @@ class ErpFinanceWriteOffServiceImplTest extends BaseMockitoUnitTest {
 
     private static final Long LOGIN_USER_ID = 9L;
 
+    @Mock private cn.iocoder.yudao.module.erp.service.finance.payable.ErpPayableOtherService payableOtherService;
+    @Mock private cn.iocoder.yudao.module.erp.service.finance.receivable.ErpReceivableOtherService receivableOtherService;
     @InjectMocks
     private ErpFinanceReceiptServiceImpl receiptService;
     @InjectMocks

@@ -13,7 +13,7 @@ import java.math.BigDecimal;
  *
  * @author Claude
  */
-@TableName("erp_voucher_item")
+@TableName(value = "erp_voucher_item", autoResultMap = true)
 @KeySequence("erp_voucher_item_seq")
 @Data
 @EqualsAndHashCode(callSuper = true)
@@ -72,4 +72,6 @@ public class ErpVoucherItemDO extends BaseDO {
      */
     private BigDecimal creditAmount;
 
+    @com.baomidou.mybatisplus.annotation.TableField(typeHandler = com.baomidou.mybatisplus.extension.handlers.JacksonTypeHandler.class)
+    private java.util.List<cn.iocoder.yudao.module.erp.service.finance.accounting.rule.ErpVoucherRuleModels.Auxiliary> auxiliaries;
 }

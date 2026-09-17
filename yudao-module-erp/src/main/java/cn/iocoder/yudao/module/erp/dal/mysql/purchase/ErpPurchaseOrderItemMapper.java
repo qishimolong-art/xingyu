@@ -4,6 +4,7 @@ import cn.hutool.core.collection.CollUtil;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.mybatis.core.mapper.BaseMapperX;
 import cn.iocoder.yudao.framework.mybatis.core.query.LambdaQueryWrapperX;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.order.ErpPurchaseOrderInableItemPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.order.ErpPurchaseOrderItemPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.stock.ErpStockInTransitDetailRespVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseOrderItemDO;
@@ -12,6 +13,7 @@ import com.baomidou.mybatisplus.core.toolkit.support.SFunction;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
+import org.springframework.util.StringUtils;
 
 import java.math.BigDecimal;
 import java.util.Collection;
@@ -28,8 +30,38 @@ import java.util.Map;
 @Mapper
 public interface ErpPurchaseOrderItemMapper extends BaseMapperX<ErpPurchaseOrderItemDO> {
 
+    String PURCHASE_ORDER_ITEM_PRODUCT_KEYWORD_SQL = "("
+            + "EXISTS (SELECT 1 FROM erp_product p "
+            + "WHERE p.id = erp_purchase_order_items.product_id AND p.deleted = b'0' "
+            + "AND p.tenant_id = erp_purchase_order_items.tenant_id "
+            + "AND (p.code LIKE {0} OR p.name LIKE {0} OR p.pinyin_code LIKE {0} "
+            + "OR p.wubi_code LIKE {0} OR p.bar_code LIKE {0} OR p.vehicle_model LIKE {0} "
+            + "OR p.factory_code LIKE {0} OR p.standard LIKE {0} OR p.brand LIKE {0} "
+            + "OR p.drawing_no LIKE {0})) "
+            + "OR erp_purchase_order_items.vehicle_model LIKE {0} "
+            + "OR erp_purchase_order_items.factory_code LIKE {0} "
+            + "OR erp_purchase_order_items.standard LIKE {0} "
+            + "OR erp_purchase_order_items.feature_code LIKE {0} "
+            + "OR erp_purchase_order_items.brand LIKE {0} "
+            + "OR erp_purchase_order_items.drawing_no LIKE {0} "
+            + "OR erp_purchase_order_items.batch_no LIKE {0})";
+
     default List<ErpPurchaseOrderItemDO> selectListByOrderId(Long orderId) {
         return selectList(ErpPurchaseOrderItemDO::getOrderId, orderId);
+    }
+
+    default PageResult<ErpPurchaseOrderItemDO> selectInableItemPage(ErpPurchaseOrderInableItemPageReqVO reqVO) {
+        QueryWrapper<ErpPurchaseOrderItemDO> query = new QueryWrapper<ErpPurchaseOrderItemDO>()
+                .eq("order_id", reqVO.getOrderId())
+                .apply("COALESCE(count, 0) > COALESCE(in_count, 0)");
+        appendProductKeyword(query, reqVO.getProductKeyword());
+        query.orderByAsc("id");
+        return selectPage(reqVO, query);
+    }
+
+    default List<ErpPurchaseOrderItemDO> selectListByOrderIdForUpdate(Long orderId) {
+        return selectList(new LambdaQueryWrapperX<ErpPurchaseOrderItemDO>()
+                .eq(ErpPurchaseOrderItemDO::getOrderId, orderId).last("FOR UPDATE"));
     }
 
     default PageResult<ErpPurchaseOrderItemDO> selectPageByOrderId(ErpPurchaseOrderItemPageReqVO reqVO) {
@@ -51,6 +83,25 @@ public interface ErpPurchaseOrderItemMapper extends BaseMapperX<ErpPurchaseOrder
 
     default List<ErpPurchaseOrderItemDO> selectListByOrderIds(Collection<Long> orderIds) {
         return selectList(ErpPurchaseOrderItemDO::getOrderId, orderIds);
+    }
+
+    default Map<Long, Integer> selectItemCountMapByOrderIds(Collection<Long> orderIds) {
+        if (CollUtil.isEmpty(orderIds)) {
+            return Collections.emptyMap();
+        }
+        List<Map<String, Object>> rows = selectMaps(new QueryWrapper<ErpPurchaseOrderItemDO>()
+                .select("order_id, COUNT(1) AS item_count")
+                .in("order_id", orderIds)
+                .groupBy("order_id"));
+        Map<Long, Integer> result = new HashMap<>();
+        for (Map<String, Object> row : rows) {
+            Object orderId = row.get("order_id");
+            Object count = row.get("item_count");
+            if (orderId != null && count != null) {
+                result.put(Long.valueOf(orderId.toString()), Integer.valueOf(count.toString()));
+            }
+        }
+        return result;
     }
 
     default int deleteByOrderId(Long orderId) {
@@ -250,5 +301,13 @@ public interface ErpPurchaseOrderItemMapper extends BaseMapperX<ErpPurchaseOrder
                                                                   @Param("statuses") Collection<Integer> statuses,
                                                                   @Param("batchNo") String batchNo,
                                                                   @Param("unassignedBatch") Boolean unassignedBatch);
+
+    static void appendProductKeyword(QueryWrapper<ErpPurchaseOrderItemDO> query, String keyword) {
+        if (!StringUtils.hasText(keyword)) {
+            return;
+        }
+        String likeValue = "%" + keyword.trim().replaceAll("\\s+", "%") + "%";
+        query.and(wrapper -> wrapper.apply(PURCHASE_ORDER_ITEM_PRODUCT_KEYWORD_SQL, likeValue));
+    }
 
 }

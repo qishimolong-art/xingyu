@@ -281,6 +281,13 @@ public class ProductSpuServiceImpl implements ProductSpuService {
 
     @Override
     @Transactional(rollbackFor = Exception.class)
+    public void updateSpuPrice(Long id, Integer price) {
+        validateSpuExists(id);
+        productSpuMapper.updatePrice(id, price);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
     public void updateSpuStatus(ProductSpuUpdateStatusReqVO updateReqVO) {
         // 校验存在
         validateSpuExists(updateReqVO.getId());

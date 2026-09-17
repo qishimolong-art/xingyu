@@ -3,6 +3,10 @@ package cn.iocoder.yudao.module.erp.controller.admin.finance;
 import cn.hutool.core.util.StrUtil;
 import cn.iocoder.yudao.framework.common.pojo.PageParam;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.account.ErpAccountPageReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.finance.payable.vo.misc.ErpPayableMiscImportExcelVO;
+import cn.iocoder.yudao.module.erp.controller.admin.finance.payable.vo.misc.ErpPayableMiscSaveReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.finance.receivable.vo.misc.ErpReceivableMiscImportExcelVO;
+import cn.iocoder.yudao.module.erp.controller.admin.finance.receivable.vo.misc.ErpReceivableMiscSaveReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.payment.ErpFinancePaymentImportExcelVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.payment.ErpFinancePaymentSaveReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.receipt.ErpFinanceReceiptImportExcelVO;
@@ -54,6 +58,8 @@ public class ErpFinanceSettlementImportResolver {
 
     private static final String PAYMENT_FIELD_PERMISSION_MODULE = "erp_finance_payment";
     private static final String RECEIPT_FIELD_PERMISSION_MODULE = "erp_finance_receipt";
+    private static final String RECEIVABLE_MISC_DEPT_PERMISSION_MODULE = "erp_receivable_misc";
+    private static final String PAYABLE_MISC_DEPT_PERMISSION_MODULE = "erp_payable_misc";
 
     @Resource
     private ErpSupplierService supplierService;
@@ -87,6 +93,16 @@ public class ErpFinanceSettlementImportResolver {
     public ReceiptImportContext buildReceiptContext() {
         return new ReceiptImportContext(buildCustomerNameMap(), buildAccountNameMap(),
                 buildDeptNameMap(RECEIPT_FIELD_PERMISSION_MODULE));
+    }
+
+    public ReceivableMiscImportContext buildReceivableMiscContext() {
+        return new ReceivableMiscImportContext(buildCustomerNameMap(), buildAccountNameMap(),
+                buildDeptNameMap(RECEIVABLE_MISC_DEPT_PERMISSION_MODULE));
+    }
+
+    public PayableMiscImportContext buildPayableMiscContext() {
+        return new PayableMiscImportContext(buildSupplierNameMap(), buildAccountNameMap(),
+                buildDeptNameMap(PAYABLE_MISC_DEPT_PERMISSION_MODULE));
     }
 
     public ErpFinancePaymentSaveReqVO buildPaymentSaveReqVO(ErpFinancePaymentImportExcelVO row,
@@ -150,6 +166,36 @@ public class ErpFinanceSettlementImportResolver {
         item.setReceiptPrice(row.getItemReceiptPrice());
         item.setRemark(row.getItemRemark());
         reqVO.setItems(Collections.singletonList(item));
+        return reqVO;
+    }
+
+    public ErpReceivableMiscSaveReqVO buildReceivableMiscSaveReqVO(ErpReceivableMiscImportExcelVO row,
+                                                                   ReceivableMiscImportContext context) {
+        ErpReceivableMiscSaveReqVO reqVO = new ErpReceivableMiscSaveReqVO();
+        reqVO.setCustomerId(resolveRequiredName("客户", row.getCustomerName(), row.getCustomerId(),
+                context.customerNameMap));
+        reqVO.setAccountId(resolveRequiredName("账户", row.getAccountName(), row.getAccountId(),
+                context.accountNameMap));
+        reqVO.setDeptId(resolveRequiredName("所属部门", row.getDeptName(), row.getDeptId(),
+                context.deptNameMap));
+        reqVO.setAmount(row.getAmount());
+        reqVO.setRemark(row.getRemark());
+        reqVO.setFileUrl(row.getFileUrl());
+        return reqVO;
+    }
+
+    public ErpPayableMiscSaveReqVO buildPayableMiscSaveReqVO(ErpPayableMiscImportExcelVO row,
+                                                             PayableMiscImportContext context) {
+        ErpPayableMiscSaveReqVO reqVO = new ErpPayableMiscSaveReqVO();
+        reqVO.setSupplierId(resolveRequiredName("供应商", row.getSupplierName(), row.getSupplierId(),
+                context.supplierNameMap));
+        reqVO.setAccountId(resolveRequiredName("账户", row.getAccountName(), row.getAccountId(),
+                context.accountNameMap));
+        reqVO.setDeptId(resolveRequiredName("所属部门", row.getDeptName(), row.getDeptId(),
+                context.deptNameMap));
+        reqVO.setAmount(row.getAmount());
+        reqVO.setRemark(row.getRemark());
+        reqVO.setFileUrl(row.getFileUrl());
         return reqVO;
     }
 
@@ -365,6 +411,36 @@ public class ErpFinanceSettlementImportResolver {
                                      Map<String, List<Long>> accountNameMap,
                                      Map<String, List<Long>> deptNameMap) {
             this.customerNameMap = customerNameMap;
+            this.accountNameMap = accountNameMap;
+            this.deptNameMap = deptNameMap;
+        }
+    }
+
+    public static class ReceivableMiscImportContext {
+
+        private final Map<String, List<Long>> customerNameMap;
+        private final Map<String, List<Long>> accountNameMap;
+        private final Map<String, List<Long>> deptNameMap;
+
+        private ReceivableMiscImportContext(Map<String, List<Long>> customerNameMap,
+                                            Map<String, List<Long>> accountNameMap,
+                                            Map<String, List<Long>> deptNameMap) {
+            this.customerNameMap = customerNameMap;
+            this.accountNameMap = accountNameMap;
+            this.deptNameMap = deptNameMap;
+        }
+    }
+
+    public static class PayableMiscImportContext {
+
+        private final Map<String, List<Long>> supplierNameMap;
+        private final Map<String, List<Long>> accountNameMap;
+        private final Map<String, List<Long>> deptNameMap;
+
+        private PayableMiscImportContext(Map<String, List<Long>> supplierNameMap,
+                                         Map<String, List<Long>> accountNameMap,
+                                         Map<String, List<Long>> deptNameMap) {
+            this.supplierNameMap = supplierNameMap;
             this.accountNameMap = accountNameMap;
             this.deptNameMap = deptNameMap;
         }

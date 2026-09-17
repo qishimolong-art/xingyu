@@ -32,6 +32,7 @@ import cn.iocoder.yudao.module.system.api.dept.dto.DeptRespDTO;
 import cn.iocoder.yudao.module.system.api.user.AdminUserApi;
 import cn.iocoder.yudao.module.system.api.user.dto.AdminUserRespDTO;
 import cn.iocoder.yudao.module.system.controller.admin.dept.vo.dept.DeptSimpleRespVO;
+import cn.iocoder.yudao.module.system.controller.admin.user.vo.user.UserSimpleRespVO;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -65,11 +66,12 @@ import static cn.iocoder.yudao.framework.apilog.core.enums.OperateTypeEnum.EXPOR
 import static cn.iocoder.yudao.framework.common.pojo.CommonResult.success;
 import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.convertListByFlatMap;
 import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.convertSet;
+import static cn.iocoder.yudao.module.erp.controller.admin.finance.ErpFinanceSimplePageUtils.buildUserSimplePage;
 import static cn.iocoder.yudao.module.erp.controller.admin.finance.vo.imports.ErpFinanceImportUtils.allBlank;
 import static cn.iocoder.yudao.module.erp.controller.admin.finance.vo.imports.ErpFinanceImportUtils.failureReason;
 import static cn.iocoder.yudao.module.erp.controller.admin.finance.vo.imports.ErpFinanceImportUtils.parseDate;
 
-@Tag(name = "ERP 其他应收")
+@Tag(name = "ERP 应收调账")
 @RestController
 @RequestMapping("/erp/receivable-other")
 @Validated
@@ -97,21 +99,21 @@ public class ErpReceivableOtherController {
     private ErpImportExportRecordService importExportRecordService;
 
     @PostMapping("/create")
-    @Operation(summary = "创建其他应收")
+    @Operation(summary = "创建应收调账")
     @PreAuthorize("@ss.hasPermission('erp:receivable-other:create')")
     public CommonResult<Long> create(@Valid @RequestBody ErpReceivableOtherSaveReqVO reqVO) {
         return success(receivableOtherService.createReceivableOther(reqVO));
     }
 
     @PostMapping("/create-draft")
-    @Operation(summary = "创建其他应收草稿")
+    @Operation(summary = "创建应收调账草稿")
     @PreAuthorize("@ss.hasPermission('erp:receivable-other:create')")
     public CommonResult<Long> createDraft(@RequestBody ErpReceivableOtherDraftSaveReqVO reqVO) {
         return success(receivableOtherService.createReceivableOtherDraft(reqVO));
     }
 
     @PostMapping("/create-and-submit")
-    @Operation(summary = "创建并提交其他应收")
+    @Operation(summary = "创建并提交应收调账")
     @PreAuthorize("@ss.hasPermission('erp:receivable-other:create') and " +
             "@ss.hasPermission('erp:receivable-other:update-status')")
     public CommonResult<Long> createAndSubmit(@Valid @RequestBody ErpReceivableOtherSaveReqVO reqVO) {
@@ -119,7 +121,7 @@ public class ErpReceivableOtherController {
     }
 
     @PutMapping("/update")
-    @Operation(summary = "修改其他应收")
+    @Operation(summary = "修改应收调账")
     @PreAuthorize("@ss.hasPermission('erp:receivable-other:update')")
     public CommonResult<Boolean> update(@Valid @RequestBody ErpReceivableOtherSaveReqVO reqVO) {
         receivableOtherService.updateReceivableOther(reqVO);
@@ -127,7 +129,7 @@ public class ErpReceivableOtherController {
     }
 
     @PutMapping("/update-draft")
-    @Operation(summary = "更新其他应收草稿")
+    @Operation(summary = "更新应收调账草稿")
     @PreAuthorize("@ss.hasPermission('erp:receivable-other:update')")
     public CommonResult<Boolean> updateDraft(@RequestBody ErpReceivableOtherDraftSaveReqVO reqVO) {
         receivableOtherService.updateReceivableOtherDraft(reqVO);
@@ -135,7 +137,7 @@ public class ErpReceivableOtherController {
     }
 
     @PutMapping("/update-and-submit")
-    @Operation(summary = "更新并提交其他应收草稿")
+    @Operation(summary = "更新并提交应收调账草稿")
     @PreAuthorize("@ss.hasPermission('erp:receivable-other:update') and " +
             "@ss.hasPermission('erp:receivable-other:update-status')")
     public CommonResult<Boolean> updateAndSubmit(@Valid @RequestBody ErpReceivableOtherSaveReqVO reqVO) {
@@ -144,7 +146,7 @@ public class ErpReceivableOtherController {
     }
 
     @PutMapping("/submit")
-    @Operation(summary = "提交其他应收草稿")
+    @Operation(summary = "提交应收调账草稿")
     @PreAuthorize("@ss.hasPermission('erp:receivable-other:update-status')")
     public CommonResult<Boolean> submit(@RequestParam("id") Long id) {
         receivableOtherService.submitReceivableOther(id);
@@ -152,7 +154,7 @@ public class ErpReceivableOtherController {
     }
 
     @PutMapping("/update-remark")
-    @Operation(summary = "更新其他应收单备注")
+    @Operation(summary = "更新应收调账单备注")
     @PreAuthorize("@ss.hasPermission('erp:receivable-other:update')")
     public CommonResult<Boolean> updateRemark(@Valid @RequestBody ErpFinanceUpdateRemarkReqVO reqVO) {
         receivableOtherService.updateReceivableOtherRemark(reqVO);
@@ -160,7 +162,7 @@ public class ErpReceivableOtherController {
     }
 
     @PutMapping("/update-status")
-    @Operation(summary = "修改其他应收状态")
+    @Operation(summary = "修改应收调账状态")
     @PreAuthorize("@ss.hasPermission('erp:receivable-other:update-status')")
     public CommonResult<Boolean> updateStatus(@RequestParam("id") Long id,
                                               @RequestParam("status") Integer status) {
@@ -170,7 +172,7 @@ public class ErpReceivableOtherController {
     }
 
     @DeleteMapping("/delete")
-    @Operation(summary = "删除其他应收")
+    @Operation(summary = "删除应收调账")
     @Parameter(name = "id", description = "编号", required = true)
     @PreAuthorize("@ss.hasPermission('erp:receivable-other:delete')")
     public CommonResult<Boolean> delete(@RequestParam("id") Long id) {
@@ -179,7 +181,7 @@ public class ErpReceivableOtherController {
     }
 
     @GetMapping("/get")
-    @Operation(summary = "获取其他应收")
+    @Operation(summary = "获取应收调账")
     @PreAuthorize("@ss.hasPermission('erp:receivable-other:query')")
     public CommonResult<ErpReceivableOtherRespVO> get(@RequestParam("id") Long id) {
         ErpReceivableOtherDO db = receivableOtherService.getReceivableOther(id);
@@ -193,7 +195,7 @@ public class ErpReceivableOtherController {
     }
 
     @GetMapping("/page")
-    @Operation(summary = "获取其他应收分页")
+    @Operation(summary = "获取应收调账分页")
     @PreAuthorize("@ss.hasPermission('erp:receivable-other:query')")
     public CommonResult<PageResult<ErpReceivableOtherRespVO>> page(@Valid ErpReceivableOtherPageReqVO reqVO) {
         PageResult<ErpReceivableOtherDO> pageResult = receivableOtherService.getReceivableOtherPage(reqVO);
@@ -216,8 +218,22 @@ public class ErpReceivableOtherController {
         return success(dataPermissionDeptService.getDeptSimpleList("erp_receivable_other"));
     }
 
+    @GetMapping("/dept-simple-page")
+    @Operation(summary = "Get receivable other data permission dept simple page")
+    @PreAuthorize("@ss.hasPermission('erp:receivable-other:query')")
+    public CommonResult<PageResult<DeptSimpleRespVO>> getReceivableOtherDeptSimplePage(@Valid PageParam pageReqVO) {
+        return success(dataPermissionDeptService.getDeptSimplePage("erp_receivable_other", pageReqVO));
+    }
+
+    @GetMapping("/user-simple-page")
+    @Operation(summary = "Get user page for receivable other filter")
+    @PreAuthorize("@ss.hasPermission('erp:receivable-other:query')")
+    public CommonResult<PageResult<UserSimpleRespVO>> getUserSimplePage(@Valid PageParam pageReqVO) {
+        return success(buildUserSimplePage(adminUserApi, pageReqVO));
+    }
+
     @GetMapping("/export-excel")
-    @Operation(summary = "导出其他应收 Excel")
+    @Operation(summary = "导出应收调账 Excel")
     @PreAuthorize("@ss.hasPermission('erp:receivable-other:export')")
     @ApiAccessLog(operateType = EXPORT)
     public void exportExcel(@Valid ErpReceivableOtherPageReqVO reqVO,
@@ -231,22 +247,22 @@ public class ErpReceivableOtherController {
             row.setIncreaseReceivableAmount(row.getReceivableAmount());
             row.setStatusName(formatStatusName(row.getStatus()));
         });
-        ExcelUtils.write(response, "其他应收.xls", "数据", ErpReceivableOtherExportRespVO.class,
+        ExcelUtils.write(response, "应收调账.xls", "数据", ErpReceivableOtherExportRespVO.class,
                 rows);
     }
 
     @GetMapping("/get-import-template")
-    @Operation(summary = "获得其他应收导入模板")
+    @Operation(summary = "获得应收调账导入模板")
     @PreAuthorize("@ss.hasPermission('erp:receivable-other:import')")
     public void getImportTemplate(HttpServletResponse response) throws IOException {
-        ExcelUtils.writeImportTemplate(response, "其他应收导入模板.xls", "其他应收",
+        ExcelUtils.writeImportTemplate(response, "应收调账导入模板.xls", "应收调账",
                 ErpReceivableOtherImportExcelVO.class,
                 Collections.singletonList(new ErpReceivableOtherImportExcelVO()),
                 RECEIVABLE_OTHER_IMPORT_TEMPLATE_FIELDS);
     }
 
     @PostMapping("/import")
-    @Operation(summary = "导入其他应收")
+    @Operation(summary = "导入应收调账")
     @PreAuthorize("@ss.hasPermission('erp:receivable-other:import')")
     public CommonResult<ErpFinanceImportRespVO> importExcel(@RequestParam("file") MultipartFile file) throws Exception {
         java.util.List<ErpReceivableOtherImportExcelVO> list = ExcelUtils.read(file, ErpReceivableOtherImportExcelVO.class);
@@ -269,7 +285,7 @@ public class ErpReceivableOtherController {
     }
 
     @GetMapping("/import-failure-details/download")
-    @Operation(summary = "下载其他应收导入错误数据")
+    @Operation(summary = "下载应收调账导入错误数据")
     @PreAuthorize("@ss.hasPermission('erp:receivable-other:import')")
     public void downloadImportFailureDetails(@RequestParam("recordId") Long recordId,
                                              HttpServletResponse response) throws IOException {

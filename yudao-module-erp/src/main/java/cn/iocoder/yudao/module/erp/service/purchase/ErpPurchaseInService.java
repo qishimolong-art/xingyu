@@ -1,8 +1,11 @@
 package cn.iocoder.yudao.module.erp.service.purchase;
 
+import cn.iocoder.yudao.framework.common.pojo.PageParam;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.ErpPurchaseUpdateRemarkReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.imports.ErpPurchaseImportResultRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.in.ErpPurchaseInAdjustableItemPageReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.in.ErpPurchaseInReturnableItemPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.in.ErpPurchaseInImportExcelVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.in.ErpPurchaseInImportRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.in.ErpPurchaseInItemBatchUpdateReqVO;
@@ -20,6 +23,7 @@ import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.in.ErpPurchaseIn
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.in.ErpPurchaseInSaveReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.in.ErpPurchaseInSaleCartableItemPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.in.ErpPurchaseInSaleCartableItemRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.in.ErpPurchaseInTransferOutableItemPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.in.ErpPurchaseInTransferOutableItemRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.order.ErpPurchaseInFromOrderReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseInDO;
@@ -124,12 +128,30 @@ public interface ErpPurchaseInService {
     List<DeptSimpleRespVO> getSupplierAvailableDeptSimpleList(Long supplierId);
 
     /**
+     * 获得当前用户对指定供应商可用的采购入库部门分页
+     *
+     * @param supplierId 供应商编号
+     * @param pageParam 分页参数
+     * @return 部门分页
+     */
+    PageResult<DeptSimpleRespVO> getSupplierAvailableDeptSimplePage(Long supplierId, PageParam pageParam);
+
+    /**
      * 获得目标采购仓库对当前用户可用的业务部门列表。
      *
      * @param warehouseId 仓库编号
      * @return 部门精简列表
      */
     List<DeptSimpleRespVO> getWarehouseAvailableDeptSimpleList(Long warehouseId);
+
+    /**
+     * 获得目标采购仓库对当前用户可用的业务部门分页。
+     *
+     * @param warehouseId 仓库编号
+     * @param pageParam 分页参数
+     * @return 部门分页
+     */
+    PageResult<DeptSimpleRespVO> getWarehouseAvailableDeptSimplePage(Long warehouseId, PageParam pageParam);
 
     /**
      * 获得采购入库分页
@@ -193,6 +215,9 @@ public interface ErpPurchaseInService {
      */
     java.util.List<cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.returns.ErpPurchaseReturnableItemRespVO> getReturnableItemsByInId(Long inId);
 
+    PageResult<cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.returns.ErpPurchaseReturnableItemRespVO> getReturnableItemPage(
+            ErpPurchaseInReturnableItemPageReqVO pageReqVO);
+
     /**
      * 查询某采购入库单的可调拨出库明细。
      *
@@ -200,6 +225,15 @@ public interface ErpPurchaseInService {
      * @return 可调拨明细列表
      */
     List<ErpPurchaseInTransferOutableItemRespVO> getTransferOutableItemsByInId(Long inId);
+
+    /**
+     * 分页查询某采购入库单的可调拨出库明细。
+     *
+     * @param pageReqVO 分页请求
+     * @return 可调拨明细分页
+     */
+    PageResult<ErpPurchaseInTransferOutableItemRespVO> getTransferOutableItemPage(
+            ErpPurchaseInTransferOutableItemPageReqVO pageReqVO);
 
     /**
      * 查询某采购入库单的可转销售手推车明细。
@@ -260,6 +294,9 @@ public interface ErpPurchaseInService {
      * @return 已审批入库单的明细行
      */
     List<ErpPurchaseInItemForAdjustRespVO> getApprovedPurchaseInItemsBySupplier(Long supplierId, Boolean excludeAdjusted);
+
+    PageResult<ErpPurchaseInItemForAdjustRespVO> getApprovedPurchaseInItemPage(
+            ErpPurchaseInAdjustableItemPageReqVO pageReqVO);
 
     /**
      * 解析采购入库导入明细

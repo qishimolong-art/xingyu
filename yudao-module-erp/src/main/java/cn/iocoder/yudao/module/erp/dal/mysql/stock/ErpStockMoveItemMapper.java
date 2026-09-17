@@ -30,6 +30,11 @@ public interface ErpStockMoveItemMapper extends BaseMapperX<ErpStockMoveItemDO> 
         return selectList(ErpStockMoveItemDO::getMoveId, moveId);
     }
 
+    default List<ErpStockMoveItemDO> selectListByMoveIdForUpdate(Long moveId) {
+        return selectList(new LambdaQueryWrapperX<ErpStockMoveItemDO>()
+                .eq(ErpStockMoveItemDO::getMoveId, moveId).last("FOR UPDATE"));
+    }
+
     default PageResult<ErpStockMoveItemDO> selectPageByMoveId(ErpStockMoveItemPageReqVO reqVO) {
         LambdaQueryWrapperX<ErpStockMoveItemDO> query = new LambdaQueryWrapperX<ErpStockMoveItemDO>()
                 .eq(ErpStockMoveItemDO::getMoveId, reqVO.getMoveId());
@@ -50,6 +55,44 @@ public interface ErpStockMoveItemMapper extends BaseMapperX<ErpStockMoveItemDO> 
     default List<ErpStockMoveItemDO> selectListByMoveIds(Collection<Long> moveIds) {
         return selectList(ErpStockMoveItemDO::getMoveId, moveIds);
     }
+
+    default List<ErpStockMoveItemDO> selectLightListByMoveIds(Collection<Long> moveIds) {
+        if (cn.hutool.core.collection.CollUtil.isEmpty(moveIds)) {
+            return Collections.emptyList();
+        }
+        return selectList(new LambdaQueryWrapperX<ErpStockMoveItemDO>()
+                .select(ErpStockMoveItemDO::getId, ErpStockMoveItemDO::getMoveId,
+                        ErpStockMoveItemDO::getFromWarehouseId, ErpStockMoveItemDO::getToWarehouseId,
+                        ErpStockMoveItemDO::getFromDeptId, ErpStockMoveItemDO::getToDeptId)
+                .in(ErpStockMoveItemDO::getMoveId, moveIds));
+    }
+
+    default Map<Long, Map<String, Object>> selectSummaryMapByMoveIds(Collection<Long> moveIds) {
+        if (cn.hutool.core.collection.CollUtil.isEmpty(moveIds)) {
+            return Collections.emptyMap();
+        }
+        return convertMap(selectSummaryRowsByMoveIds(moveIds), row -> toLong(row.get("moveId")), row -> row);
+    }
+
+    @Select({
+            "<script>",
+            "SELECT smi.move_id AS moveId,",
+            "       COUNT(*) AS itemCount,",
+            "       GROUP_CONCAT(DISTINCT p.name ORDER BY p.name SEPARATOR ', ') AS productNames,",
+            "       GROUP_CONCAT(DISTINCT p.code ORDER BY p.code SEPARATOR ', ') AS productCodes,",
+            "       GROUP_CONCAT(DISTINCT fw.name ORDER BY fw.name SEPARATOR '、') AS fromWarehouseNames,",
+            "       GROUP_CONCAT(DISTINCT tw.name ORDER BY tw.name SEPARATOR '、') AS toWarehouseNames",
+            "  FROM erp_stock_move_item smi",
+            "  LEFT JOIN erp_product p ON p.id = smi.product_id AND p.deleted = b'0'",
+            "  LEFT JOIN erp_warehouse fw ON fw.id = smi.from_warehouse_id AND fw.deleted = b'0'",
+            "  LEFT JOIN erp_warehouse tw ON tw.id = smi.to_warehouse_id AND tw.deleted = b'0'",
+            " WHERE smi.deleted = b'0'",
+            "   AND smi.move_id IN",
+            " <foreach collection='moveIds' item='moveId' open='(' separator=',' close=')'>#{moveId}</foreach>",
+            " GROUP BY smi.move_id",
+            "</script>"
+    })
+    List<Map<String, Object>> selectSummaryRowsByMoveIds(@Param("moveIds") Collection<Long> moveIds);
 
     default int deleteByMoveId(Long moveId) {
         return delete(ErpStockMoveItemDO::getMoveId, moveId);
@@ -118,6 +161,10 @@ public interface ErpStockMoveItemMapper extends BaseMapperX<ErpStockMoveItemDO> 
             default:
                 return null;
         }
+    }
+
+    static Long toLong(Object value) {
+        return value instanceof Number ? ((Number) value).longValue() : null;
     }
 
     default Map<Long, BigDecimal> selectMovedCountMapBySourceInItemIds(Collection<Long> sourceInItemIds) {

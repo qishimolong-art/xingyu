@@ -29,9 +29,9 @@ import cn.iocoder.yudao.module.erp.enums.stock.ErpStockTransferDirectionEnum;
 import cn.iocoder.yudao.module.erp.service.mall.ErpMallProductSyncPublisher;
 import cn.iocoder.yudao.module.erp.service.product.ErpProductService;
 import cn.iocoder.yudao.module.erp.service.stock.bo.ErpProductStockPermissionScope;
+import cn.iocoder.yudao.module.erp.service.stock.cost.ErpDualCostPostingService;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import org.springframework.context.annotation.Lazy;
-import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -93,6 +93,12 @@ public class ErpStockServiceImpl implements ErpStockService {
 
     @Resource
     private ErpStockMapper stockMapper;
+    @Resource
+    private ErpDualCostPostingService dualCostPostingService;
+    @Resource
+    private cn.iocoder.yudao.module.erp.service.stock.cost.ErpStockDimensionService stockDimensionService;
+    @Resource
+    private ErpProductStockInitService productStockInitService;
     @Resource
     private ErpStockLockMapper stockLockMapper;
     @Resource
@@ -394,6 +400,11 @@ public class ErpStockServiceImpl implements ErpStockService {
                                                    Collection<Long> keywordProductIdFilter,
                                                    Collection<Long> keywordWarehouseIdFilter,
                                                    Map<Long, Set<Long>> batchKeywordStockKeyMap) {
+        if (isSaleAvailableCountSort(pageReqVO)) {
+            return stockMapper.selectPageOrderByAvailableCount(pageReqVO, productIdFilter, warehouseIdFilter,
+                    keywordProductIdFilter, keywordWarehouseIdFilter, batchKeywordStockKeyMap,
+                    null, null, null);
+        }
         if (batchKeywordStockKeyMap == null) {
             return stockMapper.selectPage(pageReqVO, productIdFilter, warehouseIdFilter,
                     keywordProductIdFilter, keywordWarehouseIdFilter);
@@ -412,6 +423,11 @@ public class ErpStockServiceImpl implements ErpStockService {
             Collection<Long> departmentWarehouseIds,
             Collection<Long> selfWarehouseIds,
             String selfCreator) {
+        if (isSaleAvailableCountSort(pageReqVO)) {
+            return stockMapper.selectPageOrderByAvailableCount(pageReqVO, productIdFilter, warehouseIdFilter,
+                    keywordProductIdFilter, keywordWarehouseIdFilter, batchKeywordStockKeyMap,
+                    departmentWarehouseIds, selfWarehouseIds, selfCreator);
+        }
         if (batchKeywordStockKeyMap == null) {
             return stockMapper.selectPage(pageReqVO, productIdFilter, warehouseIdFilter,
                     keywordProductIdFilter, keywordWarehouseIdFilter,
@@ -439,31 +455,12 @@ public class ErpStockServiceImpl implements ErpStockService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void ensureStockExists(Long productId, Long warehouseId) {
-        if (productId == null || warehouseId == null) {
-            return;
-        }
-        Long warehouseDeptId = resolveWarehouseDeptId(warehouseId);
-        ErpStockDO stock = selectStockIgnoreDataPermission(productId, warehouseId);
-        if (stock != null) {
-            if (!java.util.Objects.equals(stock.getDeptId(), warehouseDeptId)) {
-                DataPermissionUtils.executeIgnore(() -> stockMapper.updateById(
-                        new ErpStockDO().setId(stock.getId()).setDeptId(warehouseDeptId)));
-            }
-            return;
-        }
-        ErpStockDO zeroStock = new ErpStockDO()
-                .setProductId(productId)
-                .setWarehouseId(warehouseId)
-                .setDeptId(warehouseDeptId)
-                .setCount(BigDecimal.ZERO)
-                .setLockCount(BigDecimal.ZERO)
-                .setCostPrice(BigDecimal.ZERO)
-                .setCostAmount(BigDecimal.ZERO);
-        try {
-            insertStockIgnoreDataPermission(zeroStock);
-        } catch (DuplicateKeyException ignored) {
-            // A concurrent transaction created the same product/warehouse row first.
-        }
+        productStockInitService.ensureStockExists(productId, warehouseId);
+    }
+
+    @Override
+    public void reserveStockDimensions(Collection<ErpStockDO> dimensions) {
+        stockDimensionService.reserveDimensions(dimensions);
     }
 
     private Collection<Long> intersectWarehouseIds(Collection<Long> requestWarehouseIds,
@@ -480,13 +477,17 @@ public class ErpStockServiceImpl implements ErpStockService {
     }
 
     private Collection<Long> getVisibleWarehouseIdsForSaleStockPage(ErpStockPageReqVO pageReqVO) {
+        String allProductPermission = Boolean.TRUE.equals(pageReqVO.getAllSaleProduct())
+                ? pageReqVO.getAllSaleProductPermission() : null;
         if (pageReqVO.getSaleDeptId() != null) {
-            return warehouseService.getCurrentUserSaleSelectableWarehouseListByDept(pageReqVO.getSaleDeptId())
+            return warehouseService.getCurrentUserSaleSelectableWarehouseListByDept(
+                            pageReqVO.getSaleDeptId(), allProductPermission)
                     .stream()
                     .map(ErpWarehouseDO::getId)
                     .collect(Collectors.toCollection(LinkedHashSet::new));
         }
-        List<ErpWarehouseDO> visibleWarehouses = warehouseService.getCurrentUserVisibleSaleWarehouseList();
+        List<ErpWarehouseDO> visibleWarehouses = warehouseService
+                .getCurrentUserSaleSelectableWarehouseListByDept(null, allProductPermission);
         Collection<Long> visibleWarehouseIds = visibleWarehouses.stream()
                 .map(ErpWarehouseDO::getId)
                 .collect(Collectors.toCollection(LinkedHashSet::new));
@@ -502,6 +503,10 @@ public class ErpStockServiceImpl implements ErpStockService {
 
     private boolean isSaleBizType(ErpStockPageReqVO pageReqVO) {
         return pageReqVO != null && "sale".equalsIgnoreCase(pageReqVO.getBizType());
+    }
+
+    private boolean isSaleAvailableCountSort(ErpStockPageReqVO pageReqVO) {
+        return isSaleBizType(pageReqVO) && ErpStockMapper.isAvailableCountSort(pageReqVO);
     }
 
     @Override
@@ -539,6 +544,7 @@ public class ErpStockServiceImpl implements ErpStockService {
                 stockMapper.updatePurchasePriceById(stock.getId(), defaultZero(reqVO.getPurchasePrice()));
                 break;
             case "costPrice":
+                dualCostPostingService.assertLegacyMutationAllowed(false);
                 costPrice = defaultZero(reqVO.getCostPrice());
                 costAmount = MoneyUtils.priceMultiply(costPrice, count);
                 if (costAmount == null) {
@@ -547,6 +553,7 @@ public class ErpStockServiceImpl implements ErpStockService {
                 stockMapper.updateCostById(stock.getId(), costPrice, costAmount);
                 break;
             case "costAmount":
+                dualCostPostingService.assertLegacyMutationAllowed(false);
                 costAmount = defaultZero(reqVO.getCostAmount());
                 costPrice = count.signum() > 0
                         ? costAmount.divide(count, COST_PRICE_SCALE, RoundingMode.HALF_UP)
@@ -565,6 +572,7 @@ public class ErpStockServiceImpl implements ErpStockService {
 
     private boolean hasProductCondition(ErpStockPageReqVO v) {
         return StringUtils.hasText(v.getKeyword())
+                || StringUtils.hasText(v.getProductKeyword())
                 || StringUtils.hasText(v.getProductCode()) || StringUtils.hasText(v.getProductName())
                 || StringUtils.hasText(v.getDrawingNo()) || StringUtils.hasText(v.getVehicleModel())
                 || StringUtils.hasText(v.getOriginPlace()) || StringUtils.hasText(v.getBrand())
@@ -578,7 +586,8 @@ public class ErpStockServiceImpl implements ErpStockService {
     }
 
     private boolean hasProductConditionExceptKeyword(ErpStockPageReqVO v) {
-        return StringUtils.hasText(v.getProductCode()) || StringUtils.hasText(v.getProductName())
+        return StringUtils.hasText(v.getProductKeyword())
+                || StringUtils.hasText(v.getProductCode()) || StringUtils.hasText(v.getProductName())
                 || StringUtils.hasText(v.getDrawingNo()) || StringUtils.hasText(v.getVehicleModel())
                 || StringUtils.hasText(v.getOriginPlace()) || StringUtils.hasText(v.getBrand())
                 || StringUtils.hasText(v.getFeatureCode())
@@ -618,6 +627,7 @@ public class ErpStockServiceImpl implements ErpStockService {
 
     @Override
     public BigDecimal updateStockCountIncrement(Long productId, Long warehouseId, BigDecimal count) {
+        dualCostPostingService.assertLegacyMutationAllowed(false);
         // 1.1 查询当前库存
         ErpStockDO stock = selectStockIgnoreDataPermission(productId, warehouseId);
         if (stock == null) {
@@ -650,13 +660,21 @@ public class ErpStockServiceImpl implements ErpStockService {
     @Override
     public StockUpdateResult updateStockCountAndCost(Long productId, Long warehouseId,
                                                     BigDecimal count, BigDecimal unitPrice, Integer bizType) {
+        dualCostPostingService.assertLegacyStockMutationAllowed(productId, warehouseId, count, bizType);
+        boolean currentAverage = dualCostPostingService.useLegacyCurrentAverage(productId, warehouseId, count, bizType);
+        BigDecimal approvedIncomingAmount = dualCostPostingService.authenticatedLegacyIncomingAmount(productId, warehouseId, count, bizType);
         // 0. 入库必须有单价（出库允许 null，由上层按当前成本均价回填至流水）
         if (count.compareTo(BigDecimal.ZERO) > 0 && unitPrice == null) {
             throw new IllegalArgumentException("入库时 unitPrice 不能为空");
         }
 
         // 1. 查询当前库存；若不存在则初始化
-        ErpStockDO stock = selectStockIgnoreDataPermission(productId, warehouseId);
+        ErpStockDO stock = currentAverage || approvedIncomingAmount != null ? DataPermissionUtils.executeIgnore(() ->
+                stockMapper.selectByProductIdAndWarehouseIdForUpdate(productId, warehouseId))
+                : selectStockIgnoreDataPermission(productId, warehouseId);
+        if ((currentAverage || approvedIncomingAmount != null) && stock == null) {
+            throw new IllegalStateException("认证退货的实际库存已缺失，不能重新创建零库存");
+        }
         if (stock == null) {
             stock = new ErpStockDO().setProductId(productId).setWarehouseId(warehouseId)
                     .setDeptId(resolveWarehouseDeptId(warehouseId))
@@ -675,6 +693,15 @@ public class ErpStockServiceImpl implements ErpStockService {
                     : MoneyUtils.priceMultiply(oldCost, oldCount);
             if (oldCostAmount == null) {
                 oldCostAmount = BigDecimal.ZERO;
+            }
+
+            if (currentAverage && (stock.getCount() == null || stock.getCostAmount() == null
+                    || oldCount.signum() <= 0 || oldCostAmount.signum() < 0)) {
+                throw new IllegalStateException("旧库存成本余额不完整，禁止按退款价或零成本替代");
+            }
+            if (approvedIncomingAmount != null && (stock.getCount() == null || stock.getCostAmount() == null
+                    || oldCount.signum() < 0 || oldCostAmount.signum() < 0 || approvedIncomingAmount.signum() < 0)) {
+                throw new IllegalStateException("无单退货兼容库存成本余额缺失，不能以退款价或零替代");
             }
 
             // 2.1 校验库存是否充足
@@ -697,7 +724,7 @@ public class ErpStockServiceImpl implements ErpStockService {
                     newCost = BigDecimal.ZERO;
                     newAmount = BigDecimal.ZERO;
                 } else {
-                    newAmount = oldCostAmount.add(count.multiply(unitPrice));
+                    newAmount = oldCostAmount.add(approvedIncomingAmount != null ? approvedIncomingAmount : count.multiply(unitPrice));
                     newCost = newAmount.divide(newCount, COST_PRICE_SCALE, RoundingMode.HALF_UP);
                 }
             } else {
@@ -705,6 +732,10 @@ public class ErpStockServiceImpl implements ErpStockService {
                 if (newCount.compareTo(BigDecimal.ZERO) == 0) {
                     newCost = BigDecimal.ZERO;
                     newAmount = BigDecimal.ZERO;
+                } else if (currentAverage) {
+                    BigDecimal movement = oldCostAmount.multiply(count).divide(oldCount, COST_PRICE_SCALE, RoundingMode.HALF_UP);
+                    newAmount = oldCostAmount.add(movement);
+                    newCost = newAmount.divide(newCount, COST_PRICE_SCALE, RoundingMode.HALF_UP);
                 } else if (shouldDeductOutboundCostByUnitPrice(unitPrice, bizType)) {
                     newAmount = oldCostAmount.add(count.multiply(unitPrice));
                     newCost = newAmount.divide(newCount, COST_PRICE_SCALE, RoundingMode.HALF_UP);
@@ -737,7 +768,9 @@ public class ErpStockServiceImpl implements ErpStockService {
             }
 
             // 2.5 冲突：重新读取再试
-            ErpStockDO latest = selectStockIgnoreDataPermission(productId, warehouseId);
+            ErpStockDO latest = currentAverage || approvedIncomingAmount != null ? DataPermissionUtils.executeIgnore(() ->
+                    stockMapper.selectByProductIdAndWarehouseIdForUpdate(productId, warehouseId))
+                    : selectStockIgnoreDataPermission(productId, warehouseId);
             if (latest != null) {
                 stock = latest;
             }
@@ -759,6 +792,7 @@ public class ErpStockServiceImpl implements ErpStockService {
     public void adjustStockCostAmount(Long productId, Long warehouseId,
                                       BigDecimal deltaCostAmountFull, BigDecimal sumInCount,
                                       Long bizId, String bizNo, LocalDateTime bizDate) {
+        dualCostPostingService.assertLegacyMutationAllowed(false);
         // 0. 空差额直接短路
         if (deltaCostAmountFull == null || deltaCostAmountFull.compareTo(BigDecimal.ZERO) == 0) {
             return;
@@ -856,6 +890,7 @@ public class ErpStockServiceImpl implements ErpStockService {
 
     @Override
     public StockUpdateResult updateStockCostPrice(Long productId, Long warehouseId, BigDecimal costPrice) {
+        dualCostPostingService.assertLegacyMutationAllowed(false);
         BigDecimal targetCostPrice = costPrice != null ? costPrice : BigDecimal.ZERO;
         ErpStockDO stock = selectStockIgnoreDataPermission(productId, warehouseId);
         if (stock == null) {
@@ -902,6 +937,7 @@ public class ErpStockServiceImpl implements ErpStockService {
     }
 
     private void insertStockIgnoreDataPermission(ErpStockDO stock) {
+        stockDimensionService.assertLegacyInsertAllowed();
         DataPermissionUtils.executeIgnore(() -> {
             stockMapper.insert(stock);
         });

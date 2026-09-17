@@ -12,7 +12,9 @@ import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
 import cn.iocoder.yudao.framework.common.util.servlet.ServletUtils;
 import cn.iocoder.yudao.framework.common.util.validation.ValidationUtils;
 import cn.iocoder.yudao.framework.datapermission.core.annotation.DataPermission;
+import cn.iocoder.yudao.framework.tenant.config.TenantProperties;
 import cn.iocoder.yudao.framework.tenant.core.context.TenantContextHolder;
+import cn.iocoder.yudao.framework.tenant.core.util.TenantUtils;
 import cn.iocoder.yudao.module.system.api.logger.dto.LoginLogCreateReqDTO;
 import cn.iocoder.yudao.module.system.api.sms.SmsCodeApi;
 import cn.iocoder.yudao.module.system.api.sms.dto.code.SmsCodeUseReqDTO;
@@ -43,6 +45,7 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 import lombok.experimental.Accessors;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
@@ -53,6 +56,7 @@ import javax.validation.Validator;
 import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static cn.iocoder.yudao.framework.common.exception.util.ServiceExceptionUtil.exception;
 import static cn.iocoder.yudao.framework.common.util.servlet.ServletUtils.getClientIP;
@@ -89,6 +93,8 @@ public class AdminAuthServiceImpl implements AdminAuthService {
     private WeComProperties weComProperties;
     @Resource
     private StringRedisTemplate stringRedisTemplate;
+    @Autowired(required = false)
+    private TenantProperties tenantProperties;
 
     /**
      * 验证码的开关，默认为 true
@@ -170,26 +176,43 @@ public class AdminAuthServiceImpl implements AdminAuthService {
     }
 
     @Override
-    public String getWeComAuthorizeUrl(String redirectUri) {
+    public String getWeComAuthorizeUrl(String redirectUri, String clientKey) {
         if (StrUtil.isBlank(redirectUri)) {
             throw exception(AUTH_WECOM_API_ERROR, "redirectUri 不能为空");
         }
+        String normalizedClientKey = StrUtil.trim(clientKey);
+        if (StrUtil.isBlank(normalizedClientKey)) {
+            normalizedClientKey = null;
+        }
+        Long tenantId = TenantContextHolder.getTenantId();
+        if (isTenantEnable() && tenantId == null) {
+            throw exception(AUTH_WECOM_API_ERROR, "租户编号不能为空");
+        }
         String state = IdUtil.fastSimpleUUID();
         WeComAuthState authState = new WeComAuthState()
-                .setTenantId(TenantContextHolder.getTenantId())
-                .setRedirectUri(redirectUri);
+                .setTenantId(tenantId)
+                .setRedirectUri(redirectUri)
+                .setClientKey(normalizedClientKey);
         long timeoutSeconds = weComProperties.getStateTimeout() == null ? 300L
                 : Math.max(60L, weComProperties.getStateTimeout().getSeconds());
         stringRedisTemplate.opsForValue().set(formatWeComAuthStateKey(state),
                 JsonUtils.toJsonString(authState), timeoutSeconds, TimeUnit.SECONDS);
-        return weComClientService.getAuthorizeUrl(redirectUri, state);
+        return weComClientService.getAuthorizeUrl(redirectUri, state, normalizedClientKey);
     }
 
     @Override
     public AuthLoginRespVO weComSilentLogin(AuthWeComLoginReqVO reqVO) {
-        validateWeComAuthState(reqVO.getState());
+        WeComAuthState authState = validateWeComAuthState(reqVO.getState());
+        if (isTenantEnable()) {
+            AtomicReference<AuthLoginRespVO> result = new AtomicReference<>();
+            TenantUtils.execute(authState.getTenantId(), () -> result.set(doWeComSilentLogin(reqVO, authState)));
+            return result.get();
+        }
+        return doWeComSilentLogin(reqVO, authState);
+    }
 
-        String mobile = weComClientService.getUserMobileByCode(reqVO.getCode());
+    private AuthLoginRespVO doWeComSilentLogin(AuthWeComLoginReqVO reqVO, WeComAuthState authState) {
+        String mobile = weComClientService.getUserMobileByCode(reqVO.getCode(), authState.getClientKey());
         if (StrUtil.isBlank(mobile)) {
             throw exception(AUTH_WECOM_MOBILE_EMPTY);
         }
@@ -212,7 +235,7 @@ public class AdminAuthServiceImpl implements AdminAuthService {
         return createTokenAfterLoginSuccess(user.getId(), mobile, LoginLogTypeEnum.LOGIN_SOCIAL);
     }
 
-    private void validateWeComAuthState(String state) {
+    private WeComAuthState validateWeComAuthState(String state) {
         String redisKey = formatWeComAuthStateKey(state);
         String stateValue = stringRedisTemplate.opsForValue().get(redisKey);
         if (StrUtil.isBlank(stateValue)) {
@@ -222,13 +245,24 @@ public class AdminAuthServiceImpl implements AdminAuthService {
 
         WeComAuthState authState = JsonUtils.parseObject(stateValue, WeComAuthState.class);
         Long tenantId = TenantContextHolder.getTenantId();
-        if (authState != null && authState.getTenantId() != null && !Objects.equals(authState.getTenantId(), tenantId)) {
+        if (authState == null) {
             throw exception(AUTH_WECOM_STATE_INVALID);
         }
+        if (isTenantEnable() && authState.getTenantId() == null) {
+            throw exception(AUTH_WECOM_STATE_INVALID);
+        }
+        if (tenantId != null && authState.getTenantId() != null && !Objects.equals(authState.getTenantId(), tenantId)) {
+            throw exception(AUTH_WECOM_STATE_INVALID);
+        }
+        return authState;
     }
 
     private String formatWeComAuthStateKey(String state) {
         return String.format(RedisKeyConstants.WECOM_AUTH_STATE, state);
+    }
+
+    private boolean isTenantEnable() {
+        return tenantProperties != null && Boolean.TRUE.equals(tenantProperties.getEnable());
     }
 
     private void createLoginLog(Long userId, String username,
@@ -355,6 +389,8 @@ public class AdminAuthServiceImpl implements AdminAuthService {
         private Long tenantId;
 
         private String redirectUri;
+
+        private String clientKey;
 
     }
 

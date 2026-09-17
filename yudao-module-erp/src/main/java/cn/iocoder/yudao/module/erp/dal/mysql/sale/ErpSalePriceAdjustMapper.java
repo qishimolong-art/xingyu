@@ -4,6 +4,8 @@ import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.mybatis.core.mapper.BaseMapperX;
 import cn.iocoder.yudao.framework.mybatis.core.query.MPJLambdaWrapperX;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.priceadjust.ErpSalePriceAdjustPageReqVO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.product.ErpProductDO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.product.ErpProductUnitDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSalePriceAdjustDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSalePriceAdjustItemDO;
 import cn.iocoder.yudao.module.erp.dal.mysql.common.ErpKeywordQuery;
@@ -13,6 +15,7 @@ import cn.iocoder.yudao.module.erp.enums.common.ErpBizTypeEnum;
 import com.baomidou.mybatisplus.core.toolkit.support.SFunction;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import org.apache.ibatis.annotations.Mapper;
+import org.springframework.util.StringUtils;
 
 /**
  * ERP 销售调价单 Mapper
@@ -43,13 +46,18 @@ public interface ErpSalePriceAdjustMapper extends BaseMapperX<ErpSalePriceAdjust
                             + "(t.total_adjust_price < 0 AND " + EFFECTIVE_RECEIPT_PRICE_EXPRESSION
                             + " <= 0 AND " + EFFECTIVE_RECEIPT_PRICE_EXPRESSION + " > t.total_adjust_price))");
         }
-        if (reqVO.getProductId() != null) {
+        if (reqVO.getProductId() != null || StringUtils.hasText(reqVO.getProductKeyword())) {
             wrapper.leftJoin(ErpSalePriceAdjustItemDO.class,
                             ErpSalePriceAdjustItemDO::getAdjustId, ErpSalePriceAdjustDO::getId)
-                    .eq(ErpSalePriceAdjustItemDO::getProductId, reqVO.getProductId())
+                    .leftJoin(ErpProductDO.class, ErpProductDO::getId, ErpSalePriceAdjustItemDO::getProductId)
+                    .leftJoin(ErpProductUnitDO.class, ErpProductUnitDO::getId, ErpProductDO::getUnitId)
+                    .eq(reqVO.getProductId() != null, ErpSalePriceAdjustItemDO::getProductId, reqVO.getProductId())
+                    .and(StringUtils.hasText(reqVO.getProductKeyword()),
+                            w -> ErpKeywordQuery.appendProductKeyword(w, reqVO.getProductKeyword()))
                     .groupBy(ErpSalePriceAdjustDO::getId);
         }
-        ErpKeywordQuery.appendWithDeptName(wrapper, reqVO.getKeyword(),
+        ErpKeywordQuery.appendWithDeptNameAndSaleCustomerAndProductItemTokensByProductUnit(wrapper, reqVO.getKeyword(),
+                "erp_sale_price_adjust_item", "adjust_id",
                 ErpSalePriceAdjustDO::getNo, ErpSalePriceAdjustDO::getRemark,
                 ErpSalePriceAdjustDO::getOriginalSaleOutNo, ErpSalePriceAdjustDO::getNewSaleOutNo,
                 ErpSalePriceAdjustDO::getSettleMethod, ErpSalePriceAdjustDO::getDeliveryMethod,

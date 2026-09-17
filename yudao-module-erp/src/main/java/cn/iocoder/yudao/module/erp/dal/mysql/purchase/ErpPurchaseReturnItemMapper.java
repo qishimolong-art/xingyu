@@ -30,6 +30,22 @@ import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.
 @Mapper
 public interface ErpPurchaseReturnItemMapper extends BaseMapperX<ErpPurchaseReturnItemDO> {
 
+    default int updateNormalizedSources(Long returnId, ErpPurchaseReturnItemDO item) {
+        return update(null, new com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper<ErpPurchaseReturnItemDO>()
+                .eq(ErpPurchaseReturnItemDO::getId, item.getId()).eq(ErpPurchaseReturnItemDO::getReturnId, returnId)
+                .set(ErpPurchaseReturnItemDO::getSourceInId, item.getSourceInId())
+                .set(ErpPurchaseReturnItemDO::getSourceInItemId, item.getSourceInItemId())
+                .set(ErpPurchaseReturnItemDO::getSourceInNo, item.getSourceInNo())
+                .set(ErpPurchaseReturnItemDO::getSourceSaleReturnId, item.getSourceSaleReturnId())
+                .set(ErpPurchaseReturnItemDO::getSourceSaleReturnItemId, item.getSourceSaleReturnItemId())
+                .set(ErpPurchaseReturnItemDO::getSourceSaleReturnNo, item.getSourceSaleReturnNo()));
+    }
+
+    default List<ErpPurchaseReturnItemDO> selectListByReturnIdForUpdate(Long id) {
+        return selectList(new cn.iocoder.yudao.framework.mybatis.core.query.LambdaQueryWrapperX<ErpPurchaseReturnItemDO>()
+                .eq(ErpPurchaseReturnItemDO::getReturnId, id).last("FOR UPDATE"));
+    }
+
     default List<ErpPurchaseReturnItemDO> selectListByReturnId(Long returnId) {
         return selectList(ErpPurchaseReturnItemDO::getReturnId, returnId);
     }
@@ -53,6 +69,19 @@ public interface ErpPurchaseReturnItemMapper extends BaseMapperX<ErpPurchaseRetu
 
     default List<ErpPurchaseReturnItemDO> selectListByReturnIds(Collection<Long> returnIds) {
         return selectList(ErpPurchaseReturnItemDO::getReturnId, returnIds);
+    }
+
+    default Map<Long, Integer> selectItemCountMapByReturnIds(Collection<Long> returnIds) {
+        if (CollUtil.isEmpty(returnIds)) {
+            return Collections.emptyMap();
+        }
+        List<Map<String, Object>> rows = selectMaps(new QueryWrapper<ErpPurchaseReturnItemDO>()
+                .select("return_id, COUNT(1) AS item_count")
+                .in("return_id", returnIds)
+                .groupBy("return_id"));
+        return convertMap(rows,
+                row -> Long.valueOf(row.get("return_id").toString()),
+                row -> Integer.valueOf(row.get("item_count").toString()));
     }
 
     default int deleteByReturnId(Long returnId) {

@@ -52,9 +52,6 @@ public class ErpPreReceiptServiceImpl implements ErpPreReceiptService {
 
     @Resource
     private ErpAccountService accountService;
-
-    @Resource
-    private ErpAutoVoucherBuilder autoVoucherBuilder;
     @Resource
     private ErpVoucherService voucherService;
     @Resource
@@ -153,19 +150,8 @@ public class ErpPreReceiptServiceImpl implements ErpPreReceiptService {
         }
 
         // 3. 审批通过：自动生成预收款凭证
-        if (approve && preReceipt.getBizTime() != null
-                && bookOpenService.isVoucherTypeEnabled(preReceipt.getBizTime().toLocalDate(),
-                ErpVoucherTypeEnum.PRE_RECEIPT.getType())) {
-            List<ErpVoucherItemDO> voucherItems = autoVoucherBuilder.buildPreReceiptItems(preReceipt);
-            voucherService.createVoucherFromBiz(
-                    ErpVoucherSourceBizTypeEnum.PRE_RECEIPT.getType(),
-                    preReceipt.getId(),
-                    preReceipt.getNo(),
-                    preReceipt.getActualAmount(),
-                    preReceipt.getBizTime().toLocalDate(),
-                    "预收款 - " + preReceipt.getPartyName(),
-                    voucherItems);
-        }
+        // 业务审核仅更新业务状态；凭证由财务统一预览生成。
+
     }
 
     @Override

@@ -22,6 +22,11 @@ public interface ErpSaleQuoteItemMapper extends BaseMapperX<ErpSaleQuoteItemDO> 
         return selectList(ErpSaleQuoteItemDO::getQuoteId, quoteId);
     }
 
+    default List<ErpSaleQuoteItemDO> selectListByQuoteIdForUpdate(Long quoteId) {
+        return selectList(new LambdaQueryWrapperX<ErpSaleQuoteItemDO>()
+                .eq(ErpSaleQuoteItemDO::getQuoteId, quoteId).last("FOR UPDATE"));
+    }
+
     default PageResult<ErpSaleQuoteItemDO> selectPageByQuoteId(ErpSaleQuoteItemPageReqVO reqVO) {
         LambdaQueryWrapperX<ErpSaleQuoteItemDO> query = new LambdaQueryWrapperX<ErpSaleQuoteItemDO>()
                 .eq(ErpSaleQuoteItemDO::getQuoteId, reqVO.getQuoteId());

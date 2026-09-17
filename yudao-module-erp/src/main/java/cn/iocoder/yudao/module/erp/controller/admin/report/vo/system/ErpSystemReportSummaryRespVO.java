@@ -31,6 +31,8 @@ public class ErpSystemReportSummaryRespVO {
 
     private BigDecimal stockQty;
     private BigDecimal stockAmount;
+    private BigDecimal outCount;
+    private BigDecimal outAmount;
     private BigDecimal occupiedQty;
     private BigDecimal availableQty;
     private BigDecimal inTransitQty;

@@ -6,7 +6,7 @@ import lombok.Data;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 
-@Schema(description = "ERP 其他应收草稿保存 Request VO")
+@Schema(description = "ERP 应收调账草稿保存 Request VO")
 @Data
 public class ErpReceivableOtherDraftSaveReqVO {
 

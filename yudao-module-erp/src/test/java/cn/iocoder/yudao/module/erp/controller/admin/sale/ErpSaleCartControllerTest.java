@@ -15,11 +15,14 @@ import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartSubm
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleCartDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleCartItemDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpWarehouseDO;
+import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpSaleCartItemMapper;
+import cn.iocoder.yudao.module.erp.service.base.ErpDataPermissionDeptService;
 import cn.iocoder.yudao.module.erp.service.config.ErpFieldConfigService;
 import cn.iocoder.yudao.module.erp.service.product.ErpProductService;
 import cn.iocoder.yudao.module.erp.service.sale.ErpCustomerService;
 import cn.iocoder.yudao.module.erp.service.sale.ErpSaleCartService;
 import cn.iocoder.yudao.module.erp.service.sale.ErpSaleFieldPermissionMasker;
+import cn.iocoder.yudao.module.erp.service.sale.ErpSaleItemPriceReferenceFiller;
 import cn.iocoder.yudao.module.erp.service.stock.ErpWarehouseService;
 import cn.iocoder.yudao.module.system.api.dept.DeptApi;
 import cn.iocoder.yudao.module.system.api.user.AdminUserApi;
@@ -44,6 +47,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -65,6 +69,12 @@ public class ErpSaleCartControllerTest extends BaseMockitoUnitTest {
     private ErpWarehouseService warehouseService;
     @Mock
     private ErpSaleFieldPermissionMasker fieldPermissionMasker;
+    @Mock
+    private ErpSaleItemPriceReferenceFiller itemPriceReferenceFiller;
+    @Mock
+    private ErpDataPermissionDeptService dataPermissionDeptService;
+    @Mock
+    private ErpSaleCartItemMapper saleCartItemMapper;
     @Mock
     private AdminUserApi adminUserApi;
     @Mock
@@ -432,6 +442,28 @@ public class ErpSaleCartControllerTest extends BaseMockitoUnitTest {
         assertNotNull(result.getData());
         assertNotNull(result.getData().getList().get(0).getItems());
         assertTrue(result.getData().getList().get(0).getItems().isEmpty());
+    }
+
+    @Test
+    public void testGetSaleCartPage_includeItemsFalse_usesLightList() {
+        ErpSaleCartPageReqVO pageReqVO = new ErpSaleCartPageReqVO();
+        pageReqVO.setIncludeItems(false);
+        ErpSaleCartDO cart = new ErpSaleCartDO();
+        cart.setId(92L);
+        cart.setDeptId(12L);
+        PageResult<ErpSaleCartDO> pageResult = new PageResult<>(singletonList(cart), 1L);
+        when(saleCartService.getSaleCartPage(eq(pageReqVO))).thenReturn(pageResult);
+        when(saleCartItemMapper.selectItemCountMapByCartIds(any()))
+                .thenReturn(Collections.singletonMap(92L, 3));
+        when(saleCartService.getFirstApproveRequiredMap(any())).thenReturn(Collections.emptyMap());
+
+        CommonResult<PageResult<ErpSaleCartRespVO>> result = controller.getSaleCartPage(pageReqVO);
+
+        ErpSaleCartRespVO respVO = result.getData().getList().get(0);
+        assertEquals(3, respVO.getItemCount());
+        assertNull(respVO.getItems());
+        verify(saleCartService, never()).getSaleCartItemListByCartIds(any());
+        verify(saleCartItemMapper).selectItemCountMapByCartIds(any());
     }
 
     @Test

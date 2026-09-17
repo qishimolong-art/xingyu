@@ -3,6 +3,7 @@ package cn.iocoder.yudao.module.erp.controller.admin.sale;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.ErpSaleUpdateRemarkReqVO;
 import cn.hutool.core.collection.CollUtil;
 import cn.iocoder.yudao.framework.apilog.core.annotation.ApiAccessLog;
+import cn.iocoder.yudao.framework.common.enums.CommonStatusEnum;
 import cn.iocoder.yudao.framework.common.pojo.CommonResult;
 import cn.iocoder.yudao.framework.common.pojo.PageParam;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
@@ -24,23 +25,32 @@ import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleRetur
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnItemBatchUpdateReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnItemPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnPageReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnPurchaseReturnableItemPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnPurchaseReturnableItemRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnRefundSummaryRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnSaveReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnTransferOutableItemPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnTransferOutableItemRespVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpCustomerDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleReturnDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleReturnItemDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpWarehouseDO;
+import cn.iocoder.yudao.module.erp.dal.mysql.finance.ErpFinanceReceiptItemMapper;
+import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpSaleReturnItemMapper;
+import cn.iocoder.yudao.module.erp.enums.common.ErpBizTypeEnum;
 import cn.iocoder.yudao.module.erp.enums.config.ErpFieldConfigModuleEnum;
 import cn.iocoder.yudao.module.erp.framework.excel.ErpExportFieldUtils;
 import cn.iocoder.yudao.module.erp.framework.excel.ErpImportTemplateRequiredFieldUtils;
+import cn.iocoder.yudao.module.erp.service.base.ErpDataPermissionDeptService;
 import cn.iocoder.yudao.module.erp.service.common.ErpImportExportRecordService;
 import cn.iocoder.yudao.module.erp.service.config.ErpFieldConfigService;
 import cn.iocoder.yudao.module.erp.service.product.ErpProductService;
+import cn.iocoder.yudao.module.erp.service.sale.ErpCustomerDeptPermissionService;
 import cn.iocoder.yudao.module.erp.service.sale.ErpCustomerService;
 import cn.iocoder.yudao.module.erp.service.sale.ErpSaleFieldPermissionMasker;
+import cn.iocoder.yudao.module.erp.service.sale.ErpSaleItemPriceReferenceFiller;
 import cn.iocoder.yudao.module.erp.service.sale.ErpSaleReturnService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpStockService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpWarehouseService;
@@ -49,6 +59,7 @@ import cn.iocoder.yudao.module.system.api.dept.dto.DeptRespDTO;
 import cn.iocoder.yudao.module.system.controller.admin.dept.vo.dept.DeptSimpleRespVO;
 import cn.iocoder.yudao.module.system.api.user.AdminUserApi;
 import cn.iocoder.yudao.module.system.api.user.dto.AdminUserRespDTO;
+import cn.iocoder.yudao.module.system.controller.admin.user.vo.user.UserSimpleRespVO;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -71,6 +82,7 @@ import java.util.Set;
 
 import static cn.iocoder.yudao.framework.apilog.core.enums.OperateTypeEnum.EXPORT;
 import static cn.iocoder.yudao.framework.common.pojo.CommonResult.success;
+import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.convertList;
 import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.convertSetByFlatMap;
 import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.convertMultiMap;
 import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.convertSet;
@@ -108,11 +120,21 @@ public class ErpSaleReturnController {
     @Resource
     private ErpWarehouseService warehouseService;
     @Resource
+    private ErpFinanceReceiptItemMapper financeReceiptItemMapper;
+    @Resource
     private ErpSaleFieldPermissionMasker fieldPermissionMasker;
+    @Resource
+    private ErpSaleItemPriceReferenceFiller itemPriceReferenceFiller;
     @Resource
     private ErpFieldConfigService fieldConfigService;
     @Resource
     private ErpImportExportRecordService importExportRecordService;
+    @Resource
+    private ErpDataPermissionDeptService dataPermissionDeptService;
+    @Resource
+    private ErpSaleReturnItemMapper saleReturnItemMapper;
+    @Resource
+    private ErpCustomerDeptPermissionService customerDeptPermissionService;
 
     @Resource
     private AdminUserApi adminUserApi;
@@ -179,9 +201,14 @@ public class ErpSaleReturnController {
     @Operation(summary = "更新销售退货的状态")
     @PreAuthorize("@ss.hasPermission('erp:sale-return:update-status')")
     public CommonResult<Boolean> updateSaleReturnStatus(@RequestParam("id") Long id,
-                                                        @RequestParam("status") Integer status) {
+                                                        @RequestParam("status") Integer status,
+            @RequestParam(value = "expectedCostBasisSignature", required = false) String expectedCostBasisSignature) {
         ErpAuditStatusRequestValidator.validateApproveStatus(status);
-        saleReturnService.updateSaleReturnStatus(id, status);
+        if (expectedCostBasisSignature == null) {
+            saleReturnService.updateSaleReturnStatus(id, status);
+        } else {
+            saleReturnService.updateSaleReturnStatusWithCostBasis(id, status, expectedCostBasisSignature);
+        }
         return success(true);
     }
 
@@ -191,6 +218,14 @@ public class ErpSaleReturnController {
     public CommonResult<List<ErpSaleReturnTransferOutableItemRespVO>> getTransferOutableItems(
             @RequestParam("returnId") Long returnId) {
         return success(saleReturnService.getTransferOutableItemsByReturnId(returnId));
+    }
+
+    @GetMapping("/transfer-outable-item-page")
+    @Operation(summary = "获得销售退货可转调拨明细分页")
+    @PreAuthorize("@ss.hasPermission('erp:sale-return:transfer-out')")
+    public CommonResult<PageResult<ErpSaleReturnTransferOutableItemRespVO>> getTransferOutableItemPage(
+            @Valid ErpSaleReturnTransferOutableItemPageReqVO pageReqVO) {
+        return success(saleReturnService.getTransferOutableItemPage(pageReqVO));
     }
 
     @PostMapping("/create-transfer-out")
@@ -207,6 +242,14 @@ public class ErpSaleReturnController {
     public CommonResult<List<ErpSaleReturnPurchaseReturnableItemRespVO>> getPurchaseReturnableItems(
             @RequestParam("returnId") Long returnId) {
         return success(saleReturnService.getPurchaseReturnableItemsByReturnId(returnId));
+    }
+
+    @GetMapping("/purchase-returnable-item-page")
+    @Operation(summary = "获得销售退货可转采购退货明细分页")
+    @PreAuthorize("@ss.hasPermission('erp:sale-return:purchase-return')")
+    public CommonResult<PageResult<ErpSaleReturnPurchaseReturnableItemRespVO>> getPurchaseReturnableItemPage(
+            @Valid ErpSaleReturnPurchaseReturnableItemPageReqVO pageReqVO) {
+        return success(saleReturnService.getPurchaseReturnableItemPage(pageReqVO));
     }
 
     @PostMapping("/create-purchase-return")
@@ -279,6 +322,7 @@ public class ErpSaleReturnController {
             });
             saleReturnVO.setItems(emptyIfNull(items));
         });
+        itemPriceReferenceFiller.fill(respVO.getItems());
         fieldPermissionMasker.maskSaleDetailFormWithItems(FIELD_PERMISSION_MODULE, respVO);
         return success(respVO);
     }
@@ -286,6 +330,44 @@ public class ErpSaleReturnController {
     @PreAuthorize("@ss.hasPermission('erp:sale-return:query')")
     public CommonResult<ErpSaleReturnRespVO> getSaleReturn(Long id) {
         return getSaleReturn(id, true);
+    }
+
+    @GetMapping("/refund-summary")
+    @Operation(summary = "获得销售退货退款核销摘要")
+    @Parameter(name = "id", description = "销售退货编号", required = true, example = "1024")
+    @PreAuthorize("@ss.hasPermission('erp:sale-return:query')")
+    public CommonResult<ErpSaleReturnRefundSummaryRespVO> getSaleReturnRefundSummary(@RequestParam("id") Long id) {
+        ErpSaleReturnDO saleReturn = saleReturnService.getSaleReturn(id);
+        if (saleReturn == null) {
+            return success(null);
+        }
+        BigDecimal refundableAmount = zeroIfNull(saleReturn.getTotalPrice());
+        BigDecimal refundedAmount = zeroIfNull(financeReceiptItemMapper.selectReceiptPriceSumByBizIdAndBizType(
+                id, ErpBizTypeEnum.SALE_RETURN.getType())).abs();
+        BigDecimal unrefundedAmount = refundableAmount.subtract(refundedAmount);
+        return success(new ErpSaleReturnRefundSummaryRespVO()
+                .setId(id)
+                .setRefundableAmount(refundableAmount)
+                .setRefundedAmount(refundedAmount)
+                .setUnrefundedAmount(unrefundedAmount)
+                .setRefundStatus(calculateSaleReturnRefundStatus(refundableAmount, refundedAmount)));
+    }
+
+    private Integer calculateSaleReturnRefundStatus(BigDecimal refundableAmount, BigDecimal refundedAmount) {
+        BigDecimal normalizedRefundableAmount = zeroIfNull(refundableAmount).abs();
+        BigDecimal normalizedRefundedAmount = zeroIfNull(refundedAmount).abs();
+        if (normalizedRefundedAmount.compareTo(BigDecimal.ZERO) == 0) {
+            return 0;
+        }
+        if (normalizedRefundableAmount.compareTo(BigDecimal.ZERO) == 0
+                || normalizedRefundedAmount.compareTo(normalizedRefundableAmount) < 0) {
+            return 1;
+        }
+        return 2;
+    }
+
+    private BigDecimal zeroIfNull(BigDecimal value) {
+        return value == null ? BigDecimal.ZERO : value;
     }
 
     @GetMapping("/item-page")
@@ -323,6 +405,7 @@ public class ErpSaleReturnController {
                         deptResp -> item.setWarehouseDeptName(deptResp.getName()));
             });
         });
+        itemPriceReferenceFiller.fill(items);
         PageResult<ErpSaleReturnRespVO.Item> respResult = new PageResult<>(emptyIfNull(items), pageResult.getTotal());
         if (Boolean.TRUE.equals(pageReqVO.getMask())) {
             ErpSaleReturnRespVO context = BeanUtils.toBean(saleReturn, ErpSaleReturnRespVO.class);
@@ -340,12 +423,44 @@ public class ErpSaleReturnController {
         return success(saleReturnService.getWarehouseAvailableDeptSimpleList(warehouseId));
     }
 
+    @GetMapping("/warehouse-dept-simple-page")
+    @Operation(summary = "获取销售退货批量修改仓库可用部门分页")
+    @PreAuthorize("@ss.hasPermission('erp:sale-return:update')")
+    public CommonResult<PageResult<DeptSimpleRespVO>> getWarehouseAvailableDeptSimplePage(
+            @RequestParam("warehouseId") Long warehouseId, @Valid PageParam pageReqVO) {
+        return success(saleReturnService.getWarehouseAvailableDeptSimplePage(warehouseId, pageReqVO));
+    }
+
+    @GetMapping("/dept-simple-page")
+    @Operation(summary = "获取销售退货可见部门精简分页")
+    @PreAuthorize("@ss.hasPermission('erp:sale-return:query')")
+    public CommonResult<PageResult<DeptSimpleRespVO>> getVisibleDeptSimplePage(@Valid PageParam pageReqVO) {
+        return success(dataPermissionDeptService.getDeptSimplePage(FIELD_PERMISSION_MODULE, pageReqVO));
+    }
+
+    @GetMapping("/customer-dept-simple-page")
+    @Operation(summary = "获取销售退货客户可用部门分页")
+    @PreAuthorize("@ss.hasPermission('erp:sale-return:query')")
+    public CommonResult<PageResult<DeptSimpleRespVO>> getCustomerAvailableDeptSimplePage(
+            @RequestParam("customerId") Long customerId, @Valid PageParam pageReqVO) {
+        return success(customerDeptPermissionService.getAvailableDeptSimplePage(customerId, FIELD_PERMISSION_MODULE, pageReqVO));
+    }
+
+    @GetMapping("/user-simple-page")
+    @Operation(summary = "获取销售退货用户精简分页")
+    @PreAuthorize("@ss.hasPermission('erp:sale-return:query')")
+    public CommonResult<PageResult<UserSimpleRespVO>> getUserSimplePage(@Valid PageParam pageReqVO) {
+        return success(buildUserSimplePage(pageReqVO));
+    }
+
     @GetMapping("/page")
     @Operation(summary = "获得销售退货分页")
     @PreAuthorize("@ss.hasPermission('erp:sale-return:query')")
     public CommonResult<PageResult<ErpSaleReturnRespVO>> getSaleReturnPage(@Valid ErpSaleReturnPageReqVO pageReqVO) {
         PageResult<ErpSaleReturnDO> pageResult = saleReturnService.getSaleReturnPage(pageReqVO);
-        PageResult<ErpSaleReturnRespVO> respResult = buildSaleReturnVOPageResult(pageResult);
+        PageResult<ErpSaleReturnRespVO> respResult = Boolean.FALSE.equals(pageReqVO.getIncludeItems())
+                ? buildSaleReturnVOPageResultWithoutItems(pageResult)
+                : buildSaleReturnVOPageResult(pageResult);
         fieldPermissionMasker.maskSaleDetailFormsWithItems(FIELD_PERMISSION_MODULE, respResult.getList());
         return success(respResult);
     }
@@ -458,7 +573,43 @@ public class ErpSaleReturnController {
                         MapUtils.findAndThen(deptMap, warehouse.getDeptId(),
                                 dept -> item.setWarehouseDeptName(dept.getName()));
                     }));
+            itemPriceReferenceFiller.fill(saleReturn.getItems());
         });
+    }
+
+    private PageResult<ErpSaleReturnRespVO> buildSaleReturnVOPageResultWithoutItems(
+            PageResult<ErpSaleReturnDO> pageResult) {
+        if (CollUtil.isEmpty(pageResult.getList())) {
+            return PageResult.empty(pageResult.getTotal());
+        }
+        List<ErpSaleReturnDO> saleReturnList = pageResult.getList();
+        Set<Long> returnIds = convertSet(saleReturnList, ErpSaleReturnDO::getId);
+        Map<Long, String> productNamesMap = saleReturnItemMapper.selectProductNamesMapByReturnIds(returnIds);
+        Map<Long, ErpCustomerDO> customerMap = emptyIfNull(customerService.getCustomerMap(
+                convertSet(saleReturnList, ErpSaleReturnDO::getCustomerId)));
+        Set<Long> userIds = convertUserIds(saleReturnList);
+        Map<Long, AdminUserRespDTO> userMap = userIds.isEmpty()
+                ? Collections.emptyMap()
+                : emptyIfNull(adminUserApi.getUserMap(userIds));
+        Set<Long> deptIds = convertSet(saleReturnList, ErpSaleReturnDO::getDeptId);
+        deptIds.remove(null);
+        Map<Long, DeptRespDTO> deptMap = CollUtil.isEmpty(deptIds)
+                ? Collections.emptyMap() : emptyIfNull(deptApi.getDeptMap(deptIds));
+        return BeanUtils.toBean(pageResult, ErpSaleReturnRespVO.class, saleReturn -> {
+            saleReturn.setProductNames(productNamesMap.get(saleReturn.getId()));
+            MapUtils.findAndThen(customerMap, saleReturn.getCustomerId(),
+                    customer -> saleReturn.setCustomerName(customer.getName()));
+            fillUserNames(saleReturn, userMap);
+            MapUtils.findAndThen(deptMap, saleReturn.getDeptId(), dept -> saleReturn.setDeptName(dept.getName()));
+        });
+    }
+
+    private PageResult<UserSimpleRespVO> buildUserSimplePage(PageParam pageReqVO) {
+        PageResult<AdminUserRespDTO> page = adminUserApi.getUserSimplePage(
+                CommonStatusEnum.ENABLE.getStatus(), pageReqVO.getKeyword(), pageReqVO);
+        List<UserSimpleRespVO> list = convertList(page.getList(), user ->
+                new UserSimpleRespVO(user.getId(), user.getNickname(), user.getDeptId(), null));
+        return new PageResult<>(list, page.getTotal());
     }
 
     private <T> List<T> emptyIfNull(List<T> list) {

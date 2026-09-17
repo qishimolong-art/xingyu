@@ -3,6 +3,7 @@ package cn.iocoder.yudao.module.erp.controller.admin.sale;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.ErpSaleUpdateRemarkReqVO;
 import cn.hutool.core.collection.CollUtil;
 import cn.iocoder.yudao.framework.apilog.core.annotation.ApiAccessLog;
+import cn.iocoder.yudao.framework.common.enums.CommonStatusEnum;
 import cn.iocoder.yudao.framework.common.pojo.CommonResult;
 import cn.iocoder.yudao.framework.common.pojo.PageParam;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
@@ -23,13 +24,17 @@ import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpCustomerDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleOrderDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleOrderItemDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpWarehouseDO;
+import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpSaleOrderItemMapper;
 import cn.iocoder.yudao.module.erp.enums.config.ErpFieldConfigModuleEnum;
 import cn.iocoder.yudao.module.erp.framework.excel.ErpImportTemplateRequiredFieldUtils;
+import cn.iocoder.yudao.module.erp.service.base.ErpDataPermissionDeptService;
 import cn.iocoder.yudao.module.erp.service.common.ErpImportExportRecordService;
 import cn.iocoder.yudao.module.erp.service.config.ErpFieldConfigService;
 import cn.iocoder.yudao.module.erp.service.product.ErpProductService;
+import cn.iocoder.yudao.module.erp.service.sale.ErpCustomerDeptPermissionService;
 import cn.iocoder.yudao.module.erp.service.sale.ErpCustomerService;
 import cn.iocoder.yudao.module.erp.service.sale.ErpSaleFieldPermissionMasker;
+import cn.iocoder.yudao.module.erp.service.sale.ErpSaleItemPriceReferenceFiller;
 import cn.iocoder.yudao.module.erp.service.sale.ErpSaleOrderService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpStockService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpWarehouseService;
@@ -37,6 +42,8 @@ import cn.iocoder.yudao.module.system.api.dept.DeptApi;
 import cn.iocoder.yudao.module.system.api.dept.dto.DeptRespDTO;
 import cn.iocoder.yudao.module.system.api.user.AdminUserApi;
 import cn.iocoder.yudao.module.system.api.user.dto.AdminUserRespDTO;
+import cn.iocoder.yudao.module.system.controller.admin.dept.vo.dept.DeptSimpleRespVO;
+import cn.iocoder.yudao.module.system.controller.admin.user.vo.user.UserSimpleRespVO;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -58,6 +65,7 @@ import java.util.Set;
 
 import static cn.iocoder.yudao.framework.apilog.core.enums.OperateTypeEnum.EXPORT;
 import static cn.iocoder.yudao.framework.common.pojo.CommonResult.success;
+import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.convertList;
 import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.convertMultiMap;
 import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.convertSet;
 import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.convertSetByFlatMap;
@@ -93,9 +101,17 @@ public class ErpSaleOrderController {
     @Resource
     private ErpSaleFieldPermissionMasker fieldPermissionMasker;
     @Resource
+    private ErpSaleItemPriceReferenceFiller itemPriceReferenceFiller;
+    @Resource
     private ErpFieldConfigService fieldConfigService;
     @Resource
     private ErpImportExportRecordService importExportRecordService;
+    @Resource
+    private ErpDataPermissionDeptService dataPermissionDeptService;
+    @Resource
+    private ErpSaleOrderItemMapper saleOrderItemMapper;
+    @Resource
+    private ErpCustomerDeptPermissionService customerDeptPermissionService;
 
     @Resource
     private AdminUserApi adminUserApi;
@@ -194,6 +210,7 @@ public class ErpSaleOrderController {
                             });
                 }));
         });
+        itemPriceReferenceFiller.fill(respVO.getItems());
         fieldPermissionMasker.maskSaleDetailFormWithItems(FIELD_PERMISSION_MODULE, respVO);
         return success(respVO);
     }
@@ -238,6 +255,7 @@ public class ErpSaleOrderController {
                         deptResp -> item.setWarehouseDeptName(deptResp.getName()));
             });
         });
+        itemPriceReferenceFiller.fill(items);
         PageResult<ErpSaleOrderRespVO.Item> respResult = new PageResult<>(items, pageResult.getTotal());
         if (Boolean.TRUE.equals(pageReqVO.getMask())) {
             ErpSaleOrderRespVO context = BeanUtils.toBean(saleOrder, ErpSaleOrderRespVO.class);
@@ -247,12 +265,36 @@ public class ErpSaleOrderController {
         return success(respResult);
     }
 
+    @GetMapping("/dept-simple-page")
+    @Operation(summary = "获取销售订单可见部门精简分页")
+    @PreAuthorize("@ss.hasPermission('erp:sale-order:query')")
+    public CommonResult<PageResult<DeptSimpleRespVO>> getVisibleDeptSimplePage(@Valid PageParam pageReqVO) {
+        return success(dataPermissionDeptService.getDeptSimplePage(FIELD_PERMISSION_MODULE, pageReqVO));
+    }
+
+    @GetMapping("/customer-dept-simple-page")
+    @Operation(summary = "获取销售订单客户可用部门分页")
+    @PreAuthorize("@ss.hasPermission('erp:sale-order:query')")
+    public CommonResult<PageResult<DeptSimpleRespVO>> getCustomerAvailableDeptSimplePage(
+            @RequestParam("customerId") Long customerId, @Valid PageParam pageReqVO) {
+        return success(customerDeptPermissionService.getAvailableDeptSimplePage(customerId, FIELD_PERMISSION_MODULE, pageReqVO));
+    }
+
+    @GetMapping("/user-simple-page")
+    @Operation(summary = "获取销售订单用户精简分页")
+    @PreAuthorize("@ss.hasPermission('erp:sale-order:query')")
+    public CommonResult<PageResult<UserSimpleRespVO>> getUserSimplePage(@Valid PageParam pageReqVO) {
+        return success(buildUserSimplePage(pageReqVO));
+    }
+
     @GetMapping("/page")
     @Operation(summary = "获得销售订单分页")
     @PreAuthorize("@ss.hasPermission('erp:sale-order:query')")
     public CommonResult<PageResult<ErpSaleOrderRespVO>> getSaleOrderPage(@Valid ErpSaleOrderPageReqVO pageReqVO) {
         PageResult<ErpSaleOrderDO> pageResult = saleOrderService.getSaleOrderPage(pageReqVO);
-        PageResult<ErpSaleOrderRespVO> respResult = buildSaleOrderVOPageResult(pageResult);
+        PageResult<ErpSaleOrderRespVO> respResult = Boolean.FALSE.equals(pageReqVO.getIncludeItems())
+                ? buildSaleOrderVOPageResultWithoutItems(pageResult)
+                : buildSaleOrderVOPageResult(pageResult);
         fieldPermissionMasker.maskSaleDetailFormsWithItems(FIELD_PERMISSION_MODULE, respResult.getList());
         return success(respResult);
     }
@@ -342,11 +384,44 @@ public class ErpSaleOrderController {
                                 MapUtils.findAndThen(deptMap, warehouse.getDeptId(),
                                         dept -> item.setWarehouseDeptName(dept.getName()));
                             }));
+            itemPriceReferenceFiller.fill(saleOrder.getItems());
             saleOrder.setProductNames(CollUtil.join(saleOrder.getItems(), "，", ErpSaleOrderRespVO.Item::getProductName));
             MapUtils.findAndThen(customerMap, saleOrder.getCustomerId(), supplier -> saleOrder.setCustomerName(supplier.getName()));
             fillAuditNames(saleOrder, userMap);
             MapUtils.findAndThen(deptMap, saleOrder.getDeptId(), dept -> saleOrder.setDeptName(dept.getName()));
         });
+    }
+
+    private PageResult<ErpSaleOrderRespVO> buildSaleOrderVOPageResultWithoutItems(PageResult<ErpSaleOrderDO> pageResult) {
+        if (CollUtil.isEmpty(pageResult.getList())) {
+            return PageResult.empty(pageResult.getTotal());
+        }
+        Set<Long> orderIds = convertSet(pageResult.getList(), ErpSaleOrderDO::getId);
+        Map<Long, String> productNamesMap = saleOrderItemMapper.selectProductNamesMapByOrderIds(orderIds);
+        Map<Long, ErpCustomerDO> customerMap = customerService.getCustomerMap(
+                convertSet(pageResult.getList(), ErpSaleOrderDO::getCustomerId));
+        Set<Long> userIds = convertUserIds(pageResult.getList());
+        Map<Long, AdminUserRespDTO> userMap = CollUtil.isEmpty(userIds)
+                ? Collections.emptyMap() : adminUserApi.getUserMap(userIds);
+        Set<Long> deptIds = convertSet(pageResult.getList(), ErpSaleOrderDO::getDeptId);
+        deptIds.remove(null);
+        Map<Long, DeptRespDTO> deptMap = CollUtil.isEmpty(deptIds)
+                ? Collections.emptyMap() : deptApi.getDeptMap(deptIds);
+        return BeanUtils.toBean(pageResult, ErpSaleOrderRespVO.class, saleOrder -> {
+            saleOrder.setProductNames(productNamesMap.get(saleOrder.getId()));
+            MapUtils.findAndThen(customerMap, saleOrder.getCustomerId(),
+                    customer -> saleOrder.setCustomerName(customer.getName()));
+            fillAuditNames(saleOrder, userMap);
+            MapUtils.findAndThen(deptMap, saleOrder.getDeptId(), dept -> saleOrder.setDeptName(dept.getName()));
+        });
+    }
+
+    private PageResult<UserSimpleRespVO> buildUserSimplePage(PageParam pageReqVO) {
+        PageResult<AdminUserRespDTO> page = adminUserApi.getUserSimplePage(
+                CommonStatusEnum.ENABLE.getStatus(), pageReqVO.getKeyword(), pageReqVO);
+        List<UserSimpleRespVO> list = convertList(page.getList(), user ->
+                new UserSimpleRespVO(user.getId(), user.getNickname(), user.getDeptId(), null));
+        return new PageResult<>(list, page.getTotal());
     }
 
     private Set<Long> convertUserIds(List<ErpSaleOrderDO> saleOrders) {

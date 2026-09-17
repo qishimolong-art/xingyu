@@ -21,6 +21,7 @@ import cn.iocoder.yudao.module.erp.service.base.ErpBaseDataService;
 import cn.iocoder.yudao.module.erp.service.common.ErpOperateLogService;
 import cn.iocoder.yudao.module.erp.service.finance.ErpAccountService;
 import cn.iocoder.yudao.module.erp.service.finance.ErpFinanceFieldPermissionMasker;
+import cn.iocoder.yudao.module.erp.service.finance.ErpFinanceItemOperationHelper;
 import cn.iocoder.yudao.module.erp.service.finance.bo.ErpSaleCartFreightDraftCreateReqBO;
 import cn.iocoder.yudao.module.system.api.dept.DeptApi;
 import cn.iocoder.yudao.module.system.api.user.AdminUserApi;
@@ -52,6 +53,8 @@ import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PAYABLE_EXPEN
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PAYABLE_EXPENSE_DRAFT_UPDATE_FAIL;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PAYABLE_EXPENSE_NOT_EXISTS;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PAYABLE_EXPENSE_NO_EXISTS;
+import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PAYABLE_EXPENSE_ITEM_OPERATION_INVALID;
+import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PAYABLE_EXPENSE_ITEM_UPDATE_NOT_EXISTS;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PAYABLE_EXPENSE_OPTION_INVALID;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PAYABLE_EXPENSE_PROCESS_FAIL;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PAYABLE_EXPENSE_UPDATE_FAIL_APPROVE;
@@ -95,6 +98,7 @@ public class ErpPayableExpenseServiceImpl implements ErpPayableExpenseService {
     @Transactional(rollbackFor = Exception.class)
     public Long createPayableExpense(ErpPayableExpenseSaveReqVO createReqVO) {
         fillDefaultDeptId(createReqVO);
+        validateRequiredItems(createReqVO.getItems());
         validateFormalDeptId(createReqVO.getDeptId());
         validateSaveOptions(createReqVO);
         validateRefs(createReqVO.getAccountId(), createReqVO.getHandlerId(), createReqVO.getDeptId());
@@ -216,21 +220,36 @@ public class ErpPayableExpenseServiceImpl implements ErpPayableExpenseService {
         if (ErpAuditStatus.APPROVE.getStatus().equals(db.getStatus())) {
             throw exception(PAYABLE_EXPENSE_UPDATE_FAIL_APPROVE, db.getNo());
         }
-        List<ErpPayableExpenseItemDO> oldItems = payableExpenseItemMapper.selectListByExpenseId(updateReqVO.getId());
+        List<ErpPayableExpenseItemDO> oldItems =
+                payableExpenseItemMapper.selectListByExpenseIdForUpdate(updateReqVO.getId());
         fieldPermissionMasker.preserveHiddenFields(FIELD_PERMISSION_MODULE, updateReqVO, db);
         if (fieldPermissionMasker.isFieldHidden(FIELD_PERMISSION_MODULE, "items")) {
             updateReqVO.setItems(BeanUtils.toBean(oldItems, ErpPayableExpenseSaveReqVO.Item.class));
         } else {
             fieldPermissionMasker.preserveOrClearHiddenItemFields(FIELD_PERMISSION_MODULE, updateReqVO.getItems(), oldItems);
-            fillDefaultItemDeptId(updateReqVO.getItems());
         }
+        boolean incrementalItems = ErpFinanceItemOperationHelper.useIncrementalItems(
+                updateReqVO.getItems(), ErpPayableExpenseSaveReqVO.Item::getOperation,
+                PAYABLE_EXPENSE_ITEM_OPERATION_INVALID);
+        ErpFinanceItemOperationHelper.RequestChangeSet<ErpPayableExpenseSaveReqVO.Item> itemChangeSet = null;
+        List<ErpPayableExpenseSaveReqVO.Item> finalReqItems = updateReqVO.getItems();
+        if (incrementalItems) {
+            itemChangeSet = ErpFinanceItemOperationHelper.buildRequestChangeSet(
+                    updateReqVO.getItems(), oldItems, ErpPayableExpenseSaveReqVO.Item.class,
+                    ErpPayableExpenseSaveReqVO.Item::getId, ErpPayableExpenseSaveReqVO.Item::setId,
+                    ErpPayableExpenseSaveReqVO.Item::getOperation, ErpPayableExpenseItemDO::getId,
+                    PAYABLE_EXPENSE_ITEM_OPERATION_INVALID, PAYABLE_EXPENSE_ITEM_UPDATE_NOT_EXISTS);
+            finalReqItems = itemChangeSet.getFinalItems();
+        }
+        fillDefaultItemDeptId(finalReqItems);
+        updateReqVO.setItems(finalReqItems);
         if (updateReqVO.getDeptId() == null) {
             updateReqVO.setDeptId(db.getDeptId());
         }
         validateFormalDeptId(updateReqVO.getDeptId());
         validateSaveOptions(updateReqVO);
         validateRefs(updateReqVO.getAccountId(), updateReqVO.getHandlerId(), updateReqVO.getDeptId());
-        validateItemRefs(updateReqVO.getItems());
+        validateItemRefs(finalReqItems);
         ErpPayableExpenseDO updateObj = BeanUtils.toBean(updateReqVO, ErpPayableExpenseDO.class);
         if (db.getSourceId() != null) {
             updateObj.setSourceType(db.getSourceType());
@@ -238,18 +257,24 @@ public class ErpPayableExpenseServiceImpl implements ErpPayableExpenseService {
             updateObj.setSourceNo(db.getSourceNo());
         }
         normalizeMain(updateObj);
-        updateObj.setTotalAmount(sumAmount(updateReqVO.getItems()));
+        updateObj.setTotalAmount(sumAmount(finalReqItems));
         if (payableExpenseMapper.updateByIdAndStatus(updateReqVO.getId(),
                 ErpAuditStatus.PROCESS.getStatus(), updateObj) == 0) {
             throw exception(PAYABLE_EXPENSE_UPDATE_FAIL_STATUS_CHANGED);
         }
-        payableExpenseItemMapper.deleteByIds(convertList(oldItems, ErpPayableExpenseItemDO::getId));
-        payableExpenseItemMapper.insertBatch(BeanUtils.toBean(updateReqVO.getItems(),
-                ErpPayableExpenseItemDO.class, item -> {
-                    item.setId(null);
-                    item.setExpenseId(updateReqVO.getId());
-                    normalizeItem(item);
-                }));
+        List<ErpPayableExpenseItemDO> finalItems = BeanUtils.toBean(finalReqItems,
+                ErpPayableExpenseItemDO.class, this::normalizeItem);
+        if (incrementalItems) {
+            applyPayableExpenseItemChangeSet(updateReqVO.getId(), finalItems, itemChangeSet);
+        } else {
+            payableExpenseItemMapper.deleteByIds(convertList(oldItems, ErpPayableExpenseItemDO::getId));
+            payableExpenseItemMapper.insertBatch(BeanUtils.toBean(finalReqItems,
+                    ErpPayableExpenseItemDO.class, item -> {
+                        item.setId(null);
+                        item.setExpenseId(updateReqVO.getId());
+                        normalizeItem(item);
+                    }));
+        }
         operateLogService.recordUpdate(ERP_PAYABLE_EXPENSE_TYPE, db.getId(), db.getNo());
     }
 
@@ -261,7 +286,7 @@ public class ErpPayableExpenseServiceImpl implements ErpPayableExpenseService {
             throw exception(PAYABLE_EXPENSE_DRAFT_UPDATE_FAIL, db.getNo());
         }
         List<ErpPayableExpenseItemDO> oldItems =
-                payableExpenseItemMapper.selectListByExpenseId(updateReqVO.getId());
+                payableExpenseItemMapper.selectListByExpenseIdForUpdate(updateReqVO.getId());
         fieldPermissionMasker.preserveHiddenFields(FIELD_PERMISSION_MODULE, updateReqVO, db);
         if (fieldPermissionMasker.isFieldHidden(FIELD_PERMISSION_MODULE, "items")) {
             updateReqVO.setItems(BeanUtils.toBean(oldItems, ErpPayableExpenseSaveReqVO.Item.class));
@@ -272,7 +297,20 @@ public class ErpPayableExpenseServiceImpl implements ErpPayableExpenseService {
             fieldPermissionMasker.preserveHiddenItemFields(
                     FIELD_PERMISSION_MODULE, updateReqVO.getItems(), oldItems);
         }
-        List<ErpPayableExpenseItemDO> expenseItems = buildDraftItems(updateReqVO.getItems());
+        boolean incrementalItems = ErpFinanceItemOperationHelper.useIncrementalItems(
+                updateReqVO.getItems(), ErpPayableExpenseSaveReqVO.Item::getOperation,
+                PAYABLE_EXPENSE_ITEM_OPERATION_INVALID);
+        ErpFinanceItemOperationHelper.RequestChangeSet<ErpPayableExpenseSaveReqVO.Item> itemChangeSet = null;
+        List<ErpPayableExpenseSaveReqVO.Item> finalReqItems = updateReqVO.getItems();
+        if (incrementalItems) {
+            itemChangeSet = ErpFinanceItemOperationHelper.buildRequestChangeSet(
+                    updateReqVO.getItems(), oldItems, ErpPayableExpenseSaveReqVO.Item.class,
+                    ErpPayableExpenseSaveReqVO.Item::getId, ErpPayableExpenseSaveReqVO.Item::setId,
+                    ErpPayableExpenseSaveReqVO.Item::getOperation, ErpPayableExpenseItemDO::getId,
+                    PAYABLE_EXPENSE_ITEM_OPERATION_INVALID, PAYABLE_EXPENSE_ITEM_UPDATE_NOT_EXISTS);
+            finalReqItems = itemChangeSet.getFinalItems();
+        }
+        List<ErpPayableExpenseItemDO> expenseItems = buildDraftItems(finalReqItems, incrementalItems);
         validateDraftOptions(updateReqVO, BeanUtils.toBean(expenseItems, ErpPayableExpenseSaveReqVO.Item.class));
         ErpPayableExpenseDO updateObj = BeanUtils.toBean(updateReqVO, ErpPayableExpenseDO.class)
                 .setId(db.getId())
@@ -288,7 +326,11 @@ public class ErpPayableExpenseServiceImpl implements ErpPayableExpenseService {
                 ErpPayableExpenseStatusEnum.DRAFT.getStatus(), updateObj) == 0) {
             throw exception(PAYABLE_EXPENSE_DRAFT_UPDATE_FAIL, db.getNo());
         }
-        replaceItems(db.getId(), expenseItems);
+        if (incrementalItems) {
+            applyPayableExpenseItemChangeSet(db.getId(), expenseItems, itemChangeSet);
+        } else {
+            replaceItems(db.getId(), expenseItems);
+        }
         operateLogService.recordUpdate(ERP_PAYABLE_EXPENSE_TYPE, db.getId(), db.getNo());
     }
 
@@ -491,6 +533,9 @@ public class ErpPayableExpenseServiceImpl implements ErpPayableExpenseService {
     }
 
     private BigDecimal sumAmount(List<ErpPayableExpenseSaveReqVO.Item> items) {
+        if (CollUtil.isEmpty(items)) {
+            return BigDecimal.ZERO;
+        }
         return items.stream()
                 .map(ErpPayableExpenseSaveReqVO.Item::getAmount)
                 .filter(Objects::nonNull)
@@ -499,6 +544,11 @@ public class ErpPayableExpenseServiceImpl implements ErpPayableExpenseService {
 
     private List<ErpPayableExpenseItemDO> buildDraftItems(
             List<ErpPayableExpenseSaveReqVO.Item> items) {
+        return buildDraftItems(items, false);
+    }
+
+    private List<ErpPayableExpenseItemDO> buildDraftItems(
+            List<ErpPayableExpenseSaveReqVO.Item> items, boolean preserveId) {
         if (CollUtil.isEmpty(items)) {
             return Collections.emptyList();
         }
@@ -508,7 +558,9 @@ public class ErpPayableExpenseServiceImpl implements ErpPayableExpenseService {
                 continue;
             }
             ErpPayableExpenseItemDO item = BeanUtils.toBean(source, ErpPayableExpenseItemDO.class);
-            item.setId(null);
+            if (!preserveId) {
+                item.setId(null);
+            }
             normalizeItem(item);
             result.add(item);
         }
@@ -522,6 +574,30 @@ public class ErpPayableExpenseServiceImpl implements ErpPayableExpenseService {
         }
         items.forEach(item -> item.setId(null).setExpenseId(expenseId));
         payableExpenseItemMapper.insertBatch(items);
+    }
+
+    private void applyPayableExpenseItemChangeSet(Long expenseId, List<ErpPayableExpenseItemDO> finalItems,
+            ErpFinanceItemOperationHelper.RequestChangeSet<ErpPayableExpenseSaveReqVO.Item> itemChangeSet) {
+        if (itemChangeSet == null) {
+            return;
+        }
+        if (CollUtil.isNotEmpty(itemChangeSet.getDeleteIds())) {
+            payableExpenseItemMapper.deleteByIds(itemChangeSet.getDeleteIds());
+        }
+        List<ErpPayableExpenseItemDO> insertList = finalItems.stream()
+                .filter(item -> item.getId() == null)
+                .peek(item -> item.setExpenseId(expenseId))
+                .collect(Collectors.toList());
+        if (CollUtil.isNotEmpty(insertList)) {
+            payableExpenseItemMapper.insertBatch(insertList);
+        }
+        List<ErpPayableExpenseItemDO> updateList = finalItems.stream()
+                .filter(item -> item.getId() != null && itemChangeSet.getUpdateIds().contains(item.getId()))
+                .peek(item -> item.setExpenseId(expenseId))
+                .collect(Collectors.toList());
+        if (CollUtil.isNotEmpty(updateList)) {
+            payableExpenseItemMapper.updateBatch(updateList);
+        }
     }
 
     private BigDecimal sumItemAmount(List<ErpPayableExpenseItemDO> items) {
@@ -615,6 +691,7 @@ public class ErpPayableExpenseServiceImpl implements ErpPayableExpenseService {
     }
 
     private void validateRequiredItemNames(List<ErpPayableExpenseSaveReqVO.Item> items) {
+        validateRequiredItems(items);
         Set<String> validItemNames = getEnabledOptionNames(PAYABLE_EXPENSE_ITEM_PROJECT);
         for (int i = 0; i < items.size(); i++) {
             String itemName = items.get(i).getItemName();
@@ -622,6 +699,12 @@ public class ErpPayableExpenseServiceImpl implements ErpPayableExpenseService {
                 throw exception(PAYABLE_EXPENSE_OPTION_INVALID,
                         "第 " + (i + 1) + " 条明细的项目名称", itemName);
             }
+        }
+    }
+
+    private void validateRequiredItems(List<ErpPayableExpenseSaveReqVO.Item> items) {
+        if (CollUtil.isEmpty(items)) {
+            throw exception(PAYABLE_EXPENSE_OPTION_INVALID, "费用明细", "不能为空");
         }
     }
 

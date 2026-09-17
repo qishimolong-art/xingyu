@@ -22,7 +22,6 @@ import cn.iocoder.yudao.module.erp.enums.ErpAuditStatus;
 import cn.iocoder.yudao.module.erp.enums.finance.accounting.ErpVoucherSourceBizTypeEnum;
 import cn.iocoder.yudao.module.erp.enums.finance.accounting.ErpVoucherTypeEnum;
 import cn.iocoder.yudao.module.erp.enums.stock.ErpStockRecordBizTypeEnum;
-import cn.iocoder.yudao.module.erp.service.finance.accounting.ErpAutoVoucherBuilder;
 import cn.iocoder.yudao.module.erp.service.finance.accounting.ErpBookOpenService;
 import cn.iocoder.yudao.module.erp.service.finance.accounting.ErpVoucherService;
 import cn.iocoder.yudao.module.erp.service.common.ErpOperateLogService;
@@ -44,6 +43,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 import static cn.iocoder.yudao.framework.common.exception.util.ServiceExceptionUtil.exception;
 import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.*;
@@ -88,9 +88,6 @@ public class ErpStockInServiceImpl implements ErpStockInService {
     private ErpStockItemBatchUpdateSupport batchUpdateSupport;
     @Resource
     private ErpStockItemSnapshotSupport snapshotSupport;
-
-    @Resource
-    private ErpAutoVoucherBuilder autoVoucherBuilder;
     @Resource
     private ErpVoucherService voucherService;
     @Resource
@@ -100,6 +97,9 @@ public class ErpStockInServiceImpl implements ErpStockInService {
     @Transactional(rollbackFor = Exception.class)
     public Long createStockIn(ErpStockInSaveReqVO createReqVO) {
         // 1.1 校验入库项的有效性
+        if (CollUtil.isEmpty(createReqVO.getItems())) {
+            throw exception(STOCK_IN_ITEM_EMPTY);
+        }
         List<ErpStockInItemDO> stockInItems = validateStockInItems(createReqVO.getItems());
         // 1.2 校验供应商
         supplierService.validateSupplier(createReqVO.getSupplierId());
@@ -130,13 +130,25 @@ public class ErpStockInServiceImpl implements ErpStockInService {
         if (ErpAuditStatus.APPROVE.getStatus().equals(stockIn.getStatus())) {
             throw exception(STOCK_IN_UPDATE_FAIL_APPROVE, stockIn.getNo());
         }
+        List<ErpStockInItemDO> oldItems = stockInItemMapper.selectListByInIdForUpdate(updateReqVO.getId());
         fieldPermissionMasker.preserveHiddenFields(FIELD_PERMISSION_MODULE, updateReqVO, stockIn);
-        fieldPermissionMasker.preserveHiddenItemFields(FIELD_PERMISSION_MODULE, updateReqVO.getItems(),
-                stockInItemMapper.selectListByInId(updateReqVO.getId()));
+        fieldPermissionMasker.preserveHiddenItemFields(FIELD_PERMISSION_MODULE, updateReqVO.getItems(), oldItems);
+        boolean incrementalItems = ErpStockItemOperationHelper.useIncrementalItems(updateReqVO.getItems(),
+                ErpStockInSaveReqVO.Item::getOperation, STOCK_IN_ITEM_OPERATION_INVALID);
+        ErpStockItemOperationHelper.RequestChangeSet<ErpStockInSaveReqVO.Item> itemChangeSet = null;
+        List<ErpStockInSaveReqVO.Item> itemReqs = updateReqVO.getItems();
+        if (incrementalItems) {
+            itemChangeSet = ErpStockItemOperationHelper.buildRequestChangeSet(updateReqVO.getItems(), oldItems,
+                    ErpStockInSaveReqVO.Item.class, ErpStockInSaveReqVO.Item::getId,
+                    ErpStockInSaveReqVO.Item::setId, ErpStockInSaveReqVO.Item::getOperation,
+                    ErpStockInItemDO::getId, STOCK_IN_ITEM_OPERATION_INVALID,
+                    STOCK_IN_ITEM_UPDATE_NOT_EXISTS);
+            itemReqs = itemChangeSet.getFinalItems();
+        }
         // 1.2 校验供应商
         supplierService.validateSupplier(updateReqVO.getSupplierId());
         // 1.3 校验入库项的有效性
-        List<ErpStockInItemDO> stockInItems = validateStockInItems(updateReqVO.getItems());
+        List<ErpStockInItemDO> stockInItems = validateStockInItems(itemReqs);
 
         // 2.1 更新入库单
         ErpStockInDO updateObj = BeanUtils.toBean(updateReqVO, ErpStockInDO.class, in -> in
@@ -147,7 +159,11 @@ public class ErpStockInServiceImpl implements ErpStockInService {
         }
         stockInMapper.updateById(updateObj);
         // 2.2 更新入库单项
-        updateStockInItemList(updateReqVO.getId(), stockInItems);
+        if (incrementalItems) {
+            applyStockInItemChangeSet(updateReqVO.getId(), itemChangeSet, stockInItems);
+        } else {
+            updateStockInItemList(updateReqVO.getId(), stockInItems);
+        }
         operateLogService.recordUpdate(ERP_STOCK_IN_TYPE, stockIn.getId(), stockIn.getNo());
     }
 
@@ -173,6 +189,10 @@ public class ErpStockInServiceImpl implements ErpStockInService {
         }
         validateBatchUpdateStockInNoDuplicate(stockInItems, selectedItemIds, targetWarehouse.getId());
 
+        stockService.reserveStockDimensions(selectedItems.stream().map(item ->
+                new cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockDO()
+                        .setProductId(item.getProductId()).setWarehouseId(targetWarehouse.getId()))
+                .collect(java.util.stream.Collectors.toList()));
         for (ErpStockInItemDO item : selectedItems) {
             item.setWarehouseId(targetWarehouse.getId());
             stockService.ensureStockExists(item.getProductId(), targetWarehouse.getId());
@@ -230,23 +250,15 @@ public class ErpStockInServiceImpl implements ErpStockInService {
 
         // 4. 审批通过：自动生成其他入库凭证
         // 金额按单据 totalPrice（即所有明细 productPrice × count），与一期成本核算约定一致
-        if (stockIn.getInTime() != null
-                && bookOpenService.isVoucherTypeEnabled(stockIn.getInTime().toLocalDate(),
-                ErpVoucherTypeEnum.OTHER_IN.getType())) {
-            BigDecimal sumCost = stockIn.getTotalPrice() == null ? BigDecimal.ZERO : stockIn.getTotalPrice();
-            List<ErpVoucherItemDO> voucherItems = autoVoucherBuilder.buildStockInItems(stockIn, sumCost);
-            voucherService.createVoucherFromBiz(
-                    ErpVoucherSourceBizTypeEnum.OTHER_IN.getType(),
-                    stockIn.getId(),
-                    stockIn.getNo(),
-                    stockIn.getTotalPrice(),
-                    stockIn.getInTime().toLocalDate(),
-                    "其他入库 - " + stockIn.getNo(),
-                    voucherItems);
-        }
+        // 业务审核仅更新业务状态；凭证由财务统一预览生成。
+
     }
 
     private List<ErpStockInItemDO> validateStockInItems(List<ErpStockInSaveReqVO.Item> list) {
+        if (CollUtil.isEmpty(list)) {
+            throw exception(STOCK_IN_ITEM_EMPTY);
+        }
+        validateStockInItemRequiredFields(list);
         validateDuplicateStockInItems(list);
         // 1.1 校验产品存在
         List<ErpProductDO> productList = DataPermissionUtils.executeIgnore(() -> productService.validProductList(
@@ -267,6 +279,14 @@ public class ErpStockInServiceImpl implements ErpStockInService {
                     .setTotalWeight(snapshotSupport.calculateTotalWeight(weight, item.getCount()))
                     .setTotalPrice(MoneyUtils.priceMultiply(item.getProductPrice(), item.getCount()));
         }));
+    }
+
+    private void validateStockInItemRequiredFields(List<ErpStockInSaveReqVO.Item> list) {
+        for (ErpStockInSaveReqVO.Item item : list) {
+            if (item == null || item.getProductId() == null || item.getWarehouseId() == null || item.getCount() == null) {
+                throw exception(STOCK_IN_ITEM_EMPTY);
+            }
+        }
     }
 
     private void validateDuplicateStockInItems(List<ErpStockInSaveReqVO.Item> list) {
@@ -312,6 +332,28 @@ public class ErpStockInServiceImpl implements ErpStockInService {
         }
         if (CollUtil.isNotEmpty(diffList.get(2))) {
             stockInItemMapper.deleteByIds(convertList(diffList.get(2), ErpStockInItemDO::getId));
+        }
+    }
+
+    private void applyStockInItemChangeSet(Long inId,
+            ErpStockItemOperationHelper.RequestChangeSet<ErpStockInSaveReqVO.Item> changeSet,
+            List<ErpStockInItemDO> finalItems) {
+        if (CollUtil.isNotEmpty(changeSet.getDeleteIds())) {
+            stockInItemMapper.deleteByIds(changeSet.getDeleteIds());
+        }
+        List<ErpStockInItemDO> insertList = finalItems.stream()
+                .filter(item -> item.getId() == null)
+                .collect(Collectors.toList());
+        if (CollUtil.isNotEmpty(insertList)) {
+            insertList.forEach(item -> item.setInId(inId));
+            stockInItemMapper.insertBatch(insertList);
+        }
+        List<ErpStockInItemDO> updateList = finalItems.stream()
+                .filter(item -> item.getId() != null && changeSet.getUpdateIds().contains(item.getId()))
+                .collect(Collectors.toList());
+        if (CollUtil.isNotEmpty(updateList)) {
+            updateList.forEach(item -> item.setInId(inId));
+            stockInItemMapper.updateBatch(updateList);
         }
     }
 

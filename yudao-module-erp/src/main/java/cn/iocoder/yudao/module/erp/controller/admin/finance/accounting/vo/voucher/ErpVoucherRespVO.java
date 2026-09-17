@@ -129,4 +129,5 @@ public class ErpVoucherRespVO {
     @Schema(description = "凭证分录列表")
     private List<ErpVoucherItemRespVO> items;
 
+    private String generationSnapshot;
 }

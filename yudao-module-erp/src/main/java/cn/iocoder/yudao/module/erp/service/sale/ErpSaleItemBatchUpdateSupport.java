@@ -4,6 +4,8 @@ import cn.hutool.core.collection.CollUtil;
 import cn.iocoder.yudao.framework.common.biz.system.permission.dto.DeptDataPermissionRespDTO;
 import cn.iocoder.yudao.framework.common.enums.CommonStatusEnum;
 import cn.iocoder.yudao.framework.common.exception.ErrorCode;
+import cn.iocoder.yudao.framework.common.pojo.PageParam;
+import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpWarehouseDO;
 import cn.iocoder.yudao.module.erp.service.stock.ErpWarehouseService;
 import cn.iocoder.yudao.module.system.api.dept.DeptApi;
@@ -108,6 +110,23 @@ public class ErpSaleItemBatchUpdateSupport {
                 .filter(dept -> dept != null && CommonStatusEnum.ENABLE.getStatus().equals(dept.getStatus()))
                 .map(dept -> new DeptSimpleRespVO(dept.getId(), dept.getName(), dept.getParentId()))
                 .collect(Collectors.toList());
+    }
+
+    public PageResult<DeptSimpleRespVO> getWarehouseAvailableDeptSimplePage(Long warehouseId, String module,
+                                                                            PageParam pageParam) {
+        ErpWarehouseDO warehouse = validateTargetWarehouse(warehouseId);
+        if (warehouse == null) {
+            return PageResult.empty();
+        }
+        Set<Long> availableDeptIds = getAvailableDeptIds(warehouse, module);
+        if (CollUtil.isEmpty(availableDeptIds)) {
+            return PageResult.empty();
+        }
+        PageResult<DeptRespDTO> page = deptApi.getDeptSimplePage(
+                CommonStatusEnum.ENABLE.getStatus(), pageParam.getKeyword(), availableDeptIds, pageParam);
+        return new PageResult<>(page.getList().stream()
+                .map(dept -> new DeptSimpleRespVO(dept.getId(), dept.getName(), dept.getParentId()))
+                .collect(Collectors.toList()), page.getTotal());
     }
 
     private Set<Long> getAvailableDeptIds(ErpWarehouseDO warehouse, String module) {

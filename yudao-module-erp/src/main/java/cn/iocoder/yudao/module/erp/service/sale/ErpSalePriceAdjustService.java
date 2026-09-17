@@ -5,6 +5,7 @@ import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.ErpSaleUpdateRemarkR
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.priceadjust.ErpSaleOutItemForAdjustRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.priceadjust.ErpSalePriceAdjustImportExcelVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.priceadjust.ErpSalePriceAdjustImportRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.priceadjust.ErpSalePriceAdjustableItemPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.priceadjust.ErpSalePriceAdjustDraftSaveReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.priceadjust.ErpSalePriceAdjustItemPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.priceadjust.ErpSalePriceAdjustPageReqVO;
@@ -56,6 +57,9 @@ public interface ErpSalePriceAdjustService {
 
     List<ErpSaleOutItemForAdjustRespVO> getAdjustableItemsByCustomerId(Long customerId, Long saleOutId,
                                                                         Boolean excludeAdjusted);
+
+    PageResult<ErpSaleOutItemForAdjustRespVO> getAdjustableItemPage(
+            ErpSalePriceAdjustableItemPageReqVO pageReqVO);
 
     ErpSalePriceAdjustImportRespVO importSalePriceAdjustItems(List<ErpSalePriceAdjustImportExcelVO> list);
 

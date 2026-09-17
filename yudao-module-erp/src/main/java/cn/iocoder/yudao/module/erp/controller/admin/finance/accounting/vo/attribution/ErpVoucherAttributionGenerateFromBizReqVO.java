@@ -41,6 +41,7 @@ public class ErpVoucherAttributionGenerateFromBizReqVO {
     @Schema(description = "业务单据快照")
     @Data
     public static class BizItem {
+        private String previewToken;
 
         @Schema(description = "业务单据类型", requiredMode = Schema.RequiredMode.REQUIRED, example = "8")
         @NotNull(message = "业务单据类型不能为空")

@@ -5,6 +5,8 @@ import cn.hutool.core.util.ObjectUtil;
 import cn.hutool.core.util.StrUtil;
 import cn.iocoder.yudao.framework.common.enums.CommonStatusEnum;
 import cn.iocoder.yudao.framework.common.exception.ServiceException;
+import cn.iocoder.yudao.framework.common.pojo.PageParam;
+import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
 import cn.iocoder.yudao.framework.common.util.validation.ValidationUtils;
 import cn.iocoder.yudao.framework.datapermission.core.annotation.DataPermission;
@@ -364,6 +366,12 @@ public class DeptServiceImpl implements DeptService {
         List<DeptDO> list = deptMapper.selectList(reqVO, leaderUserIds);
         sortDeptList(list, reqVO);
         return list;
+    }
+
+    @Override
+    public PageResult<DeptDO> getDeptSimplePage(Integer status, String keyword,
+                                                Collection<Long> deptIds, PageParam pageParam) {
+        return deptMapper.selectSimplePage(pageParam, status, keyword, deptIds);
     }
 
     @Override

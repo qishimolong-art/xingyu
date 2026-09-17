@@ -11,7 +11,7 @@ ALTER TABLE `erp_purchase_in_items`
     ADD COLUMN `batch_no`            VARCHAR(64)  DEFAULT NULL COMMENT '批次',
     ADD COLUMN `bar_code`            VARCHAR(128) DEFAULT NULL COMMENT '条形码',
     ADD COLUMN `brand`               VARCHAR(64)  DEFAULT NULL COMMENT '品牌（从商品资料带出）',
-    ADD COLUMN `vehicle_model`       VARCHAR(64)  DEFAULT NULL COMMENT '适用车型（从商品资料带出）',
+    ADD COLUMN `vehicle_model`       VARCHAR(128) DEFAULT NULL COMMENT '适用车型（从商品资料带出）',
     ADD COLUMN `origin_place`        VARCHAR(64)  DEFAULT NULL COMMENT '产地（从商品资料带出）',
     ADD COLUMN `business_entity`     VARCHAR(64)  DEFAULT NULL COMMENT '所属经营（单据项级）';
 

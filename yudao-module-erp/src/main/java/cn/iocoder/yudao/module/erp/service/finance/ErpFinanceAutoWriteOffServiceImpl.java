@@ -7,6 +7,8 @@ import cn.iocoder.yudao.module.erp.dal.dataobject.finance.ErpFinancePaymentDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.ErpFinancePaymentItemDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.ErpFinanceReceiptDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.ErpFinanceReceiptItemDO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.finance.payable.ErpPayableMiscDO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.finance.receivable.ErpReceivableMiscDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseInDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseInItemDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchasePriceAdjustDO;
@@ -19,6 +21,8 @@ import cn.iocoder.yudao.module.erp.dal.mysql.finance.ErpFinancePaymentItemMapper
 import cn.iocoder.yudao.module.erp.dal.mysql.finance.ErpFinancePaymentMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.finance.ErpFinanceReceiptItemMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.finance.ErpFinanceReceiptMapper;
+import cn.iocoder.yudao.module.erp.dal.mysql.finance.payable.ErpPayableMiscMapper;
+import cn.iocoder.yudao.module.erp.dal.mysql.finance.receivable.ErpReceivableMiscMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.purchase.ErpPurchaseInMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.purchase.ErpPurchasePriceAdjustMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.purchase.ErpPurchaseReturnMapper;
@@ -30,6 +34,7 @@ import cn.iocoder.yudao.module.erp.enums.common.ErpBizTypeEnum;
 import cn.iocoder.yudao.module.erp.enums.finance.ErpFinanceWriteOffStatusEnum;
 import cn.iocoder.yudao.module.erp.service.common.ErpOperateLogService;
 import cn.iocoder.yudao.module.erp.service.common.ErpOriginalSettlementAmountUtils;
+import cn.iocoder.yudao.module.erp.service.config.ErpAutoWriteOffConfigService;
 import cn.iocoder.yudao.module.erp.service.purchase.ErpPurchaseInService;
 import cn.iocoder.yudao.module.erp.service.purchase.ErpPurchasePriceAdjustService;
 import cn.iocoder.yudao.module.erp.service.purchase.ErpPurchaseReturnService;
@@ -91,7 +96,13 @@ public class ErpFinanceAutoWriteOffServiceImpl implements ErpFinanceAutoWriteOff
     private ErpPurchaseReturnMapper purchaseReturnMapper;
     @Resource
     private ErpPurchasePriceAdjustMapper purchasePriceAdjustMapper;
+    @Resource
+    private ErpReceivableMiscMapper receivableMiscMapper;
+    @Resource
+    private ErpPayableMiscMapper payableMiscMapper;
 
+    @Resource
+    private ErpAutoWriteOffConfigService autoWriteOffConfigService;
     @Resource
     private ErpSaleOutService saleOutService;
     @Resource
@@ -115,6 +126,9 @@ public class ErpFinanceAutoWriteOffServiceImpl implements ErpFinanceAutoWriteOff
             throw exception(FINANCE_RECEIPT_NOT_EXISTS);
         }
         if (!ErpAuditStatus.APPROVE.getStatus().equals(receipt.getStatus())) {
+            return;
+        }
+        if (autoWriteOffConfigService.isAutoWriteOffDisabled(receipt.getDeptId())) {
             return;
         }
 
@@ -194,6 +208,9 @@ public class ErpFinanceAutoWriteOffServiceImpl implements ErpFinanceAutoWriteOff
         if (!ErpAuditStatus.APPROVE.getStatus().equals(payment.getStatus())) {
             return;
         }
+        if (autoWriteOffConfigService.isAutoWriteOffDisabled(payment.getDeptId())) {
+            return;
+        }
 
         BigDecimal currentAllocatedPrice = normalize(financePaymentItemMapper.selectEffectivePriceSumMapByPaymentIds(
                 Collections.singleton(payment.getId())).getOrDefault(payment.getId(), BigDecimal.ZERO));
@@ -266,6 +283,7 @@ public class ErpFinanceAutoWriteOffServiceImpl implements ErpFinanceAutoWriteOff
         addSaleOutCandidates(result, receipt);
         addSaleReturnCandidates(result, receipt);
         addSalePriceAdjustCandidates(result, receipt);
+        addReceivableMiscCandidates(result, receipt);
         result.sort(Comparator.comparing(ReceiptWriteOffCandidate::getBizTime,
                         Comparator.nullsLast(Comparator.naturalOrder()))
                 .thenComparing(ReceiptWriteOffCandidate::getBizNo, Comparator.nullsLast(Comparator.naturalOrder()))
@@ -324,6 +342,22 @@ public class ErpFinanceAutoWriteOffServiceImpl implements ErpFinanceAutoWriteOff
                 allocatedMap.getOrDefault(row.getId(), BigDecimal.ZERO)));
     }
 
+    private void addReceivableMiscCandidates(List<ReceiptWriteOffCandidate> result, ErpFinanceReceiptDO receipt) {
+        LambdaQueryWrapperX<ErpReceivableMiscDO> query = new LambdaQueryWrapperX<ErpReceivableMiscDO>()
+                .eq(ErpReceivableMiscDO::getCustomerId, receipt.getCustomerId())
+                .eq(ErpReceivableMiscDO::getStatus, ErpAuditStatus.APPROVE.getStatus());
+        appendDeptCondition(query, ErpReceivableMiscDO::getDeptId, receipt.getDeptId());
+        List<ErpReceivableMiscDO> rows = receivableMiscMapper.selectList(query);
+        if (CollUtil.isEmpty(rows)) {
+            return;
+        }
+        Map<Long, BigDecimal> allocatedMap = financeReceiptItemMapper.selectReceiptPriceSumMapByBizIdsAndBizType(
+                convertSet(rows, ErpReceivableMiscDO::getId), ErpBizTypeEnum.RECEIVABLE_MISC.getType());
+        rows.forEach(row -> addCandidate(result, ErpBizTypeEnum.RECEIVABLE_MISC.getType(), row.getId(),
+                row.getNo(), row.getBizTime(), getZeroIfNull(row.getAmount()),
+                allocatedMap.getOrDefault(row.getId(), BigDecimal.ZERO)));
+    }
+
     private <T> void appendDeptCondition(LambdaQueryWrapperX<T> query,
                                          com.baomidou.mybatisplus.core.toolkit.support.SFunction<T, ?> column,
                                          Long deptId) {
@@ -361,6 +395,11 @@ public class ErpFinanceAutoWriteOffServiceImpl implements ErpFinanceAutoWriteOff
                     .eq(ErpSalePriceAdjustDO::getId, bizId).last("FOR UPDATE"));
             result = row == null ? null : new ReceiptBizSnapshot(row.getCustomerId(), row.getDeptId(), row.getStatus(),
                     row.getNo(), getZeroIfNull(row.getTotalAdjustPrice()));
+        } else if (ObjectUtil.equal(bizType, ErpBizTypeEnum.RECEIVABLE_MISC.getType())) {
+            ErpReceivableMiscDO row = receivableMiscMapper.selectOne(new LambdaQueryWrapperX<ErpReceivableMiscDO>()
+                    .eq(ErpReceivableMiscDO::getId, bizId).last("FOR UPDATE"));
+            result = row == null ? null : new ReceiptBizSnapshot(row.getCustomerId(), row.getDeptId(), row.getStatus(),
+                    row.getNo(), getZeroIfNull(row.getAmount()));
         } else {
             return null;
         }
@@ -409,6 +448,8 @@ public class ErpFinanceAutoWriteOffServiceImpl implements ErpFinanceAutoWriteOff
                 saleReturnService.updateSaleReturnRefundPrice(receiptItem.getBizId(), totalReceiptPrice.negate());
             } else if (ErpBizTypeEnum.SALE_PRICE_ADJUST.getType().equals(receiptItem.getBizType())) {
                 salePriceAdjustService.updateSalePriceAdjustReceiptPrice(receiptItem.getBizId(), totalReceiptPrice);
+            } else if (ErpBizTypeEnum.RECEIVABLE_MISC.getType().equals(receiptItem.getBizType())) {
+                // 其他应收的已收/未收金额通过收款明细动态汇总，不回写主单。
             }
         });
     }
@@ -418,6 +459,7 @@ public class ErpFinanceAutoWriteOffServiceImpl implements ErpFinanceAutoWriteOff
         addPurchaseInCandidates(result, payment);
         addPurchaseReturnCandidates(result, payment);
         addPurchasePriceAdjustCandidates(result, payment);
+        addPayableMiscCandidates(result, payment);
         result.sort(Comparator.comparing(PaymentWriteOffCandidate::getBizTime,
                         Comparator.nullsLast(Comparator.naturalOrder()))
                 .thenComparing(PaymentWriteOffCandidate::getBizNo, Comparator.nullsLast(Comparator.naturalOrder()))
@@ -479,6 +521,22 @@ public class ErpFinanceAutoWriteOffServiceImpl implements ErpFinanceAutoWriteOff
                 allocatedMap.getOrDefault(row.getId(), BigDecimal.ZERO)));
     }
 
+    private void addPayableMiscCandidates(List<PaymentWriteOffCandidate> result, ErpFinancePaymentDO payment) {
+        LambdaQueryWrapperX<ErpPayableMiscDO> query = new LambdaQueryWrapperX<ErpPayableMiscDO>()
+                .eq(ErpPayableMiscDO::getSupplierId, payment.getSupplierId())
+                .eq(ErpPayableMiscDO::getStatus, ErpAuditStatus.APPROVE.getStatus());
+        appendDeptCondition(query, ErpPayableMiscDO::getDeptId, payment.getDeptId());
+        List<ErpPayableMiscDO> rows = payableMiscMapper.selectList(query);
+        if (CollUtil.isEmpty(rows)) {
+            return;
+        }
+        Map<Long, BigDecimal> allocatedMap = financePaymentItemMapper.selectPaymentPriceSumMapByBizIdsAndBizType(
+                convertSet(rows, ErpPayableMiscDO::getId), ErpBizTypeEnum.PAYABLE_MISC.getType());
+        rows.forEach(row -> addPaymentCandidate(result, ErpBizTypeEnum.PAYABLE_MISC.getType(), row.getId(),
+                row.getNo(), row.getBizTime(), getZeroIfNull(row.getAmount()),
+                allocatedMap.getOrDefault(row.getId(), BigDecimal.ZERO)));
+    }
+
     private void addPaymentCandidate(List<PaymentWriteOffCandidate> result, Integer bizType, Long bizId, String bizNo,
                                      LocalDateTime bizTime, BigDecimal totalPrice, BigDecimal allocatedPrice) {
         BigDecimal unallocatedPrice = normalize(getZeroIfNull(totalPrice).subtract(getZeroIfNull(allocatedPrice)));
@@ -507,6 +565,11 @@ public class ErpFinanceAutoWriteOffServiceImpl implements ErpFinanceAutoWriteOff
                             .eq(ErpPurchasePriceAdjustDO::getId, bizId).last("FOR UPDATE"));
             result = row == null ? null : new PaymentBizSnapshot(row.getSupplierId(), row.getDeptId(), row.getStatus(),
                     row.getNo(), getZeroIfNull(row.getTotalAdjustPrice()));
+        } else if (ObjectUtil.equal(bizType, ErpBizTypeEnum.PAYABLE_MISC.getType())) {
+            ErpPayableMiscDO row = payableMiscMapper.selectOne(new LambdaQueryWrapperX<ErpPayableMiscDO>()
+                    .eq(ErpPayableMiscDO::getId, bizId).last("FOR UPDATE"));
+            result = row == null ? null : new PaymentBizSnapshot(row.getSupplierId(), row.getDeptId(), row.getStatus(),
+                    row.getNo(), getZeroIfNull(row.getAmount()));
         } else {
             return null;
         }
@@ -528,6 +591,8 @@ public class ErpFinanceAutoWriteOffServiceImpl implements ErpFinanceAutoWriteOff
                 purchaseReturnService.updatePurchaseReturnRefundPrice(paymentItem.getBizId(), totalPaymentPrice.negate());
             } else if (ErpBizTypeEnum.PURCHASE_PRICE_ADJUST.getType().equals(paymentItem.getBizType())) {
                 purchasePriceAdjustService.updatePurchasePriceAdjustPaymentPrice(paymentItem.getBizId(), totalPaymentPrice);
+            } else if (ErpBizTypeEnum.PAYABLE_MISC.getType().equals(paymentItem.getBizType())) {
+                // 其他应付的已付/未付金额通过付款明细动态汇总，不回写主单。
             }
         });
     }

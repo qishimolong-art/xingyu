@@ -2,7 +2,9 @@ package cn.iocoder.yudao.module.erp.controller.admin.stock;
 
 import cn.hutool.core.collection.CollUtil;
 import cn.iocoder.yudao.framework.apilog.core.annotation.ApiAccessLog;
+import cn.iocoder.yudao.framework.common.enums.CommonStatusEnum;
 import cn.iocoder.yudao.framework.common.pojo.CommonResult;
+import cn.iocoder.yudao.framework.common.pojo.PageParam;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.common.exception.ErrorCode;
 import cn.iocoder.yudao.framework.common.util.collection.MapUtils;
@@ -27,6 +29,7 @@ import cn.iocoder.yudao.module.erp.service.stock.ErpStockOutBillService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpWarehouseService;
 import cn.iocoder.yudao.module.system.api.user.AdminUserApi;
 import cn.iocoder.yudao.module.system.api.user.dto.AdminUserRespDTO;
+import cn.iocoder.yudao.module.system.controller.admin.user.vo.user.UserSimpleRespVO;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -53,6 +56,7 @@ import java.util.Set;
 import static cn.iocoder.yudao.framework.apilog.core.enums.OperateTypeEnum.EXPORT;
 import static cn.iocoder.yudao.framework.common.pojo.CommonResult.success;
 import static cn.iocoder.yudao.framework.common.exception.util.ServiceExceptionUtil.exception;
+import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.convertList;
 import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.convertMultiMap;
 import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.convertSet;
 
@@ -179,6 +183,17 @@ public class ErpStockOutBillController {
     public CommonResult<List<ErpExportFieldRespVO>> getStockOutBillExportFields() {
         return success(ErpExportFieldUtils.listFields(ErpStockOutBillExportRespVO.class, EXPORT_FIELD_GROUP_MAP,
                 fieldPermissionMasker.getHiddenFieldSet(FIELD_PERMISSION_MODULE), EXPORT_FIELD_PERMISSION_MAP));
+    }
+
+    @GetMapping("/user-simple-page")
+    @Operation(summary = "获得出仓单搜索用户分页")
+    @PreAuthorize("@ss.hasPermission('erp:stock-out-bill:query')")
+    public CommonResult<PageResult<UserSimpleRespVO>> getUserSimplePage(@Valid PageParam pageReqVO) {
+        PageResult<AdminUserRespDTO> page = adminUserApi.getUserSimplePage(
+                CommonStatusEnum.ENABLE.getStatus(), pageReqVO.getKeyword(), pageReqVO);
+        List<UserSimpleRespVO> list = convertList(page.getList(), user ->
+                new UserSimpleRespVO(user.getId(), user.getNickname(), user.getDeptId(), null));
+        return success(new PageResult<>(list, page.getTotal()));
     }
 
     private PageResult<ErpStockOutBillRespVO> buildStockOutBillVOPageResult(PageResult<ErpStockOutBillDO> pageResult) {

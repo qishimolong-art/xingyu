@@ -7,7 +7,7 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 
-@Schema(description = "ERP 其他应付 Response VO")
+@Schema(description = "ERP 应付调账 Response VO")
 @Data
 public class ErpPayableOtherRespVO {
 
@@ -40,6 +40,8 @@ public class ErpPayableOtherRespVO {
     private String project;
 
     private String sourceType;
+
+    private String sourceNo;
 
     private Long handlerId;
 

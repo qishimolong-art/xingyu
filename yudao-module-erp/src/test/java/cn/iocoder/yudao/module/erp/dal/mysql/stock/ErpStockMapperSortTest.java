@@ -24,6 +24,47 @@ class ErpStockMapperSortTest {
     }
 
     @Test
+    void optimizedAvailableCountSortSqlAggregatesOccupiedSourcesByCandidateStock() {
+        String sql = ErpStockMapper.availableCountSortedSql();
+
+        assertTrue(sql.contains("SELECT * FROM erp_stock"));
+        assertTrue(sql.contains("INNER JOIN (SELECT * FROM erp_stock"));
+        assertTrue(sql.contains("GROUP BY occupied_source.product_id, occupied_source.warehouse_id"));
+        assertTrue(sql.contains("SUM(occupied_source.occupied_count_delta) AS occupied_count"));
+        assertTrue(sql.contains("ORDER BY (COALESCE(erp_stock.count, 0) - COALESCE(occupied.occupied_count, 0))"));
+        assertTrue(sql.contains("erp_sale_cart_items"));
+        assertTrue(sql.contains("erp_sale_out_items"));
+        assertTrue(sql.contains("erp_purchase_return_items"));
+        assertTrue(sql.contains("erp_stock_out_item"));
+        assertTrue(sql.contains("erp_stock_move_item"));
+        assertTrue(sql.contains("erp_warehouse_move_item"));
+        assertTrue(sql.contains("erp_stock_check_item"));
+        assertTrue(sql.contains("erp_stock_out_bill_item"));
+    }
+
+    @Test
+    void shouldUseOptimizedAvailableCountSortOnlyForExplicitDirection() {
+        cn.iocoder.yudao.module.erp.controller.admin.stock.vo.stock.ErpStockPageReqVO reqVO =
+                new cn.iocoder.yudao.module.erp.controller.admin.stock.vo.stock.ErpStockPageReqVO();
+        reqVO.setOrderField("availableCount");
+        reqVO.setOrderDirection("desc");
+
+        assertTrue(ErpStockMapper.isAvailableCountSort(reqVO));
+        assertEquals("DESC", ErpStockMapper.normalizeOrderDirection(reqVO.getOrderDirection()));
+
+        reqVO.setOrderDirection("asc");
+        assertTrue(ErpStockMapper.isAvailableCountSort(reqVO));
+        assertEquals("ASC", ErpStockMapper.normalizeOrderDirection(reqVO.getOrderDirection()));
+
+        reqVO.setOrderDirection("id desc; delete from erp_stock");
+        assertTrue(!ErpStockMapper.isAvailableCountSort(reqVO));
+
+        reqVO.setOrderField("count");
+        reqVO.setOrderDirection("desc");
+        assertTrue(!ErpStockMapper.isAvailableCountSort(reqVO));
+    }
+
+    @Test
     void summaryValueReadersReturnZeroForNullRow() {
         assertEquals(0L, ErpStockMapper.getLong(null, "total_rows"));
         assertEquals(BigDecimal.ZERO, ErpStockMapper.getBigDecimal(null, "total_stock_count"));

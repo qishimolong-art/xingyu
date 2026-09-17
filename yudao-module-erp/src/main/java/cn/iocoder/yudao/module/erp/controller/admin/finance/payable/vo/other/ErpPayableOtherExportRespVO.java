@@ -48,6 +48,9 @@ public class ErpPayableOtherExportRespVO {
     @ExcelProperty("来源类型")
     private String sourceType;
 
+    @ExcelProperty("来源单号")
+    private String sourceNo;
+
     @ExcelProperty("经手人")
     private String handlerName;
 

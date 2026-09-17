@@ -280,4 +280,9 @@ public class ProductSkuServiceImpl implements ProductSkuService {
         productSkuMapper.updateStockCount(id, stock);
     }
 
+    @Override
+    public void updateSkuPriceBySpuId(Long spuId, Integer price) {
+        productSkuMapper.updatePriceBySpuId(spuId, price);
+    }
+
 }

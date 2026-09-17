@@ -24,4 +24,8 @@ public class ErpMallStockOptionBO {
 
     private String availableStatusText;
 
+    private Long distanceMeters;
+
+    private String distanceText;
+
 }

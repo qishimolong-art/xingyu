@@ -1,7 +1,9 @@
 package cn.iocoder.yudao.module.erp.controller.app.stock;
 
 import cn.iocoder.yudao.framework.common.pojo.CommonResult;
+import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
+import cn.iocoder.yudao.module.erp.controller.app.stock.vo.AppErpMallStockOptionPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.app.stock.vo.AppErpMallStockOptionRespVO;
 import cn.iocoder.yudao.module.erp.controller.app.stock.vo.AppErpMallStockSummaryRespVO;
 import cn.iocoder.yudao.module.erp.service.stock.ErpMallStockService;
@@ -15,6 +17,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import javax.annotation.Resource;
+import javax.validation.Valid;
 import java.util.List;
 
 import static cn.iocoder.yudao.framework.common.pojo.CommonResult.success;
@@ -48,6 +51,17 @@ public class AppErpMallStockController {
             @RequestParam("skuId") Long skuId) {
         return success(BeanUtils.toBean(mallStockService.getMallStockOptions(spuId, skuId),
                 AppErpMallStockOptionRespVO.class));
+    }
+
+    @GetMapping("/mall-options/page")
+    @Operation(summary = "分页获得商城商品可购买库存选项")
+    public CommonResult<PageResult<AppErpMallStockOptionRespVO>> getMallStockOptionPage(
+            @Valid AppErpMallStockOptionPageReqVO reqVO) {
+        PageResult<AppErpMallStockOptionRespVO> pageResult = BeanUtils.toBean(
+                mallStockService.getMallStockOptionPage(reqVO.getSpuId(), reqVO.getSkuId(),
+                        reqVO.getPageNo(), reqVO.getPageSize(), reqVO.getUserLongitude(), reqVO.getUserLatitude()),
+                AppErpMallStockOptionRespVO.class);
+        return success(pageResult);
     }
 
 }

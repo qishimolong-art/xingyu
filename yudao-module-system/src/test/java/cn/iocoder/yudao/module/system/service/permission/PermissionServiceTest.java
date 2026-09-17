@@ -292,6 +292,16 @@ public class PermissionServiceTest extends BaseDbUnitTest {
 
                 assertTrue(result.contains("item_productPrice"), module);
                 assertTrue(result.contains("item_salePrice"), module);
+                assertTrue(result.contains("item_productPurchasePrice"), module);
+                assertTrue(result.contains("item_lastSalePrice"), module);
+                assertTrue(result.contains("item_minPrice"), module);
+                assertTrue(result.contains("item_referencePrice"), module);
+                assertTrue(result.contains("item_retailPrice"), module);
+                assertTrue(result.contains("item_lastPurchasePrice"), module);
+                assertTrue(result.contains("item_grossProfitRate"), module);
+                assertTrue(result.contains("item_backupPrice1"), module);
+                assertTrue(result.contains("item_wholesalePrice"), module);
+                assertTrue(result.contains("item_sharePrice"), module);
                 assertTrue(result.contains("item_totalProductPrice"), module);
                 assertTrue(result.contains("item_totalPrice"), module);
                 assertTrue(result.contains("item_oldPrice"), module);
@@ -299,6 +309,45 @@ public class PermissionServiceTest extends BaseDbUnitTest {
                 assertTrue(result.contains("totalProductPrice"), module);
                 assertTrue(result.contains("totalPrice"), module);
                 assertTrue(result.contains("totalAdjustPrice"), module);
+            }
+        }
+    }
+
+    @Test
+    public void testGetCurrentUserHiddenFields_StockModulesIncludeProductPricePermission() {
+        try (MockedStatic<SpringUtil> springUtilMockedStatic = mockStatic(SpringUtil.class);
+             MockedStatic<SecurityFrameworkUtils> securityMockedStatic = mockStatic(SecurityFrameworkUtils.class)) {
+            springUtilMockedStatic.when(() -> SpringUtil.getBean(eq(PermissionServiceImpl.class)))
+                    .thenReturn(permissionService);
+            securityMockedStatic.when(SecurityFrameworkUtils::getLoginUserId).thenReturn(1L);
+            securityMockedStatic.when(SecurityFrameworkUtils::getLoginUserDeptId).thenReturn(10L);
+            userRoleMapper.insert(randomPojo(UserRoleDO.class).setUserId(1L).setRoleId(100L));
+            RoleDO role = randomPojo(RoleDO.class, item -> item.setId(100L)
+                    .setStatus(CommonStatusEnum.ENABLE.getStatus()));
+            when(roleService.getRoleListFromCache(eq(singleton(100L)))).thenReturn(toList(role));
+            when(roleService.hasAnySuperAdmin(eq(singleton(100L)))).thenReturn(false);
+            DeptDO enabledDept = randomPojo(DeptDO.class, item -> item.setId(10L)
+                    .setStatus(CommonStatusEnum.ENABLE.getStatus()));
+            when(deptService.getDept(10L)).thenReturn(enabledDept);
+            when(deptPriceFieldService.getHiddenPriceFields(eq(singleton(10L))))
+                    .thenReturn(toList("purchasePrice", "backupPrice1", "col_backupPrice1"));
+            List<String> modules = toList(
+                    "erp_stock_in",
+                    "erp_stock_out",
+                    "erp_stock_check",
+                    "erp_stock_move",
+                    "erp_stock_transfer_out",
+                    "erp_stock_transfer_in",
+                    "erp_warehouse_move");
+
+            for (String module : modules) {
+                List<String> result = permissionService.getCurrentUserHiddenFields(module);
+
+                assertTrue(result.contains("item_productPurchasePrice"), module);
+                assertTrue(result.contains("select_col_productPurchasePrice"), module);
+                assertTrue(result.contains("item_backupPrice1"), module);
+                assertTrue(result.contains("select_col_backupPrice1"), module);
+                assertFalse(result.contains("item_salePrice"), module);
             }
         }
     }

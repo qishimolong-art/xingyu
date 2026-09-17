@@ -26,6 +26,8 @@ public class ErpSaleCartPageReqVO extends PageParam {
     private LocalDateTime[] cartTime;
     private String contactPerson;
     private Long productId;
+    private String productKeyword;
+    private Boolean includeItems;
     private Integer status;
     private Boolean includeCompleted;
     private String remark;

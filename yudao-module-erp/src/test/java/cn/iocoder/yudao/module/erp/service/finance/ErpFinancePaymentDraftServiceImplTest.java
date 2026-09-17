@@ -218,7 +218,6 @@ class ErpFinancePaymentDraftServiceImplTest extends BaseMockitoUnitTest {
         when(paymentMapper.selectById(10L)).thenReturn(new ErpFinancePaymentDO()
                 .setId(10L).setNo("FKD10").setStatus(ErpFinancePaymentStatusEnum.DRAFT.getStatus())
                 .setPaymentTime(LocalDateTime.now()));
-        when(paymentItemMapper.selectListByPaymentId(10L)).thenReturn(Collections.emptyList());
         when(paymentMapper.updateByIdAndStatus(eq(10L),
                 eq(ErpFinancePaymentStatusEnum.DRAFT.getStatus()), any())).thenReturn(0);
 
@@ -234,7 +233,6 @@ class ErpFinancePaymentDraftServiceImplTest extends BaseMockitoUnitTest {
         when(paymentMapper.selectById(10L)).thenReturn(new ErpFinancePaymentDO()
                 .setId(10L).setNo("FKD10").setStatus(ErpFinancePaymentStatusEnum.DRAFT.getStatus())
                 .setPaymentTime(paymentTime));
-        when(paymentItemMapper.selectListByPaymentId(10L)).thenReturn(Collections.emptyList());
         when(paymentMapper.updateByIdAndStatus(eq(10L),
                 eq(ErpFinancePaymentStatusEnum.DRAFT.getStatus()), any())).thenReturn(1);
 
@@ -250,7 +248,7 @@ class ErpFinancePaymentDraftServiceImplTest extends BaseMockitoUnitTest {
         assertThat(captor.getValue().getPaymentTime()).isEqualTo(paymentTime);
         assertThat(captor.getValue().getTotalPrice()).isEqualByComparingTo("100.00");
         assertThat(captor.getValue().getPaymentPrice()).isEqualByComparingTo("100.00");
-        verify(paymentItemMapper).deleteByPaymentId(10L);
+        verify(paymentItemMapper, never()).deleteByPaymentId(10L);
     }
 
     @Test
@@ -259,7 +257,6 @@ class ErpFinancePaymentDraftServiceImplTest extends BaseMockitoUnitTest {
         when(paymentMapper.selectById(10L)).thenReturn(new ErpFinancePaymentDO()
                 .setId(10L).setNo("FKD10").setStatus(ErpFinancePaymentStatusEnum.DRAFT.getStatus())
                 .setPaymentTime(paymentTime));
-        when(paymentItemMapper.selectListByPaymentId(10L)).thenReturn(Collections.emptyList());
         when(paymentMapper.updateByIdAndStatus(eq(10L),
                 eq(ErpFinancePaymentStatusEnum.DRAFT.getStatus()), any())).thenReturn(1);
 
@@ -303,7 +300,7 @@ class ErpFinancePaymentDraftServiceImplTest extends BaseMockitoUnitTest {
         verify(paymentMapper).updateByIdAndStatus(eq(10L),
                 eq(ErpFinancePaymentStatusEnum.DRAFT.getStatus()), captor.capture());
         assertThat(captor.getValue().getStatus()).isEqualTo(ErpFinancePaymentStatusEnum.PROCESS.getStatus());
-        verify(paymentItemMapper).deleteByPaymentId(10L);
+        verify(paymentItemMapper, never()).deleteByPaymentId(10L);
     }
 
     @Test
@@ -312,7 +309,6 @@ class ErpFinancePaymentDraftServiceImplTest extends BaseMockitoUnitTest {
                 .setId(10L).setNo("FKD10").setStatus(ErpFinancePaymentStatusEnum.DRAFT.getStatus())
                 .setPaymentTime(LocalDateTime.now()).setSupplierId(1L).setAccountId(2L)
                 .setTotalPrice(new BigDecimal("-100")).setDiscountPrice(BigDecimal.ZERO));
-        when(paymentItemMapper.selectListByPaymentId(10L)).thenReturn(Collections.emptyList());
         when(paymentMapper.updateByIdAndStatus(eq(10L),
                 eq(ErpFinancePaymentStatusEnum.DRAFT.getStatus()), any())).thenReturn(1);
 
@@ -331,8 +327,6 @@ class ErpFinancePaymentDraftServiceImplTest extends BaseMockitoUnitTest {
                 .setId(10L).setNo("FKD10").setStatus(ErpFinancePaymentStatusEnum.DRAFT.getStatus())
                 .setPaymentTime(LocalDateTime.now()).setSupplierId(1L).setAccountId(2L)
                 .setTotalPrice(BigDecimal.ZERO).setDiscountPrice(BigDecimal.ZERO));
-        when(paymentItemMapper.selectListByPaymentId(10L)).thenReturn(Collections.emptyList());
-
         assertServiceException(() -> service.submitFinancePayment(10L),
                 FINANCE_PAYMENT_WRITEOFF_AMOUNT_INVALID, "合计付款不能为 0");
         verify(paymentMapper, never()).updateByIdAndStatus(any(), any(), any());

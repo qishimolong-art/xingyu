@@ -39,4 +39,7 @@ public class ErpPreReceivablePageReqVO extends PageParam {
     @Schema(description = "状态", example = "10")
     private Integer status;
 
+    @Schema(description = "是否返回明细，默认 true 保持兼容")
+    private Boolean includeItems;
+
 }

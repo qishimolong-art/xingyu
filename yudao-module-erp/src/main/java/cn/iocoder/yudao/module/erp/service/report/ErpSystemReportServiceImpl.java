@@ -399,6 +399,9 @@ public class ErpSystemReportServiceImpl implements ErpSystemReportService {
             if ("stockQty".equals(metric)) {
                 return "SUM(r.stockQty)";
             }
+            if ("lowStock".equals(metric) || "lowStockSku".equals(metric)) {
+                return "COUNT(DISTINCT CASE WHEN r.risk = '低库存' THEN r.productId END)";
+            }
             return "SUM(r.stockAmount)";
         }
         if ("inAmount".equals(metric) || "purchaseAmount".equals(metric) || "saleAmount".equals(metric)) {
@@ -429,11 +432,52 @@ public class ErpSystemReportServiceImpl implements ErpSystemReportService {
         fields.put("netAmount", "netAmount");
         fields.put("pendingQty", "pendingQty");
         fields.put("saleCount", "saleCount");
+        fields.put("saleQty", "saleCount");
         fields.put("saleAmount", "saleAmount");
         fields.put("stockQty", "stockQty");
         fields.put("stockAmount", "stockAmount");
+        fields.put("skuCount", "skuCount");
+        fields.put("availableQty", "availableQty");
+        fields.put("occupiedQty", "occupiedQty");
+        fields.put("inTransitQty", "inTransitQty");
+        fields.put("outCount", "outCount");
+        fields.put("outQty", "outCount");
+        fields.put("outAmount", "outAmount");
+        fields.put("totalCount", "totalCount");
+        fields.put("balanceQty", "totalCount");
+        fields.put("costAmount", "costAmount");
+        fields.put("balanceAmount", "costAmount");
+        fields.put("stockMin", "stockMin");
+        fields.put("safeStock", "stockMin");
         fields.put("gapQty", "gapQty");
         fields.put("lowStockSku", "lowStockSku");
+        fields.put("lowStock", "lowStockSku");
+        fields.put("sku", "skuCount");
+        fields.put("warehouse", "name");
+        fields.put("category", "name");
+        fields.put("date", "docDate");
+        fields.put("type", "docType");
+        if (TYPE_SALE.equals(reportType)) {
+            if ("customer".equals(orderField)) {
+                fields.put("customer", "document".equals(dimension) ? "customerName" : "name");
+            }
+            if ("seller".equals(orderField)) {
+                fields.put("seller", "user".equals(dimension) ? "name" : "userName");
+            }
+            if ("dept".equals(orderField)) {
+                fields.put("dept", "dept".equals(dimension) ? "name" : "deptName");
+            }
+            fields.put("lineCount", "bizCount");
+            fields.put("sellerCount", "userCount");
+        }
+        if (TYPE_STOCK.equals(reportType)) {
+            if ("warehouse".equals(orderField)) {
+                fields.put("warehouse", "flow".equals(dimension) || "risk".equals(dimension) ? "warehouseName" : "name");
+            }
+            if ("category".equals(orderField)) {
+                fields.put("category", "category".equals(dimension) ? "name" : "categoryName");
+            }
+        }
         String field = fields.get(orderField);
         if (field == null) {
             if ("document".equals(dimension)) {
@@ -538,7 +582,8 @@ public class ErpSystemReportServiceImpl implements ErpSystemReportService {
 
     private void maskStockRows(List<Map<String, Object>> rows) {
         if (isStockAmountHidden()) {
-            rows.forEach(row -> maskKeys(row, "stockAmount"));
+            rows.forEach(row -> maskKeys(row, "stockAmount", "inAmount", "outAmount", "costAmount",
+                    "unitPrice", "costPrice", "balanceAmount"));
         }
     }
 

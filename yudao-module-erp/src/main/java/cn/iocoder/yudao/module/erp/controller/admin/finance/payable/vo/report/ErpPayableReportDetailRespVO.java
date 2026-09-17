@@ -39,6 +39,12 @@ public class ErpPayableReportDetailRespVO {
 
     private BigDecimal writeOffBaseAmount;
 
+    @ExcelProperty("备注")
+    private String remark;
+
+    @ExcelProperty("附件")
+    private String fileUrl;
+
     @ExcelProperty("余额")
     private BigDecimal balance;
 }

@@ -17,6 +17,8 @@ import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleOutDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleOutItemDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpWarehouseDO;
 import cn.iocoder.yudao.module.erp.dal.mysql.product.ErpProductMapper;
+import cn.iocoder.yudao.module.erp.dal.mysql.stock.ErpStockMapper;
+import cn.iocoder.yudao.module.erp.dal.mysql.stock.ErpStockRecordMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpSalePriceAdjustItemMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.finance.ErpFinanceReceiptItemMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpSalePriceAdjustMapper;
@@ -96,9 +98,17 @@ public class ErpSalePriceAdjustServiceImplTest extends BaseMockitoUnitTest {
     private ErpWarehouseService warehouseService;
     @Mock
     private ErpSaleFieldPermissionMasker fieldPermissionMasker;
+    @Mock
+    private ErpSaleDocumentDefaultService saleDocumentDefaultService;
+    @Mock
+    private ErpStockMapper stockMapper;
+    @Mock
+    private ErpStockRecordMapper stockRecordMapper;
 
     @BeforeEach
     public void setUp() {
+        org.mockito.Mockito.lenient().when(saleOutItemMapper.selectListByOutIdForUpdate(anyLong()))
+                .thenAnswer(invocation -> saleOutItemMapper.selectListByOutId(invocation.getArgument(0)));
         ReflectionTestUtils.setField(salePriceAdjustService, "noRedisDAO", new ErpNoRedisDAO() {
             @Override
             public String generate(String prefix) {
@@ -259,6 +269,7 @@ public class ErpSalePriceAdjustServiceImplTest extends BaseMockitoUnitTest {
                 .setStatus(ErpAuditStatus.APPROVE.getStatus())
                 .setDiscountPercent(BigDecimal.ZERO).setOtherPrice(BigDecimal.ZERO);
         when(saleOutMapper.selectByNo(eq("XSCK300"))).thenReturn(originalOut);
+        when(saleOutMapper.selectByIdForUpdate(eq(saleOutId))).thenReturn(originalOut);
 
         // 4. 原销售出库子项
         ErpSaleOutItemDO outItem = new ErpSaleOutItemDO()
@@ -320,6 +331,8 @@ public class ErpSalePriceAdjustServiceImplTest extends BaseMockitoUnitTest {
                 .setDiscountPercent(BigDecimal.ZERO).setOtherPrice(BigDecimal.ZERO);
         when(saleOutMapper.selectByNo(eq("XSCK310A"))).thenReturn(outA);
         when(saleOutMapper.selectByNo(eq("XSCK310B"))).thenReturn(outB);
+        when(saleOutMapper.selectByIdForUpdate(eq(410L))).thenReturn(outA);
+        when(saleOutMapper.selectByIdForUpdate(eq(411L))).thenReturn(outB);
 
         ErpSaleOutItemDO outItemA = new ErpSaleOutItemDO()
                 .setId(510L).setOutId(410L).setProductId(610L)
@@ -369,10 +382,6 @@ public class ErpSalePriceAdjustServiceImplTest extends BaseMockitoUnitTest {
     public void testUpdateSalePriceAdjustStatus_optimisticLockFail_throwException() {
         // 反审核（PROCESS）只能从 APPROVE 过来；若当前状态已是 PROCESS，再次反审核应抛 SALE_PRICE_ADJUST_PROCESS_FAIL。
         Long adjustId = 330L;
-        ErpSalePriceAdjustDO adjustDO = new ErpSalePriceAdjustDO()
-                .setId(adjustId).setStatus(ErpAuditStatus.PROCESS.getStatus());
-        when(salePriceAdjustMapper.selectById(eq(adjustId))).thenReturn(adjustDO);
-
         assertServiceException(() -> salePriceAdjustService.updateSalePriceAdjustStatus(
                         adjustId, ErpAuditStatus.PROCESS.getStatus()),
                 SALE_PRICE_ADJUST_PROCESS_FAIL);
@@ -682,4 +691,30 @@ public class ErpSalePriceAdjustServiceImplTest extends BaseMockitoUnitTest {
         return item;
     }
 
+    @Test
+    public void testNewAccountingBlocksAdjustTypeOneBeforeAnyEffect() {
+        assertNewAccountingBlocksBeforeAnyEffect(1);
+    }
+
+    @Test
+    public void testNewAccountingBlocksAdjustTypeTwoBeforeAnyEffect() {
+        assertNewAccountingBlocksBeforeAnyEffect(2);
+    }
+
+    private void assertNewAccountingBlocksBeforeAnyEffect(int adjustType) {
+        ReflectionTestUtils.setField(salePriceAdjustService, "dualCostEnabled", true);
+        ErpSalePriceAdjustDO source = new ErpSalePriceAdjustDO().setId(990L)
+                .setStatus(ErpAuditStatus.PROCESS.getStatus()).setAdjustType(adjustType);
+        when(salePriceAdjustMapper.selectById(990L)).thenReturn(source);
+        cn.iocoder.yudao.framework.common.exception.ServiceException error =
+                org.junit.jupiter.api.Assertions.assertThrows(
+                        cn.iocoder.yudao.framework.common.exception.ServiceException.class,
+                        () -> salePriceAdjustService.updateSalePriceAdjustStatus(990L, ErpAuditStatus.APPROVE.getStatus()));
+        assertEquals(409, error.getCode());
+        assertTrue(error.getMessage().contains("尚未接入新核算"));
+        assertEquals(ErpAuditStatus.PROCESS.getStatus(), source.getStatus());
+        verify(salePriceAdjustMapper, never()).updateById(any(ErpSalePriceAdjustDO.class));
+        org.mockito.Mockito.verifyNoInteractions(salePriceAdjustItemMapper, saleOutMapper,
+                saleOutItemMapper, stockMapper, stockRecordMapper);
+    }
 }

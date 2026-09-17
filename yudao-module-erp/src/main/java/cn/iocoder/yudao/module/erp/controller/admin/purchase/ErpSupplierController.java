@@ -19,6 +19,7 @@ import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.supplier.ErpSupp
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.supplier.ErpSupplierDeptDistributionRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.supplier.ErpSupplierDeptDistributionSaveReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.supplier.ErpSupplierImportExcelVO;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.supplier.ErpSupplierImportRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.supplier.ErpSupplierPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.supplier.ErpSupplierRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.supplier.ErpSupplierSaveReqVO;
@@ -225,7 +226,19 @@ public class ErpSupplierController {
     @Operation(summary = "获得供应商精简列表", description = "只包含被开启的供应商，主要用于前端的下拉选项")
     public CommonResult<List<ErpSupplierRespVO>> getSupplierSimpleList() {
         List<ErpSupplierDO> list = supplierService.getSupplierListByStatus(CommonStatusEnum.ENABLE.getStatus());
-        return success(convertList(list, supplier -> new ErpSupplierRespVO()
+        return success(buildSupplierSimpleRespList(list));
+    }
+
+    @GetMapping("/simple-page")
+    @Operation(summary = "获得供应商精简分页", description = "只包含被开启的供应商，主要用于前端的下拉分页选项")
+    public CommonResult<PageResult<ErpSupplierRespVO>> getSupplierSimplePage(@Valid ErpSupplierPageReqVO pageReqVO) {
+        PageResult<ErpSupplierDO> pageResult =
+                supplierService.getSupplierPageByStatus(pageReqVO, CommonStatusEnum.ENABLE.getStatus());
+        return success(new PageResult<>(buildSupplierSimpleRespList(pageResult.getList()), pageResult.getTotal()));
+    }
+
+    private List<ErpSupplierRespVO> buildSupplierSimpleRespList(List<ErpSupplierDO> list) {
+        return convertList(list, supplier -> new ErpSupplierRespVO()
                 .setId(supplier.getId())
                 .setName(supplier.getName())
                 .setCode(supplier.getCode())
@@ -234,7 +247,7 @@ public class ErpSupplierController {
                 .setMobile(supplier.getMobile())
                 .setTelephone(supplier.getTelephone())
                 .setPinyinCode(supplier.getPinyinCode())
-                .setWubiCode(supplier.getWubiCode())));
+                .setWubiCode(supplier.getWubiCode()));
     }
 
     @GetMapping("/export-excel")
@@ -285,10 +298,9 @@ public class ErpSupplierController {
     @PostMapping("/import")
     @Operation(summary = "导入供应商")
     @PreAuthorize("@ss.hasPermission('erp:supplier:import')")
-    public CommonResult<Boolean> importSupplier(@RequestParam("file") MultipartFile file) throws Exception {
+    public CommonResult<ErpSupplierImportRespVO> importSupplier(@RequestParam("file") MultipartFile file) throws Exception {
         List<ErpSupplierImportExcelVO> list = ExcelUtils.read(file, ErpSupplierImportExcelVO.class);
-        supplierService.importSupplierList(list);
-        return success(true);
+        return success(supplierService.importSupplierList(list));
     }
 
     private static Map<String, String> buildExportFieldGroupMap() {

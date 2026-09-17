@@ -14,4 +14,5 @@ public class ErpVoucherAttributionGenerateReqVO {
     @NotEmpty(message = "归属记录编号列表不能为空")
     private List<Long> ids;
 
+    private java.util.Map<Long, String> previewTokens;
 }

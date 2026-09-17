@@ -3,6 +3,7 @@ package cn.iocoder.yudao.module.erp.controller.admin.finance.receivable;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.ErpFinanceUpdateRemarkReqVO;
 import cn.hutool.core.collection.CollUtil;
 import cn.iocoder.yudao.framework.apilog.core.annotation.ApiAccessLog;
+import cn.iocoder.yudao.framework.common.enums.CommonStatusEnum;
 import cn.iocoder.yudao.framework.common.pojo.CommonResult;
 import cn.iocoder.yudao.framework.common.pojo.PageParam;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
@@ -35,6 +36,7 @@ import cn.iocoder.yudao.module.system.api.dept.dto.DeptRespDTO;
 import cn.iocoder.yudao.module.system.api.user.AdminUserApi;
 import cn.iocoder.yudao.module.system.api.user.dto.AdminUserRespDTO;
 import cn.iocoder.yudao.module.system.controller.admin.dept.vo.dept.DeptSimpleRespVO;
+import cn.iocoder.yudao.module.system.controller.admin.user.vo.user.UserSimpleRespVO;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -225,7 +227,7 @@ public class ErpReceivableOtherIncomeController {
     @PreAuthorize("@ss.hasPermission('erp:receivable-other-income:query')")
     public CommonResult<PageResult<ErpReceivableOtherIncomeRespVO>> page(@Valid ErpReceivableOtherIncomePageReqVO pageReqVO) {
         PageResult<ErpReceivableOtherIncomeDO> pageResult = otherIncomeService.getOtherIncomePage(pageReqVO);
-        return success(buildPageResult(pageResult));
+        return success(buildPageResult(pageResult, !Boolean.FALSE.equals(pageReqVO.getIncludeItems())));
     }
 
     @GetMapping("/dept-simple-list")
@@ -235,12 +237,37 @@ public class ErpReceivableOtherIncomeController {
         return success(dataPermissionDeptService.getDeptSimpleList("erp_receivable_other_income"));
     }
 
+    @GetMapping("/dept-simple-page")
+    @Operation(summary = "Get receivable other income data permission dept simple page")
+    @PreAuthorize("@ss.hasPermission('erp:receivable-other-income:query')")
+    public CommonResult<PageResult<DeptSimpleRespVO>> getReceivableOtherIncomeDeptSimplePage(@Valid PageParam pageReqVO) {
+        return success(dataPermissionDeptService.getDeptSimplePage("erp_receivable_other_income", pageReqVO));
+    }
+
+    @GetMapping("/user-simple-page")
+    @Operation(summary = "Get receivable other income user simple page")
+    @PreAuthorize("@ss.hasPermission('erp:receivable-other-income:query')")
+    public CommonResult<PageResult<UserSimpleRespVO>> getReceivableOtherIncomeUserSimplePage(@Valid PageParam pageReqVO) {
+        PageResult<AdminUserRespDTO> page = adminUserApi.getUserSimplePage(
+                CommonStatusEnum.ENABLE.getStatus(), pageReqVO.getKeyword(), pageReqVO);
+        List<UserSimpleRespVO> list = CollectionUtils.convertList(page.getList(), user ->
+                new UserSimpleRespVO(user.getId(), user.getNickname(), user.getDeptId(), null));
+        return success(new PageResult<>(list, page.getTotal()));
+    }
+
     private PageResult<ErpReceivableOtherIncomeRespVO> buildPageResult(PageResult<ErpReceivableOtherIncomeDO> pageResult) {
+        return buildPageResult(pageResult, true);
+    }
+
+    private PageResult<ErpReceivableOtherIncomeRespVO> buildPageResult(PageResult<ErpReceivableOtherIncomeDO> pageResult,
+                                                                       boolean includeItems) {
         if (CollUtil.isEmpty(pageResult.getList())) {
             return PageResult.empty(pageResult.getTotal());
         }
-        java.util.List<ErpReceivableOtherIncomeItemDO> itemList = otherIncomeService
-                .getOtherIncomeItemListByIncomeIds(CollectionUtils.convertSet(pageResult.getList(), ErpReceivableOtherIncomeDO::getId));
+        java.util.List<ErpReceivableOtherIncomeItemDO> itemList = includeItems
+                ? otherIncomeService.getOtherIncomeItemListByIncomeIds(CollectionUtils.convertSet(
+                        pageResult.getList(), ErpReceivableOtherIncomeDO::getId))
+                : Collections.emptyList();
         Map<Long, java.util.List<ErpReceivableOtherIncomeItemDO>> itemMap = CollectionUtils.convertMultiMap(
                 itemList, ErpReceivableOtherIncomeItemDO::getIncomeId);
         java.util.Set<Long> accountIds = CollectionUtils.convertSet(pageResult.getList(), ErpReceivableOtherIncomeDO::getAccountId);
@@ -261,9 +288,9 @@ public class ErpReceivableOtherIncomeController {
         Map<Long, ErpCustomerDO> customerMap = customerIds.isEmpty() ? java.util.Collections.emptyMap()
                 : customerService.getCustomerMap(customerIds);
         PageResult<ErpReceivableOtherIncomeRespVO> result = BeanUtils.toBean(pageResult, ErpReceivableOtherIncomeRespVO.class, vo -> {
-            vo.setItems(BeanUtils.toBean(itemMap.get(vo.getId()), ErpReceivableOtherIncomeRespVO.Item.class, item -> {
-                fillOtherIncomeItemExtend(item, userMap, deptMap, customerMap);
-            }));
+            vo.setItems(includeItems ? BeanUtils.toBean(itemMap.get(vo.getId()),
+                    ErpReceivableOtherIncomeRespVO.Item.class,
+                    item -> fillOtherIncomeItemExtend(item, userMap, deptMap, customerMap)) : Collections.emptyList());
             MapUtils.findAndThen(accountMap, vo.getAccountId(), account -> vo.setAccountName(account.getName()));
             MapUtils.findAndThen(userMap, vo.getHandlerId(), user -> vo.setHandlerName(user.getNickname()));
             MapUtils.findAndThen(userMap, NumberUtils.parseLong(vo.getCreator()), user -> vo.setCreatorName(user.getNickname()));

@@ -115,7 +115,7 @@ public class ErpWarehouseRespVO {
     @Schema(description = "采购启用")
     private Boolean purchaseEnabled;
 
-    @Schema(description = "入出仓单")
+    @Schema(description = "历史领货设置")
     private Boolean stockBillEnabled;
 
     @Schema(description = "允许电商销售")

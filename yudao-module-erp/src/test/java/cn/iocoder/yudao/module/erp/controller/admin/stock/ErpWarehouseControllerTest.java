@@ -50,7 +50,7 @@ public class ErpWarehouseControllerTest extends BaseMockitoUnitTest {
         when(deptApi.getDeptMap(any())).thenReturn(Collections.singletonMap(
                 2L, new DeptRespDTO().setId(2L).setName("Qionglai Branch")));
 
-        CommonResult<List<ErpWarehouseRespVO>> result = controller.getWarehouseSimpleList("stock", null);
+        CommonResult<List<ErpWarehouseRespVO>> result = controller.getWarehouseSimpleList("stock", null, null, null);
 
         assertEquals(Arrays.asList(10L, 20L), result.getData().stream()
                 .map(ErpWarehouseRespVO::getId)
@@ -68,7 +68,7 @@ public class ErpWarehouseControllerTest extends BaseMockitoUnitTest {
                 new ErpWarehouseDO().setId(20L).setName("HY").setDeptId(2L)));
         when(deptApi.getDeptMap(any())).thenReturn(Collections.emptyMap());
 
-        CommonResult<List<ErpWarehouseRespVO>> result = controller.getWarehouseSimpleList("purchase", null);
+        CommonResult<List<ErpWarehouseRespVO>> result = controller.getWarehouseSimpleList("purchase", null, null, null);
 
         assertEquals(Arrays.asList(10L, 20L), result.getData().stream()
                 .map(ErpWarehouseRespVO::getId)
@@ -79,19 +79,37 @@ public class ErpWarehouseControllerTest extends BaseMockitoUnitTest {
 
     @Test
     public void testGetWarehouseSimpleList_saleDeptFilterUsesSelectableWarehouses() {
-        when(warehouseService.getCurrentUserSaleSelectableWarehouseListByDept(30L)).thenReturn(Arrays.asList(
+        when(warehouseService.getCurrentUserSaleSelectableWarehouseListByDept(30L, null)).thenReturn(Arrays.asList(
                 new ErpWarehouseDO().setId(10L).setName("WJ").setDeptId(1L),
                 new ErpWarehouseDO().setId(20L).setName("HY").setDeptId(2L)));
         when(deptApi.getDeptMap(any())).thenReturn(Collections.emptyMap());
 
-        CommonResult<List<ErpWarehouseRespVO>> result = controller.getWarehouseSimpleList("sale", 30L);
+        CommonResult<List<ErpWarehouseRespVO>> result = controller.getWarehouseSimpleList("sale", 30L, null, null);
 
         assertEquals(Arrays.asList(10L, 20L), result.getData().stream()
                 .map(ErpWarehouseRespVO::getId)
                 .collect(Collectors.toList()));
-        verify(warehouseService).getCurrentUserSaleSelectableWarehouseListByDept(30L);
+        verify(warehouseService).getCurrentUserSaleSelectableWarehouseListByDept(30L, null);
         verify(warehouseService, never()).getSaleWarehouseListByDeptId(30L);
         verify(warehouseService, never()).getCurrentUserVisibleSaleWarehouseList();
+    }
+
+    @Test
+    public void testGetWarehouseSimpleList_saleAllProductUsesFormPermission() {
+        when(warehouseService.getCurrentUserSaleSelectableWarehouseListByDept(
+                30L, ErpWarehouseService.SALE_CART_ALL_PRODUCT_PERMISSION)).thenReturn(Arrays.asList(
+                new ErpWarehouseDO().setId(10L).setName("WJ").setDeptId(1L),
+                new ErpWarehouseDO().setId(20L).setName("HY").setDeptId(2L)));
+        when(deptApi.getDeptMap(any())).thenReturn(Collections.emptyMap());
+
+        CommonResult<List<ErpWarehouseRespVO>> result = controller.getWarehouseSimpleList("sale", 30L,
+                true, ErpWarehouseService.SALE_CART_ALL_PRODUCT_PERMISSION);
+
+        assertEquals(Arrays.asList(10L, 20L), result.getData().stream()
+                .map(ErpWarehouseRespVO::getId)
+                .collect(Collectors.toList()));
+        verify(warehouseService).getCurrentUserSaleSelectableWarehouseListByDept(
+                30L, ErpWarehouseService.SALE_CART_ALL_PRODUCT_PERMISSION);
     }
 
     @Test

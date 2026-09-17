@@ -61,6 +61,8 @@ public class ErpVoucherServiceImpl implements ErpVoucherService {
     private ErpNoRedisDAO noRedisDAO;
     @Resource
     private AdminUserApi adminUserApi;
+    @Resource
+    private cn.iocoder.yudao.module.erp.service.finance.accounting.rule.ErpVoucherAuxiliarySupport auxiliarySupport;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -218,7 +220,11 @@ public class ErpVoucherServiceImpl implements ErpVoucherService {
     public Long createVoucherFromBiz(Integer sourceBizType, Long sourceBizId, String sourceBizNo,
                                      BigDecimal sourceBizAmount, LocalDate voucherDate, String summary,
                                      List<ErpVoucherItemDO> items) {
-        replaceUnapprovedVoucherFromBiz(sourceBizType, sourceBizId, sourceBizNo);
+        List<ErpVoucherDO> existing = voucherMapper.selectListByBiz(sourceBizType, sourceBizId);
+        if (!existing.isEmpty()) return existing.get(0).getId();
+        List<cn.iocoder.yudao.module.erp.controller.admin.finance.accounting.vo.voucher.ErpVoucherItemSaveReqVO> requests = new ArrayList<>();
+        if (items != null) for (ErpVoucherItemDO item : items) requests.add(cn.iocoder.yudao.framework.common.util.object.BeanUtils.toBean(item, cn.iocoder.yudao.module.erp.controller.admin.finance.accounting.vo.voucher.ErpVoucherItemSaveReqVO.class));
+        items = validateVoucherItems(requests);
 
         // 1. 校验分录非空 + 借贷平衡
         if (CollUtil.isEmpty(items)) {
@@ -264,25 +270,7 @@ public class ErpVoucherServiceImpl implements ErpVoucherService {
         return voucher.getId();
     }
 
-    private void replaceUnapprovedVoucherFromBiz(Integer sourceBizType, Long sourceBizId, String sourceBizNo) {
-        if (sourceBizType == null || sourceBizId == null) {
-            return;
-        }
-        List<ErpVoucherDO> oldVouchers = voucherMapper.selectListByBiz(sourceBizType, sourceBizId);
-        if (CollUtil.isEmpty(oldVouchers)) {
-            return;
-        }
-        for (ErpVoucherDO oldVoucher : oldVouchers) {
-            if (ErpVoucherAuditStatusEnum.APPROVE.getStatus().equals(oldVoucher.getAuditStatus())) {
-                throw exception(VOUCHER_BIZ_APPROVED_EXISTS,
-                        ObjectUtil.defaultIfNull(sourceBizNo, oldVoucher.getSourceBizNo()));
-            }
-        }
-        for (ErpVoucherDO oldVoucher : oldVouchers) {
-            voucherMapper.deleteById(oldVoucher.getId());
-            voucherItemMapper.deleteByVoucherId(oldVoucher.getId());
-        }
-    }
+
 
     // ==================== 私有辅助 ====================
 
@@ -321,6 +309,7 @@ public class ErpVoucherServiceImpl implements ErpVoucherService {
             ErpVoucherItemDO item = BeanUtils.toBean(reqItem, ErpVoucherItemDO.class);
             BigDecimal debit = ObjectUtil.defaultIfNull(item.getDebitAmount(), BigDecimal.ZERO);
             BigDecimal credit = ObjectUtil.defaultIfNull(item.getCreditAmount(), BigDecimal.ZERO);
+            if (debit.signum() < 0 || credit.signum() < 0 || debit.stripTrailingZeros().scale() > 2 || credit.stripTrailingZeros().scale() > 2) throw new ServiceException(1_030_090_001, "分录金额应为非负数，最多两位小数");
             // 2. 同行借/贷不可同时 > 0；且至少一非 0
             boolean debitPositive = debit.compareTo(BigDecimal.ZERO) > 0;
             boolean creditPositive = credit.compareTo(BigDecimal.ZERO) > 0;
@@ -355,9 +344,11 @@ public class ErpVoucherServiceImpl implements ErpVoucherService {
             if (subject == null) {
                 throw exception(ACCOUNTING_SUBJECT_NOT_EXISTS);
             }
-            if (Boolean.FALSE.equals(subject.getIsLeaf())) {
+            if (!Boolean.TRUE.equals(subject.getIsLeaf())) {
                 throw exception(ACCOUNTING_SUBJECT_NOT_LEAF);
             }
+            if (!Boolean.TRUE.equals(subject.getEnable())) throw new ServiceException(1_030_090_001, "会计科目已停用");
+            auxiliarySupport.validate(item);
             item.setSubjectCode(subject.getSubjectCode());
             item.setSubjectName(subject.getSubjectName());
         }

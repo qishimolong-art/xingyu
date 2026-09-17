@@ -5,6 +5,8 @@ import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.mybatis.core.mapper.BaseMapperX;
 import cn.iocoder.yudao.framework.mybatis.core.query.MPJLambdaWrapperX;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.order.ErpSaleOrderPageReqVO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.product.ErpProductDO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.product.ErpProductUnitDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleOrderDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleOrderItemDO;
 import cn.iocoder.yudao.module.erp.dal.mysql.common.ErpKeywordQuery;
@@ -12,6 +14,7 @@ import cn.iocoder.yudao.module.erp.enums.ErpAuditStatus;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.core.toolkit.support.SFunction;
 import org.apache.ibatis.annotations.Mapper;
+import org.springframework.util.StringUtils;
 
 import java.util.Objects;
 
@@ -58,12 +61,17 @@ public interface ErpSaleOrderMapper extends BaseMapperX<ErpSaleOrderDO> {
             query.eq(ErpSaleOrderDO::getStatus, ErpAuditStatus.APPROVE.getStatus())
                     .apply("t.return_count < t.out_count");
         }
-        if (reqVO.getProductId() != null) {
+        if (reqVO.getProductId() != null || StringUtils.hasText(reqVO.getProductKeyword())) {
             query.leftJoin(ErpSaleOrderItemDO.class, ErpSaleOrderItemDO::getOrderId, ErpSaleOrderDO::getId)
+                    .leftJoin(ErpProductDO.class, ErpProductDO::getId, ErpSaleOrderItemDO::getProductId)
+                    .leftJoin(ErpProductUnitDO.class, ErpProductUnitDO::getId, ErpSaleOrderItemDO::getProductUnitId)
                     .eq(reqVO.getProductId() != null, ErpSaleOrderItemDO::getProductId, reqVO.getProductId())
+                    .and(StringUtils.hasText(reqVO.getProductKeyword()),
+                            w -> ErpKeywordQuery.appendProductKeyword(w, reqVO.getProductKeyword()))
                     .groupBy(ErpSaleOrderDO::getId); // 避免 1 对多查询，产生相同的 1
         }
-        ErpKeywordQuery.appendWithDeptName(query, reqVO.getKeyword(),
+        ErpKeywordQuery.appendWithDeptNameAndSaleCustomerAndProductItemTokens(query, reqVO.getKeyword(),
+                "erp_sale_order_items", "order_id",
                 ErpSaleOrderDO::getNo, ErpSaleOrderDO::getRemark);
         orderByIfPresent(query, reqVO);
         return selectJoinPage(reqVO, ErpSaleOrderDO.class, query);

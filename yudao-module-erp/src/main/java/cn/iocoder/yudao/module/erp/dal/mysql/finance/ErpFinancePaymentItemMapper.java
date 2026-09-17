@@ -40,6 +40,13 @@ public interface ErpFinancePaymentItemMapper extends BaseMapperX<ErpFinancePayme
                 .orderByAsc(ErpFinancePaymentItemDO::getId));
     }
 
+    default List<ErpFinancePaymentItemDO> selectListByPaymentIdForUpdate(Long paymentId) {
+        return selectList(new LambdaQueryWrapperX<ErpFinancePaymentItemDO>()
+                .eq(ErpFinancePaymentItemDO::getPaymentId, paymentId)
+                .orderByAsc(ErpFinancePaymentItemDO::getId)
+                .last("FOR UPDATE"));
+    }
+
     default PageResult<ErpFinancePaymentItemDO> selectPageByPaymentId(ErpFinancePaymentItemPageReqVO reqVO) {
         LambdaQueryWrapperX<ErpFinancePaymentItemDO> query = new LambdaQueryWrapperX<ErpFinancePaymentItemDO>()
                 .eq(ErpFinancePaymentItemDO::getPaymentId, reqVO.getPaymentId());
@@ -59,6 +66,16 @@ public interface ErpFinancePaymentItemMapper extends BaseMapperX<ErpFinancePayme
 
     default List<ErpFinancePaymentItemDO> selectListByPaymentIds(Collection<Long> paymentIds) {
         return selectList(ErpFinancePaymentItemDO::getPaymentId, paymentIds);
+    }
+
+    default List<ErpFinancePaymentItemDO> selectListByBizTypeAndBizId(Integer bizType, Long bizId) {
+        return selectList(new LambdaQueryWrapperX<ErpFinancePaymentItemDO>()
+                .eq(ErpFinancePaymentItemDO::getBizType, bizType)
+                .eq(ErpFinancePaymentItemDO::getBizId, bizId)
+                .inSql(ErpFinancePaymentItemDO::getPaymentId,
+                        "SELECT id FROM erp_finance_payment WHERE deleted = 0 AND status = 20")
+                .orderByDesc(ErpFinancePaymentItemDO::getWriteOffTime)
+                .orderByDesc(ErpFinancePaymentItemDO::getId));
     }
 
     default int deleteByPaymentId(Long paymentId) {
@@ -117,6 +134,27 @@ public interface ErpFinancePaymentItemMapper extends BaseMapperX<ErpFinancePayme
             Number paymentId = (Number) row.get("payment_id");
             if (paymentId != null) {
                 resultMap.put(paymentId.longValue(), toBigDecimal(row.get("payment_price_sum")));
+            }
+        }
+        return resultMap;
+    }
+
+    default Map<Long, Long> selectEffectiveCountMapByPaymentIds(Collection<Long> paymentIds) {
+        if (CollUtil.isEmpty(paymentIds)) {
+            return new HashMap<>();
+        }
+        List<Map<String, Object>> result = selectMaps(new QueryWrapper<ErpFinancePaymentItemDO>()
+                .select("payment_id, COUNT(1) AS item_count")
+                .eq("write_off_status", ErpFinanceWriteOffStatusEnum.EFFECTIVE.getStatus())
+                .inSql("payment_id", "SELECT id FROM erp_finance_payment WHERE deleted = 0 AND status = 20")
+                .in("payment_id", paymentIds)
+                .groupBy("payment_id"));
+        Map<Long, Long> resultMap = new HashMap<>();
+        for (Map<String, Object> row : result) {
+            Number paymentId = (Number) row.get("payment_id");
+            Number itemCount = (Number) row.get("item_count");
+            if (paymentId != null) {
+                resultMap.put(paymentId.longValue(), itemCount == null ? 0L : itemCount.longValue());
             }
         }
         return resultMap;

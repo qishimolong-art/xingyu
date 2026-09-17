@@ -109,6 +109,17 @@ class ErpFinanceDocumentSortMapperTest {
     }
 
     @Test
+    void testPaymentMapper_withoutSortUsesDefaultDescOrder() {
+        MPJLambdaWrapperX<ErpFinancePaymentDO> wrapper = new MPJLambdaWrapperX<>();
+        ErpFinancePaymentPageReqVO reqVO = new ErpFinancePaymentPageReqVO();
+
+        ErpFinancePaymentMapper.orderBy(wrapper, reqVO);
+
+        String sql = wrapper.getSqlSegment();
+        assertTrue(sql.contains("t.id DESC"), sql);
+    }
+
+    @Test
     void testPaymentMapper_rejectsUnknownFieldAndInvalidDirection() {
         assertNull(ErpFinancePaymentMapper.getOrderExpression("supplierName desc; delete from erp_supplier"));
         assertNull(ErpFinancePaymentMapper.getOrderExpression("id desc; delete from erp_finance_payment"));
@@ -154,6 +165,17 @@ class ErpFinanceDocumentSortMapperTest {
         String sql = wrapper.getSqlSegment();
         assertTrue(sql.contains("SELECT c.name FROM erp_customer"), sql);
         assertTrue(sql.contains("ASC"), sql);
+        assertTrue(sql.contains("t.id DESC"), sql);
+    }
+
+    @Test
+    void testReceiptMapper_withoutSortUsesDefaultDescOrder() {
+        MPJLambdaWrapperX<ErpFinanceReceiptDO> wrapper = new MPJLambdaWrapperX<>();
+        ErpFinanceReceiptPageReqVO reqVO = new ErpFinanceReceiptPageReqVO();
+
+        ErpFinanceReceiptMapper.orderBy(wrapper, reqVO);
+
+        String sql = wrapper.getSqlSegment();
         assertTrue(sql.contains("t.id DESC"), sql);
     }
 

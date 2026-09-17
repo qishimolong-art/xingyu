@@ -10,6 +10,8 @@ import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchasePriceAdjus
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseReturnDO;
 import cn.iocoder.yudao.module.erp.dal.mysql.finance.ErpFinancePaymentItemMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.finance.ErpFinancePaymentMapper;
+import cn.iocoder.yudao.module.erp.dal.mysql.finance.payable.ErpPayableMiscMapper;
+import cn.iocoder.yudao.module.erp.dal.mysql.finance.receivable.ErpReceivableMiscMapper;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleOutDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSalePriceAdjustDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleReturnDO;
@@ -25,12 +27,14 @@ import cn.iocoder.yudao.module.erp.enums.ErpAuditStatus;
 import cn.iocoder.yudao.module.erp.enums.common.ErpBizTypeEnum;
 import cn.iocoder.yudao.module.erp.enums.finance.ErpFinanceWriteOffStatusEnum;
 import cn.iocoder.yudao.module.erp.service.common.ErpOperateLogService;
+import cn.iocoder.yudao.module.erp.service.config.ErpAutoWriteOffConfigService;
 import cn.iocoder.yudao.module.erp.service.purchase.ErpPurchaseInService;
 import cn.iocoder.yudao.module.erp.service.purchase.ErpPurchasePriceAdjustService;
 import cn.iocoder.yudao.module.erp.service.purchase.ErpPurchaseReturnService;
 import cn.iocoder.yudao.module.erp.service.sale.ErpSaleOutService;
 import cn.iocoder.yudao.module.erp.service.sale.ErpSalePriceAdjustService;
 import cn.iocoder.yudao.module.erp.service.sale.ErpSaleReturnService;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
@@ -45,6 +49,7 @@ import java.util.Collections;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -77,6 +82,12 @@ class ErpFinanceAutoWriteOffServiceImplTest extends BaseMockitoUnitTest {
     @Mock
     private ErpPurchasePriceAdjustMapper purchasePriceAdjustMapper;
     @Mock
+    private ErpReceivableMiscMapper receivableMiscMapper;
+    @Mock
+    private ErpPayableMiscMapper payableMiscMapper;
+    @Mock
+    private ErpAutoWriteOffConfigService autoWriteOffConfigService;
+    @Mock
     private ErpSaleOutService saleOutService;
     @Mock
     private ErpSaleReturnService saleReturnService;
@@ -90,6 +101,25 @@ class ErpFinanceAutoWriteOffServiceImplTest extends BaseMockitoUnitTest {
     private ErpPurchasePriceAdjustService purchasePriceAdjustService;
     @Mock
     private ErpOperateLogService operateLogService;
+
+    @BeforeEach
+    void setUpMiscCandidates() {
+        lenient().when(receivableMiscMapper.selectList(any())).thenReturn(Collections.emptyList());
+        lenient().when(payableMiscMapper.selectList(any())).thenReturn(Collections.emptyList());
+    }
+
+    @Test
+    void autoWriteOffReceipt_disabledDepartmentDoesNotGenerateItems() {
+        when(receiptMapper.selectByIdForUpdate(100L)).thenReturn(createReceipt("100"));
+        when(autoWriteOffConfigService.isAutoWriteOffDisabled(10L)).thenReturn(true);
+
+        autoWriteOffService.autoWriteOffReceipt(100L, LOGIN_USER_ID);
+
+        verify(receiptItemMapper, never()).insertBatch(any());
+        verify(saleOutMapper, never()).selectList(any());
+        verify(saleReturnMapper, never()).selectList(any());
+        verify(salePriceAdjustMapper, never()).selectList(any());
+    }
 
     @Test
     void autoWriteOffReceipt_partiallyWritesFirstUncoveredSaleOutAndStops() {
@@ -240,6 +270,19 @@ class ErpFinanceAutoWriteOffServiceImplTest extends BaseMockitoUnitTest {
         assertThat(captor.getValue()).hasSize(1);
         assertThat(captor.getValue().iterator().next().getBizId()).isEqualTo(201L);
         verify(saleReturnService, never()).updateSaleReturnRefundPrice(any(), any());
+    }
+
+    @Test
+    void autoWriteOffPayment_disabledDepartmentDoesNotGenerateItems() {
+        when(paymentMapper.selectByIdForUpdate(110L)).thenReturn(createPayment("100"));
+        when(autoWriteOffConfigService.isAutoWriteOffDisabled(10L)).thenReturn(true);
+
+        autoWriteOffService.autoWriteOffPayment(110L, LOGIN_USER_ID);
+
+        verify(paymentItemMapper, never()).insertBatch(any());
+        verify(purchaseInMapper, never()).selectList(any());
+        verify(purchaseReturnMapper, never()).selectList(any());
+        verify(purchasePriceAdjustMapper, never()).selectList(any());
     }
 
     @Test
@@ -470,3 +513,4 @@ class ErpFinanceAutoWriteOffServiceImplTest extends BaseMockitoUnitTest {
     }
 
 }
+

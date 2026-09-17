@@ -71,6 +71,10 @@ public class ErpStockMoveRespVO {
     @Schema(description = "Source document no", example = "SC202606100001")
     private String sourceNo;
 
+    @Schema(description = "Direct shipment customer name")
+    @ExcelProperty("直发客户")
+    private String directCustomerName;
+
     @Schema(description = "Total count", requiredMode = Schema.RequiredMode.REQUIRED, example = "15663")
     @ExcelProperty("合计数量")
     private BigDecimal totalCount;
@@ -145,6 +149,9 @@ public class ErpStockMoveRespVO {
     @Schema(description = "Distinct to warehouse names")
     private String toWarehouseNames;
 
+    @Schema(description = "Item count")
+    private Integer itemCount;
+
     @Schema(description = "Whether current user can approve")
     private Boolean approveAllowed;
 
@@ -207,6 +214,31 @@ public class ErpStockMoveRespVO {
 
         @Schema(description = "Product id", requiredMode = Schema.RequiredMode.REQUIRED, example = "3113")
         private Long productId;
+
+        @Schema(description = "Product purchase price from product or stock", example = "88.00")
+        private BigDecimal productPurchasePrice;
+        @Schema(description = "Sale price", example = "120.00")
+        private BigDecimal salePrice;
+        @Schema(description = "Latest sale price", example = "118.00")
+        private BigDecimal lastSalePrice;
+        @Schema(description = "Minimum price", example = "95.00")
+        private BigDecimal minPrice;
+        @Schema(description = "Reference price", example = "100.00")
+        private BigDecimal referencePrice;
+        @Schema(description = "Retail price", example = "128.00")
+        private BigDecimal retailPrice;
+        @Schema(description = "Last purchase price", example = "86.00")
+        private BigDecimal lastPurchasePrice;
+        @Schema(description = "Gross profit rate", example = "20")
+        private Integer grossProfitRate;
+        @Schema(description = "Backup price 1", example = "98.00")
+        private BigDecimal backupPrice1;
+        @Schema(description = "Wholesale price", example = "98.00")
+        private BigDecimal wholesalePrice;
+        @Schema(description = "Share price", example = "90.00")
+        private BigDecimal sharePrice;
+        @Schema(description = "Price visible", example = "true")
+        private Boolean priceVisible;
 
         @Schema(description = "Product price", requiredMode = Schema.RequiredMode.REQUIRED, example = "100.00")
         private BigDecimal productPrice;

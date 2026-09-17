@@ -39,6 +39,24 @@ public interface ErpCustomerMapper extends BaseMapperX<ErpCustomerDO> {
         return selectPage(reqVO, wrapper);
     }
 
+    default PageResult<ErpCustomerDO> selectPageByStatus(ErpCustomerPageReqVO reqVO, Integer status) {
+        LambdaQueryWrapperX<ErpCustomerDO> wrapper = buildPageQuery(reqVO);
+        wrapper.eqIfPresent(ErpCustomerDO::getStatus, status);
+        wrapper.ne(ErpCustomerDO::getMergedFlag, Boolean.TRUE);
+        orderByIfPresent(wrapper, reqVO);
+        return selectPage(reqVO, wrapper);
+    }
+
+    default PageResult<ErpCustomerDO> selectVisiblePageByStatus(ErpCustomerPageReqVO reqVO, Integer status,
+                                                               Collection<Long> deptIds, Long selfUserId, boolean all) {
+        LambdaQueryWrapperX<ErpCustomerDO> wrapper = buildPageQuery(reqVO);
+        wrapper.eqIfPresent(ErpCustomerDO::getStatus, status);
+        wrapper.ne(ErpCustomerDO::getMergedFlag, Boolean.TRUE);
+        applyVisibleScope(wrapper, deptIds, selfUserId, all);
+        orderByIfPresent(wrapper, reqVO);
+        return selectPage(reqVO, wrapper);
+    }
+
     static LambdaQueryWrapperX<ErpCustomerDO> buildPageQuery(ErpCustomerPageReqVO reqVO) {
         LambdaQueryWrapperX<ErpCustomerDO> wrapper = new LambdaQueryWrapperX<ErpCustomerDO>()
                 .likeIfPresent(ErpCustomerDO::getName, reqVO.getName())
@@ -188,6 +206,21 @@ public interface ErpCustomerMapper extends BaseMapperX<ErpCustomerDO> {
         return selectOne(new LambdaQueryWrapperX<ErpCustomerDO>()
                 .eq(ErpCustomerDO::getCode, code)
                 .neIfPresent(ErpCustomerDO::getId, excludeId));
+    }
+
+    default ErpCustomerDO selectByNameExcludeId(String name, Long excludeId) {
+        return selectOne(new LambdaQueryWrapperX<ErpCustomerDO>()
+                .eq(ErpCustomerDO::getName, name)
+                .neIfPresent(ErpCustomerDO::getId, excludeId));
+    }
+
+    default List<ErpCustomerDO> selectListByCodes(Collection<String> codes) {
+        if (CollUtil.isEmpty(codes)) {
+            return java.util.Collections.emptyList();
+        }
+        return selectList(new LambdaQueryWrapperX<ErpCustomerDO>()
+                .in(ErpCustomerDO::getCode, codes)
+                .ne(ErpCustomerDO::getMergedFlag, Boolean.TRUE));
     }
 
     static void applyVisibleScope(LambdaQueryWrapper<ErpCustomerDO> wrapper, Collection<Long> deptIds, Long selfUserId, boolean all) {

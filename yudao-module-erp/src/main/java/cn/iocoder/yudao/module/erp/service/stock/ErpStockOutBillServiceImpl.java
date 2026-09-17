@@ -131,17 +131,8 @@ public class ErpStockOutBillServiceImpl implements ErpStockOutBillService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void createFromSaleOut(ErpSaleOutDO saleOut, List<ErpSaleOutItemDO> saleOutItems) {
-        if (saleOut == null || CollUtil.isEmpty(saleOutItems)) {
-            return;
-        }
-        if (CollUtil.isNotEmpty(stockOutBillMapper.selectListBySource(SOURCE_BIZ_TYPE_SALE_OUT, saleOut.getId()))) {
-            return;
-        }
-        Map<Long, ErpWarehouseDO> warehouseMap = warehouseService.getWarehouseMap(
-                convertSet(saleOutItems, ErpSaleOutItemDO::getWarehouseId));
-        Map<Long, List<ErpSaleOutItemDO>> itemMap = saleOutItems.stream()
-                .collect(Collectors.groupingBy(ErpSaleOutItemDO::getWarehouseId));
-        itemMap.forEach((warehouseId, items) -> createFromSaleOutAndWarehouse(saleOut, warehouseMap.get(warehouseId), items));
+        throw new cn.iocoder.yudao.framework.common.exception.ServiceException(409,
+                "销售领货已取消，销售审核直接扣库存；历史单据仅供查询");
     }
 
     private void createFromSaleOutAndWarehouse(ErpSaleOutDO saleOut, ErpWarehouseDO warehouse,
@@ -199,62 +190,8 @@ public class ErpStockOutBillServiceImpl implements ErpStockOutBillService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void pick(ErpStockOutBillPickReqVO reqVO) {
-        ErpStockOutBillDO bill = validateStockOutBillExists(reqVO.getId());
-        if (Integer.valueOf(STATUS_DONE).equals(bill.getStatus())) {
-            throw exception(STOCK_OUT_BILL_PICK_FAIL_COMPLETED, bill.getNo());
-        }
-        List<ErpStockOutBillItemDO> billItems = stockOutBillItemMapper.selectListByBillId(reqVO.getId());
-        warehouseService.validateCurrentUserWarehousePermission(convertSet(billItems, ErpStockOutBillItemDO::getWarehouseId));
-        Map<Long, ErpStockOutBillItemDO> billItemMap = convertMap(billItems, ErpStockOutBillItemDO::getId);
-        LocalDateTime pickTime = reqVO.getPickTime() != null ? reqVO.getPickTime() : LocalDateTime.now();
-        Long pickUserId = SecurityFrameworkUtils.getLoginUserId();
-        String pickUserName = getUserName(pickUserId);
-
-        List<ErpStockOutBillPickRecordDO> records = new ArrayList<>();
-        for (ErpStockOutBillPickReqVO.Item reqItem : reqVO.getItems()) {
-            ErpStockOutBillItemDO billItem = billItemMap.get(reqItem.getItemId());
-            if (billItem == null) {
-                throw exception(STOCK_OUT_BILL_PICK_ITEM_NOT_EXISTS, reqItem.getItemId());
-            }
-            BigDecimal oldPickedCount = nullToZero(billItem.getPickedCount());
-            BigDecimal remainCount = nullToZero(billItem.getCount()).subtract(oldPickedCount);
-            if (reqItem.getPickCount().compareTo(remainCount) > 0) {
-                throw exception(STOCK_OUT_BILL_PICK_COUNT_EXCEED,
-                        billItem.getId(), reqItem.getPickCount(), remainCount);
-            }
-            BigDecimal pickCount = reqItem.getPickCount().negate();
-            stockRecordService.createStockRecord(new ErpStockRecordCreateReqBO(
-                    billItem.getProductId(), billItem.getWarehouseId(), billItem.getBatchNo(),
-                    billItem.getProductUnitId(), billItem.getPackageQty(), billItem.getWeight(),
-                    snapshotSupport.calculateTotalWeight(billItem.getWeight(), pickCount), pickCount,
-                    ErpStockRecordBizTypeEnum.SALE_OUT.getType(), bill.getSourceId(), billItem.getSourceItemId(), bill.getSourceNo(),
-                    billItem.getProductPrice(), pickTime));
-            BigDecimal pickedCount = oldPickedCount.add(reqItem.getPickCount());
-            int itemStatus = pickedCount.compareTo(nullToZero(billItem.getCount())) >= 0 ? STATUS_DONE : STATUS_PART_PICK;
-            int updateCount = stockOutBillItemMapper.updatePickedCountByIdAndPickedCount(
-                    billItem.getId(), oldPickedCount, pickedCount, itemStatus);
-            if (updateCount == 0) {
-                throw exception(STOCK_OUT_BILL_PICK_COUNT_EXCEED,
-                        billItem.getId(), reqItem.getPickCount(), remainCount);
-            }
-            billItem.setPickedCount(pickedCount).setStatus(itemStatus);
-            records.add(new ErpStockOutBillPickRecordDO()
-                    .setBillId(bill.getId())
-                    .setBillItemId(billItem.getId())
-                    .setSourceId(billItem.getSourceId())
-                    .setSourceItemId(billItem.getSourceItemId())
-                    .setProductId(billItem.getProductId())
-                    .setWarehouseId(billItem.getWarehouseId())
-                    .setPickCount(reqItem.getPickCount())
-                    .setPickUserId(pickUserId)
-                    .setPickUserName(pickUserName)
-                    .setPickTime(pickTime)
-                    .setRemark(reqVO.getRemark()));
-        }
-        if (CollUtil.isNotEmpty(records)) {
-            pickRecordMapper.insertBatch(records);
-        }
-        updateBillPickStatus(bill, pickUserName);
+        throw new cn.iocoder.yudao.framework.common.exception.ServiceException(409,
+                "销售领货已取消，销售审核直接扣库存；历史单据仅供查询");
     }
 
     private void updateBillPickStatus(ErpStockOutBillDO bill, String pickUserName) {

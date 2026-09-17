@@ -83,6 +83,9 @@ public class ErpSaleOrderServiceImplTest extends BaseMockitoUnitTest {
                 new ErpProductBatchNoValidator());
         lenient().when(warehouseService.validSaleWarehouseList(anyCollection()))
                 .thenAnswer(invocation -> buildWarehouseList(invocation.getArgument(0)));
+        lenient().when(warehouseService.validSaleSelectableWarehouseListForDept(
+                        anyCollection(), any(), any()))
+                .thenAnswer(invocation -> buildWarehouseList(invocation.getArgument(0)));
         lenient().when(warehouseService.getWarehouseMap(anyCollection()))
                 .thenAnswer(invocation -> {
                     Map<Long, ErpWarehouseDO> map = new HashMap<>();

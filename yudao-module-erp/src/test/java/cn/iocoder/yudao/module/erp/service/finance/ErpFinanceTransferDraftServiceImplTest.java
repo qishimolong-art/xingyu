@@ -83,7 +83,9 @@ class ErpFinanceTransferDraftServiceImplTest extends BaseMockitoUnitTest {
                 .setTransferTime(LocalDateTime.now())
                 .setOutAccountId(1L)
                 .setInAccountId(2L)
-                .setTransferPrice(new BigDecimal("100")));
+                .setTransferPrice(new BigDecimal("100"))
+                .setFinanceUserId(9L)
+                .setDeptId(3L));
 
         assertThat(id).isEqualTo(1L);
         ArgumentCaptor<ErpFinanceTransferDO> captor = ArgumentCaptor.forClass(ErpFinanceTransferDO.class);
@@ -139,7 +141,9 @@ class ErpFinanceTransferDraftServiceImplTest extends BaseMockitoUnitTest {
         when(financeTransferMapper.selectByIdForUpdate(10L)).thenReturn(new ErpFinanceTransferDO()
                 .setId(10L).setNo("YHZZ10").setStatus(ErpFinanceTransferStatusEnum.DRAFT.getStatus())
                 .setTransferTime(LocalDateTime.now()).setOutAccountId(1L).setInAccountId(2L)
-                .setTransferPrice(new BigDecimal("100")));
+                .setTransferPrice(new BigDecimal("100"))
+                .setFinanceUserId(9L)
+                .setDeptId(3L));
         when(financeTransferMapper.updateByIdAndStatus(eq(10L),
                 eq(ErpFinanceTransferStatusEnum.DRAFT.getStatus()), any())).thenReturn(1);
 

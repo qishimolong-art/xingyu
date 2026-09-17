@@ -1,6 +1,8 @@
 package cn.iocoder.yudao.module.erp.controller.admin.sale;
 
 import cn.iocoder.yudao.framework.common.pojo.CommonResult;
+import cn.iocoder.yudao.framework.common.enums.CommonStatusEnum;
+import cn.iocoder.yudao.framework.common.pojo.PageParam;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.test.core.ut.BaseMockitoUnitTest;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.quote.ErpSaleQuoteConvertCartReqVO;
@@ -11,18 +13,25 @@ import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.quote.ErpSaleQuotePa
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.quote.ErpSaleQuoteRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.quote.ErpSaleQuoteSaveReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpProductRespVO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpCustomerDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleQuoteDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleQuoteItemDO;
+import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpSaleOutItemMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpSaleOutMapper;
 import cn.iocoder.yudao.module.erp.service.config.ErpFieldConfigService;
+import cn.iocoder.yudao.module.erp.service.base.ErpDataPermissionDeptService;
 import cn.iocoder.yudao.module.erp.service.product.ErpProductService;
 import cn.iocoder.yudao.module.erp.service.sale.ErpCustomerService;
 import cn.iocoder.yudao.module.erp.service.sale.ErpSaleFieldPermissionMasker;
+import cn.iocoder.yudao.module.erp.service.sale.ErpSaleItemPriceReferenceFiller;
 import cn.iocoder.yudao.module.erp.service.sale.ErpSaleQuoteService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpWarehouseService;
 import cn.iocoder.yudao.module.system.api.dept.DeptApi;
 import cn.iocoder.yudao.module.system.api.dept.dto.DeptRespDTO;
 import cn.iocoder.yudao.module.system.api.user.AdminUserApi;
+import cn.iocoder.yudao.module.system.api.user.dto.AdminUserRespDTO;
+import cn.iocoder.yudao.module.system.controller.admin.dept.vo.dept.DeptSimpleRespVO;
+import cn.iocoder.yudao.module.system.controller.admin.user.vo.user.UserSimpleRespVO;
 import org.junit.jupiter.api.Test;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
@@ -64,7 +73,11 @@ public class ErpSaleQuoteControllerTest extends BaseMockitoUnitTest {
     @Mock
     private ErpSaleOutMapper saleOutMapper;
     @Mock
+    private ErpSaleOutItemMapper saleOutItemMapper;
+    @Mock
     private ErpSaleFieldPermissionMasker fieldPermissionMasker;
+    @Mock
+    private ErpSaleItemPriceReferenceFiller itemPriceReferenceFiller;
     @Mock
     private AdminUserApi adminUserApi;
     @Mock
@@ -73,6 +86,8 @@ public class ErpSaleQuoteControllerTest extends BaseMockitoUnitTest {
     private ErpFieldConfigService fieldConfigService;
     @Mock
     private ErpWarehouseService warehouseService;
+    @Mock
+    private ErpDataPermissionDeptService dataPermissionDeptService;
 
     // ==================== createSaleQuote ====================
 
@@ -290,6 +305,48 @@ public class ErpSaleQuoteControllerTest extends BaseMockitoUnitTest {
         assertTrue(anno.value().contains("erp:sale-quote:query"));
     }
 
+    @Test
+    public void testGetVisibleDeptSimplePage_passesPagedPermissionRequest() {
+        PageParam pageReqVO = new PageParam();
+        pageReqVO.setPageNo(1);
+        pageReqVO.setPageSize(10);
+        pageReqVO.setKeyword("甘孜");
+        DeptSimpleRespVO dept = new DeptSimpleRespVO(73L, "甘孜分公司", 0L);
+        PageResult<DeptSimpleRespVO> page = new PageResult<>(singletonList(dept), 1L);
+        when(dataPermissionDeptService.getDeptSimplePage(eq("erp_sale_quote"), eq(pageReqVO)))
+                .thenReturn(page);
+
+        CommonResult<PageResult<DeptSimpleRespVO>> result = controller.getVisibleDeptSimplePage(pageReqVO);
+
+        assertEquals(0, result.getCode());
+        assertEquals(1L, result.getData().getTotal());
+        assertEquals("甘孜分公司", result.getData().getList().get(0).getName());
+        verify(dataPermissionDeptService).getDeptSimplePage(eq("erp_sale_quote"), eq(pageReqVO));
+    }
+
+    @Test
+    public void testGetSaleUserSimplePage_usesUserSimplePageWithoutSystemUserPermission() {
+        PageParam pageReqVO = new PageParam();
+        pageReqVO.setPageNo(1);
+        pageReqVO.setPageSize(10);
+        pageReqVO.setKeyword("毛");
+        AdminUserRespDTO user = new AdminUserRespDTO();
+        user.setId(72L);
+        user.setNickname("毛琳");
+        user.setDeptId(73L);
+        when(adminUserApi.getUserSimplePage(eq(CommonStatusEnum.ENABLE.getStatus()), eq("毛"), eq(pageReqVO)))
+                .thenReturn(new PageResult<>(singletonList(user), 1L));
+
+        CommonResult<PageResult<UserSimpleRespVO>> result = controller.getSaleUserSimplePage(pageReqVO);
+
+        assertEquals(0, result.getCode());
+        assertEquals(1L, result.getData().getTotal());
+        assertEquals(72L, result.getData().getList().get(0).getId());
+        assertEquals("毛琳", result.getData().getList().get(0).getNickname());
+        assertEquals(73L, result.getData().getList().get(0).getDeptId());
+        verify(adminUserApi).getUserSimplePage(eq(CommonStatusEnum.ENABLE.getStatus()), eq("毛"), eq(pageReqVO));
+    }
+
     // ==================== getSaleQuotePage ====================
 
     @Test
@@ -324,6 +381,64 @@ public class ErpSaleQuoteControllerTest extends BaseMockitoUnitTest {
         assertEquals(1L, result.getData().getTotal());
         assertEquals(1, result.getData().getList().size());
         assertEquals(70L, result.getData().getList().get(0).getId());
+        verify(saleQuoteService).getSaleQuoteItemListByQuoteIds(any());
+    }
+
+    @Test
+    public void testGetSaleQuotePage_withoutItemsKeepsMainRelations() {
+        ErpSaleQuotePageReqVO pageReqVO = new ErpSaleQuotePageReqVO();
+        pageReqVO.setIncludeItems(false);
+        ErpSaleQuoteDO quote = new ErpSaleQuoteDO();
+        quote.setId(70L);
+        quote.setCustomerId(71L);
+        quote.setSaleUserId(72L);
+        quote.setDeptId(73L);
+        quote.setCreator("74");
+        quote.setUpdater("75");
+        quote.setStatus(10);
+        PageResult<ErpSaleQuoteDO> pageResult = new PageResult<>(singletonList(quote), 1L);
+        when(saleQuoteService.getSaleQuotePage(eq(pageReqVO))).thenReturn(pageResult);
+        ErpCustomerDO customer = new ErpCustomerDO();
+        customer.setId(71L);
+        customer.setName("客户A");
+        customer.setCode("C001");
+        when(customerService.getCustomerMap(any())).thenReturn(Collections.singletonMap(71L, customer));
+        AdminUserRespDTO saleUser = new AdminUserRespDTO();
+        saleUser.setId(72L);
+        saleUser.setNickname("业务员A");
+        AdminUserRespDTO creator = new AdminUserRespDTO();
+        creator.setId(74L);
+        creator.setNickname("创建人A");
+        AdminUserRespDTO updater = new AdminUserRespDTO();
+        updater.setId(75L);
+        updater.setNickname("修改人A");
+        Map<Long, AdminUserRespDTO> userMap = new HashMap<>();
+        userMap.put(72L, saleUser);
+        userMap.put(74L, creator);
+        userMap.put(75L, updater);
+        when(adminUserApi.getUserMap(any())).thenReturn(userMap);
+        DeptRespDTO dept = new DeptRespDTO();
+        dept.setId(73L);
+        dept.setName("销售部");
+        when(deptApi.getDeptMap(any())).thenReturn(Collections.singletonMap(73L, dept));
+
+        CommonResult<PageResult<ErpSaleQuoteRespVO>> result = controller.getSaleQuotePage(pageReqVO);
+
+        ErpSaleQuoteRespVO row = result.getData().getList().get(0);
+        assertEquals(0, result.getCode());
+        assertEquals(1L, result.getData().getTotal());
+        assertEquals("客户A", row.getCustomerName());
+        assertEquals("C001", row.getCustomerCode());
+        assertEquals("业务员A", row.getSaleUserName());
+        assertEquals("创建人A", row.getCreatorName());
+        assertEquals("修改人A", row.getUpdaterName());
+        assertEquals("销售部", row.getDeptName());
+        assertNull(row.getItems());
+        verify(saleQuoteService, never()).getSaleQuoteItemListByQuoteIds(any());
+        verify(productService, never()).getProductVOMap(any());
+        verify(warehouseService, never()).getWarehouseMap(any());
+        verify(saleOutItemMapper, never()).selectLatestSalePriceMap(any());
+        verify(itemPriceReferenceFiller, never()).fill(any());
     }
 
     @Test

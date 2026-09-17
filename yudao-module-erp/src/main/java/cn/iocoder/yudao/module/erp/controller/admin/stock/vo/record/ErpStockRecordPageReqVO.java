@@ -56,6 +56,9 @@ public class ErpStockRecordPageReqVO extends PageParam {
     @DateTimeFormat(pattern = FORMAT_YEAR_MONTH_DAY_HOUR_MINUTE_SECOND)
     private LocalDateTime[] bizDate;
 
+    @Schema(description = "产品关键词，匹配编码、名称、拼音码、五笔码等")
+    private String productKeyword;
+
     // ========== 产品维度过滤（Service 层预查 productIds） ==========
     @Schema(description = "零件编码（模糊）")
     private String productCode;

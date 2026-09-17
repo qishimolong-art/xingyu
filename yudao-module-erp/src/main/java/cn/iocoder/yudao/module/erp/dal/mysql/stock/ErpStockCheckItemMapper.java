@@ -3,6 +3,7 @@ package cn.iocoder.yudao.module.erp.dal.mysql.stock;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.mybatis.core.mapper.BaseMapperX;
 import cn.iocoder.yudao.framework.mybatis.core.query.LambdaQueryWrapperX;
+import cn.hutool.core.collection.CollUtil;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.check.ErpStockCheckItemPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.stock.ErpStockPendingInDetailRespVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockCheckItemDO;
@@ -12,7 +13,11 @@ import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
 
 import java.util.Collection;
+import java.util.Collections;
 import java.util.List;
+import java.util.Map;
+
+import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.convertMap;
 
 /**
  * ERP 库存盘点单项 Mapper
@@ -24,6 +29,11 @@ public interface ErpStockCheckItemMapper extends BaseMapperX<ErpStockCheckItemDO
 
     default List<ErpStockCheckItemDO> selectListByCheckId(Long checkId) {
         return selectList(ErpStockCheckItemDO::getCheckId, checkId);
+    }
+
+    default List<ErpStockCheckItemDO> selectListByCheckIdForUpdate(Long checkId) {
+        return selectList(new LambdaQueryWrapperX<ErpStockCheckItemDO>()
+                .eq(ErpStockCheckItemDO::getCheckId, checkId).last("FOR UPDATE"));
     }
 
     default PageResult<ErpStockCheckItemDO> selectPageByCheckId(ErpStockCheckItemPageReqVO reqVO) {
@@ -46,6 +56,31 @@ public interface ErpStockCheckItemMapper extends BaseMapperX<ErpStockCheckItemDO
     default List<ErpStockCheckItemDO> selectListByCheckIds(Collection<Long> checkIds) {
         return selectList(ErpStockCheckItemDO::getCheckId, checkIds);
     }
+
+    default Map<Long, Map<String, Object>> selectSummaryMapByCheckIds(Collection<Long> checkIds) {
+        if (CollUtil.isEmpty(checkIds)) {
+            return Collections.emptyMap();
+        }
+        return convertMap(selectSummaryRowsByCheckIds(checkIds), row -> toLong(row.get("checkId")), row -> row);
+    }
+
+    @Select({
+            "<script>",
+            "SELECT sci.check_id AS checkId,",
+            "       COUNT(*) AS itemCount,",
+            "       GROUP_CONCAT(DISTINCT p.name ORDER BY p.name SEPARATOR ', ') AS productNames,",
+            "       GROUP_CONCAT(DISTINCT p.code ORDER BY p.code SEPARATOR ', ') AS productCodes,",
+            "       GROUP_CONCAT(DISTINCT w.name ORDER BY w.name SEPARATOR ', ') AS warehouseNames",
+            "  FROM erp_stock_check_item sci",
+            "  LEFT JOIN erp_product p ON p.id = sci.product_id AND p.deleted = b'0'",
+            "  LEFT JOIN erp_warehouse w ON w.id = sci.warehouse_id AND w.deleted = b'0'",
+            " WHERE sci.deleted = b'0'",
+            "   AND sci.check_id IN",
+            " <foreach collection='checkIds' item='checkId' open='(' separator=',' close=')'>#{checkId}</foreach>",
+            " GROUP BY sci.check_id",
+            "</script>"
+    })
+    List<Map<String, Object>> selectSummaryRowsByCheckIds(@Param("checkIds") Collection<Long> checkIds);
 
     default int deleteByCheckId(Long checkId) {
         return delete(ErpStockCheckItemDO::getCheckId, checkId);
@@ -100,6 +135,10 @@ public interface ErpStockCheckItemMapper extends BaseMapperX<ErpStockCheckItemDO
             default:
                 return null;
         }
+    }
+
+    static Long toLong(Object value) {
+        return value instanceof Number ? ((Number) value).longValue() : null;
     }
 
     @Select({

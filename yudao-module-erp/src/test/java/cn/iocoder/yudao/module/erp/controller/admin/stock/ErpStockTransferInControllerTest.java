@@ -3,6 +3,7 @@ package cn.iocoder.yudao.module.erp.controller.admin.stock;
 import cn.iocoder.yudao.framework.common.pojo.CommonResult;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.test.core.ut.BaseMockitoUnitTest;
+import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.move.ErpStockMoveItemPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.move.ErpStockMovePageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.move.ErpStockMoveRespVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockMoveDO;
@@ -42,7 +43,7 @@ class ErpStockTransferInControllerTest extends BaseMockitoUnitTest {
         PageResult<ErpStockMoveDO> dataPage = new PageResult<>(Collections.emptyList(), 0L);
         PageResult<ErpStockMoveRespVO> responsePage = new PageResult<>(Collections.emptyList(), 0L);
         when(stockMoveService.getVisibleStockTransferInPage(request)).thenReturn(dataPage);
-        when(stockMoveController.buildStockMoveVOPageResult(dataPage, "erp_stock_transfer_in"))
+        when(stockMoveController.buildStockMoveVOPageResult(dataPage, "erp_stock_transfer_in", null, null))
                 .thenReturn(responsePage);
 
         CommonResult<PageResult<ErpStockMoveRespVO>> result = controller.getStockTransferInPage(request);
@@ -106,6 +107,48 @@ class ErpStockTransferInControllerTest extends BaseMockitoUnitTest {
         assertServiceException(() -> controller.getStockTransferIn(303L), STOCK_MOVE_NOT_EXISTS);
 
         verify(stockMoveController, never()).buildStockMoveDetail(transferOut, "erp_stock_transfer_in");
+    }
+
+    @Test
+    void getStockTransferInItemPage_usesVisibleCheckBeforeSkippingGenericMoveValidation() {
+        ErpStockMoveItemPageReqVO request = new ErpStockMoveItemPageReqVO();
+        request.setMoveId(401L);
+        ErpStockMoveDO stockMove = new ErpStockMoveDO().setId(401L).setTransferDirection(20);
+        PageResult<ErpStockMoveRespVO.Item> responsePage = new PageResult<>(Collections.emptyList(), 0L);
+        CommonResult<PageResult<ErpStockMoveRespVO.Item>> expected = CommonResult.success(responsePage);
+        when(stockMoveService.getVisibleStockTransferIn(401L)).thenReturn(stockMove);
+        when(stockMoveController.getStockMoveItemPageAfterVisibleCheck(request, "erp_stock_transfer_in"))
+                .thenReturn(expected);
+
+        CommonResult<PageResult<ErpStockMoveRespVO.Item>> result = controller.getStockTransferInItemPage(request);
+
+        assertSame(expected, result);
+        verify(stockMoveService).getVisibleStockTransferIn(401L);
+        verify(stockMoveController).getStockMoveItemPageAfterVisibleCheck(request, "erp_stock_transfer_in");
+        verify(stockMoveController, never()).getStockMoveItemPage(request, "erp_stock_transfer_in");
+    }
+
+    @Test
+    void getStockTransferInItemPage_outOfScope_returnsNotExists() {
+        ErpStockMoveItemPageReqVO request = new ErpStockMoveItemPageReqVO();
+        request.setMoveId(402L);
+        when(stockMoveService.getVisibleStockTransferIn(402L)).thenReturn(null);
+
+        assertServiceException(() -> controller.getStockTransferInItemPage(request), STOCK_MOVE_NOT_EXISTS);
+
+        verify(stockMoveController, never()).getStockMoveItemPageAfterVisibleCheck(request, "erp_stock_transfer_in");
+    }
+
+    @Test
+    void getStockTransferInItemPage_wrongDirection_returnsNotExists() {
+        ErpStockMoveItemPageReqVO request = new ErpStockMoveItemPageReqVO();
+        request.setMoveId(403L);
+        ErpStockMoveDO transferOut = new ErpStockMoveDO().setId(403L).setTransferDirection(10);
+        when(stockMoveService.getVisibleStockTransferIn(403L)).thenReturn(transferOut);
+
+        assertServiceException(() -> controller.getStockTransferInItemPage(request), STOCK_MOVE_NOT_EXISTS);
+
+        verify(stockMoveController, never()).getStockMoveItemPageAfterVisibleCheck(request, "erp_stock_transfer_in");
     }
 
 }

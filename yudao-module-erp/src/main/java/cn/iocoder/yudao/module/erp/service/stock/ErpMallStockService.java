@@ -1,5 +1,6 @@
 package cn.iocoder.yudao.module.erp.service.stock;
 
+import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.module.erp.service.stock.bo.ErpMallStockOptionBO;
 import cn.iocoder.yudao.module.erp.service.stock.bo.ErpMallStockSummaryBO;
 
@@ -19,6 +20,9 @@ public interface ErpMallStockService {
     Map<Long, BigDecimal> getMallSkuAvailableStockMap(Long spuId, Collection<Long> skuIds);
 
     List<ErpMallStockOptionBO> getMallStockOptions(Long spuId, Long skuId);
+
+    PageResult<ErpMallStockOptionBO> getMallStockOptionPage(Long spuId, Long skuId, Integer pageNo, Integer pageSize,
+                                                            BigDecimal userLongitude, BigDecimal userLatitude);
 
     Map<Long, ErpMallStockOptionBO> getMallStockOptionMap(Collection<Long> stockIds);
 

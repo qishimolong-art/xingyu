@@ -21,12 +21,16 @@ import java.util.Map;
 @Slf4j
 public class ErpVinRecognizeServiceImpl implements ErpVinRecognizeService {
 
-    private static final String DEFAULT_ENDPOINT = "https://kzvin.market.alicloudapi.com/vin/query";
+    private static final String DEFAULT_ENDPOINT = "https://slyvinstd.market.alicloudapi.com/vin/query";
     private static final String MODEL_LIST_KEY = "model_list";
     private static final String VIN_PATTERN = "^[A-HJ-NPR-Z0-9]{17}$";
 
     @Value("${yudao.erp.vin.endpoint:" + DEFAULT_ENDPOINT + "}")
     private String endpoint;
+    @Value("${yudao.erp.vin.app-key:}")
+    private String appKey;
+    @Value("${yudao.erp.vin.app-secret:}")
+    private String appSecret;
     @Value("${yudao.erp.vin.app-code:}")
     private String appCode;
     @Value("${yudao.erp.vin.timeout:8000}")
@@ -61,11 +65,11 @@ public class ErpVinRecognizeServiceImpl implements ErpVinRecognizeService {
         }
     }
 
-    private String normalizeVin(String vin) {
+    String normalizeVin(String vin) {
         return StrUtil.trimToEmpty(vin).toUpperCase();
     }
 
-    private ErpVinRecognizeRespVO parseResponse(String vin, String body) {
+    ErpVinRecognizeRespVO parseResponse(String vin, String body) {
         JSONObject rawObject = JSONUtil.parseObj(body);
         Map<String, Object> raw = toMap(rawObject);
         Map<String, Object> data = extractData(rawObject);
@@ -82,12 +86,35 @@ public class ErpVinRecognizeServiceImpl implements ErpVinRecognizeService {
     }
 
     private Map<String, Object> extractData(JSONObject rawObject) {
-        Object dataObject = firstNonNull(rawObject.get("data"), rawObject.get("result"));
+        Object dataObject = rawObject.get("data");
         if (dataObject instanceof JSONObject) {
-            return toMap((JSONObject) dataObject);
+            JSONObject dataJsonObject = (JSONObject) dataObject;
+            Object resultObject = dataJsonObject.get("result");
+            if (resultObject instanceof JSONObject) {
+                return toMap((JSONObject) resultObject);
+            }
+            if (resultObject instanceof Map) {
+                return new LinkedHashMap<>((Map<String, Object>) resultObject);
+            }
+            return toMap(dataJsonObject);
         }
         if (dataObject instanceof Map) {
-            return new LinkedHashMap<>((Map<String, Object>) dataObject);
+            Map<String, Object> dataMap = new LinkedHashMap<>((Map<String, Object>) dataObject);
+            Object resultObject = dataMap.get("result");
+            if (resultObject instanceof JSONObject) {
+                return toMap((JSONObject) resultObject);
+            }
+            if (resultObject instanceof Map) {
+                return new LinkedHashMap<>((Map<String, Object>) resultObject);
+            }
+            return dataMap;
+        }
+        Object resultObject = rawObject.get("result");
+        if (resultObject instanceof JSONObject) {
+            return toMap((JSONObject) resultObject);
+        }
+        if (resultObject instanceof Map) {
+            return new LinkedHashMap<>((Map<String, Object>) resultObject);
         }
         return toMap(rawObject);
     }
@@ -128,11 +155,13 @@ public class ErpVinRecognizeServiceImpl implements ErpVinRecognizeService {
         if (StrUtil.isBlank(text)) {
             return null;
         }
-        return "true".equalsIgnoreCase(text) || "0".equals(text) || "200".equals(text);
+        return "true".equalsIgnoreCase(text) || "success".equalsIgnoreCase(text) || "ok".equalsIgnoreCase(text)
+                || "0".equals(text) || "200".equals(text);
     }
 
     private String resolveMessage(JSONObject rawObject) {
-        Object message = firstNonNull(rawObject.get("message"), rawObject.get("msg"), rawObject.get("reason"));
+        Object message = firstNonNull(rawObject.get("msg"), rawObject.get("message"), rawObject.get("reason"),
+                rawObject.get("error_msg"), rawObject.get("errorMsg"));
         return message == null ? null : String.valueOf(message);
     }
 

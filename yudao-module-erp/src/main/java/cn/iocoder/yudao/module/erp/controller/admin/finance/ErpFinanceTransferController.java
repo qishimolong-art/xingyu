@@ -34,6 +34,7 @@ import cn.iocoder.yudao.module.system.api.dept.dto.DeptRespDTO;
 import cn.iocoder.yudao.module.system.api.user.AdminUserApi;
 import cn.iocoder.yudao.module.system.api.user.dto.AdminUserRespDTO;
 import cn.iocoder.yudao.module.system.controller.admin.dept.vo.dept.DeptSimpleRespVO;
+import cn.iocoder.yudao.module.system.controller.admin.user.vo.user.UserSimpleRespVO;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -67,6 +68,7 @@ import static cn.iocoder.yudao.framework.apilog.core.enums.OperateTypeEnum.EXPOR
 import static cn.iocoder.yudao.framework.common.pojo.CommonResult.success;
 import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.convertListByFlatMap;
 import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.convertSet;
+import static cn.iocoder.yudao.module.erp.controller.admin.finance.ErpFinanceSimplePageUtils.buildUserSimplePage;
 import static cn.iocoder.yudao.module.erp.controller.admin.finance.vo.imports.ErpFinanceImportUtils.allBlank;
 import static cn.iocoder.yudao.module.erp.controller.admin.finance.vo.imports.ErpFinanceImportUtils.failureReason;
 import static cn.iocoder.yudao.module.erp.controller.admin.finance.vo.imports.ErpFinanceImportUtils.parseDateTime;
@@ -213,6 +215,20 @@ public class ErpFinanceTransferController {
     @PreAuthorize("@ss.hasPermission('erp:finance-transfer:query')")
     public CommonResult<List<DeptSimpleRespVO>> getFinanceTransferDeptSimpleList() {
         return success(dataPermissionDeptService.getDeptSimpleList("erp_finance_transfer"));
+    }
+
+    @GetMapping("/dept-simple-page")
+    @Operation(summary = "Get finance transfer data permission dept simple page")
+    @PreAuthorize("@ss.hasPermission('erp:finance-transfer:query')")
+    public CommonResult<PageResult<DeptSimpleRespVO>> getFinanceTransferDeptSimplePage(@Valid PageParam pageReqVO) {
+        return success(dataPermissionDeptService.getDeptSimplePage("erp_finance_transfer", pageReqVO));
+    }
+
+    @GetMapping("/user-simple-page")
+    @Operation(summary = "Get user page for finance transfer filter")
+    @PreAuthorize("@ss.hasPermission('erp:finance-transfer:query')")
+    public CommonResult<PageResult<UserSimpleRespVO>> getUserSimplePage(@Valid PageParam pageReqVO) {
+        return success(buildUserSimplePage(adminUserApi, pageReqVO));
     }
 
     @GetMapping("/export-excel")

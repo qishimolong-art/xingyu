@@ -165,6 +165,42 @@ public class ErpPurchaseReturnRespVO {
         @Schema(description = "产品单价", example = "100.00")
         private BigDecimal productPrice;
 
+        @Schema(description = "产品资料采购价", example = "88.00")
+        private BigDecimal productPurchasePrice;
+
+        @Schema(description = "销售价", example = "120.00")
+        private BigDecimal salePrice;
+
+        @Schema(description = "最近销售价", example = "118.00")
+        private BigDecimal lastSalePrice;
+
+        @Schema(description = "最低价", example = "90.00")
+        private BigDecimal minPrice;
+
+        @Schema(description = "参考价", example = "100.00")
+        private BigDecimal referencePrice;
+
+        @Schema(description = "零售价", example = "128.00")
+        private BigDecimal retailPrice;
+
+        @Schema(description = "最后采购入库价", example = "86.00")
+        private BigDecimal lastPurchasePrice;
+
+        @Schema(description = "毛利率", example = "20")
+        private Integer grossProfitRate;
+
+        @Schema(description = "备用价1", example = "98.00")
+        private BigDecimal backupPrice1;
+
+        @Schema(description = "批发价", example = "96.00")
+        private BigDecimal wholesalePrice;
+
+        @Schema(description = "股份价", example = "92.00")
+        private BigDecimal sharePrice;
+
+        @Schema(description = "当前业务场景是否允许查看价格")
+        private Boolean priceVisible;
+
         @Schema(description = "产品数量", requiredMode = Schema.RequiredMode.REQUIRED, example = "100.00")
         @NotNull(message = "产品数量不能为空")
         private BigDecimal count;

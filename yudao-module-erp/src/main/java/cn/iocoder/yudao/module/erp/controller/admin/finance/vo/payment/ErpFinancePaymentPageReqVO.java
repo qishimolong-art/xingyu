@@ -52,6 +52,9 @@ public class ErpFinancePaymentPageReqVO extends PageParam {
     @Schema(description = "勾选导出的付款单编号数组", example = "[1,2,3]")
     private List<Long> ids;
 
+    @Schema(description = "是否返回明细；为空或 true 时兼容旧行为返回明细，false 时仅返回列表主表和轻量汇总")
+    private Boolean includeItems;
+
     @Schema(description = "排序字段")
     private String orderField;
 

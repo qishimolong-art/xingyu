@@ -5,12 +5,15 @@ import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.ErpFinanceUpdateR
 import cn.iocoder.yudao.module.erp.controller.admin.finance.receivable.vo.otherreceivable.ErpReceivableOtherDraftSaveReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.receivable.vo.otherreceivable.ErpReceivableOtherPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.receivable.vo.otherreceivable.ErpReceivableOtherSaveReqVO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.finance.ErpFinanceReceiptDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.receivable.ErpReceivableOtherDO;
 import cn.iocoder.yudao.module.erp.service.finance.bo.ErpSaleCartFreightDraftCreateReqBO;
 
 import javax.validation.Valid;
 
 public interface ErpReceivableOtherService {
+
+    String RECEIPT_DISCOUNT_SOURCE_TYPE = "收款单优惠";
 
     Long createReceivableOther(@Valid ErpReceivableOtherSaveReqVO createReqVO);
 
@@ -19,6 +22,8 @@ public interface ErpReceivableOtherService {
     Long createAndSubmitReceivableOther(@Valid ErpReceivableOtherSaveReqVO createReqVO);
 
     Long createFromSaleCartFreight(ErpSaleCartFreightDraftCreateReqBO createReqBO);
+
+    Long createFromFinanceReceiptDiscount(ErpFinanceReceiptDO receipt);
 
     void updateReceivableOther(@Valid ErpReceivableOtherSaveReqVO updateReqVO);
 

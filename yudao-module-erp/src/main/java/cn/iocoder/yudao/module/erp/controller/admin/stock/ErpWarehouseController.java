@@ -14,6 +14,8 @@ import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.warehouse.ErpWareho
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.warehouse.ErpWarehouseImportExcelVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.warehouse.ErpWarehouseImportRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.warehouse.ErpWarehousePageReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.warehouse.ErpWarehousePickerRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.warehouse.ErpWarehousePickerSaveReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.warehouse.ErpWarehouseRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.warehouse.ErpWarehouseSaleDeptPermissionRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.warehouse.ErpWarehouseSaleDeptPermissionSaveReqVO;
@@ -23,6 +25,7 @@ import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.warehouse.ErpWareho
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.warehouse.ErpUserWarehousePermissionRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.warehouse.ErpUserWarehousePermissionSaveReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpWarehouseDO;
+import cn.iocoder.yudao.module.erp.dal.mysql.stock.ErpWarehouseMapper;
 import cn.iocoder.yudao.module.erp.service.base.ErpDataPermissionDeptService;
 import cn.iocoder.yudao.module.erp.service.common.ErpImportExportRecordService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpStockFieldPermissionMasker;
@@ -86,6 +89,8 @@ public class ErpWarehouseController {
     private ErpWarehouseService warehouseService;
     @Resource
     private ErpImportExportRecordService importExportRecordService;
+    @Resource
+    private ErpWarehouseMapper warehouseMapper;
     @Resource
     private ErpStockFieldPermissionMasker fieldPermissionMasker;
     @Resource
@@ -196,26 +201,69 @@ public class ErpWarehouseController {
         return success(dataPermissionDeptService.getDeptSimpleList(FIELD_PERMISSION_MODULE));
     }
 
+    @GetMapping("/dept-simple-page")
+    @Operation(summary = "Get visible department page for warehouse filter")
+    @PreAuthorize("@ss.hasPermission('erp:warehouse:query')")
+    public CommonResult<PageResult<DeptSimpleRespVO>> getVisibleDeptSimplePage(@Valid PageParam pageReqVO) {
+        return success(dataPermissionDeptService.getDeptSimplePage(FIELD_PERMISSION_MODULE, pageReqVO));
+    }
+
     @GetMapping("/simple-list")
     @Operation(summary = "Get warehouse simple list")
     public CommonResult<List<ErpWarehouseRespVO>> getWarehouseSimpleList(
             @RequestParam(value = "bizType", required = false) String bizType,
-            @RequestParam(value = "deptId", required = false) Long deptId) {
-        List<ErpWarehouseDO> list;
-        if ("stockMoveFrom".equalsIgnoreCase(bizType)) {
-            list = warehouseService.getCurrentUserStockMoveFromWarehouseList();
-        } else if ("stock".equalsIgnoreCase(bizType)) {
-            list = warehouseService.getCurrentUserStockVisibleWarehouseList();
-        } else if ("purchase".equalsIgnoreCase(bizType)) {
-            list = warehouseService.getCurrentUserAuthorizedPurchaseWarehouseList();
-        } else if ("sale".equalsIgnoreCase(bizType) && deptId != null) {
-            list = warehouseService.getCurrentUserSaleSelectableWarehouseListByDept(deptId);
-        } else if ("sale".equalsIgnoreCase(bizType)) {
-            list = warehouseService.getCurrentUserVisibleSaleWarehouseList();
-        } else {
-            list = warehouseService.getCurrentUserAuthorizedWarehouseList();
+            @RequestParam(value = "deptId", required = false) Long deptId,
+            @RequestParam(value = "allSaleProduct", required = false) Boolean allSaleProduct,
+            @RequestParam(value = "allSaleProductPermission", required = false) String allSaleProductPermission) {
+        return success(buildSimpleWarehouseVOList(selectSimpleWarehouseList(
+                bizType, deptId, allSaleProduct, allSaleProductPermission)));
+    }
+
+    @GetMapping("/simple-page")
+    @Operation(summary = "Get warehouse simple page")
+    public CommonResult<PageResult<ErpWarehouseRespVO>> getWarehouseSimplePage(
+            @Valid PageParam pageReqVO,
+            @RequestParam(value = "bizType", required = false) String bizType,
+            @RequestParam(value = "deptId", required = false) Long deptId,
+            @RequestParam(value = "allSaleProduct", required = false) Boolean allSaleProduct,
+            @RequestParam(value = "allSaleProductPermission", required = false) String allSaleProductPermission) {
+        if ("purchase".equalsIgnoreCase(bizType)) {
+            ErpWarehousePageReqVO warehousePageReqVO = new ErpWarehousePageReqVO();
+            warehousePageReqVO.setPageNo(pageReqVO.getPageNo());
+            warehousePageReqVO.setPageSize(pageReqVO.getPageSize());
+            warehousePageReqVO.setKeyword(pageReqVO.getKeyword());
+            warehousePageReqVO.setStatus(CommonStatusEnum.ENABLE.getStatus());
+            warehousePageReqVO.setPurchaseEnabled(true);
+            warehousePageReqVO.setDeptId(deptId);
+            PageResult<ErpWarehouseDO> page = warehouseService.getWarehousePage(warehousePageReqVO);
+            return success(new PageResult<>(buildSimpleWarehouseVOList(page.getList()), page.getTotal()));
         }
-        return success(buildSimpleWarehouseVOList(list));
+        if ("sale".equalsIgnoreCase(bizType)) {
+            Set<Long> warehouseIds = convertSet(selectSimpleWarehouseList(
+                    bizType, deptId, allSaleProduct, allSaleProductPermission), ErpWarehouseDO::getId);
+            ErpWarehousePageReqVO warehousePageReqVO = new ErpWarehousePageReqVO();
+            warehousePageReqVO.setPageNo(pageReqVO.getPageNo());
+            warehousePageReqVO.setPageSize(pageReqVO.getPageSize());
+            warehousePageReqVO.setKeyword(pageReqVO.getKeyword());
+            warehousePageReqVO.setStatus(CommonStatusEnum.ENABLE.getStatus());
+            warehousePageReqVO.setSaleEnabled(true);
+            PageResult<ErpWarehouseDO> page = warehouseMapper.selectPageByIds(warehousePageReqVO, warehouseIds);
+            return success(new PageResult<>(buildSimpleWarehouseVOList(page.getList()), page.getTotal()));
+        }
+        List<ErpWarehouseRespVO> list = buildSimpleWarehouseVOList(selectSimpleWarehouseList(
+                bizType, deptId, allSaleProduct, allSaleProductPermission));
+        String keyword = pageReqVO.getKeyword() == null ? null : pageReqVO.getKeyword().trim();
+        List<ErpWarehouseRespVO> filtered = keyword == null || keyword.isEmpty() ? list : list.stream()
+                .filter(warehouse -> containsKeyword(warehouse.getName(), keyword)
+                        || containsKeyword(warehouse.getWarehouseCode(), keyword)
+                        || containsKeyword(warehouse.getDeptName(), keyword))
+                .collect(Collectors.toList());
+        int fromIndex = Math.max(0, (pageReqVO.getPageNo() - 1) * pageReqVO.getPageSize());
+        if (fromIndex >= filtered.size()) {
+            return success(new PageResult<>(Collections.emptyList(), (long) filtered.size()));
+        }
+        int toIndex = Math.min(filtered.size(), fromIndex + pageReqVO.getPageSize());
+        return success(new PageResult<>(filtered.subList(fromIndex, toIndex), (long) filtered.size()));
     }
 
     @GetMapping("/sale-list-by-dept")
@@ -226,12 +274,42 @@ public class ErpWarehouseController {
         return success(buildSimpleWarehouseVOList(list));
     }
 
+    private List<ErpWarehouseDO> selectSimpleWarehouseList(String bizType, Long deptId, Boolean allSaleProduct,
+                                                           String allSaleProductPermission) {
+        if ("stockMoveFrom".equalsIgnoreCase(bizType)) {
+            return warehouseService.getCurrentUserStockMoveFromWarehouseList();
+        }
+        if ("stock".equalsIgnoreCase(bizType)) {
+            return warehouseService.getCurrentUserStockVisibleWarehouseList();
+        }
+        if ("purchase".equalsIgnoreCase(bizType)) {
+            return warehouseService.getCurrentUserAuthorizedPurchaseWarehouseList();
+        }
+        if ("sale".equalsIgnoreCase(bizType) && deptId != null) {
+            return warehouseService.getCurrentUserSaleSelectableWarehouseListByDept(deptId,
+                    Boolean.TRUE.equals(allSaleProduct) ? allSaleProductPermission : null);
+        }
+        if ("sale".equalsIgnoreCase(bizType)) {
+            return warehouseService.getCurrentUserSaleSelectableWarehouseListByDept(null,
+                    Boolean.TRUE.equals(allSaleProduct) ? allSaleProductPermission : null);
+        }
+        return warehouseService.getCurrentUserAuthorizedWarehouseList();
+    }
+
+    private boolean containsKeyword(String value, String keyword) {
+        return value != null && value.contains(keyword);
+    }
+
     @GetMapping("/sale-owner-dept-simple-list")
     @Operation(summary = "Get owner department list of sale-selectable warehouses")
     @Parameter(name = "deptId", description = "sales department id", required = true)
     @DataPermission(enable = false)
-    public CommonResult<List<DeptRespDTO>> getSaleWarehouseOwnerDeptSimpleList(@RequestParam("deptId") Long deptId) {
-        Set<Long> ownerDeptIds = warehouseService.getCurrentUserSaleSelectableWarehouseListByDept(deptId).stream()
+    public CommonResult<List<DeptRespDTO>> getSaleWarehouseOwnerDeptSimpleList(
+            @RequestParam("deptId") Long deptId,
+            @RequestParam(value = "allSaleProduct", required = false) Boolean allSaleProduct,
+            @RequestParam(value = "allSaleProductPermission", required = false) String allSaleProductPermission) {
+        Set<Long> ownerDeptIds = warehouseService.getCurrentUserSaleSelectableWarehouseListByDept(deptId,
+                        Boolean.TRUE.equals(allSaleProduct) ? allSaleProductPermission : null).stream()
                 .map(ErpWarehouseDO::getDeptId)
                 .filter(Objects::nonNull)
                 .collect(Collectors.toCollection(LinkedHashSet::new));
@@ -243,6 +321,26 @@ public class ErpWarehouseController {
                 .map(deptMap::get)
                 .filter(Objects::nonNull)
                 .collect(Collectors.toList()));
+    }
+
+    @GetMapping("/sale-owner-dept-simple-page")
+    @Operation(summary = "Get owner department page of sale-selectable warehouses")
+    @DataPermission(enable = false)
+    public CommonResult<PageResult<DeptRespDTO>> getSaleWarehouseOwnerDeptSimplePage(
+            @Valid PageParam pageReqVO,
+            @RequestParam(value = "deptId", required = false) Long deptId,
+            @RequestParam(value = "allSaleProduct", required = false) Boolean allSaleProduct,
+            @RequestParam(value = "allSaleProductPermission", required = false) String allSaleProductPermission) {
+        Set<Long> ownerDeptIds = warehouseService.getCurrentUserSaleSelectableWarehouseListByDept(deptId,
+                        Boolean.TRUE.equals(allSaleProduct) ? allSaleProductPermission : null).stream()
+                .map(ErpWarehouseDO::getDeptId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toCollection(LinkedHashSet::new));
+        if (ownerDeptIds.isEmpty()) {
+            return success(PageResult.empty());
+        }
+        return success(deptApi.getDeptSimplePage(CommonStatusEnum.ENABLE.getStatus(),
+                pageReqVO.getKeyword(), ownerDeptIds, pageReqVO));
     }
 
     @GetMapping("/purchase-owner-dept-simple-list")
@@ -268,18 +366,41 @@ public class ErpWarehouseController {
     @PreAuthorize("@ss.hasPermission('erp:stock:query')")
     @DataPermission(enable = false)
     public CommonResult<List<DeptRespDTO>> getStockWarehouseOwnerDeptSimpleList() {
+        return success(getStockWarehouseOwnerDeptList());
+    }
+
+    @GetMapping("/stock-owner-dept-simple-page")
+    @Operation(summary = "Get owner department page of stock-visible warehouses")
+    @PreAuthorize("@ss.hasPermission('erp:stock:query')")
+    @DataPermission(enable = false)
+    public CommonResult<PageResult<DeptRespDTO>> getStockWarehouseOwnerDeptSimplePage(@Valid PageParam pageReqVO) {
+        List<DeptRespDTO> list = getStockWarehouseOwnerDeptList();
+        String keyword = pageReqVO.getKeyword() == null ? null : pageReqVO.getKeyword().trim();
+        List<DeptRespDTO> filtered = keyword == null || keyword.isEmpty() ? list : list.stream()
+                .filter(dept -> containsKeyword(dept.getName(), keyword)
+                        || containsKeyword(String.valueOf(dept.getId()), keyword))
+                .collect(Collectors.toList());
+        int fromIndex = Math.max(0, (pageReqVO.getPageNo() - 1) * pageReqVO.getPageSize());
+        if (fromIndex >= filtered.size()) {
+            return success(new PageResult<>(Collections.emptyList(), (long) filtered.size()));
+        }
+        int toIndex = Math.min(filtered.size(), fromIndex + pageReqVO.getPageSize());
+        return success(new PageResult<>(filtered.subList(fromIndex, toIndex), (long) filtered.size()));
+    }
+
+    private List<DeptRespDTO> getStockWarehouseOwnerDeptList() {
         Set<Long> ownerDeptIds = warehouseService.getCurrentUserStockVisibleWarehouseList().stream()
                 .map(ErpWarehouseDO::getDeptId)
                 .filter(Objects::nonNull)
                 .collect(Collectors.toCollection(LinkedHashSet::new));
         if (ownerDeptIds.isEmpty()) {
-            return success(Collections.emptyList());
+            return Collections.emptyList();
         }
         Map<Long, DeptRespDTO> deptMap = deptApi.getDeptMap(ownerDeptIds);
-        return success(ownerDeptIds.stream()
+        return ownerDeptIds.stream()
                 .map(deptMap::get)
                 .filter(Objects::nonNull)
-                .collect(Collectors.toList()));
+                .collect(Collectors.toList());
     }
 
     @GetMapping("/assignable-list")
@@ -340,6 +461,32 @@ public class ErpWarehouseController {
         return success(true);
     }
 
+    @GetMapping("/picker-users")
+    @Operation(summary = "Get warehouse picker users")
+    @Parameter(name = "warehouseId", description = "warehouse id", required = true)
+    @DataPermission(enable = false)
+    @PreAuthorize("@ss.hasPermission('erp:warehouse-picker:query') or @ss.hasPermission('erp:warehouse-picker:update')")
+    public CommonResult<ErpWarehousePickerRespVO> getWarehousePickerUsers(
+            @RequestParam("warehouseId") Long warehouseId) {
+        ErpWarehousePickerRespVO respVO = new ErpWarehousePickerRespVO()
+                .setWarehouseId(warehouseId)
+                .setUserIds(warehouseService.getWarehousePickerUserIds(warehouseId));
+        return success(respVO);
+    }
+
+    @PutMapping("/picker-users")
+    @Operation(summary = "Update warehouse picker users")
+    @DataPermission(enable = false)
+    @PreAuthorize("@ss.hasPermission('erp:warehouse-picker:update')")
+    public CommonResult<Boolean> updateWarehousePickerUsers(
+            @Valid @RequestBody ErpWarehousePickerSaveReqVO updateReqVO) {
+        if (updateReqVO.getUserIds() != null && !updateReqVO.getUserIds().isEmpty()) {
+            adminUserApi.validateUserList(updateReqVO.getUserIds());
+        }
+        warehouseService.updateWarehousePickers(updateReqVO.getWarehouseId(), updateReqVO.getUserIds());
+        return success(true);
+    }
+
     @GetMapping("/sale-dept-permissions")
     @Operation(summary = "Get warehouse sale department permissions")
     @Parameter(name = "warehouseId", description = "warehouse id", required = true)
@@ -366,7 +513,8 @@ public class ErpWarehouseController {
     @GetMapping("/assignable-users")
     @Operation(summary = "Get assignable user list for warehouse permissions")
     @DataPermission(enable = false)
-    @PreAuthorize("@ss.hasPermission('erp:warehouse-permission:query') or @ss.hasPermission('erp:warehouse-permission:update')")
+    @PreAuthorize("@ss.hasPermission('erp:warehouse-permission:query') or @ss.hasPermission('erp:warehouse-permission:update')"
+            + " or @ss.hasPermission('erp:warehouse-picker:query') or @ss.hasPermission('erp:warehouse-picker:update')")
     public CommonResult<List<AdminUserRespDTO>> getWarehouseAssignableUsers() {
         return success(adminUserApi.getUserListByStatus(CommonStatusEnum.ENABLE.getStatus()));
     }

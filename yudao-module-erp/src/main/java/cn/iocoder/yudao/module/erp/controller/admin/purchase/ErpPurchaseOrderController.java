@@ -2,6 +2,7 @@ package cn.iocoder.yudao.module.erp.controller.admin.purchase;
 
 import cn.hutool.core.collection.CollUtil;
 import cn.iocoder.yudao.framework.apilog.core.annotation.ApiAccessLog;
+import cn.iocoder.yudao.framework.common.enums.CommonStatusEnum;
 import cn.iocoder.yudao.framework.common.pojo.CommonResult;
 import cn.iocoder.yudao.framework.common.pojo.PageParam;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
@@ -19,6 +20,7 @@ import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.order.ErpPurchas
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.order.ErpPurchaseOrderImportExcelVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.order.ErpPurchaseOrderImportResultRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.order.ErpPurchaseOrderImportRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.order.ErpPurchaseOrderInableItemPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.order.ErpPurchaseOrderInableItemRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.order.ErpPurchaseOrderItemBatchUpdateReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.order.ErpPurchaseOrderItemPageReqVO;
@@ -31,10 +33,14 @@ import cn.iocoder.yudao.module.erp.dal.dataobject.finance.ErpAccountDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseOrderDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseOrderItemDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpSupplierDO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpWarehouseDO;
+import cn.iocoder.yudao.module.erp.dal.mysql.purchase.ErpPurchaseOrderItemMapper;
+import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpSaleOutItemMapper;
 import cn.iocoder.yudao.module.erp.enums.config.ErpFieldConfigModuleEnum;
 import cn.iocoder.yudao.module.erp.framework.excel.ErpExportFieldUtils;
 import cn.iocoder.yudao.module.erp.framework.excel.ErpImportTemplateRequiredFieldUtils;
+import cn.iocoder.yudao.module.erp.service.base.ErpDataPermissionDeptService;
 import cn.iocoder.yudao.module.erp.service.config.ErpFieldConfigService;
 import cn.iocoder.yudao.module.erp.service.common.ErpImportExportRecordService;
 import cn.iocoder.yudao.module.erp.service.common.ErpPrintService;
@@ -51,6 +57,7 @@ import cn.iocoder.yudao.module.system.api.dept.dto.DeptRespDTO;
 import cn.iocoder.yudao.module.system.controller.admin.dept.vo.dept.DeptSimpleRespVO;
 import cn.iocoder.yudao.module.system.api.user.AdminUserApi;
 import cn.iocoder.yudao.module.system.api.user.dto.AdminUserRespDTO;
+import cn.iocoder.yudao.module.system.controller.admin.user.vo.user.UserSimpleRespVO;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -71,7 +78,6 @@ import javax.servlet.http.HttpServletResponse;
 import javax.validation.Valid;
 import java.io.IOException;
 import java.math.BigDecimal;
-import java.math.RoundingMode;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -81,11 +87,13 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 import static cn.iocoder.yudao.framework.apilog.core.enums.OperateTypeEnum.EXPORT;
 import static cn.iocoder.yudao.framework.common.pojo.CommonResult.success;
 import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.convertMultiMap;
 import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.convertSet;
+import static cn.iocoder.yudao.framework.common.util.number.MoneyUtils.formatAmountUpper;
 import static cn.iocoder.yudao.framework.common.util.number.MoneyUtils.priceMultiply;
 import static cn.iocoder.yudao.framework.security.core.util.SecurityFrameworkUtils.getLoginUserId;
 import static cn.iocoder.yudao.module.erp.service.common.ErpPrintServiceImpl.MODULE_PURCHASE_ORDER;
@@ -134,7 +142,13 @@ public class ErpPurchaseOrderController {
     @Resource
     private ErpSupplierDeptPermissionService supplierDeptPermissionService;
     @Resource
+    private ErpDataPermissionDeptService dataPermissionDeptService;
+    @Resource
+    private ErpPurchaseOrderItemMapper purchaseOrderItemMapper;
+    @Resource
     private ErpStockService stockService;
+    @Resource
+    private ErpSaleOutItemMapper saleOutItemMapper;
     @Resource
     private ErpProductService productService;
     @Resource
@@ -351,11 +365,34 @@ public class ErpPurchaseOrderController {
         return success(purchaseOrderService.getSupplierAvailableDeptSimpleList(supplierId));
     }
 
+    @GetMapping("/supplier-dept-simple-page")
+    @Operation(summary = "获得供应商对当前用户可用的采购部门精简分页")
+    @Parameter(name = "supplierId", description = "供应商编号", required = true, example = "1024")
+    @PreAuthorize("@ss.hasPermission('erp:purchase-order:query')")
+    public CommonResult<PageResult<DeptSimpleRespVO>> getSupplierAvailableDeptSimplePage(
+            @RequestParam("supplierId") Long supplierId, @Valid PageParam pageReqVO) {
+        return success(purchaseOrderService.getSupplierAvailableDeptSimplePage(supplierId, pageReqVO));
+    }
+
     @GetMapping("/dept-simple-list")
     @Operation(summary = "鑾峰緱褰撳墠鐢ㄦ埛鍙煡璇㈢殑閲囪喘璁㈠崟閮ㄩ棬绮剧畝鍒楄〃")
     @PreAuthorize("@ss.hasPermission('erp:purchase-order:query')")
     public CommonResult<List<DeptSimpleRespVO>> getVisibleDeptSimpleList() {
         return success(supplierDeptPermissionService.getDataPermissionDeptSimpleList(DEPT_SELECTION_PERMISSION_FORM_KEY));
+    }
+
+    @GetMapping("/dept-simple-page")
+    @Operation(summary = "获得当前用户可查询的采购订单部门精简分页")
+    @PreAuthorize("@ss.hasPermission('erp:purchase-order:query')")
+    public CommonResult<PageResult<DeptSimpleRespVO>> getVisibleDeptSimplePage(@Valid PageParam pageReqVO) {
+        return success(dataPermissionDeptService.getDeptSimplePage(DEPT_SELECTION_PERMISSION_FORM_KEY, pageReqVO));
+    }
+
+    @GetMapping("/user-simple-page")
+    @Operation(summary = "获得采购订单用户精简分页")
+    @PreAuthorize("@ss.hasPermission('erp:purchase-order:query')")
+    public CommonResult<PageResult<UserSimpleRespVO>> getUserSimplePage(@Valid PageParam pageReqVO) {
+        return success(buildUserSimplePage(pageReqVO));
     }
 
     @GetMapping("/warehouse-dept-simple-list")
@@ -367,11 +404,23 @@ public class ErpPurchaseOrderController {
         return success(purchaseOrderService.getWarehouseAvailableDeptSimpleList(warehouseId));
     }
 
+    @GetMapping("/warehouse-dept-simple-page")
+    @Operation(summary = "获得目标采购仓库对当前用户可用的业务部门精简分页")
+    @Parameter(name = "warehouseId", description = "仓库编号", required = true, example = "1024")
+    @PreAuthorize("@ss.hasPermission('erp:purchase-order:update')")
+    public CommonResult<PageResult<DeptSimpleRespVO>> getWarehouseAvailableDeptSimplePage(
+            @RequestParam("warehouseId") Long warehouseId, @Valid PageParam pageReqVO) {
+        return success(purchaseOrderService.getWarehouseAvailableDeptSimplePage(warehouseId, pageReqVO));
+    }
+
     @GetMapping("/page")
     @Operation(summary = "获得采购订单分页")
     @PreAuthorize("@ss.hasPermission('erp:purchase-order:query')")
     public CommonResult<PageResult<ErpPurchaseOrderRespVO>> getPurchaseOrderPage(@Valid ErpPurchaseOrderPageReqVO pageReqVO) {
-        return success(buildPurchaseOrderVOPageResult(purchaseOrderService.getPurchaseOrderPage(pageReqVO)));
+        PageResult<ErpPurchaseOrderDO> pageResult = purchaseOrderService.getPurchaseOrderPage(pageReqVO);
+        return success(Boolean.FALSE.equals(pageReqVO.getIncludeItems())
+                ? buildPurchaseOrderVOPageResultWithoutItems(pageResult)
+                : buildPurchaseOrderVOPageResult(pageResult));
     }
 
     @GetMapping("/export-excel")
@@ -506,6 +555,14 @@ public class ErpPurchaseOrderController {
         return success(purchaseOrderService.getInableItemsByOrderId(orderId));
     }
 
+    @GetMapping("/inable-item-page")
+    @Operation(summary = "获取采购订单的可入库明细分页")
+    @PreAuthorize("@ss.hasPermission('erp:purchase-in:create')")
+    public CommonResult<PageResult<ErpPurchaseOrderInableItemRespVO>> getInableItemPage(
+            @Valid ErpPurchaseOrderInableItemPageReqVO pageReqVO) {
+        return success(purchaseOrderService.getInableItemPage(pageReqVO));
+    }
+
     private PageResult<ErpPurchaseOrderRespVO> buildPurchaseOrderVOPageResult(PageResult<ErpPurchaseOrderDO> pageResult) {
         if (CollUtil.isEmpty(pageResult.getList())) {
             return PageResult.empty(pageResult.getTotal());
@@ -530,6 +587,7 @@ public class ErpPurchaseOrderController {
         PageResult<ErpPurchaseOrderRespVO> respResult = BeanUtils.toBean(pageResult, ErpPurchaseOrderRespVO.class, purchaseOrder -> {
             purchaseOrder.setItems(buildPurchaseOrderItemVOList(
                     purchaseOrderItemMap.get(purchaseOrder.getId()), productMap, false));
+            purchaseOrder.setItemCount(CollUtil.size(purchaseOrder.getItems()));
             purchaseOrder.setProductNames(CollUtil.join(purchaseOrder.getItems(), "，",
                     ErpPurchaseOrderRespVO.Item::getProductName));
             MapUtils.findAndThen(supplierMap, purchaseOrder.getSupplierId(),
@@ -543,6 +601,49 @@ public class ErpPurchaseOrderController {
         fieldPermissionMasker.maskList(FIELD_PERMISSION_MODULE, respResult.getList());
         fillPrintInfo(respResult.getList());
         return respResult;
+    }
+
+    private PageResult<ErpPurchaseOrderRespVO> buildPurchaseOrderVOPageResultWithoutItems(
+            PageResult<ErpPurchaseOrderDO> pageResult) {
+        if (CollUtil.isEmpty(pageResult.getList())) {
+            return PageResult.empty(pageResult.getTotal());
+        }
+        Set<Long> orderIds = convertSet(pageResult.getList(), ErpPurchaseOrderDO::getId);
+        Map<Long, Integer> itemCountMap = purchaseOrderItemMapper.selectItemCountMapByOrderIds(orderIds);
+        Map<Long, ErpSupplierDO> supplierMap = supplierService.getSupplierMap(
+                convertSet(pageResult.getList(), ErpPurchaseOrderDO::getSupplierId));
+        Map<Long, DeptRespDTO> deptMap = deptApi.getDeptMap(
+                convertSet(pageResult.getList(), ErpPurchaseOrderDO::getDeptId));
+        Set<Long> userIds = new HashSet<>();
+        pageResult.getList().forEach(purchaseOrder -> {
+            addUserId(userIds, purchaseOrder.getCreator());
+            addUserId(userIds, purchaseOrder.getUpdater());
+            addUserId(userIds, purchaseOrder.getPurchaser());
+        });
+        Map<Long, AdminUserRespDTO> userMap = adminUserApi.getUserMap(userIds);
+        PageResult<ErpPurchaseOrderRespVO> respResult = BeanUtils.toBean(pageResult, ErpPurchaseOrderRespVO.class,
+                purchaseOrder -> {
+                    purchaseOrder.setItemCount(itemCountMap.getOrDefault(purchaseOrder.getId(), 0));
+                    MapUtils.findAndThen(supplierMap, purchaseOrder.getSupplierId(),
+                            supplier -> purchaseOrder.setSupplierName(supplier.getName()));
+                    MapUtils.findAndThen(deptMap, purchaseOrder.getDeptId(),
+                            dept -> purchaseOrder.setDeptName(dept.getName()));
+                    fillUserNames(purchaseOrder, userMap);
+                    purchaseOrder.setInStatus(calcStatus(purchaseOrder.getInCount(), purchaseOrder.getTotalCount()));
+                    purchaseOrder.setReturnStatus(calcStatus(purchaseOrder.getReturnCount(), purchaseOrder.getTotalCount()));
+                });
+        fieldPermissionMasker.maskList(FIELD_PERMISSION_MODULE, respResult.getList());
+        fillPrintInfo(respResult.getList());
+        return respResult;
+    }
+
+    private PageResult<UserSimpleRespVO> buildUserSimplePage(PageParam pageReqVO) {
+        PageResult<AdminUserRespDTO> page = adminUserApi.getUserSimplePage(
+                CommonStatusEnum.ENABLE.getStatus(), pageReqVO.getKeyword(), pageReqVO);
+        List<UserSimpleRespVO> list = page.getList().stream()
+                .map(user -> new UserSimpleRespVO(user.getId(), user.getNickname(), user.getDeptId(), null))
+                .collect(Collectors.toList());
+        return new PageResult<>(list, page.getTotal());
     }
 
     private List<ErpPurchaseOrderRespVO.Item> buildPurchaseOrderItemVOList(List<ErpPurchaseOrderItemDO> itemList,
@@ -564,17 +665,53 @@ public class ErpPurchaseOrderController {
         Map<Long, BigDecimal> stockCountMap = includeStockCount
                 ? stockService.getStockCountMap(convertSet(itemList, ErpPurchaseOrderItemDO::getProductId))
                 : Collections.emptyMap();
+        Set<Long> productIds = convertSet(itemList, ErpPurchaseOrderItemDO::getProductId);
+        Set<Long> warehouseIds = convertSet(itemList, ErpPurchaseOrderItemDO::getWarehouseId);
+        Set<Long> deptIds = convertSet(itemList, ErpPurchaseOrderItemDO::getDeptId);
+        Map<Long, ErpWarehouseDO> warehouseMap = CollUtil.isEmpty(warehouseIds)
+                ? Collections.emptyMap()
+                : DataPermissionUtils.executeIgnore(() -> warehouseService.getWarehouseMap(warehouseIds));
+        Map<Long, DeptRespDTO> deptMap = CollUtil.isEmpty(deptIds)
+                ? Collections.emptyMap()
+                : DataPermissionUtils.executeIgnore(() -> deptApi.getDeptMap(deptIds));
+        Map<String, ErpStockDO> stockMap = CollUtil.isEmpty(productIds) || CollUtil.isEmpty(warehouseIds)
+                ? Collections.emptyMap()
+                : DataPermissionUtils.executeIgnore(() -> stockService.getStockMap(productIds, warehouseIds));
+        Map<Long, BigDecimal> lastSalePriceMap = CollUtil.isEmpty(productIds)
+                ? Collections.emptyMap()
+                : DataPermissionUtils.executeIgnore(() -> saleOutItemMapper.selectLatestSalePriceMap(productIds));
         return BeanUtils.toBean(itemList, ErpPurchaseOrderRespVO.Item.class, item -> {
             if (includeStockCount) {
                 BigDecimal stockCount = stockCountMap.get(item.getProductId());
                 item.setStockCount(stockCount != null ? stockCount : BigDecimal.ZERO);
             }
-            MapUtils.findAndThen(productMap, item.getProductId(), product -> item.setProductName(product.getName())
-                    .setProductBarCode(product.getBarCode()).setProductUnitName(product.getUnitName())
-                    .setWeight(product.getWeight()).setPackageQty(product.getPackageQty())
-                    .setProductCode(product.getCode()).setBatchNoEnabled(product.getBatchNoEnabled())
-                    .setLastPurchasePrice(product.getLastPurchasePrice()));
+            MapUtils.findAndThen(warehouseMap, item.getWarehouseId(), warehouse -> item.setWarehouseName(warehouse.getName()));
+            MapUtils.findAndThen(deptMap, item.getDeptId(), dept -> item.setDeptName(dept.getName()));
+            item.setLastSalePrice(lastSalePriceMap.get(item.getProductId()));
+            MapUtils.findAndThen(productMap, item.getProductId(), product -> {
+                ErpStockDO stock = stockMap.get(buildStockMapKey(item.getProductId(), item.getWarehouseId()));
+                BigDecimal purchasePrice = stock != null && stock.getPurchasePrice() != null
+                        ? stock.getPurchasePrice() : product.getPurchasePrice();
+                item.setProductName(product.getName())
+                        .setProductBarCode(product.getBarCode()).setProductUnitName(product.getUnitName())
+                        .setWeight(product.getWeight()).setPackageQty(product.getPackageQty())
+                        .setProductCode(product.getCode()).setBatchNoEnabled(product.getBatchNoEnabled())
+                        .setProductPurchasePrice(purchasePrice)
+                        .setSalePrice(product.getSalePrice())
+                        .setMinPrice(product.getMinPrice())
+                        .setReferencePrice(product.getReferencePrice())
+                        .setRetailPrice(product.getRetailPrice())
+                        .setLastPurchasePrice(product.getLastPurchasePrice())
+                        .setGrossProfitRate(product.getGrossProfitRate())
+                        .setBackupPrice1(product.getBackupPrice1())
+                        .setWholesalePrice(product.getWholesalePrice())
+                        .setSharePrice(product.getSharePrice());
+            });
         });
+    }
+
+    private String buildStockMapKey(Long productId, Long warehouseId) {
+        return productId + "_" + warehouseId;
     }
 
     private Map<String, Object> buildPurchaseOrderPrintMain(ErpPurchaseOrderDO purchaseOrder, ErpSupplierDO supplier,
@@ -703,14 +840,6 @@ public class ErpPurchaseOrderController {
 
     private String formatDecimal(BigDecimal value) {
         return value == null ? "" : value.stripTrailingZeros().toPlainString();
-    }
-
-    private String formatAmountUpper(BigDecimal value) {
-        if (value == null) {
-            return "";
-        }
-        BigDecimal amount = value.setScale(2, RoundingMode.HALF_UP);
-        return amount.toPlainString();
     }
 
     private String formatStatus(Integer status) {

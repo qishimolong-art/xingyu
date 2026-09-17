@@ -137,7 +137,6 @@ class ErpFinanceReceiptDraftServiceImplTest extends BaseMockitoUnitTest {
         when(receiptMapper.selectById(1L)).thenReturn(ErpFinanceReceiptDO.builder()
                 .id(1L).no("SK001").status(ErpFinanceReceiptStatusEnum.DRAFT.getStatus())
                 .receiptTime(LocalDateTime.now()).build());
-        when(receiptItemMapper.selectListByReceiptId(1L)).thenReturn(Collections.emptyList());
         when(receiptMapper.updateByIdAndStatus(eq(1L),
                 eq(ErpFinanceReceiptStatusEnum.DRAFT.getStatus()), any())).thenReturn(1);
         ErpFinanceReceiptSaveReqVO.Item validItem = new ErpFinanceReceiptSaveReqVO.Item()
@@ -167,7 +166,6 @@ class ErpFinanceReceiptDraftServiceImplTest extends BaseMockitoUnitTest {
         when(receiptMapper.selectById(1L)).thenReturn(ErpFinanceReceiptDO.builder()
                 .id(1L).no("SK001").status(ErpFinanceReceiptStatusEnum.DRAFT.getStatus())
                 .receiptTime(LocalDateTime.now()).build());
-        when(receiptItemMapper.selectListByReceiptId(1L)).thenReturn(Collections.emptyList());
         when(receiptMapper.updateByIdAndStatus(eq(1L),
                 eq(ErpFinanceReceiptStatusEnum.DRAFT.getStatus()), any())).thenReturn(1);
         ErpFinanceReceiptSaveReqVO.Item returnItem = new ErpFinanceReceiptSaveReqVO.Item()
@@ -195,7 +193,6 @@ class ErpFinanceReceiptDraftServiceImplTest extends BaseMockitoUnitTest {
                 .totalPrice(new BigDecimal("100")).discountPrice(new BigDecimal("5"))
                 .receiptPrice(new BigDecimal("95")).build();
         when(receiptMapper.selectByIdForUpdate(1L)).thenReturn(receipt);
-        when(receiptItemMapper.selectListByReceiptId(1L)).thenReturn(Collections.emptyList());
         when(receiptMapper.updateByIdAndStatus(eq(1L),
                 eq(ErpFinanceReceiptStatusEnum.DRAFT.getStatus()), any())).thenReturn(1);
 
@@ -208,7 +205,7 @@ class ErpFinanceReceiptDraftServiceImplTest extends BaseMockitoUnitTest {
                 org.mockito.ArgumentMatchers.argThat(update ->
                         ErpFinanceReceiptStatusEnum.PROCESS.getStatus().equals(update.getStatus())
                                 && new BigDecimal("95").compareTo(update.getReceiptPrice()) == 0));
-        verify(receiptItemMapper).deleteByReceiptId(1L);
+        verify(receiptItemMapper, never()).deleteByReceiptId(1L);
     }
 
     @Test
@@ -219,7 +216,6 @@ class ErpFinanceReceiptDraftServiceImplTest extends BaseMockitoUnitTest {
                 .totalPrice(new BigDecimal("-100")).discountPrice(BigDecimal.ZERO)
                 .receiptPrice(new BigDecimal("-100")).build();
         when(receiptMapper.selectByIdForUpdate(1L)).thenReturn(receipt);
-        when(receiptItemMapper.selectListByReceiptId(1L)).thenReturn(Collections.emptyList());
         when(receiptMapper.updateByIdAndStatus(eq(1L),
                 eq(ErpFinanceReceiptStatusEnum.DRAFT.getStatus()), any())).thenReturn(1);
 

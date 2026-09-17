@@ -35,7 +35,7 @@ public interface ErpFinanceReceiptMapper extends BaseMapperX<ErpFinanceReceiptDO
                     .eq(reqVO.getBizNo() != null, ErpFinanceReceiptItemDO::getBizNo, reqVO.getBizNo())
                     .groupBy(ErpFinanceReceiptDO::getId); // 避免 1 对多查询，产生相同的 1
         }
-        ErpKeywordQuery.appendWithDeptName(query, reqVO.getKeyword(),
+        ErpKeywordQuery.appendWithDeptNameAndSaleCustomer(query, reqVO.getKeyword(),
                 ErpFinanceReceiptDO::getNo,
                 ErpFinanceReceiptDO::getRemark);
         orderBy(query, reqVO);

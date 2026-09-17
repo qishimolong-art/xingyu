@@ -12,15 +12,19 @@ import java.util.Set;
 public final class SaleCustomerPriceLevelFieldKeys {
 
     private static final Set<String> ALL_SALE_PRICE_SOURCE_FIELDS = new LinkedHashSet<>(Arrays.asList(
+            "productPurchasePrice",
             "salePrice",
+            "lastSalePrice",
+            "minPrice",
             "backupPrice1",
             "referencePrice",
             "retailPrice",
             "wholesalePrice",
             "lastPurchasePrice",
+            "grossProfitRate",
+            "sharePrice",
             "purchasePrice",
-            "costPrice",
-            "productPurchasePrice"));
+            "costPrice"));
 
     private SaleCustomerPriceLevelFieldKeys() {
     }

@@ -7,6 +7,7 @@ import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.ErpFinanceUpdateR
 import cn.iocoder.yudao.module.erp.controller.admin.finance.receivable.vo.otherreceivable.ErpReceivableOtherDraftSaveReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.receivable.vo.otherreceivable.ErpReceivableOtherPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.receivable.vo.otherreceivable.ErpReceivableOtherSaveReqVO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.finance.ErpFinanceReceiptDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.receivable.ErpReceivableOtherDO;
 import cn.iocoder.yudao.module.erp.dal.mysql.finance.receivable.ErpReceivableOtherMapper;
 import cn.iocoder.yudao.module.erp.dal.redis.no.ErpNoRedisDAO;
@@ -145,6 +146,48 @@ public class ErpReceivableOtherServiceImpl implements ErpReceivableOtherService 
         normalize(doObj);
         receivableOtherMapper.insert(doObj);
         operateLogService.recordCreate(ERP_RECEIVABLE_OTHER_TYPE, doObj.getId(), doObj.getNo());
+        return doObj.getId();
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public Long createFromFinanceReceiptDiscount(ErpFinanceReceiptDO receipt) {
+        BigDecimal discountPrice = receipt == null || receipt.getDiscountPrice() == null
+                ? BigDecimal.ZERO : receipt.getDiscountPrice();
+        if (receipt == null || receipt.getId() == null || discountPrice.compareTo(BigDecimal.ZERO) <= 0) {
+            return null;
+        }
+        ErpReceivableOtherDO existing = receivableOtherMapper.selectBySource(
+                RECEIPT_DISCOUNT_SOURCE_TYPE, receipt.getId());
+        if (existing != null) {
+            return existing.getId();
+        }
+        customerService.validateCustomer(receipt.getCustomerId());
+        validateRefs(receipt.getFinanceUserId(), receipt.getDeptId());
+        String no = noRedisDAO.generate(ErpNoRedisDAO.OTHER_RECEIVABLE_NO_PREFIX);
+        if (receivableOtherMapper.selectByNo(no) != null) {
+            throw exception(OTHER_RECEIVABLE_NO_EXISTS);
+        }
+        ErpReceivableOtherDO doObj = new ErpReceivableOtherDO()
+                .setNo(no)
+                .setStatus(ErpAuditStatus.APPROVE.getStatus())
+                .setBizTime(receipt.getReceiptTime() == null ? null : receipt.getReceiptTime().toLocalDate())
+                .setCustomerId(receipt.getCustomerId())
+                .setSettledAmount(BigDecimal.ZERO)
+                .setDeptId(receipt.getDeptId())
+                .setReceivableAmount(discountPrice.negate())
+                .setProject("优惠折让")
+                .setSourceType(RECEIPT_DISCOUNT_SOURCE_TYPE)
+                .setSourceId(receipt.getId())
+                .setSourceNo(receipt.getNo())
+                .setHandlerId(receipt.getFinanceUserId())
+                .setReceivableType("优惠折让")
+                .setCostAmount(BigDecimal.ZERO)
+                .setRemark("收款单审核自动生成，来源单号：" + receipt.getNo());
+        normalize(doObj);
+        receivableOtherMapper.insert(doObj);
+        operateLogService.recordCreate(ERP_RECEIVABLE_OTHER_TYPE, doObj.getId(), doObj.getNo());
+        operateLogService.recordStatus(ERP_RECEIVABLE_OTHER_TYPE, doObj.getId(), doObj.getNo(), true);
         return doObj.getId();
     }
 

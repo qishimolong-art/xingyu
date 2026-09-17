@@ -9,6 +9,8 @@ import java.time.LocalDateTime;
 @Schema(description = "ERP 应收账款 Response VO")
 @Data
 public class ErpReceivableAccountRespVO {
+    private String accountKey;
+    private String deptKey;
     private Long customerId;
     private String customerName;
     private String contact;
@@ -30,6 +32,7 @@ public class ErpReceivableAccountRespVO {
     private BigDecimal receiptAmount;
     private BigDecimal writeOffAmount;
     private BigDecimal otherReceivableAmount;
+    private BigDecimal miscReceivableAmount;
     private BigDecimal receivableAmount;
     private BigDecimal receivedAmount;
     private BigDecimal unreceivedAmount;

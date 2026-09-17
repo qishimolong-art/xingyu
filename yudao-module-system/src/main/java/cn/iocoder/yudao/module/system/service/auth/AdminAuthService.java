@@ -58,9 +58,14 @@ public interface AdminAuthService {
      * 获得企业微信 H5 免登授权地址
      *
      * @param redirectUri 回调地址
+     * @param clientKey 企业微信应用配置 key
      * @return 授权地址
      */
-    String getWeComAuthorizeUrl(String redirectUri);
+    String getWeComAuthorizeUrl(String redirectUri, String clientKey);
+
+    default String getWeComAuthorizeUrl(String redirectUri) {
+        return getWeComAuthorizeUrl(redirectUri, null);
+    }
 
     /**
      * 企业微信 H5 免登

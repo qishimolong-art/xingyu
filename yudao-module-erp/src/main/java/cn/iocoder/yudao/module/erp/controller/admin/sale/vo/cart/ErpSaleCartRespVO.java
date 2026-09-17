@@ -85,6 +85,7 @@ public class ErpSaleCartRespVO {
     private String remark2;
 
     private List<Item> items;
+    private Integer itemCount;
     @ExcelProperty("产品信息")
     private String productNames;
 
@@ -108,6 +109,18 @@ public class ErpSaleCartRespVO {
         private BigDecimal count;
         @ExcelProperty("是否为赠品")
         private Boolean giftFlag;
+        private BigDecimal productPurchasePrice;
+        private BigDecimal salePrice;
+        private BigDecimal lastSalePrice;
+        private BigDecimal minPrice;
+        private BigDecimal referencePrice;
+        private BigDecimal retailPrice;
+        private BigDecimal lastPurchasePrice;
+        private Integer grossProfitRate;
+        private BigDecimal backupPrice1;
+        private BigDecimal wholesalePrice;
+        private BigDecimal sharePrice;
+        private Boolean priceVisible;
         @ExcelProperty("单价")
         private BigDecimal productPrice;
         @ExcelProperty("金额")

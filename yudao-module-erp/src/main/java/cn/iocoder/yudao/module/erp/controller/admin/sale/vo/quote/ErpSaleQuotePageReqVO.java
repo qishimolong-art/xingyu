@@ -45,6 +45,12 @@ public class ErpSaleQuotePageReqVO extends PageParam {
     @Schema(description = "产品编号", example = "1")
     private Long productId;
 
+    @Schema(description = "产品关键词，匹配配件编码、名称、拼音码、五笔码等", example = "刹车片")
+    private String productKeyword;
+
+    @Schema(description = "是否返回明细，默认 true 保持兼容；普通列表可传 false 减少数据量", example = "false")
+    private Boolean includeItems;
+
     @Schema(description = "报价订单编号数组")
     private List<Long> ids;
 

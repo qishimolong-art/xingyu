@@ -10,10 +10,12 @@ import cn.iocoder.yudao.module.erp.controller.admin.finance.payable.vo.report.Er
 import cn.iocoder.yudao.module.erp.controller.admin.finance.payable.vo.report.ErpPayableReportDetailRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.payable.vo.report.ErpPayableReportPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.payable.vo.report.ErpPayableReportRespVO;
-import cn.iocoder.yudao.module.erp.dal.dataobject.finance.payable.ErpPayableOtherDO;
-import cn.iocoder.yudao.module.erp.dal.mysql.finance.payable.ErpPayableOtherMapper;
+import cn.iocoder.yudao.module.erp.dal.dataobject.finance.payable.ErpPayableMiscDO;
+import cn.iocoder.yudao.module.erp.dal.mysql.finance.ErpFinancePaymentItemMapper;
+import cn.iocoder.yudao.module.erp.dal.mysql.finance.payable.ErpPayableMiscMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.finance.payable.ErpPayableReportMapper;
 import cn.iocoder.yudao.module.erp.enums.ErpAuditStatus;
+import cn.iocoder.yudao.module.erp.enums.common.ErpBizTypeEnum;
 import cn.iocoder.yudao.module.erp.service.finance.ErpFinanceVisibleScope;
 import cn.iocoder.yudao.module.erp.service.purchase.ErpSupplierService;
 import cn.iocoder.yudao.module.system.api.permission.PermissionApi;
@@ -24,6 +26,7 @@ import javax.annotation.Resource;
 import java.math.BigDecimal;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 @Service
@@ -36,7 +39,9 @@ public class ErpPayableReportServiceImpl implements ErpPayableReportService {
     @Resource
     private ErpPayableReportMapper payableReportMapper;
     @Resource
-    private ErpPayableOtherMapper payableOtherMapper;
+    private ErpPayableMiscMapper payableMiscMapper;
+    @Resource
+    private ErpFinancePaymentItemMapper financePaymentItemMapper;
     @Resource
     private ErpSupplierService supplierService;
     @Resource
@@ -68,8 +73,12 @@ public class ErpPayableReportServiceImpl implements ErpPayableReportService {
     private List<ErpPayableReportDetailRespVO> buildDetailList(ErpPayableReportDetailReqVO reqVO,
                                                                ErpFinanceVisibleScope scope) {
         BigDecimal balance = getInitialBalance(reqVO, scope);
-        List<ErpPayableReportDetailRespVO> rows = selectOtherList(reqVO, scope, false).stream()
-                .map(this::buildRow)
+        List<ErpPayableMiscDO> miscRows = selectOtherList(reqVO, scope, false);
+        Map<Long, BigDecimal> allocatedMap = financePaymentItemMapper.selectPaymentPriceSumMapByBizIdsAndBizType(
+                miscRows.stream().map(ErpPayableMiscDO::getId).collect(Collectors.toSet()),
+                ErpBizTypeEnum.PAYABLE_MISC.getType());
+        List<ErpPayableReportDetailRespVO> rows = miscRows.stream()
+                .map(item -> buildRow(item, allocatedMap.get(item.getId())))
                 .collect(Collectors.toList());
         for (ErpPayableReportDetailRespVO row : rows) {
             row.setPrevBalance(balance);
@@ -86,42 +95,48 @@ public class ErpPayableReportServiceImpl implements ErpPayableReportService {
         ErpPayableReportDetailReqVO copy = new ErpPayableReportDetailReqVO();
         copy.setSupplierId(reqVO.getSupplierId());
         copy.setBizTime(new java.time.LocalDateTime[]{null, reqVO.getStartDate().atStartOfDay()});
-        return selectOtherList(copy, scope, true).stream()
-                .map(item -> amount(item.getPayableAmount()).subtract(amount(item.getSettledAmount())))
+        List<ErpPayableMiscDO> rows = selectOtherList(copy, scope, true);
+        Map<Long, BigDecimal> allocatedMap = financePaymentItemMapper.selectPaymentPriceSumMapByBizIdsAndBizType(
+                rows.stream().map(ErpPayableMiscDO::getId).collect(Collectors.toSet()),
+                ErpBizTypeEnum.PAYABLE_MISC.getType());
+        return rows.stream()
+                .map(item -> amount(item.getAmount()).subtract(amount(allocatedMap.get(item.getId()))))
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
     }
 
-    private List<ErpPayableOtherDO> selectOtherList(ErpPayableReportDetailReqVO reqVO,
+    private List<ErpPayableMiscDO> selectOtherList(ErpPayableReportDetailReqVO reqVO,
                                                     ErpFinanceVisibleScope scope,
                                                     boolean beforeStartDate) {
-        LambdaQueryWrapperX<ErpPayableOtherDO> query = new LambdaQueryWrapperX<ErpPayableOtherDO>()
-                .eq(ErpPayableOtherDO::getSupplierId, reqVO.getSupplierId())
-                .eq(ErpPayableOtherDO::getStatus, ErpAuditStatus.APPROVE.getStatus());
+        LambdaQueryWrapperX<ErpPayableMiscDO> query = new LambdaQueryWrapperX<ErpPayableMiscDO>()
+                .eq(ErpPayableMiscDO::getSupplierId, reqVO.getSupplierId())
+                .eq(ErpPayableMiscDO::getStatus, ErpAuditStatus.APPROVE.getStatus());
         if (beforeStartDate) {
-            query.lt(ErpPayableOtherDO::getBizTime, reqVO.getEndDate());
+            query.lt(ErpPayableMiscDO::getBizTime, reqVO.getEndTime());
         } else {
-            query.geIfPresent(ErpPayableOtherDO::getBizTime, reqVO.getStartDate())
-                    .leIfPresent(ErpPayableOtherDO::getBizTime, reqVO.getEndDate());
+            query.geIfPresent(ErpPayableMiscDO::getBizTime, reqVO.getStartTime())
+                    .leIfPresent(ErpPayableMiscDO::getBizTime, reqVO.getEndTime());
         }
         applyScope(query, scope);
-        return payableOtherMapper.selectList(query.orderByAsc(ErpPayableOtherDO::getBizTime)
-                .orderByAsc(ErpPayableOtherDO::getNo)
-                .orderByAsc(ErpPayableOtherDO::getId));
+        return payableMiscMapper.selectList(query.orderByAsc(ErpPayableMiscDO::getBizTime)
+                .orderByAsc(ErpPayableMiscDO::getNo)
+                .orderByAsc(ErpPayableMiscDO::getId));
     }
 
-    private ErpPayableReportDetailRespVO buildRow(ErpPayableOtherDO item) {
-        BigDecimal payableAmount = amount(item.getPayableAmount());
-        BigDecimal settledAmount = amount(item.getSettledAmount());
+    private ErpPayableReportDetailRespVO buildRow(ErpPayableMiscDO item, BigDecimal paidAmount) {
+        BigDecimal payableAmount = amount(item.getAmount());
         ErpPayableReportDetailRespVO row = new ErpPayableReportDetailRespVO();
         row.setDocType("其他应付");
+        row.setBizType(ErpBizTypeEnum.PAYABLE_MISC.getType());
         row.setBizId(item.getId());
-        row.setDocDate(item.getBizTime() == null ? null : item.getBizTime().atStartOfDay());
+        row.setDocDate(item.getBizTime());
         row.setDocNo(item.getNo());
         row.setIncreaseAmount(payableAmount);
-        row.setPaymentAmount(settledAmount);
+        row.setPaymentAmount(amount(paidAmount));
         row.setWriteOffAmount(BigDecimal.ZERO);
-        row.setAllocatedAmount(settledAmount);
+        row.setAllocatedAmount(amount(paidAmount).abs());
         row.setWriteOffBaseAmount(payableAmount);
+        row.setRemark(item.getRemark());
+        row.setFileUrl(item.getFileUrl());
         return row;
     }
 
@@ -146,17 +161,17 @@ public class ErpPayableReportServiceImpl implements ErpPayableReportService {
         return ErpFinanceVisibleScope.from(permission, loginUserId);
     }
 
-    private void applyScope(LambdaQueryWrapperX<ErpPayableOtherDO> query, ErpFinanceVisibleScope scope) {
+    private void applyScope(LambdaQueryWrapperX<ErpPayableMiscDO> query, ErpFinanceVisibleScope scope) {
         if (scope.isAll()) {
             return;
         }
         if (!scope.getDeptIds().isEmpty() && scope.getSelfUserId() != null) {
-            query.and(wrapper -> wrapper.in(ErpPayableOtherDO::getDeptId, scope.getDeptIds())
-                    .or().eq(ErpPayableOtherDO::getHandlerId, scope.getSelfUserId()));
+            query.and(wrapper -> wrapper.in(ErpPayableMiscDO::getDeptId, scope.getDeptIds())
+                    .or().eq(ErpPayableMiscDO::getHandlerId, scope.getSelfUserId()));
         } else if (!scope.getDeptIds().isEmpty()) {
-            query.in(ErpPayableOtherDO::getDeptId, scope.getDeptIds());
+            query.in(ErpPayableMiscDO::getDeptId, scope.getDeptIds());
         } else {
-            query.eq(ErpPayableOtherDO::getHandlerId, scope.getSelfUserId());
+            query.eq(ErpPayableMiscDO::getHandlerId, scope.getSelfUserId());
         }
     }
 

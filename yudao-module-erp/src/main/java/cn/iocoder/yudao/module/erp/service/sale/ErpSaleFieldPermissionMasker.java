@@ -29,7 +29,9 @@ public class ErpSaleFieldPermissionMasker {
 
     private static final Integer UNKNOWN_PRICE_LEVEL_CACHE_KEY = Integer.MIN_VALUE;
     private static final Set<String> SALE_DETAIL_VISIBLE_PRICE_FIELDS = new HashSet<>(Arrays.asList(
-            "productPrice", "salePrice", "lastSalePrice", "originalProductPrice", "oldPrice", "newPrice",
+            "productPurchasePrice", "productPrice", "salePrice", "lastSalePrice", "minPrice", "referencePrice",
+            "retailPrice", "lastPurchasePrice", "grossProfitRate", "backupPrice1", "wholesalePrice", "sharePrice",
+            "originalProductPrice", "oldPrice", "newPrice",
             "totalProductPrice", "totalPrice", "taxPrice", "totalTaxPrice", "discountPrice", "allowancePrice",
             "feeAmount", "otherPrice", "freightAmount", "depositPrice", "receiptPrice", "refundPrice",
             "reductionAmount", "afterReductionPrice", "afterReductionAmount", "actualSaleAmount",

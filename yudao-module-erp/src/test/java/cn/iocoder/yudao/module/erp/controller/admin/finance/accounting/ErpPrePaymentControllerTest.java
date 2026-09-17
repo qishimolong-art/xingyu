@@ -151,6 +151,7 @@ public class ErpPrePaymentControllerTest extends BaseMockitoUnitTest {
     @Test
     public void testGetPrePaymentPage_withResults() {
         ErpPrePaymentPageReqVO pageReqVO = new ErpPrePaymentPageReqVO();
+        pageReqVO.setIncludeItems(false);
         ErpPrePaymentDO prePayment = new ErpPrePaymentDO();
         prePayment.setId(1L);
         prePayment.setNo("YFKD-100");
@@ -163,6 +164,7 @@ public class ErpPrePaymentControllerTest extends BaseMockitoUnitTest {
         assertEquals(1L, result.getData().getTotal());
         assertEquals(1, result.getData().getList().size());
         assertEquals("YFKD-100", result.getData().getList().get(0).getNo());
+        verify(prePaymentService).getPrePaymentPage(eq(pageReqVO));
     }
 
 }

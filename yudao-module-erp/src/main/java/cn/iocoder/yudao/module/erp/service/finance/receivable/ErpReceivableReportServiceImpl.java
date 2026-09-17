@@ -10,10 +10,12 @@ import cn.iocoder.yudao.module.erp.controller.admin.finance.receivable.vo.report
 import cn.iocoder.yudao.module.erp.controller.admin.finance.receivable.vo.report.ErpReceivableReportDetailRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.receivable.vo.report.ErpReceivableReportPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.receivable.vo.report.ErpReceivableReportRespVO;
-import cn.iocoder.yudao.module.erp.dal.dataobject.finance.receivable.ErpReceivableOtherDO;
-import cn.iocoder.yudao.module.erp.dal.mysql.finance.receivable.ErpReceivableOtherMapper;
+import cn.iocoder.yudao.module.erp.dal.dataobject.finance.receivable.ErpReceivableMiscDO;
+import cn.iocoder.yudao.module.erp.dal.mysql.finance.ErpFinanceReceiptItemMapper;
+import cn.iocoder.yudao.module.erp.dal.mysql.finance.receivable.ErpReceivableMiscMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.finance.receivable.ErpReceivableReportMapper;
 import cn.iocoder.yudao.module.erp.enums.ErpAuditStatus;
+import cn.iocoder.yudao.module.erp.enums.common.ErpBizTypeEnum;
 import cn.iocoder.yudao.module.erp.service.finance.ErpFinanceVisibleScope;
 import cn.iocoder.yudao.module.erp.service.sale.ErpCustomerService;
 import cn.iocoder.yudao.module.system.api.permission.PermissionApi;
@@ -25,6 +27,7 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 @Service
@@ -37,7 +40,9 @@ public class ErpReceivableReportServiceImpl implements ErpReceivableReportServic
     @Resource
     private ErpReceivableReportMapper receivableReportMapper;
     @Resource
-    private ErpReceivableOtherMapper receivableOtherMapper;
+    private ErpReceivableMiscMapper receivableMiscMapper;
+    @Resource
+    private ErpFinanceReceiptItemMapper financeReceiptItemMapper;
     @Resource
     private ErpCustomerService customerService;
     @Resource
@@ -69,8 +74,12 @@ public class ErpReceivableReportServiceImpl implements ErpReceivableReportServic
     private List<ErpReceivableReportDetailRespVO> buildDetailList(ErpReceivableReportDetailReqVO reqVO,
                                                                   ErpFinanceVisibleScope scope) {
         BigDecimal balance = getInitialBalance(reqVO, scope);
-        List<ErpReceivableReportDetailRespVO> rows = selectOtherList(reqVO, scope, false).stream()
-                .map(this::buildRow)
+        List<ErpReceivableMiscDO> miscRows = selectOtherList(reqVO, scope, false);
+        Map<Long, BigDecimal> allocatedMap = financeReceiptItemMapper.selectReceiptPriceSumMapByBizIdsAndBizType(
+                miscRows.stream().map(ErpReceivableMiscDO::getId).collect(Collectors.toSet()),
+                ErpBizTypeEnum.RECEIVABLE_MISC.getType());
+        List<ErpReceivableReportDetailRespVO> rows = miscRows.stream()
+                .map(item -> buildRow(item, allocatedMap.get(item.getId())))
                 .collect(Collectors.toList());
         for (ErpReceivableReportDetailRespVO row : rows) {
             row.setPrevBalance(balance);
@@ -87,42 +96,48 @@ public class ErpReceivableReportServiceImpl implements ErpReceivableReportServic
         ErpReceivableReportDetailReqVO copy = new ErpReceivableReportDetailReqVO();
         copy.setCustomerId(reqVO.getCustomerId());
         copy.setBizTime(new java.time.LocalDateTime[]{null, reqVO.getStartDate().atStartOfDay()});
-        return selectOtherList(copy, scope, true).stream()
-                .map(item -> amount(item.getReceivableAmount()).subtract(amount(item.getSettledAmount())))
+        List<ErpReceivableMiscDO> rows = selectOtherList(copy, scope, true);
+        Map<Long, BigDecimal> allocatedMap = financeReceiptItemMapper.selectReceiptPriceSumMapByBizIdsAndBizType(
+                rows.stream().map(ErpReceivableMiscDO::getId).collect(Collectors.toSet()),
+                ErpBizTypeEnum.RECEIVABLE_MISC.getType());
+        return rows.stream()
+                .map(item -> amount(item.getAmount()).subtract(amount(allocatedMap.get(item.getId()))))
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
     }
 
-    private List<ErpReceivableOtherDO> selectOtherList(ErpReceivableReportDetailReqVO reqVO,
+    private List<ErpReceivableMiscDO> selectOtherList(ErpReceivableReportDetailReqVO reqVO,
                                                        ErpFinanceVisibleScope scope,
                                                        boolean beforeStartDate) {
-        LambdaQueryWrapperX<ErpReceivableOtherDO> query = new LambdaQueryWrapperX<ErpReceivableOtherDO>()
-                .eq(ErpReceivableOtherDO::getCustomerId, reqVO.getCustomerId())
-                .eq(ErpReceivableOtherDO::getStatus, ErpAuditStatus.APPROVE.getStatus());
+        LambdaQueryWrapperX<ErpReceivableMiscDO> query = new LambdaQueryWrapperX<ErpReceivableMiscDO>()
+                .eq(ErpReceivableMiscDO::getCustomerId, reqVO.getCustomerId())
+                .eq(ErpReceivableMiscDO::getStatus, ErpAuditStatus.APPROVE.getStatus());
         if (beforeStartDate) {
-            query.lt(ErpReceivableOtherDO::getBizTime, reqVO.getEndDate());
+            query.lt(ErpReceivableMiscDO::getBizTime, reqVO.getEndTime());
         } else {
-            query.geIfPresent(ErpReceivableOtherDO::getBizTime, reqVO.getStartDate())
-                    .leIfPresent(ErpReceivableOtherDO::getBizTime, reqVO.getEndDate());
+            query.geIfPresent(ErpReceivableMiscDO::getBizTime, reqVO.getStartTime())
+                    .leIfPresent(ErpReceivableMiscDO::getBizTime, reqVO.getEndTime());
         }
         applyScope(query, scope);
-        return receivableOtherMapper.selectList(query.orderByAsc(ErpReceivableOtherDO::getBizTime)
-                .orderByAsc(ErpReceivableOtherDO::getNo)
-                .orderByAsc(ErpReceivableOtherDO::getId));
+        return receivableMiscMapper.selectList(query.orderByAsc(ErpReceivableMiscDO::getBizTime)
+                .orderByAsc(ErpReceivableMiscDO::getNo)
+                .orderByAsc(ErpReceivableMiscDO::getId));
     }
 
-    private ErpReceivableReportDetailRespVO buildRow(ErpReceivableOtherDO item) {
-        BigDecimal receivableAmount = amount(item.getReceivableAmount());
-        BigDecimal settledAmount = amount(item.getSettledAmount());
+    private ErpReceivableReportDetailRespVO buildRow(ErpReceivableMiscDO item, BigDecimal receiptedAmount) {
+        BigDecimal receivableAmount = amount(item.getAmount());
         ErpReceivableReportDetailRespVO row = new ErpReceivableReportDetailRespVO();
         row.setDocType("其他应收");
+        row.setBizType(ErpBizTypeEnum.RECEIVABLE_MISC.getType());
         row.setBizId(item.getId());
-        row.setDocDate(item.getBizTime() == null ? null : item.getBizTime().atStartOfDay());
+        row.setDocDate(item.getBizTime());
         row.setDocNo(item.getNo());
         row.setIncreaseAmount(receivableAmount);
-        row.setReceiptAmount(settledAmount);
+        row.setReceiptAmount(amount(receiptedAmount));
         row.setWriteOffAmount(BigDecimal.ZERO);
-        row.setAllocatedAmount(settledAmount);
+        row.setAllocatedAmount(amount(receiptedAmount).abs());
         row.setWriteOffBaseAmount(receivableAmount);
+        row.setRemark(item.getRemark());
+        row.setFileUrl(item.getFileUrl());
         return row;
     }
 
@@ -147,17 +162,17 @@ public class ErpReceivableReportServiceImpl implements ErpReceivableReportServic
         return ErpFinanceVisibleScope.from(permission, loginUserId);
     }
 
-    private void applyScope(LambdaQueryWrapperX<ErpReceivableOtherDO> query, ErpFinanceVisibleScope scope) {
+    private void applyScope(LambdaQueryWrapperX<ErpReceivableMiscDO> query, ErpFinanceVisibleScope scope) {
         if (scope.isAll()) {
             return;
         }
         if (!scope.getDeptIds().isEmpty() && scope.getSelfUserId() != null) {
-            query.and(wrapper -> wrapper.in(ErpReceivableOtherDO::getDeptId, scope.getDeptIds())
-                    .or().eq(ErpReceivableOtherDO::getHandlerId, scope.getSelfUserId()));
+            query.and(wrapper -> wrapper.in(ErpReceivableMiscDO::getDeptId, scope.getDeptIds())
+                    .or().eq(ErpReceivableMiscDO::getHandlerId, scope.getSelfUserId()));
         } else if (!scope.getDeptIds().isEmpty()) {
-            query.in(ErpReceivableOtherDO::getDeptId, scope.getDeptIds());
+            query.in(ErpReceivableMiscDO::getDeptId, scope.getDeptIds());
         } else {
-            query.eq(ErpReceivableOtherDO::getHandlerId, scope.getSelfUserId());
+            query.eq(ErpReceivableMiscDO::getHandlerId, scope.getSelfUserId());
         }
     }
 

@@ -28,4 +28,20 @@ public interface ErpProductDeptMapper extends BaseMapperX<ErpProductDeptDO> {
     @Delete("DELETE FROM erp_product_dept WHERE product_id = #{productId} AND tenant_id = #{tenantId}")
     int deleteByProductId(@Param("productId") Long productId, @Param("tenantId") Long tenantId);
 
+    default int deleteByProductIds(Collection<Long> productIds) {
+        if (productIds == null || productIds.isEmpty()) {
+            return 0;
+        }
+        return deleteByProductIds(productIds, TenantContextHolder.getRequiredTenantId());
+    }
+
+    @Delete({"<script>",
+            "DELETE FROM erp_product_dept WHERE tenant_id = #{tenantId}",
+            "AND product_id IN",
+            "<foreach collection='productIds' item='productId' open='(' separator=',' close=')'>",
+            "#{productId}",
+            "</foreach>",
+            "</script>"})
+    int deleteByProductIds(@Param("productIds") Collection<Long> productIds, @Param("tenantId") Long tenantId);
+
 }

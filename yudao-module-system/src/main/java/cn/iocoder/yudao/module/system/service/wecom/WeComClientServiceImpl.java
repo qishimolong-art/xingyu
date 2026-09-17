@@ -42,11 +42,11 @@ public class WeComClientServiceImpl implements WeComClientService {
     private StringRedisTemplate stringRedisTemplate;
 
     @Override
-    public String getAuthorizeUrl(String redirectUri, String state) {
-        validateConfig();
+    public String getAuthorizeUrl(String redirectUri, String state, String clientKey) {
+        WeComClientConfig config = resolveConfig(clientKey);
         return UriComponentsBuilder.fromHttpUrl(AUTHORIZE_URL)
-                .queryParam("appid", properties.getCorpId())
-                .queryParam("agentid", properties.getAgentId())
+                .queryParam("appid", config.getCorpId())
+                .queryParam("agentid", config.getAgentId())
                 .queryParam("redirect_uri", redirectUri)
                 .queryParam("response_type", "code")
                 .queryParam("scope", "snsapi_privateinfo")
@@ -57,9 +57,9 @@ public class WeComClientServiceImpl implements WeComClientService {
     }
 
     @Override
-    public String getUserMobileByCode(String code) {
-        validateConfig();
-        String accessToken = getAccessToken();
+    public String getUserMobileByCode(String code, String clientKey) {
+        WeComClientConfig config = resolveConfig(clientKey);
+        String accessToken = getAccessToken(config);
         WeComUserInfoRespDTO userInfo = getForObject(UriComponentsBuilder.fromHttpUrl(GET_USER_INFO_URL)
                 .queryParam("access_token", accessToken)
                 .queryParam("code", code)
@@ -82,16 +82,16 @@ public class WeComClientServiceImpl implements WeComClientService {
         return user.getMobile();
     }
 
-    private String getAccessToken() {
-        String cacheKey = formatAccessTokenKey();
+    private String getAccessToken(WeComClientConfig config) {
+        String cacheKey = formatAccessTokenKey(config);
         String accessToken = stringRedisTemplate.opsForValue().get(cacheKey);
         if (StrUtil.isNotBlank(accessToken)) {
             return accessToken;
         }
 
         WeComAccessTokenRespDTO response = getForObject(UriComponentsBuilder.fromHttpUrl(GET_TOKEN_URL)
-                .queryParam("corpid", properties.getCorpId())
-                .queryParam("corpsecret", properties.getSecret())
+                .queryParam("corpid", config.getCorpId())
+                .queryParam("corpsecret", config.getSecret())
                 .build()
                 .encode(StandardCharsets.UTF_8)
                 .toUri(), WeComAccessTokenRespDTO.class, "获取 access_token");
@@ -107,17 +107,32 @@ public class WeComClientServiceImpl implements WeComClientService {
         return response.getAccessToken();
     }
 
-    private String formatAccessTokenKey() {
-        return String.format(ACCESS_TOKEN_KEY, properties.getCorpId(), properties.getAgentId());
+    private String formatAccessTokenKey(WeComClientConfig config) {
+        return String.format(ACCESS_TOKEN_KEY, config.getCorpId(), config.getAgentId());
     }
 
-    private void validateConfig() {
+    private WeComClientConfig resolveConfig(String clientKey) {
         if (!properties.isEnabled()) {
             throw exception(AUTH_WECOM_DISABLED);
         }
-        if (StrUtil.hasBlank(properties.getCorpId(), properties.getAgentId(), properties.getSecret())) {
+        String normalizedClientKey = StrUtil.trim(clientKey);
+        WeComProperties.ClientProperties clientProperties = null;
+        if (StrUtil.isNotBlank(normalizedClientKey)) {
+            clientProperties = properties.getClients() == null ? null : properties.getClients().get(normalizedClientKey);
+            if (clientProperties == null) {
+                throw exception(AUTH_WECOM_CONFIG_ERROR);
+            }
+        }
+        String corpId = clientProperties == null || StrUtil.isBlank(clientProperties.getCorpId())
+                ? properties.getCorpId() : clientProperties.getCorpId();
+        String agentId = clientProperties == null || StrUtil.isBlank(clientProperties.getAgentId())
+                ? properties.getAgentId() : clientProperties.getAgentId();
+        String secret = clientProperties == null || StrUtil.isBlank(clientProperties.getSecret())
+                ? properties.getSecret() : clientProperties.getSecret();
+        if (StrUtil.hasBlank(corpId, agentId, secret)) {
             throw exception(AUTH_WECOM_CONFIG_ERROR);
         }
+        return new WeComClientConfig(corpId, agentId, secret);
     }
 
     private <T extends WeComBaseRespDTO> T getForObject(URI uri, Class<T> responseType, String action) {
@@ -220,6 +235,17 @@ public class WeComClientServiceImpl implements WeComClientService {
 
         @JsonProperty("mobile")
         private String mobile;
+
+    }
+
+    @Data
+    private static class WeComClientConfig {
+
+        private final String corpId;
+
+        private final String agentId;
+
+        private final String secret;
 
     }
 

@@ -2,10 +2,12 @@ package cn.iocoder.yudao.module.erp.dal.mysql.stock;
 
 import cn.hutool.core.collection.CollUtil;
 import cn.hutool.core.map.MapUtil;
+import cn.iocoder.yudao.framework.common.pojo.PageParam;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.mybatis.core.mapper.BaseMapperX;
 import cn.iocoder.yudao.framework.mybatis.core.query.LambdaQueryWrapperX;
 import cn.iocoder.yudao.framework.mybatis.core.query.QueryWrapperX;
+import cn.iocoder.yudao.framework.mybatis.core.util.MyBatisUtils;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.stock.ErpStockPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.stock.ErpStockSummaryRespVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockDO;
@@ -15,7 +17,10 @@ import cn.iocoder.yudao.module.erp.enums.stock.ErpStockCheckTypeEnum;
 import cn.iocoder.yudao.module.erp.enums.stock.ErpStockTransferDirectionEnum;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
+import com.baomidou.mybatisplus.core.metadata.IPage;
 import org.apache.ibatis.annotations.Mapper;
+import org.apache.ibatis.annotations.Param;
+import org.apache.ibatis.annotations.SelectProvider;
 
 import java.math.BigDecimal;
 import java.util.Collection;
@@ -91,6 +96,40 @@ public interface ErpStockMapper extends BaseMapperX<ErpStockDO> {
         orderByIfPresent(wrapper, reqVO);
         return selectPage(reqVO, wrapper);
     }
+
+    default PageResult<ErpStockDO> selectPageOrderByAvailableCount(ErpStockPageReqVO reqVO,
+                                                                   Collection<Long> productIdFilter,
+                                                                   Collection<Long> warehouseIdFilter,
+                                                                   Collection<Long> keywordProductIdFilter,
+                                                                   Collection<Long> keywordWarehouseIdFilter,
+                                                                   Map<Long, Set<Long>> batchKeywordStockKeyMap,
+                                                                   Collection<Long> departmentWarehouseIds,
+                                                                   Collection<Long> selfWarehouseIds,
+                                                                   String selfCreator) {
+        QueryWrapperX<ErpStockDO> wrapper = buildStockQueryWrapper(reqVO, productIdFilter, warehouseIdFilter,
+                keywordProductIdFilter, keywordWarehouseIdFilter, batchKeywordStockKeyMap,
+                departmentWarehouseIds, selfWarehouseIds, selfCreator);
+        if (wrapper == null) {
+            return PageResult.empty(0L);
+        }
+        String orderDirection = normalizeOrderDirection(reqVO.getOrderDirection());
+        if (PageParam.PAGE_SIZE_NONE.equals(reqVO.getPageSize())) {
+            List<ErpStockDO> list = selectListOrderByAvailableCount(wrapper, orderDirection);
+            return new PageResult<>(list, (long) list.size());
+        }
+        IPage<ErpStockDO> page = MyBatisUtils.buildPage(reqVO);
+        IPage<ErpStockDO> pageResult = selectPageOrderByAvailableCount(page, wrapper, orderDirection);
+        return new PageResult<>(pageResult.getRecords(), pageResult.getTotal());
+    }
+
+    @SelectProvider(type = ErpStockMapper.class, method = "availableCountSortedSql")
+    IPage<ErpStockDO> selectPageOrderByAvailableCount(IPage<ErpStockDO> page,
+                                                      @Param("ew") QueryWrapperX<ErpStockDO> wrapper,
+                                                      @Param("orderDirection") String orderDirection);
+
+    @SelectProvider(type = ErpStockMapper.class, method = "availableCountSortedSql")
+    List<ErpStockDO> selectListOrderByAvailableCount(@Param("ew") QueryWrapperX<ErpStockDO> wrapper,
+                                                     @Param("orderDirection") String orderDirection);
 
     default QueryWrapperX<ErpStockDO> buildStockQueryWrapper(ErpStockPageReqVO reqVO,
                                                             Collection<Long> productIdFilter,
@@ -301,6 +340,159 @@ public interface ErpStockMapper extends BaseMapperX<ErpStockDO> {
         defaultOrderBy(wrapper);
     }
 
+    static boolean isAvailableCountSort(ErpStockPageReqVO reqVO) {
+        return reqVO != null
+                && reqVO.getOrderField() != null
+                && "availableCount".equals(reqVO.getOrderField().trim())
+                && isSupportedOrderDirection(reqVO.getOrderDirection());
+    }
+
+    static boolean isSupportedOrderDirection(String orderDirection) {
+        return "asc".equalsIgnoreCase(orderDirection) || "desc".equalsIgnoreCase(orderDirection);
+    }
+
+    static String normalizeOrderDirection(String orderDirection) {
+        return "asc".equalsIgnoreCase(orderDirection) ? "ASC" : "DESC";
+    }
+
+    static String availableCountSortedSql() {
+        String candidateStockSql = candidateStockSql();
+        return "<script>"
+                + "SELECT erp_stock.* "
+                + "FROM " + candidateStockSql + " erp_stock "
+                + "LEFT JOIN ("
+                + "  SELECT occupied_source.product_id, occupied_source.warehouse_id, "
+                + "         SUM(occupied_source.occupied_count_delta) AS occupied_count "
+                + "  FROM ("
+                + saleCartOccupiedSql(candidateStockSql)
+                + "    UNION ALL "
+                + pendingAuditOccupiedSql(candidateStockSql, "erp_sale_out_items", "soi",
+                "erp_sale_out", "so", "soi.out_id", "soi.warehouse_id",
+                "COALESCE(soi.count, 0)")
+                + "    UNION ALL "
+                + pendingAuditOccupiedSql(candidateStockSql, "erp_purchase_return_items", "pri",
+                "erp_purchase_return", "pr", "pri.return_id", "pri.warehouse_id",
+                "COALESCE(pri.count, 0)")
+                + "    UNION ALL "
+                + pendingAuditOccupiedSql(candidateStockSql, "erp_stock_out_item", "soi2",
+                "erp_stock_out", "so2", "soi2.out_id", "soi2.warehouse_id",
+                "COALESCE(soi2.count, 0)")
+                + "    UNION ALL "
+                + stockTransferOutOccupiedSql(candidateStockSql)
+                + "    UNION ALL "
+                + warehouseMoveOccupiedSql(candidateStockSql)
+                + "    UNION ALL "
+                + stockCheckLessOccupiedSql(candidateStockSql)
+                + "    UNION ALL "
+                + stockOutBillOccupiedSql(candidateStockSql)
+                + "  ) occupied_source "
+                + "  GROUP BY occupied_source.product_id, occupied_source.warehouse_id"
+                + ") occupied ON occupied.product_id = erp_stock.product_id "
+                + "AND occupied.warehouse_id = erp_stock.warehouse_id "
+                + "ORDER BY (COALESCE(erp_stock.count, 0) - COALESCE(occupied.occupied_count, 0)) "
+                + "${orderDirection}, erp_stock.id DESC"
+                + "</script>";
+    }
+
+    static String candidateStockSql() {
+        return "(SELECT * FROM erp_stock "
+                + "WHERE deleted = 0 "
+                + "<if test='ew != null and ew.sqlSegment != null and ew.sqlSegment != \"\"'>"
+                + " AND ${ew.sqlSegment}"
+                + "</if>"
+                + ")";
+    }
+
+    static String saleCartOccupiedSql(String candidateStockSql) {
+        return "    SELECT sci.product_id, sci.warehouse_id, SUM(COALESCE(sci.count, 0)) AS occupied_count_delta "
+                + "    FROM erp_sale_cart_items sci "
+                + "    INNER JOIN erp_sale_cart sc ON sc.id = sci.cart_id "
+                + "    AND sc.deleted = 0 "
+                + "    AND sc.status IN (" + ErpSaleCartStatusEnum.PROCESS.getStatus() + ","
+                + ErpSaleCartStatusEnum.SUBMITTED.getStatus() + ","
+                + ErpSaleCartStatusEnum.FIRST_APPROVE.getStatus() + ") "
+                + "    INNER JOIN " + candidateStockSql + " candidate_stock "
+                + "    ON candidate_stock.product_id = sci.product_id "
+                + "    AND candidate_stock.warehouse_id = sci.warehouse_id "
+                + "    WHERE sci.deleted = 0 "
+                + "    AND NOT EXISTS (SELECT 1 FROM erp_sale_out so WHERE so.deleted = 0 AND so.tenant_id=sc.tenant_id AND so.source_type=30 AND so.source_id = sc.id) "
+                + "    GROUP BY sci.product_id, sci.warehouse_id ";
+    }
+
+    static String pendingAuditOccupiedSql(String candidateStockSql, String itemTable, String itemAlias,
+                                          String mainTable, String mainAlias, String itemForeignKey,
+                                          String warehouseColumn, String countExpression) {
+        return "    SELECT " + itemAlias + ".product_id, " + warehouseColumn
+                + " AS warehouse_id, SUM(" + countExpression + ") AS occupied_count_delta "
+                + "    FROM " + itemTable + " " + itemAlias + " "
+                + "    INNER JOIN " + mainTable + " " + mainAlias
+                + " ON " + mainAlias + ".id = " + itemForeignKey
+                + " AND " + mainAlias + ".deleted = 0"
+                + " AND " + mainAlias + ".status = " + ErpAuditStatus.PROCESS.getStatus()
+                + "    INNER JOIN " + candidateStockSql + " candidate_stock "
+                + "    ON candidate_stock.product_id = " + itemAlias + ".product_id "
+                + "    AND candidate_stock.warehouse_id = " + warehouseColumn + " "
+                + "    WHERE " + itemAlias + ".deleted = 0 "
+                + "    GROUP BY " + itemAlias + ".product_id, " + warehouseColumn + " ";
+    }
+
+    static String stockTransferOutOccupiedSql(String candidateStockSql) {
+        return "    SELECT smi.product_id, smi.from_warehouse_id AS warehouse_id, "
+                + "SUM(COALESCE(smi.count, 0)) AS occupied_count_delta "
+                + "    FROM erp_stock_move_item smi "
+                + "    INNER JOIN erp_stock_move sm ON sm.id = smi.move_id "
+                + "    AND sm.deleted = 0 "
+                + "    AND sm.status = " + ErpAuditStatus.PROCESS.getStatus()
+                + " AND sm.transfer_direction = " + ErpStockTransferDirectionEnum.TRANSFER_OUT.getDirection() + " "
+                + "    INNER JOIN " + candidateStockSql + " candidate_stock "
+                + "    ON candidate_stock.product_id = smi.product_id "
+                + "    AND candidate_stock.warehouse_id = smi.from_warehouse_id "
+                + "    WHERE smi.deleted = 0 "
+                + "    GROUP BY smi.product_id, smi.from_warehouse_id ";
+    }
+
+    static String warehouseMoveOccupiedSql(String candidateStockSql) {
+        return "    SELECT wmi.product_id, wmi.from_warehouse_id AS warehouse_id, "
+                + "SUM(COALESCE(wmi.count, 0)) AS occupied_count_delta "
+                + "    FROM erp_warehouse_move_item wmi "
+                + "    INNER JOIN erp_warehouse_move wm ON wm.id = wmi.move_id "
+                + "    AND wm.deleted = 0 "
+                + "    AND wm.status = " + ErpAuditStatus.PROCESS.getStatus() + " "
+                + "    INNER JOIN " + candidateStockSql + " candidate_stock "
+                + "    ON candidate_stock.product_id = wmi.product_id "
+                + "    AND candidate_stock.warehouse_id = wmi.from_warehouse_id "
+                + "    WHERE wmi.deleted = 0 "
+                + "    GROUP BY wmi.product_id, wmi.from_warehouse_id ";
+    }
+
+    static String stockCheckLessOccupiedSql(String candidateStockSql) {
+        return "    SELECT sci2.product_id, sci2.warehouse_id, "
+                + "SUM(ABS(COALESCE(sci2.count, 0))) AS occupied_count_delta "
+                + "    FROM erp_stock_check_item sci2 "
+                + "    INNER JOIN erp_stock_check sc2 ON sc2.id = sci2.check_id "
+                + "    AND sc2.deleted = 0 "
+                + "    AND sc2.status = " + ErpAuditStatus.PROCESS.getStatus()
+                + " AND sc2.check_type = " + ErpStockCheckTypeEnum.COUNT.getType() + " "
+                + "    INNER JOIN " + candidateStockSql + " candidate_stock "
+                + "    ON candidate_stock.product_id = sci2.product_id "
+                + "    AND candidate_stock.warehouse_id = sci2.warehouse_id "
+                + "    WHERE sci2.deleted = 0 AND sci2.count &lt; 0 "
+                + "    GROUP BY sci2.product_id, sci2.warehouse_id ";
+    }
+
+    static String stockOutBillOccupiedSql(String candidateStockSql) {
+        return "    SELECT sobi.product_id, sobi.warehouse_id, "
+                + "SUM(GREATEST(COALESCE(sobi.count, 0) - COALESCE(sobi.picked_count, 0), 0)) AS occupied_count_delta "
+                + "    FROM erp_stock_out_bill_item sobi "
+                + "    INNER JOIN erp_stock_out_bill sob ON sob.id = sobi.bill_id "
+                + "    AND sob.deleted = 0 AND sob.status IN (10,20) "
+                + "    INNER JOIN " + candidateStockSql + " candidate_stock "
+                + "    ON candidate_stock.product_id = sobi.product_id "
+                + "    AND candidate_stock.warehouse_id = sobi.warehouse_id "
+                + "    WHERE sobi.deleted = 0 "
+                + "    GROUP BY sobi.product_id, sobi.warehouse_id ";
+    }
+
     static String getOrderExpression(String orderField, Long priceSystemId) {
         if (orderField == null) {
             return null;
@@ -408,7 +600,7 @@ public interface ErpStockMapper extends BaseMapperX<ErpStockDO> {
                 + "AND sci.product_id = erp_stock.product_id "
                 + "AND sci.warehouse_id = erp_stock.warehouse_id "
                 + "AND NOT EXISTS (SELECT 1 FROM erp_sale_out so WHERE so.deleted = b'0' "
-                + "AND so.source_id = sc.id))";
+                + "AND so.tenant_id=sc.tenant_id AND so.source_type=30 AND so.source_id = sc.id))";
         String saleOut = pendingAuditSum("erp_sale_out_items", "soi", "erp_sale_out", "so",
                 "soi.out_id", "soi.warehouse_id", "COALESCE(soi.count, 0)");
         String purchaseReturn = pendingAuditSum("erp_purchase_return_items", "pri", "erp_purchase_return", "pr",
@@ -567,6 +759,11 @@ public interface ErpStockMapper extends BaseMapperX<ErpStockDO> {
             return null;
         }
         return keyword.trim().replaceAll("\\s+", "%");
+    }
+
+    default ErpStockDO selectByProductIdAndWarehouseIdForUpdate(Long productId, Long warehouseId) {
+        return selectOne(new LambdaQueryWrapperX<ErpStockDO>().eq(ErpStockDO::getProductId, productId)
+                .eq(ErpStockDO::getWarehouseId, warehouseId).last("FOR UPDATE"));
     }
 
     default ErpStockDO selectByProductIdAndWarehouseId(Long productId, Long warehouseId) {

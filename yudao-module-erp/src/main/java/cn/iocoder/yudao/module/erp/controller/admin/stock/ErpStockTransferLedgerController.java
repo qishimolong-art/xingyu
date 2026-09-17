@@ -3,6 +3,7 @@ package cn.iocoder.yudao.module.erp.controller.admin.stock;
 import cn.iocoder.yudao.framework.apilog.core.annotation.ApiAccessLog;
 import cn.iocoder.yudao.framework.common.exception.ErrorCode;
 import cn.iocoder.yudao.framework.common.pojo.CommonResult;
+import cn.iocoder.yudao.framework.common.pojo.PageParam;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.excel.core.util.ExcelUtils;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.transferledger.ErpStockTransferLedgerDetailPageReqVO;
@@ -31,6 +32,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 import static cn.iocoder.yudao.framework.apilog.core.enums.OperateTypeEnum.EXPORT;
 import static cn.iocoder.yudao.framework.common.exception.util.ServiceExceptionUtil.exception;
@@ -90,11 +92,25 @@ public class ErpStockTransferLedgerController {
         return success(transferLedgerService.getVisibleFromDeptSimpleList());
     }
 
+    @GetMapping("/from-dept-simple-page")
+    @Operation(summary = "获得当前用户可见调拨台账调出部门分页")
+    @PreAuthorize("@ss.hasPermission('erp:stock-transfer-ledger:query')")
+    public CommonResult<PageResult<DeptSimpleRespVO>> getFromDeptSimplePage(@Valid PageParam pageReqVO) {
+        return success(pageDeptSimpleList(transferLedgerService.getVisibleFromDeptSimpleList(), pageReqVO));
+    }
+
     @GetMapping("/to-dept-simple-list")
     @Operation(summary = "鑾峰緱褰撳墠鐢ㄦ埛鍙璋冩嫧鍙拌处璋冨叆閮ㄩ棬绮剧畝鍒楄〃")
     @PreAuthorize("@ss.hasPermission('erp:stock-transfer-ledger:query')")
     public CommonResult<List<DeptSimpleRespVO>> getToDeptSimpleList() {
         return success(transferLedgerService.getVisibleToDeptSimpleList());
+    }
+
+    @GetMapping("/to-dept-simple-page")
+    @Operation(summary = "获得当前用户可见调拨台账调入部门分页")
+    @PreAuthorize("@ss.hasPermission('erp:stock-transfer-ledger:query')")
+    public CommonResult<PageResult<DeptSimpleRespVO>> getToDeptSimplePage(@Valid PageParam pageReqVO) {
+        return success(pageDeptSimpleList(transferLedgerService.getVisibleToDeptSimpleList(), pageReqVO));
     }
 
     @GetMapping("/export-excel")
@@ -113,6 +129,24 @@ public class ErpStockTransferLedgerController {
                 fieldPermissionMasker.getHiddenFieldSet(FIELD_PERMISSION_MODULE), EXPORT_PERMISSION_MAP);
         ExcelUtils.write(response, "调拨出入库台账.xls", "台账明细",
                 ErpStockTransferLedgerDetailRespVO.class, list, includeFields);
+    }
+
+    private PageResult<DeptSimpleRespVO> pageDeptSimpleList(List<DeptSimpleRespVO> list, PageParam pageReqVO) {
+        String keyword = pageReqVO.getKeyword() == null ? null : pageReqVO.getKeyword().trim();
+        List<DeptSimpleRespVO> filtered = keyword == null || keyword.isEmpty() ? list : list.stream()
+                .filter(dept -> containsKeyword(dept.getName(), keyword)
+                        || containsKeyword(String.valueOf(dept.getId()), keyword))
+                .collect(Collectors.toList());
+        int fromIndex = Math.max(0, (pageReqVO.getPageNo() - 1) * pageReqVO.getPageSize());
+        if (fromIndex >= filtered.size()) {
+            return new PageResult<>(Collections.emptyList(), (long) filtered.size());
+        }
+        int toIndex = Math.min(filtered.size(), fromIndex + pageReqVO.getPageSize());
+        return new PageResult<>(filtered.subList(fromIndex, toIndex), (long) filtered.size());
+    }
+
+    private boolean containsKeyword(String value, String keyword) {
+        return value != null && value.contains(keyword);
     }
 
     private static Map<String, String> buildExportPermissionMap() {

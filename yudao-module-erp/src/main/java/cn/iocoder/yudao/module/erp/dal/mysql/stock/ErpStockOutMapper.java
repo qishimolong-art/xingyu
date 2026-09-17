@@ -4,12 +4,15 @@ import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.mybatis.core.mapper.BaseMapperX;
 import cn.iocoder.yudao.framework.mybatis.core.query.MPJLambdaWrapperX;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.out.ErpStockOutPageReqVO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.product.ErpProductDO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.product.ErpProductUnitDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockOutDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockOutItemDO;
 import cn.iocoder.yudao.module.erp.dal.mysql.common.ErpKeywordQuery;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.core.toolkit.support.SFunction;
 import org.apache.ibatis.annotations.Mapper;
+import org.springframework.util.StringUtils;
 
 /**
  * ERP 其它出库�?Mapper
@@ -28,13 +31,17 @@ public interface ErpStockOutMapper extends BaseMapperX<ErpStockOutDO> {
                 .eqIfPresent(ErpStockOutDO::getDeptId, reqVO.getDeptId())
                 .likeIfPresent(ErpStockOutDO::getRemark, reqVO.getRemark())
                 .eqIfPresent(ErpStockOutDO::getCreator, reqVO.getCreator());
-        if (reqVO.getWarehouseId() != null || reqVO.getProductId() != null) {
+        if (reqVO.getWarehouseId() != null || reqVO.getProductId() != null || StringUtils.hasText(reqVO.getProductKeyword())) {
             query.leftJoin(ErpStockOutItemDO.class, ErpStockOutItemDO::getOutId, ErpStockOutDO::getId)
+                    .leftJoin(ErpProductDO.class, ErpProductDO::getId, ErpStockOutItemDO::getProductId)
+                    .leftJoin(ErpProductUnitDO.class, ErpProductUnitDO::getId, ErpStockOutItemDO::getProductUnitId)
                     .eq(reqVO.getWarehouseId() != null, ErpStockOutItemDO::getWarehouseId, reqVO.getWarehouseId())
                     .eq(reqVO.getProductId() != null, ErpStockOutItemDO::getProductId, reqVO.getProductId())
+                    .and(StringUtils.hasText(reqVO.getProductKeyword()), w -> ErpKeywordQuery.appendProductKeyword(w, reqVO.getProductKeyword()))
                     .groupBy(ErpStockOutDO::getId); // 避免 1 对多查询，产生相同的 1
         }
-        ErpKeywordQuery.appendWithDeptName(query, reqVO.getKeyword(),
+        ErpKeywordQuery.appendWithDeptNameAndSaleCustomerAndProductItemTokens(query, reqVO.getKeyword(),
+                "erp_stock_out_item", "out_id",
                 ErpStockOutDO::getNo, ErpStockOutDO::getRemark);
         orderBy(query, reqVO);
         return selectJoinPage(reqVO, ErpStockOutDO.class, query);

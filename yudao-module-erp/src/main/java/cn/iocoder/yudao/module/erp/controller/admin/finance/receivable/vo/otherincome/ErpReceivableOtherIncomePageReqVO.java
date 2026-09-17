@@ -33,6 +33,8 @@ public class ErpReceivableOtherIncomePageReqVO extends PageParam {
     private Integer status;
     private String remark;
     private String creator;
+    @Schema(description = "是否返回明细；为空或 true 时兼容旧行为返回明细，false 时仅返回列表主表数据")
+    private Boolean includeItems;
     public LocalDateTime getStartTime() { return bizTime == null || bizTime.length == 0 ? null : bizTime[0]; }
     public LocalDateTime getEndTime() { return bizTime == null || bizTime.length < 2 ? null : bizTime[1]; }
     @Schema(description = "排序字段")

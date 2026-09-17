@@ -8,6 +8,7 @@ import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockOutBillDO;
 import cn.iocoder.yudao.module.erp.dal.mysql.common.ErpKeywordQuery;
 import com.baomidou.mybatisplus.core.toolkit.support.SFunction;
 import org.apache.ibatis.annotations.Mapper;
+import org.springframework.util.StringUtils;
 
 import java.util.Collection;
 import java.util.Collections;
@@ -28,6 +29,7 @@ public interface ErpStockOutBillMapper extends BaseMapperX<ErpStockOutBillDO> {
                 .likeIfPresent(ErpStockOutBillDO::getPickUserName, reqVO.getPickUserName())
                 .eqIfPresent(ErpStockOutBillDO::getCreator, reqVO.getCreator())
                 .eqIfPresent(ErpStockOutBillDO::getAuditor, reqVO.getAuditor());
+        appendProductKeyword(wrapper, reqVO.getProductKeyword());
         ErpKeywordQuery.append(wrapper, reqVO.getKeyword(),
                 ErpStockOutBillDO::getNo, ErpStockOutBillDO::getSourceNo,
                 ErpStockOutBillDO::getSourceUnitName, ErpStockOutBillDO::getWarehouseName,
@@ -37,6 +39,24 @@ public interface ErpStockOutBillMapper extends BaseMapperX<ErpStockOutBillDO> {
                 ErpStockOutBillDO::getRemark);
         orderBy(wrapper, reqVO);
         return selectPage(reqVO, wrapper);
+    }
+
+    static void appendProductKeyword(LambdaQueryWrapperX<ErpStockOutBillDO> wrapper, String productKeyword) {
+        String keyword = ErpKeywordQuery.normalize(productKeyword);
+        if (!StringUtils.hasText(keyword)) {
+            return;
+        }
+        String like = "%" + keyword + "%";
+        wrapper.apply("EXISTS (SELECT 1 FROM erp_stock_out_bill_item i "
+                + "LEFT JOIN erp_product p ON p.id = i.product_id AND p.deleted = b'0' "
+                + "AND p.tenant_id = erp_stock_out_bill.tenant_id "
+                + "WHERE i.bill_id = erp_stock_out_bill.id "
+                + "AND i.deleted = b'0' AND i.tenant_id = erp_stock_out_bill.tenant_id "
+                + "AND (p.code LIKE {0} OR p.name LIKE {0} OR p.pinyin_code LIKE {0} "
+                + "OR p.wubi_code LIKE {0} OR p.bar_code LIKE {0} OR p.vehicle_model LIKE {0} "
+                + "OR p.factory_code LIKE {0} OR p.standard LIKE {0} OR p.brand LIKE {0} "
+                + "OR p.drawing_no LIKE {0} OR i.vehicle_model LIKE {0} OR i.brand LIKE {0} "
+                + "OR i.drawing_no LIKE {0} OR i.bar_code LIKE {0}))", like);
     }
 
     static void orderBy(LambdaQueryWrapperX<ErpStockOutBillDO> wrapper, ErpStockOutBillPageReqVO reqVO) {

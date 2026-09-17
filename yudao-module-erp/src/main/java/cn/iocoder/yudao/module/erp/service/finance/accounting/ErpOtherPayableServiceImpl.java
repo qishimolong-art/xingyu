@@ -48,8 +48,6 @@ public class ErpOtherPayableServiceImpl implements ErpOtherPayableService {
     @Resource
     private ErpNoRedisDAO noRedisDAO;
     @Resource
-    private ErpAutoVoucherBuilder autoVoucherBuilder;
-    @Resource
     private ErpVoucherService voucherService;
     @Resource
     private ErpBookOpenService bookOpenService;
@@ -156,7 +154,7 @@ public class ErpOtherPayableServiceImpl implements ErpOtherPayableService {
 
         // 5. 审核通过时生成凭证
         if (approve) {
-            generateVoucherOnApprove(payable);
+            // 由财务在凭证生成页统一处理。
         }
     }
 
@@ -216,23 +214,6 @@ public class ErpOtherPayableServiceImpl implements ErpOtherPayableService {
         BigDecimal discountAmount = payable.getDiscountAmount() != null ? payable.getDiscountAmount() : BigDecimal.ZERO;
         payable.setDiscountAmount(discountAmount);
         payable.setActualAmount(totalAmount.subtract(discountAmount));
-    }
-
-    private void generateVoucherOnApprove(ErpOtherPayableDO payable) {
-        LocalDate bizDate = payable.getBizTime() != null ? payable.getBizTime().toLocalDate() : LocalDate.now();
-        if (!bookOpenService.isVoucherTypeEnabled(bizDate, ErpVoucherTypeEnum.OTHER_PAYABLE.getType())) {
-            return;
-        }
-        List<ErpVoucherItemDO> voucherItems = autoVoucherBuilder.buildOtherPayableItems(payable);
-        voucherService.createVoucherFromBiz(
-                ErpVoucherSourceBizTypeEnum.OTHER_PAYABLE.getType(),
-                payable.getId(),
-                payable.getNo(),
-                payable.getActualAmount() != null ? payable.getActualAmount() : payable.getTotalAmount(),
-                bizDate,
-                "其他应付 - " + (payable.getPartyName() != null ? payable.getPartyName() : ""),
-                voucherItems
-        );
     }
 
 }

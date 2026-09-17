@@ -7,6 +7,7 @@ import cn.hutool.core.util.StrUtil;
 import cn.iocoder.yudao.framework.common.enums.CommonStatusEnum;
 import cn.iocoder.yudao.framework.common.enums.UserTypeEnum;
 import cn.iocoder.yudao.framework.common.exception.ServiceException;
+import cn.iocoder.yudao.framework.common.pojo.PageParam;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.common.util.collection.CollectionUtils;
 import cn.iocoder.yudao.framework.common.util.json.JsonUtils;
@@ -635,6 +636,11 @@ public class AdminUserServiceImpl implements AdminUserService {
 
         // 分页查询
         return userMapper.selectPage(reqVO, Collections.emptySet(), userIds);
+    }
+
+    @Override
+    public PageResult<AdminUserDO> getUserSimplePage(Integer status, String keyword, PageParam pageParam) {
+        return userMapper.selectSimplePage(pageParam, status, keyword);
     }
 
     @Override

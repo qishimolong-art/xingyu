@@ -47,6 +47,8 @@ class ErpAccountDraftServiceImplTest extends BaseMockitoUnitTest {
     private ErpOperateLogService operateLogService;
     @Mock
     private ErpAccountingSubjectService accountingSubjectService;
+    @Mock
+    private cn.iocoder.yudao.module.erp.service.finance.accounting.rule.ErpVoucherRuleStore voucherRuleStore;
 
     @Test
     void createDraft_allowsMissingNameAndUsesSafeDefaults() {

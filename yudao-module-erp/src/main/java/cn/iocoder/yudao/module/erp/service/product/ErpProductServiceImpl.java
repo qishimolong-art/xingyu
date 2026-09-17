@@ -44,9 +44,11 @@ import cn.iocoder.yudao.module.erp.dal.mysql.stock.ErpStockRecordMapper;
 import cn.iocoder.yudao.module.erp.dal.redis.no.ErpNoRedisDAO;
 import cn.iocoder.yudao.module.erp.service.base.ErpBaseArchiveReferenceService;
 import cn.iocoder.yudao.module.erp.service.base.ErpArchiveMergeService;
+import cn.iocoder.yudao.module.erp.service.common.ErpMnemonicCodeUtils;
 import cn.iocoder.yudao.module.erp.service.common.ErpOperateLogService;
 import cn.iocoder.yudao.module.erp.service.config.ErpFieldConfigService;
 import cn.iocoder.yudao.module.erp.service.mall.ErpMallProductSyncPublisher;
+import cn.iocoder.yudao.module.erp.service.stock.ErpProductStockInitService;
 import cn.iocoder.yudao.module.infra.api.config.ConfigApi;
 import cn.iocoder.yudao.module.system.api.dept.DeptApi;
 import cn.iocoder.yudao.module.system.api.dept.dto.DeptRespDTO;
@@ -81,6 +83,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
 import static cn.iocoder.yudao.framework.common.exception.util.ServiceExceptionUtil.exception;
@@ -96,6 +99,7 @@ import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PRODUCT_CATEG
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PRODUCT_CATEGORY_NOT_LEAF;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PRODUCT_DELETE_FAIL_STOCK_EXISTS;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PRODUCT_MERGED;
+import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PRODUCT_NAME_DUPLICATE;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PRODUCT_NOT_ENABLE;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PRODUCT_NOT_EXISTS;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PRODUCT_FIELD_NO_PERMISSION;
@@ -185,10 +189,21 @@ public class ErpProductServiceImpl implements ErpProductService {
     private AdminUserApi adminUserApi;
     @Resource
     private ErpOperateLogService operateLogService;
+    @Resource
+    private cn.iocoder.yudao.module.erp.service.stock.cost.ErpStockDimensionService stockDimensionService;
+    @Resource
+    private ErpProductStockInitService productStockInitService;
+    @Resource
+    private org.springframework.transaction.PlatformTransactionManager transactionManager;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Long createProduct(ProductSaveReqVO createReqVO) {
+        return createProductInternal(createReqVO, true);
+    }
+
+    private Long createProductInternal(ProductSaveReqVO createReqVO, boolean initAllRealWarehouseStocks) {
+        stockDimensionService.lockIdentityChanges();
         // 1. 默认仓库必填，并校验仓库存在
         applyProductSaveFieldPermissions(createReqVO, null);
         ignoreReadonlyProductSaveFields(createReqVO);
@@ -1085,6 +1100,8 @@ public class ErpProductServiceImpl implements ErpProductService {
 
         // 2. 生成配件编码（带重试，防并发）并插入主表
         ErpProductDO product = BeanUtils.toBean(createReqVO, ErpProductDO.class);
+        product.setName(trimToNull(product.getName()));
+        validateProductNameUnique(null, product.getName());
         if (product.getMergedFlag() == null) {
             product.setMergedFlag(false);
         }
@@ -1105,7 +1122,11 @@ public class ErpProductServiceImpl implements ErpProductService {
         normalizeProductOptionalFields(product);
         insertProduct(product);
         saveProductCustomFields(product.getId(), createReqVO, getHiddenFieldSet(), true);
-        initProductStock(product.getId(), createReqVO.getDefaultWarehouseId());
+        if (initAllRealWarehouseStocks) {
+            productStockInitService.ensureProductStockForEnabledRealWarehouses(product.getId());
+        } else {
+            initProductStock(product.getId(), createReqVO.getDefaultWarehouseId());
+        }
         syncProductOpenDeptByStockDistribution(product.getId());
 
         // 3. 校验并插入通用件子表
@@ -1173,6 +1194,11 @@ public class ErpProductServiceImpl implements ErpProductService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void updateProduct(ProductSaveReqVO updateReqVO) {
+        updateProductInternal(updateReqVO);
+    }
+
+    private void updateProductInternal(ProductSaveReqVO updateReqVO) {
+        stockDimensionService.lockIdentityChanges();
         // 1. 校验存在 & 未被合并
         ErpProductDO existing = validateManageableProductExists(updateReqVO.getId());
         ProductLogSnapshot before = loadProductLogSnapshot(updateReqVO.getId());
@@ -1190,6 +1216,8 @@ public class ErpProductServiceImpl implements ErpProductService {
 
         // 2. 更新主表（code/mergedFlag/mergedTargetId 不允许通过此接口修改，保留原值）
         ErpProductDO updateObj = BeanUtils.toBean(updateReqVO, ErpProductDO.class);
+        updateObj.setName(trimToNull(updateObj.getName()));
+        validateProductNameUnique(existing.getId(), updateObj.getName());
         prepareProductCode(updateObj, updateReqVO.getCode(), existing.getId());
         updateObj.setDeptId(existing.getDeptId());
         updateObj.setCreateDeptId(existing.getCreateDeptId());
@@ -1221,6 +1249,7 @@ public class ErpProductServiceImpl implements ErpProductService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void batchUpdateProduct(ProductBatchUpdateReqVO updateReqVO) {
+        stockDimensionService.lockIdentityChanges();
         if (CollUtil.isEmpty(updateReqVO.getIds())) {
             return;
         }
@@ -1244,6 +1273,9 @@ public class ErpProductServiceImpl implements ErpProductService {
         }
         validateDefaultWarehouseExists(defaultWarehouseId);
 
+        if (defaultWarehouseId != null) {
+            reserveProductStockDimensions(updateReqVO.getIds(), Collections.singleton(defaultWarehouseId));
+        }
         List<ErpProductDO> products = productMapper.selectByIds(updateReqVO.getIds());
         Map<Long, ErpProductDO> productMap = convertMap(products, ErpProductDO::getId);
         for (Long id : updateReqVO.getIds()) {
@@ -1403,6 +1435,17 @@ public class ErpProductServiceImpl implements ErpProductService {
         }
     }
 
+    private void validateProductNameUnique(Long excludeId, String name) {
+        String normalizedName = trimToNull(name);
+        if (!StringUtils.hasText(normalizedName)) {
+            return;
+        }
+        ErpProductDO existing = productMapper.selectByNameExcludeId(normalizedName, excludeId);
+        if (existing != null) {
+            throw exception(PRODUCT_NAME_DUPLICATE, normalizedName);
+        }
+    }
+
     private void insertProduct(ErpProductDO product) {
         if (!StringUtils.hasText(product.getCode())) {
             insertWithGeneratedCode(product);
@@ -1425,7 +1468,9 @@ public class ErpProductServiceImpl implements ErpProductService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void deleteProduct(Long id) {
+        stockDimensionService.lockIdentityChanges();
         ErpProductDO product = validateManageableProductExists(id);
+        stockDimensionService.assertProductIdentityChange(id);
         ProductLogSnapshot before = loadProductLogSnapshot(id);
         validateProductCanDelete(product);
         stockMapper.delete(ErpStockDO::getProductId, id);
@@ -1439,11 +1484,14 @@ public class ErpProductServiceImpl implements ErpProductService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void mergeProduct(Long sourceId, Long keepId) {
+        stockDimensionService.lockIdentityChanges();
         if (Objects.equals(sourceId, keepId)) {
             throw exception(ARCHIVE_MERGE_SAME_ID);
         }
         ErpProductDO source = validateManageableProductExists(sourceId);
         ErpProductDO keep = validateManageableProductExists(keepId);
+        stockDimensionService.assertProductIdentityChange(sourceId);
+        stockDimensionService.assertProductIdentityChange(keepId);
         if (Boolean.TRUE.equals(source.getMergedFlag())) {
             throw exception(PRODUCT_MERGED, source.getName());
         }
@@ -1452,9 +1500,9 @@ public class ErpProductServiceImpl implements ErpProductService {
         }
         ProductLogSnapshot before = loadProductLogSnapshot(sourceId);
         ProductLogSnapshot keepSnapshot = loadProductLogSnapshot(keepId);
-        archiveMergeService.validateProductStockMergeConflict(sourceId, keepId);
         String operatorId = String.valueOf(getLoginUserId());
-        archiveMergeService.mergeProductReferences(sourceId, keepId, source.getCode(), keep.getCode(), operatorId);
+        archiveMergeService.mergeProductReferences(sourceId, keepId,
+                source.getCode(), keep.getCode(), source.getName(), keep.getName(), operatorId);
         productMapper.update(null, new LambdaUpdateWrapper<ErpProductDO>()
                 .eq(ErpProductDO::getId, sourceId)
                 .ne(ErpProductDO::getMergedFlag, Boolean.TRUE)
@@ -1500,25 +1548,17 @@ public class ErpProductServiceImpl implements ErpProductService {
     }
 
     private void initProductStock(Long productId, Long warehouseId) {
-        if (productId == null || warehouseId == null) {
-            return;
-        }
-        if (stockMapper.selectByProductIdAndWarehouseId(productId, warehouseId) != null) {
-            return;
-        }
-        stockMapper.insert(new ErpStockDO()
-                .setProductId(productId)
-                .setWarehouseId(warehouseId)
-                .setDeptId(resolveWarehouseDeptId(warehouseId))
-                .setCount(BigDecimal.ZERO)
-                .setLockCount(BigDecimal.ZERO)
-                .setCostPrice(BigDecimal.ZERO)
-                .setCostAmount(BigDecimal.ZERO));
+        productStockInitService.ensureStockExists(productId, warehouseId);
     }
 
-    private Long resolveWarehouseDeptId(Long warehouseId) {
-        ErpWarehouseDO warehouse = warehouseService.getWarehouse(warehouseId);
-        return warehouse != null ? warehouse.getDeptId() : null;
+    private void reserveProductStockDimensions(Collection<Long> productIds, Collection<Long> warehouseIds) {
+        List<ErpStockDO> dimensions = new ArrayList<>();
+        for (Long productId : productIds) {
+            for (Long warehouseId : warehouseIds) {
+                dimensions.add(new ErpStockDO().setProductId(productId).setWarehouseId(warehouseId));
+            }
+        }
+        stockDimensionService.reserveDimensions(dimensions);
     }
 
     private ErpProductStockDistributionRespVO.WarehouseItem buildStockDistributionWarehouseItem(
@@ -1743,6 +1783,7 @@ public class ErpProductServiceImpl implements ErpProductService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void updateProductStockDistribution(ErpProductStockDistributionSaveReqVO reqVO) {
+        stockDimensionService.lockIdentityChanges();
         ErpProductDO product = validateVisibleProductExists(reqVO.getProductId());
         validateProductCanStockDistribute(product);
 
@@ -1760,6 +1801,7 @@ public class ErpProductServiceImpl implements ErpProductService {
                         LinkedHashMap::new));
 
         List<Long> addedWarehouseIds = new ArrayList<>();
+        reserveProductStockDimensions(Collections.singleton(reqVO.getProductId()), targetWarehouseIds);
         for (Long warehouseId : targetWarehouseIds) {
             if (existingStockMap.containsKey(warehouseId)) {
                 continue;
@@ -1781,6 +1823,7 @@ public class ErpProductServiceImpl implements ErpProductService {
             if (!canRemoveStockDistribution(stock)) {
                 throw exception(PRODUCT_STOCK_DISTRIBUTION_REMOVE_DENIED, getWarehouseDisplayName(warehouseId));
             }
+            stockDimensionService.assertStockRemoval(stock.getId());
             stockMapper.deleteById(stock.getId());
             removedWarehouseIds.add(warehouseId);
         }
@@ -1798,6 +1841,7 @@ public class ErpProductServiceImpl implements ErpProductService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void batchUpdateProductStockDistribution(ErpProductStockDistributionBatchSaveReqVO reqVO) {
+        stockDimensionService.lockIdentityChanges();
         Set<Long> productIds = reqVO.getProductIds().stream()
                 .filter(Objects::nonNull)
                 .collect(Collectors.toCollection(LinkedHashSet::new));
@@ -1809,6 +1853,7 @@ public class ErpProductServiceImpl implements ErpProductService {
                 .collect(Collectors.toCollection(LinkedHashSet::new));
         validateStockDistributionWarehouseIds(targetWarehouseIds);
 
+        reserveProductStockDimensions(productIds, targetWarehouseIds);
         for (Long productId : productIds) {
             ErpProductDO product = validateVisibleProductExists(productId);
             validateProductCanStockDistribute(product);
@@ -3060,32 +3105,60 @@ public class ErpProductServiceImpl implements ErpProductService {
         if (productId == null) {
             return;
         }
+        syncProductOpenDeptByStockDistribution(Collections.singletonList(productId));
+    }
+
+    private void syncProductOpenDeptByStockDistribution(Collection<Long> productIds) {
+        List<Long> distinctProductIds = productIds == null ? Collections.emptyList() : productIds.stream()
+                .filter(Objects::nonNull)
+                .collect(Collectors.toCollection(LinkedHashSet::new))
+                .stream()
+                .collect(Collectors.toList());
+        if (CollUtil.isEmpty(distinctProductIds)) {
+            return;
+        }
         List<ErpStockDO> stocks = DataPermissionUtils.executeIgnore(() ->
-                stockMapper.selectListByProductId(productId));
+                stockMapper.selectListByProductIds(distinctProductIds));
+        if (stocks == null) {
+            stocks = Collections.emptyList();
+        }
         Set<Long> warehouseIds = stocks.stream()
                 .map(ErpStockDO::getWarehouseId)
                 .filter(Objects::nonNull)
                 .collect(Collectors.toCollection(LinkedHashSet::new));
-        if (CollUtil.isEmpty(warehouseIds)) {
+        Map<Long, Set<Long>> productWarehouseIdMap = new HashMap<>();
+        for (Long productId : distinctProductIds) {
+            productWarehouseIdMap.put(productId, new LinkedHashSet<>());
+        }
+        for (ErpStockDO stock : stocks) {
+            if (stock.getProductId() == null || stock.getWarehouseId() == null) {
+                continue;
+            }
+            productWarehouseIdMap.computeIfAbsent(stock.getProductId(), key -> new LinkedHashSet<>())
+                    .add(stock.getWarehouseId());
+        }
+        Map<Long, ErpWarehouseDO> warehouseMap = CollUtil.isEmpty(warehouseIds) ? Collections.emptyMap()
+                : DataPermissionUtils.executeIgnore(() -> warehouseService.getWarehouseMap(warehouseIds));
+        List<ErpProductDeptDO> productDeptList = new ArrayList<>();
+        for (Long productId : distinctProductIds) {
+            List<Long> deptIds = productWarehouseIdMap.getOrDefault(productId, Collections.emptySet()).stream()
+                    .map(warehouseMap::get)
+                    .filter(Objects::nonNull)
+                    .map(ErpWarehouseDO::getDeptId)
+                    .filter(Objects::nonNull)
+                    .distinct()
+                    .collect(Collectors.toList());
             productMapper.update(null, new LambdaUpdateWrapper<ErpProductDO>()
                     .eq(ErpProductDO::getId, productId)
-                    .set(ErpProductDO::getDeptId, null));
-            syncProductDeptList(productId, Collections.emptyList());
-            return;
+                    .set(ErpProductDO::getDeptId, CollUtil.isEmpty(deptIds) ? null : deptIds.get(0)));
+            productDeptList.addAll(deptIds.stream()
+                    .map(deptId -> new ErpProductDeptDO().setProductId(productId).setDeptId(deptId))
+                    .collect(Collectors.toList()));
         }
-        Map<Long, ErpWarehouseDO> warehouseMap = DataPermissionUtils.executeIgnore(() ->
-                warehouseService.getWarehouseMap(warehouseIds));
-        List<Long> deptIds = warehouseIds.stream()
-                .map(warehouseMap::get)
-                .filter(Objects::nonNull)
-                .map(ErpWarehouseDO::getDeptId)
-                .filter(Objects::nonNull)
-                .distinct()
-                .collect(Collectors.toList());
-        productMapper.update(null, new LambdaUpdateWrapper<ErpProductDO>()
-                .eq(ErpProductDO::getId, productId)
-                .set(ErpProductDO::getDeptId, CollUtil.isEmpty(deptIds) ? null : deptIds.get(0)));
-        syncProductDeptList(productId, deptIds);
+        productDeptMapper.deleteByProductIds(distinctProductIds);
+        if (CollUtil.isNotEmpty(productDeptList)) {
+            productDeptMapper.insertBatch(productDeptList);
+        }
     }
 
     private String formatDeptNames(Collection<Long> deptIds, Map<Long, DeptRespDTO> deptMap) {
@@ -3326,6 +3399,7 @@ public class ErpProductServiceImpl implements ErpProductService {
         Map<String, ErpProductBrandDO> brandMap = buildBrandNameMap();
         Map<String, ErpWarehouseDO> warehouseMap = buildWarehouseNameMap();
         Map<String, ErpProductDO> existedMap = buildExistedProductMap(list);
+        Set<Long> successfulProductIds = new LinkedHashSet<>();
 
         for (int i = 0; i < list.size(); i++) {
             ErpProductImportExcelVO row = list.get(i);
@@ -3335,13 +3409,20 @@ public class ErpProductServiceImpl implements ErpProductService {
             Integer rowNo = i + 2;
             String code = trimToNull(row.getCode());
             try {
-                ProductSaveReqVO saveReqVO = buildSaveReqVO(row, categoryMap, unitMap, brandMap, warehouseMap);
-                if (StringUtils.hasText(code) && existedMap.containsKey(code)) {
-                    saveReqVO.setId(existedMap.get(code).getId());
-                    updateProduct(saveReqVO);
+                ErpProductDO existing = StringUtils.hasText(code) ? existedMap.get(code) : null;
+                ProductSaveReqVO saveReqVO = buildSaveReqVO(row, categoryMap, unitMap, brandMap, warehouseMap,
+                        existing);
+                if (existing != null) {
+                    saveReqVO.setId(existing.getId());
+                    Long productId = executeProductImportRow(() -> {
+                        updateProductInternal(saveReqVO);
+                        return existing.getId();
+                    });
+                    successfulProductIds.add(productId);
                     respVO.setUpdateCount(respVO.getUpdateCount() + 1);
                 } else {
-                    createProduct(saveReqVO);
+                    Long productId = executeProductImportRow(() -> createProductInternal(saveReqVO, false));
+                    successfulProductIds.add(productId);
                     respVO.setCreateCount(respVO.getCreateCount() + 1);
                 }
             } catch (Exception ex) {
@@ -3349,6 +3430,8 @@ public class ErpProductServiceImpl implements ErpProductService {
                         rowNo, code, getImportFailureReason(ex)));
             }
         }
+        productStockInitService.ensureProductsStockForEnabledRealWarehouses(successfulProductIds);
+        syncProductOpenDeptByStockDistribution(successfulProductIds);
 
         respVO.setSuccessCount(respVO.getCreateCount() + respVO.getUpdateCount());
         respVO.setFailureCount(respVO.getFailureDetails().size());
@@ -3358,6 +3441,16 @@ public class ErpProductServiceImpl implements ErpProductService {
                         + "，失败：" + respVO.getFailureCount(),
                 "产品导入");
         return respVO;
+    }
+
+    private <T> T executeProductImportRow(Supplier<T> action) {
+        if (!stockDimensionService.isEnabled()) {
+            return action.get();
+        }
+        org.springframework.transaction.support.TransactionTemplate rowTransaction =
+                new org.springframework.transaction.support.TransactionTemplate(transactionManager);
+        rowTransaction.setPropagationBehavior(org.springframework.transaction.TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+        return rowTransaction.execute(status -> action.get());
     }
 
     public List<ErpProductImportExcelVO> parseCsvImport(Reader reader) {
@@ -3447,12 +3540,14 @@ public class ErpProductServiceImpl implements ErpProductService {
                                             Map<String, ErpProductCategoryDO> categoryMap,
                                             Map<String, ErpProductUnitDO> unitMap,
                                             Map<String, ErpProductBrandDO> brandMap,
-                                            Map<String, ErpWarehouseDO> warehouseMap) {
+                                            Map<String, ErpWarehouseDO> warehouseMap,
+                                            ErpProductDO existing) {
         ProductSaveReqVO reqVO = new ProductSaveReqVO();
         reqVO.setCode(trimToNull(row.getCode()));
         reqVO.setName(trimToNull(row.getName()));
         reqVO.setPinyinCode(trimToNull(row.getPinyinCode()));
         reqVO.setWubiCode(trimToNull(row.getWubiCode()));
+        fillProductImportMnemonicCodes(reqVO, existing);
         reqVO.setBarCode(trimToNull(row.getBarCode()));
         reqVO.setCategoryId(resolveCategoryId(row.getCategoryCode(), categoryMap));
         reqVO.setBatchNoEnabled(Boolean.TRUE.equals(row.getBatchNoEnabled()));
@@ -3483,6 +3578,21 @@ public class ErpProductServiceImpl implements ErpProductService {
         reqVO.setDetailContent(trimToNull(row.getDetailContent()));
         ValidationUtils.validate(reqVO);
         return reqVO;
+    }
+
+    private void fillProductImportMnemonicCodes(ProductSaveReqVO reqVO, ErpProductDO existing) {
+        String name = trimToNull(reqVO.getName());
+        if (!StringUtils.hasText(name)) {
+            return;
+        }
+        if (!StringUtils.hasText(reqVO.getPinyinCode())) {
+            reqVO.setPinyinCode(existing != null && StringUtils.hasText(existing.getPinyinCode())
+                    ? existing.getPinyinCode() : ErpMnemonicCodeUtils.buildPinyinCode(name));
+        }
+        if (!StringUtils.hasText(reqVO.getWubiCode())) {
+            reqVO.setWubiCode(existing != null && StringUtils.hasText(existing.getWubiCode())
+                    ? existing.getWubiCode() : ErpMnemonicCodeUtils.buildWubiCode(name));
+        }
     }
 
     private Long resolveCategoryId(String categoryCode, Map<String, ErpProductCategoryDO> categoryMap) {

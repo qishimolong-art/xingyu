@@ -9,10 +9,13 @@ import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleReturnItemDO;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.toolkit.support.SFunction;
 import org.apache.ibatis.annotations.Mapper;
+import org.apache.ibatis.annotations.Param;
+import org.apache.ibatis.annotations.Select;
 
 import java.math.BigDecimal;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -25,6 +28,18 @@ import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.
  */
 @Mapper
 public interface ErpSaleReturnItemMapper extends BaseMapperX<ErpSaleReturnItemDO> {
+
+    default List<ErpSaleReturnItemDO> selectListByReturnIdForUpdate(Long returnId) {
+        // 已持父锁；当前读避免外层旧RR快照，不在FOR UPDATE前拼接会被拦截器错误重排的ORDER BY。
+        return selectList(new LambdaQueryWrapperX<ErpSaleReturnItemDO>()
+                .eq(ErpSaleReturnItemDO::getReturnId, returnId).last("FOR UPDATE"));
+    }
+
+    default int clearOriginalReferencesByReturnId(Long returnId) {
+        return update(null, new com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper<ErpSaleReturnItemDO>()
+                .eq(ErpSaleReturnItemDO::getReturnId, returnId)
+                .set(ErpSaleReturnItemDO::getSourceOutItemId, null).set(ErpSaleReturnItemDO::getOrderItemId, null));
+    }
 
     default List<ErpSaleReturnItemDO> selectListByReturnId(Long returnId) {
         return selectList(ErpSaleReturnItemDO::getReturnId, returnId);
@@ -50,6 +65,56 @@ public interface ErpSaleReturnItemMapper extends BaseMapperX<ErpSaleReturnItemDO
     default List<ErpSaleReturnItemDO> selectListByReturnIds(Collection<Long> returnIds) {
         return selectList(ErpSaleReturnItemDO::getReturnId, returnIds);
     }
+
+    default Map<Long, Integer> selectItemCountMapByReturnIds(Collection<Long> returnIds) {
+        if (CollUtil.isEmpty(returnIds)) {
+            return Collections.emptyMap();
+        }
+        List<Map<String, Object>> rows = selectMaps(new QueryWrapper<ErpSaleReturnItemDO>()
+                .select("return_id, COUNT(1) AS item_count")
+                .in("return_id", returnIds)
+                .groupBy("return_id"));
+        Map<Long, Integer> result = new HashMap<>();
+        for (Map<String, Object> row : rows) {
+            Object returnId = row.get("return_id");
+            Object count = row.get("item_count");
+            if (returnId != null && count != null) {
+                result.put(((Number) returnId).longValue(), ((Number) count).intValue());
+            }
+        }
+        return result;
+    }
+
+    default Map<Long, String> selectProductNamesMapByReturnIds(Collection<Long> returnIds) {
+        if (CollUtil.isEmpty(returnIds)) {
+            return Collections.emptyMap();
+        }
+        List<Map<String, Object>> rows = selectProductNamesRows(returnIds);
+        Map<Long, String> result = new HashMap<>();
+        for (Map<String, Object> row : rows) {
+            Object returnId = row.get("return_id");
+            Object productNames = row.get("product_names");
+            if (returnId != null && productNames != null) {
+                result.put(((Number) returnId).longValue(), productNames.toString());
+            }
+        }
+        return result;
+    }
+
+    @Select({
+            "<script>",
+            "SELECT sri.return_id, GROUP_CONCAT(p.name ORDER BY sri.id SEPARATOR '，') AS product_names",
+            "  FROM erp_sale_return_items sri",
+            "  LEFT JOIN erp_product p ON p.id = sri.product_id AND p.deleted = 0",
+            " WHERE sri.deleted = 0",
+            "   AND sri.return_id IN",
+            "   <foreach collection='returnIds' item='returnId' open='(' separator=',' close=')'>",
+            "     #{returnId}",
+            "   </foreach>",
+            " GROUP BY sri.return_id",
+            "</script>"
+    })
+    List<Map<String, Object>> selectProductNamesRows(@Param("returnIds") Collection<Long> returnIds);
 
     default int deleteByReturnId(Long returnId) {
         return delete(ErpSaleReturnItemDO::getReturnId, returnId);

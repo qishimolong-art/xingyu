@@ -1,6 +1,9 @@
 package cn.iocoder.yudao.module.erp.dal.mysql.stock;
 
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockMoveDO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.product.ErpProductDO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.product.ErpProductUnitDO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockMoveItemDO;
 import cn.iocoder.yudao.module.erp.enums.sale.ErpSaleBizSourceTypeEnum;
 import cn.iocoder.yudao.framework.mybatis.core.query.LambdaQueryWrapperX;
 import cn.iocoder.yudao.framework.mybatis.core.query.MPJLambdaWrapperX;
@@ -13,6 +16,7 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.Collections;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -31,6 +35,9 @@ class ErpStockMoveMapperTest {
         MapperBuilderAssistant assistant = new MapperBuilderAssistant(configuration, "");
         assistant.setCurrentNamespace(ErpStockMoveMapper.class.getName());
         TableInfoHelper.initTableInfo(assistant, ErpStockMoveDO.class);
+        TableInfoHelper.initTableInfo(assistant, ErpStockMoveItemDO.class);
+        TableInfoHelper.initTableInfo(assistant, ErpProductDO.class);
+        TableInfoHelper.initTableInfo(assistant, ErpProductUnitDO.class);
     }
 
     @Test
@@ -54,21 +61,23 @@ class ErpStockMoveMapperTest {
     }
 
     @Test
-    void applyTransferOutVisibleScope_departmentScope_requiresAllFromDepartments() {
+    void applyTransferOutVisibleScope_departmentScope_matchesAnyMoveOrItemDepartment() {
         MPJLambdaWrapperX<ErpStockMoveDO> wrapper = new MPJLambdaWrapperX<>();
 
         ErpStockMoveMapper.applyTransferOutVisibleScope(wrapper, Arrays.asList(10L, 20L), false);
 
         String sqlSegment = wrapper.getSqlSegment();
+        assertTrue(sqlSegment.contains("dept_id"));
         assertTrue(sqlSegment.contains("from_dept_id"));
+        assertTrue(sqlSegment.contains("to_dept_id"));
         assertTrue(sqlSegment.contains("EXISTS"));
-        assertTrue(sqlSegment.contains("NOT EXISTS"));
         assertTrue(sqlSegment.contains("erp_stock_move_item"));
         assertTrue(sqlSegment.contains("i.from_dept_id IN"));
-        assertTrue(sqlSegment.contains("NOT IN"));
-        assertTrue(sqlSegment.contains("i.from_dept_id IS NULL"));
-        assertFalse(sqlSegment.contains("t.from_dept_id"));
-        assertFalse(sqlSegment.contains("t.dept_id"));
+        assertTrue(sqlSegment.contains("i.to_dept_id IN"));
+        assertTrue(sqlSegment.contains("OR"));
+        assertFalse(sqlSegment.contains("NOT EXISTS"));
+        assertFalse(sqlSegment.contains("NOT IN"));
+        assertFalse(sqlSegment.contains("IS NULL"));
         assertFalse(sqlSegment.contains("creator"));
     }
 
@@ -94,22 +103,23 @@ class ErpStockMoveMapperTest {
     }
 
     @Test
-    void applyTransferInVisibleScope_departmentScope_requiresAllToDepartments() {
+    void applyTransferInVisibleScope_departmentScope_matchesAnyMoveOrItemDepartment() {
         MPJLambdaWrapperX<ErpStockMoveDO> wrapper = new MPJLambdaWrapperX<>();
 
         ErpStockMoveMapper.applyTransferInVisibleScope(wrapper, Arrays.asList(10L, 20L), false);
 
         String sqlSegment = wrapper.getSqlSegment();
+        assertTrue(sqlSegment.contains("dept_id"));
+        assertTrue(sqlSegment.contains("from_dept_id"));
         assertTrue(sqlSegment.contains("to_dept_id"));
         assertTrue(sqlSegment.contains("EXISTS"));
-        assertTrue(sqlSegment.contains("NOT EXISTS"));
         assertTrue(sqlSegment.contains("erp_stock_move_item"));
+        assertTrue(sqlSegment.contains("i.from_dept_id IN"));
         assertTrue(sqlSegment.contains("i.to_dept_id IN"));
-        assertTrue(sqlSegment.contains("NOT IN"));
-        assertTrue(sqlSegment.contains("i.to_dept_id IS NULL"));
-        assertFalse(sqlSegment.contains("t.dept_id"));
-        assertFalse(sqlSegment.contains("t.to_dept_id"));
-        assertFalse(sqlSegment.contains("i.from_dept_id"));
+        assertTrue(sqlSegment.contains("OR"));
+        assertFalse(sqlSegment.contains("NOT EXISTS"));
+        assertFalse(sqlSegment.contains("NOT IN"));
+        assertFalse(sqlSegment.contains("IS NULL"));
         assertFalse(sqlSegment.contains("creator"));
     }
 
@@ -132,6 +142,33 @@ class ErpStockMoveMapperTest {
         ErpStockMoveMapper.applyTransferInVisibleScope(wrapper, Collections.singleton(10L), true);
 
         assertTrue(wrapper.getSqlSegment().isEmpty());
+    }
+
+    @Test
+    void appendStockMoveKeyword_supportsProductNameAndUnitTokens() {
+        MPJLambdaWrapperX<ErpStockMoveDO> wrapper = new MPJLambdaWrapperX<>();
+
+        ErpStockMoveMapper.appendStockMoveKeyword(wrapper, "极护SP新包装，桶");
+
+        String sql = wrapper.getCustomSqlSegment();
+        Collection<Object> values = wrapper.getParamNameValuePairs().values();
+        assertTrue(sql.contains("erp_stock_move_item"), sql);
+        assertTrue(sql.contains("erp_product_unit"), sql);
+        assertTrue(sql.contains("u.name LIKE"), sql);
+        assertTrue(values.contains("%极护SP新包装，桶%"), values.toString());
+        assertTrue(values.contains("%极护SP新包装%"), values.toString());
+        assertTrue(values.contains("%桶%"), values.toString());
+    }
+
+    @Test
+    void appendStockMoveKeyword_stripsTrailingExplicitDelimiterForProductItems() {
+        MPJLambdaWrapperX<ErpStockMoveDO> wrapper = new MPJLambdaWrapperX<>();
+
+        ErpStockMoveMapper.appendStockMoveKeyword(wrapper, "极护SP新包装,");
+
+        wrapper.getCustomSqlSegment();
+        Collection<Object> values = wrapper.getParamNameValuePairs().values();
+        assertTrue(values.contains("%极护SP新包装%"), values.toString());
     }
 
 }

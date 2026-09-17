@@ -5,10 +5,16 @@ import cn.iocoder.yudao.framework.test.core.ut.BaseMockitoUnitTest;
 import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpProductRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.move.ErpStockMoveSaveReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.move.ErpStockMoveRespVO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpCustomerDO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleCartDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockMoveDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockMoveItemDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpWarehouseDO;
+import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpSaleCartMapper;
+import cn.iocoder.yudao.module.erp.enums.sale.ErpSaleBizSourceTypeEnum;
 import cn.iocoder.yudao.module.erp.service.product.ErpProductService;
+import cn.iocoder.yudao.module.erp.service.common.ErpPrintService;
+import cn.iocoder.yudao.module.erp.service.sale.ErpCustomerService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpStockFieldPermissionMasker;
 import cn.iocoder.yudao.module.erp.service.stock.ErpStockMoveService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpStockService;
@@ -63,6 +69,12 @@ class ErpStockMoveControllerTest extends BaseMockitoUnitTest {
     @Mock
     private ErpWarehouseService warehouseService;
     @Mock
+    private ErpPrintService printService;
+    @Mock
+    private ErpSaleCartMapper saleCartMapper;
+    @Mock
+    private ErpCustomerService customerService;
+    @Mock
     private DeptApi deptApi;
     @Mock
     private AdminUserApi adminUserApi;
@@ -111,6 +123,8 @@ class ErpStockMoveControllerTest extends BaseMockitoUnitTest {
             return result;
         });
         when(adminUserApi.getUserMap(anyCollection())).thenReturn(Collections.emptyMap());
+        when(printService.getPrintCountMap(any(), anyCollection())).thenReturn(Collections.emptyMap());
+        when(printService.getLastPrintTimeMap(any(), anyCollection())).thenReturn(Collections.emptyMap());
         Map<Long, ErpStockMoveApprovePermission> approvePermissionMap = new HashMap<>();
         approvePermissionMap.put(1L, ErpStockMoveApprovePermission.allowed());
         approvePermissionMap.put(2L, ErpStockMoveApprovePermission.denied("denied"));
@@ -118,7 +132,7 @@ class ErpStockMoveControllerTest extends BaseMockitoUnitTest {
                 false, Arrays.asList(20L, 21L));
         when(stockMoveService.getApprovePermissionMap(
                 eq(stockMoves), anyMap(), eq(permissionScope))).thenReturn(approvePermissionMap);
-        when(stockMoveService.getDeletePermission(any(), anyList()))
+        when(stockMoveService.getDeletePermission(any(), any()))
                 .thenReturn(ErpStockMoveOperationPermission.allowed());
 
         PageResult<ErpStockMoveRespVO> result = controller.buildStockMoveVOPageResult(
@@ -138,6 +152,36 @@ class ErpStockMoveControllerTest extends BaseMockitoUnitTest {
         verify(deptApi, times(1)).getDeptMap(argThat(deptIds -> deptIds.containsAll(Arrays.asList(
                 10L, 11L, 20L, 21L, 30L, 31L, 40L, 41L, 50L, 51L))));
         verify(deptApi, never()).getDept(any());
+    }
+
+    @Test
+    void buildStockTransferOutVOPageResult_batchesDirectCustomerNameFromSourceCart() {
+        List<ErpStockMoveDO> stockMoves = Arrays.asList(
+                new ErpStockMoveDO().setId(1L)
+                        .setSourceType(ErpSaleBizSourceTypeEnum.CART.getType()).setSourceId(3001L),
+                new ErpStockMoveDO().setId(2L).setSourceType(99).setSourceId(3002L));
+        when(stockMoveService.getStockMoveItemListByMoveIds(anyCollection())).thenReturn(Collections.emptyList());
+        when(adminUserApi.getUserMap(anyCollection())).thenReturn(Collections.emptyMap());
+        when(stockMoveService.getApprovePermissionMap(eq(stockMoves), anyMap(), any()))
+                .thenReturn(Collections.emptyMap());
+        when(stockMoveService.getDeletePermission(any(), any()))
+                .thenReturn(ErpStockMoveOperationPermission.allowed());
+        when(printService.getPrintCountMap(any(), anyCollection())).thenReturn(Collections.emptyMap());
+        when(printService.getLastPrintTimeMap(any(), anyCollection())).thenReturn(Collections.emptyMap());
+        when(saleCartMapper.selectByIds(argThat(ids -> ids.contains(3001L) && ids.size() == 1)))
+                .thenReturn(Collections.singletonList(new ErpSaleCartDO().setId(3001L).setCustomerId(4001L)));
+        when(customerService.getCustomerMap(argThat(ids -> ids.contains(4001L) && ids.size() == 1)))
+                .thenReturn(Collections.singletonMap(4001L,
+                        new ErpCustomerDO().setId(4001L).setName("直发客户A")));
+
+        PageResult<ErpStockMoveRespVO> result = controller.buildStockMoveVOPageResult(
+                new PageResult<>(stockMoves, 2L), "erp_stock_transfer_out",
+                new ErpStockTransferOutPermissionScope(true, Collections.emptyList()));
+
+        assertEquals("直发客户A", result.getList().get(0).getDirectCustomerName());
+        assertEquals(null, result.getList().get(1).getDirectCustomerName());
+        verify(saleCartMapper, times(1)).selectByIds(anyCollection());
+        verify(customerService, times(1)).getCustomerMap(anyCollection());
     }
 
     private DeptRespDTO dept(Long id, String name) {

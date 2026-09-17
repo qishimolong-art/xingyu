@@ -1,10 +1,13 @@
 package cn.iocoder.yudao.module.system.dal.mysql.dept;
 
+import cn.iocoder.yudao.framework.common.pojo.PageParam;
+import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.mybatis.core.mapper.BaseMapperX;
 import cn.iocoder.yudao.framework.mybatis.core.query.LambdaQueryWrapperX;
 import cn.iocoder.yudao.framework.mybatis.core.query.QueryWrapperX;
 import cn.iocoder.yudao.module.system.controller.admin.dept.vo.dept.DeptListReqVO;
 import cn.iocoder.yudao.module.system.dal.dataobject.dept.DeptDO;
+import cn.hutool.core.collection.CollUtil;
 import org.apache.ibatis.annotations.Mapper;
 
 import java.util.Collection;
@@ -23,6 +26,20 @@ public interface DeptMapper extends BaseMapperX<DeptDO> {
                 .eqIfPresent(DeptDO::getLeaderUserId, reqVO.getLeaderUserId())
                 .inIfPresent(DeptDO::getLeaderUserId, leaderUserIds)
                 .eqIfPresent(DeptDO::getStatus, reqVO.getStatus()));
+    }
+
+    default PageResult<DeptDO> selectSimplePage(PageParam pageParam, Integer status,
+                                                String keyword, Collection<Long> deptIds) {
+        if (deptIds != null && CollUtil.isEmpty(deptIds)) {
+            return PageResult.empty();
+        }
+        LambdaQueryWrapperX<DeptDO> wrapper = new LambdaQueryWrapperX<DeptDO>()
+                .eqIfPresent(DeptDO::getStatus, status)
+                .likeIfPresent(DeptDO::getName, keyword)
+                .inIfPresent(DeptDO::getId, deptIds);
+        wrapper.orderByAsc(DeptDO::getSort);
+        wrapper.orderByAsc(DeptDO::getId);
+        return selectPage(pageParam, wrapper);
     }
 
     default DeptDO selectByParentIdAndName(Long parentId, String name) {

@@ -16,6 +16,7 @@ import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.customer.ErpCustomer
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.customer.ErpCustomerDeptDistributionRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.customer.ErpCustomerDeptDistributionSaveReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.customer.ErpCustomerImportExcelVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.customer.ErpCustomerImportRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.customer.ErpCustomerPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.customer.ErpCustomerRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.customer.ErpCustomerSaleDeptRespVO;
@@ -232,22 +233,51 @@ public class ErpCustomerController {
     @Operation(summary = "获得客户精简列表", description = "只包含被开启的客户，主要用于前端的下拉选项")
     public CommonResult<List<ErpCustomerRespVO>> getCustomerSimpleList() {
         List<ErpCustomerDO> list = customerService.getCustomerListByStatus(CommonStatusEnum.ENABLE.getStatus());
-        List<ErpCustomerRespVO> respList = convertList(list, customer -> new ErpCustomerRespVO().setId(customer.getId())
-                .setName(customer.getName()).setContact(customer.getContact()).setMobile(customer.getMobile()));
+        List<ErpCustomerRespVO> respList = convertList(list, this::buildCustomerSimpleRespVO);
         fillCustomerExtra(respList);
         fieldPermissionMasker.maskForms(FIELD_PERMISSION_MODULE, respList);
         return success(respList);
+    }
+
+    @GetMapping("/simple-page")
+    @Operation(summary = "获得客户精简分页", description = "只包含被开启的客户，主要用于前端的下拉选项")
+    public CommonResult<PageResult<ErpCustomerRespVO>> getCustomerSimplePage(@Valid ErpCustomerPageReqVO pageReqVO) {
+        PageResult<ErpCustomerDO> pageResult = customerService.getCustomerPageByStatus(
+                pageReqVO, CommonStatusEnum.ENABLE.getStatus());
+        List<ErpCustomerRespVO> respList = convertList(pageResult.getList(), this::buildCustomerSimpleRespVO);
+        fillCustomerExtra(respList);
+        fieldPermissionMasker.maskForms(FIELD_PERMISSION_MODULE, respList);
+        return success(new PageResult<>(respList, pageResult.getTotal()));
     }
 
     @GetMapping("/sale-simple-list")
     @Operation(summary = "获得销售可选客户精简列表", description = "包含启用客户，并标记超过白条授信限制的客户为禁选")
     public CommonResult<List<ErpCustomerRespVO>> getSaleCustomerSimpleList() {
         List<ErpCustomerDO> list = customerService.getCustomerListByStatus(CommonStatusEnum.ENABLE.getStatus());
-        List<ErpCustomerRespVO> respList = convertList(list, customer -> new ErpCustomerRespVO()
-                .setId(customer.getId()).setName(customer.getName()).setContact(customer.getContact())
-                .setMobile(customer.getMobile()).setCreditEnabled(customer.getCreditEnabled())
+        List<ErpCustomerRespVO> respList = convertList(list, customer -> buildCustomerSimpleRespVO(customer)
+                .setCreditEnabled(customer.getCreditEnabled())
                 .setCreditLimit(customer.getCreditLimit()).setCreditTermDays(customer.getCreditTermDays()));
         fillCustomerExtra(respList);
+        fillSaleCustomerCreditStatus(respList);
+        fieldPermissionMasker.maskForms(FIELD_PERMISSION_MODULE, respList);
+        return success(respList);
+    }
+
+    @GetMapping("/sale-simple-page")
+    @Operation(summary = "获得销售可选客户精简分页", description = "包含启用客户，并标记超过白条授信限制的客户为禁选")
+    public CommonResult<PageResult<ErpCustomerRespVO>> getSaleCustomerSimplePage(@Valid ErpCustomerPageReqVO pageReqVO) {
+        PageResult<ErpCustomerDO> pageResult = customerService.getCustomerPageByStatus(
+                pageReqVO, CommonStatusEnum.ENABLE.getStatus());
+        List<ErpCustomerRespVO> respList = convertList(pageResult.getList(), customer -> buildCustomerSimpleRespVO(customer)
+                .setCreditEnabled(customer.getCreditEnabled())
+                .setCreditLimit(customer.getCreditLimit()).setCreditTermDays(customer.getCreditTermDays()));
+        fillCustomerExtra(respList);
+        fillSaleCustomerCreditStatus(respList);
+        fieldPermissionMasker.maskForms(FIELD_PERMISSION_MODULE, respList);
+        return success(new PageResult<>(respList, pageResult.getTotal()));
+    }
+
+    private void fillSaleCustomerCreditStatus(List<ErpCustomerRespVO> respList) {
         Map<Long, ErpCustomerCreditStatusBO> creditStatusMap = customerService.getCustomerCreditStatusMap(
                 convertList(respList, ErpCustomerRespVO::getId));
         respList.forEach(vo -> {
@@ -255,8 +285,21 @@ public class ErpCustomerController {
             applyCreditStatus(vo, status);
             vo.setDisabled(status != null && Boolean.TRUE.equals(status.getBlocked()));
         });
-        fieldPermissionMasker.maskForms(FIELD_PERMISSION_MODULE, respList);
-        return success(respList);
+    }
+
+    private ErpCustomerRespVO buildCustomerSimpleRespVO(ErpCustomerDO customer) {
+        return new ErpCustomerRespVO()
+                .setId(customer.getId())
+                .setCode(customer.getCode())
+                .setName(customer.getName())
+                .setShortName(customer.getShortName())
+                .setContact(customer.getContact())
+                .setMobile(customer.getMobile())
+                .setTelephone(customer.getTelephone())
+                .setPinyinCode(customer.getPinyinCode())
+                .setWubiCode(customer.getWubiCode())
+                .setMemberCode(customer.getMemberCode())
+                .setPlatformCode(customer.getPlatformCode());
     }
 
     @GetMapping("/sale-dept-list")
@@ -317,6 +360,8 @@ public class ErpCustomerController {
                         ErpImportTemplateRequiredFieldUtils.aliasMap(
                                 "name", "name",
                                 "code", "code",
+                                "deptId", "deptName",
+                                "deptIds", "deptNames",
                                 "contact", "contact",
                                 "mobile", "mobile",
                                 "telephone", "telephone",
@@ -326,10 +371,9 @@ public class ErpCustomerController {
     @PostMapping("/import")
     @Operation(summary = "导入客户")
     @PreAuthorize("@ss.hasPermission('erp:customer:import')")
-    public CommonResult<Boolean> importCustomer(@RequestParam("file") MultipartFile file) throws Exception {
+    public CommonResult<ErpCustomerImportRespVO> importCustomer(@RequestParam("file") MultipartFile file) throws Exception {
         List<ErpCustomerImportExcelVO> list = ExcelUtils.read(file, ErpCustomerImportExcelVO.class);
-        customerService.importCustomerList(list);
-        return success(true);
+        return success(customerService.importCustomerList(list));
     }
 
     @PutMapping("/batch-update")

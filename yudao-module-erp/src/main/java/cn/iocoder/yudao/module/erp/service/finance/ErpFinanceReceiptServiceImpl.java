@@ -3,12 +3,15 @@ package cn.iocoder.yudao.module.erp.service.finance;
 import cn.hutool.core.collection.CollUtil;
 import cn.hutool.core.util.ObjectUtil;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
+import cn.iocoder.yudao.framework.common.util.collection.MapUtils;
 import cn.iocoder.yudao.framework.mybatis.core.query.LambdaQueryWrapperX;
 import cn.iocoder.yudao.framework.security.core.util.SecurityFrameworkUtils;
 import cn.iocoder.yudao.framework.common.util.collection.CollectionUtils;
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.ErpFinanceUpdateRemarkReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.receipt.ErpFinanceReceiptDraftSaveReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.receipt.ErpFinanceReceiptFormCandidateReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.receipt.ErpFinanceReceiptFormCandidateRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.receipt.ErpFinanceReceiptItemPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.receipt.ErpFinanceReceiptPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.receipt.ErpFinanceReceiptSaveReqVO;
@@ -17,6 +20,9 @@ import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.receipt.ErpFinanc
 import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.receipt.ErpFinanceReceiptWriteOffReverseReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.ErpFinanceReceiptDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.ErpFinanceReceiptItemDO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.finance.receivable.ErpReceivableMiscDO;
+import cn.iocoder.yudao.module.erp.dal.mysql.finance.receivable.ErpReceivableMiscMapper;
+import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpCustomerDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleOutDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleOutItemDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSalePriceAdjustDO;
@@ -33,11 +39,14 @@ import cn.iocoder.yudao.module.erp.enums.finance.ErpFinanceReceiptStatusEnum;
 import cn.iocoder.yudao.module.erp.enums.finance.ErpFinanceWriteOffStatusEnum;
 import cn.iocoder.yudao.module.erp.service.common.ErpOperateLogService;
 import cn.iocoder.yudao.module.erp.service.common.ErpOriginalSettlementAmountUtils;
+import cn.iocoder.yudao.module.erp.service.finance.receivable.ErpReceivableOtherService;
 import cn.iocoder.yudao.module.erp.service.sale.ErpCustomerService;
 import cn.iocoder.yudao.module.erp.service.sale.ErpCustomerDeptPermissionService;
 import cn.iocoder.yudao.module.erp.service.sale.ErpSaleOutService;
 import cn.iocoder.yudao.module.erp.service.sale.ErpSalePriceAdjustService;
 import cn.iocoder.yudao.module.erp.service.sale.ErpSaleReturnService;
+import cn.iocoder.yudao.module.system.api.dept.DeptApi;
+import cn.iocoder.yudao.module.system.api.dept.dto.DeptRespDTO;
 import cn.iocoder.yudao.module.system.api.user.AdminUserApi;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -46,6 +55,7 @@ import org.springframework.validation.annotation.Validated;
 import javax.annotation.Resource;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
@@ -85,6 +95,8 @@ public class ErpFinanceReceiptServiceImpl implements ErpFinanceReceiptService {
     private ErpSaleReturnMapper saleReturnMapper;
     @Resource
     private ErpSalePriceAdjustMapper salePriceAdjustMapper;
+    @Resource
+    private ErpReceivableMiscMapper receivableMiscMapper;
 
     @Resource
     private ErpNoRedisDAO noRedisDAO;
@@ -105,6 +117,8 @@ public class ErpFinanceReceiptServiceImpl implements ErpFinanceReceiptService {
     @Resource
     private AdminUserApi adminUserApi;
     @Resource
+    private DeptApi deptApi;
+    @Resource
     private ErpFinancePermissionFieldFiller permissionFieldFiller;
     @Resource
     private ErpFinanceFieldPermissionMasker fieldPermissionMasker;
@@ -112,6 +126,8 @@ public class ErpFinanceReceiptServiceImpl implements ErpFinanceReceiptService {
     private ErpOperateLogService operateLogService;
     @Resource
     private ErpFinanceAutoWriteOffService financeAutoWriteOffService;
+    @Resource
+    private ErpReceivableOtherService receivableOtherService;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -200,12 +216,26 @@ public class ErpFinanceReceiptServiceImpl implements ErpFinanceReceiptService {
         if (ErpAuditStatus.APPROVE.getStatus().equals(receipt.getStatus())) {
             throw exception(FINANCE_RECEIPT_UPDATE_FAIL_APPROVE, receipt.getNo());
         }
-        List<ErpFinanceReceiptItemDO> oldReceiptItems = financeReceiptItemMapper.selectListByReceiptId(updateReqVO.getId());
+        List<ErpFinanceReceiptItemDO> oldReceiptItems =
+                financeReceiptItemMapper.selectListByReceiptIdForUpdate(updateReqVO.getId());
         fieldPermissionMasker.preserveHiddenFields(FIELD_PERMISSION_MODULE, updateReqVO, receipt);
         if (fieldPermissionMasker.isFieldHidden(FIELD_PERMISSION_MODULE, "items")) {
             updateReqVO.setItems(BeanUtils.toBean(oldReceiptItems, ErpFinanceReceiptSaveReqVO.Item.class));
         } else {
             fieldPermissionMasker.preserveHiddenItemFields(FIELD_PERMISSION_MODULE, updateReqVO.getItems(), oldReceiptItems);
+        }
+        boolean incrementalItems = ErpFinanceItemOperationHelper.useIncrementalItems(
+                updateReqVO.getItems(), ErpFinanceReceiptSaveReqVO.Item::getOperation,
+                FINANCE_RECEIPT_ITEM_OPERATION_INVALID);
+        ErpFinanceItemOperationHelper.RequestChangeSet<ErpFinanceReceiptSaveReqVO.Item> itemChangeSet = null;
+        List<ErpFinanceReceiptSaveReqVO.Item> finalReqItems = updateReqVO.getItems();
+        if (incrementalItems) {
+            itemChangeSet = ErpFinanceItemOperationHelper.buildRequestChangeSet(
+                    updateReqVO.getItems(), oldReceiptItems, ErpFinanceReceiptSaveReqVO.Item.class,
+                    ErpFinanceReceiptSaveReqVO.Item::getId, ErpFinanceReceiptSaveReqVO.Item::setId,
+                    ErpFinanceReceiptSaveReqVO.Item::getOperation, ErpFinanceReceiptItemDO::getId,
+                    FINANCE_RECEIPT_ITEM_OPERATION_INVALID, FINANCE_RECEIPT_ITEM_UPDATE_NOT_EXISTS);
+            finalReqItems = itemChangeSet.getFinalItems();
         }
         // 1.2 校验客户
         customerService.validateCustomer(updateReqVO.getCustomerId());
@@ -219,7 +249,7 @@ public class ErpFinanceReceiptServiceImpl implements ErpFinanceReceiptService {
         }
         // 1.5 校验收款单项的有效性
         List<ErpFinanceReceiptItemDO> receiptItems = validateFinanceReceiptItems(
-                updateReqVO.getCustomerId(), updateReqVO.getItems());
+                updateReqVO.getCustomerId(), finalReqItems);
 
         // 2.1 更新收款单
         ErpFinanceReceiptDO updateObj = BeanUtils.toBean(updateReqVO, ErpFinanceReceiptDO.class);
@@ -231,7 +261,11 @@ public class ErpFinanceReceiptServiceImpl implements ErpFinanceReceiptService {
         preparePendingItems(updateObj, receiptItems);
         financeReceiptMapper.updateById(updateObj);
         // 2.2 更新收款单项
-        updateFinanceReceiptItemList(updateReqVO.getId(), receiptItems);
+        if (incrementalItems) {
+            applyFinanceReceiptItemChangeSet(updateReqVO.getId(), receiptItems, itemChangeSet);
+        } else {
+            updateFinanceReceiptItemList(updateReqVO.getId(), receiptItems);
+        }
         recordUpdate(receipt, updateObj);
     }
 
@@ -243,7 +277,7 @@ public class ErpFinanceReceiptServiceImpl implements ErpFinanceReceiptService {
             throw exception(FINANCE_RECEIPT_DRAFT_UPDATE_FAIL, receipt.getNo());
         }
         List<ErpFinanceReceiptItemDO> oldReceiptItems =
-                financeReceiptItemMapper.selectListByReceiptId(updateReqVO.getId());
+                financeReceiptItemMapper.selectListByReceiptIdForUpdate(updateReqVO.getId());
         fieldPermissionMasker.preserveHiddenFields(FIELD_PERMISSION_MODULE, updateReqVO, receipt);
         if (fieldPermissionMasker.isFieldHidden(FIELD_PERMISSION_MODULE, "items")) {
             updateReqVO.setItems(BeanUtils.toBean(oldReceiptItems, ErpFinanceReceiptSaveReqVO.Item.class));
@@ -251,7 +285,21 @@ public class ErpFinanceReceiptServiceImpl implements ErpFinanceReceiptService {
             fieldPermissionMasker.preserveHiddenItemFields(
                     FIELD_PERMISSION_MODULE, updateReqVO.getItems(), oldReceiptItems);
         }
-        List<ErpFinanceReceiptItemDO> receiptItems = buildFinanceReceiptDraftItems(updateReqVO.getItems());
+        boolean incrementalItems = ErpFinanceItemOperationHelper.useIncrementalItems(
+                updateReqVO.getItems(), ErpFinanceReceiptSaveReqVO.Item::getOperation,
+                FINANCE_RECEIPT_ITEM_OPERATION_INVALID);
+        ErpFinanceItemOperationHelper.RequestChangeSet<ErpFinanceReceiptSaveReqVO.Item> itemChangeSet = null;
+        List<ErpFinanceReceiptSaveReqVO.Item> finalReqItems = updateReqVO.getItems();
+        if (incrementalItems) {
+            itemChangeSet = ErpFinanceItemOperationHelper.buildRequestChangeSet(
+                    updateReqVO.getItems(), oldReceiptItems, ErpFinanceReceiptSaveReqVO.Item.class,
+                    ErpFinanceReceiptSaveReqVO.Item::getId, ErpFinanceReceiptSaveReqVO.Item::setId,
+                    ErpFinanceReceiptSaveReqVO.Item::getOperation, ErpFinanceReceiptItemDO::getId,
+                    FINANCE_RECEIPT_ITEM_OPERATION_INVALID, FINANCE_RECEIPT_ITEM_UPDATE_NOT_EXISTS);
+            finalReqItems = itemChangeSet.getFinalItems();
+        }
+        List<ErpFinanceReceiptItemDO> receiptItems =
+                buildFinanceReceiptDraftItems(finalReqItems, incrementalItems);
         ErpFinanceReceiptDO updateObj = BeanUtils.toBean(updateReqVO, ErpFinanceReceiptDO.class)
                 .setId(receipt.getId())
                 .setNo(receipt.getNo())
@@ -264,8 +312,12 @@ public class ErpFinanceReceiptServiceImpl implements ErpFinanceReceiptService {
                 ErpFinanceReceiptStatusEnum.DRAFT.getStatus(), updateObj) == 0) {
             throw exception(FINANCE_RECEIPT_DRAFT_UPDATE_FAIL, receipt.getNo());
         }
-        financeReceiptItemMapper.deleteByReceiptId(receipt.getId());
-        insertFinanceReceiptDraftItems(receipt.getId(), receiptItems);
+        if (incrementalItems) {
+            applyFinanceReceiptItemChangeSet(receipt.getId(), receiptItems, itemChangeSet);
+        } else {
+            financeReceiptItemMapper.deleteByReceiptId(receipt.getId());
+            insertFinanceReceiptDraftItems(receipt.getId(), receiptItems);
+        }
         recordUpdate(receipt, updateObj);
     }
 
@@ -305,8 +357,10 @@ public class ErpFinanceReceiptServiceImpl implements ErpFinanceReceiptService {
                 ErpFinanceReceiptStatusEnum.DRAFT.getStatus(), statusUpdate) == 0) {
             throw exception(FINANCE_RECEIPT_DRAFT_SUBMIT_FAIL, "状态已变化，请刷新后重试");
         }
-        financeReceiptItemMapper.deleteByReceiptId(id);
-        insertFinanceReceiptDraftItems(id, receiptItems);
+        if (CollUtil.isNotEmpty(receiptItems)) {
+            receiptItems.forEach(item -> item.setReceiptId(id));
+            financeReceiptItemMapper.updateBatch(receiptItems);
+        }
         operateLogService.recordUpdate(ERP_FINANCE_RECEIPT_TYPE, id, receipt.getNo());
     }
 
@@ -377,6 +431,7 @@ public class ErpFinanceReceiptServiceImpl implements ErpFinanceReceiptService {
             financeReceiptItemMapper.updateBatch(pendingItems);
             updateSalePrice(pendingItems);
         }
+        receivableOtherService.createFromFinanceReceiptDiscount(receipt);
         financeAutoWriteOffService.autoWriteOffReceipt(id, loginUserId);
         operateLogService.recordStatus(ERP_FINANCE_RECEIPT_TYPE, id, receipt.getNo(), true);
     }
@@ -408,6 +463,15 @@ public class ErpFinanceReceiptServiceImpl implements ErpFinanceReceiptService {
                     throw exception(FINANCE_RECEIPT_WRITEOFF_BIZ_INVALID, "客户必须相同");
                 }
                 item.setTotalPrice(salePriceAdjust.getTotalAdjustPrice()).setBizNo(salePriceAdjust.getNo());
+            } else if (ObjectUtil.equal(item.getBizType(), ErpBizTypeEnum.RECEIVABLE_MISC.getType())) {
+                ErpReceivableMiscDO receivableMisc = receivableMiscMapper.selectById(item.getBizId());
+                if (receivableMisc == null || !ErpAuditStatus.APPROVE.getStatus().equals(receivableMisc.getStatus())) {
+                    throw exception(FINANCE_RECEIPT_WRITEOFF_BIZ_INVALID, "其他应收单不存在或未审核");
+                }
+                if (!Objects.equals(receivableMisc.getCustomerId(), customerId)) {
+                    throw exception(FINANCE_RECEIPT_WRITEOFF_BIZ_INVALID, "客户必须相同");
+                }
+                item.setTotalPrice(getZeroIfNull(receivableMisc.getAmount())).setBizNo(receivableMisc.getNo());
             } else {
                 throw exception(FINANCE_RECEIPT_WRITEOFF_BIZ_INVALID, "业务类型不正确：" + item.getBizType());
             }
@@ -417,6 +481,11 @@ public class ErpFinanceReceiptServiceImpl implements ErpFinanceReceiptService {
 
     private List<ErpFinanceReceiptItemDO> buildFinanceReceiptDraftItems(
             List<ErpFinanceReceiptSaveReqVO.Item> list) {
+        return buildFinanceReceiptDraftItems(list, false);
+    }
+
+    private List<ErpFinanceReceiptItemDO> buildFinanceReceiptDraftItems(
+            List<ErpFinanceReceiptSaveReqVO.Item> list, boolean preserveId) {
         if (CollUtil.isEmpty(list)) {
             return Collections.emptyList();
         }
@@ -427,18 +496,24 @@ public class ErpFinanceReceiptServiceImpl implements ErpFinanceReceiptService {
                         && item.getReceiptPrice() != null)
                 .filter(item -> ObjectUtil.equal(item.getBizType(), ErpBizTypeEnum.SALE_OUT.getType())
                         || ObjectUtil.equal(item.getBizType(), ErpBizTypeEnum.SALE_RETURN.getType())
-                        || ObjectUtil.equal(item.getBizType(), ErpBizTypeEnum.SALE_PRICE_ADJUST.getType()))
-                .map(item -> BeanUtils.toBean(item, ErpFinanceReceiptItemDO.class)
-                        .setId(null)
-                        .setTotalPrice(normalize(getZeroIfNull(item.getTotalPrice())))
-                        .setReceiptedPrice(normalize(getZeroIfNull(item.getReceiptedPrice())))
-                        .setReceiptPrice(normalize(item.getReceiptPrice()))
-                        .setWriteOffStatus(ErpFinanceWriteOffStatusEnum.PENDING.getStatus())
-                        .setWriteOffTime(null)
-                        .setWriteOffUserId(null)
-                        .setReverseTime(null)
-                        .setReverseUserId(null)
-                        .setReverseReason(null))
+                        || ObjectUtil.equal(item.getBizType(), ErpBizTypeEnum.SALE_PRICE_ADJUST.getType())
+                        || ObjectUtil.equal(item.getBizType(), ErpBizTypeEnum.RECEIVABLE_MISC.getType()))
+                .map(item -> {
+                    ErpFinanceReceiptItemDO draftItem = BeanUtils.toBean(item, ErpFinanceReceiptItemDO.class)
+                            .setTotalPrice(normalize(getZeroIfNull(item.getTotalPrice())))
+                            .setReceiptedPrice(normalize(getZeroIfNull(item.getReceiptedPrice())))
+                            .setReceiptPrice(normalize(item.getReceiptPrice()))
+                            .setWriteOffStatus(ErpFinanceWriteOffStatusEnum.PENDING.getStatus())
+                            .setWriteOffTime(null)
+                            .setWriteOffUserId(null)
+                            .setReverseTime(null)
+                            .setReverseUserId(null)
+                            .setReverseReason(null);
+                    if (!preserveId) {
+                        draftItem.setId(null);
+                    }
+                    return draftItem;
+                })
                 .collect(Collectors.toList());
     }
 
@@ -499,6 +574,30 @@ public class ErpFinanceReceiptServiceImpl implements ErpFinanceReceiptService {
 
     }
 
+    private void applyFinanceReceiptItemChangeSet(Long id, List<ErpFinanceReceiptItemDO> finalItems,
+            ErpFinanceItemOperationHelper.RequestChangeSet<ErpFinanceReceiptSaveReqVO.Item> itemChangeSet) {
+        if (itemChangeSet == null) {
+            return;
+        }
+        if (CollUtil.isNotEmpty(itemChangeSet.getDeleteIds())) {
+            financeReceiptItemMapper.deleteByIds(itemChangeSet.getDeleteIds());
+        }
+        List<ErpFinanceReceiptItemDO> insertList = finalItems.stream()
+                .filter(item -> item.getId() == null)
+                .peek(item -> item.setReceiptId(id))
+                .collect(Collectors.toList());
+        if (CollUtil.isNotEmpty(insertList)) {
+            financeReceiptItemMapper.insertBatch(insertList);
+        }
+        List<ErpFinanceReceiptItemDO> updateList = finalItems.stream()
+                .filter(item -> item.getId() != null && itemChangeSet.getUpdateIds().contains(item.getId()))
+                .peek(item -> item.setReceiptId(id))
+                .collect(Collectors.toList());
+        if (CollUtil.isNotEmpty(updateList)) {
+            financeReceiptItemMapper.updateBatch(updateList);
+        }
+    }
+
     private void updateSalePrice(List<ErpFinanceReceiptItemDO> receiptItems) {
         receiptItems.forEach(receiptItem -> {
             BigDecimal totalReceiptPrice = financeReceiptItemMapper.selectReceiptPriceSumByBizIdAndBizType(
@@ -509,6 +608,8 @@ public class ErpFinanceReceiptServiceImpl implements ErpFinanceReceiptService {
                 saleReturnService.updateSaleReturnRefundPrice(receiptItem.getBizId(), totalReceiptPrice.negate());
             } else if (ErpBizTypeEnum.SALE_PRICE_ADJUST.getType().equals(receiptItem.getBizType())) {
                 salePriceAdjustService.updateSalePriceAdjustReceiptPrice(receiptItem.getBizId(), totalReceiptPrice);
+            } else if (ErpBizTypeEnum.RECEIVABLE_MISC.getType().equals(receiptItem.getBizType())) {
+                // 其他应收的已收/未收金额通过收款明细动态汇总，不回写主单。
             } else {
                 throw new IllegalArgumentException("业务类型不正确：" + receiptItem.getBizType());
             }
@@ -613,9 +714,96 @@ public class ErpFinanceReceiptServiceImpl implements ErpFinanceReceiptService {
                 row.getAdjustDate(), getZeroIfNull(row.getTotalAdjustPrice()),
                 adjustAllocated.getOrDefault(row.getId(), BigDecimal.ZERO)));
 
+        LambdaQueryWrapperX<ErpReceivableMiscDO> miscQuery = new LambdaQueryWrapperX<ErpReceivableMiscDO>()
+                .eq(ErpReceivableMiscDO::getCustomerId, receipt.getCustomerId())
+                .eq(ErpReceivableMiscDO::getStatus, ErpAuditStatus.APPROVE.getStatus());
+        if (receipt.getDeptId() == null) {
+            miscQuery.isNull(ErpReceivableMiscDO::getDeptId);
+        } else {
+            miscQuery.eq(ErpReceivableMiscDO::getDeptId, receipt.getDeptId());
+        }
+        List<ErpReceivableMiscDO> miscReceivables = receivableMiscMapper.selectList(miscQuery);
+        Map<Long, BigDecimal> miscAllocated = financeReceiptItemMapper.selectReceiptPriceSumMapByBizIdsAndBizType(
+                convertSet(miscReceivables, ErpReceivableMiscDO::getId), ErpBizTypeEnum.RECEIVABLE_MISC.getType());
+        miscReceivables.forEach(row -> addReceiptCandidate(result, ErpBizTypeEnum.RECEIVABLE_MISC, row.getId(),
+                row.getNo(), row.getBizTime(), getZeroIfNull(row.getAmount()),
+                miscAllocated.getOrDefault(row.getId(), BigDecimal.ZERO)));
+
         result.sort(Comparator.comparing(ErpFinanceReceiptWriteOffCandidateRespVO::getBizTime,
                 Comparator.nullsLast(Comparator.naturalOrder())).reversed()
                 .thenComparing(ErpFinanceReceiptWriteOffCandidateRespVO::getBizNo,
+                        Comparator.nullsLast(Comparator.naturalOrder())));
+        return result;
+    }
+
+    @Override
+    public List<ErpFinanceReceiptFormCandidateRespVO> getFormCandidates(ErpFinanceReceiptFormCandidateReqVO reqVO) {
+        if (reqVO == null || reqVO.getCustomerId() == null) {
+            return Collections.emptyList();
+        }
+        List<ErpFinanceReceiptFormCandidateRespVO> result = new ArrayList<>();
+
+        LambdaQueryWrapperX<ErpSaleOutDO> outQuery = new LambdaQueryWrapperX<ErpSaleOutDO>()
+                .eq(ErpSaleOutDO::getCustomerId, reqVO.getCustomerId())
+                .eqIfPresent(ErpSaleOutDO::getDeptId, reqVO.getDeptId())
+                .eq(ErpSaleOutDO::getStatus, ErpAuditStatus.APPROVE.getStatus())
+                .likeIfPresent(ErpSaleOutDO::getNo, reqVO.getNo());
+        List<ErpSaleOutDO> saleOuts = saleOutMapper.selectList(outQuery);
+        Map<Long, List<ErpSaleOutItemDO>> saleOutItemMap = CollUtil.isEmpty(saleOuts)
+                ? Collections.emptyMap()
+                : convertMultiMap(saleOutService.getSaleOutItemListByOutIds(
+                        convertSet(saleOuts, ErpSaleOutDO::getId)), ErpSaleOutItemDO::getOutId);
+        Map<Long, BigDecimal> outAllocated = financeReceiptItemMapper.selectReceiptPriceSumMapByBizIdsAndBizType(
+                convertSet(saleOuts, ErpSaleOutDO::getId), ErpBizTypeEnum.SALE_OUT.getType());
+        saleOuts.forEach(row -> addReceiptFormCandidate(result, ErpBizTypeEnum.SALE_OUT,
+                row.getId(), row.getNo(), row.getOutTime(), row.getCreateTime(), row.getCustomerId(), row.getDeptId(),
+                ErpOriginalSettlementAmountUtils.calculateSaleOut(row,
+                        saleOutItemMap.getOrDefault(row.getId(), Collections.emptyList())),
+                outAllocated.getOrDefault(row.getId(), BigDecimal.ZERO)));
+
+        LambdaQueryWrapperX<ErpSaleReturnDO> returnQuery = new LambdaQueryWrapperX<ErpSaleReturnDO>()
+                .eq(ErpSaleReturnDO::getCustomerId, reqVO.getCustomerId())
+                .eqIfPresent(ErpSaleReturnDO::getDeptId, reqVO.getDeptId())
+                .eq(ErpSaleReturnDO::getStatus, ErpAuditStatus.APPROVE.getStatus())
+                .likeIfPresent(ErpSaleReturnDO::getNo, reqVO.getNo());
+        List<ErpSaleReturnDO> saleReturns = saleReturnMapper.selectList(returnQuery);
+        Map<Long, BigDecimal> returnAllocated = financeReceiptItemMapper.selectReceiptPriceSumMapByBizIdsAndBizType(
+                convertSet(saleReturns, ErpSaleReturnDO::getId), ErpBizTypeEnum.SALE_RETURN.getType());
+        saleReturns.forEach(row -> addReceiptFormCandidate(result, ErpBizTypeEnum.SALE_RETURN,
+                row.getId(), row.getNo(), row.getReturnTime(), row.getCreateTime(), row.getCustomerId(), row.getDeptId(),
+                getZeroIfNull(row.getTotalPrice()).negate(),
+                returnAllocated.getOrDefault(row.getId(), BigDecimal.ZERO)));
+
+        LambdaQueryWrapperX<ErpSalePriceAdjustDO> adjustQuery = new LambdaQueryWrapperX<ErpSalePriceAdjustDO>()
+                .eq(ErpSalePriceAdjustDO::getCustomerId, reqVO.getCustomerId())
+                .eqIfPresent(ErpSalePriceAdjustDO::getDeptId, reqVO.getDeptId())
+                .eq(ErpSalePriceAdjustDO::getStatus, ErpAuditStatus.APPROVE.getStatus())
+                .likeIfPresent(ErpSalePriceAdjustDO::getNo, reqVO.getNo());
+        List<ErpSalePriceAdjustDO> adjusts = salePriceAdjustMapper.selectList(adjustQuery);
+        Map<Long, BigDecimal> adjustAllocated = financeReceiptItemMapper.selectReceiptPriceSumMapByBizIdsAndBizType(
+                convertSet(adjusts, ErpSalePriceAdjustDO::getId), ErpBizTypeEnum.SALE_PRICE_ADJUST.getType());
+        adjusts.forEach(row -> addReceiptFormCandidate(result, ErpBizTypeEnum.SALE_PRICE_ADJUST,
+                row.getId(), row.getNo(), row.getAdjustDate(), row.getCreateTime(), row.getCustomerId(), row.getDeptId(),
+                getZeroIfNull(row.getTotalAdjustPrice()),
+                adjustAllocated.getOrDefault(row.getId(), BigDecimal.ZERO)));
+
+        LambdaQueryWrapperX<ErpReceivableMiscDO> miscQuery = new LambdaQueryWrapperX<ErpReceivableMiscDO>()
+                .eq(ErpReceivableMiscDO::getCustomerId, reqVO.getCustomerId())
+                .eqIfPresent(ErpReceivableMiscDO::getDeptId, reqVO.getDeptId())
+                .eq(ErpReceivableMiscDO::getStatus, ErpAuditStatus.APPROVE.getStatus())
+                .likeIfPresent(ErpReceivableMiscDO::getNo, reqVO.getNo());
+        List<ErpReceivableMiscDO> miscReceivables = receivableMiscMapper.selectList(miscQuery);
+        Map<Long, BigDecimal> miscAllocated = financeReceiptItemMapper.selectReceiptPriceSumMapByBizIdsAndBizType(
+                convertSet(miscReceivables, ErpReceivableMiscDO::getId), ErpBizTypeEnum.RECEIVABLE_MISC.getType());
+        miscReceivables.forEach(row -> addReceiptFormCandidate(result, ErpBizTypeEnum.RECEIVABLE_MISC,
+                row.getId(), row.getNo(), row.getBizTime(), row.getCreateTime(), row.getCustomerId(), row.getDeptId(),
+                getZeroIfNull(row.getAmount()),
+                miscAllocated.getOrDefault(row.getId(), BigDecimal.ZERO)));
+
+        fillReceiptFormCandidateNames(result);
+        result.sort(Comparator.comparing(ErpFinanceReceiptFormCandidateRespVO::getCreateTime,
+                        Comparator.nullsLast(Comparator.naturalOrder()))
+                .thenComparing(ErpFinanceReceiptFormCandidateRespVO::getBizId,
                         Comparator.nullsLast(Comparator.naturalOrder())));
         return result;
     }
@@ -632,6 +820,39 @@ public class ErpFinanceReceiptServiceImpl implements ErpFinanceReceiptService {
                 .setBizId(bizId).setBizNo(bizNo).setBizTime(bizTime)
                 .setTotalPrice(totalPrice).setAllocatedPrice(allocatedPrice)
                 .setUnallocatedPrice(unallocatedPrice));
+    }
+
+    private void addReceiptFormCandidate(List<ErpFinanceReceiptFormCandidateRespVO> result, ErpBizTypeEnum bizType,
+                                         Long bizId, String bizNo, LocalDateTime bizTime, LocalDateTime createTime,
+                                         Long customerId, Long deptId, BigDecimal totalPrice, BigDecimal allocatedPrice) {
+        BigDecimal normalizedTotalPrice = normalize(getZeroIfNull(totalPrice));
+        BigDecimal normalizedAllocatedPrice = normalize(getZeroIfNull(allocatedPrice));
+        BigDecimal unallocatedPrice = normalize(normalizedTotalPrice.subtract(normalizedAllocatedPrice));
+        if (unallocatedPrice.compareTo(BigDecimal.ZERO) == 0) {
+            return;
+        }
+        result.add(new ErpFinanceReceiptFormCandidateRespVO()
+                .setBizType(bizType.getType()).setBizTypeName(bizType.getName())
+                .setBizId(bizId).setBizNo(bizNo).setBizTime(bizTime).setCreateTime(createTime)
+                .setCustomerId(customerId).setDeptId(deptId)
+                .setTotalPrice(normalizedTotalPrice).setAllocatedPrice(normalizedAllocatedPrice)
+                .setUnallocatedPrice(unallocatedPrice));
+    }
+
+    private void fillReceiptFormCandidateNames(List<ErpFinanceReceiptFormCandidateRespVO> rows) {
+        if (CollUtil.isEmpty(rows)) {
+            return;
+        }
+        Map<Long, ErpCustomerDO> customerMap = customerService.getCustomerMap(
+                convertSet(rows, ErpFinanceReceiptFormCandidateRespVO::getCustomerId));
+        Map<Long, DeptRespDTO> deptMap = deptApi.getDeptMap(
+                convertSet(rows, ErpFinanceReceiptFormCandidateRespVO::getDeptId));
+        rows.forEach(row -> {
+            MapUtils.findAndThen(customerMap, row.getCustomerId(),
+                    customer -> row.setCustomerName(customer.getName()));
+            MapUtils.findAndThen(deptMap, row.getDeptId(),
+                    dept -> row.setDeptName(dept.getName()));
+        });
     }
 
     @Override
@@ -716,6 +937,11 @@ public class ErpFinanceReceiptServiceImpl implements ErpFinanceReceiptService {
                     .eq(ErpSalePriceAdjustDO::getId, bizId).last("FOR UPDATE"));
             result = row == null ? null : new ReceiptBizSnapshot(row.getCustomerId(), row.getDeptId(), row.getStatus(),
                     row.getNo(), getZeroIfNull(row.getTotalAdjustPrice()));
+        } else if (ObjectUtil.equal(bizType, ErpBizTypeEnum.RECEIVABLE_MISC.getType())) {
+            ErpReceivableMiscDO row = receivableMiscMapper.selectOne(new LambdaQueryWrapperX<ErpReceivableMiscDO>()
+                    .eq(ErpReceivableMiscDO::getId, bizId).last("FOR UPDATE"));
+            result = row == null ? null : new ReceiptBizSnapshot(row.getCustomerId(), row.getDeptId(), row.getStatus(),
+                    row.getNo(), getZeroIfNull(row.getAmount()));
         } else {
             throw exception(FINANCE_RECEIPT_WRITEOFF_BIZ_INVALID, "业务类型不正确：" + bizType);
         }
@@ -851,11 +1077,26 @@ public class ErpFinanceReceiptServiceImpl implements ErpFinanceReceiptService {
     }
 
     @Override
+    public List<ErpFinanceReceiptItemDO> getFinanceReceiptItemListByBiz(Integer bizType, Long bizId) {
+        return financeReceiptItemMapper.selectListByBizTypeAndBizId(bizType, bizId);
+    }
+
+    @Override
     public List<ErpFinanceReceiptItemDO> getFinanceReceiptItemListByReceiptIds(Collection<Long> receiptIds) {
         if (CollUtil.isEmpty(receiptIds)) {
             return Collections.emptyList();
         }
         return financeReceiptItemMapper.selectListByReceiptIds(receiptIds);
+    }
+
+    @Override
+    public Map<Long, BigDecimal> getEffectiveReceiptPriceSumMapByReceiptIds(Collection<Long> receiptIds) {
+        return financeReceiptItemMapper.selectEffectivePriceSumMapByReceiptIds(receiptIds);
+    }
+
+    @Override
+    public Map<Long, Long> getEffectiveReceiptItemCountMapByReceiptIds(Collection<Long> receiptIds) {
+        return financeReceiptItemMapper.selectEffectiveCountMapByReceiptIds(receiptIds);
     }
 
     private BigDecimal getZeroIfNull(BigDecimal amount) {

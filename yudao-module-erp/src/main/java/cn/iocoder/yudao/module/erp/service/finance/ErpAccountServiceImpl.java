@@ -79,6 +79,8 @@ public class ErpAccountServiceImpl implements ErpAccountService {
     private ErpOperateLogService operateLogService;
     @Resource
     private ErpAccountingSubjectService accountingSubjectService;
+    @Resource
+    private cn.iocoder.yudao.module.erp.service.finance.accounting.rule.ErpVoucherRuleStore voucherRuleStore;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -334,7 +336,8 @@ public class ErpAccountServiceImpl implements ErpAccountService {
         if (account == null) {
             return;
         }
-        accountingSubjectService.ensureFundAccountSubject(account.getAccountType(), account.getName());
+        Long subjectId = accountingSubjectService.ensureFundAccountSubject(account.getAccountType(), account.getName());
+        if (subjectId != null && account.getId() != null) voucherRuleStore.bindNewFundAccount(account.getId(), subjectId);
     }
 
     private void normalizeAccount(ErpAccountDO account) {

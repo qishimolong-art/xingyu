@@ -100,16 +100,19 @@ public class ErpPreReceiptController {
     @PreAuthorize("@ss.hasPermission('erp:pre-receipt:query')")
     public CommonResult<PageResult<ErpPreReceiptRespVO>> getPreReceiptPage(@Valid ErpPreReceiptPageReqVO pageReqVO) {
         PageResult<ErpPreReceiptDO> pageResult = preReceiptService.getPreReceiptPage(pageReqVO);
-        return success(buildPreReceiptVOPageResult(pageResult));
+        return success(buildPreReceiptVOPageResult(pageResult, !Boolean.FALSE.equals(pageReqVO.getIncludeItems())));
     }
 
-    private PageResult<ErpPreReceiptRespVO> buildPreReceiptVOPageResult(PageResult<ErpPreReceiptDO> pageResult) {
+    private PageResult<ErpPreReceiptRespVO> buildPreReceiptVOPageResult(PageResult<ErpPreReceiptDO> pageResult,
+                                                                        boolean includeItems) {
         if (CollUtil.isEmpty(pageResult.getList())) {
             return PageResult.empty(pageResult.getTotal());
         }
         // 1.1 明细
-        List<ErpPreReceiptItemDO> itemList = preReceiptService.getPreReceiptItemListByPreReceiptIds(
-                convertSet(pageResult.getList(), ErpPreReceiptDO::getId));
+        List<ErpPreReceiptItemDO> itemList = includeItems
+                ? preReceiptService.getPreReceiptItemListByPreReceiptIds(
+                convertSet(pageResult.getList(), ErpPreReceiptDO::getId))
+                : Collections.emptyList();
         Map<Long, List<ErpPreReceiptItemDO>> itemMap = convertMultiMap(itemList, ErpPreReceiptItemDO::getPreReceiptId);
         // 1.2 结算账户
         Set<Long> accountIds = convertSet(pageResult.getList(), ErpPreReceiptDO::getAccountId);
@@ -121,7 +124,8 @@ public class ErpPreReceiptController {
                 convertSet(pageResult.getList(), r -> NumberUtils.parseLong(r.getCreator())));
         // 2. 拼接
         return BeanUtils.toBean(pageResult, ErpPreReceiptRespVO.class, vo -> {
-            vo.setItems(BeanUtils.toBean(itemMap.get(vo.getId()), ErpPreReceiptRespVO.Item.class));
+            vo.setItems(includeItems ? BeanUtils.toBean(itemMap.get(vo.getId()), ErpPreReceiptRespVO.Item.class)
+                    : Collections.emptyList());
             MapUtils.findAndThen(accountMap, vo.getAccountId(), account -> vo.setAccountName(account.getName()));
             MapUtils.findAndThen(userMap, NumberUtils.parseLong(vo.getCreator()), user -> vo.setCreatorName(user.getNickname()));
         });

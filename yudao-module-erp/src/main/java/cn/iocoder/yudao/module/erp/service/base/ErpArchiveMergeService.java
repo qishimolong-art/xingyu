@@ -21,6 +21,8 @@ import java.util.stream.Collectors;
 
 @Service
 public class ErpArchiveMergeService {
+    @javax.annotation.Resource
+    private cn.iocoder.yudao.module.erp.service.stock.cost.ErpStockDimensionService stockDimensionService;
 
     private static final int PARTY_TYPE_CUSTOMER = 1;
     private static final int PARTY_TYPE_SUPPLIER = 2;
@@ -109,12 +111,20 @@ public class ErpArchiveMergeService {
         insertLog("customer", sourceId, keepId, result);
     }
 
-    public void mergeProductReferences(Long sourceId, Long keepId, String sourceCode, String keepCode, String operatorId) {
-        DataPermissionUtils.executeIgnore(() -> doMergeProductReferences(sourceId, keepId, sourceCode, keepCode, operatorId));
+    @org.springframework.transaction.annotation.Transactional(rollbackFor = Exception.class)
+    public void mergeProductReferences(Long sourceId, Long keepId, String sourceCode, String keepCode,
+                                        String sourceName, String keepName, String operatorId) {
+        stockDimensionService.assertProductIdentityChange(sourceId);
+        stockDimensionService.assertProductIdentityChange(keepId);
+        DataPermissionUtils.executeIgnore(() -> doMergeProductReferences(sourceId, keepId,
+                sourceCode, keepCode, sourceName, keepName, operatorId));
     }
 
-    private void doMergeProductReferences(Long sourceId, Long keepId, String sourceCode, String keepCode, String operatorId) {
+    private void doMergeProductReferences(Long sourceId, Long keepId, String sourceCode, String keepCode,
+                                          String sourceName, String keepName, String operatorId) {
         MergeResult result = new MergeResult();
+        mergeProductStockReferences(result, sourceId, keepId, operatorId);
+        updateProductStoredIdentityReferences(result, sourceId, keepCode, keepName, operatorId);
         updateLong(result, "erp_purchase_order_items", "product_id", sourceId, keepId, operatorId);
         updateLong(result, "erp_purchase_in_items", "product_id", sourceId, keepId, operatorId);
         updateLong(result, "erp_purchase_return_items", "product_id", sourceId, keepId, operatorId);
@@ -138,8 +148,6 @@ public class ErpArchiveMergeService {
         updateLong(result, "erp_stock_move_item", "product_id", sourceId, keepId, operatorId);
         updateLong(result, "erp_stock_check_item", "product_id", sourceId, keepId, operatorId);
         updateLong(result, "erp_stock_record", "product_id", sourceId, keepId, operatorId);
-        updateLong(result, "erp_stock", "product_id", sourceId, keepId, operatorId);
-        updateLong(result, "erp_stock_lock", "product_id", sourceId, keepId, operatorId);
         updateLong(result, "erp_vehicle_product_fit", "product_id", sourceId, keepId, operatorId);
         updateLong(result, "erp_product_price_system", "product_id", sourceId, keepId, operatorId);
         updateLong(result, "erp_price_history", "product_id", sourceId, keepId, operatorId);
@@ -153,14 +161,27 @@ public class ErpArchiveMergeService {
         insertLog("product", sourceId, keepId, result);
     }
 
-    public void validateProductStockMergeConflict(Long sourceId, Long keepId) {
+    private void updateProductStoredIdentityReferences(MergeResult result, Long sourceId,
+                                                       String keepCode, String keepName, String operatorId) {
+        updateProductStoredIdentity(result, "erp_purchase_price_adjust_item", "product_id",
+                "product_code", "product_name", sourceId, keepCode, keepName, operatorId);
+        updateProductStoredIdentity(result, "erp_sale_price_adjust_item", "product_id",
+                "part_code", "part_name", sourceId, keepCode, keepName, operatorId);
+    }
+
+    private void mergeProductStockReferences(MergeResult result, Long sourceId, Long keepId, String operatorId) {
         Long tenantId = TenantContextHolder.getRequiredTenantId();
-        Long stockConflict = referenceMapper.selectProductStockWarehouseConflictCount(sourceId, keepId, tenantId);
-        Long stockLockConflict = referenceMapper.selectProductStockLockWarehouseConflictCount(sourceId, keepId, tenantId);
-        if ((stockConflict != null && stockConflict > 0) || (stockLockConflict != null && stockLockConflict > 0)) {
-            throw cn.iocoder.yudao.framework.common.exception.util.ServiceExceptionUtil.exception(
-                    cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PRODUCT_MERGE_STOCK_CONFLICT);
-        }
+        int stockMergedRows = referenceMapper.mergeProductStockConflict(sourceId, keepId, operatorId, tenantId);
+        result.add("erp_stock(merged)", stockMergedRows);
+        int stockDeletedRows = referenceMapper.deleteMergedProductStockConflict(sourceId, keepId, operatorId, tenantId);
+        result.add("erp_stock(conflict-deleted)", stockDeletedRows);
+        updateLong(result, "erp_stock", "product_id", sourceId, keepId, operatorId);
+
+        int lockMergedRows = referenceMapper.mergeProductStockLockConflict(sourceId, keepId, operatorId, tenantId);
+        result.add("erp_stock_lock(merged)", lockMergedRows);
+        int lockDeletedRows = referenceMapper.deleteMergedProductStockLockConflict(sourceId, keepId, operatorId, tenantId);
+        result.add("erp_stock_lock(conflict-deleted)", lockDeletedRows);
+        updateLong(result, "erp_stock_lock", "product_id", sourceId, keepId, operatorId);
     }
 
     private void updateLong(MergeResult result, String tableName, String columnName,
@@ -168,6 +189,20 @@ public class ErpArchiveMergeService {
         int rows = referenceMapper.updateLongReference(tableName, columnName, sourceId, keepId,
                 null, null, operatorId, TenantContextHolder.getRequiredTenantId(), isTenantScoped(tableName));
         result.add(tableName, rows);
+    }
+
+    private void updateProductStoredIdentity(MergeResult result, String tableName, String productIdColumnName,
+                                             String codeColumnName, String nameColumnName, Long sourceId,
+                                             String keepCode, String keepName, String operatorId) {
+        if (!hasTableColumn(tableName, productIdColumnName)
+                || !hasTableColumn(tableName, codeColumnName)
+                || !hasTableColumn(tableName, nameColumnName)) {
+            return;
+        }
+        int rows = referenceMapper.updateProductStoredIdentityReference(tableName, productIdColumnName,
+                codeColumnName, nameColumnName, sourceId, keepCode, keepName, operatorId,
+                TenantContextHolder.getRequiredTenantId(), isTenantScoped(tableName));
+        result.add(tableName + "(identity)", rows);
     }
 
     private void updateUniqueLong(MergeResult result, String tableName, String columnName,
@@ -226,7 +261,11 @@ public class ErpArchiveMergeService {
     }
 
     private boolean hasTenantIdColumn(String tableName) {
-        Long count = referenceMapper.selectTableColumnCount(tableName, TENANT_ID_COLUMN);
+        return hasTableColumn(tableName, TENANT_ID_COLUMN);
+    }
+
+    private boolean hasTableColumn(String tableName, String columnName) {
+        Long count = referenceMapper.selectTableColumnCount(tableName, columnName);
         return count != null && count > 0;
     }
 

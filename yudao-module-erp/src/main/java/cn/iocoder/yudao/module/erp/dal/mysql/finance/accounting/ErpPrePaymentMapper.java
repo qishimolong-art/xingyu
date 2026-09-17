@@ -22,7 +22,7 @@ public interface ErpPrePaymentMapper extends BaseMapperX<ErpPrePaymentDO> {
                 .eqIfPresent(ErpPrePaymentDO::getAccountId, reqVO.getAccountId())
                 .betweenIfPresent(ErpPrePaymentDO::getBizTime, reqVO.getBizTime())
                 .orderByDesc(ErpPrePaymentDO::getId);
-        ErpKeywordQuery.appendWithDeptName(wrapper, reqVO.getKeyword(),
+        ErpKeywordQuery.appendWithDeptNameAndParty(wrapper, reqVO.getKeyword(),
                 ErpPrePaymentDO::getNo,
                 ErpPrePaymentDO::getPartyName,
                 ErpPrePaymentDO::getRemark);

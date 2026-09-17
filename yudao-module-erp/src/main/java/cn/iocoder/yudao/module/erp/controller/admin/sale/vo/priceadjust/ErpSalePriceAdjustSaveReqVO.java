@@ -54,6 +54,9 @@ public class ErpSalePriceAdjustSaveReqVO {
         @Schema(description = "调价项编号", example = "1")
         private Long id;
 
+        @Schema(description = "明细操作类型：insert 新增，update 修改，delete 删除")
+        private String operation;
+
         @Schema(description = "销售单号")
         private String saleOutNo;
 

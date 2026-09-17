@@ -1,6 +1,13 @@
 server:
   port: 48080
 
+erp:
+  mnemonic-code-backfill:
+    # 历史客户、供应商、配件助记码回填开关；需要补历史数据时临时改为 true，回填完成后保持 false。
+    enabled: false
+    # 配件拼音码旧算法重算开关；仅覆盖“现值等于旧算法生成值”的配件拼音码，回填完成后保持 false。
+    rebuild-product-pinyin-code: false
+
 --- #################### 数据库相关配置 ####################
 spring:
   autoconfigure:
@@ -238,16 +245,33 @@ yudao:
     corp-id: wweadabfc4c1eddf73
     agent-id: 1000084
     secret: cWBjL8GZV3s6q7y3CZRLccMyPYkxqKTnpcJZGVWFLv8
+    clients:
+      sale-pick:
+        agent-id: 1000085
+        secret: pIV-4i8JgFVdbW_iUS3N_ph7F9m7l2ia2S1SohT0U_8
+      sale-delivery:
+        agent-id: 1000086
+        secret: V-qSwtMHiZA98NRQrykn0DzQxVvPBiPQaC4hykmk1C0
   security:
     mock-enable: true
   erp:
+    vin:
+      endpoint: ${ERP_VIN_ENDPOINT:https://slyvinstd.market.alicloudapi.com/vin/query}
+      app-key: ${ERP_VIN_APP_KEY:205043684}
+      app-secret: ${ERP_VIN_APP_SECRET:SSJl5t5C7zL2yyeVaHEkcemXAbSaXg92}
+      app-code: ${ERP_VIN_APP_CODE:b527ea29afc544feacbabdc6d8170edb}
+      timeout: ${ERP_VIN_TIMEOUT:8000}
     business-license-ocr:
       endpoint: ${ERP_BUSINESS_LICENSE_OCR_ENDPOINT:https://bizlicense.market.alicloudapi.com/rest/160601/ocr/ocr_business_license.json}
-      app-code: ${ERP_BUSINESS_LICENSE_OCR_APP_CODE:${yudao.erp.vin.app-code:}}
+      app-key: ${ERP_BUSINESS_LICENSE_OCR_APP_KEY:205043684}
+      app-secret: ${ERP_BUSINESS_LICENSE_OCR_APP_SECRET:SSJl5t5C7zL2yyeVaHEkcemXAbSaXg92}
+      app-code: ${ERP_BUSINESS_LICENSE_OCR_APP_CODE:b527ea29afc544feacbabdc6d8170edb}
       timeout: ${ERP_BUSINESS_LICENSE_OCR_TIMEOUT:8000}
     purchase-invoice-ocr:
       endpoint: ${ERP_PURCHASE_INVOICE_OCR_ENDPOINT:https://dgfp.market.alicloudapi.com/ocrservice/invoice}
-      app-code: ${ERP_PURCHASE_INVOICE_OCR_APP_CODE:0e8fb38236264814b7ac414f5dd0d5dd}
+      app-key: ${ERP_PURCHASE_INVOICE_OCR_APP_KEY:205043684}
+      app-secret: ${ERP_PURCHASE_INVOICE_OCR_APP_SECRET:SSJl5t5C7zL2yyeVaHEkcemXAbSaXg92}
+      app-code: ${ERP_PURCHASE_INVOICE_OCR_APP_CODE:b527ea29afc544feacbabdc6d8170edb}
       timeout: ${ERP_PURCHASE_INVOICE_OCR_TIMEOUT:8000}
       file-url-expiration-seconds: ${ERP_PURCHASE_INVOICE_OCR_FILE_URL_EXPIRATION_SECONDS:300}
       amount-tolerance: ${ERP_PURCHASE_INVOICE_OCR_AMOUNT_TOLERANCE:0.01}

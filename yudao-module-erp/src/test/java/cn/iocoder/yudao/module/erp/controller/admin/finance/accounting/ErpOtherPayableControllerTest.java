@@ -151,6 +151,7 @@ public class ErpOtherPayableControllerTest extends BaseMockitoUnitTest {
     @Test
     public void testGetOtherPayablePage_withResults() {
         ErpOtherPayablePageReqVO pageReqVO = new ErpOtherPayablePageReqVO();
+        pageReqVO.setIncludeItems(false);
         ErpOtherPayableDO payable = new ErpOtherPayableDO();
         payable.setId(1L);
         payable.setNo("QTYF-100");
@@ -163,6 +164,7 @@ public class ErpOtherPayableControllerTest extends BaseMockitoUnitTest {
         assertEquals(1L, result.getData().getTotal());
         assertEquals(1, result.getData().getList().size());
         assertEquals("QTYF-100", result.getData().getList().get(0).getNo());
+        verify(otherPayableService).getOtherPayablePage(eq(pageReqVO));
     }
 
 }

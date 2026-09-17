@@ -10,6 +10,7 @@ import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.customer.ErpCustomer
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.customer.ErpCustomerDeptDistributionRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.customer.ErpCustomerDeptDistributionSaveReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.customer.ErpCustomerImportExcelVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.customer.ErpCustomerImportRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.customer.ErpCustomerPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.customer.ErpCustomerSaveReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.ErpFinanceReceiptDO;
@@ -39,6 +40,7 @@ import cn.iocoder.yudao.module.erp.dal.redis.no.ErpNoRedisDAO;
 import cn.iocoder.yudao.module.erp.enums.ErpAuditStatus;
 import cn.iocoder.yudao.module.erp.service.base.ErpBaseArchiveReferenceService;
 import cn.iocoder.yudao.module.erp.service.base.ErpArchiveMergeService;
+import cn.iocoder.yudao.module.erp.service.common.ErpMnemonicCodeUtils;
 import cn.iocoder.yudao.module.erp.service.common.ErpOperateLogService;
 import cn.iocoder.yudao.module.erp.service.sale.bo.ErpCustomerCreditStatusBO;
 import cn.iocoder.yudao.framework.datapermission.core.util.DataPermissionUtils;
@@ -62,6 +64,7 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -83,9 +86,11 @@ import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.CUSTOMER_DELE
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.CUSTOMER_DISABLE_FAIL_RECEIVABLE_NOT_CLEAR;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.ARCHIVE_MERGE_SAME_ID;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.CUSTOMER_MERGED;
+import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.CUSTOMER_NAME_DUPLICATE;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.CUSTOMER_NOT_ENABLE;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.CUSTOMER_NOT_EXISTS;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.CUSTOMER_SALE_DEPT_NOT_ALLOWED;
+import static cn.iocoder.yudao.module.erp.enums.LogRecordConstants.ERP_IMPORT_SUB_TYPE;
 import static cn.iocoder.yudao.module.erp.enums.LogRecordConstants.ERP_CUSTOMER_TYPE;
 
 /**
@@ -98,6 +103,8 @@ import static cn.iocoder.yudao.module.erp.enums.LogRecordConstants.ERP_CUSTOMER_
 public class ErpCustomerServiceImpl implements ErpCustomerService {
 
     private static final String FIELD_PERMISSION_MODULE = "erp_customer";
+    private static final String CUSTOMER_DEPT_DISTRIBUTE_PERMISSION = "erp:customer:dept-distribute";
+    private static final String IMPORT_DEPT_NAME_SPLIT_REGEX = "[,，、;；]";
 
     @Resource
     private ErpCustomerMapper customerMapper;
@@ -157,6 +164,8 @@ public class ErpCustomerServiceImpl implements ErpCustomerService {
         validateCreditConfig(createReqVO);
         // 插入
         ErpCustomerDO customer = BeanUtils.toBean(createReqVO, ErpCustomerDO.class);
+        customer.setName(trimToNull(customer.getName()));
+        validateCustomerNameUnique(null, customer.getName());
         normalizeCreditConfig(customer);
         // 自动生成编码
         customer.setCode(normalizeCode(customer.getCode()));
@@ -202,6 +211,8 @@ public class ErpCustomerServiceImpl implements ErpCustomerService {
         validateCreditConfig(updateReqVO);
         // 更新
         ErpCustomerDO updateObj = BeanUtils.toBean(updateReqVO, ErpCustomerDO.class);
+        updateObj.setName(trimToNull(updateObj.getName()));
+        validateCustomerNameUnique(existing.getId(), updateObj.getName());
         normalizeCreditConfig(updateObj);
         updateObj.setCode(existing.getCode());
         if (allowMultiDeptHidden) {
@@ -567,6 +578,17 @@ public class ErpCustomerServiceImpl implements ErpCustomerService {
     }
 
     @Override
+    public PageResult<ErpCustomerDO> getCustomerPageByStatus(ErpCustomerPageReqVO pageReqVO, Integer status) {
+        CustomerVisibleScope scope = getCustomerVisibleScope();
+        if (scope == null) {
+            return customerMapper.selectPageByStatus(pageReqVO, status);
+        }
+        return DataPermissionUtils.executeIgnore(() ->
+                customerMapper.selectVisiblePageByStatus(pageReqVO, status, scope.getDeptIds(),
+                        scope.getSelfUserId(), scope.isAll()));
+    }
+
+    @Override
     public List<ErpCustomerDO> getCustomerListByStatus(Integer status) {
         CustomerVisibleScope scope = getCustomerVisibleScope();
         if (scope == null) {
@@ -591,31 +613,271 @@ public class ErpCustomerServiceImpl implements ErpCustomerService {
 
     @Override
     @Transactional(rollbackFor = Exception.class)
-    public void importCustomerList(List<ErpCustomerImportExcelVO> list) {
-        if (list == null || list.isEmpty()) {
-            return;
+    public ErpCustomerImportRespVO importCustomerList(List<ErpCustomerImportExcelVO> list) {
+        ErpCustomerImportRespVO respVO = new ErpCustomerImportRespVO();
+        if (CollUtil.isEmpty(list)) {
+            return respVO;
         }
-        for (ErpCustomerImportExcelVO importVO : list) {
-            if (importVO == null || !StringUtils.hasText(importVO.getName())) {
+
+        Map<String, ErpCustomerDO> existedMap = buildExistedCustomerMap(list);
+        ImportDeptContext deptContext = buildImportDeptContext(list);
+        for (int i = 0; i < list.size(); i++) {
+            ErpCustomerImportExcelVO importVO = list.get(i);
+            if (importVO == null || !StringUtils.hasText(trimToNull(importVO.getName()))) {
                 continue;
             }
-            ErpCustomerDO customer = BeanUtils.toBean(importVO, ErpCustomerDO.class);
-            if (customer.getStatus() == null) {
-                customer.setStatus(CommonStatusEnum.ENABLE.getStatus());
+            Integer rowNo = i + 2;
+            String code = trimToNull(importVO.getCode());
+            try {
+                ImportDeptAssignment deptAssignment = resolveImportDeptAssignment(importVO, deptContext);
+                ErpCustomerDO existed = StringUtils.hasText(code) ? existedMap.get(code) : null;
+                if (existed != null) {
+                    updateCustomerFromImport(importVO, existed, deptAssignment);
+                    respVO.setUpdateCount(respVO.getUpdateCount() + 1);
+                } else {
+                    Long customerId = createCustomerFromImport(importVO, deptAssignment);
+                    if (StringUtils.hasText(code)) {
+                        existedMap.put(code, new ErpCustomerDO().setId(customerId).setCode(code));
+                    }
+                    respVO.setCreateCount(respVO.getCreateCount() + 1);
+                }
+            } catch (Exception ex) {
+                respVO.getFailureDetails().add(new ErpCustomerImportRespVO.FailureItem(
+                        rowNo, code, getImportFailureReason(ex)));
             }
-            if (customer.getSort() == null) {
-                customer.setSort(0);
-            }
-            clearHiddenFields(customer);
-            normalizeCreditConfig(customer);
-            saleDocumentDefaultService.fillCreateDefaults(customer);
-            if (customer.getAllowMultiDept() == null) {
-                customer.setAllowMultiDept(false);
-            }
-            customerMapper.insert(customer);
-            syncCustomerDeptList(customer.getId(), buildCustomerDeptIds(customer.getDeptId(), null,
-                    customer.getAllowMultiDept()));
         }
+        respVO.setSuccessCount(respVO.getCreateCount() + respVO.getUpdateCount());
+        respVO.setFailureCount(respVO.getFailureDetails().size());
+        if (operateLogService != null) {
+            operateLogService.record(ERP_CUSTOMER_TYPE, ERP_IMPORT_SUB_TYPE, 0L,
+                    "导入客户信息，新增：" + respVO.getCreateCount()
+                            + "，更新：" + respVO.getUpdateCount()
+                            + "，失败：" + respVO.getFailureCount(),
+                    "客户导入");
+        }
+        return respVO;
+    }
+
+    private Map<String, ErpCustomerDO> buildExistedCustomerMap(List<ErpCustomerImportExcelVO> list) {
+        List<String> codes = list.stream()
+                .filter(Objects::nonNull)
+                .map(ErpCustomerImportExcelVO::getCode)
+                .map(this::trimToNull)
+                .filter(StringUtils::hasText)
+                .distinct()
+                .collect(Collectors.toList());
+        if (CollUtil.isEmpty(codes)) {
+            return new HashMap<>();
+        }
+        List<ErpCustomerDO> customers = customerMapper.selectListByCodes(codes);
+        if (CollUtil.isEmpty(customers)) {
+            return new HashMap<>();
+        }
+        return customers.stream()
+                .filter(item -> StringUtils.hasText(item.getCode()))
+                .collect(Collectors.toMap(ErpCustomerDO::getCode, item -> item, (a, b) -> a, LinkedHashMap::new));
+    }
+
+    private Long createCustomerFromImport(ErpCustomerImportExcelVO importVO, ImportDeptAssignment deptAssignment) {
+        ErpCustomerSaveReqVO reqVO = new ErpCustomerSaveReqVO();
+        reqVO.setCode(trimToNull(importVO.getCode()));
+        reqVO.setName(trimToNull(importVO.getName()));
+        reqVO.setContact(trimToNull(importVO.getContact()));
+        reqVO.setMobile(trimToNull(importVO.getMobile()));
+        reqVO.setTelephone(trimToNull(importVO.getTelephone()));
+        reqVO.setAreaId(importVO.getAreaId());
+        reqVO.setDetailAddress(trimToNull(importVO.getDetailAddress()));
+        reqVO.setTaxNo(trimToNull(importVO.getTaxNo()));
+        reqVO.setBankName(trimToNull(importVO.getBankName()));
+        reqVO.setBankAccount(trimToNull(importVO.getBankAccount()));
+        reqVO.setRemark(trimToNull(importVO.getRemark()));
+        reqVO.setSort(importVO.getSort());
+        reqVO.setStatus(importVO.getStatus() == null ? CommonStatusEnum.ENABLE.getStatus() : importVO.getStatus());
+        fillCustomerImportMnemonicCodes(reqVO);
+        if (deptAssignment.hasDeptImport()) {
+            reqVO.setDeptId(deptAssignment.getDeptId());
+            reqVO.setDeptIds(deptAssignment.getDeptIds());
+            reqVO.setAllowMultiDept(CollUtil.isNotEmpty(deptAssignment.getDeptIds()));
+        }
+        return createCustomer(reqVO);
+    }
+
+    private void updateCustomerFromImport(ErpCustomerImportExcelVO importVO, ErpCustomerDO existing,
+                                          ImportDeptAssignment deptAssignment) {
+        ErpCustomerDO updateObj = new ErpCustomerDO();
+        updateObj.setId(existing.getId());
+        updateObj.setCode(existing.getCode());
+        updateObj.setName(trimToNull(importVO.getName()));
+        validateCustomerNameUnique(existing.getId(), updateObj.getName());
+        setIfHasText(updateObj::setContact, importVO.getContact());
+        setIfHasText(updateObj::setMobile, importVO.getMobile());
+        setIfHasText(updateObj::setTelephone, importVO.getTelephone());
+        if (importVO.getAreaId() != null) {
+            updateObj.setAreaId(importVO.getAreaId());
+        }
+        setIfHasText(updateObj::setDetailAddress, importVO.getDetailAddress());
+        setIfHasText(updateObj::setTaxNo, importVO.getTaxNo());
+        setIfHasText(updateObj::setBankName, importVO.getBankName());
+        setIfHasText(updateObj::setBankAccount, importVO.getBankAccount());
+        setIfHasText(updateObj::setRemark, importVO.getRemark());
+        if (importVO.getSort() != null) {
+            updateObj.setSort(importVO.getSort());
+        }
+        if (importVO.getStatus() != null) {
+            updateObj.setStatus(importVO.getStatus());
+        }
+        if (deptAssignment.hasDeptImport()) {
+            updateObj.setDeptId(resolvePrimaryDeptId(deptAssignment.getDeptId(), deptAssignment.getDeptIds(),
+                    existing.getDeptId()));
+            updateObj.setAllowMultiDept(CollUtil.isNotEmpty(deptAssignment.getDeptIds()));
+        }
+        fillCustomerImportMnemonicCodes(updateObj, existing);
+        clearHiddenFields(updateObj);
+        customerMapper.updateById(updateObj);
+        if (deptAssignment.hasDeptImport()) {
+            Long effectiveDeptId = updateObj.getDeptId() != null ? updateObj.getDeptId() : existing.getDeptId();
+            if (Boolean.TRUE.equals(updateObj.getAllowMultiDept())) {
+                syncCustomerDeptList(existing.getId(), buildCustomerDeptIds(effectiveDeptId,
+                        deptAssignment.getDeptIds(), true));
+            } else {
+                customerDeptMapper.deleteByCustomerId(existing.getId());
+            }
+        }
+        ErpCustomerDO newest = customerMapper.selectById(existing.getId());
+        recordUpdate(existing, newest != null ? newest : updateObj);
+    }
+
+    private ImportDeptContext buildImportDeptContext(List<ErpCustomerImportExcelVO> list) {
+        if (list.stream().filter(Objects::nonNull).noneMatch(this::hasImportDeptText)) {
+            return ImportDeptContext.empty();
+        }
+        Long loginUserId = getLoginUserId();
+        if (permissionApi == null
+                || !permissionApi.hasAnyPermissions(loginUserId, CUSTOMER_DEPT_DISTRIBUTE_PERMISSION)) {
+            return ImportDeptContext.permissionDenied();
+        }
+        DeptDataPermissionRespDTO permission = permissionApi.getDeptDataPermission(loginUserId, FIELD_PERMISSION_MODULE);
+        Set<Long> allowedDeptIds = Boolean.TRUE.equals(permission != null ? permission.getAll() : null)
+                ? null : (permission != null && CollUtil.isNotEmpty(permission.getDeptIds())
+                        ? permission.getDeptIds() : Collections.emptySet());
+        List<DeptRespDTO> depts = deptApi.getDeptListByStatus(null);
+        if (depts == null) {
+            depts = Collections.emptyList();
+        }
+        Map<Long, DeptRespDTO> deptMap = depts.stream()
+                .filter(dept -> dept != null && dept.getId() != null)
+                .collect(Collectors.toMap(DeptRespDTO::getId, dept -> dept, (a, b) -> a, LinkedHashMap::new));
+        Map<String, List<DeptRespDTO>> nameMap = new LinkedHashMap<>();
+        Map<String, List<DeptRespDTO>> fullNameMap = new LinkedHashMap<>();
+        for (DeptRespDTO dept : deptMap.values()) {
+            addDeptCandidate(nameMap, dept.getName(), dept);
+            addDeptCandidate(fullNameMap, buildDeptFullName(dept.getId(), deptMap), dept);
+        }
+        return new ImportDeptContext(nameMap, fullNameMap, allowedDeptIds, false);
+    }
+
+    private boolean hasImportDeptText(ErpCustomerImportExcelVO importVO) {
+        return StringUtils.hasText(trimToNull(importVO.getDeptName()))
+                || StringUtils.hasText(trimToNull(importVO.getDeptNames()));
+    }
+
+    private ImportDeptAssignment resolveImportDeptAssignment(ErpCustomerImportExcelVO importVO,
+                                                             ImportDeptContext context) {
+        if (!hasImportDeptText(importVO)) {
+            return ImportDeptAssignment.none();
+        }
+        if (isFieldHidden("deptId") || isFieldHidden("deptIds") || isFieldHidden("allowMultiDept")) {
+            throw new IllegalStateException("无客户部门字段权限，不能通过导入设置部门分配");
+        }
+        if (context.isPermissionDenied()) {
+            throw new IllegalStateException("无客户分配部门权限，不能通过导入设置部门分配");
+        }
+        Long deptId = resolveImportDeptId(importVO.getDeptName(), context);
+        List<Long> deptIds = resolveImportDeptIds(importVO.getDeptNames(), context);
+        if (deptId == null && CollUtil.isNotEmpty(deptIds)) {
+            deptId = deptIds.get(0);
+        }
+        return new ImportDeptAssignment(true, deptId, buildCustomerDeptIds(deptId, deptIds,
+                CollUtil.isNotEmpty(deptIds)));
+    }
+
+    private Long resolveImportDeptId(String deptName, ImportDeptContext context) {
+        String name = trimToNull(deptName);
+        if (name == null) {
+            return null;
+        }
+        return resolveImportDept(name, context).getId();
+    }
+
+    private List<Long> resolveImportDeptIds(String deptNames, ImportDeptContext context) {
+        String names = trimToNull(deptNames);
+        if (names == null) {
+            return Collections.emptyList();
+        }
+        Set<Long> deptIds = new LinkedHashSet<>();
+        for (String item : names.split(IMPORT_DEPT_NAME_SPLIT_REGEX)) {
+            String name = trimToNull(item);
+            if (name == null) {
+                continue;
+            }
+            deptIds.add(resolveImportDept(name, context).getId());
+        }
+        return new ArrayList<>(deptIds);
+    }
+
+    private DeptRespDTO resolveImportDept(String inputName, ImportDeptContext context) {
+        String normalizedName = normalizeDeptName(inputName);
+        boolean fullNameInput = inputName.contains("/") || inputName.contains("\\");
+        List<DeptRespDTO> candidates = fullNameInput
+                ? context.getFullNameMap().getOrDefault(normalizedName, Collections.emptyList())
+                : context.getNameMap().getOrDefault(normalizedName, Collections.emptyList());
+        if (CollUtil.isEmpty(candidates)) {
+            throw new IllegalArgumentException("部门不存在：" + inputName);
+        }
+        List<DeptRespDTO> enabledCandidates = candidates.stream()
+                .filter(dept -> CommonStatusEnum.ENABLE.getStatus().equals(dept.getStatus()))
+                .collect(Collectors.toList());
+        if (CollUtil.isEmpty(enabledCandidates)) {
+            throw new IllegalArgumentException("部门未启用：" + inputName);
+        }
+        if (enabledCandidates.size() > 1) {
+            throw new IllegalArgumentException("部门名称重复：" + inputName + "，请填写完整路径");
+        }
+        DeptRespDTO dept = enabledCandidates.get(0);
+        if (context.getAllowedDeptIds() != null && !context.getAllowedDeptIds().contains(dept.getId())) {
+            throw new IllegalArgumentException("部门超出当前用户可操作范围：" + inputName);
+        }
+        return dept;
+    }
+
+    private void addDeptCandidate(Map<String, List<DeptRespDTO>> map, String name, DeptRespDTO dept) {
+        String normalizedName = normalizeDeptName(name);
+        if (!StringUtils.hasText(normalizedName)) {
+            return;
+        }
+        map.computeIfAbsent(normalizedName, key -> new ArrayList<>()).add(dept);
+    }
+
+    private String normalizeDeptName(String value) {
+        String name = trimToNull(value);
+        if (name == null) {
+            return null;
+        }
+        return name.replace('／', '/')
+                .replace('\\', '/')
+                .replaceAll("\\s*/\\s*", "/")
+                .toLowerCase();
+    }
+
+    private void setIfHasText(java.util.function.Consumer<String> setter, String value) {
+        String trim = trimToNull(value);
+        if (trim != null) {
+            setter.accept(trim);
+        }
+    }
+
+    private String getImportFailureReason(Exception ex) {
+        return ex.getMessage() != null ? ex.getMessage() : ex.getClass().getSimpleName();
     }
 
     @Override
@@ -1144,8 +1406,49 @@ public class ErpCustomerServiceImpl implements ErpCustomerService {
         }
     }
 
+    private void validateCustomerNameUnique(Long id, String name) {
+        String normalizedName = trimToNull(name);
+        if (!StringUtils.hasText(normalizedName)) {
+            return;
+        }
+        ErpCustomerDO customer = customerMapper.selectByNameExcludeId(normalizedName, id);
+        if (customer != null) {
+            throw exception(CUSTOMER_NAME_DUPLICATE, normalizedName);
+        }
+    }
+
     private String normalizeCode(String code) {
         return StringUtils.hasText(code) ? code.trim() : null;
+    }
+
+    private String trimToNull(String value) {
+        return StringUtils.hasText(value) ? value.trim() : null;
+    }
+
+    private void fillCustomerImportMnemonicCodes(ErpCustomerSaveReqVO reqVO) {
+        String name = trimToNull(reqVO.getName());
+        if (!StringUtils.hasText(name)) {
+            return;
+        }
+        if (!StringUtils.hasText(reqVO.getPinyinCode())) {
+            reqVO.setPinyinCode(ErpMnemonicCodeUtils.buildPinyinCode(name));
+        }
+        if (!StringUtils.hasText(reqVO.getWubiCode())) {
+            reqVO.setWubiCode(ErpMnemonicCodeUtils.buildWubiCode(name));
+        }
+    }
+
+    private void fillCustomerImportMnemonicCodes(ErpCustomerDO updateObj, ErpCustomerDO existing) {
+        String name = trimToNull(updateObj.getName());
+        if (!StringUtils.hasText(name)) {
+            return;
+        }
+        if (!StringUtils.hasText(existing.getPinyinCode())) {
+            updateObj.setPinyinCode(ErpMnemonicCodeUtils.buildPinyinCode(name));
+        }
+        if (!StringUtils.hasText(existing.getWubiCode())) {
+            updateObj.setWubiCode(ErpMnemonicCodeUtils.buildWubiCode(name));
+        }
     }
 
     private void recordCreate(ErpCustomerDO customer) {
@@ -1165,6 +1468,79 @@ public class ErpCustomerServiceImpl implements ErpCustomerService {
         if (operateLogService != null) {
             operateLogService.recordDelete(ERP_CUSTOMER_TYPE, customer.getId(), customer, customer.getCode());
         }
+    }
+
+    private static final class ImportDeptContext {
+
+        private final Map<String, List<DeptRespDTO>> nameMap;
+        private final Map<String, List<DeptRespDTO>> fullNameMap;
+        private final Set<Long> allowedDeptIds;
+        private final boolean permissionDenied;
+
+        private ImportDeptContext(Map<String, List<DeptRespDTO>> nameMap,
+                                  Map<String, List<DeptRespDTO>> fullNameMap,
+                                  Set<Long> allowedDeptIds,
+                                  boolean permissionDenied) {
+            this.nameMap = nameMap;
+            this.fullNameMap = fullNameMap;
+            this.allowedDeptIds = allowedDeptIds;
+            this.permissionDenied = permissionDenied;
+        }
+
+        private static ImportDeptContext empty() {
+            return new ImportDeptContext(Collections.emptyMap(), Collections.emptyMap(), null, false);
+        }
+
+        private static ImportDeptContext permissionDenied() {
+            return new ImportDeptContext(Collections.emptyMap(), Collections.emptyMap(), Collections.emptySet(), true);
+        }
+
+        private Map<String, List<DeptRespDTO>> getNameMap() {
+            return nameMap;
+        }
+
+        private Map<String, List<DeptRespDTO>> getFullNameMap() {
+            return fullNameMap;
+        }
+
+        private Set<Long> getAllowedDeptIds() {
+            return allowedDeptIds;
+        }
+
+        private boolean isPermissionDenied() {
+            return permissionDenied;
+        }
+
+    }
+
+    private static final class ImportDeptAssignment {
+
+        private final boolean deptImport;
+        private final Long deptId;
+        private final List<Long> deptIds;
+
+        private ImportDeptAssignment(boolean deptImport, Long deptId, List<Long> deptIds) {
+            this.deptImport = deptImport;
+            this.deptId = deptId;
+            this.deptIds = deptIds == null ? Collections.emptyList() : deptIds;
+        }
+
+        private static ImportDeptAssignment none() {
+            return new ImportDeptAssignment(false, null, Collections.emptyList());
+        }
+
+        private boolean hasDeptImport() {
+            return deptImport;
+        }
+
+        private Long getDeptId() {
+            return deptId;
+        }
+
+        private List<Long> getDeptIds() {
+            return deptIds;
+        }
+
     }
 
     private static final class ReceivableTimelineRow {

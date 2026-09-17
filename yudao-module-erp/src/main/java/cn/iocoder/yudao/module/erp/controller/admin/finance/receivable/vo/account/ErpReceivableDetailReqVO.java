@@ -16,6 +16,10 @@ public class ErpReceivableDetailReqVO {
     @NotNull
     private Long customerId;
 
+    private Long deptId;
+
+    private Boolean deptUnassigned;
+
     @DateTimeFormat(pattern = FORMAT_YEAR_MONTH_DAY_HOUR_MINUTE_SECOND)
     private LocalDateTime[] bizTime;
 

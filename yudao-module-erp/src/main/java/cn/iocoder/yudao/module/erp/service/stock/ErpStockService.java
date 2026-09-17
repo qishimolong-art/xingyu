@@ -126,6 +126,9 @@ public interface ErpStockService {
      */
     void ensureStockExists(Long productId, Long warehouseId);
 
+    /** 批量新增库存维度前，按稳定顺序预锁完整维度集合；旧核算关闭时不访问新表。 */
+    void reserveStockDimensions(Collection<ErpStockDO> dimensions);
+
     /**
      * Update shelf locations by stock row.
      *

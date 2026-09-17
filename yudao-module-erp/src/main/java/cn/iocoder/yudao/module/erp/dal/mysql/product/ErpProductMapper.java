@@ -52,6 +52,44 @@ public interface ErpProductMapper extends BaseMapperX<ErpProductDO> {
     String KEYWORD_FIELD_DEPT_NAME = "deptName";
     String KEYWORD_FIELD_UNIVERSAL = "universal";
     String KEYWORD_FIELD_CREATE_TIME = "createTime";
+    String EXPLICIT_KEYWORD_DELIMITER_REGEX = "[/\\\\,，;；+|]+";
+    String SPACE_KEYWORD_DELIMITER_REGEX = "[\\s\\u3000]+";
+    List<String> STOCK_PRODUCT_KEYWORD_FIELDS = java.util.Arrays.asList(
+            KEYWORD_FIELD_CODE,
+            KEYWORD_FIELD_NAME,
+            KEYWORD_FIELD_PINYIN_CODE,
+            KEYWORD_FIELD_WUBI_CODE,
+            KEYWORD_FIELD_BAR_CODE,
+            KEYWORD_FIELD_VEHICLE_MODEL,
+            KEYWORD_FIELD_FACTORY_CODE,
+            KEYWORD_FIELD_STANDARD,
+            KEYWORD_FIELD_REMARK,
+            KEYWORD_FIELD_BRAND,
+            KEYWORD_FIELD_OE_NUMBER,
+            KEYWORD_FIELD_ORIGIN_PLACE,
+            KEYWORD_FIELD_FEATURE_CODE,
+            KEYWORD_FIELD_DRAWING_NO,
+            KEYWORD_FIELD_SHELF,
+            KEYWORD_FIELD_UNIT_NAME);
+    List<String> STOCK_KEYWORD_FIELDS = java.util.Arrays.asList(
+            KEYWORD_FIELD_CODE,
+            KEYWORD_FIELD_NAME,
+            KEYWORD_FIELD_PINYIN_CODE,
+            KEYWORD_FIELD_WUBI_CODE,
+            KEYWORD_FIELD_BAR_CODE,
+            KEYWORD_FIELD_VEHICLE_MODEL,
+            KEYWORD_FIELD_FACTORY_CODE,
+            KEYWORD_FIELD_STANDARD,
+            KEYWORD_FIELD_REMARK,
+            KEYWORD_FIELD_BRAND,
+            KEYWORD_FIELD_OE_NUMBER,
+            KEYWORD_FIELD_ORIGIN_PLACE,
+            KEYWORD_FIELD_FEATURE_CODE,
+            KEYWORD_FIELD_DRAWING_NO,
+            KEYWORD_FIELD_SHELF,
+            KEYWORD_FIELD_UNIT_NAME,
+            KEYWORD_FIELD_DEPT_NAME,
+            KEYWORD_FIELD_CREATE_TIME);
 
     @Select("<script>" +
             "SELECT id" +
@@ -109,7 +147,7 @@ public interface ErpProductMapper extends BaseMapperX<ErpProductDO> {
                 .eqIfPresent(ErpProductDO::getStatus, reqVO.getStatus())
                 .eqIfPresent(ErpProductDO::getDefaultWarehouseId, reqVO.getWarehouseId())
                 .betweenIfPresent(ErpProductDO::getCreateTime, reqVO.getCreateTime());
-        appendKeywordCondition(wrapper, fuzzyKeyword(reqVO.getKeyword()), keywordFields, customKeywordColumns);
+        appendKeywordCondition(wrapper, reqVO.getKeyword(), keywordFields, customKeywordColumns);
         if (reqVO.getDeptId() != null) {
             wrapper.and(w -> w.eq(ErpProductDO::getDeptId, reqVO.getDeptId())
                     .or()
@@ -139,84 +177,167 @@ public interface ErpProductMapper extends BaseMapperX<ErpProductDO> {
         if (!StringUtils.hasText(keyword)) {
             return;
         }
-        wrapper.and(w -> {
-            boolean hasCondition = false;
-            if (keywordFields.contains(KEYWORD_FIELD_CODE)) {
-                w.like(ErpProductDO::getCode, keyword);
-                hasCondition = true;
+        KeywordSearch keywordSearch = parseKeywordSearch(keyword);
+        if (keywordSearch.explicitDelimited()) {
+            appendKeywordTokensAndCondition(wrapper, keywordSearch.tokens(), keywordFields, customKeywordColumns);
+            return;
+        }
+        if (keywordSearch.spaceDelimited()) {
+            wrapper.and(w -> {
+                appendKeywordMatchGroup(w, fuzzyKeyword(keyword), keywordFields, customKeywordColumns);
+                w.or(or -> appendKeywordTokensAndCondition(or, keywordSearch.tokens(), keywordFields, customKeywordColumns));
+            });
+            return;
+        }
+        wrapper.and(w -> appendKeywordMatchGroup(w, fuzzyKeyword(keyword), keywordFields, customKeywordColumns));
+    }
+
+    static KeywordSearch parseKeywordSearch(String keyword) {
+        String rawKeyword = keyword.trim();
+        List<String> explicitTokens = splitKeywordTokens(rawKeyword, EXPLICIT_KEYWORD_DELIMITER_REGEX);
+        if (containsExplicitDelimiter(rawKeyword) && !explicitTokens.isEmpty()) {
+            return new KeywordSearch(explicitTokens, true, false);
+        }
+        List<String> spaceTokens = splitKeywordTokens(rawKeyword, SPACE_KEYWORD_DELIMITER_REGEX);
+        if (spaceTokens.size() > 1) {
+            return new KeywordSearch(spaceTokens, false, true);
+        }
+        return new KeywordSearch(Collections.emptyList(), false, false);
+    }
+
+    static List<String> splitKeywordTokens(String keyword, String delimiterRegex) {
+        return java.util.Arrays.stream(keyword.split(delimiterRegex))
+                .map(String::trim)
+                .filter(StringUtils::hasText)
+                .distinct()
+                .collect(Collectors.toList());
+    }
+
+    static boolean containsExplicitDelimiter(String keyword) {
+        return keyword.indexOf('/') >= 0
+                || keyword.indexOf('\\') >= 0
+                || keyword.indexOf(',') >= 0
+                || keyword.indexOf('，') >= 0
+                || keyword.indexOf(';') >= 0
+                || keyword.indexOf('；') >= 0
+                || keyword.indexOf('+') >= 0
+                || keyword.indexOf('|') >= 0;
+    }
+
+    static void appendKeywordTokensAndCondition(LambdaQueryWrapper<ErpProductDO> wrapper,
+                                                List<String> tokens,
+                                                Collection<String> keywordFields,
+                                                Collection<String> customKeywordColumns) {
+        tokens.forEach(token -> wrapper.and(w -> appendKeywordMatchGroup(w, fuzzyKeyword(token),
+                keywordFields, customKeywordColumns)));
+    }
+
+    static void appendKeywordMatchGroup(LambdaQueryWrapper<ErpProductDO> wrapper,
+                                        String keyword,
+                                        Collection<String> keywordFields,
+                                        Collection<String> customKeywordColumns) {
+        boolean hasCondition = false;
+        if (keywordFields.contains(KEYWORD_FIELD_CODE)) {
+            wrapper.like(ErpProductDO::getCode, keyword);
+            hasCondition = true;
+        }
+        if (keywordFields.contains(KEYWORD_FIELD_NAME)) {
+            appendOr(wrapper, hasCondition).like(ErpProductDO::getName, keyword);
+            hasCondition = true;
+        }
+        if (keywordFields.contains(KEYWORD_FIELD_PINYIN_CODE)) {
+            appendOr(wrapper, hasCondition).like(ErpProductDO::getPinyinCode, keyword);
+            hasCondition = true;
+        }
+        if (keywordFields.contains(KEYWORD_FIELD_WUBI_CODE)) {
+            appendOr(wrapper, hasCondition).like(ErpProductDO::getWubiCode, keyword);
+            hasCondition = true;
+        }
+        if (keywordFields.contains(KEYWORD_FIELD_BAR_CODE)) {
+            appendOr(wrapper, hasCondition).like(ErpProductDO::getBarCode, keyword);
+            hasCondition = true;
+        }
+        if (keywordFields.contains(KEYWORD_FIELD_VEHICLE_MODEL)) {
+            appendOr(wrapper, hasCondition).like(ErpProductDO::getVehicleModel, keyword);
+            hasCondition = true;
+        }
+        if (keywordFields.contains(KEYWORD_FIELD_FACTORY_CODE)) {
+            appendOr(wrapper, hasCondition).like(ErpProductDO::getFactoryCode, keyword);
+            hasCondition = true;
+        }
+        if (keywordFields.contains(KEYWORD_FIELD_STANDARD)) {
+            appendOr(wrapper, hasCondition).like(ErpProductDO::getStandard, keyword);
+            hasCondition = true;
+        }
+        if (keywordFields.contains(KEYWORD_FIELD_REMARK)) {
+            appendOr(wrapper, hasCondition).like(ErpProductDO::getRemark, keyword);
+            hasCondition = true;
+        }
+        if (keywordFields.contains(KEYWORD_FIELD_BRAND)) {
+            appendOr(wrapper, hasCondition).like(ErpProductDO::getBrand, keyword);
+            hasCondition = true;
+        }
+        if (keywordFields.contains(KEYWORD_FIELD_OE_NUMBER)) {
+            appendOr(wrapper, hasCondition).like(ErpProductDO::getOeNumber, keyword);
+            hasCondition = true;
+        }
+        if (keywordFields.contains(KEYWORD_FIELD_ORIGIN_PLACE)) {
+            appendOr(wrapper, hasCondition).like(ErpProductDO::getOriginPlace, keyword);
+            hasCondition = true;
+        }
+        if (keywordFields.contains(KEYWORD_FIELD_FEATURE_CODE)) {
+            appendOr(wrapper, hasCondition).like(ErpProductDO::getFeatureCode, keyword);
+            hasCondition = true;
+        }
+        if (keywordFields.contains(KEYWORD_FIELD_DRAWING_NO)) {
+            appendOr(wrapper, hasCondition).like(ErpProductDO::getDrawingNo, keyword);
+            hasCondition = true;
+        }
+        if (keywordFields.contains(KEYWORD_FIELD_SHELF)) {
+            appendOr(wrapper, hasCondition).like(ErpProductDO::getShelf, keyword);
+            hasCondition = true;
+        }
+        if (keywordFields.contains(KEYWORD_FIELD_CREATE_TIME)) {
+            appendOr(wrapper, hasCondition).apply("DATE_FORMAT(create_time, '%Y-%m-%d %H:%i:%s') LIKE {0}", "%" + keyword + "%");
+            hasCondition = true;
+        }
+        for (String column : customKeywordColumns) {
+            if (!StringUtils.hasText(column)) {
+                continue;
             }
-            if (keywordFields.contains(KEYWORD_FIELD_NAME)) {
-                appendOr(w, hasCondition).like(ErpProductDO::getName, keyword);
-                hasCondition = true;
-            }
-            if (keywordFields.contains(KEYWORD_FIELD_PINYIN_CODE)) {
-                appendOr(w, hasCondition).like(ErpProductDO::getPinyinCode, keyword);
-                hasCondition = true;
-            }
-            if (keywordFields.contains(KEYWORD_FIELD_WUBI_CODE)) {
-                appendOr(w, hasCondition).like(ErpProductDO::getWubiCode, keyword);
-                hasCondition = true;
-            }
-            if (keywordFields.contains(KEYWORD_FIELD_BAR_CODE)) {
-                appendOr(w, hasCondition).like(ErpProductDO::getBarCode, keyword);
-                hasCondition = true;
-            }
-            if (keywordFields.contains(KEYWORD_FIELD_VEHICLE_MODEL)) {
-                appendOr(w, hasCondition).like(ErpProductDO::getVehicleModel, keyword);
-                hasCondition = true;
-            }
-            if (keywordFields.contains(KEYWORD_FIELD_FACTORY_CODE)) {
-                appendOr(w, hasCondition).like(ErpProductDO::getFactoryCode, keyword);
-                hasCondition = true;
-            }
-            if (keywordFields.contains(KEYWORD_FIELD_STANDARD)) {
-                appendOr(w, hasCondition).like(ErpProductDO::getStandard, keyword);
-                hasCondition = true;
-            }
-            if (keywordFields.contains(KEYWORD_FIELD_REMARK)) {
-                appendOr(w, hasCondition).like(ErpProductDO::getRemark, keyword);
-                hasCondition = true;
-            }
-            if (keywordFields.contains(KEYWORD_FIELD_BRAND)) {
-                appendOr(w, hasCondition).like(ErpProductDO::getBrand, keyword);
-                hasCondition = true;
-            }
-            if (keywordFields.contains(KEYWORD_FIELD_OE_NUMBER)) {
-                appendOr(w, hasCondition).like(ErpProductDO::getOeNumber, keyword);
-                hasCondition = true;
-            }
-            if (keywordFields.contains(KEYWORD_FIELD_ORIGIN_PLACE)) {
-                appendOr(w, hasCondition).like(ErpProductDO::getOriginPlace, keyword);
-                hasCondition = true;
-            }
-            if (keywordFields.contains(KEYWORD_FIELD_FEATURE_CODE)) {
-                appendOr(w, hasCondition).like(ErpProductDO::getFeatureCode, keyword);
-                hasCondition = true;
-            }
-            if (keywordFields.contains(KEYWORD_FIELD_DRAWING_NO)) {
-                appendOr(w, hasCondition).like(ErpProductDO::getDrawingNo, keyword);
-                hasCondition = true;
-            }
-            if (keywordFields.contains(KEYWORD_FIELD_SHELF)) {
-                appendOr(w, hasCondition).like(ErpProductDO::getShelf, keyword);
-                hasCondition = true;
-            }
-            if (keywordFields.contains(KEYWORD_FIELD_CREATE_TIME)) {
-                appendOr(w, hasCondition).apply("DATE_FORMAT(create_time, '%Y-%m-%d %H:%i:%s') LIKE {0}", "%" + keyword + "%");
-                hasCondition = true;
-            }
-            for (String column : customKeywordColumns) {
-                if (!StringUtils.hasText(column)) {
-                    continue;
-                }
-                appendOr(w, hasCondition).apply(column + " LIKE {0}", "%" + keyword + "%");
-                hasCondition = true;
-            }
-            hasCondition = appendKeywordExists(w, hasCondition, keyword, keywordFields);
-            if (!hasCondition) {
-                w.apply("1 = 0");
-            }
-        });
+            appendOr(wrapper, hasCondition).apply(column + " LIKE {0}", "%" + keyword + "%");
+            hasCondition = true;
+        }
+        hasCondition = appendKeywordExists(wrapper, hasCondition, keyword, keywordFields);
+        if (!hasCondition) {
+            wrapper.apply("1 = 0");
+        }
+    }
+
+    class KeywordSearch {
+
+        private final List<String> tokens;
+        private final boolean explicitDelimited;
+        private final boolean spaceDelimited;
+
+        KeywordSearch(List<String> tokens, boolean explicitDelimited, boolean spaceDelimited) {
+            this.tokens = tokens;
+            this.explicitDelimited = explicitDelimited;
+            this.spaceDelimited = spaceDelimited;
+        }
+
+        List<String> tokens() {
+            return tokens;
+        }
+
+        boolean explicitDelimited() {
+            return explicitDelimited;
+        }
+
+        boolean spaceDelimited() {
+            return spaceDelimited;
+        }
+
     }
 
     static LambdaQueryWrapper<ErpProductDO> appendOr(LambdaQueryWrapper<ErpProductDO> wrapper,
@@ -463,6 +584,12 @@ public interface ErpProductMapper extends BaseMapperX<ErpProductDO> {
                 .neIfPresent(ErpProductDO::getId, excludeId));
     }
 
+    default ErpProductDO selectByNameExcludeId(String name, Long excludeId) {
+        return selectOne(new LambdaQueryWrapperX<ErpProductDO>()
+                .eq(ErpProductDO::getName, name)
+                .neIfPresent(ErpProductDO::getId, excludeId));
+    }
+
     default List<String> selectCodesByPrefix(String prefix) {
         if (!StringUtils.hasText(prefix)) {
             return Collections.emptyList();
@@ -580,7 +707,7 @@ public interface ErpProductMapper extends BaseMapperX<ErpProductDO> {
     default List<Long> selectIdsByKeyword(ErpStockPageReqVO reqVO) {
         LambdaQueryWrapper<ErpProductDO> w = new LambdaQueryWrapper<>();
         w.select(ErpProductDO::getId);
-        appendStockKeywordCondition(w, fuzzyKeyword(reqVO.getKeyword()));
+        appendStockKeywordCondition(w, reqVO.getKeyword());
         List<Map<String, Object>> rows = selectMaps(w);
         return rows.stream().map(m -> (Long) m.get("id")).collect(Collectors.toList());
     }
@@ -627,8 +754,9 @@ public interface ErpProductMapper extends BaseMapperX<ErpProductDO> {
         if (StringUtils.hasText(reqVO.getOeNumber())) {
             w.like(ErpProductDO::getOeNumber, fuzzyKeyword(reqVO.getOeNumber()));
         }
+        appendStockKeywordCondition(w, reqVO.getProductKeyword());
         if (includeKeyword) {
-            appendStockKeywordCondition(w, fuzzyKeyword(reqVO.getKeyword()));
+            appendStockKeywordCondition(w, reqVO.getKeyword());
         }
         if (reqVO.getCategoryId() != null) {
             w.eq(ErpProductDO::getCategoryId, reqVO.getCategoryId());
@@ -664,30 +792,28 @@ public interface ErpProductMapper extends BaseMapperX<ErpProductDO> {
         if (!StringUtils.hasText(keyword)) {
             return;
         }
-        w.and(q -> q.like(ErpProductDO::getCode, keyword)
-                .or().like(ErpProductDO::getName, keyword)
-                .or().like(ErpProductDO::getPinyinCode, keyword)
-                .or().like(ErpProductDO::getWubiCode, keyword)
-                .or().like(ErpProductDO::getBarCode, keyword)
-                .or().like(ErpProductDO::getVehicleModel, keyword)
-                .or().like(ErpProductDO::getFactoryCode, keyword)
-                .or().like(ErpProductDO::getStandard, keyword)
-                .or().like(ErpProductDO::getRemark, keyword)
-                .or().like(ErpProductDO::getBrand, keyword)
-                .or().like(ErpProductDO::getOeNumber, keyword)
-                .or().like(ErpProductDO::getOriginPlace, keyword)
-                .or().like(ErpProductDO::getFeatureCode, keyword)
-                .or().like(ErpProductDO::getDrawingNo, keyword)
-                .or().like(ErpProductDO::getShelf, keyword)
-                .or().exists("SELECT 1 FROM system_dept d "
-                        + "WHERE d.deleted = b'0' "
-                        + "AND d.name LIKE {0} "
-                        + "AND (d.id = erp_product.dept_id "
-                        + "OR EXISTS (SELECT 1 FROM erp_product_dept epd "
-                        + "WHERE epd.product_id = erp_product.id "
-                        + "AND epd.deleted = b'0' "
-                        + "AND epd.dept_id = d.id))", "%" + keyword + "%")
-                .or().apply("DATE_FORMAT(create_time, '%Y-%m-%d %H:%i:%s') LIKE {0}", "%" + keyword + "%"));
+        KeywordSearch keywordSearch = parseKeywordSearch(keyword);
+        if (keywordSearch.explicitDelimited()) {
+            appendStockProductKeywordTokensAndCondition(w, keywordSearch.tokens());
+            return;
+        }
+        if (keywordSearch.spaceDelimited()) {
+            w.and(q -> {
+                appendStockKeywordMatchGroup(q, fuzzyKeyword(keyword));
+                q.or(or -> appendStockProductKeywordTokensAndCondition(or, keywordSearch.tokens()));
+            });
+            return;
+        }
+        w.and(q -> appendStockKeywordMatchGroup(q, fuzzyKeyword(keyword)));
+    }
+
+    static void appendStockKeywordMatchGroup(LambdaQueryWrapper<ErpProductDO> wrapper, String keyword) {
+        appendKeywordMatchGroup(wrapper, keyword, STOCK_KEYWORD_FIELDS, Collections.emptyList());
+    }
+
+    static void appendStockProductKeywordTokensAndCondition(LambdaQueryWrapper<ErpProductDO> wrapper,
+                                                           List<String> tokens) {
+        appendKeywordTokensAndCondition(wrapper, tokens, STOCK_PRODUCT_KEYWORD_FIELDS, Collections.emptyList());
     }
 
 }

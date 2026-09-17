@@ -102,6 +102,9 @@ public class ErpPurchaseOrderRespVO {
     @ExcelProperty("产品信息")
     private String productNames;
 
+    @Schema(description = "明细项数", example = "3")
+    private Integer itemCount;
+
     // ========== 采购入库 ==========
 
     @Schema(description = "采购入库数量", requiredMode = Schema.RequiredMode.REQUIRED, example = "100.00")
@@ -205,8 +208,38 @@ public class ErpPurchaseOrderRespVO {
         @Schema(description = "产品单价", example = "100.00")
         private BigDecimal productPrice;
 
+        @Schema(description = "产品采购价（只读参考）", example = "100.00")
+        private BigDecimal productPurchasePrice;
+
+        @Schema(description = "销售价（只读参考）", example = "120.00")
+        private BigDecimal salePrice;
+
+        @Schema(description = "最近销售价（只读参考）", example = "118.00")
+        private BigDecimal lastSalePrice;
+
+        @Schema(description = "最低价（只读参考）", example = "90.00")
+        private BigDecimal minPrice;
+
+        @Schema(description = "参考价（只读参考）", example = "110.00")
+        private BigDecimal referencePrice;
+
+        @Schema(description = "零售价（只读参考）", example = "130.00")
+        private BigDecimal retailPrice;
+
         @Schema(description = "最后采购价（只读参考）", example = "100.00")
         private BigDecimal lastPurchasePrice;
+
+        @Schema(description = "毛利率（百分比整数，只读参考）", example = "20")
+        private Integer grossProfitRate;
+
+        @Schema(description = "备用价1（只读参考）", example = "95.00")
+        private BigDecimal backupPrice1;
+
+        @Schema(description = "批发价（只读参考）", example = "80.00")
+        private BigDecimal wholesalePrice;
+
+        @Schema(description = "股份价（只读参考）", example = "88.00")
+        private BigDecimal sharePrice;
 
         @Schema(description = "产品数量", requiredMode = Schema.RequiredMode.REQUIRED, example = "100.00")
         @NotNull(message = "产品数量不能为空")
@@ -256,8 +289,14 @@ public class ErpPurchaseOrderRespVO {
         @Schema(description = "仓库编号", example = "1")
         private Long warehouseId;
 
+        @Schema(description = "仓库名称", example = "主仓库")
+        private String warehouseName;
+
         @Schema(description = "所属部门", example = "100")
         private Long deptId;
+
+        @Schema(description = "所属部门名称", example = "采购部")
+        private String deptName;
 
         @Schema(description = "货架位", example = "A-01-02")
         private String warehousePosition;

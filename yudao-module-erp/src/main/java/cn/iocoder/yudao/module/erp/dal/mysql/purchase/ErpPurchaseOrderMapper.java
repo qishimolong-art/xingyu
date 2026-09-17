@@ -5,6 +5,7 @@ import cn.iocoder.yudao.framework.mybatis.core.mapper.BaseMapperX;
 import cn.iocoder.yudao.framework.mybatis.core.query.MPJLambdaWrapperX;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.order.ErpPurchaseOrderPageReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.product.ErpProductDO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.product.ErpProductUnitDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseOrderDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseOrderItemDO;
 import cn.iocoder.yudao.module.erp.dal.mysql.common.ErpKeywordQuery;
@@ -64,25 +65,18 @@ public interface ErpPurchaseOrderMapper extends BaseMapperX<ErpPurchaseOrderDO> 
         if (reqVO.getProductId() != null || StringUtils.hasText(reqVO.getProductKeyword())) {
             query.leftJoin(ErpPurchaseOrderItemDO.class, ErpPurchaseOrderItemDO::getOrderId, ErpPurchaseOrderDO::getId)
                     .leftJoin(ErpProductDO.class, ErpProductDO::getId, ErpPurchaseOrderItemDO::getProductId)
+                    .leftJoin(ErpProductUnitDO.class, ErpProductUnitDO::getId, ErpProductDO::getUnitId)
                     .eq(reqVO.getProductId() != null, ErpPurchaseOrderItemDO::getProductId, reqVO.getProductId())
-                    .and(StringUtils.hasText(reqVO.getProductKeyword()), w -> {
-                        String productKeyword = normalizeLikeValue(reqVO.getProductKeyword());
-                        w.like(ErpProductDO::getCode, productKeyword)
-                                .or().like(ErpProductDO::getName, productKeyword)
-                                .or().like(ErpProductDO::getPinyinCode, productKeyword)
-                                .or().like(ErpProductDO::getWubiCode, productKeyword)
-                                .or().like(ErpProductDO::getBarCode, productKeyword)
-                                .or().like(ErpProductDO::getVehicleModel, productKeyword)
-                                .or().like(ErpProductDO::getFactoryCode, productKeyword)
-                                .or().like(ErpProductDO::getStandard, productKeyword)
-                                .or().like(ErpPurchaseOrderItemDO::getVehicleModel, productKeyword)
-                                .or().like(ErpPurchaseOrderItemDO::getFactoryCode, productKeyword)
-                                .or().like(ErpPurchaseOrderItemDO::getDrawingNo, productKeyword)
-                                .or().like(ErpPurchaseOrderItemDO::getBrand, productKeyword);
-                    })
+                    .and(StringUtils.hasText(reqVO.getProductKeyword()),
+                            w -> ErpKeywordQuery.appendProductKeyword(w, reqVO.getProductKeyword(),
+                                    ErpKeywordQuery.productKeywordColumn(ErpPurchaseOrderItemDO::getVehicleModel),
+                                    ErpKeywordQuery.productKeywordColumn(ErpPurchaseOrderItemDO::getFactoryCode),
+                                    ErpKeywordQuery.productKeywordColumn(ErpPurchaseOrderItemDO::getDrawingNo),
+                                    ErpKeywordQuery.productKeywordColumn(ErpPurchaseOrderItemDO::getBrand)))
                     .groupBy(ErpPurchaseOrderDO::getId); // 避免 1 对多查询，产生相同的 1
         }
-        ErpKeywordQuery.appendWithDeptNameAndPurchaseSupplier(query, reqVO.getKeyword(),
+        ErpKeywordQuery.appendWithDeptNameAndPurchaseSupplierAndProductItemTokens(query, reqVO.getKeyword(),
+                "erp_purchase_order_items", "order_id",
                 ErpPurchaseOrderDO::getNo, ErpPurchaseOrderDO::getFactoryOrderNo,
                 ErpPurchaseOrderDO::getRemark, ErpPurchaseOrderDO::getDeliveryMethod,
                 ErpPurchaseOrderDO::getPurchaseType, ErpPurchaseOrderDO::getOrderFormula,

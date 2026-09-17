@@ -74,6 +74,12 @@
             <artifactId>yudao-spring-boot-starter-excel</artifactId>
         </dependency>
 
+        <dependency>
+            <groupId>com.belerweb</groupId>
+            <artifactId>pinyin4j</artifactId>
+            <version>2.5.1</version>
+        </dependency>
+
         <!-- Test 测试相关 -->
         <dependency>
             <groupId>cn.iocoder.boot</groupId>

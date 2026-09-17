@@ -25,6 +25,12 @@ import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.
  */
 public interface ErpWarehouseService {
 
+    String SALE_QUOTE_ALL_PRODUCT_PERMISSION = "erp:sale-quote:all-product";
+    String SALE_CART_ALL_PRODUCT_PERMISSION = "erp:sale-cart:all-product";
+    String SALE_ORDER_ALL_PRODUCT_PERMISSION = "erp:sale-order:all-product";
+    String SALE_OUT_ALL_PRODUCT_PERMISSION = "erp:sale-out:all-product";
+    String SALE_RETURN_ALL_PRODUCT_PERMISSION = "erp:sale-return:all-product";
+
     /**
      * 创建仓库
      *
@@ -159,6 +165,18 @@ public interface ErpWarehouseService {
     List<ErpWarehouseDO> validSaleSelectableWarehouseListForDept(Collection<Long> ids, Long deptId);
 
     /**
+     * Validates sale warehouses selectable in a sales form workflow, allowing all sale-enabled warehouses
+     * when the current user owns the given all-product sale permission.
+     *
+     * @param ids warehouse ids
+     * @param deptId sales department id
+     * @param allProductPermission form-specific all-product sale permission
+     * @return warehouse list
+     */
+    List<ErpWarehouseDO> validSaleSelectableWarehouseListForDept(Collection<Long> ids, Long deptId,
+                                                                 String allProductPermission);
+
+    /**
      * 获得指定状态的仓库列表
      *
      * @param status 状态
@@ -234,6 +252,15 @@ public interface ErpWarehouseService {
     List<ErpWarehouseDO> getCurrentUserSaleSelectableWarehouseListByDept(Long deptId);
 
     /**
+     * Gets sale warehouses selectable by current user in the given sales form workflow.
+     *
+     * @param deptId sales department id
+     * @param allProductPermission form-specific all-product sale permission
+     * @return warehouse list
+     */
+    List<ErpWarehouseDO> getCurrentUserSaleSelectableWarehouseListByDept(Long deptId, String allProductPermission);
+
+    /**
      * Gets enabled warehouse list visible to current login user on the product stock page.
      * Includes directly authorized warehouses and sale-department distributed warehouses.
      *
@@ -295,6 +322,23 @@ public interface ErpWarehouseService {
     void validateWarehouseSaleSelectableForDept(Long warehouseId, Long deptId);
 
     /**
+     * Validates the warehouse can be selected in the given sales form workflow.
+     *
+     * @param warehouseId warehouse id
+     * @param deptId sales department id
+     * @param allProductPermission form-specific all-product sale permission
+     */
+    void validateWarehouseSaleSelectableForDept(Long warehouseId, Long deptId, String allProductPermission);
+
+    /**
+     * Returns whether current user owns a supported all-product sale permission.
+     *
+     * @param allProductPermission form-specific all-product sale permission
+     * @return true if current user owns the permission
+     */
+    boolean hasCurrentUserSaleAllProductPermission(String allProductPermission);
+
+    /**
      * Returns whether the warehouse is allowed by the given sales department rule.
      *
      * @param warehouseId warehouse id
@@ -310,6 +354,14 @@ public interface ErpWarehouseService {
      * @return warehouse ids
      */
     List<Long> getUserWarehouseIds(Long userId);
+
+    /**
+     * Gets picker warehouse ids by user id.
+     *
+     * @param userId user id
+     * @return picker warehouse ids
+     */
+    List<Long> getUserPickWarehouseIds(Long userId);
 
     /**
      * Replaces user warehouse permissions.
@@ -328,12 +380,28 @@ public interface ErpWarehouseService {
     List<Long> getWarehouseUserIds(Long warehouseId);
 
     /**
+     * Gets picker user ids by warehouse id.
+     *
+     * @param warehouseId warehouse id
+     * @return picker user ids
+     */
+    List<Long> getWarehousePickerUserIds(Long warehouseId);
+
+    /**
      * Replaces warehouse user permissions.
      *
      * @param warehouseId warehouse id
      * @param userIds user ids
      */
     void updateWarehouseUserPermissions(Long warehouseId, Collection<Long> userIds);
+
+    /**
+     * Replaces warehouse picker assignments.
+     *
+     * @param warehouseId warehouse id
+     * @param userIds picker user ids
+     */
+    void updateWarehousePickers(Long warehouseId, Collection<Long> userIds);
 
     /**
      * Validates current login user can access all warehouses.

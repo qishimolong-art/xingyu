@@ -5,6 +5,7 @@ import cn.iocoder.yudao.framework.common.pojo.CommonResult;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
 import cn.iocoder.yudao.framework.excel.core.util.ExcelUtils;
+import cn.iocoder.yudao.module.erp.api.mall.ErpMallProductPriceApi;
 import cn.iocoder.yudao.module.product.controller.admin.spu.vo.*;
 import cn.iocoder.yudao.module.product.convert.spu.ProductSpuConvert;
 import cn.iocoder.yudao.module.product.dal.dataobject.brand.ProductBrandDO;
@@ -33,8 +34,10 @@ import java.util.List;
 import java.util.Map;
 
 import static cn.iocoder.yudao.framework.apilog.core.enums.OperateTypeEnum.EXPORT;
+import static cn.iocoder.yudao.framework.common.exception.util.ServiceExceptionUtil.exception;
 import static cn.iocoder.yudao.framework.common.pojo.CommonResult.success;
 import static cn.iocoder.yudao.framework.common.pojo.PageParam.PAGE_SIZE_NONE;
+import static cn.iocoder.yudao.module.product.enums.ErrorCodeConstants.SPU_NOT_EXISTS;
 
 @Tag(name = "管理后台 - 商品 SPU")
 @RestController
@@ -50,6 +53,8 @@ public class ProductSpuController {
     private ProductCategoryService productCategoryService;
     @Resource
     private ProductBrandService productBrandService;
+    @Resource
+    private ErpMallProductPriceApi mallProductPriceApi;
 
     @PostMapping("/create")
     @Operation(summary = "创建商品 SPU")
@@ -71,6 +76,17 @@ public class ProductSpuController {
     @PreAuthorize("@ss.hasPermission('product:spu:update')")
     public CommonResult<Boolean> updateStatus(@Valid @RequestBody ProductSpuUpdateStatusReqVO updateReqVO) {
         productSpuService.updateSpuStatus(updateReqVO);
+        return success(true);
+    }
+
+    @PutMapping("/update-retail-price")
+    @Operation(summary = "更新商品小程序价格")
+    @PreAuthorize("@ss.hasPermission('product:spu:update')")
+    public CommonResult<Boolean> updateRetailPrice(@Valid @RequestBody ProductSpuUpdateRetailPriceReqVO updateReqVO) {
+        if (productSpuService.getSpu(updateReqVO.getId()) == null) {
+            throw exception(SPU_NOT_EXISTS);
+        }
+        mallProductPriceApi.updateMallSpuRetailPrice(updateReqVO.getId(), updateReqVO.getPrice());
         return success(true);
     }
 

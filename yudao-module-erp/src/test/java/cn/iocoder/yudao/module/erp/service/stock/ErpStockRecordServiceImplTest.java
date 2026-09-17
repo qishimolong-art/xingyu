@@ -48,6 +48,10 @@ public class ErpStockRecordServiceImplTest extends BaseMockitoUnitTest {
     @Mock
     private ErpStockRecordMapper stockRecordMapper;
     @Mock
+    private cn.iocoder.yudao.module.erp.service.stock.cost.ErpDualCostPostingService dualCostPostingService;
+    @Mock
+    private ErpStockItemSnapshotSupport snapshotSupport;
+    @Mock
     private ErpStockService stockService;
     @Mock
     private ErpWarehouseService warehouseService;

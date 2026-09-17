@@ -6,6 +6,7 @@ import cn.iocoder.yudao.framework.mybatis.core.mapper.BaseMapperX;
 import cn.iocoder.yudao.framework.mybatis.core.query.MPJLambdaWrapperX;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.in.ErpPurchaseInPageReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.product.ErpProductDO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.product.ErpProductUnitDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseInDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseInItemDO;
 import cn.iocoder.yudao.module.erp.dal.mysql.common.ErpKeywordQuery;
@@ -28,6 +29,12 @@ import java.util.Objects;
  */
 @Mapper
 public interface ErpPurchaseInMapper extends BaseMapperX<ErpPurchaseInDO> {
+
+    /** 核算确认、编辑与审核共用主行锁；保留框架租户及单据部门权限。 */
+    default ErpPurchaseInDO selectByIdForUpdate(Long id) {
+        return selectOne(new cn.iocoder.yudao.framework.mybatis.core.query.LambdaQueryWrapperX<ErpPurchaseInDO>()
+                .eq(ErpPurchaseInDO::getId,id).last("FOR UPDATE"));
+    }
 
     String EFFECTIVE_PAYMENT_PRICE_EXPRESSION = ErpFinancePaymentItemMapper.effectivePaymentPriceSql(
             ErpBizTypeEnum.PURCHASE_IN.getType());
@@ -84,28 +91,19 @@ public interface ErpPurchaseInMapper extends BaseMapperX<ErpPurchaseInDO> {
                 || StringUtils.hasText(reqVO.getProductKeyword())) {
             query.leftJoin(ErpPurchaseInItemDO.class, ErpPurchaseInItemDO::getInId, ErpPurchaseInDO::getId)
                     .leftJoin(ErpProductDO.class, ErpProductDO::getId, ErpPurchaseInItemDO::getProductId)
+                    .leftJoin(ErpProductUnitDO.class, ErpProductUnitDO::getId, ErpProductDO::getUnitId)
                     .eq(reqVO.getWarehouseId() != null, ErpPurchaseInItemDO::getWarehouseId, reqVO.getWarehouseId())
                     .eq(reqVO.getProductId() != null, ErpPurchaseInItemDO::getProductId, reqVO.getProductId())
-                    .and(StringUtils.hasText(reqVO.getProductKeyword()), w -> {
-                        String productKeyword = ErpKeywordQuery.normalize(reqVO.getProductKeyword());
-                        w.like(ErpProductDO::getCode, productKeyword)
-                                .or().like(ErpProductDO::getName, productKeyword)
-                                .or().like(ErpProductDO::getPinyinCode, productKeyword)
-                                .or().like(ErpProductDO::getWubiCode, productKeyword)
-                                .or().like(ErpProductDO::getBarCode, productKeyword)
-                                .or().like(ErpProductDO::getVehicleModel, productKeyword)
-                                .or().like(ErpProductDO::getFactoryCode, productKeyword)
-                                .or().like(ErpProductDO::getStandard, productKeyword)
-                                .or().like(ErpProductDO::getBrand, productKeyword)
-                                .or().like(ErpProductDO::getDrawingNo, productKeyword)
-                                .or().like(ErpPurchaseInItemDO::getBarCode, productKeyword)
-                                .or().like(ErpPurchaseInItemDO::getVehicleModel, productKeyword)
-                                .or().like(ErpPurchaseInItemDO::getDrawingNo, productKeyword)
-                                .or().like(ErpPurchaseInItemDO::getBrand, productKeyword);
-                    })
+                    .and(StringUtils.hasText(reqVO.getProductKeyword()),
+                            w -> ErpKeywordQuery.appendProductKeyword(w, reqVO.getProductKeyword(),
+                                    ErpKeywordQuery.productKeywordColumn(ErpPurchaseInItemDO::getBarCode),
+                                    ErpKeywordQuery.productKeywordColumn(ErpPurchaseInItemDO::getVehicleModel),
+                                    ErpKeywordQuery.productKeywordColumn(ErpPurchaseInItemDO::getDrawingNo),
+                                    ErpKeywordQuery.productKeywordColumn(ErpPurchaseInItemDO::getBrand)))
                     .groupBy(ErpPurchaseInDO::getId); // 避免 1 对多查询，产生相同的 1
         }
-        ErpKeywordQuery.appendWithDeptNameAndPurchaseSupplier(query, reqVO.getKeyword(),
+        ErpKeywordQuery.appendWithDeptNameAndPurchaseSupplierAndProductItemTokens(query, reqVO.getKeyword(),
+                "erp_purchase_in_items", "in_id",
                 ErpPurchaseInDO::getNo, ErpPurchaseInDO::getOrderNo,
                 ErpPurchaseInDO::getRemark, ErpPurchaseInDO::getPurchaser,
                 ErpPurchaseInDO::getInvoiceType, ErpPurchaseInDO::getTransportMethod,

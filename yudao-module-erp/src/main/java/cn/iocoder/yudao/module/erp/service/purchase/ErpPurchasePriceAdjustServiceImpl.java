@@ -223,6 +223,22 @@ public class ErpPurchasePriceAdjustServiceImpl implements ErpPurchasePriceAdjust
             throw exception(PURCHASE_PRICE_ADJUST_UPDATE_FAIL_APPROVE);
         }
 
+        List<ErpPurchasePriceAdjustItemDO> oldItems = priceAdjustItemMapper.selectListByAdjustIdForUpdate(reqVO.getId());
+        boolean incrementalItems = ErpPurchaseItemOperationHelper.useIncrementalItems(reqVO.getItems(),
+                ErpPurchasePriceAdjustSaveReqVO.Item::getOperation,
+                PURCHASE_PRICE_ADJUST_ITEM_OPERATION_INVALID);
+        ErpPurchaseItemOperationHelper.RequestChangeSet<ErpPurchasePriceAdjustSaveReqVO.Item> itemChangeSet = null;
+        if (incrementalItems) {
+            itemChangeSet = ErpPurchaseItemOperationHelper.buildRequestChangeSet(reqVO.getItems(), oldItems,
+                    ErpPurchasePriceAdjustSaveReqVO.Item.class,
+                    ErpPurchasePriceAdjustSaveReqVO.Item::getId,
+                    ErpPurchasePriceAdjustSaveReqVO.Item::setId,
+                    ErpPurchasePriceAdjustSaveReqVO.Item::getOperation,
+                    ErpPurchasePriceAdjustItemDO::getId,
+                    PURCHASE_PRICE_ADJUST_ITEM_OPERATION_INVALID,
+                    PURCHASE_PRICE_ADJUST_ITEM_UPDATE_NOT_EXISTS);
+            reqVO.setItems(itemChangeSet.getFinalItems());
+        }
         // 2. 主表 + 子表校验 + 回填（排除自己已有的 item ID，以便防重复规则正确）
         validateMainForm(reqVO);
         List<ErpPurchasePriceAdjustItemDO> items = buildAndValidateItems(reqVO, reqVO.getId());
@@ -246,14 +262,18 @@ public class ErpPurchasePriceAdjustServiceImpl implements ErpPurchasePriceAdjust
         purchaseDocumentDefaultService.fillCreateDefaults(updateDO);
         priceAdjustMapper.updateById(updateDO);
 
-        // 5. 重建子表
-        priceAdjustItemMapper.deleteByAdjustId(reqVO.getId());
-        items.forEach(item -> {
-            item.setId(null);
-            item.setAdjustId(reqVO.getId());
-        });
-        purchaseDocumentDefaultService.fillCreateAuditDefaults(items);
-        priceAdjustItemMapper.insertBatch(items);
+        // 5. 更新子表
+        if (incrementalItems) {
+            applyPurchasePriceAdjustItemChangeSet(reqVO.getId(), itemChangeSet, items);
+        } else {
+            priceAdjustItemMapper.deleteByAdjustId(reqVO.getId());
+            items.forEach(item -> {
+                item.setId(null);
+                item.setAdjustId(reqVO.getId());
+            });
+            purchaseDocumentDefaultService.fillCreateAuditDefaults(items);
+            priceAdjustItemMapper.insertBatch(items);
+        }
         operateLogService.recordUpdate(ERP_PURCHASE_PRICE_ADJUST_TYPE, reqVO.getId(), existDO.getNo());
     }
 
@@ -265,9 +285,25 @@ public class ErpPurchasePriceAdjustServiceImpl implements ErpPurchasePriceAdjust
             throw exception(PURCHASE_PRICE_ADJUST_DRAFT_UPDATE_FAIL, existDO.getNo());
         }
         fieldPermissionMasker.preserveHiddenFields(FIELD_PERMISSION_MODULE, reqVO, existDO);
-        fieldPermissionMasker.preserveHiddenItemFields(FIELD_PERMISSION_MODULE, reqVO.getItems(),
-                priceAdjustItemMapper.selectListByAdjustId(reqVO.getId()));
-        List<ErpPurchasePriceAdjustItemDO> items = buildDraftItems(reqVO.getAdjustType(), reqVO.getItems());
+        List<ErpPurchasePriceAdjustItemDO> oldItems = priceAdjustItemMapper.selectListByAdjustIdForUpdate(reqVO.getId());
+        fieldPermissionMasker.preserveHiddenItemFields(FIELD_PERMISSION_MODULE, reqVO.getItems(), oldItems);
+        boolean incrementalItems = ErpPurchaseItemOperationHelper.useIncrementalItems(reqVO.getItems(),
+                ErpPurchasePriceAdjustSaveReqVO.Item::getOperation,
+                PURCHASE_PRICE_ADJUST_ITEM_OPERATION_INVALID);
+        ErpPurchaseItemOperationHelper.RequestChangeSet<ErpPurchasePriceAdjustSaveReqVO.Item> itemChangeSet = null;
+        List<ErpPurchasePriceAdjustSaveReqVO.Item> itemReqs = reqVO.getItems();
+        if (incrementalItems) {
+            itemChangeSet = ErpPurchaseItemOperationHelper.buildRequestChangeSet(reqVO.getItems(), oldItems,
+                    ErpPurchasePriceAdjustSaveReqVO.Item.class,
+                    ErpPurchasePriceAdjustSaveReqVO.Item::getId,
+                    ErpPurchasePriceAdjustSaveReqVO.Item::setId,
+                    ErpPurchasePriceAdjustSaveReqVO.Item::getOperation,
+                    ErpPurchasePriceAdjustItemDO::getId,
+                    PURCHASE_PRICE_ADJUST_ITEM_OPERATION_INVALID,
+                    PURCHASE_PRICE_ADJUST_ITEM_UPDATE_NOT_EXISTS);
+            itemReqs = itemChangeSet.getFinalItems();
+        }
+        List<ErpPurchasePriceAdjustItemDO> items = buildDraftItems(reqVO.getAdjustType(), itemReqs);
         ErpPurchasePriceAdjustDO updateDO = BeanUtils.toBean(reqVO, ErpPurchasePriceAdjustDO.class);
         updateDO.setId(existDO.getId());
         updateDO.setNo(existDO.getNo());
@@ -286,8 +322,12 @@ public class ErpPurchasePriceAdjustServiceImpl implements ErpPurchasePriceAdjust
                 ErpPurchasePriceAdjustStatusEnum.DRAFT.getStatus(), updateDO) == 0) {
             throw exception(PURCHASE_PRICE_ADJUST_DRAFT_UPDATE_FAIL, existDO.getNo());
         }
-        priceAdjustItemMapper.deleteByAdjustId(existDO.getId());
-        insertDraftItems(existDO.getId(), items);
+        if (incrementalItems) {
+            applyPurchasePriceAdjustItemChangeSet(existDO.getId(), itemChangeSet, items);
+        } else {
+            priceAdjustItemMapper.deleteByAdjustId(existDO.getId());
+            insertDraftItems(existDO.getId(), items);
+        }
         operateLogService.recordUpdate(ERP_PURCHASE_PRICE_ADJUST_TYPE, existDO.getId(), existDO.getNo());
     }
 
@@ -807,7 +847,6 @@ public class ErpPurchasePriceAdjustServiceImpl implements ErpPurchasePriceAdjust
                 .map(item -> {
                     ErpPurchasePriceAdjustItemDO draftItem =
                             BeanUtils.toBean(item, ErpPurchasePriceAdjustItemDO.class);
-                    draftItem.setId(null);
                     BigDecimal oldPrice = draftItem.getOldPrice() != null
                             ? draftItem.getOldPrice() : BigDecimal.ZERO;
                     draftItem.setOldPrice(oldPrice);
@@ -830,9 +869,33 @@ public class ErpPurchasePriceAdjustServiceImpl implements ErpPurchasePriceAdjust
         priceAdjustItemMapper.insertBatch(items);
     }
 
+    private void applyPurchasePriceAdjustItemChangeSet(Long adjustId,
+            ErpPurchaseItemOperationHelper.RequestChangeSet<ErpPurchasePriceAdjustSaveReqVO.Item> changeSet,
+            List<ErpPurchasePriceAdjustItemDO> finalItems) {
+        if (CollUtil.isNotEmpty(changeSet.getDeleteIds())) {
+            priceAdjustItemMapper.deleteByIds(changeSet.getDeleteIds());
+        }
+        List<ErpPurchasePriceAdjustItemDO> insertList = finalItems.stream()
+                .filter(item -> item.getId() == null)
+                .collect(Collectors.toList());
+        if (CollUtil.isNotEmpty(insertList)) {
+            insertList.forEach(item -> item.setId(null).setAdjustId(adjustId));
+            purchaseDocumentDefaultService.fillCreateAuditDefaults(insertList);
+            priceAdjustItemMapper.insertBatch(insertList);
+        }
+        List<ErpPurchasePriceAdjustItemDO> updateList = finalItems.stream()
+                .filter(item -> item.getId() != null && changeSet.getUpdateIds().contains(item.getId()))
+                .collect(Collectors.toList());
+        if (CollUtil.isNotEmpty(updateList)) {
+            updateList.forEach(item -> item.setAdjustId(adjustId));
+            priceAdjustItemMapper.updateBatch(updateList);
+        }
+    }
+
     private List<ErpPurchasePriceAdjustItemDO> buildAndValidateItems(ErpPurchasePriceAdjustSaveReqVO reqVO,
                                                                     Long excludeAdjustId) {
         Integer adjustType = reqVO.getAdjustType();
+        validatePurchasePriceAdjustItemRequiredFields(reqVO.getItems(), adjustType);
         List<ErpPurchasePriceAdjustItemDO> items = new ArrayList<>(reqVO.getItems().size());
 
         Map<Long, ErpPurchaseInItemDO> inItemMap = new HashMap<>();
@@ -884,7 +947,6 @@ public class ErpPurchasePriceAdjustServiceImpl implements ErpPurchasePriceAdjust
                         .setScale(2, RoundingMode.HALF_UP);
 
                 ErpPurchasePriceAdjustItemDO item = BeanUtils.toBean(voItem, ErpPurchasePriceAdjustItemDO.class);
-                item.setId(null);
                 item.setInId(null);
                 item.setInItemId(null);
                 item.setInNo(null);
@@ -942,7 +1004,6 @@ public class ErpPurchasePriceAdjustServiceImpl implements ErpPurchasePriceAdjust
                     .setScale(2, RoundingMode.HALF_UP);
 
             ErpPurchasePriceAdjustItemDO item = BeanUtils.toBean(voItem, ErpPurchasePriceAdjustItemDO.class);
-            item.setId(null);
             item.setOldPrice(oldPrice);
             item.setCount(count);
             item.setAdjustPrice(adjustPrice);
@@ -983,6 +1044,32 @@ public class ErpPurchasePriceAdjustServiceImpl implements ErpPurchasePriceAdjust
         Map<Long, ErpWarehouseDO> warehouseMap = warehouseService.getWarehouseMap(warehouseIds);
         items.forEach(item -> fillDeptIdFromWarehouse(item, warehouseMap));
         return items;
+    }
+
+    private void validatePurchasePriceAdjustItemRequiredFields(
+            List<ErpPurchasePriceAdjustSaveReqVO.Item> items, Integer adjustType) {
+        if (CollUtil.isEmpty(items)) {
+            throw exception(PURCHASE_PRICE_ADJUST_ITEM_EMPTY);
+        }
+        boolean byInOrder = ErpPurchasePriceAdjustTypeEnum.isByInOrder(adjustType);
+        for (ErpPurchasePriceAdjustSaveReqVO.Item item : items) {
+            if (item == null) {
+                throw exception(PURCHASE_PRICE_ADJUST_ITEM_EMPTY);
+            }
+            if (item.getNewPrice() == null || item.getNewPrice().compareTo(BigDecimal.ZERO) < 0) {
+                throw exception(PURCHASE_PRICE_ADJUST_NEW_PRICE_NEGATIVE);
+            }
+            if (byInOrder) {
+                if (item.getInId() == null || item.getInItemId() == null) {
+                    throw exception(PURCHASE_PRICE_ADJUST_ITEM_NOT_EXISTS);
+                }
+                continue;
+            }
+            if (item.getProductId() == null || item.getCount() == null
+                    || item.getCount().compareTo(BigDecimal.ZERO) <= 0) {
+                throw exception(PURCHASE_PRICE_ADJUST_ITEM_EMPTY);
+            }
+        }
     }
 
     private void validatePurchaseInsNoApprovedInvoice(Collection<Long> inIds) {

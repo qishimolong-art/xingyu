@@ -4,7 +4,6 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Data;
 
 import javax.validation.Valid;
-import javax.validation.constraints.NotEmpty;
 import javax.validation.constraints.NotNull;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -34,7 +33,6 @@ public class ErpStockOutSaveReqVO {
     private String fileUrl;
 
     @Schema(description = "出库项列表", requiredMode = Schema.RequiredMode.REQUIRED)
-    @NotEmpty(message = "出库项列表不能为空")
     @Valid
     private List<Item> items;
 
@@ -44,12 +42,13 @@ public class ErpStockOutSaveReqVO {
         @Schema(description = "出库项编号", example = "11756")
         private Long id;
 
+        @Schema(description = "明细操作类型：insert 新增，update 修改，delete 删除", example = "update")
+        private String operation;
+
         @Schema(description = "仓库编号", requiredMode = Schema.RequiredMode.REQUIRED, example = "3113")
-        @NotNull(message = "仓库编号不能为空")
         private Long warehouseId;
 
         @Schema(description = "产品编号", requiredMode = Schema.RequiredMode.REQUIRED, example = "3113")
-        @NotNull(message = "产品编号不能为空")
         private Long productId;
 
         @Schema(description = "批次号", example = "BATCH-001")
@@ -68,7 +67,6 @@ public class ErpStockOutSaveReqVO {
         private BigDecimal productPrice;
 
         @Schema(description = "产品数量", requiredMode = Schema.RequiredMode.REQUIRED, example = "100.00")
-        @NotNull(message = "产品数量不能为空")
         private BigDecimal count;
 
         @Schema(description = "备注", example = "随便")

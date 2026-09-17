@@ -25,4 +25,10 @@ public class AppErpMallStockOptionRespVO {
     @Schema(description = "库存状态文案", requiredMode = Schema.RequiredMode.REQUIRED, example = "现货")
     private String availableStatusText;
 
+    @Schema(description = "与用户的直线距离，单位：米", example = "1200")
+    private Long distanceMeters;
+
+    @Schema(description = "与用户的直线距离展示文案", example = "1.2km")
+    private String distanceText;
+
 }

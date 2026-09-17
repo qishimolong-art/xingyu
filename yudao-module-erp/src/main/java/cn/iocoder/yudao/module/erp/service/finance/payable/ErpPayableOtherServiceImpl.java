@@ -7,6 +7,7 @@ import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.ErpFinanceUpdateR
 import cn.iocoder.yudao.module.erp.controller.admin.finance.payable.vo.other.ErpPayableOtherDraftSaveReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.payable.vo.other.ErpPayableOtherPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.payable.vo.other.ErpPayableOtherSaveReqVO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.finance.ErpFinancePaymentDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.payable.ErpPayableOtherDO;
 import cn.iocoder.yudao.module.erp.dal.mysql.finance.payable.ErpPayableOtherMapper;
 import cn.iocoder.yudao.module.erp.dal.redis.no.ErpNoRedisDAO;
@@ -111,6 +112,47 @@ public class ErpPayableOtherServiceImpl implements ErpPayableOtherService {
 
     @Override
     @Transactional(rollbackFor = Exception.class)
+    public Long createFromFinancePaymentDiscount(ErpFinancePaymentDO payment) {
+        BigDecimal discountPrice = payment == null || payment.getDiscountPrice() == null
+                ? BigDecimal.ZERO : payment.getDiscountPrice();
+        if (payment == null || payment.getId() == null || discountPrice.compareTo(BigDecimal.ZERO) <= 0) {
+            return null;
+        }
+        ErpPayableOtherDO existing = payableOtherMapper.selectBySource(
+                PAYMENT_DISCOUNT_SOURCE_TYPE, payment.getId());
+        if (existing != null) {
+            return existing.getId();
+        }
+        supplierService.validateSupplier(payment.getSupplierId());
+        validateRefs(payment.getFinanceUserId(), payment.getDeptId());
+        String no = noRedisDAO.generate("QTFK");
+        if (payableOtherMapper.selectByNo(no) != null) {
+            throw exception(OTHER_PAYABLE_NO_EXISTS);
+        }
+        ErpPayableOtherDO doObj = new ErpPayableOtherDO()
+                .setNo(no)
+                .setStatus(ErpAuditStatus.APPROVE.getStatus())
+                .setBizTime(payment.getPaymentTime() == null ? null : payment.getPaymentTime().toLocalDate())
+                .setSupplierId(payment.getSupplierId())
+                .setVoucherNo("")
+                .setSettledAmount(BigDecimal.ZERO)
+                .setDeptId(payment.getDeptId())
+                .setPayableAmount(discountPrice.negate())
+                .setProject("优惠折让")
+                .setSourceType(PAYMENT_DISCOUNT_SOURCE_TYPE)
+                .setSourceId(payment.getId())
+                .setSourceNo(payment.getNo())
+                .setHandlerId(payment.getFinanceUserId())
+                .setRemark("付款单审核自动生成，来源单号：" + payment.getNo());
+        normalize(doObj);
+        payableOtherMapper.insert(doObj);
+        operateLogService.recordCreate(ERP_PAYABLE_OTHER_TYPE, doObj.getId(), doObj.getNo());
+        operateLogService.recordStatus(ERP_PAYABLE_OTHER_TYPE, doObj.getId(), doObj.getNo(), true);
+        return doObj.getId();
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
     public void updatePayableOther(ErpPayableOtherSaveReqVO updateReqVO) {
         ErpPayableOtherDO db = validatePayableOtherExists(updateReqVO.getId());
         if (ErpPayableOtherStatusEnum.DRAFT.getStatus().equals(db.getStatus())) {
@@ -127,6 +169,11 @@ public class ErpPayableOtherServiceImpl implements ErpPayableOtherService {
                 obj.setSourceType("调账");
             }
         });
+        if (db.getSourceId() != null) {
+            updateObj.setSourceType(db.getSourceType());
+            updateObj.setSourceId(db.getSourceId());
+            updateObj.setSourceNo(db.getSourceNo());
+        }
         if (updateObj.getDeptId() == null) {
             updateObj.setDeptId(db.getDeptId());
         }
@@ -152,7 +199,11 @@ public class ErpPayableOtherServiceImpl implements ErpPayableOtherService {
                 .setId(db.getId())
                 .setNo(db.getNo())
                 .setStatus(db.getStatus());
-        if (StrUtil.isBlank(updateObj.getSourceType())) {
+        if (db.getSourceId() != null) {
+            updateObj.setSourceType(db.getSourceType());
+            updateObj.setSourceId(db.getSourceId());
+            updateObj.setSourceNo(db.getSourceNo());
+        } else if (StrUtil.isBlank(updateObj.getSourceType())) {
             updateObj.setSourceType(StrUtil.blankToDefault(db.getSourceType(), "调账"));
         }
         if (updateObj.getDeptId() == null) {

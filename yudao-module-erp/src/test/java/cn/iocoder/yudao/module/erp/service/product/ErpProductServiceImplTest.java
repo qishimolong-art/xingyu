@@ -26,9 +26,12 @@ import cn.iocoder.yudao.module.erp.dal.mysql.product.ErpProductUniversalMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.stock.ErpStockLockMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.stock.ErpStockMapper;
 import cn.iocoder.yudao.module.erp.dal.redis.no.ErpNoRedisDAO;
+import cn.iocoder.yudao.module.erp.service.base.ErpArchiveMergeService;
+import cn.iocoder.yudao.module.erp.service.common.ErpMnemonicCodeUtils;
 import cn.iocoder.yudao.module.erp.service.common.ErpOperateLogService;
 import cn.iocoder.yudao.module.erp.service.config.ErpFieldConfigService;
 import cn.iocoder.yudao.module.erp.service.mall.ErpMallProductSyncPublisher;
+import cn.iocoder.yudao.module.erp.service.stock.ErpProductStockInitService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpWarehouseService;
 import cn.iocoder.yudao.module.infra.api.config.ConfigApi;
 import cn.iocoder.yudao.module.system.api.dept.DeptApi;
@@ -70,9 +73,15 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PRODUCT_FIELD_NO_PERMISSION;
+import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PRODUCT_NAME_DUPLICATE;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PRODUCT_READONLY_BY_SALE_DISTRIBUTION;
 
 class ErpProductServiceImplTest extends BaseMockitoUnitTest {
+    @Mock
+    private cn.iocoder.yudao.module.erp.service.stock.cost.ErpStockDimensionService stockDimensionService;
+    @Mock
+    private ErpProductStockInitService productStockInitService;
+
 
     @InjectMocks
     private ErpProductServiceImpl productService;
@@ -111,6 +120,8 @@ class ErpProductServiceImplTest extends BaseMockitoUnitTest {
     private ErpOperateLogService operateLogService;
     @Mock
     private ErpMallProductSyncPublisher mallProductSyncPublisher;
+    @Mock
+    private ErpArchiveMergeService archiveMergeService;
 
     @BeforeAll
     static void initMybatisPlusCache() {
@@ -233,8 +244,6 @@ class ErpProductServiceImplTest extends BaseMockitoUnitTest {
         when(productCategoryService.getProductCategory(102L)).thenReturn(category);
         when(productCategoryService.getProductCategoryChildCount(102L)).thenReturn(0L);
         when(warehouseService.getWarehouse(301L)).thenReturn(warehouse);
-        when(stockMapper.selectByProductIdAndWarehouseId(501L, 301L)).thenReturn(null);
-        when(stockMapper.selectListByProductId(501L)).thenReturn(Collections.emptyList());
         when(productUniversalMapper.selectListByProductId(501L)).thenReturn(Collections.emptyList());
         when(productMapper.selectById(501L)).thenReturn(ErpProductDO.builder()
                 .id(501L)
@@ -282,8 +291,6 @@ class ErpProductServiceImplTest extends BaseMockitoUnitTest {
         when(productCategoryService.getProductCategory(102L)).thenReturn(category);
         when(productCategoryService.getProductCategoryChildCount(102L)).thenReturn(0L);
         when(warehouseService.getWarehouse(301L)).thenReturn(warehouse);
-        when(stockMapper.selectByProductIdAndWarehouseId(502L, 301L)).thenReturn(null);
-        when(stockMapper.selectListByProductId(502L)).thenReturn(Collections.emptyList());
         when(productUniversalMapper.selectListByProductId(502L)).thenReturn(Collections.emptyList());
         when(productMapper.selectById(502L)).thenReturn(ErpProductDO.builder()
                 .id(502L)
@@ -312,6 +319,71 @@ class ErpProductServiceImplTest extends BaseMockitoUnitTest {
         verify(productBrandService).validateEnabledProductBrand("博世");
         verify(productMapper).insert(productCaptor.capture());
         assertEquals("博世", productCaptor.getValue().getBrand());
+    }
+
+    @Test
+    void createProduct_whenNameDuplicate_thenRejects() {
+        ProductSaveReqVO reqVO = new ProductSaveReqVO();
+        reqVO.setCode("P-CREATE-003");
+        reqVO.setName(" Brake Pad ");
+        reqVO.setCategoryId(102L);
+        reqVO.setUnitId(201L);
+        reqVO.setDefaultWarehouseId(301L);
+        reqVO.setStatus(0);
+
+        ErpProductCategoryDO category = ErpProductCategoryDO.builder().id(102L).name("Parts").build();
+        ErpWarehouseDO warehouse = ErpWarehouseDO.builder().id(301L).name("Main").deptId(401L).build();
+        when(permissionApi.getCurrentUserHiddenFields("erp_product")).thenReturn(Collections.emptyList());
+        when(productCategoryService.getProductCategory(102L)).thenReturn(category);
+        when(productCategoryService.getProductCategoryChildCount(102L)).thenReturn(0L);
+        when(warehouseService.getWarehouse(301L)).thenReturn(warehouse);
+        when(productMapper.selectByNameExcludeId(eq("Brake Pad"), eq(null)))
+                .thenReturn(ErpProductDO.builder().id(900L).name("Brake Pad").build());
+
+        ServiceException ex = assertThrows(ServiceException.class, () -> productService.createProduct(reqVO));
+
+        assertEquals(PRODUCT_NAME_DUPLICATE.getCode(), ex.getCode());
+        verify(productMapper, never()).insert(any(ErpProductDO.class));
+    }
+
+    @Test
+    void updateProduct_whenNameDuplicate_thenRejects() {
+        ProductSaveReqVO reqVO = new ProductSaveReqVO();
+        reqVO.setId(601L);
+        reqVO.setCode("P-UPDATE-001");
+        reqVO.setName(" Oil Filter ");
+        reqVO.setCategoryId(102L);
+        reqVO.setUnitId(201L);
+        reqVO.setDefaultWarehouseId(301L);
+        reqVO.setStatus(0);
+
+        ErpProductDO existing = ErpProductDO.builder()
+                .id(601L)
+                .code("P-UPDATE-001")
+                .name("Brake Pad")
+                .categoryId(102L)
+                .unitId(201L)
+                .defaultWarehouseId(301L)
+                .status(0)
+                .build();
+        ErpProductCategoryDO category = ErpProductCategoryDO.builder().id(102L).name("Parts").build();
+        ErpWarehouseDO warehouse = ErpWarehouseDO.builder().id(301L).name("Main").deptId(401L).build();
+
+        when(productMapper.selectVisibleById(eq(601L), any(ErpProductPageReqVO.class))).thenReturn(existing);
+        when(productMapper.selectById(601L)).thenReturn(existing);
+        when(productUniversalMapper.selectListByProductId(601L)).thenReturn(Collections.emptyList());
+        when(permissionApi.getCurrentUserHiddenFields("erp_product")).thenReturn(Collections.emptyList());
+        when(fieldConfigService.getFieldConfigListByModule("erp_product")).thenReturn(Collections.emptyList());
+        when(productCategoryService.getProductCategory(102L)).thenReturn(category);
+        when(productCategoryService.getProductCategoryChildCount(102L)).thenReturn(0L);
+        when(warehouseService.getWarehouse(301L)).thenReturn(warehouse);
+        when(productMapper.selectByNameExcludeId(eq("Oil Filter"), eq(601L)))
+                .thenReturn(ErpProductDO.builder().id(602L).name("Oil Filter").build());
+
+        ServiceException ex = assertThrows(ServiceException.class, () -> productService.updateProduct(reqVO));
+
+        assertEquals(PRODUCT_NAME_DUPLICATE.getCode(), ex.getCode());
+        verify(productMapper, never()).updateById(any(ErpProductDO.class));
     }
 
     @Test
@@ -376,8 +448,6 @@ class ErpProductServiceImplTest extends BaseMockitoUnitTest {
         when(productCategoryService.getProductCategoryChildCount(102L)).thenReturn(0L);
         when(warehouseService.getWarehouse(301L)).thenReturn(warehouse);
         when(permissionApi.getCurrentUserHiddenFields("erp_product")).thenReturn(Collections.emptyList());
-        when(stockMapper.selectByProductIdAndWarehouseId(500L, 301L)).thenReturn(null);
-        when(stockMapper.selectListByProductId(500L)).thenReturn(Collections.emptyList());
         when(productMapper.insert(any(ErpProductDO.class))).thenAnswer(invocation -> {
             ErpProductDO product = invocation.getArgument(0);
             product.setId(500L);
@@ -397,6 +467,8 @@ class ErpProductServiceImplTest extends BaseMockitoUnitTest {
         ArgumentCaptor<ErpProductDO> productCaptor = ArgumentCaptor.forClass(ErpProductDO.class);
         verify(productMapper).insert(productCaptor.capture());
         assertEquals(102L, productCaptor.getValue().getCategoryId());
+        assertEquals(ErpMnemonicCodeUtils.buildPinyinCode("刹车片"), productCaptor.getValue().getPinyinCode());
+        assertEquals(ErpMnemonicCodeUtils.buildWubiCode("刹车片"), productCaptor.getValue().getWubiCode());
     }
 
     @Test
@@ -407,6 +479,8 @@ class ErpProductServiceImplTest extends BaseMockitoUnitTest {
         row.setCategoryCode("CAT-A");
         row.setUnitName("个");
         row.setBrand("博世");
+        row.setPinyinCode("YGP");
+        row.setWubiCode("TTT");
         row.setDefaultWarehouseName("主仓");
 
         ErpProductCategoryDO category = ErpProductCategoryDO.builder()
@@ -438,9 +512,7 @@ class ErpProductServiceImplTest extends BaseMockitoUnitTest {
         when(productCategoryService.getProductCategory(101L)).thenReturn(category);
         when(productCategoryService.getProductCategoryChildCount(101L)).thenReturn(0L);
         when(warehouseService.getWarehouse(401L)).thenReturn(warehouse);
-        when(stockMapper.selectByProductIdAndWarehouseId(500L, 401L)).thenReturn(null);
         when(permissionApi.getCurrentUserHiddenFields("erp_product")).thenReturn(Collections.emptyList());
-        when(stockMapper.selectListByProductId(500L)).thenReturn(Collections.emptyList());
         when(productMapper.insert(any(ErpProductDO.class))).thenAnswer(invocation -> {
             ErpProductDO product = invocation.getArgument(0);
             product.setId(500L);
@@ -454,6 +526,8 @@ class ErpProductServiceImplTest extends BaseMockitoUnitTest {
         ArgumentCaptor<ErpProductDO> productCaptor = ArgumentCaptor.forClass(ErpProductDO.class);
         verify(productMapper).insert(productCaptor.capture());
         assertEquals("博世", productCaptor.getValue().getBrand());
+        assertEquals("YGP", productCaptor.getValue().getPinyinCode());
+        assertEquals("TTT", productCaptor.getValue().getWubiCode());
     }
 
     @Test
@@ -658,6 +732,42 @@ class ErpProductServiceImplTest extends BaseMockitoUnitTest {
 
             assertEquals(Collections.singleton(2L), readonlyIds);
         }
+    }
+
+    @Test
+    void mergeProduct_passesKeepProductIdentityToArchiveMergeService() {
+        mockProductPermission(104L, Collections.singleton(200L));
+        when(warehouseService.getCurrentUserAuthorizedWarehouseIds())
+                .thenReturn(new LinkedHashSet<>(Collections.singletonList(11L)));
+        when(fieldConfigService.getFieldConfigListByModule("erp_product"))
+                .thenReturn(Collections.emptyList());
+        ErpProductDO source = ErpProductDO.builder()
+                .id(10L)
+                .code("SRC")
+                .name("源配件")
+                .mergedFlag(false)
+                .build();
+        ErpProductDO keep = ErpProductDO.builder()
+                .id(20L)
+                .code("KEEP")
+                .name("保留配件")
+                .mergedFlag(false)
+                .build();
+        when(productMapper.selectVisibleById(eq(10L), any())).thenReturn(source);
+        when(productMapper.selectVisibleById(eq(20L), any())).thenReturn(keep);
+        when(productMapper.selectById(10L)).thenReturn(source);
+        when(productMapper.selectById(20L)).thenReturn(keep);
+        when(productUniversalMapper.selectListByProductId(10L)).thenReturn(Collections.emptyList());
+        when(productUniversalMapper.selectListByProductId(20L)).thenReturn(Collections.emptyList());
+
+        try (MockedStatic<SecurityFrameworkUtils> security = mockStatic(SecurityFrameworkUtils.class)) {
+            security.when(SecurityFrameworkUtils::getLoginUserId).thenReturn(104L);
+
+            productService.mergeProduct(10L, 20L);
+        }
+
+        verify(archiveMergeService).mergeProductReferences(10L, 20L,
+                "SRC", "KEEP", "源配件", "保留配件", "104");
     }
 
     @Test

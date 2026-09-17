@@ -5,6 +5,7 @@ import cn.iocoder.yudao.framework.mybatis.core.mapper.BaseMapperX;
 import cn.iocoder.yudao.framework.mybatis.core.query.MPJLambdaWrapperX;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.returns.ErpPurchaseReturnPageReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.product.ErpProductDO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.product.ErpProductUnitDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseReturnDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseReturnItemDO;
 import cn.iocoder.yudao.module.erp.dal.mysql.common.ErpKeywordQuery;
@@ -26,6 +27,11 @@ import java.util.Objects;
  */
 @Mapper
 public interface ErpPurchaseReturnMapper extends BaseMapperX<ErpPurchaseReturnDO> {
+
+    default ErpPurchaseReturnDO selectByIdForUpdate(Long id) {
+        return selectOne(new cn.iocoder.yudao.framework.mybatis.core.query.LambdaQueryWrapperX<ErpPurchaseReturnDO>()
+                .eq(ErpPurchaseReturnDO::getId, id).last("FOR UPDATE"));
+    }
 
     String EFFECTIVE_REFUND_PRICE_EXPRESSION = "ABS("
             + ErpFinancePaymentItemMapper.effectivePaymentPriceSql(ErpBizTypeEnum.PURCHASE_RETURN.getType()) + ")";
@@ -61,31 +67,22 @@ public interface ErpPurchaseReturnMapper extends BaseMapperX<ErpPurchaseReturnDO
                 || StringUtils.hasText(reqVO.getProductKeyword())) {
             query.leftJoin(ErpPurchaseReturnItemDO.class, ErpPurchaseReturnItemDO::getReturnId, ErpPurchaseReturnDO::getId)
                     .leftJoin(ErpProductDO.class, ErpProductDO::getId, ErpPurchaseReturnItemDO::getProductId)
+                    .leftJoin(ErpProductUnitDO.class, ErpProductUnitDO::getId, ErpProductDO::getUnitId)
                     .eq(reqVO.getWarehouseId() != null, ErpPurchaseReturnItemDO::getWarehouseId, reqVO.getWarehouseId())
                     .eq(reqVO.getProductId() != null, ErpPurchaseReturnItemDO::getProductId, reqVO.getProductId())
                     .likeIfPresent(ErpPurchaseReturnItemDO::getSourceInNo, reqVO.getSourceInNo())
-                    .and(StringUtils.hasText(reqVO.getProductKeyword()), w -> {
-                        String productKeyword = ErpKeywordQuery.normalize(reqVO.getProductKeyword());
-                        w.like(ErpProductDO::getCode, productKeyword)
-                                .or().like(ErpProductDO::getName, productKeyword)
-                                .or().like(ErpProductDO::getPinyinCode, productKeyword)
-                                .or().like(ErpProductDO::getWubiCode, productKeyword)
-                                .or().like(ErpProductDO::getBarCode, productKeyword)
-                                .or().like(ErpProductDO::getVehicleModel, productKeyword)
-                                .or().like(ErpProductDO::getFactoryCode, productKeyword)
-                                .or().like(ErpProductDO::getStandard, productKeyword)
-                                .or().like(ErpProductDO::getBrand, productKeyword)
-                                .or().like(ErpProductDO::getDrawingNo, productKeyword)
-                                .or().like(ErpPurchaseReturnItemDO::getPartCode, productKeyword)
-                                .or().like(ErpPurchaseReturnItemDO::getPartName, productKeyword)
-                                .or().like(ErpPurchaseReturnItemDO::getBarCode, productKeyword)
-                                .or().like(ErpPurchaseReturnItemDO::getVehicleModel, productKeyword)
-                                .or().like(ErpPurchaseReturnItemDO::getDrawingNo, productKeyword)
-                                .or().like(ErpPurchaseReturnItemDO::getBrand, productKeyword);
-                    })
+                    .and(StringUtils.hasText(reqVO.getProductKeyword()),
+                            w -> ErpKeywordQuery.appendProductKeyword(w, reqVO.getProductKeyword(),
+                                    ErpKeywordQuery.productKeywordColumn(ErpPurchaseReturnItemDO::getPartCode),
+                                    ErpKeywordQuery.productKeywordColumn(ErpPurchaseReturnItemDO::getPartName),
+                                    ErpKeywordQuery.productKeywordColumn(ErpPurchaseReturnItemDO::getBarCode),
+                                    ErpKeywordQuery.productKeywordColumn(ErpPurchaseReturnItemDO::getVehicleModel),
+                                    ErpKeywordQuery.productKeywordColumn(ErpPurchaseReturnItemDO::getDrawingNo),
+                                    ErpKeywordQuery.productKeywordColumn(ErpPurchaseReturnItemDO::getBrand)))
                     .groupBy(ErpPurchaseReturnDO::getId); // 避免 1 对多查询，产生相同的 1
         }
-        ErpKeywordQuery.appendWithDeptNameAndPurchaseSupplier(query, reqVO.getKeyword(),
+        ErpKeywordQuery.appendWithDeptNameAndPurchaseSupplierAndProductItemTokens(query, reqVO.getKeyword(),
+                "erp_purchase_return_items", "return_id",
                 ErpPurchaseReturnDO::getNo, ErpPurchaseReturnDO::getOrderNo,
                 ErpPurchaseReturnDO::getRemark, ErpPurchaseReturnDO::getReturnType,
                 ErpPurchaseReturnDO::getPurchaser, ErpPurchaseReturnDO::getInvoiceType,

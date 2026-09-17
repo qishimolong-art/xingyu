@@ -17,6 +17,7 @@ import cn.iocoder.yudao.module.erp.dal.dataobject.product.ErpProductDeptDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpWarehouseBranchDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpWarehouseDO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpWarehousePickerDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpWarehouseSaleDeptPermissionDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpUserWarehousePermissionDO;
 import cn.iocoder.yudao.module.erp.dal.mysql.product.ErpProductDeptMapper;
@@ -25,6 +26,7 @@ import cn.iocoder.yudao.module.erp.dal.mysql.stock.ErpUserWarehousePermissionMap
 import cn.iocoder.yudao.module.erp.dal.mysql.stock.ErpStockMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.stock.ErpWarehouseBranchMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.stock.ErpWarehouseMapper;
+import cn.iocoder.yudao.module.erp.dal.mysql.stock.ErpWarehousePickerMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.stock.ErpWarehouseSaleDeptPermissionMapper;
 import cn.iocoder.yudao.module.erp.dal.redis.no.ErpNoRedisDAO;
 import cn.iocoder.yudao.module.erp.service.base.ErpBaseArchiveReferenceService;
@@ -49,6 +51,7 @@ import javax.annotation.Resource;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashSet;
@@ -82,17 +85,29 @@ import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.WAREHOUSE_SAL
 @Service
 @Validated
 public class ErpWarehouseServiceImpl implements ErpWarehouseService {
+    @Resource
+    private cn.iocoder.yudao.module.erp.service.stock.cost.ErpStockDimensionService stockDimensionService;
+    @Resource
+    private org.springframework.transaction.PlatformTransactionManager transactionManager;
 
     private static final String FIELD_PERMISSION_MODULE = "erp_warehouse";
     private static final String DIRECT_WAREHOUSE_NAME = "直发仓";
     private static final String DIRECT_WAREHOUSE_AUTO_CREATE_REMARK =
             "系统自动创建：销售手推车跨部门调拨专用直发仓";
     private static final String DIRECT_WAREHOUSE_CREATE_LOCK_KEY_PREFIX = "erp:warehouse:direct:create:";
+    private static final int WAREHOUSE_CODE_GENERATE_RETRY_TIMES = 5;
+    private static final int WAREHOUSE_CODE_RECOVERY_RETRY_TIMES = 5;
     private static final String WAREHOUSE_LOG_TYPE = "仓库信息";
     private static final String WAREHOUSE_LOG_CREATE = "新增";
     private static final String WAREHOUSE_LOG_UPDATE = "修改";
     private static final String WAREHOUSE_LOG_DELETE = "删除";
     private static final String LOG_EMPTY_VALUE = "空";
+    private static final Set<String> SALE_ALL_PRODUCT_PERMISSIONS = new HashSet<>(Arrays.asList(
+            SALE_QUOTE_ALL_PRODUCT_PERMISSION,
+            SALE_CART_ALL_PRODUCT_PERMISSION,
+            SALE_ORDER_ALL_PRODUCT_PERMISSION,
+            SALE_OUT_ALL_PRODUCT_PERMISSION,
+            SALE_RETURN_ALL_PRODUCT_PERMISSION));
     private static final BigDecimal MIN_LONGITUDE = new BigDecimal("-180");
     private static final BigDecimal MAX_LONGITUDE = new BigDecimal("180");
     private static final BigDecimal MIN_LATITUDE = new BigDecimal("-90");
@@ -111,6 +126,8 @@ public class ErpWarehouseServiceImpl implements ErpWarehouseService {
     private ErpWarehouseBranchMapper warehouseBranchMapper;
     @Resource
     private ErpUserWarehousePermissionMapper userWarehousePermissionMapper;
+    @Resource
+    private ErpWarehousePickerMapper warehousePickerMapper;
     @Resource
     private ErpWarehouseSaleDeptPermissionMapper warehouseSaleDeptPermissionMapper;
     @Resource
@@ -154,11 +171,13 @@ public class ErpWarehouseServiceImpl implements ErpWarehouseService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void updateWarehouse(ErpWarehouseSaveReqVO updateReqVO) {
+        stockDimensionService.lockIdentityChanges();
         ErpWarehouseDO warehouse = validateWarehouseExists(updateReqVO.getId());
         fieldPermissionMasker.preserveHiddenFields(FIELD_PERMISSION_MODULE, updateReqVO, warehouse);
 
         ErpWarehouseDO updateObj = BeanUtils.toBean(updateReqVO, ErpWarehouseDO.class);
         updateObj.setId(warehouse.getId());
+        updateObj.setStockBillEnabled(warehouse.getStockBillEnabled());
         updateObj.setPrincipal(warehouse.getPrincipal());
         updateObj.setWarehousePrice(warehouse.getWarehousePrice());
         updateObj.setTruckagePrice(warehouse.getTruckagePrice());
@@ -184,6 +203,7 @@ public class ErpWarehouseServiceImpl implements ErpWarehouseService {
         if (Boolean.FALSE.equals(updateObj.getSaleEnabled())) {
             validateWarehouseSaleDisableStockClear(Collections.singleton(warehouse.getId()));
         }
+        stockDimensionService.assertWarehouseDepartmentChange(warehouse.getId(), updateObj.getDeptId());
         warehouseMapper.updateById(updateObj);
         if (!Objects.equals(updateObj.getDeptId(), warehouse.getDeptId())) {
             stockMapper.updateDeptIdByWarehouseId(warehouse.getId(), updateObj.getDeptId());
@@ -200,6 +220,7 @@ public class ErpWarehouseServiceImpl implements ErpWarehouseService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void batchUpdateWarehouse(ErpWarehouseBatchUpdateReqVO updateReqVO) {
+        stockDimensionService.lockIdentityChanges();
         if (!hasBatchUpdateFields(updateReqVO)) {
             return;
         }
@@ -214,9 +235,11 @@ public class ErpWarehouseServiceImpl implements ErpWarehouseService {
             ErpWarehouseDO updateObj = buildBatchUpdateObj(updateReqVO);
             updateObj.setId(id);
             fieldPermissionMasker.preserveHiddenFields(FIELD_PERMISSION_MODULE, updateObj, warehouse);
+            updateObj.setStockBillEnabled(warehouse.getStockBillEnabled());
+            stockDimensionService.assertWarehouseDepartmentChange(id, updateObj.getDeptId());
             warehouseMapper.updateById(updateObj);
-            if (updateReqVO.getDeptId() != null && !Objects.equals(updateReqVO.getDeptId(), warehouse.getDeptId())) {
-                stockMapper.updateDeptIdByWarehouseId(id, updateReqVO.getDeptId());
+            if (updateObj.getDeptId() != null && !Objects.equals(updateObj.getDeptId(), warehouse.getDeptId())) {
+                stockMapper.updateDeptIdByWarehouseId(id, updateObj.getDeptId());
                 syncProductOpenDeptByWarehouseIds(Collections.singleton(id));
             }
             recordWarehouseUpdateLog(warehouse, warehouseMapper.selectById(id));
@@ -229,7 +252,6 @@ public class ErpWarehouseServiceImpl implements ErpWarehouseService {
                 || updateReqVO.getStatus() != null
                 || updateReqVO.getSaleEnabled() != null
                 || updateReqVO.getPurchaseEnabled() != null
-                || updateReqVO.getStockBillEnabled() != null
                 || updateReqVO.getScanControl() != null
                 || updateReqVO.getSplitOrder() != null
                 || updateReqVO.getSort() != null
@@ -256,9 +278,6 @@ public class ErpWarehouseServiceImpl implements ErpWarehouseService {
         }
         if (updateReqVO.getPurchaseEnabled() != null) {
             updateObj.setPurchaseEnabled(updateReqVO.getPurchaseEnabled());
-        }
-        if (updateReqVO.getStockBillEnabled() != null) {
-            updateObj.setStockBillEnabled(updateReqVO.getStockBillEnabled());
         }
         if (updateReqVO.getScanControl() != null) {
             updateObj.setScanControl(updateReqVO.getScanControl());
@@ -371,7 +390,7 @@ public class ErpWarehouseServiceImpl implements ErpWarehouseService {
         addWarehouseChange(changes, "仓储对应仓库", before.getStorageWarehouseId(), after.getStorageWarehouseId(), this::formatWarehouseRefValue);
         addWarehouseChange(changes, "销售启用", before.getSaleEnabled(), after.getSaleEnabled(), this::formatEnabledValue);
         addWarehouseChange(changes, "采购启用", before.getPurchaseEnabled(), after.getPurchaseEnabled(), this::formatEnabledValue);
-        addWarehouseChange(changes, "入出仓单", before.getStockBillEnabled(), after.getStockBillEnabled(), this::formatStockBillValue);
+        addWarehouseChange(changes, "历史领货设置", before.getStockBillEnabled(), after.getStockBillEnabled(), this::formatStockBillValue);
         addWarehouseChange(changes, "允许电商销售", before.getEcommerceEnabled(), after.getEcommerceEnabled());
         addWarehouseChange(changes, "扫码管控", before.getScanControl(), after.getScanControl());
         addWarehouseChange(changes, "销售开单管控", before.getSaleBillControl(), after.getSaleBillControl());
@@ -581,6 +600,8 @@ public class ErpWarehouseServiceImpl implements ErpWarehouseService {
         warehouseBranchMapper.deleteByWarehouseId(id);
         userWarehousePermissionMapper.deleteListByWarehouseIds(Collections.singleton(id),
                 TenantContextHolder.getRequiredTenantId());
+        warehousePickerMapper.deleteListByWarehouseIds(Collections.singleton(id),
+                TenantContextHolder.getRequiredTenantId());
         recordWarehouseDeleteLog(warehouse);
     }
 
@@ -608,8 +629,7 @@ public class ErpWarehouseServiceImpl implements ErpWarehouseService {
             Integer rowNo = i + 2;
             try {
                 resolveImportDeptId(row, deptNameMap);
-                boolean create = findImportWarehouse(row) == null;
-                importWarehouse(row);
+                boolean create = executeWarehouseImportRow(row);
                 respVO.setSuccessCount(respVO.getSuccessCount() + 1);
                 if (create) {
                     respVO.setCreateCount(respVO.getCreateCount() + 1);
@@ -654,6 +674,7 @@ public class ErpWarehouseServiceImpl implements ErpWarehouseService {
     }
 
     private void importWarehouse(ErpWarehouseImportExcelVO row) {
+        stockDimensionService.lockIdentityChanges();
         if (row == null || StrUtil.isBlank(row.getName())) {
             throw new IllegalArgumentException("仓库名称不能为空");
         }
@@ -678,17 +699,36 @@ public class ErpWarehouseServiceImpl implements ErpWarehouseService {
             return;
         }
         importObj.setId(existing.getId());
+        importObj.setStockBillEnabled(existing.getStockBillEnabled());
         importObj.setDefaultStatus(existing.getDefaultStatus());
         importObj.setWarehouseCode(existing.getWarehouseCode());
         validateWarehouseLocation(importObj);
         if (Boolean.FALSE.equals(importObj.getSaleEnabled())) {
             validateWarehouseSaleDisableStockClear(Collections.singleton(existing.getId()));
         }
+        stockDimensionService.assertWarehouseDepartmentChange(existing.getId(), importObj.getDeptId());
         warehouseMapper.updateById(importObj);
         if (importObj.getDeptId() != null && !Objects.equals(importObj.getDeptId(), existing.getDeptId())) {
             stockMapper.updateDeptIdByWarehouseId(existing.getId(), importObj.getDeptId());
         }
         recordWarehouseUpdateLog(existing, warehouseMapper.selectById(existing.getId()));
+    }
+
+    private boolean executeWarehouseImportRow(ErpWarehouseImportExcelVO row) {
+        if (!stockDimensionService.isEnabled()) {
+            boolean create = findImportWarehouse(row) == null;
+            importWarehouse(row);
+            return create;
+        }
+        org.springframework.transaction.support.TransactionTemplate rowTransaction =
+                new org.springframework.transaction.support.TransactionTemplate(transactionManager);
+        rowTransaction.setPropagationBehavior(org.springframework.transaction.TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+        return Boolean.TRUE.equals(rowTransaction.execute(status -> {
+            stockDimensionService.lockIdentityChanges();
+            boolean create = findImportWarehouse(row) == null;
+            importWarehouse(row);
+            return create;
+        }));
     }
 
     private ErpWarehouseDO findImportWarehouse(ErpWarehouseImportExcelVO row) {
@@ -711,13 +751,56 @@ public class ErpWarehouseServiceImpl implements ErpWarehouseService {
     }
 
     private String generateWarehouseCode() {
-        for (int i = 0; i < 5; i++) {
+        for (int i = 0; i < WAREHOUSE_CODE_GENERATE_RETRY_TIMES; i++) {
             String warehouseCode = noRedisDAO.generatePlain(ErpNoRedisDAO.WAREHOUSE_CODE_PREFIX);
-            if (StrUtil.isNotBlank(warehouseCode) && warehouseMapper.selectByWarehouseCode(warehouseCode) == null) {
+            if (isAvailableWarehouseCode(warehouseCode)) {
                 return warehouseCode;
             }
         }
+        long maxSequence = findMaxPlainWarehouseCodeSequence(ErpNoRedisDAO.WAREHOUSE_CODE_PREFIX);
+        for (int i = 0; i < WAREHOUSE_CODE_RECOVERY_RETRY_TIMES; i++) {
+            String warehouseCode = noRedisDAO.generatePlainAfter(ErpNoRedisDAO.WAREHOUSE_CODE_PREFIX, maxSequence);
+            if (isAvailableWarehouseCode(warehouseCode)) {
+                return warehouseCode;
+            }
+            Long sequence = parsePlainWarehouseCodeSequence(ErpNoRedisDAO.WAREHOUSE_CODE_PREFIX, warehouseCode);
+            if (sequence != null && sequence > maxSequence) {
+                maxSequence = sequence;
+            }
+        }
         throw new IllegalStateException("自动生成仓库编码失败，请稍后重试");
+    }
+
+    private boolean isAvailableWarehouseCode(String warehouseCode) {
+        return StrUtil.isNotBlank(warehouseCode) && warehouseMapper.selectByWarehouseCode(warehouseCode) == null;
+    }
+
+    private long findMaxPlainWarehouseCodeSequence(String prefix) {
+        return warehouseMapper.selectListByWarehouseCodePrefix(prefix).stream()
+                .map(warehouse -> parsePlainWarehouseCodeSequence(prefix, warehouse.getWarehouseCode()))
+                .filter(Objects::nonNull)
+                .max(Long::compareTo)
+                .orElse(0L);
+    }
+
+    private Long parsePlainWarehouseCodeSequence(String prefix, String warehouseCode) {
+        if (StrUtil.isBlank(prefix) || StrUtil.isBlank(warehouseCode) || !warehouseCode.startsWith(prefix)) {
+            return null;
+        }
+        String sequenceText = warehouseCode.substring(prefix.length());
+        if (StrUtil.isBlank(sequenceText)) {
+            return null;
+        }
+        for (int i = 0; i < sequenceText.length(); i++) {
+            if (!Character.isDigit(sequenceText.charAt(i))) {
+                return null;
+            }
+        }
+        try {
+            return Long.valueOf(sequenceText);
+        } catch (NumberFormatException ex) {
+            return null;
+        }
     }
 
     private void validateWarehouseCodeUnique(Long id, String warehouseCode) {
@@ -750,6 +833,8 @@ public class ErpWarehouseServiceImpl implements ErpWarehouseService {
     }
 
     private void fillWarehouseEnabledDefaults(ErpWarehouseDO warehouse) {
+        // 已取消领货；旧仓库值仅作历史保留，新仓库不启用。
+        warehouse.setStockBillEnabled(false);
         if (warehouse.getSaleEnabled() == null) {
             warehouse.setSaleEnabled(true);
         }
@@ -851,6 +936,19 @@ public class ErpWarehouseServiceImpl implements ErpWarehouseService {
 
     @Override
     public List<ErpWarehouseDO> validSaleSelectableWarehouseListForDept(Collection<Long> ids, Long deptId) {
+        return validSaleSelectableWarehouseListForDept(ids, deptId, null);
+    }
+
+    @Override
+    public List<ErpWarehouseDO> validSaleSelectableWarehouseListForDept(Collection<Long> ids, Long deptId,
+                                                                        String allProductPermission) {
+        if (hasCurrentUserSaleAllProductPermission(allProductPermission)) {
+            List<ErpWarehouseDO> list = DataPermissionUtils.executeIgnore(() -> validWarehouseList(ids));
+            for (ErpWarehouseDO warehouse : list) {
+                validateSaleEnabledWarehouse(warehouse);
+            }
+            return list;
+        }
         if (deptId == null) {
             return validSaleWarehouseList(ids);
         }
@@ -1015,6 +1113,15 @@ public class ErpWarehouseServiceImpl implements ErpWarehouseService {
 
     @Override
     public List<ErpWarehouseDO> getCurrentUserSaleSelectableWarehouseListByDept(Long deptId) {
+        return getCurrentUserSaleSelectableWarehouseListByDept(deptId, null);
+    }
+
+    @Override
+    public List<ErpWarehouseDO> getCurrentUserSaleSelectableWarehouseListByDept(Long deptId,
+                                                                               String allProductPermission) {
+        if (hasCurrentUserSaleAllProductPermission(allProductPermission)) {
+            return getAllEnabledSaleWarehouseList();
+        }
         if (deptId == null) {
             return getCurrentUserVisibleSaleWarehouseList();
         }
@@ -1155,7 +1262,16 @@ public class ErpWarehouseServiceImpl implements ErpWarehouseService {
 
     @Override
     public void validateWarehouseSaleSelectableForDept(Long warehouseId, Long deptId) {
+        validateWarehouseSaleSelectableForDept(warehouseId, deptId, null);
+    }
+
+    @Override
+    public void validateWarehouseSaleSelectableForDept(Long warehouseId, Long deptId, String allProductPermission) {
         ErpWarehouseDO warehouse = DataPermissionUtils.executeIgnore(() -> validateWarehouseExists(warehouseId));
+        if (hasCurrentUserSaleAllProductPermission(allProductPermission)) {
+            validateSaleEnabledWarehouse(warehouse);
+            return;
+        }
         validateWarehouseSaleSelectableForDept(warehouse, deptId);
     }
 
@@ -1169,16 +1285,20 @@ public class ErpWarehouseServiceImpl implements ErpWarehouseService {
     }
 
     private void validateWarehouseSaleAllowedForDept(ErpWarehouseDO warehouse, Long deptId) {
+        validateSaleEnabledWarehouse(warehouse);
+        if (isWarehouseSaleAllowedForDept(warehouse, deptId)) {
+            return;
+        }
+        throw exception(WAREHOUSE_SALE_DEPT_PERMISSION_DENIED, warehouse.getName());
+    }
+
+    private void validateSaleEnabledWarehouse(ErpWarehouseDO warehouse) {
         if (CommonStatusEnum.isDisable(warehouse.getStatus())) {
             throw exception(WAREHOUSE_NOT_ENABLE, warehouse.getName());
         }
         if (!isSaleEnabled(warehouse)) {
             throw exception(WAREHOUSE_SALE_NOT_ENABLE, warehouse.getName());
         }
-        if (isWarehouseSaleAllowedForDept(warehouse, deptId)) {
-            return;
-        }
-        throw exception(WAREHOUSE_SALE_DEPT_PERMISSION_DENIED, warehouse.getName());
     }
 
     private void validateWarehouseSaleSelectableForDept(ErpWarehouseDO warehouse, Long deptId) {
@@ -1215,6 +1335,22 @@ public class ErpWarehouseServiceImpl implements ErpWarehouseService {
                 .stream()
                 .filter(this::isSaleEnabled)
                 .collect(Collectors.toList());
+    }
+
+    private List<ErpWarehouseDO> getAllEnabledSaleWarehouseList() {
+        return DataPermissionUtils.executeIgnore(() ->
+                warehouseMapper.selectListByStatus(CommonStatusEnum.ENABLE.getStatus())).stream()
+                .filter(this::isSaleEnabled)
+                .collect(Collectors.toList());
+    }
+
+    @Override
+    public boolean hasCurrentUserSaleAllProductPermission(String allProductPermission) {
+        if (!SALE_ALL_PRODUCT_PERMISSIONS.contains(allProductPermission)) {
+            return false;
+        }
+        Long loginUserId = getLoginUserId();
+        return loginUserId != null && permissionApi.hasAnyPermissions(loginUserId, allProductPermission);
     }
 
     private boolean isCurrentUserDirectAuthorizedWarehouse(Long warehouseId) {
@@ -1256,6 +1392,15 @@ public class ErpWarehouseServiceImpl implements ErpWarehouseService {
     }
 
     @Override
+    public List<Long> getUserPickWarehouseIds(Long userId) {
+        if (userId == null) {
+            return Collections.emptyList();
+        }
+        return convertList(warehousePickerMapper.selectListByUserId(userId),
+                ErpWarehousePickerDO::getWarehouseId);
+    }
+
+    @Override
     @Transactional(rollbackFor = Exception.class)
     public void updateUserWarehousePermissions(Long userId, Collection<Long> warehouseIds) {
         if (userId == null) {
@@ -1288,6 +1433,18 @@ public class ErpWarehouseServiceImpl implements ErpWarehouseService {
     }
 
     @Override
+    public List<Long> getWarehousePickerUserIds(Long warehouseId) {
+        if (warehouseId == null) {
+            return Collections.emptyList();
+        }
+        DataPermissionUtils.executeIgnore(() -> {
+            validateWarehouseExists(warehouseId);
+        });
+        return convertList(warehousePickerMapper.selectListByWarehouseId(warehouseId),
+                ErpWarehousePickerDO::getUserId);
+    }
+
+    @Override
     @Transactional(rollbackFor = Exception.class)
     public void updateWarehouseUserPermissions(Long warehouseId, Collection<Long> userIds) {
         if (warehouseId == null) {
@@ -1305,6 +1462,26 @@ public class ErpWarehouseServiceImpl implements ErpWarehouseService {
             return;
         }
         userIdSet.forEach(userId -> userWarehousePermissionMapper.insertIgnore(userId, warehouseId, tenantId));
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void updateWarehousePickers(Long warehouseId, Collection<Long> userIds) {
+        if (warehouseId == null) {
+            return;
+        }
+        DataPermissionUtils.executeIgnore(() -> {
+            validateWarehouseExists(warehouseId);
+        });
+        Set<Long> userIdSet = (userIds == null ? Collections.<Long>emptyList() : userIds).stream()
+                .filter(Objects::nonNull)
+                .collect(Collectors.toCollection(LinkedHashSet::new));
+        Long tenantId = TenantContextHolder.getRequiredTenantId();
+        warehousePickerMapper.deleteListByWarehouseId(warehouseId, tenantId);
+        if (CollUtil.isEmpty(userIdSet)) {
+            return;
+        }
+        userIdSet.forEach(userId -> warehousePickerMapper.insertIgnore(warehouseId, userId, tenantId));
     }
 
     @Override
@@ -1564,4 +1741,3 @@ public class ErpWarehouseServiceImpl implements ErpWarehouseService {
     }
 
 }
-

@@ -4,12 +4,16 @@ import cn.hutool.core.collection.CollUtil;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.mybatis.core.mapper.BaseMapperX;
 import cn.iocoder.yudao.framework.mybatis.core.query.LambdaQueryWrapperX;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.in.ErpPurchaseInAdjustableItemPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.in.ErpPurchaseInItemPageReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.in.ErpPurchaseInReturnableItemPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.in.ErpPurchaseInSaleCartableItemPageReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.in.ErpPurchaseInTransferOutableItemPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.invoice.ErpPurchaseInvoiceSourceInItemPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.stock.ErpStockPendingInDetailRespVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseInItemDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockDO;
+import cn.iocoder.yudao.module.erp.enums.ErpAuditStatus;
 import cn.iocoder.yudao.module.erp.enums.sale.ErpSaleBizSourceTypeEnum;
 import cn.iocoder.yudao.module.erp.enums.sale.ErpSaleConvertTypeEnum;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
@@ -17,6 +21,7 @@ import com.baomidou.mybatisplus.core.toolkit.support.SFunction;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
+import org.springframework.util.StringUtils;
 
 import java.math.BigDecimal;
 import java.util.Collection;
@@ -34,6 +39,25 @@ import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.
  */
 @Mapper
 public interface ErpPurchaseInItemMapper extends BaseMapperX<ErpPurchaseInItemDO> {
+
+    String PURCHASE_ITEM_PRODUCT_KEYWORD_SQL = "("
+            + "EXISTS (SELECT 1 FROM erp_product p "
+            + "WHERE p.id = erp_purchase_in_items.product_id AND p.deleted = b'0' "
+            + "AND p.tenant_id = erp_purchase_in_items.tenant_id "
+            + "AND (p.code LIKE {0} OR p.name LIKE {0} OR p.pinyin_code LIKE {0} "
+            + "OR p.wubi_code LIKE {0} OR p.bar_code LIKE {0} OR p.vehicle_model LIKE {0} "
+            + "OR p.factory_code LIKE {0} OR p.standard LIKE {0} OR p.brand LIKE {0} "
+            + "OR p.drawing_no LIKE {0})) "
+            + "OR erp_purchase_in_items.bar_code LIKE {0} "
+            + "OR erp_purchase_in_items.vehicle_model LIKE {0} "
+            + "OR erp_purchase_in_items.brand LIKE {0} "
+            + "OR erp_purchase_in_items.drawing_no LIKE {0} "
+            + "OR erp_purchase_in_items.batch_no LIKE {0})";
+
+    default List<ErpPurchaseInItemDO> selectListByInIdForUpdate(Long inId) {
+        return selectList(new LambdaQueryWrapperX<ErpPurchaseInItemDO>()
+                .eq(ErpPurchaseInItemDO::getInId,inId).last("FOR UPDATE"));
+    }
 
     default List<ErpPurchaseInItemDO> selectListByInId(Long inId) {
         return selectList(ErpPurchaseInItemDO::getInId, inId);
@@ -105,8 +129,82 @@ public interface ErpPurchaseInItemMapper extends BaseMapperX<ErpPurchaseInItemDO
         return selectPage(reqVO, query);
     }
 
+    default PageResult<ErpPurchaseInItemDO> selectAdjustableItemPage(
+            ErpPurchaseInAdjustableItemPageReqVO reqVO) {
+        if (reqVO.getSupplierId() == null) {
+            return PageResult.empty();
+        }
+        QueryWrapper<ErpPurchaseInItemDO> query = new QueryWrapper<ErpPurchaseInItemDO>()
+                .apply("EXISTS (SELECT 1 FROM erp_purchase_in pi "
+                                + "WHERE pi.id = erp_purchase_in_items.in_id AND pi.deleted = b'0' "
+                                + "AND pi.tenant_id = erp_purchase_in_items.tenant_id "
+                                + "AND pi.supplier_id = {0} AND pi.status = {1})",
+                        reqVO.getSupplierId(), ErpAuditStatus.APPROVE.getStatus());
+        if (CollUtil.isNotEmpty(reqVO.getInIds())) {
+            query.in("in_id", reqVO.getInIds());
+        }
+        if (Boolean.TRUE.equals(reqVO.getExcludeAdjusted())) {
+            query.and(wrapper -> wrapper.isNull("adjusted").or().eq("adjusted", false));
+        }
+        if (Boolean.TRUE.equals(reqVO.getExcludeInvoiced())) {
+            query.apply("NOT EXISTS (SELECT 1 FROM erp_purchase_invoice_item pii "
+                    + "INNER JOIN erp_purchase_invoice pio ON pio.id = pii.invoice_id "
+                    + "AND pio.deleted = b'0' AND pio.tenant_id = pii.tenant_id "
+                    + "AND pio.status = {0} "
+                    + "WHERE pii.deleted = b'0' AND pii.tenant_id = erp_purchase_in_items.tenant_id "
+                    + "AND pii.source_in_id = erp_purchase_in_items.in_id)", ErpAuditStatus.APPROVE.getStatus());
+        }
+        appendProductKeyword(query, reqVO.getProductKeyword());
+        query.orderByDesc("in_id").orderByAsc("id");
+        return selectPage(reqVO, query);
+    }
+
+    default PageResult<ErpPurchaseInItemDO> selectReturnableItemPage(
+            ErpPurchaseInReturnableItemPageReqVO reqVO) {
+        QueryWrapper<ErpPurchaseInItemDO> query = new QueryWrapper<ErpPurchaseInItemDO>()
+                .eq("in_id", reqVO.getInId())
+                .apply("COALESCE(count, 0) > COALESCE((SELECT SUM(COALESCE(pri.count, 0)) "
+                                + "FROM erp_purchase_return_items pri "
+                                + "INNER JOIN erp_purchase_return pr ON pr.id = pri.return_id "
+                                + "AND pr.deleted = b'0' AND pr.tenant_id = pri.tenant_id "
+                                + "AND pr.status = {0} "
+                                + "WHERE pri.deleted = b'0' "
+                                + "AND pri.tenant_id = erp_purchase_in_items.tenant_id "
+                                + "AND pri.source_in_item_id = erp_purchase_in_items.id), 0)",
+                        ErpAuditStatus.APPROVE.getStatus());
+        appendProductKeyword(query, reqVO.getProductKeyword());
+        query.orderByAsc("id");
+        return selectPage(reqVO, query);
+    }
+
+    default PageResult<ErpPurchaseInItemDO> selectTransferOutableItemPage(
+            ErpPurchaseInTransferOutableItemPageReqVO reqVO) {
+        QueryWrapper<ErpPurchaseInItemDO> query = new QueryWrapper<ErpPurchaseInItemDO>()
+                .eq("in_id", reqVO.getInId())
+                .apply("COALESCE(count, 0) > COALESCE((SELECT SUM(COALESCE(smi.count, 0)) "
+                        + "FROM erp_stock_move_item smi "
+                        + "INNER JOIN erp_stock_move sm ON sm.id = smi.move_id "
+                        + "AND sm.deleted = b'0' AND sm.tenant_id = smi.tenant_id "
+                        + "AND (sm.transfer_direction = 10 OR sm.transfer_direction IS NULL) "
+                        + "WHERE smi.deleted = b'0' "
+                        + "AND smi.tenant_id = erp_purchase_in_items.tenant_id "
+                        + "AND smi.source_in_item_id = erp_purchase_in_items.id), 0)");
+        appendProductKeyword(query, reqVO.getProductKeyword());
+        query.orderByAsc("id");
+        return selectPage(reqVO, query);
+    }
+
     default List<ErpPurchaseInItemDO> selectListByInIds(Collection<Long> inIds) {
         return selectList(ErpPurchaseInItemDO::getInId, inIds);
+    }
+
+    default List<ErpPurchaseInItemDO> selectLightListByInIds(Collection<Long> inIds) {
+        if (CollUtil.isEmpty(inIds)) {
+            return Collections.emptyList();
+        }
+        return selectList(new QueryWrapper<ErpPurchaseInItemDO>()
+                .select("id", "in_id", "count", "adjusted")
+                .in("in_id", inIds));
     }
 
     default int deleteByInId(Long inId) {
@@ -177,6 +275,14 @@ public interface ErpPurchaseInItemMapper extends BaseMapperX<ErpPurchaseInItemDO
             default:
                 return null;
         }
+    }
+
+    static void appendProductKeyword(QueryWrapper<ErpPurchaseInItemDO> query, String keyword) {
+        if (!StringUtils.hasText(keyword)) {
+            return;
+        }
+        String likeValue = "%" + keyword.trim().replaceAll("\\s+", "%") + "%";
+        query.and(wrapper -> wrapper.apply(PURCHASE_ITEM_PRODUCT_KEYWORD_SQL, likeValue));
     }
 
     static String getSaleCartableOrderColumn(String orderField) {

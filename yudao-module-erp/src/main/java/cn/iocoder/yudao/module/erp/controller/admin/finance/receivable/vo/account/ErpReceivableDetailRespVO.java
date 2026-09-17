@@ -26,6 +26,15 @@ public class ErpReceivableDetailRespVO {
     @ExcelProperty("单据编号")
     private String docNo;
 
+    private Long deptId;
+
+    private Integer returnStatus;
+
+    private Boolean priceAdjusted;
+
+    @ExcelProperty("所属部门")
+    private String deptName;
+
     @ExcelProperty("上笔余额")
     private BigDecimal prevBalance;
 

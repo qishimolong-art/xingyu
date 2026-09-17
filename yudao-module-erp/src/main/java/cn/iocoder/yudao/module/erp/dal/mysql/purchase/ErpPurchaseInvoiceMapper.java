@@ -5,6 +5,7 @@ import cn.iocoder.yudao.framework.mybatis.core.mapper.BaseMapperX;
 import cn.iocoder.yudao.framework.mybatis.core.query.MPJLambdaWrapperX;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.invoice.ErpPurchaseInvoicePageReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.product.ErpProductDO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.product.ErpProductUnitDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseInvoiceDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseInvoiceItemDO;
 import cn.iocoder.yudao.module.erp.dal.mysql.common.ErpKeywordQuery;
@@ -38,25 +39,17 @@ public interface ErpPurchaseInvoiceMapper extends BaseMapperX<ErpPurchaseInvoice
                 || StringUtils.hasText(reqVO.getProductKeyword())) {
             query.leftJoin(ErpPurchaseInvoiceItemDO.class, ErpPurchaseInvoiceItemDO::getInvoiceId, ErpPurchaseInvoiceDO::getId)
                     .leftJoin(ErpProductDO.class, ErpProductDO::getId, ErpPurchaseInvoiceItemDO::getProductId)
+                    .leftJoin(ErpProductUnitDO.class, ErpProductUnitDO::getId, ErpProductDO::getUnitId)
                     .eq(reqVO.getProductId() != null, ErpPurchaseInvoiceItemDO::getProductId, reqVO.getProductId())
                     .likeIfPresent(ErpPurchaseInvoiceItemDO::getSourceInNo, reqVO.getSourceInNo())
-                    .and(StringUtils.hasText(reqVO.getProductKeyword()), w -> {
-                        String productKeyword = ErpKeywordQuery.normalize(reqVO.getProductKeyword());
-                        w.like(ErpProductDO::getCode, productKeyword)
-                                .or().like(ErpProductDO::getName, productKeyword)
-                                .or().like(ErpProductDO::getPinyinCode, productKeyword)
-                                .or().like(ErpProductDO::getWubiCode, productKeyword)
-                                .or().like(ErpProductDO::getBarCode, productKeyword)
-                                .or().like(ErpProductDO::getVehicleModel, productKeyword)
-                                .or().like(ErpProductDO::getFactoryCode, productKeyword)
-                                .or().like(ErpProductDO::getStandard, productKeyword)
-                                .or().like(ErpProductDO::getBrand, productKeyword)
-                                .or().like(ErpProductDO::getDrawingNo, productKeyword)
-                                .or().like(ErpPurchaseInvoiceItemDO::getProductBarCode, productKeyword);
-                    })
+                    .and(StringUtils.hasText(reqVO.getProductKeyword()),
+                            w -> ErpKeywordQuery.appendProductKeyword(w, reqVO.getProductKeyword(),
+                                    ErpKeywordQuery.productKeywordColumn(ErpPurchaseInvoiceItemDO::getProductBarCode),
+                                    ErpKeywordQuery.productKeywordColumn(ErpPurchaseInvoiceItemDO::getProductUnitName)))
                     .groupBy(ErpPurchaseInvoiceDO::getId);
         }
-        ErpKeywordQuery.appendWithDeptNameAndPurchaseSupplier(query, reqVO.getKeyword(),
+        ErpKeywordQuery.appendWithDeptNameAndPurchaseSupplierAndProductItemTokensByProductUnit(query, reqVO.getKeyword(),
+                "erp_purchase_invoice_item", "invoice_id",
                 ErpPurchaseInvoiceDO::getNo, ErpPurchaseInvoiceDO::getInvoiceNo,
                 ErpPurchaseInvoiceDO::getInvoiceType, ErpPurchaseInvoiceDO::getRemark);
         orderByIfPresent(query, reqVO);

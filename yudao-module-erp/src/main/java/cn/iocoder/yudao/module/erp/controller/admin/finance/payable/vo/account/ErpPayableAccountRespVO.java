@@ -46,6 +46,9 @@ public class ErpPayableAccountRespVO {
     @Schema(description = "其他应付金额")
     private BigDecimal otherPayableAmount;
 
+    @Schema(description = "独立其他应付金额")
+    private BigDecimal miscPayableAmount;
+
     @Schema(description = "付款金额")
     private BigDecimal paymentAmount;
 

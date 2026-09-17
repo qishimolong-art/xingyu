@@ -101,16 +101,19 @@ public class ErpOtherReceivableController {
     @PreAuthorize("@ss.hasPermission('erp:other-receivable:query')")
     public CommonResult<PageResult<ErpOtherReceivableRespVO>> getOtherReceivablePage(@Valid ErpOtherReceivablePageReqVO pageReqVO) {
         PageResult<ErpOtherReceivableDO> pageResult = otherReceivableService.getOtherReceivablePage(pageReqVO);
-        return success(buildOtherReceivableVOPageResult(pageResult));
+        return success(buildOtherReceivableVOPageResult(pageResult, !Boolean.FALSE.equals(pageReqVO.getIncludeItems())));
     }
 
-    private PageResult<ErpOtherReceivableRespVO> buildOtherReceivableVOPageResult(PageResult<ErpOtherReceivableDO> pageResult) {
+    private PageResult<ErpOtherReceivableRespVO> buildOtherReceivableVOPageResult(PageResult<ErpOtherReceivableDO> pageResult,
+                                                                                  boolean includeItems) {
         if (CollUtil.isEmpty(pageResult.getList())) {
             return PageResult.empty(pageResult.getTotal());
         }
         // 1.1 明细
-        List<ErpOtherReceivableItemDO> itemList = otherReceivableService.getOtherReceivableItemListByReceivableIds(
-                convertSet(pageResult.getList(), ErpOtherReceivableDO::getId));
+        List<ErpOtherReceivableItemDO> itemList = includeItems
+                ? otherReceivableService.getOtherReceivableItemListByReceivableIds(
+                convertSet(pageResult.getList(), ErpOtherReceivableDO::getId))
+                : Collections.emptyList();
         Map<Long, List<ErpOtherReceivableItemDO>> itemMap = convertMultiMap(itemList, ErpOtherReceivableItemDO::getReceivableId);
         // 1.2 结算账户
         Set<Long> accountIds = convertSet(pageResult.getList(), ErpOtherReceivableDO::getAccountId);
@@ -122,7 +125,8 @@ public class ErpOtherReceivableController {
                 convertSet(pageResult.getList(), r -> NumberUtils.parseLong(r.getCreator())));
         // 2. 拼接
         return BeanUtils.toBean(pageResult, ErpOtherReceivableRespVO.class, vo -> {
-            vo.setItems(BeanUtils.toBean(itemMap.get(vo.getId()), ErpOtherReceivableRespVO.Item.class));
+            vo.setItems(includeItems ? BeanUtils.toBean(itemMap.get(vo.getId()), ErpOtherReceivableRespVO.Item.class)
+                    : Collections.emptyList());
             MapUtils.findAndThen(accountMap, vo.getAccountId(), account -> vo.setAccountName(account.getName()));
             MapUtils.findAndThen(userMap, NumberUtils.parseLong(vo.getCreator()), user -> vo.setCreatorName(user.getNickname()));
         });

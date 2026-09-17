@@ -7,6 +7,7 @@ import cn.iocoder.yudao.framework.mybatis.core.query.LambdaQueryWrapperX;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartItemPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.stock.ErpStockOccupiedDetailRespVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleCartItemDO;
+import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.toolkit.support.SFunction;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
@@ -29,6 +30,12 @@ public interface ErpSaleCartItemMapper extends BaseMapperX<ErpSaleCartItemDO> {
         return selectList(ErpSaleCartItemDO::getCartId, cartId);
     }
 
+    /** 写入流程在父行锁后读取完整源行，不使用已有 RR 快照；排序由服务执行。 */
+    default List<ErpSaleCartItemDO> selectListByCartIdForUpdate(Long cartId) {
+        return selectList(new LambdaQueryWrapperX<ErpSaleCartItemDO>()
+                .eq(ErpSaleCartItemDO::getCartId, cartId).last("FOR UPDATE"));
+    }
+
     default PageResult<ErpSaleCartItemDO> selectPageByCartId(ErpSaleCartItemPageReqVO reqVO) {
         LambdaQueryWrapperX<ErpSaleCartItemDO> query = new LambdaQueryWrapperX<ErpSaleCartItemDO>()
                 .eq(ErpSaleCartItemDO::getCartId, reqVO.getCartId());
@@ -48,6 +55,25 @@ public interface ErpSaleCartItemMapper extends BaseMapperX<ErpSaleCartItemDO> {
 
     default List<ErpSaleCartItemDO> selectListByCartIds(Collection<Long> cartIds) {
         return selectList(ErpSaleCartItemDO::getCartId, cartIds);
+    }
+
+    default Map<Long, Integer> selectItemCountMapByCartIds(Collection<Long> cartIds) {
+        if (CollUtil.isEmpty(cartIds)) {
+            return Collections.emptyMap();
+        }
+        List<Map<String, Object>> rows = selectMaps(new QueryWrapper<ErpSaleCartItemDO>()
+                .select("cart_id, COUNT(1) AS item_count")
+                .in("cart_id", cartIds)
+                .groupBy("cart_id"));
+        Map<Long, Integer> result = new HashMap<>();
+        for (Map<String, Object> row : rows) {
+            Object cartId = row.get("cart_id");
+            Object count = row.get("item_count");
+            if (cartId != null && count != null) {
+                result.put(((Number) cartId).longValue(), ((Number) count).intValue());
+            }
+        }
+        return result;
     }
 
     default int deleteByCartId(Long cartId) {

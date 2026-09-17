@@ -136,6 +136,19 @@ public class ErpSaleOrderRespVO {
         @NotNull(message = "产品数量不能为空")
         private BigDecimal count;
 
+        private BigDecimal productPurchasePrice;
+        private BigDecimal salePrice;
+        private BigDecimal lastSalePrice;
+        private BigDecimal minPrice;
+        private BigDecimal referencePrice;
+        private BigDecimal retailPrice;
+        private BigDecimal lastPurchasePrice;
+        private Integer grossProfitRate;
+        private BigDecimal backupPrice1;
+        private BigDecimal wholesalePrice;
+        private BigDecimal sharePrice;
+        private Boolean priceVisible;
+
         @ExcelProperty("单价")
         private BigDecimal productPrice;
 

@@ -134,6 +134,14 @@ public interface ErpWarehouseMapper extends BaseMapperX<ErpWarehouseDO> {
         return selectOne(ErpWarehouseDO::getWarehouseCode, warehouseCode);
     }
 
+    default List<ErpWarehouseDO> selectListByWarehouseCodePrefix(String warehouseCodePrefix) {
+        if (warehouseCodePrefix == null) {
+            return Collections.emptyList();
+        }
+        return selectList(new LambdaQueryWrapperX<ErpWarehouseDO>()
+                .likeRight(ErpWarehouseDO::getWarehouseCode, warehouseCodePrefix));
+    }
+
     default ErpWarehouseDO selectByName(String name) {
         return selectOne(ErpWarehouseDO::getName, name);
     }

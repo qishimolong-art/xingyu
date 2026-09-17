@@ -9,6 +9,8 @@ import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleOrderItemDO;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.toolkit.support.SFunction;
 import org.apache.ibatis.annotations.Mapper;
+import org.apache.ibatis.annotations.Param;
+import org.apache.ibatis.annotations.Select;
 
 import java.math.BigDecimal;
 import java.util.Collection;
@@ -27,6 +29,11 @@ public interface ErpSaleOrderItemMapper extends BaseMapperX<ErpSaleOrderItemDO> 
 
     default List<ErpSaleOrderItemDO> selectListByOrderId(Long orderId) {
         return selectList(ErpSaleOrderItemDO::getOrderId, orderId);
+    }
+
+    default List<ErpSaleOrderItemDO> selectListByOrderIdForUpdate(Long orderId) {
+        return selectList(new LambdaQueryWrapperX<ErpSaleOrderItemDO>()
+                .eq(ErpSaleOrderItemDO::getOrderId, orderId).last("FOR UPDATE"));
     }
 
     default PageResult<ErpSaleOrderItemDO> selectPageByOrderId(ErpSaleOrderItemPageReqVO reqVO) {
@@ -49,6 +56,56 @@ public interface ErpSaleOrderItemMapper extends BaseMapperX<ErpSaleOrderItemDO> 
     default List<ErpSaleOrderItemDO> selectListByOrderIds(Collection<Long> orderIds) {
         return selectList(ErpSaleOrderItemDO::getOrderId, orderIds);
     }
+
+    default Map<Long, Integer> selectItemCountMapByOrderIds(Collection<Long> orderIds) {
+        if (CollUtil.isEmpty(orderIds)) {
+            return Collections.emptyMap();
+        }
+        List<Map<String, Object>> rows = selectMaps(new QueryWrapper<ErpSaleOrderItemDO>()
+                .select("order_id, COUNT(1) AS item_count")
+                .in("order_id", orderIds)
+                .groupBy("order_id"));
+        Map<Long, Integer> result = new HashMap<>();
+        for (Map<String, Object> row : rows) {
+            Object orderId = row.get("order_id");
+            Object count = row.get("item_count");
+            if (orderId != null && count != null) {
+                result.put(((Number) orderId).longValue(), ((Number) count).intValue());
+            }
+        }
+        return result;
+    }
+
+    default Map<Long, String> selectProductNamesMapByOrderIds(Collection<Long> orderIds) {
+        if (CollUtil.isEmpty(orderIds)) {
+            return Collections.emptyMap();
+        }
+        List<Map<String, Object>> rows = selectProductNamesRows(orderIds);
+        Map<Long, String> result = new HashMap<>();
+        for (Map<String, Object> row : rows) {
+            Object orderId = row.get("order_id");
+            Object productNames = row.get("product_names");
+            if (orderId != null && productNames != null) {
+                result.put(((Number) orderId).longValue(), productNames.toString());
+            }
+        }
+        return result;
+    }
+
+    @Select({
+            "<script>",
+            "SELECT soi.order_id, GROUP_CONCAT(p.name ORDER BY soi.id SEPARATOR '，') AS product_names",
+            "  FROM erp_sale_order_items soi",
+            "  LEFT JOIN erp_product p ON p.id = soi.product_id AND p.deleted = 0",
+            " WHERE soi.deleted = 0",
+            "   AND soi.order_id IN",
+            "   <foreach collection='orderIds' item='orderId' open='(' separator=',' close=')'>",
+            "     #{orderId}",
+            "   </foreach>",
+            " GROUP BY soi.order_id",
+            "</script>"
+    })
+    List<Map<String, Object>> selectProductNamesRows(@Param("orderIds") Collection<Long> orderIds);
 
     default int deleteByOrderId(Long orderId) {
         return delete(ErpSaleOrderItemDO::getOrderId, orderId);

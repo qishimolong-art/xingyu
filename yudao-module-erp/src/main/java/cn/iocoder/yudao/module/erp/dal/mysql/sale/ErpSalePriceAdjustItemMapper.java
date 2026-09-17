@@ -1,15 +1,20 @@
 package cn.iocoder.yudao.module.erp.dal.mysql.sale;
 
+import cn.hutool.core.collection.CollUtil;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.mybatis.core.mapper.BaseMapperX;
 import cn.iocoder.yudao.framework.mybatis.core.query.LambdaQueryWrapperX;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.priceadjust.ErpSalePriceAdjustItemPageReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSalePriceAdjustItemDO;
+import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.toolkit.support.SFunction;
 import org.apache.ibatis.annotations.Mapper;
 
 import java.util.Collection;
+import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * ERP 销售调价单明细 Mapper
@@ -21,6 +26,11 @@ public interface ErpSalePriceAdjustItemMapper extends BaseMapperX<ErpSalePriceAd
 
     default List<ErpSalePriceAdjustItemDO> selectListByAdjustId(Long adjustId) {
         return selectList(ErpSalePriceAdjustItemDO::getAdjustId, adjustId);
+    }
+
+    default List<ErpSalePriceAdjustItemDO> selectListByAdjustIdForUpdate(Long adjustId) {
+        return selectList(new LambdaQueryWrapperX<ErpSalePriceAdjustItemDO>()
+                .eq(ErpSalePriceAdjustItemDO::getAdjustId, adjustId).last("FOR UPDATE"));
     }
 
     default PageResult<ErpSalePriceAdjustItemDO> selectPageByAdjustId(ErpSalePriceAdjustItemPageReqVO reqVO) {
@@ -42,6 +52,36 @@ public interface ErpSalePriceAdjustItemMapper extends BaseMapperX<ErpSalePriceAd
 
     default List<ErpSalePriceAdjustItemDO> selectListByAdjustIds(Collection<Long> adjustIds) {
         return selectList(ErpSalePriceAdjustItemDO::getAdjustId, adjustIds);
+    }
+
+    default Map<Long, Integer> selectItemCountMapByAdjustIds(Collection<Long> adjustIds) {
+        if (CollUtil.isEmpty(adjustIds)) {
+            return Collections.emptyMap();
+        }
+        List<Map<String, Object>> rows = selectMaps(new QueryWrapper<ErpSalePriceAdjustItemDO>()
+                .select("adjust_id, COUNT(1) AS item_count")
+                .in("adjust_id", adjustIds)
+                .groupBy("adjust_id"));
+        Map<Long, Integer> result = new HashMap<>();
+        for (Map<String, Object> row : rows) {
+            Object adjustId = row.get("adjust_id");
+            Object count = row.get("item_count");
+            if (adjustId != null && count != null) {
+                result.put(((Number) adjustId).longValue(), ((Number) count).intValue());
+            }
+        }
+        return result;
+    }
+
+    default List<ErpSalePriceAdjustItemDO> selectSummaryListByAdjustIds(Collection<Long> adjustIds) {
+        if (CollUtil.isEmpty(adjustIds)) {
+            return Collections.emptyList();
+        }
+        return selectList(new LambdaQueryWrapperX<ErpSalePriceAdjustItemDO>()
+                .select(ErpSalePriceAdjustItemDO::getAdjustId, ErpSalePriceAdjustItemDO::getSaleOutNo,
+                        ErpSalePriceAdjustItemDO::getOutCount, ErpSalePriceAdjustItemDO::getOldPrice,
+                        ErpSalePriceAdjustItemDO::getNewPrice)
+                .in(ErpSalePriceAdjustItemDO::getAdjustId, adjustIds));
     }
 
     default List<ErpSalePriceAdjustItemDO> selectListBySaleOutItemIds(Collection<Long> saleOutItemIds) {

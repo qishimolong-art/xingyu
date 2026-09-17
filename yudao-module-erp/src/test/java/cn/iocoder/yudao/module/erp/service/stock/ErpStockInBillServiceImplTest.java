@@ -63,80 +63,29 @@ public class ErpStockInBillServiceImplTest extends BaseMockitoUnitTest {
     }
 
     @Test
-    public void testCreateFromPurchaseIn_success() {
-        ErpPurchaseInDO purchaseIn = new ErpPurchaseInDO()
-                .setId(10L).setNo("CGRK001")
-                .setInTime(LocalDateTime.of(2026, 6, 29, 10, 0, 0));
-        ErpPurchaseInItemDO item = new ErpPurchaseInItemDO()
-                .setId(100L).setInId(10L).setWarehouseId(20L).setProductId(30L).setProductUnitId(40L)
-                .setCount(new BigDecimal("5")).setProductPrice(new BigDecimal("12.34"));
-        when(warehouseService.getWarehouseMap(any())).thenReturn(Collections.singletonMap(20L,
-                new ErpWarehouseDO().setId(20L).setName("主仓")));
-        when(stockInBillMapper.selectByNo(any())).thenReturn(null);
-
-        stockInBillService.createFromPurchaseIn(purchaseIn, Collections.singletonList(item));
-
-        ArgumentCaptor<ErpStockInBillDO> billCaptor = ArgumentCaptor.forClass(ErpStockInBillDO.class);
-        verify(stockInBillMapper).insert(billCaptor.capture());
-        assertEquals("RCD20260629000001", billCaptor.getValue().getNo());
-        assertEquals(0, billCaptor.getValue().getTotalCount().compareTo(new BigDecimal("5")));
-
-        ArgumentCaptor<java.util.List<ErpStockInBillItemDO>> itemsCaptor = ArgumentCaptor.forClass(java.util.List.class);
-        verify(stockInBillItemMapper).insertBatch(itemsCaptor.capture());
-        assertEquals(Long.valueOf(100L), itemsCaptor.getValue().get(0).getSourceItemId());
-        assertEquals(0, itemsCaptor.getValue().get(0).getPickedCount().compareTo(BigDecimal.ZERO));
+    public void testCreateFromPurchaseIn_cancelled_rejectsWithoutWriting() {
+        cn.iocoder.yudao.framework.common.exception.ServiceException error = org.junit.jupiter.api.Assertions.assertThrows(
+                cn.iocoder.yudao.framework.common.exception.ServiceException.class,
+                () -> stockInBillService.createFromPurchaseIn(new ErpPurchaseInDO().setId(10L),
+                        Collections.singletonList(new ErpPurchaseInItemDO().setId(100L))));
+        assertEquals(409, error.getCode());
+        org.mockito.Mockito.verifyNoInteractions(stockInBillMapper, stockInBillItemMapper, stockRecordService);
     }
 
     @Test
-    public void testPickup_success_createStockRecord() {
-        ErpStockInBillDO bill = new ErpStockInBillDO()
-                .setId(1L).setNo("RCD001").setSourceId(10L).setSourceNo("CGRK001")
-                .setStatus(ErpStockInBillServiceImpl.STATUS_WAIT_PICKUP);
-        when(stockInBillMapper.selectById(eq(1L))).thenReturn(bill);
-        ErpStockInBillItemDO item = new ErpStockInBillItemDO()
-                .setId(2L).setBillId(1L).setSourceId(10L).setSourceItemId(100L)
-                .setProductId(200L).setWarehouseId(300L)
-                .setCount(new BigDecimal("5")).setPickedCount(BigDecimal.ZERO)
-                .setProductPrice(new BigDecimal("12.34"));
-        when(stockInBillItemMapper.selectListByBillId(eq(1L))).thenReturn(Collections.singletonList(item));
-        ErpStockInBillPickupReqVO reqVO = new ErpStockInBillPickupReqVO();
-        reqVO.setId(1L);
-        ErpStockInBillPickupReqVO.Item reqItem = new ErpStockInBillPickupReqVO.Item();
-        reqItem.setItemId(2L);
-        reqItem.setPickupCount(new BigDecimal("3"));
-        reqVO.setItems(Collections.singletonList(reqItem));
-
-        stockInBillService.pickup(reqVO);
-
-        ArgumentCaptor<ErpStockRecordCreateReqBO> recordCaptor =
-                ArgumentCaptor.forClass(ErpStockRecordCreateReqBO.class);
-        verify(stockRecordService).createStockRecord(recordCaptor.capture());
-        assertEquals(ErpStockRecordBizTypeEnum.PURCHASE_IN.getType(), recordCaptor.getValue().getBizType());
-        assertEquals(0, recordCaptor.getValue().getCount().compareTo(new BigDecimal("3")));
-        assertEquals(Long.valueOf(10L), recordCaptor.getValue().getBizId());
-        assertEquals(Long.valueOf(100L), recordCaptor.getValue().getBizItemId());
-        verify(stockInBillItemMapper).updateById(any(ErpStockInBillItemDO.class));
-        verify(stockInBillMapper).updateById(any(ErpStockInBillDO.class));
-        verify(pickupRecordMapper).insertBatch(any());
+    public void testPickup_cancelled_rejectsWithoutLookingUpOrWritingHistory() {
+        ErpStockInBillPickupReqVO request = new ErpStockInBillPickupReqVO();
+        request.setId(1L);
+        cn.iocoder.yudao.framework.common.exception.ServiceException error = org.junit.jupiter.api.Assertions.assertThrows(
+                cn.iocoder.yudao.framework.common.exception.ServiceException.class, () -> stockInBillService.pickup(request));
+        assertEquals(409, error.getCode());
+        org.mockito.Mockito.verifyNoInteractions(stockInBillMapper, stockInBillItemMapper, pickupRecordMapper, stockRecordService);
     }
 
     @Test
-    public void testPickup_countExceed_throwException() {
-        when(stockInBillMapper.selectById(eq(1L))).thenReturn(new ErpStockInBillDO()
-                .setId(1L).setNo("RCD001").setStatus(ErpStockInBillServiceImpl.STATUS_WAIT_PICKUP));
-        when(stockInBillItemMapper.selectListByBillId(eq(1L))).thenReturn(Collections.singletonList(
-                new ErpStockInBillItemDO().setId(2L).setBillId(1L)
-                        .setCount(new BigDecimal("5")).setPickedCount(new BigDecimal("4"))));
-        ErpStockInBillPickupReqVO reqVO = new ErpStockInBillPickupReqVO();
-        reqVO.setId(1L);
-        ErpStockInBillPickupReqVO.Item reqItem = new ErpStockInBillPickupReqVO.Item();
-        reqItem.setItemId(2L);
-        reqItem.setPickupCount(new BigDecimal("2"));
-        reqVO.setItems(Collections.singletonList(reqItem));
-
-        assertServiceException(() -> stockInBillService.pickup(reqVO),
-                STOCK_IN_BILL_PICKUP_COUNT_EXCEED, 2L, new BigDecimal("2"), new BigDecimal("1"));
-        verify(stockRecordService, never()).createStockRecord(any());
+    public void testPickup_cancelled_malformedRequestCannotBypassGuard() {
+        org.junit.jupiter.api.Assertions.assertThrows(cn.iocoder.yudao.framework.common.exception.ServiceException.class,
+                () -> stockInBillService.pickup(null));
+        org.mockito.Mockito.verifyNoInteractions(stockInBillMapper, stockInBillItemMapper, pickupRecordMapper, stockRecordService);
     }
-
 }

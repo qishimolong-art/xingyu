@@ -1,10 +1,12 @@
 package cn.iocoder.yudao.module.erp.service.purchase;
 
+import cn.iocoder.yudao.framework.common.pojo.PageParam;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.order.ErpPurchaseOrderDetailImportExcelVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.order.ErpPurchaseOrderImportExcelVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.order.ErpPurchaseOrderImportResultRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.order.ErpPurchaseOrderImportRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.order.ErpPurchaseOrderInableItemPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.order.ErpPurchaseOrderInableItemRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.order.ErpPurchaseOrderItemBatchUpdateReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.order.ErpPurchaseOrderItemPageReqVO;
@@ -123,12 +125,30 @@ public interface ErpPurchaseOrderService {
     List<DeptSimpleRespVO> getSupplierAvailableDeptSimpleList(Long supplierId);
 
     /**
+     * 获得当前用户对指定供应商可用的采购部门分页
+     *
+     * @param supplierId 供应商编号
+     * @param pageParam 分页参数
+     * @return 部门分页
+     */
+    PageResult<DeptSimpleRespVO> getSupplierAvailableDeptSimplePage(Long supplierId, PageParam pageParam);
+
+    /**
      * 获得当前用户对指定采购仓库可用的业务部门列表。
      *
      * @param warehouseId 仓库编号
      * @return 部门精简列表
      */
     List<DeptSimpleRespVO> getWarehouseAvailableDeptSimpleList(Long warehouseId);
+
+    /**
+     * 获得当前用户对指定采购仓库可用的业务部门分页。
+     *
+     * @param warehouseId 仓库编号
+     * @param pageParam 分页参数
+     * @return 部门分页
+     */
+    PageResult<DeptSimpleRespVO> getWarehouseAvailableDeptSimplePage(Long warehouseId, PageParam pageParam);
 
     /**
      * 获得采购订单分页
@@ -195,5 +215,13 @@ public interface ErpPurchaseOrderService {
      * @return 可入库明细列表
      */
     List<ErpPurchaseOrderInableItemRespVO> getInableItemsByOrderId(Long orderId);
+
+    /**
+     * 获取采购订单的可入库明细分页
+     *
+     * @param pageReqVO 分页查询
+     * @return 可入库明细分页
+     */
+    PageResult<ErpPurchaseOrderInableItemRespVO> getInableItemPage(ErpPurchaseOrderInableItemPageReqVO pageReqVO);
 
 }

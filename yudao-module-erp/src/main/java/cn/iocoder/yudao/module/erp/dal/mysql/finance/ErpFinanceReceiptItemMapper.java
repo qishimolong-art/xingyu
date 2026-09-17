@@ -40,6 +40,13 @@ public interface ErpFinanceReceiptItemMapper extends BaseMapperX<ErpFinanceRecei
                 .orderByAsc(ErpFinanceReceiptItemDO::getId));
     }
 
+    default List<ErpFinanceReceiptItemDO> selectListByReceiptIdForUpdate(Long receiptId) {
+        return selectList(new LambdaQueryWrapperX<ErpFinanceReceiptItemDO>()
+                .eq(ErpFinanceReceiptItemDO::getReceiptId, receiptId)
+                .orderByAsc(ErpFinanceReceiptItemDO::getId)
+                .last("FOR UPDATE"));
+    }
+
     default PageResult<ErpFinanceReceiptItemDO> selectPageByReceiptId(ErpFinanceReceiptItemPageReqVO reqVO) {
         LambdaQueryWrapperX<ErpFinanceReceiptItemDO> query = new LambdaQueryWrapperX<ErpFinanceReceiptItemDO>()
                 .eq(ErpFinanceReceiptItemDO::getReceiptId, reqVO.getReceiptId());
@@ -59,6 +66,16 @@ public interface ErpFinanceReceiptItemMapper extends BaseMapperX<ErpFinanceRecei
 
     default List<ErpFinanceReceiptItemDO> selectListByReceiptIds(Collection<Long> receiptIds) {
         return selectList(ErpFinanceReceiptItemDO::getReceiptId, receiptIds);
+    }
+
+    default List<ErpFinanceReceiptItemDO> selectListByBizTypeAndBizId(Integer bizType, Long bizId) {
+        return selectList(new LambdaQueryWrapperX<ErpFinanceReceiptItemDO>()
+                .eq(ErpFinanceReceiptItemDO::getBizType, bizType)
+                .eq(ErpFinanceReceiptItemDO::getBizId, bizId)
+                .inSql(ErpFinanceReceiptItemDO::getReceiptId,
+                        "SELECT id FROM erp_finance_receipt WHERE deleted = 0 AND status = 20")
+                .orderByDesc(ErpFinanceReceiptItemDO::getWriteOffTime)
+                .orderByDesc(ErpFinanceReceiptItemDO::getId));
     }
 
     default int deleteByReceiptId(Long receiptId) {
@@ -114,6 +131,27 @@ public interface ErpFinanceReceiptItemMapper extends BaseMapperX<ErpFinanceRecei
             Number receiptId = (Number) row.get("receipt_id");
             if (receiptId != null) {
                 resultMap.put(receiptId.longValue(), toBigDecimal(row.get("receipt_price_sum")));
+            }
+        }
+        return resultMap;
+    }
+
+    default Map<Long, Long> selectEffectiveCountMapByReceiptIds(Collection<Long> receiptIds) {
+        if (CollUtil.isEmpty(receiptIds)) {
+            return new HashMap<>();
+        }
+        List<Map<String, Object>> result = selectMaps(new QueryWrapper<ErpFinanceReceiptItemDO>()
+                .select("receipt_id, COUNT(1) AS item_count")
+                .eq("write_off_status", ErpFinanceWriteOffStatusEnum.EFFECTIVE.getStatus())
+                .inSql("receipt_id", "SELECT id FROM erp_finance_receipt WHERE deleted = 0 AND status = 20")
+                .in("receipt_id", receiptIds)
+                .groupBy("receipt_id"));
+        Map<Long, Long> resultMap = new HashMap<>();
+        for (Map<String, Object> row : result) {
+            Number receiptId = (Number) row.get("receipt_id");
+            Number itemCount = (Number) row.get("item_count");
+            if (receiptId != null) {
+                resultMap.put(receiptId.longValue(), itemCount == null ? 0L : itemCount.longValue());
             }
         }
         return resultMap;

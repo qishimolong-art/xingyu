@@ -23,7 +23,7 @@ public interface ErpOtherReceivableMapper extends BaseMapperX<ErpOtherReceivable
                 .betweenIfPresent(ErpOtherReceivableDO::getBizTime, reqVO.getBizTime())
                 .eqIfPresent(ErpOtherReceivableDO::getCreator, reqVO.getCreator())
                 .orderByDesc(ErpOtherReceivableDO::getId);
-        ErpKeywordQuery.appendWithDeptName(wrapper, reqVO.getKeyword(),
+        ErpKeywordQuery.appendWithDeptNameAndParty(wrapper, reqVO.getKeyword(),
                 ErpOtherReceivableDO::getNo,
                 ErpOtherReceivableDO::getPartyName,
                 ErpOtherReceivableDO::getRemark);

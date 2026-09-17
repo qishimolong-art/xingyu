@@ -2,10 +2,13 @@ package cn.iocoder.yudao.module.erp.controller.admin.sale;
 
 import cn.iocoder.yudao.framework.common.pojo.CommonResult;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
+import cn.iocoder.yudao.framework.common.enums.CommonStatusEnum;
 import cn.iocoder.yudao.framework.test.core.ut.BaseMockitoUnitTest;
+import cn.idev.excel.annotation.ExcelProperty;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.customer.ErpCustomerBatchUpdateReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.customer.ErpCustomerDeptCreditRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.customer.ErpCustomerDeptCreditSaveReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.customer.ErpCustomerImportExcelVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.customer.ErpCustomerPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.customer.ErpCustomerRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.customer.ErpCustomerSaveReqVO;
@@ -15,20 +18,24 @@ import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpCustomerBusinessInfoMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpSaleOutMapper;
 import cn.iocoder.yudao.module.erp.service.sale.ErpCustomerService;
 import cn.iocoder.yudao.module.erp.service.sale.ErpSaleFieldPermissionMasker;
+import cn.iocoder.yudao.module.erp.service.sale.bo.ErpCustomerCreditStatusBO;
 import org.junit.jupiter.api.Test;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.springframework.security.access.prepost.PreAuthorize;
 
+import java.math.BigDecimal;
 import java.lang.reflect.Method;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.when;
 
 public class ErpCustomerControllerTest extends BaseMockitoUnitTest {
@@ -237,17 +244,131 @@ public class ErpCustomerControllerTest extends BaseMockitoUnitTest {
     public void testGetCustomerSimpleList_paramPassThrough() {
         ErpCustomerDO customer = new ErpCustomerDO();
         customer.setId(1L);
+        customer.setCode("C001");
         customer.setName("test");
+        customer.setShortName("short");
         customer.setContact("contact1");
         customer.setMobile("13800138000");
+        customer.setTelephone("010-12345678");
+        customer.setPinyinCode("TESTPY");
+        customer.setWubiCode("TESTWB");
+        customer.setMemberCode("VIP-001");
+        customer.setPlatformCode("PLAT-001");
         when(customerService.getCustomerListByStatus(any())).thenReturn(Arrays.asList(customer));
+        when(customerService.getCustomerDeptMap(any())).thenReturn(Collections.emptyMap());
 
         CommonResult<List<ErpCustomerRespVO>> result = controller.getCustomerSimpleList();
 
         assertEquals(0, result.getCode());
         assertNotNull(result.getData());
         assertEquals(1, result.getData().size());
-        assertEquals("test", result.getData().get(0).getName());
+        ErpCustomerRespVO respVO = result.getData().get(0);
+        assertEquals("C001", respVO.getCode());
+        assertEquals("test", respVO.getName());
+        assertEquals("short", respVO.getShortName());
+        assertEquals("contact1", respVO.getContact());
+        assertEquals("13800138000", respVO.getMobile());
+        assertEquals("010-12345678", respVO.getTelephone());
+        assertEquals("TESTPY", respVO.getPinyinCode());
+        assertEquals("TESTWB", respVO.getWubiCode());
+        assertEquals("VIP-001", respVO.getMemberCode());
+        assertEquals("PLAT-001", respVO.getPlatformCode());
+        verify(fieldPermissionMasker).maskForms(eq("erp_customer"), any());
+    }
+
+    @Test
+    public void testGetCustomerSimplePage_returnsPagedSimpleFieldsWithoutCreditStatus() {
+        ErpCustomerPageReqVO pageReqVO = new ErpCustomerPageReqVO();
+        pageReqVO.setPageNo(1);
+        pageReqVO.setPageSize(10);
+        pageReqVO.setKeyword("TESTPY");
+        ErpCustomerDO customer = new ErpCustomerDO();
+        customer.setId(3L);
+        customer.setCode("C003");
+        customer.setName("page-test");
+        customer.setShortName("page-short");
+        customer.setContact("contact3");
+        customer.setMobile("13700137000");
+        customer.setTelephone("0755-12345678");
+        customer.setPinyinCode("PAGETESTPY");
+        customer.setWubiCode("PAGETESTWB");
+        customer.setMemberCode("VIP-003");
+        customer.setPlatformCode("PLAT-003");
+        when(customerService.getCustomerPageByStatus(any(), eq(CommonStatusEnum.ENABLE.getStatus())))
+                .thenReturn(new PageResult<>(Collections.singletonList(customer), 1L));
+        when(customerService.getCustomerDeptMap(any())).thenReturn(Collections.emptyMap());
+
+        CommonResult<PageResult<ErpCustomerRespVO>> result = controller.getCustomerSimplePage(pageReqVO);
+
+        assertEquals(0, result.getCode());
+        assertNotNull(result.getData());
+        assertEquals(1L, result.getData().getTotal());
+        assertEquals(1, result.getData().getList().size());
+        ErpCustomerRespVO respVO = result.getData().getList().get(0);
+        assertEquals("C003", respVO.getCode());
+        assertEquals("page-test", respVO.getName());
+        assertEquals("page-short", respVO.getShortName());
+        assertEquals("contact3", respVO.getContact());
+        assertEquals("13700137000", respVO.getMobile());
+        assertEquals("0755-12345678", respVO.getTelephone());
+        assertEquals("PAGETESTPY", respVO.getPinyinCode());
+        assertEquals("PAGETESTWB", respVO.getWubiCode());
+        assertEquals("VIP-003", respVO.getMemberCode());
+        assertEquals("PLAT-003", respVO.getPlatformCode());
+        assertFalse(Boolean.TRUE.equals(respVO.getDisabled()));
+        verify(customerService).getCustomerPageByStatus(eq(pageReqVO), eq(CommonStatusEnum.ENABLE.getStatus()));
+        verify(customerService, never()).getCustomerCreditStatusMap(any());
+        verify(fieldPermissionMasker).maskForms(eq("erp_customer"), any());
+    }
+
+    @Test
+    public void testGetSaleCustomerSimpleList_includesSearchAndCreditFields() {
+        ErpCustomerDO customer = new ErpCustomerDO();
+        customer.setId(2L);
+        customer.setCode("C002");
+        customer.setName("sale-test");
+        customer.setShortName("sale-short");
+        customer.setContact("contact2");
+        customer.setMobile("13900139000");
+        customer.setTelephone("021-12345678");
+        customer.setPinyinCode("SALETESTPY");
+        customer.setWubiCode("SALETESTWB");
+        customer.setMemberCode("VIP-002");
+        customer.setPlatformCode("PLAT-002");
+        customer.setCreditEnabled(true);
+        customer.setCreditLimit(new BigDecimal("1000.00"));
+        customer.setCreditTermDays(30);
+        when(customerService.getCustomerListByStatus(any())).thenReturn(Arrays.asList(customer));
+        when(customerService.getCustomerDeptMap(any())).thenReturn(Collections.emptyMap());
+        when(customerService.getCustomerCreditStatusMap(any())).thenReturn(Map.of(
+                2L, new ErpCustomerCreditStatusBO()
+                        .setCustomerId(2L)
+                        .setBlocked(true)
+                        .setBlockedReason("超授信额度")));
+
+        CommonResult<List<ErpCustomerRespVO>> result = controller.getSaleCustomerSimpleList();
+
+        assertEquals(0, result.getCode());
+        assertNotNull(result.getData());
+        assertEquals(1, result.getData().size());
+        ErpCustomerRespVO respVO = result.getData().get(0);
+        assertEquals("C002", respVO.getCode());
+        assertEquals("sale-test", respVO.getName());
+        assertEquals("sale-short", respVO.getShortName());
+        assertEquals("contact2", respVO.getContact());
+        assertEquals("13900139000", respVO.getMobile());
+        assertEquals("021-12345678", respVO.getTelephone());
+        assertEquals("SALETESTPY", respVO.getPinyinCode());
+        assertEquals("SALETESTWB", respVO.getWubiCode());
+        assertEquals("VIP-002", respVO.getMemberCode());
+        assertEquals("PLAT-002", respVO.getPlatformCode());
+        assertTrue(respVO.getCreditEnabled());
+        assertEquals(new BigDecimal("1000.00"), respVO.getCreditLimit());
+        assertEquals(30, respVO.getCreditTermDays());
+        assertTrue(respVO.getDisabled());
+        assertTrue(respVO.getCreditBlocked());
+        assertEquals("超授信额度", respVO.getCreditBlockedReason());
+        verify(fieldPermissionMasker).maskForms(eq("erp_customer"), any());
     }
 
     // ==================== exportCustomerExcel ====================
@@ -270,6 +391,19 @@ public class ErpCustomerControllerTest extends BaseMockitoUnitTest {
         PreAuthorize anno = method.getAnnotation(PreAuthorize.class);
         assertNotNull(anno);
         assertTrue(anno.value().contains("erp:customer:import"));
+    }
+
+    @Test
+    public void testImportTemplateExcelVO_containsDeptColumns() throws NoSuchFieldException {
+        ExcelProperty deptName = ErpCustomerImportExcelVO.class.getDeclaredField("deptName")
+                .getAnnotation(ExcelProperty.class);
+        ExcelProperty deptNames = ErpCustomerImportExcelVO.class.getDeclaredField("deptNames")
+                .getAnnotation(ExcelProperty.class);
+
+        assertNotNull(deptName);
+        assertArrayEquals(new String[]{"所属部门"}, deptName.value());
+        assertNotNull(deptNames);
+        assertArrayEquals(new String[]{"适用部门"}, deptNames.value());
     }
 
     // ==================== importCustomer ====================

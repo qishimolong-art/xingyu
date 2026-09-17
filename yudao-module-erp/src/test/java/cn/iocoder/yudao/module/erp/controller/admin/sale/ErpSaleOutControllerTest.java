@@ -5,6 +5,7 @@ import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.common.exception.ServiceException;
 import cn.iocoder.yudao.framework.test.core.ut.BaseMockitoUnitTest;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.out.ErpSaleOutPageReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.out.ErpSaleOutReceiptSummaryRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.out.ErpSaleOutRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.out.ErpSaleOutSaveReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.out.ErpSaleOutUpdateExpressFileReqVO;
@@ -14,13 +15,19 @@ import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleCartDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleOutDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleOutItemDO;
 import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpSaleCartMapper;
+import cn.iocoder.yudao.module.erp.dal.mysql.finance.ErpFinanceReceiptItemMapper;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpWarehouseDO;
+import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpSaleOutItemMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpSaleReturnItemMapper;
+import cn.iocoder.yudao.module.erp.enums.common.ErpBizTypeEnum;
 import cn.iocoder.yudao.module.erp.enums.sale.ErpSaleBizSourceTypeEnum;
+import cn.iocoder.yudao.module.erp.service.base.ErpDataPermissionDeptService;
 import cn.iocoder.yudao.module.erp.service.product.ErpProductService;
 import cn.iocoder.yudao.module.erp.service.sale.ErpCustomerService;
 import cn.iocoder.yudao.module.erp.service.sale.ErpSaleFieldPermissionMasker;
+import cn.iocoder.yudao.module.erp.service.sale.ErpSaleItemPriceReferenceFiller;
 import cn.iocoder.yudao.module.erp.service.sale.ErpSaleOutService;
+import cn.iocoder.yudao.module.erp.service.sale.ErpSalePickDeliveryService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpStockService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpStockOutBillService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpWarehouseService;
@@ -35,6 +42,7 @@ import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.math.BigDecimal;
 import java.lang.reflect.Method;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -81,6 +89,10 @@ public class ErpSaleOutControllerTest extends BaseMockitoUnitTest {
     @Mock
     private ErpSaleReturnItemMapper saleReturnItemMapper;
     @Mock
+    private ErpSaleOutItemMapper saleOutItemMapper;
+    @Mock
+    private ErpFinanceReceiptItemMapper financeReceiptItemMapper;
+    @Mock
     private ErpSaleCartMapper saleCartMapper;
     @Mock
     private AdminUserApi adminUserApi;
@@ -88,6 +100,12 @@ public class ErpSaleOutControllerTest extends BaseMockitoUnitTest {
     private DeptApi deptApi;
     @Mock
     private ErpSaleFieldPermissionMasker fieldPermissionMasker;
+    @Mock
+    private ErpSaleItemPriceReferenceFiller itemPriceReferenceFiller;
+    @Mock
+    private ErpSalePickDeliveryService salePickDeliveryService;
+    @Mock
+    private ErpDataPermissionDeptService dataPermissionDeptService;
 
     // ========== createSaleOut ==========
 
@@ -313,6 +331,52 @@ public class ErpSaleOutControllerTest extends BaseMockitoUnitTest {
         assertTrue(anno.value().contains("erp:sale-out:query"));
     }
 
+    @Test
+    public void testGetSaleOutReceiptSummaryReturnsUnreceivedStatusWithOriginalSettlementAmount() {
+        ErpSaleOutDO saleOut = new ErpSaleOutDO().setId(10L)
+                .setTotalPrice(new BigDecimal("120")).setDiscountPercent(new BigDecimal("10"))
+                .setFeeAmount(new BigDecimal("5"));
+        List<ErpSaleOutItemDO> items = Collections.singletonList(new ErpSaleOutItemDO()
+                .setOutId(10L).setOriginalProductPrice(new BigDecimal("100"))
+                .setProductPrice(new BigDecimal("120")).setCount(BigDecimal.ONE));
+        when(saleOutService.getSaleOut(eq(10L))).thenReturn(saleOut);
+        when(saleOutService.getSaleOutItemListByOutId(eq(10L))).thenReturn(items);
+        when(financeReceiptItemMapper.selectReceiptPriceSumByBizIdAndBizType(
+                eq(10L), eq(ErpBizTypeEnum.SALE_OUT.getType()))).thenReturn(BigDecimal.ZERO);
+
+        ErpSaleOutReceiptSummaryRespVO data = controller.getSaleOutReceiptSummary(10L).getData();
+
+        assertNotNull(data);
+        assertEquals(0, new BigDecimal("95").compareTo(data.getReceivableAmount()));
+        assertEquals(0, BigDecimal.ZERO.compareTo(data.getReceivedAmount()));
+        assertEquals(0, new BigDecimal("95").compareTo(data.getUnreceivedAmount()));
+        assertEquals(Integer.valueOf(0), data.getReceiptStatus());
+    }
+
+    @Test
+    public void testGetSaleOutReceiptSummaryReturnsPartialAndReceivedStatus() {
+        ErpSaleOutDO saleOut = new ErpSaleOutDO().setId(10L).setTotalPrice(new BigDecimal("100"));
+        when(saleOutService.getSaleOut(eq(10L))).thenReturn(saleOut);
+        when(saleOutService.getSaleOutItemListByOutId(eq(10L))).thenReturn(Collections.emptyList());
+        when(financeReceiptItemMapper.selectReceiptPriceSumByBizIdAndBizType(
+                eq(10L), eq(ErpBizTypeEnum.SALE_OUT.getType()))).thenReturn(new BigDecimal("40"));
+
+        ErpSaleOutReceiptSummaryRespVO partial = controller.getSaleOutReceiptSummary(10L).getData();
+
+        assertNotNull(partial);
+        assertEquals(0, new BigDecimal("60").compareTo(partial.getUnreceivedAmount()));
+        assertEquals(Integer.valueOf(1), partial.getReceiptStatus());
+
+        when(financeReceiptItemMapper.selectReceiptPriceSumByBizIdAndBizType(
+                eq(10L), eq(ErpBizTypeEnum.SALE_OUT.getType()))).thenReturn(new BigDecimal("100"));
+
+        ErpSaleOutReceiptSummaryRespVO received = controller.getSaleOutReceiptSummary(10L).getData();
+
+        assertNotNull(received);
+        assertEquals(0, BigDecimal.ZERO.compareTo(received.getUnreceivedAmount()));
+        assertEquals(Integer.valueOf(2), received.getReceiptStatus());
+    }
+
     // ========== getSaleOutPage ==========
 
     @Test
@@ -336,6 +400,83 @@ public class ErpSaleOutControllerTest extends BaseMockitoUnitTest {
         PreAuthorize anno = method.getAnnotation(PreAuthorize.class);
         assertNotNull(anno);
         assertTrue(anno.value().contains("erp:sale-out:query"));
+    }
+
+    @Test
+    public void testGetSaleOutPage_fillsAdjustAndReturnStatuses() {
+        ErpSaleOutPageReqVO reqVO = new ErpSaleOutPageReqVO();
+        List<ErpSaleOutDO> saleOuts = Arrays.asList(
+                new ErpSaleOutDO().setId(1L).setAdjusted(false),
+                new ErpSaleOutDO().setId(2L).setAdjusted(false),
+                new ErpSaleOutDO().setId(3L).setAdjusted(false),
+                new ErpSaleOutDO().setId(4L).setAdjusted(true));
+        List<ErpSaleOutItemDO> items = Arrays.asList(
+                saleOutItem(11L, 1L, false, "10"),
+                saleOutItem(12L, 1L, false, "8"),
+                saleOutItem(21L, 2L, true, "10"),
+                saleOutItem(22L, 2L, false, "8"),
+                saleOutItem(31L, 3L, true, "2"),
+                saleOutItem(32L, 3L, true, "3"));
+        Map<Long, BigDecimal> returnedCountMap = new HashMap<>();
+        returnedCountMap.put(21L, new BigDecimal("5"));
+        returnedCountMap.put(31L, new BigDecimal("2"));
+        returnedCountMap.put(32L, new BigDecimal("3"));
+
+        when(saleOutService.getSaleOutPage(eq(reqVO))).thenReturn(new PageResult<>(saleOuts, 4L));
+        when(saleOutService.getSaleOutItemListByOutIds(any())).thenReturn(items);
+        when(customerService.getCustomerMap(any())).thenReturn(Collections.emptyMap());
+        when(deptApi.getDeptMap(any())).thenReturn(Collections.emptyMap());
+        when(stockOutBillService.getStockOutBillListBySaleOutIds(any())).thenReturn(Collections.emptyList());
+        when(saleReturnItemMapper.selectReturnedCountMapBySourceOutItemIds(any())).thenReturn(returnedCountMap);
+
+        PageResult<ErpSaleOutRespVO> result = controller.getSaleOutPage(reqVO).getData();
+
+        assertEquals(4L, result.getTotal());
+        assertEquals(0, result.getList().get(0).getAdjustStatus());
+        assertEquals(0, result.getList().get(0).getReturnStatus());
+        assertEquals(1, result.getList().get(1).getAdjustStatus());
+        assertEquals(1, result.getList().get(1).getReturnStatus());
+        assertEquals(2, result.getList().get(2).getAdjustStatus());
+        assertEquals(2, result.getList().get(2).getReturnStatus());
+        assertEquals(2, result.getList().get(3).getAdjustStatus());
+        assertEquals(0, result.getList().get(3).getReturnStatus());
+        verify(fieldPermissionMasker).maskSaleDetailFormsWithItems(eq("erp_sale_out"), argThat(collection -> {
+            List<?> list = new ArrayList<>(collection);
+            return list.size() == 4
+                    && Integer.valueOf(0).equals(((ErpSaleOutRespVO) list.get(0)).getAdjustStatus())
+                    && Integer.valueOf(1).equals(((ErpSaleOutRespVO) list.get(1)).getAdjustStatus())
+                    && Integer.valueOf(2).equals(((ErpSaleOutRespVO) list.get(2)).getAdjustStatus())
+                    && Integer.valueOf(2).equals(((ErpSaleOutRespVO) list.get(3)).getAdjustStatus());
+        }));
+    }
+
+    @Test
+    public void testGetSaleOutPage_includeItemsFalse_usesLightList() {
+        ErpSaleOutPageReqVO reqVO = new ErpSaleOutPageReqVO();
+        reqVO.setIncludeItems(false);
+        ErpSaleOutDO saleOut = new ErpSaleOutDO().setId(5L).setAdjusted(false);
+        ErpSaleOutItemDO item = saleOutItem(51L, 5L, true, "2");
+        when(saleOutService.getSaleOutPage(eq(reqVO)))
+                .thenReturn(new PageResult<>(Collections.singletonList(saleOut), 1L));
+        when(saleOutItemMapper.selectLightListByOutIds(any())).thenReturn(Collections.singletonList(item));
+        when(customerService.getCustomerMap(any())).thenReturn(Collections.emptyMap());
+        when(stockOutBillService.getStockOutBillListBySaleOutIds(any())).thenReturn(Collections.emptyList());
+        when(salePickDeliveryService.getSummaryMapBySaleOutIds(any())).thenReturn(Collections.emptyMap());
+        when(saleReturnItemMapper.selectReturnedCountMapBySourceOutItemIds(any())).thenReturn(Collections.emptyMap());
+
+        PageResult<ErpSaleOutRespVO> result = controller.getSaleOutPage(reqVO).getData();
+
+        ErpSaleOutRespVO respVO = result.getList().get(0);
+        assertEquals(2, respVO.getAdjustStatus());
+        assertEquals(0, respVO.getReturnStatus());
+        assertNull(respVO.getItems());
+        verify(saleOutService, never()).getSaleOutItemListByOutIds(any());
+        verify(saleOutItemMapper).selectLightListByOutIds(any());
+    }
+
+    private ErpSaleOutItemDO saleOutItem(Long id, Long outId, Boolean adjusted, String count) {
+        return new ErpSaleOutItemDO().setId(id).setOutId(outId)
+                .setAdjusted(adjusted).setCount(new BigDecimal(count));
     }
 
     // ========== getReturnableItems ==========

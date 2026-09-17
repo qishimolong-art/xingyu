@@ -540,6 +540,68 @@ public class ErpPurchasePriceAdjustServiceImplTest extends BaseMockitoUnitTest {
     }
 
     @Test
+    public void testUpdatePurchasePriceAdjust_emptyIncrement_keepsExistingItems() {
+        Long adjustId = 10L;
+        Long inId = 800L;
+        Long inItemId = 500L;
+        Long productId = 200L;
+        Long warehouseId = 7L;
+        ErpPurchasePriceAdjustDO existing = new ErpPurchasePriceAdjustDO()
+                .setId(adjustId).setNo("CGTJOLD001")
+                .setStatus(ErpAuditStatus.PROCESS.getStatus());
+        ErpPurchasePriceAdjustItemDO oldItem = buildAdjustItem(1L, adjustId, inId, inItemId,
+                productId, warehouseId, new BigDecimal("10"), new BigDecimal("15"), new BigDecimal("5"))
+                .setDeptId(88L);
+        ErpPurchaseInItemDO inItem = buildInItem(inItemId, inId, productId, warehouseId,
+                new BigDecimal("10"), new BigDecimal("5")).setDeptId(88L);
+        ErpPurchasePriceAdjustSaveReqVO reqVO = buildBaseReqVO(
+                ErpPurchasePriceAdjustTypeEnum.BY_IN_ORDER.getType());
+        reqVO.setId(adjustId);
+
+        when(priceAdjustMapper.selectById(eq(adjustId))).thenReturn(existing);
+        when(priceAdjustItemMapper.selectListByAdjustIdForUpdate(eq(adjustId)))
+                .thenReturn(Collections.singletonList(oldItem));
+        when(purchaseInItemMapper.selectBatchIds(eq(Collections.singleton(inItemId))))
+                .thenReturn(Collections.singletonList(inItem));
+        when(productService.getProductVOMap(any())).thenReturn(new HashMap<>());
+
+        priceAdjustService.updatePurchasePriceAdjust(reqVO);
+
+        verify(priceAdjustMapper).updateById(any(ErpPurchasePriceAdjustDO.class));
+        verify(priceAdjustItemMapper, never()).deleteByAdjustId(any());
+        verify(priceAdjustItemMapper, never()).deleteByIds(any());
+        verify(priceAdjustItemMapper, never()).insertBatch(anyList());
+        verify(priceAdjustItemMapper, never()).updateBatch(anyList());
+    }
+
+    @Test
+    public void testUpdatePurchasePriceAdjust_deleteAllItems_throwException() {
+        Long adjustId = 10L;
+        ErpPurchasePriceAdjustDO existing = new ErpPurchasePriceAdjustDO()
+                .setId(adjustId).setNo("CGTJOLD001")
+                .setStatus(ErpAuditStatus.PROCESS.getStatus());
+        ErpPurchasePriceAdjustItemDO oldItem = buildAdjustItem(1L, adjustId, 800L, 500L,
+                200L, 7L, new BigDecimal("10"), new BigDecimal("15"), new BigDecimal("5"));
+        ErpPurchasePriceAdjustSaveReqVO.Item deleteItem = new ErpPurchasePriceAdjustSaveReqVO.Item();
+        deleteItem.setId(1L);
+        deleteItem.setOperation("delete");
+        ErpPurchasePriceAdjustSaveReqVO reqVO = buildBaseReqVO(
+                ErpPurchasePriceAdjustTypeEnum.BY_IN_ORDER.getType(), deleteItem);
+        reqVO.setId(adjustId);
+
+        when(priceAdjustMapper.selectById(eq(adjustId))).thenReturn(existing);
+        when(priceAdjustItemMapper.selectListByAdjustIdForUpdate(eq(adjustId)))
+                .thenReturn(Collections.singletonList(oldItem));
+
+        assertServiceException(() -> priceAdjustService.updatePurchasePriceAdjust(reqVO),
+                PURCHASE_PRICE_ADJUST_ITEM_EMPTY);
+
+        verify(priceAdjustMapper, never()).updateById(any(ErpPurchasePriceAdjustDO.class));
+        verify(priceAdjustItemMapper, never()).deleteByAdjustId(any());
+        verify(priceAdjustItemMapper, never()).deleteByIds(any());
+    }
+
+    @Test
     public void testUpdatePurchasePriceAdjust_notExists_throwException() {
         when(priceAdjustMapper.selectById(eq(10L))).thenReturn(null);
         ErpPurchasePriceAdjustSaveReqVO reqVO = buildBaseReqVO(

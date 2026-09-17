@@ -23,6 +23,9 @@ public class ErpSettlementOffsetDetailExportRespVO {
     @ExcelProperty("单据编号")
     private String docNo;
 
+    @ExcelProperty("所属部门")
+    private String deptName;
+
     @ExcelProperty("上笔余额")
     private BigDecimal prevBalance;
 

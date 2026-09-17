@@ -91,6 +91,12 @@ public interface ErpStockRecordMapper extends BaseMapperX<ErpStockRecordDO> {
         wrapper.and(w -> w.like("biz_no", value)
                 .or().apply("EXISTS (SELECT 1 FROM system_dept d WHERE d.id = dept_id "
                         + "AND d.deleted = b'0' AND d.name LIKE {0})", "%" + value + "%")
+                .or().apply("EXISTS (SELECT 1 FROM erp_product p "
+                        + "WHERE p.id = product_id AND p.deleted = b'0' "
+                        + "AND (p.code LIKE {0} OR p.name LIKE {0} OR p.pinyin_code LIKE {0} "
+                        + "OR p.wubi_code LIKE {0} OR p.bar_code LIKE {0} OR p.vehicle_model LIKE {0} "
+                        + "OR p.factory_code LIKE {0} OR p.standard LIKE {0} OR p.brand LIKE {0} "
+                        + "OR p.drawing_no LIKE {0}))", "%" + value + "%")
                 .or().apply("DATE_FORMAT(create_time, '%Y-%m-%d %H:%i:%s') LIKE {0}", "%" + value + "%"));
     }
 

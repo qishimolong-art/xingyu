@@ -284,13 +284,11 @@ public class ErpPrePaymentServiceImplTest extends BaseMockitoUnitTest {
         when(prePaymentMapper.selectById(100L)).thenReturn(existing);
         when(prePaymentMapper.updateByIdAndStatus(eq(100L), eq(ErpAuditStatus.PROCESS.getStatus()), any(ErpPrePaymentDO.class)))
                 .thenReturn(1);
-        when(bookOpenService.isVoucherTypeEnabled(eq(LocalDate.of(2026, 5, 10)), eq(VT))).thenReturn(true);
-        when(autoVoucherBuilder.buildPrePaymentItems(existing)).thenReturn(Collections.emptyList());
+
 
         service.updatePrePaymentStatus(100L, ErpAuditStatus.APPROVE.getStatus());
 
-        verify(voucherService).createVoucherFromBiz(eq(SBT), eq(100L), eq("YFKD"),
-                any(), eq(LocalDate.of(2026, 5, 10)), startsWith("预付款 - "), anyList());
+        org.mockito.Mockito.verifyNoInteractions(voucherService);
     }
 
     @Test
@@ -302,7 +300,7 @@ public class ErpPrePaymentServiceImplTest extends BaseMockitoUnitTest {
                 .setPartyName("某供应商");
         when(prePaymentMapper.selectById(100L)).thenReturn(existing);
         when(prePaymentMapper.updateByIdAndStatus(any(), any(), any())).thenReturn(1);
-        when(bookOpenService.isVoucherTypeEnabled(any(LocalDate.class), eq(VT))).thenReturn(false);
+
 
         service.updatePrePaymentStatus(100L, ErpAuditStatus.APPROVE.getStatus());
 
@@ -319,11 +317,11 @@ public class ErpPrePaymentServiceImplTest extends BaseMockitoUnitTest {
         when(prePaymentMapper.selectById(100L)).thenReturn(existing);
         when(prePaymentMapper.updateByIdAndStatus(any(), any(), any())).thenReturn(1);
         // 注意：bizTime null 时仍会调用 isVoucherTypeEnabled(now(), VT)，与 OtherReceivable 不同
-        when(bookOpenService.isVoucherTypeEnabled(any(LocalDate.class), eq(VT))).thenReturn(false);
+
 
         service.updatePrePaymentStatus(100L, ErpAuditStatus.APPROVE.getStatus());
 
-        verify(bookOpenService).isVoucherTypeEnabled(any(LocalDate.class), eq(VT));
+        org.mockito.Mockito.verifyNoInteractions(bookOpenService);
         verify(voucherService, never()).createVoucherFromBiz(anyInt(), anyLong(), anyString(), any(), any(), anyString(), anyList());
     }
 

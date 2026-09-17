@@ -31,6 +31,9 @@ public class ErpStockOutBillPageReqVO extends PageParam {
     @Schema(description = "仓库编号", example = "1")
     private Long warehouseId;
 
+    @Schema(description = "产品关键词，匹配编码、名称、拼音码、五笔码等")
+    private String productKeyword;
+
     @Schema(description = "发货区", example = "A区")
     private String shippingArea;
 

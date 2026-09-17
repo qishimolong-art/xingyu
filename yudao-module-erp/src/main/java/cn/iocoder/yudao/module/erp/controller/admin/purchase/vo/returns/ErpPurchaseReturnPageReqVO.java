@@ -80,6 +80,9 @@ public class ErpPurchaseReturnPageReqVO extends PageParam {
     @Schema(description = "勾选导出的采购退货编号数组", example = "[1,2,3]")
     private List<Long> ids;
 
+    @Schema(description = "是否返回明细，默认 true；普通列表可传 false 减少响应体", example = "false")
+    private Boolean includeItems;
+
     @Schema(description = "Sort field, supports: no, settlementStatus, returnTime, supplierId, supplierName, "
             + "itemCount, totalCount, totalPrice, purchaser, status, deptId, deptName, remark, creator, creatorName")
     private String orderField;

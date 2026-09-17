@@ -130,7 +130,7 @@ class ErpPayableExpenseDraftServiceImplTest extends BaseMockitoUnitTest {
         when(expenseMapper.selectById(10L)).thenReturn(new ErpPayableExpenseDO()
                 .setId(10L).setNo("FYZF10")
                 .setStatus(ErpPayableExpenseStatusEnum.PROCESS.getStatus()));
-        when(expenseItemMapper.selectListByExpenseId(10L)).thenReturn(
+        when(expenseItemMapper.selectListByExpenseIdForUpdate(10L)).thenReturn(
                 Collections.singletonList(new ErpPayableExpenseItemDO().setId(20L)));
         when(deptApi.getDept(4L)).thenReturn(new DeptRespDTO().setId(4L));
         when(expenseMapper.updateByIdAndStatus(eq(10L),
@@ -246,7 +246,7 @@ class ErpPayableExpenseDraftServiceImplTest extends BaseMockitoUnitTest {
                 .setId(10L).setNo("FYZF10")
                 .setStatus(ErpPayableExpenseStatusEnum.DRAFT.getStatus())
                 .setSourceType("销售手推车").setSourceId(2L).setSourceNo("XSC2"));
-        when(expenseItemMapper.selectListByExpenseId(10L)).thenReturn(Collections.emptyList());
+        when(expenseItemMapper.selectListByExpenseIdForUpdate(10L)).thenReturn(Collections.emptyList());
         when(expenseMapper.updateByIdAndStatus(eq(10L),
                 eq(ErpPayableExpenseStatusEnum.DRAFT.getStatus()), any())).thenReturn(1);
         ErpPayableExpenseSaveReqVO.Item item = new ErpPayableExpenseSaveReqVO.Item()

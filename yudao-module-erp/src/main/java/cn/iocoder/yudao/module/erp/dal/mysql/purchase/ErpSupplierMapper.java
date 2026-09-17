@@ -39,6 +39,25 @@ public interface ErpSupplierMapper extends BaseMapperX<ErpSupplierDO> {
         return selectPage(reqVO, wrapper);
     }
 
+    default PageResult<ErpSupplierDO> selectPageByStatus(ErpSupplierPageReqVO reqVO, Integer status) {
+        LambdaQueryWrapperX<ErpSupplierDO> wrapper = buildPageQuery(reqVO);
+        wrapper.eqIfPresent(ErpSupplierDO::getStatus, status);
+        wrapper.ne(ErpSupplierDO::getMergedFlag, Boolean.TRUE);
+        orderByIfPresent(wrapper, reqVO);
+        return selectPage(reqVO, wrapper);
+    }
+
+    default PageResult<ErpSupplierDO> selectVisiblePageByStatus(ErpSupplierPageReqVO reqVO, Integer status,
+                                                               Collection<Long> deptIds, Long selfUserId,
+                                                               boolean all) {
+        LambdaQueryWrapperX<ErpSupplierDO> wrapper = buildPageQuery(reqVO);
+        wrapper.eqIfPresent(ErpSupplierDO::getStatus, status);
+        wrapper.ne(ErpSupplierDO::getMergedFlag, Boolean.TRUE);
+        applyVisibleScope(wrapper, deptIds, selfUserId, all);
+        orderByIfPresent(wrapper, reqVO);
+        return selectPage(reqVO, wrapper);
+    }
+
     static LambdaQueryWrapperX<ErpSupplierDO> buildPageQuery(ErpSupplierPageReqVO reqVO) {
         LambdaQueryWrapperX<ErpSupplierDO> wrapper = new LambdaQueryWrapperX<ErpSupplierDO>()
                 .likeIfPresent(ErpSupplierDO::getCode, reqVO.getCode())
@@ -168,6 +187,21 @@ public interface ErpSupplierMapper extends BaseMapperX<ErpSupplierDO> {
         return selectOne(new LambdaQueryWrapperX<ErpSupplierDO>()
                 .eq(ErpSupplierDO::getCode, code)
                 .neIfPresent(ErpSupplierDO::getId, excludeId));
+    }
+
+    default ErpSupplierDO selectByNameExcludeId(String name, Long excludeId) {
+        return selectOne(new LambdaQueryWrapperX<ErpSupplierDO>()
+                .eq(ErpSupplierDO::getName, name)
+                .neIfPresent(ErpSupplierDO::getId, excludeId));
+    }
+
+    default List<ErpSupplierDO> selectListByCodes(Collection<String> codes) {
+        if (CollUtil.isEmpty(codes)) {
+            return java.util.Collections.emptyList();
+        }
+        return selectList(new LambdaQueryWrapperX<ErpSupplierDO>()
+                .in(ErpSupplierDO::getCode, codes)
+                .ne(ErpSupplierDO::getMergedFlag, Boolean.TRUE));
     }
 
     default List<ErpSupplierDO> selectListByNameLike(String name) {

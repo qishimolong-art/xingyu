@@ -3,6 +3,10 @@ package cn.iocoder.yudao.module.erp.controller.admin.finance;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.test.core.ut.BaseMockitoUnitTest;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.account.ErpAccountPageReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.finance.payable.vo.misc.ErpPayableMiscImportExcelVO;
+import cn.iocoder.yudao.module.erp.controller.admin.finance.payable.vo.misc.ErpPayableMiscSaveReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.finance.receivable.vo.misc.ErpReceivableMiscImportExcelVO;
+import cn.iocoder.yudao.module.erp.controller.admin.finance.receivable.vo.misc.ErpReceivableMiscSaveReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.payment.ErpFinancePaymentImportExcelVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.payment.ErpFinancePaymentSaveReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.receipt.ErpFinanceReceiptImportExcelVO;
@@ -462,6 +466,43 @@ class ErpFinanceSettlementImportResolverTest extends BaseMockitoUnitTest {
                 .hasMessageContaining("业务单号不存在：XSCK-404");
     }
 
+    @Test
+    void buildReceivableMiscSaveReqVO_resolvesNames() {
+        mockReceivableMiscContext(singleCustomer(11L, "杭州客户"), singleAccount(21L, "农行收款户"),
+                Collections.singletonList(new DeptSimpleRespVO(31L, "销售部", 0L)));
+
+        ErpReceivableMiscSaveReqVO reqVO = resolver.buildReceivableMiscSaveReqVO(new ErpReceivableMiscImportExcelVO()
+                .setCustomerName("杭州客户")
+                .setAccountName("农行收款户")
+                .setDeptName("销售部")
+                .setAmount(new BigDecimal("88.00"))
+                .setRemark("临时垫付"),
+                resolver.buildReceivableMiscContext());
+
+        assertThat(reqVO.getCustomerId()).isEqualTo(11L);
+        assertThat(reqVO.getAccountId()).isEqualTo(21L);
+        assertThat(reqVO.getDeptId()).isEqualTo(31L);
+        assertThat(reqVO.getAmount()).isEqualByComparingTo("88.00");
+        assertThat(reqVO.getRemark()).isEqualTo("临时垫付");
+    }
+
+    @Test
+    void buildPayableMiscSaveReqVO_resolvesNamesAndRejectsDuplicateAccount() {
+        mockPayableMiscContext(singleSupplier(11L, "上海汽配"),
+                Arrays.asList(new ErpAccountDO().setId(21L).setName("工行基本户"),
+                        new ErpAccountDO().setId(22L).setName("工行基本户")),
+                Collections.singletonList(new DeptSimpleRespVO(31L, "采购部", 0L)));
+
+        assertThatThrownBy(() -> resolver.buildPayableMiscSaveReqVO(new ErpPayableMiscImportExcelVO()
+                .setSupplierName("上海汽配")
+                .setAccountName("工行基本户")
+                .setDeptName("采购部")
+                .setAmount(new BigDecimal("66.00")),
+                resolver.buildPayableMiscContext()))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("账户名称重复：工行基本户");
+    }
+
     private void mockPaymentContext(java.util.List<ErpSupplierDO> suppliers, java.util.List<ErpAccountDO> accounts,
                                     java.util.List<DeptSimpleRespVO> depts) {
         when(supplierService.getSupplierPage(any(ErpSupplierPageReqVO.class)))
@@ -478,6 +519,26 @@ class ErpFinanceSettlementImportResolverTest extends BaseMockitoUnitTest {
         when(accountService.getAccountPage(any(ErpAccountPageReqVO.class)))
                 .thenReturn(new PageResult<>(accounts, (long) accounts.size()));
         when(dataPermissionDeptService.getDeptSimpleList("erp_finance_receipt")).thenReturn(depts);
+    }
+
+    private void mockReceivableMiscContext(java.util.List<ErpCustomerDO> customers,
+                                           java.util.List<ErpAccountDO> accounts,
+                                           java.util.List<DeptSimpleRespVO> depts) {
+        when(customerService.getCustomerPage(any(ErpCustomerPageReqVO.class)))
+                .thenReturn(new PageResult<>(customers, (long) customers.size()));
+        when(accountService.getAccountPage(any(ErpAccountPageReqVO.class)))
+                .thenReturn(new PageResult<>(accounts, (long) accounts.size()));
+        when(dataPermissionDeptService.getDeptSimpleList("erp_receivable_misc")).thenReturn(depts);
+    }
+
+    private void mockPayableMiscContext(java.util.List<ErpSupplierDO> suppliers,
+                                        java.util.List<ErpAccountDO> accounts,
+                                        java.util.List<DeptSimpleRespVO> depts) {
+        when(supplierService.getSupplierPage(any(ErpSupplierPageReqVO.class)))
+                .thenReturn(new PageResult<>(suppliers, (long) suppliers.size()));
+        when(accountService.getAccountPage(any(ErpAccountPageReqVO.class)))
+                .thenReturn(new PageResult<>(accounts, (long) accounts.size()));
+        when(dataPermissionDeptService.getDeptSimpleList("erp_payable_misc")).thenReturn(depts);
     }
 
     private java.util.List<ErpSupplierDO> singleSupplier(Long id, String name) {

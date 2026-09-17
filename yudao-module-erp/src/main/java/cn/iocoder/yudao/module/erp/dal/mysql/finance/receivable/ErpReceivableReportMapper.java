@@ -5,7 +5,7 @@ import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.mybatis.core.mapper.BaseMapperX;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.receivable.vo.report.ErpReceivableReportPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.receivable.vo.report.ErpReceivableReportRespVO;
-import cn.iocoder.yudao.module.erp.dal.dataobject.finance.receivable.ErpReceivableOtherDO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.finance.receivable.ErpReceivableMiscDO;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
@@ -14,7 +14,7 @@ import java.util.Collection;
 import java.util.List;
 
 @Mapper
-public interface ErpReceivableReportMapper extends BaseMapperX<ErpReceivableOtherDO> {
+public interface ErpReceivableReportMapper extends BaseMapperX<ErpReceivableMiscDO> {
 
     @Select({
             "<script>",
@@ -32,35 +32,43 @@ public interface ErpReceivableReportMapper extends BaseMapperX<ErpReceivableOthe
             "       ro.lastBizTime AS lastBizTime",
             "  FROM erp_customer c",
             "  LEFT JOIN (",
-            "       SELECT customer_id,",
-            "              MAX(dept_id) AS deptId,",
-            "              MAX(handler_id) AS handlerId,",
-            "              SUM(receivable_amount) AS otherReceivableAmount,",
-            "              SUM(IFNULL(settled_amount, 0)) AS settledAmount,",
-            "              CAST(MAX(biz_time) AS DATETIME) AS lastBizTime",
-            "         FROM erp_receivable_other",
-            "        WHERE deleted = 0 AND status = 20",
+            "       SELECT rm.customer_id,",
+            "              MAX(rm.dept_id) AS deptId,",
+            "              MAX(rm.handler_id) AS handlerId,",
+            "              SUM(rm.amount) AS otherReceivableAmount,",
+            "              SUM(IFNULL(ra.receiptAmount, 0)) AS settledAmount,",
+            "              CAST(MAX(rm.biz_time) AS DATETIME) AS lastBizTime",
+            "         FROM erp_receivable_misc rm",
+            "         LEFT JOIN (",
+            "              SELECT fri.biz_id, SUM(fri.receipt_price) AS receiptAmount",
+            "                FROM erp_finance_receipt_item fri",
+            "                INNER JOIN erp_finance_receipt fr ON fr.id = fri.receipt_id",
+            "                 AND fr.deleted = 0 AND fr.status = 20 AND fr.tenant_id = fri.tenant_id",
+            "               WHERE fri.deleted = 0 AND fri.biz_type = 24 AND fri.write_off_status = 1",
+            "               GROUP BY fri.biz_id",
+            "         ) ra ON ra.biz_id = rm.id",
+            "        WHERE rm.deleted = 0 AND rm.status = 20",
             "          <if test='!documentAll'>",
             "          AND (",
             "            <choose>",
             "              <when test='documentDeptIds != null and documentDeptIds.size() > 0'>",
-            "                dept_id IN <foreach collection='documentDeptIds' item='id' open='(' separator=',' close=')'>#{id}</foreach>",
-            "                <if test='documentSelfUserId != null'> OR handler_id = #{documentSelfUserId}</if>",
+            "                rm.dept_id IN <foreach collection='documentDeptIds' item='id' open='(' separator=',' close=')'>#{id}</foreach>",
+            "                <if test='documentSelfUserId != null'> OR rm.handler_id = #{documentSelfUserId}</if>",
             "              </when>",
-            "              <when test='documentSelfUserId != null'>handler_id = #{documentSelfUserId}</when>",
+            "              <when test='documentSelfUserId != null'>rm.handler_id = #{documentSelfUserId}</when>",
             "              <otherwise>1 = 0</otherwise>",
             "            </choose>",
             "          )",
             "          </if>",
-            "          <if test='reqVO.startTime != null'> AND biz_time &gt;= DATE(#{reqVO.startTime}) </if>",
-            "          <if test='reqVO.endTime != null'> AND biz_time &lt;= DATE(#{reqVO.endTime}) </if>",
-            "        GROUP BY customer_id",
+            "          <if test='reqVO.startTime != null'> AND rm.biz_time &gt;= #{reqVO.startTime} </if>",
+            "          <if test='reqVO.endTime != null'> AND rm.biz_time &lt;= #{reqVO.endTime} </if>",
+            "        GROUP BY rm.customer_id",
             "  ) ro ON ro.customer_id = c.id",
             "  LEFT JOIN system_dept d ON d.id = COALESCE(ro.deptId, c.dept_id)",
             "  LEFT JOIN system_users u ON u.id = ro.handlerId",
             " WHERE c.deleted = 0",
             "   <if test='reqVO.showZeroBalance == null or !reqVO.showZeroBalance'>",
-            "   AND (IFNULL(ro.otherReceivableAmount, 0) - IFNULL(ro.settledAmount, 0)) &lt;&gt; 0",
+            "   AND IFNULL(ro.otherReceivableAmount, 0) - IFNULL(ro.settledAmount, 0) &lt;&gt; 0",
             "   </if>",
             "   <if test='reqVO.customerId != null'> AND c.id = #{reqVO.customerId} </if>",
             "   <if test='reqVO.customerName != null and reqVO.customerName != \"\"'> AND c.name LIKE CONCAT('%', #{reqVO.customerName}, '%') </if>",
@@ -95,9 +103,16 @@ public interface ErpReceivableReportMapper extends BaseMapperX<ErpReceivableOthe
             "   )",
             "   </if>",
             "   <if test='reqVO.keyword != null and reqVO.keyword != \"\"'>",
-            "   AND (c.name LIKE CONCAT('%', #{reqVO.keyword}, '%')",
+            "   AND (c.code LIKE CONCAT('%', #{reqVO.keyword}, '%')",
+            "        OR c.name LIKE CONCAT('%', #{reqVO.keyword}, '%')",
+            "        OR c.short_name LIKE CONCAT('%', #{reqVO.keyword}, '%')",
             "        OR c.contact LIKE CONCAT('%', #{reqVO.keyword}, '%')",
             "        OR c.mobile LIKE CONCAT('%', #{reqVO.keyword}, '%')",
+            "        OR c.telephone LIKE CONCAT('%', #{reqVO.keyword}, '%')",
+            "        OR c.pinyin_code LIKE CONCAT('%', #{reqVO.keyword}, '%')",
+            "        OR c.wubi_code LIKE CONCAT('%', #{reqVO.keyword}, '%')",
+            "        OR c.member_code LIKE CONCAT('%', #{reqVO.keyword}, '%')",
+            "        OR c.platform_code LIKE CONCAT('%', #{reqVO.keyword}, '%')",
             "        OR d.name LIKE CONCAT('%', #{reqVO.keyword}, '%')",
             "        OR u.nickname LIKE CONCAT('%', #{reqVO.keyword}, '%'))",
             "   </if>",
@@ -106,13 +121,9 @@ public interface ErpReceivableReportMapper extends BaseMapperX<ErpReceivableOthe
             "   <when test='reqVO.orderDirection == \"desc\" and reqVO.orderField == \"customerName\"'>ORDER BY customerName DESC, c.id DESC</when>",
             "   <when test='reqVO.orderDirection == \"asc\" and reqVO.orderField == \"otherReceivableAmount\"'>ORDER BY otherReceivableAmount ASC, c.id DESC</when>",
             "   <when test='reqVO.orderDirection == \"desc\" and reqVO.orderField == \"otherReceivableAmount\"'>ORDER BY otherReceivableAmount DESC, c.id DESC</when>",
-            "   <when test='reqVO.orderDirection == \"asc\" and reqVO.orderField == \"settledAmount\"'>ORDER BY settledAmount ASC, c.id DESC</when>",
-            "   <when test='reqVO.orderDirection == \"desc\" and reqVO.orderField == \"settledAmount\"'>ORDER BY settledAmount DESC, c.id DESC</when>",
-            "   <when test='reqVO.orderDirection == \"asc\" and reqVO.orderField == \"balance\"'>ORDER BY balance ASC, c.id DESC</when>",
-            "   <when test='reqVO.orderDirection == \"desc\" and reqVO.orderField == \"balance\"'>ORDER BY balance DESC, c.id DESC</when>",
             "   <when test='reqVO.orderDirection == \"asc\" and reqVO.orderField == \"lastBizTime\"'>ORDER BY lastBizTime ASC, c.id DESC</when>",
             "   <when test='reqVO.orderDirection == \"desc\" and reqVO.orderField == \"lastBizTime\"'>ORDER BY lastBizTime DESC, c.id DESC</when>",
-            "   <otherwise>ORDER BY balance DESC, c.id DESC</otherwise>",
+            "   <otherwise>ORDER BY otherReceivableAmount DESC, c.id DESC</otherwise>",
             " </choose>",
             "</script>"
     })

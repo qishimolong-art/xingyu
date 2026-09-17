@@ -1,8 +1,10 @@
 package cn.iocoder.yudao.module.erp.controller.admin.stock;
 
+import cn.iocoder.yudao.module.erp.service.stock.ErpStockItemPriceReferenceFiller;
 import cn.hutool.core.collection.CollUtil;
 import cn.iocoder.yudao.framework.apilog.core.annotation.ApiAccessLog;
 import cn.iocoder.yudao.framework.common.pojo.CommonResult;
+import cn.iocoder.yudao.framework.common.enums.CommonStatusEnum;
 import cn.iocoder.yudao.framework.common.pojo.PageParam;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.common.util.collection.MapUtils;
@@ -26,6 +28,7 @@ import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpWarehouseDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpWarehouseMoveDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpWarehouseMoveItemDO;
+import cn.iocoder.yudao.module.erp.dal.mysql.stock.ErpWarehouseMoveItemMapper;
 import cn.iocoder.yudao.module.erp.framework.excel.ErpExportFieldUtils;
 import cn.iocoder.yudao.module.erp.service.base.ErpDataPermissionDeptService;
 import cn.iocoder.yudao.module.erp.service.common.ErpImportExportRecordService;
@@ -40,6 +43,7 @@ import cn.iocoder.yudao.module.system.api.dept.dto.DeptRespDTO;
 import cn.iocoder.yudao.module.system.api.user.AdminUserApi;
 import cn.iocoder.yudao.module.system.api.user.dto.AdminUserRespDTO;
 import cn.iocoder.yudao.module.system.controller.admin.dept.vo.dept.DeptSimpleRespVO;
+import cn.iocoder.yudao.module.system.controller.admin.user.vo.user.UserSimpleRespVO;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -102,11 +106,15 @@ public class ErpWarehouseMoveController {
     @Resource
     private ErpStockFieldPermissionMasker fieldPermissionMasker;
     @Resource
+    private ErpStockItemPriceReferenceFiller itemPriceReferenceFiller;
+    @Resource
     private ErpDataPermissionDeptService dataPermissionDeptService;
     @Resource
     private DeptApi deptApi;
     @Resource
     private AdminUserApi adminUserApi;
+    @Resource
+    private ErpWarehouseMoveItemMapper warehouseMoveItemMapper;
 
     @PostMapping("/create")
     @Operation(summary = "Create warehouse move")
@@ -209,6 +217,7 @@ public class ErpWarehouseMoveController {
         PageResult<ErpWarehouseMoveItemDO> pageResult = warehouseMoveService.getWarehouseMoveItemPage(pageReqVO);
         PageResult<ErpWarehouseMoveRespVO.Item> respResult = new PageResult<>(
                 buildWarehouseMoveItemVOList(pageResult.getList(), true), pageResult.getTotal());
+        itemPriceReferenceFiller.fill(respResult.getList());
         if (Boolean.TRUE.equals(pageReqVO.getMask())) {
             fieldPermissionMasker.clearHiddenItemFields(FIELD_PERMISSION_MODULE, respResult.getList());
         }
@@ -220,7 +229,25 @@ public class ErpWarehouseMoveController {
     @PreAuthorize("@ss.hasPermission('erp:warehouse-move:query')")
     public CommonResult<PageResult<ErpWarehouseMoveRespVO>> getWarehouseMovePage(
             @Valid ErpWarehouseMovePageReqVO pageReqVO) {
-        return success(buildWarehouseMoveVOPageResult(warehouseMoveService.getWarehouseMovePage(pageReqVO)));
+        PageResult<ErpWarehouseMoveDO> pageResult = warehouseMoveService.getWarehouseMovePage(pageReqVO);
+        PageResult<ErpWarehouseMoveRespVO> respResult = Boolean.FALSE.equals(pageReqVO.getIncludeItems())
+                ? buildWarehouseMoveVOPageResultWithoutItems(pageResult) : buildWarehouseMoveVOPageResult(pageResult);
+        fieldPermissionMasker.maskListColumns(FIELD_PERMISSION_MODULE, respResult.getList());
+        return success(respResult);
+    }
+
+    @GetMapping("/dept-simple-page")
+    @Operation(summary = "Get visible department page for warehouse move filter")
+    @PreAuthorize("@ss.hasPermission('erp:warehouse-move:query')")
+    public CommonResult<PageResult<DeptSimpleRespVO>> getVisibleDeptSimplePage(@Valid PageParam pageReqVO) {
+        return success(dataPermissionDeptService.getDeptSimplePage(FIELD_PERMISSION_MODULE, pageReqVO));
+    }
+
+    @GetMapping("/user-simple-page")
+    @Operation(summary = "Get user page for warehouse move filter")
+    @PreAuthorize("@ss.hasPermission('erp:warehouse-move:query')")
+    public CommonResult<PageResult<UserSimpleRespVO>> getUserSimplePage(@Valid PageParam pageReqVO) {
+        return success(buildUserSimplePage(pageReqVO));
     }
 
     @GetMapping("/dept-simple-list")
@@ -235,7 +262,9 @@ public class ErpWarehouseMoveController {
     @PreAuthorize("@ss.hasPermission('erp:warehouse-move:query')")
     public CommonResult<ErpWarehouseMoveSummaryRespVO> getWarehouseMoveSummary(
             @Valid ErpWarehouseMovePageReqVO pageReqVO) {
-        return success(warehouseMoveService.getWarehouseMoveSummary(pageReqVO));
+        ErpWarehouseMoveSummaryRespVO summary = warehouseMoveService.getWarehouseMoveSummary(pageReqVO);
+        fieldPermissionMasker.maskListColumns(FIELD_PERMISSION_MODULE, summary);
+        return success(summary);
     }
 
     @GetMapping("/export-excel")
@@ -332,6 +361,43 @@ public class ErpWarehouseMoveController {
         });
     }
 
+    private PageResult<ErpWarehouseMoveRespVO> buildWarehouseMoveVOPageResultWithoutItems(
+            PageResult<ErpWarehouseMoveDO> pageResult) {
+        if (CollUtil.isEmpty(pageResult.getList())) {
+            return PageResult.empty(pageResult.getTotal());
+        }
+        Set<Long> moveIds = convertSet(pageResult.getList(), ErpWarehouseMoveDO::getId);
+        Map<Long, Map<String, Object>> summaryMap = warehouseMoveItemMapper.selectSummaryMapByMoveIds(moveIds);
+        Map<Long, ErpWarehouseDO> warehouseMap = getWarehouseMapIgnoreDataPermission(collectWarehouseIds(pageResult.getList()));
+        Map<Long, DeptRespDTO> deptMap = deptApi.getDeptMap(convertSet(pageResult.getList(), ErpWarehouseMoveDO::getDeptId));
+        Map<Long, AdminUserRespDTO> userMap = getUserMap(pageResult.getList());
+        return BeanUtils.toBean(pageResult, ErpWarehouseMoveRespVO.class, vo -> {
+            fillSummary(vo, summaryMap.get(vo.getId()));
+            fillWarehouse(vo, warehouseMap);
+            MapUtils.findAndThen(deptMap, vo.getDeptId(), dept -> vo.setDeptName(dept.getName()));
+            fillUserNames(vo, userMap);
+        });
+    }
+
+    private void fillSummary(ErpWarehouseMoveRespVO vo, Map<String, Object> summary) {
+        if (summary == null) {
+            vo.setItemCount(0);
+            return;
+        }
+        vo.setProductNames((String) summary.get("productNames"));
+        vo.setProductCodes((String) summary.get("productCodes"));
+        Object count = summary.get("itemCount");
+        vo.setItemCount(count instanceof Number ? ((Number) count).intValue() : 0);
+    }
+
+    private PageResult<UserSimpleRespVO> buildUserSimplePage(PageParam pageReqVO) {
+        PageResult<AdminUserRespDTO> page = adminUserApi.getUserSimplePage(
+                CommonStatusEnum.ENABLE.getStatus(), pageReqVO.getKeyword(), pageReqVO);
+        List<UserSimpleRespVO> list = convertList(page.getList(), user ->
+                new UserSimpleRespVO(user.getId(), user.getNickname(), user.getDeptId(), null));
+        return new PageResult<>(list, page.getTotal());
+    }
+
     private ErpWarehouseMoveRespVO buildWarehouseMoveVO(ErpWarehouseMoveDO warehouseMove,
                                                         List<ErpWarehouseMoveItemDO> itemList) {
         Map<Long, ErpProductRespVO> productMap = getProductVOMapIgnoreDataPermission(
@@ -348,7 +414,7 @@ public class ErpWarehouseMoveController {
         }
         Map<Long, AdminUserRespDTO> userMap = adminUserApi.getUserMap(convertSet(userIds, Long::valueOf));
         DeptRespDTO dept = warehouseMove.getDeptId() == null ? null : deptApi.getDept(warehouseMove.getDeptId());
-        return BeanUtils.toBean(warehouseMove, ErpWarehouseMoveRespVO.class, vo -> {
+        ErpWarehouseMoveRespVO respVO = BeanUtils.toBean(warehouseMove, ErpWarehouseMoveRespVO.class, vo -> {
             vo.setItems(BeanUtils.toBean(itemList, ErpWarehouseMoveRespVO.Item.class,
                     item -> {
                         fillItem(item, productMap.get(item.getProductId()), warehouseMap);
@@ -363,6 +429,9 @@ public class ErpWarehouseMoveController {
             fillWarehouse(vo, warehouseMap);
             fillUserNames(vo, userMap);
         });
+        itemPriceReferenceFiller.fill(respVO.getItems());
+        fieldPermissionMasker.maskFormWithItems(FIELD_PERMISSION_MODULE, respVO);
+        return respVO;
     }
 
     private List<ErpWarehouseMoveRespVO.Item> buildWarehouseMoveItemVOList(List<ErpWarehouseMoveItemDO> itemList,

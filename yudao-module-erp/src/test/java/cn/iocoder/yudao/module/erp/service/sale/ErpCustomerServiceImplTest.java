@@ -1,12 +1,14 @@
 package cn.iocoder.yudao.module.erp.service.sale;
 
 import cn.iocoder.yudao.framework.common.enums.CommonStatusEnum;
+import cn.iocoder.yudao.framework.common.biz.system.permission.dto.DeptDataPermissionRespDTO;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.test.core.ut.BaseMockitoUnitTest;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.customer.ErpCustomerBatchUpdateReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.customer.ErpCustomerDeptCreditRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.customer.ErpCustomerDeptCreditSaveReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.customer.ErpCustomerImportExcelVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.customer.ErpCustomerImportRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.customer.ErpCustomerPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.customer.ErpCustomerSaveReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.receivable.ErpReceivableAccountDO;
@@ -25,9 +27,11 @@ import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpSalePriceAdjustMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpSaleReturnMapper;
 import cn.iocoder.yudao.module.erp.dal.redis.no.ErpNoRedisDAO;
 import cn.iocoder.yudao.module.erp.service.base.ErpBaseArchiveReferenceService;
+import cn.iocoder.yudao.module.erp.service.common.ErpMnemonicCodeUtils;
 import cn.iocoder.yudao.module.erp.service.common.ErpOperateLogService;
 import cn.iocoder.yudao.module.system.api.dept.DeptApi;
 import cn.iocoder.yudao.module.system.api.dept.dto.DeptRespDTO;
+import cn.iocoder.yudao.module.system.api.permission.PermissionApi;
 import com.baomidou.mybatisplus.core.MybatisConfiguration;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
@@ -54,6 +58,7 @@ import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.CUSTOMER_CRED
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.CUSTOMER_CREDIT_CONFIG_REQUIRED;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.CUSTOMER_DEPT_CREDIT_DEPT_NOT_ALLOWED;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.CUSTOMER_DEPT_CREDIT_DUPLICATE_DEPT;
+import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.CUSTOMER_NAME_DUPLICATE;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.CUSTOMER_NOT_ENABLE;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.CUSTOMER_NOT_EXISTS;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.CUSTOMER_SALE_DEPT_NOT_ALLOWED;
@@ -105,6 +110,8 @@ public class ErpCustomerServiceImplTest extends BaseMockitoUnitTest {
     private ErpReceivableAccountMapper receivableAccountMapper;
     @Mock
     private DeptApi deptApi;
+    @Mock
+    private PermissionApi permissionApi;
 
     /**
      * 在测试类加载时初始化 MyBatis-Plus 的 TableInfo 缓存（含 lambda 缓存）。
@@ -520,6 +527,20 @@ public class ErpCustomerServiceImplTest extends BaseMockitoUnitTest {
         verify(customerMapper, never()).insert(any(ErpCustomerDO.class));
     }
 
+    @Test
+    public void testCreateCustomer_duplicateName_throwException() {
+        when(customerMapper.selectByNameExcludeId(eq("重复客户"), eq(null)))
+                .thenReturn(new ErpCustomerDO().setId(10L).setName("重复客户"));
+        ErpCustomerSaveReqVO reqVO = new ErpCustomerSaveReqVO();
+        reqVO.setCode("CUSTOM002");
+        reqVO.setName(" 重复客户 ");
+        reqVO.setStatus(CommonStatusEnum.ENABLE.getStatus());
+
+        assertServiceException(() -> customerService.createCustomer(reqVO),
+                CUSTOMER_NAME_DUPLICATE, "重复客户");
+        verify(customerMapper, never()).insert(any(ErpCustomerDO.class));
+    }
+
     // ==================== update ====================
 
     @Test
@@ -561,6 +582,26 @@ public class ErpCustomerServiceImplTest extends BaseMockitoUnitTest {
         // 执行 & 断言
         assertServiceException(() -> customerService.updateCustomer(reqVO), CUSTOMER_NOT_EXISTS);
         // 未走到 updateById
+        verify(customerMapper, never()).updateById(any(ErpCustomerDO.class));
+    }
+
+    @Test
+    public void testUpdateCustomer_duplicateName_throwException() {
+        Long id = 202L;
+        ErpCustomerDO exist = new ErpCustomerDO().setId(id).setName("旧名称")
+                .setCode("KH000202")
+                .setStatus(CommonStatusEnum.ENABLE.getStatus());
+        when(customerMapper.selectById(eq(id))).thenReturn(exist);
+        when(customerMapper.selectByNameExcludeId(eq("重复客户"), eq(id)))
+                .thenReturn(new ErpCustomerDO().setId(203L).setName("重复客户"));
+
+        ErpCustomerSaveReqVO reqVO = new ErpCustomerSaveReqVO();
+        reqVO.setId(id);
+        reqVO.setName(" 重复客户 ");
+        reqVO.setStatus(CommonStatusEnum.ENABLE.getStatus());
+
+        assertServiceException(() -> customerService.updateCustomer(reqVO),
+                CUSTOMER_NAME_DUPLICATE, "重复客户");
         verify(customerMapper, never()).updateById(any(ErpCustomerDO.class));
     }
 
@@ -704,29 +745,214 @@ public class ErpCustomerServiceImplTest extends BaseMockitoUnitTest {
         List<ErpCustomerImportExcelVO> list = Arrays.asList(valid1, valid2, blankName, null);
 
         // 执行
-        customerService.importCustomerList(list);
+        ErpCustomerImportRespVO result = customerService.importCustomerList(list);
 
         // 断言：合法 2 条被 insert，name 空和 null 跳过
+        assertEquals(2, result.getSuccessCount());
+        assertEquals(2, result.getCreateCount());
+        assertEquals(0, result.getUpdateCount());
+        assertEquals(0, result.getFailureCount());
         verify(customerMapper).insert(ArgumentMatchers.<ErpCustomerDO>argThat(customer ->
                 "导入客户A".equals(customer.getName())
                         && CommonStatusEnum.ENABLE.getStatus().equals(customer.getStatus())
-                        && Integer.valueOf(0).equals(customer.getSort())));
+                        && Integer.valueOf(0).equals(customer.getSort())
+                        && ErpMnemonicCodeUtils.buildPinyinCode("导入客户A").equals(customer.getPinyinCode())
+                        && ErpMnemonicCodeUtils.buildWubiCode("导入客户A").equals(customer.getWubiCode())));
         verify(customerMapper).insert(ArgumentMatchers.<ErpCustomerDO>argThat(customer ->
                 "导入客户B".equals(customer.getName())
                         && CommonStatusEnum.DISABLE.getStatus().equals(customer.getStatus())
-                        && Integer.valueOf(50).equals(customer.getSort())));
+                        && Integer.valueOf(50).equals(customer.getSort())
+                        && ErpMnemonicCodeUtils.buildPinyinCode("导入客户B").equals(customer.getPinyinCode())
+                        && ErpMnemonicCodeUtils.buildWubiCode("导入客户B").equals(customer.getWubiCode())));
         // blankName 和 null 都被跳过：只 insert 2 次
         verify(customerMapper, org.mockito.Mockito.times(2)).insert(any(ErpCustomerDO.class));
     }
 
     @Test
+    public void testImportCustomerList_existingCode_updateWithoutBlankOverwrite() {
+        ErpCustomerImportExcelVO row = new ErpCustomerImportExcelVO();
+        row.setName("更新客户");
+        row.setCode(" EXIST001 ");
+        row.setContact(" ");
+        row.setMobile("13900000000");
+        row.setTelephone("");
+        row.setDetailAddress(null);
+        row.setTaxNo("TAX001");
+
+        ErpCustomerDO existing = new ErpCustomerDO().setId(900L).setCode("EXIST001").setName("旧客户")
+                .setContact("旧联系人").setMobile("13800000000").setTelephone("028-0000")
+                .setDetailAddress("旧地址").setStatus(CommonStatusEnum.ENABLE.getStatus()).setSort(20);
+        when(customerMapper.selectListByCodes(any())).thenReturn(Collections.singletonList(existing));
+        when(customerMapper.selectById(eq(900L))).thenReturn(existing.setName("更新客户").setMobile("13900000000"));
+
+        ErpCustomerImportRespVO result = customerService.importCustomerList(Collections.singletonList(row));
+
+        assertEquals(1, result.getSuccessCount());
+        assertEquals(0, result.getCreateCount());
+        assertEquals(1, result.getUpdateCount());
+        assertEquals(0, result.getFailureCount());
+        verify(customerMapper).updateById(ArgumentMatchers.<ErpCustomerDO>argThat(update ->
+                Long.valueOf(900L).equals(update.getId())
+                        && "EXIST001".equals(update.getCode())
+                        && "更新客户".equals(update.getName())
+                        && update.getContact() == null
+                        && "13900000000".equals(update.getMobile())
+                        && update.getTelephone() == null
+                        && update.getDetailAddress() == null
+                        && "TAX001".equals(update.getTaxNo())
+                        && ErpMnemonicCodeUtils.buildPinyinCode("更新客户").equals(update.getPinyinCode())
+                        && ErpMnemonicCodeUtils.buildWubiCode("更新客户").equals(update.getWubiCode())
+                        && update.getStatus() == null
+                        && update.getSort() == null));
+        verify(customerMapper, never()).insert(any(ErpCustomerDO.class));
+        verify(customerDeptMapper, never()).deleteByCustomerId(eq(900L));
+    }
+
+    @Test
+    public void testImportCustomerList_partialFailure_continueNextRow() {
+        ErpCustomerImportExcelVO failed = new ErpCustomerImportExcelVO();
+        failed.setName("失败客户");
+        failed.setCode("FAIL001");
+        ErpCustomerImportExcelVO success = new ErpCustomerImportExcelVO();
+        success.setName("成功客户");
+        success.setCode("OK001");
+        when(customerMapper.selectByCodeExcludeId(eq("FAIL001"), eq(null)))
+                .thenThrow(new IllegalArgumentException("模拟失败"));
+
+        ErpCustomerImportRespVO result = customerService.importCustomerList(Arrays.asList(failed, success));
+
+        assertEquals(1, result.getSuccessCount());
+        assertEquals(1, result.getCreateCount());
+        assertEquals(0, result.getUpdateCount());
+        assertEquals(1, result.getFailureCount());
+        assertEquals(2, result.getFailureDetails().get(0).getRowNo());
+        assertEquals("FAIL001", result.getFailureDetails().get(0).getCode());
+        assertEquals("模拟失败", result.getFailureDetails().get(0).getReason());
+        verify(customerMapper).insert(ArgumentMatchers.<ErpCustomerDO>argThat(customer ->
+                "成功客户".equals(customer.getName()) && "OK001".equals(customer.getCode())));
+    }
+
+    @Test
+    public void testImportCustomerList_createWithOwnerDept() {
+        ErpCustomerImportExcelVO row = new ErpCustomerImportExcelVO();
+        row.setName("部门客户");
+        row.setCode("DEPT001");
+        row.setDeptName("销售部");
+        mockImportDeptContext(true);
+        doAnswer(invocation -> {
+            ErpCustomerDO customer = invocation.getArgument(0);
+            customer.setId(501L);
+            return 1;
+        }).when(customerMapper).insert(any(ErpCustomerDO.class));
+
+        ErpCustomerImportRespVO result = customerService.importCustomerList(Collections.singletonList(row));
+
+        assertEquals(1, result.getSuccessCount());
+        assertEquals(1, result.getCreateCount());
+        assertEquals(0, result.getFailureCount());
+        verify(customerMapper).insert(ArgumentMatchers.<ErpCustomerDO>argThat(customer ->
+                Long.valueOf(10L).equals(customer.getDeptId())
+                        && Boolean.FALSE.equals(customer.getAllowMultiDept())));
+        verify(customerDeptMapper).deleteByCustomerId(501L);
+        verify(customerDeptMapper, never()).insertBatch(any());
+    }
+
+    @Test
+    public void testImportCustomerList_createWithMultiDept() {
+        ErpCustomerImportExcelVO row = new ErpCustomerImportExcelVO();
+        row.setName("多部门客户");
+        row.setCode("DEPT002");
+        row.setDeptNames("销售部 / 一组、销售部 / 二组");
+        mockImportDeptContext(true);
+        doAnswer(invocation -> {
+            ErpCustomerDO customer = invocation.getArgument(0);
+            customer.setId(502L);
+            return 1;
+        }).when(customerMapper).insert(any(ErpCustomerDO.class));
+
+        ErpCustomerImportRespVO result = customerService.importCustomerList(Collections.singletonList(row));
+
+        assertEquals(1, result.getSuccessCount());
+        assertEquals(1, result.getCreateCount());
+        assertEquals(0, result.getFailureCount());
+        verify(customerMapper).insert(ArgumentMatchers.<ErpCustomerDO>argThat(customer ->
+                Long.valueOf(11L).equals(customer.getDeptId())
+                        && Boolean.TRUE.equals(customer.getAllowMultiDept())));
+        verify(customerDeptMapper).insertBatch(ArgumentMatchers.<Collection<ErpCustomerDeptDO>>argThat(depts ->
+                depts.stream().map(ErpCustomerDeptDO::getDeptId).collect(java.util.stream.Collectors.toList())
+                        .containsAll(Arrays.asList(11L, 12L)) && depts.size() == 2));
+    }
+
+    @Test
+    public void testImportCustomerList_existingCode_overwriteDeptDistribution() {
+        ErpCustomerImportExcelVO row = new ErpCustomerImportExcelVO();
+        row.setName("更新部门客户");
+        row.setCode("EXIST002");
+        row.setDeptName("售后部");
+        row.setDeptNames("售后部;销售部 / 二组");
+        ErpCustomerDO existing = new ErpCustomerDO().setId(902L).setCode("EXIST002")
+                .setName("旧客户").setDeptId(10L).setAllowMultiDept(true);
+        when(customerMapper.selectListByCodes(any())).thenReturn(Collections.singletonList(existing));
+        when(customerMapper.selectById(eq(902L))).thenReturn(existing);
+        mockImportDeptContext(true);
+
+        ErpCustomerImportRespVO result = customerService.importCustomerList(Collections.singletonList(row));
+
+        assertEquals(1, result.getSuccessCount());
+        assertEquals(1, result.getUpdateCount());
+        assertEquals(0, result.getFailureCount());
+        verify(customerMapper).updateById(ArgumentMatchers.<ErpCustomerDO>argThat(update ->
+                Long.valueOf(902L).equals(update.getId())
+                        && Long.valueOf(20L).equals(update.getDeptId())
+                        && Boolean.TRUE.equals(update.getAllowMultiDept())));
+        verify(customerDeptMapper).deleteByCustomerId(902L);
+        verify(customerDeptMapper).insertBatch(ArgumentMatchers.<Collection<ErpCustomerDeptDO>>argThat(depts ->
+                depts.stream().map(ErpCustomerDeptDO::getDeptId).collect(java.util.stream.Collectors.toList())
+                        .containsAll(Arrays.asList(20L, 12L)) && depts.size() == 2));
+    }
+
+    @Test
+    public void testImportCustomerList_deptWithoutDistributePermission_failure() {
+        ErpCustomerImportExcelVO row = new ErpCustomerImportExcelVO();
+        row.setName("无权限客户");
+        row.setCode("NOPERM001");
+        row.setDeptName("销售部");
+        when(permissionApi.hasAnyPermissions(any(), eq("erp:customer:dept-distribute"))).thenReturn(false);
+
+        ErpCustomerImportRespVO result = customerService.importCustomerList(Collections.singletonList(row));
+
+        assertEquals(0, result.getSuccessCount());
+        assertEquals(1, result.getFailureCount());
+        assertTrue(result.getFailureDetails().get(0).getReason().contains("无客户分配部门权限"));
+        verify(customerMapper, never()).insert(any(ErpCustomerDO.class));
+    }
+
+    @Test
+    public void testImportCustomerList_deptOutOfPermission_failure() {
+        ErpCustomerImportExcelVO row = new ErpCustomerImportExcelVO();
+        row.setName("超范围客户");
+        row.setCode("LIMIT001");
+        row.setDeptName("售后部");
+        mockImportDeptContext(false, 10L, 11L, 12L);
+
+        ErpCustomerImportRespVO result = customerService.importCustomerList(Collections.singletonList(row));
+
+        assertEquals(0, result.getSuccessCount());
+        assertEquals(1, result.getFailureCount());
+        assertTrue(result.getFailureDetails().get(0).getReason().contains("部门超出当前用户可操作范围"));
+        verify(customerMapper, never()).insert(any(ErpCustomerDO.class));
+    }
+
+    @Test
     public void testImportCustomerList_emptyList_skip() {
         // null 列表：直接 return
-        customerService.importCustomerList(null);
+        ErpCustomerImportRespVO nullResult = customerService.importCustomerList(null);
+        assertEquals(0, nullResult.getSuccessCount());
         verify(customerMapper, never()).insert(any(ErpCustomerDO.class));
 
         // 空列表：直接 return
-        customerService.importCustomerList(Collections.emptyList());
+        ErpCustomerImportRespVO emptyResult = customerService.importCustomerList(Collections.emptyList());
+        assertEquals(0, emptyResult.getSuccessCount());
         verify(customerMapper, never()).insert(any(ErpCustomerDO.class));
     }
 
@@ -786,12 +1012,30 @@ public class ErpCustomerServiceImplTest extends BaseMockitoUnitTest {
     }
 
     private DeptRespDTO buildDept(Long id, String name) {
+        return buildDept(id, name, 0L, CommonStatusEnum.ENABLE.getStatus());
+    }
+
+    private DeptRespDTO buildDept(Long id, String name, Long parentId, Integer status) {
         DeptRespDTO dept = new DeptRespDTO();
         dept.setId(id);
         dept.setName(name);
-        dept.setParentId(0L);
-        dept.setStatus(CommonStatusEnum.ENABLE.getStatus());
+        dept.setParentId(parentId);
+        dept.setStatus(status);
         return dept;
+    }
+
+    private void mockImportDeptContext(boolean all, Long... allowedDeptIds) {
+        when(permissionApi.hasAnyPermissions(any(), eq("erp:customer:dept-distribute"))).thenReturn(true);
+        DeptDataPermissionRespDTO permission = new DeptDataPermissionRespDTO();
+        permission.setAll(all);
+        permission.setDeptIds(new java.util.LinkedHashSet<>(Arrays.asList(allowedDeptIds)));
+        when(permissionApi.getDeptDataPermission(any(), eq("erp_customer"))).thenReturn(permission);
+        when(deptApi.getDeptListByStatus(eq(null))).thenReturn(Arrays.asList(
+                buildDept(10L, "销售部", 0L, CommonStatusEnum.ENABLE.getStatus()),
+                buildDept(11L, "一组", 10L, CommonStatusEnum.ENABLE.getStatus()),
+                buildDept(12L, "二组", 10L, CommonStatusEnum.ENABLE.getStatus()),
+                buildDept(20L, "售后部", 0L, CommonStatusEnum.ENABLE.getStatus()),
+                buildDept(30L, "停用部", 0L, CommonStatusEnum.DISABLE.getStatus())));
     }
 
 }

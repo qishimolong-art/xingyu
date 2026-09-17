@@ -179,4 +179,29 @@ public class ErpPreReceivableControllerTest extends BaseMockitoUnitTest {
         verify(preReceivableService).getPreReceivablePage(eq(pageReqVO));
     }
 
+    @Test
+    public void testGetPreReceivablePage_includeItemsFalseWithResults() {
+        ErpPreReceivablePageReqVO pageReqVO = new ErpPreReceivablePageReqVO();
+        pageReqVO.setIncludeItems(false);
+        ErpPreReceivableDO preReceivable = new ErpPreReceivableDO();
+        preReceivable.setId(1L);
+        preReceivable.setNo("YSZK-100");
+        preReceivable.setAccountId(100L);
+        PageResult<ErpPreReceivableDO> pageResult = new PageResult<>(Collections.singletonList(preReceivable), 1L);
+        when(preReceivableService.getPreReceivablePage(any())).thenReturn(pageResult);
+
+        ErpAccountDO account = new ErpAccountDO();
+        account.setId(100L);
+        account.setName("中国银行");
+        when(accountService.getAccountMap(any())).thenReturn(Collections.singletonMap(100L, account));
+
+        CommonResult<PageResult<ErpPreReceivableRespVO>> result = controller.getPreReceivablePage(pageReqVO);
+
+        assertEquals(0, result.getCode());
+        assertEquals(1L, result.getData().getTotal());
+        assertEquals("YSZK-100", result.getData().getList().get(0).getNo());
+        assertEquals("中国银行", result.getData().getList().get(0).getAccountName());
+        verify(preReceivableService).getPreReceivablePage(eq(pageReqVO));
+    }
+
 }

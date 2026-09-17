@@ -235,7 +235,7 @@ class ErpReceivableOtherIncomeDraftServiceImplTest extends BaseMockitoUnitTest {
         assertThat(captor.getValue().getStatus())
                 .isEqualTo(ErpReceivableOtherIncomeStatusEnum.DRAFT.getStatus());
         assertThat(captor.getValue().getBizTime()).isEqualTo(persistedBizTime);
-        verify(otherIncomeItemMapper).deleteByIncomeId(10L);
+        verify(otherIncomeItemMapper, never()).deleteByIncomeId(10L);
     }
 
     @Test

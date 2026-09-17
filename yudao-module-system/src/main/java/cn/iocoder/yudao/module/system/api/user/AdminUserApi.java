@@ -1,5 +1,7 @@
 package cn.iocoder.yudao.module.system.api.user;
 
+import cn.iocoder.yudao.framework.common.pojo.PageParam;
+import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.common.util.collection.CollectionUtils;
 import cn.iocoder.yudao.module.system.api.user.dto.AdminUserRespDTO;
 
@@ -46,6 +48,8 @@ public interface AdminUserApi {
      * @return 用户列表
      */
     List<AdminUserRespDTO> getUserListByStatus(Integer status);
+
+    PageResult<AdminUserRespDTO> getUserSimplePage(Integer status, String keyword, PageParam pageParam);
 
     /**
      * 获得指定昵称的用户数组

@@ -59,12 +59,13 @@ public class ErpFinancePaymentSaveReqVO {
         @Schema(description = "付款项编号", example = "11756")
         private Long id;
 
+        @Schema(description = "明细操作类型：insert 新增，update 修改，delete 删除", example = "update")
+        private String operation;
+
         @Schema(description = "业务类型", requiredMode = Schema.RequiredMode.REQUIRED, example = "1")
-        @NotNull(message = "业务类型不能为空")
         private Integer bizType;
 
         @Schema(description = "业务编号", requiredMode = Schema.RequiredMode.REQUIRED, example = "11756")
-        @NotNull(message = "业务编号不能为空")
         private Long bizId;
 
         @Schema(description = "业务单据编号")
@@ -74,11 +75,9 @@ public class ErpFinancePaymentSaveReqVO {
         private BigDecimal totalPrice;
 
         @Schema(description = "已付金额，单位：分", requiredMode = Schema.RequiredMode.REQUIRED, example = "10000")
-        @NotNull(message = "已付金额不能为空")
         private BigDecimal paidPrice;
 
         @Schema(description = "本次付款，单位：分", requiredMode = Schema.RequiredMode.REQUIRED, example = "10000")
-        @NotNull(message = "本次付款不能为空")
         private BigDecimal paymentPrice;
 
         @Schema(description = "备注", example = "随便")

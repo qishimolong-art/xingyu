@@ -22,6 +22,8 @@ import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpWarehouseDO;
 import cn.iocoder.yudao.module.erp.dal.mysql.purchase.ErpPurchaseInItemMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.stock.ErpStockMoveItemMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.stock.ErpStockMoveMapper;
+import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpSaleCartMapper;
+import cn.iocoder.yudao.module.erp.service.sale.ErpSaleCartTransferLinkService;
 import cn.iocoder.yudao.module.erp.dal.redis.no.ErpNoRedisDAO;
 import cn.iocoder.yudao.module.erp.enums.ErpAuditStatus;
 import cn.iocoder.yudao.module.erp.enums.sale.ErpSaleBizSourceTypeEnum;
@@ -48,6 +50,7 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Comparator;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -87,6 +90,10 @@ public class ErpStockMoveServiceImpl implements ErpStockMoveService {
 
     @Resource
     private ErpStockMoveMapper stockMoveMapper;
+    @Resource
+    private ErpSaleCartMapper saleCartMapper;
+    @Resource
+    private ErpSaleCartTransferLinkService saleCartTransferLinkService;
     @Resource
     private ErpStockMoveItemMapper stockMoveItemMapper;
     @Resource
@@ -184,8 +191,11 @@ public class ErpStockMoveServiceImpl implements ErpStockMoveService {
         if (createReqVO.getSourceType() == null || createReqVO.getSourceId() == null) {
             return createStockMoveDraft(createReqVO);
         }
-        ErpStockMoveDO existing = stockMoveMapper.selectListBySourceAndDirection(createReqVO.getSourceType(),
-                        createReqVO.getSourceId(), TRANSFER_DIRECTION_OUT).stream()
+        List<ErpStockMoveDO> sourceMoves = isSaleCartSource(createReqVO.getSourceType())
+                ? saleCartTransferLinkService.lockAndGet(createReqVO.getSourceId())
+                : stockMoveMapper.selectListBySourceAndDirection(createReqVO.getSourceType(),
+                        createReqVO.getSourceId(), TRANSFER_DIRECTION_OUT);
+        ErpStockMoveDO existing = sourceMoves.stream()
                 .filter(stockMove -> Objects.equals(stockMove.getFromDeptId(), createReqVO.getFromDeptId()))
                 .findFirst().orElse(null);
         if (existing == null) {
@@ -224,8 +234,9 @@ public class ErpStockMoveServiceImpl implements ErpStockMoveService {
             }
         });
 
-        List<ErpStockMoveDO> existingList = stockMoveMapper.selectListBySourceAndDirectionForUpdate(
-                sourceType, sourceId, TRANSFER_DIRECTION_OUT);
+        List<ErpStockMoveDO> existingList = isSaleCartSource(sourceType)
+                ? saleCartTransferLinkService.lockAndGet(sourceId)
+                : stockMoveMapper.selectListBySourceAndDirectionForUpdate(sourceType, sourceId, TRANSFER_DIRECTION_OUT);
         if (existingList.stream().anyMatch(stockMove -> ErpAuditStatus.APPROVE.getStatus().equals(stockMove.getStatus()))) {
             throw exception(SALE_WAREHOUSE_TRANSFER_APPROVED_EXISTS);
         }
@@ -254,6 +265,9 @@ public class ErpStockMoveServiceImpl implements ErpStockMoveService {
     }
 
     private void deleteUnapprovedTransferOutDraft(ErpStockMoveDO stockMove) {
+        if (isSaleCartSource(stockMove.getSourceType())) {
+            saleCartTransferLinkService.remove(stockMove.getSourceId(), stockMove.getId());
+        }
         deleteTransferInMirror(stockMove);
         stockMoveMapper.deleteById(stockMove.getId());
         stockMoveItemMapper.deleteByMoveId(stockMove.getId());
@@ -266,8 +280,9 @@ public class ErpStockMoveServiceImpl implements ErpStockMoveService {
         if (sourceType == null || sourceId == null) {
             return;
         }
-        List<ErpStockMoveDO> stockMoves = stockMoveMapper.selectListBySourceAndDirectionForUpdate(
-                sourceType, sourceId, TRANSFER_DIRECTION_OUT);
+        List<ErpStockMoveDO> stockMoves = isSaleCartSource(sourceType)
+                ? saleCartTransferLinkService.lockAndGet(sourceId)
+                : stockMoveMapper.selectListBySourceAndDirectionForUpdate(sourceType, sourceId, TRANSFER_DIRECTION_OUT);
         if (CollUtil.isEmpty(stockMoves)) {
             return;
         }
@@ -317,6 +332,21 @@ public class ErpStockMoveServiceImpl implements ErpStockMoveService {
             return Collections.emptyList();
         }
         return stockMoveMapper.selectListBySourceAndDirection(sourceType, sourceId, TRANSFER_DIRECTION_OUT);
+    }
+
+    @Override
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY, rollbackFor = Exception.class)
+    public List<ErpStockMoveDO> getCartTransferOutListForUpdate(Long cartId) {
+        // 调用方先取得手推车父锁；同源调拨创建、删除与审核使用相同顺序。
+        return saleCartTransferLinkService.lockAndGet(cartId);
+    }
+
+    @Override
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY, rollbackFor = Exception.class)
+    public List<ErpStockMoveItemDO> getStockMoveItemsForUpdate(Long moveId) {
+        List<ErpStockMoveItemDO> items = new ArrayList<>(stockMoveItemMapper.selectListByMoveIdForUpdate(moveId));
+        items.sort(Comparator.comparing(ErpStockMoveItemDO::getId));
+        return items;
     }
 
     @Override
@@ -489,6 +519,9 @@ public class ErpStockMoveServiceImpl implements ErpStockMoveService {
     }
 
     private Long doCreateStockMove(ErpStockMoveSaveReqVO createReqVO, boolean requireWarehouses) {
+        if (isSaleCartSource(createReqVO.getSourceType())) {
+            saleCartTransferLinkService.lockAndGet(createReqVO.getSourceId());
+        }
         // 1.1 鏍￠獙鍑哄簱椤圭殑鏈夋晥鎬?
         List<ErpStockMoveItemDO> stockMoveItems = validateStockMoveItems(createReqVO.getItems(), requireWarehouses,
                 isSaleCartSource(createReqVO.getSourceType()), createReqVO.getDeptId());
@@ -511,6 +544,9 @@ public class ErpStockMoveServiceImpl implements ErpStockMoveService {
                 .setTotalPrice(getSumValue(stockMoveItems, ErpStockMoveItemDO::getTotalPrice, BigDecimal::add, BigDecimal.ZERO)));
         fillDeptSnapshots(stockMove, stockMoveItems);
         stockMoveMapper.insert(stockMove);
+        if (isSaleCartSource(stockMove.getSourceType())) {
+            saleCartTransferLinkService.append(stockMove.getSourceId(), stockMove.getId());
+        }
         // 2.2 鎻掑叆鍑哄簱鍗曢」
         stockMoveItems.forEach(o -> o.setMoveId(stockMove.getId()));
         stockMoveItemMapper.insertBatch(stockMoveItems);
@@ -601,17 +637,32 @@ public class ErpStockMoveServiceImpl implements ErpStockMoveService {
     }
 
     private void doUpdateStockTransferOutDraft(ErpStockMoveSaveReqVO updateReqVO) {
-        ErpStockMoveDO stockMove = validateStockMoveExists(updateReqVO.getId());
+        ErpStockMoveDO stockMove = lockStockMoveForMutation(updateReqVO.getId());
+        preserveMoveSource(updateReqVO, stockMove);
         validateTransferOut(stockMove);
         if (!ErpStockTransferOutStatusEnum.DRAFT.getStatus().equals(stockMove.getStatus())) {
             throw exception(STOCK_MOVE_UPDATE_FAIL_NOT_DRAFT, stockMove.getNo());
         }
-        List<ErpStockMoveItemDO> oldItems = stockMoveItemMapper.selectListByMoveId(updateReqVO.getId());
+        List<ErpStockMoveItemDO> oldItems = stockMoveItemMapper.selectListByMoveIdForUpdate(updateReqVO.getId());
         preserveSourceSaleReturnMoveItems(updateReqVO.getItems(), oldItems);
         fieldPermissionMasker.preserveHiddenFields(TRANSFER_OUT_FIELD_PERMISSION_MODULE, updateReqVO, stockMove);
         fieldPermissionMasker.preserveHiddenItemFields(
                 TRANSFER_OUT_FIELD_PERMISSION_MODULE, updateReqVO.getItems(), oldItems);
-        List<ErpStockMoveItemDO> stockMoveItems = buildStockTransferOutDraftItems(updateReqVO);
+        boolean incrementalItems = ErpStockItemOperationHelper.useIncrementalItems(updateReqVO.getItems(),
+                ErpStockMoveSaveReqVO.Item::getOperation, STOCK_MOVE_ITEM_OPERATION_INVALID);
+        ErpStockItemOperationHelper.RequestChangeSet<ErpStockMoveSaveReqVO.Item> itemChangeSet = null;
+        List<ErpStockMoveSaveReqVO.Item> itemReqs = updateReqVO.getItems();
+        if (incrementalItems) {
+            itemChangeSet = ErpStockItemOperationHelper.buildRequestChangeSet(updateReqVO.getItems(), oldItems,
+                    ErpStockMoveSaveReqVO.Item.class, ErpStockMoveSaveReqVO.Item::getId,
+                    ErpStockMoveSaveReqVO.Item::setId, ErpStockMoveSaveReqVO.Item::getOperation,
+                    ErpStockMoveItemDO::getId, STOCK_MOVE_ITEM_OPERATION_INVALID,
+                    STOCK_MOVE_ITEM_UPDATE_NOT_EXISTS);
+            itemReqs = itemChangeSet.getFinalItems();
+        }
+        ErpStockMoveSaveReqVO finalReqVO = BeanUtils.toBean(updateReqVO, ErpStockMoveSaveReqVO.class);
+        finalReqVO.setItems(itemReqs);
+        List<ErpStockMoveItemDO> stockMoveItems = buildStockTransferOutDraftItems(finalReqVO);
         ErpStockMoveDO updateObj = BeanUtils.toBean(updateReqVO, ErpStockMoveDO.class, target -> target
                 .setNo(stockMove.getNo())
                 .setDeptId(updateReqVO.getDeptId() != null ? updateReqVO.getDeptId() : stockMove.getDeptId())
@@ -636,12 +687,16 @@ public class ErpStockMoveServiceImpl implements ErpStockMoveService {
         if (updateCount == 0) {
             throw exception(STOCK_MOVE_UPDATE_FAIL_NOT_DRAFT, stockMove.getNo());
         }
-        replaceStockMoveItems(updateReqVO.getId(), stockMoveItems);
+        if (incrementalItems) {
+            applyStockMoveItemChangeSet(updateReqVO.getId(), itemChangeSet, stockMoveItems);
+        } else {
+            replaceStockMoveItems(updateReqVO.getId(), stockMoveItems);
+        }
         operateLogService.recordUpdate(ERP_STOCK_MOVE_TYPE, stockMove.getId(), stockMove.getNo());
     }
 
     private void doSubmitStockTransferOutDraft(Long id) {
-        ErpStockMoveDO stockMove = validateStockMoveExists(id);
+        ErpStockMoveDO stockMove = lockStockMoveForMutation(id);
         validateTransferOut(stockMove);
         if (!ErpStockTransferOutStatusEnum.DRAFT.getStatus().equals(stockMove.getStatus())) {
             throw exception(STOCK_MOVE_SUBMIT_FAIL);
@@ -649,7 +704,7 @@ public class ErpStockMoveServiceImpl implements ErpStockMoveService {
         if (stockMove.getMoveTime() == null) {
             throw exception(STOCK_MOVE_SUBMIT_TIME_REQUIRED);
         }
-        List<ErpStockMoveItemDO> persistedItems = stockMoveItemMapper.selectListByMoveId(id);
+        List<ErpStockMoveItemDO> persistedItems = stockMoveItemMapper.selectListByMoveIdForUpdate(id);
         if (CollUtil.isEmpty(persistedItems)) {
             throw exception(STOCK_MOVE_SUBMIT_ITEMS_REQUIRED);
         }
@@ -680,13 +735,13 @@ public class ErpStockMoveServiceImpl implements ErpStockMoveService {
                 .setTotalPrice(updateObj.getTotalPrice())
                 .setFromDeptId(updateObj.getFromDeptId())
                 .setToDeptId(updateObj.getToDeptId());
-        syncTransferInMirror(stockMove, stockMoveItemMapper.selectListByMoveId(id), null);
+        syncTransferInMirror(stockMove, stockMoveItemMapper.selectListByMoveIdForUpdate(id), null);
         operateLogService.recordUpdate(ERP_STOCK_MOVE_TYPE, stockMove.getId(), stockMove.getNo());
     }
 
     private void doUpdateStockMove(ErpStockMoveSaveReqVO updateReqVO, String fieldPermissionModule) {
         // 1.1 ??????
-        ErpStockMoveDO stockMove = validateStockMoveExists(updateReqVO.getId());
+        ErpStockMoveDO stockMove = lockStockMoveForMutation(updateReqVO.getId());
         validateTransferOut(stockMove);
         if (ErpStockTransferOutStatusEnum.DRAFT.getStatus().equals(stockMove.getStatus())) {
             throw exception(STOCK_MOVE_FORMAL_UPDATE_FAIL_DRAFT, stockMove.getNo());
@@ -695,10 +750,23 @@ public class ErpStockMoveServiceImpl implements ErpStockMoveService {
             throw exception(STOCK_MOVE_UPDATE_FAIL_APPROVE, stockMove.getNo());
         }
         fieldPermissionMasker.preserveHiddenFields(fieldPermissionModule, updateReqVO, stockMove);
-        List<ErpStockMoveItemDO> oldItems = stockMoveItemMapper.selectListByMoveId(updateReqVO.getId());
+        List<ErpStockMoveItemDO> oldItems = stockMoveItemMapper.selectListByMoveIdForUpdate(updateReqVO.getId());
         preserveSourceSaleReturnMoveItems(updateReqVO.getItems(), oldItems);
         fieldPermissionMasker.preserveHiddenItemFields(fieldPermissionModule, updateReqVO.getItems(), oldItems);
-        doUpdateStockMove(updateReqVO, stockMove, true);
+        boolean incrementalItems = ErpStockItemOperationHelper.useIncrementalItems(updateReqVO.getItems(),
+                ErpStockMoveSaveReqVO.Item::getOperation, STOCK_MOVE_ITEM_OPERATION_INVALID);
+        ErpStockItemOperationHelper.RequestChangeSet<ErpStockMoveSaveReqVO.Item> itemChangeSet = null;
+        ErpStockMoveSaveReqVO finalReqVO = updateReqVO;
+        if (incrementalItems) {
+            itemChangeSet = ErpStockItemOperationHelper.buildRequestChangeSet(updateReqVO.getItems(), oldItems,
+                    ErpStockMoveSaveReqVO.Item.class, ErpStockMoveSaveReqVO.Item::getId,
+                    ErpStockMoveSaveReqVO.Item::setId, ErpStockMoveSaveReqVO.Item::getOperation,
+                    ErpStockMoveItemDO::getId, STOCK_MOVE_ITEM_OPERATION_INVALID,
+                    STOCK_MOVE_ITEM_UPDATE_NOT_EXISTS);
+            finalReqVO = BeanUtils.toBean(updateReqVO, ErpStockMoveSaveReqVO.class);
+            finalReqVO.setItems(itemChangeSet.getFinalItems());
+        }
+        doUpdateStockMove(finalReqVO, stockMove, true, incrementalItems, itemChangeSet);
     }
 
     private void preserveSourceSaleReturnMoveItems(List<ErpStockMoveSaveReqVO.Item> reqItems,
@@ -731,6 +799,13 @@ public class ErpStockMoveServiceImpl implements ErpStockMoveService {
 
     private void doUpdateStockMove(ErpStockMoveSaveReqVO updateReqVO, ErpStockMoveDO stockMove,
                                    boolean requireWarehouses) {
+        doUpdateStockMove(updateReqVO, stockMove, requireWarehouses, false, null);
+    }
+
+    private void doUpdateStockMove(ErpStockMoveSaveReqVO updateReqVO, ErpStockMoveDO stockMove,
+                                   boolean requireWarehouses, boolean incrementalItems,
+                                   ErpStockItemOperationHelper.RequestChangeSet<ErpStockMoveSaveReqVO.Item> itemChangeSet) {
+        preserveMoveSource(updateReqVO, stockMove);
         List<ErpStockMoveItemDO> stockMoveItems = validateStockMoveItems(updateReqVO.getItems(), requireWarehouses,
                 isSaleCartSource(stockMove.getSourceType()),
                 updateReqVO.getDeptId() != null ? updateReqVO.getDeptId() : stockMove.getDeptId());
@@ -743,8 +818,14 @@ public class ErpStockMoveServiceImpl implements ErpStockMoveService {
             updateObj.setDeptId(stockMove.getDeptId());
         }
         fillDeptSnapshots(updateObj, stockMoveItems);
-        stockMoveMapper.updateById(updateObj);
-        updateStockMoveItemList(updateReqVO.getId(), stockMoveItems);
+        if (stockMoveMapper.updateByIdAndStatus(stockMove.getId(), stockMove.getStatus(), updateObj) != 1) {
+            throw new cn.iocoder.yudao.framework.common.exception.ServiceException(409, "调拨状态已变化，请刷新后重试");
+        }
+        if (incrementalItems) {
+            applyStockMoveItemChangeSet(updateReqVO.getId(), itemChangeSet, stockMoveItems);
+        } else {
+            updateStockMoveItemList(updateReqVO.getId(), stockMoveItems);
+        }
         stockMove.setDeptId(updateObj.getDeptId())
                 .setFromDeptId(updateObj.getFromDeptId())
                 .setToDeptId(updateObj.getToDeptId())
@@ -755,6 +836,28 @@ public class ErpStockMoveServiceImpl implements ErpStockMoveService {
                 .setFileUrl(updateObj.getFileUrl());
         syncTransferInMirror(stockMove, stockMoveItemMapper.selectListByMoveId(stockMove.getId()), null);
         operateLogService.recordUpdate(ERP_STOCK_MOVE_TYPE, stockMove.getId(), stockMove.getNo());
+    }
+
+    private void applyStockMoveItemChangeSet(Long moveId,
+            ErpStockItemOperationHelper.RequestChangeSet<ErpStockMoveSaveReqVO.Item> changeSet,
+            List<ErpStockMoveItemDO> finalItems) {
+        if (CollUtil.isNotEmpty(changeSet.getDeleteIds())) {
+            stockMoveItemMapper.deleteByIds(changeSet.getDeleteIds());
+        }
+        List<ErpStockMoveItemDO> insertList = finalItems.stream()
+                .filter(item -> item.getId() == null)
+                .collect(Collectors.toList());
+        if (CollUtil.isNotEmpty(insertList)) {
+            insertList.forEach(item -> item.setMoveId(moveId));
+            stockMoveItemMapper.insertBatch(insertList);
+        }
+        List<ErpStockMoveItemDO> updateList = finalItems.stream()
+                .filter(item -> item.getId() != null && changeSet.getUpdateIds().contains(item.getId()))
+                .collect(Collectors.toList());
+        if (CollUtil.isNotEmpty(updateList)) {
+            updateList.forEach(item -> item.setMoveId(moveId));
+            stockMoveItemMapper.updateBatch(updateList);
+        }
     }
 
     @Override
@@ -782,7 +885,7 @@ public class ErpStockMoveServiceImpl implements ErpStockMoveService {
             throw exception(STOCK_MOVE_PROCESS_FAIL);
         }
         // 1.1 鏍￠獙瀛樺湪
-        ErpStockMoveDO stockMove = validateStockMoveExists(id);
+        ErpStockMoveDO stockMove = lockStockMoveForMutation(id);
         validateTransferOut(stockMove);
         if (!ErpStockTransferOutStatusEnum.PROCESS.getStatus().equals(stockMove.getStatus())) {
             throw exception(STOCK_MOVE_APPROVE_FAIL);
@@ -795,7 +898,8 @@ public class ErpStockMoveServiceImpl implements ErpStockMoveService {
         }
 
         // 2. 鏇存柊鐘舵€?
-        List<ErpStockMoveItemDO> stockMoveItems = stockMoveItemMapper.selectListByMoveId(id);
+        List<ErpStockMoveItemDO> stockMoveItems = new ArrayList<>(stockMoveItemMapper.selectListByMoveIdForUpdate(id));
+        stockMoveItems.sort(Comparator.comparing(ErpStockMoveItemDO::getId));
         ErpStockMoveApprovePermission approvePermission = getApprovePermission(stockMove, stockMoveItems, scope, null);
         if (!Boolean.TRUE.equals(approvePermission.getApproveAllowed())) {
             throw exception(STOCK_MOVE_APPROVE_DEPT_PERMISSION_DENIED);
@@ -919,6 +1023,10 @@ public class ErpStockMoveServiceImpl implements ErpStockMoveService {
                         .setUpdater(null)
                         .setUpdateTime(null)));
         stockMoveItemMapper.insertBatch(inItems);
+        stockService.reserveStockDimensions(outItems.stream().map(item ->
+                new cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockDO()
+                        .setProductId(item.getProductId()).setWarehouseId(item.getToWarehouseId()))
+                .collect(java.util.stream.Collectors.toList()));
         outItems.forEach(item -> stockService.ensureStockExists(item.getProductId(), item.getToWarehouseId()));
 
         stockMoveMapper.updateById(new ErpStockMoveDO().setId(outMove.getId())
@@ -1085,9 +1193,13 @@ public class ErpStockMoveServiceImpl implements ErpStockMoveService {
     }
 
     private List<ErpStockMoveItemDO> validateStockMoveItems(List<ErpStockMoveSaveReqVO.Item> list,
-                                                            boolean requireWarehouses,
-                                                            boolean saleCartSource,
-                                                            Long saleDeptId) {
+                                                           boolean requireWarehouses,
+                                                           boolean saleCartSource,
+                                                           Long saleDeptId) {
+        if (CollUtil.isEmpty(list)) {
+            throw exception(STOCK_MOVE_ITEM_EMPTY);
+        }
+        validateStockMoveItemRequiredFields(list);
         validateDuplicateStockMoveItems(list);
         // 1.1 鏍￠獙浜у搧瀛樺湪
         List<ErpProductDO> productList = validProductList(
@@ -1105,6 +1217,20 @@ public class ErpStockMoveServiceImpl implements ErpStockMoveService {
                     .setTotalWeight(snapshotSupport.calculateTotalWeight(weight, item.getCount()))
                     .setTotalPrice(MoneyUtils.priceMultiply(item.getProductPrice(), item.getCount()));
         }));
+    }
+
+    private void validateStockMoveItemRequiredFields(List<ErpStockMoveSaveReqVO.Item> list) {
+        for (ErpStockMoveSaveReqVO.Item item : list) {
+            if (item == null || item.getProductId() == null) {
+                throw exception(STOCK_MOVE_ITEM_EMPTY);
+            }
+            if (item.getCount() == null || item.getCount().compareTo(BigDecimal.ZERO) <= 0) {
+                throw exception(STOCK_MOVE_ITEM_COUNT_POSITIVE);
+            }
+            if (item.getProductPrice() == null || item.getProductPrice().compareTo(BigDecimal.ZERO) <= 0) {
+                throw exception(STOCK_MOVE_ITEM_PRICE_POSITIVE);
+            }
+        }
     }
 
     private void validatePurchaseInSourceMoveCounts(List<ErpStockMoveItemDO> stockMoveItems, Long excludeMoveId) {
@@ -1572,6 +1698,33 @@ public class ErpStockMoveServiceImpl implements ErpStockMoveService {
         });
     }
 
+    private ErpStockMoveDO lockStockMoveForMutation(Long id) {
+        ErpStockMoveDO observed = validateStockMoveExists(id);
+        if (isSaleCartSource(observed.getSourceType())) {
+            if (observed.getSourceId() == null || DataPermissionUtils.executeIgnore(
+                    () -> saleCartMapper.selectByIdForUpdate(observed.getSourceId())) == null) {
+                throw exception(SALE_CART_NOT_EXISTS);
+            }
+            saleCartTransferLinkService.lockAndGet(observed.getSourceId());
+        }
+        ErpStockMoveDO current = stockMoveMapper.selectByIdForUpdate(id);
+        if (current == null || !Objects.equals(observed.getSourceType(), current.getSourceType())
+                || !Objects.equals(observed.getSourceId(), current.getSourceId())) {
+            throw new cn.iocoder.yudao.framework.common.exception.ServiceException(409, "调拨来源已变化，请刷新后重试");
+        }
+        return current;
+    }
+
+    private void preserveMoveSource(ErpStockMoveSaveReqVO request, ErpStockMoveDO existing) {
+        if ((request.getSourceType() != null && !Objects.equals(request.getSourceType(), existing.getSourceType()))
+                || (request.getSourceId() != null && !Objects.equals(request.getSourceId(), existing.getSourceId()))) {
+            throw new cn.iocoder.yudao.framework.common.exception.ServiceException(409, "调拨来源不可修改");
+        }
+        request.setSourceType(existing.getSourceType());
+        request.setSourceId(existing.getSourceId());
+        request.setSourceNo(existing.getSourceNo());
+    }
+
     private ErpStockMoveDO validateStockMoveExists(Long id) {
         ErpStockMoveDO stockMove = stockMoveMapper.selectById(id);
         if (stockMove == null) {
@@ -1744,6 +1897,12 @@ public class ErpStockMoveServiceImpl implements ErpStockMoveService {
     @Override
     public PageResult<ErpStockMoveItemDO> getStockMoveItemPage(ErpStockMoveItemPageReqVO pageReqVO) {
         validateStockMoveExists(pageReqVO.getMoveId());
+        return getStockMoveItemPageWithoutMoveValidation(pageReqVO);
+    }
+
+    @Override
+    public PageResult<ErpStockMoveItemDO> getStockMoveItemPageWithoutMoveValidation(
+            ErpStockMoveItemPageReqVO pageReqVO) {
         return stockMoveItemMapper.selectPageByMoveId(pageReqVO);
     }
 

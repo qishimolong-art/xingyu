@@ -44,6 +44,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 import static cn.iocoder.yudao.framework.common.exception.util.ServiceExceptionUtil.exception;
 import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.*;
@@ -190,12 +191,24 @@ public class ErpStockCheckServiceImpl implements ErpStockCheckService {
         if (ErpStockCheckStatusEnum.APPROVE.getStatus().equals(stockCheck.getStatus())) {
             throw exception(STOCK_CHECK_UPDATE_FAIL_APPROVE, stockCheck.getNo());
         }
+        List<ErpStockCheckItemDO> oldItems = stockCheckItemMapper.selectListByCheckIdForUpdate(updateReqVO.getId());
         fieldPermissionMasker.preserveHiddenFields(FIELD_PERMISSION_MODULE, updateReqVO, stockCheck);
-        fieldPermissionMasker.preserveHiddenItemFields(FIELD_PERMISSION_MODULE, updateReqVO.getItems(),
-                stockCheckItemMapper.selectListByCheckId(updateReqVO.getId()));
+        fieldPermissionMasker.preserveHiddenItemFields(FIELD_PERMISSION_MODULE, updateReqVO.getItems(), oldItems);
+        boolean incrementalItems = ErpStockItemOperationHelper.useIncrementalItems(updateReqVO.getItems(),
+                ErpStockCheckSaveReqVO.Item::getOperation, STOCK_CHECK_ITEM_OPERATION_INVALID);
+        ErpStockItemOperationHelper.RequestChangeSet<ErpStockCheckSaveReqVO.Item> itemChangeSet = null;
+        List<ErpStockCheckSaveReqVO.Item> itemReqs = updateReqVO.getItems();
+        if (incrementalItems) {
+            itemChangeSet = ErpStockItemOperationHelper.buildRequestChangeSet(updateReqVO.getItems(), oldItems,
+                    ErpStockCheckSaveReqVO.Item.class, ErpStockCheckSaveReqVO.Item::getId,
+                    ErpStockCheckSaveReqVO.Item::setId, ErpStockCheckSaveReqVO.Item::getOperation,
+                    ErpStockCheckItemDO::getId, STOCK_CHECK_ITEM_OPERATION_INVALID,
+                    STOCK_CHECK_ITEM_UPDATE_NOT_EXISTS);
+            itemReqs = itemChangeSet.getFinalItems();
+        }
         Integer checkType = ErpStockCheckTypeEnum.defaultIfNull(updateReqVO.getCheckType());
         updateReqVO.setCheckType(checkType);
-        List<ErpStockCheckItemDO> stockCheckItems = validateStockCheckItems(updateReqVO.getItems(), checkType);
+        List<ErpStockCheckItemDO> stockCheckItems = validateStockCheckItems(itemReqs, checkType);
 
         ErpStockCheckDO updateObj = BeanUtils.toBean(updateReqVO, ErpStockCheckDO.class, in -> in
                 .setTotalCount(getSumValue(stockCheckItems, ErpStockCheckItemDO::getCount, BigDecimal::add))
@@ -205,7 +218,11 @@ public class ErpStockCheckServiceImpl implements ErpStockCheckService {
         }
         stockCheckMapper.updateById(updateObj);
         // 2.2 鏇存柊鐩樼偣鍗曢」
-        updateStockCheckItemList(updateReqVO.getId(), stockCheckItems);
+        if (incrementalItems) {
+            applyStockCheckItemChangeSet(updateReqVO.getId(), itemChangeSet, stockCheckItems);
+        } else {
+            updateStockCheckItemList(updateReqVO.getId(), stockCheckItems);
+        }
         operateLogService.recordUpdate(ERP_STOCK_CHECK_TYPE, stockCheck.getId(), stockCheck.getNo());
     }
 
@@ -263,17 +280,29 @@ public class ErpStockCheckServiceImpl implements ErpStockCheckService {
         if (!ErpStockCheckStatusEnum.DRAFT.getStatus().equals(stockCheck.getStatus())) {
             throw exception(STOCK_CHECK_UPDATE_FAIL_NOT_DRAFT, stockCheck.getNo());
         }
-        List<ErpStockCheckItemDO> oldItems = stockCheckItemMapper.selectListByCheckId(updateReqVO.getId());
+        List<ErpStockCheckItemDO> oldItems = stockCheckItemMapper.selectListByCheckIdForUpdate(updateReqVO.getId());
         if (updateReqVO.getItems() == null) {
             updateReqVO.setItems(Collections.emptyList());
         }
         fieldPermissionMasker.preserveHiddenFields(FIELD_PERMISSION_MODULE, updateReqVO, stockCheck);
         fieldPermissionMasker.preserveHiddenItemFields(FIELD_PERMISSION_MODULE, updateReqVO.getItems(), oldItems);
+        boolean incrementalItems = ErpStockItemOperationHelper.useIncrementalItems(updateReqVO.getItems(),
+                ErpStockCheckSaveReqVO.Item::getOperation, STOCK_CHECK_ITEM_OPERATION_INVALID);
+        ErpStockItemOperationHelper.RequestChangeSet<ErpStockCheckSaveReqVO.Item> itemChangeSet = null;
+        List<ErpStockCheckSaveReqVO.Item> itemReqs = updateReqVO.getItems();
+        if (incrementalItems) {
+            itemChangeSet = ErpStockItemOperationHelper.buildRequestChangeSet(updateReqVO.getItems(), oldItems,
+                    ErpStockCheckSaveReqVO.Item.class, ErpStockCheckSaveReqVO.Item::getId,
+                    ErpStockCheckSaveReqVO.Item::setId, ErpStockCheckSaveReqVO.Item::getOperation,
+                    ErpStockCheckItemDO::getId, STOCK_CHECK_ITEM_OPERATION_INVALID,
+                    STOCK_CHECK_ITEM_UPDATE_NOT_EXISTS);
+            itemReqs = itemChangeSet.getFinalItems();
+        }
         Integer checkType = ErpStockCheckTypeEnum.defaultIfNull(updateReqVO.getCheckType());
         updateReqVO.setCheckType(checkType);
-        List<ErpStockCheckSaveReqVO.Item> itemReqs = filterDraftItems(updateReqVO.getItems(), checkType);
-        List<ErpStockCheckItemDO> stockCheckItems = CollUtil.isEmpty(itemReqs)
-                ? Collections.emptyList() : validateStockCheckItems(itemReqs, checkType);
+        List<ErpStockCheckSaveReqVO.Item> finalItemReqs = filterDraftItems(itemReqs, checkType);
+        List<ErpStockCheckItemDO> stockCheckItems = CollUtil.isEmpty(finalItemReqs)
+                ? Collections.emptyList() : validateStockCheckItems(finalItemReqs, checkType);
 
         ErpStockCheckDO updateObj = BeanUtils.toBean(updateReqVO, ErpStockCheckDO.class, target -> target
                 .setCheckTime(updateReqVO.getCheckTime() != null ? updateReqVO.getCheckTime() : stockCheck.getCheckTime())
@@ -283,7 +312,11 @@ public class ErpStockCheckServiceImpl implements ErpStockCheckService {
                 .setTotalPrice(getSumValue(stockCheckItems, ErpStockCheckItemDO::getTotalPrice,
                         BigDecimal::add, BigDecimal.ZERO)));
         stockCheckMapper.updateById(updateObj);
-        replaceStockCheckItems(updateReqVO.getId(), stockCheckItems);
+        if (incrementalItems) {
+            applyStockCheckItemChangeSet(updateReqVO.getId(), itemChangeSet, stockCheckItems);
+        } else {
+            replaceStockCheckItems(updateReqVO.getId(), stockCheckItems);
+        }
         operateLogService.recordUpdate(ERP_STOCK_CHECK_TYPE, stockCheck.getId(), stockCheck.getNo());
     }
 
@@ -375,6 +408,10 @@ public class ErpStockCheckServiceImpl implements ErpStockCheckService {
     }
 
     private List<ErpStockCheckItemDO> validateStockCheckItems(List<ErpStockCheckSaveReqVO.Item> list, Integer checkType) {
+        if (CollUtil.isEmpty(list)) {
+            throw exception(STOCK_CHECK_SUBMIT_ITEMS_REQUIRED);
+        }
+        validateStockCheckItemRequiredFields(list);
         validateDuplicateStockCheckItems(list);
         // 1.1 鏍￠獙浜у搧瀛樺湪
         List<ErpProductDO> productList = DataPermissionUtils.executeIgnore(() -> productService.validProductList(
@@ -424,6 +461,15 @@ public class ErpStockCheckServiceImpl implements ErpStockCheckService {
             item.setCount(count);
             item.setTotalPrice(totalPrice);
         }));
+    }
+
+    private void validateStockCheckItemRequiredFields(List<ErpStockCheckSaveReqVO.Item> list) {
+        for (ErpStockCheckSaveReqVO.Item item : list) {
+            if (item == null || item.getProductId() == null || item.getWarehouseId() == null
+                    || item.getStockCount() == null) {
+                throw exception(STOCK_CHECK_SUBMIT_ITEMS_REQUIRED);
+            }
+        }
     }
 
     private List<ErpStockCheckSaveReqVO.Item> filterDraftItems(
@@ -528,6 +574,28 @@ public class ErpStockCheckServiceImpl implements ErpStockCheckService {
         }
         if (CollUtil.isNotEmpty(diffList.get(2))) {
             stockCheckItemMapper.deleteByIds(convertList(diffList.get(2), ErpStockCheckItemDO::getId));
+        }
+    }
+
+    private void applyStockCheckItemChangeSet(Long checkId,
+            ErpStockItemOperationHelper.RequestChangeSet<ErpStockCheckSaveReqVO.Item> changeSet,
+            List<ErpStockCheckItemDO> finalItems) {
+        if (CollUtil.isNotEmpty(changeSet.getDeleteIds())) {
+            stockCheckItemMapper.deleteByIds(changeSet.getDeleteIds());
+        }
+        List<ErpStockCheckItemDO> insertList = finalItems.stream()
+                .filter(item -> item.getId() == null)
+                .collect(Collectors.toList());
+        if (CollUtil.isNotEmpty(insertList)) {
+            insertList.forEach(item -> item.setCheckId(checkId));
+            stockCheckItemMapper.insertBatch(insertList);
+        }
+        List<ErpStockCheckItemDO> updateList = finalItems.stream()
+                .filter(item -> item.getId() != null && changeSet.getUpdateIds().contains(item.getId()))
+                .collect(Collectors.toList());
+        if (CollUtil.isNotEmpty(updateList)) {
+            updateList.forEach(item -> item.setCheckId(checkId));
+            stockCheckItemMapper.updateBatch(updateList);
         }
     }
 

@@ -296,58 +296,13 @@ public class ErpBookOpenServiceImplTest extends BaseMockitoUnitTest {
     }
 
     @Test
-    @DisplayName("createBookOpen：Bug S5 暴露 - 凭证扫描中 voucherService 抛异常被静默吞噬，主流程仍返回成功 ID")
-    public void testCreate_scanThrowsButMainFlowSuccessful_bugS5() {
+    @DisplayName("开账仅启用年度及类型，不扫描业务或生成凭证")
+    public void testCreateDoesNotGenerateVouchers() {
         when(bookOpenMapper.selectListByYear(any())).thenReturn(Collections.emptyList());
-        mockNoGeneration("KZ20260514000006");
-        lenient().when(adminUserApi.getUser(anyLong())).thenReturn(new AdminUserRespDTO().setNickname("admin"));
         mockInsertReturnId(1005L);
-
-        // scan 阶段：返回 SALE(1) enabled=true 的 cfg
-        ErpBookOpenVoucherConfigDO cfg = ErpBookOpenVoucherConfigDO.builder()
-                .voucherType(ErpVoucherTypeEnum.SALE.getType())
-                .enabled(true)
-                .build();
-        when(voucherConfigMapper.selectListByBookOpenId(anyLong())).thenReturn(Arrays.asList(cfg));
-
-        // saleOutMapper 返回 1 条
-        ErpSaleOutDO saleOut = new ErpSaleOutDO();
-        saleOut.setId(100L);
-        saleOut.setNo("XSCK001");
-        saleOut.setOutTime(LocalDateTime.of(2026, 5, 15, 10, 0));
-        when(saleOutMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(Arrays.asList(saleOut));
-        lenient().when(saleReturnMapper.selectList(any(LambdaQueryWrapper.class)))
-                .thenReturn(Collections.emptyList());
-
-        // 凭证未存在
-        lenient().when(voucherMapper.selectListByBiz(any(), anyLong())).thenReturn(Collections.emptyList());
-
-        // mock 事务模板能跑通
-        TransactionStatus txStatus = mock(TransactionStatus.class);
-        when(transactionManager.getTransaction(any())).thenReturn(txStatus);
-
-        // 关键：让 createVoucherFromBiz 抛 RuntimeException
-        when(voucherService.createVoucherFromBiz(any(), anyLong(), anyString(), any(), any(), anyString(), any()))
-                .thenThrow(new RuntimeException("模拟凭证生成失败"));
-
-        try (MockedStatic<SecurityFrameworkUtils> mock = mockStatic(SecurityFrameworkUtils.class)) {
-            mock.when(SecurityFrameworkUtils::getLoginUserId).thenReturn(99L);
-
-            // Bug S5：异常被三层吞噬（callback try-catch + voucherType try-catch + 顶层 try-catch）
-            //        主流程 "开账成功" 返回 ID，调用方无感知凭证补生成失败
-            Long id = bookOpenService.createBookOpen(buildBaseReq());
-
-            assertNotNull(id);
-            assertEquals(1005L, id);
-        }
-        // 确实尝试过生成凭证（抛异常被吞）
-        verify(voucherService, times(1))
-                .createVoucherFromBiz(any(), anyLong(), anyString(), any(), any(), anyString(), any());
-
-        LocalDateTime[] annualRange = ErpBookOpenServiceImpl.buildAnnualScanRange(2026);
-        assertThat(annualRange).containsExactly(
-                LocalDateTime.of(2026, 1, 1, 0, 0),
-                LocalDateTime.of(2026, 12, 31, 23, 59, 59));
+        ErpBookOpenSaveReqVO vo = buildBaseReq();
+        assertEquals(1005L, bookOpenService.createBookOpen(vo));
+        org.mockito.Mockito.verifyNoInteractions(voucherService, saleOutMapper, purchaseInMapper, autoVoucherBuilder);
     }
 
     @Test

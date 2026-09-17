@@ -14,6 +14,8 @@ import cn.iocoder.yudao.module.erp.controller.admin.finance.accounting.vo.vouche
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.accounting.ErpVoucherDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.accounting.ErpVoucherItemDO;
 import cn.iocoder.yudao.module.erp.service.finance.accounting.ErpVoucherService;
+import cn.iocoder.yudao.module.system.api.user.AdminUserApi;
+import cn.iocoder.yudao.module.system.controller.admin.user.vo.user.UserSimpleRespVO;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -29,6 +31,7 @@ import java.util.List;
 
 import static cn.iocoder.yudao.framework.apilog.core.enums.OperateTypeEnum.EXPORT;
 import static cn.iocoder.yudao.framework.common.pojo.CommonResult.success;
+import static cn.iocoder.yudao.module.erp.controller.admin.finance.ErpFinanceSimplePageUtils.buildUserSimplePage;
 
 @Tag(name = "管理后台 - ERP 凭证")
 @RestController
@@ -38,6 +41,8 @@ public class ErpVoucherController {
 
     @Resource
     private ErpVoucherService voucherService;
+    @Resource
+    private AdminUserApi adminUserApi;
 
     @PostMapping("/create")
     @Operation(summary = "创建凭证")
@@ -108,6 +113,13 @@ public class ErpVoucherController {
     public CommonResult<Boolean> processVoucher(@RequestParam("id") Long id) {
         voucherService.processVoucher(id);
         return success(true);
+    }
+
+    @GetMapping("/user-simple-page")
+    @Operation(summary = "获得凭证用户精简分页")
+    @PreAuthorize("@ss.hasPermission('erp:voucher:query')")
+    public CommonResult<PageResult<UserSimpleRespVO>> getUserSimplePage(@Valid PageParam pageReqVO) {
+        return success(buildUserSimplePage(adminUserApi, pageReqVO));
     }
 
     @GetMapping("/export-excel")

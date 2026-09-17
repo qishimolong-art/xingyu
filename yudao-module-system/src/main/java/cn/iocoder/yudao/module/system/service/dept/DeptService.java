@@ -1,5 +1,7 @@
 package cn.iocoder.yudao.module.system.service.dept;
 
+import cn.iocoder.yudao.framework.common.pojo.PageParam;
+import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.common.util.collection.CollectionUtils;
 import cn.iocoder.yudao.module.system.controller.admin.dept.vo.dept.DeptBatchUpdateReqVO;
 import cn.iocoder.yudao.module.system.controller.admin.dept.vo.dept.DeptImportExcelVO;
@@ -84,6 +86,8 @@ public interface DeptService {
      * @return 部门列表
      */
     List<DeptDO> getDeptList(DeptListReqVO reqVO);
+
+    PageResult<DeptDO> getDeptSimplePage(Integer status, String keyword, Collection<Long> deptIds, PageParam pageParam);
 
     /**
      * 获得指定名称的部门信息数组

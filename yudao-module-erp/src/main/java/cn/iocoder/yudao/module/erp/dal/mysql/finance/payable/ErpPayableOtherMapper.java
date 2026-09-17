@@ -11,6 +11,10 @@ import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Select;
 
+import java.util.Collection;
+import java.util.Collections;
+import java.util.List;
+
 @Mapper
 public interface ErpPayableOtherMapper extends BaseMapperX<ErpPayableOtherDO> {
 
@@ -25,11 +29,12 @@ public interface ErpPayableOtherMapper extends BaseMapperX<ErpPayableOtherDO> {
                 .eqIfPresent(ErpPayableOtherDO::getCreator, reqVO.getCreator())
                 .likeIfPresent(ErpPayableOtherDO::getRemark, reqVO.getRemark())
                 .eqIfPresent(ErpPayableOtherDO::getStatus, reqVO.getStatus());
-        ErpKeywordQuery.appendWithDeptName(wrapper, reqVO.getKeyword(),
+        ErpKeywordQuery.appendWithDeptNameAndSupplier(wrapper, reqVO.getKeyword(),
                 ErpPayableOtherDO::getNo,
                 ErpPayableOtherDO::getVoucherNo,
                 ErpPayableOtherDO::getProject,
                 ErpPayableOtherDO::getSourceType,
+                ErpPayableOtherDO::getSourceNo,
                 ErpPayableOtherDO::getRemark);
         ErpFinanceSortUtils.apply(wrapper, reqVO.getOrderField(), reqVO.getOrderDirection(), "erp_payable_other",
                 "no", "bizTime", "supplierId", "deptId", "handlerId", "payableAmount", "settledAmount",
@@ -46,6 +51,21 @@ public interface ErpPayableOtherMapper extends BaseMapperX<ErpPayableOtherDO> {
 
     default ErpPayableOtherDO selectByNo(String no) {
         return selectOne(ErpPayableOtherDO::getNo, no);
+    }
+
+    default ErpPayableOtherDO selectBySource(String sourceType, Long sourceId) {
+        return selectOne(ErpPayableOtherDO::getSourceType, sourceType,
+                ErpPayableOtherDO::getSourceId, sourceId);
+    }
+
+    default List<ErpPayableOtherDO> selectApprovedListBySourceIds(String sourceType, Collection<Long> sourceIds) {
+        if (sourceIds == null || sourceIds.isEmpty()) {
+            return Collections.emptyList();
+        }
+        return selectList(new LambdaQueryWrapperX<ErpPayableOtherDO>()
+                .eq(ErpPayableOtherDO::getStatus, 20)
+                .eq(ErpPayableOtherDO::getSourceType, sourceType)
+                .in(ErpPayableOtherDO::getSourceId, sourceIds));
     }
 
     @Select("SELECT * FROM erp_payable_other WHERE id = #{id} AND deleted = 0 FOR UPDATE")

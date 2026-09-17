@@ -1,5 +1,7 @@
 package cn.iocoder.yudao.module.system.api.dept;
 
+import cn.iocoder.yudao.framework.common.pojo.PageParam;
+import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.common.util.collection.CollectionUtils;
 import cn.iocoder.yudao.module.system.api.dept.dto.DeptRespDTO;
 
@@ -31,6 +33,9 @@ public interface DeptApi {
     List<DeptRespDTO> getDeptList(Collection<Long> ids);
 
     List<DeptRespDTO> getDeptListByStatus(Integer status);
+
+    PageResult<DeptRespDTO> getDeptSimplePage(Integer status, String keyword,
+                                              Collection<Long> deptIds, PageParam pageParam);
 
     /**
      * 获得指定名称的部门信息数组

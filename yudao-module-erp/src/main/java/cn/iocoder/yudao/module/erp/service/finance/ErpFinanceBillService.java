@@ -21,6 +21,7 @@ import cn.iocoder.yudao.module.erp.dal.mysql.finance.ErpFinancePaymentMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.finance.ErpFinanceReceiptItemMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.finance.ErpFinanceReceiptMapper;
 import cn.iocoder.yudao.module.erp.enums.ErpAuditStatus;
+import cn.iocoder.yudao.module.erp.service.finance.bo.ErpAccountBalanceBO;
 import cn.iocoder.yudao.module.erp.service.purchase.ErpSupplierService;
 import cn.iocoder.yudao.module.erp.service.sale.ErpCustomerService;
 import cn.iocoder.yudao.module.system.api.dept.DeptApi;
@@ -35,6 +36,7 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -84,8 +86,6 @@ public class ErpFinanceBillService {
         billReqVO.setPageNo(1);
         billReqVO.setPageSize(Integer.MAX_VALUE);
         billReqVO.setAccountId(reqVO.getAccountId());
-        billReqVO.setBillType(reqVO.getBillType());
-        billReqVO.setBillTime(reqVO.getTransactionTime());
         billReqVO.setStatus(ErpAuditStatus.APPROVE.getStatus());
         List<ErpAccountTransactionRespVO> rows = convertList(buildBillRows(billReqVO), bill -> {
             ErpAccountTransactionRespVO row = new ErpAccountTransactionRespVO();
@@ -98,8 +98,47 @@ public class ErpFinanceBillService {
             row.setRemark(bill.getRemark());
             return row;
         });
+        fillAccountTransactionBalances(rows, reqVO.getAccountId());
+        rows = rows.stream()
+                .filter(row -> matchesAccountTransactionFilter(row, reqVO))
+                .collect(Collectors.toList());
         rows.sort(getAccountTransactionComparator(reqVO));
         return page(rows, reqVO.getPageNo(), reqVO.getPageSize());
+    }
+
+    private void fillAccountTransactionBalances(List<ErpAccountTransactionRespVO> rows, Long accountId) {
+        if (CollUtil.isEmpty(rows) || accountId == null) {
+            return;
+        }
+        ErpAccountBalanceBO accountBalance = accountService.getAccountBalanceMap(
+                Collections.singletonList(accountId)).get(accountId);
+        BigDecimal balance = accountBalance == null || accountBalance.getCurrentBalance() == null
+                ? BigDecimal.ZERO
+                : accountBalance.getCurrentBalance();
+        List<ErpAccountTransactionRespVO> orderedRows = new ArrayList<>(rows);
+        orderedRows.sort(getDefaultAccountTransactionComparator());
+        for (ErpAccountTransactionRespVO row : orderedRows) {
+            row.setBalance(balance);
+            balance = balance.subtract(getAccountTransactionChangeAmount(row));
+        }
+    }
+
+    private boolean matchesAccountTransactionFilter(ErpAccountTransactionRespVO row,
+                                                    ErpAccountTransactionPageReqVO reqVO) {
+        if (StrUtil.isNotBlank(reqVO.getBillType()) && !reqVO.getBillType().equals(row.getBillType())) {
+            return false;
+        }
+        LocalDateTime startTime = reqVO.getStartTime();
+        if (startTime != null && (row.getTransactionTime() == null || row.getTransactionTime().isBefore(startTime))) {
+            return false;
+        }
+        LocalDateTime endTime = reqVO.getEndTime();
+        return endTime == null || (row.getTransactionTime() != null && row.getTransactionTime().isBefore(endTime));
+    }
+
+    private BigDecimal getAccountTransactionChangeAmount(ErpAccountTransactionRespVO row) {
+        BigDecimal amount = row.getAmount() == null ? BigDecimal.ZERO : row.getAmount();
+        return BILL_TYPE_PAYMENT.equals(row.getBillType()) ? amount.negate() : amount;
     }
 
     private Comparator<ErpAccountTransactionRespVO> getAccountTransactionComparator(
@@ -114,6 +153,10 @@ public class ErpFinanceBillService {
                 comparator = Comparator.comparing(ErpAccountTransactionRespVO::getAmount,
                         Comparator.nullsLast(Comparator.naturalOrder()));
                 break;
+            case "balance":
+                comparator = Comparator.comparing(ErpAccountTransactionRespVO::getBalance,
+                        Comparator.nullsLast(Comparator.naturalOrder()));
+                break;
             case "transactionTime":
                 comparator = Comparator.comparing(ErpAccountTransactionRespVO::getTransactionTime,
                         Comparator.nullsLast(Comparator.naturalOrder()));
@@ -123,21 +166,22 @@ public class ErpFinanceBillService {
                         Comparator.nullsLast(Comparator.naturalOrder()));
                 break;
             default:
-                return Comparator.comparing(ErpAccountTransactionRespVO::getTransactionTime,
-                                Comparator.nullsLast(Comparator.reverseOrder()))
-                        .thenComparing(ErpAccountTransactionRespVO::getNo,
-                                Comparator.nullsLast(Comparator.reverseOrder()));
+                return getDefaultAccountTransactionComparator();
         }
         if ("desc".equalsIgnoreCase(reqVO.getOrderDirection())) {
             comparator = comparator.reversed();
         } else if (!"asc".equalsIgnoreCase(reqVO.getOrderDirection())) {
-            return Comparator.comparing(ErpAccountTransactionRespVO::getTransactionTime,
-                            Comparator.nullsLast(Comparator.reverseOrder()))
-                    .thenComparing(ErpAccountTransactionRespVO::getNo,
-                            Comparator.nullsLast(Comparator.reverseOrder()));
+            return getDefaultAccountTransactionComparator();
         }
         return comparator.thenComparing(ErpAccountTransactionRespVO::getNo,
                 Comparator.nullsLast(Comparator.reverseOrder()));
+    }
+
+    private Comparator<ErpAccountTransactionRespVO> getDefaultAccountTransactionComparator() {
+        return Comparator.comparing(ErpAccountTransactionRespVO::getTransactionTime,
+                        Comparator.nullsLast(Comparator.reverseOrder()))
+                .thenComparing(ErpAccountTransactionRespVO::getNo,
+                        Comparator.nullsLast(Comparator.reverseOrder()));
     }
 
     private List<ErpFinanceBillRespVO> buildBillRows(ErpFinanceBillPageReqVO reqVO) {

@@ -284,13 +284,11 @@ public class ErpPreReceivableServiceImplTest extends BaseMockitoUnitTest {
         when(preReceivableMapper.selectById(100L)).thenReturn(existing);
         when(preReceivableMapper.updateByIdAndStatus(eq(100L), eq(ErpAuditStatus.PROCESS.getStatus()), any(ErpPreReceivableDO.class)))
                 .thenReturn(1);
-        when(bookOpenService.isVoucherTypeEnabled(eq(LocalDate.of(2026, 5, 10)), eq(VT))).thenReturn(true);
-        when(autoVoucherBuilder.buildPreReceivableItems(existing)).thenReturn(Collections.emptyList());
+
 
         service.updatePreReceivableStatus(100L, ErpAuditStatus.APPROVE.getStatus());
 
-        verify(voucherService).createVoucherFromBiz(eq(SBT), eq(100L), eq("YSZK"),
-                any(), eq(LocalDate.of(2026, 5, 10)), startsWith("预收账款 - "), anyList());
+        org.mockito.Mockito.verifyNoInteractions(voucherService);
     }
 
     @Test
@@ -302,7 +300,7 @@ public class ErpPreReceivableServiceImplTest extends BaseMockitoUnitTest {
                 .setPartyName("某客户");
         when(preReceivableMapper.selectById(100L)).thenReturn(existing);
         when(preReceivableMapper.updateByIdAndStatus(any(), any(), any())).thenReturn(1);
-        when(bookOpenService.isVoucherTypeEnabled(any(LocalDate.class), eq(VT))).thenReturn(false);
+
 
         service.updatePreReceivableStatus(100L, ErpAuditStatus.APPROVE.getStatus());
 

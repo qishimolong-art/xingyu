@@ -102,6 +102,9 @@ public class ErpSaleOutRespVO {
     @Schema(description = "是否已被调价")
     private Boolean adjusted;
 
+    @Schema(description = "调价状态：0=未调价，1=部分调价，2=已调价")
+    private Integer adjustStatus;
+
     @Schema(description = "调价源销售单编号")
     private Long adjustSourceOutId;
 
@@ -287,6 +290,44 @@ public class ErpSaleOutRespVO {
     @Schema(description = "退货状态：0=未退, 1=部分退, 2=整退")
     private Integer returnStatus;
 
+    // ========== 拣货/送货汇总 ==========
+
+    @Schema(description = "拣货送货单编号")
+    private Long pickDeliveryOrderId;
+
+    @Schema(description = "拣货状态：10=待拣货，20=部分拣货，30=已拣货")
+    private Integer pickStatus;
+
+    @Schema(description = "送货状态：5=待拣货完成，10=待送货，20=部分送货，30=已送货")
+    private Integer deliveryStatus;
+
+    @Schema(description = "拣货送货总明细数")
+    private Integer pickDeliveryTotalItemCount;
+
+    @Schema(description = "已拣货明细数")
+    private Integer pickedItemCount;
+
+    @Schema(description = "已送货明细数")
+    private Integer deliveredItemCount;
+
+    @Schema(description = "拣货进度")
+    private String pickProgress;
+
+    @Schema(description = "送货进度")
+    private String deliveryProgress;
+
+    @Schema(description = "最近拣货时间")
+    private LocalDateTime latestPickTime;
+
+    @Schema(description = "最近送货时间")
+    private LocalDateTime latestDeliveryTime;
+
+    @Schema(description = "拣货完成时间")
+    private LocalDateTime pickCompleteTime;
+
+    @Schema(description = "送货完成时间")
+    private LocalDateTime deliveryCompleteTime;
+
     @Data
     public static class StockOutBillBrief {
 
@@ -344,6 +385,19 @@ public class ErpSaleOutRespVO {
 
         @Schema(description = "产品单位单位", requiredMode = Schema.RequiredMode.REQUIRED, example = "3113")
         private Long productUnitId;
+
+        private BigDecimal productPurchasePrice;
+        private BigDecimal salePrice;
+        private BigDecimal lastSalePrice;
+        private BigDecimal minPrice;
+        private BigDecimal referencePrice;
+        private BigDecimal retailPrice;
+        private BigDecimal lastPurchasePrice;
+        private Integer grossProfitRate;
+        private BigDecimal backupPrice1;
+        private BigDecimal wholesalePrice;
+        private BigDecimal sharePrice;
+        private Boolean priceVisible;
 
         @Schema(description = "产品单价", example = "100.00")
         private BigDecimal productPrice;

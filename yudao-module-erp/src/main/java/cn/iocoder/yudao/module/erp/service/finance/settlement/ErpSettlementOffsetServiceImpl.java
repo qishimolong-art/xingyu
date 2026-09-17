@@ -142,6 +142,8 @@ public class ErpSettlementOffsetServiceImpl implements ErpSettlementOffsetServic
             comparator = comparing(ErpReceivableDetailRespVO::getDocDate, ascending);
         } else if ("docNo".equals(orderField)) {
             comparator = comparing(ErpReceivableDetailRespVO::getDocNo, ascending);
+        } else if ("deptName".equals(orderField)) {
+            comparator = comparing(ErpReceivableDetailRespVO::getDeptName, ascending);
         } else if ("prevBalance".equals(orderField)) {
             comparator = comparing(ErpReceivableDetailRespVO::getPrevBalance, ascending);
         } else if ("increaseAmount".equals(orderField)) {
@@ -174,6 +176,8 @@ public class ErpSettlementOffsetServiceImpl implements ErpSettlementOffsetServic
             comparator = comparing(ErpPayableDetailRespVO::getDocDate, ascending);
         } else if ("docNo".equals(orderField)) {
             comparator = comparing(ErpPayableDetailRespVO::getDocNo, ascending);
+        } else if ("deptName".equals(orderField)) {
+            comparator = comparing(ErpPayableDetailRespVO::getDeptName, ascending);
         } else if ("prevBalance".equals(orderField)) {
             comparator = comparing(ErpPayableDetailRespVO::getPrevBalance, ascending);
         } else if ("increaseAmount".equals(orderField)) {

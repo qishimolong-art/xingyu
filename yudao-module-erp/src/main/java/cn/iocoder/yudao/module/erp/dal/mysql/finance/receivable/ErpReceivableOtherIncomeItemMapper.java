@@ -20,6 +20,13 @@ public interface ErpReceivableOtherIncomeItemMapper extends BaseMapperX<ErpRecei
                 .orderByAsc(ErpReceivableOtherIncomeItemDO::getId));
     }
 
+    default List<ErpReceivableOtherIncomeItemDO> selectListByIncomeIdForUpdate(Long incomeId) {
+        return selectList(new LambdaQueryWrapperX<ErpReceivableOtherIncomeItemDO>()
+                .eq(ErpReceivableOtherIncomeItemDO::getIncomeId, incomeId)
+                .orderByAsc(ErpReceivableOtherIncomeItemDO::getId)
+                .last("FOR UPDATE"));
+    }
+
     default PageResult<ErpReceivableOtherIncomeItemDO> selectPageByIncomeId(ErpReceivableOtherIncomeItemPageReqVO reqVO) {
         LambdaQueryWrapperX<ErpReceivableOtherIncomeItemDO> query = new LambdaQueryWrapperX<ErpReceivableOtherIncomeItemDO>()
                 .eq(ErpReceivableOtherIncomeItemDO::getIncomeId, reqVO.getIncomeId());

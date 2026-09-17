@@ -6,11 +6,14 @@ import cn.iocoder.yudao.framework.mybatis.core.mapper.BaseMapperX;
 import cn.iocoder.yudao.framework.mybatis.core.query.LambdaQueryWrapperX;
 import cn.iocoder.yudao.framework.mybatis.core.query.MPJLambdaWrapperX;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.move.ErpStockMovePageReqVO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.product.ErpProductDO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.product.ErpProductUnitDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockMoveDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockMoveItemDO;
 import cn.iocoder.yudao.module.erp.dal.mysql.common.ErpKeywordQuery;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.core.toolkit.support.SFunction;
+import com.github.yulichang.wrapper.MPJLambdaWrapper;
 import org.apache.ibatis.annotations.Mapper;
 import org.springframework.util.StringUtils;
 
@@ -172,11 +175,15 @@ public interface ErpStockMoveMapper extends BaseMapperX<ErpStockMoveDO> {
                 .likeIfPresent(ErpStockMoveDO::getRemark, reqVO.getRemark())
                 .eqIfPresent(ErpStockMoveDO::getCreator, reqVO.getCreator());
         appendTransferDirection(query, reqVO.getTransferDirection());
-        if (reqVO.getFromWarehouseId() != null || reqVO.getToWarehouseId() != null || reqVO.getProductId() != null) {
+        if (reqVO.getFromWarehouseId() != null || reqVO.getToWarehouseId() != null
+                || reqVO.getProductId() != null || StringUtils.hasText(reqVO.getProductKeyword())) {
             query.leftJoin(ErpStockMoveItemDO.class, ErpStockMoveItemDO::getMoveId, ErpStockMoveDO::getId)
+                    .leftJoin(ErpProductDO.class, ErpProductDO::getId, ErpStockMoveItemDO::getProductId)
+                    .leftJoin(ErpProductUnitDO.class, ErpProductUnitDO::getId, ErpStockMoveItemDO::getProductUnitId)
                     .eq(reqVO.getFromWarehouseId() != null, ErpStockMoveItemDO::getFromWarehouseId, reqVO.getFromWarehouseId())
                     .eq(reqVO.getToWarehouseId() != null, ErpStockMoveItemDO::getToWarehouseId, reqVO.getToWarehouseId())
                     .eq(reqVO.getProductId() != null, ErpStockMoveItemDO::getProductId, reqVO.getProductId())
+                    .and(StringUtils.hasText(reqVO.getProductKeyword()), w -> ErpKeywordQuery.appendProductKeyword(w, reqVO.getProductKeyword()))
                     .groupBy(ErpStockMoveDO::getId); // 避免 1 对多查询，产生相同的 1
         }
         appendStockMoveKeyword(query, reqVO.getKeyword());
@@ -186,24 +193,7 @@ public interface ErpStockMoveMapper extends BaseMapperX<ErpStockMoveDO> {
     static void applyTransferOutVisibleScope(MPJLambdaWrapperX<ErpStockMoveDO> query,
                                              Collection<Long> deptIds,
                                              boolean all) {
-        if (all) {
-            return;
-        }
-        query.and(scope -> {
-            if (CollUtil.isNotEmpty(deptIds)) {
-                Object[] parameters = deptIds.toArray();
-                String placeholders = buildIndexedPlaceholders(parameters.length);
-                scope.apply("EXISTS (SELECT 1 FROM erp_stock_move_item i "
-                                + "WHERE i.move_id = t.id AND i.deleted = b'0' "
-                                + "AND i.from_dept_id IN (" + placeholders + "))", parameters)
-                        .apply("NOT EXISTS (SELECT 1 FROM erp_stock_move_item i "
-                                + "WHERE i.move_id = t.id AND i.deleted = b'0' "
-                                + "AND (i.from_dept_id IS NULL OR i.from_dept_id NOT IN ("
-                                + placeholders + ")))", parameters);
-            } else {
-                scope.apply("1 = 0");
-            }
-        });
+        applyTransferVisibleScope(query, deptIds, all);
     }
 
     static String buildIndexedPlaceholders(int size) {
@@ -220,6 +210,12 @@ public interface ErpStockMoveMapper extends BaseMapperX<ErpStockMoveDO> {
     static void applyTransferInVisibleScope(MPJLambdaWrapperX<ErpStockMoveDO> query,
                                             Collection<Long> deptIds,
                                             boolean all) {
+        applyTransferVisibleScope(query, deptIds, all);
+    }
+
+    static void applyTransferVisibleScope(MPJLambdaWrapperX<ErpStockMoveDO> query,
+                                          Collection<Long> deptIds,
+                                          boolean all) {
         if (all) {
             return;
         }
@@ -227,13 +223,15 @@ public interface ErpStockMoveMapper extends BaseMapperX<ErpStockMoveDO> {
             if (CollUtil.isNotEmpty(deptIds)) {
                 Object[] parameters = deptIds.toArray();
                 String placeholders = buildIndexedPlaceholders(parameters.length);
-                scope.apply("EXISTS (SELECT 1 FROM erp_stock_move_item i "
+                scope.apply("t.dept_id IN (" + placeholders + ")", parameters)
+                        .or().apply("t.from_dept_id IN (" + placeholders + ")", parameters)
+                        .or().apply("t.to_dept_id IN (" + placeholders + ")", parameters)
+                        .or().apply("EXISTS (SELECT 1 FROM erp_stock_move_item i "
                                 + "WHERE i.move_id = t.id AND i.deleted = b'0' "
-                                + "AND i.to_dept_id IN (" + placeholders + "))", parameters)
-                        .apply("NOT EXISTS (SELECT 1 FROM erp_stock_move_item i "
+                                + "AND i.from_dept_id IN (" + placeholders + "))", parameters)
+                        .or().apply("EXISTS (SELECT 1 FROM erp_stock_move_item i "
                                 + "WHERE i.move_id = t.id AND i.deleted = b'0' "
-                                + "AND (i.to_dept_id IS NULL OR i.to_dept_id NOT IN ("
-                                + placeholders + ")))", parameters);
+                                + "AND i.to_dept_id IN (" + placeholders + "))", parameters);
             } else {
                 scope.apply("1 = 0");
             }
@@ -325,18 +323,33 @@ public interface ErpStockMoveMapper extends BaseMapperX<ErpStockMoveDO> {
             return;
         }
         String likeValue = "%" + value + "%";
-        query.and(wrapper -> wrapper
-                .like(ErpStockMoveDO::getNo, value)
-                .or().like(ErpStockMoveDO::getRelatedMoveNo, value)
-                .or().like(ErpStockMoveDO::getSourceNo, value)
-                .or().like(ErpStockMoveDO::getRemark, value)
-                .or().apply("EXISTS (SELECT 1 FROM system_dept d "
-                        + "WHERE d.id IN (t.dept_id, t.from_dept_id, t.to_dept_id) "
-                        + "AND d.deleted = b'0' AND d.name LIKE {0})", likeValue)
-                .or().apply("EXISTS (SELECT 1 FROM erp_stock_move_item mi "
-                        + "INNER JOIN erp_product p ON p.id = mi.product_id AND p.deleted = b'0' "
-                        + "WHERE mi.move_id = t.id AND mi.deleted = b'0' "
-                        + "AND (p.name LIKE {0} OR p.code LIKE {0}))", likeValue));
+        ErpKeywordQuery.KeywordSearch keywordSearch = ErpKeywordQuery.parseKeywordSearch(keyword);
+        query.and(wrapper -> {
+            wrapper.like(ErpStockMoveDO::getNo, value)
+                    .or().like(ErpStockMoveDO::getRelatedMoveNo, value)
+                    .or().like(ErpStockMoveDO::getSourceNo, value)
+                    .or().like(ErpStockMoveDO::getRemark, value)
+                    .or().apply("EXISTS (SELECT 1 FROM system_dept d "
+                            + "WHERE d.id IN (t.dept_id, t.from_dept_id, t.to_dept_id) "
+                            + "AND d.deleted = b'0' AND d.name LIKE {0})", likeValue)
+                    .or().apply(buildStockMoveProductItemKeywordSql(1), likeValue);
+            if (ErpKeywordQuery.shouldAppendTokenProductItemCondition(keywordSearch)) {
+                wrapper.or(or -> appendStockMoveProductItemTokens(or, keywordSearch.tokens()));
+            }
+        });
+    }
+
+    static void appendStockMoveProductItemTokens(MPJLambdaWrapper<ErpStockMoveDO> query, List<String> tokens) {
+        Object[] values = tokens.stream()
+                .map(ErpKeywordQuery::normalize)
+                .map(token -> "%" + token + "%")
+                .toArray();
+        query.apply(buildStockMoveProductItemKeywordSql(tokens.size()), values);
+    }
+
+    static String buildStockMoveProductItemKeywordSql(int tokenCount) {
+        return ErpKeywordQuery.buildProductItemKeywordSql("erp_stock_move_item", "move_id",
+                "t", tokenCount, true);
     }
 
     default int updateByIdAndStatus(Long id, Integer status, ErpStockMoveDO updateObj) {

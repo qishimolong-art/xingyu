@@ -120,6 +120,42 @@ public class ErpPurchasePriceAdjustRespVO {
         @Schema(description = "调价后单价")
         private BigDecimal newPrice;
 
+        @Schema(description = "产品资料采购价")
+        private BigDecimal productPurchasePrice;
+
+        @Schema(description = "销售价")
+        private BigDecimal salePrice;
+
+        @Schema(description = "最近销售价")
+        private BigDecimal lastSalePrice;
+
+        @Schema(description = "最低价")
+        private BigDecimal minPrice;
+
+        @Schema(description = "参考价")
+        private BigDecimal referencePrice;
+
+        @Schema(description = "零售价")
+        private BigDecimal retailPrice;
+
+        @Schema(description = "最后采购入库价")
+        private BigDecimal lastPurchasePrice;
+
+        @Schema(description = "毛利率")
+        private Integer grossProfitRate;
+
+        @Schema(description = "备用价1")
+        private BigDecimal backupPrice1;
+
+        @Schema(description = "批发价")
+        private BigDecimal wholesalePrice;
+
+        @Schema(description = "股份价")
+        private BigDecimal sharePrice;
+
+        @Schema(description = "当前业务场景是否允许查看价格")
+        private Boolean priceVisible;
+
         @Schema(description = "入库数量快照")
         private BigDecimal count;
 

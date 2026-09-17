@@ -11,9 +11,13 @@ import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpCustomerDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleOrderDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleOrderItemDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpWarehouseDO;
+import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpSaleOrderItemMapper;
+import cn.iocoder.yudao.module.erp.service.base.ErpDataPermissionDeptService;
+import cn.iocoder.yudao.module.erp.service.config.ErpFieldConfigService;
 import cn.iocoder.yudao.module.erp.service.product.ErpProductService;
 import cn.iocoder.yudao.module.erp.service.sale.ErpCustomerService;
 import cn.iocoder.yudao.module.erp.service.sale.ErpSaleFieldPermissionMasker;
+import cn.iocoder.yudao.module.erp.service.sale.ErpSaleItemPriceReferenceFiller;
 import cn.iocoder.yudao.module.erp.service.sale.ErpSaleOrderService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpStockService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpWarehouseService;
@@ -62,6 +66,14 @@ public class ErpSaleOrderControllerTest extends BaseMockitoUnitTest {
     private ErpCustomerService customerService;
     @Mock
     private ErpSaleFieldPermissionMasker fieldPermissionMasker;
+    @Mock
+    private ErpSaleItemPriceReferenceFiller itemPriceReferenceFiller;
+    @Mock
+    private ErpFieldConfigService fieldConfigService;
+    @Mock
+    private ErpDataPermissionDeptService dataPermissionDeptService;
+    @Mock
+    private ErpSaleOrderItemMapper saleOrderItemMapper;
     @Mock
     private AdminUserApi adminUserApi;
     @Mock
@@ -234,6 +246,27 @@ public class ErpSaleOrderControllerTest extends BaseMockitoUnitTest {
         assertEquals(0L, result.getData().getTotal());
         assertTrue(result.getData().getList().isEmpty());
         verify(saleOrderService).getSaleOrderPage(eq(reqVO));
+    }
+
+    @Test
+    public void testGetSaleOrderPage_includeItemsFalse_usesLightList() {
+        ErpSaleOrderPageReqVO reqVO = new ErpSaleOrderPageReqVO();
+        reqVO.setIncludeItems(false);
+        ErpSaleOrderDO order = new ErpSaleOrderDO();
+        order.setId(201L);
+        PageResult<ErpSaleOrderDO> pageResult = new PageResult<>(Collections.singletonList(order), 1L);
+        when(saleOrderService.getSaleOrderPage(eq(reqVO))).thenReturn(pageResult);
+        when(saleOrderItemMapper.selectProductNamesMapByOrderIds(any()))
+                .thenReturn(Collections.singletonMap(201L, "机油滤芯"));
+        when(customerService.getCustomerMap(any())).thenReturn(Collections.emptyMap());
+
+        CommonResult<PageResult<ErpSaleOrderRespVO>> result = controller.getSaleOrderPage(reqVO);
+
+        ErpSaleOrderRespVO respVO = result.getData().getList().get(0);
+        assertEquals("机油滤芯", respVO.getProductNames());
+        assertNull(respVO.getItems());
+        verify(saleOrderService, never()).getSaleOrderItemListByOrderIds(any());
+        verify(saleOrderItemMapper).selectProductNamesMapByOrderIds(any());
     }
 
     @Test

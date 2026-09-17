@@ -2,6 +2,8 @@ package cn.iocoder.yudao.module.system.api.user;
 
 import cn.hutool.core.collection.CollUtil;
 import cn.hutool.core.util.ObjUtil;
+import cn.iocoder.yudao.framework.common.pojo.PageParam;
+import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
 import cn.iocoder.yudao.framework.datapermission.core.annotation.DataPermission;
 import cn.iocoder.yudao.framework.datapermission.core.util.DataPermissionUtils;
@@ -73,6 +75,14 @@ public class AdminUserApiImpl implements AdminUserApi {
         return DataPermissionUtils.executeIgnore(() -> {
             List<AdminUserDO> users = userService.getUserListByStatus(status);
             return BeanUtils.toBean(users, AdminUserRespDTO.class);
+        });
+    }
+
+    @Override
+    public PageResult<AdminUserRespDTO> getUserSimplePage(Integer status, String keyword, PageParam pageParam) {
+        return DataPermissionUtils.executeIgnore(() -> {
+            PageResult<AdminUserDO> page = userService.getUserSimplePage(status, keyword, pageParam);
+            return new PageResult<>(BeanUtils.toBean(page.getList(), AdminUserRespDTO.class), page.getTotal());
         });
     }
 

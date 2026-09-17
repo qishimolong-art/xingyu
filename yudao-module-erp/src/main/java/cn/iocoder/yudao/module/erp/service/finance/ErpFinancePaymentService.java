@@ -3,6 +3,8 @@ package cn.iocoder.yudao.module.erp.service.finance;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.ErpFinanceUpdateRemarkReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.payment.ErpFinancePaymentDraftSaveReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.payment.ErpFinancePaymentFormCandidateReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.payment.ErpFinancePaymentFormCandidateRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.payment.ErpFinancePaymentItemPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.payment.ErpFinancePaymentPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.payment.ErpFinancePaymentSaveReqVO;
@@ -13,8 +15,10 @@ import cn.iocoder.yudao.module.erp.dal.dataobject.finance.ErpFinancePaymentDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.ErpFinancePaymentItemDO;
 
 import javax.validation.Valid;
+import java.math.BigDecimal;
 import java.util.Collection;
 import java.util.List;
+import java.util.Map;
 
 /**
  * ERP 付款单 Service 接口
@@ -82,6 +86,8 @@ public interface ErpFinancePaymentService {
      */
     PageResult<ErpFinancePaymentDO> getFinancePaymentPage(ErpFinancePaymentPageReqVO pageReqVO);
 
+    List<ErpFinancePaymentFormCandidateRespVO> getFormCandidates(ErpFinancePaymentFormCandidateReqVO reqVO);
+
     List<ErpFinancePaymentWriteOffCandidateRespVO> getWriteOffCandidates(Long paymentId);
 
     void writeOffFinancePayment(@Valid ErpFinancePaymentWriteOffReqVO reqVO);
@@ -100,6 +106,8 @@ public interface ErpFinancePaymentService {
 
     PageResult<ErpFinancePaymentItemDO> getFinancePaymentItemPage(ErpFinancePaymentItemPageReqVO pageReqVO);
 
+    List<ErpFinancePaymentItemDO> getFinancePaymentItemListByBiz(Integer bizType, Long bizId);
+
     /**
      * 获得付款单项 List
      *
@@ -107,5 +115,9 @@ public interface ErpFinancePaymentService {
      * @return 付款单项 List
      */
     List<ErpFinancePaymentItemDO> getFinancePaymentItemListByPaymentIds(Collection<Long> paymentIds);
+
+    Map<Long, BigDecimal> getEffectivePaymentPriceSumMapByPaymentIds(Collection<Long> paymentIds);
+
+    Map<Long, Long> getEffectivePaymentItemCountMapByPaymentIds(Collection<Long> paymentIds);
 
 }

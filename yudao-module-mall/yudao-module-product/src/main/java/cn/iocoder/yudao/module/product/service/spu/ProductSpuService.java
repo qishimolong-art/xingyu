@@ -135,6 +135,14 @@ public interface ProductSpuService {
     void updateSpuStockCount(Long id, Integer stock);
 
     /**
+     * 设置商品 SPU 小程序展示价。
+     *
+     * @param id SPU 编号
+     * @param price 展示价，单位：分
+     */
+    void updateSpuPrice(Long id, Integer price);
+
+    /**
      * 更新 SPU 状态
      *
      * @param updateReqVO 更新请求

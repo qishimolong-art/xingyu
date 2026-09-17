@@ -2,6 +2,7 @@ package cn.iocoder.yudao.module.erp.service.sale;
 
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.ErpSaleUpdateRemarkReqVO;
 import cn.hutool.core.collection.CollUtil;
+import cn.iocoder.yudao.framework.common.pojo.PageParam;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.common.enums.CommonStatusEnum;
 import cn.iocoder.yudao.framework.datapermission.core.util.DataPermissionUtils;
@@ -95,6 +96,8 @@ public class ErpSaleQuoteServiceImpl implements ErpSaleQuoteService {
     @Resource
     private ErpSaleCartMapper saleCartMapper;
     @Resource
+    private ErpSaleCartTransferLinkService saleCartTransferLinkService;
+    @Resource
     private ErpSaleCartItemMapper saleCartItemMapper;
     @Resource
     private ErpSaleConvertRecordMapper saleConvertRecordMapper;
@@ -124,6 +127,8 @@ public class ErpSaleQuoteServiceImpl implements ErpSaleQuoteService {
     private ErpSaleItemBatchUpdateSupport batchUpdateSupport;
     @Resource
     private ErpSalePriceLevelPricePicker priceLevelPricePicker;
+    @Resource
+    private ErpSalePriceLevelPermissionValidator priceLevelPermissionValidator;
     @Resource
     private ErpSaleDocumentDefaultService saleDocumentDefaultService;
     @Resource
@@ -162,7 +167,7 @@ public class ErpSaleQuoteServiceImpl implements ErpSaleQuoteService {
         calculateTotalPrice(quote, items);
         saleDocumentDefaultService.fillCreateDefaults(quote);
         saleQuoteMapper.insert(quote);
-        items.forEach(item -> item.setQuoteId(quote.getId()));
+        items.forEach(item -> item.setId(null).setQuoteId(quote.getId()));
         saleQuoteItemMapper.insertBatch(items);
         recordCreate(quote.getId(), quote.getNo());
         return quote.getId();
@@ -200,7 +205,7 @@ public class ErpSaleQuoteServiceImpl implements ErpSaleQuoteService {
         saleDocumentDefaultService.fillCreateDefaults(quote);
         saleQuoteMapper.insert(quote);
         if (CollUtil.isNotEmpty(items)) {
-            items.forEach(item -> item.setQuoteId(quote.getId()));
+            items.forEach(item -> item.setId(null).setQuoteId(quote.getId()));
             saleQuoteItemMapper.insertBatch(items);
         }
         recordCreate(quote.getId(), quote.getNo());
@@ -218,11 +223,25 @@ public class ErpSaleQuoteServiceImpl implements ErpSaleQuoteService {
                 && !ErpSaleQuoteStatusEnum.CANCEL.getStatus().equals(quote.getStatus())) {
             throw exception(SALE_QUOTE_UPDATE_FAIL_NOT_DRAFT, quote.getNo());
         }
+        List<ErpSaleQuoteItemDO> oldItems = saleQuoteItemMapper.selectListByQuoteIdForUpdate(updateReqVO.getId());
         preserveHiddenFields(updateReqVO, quote);
         preserveHiddenItemFields(updateReqVO, updateReqVO.getItems(),
-                saleQuoteItemMapper.selectListByQuoteId(updateReqVO.getId()));
+                oldItems);
+        boolean incrementalItems = ErpSaleItemOperationHelper.useIncrementalItems(updateReqVO.getItems(),
+                ErpSaleQuoteSaveReqVO.Item::getOperation, SALE_QUOTE_ITEM_OPERATION_INVALID);
+        ErpSaleItemOperationHelper.RequestChangeSet<ErpSaleQuoteSaveReqVO.Item> itemChangeSet = null;
+        List<ErpSaleQuoteSaveReqVO.Item> itemReqs = updateReqVO.getItems();
+        if (incrementalItems) {
+            itemChangeSet = ErpSaleItemOperationHelper.buildRequestChangeSet(updateReqVO.getItems(), oldItems,
+                    ErpSaleQuoteSaveReqVO.Item.class, ErpSaleQuoteSaveReqVO.Item::getId,
+                    ErpSaleQuoteSaveReqVO.Item::setId, ErpSaleQuoteSaveReqVO.Item::getOperation,
+                    ErpSaleQuoteItemDO::getId, SALE_QUOTE_ITEM_OPERATION_INVALID,
+                    SALE_QUOTE_ITEM_UPDATE_NOT_EXISTS);
+            itemReqs = itemChangeSet.getFinalItems();
+        }
         Long reqDeptId = updateReqVO.getDeptId();
-        List<ErpSaleQuoteItemDO> items = validateSaleQuoteItems(updateReqVO.getItems(), reqDeptId);
+        List<ErpSaleQuoteItemDO> items = validateSaleQuoteItems(itemReqs, reqDeptId);
+        preserveSaleQuoteConvertedCount(items, oldItems);
         Long quoteDeptId = prepareSaleQuoteDept(updateReqVO);
         if (reqDeptId == null && quoteDeptId != null) {
             validateSaleQuoteItemWarehousesAllowed(items, quoteDeptId);
@@ -237,10 +256,50 @@ public class ErpSaleQuoteServiceImpl implements ErpSaleQuoteService {
                 in -> in.setQuoteTime(LocalDateTime.now()));
         calculateTotalPrice(updateObj, items);
         saleQuoteMapper.updateById(updateObj);
-        saleQuoteItemMapper.deleteByQuoteId(updateReqVO.getId());
-        items.forEach(item -> item.setQuoteId(updateReqVO.getId()));
-        saleQuoteItemMapper.insertBatch(items);
+        if (incrementalItems) {
+            applySaleQuoteItemChangeSet(updateReqVO.getId(), itemChangeSet, items);
+        } else {
+            saleQuoteItemMapper.deleteByQuoteId(updateReqVO.getId());
+            items.forEach(item -> item.setId(null).setQuoteId(updateReqVO.getId()));
+            saleQuoteItemMapper.insertBatch(items);
+        }
         recordUpdate(updateReqVO.getId(), quote.getNo());
+    }
+
+    private void applySaleQuoteItemChangeSet(Long quoteId,
+            ErpSaleItemOperationHelper.RequestChangeSet<ErpSaleQuoteSaveReqVO.Item> changeSet,
+            List<ErpSaleQuoteItemDO> finalItems) {
+        if (CollUtil.isNotEmpty(changeSet.getDeleteIds())) {
+            saleQuoteItemMapper.deleteByIds(changeSet.getDeleteIds());
+        }
+        List<ErpSaleQuoteItemDO> insertList = finalItems.stream()
+                .filter(item -> item.getId() == null)
+                .collect(Collectors.toList());
+        if (CollUtil.isNotEmpty(insertList)) {
+            insertList.forEach(item -> item.setQuoteId(quoteId));
+            saleQuoteItemMapper.insertBatch(insertList);
+        }
+        List<ErpSaleQuoteItemDO> updateList = finalItems.stream()
+                .filter(item -> item.getId() != null && changeSet.getUpdateIds().contains(item.getId()))
+                .collect(Collectors.toList());
+        if (CollUtil.isNotEmpty(updateList)) {
+            updateList.forEach(item -> item.setQuoteId(quoteId));
+            saleQuoteItemMapper.updateBatch(updateList);
+        }
+    }
+
+    private void preserveSaleQuoteConvertedCount(List<ErpSaleQuoteItemDO> items,
+                                                 List<ErpSaleQuoteItemDO> oldItems) {
+        if (CollUtil.isEmpty(items) || CollUtil.isEmpty(oldItems)) {
+            return;
+        }
+        Map<Long, ErpSaleQuoteItemDO> oldItemMap = convertMap(oldItems, ErpSaleQuoteItemDO::getId);
+        items.forEach(item -> {
+            ErpSaleQuoteItemDO oldItem = oldItemMap.get(item.getId());
+            if (oldItem != null) {
+                item.setConvertedCount(oldItem.getConvertedCount());
+            }
+        });
     }
 
     @Override
@@ -251,14 +310,27 @@ public class ErpSaleQuoteServiceImpl implements ErpSaleQuoteService {
             throw exception(SALE_QUOTE_UPDATE_FAIL_NOT_DRAFT, quote.getNo());
         }
         preserveHiddenFields(updateReqVO, quote);
-        List<ErpSaleQuoteItemDO> existingItems = saleQuoteItemMapper.selectListByQuoteId(updateReqVO.getId());
+        List<ErpSaleQuoteItemDO> existingItems = saleQuoteItemMapper.selectListByQuoteIdForUpdate(updateReqVO.getId());
         preserveHiddenItemFields(updateReqVO, updateReqVO.getItems(), existingItems);
-        List<ErpSaleQuoteSaveReqVO.Item> itemReqs = filterDraftItems(updateReqVO.getItems());
+        boolean incrementalItems = ErpSaleItemOperationHelper.useIncrementalItems(updateReqVO.getItems(),
+                ErpSaleQuoteSaveReqVO.Item::getOperation, SALE_QUOTE_ITEM_OPERATION_INVALID);
+        ErpSaleItemOperationHelper.RequestChangeSet<ErpSaleQuoteSaveReqVO.Item> itemChangeSet = null;
+        List<ErpSaleQuoteSaveReqVO.Item> itemReqs = updateReqVO.getItems();
+        if (incrementalItems) {
+            itemChangeSet = ErpSaleItemOperationHelper.buildRequestChangeSet(updateReqVO.getItems(), existingItems,
+                    ErpSaleQuoteSaveReqVO.Item.class, ErpSaleQuoteSaveReqVO.Item::getId,
+                    ErpSaleQuoteSaveReqVO.Item::setId, ErpSaleQuoteSaveReqVO.Item::getOperation,
+                    ErpSaleQuoteItemDO::getId, SALE_QUOTE_ITEM_OPERATION_INVALID,
+                    SALE_QUOTE_ITEM_UPDATE_NOT_EXISTS);
+            itemReqs = itemChangeSet.getFinalItems();
+        }
+        itemReqs = filterDraftItems(itemReqs);
         Long quoteDeptId = updateReqVO.getDeptId() != null ? updateReqVO.getDeptId() : quote.getDeptId();
         if (updateReqVO.getCustomerId() != null) {
             quoteDeptId = prepareSaleQuoteDept(updateReqVO);
         }
         List<ErpSaleQuoteItemDO> items = validateSaleQuoteDraftItems(itemReqs, quoteDeptId);
+        preserveSaleQuoteConvertedCount(items, existingItems);
         if (updateReqVO.getAccountId() != null) {
             accountService.validateAccount(updateReqVO.getAccountId());
         }
@@ -272,10 +344,14 @@ public class ErpSaleQuoteServiceImpl implements ErpSaleQuoteService {
         updateObj.setQuoteTime(LocalDateTime.now());
         calculateTotalPrice(updateObj, items);
         saleQuoteMapper.updateById(updateObj);
-        saleQuoteItemMapper.deleteByQuoteId(updateReqVO.getId());
-        if (CollUtil.isNotEmpty(items)) {
-            items.forEach(item -> item.setQuoteId(updateReqVO.getId()));
-            saleQuoteItemMapper.insertBatch(items);
+        if (incrementalItems) {
+            applySaleQuoteItemChangeSet(updateReqVO.getId(), itemChangeSet, items);
+        } else {
+            saleQuoteItemMapper.deleteByQuoteId(updateReqVO.getId());
+            if (CollUtil.isNotEmpty(items)) {
+                items.forEach(item -> item.setId(null).setQuoteId(updateReqVO.getId()));
+                saleQuoteItemMapper.insertBatch(items);
+            }
         }
         recordUpdate(updateReqVO.getId(), quote.getNo());
     }
@@ -325,8 +401,9 @@ public class ErpSaleQuoteServiceImpl implements ErpSaleQuoteService {
         }
 
         Map<Long, BigDecimal> productPriceMap = updatePrice
-                ? priceLevelPricePicker.pickProductPriceMap(convertSet(selectedItems, ErpSaleQuoteItemDO::getProductId),
-                updateReqVO.getPriceLevel()) : Collections.emptyMap();
+                ? pickBatchProductPriceMap(convertSet(selectedItems, ErpSaleQuoteItemDO::getProductId), updateReqVO,
+                quote.getDeptId())
+                : Collections.emptyMap();
         ErpWarehouseDO finalTargetWarehouse = targetWarehouse;
         Long finalTargetDeptId = targetDeptId;
         selectedItems.forEach(item -> {
@@ -360,6 +437,13 @@ public class ErpSaleQuoteServiceImpl implements ErpSaleQuoteService {
                     targetWarehouse != null ? targetWarehouse.getId() : null, targetDeptId, targetWarehouse != null);
         }
         recordUpdate(updateReqVO.getQuoteId(), quote.getNo());
+    }
+
+    private Map<Long, BigDecimal> pickBatchProductPriceMap(Set<Long> productIds,
+                                                           ErpSaleQuoteItemBatchUpdateReqVO updateReqVO,
+                                                           Long businessDeptId) {
+        priceLevelPermissionValidator.validateSelectablePriceLevel(updateReqVO.getPriceLevel(), businessDeptId);
+        return priceLevelPricePicker.pickProductPriceMap(productIds, updateReqVO.getPriceLevel());
     }
 
     @Override
@@ -495,7 +579,7 @@ public class ErpSaleQuoteServiceImpl implements ErpSaleQuoteService {
         });
         calculateCartTotalPrice(cart, cartItems);
         saleDocumentDefaultService.fillCreateDefaults(cart);
-        saleCartMapper.insert(cart);
+        saleCartTransferLinkService.insertCart(cart);
         cartItems.forEach(item -> item.setCartId(cart.getId()));
         cartItems.forEach(item ->
                 item.setStockCount(getStockCountIgnoreDataPermission(item.getProductId(), item.getWarehouseId())));
@@ -650,6 +734,9 @@ public class ErpSaleQuoteServiceImpl implements ErpSaleQuoteService {
     }
 
     private List<ErpSaleQuoteItemDO> validateSaleQuoteItems(List<ErpSaleQuoteSaveReqVO.Item> list, Long quoteDeptId) {
+        if (CollUtil.isEmpty(list)) {
+            throw exception(SALE_QUOTE_SUBMIT_ITEMS_REQUIRED);
+        }
         validateSaleQuoteItemBasics(list);
         List<ErpProductDO> productList = DataPermissionUtils.executeIgnore(() ->
                 productService.validProductList(convertSet(list, ErpSaleQuoteSaveReqVO.Item::getProductId)));
@@ -657,13 +744,12 @@ public class ErpSaleQuoteServiceImpl implements ErpSaleQuoteService {
         productBatchNoValidator.validateBatchNoAllowed(list, productMap,
                 ErpSaleQuoteSaveReqVO.Item::getProductId, ErpSaleQuoteSaveReqVO.Item::getBatchNo);
         Set<Long> warehouseIds = convertSet(list, ErpSaleQuoteSaveReqVO.Item::getWarehouseId);
-        Map<Long, ErpWarehouseDO> warehouseMap = convertMap(warehouseService.validSaleWarehouseList(warehouseIds),
-                ErpWarehouseDO::getId);
+        Map<Long, ErpWarehouseDO> warehouseMap = convertMap(warehouseService.validSaleSelectableWarehouseListForDept(
+                warehouseIds, quoteDeptId, ErpWarehouseService.SALE_QUOTE_ALL_PRODUCT_PERMISSION), ErpWarehouseDO::getId);
         if (quoteDeptId != null) {
             validateSaleQuoteWarehouseIdsAllowed(warehouseIds, quoteDeptId);
         }
         return convertList(list, o -> BeanUtils.toBean(o, ErpSaleQuoteItemDO.class, item -> {
-            item.setId(null); // Clear stale id returned from frontend before insertBatch.
             ErpProductDO product = productMap.get(item.getProductId());
             item.setProductUnitId(product.getUnitId());
             fillProductWeightAndPackage(item, product);
@@ -703,13 +789,12 @@ public class ErpSaleQuoteServiceImpl implements ErpSaleQuoteService {
         productBatchNoValidator.validateBatchNoAllowed(list, productMap,
                 ErpSaleQuoteSaveReqVO.Item::getProductId, ErpSaleQuoteSaveReqVO.Item::getBatchNo);
         Set<Long> warehouseIds = convertSet(list, ErpSaleQuoteSaveReqVO.Item::getWarehouseId);
-        Map<Long, ErpWarehouseDO> warehouseMap = convertMap(warehouseService.validSaleWarehouseList(warehouseIds),
-                ErpWarehouseDO::getId);
+        Map<Long, ErpWarehouseDO> warehouseMap = convertMap(warehouseService.validSaleSelectableWarehouseListForDept(
+                warehouseIds, quoteDeptId, ErpWarehouseService.SALE_QUOTE_ALL_PRODUCT_PERMISSION), ErpWarehouseDO::getId);
         if (quoteDeptId != null) {
             validateSaleQuoteWarehouseIdsAllowed(warehouseIds, quoteDeptId);
         }
         return convertList(list, o -> BeanUtils.toBean(o, ErpSaleQuoteItemDO.class, item -> {
-            item.setId(null); // Clear stale id returned from frontend before insertBatch.
             ErpProductDO product = productMap.get(item.getProductId());
             item.setProductUnitId(product.getUnitId());
             fillProductWeightAndPackage(item, product);
@@ -730,8 +815,20 @@ public class ErpSaleQuoteServiceImpl implements ErpSaleQuoteService {
     }
 
     private void validateSaleQuoteItemBasics(List<ErpSaleQuoteSaveReqVO.Item> list) {
+        validateSaleQuoteItemRequiredFields(list);
         validateDuplicateSaleQuoteItems(list);
         validateSaleQuoteItemAmounts(list);
+    }
+
+    private void validateSaleQuoteItemRequiredFields(List<ErpSaleQuoteSaveReqVO.Item> list) {
+        if (CollUtil.isEmpty(list)) {
+            throw exception(SALE_QUOTE_SUBMIT_ITEMS_REQUIRED);
+        }
+        for (ErpSaleQuoteSaveReqVO.Item item : list) {
+            if (item == null || item.getProductId() == null || item.getWarehouseId() == null) {
+                throw exception(SALE_QUOTE_SUBMIT_ITEMS_REQUIRED);
+            }
+        }
     }
 
     private void fillProductWeightAndPackage(ErpSaleQuoteItemDO item, ErpProductDO product) {
@@ -754,7 +851,8 @@ public class ErpSaleQuoteServiceImpl implements ErpSaleQuoteService {
         if (quoteDeptId == null || CollUtil.isEmpty(warehouseIds)) {
             return;
         }
-        warehouseIds.forEach(warehouseId -> warehouseService.validateWarehouseSaleSelectableForDept(warehouseId, quoteDeptId));
+        warehouseIds.forEach(warehouseId -> warehouseService.validateWarehouseSaleSelectableForDept(warehouseId,
+                quoteDeptId, ErpWarehouseService.SALE_QUOTE_ALL_PRODUCT_PERMISSION));
     }
 
     private Long resolveQuoteItemDeptId(Long productId, Long warehouseId, Long itemDeptId,
@@ -883,6 +981,11 @@ public class ErpSaleQuoteServiceImpl implements ErpSaleQuoteService {
     @Override
     public List<DeptSimpleRespVO> getWarehouseAvailableDeptSimpleList(Long warehouseId) {
         return batchUpdateSupport.getWarehouseAvailableDeptSimpleList(warehouseId, FIELD_PERMISSION_MODULE);
+    }
+
+    @Override
+    public PageResult<DeptSimpleRespVO> getWarehouseAvailableDeptSimplePage(Long warehouseId, PageParam pageParam) {
+        return batchUpdateSupport.getWarehouseAvailableDeptSimplePage(warehouseId, FIELD_PERMISSION_MODULE, pageParam);
     }
 
     @Override

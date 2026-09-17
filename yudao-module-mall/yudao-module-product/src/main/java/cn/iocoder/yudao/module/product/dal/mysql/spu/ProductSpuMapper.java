@@ -156,6 +156,13 @@ public interface ProductSpuMapper extends BaseMapperX<ProductSpuDO> {
         update(null, updateWrapper);
     }
 
+    default void updatePrice(Long id, Integer price) {
+        LambdaUpdateWrapper<ProductSpuDO> updateWrapper = new LambdaUpdateWrapper<ProductSpuDO>()
+                .set(ProductSpuDO::getPrice, price)
+                .eq(ProductSpuDO::getId, id);
+        update(null, updateWrapper);
+    }
+
     /**
      * 添加后台 Tab 选项的查询条件
      *

@@ -2,6 +2,7 @@ package cn.iocoder.yudao.module.erp.controller.admin.sale;
 
 import cn.hutool.core.collection.CollUtil;
 import cn.iocoder.yudao.framework.apilog.core.annotation.ApiAccessLog;
+import cn.iocoder.yudao.framework.common.enums.CommonStatusEnum;
 import cn.iocoder.yudao.framework.common.pojo.CommonResult;
 import cn.iocoder.yudao.framework.common.pojo.PageParam;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
@@ -32,6 +33,7 @@ import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpCustomerDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleCartDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleCartItemDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleQuoteDO;
+import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpSaleCartItemMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpSaleQuoteMapper;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpWarehouseDO;
 import cn.iocoder.yudao.module.erp.enums.config.ErpFieldConfigModuleEnum;
@@ -41,10 +43,12 @@ import cn.iocoder.yudao.module.erp.framework.excel.ErpImportTemplateRequiredFiel
 import cn.iocoder.yudao.module.erp.service.base.ErpDataPermissionDeptService;
 import cn.iocoder.yudao.module.erp.service.common.ErpImportExportRecordService;
 import cn.iocoder.yudao.module.erp.service.config.ErpFieldConfigService;
+import cn.iocoder.yudao.module.erp.service.sale.ErpCustomerDeptPermissionService;
 import cn.iocoder.yudao.module.erp.service.product.ErpProductService;
 import cn.iocoder.yudao.module.erp.service.sale.ErpCustomerService;
 import cn.iocoder.yudao.module.erp.service.sale.ErpSaleCartService;
 import cn.iocoder.yudao.module.erp.service.sale.ErpSaleFieldPermissionMasker;
+import cn.iocoder.yudao.module.erp.service.sale.ErpSaleItemPriceReferenceFiller;
 import cn.iocoder.yudao.module.erp.service.sale.ErpVinRecognizeService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpWarehouseService;
 import cn.iocoder.yudao.module.system.api.dept.DeptApi;
@@ -52,6 +56,7 @@ import cn.iocoder.yudao.module.system.api.dept.dto.DeptRespDTO;
 import cn.iocoder.yudao.module.system.controller.admin.dept.vo.dept.DeptSimpleRespVO;
 import cn.iocoder.yudao.module.system.api.user.AdminUserApi;
 import cn.iocoder.yudao.module.system.api.user.dto.AdminUserRespDTO;
+import cn.iocoder.yudao.module.system.controller.admin.user.vo.user.UserSimpleRespVO;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -112,6 +117,8 @@ public class ErpSaleCartController {
     @Resource
     private ErpSaleFieldPermissionMasker fieldPermissionMasker;
     @Resource
+    private ErpSaleItemPriceReferenceFiller itemPriceReferenceFiller;
+    @Resource
     private ErpSaleQuoteMapper saleQuoteMapper;
     @Resource
     private AdminUserApi adminUserApi;
@@ -123,6 +130,10 @@ public class ErpSaleCartController {
     private ErpDataPermissionDeptService dataPermissionDeptService;
     @Resource
     private ErpImportExportRecordService importExportRecordService;
+    @Resource
+    private ErpSaleCartItemMapper saleCartItemMapper;
+    @Resource
+    private ErpCustomerDeptPermissionService customerDeptPermissionService;
 
     @PostMapping("/create")
     @Operation(summary = "创建销售手推车")
@@ -299,11 +310,41 @@ public class ErpSaleCartController {
         return success(saleCartService.getWarehouseAvailableDeptSimpleList(warehouseId));
     }
 
+    @GetMapping("/warehouse-dept-simple-page")
+    @Operation(summary = "获取销售手推车批量修改仓库可用部门分页")
+    @PreAuthorize("@ss.hasPermission('erp:sale-cart:update')")
+    public CommonResult<PageResult<DeptSimpleRespVO>> getWarehouseAvailableDeptSimplePage(
+            @RequestParam("warehouseId") Long warehouseId, @Valid PageParam pageReqVO) {
+        return success(saleCartService.getWarehouseAvailableDeptSimplePage(warehouseId, pageReqVO));
+    }
+
     @GetMapping("/dept-simple-list")
     @Operation(summary = "获取销售手推车可见部门精简列表")
     @PreAuthorize("@ss.hasPermission('erp:sale-cart:query')")
     public CommonResult<List<DeptSimpleRespVO>> getVisibleDeptSimpleList() {
         return success(dataPermissionDeptService.getDeptSimpleList(FIELD_PERMISSION_MODULE));
+    }
+
+    @GetMapping("/dept-simple-page")
+    @Operation(summary = "获取销售手推车可见部门精简分页")
+    @PreAuthorize("@ss.hasPermission('erp:sale-cart:query')")
+    public CommonResult<PageResult<DeptSimpleRespVO>> getVisibleDeptSimplePage(@Valid PageParam pageReqVO) {
+        return success(dataPermissionDeptService.getDeptSimplePage(FIELD_PERMISSION_MODULE, pageReqVO));
+    }
+
+    @GetMapping("/customer-dept-simple-page")
+    @Operation(summary = "获取销售手推车客户可用部门分页")
+    @PreAuthorize("@ss.hasPermission('erp:sale-cart:query')")
+    public CommonResult<PageResult<DeptSimpleRespVO>> getCustomerAvailableDeptSimplePage(
+            @RequestParam("customerId") Long customerId, @Valid PageParam pageReqVO) {
+        return success(customerDeptPermissionService.getAvailableDeptSimplePage(customerId, FIELD_PERMISSION_MODULE, pageReqVO));
+    }
+
+    @GetMapping("/user-simple-page")
+    @Operation(summary = "获取销售手推车用户精简分页")
+    @PreAuthorize("@ss.hasPermission('erp:sale-cart:query')")
+    public CommonResult<PageResult<UserSimpleRespVO>> getUserSimplePage(@Valid PageParam pageReqVO) {
+        return success(buildUserSimplePage(pageReqVO));
     }
 
     @GetMapping("/recognize-vin")
@@ -318,7 +359,9 @@ public class ErpSaleCartController {
     @PreAuthorize("@ss.hasPermission('erp:sale-cart:query')")
     public CommonResult<PageResult<ErpSaleCartRespVO>> getSaleCartPage(@Valid ErpSaleCartPageReqVO pageReqVO) {
         PageResult<ErpSaleCartDO> pageResult = saleCartService.getSaleCartPage(pageReqVO);
-        PageResult<ErpSaleCartRespVO> respResult = buildSaleCartVOPageResult(pageResult);
+        PageResult<ErpSaleCartRespVO> respResult = Boolean.FALSE.equals(pageReqVO.getIncludeItems())
+                ? buildSaleCartVOPageResultWithoutItems(pageResult)
+                : buildSaleCartVOPageResult(pageResult);
         fieldPermissionMasker.maskSaleDetailFormsWithItems(FIELD_PERMISSION_MODULE, respResult.getList());
         return success(respResult);
     }
@@ -425,6 +468,38 @@ public class ErpSaleCartController {
                         quoteMap, userMap, deptMap, firstApproveRequiredMap.get(cart.getDeptId())));
     }
 
+    private PageResult<ErpSaleCartRespVO> buildSaleCartVOPageResultWithoutItems(PageResult<ErpSaleCartDO> pageResult) {
+        if (CollUtil.isEmpty(pageResult.getList())) {
+            return PageResult.empty(pageResult.getTotal());
+        }
+        Set<Long> cartIds = convertSet(pageResult.getList(), ErpSaleCartDO::getId);
+        Map<Long, Integer> itemCountMap = saleCartItemMapper.selectItemCountMapByCartIds(cartIds);
+        Set<Long> customerIds = convertSet(pageResult.getList(), ErpSaleCartDO::getCustomerId);
+        customerIds.remove(null);
+        Map<Long, ErpCustomerDO> customerMap = CollUtil.isEmpty(customerIds)
+                ? Collections.emptyMap() : customerService.getCustomerMap(customerIds);
+        Set<Long> quoteIds = convertSet(pageResult.getList(), cart ->
+                ErpSaleBizSourceTypeEnum.QUOTE.getType().equals(cart.getSourceType()) ? cart.getSourceId() : null);
+        quoteIds.remove(null);
+        Map<Long, ErpSaleQuoteDO> quoteMap = CollUtil.isEmpty(quoteIds)
+                ? Collections.emptyMap()
+                : convertMap(saleQuoteMapper.selectByIds(quoteIds), ErpSaleQuoteDO::getId);
+        Set<Long> userIds = convertSet(pageResult.getList(), cart -> parseLongSafely(cart.getCreator()));
+        userIds.addAll(convertSet(pageResult.getList(), cart -> parseLongSafely(cart.getUpdater())));
+        userIds.addAll(convertSet(pageResult.getList(), ErpSaleCartDO::getSaleUserId));
+        userIds.remove(null);
+        Map<Long, AdminUserRespDTO> userMap = CollUtil.isNotEmpty(userIds)
+                ? adminUserApi.getUserMap(userIds) : Collections.emptyMap();
+        Set<Long> deptIds = convertSet(pageResult.getList(), ErpSaleCartDO::getDeptId);
+        Map<Long, Boolean> firstApproveRequiredMap = saleCartService.getFirstApproveRequiredMap(deptIds);
+        deptIds.remove(null);
+        Map<Long, DeptRespDTO> deptMap = CollUtil.isEmpty(deptIds)
+                ? Collections.emptyMap() : deptApi.getDeptMap(deptIds);
+        return BeanUtils.toBean(pageResult, ErpSaleCartRespVO.class,
+                cart -> fillMainRelation(cart, itemCountMap.getOrDefault(cart.getId(), 0), customerMap,
+                        quoteMap, userMap, deptMap, firstApproveRequiredMap.get(cart.getDeptId())));
+    }
+
     private ErpSaleCartRespVO buildSaleCartRespVO(ErpSaleCartDO cart, List<ErpSaleCartItemDO> items) {
         Map<Long, ErpProductRespVO> productMap = CollUtil.isEmpty(items)
                 ? Collections.emptyMap()
@@ -493,6 +568,7 @@ public class ErpSaleCartController {
                     item.setWarehouseDeptId(warehouse.getDeptId());
                     MapUtils.findAndThen(deptMap, warehouse.getDeptId(), dept -> item.setWarehouseDeptName(dept.getName()));
                 }));
+        itemPriceReferenceFiller.fill(vo.getItems());
         vo.setProductNames(CollUtil.join(vo.getItems(), "，", ErpSaleCartRespVO.Item::getProductName));
         if (vo.getCustomerId() != null) {
             MapUtils.findAndThen(customerMap, vo.getCustomerId(), customer -> {
@@ -524,6 +600,53 @@ public class ErpSaleCartController {
             MapUtils.findAndThen(deptMap, vo.getDeptId(), dept -> vo.setDeptName(dept.getName()));
         }
         vo.setFirstApproveRequired(firstApproveRequired);
+    }
+
+    private void fillMainRelation(ErpSaleCartRespVO vo, Integer itemCount,
+                                  Map<Long, ErpCustomerDO> customerMap,
+                                  Map<Long, ErpSaleQuoteDO> quoteMap,
+                                  Map<Long, AdminUserRespDTO> userMap,
+                                  Map<Long, DeptRespDTO> deptMap,
+                                  Boolean firstApproveRequired) {
+        vo.setItemCount(itemCount);
+        if (vo.getCustomerId() != null) {
+            MapUtils.findAndThen(customerMap, vo.getCustomerId(), customer -> {
+                vo.setCustomerName(customer.getName());
+                vo.setCustomerCode(customer.getCode());
+            });
+        }
+        if (ErpSaleBizSourceTypeEnum.QUOTE.getType().equals(vo.getSourceType())) {
+            if (vo.getSourceNo() != null && !vo.getSourceNo().isEmpty()) {
+                vo.setQuoteNo(vo.getSourceNo());
+            }
+            MapUtils.findAndThen(quoteMap, vo.getSourceId(), quote -> {
+                if (vo.getQuoteNo() == null || vo.getQuoteNo().isEmpty()) {
+                    vo.setQuoteNo(quote.getNo());
+                }
+                vo.setVehiclePlateNo(quote.getVehiclePlateNo());
+            });
+        }
+        if (vo.getCreator() != null) {
+            MapUtils.findAndThen(userMap, parseLongSafely(vo.getCreator()), user -> vo.setCreatorName(user.getNickname()));
+        }
+        if (vo.getUpdater() != null) {
+            MapUtils.findAndThen(userMap, parseLongSafely(vo.getUpdater()), user -> vo.setUpdaterName(user.getNickname()));
+        }
+        if (vo.getSaleUserId() != null) {
+            MapUtils.findAndThen(userMap, vo.getSaleUserId(), user -> vo.setSaleUserName(user.getNickname()));
+        }
+        if (vo.getDeptId() != null) {
+            MapUtils.findAndThen(deptMap, vo.getDeptId(), dept -> vo.setDeptName(dept.getName()));
+        }
+        vo.setFirstApproveRequired(firstApproveRequired);
+    }
+
+    private PageResult<UserSimpleRespVO> buildUserSimplePage(PageParam pageReqVO) {
+        PageResult<AdminUserRespDTO> page = adminUserApi.getUserSimplePage(
+                CommonStatusEnum.ENABLE.getStatus(), pageReqVO.getKeyword(), pageReqVO);
+        List<UserSimpleRespVO> list = convertList(page.getList(), user ->
+                new UserSimpleRespVO(user.getId(), user.getNickname(), user.getDeptId(), null));
+        return new PageResult<>(list, page.getTotal());
     }
 
     private static Long parseLongSafely(String value) {

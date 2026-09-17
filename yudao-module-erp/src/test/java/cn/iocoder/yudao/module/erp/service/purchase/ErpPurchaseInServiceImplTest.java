@@ -156,6 +156,8 @@ public class ErpPurchaseInServiceImplTest extends BaseMockitoUnitTest {
     @Mock
     private ErpPurchaseInMapper purchaseInMapper;
     @Mock
+    private cn.iocoder.yudao.module.erp.service.purchase.cost.ErpPurchaseCostConfirmationService costConfirmationService;
+    @Mock
     private ErpFinancePaymentItemMapper financePaymentItemMapper;
     @Mock
     private ErpPurchaseInItemMapper purchaseInItemMapper;
@@ -214,6 +216,11 @@ public class ErpPurchaseInServiceImplTest extends BaseMockitoUnitTest {
 
     @BeforeEach
     public void setUp() {
+        // 旧纯Mockito夹具的数据读取沿用；真实FOR UPDATE行为由MySQL集成测试验证。
+        org.mockito.Mockito.lenient().when(purchaseInMapper.selectByIdForUpdate(anyLong()))
+                .thenAnswer(invocation -> purchaseInMapper.selectById((Long)invocation.getArgument(0)));
+        org.mockito.Mockito.lenient().when(purchaseInItemMapper.selectListByInIdForUpdate(anyLong()))
+                .thenAnswer(invocation -> purchaseInItemMapper.selectListByInId(invocation.getArgument(0)));
         // 替换 Redis 序号生成器（不连接真实 Redis）
         ReflectionTestUtils.setField(purchaseInService, "noRedisDAO", new ErpNoRedisDAO() {
             @Override
@@ -432,6 +439,17 @@ public class ErpPurchaseInServiceImplTest extends BaseMockitoUnitTest {
         assertEquals(null, inserted.getOrderId());
         verify(supplierService).validateSupplier(eq(99L));
         verify(purchaseOrderService, never()).updatePurchaseOrderInCount(anyLong(), any());
+    }
+
+    @Test
+    public void testCreatePurchaseIn_emptyItems_throwException() {
+        ErpPurchaseInSaveReqVO reqVO = buildBaseReqVO();
+        reqVO.setItems(Collections.emptyList());
+
+        assertServiceException(() -> purchaseInService.createPurchaseIn(reqVO),
+                PURCHASE_IN_SUBMIT_ITEMS_REQUIRED);
+        verify(purchaseInMapper, never()).insert(any(ErpPurchaseInDO.class));
+        verify(purchaseInItemMapper, never()).insertBatch(anyList());
     }
 
     @Test
@@ -685,6 +703,29 @@ public class ErpPurchaseInServiceImplTest extends BaseMockitoUnitTest {
         verify(purchaseInItemMapper, never()).deleteByIds(anyList());
         verify(purchaseInItemMapper, never()).insertBatch(anyList());
         verify(purchaseInItemMapper, never()).updateBatch(anyList());
+    }
+
+    @Test
+    public void testUpdatePurchaseIn_deleteAllItems_throwException() {
+        ErpPurchaseInDO existing = new ErpPurchaseInDO()
+                .setId(10L).setNo("CGRK001").setStatus(ErpAuditStatus.PROCESS.getStatus());
+        ErpPurchaseInItemDO oldItem = new ErpPurchaseInItemDO()
+                .setId(11L).setInId(10L).setProductId(100L).setWarehouseId(10L)
+                .setCount(new BigDecimal("2")).setProductPrice(new BigDecimal("10"))
+                .setTotalPrice(new BigDecimal("20"));
+        when(purchaseInMapper.selectById(eq(10L))).thenReturn(existing);
+        when(purchaseInItemMapper.selectListByInId(eq(10L))).thenReturn(Collections.singletonList(oldItem));
+
+        ErpPurchaseInSaveReqVO.Item deleteItem = new ErpPurchaseInSaveReqVO.Item();
+        deleteItem.setId(11L);
+        deleteItem.setOperation("delete");
+        ErpPurchaseInSaveReqVO reqVO = buildBaseReqVO(deleteItem);
+        reqVO.setId(10L);
+
+        assertServiceException(() -> purchaseInService.updatePurchaseIn(reqVO),
+                PURCHASE_IN_SUBMIT_ITEMS_REQUIRED);
+        verify(purchaseInMapper, never()).updateById(any(ErpPurchaseInDO.class));
+        verify(purchaseInItemMapper, never()).deleteByIds(anyList());
     }
 
     @Test
@@ -1338,7 +1379,7 @@ public class ErpPurchaseInServiceImplTest extends BaseMockitoUnitTest {
     }
 
     @Test
-    public void testUpdatePurchaseInStatus_stockBillWarehouse_createsStockInBillWithoutStockRecord() {
+    public void testUpdatePurchaseInStatus_legacyStockBillWarehouse_postsImmediately() {
         ErpPurchaseInDO existing = new ErpPurchaseInDO()
                 .setId(10L).setNo("CGRK001").setSupplierId(99L)
                 .setInTime(LocalDateTime.of(2026, 5, 20, 10, 0, 0))
@@ -1351,15 +1392,13 @@ public class ErpPurchaseInServiceImplTest extends BaseMockitoUnitTest {
                 .setId(1L).setInId(10L).setProductId(200L).setWarehouseId(10L)
                 .setCount(new BigDecimal("5")).setProductPrice(new BigDecimal("10"));
         when(purchaseInItemMapper.selectListByInId(eq(10L))).thenReturn(Collections.singletonList(item));
-        when(warehouseService.getWarehouseMap(any())).thenReturn(Collections.singletonMap(10L,
+        org.mockito.Mockito.lenient().when(warehouseService.getWarehouseMap(any())).thenReturn(Collections.singletonMap(10L,
                 new ErpWarehouseDO().setId(10L).setStockBillEnabled(true)));
-        when(bookOpenService.isVoucherTypeEnabled(any(), eq(ErpVoucherTypeEnum.PURCHASE.getType())))
-                .thenReturn(false);
 
         purchaseInService.updatePurchaseInStatus(10L, ErpAuditStatus.APPROVE.getStatus());
 
-        verify(stockRecordService, never()).createStockRecord(any());
-        verify(stockInBillService).createFromPurchaseIn(eq(existing), eq(Collections.singletonList(item)));
+        verify(stockRecordService).createStockRecord(any());
+        verify(stockInBillService,never()).createFromPurchaseIn(any(),any());
         verify(productService).updateProductLastPurchasePrice(eq(200L), eq(new BigDecimal("10")));
     }
 
@@ -1546,7 +1585,7 @@ public class ErpPurchaseInServiceImplTest extends BaseMockitoUnitTest {
     public void testDeletePurchaseIn_success() {
         ErpPurchaseInDO in = new ErpPurchaseInDO().setId(10L).setNo("CGRK001")
                 .setStatus(ErpAuditStatus.PROCESS.getStatus());
-        when(purchaseInMapper.selectByIds(any())).thenReturn(Collections.singletonList(in));
+        when(purchaseInMapper.selectById(anyLong())).thenReturn(in);
 
         purchaseInService.deletePurchaseIn(Collections.singletonList(10L));
 
@@ -1558,7 +1597,7 @@ public class ErpPurchaseInServiceImplTest extends BaseMockitoUnitTest {
     public void testDeletePurchaseIn_alreadyApproved_throwException() {
         ErpPurchaseInDO approved = new ErpPurchaseInDO().setId(10L).setNo("CGRK001")
                 .setStatus(ErpAuditStatus.APPROVE.getStatus());
-        when(purchaseInMapper.selectByIds(any())).thenReturn(Collections.singletonList(approved));
+        when(purchaseInMapper.selectById(anyLong())).thenReturn(approved);
 
         assertServiceException(() -> purchaseInService.deletePurchaseIn(Collections.singletonList(10L)),
                 PURCHASE_IN_DELETE_FAIL_APPROVE, "CGRK001");
@@ -1567,7 +1606,7 @@ public class ErpPurchaseInServiceImplTest extends BaseMockitoUnitTest {
 
     @Test
     public void testDeletePurchaseIn_emptyResult_noOp() {
-        when(purchaseInMapper.selectByIds(any())).thenReturn(Collections.emptyList());
+        when(purchaseInMapper.selectById(anyLong())).thenReturn(null);
 
         purchaseInService.deletePurchaseIn(Collections.singletonList(10L));
 

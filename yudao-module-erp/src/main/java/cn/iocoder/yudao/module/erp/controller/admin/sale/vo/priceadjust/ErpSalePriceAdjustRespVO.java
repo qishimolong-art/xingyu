@@ -143,6 +143,19 @@ public class ErpSalePriceAdjustRespVO {
         @Schema(description = "批次号", example = "BATCH20260818001")
         private String batchNo;
 
+        private BigDecimal productPurchasePrice;
+        private BigDecimal salePrice;
+        private BigDecimal lastSalePrice;
+        private BigDecimal minPrice;
+        private BigDecimal referencePrice;
+        private BigDecimal retailPrice;
+        private BigDecimal lastPurchasePrice;
+        private Integer grossProfitRate;
+        private BigDecimal backupPrice1;
+        private BigDecimal wholesalePrice;
+        private BigDecimal sharePrice;
+        private Boolean priceVisible;
+
         @Schema(description = "原售价")
         private BigDecimal oldPrice;
 

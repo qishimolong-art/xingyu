@@ -116,6 +116,9 @@ public class ErpPurchaseOrderSaveReqVO {
         @Schema(description = "订单项编号", example = "11756")
         private Long id;
 
+        @Schema(description = "明细操作类型：insert 新增，update 修改，delete 删除", example = "update")
+        private String operation;
+
         @Schema(description = "产品编码", example = "P0001")
         private String productCode;
 

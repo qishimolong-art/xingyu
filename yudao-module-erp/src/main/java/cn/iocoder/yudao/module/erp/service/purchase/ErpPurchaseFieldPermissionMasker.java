@@ -33,18 +33,38 @@ public class ErpPurchaseFieldPermissionMasker {
         add("taxExclusiveAmount");
         add("totalTaxPrice");
         add("productPrice");
+        add("productPurchasePrice");
+        add("salePrice");
+        add("lastSalePrice");
+        add("minPrice");
+        add("referencePrice");
+        add("retailPrice");
         add("lastPurchasePrice");
+        add("grossProfitRate");
+        add("backupPrice1");
+        add("wholesalePrice");
+        add("sharePrice");
         add("originalProductPrice");
         add("oldPrice");
         add("newPrice");
         add("adjustPrice");
         add("totalAdjustPrice");
         add("item_productPrice");
+        add("item_productPurchasePrice");
+        add("item_salePrice");
+        add("item_lastSalePrice");
+        add("item_minPrice");
+        add("item_referencePrice");
+        add("item_retailPrice");
         add("item_totalProductPrice");
         add("item_totalPrice");
         add("item_taxPrice");
         add("item_totalTaxPrice");
         add("item_lastPurchasePrice");
+        add("item_grossProfitRate");
+        add("item_backupPrice1");
+        add("item_wholesalePrice");
+        add("item_sharePrice");
         add("item_originalProductPrice");
         add("item_oldPrice");
         add("item_newPrice");
@@ -65,9 +85,12 @@ public class ErpPurchaseFieldPermissionMasker {
     public Set<String> getHiddenFieldSet(String module) {
         List<String> hiddenFields = permissionApi.getCurrentUserHiddenFields(module);
         Set<String> result = CollUtil.isEmpty(hiddenFields) ? new HashSet<>() : new HashSet<>(hiddenFields);
-        if (!PRODUCT_PRICE_PERMISSION_MODULE.equals(module)
-                && isPurchasePriceHidden(getProductPriceHiddenFieldSet())) {
-            result.addAll(PURCHASE_PRICE_RELATED_FIELDS);
+        if (!PRODUCT_PRICE_PERMISSION_MODULE.equals(module)) {
+            Set<String> productPriceHiddenFields = getProductPriceHiddenFieldSet();
+            if (isPurchasePriceHidden(productPriceHiddenFields)) {
+                result.addAll(PURCHASE_PRICE_RELATED_FIELDS);
+            }
+            addProductPriceHiddenFields(result, productPriceHiddenFields);
         }
         return result.isEmpty() ? Collections.emptySet() : result;
     }
@@ -267,6 +290,29 @@ public class ErpPurchaseFieldPermissionMasker {
     private Set<String> getProductPriceHiddenFieldSet() {
         List<String> hiddenFields = permissionApi.getCurrentUserHiddenFields(PRODUCT_PRICE_PERMISSION_MODULE);
         return CollUtil.isEmpty(hiddenFields) ? Collections.emptySet() : new HashSet<>(hiddenFields);
+    }
+
+    private void addProductPriceHiddenFields(Set<String> result, Set<String> productHiddenFields) {
+        addMappedProductPriceHiddenField(result, productHiddenFields, "purchasePrice", "productPurchasePrice");
+        addMappedProductPriceHiddenField(result, productHiddenFields, "salePrice", "salePrice");
+        addMappedProductPriceHiddenField(result, productHiddenFields, "lastSalePrice", "lastSalePrice");
+        addMappedProductPriceHiddenField(result, productHiddenFields, "minPrice", "minPrice");
+        addMappedProductPriceHiddenField(result, productHiddenFields, "referencePrice", "referencePrice");
+        addMappedProductPriceHiddenField(result, productHiddenFields, "retailPrice", "retailPrice");
+        addMappedProductPriceHiddenField(result, productHiddenFields, "lastPurchasePrice", "lastPurchasePrice");
+        addMappedProductPriceHiddenField(result, productHiddenFields, "grossProfitRate", "grossProfitRate");
+        addMappedProductPriceHiddenField(result, productHiddenFields, "backupPrice1", "backupPrice1");
+        addMappedProductPriceHiddenField(result, productHiddenFields, "wholesalePrice", "wholesalePrice");
+        addMappedProductPriceHiddenField(result, productHiddenFields, "sharePrice", "sharePrice");
+    }
+
+    private void addMappedProductPriceHiddenField(Set<String> result, Set<String> productHiddenFields,
+                                                  String productField, String itemField) {
+        if (!isHiddenField(productHiddenFields, "", productField)) {
+            return;
+        }
+        result.add(itemField);
+        result.add("item_" + itemField);
     }
 
     private Set<String> getHiddenFieldSetExcept(String module, Set<String> retainedFields) {

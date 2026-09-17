@@ -3,6 +3,7 @@ package cn.iocoder.yudao.module.erp.service.common;
 import cn.hutool.core.bean.BeanUtil;
 import cn.hutool.core.collection.CollUtil;
 import cn.iocoder.yudao.framework.common.enums.CommonStatusEnum;
+import cn.iocoder.yudao.framework.common.util.number.MoneyUtils;
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
 import cn.iocoder.yudao.framework.datapermission.core.util.DataPermissionUtils;
 import cn.iocoder.yudao.framework.security.core.service.SecurityFrameworkService;
@@ -16,9 +17,12 @@ import cn.iocoder.yudao.module.erp.dal.dataobject.common.ErpPrintTemplateDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.ErpAccountDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.accounting.ErpVoucherDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.accounting.ErpVoucherItemDO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.finance.payable.ErpPayableMiscDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.payable.ErpPayableOtherDO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.finance.receivable.ErpReceivableMiscDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.receivable.ErpReceivableOtherDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.receivable.ErpReceivableOtherIncomeDO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.finance.receivable.ErpReceivableAccountDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseInDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseInItemDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseInvoiceDO;
@@ -48,6 +52,7 @@ import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockInItemDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockMoveDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockMoveItemDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockOutDO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockOutBillDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockOutItemDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpWarehouseMoveDO;
@@ -57,6 +62,7 @@ import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockCheckItemDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpWarehouseDO;
 import cn.iocoder.yudao.module.erp.dal.mysql.common.ErpPrintRecordMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.common.ErpPrintTemplateMapper;
+import cn.iocoder.yudao.module.erp.dal.mysql.finance.receivable.ErpReceivableAccountMapper;
 import cn.iocoder.yudao.module.erp.enums.ErpAuditStatus;
 import cn.iocoder.yudao.module.erp.enums.print.ErpPrintModuleEnum;
 import cn.iocoder.yudao.module.erp.enums.sale.ErpSaleBizSourceTypeEnum;
@@ -66,7 +72,9 @@ import cn.iocoder.yudao.module.erp.service.finance.ErpFinanceReceiptService;
 import cn.iocoder.yudao.module.erp.service.finance.ErpFinanceTransferService;
 import cn.iocoder.yudao.module.erp.service.finance.accounting.ErpVoucherService;
 import cn.iocoder.yudao.module.erp.service.finance.payable.ErpPayableExpenseService;
+import cn.iocoder.yudao.module.erp.service.finance.payable.ErpPayableMiscService;
 import cn.iocoder.yudao.module.erp.service.finance.payable.ErpPayableOtherService;
+import cn.iocoder.yudao.module.erp.service.finance.receivable.ErpReceivableMiscService;
 import cn.iocoder.yudao.module.erp.service.finance.receivable.ErpReceivableOtherIncomeService;
 import cn.iocoder.yudao.module.erp.service.finance.receivable.ErpReceivableOtherService;
 import cn.iocoder.yudao.module.erp.service.product.ErpProductService;
@@ -87,6 +95,7 @@ import cn.iocoder.yudao.module.erp.service.stock.ErpStockCheckService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpStockInService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpStockMoveService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpStockOutService;
+import cn.iocoder.yudao.module.erp.service.stock.ErpStockOutBillService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpStockService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpWarehouseMoveService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpWarehouseService;
@@ -172,13 +181,19 @@ public class ErpPrintServiceImpl implements ErpPrintService {
     @Resource
     private ErpFinanceReceiptService financeReceiptService;
     @Resource
+    private ErpPayableMiscService payableMiscService;
+    @Resource
     private ErpPayableOtherService payableOtherService;
     @Resource
     private ErpPayableExpenseService payableExpenseService;
     @Resource
+    private ErpReceivableMiscService receivableMiscService;
+    @Resource
     private ErpReceivableOtherService receivableOtherService;
     @Resource
     private ErpReceivableOtherIncomeService receivableOtherIncomeService;
+    @Resource
+    private ErpReceivableAccountMapper receivableAccountMapper;
     @Resource
     private ErpFinanceTransferService financeTransferService;
     @Resource
@@ -193,6 +208,8 @@ public class ErpPrintServiceImpl implements ErpPrintService {
     private ErpStockMoveService stockMoveService;
     @Resource
     private ErpStockOutService stockOutService;
+    @Resource
+    private ErpStockOutBillService stockOutBillService;
     @Resource
     private ErpStockService stockService;
     @Resource
@@ -243,9 +260,11 @@ public class ErpPrintServiceImpl implements ErpPrintService {
                     financePaymentService.getFinancePaymentItemListByPaymentId(businessId));
             case FINANCE_RECEIPT -> buildPrintData(module, financeReceiptService.getFinanceReceipt(businessId),
                     financeReceiptService.getFinanceReceiptItemListByReceiptId(businessId));
+            case PAYABLE_MISC -> buildPayableMiscPrintData(businessId);
             case PAYABLE_OTHER -> buildOtherPayablePrintData(businessId);
             case PAYABLE_EXPENSE -> buildPrintData(module, payableExpenseService.getPayableExpense(businessId),
                     payableExpenseService.getPayableExpenseItemListByExpenseId(businessId));
+            case RECEIVABLE_MISC -> buildReceivableMiscPrintData(businessId);
             case RECEIVABLE_OTHER -> buildOtherReceivablePrintData(businessId);
             case RECEIVABLE_OTHER_INCOME -> buildOtherIncomePrintData(businessId);
             case FINANCE_TRANSFER -> buildPrintData(module, financeTransferService.getFinanceTransfer(businessId),
@@ -393,9 +412,19 @@ public class ErpPrintServiceImpl implements ErpPrintService {
         return buildPrintData(ErpPrintModuleEnum.RECEIVABLE_OTHER, receivable, Collections.emptyList());
     }
 
+    private Map<String, Object> buildReceivableMiscPrintData(Long businessId) {
+        ErpReceivableMiscDO receivable = receivableMiscService.getReceivableMisc(businessId);
+        return buildPrintData(ErpPrintModuleEnum.RECEIVABLE_MISC, receivable, Collections.emptyList());
+    }
+
     private Map<String, Object> buildOtherPayablePrintData(Long businessId) {
         ErpPayableOtherDO payable = payableOtherService.getPayableOther(businessId);
         return buildPrintData(ErpPrintModuleEnum.PAYABLE_OTHER, payable, Collections.emptyList());
+    }
+
+    private Map<String, Object> buildPayableMiscPrintData(Long businessId) {
+        ErpPayableMiscDO payable = payableMiscService.getPayableMisc(businessId);
+        return buildPrintData(ErpPrintModuleEnum.PAYABLE_MISC, payable, Collections.emptyList());
     }
 
     private Map<String, Object> buildOtherIncomePrintData(Long businessId) {
@@ -421,7 +450,9 @@ public class ErpPrintServiceImpl implements ErpPrintService {
             return null;
         }
         List<ErpStockMoveItemDO> items = stockMoveService.getStockMoveItemListByMoveId(businessId);
-        return buildPrintData(ErpPrintModuleEnum.STOCK_TRANSFER_OUT, stockMove, items);
+        Map<String, Object> data = buildPrintData(ErpPrintModuleEnum.STOCK_TRANSFER_OUT, stockMove, items);
+        enrichStockTransferOutPrintData(data, stockMove);
+        return data;
     }
 
     private Map<String, Object> buildWarehouseMovePrintData(Long businessId) {
@@ -584,6 +615,9 @@ public class ErpPrintServiceImpl implements ErpPrintService {
         if (saleOut.getCustomerId() != null) {
             ErpCustomerDO customer = customerService.getCustomer(saleOut.getCustomerId());
             putDocumentField(documentMap, mainMap, "customerCode", customer == null ? null : customer.getCode());
+            putDocumentField(documentMap, mainMap, "customerAddress", customer == null ? null : customer.getAddress());
+            putDocumentField(documentMap, mainMap, "customerPhone",
+                    customer == null ? null : firstNonBlank(customer.getMobile(), customer.getTelephone()));
         }
         putDocumentField(documentMap, mainMap, "statusName", formatSaleOutAuditStatus(saleOut.getStatus()));
         putDocumentField(documentMap, mainMap, "settleStatusName", formatSaleOutSettleStatus(saleOut.getSettleStatus()));
@@ -593,6 +627,10 @@ public class ErpPrintServiceImpl implements ErpPrintService {
                 firstNonBlank(saleOut.getReductionAmount(), saleOut.getDiscountPrice()));
         putDocumentField(documentMap, mainMap, "afterReductionAmount",
                 firstNonBlank(saleOut.getAfterReductionAmount(), saleOut.getTotalPrice()));
+        putDocumentField(documentMap, mainMap, "totalAmount", saleOut.getTotalPrice());
+        addAmountUpper(mainMap, "document.totalAmountUpper", saleOut.getTotalPrice());
+        enrichSaleOutReceivablePrintData(documentMap, mainMap, saleOut);
+        enrichSaleOutOperatorPrintData(documentMap, mainMap, saleOut);
 
         SaleOutSourceDocumentMeta sourceMeta = getSaleOutSourceDocumentMeta(saleOut);
         if (sourceMeta == null) {
@@ -605,6 +643,68 @@ public class ErpPrintServiceImpl implements ErpPrintService {
         AdminUserRespDTO sourceCreator = sourceCreatorId == null ? null : adminUserApi.getUser(sourceCreatorId);
         putDocumentField(documentMap, mainMap, "sourceCreatorName",
                 sourceCreator == null ? null : sourceCreator.getNickname());
+    }
+
+    private void enrichSaleOutReceivablePrintData(Map<String, Object> documentMap, Map<String, Object> mainMap,
+                                                  ErpSaleOutDO saleOut) {
+        BigDecimal currentDebt = nullToZero(saleOut.getTotalPrice());
+        putDocumentField(documentMap, mainMap, "currentDebt", currentDebt);
+        if (saleOut.getCustomerId() == null) {
+            putDocumentField(documentMap, mainMap, "previousReceivable", BigDecimal.ZERO);
+            putDocumentField(documentMap, mainMap, "totalDebt", currentDebt);
+            return;
+        }
+        ErpReceivableAccountDO account = receivableAccountMapper.selectByCustomerId(saleOut.getCustomerId());
+        BigDecimal receivableBalance = account == null ? BigDecimal.ZERO : nullToZero(account.getReceivableBalance());
+        putDocumentField(documentMap, mainMap, "previousReceivable", receivableBalance);
+        putDocumentField(documentMap, mainMap, "totalDebt", receivableBalance.add(currentDebt));
+    }
+
+    private void enrichSaleOutOperatorPrintData(Map<String, Object> documentMap, Map<String, Object> mainMap,
+                                                ErpSaleOutDO saleOut) {
+        Long auditorId = saleOut.getAuditorId();
+        AdminUserRespDTO auditor = auditorId == null ? null : adminUserApi.getUser(auditorId);
+        putDocumentField(documentMap, mainMap, "checkerName", auditor == null ? null : auditor.getNickname());
+        putDocumentField(documentMap, mainMap, "pickerName", collectSaleOutPickerNames(saleOut.getId()));
+    }
+
+    private String collectSaleOutPickerNames(Long saleOutId) {
+        if (saleOutId == null || stockOutBillService == null) {
+            return "";
+        }
+        List<ErpStockOutBillDO> bills = stockOutBillService.getStockOutBillListBySaleOutId(saleOutId);
+        if (CollUtil.isEmpty(bills)) {
+            return "";
+        }
+        LinkedHashSet<String> names = new LinkedHashSet<>();
+        for (ErpStockOutBillDO bill : bills) {
+            Object name = firstNonBlank(bill.getPickUserName(), bill.getPick());
+            String text = name == null ? null : String.valueOf(name);
+            if (StringUtils.hasText(text)) {
+                names.add(text);
+            }
+        }
+        return String.join("、", names);
+    }
+
+    @SuppressWarnings("unchecked")
+    private void enrichStockTransferOutPrintData(Map<String, Object> data, ErpStockMoveDO stockMove) {
+        if (data == null || stockMove == null
+                || !ErpSaleBizSourceTypeEnum.CART.getType().equals(stockMove.getSourceType())
+                || stockMove.getSourceId() == null) {
+            return;
+        }
+        Map<String, Object> documentMap = (Map<String, Object>) data.get("document");
+        Map<String, Object> mainMap = (Map<String, Object>) data.get("main");
+        if (documentMap == null || mainMap == null) {
+            return;
+        }
+        ErpSaleCartDO cart = saleCartService.getSaleCart(stockMove.getSourceId());
+        if (cart == null || cart.getCustomerId() == null) {
+            return;
+        }
+        ErpCustomerDO customer = DataPermissionUtils.executeIgnore(() -> customerService.getCustomer(cart.getCustomerId()));
+        putDocumentField(documentMap, mainMap, "directCustomerName", customer == null ? null : customer.getName());
     }
 
     private void putDocumentField(Map<String, Object> documentMap, Map<String, Object> mainMap,
@@ -692,6 +792,10 @@ public class ErpPrintServiceImpl implements ErpPrintService {
                     product == null ? null : product.getWeight()));
             putIfPresent(row, "items.packageQty", firstNonBlank(itemMap.get("packageQty"),
                     product == null ? null : product.getPackageQty()));
+            if (isPieceCountPrintModule(module)) {
+                row.put("items.pieceCount",
+                        calculatePieceCount(getPieceCountValue(module, itemMap), row.get("items.packageQty")));
+            }
             putIfPresent(row, "items.productBarCode", firstNonBlank(itemMap.get("productBarCode"),
                     product == null ? null : product.getBarCode()));
             putIfPresent(row, "items.warehouseName", warehouse == null ? null : warehouse.getName());
@@ -836,6 +940,9 @@ public class ErpPrintServiceImpl implements ErpPrintService {
             addFieldIfAbsent(mainFields, "仓库", "document.warehouseNames", module.getFieldModuleKey() + " / main_form");
             addFieldIfAbsent(mainFields, "项数", "document.itemCount", module.getFieldModuleKey() + " / main_form");
         }
+        if (isPieceCountPrintModule(module)) {
+            addFieldIfAbsent(detailFields, "件数", "items.pieceCount", module.getFieldModuleKey() + " / detail_item");
+        }
         List<ErpPrintFieldRespVO.Group> groups = new ArrayList<>();
         groups.add(new ErpPrintFieldRespVO.Group("main", "主表字段", "拖到单元格", mainFields));
         groups.add(new ErpPrintFieldRespVO.Group("detail", "明细字段", "拖到明细行", detailFields));
@@ -861,6 +968,7 @@ public class ErpPrintServiceImpl implements ErpPrintService {
                 detailFields.add(field);
             }
         }
+        addFieldIfAbsent(detailFields, "件数", "items.pieceCount", module.getFieldModuleKey() + " / detail_item");
         List<ErpPrintFieldRespVO.Group> groups = new ArrayList<>();
         groups.add(new ErpPrintFieldRespVO.Group("main", "主表字段", "拖到单元格", mainFields));
         groups.add(new ErpPrintFieldRespVO.Group("detail", "明细字段", "拖到明细行", detailFields));
@@ -898,7 +1006,9 @@ public class ErpPrintServiceImpl implements ErpPrintService {
         String source = definition.getFieldKey().startsWith("item_")
                 ? module.getFieldModuleKey() + " / detail_item"
                 : module.getFieldModuleKey() + " / main_form";
-        return field(definition.getFieldLabel(), code, source);
+        String name = module == ErpPrintModuleEnum.SALE_OUT && "no".equals(definition.getFieldKey())
+                ? "销售单号" : definition.getFieldLabel();
+        return field(name, code, source);
     }
 
     private String toPrintCode(ErpPrintModuleEnum module, String fieldKey) {
@@ -1009,8 +1119,12 @@ public class ErpPrintServiceImpl implements ErpPrintService {
                 case "accountId" -> "account.name";
                 case "saleUserId", "saleUserName" -> "saleUser.nickname";
                 case "auditorId", "auditorName" -> "auditor.nickname";
-                case "creator", "creatorName" -> "creator.nickname";
+                case "creator", "creatorName", "billerName" -> "creator.nickname";
                 case "updater", "updaterName" -> "updater.nickname";
+                case "totalAmount" -> "document.totalAmount";
+                case "totalAmountUpper" -> "document.totalAmountUpper";
+                case "totalPriceUpper" -> "document.totalPriceUpper";
+                case "checkerName" -> "document.checkerName";
                 default -> "document." + lowerFirst(fieldKey);
             };
         }
@@ -1134,8 +1248,7 @@ public class ErpPrintServiceImpl implements ErpPrintService {
             return "";
         }
         try {
-            BigDecimal amount = new BigDecimal(String.valueOf(value)).setScale(2, RoundingMode.HALF_UP);
-            return amount.toPlainString();
+            return MoneyUtils.formatAmountUpper(new BigDecimal(String.valueOf(value)));
         } catch (NumberFormatException ignored) {
             return "";
         }
@@ -1167,6 +1280,76 @@ public class ErpPrintServiceImpl implements ErpPrintService {
             }
         }
         return null;
+    }
+
+    private String calculatePieceCount(Object countValue, Object packageQtyValue) {
+        BigDecimal count = parseDecimal(countValue);
+        BigDecimal packageQty = parseDecimal(packageQtyValue);
+        if (count == null || packageQty == null || packageQty.compareTo(BigDecimal.ZERO) <= 0) {
+            return "";
+        }
+        return formatDecimal(count.divide(packageQty, 3, RoundingMode.HALF_UP));
+    }
+
+    private BigDecimal parseDecimal(Object value) {
+        if (value instanceof BigDecimal decimal) {
+            return decimal;
+        }
+        if (value instanceof Number number) {
+            return BigDecimal.valueOf(number.doubleValue());
+        }
+        if (value instanceof String text && StringUtils.hasText(text)) {
+            try {
+                return new BigDecimal(text);
+            } catch (NumberFormatException ignored) {
+                return null;
+            }
+        }
+        return null;
+    }
+
+    private BigDecimal nullToZero(BigDecimal value) {
+        return value == null ? BigDecimal.ZERO : value;
+    }
+
+    private BigDecimal nonNegative(BigDecimal value) {
+        return value == null || value.compareTo(BigDecimal.ZERO) < 0 ? BigDecimal.ZERO : value;
+    }
+
+    private Object getPieceCountValue(ErpPrintModuleEnum module, Map<String, Object> itemMap) {
+        if (module == ErpPrintModuleEnum.SALE_PRICE_ADJUST) {
+            return itemMap.get("outCount");
+        }
+        return itemMap.get("count");
+    }
+
+    private boolean isPieceCountPrintModule(ErpPrintModuleEnum module) {
+        return isPurchasePrintModule(module) || isSalePrintModule(module) || isStockPrintModule(module);
+    }
+
+    private boolean isPurchasePrintModule(ErpPrintModuleEnum module) {
+        return module == ErpPrintModuleEnum.PURCHASE_ORDER
+                || module == ErpPrintModuleEnum.PURCHASE_IN
+                || module == ErpPrintModuleEnum.PURCHASE_RETURN
+                || module == ErpPrintModuleEnum.PURCHASE_INVOICE
+                || module == ErpPrintModuleEnum.PURCHASE_PRICE_ADJUST;
+    }
+
+    private boolean isSalePrintModule(ErpPrintModuleEnum module) {
+        return module == ErpPrintModuleEnum.SALE_ORDER
+                || module == ErpPrintModuleEnum.SALE_OUT
+                || module == ErpPrintModuleEnum.SALE_RETURN
+                || module == ErpPrintModuleEnum.SALE_QUOTE
+                || module == ErpPrintModuleEnum.SALE_PRICE_ADJUST
+                || module == ErpPrintModuleEnum.SALE_CART;
+    }
+
+    private boolean isStockPrintModule(ErpPrintModuleEnum module) {
+        return module == ErpPrintModuleEnum.STOCK_IN
+                || module == ErpPrintModuleEnum.STOCK_OUT
+                || module == ErpPrintModuleEnum.STOCK_CHECK
+                || module == ErpPrintModuleEnum.STOCK_TRANSFER_OUT
+                || module == ErpPrintModuleEnum.WAREHOUSE_MOVE;
     }
 
     private AdminUserRespDTO firstUser(RelatedMaps relatedMaps, Object... values) {

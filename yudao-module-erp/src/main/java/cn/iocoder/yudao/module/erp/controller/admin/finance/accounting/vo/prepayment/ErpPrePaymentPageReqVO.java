@@ -39,4 +39,7 @@ public class ErpPrePaymentPageReqVO extends PageParam {
     @DateTimeFormat(pattern = FORMAT_YEAR_MONTH_DAY_HOUR_MINUTE_SECOND)
     private LocalDateTime[] bizTime;
 
+    @Schema(description = "是否返回明细，默认 true 保持兼容")
+    private Boolean includeItems;
+
 }

@@ -25,6 +25,27 @@ class ErpPayableAccountMapperSqlTest {
         assertSql(render(false, Collections.emptyList(), 30L), "creator = ?", true);
     }
 
+    @Test
+    void selectList_exposesMiscPayableWithoutChangingBalanceFormula() throws Exception {
+        String sql = render(true, Collections.emptyList(), null);
+
+        assertTrue(sql.contains("erp_payable_misc"));
+        assertTrue(sql.contains("SUM(amount) AS miscPayableAmount"));
+        assertTrue(sql.contains("IFNULL(pm.miscPayableAmount, 0) AS miscPayableAmount"));
+        assertTrue(sql.contains("erp_payable_other"));
+        assertTrue(sql.contains("+ IFNULL(po.otherPayableAmount, 0) + IFNULL(pm.miscPayableAmount, 0) - IFNULL(pr.purchaseReturnAmount, 0) - IFNULL(fp.paymentAmount, 0) AS balance"));
+        assertFalse(sql.contains("+ IFNULL(po.otherPayableAmount, 0) - IFNULL(pr.purchaseReturnAmount, 0)"));
+    }
+
+    @Test
+    void selectList_shouldUseOriginalPurchaseInSettlementAmount() throws Exception {
+        String sql = render(true, Collections.emptyList(), null);
+
+        assertTrue(sql.contains("original_product_price"));
+        assertTrue(sql.contains("SUM((CASE WHEN EXISTS"));
+        assertFalse(sql.contains("SUM(total_price) AS purchaseInAmount"));
+    }
+
     private String render(boolean all, java.util.Collection<Long> deptIds, Long selfUserId) throws Exception {
         Method method = ErpPayableAccountMapper.class.getMethod("selectList", ErpPayableAccountPageReqVO.class,
                 java.util.Collection.class, String.class, boolean.class, java.util.Collection.class,

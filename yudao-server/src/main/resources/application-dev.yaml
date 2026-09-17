@@ -159,7 +159,7 @@ wx: # 参见 https://github.com/Wechat-Group/WxJava/blob/develop/spring-boot-sta
       key-prefix: wx # Redis Key 的前缀
       http-client-type: HttpClient # 采用 HttpClient 请求微信公众号平台
   miniapp: # 小程序配置（必填），参见 https://github.com/Wechat-Group/WxJava/blob/develop/spring-boot-starters/wx-java-miniapp-spring-boot-starter/README.md 文档
-    appid: wx6b354a2cceda1b8c
+    appid: wx6b354a2cceda1b8
     secret: a8523d0d6bdca0ce64b248c8bf7facc4
     config-storage:
       type: RedisTemplate # 采用 RedisTemplate 操作 Redis，会自动从 Spring 中获取
@@ -175,6 +175,13 @@ yudao:
     corp-id: wweadabfc4c1eddf73
     agent-id: 1000084
     secret: cWBjL8GZV3s6q7y3CZRLccMyPYkxqKTnpcJZGVWFLv8
+    clients:
+      sale-pick:
+        agent-id: 1000085
+        secret: pIV-4i8JgFVdbW_iUS3N_ph7F9m7l2ia2S1SohT0U_8
+      sale-delivery:
+        agent-id: 1000086
+        secret: V-qSwtMHiZA98NRQrykn0DzQxVvPBiPQaC4hykmk1C0
   pay:
     order-notify-url: http://yunai.natapp1.cc/admin-api/pay/notify/order # 支付渠道的【支付】回调地址
     refund-notify-url: http://yunai.natapp1.cc/admin-api/pay/notify/refund # 支付渠道的【退款】回调地址

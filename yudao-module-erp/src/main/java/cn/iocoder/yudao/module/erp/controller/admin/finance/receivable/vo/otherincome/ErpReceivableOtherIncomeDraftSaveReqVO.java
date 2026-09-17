@@ -32,6 +32,7 @@ public class ErpReceivableOtherIncomeDraftSaveReqVO {
     @Accessors(chain = true)
     public static class Item {
         private Long id;
+        private String operation;
         private String itemName;
         private BigDecimal amount;
         private String invoiceNo;

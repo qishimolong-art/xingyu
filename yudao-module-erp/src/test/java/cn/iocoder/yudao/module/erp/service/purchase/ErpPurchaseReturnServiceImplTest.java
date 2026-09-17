@@ -81,6 +81,7 @@ import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PURCHASE_RETU
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PURCHASE_RETURN_ITEM_COUNT_POSITIVE;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PURCHASE_RETURN_ITEM_DUPLICATE;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PURCHASE_RETURN_ITEM_PRICE_POSITIVE;
+import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PURCHASE_RETURN_ITEMS_REQUIRED;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PURCHASE_RETURN_MODE_INVALID;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PURCHASE_RETURN_NOT_APPROVE;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PURCHASE_RETURN_NOT_EXISTS;
@@ -115,6 +116,10 @@ public class ErpPurchaseReturnServiceImplTest extends BaseMockitoUnitTest {
     @InjectMocks
     private ErpPurchaseReturnServiceImpl purchaseReturnService;
 
+    @Mock
+    private cn.iocoder.yudao.module.erp.service.purchase.returncost.ErpPurchaseReturnCostService purchaseReturnCostService;
+    @Mock
+    private cn.iocoder.yudao.module.erp.service.report.trade.ErpTradeSnapshotService tradeSnapshotService;
     @Mock
     private ErpPurchaseReturnMapper purchaseReturnMapper;
     @Mock
@@ -162,6 +167,10 @@ public class ErpPurchaseReturnServiceImplTest extends BaseMockitoUnitTest {
 
     @BeforeEach
     public void setUp() {
+        org.mockito.Mockito.lenient().when(purchaseReturnMapper.selectByIdForUpdate(anyLong()))
+                .thenAnswer(i -> purchaseReturnMapper.selectById((Long)i.getArgument(0)));
+        org.mockito.Mockito.lenient().when(purchaseReturnItemMapper.selectListByReturnIdForUpdate(anyLong()))
+                .thenAnswer(i -> new java.util.ArrayList<>(purchaseReturnItemMapper.selectListByReturnId(i.getArgument(0))));
         // 替换 Redis 序号生成器（不连接真实 Redis）
         ReflectionTestUtils.setField(purchaseReturnService, "noRedisDAO", new ErpNoRedisDAO() {
             @Override
@@ -409,6 +418,16 @@ public class ErpPurchaseReturnServiceImplTest extends BaseMockitoUnitTest {
 
         assertServiceException(() -> purchaseReturnService.createPurchaseReturnDraft(reqVO),
                 PURCHASE_RETURN_SUBMIT_ITEMS_REQUIRED);
+        verify(purchaseReturnMapper, never()).insert(any(ErpPurchaseReturnDO.class));
+        verify(purchaseReturnItemMapper, never()).insertBatch(anyList());
+    }
+
+    @Test
+    public void testCreatePurchaseReturn_emptyItems_throwException() {
+        ErpPurchaseReturnSaveReqVO reqVO = buildByStockReqVO();
+
+        assertServiceException(() -> purchaseReturnService.createPurchaseReturn(reqVO),
+                PURCHASE_RETURN_ITEMS_REQUIRED);
         verify(purchaseReturnMapper, never()).insert(any(ErpPurchaseReturnDO.class));
         verify(purchaseReturnItemMapper, never()).insertBatch(anyList());
     }
@@ -757,6 +776,21 @@ public class ErpPurchaseReturnServiceImplTest extends BaseMockitoUnitTest {
     }
 
     @Test
+    public void testUpdatePurchaseReturn_emptyItems_throwException() {
+        ErpPurchaseReturnDO existing = new ErpPurchaseReturnDO()
+                .setId(10L).setNo("CGTH001").setStatus(ErpAuditStatus.PROCESS.getStatus());
+        when(purchaseReturnMapper.selectById(eq(10L))).thenReturn(existing);
+        when(purchaseReturnItemMapper.selectListByReturnId(eq(10L))).thenReturn(Collections.emptyList());
+
+        ErpPurchaseReturnSaveReqVO reqVO = buildByStockReqVO();
+        reqVO.setId(10L);
+
+        assertServiceException(() -> purchaseReturnService.updatePurchaseReturn(reqVO),
+                PURCHASE_RETURN_ITEMS_REQUIRED);
+        verify(purchaseReturnMapper, never()).updateById(any(ErpPurchaseReturnDO.class));
+    }
+
+    @Test
     public void testUpdatePurchaseReturn_alreadyApproved_throwException() {
         ErpPurchaseReturnDO existing = new ErpPurchaseReturnDO()
                 .setId(10L).setNo("CGTH001").setStatus(ErpAuditStatus.APPROVE.getStatus());
@@ -866,11 +900,6 @@ public class ErpPurchaseReturnServiceImplTest extends BaseMockitoUnitTest {
         when(purchaseReturnItemMapper.selectListByReturnId(eq(10L)))
                 .thenReturn(Collections.singletonList(item));
 
-        when(bookOpenService.isVoucherTypeEnabled(any(), eq(ErpVoucherTypeEnum.PURCHASE.getType())))
-                .thenReturn(true);
-        when(supplierService.getSupplier(eq(100L))).thenReturn(
-                new ErpSupplierDO().setId(100L).setName("芋道供应商"));
-        when(autoVoucherBuilder.buildPurchaseReturnItems(any(), any())).thenReturn(Collections.emptyList());
 
         purchaseReturnService.updatePurchaseReturnStatus(10L, ErpAuditStatus.APPROVE.getStatus());
 
@@ -879,10 +908,8 @@ public class ErpPurchaseReturnServiceImplTest extends BaseMockitoUnitTest {
                 ArgumentCaptor.forClass(ErpStockRecordCreateReqBO.class);
         verify(stockRecordService).createStockRecord(stockCaptor.capture());
         assertEquals(0, stockCaptor.getValue().getCount().compareTo(new BigDecimal("-3")));
-        // 生成凭证
-        verify(voucherService).createVoucherFromBiz(
-                eq(ErpVoucherSourceBizTypeEnum.PURCHASE_RETURN.getType()), eq(10L), eq("CGTH001"),
-                any(), any(), any(), anyList());
+        // 审核不再直接生成凭证
+        org.mockito.Mockito.verifyNoInteractions(voucherService);
     }
 
     @Test
@@ -1047,8 +1074,6 @@ public class ErpPurchaseReturnServiceImplTest extends BaseMockitoUnitTest {
         when(purchaseReturnMapper.updateByIdAndStatus(eq(10L), any(), any())).thenReturn(1);
         when(purchaseReturnItemMapper.selectListByReturnId(eq(10L))).thenReturn(Collections.emptyList());
 
-        when(bookOpenService.isVoucherTypeEnabled(any(), eq(ErpVoucherTypeEnum.PURCHASE.getType())))
-                .thenReturn(false);
 
         purchaseReturnService.updatePurchaseReturnStatus(10L, ErpAuditStatus.APPROVE.getStatus());
 
@@ -1119,7 +1144,7 @@ public class ErpPurchaseReturnServiceImplTest extends BaseMockitoUnitTest {
     public void testDeletePurchaseReturn_success() {
         ErpPurchaseReturnDO toDelete = new ErpPurchaseReturnDO()
                 .setId(10L).setNo("CGTH001").setStatus(ErpAuditStatus.PROCESS.getStatus());
-        when(purchaseReturnMapper.selectByIds(any())).thenReturn(Collections.singletonList(toDelete));
+        when(purchaseReturnMapper.selectByIdForUpdate(10L)).thenReturn(toDelete);
 
         purchaseReturnService.deletePurchaseReturn(Collections.singletonList(10L));
 
@@ -1132,7 +1157,7 @@ public class ErpPurchaseReturnServiceImplTest extends BaseMockitoUnitTest {
     public void testDeletePurchaseReturn_alreadyApproved_throwException() {
         ErpPurchaseReturnDO approved = new ErpPurchaseReturnDO()
                 .setId(10L).setNo("CGTH001").setStatus(ErpAuditStatus.APPROVE.getStatus());
-        when(purchaseReturnMapper.selectByIds(any())).thenReturn(Collections.singletonList(approved));
+        when(purchaseReturnMapper.selectByIdForUpdate(10L)).thenReturn(approved);
 
         assertServiceException(
                 () -> purchaseReturnService.deletePurchaseReturn(Collections.singletonList(10L)),
@@ -1142,7 +1167,7 @@ public class ErpPurchaseReturnServiceImplTest extends BaseMockitoUnitTest {
 
     @Test
     public void testDeletePurchaseReturn_emptyList_noOp() {
-        when(purchaseReturnMapper.selectByIds(any())).thenReturn(Collections.emptyList());
+        when(purchaseReturnMapper.selectByIdForUpdate(10L)).thenReturn(null);
 
         purchaseReturnService.deletePurchaseReturn(Collections.singletonList(10L));
 

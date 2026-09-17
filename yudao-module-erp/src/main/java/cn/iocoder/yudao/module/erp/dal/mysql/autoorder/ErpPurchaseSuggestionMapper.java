@@ -21,7 +21,9 @@ public interface ErpPurchaseSuggestionMapper extends BaseMapperX<ErpPurchaseSugg
                 .eqIfPresent(ErpPurchaseSuggestionDO::getStatus, reqVO.getStatus())
                 .eqIfPresent(ErpPurchaseSuggestionDO::getWarehouseId, reqVO.getWarehouseId())
                 .orderByDesc(ErpPurchaseSuggestionDO::getId);
-        ErpKeywordQuery.appendWithDeptName(wrapper, reqVO.getKeyword(), ErpPurchaseSuggestionDO::getNo);
+        ErpKeywordQuery.appendWithDeptNameAndProductItemsAndItemSupplier(wrapper, reqVO.getKeyword(),
+                "erp_purchase_suggestion", "erp_purchase_suggestion_item", "suggestion_id",
+                ErpPurchaseSuggestionDO::getNo);
         return selectPage(reqVO, wrapper);
     }
 

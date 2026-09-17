@@ -49,6 +49,10 @@ public class ErpPayableOtherDO extends BaseDO {
 
     private String sourceType;
 
+    private Long sourceId;
+
+    private String sourceNo;
+
     private Long handlerId;
 
     private String remark;

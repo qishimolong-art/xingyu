@@ -21,6 +21,7 @@ public class ErpSystemReportRankRespVO {
     private BigDecimal pendingQty;
     private BigDecimal stockQty;
     private BigDecimal stockAmount;
+    private Long lowStockSku;
     private Long count;
 
 }

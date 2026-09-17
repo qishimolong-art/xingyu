@@ -206,6 +206,37 @@ class ErpSettlementOffsetServiceImplTest extends BaseMockitoUnitTest {
     }
 
     @Test
+    void getSettlementOffsetDetail_sortsReceivableAndPayableByDeptName() {
+        ErpSettlementOffsetDetailReqVO reqVO = new ErpSettlementOffsetDetailReqVO();
+        reqVO.setCustomerId(1L);
+        reqVO.setSupplierId(11L);
+        reqVO.setReceivableOrderField("deptName");
+        reqVO.setReceivableOrderDirection("asc");
+        reqVO.setPayableOrderField("deptName");
+        reqVO.setPayableOrderDirection("desc");
+        ErpReceivableDetailRespVO receivableA = createReceivableDetail(1L, "YS-1", "10");
+        receivableA.setDeptName("销售二部");
+        ErpReceivableDetailRespVO receivableB = createReceivableDetail(2L, "YS-2", "10");
+        receivableB.setDeptName("销售一部");
+        ErpReceivableDetailRespVO receivableBlank = createReceivableDetail(3L, "YS-3", "10");
+        when(receivableAccountService.getReceivableDetailList(any(ErpReceivableDetailReqVO.class),
+                any(ErpFinanceVisibleScope.class))).thenReturn(Arrays.asList(receivableA, receivableBlank, receivableB));
+        ErpPayableDetailRespVO payableA = createPayableDetail(11L, "YF-1");
+        payableA.setDeptName("采购一部");
+        ErpPayableDetailRespVO payableB = createPayableDetail(12L, "YF-2");
+        payableB.setDeptName("采购三部");
+        when(payableAccountService.getPayableDetailList(any(ErpPayableDetailReqVO.class),
+                any(ErpFinanceVisibleScope.class))).thenReturn(Arrays.asList(payableA, payableB));
+
+        ErpSettlementOffsetDetailRespVO result = invokeDetailAsBranchUser(reqVO);
+
+        assertThat(result.getReceivableDetails()).extracting(ErpReceivableDetailRespVO::getBizId)
+                .containsExactly(2L, 1L, 3L);
+        assertThat(result.getPayableDetails()).extracting(ErpPayableDetailRespVO::getBizId)
+                .containsExactly(12L, 11L);
+    }
+
+    @Test
     void getSettlementOffsetDetail_rejectsUnknownFieldAndInvalidDirection() {
         ErpSettlementOffsetDetailReqVO reqVO = new ErpSettlementOffsetDetailReqVO();
         reqVO.setCustomerId(1L);

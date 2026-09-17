@@ -39,6 +39,12 @@ public class ErpSalePriceAdjustPageReqVO extends PageParam {
     @Schema(description = "产品编号", example = "1")
     private Long productId;
 
+    @Schema(description = "产品关键词")
+    private String productKeyword;
+
+    @Schema(description = "是否返回明细，默认 true 兼容旧逻辑")
+    private Boolean includeItems;
+
     @Schema(description = "调价时间")
     @DateTimeFormat(pattern = FORMAT_YEAR_MONTH_DAY_HOUR_MINUTE_SECOND)
     private LocalDateTime[] adjustDate;

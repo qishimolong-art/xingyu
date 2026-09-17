@@ -7,6 +7,7 @@ import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.customer.ErpCustomer
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.customer.ErpCustomerDeptDistributionRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.customer.ErpCustomerDeptDistributionSaveReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.customer.ErpCustomerImportExcelVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.customer.ErpCustomerImportRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.customer.ErpCustomerPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.customer.ErpCustomerSaveReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpCustomerDO;
@@ -139,6 +140,15 @@ public interface ErpCustomerService {
     PageResult<ErpCustomerDO> getCustomerPage(ErpCustomerPageReqVO pageReqVO);
 
     /**
+     * 获得指定状态的客户分页
+     *
+     * @param pageReqVO 分页查询
+     * @param status 状态
+     * @return 客户分页
+     */
+    PageResult<ErpCustomerDO> getCustomerPageByStatus(ErpCustomerPageReqVO pageReqVO, Integer status);
+
+    /**
      * 获得指定状态的客户列表
      *
      * @param status 状态
@@ -160,8 +170,9 @@ public interface ErpCustomerService {
      * 导入客户列表
      *
      * @param list 导入的客户列表
+     * @return 导入结果
      */
-    void importCustomerList(@Valid List<ErpCustomerImportExcelVO> list);
+    ErpCustomerImportRespVO importCustomerList(@Valid List<ErpCustomerImportExcelVO> list);
 
     /**
      * 批量编辑客户

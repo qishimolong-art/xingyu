@@ -1,8 +1,11 @@
 package cn.iocoder.yudao.module.erp.controller.admin.stock;
 
+import cn.iocoder.yudao.module.erp.service.stock.ErpStockItemPriceReferenceFiller;
 import cn.hutool.core.collection.CollUtil;
 import cn.iocoder.yudao.framework.apilog.core.annotation.ApiAccessLog;
+import cn.iocoder.yudao.framework.common.enums.CommonStatusEnum;
 import cn.iocoder.yudao.framework.common.pojo.CommonResult;
+import cn.iocoder.yudao.framework.common.pojo.PageParam;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.common.exception.ErrorCode;
 import cn.iocoder.yudao.framework.common.util.collection.MapUtils;
@@ -16,14 +19,20 @@ import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.move.ErpStockMoveIt
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.move.ErpStockMovePageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.move.ErpStockMoveRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.move.ErpStockMoveSaveReqVO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpCustomerDO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleCartDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockMoveDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockMoveItemDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpWarehouseDO;
+import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpSaleCartMapper;
+import cn.iocoder.yudao.module.erp.dal.mysql.stock.ErpStockMoveItemMapper;
 import cn.iocoder.yudao.module.erp.enums.print.ErpPrintModuleEnum;
+import cn.iocoder.yudao.module.erp.enums.sale.ErpSaleBizSourceTypeEnum;
 import cn.iocoder.yudao.module.erp.service.base.ErpDataPermissionDeptService;
 import cn.iocoder.yudao.module.erp.service.common.ErpPrintService;
 import cn.iocoder.yudao.module.erp.service.product.ErpProductService;
+import cn.iocoder.yudao.module.erp.service.sale.ErpCustomerService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpStockFieldPermissionMasker;
 import cn.iocoder.yudao.module.erp.service.stock.ErpStockMoveService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpStockService;
@@ -36,6 +45,7 @@ import cn.iocoder.yudao.module.system.api.dept.dto.DeptRespDTO;
 import cn.iocoder.yudao.module.system.api.user.AdminUserApi;
 import cn.iocoder.yudao.module.system.api.user.dto.AdminUserRespDTO;
 import cn.iocoder.yudao.module.system.controller.admin.dept.vo.dept.DeptSimpleRespVO;
+import cn.iocoder.yudao.module.system.controller.admin.user.vo.user.UserSimpleRespVO;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -71,6 +81,7 @@ import static cn.iocoder.yudao.framework.common.exception.util.ServiceExceptionU
 import static cn.iocoder.yudao.framework.common.pojo.CommonResult.success;
 import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.convertMultiMap;
 import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.convertMap;
+import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.convertList;
 import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.convertSet;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.STOCK_MOVE_LEGACY_READ_ONLY;
 
@@ -96,9 +107,17 @@ public class ErpStockMoveController {
     @Resource
     private ErpStockFieldPermissionMasker fieldPermissionMasker;
     @Resource
+    private ErpStockItemPriceReferenceFiller itemPriceReferenceFiller;
+    @Resource
     private ErpWarehouseService warehouseService;
     @Resource
     private ErpDataPermissionDeptService dataPermissionDeptService;
+    @Resource
+    private ErpStockMoveItemMapper stockMoveItemMapper;
+    @Resource
+    private ErpSaleCartMapper saleCartMapper;
+    @Resource
+    private ErpCustomerService customerService;
     @Resource
     private DeptApi deptApi;
     @Resource
@@ -201,7 +220,9 @@ public class ErpStockMoveController {
             fillUnlockCartPermission(vo, stockMove, itemList);
             fillUserNames(vo, userMap);
         });
+        fillDirectCustomerNamesIfStockTransferOut(fieldPermissionModule, Collections.singletonList(respVO));
         fillPrintInfoIfStockTransferOut(fieldPermissionModule, Collections.singletonList(respVO));
+        itemPriceReferenceFiller.fill(respVO.getItems());
         fieldPermissionMasker.maskFormWithItems(fieldPermissionModule, respVO);
         return success(respVO);
     }
@@ -217,8 +238,22 @@ public class ErpStockMoveController {
     public CommonResult<PageResult<ErpStockMoveRespVO.Item>> getStockMoveItemPage(
             ErpStockMoveItemPageReqVO pageReqVO, String fieldPermissionModule) {
         PageResult<ErpStockMoveItemDO> pageResult = stockMoveService.getStockMoveItemPage(pageReqVO);
+        return buildStockMoveItemPageResult(pageReqVO, fieldPermissionModule, pageResult);
+    }
+
+    public CommonResult<PageResult<ErpStockMoveRespVO.Item>> getStockMoveItemPageAfterVisibleCheck(
+            ErpStockMoveItemPageReqVO pageReqVO, String fieldPermissionModule) {
+        PageResult<ErpStockMoveItemDO> pageResult =
+                stockMoveService.getStockMoveItemPageWithoutMoveValidation(pageReqVO);
+        return buildStockMoveItemPageResult(pageReqVO, fieldPermissionModule, pageResult);
+    }
+
+    private CommonResult<PageResult<ErpStockMoveRespVO.Item>> buildStockMoveItemPageResult(
+            ErpStockMoveItemPageReqVO pageReqVO, String fieldPermissionModule,
+            PageResult<ErpStockMoveItemDO> pageResult) {
         PageResult<ErpStockMoveRespVO.Item> respResult = new PageResult<>(
                 buildStockMoveItemVOList(pageResult.getList(), true), pageResult.getTotal());
+        itemPriceReferenceFiller.fill(respResult.getList());
         if (Boolean.TRUE.equals(pageReqVO.getMask())) {
             fieldPermissionMasker.clearHiddenItemFields(fieldPermissionModule, respResult.getList());
         }
@@ -229,7 +264,24 @@ public class ErpStockMoveController {
     @Operation(summary = "Get stock move page")
     @PreAuthorize("@ss.hasPermission('erp:stock-move:query')")
     public CommonResult<PageResult<ErpStockMoveRespVO>> getStockMovePage(@Valid ErpStockMovePageReqVO pageReqVO) {
-        return success(buildStockMoveVOPageResult(stockMoveService.getStockMovePage(pageReqVO)));
+        PageResult<ErpStockMoveDO> pageResult = stockMoveService.getStockMovePage(pageReqVO);
+        return success(Boolean.FALSE.equals(pageReqVO.getIncludeItems())
+                ? buildStockMoveVOPageResultWithoutItems(pageResult, FIELD_PERMISSION_MODULE, null, false)
+                : buildStockMoveVOPageResult(pageResult));
+    }
+
+    @GetMapping("/dept-simple-page")
+    @Operation(summary = "Get visible department page for stock move filter")
+    @PreAuthorize("@ss.hasPermission('erp:stock-move:query')")
+    public CommonResult<PageResult<DeptSimpleRespVO>> getVisibleDeptSimplePage(@Valid PageParam pageReqVO) {
+        return success(dataPermissionDeptService.getDeptSimplePage(FIELD_PERMISSION_MODULE, pageReqVO));
+    }
+
+    @GetMapping("/user-simple-page")
+    @Operation(summary = "Get user page for stock move filter")
+    @PreAuthorize("@ss.hasPermission('erp:stock-move:query')")
+    public CommonResult<PageResult<UserSimpleRespVO>> getUserSimplePage(@Valid PageParam pageReqVO) {
+        return success(buildUserSimplePage(pageReqVO));
     }
 
     @GetMapping("/dept-simple-list")
@@ -285,6 +337,15 @@ public class ErpStockMoveController {
         return buildStockMoveVOPageResult(pageResult, fieldPermissionModule, transferOutPermissionScope, true);
     }
 
+    public PageResult<ErpStockMoveRespVO> buildStockMoveVOPageResult(
+            PageResult<ErpStockMoveDO> pageResult, String fieldPermissionModule,
+            ErpStockTransferOutPermissionScope transferOutPermissionScope, Boolean includeItems) {
+        return Boolean.FALSE.equals(includeItems)
+                ? buildStockMoveVOPageResultWithoutItems(
+                        pageResult, fieldPermissionModule, transferOutPermissionScope, true)
+                : buildStockMoveVOPageResult(pageResult, fieldPermissionModule, transferOutPermissionScope, true);
+    }
+
     private PageResult<ErpStockMoveRespVO> buildStockMoveVOPageResult(
             PageResult<ErpStockMoveDO> pageResult, String fieldPermissionModule,
             ErpStockTransferOutPermissionScope transferOutPermissionScope, boolean reuseTransferOutPermissionScope) {
@@ -332,9 +393,77 @@ public class ErpStockMoveController {
             fillMoveDeptNames(vo, deptMap);
             fillUserNames(vo, userMap);
         });
+        fillDirectCustomerNamesIfStockTransferOut(fieldPermissionModule, result.getList());
         fillPrintInfoIfStockTransferOut(fieldPermissionModule, result.getList());
         fieldPermissionMasker.maskListColumns(fieldPermissionModule, result.getList());
         return result;
+    }
+
+    private PageResult<ErpStockMoveRespVO> buildStockMoveVOPageResultWithoutItems(
+            PageResult<ErpStockMoveDO> pageResult, String fieldPermissionModule,
+            ErpStockTransferOutPermissionScope transferOutPermissionScope,
+            boolean reuseTransferOutPermissionScope) {
+        if (CollUtil.isEmpty(pageResult.getList())) {
+            return PageResult.empty(pageResult.getTotal());
+        }
+        Set<Long> moveIds = convertSet(pageResult.getList(), ErpStockMoveDO::getId);
+        List<ErpStockMoveItemDO> itemList = stockMoveItemMapper.selectLightListByMoveIds(moveIds);
+        Map<Long, List<ErpStockMoveItemDO>> itemMap = convertMultiMap(itemList, ErpStockMoveItemDO::getMoveId);
+        Map<Long, Map<String, Object>> summaryMap = stockMoveItemMapper.selectSummaryMapByMoveIds(moveIds);
+        Map<Long, ErpStockMoveDO> stockMoveMap = convertMap(pageResult.getList(), ErpStockMoveDO::getId);
+        Map<Long, DeptRespDTO> deptMap = getDeptMap(pageResult.getList(), itemList, Collections.emptyMap());
+        Map<Long, ErpStockMoveApprovePermission> approvePermissionMap = reuseTransferOutPermissionScope
+                ? stockMoveService.getApprovePermissionMap(
+                        pageResult.getList(), itemMap, transferOutPermissionScope)
+                : stockMoveService.getApprovePermissionMap(pageResult.getList(), itemMap);
+        Set<Long> userIds = new HashSet<>();
+        pageResult.getList().forEach(stockMove -> {
+            addUserId(userIds, stockMove.getCreator());
+            addUserId(userIds, stockMove.getUpdater());
+            if (stockMove.getApproveUserId() != null) {
+                userIds.add(stockMove.getApproveUserId());
+            }
+        });
+        Map<Long, AdminUserRespDTO> userMap = adminUserApi.getUserMap(userIds);
+        PageResult<ErpStockMoveRespVO> result = BeanUtils.toBean(pageResult, ErpStockMoveRespVO.class, vo -> {
+            fillSummary(vo, summaryMap.get(vo.getId()));
+            MapUtils.findAndThen(deptMap, vo.getDeptId(), dept -> vo.setDeptName(dept.getName()));
+            MapUtils.findAndThen(stockMoveMap, vo.getId(), stockMove -> {
+                List<ErpStockMoveItemDO> stockMoveItems = itemMap.get(vo.getId());
+                fillApprovePermission(vo, approvePermissionMap.get(vo.getId()));
+                fillDeletePermission(vo, stockMove, stockMoveItems);
+                fillUnlockCartPermission(vo, stockMove, stockMoveItems);
+            });
+            fillMoveDeptNames(vo, deptMap);
+            fillUserNames(vo, userMap);
+        });
+        fillDirectCustomerNamesIfStockTransferOut(fieldPermissionModule, result.getList());
+        fillPrintInfoIfStockTransferOut(fieldPermissionModule, result.getList());
+        fieldPermissionMasker.maskListColumns(fieldPermissionModule, result.getList());
+        return result;
+    }
+
+    private void fillSummary(ErpStockMoveRespVO vo, Map<String, Object> summary) {
+        if (summary == null) {
+            vo.setItemCount(0);
+            vo.setFromWarehouseNames("");
+            vo.setToWarehouseNames("");
+            return;
+        }
+        vo.setProductNames((String) summary.get("productNames"));
+        vo.setProductCodes((String) summary.get("productCodes"));
+        vo.setFromWarehouseNames((String) summary.get("fromWarehouseNames"));
+        vo.setToWarehouseNames((String) summary.get("toWarehouseNames"));
+        Object count = summary.get("itemCount");
+        vo.setItemCount(count instanceof Number ? ((Number) count).intValue() : 0);
+    }
+
+    public PageResult<UserSimpleRespVO> buildUserSimplePage(PageParam pageReqVO) {
+        PageResult<AdminUserRespDTO> page = adminUserApi.getUserSimplePage(
+                CommonStatusEnum.ENABLE.getStatus(), pageReqVO.getKeyword(), pageReqVO);
+        List<UserSimpleRespVO> list = convertList(page.getList(), user ->
+                new UserSimpleRespVO(user.getId(), user.getNickname(), user.getDeptId(), null));
+        return new PageResult<>(list, page.getTotal());
     }
 
     private void fillPrintInfoIfStockTransferOut(String fieldPermissionModule, List<ErpStockMoveRespVO> list) {
@@ -350,6 +479,39 @@ public class ErpStockMoveController {
             Long printCount = countMap.get(vo.getId());
             vo.setPrintCount(printCount == null ? 0 : printCount.intValue());
             vo.setLastPrintTime(lastPrintTimeMap.get(vo.getId()));
+        });
+    }
+
+    private void fillDirectCustomerNamesIfStockTransferOut(String fieldPermissionModule,
+                                                           List<ErpStockMoveRespVO> list) {
+        if (!FIELD_PERMISSION_MODULE_STOCK_TRANSFER_OUT.equals(fieldPermissionModule) || CollUtil.isEmpty(list)) {
+            return;
+        }
+        Set<Long> cartIds = convertSet(list, vo -> ErpSaleBizSourceTypeEnum.CART.getType().equals(vo.getSourceType())
+                ? vo.getSourceId() : null);
+        cartIds.remove(null);
+        if (CollUtil.isEmpty(cartIds)) {
+            return;
+        }
+        List<ErpSaleCartDO> carts = saleCartMapper.selectByIds(cartIds);
+        if (CollUtil.isEmpty(carts)) {
+            return;
+        }
+        Map<Long, ErpSaleCartDO> cartMap = convertMap(carts, ErpSaleCartDO::getId);
+        Set<Long> customerIds = convertSet(carts, ErpSaleCartDO::getCustomerId);
+        customerIds.remove(null);
+        Map<Long, ErpCustomerDO> customerMap = CollUtil.isEmpty(customerIds) ? Collections.emptyMap()
+                : DataPermissionUtils.executeIgnore(() -> customerService.getCustomerMap(customerIds));
+        list.forEach(vo -> {
+            if (!ErpSaleBizSourceTypeEnum.CART.getType().equals(vo.getSourceType()) || vo.getSourceId() == null) {
+                return;
+            }
+            ErpSaleCartDO cart = cartMap.get(vo.getSourceId());
+            if (cart == null || cart.getCustomerId() == null) {
+                return;
+            }
+            MapUtils.findAndThen(customerMap, cart.getCustomerId(),
+                    customer -> vo.setDirectCustomerName(customer.getName()));
         });
     }
 

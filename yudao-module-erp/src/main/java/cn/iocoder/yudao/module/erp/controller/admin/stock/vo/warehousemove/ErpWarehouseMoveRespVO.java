@@ -161,6 +161,18 @@ public class ErpWarehouseMoveRespVO {
         private Integer packageQty;
         private String fromShelf;
         private String toShelf;
+        private BigDecimal productPurchasePrice;
+        private BigDecimal salePrice;
+        private BigDecimal lastSalePrice;
+        private BigDecimal minPrice;
+        private BigDecimal referencePrice;
+        private BigDecimal retailPrice;
+        private BigDecimal lastPurchasePrice;
+        private Integer grossProfitRate;
+        private BigDecimal backupPrice1;
+        private BigDecimal wholesalePrice;
+        private BigDecimal sharePrice;
+        private Boolean priceVisible;
         private BigDecimal productPrice;
         private BigDecimal count;
         private BigDecimal totalPrice;

@@ -19,6 +19,12 @@ public class ErpSupplierImportExcelVO {
     @ExcelProperty("供应商编码")
     private String code;
 
+    @ExcelProperty("所属部门名称")
+    private String deptName;
+
+    @ExcelProperty("适用部门名称")
+    private String deptNames;
+
     @ExcelProperty("简称")
     private String shortName;
 

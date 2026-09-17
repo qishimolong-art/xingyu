@@ -31,6 +31,16 @@ public class ErpPayableDetailRespVO {
     @ExcelProperty("单据编号")
     private String docNo;
 
+    @Schema(description = "采购入库单是否被调过价")
+    private Boolean priceAdjusted;
+
+    @Schema(description = "部门 ID", example = "1")
+    private Long deptId;
+
+    @Schema(description = "部门名称", example = "采购部")
+    @ExcelProperty("所属部门")
+    private String deptName;
+
     @Schema(description = "上次余额")
     @ExcelProperty("上次余额")
     private BigDecimal prevBalance;

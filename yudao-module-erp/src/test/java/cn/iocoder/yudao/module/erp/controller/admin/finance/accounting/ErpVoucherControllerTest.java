@@ -1,5 +1,7 @@
 package cn.iocoder.yudao.module.erp.controller.admin.finance.accounting;
 
+import cn.iocoder.yudao.framework.common.enums.CommonStatusEnum;
+import cn.iocoder.yudao.framework.common.pojo.PageParam;
 import cn.iocoder.yudao.framework.common.pojo.CommonResult;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.test.core.ut.BaseMockitoUnitTest;
@@ -9,6 +11,9 @@ import cn.iocoder.yudao.module.erp.controller.admin.finance.accounting.vo.vouche
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.accounting.ErpVoucherDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.accounting.ErpVoucherItemDO;
 import cn.iocoder.yudao.module.erp.service.finance.accounting.ErpVoucherService;
+import cn.iocoder.yudao.module.system.api.user.AdminUserApi;
+import cn.iocoder.yudao.module.system.api.user.dto.AdminUserRespDTO;
+import cn.iocoder.yudao.module.system.controller.admin.user.vo.user.UserSimpleRespVO;
 import org.junit.jupiter.api.Test;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
@@ -29,6 +34,8 @@ public class ErpVoucherControllerTest extends BaseMockitoUnitTest {
 
     @Mock
     private ErpVoucherService voucherService;
+    @Mock
+    private AdminUserApi adminUserApi;
 
     // ==================== createVoucher ====================
 
@@ -156,6 +163,27 @@ public class ErpVoucherControllerTest extends BaseMockitoUnitTest {
         assertEquals(0, result.getCode());
         assertTrue(result.getData());
         verify(voucherService).processVoucher(eq(1L));
+    }
+
+    @Test
+    public void testGetUserSimplePage_returnsEnabledUserPage() {
+        PageParam pageReqVO = new PageParam();
+        pageReqVO.setKeyword("张");
+        AdminUserRespDTO user = new AdminUserRespDTO();
+        user.setId(9L);
+        user.setNickname("张三");
+        user.setDeptId(3L);
+        when(adminUserApi.getUserSimplePage(any(), any(), any()))
+                .thenReturn(new PageResult<>(Collections.singletonList(user), 1L));
+
+        CommonResult<PageResult<UserSimpleRespVO>> result = controller.getUserSimplePage(pageReqVO);
+
+        assertEquals(0, result.getCode());
+        assertEquals(1L, result.getData().getTotal());
+        assertEquals("张三", result.getData().getList().get(0).getNickname());
+        assertEquals(3L, result.getData().getList().get(0).getDeptId());
+        verify(adminUserApi).getUserSimplePage(
+                eq(CommonStatusEnum.ENABLE.getStatus()), eq("张"), eq(pageReqVO));
     }
 
 }

@@ -10,6 +10,10 @@ import cn.iocoder.yudao.module.erp.dal.mysql.finance.ErpFinanceSortUtils;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import org.apache.ibatis.annotations.Mapper;
 
+import java.util.Collection;
+import java.util.Collections;
+import java.util.List;
+
 @Mapper
 public interface ErpReceivableOtherMapper extends BaseMapperX<ErpReceivableOtherDO> {
 
@@ -24,7 +28,7 @@ public interface ErpReceivableOtherMapper extends BaseMapperX<ErpReceivableOther
                 .eqIfPresent(ErpReceivableOtherDO::getCreator, reqVO.getCreator())
                 .eqIfPresent(ErpReceivableOtherDO::getStatus, reqVO.getStatus())
                 .likeIfPresent(ErpReceivableOtherDO::getRemark, reqVO.getRemark());
-        ErpKeywordQuery.appendWithDeptName(wrapper, reqVO.getKeyword(),
+        ErpKeywordQuery.appendWithDeptNameAndCustomer(wrapper, reqVO.getKeyword(),
                 ErpReceivableOtherDO::getNo,
                 ErpReceivableOtherDO::getVoucherNo,
                 ErpReceivableOtherDO::getProject,
@@ -59,6 +63,16 @@ public interface ErpReceivableOtherMapper extends BaseMapperX<ErpReceivableOther
     default ErpReceivableOtherDO selectBySource(String sourceType, Long sourceId) {
         return selectOne(ErpReceivableOtherDO::getSourceType, sourceType,
                 ErpReceivableOtherDO::getSourceId, sourceId);
+    }
+
+    default List<ErpReceivableOtherDO> selectApprovedListBySourceIds(String sourceType, Collection<Long> sourceIds) {
+        if (sourceIds == null || sourceIds.isEmpty()) {
+            return Collections.emptyList();
+        }
+        return selectList(new LambdaQueryWrapperX<ErpReceivableOtherDO>()
+                .eq(ErpReceivableOtherDO::getStatus, 20)
+                .eq(ErpReceivableOtherDO::getSourceType, sourceType)
+                .in(ErpReceivableOtherDO::getSourceId, sourceIds));
     }
 
     default Long selectCountByCustomerId(Long customerId) {

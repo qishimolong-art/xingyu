@@ -149,9 +149,13 @@ public class AuthController {
     @GetMapping("/wecom-authorize-url")
     @PermitAll
     @Operation(summary = "企业微信 H5 免登授权地址")
-    @Parameter(name = "redirectUri", description = "回调路径", required = true)
-    public CommonResult<String> getWeComAuthorizeUrl(@RequestParam("redirectUri") String redirectUri) {
-        return success(authService.getWeComAuthorizeUrl(redirectUri));
+    @Parameters({
+            @Parameter(name = "redirectUri", description = "回调路径", required = true),
+            @Parameter(name = "clientKey", description = "企业微信应用配置 key")
+    })
+    public CommonResult<String> getWeComAuthorizeUrl(@RequestParam("redirectUri") String redirectUri,
+                                                     @RequestParam(value = "clientKey", required = false) String clientKey) {
+        return success(authService.getWeComAuthorizeUrl(redirectUri, clientKey));
     }
 
     @PostMapping("/wecom-silent-login")

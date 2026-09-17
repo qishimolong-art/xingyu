@@ -5,11 +5,18 @@ import cn.iocoder.yudao.framework.mybatis.core.mapper.BaseMapperX;
 import cn.iocoder.yudao.framework.mybatis.core.query.LambdaQueryWrapperX;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.out.ErpStockOutItemPageReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockOutItemDO;
+import cn.hutool.core.collection.CollUtil;
 import com.baomidou.mybatisplus.core.toolkit.support.SFunction;
 import org.apache.ibatis.annotations.Mapper;
+import org.apache.ibatis.annotations.Param;
+import org.apache.ibatis.annotations.Select;
 
 import java.util.Collection;
+import java.util.Collections;
 import java.util.List;
+import java.util.Map;
+
+import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.convertMap;
 
 /**
  * ERP 其它出库单项 Mapper
@@ -21,6 +28,11 @@ public interface ErpStockOutItemMapper extends BaseMapperX<ErpStockOutItemDO> {
 
     default List<ErpStockOutItemDO> selectListByOutId(Long outId) {
         return selectList(ErpStockOutItemDO::getOutId, outId);
+    }
+
+    default List<ErpStockOutItemDO> selectListByOutIdForUpdate(Long outId) {
+        return selectList(new LambdaQueryWrapperX<ErpStockOutItemDO>()
+                .eq(ErpStockOutItemDO::getOutId, outId).last("FOR UPDATE"));
     }
 
     default PageResult<ErpStockOutItemDO> selectPageByOutId(ErpStockOutItemPageReqVO reqVO) {
@@ -43,6 +55,31 @@ public interface ErpStockOutItemMapper extends BaseMapperX<ErpStockOutItemDO> {
     default List<ErpStockOutItemDO> selectListByOutIds(Collection<Long> outIds) {
         return selectList(ErpStockOutItemDO::getOutId, outIds);
     }
+
+    default Map<Long, Map<String, Object>> selectSummaryMapByOutIds(Collection<Long> outIds) {
+        if (CollUtil.isEmpty(outIds)) {
+            return Collections.emptyMap();
+        }
+        return convertMap(selectSummaryRowsByOutIds(outIds), row -> toLong(row.get("outId")), row -> row);
+    }
+
+    @Select({
+            "<script>",
+            "SELECT soi.out_id AS outId,",
+            "       COUNT(*) AS itemCount,",
+            "       GROUP_CONCAT(DISTINCT p.name ORDER BY p.name SEPARATOR ', ') AS productNames,",
+            "       GROUP_CONCAT(DISTINCT p.code ORDER BY p.code SEPARATOR ', ') AS productCodes,",
+            "       GROUP_CONCAT(DISTINCT w.name ORDER BY w.name SEPARATOR ', ') AS warehouseNames",
+            "  FROM erp_stock_out_item soi",
+            "  LEFT JOIN erp_product p ON p.id = soi.product_id AND p.deleted = b'0'",
+            "  LEFT JOIN erp_warehouse w ON w.id = soi.warehouse_id AND w.deleted = b'0'",
+            " WHERE soi.deleted = b'0'",
+            "   AND soi.out_id IN",
+            " <foreach collection='outIds' item='outId' open='(' separator=',' close=')'>#{outId}</foreach>",
+            " GROUP BY soi.out_id",
+            "</script>"
+    })
+    List<Map<String, Object>> selectSummaryRowsByOutIds(@Param("outIds") Collection<Long> outIds);
 
     default int deleteByOutId(Long outId) {
         return delete(ErpStockOutItemDO::getOutId, outId);
@@ -93,6 +130,10 @@ public interface ErpStockOutItemMapper extends BaseMapperX<ErpStockOutItemDO> {
             default:
                 return null;
         }
+    }
+
+    static Long toLong(Object value) {
+        return value instanceof Number ? ((Number) value).longValue() : null;
     }
 
 }

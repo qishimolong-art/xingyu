@@ -30,6 +30,7 @@ public class ErpStockTransferLedgerPageReqVO extends PageParam {
     private Long fromWarehouseId;
     private Long toWarehouseId;
     private Long productId;
+    private String productKeyword;
     private String transferOutNo;
     private String transferInNo;
     private String sourceNo;

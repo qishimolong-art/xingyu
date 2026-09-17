@@ -9,7 +9,6 @@ import lombok.Data;
 
 import javax.validation.Valid;
 import javax.validation.constraints.AssertTrue;
-import javax.validation.constraints.NotEmpty;
 import javax.validation.constraints.NotNull;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -64,7 +63,6 @@ public class ErpStockMoveSaveReqVO {
     private String fileUrl;
 
     @Schema(description = "Move items", requiredMode = Schema.RequiredMode.REQUIRED)
-    @NotEmpty(message = "Move items cannot be empty")
     @Valid
     private List<Item> items;
 
@@ -74,12 +72,13 @@ public class ErpStockMoveSaveReqVO {
         @Schema(description = "Move item id", example = "11756")
         private Long id;
 
+        @Schema(description = "Item operation: insert, update, delete", example = "update")
+        private String operation;
+
         @Schema(description = "From warehouse id", requiredMode = Schema.RequiredMode.REQUIRED, example = "3113")
-        @NotNull(message = "From warehouse id cannot be empty")
         private Long fromWarehouseId;
 
         @Schema(description = "To warehouse id", requiredMode = Schema.RequiredMode.REQUIRED, example = "888")
-        @NotNull(message = "To warehouse id cannot be empty")
         private Long toWarehouseId;
 
         @Schema(description = "From department id", example = "100")
@@ -89,7 +88,6 @@ public class ErpStockMoveSaveReqVO {
         private Long toDeptId;
 
         @Schema(description = "Product id", requiredMode = Schema.RequiredMode.REQUIRED, example = "3113")
-        @NotNull(message = "Product id cannot be empty")
         private Long productId;
 
         @Schema(description = "Package quantity", example = "12")
@@ -105,7 +103,6 @@ public class ErpStockMoveSaveReqVO {
         private BigDecimal productPrice;
 
         @Schema(description = "Product count", requiredMode = Schema.RequiredMode.REQUIRED, example = "100.00")
-        @NotNull(message = "Product count cannot be empty")
         private BigDecimal count;
 
         @Schema(description = "Remark", example = "remark")
@@ -141,7 +138,7 @@ public class ErpStockMoveSaveReqVO {
         @AssertTrue(message = "调出仓库和调入仓库不能相同")
         @JsonIgnore
         public boolean isWarehouseValid() {
-            return ObjectUtil.notEqual(fromWarehouseId, toWarehouseId);
+            return fromWarehouseId == null || toWarehouseId == null || ObjectUtil.notEqual(fromWarehouseId, toWarehouseId);
         }
 
     }

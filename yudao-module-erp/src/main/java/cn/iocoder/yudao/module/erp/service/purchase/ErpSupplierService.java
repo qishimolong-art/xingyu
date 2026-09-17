@@ -5,6 +5,7 @@ import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.supplier.ErpSupp
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.supplier.ErpSupplierDeptDistributionRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.supplier.ErpSupplierDeptDistributionSaveReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.supplier.ErpSupplierImportExcelVO;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.supplier.ErpSupplierImportRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.supplier.ErpSupplierPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.supplier.ErpSupplierSaveReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpSupplierDO;
@@ -128,6 +129,15 @@ public interface ErpSupplierService {
     PageResult<ErpSupplierDO> getSupplierPage(ErpSupplierPageReqVO pageReqVO);
 
     /**
+     * 获得指定状态的供应商分页
+     *
+     * @param pageReqVO 分页查询
+     * @param status 状态
+     * @return 供应商分页
+     */
+    PageResult<ErpSupplierDO> getSupplierPageByStatus(ErpSupplierPageReqVO pageReqVO, Integer status);
+
+    /**
      * 更新供应商开启状态
      *
      * @param id     编号
@@ -163,7 +173,8 @@ public interface ErpSupplierService {
      * 导入供应商列表
      *
      * @param list 导入的供应商列表
+     * @return 导入结果
      */
-    void importSupplierList(@Valid List<ErpSupplierImportExcelVO> list);
+    ErpSupplierImportRespVO importSupplierList(@Valid List<ErpSupplierImportExcelVO> list);
 
 }

@@ -11,6 +11,7 @@ import cn.iocoder.yudao.framework.common.util.number.MoneyUtils;
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.out.ErpSaleOutPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.out.ErpSaleOutItemPageReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.out.ErpSaleOutReturnableItemPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.out.ErpSaleReturnableItemRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.out.ErpSaleOutSaveReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.out.ErpSaleOutUpdateExpressFileReqVO;
@@ -40,7 +41,6 @@ import cn.iocoder.yudao.module.erp.enums.sale.ErpSaleBizSourceTypeEnum;
 import cn.iocoder.yudao.module.erp.service.common.ErpOperateLogService;
 import cn.iocoder.yudao.module.erp.service.common.ErpOriginalSettlementAmountUtils;
 import cn.iocoder.yudao.module.erp.service.finance.ErpAccountService;
-import cn.iocoder.yudao.module.erp.service.finance.accounting.ErpAutoVoucherBuilder;
 import cn.iocoder.yudao.module.erp.service.finance.accounting.ErpBookOpenService;
 import cn.iocoder.yudao.module.erp.service.finance.accounting.ErpVoucherService;
 import cn.iocoder.yudao.module.erp.service.product.ErpProductBatchNoValidator;
@@ -88,6 +88,8 @@ import static cn.iocoder.yudao.module.erp.enums.LogRecordConstants.*;
 @Service
 @Validated
 public class ErpSaleOutServiceImpl implements ErpSaleOutService {
+    @Resource
+    private cn.iocoder.yudao.module.erp.service.report.trade.ErpTradeSnapshotService tradeSnapshotService;
 
     private static final String FIELD_PERMISSION_MODULE = "erp_sale_out";
     private static final String EXPRESS_FILE_DIRECTORY = "erp/sale-out/express";
@@ -134,6 +136,8 @@ public class ErpSaleOutServiceImpl implements ErpSaleOutService {
     private ErpSaleFieldPermissionMasker fieldPermissionMasker;
     @Resource
     private ErpSaleDocumentDefaultService saleDocumentDefaultService;
+    @Resource
+    private ErpSalePickDeliveryService salePickDeliveryService;
 
     @Resource
     private AdminUserApi adminUserApi;
@@ -141,9 +145,6 @@ public class ErpSaleOutServiceImpl implements ErpSaleOutService {
     private DeptApi deptApi;
     @Resource
     private ErpOperateLogService operateLogService;
-
-    @Resource
-    private ErpAutoVoucherBuilder autoVoucherBuilder;
     @Resource
     private ErpVoucherService voucherService;
     @Resource
@@ -247,41 +248,37 @@ public class ErpSaleOutServiceImpl implements ErpSaleOutService {
 
         // 3. 自动审核，复用现有销售出库扣库存流水
         Long generatedSaleOutId = saleOutId;
-        if (Boolean.TRUE.equals(deferStockOutBill)) {
-            DataPermissionUtils.executeIgnore(
-                    () -> approveGeneratedSaleOutAndCreateStockOutBill(generatedSaleOutId, saleOut, saleOutItems));
-        } else {
-            DataPermissionUtils.executeIgnore(
-                    () -> updateSaleOutStatus(generatedSaleOutId, ErpAuditStatus.APPROVE.getStatus(), false));
-        }
+        // 销售领货已取消。旧五参调用仍兼容接收，但不得用 defer 或仓库历史开关跳过真实扣库。
+        DataPermissionUtils.executeIgnore(
+                () -> updateSaleOutStatus(generatedSaleOutId, ErpAuditStatus.APPROVE.getStatus(), false));
         recordCreate(generatedSaleOutId, saleOut.getNo());
         return generatedSaleOutId;
-    }
-
-    private void approveGeneratedSaleOutAndCreateStockOutBill(Long saleOutId, ErpSaleOutDO saleOut,
-                                                              List<ErpSaleOutItemDO> saleOutItems) {
-        int updateCount = saleOutMapper.updateByIdAndStatus(saleOutId, ErpAuditStatus.PROCESS.getStatus(),
-                new ErpSaleOutDO().setStatus(ErpAuditStatus.APPROVE.getStatus()));
-        if (updateCount == 0) {
-            throw exception(SALE_OUT_APPROVE_FAIL);
-        }
-        saleOut.setId(saleOutId).setStatus(ErpAuditStatus.APPROVE.getStatus());
-        stockOutBillService.createFromSaleOut(saleOut, saleOutItemMapper.selectListByOutId(saleOutId));
-        recordStatus(saleOutId, saleOut.getNo(), true);
     }
 
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void updateSaleOut(ErpSaleOutSaveReqVO updateReqVO) {
         // 1.1 校验存在
-        ErpSaleOutDO saleOut = validateSaleOutExists(updateReqVO.getId());
+        ErpSaleOutDO saleOut = validateSaleOutForUpdate(updateReqVO.getId());
         if (ErpAuditStatus.APPROVE.getStatus().equals(saleOut.getStatus())) {
             throw exception(SALE_OUT_UPDATE_FAIL_APPROVE, saleOut.getNo());
         }
         preserveHiddenFields(updateReqVO, saleOut);
-        List<ErpSaleOutItemDO> existingItems = saleOutItemMapper.selectListByOutId(updateReqVO.getId());
+        List<ErpSaleOutItemDO> existingItems = saleOutItemMapper.selectListByOutIdForUpdate(updateReqVO.getId());
         preserveHiddenItemFields(updateReqVO, updateReqVO.getItems(), existingItems);
-        preserveItemSourceSnapshots(updateReqVO.getItems(), existingItems);
+        boolean incrementalItems = ErpSaleItemOperationHelper.useIncrementalItems(updateReqVO.getItems(),
+                ErpSaleOutSaveReqVO.Item::getOperation, SALE_OUT_ITEM_OPERATION_INVALID);
+        ErpSaleItemOperationHelper.RequestChangeSet<ErpSaleOutSaveReqVO.Item> itemChangeSet = null;
+        List<ErpSaleOutSaveReqVO.Item> itemReqs = updateReqVO.getItems();
+        if (incrementalItems) {
+            itemChangeSet = ErpSaleItemOperationHelper.buildRequestChangeSet(updateReqVO.getItems(), existingItems,
+                    ErpSaleOutSaveReqVO.Item.class, ErpSaleOutSaveReqVO.Item::getId,
+                    ErpSaleOutSaveReqVO.Item::setId, ErpSaleOutSaveReqVO.Item::getOperation,
+                    ErpSaleOutItemDO::getId, SALE_OUT_ITEM_OPERATION_INVALID,
+                    SALE_OUT_ITEM_UPDATE_NOT_EXISTS);
+            itemReqs = itemChangeSet.getFinalItems();
+        }
+        preserveItemSourceSnapshots(itemReqs, existingItems);
         // 1.2 校验销售订单已审核
         ErpSaleOrderDO saleOrder = saleOrderService.validateSaleOrder(updateReqVO.getOrderId());
         customerService.validateCustomerForSale(saleOrder.getCustomerId(), saleOrder.getDeptId());
@@ -292,7 +289,7 @@ public class ErpSaleOutServiceImpl implements ErpSaleOutService {
             adminUserApi.validateUser(updateReqVO.getSaleUserId());
         }
         // 1.5 校验订单项的有效性
-        List<ErpSaleOutItemDO> saleOutItems = validateSaleOutItems(updateReqVO.getItems(), updateReqVO.getOrderId());
+        List<ErpSaleOutItemDO> saleOutItems = validateSaleOutItems(itemReqs, updateReqVO.getOrderId());
 
         // 2.1 更新出库
         ErpSaleOutDO updateObj = BeanUtils.toBean(updateReqVO, ErpSaleOutDO.class)
@@ -300,7 +297,11 @@ public class ErpSaleOutServiceImpl implements ErpSaleOutService {
         calculateTotalPrice(updateObj, saleOutItems);
         saleOutMapper.updateById(updateObj);
         // 2.2 更新出库项
-        updateSaleOutItemList(updateReqVO.getId(), saleOutItems);
+        if (incrementalItems) {
+            applySaleOutItemChangeSet(updateReqVO.getId(), itemChangeSet, saleOutItems);
+        } else {
+            updateSaleOutItemList(updateReqVO.getId(), saleOutItems);
+        }
 
         // 3.1 更新销售订单的出库数量
         if (updateObj.getOrderId() != null) {
@@ -432,7 +433,7 @@ public class ErpSaleOutServiceImpl implements ErpSaleOutService {
             throw exception(SALE_OUT_PROCESS_FAIL);
         }
         // 1.1 校验存在
-        ErpSaleOutDO saleOut = validateSaleOutExists(id);
+        ErpSaleOutDO saleOut = validateSaleOutForUpdate(id);
         // Validate status.
         if (!ErpAuditStatus.PROCESS.getStatus().equals(saleOut.getStatus())) {
             throw exception(SALE_OUT_APPROVE_FAIL);
@@ -446,36 +447,34 @@ public class ErpSaleOutServiceImpl implements ErpSaleOutService {
         }
 
         // 3. 变更库存
-        List<ErpSaleOutItemDO> saleOutItems = saleOutItemMapper.selectListByOutId(id);
+        List<ErpSaleOutItemDO> saleOutItems = saleOutItemMapper.selectListByOutIdForUpdate(id);
         List<Long> warehouseIds = convertList(saleOutItems, ErpSaleOutItemDO::getWarehouseId);
         if (validateCurrentUserWarehousePermission) {
             warehouseService.validSaleWarehouseList(warehouseIds);
         } else {
             warehouseService.validSaleSelectableWarehouseListForDept(
-                    warehouseIds, resolveSaleDeptId(saleOut, saleOutItems));
+                    warehouseIds, resolveSaleDeptId(saleOut, saleOutItems),
+                    ErpWarehouseService.SALE_OUT_ALL_PRODUCT_PERMISSION);
         }
         Integer bizType = ErpStockRecordBizTypeEnum.SALE_OUT.getType();
 
-        // 3.1 审批通过且销售凭证已开账时，先快照成本（必须前置于扣库存）
-        boolean enableVoucher = bookOpenService.isVoucherTypeEnabled(
-                saleOut.getOutTime().toLocalDate(), ErpVoucherTypeEnum.SALE.getType());
-        BigDecimal sumCost = BigDecimal.ZERO;
-        if (enableVoucher) {
-            for (ErpSaleOutItemDO item : saleOutItems) {
-                ErpStockDO stock = getStockIgnoreDataPermission(item.getProductId(), item.getWarehouseId());
-                BigDecimal cost = (stock != null && stock.getCostPrice() != null)
-                        ? stock.getCostPrice() : BigDecimal.ZERO;
-                sumCost = sumCost.add(cost.multiply(item.getCount()));
-            }
-        }
+        ErpSaleOutDO approvedSource = saleOutMapper.selectByIdForUpdate(id);
+        Map<Long, cn.iocoder.yudao.module.erp.service.report.trade.ErpTradeSnapshotService.PreparedTradeContext> tradeContexts =
+                tradeSnapshotService.prepareSaleOut(approvedSource, saleOutItems);
+        // 同一父单下的多个库存维度采用稳定顺序；source锁先于库存锁。
+        saleOutItems.sort(java.util.Comparator.comparing(ErpSaleOutItemDO::getProductId)
+                .thenComparing(ErpSaleOutItemDO::getWarehouseId).thenComparing(ErpSaleOutItemDO::getId));
 
+        // 凭证成本在生成页读取已完成业务的库存流水。
         // 3.2 Deduct stock.
         saleOutItems.forEach(saleOutItem -> {
             BigDecimal count = saleOutItem.getCount().negate();
             stockRecordService.createStockRecord(new ErpStockRecordCreateReqBO(
                     saleOutItem.getProductId(), saleOutItem.getWarehouseId(), saleOutItem.getBatchNo(), count,
                     bizType, saleOutItem.getOutId(), saleOutItem.getId(), saleOut.getNo(),
-                    saleOutItem.getProductPrice(), saleOut.getOutTime()));
+                    saleOutItem.getProductPrice(), saleOut.getOutTime())
+                    .setAccountingDeptId(saleOut.getDeptId()).setSourcePriceBasis("INCLUSIVE_UNCONFIRMED")
+                    .setTradeContext(tradeContexts.get(saleOutItem.getId())));
         });
         if (ErpSaleBizSourceTypeEnum.CART.getType().equals(saleOut.getSourceType())
                 && saleOut.getSourceId() != null) {
@@ -483,20 +482,9 @@ public class ErpSaleOutServiceImpl implements ErpSaleOutService {
         }
 
         // 4. 审批通过且已开账：生成销售凭证
-        if (enableVoucher) {
-            ErpCustomerDO customer = customerService.getCustomer(saleOut.getCustomerId());
-            String customerName = customer != null ? customer.getName() : "";
-            List<ErpVoucherItemDO> voucherItems = autoVoucherBuilder.buildSaleOutItems(
-                    saleOut, customerName, sumCost);
-            voucherService.createVoucherFromBiz(
-                    ErpVoucherSourceBizTypeEnum.SALE_OUT.getType(),
-                    saleOut.getId(),
-                    saleOut.getNo(),
-                    saleOut.getTotalPrice(),
-                    saleOut.getOutTime().toLocalDate(),
-                    "销售出库 - " + customerName,
-                    voucherItems);
-        }
+        // 业务审核仅更新业务状态；凭证由财务统一预览生成。
+
+        salePickDeliveryService.generateForSaleOut(id);
         recordStatus(id, saleOut.getNo(), true);
     }
 
@@ -537,7 +525,8 @@ public class ErpSaleOutServiceImpl implements ErpSaleOutService {
         List<Long> warehouseIds = convertList(list, ErpSaleOutSaveReqVO.Item::getWarehouseId);
         Map<Long, ErpWarehouseDO> warehouseMap = convertMap(
                 saleDeptId != null
-                        ? warehouseService.validSaleSelectableWarehouseListForDept(warehouseIds, saleDeptId)
+                        ? warehouseService.validSaleSelectableWarehouseListForDept(warehouseIds, saleDeptId,
+                                ErpWarehouseService.SALE_OUT_ALL_PRODUCT_PERMISSION)
                         : warehouseService.validSaleWarehouseList(warehouseIds),
                 ErpWarehouseDO::getId);
         Map<Long, ErpSaleOrderItemDO> orderItemMap = buildOrderItemMap(orderId);
@@ -625,7 +614,8 @@ public class ErpSaleOutServiceImpl implements ErpSaleOutService {
             throw exception(SALE_WAREHOUSE_DEPT_REQUIRED);
         }
         warehouseService.validateWarehouseSaleSelectableForDept(item.getWarehouseId(),
-                saleDeptId != null ? saleDeptId : item.getDeptId());
+                saleDeptId != null ? saleDeptId : item.getDeptId(),
+                ErpWarehouseService.SALE_OUT_ALL_PRODUCT_PERMISSION);
     }
 
     private Map<Long, ErpSaleOrderItemDO> buildOrderItemMap(Long orderId) {
@@ -723,7 +713,13 @@ public class ErpSaleOutServiceImpl implements ErpSaleOutService {
     @Transactional(rollbackFor = Exception.class)
     public void deleteSaleOut(List<Long> ids) {
         // 1. 校验不处于已审批
-        List<ErpSaleOutDO> saleOuts = saleOutMapper.selectByIds(ids);
+        List<ErpSaleOutDO> saleOuts = new java.util.ArrayList<>();
+        if (ids != null) {
+            ids.stream().filter(java.util.Objects::nonNull).distinct().sorted().forEach(id -> {
+                ErpSaleOutDO source = saleOutMapper.selectByIdForUpdate(id);
+                if (source != null) saleOuts.add(source);
+            });
+        }
         if (CollUtil.isEmpty(saleOuts)) {
             return;
         }
@@ -755,6 +751,12 @@ public class ErpSaleOutServiceImpl implements ErpSaleOutService {
             throw exception(SALE_OUT_NOT_EXISTS);
         }
         return saleOut;
+    }
+
+    private ErpSaleOutDO validateSaleOutForUpdate(Long id) {
+        ErpSaleOutDO source = saleOutMapper.selectByIdForUpdate(id);
+        if (source == null) throw exception(SALE_OUT_NOT_EXISTS);
+        return source;
     }
 
     @Override
@@ -814,6 +816,40 @@ public class ErpSaleOutServiceImpl implements ErpSaleOutService {
     public List<ErpSaleReturnableItemRespVO> getReturnableItemsByOutId(Long outId) {
         ErpSaleOutDO saleOut = validateSaleOut(outId);
         List<ErpSaleOutItemDO> items = saleOutItemMapper.selectListByOutId(outId);
+        return buildSaleReturnableItemVOList(saleOut, items);
+    }
+
+    private void applySaleOutItemChangeSet(Long outId,
+            ErpSaleItemOperationHelper.RequestChangeSet<ErpSaleOutSaveReqVO.Item> changeSet,
+            List<ErpSaleOutItemDO> finalItems) {
+        if (CollUtil.isNotEmpty(changeSet.getDeleteIds())) {
+            saleOutItemMapper.deleteByIds(changeSet.getDeleteIds());
+        }
+        List<ErpSaleOutItemDO> insertList = finalItems.stream()
+                .filter(item -> item.getId() == null)
+                .collect(Collectors.toList());
+        if (CollUtil.isNotEmpty(insertList)) {
+            insertList.forEach(item -> item.setOutId(outId));
+            saleOutItemMapper.insertBatch(insertList);
+        }
+        List<ErpSaleOutItemDO> updateList = finalItems.stream()
+                .filter(item -> item.getId() != null && changeSet.getUpdateIds().contains(item.getId()))
+                .collect(Collectors.toList());
+        if (CollUtil.isNotEmpty(updateList)) {
+            updateList.forEach(item -> item.setOutId(outId));
+            saleOutItemMapper.updateBatch(updateList);
+        }
+    }
+
+    @Override
+    public PageResult<ErpSaleReturnableItemRespVO> getReturnableItemPage(ErpSaleOutReturnableItemPageReqVO pageReqVO) {
+        ErpSaleOutDO saleOut = validateSaleOut(pageReqVO.getOutId());
+        PageResult<ErpSaleOutItemDO> pageResult = saleOutItemMapper.selectReturnableItemPage(pageReqVO);
+        return new PageResult<>(buildSaleReturnableItemVOList(saleOut, pageResult.getList()), pageResult.getTotal());
+    }
+
+    private List<ErpSaleReturnableItemRespVO> buildSaleReturnableItemVOList(
+            ErpSaleOutDO saleOut, List<ErpSaleOutItemDO> items) {
         if (CollUtil.isEmpty(items)) {
             return Collections.emptyList();
         }
@@ -822,7 +858,7 @@ public class ErpSaleOutServiceImpl implements ErpSaleOutService {
             returnedMap = saleReturnItemMapper.selectReturnedCountMapBySourceOutItemIds(
                     convertList(items, ErpSaleOutItemDO::getId));
         } else {
-            List<ErpSaleReturnDO> approvedReturns = saleReturnMapper.selectListBySourceOutId(outId);
+            List<ErpSaleReturnDO> approvedReturns = saleReturnMapper.selectListBySourceOutId(saleOut.getId());
             approvedReturns.removeIf(saleReturn -> !ErpAuditStatus.APPROVE.getStatus().equals(saleReturn.getStatus()));
             returnedMap = CollUtil.isEmpty(approvedReturns) ? Collections.emptyMap()
                     : saleReturnItemMapper.selectSourceOutItemCountSumMapByReturnIds(
@@ -838,7 +874,7 @@ public class ErpSaleOutServiceImpl implements ErpSaleOutService {
         Map<Long, DeptRespDTO> deptMap = CollUtil.isEmpty(deptIds) ? Collections.emptyMap() : deptApi.getDeptMap(deptIds);
         return items.stream().map(item -> {
             ErpSaleReturnableItemRespVO vo = new ErpSaleReturnableItemRespVO();
-            vo.setSourceOutId(outId);
+            vo.setSourceOutId(saleOut.getId());
             vo.setSourceOutItemId(item.getId());
             vo.setSourceOutNo(saleOut.getNo());
             vo.setCustomerId(saleOut.getCustomerId());
@@ -863,6 +899,7 @@ public class ErpSaleOutServiceImpl implements ErpSaleOutService {
             vo.setBatchNo(item.getBatchNo());
             MapUtils.findAndThen(deptMap, item.getDeptId(), dept -> vo.setDeptName(dept.getName()));
             vo.setProductPrice(item.getProductPrice());
+            vo.setTaxPercent(item.getTaxPercent());
             vo.setOutCount(item.getCount());
             BigDecimal returned = returnedMap.getOrDefault(item.getId(), BigDecimal.ZERO);
             vo.setReturnedCount(returned);

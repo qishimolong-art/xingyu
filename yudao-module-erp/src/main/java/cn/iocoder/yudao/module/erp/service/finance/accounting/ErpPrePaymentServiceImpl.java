@@ -42,8 +42,6 @@ public class ErpPrePaymentServiceImpl implements ErpPrePaymentService {
     @Resource
     private ErpNoRedisDAO noRedisDAO;
     @Resource
-    private ErpAutoVoucherBuilder autoVoucherBuilder;
-    @Resource
     private ErpVoucherService voucherService;
     @Resource
     private ErpBookOpenService bookOpenService;
@@ -146,22 +144,7 @@ public class ErpPrePaymentServiceImpl implements ErpPrePaymentService {
             throw exception(approve ? PRE_PAYMENT_APPROVE_FAIL : PRE_PAYMENT_PROCESS_FAIL);
         }
 
-        // 4. 审核通过：自动生成凭证
-        if (approve) {
-            java.time.LocalDate bizDate = prePayment.getBizTime() != null
-                    ? prePayment.getBizTime().toLocalDate() : java.time.LocalDate.now();
-            if (bookOpenService.isVoucherTypeEnabled(bizDate, ErpVoucherTypeEnum.PRE_PAYMENT.getType())) {
-                List<ErpVoucherItemDO> voucherItems = autoVoucherBuilder.buildPrePaymentItems(prePayment);
-                voucherService.createVoucherFromBiz(
-                        ErpVoucherSourceBizTypeEnum.PRE_PAYMENT.getType(),
-                        prePayment.getId(),
-                        prePayment.getNo(),
-                        prePayment.getActualAmount(),
-                        bizDate,
-                        "预付款 - " + (prePayment.getPartyName() != null ? prePayment.getPartyName() : ""),
-                        voucherItems);
-            }
-        }
+        // 财务在凭证生成页统一处理。
     }
 
     @Override

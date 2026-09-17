@@ -1,5 +1,6 @@
 package cn.iocoder.yudao.module.system.dal.mysql.user;
 
+import cn.iocoder.yudao.framework.common.pojo.PageParam;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.mybatis.core.mapper.BaseMapperX;
 import cn.iocoder.yudao.framework.mybatis.core.query.LambdaQueryWrapperX;
@@ -7,6 +8,7 @@ import cn.iocoder.yudao.module.system.controller.admin.user.vo.user.UserPageReqV
 import cn.iocoder.yudao.module.system.dal.dataobject.user.AdminUserDO;
 import com.baomidou.mybatisplus.core.toolkit.support.SFunction;
 import org.apache.ibatis.annotations.Mapper;
+import org.springframework.util.StringUtils;
 
 import java.util.Collection;
 import java.util.List;
@@ -51,6 +53,22 @@ public interface AdminUserMapper extends BaseMapperX<AdminUserDO> {
         }
         orderByIfPresent(wrapper, reqVO);
         return selectPage(reqVO, wrapper);
+    }
+
+    default PageResult<AdminUserDO> selectSimplePage(PageParam pageParam, Integer status, String keyword) {
+        LambdaQueryWrapperX<AdminUserDO> wrapper = new LambdaQueryWrapperX<AdminUserDO>()
+                .eqIfPresent(AdminUserDO::getStatus, status);
+        if (StringUtils.hasText(keyword)) {
+            wrapper.and(query -> query
+                    .like(AdminUserDO::getNickname, keyword)
+                    .or()
+                    .like(AdminUserDO::getUsername, keyword)
+                    .or()
+                    .like(AdminUserDO::getMobile, keyword));
+        }
+        wrapper.orderByAsc(AdminUserDO::getNickname);
+        wrapper.orderByDesc(AdminUserDO::getId);
+        return selectPage(pageParam, wrapper);
     }
 
     static void orderByIfPresent(LambdaQueryWrapperX<AdminUserDO> wrapper, UserPageReqVO reqVO) {

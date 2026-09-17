@@ -59,12 +59,13 @@ public class ErpFinanceReceiptSaveReqVO {
         @Schema(description = "收款项编号", example = "11756")
         private Long id;
 
+        @Schema(description = "明细操作类型：insert 新增，update 修改，delete 删除", example = "update")
+        private String operation;
+
         @Schema(description = "业务类型", requiredMode = Schema.RequiredMode.REQUIRED, example = "1")
-        @NotNull(message = "业务类型不能为空")
         private Integer bizType;
 
         @Schema(description = "业务编号", requiredMode = Schema.RequiredMode.REQUIRED, example = "11756")
-        @NotNull(message = "业务编号不能为空")
         private Long bizId;
 
         @Schema(description = "业务单号（草稿展示使用）", example = "XSCK202607270001")
@@ -74,11 +75,9 @@ public class ErpFinanceReceiptSaveReqVO {
         private BigDecimal totalPrice;
 
         @Schema(description = "已收金额，单位：分", requiredMode = Schema.RequiredMode.REQUIRED, example = "10000")
-        @NotNull(message = "已收金额不能为空")
         private BigDecimal receiptedPrice;
 
         @Schema(description = "本次收款，单位：分", requiredMode = Schema.RequiredMode.REQUIRED, example = "10000")
-        @NotNull(message = "本次收款不能为空")
         private BigDecimal receiptPrice;
 
         @Schema(description = "备注", example = "随便")

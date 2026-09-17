@@ -62,6 +62,9 @@ public class ErpPurchaseInvoiceSaveReqVO {
         @Schema(description = "明细编号", example = "1")
         private Long id;
 
+        @Schema(description = "明细操作类型：insert 新增，update 修改，delete 删除", example = "update")
+        private String operation;
+
         @Schema(description = "来源入库单编号", example = "100")
         private Long sourceInId;
 

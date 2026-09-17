@@ -22,6 +22,9 @@ public class ErpAccountTransactionRespVO {
     @Schema(description = "金额")
     private BigDecimal amount;
 
+    @Schema(description = "该笔交易后的账户余额")
+    private BigDecimal balance;
+
     @Schema(description = "交易时间")
     private LocalDateTime transactionTime;
 

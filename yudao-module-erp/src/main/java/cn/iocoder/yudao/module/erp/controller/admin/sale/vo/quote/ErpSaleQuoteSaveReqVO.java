@@ -4,7 +4,6 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Data;
 
 import javax.validation.Valid;
-import javax.validation.constraints.NotEmpty;
 import javax.validation.constraints.NotNull;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -121,7 +120,6 @@ public class ErpSaleQuoteSaveReqVO {
     private String internalRemark;
 
     @Valid
-    @NotEmpty(message = "报价明细不能为空")
     @Schema(description = "报价清单列表")
     private List<Item> items;
 
@@ -131,13 +129,14 @@ public class ErpSaleQuoteSaveReqVO {
         @Schema(description = "报价项编号")
         private Long id;
 
+        @Schema(description = "明细操作类型：insert 新增，update 修改，delete 删除")
+        private String operation;
+
         @Schema(description = "仓库编号")
-        @NotNull(message = "仓库编号不能为空")
         private Long warehouseId;
         private Long deptId;
 
         @Schema(description = "产品编号", requiredMode = Schema.RequiredMode.REQUIRED)
-        @NotNull(message = "产品编号不能为空")
         private Long productId;
 
         @Schema(description = "产品单价")
@@ -150,7 +149,6 @@ public class ErpSaleQuoteSaveReqVO {
         private Integer packageQty;
 
         @Schema(description = "产品数量", requiredMode = Schema.RequiredMode.REQUIRED)
-        @NotNull(message = "产品数量不能为空")
         private BigDecimal count;
 
         @Schema(description = "是否赠品", example = "false")

@@ -2,6 +2,7 @@ package cn.iocoder.yudao.module.erp.service.sale;
 
 import cn.hutool.core.collection.CollUtil;
 import cn.iocoder.yudao.framework.common.exception.ServiceException;
+import cn.iocoder.yudao.framework.common.pojo.PageParam;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.common.enums.CommonStatusEnum;
 import cn.iocoder.yudao.framework.common.util.json.JsonUtils;
@@ -77,6 +78,7 @@ import javax.annotation.Resource;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.Collection;
+import java.util.Comparator;
 import java.util.Collections;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
@@ -113,6 +115,8 @@ public class ErpSaleCartServiceImpl implements ErpSaleCartService {
 
     @Resource
     private ErpSaleCartMapper saleCartMapper;
+    @Resource
+    private ErpSaleCartTransferLinkService saleCartTransferLinkService;
     @Resource
     private ErpSaleCartItemMapper saleCartItemMapper;
     @Resource
@@ -153,6 +157,8 @@ public class ErpSaleCartServiceImpl implements ErpSaleCartService {
     private ErpSaleItemBatchUpdateSupport batchUpdateSupport;
     @Resource
     private ErpSalePriceLevelPricePicker priceLevelPricePicker;
+    @Resource
+    private ErpSalePriceLevelPermissionValidator priceLevelPermissionValidator;
     @Resource
     private ErpSaleDocumentDefaultService saleDocumentDefaultService;
     @Resource
@@ -252,6 +258,8 @@ public class ErpSaleCartServiceImpl implements ErpSaleCartService {
             if (CollUtil.isEmpty(itemReqs)) {
                 throw exception(SALE_CART_DRAFT_ITEMS_REQUIRED);
             }
+        } else if (CollUtil.isEmpty(itemReqs)) {
+            throw exception(SALE_CART_ITEMS_EMPTY);
         }
         List<ErpSaleCartItemDO> items = CollUtil.isEmpty(itemReqs)
                 ? Collections.emptyList() : (draft
@@ -264,7 +272,7 @@ public class ErpSaleCartServiceImpl implements ErpSaleCartService {
         if (isMallOrderSource(preserveSource, sourceType)) {
             fillMallDefaultAuditFields(cart, items);
         }
-        saleCartMapper.insert(cart);
+        saleCartTransferLinkService.insertCart(cart);
         if (CollUtil.isNotEmpty(items)) {
             items.forEach(item -> item.setCartId(cart.getId()));
             saleCartItemMapper.insertBatch(items);
@@ -304,8 +312,9 @@ public class ErpSaleCartServiceImpl implements ErpSaleCartService {
     }
 
     @Override
+    @Transactional(rollbackFor = Exception.class)
     public void updateSaleCartRemark(ErpSaleUpdateRemarkReqVO updateReqVO) {
-        ErpSaleCartDO cart = validateSaleCartExists(updateReqVO.getId());
+        ErpSaleCartDO cart = validateSaleCartForUpdate(updateReqVO.getId());
         saleCartMapper.updateById(new ErpSaleCartDO()
                 .setId(updateReqVO.getId())
                 .setRemark(updateReqVO.getRemark()));
@@ -330,16 +339,16 @@ public class ErpSaleCartServiceImpl implements ErpSaleCartService {
         batchUpdateSupport.validateFieldPermission(FIELD_PERMISSION_MODULE,
                 updateWarehouse, updateDept, updatePrice,
                 SALE_CART_ITEM_BATCH_UPDATE_FIELD_DENIED);
-        ErpSaleCartDO cart = validateSaleCartExists(updateReqVO.getCartId());
+        ErpSaleCartDO cart = validateSaleCartForUpdate(updateReqVO.getCartId());
         if (!isBeforeFirstApprove(cart.getStatus())) {
             throw exception(SALE_CART_UPDATE_FAIL_NOT_PROCESS, cart.getNo());
         }
-        if (stockMoveService.hasUnapprovedTransferOutBySource(ErpSaleBizSourceTypeEnum.CART.getType(), cart.getId())
-                || stockMoveService.hasApprovedTransferOutBySource(ErpSaleBizSourceTypeEnum.CART.getType(), cart.getId())) {
+        if (hasUnapprovedCartTransfer(ErpSaleBizSourceTypeEnum.CART.getType(), cart.getId())
+                || hasApprovedCartTransfer(ErpSaleBizSourceTypeEnum.CART.getType(), cart.getId())) {
             throw exception(SALE_CART_ITEM_BATCH_UPDATE_TRANSFER_EXISTS, cart.getNo());
         }
 
-        List<ErpSaleCartItemDO> cartItems = saleCartItemMapper.selectListByCartId(updateReqVO.getCartId());
+        List<ErpSaleCartItemDO> cartItems = currentCartItems(updateReqVO.getCartId());
         Map<Long, ErpSaleCartItemDO> itemMap = convertMap(cartItems, ErpSaleCartItemDO::getId);
         List<ErpSaleCartItemDO> selectedItems = new ArrayList<>();
         for (Long itemId : new LinkedHashSet<>(updateReqVO.getItemIds())) {
@@ -365,8 +374,9 @@ public class ErpSaleCartServiceImpl implements ErpSaleCartService {
         }
 
         Map<Long, BigDecimal> productPriceMap = updatePrice
-                ? priceLevelPricePicker.pickProductPriceMap(convertSet(selectedItems, ErpSaleCartItemDO::getProductId),
-                updateReqVO.getPriceLevel()) : Collections.emptyMap();
+                ? pickBatchProductPriceMap(convertSet(selectedItems, ErpSaleCartItemDO::getProductId), updateReqVO,
+                cart.getDeptId())
+                : Collections.emptyMap();
         ErpWarehouseDO finalTargetWarehouse = targetWarehouse;
         Long finalTargetDeptId = targetDeptId;
         selectedItems.forEach(item -> {
@@ -404,8 +414,15 @@ public class ErpSaleCartServiceImpl implements ErpSaleCartService {
         recordUpdate(updateReqVO.getCartId(), cart.getNo());
     }
 
+    private Map<Long, BigDecimal> pickBatchProductPriceMap(Set<Long> productIds,
+                                                           ErpSaleCartItemBatchUpdateReqVO updateReqVO,
+                                                           Long businessDeptId) {
+        priceLevelPermissionValidator.validateSelectablePriceLevel(updateReqVO.getPriceLevel(), businessDeptId);
+        return priceLevelPricePicker.pickProductPriceMap(productIds, updateReqVO.getPriceLevel());
+    }
+
     private void updateSaleCart(ErpSaleCartSaveReqVO updateReqVO, boolean draft) {
-        ErpSaleCartDO cart = validateSaleCartExists(updateReqVO.getId());
+        ErpSaleCartDO cart = validateSaleCartForUpdate(updateReqVO.getId());
         if (draft
                 ? !ErpSaleCartStatusEnum.PROCESS.getStatus().equals(cart.getStatus())
                 : !isBeforeFirstApprove(cart.getStatus())) {
@@ -413,7 +430,19 @@ public class ErpSaleCartServiceImpl implements ErpSaleCartService {
         }
         preserveHiddenFields(updateReqVO, cart);
         List<ErpSaleCartSaveReqVO.Item> itemReqs = updateReqVO.getItems();
-        preserveHiddenItemFields(updateReqVO, itemReqs, saleCartItemMapper.selectListByCartId(updateReqVO.getId()));
+        List<ErpSaleCartItemDO> oldItems = saleCartItemMapper.selectListByCartIdForUpdate(updateReqVO.getId());
+        preserveHiddenItemFields(updateReqVO, itemReqs, oldItems);
+        boolean incrementalItems = ErpSaleItemOperationHelper.useIncrementalItems(itemReqs,
+                ErpSaleCartSaveReqVO.Item::getOperation, SALE_CART_ITEM_OPERATION_INVALID);
+        ErpSaleItemOperationHelper.RequestChangeSet<ErpSaleCartSaveReqVO.Item> itemChangeSet = null;
+        if (incrementalItems) {
+            itemChangeSet = ErpSaleItemOperationHelper.buildRequestChangeSet(itemReqs, oldItems,
+                    ErpSaleCartSaveReqVO.Item.class, ErpSaleCartSaveReqVO.Item::getId,
+                    ErpSaleCartSaveReqVO.Item::setId, ErpSaleCartSaveReqVO.Item::getOperation,
+                    ErpSaleCartItemDO::getId, SALE_CART_ITEM_OPERATION_INVALID,
+                    SALE_CART_ITEM_UPDATE_NOT_EXISTS);
+            itemReqs = itemChangeSet.getFinalItems();
+        }
         ErpSaleCartDO updateObj = BeanUtils.toBean(updateReqVO, ErpSaleCartDO.class);
         updateObj.setCartTime(LocalDateTime.now());
         Long saleDeptId = updateObj.getDeptId() != null ? updateObj.getDeptId() : cart.getDeptId();
@@ -432,6 +461,9 @@ public class ErpSaleCartServiceImpl implements ErpSaleCartService {
         if (draft && CollUtil.isNotEmpty(itemReqs)) {
             itemReqs = filterDraftItems(itemReqs);
         }
+        if (!draft && CollUtil.isEmpty(itemReqs)) {
+            throw exception(SALE_CART_ITEMS_EMPTY);
+        }
         List<ErpSaleCartItemDO> items = CollUtil.isEmpty(itemReqs)
                 ? Collections.emptyList() : (draft
                 ? validateSaleCartDraftItems(itemReqs, saleDeptId)
@@ -441,13 +473,17 @@ public class ErpSaleCartServiceImpl implements ErpSaleCartService {
             validateFreightFinanceFields(updateObj);
         }
         saleCartMapper.updateById(updateObj);
-        saleCartItemMapper.deleteByCartId(updateReqVO.getId());
-        items.forEach(item -> {
-            item.setId(null);
-            item.setCartId(updateReqVO.getId());
-        });
-        if (CollUtil.isNotEmpty(items)) {
-            saleCartItemMapper.insertBatch(items);
+        if (incrementalItems) {
+            applySaleCartItemChangeSet(updateReqVO.getId(), itemChangeSet, items);
+        } else {
+            saleCartItemMapper.deleteByCartId(updateReqVO.getId());
+            items.forEach(item -> {
+                item.setId(null);
+                item.setCartId(updateReqVO.getId());
+            });
+            if (CollUtil.isNotEmpty(items)) {
+                saleCartItemMapper.insertBatch(items);
+            }
         }
         if (ErpSaleCartStatusEnum.SUBMITTED.getStatus().equals(cart.getStatus())) {
             validateStockEnoughRealtime(items);
@@ -455,10 +491,32 @@ public class ErpSaleCartServiceImpl implements ErpSaleCartService {
         recordUpdate(updateReqVO.getId(), cart.getNo());
     }
 
+    private void applySaleCartItemChangeSet(Long cartId,
+            ErpSaleItemOperationHelper.RequestChangeSet<ErpSaleCartSaveReqVO.Item> changeSet,
+            List<ErpSaleCartItemDO> finalItems) {
+        if (CollUtil.isNotEmpty(changeSet.getDeleteIds())) {
+            saleCartItemMapper.deleteByIds(changeSet.getDeleteIds());
+        }
+        List<ErpSaleCartItemDO> insertList = finalItems.stream()
+                .filter(item -> item.getId() == null)
+                .collect(Collectors.toList());
+        if (CollUtil.isNotEmpty(insertList)) {
+            insertList.forEach(item -> item.setId(null).setCartId(cartId));
+            saleCartItemMapper.insertBatch(insertList);
+        }
+        List<ErpSaleCartItemDO> updateList = finalItems.stream()
+                .filter(item -> item.getId() != null && changeSet.getUpdateIds().contains(item.getId()))
+                .collect(Collectors.toList());
+        if (CollUtil.isNotEmpty(updateList)) {
+            updateList.forEach(item -> item.setCartId(cartId));
+            saleCartItemMapper.updateBatch(updateList);
+        }
+    }
+
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void updateSaleCartBasic(ErpSaleCartUpdateBasicReqVO updateReqVO) {
-        ErpSaleCartDO cart = validateSaleCartExists(updateReqVO.getId());
+        ErpSaleCartDO cart = validateSaleCartForUpdate(updateReqVO.getId());
         if (!ErpSaleCartStatusEnum.FINAL_APPROVE.getStatus().equals(cart.getStatus())
                 && !ErpSaleCartStatusEnum.GENERATED_SALE_OUT.getStatus().equals(cart.getStatus())) {
             throw exception(SALE_CART_UPDATE_BASIC_FAIL_STATUS, cart.getNo());
@@ -477,8 +535,8 @@ public class ErpSaleCartServiceImpl implements ErpSaleCartService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public ErpSaleCartSubmitRespVO submitSaleCart(Long id) {
-        ErpSaleCartDO cart = validateSaleCartExists(id);
-        List<ErpSaleCartItemDO> items = saleCartItemMapper.selectListByCartId(id);
+        ErpSaleCartDO cart = validateSaleCartForUpdate(id);
+        List<ErpSaleCartItemDO> items = currentCartItems(id);
         normalizeItemDeptIdByCartDept(cart, items);
         ErpSaleCartSubmitRespVO result = buildSubmitResult(cart, items);
         if (CollUtil.isNotEmpty(result.getShortageItems())) {
@@ -498,11 +556,11 @@ public class ErpSaleCartServiceImpl implements ErpSaleCartService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void createCrossDeptTransferOutDraftByCartId(Long cartId) {
-        ErpSaleCartDO cart = validateSaleCartExists(cartId);
+        ErpSaleCartDO cart = validateSaleCartForUpdate(cartId);
         if (!ErpSaleCartStatusEnum.FIRST_APPROVE.getStatus().equals(cart.getStatus())) {
             throw exception(SALE_CART_FIRST_APPROVE_FAIL);
         }
-        List<ErpSaleCartItemDO> items = saleCartItemMapper.selectListByCartId(cartId);
+        List<ErpSaleCartItemDO> items = currentCartItems(cartId);
         normalizeItemDeptIdByCartDept(cart, items);
         createTransferOutDraft(cart, items);
     }
@@ -514,11 +572,11 @@ public class ErpSaleCartServiceImpl implements ErpSaleCartService {
         if (!Boolean.TRUE.equals(config.getEnabled())) {
             throw exception(SALE_CART_FIRST_APPROVE_DISABLED);
         }
-        ErpSaleCartDO cart = validateSaleCartExists(id);
+        ErpSaleCartDO cart = validateSaleCartForUpdate(id);
         if (!isFirstApproveRequiredForDept(config, cart.getDeptId())) {
             throw exception(SALE_CART_FIRST_APPROVE_DEPT_UNAUTHORIZED);
         }
-        List<ErpSaleCartItemDO> items = saleCartItemMapper.selectListByCartId(id);
+        List<ErpSaleCartItemDO> items = currentCartItems(id);
         normalizeItemDeptIdByCartDept(cart, items);
         validateStockEnoughRealtime(items);
         lockSaleCartStock(cart, items);
@@ -534,14 +592,14 @@ public class ErpSaleCartServiceImpl implements ErpSaleCartService {
     }
 
     private List<Long> doFinalApproveSaleCart(Long id, Long finalApproveUserId) {
-        ErpSaleCartDO cart = validateSaleCartExists(id);
+        ErpSaleCartDO cart = validateSaleCartForUpdate(id);
         Integer oldStatus = resolveFinalApproveOldStatus(cart);
         int claimCount = saleCartMapper.updateByIdAndStatus(id, oldStatus,
                 new ErpSaleCartDO().setStatus(ErpSaleCartStatusEnum.FINAL_APPROVE.getStatus()));
         if (claimCount == 0) {
             throw exception(SALE_CART_FINAL_APPROVE_FAIL);
         }
-        List<ErpSaleCartItemDO> items = saleCartItemMapper.selectListByCartId(id);
+        List<ErpSaleCartItemDO> items = currentCartItems(id);
         normalizeItemDeptIdByCartDept(cart, items);
         // 终审时实时校验库存，不依赖缓存的 stockCount。
         // The cart has already been claimed as FINAL_APPROVE, so it is no longer included in occupied stock.
@@ -549,35 +607,14 @@ public class ErpSaleCartServiceImpl implements ErpSaleCartService {
         validateStockEnoughRealtime(finalItems, false, cart.getDeptId());
         validateFreightFinanceFields(cart);
         Set<Long> warehouseIds = convertSet(finalItems, ErpSaleCartItemDO::getWarehouseId);
-        Map<Long, ErpWarehouseDO> warehouseMap = convertMap(
-                warehouseService.validSaleSelectableWarehouseListForDept(warehouseIds, cart.getDeptId()),
-                ErpWarehouseDO::getId);
-        boolean stockBillEnabled = warehouseMap.values().stream()
-                .anyMatch(warehouse -> Boolean.TRUE.equals(warehouse.getStockBillEnabled()));
+        warehouseService.validSaleSelectableWarehouseListForDept(warehouseIds, cart.getDeptId(),
+                ErpWarehouseService.SALE_CART_ALL_PRODUCT_PERMISSION);
         Long saleOutId = saleOutService.createGeneratedSaleOut(buildSaleOutReqVO(cart, finalItems),
-                ErpSaleBizSourceTypeEnum.CART.getType(), cart.getId(), cart.getNo(), stockBillEnabled);
+                ErpSaleBizSourceTypeEnum.CART.getType(), cart.getId(), cart.getNo(), false);
         createFreightFinanceDraft(cart);
-        if (stockBillEnabled) {
-            // 出库凭证已接管待出库占用，释放手推车库存锁，避免重复占用。
-            stockLockService.unlockStock(ErpSaleBizSourceTypeEnum.CART.getType(), cart.getId());
-        }
+        // 普通销售审核已通过 deductStock 释放本手推车锁；此处不再重复释放或扣实物。
         List<Long> saleOutIds = new ArrayList<>();
         saleOutIds.add(saleOutId);
-        /*
-         * 原逻辑：按仓库拆分生成销售单。业务目前要求一张手推车只生成一张销售单，后续如果恢复拆单可启用该逻辑。
-        Map<Long, List<ErpSaleCartItemDO>> itemsByWarehouse = items.stream()
-                .collect(Collectors.groupingBy(ErpSaleCartItemDO::getWarehouseId, LinkedHashMap::new, Collectors.toList()));
-        Map<Long, ErpWarehouseDO> warehouseMap = convertMap(
-                warehouseService.validSaleWarehouseList(itemsByWarehouse.keySet()), ErpWarehouseDO::getId);
-        List<Long> saleOutIds = new ArrayList<>();
-        for (Map.Entry<Long, List<ErpSaleCartItemDO>> entry : itemsByWarehouse.entrySet()) {
-            ErpWarehouseDO warehouse = warehouseMap.get(entry.getKey());
-            boolean stockBillEnabled = warehouse != null && Boolean.TRUE.equals(warehouse.getStockBillEnabled());
-            Long saleOutId = saleOutService.createGeneratedSaleOut(buildSaleOutReqVO(cart, entry.getValue()),
-                    ErpSaleBizSourceTypeEnum.CART.getType(), cart.getId(), cart.getNo(), stockBillEnabled);
-            saleOutIds.add(saleOutId);
-        }
-         */
         int updateCount = saleCartMapper.updateByIdAndStatus(id, ErpSaleCartStatusEnum.FINAL_APPROVE.getStatus(),
                 new ErpSaleCartDO().setStatus(ErpSaleCartStatusEnum.GENERATED_SALE_OUT.getStatus())
                         .setFinalAuditTime(LocalDateTime.now())
@@ -641,16 +678,42 @@ public class ErpSaleCartServiceImpl implements ErpSaleCartService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void cancelFirstApproveSaleCart(Long id) {
-        ErpSaleCartDO cart = validateSaleCartExists(id);
+        ErpSaleCartDO cart = validateSaleCartForUpdate(id);
         doCancelFirstApproveSaleCart(cart);
     }
 
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void unlockSaleCartByTransferOutId(Long transferOutId) {
-        ErpStockMoveDO transferOut = stockMoveService.getStockMoveForUpdate(transferOutId);
-        if (transferOut == null) {
+        ErpStockMoveDO observed = stockMoveService.getStockMove(transferOutId);
+        if (observed == null) {
             throw exception(STOCK_MOVE_NOT_EXISTS);
+        }
+        if (!ErpSaleBizSourceTypeEnum.CART.getType().equals(observed.getSourceType())) {
+            throw exception(STOCK_MOVE_UNLOCK_NOT_CART_SOURCE);
+        }
+        if (observed.getSourceId() == null) {
+            throw exception(STOCK_MOVE_UNLOCK_SOURCE_ID_MISSING);
+        }
+        if (observed.getTransferDirection() != null
+                && !Integer.valueOf(TRANSFER_DIRECTION_OUT).equals(observed.getTransferDirection())) {
+            throw exception(STOCK_MOVE_UNLOCK_NOT_TRANSFER_OUT);
+        }
+        if (!ErpAuditStatus.PROCESS.getStatus().equals(observed.getStatus())) {
+            throw exception(STOCK_MOVE_UNLOCK_APPROVED);
+        }
+        ErpStockMoveOperationPermission observedPermission = stockMoveService.getUnlockCartPermission(
+                observed, stockMoveService.getStockMoveItemListByMoveId(transferOutId));
+        if (!Boolean.TRUE.equals(observedPermission.getAllowed())) {
+            throw exception(STOCK_MOVE_UNLOCK_CROSS_DEPT_DENIED);
+        }
+        // 与调拨审批同序：先手推车、再调拨、最后库存；锁后重新核对来源。
+        ErpSaleCartDO cart = validateSaleCartForUpdate(observed.getSourceId());
+        ErpStockMoveDO transferOut = stockMoveService.getStockMoveForUpdate(transferOutId);
+        if (transferOut == null || !Objects.equals(observed.getSourceType(), transferOut.getSourceType())
+                || !Objects.equals(observed.getSourceId(), transferOut.getSourceId())) {
+            throw new cn.iocoder.yudao.framework.common.exception.ServiceException(409,
+                    "调拨来源已变化，请刷新后重试");
         }
         if (transferOut.getTransferDirection() != null
                 && !Integer.valueOf(TRANSFER_DIRECTION_OUT).equals(transferOut.getTransferDirection())) {
@@ -666,19 +729,17 @@ public class ErpSaleCartServiceImpl implements ErpSaleCartService {
             throw exception(STOCK_MOVE_UNLOCK_SOURCE_ID_MISSING);
         }
 
-        List<ErpStockMoveItemDO> transferOutItems = stockMoveService.getStockMoveItemListByMoveId(transferOutId);
+        List<ErpStockMoveItemDO> transferOutItems = stockMoveService.getStockMoveItemsForUpdate(transferOutId);
         ErpStockMoveOperationPermission transferOutPermission = stockMoveService.getUnlockCartPermission(
                 transferOut, transferOutItems);
         if (!Boolean.TRUE.equals(transferOutPermission.getAllowed())) {
             throw exception(STOCK_MOVE_UNLOCK_CROSS_DEPT_DENIED);
         }
 
-        ErpSaleCartDO cart = validateSaleCartExists(transferOut.getSourceId());
         if (!ErpSaleCartStatusEnum.FIRST_APPROVE.getStatus().equals(cart.getStatus())) {
             throw exception(SALE_CART_UNLOCK_STATUS_INVALID);
         }
-        List<ErpStockMoveDO> relatedTransferOuts = new ArrayList<>(stockMoveService.getTransferOutListBySource(
-                ErpSaleBizSourceTypeEnum.CART.getType(), cart.getId()));
+        List<ErpStockMoveDO> relatedTransferOuts = new ArrayList<>(stockMoveService.getCartTransferOutListForUpdate(cart.getId()));
         if (relatedTransferOuts.stream().noneMatch(move -> Objects.equals(move.getId(), transferOutId))) {
             relatedTransferOuts.add(transferOut);
         }
@@ -689,7 +750,7 @@ public class ErpSaleCartServiceImpl implements ErpSaleCartService {
         boolean permissionDenied = relatedTransferOuts.stream()
                 .filter(move -> !Objects.equals(move.getId(), transferOutId))
                 .anyMatch(move -> {
-            List<ErpStockMoveItemDO> moveItems = stockMoveService.getStockMoveItemListByMoveId(move.getId());
+            List<ErpStockMoveItemDO> moveItems = stockMoveService.getStockMoveItemsForUpdate(move.getId());
             ErpStockMoveOperationPermission permission = stockMoveService.getUnlockCartPermission(move, moveItems);
             return !Boolean.TRUE.equals(permission.getAllowed());
         });
@@ -753,12 +814,12 @@ public class ErpSaleCartServiceImpl implements ErpSaleCartService {
             return;
         }
         Integer sourceType = ErpSaleBizSourceTypeEnum.CART.getType();
-        if (stockMoveService.hasUnapprovedTransferOutBySource(sourceType, id)) {
+        if (hasUnapprovedCartTransfer(sourceType, id)) {
             log.info("调拨出库审批后暂不自动终审，销售手推车仍有未审核调拨出库单，saleCartId={}, cartNo={}",
                     id, cart.getNo());
             return;
         }
-        if (!stockMoveService.hasApprovedTransferOutBySource(sourceType, id)) {
+        if (!hasApprovedCartTransfer(sourceType, id)) {
             log.warn("调拨出库审批后暂不自动终审，销售手推车没有已审核调拨出库单，saleCartId={}, cartNo={}",
                     id, cart.getNo());
             return;
@@ -771,7 +832,7 @@ public class ErpSaleCartServiceImpl implements ErpSaleCartService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void rejectSaleCart(Long id) {
-        ErpSaleCartDO cart = validateSaleCartExists(id);
+        ErpSaleCartDO cart = validateSaleCartForUpdate(id);
         if (!ErpSaleCartStatusEnum.SUBMITTED.getStatus().equals(cart.getStatus())
                 && !ErpSaleCartStatusEnum.FIRST_APPROVE.getStatus().equals(cart.getStatus())) {
             throw exception(SALE_CART_REJECT_FAIL);
@@ -791,13 +852,13 @@ public class ErpSaleCartServiceImpl implements ErpSaleCartService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Long convertToQuote(ErpSaleCartConvertQuoteReqVO reqVO) {
-        ErpSaleCartDO cart = validateSaleCartExists(reqVO.getCartId());
+        ErpSaleCartDO cart = validateSaleCartForUpdate(reqVO.getCartId());
         if (!isBeforeFirstApprove(cart.getStatus())) {
             throw exception(SALE_CART_CONVERT_QUOTE_FAIL);
         }
 
         // 1. 查询所有子表行（整单转换）
-        List<ErpSaleCartItemDO> allItems = saleCartItemMapper.selectListByCartId(cart.getId());
+        List<ErpSaleCartItemDO> allItems = currentCartItems(cart.getId());
         if (allItems.isEmpty()) {
             throw exception(SALE_CART_CONVERT_QUOTE_ITEMS_EMPTY);
         }
@@ -839,7 +900,8 @@ public class ErpSaleCartServiceImpl implements ErpSaleCartService {
         if (CollUtil.isEmpty(ids)) {
             return;
         }
-        List<ErpSaleCartDO> carts = saleCartMapper.selectBatchIds(ids);
+        List<Long> orderedIds = ids.stream().filter(Objects::nonNull).distinct().sorted().collect(Collectors.toList());
+        List<ErpSaleCartDO> carts = orderedIds.stream().map(this::validateSaleCartForUpdate).collect(Collectors.toList());
         carts.forEach(cart -> {
             if (!isBeforeFirstApprove(cart.getStatus())) {
                 throw exception(SALE_CART_DELETE_FAIL_NOT_DRAFT, cart.getNo());
@@ -848,9 +910,9 @@ public class ErpSaleCartServiceImpl implements ErpSaleCartService {
         carts.forEach(cart -> stockMoveService.deleteUnapprovedTransferOutBySource(
                 ErpSaleBizSourceTypeEnum.CART.getType(), cart.getId()));
         carts.forEach(cart -> stockLockService.unlockStock(ErpSaleBizSourceTypeEnum.CART.getType(), cart.getId()));
-        saleCartMapper.deleteBatchIds(ids);
-        ids.forEach(saleCartItemMapper::deleteByCartId);
-        ids.forEach(id -> saleConvertRecordMapper.deleteByTarget(ErpSaleBizSourceTypeEnum.CART.getType(), id));
+        saleCartMapper.deleteBatchIds(orderedIds);
+        orderedIds.forEach(saleCartItemMapper::deleteByCartId);
+        orderedIds.forEach(id -> saleConvertRecordMapper.deleteByTarget(ErpSaleBizSourceTypeEnum.CART.getType(), id));
         carts.forEach(cart -> recordDelete(cart.getId(), cart.getNo()));
     }
 
@@ -880,7 +942,7 @@ public class ErpSaleCartServiceImpl implements ErpSaleCartService {
     }
 
     private void updateStatus(Long id, Integer oldStatus, Integer newStatus, cn.iocoder.yudao.framework.common.exception.ErrorCode errorCode) {
-        validateSaleCartExists(id);
+        validateSaleCartForUpdate(id);
         boolean isFirstApproveAction = ErpSaleCartStatusEnum.SUBMITTED.getStatus().equals(oldStatus)
                 && ErpSaleCartStatusEnum.FIRST_APPROVE.getStatus().equals(newStatus);
         int updateCount = saleCartMapper.updateByIdAndStatus(id, oldStatus,
@@ -940,21 +1002,20 @@ public class ErpSaleCartServiceImpl implements ErpSaleCartService {
     }
 
     private List<ErpSaleCartItemDO> validateSaleCartItems(List<ErpSaleCartSaveReqVO.Item> list, Long saleDeptId) {
+        validateSaleCartItemRequiredFields(list);
         List<ErpProductDO> productList = DataPermissionUtils.executeIgnore(() ->
                 productService.validProductList(convertSet(list, ErpSaleCartSaveReqVO.Item::getProductId)));
         Map<Long, ErpProductDO> productMap = convertMap(productList, ErpProductDO::getId);
         productBatchNoValidator.validateBatchNoAllowed(list, productMap,
                 ErpSaleCartSaveReqVO.Item::getProductId, ErpSaleCartSaveReqVO.Item::getBatchNo);
         Map<Long, ErpWarehouseDO> warehouseMap = convertMap(warehouseService.validSaleSelectableWarehouseListForDept(
-                convertSet(list, ErpSaleCartSaveReqVO.Item::getWarehouseId), saleDeptId), ErpWarehouseDO::getId);
+                convertSet(list, ErpSaleCartSaveReqVO.Item::getWarehouseId), saleDeptId,
+                ErpWarehouseService.SALE_CART_ALL_PRODUCT_PERMISSION), ErpWarehouseDO::getId);
         Map<String, ErpStockDO> stockMap = getStockMapIgnoreDataPermission(
                 convertSet(list, ErpSaleCartSaveReqVO.Item::getProductId),
                 convertSet(list, ErpSaleCartSaveReqVO.Item::getWarehouseId));
-        // 校验数量和价格
+        // 校验价格
         list.forEach(item -> {
-            if (item.getCount() == null || item.getCount().compareTo(BigDecimal.ZERO) <= 0) {
-                throw exception(SALE_CART_ITEM_COUNT_POSITIVE);
-            }
             if (!Boolean.TRUE.equals(item.getGiftFlag())
                     && (item.getProductPrice() == null || item.getProductPrice().compareTo(BigDecimal.ZERO) <= 0)) {
                 throw exception(SALE_CART_ITEM_PRICE_POSITIVE);
@@ -979,21 +1040,18 @@ public class ErpSaleCartServiceImpl implements ErpSaleCartService {
     }
 
     private List<ErpSaleCartItemDO> validateSaleCartDraftItems(List<ErpSaleCartSaveReqVO.Item> list, Long saleDeptId) {
+        validateSaleCartItemRequiredFields(list);
         List<ErpProductDO> productList = DataPermissionUtils.executeIgnore(() ->
                 productService.validProductList(convertSet(list, ErpSaleCartSaveReqVO.Item::getProductId)));
         Map<Long, ErpProductDO> productMap = convertMap(productList, ErpProductDO::getId);
         productBatchNoValidator.validateBatchNoAllowed(list, productMap,
                 ErpSaleCartSaveReqVO.Item::getProductId, ErpSaleCartSaveReqVO.Item::getBatchNo);
         Map<Long, ErpWarehouseDO> warehouseMap = convertMap(warehouseService.validSaleSelectableWarehouseListForDept(
-                convertSet(list, ErpSaleCartSaveReqVO.Item::getWarehouseId), saleDeptId), ErpWarehouseDO::getId);
+                convertSet(list, ErpSaleCartSaveReqVO.Item::getWarehouseId), saleDeptId,
+                ErpWarehouseService.SALE_CART_ALL_PRODUCT_PERMISSION), ErpWarehouseDO::getId);
         Map<String, ErpStockDO> stockMap = getStockMapIgnoreDataPermission(
                 convertSet(list, ErpSaleCartSaveReqVO.Item::getProductId),
                 convertSet(list, ErpSaleCartSaveReqVO.Item::getWarehouseId));
-        list.forEach(item -> {
-            if (item.getCount() == null || item.getCount().compareTo(BigDecimal.ZERO) <= 0) {
-                throw exception(SALE_CART_ITEM_COUNT_POSITIVE);
-            }
-        });
         return convertList(list, o -> BeanUtils.toBean(o, ErpSaleCartItemDO.class, item -> {
             item.setId(null);
             ErpProductDO product = productMap.get(item.getProductId());
@@ -1013,6 +1071,20 @@ public class ErpSaleCartServiceImpl implements ErpSaleCartService {
             ErpStockDO stock = stockMap.get(buildProductWarehouseMapKey(item.getProductId(), item.getWarehouseId()));
             item.setStockCount(stock != null ? stock.getCount() : BigDecimal.ZERO);
         }));
+    }
+
+    private void validateSaleCartItemRequiredFields(List<ErpSaleCartSaveReqVO.Item> list) {
+        if (CollUtil.isEmpty(list)) {
+            throw exception(SALE_CART_ITEMS_EMPTY);
+        }
+        for (ErpSaleCartSaveReqVO.Item item : list) {
+            if (item == null || item.getProductId() == null || item.getWarehouseId() == null) {
+                throw exception(SALE_CART_ITEMS_EMPTY);
+            }
+            if (item.getCount() == null || item.getCount().compareTo(BigDecimal.ZERO) <= 0) {
+                throw exception(SALE_CART_ITEM_COUNT_POSITIVE);
+            }
+        }
     }
 
     private List<ErpSaleCartSaveReqVO.Item> filterDraftItems(List<ErpSaleCartSaveReqVO.Item> itemReqs) {
@@ -1056,7 +1128,8 @@ public class ErpSaleCartServiceImpl implements ErpSaleCartService {
             return;
         }
         Map<Long, ErpWarehouseDO> warehouseMap = convertMap(warehouseService.validSaleSelectableWarehouseListForDept(
-                convertSet(items, ErpSaleCartItemDO::getWarehouseId), cart.getDeptId()), ErpWarehouseDO::getId);
+                convertSet(items, ErpSaleCartItemDO::getWarehouseId), cart.getDeptId(),
+                ErpWarehouseService.SALE_CART_ALL_PRODUCT_PERMISSION), ErpWarehouseDO::getId);
         items.forEach(item -> {
             fillDeptIdFromSaleDept(item, cart.getDeptId(), warehouseMap);
             validateSaleDeptWarehousePermission(item, cart.getDeptId());
@@ -1068,7 +1141,8 @@ public class ErpSaleCartServiceImpl implements ErpSaleCartService {
             throw exception(SALE_WAREHOUSE_DEPT_REQUIRED);
         }
         warehouseService.validateWarehouseSaleSelectableForDept(item.getWarehouseId(),
-                saleDeptId != null ? saleDeptId : item.getDeptId());
+                saleDeptId != null ? saleDeptId : item.getDeptId(),
+                ErpWarehouseService.SALE_CART_ALL_PRODUCT_PERMISSION);
     }
 
     private void createTransferOutDraft(ErpSaleCartDO cart, List<ErpSaleCartItemDO> items) {
@@ -1136,13 +1210,11 @@ public class ErpSaleCartServiceImpl implements ErpSaleCartService {
         if (CollUtil.isEmpty(items)) {
             throw exception(SALE_CART_FINAL_APPROVE_FAIL);
         }
-        Map<Long, ErpWarehouseDO> warehouseMap = convertMap(warehouseService.validSaleWarehouseList(
-                convertSet(items, ErpSaleCartItemDO::getWarehouseId)), ErpWarehouseDO::getId);
-        items.forEach(item -> {
-            ErpWarehouseDO warehouse = warehouseMap.get(item.getWarehouseId());
-            if (warehouse != null && Boolean.TRUE.equals(warehouse.getStockBillEnabled())) {
-                return;
-            }
+        warehouseService.validSaleWarehouseList(convertSet(items, ErpSaleCartItemDO::getWarehouseId));
+        List<ErpSaleCartItemDO> ordered = new ArrayList<>(items);
+        ordered.sort(Comparator.comparing(ErpSaleCartItemDO::getProductId)
+                .thenComparing(ErpSaleCartItemDO::getWarehouseId).thenComparing(ErpSaleCartItemDO::getId));
+        ordered.forEach(item -> {
             stockLockService.lockStock(item.getProductId(), item.getWarehouseId(), item.getCount(),
                     ErpSaleBizSourceTypeEnum.CART.getType(), cart.getId(), item.getId(), cart.getNo());
         });
@@ -1159,10 +1231,10 @@ public class ErpSaleCartServiceImpl implements ErpSaleCartService {
             return items;
         }
         Integer sourceType = ErpSaleBizSourceTypeEnum.CART.getType();
-        if (stockMoveService.hasUnapprovedTransferOutBySource(sourceType, cart.getId())) {
+        if (hasUnapprovedCartTransfer(sourceType, cart.getId())) {
             throw exception(SALE_WAREHOUSE_TRANSFER_NOT_APPROVED);
         }
-        List<ErpStockMoveDO> approvedTransfers = stockMoveService.getTransferOutListBySource(sourceType, cart.getId())
+        List<ErpStockMoveDO> approvedTransfers = stockMoveService.getCartTransferOutListForUpdate(cart.getId())
                 .stream()
                 .filter(move -> ErpAuditStatus.APPROVE.getStatus().equals(move.getStatus()))
                 .collect(Collectors.toList());
@@ -1170,7 +1242,7 @@ public class ErpSaleCartServiceImpl implements ErpSaleCartService {
             throw exception(SALE_WAREHOUSE_TRANSFER_NOT_APPROVED);
         }
         List<ErpStockMoveItemDO> moveItems = approvedTransfers.stream()
-                .flatMap(move -> stockMoveService.getStockMoveItemListByMoveId(move.getId()).stream())
+                .flatMap(move -> stockMoveService.getStockMoveItemsForUpdate(move.getId()).stream())
                 .collect(Collectors.toList());
         Map<String, BigDecimal> expectedCountMap = aggregateCartItemCounts(crossDeptItems);
         Map<String, BigDecimal> actualCountMap = aggregateMoveItemCounts(moveItems);
@@ -1200,8 +1272,8 @@ public class ErpSaleCartServiceImpl implements ErpSaleCartService {
 
     private void deleteRedundantUnapprovedTransferOut(ErpSaleCartDO cart) {
         Integer sourceType = ErpSaleBizSourceTypeEnum.CART.getType();
-        if (!stockMoveService.hasUnapprovedTransferOutBySource(sourceType, cart.getId())
-                || stockMoveService.hasApprovedTransferOutBySource(sourceType, cart.getId())) {
+        if (!hasUnapprovedCartTransfer(sourceType, cart.getId())
+                || hasApprovedCartTransfer(sourceType, cart.getId())) {
             return;
         }
         stockMoveService.deleteUnapprovedTransferOutBySource(sourceType, cart.getId());
@@ -1225,7 +1297,8 @@ public class ErpSaleCartServiceImpl implements ErpSaleCartService {
     private Map<Long, ErpWarehouseDO> getCartSourceWarehouseMap(ErpSaleCartDO cart,
                                                                 List<ErpSaleCartItemDO> items) {
         return convertMap(warehouseService.validSaleSelectableWarehouseListForDept(
-                convertSet(items, ErpSaleCartItemDO::getWarehouseId), cart.getDeptId()), ErpWarehouseDO::getId);
+                convertSet(items, ErpSaleCartItemDO::getWarehouseId), cart.getDeptId(),
+                ErpWarehouseService.SALE_CART_ALL_PRODUCT_PERMISSION), ErpWarehouseDO::getId);
     }
 
     private List<ErpSaleCartItemDO> getCrossDeptItems(ErpSaleCartDO cart, List<ErpSaleCartItemDO> items,
@@ -1367,15 +1440,12 @@ public class ErpSaleCartServiceImpl implements ErpSaleCartService {
         Set<Long> warehouseIds = convertSet(items, ErpSaleCartItemDO::getWarehouseId);
         Map<Long, ErpWarehouseDO> warehouseMap = convertMap(
                 saleDeptId != null
-                        ? warehouseService.validSaleSelectableWarehouseListForDept(warehouseIds, saleDeptId)
+                        ? warehouseService.validSaleSelectableWarehouseListForDept(warehouseIds, saleDeptId,
+                                ErpWarehouseService.SALE_CART_ALL_PRODUCT_PERMISSION)
                         : warehouseService.validSaleWarehouseList(warehouseIds),
                 ErpWarehouseDO::getId);
         Map<ProductWarehouseKey, BigDecimal> requiredCountMap = new LinkedHashMap<>();
         items.forEach(item -> {
-            ErpWarehouseDO warehouse = warehouseMap.get(item.getWarehouseId());
-            if (warehouse != null && Boolean.TRUE.equals(warehouse.getStockBillEnabled())) {
-                return;
-            }
             ProductWarehouseKey key = new ProductWarehouseKey(item.getProductId(), item.getWarehouseId());
             requiredCountMap.merge(key, item.getCount() != null ? item.getCount() : BigDecimal.ZERO, BigDecimal::add);
         });
@@ -1492,12 +1562,42 @@ public class ErpSaleCartServiceImpl implements ErpSaleCartService {
         });
     }
 
+    private boolean hasUnapprovedCartTransfer(Integer sourceType, Long cartId) {
+        if (!ErpSaleBizSourceTypeEnum.CART.getType().equals(sourceType)) {
+            throw new IllegalArgumentException("必须使用手推车来源");
+        }
+        return stockMoveService.getCartTransferOutListForUpdate(cartId).stream()
+                .anyMatch(move -> !ErpAuditStatus.APPROVE.getStatus().equals(move.getStatus()));
+    }
+
+    private boolean hasApprovedCartTransfer(Integer sourceType, Long cartId) {
+        if (!ErpSaleBizSourceTypeEnum.CART.getType().equals(sourceType)) {
+            throw new IllegalArgumentException("必须使用手推车来源");
+        }
+        return stockMoveService.getCartTransferOutListForUpdate(cartId).stream()
+                .anyMatch(move -> ErpAuditStatus.APPROVE.getStatus().equals(move.getStatus()));
+    }
+
     private ErpSaleCartDO validateSaleCartExists(Long id) {
         ErpSaleCartDO cart = saleCartMapper.selectById(id);
         if (cart == null) {
             throw exception(SALE_CART_NOT_EXISTS);
         }
         return cart;
+    }
+
+    private ErpSaleCartDO validateSaleCartForUpdate(Long id) {
+        ErpSaleCartDO cart = saleCartMapper.selectByIdForUpdate(id);
+        if (cart == null) {
+            throw exception(SALE_CART_NOT_EXISTS);
+        }
+        return cart;
+    }
+
+    private List<ErpSaleCartItemDO> currentCartItems(Long id) {
+        List<ErpSaleCartItemDO> items = new ArrayList<>(saleCartItemMapper.selectListByCartIdForUpdate(id));
+        items.sort(Comparator.comparing(ErpSaleCartItemDO::getId));
+        return items;
     }
 
     @Override
@@ -1532,6 +1632,11 @@ public class ErpSaleCartServiceImpl implements ErpSaleCartService {
     @Override
     public List<DeptSimpleRespVO> getWarehouseAvailableDeptSimpleList(Long warehouseId) {
         return batchUpdateSupport.getWarehouseAvailableDeptSimpleList(warehouseId, FIELD_PERMISSION_MODULE);
+    }
+
+    @Override
+    public PageResult<DeptSimpleRespVO> getWarehouseAvailableDeptSimplePage(Long warehouseId, PageParam pageParam) {
+        return batchUpdateSupport.getWarehouseAvailableDeptSimplePage(warehouseId, FIELD_PERMISSION_MODULE, pageParam);
     }
 
     @Override

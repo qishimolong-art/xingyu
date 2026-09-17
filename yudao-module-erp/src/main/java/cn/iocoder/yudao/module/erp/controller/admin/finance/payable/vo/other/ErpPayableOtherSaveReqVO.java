@@ -7,7 +7,7 @@ import javax.validation.constraints.NotNull;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 
-@Schema(description = "ERP 其他应付新增/修改 Request VO")
+@Schema(description = "ERP 应付调账新增/修改 Request VO")
 @Data
 public class ErpPayableOtherSaveReqVO {
 

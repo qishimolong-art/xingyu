@@ -13,6 +13,7 @@ public class ErpPayableDetailDO {
     private Long bizId;
     private LocalDateTime docDate;
     private String docNo;
+    private Boolean priceAdjusted;
     private BigDecimal increaseAmount;
     private BigDecimal paymentAmount;
     private BigDecimal writeOffAmount;

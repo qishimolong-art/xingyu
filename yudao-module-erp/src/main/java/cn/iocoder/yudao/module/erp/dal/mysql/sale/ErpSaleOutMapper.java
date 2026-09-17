@@ -5,6 +5,8 @@ import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.mybatis.core.mapper.BaseMapperX;
 import cn.iocoder.yudao.framework.mybatis.core.query.MPJLambdaWrapperX;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.out.ErpSaleOutPageReqVO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.product.ErpProductDO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.product.ErpProductUnitDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleOutDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleOutItemDO;
 import cn.iocoder.yudao.module.erp.dal.mysql.common.ErpKeywordQuery;
@@ -14,6 +16,7 @@ import cn.iocoder.yudao.module.erp.enums.common.ErpBizTypeEnum;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.core.toolkit.support.SFunction;
 import org.apache.ibatis.annotations.Mapper;
+import org.springframework.util.StringUtils;
 
 import java.util.Collection;
 import java.util.Collections;
@@ -27,6 +30,12 @@ import java.util.Objects;
  */
 @Mapper
 public interface ErpSaleOutMapper extends BaseMapperX<ErpSaleOutDO> {
+
+    /** 所有来源主明细写入共用父单锁；锁后重新验证状态。 */
+    default ErpSaleOutDO selectByIdForUpdate(Long id) {
+        return selectOne(new cn.iocoder.yudao.framework.mybatis.core.query.LambdaQueryWrapperX<ErpSaleOutDO>()
+                .eq(ErpSaleOutDO::getId, id).last("FOR UPDATE"));
+    }
 
     String EFFECTIVE_RECEIPT_PRICE_EXPRESSION = ErpFinanceReceiptItemMapper.effectiveReceiptPriceSql(
             ErpBizTypeEnum.SALE_OUT.getType());
@@ -70,13 +79,19 @@ public interface ErpSaleOutMapper extends BaseMapperX<ErpSaleOutDO> {
             query.eq(ErpSaleOutDO::getStatus, ErpAuditStatus.APPROVE.getStatus())
                     .apply(EFFECTIVE_RECEIPT_PRICE_EXPRESSION + " < " + ORIGINAL_SETTLEMENT_TOTAL_EXPRESSION);
         }
-        if (reqVO.getWarehouseId() != null || reqVO.getProductId() != null) {
+        if (reqVO.getWarehouseId() != null || reqVO.getProductId() != null
+                || StringUtils.hasText(reqVO.getProductKeyword())) {
             query.leftJoin(ErpSaleOutItemDO.class, ErpSaleOutItemDO::getOutId, ErpSaleOutDO::getId)
+                    .leftJoin(ErpProductDO.class, ErpProductDO::getId, ErpSaleOutItemDO::getProductId)
+                    .leftJoin(ErpProductUnitDO.class, ErpProductUnitDO::getId, ErpSaleOutItemDO::getProductUnitId)
                     .eq(reqVO.getWarehouseId() != null, ErpSaleOutItemDO::getWarehouseId, reqVO.getWarehouseId())
                     .eq(reqVO.getProductId() != null, ErpSaleOutItemDO::getProductId, reqVO.getProductId())
+                    .and(StringUtils.hasText(reqVO.getProductKeyword()),
+                            w -> ErpKeywordQuery.appendProductKeyword(w, reqVO.getProductKeyword()))
                     .groupBy(ErpSaleOutDO::getId); // 避免 1 对多查询，产生相同的 1
         }
-        ErpKeywordQuery.appendWithDeptName(query, reqVO.getKeyword(),
+        ErpKeywordQuery.appendWithDeptNameAndSaleCustomerAndProductItemTokens(query, reqVO.getKeyword(),
+                "erp_sale_out_items", "out_id",
                 ErpSaleOutDO::getNo, ErpSaleOutDO::getOrderNo,
                 ErpSaleOutDO::getSourceNo, ErpSaleOutDO::getRemark,
                 ErpSaleOutDO::getOrderType, ErpSaleOutDO::getPriority,

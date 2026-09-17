@@ -15,6 +15,9 @@ public class ErpPurchaseOrderInableItemRespVO {
     @Schema(description = "产品编号", requiredMode = Schema.RequiredMode.REQUIRED, example = "100")
     private Long productId;
 
+    @Schema(description = "产品单位编号", example = "1")
+    private Long productUnitId;
+
     @Schema(description = "产品名称", example = "刹车片")
     private String productName;
 
@@ -26,6 +29,9 @@ public class ErpPurchaseOrderInableItemRespVO {
 
     @Schema(description = "产品单价", example = "100.00")
     private BigDecimal productPrice;
+
+    @Schema(description = "税率", example = "13")
+    private BigDecimal taxPercent;
 
     @Schema(description = "订单数量", example = "100")
     private BigDecimal orderCount;
@@ -64,5 +70,8 @@ public class ErpPurchaseOrderInableItemRespVO {
 
     @Schema(description = "货架位", example = "A-01-02")
     private String warehousePosition;
+
+    @Schema(description = "包装数", example = "12")
+    private Integer packageQty;
 
 }

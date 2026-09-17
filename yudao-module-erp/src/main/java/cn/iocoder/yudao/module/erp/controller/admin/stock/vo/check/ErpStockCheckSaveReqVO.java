@@ -6,7 +6,6 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Data;
 
 import javax.validation.Valid;
-import javax.validation.constraints.NotEmpty;
 import javax.validation.constraints.NotNull;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -37,7 +36,6 @@ public class ErpStockCheckSaveReqVO {
     private String fileUrl;
 
     @Schema(description = "盘点项列表", requiredMode = Schema.RequiredMode.REQUIRED)
-    @NotEmpty(message = "盘点项列表不能为空")
     @Valid
     private List<Item> items;
 
@@ -47,12 +45,13 @@ public class ErpStockCheckSaveReqVO {
         @Schema(description = "盘点项编号", example = "11756")
         private Long id;
 
+        @Schema(description = "明细操作类型：insert 新增，update 修改，delete 删除", example = "update")
+        private String operation;
+
         @Schema(description = "仓库编号", requiredMode = Schema.RequiredMode.REQUIRED, example = "3113")
-        @NotNull(message = "仓库编号不能为空")
         private Long warehouseId;
 
         @Schema(description = "产品编号", requiredMode = Schema.RequiredMode.REQUIRED, example = "3113")
-        @NotNull(message = "产品编号不能为空")
         private Long productId;
 
         @Schema(description = "批次号", example = "BATCH-001")
@@ -71,7 +70,6 @@ public class ErpStockCheckSaveReqVO {
         private BigDecimal productPrice;
 
         @Schema(description = "账面数量（当前库存）", requiredMode = Schema.RequiredMode.REQUIRED, example = "100.00")
-        @NotNull(message = "账面数量不能为空")
         private BigDecimal stockCount;
 
         @Schema(description = "实际数量（实际库存），盘成本时由系统按账面数量写入", example = "100.00")

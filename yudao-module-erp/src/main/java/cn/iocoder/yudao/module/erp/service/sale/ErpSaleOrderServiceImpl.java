@@ -44,6 +44,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 import static cn.iocoder.yudao.framework.common.exception.util.ServiceExceptionUtil.exception;
 import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.*;
@@ -141,9 +142,22 @@ public class ErpSaleOrderServiceImpl implements ErpSaleOrderService {
         if (ErpAuditStatus.APPROVE.getStatus().equals(saleOrder.getStatus())) {
             throw exception(SALE_ORDER_UPDATE_FAIL_APPROVE, saleOrder.getNo());
         }
+        List<ErpSaleOrderItemDO> oldItems = saleOrderItemMapper.selectListByOrderIdForUpdate(updateReqVO.getId());
         fieldPermissionMasker.preserveSaleDetailHiddenFields(FIELD_PERMISSION_MODULE, updateReqVO, saleOrder);
         fieldPermissionMasker.preserveSaleDetailHiddenItemFields(FIELD_PERMISSION_MODULE, updateReqVO, updateReqVO.getItems(),
-                saleOrderItemMapper.selectListByOrderId(updateReqVO.getId()));
+                oldItems);
+        boolean incrementalItems = ErpSaleItemOperationHelper.useIncrementalItems(updateReqVO.getItems(),
+                ErpSaleOrderSaveReqVO.Item::getOperation, SALE_ORDER_ITEM_OPERATION_INVALID);
+        ErpSaleItemOperationHelper.RequestChangeSet<ErpSaleOrderSaveReqVO.Item> itemChangeSet = null;
+        List<ErpSaleOrderSaveReqVO.Item> itemReqs = updateReqVO.getItems();
+        if (incrementalItems) {
+            itemChangeSet = ErpSaleItemOperationHelper.buildRequestChangeSet(updateReqVO.getItems(), oldItems,
+                    ErpSaleOrderSaveReqVO.Item.class, ErpSaleOrderSaveReqVO.Item::getId,
+                    ErpSaleOrderSaveReqVO.Item::setId, ErpSaleOrderSaveReqVO.Item::getOperation,
+                    ErpSaleOrderItemDO::getId, SALE_ORDER_ITEM_OPERATION_INVALID,
+                    SALE_ORDER_ITEM_UPDATE_NOT_EXISTS);
+            itemReqs = itemChangeSet.getFinalItems();
+        }
         // 1.2 校验客户
         customerService.validateCustomerForSale(updateReqVO.getCustomerId(),
                 updateReqVO.getDeptId() != null ? updateReqVO.getDeptId() : saleOrder.getDeptId());
@@ -157,14 +171,19 @@ public class ErpSaleOrderServiceImpl implements ErpSaleOrderService {
         }
         // 1.5 校验订单项的有效性
         Long saleDeptId = updateReqVO.getDeptId() != null ? updateReqVO.getDeptId() : saleOrder.getDeptId();
-        List<ErpSaleOrderItemDO> saleOrderItems = validateSaleOrderItems(updateReqVO.getItems(), saleDeptId);
+        List<ErpSaleOrderItemDO> saleOrderItems = validateSaleOrderItems(itemReqs, saleDeptId);
+        preserveSaleOrderDownstreamCounts(saleOrderItems, oldItems);
 
         // 2.1 更新订单
         ErpSaleOrderDO updateObj = BeanUtils.toBean(updateReqVO, ErpSaleOrderDO.class);
         calculateTotalPrice(updateObj, saleOrderItems);
         saleOrderMapper.updateById(updateObj);
         // 2.2 更新订单项
-        updateSaleOrderItemList(updateReqVO.getId(), saleOrderItems);
+        if (incrementalItems) {
+            applySaleOrderItemChangeSet(updateReqVO.getId(), itemChangeSet, saleOrderItems);
+        } else {
+            updateSaleOrderItemList(updateReqVO.getId(), saleOrderItems);
+        }
         operateLogService.recordUpdate(ERP_SALE_ORDER_TYPE, updateReqVO.getId(), saleOrder.getNo());
     }
 
@@ -219,6 +238,9 @@ public class ErpSaleOrderServiceImpl implements ErpSaleOrderService {
     }
 
     private List<ErpSaleOrderItemDO> validateSaleOrderItems(List<ErpSaleOrderSaveReqVO.Item> list, Long saleDeptId) {
+        if (CollUtil.isEmpty(list)) {
+            throw exception(SALE_ORDER_ITEM_EMPTY);
+        }
         // 1. 校验产品存在
         List<ErpProductDO> productList = DataPermissionUtils.executeIgnore(() ->
                 productService.validProductList(convertSet(list, ErpSaleOrderSaveReqVO.Item::getProductId)));
@@ -233,7 +255,8 @@ public class ErpSaleOrderServiceImpl implements ErpSaleOrderService {
         });
         Set<Long> warehouseIds = convertSet(list, ErpSaleOrderSaveReqVO.Item::getWarehouseId);
         Map<Long, ErpWarehouseDO> warehouseMap = convertMap(
-                warehouseService.validSaleSelectableWarehouseListForDept(warehouseIds, saleDeptId),
+                warehouseService.validSaleSelectableWarehouseListForDept(warehouseIds, saleDeptId,
+                        ErpWarehouseService.SALE_ORDER_ALL_PRODUCT_PERMISSION),
                 ErpWarehouseDO::getId);
         // 2. 转化为 ErpSaleOrderItemDO 列表
         return convertList(list, o -> BeanUtils.toBean(o, ErpSaleOrderItemDO.class, item -> {
@@ -297,6 +320,44 @@ public class ErpSaleOrderServiceImpl implements ErpSaleOrderService {
         if (CollUtil.isNotEmpty(diffList.get(2))) {
             saleOrderItemMapper.deleteByIds(convertList(diffList.get(2), ErpSaleOrderItemDO::getId));
         }
+    }
+
+    private void applySaleOrderItemChangeSet(Long orderId,
+            ErpSaleItemOperationHelper.RequestChangeSet<ErpSaleOrderSaveReqVO.Item> changeSet,
+            List<ErpSaleOrderItemDO> finalItems) {
+        if (CollUtil.isNotEmpty(changeSet.getDeleteIds())) {
+            saleOrderItemMapper.deleteByIds(changeSet.getDeleteIds());
+        }
+        List<ErpSaleOrderItemDO> insertList = finalItems.stream()
+                .filter(item -> item.getId() == null)
+                .collect(Collectors.toList());
+        if (CollUtil.isNotEmpty(insertList)) {
+            insertList.forEach(item -> item.setOrderId(orderId));
+            saleOrderItemMapper.insertBatch(insertList);
+        }
+        List<ErpSaleOrderItemDO> updateList = finalItems.stream()
+                .filter(item -> item.getId() != null && changeSet.getUpdateIds().contains(item.getId()))
+                .collect(Collectors.toList());
+        if (CollUtil.isNotEmpty(updateList)) {
+            updateList.forEach(item -> item.setOrderId(orderId));
+            saleOrderItemMapper.updateBatch(updateList);
+        }
+    }
+
+    private void preserveSaleOrderDownstreamCounts(List<ErpSaleOrderItemDO> items,
+                                                   List<ErpSaleOrderItemDO> oldItems) {
+        if (CollUtil.isEmpty(items) || CollUtil.isEmpty(oldItems)) {
+            return;
+        }
+        Map<Long, ErpSaleOrderItemDO> oldItemMap = convertMap(oldItems, ErpSaleOrderItemDO::getId);
+        items.forEach(item -> {
+            ErpSaleOrderItemDO oldItem = oldItemMap.get(item.getId());
+            if (oldItem == null) {
+                return;
+            }
+            item.setOutCount(oldItem.getOutCount());
+            item.setReturnCount(oldItem.getReturnCount());
+        });
     }
 
     @Override

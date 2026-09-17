@@ -2,6 +2,7 @@ package cn.iocoder.yudao.module.erp.controller.admin.purchase;
 
 import cn.hutool.core.collection.CollUtil;
 import cn.iocoder.yudao.framework.apilog.core.annotation.ApiAccessLog;
+import cn.iocoder.yudao.framework.common.enums.CommonStatusEnum;
 import cn.iocoder.yudao.framework.common.pojo.CommonResult;
 import cn.iocoder.yudao.framework.common.pojo.PageParam;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
@@ -30,14 +31,17 @@ import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseInvoiceIte
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpSupplierDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockDO;
 import cn.iocoder.yudao.module.erp.dal.mysql.purchase.ErpPurchaseInItemMapper;
+import cn.iocoder.yudao.module.erp.dal.mysql.purchase.ErpPurchaseInvoiceItemMapper;
 import cn.iocoder.yudao.module.erp.enums.ErpAuditStatus;
 import cn.iocoder.yudao.module.erp.enums.config.ErpFieldConfigModuleEnum;
 import cn.iocoder.yudao.module.erp.framework.excel.ErpExportFieldUtils;
 import cn.iocoder.yudao.module.erp.framework.excel.ErpImportTemplateRequiredFieldUtils;
+import cn.iocoder.yudao.module.erp.service.base.ErpDataPermissionDeptService;
 import cn.iocoder.yudao.module.erp.service.config.ErpFieldConfigService;
 import cn.iocoder.yudao.module.erp.service.common.ErpImportExportRecordService;
 import cn.iocoder.yudao.module.erp.service.product.ErpProductService;
 import cn.iocoder.yudao.module.erp.service.purchase.ErpPurchaseFieldPermissionMasker;
+import cn.iocoder.yudao.module.erp.service.purchase.ErpPurchaseItemPriceReferenceFiller;
 import cn.iocoder.yudao.module.erp.service.purchase.ErpPurchaseInvoiceService;
 import cn.iocoder.yudao.module.erp.service.purchase.ErpSupplierDeptPermissionService;
 import cn.iocoder.yudao.module.erp.service.purchase.ErpSupplierService;
@@ -47,6 +51,7 @@ import cn.iocoder.yudao.module.system.api.dept.dto.DeptRespDTO;
 import cn.iocoder.yudao.module.system.api.user.AdminUserApi;
 import cn.iocoder.yudao.module.system.api.user.dto.AdminUserRespDTO;
 import cn.iocoder.yudao.module.system.controller.admin.dept.vo.dept.DeptSimpleRespVO;
+import cn.iocoder.yudao.module.system.controller.admin.user.vo.user.UserSimpleRespVO;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -75,6 +80,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 import static cn.iocoder.yudao.framework.apilog.core.enums.OperateTypeEnum.EXPORT;
 import static cn.iocoder.yudao.framework.common.pojo.CommonResult.success;
@@ -123,6 +129,8 @@ public class ErpPurchaseInvoiceController {
     @Resource
     private ErpSupplierDeptPermissionService supplierDeptPermissionService;
     @Resource
+    private ErpDataPermissionDeptService dataPermissionDeptService;
+    @Resource
     private ErpStockService stockService;
     @Resource
     private ErpProductService productService;
@@ -131,11 +139,15 @@ public class ErpPurchaseInvoiceController {
     @Resource
     private ErpPurchaseInItemMapper purchaseInItemMapper;
     @Resource
+    private ErpPurchaseInvoiceItemMapper purchaseInvoiceItemMapper;
+    @Resource
     private DeptApi deptApi;
     @Resource
     private AdminUserApi adminUserApi;
     @Resource
     private ErpPurchaseFieldPermissionMasker fieldPermissionMasker;
+    @Resource
+    private ErpPurchaseItemPriceReferenceFiller itemPriceReferenceFiller;
     @Resource
     private ErpFieldConfigService fieldConfigService;
     @Resource
@@ -342,7 +354,9 @@ public class ErpPurchaseInvoiceController {
     @PreAuthorize("@ss.hasPermission('erp:purchase-invoice:query')")
     public CommonResult<PageResult<ErpPurchaseInvoiceRespVO>> getPurchaseInvoicePage(@Valid ErpPurchaseInvoicePageReqVO pageReqVO) {
         PageResult<ErpPurchaseInvoiceDO> pageResult = purchaseInvoiceService.getPurchaseInvoicePage(pageReqVO);
-        return success(buildPurchaseInvoiceVOPageResult(pageResult));
+        return success(Boolean.FALSE.equals(pageReqVO.getIncludeItems())
+                ? buildPurchaseInvoiceVOPageResultWithoutItems(pageResult)
+                : buildPurchaseInvoiceVOPageResult(pageResult));
     }
 
     @GetMapping("/dept-simple-list")
@@ -351,6 +365,20 @@ public class ErpPurchaseInvoiceController {
     public CommonResult<List<DeptSimpleRespVO>> getVisibleDeptSimpleList() {
         return success(supplierDeptPermissionService.getDataPermissionDeptSimpleList(
                 DEPT_SELECTION_PERMISSION_FORM_KEY));
+    }
+
+    @GetMapping("/dept-simple-page")
+    @Operation(summary = "获得当前用户可查询的采购票据部门精简分页")
+    @PreAuthorize("@ss.hasPermission('erp:purchase-invoice:query')")
+    public CommonResult<PageResult<DeptSimpleRespVO>> getVisibleDeptSimplePage(@Valid PageParam pageReqVO) {
+        return success(dataPermissionDeptService.getDeptSimplePage(DEPT_SELECTION_PERMISSION_FORM_KEY, pageReqVO));
+    }
+
+    @GetMapping("/user-simple-page")
+    @Operation(summary = "获得采购票据用户精简分页")
+    @PreAuthorize("@ss.hasPermission('erp:purchase-invoice:query')")
+    public CommonResult<PageResult<UserSimpleRespVO>> getUserSimplePage(@Valid PageParam pageReqVO) {
+        return success(buildUserSimplePage(pageReqVO));
     }
 
     @GetMapping("/export-excel")
@@ -416,6 +444,45 @@ public class ErpPurchaseInvoiceController {
         return respPage;
     }
 
+    private PageResult<ErpPurchaseInvoiceRespVO> buildPurchaseInvoiceVOPageResultWithoutItems(
+            PageResult<ErpPurchaseInvoiceDO> pageResult) {
+        if (CollUtil.isEmpty(pageResult.getList())) {
+            return PageResult.empty(pageResult.getTotal());
+        }
+        Set<Long> invoiceIds = convertSet(pageResult.getList(), ErpPurchaseInvoiceDO::getId);
+        List<ErpPurchaseInvoiceItemDO> taxItems = purchaseInvoiceItemMapper.selectTaxPercentListByInvoiceIds(invoiceIds);
+        Map<Long, List<ErpPurchaseInvoiceItemDO>> taxItemMap = convertMultiMap(
+                taxItems, ErpPurchaseInvoiceItemDO::getInvoiceId);
+        Set<Long> supplierIds = convertSet(pageResult.getList(), ErpPurchaseInvoiceDO::getSupplierId);
+        supplierIds.remove(null);
+        Map<Long, ErpSupplierDO> supplierMap = supplierService.getSupplierMap(supplierIds);
+        Map<Long, DeptRespDTO> deptMap = deptApi.getDeptMap(convertSet(pageResult.getList(), ErpPurchaseInvoiceDO::getDeptId));
+        Map<Long, AdminUserRespDTO> userMap = adminUserApi.getUserMap(collectUserIds(pageResult.getList()));
+
+        PageResult<ErpPurchaseInvoiceRespVO> respPage = BeanUtils.toBean(pageResult, ErpPurchaseInvoiceRespVO.class);
+        respPage.getList().forEach(invoice -> {
+            invoice.setDisplayTaxPercent(buildDisplayTaxPercent(taxItemMap.get(invoice.getId())));
+            MapUtils.findAndThen(supplierMap, invoice.getSupplierId(), supplier -> {
+                invoice.setSupplierName(supplier.getName());
+                invoice.setSupplierType(supplier.getSupplierType());
+            });
+            MapUtils.findAndThen(deptMap, invoice.getDeptId(), dept -> invoice.setDeptName(dept.getName()));
+            fillUserNames(invoice, userMap);
+            fillAuditInfo(invoice);
+        });
+        fieldPermissionMasker.maskList(FIELD_PERMISSION_MODULE, respPage.getList());
+        return respPage;
+    }
+
+    private PageResult<UserSimpleRespVO> buildUserSimplePage(PageParam pageReqVO) {
+        PageResult<AdminUserRespDTO> page = adminUserApi.getUserSimplePage(
+                CommonStatusEnum.ENABLE.getStatus(), pageReqVO.getKeyword(), pageReqVO);
+        List<UserSimpleRespVO> list = page.getList().stream()
+                .map(user -> new UserSimpleRespVO(user.getId(), user.getNickname(), user.getDeptId(), null))
+                .collect(Collectors.toList());
+        return new PageResult<>(list, page.getTotal());
+    }
+
     private List<ErpPurchaseInvoiceRespVO.Item> buildPurchaseInvoiceItemVOList(List<ErpPurchaseInvoiceItemDO> itemList) {
         ErpPurchaseInvoiceRespVO invoice = new ErpPurchaseInvoiceRespVO();
         fillInvoiceRespItems(invoice, itemList);
@@ -441,7 +508,9 @@ public class ErpPurchaseInvoiceController {
             item.setSourceInNo(purchaseIn == null ? null : purchaseIn.getNo());
             item.setSourceInItemId(sourceItem.getId());
             item.setProductId(sourceItem.getProductId());
+            item.setWarehouseId(sourceItem.getWarehouseId());
             item.setCount(sourceItem.getCount());
+            item.setPackageQty(sourceItem.getPackageQty());
             item.setProductPrice(sourceItem.getProductPrice());
             item.setRemark(sourceItem.getRemark());
             item.setTaxExclusivePrice(sourceItem.getProductPrice() == null || sourceItem.getCount() == null
@@ -455,9 +524,11 @@ public class ErpPurchaseInvoiceController {
             MapUtils.findAndThen(productMap, sourceItem.getProductId(), product -> item.setProductName(product.getName())
                     .setProductCode(product.getCode())
                     .setProductUnitName(product.getUnitName())
+                    .setPackageQty(item.getPackageQty() == null ? product.getPackageQty() : item.getPackageQty())
                     .setProductBarCode(product.getBarCode()));
             result.add(item);
         }
+        itemPriceReferenceFiller.fill(result);
         return result;
     }
 
@@ -477,10 +548,14 @@ public class ErpPurchaseInvoiceController {
         }
         for (ErpPurchaseInvoiceRespVO.Item item : items) {
             Long resolvedWarehouseId = null;
+            Integer packageQty = null;
             if (item.getSourceInItemId() != null) {
                 ErpPurchaseInItemDO sourceInItem = sourceInItemMap.get(item.getSourceInItemId());
                 resolvedWarehouseId = sourceInItem == null ? null : sourceInItem.getWarehouseId();
+                packageQty = sourceInItem == null ? null : sourceInItem.getPackageQty();
             }
+            item.setWarehouseId(resolvedWarehouseId);
+            item.setPackageQty(packageQty);
             final Long warehouseId = resolvedWarehouseId;
             ErpStockDO stock = DataPermissionUtils.executeIgnore(() ->
                     stockService.getStock(item.getProductId(), warehouseId));
@@ -497,7 +572,11 @@ public class ErpPurchaseInvoiceController {
             if (item.getProductBarCode() == null) {
                 item.setProductBarCode(product.getBarCode());
             }
+            if (item.getPackageQty() == null) {
+                item.setPackageQty(product.getPackageQty());
+            }
         }
+        itemPriceReferenceFiller.fill(items);
         invoice.setItems(items);
         invoice.setProductNames(CollUtil.join(items, ", ", ErpPurchaseInvoiceRespVO.Item::getProductName));
         invoice.setDisplayTaxPercent(buildDisplayTaxPercent(itemList));

@@ -31,6 +31,7 @@ import cn.iocoder.yudao.module.erp.dal.mysql.stock.ErpStockOutItemMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.stock.ErpStockRecordMapper;
 import cn.iocoder.yudao.module.erp.enums.stock.ErpStockRecordBizTypeEnum;
 import cn.iocoder.yudao.module.erp.service.stock.bo.ErpStockRecordCreateReqBO;
+import cn.iocoder.yudao.module.erp.service.stock.cost.ErpDualCostPostingService;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -61,6 +62,9 @@ public class ErpStockRecordServiceImpl implements ErpStockRecordService {
 
     @Resource
     private ErpStockRecordMapper stockRecordMapper;
+
+    @Resource
+    private ErpDualCostPostingService dualCostPostingService;
 
     @Resource
     private ErpStockService stockService;
@@ -359,7 +363,8 @@ public class ErpStockRecordServiceImpl implements ErpStockRecordService {
      * 若 reqVO 有产品维度条件，预查 productIds；无条件返回 null 表示不过滤
      */
     private Collection<Long> resolveProductIdFilter(ErpStockRecordPageReqVO reqVO) {
-        boolean hasCondition = (reqVO.getProductCode() != null && !reqVO.getProductCode().isEmpty())
+        boolean hasCondition = StringUtils.hasText(reqVO.getProductKeyword())
+                || (reqVO.getProductCode() != null && !reqVO.getProductCode().isEmpty())
                 || (reqVO.getProductName() != null && !reqVO.getProductName().isEmpty())
                 || (reqVO.getVehicleModel() != null && !reqVO.getVehicleModel().isEmpty())
                 || (reqVO.getOriginPlace() != null && !reqVO.getOriginPlace().isEmpty());
@@ -368,6 +373,10 @@ public class ErpStockRecordServiceImpl implements ErpStockRecordService {
         }
         QueryWrapper<ErpProductDO> w = new QueryWrapper<>();
         w.select("id");
+        if (StringUtils.hasText(reqVO.getProductKeyword())) {
+            ErpProductMapper.appendStockKeywordCondition(w.lambda(),
+                    ErpProductMapper.fuzzyKeyword(reqVO.getProductKeyword()));
+        }
         if (reqVO.getProductCode() != null && !reqVO.getProductCode().isEmpty()) {
             w.like("code", reqVO.getProductCode());
         }
@@ -387,6 +396,12 @@ public class ErpStockRecordServiceImpl implements ErpStockRecordService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void createStockRecord(ErpStockRecordCreateReqBO createReqBO) {
+        if (!dualCostPostingService.post(createReqBO, () -> createLegacyStockRecord(createReqBO))) {
+            createLegacyStockRecord(createReqBO);
+        }
+    }
+
+    private void createLegacyStockRecord(ErpStockRecordCreateReqBO createReqBO) {
         // 1. 决定业务发生日期：优先用 BO 的 bizDate，其次 LocalDateTime.now()
         LocalDateTime bizDate = createReqBO.getBizDate() != null ? createReqBO.getBizDate() : LocalDateTime.now();
 
@@ -397,7 +412,7 @@ public class ErpStockRecordServiceImpl implements ErpStockRecordService {
             businessUnitPrice = stock != null && stock.getCostPrice() != null ? stock.getCostPrice() : BigDecimal.ZERO;
         }
 
-        // 3. 更新库存 + 成本均价（走移动加权平均算法）
+        // 3. 保留业务退款单价；新核算80的扣库成本由StockService在认证回调内按余额均价独立计算。
         ErpStockService.StockUpdateResult result = stockService.updateStockCountAndCost(
                 createReqBO.getProductId(), createReqBO.getWarehouseId(),
                 createReqBO.getCount(), createReqBO.getUnitPrice(), createReqBO.getBizType());

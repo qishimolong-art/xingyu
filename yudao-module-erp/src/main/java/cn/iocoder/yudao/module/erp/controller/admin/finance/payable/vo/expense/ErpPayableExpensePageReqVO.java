@@ -44,6 +44,9 @@ public class ErpPayableExpensePageReqVO extends PageParam {
 
     private Integer status;
 
+    @Schema(description = "是否返回明细；为空或 true 时兼容旧行为返回明细，false 时仅返回列表主表数据")
+    private Boolean includeItems;
+
     public LocalDate getStartTime() {
         return bizTime == null || bizTime.length == 0 ? null : bizTime[0];
     }

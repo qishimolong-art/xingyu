@@ -65,6 +65,8 @@ import static org.mockito.Mockito.when;
  */
 class ErpVoucherServiceImplTest extends BaseMockitoUnitTest {
 
+    @Mock private cn.iocoder.yudao.module.erp.service.finance.accounting.rule.ErpVoucherAuxiliarySupport auxiliarySupport;
+
     @InjectMocks
     private ErpVoucherServiceImpl voucherService;
 
@@ -119,8 +121,8 @@ class ErpVoucherServiceImplTest extends BaseMockitoUnitTest {
 
     private List<ErpAccountingSubjectDO> buildLeafSubjects() {
         return Arrays.asList(
-                new ErpAccountingSubjectDO().setId(100L).setSubjectCode("1001").setSubjectName("现金").setIsLeaf(true),
-                new ErpAccountingSubjectDO().setId(200L).setSubjectCode("1002").setSubjectName("银行").setIsLeaf(true)
+                new ErpAccountingSubjectDO().setId(100L).setSubjectCode("1001").setSubjectName("现金").setIsLeaf(true).setEnable(true),
+                new ErpAccountingSubjectDO().setId(200L).setSubjectCode("1002").setSubjectName("银行").setIsLeaf(true).setEnable(true)
         );
     }
 
@@ -226,7 +228,7 @@ class ErpVoucherServiceImplTest extends BaseMockitoUnitTest {
 
         // 只返回 1 个，而要求 2 个
         when(subjectMapper.selectByIds(anyCollection())).thenReturn(
-                singletonList(new ErpAccountingSubjectDO().setId(100L).setSubjectCode("1001").setSubjectName("现金").setIsLeaf(true))
+                singletonList(new ErpAccountingSubjectDO().setId(100L).setSubjectCode("1001").setSubjectName("现金").setIsLeaf(true).setEnable(true))
         );
 
         assertServiceException(() -> voucherService.createVoucher(vo), ACCOUNTING_SUBJECT_NOT_EXISTS);
@@ -239,7 +241,7 @@ class ErpVoucherServiceImplTest extends BaseMockitoUnitTest {
         // 一个非末级科目
         when(subjectMapper.selectByIds(anyCollection())).thenReturn(Arrays.asList(
                 new ErpAccountingSubjectDO().setId(100L).setSubjectCode("1001").setSubjectName("现金").setIsLeaf(false),
-                new ErpAccountingSubjectDO().setId(200L).setSubjectCode("1002").setSubjectName("银行").setIsLeaf(true)
+                new ErpAccountingSubjectDO().setId(200L).setSubjectCode("1002").setSubjectName("银行").setIsLeaf(true).setEnable(true)
         ));
 
         assertServiceException(() -> voucherService.createVoucher(vo), ACCOUNTING_SUBJECT_NOT_LEAF);
@@ -533,6 +535,7 @@ class ErpVoucherServiceImplTest extends BaseMockitoUnitTest {
 
     @Test
     void testCreateVoucherFromBiz_success() {
+        when(subjectMapper.selectByIds(anyCollection())).thenReturn(buildLeafSubjects());
         nextNoRef.set("记-202605-000001");
 
         List<ErpVoucherItemDO> items = Arrays.asList(
@@ -598,6 +601,7 @@ class ErpVoucherServiceImplTest extends BaseMockitoUnitTest {
 
     @Test
     void testCreateVoucherFromBiz_voucherNoExists() {
+        when(subjectMapper.selectByIds(anyCollection())).thenReturn(buildLeafSubjects());
         nextNoRef.set("记-202605-000001");
 
         List<ErpVoucherItemDO> items = Arrays.asList(

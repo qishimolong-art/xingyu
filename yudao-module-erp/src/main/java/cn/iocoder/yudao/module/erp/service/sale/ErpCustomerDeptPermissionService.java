@@ -3,6 +3,8 @@ package cn.iocoder.yudao.module.erp.service.sale;
 import cn.hutool.core.collection.CollUtil;
 import cn.iocoder.yudao.framework.common.biz.system.permission.dto.DeptDataPermissionRespDTO;
 import cn.iocoder.yudao.framework.common.enums.CommonStatusEnum;
+import cn.iocoder.yudao.framework.common.pojo.PageParam;
+import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.module.system.api.dept.DeptApi;
 import cn.iocoder.yudao.module.system.api.dept.dto.DeptRespDTO;
 import cn.iocoder.yudao.module.system.api.permission.PermissionApi;
@@ -39,6 +41,16 @@ public class ErpCustomerDeptPermissionService {
         return toDeptSimpleRespVOList(getAvailableDeptList(customerId, formKey));
     }
 
+    public PageResult<DeptSimpleRespVO> getAvailableDeptSimplePage(Long customerId, String formKey, PageParam pageParam) {
+        Set<Long> availableDeptIds = getAvailableDeptIds(customerId, formKey);
+        if (CollUtil.isEmpty(availableDeptIds)) {
+            return PageResult.empty();
+        }
+        PageResult<DeptRespDTO> page = deptApi.getDeptSimplePage(
+                CommonStatusEnum.ENABLE.getStatus(), pageParam.getKeyword(), availableDeptIds, pageParam);
+        return new PageResult<>(toDeptSimpleRespVOList(page.getList()), page.getTotal());
+    }
+
     public List<DeptRespDTO> getCustomerAppAvailableDeptList(Long customerId) {
         Set<Long> availableDeptIds = new LinkedHashSet<>(
                 customerService.getCustomerSaleDeptIdsIgnoreDataPermission(customerId));
@@ -62,19 +74,7 @@ public class ErpCustomerDeptPermissionService {
     }
 
     private List<DeptRespDTO> getAvailableDeptList(Long customerId, String formKey) {
-        Set<Long> availableDeptIds = new LinkedHashSet<>(customerService.getCustomerSaleDeptIds(customerId));
-        if (CollUtil.isEmpty(availableDeptIds)) {
-            return Collections.emptyList();
-        }
-
-        DeptDataPermissionRespDTO permission = permissionApi.getDeptDataPermission(getLoginUserId(), formKey);
-        if (!Boolean.TRUE.equals(permission != null ? permission.getAll() : null)) {
-            Set<Long> permissionDeptIds = permission != null ? permission.getDeptIds() : Collections.emptySet();
-            if (CollUtil.isEmpty(permissionDeptIds)) {
-                return Collections.emptyList();
-            }
-            availableDeptIds.retainAll(permissionDeptIds);
-        }
+        Set<Long> availableDeptIds = getAvailableDeptIds(customerId, formKey);
         if (CollUtil.isEmpty(availableDeptIds)) {
             return Collections.emptyList();
         }
@@ -84,6 +84,23 @@ public class ErpCustomerDeptPermissionService {
                 .map(deptMap::get)
                 .filter(dept -> dept != null && CommonStatusEnum.ENABLE.getStatus().equals(dept.getStatus()))
                 .collect(Collectors.toList());
+    }
+
+    private Set<Long> getAvailableDeptIds(Long customerId, String formKey) {
+        Set<Long> availableDeptIds = new LinkedHashSet<>(customerService.getCustomerSaleDeptIds(customerId));
+        if (CollUtil.isEmpty(availableDeptIds)) {
+            return Collections.emptySet();
+        }
+
+        DeptDataPermissionRespDTO permission = permissionApi.getDeptDataPermission(getLoginUserId(), formKey);
+        if (!Boolean.TRUE.equals(permission != null ? permission.getAll() : null)) {
+            Set<Long> permissionDeptIds = permission != null ? permission.getDeptIds() : Collections.emptySet();
+            if (CollUtil.isEmpty(permissionDeptIds)) {
+                return Collections.emptySet();
+            }
+            availableDeptIds.retainAll(permissionDeptIds);
+        }
+        return availableDeptIds;
     }
 
     private List<DeptSimpleRespVO> toDeptSimpleRespVOList(List<DeptRespDTO> depts) {

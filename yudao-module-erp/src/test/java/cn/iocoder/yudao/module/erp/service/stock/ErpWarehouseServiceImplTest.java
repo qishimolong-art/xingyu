@@ -71,6 +71,9 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 public class ErpWarehouseServiceImplTest extends BaseMockitoUnitTest {
+    @Mock
+    private cn.iocoder.yudao.module.erp.service.stock.cost.ErpStockDimensionService stockDimensionService;
+
 
     @InjectMocks
     private ErpWarehouseServiceImpl warehouseService;
@@ -152,6 +155,38 @@ public class ErpWarehouseServiceImplTest extends BaseMockitoUnitTest {
         ArgumentCaptor<ErpWarehouseDO> captor = ArgumentCaptor.forClass(ErpWarehouseDO.class);
         verify(warehouseMapper).insert(captor.capture());
         assertEquals("WH000001", captor.getValue().getWarehouseCode());
+    }
+
+    @Test
+    public void testCreateWarehouse_blankCode_recoversWhenRedisSequenceBehindDatabase() {
+        ErpWarehouseSaveReqVO reqVO = new ErpWarehouseSaveReqVO();
+        reqVO.setName("A");
+        when(noRedisDAO.generatePlain(eq(ErpNoRedisDAO.WAREHOUSE_CODE_PREFIX)))
+                .thenReturn("WH000001", "WH000002", "WH000003", "WH000004", "WH000005");
+        when(warehouseMapper.selectByWarehouseCode(anyString())).thenAnswer(invocation -> {
+            String warehouseCode = invocation.getArgument(0);
+            return "WH000124".equals(warehouseCode) ? null
+                    : new ErpWarehouseDO().setId(1L).setWarehouseCode(warehouseCode);
+        });
+        when(warehouseMapper.selectListByWarehouseCodePrefix(eq(ErpNoRedisDAO.WAREHOUSE_CODE_PREFIX)))
+                .thenReturn(Arrays.asList(
+                        new ErpWarehouseDO().setWarehouseCode("WH000005"),
+                        new ErpWarehouseDO().setWarehouseCode("WH000123"),
+                        new ErpWarehouseDO().setWarehouseCode("WH-OTHER")));
+        when(noRedisDAO.generatePlainAfter(eq(ErpNoRedisDAO.WAREHOUSE_CODE_PREFIX), eq(123L)))
+                .thenReturn("WH000124");
+        when(warehouseMapper.insert(any(ErpWarehouseDO.class))).thenAnswer(invocation -> {
+            ErpWarehouseDO warehouse = invocation.getArgument(0);
+            warehouse.setId(100L);
+            return 1;
+        });
+
+        Long id = warehouseService.createWarehouse(reqVO);
+
+        assertEquals(100L, id);
+        ArgumentCaptor<ErpWarehouseDO> captor = ArgumentCaptor.forClass(ErpWarehouseDO.class);
+        verify(warehouseMapper).insert(captor.capture());
+        assertEquals("WH000124", captor.getValue().getWarehouseCode());
     }
 
     @Test
@@ -571,6 +606,29 @@ public class ErpWarehouseServiceImplTest extends BaseMockitoUnitTest {
     }
 
     @Test
+    public void testGetCurrentUserSaleSelectableWarehouseListByDept_allSaleProductPermissionReturnsAllSaleWarehouses() {
+        ErpWarehouseDO saleWarehouse = new ErpWarehouseDO().setId(11L).setDeptId(10L)
+                .setStatus(CommonStatusEnum.ENABLE.getStatus()).setSaleEnabled(true);
+        ErpWarehouseDO saleDisabledWarehouse = new ErpWarehouseDO().setId(12L).setDeptId(20L)
+                .setStatus(CommonStatusEnum.ENABLE.getStatus()).setSaleEnabled(false);
+        when(permissionApi.hasAnyPermissions(eq(104L), eq(ErpWarehouseService.SALE_CART_ALL_PRODUCT_PERMISSION)))
+                .thenReturn(true);
+        when(warehouseMapper.selectListByStatus(eq(CommonStatusEnum.ENABLE.getStatus())))
+                .thenReturn(Arrays.asList(saleWarehouse, saleDisabledWarehouse));
+
+        try (MockedStatic<SecurityFrameworkUtils> mock = mockStatic(SecurityFrameworkUtils.class)) {
+            mock.when(SecurityFrameworkUtils::getLoginUserId).thenReturn(104L);
+
+            List<ErpWarehouseDO> result = warehouseService.getCurrentUserSaleSelectableWarehouseListByDept(
+                    10L, ErpWarehouseService.SALE_CART_ALL_PRODUCT_PERMISSION);
+
+            assertEquals(Collections.singletonList(11L), result.stream().map(ErpWarehouseDO::getId)
+                    .collect(java.util.stream.Collectors.toList()));
+            verify(warehouseMapper, never()).selectListByStatusAndDeptIdOrIds(any(), any(), any());
+        }
+    }
+
+    @Test
     public void testValidateWarehouseSaleSelectableForDept_directUserWarehousePassesWithoutDeptDistribution() {
         ErpWarehouseDO warehouse = new ErpWarehouseDO().setId(11L).setName("A").setDeptId(20L)
                 .setStatus(CommonStatusEnum.ENABLE.getStatus()).setSaleEnabled(true);
@@ -583,6 +641,25 @@ public class ErpWarehouseServiceImplTest extends BaseMockitoUnitTest {
             mock.when(SecurityFrameworkUtils::getLoginUserId).thenReturn(104L);
 
             warehouseService.validateWarehouseSaleSelectableForDept(11L, 10L);
+        }
+    }
+
+    @Test
+    public void testValidateWarehouseSaleSelectableForDept_allSaleProductPermissionPassesCrossDeptWarehouse() {
+        ErpWarehouseDO warehouse = new ErpWarehouseDO().setId(11L).setName("A").setDeptId(20L)
+                .setStatus(CommonStatusEnum.ENABLE.getStatus()).setSaleEnabled(true);
+        when(warehouseMapper.selectById(eq(11L))).thenReturn(warehouse);
+        when(permissionApi.hasAnyPermissions(eq(104L), eq(ErpWarehouseService.SALE_ORDER_ALL_PRODUCT_PERMISSION)))
+                .thenReturn(true);
+
+        try (MockedStatic<SecurityFrameworkUtils> mock = mockStatic(SecurityFrameworkUtils.class)) {
+            mock.when(SecurityFrameworkUtils::getLoginUserId).thenReturn(104L);
+
+            warehouseService.validateWarehouseSaleSelectableForDept(
+                    11L, 10L, ErpWarehouseService.SALE_ORDER_ALL_PRODUCT_PERMISSION);
+
+            verify(warehouseSaleDeptPermissionMapper, never()).selectCountByWarehouseIdAndDeptId(any(), any());
+            verify(userWarehousePermissionMapper, never()).selectListByUserId(any());
         }
     }
 
@@ -1098,6 +1175,29 @@ public class ErpWarehouseServiceImplTest extends BaseMockitoUnitTest {
 
         verify(warehouseMapper, never()).selectById(any());
         verify(warehouseMapper, never()).updateById(any(ErpWarehouseDO.class));
+    }
+
+    @Test
+    public void testBatchUpdateWarehouse_hiddenDeptPreservedAlsoPreservesStockDept() {
+        ErpWarehouseDO warehouse = new ErpWarehouseDO().setId(1L).setName("A仓").setDeptId(10L);
+        when(warehouseMapper.selectById(eq(1L))).thenReturn(warehouse);
+        ErpWarehouseBatchUpdateReqVO req = new ErpWarehouseBatchUpdateReqVO();
+        req.setIds(Collections.singletonList(1L));
+        req.setDeptId(20L);
+        req.setRemark("仅修改备注");
+        org.mockito.Mockito.doAnswer(invocation -> {
+            ((ErpWarehouseDO) invocation.getArgument(1)).setDeptId(10L);
+            return null;
+        }).when(fieldPermissionMasker).preserveHiddenFields(eq("erp_warehouse"), any(ErpWarehouseDO.class), eq(warehouse));
+
+        warehouseService.batchUpdateWarehouse(req);
+
+        verify(stockDimensionService).assertWarehouseDepartmentChange(1L, 10L);
+        verify(stockMapper, never()).updateDeptIdByWarehouseId(any(), any());
+        ArgumentCaptor<ErpWarehouseDO> saved = ArgumentCaptor.forClass(ErpWarehouseDO.class);
+        verify(warehouseMapper).updateById(saved.capture());
+        assertEquals(10L, saved.getValue().getDeptId());
+        assertEquals("仅修改备注", saved.getValue().getRemark());
     }
 
     @Test

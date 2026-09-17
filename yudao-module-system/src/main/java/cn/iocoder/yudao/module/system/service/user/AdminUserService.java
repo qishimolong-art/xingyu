@@ -1,6 +1,7 @@
 package cn.iocoder.yudao.module.system.service.user;
 
 import cn.hutool.core.collection.CollUtil;
+import cn.iocoder.yudao.framework.common.pojo.PageParam;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.common.util.collection.CollectionUtils;
 import cn.iocoder.yudao.module.system.controller.admin.auth.vo.AuthRegisterReqVO;
@@ -142,6 +143,8 @@ public interface AdminUserService {
      * @return 分页列表
      */
     PageResult<AdminUserDO> getUserPage(UserPageReqVO reqVO);
+
+    PageResult<AdminUserDO> getUserSimplePage(Integer status, String keyword, PageParam pageParam);
 
     /**
      * 通过用户 ID 查询用户

@@ -4,7 +4,6 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Data;
 
 import javax.validation.Valid;
-import javax.validation.constraints.NotEmpty;
 import javax.validation.constraints.NotNull;
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -47,16 +46,14 @@ public class ErpPayableExpenseSaveReqVO {
 
     private String fileUrl;
 
-    @NotEmpty(message = "费用明细不能为空")
     @Valid
     private List<Item> items;
 
     @Data
     public static class Item {
         private Long id;
-        @NotNull(message = "项目名称不能为空")
+        private String operation;
         private String itemName;
-        @NotNull(message = "金额不能为空")
         private BigDecimal amount;
         private String invoiceNo;
         private String party;

@@ -61,7 +61,9 @@ import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.SALE_QUOTE_DR
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.SALE_QUOTE_ITEM_DUPLICATE;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.SALE_QUOTE_ITEM_PRODUCT_PRICE_POSITIVE;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.SALE_QUOTE_SUBMIT_FAIL;
+import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.SALE_QUOTE_SUBMIT_ITEMS_REQUIRED;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.SALE_QUOTE_UPDATE_FAIL_GENERATED;
+import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.SALE_PRICE_LEVEL_PERMISSION_DENIED;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.mockito.ArgumentMatchers.any;
@@ -122,6 +124,8 @@ public class ErpSaleQuoteServiceImplTest extends BaseMockitoUnitTest {
     private ErpSaleItemBatchUpdateSupport batchUpdateSupport;
     @Mock
     private ErpSalePriceLevelPricePicker priceLevelPricePicker;
+    @Mock
+    private ErpSalePriceLevelPermissionValidator priceLevelPermissionValidator;
 
     @BeforeEach
     public void setUp() {
@@ -132,6 +136,9 @@ public class ErpSaleQuoteServiceImplTest extends BaseMockitoUnitTest {
             }
         });
         lenient().when(warehouseService.validSaleWarehouseList(ArgumentMatchers.anyCollection()))
+                .thenAnswer(invocation -> buildWarehouseList(invocation.getArgument(0)));
+        lenient().when(warehouseService.validSaleSelectableWarehouseListForDept(
+                        ArgumentMatchers.anyCollection(), ArgumentMatchers.any(), ArgumentMatchers.any()))
                 .thenAnswer(invocation -> buildWarehouseList(invocation.getArgument(0)));
         lenient().when(warehouseService.getWarehouseMap(ArgumentMatchers.anyCollection()))
                 .thenAnswer(invocation -> {
@@ -370,6 +377,7 @@ public class ErpSaleQuoteServiceImplTest extends BaseMockitoUnitTest {
 
         saleQuoteService.batchUpdateSaleQuoteItems(reqVO);
 
+        verify(priceLevelPermissionValidator).validateSelectablePriceLevel(eq(10), nullable(Long.class));
         verify(saleQuoteItemMapper).updateBatch(ArgumentMatchers.<Collection<ErpSaleQuoteItemDO>>argThat(items -> {
             List<ErpSaleQuoteItemDO> list = new ArrayList<>(items);
             return list.size() == 2
@@ -381,6 +389,43 @@ public class ErpSaleQuoteServiceImplTest extends BaseMockitoUnitTest {
         verify(saleQuoteMapper).updateById(ArgumentMatchers.<ErpSaleQuoteDO>argThat(update ->
                 update.getId().equals(quoteId)
                         && update.getTotalProductPrice().compareTo(new BigDecimal("30.00")) == 0));
+    }
+
+    @Test
+    public void testBatchUpdateSaleQuoteItems_priceLevelPermissionDenied() {
+        Long quoteId = 17L;
+        Long deptId = 20L;
+        ErpSaleQuoteDO quote = new ErpSaleQuoteDO()
+                .setId(quoteId)
+                .setNo("BJ20260509000007")
+                .setDeptId(deptId)
+                .setStatus(ErpSaleQuoteStatusEnum.PROCESS.getStatus())
+                .setDiscountPercent(BigDecimal.ZERO)
+                .setFeeAmount(BigDecimal.ZERO);
+        ErpSaleQuoteItemDO normalItem = new ErpSaleQuoteItemDO()
+                .setId(117L)
+                .setQuoteId(quoteId)
+                .setProductId(217L)
+                .setCount(new BigDecimal("2"))
+                .setGiftFlag(false)
+                .setProductPrice(new BigDecimal("10.00"))
+                .setTotalPrice(new BigDecimal("20.00"))
+                .setTaxPercent(new BigDecimal("10"));
+        ErpSaleQuoteItemBatchUpdateReqVO reqVO = new ErpSaleQuoteItemBatchUpdateReqVO();
+        reqVO.setQuoteId(quoteId);
+        reqVO.setItemIds(Collections.singletonList(normalItem.getId()));
+        reqVO.setPriceLevel(10);
+        when(saleQuoteMapper.selectById(eq(quoteId))).thenReturn(quote);
+        when(saleQuoteItemMapper.selectListByQuoteId(eq(quoteId)))
+                .thenReturn(Collections.singletonList(normalItem));
+        doThrow(new ServiceException(SALE_PRICE_LEVEL_PERMISSION_DENIED)).when(priceLevelPermissionValidator)
+                .validateSelectablePriceLevel(eq(10), eq(deptId));
+
+        assertServiceException(() -> saleQuoteService.batchUpdateSaleQuoteItems(reqVO),
+                SALE_PRICE_LEVEL_PERMISSION_DENIED);
+
+        verify(priceLevelPricePicker, never()).pickProductPriceMap(anyCollection(), any());
+        verify(saleQuoteItemMapper, never()).updateBatch(anyCollection());
     }
 
     @Test
@@ -541,7 +586,8 @@ public class ErpSaleQuoteServiceImplTest extends BaseMockitoUnitTest {
         verify(customerService).validateCustomerSaleDept(eq(50L), eq(80L));
         verify(accountService).validateAccount(eq(60L));
         verify(adminUserApi).validateUser(eq(70L));
-        verify(warehouseService).validateWarehouseSaleSelectableForDept(eq(600L), eq(80L));
+        verify(warehouseService).validateWarehouseSaleSelectableForDept(eq(600L), eq(80L),
+                eq(ErpWarehouseService.SALE_QUOTE_ALL_PRODUCT_PERMISSION));
         verify(saleQuoteMapper).insert(ArgumentMatchers.<ErpSaleQuoteDO>argThat(quote -> ErpSaleQuoteStatusEnum.PROCESS.getStatus().equals(quote.getStatus())
                 && reqVO.getCustomerId().equals(quote.getCustomerId())));
         verify(saleQuoteItemMapper).insertBatch(argThat((List<ErpSaleQuoteItemDO> items) -> items.size() == 1
@@ -581,7 +627,8 @@ public class ErpSaleQuoteServiceImplTest extends BaseMockitoUnitTest {
         Long resultId = saleQuoteService.createSaleQuote(reqVO);
 
         assertEquals(1000L, resultId);
-        verify(warehouseService).validateWarehouseSaleSelectableForDept(eq(606L), eq(80L));
+        verify(warehouseService).validateWarehouseSaleSelectableForDept(eq(606L), eq(80L),
+                eq(ErpWarehouseService.SALE_QUOTE_ALL_PRODUCT_PERMISSION));
         verify(saleQuoteItemMapper).insertBatch(argThat((List<ErpSaleQuoteItemDO> items) -> items.size() == 1
                 && Long.valueOf(606L).equals(items.get(0).getWarehouseId())
                 && Long.valueOf(2606L).equals(items.get(0).getDeptId())));
@@ -741,6 +788,85 @@ public class ErpSaleQuoteServiceImplTest extends BaseMockitoUnitTest {
         verify(saleQuoteItemMapper).insertBatch(argThat((List<ErpSaleQuoteItemDO> items) -> items.size() == 1
                 && quoteId.equals(items.get(0).getQuoteId())
                 && Long.valueOf(1900L).equals(items.get(0).getDeptId())));
+    }
+
+    @Test
+    public void testUpdateSaleQuote_emptyIncrement_keepsExistingItems() {
+        Long quoteId = 62L;
+        ErpSaleQuoteDO existQuote = new ErpSaleQuoteDO()
+                .setId(quoteId)
+                .setNo("BJ20260509000062")
+                .setCustomerId(80L)
+                .setDeptId(81L)
+                .setStatus(ErpSaleQuoteStatusEnum.PROCESS.getStatus());
+        ErpSaleQuoteItemDO oldItem = new ErpSaleQuoteItemDO()
+                .setId(162L)
+                .setQuoteId(quoteId)
+                .setProductId(800L)
+                .setWarehouseId(900L)
+                .setProductPrice(new BigDecimal("15.00"))
+                .setCount(new BigDecimal("2"))
+                .setGiftFlag(Boolean.FALSE)
+                .setConvertedCount(BigDecimal.ONE);
+        ErpSaleQuoteSaveReqVO reqVO = new ErpSaleQuoteSaveReqVO();
+        reqVO.setId(quoteId);
+        reqVO.setCustomerId(80L);
+        reqVO.setDeptId(81L);
+        reqVO.setItems(Collections.emptyList());
+
+        when(saleQuoteMapper.selectById(eq(quoteId))).thenReturn(existQuote);
+        when(saleQuoteItemMapper.selectListByQuoteIdForUpdate(eq(quoteId)))
+                .thenReturn(Collections.singletonList(oldItem));
+        when(customerService.getCustomerSaleDeptIds(eq(80L))).thenReturn(Collections.singletonList(81L));
+        when(productService.validProductList(eq(Collections.singleton(800L))))
+                .thenReturn(Collections.singletonList(new ErpProductDO().setId(800L).setUnitId(1000L)));
+
+        saleQuoteService.updateSaleQuote(reqVO);
+
+        verify(saleQuoteMapper).updateById(ArgumentMatchers.<ErpSaleQuoteDO>argThat(update -> quoteId.equals(update.getId())
+                && BigDecimal.valueOf(2).compareTo(update.getTotalCount()) == 0));
+        verify(saleQuoteItemMapper, never()).deleteByQuoteId(anyLong());
+        verify(saleQuoteItemMapper, never()).deleteByIds(anyCollection());
+        verify(saleQuoteItemMapper, never()).insertBatch(any());
+        verify(saleQuoteItemMapper, never()).updateBatch(ArgumentMatchers.<Collection<ErpSaleQuoteItemDO>>any());
+    }
+
+    @Test
+    public void testUpdateSaleQuote_deleteAllItems_throwException() {
+        Long quoteId = 63L;
+        ErpSaleQuoteDO existQuote = new ErpSaleQuoteDO()
+                .setId(quoteId)
+                .setNo("BJ20260509000063")
+                .setCustomerId(80L)
+                .setDeptId(81L)
+                .setStatus(ErpSaleQuoteStatusEnum.PROCESS.getStatus());
+        ErpSaleQuoteItemDO oldItem = new ErpSaleQuoteItemDO()
+                .setId(163L)
+                .setQuoteId(quoteId)
+                .setProductId(800L)
+                .setWarehouseId(900L)
+                .setProductPrice(new BigDecimal("15.00"))
+                .setCount(new BigDecimal("2"))
+                .setGiftFlag(Boolean.FALSE);
+        ErpSaleQuoteSaveReqVO.Item deleteItem = new ErpSaleQuoteSaveReqVO.Item();
+        deleteItem.setId(163L);
+        deleteItem.setOperation("delete");
+        ErpSaleQuoteSaveReqVO reqVO = new ErpSaleQuoteSaveReqVO();
+        reqVO.setId(quoteId);
+        reqVO.setCustomerId(80L);
+        reqVO.setDeptId(81L);
+        reqVO.setItems(Collections.singletonList(deleteItem));
+
+        when(saleQuoteMapper.selectById(eq(quoteId))).thenReturn(existQuote);
+        when(saleQuoteItemMapper.selectListByQuoteIdForUpdate(eq(quoteId)))
+                .thenReturn(Collections.singletonList(oldItem));
+
+        assertServiceException(() -> saleQuoteService.updateSaleQuote(reqVO),
+                SALE_QUOTE_SUBMIT_ITEMS_REQUIRED);
+
+        verify(saleQuoteMapper, never()).updateById(ArgumentMatchers.<ErpSaleQuoteDO>any());
+        verify(saleQuoteItemMapper, never()).deleteByQuoteId(anyLong());
+        verify(saleQuoteItemMapper, never()).deleteByIds(anyCollection());
     }
 
     @Test

@@ -3,6 +3,7 @@ package cn.iocoder.yudao.module.erp.controller.admin.finance.payable;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.ErpFinanceUpdateRemarkReqVO;
 import cn.hutool.core.collection.CollUtil;
 import cn.iocoder.yudao.framework.apilog.core.annotation.ApiAccessLog;
+import cn.iocoder.yudao.framework.common.enums.CommonStatusEnum;
 import cn.iocoder.yudao.framework.common.pojo.CommonResult;
 import cn.iocoder.yudao.framework.common.pojo.PageParam;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
@@ -33,6 +34,7 @@ import cn.iocoder.yudao.module.system.api.dept.dto.DeptRespDTO;
 import cn.iocoder.yudao.module.system.api.user.AdminUserApi;
 import cn.iocoder.yudao.module.system.api.user.dto.AdminUserRespDTO;
 import cn.iocoder.yudao.module.system.controller.admin.dept.vo.dept.DeptSimpleRespVO;
+import cn.iocoder.yudao.module.system.controller.admin.user.vo.user.UserSimpleRespVO;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -219,7 +221,7 @@ public class ErpPayableExpenseController {
     @PreAuthorize("@ss.hasPermission('erp:payable-expense:query')")
     public CommonResult<PageResult<ErpPayableExpenseRespVO>> page(@Valid ErpPayableExpensePageReqVO reqVO) {
         PageResult<ErpPayableExpenseDO> pageResult = payableExpenseService.getPayableExpensePage(reqVO);
-        return success(maskPageResult(buildPageResult(pageResult)));
+        return success(maskPageResult(buildPageResult(pageResult, !Boolean.FALSE.equals(reqVO.getIncludeItems()))));
     }
 
     @GetMapping("/dept-simple-list")
@@ -227,6 +229,24 @@ public class ErpPayableExpenseController {
     @PreAuthorize("@ss.hasPermission('erp:payable-expense:query')")
     public CommonResult<List<DeptSimpleRespVO>> getPayableExpenseDeptSimpleList() {
         return success(dataPermissionDeptService.getDeptSimpleList("erp_payable_expense"));
+    }
+
+    @GetMapping("/dept-simple-page")
+    @Operation(summary = "Get payable expense data permission dept simple page")
+    @PreAuthorize("@ss.hasPermission('erp:payable-expense:query')")
+    public CommonResult<PageResult<DeptSimpleRespVO>> getPayableExpenseDeptSimplePage(@Valid PageParam pageReqVO) {
+        return success(dataPermissionDeptService.getDeptSimplePage("erp_payable_expense", pageReqVO));
+    }
+
+    @GetMapping("/user-simple-page")
+    @Operation(summary = "Get payable expense user simple page")
+    @PreAuthorize("@ss.hasPermission('erp:payable-expense:query')")
+    public CommonResult<PageResult<UserSimpleRespVO>> getPayableExpenseUserSimplePage(@Valid PageParam pageReqVO) {
+        PageResult<AdminUserRespDTO> page = adminUserApi.getUserSimplePage(
+                CommonStatusEnum.ENABLE.getStatus(), pageReqVO.getKeyword(), pageReqVO);
+        List<UserSimpleRespVO> list = CollectionUtils.convertList(page.getList(), user ->
+                new UserSimpleRespVO(user.getId(), user.getNickname(), user.getDeptId(), null));
+        return success(new PageResult<>(list, page.getTotal()));
     }
 
     @GetMapping("/export-excel")
@@ -307,11 +327,18 @@ public class ErpPayableExpenseController {
     }
 
     private PageResult<ErpPayableExpenseRespVO> buildPageResult(PageResult<ErpPayableExpenseDO> pageResult) {
+        return buildPageResult(pageResult, true);
+    }
+
+    private PageResult<ErpPayableExpenseRespVO> buildPageResult(PageResult<ErpPayableExpenseDO> pageResult,
+                                                                boolean includeItems) {
         if (CollUtil.isEmpty(pageResult.getList())) {
             return PageResult.empty(pageResult.getTotal());
         }
-        List<ErpPayableExpenseItemDO> itemList = payableExpenseService.getPayableExpenseItemListByExpenseIds(
-                convertSet(pageResult.getList(), ErpPayableExpenseDO::getId));
+        List<ErpPayableExpenseItemDO> itemList = includeItems
+                ? payableExpenseService.getPayableExpenseItemListByExpenseIds(
+                        convertSet(pageResult.getList(), ErpPayableExpenseDO::getId))
+                : Collections.emptyList();
         Map<Long, List<ErpPayableExpenseItemDO>> itemMap = convertMultiMap(itemList,
                 ErpPayableExpenseItemDO::getExpenseId);
         Set<Long> accountIds = convertSet(pageResult.getList(), ErpPayableExpenseDO::getAccountId);
@@ -324,13 +351,15 @@ public class ErpPayableExpenseController {
         Map<Long, DeptRespDTO> deptMap = deptApi.getDeptMap(CollectionUtils.convertSet(pageResult.getList(),
                 ErpPayableExpenseDO::getDeptId));
         return BeanUtils.toBean(pageResult, ErpPayableExpenseRespVO.class, vo -> {
-            vo.setItems(buildPayableExpenseItems(itemMap.get(vo.getId())));
+            vo.setItems(includeItems ? buildPayableExpenseItems(itemMap.get(vo.getId())) : Collections.emptyList());
             MapUtils.findAndThen(accountMap, vo.getAccountId(), account -> vo.setAccountName(account.getName()));
             MapUtils.findAndThen(userMap, vo.getHandlerId(), user -> vo.setHandlerName(user.getNickname()));
             MapUtils.findAndThen(userMap, NumberUtils.parseLong(vo.getCreator()), user -> vo.setCreatorName(user.getNickname()));
             MapUtils.findAndThen(userMap, NumberUtils.parseLong(vo.getUpdater()), user -> vo.setUpdaterName(user.getNickname()));
             MapUtils.findAndThen(deptMap, vo.getDeptId(), dept -> vo.setDeptName(dept.getName()));
-            fillItemExtend(vo);
+            if (includeItems) {
+                fillItemExtend(vo);
+            }
         });
     }
 

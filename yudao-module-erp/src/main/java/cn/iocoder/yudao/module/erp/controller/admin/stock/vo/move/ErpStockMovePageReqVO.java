@@ -69,6 +69,9 @@ public class ErpStockMovePageReqVO extends PageParam {
     @Schema(description = "产品编号", example = "1")
     private Long productId;
 
+    @Schema(description = "产品关键词")
+    private String productKeyword;
+
     @Schema(description = "调出仓库编号", example = "1")
     private Long fromWarehouseId;
 
@@ -86,5 +89,8 @@ public class ErpStockMovePageReqVO extends PageParam {
 
     @Schema(description = "排序方向（asc/desc）")
     private String orderDirection;
+
+    @Schema(description = "是否返回明细")
+    private Boolean includeItems;
 
 }

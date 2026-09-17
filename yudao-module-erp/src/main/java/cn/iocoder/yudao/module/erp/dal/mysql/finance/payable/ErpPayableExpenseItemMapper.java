@@ -20,6 +20,13 @@ public interface ErpPayableExpenseItemMapper extends BaseMapperX<ErpPayableExpen
                 .orderByAsc(ErpPayableExpenseItemDO::getId));
     }
 
+    default List<ErpPayableExpenseItemDO> selectListByExpenseIdForUpdate(Long expenseId) {
+        return selectList(new LambdaQueryWrapperX<ErpPayableExpenseItemDO>()
+                .eq(ErpPayableExpenseItemDO::getExpenseId, expenseId)
+                .orderByAsc(ErpPayableExpenseItemDO::getId)
+                .last("FOR UPDATE"));
+    }
+
     default PageResult<ErpPayableExpenseItemDO> selectPageByExpenseId(ErpPayableExpenseItemPageReqVO reqVO) {
         LambdaQueryWrapperX<ErpPayableExpenseItemDO> query = new LambdaQueryWrapperX<ErpPayableExpenseItemDO>()
                 .eq(ErpPayableExpenseItemDO::getExpenseId, reqVO.getExpenseId());

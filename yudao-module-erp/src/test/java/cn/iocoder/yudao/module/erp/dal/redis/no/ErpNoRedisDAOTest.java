@@ -14,6 +14,7 @@ import org.springframework.data.redis.core.ValueOperations;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.time.YearMonth;
+import java.util.Collections;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -118,6 +119,18 @@ public class ErpNoRedisDAOTest extends BaseMockitoUnitTest {
         String no = noRedisDAO.generatePlain(prefix);
 
         assertEquals("P000001", no);
+    }
+
+    @Test
+    @DisplayName("generatePlainAfter：Redis 流水落后时先追到指定流水再自增")
+    public void testGeneratePlainAfter() {
+        String prefix = "WH";
+        when(stringRedisTemplate.execute(any(), eq(Collections.singletonList(RedisKeyConstants.NO + prefix)),
+                eq("123"))).thenReturn(124L);
+
+        String no = noRedisDAO.generatePlainAfter(prefix, 123L);
+
+        assertEquals("WH000124", no);
     }
 
     // ==================== generateMonthly（财务凭证号） ====================

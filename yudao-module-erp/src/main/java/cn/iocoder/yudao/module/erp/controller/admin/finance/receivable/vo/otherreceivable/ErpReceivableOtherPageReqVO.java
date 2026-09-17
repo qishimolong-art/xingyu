@@ -12,7 +12,7 @@ import java.time.LocalDate;
 
 import static cn.iocoder.yudao.framework.common.util.date.DateUtils.FORMAT_YEAR_MONTH_DAY;
 
-@Schema(description = "ERP 其他应收分页 Request VO")
+@Schema(description = "ERP 应收调账分页 Request VO")
 @Data
 @EqualsAndHashCode(callSuper = true)
 @ToString(callSuper = true)

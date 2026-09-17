@@ -65,6 +65,9 @@ public class ErpPurchasePriceAdjustPageReqVO extends PageParam {
     @Schema(description = "勾选导出的采购调价单编号数组", example = "[1,2,3]")
     private List<Long> ids;
 
+    @Schema(description = "是否返回明细，默认 true；普通列表可传 false 减少响应体", example = "false")
+    private Boolean includeItems;
+
     @Schema(description = "Sort field, supports: no, status, adjustTime, supplierName, originalTotalPrice, "
             + "adjustedTotalPrice, totalAdjustPrice, adjusterName, approverName, approveTime, remark")
     private String orderField;

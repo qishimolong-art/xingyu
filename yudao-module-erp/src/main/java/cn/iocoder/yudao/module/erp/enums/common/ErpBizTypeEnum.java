@@ -19,11 +19,13 @@ public enum ErpBizTypeEnum implements ArrayValuable<Integer> {
     PURCHASE_IN(11, "采购入库"),
     PURCHASE_RETURN(12, "采购退货"),
     PURCHASE_PRICE_ADJUST(13, "采购调价"),
+    PAYABLE_MISC(14, "其他应付"),
 
     SALE_ORDER(20, "销售订单"),
     SALE_OUT(21, "销售出库"),
     SALE_RETURN(22, "销售退货"),
     SALE_PRICE_ADJUST(23, "销售调价"),
+    RECEIVABLE_MISC(24, "其他应收"),
     ;
 
     public static final Integer[] ARRAYS = Arrays.stream(values()).map(ErpBizTypeEnum::getType).toArray(Integer[]::new);

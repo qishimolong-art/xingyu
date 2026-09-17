@@ -1,8 +1,11 @@
 package cn.iocoder.yudao.module.erp.controller.admin.stock;
 
+import cn.iocoder.yudao.module.erp.service.stock.ErpStockItemPriceReferenceFiller;
 import cn.hutool.core.collection.CollUtil;
 import cn.iocoder.yudao.framework.apilog.core.annotation.ApiAccessLog;
+import cn.iocoder.yudao.framework.common.enums.CommonStatusEnum;
 import cn.iocoder.yudao.framework.common.pojo.CommonResult;
+import cn.iocoder.yudao.framework.common.pojo.PageParam;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.common.exception.ErrorCode;
 import cn.iocoder.yudao.framework.common.util.collection.MapUtils;
@@ -24,6 +27,7 @@ import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.imports.ErpStockImp
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockCheckDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockCheckItemDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpWarehouseDO;
+import cn.iocoder.yudao.module.erp.dal.mysql.stock.ErpStockCheckItemMapper;
 import cn.iocoder.yudao.module.erp.enums.print.ErpPrintModuleEnum;
 import cn.iocoder.yudao.module.erp.service.base.ErpDataPermissionDeptService;
 import cn.iocoder.yudao.module.erp.service.common.ErpImportExportRecordService;
@@ -38,6 +42,7 @@ import cn.iocoder.yudao.module.system.api.dept.dto.DeptRespDTO;
 import cn.iocoder.yudao.module.system.api.user.AdminUserApi;
 import cn.iocoder.yudao.module.system.api.user.dto.AdminUserRespDTO;
 import cn.iocoder.yudao.module.system.controller.admin.dept.vo.dept.DeptSimpleRespVO;
+import cn.iocoder.yudao.module.system.controller.admin.user.vo.user.UserSimpleRespVO;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -71,6 +76,7 @@ import java.util.Set;
 import static cn.iocoder.yudao.framework.apilog.core.enums.OperateTypeEnum.EXPORT;
 import static cn.iocoder.yudao.framework.common.pojo.CommonResult.success;
 import static cn.iocoder.yudao.framework.common.exception.util.ServiceExceptionUtil.exception;
+import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.convertList;
 import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.convertMultiMap;
 import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.convertSet;
 
@@ -101,6 +107,8 @@ public class ErpStockCheckController {
     @Resource
     private ErpStockFieldPermissionMasker fieldPermissionMasker;
     @Resource
+    private ErpStockItemPriceReferenceFiller itemPriceReferenceFiller;
+    @Resource
     private ErpDataPermissionDeptService dataPermissionDeptService;
     @Resource
     private DeptApi deptApi;
@@ -108,6 +116,8 @@ public class ErpStockCheckController {
     private AdminUserApi adminUserApi;
     @Resource
     private ErpPrintService printService;
+    @Resource
+    private ErpStockCheckItemMapper stockCheckItemMapper;
 
     @PostMapping("/create")
     @Operation(summary = "Create stock check")
@@ -236,6 +246,7 @@ public class ErpStockCheckController {
             MapUtils.findAndThen(deptMap, vo.getDeptId(), dept -> vo.setDeptName(dept.getName()));
             fillUserNames(vo, userMap);
         });
+        itemPriceReferenceFiller.fill(respVO.getItems());
         fieldPermissionMasker.maskFormWithItems(FIELD_PERMISSION_MODULE, respVO);
         return success(respVO);
     }
@@ -248,6 +259,7 @@ public class ErpStockCheckController {
         PageResult<ErpStockCheckItemDO> pageResult = stockCheckService.getStockCheckItemPage(pageReqVO);
         PageResult<ErpStockCheckRespVO.Item> respResult = new PageResult<>(
                 buildStockCheckItemVOList(pageResult.getList()), pageResult.getTotal());
+        itemPriceReferenceFiller.fill(respResult.getList());
         if (Boolean.TRUE.equals(pageReqVO.getMask())) {
             fieldPermissionMasker.clearHiddenItemFields(FIELD_PERMISSION_MODULE, respResult.getList());
         }
@@ -258,7 +270,26 @@ public class ErpStockCheckController {
     @Operation(summary = "Get stock check page")
     @PreAuthorize("@ss.hasPermission('erp:stock-check:query')")
     public CommonResult<PageResult<ErpStockCheckRespVO>> getStockCheckPage(@Valid ErpStockCheckPageReqVO pageReqVO) {
-        return success(buildStockCheckVOPageResult(stockCheckService.getStockCheckPage(pageReqVO)));
+        PageResult<ErpStockCheckDO> pageResult = stockCheckService.getStockCheckPage(pageReqVO);
+        PageResult<ErpStockCheckRespVO> respResult = Boolean.FALSE.equals(pageReqVO.getIncludeItems())
+                ? buildStockCheckVOPageResultWithoutItems(pageResult) : buildStockCheckVOPageResult(pageResult);
+        fieldPermissionMasker.maskListColumns(FIELD_PERMISSION_MODULE, respResult.getList());
+        maskStockCheckListAmounts(respResult.getList());
+        return success(respResult);
+    }
+
+    @GetMapping("/dept-simple-page")
+    @Operation(summary = "Get visible department page for stock check filter")
+    @PreAuthorize("@ss.hasPermission('erp:stock-check:query')")
+    public CommonResult<PageResult<DeptSimpleRespVO>> getVisibleDeptSimplePage(@Valid PageParam pageReqVO) {
+        return success(dataPermissionDeptService.getDeptSimplePage(FIELD_PERMISSION_MODULE, pageReqVO));
+    }
+
+    @GetMapping("/user-simple-page")
+    @Operation(summary = "Get user page for stock check filter")
+    @PreAuthorize("@ss.hasPermission('erp:stock-check:query')")
+    public CommonResult<PageResult<UserSimpleRespVO>> getUserSimplePage(@Valid PageParam pageReqVO) {
+        return success(buildUserSimplePage(pageReqVO));
     }
 
     @GetMapping("/dept-simple-list")
@@ -351,6 +382,8 @@ public class ErpStockCheckController {
         return BeanUtils.toBean(pageResult, ErpStockCheckRespVO.class, vo -> {
             vo.setItems(BeanUtils.toBean(itemMap.get(vo.getId()), ErpStockCheckRespVO.Item.class,
                     item -> fillItemRelation(item, productMap.get(item.getProductId()), warehouseMap, deptMap)));
+            vo.setItemCount(CollUtil.size(vo.getItems()));
+            vo.setWarehouseNames(CollUtil.join(vo.getItems(), ", ", ErpStockCheckRespVO.Item::getWarehouseName));
             vo.setProductNames(CollUtil.join(vo.getItems(), ", ", ErpStockCheckRespVO.Item::getProductName));
             vo.setProductCodes(CollUtil.join(vo.getItems(), ", ", ErpStockCheckRespVO.Item::getProductCode));
             MapUtils.findAndThen(deptMap, vo.getDeptId(), dept -> vo.setDeptName(dept.getName()));
@@ -359,6 +392,67 @@ public class ErpStockCheckController {
             vo.setPrintCount(printCount == null ? 0 : printCount.intValue());
             vo.setPrintTime(printTimeMap.get(vo.getId()));
         });
+    }
+
+    private PageResult<ErpStockCheckRespVO> buildStockCheckVOPageResultWithoutItems(
+            PageResult<ErpStockCheckDO> pageResult) {
+        if (CollUtil.isEmpty(pageResult.getList())) {
+            return PageResult.empty(pageResult.getTotal());
+        }
+        Map<Long, Map<String, Object>> summaryMap = stockCheckItemMapper.selectSummaryMapByCheckIds(
+                convertSet(pageResult.getList(), ErpStockCheckDO::getId));
+        Set<Long> deptIds = new HashSet<>(convertSet(pageResult.getList(), ErpStockCheckDO::getDeptId));
+        deptIds.remove(null);
+        Map<Long, DeptRespDTO> deptMap = CollUtil.isEmpty(deptIds) ? Collections.emptyMap() : deptApi.getDeptMap(deptIds);
+        Set<Long> userIds = new HashSet<>();
+        pageResult.getList().forEach(stockCheck -> {
+            addUserId(userIds, stockCheck.getCreator());
+            addUserId(userIds, stockCheck.getUpdater());
+        });
+        Map<Long, AdminUserRespDTO> userMap = adminUserApi.getUserMap(userIds);
+        Set<Long> ids = convertSet(pageResult.getList(), ErpStockCheckDO::getId);
+        Map<Long, Long> printCountMap = printService.getPrintCountMap(ErpPrintModuleEnum.STOCK_CHECK.getKey(), ids);
+        Map<Long, LocalDateTime> printTimeMap = printService.getLastPrintTimeMap(
+                ErpPrintModuleEnum.STOCK_CHECK.getKey(), ids);
+        return BeanUtils.toBean(pageResult, ErpStockCheckRespVO.class, vo -> {
+            fillSummary(vo, summaryMap.get(vo.getId()));
+            MapUtils.findAndThen(deptMap, vo.getDeptId(), dept -> vo.setDeptName(dept.getName()));
+            fillUserNames(vo, userMap);
+            Long printCount = printCountMap.get(vo.getId());
+            vo.setPrintCount(printCount == null ? 0 : printCount.intValue());
+            vo.setPrintTime(printTimeMap.get(vo.getId()));
+        });
+    }
+
+    private void fillSummary(ErpStockCheckRespVO vo, Map<String, Object> summary) {
+        if (summary == null) {
+            return;
+        }
+        Object itemCount = summary.get("itemCount");
+        if (itemCount instanceof Number) {
+            vo.setItemCount(((Number) itemCount).intValue());
+        }
+        vo.setWarehouseNames((String) summary.get("warehouseNames"));
+        vo.setProductNames((String) summary.get("productNames"));
+        vo.setProductCodes((String) summary.get("productCodes"));
+    }
+
+    private void maskStockCheckListAmounts(List<ErpStockCheckRespVO> list) {
+        if (CollUtil.isEmpty(list)) {
+            return;
+        }
+        if (!fieldPermissionMasker.isFieldHidden(FIELD_PERMISSION_MODULE, "item_totalPrice")) {
+            return;
+        }
+        list.forEach(vo -> vo.setTotalPrice(null));
+    }
+
+    private PageResult<UserSimpleRespVO> buildUserSimplePage(PageParam pageReqVO) {
+        PageResult<AdminUserRespDTO> page = adminUserApi.getUserSimplePage(
+                CommonStatusEnum.ENABLE.getStatus(), pageReqVO.getKeyword(), pageReqVO);
+        List<UserSimpleRespVO> list = convertList(page.getList(), user ->
+                new UserSimpleRespVO(user.getId(), user.getNickname(), user.getDeptId(), null));
+        return new PageResult<>(list, page.getTotal());
     }
 
     private List<ErpStockCheckRespVO.Item> buildStockCheckItemVOList(List<ErpStockCheckItemDO> itemList) {

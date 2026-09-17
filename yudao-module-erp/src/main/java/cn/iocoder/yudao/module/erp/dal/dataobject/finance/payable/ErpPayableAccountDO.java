@@ -20,6 +20,7 @@ public class ErpPayableAccountDO {
     private BigDecimal purchaseReturnAmount;
     private BigDecimal priceAdjustAmount;
     private BigDecimal otherPayableAmount;
+    private BigDecimal miscPayableAmount;
     private BigDecimal paymentAmount;
     private BigDecimal writeOffAmount;
     private BigDecimal balance;

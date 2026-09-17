@@ -7,11 +7,20 @@ import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.priceadjust.ErpSaleO
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.priceadjust.ErpSalePriceAdjustPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.priceadjust.ErpSalePriceAdjustRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.priceadjust.ErpSalePriceAdjustSaveReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.priceadjust.ErpSalePriceAdjustSettlementSummaryRespVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSalePriceAdjustDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSalePriceAdjustItemDO;
+import cn.iocoder.yudao.module.erp.dal.mysql.finance.ErpFinanceReceiptItemMapper;
+import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpSaleOutItemMapper;
+import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpSalePriceAdjustItemMapper;
+import cn.iocoder.yudao.module.erp.enums.common.ErpBizTypeEnum;
+import cn.iocoder.yudao.module.erp.service.base.ErpDataPermissionDeptService;
+import cn.iocoder.yudao.module.erp.service.config.ErpFieldConfigService;
 import cn.iocoder.yudao.module.erp.service.sale.ErpCustomerService;
 import cn.iocoder.yudao.module.erp.service.sale.ErpSaleFieldPermissionMasker;
+import cn.iocoder.yudao.module.erp.service.sale.ErpSaleItemPriceReferenceFiller;
 import cn.iocoder.yudao.module.erp.service.sale.ErpSalePriceAdjustService;
+import cn.iocoder.yudao.module.erp.service.stock.ErpWarehouseService;
 import cn.iocoder.yudao.module.system.api.dept.DeptApi;
 import cn.iocoder.yudao.module.system.api.user.AdminUserApi;
 import org.junit.jupiter.api.Test;
@@ -19,6 +28,7 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.springframework.security.access.prepost.PreAuthorize;
 
+import java.math.BigDecimal;
 import java.lang.reflect.Method;
 import java.util.Arrays;
 import java.util.Collections;
@@ -31,6 +41,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -52,6 +63,20 @@ public class ErpSalePriceAdjustControllerTest extends BaseMockitoUnitTest {
     private AdminUserApi adminUserApi;
     @Mock
     private ErpSaleFieldPermissionMasker fieldPermissionMasker;
+    @Mock
+    private ErpFinanceReceiptItemMapper financeReceiptItemMapper;
+    @Mock
+    private ErpSaleItemPriceReferenceFiller itemPriceReferenceFiller;
+    @Mock
+    private ErpFieldConfigService fieldConfigService;
+    @Mock
+    private ErpSaleOutItemMapper saleOutItemMapper;
+    @Mock
+    private ErpWarehouseService warehouseService;
+    @Mock
+    private ErpDataPermissionDeptService dataPermissionDeptService;
+    @Mock
+    private ErpSalePriceAdjustItemMapper salePriceAdjustItemMapper;
 
     // ==================== createSalePriceAdjust ====================
 
@@ -177,6 +202,59 @@ public class ErpSalePriceAdjustControllerTest extends BaseMockitoUnitTest {
         assertTrue(anno.value().contains("erp:sale-price-adjust:query"));
     }
 
+    @Test
+    public void testGetSalePriceAdjustSettlementSummaryReturnsUnsignedStatusByAbsComparison() {
+        when(salePriceAdjustService.getSalePriceAdjust(eq(10L))).thenReturn(new ErpSalePriceAdjustDO()
+                .setId(10L).setTotalAdjustPrice(new BigDecimal("100")));
+        when(financeReceiptItemMapper.selectReceiptPriceSumByBizIdAndBizType(
+                eq(10L), eq(ErpBizTypeEnum.SALE_PRICE_ADJUST.getType()))).thenReturn(BigDecimal.ZERO);
+
+        ErpSalePriceAdjustSettlementSummaryRespVO none =
+                controller.getSalePriceAdjustSettlementSummary(10L).getData();
+
+        assertNotNull(none);
+        assertEquals(0, new BigDecimal("100").compareTo(none.getSettlementAmount()));
+        assertEquals(0, BigDecimal.ZERO.compareTo(none.getWrittenOffAmount()));
+        assertEquals(Integer.valueOf(0), none.getSettlementStatus());
+
+        when(financeReceiptItemMapper.selectReceiptPriceSumByBizIdAndBizType(
+                eq(10L), eq(ErpBizTypeEnum.SALE_PRICE_ADJUST.getType()))).thenReturn(new BigDecimal("40"));
+
+        ErpSalePriceAdjustSettlementSummaryRespVO partial =
+                controller.getSalePriceAdjustSettlementSummary(10L).getData();
+
+        assertNotNull(partial);
+        assertEquals(0, new BigDecimal("60").compareTo(partial.getUnwrittenOffAmount()));
+        assertEquals(Integer.valueOf(1), partial.getSettlementStatus());
+
+        when(financeReceiptItemMapper.selectReceiptPriceSumByBizIdAndBizType(
+                eq(10L), eq(ErpBizTypeEnum.SALE_PRICE_ADJUST.getType()))).thenReturn(new BigDecimal("100"));
+
+        ErpSalePriceAdjustSettlementSummaryRespVO writtenOff =
+                controller.getSalePriceAdjustSettlementSummary(10L).getData();
+
+        assertNotNull(writtenOff);
+        assertEquals(0, BigDecimal.ZERO.compareTo(writtenOff.getUnwrittenOffAmount()));
+        assertEquals(Integer.valueOf(2), writtenOff.getSettlementStatus());
+    }
+
+    @Test
+    public void testGetSalePriceAdjustSettlementSummaryPreservesNegativeAmounts() {
+        when(salePriceAdjustService.getSalePriceAdjust(eq(10L))).thenReturn(new ErpSalePriceAdjustDO()
+                .setId(10L).setTotalAdjustPrice(new BigDecimal("-100")));
+        when(financeReceiptItemMapper.selectReceiptPriceSumByBizIdAndBizType(
+                eq(10L), eq(ErpBizTypeEnum.SALE_PRICE_ADJUST.getType()))).thenReturn(new BigDecimal("-40"));
+
+        ErpSalePriceAdjustSettlementSummaryRespVO data =
+                controller.getSalePriceAdjustSettlementSummary(10L).getData();
+
+        assertNotNull(data);
+        assertEquals(0, new BigDecimal("-100").compareTo(data.getSettlementAmount()));
+        assertEquals(0, new BigDecimal("-40").compareTo(data.getWrittenOffAmount()));
+        assertEquals(0, new BigDecimal("-60").compareTo(data.getUnwrittenOffAmount()));
+        assertEquals(Integer.valueOf(1), data.getSettlementStatus());
+    }
+
     // ==================== getSalePriceAdjustPage ====================
 
     @Test
@@ -211,6 +289,36 @@ public class ErpSalePriceAdjustControllerTest extends BaseMockitoUnitTest {
         assertEquals(0, result.getCode());
         assertEquals(1L, result.getData().getTotal());
         assertEquals(300L, result.getData().getList().get(0).getId());
+    }
+
+    @Test
+    public void testGetSalePriceAdjustPage_includeItemsFalse_usesLightList() {
+        ErpSalePriceAdjustPageReqVO pageReqVO = new ErpSalePriceAdjustPageReqVO();
+        pageReqVO.setIncludeItems(false);
+        ErpSalePriceAdjustDO adjust = new ErpSalePriceAdjustDO();
+        adjust.setId(301L);
+        adjust.setCustomerId(302L);
+        ErpSalePriceAdjustItemDO item = new ErpSalePriceAdjustItemDO()
+                .setAdjustId(301L)
+                .setSaleOutNo("XSCK001")
+                .setOutCount(new BigDecimal("2"))
+                .setOldPrice(new BigDecimal("10"))
+                .setNewPrice(new BigDecimal("12"));
+        when(salePriceAdjustService.getSalePriceAdjustPage(eq(pageReqVO)))
+                .thenReturn(new PageResult<>(singletonList(adjust), 1L));
+        when(salePriceAdjustItemMapper.selectSummaryListByAdjustIds(any()))
+                .thenReturn(singletonList(item));
+        when(customerService.getCustomerMap(any())).thenReturn(Collections.emptyMap());
+
+        CommonResult<PageResult<ErpSalePriceAdjustRespVO>> result = controller.getSalePriceAdjustPage(pageReqVO);
+
+        ErpSalePriceAdjustRespVO respVO = result.getData().getList().get(0);
+        assertEquals("XSCK001", respVO.getSourceNo());
+        assertEquals(0, new BigDecimal("20").compareTo(respVO.getTotalOriginalPrice()));
+        assertEquals(0, new BigDecimal("24").compareTo(respVO.getTotalAdjustedPrice()));
+        assertNull(respVO.getItems());
+        verify(salePriceAdjustService, never()).getSalePriceAdjustItemListByAdjustIds(any());
+        verify(salePriceAdjustItemMapper).selectSummaryListByAdjustIds(any());
     }
 
     @Test

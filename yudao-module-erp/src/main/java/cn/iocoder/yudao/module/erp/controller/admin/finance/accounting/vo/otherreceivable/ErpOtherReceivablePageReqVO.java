@@ -42,4 +42,7 @@ public class ErpOtherReceivablePageReqVO extends PageParam {
     @Schema(description = "创建者", example = "1")
     private String creator;
 
+    @Schema(description = "是否返回明细，默认 true 保持兼容")
+    private Boolean includeItems;
+
 }

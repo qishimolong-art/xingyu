@@ -78,6 +78,14 @@ public class PermissionServiceImpl implements PermissionService {
             "erp_sale_return",
             "erp_sale_out",
             "erp_sale_price_adjust"));
+    private static final Set<String> STOCK_PRICE_PERMISSION_MODULES = new HashSet<>(Arrays.asList(
+            "erp_stock_in",
+            "erp_stock_out",
+            "erp_stock_check",
+            "erp_stock_move",
+            "erp_stock_transfer_out",
+            "erp_stock_transfer_in",
+            "erp_warehouse_move"));
     private static final List<String> PURCHASE_PRICE_RELATED_FIELDS = Arrays.asList(
             "totalProductPrice",
             "discountPrice",
@@ -112,8 +120,18 @@ public class PermissionServiceImpl implements PermissionService {
             "select_col_totalPrice",
             "select_col_taxPrice");
     private static final List<String> SALE_PRICE_RELATED_FIELDS = Arrays.asList(
+            "productPurchasePrice",
             "productPrice",
             "salePrice",
+            "lastSalePrice",
+            "minPrice",
+            "referencePrice",
+            "retailPrice",
+            "lastPurchasePrice",
+            "grossProfitRate",
+            "backupPrice1",
+            "wholesalePrice",
+            "sharePrice",
             "totalProductPrice",
             "discountPrice",
             "allowancePrice",
@@ -132,8 +150,18 @@ public class PermissionServiceImpl implements PermissionService {
             "adjustPrice",
             "adjustAmount",
             "totalAdjustPrice",
+            "item_productPurchasePrice",
             "item_productPrice",
             "item_salePrice",
+            "item_lastSalePrice",
+            "item_minPrice",
+            "item_referencePrice",
+            "item_retailPrice",
+            "item_lastPurchasePrice",
+            "item_grossProfitRate",
+            "item_backupPrice1",
+            "item_wholesalePrice",
+            "item_sharePrice",
             "item_totalProductPrice",
             "item_discountPrice",
             "item_allowancePrice",
@@ -152,8 +180,18 @@ public class PermissionServiceImpl implements PermissionService {
             "item_adjustPrice",
             "item_adjustAmount",
             "item_totalAdjustPrice",
+            "select_productPurchasePrice",
             "select_productPrice",
             "select_salePrice",
+            "select_lastSalePrice",
+            "select_minPrice",
+            "select_referencePrice",
+            "select_retailPrice",
+            "select_lastPurchasePrice",
+            "select_grossProfitRate",
+            "select_backupPrice1",
+            "select_wholesalePrice",
+            "select_sharePrice",
             "select_totalProductPrice",
             "select_discountPrice",
             "select_allowancePrice",
@@ -171,8 +209,18 @@ public class PermissionServiceImpl implements PermissionService {
             "select_adjustPrice",
             "select_adjustAmount",
             "select_totalAdjustPrice",
+            "select_col_productPurchasePrice",
             "select_col_productPrice",
             "select_col_salePrice",
+            "select_col_lastSalePrice",
+            "select_col_minPrice",
+            "select_col_referencePrice",
+            "select_col_retailPrice",
+            "select_col_lastPurchasePrice",
+            "select_col_grossProfitRate",
+            "select_col_backupPrice1",
+            "select_col_wholesalePrice",
+            "select_col_sharePrice",
             "select_col_totalProductPrice",
             "select_col_discountPrice",
             "select_col_allowancePrice",
@@ -190,6 +238,7 @@ public class PermissionServiceImpl implements PermissionService {
             "select_col_adjustPrice",
             "select_col_adjustAmount",
             "select_col_totalAdjustPrice");
+    private static final Map<String, String> STOCK_PRICE_RELATED_FIELD_MAP = buildStockPriceRelatedFieldMap();
 
     @Resource
     private RoleMenuMapper roleMenuMapper;
@@ -449,6 +498,9 @@ public class PermissionServiceImpl implements PermissionService {
                         && isSalePriceSourceHidden(hiddenProductPriceFieldSet, customerPriceLevel)) {
                     hiddenFields.addAll(SALE_PRICE_RELATED_FIELDS);
                 }
+                if (STOCK_PRICE_PERMISSION_MODULES.contains(module)) {
+                    addStockPriceRelatedFields(hiddenFields, hiddenProductPriceFieldSet);
+                }
             }
         }
         if (ERP_PRODUCT_FIELD_PERMISSION_MODULE.equals(module)) {
@@ -462,7 +514,8 @@ public class PermissionServiceImpl implements PermissionService {
     private boolean shouldIncludeProductPricePermission(String module) {
         return ERP_PRODUCT_FIELD_PERMISSION_MODULE.equals(module)
                 || PURCHASE_PRICE_PERMISSION_MODULES.contains(module)
-                || SALE_PRICE_PERMISSION_MODULES.contains(module);
+                || SALE_PRICE_PERMISSION_MODULES.contains(module)
+                || STOCK_PRICE_PERMISSION_MODULES.contains(module);
     }
 
     private List<String> getHiddenProductPriceFields(Long userId, Long businessDeptId, boolean superAdmin) {
@@ -492,6 +545,36 @@ public class PermissionServiceImpl implements PermissionService {
 
     private boolean isSalePriceSourceHidden(Set<String> hiddenFields, Integer customerPriceLevel) {
         return SaleCustomerPriceLevelFieldKeys.isHidden(hiddenFields, customerPriceLevel);
+    }
+
+    private void addStockPriceRelatedFields(List<String> hiddenFields, Set<String> hiddenProductPriceFields) {
+        STOCK_PRICE_RELATED_FIELD_MAP.forEach((productField, itemField) -> {
+            if (!hiddenProductPriceFields.contains(productField)
+                    && !hiddenProductPriceFields.contains("col_" + productField)) {
+                return;
+            }
+            hiddenFields.add(itemField);
+            hiddenFields.add("item_" + itemField);
+            hiddenFields.add("select_" + itemField);
+            hiddenFields.add("select_col_" + itemField);
+        });
+    }
+
+    private static Map<String, String> buildStockPriceRelatedFieldMap() {
+        Map<String, String> map = new LinkedHashMap<>();
+        map.put("purchasePrice", "productPurchasePrice");
+        map.put("productPurchasePrice", "productPurchasePrice");
+        map.put("salePrice", "salePrice");
+        map.put("lastSalePrice", "lastSalePrice");
+        map.put("minPrice", "minPrice");
+        map.put("referencePrice", "referencePrice");
+        map.put("retailPrice", "retailPrice");
+        map.put("lastPurchasePrice", "lastPurchasePrice");
+        map.put("grossProfitRate", "grossProfitRate");
+        map.put("backupPrice1", "backupPrice1");
+        map.put("wholesalePrice", "wholesalePrice");
+        map.put("sharePrice", "sharePrice");
+        return Collections.unmodifiableMap(map);
     }
 
     @Override

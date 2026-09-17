@@ -8,9 +8,12 @@ import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.invoice.ErpPurch
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseInvoiceDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseInvoiceItemDO;
 import cn.iocoder.yudao.module.erp.enums.ErpAuditStatus;
+import cn.hutool.core.collection.CollUtil;
+import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.toolkit.support.SFunction;
 import org.apache.ibatis.annotations.Mapper;
 
+import java.util.Collections;
 import java.util.Collection;
 import java.util.List;
 
@@ -19,6 +22,11 @@ public interface ErpPurchaseInvoiceItemMapper extends BaseMapperX<ErpPurchaseInv
 
     default List<ErpPurchaseInvoiceItemDO> selectListByInvoiceId(Long invoiceId) {
         return selectList(ErpPurchaseInvoiceItemDO::getInvoiceId, invoiceId);
+    }
+
+    default List<ErpPurchaseInvoiceItemDO> selectListByInvoiceIdForUpdate(Long invoiceId) {
+        return selectList(new LambdaQueryWrapperX<ErpPurchaseInvoiceItemDO>()
+                .eq(ErpPurchaseInvoiceItemDO::getInvoiceId, invoiceId).last("FOR UPDATE"));
     }
 
     default PageResult<ErpPurchaseInvoiceItemDO> selectPageByInvoiceId(ErpPurchaseInvoiceItemPageReqVO reqVO) {
@@ -40,6 +48,15 @@ public interface ErpPurchaseInvoiceItemMapper extends BaseMapperX<ErpPurchaseInv
 
     default List<ErpPurchaseInvoiceItemDO> selectListByInvoiceIds(Collection<Long> invoiceIds) {
         return selectList(ErpPurchaseInvoiceItemDO::getInvoiceId, invoiceIds);
+    }
+
+    default List<ErpPurchaseInvoiceItemDO> selectTaxPercentListByInvoiceIds(Collection<Long> invoiceIds) {
+        if (CollUtil.isEmpty(invoiceIds)) {
+            return Collections.emptyList();
+        }
+        return selectList(new QueryWrapper<ErpPurchaseInvoiceItemDO>()
+                .select("invoice_id", "tax_percent")
+                .in("invoice_id", invoiceIds));
     }
 
     default List<ErpPurchaseInvoiceItemDO> selectListBySourceInId(Long sourceInId) {

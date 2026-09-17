@@ -130,16 +130,9 @@ public class ErpStockInBillServiceImpl implements ErpStockInBillService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void createFromPurchaseIn(ErpPurchaseInDO purchaseIn, List<ErpPurchaseInItemDO> purchaseInItems) {
-        if (CollUtil.isEmpty(purchaseInItems)) {
-            return;
-        }
-        Map<Long, ErpWarehouseDO> warehouseMap = warehouseService.getWarehouseMap(
-                convertSet(purchaseInItems, ErpPurchaseInItemDO::getWarehouseId));
-        Map<Long, List<ErpPurchaseInItemDO>> itemMap = purchaseInItems.stream()
-                .collect(Collectors.groupingBy(ErpPurchaseInItemDO::getWarehouseId));
-        itemMap.forEach((warehouseId, items) -> createFromPurchaseInAndWarehouse(purchaseIn, warehouseMap.get(warehouseId), items));
+        throw new cn.iocoder.yudao.framework.common.exception.ServiceException(409,
+                "采购领货流程已取消，审核直接入库，不再生成待领货凭证");
     }
-
     private void createFromPurchaseInAndWarehouse(ErpPurchaseInDO purchaseIn, ErpWarehouseDO warehouse,
                                                   List<ErpPurchaseInItemDO> purchaseInItems) {
         String no = noRedisDAO.generate(ErpNoRedisDAO.STOCK_IN_BILL_NO_PREFIX);
@@ -199,60 +192,9 @@ public class ErpStockInBillServiceImpl implements ErpStockInBillService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void pickup(ErpStockInBillPickupReqVO reqVO) {
-        ErpStockInBillDO bill = validateStockInBillExists(reqVO.getId());
-        if (Integer.valueOf(STATUS_DONE).equals(bill.getStatus())) {
-            throw exception(STOCK_IN_BILL_PICKUP_FAIL_COMPLETED, bill.getNo());
-        }
-        List<ErpStockInBillItemDO> billItems = stockInBillItemMapper.selectListByBillId(reqVO.getId());
-        Map<Long, ErpStockInBillItemDO> billItemMap = convertMap(billItems, ErpStockInBillItemDO::getId);
-        LocalDateTime pickupTime = reqVO.getPickupTime() != null ? reqVO.getPickupTime() : LocalDateTime.now();
-        Long pickupUserId = SecurityFrameworkUtils.getLoginUserId();
-        String pickupUserName = getUserName(pickupUserId);
-
-        List<ErpStockInBillPickupRecordDO> records = new ArrayList<>();
-        for (ErpStockInBillPickupReqVO.Item reqItem : reqVO.getItems()) {
-            ErpStockInBillItemDO billItem = billItemMap.get(reqItem.getItemId());
-            if (billItem == null) {
-                throw exception(STOCK_IN_BILL_PICKUP_ITEM_NOT_EXISTS, reqItem.getItemId());
-            }
-            BigDecimal remainCount = remainCount(billItem);
-            if (reqItem.getPickupCount().compareTo(remainCount) > 0) {
-                throw exception(STOCK_IN_BILL_PICKUP_COUNT_EXCEED,
-                        billItem.getId(), reqItem.getPickupCount(), remainCount);
-            }
-            stockRecordService.createStockRecord(new ErpStockRecordCreateReqBO(
-                    billItem.getProductId(), billItem.getWarehouseId(), billItem.getBatchNo(),
-                    billItem.getProductUnitId(), billItem.getPackageQty(), billItem.getWeight(),
-                    snapshotSupport.calculateTotalWeight(billItem.getWeight(), reqItem.getPickupCount()),
-                    reqItem.getPickupCount(),
-                    ErpStockRecordBizTypeEnum.PURCHASE_IN.getType(), bill.getSourceId(), billItem.getSourceItemId(), bill.getSourceNo(),
-                    billItem.getProductPrice(), pickupTime));
-            BigDecimal pickedCount = nullToZero(billItem.getPickedCount()).add(reqItem.getPickupCount());
-            int itemStatus = pickedCount.compareTo(nullToZero(billItem.getCount())) >= 0 ? STATUS_DONE : STATUS_PART_PICKUP;
-            stockInBillItemMapper.updateById(new ErpStockInBillItemDO()
-                    .setId(billItem.getId())
-                    .setPickedCount(pickedCount)
-                    .setStatus(itemStatus));
-            billItem.setPickedCount(pickedCount).setStatus(itemStatus);
-            records.add(new ErpStockInBillPickupRecordDO()
-                    .setBillId(bill.getId())
-                    .setBillItemId(billItem.getId())
-                    .setSourceId(billItem.getSourceId())
-                    .setSourceItemId(billItem.getSourceItemId())
-                    .setProductId(billItem.getProductId())
-                    .setWarehouseId(billItem.getWarehouseId())
-                    .setPickupCount(reqItem.getPickupCount())
-                    .setPickupUserId(pickupUserId)
-                    .setPickupUserName(pickupUserName)
-                    .setPickupTime(pickupTime)
-                    .setRemark(reqVO.getRemark()));
-        }
-        if (CollUtil.isNotEmpty(records)) {
-            pickupRecordMapper.insertBatch(records);
-        }
-        updateBillPickupStatus(bill, billItems, pickupUserName, pickupTime);
+        throw new cn.iocoder.yudao.framework.common.exception.ServiceException(409,
+                "采购领货流程已取消；历史入仓凭证仅供核对，不允许由领货入口补记库存");
     }
-
     private void updateBillPickupStatus(ErpStockInBillDO bill, List<ErpStockInBillItemDO> billItems,
                                         String pickupUserName, LocalDateTime pickupTime) {
         BigDecimal totalCount = sumCount(billItems, ErpStockInBillItemDO::getCount);

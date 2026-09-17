@@ -55,6 +55,9 @@ public class ErpSaleOrderSaveReqVO {
         @Schema(description = "订单项编号", example = "11756")
         private Long id;
 
+        @Schema(description = "明细操作类型：insert 新增，update 修改，delete 删除")
+        private String operation;
+
         @Schema(description = "产品编号", requiredMode = Schema.RequiredMode.REQUIRED, example = "3113")
         @NotNull(message = "产品编号不能为空")
         private Long productId;

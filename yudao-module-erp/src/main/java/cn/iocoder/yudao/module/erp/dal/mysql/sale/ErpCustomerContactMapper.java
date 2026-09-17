@@ -19,7 +19,7 @@ public interface ErpCustomerContactMapper extends BaseMapperX<ErpCustomerContact
                 .likeIfPresent(ErpCustomerContactDO::getName, reqVO.getName())
                 .eqIfPresent(ErpCustomerContactDO::getMobile, reqVO.getMobile())
                 .orderByDesc(ErpCustomerContactDO::getId);
-        ErpKeywordQuery.appendWithDeptName(wrapper, reqVO.getKeyword(),
+        ErpKeywordQuery.appendWithDeptNameAndCustomer(wrapper, reqVO.getKeyword(),
                 ErpCustomerContactDO::getName,
                 ErpCustomerContactDO::getMobile,
                 ErpCustomerContactDO::getTelephone,

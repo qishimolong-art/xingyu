@@ -295,13 +295,11 @@ public class ErpOtherReceivableServiceImplTest extends BaseMockitoUnitTest {
         when(otherReceivableMapper.selectById(100L)).thenReturn(existing);
         when(otherReceivableMapper.updateByIdAndStatus(eq(100L), eq(ErpAuditStatus.PROCESS.getStatus()), any(ErpOtherReceivableDO.class)))
                 .thenReturn(1);
-        when(bookOpenService.isVoucherTypeEnabled(eq(LocalDate.of(2026, 5, 10)), eq(VT))).thenReturn(true);
-        when(autoVoucherBuilder.buildOtherReceivableItems(existing)).thenReturn(Collections.emptyList());
+
 
         service.updateOtherReceivableStatus(100L, ErpAuditStatus.APPROVE.getStatus());
 
-        verify(voucherService).createVoucherFromBiz(eq(SBT), eq(100L), eq("QTYS"),
-                any(), eq(LocalDate.of(2026, 5, 10)), startsWith("其他应收 - "), anyList());
+        org.mockito.Mockito.verifyNoInteractions(voucherService);
     }
 
     @Test
@@ -312,7 +310,7 @@ public class ErpOtherReceivableServiceImplTest extends BaseMockitoUnitTest {
                 .setBizTime(LocalDateTime.of(2026, 5, 10, 0, 0));
         when(otherReceivableMapper.selectById(100L)).thenReturn(existing);
         when(otherReceivableMapper.updateByIdAndStatus(any(), any(), any())).thenReturn(1);
-        when(bookOpenService.isVoucherTypeEnabled(any(LocalDate.class), eq(VT))).thenReturn(false);
+
 
         service.updateOtherReceivableStatus(100L, ErpAuditStatus.APPROVE.getStatus());
 

@@ -45,9 +45,17 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 public class ErpStockServiceImplTest extends BaseMockitoUnitTest {
+    @Mock
+    private cn.iocoder.yudao.module.erp.service.stock.cost.ErpStockDimensionService stockDimensionService;
+    @Mock
+    private ErpProductStockInitService productStockInitService;
+
 
     @InjectMocks
     private ErpStockServiceImpl stockService;
+
+    @Mock
+    private cn.iocoder.yudao.module.erp.service.stock.cost.ErpDualCostPostingService dualCostPostingService;
 
     @Mock
     private ErpProductService productService;
@@ -161,7 +169,7 @@ public class ErpStockServiceImplTest extends BaseMockitoUnitTest {
         ErpStockPageReqVO reqVO = new ErpStockPageReqVO();
         reqVO.setBizType("sale");
         PageResult<ErpStockDO> pageResult = new PageResult<>(Collections.emptyList(), 0L);
-        when(warehouseService.getCurrentUserVisibleSaleWarehouseList()).thenReturn(Arrays.asList(
+        when(warehouseService.getCurrentUserSaleSelectableWarehouseListByDept(isNull(), isNull())).thenReturn(Arrays.asList(
                 new ErpWarehouseDO().setId(10L), new ErpWarehouseDO().setId(20L)));
         when(stockMapper.selectPage(eq(reqVO), org.mockito.ArgumentMatchers.<Collection<Long>>isNull(),
                 eq(new LinkedHashSet<>(Arrays.asList(10L, 20L))),
@@ -172,8 +180,47 @@ public class ErpStockServiceImplTest extends BaseMockitoUnitTest {
         PageResult<ErpStockDO> result = stockService.getStockPage(reqVO);
 
         assertSame(pageResult, result);
-        verify(warehouseService).getCurrentUserVisibleSaleWarehouseList();
+        verify(warehouseService).getCurrentUserSaleSelectableWarehouseListByDept(isNull(), isNull());
         verify(stockMapper).selectPage(eq(reqVO), org.mockito.ArgumentMatchers.<Collection<Long>>isNull(),
+                eq(new LinkedHashSet<>(Arrays.asList(10L, 20L))),
+                org.mockito.ArgumentMatchers.<Collection<Long>>isNull(),
+                org.mockito.ArgumentMatchers.<Collection<Long>>isNull());
+    }
+
+    @Test
+    public void testGetStockPage_saleAvailableCountSort_usesOptimizedMapper() {
+        ErpStockPageReqVO reqVO = new ErpStockPageReqVO();
+        reqVO.setBizType("sale");
+        reqVO.setOrderField("availableCount");
+        reqVO.setOrderDirection("desc");
+        PageResult<ErpStockDO> pageResult = new PageResult<>(Collections.emptyList(), 0L);
+        when(warehouseService.getCurrentUserSaleSelectableWarehouseListByDept(isNull(), isNull())).thenReturn(Arrays.asList(
+                new ErpWarehouseDO().setId(10L), new ErpWarehouseDO().setId(20L)));
+        when(stockMapper.selectPageOrderByAvailableCount(eq(reqVO),
+                org.mockito.ArgumentMatchers.<Collection<Long>>isNull(),
+                eq(new LinkedHashSet<>(Arrays.asList(10L, 20L))),
+                org.mockito.ArgumentMatchers.<Collection<Long>>isNull(),
+                org.mockito.ArgumentMatchers.<Collection<Long>>isNull(),
+                org.mockito.ArgumentMatchers.<Map<Long, Set<Long>>>isNull(),
+                org.mockito.ArgumentMatchers.<Collection<Long>>isNull(),
+                org.mockito.ArgumentMatchers.<Collection<Long>>isNull(),
+                isNull()))
+                .thenReturn(pageResult);
+
+        PageResult<ErpStockDO> result = stockService.getStockPage(reqVO);
+
+        assertSame(pageResult, result);
+        verify(stockMapper).selectPageOrderByAvailableCount(eq(reqVO),
+                org.mockito.ArgumentMatchers.<Collection<Long>>isNull(),
+                eq(new LinkedHashSet<>(Arrays.asList(10L, 20L))),
+                org.mockito.ArgumentMatchers.<Collection<Long>>isNull(),
+                org.mockito.ArgumentMatchers.<Collection<Long>>isNull(),
+                org.mockito.ArgumentMatchers.<Map<Long, Set<Long>>>isNull(),
+                org.mockito.ArgumentMatchers.<Collection<Long>>isNull(),
+                org.mockito.ArgumentMatchers.<Collection<Long>>isNull(),
+                isNull());
+        verify(stockMapper, never()).selectPage(eq(reqVO),
+                org.mockito.ArgumentMatchers.<Collection<Long>>isNull(),
                 eq(new LinkedHashSet<>(Arrays.asList(10L, 20L))),
                 org.mockito.ArgumentMatchers.<Collection<Long>>isNull(),
                 org.mockito.ArgumentMatchers.<Collection<Long>>isNull());
@@ -308,7 +355,7 @@ public class ErpStockServiceImplTest extends BaseMockitoUnitTest {
         when(warehouseService.getWarehouseListByDeptId(30L)).thenReturn(Arrays.asList(
                 new ErpWarehouseDO().setId(10L),
                 new ErpWarehouseDO().setId(20L)));
-        when(warehouseService.getCurrentUserVisibleSaleWarehouseList()).thenReturn(Collections.singletonList(
+        when(warehouseService.getCurrentUserSaleSelectableWarehouseListByDept(isNull(), isNull())).thenReturn(Collections.singletonList(
                 new ErpWarehouseDO().setId(20L)));
         when(stockMapper.selectPage(eq(reqVO), org.mockito.ArgumentMatchers.<Collection<Long>>isNull(),
                 eq(new LinkedHashSet<>(Collections.singletonList(20L))),
@@ -321,7 +368,7 @@ public class ErpStockServiceImplTest extends BaseMockitoUnitTest {
         assertSame(pageResult, result);
         verify(warehouseService, never()).getSaleWarehouseListByDeptId(30L);
         verify(warehouseService).getWarehouseListByDeptId(30L);
-        verify(warehouseService).getCurrentUserVisibleSaleWarehouseList();
+        verify(warehouseService).getCurrentUserSaleSelectableWarehouseListByDept(isNull(), isNull());
         verify(stockMapper).selectPage(eq(reqVO), org.mockito.ArgumentMatchers.<Collection<Long>>isNull(),
                 eq(new LinkedHashSet<>(Collections.singletonList(20L))),
                 org.mockito.ArgumentMatchers.<Collection<Long>>isNull(),
@@ -380,39 +427,16 @@ public class ErpStockServiceImplTest extends BaseMockitoUnitTest {
 
     @Test
     public void testEnsureStockExists_directWarehouseCreatesNormalZeroStockCarrier() {
-        when(warehouseService.getWarehouse(20L)).thenReturn(
-                new ErpWarehouseDO().setId(20L).setDeptId(30L).setName("直发仓"));
-        when(stockMapper.selectByProductIdAndWarehouseId(10L, 20L)).thenReturn(null);
-
         stockService.ensureStockExists(10L, 20L);
 
-        ArgumentCaptor<ErpStockDO> stockCaptor = ArgumentCaptor.forClass(ErpStockDO.class);
-        verify(stockMapper).insert(stockCaptor.capture());
-        ErpStockDO stock = stockCaptor.getValue();
-        assertEquals(Long.valueOf(10L), stock.getProductId());
-        assertEquals(Long.valueOf(20L), stock.getWarehouseId());
-        assertEquals(Long.valueOf(30L), stock.getDeptId());
-        assertEquals(BigDecimal.ZERO, stock.getCount());
-        assertEquals(BigDecimal.ZERO, stock.getLockCount());
-        assertEquals(BigDecimal.ZERO, stock.getCostPrice());
-        assertEquals(BigDecimal.ZERO, stock.getCostAmount());
+        verify(productStockInitService).ensureStockExists(10L, 20L);
     }
 
     @Test
     public void testEnsureStockExists_existingStockAlignsWarehouseDepartmentWithoutResettingCounts() {
-        ErpStockDO existing = new ErpStockDO().setId(1L).setProductId(10L).setWarehouseId(20L)
-                .setDeptId(99L).setCount(new BigDecimal("8"));
-        when(warehouseService.getWarehouse(20L)).thenReturn(
-                new ErpWarehouseDO().setId(20L).setDeptId(30L));
-        when(stockMapper.selectByProductIdAndWarehouseId(10L, 20L)).thenReturn(existing);
-
         stockService.ensureStockExists(10L, 20L);
 
-        verify(stockMapper).updateById(org.mockito.ArgumentMatchers.<ErpStockDO>argThat(update ->
-                Long.valueOf(1L).equals(update.getId())
-                        && Long.valueOf(30L).equals(update.getDeptId())
-                        && update.getCount() == null));
-        verify(stockMapper, never()).insert(any(ErpStockDO.class));
+        verify(productStockInitService).ensureStockExists(10L, 20L);
     }
 
     @Test
@@ -421,7 +445,7 @@ public class ErpStockServiceImplTest extends BaseMockitoUnitTest {
         reqVO.setBizType("sale");
         reqVO.setSaleDeptId(30L);
         PageResult<ErpStockDO> pageResult = new PageResult<>(Collections.emptyList(), 0L);
-        when(warehouseService.getCurrentUserSaleSelectableWarehouseListByDept(30L)).thenReturn(Arrays.asList(
+        when(warehouseService.getCurrentUserSaleSelectableWarehouseListByDept(eq(30L), isNull())).thenReturn(Arrays.asList(
                 new ErpWarehouseDO().setId(20L), new ErpWarehouseDO().setId(30L)));
         when(stockMapper.selectPage(eq(reqVO), org.mockito.ArgumentMatchers.<Collection<Long>>isNull(),
                 eq(new LinkedHashSet<>(Arrays.asList(20L, 30L))),
@@ -432,11 +456,39 @@ public class ErpStockServiceImplTest extends BaseMockitoUnitTest {
         PageResult<ErpStockDO> result = stockService.getStockPage(reqVO);
 
         assertSame(pageResult, result);
-        verify(warehouseService).getCurrentUserSaleSelectableWarehouseListByDept(30L);
+        verify(warehouseService).getCurrentUserSaleSelectableWarehouseListByDept(eq(30L), isNull());
         verify(warehouseService, never()).getSaleWarehouseListByDeptId(30L);
         verify(warehouseService, never()).getCurrentUserVisibleSaleWarehouseList();
         verify(stockMapper).selectPage(eq(reqVO), org.mockito.ArgumentMatchers.<Collection<Long>>isNull(),
                 eq(new LinkedHashSet<>(Arrays.asList(20L, 30L))),
+                org.mockito.ArgumentMatchers.<Collection<Long>>isNull(),
+                org.mockito.ArgumentMatchers.<Collection<Long>>isNull());
+    }
+
+    @Test
+    public void testGetStockPage_saleAllProductPermissionUsesFormPermissionScope() {
+        ErpStockPageReqVO reqVO = new ErpStockPageReqVO();
+        reqVO.setBizType("sale");
+        reqVO.setSaleDeptId(30L);
+        reqVO.setAllSaleProduct(true);
+        reqVO.setAllSaleProductPermission(ErpWarehouseService.SALE_CART_ALL_PRODUCT_PERMISSION);
+        PageResult<ErpStockDO> pageResult = new PageResult<>(Collections.emptyList(), 0L);
+        when(warehouseService.getCurrentUserSaleSelectableWarehouseListByDept(
+                eq(30L), eq(ErpWarehouseService.SALE_CART_ALL_PRODUCT_PERMISSION))).thenReturn(Arrays.asList(
+                new ErpWarehouseDO().setId(20L), new ErpWarehouseDO().setId(30L), new ErpWarehouseDO().setId(40L)));
+        when(stockMapper.selectPage(eq(reqVO), org.mockito.ArgumentMatchers.<Collection<Long>>isNull(),
+                eq(new LinkedHashSet<>(Arrays.asList(20L, 30L, 40L))),
+                org.mockito.ArgumentMatchers.<Collection<Long>>isNull(),
+                org.mockito.ArgumentMatchers.<Collection<Long>>isNull()))
+                .thenReturn(pageResult);
+
+        PageResult<ErpStockDO> result = stockService.getStockPage(reqVO);
+
+        assertSame(pageResult, result);
+        verify(warehouseService).getCurrentUserSaleSelectableWarehouseListByDept(
+                eq(30L), eq(ErpWarehouseService.SALE_CART_ALL_PRODUCT_PERMISSION));
+        verify(stockMapper).selectPage(eq(reqVO), org.mockito.ArgumentMatchers.<Collection<Long>>isNull(),
+                eq(new LinkedHashSet<>(Arrays.asList(20L, 30L, 40L))),
                 org.mockito.ArgumentMatchers.<Collection<Long>>isNull(),
                 org.mockito.ArgumentMatchers.<Collection<Long>>isNull());
     }
@@ -621,6 +673,45 @@ public class ErpStockServiceImplTest extends BaseMockitoUnitTest {
         assertEquals(ErpStockRecordBizTypeEnum.PURCHASE_PRICE_ADJUST.getType(), record.getBizType());
         assertEquals(BigDecimal.ZERO, record.getCount());
         assertEquals(new BigDecimal("128.00"), record.getCostAmount());
+    }
+
+    @Test
+    public void testCertifiedPurchaseReturn_usesAmountAverageAndRetainsRemainder() {
+        ErpStockDO stock = new ErpStockDO().setId(1L).setProductId(10L).setWarehouseId(20L)
+                .setCount(new BigDecimal("3")).setCostPrice(new BigDecimal("216.666667")).setCostAmount(new BigDecimal("650"));
+        when(dualCostPostingService.useLegacyCurrentAverage(10L, 20L, new BigDecimal("-1"), 80)).thenReturn(true);
+        when(stockMapper.selectByProductIdAndWarehouseIdForUpdate(10L, 20L)).thenReturn(stock);
+        when(stockMapper.updateCountAndCost(eq(1L), eq(new BigDecimal("3")), eq(new BigDecimal("2")),
+                eq(new BigDecimal("216.666667")), eq(new BigDecimal("433.333333")), eq(false))).thenReturn(1);
+        ErpStockService.StockUpdateResult result = stockService.updateStockCountAndCost(10L, 20L,
+                new BigDecimal("-1"), new BigDecimal("1000"), 80);
+        assertEquals(new BigDecimal("433.333333"), result.getCostAmount());
+        verify(stockMapper, org.mockito.Mockito.never()).selectByProductIdAndWarehouseId(10L, 20L);
+    }
+
+    @Test
+    public void testCertifiedPurchaseReturn_missingLegacyCostCannotBeClearedByFullReturn() {
+        ErpStockDO stock = new ErpStockDO().setId(1L).setProductId(10L).setWarehouseId(20L)
+                .setCount(BigDecimal.ONE).setCostPrice(new BigDecimal("100"));
+        when(dualCostPostingService.useLegacyCurrentAverage(10L, 20L, new BigDecimal("-1"), 80)).thenReturn(true);
+        when(stockMapper.selectByProductIdAndWarehouseIdForUpdate(10L, 20L)).thenReturn(stock);
+        assertThrows(IllegalStateException.class, () -> stockService.updateStockCountAndCost(10L, 20L,
+                new BigDecimal("-1"), new BigDecimal("1000"), 80));
+    }
+
+    @Test
+    public void testCertifiedNoOrderSaleReturn_usesApprovedFinancialAmountInsteadOfRefundPrice() {
+        ErpStockDO stock = new ErpStockDO().setId(1L).setProductId(10L).setWarehouseId(20L)
+                .setCount(new BigDecimal("3")).setCostPrice(new BigDecimal("216.666667")).setCostAmount(new BigDecimal("650"));
+        when(dualCostPostingService.authenticatedLegacyIncomingAmount(10L, 20L, new BigDecimal("2"), 60))
+                .thenReturn(new BigDecimal("160"));
+        when(stockMapper.selectByProductIdAndWarehouseIdForUpdate(10L, 20L)).thenReturn(stock);
+        when(stockMapper.updateCountAndCost(eq(1L), eq(new BigDecimal("3")), eq(new BigDecimal("5")),
+                eq(new BigDecimal("162.000000")), eq(new BigDecimal("810")), eq(false))).thenReturn(1);
+        ErpStockService.StockUpdateResult result = stockService.updateStockCountAndCost(10L, 20L,
+                new BigDecimal("2"), new BigDecimal("100"), 60);
+        assertEquals(new BigDecimal("810"), result.getCostAmount());
+        verify(stockMapper, org.mockito.Mockito.never()).selectByProductIdAndWarehouseId(10L, 20L);
     }
 
 }

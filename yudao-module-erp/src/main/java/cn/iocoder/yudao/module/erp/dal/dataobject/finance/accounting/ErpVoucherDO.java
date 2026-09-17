@@ -154,4 +154,5 @@ public class ErpVoucherDO extends BaseDO {
      */
     private String remark;
 
+    private String generationSnapshot;
 }

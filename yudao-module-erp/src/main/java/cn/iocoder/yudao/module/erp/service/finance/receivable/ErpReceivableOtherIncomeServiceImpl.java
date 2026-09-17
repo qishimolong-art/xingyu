@@ -20,6 +20,7 @@ import cn.iocoder.yudao.module.erp.enums.finance.ErpReceivableOtherIncomeStatusE
 import cn.iocoder.yudao.module.erp.service.common.ErpOperateLogService;
 import cn.iocoder.yudao.module.erp.service.finance.ErpAccountService;
 import cn.iocoder.yudao.module.erp.service.finance.ErpFinanceFieldPermissionMasker;
+import cn.iocoder.yudao.module.erp.service.finance.ErpFinanceItemOperationHelper;
 import cn.iocoder.yudao.module.erp.service.sale.ErpCustomerService;
 import cn.iocoder.yudao.module.system.api.dept.DeptApi;
 import cn.iocoder.yudao.module.system.api.user.AdminUserApi;
@@ -53,6 +54,8 @@ import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.OTHER_INCOME_
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.OTHER_INCOME_DRAFT_ITEMS_REQUIRED;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.OTHER_INCOME_DRAFT_UPDATE_FAIL;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.OTHER_INCOME_DEPT_REQUIRED;
+import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.OTHER_INCOME_ITEM_OPERATION_INVALID;
+import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.OTHER_INCOME_ITEM_UPDATE_NOT_EXISTS;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.OTHER_INCOME_OPTION_INVALID;
 import static cn.iocoder.yudao.module.erp.enums.LogRecordConstants.ERP_RECEIVABLE_OTHER_INCOME_TYPE;
 
@@ -93,6 +96,7 @@ public class ErpReceivableOtherIncomeServiceImpl implements ErpReceivableOtherIn
     @Transactional(rollbackFor = Exception.class)
     public Long createOtherIncome(ErpReceivableOtherIncomeSaveReqVO createReqVO) {
         fillDefaultDeptId(createReqVO);
+        validateRequiredItems(createReqVO.getItems());
         validateFormalDeptId(createReqVO.getDeptId());
         validateSaveOptions(createReqVO);
         validateRefs(createReqVO.getAccountId(), createReqVO.getHandlerId(), createReqVO.getDeptId());
@@ -154,33 +158,54 @@ public class ErpReceivableOtherIncomeServiceImpl implements ErpReceivableOtherIn
         if (ErpAuditStatus.APPROVE.getStatus().equals(db.getStatus())) {
             throw exception(OTHER_RECEIVABLE_UPDATE_FAIL_APPROVE, db.getNo());
         }
-        List<ErpReceivableOtherIncomeItemDO> oldItems = otherIncomeItemMapper.selectListByIncomeId(updateReqVO.getId());
+        List<ErpReceivableOtherIncomeItemDO> oldItems =
+                otherIncomeItemMapper.selectListByIncomeIdForUpdate(updateReqVO.getId());
         fieldPermissionMasker.preserveHiddenFields(FIELD_PERMISSION_MODULE, updateReqVO, db);
         if (fieldPermissionMasker.isFieldHidden(FIELD_PERMISSION_MODULE, "items")) {
             updateReqVO.setItems(BeanUtils.toBean(oldItems, ErpReceivableOtherIncomeSaveReqVO.Item.class));
         } else {
             fieldPermissionMasker.preserveOrClearHiddenItemFields(FIELD_PERMISSION_MODULE, updateReqVO.getItems(), oldItems);
-            fillDefaultItemDeptId(updateReqVO.getItems());
         }
+        boolean incrementalItems = ErpFinanceItemOperationHelper.useIncrementalItems(
+                updateReqVO.getItems(), ErpReceivableOtherIncomeSaveReqVO.Item::getOperation,
+                OTHER_INCOME_ITEM_OPERATION_INVALID);
+        ErpFinanceItemOperationHelper.RequestChangeSet<ErpReceivableOtherIncomeSaveReqVO.Item> itemChangeSet = null;
+        List<ErpReceivableOtherIncomeSaveReqVO.Item> finalReqItems = updateReqVO.getItems();
+        if (incrementalItems) {
+            itemChangeSet = ErpFinanceItemOperationHelper.buildRequestChangeSet(
+                    updateReqVO.getItems(), oldItems, ErpReceivableOtherIncomeSaveReqVO.Item.class,
+                    ErpReceivableOtherIncomeSaveReqVO.Item::getId, ErpReceivableOtherIncomeSaveReqVO.Item::setId,
+                    ErpReceivableOtherIncomeSaveReqVO.Item::getOperation, ErpReceivableOtherIncomeItemDO::getId,
+                    OTHER_INCOME_ITEM_OPERATION_INVALID, OTHER_INCOME_ITEM_UPDATE_NOT_EXISTS);
+            finalReqItems = itemChangeSet.getFinalItems();
+        }
+        fillDefaultItemDeptId(finalReqItems);
+        updateReqVO.setItems(finalReqItems);
         if (updateReqVO.getDeptId() == null) {
             updateReqVO.setDeptId(db.getDeptId());
         }
         validateFormalDeptId(updateReqVO.getDeptId());
         validateSaveOptions(updateReqVO);
         validateRefs(updateReqVO.getAccountId(), updateReqVO.getHandlerId(), updateReqVO.getDeptId());
-        updateReqVO.getItems().forEach(this::validateSaveItemRefs);
+        finalReqItems.forEach(this::validateSaveItemRefs);
 
         ErpReceivableOtherIncomeDO updateObj = BeanUtils.toBean(updateReqVO, ErpReceivableOtherIncomeDO.class);
-        updateObj.setTotalAmount(sumAmount(updateReqVO.getItems()));
+        updateObj.setTotalAmount(sumAmount(finalReqItems));
         if (otherIncomeMapper.updateByIdAndStatus(updateReqVO.getId(), ErpAuditStatus.PROCESS.getStatus(), updateObj) == 0) {
             throw exception(OTHER_RECEIVABLE_UPDATE_FAIL_STATUS_CHANGED);
         }
 
-        if (CollUtil.isNotEmpty(oldItems)) {
-            otherIncomeItemMapper.deleteByIds(convertList(oldItems, ErpReceivableOtherIncomeItemDO::getId));
+        List<ErpReceivableOtherIncomeItemDO> finalItems = BeanUtils.toBean(finalReqItems,
+                ErpReceivableOtherIncomeItemDO.class);
+        if (incrementalItems) {
+            applyOtherIncomeItemChangeSet(updateReqVO.getId(), finalItems, itemChangeSet);
+        } else {
+            if (CollUtil.isNotEmpty(oldItems)) {
+                otherIncomeItemMapper.deleteByIds(convertList(oldItems, ErpReceivableOtherIncomeItemDO::getId));
+            }
+            otherIncomeItemMapper.insertBatch(BeanUtils.toBean(finalReqItems,
+                    ErpReceivableOtherIncomeItemDO.class, item -> item.setId(null).setIncomeId(updateReqVO.getId())));
         }
-        otherIncomeItemMapper.insertBatch(BeanUtils.toBean(updateReqVO.getItems(),
-                ErpReceivableOtherIncomeItemDO.class, item -> item.setId(null).setIncomeId(updateReqVO.getId())));
         operateLogService.recordUpdate(ERP_RECEIVABLE_OTHER_INCOME_TYPE, db.getId(), db.getNo());
     }
 
@@ -193,13 +218,28 @@ public class ErpReceivableOtherIncomeServiceImpl implements ErpReceivableOtherIn
         }
         normalizeDraftBizTime(updateReqVO, db.getBizTime());
         List<ErpReceivableOtherIncomeItemDO> oldItems =
-                otherIncomeItemMapper.selectListByIncomeId(updateReqVO.getId());
+                otherIncomeItemMapper.selectListByIncomeIdForUpdate(updateReqVO.getId());
         fieldPermissionMasker.preserveHiddenFields(FIELD_PERMISSION_MODULE, updateReqVO, db);
         List<ErpReceivableOtherIncomeDraftSaveReqVO.Item> items = safeDraftItems(updateReqVO.getItems());
         if (fieldPermissionMasker.isFieldHidden(FIELD_PERMISSION_MODULE, "items")) {
             items = BeanUtils.toBean(oldItems, ErpReceivableOtherIncomeDraftSaveReqVO.Item.class);
+            updateReqVO.setItems(items);
         } else {
             fieldPermissionMasker.preserveOrClearHiddenItemFields(FIELD_PERMISSION_MODULE, items, oldItems);
+        }
+        boolean incrementalItems = ErpFinanceItemOperationHelper.useIncrementalItems(
+                updateReqVO.getItems(), ErpReceivableOtherIncomeDraftSaveReqVO.Item::getOperation,
+                OTHER_INCOME_ITEM_OPERATION_INVALID);
+        ErpFinanceItemOperationHelper.RequestChangeSet<ErpReceivableOtherIncomeDraftSaveReqVO.Item> itemChangeSet = null;
+        if (incrementalItems) {
+            itemChangeSet = ErpFinanceItemOperationHelper.buildRequestChangeSet(
+                    updateReqVO.getItems(), oldItems, ErpReceivableOtherIncomeDraftSaveReqVO.Item.class,
+                    ErpReceivableOtherIncomeDraftSaveReqVO.Item::getId,
+                    ErpReceivableOtherIncomeDraftSaveReqVO.Item::setId,
+                    ErpReceivableOtherIncomeDraftSaveReqVO.Item::getOperation,
+                    ErpReceivableOtherIncomeItemDO::getId,
+                    OTHER_INCOME_ITEM_OPERATION_INVALID, OTHER_INCOME_ITEM_UPDATE_NOT_EXISTS);
+            items = safeDraftItems(itemChangeSet.getFinalItems());
         }
         if (updateReqVO.getDeptId() == null) {
             updateReqVO.setDeptId(db.getDeptId());
@@ -218,11 +258,15 @@ public class ErpReceivableOtherIncomeServiceImpl implements ErpReceivableOtherIn
                 ErpReceivableOtherIncomeStatusEnum.DRAFT.getStatus(), updateObj) == 0) {
             throw exception(OTHER_INCOME_DRAFT_UPDATE_FAIL, db.getNo());
         }
-        otherIncomeItemMapper.deleteByIncomeId(updateReqVO.getId());
-        if (CollUtil.isNotEmpty(items)) {
-            otherIncomeItemMapper.insertBatch(BeanUtils.toBean(items,
-                    ErpReceivableOtherIncomeItemDO.class,
-                    item -> item.setId(null).setIncomeId(updateReqVO.getId())));
+        if (incrementalItems) {
+            applyOtherIncomeDraftItemChangeSet(updateReqVO.getId(), items, itemChangeSet);
+        } else {
+            otherIncomeItemMapper.deleteByIncomeId(updateReqVO.getId());
+            if (CollUtil.isNotEmpty(items)) {
+                otherIncomeItemMapper.insertBatch(BeanUtils.toBean(items,
+                        ErpReceivableOtherIncomeItemDO.class,
+                        item -> item.setId(null).setIncomeId(updateReqVO.getId())));
+            }
         }
         operateLogService.recordUpdate(ERP_RECEIVABLE_OTHER_INCOME_TYPE, db.getId(), db.getNo());
     }
@@ -408,6 +452,9 @@ public class ErpReceivableOtherIncomeServiceImpl implements ErpReceivableOtherIn
     }
 
     private BigDecimal sumAmount(List<ErpReceivableOtherIncomeSaveReqVO.Item> items) {
+        if (CollUtil.isEmpty(items)) {
+            return BigDecimal.ZERO;
+        }
         return items.stream()
                 .map(ErpReceivableOtherIncomeSaveReqVO.Item::getAmount)
                 .filter(Objects::nonNull)
@@ -517,6 +564,7 @@ public class ErpReceivableOtherIncomeServiceImpl implements ErpReceivableOtherIn
     }
 
     private void validateRequiredItemNames(List<ErpReceivableOtherIncomeSaveReqVO.Item> items) {
+        validateRequiredItems(items);
         Set<String> validItemNames = getEnabledOptionNames(OTHER_INCOME_ITEM_PROJECT);
         for (int i = 0; i < items.size(); i++) {
             String itemName = items.get(i).getItemName();
@@ -524,6 +572,63 @@ public class ErpReceivableOtherIncomeServiceImpl implements ErpReceivableOtherIn
                 throw exception(OTHER_INCOME_OPTION_INVALID,
                         "第 " + (i + 1) + " 条明细的项目名称", itemName);
             }
+        }
+    }
+
+    private void validateRequiredItems(List<ErpReceivableOtherIncomeSaveReqVO.Item> items) {
+        if (CollUtil.isEmpty(items)) {
+            throw exception(OTHER_INCOME_OPTION_INVALID, "收入明细", "不能为空");
+        }
+    }
+
+    private void applyOtherIncomeItemChangeSet(Long incomeId, List<ErpReceivableOtherIncomeItemDO> finalItems,
+            ErpFinanceItemOperationHelper.RequestChangeSet<ErpReceivableOtherIncomeSaveReqVO.Item> itemChangeSet) {
+        if (itemChangeSet == null) {
+            return;
+        }
+        if (CollUtil.isNotEmpty(itemChangeSet.getDeleteIds())) {
+            otherIncomeItemMapper.deleteByIds(itemChangeSet.getDeleteIds());
+        }
+        List<ErpReceivableOtherIncomeItemDO> insertList = finalItems.stream()
+                .filter(item -> item.getId() == null)
+                .peek(item -> item.setIncomeId(incomeId))
+                .collect(Collectors.toList());
+        if (CollUtil.isNotEmpty(insertList)) {
+            otherIncomeItemMapper.insertBatch(insertList);
+        }
+        List<ErpReceivableOtherIncomeItemDO> updateList = finalItems.stream()
+                .filter(item -> item.getId() != null && itemChangeSet.getUpdateIds().contains(item.getId()))
+                .peek(item -> item.setIncomeId(incomeId))
+                .collect(Collectors.toList());
+        if (CollUtil.isNotEmpty(updateList)) {
+            otherIncomeItemMapper.updateBatch(updateList);
+        }
+    }
+
+    private void applyOtherIncomeDraftItemChangeSet(Long incomeId,
+            List<ErpReceivableOtherIncomeDraftSaveReqVO.Item> items,
+            ErpFinanceItemOperationHelper.RequestChangeSet<ErpReceivableOtherIncomeDraftSaveReqVO.Item> itemChangeSet) {
+        if (itemChangeSet == null) {
+            return;
+        }
+        if (CollUtil.isNotEmpty(itemChangeSet.getDeleteIds())) {
+            otherIncomeItemMapper.deleteByIds(itemChangeSet.getDeleteIds());
+        }
+        List<ErpReceivableOtherIncomeItemDO> finalItems =
+                BeanUtils.toBean(items, ErpReceivableOtherIncomeItemDO.class);
+        List<ErpReceivableOtherIncomeItemDO> insertList = finalItems.stream()
+                .filter(item -> item.getId() == null)
+                .peek(item -> item.setIncomeId(incomeId))
+                .collect(Collectors.toList());
+        if (CollUtil.isNotEmpty(insertList)) {
+            otherIncomeItemMapper.insertBatch(insertList);
+        }
+        List<ErpReceivableOtherIncomeItemDO> updateList = finalItems.stream()
+                .filter(item -> item.getId() != null && itemChangeSet.getUpdateIds().contains(item.getId()))
+                .peek(item -> item.setIncomeId(incomeId))
+                .collect(Collectors.toList());
+        if (CollUtil.isNotEmpty(updateList)) {
+            otherIncomeItemMapper.updateBatch(updateList);
         }
     }
 

@@ -8,6 +8,8 @@ import java.time.LocalDateTime;
 @Data
 public class ErpReceivableAccountDO {
 
+    private String accountKey;
+    private String deptKey;
     private Long customerId;
     private String customerName;
     private String contact;
@@ -29,6 +31,7 @@ public class ErpReceivableAccountDO {
     private BigDecimal receiptAmount;
     private BigDecimal writeOffAmount;
     private BigDecimal otherReceivableAmount;
+    private BigDecimal miscReceivableAmount;
     private BigDecimal receivableAmount;
     private BigDecimal receivedAmount;
     private BigDecimal unreceivedAmount;

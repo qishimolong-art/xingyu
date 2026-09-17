@@ -87,6 +87,12 @@ public class ErpSaleReturnServiceImplTest extends BaseMockitoUnitTest {
     private ErpSaleReturnServiceImpl saleReturnService;
 
     @Mock
+    private cn.iocoder.yudao.module.erp.service.sale.returncost.ErpSaleReturnCostService saleReturnCostService;
+    @Mock
+    private cn.iocoder.yudao.module.erp.service.sale.returncost.ErpSaleReturnCurrentCostService currentCostService;
+    @Mock
+    private cn.iocoder.yudao.module.erp.service.report.trade.ErpTradeSnapshotService tradeSnapshotService;
+    @Mock
     private ErpSaleReturnMapper saleReturnMapper;
     @Mock
     private ErpFinanceReceiptItemMapper financeReceiptItemMapper;
@@ -153,6 +159,11 @@ public class ErpSaleReturnServiceImplTest extends BaseMockitoUnitTest {
 
     @BeforeEach
     public void setUp() {
+        // 旧行为用例继续使用原有数据夹具；生产变更为持主锁后的当前读。
+        lenient().when(saleReturnMapper.selectByIdForUpdate(anyLong()))
+                .thenAnswer(invocation -> saleReturnMapper.selectById((Long) invocation.getArgument(0)));
+        lenient().when(saleReturnItemMapper.selectListByReturnIdForUpdate(anyLong()))
+                .thenAnswer(invocation -> new java.util.ArrayList<>(saleReturnItemMapper.selectListByReturnId(invocation.getArgument(0))));
         ReflectionTestUtils.setField(saleReturnService, "noRedisDAO", new ErpNoRedisDAO() {
             @Override
             public String generate(String prefix) {
@@ -161,6 +172,11 @@ public class ErpSaleReturnServiceImplTest extends BaseMockitoUnitTest {
         });
         ReflectionTestUtils.setField(saleReturnService, "productBatchNoValidator",
                 new ErpProductBatchNoValidator());
+        lenient().when(warehouseService.validSaleSelectableWarehouseListForDept(
+                        anyCollection(), any(), any()))
+                .thenAnswer(invocation -> Collections.singletonList(
+                        new ErpWarehouseDO().setId(((java.util.Collection<Long>) invocation.getArgument(0))
+                                .stream().filter(java.util.Objects::nonNull).findFirst().orElse(400L))));
     }
 
     @Test
@@ -660,8 +676,7 @@ public class ErpSaleReturnServiceImplTest extends BaseMockitoUnitTest {
                 .setProductPrice(new BigDecimal("10")).setCount(new BigDecimal("2"));
         when(saleReturnItemMapper.selectListByReturnId(eq(id))).thenReturn(Collections.singletonList(item));
         // 未开账时不生成凭证
-        when(bookOpenService.isVoucherTypeEnabled(any(LocalDate.class), eq(ErpVoucherTypeEnum.SALE.getType())))
-                .thenReturn(false);
+
 
         saleReturnService.updateSaleReturnStatus(id, ErpAuditStatus.APPROVE.getStatus());
 
@@ -724,8 +739,7 @@ public class ErpSaleReturnServiceImplTest extends BaseMockitoUnitTest {
                 .setId(id).setNo("XTH400")
                 .setStatus(ErpAuditStatus.PROCESS.getStatus())
                 .setOrderId(null);
-        when(saleReturnMapper.selectByIds(eq(Collections.singletonList(id))))
-                .thenReturn(Collections.singletonList(saleReturn));
+        when(saleReturnMapper.selectByIdForUpdate(id)).thenReturn(saleReturn);
 
         saleReturnService.deleteSaleReturn(Collections.singletonList(id));
 
@@ -739,8 +753,7 @@ public class ErpSaleReturnServiceImplTest extends BaseMockitoUnitTest {
         ErpSaleReturnDO saleReturn = new ErpSaleReturnDO()
                 .setId(id).setNo("XTH401")
                 .setStatus(ErpAuditStatus.APPROVE.getStatus());
-        when(saleReturnMapper.selectByIds(eq(Collections.singletonList(id))))
-                .thenReturn(Collections.singletonList(saleReturn));
+        when(saleReturnMapper.selectByIdForUpdate(id)).thenReturn(saleReturn);
 
         assertException(() -> saleReturnService.deleteSaleReturn(Collections.singletonList(id)),
                 ErrorCodeConstants.SALE_RETURN_DELETE_FAIL_APPROVE, "XTH401");

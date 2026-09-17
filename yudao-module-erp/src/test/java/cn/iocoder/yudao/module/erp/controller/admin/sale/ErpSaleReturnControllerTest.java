@@ -8,6 +8,7 @@ import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleRetur
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnCreateTargetDraftRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnCreateTransferOutReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnPurchaseReturnableItemRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnRefundSummaryRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnTransferOutableItemRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnDraftCreateReqVO;
@@ -15,10 +16,15 @@ import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleRetur
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnSaveReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpCustomerDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleReturnDO;
+import cn.iocoder.yudao.module.erp.dal.mysql.finance.ErpFinanceReceiptItemMapper;
+import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpSaleReturnItemMapper;
+import cn.iocoder.yudao.module.erp.enums.common.ErpBizTypeEnum;
+import cn.iocoder.yudao.module.erp.service.base.ErpDataPermissionDeptService;
 import cn.iocoder.yudao.module.erp.service.config.ErpFieldConfigService;
 import cn.iocoder.yudao.module.erp.service.product.ErpProductService;
 import cn.iocoder.yudao.module.erp.service.sale.ErpCustomerService;
 import cn.iocoder.yudao.module.erp.service.sale.ErpSaleFieldPermissionMasker;
+import cn.iocoder.yudao.module.erp.service.sale.ErpSaleItemPriceReferenceFiller;
 import cn.iocoder.yudao.module.erp.service.sale.ErpSaleReturnService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpStockService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpWarehouseService;
@@ -30,6 +36,7 @@ import org.mockito.Mock;
 import org.springframework.security.access.prepost.PreAuthorize;
 
 import java.lang.reflect.Method;
+import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -41,6 +48,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -70,6 +78,14 @@ public class ErpSaleReturnControllerTest extends BaseMockitoUnitTest {
     private DeptApi deptApi;
     @Mock
     private ErpFieldConfigService fieldConfigService;
+    @Mock
+    private ErpFinanceReceiptItemMapper financeReceiptItemMapper;
+    @Mock
+    private ErpSaleItemPriceReferenceFiller itemPriceReferenceFiller;
+    @Mock
+    private ErpDataPermissionDeptService dataPermissionDeptService;
+    @Mock
+    private ErpSaleReturnItemMapper saleReturnItemMapper;
 
     // ========== createSaleReturn ==========
 
@@ -119,7 +135,7 @@ public class ErpSaleReturnControllerTest extends BaseMockitoUnitTest {
 
     @Test
     public void testUpdateSaleReturnStatus_paramPassThrough() {
-        CommonResult<Boolean> result = controller.updateSaleReturnStatus(33L, 20);
+        CommonResult<Boolean> result = controller.updateSaleReturnStatus(33L, 20, null);
 
         assertEquals(0, result.getCode());
         assertEquals(Boolean.TRUE, result.getData());
@@ -128,7 +144,8 @@ public class ErpSaleReturnControllerTest extends BaseMockitoUnitTest {
 
     @Test
     public void testUpdateSaleReturnStatus_hasPreAuthorize() throws NoSuchMethodException {
-        Method method = ErpSaleReturnController.class.getMethod("updateSaleReturnStatus", Long.class, Integer.class);
+        Method method = ErpSaleReturnController.class.getMethod(
+                "updateSaleReturnStatus", Long.class, Integer.class, String.class);
         PreAuthorize anno = method.getAnnotation(PreAuthorize.class);
         assertNotNull(anno);
         assertTrue(anno.value().contains("erp:sale-return:update-status"));
@@ -280,6 +297,54 @@ public class ErpSaleReturnControllerTest extends BaseMockitoUnitTest {
         assertTrue(anno.value().contains("erp:sale-return:query"));
     }
 
+    @Test
+    public void testGetSaleReturnRefundSummaryReturnsUnrefundedStatus() {
+        when(saleReturnService.getSaleReturn(eq(10L))).thenReturn(new ErpSaleReturnDO()
+                .setId(10L).setTotalPrice(new BigDecimal("100")));
+        when(financeReceiptItemMapper.selectReceiptPriceSumByBizIdAndBizType(
+                eq(10L), eq(ErpBizTypeEnum.SALE_RETURN.getType()))).thenReturn(BigDecimal.ZERO);
+
+        ErpSaleReturnRefundSummaryRespVO data = controller.getSaleReturnRefundSummary(10L).getData();
+
+        assertNotNull(data);
+        assertEquals(0, new BigDecimal("100").compareTo(data.getRefundableAmount()));
+        assertEquals(0, BigDecimal.ZERO.compareTo(data.getRefundedAmount()));
+        assertEquals(0, new BigDecimal("100").compareTo(data.getUnrefundedAmount()));
+        assertEquals(Integer.valueOf(0), data.getRefundStatus());
+    }
+
+    @Test
+    public void testGetSaleReturnRefundSummaryReturnsPartialStatusWithAbsoluteRefundAmount() {
+        when(saleReturnService.getSaleReturn(eq(10L))).thenReturn(new ErpSaleReturnDO()
+                .setId(10L).setTotalPrice(new BigDecimal("100")));
+        when(financeReceiptItemMapper.selectReceiptPriceSumByBizIdAndBizType(
+                eq(10L), eq(ErpBizTypeEnum.SALE_RETURN.getType()))).thenReturn(new BigDecimal("-40"));
+
+        ErpSaleReturnRefundSummaryRespVO data = controller.getSaleReturnRefundSummary(10L).getData();
+
+        assertNotNull(data);
+        assertEquals(0, new BigDecimal("100").compareTo(data.getRefundableAmount()));
+        assertEquals(0, new BigDecimal("40").compareTo(data.getRefundedAmount()));
+        assertEquals(0, new BigDecimal("60").compareTo(data.getUnrefundedAmount()));
+        assertEquals(Integer.valueOf(1), data.getRefundStatus());
+    }
+
+    @Test
+    public void testGetSaleReturnRefundSummaryReturnsRefundedStatus() {
+        when(saleReturnService.getSaleReturn(eq(10L))).thenReturn(new ErpSaleReturnDO()
+                .setId(10L).setTotalPrice(new BigDecimal("100")));
+        when(financeReceiptItemMapper.selectReceiptPriceSumByBizIdAndBizType(
+                eq(10L), eq(ErpBizTypeEnum.SALE_RETURN.getType()))).thenReturn(new BigDecimal("-100"));
+
+        ErpSaleReturnRefundSummaryRespVO data = controller.getSaleReturnRefundSummary(10L).getData();
+
+        assertNotNull(data);
+        assertEquals(0, new BigDecimal("100").compareTo(data.getRefundableAmount()));
+        assertEquals(0, new BigDecimal("100").compareTo(data.getRefundedAmount()));
+        assertEquals(0, BigDecimal.ZERO.compareTo(data.getUnrefundedAmount()));
+        assertEquals(Integer.valueOf(2), data.getRefundStatus());
+    }
+
     // ========== getSaleReturnPage ==========
 
     @Test
@@ -315,6 +380,27 @@ public class ErpSaleReturnControllerTest extends BaseMockitoUnitTest {
         assertEquals(1L, result.getData().getTotal());
         assertNotNull(result.getData().getList().get(0).getItems());
         assertTrue(result.getData().getList().get(0).getItems().isEmpty());
+    }
+
+    @Test
+    public void testGetSaleReturnPage_includeItemsFalse_usesLightList() {
+        ErpSaleReturnPageReqVO reqVO = new ErpSaleReturnPageReqVO();
+        reqVO.setIncludeItems(false);
+        ErpSaleReturnDO saleReturn = new ErpSaleReturnDO();
+        saleReturn.setId(1031L);
+        PageResult<ErpSaleReturnDO> pageResult = new PageResult<>(Collections.singletonList(saleReturn), 1L);
+        when(saleReturnService.getSaleReturnPage(eq(reqVO))).thenReturn(pageResult);
+        when(saleReturnItemMapper.selectProductNamesMapByReturnIds(any()))
+                .thenReturn(Collections.singletonMap(1031L, "空气滤芯"));
+        when(customerService.getCustomerMap(any())).thenReturn(Collections.emptyMap());
+
+        CommonResult<PageResult<ErpSaleReturnRespVO>> result = controller.getSaleReturnPage(reqVO);
+
+        ErpSaleReturnRespVO respVO = result.getData().getList().get(0);
+        assertEquals("空气滤芯", respVO.getProductNames());
+        assertNull(respVO.getItems());
+        verify(saleReturnService, never()).getSaleReturnItemListByReturnIds(any());
+        verify(saleReturnItemMapper).selectProductNamesMapByReturnIds(any());
     }
 
     @Test
