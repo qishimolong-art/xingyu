@@ -127,6 +127,9 @@ public class ErpWarehouseSaveReqVO {
     @Schema(description = "区域ID")
     private Long regionId;
 
+    @Schema(description = "销售单云打印设备编号")
+    private Long cloudPrintDeviceId;
+
     @Schema(description = "分店租户ID列表")
     private List<Long> branchTenantIds;
 

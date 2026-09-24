@@ -21,6 +21,8 @@ import cn.iocoder.yudao.module.erp.enums.stock.ErpStockRecordBizTypeEnum;
 import cn.iocoder.yudao.module.erp.service.product.ErpProductService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpStockRecordService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpWarehouseService;
+import cn.iocoder.yudao.module.system.api.dept.DeptApi;
+import cn.iocoder.yudao.module.system.api.dept.dto.DeptRespDTO;
 import cn.iocoder.yudao.module.system.api.permission.PermissionApi;
 import cn.iocoder.yudao.module.system.api.user.AdminUserApi;
 import cn.iocoder.yudao.module.system.api.user.dto.AdminUserRespDTO;
@@ -70,6 +72,8 @@ public class ErpStockRecordController {
 
     @Resource
     private AdminUserApi adminUserApi;
+    @Resource
+    private DeptApi deptApi;
     @Resource
     private PermissionApi permissionApi;
 
@@ -173,6 +177,9 @@ public class ErpStockRecordController {
                 convertSet(pageResult.getList(), ErpStockRecordDO::getProductId)));
         Map<Long, ErpWarehouseDO> warehouseMap = DataPermissionUtils.executeIgnore(() -> warehouseService.getWarehouseMap(
                 convertSet(pageResult.getList(), ErpStockRecordDO::getWarehouseId)));
+        Set<Long> deptIds = convertSet(pageResult.getList(), ErpStockRecordDO::getDeptId);
+        deptIds.remove(null);
+        Map<Long, DeptRespDTO> deptMap = CollUtil.isEmpty(deptIds) ? Collections.emptyMap() : deptApi.getDeptMap(deptIds);
         Set<String> hiddenFields = getHiddenProductPriceFieldSet();
 
         List<ErpStockRecordReportRespVO> list = pageResult.getList().stream().map(r -> {
@@ -185,6 +192,10 @@ public class ErpStockRecordController {
             ErpWarehouseDO warehouse = warehouseMap.get(r.getWarehouseId());
             if (warehouse != null) {
                 vo.setWarehouseName(warehouse.getName());
+            }
+            DeptRespDTO dept = deptMap.get(r.getDeptId());
+            if (dept != null) {
+                vo.setDeptName(dept.getName());
             }
             BigDecimal count = r.getCount() != null ? r.getCount() : BigDecimal.ZERO;
             BigDecimal unitPrice = r.getUnitPrice() != null ? r.getUnitPrice() : BigDecimal.ZERO;

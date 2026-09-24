@@ -442,6 +442,29 @@ public class ErpPurchaseInServiceImplTest extends BaseMockitoUnitTest {
     }
 
     @Test
+    public void testCreatePurchaseIn_totalPriceExcludesFreightButKeepsLegacyFee() {
+        ErpPurchaseInSaveReqVO.Item item = buildItem(200L, new BigDecimal("10"), new BigDecimal("5"));
+        ErpPurchaseInSaveReqVO reqVO = buildBaseReqVO(item);
+        reqVO.setFeeAmount(new BigDecimal("12.00"));
+        reqVO.setOtherPrice(new BigDecimal("12.00"));
+        reqVO.setFreightType1("我方自付");
+        reqVO.setTotalFreight1(new BigDecimal("8.00"));
+
+        when(productService.validProductList(any())).thenReturn(Collections.singletonList(
+                new ErpProductDO().setId(200L).setUnitId(1L).setName("螺丝")));
+        when(purchaseInMapper.selectByNo(any())).thenReturn(null);
+
+        purchaseInService.createPurchaseIn(reqVO);
+
+        ArgumentCaptor<ErpPurchaseInDO> captor = ArgumentCaptor.forClass(ErpPurchaseInDO.class);
+        verify(purchaseInMapper).insert(captor.capture());
+        ErpPurchaseInDO inserted = captor.getValue();
+        assertEquals(0, inserted.getFeeAmount().compareTo(new BigDecimal("12.00")));
+        assertEquals(0, inserted.getTotalFreight1().compareTo(new BigDecimal("8.00")));
+        assertEquals(0, inserted.getTotalPrice().compareTo(new BigDecimal("62.00")));
+    }
+
+    @Test
     public void testCreatePurchaseIn_emptyItems_throwException() {
         ErpPurchaseInSaveReqVO reqVO = buildBaseReqVO();
         reqVO.setItems(Collections.emptyList());
@@ -2121,7 +2144,7 @@ public class ErpPurchaseInServiceImplTest extends BaseMockitoUnitTest {
         assertEquals(Long.valueOf(999L), inserted.getSupplierId());
         assertEquals(Long.valueOf(88L), inserted.getDeptId());
         assertEquals(Long.valueOf(300L), inserted.getAccountId());
-        assertEquals(0, inserted.getFeeAmount().compareTo(new BigDecimal("12.50")));
+        assertEquals(0, inserted.getFeeAmount().compareTo(BigDecimal.ZERO));
         assertEquals("https://example.com/order.pdf", inserted.getFileUrl());
         assertEquals("订单备注", inserted.getRemark());
         assertEquals("F20260520", inserted.getFactoryOrderNo());

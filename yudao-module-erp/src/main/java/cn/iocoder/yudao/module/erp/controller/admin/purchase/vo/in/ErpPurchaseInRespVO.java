@@ -311,6 +311,18 @@ public class ErpPurchaseInRespVO {
         @Schema(description = "产品单价", example = "100.00")
         private BigDecimal productPrice;
 
+        @Schema(description = "产品金额", example = "100.00")
+        private BigDecimal totalProductPrice;
+
+        @Schema(description = "合计金额", example = "100.00")
+        private BigDecimal totalPrice;
+
+        @Schema(description = "产品成本单价", example = "100.00")
+        private BigDecimal productCostPrice;
+
+        @Schema(description = "产品成本金额", example = "100.00")
+        private BigDecimal productCostAmount;
+
         @Schema(description = "产品资料采购价", example = "88.00")
         private BigDecimal productPurchasePrice;
 

@@ -1,6 +1,7 @@
 package cn.iocoder.yudao.module.erp.service.purchase;
 
 import cn.hutool.core.util.StrUtil;
+import cn.hutool.core.util.URLUtil;
 import cn.hutool.http.HttpRequest;
 import cn.hutool.http.HttpResponse;
 import cn.hutool.json.JSONArray;
@@ -23,6 +24,7 @@ import cn.iocoder.yudao.module.erp.enums.ErpAuditStatus;
 import cn.iocoder.yudao.module.erp.enums.purchase.ErpPurchaseInvoiceOcrBatchStatusEnum;
 import cn.iocoder.yudao.module.erp.enums.purchase.ErpPurchaseInvoiceOcrItemStatusEnum;
 import cn.iocoder.yudao.module.infra.api.file.FileApi;
+import cn.iocoder.yudao.module.infra.service.file.FileService;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -32,7 +34,13 @@ import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.validation.annotation.Validated;
 
 import javax.annotation.Resource;
+import javax.crypto.Mac;
+import javax.crypto.spec.SecretKeySpec;
 import java.math.BigDecimal;
+import java.net.URI;
+import java.net.URISyntaxException;
+import java.net.Proxy;
+import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
@@ -41,10 +49,13 @@ import java.util.Arrays;
 import java.util.Base64;
 import java.util.Collection;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.UUID;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -71,11 +82,16 @@ public class ErpPurchaseInvoiceOcrServiceImpl implements ErpPurchaseInvoiceOcrSe
 
     private static final DateTimeFormatter BATCH_NO_DATE_FORMATTER = DateTimeFormatter.ofPattern("yyyyMMdd");
     private static final String DEFAULT_ENDPOINT = "https://dgfp.market.alicloudapi.com/ocrservice/invoice";
+    private static final String OCR_ACCEPT = "application/json; charset=utf-8";
+    private static final String OCR_CONTENT_TYPE = "application/json; charset=utf-8";
+    private static final String ALIYUN_SIGNATURE_METHOD = "HmacSHA256";
+    private static final String ALIYUN_SIGNATURE_HEADERS = "x-ca-key,x-ca-nonce,x-ca-signature-method,x-ca-timestamp";
     private static final Pattern DATE_PATTERN = Pattern.compile("(\\d{4})[-/.年](\\d{1,2})[-/.月](\\d{1,2})日?");
     private static final Pattern AMOUNT_PATTERN = Pattern.compile("-?\\d+(\\.\\d+)?");
     private static final Pattern FACTORY_ORDER_TOKEN_PATTERN = Pattern.compile("^(S[A-Za-z0-9_-]+)");
     private static final Pattern MERGED_FACTORY_ORDER_PATTERN =
             Pattern.compile("^(S(?:\\d{12}|\\d{9}))\\d{10}(?=\\s*(?:\\d{4}[-/.]\\d{1,2}[-/.]\\d{1,2}|$))");
+    private static final String INTERNAL_FILE_URL_PREFIX = "/infra/file/";
     private static final List<String> MATCHABLE_ITEM_STATUSES = Arrays.asList(
             ErpPurchaseInvoiceOcrItemStatusEnum.PENDING.getStatus(),
             ErpPurchaseInvoiceOcrItemStatusEnum.NO_PURCHASE_IN.getStatus(),
@@ -98,10 +114,16 @@ public class ErpPurchaseInvoiceOcrServiceImpl implements ErpPurchaseInvoiceOcrSe
     @Resource
     private FileApi fileApi;
     @Resource
+    private FileService fileService;
+    @Resource
     private TransactionTemplate transactionTemplate;
 
     @Value("${yudao.erp.purchase-invoice-ocr.endpoint:" + DEFAULT_ENDPOINT + "}")
     private String endpoint;
+    @Value("${yudao.erp.purchase-invoice-ocr.app-key:}")
+    private String appKey;
+    @Value("${yudao.erp.purchase-invoice-ocr.app-secret:}")
+    private String appSecret;
     @Value("${yudao.erp.purchase-invoice-ocr.app-code:}")
     private String appCode;
     @Value("${yudao.erp.purchase-invoice-ocr.timeout:8000}")
@@ -110,10 +132,12 @@ public class ErpPurchaseInvoiceOcrServiceImpl implements ErpPurchaseInvoiceOcrSe
     private Integer fileUrlExpirationSeconds;
     @Value("${yudao.erp.purchase-invoice-ocr.amount-tolerance:0.01}")
     private BigDecimal amountTolerance;
+    @Value("${yudao.erp.purchase-invoice-ocr.use-system-proxy:false}")
+    private boolean useSystemProxy;
 
     @Override
     public Long uploadPurchaseInvoiceOcrBatch(ErpPurchaseInvoiceOcrUploadReqVO uploadReqVO) {
-        if (isAutoProcess(uploadReqVO) && StrUtil.isBlank(appCode)) {
+        if (isAutoProcess(uploadReqVO) && !hasInvoiceOcrCredential()) {
             throw exception(PURCHASE_INVOICE_OCR_APP_CODE_NOT_CONFIGURED);
         }
         Long batchId = transactionTemplate.execute(status -> createPurchaseInvoiceOcrBatch(uploadReqVO));
@@ -224,7 +248,7 @@ public class ErpPurchaseInvoiceOcrServiceImpl implements ErpPurchaseInvoiceOcrSe
 
     @Override
     public Boolean recognizePurchaseInvoiceOcrBatch(Long batchId) {
-        if (StrUtil.isBlank(appCode)) {
+        if (!hasInvoiceOcrCredential()) {
             throw exception(PURCHASE_INVOICE_OCR_APP_CODE_NOT_CONFIGURED);
         }
 
@@ -676,21 +700,70 @@ public class ErpPurchaseInvoiceOcrServiceImpl implements ErpPurchaseInvoiceOcrSe
     }
 
     private byte[] downloadInvoiceFile(ErpPurchaseInvoiceOcrItemDO item) {
+        byte[] internalContent = readInternalInvoiceFile(item.getFileUrl());
+        if (internalContent != null) {
+            return internalContent;
+        }
         String downloadUrl = resolveDownloadUrl(item.getFileUrl());
         if (StrUtil.isBlank(downloadUrl)) {
             throw new IllegalStateException("发票文件地址为空");
         }
-        try (HttpResponse response = HttpRequest.get(downloadUrl)
+        try (HttpResponse response = prepareInvoiceOcrRequest(HttpRequest.get(downloadUrl))
                 .timeout(timeout)
                 .execute()) {
             if (!response.isOk()) {
-                throw new IllegalStateException("发票文件下载失败：" + response.getStatus());
+                throw new IllegalStateException("HTTP " + response.getStatus());
             }
             byte[] content = response.bodyBytes();
             if (content == null || content.length == 0) {
                 throw new IllegalStateException("发票文件内容为空");
             }
             return content;
+        } catch (Exception ex) {
+            throw new IllegalStateException("下载发票文件失败：" + limitErrorMessage(ex.getMessage()), ex);
+        }
+    }
+
+    private byte[] readInternalInvoiceFile(String fileUrl) {
+        InternalFileLocation location = parseInternalFileLocation(fileUrl);
+        if (location == null) {
+            return null;
+        }
+        try {
+            byte[] content = fileService.getFileContent(location.getConfigId(), location.getPath());
+            if (content == null || content.length == 0) {
+                throw new IllegalStateException("发票文件内容为空");
+            }
+            return content;
+        } catch (Exception ex) {
+            throw new IllegalStateException("读取系统发票文件失败：" + limitErrorMessage(ex.getMessage()), ex);
+        }
+    }
+
+    InternalFileLocation parseInternalFileLocation(String fileUrl) {
+        if (StrUtil.isBlank(fileUrl)) {
+            return null;
+        }
+        String urlWithoutQuery = StrUtil.subBefore(fileUrl, "?", false);
+        int prefixIndex = urlWithoutQuery.indexOf(INTERNAL_FILE_URL_PREFIX);
+        if (prefixIndex < 0) {
+            return null;
+        }
+        String filePath = urlWithoutQuery.substring(prefixIndex + INTERNAL_FILE_URL_PREFIX.length());
+        int getIndex = filePath.indexOf("/get/");
+        if (getIndex <= 0) {
+            return null;
+        }
+        String configIdText = filePath.substring(0, getIndex);
+        String path = filePath.substring(getIndex + "/get/".length());
+        if (StrUtil.isBlank(path)) {
+            return null;
+        }
+        try {
+            Long configId = Long.valueOf(configIdText);
+            return new InternalFileLocation(configId, URLUtil.decode(path, StandardCharsets.UTF_8, false));
+        } catch (NumberFormatException ex) {
+            return null;
         }
     }
 
@@ -713,21 +786,116 @@ public class ErpPurchaseInvoiceOcrServiceImpl implements ErpPurchaseInvoiceOcrSe
         String requestBody = JSONUtil.createObj()
                 .set("img", Base64.getEncoder().encodeToString(fileContent))
                 .toString();
-        try (HttpResponse response = HttpRequest.post(endpoint)
-                .header("Authorization", "APPCODE " + appCode)
-                .header("Content-Type", "application/json; charset=utf-8")
+        HttpRequest request = prepareInvoiceOcrRequest(HttpRequest.post(endpoint))
+                .header("Accept", OCR_ACCEPT)
+                .header("Content-Type", OCR_CONTENT_TYPE)
                 .body(requestBody)
-                .timeout(timeout)
-                .execute()) {
+                .timeout(timeout);
+        applyInvoiceOcrAuth(request);
+        try (HttpResponse response = request.execute()) {
             String body = response.body();
             if (!response.isOk()) {
-                throw new IllegalStateException("OCR 接口请求失败：" + response.getStatus());
+                throw new IllegalStateException("HTTP " + response.getStatus()
+                        + buildInvoiceOcrHttpFailureDetail(body));
             }
             if (StrUtil.isBlank(body)) {
                 throw new IllegalStateException("OCR 接口返回为空");
             }
             return body;
+        } catch (Exception ex) {
+            throw new IllegalStateException("调用发票 OCR 接口失败：" + limitErrorMessage(ex.getMessage()), ex);
         }
+    }
+
+    private boolean hasInvoiceOcrCredential() {
+        return StrUtil.isNotBlank(appCode) || hasSignatureCredential();
+    }
+
+    private boolean hasSignatureCredential() {
+        return StrUtil.isAllNotBlank(appKey, appSecret);
+    }
+
+    private void applyInvoiceOcrAuth(HttpRequest request) {
+        if (StrUtil.isNotBlank(appCode)) {
+            request.header("Authorization", "APPCODE " + appCode);
+            return;
+        }
+        if (hasSignatureCredential()) {
+            buildAliyunApiGatewaySignatureHeaders(appKey, appSecret, "POST", endpoint, OCR_ACCEPT, OCR_CONTENT_TYPE,
+                    String.valueOf(System.currentTimeMillis()), UUID.randomUUID().toString())
+                    .forEach(request::header);
+        }
+    }
+
+    private String buildInvoiceOcrHttpFailureDetail(String body) {
+        if (StrUtil.isBlank(body)) {
+            return "";
+        }
+        return "，响应：" + limitErrorMessage(body);
+    }
+
+    static Map<String, String> buildAliyunApiGatewaySignatureHeaders(String appKey, String appSecret,
+                                                                     String method, String requestUrl,
+                                                                     String accept, String contentType,
+                                                                     String timestamp, String nonce) {
+        Map<String, String> signedHeaders = new LinkedHashMap<>();
+        signedHeaders.put("x-ca-key", appKey);
+        signedHeaders.put("x-ca-nonce", nonce);
+        signedHeaders.put("x-ca-signature-method", ALIYUN_SIGNATURE_METHOD);
+        signedHeaders.put("x-ca-timestamp", timestamp);
+
+        String signedHeaderText = signedHeaders.entrySet().stream()
+                .map(entry -> entry.getKey() + ":" + entry.getValue())
+                .collect(Collectors.joining("\n"));
+        String stringToSign = method.toUpperCase(Locale.ROOT) + "\n"
+                + StrUtil.nullToEmpty(accept) + "\n"
+                + "\n"
+                + StrUtil.nullToEmpty(contentType) + "\n"
+                + "\n"
+                + signedHeaderText + "\n"
+                + buildPathAndSortedQuery(requestUrl);
+
+        Map<String, String> headers = new LinkedHashMap<>();
+        headers.put("X-Ca-Key", appKey);
+        headers.put("X-Ca-Nonce", nonce);
+        headers.put("X-Ca-Signature-Method", ALIYUN_SIGNATURE_METHOD);
+        headers.put("X-Ca-Timestamp", timestamp);
+        headers.put("X-Ca-Signature-Headers", ALIYUN_SIGNATURE_HEADERS);
+        headers.put("X-Ca-Signature", hmacSha256Base64(appSecret, stringToSign));
+        return headers;
+    }
+
+    private static String buildPathAndSortedQuery(String requestUrl) {
+        try {
+            URI uri = new URI(requestUrl);
+            String path = StrUtil.blankToDefault(uri.getRawPath(), "/");
+            String query = uri.getRawQuery();
+            if (StrUtil.isBlank(query)) {
+                return path;
+            }
+            return path + "?" + Arrays.stream(query.split("&"))
+                    .sorted()
+                    .collect(Collectors.joining("&"));
+        } catch (URISyntaxException ex) {
+            throw new IllegalStateException("发票 OCR 接口地址不合法", ex);
+        }
+    }
+
+    private static String hmacSha256Base64(String secret, String text) {
+        try {
+            Mac mac = Mac.getInstance(ALIYUN_SIGNATURE_METHOD);
+            mac.init(new SecretKeySpec(secret.getBytes(StandardCharsets.UTF_8), ALIYUN_SIGNATURE_METHOD));
+            return Base64.getEncoder().encodeToString(mac.doFinal(text.getBytes(StandardCharsets.UTF_8)));
+        } catch (Exception ex) {
+            throw new IllegalStateException("生成发票 OCR 签名失败", ex);
+        }
+    }
+
+    private HttpRequest prepareInvoiceOcrRequest(HttpRequest request) {
+        if (!useSystemProxy) {
+            request.setProxy(Proxy.NO_PROXY);
+        }
+        return request;
     }
 
     private OcrParseResult parseOcrResponse(String rawJson) {
@@ -987,6 +1155,26 @@ public class ErpPurchaseInvoiceOcrServiceImpl implements ErpPurchaseInvoiceOcrSe
             return oldMessage;
         }
         return limitErrorMessage(oldMessage + "；" + text);
+    }
+
+    static class InternalFileLocation {
+
+        private final Long configId;
+        private final String path;
+
+        InternalFileLocation(Long configId, String path) {
+            this.configId = configId;
+            this.path = path;
+        }
+
+        public Long getConfigId() {
+            return configId;
+        }
+
+        public String getPath() {
+            return path;
+        }
+
     }
 
     private static class OcrParseResult {

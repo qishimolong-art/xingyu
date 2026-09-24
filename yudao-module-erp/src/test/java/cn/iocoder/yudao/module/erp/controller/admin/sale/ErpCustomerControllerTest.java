@@ -167,6 +167,9 @@ public class ErpCustomerControllerTest extends BaseMockitoUnitTest {
         customer.setId(1L);
         customer.setName("test");
         when(customerService.getCustomer(eq(1L))).thenReturn(customer);
+        ErpCustomerBusinessInfoDO businessInfo = new ErpCustomerBusinessInfoDO();
+        businessInfo.setCustomerId(1L);
+        when(customerBusinessInfoMapper.selectListByCustomerIds(any())).thenReturn(Collections.singletonList(businessInfo));
 
         CommonResult<ErpCustomerRespVO> result = controller.getCustomer(1L);
 
@@ -174,6 +177,7 @@ public class ErpCustomerControllerTest extends BaseMockitoUnitTest {
         assertNotNull(result.getData());
         assertEquals(1L, result.getData().getId());
         assertEquals("test", result.getData().getName());
+        assertTrue(result.getData().getBusinessInfoSynced());
     }
 
     @Test

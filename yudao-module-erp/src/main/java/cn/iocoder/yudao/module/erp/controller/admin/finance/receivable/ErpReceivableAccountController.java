@@ -5,6 +5,7 @@ import cn.iocoder.yudao.framework.common.pojo.CommonResult;
 import cn.iocoder.yudao.framework.common.pojo.PageParam;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.excel.core.util.ExcelUtils;
+import cn.iocoder.yudao.module.erp.controller.admin.finance.receivable.vo.account.ErpReceivableAccountExportRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.receivable.vo.account.ErpReceivableAccountPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.receivable.vo.account.ErpReceivableAccountRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.receivable.vo.account.ErpReceivableDetailReqVO;
@@ -12,6 +13,7 @@ import cn.iocoder.yudao.module.erp.controller.admin.finance.receivable.vo.accoun
 import cn.iocoder.yudao.module.erp.controller.admin.finance.receivable.vo.account.ErpReceivableWriteOffReqVO;
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
 import cn.iocoder.yudao.module.erp.service.base.ErpDataPermissionDeptService;
+import cn.iocoder.yudao.module.erp.dal.dataobject.finance.receivable.ErpReceivableAccountDO;
 import cn.iocoder.yudao.module.erp.service.finance.receivable.ErpReceivableAccountService;
 import cn.iocoder.yudao.module.system.api.user.AdminUserApi;
 import cn.iocoder.yudao.module.system.controller.admin.dept.vo.dept.DeptSimpleRespVO;
@@ -31,6 +33,7 @@ import javax.servlet.http.HttpServletResponse;
 import javax.validation.Valid;
 import java.io.IOException;
 import java.util.List;
+import java.util.stream.Collectors;
 
 import static cn.iocoder.yudao.framework.apilog.core.enums.OperateTypeEnum.EXPORT;
 import static cn.iocoder.yudao.framework.common.pojo.CommonResult.success;
@@ -91,6 +94,17 @@ public class ErpReceivableAccountController {
         return success(receivableAccountService.writeOffReceivable(reqVO));
     }
 
+    @GetMapping("/export")
+    @Operation(summary = "导出应收账款概览 Excel")
+    @PreAuthorize("@ss.hasPermission('erp:receivable-account:query')")
+    @ApiAccessLog(operateType = EXPORT)
+    public void exportReceivableAccount(@Valid ErpReceivableAccountPageReqVO reqVO,
+                                        HttpServletResponse response) throws IOException {
+        ExcelUtils.write(response, "应收账款概览.xls", "概览", ErpReceivableAccountExportRespVO.class,
+                receivableAccountService.getReceivableAccountList(reqVO).stream()
+                        .map(this::toExportVO).collect(Collectors.toList()));
+    }
+
     @GetMapping("/export-detail")
     @Operation(summary = "导出应收账款明细 Excel")
     @PreAuthorize("@ss.hasPermission('erp:receivable-account:query')")
@@ -99,5 +113,25 @@ public class ErpReceivableAccountController {
                                        HttpServletResponse response) throws IOException {
         ExcelUtils.write(response, "应收账款明细.xls", "明细", ErpReceivableDetailRespVO.class,
                 receivableAccountService.getReceivableDetailList(reqVO));
+    }
+
+    private ErpReceivableAccountExportRespVO toExportVO(ErpReceivableAccountDO source) {
+        ErpReceivableAccountExportRespVO target = new ErpReceivableAccountExportRespVO();
+        target.setCustomerName(source.getCustomerName());
+        target.setContact(source.getContact());
+        target.setMobile(source.getMobile());
+        target.setDeptName(source.getDeptName());
+        target.setSaleUserName(source.getSaleUserName());
+        target.setSaleOutAmount(source.getSaleOutAmount());
+        target.setSaleReturnAmount(source.getSaleReturnAmount());
+        target.setPriceAdjustAmount(source.getPriceAdjustAmount());
+        target.setMiscReceivableAmount(source.getMiscReceivableAmount());
+        target.setReceiptAmount(source.getReceiptAmount());
+        target.setWriteOffAmount(source.getWriteOffAmount());
+        target.setReceivableBalance(source.getReceivableBalance());
+        target.setPreAdvanceAmount(source.getPreAdvanceAmount());
+        target.setCreditBalance(source.getCreditBalance());
+        target.setLastBizTime(source.getLastBizTime());
+        return target;
     }
 }

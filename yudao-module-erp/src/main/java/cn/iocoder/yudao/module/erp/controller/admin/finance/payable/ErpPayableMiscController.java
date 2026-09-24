@@ -21,12 +21,14 @@ import cn.iocoder.yudao.module.erp.controller.admin.finance.payable.vo.misc.ErpP
 import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.imports.ErpFinanceImportRespVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.ErpAccountDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.payable.ErpPayableMiscDO;
+import cn.iocoder.yudao.module.erp.dal.mysql.finance.payable.ErpPayableMiscMapper;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpSupplierDO;
 import cn.iocoder.yudao.module.erp.enums.ErpAuditStatus;
 import cn.iocoder.yudao.module.erp.enums.finance.ErpPayableMiscStatusEnum;
 import cn.iocoder.yudao.module.erp.service.base.ErpDataPermissionDeptService;
 import cn.iocoder.yudao.module.erp.service.finance.ErpAccountService;
 import cn.iocoder.yudao.module.erp.service.finance.ErpFinanceFieldPermissionMasker;
+import cn.iocoder.yudao.module.erp.service.finance.ErpMiscTransferOffsetConstants;
 import cn.iocoder.yudao.module.erp.service.finance.payable.ErpPayableMiscService;
 import cn.iocoder.yudao.module.erp.service.purchase.ErpSupplierService;
 import cn.iocoder.yudao.module.system.api.dept.DeptApi;
@@ -54,6 +56,7 @@ import javax.annotation.Resource;
 import javax.servlet.http.HttpServletResponse;
 import javax.validation.Valid;
 import java.io.IOException;
+import java.math.BigDecimal;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashSet;
@@ -88,6 +91,8 @@ public class ErpPayableMiscController {
     private ErpSupplierService supplierService;
     @Resource
     private ErpAccountService accountService;
+    @Resource
+    private ErpPayableMiscMapper payableMiscMapper;
     @Resource
     private AdminUserApi adminUserApi;
     @Resource
@@ -183,7 +188,10 @@ public class ErpPayableMiscController {
         }
         ErpPayableMiscRespVO vo = BeanUtils.toBean(db, ErpPayableMiscRespVO.class);
         fillExtend(vo);
-        fieldPermissionMasker.maskForm(FIELD_PERMISSION_MODULE, vo);
+        fillSettlement(vo, Collections.singletonMap(db.getId(), db),
+                payableMiscMapper.selectOffsetAmountSumMapBySourceMiscIds(Collections.singleton(db.getId()),
+                        ErpMiscTransferOffsetConstants.PAYMENT_OFFSET_SOURCE_TYPE));
+        maskForm(vo);
         return success(vo);
     }
 
@@ -278,10 +286,46 @@ public class ErpPayableMiscController {
                 convertSet(pageResult.getList(), ErpPayableMiscDO::getAccountId));
         Map<Long, AdminUserRespDTO> userMap = getUserMap(pageResult.getList());
         Map<Long, DeptRespDTO> deptMap = deptApi.getDeptMap(convertSet(pageResult.getList(), ErpPayableMiscDO::getDeptId));
+        Set<Long> ids = convertSet(pageResult.getList(), ErpPayableMiscDO::getId);
+        Map<Long, BigDecimal> settledMap = payableMiscMapper.selectOffsetAmountSumMapBySourceMiscIds(
+                ids, ErpMiscTransferOffsetConstants.PAYMENT_OFFSET_SOURCE_TYPE);
+        Map<Long, ErpPayableMiscDO> rowMap = pageResult.getList().stream()
+                .collect(java.util.stream.Collectors.toMap(ErpPayableMiscDO::getId, item -> item));
         PageResult<ErpPayableMiscRespVO> result = BeanUtils.toBean(pageResult, ErpPayableMiscRespVO.class, vo ->
                 fillExtend(vo, supplierMap, accountMap, userMap, deptMap));
-        result.getList().forEach(item -> fieldPermissionMasker.maskForm(FIELD_PERMISSION_MODULE, item));
+        result.getList().forEach(item -> fillSettlement(item, rowMap, settledMap));
+        result.getList().forEach(this::maskForm);
         return result;
+    }
+
+    private void fillSettlement(ErpPayableMiscRespVO vo, Map<Long, ErpPayableMiscDO> rowMap,
+                                Map<Long, BigDecimal> settledMap) {
+        BigDecimal settledAmount = amount(settledMap.get(vo.getId()));
+        ErpPayableMiscDO row = rowMap.get(vo.getId());
+        BigDecimal originalAmount = amount(vo.getAmount());
+        if (row != null) {
+            originalAmount = amount(row.getAmount());
+            vo.setGeneratedOffset(isGeneratedOffset(row));
+        }
+        vo.setSettledAmount(settledAmount);
+        vo.setBalanceAmount(originalAmount.subtract(settledAmount));
+    }
+
+    private boolean isGeneratedOffset(ErpPayableMiscDO row) {
+        return ErpMiscTransferOffsetConstants.PAYMENT_OFFSET_SOURCE_TYPE.equals(row.getSourceType())
+                && row.getSourceItemId() != null;
+    }
+
+    private BigDecimal amount(BigDecimal value) {
+        return value == null ? BigDecimal.ZERO : value;
+    }
+
+    private void maskForm(ErpPayableMiscRespVO vo) {
+        fieldPermissionMasker.maskForm(FIELD_PERMISSION_MODULE, vo);
+        if (vo.getAmount() == null) {
+            vo.setSettledAmount(null);
+            vo.setBalanceAmount(null);
+        }
     }
 
     private void fillExtend(ErpPayableMiscRespVO vo) {

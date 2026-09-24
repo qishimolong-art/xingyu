@@ -3,6 +3,7 @@ package cn.iocoder.yudao.module.erp.service.common;
 import cn.hutool.core.bean.BeanUtil;
 import cn.hutool.core.collection.CollUtil;
 import cn.iocoder.yudao.framework.common.enums.CommonStatusEnum;
+import cn.iocoder.yudao.framework.common.pojo.PageParam;
 import cn.iocoder.yudao.framework.common.util.number.MoneyUtils;
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
 import cn.iocoder.yudao.framework.datapermission.core.util.DataPermissionUtils;
@@ -88,6 +89,7 @@ import cn.iocoder.yudao.module.erp.service.sale.ErpCustomerService;
 import cn.iocoder.yudao.module.erp.service.sale.ErpSaleCartService;
 import cn.iocoder.yudao.module.erp.service.sale.ErpSaleOrderService;
 import cn.iocoder.yudao.module.erp.service.sale.ErpSaleOutService;
+import cn.iocoder.yudao.module.erp.service.sale.ErpSalePickDeliveryService;
 import cn.iocoder.yudao.module.erp.service.sale.ErpSalePriceAdjustService;
 import cn.iocoder.yudao.module.erp.service.sale.ErpSaleQuoteService;
 import cn.iocoder.yudao.module.erp.service.sale.ErpSaleReturnService;
@@ -166,6 +168,8 @@ public class ErpPrintServiceImpl implements ErpPrintService {
     private ErpSaleOrderService saleOrderService;
     @Resource
     private ErpSaleOutService saleOutService;
+    @Resource
+    private ErpSalePickDeliveryService salePickDeliveryService;
     @Resource
     private ErpSaleReturnService saleReturnService;
     @Resource
@@ -664,27 +668,38 @@ public class ErpPrintServiceImpl implements ErpPrintService {
                                                 ErpSaleOutDO saleOut) {
         Long auditorId = saleOut.getAuditorId();
         AdminUserRespDTO auditor = auditorId == null ? null : adminUserApi.getUser(auditorId);
-        putDocumentField(documentMap, mainMap, "checkerName", auditor == null ? null : auditor.getNickname());
+        putDocumentField(documentMap, mainMap, "checkerName",
+                firstNonBlank(saleOut.getSenderName(), auditor == null ? null : auditor.getNickname()));
         putDocumentField(documentMap, mainMap, "pickerName", collectSaleOutPickerNames(saleOut.getId()));
     }
 
     private String collectSaleOutPickerNames(Long saleOutId) {
-        if (saleOutId == null || stockOutBillService == null) {
-            return "";
-        }
-        List<ErpStockOutBillDO> bills = stockOutBillService.getStockOutBillListBySaleOutId(saleOutId);
-        if (CollUtil.isEmpty(bills)) {
+        if (saleOutId == null) {
             return "";
         }
         LinkedHashSet<String> names = new LinkedHashSet<>();
-        for (ErpStockOutBillDO bill : bills) {
-            Object name = firstNonBlank(bill.getPickUserName(), bill.getPick());
-            String text = name == null ? null : String.valueOf(name);
-            if (StringUtils.hasText(text)) {
-                names.add(text);
+        if (salePickDeliveryService != null) {
+            PageParam pageParam = new PageParam();
+            pageParam.setPageSize(PageParam.PAGE_SIZE_NONE);
+            salePickDeliveryService.getSaleOutPickDeliveryItemPage(saleOutId, pageParam).getList()
+                    .forEach(item -> addName(names, item.getPickUserName()));
+        }
+        if (stockOutBillService != null) {
+            List<ErpStockOutBillDO> bills = stockOutBillService.getStockOutBillListBySaleOutId(saleOutId);
+            if (CollUtil.isNotEmpty(bills)) {
+                for (ErpStockOutBillDO bill : bills) {
+                    Object name = firstNonBlank(bill.getPickUserName(), bill.getPick());
+                    addName(names, name == null ? null : String.valueOf(name));
+                }
             }
         }
         return String.join("、", names);
+    }
+
+    private void addName(LinkedHashSet<String> names, String name) {
+        if (StringUtils.hasText(name)) {
+            names.add(name);
+        }
     }
 
     @SuppressWarnings("unchecked")
@@ -1006,8 +1021,12 @@ public class ErpPrintServiceImpl implements ErpPrintService {
         String source = definition.getFieldKey().startsWith("item_")
                 ? module.getFieldModuleKey() + " / detail_item"
                 : module.getFieldModuleKey() + " / main_form";
-        String name = module == ErpPrintModuleEnum.SALE_OUT && "no".equals(definition.getFieldKey())
-                ? "销售单号" : definition.getFieldLabel();
+        String name = definition.getFieldLabel();
+        if (module == ErpPrintModuleEnum.SALE_OUT && "no".equals(definition.getFieldKey())) {
+            name = "销售单号";
+        } else if (module == ErpPrintModuleEnum.SALE_OUT && "checkerName".equals(definition.getFieldKey())) {
+            name = "发货人";
+        }
         return field(name, code, source);
     }
 

@@ -152,6 +152,8 @@ public class ErpSaleCartServiceImpl implements ErpSaleCartService {
     @Resource
     private ErpSaleOutService saleOutService;
     @Resource
+    private ErpSalePickDeliveryService salePickDeliveryService;
+    @Resource
     private ErpSaleFieldPermissionMasker fieldPermissionMasker;
     @Resource
     private ErpSaleItemBatchUpdateSupport batchUpdateSupport;
@@ -161,6 +163,8 @@ public class ErpSaleCartServiceImpl implements ErpSaleCartService {
     private ErpSalePriceLevelPermissionValidator priceLevelPermissionValidator;
     @Resource
     private ErpSaleDocumentDefaultService saleDocumentDefaultService;
+    @Resource
+    private ErpSaleDirectDeptPermissionService saleDirectDeptPermissionService;
     @Resource
     private AdminUserApi adminUserApi;
     @Resource
@@ -251,6 +255,7 @@ public class ErpSaleCartServiceImpl implements ErpSaleCartService {
             cart.setSourceNo(sourceNo);
         }
         saleDocumentDefaultService.fillCreateDefaults(cart);
+        saleDirectDeptPermissionService.validateSaleDocumentDeptAllowed(cart.getDeptId());
         cart.setStatus(status != null ? status : getSubmitTargetStatus(cart.getDeptId()));
         List<ErpSaleCartSaveReqVO.Item> itemReqs = createReqVO.getItems();
         if (draft) {
@@ -446,6 +451,7 @@ public class ErpSaleCartServiceImpl implements ErpSaleCartService {
         ErpSaleCartDO updateObj = BeanUtils.toBean(updateReqVO, ErpSaleCartDO.class);
         updateObj.setCartTime(LocalDateTime.now());
         Long saleDeptId = updateObj.getDeptId() != null ? updateObj.getDeptId() : cart.getDeptId();
+        saleDirectDeptPermissionService.validateSaleDocumentDeptAllowed(saleDeptId);
         updateObj.setNo(cart.getNo());
         updateObj.setStatus(cart.getStatus());
         updateObj.setDeptId(saleDeptId);
@@ -536,6 +542,7 @@ public class ErpSaleCartServiceImpl implements ErpSaleCartService {
     @Transactional(rollbackFor = Exception.class)
     public ErpSaleCartSubmitRespVO submitSaleCart(Long id) {
         ErpSaleCartDO cart = validateSaleCartForUpdate(id);
+        saleDirectDeptPermissionService.validateSaleDocumentDeptAllowed(cart.getDeptId());
         List<ErpSaleCartItemDO> items = currentCartItems(id);
         normalizeItemDeptIdByCartDept(cart, items);
         ErpSaleCartSubmitRespVO result = buildSubmitResult(cart, items);
@@ -573,6 +580,7 @@ public class ErpSaleCartServiceImpl implements ErpSaleCartService {
             throw exception(SALE_CART_FIRST_APPROVE_DISABLED);
         }
         ErpSaleCartDO cart = validateSaleCartForUpdate(id);
+        saleDirectDeptPermissionService.validateSaleDocumentDeptAllowed(cart.getDeptId());
         if (!isFirstApproveRequiredForDept(config, cart.getDeptId())) {
             throw exception(SALE_CART_FIRST_APPROVE_DEPT_UNAUTHORIZED);
         }
@@ -593,6 +601,7 @@ public class ErpSaleCartServiceImpl implements ErpSaleCartService {
 
     private List<Long> doFinalApproveSaleCart(Long id, Long finalApproveUserId) {
         ErpSaleCartDO cart = validateSaleCartForUpdate(id);
+        saleDirectDeptPermissionService.validateSaleDocumentDeptAllowed(cart.getDeptId());
         Integer oldStatus = resolveFinalApproveOldStatus(cart);
         int claimCount = saleCartMapper.updateByIdAndStatus(id, oldStatus,
                 new ErpSaleCartDO().setStatus(ErpSaleCartStatusEnum.FINAL_APPROVE.getStatus()));
@@ -1164,6 +1173,7 @@ public class ErpSaleCartServiceImpl implements ErpSaleCartService {
         deptItemMap.forEach((fromDeptId, deptItems) -> reqVOs.add(buildTransferOutDraftReqVO(
                 cart, deptItems, fromDeptId, directWarehouseId, moveTime)));
         stockMoveService.syncTransferOutDraftsBySource(reqVOs);
+        salePickDeliveryService.generateForSaleCartTransferOuts(cart.getId());
     }
 
     private ErpStockMoveSaveReqVO buildTransferOutDraftReqVO(ErpSaleCartDO cart,
@@ -1387,7 +1397,8 @@ public class ErpSaleCartServiceImpl implements ErpSaleCartService {
         result.setId(cart.getId());
         result.setNo(cart.getNo());
         result.setStatus(cart.getStatus());
-        List<ErpSaleCartSubmitRespVO.ShortageItem> shortages = calculateStockShortages(items, true);
+        boolean occupiedIncludesCurrentCart = !ErpSaleCartStatusEnum.PROCESS.getStatus().equals(cart.getStatus());
+        List<ErpSaleCartSubmitRespVO.ShortageItem> shortages = calculateStockShortages(items, occupiedIncludesCurrentCart);
         result.setShortageItems(shortages);
         result.setStockInsufficient(CollUtil.isNotEmpty(shortages));
         return result;
@@ -1464,7 +1475,7 @@ public class ErpSaleCartServiceImpl implements ErpSaleCartService {
             BigDecimal stockCount = stock != null && stock.getCount() != null ? stock.getCount() : BigDecimal.ZERO;
             BigDecimal occupiedCount = occupiedCountMap.getOrDefault(
                     key.getProductId() + "_" + key.getWarehouseId(), BigDecimal.ZERO);
-            // PROCESS/SUBMITTED/FIRST_APPROVE carts are part of occupiedCount. Exclude the current cart before
+            // SUBMITTED/FIRST_APPROVE carts are part of occupiedCount. Exclude the current cart before
             // comparing its requested quantity, otherwise the current quantity is deducted twice.
             BigDecimal existingOccupiedCount = occupiedIncludesCurrentCart
                     ? occupiedCount.subtract(requiredCount).max(BigDecimal.ZERO) : occupiedCount;

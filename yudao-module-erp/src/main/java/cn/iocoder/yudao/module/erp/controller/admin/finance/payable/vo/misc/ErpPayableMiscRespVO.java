@@ -19,8 +19,17 @@ public class ErpPayableMiscRespVO {
     private Long accountId;
     private String accountName;
     private BigDecimal amount;
+    private BigDecimal settledAmount;
+    private BigDecimal balanceAmount;
     private String remark;
     private String fileUrl;
+    private String sourceType;
+    private Long sourceId;
+    private String sourceNo;
+    private Long sourceItemId;
+    private Long sourceMiscId;
+    private String sourceMiscNo;
+    private Boolean generatedOffset;
     private Long deptId;
     private String deptName;
     private Long handlerId;

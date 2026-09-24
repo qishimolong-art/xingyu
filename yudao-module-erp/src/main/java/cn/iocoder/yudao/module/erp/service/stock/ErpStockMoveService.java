@@ -223,6 +223,14 @@ public interface ErpStockMoveService {
     void updateStockTransferOutStatus(Long id, Integer status);
 
     /**
+     * 销售手推车来源调拨出库在拣货/送货完成后由系统自动审核。
+     *
+     * @param id 调拨出库单编号
+     * @param approveUserId 审核人编号
+     */
+    void approveSaleCartTransferOutAfterDelivery(Long id, Long approveUserId);
+
+    /**
      * 删除库存调拨单
      *
      * @param ids 编号数组

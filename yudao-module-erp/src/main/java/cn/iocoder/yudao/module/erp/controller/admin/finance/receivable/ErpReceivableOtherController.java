@@ -26,6 +26,7 @@ import cn.iocoder.yudao.module.erp.service.base.ErpDataPermissionDeptService;
 import cn.iocoder.yudao.module.erp.service.common.ErpImportExportRecordService;
 import cn.iocoder.yudao.module.erp.service.finance.ErpFinanceFieldPermissionMasker;
 import cn.iocoder.yudao.module.erp.service.finance.receivable.ErpReceivableOtherService;
+import cn.iocoder.yudao.module.erp.service.sale.ErpCustomerDeptPermissionService;
 import cn.iocoder.yudao.module.erp.service.sale.ErpCustomerService;
 import cn.iocoder.yudao.module.system.api.dept.DeptApi;
 import cn.iocoder.yudao.module.system.api.dept.dto.DeptRespDTO;
@@ -97,6 +98,8 @@ public class ErpReceivableOtherController {
     private ErpDataPermissionDeptService dataPermissionDeptService;
     @Resource
     private ErpImportExportRecordService importExportRecordService;
+    @Resource
+    private ErpCustomerDeptPermissionService customerDeptPermissionService;
 
     @PostMapping("/create")
     @Operation(summary = "创建应收调账")
@@ -223,6 +226,22 @@ public class ErpReceivableOtherController {
     @PreAuthorize("@ss.hasPermission('erp:receivable-other:query')")
     public CommonResult<PageResult<DeptSimpleRespVO>> getReceivableOtherDeptSimplePage(@Valid PageParam pageReqVO) {
         return success(dataPermissionDeptService.getDeptSimplePage("erp_receivable_other", pageReqVO));
+    }
+
+    @GetMapping("/customer-dept-simple-list")
+    @Operation(summary = "Get receivable other customer available dept simple list")
+    @PreAuthorize("@ss.hasPermission('erp:receivable-other:query')")
+    public CommonResult<List<DeptSimpleRespVO>> getCustomerDeptSimpleList(@RequestParam("customerId") Long customerId) {
+        return success(customerDeptPermissionService.getAvailableDeptSimpleList(customerId, "erp_receivable_other"));
+    }
+
+    @GetMapping("/customer-dept-simple-page")
+    @Operation(summary = "Get receivable other customer available dept simple page")
+    @PreAuthorize("@ss.hasPermission('erp:receivable-other:query')")
+    public CommonResult<PageResult<DeptSimpleRespVO>> getCustomerDeptSimplePage(@RequestParam("customerId") Long customerId,
+                                                                                @Valid PageParam pageReqVO) {
+        return success(customerDeptPermissionService.getAvailableDeptSimplePage(
+                customerId, "erp_receivable_other", pageReqVO));
     }
 
     @GetMapping("/user-simple-page")

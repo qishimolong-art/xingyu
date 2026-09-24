@@ -1,0 +1,63 @@
+package cn.iocoder.yudao.module.erp.controller.admin.report.vo.sale;
+
+import cn.idev.excel.annotation.ExcelIgnoreUnannotated;
+import cn.idev.excel.annotation.ExcelProperty;
+import lombok.Data;
+
+import java.math.BigDecimal;
+import java.time.LocalDateTime;
+
+@ExcelIgnoreUnannotated
+@Data
+public class ErpSaleReportProductRespVO {
+
+    private Long productId;
+
+    @ExcelProperty("配件编码")
+    private String productCode;
+
+    @ExcelProperty("配件名称")
+    private String productName;
+
+    @ExcelProperty("条形码")
+    private String barCode;
+
+    @ExcelProperty("单位")
+    private String unitName;
+
+    @ExcelProperty("品牌")
+    private String brand;
+
+    @ExcelProperty("规格")
+    private String standard;
+
+    @ExcelProperty("适用车型")
+    private String vehicleModel;
+
+    @ExcelProperty("图号")
+    private String drawingNo;
+
+    @ExcelProperty("客户数")
+    private Long customerCount;
+
+    @ExcelProperty("单据数")
+    private Long docCount;
+
+    @ExcelProperty("出库数量")
+    private BigDecimal saleCount;
+
+    @ExcelProperty("出库金额")
+    private BigDecimal saleAmount;
+
+    @ExcelProperty("退货数量")
+    private BigDecimal returnCount;
+
+    @ExcelProperty("退货金额")
+    private BigDecimal returnAmount;
+
+    @ExcelProperty("销售净额")
+    private BigDecimal netAmount;
+
+    @ExcelProperty("最近业务时间")
+    private LocalDateTime lastBizTime;
+}

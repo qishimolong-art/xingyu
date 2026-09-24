@@ -11,7 +11,8 @@ class ErpReceivableAccountMapperSortTest {
     private static final String[] DISPLAYED_SORT_FIELDS = {
             "mobile", "customerName", "receivableBalance", "preAdvanceAmount", "receiptAmount", "baseAmount",
             "creditLimit", "creditBalance", "creditTermDays", "customerType", "saleUserName", "areaId",
-            "deptName", "saleOutAmount", "saleReturnAmount", "routeId"
+            "deptName", "saleOutAmount", "saleReturnAmount", "routeId", "miscReceivableAmount",
+            "openingReceivableBalance"
     };
 
     @Test
@@ -65,26 +66,53 @@ class ErpReceivableAccountMapperSortTest {
     }
 
     @Test
-    void selectList_exposesMiscReceivableWithoutChangingBalanceFormula() {
+    void selectList_showsNegatedMiscReceivableWithoutPuttingItInReceivableAccountBalance() {
         String script = getSelectListScript();
 
-        assertTrue(script.contains("sourceKeySql(\"erp_receivable_misc\"")
-                || script.contains("FROM erp_receivable_misc rm_key"));
+        assertTrue(script.contains("FROM erp_receivable_misc rm_key"));
+        assertTrue(script.contains("FROM erp_receivable_misc rm"));
+        assertTrue(script.contains("-SUM(rm.amount) AS miscReceivableAmount"));
         assertTrue(script.contains("IFNULL(rm.miscReceivableAmount, 0) AS miscReceivableAmount"));
-        assertTrue(script.contains("SUM(rm.amount) AS miscReceivableAmount"));
-        assertTrue(script.contains("IFNULL(ro.otherReceivableAmount, 0) + IFNULL(rm.miscReceivableAmount, 0)"));
-        assertTrue(script.contains("- IFNULL(sr.saleReturnAmount, 0) - IFNULL(rc.receiptAmount, 0)"));
+        assertFalse(script.contains("+ IFNULL(rm.miscReceivableAmount, 0)"));
+        assertFalse(script.contains("- IFNULL(rm.miscReceivableAmount, 0)"));
+        assertTrue(script.contains("IFNULL(ro.otherReceivableAmount, 0)"));
+        assertTrue(script.contains("- IFNULL(csr.saleReturnAmount, 0) - IFNULL(crc.receiptAmount, 0)"));
+        assertTrue(script.contains("OR IFNULL(rm.miscReceivableAmount, 0) &lt;&gt; 0"));
+        assertTrue(script.contains("ORDER BY miscReceivableAmount ASC"));
+        assertTrue(script.contains("ORDER BY miscReceivableAmount DESC"));
         assertTrue(script.contains("amountJoinSql(\"erp_receivable_other\"")
                 || script.contains("FROM erp_receivable_other ro"));
     }
 
     @Test
-    void selectList_usesOriginalSaleOutAmountBeforeAddingPriceAdjustments() {
+    void selectList_keepsDateRangePeriodAmountsSeparateFromOpeningAndCutoffBalances() {
         String script = getSelectListScript();
 
-        assertTrue(script.contains(ErpSaleOutMapper.ORIGINAL_SETTLEMENT_TOTAL_EXPRESSION));
-        assertTrue(script.contains("SUM(" + ErpSaleOutMapper.ORIGINAL_SETTLEMENT_TOTAL_EXPRESSION
+        assertTrue(script.contains("IFNULL(oso.saleOutAmount, 0)"));
+        assertTrue(script.contains("AS openingReceivableBalance"));
+        assertTrue(script.contains("IFNULL(cso.saleOutAmount, 0)"));
+        assertTrue(script.contains("AS receivableBalance"));
+        assertTrue(script.contains("so_key.out_time &lt;= #{reqVO.endTime}"));
+        assertFalse(script.contains("so_key.out_time BETWEEN #{reqVO.startTime} AND #{reqVO.endTime}"));
+        assertTrue(script.contains("t.out_time BETWEEN #{reqVO.startTime} AND #{reqVO.endTime}"));
+        assertTrue(script.contains("t.out_time &lt; #{reqVO.startTime}"));
+        assertTrue(script.contains("t.out_time &lt;= #{reqVO.endTime}"));
+        assertTrue(script.contains("OR (" +
+                "IFNULL(oso.saleOutAmount, 0) + IFNULL(opa.priceAdjustAmount, 0)"));
+        assertTrue(script.contains("ORDER BY openingReceivableBalance ASC"));
+        assertTrue(script.contains("ORDER BY openingReceivableBalance DESC"));
+    }
+
+    @Test
+    void selectList_usesReceivableAccountSaleOutAmountBeforeAddingPriceAdjustments() {
+        String script = getSelectListScript();
+
+        assertTrue(script.contains(ErpSaleOutMapper.RECEIVABLE_ACCOUNT_SALE_AMOUNT_EXPRESSION));
+        assertTrue(script.contains("SUM(" + ErpSaleOutMapper.RECEIVABLE_ACCOUNT_SALE_AMOUNT_EXPRESSION
                 + ") AS saleOutAmount"));
+        assertFalse(script.contains(ErpSaleOutMapper.ORIGINAL_SETTLEMENT_TOTAL_EXPRESSION));
+        assertTrue(script.contains("- COALESCE(t.fee_amount, t.other_price, t.extra_fee, t.freight, 0)"));
+        assertFalse(script.contains("+ COALESCE(t.fee_amount, t.other_price, t.extra_fee, 0)"));
         assertTrue(script.contains("IFNULL(so.saleOutAmount, 0) + IFNULL(pa.priceAdjustAmount, 0)"));
         assertFalse(script.contains("amountJoinSql(\"erp_sale_out\""));
         assertFalse(script.contains("SUM(so.total_price) AS saleOutAmount"));

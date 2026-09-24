@@ -11,7 +11,6 @@ import cn.iocoder.yudao.module.erp.controller.admin.finance.receivable.vo.report
 import cn.iocoder.yudao.module.erp.controller.admin.finance.receivable.vo.report.ErpReceivableReportPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.receivable.vo.report.ErpReceivableReportRespVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.receivable.ErpReceivableMiscDO;
-import cn.iocoder.yudao.module.erp.dal.mysql.finance.ErpFinanceReceiptItemMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.finance.receivable.ErpReceivableMiscMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.finance.receivable.ErpReceivableReportMapper;
 import cn.iocoder.yudao.module.erp.enums.ErpAuditStatus;
@@ -27,7 +26,6 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.Collections;
 import java.util.List;
-import java.util.Map;
 import java.util.stream.Collectors;
 
 @Service
@@ -41,8 +39,6 @@ public class ErpReceivableReportServiceImpl implements ErpReceivableReportServic
     private ErpReceivableReportMapper receivableReportMapper;
     @Resource
     private ErpReceivableMiscMapper receivableMiscMapper;
-    @Resource
-    private ErpFinanceReceiptItemMapper financeReceiptItemMapper;
     @Resource
     private ErpCustomerService customerService;
     @Resource
@@ -75,11 +71,8 @@ public class ErpReceivableReportServiceImpl implements ErpReceivableReportServic
                                                                   ErpFinanceVisibleScope scope) {
         BigDecimal balance = getInitialBalance(reqVO, scope);
         List<ErpReceivableMiscDO> miscRows = selectOtherList(reqVO, scope, false);
-        Map<Long, BigDecimal> allocatedMap = financeReceiptItemMapper.selectReceiptPriceSumMapByBizIdsAndBizType(
-                miscRows.stream().map(ErpReceivableMiscDO::getId).collect(Collectors.toSet()),
-                ErpBizTypeEnum.RECEIVABLE_MISC.getType());
         List<ErpReceivableReportDetailRespVO> rows = miscRows.stream()
-                .map(item -> buildRow(item, allocatedMap.get(item.getId())))
+                .map(item -> buildRow(item, BigDecimal.ZERO))
                 .collect(Collectors.toList());
         for (ErpReceivableReportDetailRespVO row : rows) {
             row.setPrevBalance(balance);
@@ -97,11 +90,8 @@ public class ErpReceivableReportServiceImpl implements ErpReceivableReportServic
         copy.setCustomerId(reqVO.getCustomerId());
         copy.setBizTime(new java.time.LocalDateTime[]{null, reqVO.getStartDate().atStartOfDay()});
         List<ErpReceivableMiscDO> rows = selectOtherList(copy, scope, true);
-        Map<Long, BigDecimal> allocatedMap = financeReceiptItemMapper.selectReceiptPriceSumMapByBizIdsAndBizType(
-                rows.stream().map(ErpReceivableMiscDO::getId).collect(Collectors.toSet()),
-                ErpBizTypeEnum.RECEIVABLE_MISC.getType());
         return rows.stream()
-                .map(item -> amount(item.getAmount()).subtract(amount(allocatedMap.get(item.getId()))))
+                .map(item -> amount(item.getAmount()))
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
     }
 

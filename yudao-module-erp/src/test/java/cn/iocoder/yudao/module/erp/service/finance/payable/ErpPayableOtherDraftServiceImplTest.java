@@ -4,11 +4,13 @@ import cn.iocoder.yudao.framework.test.core.ut.BaseMockitoUnitTest;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.payable.vo.other.ErpPayableOtherDraftSaveReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.payable.vo.other.ErpPayableOtherSaveReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.payable.ErpPayableOtherDO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpSupplierDO;
 import cn.iocoder.yudao.module.erp.dal.mysql.finance.payable.ErpPayableOtherMapper;
 import cn.iocoder.yudao.module.erp.dal.redis.no.ErpNoRedisDAO;
 import cn.iocoder.yudao.module.erp.enums.finance.ErpPayableOtherStatusEnum;
 import cn.iocoder.yudao.module.erp.service.common.ErpOperateLogService;
 import cn.iocoder.yudao.module.erp.service.finance.ErpFinanceFieldPermissionMasker;
+import cn.iocoder.yudao.module.erp.service.purchase.ErpSupplierDeptPermissionService;
 import cn.iocoder.yudao.module.erp.service.purchase.ErpSupplierService;
 import cn.iocoder.yudao.module.system.api.dept.DeptApi;
 import cn.iocoder.yudao.module.system.api.dept.dto.DeptRespDTO;
@@ -27,6 +29,7 @@ import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.OTHER_PAYABLE
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.OTHER_PAYABLE_DRAFT_SUBMIT_FAIL;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.OTHER_PAYABLE_DRAFT_UPDATE_FAIL;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.OTHER_PAYABLE_SAVE_FAIL;
+import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.OTHER_PAYABLE_SUPPLIER_DEPT_NOT_ALLOWED;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
@@ -53,6 +56,8 @@ class ErpPayableOtherDraftServiceImplTest extends BaseMockitoUnitTest {
     private DeptApi deptApi;
     @Mock
     private ErpOperateLogService operateLogService;
+    @Mock
+    private ErpSupplierDeptPermissionService supplierDeptPermissionService;
 
     @Test
     void createDraft_requiresSupplier() {
@@ -103,7 +108,9 @@ class ErpPayableOtherDraftServiceImplTest extends BaseMockitoUnitTest {
     void updateDraft_requiresSupplier() {
         when(payableOtherMapper.selectById(10L)).thenReturn(new ErpPayableOtherDO()
                 .setId(10L).setNo("QTFK10")
-                .setStatus(ErpPayableOtherStatusEnum.DRAFT.getStatus()));
+                .setStatus(ErpPayableOtherStatusEnum.DRAFT.getStatus())
+                .setSourceType("调账")
+                .setSourceNo("OLD-SOURCE"));
 
         assertServiceException(
                 () -> service.updatePayableOtherDraft(
@@ -116,12 +123,14 @@ class ErpPayableOtherDraftServiceImplTest extends BaseMockitoUnitTest {
     void updateDraft_usesStatusGuardAndPreservesIdentity() {
         when(payableOtherMapper.selectById(10L)).thenReturn(new ErpPayableOtherDO()
                 .setId(10L).setNo("QTFK10")
-                .setStatus(ErpPayableOtherStatusEnum.DRAFT.getStatus()));
+                .setStatus(ErpPayableOtherStatusEnum.DRAFT.getStatus())
+                .setSourceType("调账")
+                .setSourceNo("OLD-SOURCE"));
         when(payableOtherMapper.updateByIdAndStatus(eq(10L),
                 eq(ErpPayableOtherStatusEnum.DRAFT.getStatus()), any())).thenReturn(1);
 
         service.updatePayableOtherDraft(new ErpPayableOtherDraftSaveReqVO()
-                .setId(10L).setSupplierId(1L).setRemark("继续编辑"));
+                .setId(10L).setSupplierId(1L).setSourceType("恶意修改").setRemark("继续编辑"));
 
         ArgumentCaptor<ErpPayableOtherDO> captor =
                 ArgumentCaptor.forClass(ErpPayableOtherDO.class);
@@ -131,6 +140,8 @@ class ErpPayableOtherDraftServiceImplTest extends BaseMockitoUnitTest {
         assertThat(captor.getValue().getStatus())
                 .isEqualTo(ErpPayableOtherStatusEnum.DRAFT.getStatus());
         assertThat(captor.getValue().getSupplierId()).isEqualTo(1L);
+        assertThat(captor.getValue().getSourceType()).isEqualTo("调账");
+        assertThat(captor.getValue().getSourceNo()).isEqualTo("OLD-SOURCE");
         assertThat(captor.getValue().getRemark()).isEqualTo("继续编辑");
         verify(supplierService).validateSupplier(1L);
     }
@@ -151,6 +162,10 @@ class ErpPayableOtherDraftServiceImplTest extends BaseMockitoUnitTest {
     void createPayableOther_allowsNegativePayableAmount() {
         when(noRedisDAO.generate("QTFK")).thenReturn("QTFK-NEG-1");
         when(deptApi.getDept(2L)).thenReturn(new DeptRespDTO());
+        ErpSupplierDO supplier = ErpSupplierDO.builder().id(1L).build();
+        when(supplierService.validateSupplier(1L)).thenReturn(supplier);
+        when(supplierDeptPermissionService.hasAvailableDept(supplier, 2L, "erp_payable_other"))
+                .thenReturn(true);
         when(payableOtherMapper.insert(any(ErpPayableOtherDO.class))).thenAnswer(invocation -> {
             ((ErpPayableOtherDO) invocation.getArgument(0)).setId(2L);
             return 1;
@@ -167,6 +182,21 @@ class ErpPayableOtherDraftServiceImplTest extends BaseMockitoUnitTest {
         verify(payableOtherMapper).insert(captor.capture());
         assertThat(captor.getValue().getPayableAmount()).isEqualByComparingTo("-1.00");
         verify(supplierService).validateSupplier(1L);
+    }
+
+    @Test
+    void createPayableOther_rejectsSupplierDeptOutsideAvailableScope() {
+        when(noRedisDAO.generate("QTFK")).thenReturn("QTFK-DEPT-1");
+        when(deptApi.getDept(2L)).thenReturn(new DeptRespDTO());
+        when(supplierService.validateSupplier(1L)).thenReturn(ErpSupplierDO.builder().id(1L).build());
+
+        assertServiceException(
+                () -> service.createPayableOther(new ErpPayableOtherSaveReqVO()
+                        .setSupplierId(1L)
+                        .setDeptId(2L)
+                        .setPayableAmount(BigDecimal.ONE)),
+                OTHER_PAYABLE_SUPPLIER_DEPT_NOT_ALLOWED);
+        verify(payableOtherMapper, never()).insert(any(ErpPayableOtherDO.class));
     }
 
     @Test
@@ -192,6 +222,10 @@ class ErpPayableOtherDraftServiceImplTest extends BaseMockitoUnitTest {
                 .setId(10L).setNo("QTFK10")
                 .setStatus(ErpPayableOtherStatusEnum.PROCESS.getStatus()));
         when(deptApi.getDept(2L)).thenReturn(new DeptRespDTO());
+        ErpSupplierDO supplier = ErpSupplierDO.builder().id(1L).build();
+        when(supplierService.validateSupplier(1L)).thenReturn(supplier);
+        when(supplierDeptPermissionService.hasAvailableDept(supplier, 2L, "erp_payable_other"))
+                .thenReturn(true);
         when(payableOtherMapper.updateByIdAndStatus(eq(10L),
                 eq(ErpPayableOtherStatusEnum.PROCESS.getStatus()), any())).thenReturn(1);
 
@@ -260,6 +294,10 @@ class ErpPayableOtherDraftServiceImplTest extends BaseMockitoUnitTest {
                 .setDeptId(2L)
                 .setPayableAmount(new BigDecimal("-1.00")));
         when(deptApi.getDept(2L)).thenReturn(new DeptRespDTO());
+        ErpSupplierDO supplier = ErpSupplierDO.builder().id(1L).build();
+        when(supplierService.validateSupplier(1L)).thenReturn(supplier);
+        when(supplierDeptPermissionService.hasAvailableDept(supplier, 2L, "erp_payable_other"))
+                .thenReturn(true);
         when(payableOtherMapper.updateByIdAndStatus(eq(10L),
                 eq(ErpPayableOtherStatusEnum.DRAFT.getStatus()), any())).thenReturn(1);
 

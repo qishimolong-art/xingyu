@@ -21,12 +21,14 @@ import cn.iocoder.yudao.module.erp.controller.admin.finance.receivable.vo.misc.E
 import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.imports.ErpFinanceImportRespVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.ErpAccountDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.receivable.ErpReceivableMiscDO;
+import cn.iocoder.yudao.module.erp.dal.mysql.finance.receivable.ErpReceivableMiscMapper;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpCustomerDO;
 import cn.iocoder.yudao.module.erp.enums.ErpAuditStatus;
 import cn.iocoder.yudao.module.erp.enums.finance.ErpReceivableMiscStatusEnum;
 import cn.iocoder.yudao.module.erp.service.base.ErpDataPermissionDeptService;
 import cn.iocoder.yudao.module.erp.service.finance.ErpAccountService;
 import cn.iocoder.yudao.module.erp.service.finance.ErpFinanceFieldPermissionMasker;
+import cn.iocoder.yudao.module.erp.service.finance.ErpMiscTransferOffsetConstants;
 import cn.iocoder.yudao.module.erp.service.finance.receivable.ErpReceivableMiscService;
 import cn.iocoder.yudao.module.erp.service.sale.ErpCustomerService;
 import cn.iocoder.yudao.module.system.api.dept.DeptApi;
@@ -54,6 +56,7 @@ import javax.annotation.Resource;
 import javax.servlet.http.HttpServletResponse;
 import javax.validation.Valid;
 import java.io.IOException;
+import java.math.BigDecimal;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashSet;
@@ -88,6 +91,8 @@ public class ErpReceivableMiscController {
     private ErpCustomerService customerService;
     @Resource
     private ErpAccountService accountService;
+    @Resource
+    private ErpReceivableMiscMapper receivableMiscMapper;
     @Resource
     private AdminUserApi adminUserApi;
     @Resource
@@ -183,7 +188,10 @@ public class ErpReceivableMiscController {
         }
         ErpReceivableMiscRespVO vo = BeanUtils.toBean(db, ErpReceivableMiscRespVO.class);
         fillExtend(vo);
-        fieldPermissionMasker.maskForm(FIELD_PERMISSION_MODULE, vo);
+        fillSettlement(vo, Collections.singletonMap(db.getId(), db),
+                receivableMiscMapper.selectOffsetAmountSumMapBySourceMiscIds(Collections.singleton(db.getId()),
+                        ErpMiscTransferOffsetConstants.RECEIPT_OFFSET_SOURCE_TYPE));
+        maskForm(vo);
         return success(vo);
     }
 
@@ -278,10 +286,46 @@ public class ErpReceivableMiscController {
                 convertSet(pageResult.getList(), ErpReceivableMiscDO::getAccountId));
         Map<Long, AdminUserRespDTO> userMap = getUserMap(pageResult.getList());
         Map<Long, DeptRespDTO> deptMap = deptApi.getDeptMap(convertSet(pageResult.getList(), ErpReceivableMiscDO::getDeptId));
+        Set<Long> ids = convertSet(pageResult.getList(), ErpReceivableMiscDO::getId);
+        Map<Long, BigDecimal> settledMap = receivableMiscMapper.selectOffsetAmountSumMapBySourceMiscIds(
+                ids, ErpMiscTransferOffsetConstants.RECEIPT_OFFSET_SOURCE_TYPE);
+        Map<Long, ErpReceivableMiscDO> rowMap = pageResult.getList().stream()
+                .collect(java.util.stream.Collectors.toMap(ErpReceivableMiscDO::getId, item -> item));
         PageResult<ErpReceivableMiscRespVO> result = BeanUtils.toBean(pageResult, ErpReceivableMiscRespVO.class, vo ->
                 fillExtend(vo, customerMap, accountMap, userMap, deptMap));
-        result.getList().forEach(item -> fieldPermissionMasker.maskForm(FIELD_PERMISSION_MODULE, item));
+        result.getList().forEach(item -> fillSettlement(item, rowMap, settledMap));
+        result.getList().forEach(this::maskForm);
         return result;
+    }
+
+    private void fillSettlement(ErpReceivableMiscRespVO vo, Map<Long, ErpReceivableMiscDO> rowMap,
+                                Map<Long, BigDecimal> settledMap) {
+        BigDecimal settledAmount = amount(settledMap.get(vo.getId()));
+        ErpReceivableMiscDO row = rowMap.get(vo.getId());
+        BigDecimal originalAmount = amount(vo.getAmount());
+        if (row != null) {
+            originalAmount = amount(row.getAmount());
+            vo.setGeneratedOffset(isGeneratedOffset(row));
+        }
+        vo.setSettledAmount(settledAmount);
+        vo.setBalanceAmount(originalAmount.subtract(settledAmount));
+    }
+
+    private boolean isGeneratedOffset(ErpReceivableMiscDO row) {
+        return ErpMiscTransferOffsetConstants.RECEIPT_OFFSET_SOURCE_TYPE.equals(row.getSourceType())
+                && row.getSourceItemId() != null;
+    }
+
+    private BigDecimal amount(BigDecimal value) {
+        return value == null ? BigDecimal.ZERO : value;
+    }
+
+    private void maskForm(ErpReceivableMiscRespVO vo) {
+        fieldPermissionMasker.maskForm(FIELD_PERMISSION_MODULE, vo);
+        if (vo.getAmount() == null) {
+            vo.setSettledAmount(null);
+            vo.setBalanceAmount(null);
+        }
     }
 
     private void fillExtend(ErpReceivableMiscRespVO vo) {

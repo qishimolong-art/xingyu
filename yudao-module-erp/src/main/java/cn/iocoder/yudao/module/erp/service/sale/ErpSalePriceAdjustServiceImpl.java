@@ -101,6 +101,8 @@ public class ErpSalePriceAdjustServiceImpl implements ErpSalePriceAdjustService 
     @Resource
     private ErpSaleDocumentDefaultService saleDocumentDefaultService;
     @Resource
+    private ErpSaleDirectDeptPermissionService saleDirectDeptPermissionService;
+    @Resource
     private ErpOperateLogService operateLogService;
     @Resource
     private ErpWarehouseService warehouseService;
@@ -132,6 +134,7 @@ public class ErpSalePriceAdjustServiceImpl implements ErpSalePriceAdjustService 
         }
         adjustDO.setTotalAdjustPrice(totalAdjustPrice);
         saleDocumentDefaultService.fillCreateDefaults(adjustDO);
+        saleDirectDeptPermissionService.validateSaleDocumentDeptAllowed(adjustDO.getDeptId());
         salePriceAdjustMapper.insert(adjustDO);
         // 3. 插入调价明细
         for (ErpSalePriceAdjustItemDO item : items) {
@@ -157,6 +160,7 @@ public class ErpSalePriceAdjustServiceImpl implements ErpSalePriceAdjustService 
         }
         calculateDraftTotal(adjustDO, items);
         saleDocumentDefaultService.fillCreateDefaults(adjustDO);
+        saleDirectDeptPermissionService.validateSaleDocumentDeptAllowed(adjustDO.getDeptId());
         salePriceAdjustMapper.insert(adjustDO);
         insertDraftItems(adjustDO.getId(), items);
         recordCreate(adjustDO.getId(), adjustDO.getNo());
@@ -204,6 +208,8 @@ public class ErpSalePriceAdjustServiceImpl implements ErpSalePriceAdjustService 
             totalAdjustPrice = totalAdjustPrice.add(adjustPrice);
         }
         updateDO.setTotalAdjustPrice(totalAdjustPrice);
+        saleDirectDeptPermissionService.validateSaleDocumentDeptAllowed(
+                updateDO.getDeptId() != null ? updateDO.getDeptId() : existDO.getDeptId());
         salePriceAdjustMapper.updateById(updateDO);
         // 3. 更新明细
         if (incrementalItems) {
@@ -251,6 +257,7 @@ public class ErpSalePriceAdjustServiceImpl implements ErpSalePriceAdjustService 
         if (updateDO.getDeptId() == null) {
             updateDO.setDeptId(existDO.getDeptId());
         }
+        saleDirectDeptPermissionService.validateSaleDocumentDeptAllowed(updateDO.getDeptId());
         calculateDraftTotal(updateDO, items);
         salePriceAdjustMapper.updateById(updateDO);
         if (incrementalItems) {
@@ -271,6 +278,7 @@ public class ErpSalePriceAdjustServiceImpl implements ErpSalePriceAdjustService 
         }
         List<ErpSalePriceAdjustItemDO> items = salePriceAdjustItemMapper.selectListByAdjustId(id);
         validateFormalSubmit(adjustDO, items);
+        saleDirectDeptPermissionService.validateSaleDocumentDeptAllowed(adjustDO.getDeptId());
         fillItemSnapshotsFromSaleOutItems(items);
         validateSalePriceAdjustItemsNotAdjusted(items, id);
         int updateCount = salePriceAdjustMapper.updateByIdAndStatus(id,
@@ -301,6 +309,7 @@ public class ErpSalePriceAdjustServiceImpl implements ErpSalePriceAdjustService 
         if (!ErpAuditStatus.PROCESS.getStatus().equals(existDO.getStatus())) {
             throw exception(SALE_PRICE_ADJUST_APPROVE_FAIL);
         }
+        saleDirectDeptPermissionService.validateSaleDocumentDeptAllowed(existDO.getDeptId());
         // 旧调价直接追加零数量旧流水，尚未接入新账；必须在任何来源及流水写入之前拒绝。
         if (dualCostEnabled) {
             throw new ServiceException(409, "销售调价尚未接入新核算，暂不能审核；请保留草稿，待调价核算接入后处理");

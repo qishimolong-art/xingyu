@@ -96,6 +96,7 @@ import javax.servlet.http.HttpServletResponse;
 import javax.validation.Valid;
 import java.io.IOException;
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -397,7 +398,7 @@ public class ErpPurchaseInController {
                 ? null : supplierService.getSupplier(purchaseIn.getSupplierId());
         ErpPurchaseInRespVO respVO = BeanUtils.toBean(purchaseIn, ErpPurchaseInRespVO.class, purchaseInVO -> {
             if (Boolean.TRUE.equals(includeItems)) {
-                purchaseInVO.setItems(buildPurchaseInItemVOList(purchaseInItemList, true));
+                purchaseInVO.setItems(buildPurchaseInItemVOList(purchaseIn, purchaseInItemList, true));
                 purchaseInVO.setItemCount(CollUtil.size(purchaseInItemList));
                 fillPurchaseInAdjustStatus(purchaseInVO);
                 fillPurchaseInReturnInfo(purchaseInVO);
@@ -466,9 +467,10 @@ public class ErpPurchaseInController {
     @PreAuthorize("@ss.hasPermission('erp:purchase-in:query')")
     public CommonResult<PageResult<ErpPurchaseInRespVO.Item>> getPurchaseInItemPage(
             @Valid ErpPurchaseInItemPageReqVO pageReqVO) {
+        ErpPurchaseInDO purchaseIn = purchaseInService.getPurchaseIn(pageReqVO.getInId());
         PageResult<ErpPurchaseInItemDO> pageResult = purchaseInService.getPurchaseInItemPage(pageReqVO);
         PageResult<ErpPurchaseInRespVO.Item> respResult = new PageResult<>(
-                buildPurchaseInItemVOList(pageResult.getList(), true), pageResult.getTotal());
+                buildPurchaseInItemVOList(purchaseIn, pageResult.getList(), true), pageResult.getTotal());
         fillPurchaseInItemStockInBillInfo(respResult.getList(), pageReqVO.getInId());
         if (Boolean.TRUE.equals(pageReqVO.getMask())) {
             fieldPermissionMasker.clearHiddenItemFields(FIELD_PERMISSION_MODULE, respResult.getList());
@@ -481,8 +483,9 @@ public class ErpPurchaseInController {
     @Parameter(name = "inId", description = "Purchase in ID", required = true, example = "1024")
     @PreAuthorize("@ss.hasPermission('erp:purchase-in:query')")
     public CommonResult<List<ErpPurchaseInRespVO.Item>> getPurchaseInItems(@RequestParam("inId") Long inId) {
+        ErpPurchaseInDO purchaseIn = purchaseInService.getPurchaseIn(inId);
         List<ErpPurchaseInItemDO> purchaseInItemList = purchaseInService.getPurchaseInItemListByInId(inId);
-        List<ErpPurchaseInRespVO.Item> items = buildPurchaseInItemVOList(purchaseInItemList, false);
+        List<ErpPurchaseInRespVO.Item> items = buildPurchaseInItemVOList(purchaseIn, purchaseInItemList, false);
         return success(items);
     }
 
@@ -739,6 +742,7 @@ public class ErpPurchaseInController {
                                 .setProductCode(product.getCode()).setBatchNoEnabled(product.getBatchNoEnabled()));
                         fillPurchaseInItemReturnInfo(item, returnCountMap);
                     });
+            fillPurchaseInItemDisplayCosts(purchaseInMap.get(purchaseIn.getId()), respItems);
             itemPriceReferenceFiller.fill(respItems);
             purchaseIn.setItems(respItems);
             purchaseIn.setItemCount(items.size());
@@ -798,7 +802,8 @@ public class ErpPurchaseInController {
         return new PageResult<>(list, page.getTotal());
     }
 
-    private List<ErpPurchaseInRespVO.Item> buildPurchaseInItemVOList(List<ErpPurchaseInItemDO> itemList,
+    private List<ErpPurchaseInRespVO.Item> buildPurchaseInItemVOList(ErpPurchaseInDO purchaseIn,
+                                                                     List<ErpPurchaseInItemDO> itemList,
                                                                      boolean includeStockCount) {
         if (CollUtil.isEmpty(itemList)) {
             return Collections.emptyList();
@@ -816,8 +821,75 @@ public class ErpPurchaseInController {
                     .setProductCode(product.getCode()).setBatchNoEnabled(product.getBatchNoEnabled()));
             fillPurchaseInItemReturnInfo(item, returnCountMap);
         });
+        fillPurchaseInItemDisplayCosts(purchaseIn, respItems);
         itemPriceReferenceFiller.fill(respItems);
         return respItems;
+    }
+
+    private void fillPurchaseInItemDisplayCosts(ErpPurchaseInDO purchaseIn,
+                                                List<ErpPurchaseInRespVO.Item> items) {
+        if (CollUtil.isEmpty(items)) {
+            return;
+        }
+        items.forEach(item -> {
+            BigDecimal lineAmount = calculatePurchaseInItemLineAmount(item);
+            item.setTotalProductPrice(lineAmount);
+            item.setTotalPrice(lineAmount);
+            item.setProductCostAmount(lineAmount);
+            item.setProductCostPrice(calculateUnitPrice(lineAmount, item.getCount(), item.getProductPrice()));
+        });
+        if (purchaseIn == null || !"我方自付".equals(purchaseIn.getFreightType1())) {
+            return;
+        }
+        BigDecimal freight = purchaseIn.getTotalFreight1() != null ? purchaseIn.getTotalFreight1() : BigDecimal.ZERO;
+        if (freight.compareTo(BigDecimal.ZERO) <= 0) {
+            return;
+        }
+        List<ErpPurchaseInRespVO.Item> positiveCountItems = items.stream()
+                .filter(item -> item.getCount() != null && item.getCount().compareTo(BigDecimal.ZERO) > 0)
+                .collect(Collectors.toList());
+        BigDecimal totalCount = positiveCountItems.stream()
+                .map(ErpPurchaseInRespVO.Item::getCount)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        if (totalCount.compareTo(BigDecimal.ZERO) <= 0) {
+            return;
+        }
+        BigDecimal allocated = BigDecimal.ZERO;
+        for (int i = 0; i < positiveCountItems.size(); i++) {
+            ErpPurchaseInRespVO.Item item = positiveCountItems.get(i);
+            BigDecimal lineAmount = item.getTotalProductPrice() != null
+                    ? item.getTotalProductPrice() : BigDecimal.ZERO;
+            BigDecimal freightShare;
+            if (i == positiveCountItems.size() - 1) {
+                freightShare = freight.subtract(allocated);
+            } else {
+                freightShare = freight.multiply(item.getCount()).divide(totalCount, 2, RoundingMode.HALF_UP);
+                allocated = allocated.add(freightShare);
+            }
+            BigDecimal costAmount = lineAmount.add(freightShare);
+            item.setProductCostAmount(costAmount);
+            item.setProductCostPrice(calculateUnitPrice(costAmount, item.getCount(), item.getProductPrice()));
+        }
+    }
+
+    private BigDecimal calculatePurchaseInItemLineAmount(ErpPurchaseInRespVO.Item item) {
+        if (item.getTotalProductPrice() != null) {
+            return item.getTotalProductPrice();
+        }
+        if (item.getTotalPrice() != null) {
+            return item.getTotalPrice();
+        }
+        if (item.getProductPrice() == null || item.getCount() == null) {
+            return BigDecimal.ZERO;
+        }
+        return item.getProductPrice().multiply(item.getCount());
+    }
+
+    private BigDecimal calculateUnitPrice(BigDecimal amount, BigDecimal count, BigDecimal fallbackPrice) {
+        if (count == null || count.compareTo(BigDecimal.ZERO) == 0) {
+            return fallbackPrice;
+        }
+        return amount.divide(count, 6, RoundingMode.HALF_UP);
     }
 
     private void markHasInvoice(List<ErpPurchaseInDO> purchaseIns) {

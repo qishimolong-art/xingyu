@@ -37,6 +37,7 @@ public interface ErpStockRecordMapper extends BaseMapperX<ErpStockRecordDO> {
         QueryWrapperX<ErpStockRecordDO> wrapper = new QueryWrapperX<ErpStockRecordDO>()
                 .eqIfPresent("product_id", reqVO.getProductId())
                 .eqIfPresent("warehouse_id", reqVO.getWarehouseId())
+                .eqIfPresent("dept_id", reqVO.getDeptId())
                 .eqIfPresent("biz_type", reqVO.getBizType())
                 .eqIfPresent("biz_id", reqVO.getBizId())
                 .eqIfPresent("biz_item_id", reqVO.getBizItemId())
@@ -171,6 +172,8 @@ public interface ErpStockRecordMapper extends BaseMapperX<ErpStockRecordDO> {
                 return productField("name");
             case "warehouseName":
                 return warehouseNameExpression();
+            case "deptName":
+                return deptNameExpression();
             case "inCount":
                 return positiveValue("count");
             case "inUnitPrice":
@@ -202,6 +205,11 @@ public interface ErpStockRecordMapper extends BaseMapperX<ErpStockRecordDO> {
     static String warehouseNameExpression() {
         return "(SELECT w.name FROM erp_warehouse w WHERE w.id = erp_stock_record.warehouse_id "
                 + "AND w.deleted = b'0')";
+    }
+
+    static String deptNameExpression() {
+        return "(SELECT d.name FROM system_dept d WHERE d.id = erp_stock_record.dept_id "
+                + "AND d.deleted = b'0')";
     }
 
     static String positiveValue(String column) {

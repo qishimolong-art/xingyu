@@ -10,8 +10,12 @@ import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.order.ErpSaleOrderSa
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpCustomerDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleOrderDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleOrderItemDO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleOutItemDO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockRecordDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpWarehouseDO;
 import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpSaleOrderItemMapper;
+import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpSaleOutItemMapper;
+import cn.iocoder.yudao.module.erp.dal.mysql.stock.ErpStockRecordMapper;
 import cn.iocoder.yudao.module.erp.service.base.ErpDataPermissionDeptService;
 import cn.iocoder.yudao.module.erp.service.config.ErpFieldConfigService;
 import cn.iocoder.yudao.module.erp.service.product.ErpProductService;
@@ -74,6 +78,10 @@ public class ErpSaleOrderControllerTest extends BaseMockitoUnitTest {
     private ErpDataPermissionDeptService dataPermissionDeptService;
     @Mock
     private ErpSaleOrderItemMapper saleOrderItemMapper;
+    @Mock
+    private ErpSaleOutItemMapper saleOutItemMapper;
+    @Mock
+    private ErpStockRecordMapper stockRecordMapper;
     @Mock
     private AdminUserApi adminUserApi;
     @Mock
@@ -221,6 +229,38 @@ public class ErpSaleOrderControllerTest extends BaseMockitoUnitTest {
         assertEquals(0, result.getCode());
         assertEquals("客户甲", result.getData().getCustomerName());
         verify(customerService).getCustomer(eq(30L));
+    }
+
+    @Test
+    public void testGetSaleOrder_costComesFromLinkedSaleOutStockRecordsAndIgnoresFee() {
+        ErpSaleOrderDO order = new ErpSaleOrderDO();
+        order.setId(1026L);
+        order.setFeeAmount(new BigDecimal("30"));
+        ErpSaleOrderItemDO item = new ErpSaleOrderItemDO();
+        item.setId(101L);
+        item.setOrderId(1026L);
+        item.setProductId(10L);
+        item.setWarehouseId(20L);
+        item.setCount(new BigDecimal("3"));
+        when(saleOrderService.getSaleOrder(eq(1026L))).thenReturn(order);
+        when(saleOrderService.getSaleOrderItemListByOrderId(eq(1026L))).thenReturn(Collections.singletonList(item));
+        when(productService.getProductVOMap(any())).thenReturn(Collections.singletonMap(10L,
+                new ErpProductRespVO().setId(10L).setName("P1")));
+        when(warehouseService.getWarehouseMap(any())).thenReturn(Collections.singletonMap(20L,
+                ErpWarehouseDO.builder().id(20L).name("分发仓").warehouseCode("WH001").build()));
+        when(stockService.getStockCount(eq(10L))).thenReturn(BigDecimal.TEN);
+        when(saleOutItemMapper.selectList(any())).thenReturn(Collections.singletonList(
+                new ErpSaleOutItemDO().setId(201L).setOrderItemId(101L)));
+        when(stockRecordMapper.selectList(any())).thenReturn(Arrays.asList(
+                new ErpStockRecordDO().setBizItemId(201L)
+                        .setCount(new BigDecimal("-1")).setTotalPrice(new BigDecimal("-40")),
+                new ErpStockRecordDO().setBizItemId(201L)
+                        .setCount(new BigDecimal("-2")).setTotalPrice(new BigDecimal("-80"))));
+
+        ErpSaleOrderRespVO.Item result = controller.getSaleOrder(1026L).getData().getItems().get(0);
+
+        assertEquals(0, new BigDecimal("120").compareTo(result.getSaleCostAmount()));
+        assertEquals(0, new BigDecimal("40.00").compareTo(result.getSaleCostPrice()));
     }
 
     @Test

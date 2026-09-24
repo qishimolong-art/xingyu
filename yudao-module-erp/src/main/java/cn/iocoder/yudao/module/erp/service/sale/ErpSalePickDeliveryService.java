@@ -14,6 +14,8 @@ public interface ErpSalePickDeliveryService {
 
     void generateForSaleOut(Long saleOutId);
 
+    void generateForSaleCartTransferOuts(Long saleCartId);
+
     PageResult<ErpSalePickTaskRespVO> getPickPage(ErpSalePickPageReqVO reqVO, boolean mobile);
 
     default ErpSalePickTaskRespVO getPick(Long id, boolean mobile) {

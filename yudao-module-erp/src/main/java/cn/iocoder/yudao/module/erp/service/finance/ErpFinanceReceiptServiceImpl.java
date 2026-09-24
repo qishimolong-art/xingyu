@@ -159,6 +159,7 @@ public class ErpFinanceReceiptServiceImpl implements ErpFinanceReceiptService {
         permissionFieldFiller.fillCreateFields(receipt);
         validateReceiptCustomerDept(receipt, false);
         fillDefaultAmount(receipt);
+        validateAndFillSourceReceivableMisc(receipt, false);
         preparePendingItems(receipt, receiptItems);
         financeReceiptMapper.insert(receipt);
         // 2.2 插入收款单项
@@ -177,7 +178,7 @@ public class ErpFinanceReceiptServiceImpl implements ErpFinanceReceiptService {
         fieldPermissionMasker.clearHiddenFields(FIELD_PERMISSION_MODULE, createReqVO);
         fieldPermissionMasker.clearHiddenItemFields(FIELD_PERMISSION_MODULE, createReqVO.getItems());
         List<ErpFinanceReceiptItemDO> receiptItems = buildFinanceReceiptDraftItems(createReqVO.getItems());
-        if (CollUtil.isEmpty(receiptItems)) {
+        if (CollUtil.isEmpty(receiptItems) && createReqVO.getSourceReceivableMiscId() == null) {
             throw exception(FINANCE_RECEIPT_DRAFT_ITEMS_REQUIRED);
         }
         String no = noRedisDAO.generate(ErpNoRedisDAO.FINANCE_RECEIPT_NO_PREFIX);
@@ -193,6 +194,7 @@ public class ErpFinanceReceiptServiceImpl implements ErpFinanceReceiptService {
         fillDraftAmounts(receipt, receiptItems);
         permissionFieldFiller.fillCreateFields(receipt);
         validateReceiptCustomerDept(receipt, true);
+        validateAndFillSourceReceivableMisc(receipt, false);
         financeReceiptMapper.insert(receipt);
         insertFinanceReceiptDraftItems(receipt.getId(), receiptItems);
         operateLogService.recordCreate(ERP_FINANCE_RECEIPT_TYPE, receipt.getId(), receipt.getNo());
@@ -256,8 +258,10 @@ public class ErpFinanceReceiptServiceImpl implements ErpFinanceReceiptService {
         if (updateObj.getDeptId() == null) {
             updateObj.setDeptId(receipt.getDeptId());
         }
+        preserveSourceReceivableMisc(updateObj, receipt);
         validateReceiptCustomerDept(updateObj, false);
         fillDefaultAmount(updateObj);
+        validateAndFillSourceReceivableMisc(updateObj, false);
         preparePendingItems(updateObj, receiptItems);
         financeReceiptMapper.updateById(updateObj);
         // 2.2 更新收款单项
@@ -306,8 +310,10 @@ public class ErpFinanceReceiptServiceImpl implements ErpFinanceReceiptService {
                 .setStatus(receipt.getStatus())
                 .setReceiptTime(updateReqVO.getReceiptTime() != null
                         ? updateReqVO.getReceiptTime() : receipt.getReceiptTime());
+        preserveSourceReceivableMisc(updateObj, receipt);
         fillDraftAmounts(updateObj, receiptItems);
         validateReceiptCustomerDept(updateObj, true);
+        validateAndFillSourceReceivableMisc(updateObj, false);
         if (financeReceiptMapper.updateByIdAndStatus(receipt.getId(),
                 ErpFinanceReceiptStatusEnum.DRAFT.getStatus(), updateObj) == 0) {
             throw exception(FINANCE_RECEIPT_DRAFT_UPDATE_FAIL, receipt.getNo());
@@ -347,6 +353,7 @@ public class ErpFinanceReceiptServiceImpl implements ErpFinanceReceiptService {
                 BeanUtils.toBean(financeReceiptItemMapper.selectListByReceiptId(id),
                         ErpFinanceReceiptSaveReqVO.Item.class));
         fillDefaultAmount(receipt);
+        validateAndFillSourceReceivableMisc(receipt, false);
         preparePendingItems(receipt, receiptItems);
         ErpFinanceReceiptDO statusUpdate = new ErpFinanceReceiptDO()
                 .setStatus(ErpFinanceReceiptStatusEnum.PROCESS.getStatus())
@@ -398,6 +405,32 @@ public class ErpFinanceReceiptServiceImpl implements ErpFinanceReceiptService {
         }
     }
 
+    private void preserveSourceReceivableMisc(ErpFinanceReceiptDO target, ErpFinanceReceiptDO source) {
+        target.setSourceReceivableMiscId(source.getSourceReceivableMiscId())
+                .setSourceReceivableMiscNo(source.getSourceReceivableMiscNo());
+    }
+
+    private ErpReceivableMiscDO validateAndFillSourceReceivableMisc(ErpFinanceReceiptDO receipt, boolean forUpdate) {
+        if (receipt.getSourceReceivableMiscId() == null) {
+            receipt.setSourceReceivableMiscNo(null);
+            return null;
+        }
+        ErpReceivableMiscDO sourceMisc = forUpdate
+                ? receivableMiscMapper.selectByIdForUpdate(receipt.getSourceReceivableMiscId())
+                : receivableMiscMapper.selectById(receipt.getSourceReceivableMiscId());
+        if (sourceMisc == null || !ErpAuditStatus.APPROVE.getStatus().equals(sourceMisc.getStatus())) {
+            throw exception(FINANCE_RECEIPT_WRITEOFF_BIZ_INVALID, "来源其他应收单不存在或未审核");
+        }
+        if (isReceivableMiscOffset(sourceMisc)) {
+            throw exception(FINANCE_RECEIPT_WRITEOFF_BIZ_INVALID, "系统生成的其他应收冲减单不能转收款");
+        }
+        if (!Objects.equals(sourceMisc.getCustomerId(), receipt.getCustomerId())) {
+            throw exception(FINANCE_RECEIPT_WRITEOFF_BIZ_INVALID, "客户必须相同");
+        }
+        receipt.setSourceReceivableMiscNo(sourceMisc.getNo());
+        return sourceMisc;
+    }
+
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void approveFinanceReceipt(Long id) {
@@ -431,9 +464,64 @@ public class ErpFinanceReceiptServiceImpl implements ErpFinanceReceiptService {
             financeReceiptItemMapper.updateBatch(pendingItems);
             updateSalePrice(pendingItems);
         }
+        createReceivableMiscOffset(receipt, now);
         receivableOtherService.createFromFinanceReceiptDiscount(receipt);
-        financeAutoWriteOffService.autoWriteOffReceipt(id, loginUserId);
+        if (receipt.getSourceReceivableMiscId() == null) {
+            financeAutoWriteOffService.autoWriteOffReceipt(id, loginUserId);
+        }
         operateLogService.recordStatus(ERP_FINANCE_RECEIPT_TYPE, id, receipt.getNo(), true);
+    }
+
+    private void createReceivableMiscOffset(ErpFinanceReceiptDO receipt, LocalDateTime approveTime) {
+        if (receipt.getSourceReceivableMiscId() == null) {
+            return;
+        }
+        BigDecimal receiptPrice = normalize(getZeroIfNull(receipt.getReceiptPrice()));
+        if (receiptPrice.compareTo(BigDecimal.ZERO) == 0) {
+            return;
+        }
+        ErpReceivableMiscDO existing = receivableMiscMapper.selectBySourceDocument(
+                ErpMiscTransferOffsetConstants.RECEIPT_OFFSET_SOURCE_TYPE, receipt.getId());
+        if (existing != null) {
+            return;
+        }
+        ErpReceivableMiscDO sourceMisc = validateAndFillSourceReceivableMisc(receipt, true);
+        BigDecimal settledAmount = receivableMiscMapper.selectOffsetAmountSumMapBySourceMiscIds(
+                Collections.singleton(sourceMisc.getId()),
+                ErpMiscTransferOffsetConstants.RECEIPT_OFFSET_SOURCE_TYPE)
+                .getOrDefault(sourceMisc.getId(), BigDecimal.ZERO);
+        BigDecimal remainingPrice = normalize(getZeroIfNull(sourceMisc.getAmount()).subtract(settledAmount));
+        validateReceiptWriteOffAmount(receiptPrice, remainingPrice);
+        String sourceMiscNo = sourceMisc.getNo() == null ? receipt.getSourceReceivableMiscNo() : sourceMisc.getNo();
+        createReceivableMiscOffset(receipt, sourceMisc, null, sourceMiscNo, receiptPrice, approveTime);
+    }
+
+    private void createReceivableMiscOffset(ErpFinanceReceiptDO receipt, ErpReceivableMiscDO sourceMisc,
+                                            Long sourceItemId, String sourceMiscNo, BigDecimal receiptPrice,
+                                            LocalDateTime approveTime) {
+        String no = noRedisDAO.generate("QTYSM");
+        if (receivableMiscMapper.selectByNo(no) != null) {
+            throw exception(RECEIVABLE_MISC_NO_EXISTS);
+        }
+        ErpReceivableMiscDO offset = new ErpReceivableMiscDO()
+                .setNo(no)
+                .setStatus(ErpAuditStatus.APPROVE.getStatus())
+                .setBizTime(receipt.getReceiptTime() == null ? approveTime : receipt.getReceiptTime())
+                .setCustomerId(sourceMisc.getCustomerId())
+                .setAccountId(receipt.getAccountId())
+                .setAmount(receiptPrice.abs().negate())
+                .setRemark("收款单审核自动生成，来源单号：" + receipt.getNo() + "，冲减其他应收：" + sourceMiscNo)
+                .setSourceType(ErpMiscTransferOffsetConstants.RECEIPT_OFFSET_SOURCE_TYPE)
+                .setSourceId(receipt.getId())
+                .setSourceNo(receipt.getNo())
+                .setSourceItemId(sourceItemId)
+                .setSourceMiscId(sourceMisc.getId())
+                .setSourceMiscNo(sourceMiscNo)
+                .setDeptId(receipt.getDeptId())
+                .setHandlerId(receipt.getFinanceUserId());
+        receivableMiscMapper.insert(offset);
+        operateLogService.recordCreate("其他应收", offset.getId(), offset.getNo());
+        operateLogService.recordStatus("其他应收", offset.getId(), offset.getNo(), true);
     }
 
     private List<ErpFinanceReceiptItemDO> validateFinanceReceiptItems(
@@ -467,6 +555,9 @@ public class ErpFinanceReceiptServiceImpl implements ErpFinanceReceiptService {
                 ErpReceivableMiscDO receivableMisc = receivableMiscMapper.selectById(item.getBizId());
                 if (receivableMisc == null || !ErpAuditStatus.APPROVE.getStatus().equals(receivableMisc.getStatus())) {
                     throw exception(FINANCE_RECEIPT_WRITEOFF_BIZ_INVALID, "其他应收单不存在或未审核");
+                }
+                if (isReceivableMiscOffset(receivableMisc)) {
+                    throw exception(FINANCE_RECEIPT_WRITEOFF_BIZ_INVALID, "系统生成的其他应收冲减单不能转收款");
                 }
                 if (!Objects.equals(receivableMisc.getCustomerId(), customerId)) {
                     throw exception(FINANCE_RECEIPT_WRITEOFF_BIZ_INVALID, "客户必须相同");
@@ -518,11 +609,12 @@ public class ErpFinanceReceiptServiceImpl implements ErpFinanceReceiptService {
     }
 
     private void fillDraftAmounts(ErpFinanceReceiptDO receipt, List<ErpFinanceReceiptItemDO> receiptItems) {
-        BigDecimal totalPrice = receiptItems.stream()
-                .map(ErpFinanceReceiptItemDO::getReceiptPrice)
-                .filter(Objects::nonNull)
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
-        totalPrice = normalize(totalPrice);
+        BigDecimal totalPrice = CollUtil.isEmpty(receiptItems)
+                ? normalize(getZeroIfNull(receipt.getTotalPrice()))
+                : normalize(receiptItems.stream()
+                    .map(ErpFinanceReceiptItemDO::getReceiptPrice)
+                    .filter(Objects::nonNull)
+                    .reduce(BigDecimal.ZERO, BigDecimal::add));
         BigDecimal discountPrice = normalize(getZeroIfNull(receipt.getDiscountPrice()));
         receipt.setTotalPrice(totalPrice)
                 .setDiscountPrice(discountPrice)
@@ -609,7 +701,7 @@ public class ErpFinanceReceiptServiceImpl implements ErpFinanceReceiptService {
             } else if (ErpBizTypeEnum.SALE_PRICE_ADJUST.getType().equals(receiptItem.getBizType())) {
                 salePriceAdjustService.updateSalePriceAdjustReceiptPrice(receiptItem.getBizId(), totalReceiptPrice);
             } else if (ErpBizTypeEnum.RECEIVABLE_MISC.getType().equals(receiptItem.getBizType())) {
-                // 其他应收的已收/未收金额通过收款明细动态汇总，不回写主单。
+                // 其他应收的冲减在收款单审核后生成负数其他应收单，不回写原主单。
             } else {
                 throw new IllegalArgumentException("业务类型不正确：" + receiptItem.getBizType());
             }
@@ -717,14 +809,18 @@ public class ErpFinanceReceiptServiceImpl implements ErpFinanceReceiptService {
         LambdaQueryWrapperX<ErpReceivableMiscDO> miscQuery = new LambdaQueryWrapperX<ErpReceivableMiscDO>()
                 .eq(ErpReceivableMiscDO::getCustomerId, receipt.getCustomerId())
                 .eq(ErpReceivableMiscDO::getStatus, ErpAuditStatus.APPROVE.getStatus());
+        miscQuery.and(query -> query.isNull(ErpReceivableMiscDO::getSourceType)
+                .or().ne(ErpReceivableMiscDO::getSourceType,
+                        ErpMiscTransferOffsetConstants.RECEIPT_OFFSET_SOURCE_TYPE));
         if (receipt.getDeptId() == null) {
             miscQuery.isNull(ErpReceivableMiscDO::getDeptId);
         } else {
             miscQuery.eq(ErpReceivableMiscDO::getDeptId, receipt.getDeptId());
         }
         List<ErpReceivableMiscDO> miscReceivables = receivableMiscMapper.selectList(miscQuery);
-        Map<Long, BigDecimal> miscAllocated = financeReceiptItemMapper.selectReceiptPriceSumMapByBizIdsAndBizType(
-                convertSet(miscReceivables, ErpReceivableMiscDO::getId), ErpBizTypeEnum.RECEIVABLE_MISC.getType());
+        Map<Long, BigDecimal> miscAllocated = receivableMiscMapper.selectOffsetAmountSumMapBySourceMiscIds(
+                convertSet(miscReceivables, ErpReceivableMiscDO::getId),
+                ErpMiscTransferOffsetConstants.RECEIPT_OFFSET_SOURCE_TYPE);
         miscReceivables.forEach(row -> addReceiptCandidate(result, ErpBizTypeEnum.RECEIVABLE_MISC, row.getId(),
                 row.getNo(), row.getBizTime(), getZeroIfNull(row.getAmount()),
                 miscAllocated.getOrDefault(row.getId(), BigDecimal.ZERO)));
@@ -792,9 +888,13 @@ public class ErpFinanceReceiptServiceImpl implements ErpFinanceReceiptService {
                 .eqIfPresent(ErpReceivableMiscDO::getDeptId, reqVO.getDeptId())
                 .eq(ErpReceivableMiscDO::getStatus, ErpAuditStatus.APPROVE.getStatus())
                 .likeIfPresent(ErpReceivableMiscDO::getNo, reqVO.getNo());
+        miscQuery.and(query -> query.isNull(ErpReceivableMiscDO::getSourceType)
+                .or().ne(ErpReceivableMiscDO::getSourceType,
+                        ErpMiscTransferOffsetConstants.RECEIPT_OFFSET_SOURCE_TYPE));
         List<ErpReceivableMiscDO> miscReceivables = receivableMiscMapper.selectList(miscQuery);
-        Map<Long, BigDecimal> miscAllocated = financeReceiptItemMapper.selectReceiptPriceSumMapByBizIdsAndBizType(
-                convertSet(miscReceivables, ErpReceivableMiscDO::getId), ErpBizTypeEnum.RECEIVABLE_MISC.getType());
+        Map<Long, BigDecimal> miscAllocated = receivableMiscMapper.selectOffsetAmountSumMapBySourceMiscIds(
+                convertSet(miscReceivables, ErpReceivableMiscDO::getId),
+                ErpMiscTransferOffsetConstants.RECEIPT_OFFSET_SOURCE_TYPE);
         miscReceivables.forEach(row -> addReceiptFormCandidate(result, ErpBizTypeEnum.RECEIVABLE_MISC,
                 row.getId(), row.getNo(), row.getBizTime(), row.getCreateTime(), row.getCustomerId(), row.getDeptId(),
                 getZeroIfNull(row.getAmount()),
@@ -940,6 +1040,9 @@ public class ErpFinanceReceiptServiceImpl implements ErpFinanceReceiptService {
         } else if (ObjectUtil.equal(bizType, ErpBizTypeEnum.RECEIVABLE_MISC.getType())) {
             ErpReceivableMiscDO row = receivableMiscMapper.selectOne(new LambdaQueryWrapperX<ErpReceivableMiscDO>()
                     .eq(ErpReceivableMiscDO::getId, bizId).last("FOR UPDATE"));
+            if (isReceivableMiscOffset(row)) {
+                throw exception(FINANCE_RECEIPT_WRITEOFF_BIZ_INVALID, "系统生成的其他应收冲减单不能转收款");
+            }
             result = row == null ? null : new ReceiptBizSnapshot(row.getCustomerId(), row.getDeptId(), row.getStatus(),
                     row.getNo(), getZeroIfNull(row.getAmount()));
         } else {
@@ -955,6 +1058,11 @@ public class ErpFinanceReceiptServiceImpl implements ErpFinanceReceiptService {
             throw exception(FINANCE_RECEIPT_WRITEOFF_BIZ_INVALID, "所属部门必须相同");
         }
         return result;
+    }
+
+    private boolean isReceivableMiscOffset(ErpReceivableMiscDO row) {
+        return row != null
+                && ErpMiscTransferOffsetConstants.RECEIPT_OFFSET_SOURCE_TYPE.equals(row.getSourceType());
     }
 
     private void validateReceiptWriteOffStatus(ErpFinanceReceiptDO receipt) {

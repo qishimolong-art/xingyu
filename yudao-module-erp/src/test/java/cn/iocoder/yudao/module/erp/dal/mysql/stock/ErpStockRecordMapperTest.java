@@ -17,6 +17,7 @@ class ErpStockRecordMapperTest {
         assertEquals("erp_stock_record.biz_date", ErpStockRecordMapper.getOrderExpression("bizDate"));
         assertTrue(ErpStockRecordMapper.getOrderExpression("productName").contains("erp_product"));
         assertTrue(ErpStockRecordMapper.getOrderExpression("warehouseName").contains("erp_warehouse"));
+        assertTrue(ErpStockRecordMapper.getOrderExpression("deptName").contains("system_dept"));
         assertTrue(ErpStockRecordMapper.getOrderExpression("inCount").contains("count > 0"));
         assertTrue(ErpStockRecordMapper.getOrderExpression("outAmount").contains("ABS"));
         assertEquals("erp_stock_record.cost_amount", ErpStockRecordMapper.getOrderExpression("costAmount"));

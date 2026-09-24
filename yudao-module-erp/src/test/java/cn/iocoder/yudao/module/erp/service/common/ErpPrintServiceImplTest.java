@@ -1,9 +1,11 @@
 package cn.iocoder.yudao.module.erp.service.common;
 
 import cn.iocoder.yudao.framework.security.core.service.SecurityFrameworkService;
+import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.test.core.ut.BaseMockitoUnitTest;
 import cn.iocoder.yudao.module.erp.controller.admin.common.vo.print.ErpPrintFieldRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpProductRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.pickdelivery.ErpSalePickDeliveryItemRespVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.receivable.ErpReceivableAccountDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.payable.ErpPayableExpenseDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.payable.ErpPayableExpenseItemDO;
@@ -30,6 +32,7 @@ import cn.iocoder.yudao.module.erp.service.product.ErpProductService;
 import cn.iocoder.yudao.module.erp.service.sale.ErpCustomerService;
 import cn.iocoder.yudao.module.erp.service.sale.ErpSaleCartService;
 import cn.iocoder.yudao.module.erp.service.sale.ErpSaleOutService;
+import cn.iocoder.yudao.module.erp.service.sale.ErpSalePickDeliveryService;
 import cn.iocoder.yudao.module.erp.service.sale.ErpSalePriceAdjustService;
 import cn.iocoder.yudao.module.erp.service.sale.ErpSaleQuoteService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpStockInService;
@@ -51,6 +54,8 @@ import java.util.Map;
 import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -73,6 +78,8 @@ class ErpPrintServiceImplTest extends BaseMockitoUnitTest {
     private ErpCustomerService customerService;
     @Mock
     private ErpSaleOutService saleOutService;
+    @Mock
+    private ErpSalePickDeliveryService salePickDeliveryService;
     @Mock
     private ErpSaleQuoteService saleQuoteService;
     @Mock
@@ -190,7 +197,7 @@ class ErpPrintServiceImplTest extends BaseMockitoUnitTest {
         assertEquals("items.seq", fieldCode(result, "序号"));
         assertEquals("creator.nickname", fieldCode(result, "开单员"));
         assertEquals("document.pickerName", fieldCode(result, "拣货人"));
-        assertEquals("document.checkerName", fieldCode(result, "验货人"));
+        assertEquals("document.checkerName", fieldCode(result, "发货人"));
         assertEquals("creator.nickname", fieldCode(result, "制单人"));
     }
 
@@ -359,7 +366,8 @@ class ErpPrintServiceImplTest extends BaseMockitoUnitTest {
                 .setDiscountPrice(new BigDecimal("8.00"))
                 .setOtherPrice(new BigDecimal("3.50"))
                 .setTotalPrice(new BigDecimal("100.00"))
-                .setReceiptPrice(new BigDecimal("40.00"));
+                .setReceiptPrice(new BigDecimal("40.00"))
+                .setSenderName("发货员A");
         ErpCustomerDO customer = new ErpCustomerDO().setId(customerId).setName("星宇客户").setCode("CUST-001")
                 .setMobile("13800138000").setTelephone("0571-88888888").setAddress("杭州市西湖区文三路");
         ErpSaleQuoteDO quote = new ErpSaleQuoteDO().setId(sourceId).setFreightType("到付");
@@ -372,7 +380,7 @@ class ErpPrintServiceImplTest extends BaseMockitoUnitTest {
         sourceCreator.setNickname("来源制单人");
         AdminUserRespDTO auditor = new AdminUserRespDTO();
         auditor.setId(auditorId);
-        auditor.setNickname("验货审核人");
+        auditor.setNickname("发货审核人");
         when(securityFrameworkService.hasPermission("erp:sale-out:print")).thenReturn(true);
         when(saleOutService.getSaleOut(businessId)).thenReturn(saleOut);
         when(saleOutService.getSaleOutItemListByOutId(businessId)).thenReturn(List.of(firstItem, secondItem));
@@ -380,6 +388,12 @@ class ErpPrintServiceImplTest extends BaseMockitoUnitTest {
         when(customerService.getCustomer(customerId)).thenReturn(customer);
         when(receivableAccountMapper.selectByCustomerId(customerId)).thenReturn(
                 new ErpReceivableAccountDO().setReceivableBalance(new BigDecimal("250.00")));
+        ErpSalePickDeliveryItemRespVO pickItem = new ErpSalePickDeliveryItemRespVO();
+        pickItem.setPickUserName("王五");
+        ErpSalePickDeliveryItemRespVO duplicatePickItem = new ErpSalePickDeliveryItemRespVO();
+        duplicatePickItem.setPickUserName("张三");
+        when(salePickDeliveryService.getSaleOutPickDeliveryItemPage(eq(businessId), any())).thenReturn(
+                new PageResult<>(List.of(pickItem, duplicatePickItem), 2L));
         when(stockOutBillService.getStockOutBillListBySaleOutId(businessId)).thenReturn(List.of(
                 new ErpStockOutBillDO().setPickUserName("张三"),
                 new ErpStockOutBillDO().setPick("李四")));
@@ -402,8 +416,8 @@ class ErpPrintServiceImplTest extends BaseMockitoUnitTest {
         assertEquals("100", document.get("currentDebt"));
         assertEquals("250", document.get("previousReceivable"));
         assertEquals("350", document.get("totalDebt"));
-        assertEquals("张三、李四", document.get("pickerName"));
-        assertEquals("验货审核人", document.get("checkerName"));
+        assertEquals("王五、张三、李四", document.get("pickerName"));
+        assertEquals("发货员A", document.get("checkerName"));
         assertEquals("2026-09-03", document.get("sourceCreateTime"));
         assertEquals("来源制单人", document.get("sourceCreatorName"));
         assertEquals("到付", document.get("freightType"));
@@ -417,8 +431,8 @@ class ErpPrintServiceImplTest extends BaseMockitoUnitTest {
         assertEquals("100", main.get("document.currentDebt"));
         assertEquals("250", main.get("document.previousReceivable"));
         assertEquals("350", main.get("document.totalDebt"));
-        assertEquals("张三、李四", main.get("document.pickerName"));
-        assertEquals("验货审核人", main.get("document.checkerName"));
+        assertEquals("王五、张三、李四", main.get("document.pickerName"));
+        assertEquals("发货员A", main.get("document.checkerName"));
         assertEquals("来源制单人", main.get("document.sourceCreatorName"));
         List<Map<String, Object>> items = (List<Map<String, Object>>) result.get("items");
         assertEquals(2, items.size());

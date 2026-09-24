@@ -43,6 +43,9 @@ public class ErpStockRespVO {
     @ExcelProperty("产品名称")
     private String productName;
 
+    @Schema(description = "产品主图 URL")
+    private String mainImage;
+
     @Schema(description = "产品分类", requiredMode = Schema.RequiredMode.REQUIRED, example = "水果")
     @ExcelProperty("产品分类")
     private String categoryName;

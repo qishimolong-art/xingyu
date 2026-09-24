@@ -13,6 +13,8 @@ public class ErpSalePickDeliveryItemRespVO {
     @Schema(description = "编号")
     private Long id;
     private Long saleOutItemId;
+    private Long transferOutId;
+    private Long transferOutItemId;
     private Long warehouseId;
     private String warehouseName;
     private Long productId;

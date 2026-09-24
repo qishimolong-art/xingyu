@@ -16,6 +16,8 @@ import cn.iocoder.yudao.module.erp.enums.common.ErpBizTypeEnum;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.core.toolkit.support.SFunction;
 import org.apache.ibatis.annotations.Mapper;
+import org.apache.ibatis.annotations.Param;
+import org.apache.ibatis.annotations.Update;
 import org.springframework.util.StringUtils;
 
 import java.util.Collection;
@@ -49,6 +51,16 @@ public interface ErpSaleOutMapper extends BaseMapperX<ErpSaleOutDO> {
             + "ssi.product_price) * ssi.count, 2)) FROM erp_sale_out_items ssi WHERE ssi.deleted = 0 "
             + "AND ssi.tenant_id = t.tenant_id AND ssi.out_id = t.id), 0) * COALESCE(t.discount_percent, 0) / 100, 2) "
             + "+ COALESCE(t.fee_amount, t.other_price, t.extra_fee, 0)) ELSE t.total_price END)";
+
+    String RECEIVABLE_ACCOUNT_SALE_AMOUNT_EXPRESSION = "(CASE WHEN EXISTS (SELECT 1 FROM erp_sale_out_items ssi "
+            + "WHERE ssi.deleted = 0 AND ssi.tenant_id = t.tenant_id AND ssi.out_id = t.id "
+            + "AND ssi.original_product_price IS NOT NULL) THEN "
+            + "(COALESCE((SELECT SUM(ROUND(COALESCE(ssi.original_product_price, ssi.product_price) * ssi.count, 2)) "
+            + "FROM erp_sale_out_items ssi WHERE ssi.deleted = 0 AND ssi.tenant_id = t.tenant_id "
+            + "AND ssi.out_id = t.id), 0) - ROUND(COALESCE((SELECT SUM(ROUND(COALESCE(ssi.original_product_price, "
+            + "ssi.product_price) * ssi.count, 2)) FROM erp_sale_out_items ssi WHERE ssi.deleted = 0 "
+            + "AND ssi.tenant_id = t.tenant_id AND ssi.out_id = t.id), 0) * COALESCE(t.discount_percent, 0) / 100, 2)) "
+            + "ELSE COALESCE(t.total_price, 0) - COALESCE(t.fee_amount, t.other_price, t.extra_fee, t.freight, 0) END)";
 
     default PageResult<ErpSaleOutDO> selectPage(ErpSaleOutPageReqVO reqVO) {
         MPJLambdaWrapperX<ErpSaleOutDO> query = new MPJLambdaWrapperX<ErpSaleOutDO>()
@@ -237,6 +249,10 @@ public interface ErpSaleOutMapper extends BaseMapperX<ErpSaleOutDO> {
     default ErpSaleOutDO selectByNo(String no) {
         return selectOne(ErpSaleOutDO::getNo, no);
     }
+
+    @Update("UPDATE erp_sale_out SET print_time = NOW(), print_count = IFNULL(print_count, 0) + 1, "
+            + "update_time = NOW() WHERE id = #{id} AND deleted = b'0'")
+    int incrementPrintCount(@Param("id") Long id);
 
     default Long selectCountByCustomerId(Long customerId) {
         return selectCount(ErpSaleOutDO::getCustomerId, customerId);

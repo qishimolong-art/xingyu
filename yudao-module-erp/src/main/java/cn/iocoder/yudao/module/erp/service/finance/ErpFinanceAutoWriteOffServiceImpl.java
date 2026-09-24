@@ -41,6 +41,7 @@ import cn.iocoder.yudao.module.erp.service.purchase.ErpPurchaseReturnService;
 import cn.iocoder.yudao.module.erp.service.sale.ErpSaleOutService;
 import cn.iocoder.yudao.module.erp.service.sale.ErpSalePriceAdjustService;
 import cn.iocoder.yudao.module.erp.service.sale.ErpSaleReturnService;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
@@ -110,6 +111,7 @@ public class ErpFinanceAutoWriteOffServiceImpl implements ErpFinanceAutoWriteOff
     @Resource
     private ErpSalePriceAdjustService salePriceAdjustService;
     @Resource
+    @Lazy
     private ErpPurchaseInService purchaseInService;
     @Resource
     private ErpPurchaseReturnService purchaseReturnService;
@@ -346,13 +348,17 @@ public class ErpFinanceAutoWriteOffServiceImpl implements ErpFinanceAutoWriteOff
         LambdaQueryWrapperX<ErpReceivableMiscDO> query = new LambdaQueryWrapperX<ErpReceivableMiscDO>()
                 .eq(ErpReceivableMiscDO::getCustomerId, receipt.getCustomerId())
                 .eq(ErpReceivableMiscDO::getStatus, ErpAuditStatus.APPROVE.getStatus());
+        query.and(wrapper -> wrapper.isNull(ErpReceivableMiscDO::getSourceType)
+                .or().ne(ErpReceivableMiscDO::getSourceType,
+                        ErpMiscTransferOffsetConstants.RECEIPT_OFFSET_SOURCE_TYPE));
         appendDeptCondition(query, ErpReceivableMiscDO::getDeptId, receipt.getDeptId());
         List<ErpReceivableMiscDO> rows = receivableMiscMapper.selectList(query);
         if (CollUtil.isEmpty(rows)) {
             return;
         }
-        Map<Long, BigDecimal> allocatedMap = financeReceiptItemMapper.selectReceiptPriceSumMapByBizIdsAndBizType(
-                convertSet(rows, ErpReceivableMiscDO::getId), ErpBizTypeEnum.RECEIVABLE_MISC.getType());
+        Map<Long, BigDecimal> allocatedMap = receivableMiscMapper.selectOffsetAmountSumMapBySourceMiscIds(
+                convertSet(rows, ErpReceivableMiscDO::getId),
+                ErpMiscTransferOffsetConstants.RECEIPT_OFFSET_SOURCE_TYPE);
         rows.forEach(row -> addCandidate(result, ErpBizTypeEnum.RECEIVABLE_MISC.getType(), row.getId(),
                 row.getNo(), row.getBizTime(), getZeroIfNull(row.getAmount()),
                 allocatedMap.getOrDefault(row.getId(), BigDecimal.ZERO)));
@@ -398,6 +404,9 @@ public class ErpFinanceAutoWriteOffServiceImpl implements ErpFinanceAutoWriteOff
         } else if (ObjectUtil.equal(bizType, ErpBizTypeEnum.RECEIVABLE_MISC.getType())) {
             ErpReceivableMiscDO row = receivableMiscMapper.selectOne(new LambdaQueryWrapperX<ErpReceivableMiscDO>()
                     .eq(ErpReceivableMiscDO::getId, bizId).last("FOR UPDATE"));
+            if (isReceivableMiscOffset(row)) {
+                return null;
+            }
             result = row == null ? null : new ReceiptBizSnapshot(row.getCustomerId(), row.getDeptId(), row.getStatus(),
                     row.getNo(), getZeroIfNull(row.getAmount()));
         } else {
@@ -409,6 +418,12 @@ public class ErpFinanceAutoWriteOffServiceImpl implements ErpFinanceAutoWriteOff
             return null;
         }
         return result;
+    }
+
+    private boolean isReceivableMiscOffset(ErpReceivableMiscDO row) {
+        return row != null
+                && ErpMiscTransferOffsetConstants.RECEIPT_OFFSET_SOURCE_TYPE.equals(row.getSourceType())
+                && row.getSourceItemId() != null;
     }
 
     private boolean isValidReceiptAllocatedPrice(BigDecimal receiptTotalPrice, BigDecimal allocatedPrice) {
@@ -449,7 +464,7 @@ public class ErpFinanceAutoWriteOffServiceImpl implements ErpFinanceAutoWriteOff
             } else if (ErpBizTypeEnum.SALE_PRICE_ADJUST.getType().equals(receiptItem.getBizType())) {
                 salePriceAdjustService.updateSalePriceAdjustReceiptPrice(receiptItem.getBizId(), totalReceiptPrice);
             } else if (ErpBizTypeEnum.RECEIVABLE_MISC.getType().equals(receiptItem.getBizType())) {
-                // 其他应收的已收/未收金额通过收款明细动态汇总，不回写主单。
+                // 其他应收的冲减在收款单审核后生成负数其他应收单，不回写原主单。
             }
         });
     }
@@ -525,13 +540,17 @@ public class ErpFinanceAutoWriteOffServiceImpl implements ErpFinanceAutoWriteOff
         LambdaQueryWrapperX<ErpPayableMiscDO> query = new LambdaQueryWrapperX<ErpPayableMiscDO>()
                 .eq(ErpPayableMiscDO::getSupplierId, payment.getSupplierId())
                 .eq(ErpPayableMiscDO::getStatus, ErpAuditStatus.APPROVE.getStatus());
+        query.and(wrapper -> wrapper.isNull(ErpPayableMiscDO::getSourceType)
+                .or().ne(ErpPayableMiscDO::getSourceType,
+                        ErpMiscTransferOffsetConstants.PAYMENT_OFFSET_SOURCE_TYPE));
         appendDeptCondition(query, ErpPayableMiscDO::getDeptId, payment.getDeptId());
         List<ErpPayableMiscDO> rows = payableMiscMapper.selectList(query);
         if (CollUtil.isEmpty(rows)) {
             return;
         }
-        Map<Long, BigDecimal> allocatedMap = financePaymentItemMapper.selectPaymentPriceSumMapByBizIdsAndBizType(
-                convertSet(rows, ErpPayableMiscDO::getId), ErpBizTypeEnum.PAYABLE_MISC.getType());
+        Map<Long, BigDecimal> allocatedMap = payableMiscMapper.selectOffsetAmountSumMapBySourceMiscIds(
+                convertSet(rows, ErpPayableMiscDO::getId),
+                ErpMiscTransferOffsetConstants.PAYMENT_OFFSET_SOURCE_TYPE);
         rows.forEach(row -> addPaymentCandidate(result, ErpBizTypeEnum.PAYABLE_MISC.getType(), row.getId(),
                 row.getNo(), row.getBizTime(), getZeroIfNull(row.getAmount()),
                 allocatedMap.getOrDefault(row.getId(), BigDecimal.ZERO)));
@@ -568,6 +587,9 @@ public class ErpFinanceAutoWriteOffServiceImpl implements ErpFinanceAutoWriteOff
         } else if (ObjectUtil.equal(bizType, ErpBizTypeEnum.PAYABLE_MISC.getType())) {
             ErpPayableMiscDO row = payableMiscMapper.selectOne(new LambdaQueryWrapperX<ErpPayableMiscDO>()
                     .eq(ErpPayableMiscDO::getId, bizId).last("FOR UPDATE"));
+            if (isPayableMiscOffset(row)) {
+                return null;
+            }
             result = row == null ? null : new PaymentBizSnapshot(row.getSupplierId(), row.getDeptId(), row.getStatus(),
                     row.getNo(), getZeroIfNull(row.getAmount()));
         } else {
@@ -581,6 +603,12 @@ public class ErpFinanceAutoWriteOffServiceImpl implements ErpFinanceAutoWriteOff
         return result;
     }
 
+    private boolean isPayableMiscOffset(ErpPayableMiscDO row) {
+        return row != null
+                && ErpMiscTransferOffsetConstants.PAYMENT_OFFSET_SOURCE_TYPE.equals(row.getSourceType())
+                && row.getSourceItemId() != null;
+    }
+
     private void updatePurchasePrice(Collection<ErpFinancePaymentItemDO> paymentItems) {
         paymentItems.forEach(paymentItem -> {
             BigDecimal totalPaymentPrice = financePaymentItemMapper.selectPaymentPriceSumByBizIdAndBizType(
@@ -592,7 +620,7 @@ public class ErpFinanceAutoWriteOffServiceImpl implements ErpFinanceAutoWriteOff
             } else if (ErpBizTypeEnum.PURCHASE_PRICE_ADJUST.getType().equals(paymentItem.getBizType())) {
                 purchasePriceAdjustService.updatePurchasePriceAdjustPaymentPrice(paymentItem.getBizId(), totalPaymentPrice);
             } else if (ErpBizTypeEnum.PAYABLE_MISC.getType().equals(paymentItem.getBizType())) {
-                // 其他应付的已付/未付金额通过付款明细动态汇总，不回写主单。
+                // 其他应付的冲减在付款单审核后生成负数其他应付单，不回写原主单。
             }
         });
     }

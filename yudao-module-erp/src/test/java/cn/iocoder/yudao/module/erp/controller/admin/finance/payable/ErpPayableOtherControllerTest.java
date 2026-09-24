@@ -12,11 +12,13 @@ import cn.iocoder.yudao.module.erp.dal.dataobject.finance.payable.ErpPayableOthe
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpSupplierDO;
 import cn.iocoder.yudao.module.erp.service.finance.ErpFinanceFieldPermissionMasker;
 import cn.iocoder.yudao.module.erp.service.finance.payable.ErpPayableOtherService;
+import cn.iocoder.yudao.module.erp.service.purchase.ErpSupplierDeptPermissionService;
 import cn.iocoder.yudao.module.erp.service.purchase.ErpSupplierService;
 import cn.iocoder.yudao.module.system.api.dept.DeptApi;
 import cn.iocoder.yudao.module.system.api.dept.dto.DeptRespDTO;
 import cn.iocoder.yudao.module.system.api.user.AdminUserApi;
 import cn.iocoder.yudao.module.system.api.user.dto.AdminUserRespDTO;
+import cn.iocoder.yudao.module.system.controller.admin.dept.vo.dept.DeptSimpleRespVO;
 import org.apache.poi.hssf.usermodel.HSSFWorkbook;
 import org.apache.poi.ss.usermodel.Row;
 import org.apache.poi.ss.usermodel.Sheet;
@@ -33,6 +35,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -56,6 +59,8 @@ class ErpPayableOtherControllerTest extends BaseMockitoUnitTest {
     private DeptApi deptApi;
     @Mock
     private ErpFinanceFieldPermissionMasker fieldPermissionMasker;
+    @Mock
+    private ErpSupplierDeptPermissionService supplierDeptPermissionService;
 
     @Test
     void createDraft_delegatesToDraftService() {
@@ -85,6 +90,18 @@ class ErpPayableOtherControllerTest extends BaseMockitoUnitTest {
 
         assertNotNull(result.getData());
         assertEquals(0, result.getData().getList().get(0).getStatus());
+    }
+
+    @Test
+    void getSupplierDeptSimpleList_delegatesToSupplierDeptPermissionService() {
+        List<DeptSimpleRespVO> depts = Collections.singletonList(new DeptSimpleRespVO(6L, "财务部", 0L));
+        when(supplierDeptPermissionService.getAvailableDeptSimpleList(10L, "erp_payable_other"))
+                .thenReturn(depts);
+
+        CommonResult<List<DeptSimpleRespVO>> result = controller.getSupplierDeptSimpleList(10L);
+
+        assertEquals(depts, result.getData());
+        verify(supplierDeptPermissionService).getAvailableDeptSimpleList(10L, "erp_payable_other");
     }
 
     @Test

@@ -34,6 +34,12 @@ public class ErpFinancePaymentSaveReqVO {
     @NotNull(message = "付款账户编号不能为空")
     private Long accountId;
 
+    @Schema(description = "来源其他应付单编号", example = "1024")
+    private Long sourcePayableMiscId;
+
+    @Schema(description = "来源其他应付单号", example = "QTYFM20260922000001")
+    private String sourcePayableMiscNo;
+
     @Schema(description = "优惠金额，单位：元", requiredMode = Schema.RequiredMode.REQUIRED, example = "11600")
     @NotNull(message = "优惠金额不能为空")
     private BigDecimal discountPrice;

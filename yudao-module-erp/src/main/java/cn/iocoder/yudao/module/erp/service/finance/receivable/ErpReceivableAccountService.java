@@ -14,6 +14,8 @@ public interface ErpReceivableAccountService {
 
     PageResult<ErpReceivableAccountDO> getReceivableAccountPage(ErpReceivableAccountPageReqVO reqVO);
 
+    List<ErpReceivableAccountDO> getReceivableAccountList(ErpReceivableAccountPageReqVO reqVO);
+
     List<ErpReceivableDetailRespVO> getReceivableDetailList(ErpReceivableDetailReqVO reqVO);
 
     List<ErpReceivableDetailRespVO> getReceivableDetailList(ErpReceivableDetailReqVO reqVO,

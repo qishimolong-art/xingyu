@@ -47,6 +47,12 @@ public class ErpFinanceReceiptRespVO {
     @Schema(description = "收款账户名称", requiredMode = Schema.RequiredMode.REQUIRED, example = "张三")
     private String accountName;
 
+    @Schema(description = "来源其他应收单编号", example = "1024")
+    private Long sourceReceivableMiscId;
+
+    @Schema(description = "来源其他应收单号", example = "QTYSM20260922000001")
+    private String sourceReceivableMiscNo;
+
     @Schema(description = "结算方式", example = "现金")
     private String settleMethod;
 

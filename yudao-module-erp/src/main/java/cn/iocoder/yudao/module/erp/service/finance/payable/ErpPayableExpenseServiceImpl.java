@@ -74,6 +74,7 @@ public class ErpPayableExpenseServiceImpl implements ErpPayableExpenseService {
     private static final String PAYABLE_EXPENSE_ITEM_PROJECT = "payable_expense_item_project";
     private static final String DEFAULT_EXPENSE_TYPE = "其他";
     private static final String SALE_CART_FREIGHT_ITEM_PROJECT = "销售产生运费";
+    private static final String PURCHASE_IN_FREIGHT_ITEM_PROJECT = "采购运费";
 
     @Resource
     private ErpPayableExpenseMapper payableExpenseMapper;
@@ -712,7 +713,8 @@ public class ErpPayableExpenseServiceImpl implements ErpPayableExpenseService {
         Set<String> validItemNames = getEnabledOptionNames(PAYABLE_EXPENSE_ITEM_PROJECT);
         for (int i = 0; i < items.size(); i++) {
             String itemName = items.get(i).getItemName();
-            if (StringUtils.hasText(itemName) && !validItemNames.contains(itemName)) {
+            if (StringUtils.hasText(itemName) && !validItemNames.contains(itemName)
+                    && !PURCHASE_IN_FREIGHT_ITEM_PROJECT.equals(itemName)) {
                 throw exception(PAYABLE_EXPENSE_OPTION_INVALID,
                         "第 " + (i + 1) + " 条明细的项目名称", itemName);
             }

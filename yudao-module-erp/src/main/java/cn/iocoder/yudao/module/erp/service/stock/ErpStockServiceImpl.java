@@ -84,6 +84,9 @@ public class ErpStockServiceImpl implements ErpStockService {
      */
     private static final int MAX_RETRY_TIMES = 5;
 
+    private static final List<Integer> SALE_CART_OCCUPIED_STATUSES = Collections.unmodifiableList(Arrays.asList(
+            ErpSaleCartStatusEnum.SUBMITTED.getStatus(), ErpSaleCartStatusEnum.FIRST_APPROVE.getStatus()));
+
     @Resource
     private ErpProductService productService;
     @Resource
@@ -364,9 +367,7 @@ public class ErpStockServiceImpl implements ErpStockService {
                                 pageReqVO.getKeyword().trim().replaceAll("\\s+", "%"),
                                 finalVisibleWarehouseIds,
                                 ErpAuditStatus.PROCESS.getStatus(),
-                                Arrays.asList(ErpSaleCartStatusEnum.PROCESS.getStatus(),
-                                        ErpSaleCartStatusEnum.SUBMITTED.getStatus(),
-                                        ErpSaleCartStatusEnum.FIRST_APPROVE.getStatus()),
+                                SALE_CART_OCCUPIED_STATUSES,
                                 ErpStockCheckTypeEnum.COUNT.getType(),
                                 ErpStockTransferDirectionEnum.TRANSFER_OUT.getDirection(),
                                 ErpStockTransferDirectionEnum.TRANSFER_IN.getDirection(),

@@ -19,7 +19,7 @@ FROM (
     UNION ALL SELECT 'erp_sale_out', 'item_seq', '序号', 'detail_item', 1, 1
     UNION ALL SELECT 'erp_sale_out', 'billerName', '开单员', 'system_info', 901, 1
     UNION ALL SELECT 'erp_sale_out', 'pickerName', '拣货人', 'system_info', 902, 1
-    UNION ALL SELECT 'erp_sale_out', 'checkerName', '验货人', 'system_info', 903, 1
+    UNION ALL SELECT 'erp_sale_out', 'checkerName', '发货人', 'system_info', 903, 1
     UNION ALL SELECT 'erp_sale_out', 'creatorName', '制单人', 'system_info', 900, 1
 ) seed
 WHERE NOT EXISTS (

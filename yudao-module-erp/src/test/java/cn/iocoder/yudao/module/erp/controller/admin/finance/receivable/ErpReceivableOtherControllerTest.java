@@ -15,11 +15,13 @@ import cn.iocoder.yudao.module.erp.dal.dataobject.finance.receivable.ErpReceivab
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpCustomerDO;
 import cn.iocoder.yudao.module.erp.service.finance.ErpFinanceFieldPermissionMasker;
 import cn.iocoder.yudao.module.erp.service.finance.receivable.ErpReceivableOtherService;
+import cn.iocoder.yudao.module.erp.service.sale.ErpCustomerDeptPermissionService;
 import cn.iocoder.yudao.module.erp.service.sale.ErpCustomerService;
 import cn.iocoder.yudao.module.system.api.dept.DeptApi;
 import cn.iocoder.yudao.module.system.api.dept.dto.DeptRespDTO;
 import cn.iocoder.yudao.module.system.api.user.AdminUserApi;
 import cn.iocoder.yudao.module.system.api.user.dto.AdminUserRespDTO;
+import cn.iocoder.yudao.module.system.controller.admin.dept.vo.dept.DeptSimpleRespVO;
 import org.apache.poi.hssf.usermodel.HSSFWorkbook;
 import org.apache.poi.ss.usermodel.Row;
 import org.apache.poi.ss.usermodel.Sheet;
@@ -67,6 +69,8 @@ class ErpReceivableOtherControllerTest extends BaseMockitoUnitTest {
     private DeptApi deptApi;
     @Mock
     private ErpFinanceFieldPermissionMasker fieldPermissionMasker;
+    @Mock
+    private ErpCustomerDeptPermissionService customerDeptPermissionService;
 
     @Test
     void saveReqVO_rejectsZeroReceivableAmountButAllowsNegative() {
@@ -106,6 +110,18 @@ class ErpReceivableOtherControllerTest extends BaseMockitoUnitTest {
 
         assertNotNull(result.getData());
         assertEquals(0, result.getData().getList().get(0).getStatus());
+    }
+
+    @Test
+    void getCustomerDeptSimpleList_delegatesToCustomerDeptPermissionService() {
+        List<DeptSimpleRespVO> depts = Collections.singletonList(new DeptSimpleRespVO(6L, "财务部", 0L));
+        when(customerDeptPermissionService.getAvailableDeptSimpleList(10L, "erp_receivable_other"))
+                .thenReturn(depts);
+
+        CommonResult<List<DeptSimpleRespVO>> result = controller.getCustomerDeptSimpleList(10L);
+
+        assertEquals(depts, result.getData());
+        verify(customerDeptPermissionService).getAvailableDeptSimpleList(10L, "erp_receivable_other");
     }
 
     @Test

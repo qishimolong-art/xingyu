@@ -91,6 +91,8 @@ public class ErpSaleOrderServiceImpl implements ErpSaleOrderService {
     private ErpWarehouseService warehouseService;
     @Resource
     private ErpStockService stockService;
+    @Resource
+    private ErpSaleDirectDeptPermissionService saleDirectDeptPermissionService;
 
     @Resource
     private AdminUserApi adminUserApi;
@@ -104,6 +106,7 @@ public class ErpSaleOrderServiceImpl implements ErpSaleOrderService {
         fieldPermissionMasker.clearSaleDetailHiddenItemFields(FIELD_PERMISSION_MODULE, createReqVO, createReqVO.getItems());
         // 1.1 校验订单项的有效性
         Long saleDeptId = resolveSaleDeptId(createReqVO.getDeptId());
+        saleDirectDeptPermissionService.validateSaleDocumentDeptAllowed(saleDeptId);
         List<ErpSaleOrderItemDO> saleOrderItems = validateSaleOrderItems(createReqVO.getItems(), saleDeptId);
         // 1.2 校验客户
         customerService.validateCustomerForSale(createReqVO.getCustomerId(), saleDeptId);
@@ -171,6 +174,7 @@ public class ErpSaleOrderServiceImpl implements ErpSaleOrderService {
         }
         // 1.5 校验订单项的有效性
         Long saleDeptId = updateReqVO.getDeptId() != null ? updateReqVO.getDeptId() : saleOrder.getDeptId();
+        saleDirectDeptPermissionService.validateSaleDocumentDeptAllowed(saleDeptId);
         List<ErpSaleOrderItemDO> saleOrderItems = validateSaleOrderItems(itemReqs, saleDeptId);
         preserveSaleOrderDownstreamCounts(saleOrderItems, oldItems);
 
@@ -227,6 +231,7 @@ public class ErpSaleOrderServiceImpl implements ErpSaleOrderService {
         if (!ErpAuditStatus.PROCESS.getStatus().equals(saleOrder.getStatus())) {
             throw exception(SALE_ORDER_APPROVE_FAIL);
         }
+        saleDirectDeptPermissionService.validateSaleDocumentDeptAllowed(saleOrder.getDeptId());
 
         // 2. 更新状态
         int updateCount = saleOrderMapper.updateByIdAndStatus(id, saleOrder.getStatus(),

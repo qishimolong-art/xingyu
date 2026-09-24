@@ -11,7 +11,6 @@ import cn.iocoder.yudao.module.erp.controller.admin.finance.payable.vo.report.Er
 import cn.iocoder.yudao.module.erp.controller.admin.finance.payable.vo.report.ErpPayableReportPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.payable.vo.report.ErpPayableReportRespVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.payable.ErpPayableMiscDO;
-import cn.iocoder.yudao.module.erp.dal.mysql.finance.ErpFinancePaymentItemMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.finance.payable.ErpPayableMiscMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.finance.payable.ErpPayableReportMapper;
 import cn.iocoder.yudao.module.erp.enums.ErpAuditStatus;
@@ -26,7 +25,6 @@ import javax.annotation.Resource;
 import java.math.BigDecimal;
 import java.util.Collections;
 import java.util.List;
-import java.util.Map;
 import java.util.stream.Collectors;
 
 @Service
@@ -40,8 +38,6 @@ public class ErpPayableReportServiceImpl implements ErpPayableReportService {
     private ErpPayableReportMapper payableReportMapper;
     @Resource
     private ErpPayableMiscMapper payableMiscMapper;
-    @Resource
-    private ErpFinancePaymentItemMapper financePaymentItemMapper;
     @Resource
     private ErpSupplierService supplierService;
     @Resource
@@ -74,11 +70,8 @@ public class ErpPayableReportServiceImpl implements ErpPayableReportService {
                                                                ErpFinanceVisibleScope scope) {
         BigDecimal balance = getInitialBalance(reqVO, scope);
         List<ErpPayableMiscDO> miscRows = selectOtherList(reqVO, scope, false);
-        Map<Long, BigDecimal> allocatedMap = financePaymentItemMapper.selectPaymentPriceSumMapByBizIdsAndBizType(
-                miscRows.stream().map(ErpPayableMiscDO::getId).collect(Collectors.toSet()),
-                ErpBizTypeEnum.PAYABLE_MISC.getType());
         List<ErpPayableReportDetailRespVO> rows = miscRows.stream()
-                .map(item -> buildRow(item, allocatedMap.get(item.getId())))
+                .map(item -> buildRow(item, BigDecimal.ZERO))
                 .collect(Collectors.toList());
         for (ErpPayableReportDetailRespVO row : rows) {
             row.setPrevBalance(balance);
@@ -96,11 +89,8 @@ public class ErpPayableReportServiceImpl implements ErpPayableReportService {
         copy.setSupplierId(reqVO.getSupplierId());
         copy.setBizTime(new java.time.LocalDateTime[]{null, reqVO.getStartDate().atStartOfDay()});
         List<ErpPayableMiscDO> rows = selectOtherList(copy, scope, true);
-        Map<Long, BigDecimal> allocatedMap = financePaymentItemMapper.selectPaymentPriceSumMapByBizIdsAndBizType(
-                rows.stream().map(ErpPayableMiscDO::getId).collect(Collectors.toSet()),
-                ErpBizTypeEnum.PAYABLE_MISC.getType());
         return rows.stream()
-                .map(item -> amount(item.getAmount()).subtract(amount(allocatedMap.get(item.getId()))))
+                .map(item -> amount(item.getAmount()))
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
     }
 

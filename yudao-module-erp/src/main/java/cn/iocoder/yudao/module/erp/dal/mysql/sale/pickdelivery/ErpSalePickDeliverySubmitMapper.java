@@ -12,6 +12,12 @@ import java.util.List;
 @Mapper
 public interface ErpSalePickDeliverySubmitMapper extends BaseMapperX<ErpSalePickDeliverySubmitDO> {
 
+    default List<ErpSalePickDeliverySubmitDO> selectListByOrderId(Long orderId) {
+        return selectList(new LambdaQueryWrapperX<ErpSalePickDeliverySubmitDO>()
+                .eq(ErpSalePickDeliverySubmitDO::getOrderId, orderId)
+                .orderByDesc(ErpSalePickDeliverySubmitDO::getId));
+    }
+
     default List<ErpSalePickDeliverySubmitDO> selectListByOrderIdAndType(Long orderId, Integer type) {
         return selectList(new LambdaQueryWrapperX<ErpSalePickDeliverySubmitDO>()
                 .eq(ErpSalePickDeliverySubmitDO::getOrderId, orderId)

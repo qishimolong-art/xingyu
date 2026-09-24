@@ -9,7 +9,8 @@ SELECT DATABASE() AS target_schema, VERSION() AS mysql_version;
 
 -- 2. 现有报表叶、真实父节点和路由。MISSING 是待核对，并不授权自动补建。
 WITH expected AS (
-SELECT 'erp/sale/report/index' AS component
+SELECT 'erp/report/overview/index' AS component
+UNION ALL SELECT 'erp/sale/report/index'
 UNION ALL SELECT 'erp/purchase/report/index'
 UNION ALL SELECT 'erp/stock/report/index'
 UNION ALL SELECT 'erp/stock/record/index'

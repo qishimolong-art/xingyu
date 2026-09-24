@@ -8,8 +8,12 @@ import cn.iocoder.yudao.framework.excel.core.util.ExcelUtils;
 import cn.iocoder.yudao.module.erp.controller.admin.report.vo.sale.ErpSaleReportDetailReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.report.vo.sale.ErpSaleReportDetailExportRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.report.vo.sale.ErpSaleReportDetailRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.report.vo.sale.ErpSaleReportDeptExportRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.report.vo.sale.ErpSaleReportDeptRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.report.vo.sale.ErpSaleReportExportRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.report.vo.sale.ErpSaleReportPageReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.report.vo.sale.ErpSaleReportProductExportRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.report.vo.sale.ErpSaleReportProductRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.report.vo.sale.ErpSaleReportRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.report.vo.sale.ErpSaleReportSummaryRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.report.vo.sale.ErpSaleReportTrendRespVO;
@@ -67,6 +71,30 @@ public class ErpSaleReportController {
         return success(saleReportService.getSaleReportPage(reqVO));
     }
 
+    @GetMapping("/product-page")
+    @Operation(summary = "获得销售商品报表分页")
+    @PreAuthorize("@ss.hasPermission('erp:sale-report:query')")
+    public CommonResult<PageResult<ErpSaleReportProductRespVO>> getSaleReportProductPage(
+            @Valid ErpSaleReportPageReqVO reqVO) {
+        return success(saleReportService.getSaleReportProductPage(reqVO));
+    }
+
+    @GetMapping("/dept-page")
+    @Operation(summary = "获得销售部门报表分页")
+    @PreAuthorize("@ss.hasPermission('erp:sale-report:query')")
+    public CommonResult<PageResult<ErpSaleReportDeptRespVO>> getSaleReportDeptPage(
+            @Valid ErpSaleReportPageReqVO reqVO) {
+        return success(saleReportService.getSaleReportDeptPage(reqVO));
+    }
+
+    @GetMapping("/detail-page")
+    @Operation(summary = "获得销售报表明细分页")
+    @PreAuthorize("@ss.hasPermission('erp:sale-report:query')")
+    public CommonResult<PageResult<ErpSaleReportDetailRespVO>> getSaleReportDetailPage(
+            @Valid ErpSaleReportPageReqVO reqVO) {
+        return success(saleReportService.getSaleReportDetailPage(reqVO));
+    }
+
     @GetMapping("/detail")
     @Operation(summary = "获得销售报表明细")
     @PreAuthorize("@ss.hasPermission('erp:sale-report:query')")
@@ -94,6 +122,30 @@ public class ErpSaleReportController {
                         .map(this::toExportVO).collect(Collectors.toList()));
     }
 
+    @GetMapping("/export-product")
+    @Operation(summary = "导出销售商品报表 Excel")
+    @PreAuthorize("@ss.hasPermission('erp:sale-report:export')")
+    @ApiAccessLog(operateType = EXPORT)
+    public void exportSaleReportProduct(@Valid ErpSaleReportPageReqVO reqVO,
+                                        HttpServletResponse response) throws IOException {
+        reqVO.setPageSize(PageParam.PAGE_SIZE_NONE);
+        ExcelUtils.write(response, "销售商品报表.xls", "数据", ErpSaleReportProductExportRespVO.class,
+                saleReportService.getSaleReportProductPage(reqVO).getList().stream()
+                        .map(this::toProductExportVO).collect(Collectors.toList()));
+    }
+
+    @GetMapping("/export-dept")
+    @Operation(summary = "导出销售部门报表 Excel")
+    @PreAuthorize("@ss.hasPermission('erp:sale-report:export')")
+    @ApiAccessLog(operateType = EXPORT)
+    public void exportSaleReportDept(@Valid ErpSaleReportPageReqVO reqVO,
+                                     HttpServletResponse response) throws IOException {
+        reqVO.setPageSize(PageParam.PAGE_SIZE_NONE);
+        ExcelUtils.write(response, "销售部门报表.xls", "数据", ErpSaleReportDeptExportRespVO.class,
+                saleReportService.getSaleReportDeptPage(reqVO).getList().stream()
+                        .map(this::toDeptExportVO).collect(Collectors.toList()));
+    }
+
     @GetMapping("/export-detail")
     @Operation(summary = "导出销售报表明细 Excel")
     @PreAuthorize("@ss.hasPermission('erp:sale-report:export')")
@@ -102,6 +154,18 @@ public class ErpSaleReportController {
                                        HttpServletResponse response) throws IOException {
         ExcelUtils.write(response, "销售报表明细.xls", "明细", ErpSaleReportDetailExportRespVO.class,
                 saleReportService.getSaleReportDetailList(reqVO).stream()
+                        .map(this::toDetailExportVO).collect(Collectors.toList()));
+    }
+
+    @GetMapping("/export-detail-page")
+    @Operation(summary = "导出销售报表明细分页口径 Excel")
+    @PreAuthorize("@ss.hasPermission('erp:sale-report:export')")
+    @ApiAccessLog(operateType = EXPORT)
+    public void exportSaleReportDetailPage(@Valid ErpSaleReportPageReqVO reqVO,
+                                           HttpServletResponse response) throws IOException {
+        reqVO.setPageSize(PageParam.PAGE_SIZE_NONE);
+        ExcelUtils.write(response, "销售报表明细.xls", "明细", ErpSaleReportDetailExportRespVO.class,
+                saleReportService.getSaleReportDetailPage(reqVO).getList().stream()
                         .map(this::toDetailExportVO).collect(Collectors.toList()));
     }
 
@@ -131,6 +195,41 @@ public class ErpSaleReportController {
         target.setSaleAmount(formatExportAmount(source.getSaleAmount()));
         target.setReturnAmount(formatExportAmount(source.getReturnAmount()));
         target.setNetAmount(formatExportAmount(source.getNetAmount()));
+        return target;
+    }
+
+    private ErpSaleReportProductExportRespVO toProductExportVO(ErpSaleReportProductRespVO source) {
+        ErpSaleReportProductExportRespVO target = new ErpSaleReportProductExportRespVO();
+        target.setProductCode(source.getProductCode());
+        target.setProductName(source.getProductName());
+        target.setBarCode(source.getBarCode());
+        target.setUnitName(source.getUnitName());
+        target.setBrand(source.getBrand());
+        target.setStandard(source.getStandard());
+        target.setVehicleModel(source.getVehicleModel());
+        target.setDrawingNo(source.getDrawingNo());
+        target.setCustomerCount(source.getCustomerCount());
+        target.setDocCount(source.getDocCount());
+        target.setSaleCount(source.getSaleCount());
+        target.setSaleAmount(formatExportAmount(source.getSaleAmount()));
+        target.setReturnCount(source.getReturnCount());
+        target.setReturnAmount(formatExportAmount(source.getReturnAmount()));
+        target.setNetAmount(formatExportAmount(source.getNetAmount()));
+        target.setLastBizTime(source.getLastBizTime());
+        return target;
+    }
+
+    private ErpSaleReportDeptExportRespVO toDeptExportVO(ErpSaleReportDeptRespVO source) {
+        ErpSaleReportDeptExportRespVO target = new ErpSaleReportDeptExportRespVO();
+        target.setDeptName(source.getDeptName());
+        target.setCustomerCount(source.getCustomerCount());
+        target.setDocCount(source.getDocCount());
+        target.setSaleCount(source.getSaleCount());
+        target.setSaleAmount(formatExportAmount(source.getSaleAmount()));
+        target.setReturnCount(source.getReturnCount());
+        target.setReturnAmount(formatExportAmount(source.getReturnAmount()));
+        target.setNetAmount(formatExportAmount(source.getNetAmount()));
+        target.setLastBizTime(source.getLastBizTime());
         return target;
     }
 

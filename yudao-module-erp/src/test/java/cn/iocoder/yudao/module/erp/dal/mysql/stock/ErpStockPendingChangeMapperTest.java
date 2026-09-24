@@ -28,7 +28,8 @@ class ErpStockPendingChangeMapperTest {
         String expression = ErpStockMapper.occupiedCountExpression();
 
         assertTrue(expression.contains("erp_sale_cart_items"));
-        assertTrue(expression.contains("sc.status IN (10,20,30)"));
+        assertTrue(expression.contains("sc.status IN (20,30)"));
+        assertFalse(expression.contains("sc.status IN (10,20,30)"));
         assertTrue(expression.contains("NOT EXISTS"));
         assertTrue(expression.contains("erp_sale_out_items"));
         assertTrue(expression.contains("erp_purchase_return_items"));

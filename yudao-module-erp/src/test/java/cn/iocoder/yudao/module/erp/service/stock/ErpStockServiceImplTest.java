@@ -523,6 +523,9 @@ public class ErpStockServiceImplTest extends BaseMockitoUnitTest {
         assertSame(pageResult, result);
         verify(stockRecordMapper).selectStockKeyMapByBatchNoKeyword(
                 "BATCH-202607", visibleWarehouseIds);
+        verify(stockBatchQuantityMapper).selectAssociatedBatchKeywordStockKeyList(
+                eq("BATCH-202607"), eq(visibleWarehouseIds), eq(10), eq(Arrays.asList(20, 30)),
+                eq(1), eq(10), eq(20), eq(Collections.singletonList(20)));
         verify(stockMapper).selectPage(eq(reqVO), org.mockito.ArgumentMatchers.<Collection<Long>>isNull(),
                 eq(visibleWarehouseIds), eq(Collections.emptyList()), eq(Collections.emptyList()),
                 eq(expectedStockKeyMap));

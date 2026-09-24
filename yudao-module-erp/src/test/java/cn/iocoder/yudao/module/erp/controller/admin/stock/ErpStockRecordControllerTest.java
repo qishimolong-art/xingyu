@@ -15,6 +15,8 @@ import cn.iocoder.yudao.module.erp.enums.DictTypeConstants;
 import cn.iocoder.yudao.module.erp.service.product.ErpProductService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpStockRecordService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpWarehouseService;
+import cn.iocoder.yudao.module.system.api.dept.DeptApi;
+import cn.iocoder.yudao.module.system.api.dept.dto.DeptRespDTO;
 import cn.iocoder.yudao.module.system.api.permission.PermissionApi;
 import cn.iocoder.yudao.module.system.api.user.AdminUserApi;
 import org.apache.poi.ss.usermodel.Sheet;
@@ -54,6 +56,8 @@ public class ErpStockRecordControllerTest extends BaseMockitoUnitTest {
     @Mock
     private ErpWarehouseService warehouseService;
     @Mock
+    private DeptApi deptApi;
+    @Mock
     private AdminUserApi adminUserApi;
     @Mock
     private PermissionApi permissionApi;
@@ -70,14 +74,14 @@ public class ErpStockRecordControllerTest extends BaseMockitoUnitTest {
     @Test
     public void testGetStockRecordReportPage_showFilledAmount() {
         ErpStockRecordDO inRecord = new ErpStockRecordDO()
-                .setId(1L).setProductId(11L).setWarehouseId(21L)
+                .setId(1L).setProductId(11L).setWarehouseId(21L).setDeptId(31L)
                 .setCount(new BigDecimal("4"))
                 .setUnitPrice(new BigDecimal("2.50"))
                 .setTotalPrice(new BigDecimal("10.00"))
                 .setBizNo("IN001");
         inRecord.setCreator("1001");
         ErpStockRecordDO outRecord = new ErpStockRecordDO()
-                .setId(2L).setProductId(12L).setWarehouseId(22L)
+                .setId(2L).setProductId(12L).setWarehouseId(22L).setDeptId(32L)
                 .setCount(new BigDecimal("-3"))
                 .setUnitPrice(new BigDecimal("5.00"))
                 .setTotalPrice(new BigDecimal("-15.00"))
@@ -95,6 +99,10 @@ public class ErpStockRecordControllerTest extends BaseMockitoUnitTest {
         warehouseMap.put(21L, new ErpWarehouseDO().setId(21L).setName("Warehouse A"));
         warehouseMap.put(22L, new ErpWarehouseDO().setId(22L).setName("Warehouse B"));
         when(warehouseService.getWarehouseMap(any())).thenReturn(warehouseMap);
+        Map<Long, DeptRespDTO> deptMap = new HashMap<>();
+        deptMap.put(31L, buildDept(31L, "Dept A"));
+        deptMap.put(32L, buildDept(32L, "Dept B"));
+        when(deptApi.getDeptMap(any())).thenReturn(deptMap);
 
         CommonResult<PageResult<ErpStockRecordReportRespVO>> response =
                 controller.getStockRecordReportPage(new ErpStockRecordPageReqVO());
@@ -103,10 +111,14 @@ public class ErpStockRecordControllerTest extends BaseMockitoUnitTest {
         assertNotNull(result);
         assertEquals(2L, result.getTotal());
         assertEquals("P-11", result.getList().get(0).getProductCode());
+        assertEquals(31L, result.getList().get(0).getDeptId());
+        assertEquals("Dept A", result.getList().get(0).getDeptName());
         assertEquals(new BigDecimal("4"), result.getList().get(0).getInCount());
         assertEquals(new BigDecimal("2.50"), result.getList().get(0).getInUnitPrice());
         assertEquals(new BigDecimal("10.00"), result.getList().get(0).getInAmount());
         assertEquals("P-12", result.getList().get(1).getProductCode());
+        assertEquals(32L, result.getList().get(1).getDeptId());
+        assertEquals("Dept B", result.getList().get(1).getDeptName());
         assertEquals(new BigDecimal("3"), result.getList().get(1).getOutCount());
         assertEquals(new BigDecimal("5.00"), result.getList().get(1).getOutUnitPrice());
         assertEquals(new BigDecimal("15.00"), result.getList().get(1).getOutAmount());
@@ -161,12 +173,13 @@ public class ErpStockRecordControllerTest extends BaseMockitoUnitTest {
         assertTrue(response.getHeader("Content-Disposition").contains(".xlsx"));
         try (Workbook workbook = WorkbookFactory.create(new ByteArrayInputStream(content))) {
             Sheet sheet = workbook.getSheetAt(0);
-            assertEquals("采购入库", sheet.getRow(1).getCell(1).getStringCellValue());
-            assertEquals("IN001", sheet.getRow(1).getCell(2).getStringCellValue());
-            assertEquals(4D, sheet.getRow(1).getCell(7).getNumericCellValue());
-            assertEquals("销售出库", sheet.getRow(2).getCell(1).getStringCellValue());
-            assertEquals("OUT001", sheet.getRow(2).getCell(2).getStringCellValue());
-            assertEquals(3D, sheet.getRow(2).getCell(10).getNumericCellValue());
+            assertEquals(-1, findColumnIndex(sheet, "部门"));
+            assertEquals("采购入库", sheet.getRow(1).getCell(findColumnIndex(sheet, "交易类型")).getStringCellValue());
+            assertEquals("IN001", sheet.getRow(1).getCell(findColumnIndex(sheet, "单号")).getStringCellValue());
+            assertEquals(4D, sheet.getRow(1).getCell(findColumnIndex(sheet, "入库数")).getNumericCellValue());
+            assertEquals("销售出库", sheet.getRow(2).getCell(findColumnIndex(sheet, "交易类型")).getStringCellValue());
+            assertEquals("OUT001", sheet.getRow(2).getCell(findColumnIndex(sheet, "单号")).getStringCellValue());
+            assertEquals(3D, sheet.getRow(2).getCell(findColumnIndex(sheet, "出库数")).getNumericCellValue());
         }
     }
 
@@ -226,11 +239,20 @@ public class ErpStockRecordControllerTest extends BaseMockitoUnitTest {
         controller.exportStockRecordReportExcel(new ErpStockRecordPageReqVO(), exportResponse);
         try (Workbook workbook = WorkbookFactory.create(new ByteArrayInputStream(exportResponse.getContentAsByteArray()))) {
             Sheet sheet = workbook.getSheetAt(0);
-            assertEquals("****", sheet.getRow(1).getCell(8).getStringCellValue());
-            assertEquals("****", sheet.getRow(1).getCell(9).getStringCellValue());
-            assertEquals("****", sheet.getRow(1).getCell(14).getStringCellValue());
-            assertEquals("****", sheet.getRow(1).getCell(15).getStringCellValue());
+            assertEquals("****", sheet.getRow(1).getCell(findColumnIndex(sheet, "入库单价")).getStringCellValue());
+            assertEquals("****", sheet.getRow(1).getCell(findColumnIndex(sheet, "入库金额")).getStringCellValue());
+            assertEquals("****", sheet.getRow(1).getCell(findColumnIndex(sheet, "结存单价")).getStringCellValue());
+            assertEquals("****", sheet.getRow(1).getCell(findColumnIndex(sheet, "结存金额")).getStringCellValue());
         }
+    }
+
+    private static int findColumnIndex(Sheet sheet, String header) {
+        for (int i = 0; i < sheet.getRow(0).getLastCellNum(); i++) {
+            if (header.equals(sheet.getRow(0).getCell(i).getStringCellValue())) {
+                return i;
+            }
+        }
+        return -1;
     }
 
     private static DictDataRespDTO buildDictData(String value, String label) {
@@ -239,6 +261,13 @@ public class ErpStockRecordControllerTest extends BaseMockitoUnitTest {
         dictData.setValue(value);
         dictData.setLabel(label);
         return dictData;
+    }
+
+    private static DeptRespDTO buildDept(Long id, String name) {
+        DeptRespDTO dept = new DeptRespDTO();
+        dept.setId(id);
+        dept.setName(name);
+        return dept;
     }
 
 }

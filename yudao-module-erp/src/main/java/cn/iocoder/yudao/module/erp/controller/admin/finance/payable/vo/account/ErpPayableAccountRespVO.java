@@ -43,11 +43,14 @@ public class ErpPayableAccountRespVO {
     @Schema(description = "采购调价金额")
     private BigDecimal priceAdjustAmount;
 
-    @Schema(description = "其他应付金额")
+    @Schema(description = "应付调账金额")
     private BigDecimal otherPayableAmount;
 
-    @Schema(description = "独立其他应付金额")
+    @Schema(description = "其他应付款金额，取独立其他应付合计的负数，不计入应付余额")
     private BigDecimal miscPayableAmount;
+
+    @Schema(description = "此前应付金额，按筛选开始时间之前的应付主账款余额统计")
+    private BigDecimal openingPayableBalance;
 
     @Schema(description = "付款金额")
     private BigDecimal paymentAmount;

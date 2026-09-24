@@ -9,6 +9,7 @@ import cn.iocoder.yudao.module.erp.dal.mysql.common.ErpKeywordQuery;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import org.apache.ibatis.annotations.Mapper;
 
+import java.util.Collection;
 import java.util.List;
 
 /**
@@ -61,6 +62,12 @@ public interface ErpVoucherMapper extends BaseMapperX<ErpVoucherDO> {
         return selectList(new LambdaQueryWrapperX<ErpVoucherDO>()
                 .eq(ErpVoucherDO::getSourceBizType, sourceBizType)
                 .eq(ErpVoucherDO::getSourceBizId, sourceBizId));
+    }
+
+    default List<ErpVoucherDO> selectListByBizTypes(Collection<Integer> sourceBizTypes, Collection<Long> sourceBizIds) {
+        return selectList(new LambdaQueryWrapperX<ErpVoucherDO>()
+                .in(ErpVoucherDO::getSourceBizType, sourceBizTypes)
+                .in(ErpVoucherDO::getSourceBizId, sourceBizIds));
     }
 
 }

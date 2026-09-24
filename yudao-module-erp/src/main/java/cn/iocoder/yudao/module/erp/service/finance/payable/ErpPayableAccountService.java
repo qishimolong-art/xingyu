@@ -14,6 +14,8 @@ public interface ErpPayableAccountService {
 
     PageResult<ErpPayableAccountDO> getPayableAccountPage(ErpPayableAccountPageReqVO reqVO);
 
+    List<ErpPayableAccountDO> getPayableAccountList(ErpPayableAccountPageReqVO reqVO);
+
     List<ErpPayableDetailRespVO> getPayableDetailList(ErpPayableDetailReqVO reqVO);
 
     List<ErpPayableDetailRespVO> getPayableDetailList(ErpPayableDetailReqVO reqVO,

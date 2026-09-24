@@ -640,6 +640,7 @@ public class ErpStockMoveServiceImpl implements ErpStockMoveService {
         ErpStockMoveDO stockMove = lockStockMoveForMutation(updateReqVO.getId());
         preserveMoveSource(updateReqVO, stockMove);
         validateTransferOut(stockMove);
+        validateTransferOutEditable(stockMove);
         if (!ErpStockTransferOutStatusEnum.DRAFT.getStatus().equals(stockMove.getStatus())) {
             throw exception(STOCK_MOVE_UPDATE_FAIL_NOT_DRAFT, stockMove.getNo());
         }
@@ -743,6 +744,7 @@ public class ErpStockMoveServiceImpl implements ErpStockMoveService {
         // 1.1 ??????
         ErpStockMoveDO stockMove = lockStockMoveForMutation(updateReqVO.getId());
         validateTransferOut(stockMove);
+        validateTransferOutEditable(stockMove);
         if (ErpStockTransferOutStatusEnum.DRAFT.getStatus().equals(stockMove.getStatus())) {
             throw exception(STOCK_MOVE_FORMAL_UPDATE_FAIL_DRAFT, stockMove.getNo());
         }
@@ -794,6 +796,12 @@ public class ErpStockMoveServiceImpl implements ErpStockMoveService {
             reqItem.setSourceSaleReturnItemId(oldItem.getSourceSaleReturnItemId());
             reqItem.setSourceSaleReturnNo(oldItem.getSourceSaleReturnNo());
             reqItem.setProductId(oldItem.getProductId());
+        }
+    }
+
+    private void validateTransferOutEditable(ErpStockMoveDO stockMove) {
+        if (isSaleCartSource(stockMove.getSourceType())) {
+            throw exception(STOCK_MOVE_UPDATE_CART_SOURCE_DENIED);
         }
     }
 
@@ -871,16 +879,24 @@ public class ErpStockMoveServiceImpl implements ErpStockMoveService {
             throw exception(STOCK_MOVE_APPROVE_DEPT_PERMISSION_DENIED);
         }
         // 共享表的通用规则只识别 dept_id；此入口由调拨出库专用范围完成对象级审批校验。
-        DataPermissionUtils.executeIgnore(() -> doUpdateStockMoveStatus(id, status, scope));
+        DataPermissionUtils.executeIgnore(() -> doUpdateStockMoveStatus(id, status, scope, null, false));
     }
 
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void updateStockMoveStatus(Long id, Integer status) {
-        doUpdateStockMoveStatus(id, status, getTransferOutPermissionScope());
+        doUpdateStockMoveStatus(id, status, getTransferOutPermissionScope(), null, false);
     }
 
-    private void doUpdateStockMoveStatus(Long id, Integer status, ErpStockTransferOutPermissionScope scope) {
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void approveSaleCartTransferOutAfterDelivery(Long id, Long approveUserId) {
+        DataPermissionUtils.executeIgnore(() -> doUpdateStockMoveStatus(id, ErpAuditStatus.APPROVE.getStatus(),
+                new ErpStockTransferOutPermissionScope(true, Collections.emptySet()), approveUserId, true));
+    }
+
+    private void doUpdateStockMoveStatus(Long id, Integer status, ErpStockTransferOutPermissionScope scope,
+                                         Long forceApproveUserId, boolean deliveryDriven) {
         if (!ErpAuditStatus.APPROVE.getStatus().equals(status)) {
             throw exception(STOCK_MOVE_PROCESS_FAIL);
         }
@@ -891,6 +907,12 @@ public class ErpStockMoveServiceImpl implements ErpStockMoveService {
             throw exception(STOCK_MOVE_APPROVE_FAIL);
         }
         boolean saleCartTransferOut = isSaleCartSource(stockMove.getSourceType());
+        if (saleCartTransferOut && !deliveryDriven) {
+            throw exception(STOCK_MOVE_APPROVE_CART_SOURCE_PICK_DELIVERY_REQUIRED);
+        }
+        if (deliveryDriven && (!saleCartTransferOut || stockMove.getSourceId() == null)) {
+            throw exception(STOCK_MOVE_APPROVE_FAIL);
+        }
         ErpStockMoveDO existingTransferIn = findTransferInMirror(stockMove);
         if (existingTransferIn != null
                 && ErpAuditStatus.APPROVE.getStatus().equals(existingTransferIn.getStatus())) {
@@ -918,7 +940,7 @@ public class ErpStockMoveServiceImpl implements ErpStockMoveService {
             throw exception(STOCK_MOVE_APPROVE_FAIL);
         }
 
-        Long approveUserId = getLoginUserId();
+        Long approveUserId = forceApproveUserId != null ? forceApproveUserId : getLoginUserId();
         LocalDateTime approveTime = LocalDateTime.now();
         int updateCount = stockMoveMapper.updateByIdAndStatus(id, stockMove.getStatus(),
                 new ErpStockMoveDO().setStatus(status)

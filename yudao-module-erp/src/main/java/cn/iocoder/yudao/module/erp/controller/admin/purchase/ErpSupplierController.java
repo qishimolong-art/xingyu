@@ -200,6 +200,7 @@ public class ErpSupplierController {
         ErpSupplierRespVO respVO = BeanUtils.toBean(supplier, ErpSupplierRespVO.class);
         fillSupplierExtra(Collections.singletonList(respVO));
         fieldPermissionMasker.mask("erp_supplier", respVO);
+        fillBusinessInfoSynced(Collections.singletonList(respVO));
         return success(respVO);
     }
 

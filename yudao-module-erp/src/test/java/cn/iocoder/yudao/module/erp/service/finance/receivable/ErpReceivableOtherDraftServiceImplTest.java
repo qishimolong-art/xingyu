@@ -6,10 +6,12 @@ import cn.iocoder.yudao.module.erp.controller.admin.finance.receivable.vo.otherr
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.receivable.ErpReceivableOtherDO;
 import cn.iocoder.yudao.module.erp.dal.mysql.finance.receivable.ErpReceivableOtherMapper;
 import cn.iocoder.yudao.module.erp.dal.redis.no.ErpNoRedisDAO;
+import cn.iocoder.yudao.module.erp.enums.ErpAuditStatus;
 import cn.iocoder.yudao.module.erp.enums.finance.ErpReceivableOtherStatusEnum;
 import cn.iocoder.yudao.module.erp.service.common.ErpOperateLogService;
 import cn.iocoder.yudao.module.erp.service.finance.ErpFinanceFieldPermissionMasker;
 import cn.iocoder.yudao.module.erp.service.finance.bo.ErpSaleCartFreightDraftCreateReqBO;
+import cn.iocoder.yudao.module.erp.service.sale.ErpCustomerDeptPermissionService;
 import cn.iocoder.yudao.module.erp.service.sale.ErpCustomerService;
 import cn.iocoder.yudao.module.system.api.dept.DeptApi;
 import cn.iocoder.yudao.module.system.api.dept.dto.DeptRespDTO;
@@ -23,6 +25,7 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 
 import static cn.iocoder.yudao.framework.test.core.util.AssertUtils.assertServiceException;
+import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.OTHER_RECEIVABLE_CUSTOMER_DEPT_NOT_ALLOWED;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.OTHER_RECEIVABLE_DRAFT_SAVE_FAIL;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.OTHER_RECEIVABLE_DRAFT_SUBMIT_FAIL;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.OTHER_RECEIVABLE_DRAFT_UPDATE_FAIL;
@@ -54,6 +57,8 @@ class ErpReceivableOtherDraftServiceImplTest extends BaseMockitoUnitTest {
     private ErpFinanceFieldPermissionMasker fieldPermissionMasker;
     @Mock
     private ErpOperateLogService operateLogService;
+    @Mock
+    private ErpCustomerDeptPermissionService customerDeptPermissionService;
 
     @Test
     void createReceivableOther_rejectsZeroReceivableAmount() {
@@ -70,6 +75,8 @@ class ErpReceivableOtherDraftServiceImplTest extends BaseMockitoUnitTest {
     @Test
     void createReceivableOther_allowsNegativeReceivableAmount() {
         when(deptApi.getDept(2L)).thenReturn(new DeptRespDTO().setId(2L));
+        when(customerDeptPermissionService.hasAvailableDept(1L, 2L, "erp_receivable_other"))
+                .thenReturn(true);
         when(noRedisDAO.generate(ErpNoRedisDAO.OTHER_RECEIVABLE_NO_PREFIX))
                 .thenReturn("QTYS-NEGATIVE-1");
         when(receivableOtherMapper.insert(any(ErpReceivableOtherDO.class))).thenAnswer(invocation -> {
@@ -89,6 +96,22 @@ class ErpReceivableOtherDraftServiceImplTest extends BaseMockitoUnitTest {
         verify(receivableOtherMapper).insert(captor.capture());
         verify(customerService).validateCustomer(1L);
         assertThat(captor.getValue().getReceivableAmount()).isEqualByComparingTo("-12.50");
+    }
+
+    @Test
+    void createReceivableOther_rejectsCustomerDeptOutsideAvailableScope() {
+        when(deptApi.getDept(2L)).thenReturn(new DeptRespDTO().setId(2L));
+        when(noRedisDAO.generate(ErpNoRedisDAO.OTHER_RECEIVABLE_NO_PREFIX))
+                .thenReturn("QTYS-DEPT-1");
+
+        assertServiceException(
+                () -> service.createReceivableOther(new ErpReceivableOtherSaveReqVO()
+                        .setBizTime(LocalDate.now())
+                        .setCustomerId(1L)
+                        .setDeptId(2L)
+                        .setReceivableAmount(BigDecimal.ONE)),
+                OTHER_RECEIVABLE_CUSTOMER_DEPT_NOT_ALLOWED);
+        verify(receivableOtherMapper, never()).insert(any(ErpReceivableOtherDO.class));
     }
 
     @Test
@@ -125,7 +148,7 @@ class ErpReceivableOtherDraftServiceImplTest extends BaseMockitoUnitTest {
     }
 
     @Test
-    void createFromSaleCartFreight_validatesCustomerByGeneratedSaleDept() {
+    void createFromSaleCartFreight_createsProcessReceivableAdjustmentWithExpectedFields() {
         when(deptApi.getDept(102L)).thenReturn(new DeptRespDTO().setId(102L));
         when(noRedisDAO.generate(ErpNoRedisDAO.OTHER_RECEIVABLE_NO_PREFIX))
                 .thenReturn("QTYS-FREIGHT-1");
@@ -141,11 +164,50 @@ class ErpReceivableOtherDraftServiceImplTest extends BaseMockitoUnitTest {
                 .setCustomerId(11L)
                 .setDeptId(102L)
                 .setHandlerId(290L)
-                .setAmount(BigDecimal.TEN));
+                .setAmount(new BigDecimal("88.50")));
 
         assertThat(id).isEqualTo(2L);
+        ArgumentCaptor<ErpReceivableOtherDO> captor =
+                ArgumentCaptor.forClass(ErpReceivableOtherDO.class);
+        verify(receivableOtherMapper).insert(captor.capture());
         verify(customerService).validateCustomerForGeneratedSale(11L, 102L);
         verify(customerService, never()).validateCustomer(any());
+        ErpReceivableOtherDO created = captor.getValue();
+        assertThat(created.getNo()).isEqualTo("QTYS-FREIGHT-1");
+        assertThat(created.getStatus()).isEqualTo(ErpAuditStatus.PROCESS.getStatus());
+        assertThat(created.getBizTime()).isEqualTo(LocalDate.now());
+        assertThat(created.getCustomerId()).isEqualTo(11L);
+        assertThat(created.getDeptId()).isEqualTo(102L);
+        assertThat(created.getHandlerId()).isEqualTo(290L);
+        assertThat(created.getReceivableAmount()).isEqualByComparingTo("88.50");
+        assertThat(created.getSettledAmount()).isEqualByComparingTo(BigDecimal.ZERO);
+        assertThat(created.getProject()).isEqualTo("代客户付运费");
+        assertThat(created.getReceivableType()).isEqualTo("客户运费");
+        assertThat(created.getCostAmount()).isEqualByComparingTo(BigDecimal.ZERO);
+        assertThat(created.getSourceType()).isEqualTo("销售手推车");
+        assertThat(created.getSourceId()).isEqualTo(155L);
+        assertThat(created.getSourceNo()).isEqualTo("XSST20260726000009");
+        assertThat(created.getRemark()).isEqualTo("销售手推车终审自动生成，来源单号：XSST20260726000009");
+    }
+
+    @Test
+    void createFromSaleCartFreight_returnsExistingReceivableAdjustmentForSameSaleCartSource() {
+        when(receivableOtherMapper.selectBySource("销售手推车", 155L))
+                .thenReturn(new ErpReceivableOtherDO().setId(9L));
+
+        Long id = service.createFromSaleCartFreight(new ErpSaleCartFreightDraftCreateReqBO()
+                .setCartId(155L)
+                .setCartNo("XSST20260726000009")
+                .setBizTime(LocalDate.now())
+                .setCustomerId(11L)
+                .setDeptId(102L)
+                .setHandlerId(290L)
+                .setAmount(new BigDecimal("88.50")));
+
+        assertThat(id).isEqualTo(9L);
+        verify(receivableOtherMapper, never()).insert(any(ErpReceivableOtherDO.class));
+        verify(noRedisDAO, never()).generate(any());
+        verify(customerService, never()).validateCustomerForGeneratedSale(any(), any());
     }
 
     @Test
@@ -164,7 +226,9 @@ class ErpReceivableOtherDraftServiceImplTest extends BaseMockitoUnitTest {
     void updateDraft_requiresCustomer() {
         when(receivableOtherMapper.selectById(10L)).thenReturn(new ErpReceivableOtherDO()
                 .setId(10L).setNo("QTYS10")
-                .setStatus(ErpReceivableOtherStatusEnum.DRAFT.getStatus()));
+                .setStatus(ErpReceivableOtherStatusEnum.DRAFT.getStatus())
+                .setSourceType("调账")
+                .setSourceNo("OLD-SOURCE"));
 
         assertServiceException(
                 () -> service.updateReceivableOtherDraft(
@@ -177,12 +241,14 @@ class ErpReceivableOtherDraftServiceImplTest extends BaseMockitoUnitTest {
     void updateDraft_usesStatusGuardAndPreservesIdentity() {
         when(receivableOtherMapper.selectById(10L)).thenReturn(new ErpReceivableOtherDO()
                 .setId(10L).setNo("QTYS10")
-                .setStatus(ErpReceivableOtherStatusEnum.DRAFT.getStatus()));
+                .setStatus(ErpReceivableOtherStatusEnum.DRAFT.getStatus())
+                .setSourceType("调账")
+                .setSourceNo("OLD-SOURCE"));
         when(receivableOtherMapper.updateByIdAndStatus(eq(10L),
                 eq(ErpReceivableOtherStatusEnum.DRAFT.getStatus()), any())).thenReturn(1);
 
         service.updateReceivableOtherDraft(new ErpReceivableOtherDraftSaveReqVO()
-                .setId(10L).setCustomerId(1L).setRemark("继续编辑"));
+                .setId(10L).setCustomerId(1L).setSourceType("恶意修改").setRemark("继续编辑"));
 
         ArgumentCaptor<ErpReceivableOtherDO> captor =
                 ArgumentCaptor.forClass(ErpReceivableOtherDO.class);
@@ -193,6 +259,8 @@ class ErpReceivableOtherDraftServiceImplTest extends BaseMockitoUnitTest {
         assertThat(captor.getValue().getStatus())
                 .isEqualTo(ErpReceivableOtherStatusEnum.DRAFT.getStatus());
         assertThat(captor.getValue().getCustomerId()).isEqualTo(1L);
+        assertThat(captor.getValue().getSourceType()).isEqualTo("调账");
+        assertThat(captor.getValue().getSourceNo()).isEqualTo("OLD-SOURCE");
         assertThat(captor.getValue().getRemark()).isEqualTo("继续编辑");
     }
 
@@ -217,6 +285,7 @@ class ErpReceivableOtherDraftServiceImplTest extends BaseMockitoUnitTest {
                 .setStatus(ErpReceivableOtherStatusEnum.DRAFT.getStatus())
                 .setBizTime(LocalDate.now())
                 .setCustomerId(1L)
+                .setDeptId(2L)
                 .setReceivableAmount(BigDecimal.ZERO)
                 .setRemark("测试"));
 
@@ -232,8 +301,12 @@ class ErpReceivableOtherDraftServiceImplTest extends BaseMockitoUnitTest {
                 .setStatus(ErpReceivableOtherStatusEnum.DRAFT.getStatus())
                 .setBizTime(LocalDate.now())
                 .setCustomerId(1L)
+                .setDeptId(2L)
                 .setReceivableAmount(new BigDecimal("-1.00"))
                 .setRemark("测试"));
+        when(deptApi.getDept(2L)).thenReturn(new DeptRespDTO().setId(2L));
+        when(customerDeptPermissionService.hasAvailableDept(1L, 2L, "erp_receivable_other"))
+                .thenReturn(true);
         when(receivableOtherMapper.updateByIdAndStatus(eq(10L),
                 eq(ErpReceivableOtherStatusEnum.DRAFT.getStatus()), any())).thenReturn(1);
 

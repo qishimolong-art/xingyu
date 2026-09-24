@@ -50,6 +50,21 @@ public final class ErpOriginalSettlementAmountUtils {
                 firstNonNull(saleOut.getFeeAmount(), saleOut.getOtherPrice(), saleOut.getExtraFee()));
     }
 
+    public static BigDecimal calculateSaleOutReceivableAccountAmount(ErpSaleOutDO saleOut,
+                                                                      List<ErpSaleOutItemDO> items) {
+        if (!hasSaleOriginalPrice(items)) {
+            return zeroIfNull(saleOut.getTotalPrice()).subtract(firstNonNull(
+                    saleOut.getFeeAmount(), saleOut.getOtherPrice(), saleOut.getExtraFee(), saleOut.getFreight()));
+        }
+        BigDecimal productPrice = items.stream()
+                .map(item -> MoneyUtils.priceMultiply(
+                        item.getOriginalProductPrice() != null ? item.getOriginalProductPrice() : item.getProductPrice(),
+                        item.getCount()))
+                .filter(price -> price != null)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        return calculateTotal(productPrice, saleOut.getDiscountPercent(), BigDecimal.ZERO);
+    }
+
     private static boolean hasPurchaseOriginalPrice(List<ErpPurchaseInItemDO> items) {
         return CollUtil.isNotEmpty(items) && items.stream()
                 .anyMatch(item -> item.getOriginalProductPrice() != null);

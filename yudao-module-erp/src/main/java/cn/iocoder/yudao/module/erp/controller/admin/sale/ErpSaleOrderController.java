@@ -23,9 +23,14 @@ import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.order.ErpSaleOrderSa
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpCustomerDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleOrderDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleOrderItemDO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleOutItemDO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockRecordDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpWarehouseDO;
 import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpSaleOrderItemMapper;
+import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpSaleOutItemMapper;
+import cn.iocoder.yudao.module.erp.dal.mysql.stock.ErpStockRecordMapper;
 import cn.iocoder.yudao.module.erp.enums.config.ErpFieldConfigModuleEnum;
+import cn.iocoder.yudao.module.erp.enums.stock.ErpStockRecordBizTypeEnum;
 import cn.iocoder.yudao.module.erp.framework.excel.ErpImportTemplateRequiredFieldUtils;
 import cn.iocoder.yudao.module.erp.service.base.ErpDataPermissionDeptService;
 import cn.iocoder.yudao.module.erp.service.common.ErpImportExportRecordService;
@@ -44,6 +49,7 @@ import cn.iocoder.yudao.module.system.api.user.AdminUserApi;
 import cn.iocoder.yudao.module.system.api.user.dto.AdminUserRespDTO;
 import cn.iocoder.yudao.module.system.controller.admin.dept.vo.dept.DeptSimpleRespVO;
 import cn.iocoder.yudao.module.system.controller.admin.user.vo.user.UserSimpleRespVO;
+import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -57,8 +63,11 @@ import javax.servlet.http.HttpServletResponse;
 import javax.validation.Valid;
 import java.io.IOException;
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -110,6 +119,10 @@ public class ErpSaleOrderController {
     private ErpDataPermissionDeptService dataPermissionDeptService;
     @Resource
     private ErpSaleOrderItemMapper saleOrderItemMapper;
+    @Resource
+    private ErpSaleOutItemMapper saleOutItemMapper;
+    @Resource
+    private ErpStockRecordMapper stockRecordMapper;
     @Resource
     private ErpCustomerDeptPermissionService customerDeptPermissionService;
 
@@ -187,6 +200,8 @@ public class ErpSaleOrderController {
         deptIds.addAll(convertSet(warehouseMap.values(), ErpWarehouseDO::getDeptId));
         deptIds.remove(null);
         Map<Long, DeptRespDTO> itemDeptMap = CollUtil.isEmpty(deptIds) ? Collections.emptyMap() : deptApi.getDeptMap(deptIds);
+        Map<Long, SaleOrderItemCost> itemCostMap = getSaleOrderItemCostMap(
+                convertSet(saleOrderItemList, ErpSaleOrderItemDO::getId));
         ErpSaleOrderRespVO respVO = BeanUtils.toBean(saleOrder, ErpSaleOrderRespVO.class, saleOrderVO -> {
                 fillAuditNames(saleOrderVO, userMap);
                 if (dept != null) {
@@ -208,6 +223,7 @@ public class ErpSaleOrderController {
                                 MapUtils.findAndThen(itemDeptMap, warehouse.getDeptId(),
                                         deptResp -> item.setWarehouseDeptName(deptResp.getName()));
                             });
+                    fillSaleOrderItemCost(item, itemCostMap);
                 }));
         });
         itemPriceReferenceFiller.fill(respVO.getItems());
@@ -242,6 +258,8 @@ public class ErpSaleOrderController {
                 ? Collections.emptyMap() : deptApi.getDeptMap(deptIds);
         Map<Long, BigDecimal> stockCountMap = getStockCountMapIgnoreDataPermission(
                 convertSet(itemList, ErpSaleOrderItemDO::getProductId));
+        Map<Long, SaleOrderItemCost> itemCostMap = getSaleOrderItemCostMap(
+                convertSet(itemList, ErpSaleOrderItemDO::getId));
         List<ErpSaleOrderRespVO.Item> items = BeanUtils.toBean(itemList, ErpSaleOrderRespVO.Item.class, item -> {
             BigDecimal stockCount = stockCountMap.get(item.getProductId());
             item.setStockCount(stockCount != null ? stockCount : BigDecimal.ZERO);
@@ -254,6 +272,7 @@ public class ErpSaleOrderController {
                 MapUtils.findAndThen(itemDeptMap, warehouse.getDeptId(),
                         deptResp -> item.setWarehouseDeptName(deptResp.getName()));
             });
+            fillSaleOrderItemCost(item, itemCostMap);
         });
         itemPriceReferenceFiller.fill(items);
         PageResult<ErpSaleOrderRespVO.Item> respResult = new PageResult<>(items, pageResult.getTotal());
@@ -359,6 +378,8 @@ public class ErpSaleOrderController {
                 convertSet(saleOrderItemList, ErpSaleOrderItemDO::getProductId));
         Map<Long, ErpWarehouseDO> warehouseMap = getWarehouseMapIgnoreDataPermission(
                 convertSet(saleOrderItemList, ErpSaleOrderItemDO::getWarehouseId));
+        Map<Long, SaleOrderItemCost> itemCostMap = getSaleOrderItemCostMap(
+                convertSet(saleOrderItemList, ErpSaleOrderItemDO::getId));
         // 1.3 客户信息
         Map<Long, ErpCustomerDO> customerMap = customerService.getCustomerMap(
                 convertSet(pageResult.getList(), ErpSaleOrderDO::getCustomerId));
@@ -373,9 +394,14 @@ public class ErpSaleOrderController {
         // 2. 开始拼接
         return BeanUtils.toBean(pageResult, ErpSaleOrderRespVO.class, saleOrder -> {
             saleOrder.setItems(BeanUtils.toBean(saleOrderItemMap.get(saleOrder.getId()), ErpSaleOrderRespVO.Item.class,
-                    item -> MapUtils.findAndThen(productMap, item.getProductId(), product -> item.setProductName(product.getName())
-                            .setProductBarCode(product.getBarCode()).setProductUnitName(product.getUnitName())
-                            .setProductCode(product.getCode()))));
+                    item -> {
+                        MapUtils.findAndThen(productMap, item.getProductId(),
+                                product -> item.setProductName(product.getName())
+                                        .setProductBarCode(product.getBarCode())
+                                        .setProductUnitName(product.getUnitName())
+                                        .setProductCode(product.getCode()));
+                    fillSaleOrderItemCost(item, itemCostMap);
+                    }));
             saleOrder.getItems().forEach(item ->
                     MapUtils.findAndThen(warehouseMap, item.getWarehouseId(),
                             warehouse -> {
@@ -390,6 +416,78 @@ public class ErpSaleOrderController {
             fillAuditNames(saleOrder, userMap);
             MapUtils.findAndThen(deptMap, saleOrder.getDeptId(), dept -> saleOrder.setDeptName(dept.getName()));
         });
+    }
+
+    private Map<Long, SaleOrderItemCost> getSaleOrderItemCostMap(Collection<Long> orderItemIds) {
+        if (CollUtil.isEmpty(orderItemIds) || saleOutItemMapper == null || stockRecordMapper == null) {
+            return Collections.emptyMap();
+        }
+        List<ErpSaleOutItemDO> outItems = saleOutItemMapper.selectList(new QueryWrapper<ErpSaleOutItemDO>()
+                .select("id", "order_item_id")
+                .in("order_item_id", orderItemIds)
+                .isNotNull("order_item_id"));
+        if (CollUtil.isEmpty(outItems)) {
+            return Collections.emptyMap();
+        }
+        Map<Long, Long> outItemOrderItemMap = new HashMap<>();
+        for (ErpSaleOutItemDO outItem : outItems) {
+            outItemOrderItemMap.put(outItem.getId(), outItem.getOrderItemId());
+        }
+        List<ErpStockRecordDO> records = stockRecordMapper.selectList(new QueryWrapper<ErpStockRecordDO>()
+                .select("id", "biz_item_id", "count", "total_price")
+                .eq("biz_type", ErpStockRecordBizTypeEnum.SALE_OUT.getType())
+                .in("biz_item_id", outItemOrderItemMap.keySet())
+                .isNotNull("biz_item_id")
+                .orderByAsc("id"));
+        if (CollUtil.isEmpty(records)) {
+            return Collections.emptyMap();
+        }
+        Map<Long, SaleOrderItemCost> result = new HashMap<>();
+        for (ErpStockRecordDO record : records) {
+            Long orderItemId = outItemOrderItemMap.get(record.getBizItemId());
+            if (orderItemId == null) {
+                continue;
+            }
+            SaleOrderItemCost cost = result.computeIfAbsent(orderItemId, ignored -> new SaleOrderItemCost());
+            cost.add(abs(record.getTotalPrice()), abs(record.getCount()));
+        }
+        return result;
+    }
+
+    private void fillSaleOrderItemCost(ErpSaleOrderRespVO.Item item,
+                                       Map<Long, SaleOrderItemCost> itemCostMap) {
+        SaleOrderItemCost cost = itemCostMap.get(item.getId());
+        if (cost == null) {
+            return;
+        }
+        item.setSaleCostAmount(cost.getAmount());
+        if (cost.getCount().compareTo(BigDecimal.ZERO) > 0) {
+            item.setSaleCostPrice(cost.getAmount().divide(cost.getCount(), 2, RoundingMode.HALF_UP));
+        }
+    }
+
+    private BigDecimal abs(BigDecimal value) {
+        return value == null ? BigDecimal.ZERO : value.abs();
+    }
+
+    private static final class SaleOrderItemCost {
+
+        private BigDecimal amount = BigDecimal.ZERO;
+        private BigDecimal count = BigDecimal.ZERO;
+
+        void add(BigDecimal amount, BigDecimal count) {
+            this.amount = this.amount.add(amount);
+            this.count = this.count.add(count);
+        }
+
+        BigDecimal getAmount() {
+            return amount;
+        }
+
+        BigDecimal getCount() {
+            return count;
+        }
+
     }
 
     private PageResult<ErpSaleOrderRespVO> buildSaleOrderVOPageResultWithoutItems(PageResult<ErpSaleOrderDO> pageResult) {

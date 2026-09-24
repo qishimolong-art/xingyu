@@ -14,6 +14,10 @@ public class ErpSaleDeliveryOrderRespVO {
     private Long id;
     private Long saleOutId;
     private String saleOutNo;
+    private Integer sourceType;
+    private Long sourceId;
+    private String sourceNo;
+    private String displayNo;
     private Long customerId;
     private String customerName;
     private Long deptId;

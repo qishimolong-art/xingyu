@@ -17,7 +17,8 @@ import java.util.List;
 @Mapper
 public interface ErpReceivableAccountMapper extends BaseMapperX<ErpReceivableAccountDO> {
 
-    String SALE_OUT_ORIGINAL_SETTLEMENT_TOTAL_EXPRESSION = ErpSaleOutMapper.ORIGINAL_SETTLEMENT_TOTAL_EXPRESSION;
+    String SALE_OUT_RECEIVABLE_ACCOUNT_AMOUNT_EXPRESSION =
+            ErpSaleOutMapper.RECEIVABLE_ACCOUNT_SALE_AMOUNT_EXPRESSION;
 
     @SelectProvider(type = SqlProvider.class, method = "selectList")
     List<ErpReceivableAccountDO> selectList(@Param("reqVO") ErpReceivableAccountPageReqVO reqVO,
@@ -72,28 +73,28 @@ public interface ErpReceivableAccountMapper extends BaseMapperX<ErpReceivableAcc
             "       IFNULL(ro.otherReceivableAmount, 0) AS otherReceivableAmount,",
             "       IFNULL(rm.miscReceivableAmount, 0) AS miscReceivableAmount,",
             "       IFNULL(ext.advance_amount, 0) AS preAdvanceAmount,",
-            "       IFNULL(so.saleOutAmount, 0) + IFNULL(pa.priceAdjustAmount, 0) + IFNULL(ro.otherReceivableAmount, 0) + IFNULL(rm.miscReceivableAmount, 0) - IFNULL(sr.saleReturnAmount, 0) AS receivableAmount,",
+            "       IFNULL(so.saleOutAmount, 0) + IFNULL(pa.priceAdjustAmount, 0) + IFNULL(ro.otherReceivableAmount, 0) - IFNULL(sr.saleReturnAmount, 0) AS receivableAmount,",
             "       IFNULL(rc.receiptAmount, 0) AS receivedAmount,",
-            "       IFNULL(so.saleOutAmount, 0) + IFNULL(pa.priceAdjustAmount, 0) + IFNULL(ro.otherReceivableAmount, 0) + IFNULL(rm.miscReceivableAmount, 0) - IFNULL(sr.saleReturnAmount, 0) - IFNULL(rc.receiptAmount, 0) AS unreceivedAmount,",
+            "       IFNULL(so.saleOutAmount, 0) + IFNULL(pa.priceAdjustAmount, 0) + IFNULL(ro.otherReceivableAmount, 0) - IFNULL(sr.saleReturnAmount, 0) - IFNULL(rc.receiptAmount, 0) AS unreceivedAmount,",
             "       '应收账款' AS billType,",
             "       CASE WHEN IFNULL(rc.receiptAmount, 0) = 0 THEN '未收款'",
-            "            WHEN IFNULL(so.saleOutAmount, 0) + IFNULL(pa.priceAdjustAmount, 0) + IFNULL(ro.otherReceivableAmount, 0) + IFNULL(rm.miscReceivableAmount, 0) - IFNULL(sr.saleReturnAmount, 0) - IFNULL(rc.receiptAmount, 0) > 0 THEN '部分收款'",
+            "            WHEN IFNULL(so.saleOutAmount, 0) + IFNULL(pa.priceAdjustAmount, 0) + IFNULL(ro.otherReceivableAmount, 0) - IFNULL(sr.saleReturnAmount, 0) - IFNULL(rc.receiptAmount, 0) > 0 THEN '部分收款'",
             "            ELSE '已收款' END AS receiveStatus,",
-            "       IFNULL(so.saleOutAmount, 0) + IFNULL(pa.priceAdjustAmount, 0) + IFNULL(ro.otherReceivableAmount, 0) + IFNULL(rm.miscReceivableAmount, 0) - IFNULL(sr.saleReturnAmount, 0) - IFNULL(rc.receiptAmount, 0) AS receivableBalance,",
-            "       CASE WHEN c.credit_limit IS NULL THEN NULL ELSE c.credit_limit - (IFNULL(so.saleOutAmount, 0) + IFNULL(pa.priceAdjustAmount, 0) + IFNULL(ro.otherReceivableAmount, 0) + IFNULL(rm.miscReceivableAmount, 0) - IFNULL(sr.saleReturnAmount, 0) - IFNULL(rc.receiptAmount, 0)) END AS creditBalance,",
-            "       IFNULL(so.saleOutAmount, 0) + IFNULL(pa.priceAdjustAmount, 0) + IFNULL(ro.otherReceivableAmount, 0) + IFNULL(rm.miscReceivableAmount, 0) - IFNULL(sr.saleReturnAmount, 0) - IFNULL(rc.receiptAmount, 0) + IFNULL(ext.advance_amount, 0) AS totalReceivable,",
+            "       IFNULL(so.saleOutAmount, 0) + IFNULL(pa.priceAdjustAmount, 0) + IFNULL(ro.otherReceivableAmount, 0) - IFNULL(sr.saleReturnAmount, 0) - IFNULL(rc.receiptAmount, 0) AS receivableBalance,",
+            "       CASE WHEN c.credit_limit IS NULL THEN NULL ELSE c.credit_limit - (IFNULL(so.saleOutAmount, 0) + IFNULL(pa.priceAdjustAmount, 0) + IFNULL(ro.otherReceivableAmount, 0) - IFNULL(sr.saleReturnAmount, 0) - IFNULL(rc.receiptAmount, 0)) END AS creditBalance,",
+            "       IFNULL(so.saleOutAmount, 0) + IFNULL(pa.priceAdjustAmount, 0) + IFNULL(ro.otherReceivableAmount, 0) - IFNULL(sr.saleReturnAmount, 0) - IFNULL(rc.receiptAmount, 0) + IFNULL(ext.advance_amount, 0) AS totalReceivable,",
             "       lastBiz.lastBizTime AS lastBizTime",
             "  FROM erp_customer c",
             "  LEFT JOIN system_users u ON u.id = c.sale_user_id",
             "  LEFT JOIN system_dept d ON d.id = c.dept_id",
             "  LEFT JOIN erp_customer_extend_info ext ON ext.customer_id = c.id",
-            "  LEFT JOIN (SELECT t.customer_id, SUM(" + SALE_OUT_ORIGINAL_SETTLEMENT_TOTAL_EXPRESSION + ") AS saleOutAmount, MAX(t.out_time) AS lastBizTime FROM erp_sale_out t WHERE t.deleted = 0 AND t.status = 20 AND t.customer_id = #{customerId} GROUP BY t.customer_id) so ON so.customer_id = c.id",
+            "  LEFT JOIN (SELECT t.customer_id, SUM(" + SALE_OUT_RECEIVABLE_ACCOUNT_AMOUNT_EXPRESSION + ") AS saleOutAmount, MAX(t.out_time) AS lastBizTime FROM erp_sale_out t WHERE t.deleted = 0 AND t.status = 20 AND t.customer_id = #{customerId} GROUP BY t.customer_id) so ON so.customer_id = c.id",
             "  LEFT JOIN (SELECT customer_id, SUM(total_price) AS saleReturnAmount FROM erp_sale_return WHERE deleted = 0 AND status = 20 AND customer_id = #{customerId} GROUP BY customer_id) sr ON sr.customer_id = c.id",
             "  LEFT JOIN (SELECT customer_id, SUM(total_adjust_price) AS priceAdjustAmount FROM erp_sale_price_adjust WHERE deleted = 0 AND status = 20 AND customer_id = #{customerId} GROUP BY customer_id) pa ON pa.customer_id = c.id",
             "  LEFT JOIN (SELECT fr.customer_id, SUM(CASE WHEN EXISTS (SELECT 1 FROM erp_receivable_other dro WHERE dro.deleted = 0 AND dro.status = 20 AND dro.source_type = '收款单优惠' AND dro.source_id = fr.id) THEN fr.receipt_price ELSE fr.total_price END) AS receiptAmount FROM erp_finance_receipt fr WHERE fr.deleted = 0 AND fr.status = 20 AND fr.customer_id = #{customerId} GROUP BY fr.customer_id) rc ON rc.customer_id = c.id",
             "  LEFT JOIN (SELECT customer_id, SUM(write_off_amount) AS writeOffAmount FROM erp_receivable_writeoff WHERE deleted = 0 AND customer_id = #{customerId} GROUP BY customer_id) wo ON wo.customer_id = c.id",
             "  LEFT JOIN (SELECT customer_id, SUM(receivable_amount) AS otherReceivableAmount FROM erp_receivable_other WHERE deleted = 0 AND status = 20 AND customer_id = #{customerId} GROUP BY customer_id) ro ON ro.customer_id = c.id",
-            "  LEFT JOIN (SELECT customer_id, SUM(amount) AS miscReceivableAmount FROM erp_receivable_misc WHERE deleted = 0 AND status = 20 AND customer_id = #{customerId} GROUP BY customer_id) rm ON rm.customer_id = c.id",
+            "  LEFT JOIN (SELECT customer_id, -SUM(amount) AS miscReceivableAmount FROM erp_receivable_misc WHERE deleted = 0 AND status = 20 AND customer_id = #{customerId} GROUP BY customer_id) rm ON rm.customer_id = c.id",
             "  LEFT JOIN (",
             "       SELECT customer_id, MAX(last_biz_time) AS lastBizTime",
             "         FROM (",
@@ -108,8 +109,6 @@ public interface ErpReceivableAccountMapper extends BaseMapperX<ErpReceivableAcc
             "               SELECT customer_id, MAX(write_off_time) AS last_biz_time FROM erp_receivable_writeoff WHERE deleted = 0 AND customer_id = #{customerId} GROUP BY customer_id",
             "               UNION ALL",
             "               SELECT customer_id, MAX(biz_time) AS last_biz_time FROM erp_receivable_other WHERE deleted = 0 AND status = 20 AND customer_id = #{customerId} GROUP BY customer_id",
-            "               UNION ALL",
-            "               SELECT customer_id, MAX(biz_time) AS last_biz_time FROM erp_receivable_misc WHERE deleted = 0 AND status = 20 AND customer_id = #{customerId} GROUP BY customer_id",
             "         ) t",
             "        GROUP BY customer_id",
             "  ) lastBiz ON lastBiz.customer_id = c.id",
@@ -130,19 +129,19 @@ public interface ErpReceivableAccountMapper extends BaseMapperX<ErpReceivableAcc
             "       IFNULL(wo.writeOffAmount, 0) AS writeOffAmount,",
             "       IFNULL(ro.otherReceivableAmount, 0) AS otherReceivableAmount,",
             "       IFNULL(rm.miscReceivableAmount, 0) AS miscReceivableAmount,",
-            "       IFNULL(so.saleOutAmount, 0) + IFNULL(pa.priceAdjustAmount, 0) + IFNULL(ro.otherReceivableAmount, 0) + IFNULL(rm.miscReceivableAmount, 0) - IFNULL(sr.saleReturnAmount, 0) AS receivableAmount,",
+            "       IFNULL(so.saleOutAmount, 0) + IFNULL(pa.priceAdjustAmount, 0) + IFNULL(ro.otherReceivableAmount, 0) - IFNULL(sr.saleReturnAmount, 0) AS receivableAmount,",
             "       IFNULL(rc.receiptAmount, 0) AS receivedAmount,",
-            "       IFNULL(so.saleOutAmount, 0) + IFNULL(pa.priceAdjustAmount, 0) + IFNULL(ro.otherReceivableAmount, 0) + IFNULL(rm.miscReceivableAmount, 0) - IFNULL(sr.saleReturnAmount, 0) - IFNULL(rc.receiptAmount, 0) AS unreceivedAmount,",
-            "       IFNULL(so.saleOutAmount, 0) + IFNULL(pa.priceAdjustAmount, 0) + IFNULL(ro.otherReceivableAmount, 0) + IFNULL(rm.miscReceivableAmount, 0) - IFNULL(sr.saleReturnAmount, 0) - IFNULL(rc.receiptAmount, 0) AS receivableBalance,",
+            "       IFNULL(so.saleOutAmount, 0) + IFNULL(pa.priceAdjustAmount, 0) + IFNULL(ro.otherReceivableAmount, 0) - IFNULL(sr.saleReturnAmount, 0) - IFNULL(rc.receiptAmount, 0) AS unreceivedAmount,",
+            "       IFNULL(so.saleOutAmount, 0) + IFNULL(pa.priceAdjustAmount, 0) + IFNULL(ro.otherReceivableAmount, 0) - IFNULL(sr.saleReturnAmount, 0) - IFNULL(rc.receiptAmount, 0) AS receivableBalance,",
             "       lastBiz.lastBizTime AS lastBizTime",
             "  FROM erp_customer c",
-            "  LEFT JOIN (SELECT t.customer_id, SUM(" + SALE_OUT_ORIGINAL_SETTLEMENT_TOTAL_EXPRESSION + ") AS saleOutAmount, MAX(t.out_time) AS lastBizTime FROM erp_sale_out t WHERE t.deleted = 0 AND t.status = 20 AND t.customer_id = #{customerId} AND t.dept_id = #{deptId} GROUP BY t.customer_id) so ON so.customer_id = c.id",
+            "  LEFT JOIN (SELECT t.customer_id, SUM(" + SALE_OUT_RECEIVABLE_ACCOUNT_AMOUNT_EXPRESSION + ") AS saleOutAmount, MAX(t.out_time) AS lastBizTime FROM erp_sale_out t WHERE t.deleted = 0 AND t.status = 20 AND t.customer_id = #{customerId} AND t.dept_id = #{deptId} GROUP BY t.customer_id) so ON so.customer_id = c.id",
             "  LEFT JOIN (SELECT customer_id, SUM(total_price) AS saleReturnAmount FROM erp_sale_return WHERE deleted = 0 AND status = 20 AND customer_id = #{customerId} AND dept_id = #{deptId} GROUP BY customer_id) sr ON sr.customer_id = c.id",
             "  LEFT JOIN (SELECT customer_id, SUM(total_adjust_price) AS priceAdjustAmount FROM erp_sale_price_adjust WHERE deleted = 0 AND status = 20 AND customer_id = #{customerId} AND dept_id = #{deptId} GROUP BY customer_id) pa ON pa.customer_id = c.id",
             "  LEFT JOIN (SELECT fr.customer_id, SUM(CASE WHEN EXISTS (SELECT 1 FROM erp_receivable_other dro WHERE dro.deleted = 0 AND dro.status = 20 AND dro.source_type = '收款单优惠' AND dro.source_id = fr.id) THEN fr.receipt_price ELSE fr.total_price END) AS receiptAmount FROM erp_finance_receipt fr WHERE fr.deleted = 0 AND fr.status = 20 AND fr.customer_id = #{customerId} AND fr.dept_id = #{deptId} GROUP BY fr.customer_id) rc ON rc.customer_id = c.id",
             "  LEFT JOIN (SELECT customer_id, SUM(write_off_amount) AS writeOffAmount FROM erp_receivable_writeoff WHERE deleted = 0 AND customer_id = #{customerId} AND dept_id = #{deptId} GROUP BY customer_id) wo ON wo.customer_id = c.id",
             "  LEFT JOIN (SELECT customer_id, SUM(receivable_amount) AS otherReceivableAmount FROM erp_receivable_other WHERE deleted = 0 AND status = 20 AND customer_id = #{customerId} AND dept_id = #{deptId} GROUP BY customer_id) ro ON ro.customer_id = c.id",
-            "  LEFT JOIN (SELECT customer_id, SUM(amount) AS miscReceivableAmount FROM erp_receivable_misc WHERE deleted = 0 AND status = 20 AND customer_id = #{customerId} AND dept_id = #{deptId} GROUP BY customer_id) rm ON rm.customer_id = c.id",
+            "  LEFT JOIN (SELECT customer_id, -SUM(amount) AS miscReceivableAmount FROM erp_receivable_misc WHERE deleted = 0 AND status = 20 AND customer_id = #{customerId} AND dept_id = #{deptId} GROUP BY customer_id) rm ON rm.customer_id = c.id",
             "  LEFT JOIN (",
             "       SELECT customer_id, MAX(last_biz_time) AS lastBizTime",
             "         FROM (",
@@ -157,8 +156,6 @@ public interface ErpReceivableAccountMapper extends BaseMapperX<ErpReceivableAcc
             "               SELECT customer_id, MAX(write_off_time) AS last_biz_time FROM erp_receivable_writeoff WHERE deleted = 0 AND customer_id = #{customerId} AND dept_id = #{deptId} GROUP BY customer_id",
             "               UNION ALL",
             "               SELECT customer_id, MAX(biz_time) AS last_biz_time FROM erp_receivable_other WHERE deleted = 0 AND status = 20 AND customer_id = #{customerId} AND dept_id = #{deptId} GROUP BY customer_id",
-            "               UNION ALL",
-            "               SELECT customer_id, MAX(biz_time) AS last_biz_time FROM erp_receivable_misc WHERE deleted = 0 AND status = 20 AND customer_id = #{customerId} AND dept_id = #{deptId} GROUP BY customer_id",
             "         ) t",
             "        GROUP BY customer_id",
             "  ) lastBiz ON lastBiz.customer_id = c.id",
@@ -170,9 +167,19 @@ public interface ErpReceivableAccountMapper extends BaseMapperX<ErpReceivableAcc
 
     class SqlProvider {
 
-        private static final String BALANCE_EXPR = "IFNULL(so.saleOutAmount, 0) + IFNULL(pa.priceAdjustAmount, 0) "
-                + "+ IFNULL(ro.otherReceivableAmount, 0) + IFNULL(rm.miscReceivableAmount, 0) "
+        private static final String PERIOD_BALANCE_EXPR = "IFNULL(so.saleOutAmount, 0) + IFNULL(pa.priceAdjustAmount, 0) "
+                + "+ IFNULL(ro.otherReceivableAmount, 0) "
                 + "- IFNULL(sr.saleReturnAmount, 0) - IFNULL(rc.receiptAmount, 0)";
+        private static final String OPENING_RECEIVABLE_BALANCE_EXPR = "IFNULL(oso.saleOutAmount, 0) "
+                + "+ IFNULL(opa.priceAdjustAmount, 0) + IFNULL(oro.otherReceivableAmount, 0) "
+                + "- IFNULL(osr.saleReturnAmount, 0) - IFNULL(orc.receiptAmount, 0)";
+        private static final String CUTOFF_RECEIVABLE_BALANCE_EXPR = "IFNULL(cso.saleOutAmount, 0) "
+                + "+ IFNULL(cpa.priceAdjustAmount, 0) + IFNULL(cro.otherReceivableAmount, 0) "
+                + "- IFNULL(csr.saleReturnAmount, 0) - IFNULL(crc.receiptAmount, 0)";
+        private static final String PERIOD_ACTIVITY_EXPR = "IFNULL(so.saleOutAmount, 0) "
+                + "+ IFNULL(pa.priceAdjustAmount, 0) + IFNULL(ro.otherReceivableAmount, 0) "
+                + "+ IFNULL(sr.saleReturnAmount, 0) + IFNULL(rc.receiptAmount, 0) "
+                + "+ IFNULL(wo.writeOffAmount, 0)";
 
         public String selectList() {
             return String.join("\n",
@@ -200,33 +207,34 @@ public interface ErpReceivableAccountMapper extends BaseMapperX<ErpReceivableAcc
                     "       IFNULL(wo.writeOffAmount, 0) AS writeOffAmount,",
                     "       IFNULL(ro.otherReceivableAmount, 0) AS otherReceivableAmount,",
                     "       IFNULL(rm.miscReceivableAmount, 0) AS miscReceivableAmount,",
+                    "       " + OPENING_RECEIVABLE_BALANCE_EXPR + " AS openingReceivableBalance,",
                     "       IFNULL(ext.advance_amount, 0) AS preAdvanceAmount,",
-                    "       IFNULL(so.saleOutAmount, 0) + IFNULL(pa.priceAdjustAmount, 0) + IFNULL(ro.otherReceivableAmount, 0) + IFNULL(rm.miscReceivableAmount, 0) - IFNULL(sr.saleReturnAmount, 0) AS receivableAmount,",
+                    "       IFNULL(so.saleOutAmount, 0) + IFNULL(pa.priceAdjustAmount, 0) + IFNULL(ro.otherReceivableAmount, 0) - IFNULL(sr.saleReturnAmount, 0) AS receivableAmount,",
                     "       IFNULL(rc.receiptAmount, 0) AS receivedAmount,",
-                    "       " + BALANCE_EXPR + " AS unreceivedAmount,",
+                    "       " + CUTOFF_RECEIVABLE_BALANCE_EXPR + " AS unreceivedAmount,",
                     "       '应收账款' AS billType,",
-                    "       CASE WHEN IFNULL(rc.receiptAmount, 0) = 0 THEN '未收款'",
-                    "            WHEN " + BALANCE_EXPR + " > 0 THEN '部分收款'",
+                    "       CASE WHEN IFNULL(crc.receiptAmount, 0) = 0 THEN '未收款'",
+                    "            WHEN " + CUTOFF_RECEIVABLE_BALANCE_EXPR + " > 0 THEN '部分收款'",
                     "            ELSE '已收款' END AS receiveStatus,",
-                    "       " + BALANCE_EXPR + " AS receivableBalance,",
-                    "       CASE WHEN COALESCE(cdc.credit_limit, c.credit_limit) IS NULL THEN NULL ELSE COALESCE(cdc.credit_limit, c.credit_limit) - (" + BALANCE_EXPR + ") END AS creditBalance,",
-                    "       " + BALANCE_EXPR + " + IFNULL(ext.advance_amount, 0) AS totalReceivable,",
+                    "       " + CUTOFF_RECEIVABLE_BALANCE_EXPR + " AS receivableBalance,",
+                    "       CASE WHEN COALESCE(cdc.credit_limit, c.credit_limit) IS NULL THEN NULL ELSE COALESCE(cdc.credit_limit, c.credit_limit) - (" + CUTOFF_RECEIVABLE_BALANCE_EXPR + ") END AS creditBalance,",
+                    "       " + CUTOFF_RECEIVABLE_BALANCE_EXPR + " + IFNULL(ext.advance_amount, 0) AS totalReceivable,",
                     "       lastBiz.lastBizTime AS lastBizTime",
                     "  FROM erp_customer c",
                     "  INNER JOIN (",
-                    sourceKeySql("erp_sale_out", "so_key", "out_time", "sale_user_id", true),
+                    sourceKeySql("erp_sale_out", "so_key", "out_time", "sale_user_id", true, false),
                     "       UNION",
-                    sourceKeySql("erp_sale_return", "sr_key", "return_time", "sale_user_id", true),
+                    sourceKeySql("erp_sale_return", "sr_key", "return_time", "sale_user_id", true, false),
                     "       UNION",
-                    sourceKeySql("erp_sale_price_adjust", "pa_key", "adjust_date", "adjust_user_id", true),
+                    sourceKeySql("erp_sale_price_adjust", "pa_key", "adjust_date", "adjust_user_id", true, false),
                     "       UNION",
-                    sourceKeySql("erp_finance_receipt", "rc_key", "receipt_time", "finance_user_id", true),
+                    sourceKeySql("erp_finance_receipt", "rc_key", "receipt_time", "finance_user_id", true, false),
                     "       UNION",
-                    sourceKeySql("erp_receivable_writeoff", "wo_key", "write_off_time", "operator_user_id", false),
+                    sourceKeySql("erp_receivable_writeoff", "wo_key", "write_off_time", "operator_user_id", false, false),
                     "       UNION",
-                    sourceKeySql("erp_receivable_other", "ro_key", "biz_time", "handler_id", true),
+                    sourceKeySql("erp_receivable_other", "ro_key", "biz_time", "handler_id", true, false),
                     "       UNION",
-                    sourceKeySql("erp_receivable_misc", "rm_key", "biz_time", "handler_id", true),
+                    sourceKeySql("erp_receivable_misc", "rm_key", "biz_time", "handler_id", true, false),
                     "  ) accountKeys ON accountKeys.customer_id = c.id",
                     "  LEFT JOIN system_users u ON u.id = c.sale_user_id",
                     "  LEFT JOIN system_dept d ON d.id = accountKeys.deptId",
@@ -238,11 +246,22 @@ public interface ErpReceivableAccountMapper extends BaseMapperX<ErpReceivableAcc
                     receiptJoinSql(),
                     amountJoinSql("erp_receivable_writeoff", "wo", "write_off_amount", "writeOffAmount", "write_off_time", "operator_user_id", false),
                     amountJoinSql("erp_receivable_other", "ro", "receivable_amount", "otherReceivableAmount", "biz_time", "handler_id", true),
-                    amountJoinSql("erp_receivable_misc", "rm", "amount", "miscReceivableAmount", "biz_time", "handler_id", true),
+                    miscReceivableAmountJoinSql(),
+                    saleOutAmountJoinSql("oso", openingTimeSql("t", "out_time")),
+                    amountJoinSql("erp_sale_return", "osr", "total_price", "saleReturnAmount", "return_time", "sale_user_id", true, openingTimeSql("osr", "return_time")),
+                    amountJoinSql("erp_sale_price_adjust", "opa", "total_adjust_price", "priceAdjustAmount", "adjust_date", "adjust_user_id", true, openingTimeSql("opa", "adjust_date")),
+                    receiptJoinSql("orc", openingTimeSql("orc", "receipt_time")),
+                    amountJoinSql("erp_receivable_other", "oro", "receivable_amount", "otherReceivableAmount", "biz_time", "handler_id", true, openingTimeSql("oro", "biz_time")),
+                    saleOutAmountJoinSql("cso", cutoffTimeSql("t", "out_time")),
+                    amountJoinSql("erp_sale_return", "csr", "total_price", "saleReturnAmount", "return_time", "sale_user_id", true, cutoffTimeSql("csr", "return_time")),
+                    amountJoinSql("erp_sale_price_adjust", "cpa", "total_adjust_price", "priceAdjustAmount", "adjust_date", "adjust_user_id", true, cutoffTimeSql("cpa", "adjust_date")),
+                    receiptJoinSql("crc", cutoffTimeSql("crc", "receipt_time")),
+                    amountJoinSql("erp_receivable_other", "cro", "receivable_amount", "otherReceivableAmount", "biz_time", "handler_id", true, cutoffTimeSql("cro", "biz_time")),
                     lastBizJoinSql(),
                     " WHERE c.deleted = 0",
                     "   <if test='reqVO.showZeroBalance == null or !reqVO.showZeroBalance'>",
-                    "   AND (" + BALANCE_EXPR + ") &lt;&gt; 0",
+                    "   AND ((" + CUTOFF_RECEIVABLE_BALANCE_EXPR + ") &lt;&gt; 0 OR (" + OPENING_RECEIVABLE_BALANCE_EXPR + ") &lt;&gt; 0 OR ("
+                            + PERIOD_ACTIVITY_EXPR + ") &lt;&gt; 0 OR IFNULL(rm.miscReceivableAmount, 0) &lt;&gt; 0)",
                     "   </if>",
                     "   <if test='reqVO.customerId != null'> AND c.id = #{reqVO.customerId} </if>",
                     "   <if test='reqVO.customerName != null and reqVO.customerName != \"\"'> AND c.name LIKE CONCAT('%', #{reqVO.customerName}, '%') </if>",
@@ -270,18 +289,30 @@ public interface ErpReceivableAccountMapper extends BaseMapperX<ErpReceivableAcc
 
         private String sourceKeySql(String tableName, String alias, String timeColumn, String userColumn,
                                     boolean approvedOnly) {
+            return sourceKeySql(tableName, alias, timeColumn, userColumn, approvedOnly, true);
+        }
+
+        private String sourceKeySql(String tableName, String alias, String timeColumn, String userColumn,
+                                    boolean approvedOnly, boolean periodTime) {
             return "       SELECT " + alias + ".customer_id, " + alias + ".dept_id AS deptId"
                     + " FROM " + tableName + " " + alias
                     + " WHERE " + alias + ".deleted = 0"
                     + (approvedOnly ? " AND " + alias + ".status = 20" : "")
                     + documentScopeSql(alias, userColumn)
-                    + timeSql(alias, timeColumn)
+                    + (periodTime ? timeSql(alias, timeColumn) : cutoffTimeSql(alias, timeColumn))
                     + requestedDeptSql(alias)
                     + " GROUP BY " + alias + ".customer_id, " + alias + ".dept_id";
         }
 
         private String amountJoinSql(String tableName, String alias, String amountColumn, String amountAlias,
                                      String timeColumn, String userColumn, boolean approvedOnly) {
+            return amountJoinSql(tableName, alias, amountColumn, amountAlias, timeColumn, userColumn, approvedOnly,
+                    timeSql(alias, timeColumn));
+        }
+
+        private String amountJoinSql(String tableName, String alias, String amountColumn, String amountAlias,
+                                     String timeColumn, String userColumn, boolean approvedOnly,
+                                     String timeCondition) {
             return String.join("\n",
                     "  LEFT JOIN (",
                     "       SELECT " + alias + ".customer_id, " + alias + ".dept_id AS deptId,",
@@ -289,43 +320,65 @@ public interface ErpReceivableAccountMapper extends BaseMapperX<ErpReceivableAcc
                     "         FROM " + tableName + " " + alias,
                     "        WHERE " + alias + ".deleted = 0" + (approvedOnly ? " AND " + alias + ".status = 20" : ""),
                     documentScopeSql(alias, userColumn),
-                    timeSql(alias, timeColumn),
+                    timeCondition,
                     requestedDeptSql(alias),
                     "        GROUP BY " + alias + ".customer_id, " + alias + ".dept_id",
                     "  ) " + alias + " ON " + alias + ".customer_id = c.id AND " + sameDeptSql(alias));
         }
 
+        private String miscReceivableAmountJoinSql() {
+            return String.join("\n",
+                    "  LEFT JOIN (",
+                    "       SELECT rm.customer_id, rm.dept_id AS deptId,",
+                    "              -SUM(rm.amount) AS miscReceivableAmount",
+                    "         FROM erp_receivable_misc rm",
+                    "        WHERE rm.deleted = 0 AND rm.status = 20",
+                    documentScopeSql("rm", "handler_id"),
+                    timeSql("rm", "biz_time"),
+                    requestedDeptSql("rm"),
+                    "        GROUP BY rm.customer_id, rm.dept_id",
+                    "  ) rm ON rm.customer_id = c.id AND " + sameDeptSql("rm"));
+        }
+
         private String saleOutAmountJoinSql() {
+            return saleOutAmountJoinSql("so", timeSql("t", "out_time"));
+        }
+
+        private String saleOutAmountJoinSql(String joinAlias, String timeCondition) {
             return String.join("\n",
                     "  LEFT JOIN (",
                     "       SELECT t.customer_id, t.dept_id AS deptId,",
-                    "              SUM(" + SALE_OUT_ORIGINAL_SETTLEMENT_TOTAL_EXPRESSION + ") AS saleOutAmount",
+                    "              SUM(" + SALE_OUT_RECEIVABLE_ACCOUNT_AMOUNT_EXPRESSION + ") AS saleOutAmount",
                     "         FROM erp_sale_out t",
                     "        WHERE t.deleted = 0 AND t.status = 20",
                     documentScopeSql("t", "sale_user_id"),
-                    timeSql("t", "out_time"),
+                    timeCondition,
                     requestedDeptSql("t"),
                     "        GROUP BY t.customer_id, t.dept_id",
-                    "  ) so ON so.customer_id = c.id AND " + sameDeptSql("so"));
+                    "  ) " + joinAlias + " ON " + joinAlias + ".customer_id = c.id AND " + sameDeptSql(joinAlias));
         }
 
         private String receiptJoinSql() {
+            return receiptJoinSql("rc", timeSql("rc", "receipt_time"));
+        }
+
+        private String receiptJoinSql(String alias, String timeCondition) {
             return String.join("\n",
                     "  LEFT JOIN (",
-                    "       SELECT rc.customer_id, rc.dept_id AS deptId,",
+                    "       SELECT " + alias + ".customer_id, " + alias + ".dept_id AS deptId,",
                     "              SUM(CASE WHEN EXISTS (",
                     "                    SELECT 1 FROM erp_receivable_other dro",
                     "                     WHERE dro.deleted = 0 AND dro.status = 20",
                     "                       AND dro.source_type = '收款单优惠'",
-                    "                       AND dro.source_id = rc.id",
-                    "                  ) THEN rc.receipt_price ELSE rc.total_price END) AS receiptAmount",
-                    "         FROM erp_finance_receipt rc",
-                    "        WHERE rc.deleted = 0 AND rc.status = 20",
-                    documentScopeSql("rc", "finance_user_id"),
-                    timeSql("rc", "receipt_time"),
-                    requestedDeptSql("rc"),
-                    "        GROUP BY rc.customer_id, rc.dept_id",
-                    "  ) rc ON rc.customer_id = c.id AND " + sameDeptSql("rc"));
+                    "                       AND dro.source_id = " + alias + ".id",
+                    "                  ) THEN " + alias + ".receipt_price ELSE " + alias + ".total_price END) AS receiptAmount",
+                    "         FROM erp_finance_receipt " + alias,
+                    "        WHERE " + alias + ".deleted = 0 AND " + alias + ".status = 20",
+                    documentScopeSql(alias, "finance_user_id"),
+                    timeCondition,
+                    requestedDeptSql(alias),
+                    "        GROUP BY " + alias + ".customer_id, " + alias + ".dept_id",
+                    "  ) " + alias + " ON " + alias + ".customer_id = c.id AND " + sameDeptSql(alias));
         }
 
         private String lastBizJoinSql() {
@@ -360,7 +413,7 @@ public interface ErpReceivableAccountMapper extends BaseMapperX<ErpReceivableAcc
                     + " WHERE " + alias + ".deleted = 0"
                     + (approvedOnly ? " AND " + alias + ".status = 20" : "")
                     + documentScopeSql(alias, userColumn)
-                    + timeSql(alias, timeColumn)
+                    + cutoffTimeSql(alias, timeColumn)
                     + requestedDeptSql(alias)
                     + " GROUP BY " + alias + ".customer_id, " + alias + ".dept_id";
         }
@@ -377,6 +430,16 @@ public interface ErpReceivableAccountMapper extends BaseMapperX<ErpReceivableAcc
         private String timeSql(String alias, String timeColumn) {
             return " <if test='reqVO.startTime != null and reqVO.endTime != null'> AND " + alias + "." + timeColumn
                     + " BETWEEN #{reqVO.startTime} AND #{reqVO.endTime}</if>";
+        }
+
+        private String openingTimeSql(String alias, String timeColumn) {
+            return " <choose><when test='reqVO.startTime != null'> AND " + alias + "." + timeColumn
+                    + " &lt; #{reqVO.startTime}</when><otherwise> AND 1 = 0</otherwise></choose>";
+        }
+
+        private String cutoffTimeSql(String alias, String timeColumn) {
+            return " <if test='reqVO.endTime != null'> AND " + alias + "." + timeColumn
+                    + " &lt;= #{reqVO.endTime}</if>";
         }
 
         private String requestedDeptSql(String alias) {
@@ -462,6 +525,10 @@ public interface ErpReceivableAccountMapper extends BaseMapperX<ErpReceivableAcc
                     "   <when test='reqVO.orderDirection == \"desc\" and reqVO.orderField == \"writeOffAmount\"'>ORDER BY writeOffAmount DESC, c.id DESC, accountKeys.deptId DESC</when>",
                     "   <when test='reqVO.orderDirection == \"asc\" and reqVO.orderField == \"otherReceivableAmount\"'>ORDER BY otherReceivableAmount ASC, c.id DESC, accountKeys.deptId DESC</when>",
                     "   <when test='reqVO.orderDirection == \"desc\" and reqVO.orderField == \"otherReceivableAmount\"'>ORDER BY otherReceivableAmount DESC, c.id DESC, accountKeys.deptId DESC</when>",
+                    "   <when test='reqVO.orderDirection == \"asc\" and reqVO.orderField == \"miscReceivableAmount\"'>ORDER BY miscReceivableAmount ASC, c.id DESC, accountKeys.deptId DESC</when>",
+                    "   <when test='reqVO.orderDirection == \"desc\" and reqVO.orderField == \"miscReceivableAmount\"'>ORDER BY miscReceivableAmount DESC, c.id DESC, accountKeys.deptId DESC</when>",
+                    "   <when test='reqVO.orderDirection == \"asc\" and reqVO.orderField == \"openingReceivableBalance\"'>ORDER BY openingReceivableBalance ASC, c.id DESC, accountKeys.deptId DESC</when>",
+                    "   <when test='reqVO.orderDirection == \"desc\" and reqVO.orderField == \"openingReceivableBalance\"'>ORDER BY openingReceivableBalance DESC, c.id DESC, accountKeys.deptId DESC</when>",
                     "   <when test='reqVO.orderDirection == \"asc\" and reqVO.orderField == \"preAdvanceAmount\"'>ORDER BY preAdvanceAmount ASC, c.id DESC, accountKeys.deptId DESC</when>",
                     "   <when test='reqVO.orderDirection == \"desc\" and reqVO.orderField == \"preAdvanceAmount\"'>ORDER BY preAdvanceAmount DESC, c.id DESC, accountKeys.deptId DESC</when>",
                     "   <when test='reqVO.orderDirection == \"asc\" and reqVO.orderField == \"lastBizTime\"'>ORDER BY lastBizTime ASC, c.id DESC, accountKeys.deptId DESC</when>",

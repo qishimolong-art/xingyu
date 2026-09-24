@@ -10,7 +10,6 @@ import cn.iocoder.yudao.module.erp.controller.admin.finance.receivable.vo.accoun
 import cn.iocoder.yudao.module.erp.controller.admin.finance.receivable.vo.account.ErpReceivableWriteOffReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.ErpFinanceReceiptDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.receivable.ErpReceivableAccountDO;
-import cn.iocoder.yudao.module.erp.dal.dataobject.finance.receivable.ErpReceivableMiscDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.receivable.ErpReceivableOtherDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.receivable.ErpReceivableWriteOffDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleOutDO;
@@ -20,7 +19,6 @@ import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleReturnDO;
 import cn.iocoder.yudao.module.erp.dal.mysql.finance.ErpFinanceReceiptMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.finance.ErpFinanceReceiptItemMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.finance.receivable.ErpReceivableAccountMapper;
-import cn.iocoder.yudao.module.erp.dal.mysql.finance.receivable.ErpReceivableMiscMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.finance.receivable.ErpReceivableOtherMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.finance.receivable.ErpReceivableWriteOffMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpSaleOutItemMapper;
@@ -80,8 +78,6 @@ public class ErpReceivableAccountServiceImpl implements ErpReceivableAccountServ
     @Resource
     private ErpFinanceReceiptItemMapper financeReceiptItemMapper;
     @Resource
-    private ErpReceivableMiscMapper receivableMiscMapper;
-    @Resource
     private ErpReceivableOtherMapper receivableOtherMapper;
     @Resource
     private ErpReceivableWriteOffMapper receivableWriteOffMapper;
@@ -105,6 +101,19 @@ public class ErpReceivableAccountServiceImpl implements ErpReceivableAccountServ
         }
         return DataPermissionUtils.executeIgnore(() ->
                 receivableAccountMapper.selectPage(reqVO, customerScope.getDeptIds(), customerScope.getSelfUserId(),
+                        customerScope.isAll(), documentScope.getDeptIds(), documentScope.getSelfUserId(),
+                        documentScope.isAll()));
+    }
+
+    @Override
+    public List<ErpReceivableAccountDO> getReceivableAccountList(ErpReceivableAccountPageReqVO reqVO) {
+        CustomerVisibleScope customerScope = getCustomerVisibleScope();
+        ReceivableVisibleScope documentScope = getReceivableVisibleScope();
+        if (customerScope == null || documentScope == null || !documentScope.hasAccess()) {
+            return Collections.emptyList();
+        }
+        return DataPermissionUtils.executeIgnore(() ->
+                receivableAccountMapper.selectList(reqVO, customerScope.getDeptIds(), customerScope.getSelfUserId(),
                         customerScope.isAll(), documentScope.getDeptIds(), documentScope.getSelfUserId(),
                         documentScope.isAll()));
     }
@@ -349,21 +358,6 @@ public class ErpReceivableAccountServiceImpl implements ErpReceivableAccountServ
                         resolveOtherReceivableDocDate(item, receiptDiscountTimeMap),
                         item.getNo(), item.getReceivableAmount(), item.getDeptId())));
 
-        LambdaQueryWrapperX<ErpReceivableMiscDO> miscQuery = new LambdaQueryWrapperX<ErpReceivableMiscDO>()
-                .eq(ErpReceivableMiscDO::getCustomerId, reqVO.getCustomerId())
-                .eq(ErpReceivableMiscDO::getStatus, ErpAuditStatus.APPROVE.getStatus())
-                .geIfPresent(ErpReceivableMiscDO::getBizTime, reqVO.getStartTime())
-                .ltIfPresent(ErpReceivableMiscDO::getBizTime, reqVO.getEndTime());
-        applyDetailDeptFilter(miscQuery, reqVO, ErpReceivableMiscDO::getDeptId);
-        applyScope(miscQuery, scope, ErpReceivableMiscDO::getDeptId, ErpReceivableMiscDO::getHandlerId);
-        List<ErpReceivableMiscDO> miscReceivables = receivableMiscMapper.selectList(miscQuery);
-        Map<Long, BigDecimal> miscAllocated = financeReceiptItemMapper
-                .selectReceiptPriceSumMapByBizIdsAndBizType(miscReceivables.stream().map(ErpReceivableMiscDO::getId)
-                        .collect(Collectors.toSet()), ErpBizTypeEnum.RECEIVABLE_MISC.getType());
-        miscReceivables.forEach(item -> rows.add(buildAllocatedRow("其他应收",
-                ErpBizTypeEnum.RECEIVABLE_MISC.getType(), item.getId(), item.getBizTime(), item.getNo(),
-                item.getAmount(), miscAllocated.get(item.getId()), item.getDeptId())));
-
         rows.sort(Comparator.comparing(ErpReceivableDetailRespVO::getDocDate, Comparator.nullsLast(Comparator.naturalOrder()))
                 .thenComparing(ErpReceivableDetailRespVO::getDocType)
                 .thenComparing(ErpReceivableDetailRespVO::getDocNo, Comparator.nullsLast(String::compareTo)));
@@ -400,7 +394,8 @@ public class ErpReceivableAccountServiceImpl implements ErpReceivableAccountServ
 
     private ErpReceivableDetailRespVO buildSaleOutDetailRow(ErpSaleOutDO saleOut, BigDecimal allocatedAmount,
                                                             List<ErpSaleOutItemDO> items) {
-        BigDecimal originalSettlementAmount = ErpOriginalSettlementAmountUtils.calculateSaleOut(saleOut, items);
+        BigDecimal originalSettlementAmount = ErpOriginalSettlementAmountUtils
+                .calculateSaleOutReceivableAccountAmount(saleOut, items);
         ErpReceivableDetailRespVO row = buildAllocatedRow("销售出库",
                 ErpBizTypeEnum.SALE_OUT.getType(), saleOut.getId(), saleOut.getOutTime(), saleOut.getNo(),
                 originalSettlementAmount, allocatedAmount, originalSettlementAmount, saleOut.getDeptId());

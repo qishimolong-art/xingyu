@@ -45,6 +45,18 @@ public class ErpReceivableMiscDO extends BaseDO {
 
     private String fileUrl;
 
+    private String sourceType;
+
+    private Long sourceId;
+
+    private String sourceNo;
+
+    private Long sourceItemId;
+
+    private Long sourceMiscId;
+
+    private String sourceMiscNo;
+
     private Long deptId;
 
     private Long handlerId;

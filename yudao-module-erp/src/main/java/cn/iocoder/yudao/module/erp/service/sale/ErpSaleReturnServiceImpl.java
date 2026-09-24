@@ -173,6 +173,8 @@ public class ErpSaleReturnServiceImpl implements ErpSaleReturnService {
     @Resource
     private ErpSaleDocumentDefaultService saleDocumentDefaultService;
     @Resource
+    private ErpSaleDirectDeptPermissionService saleDirectDeptPermissionService;
+    @Resource
     private ErpOperateLogService operateLogService;
     @Resource
     private ErpStockMoveService stockMoveService;
@@ -221,6 +223,7 @@ public class ErpSaleReturnServiceImpl implements ErpSaleReturnService {
         validateCurrentStockReturnSources(saleReturn, saleReturnItems);
         calculateTotalPrice(saleReturn, saleReturnItems);
         saleDocumentDefaultService.fillCreateDefaults(saleReturn);
+        saleDirectDeptPermissionService.validateSaleDocumentDeptAllowed(saleReturn.getDeptId());
         saleReturnMapper.insert(saleReturn);
         saleReturnItems.forEach(item -> item.setReturnId(saleReturn.getId()));
         clearSaleReturnItemIds(saleReturnItems);
@@ -267,6 +270,7 @@ public class ErpSaleReturnServiceImpl implements ErpSaleReturnService {
         validateCurrentStockReturnSources(saleReturn, items);
         calculateTotalPrice(saleReturn, items);
         saleDocumentDefaultService.fillCreateDefaults(saleReturn);
+        saleDirectDeptPermissionService.validateSaleDocumentDeptAllowed(saleReturn.getDeptId());
         saleReturnMapper.insert(saleReturn);
         if (CollUtil.isNotEmpty(items)) {
             items.forEach(item -> item.setReturnId(saleReturn.getId()));
@@ -322,6 +326,7 @@ public class ErpSaleReturnServiceImpl implements ErpSaleReturnService {
             adminUserApi.validateUser(updateReqVO.getSaleUserId());
         }
         Long saleDeptId = updateReqVO.getDeptId() != null ? updateReqVO.getDeptId() : oldSaleReturn.getDeptId();
+        saleDirectDeptPermissionService.validateSaleDocumentDeptAllowed(saleDeptId);
         List<ErpSaleReturnItemDO> saleReturnItems = validateSaleReturnItems(itemReqs, saleDeptId);
 
         ErpSaleReturnDO updateObj = BeanUtils.toBean(updateReqVO, ErpSaleReturnDO.class)
@@ -398,6 +403,7 @@ public class ErpSaleReturnServiceImpl implements ErpSaleReturnService {
         if (updateObj.getDeptId() == null) {
             updateObj.setDeptId(oldSaleReturn.getDeptId());
         }
+        saleDirectDeptPermissionService.validateSaleDocumentDeptAllowed(updateObj.getDeptId());
         calculateTotalPrice(updateObj, items);
         saleReturnMapper.updateById(updateObj);
         if (incrementalItems) {
@@ -485,6 +491,7 @@ public class ErpSaleReturnServiceImpl implements ErpSaleReturnService {
         ErpSaleReturnSaveReqVO submitReqVO = BeanUtils.toBean(saleReturn, ErpSaleReturnSaveReqVO.class);
         submitReqVO.setItems(BeanUtils.toBean(persistedItems, ErpSaleReturnSaveReqVO.Item.class));
         validateFormalSaleReturn(submitReqVO, id);
+        saleDirectDeptPermissionService.validateSaleDocumentDeptAllowed(saleReturn.getDeptId());
 
         int updateCount = saleReturnMapper.updateByIdAndStatus(id, ErpSaleReturnStatusEnum.DRAFT.getStatus(),
                 new ErpSaleReturnDO().setStatus(ErpSaleReturnStatusEnum.PROCESS.getStatus()));
@@ -722,6 +729,7 @@ public class ErpSaleReturnServiceImpl implements ErpSaleReturnService {
         if (!ErpAuditStatus.PROCESS.getStatus().equals(saleReturn.getStatus())) {
             throw exception(SALE_RETURN_APPROVE_FAIL);
         }
+        saleDirectDeptPermissionService.validateSaleDocumentDeptAllowed(saleReturn.getDeptId());
 
         List<ErpSaleReturnItemDO> lockedItems = saleReturnItemMapper.selectListByReturnIdForUpdate(id);
         validateCurrentStockReturnSources(saleReturn, lockedItems);

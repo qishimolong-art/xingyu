@@ -1,10 +1,13 @@
 package cn.iocoder.yudao.module.erp.controller.admin.finance.payable;
 
 import cn.hutool.core.collection.CollUtil;
+import cn.iocoder.yudao.framework.apilog.core.annotation.ApiAccessLog;
 import cn.iocoder.yudao.framework.common.pojo.CommonResult;
 import cn.iocoder.yudao.framework.common.pojo.PageParam;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
+import cn.iocoder.yudao.framework.excel.core.util.ExcelUtils;
+import cn.iocoder.yudao.module.erp.controller.admin.finance.payable.vo.account.ErpPayableAccountExportRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.payable.vo.account.ErpPayableAccountPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.payable.vo.account.ErpPayableAccountRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.payable.vo.account.ErpPayableDetailReqVO;
@@ -27,9 +30,13 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import javax.annotation.Resource;
+import javax.servlet.http.HttpServletResponse;
 import javax.validation.Valid;
+import java.io.IOException;
 import java.util.List;
+import java.util.stream.Collectors;
 
+import static cn.iocoder.yudao.framework.apilog.core.enums.OperateTypeEnum.EXPORT;
 import static cn.iocoder.yudao.framework.common.pojo.CommonResult.success;
 import static cn.iocoder.yudao.module.erp.controller.admin.finance.ErpFinanceSimplePageUtils.buildUserSimplePage;
 
@@ -85,10 +92,50 @@ public class ErpPayableAccountController {
         return success(payableAccountService.getPayableDetailList(reqVO));
     }
 
+    @GetMapping("/export")
+    @Operation(summary = "导出应付账款概览 Excel")
+    @PreAuthorize("@ss.hasPermission('erp:payable-account:query')")
+    @ApiAccessLog(operateType = EXPORT)
+    public void exportPayableAccount(@Valid ErpPayableAccountPageReqVO reqVO,
+                                     HttpServletResponse response) throws IOException {
+        ExcelUtils.write(response, "应付账款概览.xls", "概览", ErpPayableAccountExportRespVO.class,
+                payableAccountService.getPayableAccountList(reqVO).stream()
+                        .map(this::toExportVO).collect(Collectors.toList()));
+    }
+
+    @GetMapping("/export-detail")
+    @Operation(summary = "导出应付账款明细 Excel")
+    @PreAuthorize("@ss.hasPermission('erp:payable-account:query')")
+    @ApiAccessLog(operateType = EXPORT)
+    public void exportPayableDetail(@Valid ErpPayableDetailReqVO reqVO,
+                                    HttpServletResponse response) throws IOException {
+        ExcelUtils.write(response, "应付账款明细.xls", "明细", ErpPayableDetailRespVO.class,
+                payableAccountService.getPayableDetailList(reqVO));
+    }
+
     @PostMapping("/writeoff")
     @Operation(summary = "核销应付账款")
     @PreAuthorize("@ss.hasPermission('erp:payable-account:writeoff')")
     public CommonResult<Long> writeOffPayable(@Valid @RequestBody ErpPayableWriteOffReqVO reqVO) {
         return success(payableAccountService.writeOffPayable(reqVO));
+    }
+
+    private ErpPayableAccountExportRespVO toExportVO(ErpPayableAccountDO source) {
+        ErpPayableAccountExportRespVO target = new ErpPayableAccountExportRespVO();
+        target.setSupplierName(source.getSupplierName());
+        target.setContact(source.getContact());
+        target.setMobile(source.getMobile());
+        target.setDeptName(source.getDeptName());
+        target.setHandlerName(source.getHandlerName());
+        target.setPurchaseInAmount(source.getPurchaseInAmount());
+        target.setPurchaseReturnAmount(source.getPurchaseReturnAmount());
+        target.setPriceAdjustAmount(source.getPriceAdjustAmount());
+        target.setMiscPayableAmount(source.getMiscPayableAmount());
+        target.setPaymentAmount(source.getPaymentAmount());
+        target.setWriteOffAmount(source.getWriteOffAmount());
+        target.setBalance(source.getBalance());
+        target.setUnclearedPrepayment(source.getUnclearedPrepayment());
+        target.setLastBizTime(source.getLastBizTime());
+        return target;
     }
 }

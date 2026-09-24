@@ -804,7 +804,10 @@ public class ErpPurchasePriceAdjustServiceImplTest extends BaseMockitoUnitTest {
         // 入库主表
         ErpPurchaseInDO inDO = new ErpPurchaseInDO()
                 .setId(inId).setNo("CGRK001").setInTime(LocalDateTime.of(2026, 5, 18, 10, 0))
-                .setDiscountPercent(BigDecimal.ZERO).setOtherPrice(BigDecimal.ZERO);
+                .setDiscountPercent(BigDecimal.ZERO)
+                .setFeeAmount(new BigDecimal("3.00"))
+                .setOtherPrice(new BigDecimal("3.00"))
+                .setTotalFreight1(new BigDecimal("8.00"));
         when(purchaseInMapper.selectById(eq(inId))).thenReturn(inDO);
 
         // recalc 入库主表所需子项
@@ -843,6 +846,8 @@ public class ErpPurchasePriceAdjustServiceImplTest extends BaseMockitoUnitTest {
         verify(purchaseInMapper).updateById(inCaptor.capture());
         ErpPurchaseInDO recalcedIn = inCaptor.getValue();
         assertTrue(Boolean.TRUE.equals(recalcedIn.getAdjusted()));
+        assertEquals(0, recalcedIn.getFeeAmount().compareTo(new BigDecimal("3.00")));
+        assertEquals(0, recalcedIn.getTotalPrice().compareTo(new BigDecimal("63.00")));
 
         // 4. adjustStockCostAmount 调用
         verify(stockService).adjustStockCostAmount(eq(productId), eq(warehouseId),

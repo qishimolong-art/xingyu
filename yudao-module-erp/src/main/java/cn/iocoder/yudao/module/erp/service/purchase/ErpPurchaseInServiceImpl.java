@@ -12,6 +12,10 @@ import cn.iocoder.yudao.framework.common.util.number.MoneyUtils;
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
 import cn.iocoder.yudao.framework.datapermission.core.util.DataPermissionUtils;
 import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpProductRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.finance.payable.vo.expense.ErpPayableExpenseDraftSaveReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.finance.payable.vo.expense.ErpPayableExpenseSaveReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.payment.ErpFinancePaymentDraftSaveReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.payment.ErpFinancePaymentSaveReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.imports.ErpPurchaseImportResultRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.ErpPurchaseUpdateRemarkReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.in.ErpPurchaseInForAdjustRespVO;
@@ -41,6 +45,9 @@ import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartSave
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartSubmitRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.supplier.ErpSupplierPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.move.ErpStockMoveSaveReqVO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.finance.ErpFinancePaymentDO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.finance.ErpFinancePaymentItemDO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.finance.payable.ErpPayableExpenseDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.product.ErpProductDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseInDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseInItemDO;
@@ -53,8 +60,10 @@ import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleConvertRecordDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockInBillItemDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpWarehouseDO;
+import cn.iocoder.yudao.module.erp.dal.mysql.finance.ErpFinancePaymentMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.product.ErpProductMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.finance.ErpFinancePaymentItemMapper;
+import cn.iocoder.yudao.module.erp.dal.mysql.finance.payable.ErpPayableExpenseMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.purchase.ErpPurchaseInItemMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.purchase.ErpPurchaseInMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.purchase.ErpPurchaseInvoiceItemMapper;
@@ -66,12 +75,15 @@ import cn.iocoder.yudao.module.erp.enums.ErpAuditStatus;
 import cn.iocoder.yudao.module.erp.enums.common.ErpBizTypeEnum;
 import cn.iocoder.yudao.module.erp.enums.sale.ErpSaleBizSourceTypeEnum;
 import cn.iocoder.yudao.module.erp.enums.sale.ErpSaleConvertTypeEnum;
+import cn.iocoder.yudao.module.erp.enums.finance.ErpFinancePaymentStatusEnum;
 import cn.iocoder.yudao.module.erp.enums.stock.ErpStockRecordBizTypeEnum;
 import cn.iocoder.yudao.module.erp.service.common.ErpImportProductResolver;
 import cn.iocoder.yudao.module.erp.service.common.ErpOperateLogService;
 import cn.iocoder.yudao.module.erp.service.common.ErpOriginalSettlementAmountUtils;
 import cn.iocoder.yudao.module.erp.service.product.ErpProductBatchNoValidator;
 import cn.iocoder.yudao.module.erp.service.product.ErpProductService;
+import cn.iocoder.yudao.module.erp.service.finance.ErpFinancePaymentService;
+import cn.iocoder.yudao.module.erp.service.finance.payable.ErpPayableExpenseService;
 import cn.iocoder.yudao.module.erp.service.sale.ErpSaleCartService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpStockService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpStockRecordService;
@@ -132,6 +144,11 @@ public class ErpPurchaseInServiceImpl implements ErpPurchaseInService {
     private static final String ITEM_OPERATION_INSERT = "insert";
     private static final String ITEM_OPERATION_UPDATE = "update";
     private static final String ITEM_OPERATION_DELETE = "delete";
+    private static final String FREIGHT_TYPE_FACTORY_ADVANCE = "代厂家付";
+    private static final String FREIGHT_TYPE_SELF_PAY = "我方自付";
+    private static final String PURCHASE_FREIGHT_EXPENSE_SOURCE_TYPE = "采购入库运费";
+    private static final String PURCHASE_FREIGHT_EXPENSE_ITEM_NAME = "采购运费";
+    private static final String PURCHASE_FREIGHT_PAYMENT_REMARK_MARKER = "采购入库运费代厂家付";
     private static final DateTimeFormatter[] PURCHASE_IN_IMPORT_DATE_TIME_FORMATTERS = new DateTimeFormatter[]{
             DateTimeFormatter.ofPattern("yyyy-M-d HH:mm:ss"),
             DateTimeFormatter.ofPattern("yyyy-M-d HH:mm"),
@@ -161,6 +178,10 @@ public class ErpPurchaseInServiceImpl implements ErpPurchaseInService {
     private ErpProductMapper productMapper;
     @Resource
     private ErpFinancePaymentItemMapper financePaymentItemMapper;
+    @Resource
+    private ErpFinancePaymentMapper financePaymentMapper;
+    @Resource
+    private ErpPayableExpenseMapper payableExpenseMapper;
 
     @Resource
     private ErpNoRedisDAO noRedisDAO;
@@ -188,6 +209,10 @@ public class ErpPurchaseInServiceImpl implements ErpPurchaseInService {
     private ErpSupplierService supplierService;
     @Resource
     private ErpWarehouseService warehouseService;
+    @Resource
+    private ErpFinancePaymentService financePaymentService;
+    @Resource
+    private ErpPayableExpenseService payableExpenseService;
 
     @Resource
     private AdminUserApi adminUserApi;
@@ -210,6 +235,7 @@ public class ErpPurchaseInServiceImpl implements ErpPurchaseInService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Long createPurchaseIn(ErpPurchaseInSaveReqVO createReqVO) {
+        validatePurchaseInFreight(createReqVO);
         // 1.1 校验采购订单已审核（如果填写�?orderId�?
         ErpPurchaseOrderDO purchaseOrder = null;
         ErpSupplierDO supplier;
@@ -259,6 +285,7 @@ public class ErpPurchaseInServiceImpl implements ErpPurchaseInService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Long createPurchaseInDraft(ErpPurchaseInDraftCreateReqVO createReqVO) {
+        validatePurchaseInFreight(createReqVO);
         ErpSupplierDO supplier = validateOptionalDraftReferences(createReqVO);
         List<ErpPurchaseInItemDO> purchaseInItems = buildDraftPurchaseInItems(createReqVO.getItems());
         if (CollUtil.isEmpty(purchaseInItems)) {
@@ -285,6 +312,7 @@ public class ErpPurchaseInServiceImpl implements ErpPurchaseInService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void updatePurchaseIn(ErpPurchaseInSaveReqVO updateReqVO) {
+        validatePurchaseInFreight(updateReqVO);
         // 1.1 校验存在
         ErpPurchaseInDO purchaseIn = lockPurchaseIn(updateReqVO.getId());
         if (ErpAuditStatus.APPROVE.getStatus().equals(purchaseIn.getStatus())) {
@@ -343,6 +371,7 @@ public class ErpPurchaseInServiceImpl implements ErpPurchaseInService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void updatePurchaseInDraft(ErpPurchaseInDraftUpdateReqVO updateReqVO) {
+        validatePurchaseInFreight(updateReqVO);
         ErpPurchaseInDO purchaseIn = lockPurchaseIn(updateReqVO.getId());
         if (!Integer.valueOf(DRAFT_STATUS).equals(purchaseIn.getStatus())) {
             throw exception(PURCHASE_IN_UPDATE_FAIL_NOT_DRAFT, purchaseIn.getNo());
@@ -392,6 +421,7 @@ public class ErpPurchaseInServiceImpl implements ErpPurchaseInService {
         if (!Integer.valueOf(DRAFT_STATUS).equals(purchaseIn.getStatus())) {
             throw exception(PURCHASE_IN_SUBMIT_FAIL);
         }
+        validatePurchaseInFreight(purchaseIn);
         if (purchaseIn.getSupplierId() == null) {
             throw exception(PURCHASE_IN_SUBMIT_SUPPLIER_REQUIRED);
         }
@@ -817,6 +847,7 @@ public class ErpPurchaseInServiceImpl implements ErpPurchaseInService {
         if (!ErpAuditStatus.PROCESS.getStatus().equals(purchaseIn.getStatus())) {
             throw exception(PURCHASE_IN_APPROVE_FAIL);
         }
+        validatePurchaseInFreight(purchaseIn);
         List<ErpPurchaseInItemDO> purchaseInItems = purchaseInItemMapper.selectListByInIdForUpdate(id);
         validatePurchaseInItemsForApproval(purchaseInItems);
         ErpSupplierDO supplier = supplierService.validateSupplier(purchaseIn.getSupplierId());
@@ -856,10 +887,153 @@ public class ErpPurchaseInServiceImpl implements ErpPurchaseInService {
                 .forEach(item -> productService.updateProductLastPurchasePrice(
                         item.getProductId(), item.getProductPrice()));
 
+        createPurchaseInFreightDraftIfNeeded(purchaseIn);
+
         if (purchaseIn.getOrderId() != null) {
             updatePurchaseOrderInCount(purchaseIn.getOrderId());
         }
         operateLogService.recordStatus(ERP_PURCHASE_IN_TYPE, id, purchaseIn.getNo(), true);
+    }
+
+    private void validatePurchaseInFreight(ErpPurchaseInSaveReqVO reqVO) {
+        validatePurchaseInFreight(reqVO.getFreightType1(), reqVO.getTotalFreight1());
+    }
+
+    private void validatePurchaseInFreight(ErpPurchaseInDO purchaseIn) {
+        validatePurchaseInFreight(purchaseIn.getFreightType1(), purchaseIn.getTotalFreight1());
+    }
+
+    private void validatePurchaseInFreight(String freightType, BigDecimal freightAmount) {
+        BigDecimal amount = freightAmount != null ? freightAmount : BigDecimal.ZERO;
+        if (amount.compareTo(BigDecimal.ZERO) < 0) {
+            throw exception(PURCHASE_IN_FREIGHT_AMOUNT_NEGATIVE);
+        }
+        String normalizedType = StrUtil.trimToEmpty(freightType);
+        if (amount.compareTo(BigDecimal.ZERO) > 0 && StrUtil.isBlank(normalizedType)) {
+            throw exception(PURCHASE_IN_FREIGHT_TYPE_REQUIRED);
+        }
+        if (StrUtil.isNotBlank(normalizedType) && !FREIGHT_TYPE_FACTORY_ADVANCE.equals(normalizedType)
+                && !FREIGHT_TYPE_SELF_PAY.equals(normalizedType)) {
+            throw exception(PURCHASE_IN_FREIGHT_TYPE_INVALID);
+        }
+    }
+
+    private void createPurchaseInFreightDraftIfNeeded(ErpPurchaseInDO purchaseIn) {
+        BigDecimal freightAmount = purchaseIn.getTotalFreight1() != null
+                ? purchaseIn.getTotalFreight1() : BigDecimal.ZERO;
+        if (freightAmount.compareTo(BigDecimal.ZERO) <= 0) {
+            return;
+        }
+        if (FREIGHT_TYPE_FACTORY_ADVANCE.equals(StrUtil.trimToEmpty(purchaseIn.getFreightType1()))) {
+            createFactoryFreightPaymentDraftIfNeeded(purchaseIn, freightAmount);
+            return;
+        }
+        if (FREIGHT_TYPE_SELF_PAY.equals(StrUtil.trimToEmpty(purchaseIn.getFreightType1()))) {
+            createSelfPayFreightExpenseDraftIfNeeded(purchaseIn, freightAmount);
+        }
+    }
+
+    private void createFactoryFreightPaymentDraftIfNeeded(ErpPurchaseInDO purchaseIn, BigDecimal freightAmount) {
+        if (hasFactoryFreightPaymentDraft(purchaseIn.getId())) {
+            return;
+        }
+        ErpFinancePaymentSaveReqVO.Item item = new ErpFinancePaymentSaveReqVO.Item();
+        item.setBizType(ErpBizTypeEnum.PURCHASE_IN.getType());
+        item.setBizId(purchaseIn.getId());
+        item.setBizNo(purchaseIn.getNo());
+        item.setTotalPrice(freightAmount);
+        item.setPaidPrice(BigDecimal.ZERO);
+        item.setPaymentPrice(freightAmount);
+        item.setRemark(buildFreightRemark(PURCHASE_FREIGHT_PAYMENT_REMARK_MARKER, purchaseIn));
+
+        ErpFinancePaymentDraftSaveReqVO draft = new ErpFinancePaymentDraftSaveReqVO();
+        draft.setPaymentTime(LocalDateTime.now());
+        draft.setFinanceUserId(getLoginUserId());
+        draft.setDeptId(purchaseIn.getDeptId());
+        draft.setSupplierId(purchaseIn.getSupplierId());
+        draft.setAccountId(purchaseIn.getAccountId());
+        draft.setDiscountPrice(BigDecimal.ZERO);
+        draft.setTotalPrice(freightAmount);
+        draft.setPaymentPrice(freightAmount);
+        draft.setRemark(buildFreightRemark(PURCHASE_FREIGHT_PAYMENT_REMARK_MARKER, purchaseIn));
+        draft.setItems(Collections.singletonList(item));
+        financePaymentService.createFinancePaymentDraft(draft);
+    }
+
+    private boolean hasFactoryFreightPaymentDraft(Long purchaseInId) {
+        List<ErpFinancePaymentItemDO> items = financePaymentItemMapper.selectList(
+                new LambdaQueryWrapper<ErpFinancePaymentItemDO>()
+                        .eq(ErpFinancePaymentItemDO::getBizType, ErpBizTypeEnum.PURCHASE_IN.getType())
+                        .eq(ErpFinancePaymentItemDO::getBizId, purchaseInId)
+                        .like(ErpFinancePaymentItemDO::getRemark, PURCHASE_FREIGHT_PAYMENT_REMARK_MARKER));
+        if (CollUtil.isEmpty(items)) {
+            return false;
+        }
+        List<ErpFinancePaymentDO> payments = financePaymentMapper.selectBatchIds(
+                convertSet(items, ErpFinancePaymentItemDO::getPaymentId));
+        return CollUtil.isNotEmpty(payments) && payments.stream()
+                .anyMatch(payment -> !ErpFinancePaymentStatusEnum.REJECT.getStatus().equals(payment.getStatus()));
+    }
+
+    private void createSelfPayFreightExpenseDraftIfNeeded(ErpPurchaseInDO purchaseIn, BigDecimal freightAmount) {
+        ErpPayableExpenseDO existing = payableExpenseMapper.selectBySource(
+                PURCHASE_FREIGHT_EXPENSE_SOURCE_TYPE, purchaseIn.getId());
+        if (existing != null) {
+            return;
+        }
+        Long handlerId = parseLongOrNull(purchaseIn.getHandler());
+        if (handlerId == null) {
+            handlerId = getLoginUserId();
+        }
+        ErpSupplierDO supplier = purchaseIn.getSupplierId() == null ? null
+                : supplierService.getSupplier(purchaseIn.getSupplierId());
+        String party = supplier != null ? supplier.getName() : null;
+        LocalDate bizDate = purchaseIn.getInTime() != null ? purchaseIn.getInTime().toLocalDate() : LocalDate.now();
+
+        ErpPayableExpenseSaveReqVO.Item item = new ErpPayableExpenseSaveReqVO.Item();
+        item.setItemName(PURCHASE_FREIGHT_EXPENSE_ITEM_NAME);
+        item.setAmount(freightAmount);
+        item.setParty(party);
+        item.setDeptId(purchaseIn.getDeptId());
+        item.setBizDate(bizDate);
+        item.setHandlerId(handlerId);
+        item.setQty(1);
+        item.setExpenseCategory("运费");
+        item.setRemark(buildFreightRemark(PURCHASE_FREIGHT_EXPENSE_ITEM_NAME, purchaseIn));
+
+        ErpPayableExpenseDraftSaveReqVO draft = new ErpPayableExpenseDraftSaveReqVO();
+        draft.setBizTime(bizDate);
+        draft.setSettleMethod(purchaseIn.getSettleMethod());
+        draft.setAccountId(purchaseIn.getAccountId());
+        draft.setDeptId(purchaseIn.getDeptId());
+        draft.setHandlerId(handlerId);
+        draft.setParty(party);
+        draft.setRelatedBiz("采购入库：" + purchaseIn.getNo());
+        draft.setSourceType(PURCHASE_FREIGHT_EXPENSE_SOURCE_TYPE);
+        draft.setSourceId(purchaseIn.getId());
+        draft.setSourceNo(purchaseIn.getNo());
+        draft.setRemark(buildFreightRemark(PURCHASE_FREIGHT_EXPENSE_ITEM_NAME, purchaseIn));
+        draft.setItems(Collections.singletonList(item));
+        payableExpenseService.createPayableExpenseDraft(draft);
+    }
+
+    private String buildFreightRemark(String prefix, ErpPurchaseInDO purchaseIn) {
+        StringBuilder remark = new StringBuilder(prefix).append("，来源单号：").append(purchaseIn.getNo());
+        if (StrUtil.isNotBlank(purchaseIn.getRemark())) {
+            remark.append("，原单备注：").append(purchaseIn.getRemark());
+        }
+        return remark.toString();
+    }
+
+    private Long parseLongOrNull(String value) {
+        if (StrUtil.isBlank(value)) {
+            return null;
+        }
+        try {
+            return Long.parseLong(value);
+        } catch (NumberFormatException ignored) {
+            return null;
+        }
     }
 
     @Override
@@ -1832,7 +2006,7 @@ public class ErpPurchaseInServiceImpl implements ErpPurchaseInService {
         saveReqVO.setInTime(reqVO.getInTime() != null ? reqVO.getInTime() : java.time.LocalDateTime.now());
         saveReqVO.setAccountId(reqVO.getAccountId() != null ? reqVO.getAccountId() : purchaseOrder.getAccountId());
         saveReqVO.setDiscountPercent(BigDecimal.ZERO);
-        saveReqVO.setFeeAmount(purchaseOrder.getFeeAmount());
+        saveReqVO.setFeeAmount(BigDecimal.ZERO);
         saveReqVO.setOtherPrice(BigDecimal.ZERO);
         saveReqVO.setFileUrl(purchaseOrder.getFileUrl());
         saveReqVO.setRemark(purchaseOrder.getRemark());

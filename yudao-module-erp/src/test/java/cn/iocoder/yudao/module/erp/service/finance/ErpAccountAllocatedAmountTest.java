@@ -14,6 +14,8 @@ import cn.iocoder.yudao.module.system.api.dept.dto.DeptRespDTO;
 import org.junit.jupiter.api.Test;
 import org.springframework.test.util.ReflectionTestUtils;
 
+import javax.annotation.Resource;
+import java.lang.reflect.Field;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.Arrays;
@@ -25,6 +27,13 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 class ErpAccountAllocatedAmountTest {
+
+    @Test
+    void payableOtherMapperMustBeInjectedForDetailDiscountAdjustmentLookup() throws NoSuchFieldException {
+        Field field = ErpPayableAccountServiceImpl.class.getDeclaredField("payableOtherMapper");
+
+        assertThat(field.getAnnotation(Resource.class)).isNotNull();
+    }
 
     @Test
     void payableAllocationIsShownWithoutReducingBalanceTwice() {

@@ -132,6 +132,8 @@ public class ErpSaleQuoteServiceImpl implements ErpSaleQuoteService {
     @Resource
     private ErpSaleDocumentDefaultService saleDocumentDefaultService;
     @Resource
+    private ErpSaleDirectDeptPermissionService saleDirectDeptPermissionService;
+    @Resource
     private AdminUserApi adminUserApi;
     @Resource
     private ErpOperateLogService operateLogService;
@@ -149,6 +151,7 @@ public class ErpSaleQuoteServiceImpl implements ErpSaleQuoteService {
         if (reqDeptId == null && quoteDeptId != null) {
             validateSaleQuoteItemWarehousesAllowed(items, quoteDeptId);
         }
+        saleDirectDeptPermissionService.validateSaleDocumentDeptAllowed(quoteDeptId);
         if (createReqVO.getAccountId() != null) {
             accountService.validateAccount(createReqVO.getAccountId());
         }
@@ -186,6 +189,7 @@ public class ErpSaleQuoteServiceImpl implements ErpSaleQuoteService {
         if (createReqVO.getCustomerId() != null) {
             quoteDeptId = prepareSaleQuoteDept(createReqVO);
         }
+        saleDirectDeptPermissionService.validateSaleDocumentDeptAllowed(quoteDeptId);
         List<ErpSaleQuoteItemDO> items = validateSaleQuoteDraftItems(itemReqs, quoteDeptId);
         if (createReqVO.getAccountId() != null) {
             accountService.validateAccount(createReqVO.getAccountId());
@@ -246,6 +250,7 @@ public class ErpSaleQuoteServiceImpl implements ErpSaleQuoteService {
         if (reqDeptId == null && quoteDeptId != null) {
             validateSaleQuoteItemWarehousesAllowed(items, quoteDeptId);
         }
+        saleDirectDeptPermissionService.validateSaleDocumentDeptAllowed(quoteDeptId);
         if (updateReqVO.getAccountId() != null) {
             accountService.validateAccount(updateReqVO.getAccountId());
         }
@@ -329,6 +334,7 @@ public class ErpSaleQuoteServiceImpl implements ErpSaleQuoteService {
         if (updateReqVO.getCustomerId() != null) {
             quoteDeptId = prepareSaleQuoteDept(updateReqVO);
         }
+        saleDirectDeptPermissionService.validateSaleDocumentDeptAllowed(quoteDeptId);
         List<ErpSaleQuoteItemDO> items = validateSaleQuoteDraftItems(itemReqs, quoteDeptId);
         preserveSaleQuoteConvertedCount(items, existingItems);
         if (updateReqVO.getAccountId() != null) {
@@ -463,6 +469,7 @@ public class ErpSaleQuoteServiceImpl implements ErpSaleQuoteService {
         ErpSaleQuoteSaveReqVO submitReqVO = BeanUtils.toBean(quote, ErpSaleQuoteSaveReqVO.class);
         submitReqVO.setItems(BeanUtils.toBean(persistedItems, ErpSaleQuoteSaveReqVO.Item.class));
         Long quoteDeptId = prepareSaleQuoteDept(submitReqVO);
+        saleDirectDeptPermissionService.validateSaleDocumentDeptAllowed(quoteDeptId);
         validateSaleQuoteItems(submitReqVO.getItems(), quoteDeptId);
         if (submitReqVO.getAccountId() != null) {
             accountService.validateAccount(submitReqVO.getAccountId());
@@ -520,6 +527,7 @@ public class ErpSaleQuoteServiceImpl implements ErpSaleQuoteService {
         if (!ErpSaleQuoteStatusEnum.PROCESS.getStatus().equals(quote.getStatus())) {
             throw exception(SALE_QUOTE_APPROVE_FAIL);
         }
+        saleDirectDeptPermissionService.validateSaleDocumentDeptAllowed(quote.getDeptId());
         List<ErpSaleQuoteItemDO> items = saleQuoteItemMapper.selectListByQuoteId(id);
         Long saleOutId = saleOutService.createGeneratedSaleOut(buildSaleOutReqVO(quote, items),
                 ErpSaleBizSourceTypeEnum.QUOTE.getType(), quote.getId(), quote.getNo());

@@ -180,5 +180,9 @@ public class ErpWarehouseDO extends BaseDO {
      * 区域ID(关联erp_base_data type=region)
      */
     private Long regionId;
+    /**
+     * 销售单云打印设备编号
+     */
+    private Long cloudPrintDeviceId;
 
 }

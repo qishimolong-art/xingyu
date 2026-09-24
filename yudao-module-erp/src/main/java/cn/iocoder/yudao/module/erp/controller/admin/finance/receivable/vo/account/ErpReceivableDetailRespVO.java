@@ -41,7 +41,7 @@ public class ErpReceivableDetailRespVO {
     @ExcelProperty("增加应收")
     private BigDecimal increaseAmount;
 
-    @ExcelProperty("其他应收")
+    @ExcelProperty("应收调账")
     private BigDecimal otherReceivableAmount;
 
     @ExcelProperty("收款金额")

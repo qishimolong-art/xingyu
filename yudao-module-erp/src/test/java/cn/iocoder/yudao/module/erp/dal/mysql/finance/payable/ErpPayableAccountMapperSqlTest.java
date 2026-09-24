@@ -8,6 +8,7 @@ import org.apache.ibatis.session.Configuration;
 import org.junit.jupiter.api.Test;
 
 import java.lang.reflect.Method;
+import java.time.LocalDateTime;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
@@ -26,15 +27,34 @@ class ErpPayableAccountMapperSqlTest {
     }
 
     @Test
-    void selectList_exposesMiscPayableWithoutChangingBalanceFormula() throws Exception {
+    void selectList_showsNegatedMiscPayableWithoutPuttingItInPayableAccountBalance() throws Exception {
         String sql = render(true, Collections.emptyList(), null);
 
         assertTrue(sql.contains("erp_payable_misc"));
-        assertTrue(sql.contains("SUM(amount) AS miscPayableAmount"));
+        assertTrue(sql.contains("-SUM(amount) AS miscPayableAmount"));
         assertTrue(sql.contains("IFNULL(pm.miscPayableAmount, 0) AS miscPayableAmount"));
+        assertFalse(sql.contains("+ IFNULL(pm.miscPayableAmount, 0)"));
+        assertFalse(sql.contains("- IFNULL(pm.miscPayableAmount, 0)"));
+        assertTrue(sql.contains("OR IFNULL(pm.miscPayableAmount, 0) <> 0"));
+        assertTrue(renderSorted("miscPayableAmount", "asc").contains("ORDER BY miscPayableAmount ASC"));
+        assertTrue(renderSorted("miscPayableAmount", "desc").contains("ORDER BY miscPayableAmount DESC"));
         assertTrue(sql.contains("erp_payable_other"));
-        assertTrue(sql.contains("+ IFNULL(po.otherPayableAmount, 0) + IFNULL(pm.miscPayableAmount, 0) - IFNULL(pr.purchaseReturnAmount, 0) - IFNULL(fp.paymentAmount, 0) AS balance"));
-        assertFalse(sql.contains("+ IFNULL(po.otherPayableAmount, 0) - IFNULL(pr.purchaseReturnAmount, 0)"));
+        assertTrue(sql.contains("+ IFNULL(cpo.otherPayableAmount, 0) - IFNULL(cpr.purchaseReturnAmount, 0) - IFNULL(cfp.paymentAmount, 0) AS balance"));
+    }
+
+    @Test
+    void selectList_keepsDateRangePeriodAmountsSeparateFromOpeningAndCutoffBalances() throws Exception {
+        String sql = renderWithDateRange();
+
+        assertTrue(sql.contains("AS openingPayableBalance"));
+        assertTrue(sql.contains("t.in_time BETWEEN ? AND ?"));
+        assertTrue(sql.contains("t.in_time < ?"));
+        assertTrue(sql.contains("t.in_time <= ?"));
+        assertTrue(sql.contains("IFNULL(opi.purchaseInAmount, 0) + IFNULL(opa.priceAdjustAmount, 0)"));
+        assertTrue(sql.contains("IFNULL(cpi.purchaseInAmount, 0) + IFNULL(cpa.priceAdjustAmount, 0)"));
+        assertTrue(sql.contains("OR (IFNULL(opi.purchaseInAmount, 0) + IFNULL(opa.priceAdjustAmount, 0)"));
+        assertTrue(renderSorted("openingPayableBalance", "asc").contains("ORDER BY openingPayableBalance ASC"));
+        assertTrue(renderSorted("openingPayableBalance", "desc").contains("ORDER BY openingPayableBalance DESC"));
     }
 
     @Test
@@ -47,6 +67,26 @@ class ErpPayableAccountMapperSqlTest {
     }
 
     private String render(boolean all, java.util.Collection<Long> deptIds, Long selfUserId) throws Exception {
+        return render(all, deptIds, selfUserId, null, null);
+    }
+
+    private String renderSorted(String orderField, String orderDirection) throws Exception {
+        return render(true, Collections.emptyList(), null, orderField, orderDirection);
+    }
+
+    private String renderWithDateRange() throws Exception {
+        return render(true, Collections.emptyList(), null, null, null,
+                new LocalDateTime[]{LocalDateTime.of(2026, 9, 1, 0, 0),
+                        LocalDateTime.of(2026, 9, 30, 23, 59, 59)});
+    }
+
+    private String render(boolean all, java.util.Collection<Long> deptIds, Long selfUserId,
+                          String orderField, String orderDirection) throws Exception {
+        return render(all, deptIds, selfUserId, orderField, orderDirection, null);
+    }
+
+    private String render(boolean all, java.util.Collection<Long> deptIds, Long selfUserId,
+                          String orderField, String orderDirection, LocalDateTime[] bizTime) throws Exception {
         Method method = ErpPayableAccountMapper.class.getMethod("selectList", ErpPayableAccountPageReqVO.class,
                 java.util.Collection.class, String.class, boolean.class, java.util.Collection.class,
                 Long.class, boolean.class);
@@ -54,7 +94,11 @@ class ErpPayableAccountMapperSqlTest {
         String script = String.join(" ", select.value());
         Configuration configuration = new Configuration();
         Map<String, Object> params = new HashMap<>();
-        params.put("reqVO", new ErpPayableAccountPageReqVO());
+        ErpPayableAccountPageReqVO reqVO = new ErpPayableAccountPageReqVO();
+        reqVO.setOrderField(orderField);
+        reqVO.setOrderDirection(orderDirection);
+        reqVO.setBizTime(bizTime);
+        params.put("reqVO", reqVO);
         params.put("deptIds", Collections.emptyList());
         params.put("selfUserId", null);
         params.put("all", true);

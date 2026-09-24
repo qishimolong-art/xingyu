@@ -31,8 +31,12 @@ public class ErpReceivableAccountRespVO {
     private BigDecimal priceAdjustAmount;
     private BigDecimal receiptAmount;
     private BigDecimal writeOffAmount;
+    @Schema(description = "应收调账金额")
     private BigDecimal otherReceivableAmount;
+    @Schema(description = "其他应收款金额，取独立其他应收合计的负数，不计入应收余额")
     private BigDecimal miscReceivableAmount;
+    @Schema(description = "此前应收金额，按筛选开始时间之前的应收主账款余额统计")
+    private BigDecimal openingReceivableBalance;
     private BigDecimal receivableAmount;
     private BigDecimal receivedAmount;
     private BigDecimal unreceivedAmount;

@@ -78,6 +78,11 @@ public class ErpStockRecordReportRespVO {
     @ExcelProperty("仓库")
     private String warehouseName;
 
+    @Schema(description = "部门编号")
+    private Long deptId;
+    @Schema(description = "部门名称")
+    private String deptName;
+
     // ========== 入库分列（当 count > 0 填充） ==========
     @Schema(description = "入库数")
     @ExcelProperty("入库数")

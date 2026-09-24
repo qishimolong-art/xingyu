@@ -16,6 +16,7 @@ import cn.iocoder.yudao.module.erp.enums.finance.ErpReceivableOtherStatusEnum;
 import cn.iocoder.yudao.module.erp.service.common.ErpOperateLogService;
 import cn.iocoder.yudao.module.erp.service.finance.ErpFinanceFieldPermissionMasker;
 import cn.iocoder.yudao.module.erp.service.finance.bo.ErpSaleCartFreightDraftCreateReqBO;
+import cn.iocoder.yudao.module.erp.service.sale.ErpCustomerDeptPermissionService;
 import cn.iocoder.yudao.module.erp.service.sale.ErpCustomerService;
 import cn.iocoder.yudao.module.system.api.dept.DeptApi;
 import cn.iocoder.yudao.module.system.api.user.AdminUserApi;
@@ -30,6 +31,7 @@ import java.math.BigDecimal;
 import static cn.iocoder.yudao.framework.common.exception.util.ServiceExceptionUtil.exception;
 import static cn.iocoder.yudao.framework.security.core.util.SecurityFrameworkUtils.getLoginUserId;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.OTHER_RECEIVABLE_APPROVE_FAIL;
+import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.OTHER_RECEIVABLE_CUSTOMER_DEPT_NOT_ALLOWED;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.OTHER_RECEIVABLE_DELETE_FAIL_APPROVE;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.OTHER_RECEIVABLE_DRAFT_SAVE_FAIL;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.OTHER_RECEIVABLE_DRAFT_SUBMIT_FAIL;
@@ -63,6 +65,8 @@ public class ErpReceivableOtherServiceImpl implements ErpReceivableOtherService 
     private ErpFinanceFieldPermissionMasker fieldPermissionMasker;
     @Resource
     private ErpOperateLogService operateLogService;
+    @Resource
+    private ErpCustomerDeptPermissionService customerDeptPermissionService;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -79,6 +83,7 @@ public class ErpReceivableOtherServiceImpl implements ErpReceivableOtherService 
                 .setSourceType(StrUtil.blankToDefault(createReqVO.getSourceType(), "调账")));
         fillCreateDeptId(doObj);
         validateRefs(createReqVO.getHandlerId(), doObj.getDeptId());
+        validateCustomerDept(doObj.getCustomerId(), doObj.getDeptId(), false);
         normalize(doObj);
         fieldPermissionMasker.clearHiddenFields(FIELD_PERMISSION_MODULE, doObj);
         receivableOtherMapper.insert(doObj);
@@ -101,6 +106,7 @@ public class ErpReceivableOtherServiceImpl implements ErpReceivableOtherService 
                 .setStatus(ErpReceivableOtherStatusEnum.DRAFT.getStatus())
                 .setSourceType(StrUtil.blankToDefault(createReqVO.getSourceType(), "调账"));
         fillCreateDeptId(doObj);
+        validateCustomerDept(doObj.getCustomerId(), doObj.getDeptId(), true);
         normalizeDraft(doObj);
         receivableOtherMapper.insert(doObj);
         operateLogService.recordCreate(ERP_RECEIVABLE_OTHER_TYPE, doObj.getId(), doObj.getNo());
@@ -209,15 +215,12 @@ public class ErpReceivableOtherServiceImpl implements ErpReceivableOtherService 
                 obj.setSourceType("调账");
             }
         });
-        if (db.getSourceId() != null) {
-            updateObj.setSourceType(db.getSourceType());
-            updateObj.setSourceId(db.getSourceId());
-            updateObj.setSourceNo(db.getSourceNo());
-        }
+        preserveSource(updateObj, db);
         if (updateObj.getDeptId() == null) {
             updateObj.setDeptId(db.getDeptId());
         }
         validateRefs(updateReqVO.getHandlerId(), updateObj.getDeptId());
+        validateCustomerDept(updateObj.getCustomerId(), updateObj.getDeptId(), false);
         normalize(updateObj);
         int affected = receivableOtherMapper.updateByIdAndStatus(updateReqVO.getId(),
                 ErpAuditStatus.PROCESS.getStatus(), updateObj);
@@ -239,17 +242,15 @@ public class ErpReceivableOtherServiceImpl implements ErpReceivableOtherService 
                 .setId(db.getId())
                 .setNo(db.getNo())
                 .setStatus(db.getStatus());
-        if (db.getSourceId() != null) {
-            updateObj.setSourceType(db.getSourceType());
-            updateObj.setSourceId(db.getSourceId());
-            updateObj.setSourceNo(db.getSourceNo());
-        } else if (StrUtil.isBlank(updateObj.getSourceType())) {
+        preserveSource(updateObj, db);
+        if (StrUtil.isBlank(updateObj.getSourceType())) {
             updateObj.setSourceType("调账");
         }
         if (updateObj.getDeptId() == null) {
             updateObj.setDeptId(db.getDeptId());
         }
         validateDraftForSave(updateObj.getCustomerId());
+        validateCustomerDept(updateObj.getCustomerId(), updateObj.getDeptId(), true);
         normalizeDraft(updateObj);
         if (receivableOtherMapper.updateByIdAndStatus(db.getId(),
                 ErpReceivableOtherStatusEnum.DRAFT.getStatus(), updateObj) == 0) {
@@ -301,6 +302,7 @@ public class ErpReceivableOtherServiceImpl implements ErpReceivableOtherService 
                 || !ErpReceivableOtherStatusEnum.PROCESS.getStatus().equals(db.getStatus())) {
             throw exception(OTHER_RECEIVABLE_PROCESS_FAIL);
         }
+        validateCustomerDept(db.getCustomerId(), db.getDeptId(), false);
         int affected = receivableOtherMapper.updateByIdAndStatus(id, db.getStatus(),
                 ErpReceivableOtherDO.builder().status(status).build());
         if (affected == 0) {
@@ -391,9 +393,13 @@ public class ErpReceivableOtherServiceImpl implements ErpReceivableOtherService 
         if (doObj.getReceivableAmount() == null) {
             throw exception(OTHER_RECEIVABLE_DRAFT_SUBMIT_FAIL, "应收金额不能为空");
         }
+        if (doObj.getDeptId() == null) {
+            throw exception(OTHER_RECEIVABLE_DRAFT_SUBMIT_FAIL, "部门不能为空");
+        }
         validateReceivableAmountNonZero(doObj.getReceivableAmount(), true);
         customerService.validateCustomer(doObj.getCustomerId());
         validateRefs(doObj.getHandlerId(), doObj.getDeptId());
+        validateCustomerDept(doObj.getCustomerId(), doObj.getDeptId(), true);
     }
 
     private void validateReceivableAmountNonZero(BigDecimal receivableAmount, boolean draftSubmit) {
@@ -401,5 +407,25 @@ public class ErpReceivableOtherServiceImpl implements ErpReceivableOtherService 
             throw exception(draftSubmit ? OTHER_RECEIVABLE_DRAFT_SUBMIT_FAIL : OTHER_RECEIVABLE_SAVE_FAIL,
                     "应收金额不能为 0");
         }
+    }
+
+    private void validateCustomerDept(Long customerId, Long deptId, boolean draftSubmit) {
+        if (customerId == null || deptId == null) {
+            return;
+        }
+        if (customerDeptPermissionService.hasAvailableDept(customerId, deptId, "erp_receivable_other")) {
+            return;
+        }
+        if (draftSubmit) {
+            throw exception(OTHER_RECEIVABLE_DRAFT_SUBMIT_FAIL,
+                    OTHER_RECEIVABLE_CUSTOMER_DEPT_NOT_ALLOWED.getMsg());
+        }
+        throw exception(OTHER_RECEIVABLE_CUSTOMER_DEPT_NOT_ALLOWED);
+    }
+
+    private void preserveSource(ErpReceivableOtherDO target, ErpReceivableOtherDO db) {
+        target.setSourceType(StrUtil.blankToDefault(db.getSourceType(), "调账"));
+        target.setSourceId(db.getSourceId());
+        target.setSourceNo(db.getSourceNo());
     }
 }

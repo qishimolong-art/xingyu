@@ -29,6 +29,12 @@ public class ErpFinanceReceiptDraftSaveReqVO {
     @Schema(description = "收款账户编号", example = "1")
     private Long accountId;
 
+    @Schema(description = "来源其他应收单编号", example = "1024")
+    private Long sourceReceivableMiscId;
+
+    @Schema(description = "来源其他应收单号", example = "QTYSM20260922000001")
+    private String sourceReceivableMiscNo;
+
     @Schema(description = "优惠金额")
     private BigDecimal discountPrice;
 

@@ -12,6 +12,7 @@ import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.warehouse.ErpWareho
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.warehouse.ErpWarehouseImportRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.warehouse.ErpWarehousePageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.warehouse.ErpWarehouseSaveReqVO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.cloudprint.ErpCloudPrintDeviceDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.product.ErpProductDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.product.ErpProductDeptDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockDO;
@@ -22,6 +23,7 @@ import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpWarehouseSaleDeptPerm
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpUserWarehousePermissionDO;
 import cn.iocoder.yudao.module.erp.dal.mysql.product.ErpProductDeptMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.product.ErpProductMapper;
+import cn.iocoder.yudao.module.erp.dal.mysql.cloudprint.ErpCloudPrintDeviceMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.stock.ErpUserWarehousePermissionMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.stock.ErpStockMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.stock.ErpWarehouseBranchMapper;
@@ -68,6 +70,8 @@ import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.
 import static cn.iocoder.yudao.framework.security.core.util.SecurityFrameworkUtils.getLoginUserDeptId;
 import static cn.iocoder.yudao.framework.security.core.util.SecurityFrameworkUtils.getLoginUserId;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.WAREHOUSE_CODE_EXISTS;
+import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.CLOUD_PRINT_DEVICE_DISABLED;
+import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.CLOUD_PRINT_DEVICE_NOT_EXISTS;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.WAREHOUSE_DIRECT_MULTIPLE;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.WAREHOUSE_DIRECT_NOT_CONFIGURED;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.WAREHOUSE_DISABLE_FAIL_STOCK_NOT_ZERO;
@@ -116,6 +120,8 @@ public class ErpWarehouseServiceImpl implements ErpWarehouseService {
     @Resource
     private ErpWarehouseMapper warehouseMapper;
     @Resource
+    private ErpCloudPrintDeviceMapper cloudPrintDeviceMapper;
+    @Resource
     private ErpStockMapper stockMapper;
     @Resource
     private ErpProductMapper productMapper;
@@ -156,6 +162,7 @@ public class ErpWarehouseServiceImpl implements ErpWarehouseService {
         fillWarehouseEnabledDefaults(warehouse);
         normalizeWarehouseCode(warehouse);
         validateWarehouseLocation(warehouse);
+        validateCloudPrintDevice(warehouse.getCloudPrintDeviceId());
         if (StrUtil.isBlank(warehouse.getWarehouseCode())) {
             warehouse.setWarehouseCode(generateWarehouseCode());
         }
@@ -200,6 +207,7 @@ public class ErpWarehouseServiceImpl implements ErpWarehouseService {
         updateObj.setCreditControl(warehouse.getCreditControl());
         updateObj.setRegionId(warehouse.getRegionId());
         validateWarehouseLocation(updateObj);
+        validateCloudPrintDevice(updateObj.getCloudPrintDeviceId());
         if (Boolean.FALSE.equals(updateObj.getSaleEnabled())) {
             validateWarehouseSaleDisableStockClear(Collections.singleton(warehouse.getId()));
         }
@@ -821,6 +829,19 @@ public class ErpWarehouseServiceImpl implements ErpWarehouseService {
                 "仓库经度必须在 -180 到 180 之间");
         validateCoordinateRange(warehouse.getLatitude(), MIN_LATITUDE, MAX_LATITUDE,
                 "仓库纬度必须在 -90 到 90 之间");
+    }
+
+    private void validateCloudPrintDevice(Long cloudPrintDeviceId) {
+        if (cloudPrintDeviceId == null) {
+            return;
+        }
+        ErpCloudPrintDeviceDO device = cloudPrintDeviceMapper.selectById(cloudPrintDeviceId);
+        if (device == null) {
+            throw exception(CLOUD_PRINT_DEVICE_NOT_EXISTS);
+        }
+        if (!CommonStatusEnum.ENABLE.getStatus().equals(device.getStatus())) {
+            throw exception(CLOUD_PRINT_DEVICE_DISABLED, device.getNickname());
+        }
     }
 
     private void validateCoordinateRange(BigDecimal value, BigDecimal min, BigDecimal max, String message) {

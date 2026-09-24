@@ -285,6 +285,50 @@ class ErpPurchaseInControllerTest extends BaseMockitoUnitTest {
     }
 
     @Test
+    void getPurchaseInAllocatesSelfPayFreightCostByItemCount() {
+        when(purchaseInService.getPurchaseIn(eq(10L))).thenReturn(new ErpPurchaseInDO()
+                .setId(10L).setNo("CGRK-001").setFreightType1("我方自付")
+                .setTotalFreight1(new BigDecimal("10")));
+        when(purchaseInService.getPurchaseInItemListByInId(eq(10L))).thenReturn(Arrays.asList(
+                new ErpPurchaseInItemDO().setId(101L).setInId(10L).setProductId(1001L)
+                        .setWarehouseId(1L).setCount(new BigDecimal("1"))
+                        .setProductPrice(new BigDecimal("100")),
+                new ErpPurchaseInItemDO().setId(102L).setInId(10L).setProductId(1002L)
+                        .setWarehouseId(1L).setCount(new BigDecimal("3"))
+                        .setProductPrice(new BigDecimal("50"))));
+
+        ErpPurchaseInRespVO data = controller.getPurchaseIn(10L, true, true).getData();
+
+        assertNotNull(data);
+        assertEquals(0, new BigDecimal("102.50").compareTo(data.getItems().get(0).getProductCostAmount()));
+        assertEquals(0, new BigDecimal("102.500000").compareTo(data.getItems().get(0).getProductCostPrice()));
+        assertEquals(0, new BigDecimal("157.50").compareTo(data.getItems().get(1).getProductCostAmount()));
+        assertEquals(0, new BigDecimal("52.500000").compareTo(data.getItems().get(1).getProductCostPrice()));
+    }
+
+    @Test
+    void getPurchaseInDoesNotAllocateFactoryAdvanceFreightCost() {
+        when(purchaseInService.getPurchaseIn(eq(10L))).thenReturn(new ErpPurchaseInDO()
+                .setId(10L).setNo("CGRK-001").setFreightType1("代厂家付")
+                .setTotalFreight1(new BigDecimal("10")));
+        when(purchaseInService.getPurchaseInItemListByInId(eq(10L))).thenReturn(Arrays.asList(
+                new ErpPurchaseInItemDO().setId(101L).setInId(10L).setProductId(1001L)
+                        .setWarehouseId(1L).setCount(new BigDecimal("1"))
+                        .setProductPrice(new BigDecimal("100")),
+                new ErpPurchaseInItemDO().setId(102L).setInId(10L).setProductId(1002L)
+                        .setWarehouseId(1L).setCount(new BigDecimal("3"))
+                        .setProductPrice(new BigDecimal("50"))));
+
+        ErpPurchaseInRespVO data = controller.getPurchaseIn(10L, true, true).getData();
+
+        assertNotNull(data);
+        assertEquals(0, new BigDecimal("100").compareTo(data.getItems().get(0).getProductCostAmount()));
+        assertEquals(0, new BigDecimal("100.000000").compareTo(data.getItems().get(0).getProductCostPrice()));
+        assertEquals(0, new BigDecimal("150").compareTo(data.getItems().get(1).getProductCostAmount()));
+        assertEquals(0, new BigDecimal("50.000000").compareTo(data.getItems().get(1).getProductCostPrice()));
+    }
+
+    @Test
     void getSupplierAvailableDeptSimpleListDelegatesToPurchaseInService() {
         List<DeptSimpleRespVO> depts = Collections.singletonList(
                 new DeptSimpleRespVO(20L, "采购二部", 0L));

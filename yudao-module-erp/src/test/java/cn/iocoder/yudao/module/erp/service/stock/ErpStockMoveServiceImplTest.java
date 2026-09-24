@@ -8,6 +8,7 @@ import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.move.ErpStockTransf
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.move.ErpStockTransferOutDraftUpdateReqVO;
 import cn.iocoder.yudao.module.infra.api.config.ConfigApi;
 import cn.iocoder.yudao.module.erp.dal.mysql.purchase.ErpPurchaseInItemMapper;
+import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpSaleCartMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.stock.ErpStockMoveItemMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.stock.ErpStockMoveMapper;
 import cn.iocoder.yudao.module.erp.dal.redis.no.ErpNoRedisDAO;
@@ -15,6 +16,7 @@ import cn.iocoder.yudao.module.erp.enums.ErpAuditStatus;
 import cn.iocoder.yudao.framework.security.core.util.SecurityFrameworkUtils;
 import cn.iocoder.yudao.framework.test.core.ut.BaseMockitoUnitTest;
 import cn.iocoder.yudao.module.erp.dal.dataobject.product.ErpProductDO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleCartDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockMoveDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockMoveItemDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpWarehouseDO;
@@ -27,6 +29,7 @@ import cn.iocoder.yudao.module.erp.service.stock.bo.ErpStockRecordCreateReqBO;
 import cn.iocoder.yudao.module.erp.service.stock.bo.ErpStockMoveApprovePermission;
 import cn.iocoder.yudao.module.erp.service.stock.bo.ErpStockMoveOperationPermission;
 import cn.iocoder.yudao.module.erp.service.stock.bo.ErpStockTransferOutPermissionScope;
+import cn.iocoder.yudao.module.erp.service.sale.ErpSaleCartTransferLinkService;
 import cn.iocoder.yudao.module.system.api.dept.DeptApi;
 import cn.iocoder.yudao.module.system.api.dept.dto.DeptRespDTO;
 import cn.iocoder.yudao.module.system.api.permission.PermissionApi;
@@ -53,12 +56,14 @@ import static cn.iocoder.yudao.framework.test.core.util.AssertUtils.assertServic
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.STOCK_MOVE_DELETE_CART_SOURCE_DENIED;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.STOCK_MOVE_DELETE_FAIL_APPROVE;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.STOCK_MOVE_APPROVE_DEPT_PERMISSION_DENIED;
+import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.STOCK_MOVE_APPROVE_CART_SOURCE_PICK_DELIVERY_REQUIRED;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.STOCK_MOVE_APPROVE_FAIL;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.STOCK_MOVE_DRAFT_ITEMS_REQUIRED;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.STOCK_MOVE_ITEM_PRICE_POSITIVE;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.STOCK_MOVE_NOT_EXISTS;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.STOCK_MOVE_SUBMIT_TIME_REQUIRED;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.STOCK_MOVE_TRANSFER_IN_EXISTS;
+import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.STOCK_MOVE_UPDATE_CART_SOURCE_DENIED;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.STOCK_MOVE_UPDATE_FAIL_NOT_DRAFT;
 import static cn.iocoder.yudao.module.erp.enums.LogRecordConstants.ERP_STOCK_MOVE_TYPE;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -68,6 +73,7 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyCollection;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.mockStatic;
@@ -91,6 +97,10 @@ class ErpStockMoveServiceImplTest extends BaseMockitoUnitTest {
     private ConfigApi configApi;
     @Mock
     private ErpStockMoveMapper stockMoveMapper;
+    @Mock
+    private ErpSaleCartMapper saleCartMapper;
+    @Mock
+    private ErpSaleCartTransferLinkService saleCartTransferLinkService;
     @Mock
     private ErpStockMoveItemMapper stockMoveItemMapper;
     @Mock
@@ -116,6 +126,17 @@ class ErpStockMoveServiceImplTest extends BaseMockitoUnitTest {
 
     @BeforeEach
     void setUp() {
+        lenient().when(stockMoveMapper.selectByIdForUpdate(anyLong()))
+                .thenAnswer(invocation -> stockMoveMapper.selectById((Long) invocation.getArgument(0)));
+        lenient().when(saleCartMapper.selectByIdForUpdate(anyLong()))
+                .thenAnswer(invocation -> new ErpSaleCartDO().setId((Long) invocation.getArgument(0)));
+        lenient().when(saleCartTransferLinkService.lockAndGet(anyLong())).thenAnswer(invocation -> {
+            List<ErpStockMoveDO> stockMoves = stockMoveMapper.selectListBySourceAndDirectionForUpdate(
+                    ErpSaleBizSourceTypeEnum.CART.getType(), (Long) invocation.getArgument(0), 10);
+            return stockMoves == null ? Collections.emptyList() : stockMoves;
+        });
+        lenient().when(snapshotSupport.resolveProductUnitId(any(), any())).thenCallRealMethod();
+        lenient().when(snapshotSupport.resolvePackageQty(any(), any())).thenCallRealMethod();
         lenient().when(snapshotSupport.resolveWeight(any(), any())).thenAnswer(invocation -> {
             BigDecimal requestWeight = invocation.getArgument(0);
             ErpProductDO product = invocation.getArgument(1);
@@ -188,11 +209,6 @@ class ErpStockMoveServiceImplTest extends BaseMockitoUnitTest {
     void createAndSubmitStockTransferOut_rejectsZeroPriceOnServer() {
         ErpStockMoveSaveReqVO request = stockMoveRequest(128L, null);
         request.getItems().get(0).setProductPrice(BigDecimal.ZERO);
-        when(productService.validProductList(anyCollection())).thenReturn(Collections.singletonList(
-                new ErpProductDO().setId(955L).setUnitId(1L)));
-        when(warehouseService.validWarehouseList(anyCollection())).thenReturn(Arrays.asList(
-                new ErpWarehouseDO().setId(1L).setDeptId(128L),
-                new ErpWarehouseDO().setId(12L).setDeptId(148L)));
 
         assertServiceException(() -> stockMoveService.createAndSubmitStockTransferOut(request),
                 STOCK_MOVE_ITEM_PRICE_POSITIVE);
@@ -232,6 +248,80 @@ class ErpStockMoveServiceImplTest extends BaseMockitoUnitTest {
                 eq(ErpStockTransferOutStatusEnum.DRAFT.getStatus()), any(ErpStockMoveDO.class));
         verify(stockMoveItemMapper).deleteByMoveId(10L);
         verify(stockMoveItemMapper, never()).insertBatch(any());
+    }
+
+    @Test
+    void updateStockMove_incrementalDeleteAndInsert_success() {
+        ErpStockMoveSaveReqVO.Item deleteItem = new ErpStockMoveSaveReqVO.Item()
+                .setId(1L).setOperation("delete");
+        ErpStockMoveSaveReqVO.Item insertItem = new ErpStockMoveSaveReqVO.Item()
+                .setOperation("insert")
+                .setFromWarehouseId(1L)
+                .setToWarehouseId(12L)
+                .setProductId(956L)
+                .setProductPrice(new BigDecimal("12.50"))
+                .setCount(new BigDecimal("2"));
+        ErpStockMoveSaveReqVO request = new ErpStockMoveSaveReqVO()
+                .setId(10L)
+                .setDeptId(128L)
+                .setMoveTime(LocalDateTime.of(2026, 9, 22, 10, 0))
+                .setItems(Arrays.asList(deleteItem, insertItem));
+        ErpStockMoveDO stockMove = new ErpStockMoveDO().setId(10L).setNo("STO-010")
+                .setDeptId(128L).setTransferDirection(10).setStatus(ErpAuditStatus.PROCESS.getStatus());
+        ErpStockMoveItemDO oldDelete = stockMoveItem(1L, 12L).setId(1L).setProductId(955L)
+                .setProductPrice(BigDecimal.TEN).setCount(BigDecimal.ONE);
+        ErpStockMoveItemDO oldKeep = stockMoveItem(1L, 12L).setId(2L).setProductId(957L)
+                .setProductPrice(BigDecimal.TEN).setCount(BigDecimal.ONE);
+        when(stockMoveMapper.selectById(10L)).thenReturn(stockMove);
+        when(stockMoveMapper.selectByIdForUpdate(10L)).thenReturn(stockMove);
+        when(stockMoveItemMapper.selectListByMoveIdForUpdate(10L)).thenReturn(Arrays.asList(oldDelete, oldKeep));
+        when(productService.validProductList(anyCollection())).thenReturn(Arrays.asList(
+                new ErpProductDO().setId(956L).setUnitId(1L),
+                new ErpProductDO().setId(957L).setUnitId(1L)));
+        when(warehouseService.validWarehouseList(anyCollection())).thenReturn(Arrays.asList(
+                new ErpWarehouseDO().setId(1L).setDeptId(128L),
+                new ErpWarehouseDO().setId(12L).setDeptId(128L)));
+        when(warehouseService.getWarehouseMap(anyCollection())).thenReturn(
+                cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.convertMap(
+                        Arrays.asList(new ErpWarehouseDO().setId(1L).setDeptId(128L),
+                                new ErpWarehouseDO().setId(12L).setDeptId(128L)), ErpWarehouseDO::getId));
+        when(stockMoveMapper.updateByIdAndStatus(eq(10L), eq(ErpAuditStatus.PROCESS.getStatus()),
+                any(ErpStockMoveDO.class))).thenReturn(1);
+        when(stockMoveItemMapper.selectListByMoveId(10L)).thenReturn(Collections.emptyList());
+
+        stockMoveService.updateStockMove(request, "erp_stock_transfer_out");
+
+        verify(stockMoveItemMapper).deleteByIds(org.mockito.ArgumentMatchers.<Collection<Long>>argThat(
+                ids -> ids.size() == 1 && ids.contains(1L)));
+        verify(stockMoveItemMapper).insertBatch(org.mockito.ArgumentMatchers.<List<ErpStockMoveItemDO>>argThat(
+                items -> items.size() == 1 && Long.valueOf(956L).equals(items.get(0).getProductId())
+                        && Long.valueOf(10L).equals(items.get(0).getMoveId())));
+        verify(stockMoveItemMapper, never()).updateBatch(
+                org.mockito.ArgumentMatchers.<Collection<ErpStockMoveItemDO>>any());
+    }
+
+    @Test
+    void updateStockMove_saleCartSource_denied() {
+        ErpStockMoveSaveReqVO request = stockMoveRequest(128L, ErpSaleBizSourceTypeEnum.CART.getType())
+                .setId(10L);
+        mockSaleCartTransferOutForUpdate(ErpAuditStatus.PROCESS.getStatus());
+
+        assertServiceException(() -> stockMoveService.updateStockMove(request, "erp_stock_transfer_out"),
+                STOCK_MOVE_UPDATE_CART_SOURCE_DENIED);
+        verify(stockMoveMapper, never()).updateByIdAndStatus(any(), any(), any());
+        verify(stockMoveItemMapper, never()).selectListByMoveIdForUpdate(any());
+    }
+
+    @Test
+    void updateAndSubmitStockTransferOutDraft_saleCartSource_denied() {
+        ErpStockMoveSaveReqVO request = stockMoveRequest(128L, ErpSaleBizSourceTypeEnum.CART.getType())
+                .setId(10L);
+        mockSaleCartTransferOutForUpdate(ErpStockTransferOutStatusEnum.DRAFT.getStatus());
+
+        assertServiceException(() -> stockMoveService.updateAndSubmitStockTransferOutDraft(request),
+                STOCK_MOVE_UPDATE_CART_SOURCE_DENIED);
+        verify(stockMoveMapper, never()).updateByIdAndStatus(any(), any(), any());
+        verify(stockMoveItemMapper, never()).selectListByMoveIdForUpdate(any());
     }
 
     @Test
@@ -924,7 +1014,7 @@ class ErpStockMoveServiceImplTest extends BaseMockitoUnitTest {
     }
 
     @Test
-    void updateStockMoveStatus_saleCartTransferOut_approvesDraftTransferInMovesLocksAndPublishesEvent() {
+    void approveSaleCartTransferOutAfterDelivery_approvesDraftTransferInMovesLocksAndPublishesEvent() {
         LocalDateTime moveTime = LocalDateTime.of(2026, 7, 15, 10, 0);
         ErpStockMoveDO stockMove = saleCartStockMove(200L)
                 .setId(10L)
@@ -957,7 +1047,7 @@ class ErpStockMoveServiceImplTest extends BaseMockitoUnitTest {
         mockWarehouseMap(200L, 300L);
         when(stockMoveMapper.selectById(10L)).thenReturn(stockMove);
         when(stockMoveMapper.selectById(12L)).thenReturn(transferIn);
-        when(stockMoveItemMapper.selectListByMoveId(10L)).thenReturn(Collections.singletonList(item));
+        when(stockMoveItemMapper.selectListByMoveIdForUpdate(10L)).thenReturn(Collections.singletonList(item));
         when(stockMoveItemMapper.selectListByMoveId(12L)).thenReturn(Collections.singletonList(transferInItem));
         when(warehouseService.validWarehouseList(anyCollection())).thenReturn(Collections.singletonList(
                 new ErpWarehouseDO().setId(2L).setDeptId(300L)));
@@ -968,7 +1058,7 @@ class ErpStockMoveServiceImplTest extends BaseMockitoUnitTest {
         when(stockMoveMapper.updateByIdAndStatus(eq(12L), eq(ErpAuditStatus.PROCESS.getStatus()), any()))
                 .thenReturn(1);
 
-        stockMoveService.updateStockMoveStatus(10L, ErpAuditStatus.APPROVE.getStatus());
+        stockMoveService.approveSaleCartTransferOutAfterDelivery(10L, 88L);
 
         ArgumentCaptor<ErpStockRecordCreateReqBO> recordCaptor =
                 ArgumentCaptor.forClass(ErpStockRecordCreateReqBO.class);
@@ -1011,14 +1101,32 @@ class ErpStockMoveServiceImplTest extends BaseMockitoUnitTest {
         when(stockMoveMapper.selectById(10L)).thenReturn(stockMove);
         when(stockMoveMapper.selectByRelatedMoveIdAndDirection(10L, 20)).thenReturn(transferIn);
 
-        assertServiceException(() -> stockMoveService.updateStockMoveStatus(
-                10L, ErpAuditStatus.APPROVE.getStatus()), STOCK_MOVE_TRANSFER_IN_EXISTS);
+        assertServiceException(() -> stockMoveService.approveSaleCartTransferOutAfterDelivery(
+                10L, 88L), STOCK_MOVE_TRANSFER_IN_EXISTS);
 
         verify(stockMoveItemMapper, never()).selectListByMoveId(any());
         verify(stockMoveMapper, never()).updateByIdAndStatus(any(), any(), any());
         verify(stockRecordService, never()).createStockRecord(any());
         verify(stockLockService, never()).transferStockLocks(any(), any(), any(), any(), any());
         verify(eventPublisher, never()).publishEvent(any(ErpSaleCartTransferOutApprovedEvent.class));
+    }
+
+    @Test
+    void updateStockMoveStatus_saleCartTransferOut_requiresPickDeliveryDrivenApprove() {
+        ErpStockMoveDO stockMove = saleCartStockMove(200L)
+                .setId(10L)
+                .setNo("STO-001")
+                .setSourceId(72L)
+                .setTransferDirection(10)
+                .setStatus(ErpAuditStatus.PROCESS.getStatus());
+        when(stockMoveMapper.selectById(10L)).thenReturn(stockMove);
+
+        assertServiceException(() -> stockMoveService.updateStockMoveStatus(
+                10L, ErpAuditStatus.APPROVE.getStatus()),
+                STOCK_MOVE_APPROVE_CART_SOURCE_PICK_DELIVERY_REQUIRED);
+
+        verify(stockMoveItemMapper, never()).selectListByMoveIdForUpdate(any());
+        verify(stockMoveMapper, never()).updateByIdAndStatus(any(), any(), any());
     }
 
     @Test
@@ -1269,6 +1377,19 @@ class ErpStockMoveServiceImplTest extends BaseMockitoUnitTest {
     private void mockSaleWarehouseValidation(Long fromDeptId) {
         when(warehouseService.validSaleWarehouseList(anyCollection())).thenReturn(Collections.singletonList(
                 new ErpWarehouseDO().setId(1L).setDeptId(fromDeptId)));
+    }
+
+    private void mockSaleCartTransferOutForUpdate(Integer status) {
+        ErpStockMoveDO stockMove = saleCartStockMove(128L)
+                .setId(10L)
+                .setNo("STO-010")
+                .setSourceId(115L)
+                .setTransferDirection(10)
+                .setStatus(status);
+        when(stockMoveMapper.selectById(10L)).thenReturn(stockMove);
+        when(saleCartMapper.selectByIdForUpdate(115L)).thenReturn(new ErpSaleCartDO().setId(115L));
+        when(saleCartTransferLinkService.lockAndGet(115L)).thenReturn(Collections.singletonList(stockMove));
+        when(stockMoveMapper.selectByIdForUpdate(10L)).thenReturn(stockMove);
     }
 
     private MockedStatic<SecurityFrameworkUtils> mockLoginDept(Long deptId) {

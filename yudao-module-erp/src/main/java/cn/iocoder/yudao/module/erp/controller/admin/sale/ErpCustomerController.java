@@ -185,6 +185,7 @@ public class ErpCustomerController {
         fillCustomerExtra(Collections.singletonList(respVO));
         applyCreditStatus(respVO, customerService.getCustomerCreditStatus(id));
         fieldPermissionMasker.maskForm(FIELD_PERMISSION_MODULE, respVO);
+        fillBusinessInfoSynced(Collections.singletonList(respVO));
         return success(respVO);
     }
 

@@ -25,6 +25,7 @@ import cn.iocoder.yudao.module.erp.service.base.ErpDataPermissionDeptService;
 import cn.iocoder.yudao.module.erp.service.common.ErpImportExportRecordService;
 import cn.iocoder.yudao.module.erp.service.finance.ErpFinanceFieldPermissionMasker;
 import cn.iocoder.yudao.module.erp.service.finance.payable.ErpPayableOtherService;
+import cn.iocoder.yudao.module.erp.service.purchase.ErpSupplierDeptPermissionService;
 import cn.iocoder.yudao.module.erp.service.purchase.ErpSupplierService;
 import cn.iocoder.yudao.module.system.api.dept.DeptApi;
 import cn.iocoder.yudao.module.system.api.dept.dto.DeptRespDTO;
@@ -93,6 +94,8 @@ public class ErpPayableOtherController {
     private ErpDataPermissionDeptService dataPermissionDeptService;
     @Resource
     private ErpImportExportRecordService importExportRecordService;
+    @Resource
+    private ErpSupplierDeptPermissionService supplierDeptPermissionService;
 
     @PostMapping("/create")
     @Operation(summary = "创建应付调账")
@@ -210,6 +213,23 @@ public class ErpPayableOtherController {
     @PreAuthorize("@ss.hasPermission('erp:payable-other:query')")
     public CommonResult<PageResult<DeptSimpleRespVO>> getPayableOtherDeptSimplePage(@Valid PageParam pageReqVO) {
         return success(dataPermissionDeptService.getDeptSimplePage("erp_payable_other", pageReqVO));
+    }
+
+    @GetMapping("/supplier-dept-simple-list")
+    @Operation(summary = "Get payable other supplier available dept simple list")
+    @PreAuthorize("@ss.hasPermission('erp:payable-other:query')")
+    public CommonResult<java.util.List<DeptSimpleRespVO>> getSupplierDeptSimpleList(
+            @RequestParam("supplierId") Long supplierId) {
+        return success(supplierDeptPermissionService.getAvailableDeptSimpleList(supplierId, "erp_payable_other"));
+    }
+
+    @GetMapping("/supplier-dept-simple-page")
+    @Operation(summary = "Get payable other supplier available dept simple page")
+    @PreAuthorize("@ss.hasPermission('erp:payable-other:query')")
+    public CommonResult<PageResult<DeptSimpleRespVO>> getSupplierDeptSimplePage(@RequestParam("supplierId") Long supplierId,
+                                                                                @Valid PageParam pageReqVO) {
+        return success(supplierDeptPermissionService.getAvailableDeptSimplePage(
+                supplierId, "erp_payable_other", pageReqVO));
     }
 
     @GetMapping("/user-simple-page")

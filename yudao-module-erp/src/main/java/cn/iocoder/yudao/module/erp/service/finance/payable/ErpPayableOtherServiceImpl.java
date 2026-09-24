@@ -9,12 +9,14 @@ import cn.iocoder.yudao.module.erp.controller.admin.finance.payable.vo.other.Erp
 import cn.iocoder.yudao.module.erp.controller.admin.finance.payable.vo.other.ErpPayableOtherSaveReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.ErpFinancePaymentDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.payable.ErpPayableOtherDO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpSupplierDO;
 import cn.iocoder.yudao.module.erp.dal.mysql.finance.payable.ErpPayableOtherMapper;
 import cn.iocoder.yudao.module.erp.dal.redis.no.ErpNoRedisDAO;
 import cn.iocoder.yudao.module.erp.enums.ErpAuditStatus;
 import cn.iocoder.yudao.module.erp.enums.finance.ErpPayableOtherStatusEnum;
 import cn.iocoder.yudao.module.erp.service.common.ErpOperateLogService;
 import cn.iocoder.yudao.module.erp.service.finance.ErpFinanceFieldPermissionMasker;
+import cn.iocoder.yudao.module.erp.service.purchase.ErpSupplierDeptPermissionService;
 import cn.iocoder.yudao.module.erp.service.purchase.ErpSupplierService;
 import cn.iocoder.yudao.module.system.api.dept.DeptApi;
 import cn.iocoder.yudao.module.system.api.user.AdminUserApi;
@@ -36,6 +38,7 @@ import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.OTHER_PAYABLE
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.OTHER_PAYABLE_NOT_EXISTS;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.OTHER_PAYABLE_NO_EXISTS;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.OTHER_PAYABLE_SAVE_FAIL;
+import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.OTHER_PAYABLE_SUPPLIER_DEPT_NOT_ALLOWED;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.OTHER_PAYABLE_UPDATE_FAIL_APPROVE;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.OTHER_PAYABLE_UPDATE_FAIL_STATUS_CHANGED;
 import static cn.iocoder.yudao.module.erp.enums.LogRecordConstants.ERP_PAYABLE_OTHER_TYPE;
@@ -60,12 +63,14 @@ public class ErpPayableOtherServiceImpl implements ErpPayableOtherService {
     private DeptApi deptApi;
     @Resource
     private ErpOperateLogService operateLogService;
+    @Resource
+    private ErpSupplierDeptPermissionService supplierDeptPermissionService;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Long createPayableOther(ErpPayableOtherSaveReqVO createReqVO) {
         validatePayableAmountNonZero(createReqVO.getPayableAmount(), false);
-        supplierService.validateSupplier(createReqVO.getSupplierId());
+        ErpSupplierDO supplier = supplierService.validateSupplier(createReqVO.getSupplierId());
         String no = noRedisDAO.generate("QTFK");
         if (payableOtherMapper.selectByNo(no) != null) {
             throw exception(OTHER_PAYABLE_NO_EXISTS);
@@ -76,6 +81,7 @@ public class ErpPayableOtherServiceImpl implements ErpPayableOtherService {
                 .setSourceType(StrUtil.isBlank(createReqVO.getSourceType()) ? "调账" : createReqVO.getSourceType()));
         fillCreateDeptId(doObj);
         validateRefs(createReqVO.getHandlerId(), doObj.getDeptId());
+        validateSupplierDept(supplier, doObj.getDeptId(), false);
         normalize(doObj);
         fieldPermissionMasker.clearHiddenFields(FIELD_PERMISSION_MODULE, doObj);
         payableOtherMapper.insert(doObj);
@@ -98,6 +104,7 @@ public class ErpPayableOtherServiceImpl implements ErpPayableOtherService {
                 .setStatus(ErpPayableOtherStatusEnum.DRAFT.getStatus())
                 .setSourceType(StrUtil.blankToDefault(createReqVO.getSourceType(), "调账"));
         fillCreateDeptId(doObj);
+        validateSupplierDept(doObj.getSupplierId(), doObj.getDeptId(), true);
         normalizeDraft(doObj);
         payableOtherMapper.insert(doObj);
         operateLogService.recordCreate(ERP_PAYABLE_OTHER_TYPE, doObj.getId(), doObj.getNo());
@@ -163,21 +170,18 @@ public class ErpPayableOtherServiceImpl implements ErpPayableOtherService {
         }
         fieldPermissionMasker.preserveHiddenFields(FIELD_PERMISSION_MODULE, updateReqVO, db);
         validatePayableAmountNonZero(updateReqVO.getPayableAmount(), false);
-        supplierService.validateSupplier(updateReqVO.getSupplierId());
+        ErpSupplierDO supplier = supplierService.validateSupplier(updateReqVO.getSupplierId());
         ErpPayableOtherDO updateObj = BeanUtils.toBean(updateReqVO, ErpPayableOtherDO.class, obj -> {
             if (StrUtil.isBlank(obj.getSourceType())) {
                 obj.setSourceType("调账");
             }
         });
-        if (db.getSourceId() != null) {
-            updateObj.setSourceType(db.getSourceType());
-            updateObj.setSourceId(db.getSourceId());
-            updateObj.setSourceNo(db.getSourceNo());
-        }
+        preserveSource(updateObj, db);
         if (updateObj.getDeptId() == null) {
             updateObj.setDeptId(db.getDeptId());
         }
         validateRefs(updateReqVO.getHandlerId(), updateObj.getDeptId());
+        validateSupplierDept(supplier, updateObj.getDeptId(), false);
         normalize(updateObj);
         int affected = payableOtherMapper.updateByIdAndStatus(updateReqVO.getId(), ErpAuditStatus.PROCESS.getStatus(), updateObj);
         if (affected == 0) {
@@ -199,16 +203,14 @@ public class ErpPayableOtherServiceImpl implements ErpPayableOtherService {
                 .setId(db.getId())
                 .setNo(db.getNo())
                 .setStatus(db.getStatus());
-        if (db.getSourceId() != null) {
-            updateObj.setSourceType(db.getSourceType());
-            updateObj.setSourceId(db.getSourceId());
-            updateObj.setSourceNo(db.getSourceNo());
-        } else if (StrUtil.isBlank(updateObj.getSourceType())) {
+        preserveSource(updateObj, db);
+        if (StrUtil.isBlank(updateObj.getSourceType())) {
             updateObj.setSourceType(StrUtil.blankToDefault(db.getSourceType(), "调账"));
         }
         if (updateObj.getDeptId() == null) {
             updateObj.setDeptId(db.getDeptId());
         }
+        validateSupplierDept(updateObj.getSupplierId(), updateObj.getDeptId(), true);
         normalizeDraft(updateObj);
         if (payableOtherMapper.updateByIdAndStatus(db.getId(),
                 ErpPayableOtherStatusEnum.DRAFT.getStatus(), updateObj) == 0) {
@@ -259,6 +261,7 @@ public class ErpPayableOtherServiceImpl implements ErpPayableOtherService {
                 || !ErpPayableOtherStatusEnum.PROCESS.getStatus().equals(db.getStatus())) {
             throw exception(OTHER_PAYABLE_APPROVE_FAIL);
         }
+        validateSupplierDept(db.getSupplierId(), db.getDeptId(), false);
         int affected = payableOtherMapper.updateByIdAndStatus(id, db.getStatus(),
                 ErpPayableOtherDO.builder().status(status).build());
         if (affected == 0) {
@@ -352,8 +355,36 @@ public class ErpPayableOtherServiceImpl implements ErpPayableOtherService {
         if (doObj.getDeptId() == null) {
             throw exception(OTHER_PAYABLE_DRAFT_SUBMIT_FAIL, "部门不能为空");
         }
-        supplierService.validateSupplier(doObj.getSupplierId());
+        ErpSupplierDO supplier = supplierService.validateSupplier(doObj.getSupplierId());
         validateRefs(doObj.getHandlerId(), doObj.getDeptId());
+        validateSupplierDept(supplier, doObj.getDeptId(), true);
+    }
+
+    private void validateSupplierDept(Long supplierId, Long deptId, boolean draftSubmit) {
+        if (supplierId == null || deptId == null) {
+            return;
+        }
+        validateSupplierDept(supplierService.validateSupplier(supplierId), deptId, draftSubmit);
+    }
+
+    private void validateSupplierDept(ErpSupplierDO supplier, Long deptId, boolean draftSubmit) {
+        if (supplier == null || deptId == null) {
+            return;
+        }
+        if (supplierDeptPermissionService.hasAvailableDept(supplier, deptId, "erp_payable_other")) {
+            return;
+        }
+        if (draftSubmit) {
+            throw exception(OTHER_PAYABLE_DRAFT_SUBMIT_FAIL,
+                    OTHER_PAYABLE_SUPPLIER_DEPT_NOT_ALLOWED.getMsg());
+        }
+        throw exception(OTHER_PAYABLE_SUPPLIER_DEPT_NOT_ALLOWED);
+    }
+
+    private void preserveSource(ErpPayableOtherDO target, ErpPayableOtherDO db) {
+        target.setSourceType(StrUtil.blankToDefault(db.getSourceType(), "调账"));
+        target.setSourceId(db.getSourceId());
+        target.setSourceNo(db.getSourceNo());
     }
 
 }

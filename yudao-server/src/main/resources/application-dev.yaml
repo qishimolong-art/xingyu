@@ -182,6 +182,14 @@ yudao:
       sale-delivery:
         agent-id: 1000086
         secret: V-qSwtMHiZA98NRQrykn0DzQxVvPBiPQaC4hykmk1C0
+  sw-print:
+    enabled: ${SW_PRINT_ENABLED:true}
+    base-url: https://open.sw-aiot.com
+    username: ${SW_PRINT_USERNAME:}
+    secret: ${SW_PRINT_SECRET:}
+    callback-path-token: ${SW_PRINT_CB_TOKEN:}
+    submit-timeout-minutes: 10
+    check-device-online: true
   pay:
     order-notify-url: http://yunai.natapp1.cc/admin-api/pay/notify/order # 支付渠道的【支付】回调地址
     refund-notify-url: http://yunai.natapp1.cc/admin-api/pay/notify/refund # 支付渠道的【退款】回调地址

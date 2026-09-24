@@ -37,6 +37,7 @@ import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleOutItemDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSalePriceAdjustDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleQuoteDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockDO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockRecordDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockOutBillDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockOutBillItemDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpWarehouseDO;
@@ -48,8 +49,10 @@ import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpSaleOutItemMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpSalePriceAdjustMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpSaleQuoteMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpSaleReturnItemMapper;
+import cn.iocoder.yudao.module.erp.dal.mysql.stock.ErpStockRecordMapper;
 import cn.iocoder.yudao.module.erp.enums.sale.ErpSaleBizSourceTypeEnum;
 import cn.iocoder.yudao.module.erp.enums.common.ErpBizTypeEnum;
+import cn.iocoder.yudao.module.erp.enums.stock.ErpStockRecordBizTypeEnum;
 import cn.iocoder.yudao.module.erp.service.base.ErpDataPermissionDeptService;
 import cn.iocoder.yudao.module.erp.service.product.ErpProductService;
 import cn.iocoder.yudao.module.erp.service.common.ErpOriginalSettlementAmountUtils;
@@ -68,6 +71,7 @@ import cn.iocoder.yudao.module.system.api.user.AdminUserApi;
 import cn.iocoder.yudao.module.system.api.user.dto.AdminUserRespDTO;
 import cn.iocoder.yudao.module.system.controller.admin.dept.vo.dept.DeptSimpleRespVO;
 import cn.iocoder.yudao.module.system.controller.admin.user.vo.user.UserSimpleRespVO;
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -150,6 +154,8 @@ public class ErpSaleOutController {
     private ErpPurchaseInMapper purchaseInMapper;
     @Resource
     private ErpFinanceReceiptItemMapper financeReceiptItemMapper;
+    @Resource
+    private ErpStockRecordMapper stockRecordMapper;
     @Resource
     private ErpSaleFieldPermissionMasker fieldPermissionMasker;
     @Resource
@@ -260,6 +266,7 @@ public class ErpSaleOutController {
         // 退货状态
         Set<Long> outItemIds = convertSet(saleOutItemList, ErpSaleOutItemDO::getId);
         Map<Long, BigDecimal> returnedCountMap = saleReturnItemMapper.selectReturnedCountMapBySourceOutItemIds(outItemIds);
+        Map<Long, ErpStockRecordDO> saleCostRecordMap = getSaleOutCostRecordMap(Collections.singleton(id));
 
         ErpSaleOutRespVO respVO = BeanUtils.toBean(saleOut, ErpSaleOutRespVO.class, saleOutVO ->
                 saleOutVO.setItems(BeanUtils.toBean(saleOutItemList, ErpSaleOutRespVO.Item.class, item -> {
@@ -297,6 +304,7 @@ public class ErpSaleOutController {
                     }
                     // 已退数量
                     item.setReturnedCount(returnedCountMap.get(item.getId()));
+                    fillSaleOutItemCost(item, saleCostRecordMap);
                 })));
         itemPriceReferenceFiller.fill(respVO.getItems());
         // 填充主表关联字段
@@ -419,6 +427,7 @@ public class ErpSaleOutController {
                 ? Collections.emptyMap() : deptApi.getDeptMap(deptIds);
         Map<Long, BigDecimal> returnedCountMap = saleReturnItemMapper.selectReturnedCountMapBySourceOutItemIds(
                 convertSet(itemList, ErpSaleOutItemDO::getId));
+        Map<Long, ErpStockRecordDO> saleCostRecordMap = getSaleOutCostRecordMap(Collections.singleton(pageReqVO.getOutId()));
         List<ErpSaleOutRespVO.Item> items = BeanUtils.toBean(itemList, ErpSaleOutRespVO.Item.class, item -> {
             ErpStockDO stock = getStockIgnoreDataPermission(item.getProductId(), item.getWarehouseId());
             item.setStockCount(stock != null ? stock.getCount() : BigDecimal.ZERO);
@@ -450,6 +459,7 @@ public class ErpSaleOutController {
                 item.setTotalProductPrice(item.getProductPrice().multiply(item.getCount()));
             }
             item.setReturnedCount(returnedCountMap.get(item.getId()));
+            fillSaleOutItemCost(item, saleCostRecordMap);
         });
         fillSaleOutItemStockOutBillInfo(pageReqVO.getOutId(), items);
         itemPriceReferenceFiller.fill(items);
@@ -460,6 +470,36 @@ public class ErpSaleOutController {
                     respResult.getList());
         }
         return success(respResult);
+    }
+
+    private Map<Long, ErpStockRecordDO> getSaleOutCostRecordMap(Collection<Long> saleOutIds) {
+        if (CollUtil.isEmpty(saleOutIds) || stockRecordMapper == null) {
+            return Collections.emptyMap();
+        }
+        List<ErpStockRecordDO> records = stockRecordMapper.selectList(
+                new LambdaQueryWrapper<ErpStockRecordDO>()
+                        .eq(ErpStockRecordDO::getBizType, ErpStockRecordBizTypeEnum.SALE_OUT.getType())
+                        .in(ErpStockRecordDO::getBizId, saleOutIds)
+                        .isNotNull(ErpStockRecordDO::getBizItemId)
+                        .orderByAsc(ErpStockRecordDO::getId));
+        if (CollUtil.isEmpty(records)) {
+            return Collections.emptyMap();
+        }
+        Map<Long, ErpStockRecordDO> result = new HashMap<>();
+        for (ErpStockRecordDO record : records) {
+            result.put(record.getBizItemId(), record);
+        }
+        return result;
+    }
+
+    private void fillSaleOutItemCost(ErpSaleOutRespVO.Item item,
+                                     Map<Long, ErpStockRecordDO> saleCostRecordMap) {
+        ErpStockRecordDO record = saleCostRecordMap.get(item.getId());
+        if (record == null) {
+            return;
+        }
+        item.setSaleCostPrice(record.getUnitPrice());
+        item.setSaleCostAmount(record.getTotalPrice() == null ? null : record.getTotalPrice().abs());
     }
 
     private Map<Long, ErpProductRespVO> getProductVOMapIgnoreDataPermission(Set<Long> productIds) {
@@ -813,6 +853,8 @@ public class ErpSaleOutController {
         // 1.5 退货状态：按 sourceOutItemId 聚合已退数量
         Set<Long> allOutItemIds = convertSet(saleOutItemList, ErpSaleOutItemDO::getId);
         Map<Long, BigDecimal> returnedCountMap = saleReturnItemMapper.selectReturnedCountMapBySourceOutItemIds(allOutItemIds);
+        Map<Long, ErpStockRecordDO> saleCostRecordMap = getSaleOutCostRecordMap(
+                convertSet(pageResult.getList(), ErpSaleOutDO::getId));
         // 2. 开始拼接
         return BeanUtils.toBean(pageResult, ErpSaleOutRespVO.class, saleOut -> {
             List<ErpSaleOutItemDO> items = saleOutItemMap.getOrDefault(saleOut.getId(), Collections.emptyList());
@@ -837,6 +879,7 @@ public class ErpSaleOutController {
                         item.setCrossDept(item.getSourceWarehouseId() != null
                                 && !Objects.equals(item.getSourceWarehouseId(), item.getWarehouseId()));
                         MapUtils.findAndThen(itemDeptMap, item.getDeptId(), dept -> item.setDeptName(dept.getName()));
+                        fillSaleOutItemCost(item, saleCostRecordMap);
                     }));
             itemPriceReferenceFiller.fill(saleOut.getItems());
             saleOut.setProductNames(CollUtil.join(saleOut.getItems(), "，", ErpSaleOutRespVO.Item::getProductName));

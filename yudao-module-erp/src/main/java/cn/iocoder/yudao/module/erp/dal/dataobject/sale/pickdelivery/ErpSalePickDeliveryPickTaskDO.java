@@ -26,6 +26,9 @@ public class ErpSalePickDeliveryPickTaskDO extends TenantBaseDO {
     private Long orderId;
     private Long saleOutId;
     private String saleOutNo;
+    private Integer sourceType;
+    private Long sourceId;
+    private String sourceNo;
     private Long customerId;
     private String customerName;
     private Long warehouseId;

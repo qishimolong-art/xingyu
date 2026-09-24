@@ -402,6 +402,12 @@ public class ErpSaleOutRespVO {
         @Schema(description = "产品单价", example = "100.00")
         private BigDecimal productPrice;
 
+        @Schema(description = "销售成本单价", example = "100.00")
+        private BigDecimal saleCostPrice;
+
+        @Schema(description = "销售成本金额", example = "100.00")
+        private BigDecimal saleCostAmount;
+
         @Schema(description = "产品数量", requiredMode = Schema.RequiredMode.REQUIRED, example = "100.00")
         @NotNull(message = "产品数量不能为空")
         private BigDecimal count;

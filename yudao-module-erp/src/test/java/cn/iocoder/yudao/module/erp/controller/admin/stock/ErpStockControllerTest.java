@@ -163,6 +163,7 @@ public class ErpStockControllerTest extends BaseMockitoUnitTest {
                 .setCount(new BigDecimal("8")).setCostPrice(new BigDecimal("5.00"))
                 .setCostAmount(new BigDecimal("40.00")).setPurchasePrice(new BigDecimal("6.00"));
         ErpProductRespVO product = new ErpProductRespVO().setId(10L).setName("P1").setCode("P001")
+                .setMainImage("https://example.com/product-p1.jpg")
                 .setPurchasePrice(new BigDecimal("6.20"))
                 .setLastPurchasePrice(new BigDecimal("6.50")).setSalePrice(new BigDecimal("10.00"))
                 .setMinPrice(new BigDecimal("8.00")).setGrossProfitRate(25)
@@ -198,6 +199,7 @@ public class ErpStockControllerTest extends BaseMockitoUnitTest {
 
         ErpStockRespVO ownRow = result.getList().get(0);
         assertTrue(ownRow.getPriceVisible());
+        assertEquals("https://example.com/product-p1.jpg", ownRow.getMainImage());
         assertEquals(new BigDecimal("10.00"), ownRow.getSalePrice());
         assertEquals(new BigDecimal("14.00"), ownRow.getCurrentPrice());
 
@@ -755,7 +757,7 @@ public class ErpStockControllerTest extends BaseMockitoUnitTest {
         creator.setId(9L);
         creator.setNickname("Occupied Creator");
 
-        when(stockOccupiedDetailMapper.selectList(17L, 27L, 10, Arrays.asList(10, 20, 30), 1, 10,
+        when(stockOccupiedDetailMapper.selectList(17L, 27L, 10, Arrays.asList(20, 30), 1, 10,
                 "B-2", false))
                 .thenReturn(Collections.singletonList(detail));
         when(adminUserApi.getUserMap(eq(Collections.singleton(9L))))
@@ -765,7 +767,7 @@ public class ErpStockControllerTest extends BaseMockitoUnitTest {
                 controller.getOccupiedDetails(17L, 27L, "B-2", false);
 
         verify(warehouseService).validateCurrentUserStockWarehousePermission(Collections.singleton(27L));
-        verify(stockOccupiedDetailMapper).selectList(17L, 27L, 10, Arrays.asList(10, 20, 30), 1, 10,
+        verify(stockOccupiedDetailMapper).selectList(17L, 27L, 10, Arrays.asList(20, 30), 1, 10,
                 "B-2", false);
         ErpStockOccupiedDetailRespVO row = result.getData().get(0);
         assertEquals("SC-001", row.getNo());
@@ -854,6 +856,8 @@ public class ErpStockControllerTest extends BaseMockitoUnitTest {
         PageResult<ErpStockRespVO> filteredPage = controller.getStockPage(reqVO).getData();
         assertEquals(1L, filteredPage.getTotal());
         assertEquals("PC20260715", filteredPage.getList().get(0).getBatchNo());
+        verify(stockBatchQuantityMapper, atLeastOnce()).selectOccupiedList(any(), any(), eq(10),
+                eq(Arrays.asList(20, 30)), eq(1), eq(10));
         verify(stockService, atLeastOnce()).getStockPage(argThat(request ->
                 Integer.valueOf(1).equals(request.getPageNo())
                         && Integer.valueOf(2).equals(request.getPageSize())
@@ -878,6 +882,7 @@ public class ErpStockControllerTest extends BaseMockitoUnitTest {
         ErpProductRespVO product = new ErpProductRespVO()
                 .setId(163L)
                 .setName("测试")
+                .setMainImage("https://example.com/product-batch.jpg")
                 .setBatchNoEnabled(true);
         ErpWarehouseDO warehouse = new ErpWarehouseDO().setId(263L).setName("蛟龙港仓");
         ErpStockBatchNoRespVO soldOutBatch = new ErpStockBatchNoRespVO()
@@ -900,6 +905,7 @@ public class ErpStockControllerTest extends BaseMockitoUnitTest {
         assertEquals(1, result.getList().size());
         ErpStockRespVO row = result.getList().get(0);
         assertEquals("PC20260720", row.getBatchNo());
+        assertEquals("https://example.com/product-batch.jpg", row.getMainImage());
         assertEquals(BigDecimal.ZERO, row.getCount());
         assertEquals(LocalDateTime.of(2026, 7, 20, 9, 0), row.getFirstInTime());
         assertTrue(row.getBatchRow());

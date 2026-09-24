@@ -74,6 +74,7 @@ class ErpSalePickDeliveryServiceImplTest extends BaseMockitoUnitTest {
 
         assertTrue(serviceSource.contains(".setWarehousePosition(saleOutItem.getWarehousePosition())"));
         assertTrue(serviceSource.contains(".setPackageQty(saleOutItem.getPackageQty())"));
+        assertTrue(serviceSource.contains("submitMapper.selectListByOrderId(order.getId()).forEach"));
         assertTrue(mapperSource.contains("warehouse_position IS NULL OR warehouse_position = ''"));
         assertTrue(mapperSource.contains("orderByAsc(\"warehouse_position\")"));
         assertTrue(mapperSource.contains("orderByAsc(\"id\")"));

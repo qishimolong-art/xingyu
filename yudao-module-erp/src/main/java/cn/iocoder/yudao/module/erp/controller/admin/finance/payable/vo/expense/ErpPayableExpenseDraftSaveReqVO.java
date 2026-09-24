@@ -32,6 +32,12 @@ public class ErpPayableExpenseDraftSaveReqVO {
 
     private String relatedBiz;
 
+    private String sourceType;
+
+    private Long sourceId;
+
+    private String sourceNo;
+
     private String docType;
 
     private String remark;

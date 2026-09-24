@@ -47,6 +47,12 @@ public class ErpFinancePaymentRespVO {
     @Schema(description = "付款账户名称", requiredMode = Schema.RequiredMode.REQUIRED, example = "张三")
     private String accountName;
 
+    @Schema(description = "来源其他应付单编号", example = "1024")
+    private Long sourcePayableMiscId;
+
+    @Schema(description = "来源其他应付单号", example = "QTYFM20260922000001")
+    private String sourcePayableMiscNo;
+
     @Schema(description = "结算方式", example = "月结")
     private String settleMethod;
 

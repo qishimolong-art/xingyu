@@ -10,11 +10,11 @@ import cn.iocoder.yudao.module.erp.controller.admin.finance.payable.vo.account.E
 import cn.iocoder.yudao.module.erp.controller.admin.finance.payable.vo.account.ErpPayableWriteOffReqVO;
 import cn.iocoder.yudao.framework.security.core.util.SecurityFrameworkUtils;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.ErpFinancePaymentDO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.finance.accounting.ErpVoucherDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.payable.ErpPayableAccountDO;
-import cn.iocoder.yudao.module.erp.dal.dataobject.finance.payable.ErpPayableMiscDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.payable.ErpPayableOtherDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.payable.ErpPayableWriteOffDO;
-import cn.iocoder.yudao.module.erp.dal.mysql.finance.payable.ErpPayableMiscMapper;
+import cn.iocoder.yudao.module.erp.dal.mysql.finance.accounting.ErpVoucherMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.finance.payable.ErpPayableOtherMapper;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseInDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchasePriceAdjustDO;
@@ -30,6 +30,7 @@ import cn.iocoder.yudao.module.erp.dal.mysql.purchase.ErpPurchasePriceAdjustMapp
 import cn.iocoder.yudao.module.erp.dal.mysql.purchase.ErpPurchaseReturnMapper;
 import cn.iocoder.yudao.module.erp.enums.ErpAuditStatus;
 import cn.iocoder.yudao.module.erp.enums.common.ErpBizTypeEnum;
+import cn.iocoder.yudao.module.erp.enums.finance.accounting.ErpVoucherSourceBizTypeEnum;
 import cn.iocoder.yudao.module.erp.service.common.ErpOriginalSettlementAmountUtils;
 import cn.iocoder.yudao.module.erp.service.common.ErpOperateLogService;
 import cn.iocoder.yudao.module.erp.service.finance.ErpFinanceVisibleScope;
@@ -49,6 +50,7 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Comparator;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -80,11 +82,11 @@ public class ErpPayableAccountServiceImpl implements ErpPayableAccountService {
     @Resource
     private ErpFinancePaymentItemMapper financePaymentItemMapper;
     @Resource
-    private ErpPayableMiscMapper payableMiscMapper;
-    @Resource
     private ErpPayableOtherMapper payableOtherMapper;
     @Resource
     private ErpPayableWriteOffMapper payableWriteOffMapper;
+    @Resource
+    private ErpVoucherMapper voucherMapper;
     @Resource
     private ErpSupplierService supplierService;
     @Resource
@@ -105,6 +107,18 @@ public class ErpPayableAccountServiceImpl implements ErpPayableAccountService {
         }
         return DataPermissionUtils.executeIgnore(() ->
                 payableAccountMapper.selectPage(reqVO, scope.getDeptIds(), scope.getSelfUserId(), scope.isAll(),
+                        documentScope.getDeptIds(), documentScope.getSelfUserId(), documentScope.isAll()));
+    }
+
+    @Override
+    public List<ErpPayableAccountDO> getPayableAccountList(ErpPayableAccountPageReqVO reqVO) {
+        SupplierVisibleScope scope = getSupplierVisibleScope();
+        ErpFinanceVisibleScope documentScope = getPayableVisibleScope();
+        if (scope == null || documentScope == null || !documentScope.hasAccess()) {
+            return Collections.emptyList();
+        }
+        return DataPermissionUtils.executeIgnore(() ->
+                payableAccountMapper.selectList(reqVO, scope.getDeptIds(), scope.getSelfUserId(), scope.isAll(),
                         documentScope.getDeptIds(), documentScope.getSelfUserId(), documentScope.isAll()));
     }
 
@@ -243,6 +257,8 @@ public class ErpPayableAccountServiceImpl implements ErpPayableAccountService {
             result.add(row);
         }
         fillDeptNames(result);
+        fillBusinessUserNames(result);
+        fillVoucherNos(result);
         return result;
     }
 
@@ -276,9 +292,19 @@ public class ErpPayableAccountServiceImpl implements ErpPayableAccountService {
         Map<Long, BigDecimal> purchaseReturnAllocated = financePaymentItemMapper
                 .selectPaymentPriceSumMapByBizIdsAndBizType(purchaseReturns.stream().map(ErpPurchaseReturnDO::getId)
                         .collect(Collectors.toSet()), ErpBizTypeEnum.PURCHASE_RETURN.getType());
-        purchaseReturns.forEach(item -> rows.add(buildAllocatedRow("采购退货",
-                ErpBizTypeEnum.PURCHASE_RETURN.getType(), item.getId(), item.getReturnTime(), item.getNo(),
-                negateAmount(item.getTotalPrice()), purchaseReturnAllocated.get(item.getId()), item.getDeptId())));
+        purchaseReturns.forEach(item -> {
+            ErpPayableDetailRespVO row = buildAllocatedRow("采购退货",
+                    ErpBizTypeEnum.PURCHASE_RETURN.getType(), item.getId(), item.getReturnTime(), item.getNo(),
+                    negateAmount(item.getTotalPrice()), purchaseReturnAllocated.get(item.getId()), item.getDeptId());
+            row.setBusinessUserName(firstNonBlank(item.getPurchaser(), null));
+            row.setBusinessUserId(row.getBusinessUserName() == null ? item.getHandler() : null);
+            row.setSourceNo(item.getOrderNo());
+            row.setFactoryOrderNo(item.getFactoryOrderNo());
+            row.setInvoiceStatus(item.getInvoiceType());
+            row.setRemark(item.getRemark());
+            row.setVoucherSourceBizType(ErpVoucherSourceBizTypeEnum.PURCHASE_RETURN.getType());
+            rows.add(row);
+        });
 
         LambdaQueryWrapperX<ErpPurchasePriceAdjustDO> priceAdjustQuery = new LambdaQueryWrapperX<ErpPurchasePriceAdjustDO>()
                 .eq(ErpPurchasePriceAdjustDO::getSupplierId, reqVO.getSupplierId())
@@ -290,9 +316,16 @@ public class ErpPayableAccountServiceImpl implements ErpPayableAccountService {
         Map<Long, BigDecimal> priceAdjustAllocated = financePaymentItemMapper
                 .selectPaymentPriceSumMapByBizIdsAndBizType(priceAdjusts.stream().map(ErpPurchasePriceAdjustDO::getId)
                         .collect(Collectors.toSet()), ErpBizTypeEnum.PURCHASE_PRICE_ADJUST.getType());
-        priceAdjusts.forEach(item -> rows.add(buildAllocatedRow("采购调价",
-                ErpBizTypeEnum.PURCHASE_PRICE_ADJUST.getType(), item.getId(), item.getAdjustTime(), item.getNo(),
-                defaultAmount(item.getTotalAdjustPrice()), priceAdjustAllocated.get(item.getId()), item.getDeptId())));
+        priceAdjusts.forEach(item -> {
+            ErpPayableDetailRespVO row = buildAllocatedRow("采购调价",
+                    ErpBizTypeEnum.PURCHASE_PRICE_ADJUST.getType(), item.getId(), item.getAdjustTime(), item.getNo(),
+                    defaultAmount(item.getTotalAdjustPrice()), priceAdjustAllocated.get(item.getId()), item.getDeptId());
+            row.setBusinessUserId(item.getAdjuster());
+            row.setRemark(item.getRemark());
+            row.setConfirmTime(item.getApproveTime());
+            row.setVoucherSourceBizType(ErpVoucherSourceBizTypeEnum.PURCHASE_PRICE_ADJUST.getType());
+            rows.add(row);
+        });
 
         LambdaQueryWrapperX<ErpFinancePaymentDO> paymentQuery = new LambdaQueryWrapperX<ErpFinancePaymentDO>()
                 .eq(ErpFinancePaymentDO::getSupplierId, reqVO.getSupplierId())
@@ -308,10 +341,16 @@ public class ErpPayableAccountServiceImpl implements ErpPayableAccountService {
                 .selectApprovedListBySourceIds(PAYMENT_DISCOUNT_SOURCE_TYPE,
                         payments.stream().map(ErpFinancePaymentDO::getId).collect(Collectors.toSet()))
                 .stream().map(ErpPayableOtherDO::getSourceId).collect(Collectors.toSet());
-        payments.forEach(item -> rows.add(buildPaymentAllocatedRow("付款单", null, item.getId(),
-                item.getPaymentTime(), item.getNo(), resolvePaymentDetailPaymentAmount(item, discountPaymentIds),
-                paymentAllocated.get(item.getId()),
-                item.getDeptId())));
+        payments.forEach(item -> {
+            ErpPayableDetailRespVO row = buildPaymentAllocatedRow("付款单", null, item.getId(),
+                    item.getPaymentTime(), item.getNo(), resolvePaymentDetailPaymentAmount(item, discountPaymentIds),
+                    paymentAllocated.get(item.getId()),
+                    item.getDeptId());
+            row.setBusinessUserId(item.getFinanceUserId());
+            row.setRemark(item.getRemark());
+            row.setVoucherSourceBizType(ErpVoucherSourceBizTypeEnum.PAYMENT.getType());
+            rows.add(row);
+        });
 
         payableWriteOffMapper.selectListBySupplierId(reqVO.getSupplierId(), reqVO.getStartTime(), reqVO.getEndTime(),
                         scope.getDeptIds(), scope.getSelfUserId(), scope.isAll())
@@ -328,23 +367,17 @@ public class ErpPayableAccountServiceImpl implements ErpPayableAccountService {
         List<ErpPayableOtherDO> otherPayables = payableOtherMapper.selectList(otherQuery);
         Map<Long, LocalDateTime> paymentDiscountTimeMap = getPaymentDiscountTimeMap(otherPayables);
         otherPayables
-                .forEach(item -> rows.add(buildRow("应付调账", null, item.getId(),
-                        resolveOtherPayableDocDate(item, paymentDiscountTimeMap),
-                        item.getNo(), item.getPayableAmount(), false, item.getDeptId())));
-
-        LambdaQueryWrapperX<ErpPayableMiscDO> miscQuery = new LambdaQueryWrapperX<ErpPayableMiscDO>()
-                .eq(ErpPayableMiscDO::getSupplierId, reqVO.getSupplierId())
-                .eq(ErpPayableMiscDO::getStatus, ErpAuditStatus.APPROVE.getStatus())
-                .geIfPresent(ErpPayableMiscDO::getBizTime, reqVO.getStartTime())
-                .ltIfPresent(ErpPayableMiscDO::getBizTime, reqVO.getEndTime());
-        applyScope(miscQuery, scope, ErpPayableMiscDO::getDeptId, ErpPayableMiscDO::getHandlerId);
-        List<ErpPayableMiscDO> miscPayables = payableMiscMapper.selectList(miscQuery);
-        Map<Long, BigDecimal> miscAllocated = financePaymentItemMapper
-                .selectPaymentPriceSumMapByBizIdsAndBizType(miscPayables.stream().map(ErpPayableMiscDO::getId)
-                        .collect(Collectors.toSet()), ErpBizTypeEnum.PAYABLE_MISC.getType());
-        miscPayables.forEach(item -> rows.add(buildAllocatedRow("其他应付",
-                ErpBizTypeEnum.PAYABLE_MISC.getType(), item.getId(), item.getBizTime(), item.getNo(),
-                item.getAmount(), miscAllocated.get(item.getId()), item.getDeptId())));
+                .forEach(item -> {
+                    ErpPayableDetailRespVO row = buildRow("应付调账", null, item.getId(),
+                            resolveOtherPayableDocDate(item, paymentDiscountTimeMap),
+                            item.getNo(), item.getPayableAmount(), false, item.getDeptId());
+                    row.setBusinessUserId(item.getHandlerId());
+                    row.setSourceNo(item.getSourceNo());
+                    row.setRemark(item.getRemark());
+                    row.setVoucherNo(item.getVoucherNo());
+                    row.setVoucherSourceBizType(ErpVoucherSourceBizTypeEnum.OTHER_PAYABLE.getType());
+                    rows.add(row);
+                });
 
         rows.sort(Comparator.comparing(ErpPayableDetailRespVO::getDocDate, Comparator.nullsLast(Comparator.naturalOrder()))
                 .thenComparing(ErpPayableDetailRespVO::getDocType)
@@ -391,6 +424,12 @@ public class ErpPayableAccountServiceImpl implements ErpPayableAccountService {
                 ErpBizTypeEnum.PURCHASE_IN.getType(), purchaseIn.getId(), purchaseIn.getInTime(), purchaseIn.getNo(),
                 originalSettlementAmount, allocatedAmount, originalSettlementAmount, purchaseIn.getDeptId());
         row.setPriceAdjusted(isPurchaseInPriceAdjusted(purchaseIn, items));
+        row.setBusinessUserName(firstNonBlank(purchaseIn.getPurchaser(), purchaseIn.getHandler()));
+        row.setSourceNo(purchaseIn.getOrderNo());
+        row.setFactoryOrderNo(purchaseIn.getFactoryOrderNo());
+        row.setInvoiceStatus(resolvePurchaseInInvoiceStatus(purchaseIn));
+        row.setRemark(purchaseIn.getRemark());
+        row.setVoucherSourceBizType(ErpVoucherSourceBizTypeEnum.PURCHASE_IN.getType());
         return row;
     }
 
@@ -493,6 +532,79 @@ public class ErpPayableAccountServiceImpl implements ErpPayableAccountService {
                 row.setDeptName(dept.getName());
             }
         }
+    }
+
+    private void fillBusinessUserNames(List<ErpPayableDetailRespVO> rows) {
+        Set<Long> userIds = rows.stream()
+                .filter(row -> !hasText(row.getBusinessUserName()))
+                .map(ErpPayableDetailRespVO::getBusinessUserId)
+                .filter(id -> id != null)
+                .collect(Collectors.toSet());
+        if (userIds.isEmpty()) {
+            return;
+        }
+        Map<Long, AdminUserRespDTO> userMap = adminUserApi.getUserMap(userIds);
+        for (ErpPayableDetailRespVO row : rows) {
+            if (hasText(row.getBusinessUserName()) || row.getBusinessUserId() == null) {
+                continue;
+            }
+            AdminUserRespDTO user = userMap.get(row.getBusinessUserId());
+            if (user != null) {
+                row.setBusinessUserName(user.getNickname());
+            }
+        }
+    }
+
+    private void fillVoucherNos(List<ErpPayableDetailRespVO> rows) {
+        Set<Integer> sourceBizTypes = rows.stream()
+                .map(ErpPayableDetailRespVO::getVoucherSourceBizType)
+                .filter(type -> type != null)
+                .collect(Collectors.toSet());
+        Set<Long> sourceBizIds = rows.stream()
+                .filter(row -> row.getVoucherSourceBizType() != null)
+                .map(ErpPayableDetailRespVO::getBizId)
+                .filter(id -> id != null)
+                .collect(Collectors.toSet());
+        if (sourceBizTypes.isEmpty() || sourceBizIds.isEmpty()) {
+            return;
+        }
+        Map<String, String> voucherNoMap = new HashMap<>();
+        for (ErpVoucherDO voucher : voucherMapper.selectListByBizTypes(sourceBizTypes, sourceBizIds)) {
+            if (voucher.getSourceBizType() == null || voucher.getSourceBizId() == null
+                    || !hasText(voucher.getVoucherNo())) {
+                continue;
+            }
+            voucherNoMap.putIfAbsent(buildVoucherKey(voucher.getSourceBizType(), voucher.getSourceBizId()),
+                    voucher.getVoucherNo());
+        }
+        for (ErpPayableDetailRespVO row : rows) {
+            if (hasText(row.getVoucherNo()) || row.getVoucherSourceBizType() == null || row.getBizId() == null) {
+                continue;
+            }
+            row.setVoucherNo(voucherNoMap.get(buildVoucherKey(row.getVoucherSourceBizType(), row.getBizId())));
+        }
+    }
+
+    private String buildVoucherKey(Integer sourceBizType, Long sourceBizId) {
+        return sourceBizType + ":" + sourceBizId;
+    }
+
+    private String resolvePurchaseInInvoiceStatus(ErpPurchaseInDO purchaseIn) {
+        if (purchaseIn.getHasInvoice() != null) {
+            return Boolean.TRUE.equals(purchaseIn.getHasInvoice()) ? "已开票" : "未开票";
+        }
+        return purchaseIn.getInvoiceType();
+    }
+
+    private String firstNonBlank(String first, String second) {
+        if (hasText(first)) {
+            return first;
+        }
+        return hasText(second) ? second : null;
+    }
+
+    private boolean hasText(String value) {
+        return value != null && !value.trim().isEmpty();
     }
 
     private BigDecimal getChangeAmount(ErpPayableDetailRespVO row) {

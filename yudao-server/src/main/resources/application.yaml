@@ -277,13 +277,14 @@ yudao:
       app-code: ${ERP_BUSINESS_LICENSE_OCR_APP_CODE:b527ea29afc544feacbabdc6d8170edb}
       timeout: ${ERP_BUSINESS_LICENSE_OCR_TIMEOUT:8000}
     purchase-invoice-ocr:
-      endpoint: ${ERP_PURCHASE_INVOICE_OCR_ENDPOINT:https://dgfp.market.alicloudapi.com/ocrservice/invoice}
-      app-key: ${ERP_PURCHASE_INVOICE_OCR_APP_KEY:205043684}
-      app-secret: ${ERP_PURCHASE_INVOICE_OCR_APP_SECRET:SSJl5t5C7zL2yyeVaHEkcemXAbSaXg92}
-      app-code: ${ERP_PURCHASE_INVOICE_OCR_APP_CODE:b527ea29afc544feacbabdc6d8170edb}
-      timeout: ${ERP_PURCHASE_INVOICE_OCR_TIMEOUT:8000}
-      file-url-expiration-seconds: ${ERP_PURCHASE_INVOICE_OCR_FILE_URL_EXPIRATION_SECONDS:300}
-      amount-tolerance: ${ERP_PURCHASE_INVOICE_OCR_AMOUNT_TOLERANCE:0.01}
+      endpoint: https://dgfp.market.alicloudapi.com/ocrservice/invoice
+      app-key: 205043684
+      app-secret: SSJl5t5C7zL2yyeVaHEkcemXAbSaXg92
+      app-code: b527ea29afc544feacbabdc6d8170edb
+      timeout: 8000
+      file-url-expiration-seconds: 300
+      amount-tolerance: 0.01
+      use-system-proxy: false
   web:
     admin-ui:
       url: http://dashboard.yudao.iocoder.cn # Admin 管理后台 UI 的地址

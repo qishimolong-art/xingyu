@@ -163,6 +163,9 @@ public class ErpWarehouseRespVO {
     @Schema(description = "区域ID")
     private Long regionId;
 
+    @Schema(description = "销售单云打印设备编号")
+    private Long cloudPrintDeviceId;
+
     // ========== 关联数据 ==========
 
     @Schema(description = "分店租户ID列表")

@@ -126,6 +126,12 @@ ErrorCode PURCHASE_ORDER_ITEM_RETURN_FAIL_IN_EXCEED = new ErrorCode(1_030_101_00
             "采购入库明细操作类型无效，请使用 insert、update 或 delete");
     ErrorCode PURCHASE_IN_ITEM_UPDATE_NOT_EXISTS = new ErrorCode(1_030_102_041,
             "采购入库明细不存在或不属于当前采购入库单");
+    ErrorCode PURCHASE_IN_FREIGHT_TYPE_INVALID = new ErrorCode(1_030_102_042,
+            "采购入库运费类型只能是：代厂家付、我方自付");
+    ErrorCode PURCHASE_IN_FREIGHT_TYPE_REQUIRED = new ErrorCode(1_030_102_043,
+            "填写运费时必须选择运费类型");
+    ErrorCode PURCHASE_IN_FREIGHT_AMOUNT_NEGATIVE = new ErrorCode(1_030_102_044,
+            "采购入库运费不能小于 0");
 
     // ========== ERP 采购退货（1-030-103-000） ==========
     ErrorCode PURCHASE_RETURN_NOT_EXISTS = new ErrorCode(1_030_103_000, "采购退货单不存在");
@@ -194,7 +200,7 @@ ErrorCode PURCHASE_ORDER_ITEM_RETURN_FAIL_IN_EXCEED = new ErrorCode(1_030_101_00
     ErrorCode PURCHASE_INVOICE_OCR_BATCH_NOT_EXISTS = new ErrorCode(1_030_104_100,
             "采购发票识别批次不存在");
     ErrorCode PURCHASE_INVOICE_OCR_APP_CODE_NOT_CONFIGURED = new ErrorCode(1_030_104_101,
-            "采购发票识别未配置 AppCode，请配置 yudao.erp.purchase-invoice-ocr.app-code");
+            "采购发票识别未配置 AppCode 或 AppKey/AppSecret，请配置 yudao.erp.purchase-invoice-ocr.app-code 或 app-key/app-secret");
     ErrorCode PURCHASE_INVOICE_OCR_RECOGNIZE_STATUS_NOT_SUPPORT = new ErrorCode(1_030_104_102,
             "采购发票识别批次当前状态不支持重新识别");
     ErrorCode PURCHASE_INVOICE_OCR_MATCH_STATUS_NOT_SUPPORT = new ErrorCode(1_030_104_103,
@@ -454,10 +460,14 @@ ErrorCode PURCHASE_ORDER_ITEM_RETURN_FAIL_IN_EXCEED = new ErrorCode(1_030_101_00
             "生成调拨出库草稿时至少需要一条有效明细");
     ErrorCode STOCK_MOVE_SOURCE_SALE_RETURN_CHANGED = new ErrorCode(1_030_402_032,
             "来源销售退货明细已绑定，不能修改来源商品身份");
+    ErrorCode STOCK_MOVE_UPDATE_CART_SOURCE_DENIED = new ErrorCode(1_030_402_033,
+            "销售手推车来源调拨出库单不允许编辑，请返回销售手推车修改");
     ErrorCode STOCK_MOVE_ITEM_OPERATION_INVALID = new ErrorCode(1_030_402_034,
             "调拨出库明细操作类型无效");
     ErrorCode STOCK_MOVE_ITEM_UPDATE_NOT_EXISTS = new ErrorCode(1_030_402_035,
             "调拨出库明细不存在或不属于当前单据");
+    ErrorCode STOCK_MOVE_APPROVE_CART_SOURCE_PICK_DELIVERY_REQUIRED = new ErrorCode(1_030_402_036,
+            "销售手推车来源调拨出库单需完成拣货送货后由系统自动审核");
 
     // ========== ERP 仓库移货单 1-030-408-000 ==========
     ErrorCode WAREHOUSE_MOVE_NOT_EXISTS = new ErrorCode(1_030_408_000, "仓库移货单不存在");
@@ -644,6 +654,8 @@ ErrorCode PURCHASE_ORDER_ITEM_RETURN_FAIL_IN_EXCEED = new ErrorCode(1_030_101_00
     // ========== ERP 销售配置 1-030-207-000 ==========
     ErrorCode SALE_CONFIG_NOT_EXISTS = new ErrorCode(1_030_207_000, "销售配置不存在");
     ErrorCode SALE_CONFIG_CODE_DUPLICATE = new ErrorCode(1_030_207_001, "销售配置类型【{}】下已存在编码【{}】");
+    ErrorCode SALE_DIRECT_DEPT_FORBIDDEN = new ErrorCode(1_030_207_010,
+            "部门【{}】已禁止直接做销售单据，请由其他销售部门开单或走调货流程");
 
     // ========== ERP 供应商基础表 1-030-110-000 ==========
     ErrorCode SUPPLIER_CONTACT_NOT_EXISTS = new ErrorCode(1_030_110_000, "供应商联系人不存在");
@@ -854,6 +866,16 @@ ErrorCode PURCHASE_ORDER_ITEM_RETURN_FAIL_IN_EXCEED = new ErrorCode(1_030_101_00
     // ========== ERP 打印模板 1-030-615-100 ==========
     ErrorCode PRINT_TEMPLATE_NOT_EXISTS = new ErrorCode(1_030_615_100, "打印模板不存在");
     ErrorCode PRINT_MODULE_NOT_SUPPORTED = new ErrorCode(1_030_615_101, "打印模块不支持");
+    ErrorCode CLOUD_PRINT_DEVICE_NOT_EXISTS = new ErrorCode(1_030_615_200, "云打印设备不存在");
+    ErrorCode CLOUD_PRINT_DEVICE_DISABLED = new ErrorCode(1_030_615_201, "云打印设备【{}】已停用");
+    ErrorCode CLOUD_PRINT_DEVICE_OFFLINE = new ErrorCode(1_030_615_202, "打印机【{}】当前离线，请检查设备电源与网络");
+    ErrorCode CLOUD_PRINT_DEVICE_HEIGHT_REQUIRED = new ErrorCode(1_030_615_203,
+            "针式打印机【{}】未配置纸张高度，请先在设备档案填写二联纸高度");
+    ErrorCode CLOUD_PRINT_SUBMIT_FAILED = new ErrorCode(1_030_615_204, "云打印提交失败：{}");
+    ErrorCode CLOUD_PRINT_DEFAULT_DEVICE_NOT_EXISTS = new ErrorCode(1_030_615_205, "未配置默认云打印设备");
+    ErrorCode CLOUD_PRINT_DEVICE_DEVID_DUPLICATE = new ErrorCode(1_030_615_206, "云打印设备机器码【{}】已存在");
+    ErrorCode CLOUD_PRINT_DEVICE_BOUND_BY_WAREHOUSE = new ErrorCode(1_030_615_207,
+            "云打印设备【{}】已被仓库【{}】绑定，不能删除或停用");
 
     // ========== ERP 科目辅助核算 1-030-616-000 ==========
     ErrorCode SUBJECT_AUXILIARY_NOT_EXISTS = new ErrorCode(1_030_616_000, "科目辅助核算不存在");
@@ -871,6 +893,8 @@ ErrorCode PURCHASE_ORDER_ITEM_RETURN_FAIL_IN_EXCEED = new ErrorCode(1_030_101_00
     ErrorCode OTHER_RECEIVABLE_DRAFT_SUBMIT_FAIL = new ErrorCode(1_030_617_008, "其他应收草稿提交失败：{}");
     ErrorCode OTHER_RECEIVABLE_DRAFT_SAVE_FAIL = new ErrorCode(1_030_617_009, "其他应收草稿保存失败：{}");
     ErrorCode OTHER_RECEIVABLE_SAVE_FAIL = new ErrorCode(1_030_617_010, "其他应收保存失败：{}");
+    ErrorCode OTHER_RECEIVABLE_CUSTOMER_DEPT_NOT_ALLOWED = new ErrorCode(1_030_617_011,
+            "当前应收调账部门不在该客户可用部门范围内");
     ErrorCode RECEIVABLE_WRITEOFF_AMOUNT_EXCEED = new ErrorCode(1_030_617_007, "核销金额({})不能超过未收余额({})");
     ErrorCode RECEIVABLE_WRITEOFF_BALANCE_EMPTY = new ErrorCode(1_030_617_008, "当前客户没有可核销的应收余额");
 
@@ -904,6 +928,8 @@ ErrorCode PURCHASE_ORDER_ITEM_RETURN_FAIL_IN_EXCEED = new ErrorCode(1_030_101_00
     ErrorCode OTHER_PAYABLE_DRAFT_SUBMIT_FAIL = new ErrorCode(1_030_621_010, "其他应付草稿提交失败：{}");
     ErrorCode OTHER_PAYABLE_DRAFT_SAVE_FAIL = new ErrorCode(1_030_621_011, "其他应付草稿保存失败：{}");
     ErrorCode OTHER_PAYABLE_SAVE_FAIL = new ErrorCode(1_030_621_012, "其他应付保存失败：{}");
+    ErrorCode OTHER_PAYABLE_SUPPLIER_DEPT_NOT_ALLOWED = new ErrorCode(1_030_621_013,
+            "当前应付调账部门不在该供应商可用部门范围内");
     ErrorCode PAYABLE_WRITEOFF_AMOUNT_EXCEED = new ErrorCode(1_030_621_007, "核销金额({})不能超过未付余额({})");
     ErrorCode PAYABLE_WRITEOFF_BALANCE_EMPTY = new ErrorCode(1_030_621_008, "当前供应商没有可核销的应付余额");
 

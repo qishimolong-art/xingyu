@@ -15,11 +15,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 class ErpOriginalSettlementAmountUtilsTest {
 
     @Test
-    void calculatePurchaseIn_usesOriginalPriceForAdjustedItemsAndCurrentPriceForOtherItems() {
+    void calculatePurchaseIn_usesOriginalPriceAndExcludesFreightFromSettlement() {
         ErpPurchaseInDO purchaseIn = ErpPurchaseInDO.builder()
                 .totalPrice(new BigDecimal("200.00"))
                 .discountPercent(new BigDecimal("10"))
                 .feeAmount(new BigDecimal("5.00"))
+                .totalFreight1(new BigDecimal("8.00"))
                 .build();
         ErpPurchaseInItemDO adjustedItem = ErpPurchaseInItemDO.builder()
                 .count(new BigDecimal("2"))
@@ -54,6 +55,41 @@ class ErpOriginalSettlementAmountUtilsTest {
                 saleOut, Collections.singletonList(item));
 
         assertThat(result).isEqualByComparingTo("87.00");
+    }
+
+    @Test
+    void calculateSaleOutReceivableAccountAmount_usesOriginalProductAmountWithoutFee() {
+        ErpSaleOutDO saleOut = ErpSaleOutDO.builder()
+                .totalPrice(new BigDecimal("90.00"))
+                .discountPercent(new BigDecimal("12.5"))
+                .otherPrice(new BigDecimal("3.00"))
+                .freight(new BigDecimal("8.00"))
+                .build();
+        ErpSaleOutItemDO item = ErpSaleOutItemDO.builder()
+                .count(new BigDecimal("3"))
+                .productPrice(new BigDecimal("40"))
+                .originalProductPrice(new BigDecimal("32"))
+                .build();
+
+        BigDecimal result = ErpOriginalSettlementAmountUtils.calculateSaleOutReceivableAccountAmount(
+                saleOut, Collections.singletonList(item));
+
+        assertThat(result).isEqualByComparingTo("84.00");
+    }
+
+    @Test
+    void calculateSaleOutReceivableAccountAmount_withoutAdjustmentSubtractsCompatibleFee() {
+        ErpSaleOutDO saleOut = ErpSaleOutDO.builder()
+                .totalPrice(new BigDecimal("110.00"))
+                .extraFee(new BigDecimal("10.00"))
+                .build();
+        ErpSaleOutItemDO item = ErpSaleOutItemDO.builder()
+                .count(BigDecimal.ONE).productPrice(new BigDecimal("100.00")).build();
+
+        BigDecimal result = ErpOriginalSettlementAmountUtils.calculateSaleOutReceivableAccountAmount(
+                saleOut, Collections.singletonList(item));
+
+        assertThat(result).isEqualByComparingTo("100.00");
     }
 
     @Test

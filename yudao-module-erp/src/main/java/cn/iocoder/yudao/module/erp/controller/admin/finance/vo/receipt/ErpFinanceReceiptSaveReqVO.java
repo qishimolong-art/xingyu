@@ -34,6 +34,12 @@ public class ErpFinanceReceiptSaveReqVO {
     @NotNull(message = "收款账户编号不能为空")
     private Long accountId;
 
+    @Schema(description = "来源其他应收单编号", example = "1024")
+    private Long sourceReceivableMiscId;
+
+    @Schema(description = "来源其他应收单号", example = "QTYSM20260922000001")
+    private String sourceReceivableMiscNo;
+
     @Schema(description = "优惠金额，单位：元", requiredMode = Schema.RequiredMode.REQUIRED, example = "11600")
     @NotNull(message = "优惠金额不能为空")
     private BigDecimal discountPrice;

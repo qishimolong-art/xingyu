@@ -137,6 +137,8 @@ public class ErpSaleOutServiceImpl implements ErpSaleOutService {
     @Resource
     private ErpSaleDocumentDefaultService saleDocumentDefaultService;
     @Resource
+    private ErpSaleDirectDeptPermissionService saleDirectDeptPermissionService;
+    @Resource
     private ErpSalePickDeliveryService salePickDeliveryService;
 
     @Resource
@@ -163,6 +165,7 @@ public class ErpSaleOutServiceImpl implements ErpSaleOutService {
         clearHiddenFields(createReqVO);
         clearHiddenItemFields(createReqVO, createReqVO.getItems());
         clearItemSourceSnapshots(createReqVO.getItems());
+        saleDirectDeptPermissionService.validateSaleDocumentDeptAllowed(saleOrder.getDeptId());
         customerService.validateCustomerForSale(saleOrder.getCustomerId(), saleOrder.getDeptId());
         // 1.2 校验出库项的有效性
         List<ErpSaleOutItemDO> saleOutItems = validateSaleOutItems(createReqVO.getItems(), createReqVO.getOrderId());
@@ -211,6 +214,7 @@ public class ErpSaleOutServiceImpl implements ErpSaleOutService {
         clearHiddenItemFields(createReqVO, createReqVO.getItems());
         // 1. Validate base data. The new sale flow does not depend on old sale orders.
         Long saleDeptId = resolveSaleDeptId(createReqVO);
+        saleDirectDeptPermissionService.validateSaleDocumentDeptAllowed(saleDeptId);
         customerService.validateCustomerForGeneratedSale(createReqVO.getCustomerId(), saleDeptId);
         List<ErpSaleOutItemDO> saleOutItems = validateSaleOutItems(
                 createReqVO.getItems(), null, saleDeptId);
@@ -281,6 +285,7 @@ public class ErpSaleOutServiceImpl implements ErpSaleOutService {
         preserveItemSourceSnapshots(itemReqs, existingItems);
         // 1.2 校验销售订单已审核
         ErpSaleOrderDO saleOrder = saleOrderService.validateSaleOrder(updateReqVO.getOrderId());
+        saleDirectDeptPermissionService.validateSaleDocumentDeptAllowed(saleOrder.getDeptId());
         customerService.validateCustomerForSale(saleOrder.getCustomerId(), saleOrder.getDeptId());
         // 1.3 校验结算账户
         accountService.validateAccount(updateReqVO.getAccountId());
@@ -438,6 +443,7 @@ public class ErpSaleOutServiceImpl implements ErpSaleOutService {
         if (!ErpAuditStatus.PROCESS.getStatus().equals(saleOut.getStatus())) {
             throw exception(SALE_OUT_APPROVE_FAIL);
         }
+        saleDirectDeptPermissionService.validateSaleDocumentDeptAllowed(saleOut.getDeptId());
 
         // Update status.
         int updateCount = saleOutMapper.updateByIdAndStatus(id, saleOut.getStatus(),

@@ -8,7 +8,9 @@ import cn.iocoder.yudao.framework.datapermission.core.util.DataPermissionUtils;
 import cn.iocoder.yudao.framework.security.core.util.SecurityFrameworkUtils;
 import cn.iocoder.yudao.module.erp.controller.admin.report.vo.sale.ErpSaleReportDetailReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.report.vo.sale.ErpSaleReportDetailRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.report.vo.sale.ErpSaleReportDeptRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.report.vo.sale.ErpSaleReportPageReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.report.vo.sale.ErpSaleReportProductRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.report.vo.sale.ErpSaleReportRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.report.vo.sale.ErpSaleReportSummaryRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.report.vo.sale.ErpSaleReportTrendRespVO;
@@ -102,6 +104,35 @@ public class ErpSaleReportServiceImpl implements ErpSaleReportService {
         List<ErpSaleReportRespVO> list = buildReportList(selectRows(reqVO));
         sortReportList(list, reqVO.getOrderField(), reqVO.getOrderDirection());
         maskReportList(list, isSaleAmountHidden());
+        return buildPageResult(list, reqVO);
+    }
+
+    @Override
+    public PageResult<ErpSaleReportProductRespVO> getSaleReportProductPage(ErpSaleReportPageReqVO reqVO) {
+        List<ErpSaleReportProductRespVO> list = selectProductRows(reqVO);
+        sortProductList(list, reqVO.getOrderField(), reqVO.getOrderDirection());
+        maskProductList(list, isSaleAmountHidden());
+        return buildPageResult(list, reqVO);
+    }
+
+    @Override
+    public PageResult<ErpSaleReportDeptRespVO> getSaleReportDeptPage(ErpSaleReportPageReqVO reqVO) {
+        List<ErpSaleReportDeptRespVO> list = buildDeptReportList(selectRows(reqVO));
+        sortDeptList(list, reqVO.getOrderField(), reqVO.getOrderDirection());
+        maskDeptList(list, isSaleAmountHidden());
+        return buildPageResult(list, reqVO);
+    }
+
+    @Override
+    public PageResult<ErpSaleReportDetailRespVO> getSaleReportDetailPage(ErpSaleReportPageReqVO reqVO) {
+        List<ErpSaleReportDetailRespVO> list = selectRows(reqVO);
+        if (isSaleAmountHidden()) {
+            maskDetailList(list);
+        }
+        return buildPageResult(list, reqVO);
+    }
+
+    private <T> PageResult<T> buildPageResult(List<T> list, ErpSaleReportPageReqVO reqVO) {
         if (PageParam.PAGE_SIZE_NONE.equals(reqVO.getPageSize())) {
             return new PageResult<>(list, (long) list.size());
         }
@@ -122,11 +153,7 @@ public class ErpSaleReportServiceImpl implements ErpSaleReportService {
         pageReqVO.setBizTime(reqVO.getBizTime());
         List<ErpSaleReportDetailRespVO> rows = selectRows(pageReqVO);
         if (isSaleAmountHidden()) {
-            for (ErpSaleReportDetailRespVO row : rows) {
-                row.setSaleAmount(null);
-                row.setReturnAmount(null);
-                row.setNetAmount(null);
-            }
+            maskDetailList(rows);
         }
         return rows;
     }
@@ -174,6 +201,46 @@ public class ErpSaleReportServiceImpl implements ErpSaleReportService {
         return item;
     }
 
+    private List<ErpSaleReportDeptRespVO> buildDeptReportList(List<ErpSaleReportDetailRespVO> rows) {
+        Map<Long, ErpSaleReportDeptRespVO> map = new LinkedHashMap<>();
+        Map<Long, Set<Long>> customerMap = new HashMap<>();
+        for (ErpSaleReportDetailRespVO row : rows) {
+            Long deptKey = row.getDeptId() == null ? 0L : row.getDeptId();
+            ErpSaleReportDeptRespVO item = map.computeIfAbsent(deptKey, key -> buildDeptReportItem(row));
+            if (row.getCustomerId() != null) {
+                customerMap.computeIfAbsent(deptKey, key -> new HashSet<>()).add(row.getCustomerId());
+                item.setCustomerCount((long) customerMap.get(deptKey).size());
+            }
+            item.setDocCount(item.getDocCount() + 1);
+            if (Integer.valueOf(1).equals(row.getBizType())) {
+                item.setSaleCount(amount(item.getSaleCount()).add(amount(row.getBizCount())));
+                item.setSaleAmount(amount(item.getSaleAmount()).add(amount(row.getSaleAmount())));
+            } else {
+                item.setReturnCount(amount(item.getReturnCount()).add(amount(row.getBizCount())));
+                item.setReturnAmount(amount(item.getReturnAmount()).add(amount(row.getReturnAmount())));
+            }
+            item.setNetAmount(amount(item.getNetAmount()).add(amount(row.getNetAmount())));
+            if (row.getDocDate() != null && (item.getLastBizTime() == null || row.getDocDate().isAfter(item.getLastBizTime()))) {
+                item.setLastBizTime(row.getDocDate());
+            }
+        }
+        return new ArrayList<>(map.values());
+    }
+
+    private ErpSaleReportDeptRespVO buildDeptReportItem(ErpSaleReportDetailRespVO row) {
+        ErpSaleReportDeptRespVO item = new ErpSaleReportDeptRespVO();
+        item.setDeptId(row.getDeptId());
+        item.setDeptName(row.getDeptName() == null ? "未设置部门" : row.getDeptName());
+        item.setCustomerCount(0L);
+        item.setDocCount(0L);
+        item.setSaleCount(BigDecimal.ZERO);
+        item.setSaleAmount(BigDecimal.ZERO);
+        item.setReturnCount(BigDecimal.ZERO);
+        item.setReturnAmount(BigDecimal.ZERO);
+        item.setNetAmount(BigDecimal.ZERO);
+        return item;
+    }
+
     private List<ErpSaleReportDetailRespVO> selectRows(ErpSaleReportPageReqVO reqVO) {
         ErpFinanceVisibleScope customerScope = getVisibleScope(CUSTOMER_MODULE);
         ErpFinanceVisibleScope documentScope = getVisibleScope(REPORT_MODULE);
@@ -181,6 +248,17 @@ public class ErpSaleReportServiceImpl implements ErpSaleReportService {
             return Collections.emptyList();
         }
         return DataPermissionUtils.executeIgnore(() -> saleReportMapper.selectRows(reqVO,
+                customerScope.getDeptIds(), selfUserIdText(customerScope), customerScope.isAll(),
+                documentScope.getDeptIds(), selfUserIdText(documentScope), documentScope.isAll()));
+    }
+
+    private List<ErpSaleReportProductRespVO> selectProductRows(ErpSaleReportPageReqVO reqVO) {
+        ErpFinanceVisibleScope customerScope = getVisibleScope(CUSTOMER_MODULE);
+        ErpFinanceVisibleScope documentScope = getVisibleScope(REPORT_MODULE);
+        if (!hasAccess(customerScope) || !hasAccess(documentScope)) {
+            return Collections.emptyList();
+        }
+        return DataPermissionUtils.executeIgnore(() -> saleReportMapper.selectProductRows(reqVO,
                 customerScope.getDeptIds(), selfUserIdText(customerScope), customerScope.isAll(),
                 documentScope.getDeptIds(), selfUserIdText(documentScope), documentScope.isAll()));
     }
@@ -244,6 +322,78 @@ public class ErpSaleReportServiceImpl implements ErpSaleReportService {
         return comparators.get(orderField);
     }
 
+    private void sortDeptList(List<ErpSaleReportDeptRespVO> list, String orderField, String orderDirection) {
+        Comparator<ErpSaleReportDeptRespVO> comparator = getDeptComparator(orderField);
+        if (comparator == null) {
+            comparator = getDeptComparator("netAmount");
+            orderDirection = "desc";
+        }
+        if ("desc".equals(orderDirection)) {
+            comparator = comparator.reversed();
+        }
+        list.sort(comparator.thenComparing(item -> item.getDeptId() == null ? 0L : item.getDeptId()));
+    }
+
+    private Comparator<ErpSaleReportDeptRespVO> getDeptComparator(String orderField) {
+        Map<String, Comparator<ErpSaleReportDeptRespVO>> comparators = new HashMap<>();
+        comparators.put("deptName", Comparator.comparing(ErpSaleReportDeptRespVO::getDeptName,
+                Comparator.nullsLast(String::compareTo)));
+        comparators.put("customerCount", Comparator.comparing(ErpSaleReportDeptRespVO::getCustomerCount,
+                Comparator.nullsLast(Long::compareTo)));
+        comparators.put("docCount", Comparator.comparing(ErpSaleReportDeptRespVO::getDocCount,
+                Comparator.nullsLast(Long::compareTo)));
+        comparators.put("saleCount", Comparator.comparing(ErpSaleReportDeptRespVO::getSaleCount,
+                Comparator.nullsLast(BigDecimal::compareTo)));
+        comparators.put("saleAmount", Comparator.comparing(ErpSaleReportDeptRespVO::getSaleAmount,
+                Comparator.nullsLast(BigDecimal::compareTo)));
+        comparators.put("returnCount", Comparator.comparing(ErpSaleReportDeptRespVO::getReturnCount,
+                Comparator.nullsLast(BigDecimal::compareTo)));
+        comparators.put("returnAmount", Comparator.comparing(ErpSaleReportDeptRespVO::getReturnAmount,
+                Comparator.nullsLast(BigDecimal::compareTo)));
+        comparators.put("netAmount", Comparator.comparing(ErpSaleReportDeptRespVO::getNetAmount,
+                Comparator.nullsLast(BigDecimal::compareTo)));
+        comparators.put("lastBizTime", Comparator.comparing(ErpSaleReportDeptRespVO::getLastBizTime,
+                Comparator.nullsLast(Comparator.naturalOrder())));
+        return comparators.get(orderField);
+    }
+
+    private void sortProductList(List<ErpSaleReportProductRespVO> list, String orderField, String orderDirection) {
+        Comparator<ErpSaleReportProductRespVO> comparator = getProductComparator(orderField);
+        if (comparator == null) {
+            comparator = getProductComparator("netAmount");
+            orderDirection = "desc";
+        }
+        if ("desc".equals(orderDirection)) {
+            comparator = comparator.reversed();
+        }
+        list.sort(comparator.thenComparing(item -> item.getProductId() == null ? 0L : item.getProductId()));
+    }
+
+    private Comparator<ErpSaleReportProductRespVO> getProductComparator(String orderField) {
+        Map<String, Comparator<ErpSaleReportProductRespVO>> comparators = new HashMap<>();
+        comparators.put("productCode", Comparator.comparing(ErpSaleReportProductRespVO::getProductCode,
+                Comparator.nullsLast(String::compareTo)));
+        comparators.put("productName", Comparator.comparing(ErpSaleReportProductRespVO::getProductName,
+                Comparator.nullsLast(String::compareTo)));
+        comparators.put("customerCount", Comparator.comparing(ErpSaleReportProductRespVO::getCustomerCount,
+                Comparator.nullsLast(Long::compareTo)));
+        comparators.put("docCount", Comparator.comparing(ErpSaleReportProductRespVO::getDocCount,
+                Comparator.nullsLast(Long::compareTo)));
+        comparators.put("saleCount", Comparator.comparing(ErpSaleReportProductRespVO::getSaleCount,
+                Comparator.nullsLast(BigDecimal::compareTo)));
+        comparators.put("saleAmount", Comparator.comparing(ErpSaleReportProductRespVO::getSaleAmount,
+                Comparator.nullsLast(BigDecimal::compareTo)));
+        comparators.put("returnCount", Comparator.comparing(ErpSaleReportProductRespVO::getReturnCount,
+                Comparator.nullsLast(BigDecimal::compareTo)));
+        comparators.put("returnAmount", Comparator.comparing(ErpSaleReportProductRespVO::getReturnAmount,
+                Comparator.nullsLast(BigDecimal::compareTo)));
+        comparators.put("netAmount", Comparator.comparing(ErpSaleReportProductRespVO::getNetAmount,
+                Comparator.nullsLast(BigDecimal::compareTo)));
+        comparators.put("lastBizTime", Comparator.comparing(ErpSaleReportProductRespVO::getLastBizTime,
+                Comparator.nullsLast(Comparator.naturalOrder())));
+        return comparators.get(orderField);
+    }
+
     private void maskReportList(List<ErpSaleReportRespVO> list, boolean hidden) {
         if (!hidden) {
             return;
@@ -252,6 +402,36 @@ public class ErpSaleReportServiceImpl implements ErpSaleReportService {
             item.setSaleAmount(null);
             item.setReturnAmount(null);
             item.setNetAmount(null);
+        }
+    }
+
+    private void maskProductList(List<ErpSaleReportProductRespVO> list, boolean hidden) {
+        if (!hidden) {
+            return;
+        }
+        for (ErpSaleReportProductRespVO item : list) {
+            item.setSaleAmount(null);
+            item.setReturnAmount(null);
+            item.setNetAmount(null);
+        }
+    }
+
+    private void maskDeptList(List<ErpSaleReportDeptRespVO> list, boolean hidden) {
+        if (!hidden) {
+            return;
+        }
+        for (ErpSaleReportDeptRespVO item : list) {
+            item.setSaleAmount(null);
+            item.setReturnAmount(null);
+            item.setNetAmount(null);
+        }
+    }
+
+    private void maskDetailList(List<ErpSaleReportDetailRespVO> list) {
+        for (ErpSaleReportDetailRespVO row : list) {
+            row.setSaleAmount(null);
+            row.setReturnAmount(null);
+            row.setNetAmount(null);
         }
     }
 

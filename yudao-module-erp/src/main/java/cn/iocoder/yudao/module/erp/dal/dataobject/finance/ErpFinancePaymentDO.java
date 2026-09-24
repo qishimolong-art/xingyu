@@ -66,6 +66,14 @@ public class ErpFinancePaymentDO extends BaseDO {
      * 关联 {@link ErpAccountDO#getId()}
      */
     private Long accountId;
+    /**
+     * 来源其他应付单编号
+     */
+    private Long sourcePayableMiscId;
+    /**
+     * 来源其他应付单号
+     */
+    private String sourcePayableMiscNo;
 
     /**
      * 合计价格，单位：元

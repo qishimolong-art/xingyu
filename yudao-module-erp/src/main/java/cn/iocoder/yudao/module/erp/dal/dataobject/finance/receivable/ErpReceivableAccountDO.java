@@ -32,6 +32,7 @@ public class ErpReceivableAccountDO {
     private BigDecimal writeOffAmount;
     private BigDecimal otherReceivableAmount;
     private BigDecimal miscReceivableAmount;
+    private BigDecimal openingReceivableBalance;
     private BigDecimal receivableAmount;
     private BigDecimal receivedAmount;
     private BigDecimal unreceivedAmount;

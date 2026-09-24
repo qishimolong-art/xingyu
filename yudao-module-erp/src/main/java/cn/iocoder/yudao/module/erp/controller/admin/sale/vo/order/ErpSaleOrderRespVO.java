@@ -155,6 +155,12 @@ public class ErpSaleOrderRespVO {
         @ExcelProperty("金额")
         private BigDecimal totalPrice;
 
+        @Schema(description = "销售成本单价，单位：元")
+        private BigDecimal saleCostPrice;
+
+        @Schema(description = "销售成本金额，单位：元")
+        private BigDecimal saleCostAmount;
+
         @ExcelProperty("税率")
         private BigDecimal taxPercent;
 

@@ -142,6 +142,8 @@ public class ErpSaleCartServiceImplTest extends BaseMockitoUnitTest {
     @Mock
     private ErpSaleOutService saleOutService;
     @Mock
+    private ErpSalePickDeliveryService salePickDeliveryService;
+    @Mock
     private ErpCustomerService customerService;
     @Mock
     private ErpProductService productService;
@@ -413,6 +415,22 @@ public class ErpSaleCartServiceImplTest extends BaseMockitoUnitTest {
                                 && cart.getLogisticsCompany().equals(req.getParty())
                                 && cart.getFeeAmount().equals(req.getAmount())));
         verify(receivableOtherService, never()).createFromSaleCartFreight(any());
+    }
+
+    @Test
+    public void testFinalApproveSaleCart_otherFreightType_doesNotCreateFinanceDraft() {
+        Long cartId = 113L;
+        ErpSaleCartDO cart = buildFinalApproveCart(cartId, ErpSaleCartStatusEnum.FIRST_APPROVE.getStatus())
+                .setFreightType("送货")
+                .setFeeAmount(new BigDecimal("50.00"));
+        ErpSaleCartItemDO item = buildCartItem(cartId, 201L, 301L, new BigDecimal("3"));
+        when(saleCartMapper.selectById(cartId)).thenReturn(cart);
+        when(saleCartItemMapper.selectListByCartId(cartId)).thenReturn(Collections.singletonList(item));
+
+        saleCartService.finalApproveSaleCart(cartId);
+
+        verify(receivableOtherService, never()).createFromSaleCartFreight(any());
+        verify(payableExpenseService, never()).createFromSaleCartFreight(any());
     }
 
     @Test
@@ -1246,7 +1264,7 @@ public class ErpSaleCartServiceImplTest extends BaseMockitoUnitTest {
         Long cartId = 273L;
         ErpSaleCartDO cart = new ErpSaleCartDO().setId(cartId).setNo("ST20260509000018").setDeptId(99L)
                 .setStatus(ErpSaleCartStatusEnum.FIRST_APPROVE.getStatus());
-        ErpSaleCartItemDO item = buildCartItem(cartId, 201L, 401L, new BigDecimal("3"));
+        ErpSaleCartItemDO item = buildCartItem(cartId, 201L, 401L, new BigDecimal("3")).setId(1L);
         item.setDeptId(20L);
         when(saleCartMapper.selectById(eq(cartId))).thenReturn(cart);
         when(saleCartItemMapper.selectListByCartId(eq(cartId))).thenReturn(Collections.singletonList(item));
@@ -1274,6 +1292,7 @@ public class ErpSaleCartServiceImplTest extends BaseMockitoUnitTest {
                     && Long.valueOf(9999L).equals(req.getItems().get(0).getToWarehouseId())
                     && item.getProductId().equals(req.getItems().get(0).getProductId());
         }));
+        verify(salePickDeliveryService).generateForSaleCartTransferOuts(cartId);
     }
 
     @Test
@@ -1281,8 +1300,8 @@ public class ErpSaleCartServiceImplTest extends BaseMockitoUnitTest {
         Long cartId = 274L;
         ErpSaleCartDO cart = new ErpSaleCartDO().setId(cartId).setNo("ST20260509000019").setDeptId(10L)
                 .setStatus(ErpSaleCartStatusEnum.FIRST_APPROVE.getStatus());
-        ErpSaleCartItemDO crossDeptItem = buildCartItem(cartId, 201L, 401L, new BigDecimal("3"));
-        ErpSaleCartItemDO sameDeptItem = buildCartItem(cartId, 202L, 402L, new BigDecimal("4"));
+        ErpSaleCartItemDO crossDeptItem = buildCartItem(cartId, 201L, 401L, new BigDecimal("3")).setId(1L);
+        ErpSaleCartItemDO sameDeptItem = buildCartItem(cartId, 202L, 402L, new BigDecimal("4")).setId(2L);
         when(saleCartMapper.selectById(eq(cartId))).thenReturn(cart);
         when(saleCartItemMapper.selectListByCartId(eq(cartId)))
                 .thenReturn(java.util.Arrays.asList(crossDeptItem, sameDeptItem));
@@ -1302,6 +1321,7 @@ public class ErpSaleCartServiceImplTest extends BaseMockitoUnitTest {
                         && crossDeptItem.getProductId().equals(reqs.get(0).getItems().get(0).getProductId())
                         && crossDeptItem.getWarehouseId().equals(reqs.get(0).getItems().get(0).getFromWarehouseId())
                         && Long.valueOf(1010L).equals(reqs.get(0).getItems().get(0).getToWarehouseId())));
+        verify(salePickDeliveryService).generateForSaleCartTransferOuts(cartId);
     }
 
     @Test
@@ -1309,9 +1329,9 @@ public class ErpSaleCartServiceImplTest extends BaseMockitoUnitTest {
         Long cartId = 275L;
         ErpSaleCartDO cart = new ErpSaleCartDO().setId(cartId).setNo("ST20260509000020").setDeptId(10L)
                 .setStatus(ErpSaleCartStatusEnum.FIRST_APPROVE.getStatus());
-        ErpSaleCartItemDO dept20Item1 = buildCartItem(cartId, 201L, 401L, new BigDecimal("3"));
-        ErpSaleCartItemDO dept30Item = buildCartItem(cartId, 202L, 402L, new BigDecimal("4"));
-        ErpSaleCartItemDO dept20Item2 = buildCartItem(cartId, 203L, 403L, new BigDecimal("5"));
+        ErpSaleCartItemDO dept20Item1 = buildCartItem(cartId, 201L, 401L, new BigDecimal("3")).setId(1L);
+        ErpSaleCartItemDO dept30Item = buildCartItem(cartId, 202L, 402L, new BigDecimal("4")).setId(2L);
+        ErpSaleCartItemDO dept20Item2 = buildCartItem(cartId, 203L, 403L, new BigDecimal("5")).setId(3L);
         when(saleCartMapper.selectById(eq(cartId))).thenReturn(cart);
         when(saleCartItemMapper.selectListByCartId(eq(cartId)))
                 .thenReturn(java.util.Arrays.asList(dept20Item1, dept30Item, dept20Item2));
@@ -1370,6 +1390,30 @@ public class ErpSaleCartServiceImplTest extends BaseMockitoUnitTest {
         assertTrue(exception.getMessage().length() > 0);
         assertTrue(exception.getMessage().contains("Product1 / Warehouse1"));
         assertTrue(exception.getMessage().contains("Product3 / Warehouse3"));
+        assertTrue(exception.getMessage().contains("Product1 / Warehouse1"));
+        verify(saleCartMapper, never()).updateByIdAndStatus(eq(cartId), any(), any());
+    }
+
+    @Test
+    public void testSubmitSaleCart_processStatusDoesNotSubtractCurrentDraftFromOccupied() {
+        Long cartId = 78L;
+        ErpSaleCartDO cart = new ErpSaleCartDO().setId(cartId).setNo("ST20260509000010")
+                .setStatus(ErpSaleCartStatusEnum.PROCESS.getStatus());
+        ErpSaleCartItemDO item = buildCartItem(cartId, 201L, 401L, new BigDecimal("6"));
+        when(saleCartMapper.selectById(eq(cartId))).thenReturn(cart);
+        when(saleCartItemMapper.selectListByCartId(eq(cartId))).thenReturn(Collections.singletonList(item));
+        when(productService.getProductVOMap(anyCollection())).thenReturn(Collections.singletonMap(201L,
+                new ErpProductRespVO().setId(201L).setCode("P001").setName("Product1")));
+        when(warehouseService.validSaleWarehouseList(anyCollection())).thenReturn(Collections.singletonList(
+                new ErpWarehouseDO().setId(401L).setName("Warehouse1")));
+        when(stockService.getStock(eq(201L), eq(401L)))
+                .thenReturn(new ErpStockDO().setCount(new BigDecimal("10")));
+        when(stockService.getOccupiedCountMap(anyCollection(), anyCollection()))
+                .thenReturn(Collections.singletonMap("201_401", new BigDecimal("5")));
+
+        ServiceException exception = assertThrows(ServiceException.class, () -> saleCartService.submitSaleCart(cartId));
+
+        assertEquals(STOCK_COUNT_NEGATIVE2.getCode(), exception.getCode());
         assertTrue(exception.getMessage().contains("Product1 / Warehouse1"));
         verify(saleCartMapper, never()).updateByIdAndStatus(eq(cartId), any(), any());
     }

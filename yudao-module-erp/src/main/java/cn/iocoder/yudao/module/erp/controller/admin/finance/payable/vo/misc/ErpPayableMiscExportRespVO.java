@@ -26,8 +26,23 @@ public class ErpPayableMiscExportRespVO {
     @ExcelProperty("所属部门")
     private String deptName;
 
-    @ExcelProperty("金额")
+    @ExcelProperty("原金额")
     private BigDecimal amount;
+
+    @ExcelProperty("已付金额")
+    private BigDecimal settledAmount;
+
+    @ExcelProperty("剩余金额")
+    private BigDecimal balanceAmount;
+
+    @ExcelProperty("来源类型")
+    private String sourceType;
+
+    @ExcelProperty("来源单号")
+    private String sourceNo;
+
+    @ExcelProperty("冲减原单号")
+    private String sourceMiscNo;
 
     @ExcelProperty("状态")
     private String statusName;

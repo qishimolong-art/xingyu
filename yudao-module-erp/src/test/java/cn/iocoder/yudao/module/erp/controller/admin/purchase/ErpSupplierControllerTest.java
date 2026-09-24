@@ -2,7 +2,9 @@ package cn.iocoder.yudao.module.erp.controller.admin.purchase;
 
 import cn.iocoder.yudao.framework.test.core.ut.BaseMockitoUnitTest;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.supplier.ErpSupplierRespVO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpSupplierBusinessInfoDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpSupplierDO;
+import cn.iocoder.yudao.module.erp.dal.mysql.purchase.ErpSupplierBusinessInfoMapper;
 import cn.iocoder.yudao.module.erp.service.purchase.ErpPurchaseFieldPermissionMasker;
 import cn.iocoder.yudao.module.erp.service.purchase.ErpSupplierService;
 import cn.iocoder.yudao.module.system.api.dept.DeptApi;
@@ -34,6 +36,8 @@ class ErpSupplierControllerTest extends BaseMockitoUnitTest {
     private AdminUserApi adminUserApi;
     @Mock
     private ErpPurchaseFieldPermissionMasker fieldPermissionMasker;
+    @Mock
+    private ErpSupplierBusinessInfoMapper supplierBusinessInfoMapper;
 
     @Test
     void getSupplier_keepsPersistedCreationDepartmentSeparateFromBusinessDepartment() {
@@ -46,6 +50,8 @@ class ErpSupplierControllerTest extends BaseMockitoUnitTest {
         when(supplierService.getSupplierDeptMap(anyCollection())).thenReturn(Collections.emptyMap());
         when(adminUserApi.getUserMap(anyCollection())).thenReturn(
                 Collections.singletonMap(7L, buildUser(7L, "张三", 202L)));
+        when(supplierBusinessInfoMapper.selectListBySupplierIds(anyCollection())).thenReturn(
+                Collections.singletonList(new ErpSupplierBusinessInfoDO().setSupplierId(1L)));
 
         Map<Long, DeptRespDTO> departments = new HashMap<>();
         departments.put(101L, buildDept(101L, "创建部门"));
@@ -58,6 +64,7 @@ class ErpSupplierControllerTest extends BaseMockitoUnitTest {
         assertEquals("创建部门", result.getCreateDeptName());
         assertEquals("业务分配部门", result.getDeptName());
         assertEquals("张三", result.getCreatorName());
+        assertEquals(true, result.getBusinessInfoSynced());
     }
 
     @Test
@@ -72,11 +79,13 @@ class ErpSupplierControllerTest extends BaseMockitoUnitTest {
                 Collections.singletonMap(7L, buildUser(7L, "张三", 202L)));
         when(deptApi.getDeptMap(anyCollection())).thenReturn(Collections.singletonMap(
                 202L, buildDept(202L, "创建人部门")));
+        when(supplierBusinessInfoMapper.selectListBySupplierIds(anyCollection())).thenReturn(Collections.emptyList());
 
         ErpSupplierRespVO result = controller.getSupplier(1L).getData();
 
         assertEquals(202L, result.getCreateDeptId());
         assertEquals("创建人部门", result.getCreateDeptName());
+        assertEquals(false, result.getBusinessInfoSynced());
     }
 
     private static AdminUserRespDTO buildUser(Long id, String nickname, Long deptId) {

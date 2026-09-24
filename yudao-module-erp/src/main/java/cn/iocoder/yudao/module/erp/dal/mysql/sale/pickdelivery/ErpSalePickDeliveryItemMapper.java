@@ -34,6 +34,14 @@ public interface ErpSalePickDeliveryItemMapper extends BaseMapperX<ErpSalePickDe
         return selectPage(pageParam, buildWarehousePositionOrderWrapper().eq("sale_out_id", saleOutId));
     }
 
+    default List<ErpSalePickDeliveryItemDO> selectListByTransferOutIds(Collection<Long> transferOutIds) {
+        if (cn.hutool.core.collection.CollUtil.isEmpty(transferOutIds)) {
+            return java.util.Collections.emptyList();
+        }
+        return selectList(new LambdaQueryWrapperX<ErpSalePickDeliveryItemDO>()
+                .in(ErpSalePickDeliveryItemDO::getTransferOutId, transferOutIds));
+    }
+
     default List<ErpSalePickDeliveryItemDO> selectListByIdsForUpdate(Collection<Long> ids) {
         return selectList(new LambdaQueryWrapperX<ErpSalePickDeliveryItemDO>()
                 .in(ErpSalePickDeliveryItemDO::getId, ids).last("FOR UPDATE"));

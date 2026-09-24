@@ -28,6 +28,8 @@ public class ErpSalePickDeliveryItemDO extends TenantBaseDO {
     private Long pickTaskId;
     private Long saleOutId;
     private Long saleOutItemId;
+    private Long transferOutId;
+    private Long transferOutItemId;
     private Long warehouseId;
     private String warehouseName;
     private Long productId;

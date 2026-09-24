@@ -7,6 +7,7 @@ import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.pickdelivery.ErpSale
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.pickdelivery.ErpSalePickDeliveryPickTaskDO;
 import cn.iocoder.yudao.module.erp.dal.mysql.common.ErpKeywordQuery;
 import org.apache.ibatis.annotations.Mapper;
+import org.springframework.util.StringUtils;
 
 import java.util.Collection;
 import java.util.List;
@@ -26,7 +27,6 @@ public interface ErpSalePickDeliveryPickTaskMapper extends BaseMapperX<ErpSalePi
     default PageResult<ErpSalePickDeliveryPickTaskDO> selectPage(ErpSalePickPageReqVO reqVO) {
         LambdaQueryWrapperX<ErpSalePickDeliveryPickTaskDO> wrapper = new LambdaQueryWrapperX<ErpSalePickDeliveryPickTaskDO>()
                 .inIfPresent(ErpSalePickDeliveryPickTaskDO::getId, reqVO.getIds())
-                .likeIfPresent(ErpSalePickDeliveryPickTaskDO::getSaleOutNo, reqVO.getSaleOutNo())
                 .eqIfPresent(ErpSalePickDeliveryPickTaskDO::getCustomerId, reqVO.getCustomerId())
                 .eqIfPresent(ErpSalePickDeliveryPickTaskDO::getWarehouseId, reqVO.getWarehouseId())
                 .eqIfPresent(ErpSalePickDeliveryPickTaskDO::getStatus, reqVO.getStatus())
@@ -34,8 +34,13 @@ public interface ErpSalePickDeliveryPickTaskMapper extends BaseMapperX<ErpSalePi
                 .betweenIfPresent(ErpSalePickDeliveryPickTaskDO::getCreateTime, reqVO.getCreateTime())
                 .betweenIfPresent(ErpSalePickDeliveryPickTaskDO::getCompleteTime, reqVO.getCompleteTime())
                 .orderByDesc(ErpSalePickDeliveryPickTaskDO::getId);
+        if (StringUtils.hasText(reqVO.getSaleOutNo())) {
+            wrapper.and(query -> query.like(ErpSalePickDeliveryPickTaskDO::getSaleOutNo, reqVO.getSaleOutNo())
+                    .or().like(ErpSalePickDeliveryPickTaskDO::getSourceNo, reqVO.getSaleOutNo()));
+        }
         ErpKeywordQuery.append(wrapper, reqVO.getKeyword(),
                 ErpSalePickDeliveryPickTaskDO::getSaleOutNo,
+                ErpSalePickDeliveryPickTaskDO::getSourceNo,
                 ErpSalePickDeliveryPickTaskDO::getCustomerName,
                 ErpSalePickDeliveryPickTaskDO::getWarehouseName);
         return selectPage(reqVO, wrapper);

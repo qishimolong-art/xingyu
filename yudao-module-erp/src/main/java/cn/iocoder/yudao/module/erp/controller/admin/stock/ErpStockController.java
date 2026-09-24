@@ -91,6 +91,9 @@ public class ErpStockController {
             "lastSalePrice", "salePrice", "minPrice", "referencePrice", "retailPrice", "grossProfitRate",
             "backupPrice1", "wholesalePrice", "sharePrice", "currentPrice", "currentPriceAmount"));
 
+    private static final List<Integer> SALE_CART_OCCUPIED_STATUSES = Collections.unmodifiableList(Arrays.asList(
+            ErpSaleCartStatusEnum.SUBMITTED.getStatus(), ErpSaleCartStatusEnum.FIRST_APPROVE.getStatus()));
+
     @Resource
     private ErpStockService stockService;
     @Resource
@@ -275,9 +278,7 @@ public class ErpStockController {
         validateCurrentUserStockAccess(productId, warehouseId);
         List<ErpStockOccupiedDetailRespVO> list = DataPermissionUtils.executeIgnore(() ->
                 stockOccupiedDetailMapper.selectList(productId, warehouseId,
-                        ErpAuditStatus.PROCESS.getStatus(), Arrays.asList(ErpSaleCartStatusEnum.PROCESS.getStatus(),
-                                ErpSaleCartStatusEnum.SUBMITTED.getStatus(),
-                        ErpSaleCartStatusEnum.FIRST_APPROVE.getStatus()),
+                        ErpAuditStatus.PROCESS.getStatus(), SALE_CART_OCCUPIED_STATUSES,
                         ErpStockCheckTypeEnum.COUNT.getType(),
                         ErpStockTransferDirectionEnum.TRANSFER_OUT.getDirection(), batchNo, unassignedBatch));
         fillCreatorNames(list, ErpStockOccupiedDetailRespVO::getCreator,
@@ -409,9 +410,7 @@ public class ErpStockController {
         Set<Long> warehouseIds = convertSet(stockPageResult.getList(), ErpStockDO::getWarehouseId);
         List<ErpStockBatchQuantityDO> occupiedList = DataPermissionUtils.executeIgnore(() ->
                 stockBatchQuantityMapper.selectOccupiedList(productIds, warehouseIds,
-                        ErpAuditStatus.PROCESS.getStatus(), Arrays.asList(ErpSaleCartStatusEnum.PROCESS.getStatus(),
-                                ErpSaleCartStatusEnum.SUBMITTED.getStatus(),
-                                ErpSaleCartStatusEnum.FIRST_APPROVE.getStatus()),
+                        ErpAuditStatus.PROCESS.getStatus(), SALE_CART_OCCUPIED_STATUSES,
                         ErpStockCheckTypeEnum.COUNT.getType(),
                         ErpStockTransferDirectionEnum.TRANSFER_OUT.getDirection()));
         List<ErpStockBatchQuantityDO> pendingInList = DataPermissionUtils.executeIgnore(() ->
@@ -700,6 +699,7 @@ public class ErpStockController {
             stock.setRowKey(buildStockRowKey(stock)).setBatchRow(false);
             MapUtils.findAndThen(productMap, stock.getProductId(), product -> {
                 stock.setProductName(product.getName())
+                        .setMainImage(product.getMainImage())
                         .setCategoryName(product.getCategoryName())
                         .setUnitId(product.getUnitId())
                         .setUnitName(product.getUnitName());
