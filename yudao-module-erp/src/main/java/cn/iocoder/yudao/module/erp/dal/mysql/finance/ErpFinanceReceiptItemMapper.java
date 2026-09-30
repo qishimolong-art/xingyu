@@ -10,6 +10,10 @@ import cn.iocoder.yudao.module.erp.enums.finance.ErpFinanceWriteOffStatusEnum;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.toolkit.support.SFunction;
 import org.apache.ibatis.annotations.Mapper;
+import cn.iocoder.yudao.framework.datapermission.core.annotation.DataPermission;
+import org.apache.ibatis.annotations.Select;
+import org.apache.ibatis.annotations.Param;
+import java.util.Collections;
 
 import java.math.BigDecimal;
 import java.util.Collection;
@@ -82,7 +86,17 @@ public interface ErpFinanceReceiptItemMapper extends BaseMapperX<ErpFinanceRecei
         return delete(ErpFinanceReceiptItemDO::getReceiptId, receiptId);
     }
 
+    @DataPermission(enable = false)
+    @Select({"<script>SELECT m.id AS biz_id, COALESCE(s.settled_amount, 0) AS receipt_price_sum FROM erp_receivable_misc m",
+            " LEFT JOIN " + ErpMiscSettlementSql.RECEIVABLE_TOTALS + " s ON s.misc_id = m.id AND s.tenant_id = m.tenant_id",
+            " WHERE m.deleted = 0 AND m.id IN <foreach collection='ids' item='id' open='(' separator=',' close=')'>#{id}</foreach></script>"})
+    List<Map<String, Object>> selectMiscSettlementTotals(@Param("ids") Collection<Long> ids);
+
     default BigDecimal selectReceiptPriceSumByBizIdAndBizType(Long bizId, Integer bizType) {
+        if (Integer.valueOf(24).equals(bizType)) {
+            List<Map<String, Object>> rows = selectMiscSettlementTotals(Collections.singleton(bizId));
+            return rows.isEmpty() ? BigDecimal.ZERO : toBigDecimal(rows.get(0).get("receipt_price_sum"));
+        }
         List<Map<String, Object>> result = selectMaps(new QueryWrapper<ErpFinanceReceiptItemDO>()
                 .select("COALESCE(SUM(receipt_price), 0) AS receipt_price_sum")
                 .eq("biz_id", bizId)
@@ -99,7 +113,8 @@ public interface ErpFinanceReceiptItemMapper extends BaseMapperX<ErpFinanceRecei
         if (CollUtil.isEmpty(bizIds)) {
             return new HashMap<>();
         }
-        List<Map<String, Object>> result = selectMaps(new QueryWrapper<ErpFinanceReceiptItemDO>()
+        List<Map<String, Object>> result = Integer.valueOf(24).equals(bizType)
+                ? selectMiscSettlementTotals(bizIds) : selectMaps(new QueryWrapper<ErpFinanceReceiptItemDO>()
                 .select("biz_id, SUM(receipt_price) AS receipt_price_sum")
                 .eq("biz_type", bizType)
                 .eq("write_off_status", ErpFinanceWriteOffStatusEnum.EFFECTIVE.getStatus())

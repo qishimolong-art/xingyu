@@ -22,6 +22,9 @@ public class ErpSalePickDeliverySubmitDO extends TenantBaseDO {
 
     @TableId
     private Long id;
+    private String requestId;
+    private String requestHash;
+    private Boolean quantityDetails;
 
     private Long orderId;
     private Long pickTaskId;

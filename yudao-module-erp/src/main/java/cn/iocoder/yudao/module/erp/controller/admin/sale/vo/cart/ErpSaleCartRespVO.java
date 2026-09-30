@@ -19,6 +19,9 @@ public class ErpSaleCartRespVO {
     @ExcelProperty("状态")
     private Integer status;
     private Boolean firstApproveRequired;
+    private Long pickDeliveryOrderId;
+    private Integer pickStatus;
+    private Integer deliveryStatus;
     private Long customerId;
     @ExcelProperty("客户名称")
     private String customerName;

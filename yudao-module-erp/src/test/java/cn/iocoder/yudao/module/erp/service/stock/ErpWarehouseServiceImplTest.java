@@ -21,6 +21,7 @@ import cn.iocoder.yudao.module.erp.dal.mysql.stock.ErpStockMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.stock.ErpUserWarehousePermissionMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.stock.ErpWarehouseBranchMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.stock.ErpWarehouseMapper;
+import cn.iocoder.yudao.module.erp.dal.mysql.stock.ErpWarehousePickerMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.stock.ErpWarehouseSaleDeptPermissionMapper;
 import cn.iocoder.yudao.module.erp.dal.redis.no.ErpNoRedisDAO;
 import cn.iocoder.yudao.module.erp.service.base.ErpBaseArchiveReferenceService;
@@ -36,6 +37,10 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.mockito.ArgumentCaptor;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.MockedStatic;
@@ -49,6 +54,7 @@ import java.util.List;
 
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.WAREHOUSE_CODE_EXISTS;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.WAREHOUSE_DIRECT_MULTIPLE;
+import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.WAREHOUSE_DIRECT_DEPT_INVALID;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.WAREHOUSE_DIRECT_NOT_CONFIGURED;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.WAREHOUSE_NOT_ENABLE;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.WAREHOUSE_NOT_EXISTS;
@@ -80,6 +86,8 @@ public class ErpWarehouseServiceImplTest extends BaseMockitoUnitTest {
 
     @Mock
     private ErpWarehouseMapper warehouseMapper;
+    @Mock
+    private ErpWarehousePickerMapper warehousePickerMapper;
     @Mock
     private ErpStockMapper stockMapper;
     @Mock
@@ -319,9 +327,9 @@ public class ErpWarehouseServiceImplTest extends BaseMockitoUnitTest {
     }
 
     @Test
-    public void testUpdateWarehouse_keepExistingCode() {
+    public void testUpdateWarehouse_keepExistingCodeAndDirectFlag() {
         ErpWarehouseDO warehouse = new ErpWarehouseDO().setId(1L).setName("A仓").setWarehouseCode("WH001")
-                .setDeptId(10L).setSaleEnabled(true);
+                .setDeptId(10L).setSaleEnabled(true).setDirectWarehouse(true);
         when(warehouseMapper.selectById(eq(1L))).thenReturn(warehouse);
         ErpWarehouseSaveReqVO reqVO = new ErpWarehouseSaveReqVO();
         reqVO.setId(1L);
@@ -334,6 +342,7 @@ public class ErpWarehouseServiceImplTest extends BaseMockitoUnitTest {
         ArgumentCaptor<ErpWarehouseDO> captor = ArgumentCaptor.forClass(ErpWarehouseDO.class);
         verify(warehouseMapper).updateById(captor.capture());
         assertEquals("WH001", captor.getValue().getWarehouseCode());
+        assertEquals(Boolean.TRUE, captor.getValue().getDirectWarehouse());
     }
 
     @Test
@@ -888,7 +897,7 @@ public class ErpWarehouseServiceImplTest extends BaseMockitoUnitTest {
         DeptDataPermissionRespDTO dataPermission = new DeptDataPermissionRespDTO();
         dataPermission.setDeptIds(new LinkedHashSet<>(Collections.singletonList(20L)));
         when(permissionApi.getDeptDataPermission(eq(104L), eq("erp_stock"))).thenReturn(dataPermission);
-        when(warehouseMapper.selectListByStatusIfPresent(eq(CommonStatusEnum.ENABLE.getStatus())))
+        when(warehouseMapper.selectEnabledPermissionScopeRows())
                 .thenReturn(Arrays.asList(
                         new ErpWarehouseDO().setId(11L).setDeptId(20L),
                         new ErpWarehouseDO().setId(12L).setDeptId(10L),
@@ -1203,7 +1212,7 @@ public class ErpWarehouseServiceImplTest extends BaseMockitoUnitTest {
     @Test
     public void testImportWarehouseList_createUpdateAndFailure() {
         ErpWarehouseImportExcelVO createRow = new ErpWarehouseImportExcelVO();
-        createRow.setName("新增仓");
+        createRow.setName("普通直发仓");
         createRow.setWarehouseCode("WH001");
         ErpWarehouseImportExcelVO updateRow = new ErpWarehouseImportExcelVO();
         updateRow.setName("更新仓");
@@ -1211,7 +1220,7 @@ public class ErpWarehouseServiceImplTest extends BaseMockitoUnitTest {
         updateRow.setDeptName("销售部");
         ErpWarehouseImportExcelVO failureRow = new ErpWarehouseImportExcelVO();
         failureRow.setWarehouseCode("WH003");
-        ErpWarehouseDO existing = new ErpWarehouseDO().setId(2L).setName("旧仓").setWarehouseCode("WH002").setDeptId(10L);
+        ErpWarehouseDO existing = new ErpWarehouseDO().setId(2L).setName("旧仓").setWarehouseCode("WH002").setDeptId(10L).setDirectWarehouse(true);
         when(warehouseMapper.selectByWarehouseCode(anyString())).thenAnswer(invocation ->
                 "WH002".equals(invocation.getArgument(0)) ? existing : null);
         when(deptApi.getDeptListByName(eq("销售部"))).thenReturn(Collections.singletonList(dept(20L, "销售部")));
@@ -1228,9 +1237,11 @@ public class ErpWarehouseServiceImplTest extends BaseMockitoUnitTest {
         verify(warehouseMapper).insert(insertCaptor.capture());
         assertEquals(CommonStatusEnum.ENABLE.getStatus(), insertCaptor.getValue().getStatus());
         assertEquals(0L, insertCaptor.getValue().getSort());
+        assertEquals(Boolean.FALSE, insertCaptor.getValue().getDirectWarehouse());
         ArgumentCaptor<ErpWarehouseDO> updateCaptor = ArgumentCaptor.forClass(ErpWarehouseDO.class);
         verify(warehouseMapper).updateById(updateCaptor.capture());
         assertEquals(20L, updateCaptor.getValue().getDeptId());
+        assertEquals(Boolean.TRUE, updateCaptor.getValue().getDirectWarehouse());
         assertEquals(null, updateCaptor.getValue().getStatus());
         assertEquals(null, updateCaptor.getValue().getSort());
         verify(stockMapper).updateDeptIdByWarehouseId(eq(2L), eq(20L));
@@ -1407,18 +1418,79 @@ public class ErpWarehouseServiceImplTest extends BaseMockitoUnitTest {
     @Test
     public void testResolveDirectWarehouseId_prefersSameDeptWarehouse() {
         List<ErpWarehouseDO> warehouses = Collections.singletonList(
-                new ErpWarehouseDO().setId(12L).setName("直发仓").setDeptId(20L));
-        when(warehouseMapper.selectListByNameAndDeptIdAndStatus(eq("直发仓"), eq(20L),
+                new ErpWarehouseDO().setId(12L).setName("已手动改名的仓库").setDirectWarehouse(true).setDeptId(20L));
+        when(warehouseMapper.selectDirectListByDeptIdAndStatus(eq(20L),
                 eq(CommonStatusEnum.ENABLE.getStatus()))).thenReturn(warehouses);
 
         Long result = warehouseService.resolveDirectWarehouseId(20L);
 
         assertEquals(12L, result);
+        verify(deptApi, never()).getDept(any());
+        verify(warehouseMapper, never()).insert(any(ErpWarehouseDO.class));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"直发仓", "甘孜分公司直发仓"})
+    public void testCreateWarehouse_directSoundingNameRemainsOrdinary(String name) {
+        ErpWarehouseSaveReqVO req = new ErpWarehouseSaveReqVO();
+        req.setName(name);
+        req.setWarehouseCode("WH001");
+
+        warehouseService.createWarehouse(req);
+
+        ArgumentCaptor<ErpWarehouseDO> captor = ArgumentCaptor.forClass(ErpWarehouseDO.class);
+        verify(warehouseMapper).insert(captor.capture());
+        assertEquals(Boolean.FALSE, captor.getValue().getDirectWarehouse());
+    }
+
+    @Test
+    public void testResolveDirectWarehouseId_missingDeptDoesNotCreateAndUnlocks() {
+        ServiceException ex = assertThrows(ServiceException.class,
+                () -> warehouseService.resolveDirectWarehouseId(20L));
+
+        assertEquals(WAREHOUSE_DIRECT_DEPT_INVALID.getCode(), ex.getCode());
+        verify(warehouseMapper, never()).insert(any(ErpWarehouseDO.class));
+        verify(directWarehouseCreateLock).unlock();
+    }
+
+    @Test
+    public void testResolveDirectWarehouseId_blankDeptNameDoesNotCreate() {
+        when(deptApi.getDept(20L)).thenReturn(dept(20L, "  "));
+
+        ServiceException ex = assertThrows(ServiceException.class,
+                () -> warehouseService.resolveDirectWarehouseId(20L));
+
+        assertEquals(WAREHOUSE_DIRECT_DEPT_INVALID.getCode(), ex.getCode());
+        verify(warehouseMapper, never()).insert(any(ErpWarehouseDO.class));
+        verify(directWarehouseCreateLock).unlock();
+    }
+
+    @Test
+    public void testResolveDirectWarehouseId_unlocksOnlyAfterTransactionCompletion() {
+        when(deptApi.getDept(20L)).thenReturn(dept(20L, "甘孜分公司"));
+        when(noRedisDAO.generatePlain(ErpNoRedisDAO.WAREHOUSE_CODE_PREFIX)).thenReturn("WH000001");
+        when(warehouseMapper.insert(any(ErpWarehouseDO.class))).thenAnswer(invocation -> {
+            ((ErpWarehouseDO) invocation.getArgument(0)).setId(12L);
+            return 1;
+        });
+        TransactionSynchronizationManager.setActualTransactionActive(true);
+        TransactionSynchronizationManager.initSynchronization();
+        try {
+            assertEquals(12L, warehouseService.resolveDirectWarehouseId(20L));
+            verify(directWarehouseCreateLock, never()).unlock();
+            TransactionSynchronizationManager.getSynchronizations().forEach(
+                    sync -> sync.afterCompletion(TransactionSynchronization.STATUS_COMMITTED));
+            verify(directWarehouseCreateLock).unlock();
+        } finally {
+            TransactionSynchronizationManager.clearSynchronization();
+            TransactionSynchronizationManager.setActualTransactionActive(false);
+        }
     }
 
     @Test
     public void testResolveDirectWarehouseId_otherDeptWarehouseExists_createsOwnWarehouse() {
-        when(warehouseMapper.selectListByNameAndDeptIdAndStatus(eq("直发仓"), eq(20L),
+        when(deptApi.getDept(20L)).thenReturn(dept(20L, "甘孜分公司"));
+        when(warehouseMapper.selectDirectListByDeptIdAndStatus(eq(20L),
                 eq(CommonStatusEnum.ENABLE.getStatus()))).thenReturn(Collections.emptyList());
         when(noRedisDAO.generatePlain(eq(ErpNoRedisDAO.WAREHOUSE_CODE_PREFIX))).thenReturn("WH000001");
         when(warehouseMapper.insert(any(ErpWarehouseDO.class))).thenAnswer(invocation -> {
@@ -1432,21 +1504,22 @@ public class ErpWarehouseServiceImplTest extends BaseMockitoUnitTest {
         assertEquals(12L, result);
         ArgumentCaptor<ErpWarehouseDO> captor = ArgumentCaptor.forClass(ErpWarehouseDO.class);
         verify(warehouseMapper).insert(captor.capture());
-        assertEquals("直发仓", captor.getValue().getName());
+        assertEquals("甘孜分公司直发仓", captor.getValue().getName());
+        assertEquals(Boolean.TRUE, captor.getValue().getDirectWarehouse());
         assertEquals(20L, captor.getValue().getDeptId());
         assertEquals(CommonStatusEnum.ENABLE.getStatus(), captor.getValue().getStatus());
         assertEquals(Boolean.TRUE, captor.getValue().getSaleEnabled());
         assertEquals(Boolean.FALSE, captor.getValue().getStockBillEnabled());
         assertEquals("系统自动创建：销售手推车跨部门调拨专用直发仓", captor.getValue().getRemark());
         verify(directWarehouseCreateLock).lock();
-        verify(warehouseMapper, times(2)).selectListByNameAndDeptIdAndStatus(
-                "直发仓", 20L, CommonStatusEnum.ENABLE.getStatus());
+        verify(warehouseMapper, times(2)).selectDirectListByDeptIdAndStatus(
+                20L, CommonStatusEnum.ENABLE.getStatus());
     }
 
     @Test
     public void testResolveDirectWarehouseId_createdByConcurrentRequest_reusesAfterLock() {
-        ErpWarehouseDO concurrentCreated = new ErpWarehouseDO().setId(13L).setName("直发仓").setDeptId(20L);
-        when(warehouseMapper.selectListByNameAndDeptIdAndStatus(eq("直发仓"), eq(20L),
+        ErpWarehouseDO concurrentCreated = new ErpWarehouseDO().setId(13L).setName("甘孜分公司直发仓").setDirectWarehouse(true).setDeptId(20L);
+        when(warehouseMapper.selectDirectListByDeptIdAndStatus(eq(20L),
                 eq(CommonStatusEnum.ENABLE.getStatus())))
                 .thenReturn(Collections.emptyList(), Collections.singletonList(concurrentCreated));
 
@@ -1468,9 +1541,9 @@ public class ErpWarehouseServiceImplTest extends BaseMockitoUnitTest {
     @Test
     public void testResolveDirectWarehouseId_multipleSameDeptThrows() {
         List<ErpWarehouseDO> warehouses = Arrays.asList(
-                new ErpWarehouseDO().setId(11L).setName("直发仓").setDeptId(20L),
-                new ErpWarehouseDO().setId(12L).setName("直发仓").setDeptId(20L));
-        when(warehouseMapper.selectListByNameAndDeptIdAndStatus(eq("直发仓"), eq(20L),
+                new ErpWarehouseDO().setId(11L).setName("直发仓").setDirectWarehouse(true).setDeptId(20L),
+                new ErpWarehouseDO().setId(12L).setName("已手动改名的仓库").setDirectWarehouse(true).setDeptId(20L));
+        when(warehouseMapper.selectDirectListByDeptIdAndStatus(eq(20L),
                 eq(CommonStatusEnum.ENABLE.getStatus()))).thenReturn(warehouses);
 
         ServiceException ex = assertThrows(ServiceException.class,

@@ -16,9 +16,15 @@ public class ErpSalePickSubmitReqVO {
     @NotNull(message = "拣货任务编号不能为空")
     private Long taskId;
 
-    @Schema(description = "本次已拣货明细编号列表", requiredMode = Schema.RequiredMode.REQUIRED)
-    @NotEmpty(message = "请至少选择一条本次已拣货明细")
+    @Schema(description = "旧版整条拣货明细编号，与 items 二选一")
     private List<Long> itemIds;
+
+    @Schema(description = "本次分批数量，与 itemIds 二选一")
+    @Valid
+    private List<ErpSalePickDeliverySubmitItemReqVO> items;
+
+    @Schema(description = "分批提交请求唯一标识，重试时必须复用")
+    private String requestId;
 
     @Schema(description = "本次拣货凭证", requiredMode = Schema.RequiredMode.REQUIRED)
     @Valid

@@ -1,6 +1,7 @@
 package cn.iocoder.yudao.module.member.controller.app.address.vo;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Data;
+import java.math.BigDecimal;
 
 import javax.validation.constraints.NotNull;
 
@@ -31,5 +32,11 @@ public class AppAddressBaseVO {
     @Schema(description = "是否默认地址", requiredMode = Schema.RequiredMode.REQUIRED)
     @NotNull(message = "是否默认地址不能为空")
     private Boolean defaultStatus;
+
+    /** 收货位置（GCJ-02），旧地址允许为空。 */
+    private BigDecimal longitude;
+    private BigDecimal latitude;
+    private String mapName;
+    private String mapAddress;
 
 }

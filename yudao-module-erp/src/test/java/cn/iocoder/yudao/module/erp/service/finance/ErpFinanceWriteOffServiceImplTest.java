@@ -56,6 +56,208 @@ import static org.mockito.Mockito.when;
 
 class ErpFinanceWriteOffServiceImplTest extends BaseMockitoUnitTest {
 
+    @Mock
+    private cn.iocoder.yudao.module.erp.dal.mysql.finance.receivable.ErpReceivableMiscMapper receivableMiscMapper;
+
+    @Test
+    void approveReceiptTransfer_countsPriorSettlementAndNeverCreatesMiscDocument() {
+        ErpFinanceReceiptDO document = new ErpFinanceReceiptDO().setId(100L).setStatus(10)
+                .setCustomerId(1L).setSourceReceivableMiscId(200L).setReceiptPrice(new BigDecimal("700"));
+        when(receiptMapper.selectByIdForUpdate(100L)).thenReturn(document);
+        when(receivableMiscMapper.selectByIdForUpdate(200L)).thenReturn(
+                new cn.iocoder.yudao.module.erp.dal.dataobject.finance.receivable.ErpReceivableMiscDO()
+                        .setId(200L).setStatus(20).setCustomerId(1L).setAmount(new BigDecimal("1000")));
+        when(receivableMiscMapper.selectSettlementAmountSumMapBySourceMiscIds(any(), any()))
+                .thenReturn(Collections.singletonMap(200L, new BigDecimal("300")));
+        when(receiptItemMapper.selectListByReceiptId(100L)).thenReturn(Collections.emptyList());
+        when(receiptMapper.updateByIdAndStatus(org.mockito.ArgumentMatchers.eq(100L),
+                org.mockito.ArgumentMatchers.eq(10), any())).thenReturn(1);
+        receiptService.approveFinanceReceipt(100L);
+        org.mockito.InOrder order = org.mockito.Mockito.inOrder(receivableMiscMapper, receiptMapper);
+        order.verify(receivableMiscMapper).selectByIdForUpdate(200L);
+        order.verify(receivableMiscMapper).selectSettlementAmountSumMapBySourceMiscIds(any(), any());
+        order.verify(receiptMapper).updateByIdAndStatus(org.mockito.ArgumentMatchers.eq(100L), org.mockito.ArgumentMatchers.eq(10), any());
+        verify(receivableMiscMapper, never()).insert(any(cn.iocoder.yudao.module.erp.dal.dataobject.finance.receivable.ErpReceivableMiscDO.class));
+        verify(financeAutoWriteOffService, never()).autoWriteOffReceipt(any(), any());
+    }
+
+    @Test
+    void approveReceiptTransfer_rejectsOverpaymentBeforeStatusChange() {
+        ErpFinanceReceiptDO document = new ErpFinanceReceiptDO().setId(100L).setStatus(10)
+                .setCustomerId(1L).setSourceReceivableMiscId(200L).setReceiptPrice(new BigDecimal("701"));
+        when(receiptMapper.selectByIdForUpdate(100L)).thenReturn(document);
+        when(receivableMiscMapper.selectByIdForUpdate(200L)).thenReturn(
+                new cn.iocoder.yudao.module.erp.dal.dataobject.finance.receivable.ErpReceivableMiscDO()
+                        .setId(200L).setStatus(20).setCustomerId(1L).setAmount(new BigDecimal("1000")));
+        when(receivableMiscMapper.selectSettlementAmountSumMapBySourceMiscIds(any(), any()))
+                .thenReturn(Collections.singletonMap(200L, new BigDecimal("300")));
+        when(receiptItemMapper.selectListByReceiptId(100L)).thenReturn(Collections.emptyList());
+        assertServiceException(() -> receiptService.approveFinanceReceipt(100L), cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.FINANCE_RECEIPT_WRITEOFF_AMOUNT_INVALID, "本次转款金额超过剩余可转金额，请刷新后调整");
+        verify(receiptMapper, never()).updateByIdAndStatus(any(), any(), any());
+    }
+
+    @Test
+    void approveReceiptTransfer_rejectsRepeatedApproval() {
+        when(receiptMapper.selectByIdForUpdate(100L)).thenReturn(new ErpFinanceReceiptDO().setId(100L).setStatus(20));
+        org.junit.jupiter.api.Assertions.assertThrows(cn.iocoder.yudao.framework.common.exception.ServiceException.class,
+                () -> receiptService.approveFinanceReceipt(100L));
+        verify(receivableMiscMapper, never()).selectByIdForUpdate(any());
+        verify(receiptMapper, never()).updateByIdAndStatus(any(), any(), any());
+    }
+
+    @Mock
+    private cn.iocoder.yudao.module.erp.dal.mysql.finance.payable.ErpPayableMiscMapper payableMiscMapper;
+
+    @Test
+    void approvePaymentTransfer_countsPriorSettlementAndNeverCreatesMiscDocument() {
+        ErpFinancePaymentDO document = new ErpFinancePaymentDO().setId(100L).setStatus(10)
+                .setSupplierId(1L).setSourcePayableMiscId(200L).setPaymentPrice(new BigDecimal("700"));
+        when(paymentMapper.selectByIdForUpdate(100L)).thenReturn(document);
+        when(payableMiscMapper.selectByIdForUpdate(200L)).thenReturn(
+                new cn.iocoder.yudao.module.erp.dal.dataobject.finance.payable.ErpPayableMiscDO()
+                        .setId(200L).setStatus(20).setSupplierId(1L).setAmount(new BigDecimal("1000")));
+        when(payableMiscMapper.selectSettlementAmountSumMapBySourceMiscIds(any(), any()))
+                .thenReturn(Collections.singletonMap(200L, new BigDecimal("300")));
+        when(paymentItemMapper.selectListByPaymentId(100L)).thenReturn(Collections.emptyList());
+        when(paymentMapper.updateByIdAndStatus(org.mockito.ArgumentMatchers.eq(100L),
+                org.mockito.ArgumentMatchers.eq(10), any())).thenReturn(1);
+        paymentService.approveFinancePayment(100L);
+        org.mockito.InOrder order = org.mockito.Mockito.inOrder(payableMiscMapper, paymentMapper);
+        order.verify(payableMiscMapper).selectByIdForUpdate(200L);
+        order.verify(payableMiscMapper).selectSettlementAmountSumMapBySourceMiscIds(any(), any());
+        order.verify(paymentMapper).updateByIdAndStatus(org.mockito.ArgumentMatchers.eq(100L), org.mockito.ArgumentMatchers.eq(10), any());
+        verify(payableMiscMapper, never()).insert(any(cn.iocoder.yudao.module.erp.dal.dataobject.finance.payable.ErpPayableMiscDO.class));
+        verify(financeAutoWriteOffService, never()).autoWriteOffPayment(any(), any());
+    }
+
+    @Test
+    void approvePaymentTransfer_rejectsOverpaymentBeforeStatusChange() {
+        ErpFinancePaymentDO document = new ErpFinancePaymentDO().setId(100L).setStatus(10)
+                .setSupplierId(1L).setSourcePayableMiscId(200L).setPaymentPrice(new BigDecimal("701"));
+        when(paymentMapper.selectByIdForUpdate(100L)).thenReturn(document);
+        when(payableMiscMapper.selectByIdForUpdate(200L)).thenReturn(
+                new cn.iocoder.yudao.module.erp.dal.dataobject.finance.payable.ErpPayableMiscDO()
+                        .setId(200L).setStatus(20).setSupplierId(1L).setAmount(new BigDecimal("1000")));
+        when(payableMiscMapper.selectSettlementAmountSumMapBySourceMiscIds(any(), any()))
+                .thenReturn(Collections.singletonMap(200L, new BigDecimal("300")));
+        when(paymentItemMapper.selectListByPaymentId(100L)).thenReturn(Collections.emptyList());
+        assertServiceException(() -> paymentService.approveFinancePayment(100L), cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.FINANCE_PAYMENT_WRITEOFF_AMOUNT_INVALID, "本次转款金额超过剩余可转金额，请刷新后调整");
+        verify(paymentMapper, never()).updateByIdAndStatus(any(), any(), any());
+    }
+
+    @Test
+    void approvePaymentTransfer_rejectsRepeatedApproval() {
+        when(paymentMapper.selectByIdForUpdate(100L)).thenReturn(new ErpFinancePaymentDO().setId(100L).setStatus(20));
+        org.junit.jupiter.api.Assertions.assertThrows(cn.iocoder.yudao.framework.common.exception.ServiceException.class,
+                () -> paymentService.approveFinancePayment(100L));
+        verify(payableMiscMapper, never()).selectByIdForUpdate(any());
+        verify(paymentMapper, never()).updateByIdAndStatus(any(), any(), any());
+    }
+
+
+    @Test
+    void receiptTransfer_respectsOtherPendingReservationsAndExcludesSelf() {
+        ErpFinanceReceiptDO document = new ErpFinanceReceiptDO().setId(100L).setStatus(10)
+                .setCustomerId(1L).setSourceReceivableMiscId(200L).setReceiptPrice(new BigDecimal("701"));
+        when(receiptMapper.selectByIdForUpdate(100L)).thenReturn(document);
+        when(receivableMiscMapper.selectByIdForUpdate(200L)).thenReturn(
+                new cn.iocoder.yudao.module.erp.dal.dataobject.finance.receivable.ErpReceivableMiscDO()
+                        .setId(200L).setStatus(20).setCustomerId(1L).setAmount(new BigDecimal("1000")));
+        when(receivableMiscMapper.selectPendingTransferAmount(200L, 100L)).thenReturn(new BigDecimal("300"));
+        org.junit.jupiter.api.Assertions.assertThrows(cn.iocoder.yudao.framework.common.exception.ServiceException.class,
+                () -> receiptService.approveFinanceReceipt(100L));
+        verify(receiptMapper, never()).updateByIdAndStatus(any(), any(), any());
+        document.setReceiptPrice(new BigDecimal("700"));
+        when(receiptMapper.updateByIdAndStatus(org.mockito.ArgumentMatchers.eq(100L),
+                org.mockito.ArgumentMatchers.eq(10), any())).thenReturn(1);
+        receiptService.approveFinanceReceipt(100L);
+        verify(receiptMapper).updateByIdAndStatus(org.mockito.ArgumentMatchers.eq(100L),
+                org.mockito.ArgumentMatchers.eq(10), any());
+    }
+
+
+    @Test
+    void paymentTransfer_respectsOtherPendingReservationsAndExcludesSelf() {
+        ErpFinancePaymentDO document = new ErpFinancePaymentDO().setId(100L).setStatus(10)
+                .setSupplierId(1L).setSourcePayableMiscId(200L).setPaymentPrice(new BigDecimal("701"));
+        when(paymentMapper.selectByIdForUpdate(100L)).thenReturn(document);
+        when(payableMiscMapper.selectByIdForUpdate(200L)).thenReturn(
+                new cn.iocoder.yudao.module.erp.dal.dataobject.finance.payable.ErpPayableMiscDO()
+                        .setId(200L).setStatus(20).setSupplierId(1L).setAmount(new BigDecimal("1000")));
+        when(payableMiscMapper.selectPendingTransferAmount(200L, 100L)).thenReturn(new BigDecimal("300"));
+        org.junit.jupiter.api.Assertions.assertThrows(cn.iocoder.yudao.framework.common.exception.ServiceException.class,
+                () -> paymentService.approveFinancePayment(100L));
+        verify(paymentMapper, never()).updateByIdAndStatus(any(), any(), any());
+        document.setPaymentPrice(new BigDecimal("700"));
+        when(paymentMapper.updateByIdAndStatus(org.mockito.ArgumentMatchers.eq(100L),
+                org.mockito.ArgumentMatchers.eq(10), any())).thenReturn(1);
+        paymentService.approveFinancePayment(100L);
+        verify(paymentMapper).updateByIdAndStatus(org.mockito.ArgumentMatchers.eq(100L),
+                org.mockito.ArgumentMatchers.eq(10), any());
+    }
+
+
+    @Test
+    void receiptManualWriteOff_cannotConsumeReservedTransferAmount() {
+        when(receiptMapper.selectByIdForUpdate(100L)).thenReturn(new ErpFinanceReceiptDO()
+                .setId(100L).setStatus(20).setCustomerId(1L).setTotalPrice(new BigDecimal("1000")));
+        when(receivableMiscMapper.selectOne(any())).thenReturn(
+                new cn.iocoder.yudao.module.erp.dal.dataobject.finance.receivable.ErpReceivableMiscDO()
+                        .setId(200L).setStatus(20).setCustomerId(1L).setAmount(new BigDecimal("1000")));
+        when(receivableMiscMapper.selectPendingTransferAmount(200L, null)).thenReturn(new BigDecimal("300"));
+        when(receiptItemMapper.selectReceiptPriceSumByBizIdAndBizType(200L,
+                ErpBizTypeEnum.RECEIVABLE_MISC.getType())).thenReturn(BigDecimal.ZERO);
+        ErpFinanceReceiptWriteOffReqVO request = new ErpFinanceReceiptWriteOffReqVO().setReceiptId(100L)
+                .setItems(Collections.singletonList(new ErpFinanceReceiptWriteOffReqVO.Item()
+                        .setBizType(ErpBizTypeEnum.RECEIVABLE_MISC.getType()).setBizId(200L).setWriteOffAmount(new BigDecimal("701"))));
+        assertServiceException(() -> receiptService.writeOffFinanceReceipt(request),
+                cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.FINANCE_RECEIPT_WRITEOFF_AMOUNT_INVALID,
+                "核销金额超过业务单据未核销金额或符号不一致");
+        verify(receiptItemMapper, never()).insertBatch(any());
+    }
+
+    @Test
+    void receiptDelete_locksAndRechecksApprovalBeforeReleasingReservation() {
+        ErpFinanceReceiptDO document = new ErpFinanceReceiptDO().setId(100L).setStatus(20).setSourceReceivableMiscId(200L);
+        when(receiptMapper.selectByIdForUpdate(100L)).thenReturn(document);
+        org.junit.jupiter.api.Assertions.assertThrows(cn.iocoder.yudao.framework.common.exception.ServiceException.class,
+                () -> receiptService.deleteFinanceReceipt(Collections.singletonList(100L)));
+        verify(receiptMapper, never()).deleteById(100L);
+        document.setStatus(10);
+        receiptService.deleteFinanceReceipt(Collections.singletonList(100L));
+        verify(receiptMapper).deleteById(100L);
+    }
+
+    @Test
+    void paymentManualWriteOff_cannotConsumeReservedTransferAmount() {
+        when(paymentMapper.selectByIdForUpdate(100L)).thenReturn(new ErpFinancePaymentDO()
+                .setId(100L).setStatus(20).setSupplierId(1L).setTotalPrice(new BigDecimal("1000")));
+        when(payableMiscMapper.selectOne(any())).thenReturn(
+                new cn.iocoder.yudao.module.erp.dal.dataobject.finance.payable.ErpPayableMiscDO()
+                        .setId(200L).setStatus(20).setSupplierId(1L).setAmount(new BigDecimal("1000")));
+        when(payableMiscMapper.selectPendingTransferAmount(200L, null)).thenReturn(new BigDecimal("300"));
+        when(paymentItemMapper.selectPaymentPriceSumByBizIdAndBizType(200L,
+                ErpBizTypeEnum.PAYABLE_MISC.getType())).thenReturn(BigDecimal.ZERO);
+        ErpFinancePaymentWriteOffReqVO request = new ErpFinancePaymentWriteOffReqVO().setPaymentId(100L)
+                .setItems(Collections.singletonList(new ErpFinancePaymentWriteOffReqVO.Item()
+                        .setBizType(ErpBizTypeEnum.PAYABLE_MISC.getType()).setBizId(200L).setWriteOffAmount(new BigDecimal("701"))));
+        assertServiceException(() -> paymentService.writeOffFinancePayment(request),
+                cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.FINANCE_PAYMENT_WRITEOFF_AMOUNT_INVALID,
+                "核销金额超过业务单据未核销金额或符号不一致");
+        verify(paymentItemMapper, never()).insertBatch(any());
+    }
+
+    @Test
+    void paymentDelete_locksAndRechecksApprovalBeforeReleasingReservation() {
+        ErpFinancePaymentDO document = new ErpFinancePaymentDO().setId(100L).setStatus(20).setSourcePayableMiscId(200L);
+        when(paymentMapper.selectByIdForUpdate(100L)).thenReturn(document);
+        org.junit.jupiter.api.Assertions.assertThrows(cn.iocoder.yudao.framework.common.exception.ServiceException.class,
+                () -> paymentService.deleteFinancePayment(Collections.singletonList(100L)));
+        verify(paymentMapper, never()).deleteById(100L);
+        document.setStatus(10);
+        paymentService.deleteFinancePayment(Collections.singletonList(100L));
+        verify(paymentMapper).deleteById(100L);
+    }
     private static final Long LOGIN_USER_ID = 9L;
 
     @Mock private cn.iocoder.yudao.module.erp.service.finance.payable.ErpPayableOtherService payableOtherService;
@@ -298,6 +500,7 @@ class ErpFinanceWriteOffServiceImplTest extends BaseMockitoUnitTest {
         ErpFinanceReceiptItemDO item = new ErpFinanceReceiptItemDO().setId(300L).setReceiptId(100L)
                 .setBizType(ErpBizTypeEnum.SALE_OUT.getType()).setBizId(200L)
                 .setWriteOffStatus(ErpFinanceWriteOffStatusEnum.EFFECTIVE.getStatus());
+        when(receiptItemMapper.selectById(300L)).thenReturn(item);
         when(receiptItemMapper.selectByIdForUpdate(300L)).thenReturn(item);
         when(receiptMapper.selectByIdForUpdate(100L)).thenReturn(createReceipt("100"));
         when(saleOutMapper.selectOne(any())).thenReturn(createSaleOut("80"));
@@ -558,6 +761,7 @@ class ErpFinanceWriteOffServiceImplTest extends BaseMockitoUnitTest {
         ErpFinancePaymentItemDO item = new ErpFinancePaymentItemDO().setId(310L).setPaymentId(110L)
                 .setBizType(ErpBizTypeEnum.PURCHASE_IN.getType()).setBizId(210L)
                 .setWriteOffStatus(ErpFinanceWriteOffStatusEnum.EFFECTIVE.getStatus());
+        when(paymentItemMapper.selectById(310L)).thenReturn(item);
         when(paymentItemMapper.selectByIdForUpdate(310L)).thenReturn(item);
         when(paymentMapper.selectByIdForUpdate(110L)).thenReturn(createPayment("100"));
         when(purchaseInMapper.selectOne(any())).thenReturn(createPurchaseIn("80"));

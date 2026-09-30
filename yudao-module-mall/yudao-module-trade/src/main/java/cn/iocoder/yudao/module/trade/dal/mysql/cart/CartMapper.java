@@ -6,6 +6,7 @@ import cn.iocoder.yudao.framework.mybatis.core.mapper.BaseMapperX;
 import cn.iocoder.yudao.module.trade.dal.dataobject.cart.CartDO;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import org.apache.ibatis.annotations.Mapper;
 
 import java.util.Collection;
@@ -29,6 +30,27 @@ public interface CartMapper extends BaseMapperX<CartDO> {
                 .eq(CartDO::getDeptId, deptId)
                 .eq(CartDO::getSkuId, skuId)
                 .eq(CartDO::getStockId, stockId));
+    }
+
+    default CartDO selectByScopeAndSkuId(Long userId, Long customerId, Long deptId, Long skuId) {
+        return selectOne(new LambdaQueryWrapper<CartDO>()
+                .eq(CartDO::getUserId, userId)
+                .eq(CartDO::getCustomerId, customerId)
+                .eq(CartDO::getDeptId, deptId)
+                .eq(CartDO::getSkuId, skuId));
+    }
+
+    default int incrementCountByScopeAndSku(Long userId, Long customerId, Long deptId, Long skuId, Integer count) {
+        return update(null, new LambdaUpdateWrapper<CartDO>()
+                .eq(CartDO::getUserId, userId)
+                .eq(CartDO::getCustomerId, customerId)
+                .eq(CartDO::getDeptId, deptId)
+                .eq(CartDO::getSkuId, skuId)
+                .set(CartDO::getSelected, true)
+                .set(CartDO::getStockId, null)
+                .set(CartDO::getErpProductId, null)
+                .set(CartDO::getWarehouseId, null)
+                .setSql("count = count + {0}", count));
     }
 
     default Integer selectSumByScope(Long userId, Long customerId, Long deptId) {

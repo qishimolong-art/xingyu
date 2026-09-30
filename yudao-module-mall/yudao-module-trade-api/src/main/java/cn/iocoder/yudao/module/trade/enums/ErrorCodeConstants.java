@@ -42,6 +42,10 @@ public interface ErrorCodeConstants {
     ErrorCode ORDER_PICK_UP_FAIL_COMBINATION_NOT_SUCCESS = new ErrorCode(1_011_000_037, "交易订单自提失败，原因：商品拼团记录不是【成功】状态");
     ErrorCode ORDER_CREATE_FAIL_INSUFFICIENT_USER_POINTS = new ErrorCode(1_011_000_038, "交易订单创建失败，原因：用户积分不足");
     ErrorCode ORDER_PICK_UP_FAIL_STATUS_NOT_UNDELIVERED = new ErrorCode(1_011_000_039, "交易订单自提失败，订单不是【待核销】状态");
+    ErrorCode ORDER_AUTO_WAREHOUSE_ADDRESS_REQUIRED = new ErrorCode(1_011_000_040, "请选择有效的收货地址");
+    ErrorCode ORDER_AUTO_WAREHOUSE_LOCATION_REQUIRED = new ErrorCode(1_011_000_041, "收货地址或自提门店缺少有效位置");
+    ErrorCode ORDER_AUTO_WAREHOUSE_STOCK_SHORTAGE = new ErrorCode(1_011_000_042, "部分商品库存不足，请返回购物车调整");
+    ErrorCode ORDER_AUTO_WAREHOUSE_CONFIG_ERROR = new ErrorCode(1_011_000_043, "自动分仓配置不完整，请联系管理员");
 
     // ========== After Sale 模块 1-011-000-100 ==========
     ErrorCode AFTER_SALE_NOT_FOUND = new ErrorCode(1_011_000_100, "售后单不存在");

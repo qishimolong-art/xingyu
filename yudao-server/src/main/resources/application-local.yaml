@@ -2,6 +2,32 @@ server:
   port: 48080
 
 erp:
+  assistant:
+    # 八项指标已完成正式只读库业务对账与核验，当前环境全部发布。
+    published-metrics:
+      - SALE
+      - PURCHASE
+      - STOCK
+      - STOCK_SKU
+      - RECEIPT
+      - PAYMENT
+      - RECEIVABLE
+      - PAYABLE
+    # 本地验收通过的新版编排配置随应用发布，避免依赖开发机外置文件。
+    entity-search:
+      enabled: true
+      max-candidates: 20
+    orchestration:
+      mode: NEW
+      gray-user-ids: []
+      max-tool-rounds: 5
+      text-to-sql-enabled: true
+      published-datasets:
+        - purchase_orders
+        - sale_orders
+        - sale_order_items
+        - inventory_current
+        - stock_movements
   mnemonic-code-backfill:
     # 历史客户、供应商、配件助记码回填开关；需要补历史数据时临时改为 true，回填完成后保持 false。
     enabled: false
@@ -14,7 +40,6 @@ spring:
     # noinspection SpringBootApplicationYaml
     exclude:
       - com.alibaba.druid.spring.boot.autoconfigure.DruidDataSourceAutoConfigure # 排除 Druid 的自动配置，使用 dynamic-datasource-spring-boot-starter 配置多数据源
-      - org.springframework.boot.autoconfigure.quartz.QuartzAutoConfiguration # 默认 local 环境，不开启 Quartz 的自动配置
       - org.springframework.ai.vectorstore.qdrant.autoconfigure.QdrantVectorStoreAutoConfiguration # 禁用 AI 模块的 Qdrant，手动创建
       - org.springframework.ai.vectorstore.milvus.autoconfigure.MilvusVectorStoreAutoConfiguration # 禁用 AI 模块的 Milvus，手动创建
   # 数据源配置项
@@ -97,9 +122,9 @@ spring:
 # Quartz 配置项，对应 QuartzProperties 配置类
 spring:
   quartz:
-    auto-startup: true # 本地开发环境，尽量不要开启 Job
+    auto-startup: true # 本地云打印联调需要启动队列调度和超时 Job
     scheduler-name: schedulerName # Scheduler 名字。默认为 schedulerName
-    job-store-type: jdbc # Job 存储器类型。默认为 memory 表示内存，可选 jdbc 使用数据库。
+    job-store-type: memory # 本地数据库未安装 Quartz 表，使用内存调度；业务任务本身持久化在 ERP 表中
     wait-for-jobs-to-complete-on-shutdown: true # 应用关闭时，是否等待定时任务执行完成。默认为 false ，建议设置为 true
     properties: # 添加 Quartz Scheduler 附加属性，更多可以看 http://www.quartz-scheduler.org/documentation/2.4.0-SNAPSHOT/configuration.html 文档
       org:
@@ -108,13 +133,6 @@ spring:
           scheduler:
             instanceName: schedulerName
             instanceId: AUTO # 自动生成 instance ID
-          # JobStore 相关配置
-          jobStore:
-            # JobStore 实现类。可见博客：https://blog.csdn.net/weixin_42458219/article/details/122247162
-            class: org.springframework.scheduling.quartz.LocalDataSourceJobStore
-            isClustered: true # 是集群模式
-            clusterCheckinInterval: 15000 # 集群检查频率，单位：毫秒。默认为 15000，即 15 秒
-            misfireThreshold: 60000 # misfire 阀值，单位：毫秒。
           # 线程池相关配置
           threadPool:
             threadCount: 25 # 线程池大小。默认为 10 。
@@ -232,6 +250,9 @@ wx:
 
 # 兴宇科技配置项，设置当前项目所有自定义的配置
 yudao:
+  trade:
+    order:
+      address-auto-warehouse-enabled: true # 本地联调自动分仓真实接口
   file:
     local:
       enabled: ${YUDAO_FILE_LOCAL_ENABLED:true}
@@ -252,6 +273,13 @@ yudao:
       sale-delivery:
         agent-id: 1000086
         secret: V-qSwtMHiZA98NRQrykn0DzQxVvPBiPQaC4hykmk1C0
+    ai-bot:
+      enabled: true
+      bot-id: aibQ_NZM7RT0r7MABSS0g8ajL7VU7Q7n2WP
+      secret: 7iha0auqNZnmDwTjCxCvgZmXM0UtiQo4k1w5pvwcBty # 企业微信智能机器人长连接 Secret，由部署人员手动填写
+      tenant-id: 1
+      login-client-key: '' # 留空时复用上方默认企业微信免登应用
+      bind-page-url: http://erp.scxyltd.com/wecom-bot-bind.html
   security:
     mock-enable: true
   erp:
@@ -281,7 +309,7 @@ yudao:
     base-url: https://open.sw-aiot.com
     username: sichuanxingyu
     secret: e8f3445036694baa9afc1d6286111b35
-    callback-path-token: xingyu-cloud-print-callback
+    callback-path-token: b426f7eb19fd3b531ccbd8e690bd44335bc950d550a34c0527e9dcc4b4cf0683
     submit-timeout-minutes: 10
     check-device-online: true
   pay:

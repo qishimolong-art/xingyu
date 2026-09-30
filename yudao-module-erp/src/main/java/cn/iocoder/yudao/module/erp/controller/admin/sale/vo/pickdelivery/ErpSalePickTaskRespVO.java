@@ -12,6 +12,9 @@ import java.util.List;
 public class ErpSalePickTaskRespVO {
 
     private Long id;
+
+    @Schema(description = "当前用户是否负责该拣货仓库")
+    private Boolean warehouseOperable;
     private Long orderId;
     private Long saleOutId;
     private String saleOutNo;

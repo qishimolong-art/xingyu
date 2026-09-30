@@ -6,6 +6,7 @@ import cn.iocoder.yudao.module.erp.controller.admin.finance.receivable.vo.accoun
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.receivable.ErpReceivableAccountDO;
 import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpSaleOutMapper;
 import org.apache.ibatis.annotations.Mapper;
+import cn.iocoder.yudao.module.erp.dal.mysql.finance.ErpMiscSettlementSql;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
 import org.apache.ibatis.annotations.SelectProvider;
@@ -94,7 +95,7 @@ public interface ErpReceivableAccountMapper extends BaseMapperX<ErpReceivableAcc
             "  LEFT JOIN (SELECT fr.customer_id, SUM(CASE WHEN EXISTS (SELECT 1 FROM erp_receivable_other dro WHERE dro.deleted = 0 AND dro.status = 20 AND dro.source_type = '收款单优惠' AND dro.source_id = fr.id) THEN fr.receipt_price ELSE fr.total_price END) AS receiptAmount FROM erp_finance_receipt fr WHERE fr.deleted = 0 AND fr.status = 20 AND fr.customer_id = #{customerId} GROUP BY fr.customer_id) rc ON rc.customer_id = c.id",
             "  LEFT JOIN (SELECT customer_id, SUM(write_off_amount) AS writeOffAmount FROM erp_receivable_writeoff WHERE deleted = 0 AND customer_id = #{customerId} GROUP BY customer_id) wo ON wo.customer_id = c.id",
             "  LEFT JOIN (SELECT customer_id, SUM(receivable_amount) AS otherReceivableAmount FROM erp_receivable_other WHERE deleted = 0 AND status = 20 AND customer_id = #{customerId} GROUP BY customer_id) ro ON ro.customer_id = c.id",
-            "  LEFT JOIN (SELECT customer_id, -SUM(amount) AS miscReceivableAmount FROM erp_receivable_misc WHERE deleted = 0 AND status = 20 AND customer_id = #{customerId} GROUP BY customer_id) rm ON rm.customer_id = c.id",
+            "  LEFT JOIN (SELECT customer_id, -SUM(amount) AS miscReceivableAmount FROM " + ErpMiscSettlementSql.RECEIVABLE_LEDGER + " misc_ledger WHERE deleted = 0 AND status = 20 AND customer_id = #{customerId} GROUP BY customer_id) rm ON rm.customer_id = c.id",
             "  LEFT JOIN (",
             "       SELECT customer_id, MAX(last_biz_time) AS lastBizTime",
             "         FROM (",
@@ -141,7 +142,7 @@ public interface ErpReceivableAccountMapper extends BaseMapperX<ErpReceivableAcc
             "  LEFT JOIN (SELECT fr.customer_id, SUM(CASE WHEN EXISTS (SELECT 1 FROM erp_receivable_other dro WHERE dro.deleted = 0 AND dro.status = 20 AND dro.source_type = '收款单优惠' AND dro.source_id = fr.id) THEN fr.receipt_price ELSE fr.total_price END) AS receiptAmount FROM erp_finance_receipt fr WHERE fr.deleted = 0 AND fr.status = 20 AND fr.customer_id = #{customerId} AND fr.dept_id = #{deptId} GROUP BY fr.customer_id) rc ON rc.customer_id = c.id",
             "  LEFT JOIN (SELECT customer_id, SUM(write_off_amount) AS writeOffAmount FROM erp_receivable_writeoff WHERE deleted = 0 AND customer_id = #{customerId} AND dept_id = #{deptId} GROUP BY customer_id) wo ON wo.customer_id = c.id",
             "  LEFT JOIN (SELECT customer_id, SUM(receivable_amount) AS otherReceivableAmount FROM erp_receivable_other WHERE deleted = 0 AND status = 20 AND customer_id = #{customerId} AND dept_id = #{deptId} GROUP BY customer_id) ro ON ro.customer_id = c.id",
-            "  LEFT JOIN (SELECT customer_id, -SUM(amount) AS miscReceivableAmount FROM erp_receivable_misc WHERE deleted = 0 AND status = 20 AND customer_id = #{customerId} AND dept_id = #{deptId} GROUP BY customer_id) rm ON rm.customer_id = c.id",
+            "  LEFT JOIN (SELECT customer_id, -SUM(amount) AS miscReceivableAmount FROM " + ErpMiscSettlementSql.RECEIVABLE_LEDGER + " misc_ledger WHERE deleted = 0 AND status = 20 AND customer_id = #{customerId} AND dept_id = #{deptId} GROUP BY customer_id) rm ON rm.customer_id = c.id",
             "  LEFT JOIN (",
             "       SELECT customer_id, MAX(last_biz_time) AS lastBizTime",
             "         FROM (",
@@ -234,7 +235,7 @@ public interface ErpReceivableAccountMapper extends BaseMapperX<ErpReceivableAcc
                     "       UNION",
                     sourceKeySql("erp_receivable_other", "ro_key", "biz_time", "handler_id", true, false),
                     "       UNION",
-                    sourceKeySql("erp_receivable_misc", "rm_key", "biz_time", "handler_id", true, false),
+                    sourceKeySql(ErpMiscSettlementSql.RECEIVABLE_LEDGER, "rm_key", "biz_time", "handler_id", true, false),
                     "  ) accountKeys ON accountKeys.customer_id = c.id",
                     "  LEFT JOIN system_users u ON u.id = c.sale_user_id",
                     "  LEFT JOIN system_dept d ON d.id = accountKeys.deptId",
@@ -331,7 +332,7 @@ public interface ErpReceivableAccountMapper extends BaseMapperX<ErpReceivableAcc
                     "  LEFT JOIN (",
                     "       SELECT rm.customer_id, rm.dept_id AS deptId,",
                     "              -SUM(rm.amount) AS miscReceivableAmount",
-                    "         FROM erp_receivable_misc rm",
+                    "         FROM " + ErpMiscSettlementSql.RECEIVABLE_LEDGER + " rm",
                     "        WHERE rm.deleted = 0 AND rm.status = 20",
                     documentScopeSql("rm", "handler_id"),
                     timeSql("rm", "biz_time"),
@@ -398,7 +399,7 @@ public interface ErpReceivableAccountMapper extends BaseMapperX<ErpReceivableAcc
                     "               UNION ALL",
                     lastBizSourceSql("erp_receivable_other", "ro_last", "biz_time", "handler_id", true),
                     "               UNION ALL",
-                    lastBizSourceSql("erp_receivable_misc", "rm_last", "biz_time", "handler_id", true),
+                    lastBizSourceSql(ErpMiscSettlementSql.RECEIVABLE_LEDGER, "rm_last", "biz_time", "handler_id", true),
                     "         ) t",
                     "        GROUP BY customer_id, deptId",
                     "  ) lastBiz ON lastBiz.customer_id = c.id AND "

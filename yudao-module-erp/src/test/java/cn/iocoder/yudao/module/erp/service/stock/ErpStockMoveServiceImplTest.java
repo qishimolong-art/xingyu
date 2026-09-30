@@ -9,6 +9,7 @@ import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.move.ErpStockTransf
 import cn.iocoder.yudao.module.infra.api.config.ConfigApi;
 import cn.iocoder.yudao.module.erp.dal.mysql.purchase.ErpPurchaseInItemMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpSaleCartMapper;
+import cn.iocoder.yudao.module.erp.dal.mysql.sale.pickdelivery.ErpSalePickDeliveryOrderMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.stock.ErpStockMoveItemMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.stock.ErpStockMoveMapper;
 import cn.iocoder.yudao.module.erp.dal.redis.no.ErpNoRedisDAO;
@@ -17,6 +18,7 @@ import cn.iocoder.yudao.framework.security.core.util.SecurityFrameworkUtils;
 import cn.iocoder.yudao.framework.test.core.ut.BaseMockitoUnitTest;
 import cn.iocoder.yudao.module.erp.dal.dataobject.product.ErpProductDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleCartDO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.sale.pickdelivery.ErpSalePickDeliveryOrderDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockMoveDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockMoveItemDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpWarehouseDO;
@@ -99,6 +101,8 @@ class ErpStockMoveServiceImplTest extends BaseMockitoUnitTest {
     private ErpStockMoveMapper stockMoveMapper;
     @Mock
     private ErpSaleCartMapper saleCartMapper;
+    @Mock
+    private ErpSalePickDeliveryOrderMapper salePickDeliveryOrderMapper;
     @Mock
     private ErpSaleCartTransferLinkService saleCartTransferLinkService;
     @Mock
@@ -789,6 +793,23 @@ class ErpStockMoveServiceImplTest extends BaseMockitoUnitTest {
                 stockMove, Collections.emptyList());
 
         assertTrue(permission.getAllowed());
+    }
+
+    @Test
+    void getUnlockCartPermission_fulfillmentGenerated_denied() {
+        ErpStockMoveDO stockMove = saleCartStockMove(100L)
+                .setSourceId(72L)
+                .setTransferDirection(10)
+                .setStatus(ErpAuditStatus.PROCESS.getStatus());
+        when(salePickDeliveryOrderMapper.selectBySource(
+                ErpSaleBizSourceTypeEnum.CART.getType(), 72L))
+                .thenReturn(new ErpSalePickDeliveryOrderDO().setId(88L));
+
+        ErpStockMoveOperationPermission permission = stockMoveService.getUnlockCartPermission(
+                stockMove, Collections.emptyList());
+
+        assertFalse(permission.getAllowed());
+        assertEquals("销售手推车已生成拣货送货任务，不能解锁手推车", permission.getDisabledReason());
     }
 
     @Test

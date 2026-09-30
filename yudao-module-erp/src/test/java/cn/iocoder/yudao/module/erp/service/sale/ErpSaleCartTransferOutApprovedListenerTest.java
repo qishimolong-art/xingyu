@@ -34,6 +34,13 @@ class ErpSaleCartTransferOutApprovedListenerTest extends BaseMockitoUnitTest {
     }
 
     @Test
+    void onDeliveryCompleted_triggersSaleCartAutoFinalApprove() {
+        listener.onDeliveryCompleted(new ErpSaleCartDeliveryCompletedEvent(72L, 99L));
+
+        verify(saleCartService).autoFinalApproveAfterDelivery(72L, 99L);
+    }
+
+    @Test
     void onTransferOutApproved_propagatesFailureToRollbackApproval() {
         doThrow(new IllegalStateException("persistent database error"))
                 .when(saleCartService).autoFinalApproveAfterTransferOut(72L, 99L);
@@ -48,6 +55,14 @@ class ErpSaleCartTransferOutApprovedListenerTest extends BaseMockitoUnitTest {
     void onTransferOutApproved_isSynchronousEventListener() throws NoSuchMethodException {
         Method method = ErpSaleCartTransferOutApprovedListener.class.getMethod(
                 "onTransferOutApproved", ErpSaleCartTransferOutApprovedEvent.class);
+
+        assertNotNull(method.getAnnotation(EventListener.class));
+    }
+
+    @Test
+    void onDeliveryCompleted_isSynchronousEventListener() throws NoSuchMethodException {
+        Method method = ErpSaleCartTransferOutApprovedListener.class.getMethod(
+                "onDeliveryCompleted", ErpSaleCartDeliveryCompletedEvent.class);
 
         assertNotNull(method.getAnnotation(EventListener.class));
     }

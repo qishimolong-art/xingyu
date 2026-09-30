@@ -7,6 +7,7 @@ import cn.iocoder.yudao.module.erp.controller.admin.finance.payable.vo.report.Er
 import cn.iocoder.yudao.module.erp.controller.admin.finance.payable.vo.report.ErpPayableReportRespVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.payable.ErpPayableMiscDO;
 import org.apache.ibatis.annotations.Mapper;
+import cn.iocoder.yudao.module.erp.dal.mysql.finance.ErpMiscSettlementSql;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
 
@@ -35,18 +36,10 @@ public interface ErpPayableReportMapper extends BaseMapperX<ErpPayableMiscDO> {
             "       SELECT pm.supplier_id,",
             "              MAX(pm.dept_id) AS deptId,",
             "              MAX(pm.handler_id) AS handlerId,",
-            "              SUM(pm.amount) AS otherPayableAmount,",
-            "              SUM(IFNULL(pa.paymentAmount, 0)) AS settledAmount,",
+            "              SUM(pm.amount + pm.settled_amount) AS otherPayableAmount,",
+            "              SUM(pm.settled_amount) AS settledAmount,",
             "              CAST(MAX(pm.biz_time) AS DATETIME) AS lastBizTime",
-            "         FROM erp_payable_misc pm",
-            "         LEFT JOIN (",
-            "              SELECT fpi.biz_id, SUM(fpi.payment_price) AS paymentAmount",
-            "                FROM erp_finance_payment_item fpi",
-            "                INNER JOIN erp_finance_payment fp ON fp.id = fpi.payment_id",
-            "                 AND fp.deleted = 0 AND fp.status = 20 AND fp.tenant_id = fpi.tenant_id",
-            "               WHERE fpi.deleted = 0 AND fpi.biz_type = 14 AND fpi.write_off_status = 1",
-            "               GROUP BY fpi.biz_id",
-            "         ) pa ON pa.biz_id = pm.id",
+            "         FROM " + ErpMiscSettlementSql.PAYABLE_LEDGER + " pm",
             "        WHERE pm.deleted = 0 AND pm.status = 20",
             "          <if test='!documentAll'>",
             "          AND (",

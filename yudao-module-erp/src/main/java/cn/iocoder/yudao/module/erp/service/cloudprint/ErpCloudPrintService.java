@@ -32,6 +32,6 @@ public interface ErpCloudPrintService {
 
     ErpCloudPrintDeviceRespVO refreshDeviceStatus(Long id);
 
-    void handleCallback(String pathToken, String rawBody);
+    ErpCloudPrintDeviceRespVO resumeQueue(Long deviceId, String failedTaskAction);
 
 }

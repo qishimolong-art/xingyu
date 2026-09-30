@@ -62,6 +62,8 @@ public interface ErpSaleCartService {
 
     void autoFinalApproveAfterTransferOut(Long id, Long finalApproveUserId);
 
+    void autoFinalApproveAfterDelivery(Long id, Long finalApproveUserId);
+
     void rejectSaleCart(Long id);
 
     Long convertToQuote(ErpSaleCartConvertQuoteReqVO reqVO);

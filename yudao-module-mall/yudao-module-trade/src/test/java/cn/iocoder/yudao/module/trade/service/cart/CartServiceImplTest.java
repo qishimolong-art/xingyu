@@ -15,10 +15,12 @@ import cn.iocoder.yudao.module.trade.controller.app.cart.vo.AppCartListRespVO;
 import cn.iocoder.yudao.module.trade.controller.app.cart.vo.AppCartUpdateCountReqVO;
 import cn.iocoder.yudao.module.trade.dal.dataobject.cart.CartDO;
 import cn.iocoder.yudao.module.trade.dal.mysql.cart.CartMapper;
+import cn.iocoder.yudao.module.trade.framework.order.config.TradeOrderProperties;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import org.springframework.dao.DuplicateKeyException;
 
 import java.math.BigDecimal;
 import java.util.ArrayList;
@@ -32,8 +34,11 @@ import static java.util.Collections.singletonList;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 /**
@@ -54,6 +59,41 @@ public class CartServiceImplTest extends BaseMockitoUnitTest {
     private ErpMallStockService mallStockService;
     @Mock
     private ErpCustomerMemberApi customerMemberApi;
+    @Mock
+    private TradeOrderProperties tradeOrderProperties;
+
+    @Test
+    void addCart_autoWarehouse_sameSkuMergeWithoutStock() {
+        when(tradeOrderProperties.getAddressAutoWarehouseEnabled()).thenReturn(true);
+        when(customerMemberApi.validateCustomerMemberAuth(eq(20L), eq(2L))).thenReturn(auth());
+        when(productSkuApi.getSku(eq(100L))).thenReturn(new ProductSkuRespDTO().setId(100L).setSpuId(300L));
+        when(cartMapper.selectByScopeAndSkuId(eq(20L), eq(10L), eq(2L), eq(100L))).thenReturn(
+                new CartDO().setId(9L).setCount(2).setSkuId(100L).setSpuId(300L));
+
+        Long cartId = cartService.addCart(20L,
+                new AppCartAddReqVO().setSkuId(100L).setCount(3).setDeptId(2L));
+
+        assertEquals(9L, cartId);
+        verify(cartMapper).incrementCountByScopeAndSku(20L, 10L, 2L, 100L, 3);
+        verifyNoInteractions(mallStockService);
+    }
+
+    @Test
+    void addCart_autoWarehouse_concurrentInsertFallbackToAtomicIncrement() {
+        when(tradeOrderProperties.getAddressAutoWarehouseEnabled()).thenReturn(true);
+        when(customerMemberApi.validateCustomerMemberAuth(eq(20L), eq(2L))).thenReturn(auth());
+        when(productSkuApi.getSku(eq(100L))).thenReturn(new ProductSkuRespDTO().setId(100L).setSpuId(300L));
+        when(cartMapper.selectByScopeAndSkuId(eq(20L), eq(10L), eq(2L), eq(100L)))
+                .thenReturn(null, new CartDO().setId(9L).setCount(1));
+        doThrow(new DuplicateKeyException("concurrent insert")).when(cartMapper).insert(any(CartDO.class));
+        when(cartMapper.incrementCountByScopeAndSku(20L, 10L, 2L, 100L, 3)).thenReturn(1);
+
+        Long cartId = cartService.addCart(20L,
+                new AppCartAddReqVO().setSkuId(100L).setCount(3).setDeptId(2L));
+
+        assertEquals(9L, cartId);
+        verify(cartMapper).incrementCountByScopeAndSku(20L, 10L, 2L, 100L, 3);
+    }
 
     @Test
     void addCart_sameSkuAndStockDifferentDept_insertNewCart() {

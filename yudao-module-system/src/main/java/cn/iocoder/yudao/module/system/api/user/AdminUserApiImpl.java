@@ -79,6 +79,12 @@ public class AdminUserApiImpl implements AdminUserApi {
     }
 
     @Override
+    @DataPermission(enable = false)
+    public List<AdminUserRespDTO> getUserListByMobile(String mobile) {
+        return BeanUtils.toBean(userService.getUserListByMobile(mobile), AdminUserRespDTO.class);
+    }
+
+    @Override
     public PageResult<AdminUserRespDTO> getUserSimplePage(Integer status, String keyword, PageParam pageParam) {
         return DataPermissionUtils.executeIgnore(() -> {
             PageResult<AdminUserDO> page = userService.getUserSimplePage(status, keyword, pageParam);

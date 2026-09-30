@@ -5,6 +5,7 @@ import cn.iocoder.yudao.framework.common.pojo.CommonResult;
 import cn.iocoder.yudao.module.trade.controller.app.config.vo.AppTradeConfigRespVO;
 import cn.iocoder.yudao.module.trade.convert.config.TradeConfigConvert;
 import cn.iocoder.yudao.module.trade.dal.dataobject.config.TradeConfigDO;
+import cn.iocoder.yudao.module.trade.framework.order.config.TradeOrderProperties;
 import cn.iocoder.yudao.module.trade.service.config.TradeConfigService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -31,6 +32,8 @@ public class AppTradeConfigController {
 
     @Resource
     private TradeConfigService tradeConfigService;
+    @Resource
+    private TradeOrderProperties tradeOrderProperties;
 
     @Value("${yudao.tencent-lbs-key}")
     private String tencentLbsKey;
@@ -40,7 +43,9 @@ public class AppTradeConfigController {
     @PermitAll
     public CommonResult<AppTradeConfigRespVO> getTradeConfig() {
         TradeConfigDO config = ObjUtil.defaultIfNull(tradeConfigService.getTradeConfig(), new TradeConfigDO());
-        return success(TradeConfigConvert.INSTANCE.convert02(config).setTencentLbsKey(tencentLbsKey));
+        return success(TradeConfigConvert.INSTANCE.convert02(config).setTencentLbsKey(tencentLbsKey)
+                .setAddressAutoWarehouseEnabled(Boolean.TRUE.equals(
+                        tradeOrderProperties.getAddressAutoWarehouseEnabled())));
     }
 
 }

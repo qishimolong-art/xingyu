@@ -60,6 +60,45 @@ class ErpFinancePaymentDraftServiceImplTest extends BaseMockitoUnitTest {
     @Mock
     private AdminUserApi adminUserApi;
 
+
+    @Mock
+    private cn.iocoder.yudao.module.erp.dal.mysql.finance.payable.ErpPayableMiscMapper payableMiscMapper;
+
+    @Test
+    void sourceDraft_checksPendingLimitWithoutReserving() {
+        when(noRedisDAO.generate(any())).thenReturn("TRANSFER-DRAFT");
+        when(payableMiscMapper.selectByIdForUpdate(200L)).thenReturn(
+                new cn.iocoder.yudao.module.erp.dal.dataobject.finance.payable.ErpPayableMiscDO()
+                        .setId(200L).setStatus(20).setSupplierId(2L).setAmount(new BigDecimal("1000")));
+        when(payableMiscMapper.selectPendingTransferAmount(200L, null)).thenReturn(new BigDecimal("300"));
+        ErpFinancePaymentDraftSaveReqVO request = new ErpFinancePaymentDraftSaveReqVO()
+                .setSourcePayableMiscId(200L).setSupplierId(2L).setTotalPrice(new BigDecimal("701"));
+        org.junit.jupiter.api.Assertions.assertThrows(cn.iocoder.yudao.framework.common.exception.ServiceException.class,
+                () -> service.createFinancePaymentDraft(request));
+        verify(paymentMapper, never()).insert(any(ErpFinancePaymentDO.class));
+        request.setTotalPrice(new BigDecimal("700"));
+        service.createFinancePaymentDraft(request);
+        ArgumentCaptor<ErpFinancePaymentDO> captor = ArgumentCaptor.forClass(ErpFinancePaymentDO.class);
+        verify(paymentMapper).insert(captor.capture());
+        assertThat(captor.getValue().getStatus()).isEqualTo(0);
+        assertThat(captor.getValue().getPaymentPrice()).isEqualByComparingTo("700");
+    }
+
+    @Test
+    void sourceDraftSubmit_rechecksCurrentLimitBeforeStatusChange() {
+        ErpFinancePaymentDO draft = new ErpFinancePaymentDO().setId(900L).setStatus(0)
+                .setSourcePayableMiscId(200L).setSupplierId(2L).setAccountId(3L)
+                .setPaymentTime(java.time.LocalDateTime.now()).setTotalPrice(new BigDecimal("701"))
+                .setPaymentPrice(new BigDecimal("701"));
+        when(paymentMapper.selectByIdForUpdate(900L)).thenReturn(draft);
+        when(payableMiscMapper.selectByIdForUpdate(200L)).thenReturn(
+                new cn.iocoder.yudao.module.erp.dal.dataobject.finance.payable.ErpPayableMiscDO()
+                        .setId(200L).setStatus(20).setSupplierId(2L).setAmount(new BigDecimal("1000")));
+        when(payableMiscMapper.selectPendingTransferAmount(200L, 900L)).thenReturn(new BigDecimal("300"));
+        org.junit.jupiter.api.Assertions.assertThrows(cn.iocoder.yudao.framework.common.exception.ServiceException.class,
+                () -> service.submitFinancePayment(900L));
+        verify(paymentMapper, never()).updateByIdAndStatus(any(), any(), any());
+    }
     @Test
     void createDraft_withoutValidItems_throwException() {
         assertServiceException(
@@ -205,7 +244,7 @@ class ErpFinancePaymentDraftServiceImplTest extends BaseMockitoUnitTest {
 
     @Test
     void updateDraft_rejectsNonDraft() {
-        when(paymentMapper.selectById(10L)).thenReturn(new ErpFinancePaymentDO()
+        when(paymentMapper.selectByIdForUpdate(10L)).thenReturn(new ErpFinancePaymentDO()
                 .setId(10L).setNo("FKD10").setStatus(ErpFinancePaymentStatusEnum.PROCESS.getStatus()));
 
         assertServiceException(
@@ -215,7 +254,7 @@ class ErpFinancePaymentDraftServiceImplTest extends BaseMockitoUnitTest {
 
     @Test
     void updateDraft_usesStatusGuard() {
-        when(paymentMapper.selectById(10L)).thenReturn(new ErpFinancePaymentDO()
+        when(paymentMapper.selectByIdForUpdate(10L)).thenReturn(new ErpFinancePaymentDO()
                 .setId(10L).setNo("FKD10").setStatus(ErpFinancePaymentStatusEnum.DRAFT.getStatus())
                 .setPaymentTime(LocalDateTime.now()));
         when(paymentMapper.updateByIdAndStatus(eq(10L),
@@ -230,7 +269,7 @@ class ErpFinancePaymentDraftServiceImplTest extends BaseMockitoUnitTest {
     @Test
     void updateDraft_preservesManualTotalWhenThereAreNoItems() {
         LocalDateTime paymentTime = LocalDateTime.now();
-        when(paymentMapper.selectById(10L)).thenReturn(new ErpFinancePaymentDO()
+        when(paymentMapper.selectByIdForUpdate(10L)).thenReturn(new ErpFinancePaymentDO()
                 .setId(10L).setNo("FKD10").setStatus(ErpFinancePaymentStatusEnum.DRAFT.getStatus())
                 .setPaymentTime(paymentTime));
         when(paymentMapper.updateByIdAndStatus(eq(10L),
@@ -254,7 +293,7 @@ class ErpFinancePaymentDraftServiceImplTest extends BaseMockitoUnitTest {
     @Test
     void updateDraft_preservesNegativeManualTotalWhenThereAreNoItems() {
         LocalDateTime paymentTime = LocalDateTime.now();
-        when(paymentMapper.selectById(10L)).thenReturn(new ErpFinancePaymentDO()
+        when(paymentMapper.selectByIdForUpdate(10L)).thenReturn(new ErpFinancePaymentDO()
                 .setId(10L).setNo("FKD10").setStatus(ErpFinancePaymentStatusEnum.DRAFT.getStatus())
                 .setPaymentTime(paymentTime));
         when(paymentMapper.updateByIdAndStatus(eq(10L),

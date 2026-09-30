@@ -23,8 +23,7 @@ public class AppCartResetReqVO {
     @Min(message = "数量必须大于 0", value = 1L)
     private Integer count;
 
-    @Schema(description = "ERP 库存记录编号", requiredMode = Schema.RequiredMode.REQUIRED, example = "2048")
-    @NotNull(message = "库存不能为空")
+    @Schema(description = "ERP 库存记录编号（自动分仓模式下无需传）", example = "2048")
     private Long stockId;
 
     @Schema(description = "部门编号", requiredMode = Schema.RequiredMode.REQUIRED, example = "1")

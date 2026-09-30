@@ -1,5 +1,7 @@
 package cn.iocoder.yudao.module.erp.service.finance.receivable;
 
+import cn.iocoder.yudao.framework.common.biz.system.logger.OperateLogCommonApi;
+import cn.iocoder.yudao.framework.common.biz.system.logger.dto.OperateLogCreateReqDTO;
 import cn.iocoder.yudao.framework.test.core.ut.BaseMockitoUnitTest;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.receivable.vo.otherreceivable.ErpReceivableOtherDraftSaveReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.receivable.vo.otherreceivable.ErpReceivableOtherSaveReqVO;
@@ -9,6 +11,7 @@ import cn.iocoder.yudao.module.erp.dal.redis.no.ErpNoRedisDAO;
 import cn.iocoder.yudao.module.erp.enums.ErpAuditStatus;
 import cn.iocoder.yudao.module.erp.enums.finance.ErpReceivableOtherStatusEnum;
 import cn.iocoder.yudao.module.erp.service.common.ErpOperateLogService;
+import cn.iocoder.yudao.module.erp.service.common.ErpFormOperateLogAspect;
 import cn.iocoder.yudao.module.erp.service.finance.ErpFinanceFieldPermissionMasker;
 import cn.iocoder.yudao.module.erp.service.finance.bo.ErpSaleCartFreightDraftCreateReqBO;
 import cn.iocoder.yudao.module.erp.service.sale.ErpCustomerDeptPermissionService;
@@ -20,6 +23,8 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import org.springframework.aop.aspectj.annotation.AspectJProxyFactory;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -148,7 +153,7 @@ class ErpReceivableOtherDraftServiceImplTest extends BaseMockitoUnitTest {
     }
 
     @Test
-    void createFromSaleCartFreight_createsProcessReceivableAdjustmentWithExpectedFields() {
+    void createFromSaleCartFreight_createsApprovedReceivableAdjustmentWithExpectedFields() {
         when(deptApi.getDept(102L)).thenReturn(new DeptRespDTO().setId(102L));
         when(noRedisDAO.generate(ErpNoRedisDAO.OTHER_RECEIVABLE_NO_PREFIX))
                 .thenReturn("QTYS-FREIGHT-1");
@@ -174,7 +179,7 @@ class ErpReceivableOtherDraftServiceImplTest extends BaseMockitoUnitTest {
         verify(customerService, never()).validateCustomer(any());
         ErpReceivableOtherDO created = captor.getValue();
         assertThat(created.getNo()).isEqualTo("QTYS-FREIGHT-1");
-        assertThat(created.getStatus()).isEqualTo(ErpAuditStatus.PROCESS.getStatus());
+        assertThat(created.getStatus()).isEqualTo(ErpAuditStatus.APPROVE.getStatus());
         assertThat(created.getBizTime()).isEqualTo(LocalDate.now());
         assertThat(created.getCustomerId()).isEqualTo(11L);
         assertThat(created.getDeptId()).isEqualTo(102L);
@@ -188,6 +193,12 @@ class ErpReceivableOtherDraftServiceImplTest extends BaseMockitoUnitTest {
         assertThat(created.getSourceId()).isEqualTo(155L);
         assertThat(created.getSourceNo()).isEqualTo("XSST20260726000009");
         assertThat(created.getRemark()).isEqualTo("销售手推车终审自动生成，来源单号：XSST20260726000009");
+        verify(operateLogService).recordCreate(any(), eq(2L),
+                org.mockito.ArgumentMatchers.argThat(snapshot -> ((ErpReceivableOtherDO) snapshot).getStatus() == 10),
+                eq(created.getNo()));
+        verify(operateLogService).recordStatus(any(), eq(2L),
+                org.mockito.ArgumentMatchers.argThat(snapshot -> ((ErpReceivableOtherDO) snapshot).getStatus() == 10),
+                eq(created), eq(created.getNo()), eq(true));
     }
 
     @Test
@@ -208,6 +219,32 @@ class ErpReceivableOtherDraftServiceImplTest extends BaseMockitoUnitTest {
         verify(receivableOtherMapper, never()).insert(any(ErpReceivableOtherDO.class));
         verify(noRedisDAO, never()).generate(any());
         verify(customerService, never()).validateCustomerForGeneratedSale(any(), any());
+        org.mockito.Mockito.verifyNoInteractions(operateLogService);
+    }
+
+    @Test
+    void createFromSaleCartFreight_withLogAspect_recordsCreationAndApproval() {
+        OperateLogCommonApi logApi = org.mockito.Mockito.mock(OperateLogCommonApi.class);
+        ErpOperateLogService logger = new ErpOperateLogService();
+        ReflectionTestUtils.setField(logger, "operateLogApi", logApi);
+        ReflectionTestUtils.setField(service, "operateLogService", logger);
+        ErpFormOperateLogAspect aspect = new ErpFormOperateLogAspect();
+        ReflectionTestUtils.setField(aspect, "operateLogService", logger);
+        AspectJProxyFactory factory = new AspectJProxyFactory(service);
+        factory.addAspect(aspect);
+        ErpReceivableOtherService proxy = factory.getProxy();
+        when(noRedisDAO.generate(ErpNoRedisDAO.OTHER_RECEIVABLE_NO_PREFIX)).thenReturn("QTYS-FREIGHT-LOG");
+        when(receivableOtherMapper.insert(any(ErpReceivableOtherDO.class))).thenAnswer(invocation -> {
+            ((ErpReceivableOtherDO) invocation.getArgument(0)).setId(2L);
+            return 1;
+        });
+        proxy.createFromSaleCartFreight(new ErpSaleCartFreightDraftCreateReqBO()
+                .setCartId(100L).setCartNo("XSC100").setCustomerId(11L).setAmount(new BigDecimal("100")));
+        ArgumentCaptor<OperateLogCreateReqDTO> logs = ArgumentCaptor.forClass(OperateLogCreateReqDTO.class);
+        verify(logApi, org.mockito.Mockito.times(2)).createOperateLogAsync(logs.capture());
+        assertThat(logs.getAllValues()).allSatisfy(log -> assertThat(log.getBizId()).isEqualTo(2L));
+        assertThat(logs.getAllValues().get(0).getSubType()).isEqualTo("新增");
+        assertThat(logs.getAllValues().get(1).getAction()).contains("status：10->20");
     }
 
     @Test

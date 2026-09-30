@@ -1,10 +1,12 @@
 package cn.iocoder.yudao.module.erp.job;
 
 import cn.iocoder.yudao.framework.quartz.core.handler.JobHandler;
+import cn.iocoder.yudao.framework.tenant.core.job.TenantJob;
 import cn.iocoder.yudao.module.erp.dal.dataobject.cloudprint.ErpCloudPrintTaskDO;
 import cn.iocoder.yudao.module.erp.dal.mysql.cloudprint.ErpCloudPrintTaskMapper;
 import cn.iocoder.yudao.module.erp.enums.cloudprint.ErpCloudPrintConstants;
 import cn.iocoder.yudao.module.erp.framework.cloudprint.config.SwPrintProperties;
+import cn.iocoder.yudao.module.erp.service.cloudprint.ErpCloudPrintQueueService;
 import org.springframework.stereotype.Component;
 
 import javax.annotation.Resource;
@@ -19,8 +21,11 @@ public class ErpCloudPrintTaskTimeoutJob implements JobHandler {
     private ErpCloudPrintTaskMapper taskMapper;
     @Resource
     private SwPrintProperties properties;
+    @Resource
+    private ErpCloudPrintQueueService queueService;
 
     @Override
+    @TenantJob
     public String execute(String param) {
         int timeoutMinutes = properties.getSubmitTimeoutMinutes() == null ? 10 : properties.getSubmitTimeoutMinutes();
         LocalDateTime deadline = LocalDateTime.now().minusMinutes(timeoutMinutes);
@@ -31,11 +36,11 @@ public class ErpCloudPrintTaskTimeoutJob implements JobHandler {
             if (task.getSubmitTime() == null || !task.getSubmitTime().isBefore(deadline)) {
                 continue;
             }
-            taskMapper.updateById(new ErpCloudPrintTaskDO()
-                    .setId(task.getId())
-                    .setStatus(ErpCloudPrintConstants.STATUS_TIMEOUT)
-                    .setErrorMsg("超时未收到打印结果回调"));
-            count++;
+            String reason = "超过" + timeoutMinutes + "分钟未收到打印结果回调";
+            if (taskMapper.markTimeoutIfInFlight(task.getId(), reason) > 0) {
+                queueService.pauseDevice(task.getDeviceId(), task.getId(), reason);
+                count++;
+            }
         }
         return "云打印超时任务处理：" + count;
     }

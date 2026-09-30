@@ -5,12 +5,29 @@ import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.mybatis.core.mapper.BaseMapperX;
 import cn.iocoder.yudao.framework.mybatis.core.query.LambdaQueryWrapperX;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.pickdelivery.ErpSalePickDeliverySubmitDO;
+import cn.iocoder.yudao.module.erp.enums.sale.ErpSalePickDeliverySubmitTypeEnum;
+import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import org.apache.ibatis.annotations.Mapper;
 
 import java.util.List;
 
 @Mapper
 public interface ErpSalePickDeliverySubmitMapper extends BaseMapperX<ErpSalePickDeliverySubmitDO> {
+
+    default List<ErpSalePickDeliverySubmitDO> selectDeliveryUsersBySaleOutId(Long saleOutId) {
+        return selectList(new QueryWrapper<ErpSalePickDeliverySubmitDO>()
+                .select("submit_user_id").eq("sale_out_id", saleOutId)
+                .eq("type", ErpSalePickDeliverySubmitTypeEnum.DELIVERY.getType())
+                .isNotNull("submit_user_id").groupBy("submit_user_id")
+                .orderByAsc("MIN(submit_time)", "MIN(id)"));
+    }
+
+    default ErpSalePickDeliverySubmitDO selectByRequestId(Long orderId, Integer type, String requestId) {
+        return selectOne(new LambdaQueryWrapperX<ErpSalePickDeliverySubmitDO>()
+                .eq(ErpSalePickDeliverySubmitDO::getOrderId, orderId)
+                .eq(ErpSalePickDeliverySubmitDO::getType, type)
+                .eq(ErpSalePickDeliverySubmitDO::getRequestId, requestId).last("FOR UPDATE"));
+    }
 
     default List<ErpSalePickDeliverySubmitDO> selectListByOrderId(Long orderId) {
         return selectList(new LambdaQueryWrapperX<ErpSalePickDeliverySubmitDO>()

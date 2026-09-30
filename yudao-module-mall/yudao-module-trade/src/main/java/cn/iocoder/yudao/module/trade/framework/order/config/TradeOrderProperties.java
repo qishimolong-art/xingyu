@@ -53,4 +53,11 @@ public class TradeOrderProperties {
     @NotNull(message = "是否同步订单状态到微信小程序不能为空")
     private Boolean statusSyncToWxaEnable;
 
+    /**
+     * 是否按照收货位置自动分配仓库。
+     *
+     * 默认关闭，便于在仓库坐标完成核对前完整回退到旧 stockId 流程。
+     */
+    private Boolean addressAutoWarehouseEnabled = false;
+
 }

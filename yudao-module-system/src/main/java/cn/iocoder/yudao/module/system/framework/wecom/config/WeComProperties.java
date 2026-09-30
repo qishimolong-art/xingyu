@@ -42,6 +42,11 @@ public class WeComProperties {
     private Map<String, ClientProperties> clients = new HashMap<>();
 
     /**
+     * 企业微信智能机器人 API 模式配置。
+     */
+    private AiBotProperties aiBot = new AiBotProperties();
+
+    /**
      * OAuth state 有效期。
      */
     private Duration stateTimeout = Duration.ofMinutes(5);
@@ -72,6 +77,27 @@ public class WeComProperties {
          * 应用 Secret。
          */
         private String secret;
+
+    }
+
+    @Data
+    public static class AiBotProperties {
+
+        private Boolean enabled = false;
+        private String botId;
+        @lombok.ToString.Exclude
+        private String secret;
+        private Long tenantId;
+        private String loginClientKey;
+        private String bindPageUrl;
+        private String websocketUrl = "wss://openws.work.weixin.qq.com";
+        private Duration heartbeatInterval = Duration.ofSeconds(30);
+        private Duration ticketTimeout = Duration.ofMinutes(5);
+        private Duration choiceTimeout = Duration.ofMinutes(10);
+
+        public boolean isEnabled() {
+            return Boolean.TRUE.equals(enabled);
+        }
 
     }
 

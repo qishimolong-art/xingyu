@@ -26,6 +26,7 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.Collections;
 import java.util.List;
+import cn.iocoder.yudao.module.erp.dal.dataobject.finance.ErpMiscSettlementLedgerRow;
 import java.util.stream.Collectors;
 
 @Service
@@ -70,9 +71,9 @@ public class ErpReceivableReportServiceImpl implements ErpReceivableReportServic
     private List<ErpReceivableReportDetailRespVO> buildDetailList(ErpReceivableReportDetailReqVO reqVO,
                                                                   ErpFinanceVisibleScope scope) {
         BigDecimal balance = getInitialBalance(reqVO, scope);
-        List<ErpReceivableMiscDO> miscRows = selectOtherList(reqVO, scope, false);
+        List<ErpMiscSettlementLedgerRow> miscRows = selectOtherList(reqVO, scope, false);
         List<ErpReceivableReportDetailRespVO> rows = miscRows.stream()
-                .map(item -> buildRow(item, BigDecimal.ZERO))
+                .map(item -> buildRow(item, amount(item.getSettledAmount())))
                 .collect(Collectors.toList());
         for (ErpReceivableReportDetailRespVO row : rows) {
             row.setPrevBalance(balance);
@@ -89,13 +90,13 @@ public class ErpReceivableReportServiceImpl implements ErpReceivableReportServic
         ErpReceivableReportDetailReqVO copy = new ErpReceivableReportDetailReqVO();
         copy.setCustomerId(reqVO.getCustomerId());
         copy.setBizTime(new java.time.LocalDateTime[]{null, reqVO.getStartDate().atStartOfDay()});
-        List<ErpReceivableMiscDO> rows = selectOtherList(copy, scope, true);
+        List<ErpMiscSettlementLedgerRow> rows = selectOtherList(copy, scope, true);
         return rows.stream()
                 .map(item -> amount(item.getAmount()))
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
     }
 
-    private List<ErpReceivableMiscDO> selectOtherList(ErpReceivableReportDetailReqVO reqVO,
+    private List<ErpMiscSettlementLedgerRow> selectOtherList(ErpReceivableReportDetailReqVO reqVO,
                                                        ErpFinanceVisibleScope scope,
                                                        boolean beforeStartDate) {
         LambdaQueryWrapperX<ErpReceivableMiscDO> query = new LambdaQueryWrapperX<ErpReceivableMiscDO>()
@@ -108,17 +109,17 @@ public class ErpReceivableReportServiceImpl implements ErpReceivableReportServic
                     .leIfPresent(ErpReceivableMiscDO::getBizTime, reqVO.getEndTime());
         }
         applyScope(query, scope);
-        return receivableMiscMapper.selectList(query.orderByAsc(ErpReceivableMiscDO::getBizTime)
+        return receivableMiscMapper.selectSettlementLedger(query.orderByAsc(ErpReceivableMiscDO::getBizTime)
                 .orderByAsc(ErpReceivableMiscDO::getNo)
                 .orderByAsc(ErpReceivableMiscDO::getId));
     }
 
-    private ErpReceivableReportDetailRespVO buildRow(ErpReceivableMiscDO item, BigDecimal receiptedAmount) {
-        BigDecimal receivableAmount = amount(item.getAmount());
+    private ErpReceivableReportDetailRespVO buildRow(ErpMiscSettlementLedgerRow item, BigDecimal receiptedAmount) {
+        BigDecimal receivableAmount = amount(item.getAmount()).add(amount(receiptedAmount));
         ErpReceivableReportDetailRespVO row = new ErpReceivableReportDetailRespVO();
-        row.setDocType("其他应收");
-        row.setBizType(ErpBizTypeEnum.RECEIVABLE_MISC.getType());
-        row.setBizId(item.getId());
+        row.setDocType(item.getDocumentId() == null ? "其他应收" : "收款单");
+        row.setBizType(item.getDocumentId() == null ? ErpBizTypeEnum.RECEIVABLE_MISC.getType() : null);
+        row.setBizId(item.getDocumentId() == null ? item.getId() : item.getDocumentId());
         row.setDocDate(item.getBizTime());
         row.setDocNo(item.getNo());
         row.setIncreaseAmount(receivableAmount);

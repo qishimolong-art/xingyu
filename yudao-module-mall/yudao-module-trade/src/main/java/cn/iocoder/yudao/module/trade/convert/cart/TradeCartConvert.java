@@ -27,6 +27,13 @@ public interface TradeCartConvert {
     default AppCartListRespVO convertList(List<CartDO> carts,
                                           List<ProductSpuRespDTO> spus, List<ProductSkuRespDTO> skus,
                                           Map<Long, ErpMallStockOptionBO> stockOptionMap) {
+        return convertList(carts, spus, skus, stockOptionMap, false);
+    }
+
+    default AppCartListRespVO convertList(List<CartDO> carts,
+                                          List<ProductSpuRespDTO> spus, List<ProductSkuRespDTO> skus,
+                                          Map<Long, ErpMallStockOptionBO> stockOptionMap,
+                                          boolean autoWarehouseEnabled) {
         Map<Long, ProductSpuRespDTO> spuMap = convertMap(spus, ProductSpuRespDTO::getId);
         Map<Long, ProductSkuRespDTO> skuMap = convertMap(skus, ProductSkuRespDTO::getId);
         // 遍历，开始转换
@@ -44,7 +51,7 @@ public interface TradeCartConvert {
                         .setStockAvailable(stockOption.getAvailable())
                         .setStockAvailableCount(stockOption.getAvailableCount())
                         .setStockStatusText(stockOption.getAvailableStatusText());
-            } else {
+            } else if (!autoWarehouseEnabled) {
                 cartVO.setStockAvailable(false);
             }
             ProductSpuRespDTO spu = spuMap.get(cart.getSpuId());
@@ -52,14 +59,12 @@ public interface TradeCartConvert {
             cartVO.setSpu(BeanUtils.toBean(spu, AppProductSpuBaseRespVO.class))
                     .setSku(BeanUtils.toBean(sku, AppProductSkuBaseRespVO.class));
             // 购物车普通购买库存以所选 ERP 仓库库存为准，不再使用商城 SPU/SKU 的旧库存字段判断。
-            if (spu == null
-                || !ProductSpuStatusEnum.isEnable(spu.getStatus())
-                || sku == null
-                || cart.getStockId() == null
-                || stockOption == null
-                || !Boolean.TRUE.equals(stockOption.getAvailable())
-                || stockOption.getAvailableCount() == null
-                || stockOption.getAvailableCount().compareTo(BigDecimal.valueOf(cart.getCount())) < 0) {
+            boolean invalidProduct = spu == null || !ProductSpuStatusEnum.isEnable(spu.getStatus()) || sku == null;
+            boolean invalidLegacyStock = !autoWarehouseEnabled && (cart.getStockId() == null
+                    || stockOption == null || !Boolean.TRUE.equals(stockOption.getAvailable())
+                    || stockOption.getAvailableCount() == null
+                    || stockOption.getAvailableCount().compareTo(BigDecimal.valueOf(cart.getCount())) < 0);
+            if (invalidProduct || invalidLegacyStock) {
                 invalidList.add(cartVO);
             } else {
                 validList.add(cartVO);

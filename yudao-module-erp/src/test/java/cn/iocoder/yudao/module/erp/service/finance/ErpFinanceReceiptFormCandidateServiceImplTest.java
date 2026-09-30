@@ -93,8 +93,11 @@ class ErpFinanceReceiptFormCandidateServiceImplTest extends BaseMockitoUnitTest 
         Map<Long, BigDecimal> miscAllocated = new HashMap<>();
         miscAllocated.put(400L, new BigDecimal("25"));
         miscAllocated.put(401L, new BigDecimal("20"));
-        when(financeReceiptItemMapper.selectReceiptPriceSumMapByBizIdsAndBizType(
-                any(), eq(ErpBizTypeEnum.RECEIVABLE_MISC.getType())))
+        when(receivableMiscMapper.selectOccupiedAmounts(
+                any(), eq(ErpMiscTransferOffsetConstants.RECEIPT_OFFSET_SOURCE_TYPE)))
+                .thenReturn(miscAllocated);
+        when(receivableMiscMapper.selectSettlementAmountSumMapBySourceMiscIds(
+                any(), eq(ErpMiscTransferOffsetConstants.RECEIPT_OFFSET_SOURCE_TYPE)))
                 .thenReturn(miscAllocated);
         when(customerService.getCustomerMap(any())).thenReturn(Collections.singletonMap(4L,
                 new ErpCustomerDO().setId(4L).setName("项目客户")));

@@ -29,6 +29,7 @@ import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartSubm
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartUpdateBasicReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.ErpSaleUpdateRemarkReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.vin.ErpVinRecognizeRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.pickdelivery.ErpSalePickDeliverySummaryRespVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpCustomerDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleCartDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleCartItemDO;
@@ -49,6 +50,7 @@ import cn.iocoder.yudao.module.erp.service.sale.ErpCustomerService;
 import cn.iocoder.yudao.module.erp.service.sale.ErpSaleCartService;
 import cn.iocoder.yudao.module.erp.service.sale.ErpSaleFieldPermissionMasker;
 import cn.iocoder.yudao.module.erp.service.sale.ErpSaleItemPriceReferenceFiller;
+import cn.iocoder.yudao.module.erp.service.sale.ErpSalePickDeliveryService;
 import cn.iocoder.yudao.module.erp.service.sale.ErpVinRecognizeService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpWarehouseService;
 import cn.iocoder.yudao.module.system.api.dept.DeptApi;
@@ -106,6 +108,8 @@ public class ErpSaleCartController {
 
     @Resource
     private ErpSaleCartService saleCartService;
+    @Resource
+    private ErpSalePickDeliveryService salePickDeliveryService;
     @Resource
     private ErpVinRecognizeService vinRecognizeService;
     @Resource
@@ -463,9 +467,13 @@ public class ErpSaleCartController {
         deptIds.remove(null);
         Map<Long, DeptRespDTO> deptMap = CollUtil.isEmpty(deptIds)
                 ? Collections.emptyMap() : deptApi.getDeptMap(deptIds);
-        return BeanUtils.toBean(pageResult, ErpSaleCartRespVO.class,
+        Map<Long, ErpSalePickDeliverySummaryRespVO> fulfillmentMap =
+                salePickDeliveryService.getSummaryMapBySaleCartIds(cartIds);
+        PageResult<ErpSaleCartRespVO> result = BeanUtils.toBean(pageResult, ErpSaleCartRespVO.class,
                 cart -> fillRelation(cart, itemMap.get(cart.getId()), productMap, warehouseMap, customerMap,
                         quoteMap, userMap, deptMap, firstApproveRequiredMap.get(cart.getDeptId())));
+        result.getList().forEach(vo -> fillFulfillment(vo, fulfillmentMap.get(vo.getId())));
+        return result;
     }
 
     private PageResult<ErpSaleCartRespVO> buildSaleCartVOPageResultWithoutItems(PageResult<ErpSaleCartDO> pageResult) {
@@ -495,9 +503,13 @@ public class ErpSaleCartController {
         deptIds.remove(null);
         Map<Long, DeptRespDTO> deptMap = CollUtil.isEmpty(deptIds)
                 ? Collections.emptyMap() : deptApi.getDeptMap(deptIds);
-        return BeanUtils.toBean(pageResult, ErpSaleCartRespVO.class,
+        Map<Long, ErpSalePickDeliverySummaryRespVO> fulfillmentMap =
+                salePickDeliveryService.getSummaryMapBySaleCartIds(cartIds);
+        PageResult<ErpSaleCartRespVO> result = BeanUtils.toBean(pageResult, ErpSaleCartRespVO.class,
                 cart -> fillMainRelation(cart, itemCountMap.getOrDefault(cart.getId(), 0), customerMap,
                         quoteMap, userMap, deptMap, firstApproveRequiredMap.get(cart.getDeptId())));
+        result.getList().forEach(vo -> fillFulfillment(vo, fulfillmentMap.get(vo.getId())));
+        return result;
     }
 
     private ErpSaleCartRespVO buildSaleCartRespVO(ErpSaleCartDO cart, List<ErpSaleCartItemDO> items) {
@@ -528,9 +540,11 @@ public class ErpSaleCartController {
         deptIds.remove(null);
         Map<Long, DeptRespDTO> deptMap = CollUtil.isEmpty(deptIds)
                 ? Collections.emptyMap() : deptApi.getDeptMap(deptIds);
-        return BeanUtils.toBean(cart, ErpSaleCartRespVO.class,
+        ErpSaleCartRespVO result = BeanUtils.toBean(cart, ErpSaleCartRespVO.class,
                 vo -> fillRelation(vo, items, productMap, warehouseMap, customerMap, quoteMap, userMap, deptMap,
                         saleCartService.isFirstApproveRequiredForDept(cart.getDeptId())));
+        fillFulfillment(result, salePickDeliveryService.getSummaryBySaleCartId(cart.getId()));
+        return result;
     }
 
     private Map<Long, ErpProductRespVO> getProductVOMapIgnoreDataPermission(Set<Long> productIds) {
@@ -639,6 +653,15 @@ public class ErpSaleCartController {
             MapUtils.findAndThen(deptMap, vo.getDeptId(), dept -> vo.setDeptName(dept.getName()));
         }
         vo.setFirstApproveRequired(firstApproveRequired);
+    }
+
+    private void fillFulfillment(ErpSaleCartRespVO vo, ErpSalePickDeliverySummaryRespVO fulfillment) {
+        if (fulfillment == null) {
+            return;
+        }
+        vo.setPickDeliveryOrderId(fulfillment.getOrderId());
+        vo.setPickStatus(fulfillment.getPickStatus());
+        vo.setDeliveryStatus(fulfillment.getDeliveryStatus());
     }
 
     private PageResult<UserSimpleRespVO> buildUserSimplePage(PageParam pageReqVO) {

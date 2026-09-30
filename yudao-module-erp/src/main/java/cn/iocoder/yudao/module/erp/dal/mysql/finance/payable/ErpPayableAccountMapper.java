@@ -8,6 +8,7 @@ import cn.iocoder.yudao.module.erp.dal.dataobject.finance.payable.ErpPayableAcco
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.payable.ErpPayableDetailDO;
 import cn.iocoder.yudao.module.erp.dal.mysql.purchase.ErpPurchaseInMapper;
 import org.apache.ibatis.annotations.Mapper;
+import cn.iocoder.yudao.module.erp.dal.mysql.finance.ErpMiscSettlementSql;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
 
@@ -120,7 +121,7 @@ public interface ErpPayableAccountMapper extends BaseMapperX<ErpPayableAccountDO
             "  ) po ON po.supplier_id = s.id",
             "  LEFT JOIN (",
             "       SELECT supplier_id, -SUM(amount) AS miscPayableAmount",
-            "         FROM erp_payable_misc",
+            "         FROM " + ErpMiscSettlementSql.PAYABLE_LEDGER + " misc_ledger",
             "        WHERE deleted = 0 AND status = 20",
             "          <if test='!documentAll'> AND (<choose><when test='documentDeptIds != null and documentDeptIds.size() > 0'>dept_id IN <foreach collection='documentDeptIds' item='id' open='(' separator=',' close=')'>#{id}</foreach><if test='documentSelfUserId != null'> OR handler_id = #{documentSelfUserId}</if></when><otherwise>handler_id = #{documentSelfUserId}</otherwise></choose>) </if>",
             "          <if test='reqVO.startTime != null and reqVO.endTime != null'>",
@@ -252,7 +253,7 @@ public interface ErpPayableAccountMapper extends BaseMapperX<ErpPayableAccountDO
             "               UNION ALL",
             "               SELECT supplier_id, MAX(biz_time) AS last_biz_time FROM erp_payable_other WHERE deleted = 0 AND status = 20 GROUP BY supplier_id",
             "               UNION ALL",
-            "               SELECT supplier_id, MAX(biz_time) AS last_biz_time FROM erp_payable_misc WHERE deleted = 0 AND status = 20 GROUP BY supplier_id",
+            "               SELECT supplier_id, MAX(biz_time) AS last_biz_time FROM " + ErpMiscSettlementSql.PAYABLE_LEDGER + " misc_ledger WHERE deleted = 0 AND status = 20 GROUP BY supplier_id",
             "         ) t",
             "        GROUP BY supplier_id",
             "  ) lb ON lb.supplier_id = s.id",
@@ -367,7 +368,7 @@ public interface ErpPayableAccountMapper extends BaseMapperX<ErpPayableAccountDO
             "  LEFT JOIN (SELECT supplier_id, SUM(total_price) AS purchaseReturnAmount FROM erp_purchase_return WHERE deleted = 0 AND status = 20 AND supplier_id = #{supplierId} GROUP BY supplier_id) pr ON pr.supplier_id = s.id",
             "  LEFT JOIN (SELECT supplier_id, SUM(total_adjust_price) AS priceAdjustAmount FROM erp_purchase_price_adjust WHERE deleted = 0 AND status = 20 AND supplier_id = #{supplierId} GROUP BY supplier_id) pa ON pa.supplier_id = s.id",
             "  LEFT JOIN (SELECT supplier_id, SUM(payable_amount) AS otherPayableAmount FROM erp_payable_other WHERE deleted = 0 AND status = 20 AND supplier_id = #{supplierId} GROUP BY supplier_id) po ON po.supplier_id = s.id",
-            "  LEFT JOIN (SELECT supplier_id, -SUM(amount) AS miscPayableAmount FROM erp_payable_misc WHERE deleted = 0 AND status = 20 AND supplier_id = #{supplierId} GROUP BY supplier_id) pm ON pm.supplier_id = s.id",
+            "  LEFT JOIN (SELECT supplier_id, -SUM(amount) AS miscPayableAmount FROM " + ErpMiscSettlementSql.PAYABLE_LEDGER + " misc_ledger WHERE deleted = 0 AND status = 20 AND supplier_id = #{supplierId} GROUP BY supplier_id) pm ON pm.supplier_id = s.id",
             "  LEFT JOIN (SELECT fpay.supplier_id, SUM(CASE WHEN EXISTS (SELECT 1 FROM erp_payable_other dpo WHERE dpo.deleted = 0 AND dpo.status = 20 AND dpo.source_type = '付款单折让' AND dpo.source_id = fpay.id) THEN fpay.payment_price ELSE fpay.total_price END) AS paymentAmount FROM erp_finance_payment fpay WHERE fpay.deleted = 0 AND fpay.status = 20 AND fpay.supplier_id = #{supplierId} GROUP BY fpay.supplier_id) fp ON fp.supplier_id = s.id",
             "  LEFT JOIN (SELECT supplier_id, SUM(write_off_amount) AS writeOffAmount FROM erp_payable_writeoff WHERE deleted = 0 AND supplier_id = #{supplierId} GROUP BY supplier_id) pwo ON pwo.supplier_id = s.id",
             " WHERE s.deleted = 0 AND s.id = #{supplierId}",

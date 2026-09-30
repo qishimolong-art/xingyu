@@ -5,41 +5,30 @@ import cn.hutool.core.util.StrUtil;
 import cn.iocoder.yudao.framework.common.enums.CommonStatusEnum;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.mybatis.core.query.LambdaQueryWrapperX;
-import cn.iocoder.yudao.framework.common.util.json.JsonUtils;
 import cn.iocoder.yudao.framework.common.util.number.MoneyUtils;
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
+import cn.iocoder.yudao.framework.tenant.core.util.TenantUtils;
 import cn.iocoder.yudao.module.erp.controller.admin.cloudprint.vo.ErpCloudPrintDevicePageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.cloudprint.vo.ErpCloudPrintDeviceRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.cloudprint.vo.ErpCloudPrintDeviceSaveReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.cloudprint.vo.ErpCloudPrintTaskRespVO;
-import cn.iocoder.yudao.module.erp.dal.dataobject.cloudprint.ErpCloudPrintCallbackLogDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.cloudprint.ErpCloudPrintDeviceDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.cloudprint.ErpCloudPrintTaskDO;
-import cn.iocoder.yudao.module.erp.dal.dataobject.common.ErpPrintRecordDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.common.ErpPrintTemplateDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleOutDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleOutItemDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpWarehouseDO;
-import cn.iocoder.yudao.module.erp.dal.mysql.cloudprint.ErpCloudPrintCallbackLogMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.cloudprint.ErpCloudPrintDeviceMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.cloudprint.ErpCloudPrintTaskMapper;
-import cn.iocoder.yudao.module.erp.dal.mysql.common.ErpPrintRecordMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.common.ErpPrintTemplateMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpSaleOutItemMapper;
-import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpSaleOutMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.stock.ErpWarehouseMapper;
 import cn.iocoder.yudao.module.erp.enums.cloudprint.ErpCloudPrintConstants;
 import cn.iocoder.yudao.module.erp.framework.cloudprint.SwPrintClient;
-import cn.iocoder.yudao.module.erp.framework.cloudprint.SwPrintException;
-import cn.iocoder.yudao.module.erp.framework.cloudprint.config.SwPrintProperties;
 import cn.iocoder.yudao.module.erp.framework.cloudprint.dto.SwPrintDtos.DeviceInfo;
-import cn.iocoder.yudao.module.erp.framework.cloudprint.dto.SwPrintDtos.PtFileData;
-import cn.iocoder.yudao.module.erp.framework.cloudprint.dto.SwPrintDtos.PtFileReq;
 import cn.iocoder.yudao.module.erp.service.common.ErpPrintService;
 import cn.iocoder.yudao.module.erp.service.sale.ErpSaleOutService;
 import cn.iocoder.yudao.module.infra.api.file.FileApi;
-import cn.iocoder.yudao.module.system.api.user.AdminUserApi;
-import cn.iocoder.yudao.module.system.api.user.dto.AdminUserRespDTO;
 import cn.iocoder.yudao.module.system.api.dept.DeptApi;
 import cn.iocoder.yudao.module.system.api.dept.dto.DeptRespDTO;
 import lombok.Data;
@@ -47,6 +36,8 @@ import lombok.extern.slf4j.Slf4j;
 import lombok.experimental.Accessors;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.util.StringUtils;
 import org.springframework.validation.annotation.Validated;
 
@@ -65,7 +56,6 @@ import java.util.stream.Collectors;
 
 import static cn.iocoder.yudao.framework.common.exception.util.ServiceExceptionUtil.exception;
 import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.convertList;
-import static cn.iocoder.yudao.framework.security.core.util.SecurityFrameworkUtils.getLoginUserId;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.*;
 
 @Slf4j
@@ -80,19 +70,13 @@ public class ErpCloudPrintServiceImpl implements ErpCloudPrintService {
     @Resource
     private ErpCloudPrintTaskMapper taskMapper;
     @Resource
-    private ErpCloudPrintCallbackLogMapper callbackLogMapper;
-    @Resource
     private ErpSaleOutService saleOutService;
-    @Resource
-    private ErpSaleOutMapper saleOutMapper;
     @Resource
     private ErpSaleOutItemMapper saleOutItemMapper;
     @Resource
     private ErpWarehouseMapper warehouseMapper;
     @Resource
     private ErpPrintService printService;
-    @Resource
-    private ErpPrintRecordMapper printRecordMapper;
     @Resource
     private ErpPrintTemplateMapper printTemplateMapper;
     @Resource
@@ -102,9 +86,7 @@ public class ErpCloudPrintServiceImpl implements ErpCloudPrintService {
     @Resource
     private SwPrintClient swPrintClient;
     @Resource
-    private SwPrintProperties properties;
-    @Resource
-    private AdminUserApi adminUserApi;
+    private ErpCloudPrintQueueService queueService;
     @Resource
     private DeptApi deptApi;
 
@@ -120,22 +102,16 @@ public class ErpCloudPrintServiceImpl implements ErpCloudPrintService {
             throw exception(CLOUD_PRINT_SUBMIT_FAILED, "销售单打印数据与明细行数不一致");
         }
 
-        if (Boolean.TRUE.equals(properties.getCheckDeviceOnline())) {
-            for (WarehousePrintGroup group : groups) {
-                checkDeviceOnline(group.getDevice());
-            }
-        }
-
         List<ErpCloudPrintTaskRespVO> result = new ArrayList<>();
+        Set<Long> deviceIds = new LinkedHashSet<>();
         for (WarehousePrintGroup group : groups) {
-            ErpCloudPrintTaskDO runningTask = taskMapper.selectRunningByBizAndWarehouse(
-                    ErpCloudPrintConstants.BIZ_TYPE_SALE_OUT, saleOutId, group.getWarehouse().getId());
-            if (runningTask != null) {
-                result.add(toTaskResp(runningTask));
-                continue;
-            }
             Map<String, Object> warehousePrintData = buildWarehousePrintData(fullPrintData, fullItemRows, group);
-            result.add(toTaskResp(submitSaleOutGroup(saleOut, template, group, copies, warehousePrintData)));
+            ErpCloudPrintTaskDO task = submitSaleOutGroup(saleOut, template, group, copies, warehousePrintData);
+            result.add(toTaskResp(task));
+            deviceIds.add(group.getDevice().getId());
+        }
+        for (Long deviceId : deviceIds) {
+            queueService.dispatchDeviceAsync(deviceId);
         }
         return result;
     }
@@ -168,50 +144,9 @@ public class ErpCloudPrintServiceImpl implements ErpCloudPrintService {
                 .setFileName(fileName)
                 .setStatus(ErpCloudPrintConstants.STATUS_PENDING);
         taskMapper.insert(task);
-
-        try {
-            PtFileReq req = new PtFileReq()
-                    .setDevid(device.getDevid())
-                    .setReqid(reqid)
-                    .setType(contentType)
-                    .setWidth(device.getPrintWidth())
-                    .setHeight(device.getPrintHeight())
-                    .setPcopy(finalCopies)
-                    .setPtype(device.getPaperType())
-                    .setRotate(device.getRotate());
-            task.setSubmitReq(maskSubmitReq(req));
-            log.info("[submitSaleOut][销售单云打印提交 saleOutId({}) warehouseId({}) warehouseName({}) templateId({}) "
-                            + "deviceId({}) type({}) fileName({})]",
-                    saleOut.getId(), group.getWarehouse().getId(), group.getWarehouse().getName(),
-                    template.getId(), device.getId(), contentType, fileName);
-            PtFileData result = swPrintClient.ptFile(req, content, fileName);
-            taskMapper.updateById(new ErpCloudPrintTaskDO()
-                    .setId(task.getId())
-                    .setSubmitReq(task.getSubmitReq())
-                    .setSubmitResp(JsonUtils.toJsonString(result))
-                    .setSubmitTime(LocalDateTime.now())
-                    .setStatus(ErpCloudPrintConstants.STATUS_SUBMITTED));
-            task.setStatus(ErpCloudPrintConstants.STATUS_SUBMITTED).setSubmitTime(LocalDateTime.now());
-            return task;
-        } catch (SwPrintException ex) {
-            int status = ex.isTimeout() ? ErpCloudPrintConstants.STATUS_UNKNOWN : ErpCloudPrintConstants.STATUS_SUBMIT_FAILED;
-            taskMapper.updateById(new ErpCloudPrintTaskDO()
-                    .setId(task.getId())
-                    .setSubmitReq(task.getSubmitReq())
-                    .setSubmitTime(LocalDateTime.now())
-                    .setStatus(status)
-                    .setErrorMsg(ex.getMessage()));
-            if (ex.isTimeout()) {
-                return task.setStatus(status).setErrorMsg(ex.getMessage());
-            }
-            throw exception(CLOUD_PRINT_SUBMIT_FAILED, ex.getMessage());
-        } catch (Exception ex) {
-            taskMapper.updateById(new ErpCloudPrintTaskDO()
-                    .setId(task.getId())
-                    .setStatus(ErpCloudPrintConstants.STATUS_SUBMIT_FAILED)
-                    .setErrorMsg(StrUtil.maxLength(ex.getMessage(), 512)));
-            throw exception(CLOUD_PRINT_SUBMIT_FAILED, ex.getMessage());
-        }
+        log.info("[submitSaleOutGroup][销售单云打印入队 saleOutId({}) warehouseId({}) templateId({}) deviceId({}) taskId({})]",
+                saleOut.getId(), group.getWarehouse().getId(), template.getId(), device.getId(), task.getId());
+        return task;
     }
 
     private List<WarehousePrintGroup> resolveWarehousePrintGroups(List<ErpSaleOutItemDO> saleOutItems) {
@@ -501,113 +436,38 @@ public class ErpCloudPrintServiceImpl implements ErpCloudPrintService {
         deviceMapper.updateById(new ErpCloudPrintDeviceDO()
                 .setId(device.getId())
                 .setOnlineState(online ? 1 : 0)
-                .setLastStatusCode(info == null ? null : info.getCode())
+                .setLastStatusCode(info == null ? null : info.getStatus())
+                .setLastStatusMessage(info == null ? null : info.getMessage())
                 .setLastStatusTime(LocalDateTime.now()));
         return getDevice(id);
     }
 
     @Override
     @Transactional(rollbackFor = Exception.class)
-    public void handleCallback(String pathToken, String rawBody) {
-        if (!StringUtils.hasText(properties.getCallbackPathToken())
-                || !properties.getCallbackPathToken().equals(pathToken)) {
-            insertCallbackLog(rawBody, null, false);
-            return;
-        }
-        CallbackReq req;
-        try {
-            req = JsonUtils.parseObject(rawBody, CallbackReq.class);
-        } catch (Exception ex) {
-            insertCallbackLog(rawBody, null, false);
-            throw ex;
-        }
-        if (req == null) {
-            insertCallbackLog(rawBody, null, false);
-            return;
-        }
-        if ("printRlt".equals(req.getMethod())) {
-            handlePrintResult(rawBody, req);
-        } else if ("devStatus".equals(req.getMethod())) {
-            handleDeviceStatus(rawBody, req);
+    public ErpCloudPrintDeviceRespVO resumeQueue(Long deviceId, String failedTaskAction) {
+        validateDeviceExists(deviceId);
+        queueService.resumeQueue(deviceId, failedTaskAction);
+        dispatchAfterCommit(deviceId, null);
+        return toDeviceResp(validateDeviceExists(deviceId));
+    }
+
+    private void dispatchAfterCommit(Long deviceId, Long tenantId) {
+        Runnable dispatch = () -> {
+            if (tenantId == null) {
+                queueService.dispatchDeviceAsync(deviceId);
+            } else {
+                TenantUtils.execute(tenantId, () -> queueService.dispatchDeviceAsync(deviceId));
+            }
+        };
+        if (TransactionSynchronizationManager.isActualTransactionActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    dispatch.run();
+                }
+            });
         } else {
-            insertCallbackLog(rawBody, req, false);
-        }
-    }
-
-    private void handlePrintResult(String rawBody, CallbackReq req) {
-        ErpCloudPrintTaskDO task = StringUtils.hasText(req.getReqid()) ? taskMapper.selectByReqid(req.getReqid()) : null;
-        insertCallbackLog(rawBody, req, task != null);
-        if (task == null) {
-            return;
-        }
-        Integer oldStatus = task.getStatus();
-        Integer newStatus = Integer.valueOf(0).equals(req.getCode())
-                ? ErpCloudPrintConstants.STATUS_SUCCESS : ErpCloudPrintConstants.STATUS_FAILED;
-        ErpCloudPrintTaskDO updateObj = new ErpCloudPrintTaskDO()
-                .setId(task.getId())
-                .setCallbackCode(req.getCode())
-                .setCallbackMsg(req.getMessage())
-                .setCallbackTime(LocalDateTime.now());
-        if (!ErpCloudPrintConstants.FINAL_STATUSES.contains(oldStatus)
-                || Integer.valueOf(ErpCloudPrintConstants.STATUS_TIMEOUT).equals(oldStatus)) {
-            updateObj.setStatus(newStatus);
-        }
-        taskMapper.updateById(updateObj);
-        if (Integer.valueOf(ErpCloudPrintConstants.STATUS_SUCCESS).equals(newStatus)
-                && !Integer.valueOf(ErpCloudPrintConstants.STATUS_SUCCESS).equals(oldStatus)
-                && ErpCloudPrintConstants.BIZ_TYPE_SALE_OUT.equals(task.getBizType())) {
-            recordSaleOutPrintSuccess(task);
-        }
-    }
-
-    private void handleDeviceStatus(String rawBody, CallbackReq req) {
-        ErpCloudPrintDeviceDO device = deviceMapper.selectByDevid(req.getDevid());
-        insertCallbackLog(rawBody, req, device != null);
-        if (device == null) {
-            return;
-        }
-        deviceMapper.updateById(new ErpCloudPrintDeviceDO()
-                .setId(device.getId())
-                .setOnlineState(Integer.valueOf(0).equals(req.getCode()) ? 1 : 0)
-                .setLastStatusCode(req.getCode())
-                .setLastStatusTime(LocalDateTime.now()));
-    }
-
-    private void recordSaleOutPrintSuccess(ErpCloudPrintTaskDO task) {
-        saleOutMapper.incrementPrintCount(task.getBizId());
-        Long loginUserId = getCallbackLoginUserId();
-        AdminUserRespDTO user = loginUserId == null ? null : adminUserApi.getUser(loginUserId);
-        printRecordMapper.insert(ErpPrintRecordDO.builder()
-                .moduleKey(ErpCloudPrintConstants.MODULE_KEY_SALE_OUT)
-                .businessId(task.getBizId())
-                .businessNo(task.getBizNo())
-                .templateId(task.getTemplateId())
-                .printerId(loginUserId)
-                .printerName(user == null ? "云打印回调" : user.getNickname())
-                .printTime(LocalDateTime.now())
-                .build());
-    }
-
-    private Long getCallbackLoginUserId() {
-        try {
-            return getLoginUserId();
-        } catch (Exception ex) {
-            return null;
-        }
-    }
-
-    private void checkDeviceOnline(ErpCloudPrintDeviceDO device) {
-        DeviceInfo info = swPrintClient.getDevice(device.getDevid());
-        boolean online = isDeviceOnline(info);
-        log.info("[checkDeviceOnline][云打印设备在线检查 deviceId({}) nickname({}) devid({}) online({}) deviceInfo({})]",
-                device.getId(), device.getNickname(), device.getDevid(), online, JsonUtils.toJsonString(info));
-        deviceMapper.updateById(new ErpCloudPrintDeviceDO()
-                .setId(device.getId())
-                .setOnlineState(online ? 1 : 0)
-                .setLastStatusCode(info.getCode())
-                .setLastStatusTime(LocalDateTime.now()));
-        if (!online) {
-            throw exception(CLOUD_PRINT_DEVICE_OFFLINE, device.getNickname());
+            dispatch.run();
         }
     }
 
@@ -625,14 +485,6 @@ public class ErpCloudPrintServiceImpl implements ErpCloudPrintService {
         return Integer.valueOf(0).equals(info.getCode())
                 || Integer.valueOf(200).equals(info.getCode())
                 || Integer.valueOf(0).equals(info.getStatus());
-    }
-
-    private ErpCloudPrintDeviceDO getSubmitDevice(Long deviceId) {
-        ErpCloudPrintDeviceDO device = deviceId == null ? deviceMapper.selectDefault() : deviceMapper.selectById(deviceId);
-        if (device == null) {
-            throw exception(deviceId == null ? CLOUD_PRINT_DEFAULT_DEVICE_NOT_EXISTS : CLOUD_PRINT_DEVICE_NOT_EXISTS);
-        }
-        return device;
     }
 
     private void validateDeviceForSubmit(ErpCloudPrintDeviceDO device) {
@@ -675,26 +527,41 @@ public class ErpCloudPrintServiceImpl implements ErpCloudPrintService {
         return reqid.length() <= 64 ? reqid : reqid.substring(reqid.length() - 64);
     }
 
-    private String maskSubmitReq(PtFileReq req) {
-        return JsonUtils.toJsonString(req);
-    }
-
-    private void insertCallbackLog(String rawBody, CallbackReq req, boolean matched) {
-        try {
-            callbackLogMapper.insert(new ErpCloudPrintCallbackLogDO()
-                    .setRawBody(rawBody)
-                    .setMethod(req == null ? null : req.getMethod())
-                    .setDevid(req == null ? null : req.getDevid())
-                    .setReqid(req == null ? null : req.getReqid())
-                    .setCode(req == null ? null : req.getCode())
-                    .setMatched(matched));
-        } catch (Exception ex) {
-            log.error("[insertCallbackLog][云打印回调日志落库失败 rawBody({})]", rawBody, ex);
-        }
-    }
-
     private ErpCloudPrintTaskRespVO toTaskResp(ErpCloudPrintTaskDO task) {
-        return BeanUtils.toBean(task, ErpCloudPrintTaskRespVO.class);
+        ErpCloudPrintTaskRespVO respVO = BeanUtils.toBean(task, ErpCloudPrintTaskRespVO.class);
+        ErpCloudPrintDeviceDO device = task.getDeviceId() == null ? null : deviceMapper.selectById(task.getDeviceId());
+        if (Integer.valueOf(ErpCloudPrintConstants.STATUS_PENDING).equals(task.getStatus())) {
+            Long position = taskMapper.selectQueuePosition(task.getDeviceId(), task.getId());
+            respVO.setQueuePosition(position);
+            if (device != null && Boolean.TRUE.equals(device.getQueuePaused())) {
+                respVO.setQueueState("PAUSED");
+                respVO.setQueueMessage("已加入" + device.getNickname() + "队列，队列已暂停："
+                        + StrUtil.blankToDefault(device.getQueuePauseReason(), "等待设备恢复"));
+            } else {
+                respVO.setQueueState("WAITING");
+                respVO.setQueueMessage("已加入" + (device == null ? "云打印机" : device.getNickname())
+                        + "队列，当前第" + position + "位");
+            }
+            return respVO;
+        }
+        if (Integer.valueOf(ErpCloudPrintConstants.STATUS_SUBMITTED).equals(task.getStatus())) {
+            return respVO.setQueuePosition(0L).setQueueState("PRINTING")
+                    .setQueueMessage("已提交至" + (device == null ? "云打印机" : device.getNickname()) + "，等待打印回调");
+        }
+        if (Integer.valueOf(ErpCloudPrintConstants.STATUS_UNKNOWN).equals(task.getStatus())) {
+            return respVO.setQueueState("UNKNOWN").setQueueMessage("提交结果未知，队列已暂停，请到云打印机页面处理");
+        }
+        if (Integer.valueOf(ErpCloudPrintConstants.STATUS_SUCCESS).equals(task.getStatus())) {
+            return respVO.setQueueState("SUCCESS").setQueueMessage("打印成功");
+        }
+        if (Integer.valueOf(ErpCloudPrintConstants.STATUS_TIMEOUT).equals(task.getStatus())) {
+            return respVO.setQueueState("TIMEOUT").setQueueMessage("打印回调超时，队列已暂停");
+        }
+        if (Integer.valueOf(ErpCloudPrintConstants.STATUS_CANCELED).equals(task.getStatus())) {
+            return respVO.setQueueState("SKIPPED").setQueueMessage("故障任务已跳过");
+        }
+        return respVO.setQueueState("FAILED")
+                .setQueueMessage(StrUtil.blankToDefault(task.getErrorMsg(), "打印失败，队列已暂停"));
     }
 
     private ErpCloudPrintDeviceDO validateDeviceExists(Long id) {
@@ -758,6 +625,9 @@ public class ErpCloudPrintServiceImpl implements ErpCloudPrintService {
         if (device.getDefaulted() == null) {
             device.setDefaulted(false);
         }
+        if (device.getQueuePaused() == null) {
+            device.setQueuePaused(false);
+        }
     }
 
     private void ensureDefaultDeviceEnabled(ErpCloudPrintDeviceDO device) {
@@ -792,7 +662,19 @@ public class ErpCloudPrintServiceImpl implements ErpCloudPrintService {
     }
 
     private ErpCloudPrintDeviceRespVO toDeviceResp(ErpCloudPrintDeviceDO device) {
-        return BeanUtils.toBean(device, ErpCloudPrintDeviceRespVO.class);
+        ErpCloudPrintDeviceRespVO respVO = BeanUtils.toBean(device, ErpCloudPrintDeviceRespVO.class);
+        ErpCloudPrintTaskDO currentTask = taskMapper.selectInFlightByDevice(device.getId());
+        if (currentTask != null) {
+            respVO.setCurrentTask(currentTask.getBizNo()
+                    + (StringUtils.hasText(currentTask.getWarehouseName()) ? " / " + currentTask.getWarehouseName() : ""));
+            respVO.setCurrentTaskStatus(currentTask.getStatus());
+        }
+        respVO.setPendingCount(taskMapper.selectPendingCountByDevice(device.getId()));
+        ErpCloudPrintTaskDO latestCallback = taskMapper.selectLatestCallbackByDevice(device.getId());
+        if (latestCallback != null) {
+            respVO.setLastCallbackTime(latestCallback.getCallbackTime());
+        }
+        return respVO;
     }
 
     private List<ErpCloudPrintDeviceRespVO> fillDeviceDeptNames(List<ErpCloudPrintDeviceRespVO> list) {
@@ -820,15 +702,6 @@ public class ErpCloudPrintServiceImpl implements ErpCloudPrintService {
         private ErpCloudPrintDeviceDO device;
         private List<Integer> itemIndexes;
         private List<ErpSaleOutItemDO> items;
-    }
-
-    @Data
-    public static class CallbackReq {
-        private String method;
-        private String devid;
-        private String reqid;
-        private Integer code;
-        private String message;
     }
 
 }

@@ -77,7 +77,6 @@ import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.
 @Validated
 public class ErpWarehouseController {
 
-    private static final String DIRECT_WAREHOUSE_NAME = "直发仓";
 
     private static final String FIELD_PERMISSION_MODULE = "erp_warehouse";
     private static final Set<String> WAREHOUSE_IMPORT_TEMPLATE_FIELDS = new LinkedHashSet<>(Arrays.asList(
@@ -566,7 +565,7 @@ public class ErpWarehouseController {
                     .setName(warehouse.getName()).setDeptId(warehouse.getDeptId())
                     .setAddress(warehouse.getAddress()).setMapName(warehouse.getMapName())
                     .setLongitude(warehouse.getLongitude()).setLatitude(warehouse.getLatitude())
-                    .setDirectWarehouse(DIRECT_WAREHOUSE_NAME.equals(warehouse.getName()))
+                    .setDirectWarehouse(Boolean.TRUE.equals(warehouse.getDirectWarehouse()))
                     .setDefaultStatus(warehouse.getDefaultStatus());
             MapUtils.findAndThen(deptMap, warehouse.getDeptId(), dept -> vo.setDeptName(dept.getName()));
             return vo;

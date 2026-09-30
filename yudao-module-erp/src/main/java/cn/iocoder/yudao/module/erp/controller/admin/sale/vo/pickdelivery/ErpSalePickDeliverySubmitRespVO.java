@@ -13,6 +13,9 @@ public class ErpSalePickDeliverySubmitRespVO {
     @Schema(description = "编号")
     private Long id;
 
+    @Schema(description = "是否包含逐配件数量，历史记录为 false")
+    private Boolean quantityDetails;
+
     @Schema(description = "类型：10=拣货，20=送货")
     private Integer type;
 

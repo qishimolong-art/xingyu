@@ -19,6 +19,7 @@ import com.baomidou.mybatisplus.extension.handlers.JacksonTypeHandler;
 import lombok.*;
 
 import java.time.LocalDateTime;
+import java.math.BigDecimal;
 import java.util.List;
 import java.util.Map;
 
@@ -235,6 +236,14 @@ public class TradeOrderDO extends BaseDO {
      * 收件人详细地址
      */
     private String receiverDetailAddress;
+    /**
+     * 下单时目的地经度快照（GCJ-02）。
+     */
+    private BigDecimal receiverLongitude;
+    /**
+     * 下单时目的地纬度快照（GCJ-02）。
+     */
+    private BigDecimal receiverLatitude;
 
     /**
      * 自提门店编号

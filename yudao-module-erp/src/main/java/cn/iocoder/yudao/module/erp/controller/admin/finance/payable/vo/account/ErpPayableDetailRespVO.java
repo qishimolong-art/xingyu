@@ -79,6 +79,12 @@ public class ErpPayableDetailRespVO {
     @ExcelProperty("来源单号")
     private String sourceNo;
 
+    @Schema(description = "来源单据类型：PURCHASE_ORDER、FINANCE_PAYMENT")
+    private String sourceType;
+
+    @Schema(description = "来源单据 ID")
+    private Long sourceId;
+
     @Schema(description = "厂家单号")
     @ExcelProperty("厂家单号")
     private String factoryOrderNo;

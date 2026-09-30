@@ -45,8 +45,8 @@ public class ErpWarehouseControllerTest extends BaseMockitoUnitTest {
     @Test
     public void testGetWarehouseSimpleList_stockUsesProductStockVisibleWarehouses() {
         when(warehouseService.getCurrentUserStockVisibleWarehouseList()).thenReturn(Arrays.asList(
-                new ErpWarehouseDO().setId(10L).setName("Dayi Warehouse").setDeptId(1L),
-                new ErpWarehouseDO().setId(20L).setName("直发仓").setDeptId(2L)));
+                new ErpWarehouseDO().setId(10L).setName("普通直发仓").setDeptId(1L).setDirectWarehouse(false),
+                new ErpWarehouseDO().setId(20L).setName("甘孜分公司直发仓").setDeptId(2L).setDirectWarehouse(true)));
         when(deptApi.getDeptMap(any())).thenReturn(Collections.singletonMap(
                 2L, new DeptRespDTO().setId(2L).setName("Qionglai Branch")));
 

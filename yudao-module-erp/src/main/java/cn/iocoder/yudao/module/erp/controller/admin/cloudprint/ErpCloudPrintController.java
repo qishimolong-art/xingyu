@@ -5,6 +5,7 @@ import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.module.erp.controller.admin.cloudprint.vo.ErpCloudPrintDevicePageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.cloudprint.vo.ErpCloudPrintDeviceRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.cloudprint.vo.ErpCloudPrintDeviceSaveReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.cloudprint.vo.ErpCloudPrintResumeQueueReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.cloudprint.vo.ErpCloudPrintSubmitSaleOutReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.cloudprint.vo.ErpCloudPrintTaskRespVO;
 import cn.iocoder.yudao.module.erp.service.cloudprint.ErpCloudPrintService;
@@ -118,6 +119,14 @@ public class ErpCloudPrintController {
     @PreAuthorize("@ss.hasPermission('erp:cloud-print-device:refresh')")
     public CommonResult<ErpCloudPrintDeviceRespVO> refreshDeviceStatus(@RequestParam("id") Long id) {
         return success(cloudPrintService.refreshDeviceStatus(id));
+    }
+
+    @PostMapping("/device/resume-queue")
+    @Operation(summary = "处理故障任务并恢复云打印队列")
+    @PreAuthorize("@ss.hasAnyPermissions('erp:cloud-print-device:update', 'erp:cloud-print-device:refresh')")
+    public CommonResult<ErpCloudPrintDeviceRespVO> resumeQueue(
+            @Valid @RequestBody ErpCloudPrintResumeQueueReqVO reqVO) {
+        return success(cloudPrintService.resumeQueue(reqVO.getDeviceId(), reqVO.getFailedTaskAction()));
     }
 
 }

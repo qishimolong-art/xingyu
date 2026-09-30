@@ -15,6 +15,7 @@ import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartImpo
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartItemBatchUpdateReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartSaveReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartSubmitRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.pickdelivery.ErpSalePickDeliverySummaryRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.move.ErpStockMoveSaveReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.product.ErpProductDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpCustomerDO;
@@ -38,6 +39,7 @@ import cn.iocoder.yudao.module.erp.dal.redis.no.ErpNoRedisDAO;
 import cn.iocoder.yudao.module.erp.enums.ErpAuditStatus;
 import cn.iocoder.yudao.module.erp.enums.sale.ErpSaleBizSourceTypeEnum;
 import cn.iocoder.yudao.module.erp.enums.sale.ErpSaleCartStatusEnum;
+import cn.iocoder.yudao.module.erp.enums.sale.ErpSaleDeliveryStatusEnum;
 import cn.iocoder.yudao.module.erp.enums.sale.ErpSaleQuoteStatusEnum;
 import cn.iocoder.yudao.module.erp.service.finance.ErpAccountService;
 import cn.iocoder.yudao.module.erp.service.finance.bo.ErpSaleCartFreightDraftCreateReqBO;
@@ -60,6 +62,14 @@ import org.mockito.ArgumentMatchers;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.springframework.test.util.ReflectionTestUtils;
+import org.springframework.aop.framework.ProxyFactory;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.datasource.DataSourceTransactionManager;
+import org.springframework.jdbc.datasource.embedded.EmbeddedDatabase;
+import org.springframework.jdbc.datasource.embedded.EmbeddedDatabaseBuilder;
+import org.springframework.jdbc.datasource.embedded.EmbeddedDatabaseType;
+import org.springframework.transaction.annotation.AnnotationTransactionAttributeSource;
+import org.springframework.transaction.interceptor.TransactionInterceptor;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -163,6 +173,10 @@ public class ErpSaleCartServiceImplTest extends BaseMockitoUnitTest {
     private ErpWarehouseService warehouseService;
     @Mock
     private ErpSaleDocumentDefaultService saleDocumentDefaultService;
+    @Mock
+    private ErpSaleDirectDeptPermissionService saleDirectDeptPermissionService;
+    @Mock
+    private ErpSaleCartTransferLinkService saleCartTransferLinkService;
     @Mock
     private ErpSaleItemBatchUpdateSupport batchUpdateSupport;
     @Mock
@@ -369,7 +383,7 @@ public class ErpSaleCartServiceImplTest extends BaseMockitoUnitTest {
     }
 
     @Test
-    public void testFinalApproveSaleCart_customerAdvanceFreight_createsReceivableDraft() {
+    public void testFinalApproveSaleCart_customerAdvanceFreight_createsApprovedReceivableThenExpenseDraft() {
         Long cartId = 111L;
         ErpSaleCartDO cart = buildFinalApproveCart(cartId, ErpSaleCartStatusEnum.FIRST_APPROVE.getStatus())
                 .setFreightType("代客户付")
@@ -390,6 +404,13 @@ public class ErpSaleCartServiceImplTest extends BaseMockitoUnitTest {
                                 && cart.getDeptId().equals(req.getDeptId())
                                 && cart.getSaleUserId().equals(req.getHandlerId())
                                 && cart.getFeeAmount().equals(req.getAmount())));
+        org.mockito.InOrder order = org.mockito.Mockito.inOrder(saleOutService, receivableOtherService, payableExpenseService);
+        order.verify(saleOutService).createGeneratedSaleOut(any(), any(), any(), any(), eq(false));
+        org.mockito.ArgumentCaptor<ErpSaleCartFreightDraftCreateReqBO> request =
+                org.mockito.ArgumentCaptor.forClass(ErpSaleCartFreightDraftCreateReqBO.class);
+        order.verify(receivableOtherService).createFromSaleCartFreight(request.capture());
+        order.verify(payableExpenseService).createDraftFromSaleCartFreight(eq(request.getValue()));
+        assertEquals(cart.getLogisticsCompany(), request.getValue().getParty());
         verify(payableExpenseService, never()).createFromSaleCartFreight(any());
     }
 
@@ -415,13 +436,15 @@ public class ErpSaleCartServiceImplTest extends BaseMockitoUnitTest {
                                 && cart.getLogisticsCompany().equals(req.getParty())
                                 && cart.getFeeAmount().equals(req.getAmount())));
         verify(receivableOtherService, never()).createFromSaleCartFreight(any());
+        verify(payableExpenseService, never()).createDraftFromSaleCartFreight(any());
     }
 
-    @Test
-    public void testFinalApproveSaleCart_otherFreightType_doesNotCreateFinanceDraft() {
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {"送货", "自提", "代收"})
+    public void testFinalApproveSaleCart_otherFreightType_doesNotCreateFinanceDraft(String freightType) {
         Long cartId = 113L;
         ErpSaleCartDO cart = buildFinalApproveCart(cartId, ErpSaleCartStatusEnum.FIRST_APPROVE.getStatus())
-                .setFreightType("送货")
+                .setFreightType(freightType)
                 .setFeeAmount(new BigDecimal("50.00"));
         ErpSaleCartItemDO item = buildCartItem(cartId, 201L, 301L, new BigDecimal("3"));
         when(saleCartMapper.selectById(cartId)).thenReturn(cart);
@@ -431,6 +454,135 @@ public class ErpSaleCartServiceImplTest extends BaseMockitoUnitTest {
 
         verify(receivableOtherService, never()).createFromSaleCartFreight(any());
         verify(payableExpenseService, never()).createFromSaleCartFreight(any());
+        verify(payableExpenseService, never()).createDraftFromSaleCartFreight(any());
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.CsvSource({"100,200,300,100", ",200,300,200", ",0,300,300"})
+    public void testFinalApproveSaleCart_customerAdvanceFreight_missingPaymentFieldsAndLegacyAmount(
+            BigDecimal fee, BigDecimal other, BigDecimal totalFreight, BigDecimal expected) {
+        Long cartId = 114L;
+        ErpSaleCartDO cart = buildFinalApproveCart(cartId, ErpSaleCartStatusEnum.FIRST_APPROVE.getStatus())
+                .setFreightType("代客户付").setFeeAmount(fee).setOtherPrice(other).setTotalFreight(totalFreight)
+                .setSettleMethod(null).setAccountId(null).setSaleUserId(null);
+        when(saleCartMapper.selectById(cartId)).thenReturn(cart);
+        when(saleCartItemMapper.selectListByCartId(cartId)).thenReturn(Collections.singletonList(
+                buildCartItem(cartId, 201L, 301L, new BigDecimal("3"))));
+        saleCartService.finalApproveSaleCart(cartId);
+        verify(receivableOtherService).createFromSaleCartFreight(argThat(req ->
+                expected.compareTo(req.getAmount()) == 0));
+        verify(payableExpenseService).createDraftFromSaleCartFreight(argThat(req ->
+                expected.compareTo(req.getAmount()) == 0 && req.getAccountId() == null
+                        && req.getSettleMethod() == null && req.getHandlerId() == null));
+    }
+
+    @Test
+    public void testFinalApproveSaleCart_customerAdvanceFreight_claimLost_doesNotGenerateDocuments() {
+        Long cartId = 115L;
+        when(saleCartMapper.selectById(cartId)).thenReturn(buildFinalApproveCart(cartId,
+                ErpSaleCartStatusEnum.FIRST_APPROVE.getStatus()).setFreightType("代客户付")
+                .setFeeAmount(new BigDecimal("100")));
+        when(saleCartMapper.updateByIdAndStatus(eq(cartId), any(), any())).thenReturn(0);
+        assertServiceException(() -> saleCartService.finalApproveSaleCart(cartId), SALE_CART_FINAL_APPROVE_FAIL);
+        org.mockito.Mockito.verifyNoInteractions(saleOutService, receivableOtherService, payableExpenseService);
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(ints = {0, -1})
+    public void testFinalApproveSaleCart_customerAdvanceFreight_invalidAmount(int amount) {
+        Long cartId = 117L;
+        when(saleCartMapper.selectById(cartId)).thenReturn(buildFinalApproveCart(cartId,
+                ErpSaleCartStatusEnum.FIRST_APPROVE.getStatus()).setFreightType("代客户付")
+                .setFeeAmount(BigDecimal.valueOf(amount)).setTotalFreight(BigDecimal.ZERO));
+        when(saleCartItemMapper.selectListByCartId(cartId)).thenReturn(Collections.singletonList(
+                buildCartItem(cartId, 201L, 301L, new BigDecimal("3"))));
+        assertServiceException(() -> saleCartService.finalApproveSaleCart(cartId),
+                cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.SALE_CART_FREIGHT_AMOUNT_INVALID);
+        org.mockito.Mockito.verifyNoInteractions(saleOutService, receivableOtherService, payableExpenseService);
+    }
+
+    @Test
+    public void testAutoFinalApproveSaleCart_customerAdvanceFreight_alreadyGenerated_skipsHistory() {
+        Long cartId = 118L;
+        when(saleCartMapper.selectById(cartId)).thenReturn(buildFinalApproveCart(cartId,
+                ErpSaleCartStatusEnum.GENERATED_SALE_OUT.getStatus()).setFreightType("代客户付")
+                .setFeeAmount(new BigDecimal("100")));
+        saleCartService.autoFinalApproveAfterTransferOut(cartId, 900L);
+        org.mockito.Mockito.verifyNoInteractions(saleOutService, receivableOtherService, payableExpenseService);
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.CsvSource({"success,false", "receivable,false", "expense,false",
+            "success,true", "receivable,true", "expense,true"})
+    public void testFinalApproveSaleCart_customerAdvanceFreight_transactionBoundary(String failureAt, boolean auto) {
+        Long cartId = 116L;
+        ErpSaleCartDO cart = buildFinalApproveCart(cartId, ErpSaleCartStatusEnum.FIRST_APPROVE.getStatus())
+                .setFreightType("代客户付").setFeeAmount(new BigDecimal("100"));
+        when(saleCartMapper.selectById(cartId)).thenReturn(cart);
+        when(saleCartItemMapper.selectListByCartId(cartId)).thenReturn(Collections.singletonList(
+                buildCartItem(cartId, 201L, 301L, new BigDecimal("3"))));
+        if (auto) {
+            when(stockMoveService.hasApprovedTransferOutBySource(
+                    ErpSaleBizSourceTypeEnum.CART.getType(), cartId)).thenReturn(true);
+        }
+        // 用独立 H2 表承接各阶段写入，验证真实 Spring 事务边界；业务字段映射另有服务用例。
+        EmbeddedDatabase database = new EmbeddedDatabaseBuilder().generateUniqueName(true)
+                .setType(EmbeddedDatabaseType.H2).build();
+        try {
+            JdbcTemplate jdbc = new JdbcTemplate(database);
+            jdbc.execute("CREATE TABLE freight_stages (stage VARCHAR(30) PRIMARY KEY, status INT)");
+            jdbc.update("INSERT INTO freight_stages VALUES ('cart', ?)", cart.getStatus());
+            when(saleCartMapper.updateByIdAndStatus(eq(cartId), any(), any())).thenAnswer(invocation -> {
+                ErpSaleCartDO update = invocation.getArgument(2);
+                return jdbc.update("UPDATE freight_stages SET status = ? WHERE stage = 'cart' AND status = ?",
+                        update.getStatus(), invocation.<Integer>getArgument(1));
+            });
+            when(saleOutService.createGeneratedSaleOut(any(), any(), any(), any(), anyBoolean())).thenAnswer(invocation -> {
+                jdbc.update("INSERT INTO freight_stages VALUES ('sale', 20)");
+                return 900L;
+            });
+            when(receivableOtherService.createFromSaleCartFreight(any())).thenAnswer(invocation -> {
+                jdbc.update("INSERT INTO freight_stages VALUES ('receivable', 20)");
+                if ("receivable".equals(failureAt)) {
+                    throw new IllegalStateException("auto approval failed");
+                }
+                return 901L;
+            });
+            lenient().when(payableExpenseService.createDraftFromSaleCartFreight(any())).thenAnswer(invocation -> {
+                jdbc.update("INSERT INTO freight_stages VALUES ('expense', 0)");
+                if ("expense".equals(failureAt)) {
+                    throw new IllegalStateException("expense creation failed");
+                }
+                return 902L;
+            });
+            ProxyFactory factory = new ProxyFactory(saleCartService);
+            factory.addAdvice(new TransactionInterceptor(new DataSourceTransactionManager(database),
+                    new AnnotationTransactionAttributeSource()));
+            ErpSaleCartService transactionalService = (ErpSaleCartService) factory.getProxy();
+            org.junit.jupiter.api.function.Executable approve = () -> {
+                if (auto) {
+                    transactionalService.autoFinalApproveAfterTransferOut(cartId, 900L);
+                } else {
+                    transactionalService.finalApproveSaleCart(cartId);
+                }
+            };
+            if ("success".equals(failureAt)) {
+                org.junit.jupiter.api.Assertions.assertDoesNotThrow(approve);
+                assertEquals(4, jdbc.queryForObject("SELECT COUNT(*) FROM freight_stages", Integer.class));
+                assertEquals(ErpSaleCartStatusEnum.GENERATED_SALE_OUT.getStatus(),
+                        jdbc.queryForObject("SELECT status FROM freight_stages WHERE stage = 'cart'", Integer.class));
+            } else {
+                assertThrows(IllegalStateException.class, approve);
+                assertEquals(1, jdbc.queryForObject("SELECT COUNT(*) FROM freight_stages", Integer.class));
+                assertEquals(cart.getStatus(),
+                        jdbc.queryForObject("SELECT status FROM freight_stages WHERE stage = 'cart'", Integer.class));
+                if ("receivable".equals(failureAt)) {
+                    verify(payableExpenseService, never()).createDraftFromSaleCartFreight(any());
+                }
+            }
+        } finally {
+            database.shutdown();
+        }
     }
 
     @Test
@@ -1292,7 +1444,7 @@ public class ErpSaleCartServiceImplTest extends BaseMockitoUnitTest {
                     && Long.valueOf(9999L).equals(req.getItems().get(0).getToWarehouseId())
                     && item.getProductId().equals(req.getItems().get(0).getProductId());
         }));
-        verify(salePickDeliveryService).generateForSaleCartTransferOuts(cartId);
+        verify(salePickDeliveryService).generateForSaleCart(cartId);
     }
 
     @Test
@@ -1321,7 +1473,7 @@ public class ErpSaleCartServiceImplTest extends BaseMockitoUnitTest {
                         && crossDeptItem.getProductId().equals(reqs.get(0).getItems().get(0).getProductId())
                         && crossDeptItem.getWarehouseId().equals(reqs.get(0).getItems().get(0).getFromWarehouseId())
                         && Long.valueOf(1010L).equals(reqs.get(0).getItems().get(0).getToWarehouseId())));
-        verify(salePickDeliveryService).generateForSaleCartTransferOuts(cartId);
+        verify(salePickDeliveryService).generateForSaleCart(cartId);
     }
 
     @Test
@@ -2208,13 +2360,13 @@ public class ErpSaleCartServiceImplTest extends BaseMockitoUnitTest {
         ErpSaleCartDO cart = buildFinalApproveCart(cartId, ErpSaleCartStatusEnum.FIRST_APPROVE.getStatus());
         ErpSaleCartItemDO item = buildCartItem(cartId, 201L, 401L, new BigDecimal("3"));
         mockCrossDeptFinalApproveContext(cart, item);
-        when(saleCartMapper.selectByIdForUpdate(eq(cartId))).thenAnswer(invocation -> {
+        doAnswer(invocation -> {
             assertNotNull(DataPermissionContextHolder.get());
             assertFalse(DataPermissionContextHolder.get().enable());
             assertEquals(Long.valueOf(1L), TenantContextHolder.getTenantId());
             assertFalse(TenantContextHolder.isIgnore());
             return cart;
-        });
+        }).when(saleCartMapper).selectByIdForUpdate(eq(cartId));
         when(stockMoveService.hasUnapprovedTransferOutBySource(
                 ErpSaleBizSourceTypeEnum.CART.getType(), cartId)).thenReturn(false);
         when(stockMoveService.hasApprovedTransferOutBySource(
@@ -2237,6 +2389,35 @@ public class ErpSaleCartServiceImplTest extends BaseMockitoUnitTest {
         verify(saleCartMapper).updateByIdAndStatus(eq(cartId),
                 eq(ErpSaleCartStatusEnum.FINAL_APPROVE.getStatus()),
                 argThat(update -> Long.valueOf(900L).equals(update.getFinalAuditUserId())));
+    }
+
+    @Test
+    public void testAutoFinalApproveAfterDelivery_done_finalApprovesWithDeliveryUser() {
+        Long cartId = 281L;
+        Long deliveryUserId = 901L;
+        ErpSaleCartDO cart = buildFinalApproveCart(cartId, ErpSaleCartStatusEnum.FIRST_APPROVE.getStatus())
+                .setDeptId(10L);
+        ErpSaleCartItemDO item = buildCartItem(cartId, 201L, 401L, new BigDecimal("3"))
+                .setDeptId(10L);
+        when(saleCartMapper.selectById(eq(cartId))).thenReturn(cart);
+        when(saleCartItemMapper.selectListByCartId(eq(cartId))).thenReturn(Collections.singletonList(item));
+        when(salePickDeliveryService.getSummaryBySaleCartId(cartId)).thenReturn(
+                new ErpSalePickDeliverySummaryRespVO().setOrderId(880L)
+                        .setDeliveryStatus(ErpSaleDeliveryStatusEnum.DONE.getStatus()));
+        when(stockService.getStock(eq(item.getProductId()), eq(item.getWarehouseId())))
+                .thenReturn(new ErpStockDO().setCount(new BigDecimal("100")));
+        lenient().when(warehouseService.getWarehouseMap(anyCollection())).thenReturn(Collections.singletonMap(
+                item.getWarehouseId(), new ErpWarehouseDO().setId(item.getWarehouseId())
+                        .setDeptId(cart.getDeptId()).setStockBillEnabled(false)));
+        when(saleOutService.createGeneratedSaleOut(any(), any(), any(), any(), anyBoolean())).thenReturn(3003L);
+
+        saleCartService.autoFinalApproveAfterDelivery(cartId, deliveryUserId);
+
+        verify(saleOutService).createGeneratedSaleOut(any(), eq(ErpSaleBizSourceTypeEnum.CART.getType()),
+                eq(cartId), eq(cart.getNo()), eq(false));
+        verify(saleCartMapper).updateByIdAndStatus(eq(cartId),
+                eq(ErpSaleCartStatusEnum.FINAL_APPROVE.getStatus()),
+                argThat(update -> deliveryUserId.equals(update.getFinalAuditUserId())));
     }
 
     @Test

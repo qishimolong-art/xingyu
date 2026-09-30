@@ -21,6 +21,10 @@ import java.util.List;
 @Mapper
 public interface ErpWarehouseMapper extends BaseMapperX<ErpWarehouseDO> {
 
+    // Permission calculation needs only identity and ownership, not mutable business columns.
+    @org.apache.ibatis.annotations.Select("SELECT id, dept_id FROM erp_warehouse WHERE status=0 AND deleted=0")
+    List<ErpWarehouseDO> selectEnabledPermissionScopeRows();
+
     default PageResult<ErpWarehouseDO> selectPage(ErpWarehousePageReqVO reqVO) {
         LambdaQueryWrapperX<ErpWarehouseDO> wrapper = new LambdaQueryWrapperX<ErpWarehouseDO>()
                 .likeIfPresent(ErpWarehouseDO::getName, reqVO.getName())
@@ -155,6 +159,13 @@ public interface ErpWarehouseMapper extends BaseMapperX<ErpWarehouseDO> {
     default List<ErpWarehouseDO> selectListByNameAndDeptIdAndStatus(String name, Long deptId, Integer status) {
         return selectList(new LambdaQueryWrapperX<ErpWarehouseDO>()
                 .eq(ErpWarehouseDO::getName, name)
+                .eq(ErpWarehouseDO::getDeptId, deptId)
+                .eq(ErpWarehouseDO::getStatus, status));
+    }
+
+    default List<ErpWarehouseDO> selectDirectListByDeptIdAndStatus(Long deptId, Integer status) {
+        return selectList(new LambdaQueryWrapperX<ErpWarehouseDO>()
+                .eq(ErpWarehouseDO::getDirectWarehouse, true)
                 .eq(ErpWarehouseDO::getDeptId, deptId)
                 .eq(ErpWarehouseDO::getStatus, status));
     }

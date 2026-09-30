@@ -666,10 +666,10 @@ public class ErpPrintServiceImpl implements ErpPrintService {
 
     private void enrichSaleOutOperatorPrintData(Map<String, Object> documentMap, Map<String, Object> mainMap,
                                                 ErpSaleOutDO saleOut) {
-        Long auditorId = saleOut.getAuditorId();
-        AdminUserRespDTO auditor = auditorId == null ? null : adminUserApi.getUser(auditorId);
-        putDocumentField(documentMap, mainMap, "checkerName",
-                firstNonBlank(saleOut.getSenderName(), auditor == null ? null : auditor.getNickname()));
+        String senderName = salePickDeliveryService.getSaleOutDeliveryUserNames(saleOut.getId());
+        putDocumentField(documentMap, mainMap, "senderName", senderName);
+        // 旧模板继续识别 checkerName，但人员来源统一为送货记录。
+        putDocumentField(documentMap, mainMap, "checkerName", senderName);
         putDocumentField(documentMap, mainMap, "pickerName", collectSaleOutPickerNames(saleOut.getId()));
     }
 
@@ -943,6 +943,12 @@ public class ErpPrintServiceImpl implements ErpPrintService {
         for (FieldDefinitionRespDTO definition : permissionApi.getFieldDefinitions(module.getFieldModuleKey())) {
             ErpPrintFieldRespVO.Field field = buildField(module, definition);
             if (field == null) {
+                continue;
+            }
+            if (module == ErpPrintModuleEnum.SALE_OUT
+                    && ("senderName".equals(definition.getFieldKey())
+                    || "checkerName".equals(definition.getFieldKey()))) {
+                addFieldIfAbsent(mainFields, "发货人", "document.senderName", field.getSource());
                 continue;
             }
             if (definition.getFieldKey() != null && definition.getFieldKey().startsWith("item_")) {

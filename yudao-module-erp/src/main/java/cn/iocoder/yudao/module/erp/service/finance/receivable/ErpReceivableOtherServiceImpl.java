@@ -135,7 +135,7 @@ public class ErpReceivableOtherServiceImpl implements ErpReceivableOtherService 
         }
         ErpReceivableOtherDO doObj = new ErpReceivableOtherDO()
                 .setNo(no)
-                .setStatus(ErpAuditStatus.PROCESS.getStatus())
+                .setStatus(ErpAuditStatus.APPROVE.getStatus())
                 .setBizTime(createReqBO.getBizTime())
                 .setCustomerId(createReqBO.getCustomerId())
                 .setSettledAmount(BigDecimal.ZERO)
@@ -151,7 +151,12 @@ public class ErpReceivableOtherServiceImpl implements ErpReceivableOtherService 
                 .setRemark("销售手推车终审自动生成，来源单号：" + createReqBO.getCartNo());
         normalize(doObj);
         receivableOtherMapper.insert(doObj);
-        operateLogService.recordCreate(ERP_RECEIVABLE_OTHER_TYPE, doObj.getId(), doObj.getNo());
+        // 完整快照日志不受表单日志切面的简版日志抑制影响，保留创建与自动审核两条记录。
+        ErpReceivableOtherDO beforeApprove = BeanUtils.toBean(doObj, ErpReceivableOtherDO.class)
+                .setStatus(ErpAuditStatus.PROCESS.getStatus());
+        operateLogService.recordCreate(ERP_RECEIVABLE_OTHER_TYPE, doObj.getId(), beforeApprove, doObj.getNo());
+        operateLogService.recordStatus(ERP_RECEIVABLE_OTHER_TYPE, doObj.getId(), beforeApprove, doObj,
+                doObj.getNo(), true);
         return doObj.getId();
     }
 

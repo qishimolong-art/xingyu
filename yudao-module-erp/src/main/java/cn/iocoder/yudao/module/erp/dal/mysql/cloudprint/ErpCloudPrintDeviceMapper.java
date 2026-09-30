@@ -11,6 +11,8 @@ import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import org.apache.ibatis.annotations.Mapper;
 import org.springframework.util.StringUtils;
 
+import java.util.List;
+
 @Mapper
 public interface ErpCloudPrintDeviceMapper extends BaseMapperX<ErpCloudPrintDeviceDO> {
 
@@ -45,6 +47,10 @@ public interface ErpCloudPrintDeviceMapper extends BaseMapperX<ErpCloudPrintDevi
         return selectOne(ErpCloudPrintDeviceDO::getDevid, devid);
     }
 
+    default List<ErpCloudPrintDeviceDO> selectListByDevid(String devid) {
+        return selectList(ErpCloudPrintDeviceDO::getDevid, devid);
+    }
+
     default void clearDefaulted(Long excludeId) {
         LambdaUpdateWrapper<ErpCloudPrintDeviceDO> wrapper = new LambdaUpdateWrapper<ErpCloudPrintDeviceDO>()
                 .set(ErpCloudPrintDeviceDO::getDefaulted, false)
@@ -53,6 +59,22 @@ public interface ErpCloudPrintDeviceMapper extends BaseMapperX<ErpCloudPrintDevi
             wrapper.ne(ErpCloudPrintDeviceDO::getId, excludeId);
         }
         update(null, wrapper);
+    }
+
+    default void pauseQueue(Long id, String reason, Long taskId) {
+        update(null, new LambdaUpdateWrapper<ErpCloudPrintDeviceDO>()
+                .set(ErpCloudPrintDeviceDO::getQueuePaused, true)
+                .set(ErpCloudPrintDeviceDO::getQueuePauseReason, reason)
+                .set(ErpCloudPrintDeviceDO::getQueuePauseTaskId, taskId)
+                .eq(ErpCloudPrintDeviceDO::getId, id));
+    }
+
+    default void resumeQueue(Long id) {
+        update(null, new LambdaUpdateWrapper<ErpCloudPrintDeviceDO>()
+                .set(ErpCloudPrintDeviceDO::getQueuePaused, false)
+                .set(ErpCloudPrintDeviceDO::getQueuePauseReason, null)
+                .set(ErpCloudPrintDeviceDO::getQueuePauseTaskId, null)
+                .eq(ErpCloudPrintDeviceDO::getId, id));
     }
 
 }

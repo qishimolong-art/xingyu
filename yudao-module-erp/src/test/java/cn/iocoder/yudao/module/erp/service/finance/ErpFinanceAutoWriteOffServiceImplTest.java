@@ -108,6 +108,42 @@ class ErpFinanceAutoWriteOffServiceImplTest extends BaseMockitoUnitTest {
         lenient().when(payableMiscMapper.selectList(any())).thenReturn(Collections.emptyList());
     }
 
+
+    @Test
+    void autoReceiptMisc_preservesPendingTransferReservation() {
+        when(receiptMapper.selectByIdForUpdate(100L)).thenReturn(new ErpFinanceReceiptDO()
+                .setId(100L).setStatus(20).setCustomerId(1L).setDeptId(2L).setTotalPrice(new BigDecimal("1000")));
+        cn.iocoder.yudao.module.erp.dal.dataobject.finance.receivable.ErpReceivableMiscDO source =
+                new cn.iocoder.yudao.module.erp.dal.dataobject.finance.receivable.ErpReceivableMiscDO()
+                        .setId(200L).setStatus(20).setCustomerId(1L).setDeptId(2L).setAmount(new BigDecimal("1000"));
+        when(receivableMiscMapper.selectList(any())).thenReturn(Collections.singletonList(source));
+        when(receivableMiscMapper.selectOne(any())).thenReturn(source);
+        when(receivableMiscMapper.selectOccupiedAmounts(any(), any())).thenReturn(Collections.singletonMap(200L, new BigDecimal("300")));
+        when(receivableMiscMapper.selectPendingTransferAmount(200L, null)).thenReturn(new BigDecimal("300"));
+        when(receiptItemMapper.selectReceiptPriceSumByBizIdAndBizType(200L,
+                ErpBizTypeEnum.RECEIVABLE_MISC.getType())).thenReturn(BigDecimal.ZERO);
+        autoWriteOffService.autoWriteOffReceipt(100L, 1L);
+        verify(receiptItemMapper).insertBatch(org.mockito.ArgumentMatchers.argThat(items ->
+                items.size() == 1 && items.iterator().next().getReceiptPrice().compareTo(new BigDecimal("700")) == 0));
+    }
+
+    @Test
+    void autoPaymentMisc_preservesPendingTransferReservation() {
+        when(paymentMapper.selectByIdForUpdate(100L)).thenReturn(new ErpFinancePaymentDO()
+                .setId(100L).setStatus(20).setSupplierId(1L).setDeptId(2L).setTotalPrice(new BigDecimal("1000")));
+        cn.iocoder.yudao.module.erp.dal.dataobject.finance.payable.ErpPayableMiscDO source =
+                new cn.iocoder.yudao.module.erp.dal.dataobject.finance.payable.ErpPayableMiscDO()
+                        .setId(200L).setStatus(20).setSupplierId(1L).setDeptId(2L).setAmount(new BigDecimal("1000"));
+        when(payableMiscMapper.selectList(any())).thenReturn(Collections.singletonList(source));
+        when(payableMiscMapper.selectOne(any())).thenReturn(source);
+        when(payableMiscMapper.selectOccupiedAmounts(any(), any())).thenReturn(Collections.singletonMap(200L, new BigDecimal("300")));
+        when(payableMiscMapper.selectPendingTransferAmount(200L, null)).thenReturn(new BigDecimal("300"));
+        when(paymentItemMapper.selectPaymentPriceSumByBizIdAndBizType(200L,
+                ErpBizTypeEnum.PAYABLE_MISC.getType())).thenReturn(BigDecimal.ZERO);
+        autoWriteOffService.autoWriteOffPayment(100L, 1L);
+        verify(paymentItemMapper).insertBatch(org.mockito.ArgumentMatchers.argThat(items ->
+                items.size() == 1 && items.iterator().next().getPaymentPrice().compareTo(new BigDecimal("700")) == 0));
+    }
     @Test
     void autoWriteOffReceipt_disabledDepartmentDoesNotGenerateItems() {
         when(receiptMapper.selectByIdForUpdate(100L)).thenReturn(createReceipt("100"));

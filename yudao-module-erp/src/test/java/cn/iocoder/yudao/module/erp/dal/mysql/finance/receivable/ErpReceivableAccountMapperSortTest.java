@@ -69,8 +69,8 @@ class ErpReceivableAccountMapperSortTest {
     void selectList_showsNegatedMiscReceivableWithoutPuttingItInReceivableAccountBalance() {
         String script = getSelectListScript();
 
-        assertTrue(script.contains("FROM erp_receivable_misc rm_key"));
-        assertTrue(script.contains("FROM erp_receivable_misc rm"));
+        assertTrue(script.contains("FROM " + cn.iocoder.yudao.module.erp.dal.mysql.finance.ErpMiscSettlementSql.RECEIVABLE_LEDGER + " rm_key"));
+        assertTrue(script.contains("FROM " + cn.iocoder.yudao.module.erp.dal.mysql.finance.ErpMiscSettlementSql.RECEIVABLE_LEDGER + " rm"));
         assertTrue(script.contains("-SUM(rm.amount) AS miscReceivableAmount"));
         assertTrue(script.contains("IFNULL(rm.miscReceivableAmount, 0) AS miscReceivableAmount"));
         assertFalse(script.contains("+ IFNULL(rm.miscReceivableAmount, 0)"));

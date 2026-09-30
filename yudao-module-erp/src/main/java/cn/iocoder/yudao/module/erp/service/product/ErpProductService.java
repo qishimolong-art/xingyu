@@ -211,6 +211,13 @@ public interface ErpProductService {
                                                   boolean includeProductPricePermission);
 
     /**
+     * 当前登录用户是否拥有至少一种配件档案可见范围。
+     *
+     * <p>该范围与配件信息页面保持一致，包含部门、本人、授权仓库以及销售分配仓库。</p>
+     */
+    boolean hasCurrentUserProductArchiveVisibleScope();
+
+    /**
      * 基于产品分类编号，获得产品数量
      *
      * @param categoryId 产品分类编号

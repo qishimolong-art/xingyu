@@ -177,6 +177,7 @@ class ErpPrintServiceImplTest extends BaseMockitoUnitTest {
                 definition("billerName", "开单员", 46),
                 definition("pickerName", "拣货人", 47),
                 definition("checkerName", "验货人", 48),
+                definition("senderName", "发货人", 49),
                 definition("creatorName", "制单人", 900)));
 
         ErpPrintFieldRespVO result = printService.getFields("sale_out");
@@ -197,7 +198,9 @@ class ErpPrintServiceImplTest extends BaseMockitoUnitTest {
         assertEquals("items.seq", fieldCode(result, "序号"));
         assertEquals("creator.nickname", fieldCode(result, "开单员"));
         assertEquals("document.pickerName", fieldCode(result, "拣货人"));
-        assertEquals("document.checkerName", fieldCode(result, "发货人"));
+        assertEquals("document.senderName", fieldCode(result, "发货人"));
+        assertEquals(1, result.getGroups().stream().flatMap(group -> group.getFields().stream())
+                .filter(field -> "发货人".equals(field.getName())).count());
         assertEquals("creator.nickname", fieldCode(result, "制单人"));
     }
 
@@ -399,7 +402,7 @@ class ErpPrintServiceImplTest extends BaseMockitoUnitTest {
                 new ErpStockOutBillDO().setPick("李四")));
         when(saleQuoteService.getSaleQuote(sourceId)).thenReturn(quote);
         when(adminUserApi.getUser(sourceCreatorId)).thenReturn(sourceCreator);
-        when(adminUserApi.getUser(auditorId)).thenReturn(auditor);
+        when(salePickDeliveryService.getSaleOutDeliveryUserNames(businessId)).thenReturn("送货员甲、送货员乙");
 
         Map<String, Object> result = printService.getPrintData("sale_out", businessId);
 
@@ -417,7 +420,8 @@ class ErpPrintServiceImplTest extends BaseMockitoUnitTest {
         assertEquals("250", document.get("previousReceivable"));
         assertEquals("350", document.get("totalDebt"));
         assertEquals("王五、张三、李四", document.get("pickerName"));
-        assertEquals("发货员A", document.get("checkerName"));
+        assertEquals("送货员甲、送货员乙", document.get("checkerName"));
+        assertEquals("送货员甲、送货员乙", document.get("senderName"));
         assertEquals("2026-09-03", document.get("sourceCreateTime"));
         assertEquals("来源制单人", document.get("sourceCreatorName"));
         assertEquals("到付", document.get("freightType"));
@@ -432,7 +436,8 @@ class ErpPrintServiceImplTest extends BaseMockitoUnitTest {
         assertEquals("250", main.get("document.previousReceivable"));
         assertEquals("350", main.get("document.totalDebt"));
         assertEquals("王五、张三、李四", main.get("document.pickerName"));
-        assertEquals("发货员A", main.get("document.checkerName"));
+        assertEquals("送货员甲、送货员乙", main.get("document.checkerName"));
+        assertEquals("送货员甲、送货员乙", main.get("document.senderName"));
         assertEquals("来源制单人", main.get("document.sourceCreatorName"));
         List<Map<String, Object>> items = (List<Map<String, Object>>) result.get("items");
         assertEquals(2, items.size());
@@ -441,6 +446,11 @@ class ErpPrintServiceImplTest extends BaseMockitoUnitTest {
         verify(saleOutService).getSaleOut(businessId);
         verify(saleOutService).getSaleOutItemListByOutId(businessId);
         verify(saleQuoteService).getSaleQuote(sourceId);
+        when(salePickDeliveryService.getSaleOutDeliveryUserNames(businessId)).thenReturn("");
+        Map<String, Object> emptyData = printService.getPrintData("sale_out", businessId);
+        Map<String, Object> emptyMain = (Map<String, Object>) emptyData.get("main");
+        assertEquals("", emptyMain.get("document.senderName"));
+        assertEquals("", emptyMain.get("document.checkerName"));
     }
 
     @Test

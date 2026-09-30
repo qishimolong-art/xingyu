@@ -58,6 +58,11 @@ public class WeComClientServiceImpl implements WeComClientService {
 
     @Override
     public String getUserMobileByCode(String code, String clientKey) {
+        return getUserIdentityByCode(code, clientKey).getMobile();
+    }
+
+    @Override
+    public WeComUserIdentity getUserIdentityByCode(String code, String clientKey) {
         WeComClientConfig config = resolveConfig(clientKey);
         String accessToken = getAccessToken(config);
         WeComUserInfoRespDTO userInfo = getForObject(UriComponentsBuilder.fromHttpUrl(GET_USER_INFO_URL)
@@ -79,7 +84,13 @@ public class WeComClientServiceImpl implements WeComClientService {
                 .encode(StandardCharsets.UTF_8)
                 .toUri(), new WeComUserDetailReqDTO(userInfo.getUserTicket()), WeComUserDetailRespDTO.class,
                 "读取成员敏感信息");
-        return user.getMobile();
+        if (StrUtil.isBlank(user.getMobile())) {
+            throw exception(AUTH_WECOM_API_ERROR, "企业微信未返回成员手机号");
+        }
+        if (StrUtil.isNotBlank(user.getUserId()) && !StrUtil.equals(userInfo.getUserId(), user.getUserId())) {
+            throw exception(AUTH_WECOM_API_ERROR, "企业微信成员身份不一致");
+        }
+        return new WeComUserIdentity(userInfo.getUserId(), user.getMobile());
     }
 
     private String getAccessToken(WeComClientConfig config) {

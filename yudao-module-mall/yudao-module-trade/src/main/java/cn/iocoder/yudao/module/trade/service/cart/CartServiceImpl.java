@@ -13,7 +13,9 @@ import cn.iocoder.yudao.module.trade.controller.app.cart.vo.*;
 import cn.iocoder.yudao.module.trade.convert.cart.TradeCartConvert;
 import cn.iocoder.yudao.module.trade.dal.dataobject.cart.CartDO;
 import cn.iocoder.yudao.module.trade.dal.mysql.cart.CartMapper;
+import cn.iocoder.yudao.module.trade.framework.order.config.TradeOrderProperties;
 import org.springframework.stereotype.Service;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.validation.annotation.Validated;
 
@@ -50,10 +52,15 @@ public class CartServiceImpl implements CartService {
     private ErpMallStockService mallStockService;
     @Resource
     private ErpCustomerMemberApi customerMemberApi;
+    @Resource
+    private TradeOrderProperties tradeOrderProperties;
 
     @Override
     public Long addCart(Long userId, AppCartAddReqVO addReqVO) {
         CartScope scope = validateCartScope(userId, addReqVO.getDeptId());
+        if (isAutoWarehouseEnabled()) {
+            return addAutoWarehouseCart(userId, scope, addReqVO);
+        }
         // 查询 TradeCartDO
         if (addReqVO.getStockId() == null) {
             throw exception(CART_STOCK_REQUIRED);
@@ -94,7 +101,9 @@ public class CartServiceImpl implements CartService {
         }
         // 校验商品 SKU
         checkProductSku(cart.getSkuId());
-        mallStockService.validateMallStock(cart.getSpuId(), cart.getSkuId(), cart.getStockId(), updateReqVO.getCount());
+        if (!isAutoWarehouseEnabled()) {
+            mallStockService.validateMallStock(cart.getSpuId(), cart.getSkuId(), cart.getStockId(), updateReqVO.getCount());
+        }
 
         // 更新数量
         cartMapper.updateById(new CartDO().setId(cart.getId())
@@ -118,6 +127,23 @@ public class CartServiceImpl implements CartService {
             throw exception(CARD_ITEM_NOT_FOUND);
         }
         cartMapper.deleteById(oldCart.getId());
+
+        if (isAutoWarehouseEnabled()) {
+            ProductSkuRespDTO sku = checkProductSku(resetReqVO.getSkuId());
+            CartDO sameSkuCart = cartMapper.selectByScopeAndSkuId(userId, scope.customerId(), scope.deptId(),
+                    resetReqVO.getSkuId());
+            if (sameSkuCart != null) {
+                cartMapper.incrementCountByScopeAndSku(userId, scope.customerId(), scope.deptId(),
+                        resetReqVO.getSkuId(), resetReqVO.getCount());
+            } else {
+                CartDO newCart = new CartDO().setUserId(userId).setCustomerId(scope.customerId())
+                        .setDeptId(scope.deptId()).setSelected(true).setSpuId(sku.getSpuId())
+                        .setSkuId(sku.getId()).setCount(resetReqVO.getCount())
+                        .setStockId(null).setErpProductId(null).setWarehouseId(null);
+                cartMapper.insert(newCart);
+            }
+            return;
+        }
 
         // 第二步：添加新的购物项
         if (resetReqVO.getStockId() == null) {
@@ -188,15 +214,16 @@ public class CartServiceImpl implements CartService {
         // 查询 SPU、SKU 列表
         List<ProductSpuRespDTO> spus = productSpuApi.getSpuList(convertSet(carts, CartDO::getSpuId));
         List<ProductSkuRespDTO> skus = productSkuApi.getSkuList(convertSet(carts, CartDO::getSkuId));
-        Map<Long, ErpMallStockOptionBO> stockOptionMap = mallStockService.getMallStockOptionMap(
-                convertSet(carts, CartDO::getStockId));
+        Map<Long, ErpMallStockOptionBO> stockOptionMap = isAutoWarehouseEnabled()
+                ? Collections.emptyMap()
+                : mallStockService.getMallStockOptionMap(convertSet(carts, CartDO::getStockId));
 
         // 如果 SPU 被删除，则删除购物车对应的商品。延迟删除
         // 为什么不是 SKU 被删除呢？因为 SKU 被删除时，还可以通过 SPU 选择其它 SKU
         deleteCartIfSpuDeleted(carts, spus);
 
         // 拼接数据
-        return TradeCartConvert.INSTANCE.convertList(carts, spus, skus, stockOptionMap)
+        return TradeCartConvert.INSTANCE.convertList(carts, spus, skus, stockOptionMap, isAutoWarehouseEnabled())
                 .setAuthorized(true)
                 .setPriceVisible(scope.priceVisible())
                 .setOrderEnabled(scope.orderEnabled());
@@ -299,6 +326,39 @@ public class CartServiceImpl implements CartService {
             throw exception(SKU_NOT_EXISTS);
         }
         return sku;
+    }
+
+    private Long addAutoWarehouseCart(Long userId, CartScope scope, AppCartAddReqVO addReqVO) {
+        ProductSkuRespDTO sku = checkProductSku(addReqVO.getSkuId());
+        CartDO cart = cartMapper.selectByScopeAndSkuId(userId, scope.customerId(), scope.deptId(), sku.getId());
+        if (cart != null) {
+            cartMapper.incrementCountByScopeAndSku(userId, scope.customerId(), scope.deptId(), sku.getId(),
+                    addReqVO.getCount());
+            return cart.getId();
+        }
+        cart = new CartDO().setUserId(userId).setCustomerId(scope.customerId()).setDeptId(scope.deptId())
+                .setSelected(true).setSpuId(sku.getSpuId()).setSkuId(sku.getId()).setCount(addReqVO.getCount());
+        try {
+            cartMapper.insert(cart);
+        } catch (DuplicateKeyException ex) {
+            // 并发首次加购时由活动购物车唯一索引兜底，再原子累加到已插入记录。
+            int updated = cartMapper.incrementCountByScopeAndSku(userId, scope.customerId(), scope.deptId(),
+                    sku.getId(), addReqVO.getCount());
+            if (updated == 0) {
+                throw ex;
+            }
+            CartDO concurrentCart = cartMapper.selectByScopeAndSkuId(userId, scope.customerId(), scope.deptId(),
+                    sku.getId());
+            if (concurrentCart == null) {
+                throw ex;
+            }
+            return concurrentCart.getId();
+        }
+        return cart.getId();
+    }
+
+    private boolean isAutoWarehouseEnabled() {
+        return Boolean.TRUE.equals(tradeOrderProperties.getAddressAutoWarehouseEnabled());
     }
 
 }

@@ -20,6 +20,8 @@ import lombok.SneakyThrows;
 import org.springframework.stereotype.Service;
 
 import javax.annotation.Resource;
+import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 
 import static cn.hutool.core.date.DatePattern.PURE_DATE_PATTERN;
@@ -201,6 +203,17 @@ public class FileServiceImpl implements FileService {
         FileClient client = fileConfigService.getFileClient(configId);
         Assert.notNull(client, "客户端({}) 不能为空", configId);
         return client.getContent(path);
+    }
+
+    @Override
+    public byte[] getFileContent(String url) throws Exception {
+        String normalizedUrl = HttpUtils.removeUrlQuery(url);
+        FileDO file = fileMapper.selectLatestByUrls(StrUtil.equals(url, normalizedUrl)
+                ? Collections.singletonList(url) : Arrays.asList(url, normalizedUrl));
+        if (file == null) {
+            throw exception(FILE_NOT_EXISTS);
+        }
+        return getFileContent(file.getConfigId(), file.getPath());
     }
 
 }

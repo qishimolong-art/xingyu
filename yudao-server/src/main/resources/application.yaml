@@ -361,6 +361,7 @@ yudao:
       receive-expire-time: 14d # 收货的过期时间
       comment-expire-time: 7d # 评论的过期时间
       status-sync-to-wxa-enable: true # 是否同步订单状态到微信小程序
+      address-auto-warehouse-enabled: false # 正式启用前保持关闭，仓库坐标核对完成后再开启
     express:
       client: kd_100
       kd-niao:
@@ -375,3 +376,44 @@ yudao:
       type: redis # 消息总线的类型
 
 debug: false
+
+# 智能问数：八项核验指标与五个受控逻辑数据集作为公共发布基线。
+erp:
+  assistant:
+    enabled: true
+    base-url: https://api.deepseek.com
+    model: deepseek-flash
+    api-key: 'sk-3247ff115bed4c80a1d0ee4c7a0fc5b6' # 待客户提供；仅服务端保存，不写入知识库或日志
+    model-timeout-seconds: 20
+    conversation-days: 30
+    audit-days: 90
+    published-metrics:
+      - SALE
+      - PURCHASE
+      - STOCK
+      - STOCK_SKU
+      - RECEIPT
+      - PAYMENT
+      - RECEIVABLE
+      - PAYABLE
+    entity-search:
+      enabled: true
+      max-candidates: 20
+    # 新版编排、实体搜索与受控 Text-to-SQL 已完成 local/dev 验收，公共配置统一启用。
+    orchestration:
+      mode: NEW
+      gray-user-ids: []
+      max-tool-rounds: 5
+      text-to-sql-enabled: true
+      # 仅发布已经完成结构、权限和业务对账的逻辑数据集。
+      published-datasets:
+        - purchase_orders
+        - sale_orders
+        - sale_order_items
+        - inventory_current
+        - stock_movements
+    # 独立只读业务连接；未配置时禁止回退到 ERP 主数据源。
+    read-only:
+      url: "jdbc:mysql://47.108.161.110:3306/ruoyi-vue-pro?useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&nullCatalogMeansCurrent=true&rewriteBatchedStatements=true"
+      username: "select_only"
+      password: "123*Abc*"

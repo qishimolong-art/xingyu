@@ -25,6 +25,7 @@ import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartSubm
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartUpdateBasicReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.ErpSaleUpdateRemarkReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.out.ErpSaleOutSaveReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.pickdelivery.ErpSalePickDeliverySummaryRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.move.ErpStockMoveSaveReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.product.ErpProductDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleCartDO;
@@ -49,6 +50,7 @@ import cn.iocoder.yudao.module.erp.enums.ErpAuditStatus;
 import cn.iocoder.yudao.module.erp.enums.sale.ErpSaleBizSourceTypeEnum;
 import cn.iocoder.yudao.module.erp.enums.sale.ErpSaleCartStatusEnum;
 import cn.iocoder.yudao.module.erp.enums.sale.ErpSaleConvertTypeEnum;
+import cn.iocoder.yudao.module.erp.enums.sale.ErpSaleDeliveryStatusEnum;
 import cn.iocoder.yudao.module.erp.enums.sale.ErpSaleQuoteStatusEnum;
 import cn.iocoder.yudao.module.erp.service.common.ErpImportProductResolver;
 import cn.iocoder.yudao.module.erp.service.common.ErpOperateLogService;
@@ -596,12 +598,22 @@ public class ErpSaleCartServiceImpl implements ErpSaleCartService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public List<Long> finalApproveSaleCart(Long id) {
-        return doFinalApproveSaleCart(id, SecurityFrameworkUtils.getLoginUserId());
+        return doFinalApproveSaleCart(id, SecurityFrameworkUtils.getLoginUserId(), false);
     }
 
-    private List<Long> doFinalApproveSaleCart(Long id, Long finalApproveUserId) {
+    private List<Long> doFinalApproveSaleCart(Long id, Long finalApproveUserId,
+                                              boolean fulfillmentAutoApprove) {
         ErpSaleCartDO cart = validateSaleCartForUpdate(id);
         saleDirectDeptPermissionService.validateSaleDocumentDeptAllowed(cart.getDeptId());
+        ErpSalePickDeliverySummaryRespVO fulfillment = salePickDeliveryService.getSummaryBySaleCartId(id);
+        if (fulfillment != null) {
+            if (!fulfillmentAutoApprove) {
+                throw exception(SALE_CART_FULFILLMENT_MANUAL_FINAL_FORBIDDEN);
+            }
+            if (!ErpSaleDeliveryStatusEnum.DONE.getStatus().equals(fulfillment.getDeliveryStatus())) {
+                throw exception(SALE_CART_FULFILLMENT_NOT_COMPLETED);
+            }
+        }
         Integer oldStatus = resolveFinalApproveOldStatus(cart);
         int claimCount = saleCartMapper.updateByIdAndStatus(id, oldStatus,
                 new ErpSaleCartDO().setStatus(ErpSaleCartStatusEnum.FINAL_APPROVE.getStatus()));
@@ -620,7 +632,7 @@ public class ErpSaleCartServiceImpl implements ErpSaleCartService {
                 ErpWarehouseService.SALE_CART_ALL_PRODUCT_PERMISSION);
         Long saleOutId = saleOutService.createGeneratedSaleOut(buildSaleOutReqVO(cart, finalItems),
                 ErpSaleBizSourceTypeEnum.CART.getType(), cart.getId(), cart.getNo(), false);
-        createFreightFinanceDraft(cart);
+        createFreightFinanceDocuments(cart);
         // 普通销售审核已通过 deductStock 释放本手推车锁；此处不再重复释放或扣实物。
         List<Long> saleOutIds = new ArrayList<>();
         saleOutIds.add(saleOutId);
@@ -635,7 +647,7 @@ public class ErpSaleCartServiceImpl implements ErpSaleCartService {
         return saleOutIds;
     }
 
-    private void createFreightFinanceDraft(ErpSaleCartDO cart) {
+    private void createFreightFinanceDocuments(ErpSaleCartDO cart) {
         if (!FREIGHT_TYPE_CUSTOMER_ADVANCE.equals(cart.getFreightType())
                 && !FREIGHT_TYPE_SELF_PAY.equals(cart.getFreightType())) {
             return;
@@ -655,6 +667,7 @@ public class ErpSaleCartServiceImpl implements ErpSaleCartService {
                 .setAmount(financeAmount);
         if (FREIGHT_TYPE_CUSTOMER_ADVANCE.equals(cart.getFreightType())) {
             receivableOtherService.createFromSaleCartFreight(createReqBO);
+            payableExpenseService.createDraftFromSaleCartFreight(createReqBO);
         } else {
             payableExpenseService.createFromSaleCartFreight(createReqBO);
         }
@@ -784,6 +797,7 @@ public class ErpSaleCartServiceImpl implements ErpSaleCartService {
             throw exception(SALE_CART_CANCEL_FIRST_APPROVE_FAIL);
         }
         Long cartId = cart.getId();
+        validateNoFulfillmentOrder(cartId);
         stockMoveService.deleteUnapprovedTransferOutBySource(ErpSaleBizSourceTypeEnum.CART.getType(), cartId);
         stockLockService.unlockStock(ErpSaleBizSourceTypeEnum.CART.getType(), cartId);
         int updateCount = saleCartMapper.cancelFirstApprove(cartId);
@@ -833,8 +847,38 @@ public class ErpSaleCartServiceImpl implements ErpSaleCartService {
                     id, cart.getNo());
             return;
         }
-        doFinalApproveSaleCart(id, finalApproveUserId);
+        doFinalApproveSaleCart(id, finalApproveUserId, true);
         log.info("调拨出库审批后销售手推车自动终审成功，saleCartId={}, cartNo={}, finalApproveUserId={}",
+                id, cart.getNo(), finalApproveUserId);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void autoFinalApproveAfterDelivery(Long id, Long finalApproveUserId) {
+        DataPermissionUtils.executeIgnore(() -> doAutoFinalApproveAfterDelivery(id, finalApproveUserId));
+    }
+
+    private void doAutoFinalApproveAfterDelivery(Long id, Long finalApproveUserId) {
+        ErpSaleCartDO cart = saleCartMapper.selectByIdForUpdate(id);
+        if (cart == null) {
+            log.warn("送货完成后自动终审未找到销售手推车，saleCartId={}", id);
+            return;
+        }
+        if (ErpSaleCartStatusEnum.GENERATED_SALE_OUT.getStatus().equals(cart.getStatus())) {
+            return;
+        }
+        if (!ErpSaleCartStatusEnum.FIRST_APPROVE.getStatus().equals(cart.getStatus())) {
+            log.warn("送货完成后暂不自动终审，销售手推车状态不是待终审，saleCartId={}, status={}",
+                    id, cart.getStatus());
+            return;
+        }
+        ErpSalePickDeliverySummaryRespVO fulfillment = salePickDeliveryService.getSummaryBySaleCartId(id);
+        if (fulfillment == null || !ErpSaleDeliveryStatusEnum.DONE.getStatus().equals(
+                fulfillment.getDeliveryStatus())) {
+            throw exception(SALE_CART_FULFILLMENT_NOT_COMPLETED);
+        }
+        doFinalApproveSaleCart(id, finalApproveUserId, true);
+        log.info("送货完成后销售手推车自动终审成功，saleCartId={}, cartNo={}, finalApproveUserId={}",
                 id, cart.getNo(), finalApproveUserId);
     }
 
@@ -847,6 +891,7 @@ public class ErpSaleCartServiceImpl implements ErpSaleCartService {
             throw exception(SALE_CART_REJECT_FAIL);
         }
         if (ErpSaleCartStatusEnum.FIRST_APPROVE.getStatus().equals(cart.getStatus())) {
+            validateNoFulfillmentOrder(id);
             stockMoveService.deleteUnapprovedTransferOutBySource(ErpSaleBizSourceTypeEnum.CART.getType(), id);
             stockLockService.unlockStock(ErpSaleBizSourceTypeEnum.CART.getType(), id);
         }
@@ -1162,6 +1207,7 @@ public class ErpSaleCartServiceImpl implements ErpSaleCartService {
         List<ErpSaleCartItemDO> transferItems = getCrossDeptItems(cart, items, sourceWarehouseMap);
         if (CollUtil.isEmpty(transferItems)) {
             deleteRedundantUnapprovedTransferOut(cart);
+            salePickDeliveryService.generateForSaleCart(cart.getId());
             return;
         }
         Long directWarehouseId = warehouseService.resolveDirectWarehouseId(cart.getDeptId());
@@ -1173,7 +1219,13 @@ public class ErpSaleCartServiceImpl implements ErpSaleCartService {
         deptItemMap.forEach((fromDeptId, deptItems) -> reqVOs.add(buildTransferOutDraftReqVO(
                 cart, deptItems, fromDeptId, directWarehouseId, moveTime)));
         stockMoveService.syncTransferOutDraftsBySource(reqVOs);
-        salePickDeliveryService.generateForSaleCartTransferOuts(cart.getId());
+        salePickDeliveryService.generateForSaleCart(cart.getId());
+    }
+
+    private void validateNoFulfillmentOrder(Long cartId) {
+        if (salePickDeliveryService.getSummaryBySaleCartId(cartId) != null) {
+            throw exception(SALE_CART_FULFILLMENT_ROLLBACK_FORBIDDEN);
+        }
     }
 
     private ErpStockMoveSaveReqVO buildTransferOutDraftReqVO(ErpSaleCartDO cart,

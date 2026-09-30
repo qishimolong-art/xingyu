@@ -23,6 +23,7 @@ import cn.iocoder.yudao.module.erp.dal.mysql.purchase.ErpPurchaseInItemMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.stock.ErpStockMoveItemMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.stock.ErpStockMoveMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpSaleCartMapper;
+import cn.iocoder.yudao.module.erp.dal.mysql.sale.pickdelivery.ErpSalePickDeliveryOrderMapper;
 import cn.iocoder.yudao.module.erp.service.sale.ErpSaleCartTransferLinkService;
 import cn.iocoder.yudao.module.erp.dal.redis.no.ErpNoRedisDAO;
 import cn.iocoder.yudao.module.erp.enums.ErpAuditStatus;
@@ -92,6 +93,8 @@ public class ErpStockMoveServiceImpl implements ErpStockMoveService {
     private ErpStockMoveMapper stockMoveMapper;
     @Resource
     private ErpSaleCartMapper saleCartMapper;
+    @Resource
+    private ErpSalePickDeliveryOrderMapper salePickDeliveryOrderMapper;
     @Resource
     private ErpSaleCartTransferLinkService saleCartTransferLinkService;
     @Resource
@@ -471,6 +474,11 @@ public class ErpStockMoveServiceImpl implements ErpStockMoveService {
         }
         if (!ErpAuditStatus.PROCESS.getStatus().equals(stockMove.getStatus())) {
             return ErpStockMoveOperationPermission.denied("调拨出库单已审核，不能解锁手推车");
+        }
+        if (salePickDeliveryOrderMapper.selectBySource(ErpSaleBizSourceTypeEnum.CART.getType(),
+                stockMove.getSourceId()) != null) {
+            return ErpStockMoveOperationPermission.denied(
+                    "销售手推车已生成拣货送货任务，不能解锁手推车");
         }
         return getUnlockCartCrossDeptOperationPermission(stockMove, items,
                 "销售手推车跨部门调拨出库单只能由总公司解锁");

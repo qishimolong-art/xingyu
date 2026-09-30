@@ -25,5 +25,8 @@ public class ErpCloudPrintTaskRespVO {
     private String callbackMsg;
     private LocalDateTime submitTime;
     private LocalDateTime callbackTime;
+    private Long queuePosition;
+    private String queueState;
+    private String queueMessage;
 
 }

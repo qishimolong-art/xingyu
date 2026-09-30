@@ -37,6 +37,8 @@ public class ErpSalePickDeliveryItemDO extends TenantBaseDO {
     private String productName;
     private String standard;
     private BigDecimal count;
+    private BigDecimal pickedCount;
+    private BigDecimal deliveredCount;
     private String warehousePosition;
     private Integer packageQty;
 

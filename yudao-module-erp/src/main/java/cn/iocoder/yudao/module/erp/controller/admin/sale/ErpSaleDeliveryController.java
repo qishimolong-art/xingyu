@@ -110,6 +110,15 @@ public class ErpSaleDeliveryController {
         return success(salePickDeliveryService.getDeliverySubmitPage(pageReqVO.getOrderId(), pageReqVO, true));
     }
 
+    @GetMapping("/submit-item-page")
+    @Operation(summary = "分页查看提交批次的配件数量")
+    @PreAuthorize("@ss.hasPermission('erp:sale-delivery:query')")
+    public CommonResult<PageResult<ErpSalePickDeliverySubmitItemRespVO>> getSubmitItemPage(
+            @RequestParam("parentId") Long parentId, @RequestParam("submitId") Long submitId,
+            @Valid cn.iocoder.yudao.framework.common.pojo.PageParam pageParam) {
+        return success(salePickDeliveryService.getSubmitItemPage(parentId, submitId, false, pageParam));
+    }
+
     @PostMapping("/mobile/submit")
     @Operation(summary = "移动端提交销售送货")
     @PreAuthorize("@ss.hasPermission('erp:sale-delivery:delivery')")

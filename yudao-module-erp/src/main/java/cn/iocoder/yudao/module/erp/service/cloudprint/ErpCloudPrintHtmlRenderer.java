@@ -388,7 +388,7 @@ public class ErpCloudPrintHtmlRenderer {
         List<RenderRow> headerPlans = filterRows(renderRows, false, headerRows, null, null);
         List<List<RenderRow>> detailPlansByItem = new ArrayList<>();
         for (int itemIndex = 0; itemIndex < itemCount; itemIndex++) {
-            detailPlansByItem.add(filterRows(renderRows, true, null, itemIndex, itemIndex));
+            detailPlansByItem.add(filterRows(renderRows, true, null, itemIndex, null));
         }
         int lastRenderableRow = lastRenderableSourceRow(cells);
         int topBoundary = headerRows.isEmpty() ? firstBlock.start : Collections.min(headerRows);

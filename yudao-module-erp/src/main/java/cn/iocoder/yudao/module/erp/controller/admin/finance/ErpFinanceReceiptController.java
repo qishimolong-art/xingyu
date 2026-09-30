@@ -274,6 +274,10 @@ public class ErpFinanceReceiptController {
             fillWriteOffSummary(Collections.singletonList(respVO));
         }
         fillFinanceReceiptNames(Collections.singletonList(respVO));
+        if (!fieldPermissionMasker.isFieldHidden("erp_finance_receipt", "receiptPrice")
+                && !fieldPermissionMasker.isFieldHidden("erp_finance_receivable_misc", "amount")) {
+            respVO.setSourceTransferAvailableAmount(financeReceiptService.getSourceTransferAvailableAmount(id));
+        }
         fieldPermissionMasker.maskFormWithItems("erp_finance_receipt", respVO);
         return success(respVO);
     }

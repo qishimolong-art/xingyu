@@ -304,6 +304,9 @@ ErrorCode PURCHASE_ORDER_ITEM_RETURN_FAIL_IN_EXCEED = new ErrorCode(1_030_101_00
     ErrorCode SALE_PICK_DELIVERY_WAREHOUSE_REQUIRED = new ErrorCode(1_030_208_010, "销售单明细缺少仓库，无法生成拣货单");
     ErrorCode SALE_PICK_DELIVERY_VOUCHER_FILE_EMPTY = new ErrorCode(1_030_208_011, "凭证图片不能为空");
     ErrorCode SALE_PICK_DELIVERY_VOUCHER_FILE_TYPE_INVALID = new ErrorCode(1_030_208_012, "凭证图片仅支持 jpg、jpeg、png 格式");
+    ErrorCode SALE_PICK_DELIVERY_QUANTITY_INVALID = new ErrorCode(1_030_208_014, "本次数量须为大于0且不超过剩余数量的整数，请刷新后核对");
+    ErrorCode SALE_PICK_DELIVERY_PAYLOAD_INVALID = new ErrorCode(1_030_208_015, "提交格式无效：明细不得重复，两种明细格式不能同时使用，分批提交须携带请求标识");
+    ErrorCode SALE_PICK_DELIVERY_REQUEST_CONFLICT = new ErrorCode(1_030_208_016, "请求标识已用于另一批数据，请核对提交记录后重新提交");
     ErrorCode SALE_PICK_DELIVERY_VOUCHER_FILE_SIZE_EXCEEDED = new ErrorCode(1_030_208_013, "凭证图片不能超过 5MB");
 
     // ========== ERP 销售退货（1-030-203-000） ==========
@@ -362,6 +365,8 @@ ErrorCode PURCHASE_ORDER_ITEM_RETURN_FAIL_IN_EXCEED = new ErrorCode(1_030_101_00
             "未配置启用的直发仓，无法自动生成调拨出仓单");
     ErrorCode WAREHOUSE_DIRECT_MULTIPLE = new ErrorCode(1_030_400_010,
             "存在多个可匹配的直发仓，请按销售部门保留唯一的启用直发仓");
+    ErrorCode WAREHOUSE_DIRECT_DEPT_INVALID = new ErrorCode(1_030_400_011,
+            "所属部门不存在或部门名称为空，无法自动创建直发仓");
 
     // ========== ERP 其它入库单 1-030-401-000 ==========
     ErrorCode STOCK_IN_NOT_EXISTS = new ErrorCode(1_030_401_000, "其它入库单不存在");
@@ -650,6 +655,14 @@ ErrorCode PURCHASE_ORDER_ITEM_RETURN_FAIL_IN_EXCEED = new ErrorCode(1_030_101_00
     ErrorCode SALE_CART_ITEM_UPDATE_NOT_EXISTS = new ErrorCode(1_030_206_034,
             "销售手推车明细不存在或不属于当前单据");
     ErrorCode SALE_CART_ITEMS_EMPTY = new ErrorCode(1_030_206_035, "销售手推车明细不能为空");
+    ErrorCode SALE_CART_FULFILLMENT_MANUAL_FINAL_FORBIDDEN = new ErrorCode(1_030_206_036,
+            "销售手推车已进入拣货送货流程，完成送货后将自动终审");
+    ErrorCode SALE_CART_FULFILLMENT_NOT_COMPLETED = new ErrorCode(1_030_206_037,
+            "销售手推车尚未完成全部送货，无法终审");
+    ErrorCode SALE_CART_FULFILLMENT_ROLLBACK_FORBIDDEN = new ErrorCode(1_030_206_038,
+            "销售手推车已生成拣货送货任务，不能撤销初审、驳回或解锁");
+    ErrorCode SALE_PICK_DELIVERY_CART_SOURCE_INVALID = new ErrorCode(1_030_208_017,
+            "销售手推车跨部门明细与调拨出库明细不一致，无法生成拣货单");
 
     // ========== ERP 销售配置 1-030-207-000 ==========
     ErrorCode SALE_CONFIG_NOT_EXISTS = new ErrorCode(1_030_207_000, "销售配置不存在");

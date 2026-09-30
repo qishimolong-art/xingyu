@@ -11,6 +11,7 @@ import cn.hutool.core.util.RandomUtil;
 import cn.hutool.core.util.StrUtil;
 import cn.hutool.extra.spring.SpringUtil;
 import cn.iocoder.yudao.framework.common.enums.UserTypeEnum;
+import cn.iocoder.yudao.framework.common.enums.CommonStatusEnum;
 import cn.iocoder.yudao.framework.common.util.json.JsonUtils;
 import cn.iocoder.yudao.framework.common.util.number.MoneyUtils;
 import cn.iocoder.yudao.module.member.api.address.MemberAddressApi;
@@ -22,6 +23,8 @@ import cn.iocoder.yudao.module.erp.api.sale.dto.ErpSaleCartDraftCreateReqDTO;
 import cn.iocoder.yudao.module.erp.api.sale.dto.ErpSaleCartDraftCreateRespDTO;
 import cn.iocoder.yudao.module.erp.enums.sale.ErpSaleBizSourceTypeEnum;
 import cn.iocoder.yudao.module.erp.service.stock.ErpMallStockService;
+import cn.iocoder.yudao.module.erp.service.stock.ErpMallAutoWarehouseService;
+import cn.iocoder.yudao.module.erp.service.stock.bo.ErpMallAutoWarehouseResultBO;
 import cn.iocoder.yudao.module.erp.service.stock.bo.ErpMallStockOptionBO;
 import cn.iocoder.yudao.module.pay.api.order.PayOrderApi;
 import cn.iocoder.yudao.module.pay.api.order.dto.PayOrderCreateReqDTO;
@@ -104,6 +107,10 @@ import static cn.iocoder.yudao.module.trade.enums.MessageTemplateConstants.WXA_O
 @Slf4j
 public class TradeOrderUpdateServiceImpl implements TradeOrderUpdateService {
 
+    static final int ERP_SALE_CART_REMARK_MAX_LENGTH = 512;
+    private static final String MALL_SALE_CART_REMARK = "小程序生成";
+    private static final String MALL_SALE_CART_CUSTOMER_REMARK_PREFIX = MALL_SALE_CART_REMARK + "；客户备注：";
+
     @Resource
     private TradeOrderMapper tradeOrderMapper;
     @Resource
@@ -120,6 +127,8 @@ public class TradeOrderUpdateServiceImpl implements TradeOrderUpdateService {
     private TradePriceService tradePriceService;
     @Resource
     private ErpMallStockService mallStockService;
+    @Resource
+    private ErpMallAutoWarehouseService autoWarehouseService;
     @Resource
     private ErpCustomerMemberApi customerMemberApi;
     @Resource
@@ -161,7 +170,28 @@ public class TradeOrderUpdateServiceImpl implements TradeOrderUpdateService {
         TradePriceCalculateRespBO calculateRespBO = calculatePrice(userId, settlementReqVO);
 
         // 3. 拼接返回
-        return TradeOrderConvert.INSTANCE.convert(calculateRespBO, address);
+        AppTradeOrderSettlementRespVO response = TradeOrderConvert.INSTANCE.convert(calculateRespBO, address);
+        if (!isAutoWarehouseEnabled()) {
+            return response;
+        }
+        // 自动分仓仅在服务端使用库存和仓库结果，不向客户端泄露或要求回传这些内部字段。
+        response.getItems().forEach(item -> item.setStockId(null).setErpProductId(null)
+                .setWarehouseId(null).setWarehouseName(null));
+        try {
+            Destination destination = resolveDestination(settlementReqVO, address);
+            if (!destination.isReady()) {
+                return response.setFulfillmentStatus(destination.status())
+                        .setFulfillmentMessage(destination.message()).setFulfillmentIssues(new ArrayList<>());
+            }
+            ErpMallAutoWarehouseResultBO allocation = allocateAndFill(settlementReqVO.getDeptId(), destination,
+                    calculateRespBO);
+            return fillFulfillmentResult(response, allocation, calculateRespBO);
+        } catch (RuntimeException ex) {
+            log.error("[settlementOrder][userId({}) 自动分仓确认失败]", userId, ex);
+            return response.setFulfillmentStatus("SERVICE_FAILURE")
+                    .setFulfillmentMessage("库存确认服务暂不可用，请重试")
+                    .setFulfillmentIssues(new ArrayList<>());
+        }
     }
 
     /**
@@ -198,10 +228,15 @@ public class TradeOrderUpdateServiceImpl implements TradeOrderUpdateService {
 
         // 2. 计算价格
         TradePriceCalculateReqBO calculateReqBO = TradeOrderConvert.INSTANCE.convert(userId, settlementReqVO, cartList);
+        if (isAutoWarehouseEnabled()) {
+            calculateReqBO.getItems().forEach(item -> item.setStockId(null));
+        }
         calculateReqBO.getItems().forEach(item -> Assert.isTrue(item.getSelected(), // 防御性编程，保证都是选中的
                 "商品({}) 未设置为选中", item.getSkuId()));
         TradePriceCalculateRespBO calculateRespBO = tradePriceService.calculateOrderPrice(calculateReqBO);
-        validateAndFillMallStock(calculateRespBO);
+        if (!isAutoWarehouseEnabled()) {
+            validateAndFillMallStock(calculateRespBO);
+        }
         return new OrderCreateContext(customerAuth, calculateRespBO);
     }
 
@@ -215,15 +250,134 @@ public class TradeOrderUpdateServiceImpl implements TradeOrderUpdateService {
         }
     }
 
+    private ErpMallAutoWarehouseResultBO allocateAndFill(Long deptId, Destination destination,
+                                                          TradePriceCalculateRespBO calculateRespBO) {
+        List<ErpMallAutoWarehouseResultBO.Item> items = new ArrayList<>();
+        for (int index = 0; index < calculateRespBO.getItems().size(); index++) {
+            TradePriceCalculateRespBO.OrderItem item = calculateRespBO.getItems().get(index);
+            items.add(new ErpMallAutoWarehouseResultBO.Item().setIndex(index).setSpuId(item.getSpuId())
+                    .setSkuId(item.getSkuId()).setCount(item.getCount()));
+        }
+        ErpMallAutoWarehouseResultBO result = autoWarehouseService.allocate(deptId,
+                destination.longitude(), destination.latitude(), items);
+        if (result.isReady()) {
+            for (ErpMallAutoWarehouseResultBO.Assignment assignment : result.getAssignments()) {
+                TradePriceCalculateRespBO.OrderItem item = calculateRespBO.getItems().get(assignment.getIndex());
+                item.setStockId(assignment.getStockId()).setErpProductId(assignment.getErpProductId())
+                        .setWarehouseId(assignment.getWarehouseId()).setWarehouseName(assignment.getWarehouseName());
+            }
+        }
+        return result;
+    }
+
+    private AppTradeOrderSettlementRespVO fillFulfillmentResult(AppTradeOrderSettlementRespVO response,
+                                                                 ErpMallAutoWarehouseResultBO allocation,
+                                                                 TradePriceCalculateRespBO calculateRespBO) {
+        response.setFulfillmentStatus(allocation.getStatus());
+        if (allocation.isReady()) {
+            return response.setFulfillmentMessage("库存确认完成").setFulfillmentIssues(new ArrayList<>());
+        }
+        List<AppTradeOrderSettlementRespVO.FulfillmentIssue> issues = new ArrayList<>();
+        for (ErpMallAutoWarehouseResultBO.Issue issue : allocation.getIssues()) {
+            TradePriceCalculateRespBO.OrderItem item = issue.getIndex() != null
+                    && issue.getIndex() >= 0 && issue.getIndex() < calculateRespBO.getItems().size()
+                    ? calculateRespBO.getItems().get(issue.getIndex()) : null;
+            issues.add(new AppTradeOrderSettlementRespVO.FulfillmentIssue()
+                    .setSkuId(issue.getSkuId()).setSpuName(item == null ? null : item.getSpuName())
+                    .setCount(issue.getCount()).setReason(issue.getReason()).setMessage(issue.getMessage()));
+        }
+        return response.setFulfillmentMessage(getFulfillmentMessage(allocation.getStatus()))
+                .setFulfillmentIssues(issues);
+    }
+
+    private String getFulfillmentMessage(String status) {
+        if (ErpMallAutoWarehouseResultBO.STATUS_STOCK_SHORTAGE.equals(status)) {
+            return "部分商品库存不足，请调整数量后重试";
+        }
+        if (ErpMallAutoWarehouseResultBO.STATUS_WAREHOUSE_LOCATION_MISSING.equals(status)) {
+            return "可售仓库尚未配置有效位置，请联系管理员";
+        }
+        if (ErpMallAutoWarehouseResultBO.STATUS_PRODUCT_NOT_MAPPED.equals(status)) {
+            return "部分商品尚未完成 ERP 产品映射，请联系管理员";
+        }
+        return "库存确认失败，请重试";
+    }
+
+    private Destination resolveDestination(AppTradeOrderSettlementReqVO reqVO, MemberAddressRespDTO address) {
+        if (Objects.equals(reqVO.getDeliveryType(), DeliveryTypeEnum.PICK_UP.getType())) {
+            DeliveryPickUpStoreDO store = reqVO.getPickUpStoreId() == null ? null
+                    : pickUpStoreService.getDeliveryPickUpStore(reqVO.getPickUpStoreId());
+            if (store == null || !Objects.equals(store.getStatus(), CommonStatusEnum.ENABLE.getStatus())) {
+                return Destination.invalid("LOCATION_REQUIRED", "请选择有效的自提门店");
+            }
+            BigDecimal longitude = store.getLongitude() == null ? null : BigDecimal.valueOf(store.getLongitude());
+            BigDecimal latitude = store.getLatitude() == null ? null : BigDecimal.valueOf(store.getLatitude());
+            if (!isValidCoordinate(longitude, latitude)) {
+                return Destination.invalid("LOCATION_REQUIRED", "自提门店缺少有效位置，请联系管理员补充");
+            }
+            return Destination.ready(longitude, latitude);
+        }
+        if (address == null) {
+            return Destination.invalid("ADDRESS_REQUIRED", "请选择收货地址");
+        }
+        if (!isValidCoordinate(address.getLongitude(), address.getLatitude())) {
+            return Destination.invalid("LOCATION_REQUIRED", "当前收货地址缺少位置，请先编辑并确认地图位置");
+        }
+        return Destination.ready(address.getLongitude(), address.getLatitude());
+    }
+
+    private boolean isValidCoordinate(BigDecimal longitude, BigDecimal latitude) {
+        if (longitude == null || latitude == null
+                || (BigDecimal.ZERO.compareTo(longitude) == 0 && BigDecimal.ZERO.compareTo(latitude) == 0)) {
+            return false;
+        }
+        return longitude.compareTo(BigDecimal.valueOf(-180)) >= 0
+                && longitude.compareTo(BigDecimal.valueOf(180)) <= 0
+                && latitude.compareTo(BigDecimal.valueOf(-90)) >= 0
+                && latitude.compareTo(BigDecimal.valueOf(90)) <= 0;
+    }
+
+    private void validateCreateAllocation(ErpMallAutoWarehouseResultBO allocation) {
+        if (allocation.isReady()) {
+            return;
+        }
+        if (ErpMallAutoWarehouseResultBO.STATUS_STOCK_SHORTAGE.equals(allocation.getStatus())) {
+            throw exception(ORDER_AUTO_WAREHOUSE_STOCK_SHORTAGE);
+        }
+        throw exception(ORDER_AUTO_WAREHOUSE_CONFIG_ERROR);
+    }
+
+    private void throwDestinationException(Destination destination) {
+        if ("ADDRESS_REQUIRED".equals(destination.status())) {
+            throw exception(ORDER_AUTO_WAREHOUSE_ADDRESS_REQUIRED);
+        }
+        throw exception(ORDER_AUTO_WAREHOUSE_LOCATION_REQUIRED);
+    }
+
+    private boolean isAutoWarehouseEnabled() {
+        return Boolean.TRUE.equals(tradeOrderProperties.getAddressAutoWarehouseEnabled());
+    }
+
     @Override
     @Transactional(rollbackFor = Exception.class)
     @TradeOrderLog(operateType = TradeOrderOperateTypeEnum.MEMBER_CREATE)
     public AppTradeOrderCreateRespVO createOrder(Long userId, AppTradeOrderCreateReqVO createReqVO) {
+        MemberAddressRespDTO address = Objects.equals(createReqVO.getDeliveryType(), DeliveryTypeEnum.EXPRESS.getType())
+                ? getAddress(userId, createReqVO.getAddressId()) : null;
+        Destination destination = isAutoWarehouseEnabled() ? resolveDestination(createReqVO, address) : null;
+        if (isAutoWarehouseEnabled() && !destination.isReady()) {
+            throwDestinationException(destination);
+        }
         // 1.1 价格计算
         OrderCreateContext orderCreateContext = calculatePriceWithCustomerAuth(userId, createReqVO);
         TradePriceCalculateRespBO calculateRespBO = orderCreateContext.getCalculateRespBO();
+        if (isAutoWarehouseEnabled()) {
+            ErpMallAutoWarehouseResultBO allocation = allocateAndFill(createReqVO.getDeptId(), destination,
+                    calculateRespBO);
+            validateCreateAllocation(allocation);
+        }
         // 1.2 构建订单
-        TradeOrderDO order = buildTradeOrder(userId, createReqVO, calculateRespBO);
+        TradeOrderDO order = buildTradeOrder(userId, createReqVO, calculateRespBO, destination);
         List<TradeOrderItemDO> orderItems = buildTradeOrderItems(order, calculateRespBO);
 
         // 2. 订单创建前的逻辑
@@ -244,7 +398,7 @@ public class TradeOrderUpdateServiceImpl implements TradeOrderUpdateService {
     }
 
     private TradeOrderDO buildTradeOrder(Long userId, AppTradeOrderCreateReqVO createReqVO,
-                                         TradePriceCalculateRespBO calculateRespBO) {
+                                         TradePriceCalculateRespBO calculateRespBO, Destination destination) {
         TradeOrderDO order = TradeOrderConvert.INSTANCE.convert(userId, createReqVO, calculateRespBO);
         order.setType(calculateRespBO.getType());
         order.setNo(tradeNoRedisDAO.generate(TradeNoRedisDAO.TRADE_ORDER_NO_PREFIX));
@@ -267,6 +421,9 @@ public class TradeOrderUpdateServiceImpl implements TradeOrderUpdateService {
         } else if (Objects.equals(createReqVO.getDeliveryType(), DeliveryTypeEnum.PICK_UP.getType())) {
             order.setReceiverName(createReqVO.getReceiverName()).setReceiverMobile(createReqVO.getReceiverMobile());
             order.setPickUpVerifyCode(RandomUtil.randomNumbers(8)); // 随机一个核销码，长度为 8 位
+        }
+        if (destination != null && destination.isReady()) {
+            order.setReceiverLongitude(destination.longitude()).setReceiverLatitude(destination.latitude());
         }
         return order;
     }
@@ -320,9 +477,25 @@ public class TradeOrderUpdateServiceImpl implements TradeOrderUpdateService {
                 .setSourceType(ErpSaleBizSourceTypeEnum.MALL_ORDER.getType())
                 .setSourceId(order.getId())
                 .setSourceNo(order.getNo())
-                .setRemark(createReqVO.getRemark())
+                .setRemark(buildSaleCartRemark(createReqVO.getRemark()))
                 .setItems(convertList(orderItems, item -> buildSaleCartDraftItem(item, createReqVO.getDeptId())));
         return saleCartApi.createSaleCartDraft(createReqDTO);
+    }
+
+    static String buildSaleCartRemark(String customerRemark) {
+        String normalizedRemark = StrUtil.trim(customerRemark);
+        if (StrUtil.isBlank(normalizedRemark)) {
+            return MALL_SALE_CART_REMARK;
+        }
+        int prefixLength = MALL_SALE_CART_CUSTOMER_REMARK_PREFIX.codePointCount(
+                0, MALL_SALE_CART_CUSTOMER_REMARK_PREFIX.length());
+        int maxCustomerRemarkLength = ERP_SALE_CART_REMARK_MAX_LENGTH - prefixLength;
+        int customerRemarkLength = normalizedRemark.codePointCount(0, normalizedRemark.length());
+        if (customerRemarkLength > maxCustomerRemarkLength) {
+            int endIndex = normalizedRemark.offsetByCodePoints(0, maxCustomerRemarkLength);
+            normalizedRemark = normalizedRemark.substring(0, endIndex);
+        }
+        return MALL_SALE_CART_CUSTOMER_REMARK_PREFIX + normalizedRemark;
     }
 
     private ErpSaleCartDraftCreateReqDTO.Item buildSaleCartDraftItem(TradeOrderItemDO orderItem, Long deptId) {
@@ -1139,6 +1312,22 @@ public class TradeOrderUpdateServiceImpl implements TradeOrderUpdateService {
 
         TradePriceCalculateRespBO getCalculateRespBO() {
             return calculateRespBO;
+        }
+
+    }
+
+    private record Destination(String status, String message, BigDecimal longitude, BigDecimal latitude) {
+
+        static Destination ready(BigDecimal longitude, BigDecimal latitude) {
+            return new Destination(ErpMallAutoWarehouseResultBO.STATUS_READY, null, longitude, latitude);
+        }
+
+        static Destination invalid(String status, String message) {
+            return new Destination(status, message, null, null);
+        }
+
+        boolean isReady() {
+            return ErpMallAutoWarehouseResultBO.STATUS_READY.equals(status);
         }
 
     }

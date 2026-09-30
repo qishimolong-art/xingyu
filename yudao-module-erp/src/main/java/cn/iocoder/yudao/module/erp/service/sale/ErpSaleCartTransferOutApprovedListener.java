@@ -21,4 +21,10 @@ public class ErpSaleCartTransferOutApprovedListener {
         saleCartService.autoFinalApproveAfterTransferOut(event.getSaleCartId(), event.getApproveUserId());
     }
 
+    /** 非跨部门手推车送货完成后，在同一事务内自动终审。 */
+    @EventListener
+    public void onDeliveryCompleted(ErpSaleCartDeliveryCompletedEvent event) {
+        saleCartService.autoFinalApproveAfterDelivery(event.getSaleCartId(), event.getDeliveryUserId());
+    }
+
 }

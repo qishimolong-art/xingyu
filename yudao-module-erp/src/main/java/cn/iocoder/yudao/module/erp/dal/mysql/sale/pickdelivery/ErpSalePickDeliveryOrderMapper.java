@@ -10,6 +10,7 @@ import org.apache.ibatis.annotations.Mapper;
 import org.springframework.util.StringUtils;
 
 import java.util.Collection;
+import java.util.Collections;
 import java.util.List;
 
 @Mapper
@@ -32,6 +33,16 @@ public interface ErpSalePickDeliveryOrderMapper extends BaseMapperX<ErpSalePickD
         }
         return selectOne(ErpSalePickDeliveryOrderDO::getSourceType, sourceType,
                 ErpSalePickDeliveryOrderDO::getSourceId, sourceId);
+    }
+
+    default List<ErpSalePickDeliveryOrderDO> selectListBySourceIds(Integer sourceType,
+                                                                   Collection<Long> sourceIds) {
+        if (sourceType == null || cn.hutool.core.collection.CollUtil.isEmpty(sourceIds)) {
+            return Collections.emptyList();
+        }
+        return selectList(new LambdaQueryWrapperX<ErpSalePickDeliveryOrderDO>()
+                .eq(ErpSalePickDeliveryOrderDO::getSourceType, sourceType)
+                .in(ErpSalePickDeliveryOrderDO::getSourceId, sourceIds));
     }
 
     default ErpSalePickDeliveryOrderDO selectBySourceForUpdate(Integer sourceType, Long sourceId) {

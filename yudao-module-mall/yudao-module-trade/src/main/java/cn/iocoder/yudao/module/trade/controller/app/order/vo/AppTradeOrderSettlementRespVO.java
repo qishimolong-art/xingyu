@@ -6,12 +6,14 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import lombok.experimental.Accessors;
 
 import java.time.LocalDateTime;
 import java.util.List;
 
 @Schema(description = "用户 App - 交易订单结算信息 Response VO")
 @Data
+@Accessors(chain = true)
 public class AppTradeOrderSettlementRespVO {
 
     @Schema(description = "交易类型", requiredMode = Schema.RequiredMode.REQUIRED, example = "1") // 对应 TradeOrderTypeEnum 枚举
@@ -41,6 +43,31 @@ public class AppTradeOrderSettlementRespVO {
      * 只对应 {@link TradePriceCalculateRespBO.Price#items} 商品匹配的活动
      */
     private List<TradePriceCalculateRespBO.Promotion> promotions;
+
+    @Schema(description = "库存确认状态", example = "READY")
+    private String fulfillmentStatus;
+
+    @Schema(description = "库存确认提示")
+    private String fulfillmentMessage;
+
+    @Schema(description = "库存确认问题商品")
+    private List<FulfillmentIssue> fulfillmentIssues;
+
+    @Schema(description = "库存确认问题商品")
+    @Data
+    @Accessors(chain = true)
+    public static class FulfillmentIssue {
+        @Schema(description = "商品 SKU 编号", example = "2048")
+        private Long skuId;
+        @Schema(description = "商品名称")
+        private String spuName;
+        @Schema(description = "请求数量", example = "2")
+        private Integer count;
+        @Schema(description = "原因", example = "STOCK_SHORTAGE")
+        private String reason;
+        @Schema(description = "提示")
+        private String message;
+    }
 
     @Schema(description = "购物项")
     @Data

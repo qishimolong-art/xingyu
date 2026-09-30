@@ -24,6 +24,9 @@ public interface ErpPayableExpenseService {
 
     Long createFromSaleCartFreight(ErpSaleCartFreightDraftCreateReqBO createReqBO);
 
+    /** 代客户付运费生成费用支付草稿，付款资料允许后补。 */
+    Long createDraftFromSaleCartFreight(ErpSaleCartFreightDraftCreateReqBO createReqBO);
+
     void updatePayableExpense(@Valid ErpPayableExpenseSaveReqVO updateReqVO);
 
     void updatePayableExpenseDraft(ErpPayableExpenseDraftSaveReqVO updateReqVO);

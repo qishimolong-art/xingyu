@@ -26,6 +26,21 @@ class ErpCloudPrintHtmlRendererTest {
     private final ErpCloudPrintHtmlRenderer renderer = new ErpCloudPrintHtmlRenderer();
 
     @Test
+    void senderAliases_shouldRenderBothOldAndNewBindings() {
+        Map<String, Object> data = Map.of("main", Map.of(
+                "document.senderName", "张三、李四", "document.checkerName", "张三、李四"));
+        for (String code : List.of("document.senderName", "document.checkerName")) {
+            Map<String, Object> cell = Map.of("name", "发货人", "code", code,
+                    "html", "<span>${发货人}</span>",
+                    "placeholderCodes", new HashMap<>(Map.of("发货人", "document.senderName")));
+            String html = org.springframework.test.util.ReflectionTestUtils.invokeMethod(
+                    renderer, "resolveCellHtml", cell, data, 0);
+            assertTrue(html.contains("张三、李四"));
+            assertFalse(html.contains("${"));
+        }
+    }
+
+    @Test
     void renderSaleOutPdf_shouldGeneratePdfBytes() {
         byte[] pdf = renderer.renderSaleOutPdf(buildPrintData(), 241, 140);
 

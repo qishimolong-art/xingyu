@@ -27,6 +27,8 @@ import java.util.Map;
  */
 public interface ErpFinanceReceiptService {
 
+    java.math.BigDecimal getSourceTransferAvailableAmount(Long id);
+
     /**
      * 创建收款单
      *

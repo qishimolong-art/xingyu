@@ -156,7 +156,13 @@ public class ErpFinanceAutoWriteOffServiceImpl implements ErpFinanceAutoWriteOff
             }
             BigDecimal alreadyReceiptedPrice = normalize(financeReceiptItemMapper.selectReceiptPriceSumByBizIdAndBizType(
                     candidate.bizId, candidate.bizType));
-            BigDecimal writeOffAmount = normalize(biz.totalPrice.subtract(alreadyReceiptedPrice));
+            if (ErpBizTypeEnum.RECEIVABLE_MISC.getType().equals(candidate.bizType)
+                    && !receivableMiscMapper.selectInvalidPendingSourceIds(Collections.singleton(candidate.bizId), null).isEmpty()) continue;
+            BigDecimal reserved = ErpBizTypeEnum.RECEIVABLE_MISC.getType().equals(candidate.bizType)
+                    ? getZeroIfNull(receivableMiscMapper.selectPendingTransferAmount(candidate.bizId, null)) : BigDecimal.ZERO;
+            BigDecimal writeOffAmount = ErpBizTypeEnum.RECEIVABLE_MISC.getType().equals(candidate.bizType)
+                    ? ErpMiscTransferAmount.available(biz.totalPrice, biz.totalPrice.subtract(alreadyReceiptedPrice), reserved)
+                    : normalize(biz.totalPrice.subtract(alreadyReceiptedPrice));
             if (writeOffAmount.compareTo(BigDecimal.ZERO) == 0) {
                 continue;
             }
@@ -236,7 +242,13 @@ public class ErpFinanceAutoWriteOffServiceImpl implements ErpFinanceAutoWriteOff
             }
             BigDecimal alreadyPaidPrice = normalize(financePaymentItemMapper.selectPaymentPriceSumByBizIdAndBizType(
                     candidate.bizId, candidate.bizType));
-            BigDecimal writeOffAmount = normalize(biz.totalPrice.subtract(alreadyPaidPrice));
+            if (ErpBizTypeEnum.PAYABLE_MISC.getType().equals(candidate.bizType)
+                    && !payableMiscMapper.selectInvalidPendingSourceIds(Collections.singleton(candidate.bizId), null).isEmpty()) continue;
+            BigDecimal reserved = ErpBizTypeEnum.PAYABLE_MISC.getType().equals(candidate.bizType)
+                    ? getZeroIfNull(payableMiscMapper.selectPendingTransferAmount(candidate.bizId, null)) : BigDecimal.ZERO;
+            BigDecimal writeOffAmount = ErpBizTypeEnum.PAYABLE_MISC.getType().equals(candidate.bizType)
+                    ? ErpMiscTransferAmount.available(biz.totalPrice, biz.totalPrice.subtract(alreadyPaidPrice), reserved)
+                    : normalize(biz.totalPrice.subtract(alreadyPaidPrice));
             if (writeOffAmount.compareTo(BigDecimal.ZERO) == 0) {
                 continue;
             }
@@ -356,7 +368,7 @@ public class ErpFinanceAutoWriteOffServiceImpl implements ErpFinanceAutoWriteOff
         if (CollUtil.isEmpty(rows)) {
             return;
         }
-        Map<Long, BigDecimal> allocatedMap = receivableMiscMapper.selectOffsetAmountSumMapBySourceMiscIds(
+        Map<Long, BigDecimal> allocatedMap = receivableMiscMapper.selectOccupiedAmounts(
                 convertSet(rows, ErpReceivableMiscDO::getId),
                 ErpMiscTransferOffsetConstants.RECEIPT_OFFSET_SOURCE_TYPE);
         rows.forEach(row -> addCandidate(result, ErpBizTypeEnum.RECEIVABLE_MISC.getType(), row.getId(),
@@ -377,7 +389,7 @@ public class ErpFinanceAutoWriteOffServiceImpl implements ErpFinanceAutoWriteOff
     private void addCandidate(List<ReceiptWriteOffCandidate> result, Integer bizType, Long bizId, String bizNo,
                               LocalDateTime bizTime, BigDecimal totalPrice, BigDecimal allocatedPrice) {
         BigDecimal unallocatedPrice = normalize(getZeroIfNull(totalPrice).subtract(getZeroIfNull(allocatedPrice)));
-        if (unallocatedPrice.compareTo(BigDecimal.ZERO) == 0) {
+        if (unallocatedPrice.compareTo(BigDecimal.ZERO) == 0 || (ErpBizTypeEnum.RECEIVABLE_MISC.getType().equals(bizType) && unallocatedPrice.signum() != totalPrice.signum())) {
             return;
         }
         result.add(new ReceiptWriteOffCandidate(bizType, bizId, bizNo, bizTime));
@@ -422,8 +434,7 @@ public class ErpFinanceAutoWriteOffServiceImpl implements ErpFinanceAutoWriteOff
 
     private boolean isReceivableMiscOffset(ErpReceivableMiscDO row) {
         return row != null
-                && ErpMiscTransferOffsetConstants.RECEIPT_OFFSET_SOURCE_TYPE.equals(row.getSourceType())
-                && row.getSourceItemId() != null;
+                && ErpMiscTransferOffsetConstants.RECEIPT_OFFSET_SOURCE_TYPE.equals(row.getSourceType());
     }
 
     private boolean isValidReceiptAllocatedPrice(BigDecimal receiptTotalPrice, BigDecimal allocatedPrice) {
@@ -464,7 +475,7 @@ public class ErpFinanceAutoWriteOffServiceImpl implements ErpFinanceAutoWriteOff
             } else if (ErpBizTypeEnum.SALE_PRICE_ADJUST.getType().equals(receiptItem.getBizType())) {
                 salePriceAdjustService.updateSalePriceAdjustReceiptPrice(receiptItem.getBizId(), totalReceiptPrice);
             } else if (ErpBizTypeEnum.RECEIVABLE_MISC.getType().equals(receiptItem.getBizType())) {
-                // 其他应收的冲减在收款单审核后生成负数其他应收单，不回写原主单。
+                // 其他应收通过有效结算聚合计算余额，不回写原单金额。
             }
         });
     }
@@ -548,7 +559,7 @@ public class ErpFinanceAutoWriteOffServiceImpl implements ErpFinanceAutoWriteOff
         if (CollUtil.isEmpty(rows)) {
             return;
         }
-        Map<Long, BigDecimal> allocatedMap = payableMiscMapper.selectOffsetAmountSumMapBySourceMiscIds(
+        Map<Long, BigDecimal> allocatedMap = payableMiscMapper.selectOccupiedAmounts(
                 convertSet(rows, ErpPayableMiscDO::getId),
                 ErpMiscTransferOffsetConstants.PAYMENT_OFFSET_SOURCE_TYPE);
         rows.forEach(row -> addPaymentCandidate(result, ErpBizTypeEnum.PAYABLE_MISC.getType(), row.getId(),
@@ -559,7 +570,7 @@ public class ErpFinanceAutoWriteOffServiceImpl implements ErpFinanceAutoWriteOff
     private void addPaymentCandidate(List<PaymentWriteOffCandidate> result, Integer bizType, Long bizId, String bizNo,
                                      LocalDateTime bizTime, BigDecimal totalPrice, BigDecimal allocatedPrice) {
         BigDecimal unallocatedPrice = normalize(getZeroIfNull(totalPrice).subtract(getZeroIfNull(allocatedPrice)));
-        if (unallocatedPrice.compareTo(BigDecimal.ZERO) == 0) {
+        if (unallocatedPrice.compareTo(BigDecimal.ZERO) == 0 || (ErpBizTypeEnum.PAYABLE_MISC.getType().equals(bizType) && unallocatedPrice.signum() != totalPrice.signum())) {
             return;
         }
         result.add(new PaymentWriteOffCandidate(bizType, bizId, bizNo, bizTime));
@@ -605,8 +616,7 @@ public class ErpFinanceAutoWriteOffServiceImpl implements ErpFinanceAutoWriteOff
 
     private boolean isPayableMiscOffset(ErpPayableMiscDO row) {
         return row != null
-                && ErpMiscTransferOffsetConstants.PAYMENT_OFFSET_SOURCE_TYPE.equals(row.getSourceType())
-                && row.getSourceItemId() != null;
+                && ErpMiscTransferOffsetConstants.PAYMENT_OFFSET_SOURCE_TYPE.equals(row.getSourceType());
     }
 
     private void updatePurchasePrice(Collection<ErpFinancePaymentItemDO> paymentItems) {
@@ -620,7 +630,7 @@ public class ErpFinanceAutoWriteOffServiceImpl implements ErpFinanceAutoWriteOff
             } else if (ErpBizTypeEnum.PURCHASE_PRICE_ADJUST.getType().equals(paymentItem.getBizType())) {
                 purchasePriceAdjustService.updatePurchasePriceAdjustPaymentPrice(paymentItem.getBizId(), totalPaymentPrice);
             } else if (ErpBizTypeEnum.PAYABLE_MISC.getType().equals(paymentItem.getBizType())) {
-                // 其他应付的冲减在付款单审核后生成负数其他应付单，不回写原主单。
+                // 其他应付通过有效结算聚合计算余额，不回写原单金额。
             }
         });
     }

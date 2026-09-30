@@ -14,6 +14,12 @@ import java.util.List;
 @Mapper
 public interface ErpSalePickDeliveryItemMapper extends BaseMapperX<ErpSalePickDeliveryItemDO> {
 
+    default List<ErpSalePickDeliveryItemDO> selectDeliveryUsersBySaleOutId(Long saleOutId) {
+        return selectList(new QueryWrapper<ErpSalePickDeliveryItemDO>()
+                .select("delivery_user_id").eq("sale_out_id", saleOutId)
+                .isNotNull("delivery_user_id").groupBy("delivery_user_id").orderByAsc("MIN(id)"));
+    }
+
     default List<ErpSalePickDeliveryItemDO> selectListByOrderId(Long orderId) {
         return selectList(buildWarehousePositionOrderWrapper().eq("order_id", orderId));
     }
@@ -63,6 +69,19 @@ public interface ErpSalePickDeliveryItemMapper extends BaseMapperX<ErpSalePickDe
         return selectCount(new LambdaQueryWrapperX<ErpSalePickDeliveryItemDO>()
                 .eq(ErpSalePickDeliveryItemDO::getOrderId, orderId)
                 .eq(ErpSalePickDeliveryItemDO::getDeliveryStatus, deliveryStatus));
+    }
+
+    default boolean hasPickProgress(Long taskId, Long orderId) {
+        return selectCount(new LambdaQueryWrapperX<ErpSalePickDeliveryItemDO>()
+                .eqIfPresent(ErpSalePickDeliveryItemDO::getPickTaskId, taskId)
+                .eqIfPresent(ErpSalePickDeliveryItemDO::getOrderId, orderId)
+                .gt(ErpSalePickDeliveryItemDO::getPickedCount, 0)) > 0;
+    }
+
+    default boolean hasDeliveryProgress(Long orderId) {
+        return selectCount(new LambdaQueryWrapperX<ErpSalePickDeliveryItemDO>()
+                .eq(ErpSalePickDeliveryItemDO::getOrderId, orderId)
+                .gt(ErpSalePickDeliveryItemDO::getDeliveredCount, 0)) > 0;
     }
 
     static QueryWrapper<ErpSalePickDeliveryItemDO> buildWarehousePositionOrderWrapper() {

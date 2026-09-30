@@ -25,6 +25,7 @@ import javax.annotation.Resource;
 import java.math.BigDecimal;
 import java.util.Collections;
 import java.util.List;
+import cn.iocoder.yudao.module.erp.dal.dataobject.finance.ErpMiscSettlementLedgerRow;
 import java.util.stream.Collectors;
 
 @Service
@@ -69,9 +70,9 @@ public class ErpPayableReportServiceImpl implements ErpPayableReportService {
     private List<ErpPayableReportDetailRespVO> buildDetailList(ErpPayableReportDetailReqVO reqVO,
                                                                ErpFinanceVisibleScope scope) {
         BigDecimal balance = getInitialBalance(reqVO, scope);
-        List<ErpPayableMiscDO> miscRows = selectOtherList(reqVO, scope, false);
+        List<ErpMiscSettlementLedgerRow> miscRows = selectOtherList(reqVO, scope, false);
         List<ErpPayableReportDetailRespVO> rows = miscRows.stream()
-                .map(item -> buildRow(item, BigDecimal.ZERO))
+                .map(item -> buildRow(item, amount(item.getSettledAmount())))
                 .collect(Collectors.toList());
         for (ErpPayableReportDetailRespVO row : rows) {
             row.setPrevBalance(balance);
@@ -88,13 +89,13 @@ public class ErpPayableReportServiceImpl implements ErpPayableReportService {
         ErpPayableReportDetailReqVO copy = new ErpPayableReportDetailReqVO();
         copy.setSupplierId(reqVO.getSupplierId());
         copy.setBizTime(new java.time.LocalDateTime[]{null, reqVO.getStartDate().atStartOfDay()});
-        List<ErpPayableMiscDO> rows = selectOtherList(copy, scope, true);
+        List<ErpMiscSettlementLedgerRow> rows = selectOtherList(copy, scope, true);
         return rows.stream()
                 .map(item -> amount(item.getAmount()))
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
     }
 
-    private List<ErpPayableMiscDO> selectOtherList(ErpPayableReportDetailReqVO reqVO,
+    private List<ErpMiscSettlementLedgerRow> selectOtherList(ErpPayableReportDetailReqVO reqVO,
                                                     ErpFinanceVisibleScope scope,
                                                     boolean beforeStartDate) {
         LambdaQueryWrapperX<ErpPayableMiscDO> query = new LambdaQueryWrapperX<ErpPayableMiscDO>()
@@ -107,17 +108,17 @@ public class ErpPayableReportServiceImpl implements ErpPayableReportService {
                     .leIfPresent(ErpPayableMiscDO::getBizTime, reqVO.getEndTime());
         }
         applyScope(query, scope);
-        return payableMiscMapper.selectList(query.orderByAsc(ErpPayableMiscDO::getBizTime)
+        return payableMiscMapper.selectSettlementLedger(query.orderByAsc(ErpPayableMiscDO::getBizTime)
                 .orderByAsc(ErpPayableMiscDO::getNo)
                 .orderByAsc(ErpPayableMiscDO::getId));
     }
 
-    private ErpPayableReportDetailRespVO buildRow(ErpPayableMiscDO item, BigDecimal paidAmount) {
-        BigDecimal payableAmount = amount(item.getAmount());
+    private ErpPayableReportDetailRespVO buildRow(ErpMiscSettlementLedgerRow item, BigDecimal paidAmount) {
+        BigDecimal payableAmount = amount(item.getAmount()).add(amount(paidAmount));
         ErpPayableReportDetailRespVO row = new ErpPayableReportDetailRespVO();
-        row.setDocType("其他应付");
-        row.setBizType(ErpBizTypeEnum.PAYABLE_MISC.getType());
-        row.setBizId(item.getId());
+        row.setDocType(item.getDocumentId() == null ? "其他应付" : "付款单");
+        row.setBizType(item.getDocumentId() == null ? ErpBizTypeEnum.PAYABLE_MISC.getType() : null);
+        row.setBizId(item.getDocumentId() == null ? item.getId() : item.getDocumentId());
         row.setDocDate(item.getBizTime());
         row.setDocNo(item.getNo());
         row.setIncreaseAmount(payableAmount);

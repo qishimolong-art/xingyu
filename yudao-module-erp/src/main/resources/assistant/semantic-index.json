@@ -1,0 +1,615 @@
+{
+  "cards": [
+    {
+      "aliases": [
+        "唯一匹配",
+        "多候选",
+        "对象不存在",
+        "无业务数据",
+        "没有权限",
+        "能力未核验"
+      ],
+      "capability": "ANSWER_STATE_MACHINE",
+      "cardType": "ANSWER_STATE",
+      "defaultPeriod": "NONE",
+      "domain": "ERP/智能问数",
+      "emptyResultPolicy": "按真实阶段返回状态，不用空列表覆盖对象解析失败",
+      "evidence": "知识库/11-AI助手接入准备/企微常用问法与回答规则.md",
+      "id": "xy-semantic-answer-state-machine",
+      "intentId": "ANSWER_STATES",
+      "negativeExamples": [
+        "把无权限显示为零",
+        "删除失败对象条件后查询全量"
+      ],
+      "note": "知识库/11-AI助手接入准备/语义索引/回答状态-统一状态机.md",
+      "noteHash": "9b61f995b66636754c5cd04f95a855475ca7919b84d5e4b2bf4087f5255ec543",
+      "optionalEntities": [
+        "PRODUCT",
+        "CUSTOMER",
+        "SUPPLIER",
+        "WAREHOUSE",
+        "DEPARTMENT",
+        "SALESPERSON"
+      ],
+      "permissions": [
+        "erp:assistant:query"
+      ],
+      "positiveExamples": [
+        "找到唯一产品",
+        "匹配多个客户",
+        "产品存在但没有库存"
+      ],
+      "requiredEntities": [],
+      "route": "CONTRACT",
+      "verificationStatus": "VERIFIED_LOCAL"
+    },
+    {
+      "aliases": [
+        "产品",
+        "配件",
+        "商品",
+        "产品编码",
+        "厂家编码",
+        "条码",
+        "型号",
+        "规格"
+      ],
+      "capability": "PRODUCT_ENTITY_RESOLUTION",
+      "cardType": "ENTITY",
+      "defaultPeriod": "NONE",
+      "domain": "ERP/产品主数据",
+      "emptyResultPolicy": "唯一匹配 RESOLVED；多个候选 CHOICE_REQUIRED；无可见对象 ENTITY_NOT_FOUND",
+      "evidence": "修改文档/0928-1004/0928/企微常用问答整理/企微常用问题问答表_20260828-20260928.xlsx",
+      "id": "xy-semantic-entity-product-normalization",
+      "intentId": "PRODUCT_ENTITY",
+      "negativeExamples": [
+        "产品销量排行",
+        "多少种SKU"
+      ],
+      "note": "知识库/11-AI助手接入准备/语义索引/对象-产品检索与规格标准化.md",
+      "noteHash": "52bfa02cf02c1995a0c63a5ef2ac0c2d61919ba3e6ade02e522330df1bda3ff2",
+      "optionalEntities": [],
+      "permissions": [
+        "erp:assistant:query",
+        "erp:stock:query|erp:sale-report:query|erp:purchase-report:query"
+      ],
+      "positiveExamples": [
+        "530",
+        "5-30",
+        "5W30",
+        "5W-30",
+        "2255518",
+        "225 55 18",
+        "225/55R18",
+        "美孚 CF 4L"
+      ],
+      "requiredEntities": [
+        "PRODUCT"
+      ],
+      "route": "ENTITY_RESOLVER",
+      "verificationStatus": "VERIFIED_LOCAL"
+    },
+    {
+      "aliases": [
+        "产品价格",
+        "产品报价",
+        "多少钱",
+        "股份价",
+        "零售价",
+        "销售价",
+        "采购价",
+        "有没有货",
+        "有货",
+        "缺货",
+        "当前库存"
+      ],
+      "capability": "PRODUCT_PRICE_STOCK",
+      "cardType": "INTENT",
+      "defaultPeriod": "CURRENT",
+      "domain": "ERP/产品与库存",
+      "emptyResultPolicy": "产品存在但无库存返回 NO_DATA；产品不可见或不存在返回 ENTITY_NOT_FOUND",
+      "evidence": "修改文档/0928-1004/0928/企微问答知识库优化/企微高频问答知识库与运行链路优化-实施与回归记录.md",
+      "id": "xy-semantic-intent-product-price-stock",
+      "intentId": "PRODUCT_PRICE_STOCK",
+      "negativeExamples": [
+        "哪个产品本月销量最多",
+        "客户当前欠款",
+        "产品毛利排行"
+      ],
+      "note": "知识库/11-AI助手接入准备/语义索引/意图-产品价格与库存.md",
+      "noteHash": "3fbd8f95e9ebb12734d0d69f7905899e7cceeccb8d17795acc0ec3c7a174a63f",
+      "optionalEntities": [
+        "WAREHOUSE",
+        "DEPARTMENT"
+      ],
+      "permissions": [
+        "erp:assistant:query",
+        "erp:stock:query"
+      ],
+      "positiveExamples": [
+        "每日保护全合成530股份价",
+        "X40有没有货",
+        "225 55 18",
+        "美孚 CF 4L",
+        "美孚 CF 4L 库存",
+        "路通源化油器清洗剂450ml*24"
+      ],
+      "requiredEntities": [
+        "PRODUCT"
+      ],
+      "route": "BUSINESS_TOOL",
+      "verificationStatus": "VERIFIED_LOCAL"
+    },
+    {
+      "aliases": [
+        "付款",
+        "付款金额",
+        "实际付款"
+      ],
+      "capability": "PAYMENT",
+      "cardType": "INTENT",
+      "defaultPeriod": "EXPLICIT",
+      "domain": "ERP/资金",
+      "emptyResultPolicy": "期间内没有已审核付款记录返回 NO_DATA",
+      "evidence": "知识库/11-AI助手接入准备/已定义指标/PAYMENT.md",
+      "id": "xy-semantic-intent-payment",
+      "intentId": "PAYMENT",
+      "negativeExamples": [
+        "当前应付",
+        "供应商余额",
+        "核销金额"
+      ],
+      "note": "知识库/11-AI助手接入准备/语义索引/意图-付款金额.md",
+      "noteHash": "3d15514de8665e7bb44bed5d9d041d65fb267c67c13657c5a3809f9483e27deb",
+      "optionalEntities": [
+        "SUPPLIER",
+        "DEPARTMENT"
+      ],
+      "permissions": [
+        "erp:assistant:query",
+        "erp:finance-payment:query"
+      ],
+      "positiveExamples": [
+        "本周付款",
+        "本月付款金额",
+        "本年实际付款",
+        "去年付款"
+      ],
+      "requiredEntities": [],
+      "route": "VERIFIED_METRIC",
+      "verificationStatus": "VERIFIED_LOCAL"
+    },
+    {
+      "aliases": [
+        "客户总数",
+        "供应商总数",
+        "配件总数",
+        "启用客户数量",
+        "停用供应商数量"
+      ],
+      "capability": "MASTER_DATA_STATS",
+      "cardType": "INTENT",
+      "defaultPeriod": "CURRENT",
+      "domain": "ERP/基础资料",
+      "emptyResultPolicy": "无可见档案返回 NO_DATA；无功能权限或数据范围返回 NO_PERMISSION",
+      "evidence": "修改文档/0928-1004/0929/智能问数/智能问数基础档案数量与状态统计-实施与回归记录.md",
+      "id": "xy-semantic-intent-master-data-stats",
+      "intentId": "MASTER_DATA_STATS",
+      "negativeExamples": [
+        "库存中有多少个配件",
+        "客户本月销售额",
+        "供应商采购额",
+        "客户欠款有多少"
+      ],
+      "note": "知识库/11-AI助手接入准备/语义索引/意图-基础档案数量统计.md",
+      "noteHash": "2ba62006f5ff2919ea640f5243d2fc7813c8cd7ad0045dd6931f657a445e1e94",
+      "optionalEntities": [
+        "CUSTOMER",
+        "SUPPLIER",
+        "PRODUCT"
+      ],
+      "permissions": [
+        "erp:assistant:query",
+        "erp:customer:query",
+        "erp:supplier:query",
+        "erp:product:query"
+      ],
+      "positiveExamples": [
+        "总共有多少个客户",
+        "客户总数",
+        "一共有几个客户",
+        "有多少个供应商",
+        "停用供应商有多少",
+        "配件总数",
+        "启用和停用配件分别有多少"
+      ],
+      "requiredEntities": [],
+      "route": "BUSINESS_TOOL",
+      "verificationStatus": "VERIFIED_LOCAL"
+    },
+    {
+      "aliases": [
+        "客户欠款",
+        "当前欠款",
+        "当前应收",
+        "客户余额",
+        "欠钱",
+        "谁欠款最多"
+      ],
+      "capability": "RECEIVABLE",
+      "cardType": "INTENT",
+      "defaultPeriod": "CURRENT",
+      "domain": "ERP/应收",
+      "emptyResultPolicy": "客户存在但当前余额为空或为零返回 NO_DATA；不能用销售额减收款推算",
+      "evidence": "知识库/11-AI助手接入准备/已定义指标/RECEIVABLE.md",
+      "id": "xy-semantic-intent-receivable",
+      "intentId": "RECEIVABLE",
+      "negativeExamples": [
+        "客户本月销量",
+        "客户账龄",
+        "跨账套欠款"
+      ],
+      "note": "知识库/11-AI助手接入准备/语义索引/意图-客户当前欠款.md",
+      "noteHash": "99e3d064b6675d791c3ffa90a28ce8f8a858076095f2b7d169d7db75ddd346f6",
+      "optionalEntities": [
+        "CUSTOMER",
+        "SALESPERSON",
+        "DEPARTMENT"
+      ],
+      "permissions": [
+        "erp:assistant:query",
+        "erp:receivable-account:query"
+      ],
+      "positiveExamples": [
+        "成都某客户欠款",
+        "理塘众鑫进口汽修 欠款",
+        "哪个客户当前欠款最多",
+        "某业务员名下客户欠款排行"
+      ],
+      "requiredEntities": [],
+      "route": "VERIFIED_METRIC",
+      "verificationStatus": "VERIFIED_LOCAL"
+    },
+    {
+      "aliases": [
+        "收款",
+        "收款金额",
+        "回款",
+        "实际收款"
+      ],
+      "capability": "RECEIPT",
+      "cardType": "INTENT",
+      "defaultPeriod": "EXPLICIT",
+      "domain": "ERP/资金",
+      "emptyResultPolicy": "期间内没有已审核收款记录返回 NO_DATA",
+      "evidence": "知识库/11-AI助手接入准备/已定义指标/RECEIPT.md",
+      "id": "xy-semantic-intent-receipt",
+      "intentId": "RECEIPT",
+      "negativeExamples": [
+        "当前应收",
+        "客户欠款",
+        "核销金额"
+      ],
+      "note": "知识库/11-AI助手接入准备/语义索引/意图-收款金额.md",
+      "noteHash": "e5d14b63ad2f4ca1b0a7e668e4d408280765dc889fe1cc2195480811accccfa3",
+      "optionalEntities": [
+        "CUSTOMER",
+        "DEPARTMENT"
+      ],
+      "permissions": [
+        "erp:assistant:query",
+        "erp:finance-receipt:query"
+      ],
+      "positiveExamples": [
+        "本周收款",
+        "本月回款",
+        "本年实际收款",
+        "去年收款金额"
+      ],
+      "requiredEntities": [],
+      "route": "VERIFIED_METRIC",
+      "verificationStatus": "VERIFIED_LOCAL"
+    },
+    {
+      "aliases": [
+        "账龄",
+        "欠款账龄",
+        "跨账套",
+        "其他账套欠款",
+        "毛利",
+        "毛利率",
+        "利润",
+        "利润排行",
+        "库存金额",
+        "库存成本",
+        "库存货值"
+      ],
+      "capability": "UNVERIFIED_BUSINESS_ANALYSIS",
+      "cardType": "INTENT",
+      "defaultPeriod": "EXPLICIT_OR_NONE",
+      "domain": "ERP/待核验经营分析",
+      "emptyResultPolicy": "返回 CAPABILITY_UNVERIFIED，不使用相近指标替代",
+      "evidence": "知识库/11-AI助手接入准备/问题到指标和数据来源的映射.md",
+      "id": "xy-semantic-intent-unverified-business",
+      "intentId": "CAPABILITY_UNVERIFIED",
+      "negativeExamples": [
+        "当前欠款",
+        "本月销售额",
+        "哪个产品库存最多"
+      ],
+      "note": "知识库/11-AI助手接入准备/语义索引/意图-未核验经营能力.md",
+      "noteHash": "3748c748df11f724f808d34a6392a290bce9af05a8f56070fc3aaf8f8b95cd1a",
+      "optionalEntities": [
+        "PRODUCT",
+        "CUSTOMER",
+        "SUPPLIER",
+        "SALESPERSON",
+        "DEPARTMENT"
+      ],
+      "permissions": [
+        "erp:assistant:query"
+      ],
+      "positiveExamples": [
+        "这个客户的欠款账龄",
+        "查询其他账套欠款",
+        "哪个产品毛利最高",
+        "当前库存金额是多少",
+        "库存成本有多少"
+      ],
+      "requiredEntities": [],
+      "route": "REJECT",
+      "verificationStatus": "UNVERIFIED"
+    },
+    {
+      "aliases": [
+        "查询指引",
+        "没有识别到意图",
+        "怎么查询",
+        "无权限",
+        "未授权",
+        "查询范围"
+      ],
+      "capability": "QUERY_GUIDANCE",
+      "cardType": "INTENT",
+      "defaultPeriod": "NONE",
+      "domain": "ERP/智能问数指引",
+      "emptyResultPolicy": "无明确意图时给查询方向；无权限时说明所缺业务能力，不返回零值",
+      "evidence": "修改文档/0928-1004/0928/企微常用问答整理/企微常用问题问答表_20260828-20260928.xlsx",
+      "id": "xy-semantic-intent-guidance-permission",
+      "intentId": "QUERY_GUIDANCE",
+      "negativeExamples": [
+        "X40有没有货",
+        "本月销售额",
+        "客户当前欠款"
+      ],
+      "note": "知识库/11-AI助手接入准备/语义索引/意图-查询指引与权限.md",
+      "noteHash": "ab2ca550c4dcc0505870ccb00bc385c92fe873432da08d8b66960a9e8ccd2359",
+      "optionalEntities": [],
+      "permissions": [
+        "erp:assistant:query"
+      ],
+      "positiveExamples": [
+        "帮我查一下",
+        "我能查哪些数据",
+        "为什么看不到价格"
+      ],
+      "requiredEntities": [],
+      "route": "CONTRACT",
+      "verificationStatus": "VERIFIED_LOCAL"
+    },
+    {
+      "aliases": [
+        "采购额",
+        "采购金额",
+        "采购总金额",
+        "采购总额"
+      ],
+      "capability": "PURCHASE",
+      "cardType": "INTENT",
+      "defaultPeriod": "EXPLICIT",
+      "domain": "ERP/采购",
+      "emptyResultPolicy": "期间内没有已审核业务记录返回 NO_DATA",
+      "evidence": "知识库/11-AI助手接入准备/已定义指标/PURCHASE.md",
+      "id": "xy-semantic-intent-purchase",
+      "intentId": "PURCHASE",
+      "negativeExamples": [
+        "采购价是多少",
+        "采购订单有几张",
+        "供应商应付余额"
+      ],
+      "note": "知识库/11-AI助手接入准备/语义索引/意图-采购金额.md",
+      "noteHash": "7cef29fcca54abf80200f39c7b032dd5afa7e998cf4fe085abf12d5a9fba5dbc",
+      "optionalEntities": [
+        "PRODUCT",
+        "SUPPLIER",
+        "DEPARTMENT"
+      ],
+      "permissions": [
+        "erp:assistant:query",
+        "erp:purchase-report:query"
+      ],
+      "positiveExamples": [
+        "本月采购额",
+        "本周采购金额",
+        "本年采购总金额",
+        "去年采购额"
+      ],
+      "requiredEntities": [],
+      "route": "VERIFIED_METRIC",
+      "verificationStatus": "VERIFIED_LOCAL"
+    },
+    {
+      "aliases": [
+        "销售订单",
+        "客户订单",
+        "订单客户",
+        "订单明细",
+        "未发货订单"
+      ],
+      "capability": "SALE_ORDER_RELATION",
+      "cardType": "INTENT",
+      "defaultPeriod": "EXPLICIT_OR_RECENT",
+      "domain": "ERP/销售订单",
+      "emptyResultPolicy": "对象存在但没有已审核销售订单时返回 NO_DATA；不得删除客户、产品、仓库或业务员条件后查询全量",
+      "evidence": "知识库/11-AI助手接入准备/问题到指标和数据来源的映射.md",
+      "id": "xy-semantic-intent-sale-order-relation",
+      "intentId": "SALE_ORDER_RELATION",
+      "negativeExamples": [
+        "本月销售额",
+        "客户当前欠款",
+        "产品当前库存"
+      ],
+      "note": "知识库/11-AI助手接入准备/语义索引/意图-销售订单与客户关联.md",
+      "noteHash": "ff731d43fbe65701d8d33274b4f745147933450e10d86c168b3a96b195b01657",
+      "optionalEntities": [
+        "CUSTOMER",
+        "PRODUCT",
+        "WAREHOUSE",
+        "DEPARTMENT",
+        "SALESPERSON"
+      ],
+      "permissions": [
+        "erp:assistant:query",
+        "erp:sale-order:query"
+      ],
+      "positiveExamples": [
+        "这个客户有哪些销售订单",
+        "销售订单XS20260929001是哪个客户",
+        "按客户统计本月销售订单金额",
+        "某客户的订单包含哪些产品",
+        "哪些销售订单还未发货"
+      ],
+      "requiredEntities": [],
+      "route": "BUSINESS_TOOL",
+      "verificationStatus": "VERIFIED_LOCAL"
+    },
+    {
+      "aliases": [
+        "销量",
+        "销售量",
+        "销售情况",
+        "卖了多少",
+        "销售额",
+        "销售金额",
+        "哪个产品卖得多"
+      ],
+      "capability": "SALE",
+      "cardType": "INTENT",
+      "defaultPeriod": "THIS_YEAR",
+      "domain": "ERP/销售",
+      "emptyResultPolicy": "对象存在但期间内无业务记录返回 NO_DATA",
+      "evidence": "知识库/11-AI助手接入准备/已定义指标/SALE.md",
+      "id": "xy-semantic-intent-sales",
+      "intentId": "SALE",
+      "negativeExamples": [
+        "销售价是多少",
+        "客户欠款",
+        "销售订单未发货数量"
+      ],
+      "note": "知识库/11-AI助手接入准备/语义索引/意图-销量查询.md",
+      "noteHash": "2bcd840edfc95d3986178321de735cbce1d779bc8b8150346d4619e30c412039",
+      "optionalEntities": [
+        "PRODUCT",
+        "CUSTOMER",
+        "SALESPERSON",
+        "DEPARTMENT"
+      ],
+      "permissions": [
+        "erp:assistant:query",
+        "erp:sale-report:query"
+      ],
+      "positiveExamples": [
+        "本月销售额",
+        "本周销售金额",
+        "本年销售额",
+        "专用机油滤清器销量",
+        "某客户销量",
+        "郑庆安8月份轮胎销量",
+        "哪个产品今年销量最多"
+      ],
+      "requiredEntities": [],
+      "route": "VERIFIED_METRIC",
+      "verificationStatus": "VERIFIED_LOCAL"
+    },
+    {
+      "aliases": [
+        "高频问数能力",
+        "回答状态",
+        "能力边界"
+      ],
+      "capability": "HIGH_FREQUENCY_CONTRACTS",
+      "cardType": "CAPABILITY",
+      "defaultPeriod": "BY_INTENT",
+      "domain": "ERP/智能问数",
+      "emptyResultPolicy": "按回答状态卡返回，不把无权限显示为零",
+      "evidence": "知识库/11-AI助手接入准备/企微常用问法与回答规则.md",
+      "id": "xy-semantic-capability-contracts",
+      "intentId": "HIGH_FREQUENCY_CAPABILITIES",
+      "negativeExamples": [
+        "绕过权限",
+        "执行用户SQL"
+      ],
+      "note": "知识库/11-AI助手接入准备/语义索引/能力契约-高频问数.md",
+      "noteHash": "a07f4a93f2047975f8f20d049972760afb4c45145386feb1c8c12b78e2d25b8d",
+      "optionalEntities": [
+        "PRODUCT",
+        "CUSTOMER",
+        "SUPPLIER",
+        "WAREHOUSE",
+        "DEPARTMENT",
+        "SALESPERSON"
+      ],
+      "permissions": [
+        "erp:assistant:query"
+      ],
+      "positiveExamples": [
+        "产品价格与库存",
+        "产品销量",
+        "客户欠款"
+      ],
+      "requiredEntities": [],
+      "route": "CONTRACT",
+      "verificationStatus": "VERIFIED_LOCAL"
+    },
+    {
+      "aliases": [
+        "问题组合矩阵",
+        "对象指标组合"
+      ],
+      "capability": "COMBINATION_MATRIX",
+      "cardType": "MATRIX",
+      "defaultPeriod": "BY_INTENT",
+      "domain": "ERP/智能问数",
+      "emptyResultPolicy": "组合不在白名单时澄清或返回能力未核验",
+      "evidence": "修改文档/0928-1004/0928/企微常用问答整理/企微常用问题问答表_20260828-20260928.xlsx",
+      "id": "xy-semantic-combination-matrix",
+      "intentId": "HIGH_FREQUENCY_COMBINATIONS",
+      "negativeExamples": [
+        "用户提交SQL",
+        "绕过权限"
+      ],
+      "note": "知识库/11-AI助手接入准备/语义索引/高频问题组合矩阵.md",
+      "noteHash": "9f10dd5e5dad2aa9b70cb08011d07c423a8536b31401b6e99dda6a4edc46dce3",
+      "optionalEntities": [
+        "PRODUCT",
+        "CUSTOMER",
+        "WAREHOUSE",
+        "DEPARTMENT",
+        "SALESPERSON"
+      ],
+      "permissions": [
+        "erp:assistant:query"
+      ],
+      "positiveExamples": [
+        "产品加价格",
+        "产品加仓库加库存",
+        "产品加时间加销量",
+        "客户加当前欠款"
+      ],
+      "requiredEntities": [],
+      "route": "CONTRACT",
+      "verificationStatus": "VERIFIED_LOCAL"
+    }
+  ],
+  "schemaVersion": 1
+}

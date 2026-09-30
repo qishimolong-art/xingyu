@@ -53,6 +53,19 @@ class ErpCustomerBusinessLicenseOcrServiceImplTest {
     }
 
     @Test
+    void parseResponse_shouldMapChineseResidenceAndName() {
+        String body = "{\"success\":true,\"data\":{\"名称\":\"杭州测试有限公司\","
+                + "\"住所\":\"浙江省杭州市滨江区长河街道测试路18号201室\"}}";
+
+        ErpCustomerBusinessLicenseOcrRespVO result = service.parseResponse(body);
+
+        assertTrue(result.getSuccess());
+        assertEquals("杭州测试有限公司", result.getInvoiceCompany());
+        assertEquals("浙江省杭州市滨江区长河街道测试路18号201室", result.getInvoiceAddress());
+        assertEquals("浙江省杭州市滨江区长河街道测试路18号201室", result.getData().get("住所"));
+    }
+
+    @Test
     void parseResponse_shouldMapNestedResultFields() {
         String body = "{"
                 + "\"code\":200,"

@@ -149,6 +149,42 @@ public class WeComClientServiceImplTest extends BaseMockitoUnitTest {
     }
 
     @Test
+    public void testGetUserIdentityByCode_returnsUserIdAndMobile() {
+        mockValueOperations();
+        when(valueOperations.get(eq(ACCESS_TOKEN_KEY))).thenReturn("cached-token");
+        mockServer.expect(requestTo("https://qyapi.weixin.qq.com/cgi-bin/auth/getuserinfo?access_token=cached-token&code=auth-code"))
+                .andRespond(withSuccess("{\"errcode\":0,\"UserId\":\"zhangsan\",\"user_ticket\":\"ticket\"}",
+                        MediaType.APPLICATION_JSON));
+        mockServer.expect(requestTo("https://qyapi.weixin.qq.com/cgi-bin/auth/getuserdetail?access_token=cached-token"))
+                .andExpect(method(HttpMethod.POST))
+                .andRespond(withSuccess("{\"errcode\":0,\"userid\":\"zhangsan\",\"mobile\":\"13800138000\"}",
+                        MediaType.APPLICATION_JSON));
+
+        WeComUserIdentity identity = weComClientService.getUserIdentityByCode("auth-code");
+
+        assertEquals("zhangsan", identity.getUserId());
+        assertEquals("13800138000", identity.getMobile());
+        mockServer.verify();
+    }
+
+    @Test
+    public void testGetUserIdentityByCode_rejectsMismatchedUserId() {
+        mockValueOperations();
+        when(valueOperations.get(eq(ACCESS_TOKEN_KEY))).thenReturn("cached-token");
+        mockServer.expect(requestTo("https://qyapi.weixin.qq.com/cgi-bin/auth/getuserinfo?access_token=cached-token&code=auth-code"))
+                .andRespond(withSuccess("{\"errcode\":0,\"UserId\":\"zhangsan\",\"user_ticket\":\"ticket\"}",
+                        MediaType.APPLICATION_JSON));
+        mockServer.expect(requestTo("https://qyapi.weixin.qq.com/cgi-bin/auth/getuserdetail?access_token=cached-token"))
+                .andExpect(method(HttpMethod.POST))
+                .andRespond(withSuccess("{\"errcode\":0,\"userid\":\"lisi\",\"mobile\":\"13800138000\"}",
+                        MediaType.APPLICATION_JSON));
+
+        assertServiceException(() -> weComClientService.getUserIdentityByCode("auth-code"),
+                AUTH_WECOM_API_ERROR, "企业微信成员身份不一致");
+        mockServer.verify();
+    }
+
+    @Test
     public void testGetUserMobileByCode_lowercaseUserId() {
         mockValueOperations();
         when(valueOperations.get(eq(ACCESS_TOKEN_KEY))).thenReturn("cached-token");

@@ -22,6 +22,16 @@ public class ErpSalePickDeliveryItemRespVO {
     private String productName;
     private String standard;
     private BigDecimal count;
+
+    @com.fasterxml.jackson.databind.annotation.JsonSerialize(using = com.fasterxml.jackson.databind.ser.std.ToStringSerializer.class)
+    private BigDecimal pickedCount;
+    @com.fasterxml.jackson.databind.annotation.JsonSerialize(using = com.fasterxml.jackson.databind.ser.std.ToStringSerializer.class)
+    private BigDecimal deliveredCount;
+    @com.fasterxml.jackson.databind.annotation.JsonSerialize(using = com.fasterxml.jackson.databind.ser.std.ToStringSerializer.class)
+    private BigDecimal remainingPickCount;
+    @com.fasterxml.jackson.databind.annotation.JsonSerialize(using = com.fasterxml.jackson.databind.ser.std.ToStringSerializer.class)
+    private BigDecimal remainingDeliveryCount;
+
     private String warehousePosition;
     private Integer packageQty;
     private BigDecimal pieceCount;

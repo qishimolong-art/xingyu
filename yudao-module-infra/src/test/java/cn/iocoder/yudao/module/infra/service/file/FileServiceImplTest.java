@@ -189,6 +189,24 @@ public class FileServiceImplTest extends BaseDbUnitTest {
     }
 
     @Test
+    public void testGetFileContentByUrl_shouldReloadPersistedFileAfterRestart() throws Exception {
+        FileDO dbFile = randomPojo(FileDO.class, file -> file
+                .setConfigId(10L)
+                .setPath("erp/cloud-print/task.pdf")
+                .setUrl("https://files.example.com/erp/cloud-print/task.pdf"));
+        fileMapper.insert(dbFile);
+        FileClient client = mock(FileClient.class);
+        when(fileConfigService.getFileClient(10L)).thenReturn(client);
+        byte[] expected = new byte[]{1, 2, 3, 4};
+        when(client.getContent("erp/cloud-print/task.pdf")).thenReturn(expected);
+
+        byte[] result = fileService.getFileContent(
+                "https://files.example.com/erp/cloud-print/task.pdf?download=1");
+
+        assertArrayEquals(expected, result);
+    }
+
+    @Test
     public void testGenerateUploadPath_AllEnabled() {
         // 准备参数
         String name = "test.jpg";

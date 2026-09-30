@@ -32,7 +32,6 @@ import java.util.stream.Collectors;
 @Validated
 public class ErpProductStockInitService {
 
-    private static final String DIRECT_WAREHOUSE_NAME = "直发仓";
     private static final int STOCK_INSERT_BATCH_SIZE = 500;
 
     @Resource
@@ -136,7 +135,7 @@ public class ErpProductStockInitService {
     }
 
     private boolean isDirectWarehouse(ErpWarehouseDO warehouse) {
-        return warehouse != null && DIRECT_WAREHOUSE_NAME.equals(warehouse.getName());
+        return warehouse != null && Boolean.TRUE.equals(warehouse.getDirectWarehouse());
     }
 
     private List<ErpStockDO> buildDimensions(List<Long> productIds, List<ErpWarehouseDO> warehouses) {

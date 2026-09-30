@@ -41,8 +41,8 @@ class ErpProductStockInitServiceTest extends BaseMockitoUnitTest {
     @Test
     void ensureProductsStockForEnabledRealWarehouses_excludesDirectWarehouseAndExistingStock() {
         ErpWarehouseDO realWarehouse = new ErpWarehouseDO().setId(20L).setName("主仓").setDeptId(30L);
-        ErpWarehouseDO directWarehouse = new ErpWarehouseDO().setId(21L).setName("直发仓").setDeptId(31L);
-        ErpWarehouseDO branchWarehouse = new ErpWarehouseDO().setId(22L).setName("分仓").setDeptId(32L);
+        ErpWarehouseDO directWarehouse = new ErpWarehouseDO().setId(21L).setName("甘孜分公司直发仓").setDeptId(31L).setDirectWarehouse(true);
+        ErpWarehouseDO branchWarehouse = new ErpWarehouseDO().setId(22L).setName("普通直发仓").setDeptId(32L).setDirectWarehouse(false);
         when(warehouseService.getWarehouseListByStatus(CommonStatusEnum.ENABLE.getStatus()))
                 .thenReturn(Arrays.asList(realWarehouse, directWarehouse, branchWarehouse));
         when(stockDimensionService.initializeDimensions(anyCollection())).thenReturn(false);

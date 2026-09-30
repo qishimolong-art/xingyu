@@ -1,6 +1,7 @@
 package cn.iocoder.yudao.module.member.api.address.dto;
 
 import lombok.Data;
+import java.math.BigDecimal;
 
 /**
  * 用户收件地址 Response DTO
@@ -38,5 +39,11 @@ public class MemberAddressRespDTO {
      * 是否默认
      */
     private Boolean defaultStatus;
+
+    /** 收货位置（GCJ-02），旧地址允许为空。 */
+    private BigDecimal longitude;
+    private BigDecimal latitude;
+    private String mapName;
+    private String mapAddress;
 
 }

@@ -21,6 +21,10 @@ public class ErpReceivableMiscRespVO {
     private BigDecimal amount;
     private BigDecimal settledAmount;
     private BigDecimal balanceAmount;
+
+    private BigDecimal pendingTransferAmount;
+
+    private BigDecimal transferAvailableAmount;
     private String remark;
     private String fileUrl;
     private String sourceType;

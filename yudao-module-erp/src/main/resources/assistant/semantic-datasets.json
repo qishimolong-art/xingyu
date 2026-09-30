@@ -1,0 +1,64 @@
+{
+  "version": "2026-09-29-v2",
+  "datasets": [
+    {
+      "name": "purchase_orders", "title": "采购订单",
+      "permission": "erp:purchase-order:query", "module": "erp_purchase_order",
+      "columns": {
+        "id": "订单标识", "no": "采购订单号", "status": "审核状态",
+        "supplier_id": "供应商标识", "supplier_name": "供应商",
+        "dept_id": "部门标识", "dept_name": "部门", "order_time": "下单时间",
+        "total_count": "订货数量", "total_price": "订单金额",
+        "in_count": "已入库数量", "return_count": "退货数量", "remaining_count": "未到货数量"
+      }
+    },
+    {
+      "name": "sale_orders", "title": "销售订单",
+      "permission": "erp:sale-order:query", "module": "erp_sale_order",
+      "columns": {
+        "id": "订单标识", "no": "销售订单号", "status": "审核状态",
+        "customer_id": "客户标识", "customer_name": "客户",
+        "salesperson_id": "业务员标识", "salesperson_name": "业务员",
+        "dept_id": "部门标识", "dept_name": "部门", "order_time": "下单时间",
+        "total_count": "订货数量", "total_price": "订单金额",
+        "out_count": "已出库数量", "return_count": "退货数量", "remaining_count": "未发货数量"
+      }
+    },
+    {
+      "name": "sale_order_items", "title": "销售订单客户与商品明细",
+      "permission": "erp:sale-order:query", "module": "erp_sale_order",
+      "columns": {
+        "item_id": "订单明细标识", "order_id": "订单标识", "order_no": "销售订单号",
+        "status": "审核状态", "order_time": "下单时间",
+        "customer_id": "客户标识", "customer_name": "客户",
+        "salesperson_id": "业务员标识", "salesperson_name": "业务员",
+        "dept_id": "部门标识", "dept_name": "部门",
+        "product_id": "产品标识", "product_name": "产品名称",
+        "warehouse_id": "仓库标识", "warehouse_name": "仓库", "unit": "计量单位",
+        "order_quantity": "订货数量", "unit_price": "订单单价", "line_amount": "明细金额",
+        "out_quantity": "已出库数量", "return_quantity": "退货数量", "remaining_quantity": "未发货数量",
+        "gift_flag": "是否赠品"
+      }
+    },
+    {
+      "name": "inventory_current", "title": "当前库存",
+      "permission": "erp:stock:query", "module": "erp_product_stock",
+      "columns": {
+        "product_id": "产品标识", "product_name": "产品名称",
+        "warehouse_id": "仓库标识", "warehouse_name": "仓库",
+        "dept_id": "部门标识", "dept_name": "部门", "unit": "计量单位", "quantity": "账面库存数量"
+      }
+    },
+    {
+      "name": "stock_movements", "title": "库存流水",
+      "permission": "erp:stock-record:query", "module": "erp_stock_record",
+      "columns": {
+        "id": "流水标识", "product_id": "产品标识", "product_name": "产品名称",
+        "warehouse_id": "仓库标识", "warehouse_name": "仓库",
+        "dept_id": "部门标识", "dept_name": "部门", "unit": "计量单位",
+        "quantity": "本次出入库数量", "balance_quantity": "变动后库存",
+        "biz_type": "业务类型", "biz_no": "业务单号", "biz_date": "业务日期"
+      }
+    }
+  ]
+}

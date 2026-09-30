@@ -299,6 +299,7 @@ public class ErpPayableAccountServiceImpl implements ErpPayableAccountService {
             row.setBusinessUserName(firstNonBlank(item.getPurchaser(), null));
             row.setBusinessUserId(row.getBusinessUserName() == null ? item.getHandler() : null);
             row.setSourceNo(item.getOrderNo());
+            fillSourceLink(row, "PURCHASE_ORDER", item.getOrderId());
             row.setFactoryOrderNo(item.getFactoryOrderNo());
             row.setInvoiceStatus(item.getInvoiceType());
             row.setRemark(item.getRemark());
@@ -373,6 +374,9 @@ public class ErpPayableAccountServiceImpl implements ErpPayableAccountService {
                             item.getNo(), item.getPayableAmount(), false, item.getDeptId());
                     row.setBusinessUserId(item.getHandlerId());
                     row.setSourceNo(item.getSourceNo());
+                    if (PAYMENT_DISCOUNT_SOURCE_TYPE.equals(item.getSourceType())) {
+                        fillSourceLink(row, "FINANCE_PAYMENT", item.getSourceId());
+                    }
                     row.setRemark(item.getRemark());
                     row.setVoucherNo(item.getVoucherNo());
                     row.setVoucherSourceBizType(ErpVoucherSourceBizTypeEnum.OTHER_PAYABLE.getType());
@@ -383,6 +387,15 @@ public class ErpPayableAccountServiceImpl implements ErpPayableAccountService {
                 .thenComparing(ErpPayableDetailRespVO::getDocType)
                 .thenComparing(ErpPayableDetailRespVO::getDocNo, Comparator.nullsLast(String::compareTo)));
         return rows;
+    }
+
+    private void fillSourceLink(ErpPayableDetailRespVO row, String sourceType, Long sourceId) {
+        // 只使用已有的明确关联，不按单号推测来源单据。
+        if (sourceId == null || sourceId <= 0 || row.getSourceNo() == null || row.getSourceNo().trim().isEmpty()) {
+            return;
+        }
+        row.setSourceType(sourceType);
+        row.setSourceId(sourceId);
     }
 
     private Map<Long, LocalDateTime> getPaymentDiscountTimeMap(List<ErpPayableOtherDO> otherPayables) {
@@ -426,6 +439,7 @@ public class ErpPayableAccountServiceImpl implements ErpPayableAccountService {
         row.setPriceAdjusted(isPurchaseInPriceAdjusted(purchaseIn, items));
         row.setBusinessUserName(firstNonBlank(purchaseIn.getPurchaser(), purchaseIn.getHandler()));
         row.setSourceNo(purchaseIn.getOrderNo());
+        fillSourceLink(row, "PURCHASE_ORDER", purchaseIn.getOrderId());
         row.setFactoryOrderNo(purchaseIn.getFactoryOrderNo());
         row.setInvoiceStatus(resolvePurchaseInInvoiceStatus(purchaseIn));
         row.setRemark(purchaseIn.getRemark());

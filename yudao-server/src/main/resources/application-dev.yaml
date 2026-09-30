@@ -1,6 +1,34 @@
 server:
   port: 48080
 
+erp:
+  assistant:
+    # 八项指标已完成正式只读库业务对账与核验，当前环境全部发布。
+    published-metrics:
+      - SALE
+      - PURCHASE
+      - STOCK
+      - STOCK_SKU
+      - RECEIPT
+      - PAYMENT
+      - RECEIVABLE
+      - PAYABLE
+    # 已完成本地验收的新版编排、实体搜索和受控 Text-to-SQL 正式随 dev 配置发布。
+    entity-search:
+      enabled: true
+      max-candidates: 20
+    orchestration:
+      mode: NEW
+      gray-user-ids: []
+      max-tool-rounds: 5
+      text-to-sql-enabled: true
+      published-datasets:
+        - purchase_orders
+        - sale_orders
+        - sale_order_items
+        - inventory_current
+        - stock_movements
+
 --- #################### 数据库相关配置 ####################
 
 spring:
@@ -170,6 +198,9 @@ wx: # 参见 https://github.com/Wechat-Group/WxJava/blob/develop/spring-boot-sta
 
 # 兴宇科技配置项，设置当前项目所有自定义的配置
 yudao:
+  trade:
+    order:
+      address-auto-warehouse-enabled: true # 开发环境验收自动分仓真实接口
   wecom:
     enabled: true
     corp-id: wweadabfc4c1eddf73
@@ -182,12 +213,19 @@ yudao:
       sale-delivery:
         agent-id: 1000086
         secret: V-qSwtMHiZA98NRQrykn0DzQxVvPBiPQaC4hykmk1C0
+    ai-bot:
+      enabled: true
+      bot-id: aibQ_NZM7RT0r7MABSS0g8ajL7VU7Q7n2WP
+      secret: 7iha0auqNZnmDwTjCxCvgZmXM0UtiQo4k1w5pvwcBty # 企业微信智能机器人长连接 Secret，由部署人员手动填写
+      tenant-id: 1
+      login-client-key: '' # 留空时复用上方默认企业微信免登应用
+      bind-page-url: http://erp.scxyltd.com/wecom-bot-bind.html
   sw-print:
     enabled: ${SW_PRINT_ENABLED:true}
     base-url: https://open.sw-aiot.com
     username: ${SW_PRINT_USERNAME:}
     secret: ${SW_PRINT_SECRET:}
-    callback-path-token: ${SW_PRINT_CB_TOKEN:}
+    callback-path-token: a823e401eaa136801a89848cf8b0fde0dafe187850da43d7234c8eb95ef4acf3
     submit-timeout-minutes: 10
     check-device-online: true
   pay:

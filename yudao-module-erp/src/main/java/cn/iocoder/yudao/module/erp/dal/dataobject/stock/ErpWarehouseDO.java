@@ -34,6 +34,10 @@ public class ErpWarehouseDO extends BaseDO {
      */
     private String name;
     /**
+     * 是否直发仓，由系统维护，不依赖仓库名称。
+     */
+    private Boolean directWarehouse;
+    /**
      * Department id.
      */
     private Long deptId;

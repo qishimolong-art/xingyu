@@ -12,9 +12,17 @@ import java.util.Map;
 
 public interface ErpSalePickDeliveryService {
 
+    /** 汇总当前销售单送货操作人，用于打印（兼容历史送货明细）。 */
+    String getSaleOutDeliveryUserNames(Long saleOutId);
+
     void generateForSaleOut(Long saleOutId);
 
-    void generateForSaleCartTransferOuts(Long saleCartId);
+    void generateForSaleCart(Long saleCartId);
+
+    /** 兼容旧调用名称；新流程按销售手推车整单生成。 */
+    default void generateForSaleCartTransferOuts(Long saleCartId) {
+        generateForSaleCart(saleCartId);
+    }
 
     PageResult<ErpSalePickTaskRespVO> getPickPage(ErpSalePickPageReqVO reqVO, boolean mobile);
 
@@ -27,6 +35,9 @@ public interface ErpSalePickDeliveryService {
     PageResult<ErpSalePickDeliveryItemRespVO> getPickItemPage(Long taskId, PageParam pageParam, boolean mobile);
 
     PageResult<ErpSalePickDeliverySubmitRespVO> getPickSubmitPage(Long taskId, PageParam pageParam, boolean mobile);
+
+    PageResult<ErpSalePickDeliverySubmitItemRespVO> getSubmitItemPage(Long parentId, Long submitId,
+                                                                    boolean pick, PageParam pageParam);
 
     void submitPick(ErpSalePickSubmitReqVO reqVO);
 
@@ -47,6 +58,13 @@ public interface ErpSalePickDeliveryService {
     String uploadVoucher(byte[] content, String fileName) throws IOException;
 
     Map<Long, ErpSalePickDeliverySummaryRespVO> getSummaryMapBySaleOutIds(Collection<Long> saleOutIds);
+
+    Map<Long, ErpSalePickDeliverySummaryRespVO> getSummaryMapBySaleCartIds(Collection<Long> saleCartIds);
+
+    default ErpSalePickDeliverySummaryRespVO getSummaryBySaleCartId(Long saleCartId) {
+        return saleCartId == null ? null : getSummaryMapBySaleCartIds(java.util.Collections.singleton(saleCartId))
+                .get(saleCartId);
+    }
 
     ErpSaleOutPickDeliveryDetailRespVO getSaleOutPickDeliveryDetail(Long saleOutId);
 

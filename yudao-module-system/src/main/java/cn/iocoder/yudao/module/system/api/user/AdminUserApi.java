@@ -49,6 +49,9 @@ public interface AdminUserApi {
      */
     List<AdminUserRespDTO> getUserListByStatus(Integer status);
 
+    /** 获得当前租户内手机号完全匹配的用户。 */
+    List<AdminUserRespDTO> getUserListByMobile(String mobile);
+
     PageResult<AdminUserRespDTO> getUserSimplePage(Integer status, String keyword, PageParam pageParam);
 
     /**

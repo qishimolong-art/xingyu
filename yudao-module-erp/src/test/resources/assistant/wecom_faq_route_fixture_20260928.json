@@ -1,0 +1,2399 @@
+{
+  "source": "D:\\MyProject\\Java\\xingyu\\修改文档\\0928-1004\\0928\\企微常用问答整理\\企微常用问题问答表_20260828-20260928.xlsx",
+  "generatedOn": "2026-09-28",
+  "rows": [
+    {
+      "rank": 1,
+      "question": "每日保护",
+      "category": "产品查价/库存",
+      "count": 12,
+      "intentTag": "product/price_multi",
+      "expectedRoute": "PRODUCT_CANDIDATE_CLARIFICATION",
+      "expectedIntent": "PRODUCT_PRICE_STOCK",
+      "expectedCapability": "PRODUCT_PRICE_STOCK",
+      "expectedEntityTypes": [
+        "PRODUCT"
+      ],
+      "expectedOutcomeClass": "CHOICE_REQUIRED"
+    },
+    {
+      "rank": 2,
+      "question": "每日保护全合成",
+      "category": "产品查价/库存",
+      "count": 12,
+      "intentTag": "product/price_multi",
+      "expectedRoute": "PRODUCT_CANDIDATE_CLARIFICATION",
+      "expectedIntent": "PRODUCT_PRICE_STOCK",
+      "expectedCapability": "PRODUCT_PRICE_STOCK",
+      "expectedEntityTypes": [
+        "PRODUCT"
+      ],
+      "expectedOutcomeClass": "CHOICE_REQUIRED"
+    },
+    {
+      "rank": 3,
+      "question": "X40",
+      "category": "产品查价/库存",
+      "count": 11,
+      "intentTag": "product/price_multi",
+      "expectedRoute": "PRODUCT_CANDIDATE_CLARIFICATION",
+      "expectedIntent": "PRODUCT_PRICE_STOCK",
+      "expectedCapability": "PRODUCT_PRICE_STOCK",
+      "expectedEntityTypes": [
+        "PRODUCT"
+      ],
+      "expectedOutcomeClass": "CHOICE_REQUIRED"
+    },
+    {
+      "rank": 4,
+      "question": "k40",
+      "category": "产品查价/库存",
+      "count": 10,
+      "intentTag": "product/price_multi",
+      "expectedRoute": "PRODUCT_CANDIDATE_CLARIFICATION",
+      "expectedIntent": "PRODUCT_PRICE_STOCK",
+      "expectedCapability": "PRODUCT_PRICE_STOCK",
+      "expectedEntityTypes": [
+        "PRODUCT"
+      ],
+      "expectedOutcomeClass": "CHOICE_REQUIRED"
+    },
+    {
+      "rank": 5,
+      "question": "力霸全合成",
+      "category": "产品查价/库存",
+      "count": 9,
+      "intentTag": "product/price_multi",
+      "expectedRoute": "PRODUCT_CANDIDATE_CLARIFICATION",
+      "expectedIntent": "PRODUCT_PRICE_STOCK",
+      "expectedCapability": "PRODUCT_PRICE_STOCK",
+      "expectedEntityTypes": [
+        "PRODUCT"
+      ],
+      "expectedOutcomeClass": "CHOICE_REQUIRED"
+    },
+    {
+      "rank": 6,
+      "question": "孚配防冻液",
+      "category": "产品查价/库存",
+      "count": 8,
+      "intentTag": "product/price_multi",
+      "expectedRoute": "PRODUCT_CANDIDATE_CLARIFICATION",
+      "expectedIntent": "PRODUCT_PRICE_STOCK",
+      "expectedCapability": "PRODUCT_PRICE_STOCK",
+      "expectedEntityTypes": [
+        "PRODUCT"
+      ],
+      "expectedOutcomeClass": "CHOICE_REQUIRED"
+    },
+    {
+      "rank": 7,
+      "question": "x20",
+      "category": "产品查价/库存",
+      "count": 8,
+      "intentTag": "product/price_multi",
+      "expectedRoute": "PRODUCT_CANDIDATE_CLARIFICATION",
+      "expectedIntent": "PRODUCT_PRICE_STOCK",
+      "expectedCapability": "PRODUCT_PRICE_STOCK",
+      "expectedEntityTypes": [
+        "PRODUCT"
+      ],
+      "expectedOutcomeClass": "CHOICE_REQUIRED"
+    },
+    {
+      "rank": 8,
+      "question": "全效保护",
+      "category": "产品查价/库存",
+      "count": 7,
+      "intentTag": "product/price_multi",
+      "expectedRoute": "PRODUCT_CANDIDATE_CLARIFICATION",
+      "expectedIntent": "PRODUCT_PRICE_STOCK",
+      "expectedCapability": "PRODUCT_PRICE_STOCK",
+      "expectedEntityTypes": [
+        "PRODUCT"
+      ],
+      "expectedOutcomeClass": "CHOICE_REQUIRED"
+    },
+    {
+      "rank": 9,
+      "question": "价格",
+      "category": "产品查价/库存",
+      "count": 6,
+      "intentTag": "product/not_found",
+      "expectedRoute": "PRODUCT_NOT_FOUND",
+      "expectedIntent": "PRODUCT_PRICE_STOCK",
+      "expectedCapability": "PRODUCT_PRICE_STOCK",
+      "expectedEntityTypes": [
+        "PRODUCT"
+      ],
+      "expectedOutcomeClass": "ENTITY_NOT_FOUND"
+    },
+    {
+      "rank": 10,
+      "question": "每日保护全合成530",
+      "category": "产品查价/库存",
+      "count": 6,
+      "intentTag": "product/price_multi",
+      "expectedRoute": "PRODUCT_CANDIDATE_CLARIFICATION",
+      "expectedIntent": "PRODUCT_PRICE_STOCK",
+      "expectedCapability": "PRODUCT_PRICE_STOCK",
+      "expectedEntityTypes": [
+        "PRODUCT"
+      ],
+      "expectedOutcomeClass": "CHOICE_REQUIRED"
+    },
+    {
+      "rank": 11,
+      "question": "澎湃表现",
+      "category": "产品查价/库存",
+      "count": 6,
+      "intentTag": "product/price_multi",
+      "expectedRoute": "PRODUCT_CANDIDATE_CLARIFICATION",
+      "expectedIntent": "PRODUCT_PRICE_STOCK",
+      "expectedCapability": "PRODUCT_PRICE_STOCK",
+      "expectedEntityTypes": [
+        "PRODUCT"
+      ],
+      "expectedOutcomeClass": "CHOICE_REQUIRED"
+    },
+    {
+      "rank": 12,
+      "question": "速霸1000",
+      "category": "产品查价/库存",
+      "count": 6,
+      "intentTag": "product/price_multi",
+      "expectedRoute": "PRODUCT_CANDIDATE_CLARIFICATION",
+      "expectedIntent": "PRODUCT_PRICE_STOCK",
+      "expectedCapability": "PRODUCT_PRICE_STOCK",
+      "expectedEntityTypes": [
+        "PRODUCT"
+      ],
+      "expectedOutcomeClass": "CHOICE_REQUIRED"
+    },
+    {
+      "rank": 13,
+      "question": "突破柴机油",
+      "category": "产品查价/库存",
+      "count": 6,
+      "intentTag": "product/price_multi",
+      "expectedRoute": "PRODUCT_CANDIDATE_CLARIFICATION",
+      "expectedIntent": "PRODUCT_PRICE_STOCK",
+      "expectedCapability": "PRODUCT_PRICE_STOCK",
+      "expectedEntityTypes": [
+        "PRODUCT"
+      ],
+      "expectedOutcomeClass": "CHOICE_REQUIRED"
+    },
+    {
+      "rank": 14,
+      "question": "黑霸王CF",
+      "category": "产品查价/库存",
+      "count": 5,
+      "intentTag": "product/price_multi",
+      "expectedRoute": "PRODUCT_CANDIDATE_CLARIFICATION",
+      "expectedIntent": "PRODUCT_PRICE_STOCK",
+      "expectedCapability": "PRODUCT_PRICE_STOCK",
+      "expectedEntityTypes": [
+        "PRODUCT"
+      ],
+      "expectedOutcomeClass": "CHOICE_REQUIRED"
+    },
+    {
+      "rank": 15,
+      "question": "经典表现040",
+      "category": "产品查价/库存",
+      "count": 5,
+      "intentTag": "product/price_multi",
+      "expectedRoute": "PRODUCT_CANDIDATE_CLARIFICATION",
+      "expectedIntent": "PRODUCT_PRICE_STOCK",
+      "expectedCapability": "PRODUCT_PRICE_STOCK",
+      "expectedEntityTypes": [
+        "PRODUCT"
+      ],
+      "expectedOutcomeClass": "CHOICE_REQUIRED"
+    },
+    {
+      "rank": 16,
+      "question": "全效020",
+      "category": "产品查价/库存",
+      "count": 5,
+      "intentTag": "product/price_multi",
+      "expectedRoute": "PRODUCT_CANDIDATE_CLARIFICATION",
+      "expectedIntent": "PRODUCT_PRICE_STOCK",
+      "expectedCapability": "PRODUCT_PRICE_STOCK",
+      "expectedEntityTypes": [
+        "PRODUCT"
+      ],
+      "expectedOutcomeClass": "CHOICE_REQUIRED"
+    },
+    {
+      "rank": 17,
+      "question": "速霸2000",
+      "category": "产品查价/库存",
+      "count": 5,
+      "intentTag": "product/price_multi",
+      "expectedRoute": "PRODUCT_CANDIDATE_CLARIFICATION",
+      "expectedIntent": "PRODUCT_PRICE_STOCK",
+      "expectedCapability": "PRODUCT_PRICE_STOCK",
+      "expectedEntityTypes": [
+        "PRODUCT"
+      ],
+      "expectedOutcomeClass": "CHOICE_REQUIRED"
+    },
+    {
+      "rank": 18,
+      "question": "XHP222",
+      "category": "产品查价/库存",
+      "count": 5,
+      "intentTag": "product/price_multi",
+      "expectedRoute": "PRODUCT_CANDIDATE_CLARIFICATION",
+      "expectedIntent": "PRODUCT_PRICE_STOCK",
+      "expectedCapability": "PRODUCT_PRICE_STOCK",
+      "expectedEntityTypes": [
+        "PRODUCT"
+      ],
+      "expectedOutcomeClass": "CHOICE_REQUIRED"
+    },
+    {
+      "rank": 19,
+      "question": "2155517 零售价",
+      "category": "产品查价/库存",
+      "count": 4,
+      "intentTag": "product/price_multi",
+      "expectedRoute": "PRODUCT_CANDIDATE_CLARIFICATION",
+      "expectedIntent": "PRODUCT_PRICE_STOCK",
+      "expectedCapability": "PRODUCT_PRICE_STOCK",
+      "expectedEntityTypes": [
+        "PRODUCT"
+      ],
+      "expectedOutcomeClass": "CHOICE_REQUIRED"
+    },
+    {
+      "rank": 20,
+      "question": "2254517轮胎",
+      "category": "产品查价/库存",
+      "count": 4,
+      "intentTag": "product/price_multi",
+      "expectedRoute": "PRODUCT_CANDIDATE_CLARIFICATION",
+      "expectedIntent": "PRODUCT_PRICE_STOCK",
+      "expectedCapability": "PRODUCT_PRICE_STOCK",
+      "expectedEntityTypes": [
+        "PRODUCT"
+      ],
+      "expectedOutcomeClass": "CHOICE_REQUIRED"
+    },
+    {
+      "rank": 21,
+      "question": "埃斯",
+      "category": "产品查价/库存",
+      "count": 4,
+      "intentTag": "product/price_multi",
+      "expectedRoute": "PRODUCT_CANDIDATE_CLARIFICATION",
+      "expectedIntent": "PRODUCT_PRICE_STOCK",
+      "expectedCapability": "PRODUCT_PRICE_STOCK",
+      "expectedEntityTypes": [
+        "PRODUCT"
+      ],
+      "expectedOutcomeClass": "CHOICE_REQUIRED"
+    },
+    {
+      "rank": 22,
+      "question": "黑霸王85140",
+      "category": "产品查价/库存",
+      "count": 4,
+      "intentTag": "product/price_multi",
+      "expectedRoute": "PRODUCT_CANDIDATE_CLARIFICATION",
+      "expectedIntent": "PRODUCT_PRICE_STOCK",
+      "expectedCapability": "PRODUCT_PRICE_STOCK",
+      "expectedEntityTypes": [
+        "PRODUCT"
+      ],
+      "expectedOutcomeClass": "CHOICE_REQUIRED"
+    },
+    {
+      "rank": 23,
+      "question": "黑霸王85w-140",
+      "category": "产品查价/库存",
+      "count": 4,
+      "intentTag": "product/price_multi",
+      "expectedRoute": "PRODUCT_CANDIDATE_CLARIFICATION",
+      "expectedIntent": "PRODUCT_PRICE_STOCK",
+      "expectedCapability": "PRODUCT_PRICE_STOCK",
+      "expectedEntityTypes": [
+        "PRODUCT"
+      ],
+      "expectedOutcomeClass": "CHOICE_REQUIRED"
+    },
+    {
+      "rank": 24,
+      "question": "经典表现",
+      "category": "产品查价/库存",
+      "count": 4,
+      "intentTag": "product/price_multi",
+      "expectedRoute": "PRODUCT_CANDIDATE_CLARIFICATION",
+      "expectedIntent": "PRODUCT_PRICE_STOCK",
+      "expectedCapability": "PRODUCT_PRICE_STOCK",
+      "expectedEntityTypes": [
+        "PRODUCT"
+      ],
+      "expectedOutcomeClass": "CHOICE_REQUIRED"
+    },
+    {
+      "rank": 25,
+      "question": "经典表现0W-40",
+      "category": "产品查价/库存",
+      "count": 4,
+      "intentTag": "product/price_multi",
+      "expectedRoute": "PRODUCT_CANDIDATE_CLARIFICATION",
+      "expectedIntent": "PRODUCT_PRICE_STOCK",
+      "expectedCapability": "PRODUCT_PRICE_STOCK",
+      "expectedEntityTypes": [
+        "PRODUCT"
+      ],
+      "expectedOutcomeClass": "CHOICE_REQUIRED"
+    },
+    {
+      "rank": 26,
+      "question": "力图46",
+      "category": "产品查价/库存",
+      "count": 4,
+      "intentTag": "product/price_multi",
+      "expectedRoute": "PRODUCT_CANDIDATE_CLARIFICATION",
+      "expectedIntent": "PRODUCT_PRICE_STOCK",
+      "expectedCapability": "PRODUCT_PRICE_STOCK",
+      "expectedEntityTypes": [
+        "PRODUCT"
+      ],
+      "expectedOutcomeClass": "CHOICE_REQUIRED"
+    },
+    {
+      "rank": 27,
+      "question": "路通源防冻液",
+      "category": "产品查价/库存",
+      "count": 4,
+      "intentTag": "product/price_multi",
+      "expectedRoute": "PRODUCT_CANDIDATE_CLARIFICATION",
+      "expectedIntent": "PRODUCT_PRICE_STOCK",
+      "expectedCapability": "PRODUCT_PRICE_STOCK",
+      "expectedEntityTypes": [
+        "PRODUCT"
+      ],
+      "expectedOutcomeClass": "CHOICE_REQUIRED"
+    },
+    {
+      "rank": 28,
+      "question": "全效保护0w-20",
+      "category": "产品查价/库存",
+      "count": 4,
+      "intentTag": "product/price_multi",
+      "expectedRoute": "PRODUCT_CANDIDATE_CLARIFICATION",
+      "expectedIntent": "PRODUCT_PRICE_STOCK",
+      "expectedCapability": "PRODUCT_PRICE_STOCK",
+      "expectedEntityTypes": [
+        "PRODUCT"
+      ],
+      "expectedOutcomeClass": "CHOICE_REQUIRED"
+    },
+    {
+      "rank": 29,
+      "question": "全效保护V",
+      "category": "产品查价/库存",
+      "count": 4,
+      "intentTag": "product/price_ok",
+      "expectedRoute": "PRODUCT_PRICE_STOCK",
+      "expectedIntent": "PRODUCT_PRICE_STOCK",
+      "expectedCapability": "PRODUCT_PRICE_STOCK",
+      "expectedEntityTypes": [
+        "PRODUCT"
+      ],
+      "expectedOutcomeClass": "RESOLVED_OR_NO_DATA"
+    },
+    {
+      "rank": 30,
+      "question": "突破机油",
+      "category": "产品查价/库存",
+      "count": 4,
+      "intentTag": "product/price_multi",
+      "expectedRoute": "PRODUCT_CANDIDATE_CLARIFICATION",
+      "expectedIntent": "PRODUCT_PRICE_STOCK",
+      "expectedCapability": "PRODUCT_PRICE_STOCK",
+      "expectedEntityTypes": [
+        "PRODUCT"
+      ],
+      "expectedOutcomeClass": "CHOICE_REQUIRED"
+    },
+    {
+      "rank": 31,
+      "question": "专属服务用油",
+      "category": "销量查询",
+      "count": 4,
+      "intentTag": "product/sales_ok",
+      "expectedRoute": "SALE_VERIFIED_METRIC",
+      "expectedIntent": "PRODUCT_PRICE_STOCK",
+      "expectedCapability": "PRODUCT_PRICE_STOCK",
+      "expectedEntityTypes": [
+        "PRODUCT"
+      ],
+      "expectedOutcomeClass": "RESOLVED_OR_NO_DATA"
+    },
+    {
+      "rank": 32,
+      "question": "cf2050",
+      "category": "产品查价/库存",
+      "count": 4,
+      "intentTag": "product/price_multi",
+      "expectedRoute": "PRODUCT_CANDIDATE_CLARIFICATION",
+      "expectedIntent": "PRODUCT_PRICE_STOCK",
+      "expectedCapability": "PRODUCT_PRICE_STOCK",
+      "expectedEntityTypes": [
+        "PRODUCT"
+      ],
+      "expectedOutcomeClass": "CHOICE_REQUIRED"
+    },
+    {
+      "rank": 33,
+      "question": "k80 库存",
+      "category": "产品查价/库存",
+      "count": 4,
+      "intentTag": "product/price_ok",
+      "expectedRoute": "PRODUCT_PRICE_STOCK",
+      "expectedIntent": "PRODUCT_PRICE_STOCK",
+      "expectedCapability": "PRODUCT_PRICE_STOCK",
+      "expectedEntityTypes": [
+        "PRODUCT"
+      ],
+      "expectedOutcomeClass": "RESOLVED_OR_NO_DATA"
+    },
+    {
+      "rank": 34,
+      "question": "1757014",
+      "category": "产品查价/库存",
+      "count": 3,
+      "intentTag": "product/price_multi",
+      "expectedRoute": "PRODUCT_CANDIDATE_CLARIFICATION",
+      "expectedIntent": "PRODUCT_PRICE_STOCK",
+      "expectedCapability": "PRODUCT_PRICE_STOCK",
+      "expectedEntityTypes": [
+        "PRODUCT"
+      ],
+      "expectedOutcomeClass": "CHOICE_REQUIRED"
+    },
+    {
+      "rank": 35,
+      "question": "2055516 零售价",
+      "category": "产品查价/库存",
+      "count": 3,
+      "intentTag": "product/price_multi",
+      "expectedRoute": "PRODUCT_CANDIDATE_CLARIFICATION",
+      "expectedIntent": "PRODUCT_PRICE_STOCK",
+      "expectedCapability": "PRODUCT_PRICE_STOCK",
+      "expectedEntityTypes": [
+        "PRODUCT"
+      ],
+      "expectedOutcomeClass": "CHOICE_REQUIRED"
+    },
+    {
+      "rank": 36,
+      "question": "2256018",
+      "category": "产品查价/库存",
+      "count": 3,
+      "intentTag": "product/price_multi",
+      "expectedRoute": "PRODUCT_CANDIDATE_CLARIFICATION",
+      "expectedIntent": "PRODUCT_PRICE_STOCK",
+      "expectedCapability": "PRODUCT_PRICE_STOCK",
+      "expectedEntityTypes": [
+        "PRODUCT"
+      ],
+      "expectedOutcomeClass": "CHOICE_REQUIRED"
+    },
+    {
+      "rank": 37,
+      "question": "柴机油",
+      "category": "销量查询",
+      "count": 3,
+      "intentTag": "product/sales_ok",
+      "expectedRoute": "SALE_VERIFIED_METRIC",
+      "expectedIntent": "PRODUCT_PRICE_STOCK",
+      "expectedCapability": "PRODUCT_PRICE_STOCK",
+      "expectedEntityTypes": [
+        "PRODUCT"
+      ],
+      "expectedOutcomeClass": "RESOLVED_OR_NO_DATA"
+    },
+    {
+      "rank": 38,
+      "question": "黑霸王80w-90",
+      "category": "产品查价/库存",
+      "count": 3,
+      "intentTag": "product/price_multi",
+      "expectedRoute": "PRODUCT_CANDIDATE_CLARIFICATION",
+      "expectedIntent": "PRODUCT_PRICE_STOCK",
+      "expectedCapability": "PRODUCT_PRICE_STOCK",
+      "expectedEntityTypes": [
+        "PRODUCT"
+      ],
+      "expectedOutcomeClass": "CHOICE_REQUIRED"
+    },
+    {
+      "rank": 39,
+      "question": "劲擎表现",
+      "category": "产品查价/库存",
+      "count": 3,
+      "intentTag": "product/price_multi",
+      "expectedRoute": "PRODUCT_CANDIDATE_CLARIFICATION",
+      "expectedIntent": "PRODUCT_PRICE_STOCK",
+      "expectedCapability": "PRODUCT_PRICE_STOCK",
+      "expectedEntityTypes": [
+        "PRODUCT"
+      ],
+      "expectedOutcomeClass": "CHOICE_REQUIRED"
+    },
+    {
+      "rank": 40,
+      "question": "劲擎表现 020",
+      "category": "产品查价/库存",
+      "count": 3,
+      "intentTag": "product/price_multi",
+      "expectedRoute": "PRODUCT_CANDIDATE_CLARIFICATION",
+      "expectedIntent": "PRODUCT_PRICE_STOCK",
+      "expectedCapability": "PRODUCT_PRICE_STOCK",
+      "expectedEntityTypes": [
+        "PRODUCT"
+      ],
+      "expectedOutcomeClass": "CHOICE_REQUIRED"
+    },
+    {
+      "rank": 41,
+      "question": "劲擎表现0-20",
+      "category": "产品查价/库存",
+      "count": 3,
+      "intentTag": "product/price_multi",
+      "expectedRoute": "PRODUCT_CANDIDATE_CLARIFICATION",
+      "expectedIntent": "PRODUCT_PRICE_STOCK",
+      "expectedCapability": "PRODUCT_PRICE_STOCK",
+      "expectedEntityTypes": [
+        "PRODUCT"
+      ],
+      "expectedOutcomeClass": "CHOICE_REQUIRED"
+    },
+    {
+      "rank": 42,
+      "question": "经典表现0-40",
+      "category": "产品查价/库存",
+      "count": 3,
+      "intentTag": "product/price_multi",
+      "expectedRoute": "PRODUCT_CANDIDATE_CLARIFICATION",
+      "expectedIntent": "PRODUCT_PRICE_STOCK",
+      "expectedCapability": "PRODUCT_PRICE_STOCK",
+      "expectedEntityTypes": [
+        "PRODUCT"
+      ],
+      "expectedOutcomeClass": "CHOICE_REQUIRED"
+    },
+    {
+      "rank": 43,
+      "question": "经典表现020",
+      "category": "产品查价/库存",
+      "count": 3,
+      "intentTag": "product/price_multi",
+      "expectedRoute": "PRODUCT_CANDIDATE_CLARIFICATION",
+      "expectedIntent": "PRODUCT_PRICE_STOCK",
+      "expectedCapability": "PRODUCT_PRICE_STOCK",
+      "expectedEntityTypes": [
+        "PRODUCT"
+      ],
+      "expectedOutcomeClass": "CHOICE_REQUIRED"
+    },
+    {
+      "rank": 44,
+      "question": "经典表现030",
+      "category": "产品查价/库存",
+      "count": 3,
+      "intentTag": "product/price_multi",
+      "expectedRoute": "PRODUCT_CANDIDATE_CLARIFICATION",
+      "expectedIntent": "PRODUCT_PRICE_STOCK",
+      "expectedCapability": "PRODUCT_PRICE_STOCK",
+      "expectedEntityTypes": [
+        "PRODUCT"
+      ],
+      "expectedOutcomeClass": "CHOICE_REQUIRED"
+    },
+    {
+      "rank": 45,
+      "question": "经典表现530",
+      "category": "产品查价/库存",
+      "count": 3,
+      "intentTag": "product/price_multi",
+      "expectedRoute": "PRODUCT_CANDIDATE_CLARIFICATION",
+      "expectedIntent": "PRODUCT_PRICE_STOCK",
+      "expectedCapability": "PRODUCT_PRICE_STOCK",
+      "expectedEntityTypes": [
+        "PRODUCT"
+      ],
+      "expectedOutcomeClass": "CHOICE_REQUIRED"
+    },
+    {
+      "rank": 46,
+      "question": "康菲",
+      "category": "产品查价/库存",
+      "count": 3,
+      "intentTag": "product/price_multi",
+      "expectedRoute": "PRODUCT_CANDIDATE_CLARIFICATION",
+      "expectedIntent": "PRODUCT_PRICE_STOCK",
+      "expectedCapability": "PRODUCT_PRICE_STOCK",
+      "expectedEntityTypes": [
+        "PRODUCT"
+      ],
+      "expectedOutcomeClass": "CHOICE_REQUIRED"
+    },
+    {
+      "rank": 47,
+      "question": "拉力士427",
+      "category": "产品查价/库存",
+      "count": 3,
+      "intentTag": "product/price_ok",
+      "expectedRoute": "PRODUCT_PRICE_STOCK",
+      "expectedIntent": "PRODUCT_PRICE_STOCK",
+      "expectedCapability": "PRODUCT_PRICE_STOCK",
+      "expectedEntityTypes": [
+        "PRODUCT"
+      ],
+      "expectedOutcomeClass": "RESOLVED_OR_NO_DATA"
+    },
+    {
+      "rank": 48,
+      "question": "蓝星防冻液",
+      "category": "产品查价/库存",
+      "count": 3,
+      "intentTag": "product/price_multi",
+      "expectedRoute": "PRODUCT_CANDIDATE_CLARIFICATION",
+      "expectedIntent": "PRODUCT_PRICE_STOCK",
+      "expectedCapability": "PRODUCT_PRICE_STOCK",
+      "expectedEntityTypes": [
+        "PRODUCT"
+      ],
+      "expectedOutcomeClass": "CHOICE_REQUIRED"
+    },
+    {
+      "rank": 49,
+      "question": "蓝油",
+      "category": "产品查价/库存",
+      "count": 3,
+      "intentTag": "product/price_multi",
+      "expectedRoute": "PRODUCT_CANDIDATE_CLARIFICATION",
+      "expectedIntent": "PRODUCT_PRICE_STOCK",
+      "expectedCapability": "PRODUCT_PRICE_STOCK",
+      "expectedEntityTypes": [
+        "PRODUCT"
+      ],
+      "expectedOutcomeClass": "CHOICE_REQUIRED"
+    },
+    {
+      "rank": 50,
+      "question": "理县武杰销量",
+      "category": "销量查询",
+      "count": 3,
+      "intentTag": "sales/sales_ok",
+      "expectedRoute": "SALE_VERIFIED_METRIC",
+      "expectedIntent": "SALE",
+      "expectedCapability": "SALE",
+      "expectedEntityTypes": [],
+      "expectedOutcomeClass": "RESOLVED_OR_NO_DATA",
+      "expectedResolvedEntityType": "CUSTOMER"
+    },
+    {
+      "rank": 51,
+      "question": "力霸",
+      "category": "产品查价/库存",
+      "count": 3,
+      "intentTag": "product/price_multi",
+      "expectedRoute": "PRODUCT_CANDIDATE_CLARIFICATION",
+      "expectedIntent": "PRODUCT_PRICE_STOCK",
+      "expectedCapability": "PRODUCT_PRICE_STOCK",
+      "expectedEntityTypes": [
+        "PRODUCT"
+      ],
+      "expectedOutcomeClass": "CHOICE_REQUIRED"
+    },
+    {
+      "rank": 52,
+      "question": "每日保护5-30",
+      "category": "产品查价/库存",
+      "count": 3,
+      "intentTag": "product/price_multi",
+      "expectedRoute": "PRODUCT_CANDIDATE_CLARIFICATION",
+      "expectedIntent": "PRODUCT_PRICE_STOCK",
+      "expectedCapability": "PRODUCT_PRICE_STOCK",
+      "expectedEntityTypes": [
+        "PRODUCT"
+      ],
+      "expectedOutcomeClass": "CHOICE_REQUIRED"
+    },
+    {
+      "rank": 53,
+      "question": "每日保护全合成0-20",
+      "category": "产品查价/库存",
+      "count": 3,
+      "intentTag": "product/price_multi",
+      "expectedRoute": "PRODUCT_CANDIDATE_CLARIFICATION",
+      "expectedIntent": "PRODUCT_PRICE_STOCK",
+      "expectedCapability": "PRODUCT_PRICE_STOCK",
+      "expectedEntityTypes": [
+        "PRODUCT"
+      ],
+      "expectedOutcomeClass": "CHOICE_REQUIRED"
+    },
+    {
+      "rank": 54,
+      "question": "每日保护全合成5-30",
+      "category": "产品查价/库存",
+      "count": 3,
+      "intentTag": "product/price_multi",
+      "expectedRoute": "PRODUCT_CANDIDATE_CLARIFICATION",
+      "expectedIntent": "PRODUCT_PRICE_STOCK",
+      "expectedCapability": "PRODUCT_PRICE_STOCK",
+      "expectedEntityTypes": [
+        "PRODUCT"
+      ],
+      "expectedOutcomeClass": "CHOICE_REQUIRED"
+    },
+    {
+      "rank": 55,
+      "question": "美润克斯",
+      "category": "产品查价/库存",
+      "count": 3,
+      "intentTag": "product/price_multi",
+      "expectedRoute": "PRODUCT_CANDIDATE_CLARIFICATION",
+      "expectedIntent": "PRODUCT_PRICE_STOCK",
+      "expectedCapability": "PRODUCT_PRICE_STOCK",
+      "expectedEntityTypes": [
+        "PRODUCT"
+      ],
+      "expectedOutcomeClass": "CHOICE_REQUIRED"
+    },
+    {
+      "rank": 56,
+      "question": "澎湃表现价格",
+      "category": "产品查价/库存",
+      "count": 3,
+      "intentTag": "product/price_multi",
+      "expectedRoute": "PRODUCT_CANDIDATE_CLARIFICATION",
+      "expectedIntent": "PRODUCT_PRICE_STOCK",
+      "expectedCapability": "PRODUCT_PRICE_STOCK",
+      "expectedEntityTypes": [
+        "PRODUCT"
+      ],
+      "expectedOutcomeClass": "CHOICE_REQUIRED"
+    },
+    {
+      "rank": 57,
+      "question": "轻享C3",
+      "category": "产品查价/库存",
+      "count": 3,
+      "intentTag": "product/price_multi",
+      "expectedRoute": "PRODUCT_CANDIDATE_CLARIFICATION",
+      "expectedIntent": "PRODUCT_PRICE_STOCK",
+      "expectedCapability": "PRODUCT_PRICE_STOCK",
+      "expectedEntityTypes": [
+        "PRODUCT"
+      ],
+      "expectedOutcomeClass": "CHOICE_REQUIRED"
+    },
+    {
+      "rank": 58,
+      "question": "全效保护540",
+      "category": "产品查价/库存",
+      "count": 3,
+      "intentTag": "product/price_multi",
+      "expectedRoute": "PRODUCT_CANDIDATE_CLARIFICATION",
+      "expectedIntent": "PRODUCT_PRICE_STOCK",
+      "expectedCapability": "PRODUCT_PRICE_STOCK",
+      "expectedEntityTypes": [
+        "PRODUCT"
+      ],
+      "expectedOutcomeClass": "CHOICE_REQUIRED"
+    },
+    {
+      "rank": 59,
+      "question": "突破齿轮油价格",
+      "category": "产品查价/库存",
+      "count": 3,
+      "intentTag": "product/price_multi",
+      "expectedRoute": "PRODUCT_CANDIDATE_CLARIFICATION",
+      "expectedIntent": "PRODUCT_PRICE_STOCK",
+      "expectedCapability": "PRODUCT_PRICE_STOCK",
+      "expectedEntityTypes": [
+        "PRODUCT"
+      ],
+      "expectedOutcomeClass": "CHOICE_REQUIRED"
+    },
+    {
+      "rank": 60,
+      "question": "液压油",
+      "category": "销量查询",
+      "count": 3,
+      "intentTag": "product/sales_ok",
+      "expectedRoute": "SALE_VERIFIED_METRIC",
+      "expectedIntent": "PRODUCT_PRICE_STOCK",
+      "expectedCapability": "PRODUCT_PRICE_STOCK",
+      "expectedEntityTypes": [
+        "PRODUCT"
+      ],
+      "expectedOutcomeClass": "RESOLVED_OR_NO_DATA"
+    },
+    {
+      "rank": 61,
+      "question": "专属保护全合成  530",
+      "category": "产品查价/库存",
+      "count": 3,
+      "intentTag": "product/price_multi",
+      "expectedRoute": "PRODUCT_CANDIDATE_CLARIFICATION",
+      "expectedIntent": "PRODUCT_PRICE_STOCK",
+      "expectedCapability": "PRODUCT_PRICE_STOCK",
+      "expectedEntityTypes": [
+        "PRODUCT"
+      ],
+      "expectedOutcomeClass": "CHOICE_REQUIRED"
+    },
+    {
+      "rank": 62,
+      "question": "专属服务",
+      "category": "产品查价/库存",
+      "count": 3,
+      "intentTag": "product/price_multi",
+      "expectedRoute": "PRODUCT_CANDIDATE_CLARIFICATION",
+      "expectedIntent": "PRODUCT_PRICE_STOCK",
+      "expectedCapability": "PRODUCT_PRICE_STOCK",
+      "expectedEntityTypes": [
+        "PRODUCT"
+      ],
+      "expectedOutcomeClass": "CHOICE_REQUIRED"
+    },
+    {
+      "rank": 63,
+      "question": "cf-4",
+      "category": "权限提示",
+      "count": 3,
+      "intentTag": "product/sales_ok",
+      "expectedRoute": "SALE_VERIFIED_METRIC",
+      "expectedIntent": "PRODUCT_PRICE_STOCK",
+      "expectedCapability": "PRODUCT_PRICE_STOCK",
+      "expectedEntityTypes": [
+        "PRODUCT"
+      ],
+      "expectedOutcomeClass": "RESOLVED_OR_NO_DATA"
+    },
+    {
+      "rank": 64,
+      "question": "EP2",
+      "category": "产品查价/库存",
+      "count": 3,
+      "intentTag": "product/price_ok",
+      "expectedRoute": "PRODUCT_PRICE_STOCK",
+      "expectedIntent": "PRODUCT_PRICE_STOCK",
+      "expectedCapability": "PRODUCT_PRICE_STOCK",
+      "expectedEntityTypes": [
+        "PRODUCT"
+      ],
+      "expectedOutcomeClass": "RESOLVED_OR_NO_DATA"
+    },
+    {
+      "rank": 65,
+      "question": "x20 价格",
+      "category": "产品查价/库存",
+      "count": 3,
+      "intentTag": "product/price_multi",
+      "expectedRoute": "PRODUCT_CANDIDATE_CLARIFICATION",
+      "expectedIntent": "PRODUCT_PRICE_STOCK",
+      "expectedCapability": "PRODUCT_PRICE_STOCK",
+      "expectedEntityTypes": [
+        "PRODUCT"
+      ],
+      "expectedOutcomeClass": "CHOICE_REQUIRED"
+    },
+    {
+      "rank": 66,
+      "question": "X30价格",
+      "category": "产品查价/库存",
+      "count": 3,
+      "intentTag": "product/price_multi",
+      "expectedRoute": "PRODUCT_CANDIDATE_CLARIFICATION",
+      "expectedIntent": "PRODUCT_PRICE_STOCK",
+      "expectedCapability": "PRODUCT_PRICE_STOCK",
+      "expectedEntityTypes": [
+        "PRODUCT"
+      ],
+      "expectedOutcomeClass": "CHOICE_REQUIRED"
+    },
+    {
+      "rank": 67,
+      "question": "1757014 股份",
+      "category": "权限提示",
+      "count": 2,
+      "intentTag": "product/sales_ok",
+      "expectedRoute": "SALE_VERIFIED_METRIC",
+      "expectedIntent": "PRODUCT_PRICE_STOCK",
+      "expectedCapability": "PRODUCT_PRICE_STOCK",
+      "expectedEntityTypes": [
+        "PRODUCT"
+      ],
+      "expectedOutcomeClass": "RESOLVED_OR_NO_DATA"
+    },
+    {
+      "rank": 68,
+      "question": "1757014轮胎",
+      "category": "产品查价/库存",
+      "count": 2,
+      "intentTag": "product/price_multi",
+      "expectedRoute": "PRODUCT_CANDIDATE_CLARIFICATION",
+      "expectedIntent": "PRODUCT_PRICE_STOCK",
+      "expectedCapability": "PRODUCT_PRICE_STOCK",
+      "expectedEntityTypes": [
+        "PRODUCT"
+      ],
+      "expectedOutcomeClass": "CHOICE_REQUIRED"
+    },
+    {
+      "rank": 69,
+      "question": "1955516轮胎",
+      "category": "产品查价/库存",
+      "count": 2,
+      "intentTag": "product/price_multi",
+      "expectedRoute": "PRODUCT_CANDIDATE_CLARIFICATION",
+      "expectedIntent": "PRODUCT_PRICE_STOCK",
+      "expectedCapability": "PRODUCT_PRICE_STOCK",
+      "expectedEntityTypes": [
+        "PRODUCT"
+      ],
+      "expectedOutcomeClass": "CHOICE_REQUIRED"
+    },
+    {
+      "rank": 70,
+      "question": "2055516 股份价",
+      "category": "产品查价/库存",
+      "count": 2,
+      "intentTag": "product/price_multi",
+      "expectedRoute": "PRODUCT_CANDIDATE_CLARIFICATION",
+      "expectedIntent": "PRODUCT_PRICE_STOCK",
+      "expectedCapability": "PRODUCT_PRICE_STOCK",
+      "expectedEntityTypes": [
+        "PRODUCT"
+      ],
+      "expectedOutcomeClass": "CHOICE_REQUIRED"
+    },
+    {
+      "rank": 71,
+      "question": "2156017轮胎",
+      "category": "产品查价/库存",
+      "count": 2,
+      "intentTag": "product/price_multi",
+      "expectedRoute": "PRODUCT_CANDIDATE_CLARIFICATION",
+      "expectedIntent": "PRODUCT_PRICE_STOCK",
+      "expectedCapability": "PRODUCT_PRICE_STOCK",
+      "expectedEntityTypes": [
+        "PRODUCT"
+      ],
+      "expectedOutcomeClass": "CHOICE_REQUIRED"
+    },
+    {
+      "rank": 72,
+      "question": "222 库存",
+      "category": "产品查价/库存",
+      "count": 2,
+      "intentTag": "product/price_ok",
+      "expectedRoute": "PRODUCT_PRICE_STOCK",
+      "expectedIntent": "PRODUCT_PRICE_STOCK",
+      "expectedCapability": "PRODUCT_PRICE_STOCK",
+      "expectedEntityTypes": [
+        "PRODUCT"
+      ],
+      "expectedOutcomeClass": "RESOLVED_OR_NO_DATA"
+    },
+    {
+      "rank": 73,
+      "question": "225 55 18 库存",
+      "category": "产品查价/库存",
+      "count": 2,
+      "intentTag": "product/price_ok",
+      "expectedRoute": "PRODUCT_PRICE_STOCK",
+      "expectedIntent": "PRODUCT_PRICE_STOCK",
+      "expectedCapability": "PRODUCT_PRICE_STOCK",
+      "expectedEntityTypes": [
+        "PRODUCT"
+      ],
+      "expectedOutcomeClass": "RESOLVED_OR_NO_DATA"
+    },
+    {
+      "rank": 74,
+      "question": "2256017",
+      "category": "产品查价/库存",
+      "count": 2,
+      "intentTag": "product/price_multi",
+      "expectedRoute": "PRODUCT_CANDIDATE_CLARIFICATION",
+      "expectedIntent": "PRODUCT_PRICE_STOCK",
+      "expectedCapability": "PRODUCT_PRICE_STOCK",
+      "expectedEntityTypes": [
+        "PRODUCT"
+      ],
+      "expectedOutcomeClass": "CHOICE_REQUIRED"
+    },
+    {
+      "rank": 75,
+      "question": "2356018轮胎",
+      "category": "产品查价/库存",
+      "count": 2,
+      "intentTag": "product/price_multi",
+      "expectedRoute": "PRODUCT_CANDIDATE_CLARIFICATION",
+      "expectedIntent": "PRODUCT_PRICE_STOCK",
+      "expectedCapability": "PRODUCT_PRICE_STOCK",
+      "expectedEntityTypes": [
+        "PRODUCT"
+      ],
+      "expectedOutcomeClass": "CHOICE_REQUIRED"
+    },
+    {
+      "rank": 76,
+      "question": "3#",
+      "category": "产品查价/库存",
+      "count": 2,
+      "intentTag": "product/price_multi",
+      "expectedRoute": "PRODUCT_CANDIDATE_CLARIFICATION",
+      "expectedIntent": "PRODUCT_PRICE_STOCK",
+      "expectedCapability": "PRODUCT_PRICE_STOCK",
+      "expectedEntityTypes": [
+        "PRODUCT"
+      ],
+      "expectedOutcomeClass": "CHOICE_REQUIRED"
+    },
+    {
+      "rank": 77,
+      "question": "3号通用锂基脂",
+      "category": "产品查价/库存",
+      "count": 2,
+      "intentTag": "product/price_multi",
+      "expectedRoute": "PRODUCT_CANDIDATE_CLARIFICATION",
+      "expectedIntent": "PRODUCT_PRICE_STOCK",
+      "expectedCapability": "PRODUCT_PRICE_STOCK",
+      "expectedEntityTypes": [
+        "PRODUCT"
+      ],
+      "expectedOutcomeClass": "CHOICE_REQUIRED"
+    },
+    {
+      "rank": 78,
+      "question": "46",
+      "category": "产品查价/库存",
+      "count": 2,
+      "intentTag": "product/price_multi",
+      "expectedRoute": "PRODUCT_CANDIDATE_CLARIFICATION",
+      "expectedIntent": "PRODUCT_PRICE_STOCK",
+      "expectedCapability": "PRODUCT_PRICE_STOCK",
+      "expectedEntityTypes": [
+        "PRODUCT"
+      ],
+      "expectedOutcomeClass": "CHOICE_REQUIRED"
+    },
+    {
+      "rank": 79,
+      "question": "46#",
+      "category": "产品查价/库存",
+      "count": 2,
+      "intentTag": "product/price_multi",
+      "expectedRoute": "PRODUCT_CANDIDATE_CLARIFICATION",
+      "expectedIntent": "PRODUCT_PRICE_STOCK",
+      "expectedCapability": "PRODUCT_PRICE_STOCK",
+      "expectedEntityTypes": [
+        "PRODUCT"
+      ],
+      "expectedOutcomeClass": "CHOICE_REQUIRED"
+    },
+    {
+      "rank": 80,
+      "question": "46号液压油",
+      "category": "产品查价/库存",
+      "count": 2,
+      "intentTag": "product/price_ok",
+      "expectedRoute": "PRODUCT_PRICE_STOCK",
+      "expectedIntent": "PRODUCT_PRICE_STOCK",
+      "expectedCapability": "PRODUCT_PRICE_STOCK",
+      "expectedEntityTypes": [
+        "PRODUCT"
+      ],
+      "expectedOutcomeClass": "RESOLVED_OR_NO_DATA"
+    },
+    {
+      "rank": 81,
+      "question": "50周年 库存",
+      "category": "产品查价/库存",
+      "count": 2,
+      "intentTag": "product/price_ok",
+      "expectedRoute": "PRODUCT_PRICE_STOCK",
+      "expectedIntent": "PRODUCT_PRICE_STOCK",
+      "expectedCapability": "PRODUCT_PRICE_STOCK",
+      "expectedEntityTypes": [
+        "PRODUCT"
+      ],
+      "expectedOutcomeClass": "RESOLVED_OR_NO_DATA"
+    },
+    {
+      "rank": 82,
+      "question": "68号液压油",
+      "category": "产品查价/库存",
+      "count": 2,
+      "intentTag": "product/price_multi",
+      "expectedRoute": "PRODUCT_CANDIDATE_CLARIFICATION",
+      "expectedIntent": "PRODUCT_PRICE_STOCK",
+      "expectedCapability": "PRODUCT_PRICE_STOCK",
+      "expectedEntityTypes": [
+        "PRODUCT"
+      ],
+      "expectedOutcomeClass": "CHOICE_REQUIRED"
+    },
+    {
+      "rank": 83,
+      "question": "埃尔夫",
+      "category": "产品查价/库存",
+      "count": 2,
+      "intentTag": "product/price_multi",
+      "expectedRoute": "PRODUCT_CANDIDATE_CLARIFICATION",
+      "expectedIntent": "PRODUCT_PRICE_STOCK",
+      "expectedCapability": "PRODUCT_PRICE_STOCK",
+      "expectedEntityTypes": [
+        "PRODUCT"
+      ],
+      "expectedOutcomeClass": "CHOICE_REQUIRED"
+    },
+    {
+      "rank": 84,
+      "question": "埃尔夫  优速  1040",
+      "category": "产品查价/库存",
+      "count": 2,
+      "intentTag": "product/price_ok",
+      "expectedRoute": "PRODUCT_PRICE_STOCK",
+      "expectedIntent": "PRODUCT_PRICE_STOCK",
+      "expectedCapability": "PRODUCT_PRICE_STOCK",
+      "expectedEntityTypes": [
+        "PRODUCT"
+      ],
+      "expectedOutcomeClass": "RESOLVED_OR_NO_DATA"
+    },
+    {
+      "rank": 85,
+      "question": "埃斯机油",
+      "category": "产品查价/库存",
+      "count": 2,
+      "intentTag": "product/not_found",
+      "expectedRoute": "PRODUCT_NOT_FOUND",
+      "expectedIntent": "PRODUCT_PRICE_STOCK",
+      "expectedCapability": "PRODUCT_PRICE_STOCK",
+      "expectedEntityTypes": [
+        "PRODUCT"
+      ],
+      "expectedOutcomeClass": "ENTITY_NOT_FOUND"
+    },
+    {
+      "rank": 86,
+      "question": "傲超K40",
+      "category": "产品查价/库存",
+      "count": 2,
+      "intentTag": "product/price_multi",
+      "expectedRoute": "PRODUCT_CANDIDATE_CLARIFICATION",
+      "expectedIntent": "PRODUCT_PRICE_STOCK",
+      "expectedCapability": "PRODUCT_PRICE_STOCK",
+      "expectedEntityTypes": [
+        "PRODUCT"
+      ],
+      "expectedOutcomeClass": "CHOICE_REQUIRED"
+    },
+    {
+      "rank": 87,
+      "question": "傲超K60",
+      "category": "产品查价/库存",
+      "count": 2,
+      "intentTag": "product/price_multi",
+      "expectedRoute": "PRODUCT_CANDIDATE_CLARIFICATION",
+      "expectedIntent": "PRODUCT_PRICE_STOCK",
+      "expectedCapability": "PRODUCT_PRICE_STOCK",
+      "expectedEntityTypes": [
+        "PRODUCT"
+      ],
+      "expectedOutcomeClass": "CHOICE_REQUIRED"
+    },
+    {
+      "rank": 88,
+      "question": "变速箱油",
+      "category": "产品查价/库存",
+      "count": 2,
+      "intentTag": "product/price_multi",
+      "expectedRoute": "PRODUCT_CANDIDATE_CLARIFICATION",
+      "expectedIntent": "PRODUCT_PRICE_STOCK",
+      "expectedCapability": "PRODUCT_PRICE_STOCK",
+      "expectedEntityTypes": [
+        "PRODUCT"
+      ],
+      "expectedOutcomeClass": "CHOICE_REQUIRED"
+    },
+    {
+      "rank": 89,
+      "question": "畅行100",
+      "category": "产品查价/库存",
+      "count": 2,
+      "intentTag": "product/price_multi",
+      "expectedRoute": "PRODUCT_CANDIDATE_CLARIFICATION",
+      "expectedIntent": "PRODUCT_PRICE_STOCK",
+      "expectedCapability": "PRODUCT_PRICE_STOCK",
+      "expectedEntityTypes": [
+        "PRODUCT"
+      ],
+      "expectedOutcomeClass": "CHOICE_REQUIRED"
+    },
+    {
+      "rank": 90,
+      "question": "畅行100 208L价格",
+      "category": "产品查价/库存",
+      "count": 2,
+      "intentTag": "product/price_multi",
+      "expectedRoute": "PRODUCT_CANDIDATE_CLARIFICATION",
+      "expectedIntent": "PRODUCT_PRICE_STOCK",
+      "expectedCapability": "PRODUCT_PRICE_STOCK",
+      "expectedEntityTypes": [
+        "PRODUCT"
+      ],
+      "expectedOutcomeClass": "CHOICE_REQUIRED"
+    },
+    {
+      "rank": 91,
+      "question": "畅行200",
+      "category": "产品查价/库存",
+      "count": 2,
+      "intentTag": "product/price_ok",
+      "expectedRoute": "PRODUCT_PRICE_STOCK",
+      "expectedIntent": "PRODUCT_PRICE_STOCK",
+      "expectedCapability": "PRODUCT_PRICE_STOCK",
+      "expectedEntityTypes": [
+        "PRODUCT"
+      ],
+      "expectedOutcomeClass": "RESOLVED_OR_NO_DATA"
+    },
+    {
+      "rank": 92,
+      "question": "超级1540",
+      "category": "产品查价/库存",
+      "count": 2,
+      "intentTag": "product/price_multi",
+      "expectedRoute": "PRODUCT_CANDIDATE_CLARIFICATION",
+      "expectedIntent": "PRODUCT_PRICE_STOCK",
+      "expectedCapability": "PRODUCT_PRICE_STOCK",
+      "expectedEntityTypes": [
+        "PRODUCT"
+      ],
+      "expectedOutcomeClass": "CHOICE_REQUIRED"
+    },
+    {
+      "rank": 93,
+      "question": "超级优享",
+      "category": "产品查价/库存",
+      "count": 2,
+      "intentTag": "product/price_multi",
+      "expectedRoute": "PRODUCT_CANDIDATE_CLARIFICATION",
+      "expectedIntent": "PRODUCT_PRICE_STOCK",
+      "expectedCapability": "PRODUCT_PRICE_STOCK",
+      "expectedEntityTypes": [
+        "PRODUCT"
+      ],
+      "expectedOutcomeClass": "CHOICE_REQUIRED"
+    },
+    {
+      "rank": 94,
+      "question": "成都鑫楚蓉商贸有限公司 欠款",
+      "category": "客户欠款",
+      "count": 2,
+      "intentTag": "debt/debt_ok",
+      "expectedRoute": "RECEIVABLE_VERIFIED_METRIC",
+      "expectedIntent": "RECEIVABLE",
+      "expectedCapability": "RECEIVABLE",
+      "expectedEntityTypes": [
+        "CUSTOMER"
+      ],
+      "expectedOutcomeClass": "RESOLVED_OR_NO_DATA"
+    },
+    {
+      "rank": 95,
+      "question": "多用途",
+      "category": "产品查价/库存",
+      "count": 2,
+      "intentTag": "product/price_multi",
+      "expectedRoute": "PRODUCT_CANDIDATE_CLARIFICATION",
+      "expectedIntent": "PRODUCT_PRICE_STOCK",
+      "expectedCapability": "PRODUCT_PRICE_STOCK",
+      "expectedEntityTypes": [
+        "PRODUCT"
+      ],
+      "expectedOutcomeClass": "CHOICE_REQUIRED"
+    },
+    {
+      "rank": 96,
+      "question": "防冻液",
+      "category": "销量查询",
+      "count": 2,
+      "intentTag": "product/sales_ok",
+      "expectedRoute": "SALE_VERIFIED_METRIC",
+      "expectedIntent": "PRODUCT_PRICE_STOCK",
+      "expectedCapability": "PRODUCT_PRICE_STOCK",
+      "expectedEntityTypes": [
+        "PRODUCT"
+      ],
+      "expectedOutcomeClass": "RESOLVED_OR_NO_DATA"
+    },
+    {
+      "rank": 97,
+      "question": "冯本全 销量",
+      "category": "销量查询",
+      "count": 2,
+      "intentTag": "sales/not_found",
+      "expectedRoute": "SALE_VERIFIED_METRIC",
+      "expectedIntent": "SALE",
+      "expectedCapability": "SALE",
+      "expectedEntityTypes": [],
+      "expectedOutcomeClass": "RESOLVED_OR_NO_DATA",
+      "expectedResolvedEntityType": "SALESPERSON"
+    },
+    {
+      "rank": 98,
+      "question": "孚配",
+      "category": "产品查价/库存",
+      "count": 2,
+      "intentTag": "product/price_multi",
+      "expectedRoute": "PRODUCT_CANDIDATE_CLARIFICATION",
+      "expectedIntent": "PRODUCT_PRICE_STOCK",
+      "expectedCapability": "PRODUCT_PRICE_STOCK",
+      "expectedEntityTypes": [
+        "PRODUCT"
+      ],
+      "expectedOutcomeClass": "CHOICE_REQUIRED"
+    },
+    {
+      "rank": 99,
+      "question": "孚配35",
+      "category": "产品查价/库存",
+      "count": 2,
+      "intentTag": "product/not_found",
+      "expectedRoute": "PRODUCT_NOT_FOUND",
+      "expectedIntent": "PRODUCT_PRICE_STOCK",
+      "expectedCapability": "PRODUCT_PRICE_STOCK",
+      "expectedEntityTypes": [
+        "PRODUCT"
+      ],
+      "expectedOutcomeClass": "ENTITY_NOT_FOUND"
+    },
+    {
+      "rank": 100,
+      "question": "孚配电瓶",
+      "category": "产品查价/库存",
+      "count": 2,
+      "intentTag": "product/price_ok",
+      "expectedRoute": "PRODUCT_PRICE_STOCK",
+      "expectedIntent": "PRODUCT_PRICE_STOCK",
+      "expectedCapability": "PRODUCT_PRICE_STOCK",
+      "expectedEntityTypes": [
+        "PRODUCT"
+      ],
+      "expectedOutcomeClass": "RESOLVED_OR_NO_DATA"
+    },
+    {
+      "rank": 101,
+      "question": "孚配防冻液价格",
+      "category": "产品查价/库存",
+      "count": 2,
+      "intentTag": "product/price_multi",
+      "expectedRoute": "PRODUCT_CANDIDATE_CLARIFICATION",
+      "expectedIntent": "PRODUCT_PRICE_STOCK",
+      "expectedCapability": "PRODUCT_PRICE_STOCK",
+      "expectedEntityTypes": [
+        "PRODUCT"
+      ],
+      "expectedOutcomeClass": "CHOICE_REQUIRED"
+    },
+    {
+      "rank": 102,
+      "question": "孚配蓄电池",
+      "category": "产品查价/库存",
+      "count": 2,
+      "intentTag": "product/price_multi",
+      "expectedRoute": "PRODUCT_CANDIDATE_CLARIFICATION",
+      "expectedIntent": "PRODUCT_PRICE_STOCK",
+      "expectedCapability": "PRODUCT_PRICE_STOCK",
+      "expectedEntityTypes": [
+        "PRODUCT"
+      ],
+      "expectedOutcomeClass": "CHOICE_REQUIRED"
+    },
+    {
+      "rank": 103,
+      "question": "工程机械液压油",
+      "category": "产品查价/库存",
+      "count": 2,
+      "intentTag": "product/not_found",
+      "expectedRoute": "PRODUCT_NOT_FOUND",
+      "expectedIntent": "PRODUCT_PRICE_STOCK",
+      "expectedCapability": "PRODUCT_PRICE_STOCK",
+      "expectedEntityTypes": [
+        "PRODUCT"
+      ],
+      "expectedOutcomeClass": "ENTITY_NOT_FOUND"
+    },
+    {
+      "rank": 104,
+      "question": "黑霸王2050",
+      "category": "产品查价/库存",
+      "count": 2,
+      "intentTag": "product/price_multi",
+      "expectedRoute": "PRODUCT_CANDIDATE_CLARIFICATION",
+      "expectedIntent": "PRODUCT_PRICE_STOCK",
+      "expectedCapability": "PRODUCT_PRICE_STOCK",
+      "expectedEntityTypes": [
+        "PRODUCT"
+      ],
+      "expectedOutcomeClass": "CHOICE_REQUIRED"
+    },
+    {
+      "rank": 105,
+      "question": "宏顺汽修欠款",
+      "category": "客户欠款",
+      "count": 2,
+      "intentTag": "debt/debt_ok",
+      "expectedRoute": "RECEIVABLE_VERIFIED_METRIC",
+      "expectedIntent": "RECEIVABLE",
+      "expectedCapability": "RECEIVABLE",
+      "expectedEntityTypes": [
+        "CUSTOMER"
+      ],
+      "expectedOutcomeClass": "RESOLVED_OR_NO_DATA"
+    },
+    {
+      "rank": 106,
+      "question": "宏顺汽修销量",
+      "category": "销量查询",
+      "count": 2,
+      "intentTag": "sales/sales_ok",
+      "expectedRoute": "SALE_VERIFIED_METRIC",
+      "expectedIntent": "SALE",
+      "expectedCapability": "SALE",
+      "expectedEntityTypes": [
+        "CUSTOMER"
+      ],
+      "expectedOutcomeClass": "RESOLVED_OR_NO_DATA"
+    },
+    {
+      "rank": 107,
+      "question": "劲擎表现 030",
+      "category": "产品查价/库存",
+      "count": 2,
+      "intentTag": "product/price_multi",
+      "expectedRoute": "PRODUCT_CANDIDATE_CLARIFICATION",
+      "expectedIntent": "PRODUCT_PRICE_STOCK",
+      "expectedCapability": "PRODUCT_PRICE_STOCK",
+      "expectedEntityTypes": [
+        "PRODUCT"
+      ],
+      "expectedOutcomeClass": "CHOICE_REQUIRED"
+    },
+    {
+      "rank": 108,
+      "question": "劲擎表现020",
+      "category": "产品查价/库存",
+      "count": 2,
+      "intentTag": "product/price_multi",
+      "expectedRoute": "PRODUCT_CANDIDATE_CLARIFICATION",
+      "expectedIntent": "PRODUCT_PRICE_STOCK",
+      "expectedCapability": "PRODUCT_PRICE_STOCK",
+      "expectedEntityTypes": [
+        "PRODUCT"
+      ],
+      "expectedOutcomeClass": "CHOICE_REQUIRED"
+    },
+    {
+      "rank": 109,
+      "question": "劲擎表现040",
+      "category": "产品查价/库存",
+      "count": 2,
+      "intentTag": "product/price_multi",
+      "expectedRoute": "PRODUCT_CANDIDATE_CLARIFICATION",
+      "expectedIntent": "PRODUCT_PRICE_STOCK",
+      "expectedCapability": "PRODUCT_PRICE_STOCK",
+      "expectedEntityTypes": [
+        "PRODUCT"
+      ],
+      "expectedOutcomeClass": "CHOICE_REQUIRED"
+    },
+    {
+      "rank": 110,
+      "question": "经典表现 040",
+      "category": "产品查价/库存",
+      "count": 2,
+      "intentTag": "product/price_multi",
+      "expectedRoute": "PRODUCT_CANDIDATE_CLARIFICATION",
+      "expectedIntent": "PRODUCT_PRICE_STOCK",
+      "expectedCapability": "PRODUCT_PRICE_STOCK",
+      "expectedEntityTypes": [
+        "PRODUCT"
+      ],
+      "expectedOutcomeClass": "CHOICE_REQUIRED"
+    },
+    {
+      "rank": 111,
+      "question": "经典表现0-20",
+      "category": "产品查价/库存",
+      "count": 2,
+      "intentTag": "product/price_multi",
+      "expectedRoute": "PRODUCT_CANDIDATE_CLARIFICATION",
+      "expectedIntent": "PRODUCT_PRICE_STOCK",
+      "expectedCapability": "PRODUCT_PRICE_STOCK",
+      "expectedEntityTypes": [
+        "PRODUCT"
+      ],
+      "expectedOutcomeClass": "CHOICE_REQUIRED"
+    },
+    {
+      "rank": 112,
+      "question": "经典表现0w-20",
+      "category": "产品查价/库存",
+      "count": 2,
+      "intentTag": "product/price_multi",
+      "expectedRoute": "PRODUCT_CANDIDATE_CLARIFICATION",
+      "expectedIntent": "PRODUCT_PRICE_STOCK",
+      "expectedCapability": "PRODUCT_PRICE_STOCK",
+      "expectedEntityTypes": [
+        "PRODUCT"
+      ],
+      "expectedOutcomeClass": "CHOICE_REQUIRED"
+    },
+    {
+      "rank": 113,
+      "question": "经典表现5-40",
+      "category": "产品查价/库存",
+      "count": 2,
+      "intentTag": "product/price_multi",
+      "expectedRoute": "PRODUCT_CANDIDATE_CLARIFICATION",
+      "expectedIntent": "PRODUCT_PRICE_STOCK",
+      "expectedCapability": "PRODUCT_PRICE_STOCK",
+      "expectedEntityTypes": [
+        "PRODUCT"
+      ],
+      "expectedOutcomeClass": "CHOICE_REQUIRED"
+    },
+    {
+      "rank": 114,
+      "question": "经典表现540",
+      "category": "产品查价/库存",
+      "count": 2,
+      "intentTag": "product/price_multi",
+      "expectedRoute": "PRODUCT_CANDIDATE_CLARIFICATION",
+      "expectedIntent": "PRODUCT_PRICE_STOCK",
+      "expectedCapability": "PRODUCT_PRICE_STOCK",
+      "expectedEntityTypes": [
+        "PRODUCT"
+      ],
+      "expectedOutcomeClass": "CHOICE_REQUIRED"
+    },
+    {
+      "rank": 115,
+      "question": "经典表现5W-40",
+      "category": "产品查价/库存",
+      "count": 2,
+      "intentTag": "product/price_multi",
+      "expectedRoute": "PRODUCT_CANDIDATE_CLARIFICATION",
+      "expectedIntent": "PRODUCT_PRICE_STOCK",
+      "expectedCapability": "PRODUCT_PRICE_STOCK",
+      "expectedEntityTypes": [
+        "PRODUCT"
+      ],
+      "expectedOutcomeClass": "CHOICE_REQUIRED"
+    },
+    {
+      "rank": 116,
+      "question": "康菲530",
+      "category": "产品查价/库存",
+      "count": 2,
+      "intentTag": "product/not_found",
+      "expectedRoute": "PRODUCT_NOT_FOUND",
+      "expectedIntent": "PRODUCT_PRICE_STOCK",
+      "expectedCapability": "PRODUCT_PRICE_STOCK",
+      "expectedEntityTypes": [
+        "PRODUCT"
+      ],
+      "expectedOutcomeClass": "ENTITY_NOT_FOUND"
+    },
+    {
+      "rank": 117,
+      "question": "抗磨倍护 530",
+      "category": "产品查价/库存",
+      "count": 2,
+      "intentTag": "product/price_multi",
+      "expectedRoute": "PRODUCT_CANDIDATE_CLARIFICATION",
+      "expectedIntent": "PRODUCT_PRICE_STOCK",
+      "expectedCapability": "PRODUCT_PRICE_STOCK",
+      "expectedEntityTypes": [
+        "PRODUCT"
+      ],
+      "expectedOutcomeClass": "CHOICE_REQUIRED"
+    },
+    {
+      "rank": 118,
+      "question": "抗磨倍护530",
+      "category": "产品查价/库存",
+      "count": 2,
+      "intentTag": "product/price_multi",
+      "expectedRoute": "PRODUCT_CANDIDATE_CLARIFICATION",
+      "expectedIntent": "PRODUCT_PRICE_STOCK",
+      "expectedCapability": "PRODUCT_PRICE_STOCK",
+      "expectedEntityTypes": [
+        "PRODUCT"
+      ],
+      "expectedOutcomeClass": "CHOICE_REQUIRED"
+    },
+    {
+      "rank": 119,
+      "question": "力霸530",
+      "category": "产品查价/库存",
+      "count": 2,
+      "intentTag": "product/price_multi",
+      "expectedRoute": "PRODUCT_CANDIDATE_CLARIFICATION",
+      "expectedIntent": "PRODUCT_PRICE_STOCK",
+      "expectedCapability": "PRODUCT_PRICE_STOCK",
+      "expectedEntityTypes": [
+        "PRODUCT"
+      ],
+      "expectedOutcomeClass": "CHOICE_REQUIRED"
+    },
+    {
+      "rank": 120,
+      "question": "力霸矿物油530",
+      "category": "产品查价/库存",
+      "count": 2,
+      "intentTag": "product/not_found",
+      "expectedRoute": "PRODUCT_NOT_FOUND",
+      "expectedIntent": "PRODUCT_PRICE_STOCK",
+      "expectedCapability": "PRODUCT_PRICE_STOCK",
+      "expectedEntityTypes": [
+        "PRODUCT"
+      ],
+      "expectedOutcomeClass": "ENTITY_NOT_FOUND"
+    },
+    {
+      "rank": 121,
+      "question": "林芝金耀 欠款",
+      "category": "客户欠款",
+      "count": 2,
+      "intentTag": "debt/debt_ok",
+      "expectedRoute": "RECEIVABLE_VERIFIED_METRIC",
+      "expectedIntent": "RECEIVABLE",
+      "expectedCapability": "RECEIVABLE",
+      "expectedEntityTypes": [
+        "CUSTOMER"
+      ],
+      "expectedOutcomeClass": "RESOLVED_OR_NO_DATA"
+    },
+    {
+      "rank": 122,
+      "question": "路极1856015",
+      "category": "产品查价/库存",
+      "count": 2,
+      "intentTag": "product/price_multi",
+      "expectedRoute": "PRODUCT_CANDIDATE_CLARIFICATION",
+      "expectedIntent": "PRODUCT_PRICE_STOCK",
+      "expectedCapability": "PRODUCT_PRICE_STOCK",
+      "expectedEntityTypes": [
+        "PRODUCT"
+      ],
+      "expectedOutcomeClass": "CHOICE_REQUIRED"
+    },
+    {
+      "rank": 123,
+      "question": "路通源",
+      "category": "产品查价/库存",
+      "count": 2,
+      "intentTag": "product/price_multi",
+      "expectedRoute": "PRODUCT_CANDIDATE_CLARIFICATION",
+      "expectedIntent": "PRODUCT_PRICE_STOCK",
+      "expectedCapability": "PRODUCT_PRICE_STOCK",
+      "expectedEntityTypes": [
+        "PRODUCT"
+      ],
+      "expectedOutcomeClass": "CHOICE_REQUIRED"
+    },
+    {
+      "rank": 124,
+      "question": "每日保护0-20",
+      "category": "产品查价/库存",
+      "count": 2,
+      "intentTag": "product/price_multi",
+      "expectedRoute": "PRODUCT_CANDIDATE_CLARIFICATION",
+      "expectedIntent": "PRODUCT_PRICE_STOCK",
+      "expectedCapability": "PRODUCT_PRICE_STOCK",
+      "expectedEntityTypes": [
+        "PRODUCT"
+      ],
+      "expectedOutcomeClass": "CHOICE_REQUIRED"
+    },
+    {
+      "rank": 125,
+      "question": "每日保护0w-20",
+      "category": "产品查价/库存",
+      "count": 2,
+      "intentTag": "product/price_multi",
+      "expectedRoute": "PRODUCT_CANDIDATE_CLARIFICATION",
+      "expectedIntent": "PRODUCT_PRICE_STOCK",
+      "expectedCapability": "PRODUCT_PRICE_STOCK",
+      "expectedEntityTypes": [
+        "PRODUCT"
+      ],
+      "expectedOutcomeClass": "CHOICE_REQUIRED"
+    },
+    {
+      "rank": 126,
+      "question": "每日保护价格",
+      "category": "产品查价/库存",
+      "count": 2,
+      "intentTag": "product/price_multi",
+      "expectedRoute": "PRODUCT_CANDIDATE_CLARIFICATION",
+      "expectedIntent": "PRODUCT_PRICE_STOCK",
+      "expectedCapability": "PRODUCT_PRICE_STOCK",
+      "expectedEntityTypes": [
+        "PRODUCT"
+      ],
+      "expectedOutcomeClass": "CHOICE_REQUIRED"
+    },
+    {
+      "rank": 127,
+      "question": "每日保护全合成  530",
+      "category": "产品查价/库存",
+      "count": 2,
+      "intentTag": "product/price_multi",
+      "expectedRoute": "PRODUCT_CANDIDATE_CLARIFICATION",
+      "expectedIntent": "PRODUCT_PRICE_STOCK",
+      "expectedCapability": "PRODUCT_PRICE_STOCK",
+      "expectedEntityTypes": [
+        "PRODUCT"
+      ],
+      "expectedOutcomeClass": "CHOICE_REQUIRED"
+    },
+    {
+      "rank": 128,
+      "question": "每日保护全合成020",
+      "category": "产品查价/库存",
+      "count": 2,
+      "intentTag": "product/price_multi",
+      "expectedRoute": "PRODUCT_CANDIDATE_CLARIFICATION",
+      "expectedIntent": "PRODUCT_PRICE_STOCK",
+      "expectedCapability": "PRODUCT_PRICE_STOCK",
+      "expectedEntityTypes": [
+        "PRODUCT"
+      ],
+      "expectedOutcomeClass": "CHOICE_REQUIRED"
+    },
+    {
+      "rank": 129,
+      "question": "每日保护全合成540",
+      "category": "产品查价/库存",
+      "count": 2,
+      "intentTag": "product/price_multi",
+      "expectedRoute": "PRODUCT_CANDIDATE_CLARIFICATION",
+      "expectedIntent": "PRODUCT_PRICE_STOCK",
+      "expectedCapability": "PRODUCT_PRICE_STOCK",
+      "expectedEntityTypes": [
+        "PRODUCT"
+      ],
+      "expectedOutcomeClass": "CHOICE_REQUIRED"
+    },
+    {
+      "rank": 130,
+      "question": "美孚齿轮油",
+      "category": "产品查价/库存",
+      "count": 2,
+      "intentTag": "product/price_multi",
+      "expectedRoute": "PRODUCT_CANDIDATE_CLARIFICATION",
+      "expectedIntent": "PRODUCT_PRICE_STOCK",
+      "expectedCapability": "PRODUCT_PRICE_STOCK",
+      "expectedEntityTypes": [
+        "PRODUCT"
+      ],
+      "expectedOutcomeClass": "CHOICE_REQUIRED"
+    },
+    {
+      "rank": 131,
+      "question": "美孚黑霸王",
+      "category": "产品查价/库存",
+      "count": 2,
+      "intentTag": "product/price_multi",
+      "expectedRoute": "PRODUCT_CANDIDATE_CLARIFICATION",
+      "expectedIntent": "PRODUCT_PRICE_STOCK",
+      "expectedCapability": "PRODUCT_PRICE_STOCK",
+      "expectedEntityTypes": [
+        "PRODUCT"
+      ],
+      "expectedOutcomeClass": "CHOICE_REQUIRED"
+    },
+    {
+      "rank": 132,
+      "question": "美孚黑霸王CF-4",
+      "category": "产品查价/库存",
+      "count": 2,
+      "intentTag": "product/price_multi",
+      "expectedRoute": "PRODUCT_CANDIDATE_CLARIFICATION",
+      "expectedIntent": "PRODUCT_PRICE_STOCK",
+      "expectedCapability": "PRODUCT_PRICE_STOCK",
+      "expectedEntityTypes": [
+        "PRODUCT"
+      ],
+      "expectedOutcomeClass": "CHOICE_REQUIRED"
+    },
+    {
+      "rank": 133,
+      "question": "美孚力霸1040",
+      "category": "产品查价/库存",
+      "count": 2,
+      "intentTag": "product/price_multi",
+      "expectedRoute": "PRODUCT_CANDIDATE_CLARIFICATION",
+      "expectedIntent": "PRODUCT_PRICE_STOCK",
+      "expectedCapability": "PRODUCT_PRICE_STOCK",
+      "expectedEntityTypes": [
+        "PRODUCT"
+      ],
+      "expectedOutcomeClass": "CHOICE_REQUIRED"
+    },
+    {
+      "rank": 134,
+      "question": "美孚液压油",
+      "category": "产品查价/库存",
+      "count": 2,
+      "intentTag": "product/price_multi",
+      "expectedRoute": "PRODUCT_CANDIDATE_CLARIFICATION",
+      "expectedIntent": "PRODUCT_PRICE_STOCK",
+      "expectedCapability": "PRODUCT_PRICE_STOCK",
+      "expectedEntityTypes": [
+        "PRODUCT"
+      ],
+      "expectedOutcomeClass": "CHOICE_REQUIRED"
+    },
+    {
+      "rank": 135,
+      "question": "美孚制动液",
+      "category": "产品查价/库存",
+      "count": 2,
+      "intentTag": "product/price_multi",
+      "expectedRoute": "PRODUCT_CANDIDATE_CLARIFICATION",
+      "expectedIntent": "PRODUCT_PRICE_STOCK",
+      "expectedCapability": "PRODUCT_PRICE_STOCK",
+      "expectedEntityTypes": [
+        "PRODUCT"
+      ],
+      "expectedOutcomeClass": "CHOICE_REQUIRED"
+    },
+    {
+      "rank": 136,
+      "question": "澎湃表现540价格",
+      "category": "产品查价/库存",
+      "count": 2,
+      "intentTag": "product/price_multi",
+      "expectedRoute": "PRODUCT_CANDIDATE_CLARIFICATION",
+      "expectedIntent": "PRODUCT_PRICE_STOCK",
+      "expectedCapability": "PRODUCT_PRICE_STOCK",
+      "expectedEntityTypes": [
+        "PRODUCT"
+      ],
+      "expectedOutcomeClass": "CHOICE_REQUIRED"
+    },
+    {
+      "rank": 137,
+      "question": "澎湃表现库存",
+      "category": "产品查价/库存",
+      "count": 2,
+      "intentTag": "product/price_ok",
+      "expectedRoute": "PRODUCT_PRICE_STOCK",
+      "expectedIntent": "PRODUCT_PRICE_STOCK",
+      "expectedCapability": "PRODUCT_PRICE_STOCK",
+      "expectedEntityTypes": [
+        "PRODUCT"
+      ],
+      "expectedOutcomeClass": "RESOLVED_OR_NO_DATA"
+    },
+    {
+      "rank": 138,
+      "question": "清洗油",
+      "category": "产品查价/库存",
+      "count": 2,
+      "intentTag": "product/price_multi",
+      "expectedRoute": "PRODUCT_CANDIDATE_CLARIFICATION",
+      "expectedIntent": "PRODUCT_PRICE_STOCK",
+      "expectedCapability": "PRODUCT_PRICE_STOCK",
+      "expectedEntityTypes": [
+        "PRODUCT"
+      ],
+      "expectedOutcomeClass": "CHOICE_REQUIRED"
+    },
+    {
+      "rank": 139,
+      "question": "全效保护 530",
+      "category": "产品查价/库存",
+      "count": 2,
+      "intentTag": "product/price_multi",
+      "expectedRoute": "PRODUCT_CANDIDATE_CLARIFICATION",
+      "expectedIntent": "PRODUCT_PRICE_STOCK",
+      "expectedCapability": "PRODUCT_PRICE_STOCK",
+      "expectedEntityTypes": [
+        "PRODUCT"
+      ],
+      "expectedOutcomeClass": "CHOICE_REQUIRED"
+    },
+    {
+      "rank": 140,
+      "question": "全效保护0-20",
+      "category": "产品查价/库存",
+      "count": 2,
+      "intentTag": "product/price_multi",
+      "expectedRoute": "PRODUCT_CANDIDATE_CLARIFICATION",
+      "expectedIntent": "PRODUCT_PRICE_STOCK",
+      "expectedCapability": "PRODUCT_PRICE_STOCK",
+      "expectedEntityTypes": [
+        "PRODUCT"
+      ],
+      "expectedOutcomeClass": "CHOICE_REQUIRED"
+    },
+    {
+      "rank": 141,
+      "question": "全效保护020",
+      "category": "产品查价/库存",
+      "count": 2,
+      "intentTag": "product/price_multi",
+      "expectedRoute": "PRODUCT_CANDIDATE_CLARIFICATION",
+      "expectedIntent": "PRODUCT_PRICE_STOCK",
+      "expectedCapability": "PRODUCT_PRICE_STOCK",
+      "expectedEntityTypes": [
+        "PRODUCT"
+      ],
+      "expectedOutcomeClass": "CHOICE_REQUIRED"
+    },
+    {
+      "rank": 142,
+      "question": "全效保护540价格",
+      "category": "产品查价/库存",
+      "count": 2,
+      "intentTag": "product/price_multi",
+      "expectedRoute": "PRODUCT_CANDIDATE_CLARIFICATION",
+      "expectedIntent": "PRODUCT_PRICE_STOCK",
+      "expectedCapability": "PRODUCT_PRICE_STOCK",
+      "expectedEntityTypes": [
+        "PRODUCT"
+      ],
+      "expectedOutcomeClass": "CHOICE_REQUIRED"
+    },
+    {
+      "rank": 143,
+      "question": "全效保护5W-30",
+      "category": "产品查价/库存",
+      "count": 2,
+      "intentTag": "product/price_multi",
+      "expectedRoute": "PRODUCT_CANDIDATE_CLARIFICATION",
+      "expectedIntent": "PRODUCT_PRICE_STOCK",
+      "expectedCapability": "PRODUCT_PRICE_STOCK",
+      "expectedEntityTypes": [
+        "PRODUCT"
+      ],
+      "expectedOutcomeClass": "CHOICE_REQUIRED"
+    },
+    {
+      "rank": 144,
+      "question": "全效保护价格",
+      "category": "产品查价/库存",
+      "count": 2,
+      "intentTag": "product/price_multi",
+      "expectedRoute": "PRODUCT_CANDIDATE_CLARIFICATION",
+      "expectedIntent": "PRODUCT_PRICE_STOCK",
+      "expectedCapability": "PRODUCT_PRICE_STOCK",
+      "expectedEntityTypes": [
+        "PRODUCT"
+      ],
+      "expectedOutcomeClass": "CHOICE_REQUIRED"
+    },
+    {
+      "rank": 145,
+      "question": "刹车油",
+      "category": "产品查价/库存",
+      "count": 2,
+      "intentTag": "product/not_found",
+      "expectedRoute": "PRODUCT_NOT_FOUND",
+      "expectedIntent": "PRODUCT_PRICE_STOCK",
+      "expectedCapability": "PRODUCT_PRICE_STOCK",
+      "expectedEntityTypes": [
+        "PRODUCT"
+      ],
+      "expectedOutcomeClass": "ENTITY_NOT_FOUND"
+    },
+    {
+      "rank": 146,
+      "question": "速霸1000大桶",
+      "category": "产品查价/库存",
+      "count": 2,
+      "intentTag": "product/price_multi",
+      "expectedRoute": "PRODUCT_CANDIDATE_CLARIFICATION",
+      "expectedIntent": "PRODUCT_PRICE_STOCK",
+      "expectedCapability": "PRODUCT_PRICE_STOCK",
+      "expectedEntityTypes": [
+        "PRODUCT"
+      ],
+      "expectedOutcomeClass": "CHOICE_REQUIRED"
+    },
+    {
+      "rank": 147,
+      "question": "速霸1000价格",
+      "category": "产品查价/库存",
+      "count": 2,
+      "intentTag": "product/price_multi",
+      "expectedRoute": "PRODUCT_CANDIDATE_CLARIFICATION",
+      "expectedIntent": "PRODUCT_PRICE_STOCK",
+      "expectedCapability": "PRODUCT_PRICE_STOCK",
+      "expectedEntityTypes": [
+        "PRODUCT"
+      ],
+      "expectedOutcomeClass": "CHOICE_REQUIRED"
+    },
+    {
+      "rank": 148,
+      "question": "速霸2000库存",
+      "category": "产品查价/库存",
+      "count": 2,
+      "intentTag": "product/price_ok",
+      "expectedRoute": "PRODUCT_PRICE_STOCK",
+      "expectedIntent": "PRODUCT_PRICE_STOCK",
+      "expectedCapability": "PRODUCT_PRICE_STOCK",
+      "expectedEntityTypes": [
+        "PRODUCT"
+      ],
+      "expectedOutcomeClass": "RESOLVED_OR_NO_DATA"
+    },
+    {
+      "rank": 149,
+      "question": "速霸专属合成科技",
+      "category": "产品查价/库存",
+      "count": 2,
+      "intentTag": "product/price_multi",
+      "expectedRoute": "PRODUCT_CANDIDATE_CLARIFICATION",
+      "expectedIntent": "PRODUCT_PRICE_STOCK",
+      "expectedCapability": "PRODUCT_PRICE_STOCK",
+      "expectedEntityTypes": [
+        "PRODUCT"
+      ],
+      "expectedOutcomeClass": "CHOICE_REQUIRED"
+    },
+    {
+      "rank": 150,
+      "question": "速霸FM",
+      "category": "产品查价/库存",
+      "count": 2,
+      "intentTag": "product/price_multi",
+      "expectedRoute": "PRODUCT_CANDIDATE_CLARIFICATION",
+      "expectedIntent": "PRODUCT_PRICE_STOCK",
+      "expectedCapability": "PRODUCT_PRICE_STOCK",
+      "expectedEntityTypes": [
+        "PRODUCT"
+      ],
+      "expectedOutcomeClass": "CHOICE_REQUIRED"
+    },
+    {
+      "rank": 151,
+      "question": "突破",
+      "category": "产品查价/库存",
+      "count": 2,
+      "intentTag": "product/price_multi",
+      "expectedRoute": "PRODUCT_CANDIDATE_CLARIFICATION",
+      "expectedIntent": "PRODUCT_PRICE_STOCK",
+      "expectedCapability": "PRODUCT_PRICE_STOCK",
+      "expectedEntityTypes": [
+        "PRODUCT"
+      ],
+      "expectedOutcomeClass": "CHOICE_REQUIRED"
+    },
+    {
+      "rank": 152,
+      "question": "突破润滑油",
+      "category": "产品查价/库存",
+      "count": 2,
+      "intentTag": "product/not_found",
+      "expectedRoute": "PRODUCT_NOT_FOUND",
+      "expectedIntent": "PRODUCT_PRICE_STOCK",
+      "expectedCapability": "PRODUCT_PRICE_STOCK",
+      "expectedEntityTypes": [
+        "PRODUCT"
+      ],
+      "expectedOutcomeClass": "ENTITY_NOT_FOUND"
+    },
+    {
+      "rank": 153,
+      "question": "新津轮胎销量",
+      "category": "销量查询",
+      "count": 2,
+      "intentTag": "sales/disambig",
+      "expectedRoute": "SALE_VERIFIED_METRIC",
+      "expectedIntent": "SALE",
+      "expectedCapability": "SALE",
+      "expectedEntityTypes": [
+        "PRODUCT"
+      ],
+      "expectedOutcomeClass": "RESOLVED_OR_NO_DATA"
+    },
+    {
+      "rank": 154,
+      "question": "液体黄金2256018",
+      "category": "产品查价/库存",
+      "count": 2,
+      "intentTag": "product/price_ok",
+      "expectedRoute": "PRODUCT_PRICE_STOCK",
+      "expectedIntent": "PRODUCT_PRICE_STOCK",
+      "expectedCapability": "PRODUCT_PRICE_STOCK",
+      "expectedEntityTypes": [
+        "PRODUCT"
+      ],
+      "expectedOutcomeClass": "RESOLVED_OR_NO_DATA"
+    },
+    {
+      "rank": 155,
+      "question": "袁凯车业欠款",
+      "category": "客户欠款",
+      "count": 2,
+      "intentTag": "debt/not_found",
+      "expectedRoute": "RECEIVABLE_VERIFIED_METRIC",
+      "expectedIntent": "RECEIVABLE",
+      "expectedCapability": "RECEIVABLE",
+      "expectedEntityTypes": [
+        "CUSTOMER"
+      ],
+      "expectedOutcomeClass": "RESOLVED_OR_NO_DATA"
+    },
+    {
+      "rank": 156,
+      "question": "郑智文8月份轮胎销量",
+      "category": "销量查询",
+      "count": 2,
+      "intentTag": "sales/sales_ok",
+      "expectedRoute": "SALE_VERIFIED_METRIC",
+      "expectedIntent": "SALE",
+      "expectedCapability": "SALE",
+      "expectedEntityTypes": [
+        "SALESPERSON",
+        "PRODUCT"
+      ],
+      "expectedOutcomeClass": "RESOLVED_OR_NO_DATA"
+    },
+    {
+      "rank": 157,
+      "question": "制动液",
+      "category": "销量查询",
+      "count": 2,
+      "intentTag": "product/sales_ok",
+      "expectedRoute": "SALE_VERIFIED_METRIC",
+      "expectedIntent": "PRODUCT_PRICE_STOCK",
+      "expectedCapability": "PRODUCT_PRICE_STOCK",
+      "expectedEntityTypes": [
+        "PRODUCT"
+      ],
+      "expectedOutcomeClass": "RESOLVED_OR_NO_DATA"
+    },
+    {
+      "rank": 158,
+      "question": "专属保护合成科技 价格",
+      "category": "产品查价/库存",
+      "count": 2,
+      "intentTag": "product/price_multi",
+      "expectedRoute": "PRODUCT_CANDIDATE_CLARIFICATION",
+      "expectedIntent": "PRODUCT_PRICE_STOCK",
+      "expectedCapability": "PRODUCT_PRICE_STOCK",
+      "expectedEntityTypes": [
+        "PRODUCT"
+      ],
+      "expectedOutcomeClass": "CHOICE_REQUIRED"
+    },
+    {
+      "rank": 159,
+      "question": "专属表现040",
+      "category": "销量查询",
+      "count": 2,
+      "intentTag": "product/sales_ok",
+      "expectedRoute": "SALE_VERIFIED_METRIC",
+      "expectedIntent": "PRODUCT_PRICE_STOCK",
+      "expectedCapability": "PRODUCT_PRICE_STOCK",
+      "expectedEntityTypes": [
+        "PRODUCT"
+      ],
+      "expectedOutcomeClass": "RESOLVED_OR_NO_DATA"
+    },
+    {
+      "rank": 160,
+      "question": "专属服务用油全合成",
+      "category": "产品查价/库存",
+      "count": 2,
+      "intentTag": "product/price_multi",
+      "expectedRoute": "PRODUCT_CANDIDATE_CLARIFICATION",
+      "expectedIntent": "PRODUCT_PRICE_STOCK",
+      "expectedCapability": "PRODUCT_PRICE_STOCK",
+      "expectedEntityTypes": [
+        "PRODUCT"
+      ],
+      "expectedOutcomeClass": "CHOICE_REQUIRED"
+    },
+    {
+      "rank": 161,
+      "question": "atf660",
+      "category": "产品查价/库存",
+      "count": 2,
+      "intentTag": "product/price_ok",
+      "expectedRoute": "PRODUCT_PRICE_STOCK",
+      "expectedIntent": "PRODUCT_PRICE_STOCK",
+      "expectedCapability": "PRODUCT_PRICE_STOCK",
+      "expectedEntityTypes": [
+        "PRODUCT"
+      ],
+      "expectedOutcomeClass": "RESOLVED_OR_NO_DATA"
+    },
+    {
+      "rank": 162,
+      "question": "ck",
+      "category": "产品查价/库存",
+      "count": 2,
+      "intentTag": "product/not_found",
+      "expectedRoute": "PRODUCT_NOT_FOUND",
+      "expectedIntent": "PRODUCT_PRICE_STOCK",
+      "expectedCapability": "PRODUCT_PRICE_STOCK",
+      "expectedEntityTypes": [
+        "PRODUCT"
+      ],
+      "expectedOutcomeClass": "ENTITY_NOT_FOUND"
+    },
+    {
+      "rank": 163,
+      "question": "dot4",
+      "category": "产品查价/库存",
+      "count": 2,
+      "intentTag": "product/block_spec_only",
+      "expectedRoute": "PRODUCT_PRICE_STOCK",
+      "expectedIntent": "PRODUCT_PRICE_STOCK",
+      "expectedCapability": "PRODUCT_PRICE_STOCK",
+      "expectedEntityTypes": [
+        "PRODUCT"
+      ],
+      "expectedOutcomeClass": "RESOLVED_OR_NO_DATA"
+    },
+    {
+      "rank": 164,
+      "question": "FM540",
+      "category": "产品查价/库存",
+      "count": 2,
+      "intentTag": "product/not_found",
+      "expectedRoute": "PRODUCT_NOT_FOUND",
+      "expectedIntent": "PRODUCT_PRICE_STOCK",
+      "expectedCapability": "PRODUCT_PRICE_STOCK",
+      "expectedEntityTypes": [
+        "PRODUCT"
+      ],
+      "expectedOutcomeClass": "ENTITY_NOT_FOUND"
+    },
+    {
+      "rank": 165,
+      "question": "FORD",
+      "category": "产品查价/库存",
+      "count": 2,
+      "intentTag": "product/price_multi",
+      "expectedRoute": "PRODUCT_CANDIDATE_CLARIFICATION",
+      "expectedIntent": "PRODUCT_PRICE_STOCK",
+      "expectedCapability": "PRODUCT_PRICE_STOCK",
+      "expectedEntityTypes": [
+        "PRODUCT"
+      ],
+      "expectedOutcomeClass": "CHOICE_REQUIRED"
+    },
+    {
+      "rank": 166,
+      "question": "G60",
+      "category": "产品查价/库存",
+      "count": 2,
+      "intentTag": "product/price_multi",
+      "expectedRoute": "PRODUCT_CANDIDATE_CLARIFICATION",
+      "expectedIntent": "PRODUCT_PRICE_STOCK",
+      "expectedCapability": "PRODUCT_PRICE_STOCK",
+      "expectedEntityTypes": [
+        "PRODUCT"
+      ],
+      "expectedOutcomeClass": "CHOICE_REQUIRED"
+    },
+    {
+      "rank": 167,
+      "question": "K100",
+      "category": "产品查价/库存",
+      "count": 2,
+      "intentTag": "product/price_multi",
+      "expectedRoute": "PRODUCT_CANDIDATE_CLARIFICATION",
+      "expectedIntent": "PRODUCT_PRICE_STOCK",
+      "expectedCapability": "PRODUCT_PRICE_STOCK",
+      "expectedEntityTypes": [
+        "PRODUCT"
+      ],
+      "expectedOutcomeClass": "CHOICE_REQUIRED"
+    },
+    {
+      "rank": 168,
+      "question": "k150 价格",
+      "category": "产品查价/库存",
+      "count": 2,
+      "intentTag": "product/price_multi",
+      "expectedRoute": "PRODUCT_CANDIDATE_CLARIFICATION",
+      "expectedIntent": "PRODUCT_PRICE_STOCK",
+      "expectedCapability": "PRODUCT_PRICE_STOCK",
+      "expectedEntityTypes": [
+        "PRODUCT"
+      ],
+      "expectedOutcomeClass": "CHOICE_REQUIRED"
+    },
+    {
+      "rank": 169,
+      "question": "K40 价格",
+      "category": "产品查价/库存",
+      "count": 2,
+      "intentTag": "product/price_multi",
+      "expectedRoute": "PRODUCT_CANDIDATE_CLARIFICATION",
+      "expectedIntent": "PRODUCT_PRICE_STOCK",
+      "expectedCapability": "PRODUCT_PRICE_STOCK",
+      "expectedEntityTypes": [
+        "PRODUCT"
+      ],
+      "expectedOutcomeClass": "CHOICE_REQUIRED"
+    },
+    {
+      "rank": 170,
+      "question": "LTY1761B",
+      "category": "产品查价/库存",
+      "count": 2,
+      "intentTag": "product/price_ok",
+      "expectedRoute": "PRODUCT_PRICE_STOCK",
+      "expectedIntent": "PRODUCT_PRICE_STOCK",
+      "expectedCapability": "PRODUCT_PRICE_STOCK",
+      "expectedEntityTypes": [
+        "PRODUCT"
+      ],
+      "expectedOutcomeClass": "RESOLVED_OR_NO_DATA"
+    },
+    {
+      "rank": 171,
+      "question": "X30",
+      "category": "产品查价/库存",
+      "count": 2,
+      "intentTag": "product/price_multi",
+      "expectedRoute": "PRODUCT_CANDIDATE_CLARIFICATION",
+      "expectedIntent": "PRODUCT_PRICE_STOCK",
+      "expectedCapability": "PRODUCT_PRICE_STOCK",
+      "expectedEntityTypes": [
+        "PRODUCT"
+      ],
+      "expectedOutcomeClass": "CHOICE_REQUIRED"
+    }
+  ]
+}

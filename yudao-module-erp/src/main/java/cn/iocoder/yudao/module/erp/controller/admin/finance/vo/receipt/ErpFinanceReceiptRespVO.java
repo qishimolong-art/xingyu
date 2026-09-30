@@ -68,6 +68,8 @@ public class ErpFinanceReceiptRespVO {
     @Schema(description = "实际价格，单位：元", requiredMode = Schema.RequiredMode.REQUIRED, example = "10000")
     private BigDecimal receiptPrice;
 
+    private BigDecimal sourceTransferAvailableAmount;
+
     @Schema(description = "已核销金额，单位：元")
     private BigDecimal allocatedPrice;
 

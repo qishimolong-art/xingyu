@@ -163,12 +163,26 @@ public class ErpPayableExpenseServiceImpl implements ErpPayableExpenseService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Long createFromSaleCartFreight(ErpSaleCartFreightDraftCreateReqBO createReqBO) {
+        return createSaleCartFreightExpense(createReqBO, false);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public Long createDraftFromSaleCartFreight(ErpSaleCartFreightDraftCreateReqBO createReqBO) {
+        return createSaleCartFreightExpense(createReqBO, true);
+    }
+
+    private Long createSaleCartFreightExpense(ErpSaleCartFreightDraftCreateReqBO createReqBO, boolean draft) {
         ErpPayableExpenseDO existing = payableExpenseMapper.selectBySource(
                 SALE_CART_SOURCE_TYPE, createReqBO.getCartId());
         if (existing != null) {
             return existing.getId();
         }
-        validateRequiredOption("结算方式", SETTLE_METHOD_TYPE, createReqBO.getSettleMethod());
+        if (draft) {
+            validateOptionalOption("结算方式", SETTLE_METHOD_TYPE, createReqBO.getSettleMethod());
+        } else {
+            validateRequiredOption("结算方式", SETTLE_METHOD_TYPE, createReqBO.getSettleMethod());
+        }
         validateRequiredOption("支出类型", PAYABLE_EXPENSE_TYPE, DEFAULT_EXPENSE_TYPE);
         validateRequiredOption("第 1 条明细的项目名称", PAYABLE_EXPENSE_ITEM_PROJECT, SALE_CART_FREIGHT_ITEM_PROJECT);
         validateRefs(createReqBO.getAccountId(), createReqBO.getHandlerId(), createReqBO.getDeptId());
@@ -178,7 +192,7 @@ public class ErpPayableExpenseServiceImpl implements ErpPayableExpenseService {
         }
         ErpPayableExpenseDO db = new ErpPayableExpenseDO()
                 .setNo(no)
-                .setStatus(ErpAuditStatus.PROCESS.getStatus())
+                .setStatus(draft ? ErpPayableExpenseStatusEnum.DRAFT.getStatus() : ErpAuditStatus.PROCESS.getStatus())
                 .setBizTime(createReqBO.getBizTime())
                 .setSettleMethod(createReqBO.getSettleMethod())
                 .setAccountId(createReqBO.getAccountId())

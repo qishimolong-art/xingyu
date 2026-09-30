@@ -129,7 +129,7 @@ public class ErpFinancePaymentServiceImpl implements ErpFinancePaymentService {
     private ErpPayableOtherService payableOtherService;
 
     @Override
-    @Transactional(rollbackFor = Exception.class)
+    @Transactional(rollbackFor = Exception.class, isolation = org.springframework.transaction.annotation.Isolation.READ_COMMITTED)
     public Long createFinancePayment(ErpFinancePaymentSaveReqVO createReqVO) {
         fieldPermissionMasker.clearHiddenFields(FIELD_PERMISSION_MODULE, createReqVO);
         fieldPermissionMasker.clearHiddenItemFields(FIELD_PERMISSION_MODULE, createReqVO.getItems());
@@ -157,7 +157,7 @@ public class ErpFinancePaymentServiceImpl implements ErpFinancePaymentService {
                 .setNo(no).setStatus(ErpAuditStatus.PROCESS.getStatus()));
         permissionFieldFiller.fillCreateFields(payment);
         fillDefaultAmount(payment);
-        validateAndFillSourcePayableMisc(payment, false);
+        validateAndFillSourcePayableMisc(payment, true);
         preparePendingItems(payment, paymentItems);
         financePaymentMapper.insert(payment);
         // 2.2 插入付款单项
@@ -171,7 +171,7 @@ public class ErpFinancePaymentServiceImpl implements ErpFinancePaymentService {
     }
 
     @Override
-    @Transactional(rollbackFor = Exception.class)
+    @Transactional(rollbackFor = Exception.class, isolation = org.springframework.transaction.annotation.Isolation.READ_COMMITTED)
     public Long createFinancePaymentDraft(ErpFinancePaymentDraftSaveReqVO createReqVO) {
         fieldPermissionMasker.clearHiddenFields(FIELD_PERMISSION_MODULE, createReqVO);
         fieldPermissionMasker.clearHiddenItemFields(FIELD_PERMISSION_MODULE, createReqVO.getItems());
@@ -193,7 +193,7 @@ public class ErpFinancePaymentServiceImpl implements ErpFinancePaymentService {
                         ? createReqVO.getPaymentTime() : LocalDateTime.now());
         fillDraftAmounts(payment, paymentItems);
         permissionFieldFiller.fillCreateFields(payment);
-        validateAndFillSourcePayableMisc(payment, false);
+        validateAndFillSourcePayableMisc(payment, true);
         financePaymentMapper.insert(payment);
         insertFinancePaymentDraftItems(payment.getId(), paymentItems);
         operateLogService.recordCreate(ERP_FINANCE_PAYMENT_TYPE, payment.getId(), payment.getNo());
@@ -201,16 +201,17 @@ public class ErpFinancePaymentServiceImpl implements ErpFinancePaymentService {
     }
 
     @Override
-    @Transactional(rollbackFor = Exception.class)
+    @Transactional(rollbackFor = Exception.class, isolation = org.springframework.transaction.annotation.Isolation.READ_COMMITTED)
     public Long createAndSubmitFinancePayment(ErpFinancePaymentSaveReqVO createReqVO) {
         return createFinancePayment(createReqVO);
     }
 
     @Override
-    @Transactional(rollbackFor = Exception.class)
+    @Transactional(rollbackFor = Exception.class, isolation = org.springframework.transaction.annotation.Isolation.READ_COMMITTED)
     public void updateFinancePayment(ErpFinancePaymentSaveReqVO updateReqVO) {
         // 1.1 校验存在
-        ErpFinancePaymentDO payment = validateFinancePaymentExists(updateReqVO.getId());
+        ErpFinancePaymentDO payment = financePaymentMapper.selectByIdForUpdate(updateReqVO.getId());
+        if (payment == null) throw exception(FINANCE_PAYMENT_NOT_EXISTS);
         if (ErpFinancePaymentStatusEnum.DRAFT.getStatus().equals(payment.getStatus())) {
             throw exception(FINANCE_PAYMENT_DRAFT_UPDATE_FAIL, payment.getNo());
         }
@@ -259,7 +260,7 @@ public class ErpFinancePaymentServiceImpl implements ErpFinancePaymentService {
         }
         preserveSourcePayableMisc(updateObj, payment);
         fillDefaultAmount(updateObj);
-        validateAndFillSourcePayableMisc(updateObj, false);
+        validateAndFillSourcePayableMisc(updateObj, true);
         preparePendingItems(updateObj, paymentItems);
         financePaymentMapper.updateById(updateObj);
         // 2.2 更新付款单项
@@ -272,9 +273,10 @@ public class ErpFinancePaymentServiceImpl implements ErpFinancePaymentService {
     }
 
     @Override
-    @Transactional(rollbackFor = Exception.class)
+    @Transactional(rollbackFor = Exception.class, isolation = org.springframework.transaction.annotation.Isolation.READ_COMMITTED)
     public void updateFinancePaymentDraft(ErpFinancePaymentDraftSaveReqVO updateReqVO) {
-        ErpFinancePaymentDO payment = validateFinancePaymentExists(updateReqVO.getId());
+        ErpFinancePaymentDO payment = financePaymentMapper.selectByIdForUpdate(updateReqVO.getId());
+        if (payment == null) throw exception(FINANCE_PAYMENT_NOT_EXISTS);
         if (!ErpFinancePaymentStatusEnum.DRAFT.getStatus().equals(payment.getStatus())) {
             throw exception(FINANCE_PAYMENT_DRAFT_UPDATE_FAIL, payment.getNo());
         }
@@ -312,7 +314,7 @@ public class ErpFinancePaymentServiceImpl implements ErpFinancePaymentService {
                         ? updateReqVO.getPaymentTime() : payment.getPaymentTime());
         preserveSourcePayableMisc(updateObj, payment);
         fillDraftAmounts(updateObj, paymentItems);
-        validateAndFillSourcePayableMisc(updateObj, false);
+        validateAndFillSourcePayableMisc(updateObj, true);
         if (financePaymentMapper.updateByIdAndStatus(payment.getId(),
                 ErpFinancePaymentStatusEnum.DRAFT.getStatus(), updateObj) == 0) {
             throw exception(FINANCE_PAYMENT_DRAFT_UPDATE_FAIL, payment.getNo());
@@ -327,7 +329,7 @@ public class ErpFinancePaymentServiceImpl implements ErpFinancePaymentService {
     }
 
     @Override
-    @Transactional(rollbackFor = Exception.class)
+    @Transactional(rollbackFor = Exception.class, isolation = org.springframework.transaction.annotation.Isolation.READ_COMMITTED)
     public void updateAndSubmitFinancePayment(ErpFinancePaymentSaveReqVO updateReqVO) {
         ErpFinancePaymentDraftSaveReqVO draftReqVO =
                 BeanUtils.toBean(updateReqVO, ErpFinancePaymentDraftSaveReqVO.class);
@@ -336,7 +338,7 @@ public class ErpFinancePaymentServiceImpl implements ErpFinancePaymentService {
     }
 
     @Override
-    @Transactional(rollbackFor = Exception.class)
+    @Transactional(rollbackFor = Exception.class, isolation = org.springframework.transaction.annotation.Isolation.READ_COMMITTED)
     public void submitFinancePayment(Long id) {
         ErpFinancePaymentDO payment = financePaymentMapper.selectByIdForUpdate(id);
         if (payment == null) {
@@ -351,7 +353,7 @@ public class ErpFinancePaymentServiceImpl implements ErpFinancePaymentService {
                 BeanUtils.toBean(financePaymentItemMapper.selectListByPaymentId(id),
                         ErpFinancePaymentSaveReqVO.Item.class));
         fillDefaultAmount(payment);
-        validateAndFillSourcePayableMisc(payment, false);
+        validateAndFillSourcePayableMisc(payment, true);
         preparePendingItems(payment, paymentItems);
         ErpFinancePaymentDO statusUpdate = new ErpFinancePaymentDO()
                 .setStatus(ErpFinancePaymentStatusEnum.PROCESS.getStatus())
@@ -415,12 +417,20 @@ public class ErpFinancePaymentServiceImpl implements ErpFinancePaymentService {
         if (!Objects.equals(sourceMisc.getSupplierId(), payment.getSupplierId())) {
             throw exception(FINANCE_PAYMENT_WRITEOFF_BIZ_INVALID, "供应商必须相同");
         }
+        if (forUpdate) {
+            BigDecimal limit = sourceTransferAvailable(sourceMisc, payment.getId());
+            BigDecimal value = getZeroIfNull(payment.getPaymentPrice());
+            if (value.signum() != 0 && (value.signum() != getZeroIfNull(sourceMisc.getAmount()).signum()
+                    || value.abs().compareTo(limit.abs()) > 0)) {
+                throw exception(FINANCE_PAYMENT_WRITEOFF_AMOUNT_INVALID, "本次转款金额超过剩余可转金额，请刷新后调整");
+            }
+        }
         payment.setSourcePayableMiscNo(sourceMisc.getNo());
         return sourceMisc;
     }
 
     @Override
-    @Transactional(rollbackFor = Exception.class)
+    @Transactional(rollbackFor = Exception.class, isolation = org.springframework.transaction.annotation.Isolation.READ_COMMITTED)
     public void approveFinancePayment(Long id) {
         ErpFinancePaymentDO payment = financePaymentMapper.selectByIdForUpdate(id);
         if (payment == null) {
@@ -433,6 +443,12 @@ public class ErpFinancePaymentServiceImpl implements ErpFinancePaymentService {
                 .filter(item -> item.getWriteOffStatus() == null
                         || ErpFinanceWriteOffStatusEnum.PENDING.getStatus().equals(item.getWriteOffStatus()))
                 .collect(Collectors.toList());
+        if (payment.getSourcePayableMiscId() != null && pendingItems.stream().anyMatch(item ->
+                !ErpBizTypeEnum.PAYABLE_MISC.getType().equals(item.getBizType())
+                        || !payment.getSourcePayableMiscId().equals(item.getBizId()))) {
+            throw exception(FINANCE_PAYMENT_WRITEOFF_BIZ_INVALID, "转收付款只能结算关联的其他应收/付来源单");
+        }
+        validatePayableMiscSettlement(payment);
         validateAndFillEffectiveItems(payment, pendingItems);
         int updateCount = financePaymentMapper.updateByIdAndStatus(id, payment.getStatus(),
                 new ErpFinancePaymentDO().setStatus(ErpAuditStatus.APPROVE.getStatus()));
@@ -447,7 +463,6 @@ public class ErpFinancePaymentServiceImpl implements ErpFinancePaymentService {
             financePaymentItemMapper.updateBatch(pendingItems);
             updatePurchasePrice(pendingItems);
         }
-        createPayableMiscOffset(payment, now);
         payableOtherService.createFromFinancePaymentDiscount(payment);
         if (payment.getSourcePayableMiscId() == null) {
             financeAutoWriteOffService.autoWriteOffPayment(id, loginUserId);
@@ -455,56 +470,39 @@ public class ErpFinancePaymentServiceImpl implements ErpFinancePaymentService {
         operateLogService.recordStatus(ERP_FINANCE_PAYMENT_TYPE, id, payment.getNo(), true);
     }
 
-    private void createPayableMiscOffset(ErpFinancePaymentDO payment, LocalDateTime approveTime) {
-        if (payment.getSourcePayableMiscId() == null) {
-            return;
-        }
-        BigDecimal paymentPrice = normalize(getZeroIfNull(payment.getPaymentPrice()));
-        if (paymentPrice.compareTo(BigDecimal.ZERO) == 0) {
-            return;
-        }
-        ErpPayableMiscDO existing = payableMiscMapper.selectBySourceDocument(
-                ErpMiscTransferOffsetConstants.PAYMENT_OFFSET_SOURCE_TYPE, payment.getId());
-        if (existing != null) {
-            return;
-        }
+    private void validatePayableMiscSettlement(ErpFinancePaymentDO payment) {
+        if (payment.getSourcePayableMiscId() == null) return;
+        // Lock the original before changing approval status, so this document is not counted twice.
         ErpPayableMiscDO sourceMisc = validateAndFillSourcePayableMisc(payment, true);
-        BigDecimal settledAmount = payableMiscMapper.selectOffsetAmountSumMapBySourceMiscIds(
-                Collections.singleton(sourceMisc.getId()),
-                ErpMiscTransferOffsetConstants.PAYMENT_OFFSET_SOURCE_TYPE)
-                .getOrDefault(sourceMisc.getId(), BigDecimal.ZERO);
-        BigDecimal remainingPrice = normalize(getZeroIfNull(sourceMisc.getAmount()).subtract(settledAmount));
-        validatePaymentWriteOffAmount(paymentPrice, remainingPrice);
-        String sourceMiscNo = sourceMisc.getNo() == null ? payment.getSourcePayableMiscNo() : sourceMisc.getNo();
-        createPayableMiscOffset(payment, sourceMisc, null, sourceMiscNo, paymentPrice, approveTime);
+        validatePaymentWriteOffAmount(normalize(getZeroIfNull(payment.getPaymentPrice())),
+                sourceTransferAvailable(sourceMisc, payment.getId()));
     }
 
-    private void createPayableMiscOffset(ErpFinancePaymentDO payment, ErpPayableMiscDO sourceMisc,
-                                         Long sourceItemId, String sourceMiscNo, BigDecimal paymentPrice,
-                                         LocalDateTime approveTime) {
-        String no = noRedisDAO.generate("QTYFM");
-        if (payableMiscMapper.selectByNo(no) != null) {
-            throw exception(PAYABLE_MISC_NO_EXISTS);
-        }
-        ErpPayableMiscDO offset = new ErpPayableMiscDO()
-                .setNo(no)
-                .setStatus(ErpAuditStatus.APPROVE.getStatus())
-                .setBizTime(payment.getPaymentTime() == null ? approveTime : payment.getPaymentTime())
-                .setSupplierId(sourceMisc.getSupplierId())
-                .setAccountId(payment.getAccountId())
-                .setAmount(paymentPrice.abs().negate())
-                .setRemark("付款单审核自动生成，来源单号：" + payment.getNo() + "，冲减其他应付：" + sourceMiscNo)
-                .setSourceType(ErpMiscTransferOffsetConstants.PAYMENT_OFFSET_SOURCE_TYPE)
-                .setSourceId(payment.getId())
-                .setSourceNo(payment.getNo())
-                .setSourceItemId(sourceItemId)
-                .setSourceMiscId(sourceMisc.getId())
-                .setSourceMiscNo(sourceMiscNo)
-                .setDeptId(payment.getDeptId())
-                .setHandlerId(payment.getFinanceUserId());
-        payableMiscMapper.insert(offset);
-        operateLogService.recordCreate("其他应付", offset.getId(), offset.getNo());
-        operateLogService.recordStatus("其他应付", offset.getId(), offset.getNo(), true);
+
+    private BigDecimal sourceTransferAvailable(ErpPayableMiscDO source, Long excludeId) {
+        if (!payableMiscMapper.selectInvalidPendingSourceIds(Collections.singleton(source.getId()), excludeId).isEmpty()) return BigDecimal.ZERO;
+        BigDecimal settled = payableMiscMapper.selectSettlementAmountSumMapBySourceMiscIds(
+                Collections.singleton(source.getId()), ErpMiscTransferOffsetConstants.PAYMENT_OFFSET_SOURCE_TYPE)
+                .getOrDefault(source.getId(), BigDecimal.ZERO);
+        return ErpMiscTransferAmount.available(source.getAmount(), getZeroIfNull(source.getAmount()).subtract(settled),
+                getZeroIfNull(payableMiscMapper.selectPendingTransferAmount(source.getId(), excludeId)));
+    }
+
+    @Override
+    public BigDecimal getSourceTransferAvailableAmount(Long id) {
+        ErpFinancePaymentDO document = financePaymentMapper.selectById(id);
+        if (document == null || document.getSourcePayableMiscId() == null) return null;
+        ErpPayableMiscDO source = payableMiscMapper.selectById(document.getSourcePayableMiscId());
+        return source == null ? null : sourceTransferAvailable(source, id);
+    }
+
+    private BigDecimal availableForBiz(Integer bizType, Long bizId, Long excludeId,
+                                       BigDecimal original, BigDecimal settled) {
+        BigDecimal balance = normalize(original.subtract(settled));
+        if (!ErpBizTypeEnum.PAYABLE_MISC.getType().equals(bizType)) return balance;
+        if (!payableMiscMapper.selectInvalidPendingSourceIds(Collections.singleton(bizId), excludeId).isEmpty()) return BigDecimal.ZERO;
+        return ErpMiscTransferAmount.available(original, balance,
+                payableMiscMapper.selectPendingTransferAmount(bizId, excludeId));
     }
 
     private List<ErpFinancePaymentItemDO> validateFinancePaymentItems(
@@ -686,7 +684,7 @@ public class ErpFinancePaymentServiceImpl implements ErpFinancePaymentService {
             } else if (ErpBizTypeEnum.PURCHASE_PRICE_ADJUST.getType().equals(paymentItem.getBizType())) {
                 purchasePriceAdjustService.updatePurchasePriceAdjustPaymentPrice(paymentItem.getBizId(), totalPaymentPrice);
             } else if (ErpBizTypeEnum.PAYABLE_MISC.getType().equals(paymentItem.getBizType())) {
-                // 其他应付的冲减在付款单审核后生成负数其他应付单，不回写原主单。
+                // 其他应付按有效结算记录计算余额，不回写原主单。
             } else {
                 throw new IllegalArgumentException("业务类型不正确：" + paymentItem.getBizType());
             }
@@ -714,6 +712,7 @@ public class ErpFinancePaymentServiceImpl implements ErpFinancePaymentService {
     private void validateAllocationItems(ErpFinancePaymentDO payment, List<ErpFinancePaymentItemDO> items) {
         Set<String> bizKeys = new HashSet<>();
         BigDecimal allocationAmount = BigDecimal.ZERO;
+        items.sort(Comparator.comparing(ErpFinancePaymentItemDO::getBizType).thenComparing(ErpFinancePaymentItemDO::getBizId));
         for (ErpFinancePaymentItemDO item : items) {
             String bizKey = item.getBizType() + ":" + item.getBizId();
             if (!bizKeys.add(bizKey)) {
@@ -723,7 +722,7 @@ public class ErpFinancePaymentServiceImpl implements ErpFinancePaymentService {
             BigDecimal allocatedPrice = financePaymentItemMapper.selectPaymentPriceSumByBizIdAndBizType(
                     item.getBizId(), item.getBizType());
             BigDecimal paymentPrice = normalize(item.getPaymentPrice());
-            BigDecimal remainingPrice = normalize(biz.totalPrice.subtract(allocatedPrice));
+            BigDecimal remainingPrice = availableForBiz(item.getBizType(), item.getBizId(), payment.getId(), biz.totalPrice, allocatedPrice);
             validatePaymentWriteOffAmount(paymentPrice, remainingPrice);
             item.setPaymentPrice(paymentPrice);
             item.setBizNo(biz.bizNo).setTotalPrice(biz.totalPrice).setPaidPrice(allocatedPrice);
@@ -803,7 +802,7 @@ public class ErpFinancePaymentServiceImpl implements ErpFinancePaymentService {
             miscQuery.eq(ErpPayableMiscDO::getDeptId, payment.getDeptId());
         }
         List<ErpPayableMiscDO> miscPayables = payableMiscMapper.selectList(miscQuery);
-        Map<Long, BigDecimal> miscAllocated = payableMiscMapper.selectOffsetAmountSumMapBySourceMiscIds(
+        Map<Long, BigDecimal> miscAllocated = payableMiscMapper.selectOccupiedAmounts(
                 convertSet(miscPayables, ErpPayableMiscDO::getId),
                 ErpMiscTransferOffsetConstants.PAYMENT_OFFSET_SOURCE_TYPE);
         miscPayables.forEach(row -> addPaymentCandidate(result, ErpBizTypeEnum.PAYABLE_MISC, row.getId(),
@@ -814,6 +813,11 @@ public class ErpFinancePaymentServiceImpl implements ErpFinancePaymentService {
                 Comparator.nullsLast(Comparator.naturalOrder())).reversed()
                 .thenComparing(ErpFinancePaymentWriteOffCandidateRespVO::getBizNo,
                         Comparator.nullsLast(Comparator.naturalOrder())));
+        Map<Long, BigDecimal> miscSettled = payableMiscMapper.selectSettlementAmountSumMapBySourceMiscIds(
+                result.stream().filter(row -> ErpBizTypeEnum.PAYABLE_MISC.getType().equals(row.getBizType()))
+                        .map(row -> row.getBizId()).collect(Collectors.toSet()), ErpMiscTransferOffsetConstants.PAYMENT_OFFSET_SOURCE_TYPE);
+        result.stream().filter(row -> ErpBizTypeEnum.PAYABLE_MISC.getType().equals(row.getBizType()))
+                .forEach(row -> row.setAllocatedPrice(miscSettled.getOrDefault(row.getBizId(), BigDecimal.ZERO)));
         return result;
     }
 
@@ -877,7 +881,7 @@ public class ErpFinancePaymentServiceImpl implements ErpFinancePaymentService {
                 .or().ne(ErpPayableMiscDO::getSourceType,
                         ErpMiscTransferOffsetConstants.PAYMENT_OFFSET_SOURCE_TYPE));
         List<ErpPayableMiscDO> miscPayables = payableMiscMapper.selectList(miscQuery);
-        Map<Long, BigDecimal> miscAllocated = payableMiscMapper.selectOffsetAmountSumMapBySourceMiscIds(
+        Map<Long, BigDecimal> miscAllocated = payableMiscMapper.selectOccupiedAmounts(
                 convertSet(miscPayables, ErpPayableMiscDO::getId),
                 ErpMiscTransferOffsetConstants.PAYMENT_OFFSET_SOURCE_TYPE);
         miscPayables.forEach(row -> addPaymentFormCandidate(result, ErpBizTypeEnum.PAYABLE_MISC,
@@ -890,6 +894,11 @@ public class ErpFinancePaymentServiceImpl implements ErpFinancePaymentService {
                         Comparator.nullsLast(Comparator.naturalOrder()))
                 .thenComparing(ErpFinancePaymentFormCandidateRespVO::getBizId,
                         Comparator.nullsLast(Comparator.naturalOrder())));
+        Map<Long, BigDecimal> miscSettled = payableMiscMapper.selectSettlementAmountSumMapBySourceMiscIds(
+                result.stream().filter(row -> ErpBizTypeEnum.PAYABLE_MISC.getType().equals(row.getBizType()))
+                        .map(row -> row.getBizId()).collect(Collectors.toSet()), ErpMiscTransferOffsetConstants.PAYMENT_OFFSET_SOURCE_TYPE);
+        result.stream().filter(row -> ErpBizTypeEnum.PAYABLE_MISC.getType().equals(row.getBizType()))
+                .forEach(row -> row.setAllocatedPrice(miscSettled.getOrDefault(row.getBizId(), BigDecimal.ZERO)));
         return result;
     }
 
@@ -902,7 +911,7 @@ public class ErpFinancePaymentServiceImpl implements ErpFinancePaymentService {
                                      Long bizId, String bizNo, LocalDateTime bizTime,
                                      BigDecimal totalPrice, BigDecimal allocatedPrice) {
         BigDecimal unallocatedPrice = totalPrice.subtract(allocatedPrice);
-        if (unallocatedPrice.compareTo(BigDecimal.ZERO) == 0) {
+        if (unallocatedPrice.compareTo(BigDecimal.ZERO) == 0 || (bizType == ErpBizTypeEnum.PAYABLE_MISC && unallocatedPrice.signum() != totalPrice.signum())) {
             return;
         }
         result.add(new ErpFinancePaymentWriteOffCandidateRespVO()
@@ -918,7 +927,7 @@ public class ErpFinancePaymentServiceImpl implements ErpFinancePaymentService {
         BigDecimal normalizedTotalPrice = normalize(getZeroIfNull(totalPrice));
         BigDecimal normalizedAllocatedPrice = normalize(getZeroIfNull(allocatedPrice));
         BigDecimal unallocatedPrice = normalize(normalizedTotalPrice.subtract(normalizedAllocatedPrice));
-        if (unallocatedPrice.compareTo(BigDecimal.ZERO) == 0) {
+        if (unallocatedPrice.compareTo(BigDecimal.ZERO) == 0 || (bizType == ErpBizTypeEnum.PAYABLE_MISC && unallocatedPrice.signum() != totalPrice.signum())) {
             return;
         }
         result.add(new ErpFinancePaymentFormCandidateRespVO()
@@ -946,7 +955,7 @@ public class ErpFinancePaymentServiceImpl implements ErpFinancePaymentService {
     }
 
     @Override
-    @Transactional(rollbackFor = Exception.class)
+    @Transactional(rollbackFor = Exception.class, isolation = org.springframework.transaction.annotation.Isolation.READ_COMMITTED)
     public void writeOffFinancePayment(ErpFinancePaymentWriteOffReqVO reqVO) {
         ErpFinancePaymentDO payment = financePaymentMapper.selectByIdForUpdate(reqVO.getPaymentId());
         if (payment == null) {
@@ -956,7 +965,9 @@ public class ErpFinancePaymentServiceImpl implements ErpFinancePaymentService {
         Set<String> bizKeys = new HashSet<>();
         LocalDateTime now = LocalDateTime.now();
         Long loginUserId = SecurityFrameworkUtils.getLoginUserId();
-        List<ErpFinancePaymentItemDO> items = reqVO.getItems().stream().map(reqItem -> {
+        List<ErpFinancePaymentItemDO> items = reqVO.getItems().stream()
+                .sorted(Comparator.comparing(ErpFinancePaymentWriteOffReqVO.Item::getBizType)
+                        .thenComparing(ErpFinancePaymentWriteOffReqVO.Item::getBizId)).map(reqItem -> {
             String bizKey = reqItem.getBizType() + ":" + reqItem.getBizId();
             if (!bizKeys.add(bizKey)) {
                 throw exception(FINANCE_PAYMENT_WRITEOFF_BIZ_INVALID, "同一业务单据不能重复选择");
@@ -965,7 +976,7 @@ public class ErpFinancePaymentServiceImpl implements ErpFinancePaymentService {
             BigDecimal allocatedPrice = financePaymentItemMapper.selectPaymentPriceSumByBizIdAndBizType(
                     reqItem.getBizId(), reqItem.getBizType());
             BigDecimal writeOffAmount = normalize(reqItem.getWriteOffAmount());
-            validatePaymentWriteOffAmount(writeOffAmount, normalize(biz.totalPrice.subtract(allocatedPrice)));
+            validatePaymentWriteOffAmount(writeOffAmount, availableForBiz(reqItem.getBizType(), reqItem.getBizId(), null, biz.totalPrice, allocatedPrice));
             return new ErpFinancePaymentItemDO().setPaymentId(payment.getId())
                     .setBizType(reqItem.getBizType()).setBizId(reqItem.getBizId()).setBizNo(biz.bizNo)
                     .setTotalPrice(biz.totalPrice).setPaidPrice(allocatedPrice)
@@ -987,15 +998,19 @@ public class ErpFinancePaymentServiceImpl implements ErpFinancePaymentService {
     }
 
     @Override
-    @Transactional(rollbackFor = Exception.class)
+    @Transactional(rollbackFor = Exception.class, isolation = org.springframework.transaction.annotation.Isolation.READ_COMMITTED)
     public void reverseFinancePaymentWriteOff(ErpFinancePaymentWriteOffReverseReqVO reqVO) {
-        ErpFinancePaymentItemDO item = financePaymentItemMapper.selectByIdForUpdate(reqVO.getItemId());
+        ErpFinancePaymentItemDO item = financePaymentItemMapper.selectById(reqVO.getItemId());
         if (item == null || !ErpFinanceWriteOffStatusEnum.EFFECTIVE.getStatus().equals(item.getWriteOffStatus())) {
             throw exception(FINANCE_PAYMENT_WRITEOFF_ITEM_NOT_EFFECTIVE);
         }
         ErpFinancePaymentDO payment = financePaymentMapper.selectByIdForUpdate(item.getPaymentId());
         if (payment == null) {
             throw exception(FINANCE_PAYMENT_NOT_EXISTS);
+        }
+        item = financePaymentItemMapper.selectByIdForUpdate(reqVO.getItemId());
+        if (item == null || !ErpFinanceWriteOffStatusEnum.EFFECTIVE.getStatus().equals(item.getWriteOffStatus())) {
+            throw exception(FINANCE_PAYMENT_WRITEOFF_ITEM_NOT_EFFECTIVE);
         }
         validatePaymentWriteOffStatus(payment);
         lockPaymentBiz(item.getBizType(), item.getBizId(), payment);
@@ -1057,6 +1072,9 @@ public class ErpFinancePaymentServiceImpl implements ErpFinancePaymentService {
     }
 
     private void validatePaymentWriteOffStatus(ErpFinancePaymentDO payment) {
+        if (payment.getSourcePayableMiscId() != null) {
+            throw exception(FINANCE_PAYMENT_WRITEOFF_BIZ_INVALID, "转收付款已直接结算来源单，不能重复核销");
+        }
         if (!ErpAuditStatus.APPROVE.getStatus().equals(payment.getStatus())) {
             throw exception(FINANCE_PAYMENT_WRITEOFF_STATUS_INVALID);
         }
@@ -1103,10 +1121,13 @@ public class ErpFinancePaymentServiceImpl implements ErpFinancePaymentService {
     }
 
     @Override
-    @Transactional(rollbackFor = Exception.class)
+    @Transactional(rollbackFor = Exception.class, isolation = org.springframework.transaction.annotation.Isolation.READ_COMMITTED)
     public void deleteFinancePayment(List<Long> ids) {
         // 1. 校验不处于已审批
-        List<ErpFinancePaymentDO> payments = financePaymentMapper.selectByIds(ids);
+        List<ErpFinancePaymentDO> payments = ids.stream().distinct().sorted()
+                .map(financePaymentMapper::selectByIdForUpdate).filter(Objects::nonNull).collect(Collectors.toList());
+        payments.stream().map(ErpFinancePaymentDO::getSourcePayableMiscId).filter(Objects::nonNull)
+                .distinct().sorted().forEach(payableMiscMapper::selectByIdForUpdate);
         if (CollUtil.isEmpty(payments)) {
             return;
         }

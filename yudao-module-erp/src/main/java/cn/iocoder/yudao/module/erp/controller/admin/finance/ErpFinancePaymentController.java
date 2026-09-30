@@ -271,6 +271,10 @@ public class ErpFinancePaymentController {
             fillWriteOffSummary(Collections.singletonList(respVO));
         }
         fillFinancePaymentNames(Collections.singletonList(respVO));
+        if (!fieldPermissionMasker.isFieldHidden("erp_finance_payment", "paymentPrice")
+                && !fieldPermissionMasker.isFieldHidden("erp_finance_payable_misc", "amount")) {
+            respVO.setSourceTransferAvailableAmount(financePaymentService.getSourceTransferAvailableAmount(id));
+        }
         fieldPermissionMasker.maskFormWithItems("erp_finance_payment", respVO);
         return success(respVO);
     }

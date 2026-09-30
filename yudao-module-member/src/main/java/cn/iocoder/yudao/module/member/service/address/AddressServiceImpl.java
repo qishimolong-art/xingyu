@@ -12,6 +12,11 @@ import org.springframework.validation.annotation.Validated;
 
 import javax.annotation.Resource;
 import java.util.List;
+import java.util.Objects;
+import java.math.BigDecimal;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
+import cn.iocoder.yudao.module.member.controller.app.address.vo.AppAddressBaseVO;
+import static cn.iocoder.yudao.framework.common.exception.util.ServiceExceptionUtil.invalidParamException;
 
 import static cn.iocoder.yudao.framework.common.exception.util.ServiceExceptionUtil.exception;
 import static cn.iocoder.yudao.module.member.enums.ErrorCodeConstants.ADDRESS_NOT_EXISTS;
@@ -31,6 +36,7 @@ public class AddressServiceImpl implements AddressService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Long createAddress(Long userId, AppAddressCreateReqVO createReqVO) {
+        validateLocation(createReqVO);
         // 如果添加的是默认收件地址，则将原默认地址修改为非默认
         if (Boolean.TRUE.equals(createReqVO.getDefaultStatus())) {
             List<MemberAddressDO> addresses = memberAddressMapper.selectListByUserIdAndDefaulted(userId, true);
@@ -49,7 +55,11 @@ public class AddressServiceImpl implements AddressService {
     @Transactional(rollbackFor = Exception.class)
     public void updateAddress(Long userId, AppAddressUpdateReqVO updateReqVO) {
         // 校验存在,校验是否能够操作
-        validAddressExists(userId, updateReqVO.getId());
+        MemberAddressDO oldAddress = getAddress(userId, updateReqVO.getId());
+        if (oldAddress == null) {
+            throw exception(ADDRESS_NOT_EXISTS);
+        }
+        validateLocation(updateReqVO);
 
         // 如果修改的是默认收件地址，则将原默认地址修改为非默认
         if (Boolean.TRUE.equals(updateReqVO.getDefaultStatus())) {
@@ -60,7 +70,50 @@ public class AddressServiceImpl implements AddressService {
 
         // 更新
         MemberAddressDO updateObj = AddressConvert.INSTANCE.convert(updateReqVO);
-        memberAddressMapper.updateById(updateObj);
+        boolean hasLocation = updateReqVO.getLongitude() != null;
+        boolean addressChanged = !Objects.equals(oldAddress.getAreaId(), updateReqVO.getAreaId())
+                || !Objects.equals(oldAddress.getDetailAddress(), updateReqVO.getDetailAddress());
+        if (!hasLocation && !addressChanged) {
+            updateObj.setLongitude(oldAddress.getLongitude());
+            updateObj.setLatitude(oldAddress.getLatitude());
+            updateObj.setMapName(oldAddress.getMapName());
+            updateObj.setMapAddress(oldAddress.getMapAddress());
+        }
+        // 显式 SET 位置字段，避免 MyBatis 忽略 null 而留下旧坐标；不影响默认地址的局部更新。
+        LambdaUpdateWrapper<MemberAddressDO> locationUpdate = new LambdaUpdateWrapper<MemberAddressDO>()
+                .eq(MemberAddressDO::getId, updateReqVO.getId())
+                .eq(MemberAddressDO::getUserId, userId)
+                .set(MemberAddressDO::getLongitude, updateObj.getLongitude())
+                .set(MemberAddressDO::getLatitude, updateObj.getLatitude())
+                .set(MemberAddressDO::getMapName, updateObj.getMapName())
+                .set(MemberAddressDO::getMapAddress, updateObj.getMapAddress());
+        updateObj.setLongitude(null);
+        updateObj.setLatitude(null);
+        updateObj.setMapName(null);
+        updateObj.setMapAddress(null);
+        memberAddressMapper.update(updateObj, locationUpdate);
+    }
+
+    private void validateLocation(AppAddressBaseVO request) {
+        BigDecimal lon = request.getLongitude();
+        BigDecimal lat = request.getLatitude();
+        if ((lon == null) != (lat == null)) {
+            throw invalidParamException("收货位置经纬度必须同时提供");
+        }
+        if (lon != null && (lon.abs().compareTo(new BigDecimal("180")) > 0
+                || lat.abs().compareTo(new BigDecimal("90")) > 0
+                || (lon.setScale(6, java.math.RoundingMode.HALF_UP).signum() == 0
+                    && lat.setScale(6, java.math.RoundingMode.HALF_UP).signum() == 0))) {
+            throw invalidParamException("收货位置经纬度无效");
+        }
+        if ((request.getMapName() != null && request.getMapName().length() > 200)
+                || (request.getMapAddress() != null && request.getMapAddress().length() > 500)) {
+            throw invalidParamException("地图地点名称或地址过长");
+        }
+        if (lon == null) {
+            request.setMapName(null);
+            request.setMapAddress(null);
+        }
     }
 
     @Override

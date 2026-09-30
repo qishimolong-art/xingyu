@@ -19,6 +19,9 @@ public class AppTradeConfigRespVO {
     @NotNull(message = "是否开启自提不能为空")
     private Boolean deliveryPickUpEnabled;
 
+    @Schema(description = "是否开启按收货位置自动分仓", requiredMode = Schema.RequiredMode.REQUIRED, example = "false")
+    private Boolean addressAutoWarehouseEnabled;
+
     // ========== 售后相关 ==========
 
     @Schema(description = "售后的退款理由", requiredMode = Schema.RequiredMode.REQUIRED)

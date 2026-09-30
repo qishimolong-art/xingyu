@@ -5,6 +5,7 @@ import com.baomidou.mybatisplus.annotation.KeySequence;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.*;
+import java.math.BigDecimal;
 
 /**
  * 用户收件地址 DO
@@ -52,5 +53,11 @@ public class MemberAddressDO extends BaseDO {
      * true - 默认收件地址
      */
     private Boolean defaultStatus;
+
+    /** 收货位置（GCJ-02），旧地址允许为空。 */
+    private BigDecimal longitude;
+    private BigDecimal latitude;
+    private String mapName;
+    private String mapAddress;
 
 }

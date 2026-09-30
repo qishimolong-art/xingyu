@@ -93,8 +93,11 @@ class ErpFinancePaymentFormCandidateServiceImplTest extends BaseMockitoUnitTest 
         Map<Long, BigDecimal> miscAllocated = new HashMap<>();
         miscAllocated.put(400L, new BigDecimal("25"));
         miscAllocated.put(401L, new BigDecimal("20"));
-        when(financePaymentItemMapper.selectPaymentPriceSumMapByBizIdsAndBizType(
-                any(), eq(ErpBizTypeEnum.PAYABLE_MISC.getType())))
+        when(payableMiscMapper.selectOccupiedAmounts(
+                any(), eq(ErpMiscTransferOffsetConstants.PAYMENT_OFFSET_SOURCE_TYPE)))
+                .thenReturn(miscAllocated);
+        when(payableMiscMapper.selectSettlementAmountSumMapBySourceMiscIds(
+                any(), eq(ErpMiscTransferOffsetConstants.PAYMENT_OFFSET_SOURCE_TYPE)))
                 .thenReturn(miscAllocated);
         when(supplierService.getSupplierMap(any())).thenReturn(Collections.singletonMap(4L,
                 new ErpSupplierDO().setId(4L).setName("项目轮胎")));

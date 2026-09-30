@@ -2034,6 +2034,15 @@ public class ErpProductServiceImpl implements ErpProductService {
         return reqVO;
     }
 
+    @Override
+    public boolean hasCurrentUserProductArchiveVisibleScope() {
+        ErpProductPageReqVO reqVO = buildCurrentUserArchiveVisibleReqVO();
+        return Boolean.TRUE.equals(reqVO.getVisibleAll())
+                || CollUtil.isNotEmpty(reqVO.getVisibleDeptIds())
+                || CollUtil.isNotEmpty(reqVO.getVisibleWarehouseIds())
+                || reqVO.getVisibleSelfUserId() != null;
+    }
+
     private ErpProductDO getVisibleProduct(Long id) {
         if (id == null) {
             return null;

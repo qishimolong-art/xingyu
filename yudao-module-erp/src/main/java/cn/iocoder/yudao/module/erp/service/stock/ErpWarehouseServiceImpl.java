@@ -73,6 +73,7 @@ import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.WAREHOUSE_COD
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.CLOUD_PRINT_DEVICE_DISABLED;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.CLOUD_PRINT_DEVICE_NOT_EXISTS;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.WAREHOUSE_DIRECT_MULTIPLE;
+import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.WAREHOUSE_DIRECT_DEPT_INVALID;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.WAREHOUSE_DIRECT_NOT_CONFIGURED;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.WAREHOUSE_DISABLE_FAIL_STOCK_NOT_ZERO;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.WAREHOUSE_NOT_ENABLE;
@@ -154,8 +155,14 @@ public class ErpWarehouseServiceImpl implements ErpWarehouseService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Long createWarehouse(ErpWarehouseSaveReqVO createReqVO) {
+        return createWarehouse(createReqVO, false);
+    }
+
+    // 仅内部自动创建可设置直发仓标识，普通表单和导入不开放该字段。
+    private Long createWarehouse(ErpWarehouseSaveReqVO createReqVO, boolean directWarehouse) {
         // 闁圭粯甯掗崣鍡樼閹惧磭姘?
         ErpWarehouseDO warehouse = BeanUtils.toBean(createReqVO, ErpWarehouseDO.class);
+        warehouse.setDirectWarehouse(directWarehouse);
         if (warehouse.getSort() == null) {
             warehouse.setSort(0L);
         }
@@ -184,6 +191,7 @@ public class ErpWarehouseServiceImpl implements ErpWarehouseService {
 
         ErpWarehouseDO updateObj = BeanUtils.toBean(updateReqVO, ErpWarehouseDO.class);
         updateObj.setId(warehouse.getId());
+        updateObj.setDirectWarehouse(warehouse.getDirectWarehouse());
         updateObj.setStockBillEnabled(warehouse.getStockBillEnabled());
         updateObj.setPrincipal(warehouse.getPrincipal());
         updateObj.setWarehousePrice(warehouse.getWarehousePrice());
@@ -689,6 +697,7 @@ public class ErpWarehouseServiceImpl implements ErpWarehouseService {
         ErpWarehouseDO existing = findImportWarehouse(row);
         ErpWarehouseDO importObj = BeanUtils.toBean(row, ErpWarehouseDO.class);
         if (existing == null) {
+            importObj.setDirectWarehouse(false);
             if (importObj.getStatus() == null) {
                 importObj.setStatus(CommonStatusEnum.ENABLE.getStatus());
             }
@@ -707,6 +716,7 @@ public class ErpWarehouseServiceImpl implements ErpWarehouseService {
             return;
         }
         importObj.setId(existing.getId());
+        importObj.setDirectWarehouse(existing.getDirectWarehouse());
         importObj.setStockBillEnabled(existing.getStockBillEnabled());
         importObj.setDefaultStatus(existing.getDefaultStatus());
         importObj.setWarehouseCode(existing.getWarehouseCode());
@@ -1029,14 +1039,18 @@ public class ErpWarehouseServiceImpl implements ErpWarehouseService {
             if (directWarehouses.size() > 1) {
                 throw exception(WAREHOUSE_DIRECT_MULTIPLE);
             }
+            DeptRespDTO dept = deptApi.getDept(deptId);
+            if (dept == null || StrUtil.isBlank(dept.getName())) {
+                throw exception(WAREHOUSE_DIRECT_DEPT_INVALID);
+            }
             ErpWarehouseSaveReqVO createReqVO = new ErpWarehouseSaveReqVO();
-            createReqVO.setName(DIRECT_WAREHOUSE_NAME);
+            createReqVO.setName(dept.getName().trim() + DIRECT_WAREHOUSE_NAME);
             createReqVO.setDeptId(deptId);
             createReqVO.setStatus(CommonStatusEnum.ENABLE.getStatus());
             createReqVO.setSaleEnabled(true);
             createReqVO.setStockBillEnabled(false);
             createReqVO.setRemark(DIRECT_WAREHOUSE_AUTO_CREATE_REMARK);
-            Long warehouseId = createWarehouse(createReqVO);
+            Long warehouseId = createWarehouse(createReqVO, true);
             unlockAfterTransaction = registerUnlockAfterTransaction(lock);
             return warehouseId;
         } finally {
@@ -1047,8 +1061,8 @@ public class ErpWarehouseServiceImpl implements ErpWarehouseService {
     }
 
     private List<ErpWarehouseDO> getEnabledDirectWarehouses(Long deptId) {
-        return DataPermissionUtils.executeIgnore(() -> warehouseMapper.selectListByNameAndDeptIdAndStatus(
-                DIRECT_WAREHOUSE_NAME, deptId, CommonStatusEnum.ENABLE.getStatus()));
+        return DataPermissionUtils.executeIgnore(() -> warehouseMapper.selectDirectListByDeptIdAndStatus(
+                deptId, CommonStatusEnum.ENABLE.getStatus()));
     }
 
     private boolean registerUnlockAfterTransaction(RLock lock) {
@@ -1175,7 +1189,7 @@ public class ErpWarehouseServiceImpl implements ErpWarehouseService {
             return ErpProductStockPermissionScope.empty(loginUserId);
         }
         List<ErpWarehouseDO> warehouses = DataPermissionUtils.executeIgnore(() ->
-                warehouseMapper.selectListByStatusIfPresent(CommonStatusEnum.ENABLE.getStatus()));
+                warehouseMapper.selectEnabledPermissionScopeRows());
         if (Boolean.TRUE.equals(permission.getAll())) {
             Set<Long> allWarehouseIds = warehouses.stream()
                     .map(ErpWarehouseDO::getId)

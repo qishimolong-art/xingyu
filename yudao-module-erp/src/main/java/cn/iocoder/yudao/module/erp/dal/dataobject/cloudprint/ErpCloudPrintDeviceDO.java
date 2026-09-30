@@ -1,6 +1,6 @@
 package cn.iocoder.yudao.module.erp.dal.dataobject.cloudprint;
 
-import cn.iocoder.yudao.framework.mybatis.core.dataobject.BaseDO;
+import cn.iocoder.yudao.framework.tenant.core.db.TenantBaseDO;
 import com.baomidou.mybatisplus.annotation.KeySequence;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
@@ -17,7 +17,7 @@ import java.time.LocalDateTime;
 @Accessors(chain = true)
 @EqualsAndHashCode(callSuper = true)
 @ToString(callSuper = true)
-public class ErpCloudPrintDeviceDO extends BaseDO {
+public class ErpCloudPrintDeviceDO extends TenantBaseDO {
 
     @TableId
     private Long id;
@@ -36,7 +36,11 @@ public class ErpCloudPrintDeviceDO extends BaseDO {
     private Integer status;
     private Integer onlineState;
     private Integer lastStatusCode;
+    private String lastStatusMessage;
     private LocalDateTime lastStatusTime;
+    private Boolean queuePaused;
+    private String queuePauseReason;
+    private Long queuePauseTaskId;
     private String remark;
 
 }

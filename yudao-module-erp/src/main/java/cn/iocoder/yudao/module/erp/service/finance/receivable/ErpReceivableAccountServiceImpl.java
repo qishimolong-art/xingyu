@@ -91,6 +91,8 @@ public class ErpReceivableAccountServiceImpl implements ErpReceivableAccountServ
     private AdminUserApi adminUserApi;
     @Resource
     private DeptApi deptApi;
+    @Resource
+    private ErpReceivableDetailDisplayService detailDisplayService;
 
     @Override
     public PageResult<ErpReceivableAccountDO> getReceivableAccountPage(ErpReceivableAccountPageReqVO reqVO) {
@@ -125,7 +127,14 @@ public class ErpReceivableAccountServiceImpl implements ErpReceivableAccountServ
         if (scope == null || !scope.hasAccess()) {
             return Collections.emptyList();
         }
-        return DataPermissionUtils.executeIgnore(() -> buildReceivableDetailList(reqVO, scope));
+        List<ErpReceivableDetailRespVO> rows = DataPermissionUtils.executeIgnore(() ->
+                buildReceivableDetailList(reqVO, scope));
+        BigDecimal opening = rows.isEmpty()
+                ? DataPermissionUtils.executeIgnore(() -> getInitialBalance(reqVO, scope))
+                : rows.get(0).getPrevBalance();
+        // 仅查看/导出补充展示行；带显式范围的抵销调用保持原核算数据。
+        return detailDisplayService.decorate(reqVO, rows, opening,
+                new ErpFinanceVisibleScope(scope.isAll(), scope.getDeptIds(), scope.getSelfUserId()));
     }
 
     @Override
@@ -340,9 +349,13 @@ public class ErpReceivableAccountServiceImpl implements ErpReceivableAccountServ
         receivableWriteOffMapper.selectListByCustomerId(reqVO.getCustomerId(), reqVO.getStartTime(), reqVO.getEndTime(),
                         scope.getDeptIds(), scope.getSelfUserId(), scope.isAll(), reqVO.getDeptId(),
                         Boolean.TRUE.equals(reqVO.getDeptUnassigned()))
-                .forEach(item -> rows.add(buildRow("核销", item.getBizType(), item.getBizId(),
-                        item.getWriteOffTime(), item.getBizNo() == null ? String.valueOf(item.getId()) : item.getBizNo(),
-                        negateAmount(item.getWriteOffAmount()), true, item.getDeptId())));
+                .forEach(item -> {
+                    ErpReceivableDetailRespVO row = buildRow("核销", item.getBizType(), item.getBizId(),
+                            item.getWriteOffTime(), item.getBizNo() == null ? String.valueOf(item.getId()) : item.getBizNo(),
+                            negateAmount(item.getWriteOffAmount()), true, item.getDeptId());
+                    row.setRemark(item.getRemark());
+                    rows.add(row);
+                });
 
         LambdaQueryWrapperX<ErpReceivableOtherDO> otherQuery = new LambdaQueryWrapperX<ErpReceivableOtherDO>()
                 .eq(ErpReceivableOtherDO::getCustomerId, reqVO.getCustomerId())
@@ -389,6 +402,11 @@ public class ErpReceivableAccountServiceImpl implements ErpReceivableAccountServ
                 return receiptTime;
             }
         }
+        // 调账业务日期仅精确到天，明细使用首次保存的创建时间，避免丢失时分秒。
+        if (item.getCreateTime() != null) {
+            return item.getCreateTime();
+        }
+        // 兼容缺少创建时间的历史记录，不推测实际发生时间。
         return item.getBizTime() == null ? null : item.getBizTime().atStartOfDay();
     }
 

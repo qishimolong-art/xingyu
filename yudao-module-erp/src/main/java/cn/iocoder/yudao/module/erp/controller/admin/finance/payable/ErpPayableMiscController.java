@@ -1,6 +1,10 @@
 package cn.iocoder.yudao.module.erp.controller.admin.finance.payable;
 
 import cn.hutool.core.collection.CollUtil;
+import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.ErpMiscSettlementRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.ErpMiscSettlementPageReqVO;
+import cn.iocoder.yudao.framework.mybatis.core.util.MyBatisUtils;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import cn.iocoder.yudao.framework.apilog.core.annotation.ApiAccessLog;
 import cn.iocoder.yudao.framework.common.pojo.CommonResult;
 import cn.iocoder.yudao.framework.common.pojo.PageParam;
@@ -189,10 +193,44 @@ public class ErpPayableMiscController {
         ErpPayableMiscRespVO vo = BeanUtils.toBean(db, ErpPayableMiscRespVO.class);
         fillExtend(vo);
         fillSettlement(vo, Collections.singletonMap(db.getId(), db),
-                payableMiscMapper.selectOffsetAmountSumMapBySourceMiscIds(Collections.singleton(db.getId()),
+                payableMiscMapper.selectSettlementAmountSumMapBySourceMiscIds(Collections.singleton(db.getId()),
                         ErpMiscTransferOffsetConstants.PAYMENT_OFFSET_SOURCE_TYPE));
+        fillTransferAmounts(Collections.singletonList(vo));
         maskForm(vo);
         return success(vo);
+    }
+
+    @GetMapping("/settlement-page")
+    @Operation(summary = "获取其他应付付款明细")
+    @PreAuthorize("@ss.hasPermission('erp:payable-misc:query')")
+    public CommonResult<PageResult<ErpMiscSettlementRespVO>> settlementPage(
+            @Valid ErpMiscSettlementPageReqVO pageParam) {
+        Long id = pageParam.getId();
+        // Original document and joined finance documents are both subject to data permissions.
+        if (payableMiscService.getPayableMisc(id) == null) return success(PageResult.empty());
+        Page<ErpMiscSettlementRespVO> page = payableMiscMapper.selectSettlementPage(MyBatisUtils.buildPage(pageParam), id);
+        List<ErpMiscSettlementRespVO> rows = page.getRecords();
+        if (CollUtil.isNotEmpty(rows)) {
+            Map<Long, ErpAccountDO> accounts = accountService.getAccountMap(convertSet(rows, ErpMiscSettlementRespVO::getAccountId));
+            Map<Long, DeptRespDTO> depts = deptApi.getDeptMap(convertSet(rows, ErpMiscSettlementRespVO::getDeptId));
+            Map<Long, AdminUserRespDTO> users = adminUserApi.getUserMap(convertSet(rows, ErpMiscSettlementRespVO::getHandlerId));
+            String financeModule = "erp_finance_payment";
+            rows.forEach(row -> {
+                MapUtils.findAndThen(accounts, row.getAccountId(), v -> row.setAccountName(v.getName()));
+                MapUtils.findAndThen(depts, row.getDeptId(), v -> row.setDeptName(v.getName()));
+                MapUtils.findAndThen(users, row.getHandlerId(), v -> row.setHandlerName(v.getNickname()));
+                fieldPermissionMasker.maskForm(FIELD_PERMISSION_MODULE, row);
+                fieldPermissionMasker.maskForm(financeModule, row);
+                if (fieldPermissionMasker.isFieldHidden(financeModule, "paymentPrice")
+                        || fieldPermissionMasker.isFieldHidden(financeModule, "item_paymentPrice")) row.setAmount(null);
+                if (fieldPermissionMasker.isFieldHidden(financeModule, "paymentTime")) row.setBizTime(null);
+                if (fieldPermissionMasker.isFieldHidden(financeModule, "financeUserId")) {
+                    row.setHandlerId(null);
+                    row.setHandlerName(null);
+                }
+            });
+        }
+        return success(new PageResult<>(rows, page.getTotal()));
     }
 
     @GetMapping("/page")
@@ -287,13 +325,14 @@ public class ErpPayableMiscController {
         Map<Long, AdminUserRespDTO> userMap = getUserMap(pageResult.getList());
         Map<Long, DeptRespDTO> deptMap = deptApi.getDeptMap(convertSet(pageResult.getList(), ErpPayableMiscDO::getDeptId));
         Set<Long> ids = convertSet(pageResult.getList(), ErpPayableMiscDO::getId);
-        Map<Long, BigDecimal> settledMap = payableMiscMapper.selectOffsetAmountSumMapBySourceMiscIds(
+        Map<Long, BigDecimal> settledMap = payableMiscMapper.selectSettlementAmountSumMapBySourceMiscIds(
                 ids, ErpMiscTransferOffsetConstants.PAYMENT_OFFSET_SOURCE_TYPE);
         Map<Long, ErpPayableMiscDO> rowMap = pageResult.getList().stream()
                 .collect(java.util.stream.Collectors.toMap(ErpPayableMiscDO::getId, item -> item));
         PageResult<ErpPayableMiscRespVO> result = BeanUtils.toBean(pageResult, ErpPayableMiscRespVO.class, vo ->
                 fillExtend(vo, supplierMap, accountMap, userMap, deptMap));
         result.getList().forEach(item -> fillSettlement(item, rowMap, settledMap));
+        fillTransferAmounts(result.getList());
         result.getList().forEach(this::maskForm);
         return result;
     }
@@ -311,9 +350,20 @@ public class ErpPayableMiscController {
         vo.setBalanceAmount(originalAmount.subtract(settledAmount));
     }
 
+    private void fillTransferAmounts(List<ErpPayableMiscRespVO> rows) {
+        Map<Long, BigDecimal> pending = payableMiscMapper.selectPendingTransferAmounts(
+                convertSet(rows, ErpPayableMiscRespVO::getId), null);
+        Set<Long> invalid = payableMiscMapper.selectInvalidPendingSourceIds(convertSet(rows, ErpPayableMiscRespVO::getId), null);
+        rows.forEach(vo -> {
+            vo.setPendingTransferAmount(amount(pending.get(vo.getId())));
+            vo.setTransferAvailableAmount(cn.iocoder.yudao.module.erp.service.finance.ErpMiscTransferAmount.available(
+                    vo.getAmount(), vo.getBalanceAmount(), vo.getPendingTransferAmount()));
+            if (invalid.contains(vo.getId())) vo.setTransferAvailableAmount(BigDecimal.ZERO);
+        });
+    }
+
     private boolean isGeneratedOffset(ErpPayableMiscDO row) {
-        return ErpMiscTransferOffsetConstants.PAYMENT_OFFSET_SOURCE_TYPE.equals(row.getSourceType())
-                && row.getSourceItemId() != null;
+        return ErpMiscTransferOffsetConstants.PAYMENT_OFFSET_SOURCE_TYPE.equals(row.getSourceType());
     }
 
     private BigDecimal amount(BigDecimal value) {
@@ -325,6 +375,8 @@ public class ErpPayableMiscController {
         if (vo.getAmount() == null) {
             vo.setSettledAmount(null);
             vo.setBalanceAmount(null);
+            vo.setPendingTransferAmount(null);
+            vo.setTransferAvailableAmount(null);
         }
     }
 

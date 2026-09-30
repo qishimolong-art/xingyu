@@ -7,6 +7,7 @@ import cn.iocoder.yudao.module.erp.controller.admin.finance.receivable.vo.report
 import cn.iocoder.yudao.module.erp.controller.admin.finance.receivable.vo.report.ErpReceivableReportRespVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.receivable.ErpReceivableMiscDO;
 import org.apache.ibatis.annotations.Mapper;
+import cn.iocoder.yudao.module.erp.dal.mysql.finance.ErpMiscSettlementSql;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
 
@@ -35,18 +36,10 @@ public interface ErpReceivableReportMapper extends BaseMapperX<ErpReceivableMisc
             "       SELECT rm.customer_id,",
             "              MAX(rm.dept_id) AS deptId,",
             "              MAX(rm.handler_id) AS handlerId,",
-            "              SUM(rm.amount) AS otherReceivableAmount,",
-            "              SUM(IFNULL(ra.receiptAmount, 0)) AS settledAmount,",
+            "              SUM(rm.amount + rm.settled_amount) AS otherReceivableAmount,",
+            "              SUM(rm.settled_amount) AS settledAmount,",
             "              CAST(MAX(rm.biz_time) AS DATETIME) AS lastBizTime",
-            "         FROM erp_receivable_misc rm",
-            "         LEFT JOIN (",
-            "              SELECT fri.biz_id, SUM(fri.receipt_price) AS receiptAmount",
-            "                FROM erp_finance_receipt_item fri",
-            "                INNER JOIN erp_finance_receipt fr ON fr.id = fri.receipt_id",
-            "                 AND fr.deleted = 0 AND fr.status = 20 AND fr.tenant_id = fri.tenant_id",
-            "               WHERE fri.deleted = 0 AND fri.biz_type = 24 AND fri.write_off_status = 1",
-            "               GROUP BY fri.biz_id",
-            "         ) ra ON ra.biz_id = rm.id",
+            "         FROM " + ErpMiscSettlementSql.RECEIVABLE_LEDGER + " rm",
             "        WHERE rm.deleted = 0 AND rm.status = 20",
             "          <if test='!documentAll'>",
             "          AND (",

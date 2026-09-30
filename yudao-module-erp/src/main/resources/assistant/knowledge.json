@@ -1,0 +1,290 @@
+{
+  "PAYABLE": {
+    "aliases": [
+      "应付",
+      "供应商余额"
+    ],
+    "dateField": "当前账户余额，无历史快照",
+    "description": "复用应付账户截止余额公式及供应商和单据范围，不支持历史余额推断。",
+    "evidence": "修改文档/0921-0927/0927/智能问数/第2批业务对账证据.json",
+    "grain": "原应付账户查询返回的供应商与归属部门粒度",
+    "groups": [
+      "NONE",
+      "PARTY",
+      "DEPT"
+    ],
+    "note": "知识库/11-AI助手接入准备/已定义指标/PAYABLE.md",
+    "noteHash": "0cc33abbc35bee4013c8d41e4e1bb42eade33040567ac4c975bdb4277ef2e604",
+    "permissions": [
+      "erp:assistant:query",
+      "erp:payable-account:query"
+    ],
+    "source": "应付账户",
+    "sourceHashes": {
+      "code/yudao-module-erp/src/main/java/cn/iocoder/yudao/module/erp/dal/mysql/assistant/AssistantAccountSql.java": "4d1ea31c24e432c4f8d9e9c86893c16a9b78522da98b3bae8bfb2421e92dabb4",
+      "code/yudao-module-erp/src/main/java/cn/iocoder/yudao/module/erp/dal/mysql/assistant/AssistantSql.java": "9fbb0243c785ce43fab5bae1f5ccfa4328c85a9a714e7be8e5d38d9e96c15510",
+      "code/yudao-module-erp/src/main/java/cn/iocoder/yudao/module/erp/dal/mysql/finance/payable/ErpPayableAccountMapper.java": "5a26a00a63b8e8c9422325732aff568fa437559975d5d1520033503f6398ceea",
+      "code/yudao-module-erp/src/main/java/cn/iocoder/yudao/module/erp/service/assistant/AssistantKnowledge.java": "14f0632f07c83195b686437a4783347403b684bb321db36cce320ace67443a0e",
+      "code/yudao-module-erp/src/main/java/cn/iocoder/yudao/module/erp/service/assistant/AssistantPlan.java": "2637103e275cf13e3775f707595f7afa2ac965f08595fc020c72c1e761dbc29d",
+      "code/yudao-module-erp/src/main/java/cn/iocoder/yudao/module/erp/service/assistant/AssistantPresentation.java": "7132eddeba6956b39f64298e5f95718f801918cf9009c8025517bf53b3c2ed08",
+      "code/yudao-module-erp/src/main/java/cn/iocoder/yudao/module/erp/service/assistant/AssistantQueryService.java": "a48bf97ac1b9293c9778c879f485d511c28b804bc671258c1f37e30f4a4afbe6",
+      "code/yudao-module-erp/src/main/java/cn/iocoder/yudao/module/erp/service/assistant/AssistantReadOnly.java": "9f648136354084208c1d113bb4e55b4ae96c78bbd29096cfcc399ec509a07695"
+    },
+    "status": "VERIFIED",
+    "title": "当前应付余额"
+  },
+  "PAYMENT": {
+    "aliases": [
+      "付款",
+      "支付情况"
+    ],
+    "dateField": "erp_finance_payment.payment_time",
+    "description": "已审核payment_price实际付款与待审核金额分列；优惠单列，核销不等于付款。",
+    "evidence": "修改文档/0921-0927/0927/智能问数/第2批业务对账证据.json",
+    "grain": "付款单头，不连接核销明细重复计数",
+    "groups": [
+      "NONE",
+      "DAY",
+      "PARTY",
+      "DEPT"
+    ],
+    "note": "知识库/11-AI助手接入准备/已定义指标/PAYMENT.md",
+    "noteHash": "95312c5761e0fbb57da846dd72beb29094b48827b4c2adb147678e27347317b9",
+    "permissions": [
+      "erp:assistant:query",
+      "erp:finance-payment:query"
+    ],
+    "source": "财务付款单",
+    "sourceHashes": {
+      "code/yudao-module-erp/src/main/java/cn/iocoder/yudao/module/erp/dal/mysql/assistant/AssistantSql.java": "9fbb0243c785ce43fab5bae1f5ccfa4328c85a9a714e7be8e5d38d9e96c15510",
+      "code/yudao-module-erp/src/main/java/cn/iocoder/yudao/module/erp/dal/mysql/finance/ErpFinancePaymentMapper.java": "b0b79bd0e7ee2dc1f1f2d03fe2922724c1f0d238f35571fa4af65993e4028afe",
+      "code/yudao-module-erp/src/main/java/cn/iocoder/yudao/module/erp/service/assistant/AssistantKnowledge.java": "14f0632f07c83195b686437a4783347403b684bb321db36cce320ace67443a0e",
+      "code/yudao-module-erp/src/main/java/cn/iocoder/yudao/module/erp/service/assistant/AssistantPlan.java": "2637103e275cf13e3775f707595f7afa2ac965f08595fc020c72c1e761dbc29d",
+      "code/yudao-module-erp/src/main/java/cn/iocoder/yudao/module/erp/service/assistant/AssistantPresentation.java": "7132eddeba6956b39f64298e5f95718f801918cf9009c8025517bf53b3c2ed08",
+      "code/yudao-module-erp/src/main/java/cn/iocoder/yudao/module/erp/service/assistant/AssistantQueryService.java": "a48bf97ac1b9293c9778c879f485d511c28b804bc671258c1f37e30f4a4afbe6",
+      "code/yudao-module-erp/src/main/java/cn/iocoder/yudao/module/erp/service/assistant/AssistantReadOnly.java": "9f648136354084208c1d113bb4e55b4ae96c78bbd29096cfcc399ec509a07695"
+    },
+    "status": "VERIFIED",
+    "title": "付款概况"
+  },
+  "PURCHASE": {
+    "aliases": [
+      "采购额",
+      "入库额",
+      "采购情况",
+      "供应商排名"
+    ],
+    "dateField": "erp_purchase_in.in_time / erp_purchase_return.return_time",
+    "description": "已审核采购入库额、退货额和净额；配件排名采用明细金额。",
+    "evidence": "修改文档/0921-0927/0927/智能问数/第2批业务对账证据.json",
+    "grain": "单据头；配件分组改用明细粒度",
+    "groups": [
+      "NONE",
+      "DAY",
+      "PARTY",
+      "PRODUCT",
+      "DEPT"
+    ],
+    "note": "知识库/11-AI助手接入准备/已定义指标/PURCHASE.md",
+    "noteHash": "84f2c4c0ffdfde21ea54bb2563ff615b2906e847af3295571869342967cd4c82",
+    "permissions": [
+      "erp:assistant:query",
+      "erp:purchase-report:query"
+    ],
+    "source": "采购经营报表",
+    "sourceHashes": {
+      "code/yudao-module-erp/src/main/java/cn/iocoder/yudao/module/erp/dal/mysql/assistant/AssistantSql.java": "9fbb0243c785ce43fab5bae1f5ccfa4328c85a9a714e7be8e5d38d9e96c15510",
+      "code/yudao-module-erp/src/main/java/cn/iocoder/yudao/module/erp/dal/mysql/report/ErpPurchaseReportMapper.java": "cff230f725c7dfbf944e6e0615c8da2a1a4773ce06bca3000edefef7c35d35b0",
+      "code/yudao-module-erp/src/main/java/cn/iocoder/yudao/module/erp/service/assistant/AssistantKnowledge.java": "14f0632f07c83195b686437a4783347403b684bb321db36cce320ace67443a0e",
+      "code/yudao-module-erp/src/main/java/cn/iocoder/yudao/module/erp/service/assistant/AssistantPlan.java": "2637103e275cf13e3775f707595f7afa2ac965f08595fc020c72c1e761dbc29d",
+      "code/yudao-module-erp/src/main/java/cn/iocoder/yudao/module/erp/service/assistant/AssistantPresentation.java": "7132eddeba6956b39f64298e5f95718f801918cf9009c8025517bf53b3c2ed08",
+      "code/yudao-module-erp/src/main/java/cn/iocoder/yudao/module/erp/service/assistant/AssistantQueryService.java": "a48bf97ac1b9293c9778c879f485d511c28b804bc671258c1f37e30f4a4afbe6",
+      "code/yudao-module-erp/src/main/java/cn/iocoder/yudao/module/erp/service/assistant/AssistantReadOnly.java": "9f648136354084208c1d113bb4e55b4ae96c78bbd29096cfcc399ec509a07695"
+    },
+    "status": "VERIFIED",
+    "title": "采购经营"
+  },
+  "RECEIPT": {
+    "aliases": [
+      "收款",
+      "回款",
+      "本周收款情况"
+    ],
+    "dateField": "erp_finance_receipt.receipt_time",
+    "description": "已审核receipt_price实际收款与待审核金额分列；优惠单列，核销不等于收款，不代表银行到账。",
+    "evidence": "修改文档/0921-0927/0927/智能问数/第1批业务对账证据.json",
+    "grain": "收款单头，不连接核销明细重复计数",
+    "groups": [
+      "NONE",
+      "DAY",
+      "PARTY",
+      "DEPT"
+    ],
+    "note": "知识库/11-AI助手接入准备/已定义指标/RECEIPT.md",
+    "noteHash": "f99706db45572fee5a16915900187cce21b4ac3893330e412f261a93750aa814",
+    "permissions": [
+      "erp:assistant:query",
+      "erp:finance-receipt:query"
+    ],
+    "source": "财务收款单",
+    "sourceHashes": {
+      "code/yudao-module-erp/src/main/java/cn/iocoder/yudao/module/erp/dal/mysql/assistant/AssistantSql.java": "9fbb0243c785ce43fab5bae1f5ccfa4328c85a9a714e7be8e5d38d9e96c15510",
+      "code/yudao-module-erp/src/main/java/cn/iocoder/yudao/module/erp/dal/mysql/finance/ErpFinanceReceiptMapper.java": "aa58452c6c260021a5708c3244b7c7520285bfc6adcd25ef4fcb2585241e3a93",
+      "code/yudao-module-erp/src/main/java/cn/iocoder/yudao/module/erp/service/assistant/AssistantKnowledge.java": "14f0632f07c83195b686437a4783347403b684bb321db36cce320ace67443a0e",
+      "code/yudao-module-erp/src/main/java/cn/iocoder/yudao/module/erp/service/assistant/AssistantPlan.java": "2637103e275cf13e3775f707595f7afa2ac965f08595fc020c72c1e761dbc29d",
+      "code/yudao-module-erp/src/main/java/cn/iocoder/yudao/module/erp/service/assistant/AssistantPresentation.java": "7132eddeba6956b39f64298e5f95718f801918cf9009c8025517bf53b3c2ed08",
+      "code/yudao-module-erp/src/main/java/cn/iocoder/yudao/module/erp/service/assistant/AssistantQueryService.java": "a48bf97ac1b9293c9778c879f485d511c28b804bc671258c1f37e30f4a4afbe6",
+      "code/yudao-module-erp/src/main/java/cn/iocoder/yudao/module/erp/service/assistant/AssistantReadOnly.java": "9f648136354084208c1d113bb4e55b4ae96c78bbd29096cfcc399ec509a07695"
+    },
+    "status": "VERIFIED",
+    "title": "收款概况"
+  },
+  "RECEIVABLE": {
+    "aliases": [
+      "应收",
+      "客户余额",
+      "欠款"
+    ],
+    "dateField": "当前账户余额，无历史快照",
+    "description": "复用应收账户截止余额公式及客户和单据范围，不使用销售额减当期收款推算当前欠款。",
+    "evidence": "修改文档/0921-0927/0927/智能问数/第2批业务对账证据.json",
+    "grain": "原应收账户查询返回的客户与归属部门粒度",
+    "groups": [
+      "NONE",
+      "PARTY",
+      "DEPT"
+    ],
+    "note": "知识库/11-AI助手接入准备/已定义指标/RECEIVABLE.md",
+    "noteHash": "714f905607528e97cf034622528ac00925e79e916b02cd81fc8ffb86d95eff4c",
+    "permissions": [
+      "erp:assistant:query",
+      "erp:receivable-account:query"
+    ],
+    "source": "应收账户",
+    "sourceHashes": {
+      "code/yudao-module-erp/src/main/java/cn/iocoder/yudao/module/erp/dal/mysql/assistant/AssistantAccountSql.java": "4d1ea31c24e432c4f8d9e9c86893c16a9b78522da98b3bae8bfb2421e92dabb4",
+      "code/yudao-module-erp/src/main/java/cn/iocoder/yudao/module/erp/dal/mysql/assistant/AssistantSql.java": "9fbb0243c785ce43fab5bae1f5ccfa4328c85a9a714e7be8e5d38d9e96c15510",
+      "code/yudao-module-erp/src/main/java/cn/iocoder/yudao/module/erp/dal/mysql/finance/receivable/ErpReceivableAccountMapper.java": "50305b7c132cb738a86385bf4f086e6566bd163508e33f611d313c51e789f225",
+      "code/yudao-module-erp/src/main/java/cn/iocoder/yudao/module/erp/service/assistant/AssistantKnowledge.java": "14f0632f07c83195b686437a4783347403b684bb321db36cce320ace67443a0e",
+      "code/yudao-module-erp/src/main/java/cn/iocoder/yudao/module/erp/service/assistant/AssistantPlan.java": "2637103e275cf13e3775f707595f7afa2ac965f08595fc020c72c1e761dbc29d",
+      "code/yudao-module-erp/src/main/java/cn/iocoder/yudao/module/erp/service/assistant/AssistantPresentation.java": "7132eddeba6956b39f64298e5f95718f801918cf9009c8025517bf53b3c2ed08",
+      "code/yudao-module-erp/src/main/java/cn/iocoder/yudao/module/erp/service/assistant/AssistantQueryService.java": "a48bf97ac1b9293c9778c879f485d511c28b804bc671258c1f37e30f4a4afbe6",
+      "code/yudao-module-erp/src/main/java/cn/iocoder/yudao/module/erp/service/assistant/AssistantReadOnly.java": "9f648136354084208c1d113bb4e55b4ae96c78bbd29096cfcc399ec509a07695"
+    },
+    "status": "VERIFIED",
+    "title": "当前应收余额"
+  },
+  "SALE": {
+    "aliases": [
+      "销售额",
+      "销售情况",
+      "销售退货",
+      "客户销售排名"
+    ],
+    "dateField": "erp_sale_out.out_time / erp_sale_return.return_time",
+    "description": "已审核销售出库总额、退货额和净额分别展示；配件排名采用报表明细金额，不能与整单含税费金额混用。",
+    "evidence": "修改文档/0921-0927/0927/智能问数/第1批业务对账证据.json",
+    "grain": "单据头；配件分组改用明细粒度",
+    "groups": [
+      "NONE",
+      "DAY",
+      "PARTY",
+      "PRODUCT",
+      "DEPT"
+    ],
+    "note": "知识库/11-AI助手接入准备/已定义指标/SALE.md",
+    "noteHash": "1b5d298c56f250f8fb5a92856b65ff8c71b42fc1661fcca02fbb4f3e78357506",
+    "permissions": [
+      "erp:assistant:query",
+      "erp:sale-report:query"
+    ],
+    "source": "销售经营报表",
+    "sourceHashes": {
+      "code/yudao-module-erp/src/main/java/cn/iocoder/yudao/module/erp/dal/mysql/assistant/AssistantSql.java": "9fbb0243c785ce43fab5bae1f5ccfa4328c85a9a714e7be8e5d38d9e96c15510",
+      "code/yudao-module-erp/src/main/java/cn/iocoder/yudao/module/erp/dal/mysql/report/ErpSaleReportMapper.java": "df74ccdb5cccea9079be3e08f4b9f97ef3f1bab0e95fe5240c03a8a90e48d169",
+      "code/yudao-module-erp/src/main/java/cn/iocoder/yudao/module/erp/service/assistant/AssistantKnowledge.java": "14f0632f07c83195b686437a4783347403b684bb321db36cce320ace67443a0e",
+      "code/yudao-module-erp/src/main/java/cn/iocoder/yudao/module/erp/service/assistant/AssistantPlan.java": "2637103e275cf13e3775f707595f7afa2ac965f08595fc020c72c1e761dbc29d",
+      "code/yudao-module-erp/src/main/java/cn/iocoder/yudao/module/erp/service/assistant/AssistantPresentation.java": "7132eddeba6956b39f64298e5f95718f801918cf9009c8025517bf53b3c2ed08",
+      "code/yudao-module-erp/src/main/java/cn/iocoder/yudao/module/erp/service/assistant/AssistantQueryService.java": "a48bf97ac1b9293c9778c879f485d511c28b804bc671258c1f37e30f4a4afbe6",
+      "code/yudao-module-erp/src/main/java/cn/iocoder/yudao/module/erp/service/assistant/AssistantReadOnly.java": "9f648136354084208c1d113bb4e55b4ae96c78bbd29096cfcc399ec509a07695",
+      "code/yudao-module-erp/src/main/java/cn/iocoder/yudao/module/erp/service/report/ErpSaleReportServiceImpl.java": "7add6450aa5d9aca962883fda464a1bea067290ead02958275e24e44306aea36"
+    },
+    "status": "VERIFIED",
+    "title": "销售经营"
+  },
+  "STOCK": {
+    "aliases": [
+      "当前库存",
+      "库存数量",
+      "负库存",
+      "可用库存"
+    ],
+    "dateField": "当前时点，无历史快照",
+    "description": "按当前有权限的库存行汇总，单位分别展示；可用数量沿用库存浏览的占用计算，不支持历史时点。",
+    "evidence": "修改文档/0921-0927/0927/智能问数/第1批业务对账证据.json",
+    "grain": "授权库存行，按计量单位分别汇总",
+    "groups": [
+      "NONE",
+      "PRODUCT",
+      "WAREHOUSE",
+      "DEPT"
+    ],
+    "note": "知识库/11-AI助手接入准备/已定义指标/STOCK.md",
+    "noteHash": "b5710128ff2870c22657c555187e739baf2971937b1fbd4a2e88a90ed3ded7e2",
+    "permissions": [
+      "erp:assistant:query",
+      "erp:stock:query"
+    ],
+    "source": "库存浏览",
+    "sourceHashes": {
+      "code/yudao-module-erp/src/main/java/cn/iocoder/yudao/module/erp/dal/mysql/assistant/AssistantSql.java": "9fbb0243c785ce43fab5bae1f5ccfa4328c85a9a714e7be8e5d38d9e96c15510",
+      "code/yudao-module-erp/src/main/java/cn/iocoder/yudao/module/erp/dal/mysql/stock/ErpStockMapper.java": "7590287baf963fa8b0c8fc3d4bdbcca4d8942f46b7f02285a9846d9f50a1ba1a",
+      "code/yudao-module-erp/src/main/java/cn/iocoder/yudao/module/erp/dal/mysql/stock/ErpWarehouseMapper.java": "ac93e358bcc6d6aa5ee439964ff6fc3041010145c337f64ca06a3f4e7c1ecc47",
+      "code/yudao-module-erp/src/main/java/cn/iocoder/yudao/module/erp/service/assistant/AssistantKnowledge.java": "14f0632f07c83195b686437a4783347403b684bb321db36cce320ace67443a0e",
+      "code/yudao-module-erp/src/main/java/cn/iocoder/yudao/module/erp/service/assistant/AssistantPlan.java": "2637103e275cf13e3775f707595f7afa2ac965f08595fc020c72c1e761dbc29d",
+      "code/yudao-module-erp/src/main/java/cn/iocoder/yudao/module/erp/service/assistant/AssistantPresentation.java": "7132eddeba6956b39f64298e5f95718f801918cf9009c8025517bf53b3c2ed08",
+      "code/yudao-module-erp/src/main/java/cn/iocoder/yudao/module/erp/service/assistant/AssistantQueryService.java": "a48bf97ac1b9293c9778c879f485d511c28b804bc671258c1f37e30f4a4afbe6",
+      "code/yudao-module-erp/src/main/java/cn/iocoder/yudao/module/erp/service/assistant/AssistantReadOnly.java": "9f648136354084208c1d113bb4e55b4ae96c78bbd29096cfcc399ec509a07695",
+      "code/yudao-module-erp/src/main/java/cn/iocoder/yudao/module/erp/service/stock/ErpWarehouseServiceImpl.java": "ca46fc13470e4b7c99fff6099f03993bd8810a531f6ab9168788e6b436cc3846"
+    },
+    "status": "VERIFIED",
+    "title": "当前库存"
+  },
+  "STOCK_SKU": {
+    "aliases": [
+      "sku数",
+      "有库存的SKU",
+      "配件种数"
+    ],
+    "dateField": "当前时点，无历史快照",
+    "description": "按配件先汇总授权库存再去重；POSITIVE为合计大于零、NEGATIVE为合计小于零、ALL包含零库存。",
+    "evidence": "修改文档/0921-0927/0927/智能问数/第1批业务对账证据.json",
+    "grain": "授权范围内先按 product_id 汇总，再计数",
+    "groups": [
+      "NONE",
+      "PRODUCT",
+      "WAREHOUSE",
+      "DEPT"
+    ],
+    "note": "知识库/11-AI助手接入准备/已定义指标/STOCK_SKU.md",
+    "noteHash": "1883cd422b2dd36344c7117533e8f6284d68fdd1e4c75c11f7386e42ca366c36",
+    "permissions": [
+      "erp:assistant:query",
+      "erp:stock:query"
+    ],
+    "source": "库存浏览",
+    "sourceHashes": {
+      "code/yudao-module-erp/src/main/java/cn/iocoder/yudao/module/erp/dal/mysql/assistant/AssistantSql.java": "9fbb0243c785ce43fab5bae1f5ccfa4328c85a9a714e7be8e5d38d9e96c15510",
+      "code/yudao-module-erp/src/main/java/cn/iocoder/yudao/module/erp/dal/mysql/stock/ErpStockMapper.java": "7590287baf963fa8b0c8fc3d4bdbcca4d8942f46b7f02285a9846d9f50a1ba1a",
+      "code/yudao-module-erp/src/main/java/cn/iocoder/yudao/module/erp/dal/mysql/stock/ErpWarehouseMapper.java": "ac93e358bcc6d6aa5ee439964ff6fc3041010145c337f64ca06a3f4e7c1ecc47",
+      "code/yudao-module-erp/src/main/java/cn/iocoder/yudao/module/erp/service/assistant/AssistantKnowledge.java": "14f0632f07c83195b686437a4783347403b684bb321db36cce320ace67443a0e",
+      "code/yudao-module-erp/src/main/java/cn/iocoder/yudao/module/erp/service/assistant/AssistantPlan.java": "2637103e275cf13e3775f707595f7afa2ac965f08595fc020c72c1e761dbc29d",
+      "code/yudao-module-erp/src/main/java/cn/iocoder/yudao/module/erp/service/assistant/AssistantPresentation.java": "7132eddeba6956b39f64298e5f95718f801918cf9009c8025517bf53b3c2ed08",
+      "code/yudao-module-erp/src/main/java/cn/iocoder/yudao/module/erp/service/assistant/AssistantQueryService.java": "a48bf97ac1b9293c9778c879f485d511c28b804bc671258c1f37e30f4a4afbe6",
+      "code/yudao-module-erp/src/main/java/cn/iocoder/yudao/module/erp/service/assistant/AssistantReadOnly.java": "9f648136354084208c1d113bb4e55b4ae96c78bbd29096cfcc399ec509a07695",
+      "code/yudao-module-erp/src/main/java/cn/iocoder/yudao/module/erp/service/stock/ErpWarehouseServiceImpl.java": "ca46fc13470e4b7c99fff6099f03993bd8810a531f6ab9168788e6b436cc3846"
+    },
+    "status": "VERIFIED",
+    "title": "库存SKU数"
+  }
+}

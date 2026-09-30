@@ -50,11 +50,11 @@ class ErpFinanceReportKeywordSqlTest {
                 ErpReceivableReportPageReqVO.class, Collection.class, String.class, boolean.class,
                 Collection.class, Long.class, boolean.class);
 
-        assertTrue(script.contains("FROM erp_receivable_misc rm"), script);
-        assertTrue(script.contains("SUM(rm.amount) AS otherReceivableAmount"), script);
-        assertTrue(script.contains("fri.biz_type = 24"), script);
-        assertTrue(script.contains("fri.write_off_status = 1"), script);
-        assertTrue(script.contains("fr.status = 20"), script);
+        assertTrue(script.contains("FROM " + ErpMiscSettlementSql.RECEIVABLE_LEDGER + " rm"), script);
+        assertTrue(script.contains("SUM(rm.amount + rm.settled_amount) AS otherReceivableAmount"), script);
+        assertTrue(script.contains("i.biz_type = 24"), script);
+        assertTrue(script.contains("i.write_off_status = 1"), script);
+        assertTrue(script.contains("f.status = 20"), script);
         assertFalse(script.contains("erp_sale_out"), script);
         assertFalse(script.contains("erp_sale_return"), script);
         assertFalse(script.contains("erp_receivable_other ro"), script);
@@ -66,11 +66,11 @@ class ErpFinanceReportKeywordSqlTest {
                 ErpPayableReportPageReqVO.class, Collection.class, String.class, boolean.class,
                 Collection.class, Long.class, boolean.class);
 
-        assertTrue(script.contains("FROM erp_payable_misc pm"), script);
-        assertTrue(script.contains("SUM(pm.amount) AS otherPayableAmount"), script);
-        assertTrue(script.contains("fpi.biz_type = 14"), script);
-        assertTrue(script.contains("fpi.write_off_status = 1"), script);
-        assertTrue(script.contains("fp.status = 20"), script);
+        assertTrue(script.contains("FROM " + ErpMiscSettlementSql.PAYABLE_LEDGER + " pm"), script);
+        assertTrue(script.contains("SUM(pm.amount + pm.settled_amount) AS otherPayableAmount"), script);
+        assertTrue(script.contains("i.biz_type = 14"), script);
+        assertTrue(script.contains("i.write_off_status = 1"), script);
+        assertTrue(script.contains("f.status = 20"), script);
         assertFalse(script.contains("erp_purchase_in"), script);
         assertFalse(script.contains("erp_purchase_return"), script);
         assertFalse(script.contains("erp_payable_other po"), script);

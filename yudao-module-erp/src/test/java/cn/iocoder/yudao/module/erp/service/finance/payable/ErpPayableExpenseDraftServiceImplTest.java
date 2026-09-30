@@ -182,12 +182,89 @@ class ErpPayableExpenseDraftServiceImplTest extends BaseMockitoUnitTest {
                 ArgumentCaptor.forClass(ErpPayableExpenseDO.class);
         verify(expenseMapper).insert(mainCaptor.capture());
         assertThat(mainCaptor.getValue().getExpenseType()).isEqualTo("其他");
+        assertThat(mainCaptor.getValue().getStatus()).isEqualTo(ErpPayableExpenseStatusEnum.PROCESS.getStatus());
         ArgumentCaptor<List<ErpPayableExpenseItemDO>> itemCaptor =
                 ArgumentCaptor.forClass(List.class);
         verify(expenseItemMapper).insertBatch(itemCaptor.capture());
         assertThat(itemCaptor.getValue()).singleElement()
                 .extracting(ErpPayableExpenseItemDO::getItemName)
                 .isEqualTo("销售产生运费");
+    }
+
+    @Test
+    void createFreightDraft_withPaymentFields_preservesMapping() {
+        assertFreightDraftMapping(true);
+    }
+
+    @Test
+    void createFreightDraft_withoutPaymentFields_allowsLaterCompletion() {
+        assertFreightDraftMapping(false);
+    }
+
+    private void assertFreightDraftMapping(boolean withPaymentFields) {
+        when(noRedisDAO.generate("FYZF")).thenReturn("FYZF-FREIGHT-1");
+        when(deptApi.getDept(4L)).thenReturn(new DeptRespDTO().setId(4L));
+        when(expenseMapper.insert(any(ErpPayableExpenseDO.class))).thenAnswer(invocation -> {
+            ((ErpPayableExpenseDO) invocation.getArgument(0)).setId(1L);
+            return 1;
+        });
+        ErpSaleCartFreightDraftCreateReqBO request = new ErpSaleCartFreightDraftCreateReqBO()
+                .setCartId(100L).setCartNo("XSC100").setBizTime(LocalDate.of(2026, 9, 27))
+                .setDeptId(4L).setParty("物流公司").setAmount(new BigDecimal("100.00"));
+        if (withPaymentFields) {
+            request.setSettleMethod("现金").setAccountId(2L).setHandlerId(3L);
+        }
+        assertThat(service.createDraftFromSaleCartFreight(request)).isEqualTo(1L);
+        ArgumentCaptor<ErpPayableExpenseDO> mainCaptor = ArgumentCaptor.forClass(ErpPayableExpenseDO.class);
+        verify(expenseMapper).insert(mainCaptor.capture());
+        ErpPayableExpenseDO main = mainCaptor.getValue();
+        assertThat(main.getStatus()).isEqualTo(ErpPayableExpenseStatusEnum.DRAFT.getStatus());
+        assertThat(main.getTotalAmount()).isEqualByComparingTo("100.00");
+        assertThat(main.getExpenseType()).isEqualTo("其他");
+        assertThat(main.getSettleMethod()).isEqualTo(withPaymentFields ? "现金" : "");
+        assertThat(main.getAccountId()).isEqualTo(request.getAccountId());
+        assertThat(main.getHandlerId()).isEqualTo(request.getHandlerId());
+        assertThat(main.getDeptId()).isEqualTo(4L);
+        assertThat(main.getParty()).isEqualTo("物流公司");
+        assertThat(main.getBizTime()).isEqualTo(request.getBizTime());
+        assertThat(main.getSourceType()).isEqualTo("销售手推车");
+        assertThat(main.getSourceId()).isEqualTo(100L);
+        assertThat(main.getSourceNo()).isEqualTo("XSC100");
+        assertThat(main.getRelatedBiz()).isEqualTo("销售手推车：XSC100");
+        ArgumentCaptor<List<ErpPayableExpenseItemDO>> itemsCaptor = ArgumentCaptor.forClass(List.class);
+        verify(expenseItemMapper).insertBatch(itemsCaptor.capture());
+        assertThat(itemsCaptor.getValue()).hasSize(1);
+        ErpPayableExpenseItemDO item = itemsCaptor.getValue().get(0);
+        assertThat(item.getExpenseId()).isEqualTo(1L);
+        assertThat(item.getItemName()).isEqualTo("销售产生运费");
+        assertThat(item.getAmount()).isEqualByComparingTo(main.getTotalAmount());
+        assertThat(item.getParty()).isEqualTo(main.getParty());
+        assertThat(item.getDeptId()).isEqualTo(main.getDeptId());
+        assertThat(item.getHandlerId()).isEqualTo(main.getHandlerId());
+        assertThat(item.getBizDate()).isEqualTo(main.getBizTime());
+        assertThat(item.getExpenseCategory()).isEqualTo("运费");
+        assertThat(item.getQty()).isEqualTo(1);
+        verify(operateLogService).recordCreate(any(), eq(1L), eq(main.getNo()));
+        verify(operateLogService, never()).recordStatus(any(), any(), any(), org.mockito.ArgumentMatchers.anyBoolean());
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(ints = {0, 10, 20})
+    void createFreightDraft_existingSource_doesNotOverwrite(int status) {
+        when(expenseMapper.selectBySource("销售手推车", 100L)).thenReturn(
+                new ErpPayableExpenseDO().setId(9L).setStatus(status));
+        assertThat(service.createDraftFromSaleCartFreight(
+                new ErpSaleCartFreightDraftCreateReqBO().setCartId(100L))).isEqualTo(9L);
+        verify(expenseMapper, never()).insert(any(ErpPayableExpenseDO.class));
+        org.mockito.Mockito.verifyNoInteractions(expenseItemMapper, noRedisDAO, operateLogService);
+    }
+
+    @Test
+    void createFreightDraft_invalidPaymentOption_rejected() {
+        assertServiceException(() -> service.createDraftFromSaleCartFreight(
+                new ErpSaleCartFreightDraftCreateReqBO().setCartId(100L).setSettleMethod("失效方式")),
+                PAYABLE_EXPENSE_OPTION_INVALID, "结算方式", "失效方式");
+        verify(expenseMapper, never()).insert(any(ErpPayableExpenseDO.class));
     }
 
     @Test
@@ -278,6 +355,52 @@ class ErpPayableExpenseDraftServiceImplTest extends BaseMockitoUnitTest {
         assertServiceException(() -> service.submitPayableExpense(10L),
                 PAYABLE_EXPENSE_DRAFT_SUBMIT_FAIL, "单据日期不能为空");
         verify(expenseMapper, never()).updateByIdAndStatus(any(), any(), any());
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.CsvSource({"method,结算方式不能为空", "account,结算账户不能为空", "handler,经手人不能为空"})
+    void submitFreightDraft_requiresPaymentFields(String missing, String message) {
+        ErpPayableExpenseDO draft = new ErpPayableExpenseDO()
+                .setId(10L).setNo("FYZF10").setStatus(0).setSourceType("销售手推车").setSourceId(100L)
+                .setBizTime(LocalDate.of(2026, 9, 27)).setSettleMethod("现金").setAccountId(2L)
+                .setExpenseType("其他").setDeptId(4L).setHandlerId(3L);
+        if ("method".equals(missing)) {
+            draft.setSettleMethod("");
+        } else if ("account".equals(missing)) {
+            draft.setAccountId(null);
+        } else {
+            draft.setHandlerId(null);
+        }
+        when(expenseMapper.selectByIdForUpdate(10L)).thenReturn(draft);
+        assertServiceException(() -> service.submitPayableExpense(10L), PAYABLE_EXPENSE_DRAFT_SUBMIT_FAIL, message);
+        verify(expenseMapper, never()).updateByIdAndStatus(any(), any(), any());
+    }
+
+    @Test
+    void submitFreightDraft_completedFields_canSubmitThenApprove() {
+        ErpPayableExpenseDO draft = new ErpPayableExpenseDO()
+                .setId(10L).setNo("FYZF10").setStatus(0)
+                .setSourceType("销售手推车").setSourceId(100L).setSourceNo("XSC100")
+                .setBizTime(LocalDate.of(2026, 9, 27)).setSettleMethod("现金").setAccountId(2L)
+                .setExpenseType("其他").setDeptId(4L).setHandlerId(3L);
+        when(expenseMapper.selectByIdForUpdate(10L)).thenReturn(draft);
+        when(expenseMapper.selectById(10L)).thenReturn(draft);
+        when(deptApi.getDept(4L)).thenReturn(new DeptRespDTO().setId(4L));
+        when(expenseItemMapper.selectListByExpenseId(10L)).thenReturn(Collections.singletonList(
+                new ErpPayableExpenseItemDO().setItemName("销售产生运费").setAmount(new BigDecimal("100"))));
+        when(expenseMapper.updateByIdAndStatus(eq(10L), any(), any())).thenAnswer(invocation -> {
+            assertThat(draft.getStatus()).isEqualTo(invocation.<Integer>getArgument(1));
+            ErpPayableExpenseDO update = invocation.getArgument(2);
+            draft.setStatus(update.getStatus());
+            return 1;
+        });
+        service.submitPayableExpense(10L);
+        assertThat(draft.getStatus()).isEqualTo(10);
+        service.updatePayableExpenseStatus(10L, 20);
+        assertThat(draft.getStatus()).isEqualTo(20);
+        assertThat(draft.getSourceId()).isEqualTo(100L);
+        assertThat(draft.getSourceNo()).isEqualTo("XSC100");
+        verify(operateLogService).recordStatus(any(), eq(10L), eq("FYZF10"), eq(true));
     }
 
     @Test

@@ -65,6 +65,45 @@ class ErpFinanceReceiptDraftServiceImplTest extends BaseMockitoUnitTest {
     @Mock
     private AdminUserApi adminUserApi;
 
+
+    @Mock
+    private cn.iocoder.yudao.module.erp.dal.mysql.finance.receivable.ErpReceivableMiscMapper receivableMiscMapper;
+
+    @Test
+    void sourceDraft_checksPendingLimitWithoutReserving() {
+        when(noRedisDAO.generate(any())).thenReturn("TRANSFER-DRAFT");
+        when(receivableMiscMapper.selectByIdForUpdate(200L)).thenReturn(
+                new cn.iocoder.yudao.module.erp.dal.dataobject.finance.receivable.ErpReceivableMiscDO()
+                        .setId(200L).setStatus(20).setCustomerId(2L).setAmount(new BigDecimal("1000")));
+        when(receivableMiscMapper.selectPendingTransferAmount(200L, null)).thenReturn(new BigDecimal("300"));
+        ErpFinanceReceiptDraftSaveReqVO request = new ErpFinanceReceiptDraftSaveReqVO()
+                .setSourceReceivableMiscId(200L).setCustomerId(2L).setTotalPrice(new BigDecimal("701"));
+        org.junit.jupiter.api.Assertions.assertThrows(cn.iocoder.yudao.framework.common.exception.ServiceException.class,
+                () -> receiptService.createFinanceReceiptDraft(request));
+        verify(receiptMapper, never()).insert(any(ErpFinanceReceiptDO.class));
+        request.setTotalPrice(new BigDecimal("700"));
+        receiptService.createFinanceReceiptDraft(request);
+        ArgumentCaptor<ErpFinanceReceiptDO> captor = ArgumentCaptor.forClass(ErpFinanceReceiptDO.class);
+        verify(receiptMapper).insert(captor.capture());
+        assertThat(captor.getValue().getStatus()).isEqualTo(0);
+        assertThat(captor.getValue().getReceiptPrice()).isEqualByComparingTo("700");
+    }
+
+    @Test
+    void sourceDraftSubmit_rechecksCurrentLimitBeforeStatusChange() {
+        ErpFinanceReceiptDO draft = new ErpFinanceReceiptDO().setId(900L).setStatus(0)
+                .setSourceReceivableMiscId(200L).setCustomerId(2L).setAccountId(3L)
+                .setReceiptTime(java.time.LocalDateTime.now()).setTotalPrice(new BigDecimal("701"))
+                .setReceiptPrice(new BigDecimal("701"));
+        when(receiptMapper.selectByIdForUpdate(900L)).thenReturn(draft);
+        when(receivableMiscMapper.selectByIdForUpdate(200L)).thenReturn(
+                new cn.iocoder.yudao.module.erp.dal.dataobject.finance.receivable.ErpReceivableMiscDO()
+                        .setId(200L).setStatus(20).setCustomerId(2L).setAmount(new BigDecimal("1000")));
+        when(receivableMiscMapper.selectPendingTransferAmount(200L, 900L)).thenReturn(new BigDecimal("300"));
+        org.junit.jupiter.api.Assertions.assertThrows(cn.iocoder.yudao.framework.common.exception.ServiceException.class,
+                () -> receiptService.submitFinanceReceipt(900L));
+        verify(receiptMapper, never()).updateByIdAndStatus(any(), any(), any());
+    }
     @Test
     void createDraft_withoutValidItems_throwException() {
         ErpFinanceReceiptSaveReqVO.Item incompleteItem = new ErpFinanceReceiptSaveReqVO.Item()
@@ -120,7 +159,7 @@ class ErpFinanceReceiptDraftServiceImplTest extends BaseMockitoUnitTest {
 
     @Test
     void updateDraft_rejectsNonDraftStatus() {
-        when(receiptMapper.selectById(1L)).thenReturn(ErpFinanceReceiptDO.builder()
+        when(receiptMapper.selectByIdForUpdate(1L)).thenReturn(ErpFinanceReceiptDO.builder()
                 .id(1L).no("SK001").status(ErpAuditStatus.PROCESS.getStatus()).build());
 
         assertServiceException(
@@ -134,7 +173,7 @@ class ErpFinanceReceiptDraftServiceImplTest extends BaseMockitoUnitTest {
 
     @Test
     void updateDraft_filtersIncompleteItemsAndRecalculatesAmounts() {
-        when(receiptMapper.selectById(1L)).thenReturn(ErpFinanceReceiptDO.builder()
+        when(receiptMapper.selectByIdForUpdate(1L)).thenReturn(ErpFinanceReceiptDO.builder()
                 .id(1L).no("SK001").status(ErpFinanceReceiptStatusEnum.DRAFT.getStatus())
                 .receiptTime(LocalDateTime.now()).build());
         when(receiptMapper.updateByIdAndStatus(eq(1L),
@@ -163,7 +202,7 @@ class ErpFinanceReceiptDraftServiceImplTest extends BaseMockitoUnitTest {
 
     @Test
     void updateDraft_preservesNegativeReceiptAmount() {
-        when(receiptMapper.selectById(1L)).thenReturn(ErpFinanceReceiptDO.builder()
+        when(receiptMapper.selectByIdForUpdate(1L)).thenReturn(ErpFinanceReceiptDO.builder()
                 .id(1L).no("SK001").status(ErpFinanceReceiptStatusEnum.DRAFT.getStatus())
                 .receiptTime(LocalDateTime.now()).build());
         when(receiptMapper.updateByIdAndStatus(eq(1L),

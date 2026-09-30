@@ -28,6 +28,15 @@ public interface WeComClientService {
      */
     String getUserMobileByCode(String code, String clientKey);
 
+    /**
+     * 使用企业微信授权码获得成员 UserId 和手机号。
+     */
+    WeComUserIdentity getUserIdentityByCode(String code, String clientKey);
+
+    default WeComUserIdentity getUserIdentityByCode(String code) {
+        return getUserIdentityByCode(code, null);
+    }
+
     default String getUserMobileByCode(String code) {
         return getUserMobileByCode(code, null);
     }

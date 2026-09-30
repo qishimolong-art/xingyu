@@ -25,7 +25,15 @@ public class ErpCloudPrintDeviceRespVO {
     private Integer status;
     private Integer onlineState;
     private Integer lastStatusCode;
+    private String lastStatusMessage;
     private LocalDateTime lastStatusTime;
+    private Boolean queuePaused;
+    private String queuePauseReason;
+    private Long queuePauseTaskId;
+    private String currentTask;
+    private Integer currentTaskStatus;
+    private Long pendingCount;
+    private LocalDateTime lastCallbackTime;
     private String remark;
     private LocalDateTime createTime;
     private LocalDateTime updateTime;

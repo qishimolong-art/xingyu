@@ -31,6 +31,8 @@ public final class ErpCloudPrintConstants {
 
     public static final Set<Integer> RUNNING_STATUSES =
             new HashSet<>(Arrays.asList(STATUS_PENDING, STATUS_SUBMITTED, STATUS_UNKNOWN));
+    public static final Set<Integer> IN_FLIGHT_STATUSES =
+            new HashSet<>(Arrays.asList(STATUS_SUBMITTED, STATUS_UNKNOWN));
     public static final Set<Integer> FINAL_STATUSES =
             new HashSet<>(Arrays.asList(STATUS_SUCCESS, STATUS_FAILED, STATUS_SUBMIT_FAILED, STATUS_CANCELED));
 
