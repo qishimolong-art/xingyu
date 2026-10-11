@@ -25,10 +25,10 @@ import java.util.regex.Pattern;
 @Service
 public class AssistantEntityResolver {
 
-    public enum EntityType { PRODUCT, CUSTOMER, SUPPLIER, WAREHOUSE, DEPARTMENT, SALESPERSON }
+    public enum EntityType { PRODUCT, CUSTOMER, SUPPLIER, WAREHOUSE, DEPARTMENT, SALESPERSON, PURCHASER, USER }
 
     private static final Pattern WRAPPED_KEYWORD = Pattern.compile(
-            "^(?:(?:产品|配件|客户|供应商|仓库|部门|业务员|销售员)\\s*)?(?:厂家编码|旧编码|名称|名字|编码|编号|代码|条码|型号)\\s*(?:为|是|[:：])?\\s*(.+)$",
+            "^(?:(?:产品|配件|客户|供应商|仓库|部门|业务员|销售员|采购员|用户|员工)\\s*)?(?:厂家编码|旧编码|名称|名字|编码|编号|代码|条码|型号)\\s*(?:为|是|[:：])?\\s*(.+)$",
             Pattern.CASE_INSENSITIVE);
 
     @Resource private AssistantProperties properties;
@@ -36,6 +36,7 @@ public class AssistantEntityResolver {
     @Resource private PermissionApi permissions;
     @Resource private DeptApi departments;
     @Resource private ErpWarehouseService warehouses;
+    @Resource private AssistantPhoneticNormalizer phonetic;
 
     public boolean enabled() {
         return properties.getEntitySearch().isEnabled();
@@ -69,23 +70,40 @@ public class AssistantEntityResolver {
     /** Resolves every textual plan filter to a verified id before the legacy metric engine runs. */
     public void preparePlan(AssistantPlan plan) {
         if (!enabled() || plan == null) return;
-        String[] fields={"warehouse","party","product","dept"};
-        String[] names={plan.getWarehouse(),plan.getParty(),plan.getProduct(),plan.getDepartment()};
-        Long[] ids={plan.getWarehouseId(),plan.getPartyId(),plan.getProductId(),plan.getDepartmentId()};
+        String[] fields={"warehouse","party","product","dept","salesperson"};
+        String[] names={plan.getWarehouse(),plan.getParty(),plan.getProduct(),plan.getDepartment(),plan.getSalesperson()};
+        Long[] ids={plan.getWarehouseId(),plan.getPartyId(),plan.getProductId(),plan.getDepartmentId(),plan.getSalespersonId()};
         for(int i=0;i<fields.length;i++) {
             if(names[i]==null) continue;
             List<Map<String,Object>> candidates=resolveForPlan(Collections.emptyMap(),plan,fields[i],names[i],ids[i]);
             if(ids[i]!=null) {
                 if(candidates.size()!=1 || !Objects.equals(((Number)candidates.get(0).get("id")).longValue(),ids[i]))
                     throw new AssistantFailure("FORBIDDEN","该候选对象已不可访问，请重新查询");
+                if ("product".equals(fields[i]) && plan.isProductResultTable())
+                    plan.setProductIds(Collections.singletonList(ids[i]));
                 clearName(plan,fields[i]);
                 continue;
             }
             if(candidates.isEmpty()) throw new AssistantFailure("ENTITY_NOT_FOUND","指定范围内未找到有权限的业务对象");
+            if ("product".equals(fields[i]) && plan.isProductResultTable()) {
+                int matched = candidates.size();
+                List<Long> productIds = new ArrayList<>();
+                for (int index = 0; index < Math.min(10, matched); index++)
+                    productIds.add(((Number) candidates.get(index).get("id")).longValue());
+                plan.setProductIds(productIds);
+                plan.setProductMatchTruncated(matched > 10);
+                plan.setProductId(matched == 1 ? productIds.get(0) : null);
+                if (matched == 1) recordPhoneticCorrection(names[i], candidates.get(0));
+                clearName(plan, fields[i]);
+                continue;
+            }
             if(candidates.size()>maxCandidates())
                 throw new AssistantFailure("CLARIFY_ENTITY","匹配对象较多，请填写更完整的名称或完整编码");
             if(candidates.size()==1) {
+                recordPhoneticCorrection(names[i],candidates.get(0));
                 AssistantQueryService.assignChoice(plan,fields[i],((Number)candidates.get(0).get("id")).longValue());
+                if ("product".equals(fields[i]) && plan.isProductResultTable())
+                    plan.setProductIds(Collections.singletonList(((Number)candidates.get(0).get("id")).longValue()));
                 clearName(plan,fields[i]);
                 continue;
             }
@@ -101,6 +119,7 @@ public class AssistantEntityResolver {
             case "party": plan.setParty(null);break;
             case "product": plan.setProduct(null);break;
             case "dept": plan.setDepartment(null);break;
+            case "salesperson": plan.setSalesperson(null);break;
             default: throw new IllegalArgumentException("Unsupported plan entity field");
         }
     }
@@ -203,7 +222,44 @@ public class AssistantEntityResolver {
             }
             if (!combined.isEmpty()) return combined;
         }
-        return Collections.emptyList();
+        return phoneticCandidates(args,type,keyword);
+    }
+
+    private List<Map<String,Object>> phoneticCandidates(Map<String,Object> args,EntityType type,String keyword) {
+        if(phonetic==null || !phonetic.enabled()
+                || !Arrays.asList(EntityType.PRODUCT,EntityType.CUSTOMER,EntityType.SUPPLIER).contains(type)
+                || !Boolean.TRUE.equals(args.get("searchPinyin"))) return Collections.emptyList();
+        List<String> codes=phonetic.searchInitialCodes(keyword);
+        if(codes.isEmpty()) return Collections.emptyList();
+        Map<String,Map<String,Object>> unique=new LinkedHashMap<>();
+        for(String code:codes) {
+            args.put("entityKeyword",code);args.put("entityMatchMode","PINYIN");
+            for(Map<String,Object> row:decorate(select(args),type,"PINYIN")) {
+                AssistantPhoneticNormalizer.EntityMatch match=phonetic.matchEntity(keyword,String.valueOf(row.get("name")));
+                if(match==null) continue;
+                row.put("matchType",match.getMatchType());
+                row.put("phoneticRank",match.getRank());
+                row.put("phoneticConfidence",match.getConfidence());
+                row.put("correctedFrom",keyword);
+                String key=type.name()+":"+row.get("id");
+                Map<String,Object> current=unique.get(key);
+                if(current==null || number(current.get("phoneticRank"),Integer.MAX_VALUE)>match.getRank()) unique.put(key,row);
+            }
+        }
+        List<Map<String,Object>> result=new ArrayList<>(unique.values());
+        result.sort(Comparator.comparingInt((Map<String,Object> value)->number(value.get("phoneticRank"),Integer.MAX_VALUE))
+                .thenComparingInt(value->Math.abs(String.valueOf(value.get("name")).length()-keyword.length()))
+                .thenComparingLong(value->number(value.get("id"),Long.MAX_VALUE)));
+        if(result.size()>maxCandidates()+1) return new ArrayList<>(result.subList(0,maxCandidates()+1));
+        return result;
+    }
+
+    public void recordPhoneticCorrection(String original,Map<String,Object> selected) {
+        if(phonetic!=null) phonetic.recordEntityCorrection(original,selected);
+    }
+
+    public String entityChoiceText(String original,Collection<Map<String,Object>> candidates,String fallback) {
+        return phonetic==null?fallback:phonetic.entityChoiceText(original,candidates,fallback);
     }
 
     /** Department is permission master data, so keep its lookup inside DeptApi and its paged query. */
@@ -300,8 +356,19 @@ public class AssistantEntityResolver {
                 applyDepartmentScope(args, userId, metric);
                 break;
             case SALESPERSON:
-                requireAny("erp:sale-report:query", "erp:receivable-account:query", "erp:sale-order:query");
-                applyAnyDeptScope(args,userId,"erp_sale_report","erp_sale_order");
+                requireAny("erp:sale-report:query", "erp:receivable-account:query", "erp:sale-order:query",
+                        "erp:sale-quote:query", "erp:sale-cart:query", "erp:sale-out:query",
+                        "erp:sale-return:query", "erp:sale-pick:query", "erp:sale-delivery:query");
+                applyAnyDeptScope(args,userId,"erp_sale_report","erp_finance_receivable_account","erp_sale_order",
+                        "erp_sale_quote","erp_sale_cart","erp_sale_out","erp_sale_return");
+                break;
+            case PURCHASER:
+                requireAny("erp:purchase-order:query", "erp:purchase-in:query");
+                applyAnyDeptScope(args,userId,"erp_purchase_order","erp_purchase_in");
+                break;
+            case USER:
+                requireAny("system:user:query");
+                applyDeptScope(args,userId,"system_users");
                 break;
             default: throw new IllegalArgumentException("Unsupported entity type");
         }
@@ -331,7 +398,10 @@ public class AssistantEntityResolver {
 
     private void applyDepartmentScope(Map<String, Object> args, Long userId, AssistantPlan.Metric metric) {
         List<String> modules = metric == null
-                ? Arrays.asList("erp_product_stock", "erp_sale_report", "erp_sale_order", "erp_purchase_report", "erp_finance_receipt", "erp_finance_payment")
+                ? Arrays.asList("erp_product_stock", "erp_sale_out", "erp_sale_return", "erp_sale_order",
+                "erp_purchase_in", "erp_purchase_return", "erp_finance_receipt", "erp_finance_payment")
+                : metric==AssistantPlan.Metric.SALE?Arrays.asList("erp_sale_out","erp_sale_return")
+                : metric==AssistantPlan.Metric.PURCHASE?Arrays.asList("erp_purchase_in","erp_purchase_return")
                 : Collections.singletonList(AssistantQueryService.module(metric));
         Set<Long> deptIds = new LinkedHashSet<>(); boolean all = false; boolean self = false;
         for (String module : modules) {
@@ -362,7 +432,8 @@ public class AssistantEntityResolver {
         }
         boolean name = !blocked.contains("name") && !blocked.contains("nickname");
         if (!name) throw new AssistantFailure("FIELD_FORBIDDEN", "对象名称字段不可见");
-        args.put("searchCode", type!=EntityType.SALESPERSON && !blocked.contains(type == EntityType.WAREHOUSE ? "warehousecode" : "code"));
+        args.put("searchCode", type!=EntityType.SALESPERSON && type!=EntityType.PURCHASER && type!=EntityType.USER
+                && !blocked.contains(type == EntityType.WAREHOUSE ? "warehousecode" : "code"));
         args.put("searchFactoryCode", type == EntityType.PRODUCT && !blocked.contains("factorycode"));
         args.put("searchBarCode", type == EntityType.PRODUCT && !blocked.contains("barcode"));
         args.put("searchVehicleModel", type == EntityType.PRODUCT && !blocked.contains("vehiclemodel"));
@@ -416,6 +487,8 @@ public class AssistantEntityResolver {
             case WAREHOUSE: return permissions.hasAnyPermissions(userId, "erp:stock:query");
             case DEPARTMENT: return true;
             case SALESPERSON: return permissions.hasAnyPermissions(userId,"erp:sale-report:query","erp:receivable-account:query","erp:sale-order:query");
+            case PURCHASER: return permissions.hasAnyPermissions(userId,"erp:purchase-order:query","erp:purchase-in:query");
+            case USER: return permissions.hasAnyPermissions(userId,"system:user:query");
             default: return false;
         }
     }
@@ -449,6 +522,7 @@ public class AssistantEntityResolver {
         if ("product".equals(field)) return EntityType.PRODUCT;
         if ("warehouse".equals(field)) return EntityType.WAREHOUSE;
         if ("dept".equals(field)) return EntityType.DEPARTMENT;
+        if ("salesperson".equals(field)) return EntityType.SALESPERSON;
         if ("party".equals(field)) return Arrays.asList(AssistantPlan.Metric.SALE, AssistantPlan.Metric.RECEIPT,
                 AssistantPlan.Metric.RECEIVABLE).contains(plan.getMetric()) ? EntityType.CUSTOMER : EntityType.SUPPLIER;
         throw new IllegalArgumentException("Unsupported plan entity field");
@@ -462,6 +536,8 @@ public class AssistantEntityResolver {
             case WAREHOUSE: return "erp_warehouse";
             case DEPARTMENT: return "system_dept";
             case SALESPERSON: return "erp_sale_report";
+            case PURCHASER: return "erp_purchase_order";
+            case USER: return "system_users";
             default: throw new IllegalArgumentException();
         }
     }
@@ -498,5 +574,13 @@ public class AssistantEntityResolver {
             if (unique.size() >= limit) break;
         }
         return new ArrayList<>(unique.values());
+    }
+
+    private static int number(Object value,int fallback) {
+        return value instanceof Number?((Number)value).intValue():fallback;
+    }
+
+    private static long number(Object value,long fallback) {
+        return value instanceof Number?((Number)value).longValue():fallback;
     }
 }

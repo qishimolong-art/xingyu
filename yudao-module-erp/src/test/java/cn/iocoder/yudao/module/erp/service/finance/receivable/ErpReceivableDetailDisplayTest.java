@@ -1,11 +1,9 @@
 package cn.iocoder.yudao.module.erp.service.finance.receivable;
 
-import cn.iocoder.yudao.framework.common.biz.system.permission.dto.DeptDataPermissionRespDTO;
 import cn.iocoder.yudao.framework.security.core.util.SecurityFrameworkUtils;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.receivable.ErpReceivableAccountController;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.receivable.vo.account.*;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.accounting.ErpVoucherDO;
-import cn.iocoder.yudao.module.erp.dal.dataobject.finance.receivable.ErpReceivableMiscDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.receivable.ErpReceivableOtherDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.ErpFinanceReceiptDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.*;
@@ -13,7 +11,6 @@ import cn.iocoder.yudao.module.erp.dal.mysql.finance.ErpFinanceReceiptMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.finance.accounting.ErpVoucherMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.finance.receivable.*;
 import cn.iocoder.yudao.module.erp.dal.mysql.sale.*;
-import cn.iocoder.yudao.module.erp.service.finance.ErpFinanceVisibleScope;
 import cn.iocoder.yudao.module.erp.service.sale.*;
 import cn.iocoder.yudao.module.system.api.permission.PermissionApi;
 import cn.iocoder.yudao.module.system.api.user.AdminUserApi;
@@ -49,7 +46,6 @@ class ErpReceivableDetailDisplayTest {
             if (!Modifier.isStatic(field.getModifiers()))
                 ReflectionTestUtils.setField(service, field.getName(), mock(field.getType()));
         }
-        TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), ErpReceivableMiscDO.class);
         TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), ErpVoucherDO.class);
         security = mockStatic(SecurityFrameworkUtils.class);
         security.when(SecurityFrameworkUtils::getLoginUserId).thenReturn(9L);
@@ -118,74 +114,15 @@ class ErpReceivableDetailDisplayTest {
     }
 
     @Test
-    void miscRowsAreDisplayOnlyAndKeepOpeningAndRunningBalances() {
-        enableMisc();
-        List<ErpReceivableMiscDO> originals = Arrays.asList(misc(21L, time.minusHours(1), "70"),
-                misc(22L, time.plusMinutes(1), "-30"));
-        when(dep("miscMapper", ErpReceivableMiscMapper.class).selectList(any(Wrapper.class))).thenReturn(originals);
-        when(dep("miscMapper", ErpReceivableMiscMapper.class)
-                .selectSettlementAmountSumMapBySourceMiscIds(anyCollection(), anyString()))
-                .thenReturn(Collections.singletonMap(21L, new BigDecimal("20")));
+    void independentOtherReceivablesAreNotAddedToReceivableDetails() {
         ErpReceivableDetailRespVO sale = row("销售出库", 10L, time, "100", "160");
         List<ErpReceivableDetailRespVO> rows = decorate(Collections.singletonList(sale));
-        assertThat(rows).extracting(ErpReceivableDetailRespVO::getDocType).containsExactly("其他应收", "销售出库", "其他应收");
-        assertThat(rows.get(0).getBalance()).isEqualByComparingTo("100");
-        assertThat(rows.get(2).getPrevBalance()).isEqualByComparingTo("160");
-        assertThat(rows.get(2).getBalance()).isEqualByComparingTo("160");
-        assertThat(rows.get(2).getMiscReceivableAmount()).isEqualByComparingTo("-30");
-        assertThat(rows.get(0).getReceivedWriteOffAmount()).isEqualByComparingTo("20");
-        assertThat(rows.get(0).getDisplayOnly()).isTrue();
+        assertThat(rows).containsExactly(sale);
+        assertThat(rows).extracting(ErpReceivableDetailRespVO::getDocType).doesNotContain("其他应收");
         assertThat(sale.getPrevBalance()).isEqualByComparingTo("100");
-        assertThat(rows.get(0).getIncreaseAmount()).isZero();
-        assertThat(rows.get(0).getReceiptAmount()).isZero();
-    }
-
-    @Test
-    void missingMiscPermissionDoesNotQueryOrExposeIndependentDocuments() {
-        assertThat(decorate(Collections.emptyList())).isEmpty();
-        verifyNoInteractions(dep("miscMapper", ErpReceivableMiscMapper.class));
-    }
-
-    @Test
-    void publicDisplayIncludesMiscWhileExplicitScopeAccountingRemainsUnchanged() {
-        enableMisc();
-        when(dep("miscMapper", ErpReceivableMiscMapper.class).selectList(any(Wrapper.class)))
-                .thenReturn(Collections.singletonList(misc(21L, time, "70")));
-        ErpReceivableAccountServiceImpl account = new ErpReceivableAccountServiceImpl();
-        for (Field field : ErpReceivableAccountServiceImpl.class.getDeclaredFields()) {
-            if (!Modifier.isStatic(field.getModifiers()))
-                ReflectionTestUtils.setField(account, field.getName(), mock(field.getType()));
-        }
-        ReflectionTestUtils.setField(account, "detailDisplayService", service);
-        ReflectionTestUtils.setField(account, "permissionApi", dep("permissionApi", PermissionApi.class));
-        when(dep("permissionApi", PermissionApi.class).getDeptDataPermission(9L, "erp_finance_receivable_account"))
-                .thenReturn(new DeptDataPermissionRespDTO().setAll(true));
-        List<ErpReceivableDetailRespVO> display = account.getReceivableDetailList(req);
-        assertThat(display).hasSize(1);
-        assertThat(display.get(0).getMiscReceivableAmount()).isEqualByComparingTo("70");
-        assertThat(display.get(0).getBalance()).isZero();
-        assertThat(account.getReceivableDetailList(req, new ErpFinanceVisibleScope(true, null, null))).isEmpty();
-        verify(dep("miscMapper", ErpReceivableMiscMapper.class), times(1)).selectList(any(Wrapper.class));
-    }
-
-    @Test
-    void hiddenIndependentAmountsNeverLeakThroughCollectionColumns() {
-        enableMisc();
-        when(dep("permissionApi", PermissionApi.class).getCurrentUserHiddenFields("erp_finance_receivable_misc"))
-                .thenReturn(Arrays.asList("col_amount", "remark"));
-        when(dep("miscMapper", ErpReceivableMiscMapper.class).selectList(any(Wrapper.class)))
-                .thenReturn(Collections.singletonList(misc(21L, time, "70").setRemark("保密")));
-        when(dep("miscMapper", ErpReceivableMiscMapper.class)
-                .selectSettlementAmountSumMapBySourceMiscIds(anyCollection(), anyString()))
-                .thenReturn(Collections.singletonMap(21L, BigDecimal.TEN));
-        ErpReceivableDetailRespVO row = decorate(Collections.emptyList()).get(0);
-        assertThat(row.getMiscReceivableAmount()).isNull();
-        assertThat(row.getReceivedAmount()).isNull();
-        assertThat(row.getReceivedWriteOffAmount()).isNull();
-        assertThat(row.getAllocatedAmount()).isNull();
-        assertThat(row.getWriteOffBaseAmount()).isNull();
-        assertThat(row.getRemark()).isNull();
-        assertThat(row.getBalance()).isEqualByComparingTo("100");
+        assertThat(sale.getBalance()).isEqualByComparingTo("160");
+        assertThat(Arrays.stream(ErpReceivableDetailDisplayService.class.getDeclaredFields())
+                .map(Field::getType)).doesNotContain(ErpReceivableMiscMapper.class);
     }
 
     @Test
@@ -208,27 +145,6 @@ class ErpReceivableDetailDisplayTest {
         verify(dep("saleOutMapper", ErpSaleOutMapper.class), times(2)).selectBatchIds(ids.capture());
         assertThat(ids.getAllValues().get(0)).hasSize(500);
         assertThat(ids.getAllValues().get(1)).containsExactly(501L);
-    }
-
-    @Test
-    void miscQueryIntersectsBothScopesAndExcludesOffsetsAndUnapprovedRows() {
-        enableMisc();
-        when(dep("permissionApi", PermissionApi.class).getDeptDataPermission(9L, "erp_finance_receivable_misc"))
-                .thenReturn(new DeptDataPermissionRespDTO().setAll(false).setSelf(false).setDeptIds(Collections.singleton(8L)));
-        req.setDeptId(8L);
-        req.setBizTime(new LocalDateTime[]{time.minusDays(1), time.plusDays(1)});
-        when(dep("miscMapper", ErpReceivableMiscMapper.class).selectList(any(Wrapper.class))).thenAnswer(invocation -> {
-            Wrapper<?> query = invocation.getArgument(0);
-            String sql = query.getSqlSegment();
-            assertThat(sql).contains("customer_id", "status", "source_type", "IS NULL", "<>", "biz_time",
-                    "dept_id", "handler_id", "LIMIT 500");
-            Map<?, ?> parameters = ((com.baomidou.mybatisplus.core.conditions.AbstractWrapper<?, ?, ?>) query)
-                    .getParamNameValuePairs();
-            assertThat(new ArrayList<Object>(parameters.values())).contains(20, 8L, 9L, "收款单转其他应收冲减");
-            return Collections.emptyList();
-        });
-        service.decorate(req, Collections.emptyList(), BigDecimal.TEN,
-                new ErpFinanceVisibleScope(false, Collections.singleton(7L), 9L));
     }
 
     @Test
@@ -270,11 +186,10 @@ class ErpReceivableDetailDisplayTest {
     }
 
     @Test
-    void exportHas24BusinessColumnsAndExactDatesAndBlankUnknowns() throws Exception {
+    void exportHas23BusinessColumnsWithoutIndependentOtherReceivables() throws Exception {
         ErpReceivableDetailRespVO row = row("销售出库", 10L, time, "0", "100");
         row.setApproveTime(time);
         row.setBillNo("000123");
-        row.setMiscReceivableAmount(new BigDecimal("10.25"));
         ErpReceivableAccountService api = mock(ErpReceivableAccountService.class);
         when(api.getReceivableDetailList(req)).thenReturn(Collections.singletonList(row));
         ErpReceivableAccountController controller = new ErpReceivableAccountController();
@@ -284,25 +199,18 @@ class ErpReceivableDetailDisplayTest {
         try (Workbook workbook = WorkbookFactory.create(new ByteArrayInputStream(response.getContentAsByteArray()))) {
             Sheet sheet = workbook.getSheetAt(0);
             DataFormatter formatter = new DataFormatter();
-            assertThat(sheet.getRow(0).getLastCellNum()).isEqualTo((short) 24);
-            assertThat(formatter.formatCellValue(sheet.getRow(0).getCell(5))).isEqualTo("其他应收");
-            assertThat(formatter.formatCellValue(sheet.getRow(0).getCell(19))).isEqualTo("已核销金额");
-            assertThat(formatter.formatCellValue(sheet.getRow(0).getCell(22))).isEqualTo("应收调账");
+            assertThat(sheet.getRow(0).getLastCellNum()).isEqualTo((short) 23);
+            assertThat(formatter.formatCellValue(sheet.getRow(0).getCell(5))).isEqualTo("收款金额");
+            assertThat(formatter.formatCellValue(sheet.getRow(0).getCell(18))).isEqualTo("已核销金额");
+            assertThat(formatter.formatCellValue(sheet.getRow(0).getCell(21))).isEqualTo("应收调账");
+            List<String> headers = new ArrayList<>();
+            sheet.getRow(0).forEach(cell -> headers.add(formatter.formatCellValue(cell)));
+            assertThat(headers).doesNotContain("其他应收");
             assertThat(formatter.formatCellValue(sheet.getRow(1).getCell(1))).isEqualTo("2026-09-27 12:34:56");
-            assertThat(formatter.formatCellValue(sheet.getRow(1).getCell(10))).isEqualTo("2026-09-27 12:34:56");
-            assertThat(formatter.formatCellValue(sheet.getRow(1).getCell(12))).isEmpty();
-            assertThat(formatter.formatCellValue(sheet.getRow(1).getCell(14))).isEqualTo("000123");
+            assertThat(formatter.formatCellValue(sheet.getRow(1).getCell(9))).isEqualTo("2026-09-27 12:34:56");
+            assertThat(formatter.formatCellValue(sheet.getRow(1).getCell(11))).isEmpty();
+            assertThat(formatter.formatCellValue(sheet.getRow(1).getCell(13))).isEqualTo("000123");
         }
-    }
-
-    private void enableMisc() {
-        when(dep("permissionApi", PermissionApi.class).hasAnyPermissions(9L, "erp:receivable-misc:query")).thenReturn(true);
-        when(dep("permissionApi", PermissionApi.class).getDeptDataPermission(9L, "erp_finance_receivable_misc"))
-                .thenReturn(new DeptDataPermissionRespDTO().setAll(true));
-    }
-
-    private ErpReceivableMiscDO misc(Long id, LocalDateTime date, String amount) {
-        return ErpReceivableMiscDO.builder().id(id).no("QTYSM" + id).bizTime(date).amount(new BigDecimal(amount)).build();
     }
 
     private ErpReceivableDetailRespVO row(String type, Long id, LocalDateTime date, String opening, String balance) {
@@ -314,7 +222,7 @@ class ErpReceivableDetailDisplayTest {
     }
 
     private List<ErpReceivableDetailRespVO> decorate(List<ErpReceivableDetailRespVO> rows) {
-        return service.decorate(req, rows, new BigDecimal("100"), new ErpFinanceVisibleScope(true, null, null));
+        return service.decorate(req, rows);
     }
 
     private <T> T dep(String name, Class<T> type) {

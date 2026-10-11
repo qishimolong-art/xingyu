@@ -7,10 +7,15 @@ import cn.hutool.core.util.ObjUtil;
 import cn.hutool.core.util.ObjectUtil;
 import cn.hutool.core.util.StrUtil;
 import cn.hutool.extra.spring.SpringUtil;
+import cn.iocoder.yudao.framework.common.enums.CommonStatusEnum;
+import cn.iocoder.yudao.framework.common.pojo.PageParam;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.common.util.date.LocalDateTimeUtils;
+import cn.iocoder.yudao.module.member.api.address.MemberAddressApi;
+import cn.iocoder.yudao.module.member.api.address.dto.MemberAddressTargetRespDTO;
 import cn.iocoder.yudao.module.member.api.user.MemberUserApi;
 import cn.iocoder.yudao.module.member.api.user.dto.MemberUserRespDTO;
+import cn.iocoder.yudao.module.promotion.controller.admin.coupon.vo.coupon.CouponAddressTargetPageReqVO;
 import cn.iocoder.yudao.module.promotion.controller.admin.coupon.vo.coupon.CouponPageReqVO;
 import cn.iocoder.yudao.module.promotion.convert.coupon.CouponConvert;
 import cn.iocoder.yudao.module.promotion.dal.dataobject.coupon.CouponDO;
@@ -19,6 +24,9 @@ import cn.iocoder.yudao.module.promotion.dal.mysql.coupon.CouponMapper;
 import cn.iocoder.yudao.module.promotion.enums.coupon.CouponStatusEnum;
 import cn.iocoder.yudao.module.promotion.enums.coupon.CouponTakeTypeEnum;
 import cn.iocoder.yudao.module.promotion.enums.coupon.CouponTemplateValidityTypeEnum;
+import cn.iocoder.yudao.module.promotion.service.coupon.bo.CouponAddressSendResultBO;
+import cn.iocoder.yudao.module.promotion.service.coupon.bo.CouponAddressTargetItemBO;
+import cn.iocoder.yudao.module.promotion.service.coupon.bo.CouponAddressTargetPageResultBO;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
@@ -46,6 +54,8 @@ import static java.util.Arrays.asList;
 @Validated
 public class CouponServiceImpl implements CouponService {
 
+    private static final int ADDRESS_SEND_BATCH_SIZE = 500;
+
     @Resource
     private CouponTemplateService couponTemplateService;
 
@@ -54,6 +64,8 @@ public class CouponServiceImpl implements CouponService {
 
     @Resource
     private MemberUserApi memberUserApi;
+    @Resource
+    private MemberAddressApi memberAddressApi;
 
     @Override
     public void useCoupon(Long id, Long userId, Long orderId) {
@@ -138,6 +150,137 @@ public class CouponServiceImpl implements CouponService {
         // 4. 增加优惠劵模板的领取数量
         couponTemplateService.updateCouponTemplateTakeCount(template.getId(), userIds.size());
         return convertMultiMap(couponList, CouponDO::getUserId, CouponDO::getId);
+    }
+
+    @Override
+    public CouponAddressTargetPageResultBO getAddressTargetPage(CouponAddressTargetPageReqVO reqVO) {
+        CouponTemplateDO template = validateAddressSendTemplate(reqVO.getTemplateId());
+        PageResult<MemberAddressTargetRespDTO> enabledPage = memberAddressApi.getAddressTargetUserPage(
+                reqVO.getAreaIds(), CommonStatusEnum.ENABLE.getStatus(),
+                new PageParam().setPageNo(reqVO.getPageNo()).setPageSize(reqVO.getPageSize()));
+        Map<Long, Integer> takeCountMap = getUserTakeCountMap(template.getId(),
+                convertList(enabledPage.getList(), MemberAddressTargetRespDTO::getUserId));
+
+        List<CouponAddressTargetItemBO> items = convertList(enabledPage.getList(), target -> {
+            int takeCount = MapUtil.getInt(takeCountMap, target.getUserId(), 0);
+            boolean sendable = couponTemplateService.isTakeLimitCountUnlimited(template.getTakeLimitCount())
+                    || takeCount < template.getTakeLimitCount();
+            CouponAddressTargetItemBO item = new CouponAddressTargetItemBO();
+            item.setUserId(target.getUserId());
+            item.setNickname(target.getNickname());
+            item.setMobile(maskMobile(target.getMobile()));
+            item.setMatchedAreaNames(target.getMatchedAreaNames());
+            item.setSendable(sendable);
+            item.setSkipReason(sendable ? null : "已达每人限领上限");
+            return item;
+        });
+        CouponAddressTargetPageResultBO result = new CouponAddressTargetPageResultBO();
+        result.setAddressMatchedCount(memberAddressApi.getAddressTargetCount(reqVO.getAreaIds()));
+        result.setEnabledMatchedCount(enabledPage.getTotal());
+        result.setPageResult(new PageResult<>(items, enabledPage.getTotal()));
+        return result;
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public CouponAddressSendResultBO takeCouponByAddress(Long templateId, Set<Integer> areaIds,
+                                                          Set<Long> excludedUserIds) {
+        CouponTemplateDO template = validateAddressSendTemplate(templateId);
+        List<MemberAddressTargetRespDTO> targets = distinctTargets(
+                memberAddressApi.getAddressTargetUserList(areaIds, null));
+        Set<Long> excludedIds = CollUtil.isEmpty(excludedUserIds) ? Collections.emptySet() : excludedUserIds;
+
+        long disabledSkippedCount = targets.stream()
+                .filter(target -> ObjUtil.notEqual(target.getStatus(), CommonStatusEnum.ENABLE.getStatus())).count();
+        List<Long> enabledUserIds = targets.stream()
+                .filter(target -> ObjUtil.equal(target.getStatus(), CommonStatusEnum.ENABLE.getStatus()))
+                .map(MemberAddressTargetRespDTO::getUserId).distinct().sorted().collect(Collectors.toList());
+        long excludedCount = enabledUserIds.stream().filter(excludedIds::contains).count();
+        List<Long> candidateUserIds = enabledUserIds.stream().filter(userId -> !excludedIds.contains(userId))
+                .collect(Collectors.toList());
+
+        Map<Long, Integer> takeCountMap = getUserTakeCountMap(templateId, candidateUserIds);
+        List<Long> sendUserIds = new ArrayList<>(candidateUserIds.size());
+        long limitSkippedCount = 0L;
+        for (Long userId : candidateUserIds) {
+            int takeCount = MapUtil.getInt(takeCountMap, userId, 0);
+            if (!couponTemplateService.isTakeLimitCountUnlimited(template.getTakeLimitCount())
+                    && takeCount >= template.getTakeLimitCount()) {
+                limitSkippedCount++;
+                continue;
+            }
+            sendUserIds.add(userId);
+        }
+
+        if (!couponTemplateService.isTotalCountUnlimited(template.getTotalCount())) {
+            int remainingCount = Math.max(template.getTotalCount() - template.getTakeCount(), 0);
+            if (sendUserIds.size() > remainingCount) {
+                limitSkippedCount += sendUserIds.size() - remainingCount;
+                sendUserIds = new ArrayList<>(sendUserIds.subList(0, remainingCount));
+            }
+        }
+
+        if (CollUtil.isNotEmpty(sendUserIds)) {
+            List<CouponDO> coupons = convertList(sendUserIds,
+                    userId -> CouponConvert.INSTANCE.convert(template, userId));
+            couponMapper.insertBatch(coupons, ADDRESS_SEND_BATCH_SIZE);
+            couponTemplateService.updateCouponTemplateTakeCount(templateId, coupons.size());
+        }
+
+        CouponAddressSendResultBO result = new CouponAddressSendResultBO();
+        result.setAddressMatchedCount(memberAddressApi.getAddressTargetCount(areaIds));
+        result.setDisabledSkippedCount(disabledSkippedCount);
+        result.setExcludedCount(excludedCount);
+        result.setLimitSkippedCount(limitSkippedCount);
+        result.setSuccessCount((long) sendUserIds.size());
+        return result;
+    }
+
+    private CouponTemplateDO validateAddressSendTemplate(Long templateId) {
+        CouponTemplateDO template = couponTemplateService.getCouponTemplate(templateId);
+        if (template == null) {
+            throw exception(COUPON_TEMPLATE_NOT_EXISTS);
+        }
+        if (ObjUtil.notEqual(template.getTakeType(), CouponTakeTypeEnum.ADMIN.getType())) {
+            throw exception(COUPON_TEMPLATE_CANNOT_TAKE);
+        }
+        if (ObjUtil.notEqual(template.getStatus(), CommonStatusEnum.ENABLE.getStatus())) {
+            throw exception(COUPON_TEMPLATE_DISABLED);
+        }
+        if (CouponTemplateValidityTypeEnum.DATE.getType().equals(template.getValidityType())
+                && LocalDateTimeUtils.beforeNow(template.getValidEndTime())) {
+            throw exception(COUPON_TEMPLATE_EXPIRED);
+        }
+        return template;
+    }
+
+    private Map<Long, Integer> getUserTakeCountMap(Long templateId, Collection<Long> userIds) {
+        if (CollUtil.isEmpty(userIds)) {
+            return Collections.emptyMap();
+        }
+        Map<Long, Integer> result = new HashMap<>();
+        List<Long> userIdList = new ArrayList<>(userIds);
+        for (int from = 0; from < userIdList.size(); from += ADDRESS_SEND_BATCH_SIZE) {
+            int to = Math.min(from + ADDRESS_SEND_BATCH_SIZE, userIdList.size());
+            result.putAll(couponMapper.selectCountByTemplateIdAndUserIds(templateId, userIdList.subList(from, to)));
+        }
+        return result;
+    }
+
+    private static List<MemberAddressTargetRespDTO> distinctTargets(List<MemberAddressTargetRespDTO> targets) {
+        if (CollUtil.isEmpty(targets)) {
+            return Collections.emptyList();
+        }
+        Map<Long, MemberAddressTargetRespDTO> result = new LinkedHashMap<>();
+        targets.forEach(target -> result.putIfAbsent(target.getUserId(), target));
+        return new ArrayList<>(result.values());
+    }
+
+    private static String maskMobile(String mobile) {
+        if (StrUtil.length(mobile) < 7) {
+            return StrUtil.isBlank(mobile) ? "" : "****";
+        }
+        return StrUtil.subPre(mobile, 3) + "****" + StrUtil.subSuf(mobile, -4);
     }
 
     @Override

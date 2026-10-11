@@ -298,9 +298,9 @@ ErrorCode PURCHASE_ORDER_ITEM_RETURN_FAIL_IN_EXCEED = new ErrorCode(1_030_101_00
     ErrorCode SALE_PICK_TASK_WAREHOUSE_PERMISSION_DENIED = new ErrorCode(1_030_208_004, "当前拣货员未负责该仓库，不能操作该拣货单");
     ErrorCode SALE_PICK_TASK_STATUS_INVALID = new ErrorCode(1_030_208_005, "当前拣货单状态不允许继续拣货");
     ErrorCode SALE_PICK_ITEM_INVALID = new ErrorCode(1_030_208_006, "所选拣货明细不存在、已拣货或不属于当前拣货单");
-    ErrorCode SALE_DELIVERY_NOT_READY = new ErrorCode(1_030_208_007, "该销售单尚未完成拣货，不能送货");
+    ErrorCode SALE_DELIVERY_NOT_READY = new ErrorCode(1_030_208_007, "该销售单暂无已拣未送数量，不能送货");
     ErrorCode SALE_DELIVERY_STATUS_INVALID = new ErrorCode(1_030_208_008, "当前送货单状态不允许继续送货");
-    ErrorCode SALE_DELIVERY_ITEM_INVALID = new ErrorCode(1_030_208_009, "所选送货明细不存在、未完成拣货、已送货或不属于当前送货单");
+    ErrorCode SALE_DELIVERY_ITEM_INVALID = new ErrorCode(1_030_208_009, "所选送货明细不存在、已送货或不属于当前送货单");
     ErrorCode SALE_PICK_DELIVERY_WAREHOUSE_REQUIRED = new ErrorCode(1_030_208_010, "销售单明细缺少仓库，无法生成拣货单");
     ErrorCode SALE_PICK_DELIVERY_VOUCHER_FILE_EMPTY = new ErrorCode(1_030_208_011, "凭证图片不能为空");
     ErrorCode SALE_PICK_DELIVERY_VOUCHER_FILE_TYPE_INVALID = new ErrorCode(1_030_208_012, "凭证图片仅支持 jpg、jpeg、png 格式");
@@ -585,10 +585,10 @@ ErrorCode PURCHASE_ORDER_ITEM_RETURN_FAIL_IN_EXCEED = new ErrorCode(1_030_101_00
     // ========== ERP 报价订单 1-030-205-000 ==========
     ErrorCode SALE_QUOTE_NOT_EXISTS = new ErrorCode(1_030_205_000, "报价订单不存在");
     ErrorCode SALE_QUOTE_NO_EXISTS = new ErrorCode(1_030_205_001, "生成报价单号失败，请重新提交");
-    ErrorCode SALE_QUOTE_UPDATE_FAIL_GENERATED = new ErrorCode(1_030_205_002, "报价订单({})已生成销售单，无法修改");
-    ErrorCode SALE_QUOTE_DELETE_FAIL_GENERATED = new ErrorCode(1_030_205_003, "报价订单({})已生成销售单，无法删除");
-    ErrorCode SALE_QUOTE_APPROVE_FAIL = new ErrorCode(1_030_205_004, "审核失败，只有待审核状态的报价订单才能审核");
-    ErrorCode SALE_QUOTE_CONVERT_CART_FAIL = new ErrorCode(1_030_205_005, "报价订单转销售手推车失败，只有待审核、已审核或部分转换状态才能转换");
+    ErrorCode SALE_QUOTE_UPDATE_FAIL_GENERATED = new ErrorCode(1_030_205_002, "报价订单({})已进入出库流程，无法修改");
+    ErrorCode SALE_QUOTE_DELETE_FAIL_GENERATED = new ErrorCode(1_030_205_003, "报价订单({})已下订或进入出库流程，无法删除");
+    ErrorCode SALE_QUOTE_APPROVE_FAIL = new ErrorCode(1_030_205_004, "下订失败，只有待下订状态的报价订单才能下订");
+    ErrorCode SALE_QUOTE_CONVERT_CART_FAIL = new ErrorCode(1_030_205_005, "报价订单出库失败，只有已下订或部分转手推车状态才能出库");
     ErrorCode SALE_QUOTE_CONVERT_COUNT_EXCEED = new ErrorCode(1_030_205_006, "报价订单项({})本次转换数量({})超过可转数量({})");
     ErrorCode SALE_QUOTE_CONVERT_COUNT_POSITIVE = new ErrorCode(1_030_205_007, "报价订单项({})本次转换数量必须大于 0");
     ErrorCode SALE_QUOTE_ITEM_NOT_EXISTS = new ErrorCode(1_030_205_008, "报价订单项不存在：{}");
@@ -610,6 +610,10 @@ ErrorCode PURCHASE_ORDER_ITEM_RETURN_FAIL_IN_EXCEED = new ErrorCode(1_030_101_00
             "报价订单明细操作类型无效，请使用 insert、update 或 delete");
     ErrorCode SALE_QUOTE_ITEM_UPDATE_NOT_EXISTS = new ErrorCode(1_030_205_024,
             "报价订单明细不存在或不属于当前报价订单");
+    ErrorCode SALE_QUOTE_REVERSE_ORDER_FAIL = new ErrorCode(1_030_205_025,
+            "反下订失败，只有已下订且尚未出库的报价订单才能反下订");
+    ErrorCode SALE_QUOTE_REVERSE_ORDER_FAIL_CONVERTED = new ErrorCode(1_030_205_026,
+            "报价订单已生成销售手推车，不能反下订");
 
     // ========== ERP 销售手推车 1-030-206-000 ==========
     ErrorCode SALE_CART_NOT_EXISTS = new ErrorCode(1_030_206_000, "销售手推车不存在");
@@ -661,6 +665,10 @@ ErrorCode PURCHASE_ORDER_ITEM_RETURN_FAIL_IN_EXCEED = new ErrorCode(1_030_101_00
             "销售手推车尚未完成全部送货，无法终审");
     ErrorCode SALE_CART_FULFILLMENT_ROLLBACK_FORBIDDEN = new ErrorCode(1_030_206_038,
             "销售手推车已生成拣货送货任务，不能撤销初审、驳回或解锁");
+    ErrorCode SALE_CART_QUOTE_SOURCE_IDENTITY_MODIFY_FAIL = new ErrorCode(1_030_206_039,
+            "报价来源手推车明细({})不能修改产品、仓库、批次或赠品标识");
+    ErrorCode SALE_CART_QUOTE_SOURCE_COUNT_EXCEED = new ErrorCode(1_030_206_040,
+            "报价订单项({})累计出库数量({})超过报价数量({})");
     ErrorCode SALE_PICK_DELIVERY_CART_SOURCE_INVALID = new ErrorCode(1_030_208_017,
             "销售手推车跨部门明细与调拨出库明细不一致，无法生成拣货单");
 

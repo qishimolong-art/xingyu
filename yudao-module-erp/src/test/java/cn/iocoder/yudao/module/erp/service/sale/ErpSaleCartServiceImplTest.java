@@ -22,6 +22,7 @@ import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpCustomerDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleCartDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleCartItemDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleConfigDO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleConvertRecordDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleQuoteDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleQuoteItemDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockDO;
@@ -95,6 +96,7 @@ import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.SALE_CART_FIR
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.SALE_CART_ITEMS_EMPTY;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.SALE_CART_NOT_EXISTS;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.SALE_CART_REJECT_FAIL;
+import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.SALE_CART_QUOTE_SOURCE_IDENTITY_MODIFY_FAIL;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.SALE_CART_STATUS_CHANGED;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.SALE_CART_UPDATE_FAIL_NOT_PROCESS;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.SALE_CART_UNLOCK_STATUS_INVALID;
@@ -147,6 +149,8 @@ public class ErpSaleCartServiceImplTest extends BaseMockitoUnitTest {
     private ErpSaleQuoteItemMapper saleQuoteItemMapper;
     @Mock
     private ErpSaleConvertRecordMapper saleConvertRecordMapper;
+    @Mock
+    private ErpSaleQuoteProgressService saleQuoteProgressService;
     @Mock
     private ErpProductMapper productMapper;
     @Mock
@@ -380,6 +384,7 @@ public class ErpSaleCartServiceImplTest extends BaseMockitoUnitTest {
                         && item.getWarehouseId().equals(req.getItems().get(0).getWarehouseId())
                         && item.getCount().equals(req.getItems().get(0).getCount())),
                 eq(ErpSaleBizSourceTypeEnum.CART.getType()), eq(cart.getId()), eq(cart.getNo()), eq(false));
+        verify(saleQuoteProgressService).refreshByCartIds(Collections.singleton(cartId));
     }
 
     @Test
@@ -714,6 +719,24 @@ public class ErpSaleCartServiceImplTest extends BaseMockitoUnitTest {
                 eq(ErpSaleBizSourceTypeEnum.CART.getType()), eq(cartId));
         verify(saleCartMapper).deleteBatchIds(eq(Collections.singletonList(cartId)));
         verify(saleCartItemMapper).deleteByCartId(eq(cartId));
+    }
+
+    @Test
+    public void testDeleteQuoteSourceSaleCart_releasesQuoteProgress() {
+        Long cartId = 53L;
+        Long quoteId = 153L;
+        ErpSaleCartDO cart = new ErpSaleCartDO().setId(cartId).setNo("ST20260510000003")
+                .setStatus(ErpSaleCartStatusEnum.SUBMITTED.getStatus())
+                .setSourceType(ErpSaleBizSourceTypeEnum.QUOTE.getType()).setSourceId(quoteId);
+        when(saleCartMapper.selectById(cartId)).thenReturn(cart);
+        when(saleConvertRecordMapper.selectQuoteToCartListByCartIds(Collections.singletonList(cartId)))
+                .thenReturn(Collections.singletonList(new ErpSaleConvertRecordDO()
+                        .setSourceId(quoteId).setTargetId(cartId)));
+
+        saleCartService.deleteSaleCart(Collections.singletonList(cartId));
+
+        verify(saleConvertRecordMapper).deleteByTarget(ErpSaleBizSourceTypeEnum.CART.getType(), cartId);
+        verify(saleQuoteProgressService).refreshQuoteProgress(quoteId);
     }
 
     @Test
@@ -1157,6 +1180,47 @@ public class ErpSaleCartServiceImplTest extends BaseMockitoUnitTest {
         verify(saleCartItemMapper, never()).deleteByIds(anyCollection());
         verify(saleCartItemMapper, never()).insertBatch(anyCollection());
         verify(saleCartItemMapper, never()).updateBatch(anyCollection());
+    }
+
+    @Test
+    public void testUpdateQuoteSourceSaleCart_cannotReplaceProductIdentity() {
+        Long cartId = 12L;
+        Long quoteId = 112L;
+        Long cartItemId = 212L;
+        Long quoteItemId = 312L;
+        ErpSaleCartDO cart = new ErpSaleCartDO().setId(cartId).setNo("ST20260509000012")
+                .setCustomerId(21L).setDeptId(10L).setStatus(ErpSaleCartStatusEnum.SUBMITTED.getStatus())
+                .setSourceType(ErpSaleBizSourceTypeEnum.QUOTE.getType()).setSourceId(quoteId);
+        ErpSaleCartItemDO oldItem = buildCartItem(cartId, 201L, 401L, new BigDecimal("3"))
+                .setId(cartItemId).setProductUnitId(301L).setGiftFlag(false);
+        ErpSaleCartSaveReqVO reqVO = buildBaseSaveReq();
+        reqVO.setId(cartId);
+        reqVO.setCustomerId(21L);
+        ErpSaleCartSaveReqVO.Item changedItem = buildItemReq(new BigDecimal("3"), new BigDecimal("15"));
+        changedItem.setId(cartItemId);
+        changedItem.setWarehouseId(402L);
+        reqVO.setItems(Collections.singletonList(changedItem));
+        ErpSaleConvertRecordDO record = new ErpSaleConvertRecordDO().setId(412L)
+                .setSourceId(quoteId).setSourceItemId(quoteItemId)
+                .setTargetId(cartId).setTargetItemId(cartItemId).setCount(new BigDecimal("3"));
+        when(saleCartMapper.selectById(cartId)).thenReturn(cart);
+        when(saleCartItemMapper.selectListByCartId(cartId)).thenReturn(Collections.singletonList(oldItem));
+        when(productService.validProductList(anyCollection()))
+                .thenReturn(Collections.singletonList(new ErpProductDO().setId(201L).setUnitId(301L)));
+        when(customerService.validateCustomerForSale(eq(21L), eq(10L)))
+                .thenReturn(new ErpCustomerDO().setId(21L));
+        when(saleConvertRecordMapper.selectQuoteToCartListByCartIds(Collections.singleton(cartId)))
+                .thenReturn(Collections.singletonList(record));
+        when(saleQuoteItemMapper.selectListByQuoteIdForUpdate(quoteId)).thenReturn(Collections.singletonList(
+                new ErpSaleQuoteItemDO().setId(quoteItemId).setQuoteId(quoteId).setCount(new BigDecimal("10"))));
+        when(saleConvertRecordMapper.selectQuoteToCartListByQuoteIds(Collections.singleton(quoteId)))
+                .thenReturn(Collections.singletonList(record));
+
+        assertServiceException(() -> saleCartService.updateSaleCart(reqVO),
+                SALE_CART_QUOTE_SOURCE_IDENTITY_MODIFY_FAIL, cartItemId);
+
+        verify(saleCartMapper, never()).updateById(any(ErpSaleCartDO.class));
+        verify(saleQuoteProgressService, never()).refreshQuoteProgress(anyLong());
     }
 
     @Test

@@ -1,11 +1,11 @@
 package cn.iocoder.yudao.module.erp.service.assistant;
 
 import cn.iocoder.yudao.framework.security.core.util.SecurityFrameworkUtils;
+import cn.iocoder.yudao.module.erp.enums.stock.ErpStockRecordBizTypeEnum;
 import org.springframework.stereotype.Service;
 import javax.annotation.Resource;
 import java.time.*;
 import java.time.format.DateTimeFormatter;
-import java.time.temporal.TemporalAdjusters;
 import java.util.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -13,6 +13,7 @@ import java.util.regex.Pattern;
 /** Hybrid routing: verified metric first, dedicated tools second, semantic SQL last. */
 @Service
 public class AssistantOrchestrator {
+    private static final Map<Integer,String> INBOUND_MOVEMENT_TYPES = inboundMovementTypes();
     @Resource private AssistantProperties properties;
     @Resource private AssistantModelClient model;
     @Resource private AssistantKnowledge knowledge;
@@ -23,6 +24,8 @@ public class AssistantOrchestrator {
     @Resource private AssistantEntityResolver entities;
     @Resource private AssistantSemanticKnowledge semanticKnowledge;
     @Resource private AssistantMasterDataQueryService masterData;
+    @Resource private AssistantCompanyKnowledge companyKnowledge;
+    @Resource private AssistantStage5BusinessQuery stage5;
 
     public boolean enabledForCurrentUser() {
         String mode=properties.getOrchestration().getMode();
@@ -31,8 +34,47 @@ public class AssistantOrchestrator {
         return "GRAY".equalsIgnoreCase(mode) && user!=null && properties.getOrchestration().getGrayUserIds().contains(user);
     }
 
+    /**
+     * V2 灰度在真正执行前只做确定性能力预判；模型路由问题统一归入 model_routed，
+     * 不在预判阶段调用模型或读取业务数据。
+     */
+    public String previewCapability(String question) {
+        return previewCapability(question, null);
+    }
+
+    public String previewCapability(String question, AssistantExecutionEnvelope previous) {
+        if (question == null || question.trim().isEmpty()) return "model_routed";
+        if (companyKnowledge != null && companyKnowledge.available() && AssistantMixedQuery.matches(question)) {
+            return AssistantMixedQuery.TOOL_NAME;
+        }
+        if (AssistantKnowledgeContext.isContextualRealtimeOrganizationBoundary(question, previous)) {
+            return AssistantStage5BusinessQuery.ORGANIZATION_TOOL;
+        }
+        if (companyKnowledge != null && companyKnowledge.available()
+                && AssistantKnowledgeContext.isFollowUp(question, previous)) {
+            return AssistantCompanyKnowledge.TOOL_NAME;
+        }
+        String deterministic = deterministicTool(question);
+        return deterministic == null ? "model_routed"
+                : AssistantIntentGeneralizer.reconcileCapability(question, deterministic,
+                companyKnowledge != null && companyKnowledge.available());
+    }
+
     public Outcome execute(String question,AssistantExecutionEnvelope previous,List<Map<String,Object>> metricCatalog) {
-        AssistantSemanticKnowledge.Match semanticMatch=semanticKnowledge.match(question);
+        if(companyKnowledge!=null && companyKnowledge.available() && AssistantMixedQuery.matches(question)) {
+            return executeMixed(question,previous,metricCatalog);
+        }
+        String personClarification=AssistantKnowledgeContext.personReferenceClarification(question,previous);
+        if(personClarification!=null) throw new AssistantFailure("CLARIFY",personClarification);
+        boolean contextualRealtimeOrganizationBoundary=
+                AssistantKnowledgeContext.isContextualRealtimeOrganizationBoundary(question,previous);
+        boolean knowledgeFollowUp=companyKnowledge!=null && companyKnowledge.available()
+                && AssistantKnowledgeContext.isFollowUp(question,previous);
+        String knowledgeQuestion=knowledgeFollowUp
+                ?AssistantKnowledgeContext.contextualQuestion(question,previous):question;
+        AssistantCompanyKnowledgeIntent.Analysis companyKnowledgeIntent =
+                AssistantCompanyKnowledgeIntent.analyze(knowledgeQuestion);
+        AssistantSemanticKnowledge.Match semanticMatch=semanticKnowledge.match(knowledgeQuestion);
         if(semanticMatch.unverified()) {
             AssistantExecutionEnvelope rejected=new AssistantExecutionEnvelope();
             rejected.setQuestion(AssistantModelClient.redact(question));rejected.setRouteType(AssistantExecutionEnvelope.RouteType.BUSINESS_TOOL);
@@ -49,8 +91,11 @@ public class AssistantOrchestrator {
                 throw new AssistantOrchestrationClarification(previous,pendingEntityChoiceResponse(previous));
             throw new AssistantFailure("CLARIFY","请先说明要查询哪个产品、客户或部门的销量");
         }
-        String deterministic=deterministicPeriodContinuation(question,previousPlan)
-                ?"query_verified_metric":deterministicTool(question);
+        String deterministic=contextualRealtimeOrganizationBoundary ? AssistantStage5BusinessQuery.ORGANIZATION_TOOL
+                : knowledgeFollowUp ? AssistantCompanyKnowledge.TOOL_NAME
+                : (deterministicPeriodContinuation(question,previousPlan)
+                || AssistantModelClient.isBusinessRankingFollowup(question,previousPlan)
+                ? "query_verified_metric" : deterministicTool(question));
         AssistantToolCall call;
         if(deterministic!=null) {
             call=new AssistantToolCall();call.setId(UUID.randomUUID().toString());call.setName(deterministic);
@@ -59,6 +104,7 @@ public class AssistantOrchestrator {
                 AssistantMasterDataQueryService.Query query=masterData.parse(question);
                 arguments.put("question",question);arguments.put("archiveType",query.getArchiveType().name());
                 arguments.put("statusMode",query.getStatusMode().name());
+                if(query.getProductKeyword()!=null) arguments.put("keyword",query.getProductKeyword());
             } else if("resolve_business_entity".equals(deterministic)) arguments.put("keyword",bareEntityKeyword(question));
             else arguments.put("question",question);
             call.setArguments(arguments);
@@ -68,18 +114,43 @@ public class AssistantOrchestrator {
             if(available.isEmpty()) throw new AssistantFailure("FORBIDDEN","当前账号没有可用的问数工具");
             call=model.chooseTool(question,AssistantModelClient.isContinuationQuestion(question)?context(previous):Collections.emptyMap(),registry.definitions(available));
         }
+        call.setName(AssistantIntentGeneralizer.reconcileCapability(question, call.getName(),
+                companyKnowledge != null && companyKnowledge.available()));
         registry.validate(call);
         if(coveredMetric(question,call.getName())) call.setName("query_verified_metric");
         AssistantExecutionEnvelope envelope=new AssistantExecutionEnvelope();envelope.setQuestion(AssistantModelClient.redact(question));envelope.setToolName(call.getName());envelope.setArguments(safeArguments(call.getArguments()));
+        if(contextualRealtimeOrganizationBoundary)
+            envelope.getArguments().put(AssistantKnowledgeContext.CONTEXTUAL_REALTIME_BOUNDARY_ARGUMENT,true);
         envelope.setRouteType(routeType(call.getName()));
         initializeSemanticResult(envelope,question,call.getName());
         applySemanticKnowledge(envelope,semanticMatch);
         Map<String,Object> orchestrationTrace=queryTrace(envelope);orchestrationTrace.put("stage","ROUTING");
         if(AssistantModelClient.isStockRankingQuestion(question)) orchestrationTrace.put("entityResolutionSkipped",true);
         record(envelope,call.getId(),call.getName(),safeArguments(call.getArguments()));
+        if(AssistantToolRegistry.CLARIFY_INTENT_TOOL.equals(call.getName())) {
+            orchestrationTrace.put("stage","INTENT_CLARIFICATION");
+            envelope.getSemanticResult().put("intentId","AMBIGUOUS_INTENT");
+            envelope.getSemanticResult().put("outcomeStatus","CLARIFICATION_REQUIRED");
+            throw new AssistantOrchestrationClarification(envelope,intentClarification(call.getArguments()));
+        }
+        if("query_product_stock".equals(call.getName())
+                && !hasConcreteProduct(question,call.getArguments(),envelope.getArguments())) {
+            orchestrationTrace.put("stage","CAPABILITY_CONTRACT");
+            orchestrationTrace.put("contractFailure","MISSING_CONCRETE_PRODUCT");
+            envelope.getSemanticResult().put("outcomeStatus","CLARIFICATION_REQUIRED");
+            throw new AssistantOrchestrationClarification(envelope,
+                    AssistantClarification.missing("MISSING_PRODUCT",
+                            "请说明要查询的产品名称、编码或型号",
+                            Collections.singletonList("entity:PRODUCT"),
+                            Arrays.asList("输入具体产品名称","输入产品编码或型号")));
+        }
         try {
         orchestrationTrace.put("stage","ENTITY_RESOLUTION");
-        if(!AssistantMasterDataQueryService.TOOL_NAME.equals(call.getName()) && entities!=null && entities.enabled()) {
+        if(!AssistantMasterDataQueryService.TOOL_NAME.equals(call.getName())
+                && !AssistantCompanyKnowledge.TOOL_NAME.equals(call.getName())
+                && !AssistantStage5BusinessQuery.MASTER_TOOL.equals(call.getName())
+                && !AssistantStage5BusinessQuery.ORGANIZATION_TOOL.equals(call.getName())
+                && entities!=null && entities.enabled()) {
             if(currentEntityKeyword!=null && inheritedEntity==null) {
                 resolveEntityOrClarify(envelope,null,currentEntityKeyword,"QUERY");
                 Map<String,Object> current=primaryResolvedEntity(envelope);
@@ -113,21 +184,47 @@ public class AssistantOrchestrator {
         switch(call.getName()) {
             case "query_master_data_stats":
                 AssistantMasterDataQueryService.Query masterQuery=masterData.parseArguments(call.getArguments());
-                if(masterQuery==null || masterData.parse(question)==null)
+                AssistantMasterDataQueryService.Query parsedMasterQuery=masterData.parse(question);
+                if(masterQuery==null || parsedMasterQuery==null)
                     throw new AssistantFailure("MODEL_INVALID","基础档案统计问题或参数无效");
+                // 产品筛选词只信任确定性问题解析，避免模型遗漏或扩大档案统计范围。
+                masterQuery.setProductKeyword(parsedMasterQuery.getProductKeyword());
                 envelope.getArguments().put("archiveType",masterQuery.getArchiveType().name());
                 envelope.getArguments().put("statusMode",masterQuery.getStatusMode().name());
+                if(masterQuery.getProductKeyword()!=null)
+                    envelope.getArguments().put("keyword",masterQuery.getProductKeyword());
                 envelope.getSemanticResult().put("intentId","MASTER_DATA_STATS");
                 envelope.getSemanticResult().put("capabilityId","MASTER_DATA_STATS");
                 envelope.setRouteType(AssistantExecutionEnvelope.RouteType.BUSINESS_TOOL);
                 result=masterData.execute(masterQuery);break;
+            case AssistantCompanyKnowledge.TOOL_NAME:
+                envelope.setRouteType(AssistantExecutionEnvelope.RouteType.KNOWLEDGE);
+                envelope.getArguments().put(AssistantKnowledgeContext.CONTEXT_ARGUMENT,
+                        AssistantModelClient.redact(knowledgeQuestion));
+                envelope.getSemanticResult().put("intentId","COMPANY_KNOWLEDGE");
+                envelope.getSemanticResult().put("capabilityId","COMPANY_KNOWLEDGE");
+                envelope.getSemanticResult().put("expectedEntityTypes",Collections.emptyList());
+                envelope.getSemanticResult().put("defaultPeriod","NONE");
+                envelope.getSemanticResult().put("outcomeStatus","RESOLVED");
+                applyCompanyKnowledgeIntent(envelope,companyKnowledgeIntent);
+                result=knowledgeFollowUp
+                        ?companyKnowledge.answer(question,knowledgeQuestion,
+                        AssistantKnowledgeContext.organizationIntent(question,previous),model)
+                        :companyKnowledge.answer(question,model);
+                applyKnowledgeFreshness(result,companyKnowledgeIntent);
+                captureKnowledgeContext(envelope,result,previous,question);break;
             case "query_verified_metric":
                 AssistantPlan plan=deterministicVerifiedPlan(question,primaryResolvedEntity(envelope),previousPlan);
                 boolean deterministicPlan=plan!=null;
                 if(plan==null) plan=model.parse(question,AssistantModelClient.continuationContext(question,previousPlan),knowledge.retrieve(question,previousPlan,metricCatalog));
-                AssistantModelClient.normalizePlan(question,AssistantModelClient.continuationContext(question,previousPlan),plan);
+                AssistantModelClient.normalizePlan(question,previousPlan,plan);
                 Map<String,Object> planTrace=queryTrace(envelope);planTrace.put("planSource",deterministicPlan?"DETERMINISTIC":"MODEL");
                 planTrace.put("normalizedMetric",plan.getMetric()==null?null:plan.getMetric().name());planTrace.put("normalizedPeriod",plan.getPeriod());
+                AssistantCalendarDate.Resolution calendarTrace=AssistantCalendarDate.resolve(question,previousPlan);
+                if(calendarTrace.isResolved()) {
+                    planTrace.put("calendarDate",calendarTrace.getDate().toString());
+                    planTrace.put("calendarDateSource",calendarTrace.getSource().name());
+                }
                 resolveModelPlanMentions(envelope,question,plan);
                 AssistantPresentation.prepare(question,plan);
                 applyResolvedEntity(envelope,plan);
@@ -143,6 +240,7 @@ public class AssistantOrchestrator {
                 AssistantModelClient.normalizePlan(question,null,stock);envelope.setRouteType(AssistantExecutionEnvelope.RouteType.BUSINESS_TOOL);envelope.setLegacyPlan(stock);
                 AssistantPresentation.prepare(question,stock);
                 applyResolvedEntity(envelope,stock);
+                applyResolvedProductCandidates(envelope,stock);
                 capturePlanSemantics(envelope,stock);validateToolEntityContract(envelope,call.getName(),stock);
                 if(stock.getClarification()!=null && !stock.getClarification().trim().isEmpty()){envelope.setClarification(stock.getClarification());return Outcome.clarify(envelope,stock);}
                 result=executePlan(envelope,stock);decorate(result,envelope,"产品价格/库存工具");break;
@@ -166,7 +264,8 @@ public class AssistantOrchestrator {
                 if(resolved!=null && "PRODUCT".equals(resolved.get("entityType"))) {
                     Map<String,Object> productArgument=new LinkedHashMap<>();productArgument.put("product",resolved.get("name"));
                     AssistantPlan defaultProduct=productStockPlan(String.valueOf(resolved.get("name"))+" 价格和库存",productArgument);
-                    applyResolvedEntity(envelope,defaultProduct);AssistantPresentation.prepare(question,defaultProduct);
+                    applyResolvedEntity(envelope,defaultProduct);applyResolvedProductCandidates(envelope,defaultProduct);
+                    AssistantPresentation.prepare(question,defaultProduct);
                     capturePlanSemantics(envelope,defaultProduct);validateToolEntityContract(envelope,"query_product_stock",defaultProduct);
                     envelope.setToolName("query_product_stock");envelope.setRouteType(AssistantExecutionEnvelope.RouteType.BUSINESS_TOOL);
                     envelope.setLegacyPlan(defaultProduct);result=executePlan(envelope,defaultProduct);decorate(result,envelope,"产品价格/库存工具");break;
@@ -181,6 +280,15 @@ public class AssistantOrchestrator {
             case "query_stock_movements":
                 envelope.setRouteType(AssistantExecutionEnvelope.RouteType.BUSINESS_TOOL);
                 result=dedicatedSemanticTool(question,"stock_movements",call.getName(),envelope);break;
+            case AssistantStage5BusinessQuery.MASTER_TOOL:
+            case AssistantStage5BusinessQuery.ORGANIZATION_TOOL:
+            case AssistantStage5BusinessQuery.STOCK_TOOL:
+            case AssistantStage5BusinessQuery.SALE_TOOL:
+            case AssistantStage5BusinessQuery.PURCHASE_TOOL:
+            case AssistantStage5BusinessQuery.FINANCE_TOOL:
+                envelope.setRouteType(AssistantExecutionEnvelope.RouteType.BUSINESS_TOOL);
+                envelope.getSemanticResult().put("capabilityId",call.getName());
+                result=stage5.execute(call.getName(),question,envelope);break;
             case "query_semantic_schema": case "execute_semantic_query":
                 if(!properties.getOrchestration().isTextToSqlEnabled()) throw new AssistantFailure("TEXT_TO_SQL_DISABLED","智能自由查询尚未向当前环境开放");
                 envelope.setRouteType(AssistantExecutionEnvelope.RouteType.TEXT_TO_SQL);
@@ -202,6 +310,196 @@ public class AssistantOrchestrator {
         }
     }
 
+    @SuppressWarnings("unchecked")
+    private static void captureKnowledgeContext(AssistantExecutionEnvelope envelope,
+                                                Map<String,Object> result,
+                                                AssistantExecutionEnvelope previous,
+                                                String question) {
+        Map<String,Object> frame=AssistantKnowledgeContext.knowledgeFrame(question,result,previous);
+        if(!frame.isEmpty()) {
+            envelope.getArguments().put(AssistantKnowledgeContext.KNOWLEDGE_FRAME_ARGUMENT,frame);
+            if(frame.get("sourceIds") instanceof Collection) {
+                List<Object> sourceIds=new ArrayList<>((Collection<?>)frame.get("sourceIds"));
+                envelope.getSemanticResult().put("knowledgeSourceIds",sourceIds);
+                queryTrace(envelope).put("knowledgeSourceIds",new ArrayList<>(sourceIds));
+            }
+        }
+        Object raw=result.remove(AssistantCompanyKnowledge.INTERNAL_ORGANIZATION_CONTEXT);
+        if(!(raw instanceof Map) && AssistantKnowledgeContext.isPersonReferenceQuestion(question)) {
+            Map<String,Object> inherited=AssistantKnowledgeContext.organizationContext(previous);
+            if(!inherited.isEmpty()) raw=inherited;
+        }
+        if(raw instanceof Map) {
+            envelope.getArguments().put(AssistantKnowledgeContext.ORGANIZATION_CONTEXT_ARGUMENT,
+                    new LinkedHashMap<>((Map<String,Object>)raw));
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private static void applyKnowledgeFreshness(Map<String,Object> result,
+                                                AssistantCompanyKnowledgeIntent.Analysis intent) {
+        if(result==null || intent==null
+                || intent.getFreshness()!=AssistantCompanyKnowledgeIntent.Freshness.LATEST_REVIEWED) return;
+        String latest=null;
+        Object rawSources=result.get("sources");
+        if(rawSources instanceof Collection) for(Object value:(Collection<?>)rawSources) {
+            if(!(value instanceof Map)) continue;
+            Object updated=((Map<?,?>)value).get("updated");
+            String current=updated==null?null:String.valueOf(updated).trim();
+            if(current!=null && !current.isEmpty() && (latest==null || current.compareTo(latest)>0)) latest=current;
+        }
+        String notice="依据最新已审核资料回答"+(latest==null?"":"；所用资料最新更新时间为 "+latest)
+                +"，不代表实时业务、网点或人员清单。";
+        result.put("freshness","LATEST_REVIEWED");
+        result.put("freshnessNotice",notice);
+        List<String> warnings=new ArrayList<>();
+        if(result.get("warnings") instanceof Collection) for(Object value:(Collection<?>)result.get("warnings"))
+            if(value!=null && !warnings.contains(String.valueOf(value))) warnings.add(String.valueOf(value));
+        if(!warnings.contains(notice)) warnings.add(notice);
+        result.put("warnings",warnings);
+    }
+
+    @SuppressWarnings("unchecked")
+    private static void applyCompanyKnowledgeIntent(AssistantExecutionEnvelope envelope,
+                                                    AssistantCompanyKnowledgeIntent.Analysis intent) {
+        if(intent==null) return;
+        Map<String,Object> audit=intent.toAuditMap();
+        envelope.getSemanticResult().put("knowledgeIntent",audit);
+        envelope.getSemanticResult().put("knowledgeTopic",intent.getTopic().name());
+        envelope.getSemanticResult().put("knowledgeOperation",intent.getOperation().name());
+        envelope.getSemanticResult().put("knowledgeFreshness",intent.getFreshness().name());
+        Map<String,Object> trace=queryTrace(envelope);
+        trace.put("knowledgeIntent",new LinkedHashMap<>(audit));
+        trace.put("sqlGenerated",false);
+        trace.put("entityResolutionSkipped",true);
+    }
+
+    private Outcome executeMixed(String question, AssistantExecutionEnvelope previous,
+                                 List<Map<String,Object>> metricCatalog) {
+        AssistantMixedQuery.Split split=AssistantMixedQuery.split(question);
+        if(split==null) throw new AssistantFailure("CLARIFY","请分别说明要了解的公司知识和要查询的实时数据");
+        AssistantExecutionEnvelope envelope=new AssistantExecutionEnvelope();
+        envelope.setQuestion(AssistantModelClient.redact(question));
+        envelope.setRouteType(AssistantExecutionEnvelope.RouteType.MIXED);
+        envelope.setToolName(AssistantMixedQuery.TOOL_NAME);
+        envelope.getArguments().put("knowledgeQuestion",AssistantModelClient.redact(split.getKnowledgeQuestion()));
+        envelope.getArguments().put("dataQuestion",AssistantModelClient.redact(split.getDataQuestion()));
+        if(split.getSharedSubject()!=null) envelope.getArguments().put("sharedSubject",AssistantModelClient.redact(split.getSharedSubject()));
+        initializeSemanticResult(envelope,question,AssistantMixedQuery.TOOL_NAME);
+        envelope.getSemanticResult().put("intentId","MIXED_QUERY");
+        envelope.getSemanticResult().put("capabilityId","MIXED");
+        Map<String,Object> knowledgeResult=null,dataResult=null;
+        AssistantExecutionEnvelope dataEnvelope=null;
+        String knowledgeFailure=null,dataFailure=null;
+        try {
+            knowledgeResult=companyKnowledge.answer(split.getKnowledgeQuestion(),model);
+        } catch(AssistantFailure failure) {
+            knowledgeFailure=failure.getMessage();
+        }
+        try {
+            Outcome data=execute(split.getDataQuestion(),previous,metricCatalog);
+            if(data.getClarification()!=null) dataFailure=data.getClarification().getClarification();
+            else {dataResult=data.getResult();dataEnvelope=data.getEnvelope();}
+        } catch(AssistantOrchestrationClarification clarification) {
+            dataFailure=String.valueOf(clarification.getResponse().get("clarification"));
+        } catch(AssistantFailure failure) {
+            dataFailure=failure.getMessage();
+        }
+        boolean knowledgeUsable=usableKnowledge(knowledgeResult);
+        boolean dataUsable=usableData(dataResult);
+        if(!knowledgeUsable && !dataUsable) {
+            String text="知识与实时数据两部分均未完成";
+            if(knowledgeFailure!=null) text+="；知识部分："+knowledgeFailure;
+            if(dataFailure!=null) text+="；数据部分："+dataFailure;
+            throw new AssistantFailure("MIXED_QUERY_FAILED",text).attachEnvelope(envelope);
+        }
+        Map<String,Object> result=new LinkedHashMap<>();
+        if(dataResult!=null) result.putAll(dataResult);
+        result.putIfAbsent("summary",Collections.emptyList());
+        result.putIfAbsent("rows",Collections.emptyList());
+        result.putIfAbsent("columns",Collections.emptyList());
+        result.putIfAbsent("scope",dataUsable?"当前 ERP 用户实时权限与公司公共知识":"公司公共知识");
+        result.putIfAbsent("queriedAt",LocalDateTime.now().toString());
+        result.put("queryType",AssistantExecutionEnvelope.RouteType.MIXED.name());
+        result.put("toolName",AssistantMixedQuery.TOOL_NAME);
+        result.put("title","公司知识与实时数据");
+        if(dataEnvelope!=null) {
+            envelope.setLegacyPlan(dataEnvelope.getLegacyPlan());
+            envelope.getArguments().putAll(dataEnvelope.getArguments());
+            envelope.getArguments().put("dataToolName",dataEnvelope.getToolName());
+            envelope.getArguments().put("dataRouteType",dataEnvelope.getRouteType()==null?null:dataEnvelope.getRouteType().name());
+            envelope.getToolCalls().addAll(dataEnvelope.getToolCalls());
+            envelope.getSemanticResult().put("dataSemanticResult",new LinkedHashMap<>(dataEnvelope.getSemanticResult()));
+            Object trace=dataEnvelope.getResultMetadata().get("queryTrace");
+            if(trace instanceof Map) envelope.getResultMetadata().put("queryTrace",new LinkedHashMap<>((Map<String,Object>)trace));
+        }
+        Map<String,Object> knowledgeComponent=component("KNOWLEDGE",knowledgeResult,knowledgeFailure);
+        Map<String,Object> dataComponent=component("DATA",dataResult,dataFailure);
+        result.put("components",Arrays.asList(knowledgeComponent,dataComponent));
+        result.put("knowledgeStatus",knowledgeComponent.get("status"));
+        result.put("dataStatus",dataComponent.get("status"));
+        if(dataEnvelope!=null) result.put("dataToolName",dataEnvelope.getToolName());
+        List<String> warnings=new ArrayList<>();
+        if(knowledgeResult!=null) {
+            copyKnowledgeField(knowledgeResult,result,"answerText");
+            copyKnowledgeField(knowledgeResult,result,"sources");
+            copyKnowledgeField(knowledgeResult,result,"knowledge");
+            copyKnowledgeField(knowledgeResult,result,"verificationStatus");
+            Object rawWarnings=knowledgeResult.get("warnings");
+            if(rawWarnings instanceof Collection) for(Object warning:(Collection<?>)rawWarnings) warnings.add(String.valueOf(warning));
+        }
+        if(!knowledgeUsable) warnings.add("知识部分未完成："+safeFailure(knowledgeFailure,knowledgeResult));
+        if(!dataUsable) warnings.add("实时数据部分未完成："+safeFailure(dataFailure,dataResult));
+        List<String> basis=new ArrayList<>();
+        appendStrings(basis,knowledgeResult==null?null:knowledgeResult.get("basis"));
+        List<String> dataBasis=new ArrayList<>();appendStrings(dataBasis,dataResult==null?null:dataResult.get("basis"));
+        for(String value:dataBasis) basis.add("实时数据："+value);
+        result.put("basis",basis);
+        boolean completeKnowledge="SUCCESS".equals(status(knowledgeResult));
+        boolean completeData=dataUsable;
+        result.put("status",completeKnowledge && completeData?"SUCCESS":"PARTIAL_SUCCESS");
+        if(!warnings.isEmpty()) result.put("warnings",warnings);
+        result.put("traceId",UUID.randomUUID().toString());
+        Map<String,Object> mixedTrace=queryTrace(envelope);
+        mixedTrace.put("mixed",true);mixedTrace.put("knowledgeStatus",knowledgeComponent.get("status"));
+        mixedTrace.put("dataStatus",dataComponent.get("status"));mixedTrace.put("rowCount",rowCount(result));
+        envelope.getResultMetadata().put("status",result.get("status"));
+        envelope.getResultMetadata().put("queryType",result.get("queryType"));
+        envelope.getResultMetadata().put("mixedComponents",result.get("components"));
+        return Outcome.result(envelope,result);
+    }
+
+    private static boolean usableKnowledge(Map<String,Object> result) {
+        return Arrays.asList("SUCCESS","UNVERIFIED_KNOWLEDGE").contains(status(result));
+    }
+    private static boolean usableData(Map<String,Object> result) {
+        return Arrays.asList("SUCCESS","EMPTY","NO_DATA").contains(status(result));
+    }
+    private static String status(Map<String,Object> result) {
+        return result==null?null:String.valueOf(result.get("status"));
+    }
+    private static Map<String,Object> component(String type,Map<String,Object> result,String failure) {
+        Map<String,Object> value=new LinkedHashMap<>();value.put("type",type);
+        value.put("status",result==null?(failure==null?"NOT_COMPLETED":"FAILED"):status(result));
+        if(failure!=null) value.put("message",failure);
+        if(result!=null && result.get("toolName")!=null) value.put("toolName",result.get("toolName"));
+        return value;
+    }
+    private static void copyKnowledgeField(Map<String,Object> source,Map<String,Object> target,String key) {
+        if(source.containsKey(key)) target.put(key,source.get(key));
+    }
+    private static void appendStrings(List<String> target,Object values) {
+        if(values instanceof Collection) for(Object value:(Collection<?>)values) if(value!=null) target.add(String.valueOf(value));
+    }
+    private static String safeFailure(String failure,Map<String,Object> result) {
+        if(failure!=null && !failure.trim().isEmpty()) return failure;
+        if(result!=null && result.get("emptyText")!=null) return String.valueOf(result.get("emptyText"));
+        return "当前没有可返回的结果";
+    }
+    private static int rowCount(Map<String,Object> result) {
+        Object rows=result.get("rows");return rows instanceof Collection?((Collection<?>)rows).size():0;
+    }
+
     public Outcome resumeChoice(AssistantExecutionEnvelope envelope,String field,Long id,List<Map<String,Object>> metricCatalog) {
         return resumeChoice(envelope,field,id,null,metricCatalog);
     }
@@ -215,15 +513,18 @@ public class AssistantOrchestrator {
         try {type=AssistantEntityResolver.EntityType.valueOf(field.substring("entity:".length()));}
         catch(Exception e){throw new AssistantFailure("INVALID_CHOICE","候选类型无效");}
         List<Map<String,Object>> pending=listOfMaps(envelope.getArguments().get("pendingEntities"));
-        boolean allowed=false;
+        boolean allowed=false;Map<String,Object> pendingSelected=null;
         for(Map<String,Object> candidate:pending) if(type.name().equals(candidate.get("entityType"))
-                && candidate.get("id") instanceof Number && ((Number)candidate.get("id")).longValue()==id) {allowed=true;break;}
+                && candidate.get("id") instanceof Number && ((Number)candidate.get("id")).longValue()==id) {allowed=true;pendingSelected=candidate;break;}
         if(!allowed) throw new AssistantFailure("INVALID_CHOICE","候选项已失效，请重新提问");
         Map<String,Object> selected=entities.validate(type,id);
+        if(pendingSelected!=null) for(String key:Arrays.asList("matchType","phoneticConfidence","correctedFrom"))
+            if(pendingSelected.get(key)!=null) selected.put(key,pendingSelected.get(key));
         String slot=stringValue(envelope.getArguments().get("pendingEntitySlot"));
         String pendingKeyword=stringValue(envelope.getArguments().get("pendingEntityKeyword"));
         String pendingMode=stringValue(envelope.getArguments().get("pendingMode"));
         selected.put("source","CLARIFICATION");if(pendingKeyword!=null) selected.put("keyword",pendingKeyword);
+        entities.recordPhoneticCorrection(pendingKeyword,selected);
         envelope.getArguments().remove("pendingEntities");envelope.getArguments().remove("pendingEntitySlot");
         envelope.getArguments().remove("pendingEntityKeyword");envelope.getArguments().remove("pendingMode");
         putResolvedEntity(envelope,selected,slot==null || envelope.getArguments().get("resolvedEntity")==null);
@@ -271,8 +572,22 @@ public class AssistantOrchestrator {
             markMentionStatus(envelope,typeValue,keyword,"NOT_FOUND");
             throw new AssistantFailure("ENTITY_NOT_FOUND",entityNotFoundText(typeValue));
         }
+        if (matches.size() > 1 && shouldUseProductBatchResult(envelope,typeValue,mode,matches)) {
+            int limit = Math.min(10, matches.size());
+            List<Map<String,Object>> candidates = new ArrayList<>();
+            for (int index = 0; index < limit; index++)
+                candidates.add(new LinkedHashMap<>(matches.get(index)));
+            envelope.getArguments().put("resolvedProductCandidates", candidates);
+            envelope.getArguments().put("productMatchTruncated", matches.size() > 10);
+            Map<String,Object> first = new LinkedHashMap<>(candidates.get(0));
+            first.put("keyword", keyword);first.put("source", "CURRENT");first.put("batchMatch", true);
+            putResolvedEntity(envelope, first, primary);
+            markMentionResolved(envelope,typeValue,keyword,first);
+            return;
+        }
         if(matches.size()>20) throw new AssistantFailure("CLARIFY_ENTITY","匹配对象较多，请填写更完整的名称或完整编码");
         if(matches.size()==1) {
+            entities.recordPhoneticCorrection(keyword,matches.get(0));
             putResolvedEntity(envelope,matches.get(0),primary);
             markMentionResolved(envelope,typeValue,keyword,matches.get(0));
             if("BARE".equals(mode)) throw new AssistantOrchestrationClarification(envelope,purposeResponse(matches.get(0)));
@@ -282,15 +597,36 @@ public class AssistantOrchestrator {
         for(Map<String,Object> candidate:matches) candidate.put("field","entity:"+candidate.get("entityType"));
         envelope.getArguments().put("pendingEntities",matches);envelope.getArguments().put("pendingMode",mode);
         envelope.getArguments().put("pendingEntityKeyword",keyword);if(slot!=null) envelope.getArguments().put("pendingEntitySlot",slot);
-        Map<String,Object> response=new LinkedHashMap<>();response.put("status","CHOICE_REQUIRED");response.put("clarification","匹配到多个有权限的业务对象，请选择");
-        response.put("field","entity");response.put("candidates",matches);
+        String fallbackChoiceText="匹配到多个有权限的业务对象，请选择";
+        String choiceText=entities.entityChoiceText(keyword,matches,fallbackChoiceText);
+        if(choiceText==null || choiceText.trim().isEmpty()) choiceText=fallbackChoiceText;
+        Map<String,Object> response=AssistantClarification.entityChoice(choiceText,matches);
+        if(!choiceText.equals(fallbackChoiceText)) response.put("correctionNotice",choiceText);
         throw new AssistantOrchestrationClarification(envelope,response);
+    }
+
+    private static boolean shouldUseProductBatchResult(AssistantExecutionEnvelope envelope,String typeValue,String mode,
+                                                       List<Map<String,Object>> matches) {
+        boolean explicitProductQuery="query_product_stock".equals(envelope.getToolName())
+                && "PRODUCT".equalsIgnoreCase(typeValue) && "QUERY".equals(mode);
+        if(explicitProductQuery) return true;
+        if(!"resolve_business_entity".equals(envelope.getToolName()) || !"BARE_DEFAULT".equals(mode)) return false;
+        for(Map<String,Object> match:matches)
+            if(!"PRODUCT".equals(String.valueOf(match.get("entityType")))) return false;
+        return true;
     }
 
     private void resolveCurrentEntityMentions(AssistantExecutionEnvelope envelope,String question,String tool) {
         for(AssistantSemanticExtractor.Reference reference:AssistantSemanticExtractor.extract(question,tool)) {
-            recordMention(envelope,reference.type.name(),reference.keyword,reference.role,"CURRENT",true,reference.matchType,"DISCOVERED");
             Map<String,Object> existing=resolvedEntityByType(envelope,reference.type.name());
+            Object primaryRaw=envelope.getArguments().get("resolvedEntity");
+            if(existing==null && primaryRaw instanceof Map) {
+                Map<?,?> primary=(Map<?,?>)primaryRaw;
+                if(!reference.type.name().equals(primary.get("entityType"))
+                        && normalizeEntityText(reference.keyword).equals(normalizeEntityText(String.valueOf(primary.get("keyword")))))
+                    continue;
+            }
+            recordMention(envelope,reference.type.name(),reference.keyword,reference.role,"CURRENT",true,reference.matchType,"DISCOVERED");
             boolean currentAlreadyResolved=existing!=null && Arrays.asList("CURRENT","CLARIFICATION").contains(existing.get("source"))
                     && reference.keyword.equals(existing.get("keyword"));
             if(currentAlreadyResolved) continue;
@@ -325,7 +661,9 @@ public class AssistantOrchestrator {
                 {"SUPPLIER","供应商","(?:这个|该|此|某)供应商|供应商(?:的)?(?:付款|应付|采购|供货)"},
                 {"WAREHOUSE","仓库","(?:这个|该|此|某)仓库|仓库(?:的)?(?:库存|出入库|库存流水)"},
                 {"DEPARTMENT","部门","(?:这个|该|此|某)部门|部门(?:的)?(?:销售|采购|库存|收款|付款|应收|应付)"},
-                {"SALESPERSON","业务员","(?:这个|该|此|某)(?:业务员|销售员)|(?:业务员|销售员)(?:的)?(?:销量|销售|客户欠款|欠款排行)"}
+                {"SALESPERSON","业务员","(?:这个|该|此|某)(?:业务员|销售员)|(?:业务员|销售员)(?:的)?(?:销量|销售|客户欠款|欠款排行)"},
+                {"PURCHASER","采购员","(?:这个|该|此|某)采购员|采购员(?:的|经手的)?(?:采购订单|采购入库|未到货订单|采购金额)"},
+                {"USER","用户","(?:这个|该|此|某)(?:用户|员工)|(?:用户|员工)(?:的)?(?:所属部门|关联部门|状态|档案)"}
         };
         for(String[] definition:definitions) {
             if(resolvedEntityByType(envelope,definition[0])!=null || !text.matches(".*(?:"+definition[2]+").*")) continue;
@@ -341,11 +679,14 @@ public class AssistantOrchestrator {
         else if("CUSTOMER".equals(type)) choices.addAll(Arrays.asList("查询本月销售","查询本月收款","查询当前应收"));
         else if("SUPPLIER".equals(type)) choices.addAll(Arrays.asList("查询本月采购","查询本月付款","查询当前应付"));
         else if("WAREHOUSE".equals(type)) choices.addAll(Arrays.asList("查询当前库存","查询库存流水"));
+        else if("SALESPERSON".equals(type)) choices.addAll(Arrays.asList("查询本月销售额","查询本月销量","查询客户欠款"));
+        else if("PURCHASER".equals(type)) choices.addAll(Arrays.asList("查询本月采购订单","查询本月采购入库","查询未到货订单"));
+        else if("USER".equals(type)) choices.add("补充要查询的用户信息");
         else choices.addAll(Arrays.asList("查询本月销售","查询本月采购","查询当前库存"));
         Map<String,Object> selected=new LinkedHashMap<>();
         selected.put("id",entity.get("id"));selected.put("entityType",type);selected.put("name",entity.get("name"));selected.put("field","resolved:"+type);
-        Map<String,Object> response=new LinkedHashMap<>();response.put("clarification","已识别“"+entity.get("name")+"”，请选择要查询的内容");
-        response.put("choices",choices);response.put("selectedEntity",selected);return response;
+        return AssistantClarification.intentChoice("已识别“"+entity.get("name")+"”，请选择要查询的内容",
+                selected,choices);
     }
 
     @SuppressWarnings("unchecked") private static Map<String,Object> resolvedEntity(AssistantExecutionEnvelope previous,String question) {
@@ -356,13 +697,16 @@ public class AssistantOrchestrator {
         Map<String,Object> previousEntity=(Map<String,Object>)value;
         if(q.contains("补充：")) return new LinkedHashMap<>(previousEntity);
         String previousType=stringValue(previousEntity.get("entityType"));
+        String compact=q.replaceAll("\\s+","");
+        if("SALESPERSON".equals(previousType) && compact.matches(".*(?:采购订单|采购入库|采购额|采购金额|未到货).*") ) return null;
+        if("PURCHASER".equals(previousType) && compact.matches(".*(?:销售|销量|销售额|客户欠款|应收|收款).*") ) return null;
         boolean currentReplacesSameType=AssistantSemanticExtractor.extract(question,null).stream()
                 .anyMatch(reference->reference.type.name().equals(previousType));
         boolean repeatsPreviousEntity=mentionsPreviousEntity(q,previousEntity);
         String currentKeyword=currentIndependentEntityKeyword(question);
         if(currentKeyword!=null && !repeatsPreviousEntity) return null;
         if(bareEntityKeyword(question)!=null) return null;
-        return !currentReplacesSameType && (AssistantModelClient.shouldInheritEntityContext(question) || repeatsPreviousEntity)
+        return !currentReplacesSameType && (AssistantModelClient.shouldInheritEntityContext(question,previous.getLegacyPlan()) || repeatsPreviousEntity)
                 ?new LinkedHashMap<>(previousEntity):null;
     }
 
@@ -377,7 +721,8 @@ public class AssistantOrchestrator {
     }
 
     @SuppressWarnings("unchecked") private static Map<String,Object> resolvedEntities(AssistantExecutionEnvelope previous,String question) {
-        if(previous==null || previous.getArguments()==null || question==null || !question.contains("补充：")) return null;
+        if(previous==null || previous.getArguments()==null || question==null
+                || !(question.contains("补充：") || AssistantModelClient.shouldInheritEntityContext(question,previous.getLegacyPlan()))) return null;
         Object value=previous.getArguments().get("resolvedEntities");
         return value instanceof Map?new LinkedHashMap<>((Map<String,Object>)value):null;
     }
@@ -447,7 +792,7 @@ public class AssistantOrchestrator {
         else return false;
         if(resolvedEntityByType(envelope,expectedType)!=null || resolvedEntityByType(envelope,"DEPARTMENT")!=null) return false;
         String text=question==null?"":question.replaceAll("\\s+","").replaceFirst("^(?:请问|帮我查一下|帮我查询|查询一下|查询|查看一下|查看|查一下)","");
-        Matcher matcher=Pattern.compile("^(.{2,80}?)(?:的)?(?:今天|今日|昨天|昨日|本周|这周|上周|本月|这个月|上月)?(?:的)?(?:采购|销售)(?:订单|单)").matcher(text);
+        Matcher matcher=Pattern.compile("^(.{2,80}?)(?:的)?(?:"+AssistantRelativePeriod.FIXED_PERIOD_REGEX+")?(?:的)?(?:采购|销售)(?:订单|单)").matcher(text);
         if(!matcher.find()) return false;
         String prefix=matcher.group(1);
         return !prefix.matches(".*(?:多少|几个|哪些|所有|全部|最近|当前|按|每个|各个|各).*");
@@ -509,6 +854,22 @@ public class AssistantOrchestrator {
         applyResolvedEntityToPlan(plan,(Map<String,Object>)value);
     }
 
+    @SuppressWarnings("unchecked")
+    private static void applyResolvedProductCandidates(AssistantExecutionEnvelope envelope,AssistantPlan plan) {
+        Object raw=envelope.getArguments().get("resolvedProductCandidates");
+        if(!(raw instanceof Collection)) return;
+        List<Long> ids=new ArrayList<>();
+        for(Object item:(Collection<?>)raw) {
+            if(!(item instanceof Map)) continue;
+            Object id=((Map<String,Object>)item).get("id");
+            if(id instanceof Number && ids.size()<10) ids.add(((Number)id).longValue());
+        }
+        if(ids.isEmpty()) return;
+        plan.setProductResultTable(true);plan.setProductIds(ids);
+        plan.setProductMatchTruncated(Boolean.TRUE.equals(envelope.getArguments().get("productMatchTruncated")));
+        plan.setProduct(null);plan.setProductId(ids.size()==1?ids.get(0):null);
+    }
+
     private static void applyResolvedEntityToPlan(AssistantPlan plan,Map<String,Object> entity) {
         Object rawId=entity.get("id");if(!(rawId instanceof Number)) return;
         Long id=((Number)rawId).longValue();String type=String.valueOf(entity.get("entityType")),name=String.valueOf(entity.get("name"));
@@ -522,6 +883,10 @@ public class AssistantOrchestrator {
             case "SUPPLIER":
                 if(!Arrays.asList(AssistantPlan.Metric.PURCHASE,AssistantPlan.Metric.PAYMENT,AssistantPlan.Metric.PAYABLE).contains(plan.getMetric())) throw new AssistantFailure("CLARIFY","该指标不能按供应商查询");
                 plan.setParty(name);plan.setPartyId(id);break;
+            case "SALESPERSON":
+                if(!Arrays.asList(AssistantPlan.Metric.SALE,AssistantPlan.Metric.RECEIVABLE).contains(plan.getMetric()))
+                    throw new AssistantFailure("CLARIFY","该指标不能按业务员查询");
+                plan.setSalesperson(name);plan.setSalespersonId(id);break;
             default: break;
         }
     }
@@ -539,12 +904,22 @@ public class AssistantOrchestrator {
     private static String currentIndependentEntityKeyword(String question) {
         if(question==null) return null;
         String text=question.trim().replaceAll("[？?。！!]+$","").replaceAll("\\s+"," ");
-        Matcher matcher=Pattern.compile("^(.{1,80}?)(?:的)?(?:今天|今日|昨天|昨日|本周|这周|上周|本月|这个月|上月)?(?:的)?(?:销量|销售量|销售情况|卖了多少)(?:呢|吗)?$").matcher(text);
+        String rolling="(?:最近|过去|近)\\s*[负+-]?[0-9零〇一二两三四五六七八九十百]+\\s*(?:个月|星期|天|填|周|月)";
+        String fixed=AssistantRelativePeriod.FIXED_PERIOD_REGEX;
+        String salesMetric="(?:销量|销售量|销售情况|销售了多少|卖了多少)(?:呢|吗)?";
+        String queryPrefix="(?:请问|帮我查一下|帮我查询|查询一下|查询|查看一下|查看|查一下)";
+        // “29号的销售情况”中的“29号”是单日条件，不能当成新的业务对象关键词。
+        if(AssistantCalendarDate.isDayOnly(text)) return null;
+        // A leading fixed or rolling period is a time condition, not a product/customer keyword.
+        if(Pattern.compile("^(?:"+queryPrefix+")?\\s*(?:"+fixed+"|"+rolling+")(?:的)?"+salesMetric+"$").matcher(text).matches())
+            return null;
+        Matcher matcher=Pattern.compile("^(.{1,80}?)(?:的)?(?:"+fixed+"|"
+                +rolling+")?(?:的)?"+salesMetric+"$").matcher(text);
         if(!matcher.find()) return null;
         String keyword=matcher.group(1).trim()
                 .replaceFirst("^(?:请问|帮我查一下|帮我查询|查询一下|查询|查看一下|查看|查一下)","")
-                .replaceFirst("^(?:今天|今日|昨天|昨日|本周|这周|上周|本月|这个月|上月)","")
-                .replaceFirst("(?:今天|今日|昨天|昨日|本周|这周|上周|本月|这个月|上月)$","")
+                .replaceFirst("^"+fixed,"")
+                .replaceFirst(fixed+"$","")
                 .replaceFirst("的$","").trim();
         if(keyword.matches("(?:这个|该|此|上面|刚才|刚刚|前面|它)(?:产品|配件|客户|供应商|仓库|部门)?")
                 || keyword.matches(".*(?:客户|供应商|产品|配件|仓库|部门)(?:名称)?(?:为|是|[:：])?.*")) return null;
@@ -557,6 +932,8 @@ public class AssistantOrchestrator {
         if(value.length()>2) value=value.replaceFirst("(?:呢|啊|呀)$","").trim();
         if(!standaloneEntityToken(value)) return null;
         String compact=value.replaceAll("\\s+","");
+        if(AssistantKnowledgeContext.containsOrganizationLanguage(compact)) return null;
+        if(compact.matches(".*(?:谁|哪位|何人|什么|如何|怎么|为何|为什么|是否).*") || compact.endsWith("吗")) return null;
         // A bare object is a name/code only, not a complete natural-language query.
         if(compact.matches(".*(?:销售|销量|销售量|销售情况|采购|库存|出入库|流水|调拨|盘点|"
                 + "收款|回款|付款|应收|应付|欠款|欠钱|价格|报价|查价|多少钱|多少元|最后采购价|上次采购价|最近采购价|最新采购价|"
@@ -569,7 +946,7 @@ public class AssistantOrchestrator {
         if(value==null || value.isEmpty() || value.length()>80
                 || !value.matches("[\\p{L}\\p{N}_./\\-·*+ ]+")) return false;
         String compact=value.replaceAll("\\s+","");
-        if(compact.matches("(?:今天|今日|昨天|昨日|本周|这周|上周|本月|这个月|上月|当前|现在|"
+        if(compact.matches("(?:"+AssistantRelativePeriod.FIXED_PERIOD_REGEX+"|当前|现在|"
                 + "销量|销售量|销售情况|销售|采购|库存|当前库存|库存情况|收款|回款|付款|应收|应付|欠款|欠钱|"
                 + "价格|报价|多少钱|多少元|有货|缺货|继续|再看|查询|查看|产品|配件|客户|供应商|仓库|部门)")) return false;
         return !compact.matches(".*(?:哪个|哪些|什么|多少|为何|为什么|怎么|排名|排行|最多|最少|最高|最低|前十|后十).*");
@@ -582,9 +959,7 @@ public class AssistantOrchestrator {
 
     private static Map<String,Object> pendingEntityChoiceResponse(AssistantExecutionEnvelope previous) {
         List<Map<String,Object>> candidates=listOfMaps(previous.getArguments().get("pendingEntities"));
-        Map<String,Object> response=new LinkedHashMap<>();response.put("status","CHOICE_REQUIRED");
-        response.put("clarification","请先选择要查询的业务对象，再继续询问销量");
-        response.put("field","entity");response.put("candidates",candidates);return response;
+        return AssistantClarification.entityChoice("请先选择要查询的业务对象，再继续询问销量",candidates);
     }
 
     private static boolean supportsStockCompoundEntities(String tool,String question) {
@@ -748,14 +1123,14 @@ public class AssistantOrchestrator {
         if("WAREHOUSE".equalsIgnoreCase(type)) return "没有找到匹配的仓库，请检查仓库名称或编码";
         if("DEPARTMENT".equalsIgnoreCase(type)) return "没有找到匹配的部门，请检查部门名称";
         if("SALESPERSON".equalsIgnoreCase(type)) return "没有找到匹配的业务员，请检查业务员名称";
+        if("PURCHASER".equalsIgnoreCase(type)) return "没有找到匹配的采购员，请检查采购员名称";
+        if("USER".equalsIgnoreCase(type)) return "没有找到匹配的用户，请检查用户昵称";
         return "指定范围内未找到有权限的业务对象";
     }
 
     private void validateToolEntityContract(AssistantExecutionEnvelope envelope,String tool,AssistantPlan plan) {
         Set<String> types=resolvedEntityTypes(envelope);
         if(types.isEmpty()) return;
-        if(types.contains("SALESPERSON"))
-            throw new AssistantFailure("CAPABILITY_UNVERIFIED","已识别业务员，但按业务员筛选销量或欠款的统计能力尚未完成业务对账，未执行删除业务员条件的查询");
         AssistantToolRegistry.ExecutionContract contract=registry.executionContract(tool,plan==null?null:plan.getMetric());
         if(contract.supportsEntities(types)) return;
         Set<String> supported=contract.getSupportedEntityTypes();
@@ -775,13 +1150,15 @@ public class AssistantOrchestrator {
 
     private static String entityTypeText(Collection<String> types) {
         List<String> names=new ArrayList<>();
-        for(String type:types) names.add("PRODUCT".equals(type)?"产品":"CUSTOMER".equals(type)?"客户":"SUPPLIER".equals(type)?"供应商":"WAREHOUSE".equals(type)?"仓库":"DEPARTMENT".equals(type)?"部门":"SALESPERSON".equals(type)?"业务员":type);
+        for(String type:types) names.add("PRODUCT".equals(type)?"产品":"CUSTOMER".equals(type)?"客户":"SUPPLIER".equals(type)?"供应商":"WAREHOUSE".equals(type)?"仓库":"DEPARTMENT".equals(type)?"部门":"SALESPERSON".equals(type)?"业务员":"PURCHASER".equals(type)?"采购员":"USER".equals(type)?"用户":type);
         return String.join("、",names);
     }
 
     /** High-frequency business tools use server-owned templates. Model SQL is reserved for the fallback route. */
     private Map<String,Object> dedicatedSemanticTool(String question,String dataset,String tool,AssistantExecutionEnvelope envelope) {
         validateToolEntityContract(envelope,tool,null);
+        if("query_stock_movements".equals(tool) && genericInboundMovementQuestion(question))
+            return dedicatedInboundMovements(question,envelope);
         if(requiresSemanticFallback(question,dataset,envelope)) {
             if(!properties.getOrchestration().isTextToSqlEnabled())
                 throw new AssistantFailure("TEXT_TO_SQL_DISABLED","该问题包含专用工具尚未覆盖的期间或对象筛选，智能查询尚未向当前环境开放");
@@ -804,6 +1181,72 @@ public class AssistantOrchestrator {
         return result;
     }
 
+    private Map<String,Object> dedicatedInboundMovements(String question,AssistantExecutionEnvelope envelope) {
+        semantic.validateDatasetAccess("stock_movements");
+        record(envelope,null,"query_semantic_schema",Collections.singletonMap("dataset","stock_movements"));
+        LocalDateTime now=LocalDateTime.now(ZoneId.of("Asia/Shanghai"));
+        AssistantRelativePeriod.Window window=AssistantRelativePeriod.window(question,now);
+        if(window==null) window=new AssistantRelativePeriod.Window("THIS_MONTH",now.toLocalDate().withDayOfMonth(1).atStartOfDay(),now);
+        Map<String,Object> parameters=new LinkedHashMap<>();List<String> filters=new ArrayList<>();
+        addWindowFilter(window,"biz_date",filters,parameters);
+        addResolvedEntityFilter("stock_movements",envelope,filters,parameters);
+        List<String> typeParameters=new ArrayList<>();
+        for(Integer type:INBOUND_MOVEMENT_TYPES.keySet()) {
+            String parameter="p"+(parameters.size()+1);parameters.put(parameter,type);typeParameters.add(":"+parameter);
+        }
+        filters.add("q.biz_type IN ("+String.join(",",typeParameters)+")");
+        String where=" WHERE "+String.join(" AND ",filters);
+        String summarySql="SELECT q.biz_type,COUNT(q.id) record_count FROM stock_movements q"+where
+                +" GROUP BY q.biz_type ORDER BY q.biz_type";
+        String detailSql="SELECT q.product_name,q.warehouse_name,q.dept_name,q.unit,q.quantity,q.balance_quantity,q.biz_type,q.biz_no,q.biz_date "
+                +"FROM stock_movements q"+where+" ORDER BY q.biz_date DESC";
+        record(envelope,null,"execute_semantic_query",Collections.singletonMap("template","query_stock_inbound-v1"));
+        Map<String,Object> summaryResult=semantic.execute(summarySql,parameters);
+        List<Map<String,Object>> grouped=maps(summaryResult.get("rows"));
+        Map<Integer,Long> counts=new LinkedHashMap<>();
+        for(Integer type:INBOUND_MOVEMENT_TYPES.keySet()) counts.put(type,0L);
+        for(Map<String,Object> row:grouped) {
+            Integer type=integerValue(row.get("biz_type"));Long count=longValue(row.get("record_count"));
+            if(type!=null && counts.containsKey(type)) counts.put(type,count);
+        }
+        long total=0L;for(Long count:counts.values()) total+=count;
+        List<Map<String,Object>> summary=new ArrayList<>();
+        if(total>0) {
+            Map<String,Object> totalRow=inboundSummaryRow("全部库存入库",total);
+            totalRow.put("has_records",true);summary.add(totalRow);
+            for(Map.Entry<Integer,String> item:INBOUND_MOVEMENT_TYPES.entrySet()) {
+                long count=counts.get(item.getKey());
+                if(count>0) summary.add(inboundSummaryRow(item.getValue(),count));
+            }
+        }
+        boolean existence=inboundExistenceQuestion(question);List<Map<String,Object>> rows=new ArrayList<>();
+        List<Map<String,Object>> columns=new ArrayList<>();
+        if(!existence && total>0) {
+            Map<String,Object> detailResult=semantic.execute(detailSql+" LIMIT 20",parameters);
+            rows=maps(detailResult.get("rows"));
+            for(Map<String,Object> row:rows) {
+                Integer type=integerValue(row.get("biz_type"));row.put("biz_type_name",INBOUND_MOVEMENT_TYPES.get(type));
+            }
+            columns=maps(detailResult.get("columns"));
+            Map<String,Object> typeColumn=new LinkedHashMap<>();typeColumn.put("key","biz_type_name");typeColumn.put("title","入库类型");
+            columns.add(typeColumn);
+        }
+        String periodLabel=periodLabel(window.getPeriod());
+        Map<String,Object> result=new LinkedHashMap<>(summaryResult);
+        result.put("queryType","BUSINESS_TOOL");result.put("toolName","query_stock_movements");
+        result.put("title",periodLabel+"库存入库记录");result.put("summary",summary);result.put("rows",rows);result.put("columns",columns);
+        result.put("status",total==0?"EMPTY":"SUCCESS");result.put("total",total);
+        result.put("answerText",total==0?periodLabel+"在当前权限范围内没有入库记录。":inboundAnswer(periodLabel,total,counts));
+        result.put("emptyText",periodLabel+"在当前权限范围内没有入库记录。");
+        result.put("basis",Collections.singletonList("库存流水；仅包含其他入库、调拨入库、仓库移货入库、盘盈入库、销售退货入库和采购入库"));
+        Map<String,Object> timeRange=new LinkedHashMap<>();timeRange.put("period",window.getPeriod());
+        timeRange.put("start",window.getStart().toString());timeRange.put("end",window.getEnd().toString());result.put("timeRange",timeRange);
+        envelope.getArguments().put("sql",summarySql);envelope.getArguments().put("detailSql",detailSql);
+        envelope.getArguments().put("parameters",safeArguments(parameters));envelope.getArguments().put("template","query_stock_inbound-v1");
+        Map<String,Object> trace=queryTrace(envelope);trace.put("inboundBusinessTypes",new ArrayList<>(INBOUND_MOVEMENT_TYPES.keySet()));
+        trace.put("recordCount",total);return result;
+    }
+
     private DedicatedQuery dedicatedQuery(String question,String dataset,String tool,AssistantExecutionEnvelope envelope) {
         String text=question==null?"":question.replaceAll("\\s+","");
         Map<String,Object> parameters=new LinkedHashMap<>();
@@ -817,9 +1260,9 @@ public class AssistantOrchestrator {
         String select;
         int limit;
         if("query_purchase_documents".equals(tool)) {
-            String group=documentGroup(text,"supplier_name");
+            String group=documentGroup(text,"supplier_name","purchaser_name");
             String scalar=documentScalar(text);
-            select=group==null?(count?"COUNT(q.id) document_count":scalar==null?"q.no,q.order_time,q.supplier_name,q.dept_name,q.total_count,q.total_price,q.status":scalar)
+            select=group==null?(count?"COUNT(q.id) document_count":scalar==null?"q.no,q.order_time,q.supplier_name,q.purchaser_name,q.dept_name,q.total_count,q.total_price,q.status":scalar)
                     :group+","+documentAggregate(text);limit=group!=null?10:count?0:20;
         } else if("query_sale_documents".equals(tool)) {
             if("sale_order_items".equals(dataset)) {
@@ -828,14 +1271,14 @@ public class AssistantOrchestrator {
                 select=group==null?(scalar==null?"q.order_no,q.order_time,q.customer_name,q.salesperson_name,q.dept_name,q.product_name,q.warehouse_name,q.unit,q.order_quantity,q.unit_price,q.line_amount,q.out_quantity,q.return_quantity,q.remaining_quantity":scalar)
                         :group+","+saleItemAggregate(text);limit=group!=null?10:isScalarAggregate(select)?0:50;
             } else {
-                String group=documentGroup(text,"customer_name");
+                String group=documentGroup(text,"customer_name","salesperson_name");
                 String scalar=documentScalar(text);
                 select=group==null?(count?"COUNT(q.id) document_count":scalar==null?"q.no,q.order_time,q.customer_name,q.salesperson_name,q.dept_name,q.total_count,q.total_price,q.status":scalar)
                         :group+","+documentAggregate(text);limit=group!=null?10:count?0:20;
             }
         } else if("query_purchase_fulfillment".equals(tool)) {
-            String group=documentGroup(text,"supplier_name");
-            select=group==null?(count?"COUNT(q.id) document_count":"q.no,q.order_time,q.supplier_name,q.dept_name,q.total_count,q.in_count,q.return_count,q.remaining_count")
+            String group=documentGroup(text,"supplier_name","purchaser_name");
+            select=group==null?(count?"COUNT(q.id) document_count":"q.no,q.order_time,q.supplier_name,q.purchaser_name,q.dept_name,q.total_count,q.in_count,q.return_count,q.remaining_count")
                     :group+",SUM(q.total_count) total_quantity,SUM(q.in_count) fulfilled_quantity,SUM(q.return_count) return_quantity,SUM(q.remaining_count) remaining_quantity";
             addFulfillmentFilter(text,filters,"in_count","return_count","remaining_count");limit=group!=null?10:count?0:50;
         } else if("query_sale_fulfillment".equals(tool)) {
@@ -845,7 +1288,7 @@ public class AssistantOrchestrator {
                         :group+",SUM(q.order_quantity) total_quantity,SUM(q.out_quantity) fulfilled_quantity,SUM(q.return_quantity) return_quantity,SUM(q.remaining_quantity) remaining_quantity";
                 addFulfillmentFilter(text,filters,"out_quantity","return_quantity","remaining_quantity");limit=group!=null?10:count?0:50;
             } else {
-                String group=documentGroup(text,"customer_name");
+                String group=documentGroup(text,"customer_name","salesperson_name");
                 select=group==null?(count?"COUNT(q.id) document_count":"q.no,q.order_time,q.customer_name,q.salesperson_name,q.dept_name,q.total_count,q.out_count,q.return_count,q.remaining_count")
                         :group+",SUM(q.total_count) total_quantity,SUM(q.out_count) fulfilled_quantity,SUM(q.return_count) return_quantity,SUM(q.remaining_count) remaining_quantity";
                 addFulfillmentFilter(text,filters,"out_count","return_count","remaining_count");limit=group!=null?10:count?0:50;
@@ -875,7 +1318,7 @@ public class AssistantOrchestrator {
 
     @SuppressWarnings("unchecked")
     private static void addResolvedEntityFilter(String dataset,AssistantExecutionEnvelope envelope,List<String> filters,Map<String,Object> parameters) {
-        if(Arrays.asList("inventory_current","stock_movements","sale_order_items").contains(dataset)) {
+        if(Arrays.asList("inventory_current","stock_movements","purchase_orders","sale_orders","sale_order_items").contains(dataset)) {
             Object rawAll=envelope.getArguments().get("resolvedEntities");Set<String> usedColumns=new LinkedHashSet<>();boolean added=false;
             if(rawAll instanceof Map) for(Object item:((Map<?,?>)rawAll).values())
                 if(item instanceof Map) added|=addResolvedEntityFilter(dataset,(Map<String,Object>)item,filters,parameters,usedColumns,false);
@@ -890,6 +1333,7 @@ public class AssistantOrchestrator {
         Object id=entity.get("id");if(!(id instanceof Number)) return false;
         String type=String.valueOf(entity.get("entityType")),column=null;
         if("purchase_orders".equals(dataset) && "SUPPLIER".equals(type)) column="supplier_id";
+        else if("purchase_orders".equals(dataset) && "PURCHASER".equals(type)) column="purchaser_id";
         else if("sale_orders".equals(dataset) && "CUSTOMER".equals(type)) column="customer_id";
         else if("sale_orders".equals(dataset) && "SALESPERSON".equals(type)) column="salesperson_id";
         else if("sale_order_items".equals(dataset) && "CUSTOMER".equals(type)) column="customer_id";
@@ -919,8 +1363,9 @@ public class AssistantOrchestrator {
                 && resolvedEntityByType(envelope,"CUSTOMER")==null;
     }
 
-    private static String documentGroup(String text,String partyColumn) {
+    private static String documentGroup(String text,String partyColumn,String personColumn) {
         if(text.matches(".*(?:按|每个|各个)(?:供应商|客户).*")) return "q."+partyColumn;
+        if(text.matches(".*(?:按|每个|各个|各)(?:业务员|销售员|采购员).*") ) return "COALESCE(q."+personColumn+",'未指定人员') person_name";
         if(text.matches(".*(?:按|每个|各个)部门.*")) return "q.dept_name";
         if(text.matches(".*(?:按天|每天|每日|趋势).*")) return "DATE(q.order_time) period";
         if(text.matches(".*(?:按|每个|各个)状态.*")) return "q.status";
@@ -931,6 +1376,7 @@ public class AssistantOrchestrator {
 
     private static String saleItemGroup(String text) {
         if(text.matches(".*(?:按|每个|各个)客户.*")) return "q.customer_name";
+        if(text.matches(".*(?:按|每个|各个|各)(?:业务员|销售员).*") ) return "COALESCE(q.salesperson_name,'未指定业务员') salesperson_name";
         if(text.matches(".*(?:按|每个|各个)(?:产品|配件|商品).*")) return "q.product_name";
         if(text.matches(".*(?:按|每个|各个)(?:业务员|销售员).*")) return "q.salesperson_name";
         if(text.matches(".*(?:按|每个|各个)仓库.*")) return "q.warehouse_name";
@@ -1030,17 +1476,77 @@ public class AssistantOrchestrator {
     }
 
     private static void addTimeFilter(String text,String column,List<String> filters,Map<String,Object> parameters) {
-        LocalDateTime now=LocalDateTime.now(ZoneId.of("Asia/Shanghai"));LocalDate day=now.toLocalDate();LocalDateTime start=null,end=now;
-        if(text.contains("今天") || text.contains("今日")) start=day.atStartOfDay();
-        else if(text.contains("昨天") || text.contains("昨日")) {start=day.minusDays(1).atStartOfDay();end=day.atStartOfDay();}
-        else if(text.contains("上周")) {end=day.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY)).atStartOfDay();start=end.minusWeeks(1);}
-        else if(text.contains("本周") || text.contains("这周")) start=day.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY)).atStartOfDay();
-        else if(text.contains("上月")) {end=day.withDayOfMonth(1).atStartOfDay();start=end.minusMonths(1);}
-        else if(text.contains("本月") || text.contains("这个月")) start=day.withDayOfMonth(1).atStartOfDay();
-        if(start==null) return;
+        AssistantRelativePeriod.Window window=AssistantRelativePeriod.window(text,LocalDateTime.now(ZoneId.of("Asia/Shanghai")));
+        if(window==null) return;
+        addWindowFilter(window,column,filters,parameters);
+    }
+
+    private static void addWindowFilter(AssistantRelativePeriod.Window window,String column,List<String> filters,
+                                        Map<String,Object> parameters) {
         DateTimeFormatter formatter=DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
-        parameters.put("p1",start.format(formatter));parameters.put("p2",end.format(formatter));
-        filters.add("q."+column+">=:p1");filters.add("q."+column+"<:p2");
+        String startParameter="p"+(parameters.size()+1);parameters.put(startParameter,window.getStart().format(formatter));
+        String endParameter="p"+(parameters.size()+1);parameters.put(endParameter,window.getEnd().format(formatter));
+        filters.add("q."+column+">=:"+startParameter);filters.add("q."+column+"<:"+endParameter);
+    }
+
+    private static boolean genericInboundMovementQuestion(String question) {
+        String text=question==null?"":question.replaceAll("\\s+","").toLowerCase(Locale.ROOT);
+        if(text.contains("出入库") || text.matches(".*(?:采购入库|其他入库|其它入库|调拨入库|移货入库|盘盈入库|销售退货入库|库存入库单|入库单).*")) return false;
+        return text.matches(".*(?:入库记录|入库流水|入库情况|是否有入库|有没有入库|有无入库|有入库吗|发生过入库).*" );
+    }
+
+    private static boolean inboundExistenceQuestion(String question) {
+        String text=question==null?"":question.replaceAll("\\s+","");
+        return text.matches(".*(?:是否有|有没有|有无|有入库吗|发生过).*" );
+    }
+
+    private static Map<Integer,String> inboundMovementTypes() {
+        Map<Integer,String> result=new LinkedHashMap<>();
+        for(ErpStockRecordBizTypeEnum value:Arrays.asList(ErpStockRecordBizTypeEnum.OTHER_IN,
+                ErpStockRecordBizTypeEnum.MOVE_IN,ErpStockRecordBizTypeEnum.WAREHOUSE_MOVE_IN,
+                ErpStockRecordBizTypeEnum.CHECK_MORE_IN,ErpStockRecordBizTypeEnum.SALE_RETURN,
+                ErpStockRecordBizTypeEnum.PURCHASE_IN)) result.put(value.getType(),value.getName());
+        return Collections.unmodifiableMap(result);
+    }
+
+    private static Map<String,Object> inboundSummaryRow(String label,long count) {
+        Map<String,Object> row=new LinkedHashMap<>();
+        row.put("label",label);row.put("amount",count);row.put("unit","条");
+        // Keep the original fields for stored conversation results and callers using the first response shape.
+        row.put("businessObject",label);row.put("record_count",count);
+        return row;
+    }
+
+    private static String inboundAnswer(String period,long total,Map<Integer,Long> counts) {
+        List<String> parts=new ArrayList<>();
+        for(Map.Entry<Integer,String> item:INBOUND_MOVEMENT_TYPES.entrySet()) {
+            long count=counts.get(item.getKey());if(count>0) parts.add(item.getValue()+count+"条");
+        }
+        return period+"在当前权限范围内有入库记录，共"+total+"条"+(parts.isEmpty()?"。":"；其中"+String.join("、",parts)+"。");
+    }
+
+    private static String periodLabel(String period) {
+        if("TODAY".equals(period)) return "今天";if("YESTERDAY".equals(period)) return "昨天";
+        if("THIS_WEEK".equals(period)) return "本周";if("LAST_WEEK".equals(period)) return "上周";
+        if("THIS_MONTH".equals(period)) return "本月";if("LAST_MONTH".equals(period)) return "上月";
+        if("THIS_YEAR".equals(period)) return "今年";if("LAST_YEAR".equals(period)) return "去年";
+        return "指定期间";
+    }
+
+    private static Integer integerValue(Object value) {
+        if(value instanceof Number) return ((Number)value).intValue();
+        try{return value==null?null:Integer.valueOf(String.valueOf(value));}catch(NumberFormatException ignored){return null;}
+    }
+
+    private static long longValue(Object value) {
+        if(value instanceof Number) return ((Number)value).longValue();
+        try{return value==null?0L:Long.parseLong(String.valueOf(value));}catch(NumberFormatException ignored){return 0L;}
+    }
+
+    private static List<Map<String,Object>> maps(Object value) {
+        List<Map<String,Object>> result=new ArrayList<>();
+        for(Map<String,Object> row:listOfMaps(value)) result.add(new LinkedHashMap<>(row));
+        return result;
     }
 
     private static AssistantPlan productStockPlan(String question,Map<String,Object> arguments) {
@@ -1048,6 +1554,7 @@ public class AssistantOrchestrator {
         if(product==null) product=extractProduct(question);
         if(product==null) throw new AssistantFailure("CLARIFY","请说明要查询的产品名称、编码或型号");
         AssistantPlan plan=new AssistantPlan();plan.setMetric(AssistantPlan.Metric.STOCK);plan.setPeriod("CURRENT");plan.setProduct(product);
+        plan.setProductResultTable(true);
         applyProductPriceIntent(question,plan);
         String text=question==null?"":question.replaceAll("\\s+","");
         boolean grouped=Boolean.TRUE.equals(arguments.get("groupByWarehouse")) || text.matches(".*(?:各个仓库|各仓库|每个仓库|所有仓库|分别在哪些仓库).*" );
@@ -1065,7 +1572,9 @@ public class AssistantOrchestrator {
         } else if(text.matches(".*(?:价格|报价|查价|多少钱|多少元).*")) {
             plan.setIncludeProductPrices(true);plan.setPriceQueryMode(AssistantPlan.PriceQueryMode.ALL);
         } else {
-            plan.setIncludeProductPrices(false);plan.setPriceQueryMode(AssistantPlan.PriceQueryMode.NONE);
+            // Product stock questions also show every visible maintained price.
+            // NONE records that price was not explicitly requested; includeProductPrices still loads visible prices.
+            plan.setIncludeProductPrices(true);plan.setPriceQueryMode(AssistantPlan.PriceQueryMode.NONE);
         }
     }
 
@@ -1084,10 +1593,10 @@ public class AssistantOrchestrator {
     private static String extractProduct(String question) {
         if(question==null) return null;String value=question.trim();
         if(AssistantModelClient.isStockRankingQuestion(value)) return null;
-        value=value.replaceFirst("^(?:请问|帮我查一下|帮我查询|查询一下|查询|查看一下|查看)","");
+        value=value.replaceFirst("^(?:请问|帮我查一下|帮我查询|查询一下|查询|查看一下|查看|查一下|查)","");
         value=value.replaceFirst("^(?:这个|这款|产品|配件|型号|规格)","");
         value=value.replaceFirst("(?:在)?(?:各个|各|每个|所有)仓库(?:中|里的|内)?(?:的)?(?:当前)?(?:库存情况|库存数量|库存量|库存多少|库存)$","");
-        value=value.replaceFirst("(?:当前)?(?:库存情况|库存数量|库存量|库存多少|库存)$","");
+        value=value.replaceFirst("(?:当前)?(?:库存情况|库存数量|库存量|库存多少|库存是多少|库存)$","");
         value=value.replaceAll("(?:的)?(?:最后采购价|上次采购价|最近采购价|最新采购价|股份价|批发价|零售价|参考价|最低价|销售价|采购价|售价|价格|报价|多少钱|多少元|有货吗|有没有货|有货没|缺货吗|库存|库存吗|查价)$","");
         value=value.replaceAll("^(?:最后采购价|上次采购价|最近采购价|最新采购价|股份价|批发价|零售价|参考价|最低价|销售价|采购价|售价|价格|报价|多少钱|多少元)$","");
         value=value.replaceAll("[？?。！!]+$","").trim();
@@ -1113,15 +1622,41 @@ public class AssistantOrchestrator {
         validateDatasetEntityContract(envelope,names);
         for(String name:names) semantic.validateDatasetAccess(name);
         record(envelope,null,"query_semantic_schema",Collections.singletonMap("datasets",names));
+        Map<String,Object> trace=queryTrace(envelope);trace.put("stage","TEXT_TO_SQL_GENERATION");trace.put("datasets",new ArrayList<>(names));
+        trace.put("catalogVersion",semanticCatalog.version());List<Map<String,Object>> attempts=new ArrayList<>();trace.put("attempts",attempts);
         Map<String,Object> constraint=entityConstraint(envelope);
         String modelQuestion=constraint==null?question:question+"\n业务对象已由服务端按ID解析，SQL不得添加对象名称或编码条件，服务端会强制注入对象ID过滤。";
         List<Map<String,Object>> schema=semantic.schema(names);Map<String,Object> proposal=model.semanticSql(modelQuestion,schema,null);Map<String,Object> result;
-        try {record(envelope,null,"execute_semantic_query",Collections.singletonMap("attempt",1));result=executeSemantic(proposal,constraint);}
-        catch(AssistantFailure first) {if(!"SQL_REJECTED".equals(first.getCode())&&!"MODEL_INVALID".equals(first.getCode()))throw first;proposal=model.semanticSql(modelQuestion,schema,first.getMessage());record(envelope,null,"execute_semantic_query",Collections.singletonMap("attempt",2));result=executeSemantic(proposal,constraint);}
+        try {record(envelope,null,"execute_semantic_query",Collections.singletonMap("attempt",1));result=executeSemanticAttempt(proposal,constraint,1,attempts,trace);}
+        catch(AssistantFailure first) {if(!"SQL_REJECTED".equals(first.getCode())&&!"MODEL_INVALID".equals(first.getCode()))throw first;proposal=model.semanticSql(modelQuestion,schema,first.getMessage());record(envelope,null,"execute_semantic_query",Collections.singletonMap("attempt",2));result=executeSemanticAttempt(proposal,constraint,2,attempts,trace);}
         envelope.getArguments().put("sql",proposal.get("sql"));envelope.getArguments().put("parameters",safeArguments(map(proposal.get("parameters"))));return result;
     }
+    @SuppressWarnings("unchecked")
+    private Map<String,Object> executeSemanticAttempt(Map<String,Object> proposal,Map<String,Object> constraint,int number,
+                                                      List<Map<String,Object>> attempts,Map<String,Object> trace) {
+        Map<String,Object> attempt=new LinkedHashMap<>();attempt.put("attempt",number);attempt.put("generation","COMPLETED");
+        Object candidate=proposal==null?null:proposal.get("sql");attempt.put("fingerprint",AssistantSemanticSqlGuard.fingerprint(candidate instanceof String?(String)candidate:""));
+        attempts.add(attempt);trace.put("stage","TEXT_TO_SQL_VALIDATION");
+        try {
+            Map<String,Object> result=executeSemantic(proposal,constraint);attempt.put("validation","PASSED");attempt.put("execution","COMPLETED");
+            Object rowValue=result.get("rows");attempt.put("rowCount",rowValue instanceof Collection?((Collection<?>)rowValue).size():null);
+            Object raw=result.get("queryTrace");if(raw instanceof Map) {
+                Map<String,Object> completed=new LinkedHashMap<>((Map<String,Object>)raw);
+                completed.put("attempts",new ArrayList<>(attempts));completed.put("stage","COMPLETED");result.put("queryTrace",completed);
+            }
+            trace.put("stage","COMPLETED");return result;
+        } catch(AssistantFailure failure) {
+            boolean validation=Arrays.asList("SQL_REJECTED","MODEL_INVALID","DATASET_UNPUBLISHED").contains(failure.getCode());
+            attempt.put("validation",validation?"REJECTED":"PASSED");attempt.put("execution",validation?"NOT_STARTED":"FAILED");
+            attempt.put("failureCode",failure.getCode());trace.put("stage",validation?"TEXT_TO_SQL_REJECTED":"TEXT_TO_SQL_FAILED");
+            throw failure;
+        }
+    }
     private Map<String,Object> executeSemantic(Map<String,Object> proposal,Map<String,Object> constraint) {
-        String sql=String.valueOf(proposal.get("sql"));Map<String,Object> parameters=map(proposal.get("parameters"));
+        if(proposal==null || !proposal.keySet().equals(new LinkedHashSet<>(Arrays.asList("sql","parameters")))
+                || !(proposal.get("sql") instanceof String) || !(proposal.get("parameters") instanceof Map))
+            throw new AssistantFailure("MODEL_INVALID","模型查询结构只能包含sql和parameters");
+        String sql=(String)proposal.get("sql");Map<String,Object> parameters=map(proposal.get("parameters"));
         return constraint==null?semantic.execute(sql,parameters):semantic.execute(sql,parameters,constraint);
     }
     public Map<String,Object> rerun(AssistantExecutionEnvelope envelope,List<Map<String,Object>> catalog) {
@@ -1130,6 +1665,8 @@ public class AssistantOrchestrator {
     }
     public Map<String,Object> details(AssistantExecutionEnvelope envelope,int page,int pageSize) {
         if(page<1 || page>10_000 || pageSize<1 || pageSize>100) throw new AssistantFailure("INVALID_PAGE","分页参数无效");
+        if(envelope!=null && AssistantCompanyKnowledge.TOOL_NAME.equals(envelope.getToolName()))
+            throw new AssistantFailure("DETAIL_UNAVAILABLE","公司知识问答请查看回答所列知识来源");
         if(AssistantMasterDataQueryService.TOOL_NAME.equals(envelope.getToolName()))
             throw new AssistantFailure("DETAIL_UNAVAILABLE","基础档案数量统计暂不提供名单明细");
         if(envelope.getLegacyPlan()!=null) return queries.details(envelope.getLegacyPlan(),page,pageSize);
@@ -1140,6 +1677,7 @@ public class AssistantOrchestrator {
         return semantic.details(String.valueOf(envelope.getArguments().get("sql")),params,entityConstraint(envelope),page,pageSize);
     }
     public void validateAccess(AssistantExecutionEnvelope envelope) {
+        if(envelope!=null && AssistantCompanyKnowledge.TOOL_NAME.equals(envelope.getToolName())) return;
         if(envelope!=null && AssistantMasterDataQueryService.TOOL_NAME.equals(envelope.getToolName())) {
             masterData.validateAccess(masterData.parseArguments(envelope.getArguments()));return;
         }
@@ -1183,18 +1721,28 @@ public class AssistantOrchestrator {
     }
 
     public List<String> availableTools() {
-        List<String> result=new ArrayList<>();boolean verified=false;
-        for(AssistantPlan.Metric metric:AssistantPlan.Metric.values()) try {queries.authorize(metric);verified=true;}catch(AssistantFailure ignored){}
-        if(verified) result.add("query_verified_metric");
-        try {queries.authorize(AssistantPlan.Metric.STOCK);result.add("query_product_stock");}catch(AssistantFailure ignored){}
+        Set<AssistantPlan.Metric> authorized=EnumSet.noneOf(AssistantPlan.Metric.class);
+        for(AssistantPlan.Metric metric:AssistantPlan.Metric.values()) try {queries.authorize(metric);authorized.add(metric);}catch(AssistantFailure ignored){}
+        return availableTools(authorized);
+    }
+
+    /** Builds the readiness tool list from the metric authorization results already calculated by the caller. */
+    public List<String> availableTools(Set<AssistantPlan.Metric> authorizedMetrics) {
+        Set<AssistantPlan.Metric> authorized=authorizedMetrics==null?Collections.emptySet():authorizedMetrics;
+        List<String> result=new ArrayList<>();
+        if(!authorized.isEmpty()) result.add("query_verified_metric");
+        if(authorized.contains(AssistantPlan.Metric.STOCK)) result.add("query_product_stock");
         try {semantic.validateDatasetAccess("inventory_current");result.add("query_inventory_details");}catch(AssistantFailure ignored){}
         try {semantic.validateDatasetAccess("stock_movements");result.add("query_stock_movements");}catch(AssistantFailure ignored){}
         try {semantic.validateDatasetAccess("purchase_orders");result.add("query_purchase_documents");result.add("query_purchase_fulfillment");}catch(AssistantFailure ignored){}
         try {semantic.validateDatasetAccess("sale_orders");semantic.validateDatasetAccess("sale_order_items");result.add("query_sale_documents");result.add("query_sale_fulfillment");}catch(AssistantFailure ignored){}
-        try {queries.authorize(AssistantPlan.Metric.RECEIPT);result.add("query_cash_documents");}catch(AssistantFailure ignored){}
-        try {queries.authorize(AssistantPlan.Metric.RECEIVABLE);result.add("query_account_balance");}catch(AssistantFailure ignored){}
+        if(authorized.contains(AssistantPlan.Metric.RECEIPT)) result.add("query_cash_documents");
+        if(authorized.contains(AssistantPlan.Metric.RECEIVABLE)) result.add("query_account_balance");
         if(masterData!=null && masterData.hasAnyAvailableType()) result.add(AssistantMasterDataQueryService.TOOL_NAME);
+        if(companyKnowledge!=null && companyKnowledge.available()) result.add(AssistantCompanyKnowledge.TOOL_NAME);
+        if(stage5!=null) for(String tool:AssistantStage5BusinessQuery.TOOLS) if(stage5.available(tool)) result.add(tool);
         if(!result.isEmpty()) result.add("resolve_business_entity");
+        if(!result.isEmpty()) result.add(AssistantToolRegistry.CLARIFY_INTENT_TOOL);
         if(properties.getOrchestration().isTextToSqlEnabled() && !semanticCatalog.publishedNames().isEmpty()) {
             result.add("query_semantic_schema");result.add("execute_semantic_query");
         }
@@ -1204,6 +1752,16 @@ public class AssistantOrchestrator {
     private String deterministicTool(String question) {
         String q=question.replaceAll("\\s+","").toLowerCase(Locale.ROOT);
         if(masterData!=null && masterData.parse(question)!=null) return AssistantMasterDataQueryService.TOOL_NAME;
+        if(companyKnowledge!=null && companyKnowledge.available() && deterministicKnowledgeQuestion(q))
+            return AssistantCompanyKnowledge.TOOL_NAME;
+        AssistantIntentGeneralizer.Decision generalized=AssistantIntentGeneralizer.analyze(question);
+        if(generalized.resolved() && generalized.getDomain()==AssistantIntentGeneralizer.Domain.COMPANY_KNOWLEDGE
+                && companyKnowledge!=null && companyKnowledge.available()) return generalized.getCapabilityId();
+        String stage5Tool=stage5DeterministicTool(q);
+        if(stage5Tool!=null) return stage5Tool;
+        if(genericInboundMovementQuestion(q)) return "query_stock_movements";
+        if(generalized.resolved() && generalized.getDomain()!=AssistantIntentGeneralizer.Domain.COMPANY_KNOWLEDGE)
+            return generalized.getCapabilityId();
         if(bareEntityKeyword(question)!=null) return "resolve_business_entity";
         if(q.matches(".*(?:库存流水|出入库(?:情况|明细|记录)?|库存变动|调拨记录|盘点记录).*")) return "query_stock_movements";
         if(q.contains("采购") && q.matches(".*(?:订单|采购单|下单|订货|到货|未到货).*")) return q.matches(".*(?:到货|未到货|剩余).*" )?"query_purchase_fulfillment":"query_purchase_documents";
@@ -1215,10 +1773,34 @@ public class AssistantOrchestrator {
                 .anyMatch(reference->reference.type==AssistantEntityResolver.EntityType.PRODUCT)) return "query_product_stock";
         if(q.contains("库存") && q.matches(".*(?:明细|清单|列表|哪些|分布|按仓库|按产品|按配件|低于|少于).*")) return "query_inventory_details";
         if(q.contains("库存") && q.matches(".*(?:产品|配件|型号|编码|各个仓库|各仓库|每个仓库).*")) return "query_product_stock";
-        if(q.matches(".*(?:销售|销量|销售额|采购|库存|收款|回款|收了(?:多少|多少钱|多少款)?(?:钱|款)?回来|付款|应收|应付|欠款|欠钱|客户余额).*")) return "query_verified_metric";
+        if(q.matches(".*(?:销售|销量|销售额|采购|库存|收款|回款|(?:收了|收回)(?:多少钱|多少款|多少)(?:回来)?|付款|应收|应付|欠款|欠钱|客户余额).*")) return "query_verified_metric";
         AssistantSemanticKnowledge.Match semanticMatch=semanticKnowledge.match(question);
         if("PRODUCT_PRICE_STOCK".equals(semanticMatch.getIntentId())) return "query_product_stock";
         if(Arrays.asList("SALE","RECEIVABLE").contains(semanticMatch.getIntentId())) return "query_verified_metric";
+        return null;
+    }
+
+    private static String stage5DeterministicTool(String q) {
+        if (AssistantKnowledgeContext.isRealtimeOrganizationKnowledgeBoundary(q))
+            return AssistantStage5BusinessQuery.ORGANIZATION_TOOL;
+        if (q.matches(".*(?:配件价格调整|商品价格调整|产品价格调整|价格历史|历史价格).*采购调价.*")
+                || q.matches(".*采购调价.*(?:配件价格调整|商品价格调整|产品价格调整|价格历史|历史价格).*"))
+            return AssistantStage5BusinessQuery.PURCHASE_TOOL;
+        if(q.matches(".*(?:商品分类|产品分类|商品品牌|产品品牌|商品单位|产品单位|往来类别|供应商分类|客户分类|供应商类型|客户类型|区域|销售区域|价格级别|结算方式|配送方式|送货方式|运费类型|物流公司|发票类型|开票类型|线路|运费说明|采购类型|采购方式|下单公司|订货公司|收货地址|仓储中心|仓储仓库|费用支付类型|支出类型|费用单据类型|费用项目|基础数据).*"))
+            return AssistantStage5BusinessQuery.MASTER_TOOL;
+        if(q.matches(".*(?:部门层级|组织层级|部门列表|组织部门|所有部门|全部部门|有哪些部门|启用部门|停用部门|部门有多少|"
+                + "系统用户|erp用户|用户列表|所有用户|全部用户|启用用户|停用用户|用户有多少|"
+                + "部门.*(?:用户|员工|职工|人数|多少人)|(?:用户|员工|职工).*(?:所属部门|关联部门|主部门|部门关系)|"
+                + "(?:用户|员工|职工)(?:与|和)部门|[\\p{IsHan}]{2,4}(?:属于哪个部门|在哪个部门|的所属部门|所在部门)|仅统计.*本部门).*"))
+            return AssistantStage5BusinessQuery.ORGANIZATION_TOOL;
+        if(q.matches(".*(?:价格体系|配件价格调整|商品价格调整|产品价格调整|价格历史|历史价格|启用仓库|仓库主数据|仓库详情|盘点单|库存盘点|其他入库|其他出库|库存入库单|库存出库单|提货记录|拣货记录|调拨台账|调拨单|调拨出库|调拨入库|调出|调入|移仓|移库).*"))
+            return AssistantStage5BusinessQuery.STOCK_TOOL;
+        if(q.matches(".*(?:销售报价|报价单|销售开单|销售手推车|销售出库|销售退货|拣货配送|待拣货|待配送|销售任务|销售调价|调价前.*原单|调价后.*新单).*"))
+            return AssistantStage5BusinessQuery.SALE_TOOL;
+        if(q.matches(".*(?:采购入库|采购退货|采购发票|发票识别|ocr|识别批次|采购调价|采购价格调整).*"))
+            return AssistantStage5BusinessQuery.PURCHASE_TOOL;
+        if(q.matches(".*(?:资金账户|现金银行|账户转账|内部资金调拨|转账单|收款单|付款单|应收杂项|应付杂项|其他收入|应付费用|其他应收|其他应付|应收调账|应付调账|应收调增|应收调减|应付调增|应付调减|核销记录|反核销|往来对冲).*"))
+            return AssistantStage5BusinessQuery.FINANCE_TOOL;
         return null;
     }
     /** Clear metric/period questions do not need a model round-trip. */
@@ -1232,32 +1814,80 @@ public class AssistantOrchestrator {
         if(balance!=null) return balance;
         AssistantPlan contextualSale=contextualSalePlan(text,inheritedEntity);
         if(contextualSale!=null) return contextualSale;
-        String period=AssistantModelClient.explicitRelativePeriod(text);
+        AssistantCalendarDate.Resolution calendar=AssistantCalendarDate.resolve(text,previousPlan);
+        calendar.requireValid();
         AssistantPlan.Metric metric=deterministicPeriodMetric(text);
-        if(metric!=null && period!=null) {
-            AssistantPlan plan=new AssistantPlan();plan.setMetric(metric);plan.setPeriod(period);
+        if(calendar.isMatched()) {
+            AssistantPlan.Metric effectiveMetric=metric!=null?metric:previousPlan==null?null:previousPlan.getMetric();
+            if(effectiveMetric!=null && isPeriodMetric(effectiveMetric)) {
+                AssistantPlan plan;
+                boolean compatiblePrevious=calendar.isResolved()
+                        && calendar.getSource()==AssistantCalendarDate.Source.PREVIOUS_YEAR_MONTH
+                        && previousPlan!=null && (metric==null || metric==previousPlan.getMetric());
+                if(compatiblePrevious) plan=copyWithDate(previousPlan,calendar);
+                else {
+                    plan=new AssistantPlan();plan.setMetric(effectiveMetric);
+                    plan.setGroup(resolvedMetricGroup(effectiveMetric,inheritedEntity));
+                    if(calendar.isResolved()) calendar.apply(plan); else calendar.applyClarification(plan);
+                }
+                return plan;
+            }
+        }
+        AssistantRelativePeriod.Resolution rolling=AssistantRelativePeriod.resolve(text);
+        rolling.requireValid();
+        String period=AssistantModelClient.explicitRelativePeriod(text);
+        if(metric!=null && (period!=null || rolling.isValid())) {
+            AssistantPlan plan=new AssistantPlan();plan.setMetric(metric);
+            if(rolling.isValid()) rolling.apply(plan); else plan.setPeriod(period);
             plan.setGroup(isDailyTrend(text)?AssistantPlan.Group.DAY:resolvedMetricGroup(metric,inheritedEntity));return plan;
         }
-        if(period!=null && deterministicPeriodContinuation(question,previousPlan)) return copyWithPeriod(previousPlan,period);
+        if((period!=null || rolling.isValid()) && deterministicPeriodContinuation(question,previousPlan))
+            return rolling.isValid()?copyWithPeriod(previousPlan,rolling):copyWithPeriod(previousPlan,period);
         return null;
     }
 
     private static boolean genericStockSkuCountQuestion(String text) {
-        return text.matches(".*(?:库存中|库存里|库存内)(?:有)?(?:多少|几个|几种)(?:个|种)?(?:产品|配件).*" )
-                || text.matches(".*有库存的(?:产品|配件)(?:数|数量|个数|种数).*" );
+        return AssistantIntentGeneralizer.isGenericStockSkuCount(text);
+    }
+
+    private static Map<String,Object> intentClarification(Map<String,Object> arguments) {
+        List<String> choices=new ArrayList<>();
+        if(arguments!=null) for(String key:Arrays.asList("choice1","choice2","choice3")) {
+            String value=stringValue(arguments.get(key));
+            if(value!=null && !choices.contains(value)) choices.add(value);
+        }
+        if(choices.size()<2) choices=Arrays.asList("查询实时业务数据","查询公司知识资料");
+        return AssistantClarification.missing("AMBIGUOUS_INTENT","请确认你想查询的内容",
+                Collections.singletonList("intent"),choices);
+    }
+
+    private static boolean hasConcreteProduct(String question,Map<String,Object> arguments,
+                                              Map<String,Object> executionArguments) {
+        Object resolved=executionArguments==null?null:executionArguments.get("resolvedEntity");
+        if(resolved instanceof Map && "PRODUCT".equals(String.valueOf(((Map<?,?>)resolved).get("entityType"))))
+            return true;
+        String argument=arguments==null?null:stringValue(arguments.get("product"));
+        if(argument!=null && !argument.equals(question)
+                && AssistantSemanticExtractor.isConcreteKeyword(AssistantEntityResolver.EntityType.PRODUCT,argument))
+            return true;
+        String extracted=extractProduct(question);
+        if(extracted==null || !AssistantSemanticExtractor.isConcreteKeyword(
+                AssistantEntityResolver.EntityType.PRODUCT,extracted)) return false;
+        AssistantIntentGeneralizer.Decision generalized=AssistantIntentGeneralizer.analyze(question);
+        return generalized.getDomain()!=AssistantIntentGeneralizer.Domain.INVENTORY
+                || !"NONE".equals(generalized.getEntityRequirement());
     }
 
     private static AssistantPlan.Metric deterministicPeriodMetric(String text) {
-        if(text.matches(".*(?:销售总金额|销售总额|销售金额|销售额).*")) return AssistantPlan.Metric.SALE;
-        if(text.matches(".*(?:采购总金额|采购总额|采购金额|采购额).*")) return AssistantPlan.Metric.PURCHASE;
-        if(text.matches(".*(?:(?:实际)?收款|回款|收了(?:多少|多少钱|多少款)?(?:钱|款)?回来|收回(?:多少|多少钱|多少款)?(?:钱|款)?).*")) return AssistantPlan.Metric.RECEIPT;
-        if(text.matches(".*(?:实际)?付款.*")) return AssistantPlan.Metric.PAYMENT;
-        return null;
+        return AssistantModelClient.explicitPeriodMetric(text);
     }
 
     private static boolean deterministicPeriodContinuation(String question,AssistantPlan previousPlan) {
         String text=question==null?"":question.replaceAll("\\s+","");
-        if(previousPlan==null || AssistantModelClient.explicitRelativePeriod(text)==null
+        AssistantRelativePeriod.Resolution rolling=AssistantRelativePeriod.resolve(text);
+        AssistantCalendarDate.Resolution calendar=AssistantCalendarDate.resolve(text,previousPlan);
+        boolean explicit=AssistantModelClient.explicitRelativePeriod(text)!=null || rolling.isMatched() || calendar.isMatched();
+        if(previousPlan==null || !explicit
                 || !AssistantModelClient.isContinuationQuestion(question)) return false;
         return Arrays.asList(AssistantPlan.Metric.SALE,AssistantPlan.Metric.PURCHASE,
                 AssistantPlan.Metric.RECEIPT,AssistantPlan.Metric.PAYMENT).contains(previousPlan.getMetric());
@@ -1267,7 +1897,23 @@ public class AssistantOrchestrator {
         AssistantPlan plan=new AssistantPlan();plan.setMetric(source.getMetric());plan.setGroup(source.getGroup());plan.setPeriod(period);
         plan.setWarehouse(source.getWarehouse());plan.setParty(source.getParty());plan.setProduct(source.getProduct());plan.setDepartment(source.getDepartment());
         plan.setWarehouseId(source.getWarehouseId());plan.setPartyId(source.getPartyId());plan.setProductId(source.getProductId());plan.setDepartmentId(source.getDepartmentId());
-        plan.setStockMode(source.getStockMode());plan.setLimit(source.getLimit());plan.setRankOrder(source.getRankOrder());return plan;
+        plan.setSalesperson(source.getSalesperson());plan.setSalespersonId(source.getSalespersonId());plan.setSalesMeasure(source.getSalesMeasure());
+        plan.setStockMode(source.getStockMode());plan.setLimit(source.getLimit());plan.setRankOrder(source.getRankOrder());
+        plan.setPresentationMode(source.getPresentationMode());plan.setIncludeProductPrices(source.isIncludeProductPrices());
+        plan.setPriceQueryMode(source.getPriceQueryMode());plan.setPriceField(source.getPriceField());return plan;
+    }
+
+    private static AssistantPlan copyWithPeriod(AssistantPlan source,AssistantRelativePeriod.Resolution rolling) {
+        AssistantPlan plan=copyWithPeriod(source,"CUSTOM");rolling.apply(plan);return plan;
+    }
+
+    private static AssistantPlan copyWithDate(AssistantPlan source,AssistantCalendarDate.Resolution calendar) {
+        AssistantPlan plan=copyWithPeriod(source,"CUSTOM");calendar.apply(plan);return plan;
+    }
+
+    private static boolean isPeriodMetric(AssistantPlan.Metric metric) {
+        return metric==AssistantPlan.Metric.SALE || metric==AssistantPlan.Metric.PURCHASE
+                || metric==AssistantPlan.Metric.RECEIPT || metric==AssistantPlan.Metric.PAYMENT;
     }
 
     private static boolean isDailyTrend(String text) {
@@ -1279,6 +1925,7 @@ public class AssistantOrchestrator {
         String type=stringValue(entity.get("entityType"));
         if("PRODUCT".equals(type) && (metric==AssistantPlan.Metric.SALE || metric==AssistantPlan.Metric.PURCHASE)) return AssistantPlan.Group.PRODUCT;
         if("DEPARTMENT".equals(type)) return AssistantPlan.Group.DEPT;
+        if("SALESPERSON".equals(type) && (metric==AssistantPlan.Metric.SALE || metric==AssistantPlan.Metric.RECEIVABLE)) return AssistantPlan.Group.SALESPERSON;
         return AssistantPlan.Group.NONE;
     }
 
@@ -1287,7 +1934,7 @@ public class AssistantOrchestrator {
         if(resolvedEntity==null) return null;
         String type=stringValue(resolvedEntity.get("entityType"));
         AssistantPlan.Metric metric;
-        if("CUSTOMER".equals(type) && text.matches(".*(?:欠款|欠钱|应收|客户余额).*") )
+        if(("CUSTOMER".equals(type)||"SALESPERSON".equals(type)) && text.matches(".*(?:欠款|欠钱|应收|客户余额).*") )
             metric=AssistantPlan.Metric.RECEIVABLE;
         else if("SUPPLIER".equals(type) && text.matches(".*(?:应付|供应商余额).*") )
             metric=AssistantPlan.Metric.PAYABLE;
@@ -1298,7 +1945,7 @@ public class AssistantOrchestrator {
 
     /** 已确认对象后的简短销量追问未给期间时使用年初至查询时刻。 */
     private static AssistantPlan contextualSalePlan(String text,Map<String,Object> inheritedEntity) {
-        if(inheritedEntity==null || !text.matches(".*(?:销量|销售量|销售情况|卖了多少).*")) return null;
+        if(inheritedEntity==null || !text.matches(".*(?:销量|销售量|销售情况|销售了多少|卖了多少).*")) return null;
         // 明确给出自定义时间时仍交给模型解析，避免把“8 月份销量”等问题误套为本月。
         if(hasCustomSalesPeriod(text)) return null;
         String type=stringValue(inheritedEntity.get("entityType"));
@@ -1306,14 +1953,18 @@ public class AssistantOrchestrator {
         if("PRODUCT".equals(type)) group=AssistantPlan.Group.PRODUCT;
         else if("CUSTOMER".equals(type)) group=AssistantPlan.Group.PARTY;
         else if("DEPARTMENT".equals(type)) group=AssistantPlan.Group.DEPT;
+        else if("SALESPERSON".equals(type)) group=AssistantPlan.Group.SALESPERSON;
         else return null;
         AssistantPlan plan=new AssistantPlan();plan.setMetric(AssistantPlan.Metric.SALE);plan.setGroup(group);
+        plan.setSalesMeasure(text.matches(".*(?:销量|销售量|卖了多少|销售了多少).*")
+                ?AssistantPlan.SalesMeasure.QUANTITY:AssistantPlan.SalesMeasure.AMOUNT);
         String period=salesPeriod(text);
         if(period!=null) plan.setPeriod(period); else applyYearToDate(plan);
         return plan;
     }
 
     private static boolean hasCustomSalesPeriod(String text) {
+        if(AssistantRelativePeriod.resolve(text).isMatched()) return true;
         if(AssistantModelClient.explicitRelativePeriod(text)!=null) return false;
         return text.matches(".*(?:今年|去年|前年|上半年|下半年|第[一二三四1234]季度|"
                 + "(?:近|最近|过去)[0-9一二三四五六七八九十百]+(?:天|周|个月|月)|"
@@ -1345,12 +1996,12 @@ public class AssistantOrchestrator {
         return "毛利或利润分析已识别，但成本、退货、调价和权限口径尚未核验，暂不返回数值";
     }
     private static boolean productPriceOrAvailabilityQuestion(String q) {
-        if(q.matches(".*(?:销售额|采购额|销量|销售量|欠款|欠钱|客户余额|应收|应付|收款|付款|订单|单据|报表|排名|最多|最少).*")) return false;
+        if(q.matches(".*(?:销售额|采购额|销量|销售量|销售情况|销售了多少|卖了多少|欠款|欠钱|客户余额|应收|应付|收款|付款|订单|单据|报表|排名|最多|最少).*")) return false;
         boolean priceAsk=q.matches(".*(?:价格|报价|查价|多少钱|多少元|最后采购价|上次采购价|最近采购价|最新采购价|股份价|零售价|销售价|售价|批发价|参考价|最低价|采购价).*");
         boolean availabilityAsk=q.matches(".*(?:有没有货|有货|缺货|库存).*");
         boolean productish=q.matches(".*(?:产品|配件|型号|规格|编码|机油|防冻液|齿轮油|轮胎|美孚|黑霸王|速霸|力霸|突破|每日保护|全效|孚配|xhp|gl-|\\d+w|dot|k\\d+|x\\d+|[a-z]\\d{4,}).*");
         boolean directCode=q.matches("^[a-z]\\d{4,}$");
-        return productish && (priceAsk || availabilityAsk || q.matches(".*(?:每日保护|全效|力霸|孚配|美孚|黑霸王|速霸|突破|xhp|gl-|\\d+w|dot|k\\d+|x\\d+).*"))
+        return productish && (priceAsk || availabilityAsk)
                 || directCode
                 || priceAsk && q.matches("^(?:价格|报价|查价|多少钱|多少元|最后采购价|上次采购价|最近采购价|最新采购价|股份价|零售价|销售价|售价|批发价|参考价|最低价|采购价)$")
                 || availabilityAsk && q.matches("^(?:有没有货|有货|缺货)$");
@@ -1358,9 +2009,21 @@ public class AssistantOrchestrator {
     private boolean coveredMetric(String question,String chosen) {return "query_verified_metric".equals(deterministicTool(question)) && !"query_verified_metric".equals(chosen);}
     private static List<String> subjects(String question) {List<String> r=new ArrayList<>();String q=question.replaceAll("\\s+","");if(q.contains("采购"))r.add("purchase_orders");if(q.contains("销售")||q.contains("客户")&&q.contains("订单"))r.add(q.matches(".*(?:产品|配件|商品|明细|业务员|销售员).*" )?"sale_order_items":"sale_orders");if(q.contains("库存")||q.contains("仓库"))r.add("inventory_current");if(q.contains("流水")||q.contains("出入库")||q.contains("调拨")||q.contains("盘点"))r.add("stock_movements");return r;}
     private static Map<String,Object> context(AssistantExecutionEnvelope previous){if(previous==null)return Collections.emptyMap();Map<String,Object> value=new LinkedHashMap<>();value.put("routeType",previous.getRouteType());value.put("toolName",previous.getToolName());if(previous.getLegacyPlan()!=null)value.put("metric",previous.getLegacyPlan().getMetric());return value;}
+    private static boolean deterministicKnowledgeQuestion(String question) {
+        return AssistantCompanyKnowledgeIntent.analyze(question).isKnowledge();
+    }
+    private static boolean mixedKnowledgeAndRealtimeQuestion(String question) {
+        String q=question==null?"":question.replaceAll("\\s+","").toLowerCase(Locale.ROOT);
+        boolean connector=q.matches(".*(?:并|同时|以及|还要|再查|顺便|另外).*" );
+        boolean knowledge=q.matches(".*(?:介绍|是什么|做什么|主营|区别|标准|认证|怎么选|如何选|选型|卖点|话术|学习路径|培训).*" );
+        boolean realtime=q.matches(".*(?:查|查询|当前|实时|今天|本周|本月|多少).*(?:库存|价格|销量|销售额|采购额|订单|单据|收款|付款|应收|应付|金额|数量|排名).*" )
+                || q.matches(".*(?:库存|价格|销量|销售额|采购额|订单|单据|收款|付款|应收|应付|金额|数量|排名).*(?:查|查询|当前|实时|今天|本周|本月|多少).*" );
+        return connector && knowledge && realtime;
+    }
     private static AssistantExecutionEnvelope.RouteType routeType(String tool) {
         if("query_verified_metric".equals(tool)) return AssistantExecutionEnvelope.RouteType.VERIFIED_METRIC;
         if("query_semantic_schema".equals(tool) || "execute_semantic_query".equals(tool)) return AssistantExecutionEnvelope.RouteType.TEXT_TO_SQL;
+        if(AssistantCompanyKnowledge.TOOL_NAME.equals(tool)) return AssistantExecutionEnvelope.RouteType.KNOWLEDGE;
         return AssistantExecutionEnvelope.RouteType.BUSINESS_TOOL;
     }
     @SuppressWarnings("unchecked") private static Map<String,Object> queryTrace(AssistantExecutionEnvelope envelope) {

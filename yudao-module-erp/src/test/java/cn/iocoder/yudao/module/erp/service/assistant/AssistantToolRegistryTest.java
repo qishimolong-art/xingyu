@@ -20,15 +20,38 @@ class AssistantToolRegistryTest {
         AssistantToolCall invalid=new AssistantToolCall();invalid.setName("query_purchase_documents");
         invalid.setArguments(Collections.<String,Object>singletonMap("sql","DROP TABLE x"));
         assertEquals("MODEL_INVALID",assertThrows(AssistantFailure.class,()->registry.validate(invalid)).getCode());
+
+        AssistantToolCall filteredProductCount=new AssistantToolCall();
+        filteredProductCount.setName("query_master_data_stats");
+        java.util.Map<String,Object> productArguments=new java.util.LinkedHashMap<>();
+        productArguments.put("question","ERP中有多少个美孚产品");
+        productArguments.put("archiveType","PRODUCT");productArguments.put("statusMode","ENABLED");
+        productArguments.put("keyword","美孚");filteredProductCount.setArguments(productArguments);
+        assertDoesNotThrow(()->registry.validate(filteredProductCount));
     }
 
     @Test
     void exposesOnlyRegisteredTools() {
         assertTrue(registry.contains("query_verified_metric"));
         assertTrue(registry.contains("query_master_data_stats"));
+        assertTrue(registry.contains(AssistantCompanyKnowledge.TOOL_NAME));
+        assertTrue(registry.contains(AssistantToolRegistry.CLARIFY_INTENT_TOOL));
         assertTrue(registry.contains("execute_semantic_query"));
         assertFalse(registry.contains("execute_sql"));
-        assertEquals(14,registry.definitions().size());
+        assertEquals(22,registry.definitions().size());
+    }
+
+    @Test
+    void clarificationToolAcceptsOnlyBoundedIntentChoices() {
+        AssistantToolCall valid=new AssistantToolCall();valid.setName(AssistantToolRegistry.CLARIFY_INTENT_TOOL);
+        java.util.Map<String,Object> arguments=new java.util.LinkedHashMap<>();
+        arguments.put("question","帮我看看这个情况");arguments.put("choice1","查询实时业务数据");
+        arguments.put("choice2","查询公司知识资料");
+        valid.setArguments(arguments);
+        assertDoesNotThrow(()->registry.validate(valid));
+
+        arguments.put("sql","select * from x");
+        assertEquals("MODEL_INVALID",assertThrows(AssistantFailure.class,()->registry.validate(valid)).getCode());
     }
 
     @Test
@@ -40,7 +63,8 @@ class AssistantToolRegistryTest {
         AssistantToolRegistry.ExecutionContract purchase=registry.executionContract("query_purchase_documents",null);
         assertTrue(purchase.supportsEntities(Arrays.asList("SUPPLIER","DEPARTMENT")));
         assertFalse(purchase.supportsEntities(Arrays.asList("SUPPLIER","PRODUCT")));
-        assertEquals(new LinkedHashSet<>(Arrays.asList("SUPPLIER","DEPARTMENT")),purchase.getSupportedEntityTypes());
+        assertEquals(new LinkedHashSet<>(Arrays.asList("SUPPLIER","DEPARTMENT","PURCHASER")),purchase.getSupportedEntityTypes());
+        assertTrue(purchase.supportsEntities(Collections.singleton("PURCHASER")));
 
         AssistantToolRegistry.ExecutionContract saleOrder=registry.executionContract("query_sale_documents",null);
         assertTrue(saleOrder.supportsEntities(Arrays.asList("CUSTOMER","PRODUCT")));
@@ -48,10 +72,12 @@ class AssistantToolRegistryTest {
 
         AssistantToolRegistry.ExecutionContract receivable=registry.executionContract("query_verified_metric",AssistantPlan.Metric.RECEIVABLE);
         assertTrue(receivable.supportsEntities(Collections.singleton("CUSTOMER")));
+        assertTrue(receivable.supportsEntities(Collections.singleton("SALESPERSON")));
         assertFalse(receivable.supportsEntities(Collections.singleton("SUPPLIER")));
 
         AssistantToolRegistry.ExecutionContract sale=registry.executionContract("query_verified_metric",AssistantPlan.Metric.SALE);
         assertTrue(sale.supportsEntities(Collections.singleton("PRODUCT")));
+        assertTrue(sale.supportsEntities(Collections.singleton("SALESPERSON")));
     }
 
     @Test
@@ -60,6 +86,7 @@ class AssistantToolRegistryTest {
         assertTrue(registry.datasetContract("sale_orders").supportsEntities(Collections.singleton("CUSTOMER")));
         assertFalse(registry.datasetContract("sale_orders").supportsEntities(Collections.singleton("PRODUCT")));
         assertTrue(registry.datasetContract("sale_order_items").supportsEntities(Arrays.asList("CUSTOMER","PRODUCT")));
+        assertTrue(registry.datasetContract("purchase_orders").supportsEntities(Collections.singleton("PURCHASER")));
         assertFalse(registry.datasetContract("unknown").supportsEntities(Collections.singleton("CUSTOMER")));
     }
 }

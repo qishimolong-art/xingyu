@@ -23,6 +23,16 @@ public class ErpSaleQuoteRespVO {
     @Schema(description = "状态")
     @ExcelProperty("状态")
     private Integer status;
+    @Schema(description = "下订状态：0 未下订，20 已下订，90 已作废")
+    private Integer orderStatus;
+    @Schema(description = "出库状态：0 未出库，30 部分转手推车，40 全部转手推车，50 已出库")
+    private Integer outStatus;
+    @Schema(description = "已转销售手推车数量")
+    private BigDecimal convertedCount;
+    @Schema(description = "已完成实际出库数量")
+    private BigDecimal actualOutCount;
+    @Schema(description = "剩余可转销售手推车数量")
+    private BigDecimal remainingCount;
     @Schema(description = "客户编号")
     private Long customerId;
     @Schema(description = "客户名称")
@@ -112,6 +122,7 @@ public class ErpSaleQuoteRespVO {
         private Boolean giftFlag;
         @ExcelProperty("已转数量")
         private BigDecimal convertedCount;
+        private BigDecimal remainingCount;
         @ExcelProperty("单价")
         private BigDecimal productPrice;
         private BigDecimal productPurchasePrice;
@@ -153,6 +164,10 @@ public class ErpSaleQuoteRespVO {
         private String warehouseDeptName;
         private Long deptId;
         private String deptName;
+        @Schema(description = "当前仓库账面库存")
+        private BigDecimal stockCount;
+        @Schema(description = "当前仓库可用库存")
+        private BigDecimal availableCount;
         private String drawingNo;
         private String batchNo;
         private Boolean batchNoEnabled;

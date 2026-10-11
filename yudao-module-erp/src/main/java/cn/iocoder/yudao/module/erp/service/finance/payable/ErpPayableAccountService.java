@@ -4,7 +4,9 @@ import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.payable.vo.account.ErpPayableAccountPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.payable.vo.account.ErpPayableDetailReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.payable.vo.account.ErpPayableDetailRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.finance.payable.vo.account.ErpPayableDrilldownReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.payable.vo.account.ErpPayableWriteOffReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.ErpAccountDrilldownPageRespVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.payable.ErpPayableAccountDO;
 import cn.iocoder.yudao.module.erp.service.finance.ErpFinanceVisibleScope;
 
@@ -20,6 +22,11 @@ public interface ErpPayableAccountService {
 
     List<ErpPayableDetailRespVO> getPayableDetailList(ErpPayableDetailReqVO reqVO,
                                                        ErpFinanceVisibleScope scope);
+
+    ErpAccountDrilldownPageRespVO<ErpPayableDetailRespVO> getPayableDrilldownPage(
+            ErpPayableDrilldownReqVO reqVO);
+
+    List<ErpPayableDetailRespVO> getPayableDrilldownList(ErpPayableDrilldownReqVO reqVO);
 
     Long writeOffPayable(ErpPayableWriteOffReqVO reqVO);
 }

@@ -24,6 +24,9 @@ public class ErpSaleDeliveryPageReqVO extends PageParam {
     @Schema(description = "客户编号")
     private Long customerId;
 
+    @Schema(description = "仓库编号")
+    private Long warehouseId;
+
     @Schema(description = "拣货状态")
     private Integer pickStatus;
 

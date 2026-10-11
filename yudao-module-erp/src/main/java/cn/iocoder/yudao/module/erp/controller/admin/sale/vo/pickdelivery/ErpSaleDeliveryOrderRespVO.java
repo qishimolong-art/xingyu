@@ -12,6 +12,7 @@ import java.util.List;
 public class ErpSaleDeliveryOrderRespVO {
 
     private Long id;
+    private Long orderId;
     private Long saleOutId;
     private String saleOutNo;
     private Integer sourceType;
@@ -21,11 +22,14 @@ public class ErpSaleDeliveryOrderRespVO {
     private Long customerId;
     private String customerName;
     private Long deptId;
+    private Long warehouseId;
+    private String warehouseName;
     private Integer pickStatus;
     private Integer deliveryStatus;
     private Integer totalItemCount;
     private Integer pickedItemCount;
     private Integer deliveredItemCount;
+    private Integer deliverableItemCount;
     private BigDecimal totalPieceCount;
     private String pickProgress;
     private String deliveryProgress;
@@ -33,6 +37,7 @@ public class ErpSaleDeliveryOrderRespVO {
     private LocalDateTime latestDeliveryTime;
     private LocalDateTime pickCompleteTime;
     private LocalDateTime deliveryCompleteTime;
+    private Boolean legacyHistoryWarning;
     private LocalDateTime createTime;
     private List<ErpSalePickDeliveryItemRespVO> items;
     private List<ErpSalePickDeliverySubmitRespVO> submits;

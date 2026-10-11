@@ -24,6 +24,7 @@ import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpSaleQuoteMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.product.ErpProductMapper;
 import cn.iocoder.yudao.module.erp.dal.redis.no.ErpNoRedisDAO;
 import cn.iocoder.yudao.module.erp.enums.sale.ErpSaleBizSourceTypeEnum;
+import cn.iocoder.yudao.module.erp.enums.sale.ErpSaleCartStatusEnum;
 import cn.iocoder.yudao.module.erp.enums.sale.ErpSaleQuoteStatusEnum;
 import cn.iocoder.yudao.module.erp.service.finance.ErpAccountService;
 import cn.iocoder.yudao.module.erp.service.product.ErpProductBatchNoValidator;
@@ -52,7 +53,6 @@ import static cn.iocoder.yudao.framework.test.core.util.AssertUtils.assertServic
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.CUSTOMER_NOT_EXISTS;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.CUSTOMER_SALE_DEPT_NOT_ALLOWED;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PRODUCT_NOT_EXISTS;
-import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.SALE_OUT_NOT_EXISTS;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.SALE_QUOTE_APPROVE_FAIL;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.SALE_QUOTE_CONVERT_CART_FAIL;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.SALE_QUOTE_CONVERT_COUNT_EXCEED;
@@ -60,6 +60,7 @@ import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.SALE_QUOTE_DE
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.SALE_QUOTE_DRAFT_ITEMS_REQUIRED;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.SALE_QUOTE_ITEM_DUPLICATE;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.SALE_QUOTE_ITEM_PRODUCT_PRICE_POSITIVE;
+import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.SALE_QUOTE_REVERSE_ORDER_FAIL_CONVERTED;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.SALE_QUOTE_SUBMIT_FAIL;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.SALE_QUOTE_SUBMIT_ITEMS_REQUIRED;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.SALE_QUOTE_UPDATE_FAIL_GENERATED;
@@ -103,6 +104,10 @@ public class ErpSaleQuoteServiceImplTest extends BaseMockitoUnitTest {
     @Mock
     private ErpSaleCartService saleCartService;
     @Mock
+    private ErpSaleCartTransferLinkService saleCartTransferLinkService;
+    @Mock
+    private ErpSaleQuoteProgressService saleQuoteProgressService;
+    @Mock
     private ErpStockService stockService;
     @Mock
     private ErpCustomerService customerService;
@@ -126,6 +131,8 @@ public class ErpSaleQuoteServiceImplTest extends BaseMockitoUnitTest {
     private ErpSalePriceLevelPricePicker priceLevelPricePicker;
     @Mock
     private ErpSalePriceLevelPermissionValidator priceLevelPermissionValidator;
+    @Mock
+    private ErpSaleDirectDeptPermissionService saleDirectDeptPermissionService;
 
     @BeforeEach
     public void setUp() {
@@ -184,7 +191,7 @@ public class ErpSaleQuoteServiceImplTest extends BaseMockitoUnitTest {
     }
 
     @Test
-    public void testApproveSaleQuote_createGeneratedSaleOutWithQuoteSource() {
+    public void testApproveSaleQuote_onlyChangesToOrderedWithoutCreatingOutboundDocument() {
         Long quoteId = 10L;
         ErpSaleQuoteDO quote = new ErpSaleQuoteDO()
                 .setId(quoteId)
@@ -203,23 +210,18 @@ public class ErpSaleQuoteServiceImplTest extends BaseMockitoUnitTest {
                 .setWarehouseId(300L)
                 .setProductPrice(new BigDecimal("12.50"))
                 .setCount(new BigDecimal("2"));
-        when(saleQuoteMapper.selectById(eq(quoteId))).thenReturn(quote);
-        when(saleQuoteItemMapper.selectListByQuoteId(eq(quoteId))).thenReturn(Collections.singletonList(item));
+        when(saleQuoteMapper.selectByIdForUpdate(eq(quoteId))).thenReturn(quote);
         when(saleQuoteMapper.updateByIdAndStatus(eq(quoteId), eq(ErpSaleQuoteStatusEnum.PROCESS.getStatus()),
-                argThat(update -> ErpSaleQuoteStatusEnum.GENERATED_SALE_OUT.getStatus().equals(update.getStatus()))))
+                argThat(update -> ErpSaleQuoteStatusEnum.APPROVE.getStatus().equals(update.getStatus()))))
                 .thenReturn(1);
 
-        saleQuoteService.approveSaleQuote(quoteId);
+        assertEquals(quoteId, saleQuoteService.approveSaleQuote(quoteId));
 
-        verify(saleOutService).createGeneratedSaleOut(argThat(req -> quote.getCustomerId().equals(req.getCustomerId())
-                        && quote.getAccountId().equals(req.getAccountId())
-                        && quote.getSaleUserId().equals(req.getSaleUserId())
-                        && quote.getQuoteTime().equals(req.getOutTime())
-                        && req.getItems().size() == 1
-                        && item.getProductId().equals(req.getItems().get(0).getProductId())
-                        && item.getWarehouseId().equals(req.getItems().get(0).getWarehouseId())
-                        && item.getCount().equals(req.getItems().get(0).getCount())),
-                eq(ErpSaleBizSourceTypeEnum.QUOTE.getType()), eq(quote.getId()), eq(quote.getNo()));
+        verify(saleQuoteMapper).updateByIdAndStatus(eq(quoteId),
+                eq(ErpSaleQuoteStatusEnum.PROCESS.getStatus()),
+                argThat(update -> ErpSaleQuoteStatusEnum.APPROVE.getStatus().equals(update.getStatus())));
+        verify(saleOutService, never()).createGeneratedSaleOut(any(), any(), any(), any());
+        verify(stockService, never()).getStockCount(anyLong(), anyLong());
     }
 
     @Test
@@ -232,9 +234,13 @@ public class ErpSaleQuoteServiceImplTest extends BaseMockitoUnitTest {
                 .setAccountId(32L)
                 .setSaleUserId(42L)
                 .setQuoteTime(LocalDateTime.of(2026, 5, 9, 12, 0))
-                .setStatus(ErpSaleQuoteStatusEnum.PROCESS.getStatus())
+                .setStatus(ErpSaleQuoteStatusEnum.APPROVE.getStatus())
                 .setDiscountPercent(BigDecimal.ZERO)
                 .setOtherPrice(BigDecimal.ZERO);
+        quote.setCreator("source-creator");
+        quote.setCreateTime(LocalDateTime.of(2026, 5, 9, 11, 50));
+        quote.setUpdater("source-updater");
+        quote.setUpdateTime(LocalDateTime.of(2026, 5, 9, 11, 55));
         ErpSaleQuoteItemDO item = new ErpSaleQuoteItemDO()
                 .setId(102L)
                 .setQuoteId(quoteId)
@@ -250,25 +256,36 @@ public class ErpSaleQuoteServiceImplTest extends BaseMockitoUnitTest {
         reqVO.setQuoteId(quoteId);
         reqVO.setItems(Collections.singletonList(new ErpSaleQuoteConvertCartReqVO.Item()
                 .setQuoteItemId(item.getId()).setCount(new BigDecimal("4"))));
-        when(saleQuoteMapper.selectById(eq(quoteId))).thenReturn(quote);
-        when(saleQuoteItemMapper.selectListByQuoteId(eq(quoteId))).thenReturn(Collections.singletonList(item));
+        when(saleQuoteMapper.selectByIdForUpdate(eq(quoteId))).thenReturn(quote);
+        when(saleQuoteItemMapper.selectListByQuoteIdForUpdate(eq(quoteId))).thenReturn(Collections.singletonList(item));
         when(saleCartMapper.selectByNo(anyString())).thenReturn(null);
-        when(saleCartMapper.insert(ArgumentMatchers.<cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleCartDO>any()))
-                .thenAnswer(invocation -> {
-                    cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleCartDO cart = invocation.getArgument(0);
-                    cart.setId(901L);
-                    return 1;
-                });
-        when(saleQuoteMapper.updateByIdAndStatus(eq(quoteId), eq(ErpSaleQuoteStatusEnum.PROCESS.getStatus()),
-                argThat(update -> ErpSaleQuoteStatusEnum.PART_CONVERTED_CART.getStatus().equals(update.getStatus()))))
-                .thenReturn(1);
+        org.mockito.Mockito.doAnswer(invocation -> {
+            cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleCartDO cart = invocation.getArgument(0);
+            cart.setId(901L);
+            return null;
+        }).when(saleCartTransferLinkService).insertCart(any());
+        when(saleCartItemMapper.insertBatch(any())).thenAnswer(invocation -> {
+            Collection<cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleCartItemDO> items = invocation.getArgument(0);
+            items.iterator().next().setId(902L);
+            return true;
+        });
 
-        saleQuoteService.convertToCart(reqVO);
+        LocalDateTime conversionStartedAt = LocalDateTime.now();
+        assertEquals(901L, saleQuoteService.convertToCart(reqVO));
+        LocalDateTime conversionFinishedAt = LocalDateTime.now();
 
-        verify(saleCartMapper).insert(ArgumentMatchers.<cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleCartDO>argThat(cart -> quote.getCustomerId().equals(cart.getCustomerId())
+        verify(saleDocumentDefaultService).fillCreateDefaults(ArgumentMatchers.<cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleCartDO>argThat(cart ->
+                cart.getCreator() == null && cart.getCreateTime() == null
+                        && cart.getUpdater() == null && cart.getUpdateTime() == null));
+        verify(saleCartTransferLinkService).insertCart(ArgumentMatchers.<cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleCartDO>argThat(cart -> quote.getCustomerId().equals(cart.getCustomerId())
+                && ErpSaleCartStatusEnum.PROCESS.getStatus().equals(cart.getStatus())
                 && ErpSaleBizSourceTypeEnum.QUOTE.getType().equals(cart.getSourceType())
                 && quote.getId().equals(cart.getSourceId())
-                && quote.getNo().equals(cart.getSourceNo())));
+                && quote.getNo().equals(cart.getSourceNo())
+                && cart.getCartTime() != null
+                && !cart.getCartTime().isBefore(conversionStartedAt)
+                && !cart.getCartTime().isAfter(conversionFinishedAt)
+                && !quote.getQuoteTime().equals(cart.getCartTime())));
         verify(saleCartItemMapper).insertBatch(argThat(items -> {
             java.util.List<cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleCartItemDO> list = new ArrayList<>(items);
             return list.size() == 1 && item.getProductId().equals(list.get(0).getProductId())
@@ -277,14 +294,50 @@ public class ErpSaleQuoteServiceImplTest extends BaseMockitoUnitTest {
                     && item.getBatchNo().equals(list.get(0).getBatchNo())
                     && new BigDecimal("4").compareTo(list.get(0).getCount()) == 0;
         }));
-        verify(saleQuoteItemMapper).updateById(ArgumentMatchers.<ErpSaleQuoteItemDO>argThat(update -> item.getId().equals(update.getId())
-                && new BigDecimal("7").compareTo(update.getConvertedCount()) == 0));
         verify(saleConvertRecordMapper).insertBatch(argThat(records -> {
             java.util.List<cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleConvertRecordDO> list = new ArrayList<>(records);
             return list.size() == 1 && item.getId().equals(list.get(0).getSourceItemId())
+                    && Long.valueOf(902L).equals(list.get(0).getTargetItemId())
                     && new BigDecimal("4").compareTo(list.get(0).getCount()) == 0;
         }));
-        verify(saleCartService, never()).createCrossDeptTransferOutDraftByCartId(any());
+        verify(saleCartService).submitSaleCart(901L);
+        verify(saleQuoteProgressService).refreshQuoteProgress(quoteId);
+    }
+
+    @Test
+    public void testConvertToCart_submitFailure_doesNotRefreshQuoteProgress() {
+        Long quoteId = 121L;
+        ErpSaleQuoteDO quote = new ErpSaleQuoteDO()
+                .setId(quoteId).setNo("BJ20260509000121").setCustomerId(221L).setDeptId(321L)
+                .setStatus(ErpSaleQuoteStatusEnum.APPROVE.getStatus())
+                .setDiscountPercent(BigDecimal.ZERO).setOtherPrice(BigDecimal.ZERO);
+        ErpSaleQuoteItemDO item = new ErpSaleQuoteItemDO()
+                .setId(122L).setQuoteId(quoteId).setProductId(222L).setProductUnitId(322L)
+                .setWarehouseId(422L).setDeptId(321L).setProductPrice(new BigDecimal("20.00"))
+                .setTaxPercent(BigDecimal.ZERO).setCount(new BigDecimal("2")).setConvertedCount(BigDecimal.ZERO);
+        ErpSaleQuoteConvertCartReqVO reqVO = new ErpSaleQuoteConvertCartReqVO();
+        reqVO.setQuoteId(quoteId);
+        reqVO.setItems(Collections.singletonList(new ErpSaleQuoteConvertCartReqVO.Item()
+                .setQuoteItemId(item.getId()).setCount(BigDecimal.ONE)));
+        when(saleQuoteMapper.selectByIdForUpdate(quoteId)).thenReturn(quote);
+        when(saleQuoteItemMapper.selectListByQuoteIdForUpdate(quoteId)).thenReturn(Collections.singletonList(item));
+        when(saleCartMapper.selectByNo(anyString())).thenReturn(null);
+        org.mockito.Mockito.doAnswer(invocation -> {
+            cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleCartDO cart = invocation.getArgument(0);
+            cart.setId(921L);
+            return null;
+        }).when(saleCartTransferLinkService).insertCart(any());
+        when(saleCartItemMapper.insertBatch(any())).thenAnswer(invocation -> {
+            Collection<cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleCartItemDO> items = invocation.getArgument(0);
+            items.iterator().next().setId(922L);
+            return true;
+        });
+        doThrow(new ServiceException(SALE_QUOTE_CONVERT_CART_FAIL)).when(saleCartService).submitSaleCart(921L);
+
+        assertServiceException(() -> saleQuoteService.convertToCart(reqVO), SALE_QUOTE_CONVERT_CART_FAIL);
+
+        verify(saleConvertRecordMapper).insertBatch(any());
+        verify(saleQuoteProgressService, never()).refreshQuoteProgress(anyLong());
     }
 
     @Test
@@ -436,7 +489,7 @@ public class ErpSaleQuoteServiceImplTest extends BaseMockitoUnitTest {
                 .setNo("BJ20260509000003")
                 .setCustomerId(23L)
                 .setQuoteTime(LocalDateTime.of(2026, 5, 9, 13, 0))
-                .setStatus(ErpSaleQuoteStatusEnum.PROCESS.getStatus())
+                .setStatus(ErpSaleQuoteStatusEnum.APPROVE.getStatus())
                 .setDiscountPercent(BigDecimal.ZERO)
                 .setOtherPrice(BigDecimal.ZERO);
         ErpSaleQuoteItemDO item = new ErpSaleQuoteItemDO()
@@ -454,18 +507,14 @@ public class ErpSaleQuoteServiceImplTest extends BaseMockitoUnitTest {
         reqVO.setItems(Arrays.asList(
                 new ErpSaleQuoteConvertCartReqVO.Item().setQuoteItemId(item.getId()).setCount(new BigDecimal("2")),
                 new ErpSaleQuoteConvertCartReqVO.Item().setQuoteItemId(item.getId()).setCount(new BigDecimal("3"))));
-        when(saleQuoteMapper.selectById(eq(quoteId))).thenReturn(quote);
-        when(saleQuoteItemMapper.selectListByQuoteId(eq(quoteId))).thenReturn(Collections.singletonList(item));
+        when(saleQuoteMapper.selectByIdForUpdate(eq(quoteId))).thenReturn(quote);
+        when(saleQuoteItemMapper.selectListByQuoteIdForUpdate(eq(quoteId))).thenReturn(Collections.singletonList(item));
         when(saleCartMapper.selectByNo(anyString())).thenReturn(null);
-        when(saleCartMapper.insert(ArgumentMatchers.<cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleCartDO>any()))
-                .thenAnswer(invocation -> {
-                    cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleCartDO cart = invocation.getArgument(0);
-                    cart.setId(902L);
-                    return 1;
-                });
-        when(saleQuoteMapper.updateByIdAndStatus(eq(quoteId), eq(ErpSaleQuoteStatusEnum.PROCESS.getStatus()),
-                argThat(update -> ErpSaleQuoteStatusEnum.CONVERTED_CART.getStatus().equals(update.getStatus()))))
-                .thenReturn(1);
+        org.mockito.Mockito.doAnswer(invocation -> {
+            cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleCartDO cart = invocation.getArgument(0);
+            cart.setId(902L);
+            return null;
+        }).when(saleCartTransferLinkService).insertCart(any());
 
         saleQuoteService.convertToCart(reqVO);
 
@@ -476,14 +525,13 @@ public class ErpSaleQuoteServiceImplTest extends BaseMockitoUnitTest {
                     && new BigDecimal("5").compareTo(list.get(0).getCount()) == 0
                     && new BigDecimal("50.00").compareTo(list.get(0).getTotalPrice()) == 0;
         }));
-        verify(saleQuoteItemMapper).updateById(ArgumentMatchers.<ErpSaleQuoteItemDO>argThat(update -> item.getId().equals(update.getId())
-                && new BigDecimal("5").compareTo(update.getConvertedCount()) == 0));
         verify(saleConvertRecordMapper).insertBatch(argThat(records -> {
             java.util.List<cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleConvertRecordDO> list = new ArrayList<>(records);
             return list.size() == 1 && item.getId().equals(list.get(0).getSourceItemId())
                     && new BigDecimal("5").compareTo(list.get(0).getCount()) == 0;
         }));
-        verify(saleCartService, never()).createCrossDeptTransferOutDraftByCartId(any());
+        verify(saleCartService).submitSaleCart(902L);
+        verify(saleQuoteProgressService).refreshQuoteProgress(quoteId);
     }
 
     @Test
@@ -494,7 +542,7 @@ public class ErpSaleQuoteServiceImplTest extends BaseMockitoUnitTest {
                 .setNo("BJ20260509000004")
                 .setCustomerId(24L)
                 .setQuoteTime(LocalDateTime.of(2026, 5, 9, 14, 0))
-                .setStatus(ErpSaleQuoteStatusEnum.PROCESS.getStatus())
+                .setStatus(ErpSaleQuoteStatusEnum.APPROVE.getStatus())
                 .setDiscountPercent(BigDecimal.ZERO)
                 .setOtherPrice(BigDecimal.ZERO);
         ErpSaleQuoteItemDO item = new ErpSaleQuoteItemDO()
@@ -511,32 +559,28 @@ public class ErpSaleQuoteServiceImplTest extends BaseMockitoUnitTest {
         reqVO.setQuoteId(quoteId);
         reqVO.setItems(Collections.singletonList(new ErpSaleQuoteConvertCartReqVO.Item()
                 .setQuoteItemId(item.getId()).setCount(new BigDecimal("1"))));
-        when(saleQuoteMapper.selectById(eq(quoteId))).thenReturn(quote);
-        when(saleQuoteItemMapper.selectListByQuoteId(eq(quoteId))).thenReturn(Collections.singletonList(item));
+        when(saleQuoteMapper.selectByIdForUpdate(eq(quoteId))).thenReturn(quote);
+        when(saleQuoteItemMapper.selectListByQuoteIdForUpdate(eq(quoteId))).thenReturn(Collections.singletonList(item));
         when(saleCartMapper.selectByNo(anyString())).thenReturn(null);
-        when(saleCartMapper.insert(ArgumentMatchers.<cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleCartDO>any()))
-                .thenAnswer(invocation -> {
-                    cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleCartDO cart = invocation.getArgument(0);
-                    cart.setId(903L);
-                    return 1;
-                });
+        org.mockito.Mockito.doAnswer(invocation -> {
+            cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleCartDO cart = invocation.getArgument(0);
+            cart.setId(903L);
+            return null;
+        }).when(saleCartTransferLinkService).insertCart(any());
         when(stockService.getStockCount(eq(204L), eq(404L))).thenAnswer(invocation -> {
             if (DataPermissionContextHolder.get() == null || DataPermissionContextHolder.get().enable()) {
                 return BigDecimal.ZERO;
             }
             return new BigDecimal("2");
         });
-        when(saleQuoteMapper.updateByIdAndStatus(eq(quoteId), eq(ErpSaleQuoteStatusEnum.PROCESS.getStatus()),
-                argThat(update -> ErpSaleQuoteStatusEnum.CONVERTED_CART.getStatus().equals(update.getStatus()))))
-                .thenReturn(1);
-
         saleQuoteService.convertToCart(reqVO);
 
         verify(saleCartItemMapper).insertBatch(argThat(items -> {
             java.util.List<cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleCartItemDO> list = new ArrayList<>(items);
             return list.size() == 1 && new BigDecimal("2").compareTo(list.get(0).getStockCount()) == 0;
         }));
-        verify(saleCartService, never()).createCrossDeptTransferOutDraftByCartId(any());
+        verify(saleCartService).submitSaleCart(903L);
+        verify(saleQuoteProgressService).refreshQuoteProgress(quoteId);
     }
 
     // ==================== create ====================
@@ -906,17 +950,11 @@ public class ErpSaleQuoteServiceImplTest extends BaseMockitoUnitTest {
                 .setStatus(ErpSaleQuoteStatusEnum.GENERATED_SALE_OUT.getStatus())
                 .setDiscountPercent(BigDecimal.ZERO)
                 .setOtherPrice(BigDecimal.ZERO);
-        when(saleQuoteMapper.selectById(eq(quoteId))).thenReturn(quote);
-        lenient().when(saleQuoteItemMapper.selectListByQuoteId(eq(quoteId)))
-                .thenReturn(Collections.singletonList(new ErpSaleQuoteItemDO()
-                        .setId(170L).setQuoteId(quoteId).setProductId(270L).setWarehouseId(370L)
-                        .setProductPrice(new BigDecimal("10.00")).setCount(new BigDecimal("1"))));
-        // 关键：由于 quote 的 status 不再是 PROCESS，乐观锁 update 返回 0
-        lenient().when(saleQuoteMapper.updateByIdAndStatus(eq(quoteId), eq(ErpSaleQuoteStatusEnum.PROCESS.getStatus()),
-                ArgumentMatchers.<ErpSaleQuoteDO>any())).thenReturn(0);
+        when(saleQuoteMapper.selectByIdForUpdate(eq(quoteId))).thenReturn(quote);
 
         // 执行 & 断言：抛 SALE_QUOTE_APPROVE_FAIL
-        assertServiceException(() -> saleQuoteService.approveSaleQuote(quoteId), SALE_OUT_NOT_EXISTS);
+        assertServiceException(() -> saleQuoteService.approveSaleQuote(quoteId), SALE_QUOTE_APPROVE_FAIL);
+        verify(saleOutService, never()).createGeneratedSaleOut(any(), any(), any(), any());
     }
 
     @Test
@@ -931,20 +969,50 @@ public class ErpSaleQuoteServiceImplTest extends BaseMockitoUnitTest {
                 .setStatus(ErpSaleQuoteStatusEnum.PROCESS.getStatus())
                 .setDiscountPercent(BigDecimal.ZERO)
                 .setOtherPrice(BigDecimal.ZERO);
-        when(saleQuoteMapper.selectById(eq(quoteId))).thenReturn(quote);
-        when(saleQuoteItemMapper.selectListByQuoteId(eq(quoteId)))
-                .thenReturn(Collections.singletonList(new ErpSaleQuoteItemDO()
-                        .setId(171L).setQuoteId(quoteId).setProductId(271L).setWarehouseId(371L)
-                        .setProductPrice(new BigDecimal("10.00")).setCount(new BigDecimal("1"))));
+        when(saleQuoteMapper.selectByIdForUpdate(eq(quoteId))).thenReturn(quote);
         // 模拟乐观锁失败（被其它事务修改）
         when(saleQuoteMapper.updateByIdAndStatus(eq(quoteId), eq(ErpSaleQuoteStatusEnum.PROCESS.getStatus()),
                 ArgumentMatchers.<ErpSaleQuoteDO>any())).thenReturn(0);
 
         // 执行 & 断言：抛 SALE_QUOTE_APPROVE_FAIL
         assertServiceException(() -> saleQuoteService.approveSaleQuote(quoteId), SALE_QUOTE_APPROVE_FAIL);
-        // 销售出库已先调用过（与生产代码保持一致：先生成销售单，再回写状态）
-        verify(saleOutService).createGeneratedSaleOut(any(), eq(ErpSaleBizSourceTypeEnum.QUOTE.getType()),
-                eq(quoteId), eq(quote.getNo()));
+        verify(saleOutService, never()).createGeneratedSaleOut(any(), any(), any(), any());
+    }
+
+    @Test
+    public void testReverseOrderSaleQuote_withoutConversion_success() {
+        Long quoteId = 72L;
+        ErpSaleQuoteDO quote = new ErpSaleQuoteDO().setId(quoteId).setNo("BJ20260509000072")
+                .setStatus(ErpSaleQuoteStatusEnum.APPROVE.getStatus());
+        when(saleQuoteMapper.selectByIdForUpdate(quoteId)).thenReturn(quote);
+        when(saleConvertRecordMapper.selectQuoteToCartListByQuoteIds(Collections.singleton(quoteId)))
+                .thenReturn(Collections.emptyList());
+        when(saleQuoteMapper.updateByIdAndStatus(eq(quoteId), eq(ErpSaleQuoteStatusEnum.APPROVE.getStatus()),
+                argThat(update -> ErpSaleQuoteStatusEnum.PROCESS.getStatus().equals(update.getStatus()))))
+                .thenReturn(1);
+
+        saleQuoteService.reverseOrderSaleQuote(quoteId);
+
+        verify(saleQuoteMapper).updateByIdAndStatus(eq(quoteId),
+                eq(ErpSaleQuoteStatusEnum.APPROVE.getStatus()),
+                argThat(update -> ErpSaleQuoteStatusEnum.PROCESS.getStatus().equals(update.getStatus())));
+    }
+
+    @Test
+    public void testReverseOrderSaleQuote_withConversion_rejected() {
+        Long quoteId = 73L;
+        ErpSaleQuoteDO quote = new ErpSaleQuoteDO().setId(quoteId).setNo("BJ20260509000073")
+                .setStatus(ErpSaleQuoteStatusEnum.APPROVE.getStatus());
+        when(saleQuoteMapper.selectByIdForUpdate(quoteId)).thenReturn(quote);
+        when(saleConvertRecordMapper.selectQuoteToCartListByQuoteIds(Collections.singleton(quoteId)))
+                .thenReturn(Collections.singletonList(new cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleConvertRecordDO()
+                        .setTargetId(173L)));
+        when(saleCartMapper.selectByIds(Collections.singleton(173L))).thenReturn(Collections.singletonList(
+                new cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleCartDO().setId(173L)));
+
+        assertServiceException(() -> saleQuoteService.reverseOrderSaleQuote(quoteId),
+                SALE_QUOTE_REVERSE_ORDER_FAIL_CONVERTED);
+        verify(saleQuoteMapper, never()).updateByIdAndStatus(anyLong(), any(), any());
     }
 
     // ==================== convertToCart ====================
@@ -957,7 +1025,7 @@ public class ErpSaleQuoteServiceImplTest extends BaseMockitoUnitTest {
                 .setNo("BJ20260509000080")
                 .setCustomerId(90L)
                 .setQuoteTime(LocalDateTime.of(2026, 5, 9, 14, 0))
-                .setStatus(ErpSaleQuoteStatusEnum.PROCESS.getStatus());
+                .setStatus(ErpSaleQuoteStatusEnum.APPROVE.getStatus());
         ErpSaleQuoteItemDO item = new ErpSaleQuoteItemDO()
                 .setId(180L)
                 .setQuoteId(quoteId)
@@ -966,8 +1034,8 @@ public class ErpSaleQuoteServiceImplTest extends BaseMockitoUnitTest {
                 .setProductPrice(new BigDecimal("20.00"))
                 .setCount(new BigDecimal("10"))
                 .setConvertedCount(new BigDecimal("3")); // 已转 3，剩余 7
-        when(saleQuoteMapper.selectById(eq(quoteId))).thenReturn(quote);
-        when(saleQuoteItemMapper.selectListByQuoteId(eq(quoteId))).thenReturn(Collections.singletonList(item));
+        when(saleQuoteMapper.selectByIdForUpdate(eq(quoteId))).thenReturn(quote);
+        when(saleQuoteItemMapper.selectListByQuoteIdForUpdate(eq(quoteId))).thenReturn(Collections.singletonList(item));
 
         // 本次转换 8 > 剩余 7
         ErpSaleQuoteConvertCartReqVO reqVO = new ErpSaleQuoteConvertCartReqVO();
@@ -993,7 +1061,7 @@ public class ErpSaleQuoteServiceImplTest extends BaseMockitoUnitTest {
                 .setAccountId(101L)
                 .setSaleUserId(111L)
                 .setQuoteTime(LocalDateTime.of(2026, 5, 9, 15, 0))
-                .setStatus(ErpSaleQuoteStatusEnum.PROCESS.getStatus())
+                .setStatus(ErpSaleQuoteStatusEnum.APPROVE.getStatus())
                 .setDiscountPercent(BigDecimal.ZERO)
                 .setOtherPrice(BigDecimal.ZERO);
         // item count=10 convertedCount=0，本次转 10，应进入 CONVERTED_CART（完全转换）
@@ -1006,13 +1074,19 @@ public class ErpSaleQuoteServiceImplTest extends BaseMockitoUnitTest {
                 .setProductPrice(new BigDecimal("20.00"))
                 .setCount(new BigDecimal("10"))
                 .setConvertedCount(BigDecimal.ZERO);
-        when(saleQuoteMapper.selectById(eq(quoteId))).thenReturn(quote);
-        when(saleQuoteItemMapper.selectListByQuoteId(eq(quoteId))).thenReturn(Collections.singletonList(item));
+        when(saleQuoteMapper.selectByIdForUpdate(eq(quoteId))).thenReturn(quote);
+        when(saleQuoteItemMapper.selectListByQuoteIdForUpdate(eq(quoteId))).thenReturn(Collections.singletonList(item));
         when(saleCartMapper.selectByNo(anyString())).thenReturn(null);
-        // 关键 stub：updateByIdAndStatus 期望传入 CONVERTED_CART 状态
-        when(saleQuoteMapper.updateByIdAndStatus(eq(quoteId), eq(ErpSaleQuoteStatusEnum.PROCESS.getStatus()),
-                argThat(update -> ErpSaleQuoteStatusEnum.CONVERTED_CART.getStatus().equals(update.getStatus()))))
-                .thenReturn(1);
+        org.mockito.Mockito.doAnswer(invocation -> {
+            cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleCartDO cart = invocation.getArgument(0);
+            cart.setId(903L);
+            return null;
+        }).when(saleCartTransferLinkService).insertCart(any());
+        when(saleCartItemMapper.insertBatch(any())).thenAnswer(invocation -> {
+            Collection<cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleCartItemDO> items = invocation.getArgument(0);
+            items.iterator().next().setId(904L);
+            return true;
+        });
         // 库存查询桩
         Map<Long, BigDecimal> stockMap = new HashMap<>();
         stockMap.put(281L, new BigDecimal("100"));
@@ -1026,13 +1100,9 @@ public class ErpSaleQuoteServiceImplTest extends BaseMockitoUnitTest {
         // 执行
         saleQuoteService.convertToCart(reqVO);
 
-        // 断言：验证状态变更为 CONVERTED_CART
-        verify(saleQuoteMapper).updateByIdAndStatus(eq(quoteId), eq(ErpSaleQuoteStatusEnum.PROCESS.getStatus()),
-                argThat(update -> ErpSaleQuoteStatusEnum.CONVERTED_CART.getStatus().equals(update.getStatus())));
-        // 验证 convertedCount 累加为 10
-        verify(saleQuoteItemMapper).updateById(ArgumentMatchers.<ErpSaleQuoteItemDO>argThat(
-                update -> item.getId().equals(update.getId())
-                        && new BigDecimal("10").compareTo(update.getConvertedCount()) == 0));
+        // 状态及累计数量由统一进度服务按转换记录刷新，避免多入口各自维护状态。
+        verify(saleCartService).submitSaleCart(903L);
+        verify(saleQuoteProgressService).refreshQuoteProgress(quoteId);
     }
 
     // ==================== draft ====================
@@ -1092,7 +1162,7 @@ public class ErpSaleQuoteServiceImplTest extends BaseMockitoUnitTest {
     }
 
     @Test
-    public void testUpdateSaleQuoteDraft_replacesItemsAndPreservesStatus() {
+    public void testUpdateSaleQuoteDraft_emptyIncrementPreservesStatusAndItems() {
         Long quoteId = 102L;
         ErpSaleQuoteDO quote = new ErpSaleQuoteDO()
                 .setId(quoteId)
@@ -1100,7 +1170,7 @@ public class ErpSaleQuoteServiceImplTest extends BaseMockitoUnitTest {
                 .setDeptId(80L)
                 .setStatus(ErpSaleQuoteStatusEnum.DRAFT.getStatus());
         when(saleQuoteMapper.selectById(quoteId)).thenReturn(quote);
-        when(saleQuoteItemMapper.selectListByQuoteId(quoteId)).thenReturn(Collections.emptyList());
+        when(saleQuoteItemMapper.selectListByQuoteIdForUpdate(quoteId)).thenReturn(Collections.emptyList());
         ErpSaleQuoteDraftUpdateReqVO reqVO = new ErpSaleQuoteDraftUpdateReqVO();
         reqVO.setId(quoteId);
         reqVO.setItems(Collections.emptyList());
@@ -1112,7 +1182,7 @@ public class ErpSaleQuoteServiceImplTest extends BaseMockitoUnitTest {
                         && quote.getNo().equals(update.getNo())
                         && ErpSaleQuoteStatusEnum.DRAFT.getStatus().equals(update.getStatus())
                         && quote.getDeptId().equals(update.getDeptId())));
-        verify(saleQuoteItemMapper).deleteByQuoteId(quoteId);
+        verify(saleQuoteItemMapper, never()).deleteByQuoteId(quoteId);
         verify(saleQuoteItemMapper, never()).insertBatch(any());
     }
 
@@ -1147,7 +1217,7 @@ public class ErpSaleQuoteServiceImplTest extends BaseMockitoUnitTest {
         reqVO.setItems(Collections.singletonList(itemVO));
 
         when(saleQuoteMapper.selectById(quoteId)).thenReturn(quote);
-        when(saleQuoteItemMapper.selectListByQuoteId(quoteId)).thenReturn(Collections.singletonList(oldItem));
+        when(saleQuoteItemMapper.selectListByQuoteIdForUpdate(quoteId)).thenReturn(Collections.singletonList(oldItem));
         when(customerService.getCustomerSaleDeptIds(90L)).thenReturn(Collections.singletonList(80L));
         when(productService.validProductList(eq(Collections.singleton(306L))))
                 .thenReturn(Collections.singletonList(new ErpProductDO().setId(306L).setUnitId(706L)));
@@ -1217,7 +1287,7 @@ public class ErpSaleQuoteServiceImplTest extends BaseMockitoUnitTest {
     @Test
     public void testConvertToCart_draftRejected() {
         Long quoteId = 105L;
-        when(saleQuoteMapper.selectById(quoteId)).thenReturn(new ErpSaleQuoteDO()
+        when(saleQuoteMapper.selectByIdForUpdate(quoteId)).thenReturn(new ErpSaleQuoteDO()
                 .setId(quoteId)
                 .setStatus(ErpSaleQuoteStatusEnum.DRAFT.getStatus()));
         ErpSaleQuoteConvertCartReqVO reqVO = new ErpSaleQuoteConvertCartReqVO();
@@ -1226,7 +1296,7 @@ public class ErpSaleQuoteServiceImplTest extends BaseMockitoUnitTest {
 
         assertServiceException(() -> saleQuoteService.convertToCart(reqVO),
                 SALE_QUOTE_CONVERT_CART_FAIL);
-        verify(saleQuoteItemMapper, never()).selectListByQuoteId(any());
+        verify(saleQuoteItemMapper, never()).selectListByQuoteIdForUpdate(any());
         verify(saleCartMapper, never()).insert(ArgumentMatchers.<cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleCartDO>any());
     }
 

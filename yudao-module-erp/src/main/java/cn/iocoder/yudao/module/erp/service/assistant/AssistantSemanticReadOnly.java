@@ -19,17 +19,22 @@ public class AssistantSemanticReadOnly {
     private volatile boolean grantsChecked;
 
     public List<Map<String,Object>> query(String sql,List<Object> parameters,int maximumRows) {
+        return query(sql,parameters,maximumRows,10);
+    }
+
+    public List<Map<String,Object>> query(String sql,List<Object> parameters,int maximumRows,int timeoutSeconds) {
         AssistantTask.checkCurrent();int cap=Math.max(1,Math.min(200,maximumRows));
+        int timeout=Math.max(1,Math.min(10,timeoutSeconds));
         try(Connection connection=datasource().getConnection()) {
             checkGrants(connection);connection.setReadOnly(true);connection.setTransactionIsolation(Connection.TRANSACTION_REPEATABLE_READ);connection.setAutoCommit(false);
             try(PreparedStatement statement=connection.prepareStatement(sql)) {
-                statement.setQueryTimeout(10);statement.setMaxRows(cap+1);
+                statement.setQueryTimeout(timeout);statement.setMaxRows(cap+1);
                 if(AssistantTask.current()!=null) AssistantTask.current().statement(statement);
                 for(int i=0;i<parameters.size();i++) statement.setObject(i+1,parameters.get(i));
                 try(ResultSet result=statement.executeQuery()) {
                     ResultSetMetaData metadata=result.getMetaData();List<Map<String,Object>> rows=new ArrayList<>();
                     while(result.next()) {
-                        if(rows.size()>=cap) throw new AssistantFailure("RESULT_TOO_LARGE","查询结果超过200行，请增加筛选条件");
+                        if(rows.size()>=cap) throw new AssistantFailure("RESULT_TOO_LARGE","查询结果超过"+cap+"行，请增加筛选条件");
                         Map<String,Object> row=new LinkedHashMap<>();
                         for(int i=1;i<=metadata.getColumnCount();i++) row.put(metadata.getColumnLabel(i),result.getObject(i));
                         rows.add(row);

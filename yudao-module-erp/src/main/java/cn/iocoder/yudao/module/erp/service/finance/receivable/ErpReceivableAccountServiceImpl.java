@@ -7,9 +7,14 @@ import cn.iocoder.yudao.framework.mybatis.core.query.LambdaQueryWrapperX;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.receivable.vo.account.ErpReceivableAccountPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.receivable.vo.account.ErpReceivableDetailReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.receivable.vo.account.ErpReceivableDetailRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.finance.receivable.vo.account.ErpReceivableDrilldownReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.receivable.vo.account.ErpReceivableWriteOffReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.ErpAccountDrilldownPageRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.ErpAccountDrilldownSummaryRespVO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.finance.ErpMiscSettlementLedgerRow;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.ErpFinanceReceiptDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.receivable.ErpReceivableAccountDO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.finance.receivable.ErpReceivableMiscDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.receivable.ErpReceivableOtherDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.receivable.ErpReceivableWriteOffDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleOutDO;
@@ -19,6 +24,7 @@ import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleReturnDO;
 import cn.iocoder.yudao.module.erp.dal.mysql.finance.ErpFinanceReceiptMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.finance.ErpFinanceReceiptItemMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.finance.receivable.ErpReceivableAccountMapper;
+import cn.iocoder.yudao.module.erp.dal.mysql.finance.receivable.ErpReceivableMiscMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.finance.receivable.ErpReceivableOtherMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.finance.receivable.ErpReceivableWriteOffMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpSaleOutItemMapper;
@@ -27,6 +33,7 @@ import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpSalePriceAdjustMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpSaleReturnMapper;
 import cn.iocoder.yudao.module.erp.enums.ErpAuditStatus;
 import cn.iocoder.yudao.module.erp.enums.common.ErpBizTypeEnum;
+import cn.iocoder.yudao.module.erp.enums.finance.ErpReceivableDrilldownTypeEnum;
 import cn.iocoder.yudao.framework.security.core.util.SecurityFrameworkUtils;
 import cn.iocoder.yudao.module.erp.service.common.ErpOriginalSettlementAmountUtils;
 import cn.iocoder.yudao.module.erp.service.common.ErpOperateLogService;
@@ -51,6 +58,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
+import java.util.function.Function;
 
 import static cn.iocoder.yudao.framework.common.exception.util.ServiceExceptionUtil.exception;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.RECEIVABLE_WRITEOFF_AMOUNT_EXCEED;
@@ -65,6 +73,8 @@ public class ErpReceivableAccountServiceImpl implements ErpReceivableAccountServ
 
     @Resource
     private ErpReceivableAccountMapper receivableAccountMapper;
+    @Resource
+    private ErpReceivableMiscMapper receivableMiscMapper;
     @Resource
     private ErpSaleOutMapper saleOutMapper;
     @Resource
@@ -129,12 +139,7 @@ public class ErpReceivableAccountServiceImpl implements ErpReceivableAccountServ
         }
         List<ErpReceivableDetailRespVO> rows = DataPermissionUtils.executeIgnore(() ->
                 buildReceivableDetailList(reqVO, scope));
-        BigDecimal opening = rows.isEmpty()
-                ? DataPermissionUtils.executeIgnore(() -> getInitialBalance(reqVO, scope))
-                : rows.get(0).getPrevBalance();
-        // 仅查看/导出补充展示行；带显式范围的抵销调用保持原核算数据。
-        return detailDisplayService.decorate(reqVO, rows, opening,
-                new ErpFinanceVisibleScope(scope.isAll(), scope.getDeptIds(), scope.getSelfUserId()));
+        return detailDisplayService.decorate(reqVO, rows);
     }
 
     @Override
@@ -147,6 +152,220 @@ public class ErpReceivableAccountServiceImpl implements ErpReceivableAccountServ
         ReceivableVisibleScope localScope = new ReceivableVisibleScope(scope.isAll(), scope.getDeptIds(),
                 scope.getSelfUserId());
         return DataPermissionUtils.executeIgnore(() -> buildReceivableDetailList(reqVO, localScope));
+    }
+
+    @Override
+    public ErpAccountDrilldownPageRespVO<ErpReceivableDetailRespVO> getReceivableDrilldownPage(
+            ErpReceivableDrilldownReqVO reqVO) {
+        List<ErpReceivableDetailRespVO> rows = getReceivableDrilldownList(reqVO);
+        ErpReceivableDrilldownTypeEnum type = ErpReceivableDrilldownTypeEnum.fromValue(reqVO.getDetailType());
+        ErpAccountDrilldownSummaryRespVO summary = buildDrilldownSummary(rows, type,
+                resolveEmptyBalanceAmount(reqVO, rows, type));
+        List<ErpReceivableDetailRespVO> sortedRows = sortDrilldownRows(rows, reqVO.getOrderField(),
+                reqVO.getOrderDirection());
+        int from = Math.min((reqVO.getPageNo() - 1) * reqVO.getPageSize(), sortedRows.size());
+        int to = Math.min(from + reqVO.getPageSize(), sortedRows.size());
+        return new ErpAccountDrilldownPageRespVO<>(new ArrayList<>(sortedRows.subList(from, to)),
+                (long) sortedRows.size(), summary);
+    }
+
+    @Override
+    public List<ErpReceivableDetailRespVO> getReceivableDrilldownList(ErpReceivableDrilldownReqVO reqVO) {
+        customerService.validateCustomer(reqVO.getCustomerId());
+        ReceivableVisibleScope scope = getReceivableVisibleScope();
+        if (scope == null || !scope.hasAccess()) {
+            return Collections.emptyList();
+        }
+        return DataPermissionUtils.executeIgnore(() -> buildDrilldownRows(reqVO, scope));
+    }
+
+    private List<ErpReceivableDetailRespVO> buildDrilldownRows(ErpReceivableDrilldownReqVO reqVO,
+                                                               ReceivableVisibleScope scope) {
+        ErpReceivableDrilldownTypeEnum type = ErpReceivableDrilldownTypeEnum.fromValue(reqVO.getDetailType());
+        if (type == ErpReceivableDrilldownTypeEnum.MISC_RECEIVABLE) {
+            return buildMiscReceivableRows(reqVO, scope);
+        }
+        if (type == ErpReceivableDrilldownTypeEnum.OPENING_BALANCE && reqVO.getStartTime() == null) {
+            return Collections.emptyList();
+        }
+        ErpReceivableDetailReqVO detailReqVO = new ErpReceivableDetailReqVO();
+        detailReqVO.setCustomerId(reqVO.getCustomerId());
+        detailReqVO.setDeptId(reqVO.getDeptId());
+        detailReqVO.setDeptUnassigned(reqVO.getDeptUnassigned());
+        detailReqVO.setBizTime(type == ErpReceivableDrilldownTypeEnum.OPENING_BALANCE
+                ? new LocalDateTime[]{null, reqVO.getStartTime()} : reqVO.getBizTime());
+        List<ErpReceivableDetailRespVO> rows = detailDisplayService.decorate(detailReqVO,
+                buildReceivableDetailList(detailReqVO, scope));
+        rows = rows.stream().filter(row -> matchesDrilldownType(row, type)).collect(Collectors.toList());
+        applyDrilldownAmounts(rows, type);
+        return rows;
+    }
+
+    private boolean matchesDrilldownType(ErpReceivableDetailRespVO row,
+                                         ErpReceivableDrilldownTypeEnum type) {
+        if (type == ErpReceivableDrilldownTypeEnum.BALANCE
+                || type == ErpReceivableDrilldownTypeEnum.OPENING_BALANCE) {
+            return true;
+        }
+        if (type == ErpReceivableDrilldownTypeEnum.SALE_OUT) {
+            return ErpBizTypeEnum.SALE_OUT.getType().equals(row.getBizType());
+        }
+        if (type == ErpReceivableDrilldownTypeEnum.SALE_RETURN) {
+            return ErpBizTypeEnum.SALE_RETURN.getType().equals(row.getBizType());
+        }
+        return type == ErpReceivableDrilldownTypeEnum.RECEIPT && "收款单".equals(row.getDocType());
+    }
+
+    private void applyDrilldownAmounts(List<ErpReceivableDetailRespVO> rows,
+                                       ErpReceivableDrilldownTypeEnum type) {
+        boolean balanceType = type == ErpReceivableDrilldownTypeEnum.BALANCE
+                || type == ErpReceivableDrilldownTypeEnum.OPENING_BALANCE;
+        BigDecimal cumulative = BigDecimal.ZERO;
+        for (ErpReceivableDetailRespVO row : rows) {
+            BigDecimal change;
+            if (balanceType) {
+                change = getChangeAmount(row);
+            } else if (type == ErpReceivableDrilldownTypeEnum.SALE_RETURN) {
+                change = defaultAmount(getChangeAmount(row)).abs();
+            } else if (type == ErpReceivableDrilldownTypeEnum.RECEIPT) {
+                change = defaultAmount(row.getReceiptAmount()).abs();
+            } else {
+                change = defaultAmount(row.getIncreaseAmount());
+            }
+            row.setChangeAmount(change);
+            if (!balanceType) {
+                row.setPrevBalance(cumulative);
+                cumulative = cumulative.add(change);
+                row.setBalance(cumulative);
+            }
+        }
+    }
+
+    private List<ErpReceivableDetailRespVO> buildMiscReceivableRows(ErpReceivableDrilldownReqVO reqVO,
+                                                                    ReceivableVisibleScope scope) {
+        LambdaQueryWrapperX<ErpReceivableMiscDO> query = new LambdaQueryWrapperX<ErpReceivableMiscDO>()
+                .eq(ErpReceivableMiscDO::getCustomerId, reqVO.getCustomerId())
+                .eq(ErpReceivableMiscDO::getStatus, ErpAuditStatus.APPROVE.getStatus())
+                .geIfPresent(ErpReceivableMiscDO::getBizTime, reqVO.getStartTime())
+                .leIfPresent(ErpReceivableMiscDO::getBizTime, reqVO.getEndTime());
+        if (Boolean.TRUE.equals(reqVO.getDeptUnassigned())) {
+            query.isNull(ErpReceivableMiscDO::getDeptId);
+        } else {
+            query.eqIfPresent(ErpReceivableMiscDO::getDeptId, reqVO.getDeptId());
+        }
+        applyMiscScope(query, scope);
+        List<ErpMiscSettlementLedgerRow> ledgerRows = receivableMiscMapper.selectSettlementLedger(query
+                .orderByAsc(ErpReceivableMiscDO::getBizTime)
+                .orderByAsc(ErpReceivableMiscDO::getNo)
+                .orderByAsc(ErpReceivableMiscDO::getId));
+        List<ErpReceivableDetailRespVO> rows = new ArrayList<>(ledgerRows.size());
+        BigDecimal cumulative = BigDecimal.ZERO;
+        for (ErpMiscSettlementLedgerRow item : ledgerRows) {
+            BigDecimal change = defaultAmount(item.getAmount()).negate();
+            ErpReceivableDetailRespVO row = new ErpReceivableDetailRespVO();
+            row.setDocType(item.getDocumentId() == null ? "其他应收" : "其他应收收款");
+            row.setBizType(item.getDocumentId() == null ? ErpBizTypeEnum.RECEIVABLE_MISC.getType() : null);
+            row.setBizId(item.getDocumentId() == null ? item.getId() : item.getDocumentId());
+            row.setDocDate(item.getBizTime());
+            row.setDocNo(item.getNo());
+            row.setDeptId(item.getDeptId());
+            row.setRemark(item.getRemark());
+            row.setIncreaseAmount(change.compareTo(BigDecimal.ZERO) > 0 ? change : BigDecimal.ZERO);
+            row.setReceiptAmount(change.compareTo(BigDecimal.ZERO) < 0 ? change.abs() : BigDecimal.ZERO);
+            row.setChangeAmount(change);
+            row.setPrevBalance(cumulative);
+            cumulative = cumulative.add(change);
+            row.setBalance(cumulative);
+            rows.add(row);
+        }
+        fillDeptNames(rows);
+        return rows;
+    }
+
+    private void applyMiscScope(LambdaQueryWrapperX<ErpReceivableMiscDO> query, ReceivableVisibleScope scope) {
+        if (scope.isAll()) {
+            return;
+        }
+        if (!scope.getDeptIds().isEmpty() && scope.getSelfUserId() != null) {
+            query.and(wrapper -> wrapper.in(ErpReceivableMiscDO::getDeptId, scope.getDeptIds())
+                    .or().eq(ErpReceivableMiscDO::getHandlerId, scope.getSelfUserId()));
+        } else if (!scope.getDeptIds().isEmpty()) {
+            query.in(ErpReceivableMiscDO::getDeptId, scope.getDeptIds());
+        } else {
+            query.eq(ErpReceivableMiscDO::getHandlerId, scope.getSelfUserId());
+        }
+    }
+
+    private ErpAccountDrilldownSummaryRespVO buildDrilldownSummary(List<ErpReceivableDetailRespVO> rows,
+                                                                    ErpReceivableDrilldownTypeEnum type,
+                                                                    BigDecimal emptyBalanceAmount) {
+        ErpAccountDrilldownSummaryRespVO summary = new ErpAccountDrilldownSummaryRespVO();
+        summary.setDetailCount((long) rows.size());
+        BigDecimal opening = rows.isEmpty() ? defaultAmount(emptyBalanceAmount)
+                : defaultAmount(rows.get(0).getPrevBalance());
+        BigDecimal increase = rows.stream().map(ErpReceivableDetailRespVO::getChangeAmount)
+                .map(this::defaultAmount).filter(value -> value.signum() > 0)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal decrease = rows.stream().map(ErpReceivableDetailRespVO::getChangeAmount)
+                .map(this::defaultAmount).filter(value -> value.signum() < 0)
+                .map(BigDecimal::abs).reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal ending = rows.isEmpty() ? opening : defaultAmount(rows.get(rows.size() - 1).getBalance());
+        boolean balanceType = type == ErpReceivableDrilldownTypeEnum.BALANCE
+                || type == ErpReceivableDrilldownTypeEnum.OPENING_BALANCE;
+        summary.setOpeningAmount(opening);
+        summary.setIncreaseAmount(increase);
+        summary.setDecreaseAmount(decrease);
+        summary.setTargetAmount(balanceType ? ending : increase.subtract(decrease));
+        summary.setEndingAmount(ending);
+        return summary;
+    }
+
+    private BigDecimal resolveEmptyBalanceAmount(ErpReceivableDrilldownReqVO reqVO,
+                                                  List<ErpReceivableDetailRespVO> rows,
+                                                  ErpReceivableDrilldownTypeEnum type) {
+        if (!rows.isEmpty() || type != ErpReceivableDrilldownTypeEnum.BALANCE || reqVO.getStartTime() == null) {
+            return BigDecimal.ZERO;
+        }
+        ReceivableVisibleScope scope = getReceivableVisibleScope();
+        if (scope == null || !scope.hasAccess()) {
+            return BigDecimal.ZERO;
+        }
+        ErpReceivableDetailReqVO detailReqVO = new ErpReceivableDetailReqVO();
+        detailReqVO.setCustomerId(reqVO.getCustomerId());
+        detailReqVO.setDeptId(reqVO.getDeptId());
+        detailReqVO.setDeptUnassigned(reqVO.getDeptUnassigned());
+        detailReqVO.setBizTime(reqVO.getBizTime());
+        return DataPermissionUtils.executeIgnore(() -> getInitialBalance(detailReqVO, scope));
+    }
+
+    private List<ErpReceivableDetailRespVO> sortDrilldownRows(List<ErpReceivableDetailRespVO> rows,
+                                                               String field, String direction) {
+        if (field == null || direction == null) {
+            return new ArrayList<>(rows);
+        }
+        Comparator<ErpReceivableDetailRespVO> comparator;
+        switch (field) {
+            case "docType": comparator = comparing(ErpReceivableDetailRespVO::getDocType); break;
+            case "docNo": comparator = comparing(ErpReceivableDetailRespVO::getDocNo); break;
+            case "changeAmount": comparator = comparing(ErpReceivableDetailRespVO::getChangeAmount); break;
+            case "increaseAmount": comparator = comparing(ErpReceivableDetailRespVO::getIncreaseAmount); break;
+            case "receiptAmount": comparator = comparing(ErpReceivableDetailRespVO::getReceiptAmount); break;
+            case "balance": comparator = comparing(ErpReceivableDetailRespVO::getBalance); break;
+            case "deptName": comparator = comparing(ErpReceivableDetailRespVO::getDeptName); break;
+            case "docDate": comparator = comparing(ErpReceivableDetailRespVO::getDocDate); break;
+            default: return new ArrayList<>(rows);
+        }
+        if ("desc".equalsIgnoreCase(direction)) {
+            comparator = comparator.reversed();
+        }
+        List<ErpReceivableDetailRespVO> sorted = new ArrayList<>(rows);
+        sorted.sort(comparator);
+        return sorted;
+    }
+
+    private <U extends Comparable<? super U>> Comparator<ErpReceivableDetailRespVO> comparing(
+            Function<ErpReceivableDetailRespVO, U> extractor) {
+        return Comparator.comparing(extractor, Comparator.nullsLast(Comparator.naturalOrder()));
     }
 
     @Override
@@ -544,6 +763,10 @@ public class ErpReceivableAccountServiceImpl implements ErpReceivableAccountServ
         BigDecimal otherReceivableAmount = row.getOtherReceivableAmount() == null ? BigDecimal.ZERO : row.getOtherReceivableAmount();
         BigDecimal receiptAmount = row.getReceiptAmount() == null ? BigDecimal.ZERO : row.getReceiptAmount();
         return increaseAmount.add(otherReceivableAmount).subtract(receiptAmount);
+    }
+
+    private BigDecimal defaultAmount(BigDecimal amount) {
+        return amount == null ? BigDecimal.ZERO : amount;
     }
 
     private CustomerVisibleScope getCustomerVisibleScope() {

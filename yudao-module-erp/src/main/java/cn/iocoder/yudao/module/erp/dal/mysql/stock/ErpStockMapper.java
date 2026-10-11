@@ -87,9 +87,39 @@ public interface ErpStockMapper extends BaseMapperX<ErpStockDO> {
                                              Collection<Long> departmentWarehouseIds,
                                              Collection<Long> selfWarehouseIds,
                                              String selfCreator) {
+        return selectPage(reqVO, productIdFilter, warehouseIdFilter, keywordProductIdFilter,
+                keywordWarehouseIdFilter, batchKeywordStockKeyMap, null,
+                departmentWarehouseIds, selfWarehouseIds, selfCreator);
+    }
+
+    default PageResult<ErpStockDO> selectPage(ErpStockPageReqVO reqVO, Collection<Long> productIdFilter,
+                                             Collection<Long> warehouseIdFilter,
+                                             Collection<Long> keywordProductIdFilter,
+                                             Collection<Long> keywordWarehouseIdFilter,
+                                             Map<Long, Set<Long>> batchKeywordStockKeyMap,
+                                             List<ErpStockKeywordMatchScope> crossDimensionKeywordScopes,
+                                             Collection<Long> departmentWarehouseIds,
+                                             Collection<Long> selfWarehouseIds,
+                                             String selfCreator) {
+        return selectPage(reqVO, productIdFilter, warehouseIdFilter, keywordProductIdFilter,
+                keywordWarehouseIdFilter, batchKeywordStockKeyMap, crossDimensionKeywordScopes,
+                departmentWarehouseIds, selfWarehouseIds, selfCreator, null);
+    }
+
+    default PageResult<ErpStockDO> selectPage(ErpStockPageReqVO reqVO, Collection<Long> productIdFilter,
+                                             Collection<Long> warehouseIdFilter,
+                                             Collection<Long> keywordProductIdFilter,
+                                             Collection<Long> keywordWarehouseIdFilter,
+                                             Map<Long, Set<Long>> batchKeywordStockKeyMap,
+                                             List<ErpStockKeywordMatchScope> crossDimensionKeywordScopes,
+                                             Collection<Long> departmentWarehouseIds,
+                                             Collection<Long> selfWarehouseIds,
+                                             String selfCreator,
+                                             Map<Long, Set<Long>> batchNoStockKeyMap) {
         QueryWrapperX<ErpStockDO> wrapper = buildStockQueryWrapper(reqVO, productIdFilter, warehouseIdFilter,
                 keywordProductIdFilter, keywordWarehouseIdFilter, batchKeywordStockKeyMap,
-                departmentWarehouseIds, selfWarehouseIds, selfCreator);
+                crossDimensionKeywordScopes,
+                departmentWarehouseIds, selfWarehouseIds, selfCreator, batchNoStockKeyMap);
         if (wrapper == null) {
             return PageResult.empty(0L);
         }
@@ -106,9 +136,41 @@ public interface ErpStockMapper extends BaseMapperX<ErpStockDO> {
                                                                    Collection<Long> departmentWarehouseIds,
                                                                    Collection<Long> selfWarehouseIds,
                                                                    String selfCreator) {
+        return selectPageOrderByAvailableCount(reqVO, productIdFilter, warehouseIdFilter,
+                keywordProductIdFilter, keywordWarehouseIdFilter, batchKeywordStockKeyMap, null,
+                departmentWarehouseIds, selfWarehouseIds, selfCreator);
+    }
+
+    default PageResult<ErpStockDO> selectPageOrderByAvailableCount(ErpStockPageReqVO reqVO,
+                                                                   Collection<Long> productIdFilter,
+                                                                   Collection<Long> warehouseIdFilter,
+                                                                   Collection<Long> keywordProductIdFilter,
+                                                                   Collection<Long> keywordWarehouseIdFilter,
+                                                                   Map<Long, Set<Long>> batchKeywordStockKeyMap,
+                                                                   List<ErpStockKeywordMatchScope> crossDimensionKeywordScopes,
+                                                                   Collection<Long> departmentWarehouseIds,
+                                                                   Collection<Long> selfWarehouseIds,
+                                                                   String selfCreator) {
+        return selectPageOrderByAvailableCount(reqVO, productIdFilter, warehouseIdFilter,
+                keywordProductIdFilter, keywordWarehouseIdFilter, batchKeywordStockKeyMap,
+                crossDimensionKeywordScopes, departmentWarehouseIds, selfWarehouseIds, selfCreator, null);
+    }
+
+    default PageResult<ErpStockDO> selectPageOrderByAvailableCount(ErpStockPageReqVO reqVO,
+                                                                   Collection<Long> productIdFilter,
+                                                                   Collection<Long> warehouseIdFilter,
+                                                                   Collection<Long> keywordProductIdFilter,
+                                                                   Collection<Long> keywordWarehouseIdFilter,
+                                                                   Map<Long, Set<Long>> batchKeywordStockKeyMap,
+                                                                   List<ErpStockKeywordMatchScope> crossDimensionKeywordScopes,
+                                                                   Collection<Long> departmentWarehouseIds,
+                                                                   Collection<Long> selfWarehouseIds,
+                                                                   String selfCreator,
+                                                                   Map<Long, Set<Long>> batchNoStockKeyMap) {
         QueryWrapperX<ErpStockDO> wrapper = buildStockQueryWrapper(reqVO, productIdFilter, warehouseIdFilter,
                 keywordProductIdFilter, keywordWarehouseIdFilter, batchKeywordStockKeyMap,
-                departmentWarehouseIds, selfWarehouseIds, selfCreator);
+                crossDimensionKeywordScopes,
+                departmentWarehouseIds, selfWarehouseIds, selfCreator, batchNoStockKeyMap);
         if (wrapper == null) {
             return PageResult.empty(0L);
         }
@@ -140,12 +202,53 @@ public interface ErpStockMapper extends BaseMapperX<ErpStockDO> {
                                                             Collection<Long> departmentWarehouseIds,
                                                             Collection<Long> selfWarehouseIds,
                                                             String selfCreator) {
+        return buildStockQueryWrapper(reqVO, productIdFilter, warehouseIdFilter,
+                keywordProductIdFilter, keywordWarehouseIdFilter, batchKeywordStockKeyMap, null,
+                departmentWarehouseIds, selfWarehouseIds, selfCreator);
+    }
+
+    default QueryWrapperX<ErpStockDO> buildStockQueryWrapper(ErpStockPageReqVO reqVO,
+                                                            Collection<Long> productIdFilter,
+                                                            Collection<Long> warehouseIdFilter,
+                                                            Collection<Long> keywordProductIdFilter,
+                                                            Collection<Long> keywordWarehouseIdFilter,
+                                                            Map<Long, Set<Long>> batchKeywordStockKeyMap,
+                                                            List<ErpStockKeywordMatchScope> crossDimensionKeywordScopes,
+                                                            Collection<Long> departmentWarehouseIds,
+                                                            Collection<Long> selfWarehouseIds,
+                                                            String selfCreator) {
+        return buildStockQueryWrapper(reqVO, productIdFilter, warehouseIdFilter,
+                keywordProductIdFilter, keywordWarehouseIdFilter, batchKeywordStockKeyMap,
+                crossDimensionKeywordScopes, departmentWarehouseIds, selfWarehouseIds, selfCreator, null);
+    }
+
+    default QueryWrapperX<ErpStockDO> buildStockQueryWrapper(ErpStockPageReqVO reqVO,
+                                                            Collection<Long> productIdFilter,
+                                                            Collection<Long> warehouseIdFilter,
+                                                            Collection<Long> keywordProductIdFilter,
+                                                            Collection<Long> keywordWarehouseIdFilter,
+                                                            Map<Long, Set<Long>> batchKeywordStockKeyMap,
+                                                            List<ErpStockKeywordMatchScope> crossDimensionKeywordScopes,
+                                                            Collection<Long> departmentWarehouseIds,
+                                                            Collection<Long> selfWarehouseIds,
+                                                            String selfCreator,
+                                                            Map<Long, Set<Long>> batchNoStockKeyMap) {
         QueryWrapperX<ErpStockDO> wrapper = new QueryWrapperX<ErpStockDO>()
                 .eqIfPresent("product_id", reqVO.getProductId())
                 .eqIfPresent("warehouse_id", reqVO.getWarehouseId())
                 .likeIfPresent("shelf", fuzzyKeyword(reqVO.getShelf()))
                 .geIfPresent("count", reqVO.getCountMin())
                 .leIfPresent("count", reqVO.getCountMax());
+        if (org.springframework.util.StringUtils.hasText(reqVO.getWarehouseName())) {
+            wrapper.exists("SELECT 1 FROM erp_warehouse w WHERE w.id = erp_stock.warehouse_id "
+                    + "AND w.deleted = b'0' AND w.name LIKE {0}",
+                    "%" + reqVO.getWarehouseName().trim() + "%");
+        }
+        if (org.springframework.util.StringUtils.hasText(reqVO.getDeptName())) {
+            wrapper.exists("SELECT 1 FROM system_dept d WHERE d.id = erp_stock.dept_id "
+                    + "AND d.deleted = b'0' AND d.name LIKE {0}",
+                    "%" + reqVO.getDeptName().trim() + "%");
+        }
         if (productIdFilter != null) {
             if (productIdFilter.isEmpty()) {
                 return null;
@@ -158,11 +261,18 @@ public interface ErpStockMapper extends BaseMapperX<ErpStockDO> {
             }
             wrapper.in("warehouse_id", warehouseIdFilter);
         }
-        if (keywordProductIdFilter != null || keywordWarehouseIdFilter != null) {
+        if (crossDimensionKeywordScopes != null) {
+            if (!appendCrossDimensionKeywordCondition(wrapper, crossDimensionKeywordScopes)) {
+                return null;
+            }
+        } else if (keywordProductIdFilter != null || keywordWarehouseIdFilter != null) {
             if (!appendKeywordCondition(wrapper, keywordProductIdFilter, keywordWarehouseIdFilter,
                     batchKeywordStockKeyMap)) {
                 return null;
             }
+        }
+        if (batchNoStockKeyMap != null && !appendStockKeyCondition(wrapper, batchNoStockKeyMap)) {
+            return null;
         }
         if (selfCreator != null) {
             if (isEmpty(departmentWarehouseIds) && isEmpty(selfWarehouseIds)) {
@@ -216,9 +326,41 @@ public interface ErpStockMapper extends BaseMapperX<ErpStockDO> {
                                                 Collection<Long> departmentWarehouseIds,
                                                 Collection<Long> selfWarehouseIds,
                                                 String selfCreator) {
+        return selectSummary(reqVO, productIdFilter, warehouseIdFilter,
+                keywordProductIdFilter, keywordWarehouseIdFilter, batchKeywordStockKeyMap, null,
+                departmentWarehouseIds, selfWarehouseIds, selfCreator);
+    }
+
+    default ErpStockSummaryRespVO selectSummary(ErpStockPageReqVO reqVO,
+                                                Collection<Long> productIdFilter,
+                                                Collection<Long> warehouseIdFilter,
+                                                Collection<Long> keywordProductIdFilter,
+                                                Collection<Long> keywordWarehouseIdFilter,
+                                                Map<Long, Set<Long>> batchKeywordStockKeyMap,
+                                                List<ErpStockKeywordMatchScope> crossDimensionKeywordScopes,
+                                                Collection<Long> departmentWarehouseIds,
+                                                Collection<Long> selfWarehouseIds,
+                                                String selfCreator) {
+        return selectSummary(reqVO, productIdFilter, warehouseIdFilter, keywordProductIdFilter,
+                keywordWarehouseIdFilter, batchKeywordStockKeyMap, crossDimensionKeywordScopes,
+                departmentWarehouseIds, selfWarehouseIds, selfCreator, null);
+    }
+
+    default ErpStockSummaryRespVO selectSummary(ErpStockPageReqVO reqVO,
+                                                Collection<Long> productIdFilter,
+                                                Collection<Long> warehouseIdFilter,
+                                                Collection<Long> keywordProductIdFilter,
+                                                Collection<Long> keywordWarehouseIdFilter,
+                                                Map<Long, Set<Long>> batchKeywordStockKeyMap,
+                                                List<ErpStockKeywordMatchScope> crossDimensionKeywordScopes,
+                                                Collection<Long> departmentWarehouseIds,
+                                                Collection<Long> selfWarehouseIds,
+                                                String selfCreator,
+                                                Map<Long, Set<Long>> batchNoStockKeyMap) {
         QueryWrapperX<ErpStockDO> wrapper = buildStockQueryWrapper(reqVO, productIdFilter, warehouseIdFilter,
                 keywordProductIdFilter, keywordWarehouseIdFilter, batchKeywordStockKeyMap,
-                departmentWarehouseIds, selfWarehouseIds, selfCreator);
+                crossDimensionKeywordScopes,
+                departmentWarehouseIds, selfWarehouseIds, selfCreator, batchNoStockKeyMap);
         if (wrapper == null) {
             return new ErpStockSummaryRespVO();
         }
@@ -320,6 +462,55 @@ public interface ErpStockMapper extends BaseMapperX<ErpStockDO> {
                 });
             }
         });
+        return true;
+    }
+
+    /**
+     * 将批次号预筛命中的产品、仓库组合作为独立 AND 条件，避免和关键词 OR 条件互相扩大结果。
+     */
+    static boolean appendStockKeyCondition(QueryWrapperX<ErpStockDO> wrapper,
+                                           Map<Long, Set<Long>> stockKeyMap) {
+        if (stockKeyMap == null || stockKeyMap.isEmpty()) {
+            return false;
+        }
+        boolean hasPair = stockKeyMap.entrySet().stream()
+                .anyMatch(entry -> entry.getKey() != null && !isEmpty(entry.getValue()));
+        if (!hasPair) {
+            return false;
+        }
+        wrapper.and(stockKeys -> {
+            boolean appended = false;
+            for (Map.Entry<Long, Set<Long>> entry : stockKeyMap.entrySet()) {
+                if (entry.getKey() == null || isEmpty(entry.getValue())) {
+                    continue;
+                }
+                if (appended) {
+                    stockKeys.or();
+                }
+                stockKeys.nested(pair -> pair.eq("product_id", entry.getKey())
+                        .in("warehouse_id", entry.getValue()));
+                appended = true;
+            }
+        });
+        return true;
+    }
+
+    /**
+     * 每个分隔符片段可以命中产品、仓库（含仓库所属部门）或批次，片段之间必须全部满足。
+     */
+    static boolean appendCrossDimensionKeywordCondition(
+            QueryWrapperX<ErpStockDO> wrapper,
+            List<ErpStockKeywordMatchScope> keywordScopes) {
+        if (keywordScopes == null || keywordScopes.isEmpty()) {
+            return false;
+        }
+        for (ErpStockKeywordMatchScope keywordScope : keywordScopes) {
+            if (keywordScope == null || !appendKeywordCondition(wrapper,
+                    keywordScope.getProductIds(), keywordScope.getWarehouseIds(),
+                    keywordScope.getBatchStockKeyMap())) {
+                return false;
+            }
+        }
         return true;
     }
 
@@ -515,12 +706,24 @@ public interface ErpStockMapper extends BaseMapperX<ErpStockDO> {
                 return "COALESCE(erp_stock.purchase_price, " + productField("last_purchase_price") + ")";
             case "lastPurchasePrice":
                 return productField("last_purchase_price");
+            case "productPurchasePrice":
+                return productField("purchase_price");
             case "salePrice":
                 return productField("sale_price");
+            case "minPrice":
+                return productField("min_price");
             case "referencePrice":
                 return productField("reference_price");
             case "retailPrice":
                 return productField("retail_price");
+            case "grossProfitRate":
+                return productField("gross_profit_rate");
+            case "backupPrice1":
+                return productField("backup_price1");
+            case "wholesalePrice":
+                return productField("wholesale_price");
+            case "sharePrice":
+                return productField("share_price");
             case "occupiedCount":
                 return "COALESCE(" + occupiedCountExpression() + ", 0)";
             case "availableCount":
@@ -551,6 +754,8 @@ public interface ErpStockMapper extends BaseMapperX<ErpStockDO> {
                 return productField("origin_place");
             case "factoryCode":
                 return productField("factory_code");
+            case "weight":
+                return productField("weight");
             case "stockMin":
                 return productField("stock_min");
             case "stockMax":

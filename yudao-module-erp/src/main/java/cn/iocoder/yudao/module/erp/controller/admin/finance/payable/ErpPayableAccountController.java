@@ -12,8 +12,12 @@ import cn.iocoder.yudao.module.erp.controller.admin.finance.payable.vo.account.E
 import cn.iocoder.yudao.module.erp.controller.admin.finance.payable.vo.account.ErpPayableAccountRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.payable.vo.account.ErpPayableDetailReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.payable.vo.account.ErpPayableDetailRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.finance.payable.vo.account.ErpPayableDrilldownReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.payable.vo.account.ErpPayableWriteOffReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.ErpAccountDrilldownPageRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.ErpAccountDrilldownExportRespVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.payable.ErpPayableAccountDO;
+import cn.iocoder.yudao.module.erp.enums.finance.ErpPayableDrilldownTypeEnum;
 import cn.iocoder.yudao.module.erp.service.base.ErpDataPermissionDeptService;
 import cn.iocoder.yudao.module.erp.service.finance.payable.ErpPayableAccountService;
 import cn.iocoder.yudao.module.system.api.user.AdminUserApi;
@@ -92,6 +96,15 @@ public class ErpPayableAccountController {
         return success(payableAccountService.getPayableDetailList(reqVO));
     }
 
+    @GetMapping("/drilldown-page")
+    @Operation(summary = "获取应付账款金额列下钻分页")
+    @PreAuthorize("@ss.hasPermission('erp:payable-account:query') && "
+            + "(!#reqVO.miscDetail || @ss.hasPermission('erp:payable-misc:query'))")
+    public CommonResult<ErpAccountDrilldownPageRespVO<ErpPayableDetailRespVO>> getPayableDrilldownPage(
+            @Valid ErpPayableDrilldownReqVO reqVO) {
+        return success(payableAccountService.getPayableDrilldownPage(reqVO));
+    }
+
     @GetMapping("/export")
     @Operation(summary = "导出应付账款概览 Excel")
     @PreAuthorize("@ss.hasPermission('erp:payable-account:query')")
@@ -111,6 +124,30 @@ public class ErpPayableAccountController {
                                     HttpServletResponse response) throws IOException {
         ExcelUtils.write(response, "应付账款明细.xls", "明细", ErpPayableDetailRespVO.class,
                 payableAccountService.getPayableDetailList(reqVO));
+    }
+
+    @GetMapping("/export-drilldown")
+    @Operation(summary = "导出应付账款金额列下钻 Excel")
+    @PreAuthorize("@ss.hasPermission('erp:payable-account:query') && "
+            + "(!#reqVO.miscDetail || @ss.hasPermission('erp:payable-misc:query'))")
+    @ApiAccessLog(operateType = EXPORT)
+    public void exportPayableDrilldown(@Valid ErpPayableDrilldownReqVO reqVO,
+                                       HttpServletResponse response) throws IOException {
+        ErpPayableDrilldownTypeEnum type = ErpPayableDrilldownTypeEnum.fromValue(reqVO.getDetailType());
+        String detailLabel = type.getLabel();
+        List<ErpPayableDetailRespVO> rows = payableAccountService.getPayableDrilldownList(reqVO);
+        if (type == ErpPayableDrilldownTypeEnum.BALANCE) {
+            ExcelUtils.write(response, "应付账款-" + detailLabel + "明细.xls", detailLabel,
+                    ErpPayableDetailRespVO.class, rows);
+            return;
+        }
+        List<ErpAccountDrilldownExportRespVO> exports = BeanUtils.toBean(rows,
+                ErpAccountDrilldownExportRespVO.class);
+        for (int i = 0; i < rows.size(); i++) {
+            exports.get(i).setOperatorName(rows.get(i).getBusinessUserName());
+        }
+        ExcelUtils.write(response, "应付账款-" + detailLabel + "明细.xls", detailLabel,
+                ErpAccountDrilldownExportRespVO.class, exports);
     }
 
     @PostMapping("/writeoff")

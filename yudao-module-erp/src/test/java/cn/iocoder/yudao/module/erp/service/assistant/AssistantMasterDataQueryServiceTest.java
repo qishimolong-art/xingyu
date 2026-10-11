@@ -12,6 +12,7 @@ import cn.iocoder.yudao.module.erp.service.product.ErpProductService;
 import cn.iocoder.yudao.module.erp.service.purchase.ErpSupplierService;
 import cn.iocoder.yudao.module.erp.service.sale.ErpCustomerService;
 import cn.iocoder.yudao.module.system.api.permission.PermissionApi;
+import cn.iocoder.yudao.module.system.api.user.AdminUserApi;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -34,6 +35,7 @@ class AssistantMasterDataQueryServiceTest {
     private ErpCustomerService customers;
     private ErpSupplierService suppliers;
     private ErpProductService products;
+    private AdminUserApi users;
 
     @BeforeEach
     void setUp() {
@@ -42,10 +44,12 @@ class AssistantMasterDataQueryServiceTest {
         customers = mock(ErpCustomerService.class);
         suppliers = mock(ErpSupplierService.class);
         products = mock(ErpProductService.class);
+        users = mock(AdminUserApi.class);
         ReflectionTestUtils.setField(service, "permissions", permissions);
         ReflectionTestUtils.setField(service, "customerService", customers);
         ReflectionTestUtils.setField(service, "supplierService", suppliers);
         ReflectionTestUtils.setField(service, "productService", products);
+        ReflectionTestUtils.setField(service, "userApi", users);
         LoginUser user = new LoginUser();
         user.setId(101L);
         SecurityContextHolder.getContext().setAuthentication(
@@ -72,12 +76,32 @@ class AssistantMasterDataQueryServiceTest {
                 AssistantMasterDataQueryService.StatusMode.DISABLED);
         assertQuery("启用和停用配件分别有多少", AssistantMasterDataQueryService.ArchiveType.PRODUCT,
                 AssistantMasterDataQueryService.StatusMode.SPLIT);
+        assertQuery("总共有多少个商品", AssistantMasterDataQueryService.ArchiveType.PRODUCT,
+                AssistantMasterDataQueryService.StatusMode.ENABLED);
         assertQuery("包含停用的客户总数", AssistantMasterDataQueryService.ArchiveType.CUSTOMER,
                 AssistantMasterDataQueryService.StatusMode.ALL);
+        assertQuery("有多少个员工", AssistantMasterDataQueryService.ArchiveType.EMPLOYEE,
+                AssistantMasterDataQueryService.StatusMode.ENABLED);
+        assertQuery("启用和停用职工分别有多少", AssistantMasterDataQueryService.ArchiveType.EMPLOYEE,
+                AssistantMasterDataQueryService.StatusMode.SPLIT);
         assertNull(service.parse("库存中有多少个配件"));
         assertNull(service.parse("客户本月销售额"));
         assertNull(service.parse("供应商采购额"));
         assertNull(service.parse("客户欠款有多少"));
+    }
+
+    @Test
+    void parsesProductCountKeywordWithoutDroppingBrandOrSeriesConstraint() {
+        for (String question : new String[]{"ERP中有多少个美孚产品", "美孚产品有多少个",
+                "ERP里美孚品牌的配件数量", "品牌为美孚的产品总数"}) {
+            AssistantMasterDataQueryService.Query query = service.parse(question);
+            assertNotNull(query, question);
+            assertEquals(AssistantMasterDataQueryService.ArchiveType.PRODUCT, query.getArchiveType(), question);
+            assertEquals(AssistantMasterDataQueryService.StatusMode.ENABLED, query.getStatusMode(), question);
+            assertEquals("美孚", query.getProductKeyword(), question);
+        }
+        assertNull(service.parse("ERP中有多少个产品").getProductKeyword());
+        assertEquals("黑霸王", service.parse("黑霸王系列商品有几个").getProductKeyword());
     }
 
     @Test
@@ -127,6 +151,37 @@ class AssistantMasterDataQueryServiceTest {
     }
 
     @Test
+    void filteredProductCountUsesExistingVisibleKeywordPageAndReportsFilter() {
+        when(products.getProductVOPage(any(ErpProductPageReqVO.class), eq(false)))
+                .thenReturn(new PageResult<>(Collections.emptyList(), 27L));
+        AssistantMasterDataQueryService.Query query = service.parse("ERP中有多少个美孚产品");
+
+        Map<String, Object> result = service.execute(query);
+
+        assertEquals("当前账号可见范围内关键词“美孚”匹配的共有 27 个启用配件档案。", result.get("answerText"));
+        assertEquals("启用配件数量（关键词：美孚）", result.get("summaryLabel"));
+        assertEquals("当前登录用户有权限查看的配件档案；产品关键词：美孚", result.get("scope"));
+        assertEquals("美孚", ((Map<?, ?>) result.get("queryTrace")).get("productKeyword"));
+        ArgumentCaptor<ErpProductPageReqVO> captor = ArgumentCaptor.forClass(ErpProductPageReqVO.class);
+        verify(products).getProductVOPage(captor.capture(), eq(false));
+        assertEquals("美孚", captor.getValue().getKeyword());
+        assertEquals(CommonStatusEnum.ENABLE.getStatus(), captor.getValue().getStatus());
+        assertEquals(Boolean.TRUE, captor.getValue().getIncludeSaleDistributedArchive());
+    }
+
+    @Test
+    void filteredProductCountReturnsExplicitFilteredEmptyResult() {
+        when(products.getProductVOPage(any(ErpProductPageReqVO.class), eq(false)))
+                .thenReturn(PageResult.empty());
+
+        Map<String, Object> result = service.execute(service.parse("未知品牌产品有多少个"));
+
+        assertEquals("EMPTY", result.get("status"));
+        assertEquals("当前账号可见范围内没有关键词“未知”匹配的启用配件档案。", result.get("emptyText"));
+        assertTrue(((java.util.List<?>) result.get("summary")).isEmpty());
+    }
+
+    @Test
     void zeroCountReturnsExplicitEmptyResult() {
         when(customers.getCustomerPageByStatus(any(ErpCustomerPageReqVO.class), anyInt()))
                 .thenReturn(PageResult.empty());
@@ -136,6 +191,33 @@ class AssistantMasterDataQueryServiceTest {
         assertEquals("EMPTY", result.get("status"));
         assertEquals("当前账号可见范围内没有启用客户档案。", result.get("emptyText"));
         assertTrue(((java.util.List<?>) result.get("summary")).isEmpty());
+    }
+
+    @Test
+    void employeeCountUsesTenantUserPageAndSystemUserPermission() {
+        when(users.getUserSimplePage(eq(CommonStatusEnum.ENABLE.getStatus()), isNull(), any()))
+                .thenReturn(new PageResult<>(Collections.emptyList(), 42L));
+        Map<String, Object> result = service.execute(new AssistantMasterDataQueryService.Query(
+                AssistantMasterDataQueryService.ArchiveType.EMPLOYEE,
+                AssistantMasterDataQueryService.StatusMode.ENABLED));
+        assertEquals("SUCCESS", result.get("status"));
+        assertEquals("按 ERP 员工账号口径，当前租户内共有 42 个启用员工档案。", result.get("answerText"));
+        assertEquals("当前租户内员工账号", result.get("scope"));
+        assertEquals(Collections.singletonList("ERP 系统用户档案；当前租户、启停用状态口径"), result.get("basis"));
+        verify(permissions).hasAnyPermissions(101L, "system:user:query");
+        verify(users).getUserSimplePage(eq(CommonStatusEnum.ENABLE.getStatus()), isNull(),
+                argThat(request -> request.getPageNo() == 1 && request.getPageSize() == 1));
+    }
+
+    @Test
+    void employeeCountRequiresSystemUserQueryPermission() {
+        when(permissions.hasAnyPermissions(101L, "system:user:query")).thenReturn(false);
+        AssistantFailure forbidden = assertThrows(AssistantFailure.class, () -> service.validateAccess(
+                new AssistantMasterDataQueryService.Query(AssistantMasterDataQueryService.ArchiveType.EMPLOYEE,
+                        AssistantMasterDataQueryService.StatusMode.ENABLED)));
+        assertEquals("FORBIDDEN", forbidden.getCode());
+        assertEquals("当前账号没有员工档案查询权限", forbidden.getMessage());
+        verifyNoInteractions(users);
     }
 
     @Test

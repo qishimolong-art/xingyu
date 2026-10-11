@@ -154,15 +154,18 @@ public class AssistantWeComMessageService {
             PendingChoice choice = readChoice(wecomUserId, question);
             AssistantExecutionService.Request execute = new AssistantExecutionService.Request();
             execute.setConversationId(conversationId);
-            execute.setQuestion(question);
+            execute.setQuestion(choice != null && StrUtil.isNotBlank(choice.question) ? choice.question : question);
+            execute.setEntry("WECOM");
             if (choice != null) {
-                execute.setChoiceField(choice.field);
-                execute.setChoiceId(choice.id);
+                if (StrUtil.isNotBlank(choice.field) && choice.id != null) {
+                    execute.setChoiceField(choice.field);
+                    execute.setChoiceId(choice.id);
+                }
                 clearChoice(wecomUserId);
             }
             if (proactive) webSocketClient.sendMarkdown(wecomUserId, "身份绑定成功，正在继续查询首次问题……");
             else webSocketClient.replyStream(requestId, streamId, "正在查询……", false);
-            executionService.execute(execute, resultSink(proactive, requestId, streamId, wecomUserId));
+            executionService.execute(execute, resultSink(proactive, requestId, streamId, wecomUserId, question));
         } catch (AssistantFailure failure) {
             send(proactive, requestId, streamId, wecomUserId, failure.getMessage(), true);
         } finally {
@@ -172,7 +175,8 @@ public class AssistantWeComMessageService {
     }
 
     private AssistantExecutionService.EventSink resultSink(boolean proactive, String requestId,
-                                                           String streamId, String wecomUserId) {
+                                                           String streamId, String wecomUserId,
+                                                           String originalQuestion) {
         return new AssistantExecutionService.EventSink() {
             private final AtomicBoolean completed = new AtomicBoolean();
             private Map<String, Object> result;
@@ -187,7 +191,7 @@ public class AssistantWeComMessageService {
                     Object text = ((Map<?, ?>) data).get("text");
                     explanation = text == null ? null : String.valueOf(text);
                 } else if ("clarification".equals(event)) {
-                    AssistantWeComResultFormatter.ChoiceResult choice = formatter.clarification(data);
+                    AssistantWeComResultFormatter.ChoiceResult choice = formatter.clarification(data, originalQuestion);
                     finalText = choice.getContent();
                     if (choice.hasChoices()) {
                         redisTemplate.opsForValue().set(choiceKey(wecomUserId), choice.toJson(),
@@ -214,10 +218,18 @@ public class AssistantWeComMessageService {
         if (StrUtil.isBlank(raw)) return null;
         JsonNode value = JsonUtils.parseTree(raw);
         int index = Integer.parseInt(question) - 1;
+        JsonNode options = value.path("options");
+        if (options.isArray() && index >= 0 && index < options.size()) {
+            JsonNode option = options.get(index);
+            String field = option.path("field").asText("");
+            Long id = option.hasNonNull("id") ? option.path("id").asLong() : null;
+            String selectedQuestion = option.path("question").asText("");
+            return new PendingChoice(field, id, selectedQuestion);
+        }
         JsonNode ids = value.path("ids");
         if (index < 0 || !ids.isArray() || index >= ids.size()) return null;
         String field = value.path("field").asText("");
-        return StrUtil.isBlank(field) ? null : new PendingChoice(field, ids.get(index).asLong());
+        return StrUtil.isBlank(field) ? null : new PendingChoice(field, ids.get(index).asLong(), null);
     }
 
     private void clearChoice(String wecomUserId) { redisTemplate.delete(choiceKey(wecomUserId)); }
@@ -261,7 +273,9 @@ public class AssistantWeComMessageService {
     }
 
     private static class PendingChoice {
-        final String field; final Long id;
-        PendingChoice(String field, Long id) { this.field = field; this.id = id; }
+        final String field; final Long id; final String question;
+        PendingChoice(String field, Long id, String question) {
+            this.field = field; this.id = id; this.question = question;
+        }
     }
 }

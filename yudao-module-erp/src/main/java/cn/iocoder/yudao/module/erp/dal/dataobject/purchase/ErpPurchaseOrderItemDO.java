@@ -146,6 +146,11 @@ public class ErpPurchaseOrderItemDO extends BaseDO {
     private BigDecimal arrivalCount;
 
     /**
+     * 首次下订时的产品仓库库存快照
+     */
+    private BigDecimal stockCountAtOrder;
+
+    /**
      * 是否赠品（0=否，1=是）
      * 赠品行 productPrice 强制为 0
      */

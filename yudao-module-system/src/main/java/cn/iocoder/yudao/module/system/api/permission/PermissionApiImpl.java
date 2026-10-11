@@ -14,6 +14,7 @@ import javax.annotation.Resource;
 import java.util.Collection;
 import java.util.List;
 import java.util.Set;
+import java.util.function.Supplier;
 
 /**
  * 权限 API 实现类
@@ -29,6 +30,11 @@ public class PermissionApiImpl implements PermissionApi {
     private AdminUserService adminUserService;
     @Resource
     private FieldDefinitionMapper fieldDefinitionMapper;
+
+    @Override
+    public <T> T executeInReadSnapshot(Supplier<T> supplier) {
+        return permissionService.executeInReadSnapshot(supplier);
+    }
 
     @Override
     public Set<Long> getUserRoleIdListByRoleIds(Collection<Long> roleIds) {

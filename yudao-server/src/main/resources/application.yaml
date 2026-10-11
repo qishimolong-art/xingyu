@@ -380,6 +380,7 @@ debug: false
 # 智能问数：八项核验指标与五个受控逻辑数据集作为公共发布基线。
 erp:
   assistant:
+    readiness-cache-seconds: 60
     enabled: true
     base-url: https://api.deepseek.com
     model: deepseek-flash
@@ -399,6 +400,11 @@ erp:
     entity-search:
       enabled: true
       max-candidates: 20
+    phonetic:
+      enabled: true
+      near-sound-enabled: true
+      max-corrections: 4
+      max-initial-variants: 8
     # 新版编排、实体搜索与受控 Text-to-SQL 已完成 local/dev 验收，公共配置统一启用。
     orchestration:
       mode: NEW
@@ -412,6 +418,23 @@ erp:
         - sale_order_items
         - inventory_current
         - stock_movements
+    # 阶段 8 已切换 V2；保留总开关、入口、能力和自动故障回退。
+    v2:
+      mode: V2
+      gray-tenant-ids: []
+      gray-user-ids: []
+      gray-department-ids: []
+      gray-entries: []
+      gray-capabilities: []
+      fallback-entries: []
+      fallback-capabilities: []
+      disabled-entries: []
+      disabled-capabilities: []
+      knowledge-enabled: true
+      mixed-enabled: true
+      fallback-on-error: true
+      max-shadow-latency-ratio: 3.0
+      max-shadow-latency-delta-millis: 5000
     # 独立只读业务连接；未配置时禁止回退到 ERP 主数据源。
     read-only:
       url: "jdbc:mysql://47.108.161.110:3306/ruoyi-vue-pro?useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&nullCatalogMeansCurrent=true&rewriteBatchedStatements=true"

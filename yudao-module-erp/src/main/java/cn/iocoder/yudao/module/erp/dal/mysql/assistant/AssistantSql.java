@@ -25,16 +25,7 @@ public class AssistantSql {
             case SALE: case PURCHASE:
                 boolean sale = plan.getMetric() == AssistantPlan.Metric.SALE;
                 boolean product = plan.getGroup() == AssistantPlan.Group.PRODUCT;
-                String raw = annotation(sale ? ErpSaleReportMapper.class : ErpPurchaseReportMapper.class,
-                        product ? "selectProductRows" : "selectRows");
-                String party = sale ? "customer" : "supplier";
-                String gross = sale ? "saleAmount" : "purchaseAmount";
-                return "SELECT " + (product ? "CAST(q.productId AS CHAR)" : "q.rowKey") + " rowId, "
-                    + (product ? "q.productName" : "q.docNo") + " name, '元' unit, q.netAmount amount, q." + gross + " gross, q.returnAmount refund, "
-                    + (product ? "0" : "1") + " documents, 0 pending, "
-                    + (product ? "NULL partyId, NULL partyName, NULL deptId, NULL deptName, NULL day, q.productId, q.productName" :
-                        "q." + party + "Id partyId, q." + party + "Name partyName, q.deptId, q.deptName, DATE(q.docDate) day, NULL productId, NULL productName")
-                    + ", NULL warehouseId, NULL warehouseName FROM (" + raw + ") q";
+                return businessMetric(plan,sale,product);
             case RECEIVABLE: case PAYABLE:
                 boolean receivable = plan.getMetric() == AssistantPlan.Metric.RECEIVABLE;
                 String account = receivable ? unwrap(new ErpReceivableAccountMapper.SqlProvider().selectList())
@@ -42,11 +33,69 @@ public class AssistantSql {
                 String prefix = receivable ? "customer" : "supplier";
                 return "SELECT CONCAT(q." + prefix + "Id,'-',COALESCE(q.deptId,0)) rowId, q." + prefix + "Name name, '元' unit, q."
                     + (receivable ? "receivableBalance" : "balance") + " amount, 0 gross, 0 refund, 0 pending, 1 documents, "
-                    + "q." + prefix + "Id partyId, q." + prefix + "Name partyName, q.deptId, q.deptName, NULL day, NULL productId, NULL productName, NULL warehouseId, NULL warehouseName FROM (" + account + ") q";
+                    + "q." + prefix + "Id partyId, q." + prefix + "Name partyName, q.deptId, q.deptName, NULL day, NULL productId, NULL productName, NULL warehouseId, NULL warehouseName,"
+                    + (receivable ? "q.saleUserId salespersonId,q.saleUserName salespersonName " : "NULL salespersonId,NULL salespersonName ")
+                    + "FROM (" + account + ") q";
             case STOCK: case STOCK_SKU: return stock(plan);
             case RECEIPT: case PAYMENT: return cash(plan);
             default: throw new IllegalArgumentException("Unsupported metric");
         }
+    }
+
+    /** Sales and purchase metrics are sourced from business documents, without report-menu permissions. */
+    private static String businessMetric(AssistantPlan plan,boolean sale,boolean product) {
+        String party=sale?"customer":"supplier";
+        String positiveTable=sale?"erp_sale_out":"erp_purchase_in";
+        String negativeTable=sale?"erp_sale_return":"erp_purchase_return";
+        String positiveItems=sale?"erp_sale_out_items":"erp_purchase_in_items";
+        String negativeItems=sale?"erp_sale_return_items":"erp_purchase_return_items";
+        String positiveId=sale?"out_id":"in_id",negativeId="return_id";
+        String positiveTime=sale?"out_time":"in_time",negativeTime="return_time";
+        String positivePrefix=sale?"saleOut":"purchaseIn",negativePrefix=sale?"saleReturn":"purchaseReturn";
+        boolean quantity=sale && plan.getSalesMeasure()==AssistantPlan.SalesMeasure.QUANTITY;
+        if(product || quantity) {
+            String unit=quantity?"COALESCE(u.name,'未设置单位')":"'元'";
+            String value=quantity?"IFNULL(i.count,0)":"IFNULL(i.total_price,0)";
+            String unitJoin=quantity?" LEFT JOIN erp_product_unit u ON u.id=p.unit_id AND u.tenant_id=h.tenant_id AND u.deleted=0 ":" ";
+            String personJoin=sale?" LEFT JOIN system_users su ON su.id=h.sale_user_id AND su.tenant_id=h.tenant_id AND su.deleted=0 ":" ";
+            String personId=sale?"h.sale_user_id":"NULL",personName=sale?"su.nickname":"NULL";
+            return "SELECT CONCAT('positive-',h.id,'-',i.id) rowId,p.name name,"+unit+" unit,"+value+" amount,"+value+" gross,0 refund,0 documents,0 pending,"
+                    + "pe.id partyId,pe.name partyName,h.dept_id deptId,d.name deptName,DATE(h."+positiveTime+") day,p.id productId,p.name productName,NULL warehouseId,NULL warehouseName,"+personId+" salespersonId,"+personName+" salespersonName "
+                    + "FROM "+positiveTable+" h JOIN "+positiveItems+" i ON i."+positiveId+"=h.id AND i.tenant_id=h.tenant_id AND i.deleted=0 "
+                    + "JOIN erp_product p ON p.id=i.product_id AND p.tenant_id=h.tenant_id AND p.deleted=0 JOIN erp_"+party+" pe ON pe.id=h."+party+"_id AND pe.tenant_id=h.tenant_id AND pe.deleted=0 "+unitJoin+personJoin+"LEFT JOIN system_dept d ON d.id=h.dept_id AND d.tenant_id=h.tenant_id AND d.deleted=0 "
+                    + "WHERE h.tenant_id=#{tenantId} AND h.deleted=0 AND h.status=20 AND h."+positiveTime+" &gt;=#{start} AND h."+positiveTime+" &lt;#{end} "
+                    + scope("h",positivePrefix,"creator") + partyScope("pe",sale)
+                    + " UNION ALL SELECT CONCAT('negative-',h.id,'-',i.id),p.name,"+unit+",-("+value+"),0,"+value+",0,0,"
+                    + "pe.id,pe.name,h.dept_id,d.name,DATE(h."+negativeTime+"),p.id,p.name,NULL,NULL,"+personId+","+personName+" "
+                    + "FROM "+negativeTable+" h JOIN "+negativeItems+" i ON i."+negativeId+"=h.id AND i.tenant_id=h.tenant_id AND i.deleted=0 "
+                    + "JOIN erp_product p ON p.id=i.product_id AND p.tenant_id=h.tenant_id AND p.deleted=0 JOIN erp_"+party+" pe ON pe.id=h."+party+"_id AND pe.tenant_id=h.tenant_id AND pe.deleted=0 "+unitJoin+personJoin+"LEFT JOIN system_dept d ON d.id=h.dept_id AND d.tenant_id=h.tenant_id AND d.deleted=0 "
+                    + "WHERE h.tenant_id=#{tenantId} AND h.deleted=0 AND h.status=20 AND h."+negativeTime+" &gt;=#{start} AND h."+negativeTime+" &lt;#{end} "
+                    + scope("h",negativePrefix,"creator") + partyScope("pe",sale);
+        }
+        String personJoin=sale?" LEFT JOIN system_users su ON su.id=h.sale_user_id AND su.tenant_id=h.tenant_id AND su.deleted=0 ":" ";
+        String personId=sale?"h.sale_user_id":"NULL",personName=sale?"su.nickname":"NULL";
+        return "SELECT CONCAT('positive-',h.id) rowId,h.no name,'元' unit,IFNULL(h.total_price,0) amount,IFNULL(h.total_price,0) gross,0 refund,1 documents,0 pending,"
+                + "p.id partyId,p.name partyName,h.dept_id deptId,d.name deptName,DATE(h."+positiveTime+") day,NULL productId,NULL productName,NULL warehouseId,NULL warehouseName,"+personId+" salespersonId,"+personName+" salespersonName "
+                + "FROM "+positiveTable+" h JOIN erp_"+party+" p ON p.id=h."+party+"_id AND p.tenant_id=h.tenant_id AND p.deleted=0 "
+                + personJoin+"LEFT JOIN system_dept d ON d.id=h.dept_id AND d.tenant_id=h.tenant_id AND d.deleted=0 "
+                + "WHERE h.tenant_id=#{tenantId} AND h.deleted=0 AND h.status=20 AND h."+positiveTime+" &gt;=#{start} AND h."+positiveTime+" &lt;#{end} "
+                + scope("h",positivePrefix,"creator") + partyScope("p",sale)
+                + " UNION ALL SELECT CONCAT('negative-',h.id),h.no,'元',-IFNULL(h.total_price,0),0,IFNULL(h.total_price,0),1,0,"
+                + "p.id,p.name,h.dept_id,d.name,DATE(h."+negativeTime+"),NULL,NULL,NULL,NULL,"+personId+","+personName+" "
+                + "FROM "+negativeTable+" h JOIN erp_"+party+" p ON p.id=h."+party+"_id AND p.tenant_id=h.tenant_id AND p.deleted=0 "
+                + personJoin+"LEFT JOIN system_dept d ON d.id=h.dept_id AND d.tenant_id=h.tenant_id AND d.deleted=0 "
+                + "WHERE h.tenant_id=#{tenantId} AND h.deleted=0 AND h.status=20 AND h."+negativeTime+" &gt;=#{start} AND h."+negativeTime+" &lt;#{end} "
+                + scope("h",negativePrefix,"creator") + partyScope("p",sale);
+    }
+
+    private static String partyScope(String alias,boolean sale) {
+        String relation=sale?"erp_customer_dept":"erp_supplier_dept";
+        String foreignKey=sale?"customer_id":"supplier_id";
+        return " <if test='!partyAll'> AND (1=0 <if test='partyDeptIds != null and partyDeptIds.size() > 0'> OR "
+                + alias+".dept_id IN <foreach collection='partyDeptIds' item='scopeId' open='(' separator=',' close=')'>#{scopeId}</foreach>"
+                + " OR EXISTS (SELECT 1 FROM "+relation+" rel WHERE rel."+foreignKey+"="+alias+".id AND rel.tenant_id="+alias+".tenant_id AND rel.deleted=0 AND rel.dept_id IN "
+                + "<foreach collection='partyDeptIds' item='scopeId' open='(' separator=',' close=')'>#{scopeId}</foreach></if>"
+                + "<if test='partySelfUserId != null'> OR "+alias+".creator=#{partySelfUserId}</if>) </if>";
     }
 
     static String scope(String alias, String prefix, String selfColumn) {
@@ -106,10 +155,12 @@ public class AssistantSql {
     }
     private static String filter(AssistantPlan plan,String source,boolean applyStockMode) {
         String sql = "SELECT v.* FROM (" + source + ") v WHERE 1=1";
-        for (String field : Arrays.asList("warehouse", "party", "product", "department")) {
+        for (String field : Arrays.asList("warehouse", "party", "product", "department", "salesperson")) {
             String col = "department".equals(field) ? "deptName" : field + "Name";
             String idCol="department".equals(field)?"deptId":field+"Id";
-            sql += " <choose><when test='plan."+field+"Id != null'> AND v."+idCol+"=#{plan."+field+"Id}</when><otherwise><if test='plan." + field + " != null'> AND v." + col + "=#{plan." + field + "}</if></otherwise></choose>";
+            if("product".equals(field) && plan.getProductIds()!=null && !plan.getProductIds().isEmpty())
+                sql += " AND v.productId IN <foreach collection='plan.productIds' item='productId' open='(' separator=',' close=')'>#{productId}</foreach>";
+            else sql += " <choose><when test='plan."+field+"Id != null'> AND v."+idCol+"=#{plan."+field+"Id}</when><otherwise><if test='plan." + field + " != null'> AND v." + col + "=#{plan." + field + "}</if></otherwise></choose>";
         }
         if(applyStockMode && plan.getMetric()==AssistantPlan.Metric.STOCK) {
             if("NEGATIVE".equals(plan.getStockMode())) sql+=" AND v.amount&lt;0";
@@ -131,7 +182,7 @@ public class AssistantSql {
         if(account && ("details".equals(mode) || "count".equals(mode))) {
             sql=filter(plan,AssistantAccountSql.source(plan));
             if("count".equals(mode)) return "<script>SELECT COUNT(*) total FROM ("+sql+") v</script>";
-            return "<script>SELECT rowId,name,docType,unit,amount,day,deptName,partyName FROM ("+sql+") v ORDER BY day DESC,rowId LIMIT #{pageSize} OFFSET #{offset}</script>";
+            return "<script>SELECT rowId,name,docType,unit,amount,day,deptName,partyName,salespersonName FROM ("+sql+") v ORDER BY day DESC,rowId LIMIT #{pageSize} OFFSET #{offset}</script>";
         }
         if("permissionDepartments".equals(mode)) {
             if(account) return "<script>SELECT DISTINCT deptId FROM ("+AssistantAccountSql.source(plan)+") v LIMIT 201</script>";
@@ -144,9 +195,27 @@ public class AssistantSql {
         }
         if ("candidates".equals(mode)) {
             String field = (String) context.get("candidateField");
-            if (!Arrays.asList("warehouse", "party", "product", "dept").contains(field)) throw new IllegalArgumentException();
+            if (!Arrays.asList("warehouse", "party", "product", "dept", "salesperson").contains(field)) throw new IllegalArgumentException();
             return "<script>SELECT DISTINCT v." + field + "Id id,v." + field + "Name name FROM (" + source(plan)
                 + ") v WHERE v." + field + "Name LIKE CONCAT('%',#{candidateName},'%') ORDER BY id LIMIT 21</script>";
+        }
+        if(account && "accountParties".equals(mode)) {
+            String order=plan.getRankOrder()==AssistantPlan.RankOrder.ASC?"ASC":"DESC";
+            return "<script>SELECT partyId,MAX(partyName) partyName,SUM(amount) amount,'元' unit FROM ("+sql+") v "
+                    + "GROUP BY partyId ORDER BY amount "+order+",partyId LIMIT #{rowLimit}</script>";
+        }
+        if(account && "accountResults".equals(mode)) {
+            String accountSql=filter(plan,AssistantAccountSql.balanceSource(plan));
+            return "<script>SELECT partyId,MAX(partyName) partyName,deptId,COALESCE(MAX(deptName),'未归属部门') deptName,"
+                    + "SUM(amount) amount,'元' unit FROM ("+accountSql+") v WHERE partyId IN "
+                    + "<foreach collection='accountPartyIds' item='partyId' open='(' separator=',' close=')'>#{partyId}</foreach> "
+                    + "GROUP BY partyId,deptId HAVING SUM(amount)&lt;&gt;0 ORDER BY partyId,amount DESC,deptName LIMIT #{rowLimit}</script>";
+        }
+        if ("productResults".equals(mode)) {
+            String prices=plan.isIncludeProductPrices()?priceAggregates():"";
+            return "<script>SELECT productId,MAX(productName) productName,MAX(unit) unit,warehouseId,MAX(warehouseName) warehouseName,"
+                    + "SUM(amount) amount"+prices+" FROM ("+sql+") v GROUP BY productId,warehouseId "
+                    + "ORDER BY productId,amount DESC,warehouseId</script>";
         }
         if(plan.getMetric()==AssistantPlan.Metric.STOCK_SKU && ("details".equals(mode) || "count".equals(mode))) {
             sql="SELECT CAST(productId AS CHAR) rowId,MAX(productName) name,MAX(unit) unit,SUM(amount) amount,0 gross,0 refund,0 pending,SUM(documents) documents,NULL day,NULL deptName,NULL partyName,MAX(productName) productName,NULL warehouseName FROM ("+sql+") s GROUP BY productId";
@@ -164,6 +233,7 @@ public class AssistantSql {
                 case PRODUCT: dimension = "productName"; key = "productId"; break;
                 case DEPT: dimension = "deptName"; key = "deptId"; break;
                 case WAREHOUSE: dimension = "warehouseName"; key = "warehouseId"; break;
+                case SALESPERSON: dimension = "COALESCE(salespersonName,'未指定业务员')"; key = "COALESCE(salespersonId,0)"; break;
                 default: break;
             }
         }

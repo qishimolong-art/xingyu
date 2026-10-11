@@ -8,6 +8,7 @@ import cn.iocoder.yudao.module.system.api.permission.dto.FieldDefinitionRespDTO;
 import java.util.Collection;
 import java.util.List;
 import java.util.Set;
+import java.util.function.Supplier;
 
 /**
  * 权限 API 接口
@@ -15,6 +16,11 @@ import java.util.Set;
  * @author 芋道源码
  */
 public interface PermissionApi extends PermissionCommonApi {
+
+    /**
+     * Reuses a read-only permission snapshot for one compound capability check.
+     */
+    <T> T executeInReadSnapshot(Supplier<T> supplier);
 
     /**
      * 获得拥有多个角色的用户编号集合

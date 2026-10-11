@@ -97,6 +97,7 @@ public final class AssistantPresentation {
             case PRODUCT:return "产品";
             case WAREHOUSE:return "仓库";
             case DEPT:return "部门";
+            case SALESPERSON:return "业务员";
             case PARTY:
                 return Arrays.asList(AssistantPlan.Metric.SALE,AssistantPlan.Metric.RECEIPT,
                         AssistantPlan.Metric.RECEIVABLE).contains(plan.getMetric())?"客户":"供应商";
@@ -108,7 +109,7 @@ public final class AssistantPresentation {
         switch(plan.getMetric()) {
             case STOCK:return "库存";
             case STOCK_SKU:return "SKU 数量";
-            case SALE:return "销售金额";
+            case SALE:return plan.getSalesMeasure()==AssistantPlan.SalesMeasure.QUANTITY?"净销量":"销售金额";
             case PURCHASE:return "采购金额";
             case RECEIPT:return "收款金额";
             case PAYMENT:return "付款金额";

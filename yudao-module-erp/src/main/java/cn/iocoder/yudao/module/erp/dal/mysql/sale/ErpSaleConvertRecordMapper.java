@@ -72,4 +72,26 @@ public interface ErpSaleConvertRecordMapper extends BaseMapperX<ErpSaleConvertRe
                 .eq(ErpSaleConvertRecordDO::getTargetId, targetId));
     }
 
+    default List<ErpSaleConvertRecordDO> selectQuoteToCartListByQuoteIds(Collection<Long> quoteIds) {
+        if (CollUtil.isEmpty(quoteIds)) {
+            return Collections.emptyList();
+        }
+        return selectList(new LambdaQueryWrapper<ErpSaleConvertRecordDO>()
+                .eq(ErpSaleConvertRecordDO::getConvertType, ErpSaleConvertTypeEnum.QUOTE_TO_CART.getType())
+                .eq(ErpSaleConvertRecordDO::getSourceType, ErpSaleBizSourceTypeEnum.QUOTE.getType())
+                .eq(ErpSaleConvertRecordDO::getTargetType, ErpSaleBizSourceTypeEnum.CART.getType())
+                .in(ErpSaleConvertRecordDO::getSourceId, quoteIds));
+    }
+
+    default List<ErpSaleConvertRecordDO> selectQuoteToCartListByCartIds(Collection<Long> cartIds) {
+        if (CollUtil.isEmpty(cartIds)) {
+            return Collections.emptyList();
+        }
+        return selectList(new LambdaQueryWrapper<ErpSaleConvertRecordDO>()
+                .eq(ErpSaleConvertRecordDO::getConvertType, ErpSaleConvertTypeEnum.QUOTE_TO_CART.getType())
+                .eq(ErpSaleConvertRecordDO::getSourceType, ErpSaleBizSourceTypeEnum.QUOTE.getType())
+                .eq(ErpSaleConvertRecordDO::getTargetType, ErpSaleBizSourceTypeEnum.CART.getType())
+                .in(ErpSaleConvertRecordDO::getTargetId, cartIds));
+    }
+
 }

@@ -8,6 +8,8 @@ import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.order.ErpPurchas
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.order.ErpPurchaseOrderImportRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.order.ErpPurchaseOrderInableItemPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.order.ErpPurchaseOrderInableItemRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.order.ErpPurchaseOrderInableStockReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.order.ErpPurchaseOrderInableStockRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.order.ErpPurchaseOrderItemBatchUpdateReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.order.ErpPurchaseOrderItemPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.order.ErpPurchaseOrderPageReqVO;
@@ -223,5 +225,13 @@ public interface ErpPurchaseOrderService {
      * @return 可入库明细分页
      */
     PageResult<ErpPurchaseOrderInableItemRespVO> getInableItemPage(ErpPurchaseOrderInableItemPageReqVO pageReqVO);
+
+    /**
+     * 批量查询可入库明细在用户所选仓库的实时库存。
+     *
+     * @param reqVO 查询请求
+     * @return 库存列表
+     */
+    List<ErpPurchaseOrderInableStockRespVO> getInableItemStockList(ErpPurchaseOrderInableStockReqVO reqVO);
 
 }

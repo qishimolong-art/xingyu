@@ -15,7 +15,8 @@ class AssistantSemanticSqlGuardTest {
     @BeforeEach
     void setUp() {
         AssistantProperties properties=new AssistantProperties();
-        properties.getOrchestration().setPublishedDatasets(Arrays.asList("purchase_orders","inventory_current"));
+        properties.getOrchestration().setPublishedDatasets(Arrays.asList(
+                "purchase_orders", "inventory_current", "stock_movements"));
         AssistantSemanticCatalog catalog=new AssistantSemanticCatalog();
         ReflectionTestUtils.setField(catalog,"properties",properties);
         guard=new AssistantSemanticSqlGuard();
@@ -37,6 +38,26 @@ class AssistantSemanticSqlGuardTest {
     @Test
     void appendsMaximumLimitWhenModelOmitsIt() {
         assertTrue(guard.validate("SELECT p.id FROM purchase_orders p").getSql().endsWith("LIMIT 200"));
+    }
+
+    @Test
+    void acceptsControlledInboundMovementSummaryAndDetailQueries() {
+        AssistantSemanticSqlGuard.Validated summary = guard.validate(
+                "SELECT q.biz_type, COUNT(q.id) record_count FROM stock_movements q "
+                        + "WHERE q.biz_date >= :p1 AND q.biz_date < :p2 "
+                        + "AND q.biz_type IN (:p3, :p4, :p5, :p6, :p7, :p8) "
+                        + "GROUP BY q.biz_type ORDER BY q.biz_type");
+        assertEquals(Collections.singleton("stock_movements"), summary.getDatasets());
+        assertTrue(summary.getSql().endsWith("LIMIT 200"));
+
+        AssistantSemanticSqlGuard.Validated detail = guard.validate(
+                "SELECT q.biz_date, q.biz_no, q.biz_type, q.product_name, q.warehouse_name, "
+                        + "q.dept_name, q.quantity, q.unit FROM stock_movements q "
+                        + "WHERE q.biz_date >= :p1 AND q.biz_date < :p2 "
+                        + "AND q.biz_type IN (:p3, :p4, :p5, :p6, :p7, :p8) "
+                        + "ORDER BY q.biz_date DESC LIMIT 20");
+        assertTrue(detail.getSql().endsWith("LIMIT 20"));
+        assertEquals(8, detail.getParameters().size());
     }
 
     @Test

@@ -30,6 +30,7 @@ import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpCustomerDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleOutDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleQuoteDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleQuoteItemDO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpWarehouseDO;
 import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpSaleOutMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpSaleOutItemMapper;
@@ -47,6 +48,8 @@ import cn.iocoder.yudao.module.erp.service.sale.ErpCustomerService;
 import cn.iocoder.yudao.module.erp.service.sale.ErpSaleFieldPermissionMasker;
 import cn.iocoder.yudao.module.erp.service.sale.ErpSaleItemPriceReferenceFiller;
 import cn.iocoder.yudao.module.erp.service.sale.ErpSaleQuoteService;
+import cn.iocoder.yudao.module.erp.service.sale.ErpSaleQuoteProgressService;
+import cn.iocoder.yudao.module.erp.service.stock.ErpStockService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpWarehouseService;
 import cn.iocoder.yudao.module.system.api.dept.DeptApi;
 import cn.iocoder.yudao.module.system.api.dept.dto.DeptRespDTO;
@@ -120,6 +123,8 @@ public class ErpSaleQuoteController {
     @Resource
     private ErpSaleQuoteService saleQuoteService;
     @Resource
+    private ErpSaleQuoteProgressService saleQuoteProgressService;
+    @Resource
     private ErpCustomerService customerService;
     @Resource
     private ErpProductService productService;
@@ -131,6 +136,8 @@ public class ErpSaleQuoteController {
     private ErpSaleFieldPermissionMasker fieldPermissionMasker;
     @Resource
     private ErpSaleItemPriceReferenceFiller itemPriceReferenceFiller;
+    @Resource
+    private ErpStockService stockService;
     @Resource
     private ErpWarehouseService warehouseService;
     @Resource
@@ -203,14 +210,22 @@ public class ErpSaleQuoteController {
     }
 
     @PutMapping("/approve")
-    @Operation(summary = "审核报价订单，并自动生成销售单")
+    @Operation(summary = "报价订单下订")
     @PreAuthorize("@ss.hasPermission('erp:sale-quote:approve')")
     public CommonResult<Long> approveSaleQuote(@RequestParam("id") Long id) {
         return success(saleQuoteService.approveSaleQuote(id));
     }
 
+    @PutMapping("/reverse-order")
+    @Operation(summary = "报价订单反下订")
+    @PreAuthorize("@ss.hasPermission('erp:sale-quote:approve')")
+    public CommonResult<Boolean> reverseOrderSaleQuote(@RequestParam("id") Long id) {
+        saleQuoteService.reverseOrderSaleQuote(id);
+        return success(true);
+    }
+
     @PostMapping("/convert-cart")
-    @Operation(summary = "报价订单转销售手推车")
+    @Operation(summary = "报价订单分批出库并生成待审核销售手推车")
     @PreAuthorize("@ss.hasPermission('erp:sale-quote:convert-cart')")
     public CommonResult<Long> convertSaleQuoteToCart(@Valid @RequestBody ErpSaleQuoteConvertCartReqVO reqVO) {
         return success(saleQuoteService.convertToCart(reqVO));
@@ -230,7 +245,9 @@ public class ErpSaleQuoteController {
     @PreAuthorize("@ss.hasPermission('erp:sale-quote:query')")
     public CommonResult<ErpSaleQuoteRespVO> getSaleQuote(@RequestParam("id") Long id,
                                                          @RequestParam(value = "includeItems", required = false,
-                                                                 defaultValue = "true") Boolean includeItems) {
+                                                                 defaultValue = "true") Boolean includeItems,
+                                                         @RequestParam(value = "includeStock", required = false,
+                                                                 defaultValue = "false") Boolean includeStock) {
         ErpSaleQuoteDO quote = saleQuoteService.getSaleQuote(id);
         if (quote == null) {
             return success(null);
@@ -238,13 +255,16 @@ public class ErpSaleQuoteController {
         List<ErpSaleQuoteItemDO> items = Boolean.TRUE.equals(includeItems)
                 ? saleQuoteService.getSaleQuoteItemListByQuoteId(id) : Collections.emptyList();
         ErpSaleQuoteRespVO respVO = buildSaleQuoteRespVO(quote, items);
+        if (Boolean.TRUE.equals(includeStock)) {
+            fillItemStock(respVO.getItems());
+        }
         fieldPermissionMasker.maskSaleDetailFormWithItems(FIELD_PERMISSION_MODULE, respVO);
         return success(respVO);
     }
 
     @PreAuthorize("@ss.hasPermission('erp:sale-quote:query')")
     public CommonResult<ErpSaleQuoteRespVO> getSaleQuote(Long id) {
-        return getSaleQuote(id, true);
+        return getSaleQuote(id, true, false);
     }
 
     @GetMapping("/item-page")
@@ -454,8 +474,10 @@ public class ErpSaleQuoteController {
                 convertSet(pageResult.getList(), ErpSaleQuoteDO::getId,
                         quote -> ErpSaleQuoteStatusEnum.GENERATED_SALE_OUT.getStatus().equals(quote.getStatus())));
         Map<Long, ErpSaleOutDO> saleOutMap = convertMap(saleOutList, ErpSaleOutDO::getSourceId);
-        return BeanUtils.toBean(pageResult, ErpSaleQuoteRespVO.class,
+        PageResult<ErpSaleQuoteRespVO> result = BeanUtils.toBean(pageResult, ErpSaleQuoteRespVO.class,
                 quote -> fillRelation(quote, itemMap.get(quote.getId()), productMap, warehouseMap, customerMap, userMap, deptMap, saleOutMap));
+        applyProgress(result.getList());
+        return result;
     }
 
     private PageResult<ErpSaleQuoteRespVO> buildSaleQuoteVOPageResultWithoutItems(PageResult<ErpSaleQuoteDO> pageResult) {
@@ -481,8 +503,10 @@ public class ErpSaleQuoteController {
                 convertSet(pageResult.getList(), ErpSaleQuoteDO::getId,
                         quote -> ErpSaleQuoteStatusEnum.GENERATED_SALE_OUT.getStatus().equals(quote.getStatus())));
         Map<Long, ErpSaleOutDO> saleOutMap = convertMap(saleOutList, ErpSaleOutDO::getSourceId);
-        return BeanUtils.toBean(pageResult, ErpSaleQuoteRespVO.class,
+        PageResult<ErpSaleQuoteRespVO> result = BeanUtils.toBean(pageResult, ErpSaleQuoteRespVO.class,
                 quote -> fillMainRelation(quote, customerMap, userMap, deptMap, saleOutMap));
+        applyProgress(result.getList());
+        return result;
     }
 
     private ErpSaleQuoteRespVO buildSaleQuoteRespVO(ErpSaleQuoteDO quote, List<ErpSaleQuoteItemDO> items) {
@@ -524,8 +548,10 @@ public class ErpSaleQuoteController {
         deptIds.remove(null);
         Map<Long, DeptRespDTO> deptMap = CollUtil.isEmpty(deptIds)
                 ? Collections.emptyMap() : deptApi.getDeptMap(deptIds);
-        return BeanUtils.toBean(quote, ErpSaleQuoteRespVO.class,
+        ErpSaleQuoteRespVO result = BeanUtils.toBean(quote, ErpSaleQuoteRespVO.class,
                 vo -> fillRelation(vo, items, productMap, warehouseMap, customerMap, userMap, deptMap, finalSaleOutMap));
+        applyProgress(Collections.singletonList(result));
+        return result;
     }
 
     private Map<Long, ErpProductRespVO> getProductVOMapIgnoreDataPermission(Collection<Long> productIds) {
@@ -533,6 +559,40 @@ public class ErpSaleQuoteController {
             return Collections.emptyMap();
         }
         return DataPermissionUtils.executeIgnore(() -> productService.getProductVOMap(productIds));
+    }
+
+    private void fillItemStock(List<ErpSaleQuoteRespVO.Item> items) {
+        if (CollUtil.isEmpty(items)) {
+            return;
+        }
+        Set<Long> productIds = convertSet(items, ErpSaleQuoteRespVO.Item::getProductId);
+        Set<Long> warehouseIds = convertSet(items, ErpSaleQuoteRespVO.Item::getWarehouseId);
+        productIds.remove(null);
+        warehouseIds.remove(null);
+        if (CollUtil.isEmpty(productIds) || CollUtil.isEmpty(warehouseIds)) {
+            items.forEach(item -> {
+                item.setStockCount(BigDecimal.ZERO);
+                item.setAvailableCount(BigDecimal.ZERO);
+            });
+            return;
+        }
+        Map<String, ErpStockDO> stockMap = DataPermissionUtils.executeIgnore(() ->
+                stockService.getStockMap(productIds, warehouseIds));
+        Map<String, BigDecimal> occupiedCountMap = DataPermissionUtils.executeIgnore(() ->
+                stockService.getOccupiedCountMap(productIds, warehouseIds));
+        items.forEach(item -> {
+            String key = buildStockMapKey(item.getProductId(), item.getWarehouseId());
+            ErpStockDO stock = stockMap.get(key);
+            BigDecimal stockCount = stock != null && stock.getCount() != null
+                    ? stock.getCount() : BigDecimal.ZERO;
+            BigDecimal occupiedCount = occupiedCountMap.getOrDefault(key, BigDecimal.ZERO);
+            item.setStockCount(stockCount);
+            item.setAvailableCount(stockCount.subtract(occupiedCount));
+        });
+    }
+
+    private static String buildStockMapKey(Long productId, Long warehouseId) {
+        return productId + "_" + warehouseId;
     }
 
     private Map<Long, ErpWarehouseDO> getWarehouseMapIgnoreDataPermission(Collection<Long> warehouseIds) {
@@ -568,6 +628,9 @@ public class ErpSaleQuoteController {
                         MapUtils.findAndThen(deptMap, warehouse.getDeptId(), dept -> item.setWarehouseDeptName(dept.getName()));
                     });
                     MapUtils.findAndThen(deptMap, item.getDeptId(), dept -> item.setDeptName(dept.getName()));
+                    item.setRemainingCount((item.getCount() != null ? item.getCount() : BigDecimal.ZERO)
+                            .subtract(item.getConvertedCount() != null ? item.getConvertedCount() : BigDecimal.ZERO)
+                            .max(BigDecimal.ZERO));
                 });
         vo.setItems(respItems == null ? Collections.emptyList() : respItems);
         itemPriceReferenceFiller.fill(vo.getItems());
@@ -609,6 +672,49 @@ public class ErpSaleQuoteController {
                 vo.setGeneratedSaleOutNo(saleOut.getNo());
             }
         }
+    }
+
+    private void applyProgress(List<ErpSaleQuoteRespVO> list) {
+        if (CollUtil.isEmpty(list)) {
+            return;
+        }
+        Map<Long, ErpSaleQuoteProgressService.Progress> progressMap = saleQuoteProgressService == null
+                ? Collections.emptyMap()
+                : saleQuoteProgressService.getProgressMap(convertSet(list, ErpSaleQuoteRespVO::getId));
+        list.forEach(vo -> {
+            ErpSaleQuoteProgressService.Progress progress = progressMap.get(vo.getId());
+            if (progress != null) {
+                vo.setStatus(progress.getRawStatus());
+                vo.setOrderStatus(progress.getOrderStatus());
+                vo.setOutStatus(progress.getOutStatus());
+                vo.setConvertedCount(progress.getConvertedCount());
+                vo.setActualOutCount(progress.getActualOutCount());
+                vo.setRemainingCount(progress.getRemainingCount());
+                return;
+            }
+            int status = vo.getStatus() != null ? vo.getStatus() : ErpSaleQuoteStatusEnum.DRAFT.getStatus();
+            vo.setOrderStatus(status == ErpSaleQuoteStatusEnum.CANCEL.getStatus()
+                    ? ErpSaleQuoteStatusEnum.CANCEL.getStatus()
+                    : status >= ErpSaleQuoteStatusEnum.APPROVE.getStatus()
+                    ? ErpSaleQuoteStatusEnum.APPROVE.getStatus() : ErpSaleQuoteStatusEnum.DRAFT.getStatus());
+            vo.setOutStatus(status == ErpSaleQuoteStatusEnum.CANCEL.getStatus()
+                    ? ErpSaleQuoteStatusEnum.DRAFT.getStatus()
+                    : status >= ErpSaleQuoteStatusEnum.GENERATED_SALE_OUT.getStatus()
+                    ? ErpSaleQuoteStatusEnum.GENERATED_SALE_OUT.getStatus()
+                    : status >= ErpSaleQuoteStatusEnum.CONVERTED_CART.getStatus()
+                    ? ErpSaleQuoteStatusEnum.CONVERTED_CART.getStatus()
+                    : status >= ErpSaleQuoteStatusEnum.PART_CONVERTED_CART.getStatus()
+                    ? ErpSaleQuoteStatusEnum.PART_CONVERTED_CART.getStatus()
+                    : ErpSaleQuoteStatusEnum.DRAFT.getStatus());
+            BigDecimal converted = vo.getItems() == null ? BigDecimal.ZERO : vo.getItems().stream()
+                    .map(ErpSaleQuoteRespVO.Item::getConvertedCount).filter(java.util.Objects::nonNull)
+                    .reduce(BigDecimal.ZERO, BigDecimal::add);
+            vo.setConvertedCount(converted);
+            vo.setActualOutCount(status >= ErpSaleQuoteStatusEnum.GENERATED_SALE_OUT.getStatus()
+                    ? (vo.getTotalCount() != null ? vo.getTotalCount() : BigDecimal.ZERO) : BigDecimal.ZERO);
+            vo.setRemainingCount((vo.getTotalCount() != null ? vo.getTotalCount() : BigDecimal.ZERO)
+                    .subtract(converted).max(BigDecimal.ZERO));
+        });
     }
 
     private static Long parseLongSafely(String value) {

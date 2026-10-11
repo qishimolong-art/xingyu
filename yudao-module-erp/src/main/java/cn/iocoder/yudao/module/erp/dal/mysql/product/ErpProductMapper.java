@@ -712,6 +712,15 @@ public interface ErpProductMapper extends BaseMapperX<ErpProductDO> {
         return rows.stream().map(m -> (Long) m.get("id")).collect(Collectors.toList());
     }
 
+    default List<Long> selectIdsByStockProductKeyword(String keyword) {
+        LambdaQueryWrapper<ErpProductDO> w = new LambdaQueryWrapper<>();
+        w.select(ErpProductDO::getId);
+        w.and(q -> appendKeywordMatchGroup(q, fuzzyKeyword(keyword),
+                STOCK_PRODUCT_KEYWORD_FIELDS, Collections.emptyList()));
+        List<Map<String, Object>> rows = selectMaps(w);
+        return rows.stream().map(m -> (Long) m.get("id")).collect(Collectors.toList());
+    }
+
     default List<Long> selectIdsByComplexQuery(ErpStockPageReqVO reqVO,
                                                Collection<Long> shelfDuplicateIds,
                                                Collection<Long> shelfEmptyIds,

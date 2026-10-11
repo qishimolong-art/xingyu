@@ -5,9 +5,13 @@ import cn.iocoder.yudao.module.erp.framework.cloudprint.dto.SwPrintDtos.DeviceIn
 import cn.iocoder.yudao.module.erp.framework.cloudprint.dto.SwPrintDtos.SwResponse;
 import com.fasterxml.jackson.core.type.TypeReference;
 import org.apache.pdfbox.pdmodel.PDDocument;
+import org.apache.pdfbox.pdmodel.PDPage;
+import org.apache.pdfbox.pdmodel.font.PDFont;
+import org.apache.pdfbox.text.PDFTextStripper;
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
+import java.io.InputStream;
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
@@ -75,6 +79,85 @@ class ErpCloudPrintHtmlRendererTest {
 
         assertTrue(pdf.length > 1024);
         assertArrayEquals("%PDF".getBytes(StandardCharsets.US_ASCII), copyOf(pdf, 4));
+    }
+
+    @Test
+    void cellStyle_shouldMapOnlyWhitelistedTemplateFonts() {
+        Map<String, String> expectedAliases = Map.of(
+                "simsun", "CloudPrintSimSun",
+                "simhei", "CloudPrintSimHei",
+                "microsoft_yahei", "CloudPrintMicrosoftYaHei",
+                "kaiti", "CloudPrintKaiTi",
+                "fangsong", "CloudPrintFangSong");
+
+        expectedAliases.forEach((fontFamily, alias) -> {
+            String style = org.springframework.test.util.ReflectionTestUtils.invokeMethod(
+                    renderer, "cellStyle", Map.of("fontFamily", fontFamily));
+            assertTrue(style.contains("font-family:'" + alias + "','CloudPrintCjk';"));
+        });
+        String invalidStyle = org.springframework.test.util.ReflectionTestUtils.invokeMethod(
+                renderer, "cellStyle", Map.of("fontFamily", "url(https://invalid.example/font.ttf)"));
+        assertFalse(invalidStyle.contains("font-family"));
+    }
+
+    @Test
+    void fontRegistry_shouldExposeAllTemplateFontsAndRejectUnknownKey() {
+        assertEquals(List.of("simsun", "simhei", "microsoft_yahei", "kaiti", "fangsong"),
+                ErpCloudPrintFontRegistry.templateKeys());
+        assertTrue(ErpCloudPrintFontRegistry.read(
+                ErpCloudPrintFontRegistry.resolveFontFile("simhei", 700)).length > 1024);
+        org.junit.jupiter.api.Assertions.assertThrows(IllegalArgumentException.class,
+                () -> ErpCloudPrintFontRegistry.resolveFontFile("unknown", 400));
+    }
+
+    @Test
+    void bundledFontResources_shouldMatchPinnedHashesAndIncludeLicenses() throws IOException {
+        Map<String, String> hashes = Map.ofEntries(
+                Map.entry("LXGWWenKai-Light.ttf", "526ec70cbb0118e871d481f8179e03ff045f0e4d72d080dcca87950c4ab27cca"),
+                Map.entry("LXGWWenKai-Regular.ttf", "39ad71264b588165b469e35e6afb162a378dacd1f95348160240ba9038ac3009"),
+                Map.entry("LXGWWenKaiGB-Medium.ttf", "b885c51ec0d3f325974013801dfcefda1a9ba0bf385c607cf5f2582dafa2e5ab"),
+                Map.entry("LXGWWenKaiGB-Regular.ttf", "295568c131648062107543aa159c97dd49564be791136c2abf74cad83eba3f7f"),
+                Map.entry("NotoSansSC-Bold.ttf", "9db05b8ad1cdd8f3408c994e2bd0b89d75e59cce9e731dc1d80a9bd6a8e71a66"),
+                Map.entry("NotoSansSC-Regular.ttf", "f073bb2c48e94be777e0ff18fabfb4e37e747df7394b294cb3206ae31edc1c5d"),
+                Map.entry("NotoSansSC-Medium.ttf", "73bf4d2027a3e58f35509d5d1fda30738176618aa79cc83c4e0c8d2b09894178"),
+                Map.entry("NotoSerifSC-Bold.ttf", "7757703c59eae2ab6b40b857d3747b4b48b9b5ca435e20dcb21651cdcbce9acb"),
+                Map.entry("NotoSerifSC-Regular.ttf", "43eecf78d8453095c2afacc7adee52fdb44c9082f6b64124be7dfedde48f855a"));
+        for (Map.Entry<String, String> entry : hashes.entrySet()) {
+            try (InputStream input = ErpCloudPrintHtmlRendererTest.class.getResourceAsStream(
+                    "/fonts/cloud-print/" + entry.getKey())) {
+                assertTrue(input != null, "字体资源缺失：" + entry.getKey());
+                assertEquals(entry.getValue(), cn.hutool.crypto.digest.DigestUtil.sha256Hex(input));
+            }
+        }
+        for (String license : List.of("OFL-LXGWWenKai.txt", "OFL-LXGWWenKaiGB.txt",
+                "OFL-NotoSansSC.txt", "OFL-NotoSerifSC.txt")) {
+            assertTrue(ErpCloudPrintHtmlRendererTest.class.getResourceAsStream(
+                    "/fonts/cloud-print/licenses/" + license) != null, "许可证缺失：" + license);
+        }
+        assertTrue(ErpCloudPrintHtmlRendererTest.class.getResourceAsStream(
+                "/fonts/cloud-print/THIRD-PARTY-FONTS.md") != null);
+    }
+
+    @Test
+    void renderSaleOutTemplatePdf_shouldEmbedFiveFontsWithoutHashCharacters() throws IOException {
+        for (String fontFamily : ErpCloudPrintFontRegistry.templateKeys()) {
+            byte[] pdf = renderer.renderSaleOutTemplatePdf(buildFontTemplateJson(fontFamily),
+                    buildPaperConfigJson(), buildPrintData(), 241, 140);
+            try (PDDocument document = PDDocument.load(pdf)) {
+                String text = new PDFTextStripper().getText(document);
+                assertTrue(text.contains("中文数字123符号×龘"), fontFamily + " 未正确提取中文");
+                assertFalse(text.contains("#"), fontFamily + " 出现井号替换字符");
+                boolean embeddedWithToUnicode = false;
+                for (PDPage page : document.getPages()) {
+                    for (org.apache.pdfbox.cos.COSName name : page.getResources().getFontNames()) {
+                        PDFont font = page.getResources().getFont(name);
+                        embeddedWithToUnicode |= font.isEmbedded()
+                                && font.getCOSObject().containsKey(org.apache.pdfbox.cos.COSName.TO_UNICODE);
+                    }
+                }
+                assertTrue(embeddedWithToUnicode, fontFamily + " 未嵌入字体或缺少 ToUnicode");
+            }
+        }
     }
 
     @Test
@@ -209,7 +292,8 @@ class ErpCloudPrintHtmlRendererTest {
                 "orientation", "portrait",
                 "margins", Map.of("top", 4, "right", 6, "bottom", 4, "left", 6)));
         template.put("cells", java.util.Arrays.asList(
-                cell("A1", 4, 1, "销售单 ${document.no}", "", Map.of("document.no", "document.no"), "center", "16px", "bold"),
+                cellWithFont("A1", 4, 1, "销售单 ${document.no}", "", Map.of("document.no", "document.no"),
+                        "center", "16px", "kaiti", "bold"),
                 cell("A2", 1, 1, "客户", "", Collections.emptyMap(), "left", "", "table-border"),
                 cell("B2", 3, 1, "${customerName}", "document.customerName", Map.of("customerName", "customer.name"), "left", "", "table-border"),
                 cell("A3", 1, 1, "序号", "", Collections.emptyMap(), "center", "", "table-border"),
@@ -247,6 +331,23 @@ class ErpCloudPrintHtmlRendererTest {
         return JsonUtils.toJsonString(template);
     }
 
+    private String buildFontTemplateJson(String fontFamily) {
+        Map<String, Object> template = new HashMap<>();
+        template.put("version", 1);
+        template.put("columns", List.of("A"));
+        template.put("rowCount", 2);
+        template.put("columnWidths", Map.of("A", "300px"));
+        template.put("rowHeights", Map.of("1", "34px", "2", "34px"));
+        template.put("paper", Map.of("width", 241, "height", 140, "orientation", "portrait",
+                "margins", Map.of("top", 4, "right", 6, "bottom", 4, "left", 6)));
+        template.put("cells", List.of(
+                cellWithFont("A1", 1, 1, "中文数字123符号&times;龘", "", Collections.emptyMap(),
+                        "left", "12px", fontFamily),
+                cellWithFont("A2", 1, 1, "中文数字123符号&times;龘", "", Collections.emptyMap(),
+                        "left", "12px", fontFamily, "bold")));
+        return JsonUtils.toJsonString(template);
+    }
+
     private String buildPaperConfigJson() {
         return JsonUtils.toJsonString(Map.of(
                 "width", 241,
@@ -269,6 +370,15 @@ class ErpCloudPrintHtmlRendererTest {
         result.put("textAlign", textAlign);
         result.put("fontSize", fontSize);
         result.put("classes", java.util.Arrays.asList(classes));
+        return result;
+    }
+
+    private Map<String, Object> cellWithFont(String cell, int colspan, int rowspan, String html, String code,
+                                             Map<String, String> placeholderCodes, String textAlign, String fontSize,
+                                             String fontFamily, String... classes) {
+        Map<String, Object> result = cell(cell, colspan, rowspan, html, code, placeholderCodes,
+                textAlign, fontSize, classes);
+        result.put("fontFamily", fontFamily);
         return result;
     }
 

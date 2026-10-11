@@ -56,6 +56,8 @@ final class AssistantSemanticExtractor {
                     extractParty(source, "供应商", "付款|应付|欠款|余额|采购|供货|供应|卖给"), "SUPPLIER", "NATURAL_NAME");
         put(result, AssistantEntityResolver.EntityType.DEPARTMENT, extractDepartment(compact), "BUSINESS_DEPARTMENT", "NATURAL_NAME");
         put(result, AssistantEntityResolver.EntityType.SALESPERSON, extractSalesperson(compact), "SALESPERSON", "NATURAL_NAME");
+        put(result, AssistantEntityResolver.EntityType.PURCHASER, extractPurchaser(compact), "PURCHASER", "NATURAL_NAME");
+        put(result, AssistantEntityResolver.EntityType.USER, extractUser(source), "SYSTEM_USER", "NATURAL_NAME");
 
         if (compact.matches(".*(?:供应商|客户).*(?:产品|配件).*")
                 || compact.matches(".*(?:购买|采购|供应|供货|卖给我们).*(?:产品|配件).*")) {
@@ -68,7 +70,9 @@ final class AssistantSemanticExtractor {
         if (question == null) return Collections.emptyList();
         String compact = compact(question);
         List<String> result = new ArrayList<>();
-        for (String value : Arrays.asList("这个产品", "该产品", "它", "这个客户", "该客户", "这个供应商", "该供应商", "这个仓库", "该仓库", "换成"))
+        for (String value : Arrays.asList("这个产品", "该产品", "它", "这个客户", "该客户", "这个供应商", "该供应商",
+                "这个仓库", "该仓库", "这个部门", "该部门", "这个业务员", "该业务员", "这个采购员", "该采购员",
+                "这个用户", "该用户", "这个员工", "该员工", "他", "她", "换成"))
             if (compact.contains(value)) result.add(value);
         return result;
     }
@@ -116,7 +120,7 @@ final class AssistantSemanticExtractor {
     }
 
     private static String extractParty(String text, String label, String actions) {
-        String time = "(?:今天|今日|昨天|昨日|本周|这周|上周|本月|这个月|上月|当前)?";
+        String time = "(?:" + AssistantRelativePeriod.FIXED_PERIOD_REGEX + "|当前)?";
         String quoted = "[\\\"'“”‘’]?";
         String[] patterns = {
                 label + "(?:名称)?(?:为|是|[:：])?" + quoted + "([^，,。；;？?]{1,80}?)" + quoted + "(?=" + time + "(?:的)?(?:" + actions + "))",
@@ -143,7 +147,7 @@ final class AssistantSemanticExtractor {
         if (text == null) return null;
         String normalized = stripPunctuation(text).trim().replaceAll("\\s+", " ");
         normalized = normalized.replaceFirst("^(?:请问|帮我查一下|帮我查询|查询一下|查询|查看一下|查看|查一下)\\s*", "");
-        normalized = normalized.replaceFirst("^(?:今天|今日|昨天|昨日|本周|这周|上周|本月|这个月|上月|当前|现在)\\s*", "");
+        normalized = normalized.replaceFirst("^(?:" + AssistantRelativePeriod.FIXED_PERIOD_REGEX + "|当前|现在)(?:的)?\\s*", "");
         String compact = compact(normalized);
         if (compact.matches(".*(?:哪个|哪些|什么|谁|各个|每个|所有|全部|按|排名|排行|最多|最少|最高|最低|前\\d+|后\\d+).*") )
             return null;
@@ -153,7 +157,7 @@ final class AssistantSemanticExtractor {
         String action = customer
                 ? "(?:欠款(?:情况|余额|多少|是多少)?|欠钱(?:多少|是多少)?|应收(?:余额|情况|多少|是多少)?|客户余额(?:多少|是多少)?|收款(?:情况|金额|多少|是多少)?)"
                 : "(?:应付(?:余额|情况|多少|是多少)?|付款(?:情况|金额|多少|是多少)?)";
-        Matcher matcher = Pattern.compile("^(.{1,80}?)(?:\\s*)?(?:今天|今日|昨天|昨日|本周|这周|上周|本月|这个月|上月|当前|现在)?(?:的)?" + action + "(?:呢|吗)?$")
+        Matcher matcher = Pattern.compile("^(.{1,80}?)(?:\\s*)?(?:" + AssistantRelativePeriod.FIXED_PERIOD_REGEX + "|当前|现在)?(?:的)?" + action + "(?:呢|吗)?$")
                 .matcher(normalized);
         if (!matcher.find()) return null;
         String value = clean(matcher.group(1));
@@ -166,8 +170,8 @@ final class AssistantSemanticExtractor {
     private static String extractDepartment(String text) {
         String action = "销售|采购|库存|收款|付款|应收|应付|欠款";
         String[] patterns = {
-                "部门(?:名称)?(?:为|是|[:：])?([^，,。；;？?]{1,60}?)(?=(?:本月|上月|本周|今天|的)?(?:" + action + "))",
-                "([^，,。；;？?]{1,60}?(?:部门|分公司|事业部|办事处))(?=(?:本月|上月|本周|今天|的)?(?:" + action + "|收了))"
+                "部门(?:名称)?(?:为|是|[:：])?([^，,。；;？?]{1,60}?)(?=(?:" + AssistantRelativePeriod.FIXED_PERIOD_REGEX + ")?(?:的)?(?:" + action + "))",
+                "([^，,。；;？?]{1,60}?(?:部门|分公司|事业部|办事处|(?<!全)部))(?=(?:" + AssistantRelativePeriod.FIXED_PERIOD_REGEX + ")?(?:的)?(?:" + action + "|收了))"
         };
         for (String pattern : patterns) {
             Matcher matcher = Pattern.compile(pattern).matcher(text);
@@ -178,15 +182,45 @@ final class AssistantSemanticExtractor {
 
     private static String extractSalesperson(String text) {
         String[] patterns={
-                "(?:业务员|销售员|业务经理)(?:名称)?(?:为|是|[:：])?([^，,。；;？?\\d]{2,20}?)(?=(?:今年|本年|本月|上月|本周|上周|\\d{1,2}月份?))",
-                "(?:业务员|销售员|业务经理)(?:名称)?(?:为|是|[:：])?([^，,。；;？?]{2,40}?)(?=(?:今年|本年|本月|上月|本周|上周|\\d{1,2}月份?)?(?:的)?(?:销量|销售量|销售情况|销售订单|订单|客户欠款|欠款排行))",
-                "([^，,。；;？?]{2,20}?)(?:业务员|销售员)(?=(?:今年|本年|本月|上月|本周|上周|\\d{1,2}月份?)?(?:的)?(?:销量|销售量|销售情况|销售订单|订单|客户欠款|欠款排行))"
+                "(?:业务员|销售员|业务经理)(?:名称)?(?:为|是|[:：])?([^，,。；;？?\\d]{2,20}?)(?=(?:" + AssistantRelativePeriod.FIXED_PERIOD_REGEX + "|\\d{1,2}月份?))",
+                "(?:业务员|销售员|业务经理)(?:名称)?(?:为|是|[:：])?([^，,。；;？?]{2,40}?)(?=(?:" + AssistantRelativePeriod.FIXED_PERIOD_REGEX + "|\\d{1,2}月份?)?(?:的)?(?:销量|销售量|销售额|销售金额|销售情况|销售订单|订单|客户欠款|欠款排行))",
+                "([^，,。；;？?]{2,20}?)(?:业务员|销售员)(?=(?:" + AssistantRelativePeriod.FIXED_PERIOD_REGEX + "|\\d{1,2}月份?)?(?:的)?(?:销量|销售量|销售额|销售金额|销售情况|销售订单|订单|客户欠款|欠款排行))"
         };
         for(String pattern:patterns) {Matcher matcher=Pattern.compile(pattern).matcher(text);if(matcher.find()) return clean(matcher.group(1));}
-        Matcher natural=Pattern.compile("^([\\p{IsHan}]{2,4})(?=(?:今年|本年|本月|上月|本周|上周|\\d{1,2}月份?).*(?:销量|销售量|销售情况)$)").matcher(text);
+        Matcher natural=Pattern.compile("^([\\p{IsHan}]{2,4})(?=(?:" + AssistantRelativePeriod.FIXED_PERIOD_REGEX + "|\\d{1,2}月份?).*(?:销量|销售量|销售额|销售金额|销售情况)$)").matcher(text);
         if(!natural.find()) return null;
         String value=clean(natural.group(1));
         return value!=null && !value.matches(".*(?:机油|轮胎|液压油|防冻液|制动液|汽修|汽配|公司|门市).*")?value:null;
+    }
+
+    private static String extractPurchaser(String text) {
+        if (text.matches(".*(?:按|各|各个|每个|所有|全部)采购员.*")) return null;
+        Matcher handled = Pattern.compile("^([\\p{IsHan}]{2,4})经手的(?:采购订单|采购入库单|入库单|未到货订单)").matcher(text);
+        if (handled.find()) return clean(handled.group(1));
+        String period = "(?:" + AssistantRelativePeriod.FIXED_PERIOD_REGEX + "|\\d{1,2}月份?)?";
+        String[] patterns = {
+                "(?:采购员|采购人员|采购经办人)(?:名称)?(?:为|是|[:：])?([^，,。；;？?]{2,20}?)(?=" + period + "(?:的)?(?:采购订单|采购入库单|入库单|未到货订单|采购金额|入库金额|采购量))",
+                "([^，,。；;？?]{2,20}?)(?:采购员|采购人员)(?=" + period + "(?:的)?(?:采购订单|采购入库单|入库单|未到货订单|采购金额|入库金额|采购量))"
+        };
+        for (String pattern : patterns) {
+            Matcher matcher = Pattern.compile(pattern).matcher(text);
+            if (matcher.find()) return clean(matcher.group(1));
+        }
+        Matcher natural = Pattern.compile("^([\\p{IsHan}]{2,4})(?=" + period
+                + "(?:的|经手的)?(?:采购订单|采购入库单|入库单|未到货订单|采购金额|入库金额|采购量))").matcher(text);
+        return natural.find() ? clean(natural.group(1)) : null;
+    }
+
+    private static String extractUser(String text) {
+        String[] patterns={
+                "(?:系统用户|用户|员工|职工)(?:名称|昵称)?(?:为|是|[:：])?[\\\"'“”‘’]?([^，,。；;？?\\\"'“”‘’]{2,40}?)[\\\"'“”‘’]?(?=(?:的)?(?:所属部门|关联部门|部门|状态|信息|档案|是否启用|$))",
+                "(?:查询|查找|查看)(?:不存在的)?(?:系统用户|用户|员工|职工)[\\\"'“”‘’]([^\\\"'“”‘’]{2,40})[\\\"'“”‘’]"
+        };
+        for(String pattern:patterns) {
+            Matcher matcher=Pattern.compile(pattern).matcher(text);
+            if(matcher.find()) return clean(matcher.group(1));
+        }
+        return null;
     }
 
     private static String extractLabelledProduct(String text) {
@@ -198,11 +232,14 @@ final class AssistantSemanticExtractor {
 
     private static boolean generic(String value, AssistantEntityResolver.EntityType type) {
         String compact = compact(value);
-        if (compact.matches("(?:有)?(?:哪个|哪些|什么|各个|每个|全部|所有|按|该|这个|此|某)(?:的)?(?:产品|配件|客户|供应商|仓库|部门|业务员|销售员)?")) return true;
-        if (compact.matches("(?:产品|配件|客户|供应商|仓库|部门|业务员|销售员|这个产品|该产品|这个客户|该客户|这个供应商|该供应商|这个仓库|该仓库|它)")) return true;
-        if (compact.matches("(?:当前|今天|今日|昨天|昨日|本周|这周|上周|本月|这个月|上月|各仓|各个仓|各个仓库|各仓库|每个仓|每个仓库|所有仓|所有仓库)")) return true;
+        if (compact.matches("(?:有)?(?:哪个|哪些|什么|各个|每个|全部|所有|按|该|这个|此|某)(?:的)?(?:产品|配件|客户|供应商|仓库|部门|业务员|销售员|采购员|用户|员工)?")) return true;
+        if (compact.matches("(?:某|这个|该|此)")) return true;
+        if (compact.matches("(?:产品|配件|客户|供应商|仓库|部门|业务员|销售员|采购员|用户|员工|这个产品|该产品|这个客户|该客户|这个供应商|该供应商|这个仓库|该仓库|这个业务员|该业务员|这个采购员|该采购员|这个用户|该用户|这个员工|该员工|它|他|她)")) return true;
+        if (compact.matches("(?:当前|" + AssistantRelativePeriod.FIXED_PERIOD_REGEX + "|各仓|各个仓|各个仓库|各仓库|每个仓|每个仓库|所有仓|所有仓库)")) return true;
         if ((type == AssistantEntityResolver.EntityType.CUSTOMER || type == AssistantEntityResolver.EntityType.SUPPLIER)
                 && compact.matches(".*(?:哪个|哪些|各个|每个|按).*$")) return true;
+        if (type == AssistantEntityResolver.EntityType.USER
+                && compact.matches("(?:数量|总数|人数|账号|档案|信息|状态|启用|停用)")) return true;
         return false;
     }
 
@@ -214,6 +251,8 @@ final class AssistantSemanticExtractor {
             case WAREHOUSE: return "WAREHOUSE";
             case DEPARTMENT: return "BUSINESS_DEPARTMENT";
             case SALESPERSON: return "SALESPERSON";
+            case PURCHASER: return "PURCHASER";
+            case USER: return "SYSTEM_USER";
             default: return type.name();
         }
     }

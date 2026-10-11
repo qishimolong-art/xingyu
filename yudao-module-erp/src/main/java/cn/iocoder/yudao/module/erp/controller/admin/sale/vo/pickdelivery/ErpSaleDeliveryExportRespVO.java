@@ -12,6 +12,8 @@ public class ErpSaleDeliveryExportRespVO {
     private String saleOutNo;
     @ExcelProperty("客户")
     private String customerName;
+    @ExcelProperty("仓库")
+    private String warehouseName;
     @ExcelProperty("拣货状态")
     private Integer pickStatus;
     @ExcelProperty("送货状态")

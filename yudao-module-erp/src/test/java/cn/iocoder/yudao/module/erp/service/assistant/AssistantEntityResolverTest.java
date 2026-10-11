@@ -1,10 +1,16 @@
 package cn.iocoder.yudao.module.erp.service.assistant;
 
 import cn.iocoder.yudao.framework.common.enums.CommonStatusEnum;
+import cn.iocoder.yudao.framework.common.biz.system.permission.dto.DeptDataPermissionRespDTO;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
+import cn.iocoder.yudao.framework.security.core.LoginUser;
+import cn.iocoder.yudao.framework.tenant.core.context.TenantContextHolder;
 import cn.iocoder.yudao.module.system.api.dept.DeptApi;
 import cn.iocoder.yudao.module.system.api.dept.dto.DeptRespDTO;
+import cn.iocoder.yudao.module.system.api.permission.PermissionApi;
 import org.junit.jupiter.api.Test;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.util.Collections;
@@ -69,6 +75,150 @@ class AssistantEntityResolverTest {
                 eq(Set.of(10L)),argThat(page -> page.getPageNo()==1 && page.getPageSize()==21));
     }
 
+    @Test void userResolutionUsesSystemUserPermissionAndDepartmentScope() {
+        LoginUser login=new LoginUser();login.setId(101L);
+        login.setInfo(Collections.singletonMap(LoginUser.INFO_KEY_DEPT_ID,"10"));
+        SecurityContextHolder.getContext().setAuthentication(
+                new UsernamePasswordAuthenticationToken(login,"",Collections.emptyList()));
+        TenantContextHolder.setTenantId(1L);
+        try {
+            PermissionApi permissions=mock(PermissionApi.class);
+            when(permissions.hasAnyPermissions(101L,"erp:assistant:query")).thenReturn(true);
+            when(permissions.hasAnyPermissions(101L,"system:user:query")).thenReturn(true);
+            DeptDataPermissionRespDTO scope=new DeptDataPermissionRespDTO();scope.setSelf(true);scope.setDeptIds(Set.of(10L));
+            when(permissions.getDeptDataPermission(101L,"system_users")).thenReturn(scope);
+            when(permissions.getCurrentUserHiddenFields("system_users")).thenReturn(Collections.emptyList());
+            when(permissions.getCurrentUserHiddenFields("system_users",10L)).thenReturn(Collections.emptyList());
+            AssistantSemanticReadOnly reader=mock(AssistantSemanticReadOnly.class);
+            Map<String,Object> row=new HashMap<>();row.put("id",1L);row.put("name","张三");
+            row.put("code",null);row.put("description",null);row.put("matchedBy","NAME");
+            when(reader.query(anyString(),anyList(),eq(21))).thenReturn(Collections.singletonList(row));
+            AssistantEntityResolver resolver=resolver(mock(DeptApi.class));
+            ReflectionTestUtils.setField(resolver,"permissions",permissions);
+            ReflectionTestUtils.setField(resolver,"reader",reader);
+
+            List<Map<String,Object>> rows=resolver.resolveType(AssistantEntityResolver.EntityType.USER,"张三");
+
+            assertEquals(1,rows.size());assertEquals("USER",rows.get(0).get("entityType"));
+            assertFalse(rows.get(0).containsKey("mobile") || rows.get(0).containsKey("avatar")
+                    || rows.get(0).containsKey("username") || rows.get(0).containsKey("deptId"));
+            verify(permissions).getDeptDataPermission(101L,"system_users");
+            verify(reader).query(argThat(sql->sql.contains("system_user_dept sud") && sql.contains("e.dept_id IN")),
+                    argThat(parameters->parameters.contains(10L) && parameters.contains("101")),eq(21));
+        } finally {
+            TenantContextHolder.clear();SecurityContextHolder.clearContext();
+        }
+    }
+
+    @Test void salespersonResolutionAcceptsSupportedSaleDocumentPermissionWithoutSystemUserPermission() {
+        LoginUser login=new LoginUser();login.setId(101L);
+        login.setInfo(Collections.singletonMap(LoginUser.INFO_KEY_DEPT_ID,"10"));
+        SecurityContextHolder.getContext().setAuthentication(
+                new UsernamePasswordAuthenticationToken(login,"",Collections.emptyList()));
+        TenantContextHolder.setTenantId(1L);
+        try {
+            PermissionApi permissions=mock(PermissionApi.class);
+            when(permissions.hasAnyPermissions(101L,"erp:assistant:query")).thenReturn(true);
+            when(permissions.hasAnyPermissions(101L,"erp:sale-report:query","erp:receivable-account:query",
+                    "erp:sale-order:query","erp:sale-quote:query","erp:sale-cart:query","erp:sale-out:query",
+                    "erp:sale-return:query","erp:sale-pick:query","erp:sale-delivery:query")).thenReturn(true);
+            DeptDataPermissionRespDTO scope=new DeptDataPermissionRespDTO();scope.setDeptIds(Set.of(10L));
+            when(permissions.getDeptDataPermission(101L,"erp_sale_out")).thenReturn(scope);
+            when(permissions.getCurrentUserHiddenFields("system_users")).thenReturn(Collections.emptyList());
+            when(permissions.getCurrentUserHiddenFields("system_users",10L)).thenReturn(Collections.emptyList());
+            AssistantSemanticReadOnly reader=mock(AssistantSemanticReadOnly.class);
+            Map<String,Object> row=new HashMap<>();row.put("id",2L);row.put("name","张三");
+            row.put("code",null);row.put("description","业务员");row.put("matchedBy","NAME");
+            when(reader.query(anyString(),anyList(),eq(21))).thenReturn(Collections.singletonList(row));
+            AssistantEntityResolver resolver=resolver(mock(DeptApi.class));
+            ReflectionTestUtils.setField(resolver,"permissions",permissions);
+            ReflectionTestUtils.setField(resolver,"reader",reader);
+
+            List<Map<String,Object>> rows=resolver.resolveType(AssistantEntityResolver.EntityType.SALESPERSON,"张三");
+
+            assertEquals(1,rows.size());assertEquals("SALESPERSON",rows.get(0).get("entityType"));
+            verify(permissions,never()).hasAnyPermissions(101L,"system:user:query");
+            verify(reader).query(argThat(sql->sql.contains("system_users e") && sql.contains("e.dept_id IN")),
+                    argThat(parameters->parameters.contains(10L)),eq(21));
+        } finally {
+            TenantContextHolder.clear();SecurityContextHolder.clearContext();
+        }
+    }
+
+    @Test void resolvesCustomerHomophoneOnlyInsideCurrentPermissionAndVisiblePinyinField() {
+        LoginUser login=new LoginUser();login.setId(101L);
+        login.setInfo(Collections.singletonMap(LoginUser.INFO_KEY_DEPT_ID,"10"));
+        SecurityContextHolder.getContext().setAuthentication(
+                new UsernamePasswordAuthenticationToken(login,"",Collections.emptyList()));
+        TenantContextHolder.setTenantId(1L);
+        try {
+            PermissionApi permissions=mock(PermissionApi.class);
+            when(permissions.hasAnyPermissions(101L,"erp:assistant:query")).thenReturn(true);
+            when(permissions.hasAnyPermissions(101L,"erp:sale-report:query","erp:finance-receipt:query",
+                    "erp:receivable-account:query","erp:sale-order:query")).thenReturn(true);
+            DeptDataPermissionRespDTO scope=new DeptDataPermissionRespDTO();scope.setAll(true);
+            when(permissions.getDeptDataPermission(101L,"erp_customer")).thenReturn(scope);
+            when(permissions.getCurrentUserHiddenFields("erp_customer")).thenReturn(Collections.emptyList());
+            AssistantSemanticReadOnly reader=mock(AssistantSemanticReadOnly.class);
+            when(reader.query(anyString(),anyList(),eq(21))).thenAnswer(call->{
+                String sql=call.getArgument(0);
+                if(!sql.contains("LIKE CONCAT('%',UPPER(?),'%')")) return Collections.emptyList();
+                Map<String,Object> row=new HashMap<>();row.put("id",8L);row.put("name","成都路通源");
+                row.put("code","KH008");row.put("description",null);row.put("matchedBy","PINYIN");
+                return Collections.singletonList(row);
+            });
+            AssistantEntityResolver resolver=resolver(mock(DeptApi.class));
+            ReflectionTestUtils.setField(resolver,"permissions",permissions);
+            ReflectionTestUtils.setField(resolver,"reader",reader);
+            AssistantPhoneticNormalizer phonetic=new AssistantPhoneticNormalizer();
+            AssistantProperties properties=(AssistantProperties)ReflectionTestUtils.getField(resolver,"properties");
+            ReflectionTestUtils.setField(phonetic,"properties",properties);
+            ReflectionTestUtils.setField(phonetic,"companyKnowledge",null);
+            ReflectionTestUtils.setField(resolver,"phonetic",phonetic);
+
+            List<Map<String,Object>> rows=resolver.resolveType(AssistantEntityResolver.EntityType.CUSTOMER,"成都路通原");
+
+            assertEquals(1,rows.size());
+            assertEquals("成都路通源",rows.get(0).get("name"));
+            assertEquals("PHONETIC",rows.get(0).get("matchType"));
+            assertEquals("成都路通原",rows.get(0).get("correctedFrom"));
+            verify(reader,atLeastOnce()).query(argThat(sql->sql.contains("erp_customer e") && sql.contains("pinyin_code")),
+                    argThat(parameters->parameters.contains("CDLTY")),eq(21));
+        } finally {
+            TenantContextHolder.clear();SecurityContextHolder.clearContext();
+        }
+    }
+
+    @Test void hiddenPinyinFieldDisablesPhoneticEntityFallback() {
+        LoginUser login=new LoginUser();login.setId(101L);
+        SecurityContextHolder.getContext().setAuthentication(
+                new UsernamePasswordAuthenticationToken(login,"",Collections.emptyList()));
+        TenantContextHolder.setTenantId(1L);
+        try {
+            PermissionApi permissions=mock(PermissionApi.class);
+            when(permissions.hasAnyPermissions(101L,"erp:assistant:query")).thenReturn(true);
+            when(permissions.hasAnyPermissions(101L,"erp:sale-report:query","erp:finance-receipt:query",
+                    "erp:receivable-account:query","erp:sale-order:query")).thenReturn(true);
+            DeptDataPermissionRespDTO scope=new DeptDataPermissionRespDTO();scope.setAll(true);
+            when(permissions.getDeptDataPermission(101L,"erp_customer")).thenReturn(scope);
+            when(permissions.getCurrentUserHiddenFields("erp_customer")).thenReturn(Collections.singletonList("pinyinCode"));
+            AssistantSemanticReadOnly reader=mock(AssistantSemanticReadOnly.class);
+            when(reader.query(anyString(),anyList(),eq(21))).thenReturn(Collections.emptyList());
+            AssistantEntityResolver resolver=resolver(mock(DeptApi.class));
+            ReflectionTestUtils.setField(resolver,"permissions",permissions);
+            ReflectionTestUtils.setField(resolver,"reader",reader);
+            AssistantPhoneticNormalizer phonetic=new AssistantPhoneticNormalizer();
+            ReflectionTestUtils.setField(phonetic,"properties",ReflectionTestUtils.getField(resolver,"properties"));
+            ReflectionTestUtils.setField(phonetic,"companyKnowledge",null);
+            ReflectionTestUtils.setField(resolver,"phonetic",phonetic);
+
+            assertTrue(resolver.resolveType(AssistantEntityResolver.EntityType.CUSTOMER,"成都路通原").isEmpty());
+            verify(reader,never()).query(argThat(sql->sql.contains("LIKE CONCAT('%',UPPER(?),'%')")),anyList(),anyInt());
+        } finally {
+            TenantContextHolder.clear();SecurityContextHolder.clearContext();
+        }
+    }
+
     private static AssistantEntityResolver resolver(DeptApi departments) {
         AssistantEntityResolver resolver=new AssistantEntityResolver();
         ReflectionTestUtils.setField(resolver,"departments",departments);
@@ -80,4 +230,5 @@ class AssistantEntityResolverTest {
         DeptRespDTO department=new DeptRespDTO();department.setId(id);department.setName(name);
         department.setStatus(CommonStatusEnum.ENABLE.getStatus());return department;
     }
+
 }

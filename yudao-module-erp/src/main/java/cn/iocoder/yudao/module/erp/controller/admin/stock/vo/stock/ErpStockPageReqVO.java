@@ -32,6 +32,16 @@ public class ErpStockPageReqVO extends PageParam {
     @Schema(description = "产品关键词，匹配编码、名称、拼音码、五笔码等")
     private String productKeyword;
 
+    @Schema(description = "是否启用库存弹框跨产品、仓库、仓库部门和批次的分隔符组合搜索", example = "false")
+    private Boolean crossDimensionKeyword;
+
+    @Schema(description = "仓库名称（包含匹配）")
+    private String warehouseName;
+    @Schema(description = "所属部门名称（包含匹配）")
+    private String deptName;
+    @Schema(description = "批次号（包含匹配，仅批次展开模式使用）")
+    private String batchNo;
+
     // ========== 模糊搜索条件 ==========
     @Schema(description = "零件编码（产品 code）")
     private String productCode;

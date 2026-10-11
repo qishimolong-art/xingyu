@@ -22,6 +22,8 @@ import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.order.ErpPurchas
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.order.ErpPurchaseOrderImportRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.order.ErpPurchaseOrderInableItemPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.order.ErpPurchaseOrderInableItemRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.order.ErpPurchaseOrderInableStockReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.order.ErpPurchaseOrderInableStockRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.order.ErpPurchaseOrderItemBatchUpdateReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.order.ErpPurchaseOrderItemPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.order.ErpPurchaseOrderPageReqVO;
@@ -561,6 +563,14 @@ public class ErpPurchaseOrderController {
     public CommonResult<PageResult<ErpPurchaseOrderInableItemRespVO>> getInableItemPage(
             @Valid ErpPurchaseOrderInableItemPageReqVO pageReqVO) {
         return success(purchaseOrderService.getInableItemPage(pageReqVO));
+    }
+
+    @PostMapping("/inable-item-stock-query")
+    @Operation(summary = "批量查询采购订单可入库明细的实时库存")
+    @PreAuthorize("@ss.hasPermission('erp:purchase-in:create')")
+    public CommonResult<List<ErpPurchaseOrderInableStockRespVO>> getInableItemStockList(
+            @Valid @RequestBody ErpPurchaseOrderInableStockReqVO reqVO) {
+        return success(purchaseOrderService.getInableItemStockList(reqVO));
     }
 
     private PageResult<ErpPurchaseOrderRespVO> buildPurchaseOrderVOPageResult(PageResult<ErpPurchaseOrderDO> pageResult) {

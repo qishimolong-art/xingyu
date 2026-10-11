@@ -13,6 +13,7 @@ import java.util.concurrent.TimeUnit;
 
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 class AssistantWeComMessageServiceTest {
 
@@ -80,6 +81,19 @@ class AssistantWeComMessageServiceTest {
         verify(webSocketClient).replyStream(eq("req-1"), anyString(), argThat(message ->
                 message.contains("http://erp.example.com/wecom-bot-bind.html?ticket=ticket-1&tenantId=1")
                         && !message.contains("/#/auth/wecom-bot-bind")), eq(true));
+    }
+
+    @Test
+    void numberedTextChoiceRestoresTheSharedClarificationSelection() {
+        when(values.get("erp:assistant:wecom:choice:bot-1:wecom-1")).thenReturn("{\"options\":[" +
+                "{\"field\":\"resolved:PRODUCT\",\"id\":8,\"question\":\"这个产品；补充：库存\"}," +
+                "{\"field\":\"resolved:PRODUCT\",\"id\":8,\"question\":\"这个产品；补充：销量\"}]}");
+
+        Object choice = ReflectionTestUtils.invokeMethod(service, "readChoice", "wecom-1", "2");
+
+        assertEquals("resolved:PRODUCT", ReflectionTestUtils.getField(choice, "field"));
+        assertEquals(8L, ReflectionTestUtils.getField(choice, "id"));
+        assertEquals("这个产品；补充：销量", ReflectionTestUtils.getField(choice, "question"));
     }
 
     private static AssistantWeComInboundEvent event(String chatType, String msgType, String content) {

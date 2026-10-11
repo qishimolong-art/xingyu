@@ -136,6 +136,28 @@ class AssistantMysqlTest {
             if(metric==AssistantPlan.Metric.RECEIVABLE || metric==AssistantPlan.Metric.PAYABLE) assertEquals(0,new BigDecimal("-20").compareTo(amount(rows)),metric.name());
         }
     }
+    @Test void accountResultsSplitOnePartyByActualDocumentDepartmentAndReconcileToSummary() {
+        insert("system_dept","id",910002L,"name","第二测试部门");
+        insert("erp_sale_out","id",910003L,"no","SECOND-sale_out","status",20,"dept_id",910002L,
+                "customer_id",910001L,"out_time","2026-09-22 12:00:00","total_price",50,"total_count",1);
+        insert("erp_purchase_in","id",910003L,"no","SECOND-purchase_in","status",20,"dept_id",910002L,
+                "supplier_id",910001L,"in_time","2026-09-22 12:00:00","total_price",50,"total_count",1);
+
+        for(AssistantPlan.Metric metric:Arrays.asList(AssistantPlan.Metric.RECEIVABLE,AssistantPlan.Metric.PAYABLE)) {
+            Map<String,Object> args=context(metric);
+            BigDecimal summary=amount(mapper.select(args));
+            args.put("mode","accountResults");args.put("rowLimit",2001);
+            args.put("accountPartyIds",Collections.singletonList(910001L));
+            List<Map<String,Object>> rows=mapper.select(args);
+
+            assertEquals(2,rows.size(),metric.name());
+            assertEquals(0,summary.compareTo(amount(rows)),metric.name());
+            assertTrue(rows.stream().anyMatch(row->"测试部门".equals(row.get("deptName"))
+                    && new BigDecimal("-20").compareTo(new BigDecimal(row.get("amount").toString()))==0));
+            assertTrue(rows.stream().anyMatch(row->"第二测试部门".equals(row.get("deptName"))
+                    && new BigDecimal("50").compareTo(new BigDecimal(row.get("amount").toString()))==0));
+        }
+    }
     @Test void tenantAndDepartmentCannotEscape() {
         for(AssistantPlan.Metric metric:AssistantPlan.Metric.values()) {
             Map<String,Object> p=context(metric);TenantContextHolder.setTenantId(2L);p.put("tenantId",2L);
@@ -214,8 +236,19 @@ class AssistantMysqlTest {
         try {
             AssistantStore store=new AssistantStore();AssistantProperties properties=new AssistantProperties();properties.setEnabled(true);
             org.springframework.test.util.ReflectionTestUtils.setField(store,"jdbc",jdbc);org.springframework.test.util.ReflectionTestUtils.setField(store,"properties",properties);
+            org.springframework.test.util.ReflectionTestUtils.setField(store,"codec",new AssistantExecutionCodec());
+            org.springframework.test.util.ReflectionTestUtils.setField(store,"orchestrator",org.mockito.Mockito.mock(AssistantOrchestrator.class));
+            AssistantReadOnly reader=org.mockito.Mockito.mock(AssistantReadOnly.class);
+            cn.iocoder.yudao.module.system.api.permission.PermissionApi permissions=org.mockito.Mockito.mock(cn.iocoder.yudao.module.system.api.permission.PermissionApi.class);
+            org.mockito.Mockito.doAnswer(invocation->((java.util.function.Supplier<?>)invocation.getArgument(0)).get()).when(reader).snapshot(org.mockito.ArgumentMatchers.any());
+            org.mockito.Mockito.doAnswer(invocation->((java.util.function.Supplier<?>)invocation.getArgument(0)).get()).when(permissions).executeInReadSnapshot(org.mockito.ArgumentMatchers.any());
+            org.springframework.test.util.ReflectionTestUtils.setField(store,"reader",reader);org.springframework.test.util.ReflectionTestUtils.setField(store,"permissions",permissions);
             String id=store.create();String message=store.begin(id,"本周收款");
             store.finish(message,"{\"metric\":\"RECEIPT\",\"period\":\"THIS_WEEK\"}","RECEIPT","test","SUCCESS",10,0);
+            String next=store.begin(id,"改查本月付款");
+            store.finish(next,"{\"metric\":\"PAYMENT\",\"period\":\"THIS_MONTH\"}","PAYMENT","test","SUCCESS",10,0);
+            Map<String,Object> listed=store.list(1,10).stream().filter(row->id.equals(row.get("id"))).findFirst().orElseThrow(AssertionError::new);
+            assertEquals("本周收款",listed.get("title"));
             assertTrue(store.queryPlan(message).contains("RECEIPT"));
             user.setId(102L);assertThrows(AssistantFailure.class,()->store.owner(id));assertThrows(AssistantFailure.class,()->store.queryPlan(message));
             user.setId(101L);TenantContextHolder.setTenantId(2L);assertThrows(AssistantFailure.class,()->store.owner(id));

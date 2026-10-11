@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "version": "2026-10-06.1",
+  "terms": [
+    {"canonical": "销售额", "category": "METRIC", "aliases": ["销瘦额", "销受额"], "allowNearSound": true},
+    {"canonical": "销售量", "category": "METRIC", "aliases": ["销瘦量", "销受量"], "allowNearSound": true},
+    {"canonical": "采购额", "category": "METRIC", "aliases": ["采够额"], "allowNearSound": true},
+    {"canonical": "采购量", "category": "METRIC", "aliases": ["采够量"], "allowNearSound": true},
+    {"canonical": "库存量", "category": "METRIC", "aliases": ["苦存量"], "allowNearSound": true},
+    {"canonical": "收款额", "category": "METRIC", "aliases": ["手款额"], "allowNearSound": true},
+    {"canonical": "付款额", "category": "METRIC", "aliases": ["付宽额"], "allowNearSound": true},
+    {"canonical": "应收款", "category": "METRIC", "aliases": ["应手款"], "allowNearSound": true},
+    {"canonical": "应付款", "category": "METRIC", "aliases": [], "allowNearSound": true},
+    {"canonical": "可用库存", "category": "METRIC", "aliases": ["可用苦存"], "allowNearSound": true},
+    {"canonical": "组织架构", "category": "KNOWLEDGE", "aliases": ["组织价构"], "allowNearSound": true},
+    {"canonical": "人员组成", "category": "KNOWLEDGE", "aliases": ["人员组乘"], "allowNearSound": true},
+    {"canonical": "经典表现", "category": "PRODUCT_KNOWLEDGE", "aliases": ["金典表现"], "allowNearSound": true},
+    {"canonical": "产品认证", "category": "KNOWLEDGE", "aliases": ["产品认正"], "allowNearSound": true},
+    {"canonical": "负责人", "category": "FIELD", "aliases": ["负责任"], "allowNearSound": true},
+    {"canonical": "供应商", "category": "ENTITY", "aliases": ["供应伤"], "allowNearSound": true},
+    {"canonical": "业务员", "category": "ENTITY", "aliases": ["业务圆"], "allowNearSound": true}
+  ]
+}

@@ -45,6 +45,8 @@ public interface ErpSaleQuoteService {
 
     Long approveSaleQuote(Long id);
 
+    void reverseOrderSaleQuote(Long id);
+
     Long convertToCart(@Valid ErpSaleQuoteConvertCartReqVO reqVO);
 
     ErpSaleQuoteDO getSaleQuote(Long id);

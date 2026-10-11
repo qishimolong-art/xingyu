@@ -130,6 +130,8 @@ public class ErpSaleCartServiceImpl implements ErpSaleCartService {
     @Resource
     private ErpSaleConvertRecordMapper saleConvertRecordMapper;
     @Resource
+    private ErpSaleQuoteProgressService saleQuoteProgressService;
+    @Resource
     private ErpProductMapper productMapper;
     @Resource
     private ErpNoRedisDAO noRedisDAO;
@@ -365,6 +367,16 @@ public class ErpSaleCartServiceImpl implements ErpSaleCartService {
             }
             selectedItems.add(item);
         }
+        if (updateWarehouse && isQuoteSourceCart(cart)) {
+            Set<Long> linkedItemIds = saleConvertRecordMapper
+                    .selectQuoteToCartListByCartIds(Collections.singleton(cart.getId())).stream()
+                    .map(ErpSaleConvertRecordDO::getTargetItemId).filter(Objects::nonNull)
+                    .collect(Collectors.toSet());
+            selectedItems.stream().filter(item -> linkedItemIds.contains(item.getId())).findFirst()
+                    .ifPresent(item -> {
+                        throw exception(SALE_CART_QUOTE_SOURCE_IDENTITY_MODIFY_FAIL, item.getId());
+                    });
+        }
 
         ErpWarehouseDO targetWarehouse = null;
         Long targetDeptId = null;
@@ -476,6 +488,7 @@ public class ErpSaleCartServiceImpl implements ErpSaleCartService {
                 ? Collections.emptyList() : (draft
                 ? validateSaleCartDraftItems(itemReqs, saleDeptId)
                 : validateSaleCartItems(itemReqs, saleDeptId));
+        List<ErpSaleConvertRecordDO> quoteSourceRecords = validateQuoteSourceCartItems(cart, oldItems, items);
         calculateTotalPrice(updateObj, items);
         if (!draft) {
             validateFreightFinanceFields(updateObj);
@@ -483,6 +496,8 @@ public class ErpSaleCartServiceImpl implements ErpSaleCartService {
         saleCartMapper.updateById(updateObj);
         if (incrementalItems) {
             applySaleCartItemChangeSet(updateReqVO.getId(), itemChangeSet, items);
+        } else if (isQuoteSourceCart(cart)) {
+            applyQuoteSourceCartFullItemUpdate(updateReqVO.getId(), oldItems, items);
         } else {
             saleCartItemMapper.deleteByCartId(updateReqVO.getId());
             items.forEach(item -> {
@@ -493,6 +508,7 @@ public class ErpSaleCartServiceImpl implements ErpSaleCartService {
                 saleCartItemMapper.insertBatch(items);
             }
         }
+        syncQuoteSourceConvertRecords(quoteSourceRecords, items);
         if (ErpSaleCartStatusEnum.SUBMITTED.getStatus().equals(cart.getStatus())) {
             validateStockEnoughRealtime(items);
         }
@@ -642,6 +658,9 @@ public class ErpSaleCartServiceImpl implements ErpSaleCartService {
                         .setFinalAuditUserId(finalApproveUserId));
         if (updateCount == 0) {
             throw exception(SALE_CART_FINAL_APPROVE_FAIL);
+        }
+        if (saleQuoteProgressService != null) {
+            saleQuoteProgressService.refreshByCartIds(Collections.singleton(id));
         }
         recordStatus(id, cart.getNo(), true);
         return saleOutIds;
@@ -944,6 +963,10 @@ public class ErpSaleCartServiceImpl implements ErpSaleCartService {
                 "sale cart converted to quote, no=" + cart.getNo() + ", target=" + quote.getNo(), cart.getNo());
         saleCartItemMapper.deleteByCartId(cart.getId());
         saleCartMapper.deleteById(cart.getId());
+        saleConvertRecordMapper.deleteByTarget(ErpSaleBizSourceTypeEnum.CART.getType(), cart.getId());
+        if (isQuoteSourceCart(cart) && saleQuoteProgressService != null) {
+            saleQuoteProgressService.refreshQuoteProgress(cart.getSourceId());
+        }
 
         return quote.getId();
     }
@@ -956,6 +979,9 @@ public class ErpSaleCartServiceImpl implements ErpSaleCartService {
         }
         List<Long> orderedIds = ids.stream().filter(Objects::nonNull).distinct().sorted().collect(Collectors.toList());
         List<ErpSaleCartDO> carts = orderedIds.stream().map(this::validateSaleCartForUpdate).collect(Collectors.toList());
+        Set<Long> quoteIds = saleConvertRecordMapper.selectQuoteToCartListByCartIds(orderedIds).stream()
+                .map(ErpSaleConvertRecordDO::getSourceId).filter(Objects::nonNull)
+                .collect(Collectors.toCollection(LinkedHashSet::new));
         carts.forEach(cart -> {
             if (!isBeforeFirstApprove(cart.getStatus())) {
                 throw exception(SALE_CART_DELETE_FAIL_NOT_DRAFT, cart.getNo());
@@ -967,7 +993,136 @@ public class ErpSaleCartServiceImpl implements ErpSaleCartService {
         saleCartMapper.deleteBatchIds(orderedIds);
         orderedIds.forEach(saleCartItemMapper::deleteByCartId);
         orderedIds.forEach(id -> saleConvertRecordMapper.deleteByTarget(ErpSaleBizSourceTypeEnum.CART.getType(), id));
+        if (saleQuoteProgressService != null) {
+            quoteIds.forEach(saleQuoteProgressService::refreshQuoteProgress);
+        }
         carts.forEach(cart -> recordDelete(cart.getId(), cart.getNo()));
+    }
+
+    private boolean isQuoteSourceCart(ErpSaleCartDO cart) {
+        return cart != null && ErpSaleBizSourceTypeEnum.QUOTE.getType().equals(cart.getSourceType())
+                && cart.getSourceId() != null;
+    }
+
+    private List<ErpSaleConvertRecordDO> validateQuoteSourceCartItems(ErpSaleCartDO cart,
+                                                                      List<ErpSaleCartItemDO> oldItems,
+                                                                      List<ErpSaleCartItemDO> finalItems) {
+        if (!isQuoteSourceCart(cart)) {
+            return Collections.emptyList();
+        }
+        List<ErpSaleConvertRecordDO> records = saleConvertRecordMapper
+                .selectQuoteToCartListByCartIds(Collections.singleton(cart.getId()));
+        if (CollUtil.isEmpty(records)) {
+            return records;
+        }
+        Map<Long, ErpSaleCartItemDO> oldItemMap = convertMap(oldItems, ErpSaleCartItemDO::getId);
+        Map<Long, ErpSaleCartItemDO> finalItemMap = finalItems.stream().filter(item -> item.getId() != null)
+                .collect(Collectors.toMap(ErpSaleCartItemDO::getId, item -> item));
+        finalItemMap.keySet().stream().filter(id -> !oldItemMap.containsKey(id)).findFirst()
+                .ifPresent(id -> {
+                    throw exception(SALE_CART_ITEM_UPDATE_NOT_EXISTS);
+                });
+        // 与报价分批转手推车保持相同的“主表 -> 明细”加锁顺序，避免并发调整数量时锁顺序反转。
+        saleQuoteMapper.selectByIdForUpdate(cart.getSourceId());
+        Map<Long, ErpSaleQuoteItemDO> quoteItemMap = convertMap(
+                saleQuoteItemMapper.selectListByQuoteIdForUpdate(cart.getSourceId()), ErpSaleQuoteItemDO::getId);
+        List<ErpSaleConvertRecordDO> allQuoteRecords = saleConvertRecordMapper
+                .selectQuoteToCartListByQuoteIds(Collections.singleton(cart.getSourceId()));
+        Set<Long> activeCartIds = allQuoteRecords.stream().map(ErpSaleConvertRecordDO::getTargetId)
+                .filter(Objects::nonNull).collect(Collectors.toSet());
+        if (CollUtil.isNotEmpty(activeCartIds)) {
+            activeCartIds = saleCartMapper.selectByIds(activeCartIds).stream()
+                    .map(ErpSaleCartDO::getId).collect(Collectors.toSet());
+        }
+        Set<Long> finalActiveCartIds = activeCartIds;
+        allQuoteRecords = allQuoteRecords.stream()
+                .filter(record -> finalActiveCartIds.contains(record.getTargetId()))
+                .collect(Collectors.toList());
+        Map<Long, BigDecimal> totalBySourceItem = allQuoteRecords.stream()
+                .collect(Collectors.groupingBy(ErpSaleConvertRecordDO::getSourceItemId,
+                        Collectors.reducing(BigDecimal.ZERO,
+                                record -> record.getCount() != null ? record.getCount() : BigDecimal.ZERO,
+                                BigDecimal::add)));
+        for (ErpSaleConvertRecordDO record : records) {
+            ErpSaleCartItemDO oldItem = oldItemMap.get(record.getTargetItemId());
+            ErpSaleCartItemDO finalItem = finalItemMap.get(record.getTargetItemId());
+            if (oldItem == null) {
+                throw exception(SALE_CART_ITEM_UPDATE_NOT_EXISTS);
+            }
+            if (finalItem != null && !sameQuoteSourceIdentity(oldItem, finalItem)) {
+                throw exception(SALE_CART_QUOTE_SOURCE_IDENTITY_MODIFY_FAIL, oldItem.getId());
+            }
+            ErpSaleQuoteItemDO quoteItem = quoteItemMap.get(record.getSourceItemId());
+            if (quoteItem == null) {
+                throw exception(SALE_QUOTE_ITEM_NOT_EXISTS, record.getSourceItemId());
+            }
+            BigDecimal proposed = totalBySourceItem.getOrDefault(record.getSourceItemId(), BigDecimal.ZERO)
+                    .subtract(record.getCount() != null ? record.getCount() : BigDecimal.ZERO)
+                    .add(finalItem != null && finalItem.getCount() != null ? finalItem.getCount() : BigDecimal.ZERO);
+            if (proposed.compareTo(quoteItem.getCount()) > 0) {
+                throw exception(SALE_CART_QUOTE_SOURCE_COUNT_EXCEED, quoteItem.getId(), proposed, quoteItem.getCount());
+            }
+            totalBySourceItem.put(record.getSourceItemId(), proposed);
+        }
+        return records;
+    }
+
+    private boolean sameQuoteSourceIdentity(ErpSaleCartItemDO oldItem, ErpSaleCartItemDO finalItem) {
+        return Objects.equals(oldItem.getProductId(), finalItem.getProductId())
+                && Objects.equals(oldItem.getProductUnitId(), finalItem.getProductUnitId())
+                && Objects.equals(oldItem.getWarehouseId(), finalItem.getWarehouseId())
+                && Objects.equals(normalizeBatchNo(oldItem.getBatchNo()), normalizeBatchNo(finalItem.getBatchNo()))
+                && Objects.equals(Boolean.TRUE.equals(oldItem.getGiftFlag()), Boolean.TRUE.equals(finalItem.getGiftFlag()));
+    }
+
+    private String normalizeBatchNo(String batchNo) {
+        return batchNo == null ? "" : batchNo.trim();
+    }
+
+    private void applyQuoteSourceCartFullItemUpdate(Long cartId, List<ErpSaleCartItemDO> oldItems,
+                                                    List<ErpSaleCartItemDO> finalItems) {
+        Set<Long> finalIds = finalItems.stream().map(ErpSaleCartItemDO::getId)
+                .filter(Objects::nonNull).collect(Collectors.toSet());
+        List<Long> deleteIds = oldItems.stream().map(ErpSaleCartItemDO::getId)
+                .filter(id -> !finalIds.contains(id)).collect(Collectors.toList());
+        if (CollUtil.isNotEmpty(deleteIds)) {
+            saleCartItemMapper.deleteByIds(deleteIds);
+        }
+        List<ErpSaleCartItemDO> insertItems = finalItems.stream().filter(item -> item.getId() == null)
+                .collect(Collectors.toList());
+        if (CollUtil.isNotEmpty(insertItems)) {
+            insertItems.forEach(item -> item.setCartId(cartId));
+            saleCartItemMapper.insertBatch(insertItems);
+        }
+        List<ErpSaleCartItemDO> updateItems = finalItems.stream().filter(item -> item.getId() != null)
+                .collect(Collectors.toList());
+        if (CollUtil.isNotEmpty(updateItems)) {
+            updateItems.forEach(item -> item.setCartId(cartId));
+            saleCartItemMapper.updateBatch(updateItems);
+        }
+    }
+
+    private void syncQuoteSourceConvertRecords(List<ErpSaleConvertRecordDO> records,
+                                               List<ErpSaleCartItemDO> finalItems) {
+        if (CollUtil.isEmpty(records)) {
+            return;
+        }
+        Map<Long, ErpSaleCartItemDO> finalItemMap = finalItems.stream().filter(item -> item.getId() != null)
+                .collect(Collectors.toMap(ErpSaleCartItemDO::getId, item -> item));
+        Set<Long> quoteIds = new LinkedHashSet<>();
+        records.forEach(record -> {
+            quoteIds.add(record.getSourceId());
+            ErpSaleCartItemDO finalItem = finalItemMap.get(record.getTargetItemId());
+            if (finalItem == null) {
+                saleConvertRecordMapper.deleteById(record.getId());
+            } else if (record.getCount() == null || record.getCount().compareTo(finalItem.getCount()) != 0) {
+                saleConvertRecordMapper.updateById(new ErpSaleConvertRecordDO().setId(record.getId())
+                        .setCount(finalItem.getCount()));
+            }
+        });
+        if (saleQuoteProgressService != null) {
+            quoteIds.forEach(saleQuoteProgressService::refreshQuoteProgress);
+        }
     }
 
     private boolean isBeforeFirstApprove(Integer status) {

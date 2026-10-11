@@ -56,6 +56,10 @@ public class ErpPurchaseReturnDO extends BaseDO {
      * 退货时间
      */
     private LocalDateTime returnTime;
+    /**
+     * 审批时间。仅在审批事务成功时写入。
+     */
+    private LocalDateTime approveTime;
 
     /**
      * 采购订单编号

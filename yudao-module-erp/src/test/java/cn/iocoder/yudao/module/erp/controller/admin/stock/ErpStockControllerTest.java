@@ -856,14 +856,23 @@ public class ErpStockControllerTest extends BaseMockitoUnitTest {
         PageResult<ErpStockRespVO> filteredPage = controller.getStockPage(reqVO).getData();
         assertEquals(1L, filteredPage.getTotal());
         assertEquals("PC20260715", filteredPage.getList().get(0).getBatchNo());
+        verify(stockService, never()).getStockPage(argThat(request ->
+                PageParam.PAGE_SIZE_NONE.equals(request.getPageSize())));
+
+        reqVO.setCountMin(null);
+        reqVO.setBatchNo(" 0715 ");
+        PageResult<ErpStockRespVO> batchFilteredPage = controller.getStockPage(reqVO).getData();
+        assertEquals(1, batchFilteredPage.getList().size());
+        assertEquals("PC20260715", batchFilteredPage.getList().get(0).getBatchNo());
         verify(stockBatchQuantityMapper, atLeastOnce()).selectOccupiedList(any(), any(), eq(10),
                 eq(Arrays.asList(20, 30)), eq(1), eq(10));
         verify(stockService, atLeastOnce()).getStockPage(argThat(request ->
                 Integer.valueOf(1).equals(request.getPageNo())
                         && Integer.valueOf(2).equals(request.getPageSize())
                         && request.getCountMin() == null));
-        verify(stockService, never()).getStockPage(argThat(request ->
-                PageParam.PAGE_SIZE_NONE.equals(request.getPageSize())));
+        verify(stockService, atLeastOnce()).getStockPage(argThat(request ->
+                PageParam.PAGE_SIZE_NONE.equals(request.getPageSize())
+                        && " 0715 ".equals(request.getBatchNo())));
     }
 
     @Test

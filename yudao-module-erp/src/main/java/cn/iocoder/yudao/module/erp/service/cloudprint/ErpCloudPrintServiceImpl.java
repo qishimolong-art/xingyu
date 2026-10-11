@@ -2,16 +2,20 @@ package cn.iocoder.yudao.module.erp.service.cloudprint;
 
 import cn.hutool.core.util.RandomUtil;
 import cn.hutool.core.util.StrUtil;
+import cn.hutool.crypto.digest.DigestUtil;
 import cn.iocoder.yudao.framework.common.enums.CommonStatusEnum;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.mybatis.core.query.LambdaQueryWrapperX;
 import cn.iocoder.yudao.framework.common.util.number.MoneyUtils;
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
+import cn.iocoder.yudao.framework.common.util.json.JsonUtils;
+import cn.iocoder.yudao.framework.tenant.core.context.TenantContextHolder;
 import cn.iocoder.yudao.framework.tenant.core.util.TenantUtils;
 import cn.iocoder.yudao.module.erp.controller.admin.cloudprint.vo.ErpCloudPrintDevicePageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.cloudprint.vo.ErpCloudPrintDeviceRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.cloudprint.vo.ErpCloudPrintDeviceSaveReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.cloudprint.vo.ErpCloudPrintTaskRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.cloudprint.vo.ErpCloudPrintPreviewSaleOutRespVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.cloudprint.ErpCloudPrintDeviceDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.cloudprint.ErpCloudPrintTaskDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.common.ErpPrintTemplateDO;
@@ -34,8 +38,12 @@ import cn.iocoder.yudao.module.system.api.dept.dto.DeptRespDTO;
 import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
 import lombok.experimental.Accessors;
+import org.redisson.api.RLock;
+import org.redisson.api.RedissonClient;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.util.StringUtils;
@@ -45,6 +53,7 @@ import javax.annotation.Resource;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -53,9 +62,12 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.LinkedHashSet;
 import java.util.stream.Collectors;
+import java.util.UUID;
+import java.util.concurrent.TimeUnit;
 
 import static cn.iocoder.yudao.framework.common.exception.util.ServiceExceptionUtil.exception;
 import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.convertList;
+import static cn.iocoder.yudao.framework.security.core.util.SecurityFrameworkUtils.getLoginUserId;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.*;
 
 @Slf4j
@@ -64,6 +76,8 @@ import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.*;
 public class ErpCloudPrintServiceImpl implements ErpCloudPrintService {
 
     private static final String SALE_OUT_FILE_DIRECTORY = "erp/cloud-print/sale-out";
+    private static final int MAX_PREVIEW_PDF_BYTES = 20 * 1024 * 1024;
+    private static final String PREVIEW_LOCK_PREFIX = "erp:cloud-print:preview-confirm-lock:";
 
     @Resource
     private ErpCloudPrintDeviceMapper deviceMapper;
@@ -88,44 +102,154 @@ public class ErpCloudPrintServiceImpl implements ErpCloudPrintService {
     @Resource
     private ErpCloudPrintQueueService queueService;
     @Resource
+    private ErpCloudPrintPreviewCacheService previewCacheService;
+    @Resource
+    private RedissonClient redissonClient;
+    @Resource
     private DeptApi deptApi;
+    @Resource
+    private PlatformTransactionManager transactionManager;
 
     @Override
-    public List<ErpCloudPrintTaskRespVO> submitSaleOut(Long saleOutId, Integer copies, Long templateId) {
-        ErpSaleOutDO saleOut = saleOutService.validateSaleOut(saleOutId);
-        ErpPrintTemplateDO template = resolveSaleOutTemplate(templateId);
-        List<ErpSaleOutItemDO> saleOutItems = saleOutItemMapper.selectListByOutId(saleOutId);
-        List<WarehousePrintGroup> groups = resolveWarehousePrintGroups(saleOutItems);
-        Map<String, Object> fullPrintData = printService.getPrintData(ErpCloudPrintConstants.MODULE_KEY_SALE_OUT, saleOutId);
-        List<Map<String, Object>> fullItemRows = getPrintItemRows(fullPrintData);
-        if (fullItemRows.size() != saleOutItems.size()) {
-            throw exception(CLOUD_PRINT_SUBMIT_FAILED, "销售单打印数据与明细行数不一致");
+    public ErpCloudPrintPreviewSaleOutRespVO previewSaleOut(Long saleOutId, Integer copies, Long templateId) {
+        SaleOutPreviewSource source = buildSaleOutPreviewSource(saleOutId, copies, templateId);
+        String token = UUID.randomUUID().toString().replace("-", "");
+        LocalDateTime expiresAt = LocalDateTime.now().plus(ErpCloudPrintPreviewCacheService.PREVIEW_TTL);
+        List<ErpCloudPrintPreviewCacheService.PreviewItem> cachedItems = new ArrayList<>();
+        List<ErpCloudPrintPreviewSaleOutRespVO.Item> responseItems = new ArrayList<>();
+        int totalBytes = 0;
+        for (WarehousePreviewData previewData : source.getWarehouseData()) {
+            WarehousePrintGroup group = previewData.getGroup();
+            byte[] content = htmlRenderer.renderSaleOutTemplatePdf(source.getTemplate().getTemplateJson(),
+                    source.getTemplate().getPaperConfig(), previewData.getPrintData(),
+                    group.getDevice().getPrintWidth(), group.getDevice().getPrintHeight());
+            totalBytes += content.length;
+            if (totalBytes > MAX_PREVIEW_PDF_BYTES) {
+                throw exception(CLOUD_PRINT_SUBMIT_FAILED, "云打印预览 PDF 总大小超过 20 MiB，请减少单据内容");
+            }
+            String itemId = UUID.randomUUID().toString().replace("-", "");
+            String fileName = source.getSaleOut().getNo() + "-"
+                    + safeFileName(group.getWarehouse().getName()) + "-预览.pdf";
+            String pdfSha256 = DigestUtil.sha256Hex(content);
+            Integer finalCopies = resolveCopies(copies, group.getDevice());
+            cachedItems.add(new ErpCloudPrintPreviewCacheService.PreviewItem()
+                    .setPreviewItemId(itemId)
+                    .setWarehouseId(group.getWarehouse().getId())
+                    .setWarehouseName(group.getWarehouse().getName())
+                    .setDeviceId(group.getDevice().getId())
+                    .setPrinterName(group.getDevice().getNickname())
+                    .setCopies(finalCopies)
+                    .setFileName(fileName)
+                    .setPdfBase64(Base64.getEncoder().encodeToString(content))
+                    .setPdfSha256(pdfSha256));
+            responseItems.add(new ErpCloudPrintPreviewSaleOutRespVO.Item()
+                    .setPreviewItemId(itemId)
+                    .setWarehouseId(group.getWarehouse().getId())
+                    .setWarehouseName(group.getWarehouse().getName())
+                    .setDeviceId(group.getDevice().getId())
+                    .setPrinterName(group.getDevice().getNickname())
+                    .setCopies(finalCopies)
+                    .setFileName(fileName)
+                    .setPdfSha256(pdfSha256));
         }
+        previewCacheService.put(new ErpCloudPrintPreviewCacheService.PreviewRecord()
+                .setPreviewToken(token)
+                .setTenantId(TenantContextHolder.getRequiredTenantId())
+                .setUserId(getLoginUserId())
+                .setSaleOutId(saleOutId)
+                .setTemplateId(templateId)
+                .setRequestedCopies(copies)
+                .setExpiresAt(expiresAt)
+                .setInputSha256(source.getInputSha256())
+                .setItems(cachedItems));
+        return new ErpCloudPrintPreviewSaleOutRespVO()
+                .setPreviewToken(token)
+                .setExpiresAt(expiresAt)
+                .setItems(responseItems);
+    }
 
-        List<ErpCloudPrintTaskRespVO> result = new ArrayList<>();
-        Set<Long> deviceIds = new LinkedHashSet<>();
-        for (WarehousePrintGroup group : groups) {
-            Map<String, Object> warehousePrintData = buildWarehousePrintData(fullPrintData, fullItemRows, group);
-            ErpCloudPrintTaskDO task = submitSaleOutGroup(saleOut, template, group, copies, warehousePrintData);
-            result.add(toTaskResp(task));
-            deviceIds.add(group.getDevice().getId());
+    @Override
+    public byte[] getSaleOutPreviewFile(String previewToken, String previewItemId) {
+        ErpCloudPrintPreviewCacheService.PreviewRecord record = previewCacheService.getBound(previewToken);
+        ErpCloudPrintPreviewCacheService.PreviewItem item = record.getItems().stream()
+                .filter(value -> Objects.equals(value.getPreviewItemId(), previewItemId))
+                .findFirst()
+                .orElseThrow(() -> exception(CLOUD_PRINT_SUBMIT_FAILED, "云打印预览项不存在或已过期"));
+        byte[] content = Base64.getDecoder().decode(item.getPdfBase64());
+        if (!Objects.equals(item.getPdfSha256(), DigestUtil.sha256Hex(content))) {
+            throw exception(CLOUD_PRINT_SUBMIT_FAILED, "云打印预览内容校验失败，请重新生成预览");
         }
-        for (Long deviceId : deviceIds) {
-            queueService.dispatchDeviceAsync(deviceId);
+        return content;
+    }
+
+    @Override
+    public List<ErpCloudPrintTaskRespVO> submitSaleOut(String previewToken) {
+        RLock lock = redissonClient.getLock(PREVIEW_LOCK_PREFIX + previewToken);
+        boolean locked = false;
+        try {
+            // 不指定固定 leaseTime，交给 Redisson watchdog 在确认尚未完成时自动续租，
+            // 避免大 PDF 或多仓上传超过固定租期后并发确认重复创建任务。
+            locked = lock.tryLock(5, TimeUnit.SECONDS);
+            if (!locked) {
+                throw exception(CLOUD_PRINT_SUBMIT_FAILED, "云打印正在确认中，请稍后查看结果");
+            }
+            ErpCloudPrintPreviewCacheService.ConfirmResult confirmed = previewCacheService.getBoundResult(previewToken);
+            if (confirmed != null) {
+                return getTaskResponsesByIds(confirmed.getTaskIds());
+            }
+            ErpCloudPrintPreviewCacheService.PreviewRecord record = previewCacheService.getBound(previewToken);
+            SaleOutPreviewSource source = buildSaleOutPreviewSource(record.getSaleOutId(),
+                    record.getRequestedCopies(), record.getTemplateId());
+            if (!Objects.equals(record.getInputSha256(), source.getInputSha256())) {
+                throw exception(CLOUD_PRINT_SUBMIT_FAILED, "销售出库单、模板或打印机配置已变化，请重新生成预览");
+            }
+            Map<Long, WarehousePrintGroup> groupMap = source.getWarehouseData().stream()
+                    .map(WarehousePreviewData::getGroup)
+                    .collect(Collectors.toMap(value -> value.getWarehouse().getId(), value -> value));
+            Set<Long> deviceIds = new LinkedHashSet<>();
+            List<ErpCloudPrintTaskDO> tasks = new TransactionTemplate(transactionManager).execute(status -> {
+                List<ErpCloudPrintTaskDO> created = new ArrayList<>();
+                for (ErpCloudPrintPreviewCacheService.PreviewItem item : record.getItems()) {
+                    WarehousePrintGroup group = groupMap.get(item.getWarehouseId());
+                    if (group == null || !Objects.equals(group.getDevice().getId(), item.getDeviceId())) {
+                        throw exception(CLOUD_PRINT_SUBMIT_FAILED, "仓库或打印机配置已变化，请重新生成预览");
+                    }
+                    byte[] content = Base64.getDecoder().decode(item.getPdfBase64());
+                    if (!Objects.equals(item.getPdfSha256(), DigestUtil.sha256Hex(content))) {
+                        throw exception(CLOUD_PRINT_SUBMIT_FAILED, "云打印预览内容校验失败，请重新生成预览");
+                    }
+                    created.add(submitSaleOutGroup(source.getSaleOut(), source.getTemplate(), group,
+                            item.getCopies(), content));
+                    deviceIds.add(group.getDevice().getId());
+                }
+                return created;
+            });
+            if (tasks == null) {
+                throw exception(CLOUD_PRINT_SUBMIT_FAILED, "云打印任务创建失败，请重试");
+            }
+            List<Long> taskIds = convertList(tasks, ErpCloudPrintTaskDO::getId);
+            previewCacheService.putResult(previewToken, taskIds);
+            previewCacheService.delete(previewToken);
+            deviceIds.forEach(queueService::dispatchDeviceAsync);
+            return tasks.stream().map(this::toTaskResp).collect(Collectors.toList());
+        } catch (InterruptedException ex) {
+            Thread.currentThread().interrupt();
+            throw exception(CLOUD_PRINT_SUBMIT_FAILED, "云打印确认被中断，请重试");
+        } finally {
+            if (locked && lock.isHeldByCurrentThread()) {
+                lock.unlock();
+            }
         }
-        return result;
     }
 
     private ErpCloudPrintTaskDO submitSaleOutGroup(ErpSaleOutDO saleOut, ErpPrintTemplateDO template,
                                                    WarehousePrintGroup group, Integer copies,
-                                                   Map<String, Object> printData) {
+                                                   byte[] content) {
         ErpCloudPrintDeviceDO device = group.getDevice();
         Integer finalCopies = resolveCopies(copies, device);
         String reqid = buildReqid(saleOut.getNo());
         Integer contentType = ErpCloudPrintConstants.CONTENT_TYPE_PDF;
         String fileName = saleOut.getNo() + "-" + safeFileName(group.getWarehouse().getName()) + "-" + reqid + ".pdf";
-        byte[] content = htmlRenderer.renderSaleOutTemplatePdf(template.getTemplateJson(), template.getPaperConfig(),
-                printData, device.getPrintWidth(), device.getPrintHeight());
         String fileUrl = fileApi.createFile(content, fileName,
                 SALE_OUT_FILE_DIRECTORY + "/" + saleOut.getId() + "/" + group.getWarehouse().getId(), "application/pdf");
         ErpCloudPrintTaskDO task = new ErpCloudPrintTaskDO()
@@ -147,6 +271,63 @@ public class ErpCloudPrintServiceImpl implements ErpCloudPrintService {
         log.info("[submitSaleOutGroup][销售单云打印入队 saleOutId({}) warehouseId({}) templateId({}) deviceId({}) taskId({})]",
                 saleOut.getId(), group.getWarehouse().getId(), template.getId(), device.getId(), task.getId());
         return task;
+    }
+
+    private SaleOutPreviewSource buildSaleOutPreviewSource(Long saleOutId, Integer copies, Long templateId) {
+        ErpSaleOutDO saleOut = saleOutService.validateSaleOut(saleOutId);
+        ErpPrintTemplateDO template = resolveSaleOutTemplate(templateId);
+        List<ErpSaleOutItemDO> saleOutItems = saleOutItemMapper.selectListByOutId(saleOutId);
+        List<WarehousePrintGroup> groups = resolveWarehousePrintGroups(saleOutItems);
+        Map<String, Object> fullPrintData = printService.getPrintData(
+                ErpCloudPrintConstants.MODULE_KEY_SALE_OUT, saleOutId);
+        List<Map<String, Object>> fullItemRows = getPrintItemRows(fullPrintData);
+        if (fullItemRows.size() != saleOutItems.size()) {
+            throw exception(CLOUD_PRINT_SUBMIT_FAILED, "销售单打印数据与明细行数不一致");
+        }
+        List<WarehousePreviewData> warehouseData = new ArrayList<>();
+        List<Map<String, Object>> fingerprintGroups = new ArrayList<>();
+        for (WarehousePrintGroup group : groups) {
+            Map<String, Object> printData = buildWarehousePrintData(fullPrintData, fullItemRows, group);
+            warehouseData.add(new WarehousePreviewData().setGroup(group).setPrintData(printData));
+            Map<String, Object> fingerprintGroup = new LinkedHashMap<>();
+            fingerprintGroup.put("warehouseId", group.getWarehouse().getId());
+            fingerprintGroup.put("warehouseName", group.getWarehouse().getName());
+            fingerprintGroup.put("deviceId", group.getDevice().getId());
+            fingerprintGroup.put("devid", group.getDevice().getDevid());
+            fingerprintGroup.put("printerName", group.getDevice().getNickname());
+            fingerprintGroup.put("deviceStatus", group.getDevice().getStatus());
+            fingerprintGroup.put("contentType", group.getDevice().getContentType());
+            fingerprintGroup.put("printWidth", group.getDevice().getPrintWidth());
+            fingerprintGroup.put("printHeight", group.getDevice().getPrintHeight());
+            fingerprintGroup.put("paperType", group.getDevice().getPaperType());
+            fingerprintGroup.put("rotate", group.getDevice().getRotate());
+            fingerprintGroup.put("copies", resolveCopies(copies, group.getDevice()));
+            fingerprintGroup.put("printData", printData);
+            fingerprintGroups.add(fingerprintGroup);
+        }
+        Map<String, Object> fingerprint = new LinkedHashMap<>();
+        fingerprint.put("saleOutId", saleOutId);
+        fingerprint.put("templateId", template.getId());
+        fingerprint.put("templateJson", template.getTemplateJson());
+        fingerprint.put("paperConfig", template.getPaperConfig());
+        fingerprint.put("groups", fingerprintGroups);
+        return new SaleOutPreviewSource()
+                .setSaleOut(saleOut)
+                .setTemplate(template)
+                .setWarehouseData(warehouseData)
+                .setInputSha256(DigestUtil.sha256Hex(JsonUtils.toJsonString(fingerprint)));
+    }
+
+    private List<ErpCloudPrintTaskRespVO> getTaskResponsesByIds(List<Long> taskIds) {
+        if (taskIds == null || taskIds.isEmpty()) {
+            return Collections.emptyList();
+        }
+        Map<Long, ErpCloudPrintTaskDO> taskMap = taskMapper.selectBatchIds(taskIds).stream()
+                .collect(Collectors.toMap(ErpCloudPrintTaskDO::getId, value -> value));
+        if (taskMap.size() != taskIds.size()) {
+            throw exception(CLOUD_PRINT_SUBMIT_FAILED, "云打印确认结果不完整，请到云打印任务列表核对");
+        }
+        return taskIds.stream().map(taskMap::get).map(this::toTaskResp).collect(Collectors.toList());
     }
 
     private List<WarehousePrintGroup> resolveWarehousePrintGroups(List<ErpSaleOutItemDO> saleOutItems) {
@@ -693,6 +874,22 @@ public class ErpCloudPrintServiceImpl implements ErpCloudPrintService {
             }
         });
         return list;
+    }
+
+    @Data
+    @Accessors(chain = true)
+    private static class SaleOutPreviewSource {
+        private ErpSaleOutDO saleOut;
+        private ErpPrintTemplateDO template;
+        private List<WarehousePreviewData> warehouseData;
+        private String inputSha256;
+    }
+
+    @Data
+    @Accessors(chain = true)
+    private static class WarehousePreviewData {
+        private WarehousePrintGroup group;
+        private Map<String, Object> printData;
     }
 
     @Data

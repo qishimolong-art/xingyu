@@ -4,9 +4,12 @@ import cn.hutool.core.collection.CollUtil;
 import cn.hutool.core.map.MapUtil;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.module.promotion.controller.admin.coupon.vo.coupon.CouponPageReqVO;
+import cn.iocoder.yudao.module.promotion.controller.admin.coupon.vo.coupon.CouponAddressTargetPageReqVO;
 import cn.iocoder.yudao.module.promotion.dal.dataobject.coupon.CouponDO;
 import cn.iocoder.yudao.module.promotion.dal.dataobject.coupon.CouponTemplateDO;
 import cn.iocoder.yudao.module.promotion.enums.coupon.CouponTakeTypeEnum;
+import cn.iocoder.yudao.module.promotion.service.coupon.bo.CouponAddressSendResultBO;
+import cn.iocoder.yudao.module.promotion.service.coupon.bo.CouponAddressTargetPageResultBO;
 
 import java.util.*;
 
@@ -60,6 +63,12 @@ public interface CouponService {
     default Map<Long, List<Long>> takeCouponByAdmin(Long templateId, Set<Long> userIds) {
         return takeCoupon(templateId, userIds, CouponTakeTypeEnum.ADMIN);
     }
+
+    /** 按收货地区分页预览可发券会员。 */
+    CouponAddressTargetPageResultBO getAddressTargetPage(CouponAddressTargetPageReqVO reqVO);
+
+    /** 按收货地区向当前命中的启用会员各发放一张优惠券。 */
+    CouponAddressSendResultBO takeCouponByAddress(Long templateId, Set<Integer> areaIds, Set<Long> excludedUserIds);
 
     /**
      * 【管理员】给指定用户批量发送优惠券

@@ -1,0 +1,26 @@
+# caseId|expectation|question
+K4-001|REVIEWED|兴宇公司主要做什么
+K4-002|REVIEWED|兴宇集团有哪些关联公司
+K4-003|REVIEWED|兴宇有哪些品牌和产品线
+K4-004|REVIEWED|客户选择柴机油时如何介绍卖点
+K4-005|REVIEWED|汽机油应该怎么选
+K4-006|REVIEWED|API SP 和 ILSAC GF-6A 有什么关系
+K4-007|REVIEWED|新员工产品学习路径是什么
+K4-008|REVIEWED|商用车带后处理系统选油要确认什么
+K4-009|REVIEWED|客户觉得价格贵应该怎么沟通
+K4-010|REVIEWED|兴宇的渠道网络是什么
+K4-011|UNVERIFIED|经典表现 FIAT 9.55535-M2 的 5W-40 认证是否已确认
+K4-012|UNVERIFIED|澎湃 5W-40 的 ILSAC GF-6A 是否确认
+K4-013|UNVERIFIED|劲擎 0W-8 的 GF-6B 与 JASO GLV-1 冲突怎么处理
+K4-014|UNVERIFIED|G60 G40 到底是不是齿轮油
+K4-015|UNVERIFIED|2023 年公司全口径金额是否已经核实
+K4-016|MIXED|介绍美孚黑霸王并查当前库存
+K4-017|MIXED|兴宇公司主营什么，同时查本月销售额
+K4-018|MIXED|说明每日保护的卖点并查询现在有没有货
+K4-019|MIXED|介绍产品选型以及查询当前价格
+K4-020|NOT_MIXED|介绍美孚黑霸王
+K4-021|NOT_MIXED|查美孚黑霸王当前库存
+K4-022|NO_EVIDENCE|量子纠缠火星基地天气
+K4-023|NO_EVIDENCE|海王星港口实时潮汐
+K4-024|UNVERIFIED|公司知识库中待核实的内容有哪些
+K4-025|MIXED|结合公司销售话术解释为什么本月这个产品销量下降

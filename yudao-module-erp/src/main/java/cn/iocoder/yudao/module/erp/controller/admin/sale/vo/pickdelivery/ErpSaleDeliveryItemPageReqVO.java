@@ -14,8 +14,8 @@ import javax.validation.constraints.NotNull;
 @ToString(callSuper = true)
 public class ErpSaleDeliveryItemPageReqVO extends PageParam {
 
-    @Schema(description = "送货单编号", requiredMode = Schema.RequiredMode.REQUIRED)
-    @NotNull(message = "送货单编号不能为空")
-    private Long orderId;
+    @Schema(description = "仓库送货任务编号", requiredMode = Schema.RequiredMode.REQUIRED)
+    @NotNull(message = "仓库送货任务编号不能为空")
+    private Long taskId;
 
 }

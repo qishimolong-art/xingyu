@@ -495,8 +495,17 @@ public class ErpWarehouseController {
             @RequestParam("warehouseId") Long warehouseId) {
         ErpWarehouseSaleDeptPermissionRespVO respVO = new ErpWarehouseSaleDeptPermissionRespVO();
         respVO.setWarehouseId(warehouseId);
+        respVO.setScopeType(warehouseService.getWarehouseSaleDeptScopeType(warehouseId));
         respVO.setDeptIds(warehouseService.getWarehouseSaleDeptIds(warehouseId));
         return success(respVO);
+    }
+
+    @GetMapping("/sale-dept-options")
+    @Operation(summary = "Get all department options for warehouse sale permissions")
+    @DataPermission(enable = false)
+    @PreAuthorize("@ss.hasPermission('erp:warehouse-permission:query') or @ss.hasPermission('erp:warehouse-permission:update')")
+    public CommonResult<List<DeptRespDTO>> getWarehouseSaleDeptOptions() {
+        return success(deptApi.getDeptListByStatus(null));
     }
 
     @PutMapping("/sale-dept-permissions")
@@ -505,7 +514,8 @@ public class ErpWarehouseController {
     @PreAuthorize("@ss.hasPermission('erp:warehouse-permission:update')")
     public CommonResult<Boolean> updateWarehouseSaleDeptPermissions(
             @Valid @RequestBody ErpWarehouseSaleDeptPermissionSaveReqVO updateReqVO) {
-        warehouseService.updateWarehouseSaleDeptPermissions(updateReqVO.getWarehouseId(), updateReqVO.getDeptIds());
+        warehouseService.updateWarehouseSaleDeptPermissions(updateReqVO.getWarehouseId(),
+                updateReqVO.getScopeType(), updateReqVO.getDeptIds());
         return success(true);
     }
 

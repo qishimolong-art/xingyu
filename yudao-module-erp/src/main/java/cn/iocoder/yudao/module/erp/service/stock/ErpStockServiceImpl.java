@@ -15,11 +15,13 @@ import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockBatchQuantityDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockLockDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockRecordDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpWarehouseDO;
+import cn.iocoder.yudao.module.erp.dal.mysql.common.ErpKeywordQuery;
 import cn.iocoder.yudao.module.erp.dal.mysql.product.ErpProductMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.purchase.ErpPurchaseInItemMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.stock.ErpStockLockMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.stock.ErpStockMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.stock.ErpStockBatchQuantityMapper;
+import cn.iocoder.yudao.module.erp.dal.mysql.stock.ErpStockKeywordMatchScope;
 import cn.iocoder.yudao.module.erp.dal.mysql.stock.ErpStockRecordMapper;
 import cn.iocoder.yudao.module.erp.enums.ErpAuditStatus;
 import cn.iocoder.yudao.module.erp.enums.sale.ErpSaleCartStatusEnum;
@@ -312,22 +314,44 @@ public class ErpStockServiceImpl implements ErpStockService {
         return DataPermissionUtils.executeIgnore(() ->
                 isUnrestrictedScope(scope)
                         ? selectStockPage(pageReqVO, scope.productIdFilter, scope.warehouseIdFilter,
-                        scope.keywordProductIdFilter, scope.keywordWarehouseIdFilter, scope.batchKeywordStockKeyMap)
+                        scope.keywordProductIdFilter, scope.keywordWarehouseIdFilter, scope.batchKeywordStockKeyMap,
+                        scope.crossDimensionKeywordScopes, scope.batchNoStockKeyMap)
                         : selectStockPageWithPermission(pageReqVO, scope.productIdFilter, scope.warehouseIdFilter,
                         scope.keywordProductIdFilter, scope.keywordWarehouseIdFilter, scope.batchKeywordStockKeyMap,
+                        scope.crossDimensionKeywordScopes,
                         scope.productStockScope.getDepartmentWarehouseIds(),
-                        scope.productStockScope.getSelfWarehouseIds(), scope.selfCreator()));
+                        scope.productStockScope.getSelfWarehouseIds(), scope.selfCreator(),
+                        scope.batchNoStockKeyMap));
     }
 
     @Override
     public ErpStockSummaryRespVO getStockSummary(ErpStockPageReqVO pageReqVO) {
         StockQueryScope scope = buildStockQueryScope(pageReqVO);
-        return DataPermissionUtils.executeIgnore(() ->
-                stockMapper.selectSummary(pageReqVO, scope.productIdFilter, scope.warehouseIdFilter,
-                        scope.keywordProductIdFilter, scope.keywordWarehouseIdFilter, scope.batchKeywordStockKeyMap,
-                        isUnrestrictedScope(scope) ? null : scope.productStockScope.getDepartmentWarehouseIds(),
-                        isUnrestrictedScope(scope) ? null : scope.productStockScope.getSelfWarehouseIds(),
-                        isUnrestrictedScope(scope) ? null : scope.selfCreator()));
+        return DataPermissionUtils.executeIgnore(() -> {
+            Collection<Long> departmentWarehouseIds = isUnrestrictedScope(scope)
+                    ? null : scope.productStockScope.getDepartmentWarehouseIds();
+            Collection<Long> selfWarehouseIds = isUnrestrictedScope(scope)
+                    ? null : scope.productStockScope.getSelfWarehouseIds();
+            String selfCreator = isUnrestrictedScope(scope) ? null : scope.selfCreator();
+            if (scope.batchNoStockKeyMap == null) {
+                if (scope.crossDimensionKeywordScopes != null) {
+                    return stockMapper.selectSummary(pageReqVO, scope.productIdFilter, scope.warehouseIdFilter,
+                            null, null, null, scope.crossDimensionKeywordScopes,
+                            departmentWarehouseIds, selfWarehouseIds, selfCreator);
+                }
+                return stockMapper.selectSummary(pageReqVO, scope.productIdFilter, scope.warehouseIdFilter,
+                        scope.keywordProductIdFilter, scope.keywordWarehouseIdFilter,
+                        scope.batchKeywordStockKeyMap, departmentWarehouseIds, selfWarehouseIds, selfCreator);
+            }
+            if (scope.crossDimensionKeywordScopes != null) {
+                return stockMapper.selectSummary(pageReqVO, scope.productIdFilter, scope.warehouseIdFilter,
+                        null, null, null, scope.crossDimensionKeywordScopes,
+                        departmentWarehouseIds, selfWarehouseIds, selfCreator, scope.batchNoStockKeyMap);
+            }
+            return stockMapper.selectSummary(pageReqVO, scope.productIdFilter, scope.warehouseIdFilter,
+                    scope.keywordProductIdFilter, scope.keywordWarehouseIdFilter, scope.batchKeywordStockKeyMap,
+                    null, departmentWarehouseIds, selfWarehouseIds, selfCreator, scope.batchNoStockKeyMap);
+        });
     }
 
     private StockQueryScope buildStockQueryScope(ErpStockPageReqVO pageReqVO) {
@@ -350,29 +374,26 @@ public class ErpStockServiceImpl implements ErpStockService {
             scope.warehouseIdFilter = intersectWarehouseIds(scope.warehouseIdFilter,
                     getVisibleWarehouseIdsForSaleStockPage(pageReqVO));
         }
+        if (StringUtils.hasText(pageReqVO.getBatchNo())) {
+            scope.batchNoStockKeyMap = getBatchKeywordStockKeyMap(
+                    pageReqVO.getBatchNo(), scope.warehouseIdFilter);
+        }
         if (StringUtils.hasText(pageReqVO.getKeyword())) {
-            scope.keywordProductIdFilter = DataPermissionUtils.executeIgnore(() ->
-                    productMapper.selectIdsByKeyword(pageReqVO));
-            scope.keywordWarehouseIdFilter = warehouseService.getWarehousePage(buildKeywordWarehouseReqVO(pageReqVO))
-                    .getList().stream()
-                    .map(ErpWarehouseDO::getId)
-                    .collect(Collectors.toList());
-            if (Boolean.TRUE.equals(pageReqVO.getShowBatchNo())) {
-                Collection<Long> finalVisibleWarehouseIds = scope.warehouseIdFilter;
-                scope.batchKeywordStockKeyMap = new LinkedHashMap<>(DataPermissionUtils.executeIgnore(() ->
-                        stockRecordMapper.selectStockKeyMapByBatchNoKeyword(
-                                pageReqVO.getKeyword(), finalVisibleWarehouseIds)));
-                List<ErpStockBatchQuantityDO> associatedBatchKeys = DataPermissionUtils.executeIgnore(() ->
-                        stockBatchQuantityMapper.selectAssociatedBatchKeywordStockKeyList(
-                                pageReqVO.getKeyword().trim().replaceAll("\\s+", "%"),
-                                finalVisibleWarehouseIds,
-                                ErpAuditStatus.PROCESS.getStatus(),
-                                SALE_CART_OCCUPIED_STATUSES,
-                                ErpStockCheckTypeEnum.COUNT.getType(),
-                                ErpStockTransferDirectionEnum.TRANSFER_OUT.getDirection(),
-                                ErpStockTransferDirectionEnum.TRANSFER_IN.getDirection(),
-                                Collections.singletonList(ErpAuditStatus.APPROVE.getStatus())));
-                mergeBatchKeywordStockKeys(scope.batchKeywordStockKeyMap, associatedBatchKeys);
+            ErpKeywordQuery.KeywordSearch keywordSearch =
+                    ErpKeywordQuery.parseKeywordSearch(pageReqVO.getKeyword());
+            if (Boolean.TRUE.equals(pageReqVO.getCrossDimensionKeyword())
+                    && keywordSearch.explicitDelimited()) {
+                scope.crossDimensionKeywordScopes = buildCrossDimensionKeywordScopes(
+                        keywordSearch.tokens(), scope.warehouseIdFilter,
+                        Boolean.TRUE.equals(pageReqVO.getShowBatchNo()));
+            } else {
+                scope.keywordProductIdFilter = DataPermissionUtils.executeIgnore(() ->
+                        productMapper.selectIdsByKeyword(pageReqVO));
+                scope.keywordWarehouseIdFilter = getKeywordWarehouseIds(pageReqVO.getKeyword());
+                if (Boolean.TRUE.equals(pageReqVO.getShowBatchNo())) {
+                    scope.batchKeywordStockKeyMap = getBatchKeywordStockKeyMap(
+                            pageReqVO.getKeyword(), scope.warehouseIdFilter);
+                }
             }
         }
         return scope;
@@ -388,6 +409,8 @@ public class ErpStockServiceImpl implements ErpStockService {
         private Collection<Long> keywordProductIdFilter;
         private Collection<Long> keywordWarehouseIdFilter;
         private Map<Long, Set<Long>> batchKeywordStockKeyMap;
+        private Map<Long, Set<Long>> batchNoStockKeyMap;
+        private List<ErpStockKeywordMatchScope> crossDimensionKeywordScopes;
         private ErpProductStockPermissionScope productStockScope;
 
         private String selfCreator() {
@@ -400,18 +423,50 @@ public class ErpStockServiceImpl implements ErpStockService {
                                                    Collection<Long> warehouseIdFilter,
                                                    Collection<Long> keywordProductIdFilter,
                                                    Collection<Long> keywordWarehouseIdFilter,
-                                                   Map<Long, Set<Long>> batchKeywordStockKeyMap) {
+                                                   Map<Long, Set<Long>> batchKeywordStockKeyMap,
+                                                   List<ErpStockKeywordMatchScope> crossDimensionKeywordScopes,
+                                                   Map<Long, Set<Long>> batchNoStockKeyMap) {
         if (isSaleAvailableCountSort(pageReqVO)) {
+            if (crossDimensionKeywordScopes != null) {
+                if (batchNoStockKeyMap == null) {
+                    return stockMapper.selectPageOrderByAvailableCount(pageReqVO, productIdFilter,
+                            warehouseIdFilter, null, null, null, crossDimensionKeywordScopes,
+                            null, null, null);
+                }
+                return stockMapper.selectPageOrderByAvailableCount(pageReqVO, productIdFilter, warehouseIdFilter,
+                        null, null, null, crossDimensionKeywordScopes,
+                        null, null, null, batchNoStockKeyMap);
+            }
+            if (batchNoStockKeyMap == null) {
+                return stockMapper.selectPageOrderByAvailableCount(pageReqVO, productIdFilter, warehouseIdFilter,
+                        keywordProductIdFilter, keywordWarehouseIdFilter, batchKeywordStockKeyMap,
+                        null, null, null);
+            }
             return stockMapper.selectPageOrderByAvailableCount(pageReqVO, productIdFilter, warehouseIdFilter,
                     keywordProductIdFilter, keywordWarehouseIdFilter, batchKeywordStockKeyMap,
-                    null, null, null);
+                    null, null, null, null, batchNoStockKeyMap);
         }
-        if (batchKeywordStockKeyMap == null) {
+        if (crossDimensionKeywordScopes != null) {
+            if (batchNoStockKeyMap == null) {
+                return stockMapper.selectPage(pageReqVO, productIdFilter, warehouseIdFilter,
+                        null, null, null, crossDimensionKeywordScopes,
+                        null, null, null);
+            }
             return stockMapper.selectPage(pageReqVO, productIdFilter, warehouseIdFilter,
-                    keywordProductIdFilter, keywordWarehouseIdFilter);
+                    null, null, null, crossDimensionKeywordScopes,
+                    null, null, null, batchNoStockKeyMap);
+        }
+        if (batchNoStockKeyMap == null) {
+            if (batchKeywordStockKeyMap == null) {
+                return stockMapper.selectPage(pageReqVO, productIdFilter, warehouseIdFilter,
+                        keywordProductIdFilter, keywordWarehouseIdFilter);
+            }
+            return stockMapper.selectPage(pageReqVO, productIdFilter, warehouseIdFilter,
+                    keywordProductIdFilter, keywordWarehouseIdFilter, batchKeywordStockKeyMap);
         }
         return stockMapper.selectPage(pageReqVO, productIdFilter, warehouseIdFilter,
-                keywordProductIdFilter, keywordWarehouseIdFilter, batchKeywordStockKeyMap);
+                keywordProductIdFilter, keywordWarehouseIdFilter, batchKeywordStockKeyMap,
+                null, null, null, null, batchNoStockKeyMap);
     }
 
     private PageResult<ErpStockDO> selectStockPageWithPermission(
@@ -421,22 +476,54 @@ public class ErpStockServiceImpl implements ErpStockService {
             Collection<Long> keywordProductIdFilter,
             Collection<Long> keywordWarehouseIdFilter,
             Map<Long, Set<Long>> batchKeywordStockKeyMap,
+            List<ErpStockKeywordMatchScope> crossDimensionKeywordScopes,
             Collection<Long> departmentWarehouseIds,
             Collection<Long> selfWarehouseIds,
-            String selfCreator) {
+            String selfCreator,
+            Map<Long, Set<Long>> batchNoStockKeyMap) {
         if (isSaleAvailableCountSort(pageReqVO)) {
+            if (crossDimensionKeywordScopes != null) {
+                if (batchNoStockKeyMap == null) {
+                    return stockMapper.selectPageOrderByAvailableCount(pageReqVO, productIdFilter,
+                            warehouseIdFilter, null, null, null, crossDimensionKeywordScopes,
+                            departmentWarehouseIds, selfWarehouseIds, selfCreator);
+                }
+                return stockMapper.selectPageOrderByAvailableCount(pageReqVO, productIdFilter, warehouseIdFilter,
+                        null, null, null, crossDimensionKeywordScopes,
+                        departmentWarehouseIds, selfWarehouseIds, selfCreator, batchNoStockKeyMap);
+            }
+            if (batchNoStockKeyMap == null) {
+                return stockMapper.selectPageOrderByAvailableCount(pageReqVO, productIdFilter, warehouseIdFilter,
+                        keywordProductIdFilter, keywordWarehouseIdFilter, batchKeywordStockKeyMap,
+                        departmentWarehouseIds, selfWarehouseIds, selfCreator);
+            }
             return stockMapper.selectPageOrderByAvailableCount(pageReqVO, productIdFilter, warehouseIdFilter,
                     keywordProductIdFilter, keywordWarehouseIdFilter, batchKeywordStockKeyMap,
-                    departmentWarehouseIds, selfWarehouseIds, selfCreator);
+                    null, departmentWarehouseIds, selfWarehouseIds, selfCreator, batchNoStockKeyMap);
         }
-        if (batchKeywordStockKeyMap == null) {
+        if (crossDimensionKeywordScopes != null) {
+            if (batchNoStockKeyMap == null) {
+                return stockMapper.selectPage(pageReqVO, productIdFilter, warehouseIdFilter,
+                        null, null, null, crossDimensionKeywordScopes,
+                        departmentWarehouseIds, selfWarehouseIds, selfCreator);
+            }
             return stockMapper.selectPage(pageReqVO, productIdFilter, warehouseIdFilter,
-                    keywordProductIdFilter, keywordWarehouseIdFilter,
+                    null, null, null, crossDimensionKeywordScopes,
+                    departmentWarehouseIds, selfWarehouseIds, selfCreator, batchNoStockKeyMap);
+        }
+        if (batchNoStockKeyMap == null) {
+            if (batchKeywordStockKeyMap == null) {
+                return stockMapper.selectPage(pageReqVO, productIdFilter, warehouseIdFilter,
+                        keywordProductIdFilter, keywordWarehouseIdFilter,
+                        departmentWarehouseIds, selfWarehouseIds, selfCreator);
+            }
+            return stockMapper.selectPage(pageReqVO, productIdFilter, warehouseIdFilter,
+                    keywordProductIdFilter, keywordWarehouseIdFilter, batchKeywordStockKeyMap,
                     departmentWarehouseIds, selfWarehouseIds, selfCreator);
         }
         return stockMapper.selectPage(pageReqVO, productIdFilter, warehouseIdFilter,
                 keywordProductIdFilter, keywordWarehouseIdFilter, batchKeywordStockKeyMap,
-                departmentWarehouseIds, selfWarehouseIds, selfCreator);
+                null, departmentWarehouseIds, selfWarehouseIds, selfCreator, batchNoStockKeyMap);
     }
 
     private void mergeBatchKeywordStockKeys(Map<Long, Set<Long>> stockKeyMap,
@@ -451,6 +538,46 @@ public class ErpStockServiceImpl implements ErpStockService {
             stockKeyMap.computeIfAbsent(stockKey.getProductId(), key -> new LinkedHashSet<>())
                     .add(stockKey.getWarehouseId());
         }
+    }
+
+    private List<ErpStockKeywordMatchScope> buildCrossDimensionKeywordScopes(
+            List<String> keywords, Collection<Long> visibleWarehouseIds, boolean includeBatchNo) {
+        List<ErpStockKeywordMatchScope> scopes = new ArrayList<>();
+        for (String keyword : keywords) {
+            Collection<Long> productIds = DataPermissionUtils.executeIgnore(() ->
+                    productMapper.selectIdsByStockProductKeyword(keyword));
+            Collection<Long> warehouseIds = DataPermissionUtils.executeIgnore(() ->
+                    getKeywordWarehouseIds(keyword));
+            Map<Long, Set<Long>> batchStockKeyMap = includeBatchNo
+                    ? getBatchKeywordStockKeyMap(keyword, visibleWarehouseIds) : null;
+            scopes.add(new ErpStockKeywordMatchScope(productIds, warehouseIds, batchStockKeyMap));
+        }
+        return scopes;
+    }
+
+    private Collection<Long> getKeywordWarehouseIds(String keyword) {
+        return warehouseService.getWarehousePage(buildKeywordWarehouseReqVO(keyword))
+                .getList().stream()
+                .map(ErpWarehouseDO::getId)
+                .collect(Collectors.toList());
+    }
+
+    private Map<Long, Set<Long>> getBatchKeywordStockKeyMap(
+            String keyword, Collection<Long> visibleWarehouseIds) {
+        Map<Long, Set<Long>> stockKeyMap = new LinkedHashMap<>(DataPermissionUtils.executeIgnore(() ->
+                stockRecordMapper.selectStockKeyMapByBatchNoKeyword(keyword, visibleWarehouseIds)));
+        List<ErpStockBatchQuantityDO> associatedBatchKeys = DataPermissionUtils.executeIgnore(() ->
+                stockBatchQuantityMapper.selectAssociatedBatchKeywordStockKeyList(
+                        keyword.trim().replaceAll("\\s+", "%"),
+                        visibleWarehouseIds,
+                        ErpAuditStatus.PROCESS.getStatus(),
+                        SALE_CART_OCCUPIED_STATUSES,
+                        ErpStockCheckTypeEnum.COUNT.getType(),
+                        ErpStockTransferDirectionEnum.TRANSFER_OUT.getDirection(),
+                        ErpStockTransferDirectionEnum.TRANSFER_IN.getDirection(),
+                        Collections.singletonList(ErpAuditStatus.APPROVE.getStatus())));
+        mergeBatchKeywordStockKeys(stockKeyMap, associatedBatchKeys);
+        return stockKeyMap;
     }
 
     @Override
@@ -617,12 +744,12 @@ public class ErpStockServiceImpl implements ErpStockService {
     }
 
     private cn.iocoder.yudao.module.erp.controller.admin.stock.vo.warehouse.ErpWarehousePageReqVO buildKeywordWarehouseReqVO(
-            ErpStockPageReqVO reqVO) {
+            String keyword) {
         cn.iocoder.yudao.module.erp.controller.admin.stock.vo.warehouse.ErpWarehousePageReqVO warehouseReqVO =
                 new cn.iocoder.yudao.module.erp.controller.admin.stock.vo.warehouse.ErpWarehousePageReqVO();
         warehouseReqVO.setPageNo(1);
         warehouseReqVO.setPageSize(cn.iocoder.yudao.framework.common.pojo.PageParam.PAGE_SIZE_NONE);
-        warehouseReqVO.setKeyword(reqVO.getKeyword());
+        warehouseReqVO.setKeyword(keyword);
         return warehouseReqVO;
     }
 

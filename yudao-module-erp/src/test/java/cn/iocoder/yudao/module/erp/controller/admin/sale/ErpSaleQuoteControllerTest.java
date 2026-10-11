@@ -16,6 +16,7 @@ import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpProduc
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpCustomerDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleQuoteDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleQuoteItemDO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockDO;
 import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpSaleOutItemMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpSaleOutMapper;
 import cn.iocoder.yudao.module.erp.service.config.ErpFieldConfigService;
@@ -25,6 +26,7 @@ import cn.iocoder.yudao.module.erp.service.sale.ErpCustomerService;
 import cn.iocoder.yudao.module.erp.service.sale.ErpSaleFieldPermissionMasker;
 import cn.iocoder.yudao.module.erp.service.sale.ErpSaleItemPriceReferenceFiller;
 import cn.iocoder.yudao.module.erp.service.sale.ErpSaleQuoteService;
+import cn.iocoder.yudao.module.erp.service.stock.ErpStockService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpWarehouseService;
 import cn.iocoder.yudao.module.system.api.dept.DeptApi;
 import cn.iocoder.yudao.module.system.api.dept.dto.DeptRespDTO;
@@ -78,6 +80,8 @@ public class ErpSaleQuoteControllerTest extends BaseMockitoUnitTest {
     private ErpSaleFieldPermissionMasker fieldPermissionMasker;
     @Mock
     private ErpSaleItemPriceReferenceFiller itemPriceReferenceFiller;
+    @Mock
+    private ErpStockService stockService;
     @Mock
     private AdminUserApi adminUserApi;
     @Mock
@@ -150,6 +154,19 @@ public class ErpSaleQuoteControllerTest extends BaseMockitoUnitTest {
     @Test
     public void testApproveSaleQuote_hasPreAuthorize() throws NoSuchMethodException {
         Method method = ErpSaleQuoteController.class.getMethod("approveSaleQuote", Long.class);
+        PreAuthorize anno = method.getAnnotation(PreAuthorize.class);
+        assertNotNull(anno);
+        assertTrue(anno.value().contains("erp:sale-quote:approve"));
+    }
+
+    @Test
+    public void testReverseOrderSaleQuote_paramPassThroughAndKeepsApprovePermission() throws NoSuchMethodException {
+        CommonResult<Boolean> result = controller.reverseOrderSaleQuote(8L);
+
+        assertEquals(0, result.getCode());
+        assertEquals(Boolean.TRUE, result.getData());
+        verify(saleQuoteService).reverseOrderSaleQuote(8L);
+        Method method = ErpSaleQuoteController.class.getMethod("reverseOrderSaleQuote", Long.class);
         PreAuthorize anno = method.getAnnotation(PreAuthorize.class);
         assertNotNull(anno);
         assertTrue(anno.value().contains("erp:sale-quote:approve"));
@@ -295,6 +312,37 @@ public class ErpSaleQuoteControllerTest extends BaseMockitoUnitTest {
         assertEquals(1, result.getData().getItems().size());
         assertEquals(30L, result.getData().getItems().get(0).getDeptId());
         assertEquals("Qionglai Dept", result.getData().getItems().get(0).getDeptName());
+    }
+
+    @Test
+    public void testGetSaleQuote_includeStock_returnsWarehouseStockAndAvailableCount() {
+        ErpSaleQuoteDO quote = new ErpSaleQuoteDO();
+        quote.setId(50L);
+        quote.setStatus(20);
+        ErpSaleQuoteItemDO item = new ErpSaleQuoteItemDO();
+        item.setId(501L);
+        item.setQuoteId(50L);
+        item.setProductId(100L);
+        item.setWarehouseId(200L);
+        item.setCount(BigDecimal.ONE);
+
+        when(saleQuoteService.getSaleQuote(eq(50L))).thenReturn(quote);
+        when(saleQuoteService.getSaleQuoteItemListByQuoteId(eq(50L)))
+                .thenReturn(Collections.singletonList(item));
+        when(productService.getProductVOMap(any())).thenReturn(Collections.emptyMap());
+        when(warehouseService.getWarehouseMap(any())).thenReturn(Collections.emptyMap());
+        when(stockService.getStockMap(any(), any())).thenReturn(Collections.singletonMap("100_200",
+                new ErpStockDO().setProductId(100L).setWarehouseId(200L).setCount(new BigDecimal("12"))));
+        when(stockService.getOccupiedCountMap(any(), any()))
+                .thenReturn(Collections.singletonMap("100_200", new BigDecimal("4.5")));
+
+        CommonResult<ErpSaleQuoteRespVO> result = controller.getSaleQuote(50L, true, true);
+
+        ErpSaleQuoteRespVO.Item resultItem = result.getData().getItems().get(0);
+        assertEquals(0, new BigDecimal("12").compareTo(resultItem.getStockCount()));
+        assertEquals(0, new BigDecimal("7.5").compareTo(resultItem.getAvailableCount()));
+        verify(stockService).getStockMap(any(), any());
+        verify(stockService).getOccupiedCountMap(any(), any());
     }
 
     @Test

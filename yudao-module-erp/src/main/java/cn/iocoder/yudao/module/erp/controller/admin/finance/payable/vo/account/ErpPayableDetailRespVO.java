@@ -108,4 +108,7 @@ public class ErpPayableDetailRespVO {
     @Schema(description = "确认时间")
     @ExcelProperty("确认时间")
     private LocalDateTime confirmTime;
+
+    @Schema(description = "当前下钻维度的本笔变动金额")
+    private BigDecimal changeAmount;
 }

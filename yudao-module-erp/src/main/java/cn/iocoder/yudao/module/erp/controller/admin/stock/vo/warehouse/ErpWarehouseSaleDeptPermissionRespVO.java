@@ -12,6 +12,10 @@ public class ErpWarehouseSaleDeptPermissionRespVO {
     @Schema(description = "Warehouse id", requiredMode = Schema.RequiredMode.REQUIRED, example = "100")
     private Long warehouseId;
 
+    @Schema(description = "销售部门授权范围", requiredMode = Schema.RequiredMode.REQUIRED,
+            allowableValues = {"ALL", "SPECIFIED"})
+    private String scopeType;
+
     @Schema(description = "Sales department ids")
     private Set<Long> deptIds;
 

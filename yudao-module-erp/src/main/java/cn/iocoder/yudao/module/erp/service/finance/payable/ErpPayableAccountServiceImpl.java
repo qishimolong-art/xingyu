@@ -7,11 +7,16 @@ import cn.iocoder.yudao.framework.mybatis.core.query.LambdaQueryWrapperX;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.payable.vo.account.ErpPayableAccountPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.payable.vo.account.ErpPayableDetailReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.payable.vo.account.ErpPayableDetailRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.finance.payable.vo.account.ErpPayableDrilldownReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.payable.vo.account.ErpPayableWriteOffReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.ErpAccountDrilldownPageRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.ErpAccountDrilldownSummaryRespVO;
 import cn.iocoder.yudao.framework.security.core.util.SecurityFrameworkUtils;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.ErpFinancePaymentDO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.finance.ErpMiscSettlementLedgerRow;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.accounting.ErpVoucherDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.payable.ErpPayableAccountDO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.finance.payable.ErpPayableMiscDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.payable.ErpPayableOtherDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.payable.ErpPayableWriteOffDO;
 import cn.iocoder.yudao.module.erp.dal.mysql.finance.accounting.ErpVoucherMapper;
@@ -22,6 +27,7 @@ import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseReturnDO;
 import cn.iocoder.yudao.module.erp.dal.mysql.finance.ErpFinancePaymentMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.finance.ErpFinancePaymentItemMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.finance.payable.ErpPayableAccountMapper;
+import cn.iocoder.yudao.module.erp.dal.mysql.finance.payable.ErpPayableMiscMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.finance.payable.ErpPayableWriteOffMapper;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseInItemDO;
 import cn.iocoder.yudao.module.erp.dal.mysql.purchase.ErpPurchaseInMapper;
@@ -31,6 +37,7 @@ import cn.iocoder.yudao.module.erp.dal.mysql.purchase.ErpPurchaseReturnMapper;
 import cn.iocoder.yudao.module.erp.enums.ErpAuditStatus;
 import cn.iocoder.yudao.module.erp.enums.common.ErpBizTypeEnum;
 import cn.iocoder.yudao.module.erp.enums.finance.accounting.ErpVoucherSourceBizTypeEnum;
+import cn.iocoder.yudao.module.erp.enums.finance.ErpPayableDrilldownTypeEnum;
 import cn.iocoder.yudao.module.erp.service.common.ErpOriginalSettlementAmountUtils;
 import cn.iocoder.yudao.module.erp.service.common.ErpOperateLogService;
 import cn.iocoder.yudao.module.erp.service.finance.ErpFinanceVisibleScope;
@@ -55,6 +62,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
+import java.util.function.Function;
 
 import static cn.iocoder.yudao.framework.common.exception.util.ServiceExceptionUtil.exception;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PAYABLE_WRITEOFF_AMOUNT_EXCEED;
@@ -69,6 +77,8 @@ public class ErpPayableAccountServiceImpl implements ErpPayableAccountService {
 
     @Resource
     private ErpPayableAccountMapper payableAccountMapper;
+    @Resource
+    private ErpPayableMiscMapper payableMiscMapper;
     @Resource
     private ErpPurchaseInMapper purchaseInMapper;
     @Resource
@@ -140,6 +150,221 @@ public class ErpPayableAccountServiceImpl implements ErpPayableAccountService {
             return Collections.emptyList();
         }
         return DataPermissionUtils.executeIgnore(() -> buildPayableDetailList(reqVO, scope));
+    }
+
+    @Override
+    public ErpAccountDrilldownPageRespVO<ErpPayableDetailRespVO> getPayableDrilldownPage(
+            ErpPayableDrilldownReqVO reqVO) {
+        List<ErpPayableDetailRespVO> rows = getPayableDrilldownList(reqVO);
+        ErpPayableDrilldownTypeEnum type = ErpPayableDrilldownTypeEnum.fromValue(reqVO.getDetailType());
+        ErpAccountDrilldownSummaryRespVO summary = buildDrilldownSummary(rows, type,
+                resolveEmptyBalanceAmount(reqVO, rows, type));
+        List<ErpPayableDetailRespVO> sortedRows = sortDrilldownRows(rows, reqVO.getOrderField(),
+                reqVO.getOrderDirection());
+        int from = Math.min((reqVO.getPageNo() - 1) * reqVO.getPageSize(), sortedRows.size());
+        int to = Math.min(from + reqVO.getPageSize(), sortedRows.size());
+        return new ErpAccountDrilldownPageRespVO<>(new ArrayList<>(sortedRows.subList(from, to)),
+                (long) sortedRows.size(), summary);
+    }
+
+    @Override
+    public List<ErpPayableDetailRespVO> getPayableDrilldownList(ErpPayableDrilldownReqVO reqVO) {
+        supplierService.validateSupplier(reqVO.getSupplierId());
+        ErpFinanceVisibleScope scope = getPayableVisibleScope();
+        if (scope == null || !scope.hasAccess()) {
+            return Collections.emptyList();
+        }
+        return DataPermissionUtils.executeIgnore(() -> buildDrilldownRows(reqVO, scope));
+    }
+
+    private List<ErpPayableDetailRespVO> buildDrilldownRows(ErpPayableDrilldownReqVO reqVO,
+                                                            ErpFinanceVisibleScope scope) {
+        ErpPayableDrilldownTypeEnum type = ErpPayableDrilldownTypeEnum.fromValue(reqVO.getDetailType());
+        if (type == ErpPayableDrilldownTypeEnum.MISC_PAYABLE) {
+            return buildMiscPayableRows(reqVO, scope);
+        }
+        if (type == ErpPayableDrilldownTypeEnum.OPENING_BALANCE && reqVO.getStartTime() == null) {
+            return Collections.emptyList();
+        }
+        ErpPayableDetailReqVO detailReqVO = new ErpPayableDetailReqVO();
+        detailReqVO.setSupplierId(reqVO.getSupplierId());
+        detailReqVO.setBizTime(type == ErpPayableDrilldownTypeEnum.OPENING_BALANCE
+                ? new LocalDateTime[]{null, reqVO.getStartTime()} : reqVO.getBizTime());
+        List<ErpPayableDetailRespVO> rows = buildPayableDetailList(detailReqVO, scope).stream()
+                .filter(row -> matchesDrilldownType(row, type)).collect(Collectors.toList());
+        applyDrilldownAmounts(rows, type);
+        return rows;
+    }
+
+    private boolean matchesDrilldownType(ErpPayableDetailRespVO row, ErpPayableDrilldownTypeEnum type) {
+        if (type == ErpPayableDrilldownTypeEnum.BALANCE
+                || type == ErpPayableDrilldownTypeEnum.OPENING_BALANCE) {
+            return true;
+        }
+        if (type == ErpPayableDrilldownTypeEnum.PURCHASE_IN) {
+            return ErpBizTypeEnum.PURCHASE_IN.getType().equals(row.getBizType());
+        }
+        if (type == ErpPayableDrilldownTypeEnum.PURCHASE_RETURN) {
+            return ErpBizTypeEnum.PURCHASE_RETURN.getType().equals(row.getBizType());
+        }
+        if (type == ErpPayableDrilldownTypeEnum.PRICE_ADJUST) {
+            return ErpBizTypeEnum.PURCHASE_PRICE_ADJUST.getType().equals(row.getBizType());
+        }
+        if (type == ErpPayableDrilldownTypeEnum.PAYABLE_ADJUST) {
+            return "应付调账".equals(row.getDocType());
+        }
+        if (type == ErpPayableDrilldownTypeEnum.PAYMENT) {
+            return "付款单".equals(row.getDocType());
+        }
+        return type == ErpPayableDrilldownTypeEnum.WRITE_OFF && "核销".equals(row.getDocType());
+    }
+
+    private void applyDrilldownAmounts(List<ErpPayableDetailRespVO> rows, ErpPayableDrilldownTypeEnum type) {
+        boolean balanceType = type == ErpPayableDrilldownTypeEnum.BALANCE
+                || type == ErpPayableDrilldownTypeEnum.OPENING_BALANCE;
+        BigDecimal cumulative = BigDecimal.ZERO;
+        for (ErpPayableDetailRespVO row : rows) {
+            BigDecimal change;
+            if (balanceType) {
+                change = getChangeAmount(row);
+            } else if (type == ErpPayableDrilldownTypeEnum.PURCHASE_RETURN) {
+                change = defaultAmount(getChangeAmount(row)).abs();
+            } else if (type == ErpPayableDrilldownTypeEnum.PAYMENT) {
+                change = defaultAmount(row.getPaymentAmount()).abs();
+            } else if (type == ErpPayableDrilldownTypeEnum.WRITE_OFF) {
+                change = defaultAmount(row.getWriteOffAmount()).abs();
+            } else {
+                change = defaultAmount(row.getIncreaseAmount());
+            }
+            row.setChangeAmount(change);
+            if (!balanceType) {
+                row.setPrevBalance(cumulative);
+                cumulative = cumulative.add(change);
+                row.setBalance(cumulative);
+            }
+        }
+    }
+
+    private List<ErpPayableDetailRespVO> buildMiscPayableRows(ErpPayableDrilldownReqVO reqVO,
+                                                               ErpFinanceVisibleScope scope) {
+        LambdaQueryWrapperX<ErpPayableMiscDO> query = new LambdaQueryWrapperX<ErpPayableMiscDO>()
+                .eq(ErpPayableMiscDO::getSupplierId, reqVO.getSupplierId())
+                .eq(ErpPayableMiscDO::getStatus, ErpAuditStatus.APPROVE.getStatus())
+                .geIfPresent(ErpPayableMiscDO::getBizTime, reqVO.getStartTime())
+                .leIfPresent(ErpPayableMiscDO::getBizTime, reqVO.getEndTime());
+        applyMiscScope(query, scope);
+        List<ErpMiscSettlementLedgerRow> ledgerRows = payableMiscMapper.selectSettlementLedger(query
+                .orderByAsc(ErpPayableMiscDO::getBizTime)
+                .orderByAsc(ErpPayableMiscDO::getNo)
+                .orderByAsc(ErpPayableMiscDO::getId));
+        List<ErpPayableDetailRespVO> rows = new ArrayList<>(ledgerRows.size());
+        BigDecimal cumulative = BigDecimal.ZERO;
+        for (ErpMiscSettlementLedgerRow item : ledgerRows) {
+            BigDecimal change = defaultAmount(item.getAmount()).negate();
+            ErpPayableDetailRespVO row = new ErpPayableDetailRespVO();
+            row.setDocType(item.getDocumentId() == null ? "其他应付" : "其他应付付款");
+            row.setBizType(item.getDocumentId() == null ? ErpBizTypeEnum.PAYABLE_MISC.getType() : null);
+            row.setBizId(item.getDocumentId() == null ? item.getId() : item.getDocumentId());
+            row.setDocDate(item.getBizTime());
+            row.setDocNo(item.getNo());
+            row.setDeptId(item.getDeptId());
+            row.setRemark(item.getRemark());
+            row.setIncreaseAmount(change.compareTo(BigDecimal.ZERO) > 0 ? change : BigDecimal.ZERO);
+            row.setPaymentAmount(change.compareTo(BigDecimal.ZERO) < 0 ? change.abs() : BigDecimal.ZERO);
+            row.setWriteOffAmount(BigDecimal.ZERO);
+            row.setChangeAmount(change);
+            row.setPrevBalance(cumulative);
+            cumulative = cumulative.add(change);
+            row.setBalance(cumulative);
+            rows.add(row);
+        }
+        fillDeptNames(rows);
+        return rows;
+    }
+
+    private void applyMiscScope(LambdaQueryWrapperX<ErpPayableMiscDO> query, ErpFinanceVisibleScope scope) {
+        if (scope.isAll()) {
+            return;
+        }
+        if (!scope.getDeptIds().isEmpty() && scope.getSelfUserId() != null) {
+            query.and(wrapper -> wrapper.in(ErpPayableMiscDO::getDeptId, scope.getDeptIds())
+                    .or().eq(ErpPayableMiscDO::getHandlerId, scope.getSelfUserId()));
+        } else if (!scope.getDeptIds().isEmpty()) {
+            query.in(ErpPayableMiscDO::getDeptId, scope.getDeptIds());
+        } else {
+            query.eq(ErpPayableMiscDO::getHandlerId, scope.getSelfUserId());
+        }
+    }
+
+    private ErpAccountDrilldownSummaryRespVO buildDrilldownSummary(List<ErpPayableDetailRespVO> rows,
+                                                                    ErpPayableDrilldownTypeEnum type,
+                                                                    BigDecimal emptyBalanceAmount) {
+        ErpAccountDrilldownSummaryRespVO summary = new ErpAccountDrilldownSummaryRespVO();
+        summary.setDetailCount((long) rows.size());
+        BigDecimal opening = rows.isEmpty() ? defaultAmount(emptyBalanceAmount)
+                : defaultAmount(rows.get(0).getPrevBalance());
+        BigDecimal increase = rows.stream().map(ErpPayableDetailRespVO::getChangeAmount)
+                .map(this::defaultAmount).filter(value -> value.signum() > 0)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal decrease = rows.stream().map(ErpPayableDetailRespVO::getChangeAmount)
+                .map(this::defaultAmount).filter(value -> value.signum() < 0)
+                .map(BigDecimal::abs).reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal ending = rows.isEmpty() ? opening : defaultAmount(rows.get(rows.size() - 1).getBalance());
+        boolean balanceType = type == ErpPayableDrilldownTypeEnum.BALANCE
+                || type == ErpPayableDrilldownTypeEnum.OPENING_BALANCE;
+        summary.setOpeningAmount(opening);
+        summary.setIncreaseAmount(increase);
+        summary.setDecreaseAmount(decrease);
+        summary.setTargetAmount(balanceType ? ending : increase.subtract(decrease));
+        summary.setEndingAmount(ending);
+        return summary;
+    }
+
+    private BigDecimal resolveEmptyBalanceAmount(ErpPayableDrilldownReqVO reqVO,
+                                                  List<ErpPayableDetailRespVO> rows,
+                                                  ErpPayableDrilldownTypeEnum type) {
+        if (!rows.isEmpty() || type != ErpPayableDrilldownTypeEnum.BALANCE || reqVO.getStartTime() == null) {
+            return BigDecimal.ZERO;
+        }
+        ErpFinanceVisibleScope scope = getPayableVisibleScope();
+        if (scope == null || !scope.hasAccess()) {
+            return BigDecimal.ZERO;
+        }
+        ErpPayableDetailReqVO detailReqVO = new ErpPayableDetailReqVO();
+        detailReqVO.setSupplierId(reqVO.getSupplierId());
+        detailReqVO.setBizTime(reqVO.getBizTime());
+        return DataPermissionUtils.executeIgnore(() -> getInitialBalance(detailReqVO, scope));
+    }
+
+    private List<ErpPayableDetailRespVO> sortDrilldownRows(List<ErpPayableDetailRespVO> rows,
+                                                            String field, String direction) {
+        if (field == null || direction == null) {
+            return new ArrayList<>(rows);
+        }
+        Comparator<ErpPayableDetailRespVO> comparator;
+        switch (field) {
+            case "docType": comparator = comparing(ErpPayableDetailRespVO::getDocType); break;
+            case "docNo": comparator = comparing(ErpPayableDetailRespVO::getDocNo); break;
+            case "changeAmount": comparator = comparing(ErpPayableDetailRespVO::getChangeAmount); break;
+            case "increaseAmount": comparator = comparing(ErpPayableDetailRespVO::getIncreaseAmount); break;
+            case "paymentAmount": comparator = comparing(ErpPayableDetailRespVO::getPaymentAmount); break;
+            case "writeOffAmount": comparator = comparing(ErpPayableDetailRespVO::getWriteOffAmount); break;
+            case "balance": comparator = comparing(ErpPayableDetailRespVO::getBalance); break;
+            case "deptName": comparator = comparing(ErpPayableDetailRespVO::getDeptName); break;
+            case "docDate": comparator = comparing(ErpPayableDetailRespVO::getDocDate); break;
+            default: return new ArrayList<>(rows);
+        }
+        if ("desc".equalsIgnoreCase(direction)) {
+            comparator = comparator.reversed();
+        }
+        List<ErpPayableDetailRespVO> sorted = new ArrayList<>(rows);
+        sorted.sort(comparator);
+        return sorted;
+    }
+
+    private <U extends Comparable<? super U>> Comparator<ErpPayableDetailRespVO> comparing(
+            Function<ErpPayableDetailRespVO, U> extractor) {
+        return Comparator.comparing(extractor, Comparator.nullsLast(Comparator.naturalOrder()));
     }
 
     @Override

@@ -12,9 +12,9 @@ import java.util.List;
 @Data
 public class ErpSaleDeliverySubmitReqVO {
 
-    @Schema(description = "送货单编号", requiredMode = Schema.RequiredMode.REQUIRED)
-    @NotNull(message = "送货单编号不能为空")
-    private Long orderId;
+    @Schema(description = "仓库送货任务编号", requiredMode = Schema.RequiredMode.REQUIRED)
+    @NotNull(message = "仓库送货任务编号不能为空")
+    private Long taskId;
 
     @Schema(description = "旧版整条送货明细编号，与 items 二选一")
     private List<Long> itemIds;

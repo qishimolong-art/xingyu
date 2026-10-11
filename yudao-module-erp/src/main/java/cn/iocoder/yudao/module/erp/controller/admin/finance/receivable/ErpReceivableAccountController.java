@@ -10,10 +10,14 @@ import cn.iocoder.yudao.module.erp.controller.admin.finance.receivable.vo.accoun
 import cn.iocoder.yudao.module.erp.controller.admin.finance.receivable.vo.account.ErpReceivableAccountRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.receivable.vo.account.ErpReceivableDetailReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.receivable.vo.account.ErpReceivableDetailRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.finance.receivable.vo.account.ErpReceivableDrilldownReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.receivable.vo.account.ErpReceivableWriteOffReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.ErpAccountDrilldownPageRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.ErpAccountDrilldownExportRespVO;
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
 import cn.iocoder.yudao.module.erp.service.base.ErpDataPermissionDeptService;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.receivable.ErpReceivableAccountDO;
+import cn.iocoder.yudao.module.erp.enums.finance.ErpReceivableDrilldownTypeEnum;
 import cn.iocoder.yudao.module.erp.service.finance.receivable.ErpReceivableAccountService;
 import cn.iocoder.yudao.module.system.api.user.AdminUserApi;
 import cn.iocoder.yudao.module.system.controller.admin.dept.vo.dept.DeptSimpleRespVO;
@@ -87,6 +91,15 @@ public class ErpReceivableAccountController {
         return success(receivableAccountService.getReceivableDetailList(reqVO));
     }
 
+    @GetMapping("/drilldown-page")
+    @Operation(summary = "获得应收账款金额列下钻分页")
+    @PreAuthorize("@ss.hasPermission('erp:receivable-account:query') && "
+            + "(!#reqVO.miscDetail || @ss.hasPermission('erp:receivable-misc:query'))")
+    public CommonResult<ErpAccountDrilldownPageRespVO<ErpReceivableDetailRespVO>> getReceivableDrilldownPage(
+            @Valid ErpReceivableDrilldownReqVO reqVO) {
+        return success(receivableAccountService.getReceivableDrilldownPage(reqVO));
+    }
+
     @PostMapping("/writeoff")
     @Operation(summary = "核销应收账款")
     @PreAuthorize("@ss.hasPermission('erp:receivable-account:writeoff')")
@@ -113,6 +126,30 @@ public class ErpReceivableAccountController {
                                        HttpServletResponse response) throws IOException {
         ExcelUtils.write(response, "应收账款明细.xls", "明细", ErpReceivableDetailRespVO.class,
                 receivableAccountService.getReceivableDetailList(reqVO));
+    }
+
+    @GetMapping("/export-drilldown")
+    @Operation(summary = "导出应收账款金额列下钻 Excel")
+    @PreAuthorize("@ss.hasPermission('erp:receivable-account:query') && "
+            + "(!#reqVO.miscDetail || @ss.hasPermission('erp:receivable-misc:query'))")
+    @ApiAccessLog(operateType = EXPORT)
+    public void exportReceivableDrilldown(@Valid ErpReceivableDrilldownReqVO reqVO,
+                                          HttpServletResponse response) throws IOException {
+        ErpReceivableDrilldownTypeEnum type = ErpReceivableDrilldownTypeEnum.fromValue(reqVO.getDetailType());
+        String detailLabel = type.getLabel();
+        List<ErpReceivableDetailRespVO> rows = receivableAccountService.getReceivableDrilldownList(reqVO);
+        if (type == ErpReceivableDrilldownTypeEnum.BALANCE) {
+            ExcelUtils.write(response, "应收账款-" + detailLabel + "明细.xls", detailLabel,
+                    ErpReceivableDetailRespVO.class, rows);
+            return;
+        }
+        List<ErpAccountDrilldownExportRespVO> exports = BeanUtils.toBean(rows,
+                ErpAccountDrilldownExportRespVO.class);
+        for (int i = 0; i < rows.size(); i++) {
+            exports.get(i).setOperatorName(rows.get(i).getAuditorName());
+        }
+        ExcelUtils.write(response, "应收账款-" + detailLabel + "明细.xls", detailLabel,
+                ErpAccountDrilldownExportRespVO.class, exports);
     }
 
     private ErpReceivableAccountExportRespVO toExportVO(ErpReceivableAccountDO source) {

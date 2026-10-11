@@ -48,6 +48,12 @@ public class ErpPurchaseOrderInableItemRespVO {
     @Schema(description = "部门 ID", example = "100")
     private Long deptId;
 
+    @Schema(description = "当前仓库账面库存", example = "10")
+    private BigDecimal stockCount;
+
+    @Schema(description = "当前仓库可用库存", example = "8")
+    private BigDecimal availableCount;
+
     @Schema(description = "是否赠品", example = "false")
     private Boolean gift;
 

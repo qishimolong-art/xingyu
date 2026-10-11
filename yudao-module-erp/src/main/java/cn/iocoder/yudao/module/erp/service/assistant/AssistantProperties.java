@@ -19,9 +19,13 @@ public class AssistantProperties {
     private int modelTimeoutSeconds = 20;
     private int conversationDays = 30;
     private int auditDays = 90;
+    /** Page capability presentation cache; business queries always authorize in real time. */
+    private int readinessCacheSeconds = 60;
     private List<String> publishedMetrics = new ArrayList<>();
     private Orchestration orchestration = new Orchestration();
+    private V2 v2 = new V2();
     private EntitySearch entitySearch = new EntitySearch();
+    private Phonetic phonetic = new Phonetic();
     private ReadOnly readOnly = new ReadOnly();
     @Data public static class Orchestration {
         /** LEGACY, GRAY or NEW. Production keeps LEGACY until acceptance is complete. */
@@ -37,9 +41,40 @@ public class AssistantProperties {
         private String username = "";
         @lombok.ToString.Exclude private String password = "";
     }
+    @Data public static class V2 {
+        /** V1、V2_SHADOW、V2_GRAY 或 V2；缺少配置时安全回退到 V1。 */
+        private String mode = "V1";
+        private List<Long> grayTenantIds = new ArrayList<>();
+        private List<Long> grayUserIds = new ArrayList<>();
+        private List<Long> grayDepartmentIds = new ArrayList<>();
+        private List<String> grayEntries = new ArrayList<>();
+        private List<String> grayCapabilities = new ArrayList<>();
+        /** 命中的入口或能力无条件走 V1，分别用于入口级和能力级回退。 */
+        private List<String> fallbackEntries = new ArrayList<>();
+        private List<String> fallbackCapabilities = new ArrayList<>();
+        /** 临时关闭指定入口或能力；关闭发生在任何数据读取之前。 */
+        private List<String> disabledEntries = new ArrayList<>();
+        private List<String> disabledCapabilities = new ArrayList<>();
+        /** 公司知识和混合路由可独立于纯数据查询关闭。 */
+        private boolean knowledgeEnabled = true;
+        private boolean mixedEnabled = true;
+        /** V2 前台执行失败且尚未返回结果时，自动用 V1 重试。 */
+        private boolean fallbackOnError = true;
+        /** 影子结果只有同时超过倍率和绝对增量时才判定为性能退化。 */
+        private double maxShadowLatencyRatio = 3.0D;
+        private long maxShadowLatencyDeltaMillis = 5000L;
+    }
     @Data public static class EntitySearch {
         /** Kept off by default; local/gray environments opt in after regression checks. */
         private boolean enabled = false;
         private int maxCandidates = 20;
+    }
+    @Data public static class Phonetic {
+        /** 同音识别仅改变语义理解，不绕过实体、字段或数据权限。 */
+        private boolean enabled = true;
+        /** 受控启用平翘舌、前后鼻音、n/l、f/h 等常见近音。 */
+        private boolean nearSoundEnabled = true;
+        private int maxCorrections = 4;
+        private int maxInitialVariants = 8;
     }
 }

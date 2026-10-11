@@ -54,7 +54,7 @@ public class ErpSaleDeliveryController {
     @PreAuthorize("@ss.hasPermission('erp:sale-delivery:query')")
     public CommonResult<PageResult<ErpSalePickDeliveryItemRespVO>> getDeliveryItemPage(
             @Valid ErpSaleDeliveryItemPageReqVO pageReqVO) {
-        return success(salePickDeliveryService.getDeliveryItemPage(pageReqVO.getOrderId(), pageReqVO, false));
+        return success(salePickDeliveryService.getDeliveryItemPage(pageReqVO.getTaskId(), pageReqVO, false));
     }
 
     @GetMapping("/submit-page")
@@ -62,7 +62,7 @@ public class ErpSaleDeliveryController {
     @PreAuthorize("@ss.hasPermission('erp:sale-delivery:query')")
     public CommonResult<PageResult<ErpSalePickDeliverySubmitRespVO>> getDeliverySubmitPage(
             @Valid ErpSaleDeliverySubmitPageReqVO pageReqVO) {
-        return success(salePickDeliveryService.getDeliverySubmitPage(pageReqVO.getOrderId(), pageReqVO, false));
+        return success(salePickDeliveryService.getDeliverySubmitPage(pageReqVO.getTaskId(), pageReqVO, false));
     }
 
     @GetMapping("/export-excel")
@@ -99,7 +99,7 @@ public class ErpSaleDeliveryController {
     @PreAuthorize("@ss.hasPermission('erp:sale-delivery:delivery')")
     public CommonResult<PageResult<ErpSalePickDeliveryItemRespVO>> getMobileDeliveryItemPage(
             @Valid ErpSaleDeliveryItemPageReqVO pageReqVO) {
-        return success(salePickDeliveryService.getDeliveryItemPage(pageReqVO.getOrderId(), pageReqVO, true));
+        return success(salePickDeliveryService.getDeliveryItemPage(pageReqVO.getTaskId(), pageReqVO, true));
     }
 
     @GetMapping("/mobile/submit-page")
@@ -107,7 +107,7 @@ public class ErpSaleDeliveryController {
     @PreAuthorize("@ss.hasPermission('erp:sale-delivery:delivery')")
     public CommonResult<PageResult<ErpSalePickDeliverySubmitRespVO>> getMobileDeliverySubmitPage(
             @Valid ErpSaleDeliverySubmitPageReqVO pageReqVO) {
-        return success(salePickDeliveryService.getDeliverySubmitPage(pageReqVO.getOrderId(), pageReqVO, true));
+        return success(salePickDeliveryService.getDeliverySubmitPage(pageReqVO.getTaskId(), pageReqVO, true));
     }
 
     @GetMapping("/submit-item-page")

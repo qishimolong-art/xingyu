@@ -13,6 +13,9 @@ public class ErpMiscSettlementLedgerRow {
     private LocalDateTime bizTime;
     private BigDecimal amount;
     private BigDecimal settledAmount;
+    private Long deptId;
+    private Long handlerId;
+    private Integer status;
     private String remark;
     private String fileUrl;
 }

@@ -18,7 +18,6 @@ import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.quote.ErpSaleQuoteOr
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.quote.ErpSaleQuoteRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.quote.ErpSaleQuoteDraftCreateReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.quote.ErpSaleQuoteDraftUpdateReqVO;
-import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.out.ErpSaleOutSaveReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.quote.ErpSaleQuoteConvertCartReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.quote.ErpSaleQuotePageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.quote.ErpSaleQuoteSaveReqVO;
@@ -27,7 +26,6 @@ import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpCustomerDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleCartDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleCartItemDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleConvertRecordDO;
-import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleOutDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleQuoteDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleQuoteItemDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockDO;
@@ -35,7 +33,6 @@ import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpWarehouseDO;
 import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpSaleCartItemMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpSaleCartMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpSaleConvertRecordMapper;
-import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpSaleOutMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpSaleQuoteItemMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpSaleQuoteMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.product.ErpProductMapper;
@@ -102,7 +99,7 @@ public class ErpSaleQuoteServiceImpl implements ErpSaleQuoteService {
     @Resource
     private ErpSaleConvertRecordMapper saleConvertRecordMapper;
     @Resource
-    private ErpSaleOutMapper saleOutMapper;
+    private ErpSaleCartService saleCartService;
     @Resource
     private ErpProductMapper productMapper;
     @Resource
@@ -118,9 +115,7 @@ public class ErpSaleQuoteServiceImpl implements ErpSaleQuoteService {
     @Resource
     private ErpWarehouseService warehouseService;
     @Resource
-    private ErpSaleOutService saleOutService;
-    @Resource
-    private ErpSaleCartService saleCartService;
+    private ErpSaleQuoteProgressService saleQuoteProgressService;
     @Resource
     private ErpSaleFieldPermissionMasker fieldPermissionMasker;
     @Resource
@@ -504,7 +499,9 @@ public class ErpSaleQuoteServiceImpl implements ErpSaleQuoteService {
             return;
         }
         quotes.forEach(quote -> {
-            if (ErpSaleQuoteStatusEnum.GENERATED_SALE_OUT.getStatus().equals(quote.getStatus())) {
+            if (quote.getStatus() != null
+                    && quote.getStatus() >= ErpSaleQuoteStatusEnum.APPROVE.getStatus()
+                    && !ErpSaleQuoteStatusEnum.CANCEL.getStatus().equals(quote.getStatus())) {
                 throw exception(SALE_QUOTE_DELETE_FAIL_GENERATED, quote.getNo());
             }
             saleQuoteMapper.deleteById(quote.getId());
@@ -516,40 +513,51 @@ public class ErpSaleQuoteServiceImpl implements ErpSaleQuoteService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Long approveSaleQuote(Long id) {
-        ErpSaleQuoteDO quote = validateSaleQuoteExists(id);
-        if (ErpSaleQuoteStatusEnum.GENERATED_SALE_OUT.getStatus().equals(quote.getStatus())) {
-            ErpSaleOutDO saleOut = getGeneratedSaleOut(id);
-            if (saleOut != null) {
-                return saleOut.getId();
-            }
-            throw exception(SALE_OUT_NOT_EXISTS);
-        }
+        ErpSaleQuoteDO quote = validateSaleQuoteForUpdate(id);
         if (!ErpSaleQuoteStatusEnum.PROCESS.getStatus().equals(quote.getStatus())) {
             throw exception(SALE_QUOTE_APPROVE_FAIL);
         }
         saleDirectDeptPermissionService.validateSaleDocumentDeptAllowed(quote.getDeptId());
-        List<ErpSaleQuoteItemDO> items = saleQuoteItemMapper.selectListByQuoteId(id);
-        Long saleOutId = saleOutService.createGeneratedSaleOut(buildSaleOutReqVO(quote, items),
-                ErpSaleBizSourceTypeEnum.QUOTE.getType(), quote.getId(), quote.getNo());
         int updateCount = saleQuoteMapper.updateByIdAndStatus(id, ErpSaleQuoteStatusEnum.PROCESS.getStatus(),
-                new ErpSaleQuoteDO().setStatus(ErpSaleQuoteStatusEnum.GENERATED_SALE_OUT.getStatus()));
+                new ErpSaleQuoteDO().setStatus(ErpSaleQuoteStatusEnum.APPROVE.getStatus()));
         if (updateCount == 0) {
             throw exception(SALE_QUOTE_APPROVE_FAIL);
         }
-        recordStatus(id, quote.getNo(), true);
-        return saleOutId;
+        record(id, "下订", "报价订单下订，单据编号：" + quote.getNo(), quote.getNo());
+        return id;
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void reverseOrderSaleQuote(Long id) {
+        ErpSaleQuoteDO quote = validateSaleQuoteForUpdate(id);
+        if (!ErpSaleQuoteStatusEnum.APPROVE.getStatus().equals(quote.getStatus())) {
+            throw exception(SALE_QUOTE_REVERSE_ORDER_FAIL);
+        }
+        List<ErpSaleConvertRecordDO> records = saleConvertRecordMapper.selectQuoteToCartListByQuoteIds(
+                Collections.singleton(id));
+        Set<Long> cartIds = records.stream().map(ErpSaleConvertRecordDO::getTargetId)
+                .filter(java.util.Objects::nonNull).collect(Collectors.toSet());
+        if (CollUtil.isNotEmpty(cartIds) && CollUtil.isNotEmpty(saleCartMapper.selectByIds(cartIds))) {
+            throw exception(SALE_QUOTE_REVERSE_ORDER_FAIL_CONVERTED);
+        }
+        int updateCount = saleQuoteMapper.updateByIdAndStatus(id, ErpSaleQuoteStatusEnum.APPROVE.getStatus(),
+                new ErpSaleQuoteDO().setStatus(ErpSaleQuoteStatusEnum.PROCESS.getStatus()));
+        if (updateCount == 0) {
+            throw exception(SALE_QUOTE_REVERSE_ORDER_FAIL);
+        }
+        record(id, "反下订", "报价订单反下订，单据编号：" + quote.getNo(), quote.getNo());
     }
 
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Long convertToCart(ErpSaleQuoteConvertCartReqVO reqVO) {
-        ErpSaleQuoteDO quote = validateSaleQuoteExists(reqVO.getQuoteId());
-        if (!ErpSaleQuoteStatusEnum.PROCESS.getStatus().equals(quote.getStatus())
-                && !ErpSaleQuoteStatusEnum.APPROVE.getStatus().equals(quote.getStatus())
+        ErpSaleQuoteDO quote = validateSaleQuoteForUpdate(reqVO.getQuoteId());
+        if (!ErpSaleQuoteStatusEnum.APPROVE.getStatus().equals(quote.getStatus())
                 && !ErpSaleQuoteStatusEnum.PART_CONVERTED_CART.getStatus().equals(quote.getStatus())) {
             throw exception(SALE_QUOTE_CONVERT_CART_FAIL);
         }
-        List<ErpSaleQuoteItemDO> quoteItems = saleQuoteItemMapper.selectListByQuoteId(reqVO.getQuoteId());
+        List<ErpSaleQuoteItemDO> quoteItems = saleQuoteItemMapper.selectListByQuoteIdForUpdate(reqVO.getQuoteId());
         Map<Long, ErpSaleQuoteItemDO> quoteItemMap = convertMap(quoteItems, ErpSaleQuoteItemDO::getId);
         Map<Long, BigDecimal> convertCountMap = new LinkedHashMap<>();
         reqVO.getItems().forEach(reqItem -> convertCountMap.merge(reqItem.getQuoteItemId(),
@@ -561,10 +569,15 @@ public class ErpSaleQuoteServiceImpl implements ErpSaleQuoteService {
             throw exception(SALE_CART_NO_EXISTS);
         }
         ErpSaleCartDO cart = BeanUtils.toBean(quote, ErpSaleCartDO.class, in -> in
-                .setId(null).setNo(no).setStatus(ErpSaleCartStatusEnum.SUBMITTED.getStatus())
-                .setCartTime(quote.getQuoteTime())
+                .setId(null).setNo(no).setStatus(ErpSaleCartStatusEnum.PROCESS.getStatus())
+                .setCartTime(LocalDateTime.now())
                 .setSourceType(ErpSaleBizSourceTypeEnum.QUOTE.getType())
                 .setSourceId(quote.getId()).setSourceNo(quote.getNo()));
+        // 新手推车的审计信息属于本次转换，不能继承来源报价的建立/修改信息。
+        cart.setCreator(null);
+        cart.setCreateTime(null);
+        cart.setUpdater(null);
+        cart.setUpdateTime(null);
         List<ErpSaleCartItemDO> cartItems = convertList(convertCountMap.entrySet(), entry -> {
             ErpSaleQuoteItemDO quoteItem = quoteItemMap.get(entry.getKey());
             BigDecimal productPrice = Boolean.TRUE.equals(quoteItem.getGiftFlag())
@@ -592,22 +605,16 @@ public class ErpSaleQuoteServiceImpl implements ErpSaleQuoteService {
         cartItems.forEach(item ->
                 item.setStockCount(getStockCountIgnoreDataPermission(item.getProductId(), item.getWarehouseId())));
         saleCartItemMapper.insertBatch(cartItems);
-        convertCountMap.forEach((quoteItemId, count) -> {
-            ErpSaleQuoteItemDO quoteItem = quoteItemMap.get(quoteItemId);
-            BigDecimal oldConvertedCount = quoteItem.getConvertedCount() != null ? quoteItem.getConvertedCount() : BigDecimal.ZERO;
-            saleQuoteItemMapper.updateById(new ErpSaleQuoteItemDO().setId(quoteItem.getId())
-                    .setConvertedCount(oldConvertedCount.add(count)));
-        });
-        Integer nextStatus = isAllConverted(quoteItems, convertCountMap) ? ErpSaleQuoteStatusEnum.CONVERTED_CART.getStatus()
-                : ErpSaleQuoteStatusEnum.PART_CONVERTED_CART.getStatus();
-        int updateCount = saleQuoteMapper.updateByIdAndStatus(quote.getId(), quote.getStatus(),
-                new ErpSaleQuoteDO().setStatus(nextStatus));
-        if (updateCount == 0) {
-            throw exception(SALE_QUOTE_CONVERT_CART_FAIL);
-        }
         saleConvertRecordMapper.insertBatch(buildQuoteToCartRecords(quote, quoteItemMap, cart, cartItems, convertCountMap));
-        record(quote.getId(), "转手推车",
-                "报价订单转销售手推车，单据编号：" + quote.getNo() + "，目标单号：" + cart.getNo(), quote.getNo());
+        // 报价出库只负责生成来源可追溯的手推车，审核路由、库存校验/锁定及拣货送货
+        // 必须统一复用销售手推车的标准提交逻辑，不能直接写死为待初审状态。
+        saleCartService.submitSaleCart(cart.getId());
+        if (saleQuoteProgressService != null) {
+            saleQuoteProgressService.refreshQuoteProgress(quote.getId());
+        }
+        record(quote.getId(), "出库",
+                "报价订单分批出库生成待审核销售手推车，单据编号：" + quote.getNo()
+                        + "，目标单号：" + cart.getNo(), quote.getNo());
         return cart.getId();
     }
 
@@ -638,33 +645,24 @@ public class ErpSaleQuoteServiceImpl implements ErpSaleQuoteService {
         });
     }
 
-    private boolean isAllConverted(List<ErpSaleQuoteItemDO> quoteItems, Map<Long, BigDecimal> convertCountMap) {
-        return quoteItems.stream().allMatch(item -> {
-            BigDecimal convertedCount = item.getConvertedCount() != null ? item.getConvertedCount() : BigDecimal.ZERO;
-            BigDecimal currentCount = convertCountMap.getOrDefault(item.getId(), BigDecimal.ZERO);
-            return convertedCount.add(currentCount).compareTo(item.getCount()) >= 0;
-        });
-    }
-
     private List<ErpSaleConvertRecordDO> buildQuoteToCartRecords(ErpSaleQuoteDO quote, Map<Long, ErpSaleQuoteItemDO> quoteItemMap,
                                                                  ErpSaleCartDO cart, List<ErpSaleCartItemDO> cartItems,
                                                                  Map<Long, BigDecimal> convertCountMap) {
-        return convertList(convertCountMap.entrySet(), entry -> {
+        List<Map.Entry<Long, BigDecimal>> entries = new ArrayList<>(convertCountMap.entrySet());
+        List<ErpSaleConvertRecordDO> records = new ArrayList<>(entries.size());
+        for (int index = 0; index < entries.size(); index++) {
+            Map.Entry<Long, BigDecimal> entry = entries.get(index);
             ErpSaleQuoteItemDO sourceItem = quoteItemMap.get(entry.getKey());
-            ErpSaleCartItemDO targetItem = cartItems.stream()
-                    .filter(item -> sourceItem.getProductId().equals(item.getProductId())
-                            && sourceItem.getWarehouseId().equals(item.getWarehouseId())
-                            && Boolean.TRUE.equals(sourceItem.getGiftFlag()) == Boolean.TRUE.equals(item.getGiftFlag())
-                            && entry.getValue().compareTo(item.getCount()) == 0)
-                    .findFirst().orElse(null);
-            return new ErpSaleConvertRecordDO()
+            ErpSaleCartItemDO targetItem = cartItems.get(index);
+            records.add(new ErpSaleConvertRecordDO()
                     .setConvertType(ErpSaleConvertTypeEnum.QUOTE_TO_CART.getType())
                     .setSourceType(ErpSaleBizSourceTypeEnum.QUOTE.getType())
                     .setSourceId(quote.getId()).setSourceNo(quote.getNo()).setSourceItemId(sourceItem.getId())
                     .setTargetType(ErpSaleBizSourceTypeEnum.CART.getType())
-                    .setTargetId(cart.getId()).setTargetNo(cart.getNo()).setTargetItemId(targetItem != null ? targetItem.getId() : null)
-                    .setProductId(sourceItem.getProductId()).setWarehouseId(sourceItem.getWarehouseId()).setCount(entry.getValue());
-        });
+                    .setTargetId(cart.getId()).setTargetNo(cart.getNo()).setTargetItemId(targetItem.getId())
+                    .setProductId(sourceItem.getProductId()).setWarehouseId(sourceItem.getWarehouseId()).setCount(entry.getValue()));
+        }
+        return records;
     }
 
     private void calculateCartTotalPrice(ErpSaleCartDO cart, List<ErpSaleCartItemDO> items) {
@@ -680,42 +678,6 @@ public class ErpSaleQuoteServiceImpl implements ErpSaleQuoteService {
         cart.setOtherPrice(feeAmount);
         cart.setDiscountPrice(MoneyUtils.priceMultiplyPercent(cart.getTotalPrice(), cart.getDiscountPercent()));
         cart.setTotalPrice(cart.getTotalPrice().subtract(cart.getDiscountPrice()).add(feeAmount));
-    }
-
-    private ErpSaleOutSaveReqVO buildSaleOutReqVO(ErpSaleQuoteDO quote, List<ErpSaleQuoteItemDO> items) {
-        ErpSaleOutSaveReqVO reqVO = new ErpSaleOutSaveReqVO();
-        reqVO.setCustomerId(quote.getCustomerId());
-        reqVO.setAccountId(quote.getAccountId());
-        reqVO.setSaleUserId(quote.getSaleUserId());
-        reqVO.setDeptId(quote.getDeptId());
-        reqVO.setOutTime(quote.getQuoteTime());
-        reqVO.setDiscountPercent(quote.getDiscountPercent());
-        reqVO.setFeeAmount(quote.getFeeAmount());
-        reqVO.setOtherPrice(quote.getOtherPrice());
-        reqVO.setFileUrl(quote.getFileUrl());
-        reqVO.setRemark(quote.getRemark());
-        reqVO.setItems(convertList(items, item -> {
-            ErpSaleOutSaveReqVO.Item outItem = new ErpSaleOutSaveReqVO.Item();
-            outItem.setWarehouseId(item.getWarehouseId());
-            outItem.setDeptId(item.getDeptId());
-            outItem.setProductId(item.getProductId());
-            outItem.setProductUnitId(item.getProductUnitId());
-            outItem.setUnitWeight(item.getWeight());
-            outItem.setPackageQty(item.getPackageQty());
-            outItem.setProductPrice(Boolean.TRUE.equals(item.getGiftFlag()) ? BigDecimal.ZERO : item.getProductPrice());
-            outItem.setCount(item.getCount());
-            outItem.setTaxPercent(item.getTaxPercent());
-            outItem.setGiftFlag(Boolean.TRUE.equals(item.getGiftFlag()));
-            outItem.setBatchNo(item.getBatchNo());
-            outItem.setRemark(item.getRemark());
-            return outItem;
-        }));
-        return reqVO;
-    }
-
-    private ErpSaleOutDO getGeneratedSaleOut(Long quoteId) {
-        return DataPermissionUtils.executeIgnore(() -> saleOutMapper.selectBySourceTypeAndSourceId(
-                ErpSaleBizSourceTypeEnum.QUOTE.getType(), quoteId));
     }
 
     private Long prepareSaleQuoteDept(ErpSaleQuoteSaveReqVO reqVO) {
@@ -951,6 +913,14 @@ public class ErpSaleQuoteServiceImpl implements ErpSaleQuoteService {
 
     private ErpSaleQuoteDO validateSaleQuoteExists(Long id) {
         ErpSaleQuoteDO quote = saleQuoteMapper.selectById(id);
+        if (quote == null) {
+            throw exception(SALE_QUOTE_NOT_EXISTS);
+        }
+        return quote;
+    }
+
+    private ErpSaleQuoteDO validateSaleQuoteForUpdate(Long id) {
+        ErpSaleQuoteDO quote = saleQuoteMapper.selectByIdForUpdate(id);
         if (quote == null) {
             throw exception(SALE_QUOTE_NOT_EXISTS);
         }

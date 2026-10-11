@@ -2,6 +2,7 @@ package cn.iocoder.yudao.module.erp.service.assistant;
 
 import cn.iocoder.yudao.framework.common.biz.system.permission.dto.DeptDataPermissionRespDTO;
 import cn.iocoder.yudao.framework.common.enums.CommonStatusEnum;
+import cn.iocoder.yudao.framework.common.pojo.PageParam;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.security.core.util.SecurityFrameworkUtils;
 import cn.iocoder.yudao.framework.tenant.core.context.TenantContextHolder;
@@ -12,7 +13,7 @@ import cn.iocoder.yudao.module.erp.service.product.ErpProductService;
 import cn.iocoder.yudao.module.erp.service.purchase.ErpSupplierService;
 import cn.iocoder.yudao.module.erp.service.sale.ErpCustomerService;
 import cn.iocoder.yudao.module.system.api.permission.PermissionApi;
-import lombok.AllArgsConstructor;
+import cn.iocoder.yudao.module.system.api.user.AdminUserApi;
 import lombok.Data;
 import org.springframework.stereotype.Service;
 
@@ -22,7 +23,7 @@ import java.time.ZoneId;
 import java.util.*;
 
 /**
- * 客户、供应商和配件基础档案数量统计。
+ * 客户、供应商、配件和员工基础档案数量统计。
  *
  * <p>只复用各档案页面已经核验的分页与可见范围，不接受模型生成 SQL。</p>
  */
@@ -31,20 +32,32 @@ public class AssistantMasterDataQueryService {
 
     public static final String TOOL_NAME = "query_master_data_stats";
 
-    public enum ArchiveType { CUSTOMER, SUPPLIER, PRODUCT }
+    public enum ArchiveType { CUSTOMER, SUPPLIER, PRODUCT, EMPLOYEE }
     public enum StatusMode { ENABLED, DISABLED, ALL, SPLIT }
 
     @Data
-    @AllArgsConstructor
     public static class Query {
         private ArchiveType archiveType;
         private StatusMode statusMode;
+        /** 产品档案关键词；仅 PRODUCT 使用，复用产品列表的名称、编码、品牌等模糊检索口径。 */
+        private String productKeyword;
+
+        public Query(ArchiveType archiveType, StatusMode statusMode) {
+            this(archiveType, statusMode, null);
+        }
+
+        public Query(ArchiveType archiveType, StatusMode statusMode, String productKeyword) {
+            this.archiveType = archiveType;
+            this.statusMode = statusMode;
+            this.productKeyword = productKeyword;
+        }
     }
 
     @Resource private PermissionApi permissions;
     @Resource private ErpCustomerService customerService;
     @Resource private ErpSupplierService supplierService;
     @Resource private ErpProductService productService;
+    @Resource private AdminUserApi userApi;
 
     /** Returns {@code null} when the question is not an unambiguous archive-count question. */
     public Query parse(String question) {
@@ -54,12 +67,13 @@ public class AssistantMasterDataQueryService {
         }
         boolean customer = text.contains("客户");
         boolean supplier = text.contains("供应商");
-        boolean product = text.contains("配件") || text.contains("产品");
-        if ((customer ? 1 : 0) + (supplier ? 1 : 0) + (product ? 1 : 0) != 1) {
+        boolean product = text.contains("配件") || text.contains("产品") || text.contains("商品");
+        boolean employee = text.contains("员工") || text.contains("职工");
+        if ((customer ? 1 : 0) + (supplier ? 1 : 0) + (product ? 1 : 0) + (employee ? 1 : 0) != 1) {
             return null;
         }
         ArchiveType archiveType = customer ? ArchiveType.CUSTOMER
-                : supplier ? ArchiveType.SUPPLIER : ArchiveType.PRODUCT;
+                : supplier ? ArchiveType.SUPPLIER : product ? ArchiveType.PRODUCT : ArchiveType.EMPLOYEE;
         StatusMode statusMode;
         boolean enabled = text.contains("启用") || text.contains("正常") || text.contains("有效");
         boolean disabled = text.contains("停用") || text.contains("禁用");
@@ -74,7 +88,8 @@ public class AssistantMasterDataQueryService {
             // 产品约定：未指定状态时只统计启用档案。
             statusMode = StatusMode.ENABLED;
         }
-        return new Query(archiveType, statusMode);
+        return new Query(archiveType, statusMode,
+                archiveType == ArchiveType.PRODUCT ? extractProductKeyword(text) : null);
     }
 
     public Query parseArguments(Map<String, Object> arguments) {
@@ -82,8 +97,11 @@ public class AssistantMasterDataQueryService {
             return null;
         }
         try {
-            return new Query(ArchiveType.valueOf(String.valueOf(arguments.get("archiveType"))),
-                    StatusMode.valueOf(String.valueOf(arguments.get("statusMode"))));
+            ArchiveType type = ArchiveType.valueOf(String.valueOf(arguments.get("archiveType")));
+            String productKeyword = type == ArchiveType.PRODUCT
+                    ? boundedKeyword(arguments.get("keyword")) : null;
+            return new Query(type, StatusMode.valueOf(String.valueOf(arguments.get("statusMode"))),
+                    productKeyword);
         } catch (Exception ignored) {
             return null;
         }
@@ -94,7 +112,7 @@ public class AssistantMasterDataQueryService {
         return userId != null && TenantContextHolder.getTenantId() != null && !TenantContextHolder.isIgnore()
                 && permissions.hasAnyPermissions(userId, "erp:assistant:query")
                 && permissions.hasAnyPermissions(userId,
-                "erp:customer:query", "erp:supplier:query", "erp:product:query");
+                "erp:customer:query", "erp:supplier:query", "erp:product:query", "system:user:query");
     }
 
     public void validateAccess(Query query) {
@@ -111,6 +129,9 @@ public class AssistantMasterDataQueryService {
             if (!productService.hasCurrentUserProductArchiveVisibleScope()) {
                 throw new AssistantFailure("FORBIDDEN", "当前账号没有可见的配件档案范围");
             }
+            return;
+        }
+        if (query.getArchiveType() == ArchiveType.EMPLOYEE) {
             return;
         }
         DeptDataPermissionRespDTO scope = permissions.getDeptDataPermission(userId, module(query.getArchiveType()));
@@ -131,22 +152,22 @@ public class AssistantMasterDataQueryService {
         List<Map<String, Object>> summary = new ArrayList<>();
         switch (mode) {
             case ENABLED:
-                enabled = count(type, CommonStatusEnum.ENABLE.getStatus());
+                enabled = count(query, CommonStatusEnum.ENABLE.getStatus());
                 total = enabled;
                 addSummary(summary, "启用" + archiveName(type), enabled);
                 break;
             case DISABLED:
-                disabled = count(type, CommonStatusEnum.DISABLE.getStatus());
+                disabled = count(query, CommonStatusEnum.DISABLE.getStatus());
                 total = disabled;
                 addSummary(summary, "停用" + archiveName(type), disabled);
                 break;
             case ALL:
-                total = count(type, null);
+                total = count(query, null);
                 addSummary(summary, "全部" + archiveName(type), total);
                 break;
             case SPLIT:
-                enabled = count(type, CommonStatusEnum.ENABLE.getStatus());
-                disabled = count(type, CommonStatusEnum.DISABLE.getStatus());
+                enabled = count(query, CommonStatusEnum.ENABLE.getStatus());
+                disabled = count(query, CommonStatusEnum.DISABLE.getStatus());
                 total = enabled + disabled;
                 addSummary(summary, "启用" + archiveName(type), enabled);
                 addSummary(summary, "停用" + archiveName(type), disabled);
@@ -157,21 +178,24 @@ public class AssistantMasterDataQueryService {
         if (total == 0L) {
             summary.clear();
         }
-        String answer = answer(type, mode, enabled, disabled, total);
+        String answer = answer(query, enabled, disabled, total);
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("summary", summary);
         result.put("rows", Collections.emptyList());
         result.put("status", total == 0L ? "EMPTY" : "SUCCESS");
         result.put("emptyText", total == 0L ? answer : null);
         result.put("answerText", answer);
-        result.put("summaryLabel", summaryLabel(type, mode));
+        result.put("summaryLabel", summaryLabel(query));
         result.put("queryType", AssistantExecutionEnvelope.RouteType.BUSINESS_TOOL.name());
         result.put("toolName", TOOL_NAME);
         result.put("title", archiveName(type) + "档案数量统计");
-        result.put("scope", "当前登录用户有权限查看的" + archiveName(type) + "档案");
+        result.put("scope", queryScope(query));
         result.put("queriedAt", LocalDateTime.now(ZoneId.of("Asia/Shanghai")).toString());
         result.put("columns", Collections.emptyList());
-        result.put("basis", Collections.singletonList(archiveName(type) + "档案页面同权限、同状态口径"));
+        result.put("basis", Collections.singletonList(type == ArchiveType.EMPLOYEE
+                ? "ERP 系统用户档案；当前租户、启停用状态口径"
+                : archiveName(type) + "档案页面同权限、同状态"
+                + (query.getProductKeyword() == null ? "" : "、同关键词") + "口径"));
         result.put("traceId", UUID.randomUUID().toString());
         Map<String, Object> presentation = new LinkedHashMap<>();
         presentation.put("mode", "SUMMARY");
@@ -183,12 +207,14 @@ public class AssistantMasterDataQueryService {
         trace.put("stage", "COMPLETED");
         trace.put("archiveType", type.name());
         trace.put("statusMode", mode.name());
+        if (query.getProductKeyword() != null) trace.put("productKeyword", query.getProductKeyword());
         trace.put("resultCount", total);
         result.put("queryTrace", trace);
         return result;
     }
 
-    private long count(ArchiveType type, Integer status) {
+    private long count(Query query, Integer status) {
+        ArchiveType type = query.getArchiveType();
         switch (type) {
             case CUSTOMER: {
                 ErpCustomerPageReqVO request = customerRequest();
@@ -203,8 +229,14 @@ public class AssistantMasterDataQueryService {
                 return total(page);
             }
             case PRODUCT: {
-                ErpProductPageReqVO request = productRequest(status);
+                ErpProductPageReqVO request = productRequest(status, query.getProductKeyword());
                 return total(productService.getProductVOPage(request, false));
+            }
+            case EMPLOYEE: {
+                PageParam request = new PageParam();
+                request.setPageNo(1);
+                request.setPageSize(1);
+                return total(userApi.getUserSimplePage(status, null, request));
             }
             default:
                 throw new AssistantFailure("MODEL_INVALID", "基础档案类型无效");
@@ -225,11 +257,12 @@ public class AssistantMasterDataQueryService {
         return request;
     }
 
-    private static ErpProductPageReqVO productRequest(Integer status) {
+    private static ErpProductPageReqVO productRequest(Integer status, String keyword) {
         ErpProductPageReqVO request = new ErpProductPageReqVO();
         request.setPageNo(1);
         request.setPageSize(1);
         request.setStatus(status);
+        request.setKeyword(keyword);
         request.setIncludeSaleDistributedArchive(true);
         return request;
     }
@@ -246,23 +279,37 @@ public class AssistantMasterDataQueryService {
         summary.add(row);
     }
 
-    private static String answer(ArchiveType type, StatusMode mode, long enabled, long disabled, long total) {
+    private static String answer(Query query, long enabled, long disabled, long total) {
+        ArchiveType type = query.getArchiveType();
+        StatusMode mode = query.getStatusMode();
         String name = archiveName(type);
+        String scope = type == ArchiveType.EMPLOYEE ? "按 ERP 员工账号口径，当前租户内" : "当前账号可见范围内";
+        String filter = query.getProductKeyword() == null ? ""
+                : "关键词“" + query.getProductKeyword() + "”匹配的";
         if (total == 0L) {
             String status = mode == StatusMode.ENABLED ? "启用" : mode == StatusMode.DISABLED ? "停用" : "";
-            return "当前账号可见范围内没有" + status + name + "档案。";
+            return scope + "没有" + filter + status + name + "档案。";
         }
         if (mode == StatusMode.SPLIT) {
-            return "当前账号可见范围内启用" + name + " " + enabled + " 个，停用" + name + " "
+            return scope + filter + "启用" + name + " " + enabled + " 个，停用" + name + " "
                     + disabled + " 个，共 " + total + " 个。";
         }
         String status = mode == StatusMode.ENABLED ? "启用" : mode == StatusMode.DISABLED ? "停用" : "";
-        return "当前账号可见范围内共有 " + total + " 个" + status + name + "档案。";
+        return scope + filter + "共有 " + total + " 个" + status + name + "档案。";
     }
 
-    private static String summaryLabel(ArchiveType type, StatusMode mode) {
+    private static String summaryLabel(Query query) {
+        ArchiveType type = query.getArchiveType();
+        StatusMode mode = query.getStatusMode();
         String status = mode == StatusMode.ENABLED ? "启用" : mode == StatusMode.DISABLED ? "停用" : "";
-        return status + archiveName(type) + "数量";
+        return status + archiveName(type) + "数量" + (query.getProductKeyword() == null
+                ? "" : "（关键词：" + query.getProductKeyword() + "）");
+    }
+
+    private static String queryScope(Query query) {
+        if (query.getArchiveType() == ArchiveType.EMPLOYEE) return "当前租户内员工账号";
+        String scope = "当前登录用户有权限查看的" + archiveName(query.getArchiveType()) + "档案";
+        return query.getProductKeyword() == null ? scope : scope + "；产品关键词：" + query.getProductKeyword();
     }
 
     private static String permission(ArchiveType type) {
@@ -270,6 +317,7 @@ public class AssistantMasterDataQueryService {
             case CUSTOMER: return "erp:customer:query";
             case SUPPLIER: return "erp:supplier:query";
             case PRODUCT: return "erp:product:query";
+            case EMPLOYEE: return "system:user:query";
             default: throw new IllegalArgumentException("Unsupported archive type");
         }
     }
@@ -279,6 +327,7 @@ public class AssistantMasterDataQueryService {
             case CUSTOMER: return "erp_customer";
             case SUPPLIER: return "erp_supplier";
             case PRODUCT: return "erp_product";
+            case EMPLOYEE: return "system_users";
             default: throw new IllegalArgumentException("Unsupported archive type");
         }
     }
@@ -288,6 +337,7 @@ public class AssistantMasterDataQueryService {
             case CUSTOMER: return "客户";
             case SUPPLIER: return "供应商";
             case PRODUCT: return "配件";
+            case EMPLOYEE: return "员工";
             default: return "基础";
         }
     }
@@ -304,5 +354,28 @@ public class AssistantMasterDataQueryService {
     private static String normalize(String question) {
         return question == null ? "" : question.toLowerCase(Locale.ROOT)
                 .replaceAll("[\\s\\u3000？?。！!，,；;：:]", "");
+    }
+
+    /**
+     * 从产品数量问题中剥离 ERP 场景词、数量词、状态词和档案类别词，保留品牌、系列、
+     * 名称、规格或编码等真实限定。结果作为产品列表现有 keyword 条件，不拼接 SQL。
+     */
+    private static String extractProductKeyword(String normalizedQuestion) {
+        String value = normalizedQuestion == null ? "" : normalizedQuestion;
+        value = value.replaceFirst("^(?:(?:erp系统|系统erp|erp|系统)(?:中|里|内|里面)?)", "");
+        value = value.replaceAll("(?:请问|帮我查一下|帮我查下|帮我查询|帮我查|查一下|查询)", "");
+        value = value.replaceAll("(?:当前账号可见范围内|当前账号可见的|当前账号|可见范围内|当前|现在|目前)", "");
+        value = value.replaceAll("(?:启用和停用|启用与停用|启停用|已启用|已停用|启用|正常|有效|停用|禁用)", "");
+        value = value.replaceAll("(?:总共有|一共有|共有|总共|有多少(?:个|条|种)?|有几个|多少(?:个|条|种)?|几个|数量|总数|统计|分别)", "");
+        value = value.replaceAll("(?:品牌为|品牌是|品牌|系列|牌|配件档案|产品档案|商品档案|配件|产品|商品|档案)", "");
+        value = value.replaceAll("(?:包含|包括|所有|全部|其中|的|和|与|及|下)", "");
+        value = value.replaceAll("[^\\p{IsHan}a-z0-9+./-]", "");
+        return value.length() >= 2 && value.length() <= 80 ? value : null;
+    }
+
+    private static String boundedKeyword(Object value) {
+        if (value == null) return null;
+        String keyword = String.valueOf(value).trim();
+        return keyword.length() >= 2 && keyword.length() <= 80 ? keyword : null;
     }
 }

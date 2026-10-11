@@ -110,14 +110,15 @@ public class AssistantSemanticKnowledge {
         if (containsAny(text, "采购额", "采购金额", "采购总金额", "采购总额")) {
             return fromCard("PURCHASE", entityTypes(text), "ROUTED");
         }
-        if (containsAny(text, "收款", "回款") && !containsAny(text, "应收")) {
+        if ((containsAny(text, "收款", "回款") || looksLikeReceiptAmountQuestion(text))
+                && !containsAny(text, "应收")) {
             return fromCard("RECEIPT", entityTypes(text), "ROUTED");
         }
         if (containsAny(text, "付款") && !containsAny(text, "应付")) {
             return fromCard("PAYMENT", entityTypes(text), "ROUTED");
         }
         boolean price = containsAny(text, "价格", "报价", "多少钱", "股份价", "零售价", "销售价", "采购价", "批发价", "参考价");
-        boolean sale = containsAny(text, "销量", "销售量", "销售情况", "卖了多少", "销售额", "卖得多", "卖的多");
+        boolean sale = containsAny(text, "销量", "销售量", "销售情况", "销售了多少", "卖了多少", "销售额", "卖得多", "卖的多");
         if (sale && !price) {
             List<String> types = new ArrayList<>();
             if (containsAny(text, "业务员", "销售员", "业务经理") || looksLikeSalespersonSales(text)) types.add("SALESPERSON");
@@ -198,23 +199,31 @@ public class AssistantSemanticKnowledge {
         if (text.contains("供应商")) result.add("SUPPLIER");
         if (text.contains("仓")) result.add("WAREHOUSE");
         if (containsAny(text, "业务员", "销售员", "业务经理")) result.add("SALESPERSON");
+        if (containsAny(text, "采购员", "采购人员", "采购经办人")) result.add("PURCHASER");
         return result;
     }
 
     private static boolean looksLikeBareProduct(String text) {
-        if (text.length() < 2 || text.length() > 80 || text.matches(".*(?:怎么|为什么|查询|查看|帮我|哪个|哪些|多少|情况).*$")) return false;
+        if (text.length() < 2 || text.length() > 80 || text.matches(".*(?:怎么|为什么|查询|查看|帮我|哪个|哪些|多少|情况|"
+                + "谁|什么|如何|工作|负责|分管|部门|人员|协作|协同|职责).*$")) return false;
+        if (AssistantKnowledgeContext.containsOrganizationLanguage(text)
+                || AssistantKnowledgeContext.isOrganizationKnowledgeQuestion(text)) return false;
         return text.matches("[\\p{L}\\p{N}_./\\-·*+# ]+");
     }
 
     private static boolean looksLikeSalespersonSales(String text) {
-        java.util.regex.Matcher matcher=java.util.regex.Pattern.compile("^([\\p{IsHan}]{2,4})(?:今年|本年|\\d{1,2}月份?|本月|上月|本周|上周).*(?:销量|销售量|销售情况)$").matcher(text);
+        java.util.regex.Matcher matcher=java.util.regex.Pattern.compile("^([\\p{IsHan}]{2,4})(?:" + AssistantRelativePeriod.FIXED_PERIOD_REGEX + "|\\d{1,2}月份?).*(?:销量|销售量|销售情况)$").matcher(text);
         if(!matcher.matches()) return false;
         String prefix=matcher.group(1);
         return !containsAny(prefix,"机油","轮胎","液压油","防冻液","制动液","汽修","汽配","公司","门市");
     }
 
     private static boolean looksLikeCustomerSales(String text) {
-        return text.matches(".*(?:公司|汽修|汽配|门市|修理厂|服务站).*(?:销量|销售量|销售情况|卖了多少).*");
+        return text.matches(".*(?:公司|汽修|汽配|门市|修理厂|服务站).*(?:销量|销售量|销售情况|销售了多少|卖了多少).*");
+    }
+
+    private static boolean looksLikeReceiptAmountQuestion(String text) {
+        return text.matches(".*(?:收了|收回)(?:多少钱|多少款|多少)(?:回来)?.*");
     }
 
     private static boolean containsAny(String value, String... choices) {

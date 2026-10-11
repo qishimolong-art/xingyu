@@ -35,10 +35,27 @@ public class AssistantSemanticCatalog {
                 Map<String,String> columns=new LinkedHashMap<>();
                 Iterator<Map.Entry<String,JsonNode>> fields=value.path("columns").fields();
                 while(fields.hasNext()){Map.Entry<String,JsonNode> field=fields.next();columns.put(field.getKey(),field.getValue().asText());}
+                Set<String> operations=textSet(value.path("allowedOperations"));
+                List<String> relationships=new ArrayList<>(textSet(value.path("relationships")));
+                JsonNode cost=value.path("costPolicy");
+                Set<String> selectiveColumns=textSet(cost.path("selectiveColumns"));
+                Set<String> timeColumns=textSet(cost.path("timeColumns"));
                 register(new Dataset(value.path("name").asText(),value.path("title").asText(),
-                        value.path("permission").asText(),value.path("module").asText(),columns));
+                        value.path("permission").asText(),value.path("module").asText(),columns,
+                        operations,relationships,cost.path("maxRows").asInt(200),cost.path("maxOffset").asInt(1000),
+                        cost.path("maxSelectedColumns").asInt(12),cost.path("maxGroupColumns").asInt(3),
+                        cost.path("queryTimeoutSeconds").asInt(10),cost.path("requiresSelectiveFilter").asBoolean(false),
+                        selectiveColumns,timeColumns,cost.path("maxTimeRangeDays").asInt(0)));
             }
         } catch(Exception e) {throw new IllegalStateException("Unable to load semantic dataset package",e);}
+    }
+
+    private static LinkedHashSet<String> textSet(JsonNode values) {
+        LinkedHashSet<String> result=new LinkedHashSet<>();
+        if(values!=null && values.isArray()) for(JsonNode value:values) {
+            String text=value.asText("").trim();if(!text.isEmpty()) result.add(text);
+        }
+        return result;
     }
 
     private static byte[] readAll(InputStream input) throws java.io.IOException {
@@ -49,7 +66,22 @@ public class AssistantSemanticCatalog {
         StringBuilder result=new StringBuilder();for(byte b:MessageDigest.getInstance("SHA-256").digest(value)) result.append(String.format("%02x",b));return result.toString();
     }
     private void register(Dataset dataset) {
-        if(dataset.name.isEmpty() || datasets.put(dataset.name,dataset)!=null) throw new IllegalStateException("Duplicate semantic dataset: "+dataset.name);
+        if(dataset.name.isEmpty() || dataset.title.isEmpty() || dataset.permission.isEmpty() || dataset.module.isEmpty()
+                || dataset.columns.isEmpty() || dataset.allowedOperations.isEmpty())
+            throw new IllegalStateException("Incomplete semantic dataset: "+dataset.name);
+        if(dataset.maxRows<1 || dataset.maxRows>200 || dataset.maxOffset<0 || dataset.maxOffset>10_000
+                || dataset.maxSelectedColumns<1 || dataset.maxSelectedColumns>30 || dataset.maxGroupColumns<0
+                || dataset.maxGroupColumns>8 || dataset.queryTimeoutSeconds<1 || dataset.queryTimeoutSeconds>10)
+            throw new IllegalStateException("Invalid semantic dataset limits: "+dataset.name);
+        if(!dataset.columns.keySet().containsAll(dataset.selectiveColumns)
+                || !dataset.columns.keySet().containsAll(dataset.timeColumns)
+                || !dataset.selectiveColumns.containsAll(dataset.timeColumns))
+            throw new IllegalStateException("Invalid semantic dataset cost columns: "+dataset.name);
+        if(dataset.requiresSelectiveFilter && dataset.selectiveColumns.isEmpty())
+            throw new IllegalStateException("Selective filters are required but not configured: "+dataset.name);
+        if(!dataset.timeColumns.isEmpty() && dataset.maxTimeRangeDays<1)
+            throw new IllegalStateException("Time range limit is missing: "+dataset.name);
+        if(datasets.put(dataset.name,dataset)!=null) throw new IllegalStateException("Duplicate semantic dataset: "+dataset.name);
     }
     public Dataset requirePublished(String name) {
         Dataset value=datasets.get(name);
@@ -84,10 +116,43 @@ public class AssistantSemanticCatalog {
     public static final class Dataset {
         private final String name,title,permission,module;
         private final Map<String,String> columns;
-        Dataset(String name,String title,String permission,String module,Map<String,String> columns) {
-            this.name=name;this.title=title;this.permission=permission;this.module=module;this.columns=Collections.unmodifiableMap(new LinkedHashMap<>(columns));
+        private final Set<String> allowedOperations,selectiveColumns,timeColumns;
+        private final List<String> relationships;
+        private final int maxRows,maxOffset,maxSelectedColumns,maxGroupColumns,queryTimeoutSeconds,maxTimeRangeDays;
+        private final boolean requiresSelectiveFilter;
+        Dataset(String name,String title,String permission,String module,Map<String,String> columns,
+                Set<String> allowedOperations,List<String> relationships,int maxRows,int maxOffset,
+                int maxSelectedColumns,int maxGroupColumns,int queryTimeoutSeconds,boolean requiresSelectiveFilter,
+                Set<String> selectiveColumns,Set<String> timeColumns,int maxTimeRangeDays) {
+            this.name=name;this.title=title;this.permission=permission;this.module=module;
+            this.columns=Collections.unmodifiableMap(new LinkedHashMap<>(columns));
+            this.allowedOperations=Collections.unmodifiableSet(new LinkedHashSet<>(allowedOperations));
+            this.relationships=Collections.unmodifiableList(new ArrayList<>(relationships));
+            this.maxRows=maxRows;this.maxOffset=maxOffset;this.maxSelectedColumns=maxSelectedColumns;
+            this.maxGroupColumns=maxGroupColumns;this.queryTimeoutSeconds=queryTimeoutSeconds;
+            this.requiresSelectiveFilter=requiresSelectiveFilter;
+            this.selectiveColumns=Collections.unmodifiableSet(new LinkedHashSet<>(selectiveColumns));
+            this.timeColumns=Collections.unmodifiableSet(new LinkedHashSet<>(timeColumns));this.maxTimeRangeDays=maxTimeRangeDays;
         }
         public String getName(){return name;} public String getTitle(){return title;} public String getPermission(){return permission;}
         public String getModule(){return module;} public Map<String,String> getColumns(){return columns;}
+        public Set<String> getAllowedOperations(){return allowedOperations;} public List<String> getRelationships(){return relationships;}
+        public int getMaxRows(){return maxRows;} public int getMaxOffset(){return maxOffset;}
+        public int getMaxSelectedColumns(){return maxSelectedColumns;} public int getMaxGroupColumns(){return maxGroupColumns;}
+        public int getQueryTimeoutSeconds(){return queryTimeoutSeconds;} public boolean isRequiresSelectiveFilter(){return requiresSelectiveFilter;}
+        public Set<String> getSelectiveColumns(){return selectiveColumns;} public Set<String> getTimeColumns(){return timeColumns;}
+        public int getMaxTimeRangeDays(){return maxTimeRangeDays;}
+        public Map<String,Object> modelPolicy(Collection<String> visibleColumns) {
+            Set<String> visible=new LinkedHashSet<>(visibleColumns);Map<String,Object> result=new LinkedHashMap<>();
+            result.put("allowedOperations",allowedOperations);result.put("relationships",relationships);
+            result.put("maxRows",maxRows);result.put("maxOffset",maxOffset);
+            result.put("maxSelectedColumns",maxSelectedColumns);result.put("maxGroupColumns",maxGroupColumns);
+            result.put("requiresSelectiveFilter",requiresSelectiveFilter);
+            List<String> filters=new ArrayList<>();for(String column:selectiveColumns) if(visible.contains(column)) filters.add(column);
+            List<String> times=new ArrayList<>();for(String column:timeColumns) if(visible.contains(column)) times.add(column);
+            result.put("selectiveColumns",filters);result.put("timeColumns",times);
+            if(!times.isEmpty()) result.put("maxTimeRangeDays",maxTimeRangeDays);
+            return result;
+        }
     }
 }

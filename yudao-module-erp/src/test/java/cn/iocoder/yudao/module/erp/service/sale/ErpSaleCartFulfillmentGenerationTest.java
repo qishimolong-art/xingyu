@@ -78,8 +78,10 @@ class ErpSaleCartFulfillmentGenerationTest extends BaseMockitoUnitTest {
         ErpSaleCartDO cart = new ErpSaleCartDO().setId(cartId).setNo("C1").setDeptId(10L);
         ErpSaleCartItemDO first = item(cartId, 11L, 101L, 3);
         ErpSaleCartItemDO second = item(cartId, 12L, 102L, 4);
+        ErpSaleCartItemDO sameWarehouse = item(cartId, 13L, 101L, 2);
         when(saleCartMapper.selectById(cartId)).thenReturn(cart);
-        when(saleCartItemMapper.selectListByCartIdForUpdate(cartId)).thenReturn(Arrays.asList(first, second));
+        when(saleCartItemMapper.selectListByCartIdForUpdate(cartId))
+                .thenReturn(Arrays.asList(first, second, sameWarehouse));
         when(warehouseService.getWarehouseMap(anyCollection())).thenReturn(Map.of(
                 101L, warehouse(101L, 10L), 102L, warehouse(102L, 10L)));
         when(stockMoveService.getTransferOutListBySource(anyInt(), eq(cartId))).thenReturn(Collections.emptyList());
@@ -88,11 +90,20 @@ class ErpSaleCartFulfillmentGenerationTest extends BaseMockitoUnitTest {
 
         ArgumentCaptor<ErpSalePickDeliveryOrderDO> order = ArgumentCaptor.forClass(ErpSalePickDeliveryOrderDO.class);
         verify(orderMapper).insert(order.capture());
-        assertEquals(2, order.getValue().getTotalItemCount());
+        assertEquals(3, order.getValue().getTotalItemCount());
         assertEquals(cartId, order.getValue().getSourceId());
-        verify(pickTaskMapper, times(2)).insert(any(ErpSalePickDeliveryPickTaskDO.class));
-        verify(itemMapper, times(2)).insert(argThat((ErpSalePickDeliveryItemDO value) ->
-                value.getTransferOutId() == null));
+        ArgumentCaptor<ErpSalePickDeliveryPickTaskDO> tasks =
+                ArgumentCaptor.forClass(ErpSalePickDeliveryPickTaskDO.class);
+        verify(pickTaskMapper, times(2)).insert(tasks.capture());
+        ErpSalePickDeliveryPickTaskDO warehouse101Task = tasks.getAllValues().stream()
+                .filter(value -> Long.valueOf(101L).equals(value.getWarehouseId())).findFirst().orElseThrow();
+        assertEquals(2, warehouse101Task.getTotalItemCount());
+        ArgumentCaptor<ErpSalePickDeliveryItemDO> items = ArgumentCaptor.forClass(ErpSalePickDeliveryItemDO.class);
+        verify(itemMapper, times(3)).insert(items.capture());
+        assertEquals(2, items.getAllValues().stream()
+                .filter(value -> Long.valueOf(101L).equals(value.getWarehouseId()))
+                .filter(value -> warehouse101Task.getId().equals(value.getPickTaskId())).count());
+        assertTrue(items.getAllValues().stream().allMatch(value -> value.getTransferOutId() == null));
         verify(stockMoveService, never()).getStockMoveItemListByMoveIds(anyCollection());
     }
 

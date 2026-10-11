@@ -5,6 +5,7 @@ import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.mybatis.core.mapper.BaseMapperX;
 import cn.iocoder.yudao.framework.mybatis.core.query.LambdaQueryWrapperX;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.pickdelivery.ErpSalePickDeliveryItemDO;
+import cn.iocoder.yudao.module.erp.enums.sale.ErpSaleDeliveryStatusEnum;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import org.apache.ibatis.annotations.Mapper;
 
@@ -26,6 +27,13 @@ public interface ErpSalePickDeliveryItemMapper extends BaseMapperX<ErpSalePickDe
 
     default List<ErpSalePickDeliveryItemDO> selectListByPickTaskId(Long pickTaskId) {
         return selectList(buildWarehousePositionOrderWrapper().eq("pick_task_id", pickTaskId));
+    }
+
+    default List<ErpSalePickDeliveryItemDO> selectListByPickTaskIds(Collection<Long> pickTaskIds) {
+        if (cn.hutool.core.collection.CollUtil.isEmpty(pickTaskIds)) {
+            return java.util.Collections.emptyList();
+        }
+        return selectList(buildWarehousePositionOrderWrapper().in("pick_task_id", pickTaskIds));
     }
 
     default PageResult<ErpSalePickDeliveryItemDO> selectPageByPickTaskId(PageParam pageParam, Long pickTaskId) {
@@ -81,7 +89,21 @@ public interface ErpSalePickDeliveryItemMapper extends BaseMapperX<ErpSalePickDe
     default boolean hasDeliveryProgress(Long orderId) {
         return selectCount(new LambdaQueryWrapperX<ErpSalePickDeliveryItemDO>()
                 .eq(ErpSalePickDeliveryItemDO::getOrderId, orderId)
-                .gt(ErpSalePickDeliveryItemDO::getDeliveredCount, 0)) > 0;
+                .and(wrapper -> wrapper.gt(ErpSalePickDeliveryItemDO::getDeliveredCount, 0)
+                        .or().in(ErpSalePickDeliveryItemDO::getDeliveryStatus,
+                                ErpSaleDeliveryStatusEnum.PARTIAL.getStatus(),
+                                ErpSaleDeliveryStatusEnum.DONE.getStatus()))) > 0;
+    }
+
+    default Long selectCountByOrderIdWithAvailableDelivery(Long orderId) {
+        return selectCount(new QueryWrapper<ErpSalePickDeliveryItemDO>()
+                .eq("order_id", orderId)
+                .apply("(CASE WHEN picked_count IS NULL AND pick_status = 30 THEN `count` ELSE COALESCE(picked_count, 0) END) "
+                        + "> (CASE WHEN delivered_count IS NULL AND delivery_status = 30 THEN `count` ELSE COALESCE(delivered_count, 0) END)"));
+    }
+
+    default boolean hasAvailableDelivery(Long orderId) {
+        return selectCountByOrderIdWithAvailableDelivery(orderId) > 0;
     }
 
     static QueryWrapper<ErpSalePickDeliveryItemDO> buildWarehousePositionOrderWrapper() {

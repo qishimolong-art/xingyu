@@ -1,29 +1,22 @@
 package cn.iocoder.yudao.module.erp.service.finance.receivable;
 
-import cn.iocoder.yudao.framework.common.biz.system.permission.dto.DeptDataPermissionRespDTO;
 import cn.iocoder.yudao.framework.datapermission.core.util.DataPermissionUtils;
 import cn.iocoder.yudao.framework.mybatis.core.query.LambdaQueryWrapperX;
 import cn.iocoder.yudao.framework.security.core.util.SecurityFrameworkUtils;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.receivable.vo.account.ErpReceivableDetailReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.receivable.vo.account.ErpReceivableDetailRespVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.accounting.ErpVoucherDO;
-import cn.iocoder.yudao.module.erp.dal.dataobject.finance.receivable.ErpReceivableMiscDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpCustomerDO;
 import cn.iocoder.yudao.module.erp.dal.mysql.finance.ErpFinanceReceiptMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.finance.accounting.ErpVoucherMapper;
-import cn.iocoder.yudao.module.erp.dal.mysql.finance.receivable.ErpReceivableMiscMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.finance.receivable.ErpReceivableOtherMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpSaleOutMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpSaleReturnMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpSalePriceAdjustMapper;
-import cn.iocoder.yudao.module.erp.service.finance.ErpFinanceVisibleScope;
-import cn.iocoder.yudao.module.erp.service.finance.ErpMiscTransferOffsetConstants;
 import cn.iocoder.yudao.module.erp.service.sale.ErpCustomerService;
 import cn.iocoder.yudao.module.erp.service.sale.ErpSaleFieldPermissionMasker;
-import cn.iocoder.yudao.module.system.api.dept.DeptApi;
 import cn.iocoder.yudao.module.system.api.user.AdminUserApi;
 import cn.iocoder.yudao.module.system.api.permission.PermissionApi;
-import com.baomidou.mybatisplus.core.toolkit.support.SFunction;
 import org.springframework.beans.BeanWrapper;
 import org.springframework.beans.BeanWrapperImpl;
 import org.springframework.stereotype.Service;
@@ -46,16 +39,14 @@ public class ErpReceivableDetailDisplayService {
     @Resource private ErpSalePriceAdjustMapper priceAdjustMapper;
     @Resource private ErpFinanceReceiptMapper receiptMapper;
     @Resource private ErpReceivableOtherMapper otherMapper;
-    @Resource private ErpReceivableMiscMapper miscMapper;
     @Resource private ErpVoucherMapper voucherMapper;
     @Resource private ErpCustomerService customerService;
     @Resource private PermissionApi permissionApi;
     @Resource private ErpSaleFieldPermissionMasker saleFieldMasker;
     @Resource private AdminUserApi userApi;
-    @Resource private DeptApi deptApi;
 
     public List<ErpReceivableDetailRespVO> decorate(ErpReceivableDetailReqVO req,
-            List<ErpReceivableDetailRespVO> accountingRows, BigDecimal opening, ErpFinanceVisibleScope accountScope) {
+            List<ErpReceivableDetailRespVO> accountingRows) {
         List<ErpReceivableDetailRespVO> rows = new ArrayList<>(accountingRows);
         if (hiddenFields("erp_finance_receivable_account").contains("remark")) {
             rows.stream().filter(row -> "核销".equals(row.getDocType())).forEach(row -> row.setRemark(null));
@@ -66,7 +57,6 @@ public class ErpReceivableDetailDisplayService {
         fillSources(rows, "销售调价", "erp_sale_price_adjust", ids -> priceAdjustMapper.selectBatchIds(ids), auditors);
         fillSources(rows, "收款单", "erp_finance_receipt", ids -> receiptMapper.selectBatchIds(ids), auditors);
         fillSources(rows, "应收调账", "erp_finance_receivable_other", ids -> otherMapper.selectBatchIds(ids), auditors);
-        rows.addAll(buildMiscRows(req, accountScope));
         fillVouchers(rows);
         ErpCustomerDO customer = customerService.getCustomer(req.getCustomerId());
         rows.forEach(row -> row.setCustomerName(customer == null ? null : customer.getName()));
@@ -76,20 +66,10 @@ public class ErpReceivableDetailDisplayService {
                 if (users.get(id) != null) row.setAuditorName(users.get(id).getNickname());
             });
         }
-        // 原账务行已完成余额计算。插入独立展示行只携带当时余额，不改变原行。
         rows.sort(Comparator.comparing(ErpReceivableDetailRespVO::getDocDate,
                         Comparator.nullsLast(Comparator.naturalOrder()))
                 .thenComparing(ErpReceivableDetailRespVO::getDocType)
                 .thenComparing(ErpReceivableDetailRespVO::getDocNo, Comparator.nullsLast(String::compareTo)));
-        BigDecimal balance = opening;
-        for (ErpReceivableDetailRespVO row : rows) {
-            if (Boolean.TRUE.equals(row.getDisplayOnly())) {
-                row.setPrevBalance(balance);
-                row.setBalance(balance);
-            } else {
-                balance = row.getBalance();
-            }
-        }
         return rows;
     }
 
@@ -132,72 +112,6 @@ public class ErpReceivableDetailDisplayService {
                 row.setReceivedWriteOffAmount(amount);
             }
         }
-    }
-
-    private List<ErpReceivableDetailRespVO> buildMiscRows(ErpReceivableDetailReqVO req,
-                                                        ErpFinanceVisibleScope accountScope) {
-        Long userId = SecurityFrameworkUtils.getLoginUserId();
-        if (userId == null || !permissionApi.hasAnyPermissions(userId, "erp:receivable-misc:query")) {
-            return Collections.emptyList();
-        }
-        DeptDataPermissionRespDTO permission = permissionApi.getDeptDataPermission(userId, "erp_finance_receivable_misc");
-        ErpFinanceVisibleScope miscScope = ErpFinanceVisibleScope.from(permission, userId);
-        if (miscScope == null || !miscScope.hasAccess()) return Collections.emptyList();
-        Set<String> hidden = hiddenFields("erp_finance_receivable_misc");
-        List<ErpReceivableDetailRespVO> result = new ArrayList<>();
-        Long afterId = null;
-        while (true) {
-            LambdaQueryWrapperX<ErpReceivableMiscDO> query = new LambdaQueryWrapperX<ErpReceivableMiscDO>()
-                    .eq(ErpReceivableMiscDO::getCustomerId, req.getCustomerId())
-                    .eq(ErpReceivableMiscDO::getStatus, 20)
-                    .geIfPresent(ErpReceivableMiscDO::getBizTime, req.getStartTime())
-                    .ltIfPresent(ErpReceivableMiscDO::getBizTime, req.getEndTime());
-            query.and(q -> q.isNull(ErpReceivableMiscDO::getSourceType).or()
-                            .ne(ErpReceivableMiscDO::getSourceType, ErpMiscTransferOffsetConstants.RECEIPT_OFFSET_SOURCE_TYPE));
-            if (Boolean.TRUE.equals(req.getDeptUnassigned())) query.isNull(ErpReceivableMiscDO::getDeptId);
-            else query.eqIfPresent(ErpReceivableMiscDO::getDeptId, req.getDeptId());
-            applyScope(query, accountScope, ErpReceivableMiscDO::getDeptId, ErpReceivableMiscDO::getHandlerId);
-            applyScope(query, miscScope, ErpReceivableMiscDO::getDeptId, ErpReceivableMiscDO::getHandlerId);
-            if (afterId != null) query.gt(ErpReceivableMiscDO::getId, afterId);
-            query.orderByAsc(ErpReceivableMiscDO::getId).last("LIMIT 500");
-            List<ErpReceivableMiscDO> originals = DataPermissionUtils.executeIgnore(() -> miscMapper.selectList(query));
-            if (originals.isEmpty()) break;
-            List<Long> ids = originals.stream().map(ErpReceivableMiscDO::getId).collect(Collectors.toList());
-            Map<Long, BigDecimal> settled = miscMapper.selectSettlementAmountSumMapBySourceMiscIds(ids,
-                    ErpMiscTransferOffsetConstants.RECEIPT_OFFSET_SOURCE_TYPE);
-            for (ErpReceivableMiscDO item : originals) {
-                ErpReceivableDetailRespVO row = new ErpReceivableDetailRespVO();
-                row.setDocType("其他应收");
-                row.setBizType(24);
-                row.setBizId(item.getId());
-                row.setDocNo(item.getNo());
-                row.setDocDate(item.getBizTime());
-                row.setDeptId(item.getDeptId());
-                row.setDisplayOnly(true);
-                row.setIncreaseAmount(BigDecimal.ZERO);
-                row.setOtherReceivableAmount(BigDecimal.ZERO);
-                row.setReceiptAmount(BigDecimal.ZERO);
-                row.setWriteOffAmount(BigDecimal.ZERO);
-                row.setMiscReceivableAmount(hidden.contains("amount") ? null : item.getAmount());
-                BigDecimal amount = hidden.contains("amount") || hidden.contains("settledAmount") ? null
-                        : zero(settled.get(item.getId())).abs();
-                row.setReceivedAmount(amount);
-                row.setReceivedWriteOffAmount(amount);
-                row.setAllocatedAmount(amount);
-                row.setWriteOffBaseAmount(hidden.contains("amount") ? null : zero(item.getAmount()).abs());
-                row.setRemark(hidden.contains("remark") ? null : item.getRemark());
-                result.add(row);
-            }
-            afterId = originals.get(originals.size() - 1).getId();
-            if (originals.size() < BATCH_SIZE) break;
-        }
-        for (List<Long> ids : batches(result.stream().map(ErpReceivableDetailRespVO::getDeptId).collect(Collectors.toList()))) {
-            Map<Long, cn.iocoder.yudao.module.system.api.dept.dto.DeptRespDTO> departments = deptApi.getDeptMap(ids);
-            result.forEach(row -> {
-                if (departments.get(row.getDeptId()) != null) row.setDeptName(departments.get(row.getDeptId()).getName());
-            });
-        }
-        return result;
     }
 
     private void fillVouchers(List<ErpReceivableDetailRespVO> rows) {
@@ -261,14 +175,4 @@ public class ErpReceivableDetailDisplayService {
         return result;
     }
 
-    private static <T> void applyScope(LambdaQueryWrapperX<T> query, ErpFinanceVisibleScope scope,
-                                      SFunction<T, ?> dept, SFunction<T, ?> handler) {
-        if (scope.isAll()) return;
-        query.and(q -> {
-            if (!scope.getDeptIds().isEmpty() && scope.getSelfUserId() != null)
-                q.in(dept, scope.getDeptIds()).or().eq(handler, scope.getSelfUserId());
-            else if (!scope.getDeptIds().isEmpty()) q.in(dept, scope.getDeptIds());
-            else q.eq(handler, scope.getSelfUserId());
-        });
-    }
 }

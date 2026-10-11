@@ -7,7 +7,6 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.util.HtmlUtils;
 
 import java.io.ByteArrayOutputStream;
-import java.io.File;
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
@@ -15,6 +14,7 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -27,7 +27,7 @@ public class ErpCloudPrintHtmlRenderer {
     private static final int DEFAULT_HTML_WIDTH = 210;
     private static final int DEFAULT_PDF_WIDTH = 241;
     private static final int DEFAULT_PDF_HEIGHT = 140;
-    private static final String PDF_FONT_FAMILY = "CloudPrintCjk";
+    private static final String PDF_FONT_FAMILY = ErpCloudPrintFontRegistry.DEFAULT_FAMILY;
     private static final int DEFAULT_ROW_HEIGHT = 34;
     private static final int MIN_ROW_HEIGHT = 28;
     private static final double PAPER_PX_PER_MM = 96D / 25.4D;
@@ -37,14 +37,6 @@ public class ErpCloudPrintHtmlRenderer {
     private static final Pattern TOKEN_SPAN_PATTERN = Pattern.compile(
             "<span\\b([^>]*)class=([\"'])(?=[^\"']*\\btoken\\b)[^\"']*\\2([^>]*)>([\\s\\S]*?)</span>",
             Pattern.CASE_INSENSITIVE);
-    private static final List<String> CHINESE_FONT_PATHS = Arrays.asList(
-            "C:/Windows/Fonts/simsun.ttc",
-            "C:/Windows/Fonts/simsun.ttf",
-            "C:/Windows/Fonts/msyh.ttc",
-            "/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc",
-            "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
-            "/usr/share/fonts/truetype/arphic/uming.ttc"
-    );
     private static final Map<String, String> FALLBACK_FIELD_CODE_BY_NAME = buildFallbackFieldCodeByName();
     private static final Map<String, String> XHTML_ENTITY_REPLACEMENT = buildXhtmlEntityReplacement();
 
@@ -218,7 +210,7 @@ public class ErpCloudPrintHtmlRenderer {
                 .append(formatNumber(doubleValue(margins.get("left"), 6))).append("mm;}");
         html.append("body{font-family:")
                 .append(PDF_FONT_FAMILY)
-                .append(",SimSun,'Microsoft YaHei',sans-serif;font-size:10px;color:#000;margin:0;}");
+                .append(",sans-serif;font-size:10px;color:#000;margin:0;}");
         html.append(".print-page{width:100%;box-sizing:border-box;page-break-after:always;}");
         html.append(".print-page:last-child{page-break-after:auto;}");
         html.append(".print-sheet{width:100%;border-collapse:collapse;table-layout:fixed;}");
@@ -743,6 +735,11 @@ public class ErpCloudPrintHtmlRenderer {
         if (fontSize.matches("^\\d+(\\.\\d+)?(px|pt|mm|em|rem|%)$")) {
             style.append("font-size:").append(fontSize).append(";");
         }
+        String templateFontKey = stringValue(cell.get("fontFamily"));
+        if (ErpCloudPrintFontRegistry.supports(templateFontKey)) {
+            style.append("font-family:'").append(ErpCloudPrintFontRegistry.pdfFamily(templateFontKey))
+                    .append("','").append(PDF_FONT_FAMILY).append("';");
+        }
         String textAlign = stringValue(cell.get("textAlign"));
         if (textAlign.matches("left|center|right")) {
             style.append("text-align:").append(textAlign).append(";");
@@ -1010,8 +1007,7 @@ public class ErpCloudPrintHtmlRenderer {
         html.append(pageHeight != null && pageHeight > 0 ? pageHeight + "mm" : "auto");
         html.append(";margin:4mm 6mm;}");
         html.append("body{font-family:");
-        html.append(PDF_FONT_FAMILY).append(",");
-        html.append("SimSun,'Microsoft YaHei',sans-serif;font-size:10px;color:#000;margin:0;}");
+        html.append(PDF_FONT_FAMILY).append(",sans-serif;font-size:10px;color:#000;margin:0;}");
         html.append("h1{font-size:16px;text-align:center;margin:0 0 5px;}");
         html.append("table{width:100%;border-collapse:collapse;table-layout:fixed;}");
         html.append("td,th{border:1px solid #000;padding:2px 3px;line-height:1.25;word-wrap:break-word;}");
@@ -1019,13 +1015,7 @@ public class ErpCloudPrintHtmlRenderer {
     }
 
     private void registerChineseFont(PdfRendererBuilder builder) {
-        for (String path : CHINESE_FONT_PATHS) {
-            File fontFile = new File(path);
-            if (fontFile.isFile()) {
-                builder.useFont(fontFile, PDF_FONT_FAMILY);
-                return;
-            }
-        }
+        ErpCloudPrintFontRegistry.registerPdfFonts(builder);
     }
 
     private void row(StringBuilder html, String label1, Object value1, String label2, Object value2) {

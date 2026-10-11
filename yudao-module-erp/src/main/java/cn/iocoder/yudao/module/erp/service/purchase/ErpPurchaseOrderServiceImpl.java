@@ -17,6 +17,8 @@ import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.order.ErpPurchas
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.order.ErpPurchaseOrderImportRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.order.ErpPurchaseOrderInableItemPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.order.ErpPurchaseOrderInableItemRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.order.ErpPurchaseOrderInableStockReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.order.ErpPurchaseOrderInableStockRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.order.ErpPurchaseOrderItemBatchUpdateReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.order.ErpPurchaseOrderItemPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.order.ErpPurchaseOrderPageReqVO;
@@ -29,6 +31,7 @@ import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseOrderDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseOrderItemDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpSupplierDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpWarehouseDO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockDO;
 import cn.iocoder.yudao.module.erp.dal.mysql.purchase.ErpPurchaseInItemMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.purchase.ErpPurchaseInMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.purchase.ErpPurchaseOrderItemMapper;
@@ -255,6 +258,7 @@ public class ErpPurchaseOrderServiceImpl implements ErpPurchaseOrderService {
         calculateTotalPrice(updateObj, purchaseOrderItems);
         purchaseOrderMapper.updateById(updateObj);
         // 2.2 更新订单�?
+        clearChangedStockCountSnapshots(oldItems, purchaseOrderItems);
         if (incrementalItems) {
             applyPurchaseOrderItemChangeSet(updateReqVO.getId(), itemChangeSet, purchaseOrderItems);
         } else {
@@ -311,6 +315,7 @@ public class ErpPurchaseOrderServiceImpl implements ErpPurchaseOrderService {
         if (updateCount == 0) {
             throw exception(PURCHASE_ORDER_UPDATE_FAIL_NOT_DRAFT, purchaseOrder.getNo());
         }
+        clearChangedStockCountSnapshots(oldItems, purchaseOrderItems);
         if (incrementalItems) {
             applyPurchaseOrderItemChangeSet(updateReqVO.getId(), itemChangeSet, purchaseOrderItems);
         } else {
@@ -469,6 +474,9 @@ public class ErpPurchaseOrderServiceImpl implements ErpPurchaseOrderService {
                 String stockKey = selectedItem.getProductId() + "_" + finalWarehouseId;
                 if (ensuredStockKeys.add(stockKey)) {
                     stockService.ensureStockExists(selectedItem.getProductId(), finalWarehouseId);
+                }
+                if (!Objects.equals(selectedItem.getWarehouseId(), finalWarehouseId)) {
+                    purchaseOrderItemMapper.clearStockCountAtOrder(selectedItem.getId());
                 }
             }
             purchaseOrderItemMapper.updateById(new ErpPurchaseOrderItemDO()
@@ -671,12 +679,48 @@ public class ErpPurchaseOrderServiceImpl implements ErpPurchaseOrderService {
         }
         validatePurchaseOrderForSubmit(purchaseOrder);
 
+        captureStockCountAtOrder(id);
+
         int updateCount = purchaseOrderMapper.updateByIdAndStatus(id, purchaseOrder.getStatus(),
                 new ErpPurchaseOrderDO().setStatus(ErpAuditStatus.APPROVE.getStatus()));
         if (updateCount == 0) {
             throw exception(PURCHASE_ORDER_APPROVE_FAIL);
         }
         operateLogService.recordStatus(ERP_PURCHASE_ORDER_TYPE, "下订", id, purchaseOrder.getNo());
+    }
+
+    private void captureStockCountAtOrder(Long orderId) {
+        List<ErpPurchaseOrderItemDO> items = purchaseOrderItemMapper.selectListByOrderId(orderId);
+        Set<Long> productIds = convertSet(items, ErpPurchaseOrderItemDO::getProductId);
+        Set<Long> warehouseIds = convertSet(items, ErpPurchaseOrderItemDO::getWarehouseId);
+        productIds.remove(null);
+        warehouseIds.remove(null);
+        Map<String, ErpStockDO> stockMap = CollUtil.isEmpty(productIds) || CollUtil.isEmpty(warehouseIds)
+                ? Collections.emptyMap() : DataPermissionUtils.executeIgnore(() ->
+                stockService.getStockMap(productIds, warehouseIds));
+        for (ErpPurchaseOrderItemDO item : items) {
+            if (item.getStockCountAtOrder() != null) {
+                continue;
+            }
+            ErpStockDO stock = stockMap.get(buildStockMapKey(item.getProductId(), item.getWarehouseId()));
+            BigDecimal stockCount = stock == null || stock.getCount() == null ? BigDecimal.ZERO : stock.getCount();
+            purchaseOrderItemMapper.updateStockCountAtOrderIfNull(item.getId(), stockCount);
+        }
+    }
+
+    private void clearChangedStockCountSnapshots(List<ErpPurchaseOrderItemDO> oldItems,
+                                                  List<ErpPurchaseOrderItemDO> newItems) {
+        Map<Long, ErpPurchaseOrderItemDO> oldItemMap = convertMap(oldItems, ErpPurchaseOrderItemDO::getId);
+        for (ErpPurchaseOrderItemDO newItem : newItems) {
+            if (newItem.getId() == null) {
+                continue;
+            }
+            ErpPurchaseOrderItemDO oldItem = oldItemMap.get(newItem.getId());
+            if (oldItem != null && (!Objects.equals(oldItem.getProductId(), newItem.getProductId())
+                    || !Objects.equals(oldItem.getWarehouseId(), newItem.getWarehouseId()))) {
+                purchaseOrderItemMapper.clearStockCountAtOrder(newItem.getId());
+            }
+        }
     }
 
     private void validatePurchaseOrderForSubmit(ErpPurchaseOrderDO purchaseOrder) {
@@ -1412,6 +1456,16 @@ public class ErpPurchaseOrderServiceImpl implements ErpPurchaseOrderService {
         }
         Map<Long, ErpProductRespVO> productVOMap = DataPermissionUtils.executeIgnore(() ->
                 productService.getProductVOMap(convertSet(orderItems, ErpPurchaseOrderItemDO::getProductId)));
+        Set<Long> productIds = convertSet(orderItems, ErpPurchaseOrderItemDO::getProductId);
+        Set<Long> warehouseIds = convertSet(orderItems, ErpPurchaseOrderItemDO::getWarehouseId);
+        productIds.remove(null);
+        warehouseIds.remove(null);
+        Map<String, ErpStockDO> stockMap = CollUtil.isEmpty(productIds) || CollUtil.isEmpty(warehouseIds)
+                ? Collections.emptyMap() : DataPermissionUtils.executeIgnore(() ->
+                stockService.getStockMap(productIds, warehouseIds));
+        Map<String, BigDecimal> occupiedCountMap = CollUtil.isEmpty(productIds) || CollUtil.isEmpty(warehouseIds)
+                ? Collections.emptyMap() : DataPermissionUtils.executeIgnore(() ->
+                stockService.getOccupiedCountMap(productIds, warehouseIds));
         return orderItems.stream().map(item -> {
             BigDecimal inCount = item.getInCount() != null ? item.getInCount() : BigDecimal.ZERO;
             BigDecimal orderCount = item.getCount() != null ? item.getCount() : BigDecimal.ZERO;
@@ -1430,6 +1484,7 @@ public class ErpPurchaseOrderServiceImpl implements ErpPurchaseOrderService {
             vo.setInableCount(inableCount);
             vo.setWarehouseId(item.getWarehouseId());
             vo.setDeptId(item.getDeptId());
+            fillStockCount(vo, item.getProductId(), item.getWarehouseId(), stockMap, occupiedCountMap);
             vo.setGift(item.getGift());
             // 产品扩展字段
             ErpProductRespVO product = productVOMap.get(item.getProductId());
@@ -1450,6 +1505,66 @@ public class ErpPurchaseOrderServiceImpl implements ErpPurchaseOrderService {
             vo.setWarehousePosition(item.getWarehousePosition());
             return vo;
         }).filter(Objects::nonNull).collect(Collectors.toList());
+    }
+
+    @Override
+    public List<ErpPurchaseOrderInableStockRespVO> getInableItemStockList(
+            ErpPurchaseOrderInableStockReqVO reqVO) {
+        validatePurchaseOrder(reqVO.getOrderId());
+        Set<Long> orderItemIds = reqVO.getItems().stream()
+                .map(ErpPurchaseOrderInableStockReqVO.Item::getOrderItemId)
+                .collect(Collectors.toCollection(LinkedHashSet::new));
+        Map<Long, ErpPurchaseOrderItemDO> orderItemMap = convertMap(
+                purchaseOrderItemMapper.selectByIds(orderItemIds), ErpPurchaseOrderItemDO::getId);
+        for (Long orderItemId : orderItemIds) {
+            ErpPurchaseOrderItemDO orderItem = orderItemMap.get(orderItemId);
+            if (orderItem == null || !Objects.equals(reqVO.getOrderId(), orderItem.getOrderId())) {
+                throw exception(PURCHASE_ORDER_ITEM_UPDATE_NOT_EXISTS);
+            }
+        }
+        Set<Long> warehouseIds = reqVO.getItems().stream()
+                .map(ErpPurchaseOrderInableStockReqVO.Item::getWarehouseId)
+                .collect(Collectors.toCollection(LinkedHashSet::new));
+        warehouseService.validPurchaseWarehouseList(warehouseIds);
+        Set<Long> productIds = orderItemMap.values().stream()
+                .map(ErpPurchaseOrderItemDO::getProductId)
+                .collect(Collectors.toCollection(LinkedHashSet::new));
+        Map<String, ErpStockDO> stockMap = DataPermissionUtils.executeIgnore(() ->
+                stockService.getStockMap(productIds, warehouseIds));
+        Map<String, BigDecimal> occupiedCountMap = DataPermissionUtils.executeIgnore(() ->
+                stockService.getOccupiedCountMap(productIds, warehouseIds));
+        return reqVO.getItems().stream().map(reqItem -> {
+            ErpPurchaseOrderItemDO orderItem = orderItemMap.get(reqItem.getOrderItemId());
+            ErpPurchaseOrderInableStockRespVO respVO = new ErpPurchaseOrderInableStockRespVO();
+            respVO.setOrderItemId(reqItem.getOrderItemId());
+            respVO.setWarehouseId(reqItem.getWarehouseId());
+            fillStockCount(respVO, orderItem.getProductId(), reqItem.getWarehouseId(), stockMap, occupiedCountMap);
+            return respVO;
+        }).collect(Collectors.toList());
+    }
+
+    private void fillStockCount(ErpPurchaseOrderInableItemRespVO vo, Long productId, Long warehouseId,
+                                Map<String, ErpStockDO> stockMap,
+                                Map<String, BigDecimal> occupiedCountMap) {
+        String key = buildStockMapKey(productId, warehouseId);
+        ErpStockDO stock = stockMap.get(key);
+        BigDecimal stockCount = stock != null && stock.getCount() != null ? stock.getCount() : BigDecimal.ZERO;
+        vo.setStockCount(stockCount);
+        vo.setAvailableCount(stockCount.subtract(occupiedCountMap.getOrDefault(key, BigDecimal.ZERO)));
+    }
+
+    private void fillStockCount(ErpPurchaseOrderInableStockRespVO vo, Long productId, Long warehouseId,
+                                Map<String, ErpStockDO> stockMap,
+                                Map<String, BigDecimal> occupiedCountMap) {
+        String key = buildStockMapKey(productId, warehouseId);
+        ErpStockDO stock = stockMap.get(key);
+        BigDecimal stockCount = stock != null && stock.getCount() != null ? stock.getCount() : BigDecimal.ZERO;
+        vo.setStockCount(stockCount);
+        vo.setAvailableCount(stockCount.subtract(occupiedCountMap.getOrDefault(key, BigDecimal.ZERO)));
+    }
+
+    private String buildStockMapKey(Long productId, Long warehouseId) {
+        return productId + "_" + warehouseId;
     }
 
 }

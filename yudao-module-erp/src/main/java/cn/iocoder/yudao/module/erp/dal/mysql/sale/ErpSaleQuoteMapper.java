@@ -9,6 +9,7 @@ import cn.iocoder.yudao.module.erp.dal.dataobject.product.ErpProductUnitDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleQuoteDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleQuoteItemDO;
 import cn.iocoder.yudao.module.erp.dal.mysql.common.ErpKeywordQuery;
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.core.toolkit.support.SFunction;
 import org.apache.ibatis.annotations.Mapper;
@@ -125,6 +126,12 @@ public interface ErpSaleQuoteMapper extends BaseMapperX<ErpSaleQuoteDO> {
 
     default ErpSaleQuoteDO selectByNo(String no) {
         return selectOne(ErpSaleQuoteDO::getNo, no);
+    }
+
+    default ErpSaleQuoteDO selectByIdForUpdate(Long id) {
+        return selectOne(new LambdaQueryWrapper<ErpSaleQuoteDO>()
+                .eq(ErpSaleQuoteDO::getId, id)
+                .last("FOR UPDATE"));
     }
 
     default Long selectCountByCustomerId(Long customerId) {

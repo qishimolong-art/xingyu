@@ -152,6 +152,7 @@
     "groups": [
       "NONE",
       "PARTY",
+      "SALESPERSON",
       "DEPT"
     ],
     "note": "知识库/11-AI助手接入准备/已定义指标/RECEIVABLE.md",
@@ -190,6 +191,7 @@
       "DAY",
       "PARTY",
       "PRODUCT",
+      "SALESPERSON",
       "DEPT"
     ],
     "note": "知识库/11-AI助手接入准备/已定义指标/SALE.md",

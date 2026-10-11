@@ -14,6 +14,7 @@ import cn.iocoder.yudao.module.erp.service.stock.bo.ErpProductStockPermissionSco
 import cn.iocoder.yudao.module.system.api.permission.PermissionApi;
 import org.springframework.stereotype.Service;
 import javax.annotation.Resource;
+import java.math.BigDecimal;
 import java.time.*;
 import java.util.*;
 
@@ -23,6 +24,7 @@ public class AssistantQueryService {
     @Resource private PermissionApi permissions;
     @Resource private ErpWarehouseService warehouses;
     @Resource private AssistantKnowledge knowledge;
+    private static final int ACCOUNT_PARTY_LIMIT = 10;
     private static final List<Map<String,String>> PRODUCT_PRICE_FIELDS = Arrays.asList(
             priceField("purchasePrice","采购价"), priceField("salePrice","销售价"), priceField("minPrice","最低价"),
             priceField("referencePrice","参考价"), priceField("retailPrice","零售价"), priceField("wholesalePrice","批发价"),
@@ -30,8 +32,8 @@ public class AssistantQueryService {
 
     public static String permission(AssistantPlan.Metric metric) {
         switch (metric) {
-            case SALE: return "erp:sale-report:query";
-            case PURCHASE: return "erp:purchase-report:query";
+            case SALE: return "erp:sale-out:query";
+            case PURCHASE: return "erp:purchase-in:query";
             case STOCK: case STOCK_SKU: return "erp:stock:query";
             case RECEIPT: return "erp:finance-receipt:query";
             case PAYMENT: return "erp:finance-payment:query";
@@ -42,8 +44,8 @@ public class AssistantQueryService {
     }
     public static String module(AssistantPlan.Metric metric) {
         switch (metric) {
-            case SALE: return "erp_sale_report";
-            case PURCHASE: return "erp_purchase_report";
+            case SALE: return "erp_sale_out";
+            case PURCHASE: return "erp_purchase_in";
             case STOCK: case STOCK_SKU: return "erp_product_stock";
             case RECEIPT: return "erp_finance_receipt";
             case PAYMENT: return "erp_finance_payment";
@@ -56,16 +58,27 @@ public class AssistantQueryService {
     public void authorize(AssistantPlan.Metric metric) {
         Long uid = SecurityFrameworkUtils.getLoginUserId();
         if (uid == null || TenantContextHolder.getTenantId() == null || TenantContextHolder.isIgnore()
-                || !permissions.hasAnyPermissions(uid,"erp:assistant:query") || !permissions.hasAnyPermissions(uid,permission(metric)))
+                || !permissions.hasAnyPermissions(uid,"erp:assistant:query"))
             throw new AssistantFailure("FORBIDDEN", "没有该指标的查询权限");
+        for(String permission:requiredPermissions(metric)) if(!permissions.hasAnyPermissions(uid,permission))
+            throw new AssistantFailure("FORBIDDEN", "没有该指标来源单据的完整查询权限");
         checkFields(metric,null);
     }
 
+    static List<String> requiredPermissions(AssistantPlan.Metric metric) {
+        if(metric==AssistantPlan.Metric.SALE)
+            return Arrays.asList("erp:sale-out:query","erp:sale-return:query");
+        if(metric==AssistantPlan.Metric.PURCHASE)
+            return Arrays.asList("erp:purchase-in:query","erp:purchase-return:query");
+        return Collections.singletonList(permission(metric));
+    }
+
     private void checkFields(AssistantPlan.Metric metric,Long department) {
-        List<String> modules = new ArrayList<>(Collections.singletonList(module(metric)));
+        List<String> modules = new ArrayList<>();
+        if(metric!=AssistantPlan.Metric.SALE && metric!=AssistantPlan.Metric.PURCHASE) modules.add(module(metric));
         if(Arrays.asList(AssistantPlan.Metric.SALE,AssistantPlan.Metric.RECEIPT,AssistantPlan.Metric.RECEIVABLE).contains(metric)) modules.add("erp_customer");
         if(Arrays.asList(AssistantPlan.Metric.PURCHASE,AssistantPlan.Metric.PAYMENT,AssistantPlan.Metric.PAYABLE).contains(metric)) modules.add("erp_supplier");
-        if(metric!=AssistantPlan.Metric.RECEIPT && metric!=AssistantPlan.Metric.PAYMENT) modules.add("erp_product");
+        if(metric==AssistantPlan.Metric.STOCK || metric==AssistantPlan.Metric.STOCK_SKU) modules.add("erp_product");
         switch (metric) {
             case SALE: modules.addAll(Arrays.asList("erp_sale_out","erp_sale_return")); break;
             case PURCHASE: modules.addAll(Arrays.asList("erp_purchase_in","erp_purchase_return")); break;
@@ -123,17 +136,22 @@ public class AssistantQueryService {
         args.put("plan",plan);
         args.put("tenantId",TenantContextHolder.getRequiredTenantId());
         args.put("userId",String.valueOf(SecurityFrameworkUtils.getLoginUserId()));
-        LocalDateTime[] range = plan.range(Clock.systemUTC());
+        Clock queryClock=Clock.fixed(Instant.now(),ZoneOffset.UTC);
+        LocalDateTime queriedAt=LocalDateTime.now(queryClock.withZone(AssistantRelativePeriod.BUSINESS_ZONE));
+        LocalDateTime[] range = plan.range(queryClock);
         args.put("start",range == null ? null : range[0]);
         args.put("end",range == null ? null : range[1]);
+        args.put("displayEnd",responseEnd(range,queriedAt));
+        args.put("queriedAt",queriedAt);
         // Existing report adapters use an inclusive end. Subtract one microsecond for MySQL DATETIME(6).
         LocalDateTime[] inclusive = range == null ? null : new LocalDateTime[]{range[0],range[1].minusNanos(1000)};
         switch (plan.getMetric()) {
             case SALE:
-                ErpSaleReportPageReqVO sale = new ErpSaleReportPageReqVO(); sale.setBizTime(inclusive); args.put("reqVO",sale); break;
+                ErpSaleReportPageReqVO sale = new ErpSaleReportPageReqVO(); sale.setBizTime(inclusive);sale.setSaleUserId(plan.getSalespersonId()); args.put("reqVO",sale); break;
             case PURCHASE:
                 ErpPurchaseReportPageReqVO purchase = new ErpPurchaseReportPageReqVO(); purchase.setBizTime(inclusive); args.put("reqVO",purchase); break;
-            case RECEIVABLE: args.put("reqVO",new ErpReceivableAccountPageReqVO()); break;
+            case RECEIVABLE:
+                ErpReceivableAccountPageReqVO receivable=new ErpReceivableAccountPageReqVO();receivable.setSaleUserId(plan.getSalespersonId());args.put("reqVO",receivable);break;
             case PAYABLE: args.put("reqVO",new ErpPayableAccountPageReqVO()); break;
             default: break;
         }
@@ -144,13 +162,23 @@ public class AssistantQueryService {
         } else {
             boolean customer = Arrays.asList(AssistantPlan.Metric.SALE,AssistantPlan.Metric.RECEIPT,AssistantPlan.Metric.RECEIVABLE).contains(plan.getMetric());
             scope(args,"party",customer ? "erp_customer" : "erp_supplier",true);
-            scope(args,"document",module(plan.getMetric()),plan.getMetric() == AssistantPlan.Metric.SALE || plan.getMetric() == AssistantPlan.Metric.PURCHASE);
+            if(plan.getMetric()==AssistantPlan.Metric.SALE) {
+                scope(args,"saleOut","erp_sale_out",true);
+                scope(args,"saleReturn","erp_sale_return",true);
+                // Compatibility keys are retained for nearby code that only inspects the context map.
+                args.put("documentAll",false);args.put("documentDeptIds",Collections.emptySet());args.put("documentSelfUserId",null);
+            } else if(plan.getMetric()==AssistantPlan.Metric.PURCHASE) {
+                scope(args,"purchaseIn","erp_purchase_in",true);
+                scope(args,"purchaseReturn","erp_purchase_return",true);
+                args.put("documentAll",false);args.put("documentDeptIds",Collections.emptySet());args.put("documentSelfUserId",null);
+            } else scope(args,"document",module(plan.getMetric()),false);
             // Original account mappers use different parameter names; both derive from the same checked scopes.
             args.put("deptIds",args.get("partyDeptIds")); args.put("selfUserId",args.get("partySelfUserId")); args.put("all",args.get("partyAll"));
             args.put("docDeptIds",args.get("documentDeptIds")); args.put("docSelfUserId",args.get("documentSelfUserId")); args.put("docAll",args.get("documentAll"));
         }
         return args;
     }
+
 
     private List<Map<String,Object>> run(Map<String,Object> args, String mode, int limit) {
         args.put("mode",mode); args.put("rowLimit",limit);
@@ -164,40 +192,103 @@ public class AssistantQueryService {
     private Map<String,Object> executeSnapshot(AssistantPlan plan) {
         Map<String,Object> args = context(plan);
         checkDepartmentFields(args,plan.getMetric());
+        includeZeroBalanceForSpecifiedParty(args,plan);
         resolveNames(args,plan);
+        includeZeroBalanceForSpecifiedParty(args,plan);
         Map<String,Object> result = new LinkedHashMap<>();
         List<Map<String,Object>> summary = AssistantPresentation.skipsSummary(plan) ? Collections.emptyList() : run(args,"summary",101);
         if(summary.size()>100) throw new AssistantFailure("TOO_MANY_UNITS","计量单位过多，请缩小范围");
         List<Map<String,Object>> rows = plan.getGroup() == AssistantPlan.Group.NONE ? Collections.emptyList()
                 : run(args,"groups",plan.getGroup() == AssistantPlan.Group.DAY ? 367 : plan.getLimit());
+        List<Map<String,Object>> productRows = plan.isProductResultTable()
+                ? run(args,"productResults",Math.max(10,plan.getProductIds().size())) : Collections.emptyList();
+        List<Map<String,Object>> accountRows=Collections.emptyList();
+        boolean accountPartyTruncated=false;
+        if(isAccountMetric(plan)) {
+            List<Map<String,Object>> parties=run(args,"accountParties",ACCOUNT_PARTY_LIMIT+1);
+            accountPartyTruncated=parties.size()>ACCOUNT_PARTY_LIMIT;
+            if(accountPartyTruncated) parties=new ArrayList<>(parties.subList(0,ACCOUNT_PARTY_LIMIT));
+            if(!parties.isEmpty()) {
+                List<Long> partyIds=new ArrayList<>();
+                Map<Long,Integer> partyOrder=new HashMap<>();
+                for(int index=0;index<parties.size();index++) {
+                    Object value=parties.get(index).get("partyId");
+                    if(!(value instanceof Number)) continue;
+                    long partyId=((Number)value).longValue();
+                    partyIds.add(partyId);partyOrder.put(partyId,index);
+                }
+                if(!partyIds.isEmpty()) {
+                    args.put("accountPartyIds",partyIds);
+                    accountRows=run(args,"accountResults",2001);
+                    if(accountRows.size()>2000) throw new AssistantFailure("TOO_MANY_ACCOUNT_DEPARTMENTS","往来单位部门明细过多，请指定客户、供应商或部门后查询");
+                    accountRows.sort(Comparator
+                            .comparingInt((Map<String,Object> row)->partyOrder.getOrDefault(longValue(row.get("partyId")),Integer.MAX_VALUE))
+                            .thenComparing((Map<String,Object> row)->decimal(row.get("amount")),Comparator.reverseOrder())
+                            .thenComparing(row->String.valueOf(row.get("deptName"))));
+                }
+            }
+        }
         if((plan.getMetric()==AssistantPlan.Metric.STOCK || plan.getMetric()==AssistantPlan.Metric.STOCK_SKU) && rows.size()>200) {
             String target=plan.getMetric()==AssistantPlan.Metric.STOCK_SKU?"SKU":"库存";
             throw new AssistantFailure("TOO_MANY_TIES",target+"排名的并列结果超过 200 条，请增加仓库、部门或库存范围条件");
         }
         if(plan.isIncludeProductPrices()) {
-            ProductPriceResult prices=sanitizeProductPrices(summary,rows,plan);
+            ProductPriceResult prices=sanitizeProductPrices(summary,rows,productRows,plan);
             result.put("priceFields",prices.availableFields);
             result.put("priceStatus",prices.status);
             result.put("missingPriceFields",prices.missingFields);
             if(!prices.availableFields.isEmpty()) result.put("columns",productColumns(prices.availableFields));
-            if(!summary.isEmpty() && stockAmountIsZero(summary))
+            if(!plan.isProductResultTable() && !summary.isEmpty() && stockAmountIsZero(summary))
                 result.put("stockNotice","系统有产品档案，但当前授权仓库范围内没有库存数量");
             if(prices.notice!=null) result.put("priceNotice",prices.notice);
+            if(plan.isProductResultTable()) result.put("productResults",buildProductResults(productRows,prices,plan));
+        }
+        if(plan.isProductResultTable()) {
+            result.put("productMatchTruncated",plan.isProductMatchTruncated());
+            result.put("productMatchLimit",10);
+        }
+        if(isAccountMetric(plan)) {
+            result.put("accountResults",accountRows);
+            result.put("accountPartyLimit",ACCOUNT_PARTY_LIMIT);
+            result.put("accountPartyTruncated",accountPartyTruncated);
+            result.put("summaryLabel",plan.getMetric()==AssistantPlan.Metric.RECEIVABLE?"应收余额合计":"应付余额合计");
         }
         result.put("summary",summary);
-        result.put("rows",rows); result.put("plan",plan); result.put("status",summary.isEmpty() && rows.isEmpty() ? "EMPTY" : "SUCCESS");
-        result.put("start",args.get("start")); result.put("end",args.get("end"));
-        result.put("queriedAt",LocalDateTime.now(ZoneId.of("Asia/Shanghai")).toString());
+        result.put("rows",rows); result.put("plan",plan); result.put("status",summary.isEmpty() && rows.isEmpty() && accountRows.isEmpty() ? "EMPTY" : "SUCCESS");
+        result.put("start",args.get("start")); result.put("end",args.get("displayEnd"));
+        result.put("queriedAt",String.valueOf(args.get("queriedAt")));
         result.put("knowledge",knowledge.get(plan.getMetric()));
         result.put("scope","当前登录用户有权限查看的数据");
         AssistantPresentation.apply(null,plan,result);
         return result;
     }
 
+    private static boolean isAccountMetric(AssistantPlan plan) {
+        return plan.getMetric()==AssistantPlan.Metric.RECEIVABLE || plan.getMetric()==AssistantPlan.Metric.PAYABLE;
+    }
+
+    private static void includeZeroBalanceForSpecifiedParty(Map<String,Object> args,AssistantPlan plan) {
+        if(!isAccountMetric(plan) || plan.getParty()==null && plan.getPartyId()==null) return;
+        Object request=args.get("reqVO");
+        if(request instanceof ErpReceivableAccountPageReqVO)
+            ((ErpReceivableAccountPageReqVO)request).setShowZeroBalance(true);
+        if(request instanceof ErpPayableAccountPageReqVO)
+            ((ErpPayableAccountPageReqVO)request).setShowZeroBalance(true);
+    }
+
+    private static long longValue(Object value) {
+        return value instanceof Number?((Number)value).longValue():Long.MIN_VALUE;
+    }
+
+    static LocalDateTime responseEnd(LocalDateTime[] range,LocalDateTime queriedAt) {
+        if(range==null) return null;
+        return range[1].equals(queriedAt)?range[1]:range[1].minusNanos(1000);
+    }
+
     private void resolveNames(Map<String,Object> args,AssistantPlan plan) {
-        String[] names = {plan.getWarehouse(),plan.getParty(),plan.getProduct(),plan.getDepartment()};
-        String[] fields = {"warehouse","party","product","dept"};
-        Long[] ids={plan.getWarehouseId(),plan.getPartyId(),plan.getProductId(),plan.getDepartmentId()};
+        String[] names = {plan.getWarehouse(),plan.getParty(),plan.getProduct(),plan.getDepartment(),plan.getSalesperson()};
+        String[] fields = {"warehouse","party","product","dept","salesperson"};
+        Long[] ids={plan.getWarehouseId(),plan.getPartyId(),plan.getProductId(),plan.getDepartmentId(),plan.getSalespersonId()};
         for(int i=0;i<fields.length;i++) {
             if(names[i]==null) continue;
             args.put("candidateField",fields[i]); args.put("candidateName",names[i]);
@@ -212,6 +303,13 @@ public class AssistantQueryService {
                 assignChoice(plan,fields[i],((Number)exact.get(0).get("id")).longValue());
             } else if(candidates.isEmpty()) {
                 throw new AssistantFailure("ENTITY_NOT_FOUND",entityNotFoundText(fields[i],plan.getMetric()));
+            } else if("product".equals(fields[i]) && plan.isProductResultTable()) {
+                List<Map<String,Object>> options=exact.isEmpty()?candidates:exact;
+                List<Long> productIds=new ArrayList<>();
+                for(int index=0;index<Math.min(10,options.size());index++)
+                    productIds.add(((Number)options.get(index).get("id")).longValue());
+                plan.setProductIds(productIds);plan.setProductMatchTruncated(options.size()>10);
+                plan.setProduct(null);plan.setProductId(productIds.size()==1?productIds.get(0):null);
             } else if(candidates.size()>20) {
                 throw new AssistantFailure("CLARIFY_ENTITY","匹配对象较多，请填写更完整的名称");
             } else {
@@ -227,6 +325,7 @@ public class AssistantQueryService {
         if("product".equals(field)) return "没有找到匹配的产品，请检查产品名称、编码或规格";
         if("warehouse".equals(field)) return "没有找到匹配的仓库，请检查仓库名称或编码";
         if("dept".equals(field)) return "没有找到匹配的部门，请检查部门名称";
+        if("salesperson".equals(field)) return "没有找到匹配的业务员，请检查业务员名称";
         if("party".equals(field)) {
             boolean supplier=Arrays.asList(AssistantPlan.Metric.PURCHASE,AssistantPlan.Metric.PAYMENT,
                     AssistantPlan.Metric.PAYABLE).contains(metric);
@@ -248,6 +347,7 @@ public class AssistantQueryService {
             case "party": plan.setPartyId(id);break;
             case "product": plan.setProductId(id);break;
             case "dept": plan.setDepartmentId(id);break;
+            case "salesperson": plan.setSalespersonId(id);break;
             default: throw new IllegalArgumentException("候选类型无效");
         }
     }
@@ -264,7 +364,8 @@ public class AssistantQueryService {
         result.put("list",run(args,"details",pageSize)); return result;
     }
 
-    private ProductPriceResult sanitizeProductPrices(List<Map<String,Object>> summary,List<Map<String,Object>> rows,AssistantPlan plan) {
+    private ProductPriceResult sanitizeProductPrices(List<Map<String,Object>> summary,List<Map<String,Object>> rows,
+                                                     List<Map<String,Object>> productRows,AssistantPlan plan) {
         List<String> hiddenFields=permissions.getCurrentUserHiddenFields("erp_product");
         if(hiddenFields==null) throw new AssistantFailure("FORBIDDEN","字段权限尚未确定");
         Set<String> hidden=normalizeHidden(hiddenFields);
@@ -275,23 +376,84 @@ public class AssistantQueryService {
             String key=field.get("key");
             boolean selected=containsPriceField(requested,key);
             boolean fieldHidden=selected && hidden.contains(key.toLowerCase(Locale.ROOT));
-            if(!selected || fieldHidden) {removeKey(summary,key);removeKey(rows,key);hasHidden|=fieldHidden;continue;}
+            if(!selected || fieldHidden) {removeKey(summary,key);removeKey(rows,key);removeKey(productRows,key);hasHidden|=fieldHidden;continue;}
             permitted.add(field);
         }
-        if(permitted.isEmpty()) throw new AssistantFailure("NO_PERMISSION",specificPriceQuery(plan)
-                ? "当前账号没有查看"+requested.get(0).get("title")+"的权限"
-                : "当前账号没有可见的产品价格字段");
+        if(permitted.isEmpty()) {
+            if(implicitStockPriceQuery(plan)) return new ProductPriceResult(Collections.emptyList(),Collections.emptyList(),
+                    Collections.emptyList(),"NO_PERMISSION",null,"当前账号没有可见的产品价格字段");
+            throw new AssistantFailure("NO_PERMISSION",specificPriceQuery(plan)
+                    ? "当前账号没有查看"+requested.get(0).get("title")+"的权限"
+                    : "当前账号没有可见的产品价格字段");
+        }
         List<Map<String,String>> available=new ArrayList<>();
         List<Map<String,String>> missing=new ArrayList<>();
         for(Map<String,String> field:permitted) {
             String key=field.get("key");
-            boolean present=containsNonNull(summary,key) || containsNonNull(rows,key);
+            boolean present=containsNonNull(summary,key) || containsNonNull(rows,key) || containsNonNull(productRows,key);
             if(present) available.add(field);
-            else {missing.add(field);removeKey(summary,key);removeKey(rows,key);}
+            else {missing.add(field);removeKey(summary,key);removeKey(rows,key);removeKey(productRows,key);}
         }
         String status=available.isEmpty()?"NOT_MAINTAINED":missing.isEmpty()?"AVAILABLE":"PARTIAL";
         String notice=priceNotice(plan,available,missing,hasHidden);
-        return new ProductPriceResult(available,missing,status,notice);
+        return new ProductPriceResult(permitted,available,missing,status,notice,null);
+    }
+
+    private static List<Map<String,Object>> buildProductResults(List<Map<String,Object>> rows,
+                                                                 ProductPriceResult priceResult,AssistantPlan plan) {
+        Map<Long,ProductResultAccumulator> grouped=new LinkedHashMap<>();
+        for(Map<String,Object> row:rows) {
+            Object rawId=row.get("productId");if(!(rawId instanceof Number)) continue;
+            long productId=((Number)rawId).longValue();
+            ProductResultAccumulator item=grouped.computeIfAbsent(productId,id->new ProductResultAccumulator(id));
+            if(item.name==null && row.get("productName")!=null) item.name=String.valueOf(row.get("productName"));
+            if(item.unit==null && row.get("unit")!=null) item.unit=String.valueOf(row.get("unit"));
+            for(Map<String,String> field:priceResult.permittedFields) {
+                Object value=row.get(field.get("key"));if(value!=null) item.prices.putIfAbsent(field.get("key"),value);
+            }
+            Object rawWarehouseId=row.get("warehouseId"),rawWarehouseName=row.get("warehouseName");
+            BigDecimal amount=decimal(row.get("amount"));
+            if(rawWarehouseId instanceof Number && rawWarehouseName!=null && amount.compareTo(BigDecimal.ZERO)!=0) {
+                long warehouseId=((Number)rawWarehouseId).longValue();
+                WarehouseStockAccumulator stock=item.stocks.computeIfAbsent(warehouseId,
+                        id->new WarehouseStockAccumulator(id,String.valueOf(rawWarehouseName)));
+                stock.amount=stock.amount.add(amount);
+            }
+        }
+        List<ProductResultAccumulator> ordered=new ArrayList<>(grouped.values());
+        Map<Long,Integer> order=new HashMap<>();
+        for(int index=0;index<plan.getProductIds().size();index++) order.put(plan.getProductIds().get(index),index);
+        ordered.sort(Comparator.comparingInt(value->order.getOrDefault(value.id,Integer.MAX_VALUE)));
+        List<Map<String,Object>> result=new ArrayList<>();
+        for(ProductResultAccumulator item:ordered) {
+            Map<String,Object> product=new LinkedHashMap<>();product.put("productId",item.id);
+            product.put("productName",item.name);product.put("unit",item.unit);
+            List<Map<String,Object>> prices=new ArrayList<>();List<Map<String,String>> missing=new ArrayList<>();
+            for(Map<String,String> field:priceResult.permittedFields) {
+                Object value=item.prices.get(field.get("key"));
+                if(value==null) missing.add(field);
+                else {Map<String,Object> price=new LinkedHashMap<>();price.put("key",field.get("key"));
+                    price.put("title",field.get("title"));price.put("value",value);price.put("unit","元");prices.add(price);}
+            }
+            product.put("prices",prices);product.put("missingPriceFields",missing);
+            if(prices.isEmpty() && priceResult.emptyMessage!=null)
+                product.put("priceDisplayText",priceResult.emptyMessage);
+            List<WarehouseStockAccumulator> stocks=new ArrayList<>(item.stocks.values());
+            stocks.removeIf(stock->stock.amount.compareTo(BigDecimal.ZERO)==0);
+            stocks.sort(Comparator.comparing((WarehouseStockAccumulator stock)->stock.amount).reversed()
+                    .thenComparing(stock->stock.name));
+            List<Map<String,Object>> warehouseStocks=new ArrayList<>();
+            for(WarehouseStockAccumulator stock:stocks) {Map<String,Object> value=new LinkedHashMap<>();
+                value.put("warehouseId",stock.id);value.put("warehouseName",stock.name);value.put("amount",stock.amount);
+                warehouseStocks.add(value);}
+            product.put("warehouseStocks",warehouseStocks);result.add(product);
+        }
+        return result;
+    }
+
+    private static BigDecimal decimal(Object value) {
+        if(value==null) return BigDecimal.ZERO;
+        try{return new BigDecimal(String.valueOf(value));}catch(NumberFormatException ignored){return BigDecimal.ZERO;}
     }
     private static Map<String,String> priceField(String key,String title) {Map<String,String> row=new LinkedHashMap<>();row.put("key",key);row.put("title",title);return row;}
     private static List<Map<String,String>> requestedPriceFields(AssistantPlan plan) {
@@ -302,6 +464,9 @@ public class AssistantQueryService {
     }
     private static boolean specificPriceQuery(AssistantPlan plan) {
         return plan.getPriceQueryMode()==AssistantPlan.PriceQueryMode.SPECIFIC;
+    }
+    private static boolean implicitStockPriceQuery(AssistantPlan plan) {
+        return plan.isProductResultTable() && plan.getPriceQueryMode()==AssistantPlan.PriceQueryMode.NONE;
     }
     private static boolean containsPriceField(List<Map<String,String>> fields,String key) {
         for(Map<String,String> field:fields) if(key.equals(field.get("key"))) return true;
@@ -347,12 +512,25 @@ public class AssistantQueryService {
         return true;
     }
     private static final class ProductPriceResult {
+        final List<Map<String,String>> permittedFields;
         final List<Map<String,String>> availableFields;
         final List<Map<String,String>> missingFields;
         final String status;
         final String notice;
-        ProductPriceResult(List<Map<String,String>> availableFields,List<Map<String,String>> missingFields,String status,String notice) {
-            this.availableFields=availableFields;this.missingFields=missingFields;this.status=status;this.notice=notice;
+        final String emptyMessage;
+        ProductPriceResult(List<Map<String,String>> permittedFields,List<Map<String,String>> availableFields,
+                           List<Map<String,String>> missingFields,String status,String notice,String emptyMessage) {
+            this.permittedFields=permittedFields;this.availableFields=availableFields;this.missingFields=missingFields;
+            this.status=status;this.notice=notice;this.emptyMessage=emptyMessage;
         }
+    }
+    private static final class ProductResultAccumulator {
+        final long id;String name;String unit;final Map<String,Object> prices=new LinkedHashMap<>();
+        final Map<Long,WarehouseStockAccumulator> stocks=new LinkedHashMap<>();
+        ProductResultAccumulator(long id){this.id=id;}
+    }
+    private static final class WarehouseStockAccumulator {
+        final long id;final String name;BigDecimal amount=BigDecimal.ZERO;
+        WarehouseStockAccumulator(long id,String name){this.id=id;this.name=name;}
     }
 }

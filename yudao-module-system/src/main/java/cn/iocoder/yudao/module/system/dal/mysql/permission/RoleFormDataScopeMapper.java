@@ -23,6 +23,14 @@ public interface RoleFormDataScopeMapper extends BaseMapperX<RoleFormDataScopeDO
                 .eq(RoleFormDataScopeDO::getFormKey, formKey));
     }
 
+    default List<RoleFormDataScopeDO> selectListByRoleIds(Collection<Long> roleIds) {
+        if (CollUtil.isEmpty(roleIds)) {
+            return Collections.emptyList();
+        }
+        return selectList(new LambdaQueryWrapperX<RoleFormDataScopeDO>()
+                .in(RoleFormDataScopeDO::getRoleId, roleIds));
+    }
+
     default List<RoleFormDataScopeDO> selectListByRoleId(Long roleId) {
         return selectList(new LambdaQueryWrapperX<RoleFormDataScopeDO>()
                 .eq(RoleFormDataScopeDO::getRoleId, roleId));

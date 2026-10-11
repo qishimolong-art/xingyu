@@ -56,6 +56,10 @@ public class ErpPurchaseInDO extends BaseDO {
      * 入库时间
      */
     private LocalDateTime inTime;
+    /**
+     * 审批时间。仅在审批事务成功时写入。
+     */
+    private LocalDateTime approveTime;
 
     /**
      * 采购订单编号

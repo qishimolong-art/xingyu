@@ -5,12 +5,17 @@ import cn.iocoder.yudao.module.erp.controller.admin.cloudprint.vo.ErpCloudPrintD
 import cn.iocoder.yudao.module.erp.controller.admin.cloudprint.vo.ErpCloudPrintDeviceRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.cloudprint.vo.ErpCloudPrintDeviceSaveReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.cloudprint.vo.ErpCloudPrintTaskRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.cloudprint.vo.ErpCloudPrintPreviewSaleOutRespVO;
 
 import java.util.List;
 
 public interface ErpCloudPrintService {
 
-    List<ErpCloudPrintTaskRespVO> submitSaleOut(Long saleOutId, Integer copies, Long templateId);
+    ErpCloudPrintPreviewSaleOutRespVO previewSaleOut(Long saleOutId, Integer copies, Long templateId);
+
+    byte[] getSaleOutPreviewFile(String previewToken, String previewItemId);
+
+    List<ErpCloudPrintTaskRespVO> submitSaleOut(String previewToken);
 
     List<ErpCloudPrintTaskRespVO> getTaskListBySaleOut(Long saleOutId);
 

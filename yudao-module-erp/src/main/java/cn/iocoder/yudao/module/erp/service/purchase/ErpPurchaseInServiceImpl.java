@@ -854,8 +854,9 @@ public class ErpPurchaseInServiceImpl implements ErpPurchaseInService {
         validatePurchaseInSupplierDept(supplier, purchaseIn.getDeptId());
 
         // Update status.
+        LocalDateTime approveTime = LocalDateTime.now();
         int updateCount = purchaseInMapper.updateByIdAndStatus(id, purchaseIn.getStatus(),
-                new ErpPurchaseInDO().setStatus(ErpAuditStatus.APPROVE.getStatus()));
+                new ErpPurchaseInDO().setStatus(ErpAuditStatus.APPROVE.getStatus()).setApproveTime(approveTime));
         if (updateCount == 0) {
             throw exception(PURCHASE_IN_APPROVE_FAIL);
         }

@@ -770,8 +770,9 @@ public class ErpPurchaseReturnServiceImpl implements ErpPurchaseReturnService {
         }
 
         // Update status.
+        LocalDateTime approveTime = LocalDateTime.now();
         int updateCount = purchaseReturnMapper.updateByIdAndStatus(id, purchaseReturn.getStatus(),
-                new ErpPurchaseReturnDO().setStatus(ErpAuditStatus.APPROVE.getStatus()));
+                new ErpPurchaseReturnDO().setStatus(ErpAuditStatus.APPROVE.getStatus()).setApproveTime(approveTime));
         if (updateCount == 0) {
             throw exception(PURCHASE_RETURN_APPROVE_FAIL);
         }

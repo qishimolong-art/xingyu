@@ -10,7 +10,8 @@ import java.util.*;
 @Data
 public class AssistantPlan {
     public enum Metric { SALE, PURCHASE, STOCK, STOCK_SKU, RECEIPT, PAYMENT, RECEIVABLE, PAYABLE }
-    public enum Group { NONE, DAY, PARTY, PRODUCT, DEPT, WAREHOUSE }
+    public enum Group { NONE, DAY, PARTY, PRODUCT, DEPT, WAREHOUSE, SALESPERSON }
+    public enum SalesMeasure { AMOUNT, QUANTITY }
     public enum RankOrder { DESC, ASC }
     public enum PresentationMode { SUMMARY, RANKING, TREND, DISTRIBUTION, DETAIL }
     public enum PriceQueryMode { NONE, ALL, SPECIFIC }
@@ -23,10 +24,20 @@ public class AssistantPlan {
     private String party;
     private String product;
     private String department;
+    private String salesperson;
     private Long warehouseId;
     private Long partyId;
     private Long productId;
+    /** Server-resolved product ids for the compact price/stock result table. */
+    private List<Long> productIds = new ArrayList<>();
+    /** Whether the product price/stock tool should return its dedicated table payload. */
+    private boolean productResultTable;
+    /** Whether more matched products existed beyond the dedicated table limit. */
+    private boolean productMatchTruncated;
     private Long departmentId;
+    private Long salespersonId;
+    /** Server-normalized sales measure. Missing values from old history default to amount. */
+    private SalesMeasure salesMeasure = SalesMeasure.AMOUNT;
     private String stockMode = "ALL";
     private int limit = 10;
     private RankOrder rankOrder = RankOrder.DESC;
@@ -63,8 +74,14 @@ public class AssistantPlan {
             throw new IllegalArgumentException("请明确查询指标，排名最多支持 50 项");
         if (priceQueryMode == null)
             throw new IllegalArgumentException("价格查询类型无效");
+        if (salesMeasure == null) salesMeasure = SalesMeasure.AMOUNT;
         if (priceQueryMode == PriceQueryMode.SPECIFIC && (priceField == null || priceField.trim().isEmpty()))
             throw new IllegalArgumentException("请明确要查询的价格类型");
+        if (productIds == null) productIds = new ArrayList<>();
+        if (productIds.size() > 10 || productIds.stream().anyMatch(id -> id == null || id <= 0))
+            throw new IllegalArgumentException("产品匹配结果无效");
+        if (productResultTable && metric != Metric.STOCK)
+            throw new IllegalArgumentException("产品价格库存表仅支持当前库存查询");
         if (!Arrays.asList("ALL", "POSITIVE", "NEGATIVE", "AVAILABLE").contains(stockMode))
             throw new IllegalArgumentException("库存口径无效");
         if (current() && (group == Group.DAY || (period != null && !"CURRENT".equals(period))))
@@ -74,6 +91,8 @@ public class AssistantPlan {
             throw new IllegalArgumentException("请明确统计时间");
         if (group == Group.WAREHOUSE && metric != Metric.STOCK && metric != Metric.STOCK_SKU)
             throw new IllegalArgumentException("该指标尚未开放仓库维度");
+        if (group == Group.SALESPERSON && metric != Metric.SALE && metric != Metric.RECEIVABLE)
+            throw new IllegalArgumentException("该指标不支持业务员维度");
         if (group == Group.PRODUCT && !Arrays.asList(Metric.STOCK, Metric.STOCK_SKU, Metric.SALE, Metric.PURCHASE).contains(metric))
             throw new IllegalArgumentException("该指标尚未开放配件维度");
         if (group == Group.PARTY && (metric == Metric.STOCK || metric == Metric.STOCK_SKU))
@@ -88,7 +107,11 @@ public class AssistantPlan {
             throw new IllegalArgumentException("该指标尚未开放仓库筛选");
         if (product != null && metric != Metric.STOCK && metric != Metric.STOCK_SKU && group != Group.PRODUCT)
             throw new IllegalArgumentException("按配件筛选时请选择配件统计口径");
-        for (String filter : Arrays.asList(warehouse, party, product, department))
+        if (salesperson != null && metric != Metric.SALE && metric != Metric.RECEIVABLE)
+            throw new IllegalArgumentException("该指标不支持业务员筛选");
+        if (metric != Metric.SALE && salesMeasure == SalesMeasure.QUANTITY)
+            throw new IllegalArgumentException("只有销售指标支持数量口径");
+        for (String filter : Arrays.asList(warehouse, party, product, department, salesperson))
             if (filter != null && (filter.trim().isEmpty() || filter.length() > 80))
                 throw new IllegalArgumentException("筛选名称长度须为 1 至 80 个字符");
     }

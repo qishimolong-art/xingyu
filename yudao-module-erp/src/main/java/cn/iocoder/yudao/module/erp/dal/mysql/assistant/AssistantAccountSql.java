@@ -3,12 +3,22 @@ package cn.iocoder.yudao.module.erp.dal.mysql.assistant;
 import cn.iocoder.yudao.module.erp.service.assistant.AssistantPlan;
 import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpSaleOutMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.purchase.ErpPurchaseInMapper;
+import cn.iocoder.yudao.module.erp.dal.mysql.finance.ErpMiscSettlementSql;
 import java.util.*;
 
 /** Account transaction evidence, paginated in SQL; never loads the legacy full detail list. */
 public final class AssistantAccountSql {
     private AssistantAccountSql() {}
     public static String source(AssistantPlan plan) {
+        return sources(plan,true);
+    }
+
+    /** Current balance sources. Write-off rows are evidence only and must not be counted twice. */
+    public static String balanceSource(AssistantPlan plan) {
+        return sources(plan,false);
+    }
+
+    private static String sources(AssistantPlan plan,boolean includeWriteoff) {
         boolean receivable=plan.getMetric()==AssistantPlan.Metric.RECEIVABLE;
         String party=receivable?"customer":"supplier", account=receivable?"receivable":"payable", cash=receivable?"receipt":"payment";
         String settlement=receivable?ErpSaleOutMapper.RECEIVABLE_ACCOUNT_SALE_AMOUNT_EXPRESSION:ErpPurchaseInMapper.ORIGINAL_SETTLEMENT_TOTAL_EXPRESSION;
@@ -19,15 +29,34 @@ public final class AssistantAccountSql {
         String cashAmount="-(CASE WHEN EXISTS(SELECT 1 FROM erp_"+account+"_other o WHERE o.source_id=t.id AND o.source_type='"+(receivable?"收款单优惠":"付款单折让")+"' AND o.status=20 AND o.deleted=0 AND o.tenant_id=t.tenant_id) THEN t."+cash+"_price ELSE t.total_price END)";
         rows.add(row(party,"finance_"+cash,receivable?"收款单":"付款单",cash+"_time",cashAmount,"finance_user_id",true,false));
         rows.add(row(party,account+"_other",receivable?"应收调账":"应付调账","biz_time","t."+account+"_amount",receivable?"handler_id":"creator",true,false));
-        // Write-off is shown separately; it must not be mistaken for actual cash received/paid.
-        rows.add(row(party,account+"_writeoff","核销","write_off_time","-t.write_off_amount",receivable?"operator_user_id":"creator",false,true));
+        rows.add(miscRow(receivable));
+        // Write-off is shown separately as evidence; it must not be mistaken for actual cash received/paid.
+        if(includeWriteoff) rows.add(row(party,account+"_writeoff","核销","write_off_time","-t.write_off_amount",receivable?"operator_user_id":"creator",false,true));
         return String.join(" UNION ALL ",rows);
+    }
+    private static String miscRow(boolean receivable) {
+        String party=receivable?"customer":"supplier";
+        String ledger=receivable?ErpMiscSettlementSql.RECEIVABLE_LEDGER:ErpMiscSettlementSql.PAYABLE_LEDGER;
+        String salesperson=receivable?"p.sale_user_id salespersonId,su.nickname salespersonName ":"NULL salespersonId,NULL salespersonName ";
+        String salespersonJoin=receivable?"LEFT JOIN system_users su ON su.id=p.sale_user_id AND su.deleted=0 AND su.tenant_id=t.tenant_id ":"";
+        return "SELECT CONCAT('"+(receivable?"receivable":"payable")+"_misc-',t.id,'-',COALESCE(t.document_id,0)) rowId,"
+                + "CONVERT(t.no USING utf8mb4) COLLATE utf8mb4_unicode_ci name,'"+(receivable?"其他应收":"其他应付")+"' docType,'元' unit,-t.amount amount,"
+                + "0 gross,0 refund,0 pending,1 documents,p.id partyId,p.name partyName,t.dept_id deptId,d.name deptName,DATE(t.biz_time) day,"
+                + "NULL productId,NULL productName,NULL warehouseId,NULL warehouseName,"+salesperson
+                + "FROM "+ledger+" t JOIN erp_"+party+" p ON p.id=t."+party+"_id AND p.deleted=0 AND p.tenant_id=t.tenant_id "
+                + salespersonJoin+"LEFT JOIN system_dept d ON d.id=t.dept_id AND d.deleted=0 AND d.tenant_id=t.tenant_id "
+                + "WHERE t.deleted=0 AND t.status=20 AND t.tenant_id=#{tenantId}"
+                + AssistantSql.scope("t","document","handler_id")+AssistantSql.scope("p","party",receivable?"sale_user_id":"creator");
     }
     private static String row(String party,String table,String label,String date,String amount,String self,boolean approved,boolean writeoff) {
         String no=writeoff?"COALESCE(t.biz_no,CAST(t.id AS CHAR))":"t.no";
+        boolean receivable="customer".equals(party);
+        String salesperson=receivable?"p.sale_user_id salespersonId,su.nickname salespersonName ":"NULL salespersonId,NULL salespersonName ";
+        String salespersonJoin=receivable?"LEFT JOIN system_users su ON su.id=p.sale_user_id AND su.deleted=0 AND su.tenant_id=t.tenant_id ":"";
         return "SELECT CONCAT('"+table+"-',t.id) rowId,CONVERT("+no+" USING utf8mb4) COLLATE utf8mb4_unicode_ci name,'"+label+"' docType,'元' unit,"+amount+" amount,0 gross,0 refund,0 pending,1 documents,"
-            +"p.id partyId,p.name partyName,t.dept_id deptId,d.name deptName,DATE(t."+date+") day,NULL productId,NULL productName,NULL warehouseId,NULL warehouseName "
+            +"p.id partyId,p.name partyName,t.dept_id deptId,d.name deptName,DATE(t."+date+") day,NULL productId,NULL productName,NULL warehouseId,NULL warehouseName,"+salesperson
             +"FROM erp_"+table+" t JOIN erp_"+party+" p ON p.id=t."+party+"_id AND p.deleted=0 AND p.tenant_id=t.tenant_id "
+            +salespersonJoin
             +"LEFT JOIN system_dept d ON d.id=t.dept_id AND d.deleted=0 AND d.tenant_id=t.tenant_id "
             +"WHERE t.deleted=0 AND t.tenant_id=#{tenantId}"+(approved?" AND t.status=20":"")
             +AssistantSql.scope("t","document",self)+AssistantSql.scope("p","party",party.equals("customer")?"sale_user_id":"creator");

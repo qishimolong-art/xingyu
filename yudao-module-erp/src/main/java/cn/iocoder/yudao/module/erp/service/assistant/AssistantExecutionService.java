@@ -29,6 +29,11 @@ public class AssistantExecutionService {
     @Resource private AssistantOrchestrator orchestrator;
     @Resource private AssistantExecutionCodec codec;
     @Resource private AssistantEntityResolver entityResolver;
+    @Resource private AssistantCompanyKnowledge companyKnowledge;
+    @Resource private AssistantEngineRouter engineRouter;
+    @Resource private AssistantV2Engine v2Engine;
+    @Resource private AssistantSemanticAnalyzer semanticAnalyzer;
+    @Resource private AssistantPhoneticNormalizer phoneticNormalizer;
 
     private final ScheduledExecutorService deadlines = Executors.newSingleThreadScheduledExecutor();
     private final ExecutorService workers = new ThreadPoolExecutor(2, 4, 60, TimeUnit.SECONDS,
@@ -43,6 +48,10 @@ public class AssistantExecutionService {
         private String choiceField;
         private Long choiceId;
         private AssistantExecutionEnvelope savedEnvelope;
+        /** WEB_PAGE、WEB_DRAWER、WECOM 或 RERUN。 */
+        private String entry;
+        /** 发起问题时所在的前端路由；仅用于灰度和审计，不参与扩大权限。 */
+        private String currentPage;
     }
 
     public interface EventSink {
@@ -62,6 +71,16 @@ public class AssistantExecutionService {
         final AssistantTask task = new AssistantTask();
         final AtomicBoolean cancelled = new AtomicBoolean();
         Running(String conversation) { this.conversation = conversation; }
+    }
+
+    @Data
+    private static class EngineRun {
+        private AssistantExecutionEnvelope envelope;
+        private AssistantPlan plan;
+        private Map<String, Object> result;
+        private Object clarification;
+        private String status;
+        private long elapsedMillis;
     }
 
     @PreDestroy
@@ -124,8 +143,24 @@ public class AssistantExecutionService {
         AssistantPlan plan = null;
         AssistantExecutionEnvelope envelope = null;
         String status = "FAILED";
+        int usedTokens = 0;
+        AssistantSemanticRequest semanticRequest = null;
+        AssistantExecutionAudit executionAudit = null;
         try {
             AssistantTask.checkCurrent();
+            AssistantPhoneticNormalizer.Normalization normalization = phoneticNormalizer == null
+                    ? null : phoneticNormalizer.normalize(request.getQuestion());
+            if (phoneticNormalizer != null) phoneticNormalizer.begin(normalization);
+            Request executionRequest = executionRequest(request, normalization == null
+                    ? request.getQuestion() : normalization.getNormalizedQuestion());
+            if (normalization != null && normalization.needsClarification()) {
+                message = store.begin(request.getConversationId(), AssistantModelClient.redact(request.getQuestion()));
+                emit(sink, "started", Collections.singletonMap("requestId", requestId), running, start);
+                emit(sink, "progress", Collections.singletonMap("text", "正在确认同音词含义"), running, start);
+                envelope = phoneticEnvelope(request.getQuestion(), normalization.getNormalizedQuestion());
+                phoneticNormalizer.decorateEnvelope(envelope);
+                throw new AssistantOrchestrationClarification(envelope, normalization.clarification());
+            }
             AssistantExecutionEnvelope savedEnvelope = request.getSavedEnvelope();
             String prior = savedEnvelope == null ? store.previous(request.getConversationId()) : null;
             AssistantExecutionEnvelope previousEnvelope = prior == null ? null : codec.read(prior, null);
@@ -138,105 +173,113 @@ public class AssistantExecutionService {
                     previous = null;
                 }
             }
+            AssistantEngineRouter.Decision decision;
+            if (engineRouter == null) {
+                decision = new AssistantEngineRouter.Decision(AssistantEngineMode.V1, "V1", false, false, false,
+                        "COMPATIBILITY_DEFAULT");
+            } else {
+                semanticRequest = engineRouter.request(requestId, executionRequest, tenantId, previousEnvelope);
+                if (phoneticNormalizer != null) phoneticNormalizer.decorateSemanticRequest(semanticRequest);
+                decision = engineRouter.decide(semanticRequest);
+            }
+            executionAudit = new AssistantExecutionAudit();
+            executionAudit.setConfiguredMode(decision.getConfiguredMode().name());
+            executionAudit.setSelectedEngine(decision.getSelectedEngine());
+            executionAudit.setDecisionReason(decision.getReason());
+            executionAudit.setCapabilityFallback(decision.isCapabilityFallback());
+            executionAudit.setEntryFallback(decision.isEntryFallback());
+
             message = store.begin(request.getConversationId(), AssistantModelClient.redact(request.getQuestion()));
             emit(sink, "started", Collections.singletonMap("requestId", requestId), running, start);
             emit(sink, "progress", Collections.singletonMap("text", "正在理解问题"), running, start);
-            AssistantPlan parsePrevious = AssistantModelClient.continuationContext(request.getQuestion(), previous);
+            AssistantPlan parsePrevious = AssistantModelClient.continuationContext(executionRequest.getQuestion(), previous);
             boolean hybridSchemaReady = store.hybridAuditSchemaReady();
             if (savedEnvelope != null
                     && savedEnvelope.getRouteType() != AssistantExecutionEnvelope.RouteType.VERIFIED_METRIC
+                    && savedEnvelope.getRouteType() != AssistantExecutionEnvelope.RouteType.KNOWLEDGE
                     && !hybridSchemaReady) {
                 throw new AssistantFailure("MIGRATION_REQUIRED", "智能查询审计扩展尚未完成数据库迁移");
             }
-            boolean useNew = (orchestrator.enabledForCurrentUser() && hybridSchemaReady)
-                    || savedEnvelope != null
-                    && savedEnvelope.getRouteType() != AssistantExecutionEnvelope.RouteType.VERIFIED_METRIC;
-            boolean orchestrationChoice = request.getChoiceField() != null && previousEnvelope != null
-                    && previousEnvelope.getLegacyPlan() == null;
-            if (useNew && (request.getChoiceField() == null || orchestrationChoice)) {
-                emit(sink, "route", Collections.singletonMap("mode", "HYBRID"), running, start);
-                emit(sink, "tool-progress", Collections.singletonMap("text", "正在选择安全查询工具"), running, start);
-                AssistantOrchestrator.Outcome outcome = orchestrationChoice
-                        ? orchestrator.resumeChoice(previousEnvelope, request.getChoiceField(), request.getChoiceId(),
-                        request.getQuestion(), authorizedCatalog())
-                        : orchestrator.execute(savedEnvelope != null ? savedEnvelope.getQuestion() : request.getQuestion(),
-                        previousEnvelope, authorizedCatalog());
-                envelope = outcome.getEnvelope();
-                plan = envelope.getLegacyPlan();
-                if (outcome.getClarification() != null) {
-                    status = "CLARIFY";
-                    emit(sink, "clarification", outcome.getClarification(), running, start);
-                } else {
-                    Map<String, Object> result = outcome.getResult();
-                    result.put("messageId", message);
-                    status = (String) result.get("status");
-                    emit(sink, "result", result, running, start);
-                    if (!running.cancelled.get() && System.currentTimeMillis() - start < 38_000) {
-                        Object answerText = result.get("answerText");
-                        String explanation = answerText instanceof String && !((String) answerText).trim().isEmpty()
-                                ? (String) answerText : model.explain(result);
-                        emit(sink, "explanation", Collections.singletonMap("text", explanation), running, start);
-                    }
-                }
-            } else {
-                if (savedEnvelope != null) {
-                    plan = savedEnvelope.getLegacyPlan();
-                } else if (request.getChoiceField() != null) {
-                    if (previous == null) {
-                        throw new AssistantFailure("NOT_FOUND", "请先发起查询再选择候选对象");
-                    }
-                    if (!request.getChoiceField().equals(previous.getPendingField())
-                            || !previous.getPendingIds().contains(request.getChoiceId())) {
-                        throw new AssistantFailure("INVALID_CHOICE", "候选项已失效，请重新提问");
-                    }
-                    plan = previous;
-                    AssistantQueryService.assignChoice(plan, request.getChoiceField(), request.getChoiceId());
-                    plan.setPendingField(null);
-                    plan.setPendingIds(new ArrayList<>());
-                } else {
-                    plan = model.parse(request.getQuestion(), parsePrevious,
-                            knowledge.retrieve(request.getQuestion(), parsePrevious, authorizedCatalog()));
-                }
-                AssistantModelClient.normalizePlan(request.getQuestion(),
-                        savedEnvelope != null ? savedEnvelope.getLegacyPlan() : parsePrevious, plan);
-                AssistantPresentation.prepare(savedEnvelope != null ? savedEnvelope.getQuestion() : request.getQuestion(), plan);
-                AssistantTask.checkCurrent();
-                if (plan.getClarification() != null && !plan.getClarification().trim().isEmpty()) {
-                    status = "CLARIFY";
-                    emit(sink, "clarification", plan, running, start);
-                } else {
-                    emit(sink, "progress", Collections.singletonMap("text", "正在核对权限并查询"), running, start);
-                    if (entityResolver != null) {
-                        entityResolver.preparePlan(plan);
-                    }
-                    Map<String, Object> result = queries.execute(plan);
-                    result.put("messageId", message);
-                    status = (String) result.get("status");
-                    emit(sink, "result", result, running, start);
-                    if (!running.cancelled.get() && System.currentTimeMillis() - start < 38_000) {
-                        emit(sink, "explanation", Collections.singletonMap("text", model.explain(result)), running, start);
-                    }
-                }
-                envelope = AssistantExecutionEnvelope.metric(request.getQuestion(), plan);
+            EngineRun foreground;
+            try {
+                foreground = runEngine(decision.getSelectedEngine(), executionRequest, semanticRequest, previousEnvelope, previous,
+                        parsePrevious, hybridSchemaReady, sink, running, start, message, true);
+            } catch (Exception v2Failure) {
+                if (!"V2".equals(decision.getSelectedEngine()) || !propertiesFallbackOnError()
+                        || !automaticFallbackAllowed(v2Failure)) throw v2Failure;
+                usedTokens += model.takeTokens();
+                model.beginRequest();
+                executionAudit.setAutomaticFallback(true);
+                executionAudit.setFallbackCode(failureCode(v2Failure));
+                foreground = runEngine("V1", executionRequest, semanticRequest, previousEnvelope, previous, parsePrevious,
+                        hybridSchemaReady, sink, running, start, message, true);
+                decision.setSelectedEngine("V1");
+                executionAudit.setSelectedEngine("V1");
+                executionAudit.setDecisionReason("V2_ERROR_FALLBACK");
             }
+            envelope = foreground.getEnvelope();
+            plan = foreground.getPlan();
+            status = foreground.getStatus();
+            decorateEnvelope(envelope, semanticRequest, executionAudit, decision.getSelectedEngine());
+            AssistantUnifiedResult foregroundSummary = foreground.getClarification() == null
+                    ? AssistantUnifiedResult.success(decision.getSelectedEngine(), envelope,
+                    foreground.getResult(), foreground.getElapsedMillis())
+                    : AssistantUnifiedResult.clarification(decision.getSelectedEngine(), envelope,
+                    foreground.getElapsedMillis());
+            executionAudit.setForeground(foregroundSummary);
+            usedTokens += model.takeTokens();
+
+            if (decision.isShadowV2() && request.getChoiceField() == null && savedEnvelope == null
+                    && !running.cancelled.get()) {
+                model.beginRequest();
+                AssistantUnifiedResult shadowSummary;
+                try {
+                    EngineRun shadow = runEngine("V2", executionRequest, semanticRequest, previousEnvelope, previous, parsePrevious,
+                            hybridSchemaReady, sink, running, start, null, false);
+                    shadowSummary = shadow.getClarification() == null
+                            ? AssistantUnifiedResult.success("V2", shadow.getEnvelope(), shadow.getResult(), shadow.getElapsedMillis())
+                            : AssistantUnifiedResult.clarification("V2", shadow.getEnvelope(), shadow.getElapsedMillis());
+                } catch (Exception shadowFailure) {
+                    AssistantExecutionEnvelope failed = shadowFailure instanceof AssistantFailure
+                            ? ((AssistantFailure) shadowFailure).getEnvelope() : null;
+                    shadowSummary = AssistantUnifiedResult.failure("V2", failed, failureCode(shadowFailure), 0L);
+                } finally {
+                    usedTokens += model.takeTokens();
+                }
+                executionAudit.setShadowComparison(engineRouter.compareShadow(foregroundSummary, shadowSummary));
+            } else if (decision.isShadowV2()) {
+                Map<String, Object> skipped = new LinkedHashMap<>();
+                skipped.put("executed", false);
+                skipped.put("reason", "CHOICE_OR_RERUN_NOT_SHADOWED");
+                executionAudit.setShadowComparison(skipped);
+            }
+            decorateEnvelope(envelope, semanticRequest, executionAudit, decision.getSelectedEngine());
             store.finish(message, codec.write(envelope), plan == null || plan.getMetric() == null ? null : plan.getMetric().name(),
-                    knowledge.version(), status, System.currentTimeMillis() - start, model.takeTokens(), envelope);
+                    knowledgeVersion(envelope), status, System.currentTimeMillis() - start, usedTokens, envelope);
             message = null;
-            emit(sink, "done", Collections.singletonMap("status", status), running, start);
+            emit(sink, "done", AssistantEntryProtocol.done(status), running, start);
             sink.complete();
         } catch (Exception exception) {
             if (exception instanceof AssistantFailure && ((AssistantFailure) exception).getEnvelope() != null) {
                 envelope = ((AssistantFailure) exception).getEnvelope();
                 plan = envelope.getLegacyPlan();
             }
+            decorateEnvelope(envelope, semanticRequest, executionAudit,
+                    executionAudit == null ? "V1" : executionAudit.getSelectedEngine());
             if (exception instanceof AssistantOrchestrationClarification) {
                 AssistantOrchestrationClarification choice = (AssistantOrchestrationClarification) exception;
                 envelope = choice.getEnvelope();
                 plan = envelope.getLegacyPlan();
+                // 回滚到 V1 时，澄清信封仍需保留与 V2 一致的标准化语义请求，便于后续上下文和审计。
+                decorateEnvelope(envelope, semanticRequest, executionAudit,
+                        executionAudit == null ? "V1" : executionAudit.getSelectedEngine());
                 status = "CLARIFY";
                 try {
-                    emit(sink, "clarification", choice.getResponse(), running, start);
-                    emit(sink, "done", Collections.singletonMap("status", status), running, start);
+                    if (phoneticNormalizer != null && choice.getResponse() instanceof Map) {
+                        phoneticNormalizer.decorateClarification((Map<String, Object>) choice.getResponse());
+                    }
+                    emit(sink, "clarification", AssistantEntryProtocol.clarification(choice.getResponse()), running, start);
+                    emit(sink, "done", AssistantEntryProtocol.done(status), running, start);
                     sink.complete();
                 } catch (Exception ignored) {
                     sink.complete();
@@ -253,11 +296,8 @@ public class AssistantExecutionService {
                     String text = exception instanceof AssistantFailure
                             ? exception.getMessage() : "查询已停止或超时";
                     try {
-                        Map<String, String> error = new HashMap<>();
-                        error.put("code", status);
-                        error.put("text", text);
                         // 不再经过 emit() 的取消检查，确保机器人等非 SSE 通道也能收到终态。
-                        sink.emit("error", error);
+                        sink.emit("error", AssistantEntryProtocol.error(status, text));
                         sink.complete();
                     } catch (Exception ignored) {
                         sink.complete();
@@ -274,13 +314,14 @@ public class AssistantExecutionService {
                                 envelope = AssistantExecutionEnvelope.metric(request.getQuestion(), plan);
                             }
                             status = "CLARIFY";
-                            emit(sink, "clarification", ((AssistantEntityChoice) exception).response(), running, start);
-                            emit(sink, "done", Collections.singletonMap("status", status), running, start);
+                            Map<String,Object> response=((AssistantEntityChoice) exception).response();
+                            if(phoneticNormalizer!=null) phoneticNormalizer.decorateClarification(response);
+                            emit(sink, "clarification",
+                                    AssistantEntryProtocol.clarification(response),
+                                    running, start);
+                            emit(sink, "done", AssistantEntryProtocol.done(status), running, start);
                         } else {
-                            Map<String, String> error = new HashMap<>();
-                            error.put("code", code);
-                            error.put("text", text);
-                            sink.emit("error", error);
+                            sink.emit("error", AssistantEntryProtocol.error(code, text));
                         }
                         sink.complete();
                     } catch (Exception ignored) {
@@ -291,9 +332,10 @@ public class AssistantExecutionService {
         } finally {
             try {
                 if (message != null) {
+                    usedTokens += model.takeTokens();
                     store.finish(message, codec.write(envelope),
                             plan == null || plan.getMetric() == null ? null : plan.getMetric().name(),
-                            knowledge.version(), status, System.currentTimeMillis() - start, model.takeTokens(), envelope);
+                            knowledgeVersion(envelope), status, System.currentTimeMillis() - start, usedTokens, envelope);
                 }
             } catch (Exception ignored) {
                 log.error("Assistant audit persistence failed for message {}", message);
@@ -303,9 +345,156 @@ public class AssistantExecutionService {
             active.remove(requestId);
             AssistantTask.clear();
             busy.remove(request.getConversationId());
+            if (phoneticNormalizer != null) phoneticNormalizer.clear();
             TenantContextHolder.clear();
             SecurityContextHolder.clearContext();
         }
+    }
+
+    private EngineRun runEngine(String engine, Request request, AssistantSemanticRequest semanticRequest,
+                                AssistantExecutionEnvelope previousEnvelope,
+                                AssistantPlan previous, AssistantPlan parsePrevious, boolean hybridSchemaReady,
+                                EventSink sink, Running running, long requestStart, String message,
+                                boolean emitEvents) throws Exception {
+        long engineStart = System.currentTimeMillis();
+        boolean forceV2 = "V2".equals(engine);
+        if (forceV2 && !hybridSchemaReady) {
+            throw new AssistantFailure("MIGRATION_REQUIRED", "V2 所需的智能查询审计扩展尚未完成数据库迁移");
+        }
+        AssistantExecutionEnvelope savedEnvelope = request.getSavedEnvelope();
+        boolean useNew = forceV2 || (orchestrator.enabledForCurrentUser() && hybridSchemaReady)
+                || savedEnvelope != null
+                && savedEnvelope.getRouteType() != AssistantExecutionEnvelope.RouteType.VERIFIED_METRIC;
+        boolean orchestrationChoice = request.getChoiceField() != null && previousEnvelope != null
+                && previousEnvelope.getLegacyPlan() == null;
+        EngineRun run = new EngineRun();
+        if (useNew && (request.getChoiceField() == null || orchestrationChoice)) {
+            emitIf(emitEvents, sink, "route", Collections.singletonMap("mode", forceV2 ? "V2" : "HYBRID"),
+                    running, requestStart);
+            emitIf(emitEvents, sink, "tool-progress", Collections.singletonMap("text", "正在选择安全查询工具"),
+                    running, requestStart);
+            AssistantOrchestrator.Outcome outcome;
+            if (forceV2 && v2Engine != null) {
+                outcome = orchestrationChoice
+                        ? v2Engine.resumeChoice(semanticRequest, previousEnvelope, request.getChoiceField(), request.getChoiceId(),
+                        request.getQuestion(), authorizedCatalog())
+                        : v2Engine.execute(semanticRequest,
+                        savedEnvelope != null ? savedEnvelope.getQuestion() : request.getQuestion(),
+                        previousEnvelope, authorizedCatalog());
+            } else {
+                outcome = orchestrationChoice
+                        ? orchestrator.resumeChoice(previousEnvelope, request.getChoiceField(), request.getChoiceId(),
+                        request.getQuestion(), authorizedCatalog())
+                        : orchestrator.execute(savedEnvelope != null ? savedEnvelope.getQuestion() : request.getQuestion(),
+                        previousEnvelope, authorizedCatalog());
+            }
+            run.setEnvelope(outcome.getEnvelope());
+            run.setPlan(run.getEnvelope().getLegacyPlan());
+            if (outcome.getClarification() != null) {
+                run.setStatus("CLARIFY");
+                run.setClarification(AssistantClarification.fromPlan(outcome.getClarification()));
+            } else {
+                run.setResult(outcome.getResult());
+                run.setStatus(String.valueOf(run.getResult().get("status")));
+            }
+        } else {
+            AssistantPlan plan;
+            if (savedEnvelope != null) {
+                plan = savedEnvelope.getLegacyPlan();
+            } else if (request.getChoiceField() != null) {
+                if (previous == null) throw new AssistantFailure("NOT_FOUND", "请先发起查询再选择候选对象");
+                if (!request.getChoiceField().equals(previous.getPendingField())
+                        || !previous.getPendingIds().contains(request.getChoiceId())) {
+                    throw new AssistantFailure("INVALID_CHOICE", "候选项已失效，请重新提问");
+                }
+                plan = previous;
+                AssistantQueryService.assignChoice(plan, request.getChoiceField(), request.getChoiceId());
+                plan.setPendingField(null);
+                plan.setPendingIds(new ArrayList<>());
+            } else {
+                plan = model.parse(request.getQuestion(), parsePrevious,
+                        knowledge.retrieve(request.getQuestion(), parsePrevious, authorizedCatalog()));
+            }
+            AssistantModelClient.normalizePlan(request.getQuestion(),
+                    savedEnvelope != null ? savedEnvelope.getLegacyPlan() : previous, plan);
+            AssistantPresentation.prepare(savedEnvelope != null ? savedEnvelope.getQuestion() : request.getQuestion(), plan);
+            AssistantTask.checkCurrent();
+            run.setPlan(plan);
+            run.setEnvelope(AssistantExecutionEnvelope.metric(request.getQuestion(), plan));
+            if (plan.getClarification() != null && !plan.getClarification().trim().isEmpty()) {
+                run.setStatus("CLARIFY");
+                run.setClarification(AssistantClarification.fromPlan(plan));
+            } else {
+                emitIf(emitEvents, sink, "progress", Collections.singletonMap("text", "正在核对权限并查询"),
+                        running, requestStart);
+                if (entityResolver != null) entityResolver.preparePlan(plan);
+                run.setResult(queries.execute(plan));
+                run.setStatus(String.valueOf(run.getResult().get("status")));
+            }
+        }
+        if (phoneticNormalizer != null) {
+            if (run.getResult() != null) phoneticNormalizer.decorateResult(run.getResult());
+            if (run.getClarification() instanceof Map) {
+                phoneticNormalizer.decorateClarification((Map<String, Object>) run.getClarification());
+            }
+            phoneticNormalizer.decorateEnvelope(run.getEnvelope());
+        }
+        emitEngineOutput(run, message, emitEvents, sink, running, requestStart);
+        run.setElapsedMillis(System.currentTimeMillis() - engineStart);
+        return run;
+    }
+
+    /** V1、V2 和三个入口共用同一套结果、澄清与解释输出规则。 */
+    private void emitEngineOutput(EngineRun run, String message, boolean emitEvents, EventSink sink,
+                                  Running running, long requestStart) throws Exception {
+        if (run.getClarification() != null) {
+            emitIf(emitEvents, sink, "clarification",
+                    AssistantEntryProtocol.clarification(run.getClarification()), running, requestStart);
+            return;
+        }
+        if (run.getResult() == null) throw new AssistantFailure("SYSTEM_ERROR", "查询引擎未返回结果");
+        if (message != null) run.getResult().put("messageId", message);
+        emitIf(emitEvents, sink, "result",
+                AssistantEntryProtocol.result(run.getResult(), run.getEnvelope(), message), running, requestStart);
+        if (!emitEvents || running.cancelled.get() || System.currentTimeMillis() - requestStart >= 38_000) return;
+        Object answerText = run.getResult().get("answerText");
+        String explanation = answerText instanceof String && !((String) answerText).trim().isEmpty()
+                ? (String) answerText : model.explain(run.getResult());
+        emit(sink, "explanation", Collections.singletonMap("text", explanation), running, requestStart);
+    }
+
+    private void emitIf(boolean enabled, EventSink sink, String event, Object data,
+                        Running running, long start) throws Exception {
+        if (enabled) emit(sink, event, data, running, start);
+        else AssistantTask.checkCurrent();
+    }
+
+    private boolean propertiesFallbackOnError() {
+        return engineRouter != null && engineRouter.propertiesFallbackOnError();
+    }
+
+    private static boolean automaticFallbackAllowed(Exception exception) {
+        if (!(exception instanceof AssistantFailure)) return true;
+        String code = ((AssistantFailure) exception).getCode();
+        return Arrays.asList("QUERY_FAILED", "SYSTEM_ERROR", "CAPABILITY_UNAVAILABLE", "MODEL_TIMEOUT",
+                "TEXT_TO_SQL_DISABLED", "MIGRATION_REQUIRED").contains(code);
+    }
+
+    private static String failureCode(Exception exception) {
+        return exception instanceof AssistantFailure ? ((AssistantFailure) exception).getCode() : "SYSTEM_ERROR";
+    }
+
+    private void decorateEnvelope(AssistantExecutionEnvelope envelope, AssistantSemanticRequest request,
+                                  AssistantExecutionAudit audit, String engine) {
+        if (envelope == null) return;
+        if (semanticAnalyzer != null) semanticAnalyzer.mergeRuntime(request, envelope);
+        if (phoneticNormalizer != null) {
+            phoneticNormalizer.decorateSemanticRequest(request);
+            phoneticNormalizer.decorateEnvelope(envelope);
+        }
+        envelope.setSemanticRequest(request);
+        envelope.setExecutionAudit(audit);
+        envelope.setEngine(engine == null ? "V1" : engine);
     }
 
     private List<Map<String, Object>> authorizedCatalog() {
@@ -319,6 +508,12 @@ public class AssistantExecutionService {
             }
         }
         return result;
+    }
+
+    private String knowledgeVersion(AssistantExecutionEnvelope envelope) {
+        return envelope != null && (envelope.getRouteType() == AssistantExecutionEnvelope.RouteType.KNOWLEDGE
+                || envelope.getRouteType() == AssistantExecutionEnvelope.RouteType.MIXED)
+                ? companyKnowledge.version() : knowledge.version();
     }
 
     private void emit(EventSink sink, String event, Object data, Running running, long start) throws Exception {
@@ -340,5 +535,19 @@ public class AssistantExecutionService {
         } else {
             running.task.cancel();
         }
+    }
+
+    private static Request executionRequest(Request source,String question) {
+        Request result=new Request();result.setConversationId(source.getConversationId());result.setQuestion(question);
+        result.setChoiceField(source.getChoiceField());result.setChoiceId(source.getChoiceId());
+        result.setSavedEnvelope(source.getSavedEnvelope());result.setEntry(source.getEntry());result.setCurrentPage(source.getCurrentPage());
+        return result;
+    }
+
+    private static AssistantExecutionEnvelope phoneticEnvelope(String original,String normalized) {
+        AssistantExecutionEnvelope result=new AssistantExecutionEnvelope();result.setQuestion(normalized);
+        result.setOriginalQuestion(AssistantModelClient.redact(original));result.setNormalizedQuestion(AssistantModelClient.redact(normalized));
+        result.setRouteType(AssistantExecutionEnvelope.RouteType.BUSINESS_TOOL);result.setToolName("phonetic_clarification");
+        return result;
     }
 }

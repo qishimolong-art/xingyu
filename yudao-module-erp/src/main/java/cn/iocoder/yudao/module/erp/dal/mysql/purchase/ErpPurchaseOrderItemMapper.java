@@ -9,6 +9,7 @@ import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.order.ErpPurchas
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.stock.ErpStockInTransitDetailRespVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseOrderItemDO;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.core.toolkit.support.SFunction;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
@@ -167,6 +168,19 @@ public interface ErpPurchaseOrderItemMapper extends BaseMapperX<ErpPurchaseOrder
 
     default Long selectCountByWarehouseId(Long warehouseId) {
         return selectCount(ErpPurchaseOrderItemDO::getWarehouseId, warehouseId);
+    }
+
+    default int updateStockCountAtOrderIfNull(Long id, BigDecimal stockCount) {
+        return update(null, new LambdaUpdateWrapper<ErpPurchaseOrderItemDO>()
+                .eq(ErpPurchaseOrderItemDO::getId, id)
+                .isNull(ErpPurchaseOrderItemDO::getStockCountAtOrder)
+                .set(ErpPurchaseOrderItemDO::getStockCountAtOrder, stockCount));
+    }
+
+    default int clearStockCountAtOrder(Long id) {
+        return update(null, new LambdaUpdateWrapper<ErpPurchaseOrderItemDO>()
+                .eq(ErpPurchaseOrderItemDO::getId, id)
+                .set(ErpPurchaseOrderItemDO::getStockCountAtOrder, null));
     }
 
     /**

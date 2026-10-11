@@ -65,6 +65,9 @@ class ErpSalePickDeliveryQuantityTest extends BaseMockitoUnitTest {
         when(itemMapper.selectCountByOrderIdAndDeliveryStatus(1L, 30)).thenAnswer(inv -> item.getDeliveryStatus() == 30 ? 1L : 0L);
         when(itemMapper.hasPickProgress(any(), any())).thenAnswer(inv -> item.getPickedCount().signum() > 0);
         when(itemMapper.hasDeliveryProgress(1L)).thenAnswer(inv -> item.getDeliveredCount().signum() > 0);
+        when(itemMapper.hasAvailableDelivery(1L)).thenAnswer(inv -> item.getPickedCount().compareTo(item.getDeliveredCount()) > 0);
+        when(itemMapper.selectCountByOrderIdWithAvailableDelivery(1L)).thenAnswer(inv ->
+                item.getPickedCount().compareTo(item.getDeliveredCount()) > 0 ? 1L : 0L);
         when(pickTaskMapper.updateById(any(ErpSalePickDeliveryPickTaskDO.class))).thenAnswer(inv -> {
             task.setStatus(((ErpSalePickDeliveryPickTaskDO) inv.getArgument(0)).getStatus()); return 1;
         });
@@ -99,26 +102,56 @@ class ErpSalePickDeliveryQuantityTest extends BaseMockitoUnitTest {
         req.setFiles(Collections.singletonList(file())); return req;
     }
     private ErpSaleDeliverySubmitReqVO delivery(String value) {
-        ErpSaleDeliverySubmitReqVO req = new ErpSaleDeliverySubmitReqVO(); req.setOrderId(1L);
+        ErpSaleDeliverySubmitReqVO req = new ErpSaleDeliverySubmitReqVO(); req.setTaskId(2L);
         req.setRequestId(UUID.randomUUID().toString()); req.setItems(Collections.singletonList(quantity(value)));
         req.setFiles(Collections.singletonList(file())); return req;
     }
 
-    @Test void sixPlusFour_shouldCompleteOnlyAfterFinalBatchAndKeepOriginalCount() {
+    @Test void pickAndDeliveryCanAlternate_shouldCompleteOnlyAfterFinalDeliveryAndKeepOriginalCount() {
         service.submitPick(pick("6"));
         assertEquals(new BigDecimal("6"), item.getPickedCount());
         assertEquals(20, item.getPickStatus()); assertEquals(20, task.getStatus()); assertEquals(20, order.getPickStatus());
-        assertServiceException(() -> service.submitDelivery(delivery("6")), SALE_DELIVERY_NOT_READY);
-        service.submitPick(pick("4"));
-        assertEquals(30, task.getStatus()); assertEquals(30, order.getPickStatus()); assertEquals(10, order.getDeliveryStatus());
-        assertEquals(new BigDecimal("10"), item.getCount());
+        assertEquals(10, order.getDeliveryStatus());
         service.submitDelivery(delivery("6"));
         assertEquals(20, item.getDeliveryStatus()); assertEquals(20, order.getDeliveryStatus());
         verifyNoInteractions(stockMoveService);
+        service.submitPick(pick("4"));
+        assertEquals(30, task.getStatus()); assertEquals(30, order.getPickStatus()); assertEquals(20, order.getDeliveryStatus());
+        assertEquals(new BigDecimal("10"), item.getCount());
         ErpSaleDeliverySubmitReqVO last = delivery("4"); service.submitDelivery(last); service.submitDelivery(last);
         assertEquals(30, order.getDeliveryStatus());
         verify(stockMoveService, times(1)).approveSaleCartTransferOutAfterDelivery(6L, 88L);
         verify(submitItemMapper, times(4)).insert(any(ErpSalePickDeliverySubmitItemDO.class));
+    }
+    @Test void deliveryMustNotExceedPickedUndeliveredQuantity() {
+        service.submitPick(pick("6"));
+        service.submitDelivery(delivery("4"));
+        assertServiceException(() -> service.submitDelivery(delivery("3")), SALE_PICK_DELIVERY_QUANTITY_INVALID);
+        assertEquals(new BigDecimal("4"), item.getDeliveredCount());
+        verify(stockMoveService, never()).approveSaleCartTransferOutAfterDelivery(anyLong(), anyLong());
+    }
+    @Test void pickingAfterPartialDelivery_shouldNotOverwriteLatestDeliveryTime() {
+        service.submitPick(pick("6"));
+        service.submitDelivery(delivery("6"));
+        clearInvocations(orderMapper);
+        service.submitPick(pick("4"));
+        ArgumentCaptor<ErpSalePickDeliveryOrderDO> captor = ArgumentCaptor.forClass(ErpSalePickDeliveryOrderDO.class);
+        verify(orderMapper, times(2)).updateById(captor.capture());
+        assertTrue(captor.getAllValues().stream().allMatch(update -> update.getLatestDeliveryTime() == null));
+        assertEquals(20, order.getDeliveryStatus());
+    }
+    @Test void deliveryWithoutPickedQuantity_shouldRejectBeforeWriting() {
+        assertServiceException(() -> service.submitDelivery(delivery("1")), SALE_PICK_DELIVERY_QUANTITY_INVALID);
+        verify(submitMapper, never()).insert(any(ErpSalePickDeliverySubmitDO.class));
+        verify(itemMapper, never()).updateById(any(ErpSalePickDeliveryItemDO.class));
+    }
+    @Test void everyDeliveryBatch_shouldRequireVoucher() {
+        service.submitPick(pick("1"));
+        ErpSaleDeliverySubmitReqVO noFile = delivery("1");
+        noFile.setFiles(Collections.emptyList());
+        assertServiceException(() -> service.submitDelivery(noFile), SALE_PICK_DELIVERY_FILE_REQUIRED);
+        verify(submitMapper, times(1)).insert(any(ErpSalePickDeliverySubmitDO.class));
+        assertEquals(0, item.getDeliveredCount().signum(), "缺少凭证时不得累计送货数量");
     }
     @Test void retryPartialAndCompleted_shouldNotAccumulateTwice() {
         ErpSalePickSubmitReqVO req = pick("6"); service.submitPick(req); service.submitPick(req);
@@ -186,6 +219,15 @@ class ErpSalePickDeliveryQuantityTest extends BaseMockitoUnitTest {
         assertServiceException(() -> service.submitPick(pick("1")), SALE_PICK_ITEM_INVALID);
         verify(submitMapper, never()).insert(any(ErpSalePickDeliverySubmitDO.class));
     }
+    @Test void deliveryFromAnotherWarehouseTask_shouldRejectBeforeWriting() {
+        item.setPickedCount(new BigDecimal("6"));
+        item.setPickStatus(20);
+        item.setDeliveryStatus(10);
+        item.setPickTaskId(99L);
+        assertServiceException(() -> service.submitDelivery(delivery("1")), SALE_DELIVERY_ITEM_INVALID);
+        verify(submitMapper, never()).insert(any(ErpSalePickDeliverySubmitDO.class));
+        verify(itemMapper, never()).updateById(any(ErpSalePickDeliveryItemDO.class));
+    }
     @Test void warehousePermissionAndVoucher_shouldRemainRequired() {
         when(warehouseService.getUserPickWarehouseIds(88L)).thenReturn(Collections.emptyList());
         assertServiceException(() -> service.submitPick(pick("1")), SALE_PICK_TASK_WAREHOUSE_PERMISSION_DENIED);
@@ -203,13 +245,14 @@ class ErpSalePickDeliveryQuantityTest extends BaseMockitoUnitTest {
         verify(submitMapper, never()).insert(any(ErpSalePickDeliverySubmitDO.class));
         verify(itemMapper, never()).updateById(any(ErpSalePickDeliveryItemDO.class));
     }
-    @Test void multipleWarehouses_shouldKeepWholeOrderBlockedUntilEveryItemIsPicked() {
+    @Test void multipleWarehouses_shouldAllowPickedItemBeforeWholeOrderIsPicked() {
         order.setTotalItemCount(2);
         service.submitPick(pick("6"));
-        assertEquals(20, order.getPickStatus()); assertEquals(5, order.getDeliveryStatus());
-        service.submitPick(pick("4"));
-        assertEquals(30, task.getStatus()); assertEquals(20, order.getPickStatus());
-        assertServiceException(() -> service.submitDelivery(delivery("1")), SALE_DELIVERY_NOT_READY);
+        assertEquals(20, order.getPickStatus()); assertEquals(10, order.getDeliveryStatus());
+        service.submitDelivery(delivery("1"));
+        assertEquals(new BigDecimal("1"), item.getDeliveredCount());
+        assertEquals(20, order.getDeliveryStatus());
+        verifyNoInteractions(stockMoveService);
     }
 
     @Test void submitDetail_shouldRejectUnrelatedBatch() {

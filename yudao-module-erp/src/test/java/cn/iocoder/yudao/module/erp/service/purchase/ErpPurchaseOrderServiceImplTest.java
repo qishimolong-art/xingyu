@@ -11,6 +11,8 @@ import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.order.ErpPurchas
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.order.ErpPurchaseOrderImportResultRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.order.ErpPurchaseOrderImportRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.order.ErpPurchaseOrderInableItemRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.order.ErpPurchaseOrderInableStockReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.order.ErpPurchaseOrderInableStockRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.order.ErpPurchaseOrderItemBatchUpdateReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.order.ErpPurchaseOrderItemPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.order.ErpPurchaseOrderSaveReqVO;
@@ -22,6 +24,7 @@ import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseOrderDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseOrderItemDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpSupplierDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpWarehouseDO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockDO;
 import cn.iocoder.yudao.module.erp.dal.mysql.purchase.ErpPurchaseInItemMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.purchase.ErpPurchaseInMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.purchase.ErpPurchaseOrderItemMapper;
@@ -201,6 +204,46 @@ public class ErpPurchaseOrderServiceImplTest extends BaseMockitoUnitTest {
         DeptDataPermissionRespDTO permission = new DeptDataPermissionRespDTO();
         permission.setDeptIds(new HashSet<>(Arrays.asList(deptIds)));
         return permission;
+    }
+
+    // ========== stockCountAtOrder ==========
+
+    @Test
+    public void testCaptureStockCountAtOrder_onlyWritesEmptySnapshots() {
+        ErpPurchaseOrderItemDO stockedItem = new ErpPurchaseOrderItemDO().setId(11L)
+                .setProductId(101L).setWarehouseId(201L);
+        ErpPurchaseOrderItemDO missingStockItem = new ErpPurchaseOrderItemDO().setId(12L)
+                .setProductId(102L).setWarehouseId(202L);
+        ErpPurchaseOrderItemDO existingSnapshotItem = new ErpPurchaseOrderItemDO().setId(13L)
+                .setProductId(103L).setWarehouseId(203L).setStockCountAtOrder(new BigDecimal("9"));
+        when(purchaseOrderItemMapper.selectListByOrderId(1L))
+                .thenReturn(Arrays.asList(stockedItem, missingStockItem, existingSnapshotItem));
+        when(stockService.getStockMap(any(), any())).thenReturn(Collections.singletonMap(
+                "101_201", new ErpStockDO().setCount(new BigDecimal("7.500000"))));
+
+        ReflectionTestUtils.invokeMethod(purchaseOrderService, "captureStockCountAtOrder", 1L);
+
+        verify(purchaseOrderItemMapper).updateStockCountAtOrderIfNull(11L, new BigDecimal("7.500000"));
+        verify(purchaseOrderItemMapper).updateStockCountAtOrderIfNull(12L, BigDecimal.ZERO);
+        verify(purchaseOrderItemMapper, never()).updateStockCountAtOrderIfNull(eq(13L), any());
+    }
+
+    @Test
+    public void testClearChangedStockCountSnapshots_onlyProductOrWarehouseChange() {
+        List<ErpPurchaseOrderItemDO> oldItems = Arrays.asList(
+                new ErpPurchaseOrderItemDO().setId(11L).setProductId(101L).setWarehouseId(201L),
+                new ErpPurchaseOrderItemDO().setId(12L).setProductId(102L).setWarehouseId(202L),
+                new ErpPurchaseOrderItemDO().setId(13L).setProductId(103L).setWarehouseId(203L));
+        List<ErpPurchaseOrderItemDO> newItems = Arrays.asList(
+                new ErpPurchaseOrderItemDO().setId(11L).setProductId(999L).setWarehouseId(201L),
+                new ErpPurchaseOrderItemDO().setId(12L).setProductId(102L).setWarehouseId(888L),
+                new ErpPurchaseOrderItemDO().setId(13L).setProductId(103L).setWarehouseId(203L));
+
+        ReflectionTestUtils.invokeMethod(purchaseOrderService, "clearChangedStockCountSnapshots", oldItems, newItems);
+
+        verify(purchaseOrderItemMapper).clearStockCountAtOrder(11L);
+        verify(purchaseOrderItemMapper).clearStockCountAtOrder(12L);
+        verify(purchaseOrderItemMapper, never()).clearStockCountAtOrder(13L);
     }
 
     // ========== getSupplierAvailableDeptSimpleList ==========
@@ -844,6 +887,8 @@ public class ErpPurchaseOrderServiceImplTest extends BaseMockitoUnitTest {
 
         verify(stockService).ensureStockExists(eq(200L), eq(8L));
         verify(stockService).ensureStockExists(eq(201L), eq(8L));
+        verify(purchaseOrderItemMapper).clearStockCountAtOrder(1L);
+        verify(purchaseOrderItemMapper).clearStockCountAtOrder(2L);
         ArgumentCaptor<ErpPurchaseOrderItemDO> itemCaptor = ArgumentCaptor.forClass(ErpPurchaseOrderItemDO.class);
         verify(purchaseOrderItemMapper, times(2)).updateById(itemCaptor.capture());
         itemCaptor.getAllValues().forEach(updateItem -> {
@@ -883,6 +928,7 @@ public class ErpPurchaseOrderServiceImplTest extends BaseMockitoUnitTest {
             assertEquals(3L, updateItem.getDeptId());
         });
         verify(stockService, never()).ensureStockExists(any(), any());
+        verify(purchaseOrderItemMapper, never()).clearStockCountAtOrder(any());
     }
 
     @Test
@@ -905,6 +951,7 @@ public class ErpPurchaseOrderServiceImplTest extends BaseMockitoUnitTest {
         purchaseOrderService.batchUpdatePurchaseOrderItems(reqVO);
 
         verify(stockService).ensureStockExists(eq(200L), eq(8L));
+        verify(purchaseOrderItemMapper).clearStockCountAtOrder(1L);
         ArgumentCaptor<ErpPurchaseOrderItemDO> itemCaptor = ArgumentCaptor.forClass(ErpPurchaseOrderItemDO.class);
         verify(purchaseOrderItemMapper).updateById(itemCaptor.capture());
         assertEquals(8L, itemCaptor.getValue().getWarehouseId());
@@ -1528,6 +1575,10 @@ public class ErpPurchaseOrderServiceImplTest extends BaseMockitoUnitTest {
         p1.setCode("P001");
         productMap.put(200L, p1);
         when(productService.getProductVOMap(any())).thenReturn(productMap);
+        when(stockService.getStockMap(any(), any())).thenReturn(Collections.singletonMap("200_7",
+                new ErpStockDO().setProductId(200L).setWarehouseId(7L).setCount(new BigDecimal("9"))));
+        when(stockService.getOccupiedCountMap(any(), any()))
+                .thenReturn(Collections.singletonMap("200_7", new BigDecimal("4")));
 
         List<ErpPurchaseOrderInableItemRespVO> result = purchaseOrderService.getInableItemsByOrderId(10L);
 
@@ -1539,6 +1590,38 @@ public class ErpPurchaseOrderServiceImplTest extends BaseMockitoUnitTest {
         assertEquals(0, vo.getInableCount().compareTo(new BigDecimal("7")));
         assertEquals(Long.valueOf(66L), vo.getDeptId());
         assertEquals("螺丝", vo.getProductName());
+        assertEquals(0, new BigDecimal("9").compareTo(vo.getStockCount()));
+        assertEquals(0, new BigDecimal("5").compareTo(vo.getAvailableCount()));
+    }
+
+    @Test
+    public void testGetInableItemStockList_usesSelectedWarehouseAndValidatesScope() {
+        when(purchaseOrderMapper.selectById(eq(10L))).thenReturn(new ErpPurchaseOrderDO()
+                .setId(10L).setStatus(ErpAuditStatus.APPROVE.getStatus()));
+        ErpPurchaseOrderItemDO orderItem = new ErpPurchaseOrderItemDO()
+                .setId(101L).setOrderId(10L).setProductId(200L).setWarehouseId(7L);
+        when(purchaseOrderItemMapper.selectByIds(any())).thenReturn(Collections.singletonList(orderItem));
+        when(warehouseService.validPurchaseWarehouseList(any())).thenReturn(Collections.singletonList(
+                new ErpWarehouseDO().setId(8L).setName("目标仓")));
+        when(stockService.getStockMap(any(), any())).thenReturn(Collections.singletonMap("200_8",
+                new ErpStockDO().setProductId(200L).setWarehouseId(8L).setCount(new BigDecimal("3"))));
+        when(stockService.getOccupiedCountMap(any(), any()))
+                .thenReturn(Collections.singletonMap("200_8", new BigDecimal("5")));
+        ErpPurchaseOrderInableStockReqVO.Item reqItem = new ErpPurchaseOrderInableStockReqVO.Item();
+        reqItem.setOrderItemId(101L);
+        reqItem.setWarehouseId(8L);
+        ErpPurchaseOrderInableStockReqVO reqVO = new ErpPurchaseOrderInableStockReqVO();
+        reqVO.setOrderId(10L);
+        reqVO.setItems(Collections.singletonList(reqItem));
+
+        List<ErpPurchaseOrderInableStockRespVO> result = purchaseOrderService.getInableItemStockList(reqVO);
+
+        assertEquals(1, result.size());
+        assertEquals(Long.valueOf(101L), result.get(0).getOrderItemId());
+        assertEquals(Long.valueOf(8L), result.get(0).getWarehouseId());
+        assertEquals(0, new BigDecimal("3").compareTo(result.get(0).getStockCount()));
+        assertEquals(0, new BigDecimal("-2").compareTo(result.get(0).getAvailableCount()));
+        verify(warehouseService).validPurchaseWarehouseList(any());
     }
 
     @Test

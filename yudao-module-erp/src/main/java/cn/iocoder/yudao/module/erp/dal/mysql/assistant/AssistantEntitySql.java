@@ -37,15 +37,20 @@ public final class AssistantEntitySql {
                 name="e.name";description="CASE WHEN parent.name IS NULL THEN e.name ELSE CONCAT(parent.name,' / ',e.name) END";break;
             case "SALESPERSON":
                 table="system_users e";name="e.nickname";description="'业务员'";break;
+            case "PURCHASER":
+                table="system_users e";name="e.nickname";description="'采购员'";break;
+            case "USER":
+                table="system_users e";name="e.nickname";break;
             default: throw new IllegalArgumentException("Unsupported entity type");
         }
         List<Object> parameters=new ArrayList<>();parameters.add(context.get("tenantId"));
         String scope=scope(context,type,parameters);
         String predicate=predicate(context,type,match,parameters);
+        String order=order(context,match,name,parameters);
         int limit=Math.max(1,Math.min(21,number(context.get("rowLimit"),21)));
         String matchedBy="EXACT_NAME".equals(match)?"NAME":"FUZZY".equals(match)?"FUZZY_NAME":match;
         String sql="SELECT e.id,"+name+" name,"+code+" code,"+description+" description,'"+matchedBy+"' matchedBy FROM "+table
-                +" WHERE e.tenant_id=? AND e.deleted=0 AND e.status=0"+base+scope+" AND ("+predicate+") ORDER BY e.id LIMIT "+limit;
+                +" WHERE e.tenant_id=? AND e.deleted=0 AND e.status=0"+base+scope+" AND ("+predicate+") "+order+" LIMIT "+limit;
         return new Query(sql,parameters,limit);
     }
 
@@ -61,17 +66,28 @@ public final class AssistantEntitySql {
         } else if("OLD_CODE".equals(match) && "SUPPLIER".equals(type) && flag(context,"searchOldCode")) {
             add(terms,parameters,"UPPER(COALESCE(e.old_code,''))=UPPER(?)",keyword);
         } else if("EXACT_NAME".equals(match)) {
-            add(terms,parameters,"SALESPERSON".equals(type)?"e.nickname=?":"e.name=?",keyword);
+            add(terms,parameters,userType(type)?"e.nickname=?":"e.name=?",keyword);
             if(flag(context,"searchShortName")) add(terms,parameters,"e.short_name=?",keyword);
         } else if("TOKEN_FUZZY".equals(match) && "PRODUCT".equals(type)) {
             return productTokenPredicate(context,parameters);
+        } else if("PINYIN".equals(match) && flag(context,"searchPinyin")) {
+            add(terms,parameters,"UPPER(COALESCE(e.pinyin_code,'')) LIKE CONCAT('%',UPPER(?),'%')",keyword);
         } else if("FUZZY".equals(match)) {
-            add(terms,parameters,"SALESPERSON".equals(type)?"e.nickname LIKE CONCAT('%',?,'%')":"e.name LIKE CONCAT('%',?,'%')",keyword);
+            add(terms,parameters,userType(type)?"e.nickname LIKE CONCAT('%',?,'%')":"e.name LIKE CONCAT('%',?,'%')",keyword);
             if(flag(context,"searchShortName")) add(terms,parameters,"e.short_name LIKE CONCAT('%',?,'%')",keyword);
             if(flag(context,"searchPinyin")) add(terms,parameters,"e.pinyin_code LIKE CONCAT(?,'%')",keyword);
             if(flag(context,"searchWubi")) add(terms,parameters,"e.wubi_code LIKE CONCAT(?,'%')",keyword);
         }
         return terms.isEmpty()?"1=0":String.join(" OR ",terms);
+    }
+
+    private static String order(Map<String,Object> context,String match,String name,List<Object> parameters) {
+        if (!"PINYIN".equals(match) || !flag(context,"searchPinyin")) return "ORDER BY e.id";
+        Object keyword=context.get("entityKeyword");
+        parameters.add(keyword);parameters.add(keyword);parameters.add(keyword);
+        return "ORDER BY CASE WHEN UPPER(COALESCE(e.pinyin_code,''))=UPPER(?) THEN 0 "
+                +"WHEN UPPER(COALESCE(e.pinyin_code,'')) LIKE CONCAT(UPPER(?),'%') THEN 1 ELSE 2 END,"
+                +"LOCATE(UPPER(?),UPPER(COALESCE(e.pinyin_code,''))),CHAR_LENGTH("+name+"),e.id";
     }
 
     /** Mirrors the product page's ordered-wildcard OR token-AND search using only visible fields. */
@@ -147,8 +163,11 @@ public final class AssistantEntitySql {
         } else if("DEPARTMENT".equals(type)) {
             if(!dept.isEmpty()) terms.add("e.id IN "+placeholders(dept,parameters));
             Object self=context.get("entitySelfDeptId");if(self!=null) add(terms,parameters,"e.id=?",self);
-        } else if("SALESPERSON".equals(type)) {
-            if(!dept.isEmpty()) terms.add("e.dept_id IN "+placeholders(dept,parameters));
+        } else if(userType(type)) {
+            if(!dept.isEmpty()) {
+                terms.add("e.dept_id IN "+placeholders(dept,parameters));
+                if("USER".equals(type)) terms.add("EXISTS (SELECT 1 FROM system_user_dept sud WHERE sud.user_id=e.id AND sud.tenant_id=e.tenant_id AND sud.deleted=0 AND sud.dept_id IN "+placeholders(dept,parameters)+")");
+            }
             addSelf(terms,parameters,"e.id",context.get("entitySelfUserId"));
         }
         return " AND ("+(terms.isEmpty()?"1=0":String.join(" OR ",terms))+")";
@@ -157,6 +176,7 @@ public final class AssistantEntitySql {
     private static void addSelf(List<String> terms,List<Object> parameters,String column,Object value) {
         if(value!=null) add(terms,parameters,column+"=?",value);
     }
+    private static boolean userType(String type) {return "SALESPERSON".equals(type) || "PURCHASER".equals(type) || "USER".equals(type);}
     private static void add(List<String> terms,List<Object> parameters,String sql,Object value) {terms.add(sql);parameters.add(value);}
     private static String placeholders(Collection<?> values,List<Object> parameters) {
         parameters.addAll(values);return "("+String.join(",",Collections.nCopies(values.size(),"?"))+")";

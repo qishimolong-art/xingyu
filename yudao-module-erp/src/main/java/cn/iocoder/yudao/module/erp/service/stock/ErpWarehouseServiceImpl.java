@@ -31,6 +31,7 @@ import cn.iocoder.yudao.module.erp.dal.mysql.stock.ErpWarehouseMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.stock.ErpWarehousePickerMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.stock.ErpWarehouseSaleDeptPermissionMapper;
 import cn.iocoder.yudao.module.erp.dal.redis.no.ErpNoRedisDAO;
+import cn.iocoder.yudao.module.erp.enums.stock.ErpWarehouseSaleDeptScopeTypeEnum;
 import cn.iocoder.yudao.module.erp.service.base.ErpBaseArchiveReferenceService;
 import cn.iocoder.yudao.module.erp.service.common.ErpOperateLogService;
 import cn.iocoder.yudao.module.erp.service.stock.bo.ErpProductStockPermissionScope;
@@ -82,6 +83,8 @@ import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.WAREHOUSE_PUR
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.WAREHOUSE_SALE_DISABLE_FAIL_STOCK_NOT_ZERO;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.WAREHOUSE_SALE_DEPT_PERMISSION_DENIED;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.WAREHOUSE_SALE_NOT_ENABLE;
+import static cn.iocoder.yudao.module.erp.enums.stock.ErpWarehouseSaleDeptScopeTypeEnum.ALL;
+import static cn.iocoder.yudao.module.erp.enums.stock.ErpWarehouseSaleDeptScopeTypeEnum.SPECIFIED;
 
 /**
  * ERP 濞寸姵鎸哥花?Service 閻庡湱鍋熼獮鍥╃尵? *
@@ -163,6 +166,7 @@ public class ErpWarehouseServiceImpl implements ErpWarehouseService {
         // 闁圭粯甯掗崣鍡樼閹惧磭姘?
         ErpWarehouseDO warehouse = BeanUtils.toBean(createReqVO, ErpWarehouseDO.class);
         warehouse.setDirectWarehouse(directWarehouse);
+        warehouse.setSaleDeptScopeType(directWarehouse ? SPECIFIED.getType() : ALL.getType());
         if (warehouse.getSort() == null) {
             warehouse.setSort(0L);
         }
@@ -698,6 +702,7 @@ public class ErpWarehouseServiceImpl implements ErpWarehouseService {
         ErpWarehouseDO importObj = BeanUtils.toBean(row, ErpWarehouseDO.class);
         if (existing == null) {
             importObj.setDirectWarehouse(false);
+            importObj.setSaleDeptScopeType(ALL.getType());
             if (importObj.getStatus() == null) {
                 importObj.setStatus(CommonStatusEnum.ENABLE.getStatus());
             }
@@ -717,6 +722,7 @@ public class ErpWarehouseServiceImpl implements ErpWarehouseService {
         }
         importObj.setId(existing.getId());
         importObj.setDirectWarehouse(existing.getDirectWarehouse());
+        importObj.setSaleDeptScopeType(existing.getSaleDeptScopeType());
         importObj.setStockBillEnabled(existing.getStockBillEnabled());
         importObj.setDefaultStatus(existing.getDefaultStatus());
         importObj.setWarehouseCode(existing.getWarehouseCode());
@@ -1248,6 +1254,7 @@ public class ErpWarehouseServiceImpl implements ErpWarehouseService {
         Set<Long> distributedWarehouseIds = warehouseSaleDeptPermissionMapper.selectListByDeptId(deptId).stream()
                 .map(ErpWarehouseSaleDeptPermissionDO::getWarehouseId)
                 .collect(Collectors.toSet());
+        distributedWarehouseIds.addAll(getAllSaleDeptScopeWarehouseIds());
         List<ErpWarehouseDO> saleWarehouses = DataPermissionUtils.executeIgnore(() ->
                 warehouseMapper.selectListByStatusAndDeptIdOrIds(CommonStatusEnum.ENABLE.getStatus(),
                         deptId, distributedWarehouseIds));
@@ -1270,20 +1277,39 @@ public class ErpWarehouseServiceImpl implements ErpWarehouseService {
     }
 
     @Override
+    public String getWarehouseSaleDeptScopeType(Long warehouseId) {
+        if (warehouseId == null) {
+            return SPECIFIED.getType();
+        }
+        ErpWarehouseDO warehouse = DataPermissionUtils.executeIgnore(() -> validateWarehouseExists(warehouseId));
+        if (Boolean.TRUE.equals(warehouse.getDirectWarehouse())) {
+            return SPECIFIED.getType();
+        }
+        return normalizeSaleDeptScopeType(warehouse.getSaleDeptScopeType());
+    }
+
+    @Override
     @Transactional(rollbackFor = Exception.class)
-    public void updateWarehouseSaleDeptPermissions(Long warehouseId, Collection<Long> deptIds) {
+    public void updateWarehouseSaleDeptPermissions(Long warehouseId, String scopeType, Collection<Long> deptIds) {
         if (warehouseId == null) {
             return;
         }
         ErpWarehouseDO warehouse = DataPermissionUtils.executeIgnore(() -> validateWarehouseExists(warehouseId));
-        Set<Long> deptIdSet = expandDeptIds(deptIds);
+        String normalizedScopeType = normalizeRequestedSaleDeptScopeType(scopeType);
+        if (Boolean.TRUE.equals(warehouse.getDirectWarehouse()) && ALL.getType().equals(normalizedScopeType)) {
+            throw new IllegalArgumentException("系统自动生成的直发仓仅支持指定部门可用");
+        }
+        Set<Long> deptIdSet = ALL.getType().equals(normalizedScopeType)
+                ? new LinkedHashSet<>() : expandDeptIds(deptIds);
         deptIdSet.removeIf(deptId -> deptId == null || Objects.equals(deptId, warehouse.getDeptId()));
-        if (CollUtil.isNotEmpty(deptIdSet)) {
-            deptApi.validateDeptList(deptIdSet);
+        if (SPECIFIED.getType().equals(normalizedScopeType) && CollUtil.isNotEmpty(deptIdSet)) {
+            validateSaleDeptIdsExist(deptIdSet);
         }
         Long tenantId = TenantContextHolder.getRequiredTenantId();
         warehouseSaleDeptPermissionMapper.deleteListByWarehouseId(warehouseId, tenantId);
-        if (CollUtil.isEmpty(deptIdSet)) {
+        warehouseMapper.updateById(new ErpWarehouseDO().setId(warehouseId)
+                .setSaleDeptScopeType(normalizedScopeType));
+        if (ALL.getType().equals(normalizedScopeType) || CollUtil.isEmpty(deptIdSet)) {
             return;
         }
         deptIdSet.forEach(deptId -> warehouseSaleDeptPermissionMapper.insertIgnore(warehouseId, deptId, tenantId));
@@ -1356,8 +1382,38 @@ public class ErpWarehouseServiceImpl implements ErpWarehouseService {
         if (Objects.equals(warehouse.getDeptId(), deptId)) {
             return true;
         }
+        if (!Boolean.TRUE.equals(warehouse.getDirectWarehouse())
+                && ALL.getType().equals(normalizeSaleDeptScopeType(warehouse.getSaleDeptScopeType()))) {
+            return true;
+        }
         return warehouse.getId() != null
                 && warehouseSaleDeptPermissionMapper.selectCountByWarehouseIdAndDeptId(warehouse.getId(), deptId) > 0;
+    }
+
+    private String normalizeRequestedSaleDeptScopeType(String scopeType) {
+        if (StrUtil.isBlank(scopeType)) {
+            return SPECIFIED.getType();
+        }
+        String normalized = scopeType.trim().toUpperCase();
+        if (!ErpWarehouseSaleDeptScopeTypeEnum.contains(normalized)) {
+            throw new IllegalArgumentException("不支持的仓库销售部门授权范围：" + scopeType);
+        }
+        return normalized;
+    }
+
+    private String normalizeSaleDeptScopeType(String scopeType) {
+        return ALL.getType().equalsIgnoreCase(StrUtil.nullToEmpty(scopeType))
+                ? ALL.getType() : SPECIFIED.getType();
+    }
+
+    private void validateSaleDeptIdsExist(Set<Long> deptIds) {
+        Set<Long> existingDeptIds = deptApi.getDeptList(deptIds).stream()
+                .map(DeptRespDTO::getId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+        if (!existingDeptIds.containsAll(deptIds)) {
+            throw new IllegalArgumentException("部门不存在，请刷新后重试");
+        }
     }
 
     private List<ErpWarehouseDO> getCurrentUserDirectAuthorizedSaleWarehouseList() {
@@ -1693,8 +1749,19 @@ public class ErpWarehouseServiceImpl implements ErpWarehouseService {
         if (CollUtil.isEmpty(deptIds)) {
             return Collections.emptySet();
         }
-        return warehouseSaleDeptPermissionMapper.selectListByDeptIds(deptIds).stream()
+        Set<Long> warehouseIds = warehouseSaleDeptPermissionMapper.selectListByDeptIds(deptIds).stream()
                 .map(ErpWarehouseSaleDeptPermissionDO::getWarehouseId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toCollection(LinkedHashSet::new));
+        warehouseIds.addAll(getAllSaleDeptScopeWarehouseIds());
+        return warehouseIds;
+    }
+
+    private Set<Long> getAllSaleDeptScopeWarehouseIds() {
+        return DataPermissionUtils.executeIgnore(
+                        () -> warehouseMapper.selectListBySaleDeptScopeType(ALL.getType())).stream()
+                .filter(warehouse -> !Boolean.TRUE.equals(warehouse.getDirectWarehouse()))
+                .map(ErpWarehouseDO::getId)
                 .filter(Objects::nonNull)
                 .collect(Collectors.toCollection(LinkedHashSet::new));
     }

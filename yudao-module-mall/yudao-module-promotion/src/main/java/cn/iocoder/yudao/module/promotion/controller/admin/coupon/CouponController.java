@@ -4,14 +4,17 @@ import cn.hutool.core.collection.CollUtil;
 import cn.iocoder.yudao.framework.common.pojo.CommonResult;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.common.util.collection.MapUtils;
+import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
+import cn.iocoder.yudao.framework.idempotent.core.annotation.Idempotent;
+import cn.iocoder.yudao.framework.idempotent.core.keyresolver.impl.ExpressionIdempotentKeyResolver;
 import cn.iocoder.yudao.module.member.api.user.MemberUserApi;
 import cn.iocoder.yudao.module.member.api.user.dto.MemberUserRespDTO;
-import cn.iocoder.yudao.module.promotion.controller.admin.coupon.vo.coupon.CouponPageItemRespVO;
-import cn.iocoder.yudao.module.promotion.controller.admin.coupon.vo.coupon.CouponPageReqVO;
-import cn.iocoder.yudao.module.promotion.controller.admin.coupon.vo.coupon.CouponSendReqVO;
+import cn.iocoder.yudao.module.promotion.controller.admin.coupon.vo.coupon.*;
 import cn.iocoder.yudao.module.promotion.convert.coupon.CouponConvert;
 import cn.iocoder.yudao.module.promotion.dal.dataobject.coupon.CouponDO;
 import cn.iocoder.yudao.module.promotion.service.coupon.CouponService;
+import cn.iocoder.yudao.module.promotion.service.coupon.bo.CouponAddressSendResultBO;
+import cn.iocoder.yudao.module.promotion.service.coupon.bo.CouponAddressTargetPageResultBO;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -22,6 +25,7 @@ import org.springframework.web.bind.annotation.*;
 import javax.annotation.Resource;
 import javax.validation.Valid;
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
 
 import static cn.iocoder.yudao.framework.common.pojo.CommonResult.success;
 import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.convertSet;
@@ -69,6 +73,32 @@ public class CouponController {
     public CommonResult<Boolean> sendCoupon(@Valid @RequestBody CouponSendReqVO reqVO) {
         couponService.takeCouponByAdmin(reqVO.getTemplateId(), reqVO.getUserIds());
         return success(true);
+    }
+
+    @PostMapping("/address-target/page")
+    @Operation(summary = "按收货地区预览优惠券发放对象")
+    @PreAuthorize("@ss.hasPermission('promotion:coupon:send')")
+    public CommonResult<CouponAddressTargetPageRespVO> getAddressTargetPage(
+            @Valid @RequestBody CouponAddressTargetPageReqVO reqVO) {
+        CouponAddressTargetPageResultBO result = couponService.getAddressTargetPage(reqVO);
+        CouponAddressTargetPageRespVO respVO = BeanUtils.toBean(result, CouponAddressTargetPageRespVO.class);
+        respVO.setPageResult(new PageResult<>(
+                BeanUtils.toBean(result.getPageResult().getList(), CouponAddressTargetItemRespVO.class),
+                result.getPageResult().getTotal()));
+        return success(respVO);
+    }
+
+    @PostMapping("/send-by-address")
+    @Operation(summary = "按收货地区发送优惠券")
+    @PreAuthorize("@ss.hasPermission('promotion:coupon:send')")
+    @Idempotent(timeout = 1, timeUnit = TimeUnit.DAYS,
+            keyResolver = ExpressionIdempotentKeyResolver.class,
+            keyArg = "#reqVO.requestId.toString()")
+    public CommonResult<CouponAddressSendRespVO> sendCouponByAddress(
+            @Valid @RequestBody CouponAddressSendReqVO reqVO) {
+        CouponAddressSendResultBO result = couponService.takeCouponByAddress(
+                reqVO.getTemplateId(), reqVO.getAreaIds(), reqVO.getExcludedUserIds());
+        return success(BeanUtils.toBean(result, CouponAddressSendRespVO.class));
     }
 
 }

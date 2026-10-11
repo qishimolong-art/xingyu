@@ -29,7 +29,8 @@
         "SUPPLIER",
         "WAREHOUSE",
         "DEPARTMENT",
-        "SALESPERSON"
+        "SALESPERSON",
+        "PURCHASER"
       ],
       "permissions": [
         "erp:assistant:query"
@@ -422,6 +423,7 @@
       "optionalEntities": [
         "PRODUCT",
         "SUPPLIER",
+        "PURCHASER",
         "DEPARTMENT"
       ],
       "permissions": [

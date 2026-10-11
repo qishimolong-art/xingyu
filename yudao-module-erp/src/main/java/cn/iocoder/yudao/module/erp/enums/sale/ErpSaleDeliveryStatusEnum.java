@@ -10,7 +10,7 @@ import java.util.Arrays;
 @Getter
 public enum ErpSaleDeliveryStatusEnum implements ArrayValuable<Integer> {
 
-    NOT_READY(5, "待拣货完成"),
+    NOT_READY(5, "待拣货"),
     WAITING(10, "待送货"),
     PARTIAL(20, "部分送货"),
     DONE(30, "已送货");

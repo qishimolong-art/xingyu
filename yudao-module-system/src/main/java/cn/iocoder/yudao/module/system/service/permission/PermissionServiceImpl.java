@@ -12,6 +12,7 @@ import cn.iocoder.yudao.framework.common.biz.system.permission.dto.DeptDataPermi
 import cn.iocoder.yudao.framework.security.core.util.SecurityFrameworkUtils;
 import cn.iocoder.yudao.framework.tenant.core.context.TenantContextHolder;
 import cn.iocoder.yudao.module.system.api.permission.dto.FieldDefinitionCreateOrUpdateReqDTO;
+import cn.iocoder.yudao.module.system.controller.admin.dept.vo.dept.DeptListReqVO;
 import cn.iocoder.yudao.module.system.controller.admin.permission.vo.permission.RoleFormDataScopeRespVO;
 import cn.iocoder.yudao.module.system.dal.dataobject.permission.FieldDefinitionDO;
 import cn.iocoder.yudao.module.system.dal.dataobject.permission.MenuDO;
@@ -266,8 +267,37 @@ public class PermissionServiceImpl implements PermissionService {
     @Resource
     private DeptPriceFieldService deptPriceFieldService;
 
+    private final ThreadLocal<PermissionReadSnapshot> readSnapshot = new ThreadLocal<>();
+
+    @Override
+    public <T> T executeInReadSnapshot(Supplier<T> supplier) {
+        PermissionReadSnapshot existing = readSnapshot.get();
+        if (existing != null) {
+            return supplier.get();
+        }
+        readSnapshot.set(new PermissionReadSnapshot());
+        try {
+            return supplier.get();
+        } finally {
+            readSnapshot.remove();
+        }
+    }
+
     @Override
     public boolean hasAnyPermissions(Long userId, String... permissions) {
+        PermissionReadSnapshot snapshot = readSnapshot.get();
+        String cacheKey = userId + "|" + String.join("\u001f", permissions == null ? new String[0] : permissions);
+        if (snapshot != null && snapshot.permissionResults.containsKey(cacheKey)) {
+            return snapshot.permissionResults.get(cacheKey);
+        }
+        boolean result = hasAnyPermissionsNow(userId, permissions);
+        if (snapshot != null) {
+            snapshot.permissionResults.put(cacheKey, result);
+        }
+        return result;
+    }
+
+    private boolean hasAnyPermissionsNow(Long userId, String... permissions) {
         // 濡傛灉涓虹┖锛岃鏄庡凡缁忔湁鏉冮檺
         if (ArrayUtil.isEmpty(permissions)) {
             return true;
@@ -285,7 +315,25 @@ public class PermissionServiceImpl implements PermissionService {
             return true;
         }
 
-        Set<String> deniedPermissions = getSelf().getUserDeniedPermissionsFromCache(userId);
+        PermissionReadSnapshot snapshot = readSnapshot.get();
+        Set<String> deniedPermissions = snapshot == null
+                ? getSelf().getUserDeniedPermissionsFromCache(userId)
+                : snapshot.deniedPermissions.computeIfAbsent(userId,
+                        ignored -> getUserDeniedPermissions(userId));
+        if (snapshot != null) {
+            Set<String> grantedPermissions = snapshot.grantedPermissions.computeIfAbsent(userId, ignored -> {
+                Set<Long> grantedMenuIds = convertSet(
+                        roleMenuMapper.selectListByRoleId(roleIds), RoleMenuDO::getMenuId);
+                return menuService.filterDisableMenus(menuService.getMenuList()).stream()
+                        .filter(menu -> grantedMenuIds.contains(menu.getId()))
+                        .map(MenuDO::getPermission)
+                        .filter(StrUtil::isNotBlank)
+                        .collect(Collectors.toSet());
+            });
+            return Arrays.stream(permissions)
+                    .anyMatch(permission -> !deniedPermissions.contains(permission)
+                            && grantedPermissions.contains(permission));
+        }
         // 鎯呭喌涓€锛氶亶鍘嗗垽鏂瘡涓潈闄愶紝濡傛灉鏈変竴婊¤冻锛岃鏄庢湁鏉冮檺
         for (String permission : permissions) {
             if (!deniedPermissions.contains(permission) && hasAnyPermission(roles, permission)) {
@@ -412,12 +460,12 @@ public class PermissionServiceImpl implements PermissionService {
 
     @Override
     public List<FieldDefinitionDO> getFieldDefinitions(String module) {
-        return fieldDefinitionMapper.selectListByModule(module);
+        return getFieldDefinitionsForRead(module);
     }
 
     @Override
     public List<String> getRoleHiddenFields(Long roleId, String module) {
-        List<FieldDefinitionDO> definitions = fieldDefinitionMapper.selectListByModule(module);
+        List<FieldDefinitionDO> definitions = getFieldDefinitionsForRead(module);
         if (CollUtil.isEmpty(definitions)) {
             return Collections.emptyList();
         }
@@ -433,7 +481,7 @@ public class PermissionServiceImpl implements PermissionService {
 
     @Override
     public List<Long> getRoleHiddenFieldIds(Long roleId, String module) {
-        List<FieldDefinitionDO> definitions = fieldDefinitionMapper.selectListByModule(module);
+        List<FieldDefinitionDO> definitions = getFieldDefinitionsForRead(module);
         if (CollUtil.isEmpty(definitions)) {
             return Collections.emptyList();
         }
@@ -470,15 +518,24 @@ public class PermissionServiceImpl implements PermissionService {
         if (userId == null) {
             return Collections.emptyList();
         }
+        PermissionReadSnapshot snapshot = readSnapshot.get();
+        String hiddenFieldKey = module + "|" + businessDeptId + "|" + includeProductPricePermission
+                + "|" + customerPriceLevel;
+        if (snapshot != null && snapshot.hiddenFields.containsKey(hiddenFieldKey)) {
+            return snapshot.hiddenFields.get(hiddenFieldKey);
+        }
         List<String> hiddenFields = new ArrayList<>();
         Set<Long> roleIds = convertSet(getEnableUserRoleListByUserIdFromCache(userId), RoleDO::getId);
-        boolean superAdmin = CollUtil.isNotEmpty(roleIds) && roleService.hasAnySuperAdmin(roleIds);
+        boolean superAdmin = snapshot == null
+                ? CollUtil.isNotEmpty(roleIds) && roleService.hasAnySuperAdmin(roleIds)
+                : snapshot.superAdminUsers.computeIfAbsent(userId,
+                        ignored -> CollUtil.isNotEmpty(roleIds) && roleService.hasAnySuperAdmin(roleIds));
         if (CollUtil.isNotEmpty(roleIds)) {
-            List<FieldDefinitionDO> definitions = fieldDefinitionMapper.selectListByModule(module);
+            List<FieldDefinitionDO> definitions = getFieldDefinitionsForRead(module);
             if (CollUtil.isNotEmpty(definitions)) {
                 Map<Long, String> fieldKeyMap = definitions.stream()
                         .collect(Collectors.toMap(FieldDefinitionDO::getId, FieldDefinitionDO::getFieldKey));
-                hiddenFields.addAll(roleFieldPermissionMapper.selectListByRoleIds(roleIds).stream()
+                hiddenFields.addAll(getRoleFieldPermissionsForRead(roleIds).stream()
                         .filter(permission -> Boolean.TRUE.equals(permission.getHidden()))
                         .map(permission -> fieldKeyMap.get(permission.getFieldId()))
                         .filter(Objects::nonNull)
@@ -508,7 +565,34 @@ public class PermissionServiceImpl implements PermissionService {
             hiddenFields.forEach(field -> ProductPriceFieldKeys.addHiddenField(expandedFields, field));
             hiddenFields = expandedFields;
         }
-        return hiddenFields.stream().distinct().collect(Collectors.toList());
+        List<String> result = hiddenFields.stream().distinct().collect(Collectors.toList());
+        if (snapshot != null) {
+            result = Collections.unmodifiableList(result);
+            snapshot.hiddenFields.put(hiddenFieldKey, result);
+        }
+        return result;
+    }
+
+    private List<FieldDefinitionDO> getFieldDefinitionsForRead(String module) {
+        PermissionReadSnapshot snapshot = readSnapshot.get();
+        if (snapshot == null) {
+            return fieldDefinitionMapper.selectListByModule(module);
+        }
+        if (snapshot.fieldDefinitionsByModule == null) {
+            snapshot.fieldDefinitionsByModule = fieldDefinitionMapper.selectList().stream()
+                    .collect(Collectors.groupingBy(FieldDefinitionDO::getModule));
+        }
+        return snapshot.fieldDefinitionsByModule.getOrDefault(module, Collections.emptyList());
+    }
+
+    private List<RoleFieldPermissionDO> getRoleFieldPermissionsForRead(Set<Long> roleIds) {
+        PermissionReadSnapshot snapshot = readSnapshot.get();
+        if (snapshot == null) {
+            return roleFieldPermissionMapper.selectListByRoleIds(roleIds);
+        }
+        String key = roleIds.stream().sorted().map(String::valueOf).collect(Collectors.joining(","));
+        return snapshot.roleFieldPermissions.computeIfAbsent(key,
+                ignored -> roleFieldPermissionMapper.selectListByRoleIds(roleIds));
     }
 
     private boolean shouldIncludeProductPricePermission(String module) {
@@ -519,21 +603,47 @@ public class PermissionServiceImpl implements PermissionService {
     }
 
     private List<String> getHiddenProductPriceFields(Long userId, Long businessDeptId, boolean superAdmin) {
+        PermissionReadSnapshot snapshot = readSnapshot.get();
+        String cacheKey = userId + "|" + businessDeptId + "|" + superAdmin;
+        if (snapshot != null && snapshot.productPriceHiddenFields.containsKey(cacheKey)) {
+            return snapshot.productPriceHiddenFields.get(cacheKey);
+        }
         List<String> hiddenFields = new ArrayList<>();
         if (!superAdmin) {
             Long pricePermissionDeptId = businessDeptId != null
                     ? businessDeptId : SecurityFrameworkUtils.getLoginUserDeptId();
-            DeptDO pricePermissionDept = pricePermissionDeptId != null
-                    ? deptService.getDept(pricePermissionDeptId) : null;
-            Set<Long> enabledDeptIds = pricePermissionDept != null
-                    && CommonStatusEnum.ENABLE.getStatus().equals(pricePermissionDept.getStatus())
-                    ? Collections.singleton(pricePermissionDept.getId()) : Collections.emptySet();
-            hiddenFields.addAll(deptPriceFieldService.getHiddenPriceFields(enabledDeptIds));
+            if (snapshot == null) {
+                DeptDO pricePermissionDept = pricePermissionDeptId != null
+                        ? deptService.getDept(pricePermissionDeptId) : null;
+                Set<Long> enabledDeptIds = pricePermissionDept != null
+                        && CommonStatusEnum.ENABLE.getStatus().equals(pricePermissionDept.getStatus())
+                        ? Collections.singleton(pricePermissionDept.getId()) : Collections.emptySet();
+                hiddenFields.addAll(deptPriceFieldService.getHiddenPriceFields(enabledDeptIds));
+            } else {
+                if (snapshot.deptPriceHiddenFields == null) {
+                    Set<Long> enabledDeptIds = deptService.getDeptList(new DeptListReqVO()).stream()
+                            .filter(dept -> CommonStatusEnum.ENABLE.getStatus().equals(dept.getStatus()))
+                            .map(DeptDO::getId)
+                            .collect(Collectors.toCollection(LinkedHashSet::new));
+                    snapshot.deptPriceHiddenFields = deptPriceFieldService
+                            .getHiddenPriceFieldsByDeptIds(enabledDeptIds);
+                }
+                hiddenFields.addAll(snapshot.deptPriceHiddenFields.getOrDefault(pricePermissionDeptId,
+                        snapshot.deptPriceHiddenFields.getOrDefault(null, Collections.emptyList())));
+            }
         }
-        hiddenFields.addAll(userPriceFieldService.getHiddenProductPriceFields(userId));
+        hiddenFields.addAll(snapshot == null
+                ? userPriceFieldService.getHiddenProductPriceFields(userId)
+                : snapshot.userPriceHiddenFields.computeIfAbsent(userId,
+                        userPriceFieldService::getHiddenProductPriceFields));
         List<String> expandedFields = new ArrayList<>();
         hiddenFields.forEach(field -> ProductPriceFieldKeys.addHiddenField(expandedFields, field));
-        return expandedFields;
+        List<String> result = expandedFields.stream().distinct().collect(Collectors.toList());
+        if (snapshot != null) {
+            result = Collections.unmodifiableList(result);
+            snapshot.productPriceHiddenFields.put(cacheKey, result);
+        }
+        return result;
     }
 
     private boolean isPurchasePriceHidden(Set<String> hiddenFields) {
@@ -882,11 +992,19 @@ public class PermissionServiceImpl implements PermissionService {
      * @return 鐢ㄦ埛鎷ユ湁鐨勮鑹?     */
     @VisibleForTesting
     List<RoleDO> getEnableUserRoleListByUserIdFromCache(Long userId) {
+        PermissionReadSnapshot snapshot = readSnapshot.get();
+        if (snapshot != null && snapshot.cachedRoles.containsKey(userId)) {
+            return snapshot.cachedRoles.get(userId);
+        }
         // 鑾峰緱鐢ㄦ埛鎷ユ湁鐨勮鑹茬紪鍙?
         Set<Long> roleIds = getSelf().getUserRoleIdListByUserIdFromCache(userId);
         // 鑾峰緱瑙掕壊鏁扮粍锛屽苟绉婚櫎琚鐢ㄧ殑
-        List<RoleDO> roles = roleService.getRoleListFromCache(roleIds);
+        List<RoleDO> roles = new ArrayList<>(roleService.getRoleListFromCache(roleIds));
         roles.removeIf(role -> !CommonStatusEnum.ENABLE.getStatus().equals(role.getStatus()));
+        if (snapshot != null) {
+            roles = Collections.unmodifiableList(roles);
+            snapshot.cachedRoles.put(userId, roles);
+        }
         return roles;
     }
 
@@ -895,9 +1013,17 @@ public class PermissionServiceImpl implements PermissionService {
      */
     @VisibleForTesting
     List<RoleDO> getEnableUserRoleListByUserId(Long userId) {
+        PermissionReadSnapshot snapshot = readSnapshot.get();
+        if (snapshot != null && snapshot.databaseRoles.containsKey(userId)) {
+            return snapshot.databaseRoles.get(userId);
+        }
         Set<Long> roleIds = getUserRoleIdListByUserId(userId);
-        List<RoleDO> roles = roleService.getRoleList(roleIds);
+        List<RoleDO> roles = new ArrayList<>(roleService.getRoleList(roleIds));
         roles.removeIf(role -> role == null || !CommonStatusEnum.ENABLE.getStatus().equals(role.getStatus()));
+        if (snapshot != null) {
+            roles = Collections.unmodifiableList(roles);
+            snapshot.databaseRoles.put(userId, roles);
+        }
         return roles;
     }
 
@@ -906,6 +1032,11 @@ public class PermissionServiceImpl implements PermissionService {
     @Override
     @DataPermission(enable = false) // 鍏抽棴鏁版嵁鏉冮檺锛屼笉鐒跺氨浼氬嚭鐜伴€掑綊鑾峰彇鏁版嵁鏉冮檺鐨勯棶棰?
     public DeptDataPermissionRespDTO getDeptDataPermission(Long userId) {
+        PermissionReadSnapshot snapshot = readSnapshot.get();
+        String cacheKey = userId + "|*";
+        if (snapshot != null && snapshot.dataPermissions.containsKey(cacheKey)) {
+            return snapshot.dataPermissions.get(cacheKey);
+        }
         // 鑾峰緱鐢ㄦ埛鐨勮鑹?
         List<RoleDO> roles = getEnableUserRoleListByUserId(userId);
 
@@ -913,14 +1044,12 @@ public class PermissionServiceImpl implements PermissionService {
         DeptDataPermissionRespDTO result = new DeptDataPermissionRespDTO();
         if (CollUtil.isEmpty(roles)) {
             result.setSelf(true);
+            if (snapshot != null) snapshot.dataPermissions.put(cacheKey, result);
             return result;
         }
 
         // 鑾峰緱鐢ㄦ埛鐨勯儴闂ㄧ紪鍙风殑缂撳瓨锛岄€氳繃 Guava 鐨?Suppliers 鎯版€ф眰鍊硷紝鍗虫湁涓斾粎鏈夌涓€娆″彂璧?DB 鐨勬煡璇?
-        Supplier<Set<Long>> userDeptIds = Suppliers.memoize(() -> {
-            Set<Long> deptIds = userService.getUserDeptIdListByUserId(userId);
-            return deptIds == null ? Collections.emptySet() : deptIds;
-        });
+        Supplier<Set<Long>> userDeptIds = Suppliers.memoize(() -> getUserDeptIdsForRead(userId));
         // 閬嶅巻姣忎釜瑙掕壊锛岃绠?
         for (RoleDO role : roles) {
             // 涓虹┖鏃讹紝璺宠繃
@@ -964,6 +1093,7 @@ public class PermissionServiceImpl implements PermissionService {
             log.error("[getDeptDataPermission][LoginUser({}) role({}) 鏃犳硶澶勭悊]", userId, toJsonString(result));
         }
         logEmptyDeptDataPermission(userId, roles, result, userDeptIds);
+        if (snapshot != null) snapshot.dataPermissions.put(cacheKey, result);
         return result;
     }
 
@@ -995,32 +1125,38 @@ public class PermissionServiceImpl implements PermissionService {
     @Override
     @DataPermission(enable = false)
     public DeptDataPermissionRespDTO getDeptDataPermission(Long userId, String formKey) {
+        PermissionReadSnapshot snapshot = readSnapshot.get();
+        String cacheKey = userId + "|" + formKey;
+        if (snapshot != null && snapshot.dataPermissions.containsKey(cacheKey)) {
+            return snapshot.dataPermissions.get(cacheKey);
+        }
         List<RoleDO> roles = getEnableUserRoleListByUserId(userId);
         if (CollUtil.isEmpty(roles)) {
             DeptDataPermissionRespDTO r = new DeptDataPermissionRespDTO();
             r.setSelf(true);
+            if (snapshot != null) snapshot.dataPermissions.put(cacheKey, r);
             return r;
         }
 
         // 鏌ヨ鐢ㄦ埛瑙掕壊鍦ㄦ formKey 涓婄殑琛ㄥ崟绾ф潈闄愰厤缃紝杩囨护鎺夊€间负 0锛圛NHERIT锛夌殑璁板綍
         Set<Long> roleIds = convertSet(roles, RoleDO::getId);
-        List<RoleFormDataScopeDO> formScopes =
-                roleFormDataScopeMapper.selectListByRoleIdsAndFormKey(roleIds, formKey);
+        List<RoleFormDataScopeDO> formScopes = getRoleFormDataScopesForRead(roleIds, formKey).stream()
+                .filter(scope -> Objects.equals(formKey, scope.getFormKey()))
+                .collect(Collectors.toList());
         List<RoleFormDataScopeDO> activeFormScopes = formScopes.stream()
                 .filter(s -> s.getDataScope() != null && s.getDataScope() != 0)
                 .collect(Collectors.toList());
 
         // 娌℃湁鏈夋晥鐨勮〃鍗曠骇閰嶇疆锛宖allback 鍒板叏灞€鏉冮檺
         if (CollUtil.isEmpty(activeFormScopes)) {
-            return getDeptDataPermission(userId);
+            DeptDataPermissionRespDTO result = getDeptDataPermission(userId);
+            if (snapshot != null) snapshot.dataPermissions.put(cacheKey, result);
+            return result;
         }
 
         // 鎸夎〃鍗曠骇閰嶇疆璁＄畻鏉冮檺锛岄€昏緫涓庡叏灞€璁＄畻鐩稿悓
         DeptDataPermissionRespDTO result = new DeptDataPermissionRespDTO();
-        Supplier<Set<Long>> userDeptIds = Suppliers.memoize(() -> {
-            Set<Long> deptIds = userService.getUserDeptIdListByUserId(userId);
-            return deptIds == null ? Collections.emptySet() : deptIds;
-        });
+        Supplier<Set<Long>> userDeptIds = Suppliers.memoize(() -> getUserDeptIdsForRead(userId));
         for (RoleFormDataScopeDO scope : activeFormScopes) {
             if (Objects.equals(scope.getDataScope(), DataScopeEnum.ALL.getScope())) {
                 result.setAll(true);
@@ -1048,7 +1184,30 @@ public class PermissionServiceImpl implements PermissionService {
                 result.setSelf(true);
             }
         }
+        if (snapshot != null) snapshot.dataPermissions.put(cacheKey, result);
         return result;
+    }
+
+    private Set<Long> getUserDeptIdsForRead(Long userId) {
+        PermissionReadSnapshot snapshot = readSnapshot.get();
+        if (snapshot == null) {
+            Set<Long> deptIds = userService.getUserDeptIdListByUserId(userId);
+            return deptIds == null ? Collections.emptySet() : deptIds;
+        }
+        return snapshot.userDeptIds.computeIfAbsent(userId, ignored -> {
+            Set<Long> deptIds = userService.getUserDeptIdListByUserId(userId);
+            return deptIds == null ? Collections.emptySet() : new LinkedHashSet<>(deptIds);
+        });
+    }
+
+    private List<RoleFormDataScopeDO> getRoleFormDataScopesForRead(Set<Long> roleIds, String formKey) {
+        PermissionReadSnapshot snapshot = readSnapshot.get();
+        if (snapshot == null) {
+            return roleFormDataScopeMapper.selectListByRoleIdsAndFormKey(roleIds, formKey);
+        }
+        String key = roleIds.stream().sorted().map(String::valueOf).collect(Collectors.joining(","));
+        return snapshot.roleFormDataScopes.computeIfAbsent(key,
+                ignored -> roleFormDataScopeMapper.selectListByRoleIds(roleIds));
     }
 
     private DeptDataPermissionRespDTO buildDeptDataPermission(Integer dataScope, Set<Long> dataScopeDeptIds,
@@ -1085,6 +1244,24 @@ public class PermissionServiceImpl implements PermissionService {
     }
 
     // ========== 瑙掕壊-琛ㄥ崟鏁版嵁鏉冮檺鐨勭浉鍏虫柟娉?==========
+
+    private static final class PermissionReadSnapshot {
+        private final Map<String, Boolean> permissionResults = new HashMap<>();
+        private final Map<Long, Set<String>> grantedPermissions = new HashMap<>();
+        private final Map<Long, Set<String>> deniedPermissions = new HashMap<>();
+        private final Map<Long, List<RoleDO>> cachedRoles = new HashMap<>();
+        private final Map<Long, List<RoleDO>> databaseRoles = new HashMap<>();
+        private final Map<Long, Set<Long>> userDeptIds = new HashMap<>();
+        private final Map<Long, Boolean> superAdminUsers = new HashMap<>();
+        private final Map<String, List<RoleFieldPermissionDO>> roleFieldPermissions = new HashMap<>();
+        private final Map<String, List<RoleFormDataScopeDO>> roleFormDataScopes = new HashMap<>();
+        private final Map<String, List<String>> hiddenFields = new HashMap<>();
+        private final Map<String, List<String>> productPriceHiddenFields = new HashMap<>();
+        private final Map<Long, List<String>> userPriceHiddenFields = new HashMap<>();
+        private final Map<String, DeptDataPermissionRespDTO> dataPermissions = new HashMap<>();
+        private Map<String, List<FieldDefinitionDO>> fieldDefinitionsByModule;
+        private Map<Long, List<String>> deptPriceHiddenFields;
+    }
 
     /**
      * 鑾峰緱鑷韩鐨勪唬鐞嗗璞★紝瑙ｅ喅 AOP 鐢熸晥闂

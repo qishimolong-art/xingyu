@@ -50,6 +50,10 @@ class AssistantSemanticQueryServiceTest {
                 .thenReturn(Collections.singletonMap("id","订单标识"));
         List<Map<String,Object>> schema=service.schema(Collections.singletonList("purchase_orders"));
         assertEquals(Collections.singletonMap("id","订单标识"),schema.get(0).get("columns"));
+        Map<?,?> policy=(Map<?,?>)schema.get(0).get("queryPolicy");
+        assertEquals(true,policy.get("requiresSelectiveFilter"));
+        assertEquals(Collections.singletonList("id"),policy.get("selectiveColumns"));
+        assertFalse(((Collection<?>)policy.get("relationships")).isEmpty());
     }
 
     @Test
@@ -61,30 +65,32 @@ class AssistantSemanticQueryServiceTest {
 
     @Test
     void semanticDetailsUseDatabaseCountAndPageQueries() {
-        when(reader.query(startsWith("SELECT COUNT(*) total FROM"),anyList(),eq(1)))
+        when(reader.query(startsWith("SELECT COUNT(*) total FROM"),anyList(),eq(1),eq(10)))
                 .thenReturn(Collections.singletonList(Collections.singletonMap("total",31)));
-        when(reader.query(startsWith("SELECT * FROM"),anyList(),eq(20)))
+        when(reader.query(startsWith("SELECT * FROM"),anyList(),eq(20),eq(10)))
                 .thenReturn(Collections.singletonList(new LinkedHashMap<String,Object>(){{put("no","CGDD001");put("order_time","2026-09-28 10:00:00");}}));
 
-        Map<String,Object> result=service.details("SELECT p.no,p.order_time FROM purchase_orders p ORDER BY p.order_time DESC",Collections.emptyMap(),null,2,20);
+        Map<String,Object> parameters=new LinkedHashMap<>();parameters.put("p1","2026-09-01");parameters.put("p2","2026-09-30");
+        Map<String,Object> result=service.details("SELECT p.no,p.order_time FROM purchase_orders p "
+                +"WHERE p.order_time>=:p1 AND p.order_time<:p2 ORDER BY p.order_time DESC",parameters,null,2,20);
 
         assertEquals(31,result.get("total"));
         assertEquals("CGDD001",((List<Map<String,Object>>)result.get("list")).get(0).get("no"));
         org.mockito.ArgumentCaptor<String> sql=org.mockito.ArgumentCaptor.forClass(String.class);
-        org.mockito.ArgumentCaptor<List<Object>> parameters=org.mockito.ArgumentCaptor.forClass(List.class);
-        verify(reader).query(sql.capture(),parameters.capture(),eq(20));
+        org.mockito.ArgumentCaptor<List<Object>> capturedParameters=org.mockito.ArgumentCaptor.forClass(List.class);
+        verify(reader).query(sql.capture(),capturedParameters.capture(),eq(20),eq(10));
         assertTrue(sql.getValue().startsWith("SELECT * FROM ("));
         assertTrue(sql.getValue().endsWith(" LIMIT ? OFFSET ?"));
-        assertEquals(Arrays.asList(20,20),parameters.getValue().subList(parameters.getValue().size()-2,parameters.getValue().size()));
+        assertEquals(Arrays.asList(20,20),capturedParameters.getValue().subList(capturedParameters.getValue().size()-2,capturedParameters.getValue().size()));
     }
 
     @Test
     void serverOwnedStockMovementDetailsAreNotCappedByDefaultSemanticLimit() {
         doAnswer(invocation -> {((Map<String,Object>)invocation.getArgument(0)).put("stockAll",Boolean.TRUE);return null;})
                 .when(permissions).stockScope(anyMap());
-        when(reader.query(startsWith("SELECT COUNT(*) total FROM"),anyList(),eq(1)))
+        when(reader.query(startsWith("SELECT COUNT(*) total FROM"),anyList(),eq(1),eq(8)))
                 .thenReturn(Collections.singletonList(Collections.singletonMap("total",250)));
-        when(reader.query(startsWith("SELECT * FROM"),anyList(),eq(20)))
+        when(reader.query(startsWith("SELECT * FROM"),anyList(),eq(20),eq(8)))
                 .thenReturn(Collections.singletonList(new LinkedHashMap<String,Object>(){{put("product_name","路通源化油器清洗剂");put("biz_type",50);put("biz_date","2026-09-21 16:56:10");}}));
 
         Map<String,Object> result=service.serverOwnedDetails(
@@ -95,7 +101,7 @@ class AssistantSemanticQueryServiceTest {
         List<Map<String,Object>> columns=(List<Map<String,Object>>)result.get("columns");
         assertEquals("产品名称",columns.get(0).get("title"));
         org.mockito.ArgumentCaptor<String> sql=org.mockito.ArgumentCaptor.forClass(String.class);
-        verify(reader).query(sql.capture(),anyList(),eq(1));
+        verify(reader).query(sql.capture(),anyList(),eq(1),eq(8));
         assertFalse(sql.getValue().contains("LIMIT 200"));
     }
 
@@ -103,7 +109,7 @@ class AssistantSemanticQueryServiceTest {
     void textToSqlInjectsEveryResolvedProductAndWarehouseId() {
         doAnswer(invocation -> {((Map<String,Object>)invocation.getArgument(0)).put("stockAll",Boolean.TRUE);return null;})
                 .when(permissions).stockScope(anyMap());
-        when(reader.query(anyString(),anyList(),eq(200))).thenReturn(Collections.emptyList());
+        when(reader.query(anyString(),anyList(),eq(200),eq(8))).thenReturn(Collections.emptyList());
         Map<String,Object> product=new LinkedHashMap<>();product.put("entityType","PRODUCT");product.put("id",701L);
         Map<String,Object> warehouse=new LinkedHashMap<>();warehouse.put("entityType","WAREHOUSE");warehouse.put("id",66L);
         Map<String,Object> constraint=new LinkedHashMap<>();constraint.put("entities",Arrays.asList(product,warehouse));
@@ -112,10 +118,30 @@ class AssistantSemanticQueryServiceTest {
 
         org.mockito.ArgumentCaptor<String> sql=org.mockito.ArgumentCaptor.forClass(String.class);
         org.mockito.ArgumentCaptor<List<Object>> parameters=org.mockito.ArgumentCaptor.forClass(List.class);
-        verify(reader).query(sql.capture(),parameters.capture(),eq(200));
+        verify(reader).query(sql.capture(),parameters.capture(),eq(200),eq(8));
         assertTrue(sql.getValue().contains("r.product_id=?"));
         assertTrue(sql.getValue().contains("r.warehouse_id=?"));
         assertTrue(parameters.getValue().contains(701L));assertTrue(parameters.getValue().contains(66L));
+    }
+
+    @Test
+    void purchaseOrderSourceProjectsAndFiltersResolvedPurchaserId() {
+        doAnswer(invocation -> {Map<String,Object> values=invocation.getArgument(0);String prefix=invocation.getArgument(1);
+            values.put(prefix+"All",Boolean.TRUE);return null;
+        }).when(permissions).documentScope(anyMap(),anyString(),anyString(),anyBoolean());
+        when(reader.query(anyString(),anyList(),eq(200),eq(10))).thenReturn(Collections.emptyList());
+        Map<String,Object> purchaser=new LinkedHashMap<>();purchaser.put("entityType","PURCHASER");purchaser.put("id",42L);
+
+        service.execute("SELECT q.purchaser_name,SUM(q.total_price) total_amount FROM purchase_orders q GROUP BY q.purchaser_name",
+                Collections.emptyMap(),purchaser);
+
+        org.mockito.ArgumentCaptor<String> sql=org.mockito.ArgumentCaptor.forClass(String.class);
+        org.mockito.ArgumentCaptor<List<Object>> parameters=org.mockito.ArgumentCaptor.forClass(List.class);
+        verify(reader).query(sql.capture(),parameters.capture(),eq(200),eq(10));
+        assertTrue(sql.getValue().contains("o.purchaser purchaser_id"));
+        assertTrue(sql.getValue().contains("pu.nickname purchaser_name"));
+        assertTrue(sql.getValue().contains("o.purchaser=?"));
+        assertTrue(parameters.getValue().contains(42L));
     }
 
     @Test
@@ -127,13 +153,14 @@ class AssistantSemanticQueryServiceTest {
             values.put(prefix+"All",Boolean.TRUE);
             return null;
         }).when(permissions).documentScope(anyMap(),anyString(),anyString(),anyBoolean());
-        when(reader.query(anyString(),anyList(),eq(200))).thenReturn(Collections.emptyList());
+        when(reader.query(anyString(),anyList(),eq(200),eq(8))).thenReturn(Collections.emptyList());
 
-        service.execute("SELECT q.customer_name,q.product_name,SUM(q.line_amount) total_amount FROM sale_order_items q GROUP BY q.customer_name,q.product_name",
-                Collections.emptyMap());
+        Map<String,Object> parameters=new LinkedHashMap<>();parameters.put("p1","2026-09-01");parameters.put("p2","2026-09-30");
+        service.execute("SELECT q.customer_name,q.product_name,SUM(q.line_amount) total_amount FROM sale_order_items q "
+                        +"WHERE q.order_time>=:p1 AND q.order_time<:p2 GROUP BY q.customer_name,q.product_name",parameters);
 
         org.mockito.ArgumentCaptor<String> sql=org.mockito.ArgumentCaptor.forClass(String.class);
-        verify(reader).query(sql.capture(),anyList(),eq(200));
+        verify(reader).query(sql.capture(),anyList(),eq(200),eq(8));
         assertTrue(sql.getValue().contains("FROM erp_sale_order_items i JOIN erp_sale_order o"));
         assertTrue(sql.getValue().contains("JOIN erp_customer c"));
         assertTrue(sql.getValue().contains("JOIN erp_product p"));

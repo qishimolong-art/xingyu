@@ -31,11 +31,11 @@ class AssistantSecurityTest {
         TenantContextHolder.setTenantId(1L);SecurityContextHolder.clearContext();assertThrows(AssistantFailure.class,()->service.authorize(AssistantPlan.Metric.SALE));
     }
     @Test void entryPermissionDoesNotGrantBusinessPermission() {
-        when(permission.hasAnyPermissions(101L,"erp:sale-report:query")).thenReturn(false);
+        when(permission.hasAnyPermissions(101L,"erp:sale-return:query")).thenReturn(false);
         assertThrows(AssistantFailure.class,()->service.authorize(AssistantPlan.Metric.SALE));
     }
     @Test void hiddenAmountCannotLeakByAggregationOrRanking() {
-        when(permission.getCurrentUserHiddenFields("erp_product")).thenReturn(Collections.singletonList("col_salePrice"));
+        when(permission.getCurrentUserHiddenFields("erp_sale_out",null,false)).thenReturn(Collections.singletonList("col_totalPrice"));
         assertThrows(AssistantFailure.class,()->service.authorize(AssistantPlan.Metric.SALE));
         assertDoesNotThrow(()->service.authorize(AssistantPlan.Metric.STOCK));
     }
@@ -53,8 +53,8 @@ class AssistantSecurityTest {
         assertThrows(AssistantFailure.class,()->service.authorize(AssistantPlan.Metric.RECEIVABLE));
         when(permission.getCurrentUserHiddenFields("erp_sale_out",null,false)).thenReturn(Collections.emptyList());
         when(permission.getCurrentUserHiddenFields("erp_product")).thenReturn(Collections.singletonList("col_salePrice"));
-        assertThrows(AssistantFailure.class,()->service.authorize(AssistantPlan.Metric.SALE));
-        assertThrows(AssistantFailure.class,()->service.authorize(AssistantPlan.Metric.RECEIVABLE));
+        assertDoesNotThrow(()->service.authorize(AssistantPlan.Metric.SALE));
+        assertDoesNotThrow(()->service.authorize(AssistantPlan.Metric.RECEIVABLE));
     }
     @Test void unsupportedDimensionAndHistoryFailBeforeQuery() {
         AssistantPlan plan=new AssistantPlan();plan.setMetric(AssistantPlan.Metric.STOCK);plan.setPeriod("LAST_MONTH");
@@ -179,6 +179,71 @@ class AssistantSecurityTest {
         assertEquals("NO_PERMISSION",failure.getCode());
         assertEquals("当前账号没有可见的产品价格字段",failure.getMessage());
     }
+    @Test void allHiddenPricesDoNotBlockAnImplicitProductStockQuery() {
+        List<String> hidden=Arrays.asList("purchasePrice","salePrice","minPrice","referencePrice","retailPrice","wholesalePrice","sharePrice","lastPurchasePrice");
+        AssistantReadOnly reader=mock(AssistantReadOnly.class);
+        cn.iocoder.yudao.module.erp.service.stock.ErpWarehouseService warehouses=mock(cn.iocoder.yudao.module.erp.service.stock.ErpWarehouseService.class);
+        when(reader.snapshot(any())).thenAnswer(call->((java.util.function.Supplier<?>)call.getArgument(0)).get());
+        when(warehouses.getCurrentUserProductStockPermissionScope()).thenReturn(
+                new cn.iocoder.yudao.module.erp.service.stock.bo.ErpProductStockPermissionScope(true,Collections.emptySet(),Collections.emptySet(),101L));
+        ReflectionTestUtils.setField(service,"reader",reader);ReflectionTestUtils.setField(service,"warehouses",warehouses);
+        ReflectionTestUtils.setField(service,"knowledge",mock(AssistantKnowledge.class));
+        when(permission.getCurrentUserHiddenFields("erp_product")).thenReturn(hidden);
+        when(reader.select(anyMap())).thenAnswer(call->{
+            String mode=String.valueOf(((Map<?,?>)call.getArgument(0)).get("mode"));
+            if("permissionDepartments".equals(mode)) return Collections.emptyList();
+            if("summary".equals(mode)) {Map<String,Object> row=new LinkedHashMap<>();row.put("label","合计");row.put("unit","桶");row.put("amount",5);return Collections.singletonList(row);}
+            if("productResults".equals(mode)) return Collections.singletonList(productStockRow(1L,"产品A",11L,"仓A",5,"sharePrice",369));
+            return Collections.emptyList();
+        });
+        AssistantPlan plan=new AssistantPlan();plan.setMetric(AssistantPlan.Metric.STOCK);plan.setPeriod("CURRENT");
+        plan.setIncludeProductPrices(true);plan.setPriceQueryMode(AssistantPlan.PriceQueryMode.NONE);
+        plan.setProductResultTable(true);plan.setProductIds(Collections.singletonList(1L));
+
+        Map<String,Object> result=service.execute(plan);
+
+        assertEquals("NO_PERMISSION",result.get("priceStatus"));
+        Map<?,?> product=(Map<?,?>)((List<?>)result.get("productResults")).get(0);
+        assertEquals(Collections.emptyList(),product.get("prices"));
+        assertEquals("当前账号没有可见的产品价格字段",product.get("priceDisplayText"));
+        assertEquals(1,((List<?>)product.get("warehouseStocks")).size());
+    }
+    @Test void productResultTableAggregatesWarehouseRowsKeepsNegativesAndUsesNoStockState() {
+        AssistantReadOnly reader=mock(AssistantReadOnly.class);
+        cn.iocoder.yudao.module.erp.service.stock.ErpWarehouseService warehouses=mock(cn.iocoder.yudao.module.erp.service.stock.ErpWarehouseService.class);
+        when(reader.snapshot(any())).thenAnswer(call->((java.util.function.Supplier<?>)call.getArgument(0)).get());
+        when(warehouses.getCurrentUserProductStockPermissionScope()).thenReturn(
+                new cn.iocoder.yudao.module.erp.service.stock.bo.ErpProductStockPermissionScope(true,Collections.emptySet(),Collections.emptySet(),101L));
+        ReflectionTestUtils.setField(service,"reader",reader);ReflectionTestUtils.setField(service,"warehouses",warehouses);
+        ReflectionTestUtils.setField(service,"knowledge",mock(AssistantKnowledge.class));
+        when(reader.select(anyMap())).thenAnswer(call->{
+            String mode=String.valueOf(((Map<?,?>)call.getArgument(0)).get("mode"));
+            if("permissionDepartments".equals(mode)) return Collections.emptyList();
+            if("summary".equals(mode)) {Map<String,Object> row=new LinkedHashMap<>();row.put("label","合计");row.put("unit","桶");row.put("amount",0);return Collections.singletonList(row);}
+            if("productResults".equals(mode)) {
+                List<Map<String,Object>> values=new ArrayList<>();
+                values.add(productStockRow(1L,"产品A",11L,"仓A",3,"sharePrice",369));
+                values.add(productStockRow(1L,"产品A",11L,"仓A",2,"sharePrice",369));
+                values.add(productStockRow(1L,"产品A",12L,"仓B",-1,"sharePrice",369));
+                values.add(productStockRow(1L,"产品A",13L,"仓C",0,"sharePrice",369));
+                values.add(productStockRow(2L,"产品B",null,null,0,"retailPrice",399));
+                return values;
+            }
+            return Collections.emptyList();
+        });
+        AssistantPlan plan=new AssistantPlan();plan.setMetric(AssistantPlan.Metric.STOCK);plan.setPeriod("CURRENT");
+        plan.setIncludeProductPrices(true);plan.setPriceQueryMode(AssistantPlan.PriceQueryMode.ALL);
+        plan.setProductResultTable(true);plan.setProductIds(Arrays.asList(1L,2L));plan.setProductMatchTruncated(true);
+
+        Map<String,Object> result=service.execute(plan);
+
+        List<?> products=(List<?>)result.get("productResults");assertEquals(2,products.size());
+        Map<?,?> first=(Map<?,?>)products.get(0);List<?> firstStocks=(List<?>)first.get("warehouseStocks");
+        assertEquals(2,firstStocks.size());assertEquals(new java.math.BigDecimal("5"),((Map<?,?>)firstStocks.get(0)).get("amount"));
+        assertEquals(new java.math.BigDecimal("-1"),((Map<?,?>)firstStocks.get(1)).get("amount"));
+        assertEquals(Collections.emptyList(),((Map<?,?>)products.get(1)).get("warehouseStocks"));
+        assertEquals(true,result.get("productMatchTruncated"));assertEquals(10,result.get("productMatchLimit"));
+    }
     @Test void rankingSkipsUnitSummaryAndUsesRowsAsSuccessfulResult() {
         AssistantReadOnly reader=mock(AssistantReadOnly.class);
         cn.iocoder.yudao.module.erp.service.stock.ErpWarehouseService warehouses=mock(cn.iocoder.yudao.module.erp.service.stock.ErpWarehouseService.class);
@@ -204,6 +269,57 @@ class AssistantSecurityTest {
         assertEquals(Arrays.asList("permissionDepartments","groups"),modes);
         assertEquals(Collections.emptyList(),result.get("summary"));assertEquals("SUCCESS",result.get("status"));
         assertEquals("RANKING",((Map<?,?>)result.get("presentation")).get("mode"));
+    }
+    @Test void exactZeroAccountTotalKeepsNonzeroDepartmentOffsetsAndSortsThem() {
+        AssistantReadOnly reader=accountReader();
+        when(reader.select(anyMap())).thenAnswer(call->{
+            Map<?,?> args=call.getArgument(0);String mode=String.valueOf(args.get("mode"));
+            if("permissionDepartments".equals(mode)) return Collections.emptyList();
+            if("summary".equals(mode)) {
+                Object req=args.get("reqVO");
+                assertTrue(req instanceof cn.iocoder.yudao.module.erp.controller.admin.finance.receivable.vo.account.ErpReceivableAccountPageReqVO);
+                assertEquals(Boolean.TRUE,((cn.iocoder.yudao.module.erp.controller.admin.finance.receivable.vo.account.ErpReceivableAccountPageReqVO)req).getShowZeroBalance());
+                Map<String,Object> row=new LinkedHashMap<>();row.put("label","合计");row.put("amount",java.math.BigDecimal.ZERO);row.put("unit","元");
+                return Collections.singletonList(row);
+            }
+            if("accountParties".equals(mode)) return Collections.singletonList(accountRow(1L,"客户A",null,null,"0"));
+            if("accountResults".equals(mode)) return Arrays.asList(
+                    accountRow(1L,"客户A",12L,"兴宇路通","-10000"),
+                    accountRow(1L,"客户A",11L,"甘孜分公司","10000"));
+            return Collections.emptyList();
+        });
+        AssistantPlan plan=new AssistantPlan();plan.setMetric(AssistantPlan.Metric.RECEIVABLE);plan.setPeriod("CURRENT");plan.setPartyId(1L);
+
+        Map<String,Object> result=service.execute(plan);
+
+        assertEquals("SUCCESS",result.get("status"));assertEquals("应收余额合计",result.get("summaryLabel"));
+        List<?> rows=(List<?>)result.get("accountResults");assertEquals(2,rows.size());
+        assertEquals("甘孜分公司",((Map<?,?>)rows.get(0)).get("deptName"));
+        assertEquals("兴宇路通",((Map<?,?>)rows.get(1)).get("deptName"));
+        assertEquals(false,result.get("accountPartyTruncated"));assertEquals(10,result.get("accountPartyLimit"));
+    }
+    @Test void genericAccountsSelectTenPartiesBeforeExpandingDepartments() {
+        AssistantReadOnly reader=accountReader();
+        when(reader.select(anyMap())).thenAnswer(call->{
+            Map<?,?> args=call.getArgument(0);String mode=String.valueOf(args.get("mode"));
+            if("permissionDepartments".equals(mode) || "summary".equals(mode)) return Collections.emptyList();
+            if("accountParties".equals(mode)) {
+                List<Map<String,Object>> parties=new ArrayList<>();
+                for(long id=1;id<=11;id++) parties.add(accountRow(id,"供应商"+id,null,null,String.valueOf(100-id)));
+                return parties;
+            }
+            if("accountResults".equals(mode)) {
+                assertEquals(Arrays.asList(1L,2L,3L,4L,5L,6L,7L,8L,9L,10L),args.get("accountPartyIds"));
+                return Collections.singletonList(accountRow(1L,"供应商1",null,"未归属部门","99"));
+            }
+            return Collections.emptyList();
+        });
+        AssistantPlan plan=new AssistantPlan();plan.setMetric(AssistantPlan.Metric.PAYABLE);plan.setPeriod("CURRENT");
+
+        Map<String,Object> result=service.execute(plan);
+
+        assertEquals(true,result.get("accountPartyTruncated"));assertEquals(1,((List<?>)result.get("accountResults")).size());
+        assertEquals("应付余额合计",result.get("summaryLabel"));
     }
     @Test void publishedMetricCannotUseAnUnverifiedGrouping() {
         AssistantProperties properties=new AssistantProperties();properties.setPublishedMetrics(Collections.singletonList("SALE"));
@@ -238,6 +354,26 @@ class AssistantSecurityTest {
         AssistantFailure failure=assertThrows(AssistantFailure.class,()->service.execute(plan));
         assertEquals("ENTITY_NOT_FOUND",failure.getCode());
         assertEquals("没有找到匹配的仓库，请检查仓库名称或编码",failure.getMessage());
+    }
+    private static Map<String,Object> productStockRow(long productId,String productName,Long warehouseId,
+                                                       String warehouseName,int amount,String priceKey,int price) {
+        Map<String,Object> row=new LinkedHashMap<>();row.put("productId",productId);row.put("productName",productName);
+        row.put("unit","桶");row.put("warehouseId",warehouseId);row.put("warehouseName",warehouseName);
+        row.put("amount",new java.math.BigDecimal(amount));row.put(priceKey,new java.math.BigDecimal(price));return row;
+    }
+    private AssistantReadOnly accountReader() {
+        AssistantReadOnly reader=mock(AssistantReadOnly.class);
+        when(reader.snapshot(any())).thenAnswer(call->((java.util.function.Supplier<?>)call.getArgument(0)).get());
+        ReflectionTestUtils.setField(service,"reader",reader);ReflectionTestUtils.setField(service,"knowledge",mock(AssistantKnowledge.class));
+        cn.iocoder.yudao.framework.common.biz.system.permission.dto.DeptDataPermissionRespDTO scope=
+                mock(cn.iocoder.yudao.framework.common.biz.system.permission.dto.DeptDataPermissionRespDTO.class);
+        when(scope.getAll()).thenReturn(true);when(scope.getDeptIds()).thenReturn(Collections.emptySet());when(scope.getSelf()).thenReturn(false);
+        when(permission.getDeptDataPermission(anyLong(),anyString())).thenReturn(scope);
+        return reader;
+    }
+    private static Map<String,Object> accountRow(long partyId,String partyName,Long deptId,String deptName,String amount) {
+        Map<String,Object> row=new LinkedHashMap<>();row.put("partyId",partyId);row.put("partyName",partyName);
+        row.put("deptId",deptId);row.put("deptName",deptName);row.put("amount",new java.math.BigDecimal(amount));row.put("unit","元");return row;
     }
     private Map<String,Object> executeProductPrice(Map<String,Object> values,List<String> hidden,
                                                    AssistantPlan.PriceQueryMode mode,String priceField) {

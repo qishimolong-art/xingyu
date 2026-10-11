@@ -11,6 +11,7 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Supplier;
 
 import static java.util.Collections.singleton;
 
@@ -22,6 +23,13 @@ import static java.util.Collections.singleton;
  * @author 芋道源码
  */
 public interface PermissionService {
+
+    /**
+     * Executes read-only permission checks against one request-scoped snapshot.
+     * The snapshot only removes duplicate reads during the supplied computation;
+     * it is never reused by later business queries.
+     */
+    <T> T executeInReadSnapshot(Supplier<T> supplier);
 
     /**
      * 判断是否有权限，任一一个即可

@@ -22,6 +22,7 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashSet;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -130,6 +131,43 @@ public class DeptPriceFieldServiceImpl implements DeptPriceFieldService {
             }
         }
         return hiddenFields;
+    }
+
+    @Override
+    public Map<Long, List<String>> getHiddenPriceFieldsByDeptIds(Collection<Long> enabledDeptIds) {
+        List<FieldDefinitionDO> definitions = productPriceFieldCatalogService.getPriceFields();
+        Map<Long, List<String>> result = new HashMap<>();
+        if (CollUtil.isEmpty(definitions)) {
+            result.put(null, Collections.emptyList());
+            if (CollUtil.isNotEmpty(enabledDeptIds)) {
+                enabledDeptIds.forEach(deptId -> result.put(deptId, Collections.emptyList()));
+            }
+            return result;
+        }
+        Set<Long> distinctDeptIds = CollUtil.isEmpty(enabledDeptIds)
+                ? Collections.emptySet() : new LinkedHashSet<>(enabledDeptIds);
+        Map<Long, Set<String>> allowedFieldKeysByDeptId = CollUtil.isEmpty(distinctDeptIds)
+                ? Collections.emptyMap()
+                : deptPriceFieldMapper.selectListByDeptIds(distinctDeptIds).stream()
+                        .collect(Collectors.groupingBy(DeptPriceFieldDO::getDeptId,
+                                Collectors.mapping(item -> ProductPriceFieldKeys.normalize(item.getFieldKey()),
+                                        Collectors.toSet())));
+        List<String> allHiddenFields = buildHiddenFields(definitions, Collections.emptySet());
+        result.put(null, allHiddenFields);
+        distinctDeptIds.forEach(deptId -> result.put(deptId, buildHiddenFields(definitions,
+                allowedFieldKeysByDeptId.getOrDefault(deptId, Collections.emptySet()))));
+        return result;
+    }
+
+    private List<String> buildHiddenFields(List<FieldDefinitionDO> definitions, Set<String> allowedFieldKeys) {
+        List<String> hiddenFields = new ArrayList<>();
+        for (FieldDefinitionDO definition : definitions) {
+            String fieldKey = ProductPriceFieldKeys.normalize(definition.getFieldKey());
+            if (!allowedFieldKeys.contains(fieldKey)) {
+                ProductPriceFieldKeys.addHiddenField(hiddenFields, fieldKey);
+            }
+        }
+        return Collections.unmodifiableList(hiddenFields);
     }
 
     @Override

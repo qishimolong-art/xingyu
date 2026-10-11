@@ -208,6 +208,10 @@ public interface ErpWarehouseMapper extends BaseMapperX<ErpWarehouseDO> {
                 }));
     }
 
+    default List<ErpWarehouseDO> selectListBySaleDeptScopeType(String scopeType) {
+        return selectList(ErpWarehouseDO::getSaleDeptScopeType, scopeType);
+    }
+
     default List<ErpWarehouseDO> selectListByDeptId(Long deptId) {
         return selectList(ErpWarehouseDO::getDeptId, deptId);
     }

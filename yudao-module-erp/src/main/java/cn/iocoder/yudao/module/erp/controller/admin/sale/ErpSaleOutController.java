@@ -20,6 +20,8 @@ import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.out.ErpSaleOutPickDe
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.out.ErpSaleOutPickDeliveryFilePageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.out.ErpSaleOutPickDeliveryFileRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.out.ErpSaleOutPickDeliveryItemPageReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.out.ErpSaleOutPickDeliveryOperationItemPageReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.out.ErpSaleOutPickDeliveryOperationItemRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.out.ErpSaleOutReceiptSummaryRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.out.ErpSaleOutRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.out.ErpSaleOutReturnableItemPageReqVO;
@@ -369,6 +371,20 @@ public class ErpSaleOutController {
             return success(PageResult.empty());
         }
         return success(salePickDeliveryService.getSaleOutPickDeliveryItemPage(pageReqVO.getOutId(), pageReqVO));
+    }
+
+    @GetMapping("/pick-delivery-operation-item-page")
+    @Operation(summary = "获得销售出库按批次拣货送货人员明细分页")
+    @PreAuthorize("@ss.hasPermission('erp:sale-out:query')")
+    public CommonResult<PageResult<ErpSaleOutPickDeliveryOperationItemRespVO>>
+    getSaleOutPickDeliveryOperationItemPage(
+            @Valid ErpSaleOutPickDeliveryOperationItemPageReqVO pageReqVO) {
+        ErpSaleOutDO saleOut = saleOutService.getSaleOut(pageReqVO.getOutId());
+        if (saleOut == null) {
+            return success(PageResult.empty());
+        }
+        return success(salePickDeliveryService.getSaleOutPickDeliveryOperationItemPage(
+                pageReqVO.getOutId(), pageReqVO.getType(), pageReqVO));
     }
 
     @GetMapping("/pick-delivery-file-page")

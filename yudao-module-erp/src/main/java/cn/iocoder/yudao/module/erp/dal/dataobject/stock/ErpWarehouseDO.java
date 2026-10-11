@@ -38,6 +38,10 @@ public class ErpWarehouseDO extends BaseDO {
      */
     private Boolean directWarehouse;
     /**
+     * 销售部门授权范围：ALL-全部部门可用，SPECIFIED-指定部门可用。
+     */
+    private String saleDeptScopeType;
+    /**
      * Department id.
      */
     private Long deptId;

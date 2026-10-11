@@ -4,6 +4,7 @@ import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.common.pojo.PageParam;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.out.ErpSaleOutPickDeliveryDetailRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.out.ErpSaleOutPickDeliveryFileRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.out.ErpSaleOutPickDeliveryOperationItemRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.pickdelivery.*;
 
 import java.io.IOException;
@@ -49,9 +50,9 @@ public interface ErpSalePickDeliveryService {
 
     ErpSaleDeliveryOrderRespVO getDelivery(Long id, boolean mobile, boolean includeDetail);
 
-    PageResult<ErpSalePickDeliveryItemRespVO> getDeliveryItemPage(Long orderId, PageParam pageParam, boolean mobile);
+    PageResult<ErpSalePickDeliveryItemRespVO> getDeliveryItemPage(Long taskId, PageParam pageParam, boolean mobile);
 
-    PageResult<ErpSalePickDeliverySubmitRespVO> getDeliverySubmitPage(Long orderId, PageParam pageParam, boolean mobile);
+    PageResult<ErpSalePickDeliverySubmitRespVO> getDeliverySubmitPage(Long taskId, PageParam pageParam, boolean mobile);
 
     void submitDelivery(ErpSaleDeliverySubmitReqVO reqVO);
 
@@ -69,6 +70,9 @@ public interface ErpSalePickDeliveryService {
     ErpSaleOutPickDeliveryDetailRespVO getSaleOutPickDeliveryDetail(Long saleOutId);
 
     PageResult<ErpSalePickDeliveryItemRespVO> getSaleOutPickDeliveryItemPage(Long saleOutId, PageParam pageParam);
+
+    PageResult<ErpSaleOutPickDeliveryOperationItemRespVO> getSaleOutPickDeliveryOperationItemPage(
+            Long saleOutId, Integer type, PageParam pageParam);
 
     PageResult<ErpSaleOutPickDeliveryFileRespVO> getSaleOutPickDeliveryFilePage(Long saleOutId, Integer type,
                                                                                 PageParam pageParam);

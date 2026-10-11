@@ -15,11 +15,21 @@ class ErpStockMapperSortTest {
     void shouldWhitelistSharedStockSelectorFields() {
         assertTrue(ErpStockMapper.getOrderExpression("warehouseName", null).contains("erp_warehouse"));
         assertTrue(ErpStockMapper.getOrderExpression("deptName", null).contains("system_dept"));
+        assertEquals("erp_stock.count", ErpStockMapper.getOrderExpression("count", null));
         assertNotNull(ErpStockMapper.getOrderExpression("pendingInCount", null));
         assertTrue(ErpStockMapper.getOrderExpression("availableCount", null).contains("erp_sale_cart_items"));
         assertTrue(ErpStockMapper.getOrderExpression("availableCount", null).contains("erp_stock.count"));
         assertNotNull(ErpStockMapper.getOrderExpression("lastPurchasePrice", null));
         assertNotNull(ErpStockMapper.getOrderExpression("retailPrice", null));
+        assertNotNull(ErpStockMapper.getOrderExpression("productPurchasePrice", null));
+        assertNotNull(ErpStockMapper.getOrderExpression("minPrice", null));
+        assertNotNull(ErpStockMapper.getOrderExpression("grossProfitRate", null));
+        assertNotNull(ErpStockMapper.getOrderExpression("backupPrice1", null));
+        assertNotNull(ErpStockMapper.getOrderExpression("wholesalePrice", null));
+        assertNotNull(ErpStockMapper.getOrderExpression("sharePrice", null));
+        assertNotNull(ErpStockMapper.getOrderExpression("featureCode", null));
+        assertNotNull(ErpStockMapper.getOrderExpression("weight", null));
+        assertNull(ErpStockMapper.getOrderExpression("lastSalePrice", null));
         assertNull(ErpStockMapper.getOrderExpression("id desc; delete from erp_stock", null));
     }
 

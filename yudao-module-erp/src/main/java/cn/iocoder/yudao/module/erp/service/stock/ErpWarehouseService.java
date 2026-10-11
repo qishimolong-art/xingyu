@@ -298,12 +298,24 @@ public interface ErpWarehouseService {
     Set<Long> getWarehouseSaleDeptIds(Long warehouseId);
 
     /**
+     * 获得仓库销售部门授权范围。
+     */
+    String getWarehouseSaleDeptScopeType(Long warehouseId);
+
+    /**
      * Replaces warehouse sale department permissions.
      *
      * @param warehouseId warehouse id
      * @param deptIds department ids
      */
-    void updateWarehouseSaleDeptPermissions(Long warehouseId, Collection<Long> deptIds);
+    default void updateWarehouseSaleDeptPermissions(Long warehouseId, Collection<Long> deptIds) {
+        updateWarehouseSaleDeptPermissions(warehouseId, null, deptIds);
+    }
+
+    /**
+     * 更新仓库销售部门授权范围及指定部门。
+     */
+    void updateWarehouseSaleDeptPermissions(Long warehouseId, String scopeType, Collection<Long> deptIds);
 
     /**
      * Validates warehouse can be selected by sales department.

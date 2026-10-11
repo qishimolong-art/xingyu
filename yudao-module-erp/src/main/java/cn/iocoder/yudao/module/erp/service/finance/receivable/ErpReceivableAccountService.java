@@ -4,7 +4,9 @@ import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.receivable.vo.account.ErpReceivableAccountPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.receivable.vo.account.ErpReceivableDetailReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.receivable.vo.account.ErpReceivableDetailRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.finance.receivable.vo.account.ErpReceivableDrilldownReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.receivable.vo.account.ErpReceivableWriteOffReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.ErpAccountDrilldownPageRespVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.receivable.ErpReceivableAccountDO;
 import cn.iocoder.yudao.module.erp.service.finance.ErpFinanceVisibleScope;
 
@@ -20,6 +22,11 @@ public interface ErpReceivableAccountService {
 
     List<ErpReceivableDetailRespVO> getReceivableDetailList(ErpReceivableDetailReqVO reqVO,
                                                              ErpFinanceVisibleScope scope);
+
+    ErpAccountDrilldownPageRespVO<ErpReceivableDetailRespVO> getReceivableDrilldownPage(
+            ErpReceivableDrilldownReqVO reqVO);
+
+    List<ErpReceivableDetailRespVO> getReceivableDrilldownList(ErpReceivableDrilldownReqVO reqVO);
 
     Long writeOffReceivable(ErpReceivableWriteOffReqVO reqVO);
 

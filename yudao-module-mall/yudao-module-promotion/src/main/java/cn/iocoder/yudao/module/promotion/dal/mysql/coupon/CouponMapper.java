@@ -7,6 +7,7 @@ import cn.iocoder.yudao.framework.mybatis.core.query.LambdaQueryWrapperX;
 import cn.iocoder.yudao.module.promotion.controller.admin.coupon.vo.coupon.CouponPageReqVO;
 import cn.iocoder.yudao.module.promotion.dal.dataobject.coupon.CouponDO;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
+import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.github.yulichang.toolkit.MPJWrappers;
 import org.apache.ibatis.annotations.Mapper;
 
@@ -66,6 +67,20 @@ public interface CouponMapper extends BaseMapperX<CouponDO> {
                 .eq(CouponDO::getTemplateId, templateId)
                 .in(CouponDO::getUserId, userIds)
         );
+    }
+
+    default Map<Long, Integer> selectCountByTemplateIdAndUserIds(Long templateId, Collection<Long> userIds) {
+        if (userIds == null || userIds.isEmpty()) {
+            return java.util.Collections.emptyMap();
+        }
+        String userIdAlias = "userId";
+        String countAlias = "count";
+        List<Map<String, Object>> list = selectMaps(new QueryWrapper<CouponDO>()
+                .select("user_id AS " + userIdAlias, "COUNT(*) AS " + countAlias)
+                .eq("template_id", templateId)
+                .in("user_id", userIds)
+                .groupBy("user_id"));
+        return convertMap(list, map -> MapUtil.getLong(map, userIdAlias), map -> MapUtil.getInt(map, countAlias));
     }
 
     default Map<Long, Integer> selectCountByUserIdAndTemplateIdIn(Long userId, Collection<Long> templateIds) {

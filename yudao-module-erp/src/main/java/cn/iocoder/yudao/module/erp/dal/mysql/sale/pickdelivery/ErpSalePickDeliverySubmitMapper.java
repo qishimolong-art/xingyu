@@ -80,4 +80,32 @@ public interface ErpSalePickDeliverySubmitMapper extends BaseMapperX<ErpSalePick
                 .orderByDesc(ErpSalePickDeliverySubmitDO::getId));
     }
 
+    default PageResult<ErpSalePickDeliverySubmitDO> selectDeliveryPageByTaskId(
+            PageParam pageParam, Long taskId, Long orderId) {
+        String preciseLegacyTask = "EXISTS (SELECT 1 FROM erp_sale_pick_delivery_submit_item si "
+                + "INNER JOIN erp_sale_pick_delivery_item i ON i.id = si.item_id "
+                + "WHERE si.submit_id = erp_sale_pick_delivery_submit.id "
+                + "AND si.tenant_id = erp_sale_pick_delivery_submit.tenant_id AND si.deleted = 0 "
+                + "AND i.tenant_id = erp_sale_pick_delivery_submit.tenant_id AND i.deleted = 0 "
+                + "AND i.pick_task_id = {0})";
+        return selectPage(pageParam, new LambdaQueryWrapperX<ErpSalePickDeliverySubmitDO>()
+                .eq(ErpSalePickDeliverySubmitDO::getOrderId, orderId)
+                .eq(ErpSalePickDeliverySubmitDO::getType, ErpSalePickDeliverySubmitTypeEnum.DELIVERY.getType())
+                .and(wrapper -> wrapper.eq(ErpSalePickDeliverySubmitDO::getPickTaskId, taskId)
+                        .or(legacy -> legacy.isNull(ErpSalePickDeliverySubmitDO::getPickTaskId)
+                                .apply(preciseLegacyTask, taskId)))
+                .orderByDesc(ErpSalePickDeliverySubmitDO::getId));
+    }
+
+    default long selectUnassignedLegacyDeliveryCount(Long orderId) {
+        String noItemDetail = "NOT EXISTS (SELECT 1 FROM erp_sale_pick_delivery_submit_item si "
+                + "WHERE si.submit_id = erp_sale_pick_delivery_submit.id "
+                + "AND si.tenant_id = erp_sale_pick_delivery_submit.tenant_id AND si.deleted = 0)";
+        return selectCount(new LambdaQueryWrapperX<ErpSalePickDeliverySubmitDO>()
+                .eq(ErpSalePickDeliverySubmitDO::getOrderId, orderId)
+                .eq(ErpSalePickDeliverySubmitDO::getType, ErpSalePickDeliverySubmitTypeEnum.DELIVERY.getType())
+                .isNull(ErpSalePickDeliverySubmitDO::getPickTaskId)
+                .apply(noItemDetail));
+    }
+
 }

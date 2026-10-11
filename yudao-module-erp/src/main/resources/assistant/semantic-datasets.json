@@ -1,12 +1,21 @@
 {
-  "version": "2026-09-29-v2",
+  "version": "2026-10-08-v4",
   "datasets": [
     {
       "name": "purchase_orders", "title": "采购订单",
       "permission": "erp:purchase-order:query", "module": "erp_purchase_order",
+      "allowedOperations": ["PROJECT", "FILTER", "AGGREGATE", "GROUP", "SORT"],
+      "relationships": ["采购订单—供应商", "采购订单—采购员", "采购订单—部门"],
+      "costPolicy": {
+        "maxRows": 200, "maxOffset": 1000, "maxSelectedColumns": 12, "maxGroupColumns": 3,
+        "queryTimeoutSeconds": 10, "requiresSelectiveFilter": true,
+        "selectiveColumns": ["id", "no", "supplier_id", "purchaser_id", "dept_id", "order_time"],
+        "timeColumns": ["order_time"], "maxTimeRangeDays": 731
+      },
       "columns": {
         "id": "订单标识", "no": "采购订单号", "status": "审核状态",
         "supplier_id": "供应商标识", "supplier_name": "供应商",
+        "purchaser_id": "采购员标识", "purchaser_name": "采购员",
         "dept_id": "部门标识", "dept_name": "部门", "order_time": "下单时间",
         "total_count": "订货数量", "total_price": "订单金额",
         "in_count": "已入库数量", "return_count": "退货数量", "remaining_count": "未到货数量"
@@ -15,6 +24,14 @@
     {
       "name": "sale_orders", "title": "销售订单",
       "permission": "erp:sale-order:query", "module": "erp_sale_order",
+      "allowedOperations": ["PROJECT", "FILTER", "AGGREGATE", "GROUP", "SORT"],
+      "relationships": ["销售订单—客户", "销售订单—业务员", "销售订单—部门"],
+      "costPolicy": {
+        "maxRows": 200, "maxOffset": 1000, "maxSelectedColumns": 12, "maxGroupColumns": 3,
+        "queryTimeoutSeconds": 10, "requiresSelectiveFilter": true,
+        "selectiveColumns": ["id", "no", "customer_id", "salesperson_id", "dept_id", "order_time"],
+        "timeColumns": ["order_time"], "maxTimeRangeDays": 731
+      },
       "columns": {
         "id": "订单标识", "no": "销售订单号", "status": "审核状态",
         "customer_id": "客户标识", "customer_name": "客户",
@@ -27,6 +44,14 @@
     {
       "name": "sale_order_items", "title": "销售订单客户与商品明细",
       "permission": "erp:sale-order:query", "module": "erp_sale_order",
+      "allowedOperations": ["PROJECT", "FILTER", "AGGREGATE", "GROUP", "SORT"],
+      "relationships": ["销售订单—客户", "销售订单—商品", "销售订单—仓库", "销售订单—业务员", "销售订单—部门"],
+      "costPolicy": {
+        "maxRows": 200, "maxOffset": 1000, "maxSelectedColumns": 12, "maxGroupColumns": 3,
+        "queryTimeoutSeconds": 8, "requiresSelectiveFilter": true,
+        "selectiveColumns": ["item_id", "order_id", "order_no", "customer_id", "product_id", "warehouse_id", "salesperson_id", "dept_id", "order_time"],
+        "timeColumns": ["order_time"], "maxTimeRangeDays": 366
+      },
       "columns": {
         "item_id": "订单明细标识", "order_id": "订单标识", "order_no": "销售订单号",
         "status": "审核状态", "order_time": "下单时间",
@@ -43,6 +68,14 @@
     {
       "name": "inventory_current", "title": "当前库存",
       "permission": "erp:stock:query", "module": "erp_product_stock",
+      "allowedOperations": ["PROJECT", "FILTER", "AGGREGATE", "GROUP", "SORT"],
+      "relationships": ["库存—商品", "库存—仓库", "仓库—部门", "商品—单位"],
+      "costPolicy": {
+        "maxRows": 200, "maxOffset": 1000, "maxSelectedColumns": 10, "maxGroupColumns": 3,
+        "queryTimeoutSeconds": 8, "requiresSelectiveFilter": false,
+        "selectiveColumns": ["product_id", "warehouse_id", "dept_id"],
+        "timeColumns": [], "maxTimeRangeDays": 0
+      },
       "columns": {
         "product_id": "产品标识", "product_name": "产品名称",
         "warehouse_id": "仓库标识", "warehouse_name": "仓库",
@@ -52,6 +85,14 @@
     {
       "name": "stock_movements", "title": "库存流水",
       "permission": "erp:stock-record:query", "module": "erp_stock_record",
+      "allowedOperations": ["PROJECT", "FILTER", "AGGREGATE", "GROUP", "SORT"],
+      "relationships": ["库存流水—商品", "库存流水—仓库", "库存流水—部门", "商品—单位"],
+      "costPolicy": {
+        "maxRows": 200, "maxOffset": 1000, "maxSelectedColumns": 12, "maxGroupColumns": 3,
+        "queryTimeoutSeconds": 8, "requiresSelectiveFilter": true,
+        "selectiveColumns": ["id", "product_id", "warehouse_id", "dept_id", "biz_no", "biz_date"],
+        "timeColumns": ["biz_date"], "maxTimeRangeDays": 366
+      },
       "columns": {
         "id": "流水标识", "product_id": "产品标识", "product_name": "产品名称",
         "warehouse_id": "仓库标识", "warehouse_name": "仓库",

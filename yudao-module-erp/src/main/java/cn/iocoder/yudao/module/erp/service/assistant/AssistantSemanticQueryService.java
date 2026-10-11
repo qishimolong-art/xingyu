@@ -28,7 +28,8 @@ public class AssistantSemanticQueryService {
         for(String name:names) {
             AssistantSemanticCatalog.Dataset dataset=catalog.requirePublished(name);
             Map<String,String> fields=permissions.visibleFields(dataset.getPermission(),dataset.getModule(),dataset.getColumns());
-            Map<String,Object> row=new LinkedHashMap<>();row.put("name",dataset.getName());row.put("title",dataset.getTitle());row.put("columns",fields);result.add(row);
+            Map<String,Object> row=new LinkedHashMap<>();row.put("name",dataset.getName());row.put("title",dataset.getTitle());row.put("columns",fields);
+            row.put("queryPolicy",dataset.modelPolicy(fields.keySet()));result.add(row);
             if(++count>=8) break;
         }
         return result;
@@ -50,7 +51,7 @@ public class AssistantSemanticQueryService {
     public Map<String,Object> execute(String sql,Map<String,Object> modelParameters,Map<String,Object> entityConstraint) {
         PreparedSemanticQuery prepared=prepare(sql,modelParameters,entityConstraint,false);
         BoundSql bound=bind(replaceDataset(prepared.checked.getSql(),prepared.dataset,source(prepared.dataset,prepared.values,prepared.definition)),prepared.values);
-        List<Map<String,Object>> rows=reader.query(bound.sql,bound.parameters,200);
+        List<Map<String,Object>> rows=reader.query(bound.sql,bound.parameters,prepared.definition.getMaxRows(),prepared.definition.getQueryTimeoutSeconds());
         Map<String,Object> result=new LinkedHashMap<>();
         result.put("queryType","TEXT_TO_SQL");result.put("toolName","execute_semantic_query");
         result.put("title",prepared.definition.getTitle()+"智能查询");result.put("summary",Collections.emptyList());result.put("rows",rows);
@@ -59,8 +60,10 @@ public class AssistantSemanticQueryService {
         result.put("basis",Collections.singletonList(prepared.definition.getTitle()));result.put("traceId",UUID.randomUUID().toString());
         result.put("queriedAt",LocalDateTime.now(ZoneId.of("Asia/Shanghai")).toString());
         result.put("status",rows.isEmpty()?"EMPTY":"SUCCESS");
-        Map<String,Object> trace=new LinkedHashMap<>();trace.put("sql",prepared.checked.getSql());trace.put("datasets",prepared.checked.getDatasets());
-        trace.put("fingerprint",prepared.checked.getFingerprint());trace.put("validation","PASSED");trace.put("rowCount",rows.size());
+        Map<String,Object> trace=new LinkedHashMap<>();trace.put("datasets",prepared.checked.getDatasets());trace.put("columns",prepared.checked.getColumns());
+        trace.put("operations",prepared.checked.getOperations());trace.put("fingerprint",prepared.checked.getFingerprint());
+        trace.put("catalogVersion",catalog.version());trace.put("validation","PASSED");trace.put("execution","COMPLETED");trace.put("rowCount",rows.size());
+        trace.put("maximumRows",prepared.definition.getMaxRows());trace.put("queryTimeoutSeconds",prepared.definition.getQueryTimeoutSeconds());
         List<String> injected=new ArrayList<>(Arrays.asList("tenant","deleted","approved","business-permission","field-permission","data-permission"));
         if(entityConstraint!=null) injected.add("resolved-entity");trace.put("injectedScopes",injected);
         result.put("queryTrace",trace);return result;
@@ -78,11 +81,11 @@ public class AssistantSemanticQueryService {
         if(page<1 || page>10_000 || pageSize<1 || pageSize>100) throw new AssistantFailure("INVALID_PAGE","分页参数无效");
         PreparedSemanticQuery prepared=prepare(sql,modelParameters,entityConstraint,serverOwnedPage);
         BoundSql bound=bind(replaceDataset(prepared.checked.getSql(),prepared.dataset,source(prepared.dataset,prepared.values,prepared.definition)),prepared.values);
-        List<Map<String,Object>> countRows=reader.query("SELECT COUNT(*) total FROM ("+bound.sql+") assistant_detail_count",bound.parameters,1);
+        List<Map<String,Object>> countRows=reader.query("SELECT COUNT(*) total FROM ("+bound.sql+") assistant_detail_count",bound.parameters,1,prepared.definition.getQueryTimeoutSeconds());
         Object total=countRows.isEmpty()?0:countRows.get(0).get("total");
         List<Object> pageParameters=new ArrayList<>(bound.parameters);
         pageParameters.add(pageSize);pageParameters.add((page-1)*pageSize);
-        List<Map<String,Object>> rows=reader.query("SELECT * FROM ("+bound.sql+") assistant_detail_page LIMIT ? OFFSET ?",pageParameters,pageSize);
+        List<Map<String,Object>> rows=reader.query("SELECT * FROM ("+bound.sql+") assistant_detail_page LIMIT ? OFFSET ?",pageParameters,pageSize,prepared.definition.getQueryTimeoutSeconds());
         Map<String,Object> result=new LinkedHashMap<>();
         result.put("list",rows);result.put("total",total);result.put("columns",columns(rows,prepared.definition));return result;
     }
@@ -103,6 +106,7 @@ public class AssistantSemanticQueryService {
             values.put(item.getKey(),item.getValue());
         }
         if(entityConstraint!=null) values.put("resolvedEntity",entityConstraint);
+        if(!serverOwnedPage) guard.enforceCost(checked,definition,submitted,entityConstraint!=null);
         return new PreparedSemanticQuery(checked,dataset,definition,values);
     }
 
@@ -112,9 +116,10 @@ public class AssistantSemanticQueryService {
                 permissions.authorize(dataset.getPermission(),dataset.getModule(),Collections.emptySet());
                 permissions.documentScope(values,"document","erp_purchase_order",false);
                 permissions.documentScope(values,"party","erp_supplier",true);
-                return "SELECT o.id,o.no,o.status,o.supplier_id,s.name supplier_name,o.dept_id,d.name dept_name,o.order_time,"
+                return "SELECT o.id,o.no,o.status,o.supplier_id,s.name supplier_name,o.purchaser purchaser_id,pu.nickname purchaser_name,o.dept_id,d.name dept_name,o.order_time,"
                         +"o.total_count,o.total_price,o.in_count,o.return_count,GREATEST(o.total_count-COALESCE(o.in_count,0)+COALESCE(o.return_count,0),0) remaining_count "
                         +"FROM erp_purchase_order o JOIN erp_supplier s ON s.id=o.supplier_id AND s.tenant_id=o.tenant_id AND s.deleted=0 "
+                        +"LEFT JOIN system_users pu ON pu.id=o.purchaser AND pu.tenant_id=o.tenant_id AND pu.deleted=0 "
                         +"LEFT JOIN system_dept d ON d.id=o.dept_id AND d.tenant_id=o.tenant_id AND d.deleted=0 "
                         +"WHERE o.tenant_id=:tenantId AND o.deleted=0 AND o.status=20"+scope("o","document","purchaser",values)+scope("s","party","creator",values)+entityScope(name,values);
             case "sale_orders":
@@ -204,7 +209,7 @@ public class AssistantSemanticQueryService {
 
     private static String[] entityColumn(String dataset,String type) {
         String column=null,alias=null;
-        if("purchase_orders".equals(dataset)){alias="o";if("SUPPLIER".equals(type))column="supplier_id";else if("DEPARTMENT".equals(type))column="dept_id";}
+        if("purchase_orders".equals(dataset)){alias="o";if("SUPPLIER".equals(type))column="supplier_id";else if("PURCHASER".equals(type))column="purchaser";else if("DEPARTMENT".equals(type))column="dept_id";}
         else if("sale_orders".equals(dataset)){alias="o";if("CUSTOMER".equals(type))column="customer_id";else if("DEPARTMENT".equals(type))column="dept_id";else if("SALESPERSON".equals(type))column="sale_user_id";}
         else if("sale_order_items".equals(dataset)){alias="i";if("PRODUCT".equals(type))column="product_id";else if("WAREHOUSE".equals(type))column="warehouse_id";else if("CUSTOMER".equals(type)){alias="o";column="customer_id";}else if("DEPARTMENT".equals(type)){alias="o";column="dept_id";}else if("SALESPERSON".equals(type)){alias="o";column="sale_user_id";}}
         else if("inventory_current".equals(dataset)){alias="st";if("PRODUCT".equals(type))column="product_id";else if("WAREHOUSE".equals(type))column="warehouse_id";else if("DEPARTMENT".equals(type)){alias="w";column="dept_id";}}

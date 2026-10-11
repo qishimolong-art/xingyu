@@ -1072,9 +1072,11 @@ public class ErpFinancePaymentServiceImpl implements ErpFinancePaymentService {
     }
 
     private void validatePaymentWriteOffStatus(ErpFinancePaymentDO payment) {
-        if (payment.getSourcePayableMiscId() != null) {
-            throw exception(FINANCE_PAYMENT_WRITEOFF_BIZ_INVALID, "转收付款已直接结算来源单，不能重复核销");
-        }
+        // 2026-10-09：按业务确认，其他应付转入的付款单允许继续人工核销。
+        // 暂时保留原限制代码，后续如需恢复可直接启用；审批阶段仍跳过自动核销，避免自动串单。
+        // if (payment.getSourcePayableMiscId() != null) {
+        //     throw exception(FINANCE_PAYMENT_WRITEOFF_BIZ_INVALID, "转收付款已直接结算来源单，不能重复核销");
+        // }
         if (!ErpAuditStatus.APPROVE.getStatus().equals(payment.getStatus())) {
             throw exception(FINANCE_PAYMENT_WRITEOFF_STATUS_INVALID);
         }

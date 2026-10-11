@@ -9,7 +9,7 @@ INSERT INTO `system_menu`
 (`id`, `name`, `permission`, `type`, `sort`, `parent_id`, `path`, `icon`, `component`, `component_name`,
  `status`, `visible`, `keep_alive`, `always_show`, `creator`, `create_time`, `updater`, `update_time`, `deleted`)
 VALUES
-(2976, '报价转手推车', 'erp:sale-quote:convert-cart', 3, 6, 2970, '', '', '', NULL,
+(2976, '报价订单出库', 'erp:sale-quote:convert-cart', 3, 6, 2970, '', '', '', NULL,
  0, b'1', b'1', b'1', '1', NOW(), '1', NOW(), b'0')
 ON DUPLICATE KEY UPDATE
  `name` = VALUES(`name`),

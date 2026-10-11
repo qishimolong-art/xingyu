@@ -6,9 +6,14 @@ import cn.iocoder.yudao.module.erp.controller.admin.common.vo.print.ErpPrintReco
 import cn.iocoder.yudao.module.erp.controller.admin.common.vo.print.ErpPrintTemplateRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.common.vo.print.ErpPrintTemplateSaveReqVO;
 import cn.iocoder.yudao.module.erp.service.common.ErpPrintService;
+import cn.iocoder.yudao.module.erp.service.cloudprint.ErpCloudPrintFontRegistry;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.http.CacheControl;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -22,6 +27,7 @@ import javax.annotation.Resource;
 import javax.validation.Valid;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
 
 import static cn.iocoder.yudao.framework.common.pojo.CommonResult.success;
 
@@ -102,6 +108,20 @@ public class ErpPrintController {
     public CommonResult<Map<String, Object>> getPrintData(@RequestParam("moduleKey") String moduleKey,
                                                           @RequestParam("businessId") Long businessId) {
         return success(printService.getPrintData(moduleKey, businessId));
+    }
+
+    @GetMapping("/font/file")
+    @Operation(summary = "获取内置打印字体")
+    @PreAuthorize(ANY_READ_PERMISSION)
+    public ResponseEntity<byte[]> getFontFile(@RequestParam("fontFamily") String fontFamily,
+                                              @RequestParam(value = "weight", defaultValue = "400") Integer weight) {
+        ErpCloudPrintFontRegistry.FontFile fontFile =
+                ErpCloudPrintFontRegistry.resolveFontFile(fontFamily, weight);
+        return ResponseEntity.ok()
+                .contentType(MediaType.parseMediaType("font/ttf"))
+                .cacheControl(CacheControl.maxAge(7, TimeUnit.DAYS).cachePrivate())
+                .header(HttpHeaders.CONTENT_DISPOSITION, "inline; filename=\"" + fontFile.getFileName() + "\"")
+                .body(ErpCloudPrintFontRegistry.read(fontFile));
     }
 
     @GetMapping("/template/default")

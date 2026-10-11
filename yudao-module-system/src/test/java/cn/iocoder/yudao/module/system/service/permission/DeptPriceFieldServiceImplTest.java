@@ -19,6 +19,7 @@ import org.mockito.Mock;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 import static cn.iocoder.yudao.framework.test.core.util.AssertUtils.assertServiceException;
@@ -84,6 +85,22 @@ class DeptPriceFieldServiceImplTest extends BaseMockitoUnitTest {
 
         assertEquals(Arrays.asList("customDealerPrice", "col_customDealerPrice"),
                 service.getHiddenPriceFields(Collections.emptySet()));
+    }
+
+    @Test
+    void getHiddenPriceFieldsByDeptIds_shouldKeepDepartmentsIndependentInOneQuery() {
+        when(productPriceFieldCatalogService.getPriceFields())
+                .thenReturn(Arrays.asList(field("referencePrice", 1), field("retailPrice", 2)));
+        when(deptPriceFieldMapper.selectListByDeptIds(eq(asSet(10L, 20L))))
+                .thenReturn(Arrays.asList(relation(10L, "referencePrice"), relation(20L, "retailPrice")));
+
+        Map<Long, List<String>> hiddenFields = service.getHiddenPriceFieldsByDeptIds(asSet(10L, 20L));
+
+        assertEquals(Arrays.asList("retailPrice", "col_retailPrice"), hiddenFields.get(10L));
+        assertEquals(Arrays.asList("referencePrice", "col_referencePrice"), hiddenFields.get(20L));
+        assertEquals(Arrays.asList("referencePrice", "col_referencePrice", "retailPrice", "col_retailPrice"),
+                hiddenFields.get(null));
+        verify(deptPriceFieldMapper).selectListByDeptIds(eq(asSet(10L, 20L)));
     }
 
     @Test

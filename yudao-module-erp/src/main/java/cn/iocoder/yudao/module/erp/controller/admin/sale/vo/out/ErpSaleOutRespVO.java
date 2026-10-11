@@ -298,7 +298,7 @@ public class ErpSaleOutRespVO {
     @Schema(description = "拣货状态：10=待拣货，20=部分拣货，30=已拣货")
     private Integer pickStatus;
 
-    @Schema(description = "送货状态：5=待拣货完成，10=待送货，20=部分送货，30=已送货")
+    @Schema(description = "送货状态：5=待拣货，10=待送货，20=部分送货，30=已送货")
     private Integer deliveryStatus;
 
     @Schema(description = "拣货送货总明细数")

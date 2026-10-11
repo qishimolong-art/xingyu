@@ -13,6 +13,7 @@ import cn.iocoder.yudao.module.erp.dal.mysql.product.ErpProductMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.stock.ErpStockLockMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.stock.ErpStockMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.stock.ErpStockBatchQuantityMapper;
+import cn.iocoder.yudao.module.erp.dal.mysql.stock.ErpStockKeywordMatchScope;
 import cn.iocoder.yudao.module.erp.dal.mysql.stock.ErpStockRecordMapper;
 import cn.iocoder.yudao.module.erp.enums.stock.ErpStockRecordBizTypeEnum;
 import cn.iocoder.yudao.module.erp.service.mall.ErpMallProductSyncPublisher;
@@ -529,6 +530,176 @@ public class ErpStockServiceImplTest extends BaseMockitoUnitTest {
         verify(stockMapper).selectPage(eq(reqVO), org.mockito.ArgumentMatchers.<Collection<Long>>isNull(),
                 eq(visibleWarehouseIds), eq(Collections.emptyList()), eq(Collections.emptyList()),
                 eq(expectedStockKeyMap));
+    }
+
+    @Test
+    public void testGetStockPage_batchNoFilterIsIndependentAndCondition() {
+        ErpStockPageReqVO reqVO = new ErpStockPageReqVO();
+        reqVO.setShowBatchNo(true);
+        reqVO.setBatchNo(" PC 202607 ");
+        Set<Long> visibleWarehouseIds = new LinkedHashSet<>(Arrays.asList(20L, 30L));
+        Map<Long, Set<Long>> batchNoStockKeyMap =
+                Collections.singletonMap(10L, Collections.singleton(20L));
+        PageResult<ErpStockDO> pageResult = new PageResult<>(Collections.emptyList(), 0L);
+        when(warehouseService.getCurrentUserProductStockPermissionScope()).thenReturn(
+                new ErpProductStockPermissionScope(true, visibleWarehouseIds, Collections.emptySet(), 1L));
+        when(stockRecordMapper.selectStockKeyMapByBatchNoKeyword(
+                " PC 202607 ", visibleWarehouseIds)).thenReturn(batchNoStockKeyMap);
+        when(stockBatchQuantityMapper.selectAssociatedBatchKeywordStockKeyList(
+                eq("PC%202607"), eq(visibleWarehouseIds), any(), any(), any(), any(), any(), any()))
+                .thenReturn(Collections.emptyList());
+        when(stockMapper.selectPage(eq(reqVO),
+                org.mockito.ArgumentMatchers.<Collection<Long>>isNull(), eq(visibleWarehouseIds),
+                org.mockito.ArgumentMatchers.<Collection<Long>>isNull(),
+                org.mockito.ArgumentMatchers.<Collection<Long>>isNull(),
+                org.mockito.ArgumentMatchers.<Map<Long, Set<Long>>>isNull(),
+                org.mockito.ArgumentMatchers.<List<ErpStockKeywordMatchScope>>isNull(),
+                org.mockito.ArgumentMatchers.<Collection<Long>>isNull(),
+                org.mockito.ArgumentMatchers.<Collection<Long>>isNull(), isNull(),
+                eq(batchNoStockKeyMap))).thenReturn(pageResult);
+
+        PageResult<ErpStockDO> result = stockService.getStockPage(reqVO);
+
+        assertSame(pageResult, result);
+        verify(stockMapper).selectPage(eq(reqVO),
+                org.mockito.ArgumentMatchers.<Collection<Long>>isNull(), eq(visibleWarehouseIds),
+                org.mockito.ArgumentMatchers.<Collection<Long>>isNull(),
+                org.mockito.ArgumentMatchers.<Collection<Long>>isNull(),
+                org.mockito.ArgumentMatchers.<Map<Long, Set<Long>>>isNull(),
+                org.mockito.ArgumentMatchers.<List<ErpStockKeywordMatchScope>>isNull(),
+                org.mockito.ArgumentMatchers.<Collection<Long>>isNull(),
+                org.mockito.ArgumentMatchers.<Collection<Long>>isNull(), isNull(),
+                eq(batchNoStockKeyMap));
+    }
+
+    @Test
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    public void testGetStockPage_crossDimensionKeywordBuildsAndTokenScopes() {
+        ErpStockPageReqVO reqVO = new ErpStockPageReqVO();
+        reqVO.setKeyword("美孚，甘孜");
+        reqVO.setCrossDimensionKeyword(true);
+        Set<Long> visibleWarehouseIds = new LinkedHashSet<>(Arrays.asList(20L, 30L));
+        when(warehouseService.getCurrentUserProductStockPermissionScope()).thenReturn(
+                new ErpProductStockPermissionScope(true, visibleWarehouseIds, Collections.emptySet(), 1L));
+        when(productMapper.selectIdsByStockProductKeyword("美孚"))
+                .thenReturn(Collections.singletonList(10L));
+        when(productMapper.selectIdsByStockProductKeyword("甘孜"))
+                .thenReturn(Collections.emptyList());
+        when(warehouseService.getWarehousePage(any())).thenAnswer(invocation -> {
+            cn.iocoder.yudao.module.erp.controller.admin.stock.vo.warehouse.ErpWarehousePageReqVO warehouseReqVO =
+                    invocation.getArgument(0);
+            if ("甘孜".equals(warehouseReqVO.getKeyword())) {
+                return new PageResult<>(Collections.singletonList(new ErpWarehouseDO().setId(20L)), 1L);
+            }
+            return PageResult.empty(0L);
+        });
+        PageResult<ErpStockDO> pageResult = new PageResult<>(Collections.emptyList(), 0L);
+        when(stockMapper.selectPage(eq(reqVO),
+                org.mockito.ArgumentMatchers.<Collection<Long>>isNull(),
+                eq(visibleWarehouseIds),
+                org.mockito.ArgumentMatchers.<Collection<Long>>isNull(),
+                org.mockito.ArgumentMatchers.<Collection<Long>>isNull(),
+                org.mockito.ArgumentMatchers.<Map<Long, Set<Long>>>isNull(),
+                org.mockito.ArgumentMatchers.<List<ErpStockKeywordMatchScope>>any(),
+                org.mockito.ArgumentMatchers.<Collection<Long>>isNull(),
+                org.mockito.ArgumentMatchers.<Collection<Long>>isNull(),
+                isNull())).thenReturn(pageResult);
+
+        PageResult<ErpStockDO> result = stockService.getStockPage(reqVO);
+
+        assertSame(pageResult, result);
+        ArgumentCaptor<List<ErpStockKeywordMatchScope>> scopeCaptor =
+                ArgumentCaptor.forClass((Class) List.class);
+        verify(stockMapper).selectPage(eq(reqVO),
+                org.mockito.ArgumentMatchers.<Collection<Long>>isNull(),
+                eq(visibleWarehouseIds),
+                org.mockito.ArgumentMatchers.<Collection<Long>>isNull(),
+                org.mockito.ArgumentMatchers.<Collection<Long>>isNull(),
+                org.mockito.ArgumentMatchers.<Map<Long, Set<Long>>>isNull(),
+                scopeCaptor.capture(),
+                org.mockito.ArgumentMatchers.<Collection<Long>>isNull(),
+                org.mockito.ArgumentMatchers.<Collection<Long>>isNull(),
+                isNull());
+        List<ErpStockKeywordMatchScope> scopes = scopeCaptor.getValue();
+        assertEquals(2, scopes.size());
+        assertEquals(Collections.singletonList(10L), scopes.get(0).getProductIds());
+        assertEquals(Collections.emptyList(), scopes.get(0).getWarehouseIds());
+        assertEquals(Collections.emptyList(), scopes.get(1).getProductIds());
+        assertEquals(Collections.singletonList(20L), scopes.get(1).getWarehouseIds());
+        verify(productMapper, never()).selectIdsByKeyword(any());
+    }
+
+    @Test
+    public void testGetStockPage_crossDimensionFlagKeepsSpaceKeywordLegacyBehavior() {
+        ErpStockPageReqVO reqVO = new ErpStockPageReqVO();
+        reqVO.setKeyword("美孚 轮胎");
+        reqVO.setCrossDimensionKeyword(true);
+        Set<Long> visibleWarehouseIds = new LinkedHashSet<>(Arrays.asList(20L, 30L));
+        List<Long> productIds = Collections.singletonList(10L);
+        PageResult<ErpStockDO> pageResult = new PageResult<>(Collections.emptyList(), 0L);
+        when(warehouseService.getCurrentUserProductStockPermissionScope()).thenReturn(
+                new ErpProductStockPermissionScope(true, visibleWarehouseIds, Collections.emptySet(), 1L));
+        when(productMapper.selectIdsByKeyword(reqVO)).thenReturn(productIds);
+        when(warehouseService.getWarehousePage(any())).thenReturn(PageResult.empty(0L));
+        when(stockMapper.selectPage(eq(reqVO),
+                org.mockito.ArgumentMatchers.<Collection<Long>>isNull(),
+                eq(visibleWarehouseIds), eq(productIds), eq(Collections.emptyList())))
+                .thenReturn(pageResult);
+
+        PageResult<ErpStockDO> result = stockService.getStockPage(reqVO);
+
+        assertSame(pageResult, result);
+        verify(productMapper).selectIdsByKeyword(reqVO);
+        verify(productMapper, never()).selectIdsByStockProductKeyword(any());
+    }
+
+    @Test
+    public void testGetStockPage_crossDimensionKeywordKeepsSaleAvailableCountSort() {
+        ErpStockPageReqVO reqVO = new ErpStockPageReqVO();
+        reqVO.setBizType("sale");
+        reqVO.setKeyword("美孚,甘孜");
+        reqVO.setCrossDimensionKeyword(true);
+        reqVO.setOrderField("availableCount");
+        reqVO.setOrderDirection("desc");
+        Set<Long> visibleWarehouseIds = new LinkedHashSet<>(Arrays.asList(20L, 30L));
+        when(warehouseService.getCurrentUserSaleSelectableWarehouseListByDept(isNull(), isNull()))
+                .thenReturn(Arrays.asList(new ErpWarehouseDO().setId(20L), new ErpWarehouseDO().setId(30L)));
+        when(productMapper.selectIdsByStockProductKeyword("美孚"))
+                .thenReturn(Collections.singletonList(10L));
+        when(productMapper.selectIdsByStockProductKeyword("甘孜"))
+                .thenReturn(Collections.emptyList());
+        when(warehouseService.getWarehousePage(any())).thenAnswer(invocation -> {
+            cn.iocoder.yudao.module.erp.controller.admin.stock.vo.warehouse.ErpWarehousePageReqVO warehouseReqVO =
+                    invocation.getArgument(0);
+            return "甘孜".equals(warehouseReqVO.getKeyword())
+                    ? new PageResult<>(Collections.singletonList(new ErpWarehouseDO().setId(20L)), 1L)
+                    : PageResult.empty(0L);
+        });
+        PageResult<ErpStockDO> pageResult = new PageResult<>(Collections.emptyList(), 0L);
+        when(stockMapper.selectPageOrderByAvailableCount(eq(reqVO),
+                org.mockito.ArgumentMatchers.<Collection<Long>>isNull(),
+                eq(visibleWarehouseIds),
+                org.mockito.ArgumentMatchers.<Collection<Long>>isNull(),
+                org.mockito.ArgumentMatchers.<Collection<Long>>isNull(),
+                org.mockito.ArgumentMatchers.<Map<Long, Set<Long>>>isNull(),
+                org.mockito.ArgumentMatchers.<List<ErpStockKeywordMatchScope>>any(),
+                org.mockito.ArgumentMatchers.<Collection<Long>>isNull(),
+                org.mockito.ArgumentMatchers.<Collection<Long>>isNull(),
+                isNull())).thenReturn(pageResult);
+
+        PageResult<ErpStockDO> result = stockService.getStockPage(reqVO);
+
+        assertSame(pageResult, result);
+        verify(stockMapper).selectPageOrderByAvailableCount(eq(reqVO),
+                org.mockito.ArgumentMatchers.<Collection<Long>>isNull(),
+                eq(visibleWarehouseIds),
+                org.mockito.ArgumentMatchers.<Collection<Long>>isNull(),
+                org.mockito.ArgumentMatchers.<Collection<Long>>isNull(),
+                org.mockito.ArgumentMatchers.<Map<Long, Set<Long>>>isNull(),
+                org.mockito.ArgumentMatchers.<List<ErpStockKeywordMatchScope>>any(),
+                org.mockito.ArgumentMatchers.<Collection<Long>>isNull(),
+                org.mockito.ArgumentMatchers.<Collection<Long>>isNull(),
+                isNull());
     }
 
     @Test

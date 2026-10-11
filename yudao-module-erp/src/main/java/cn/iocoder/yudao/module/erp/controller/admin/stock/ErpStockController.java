@@ -50,6 +50,7 @@ import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.Parameters;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.util.StringUtils;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PutMapping;
@@ -391,8 +392,11 @@ public class ErpStockController {
                                                                   Set<String> hiddenPriceFields,
                                                                   boolean retainHiddenPriceValues) {
         boolean fullBatchPage = PageParam.PAGE_SIZE_NONE.equals(pageReqVO.getPageSize());
+        boolean requiresGlobalBatchRows = fullBatchPage
+                || StringUtils.hasText(pageReqVO.getBatchNo())
+                || "batchNo".equals(pageReqVO.getOrderField());
         ErpStockPageReqVO baseReqVO = BeanUtils.toBean(pageReqVO, ErpStockPageReqVO.class);
-        if (fullBatchPage) {
+        if (requiresGlobalBatchRows) {
             baseReqVO.setPageNo(1);
             baseReqVO.setPageSize(PageParam.PAGE_SIZE_NONE);
         }
@@ -432,7 +436,8 @@ public class ErpStockController {
                         .setBatchRow(false)
                         .setBatchNo(null)
                         .setFirstInTime(null);
-                if (matchesBatchCountFilters(stock.getCount(), pageReqVO)) {
+                if (matchesBatchNoFilter(stock.getBatchNo(), pageReqVO)
+                        && matchesBatchCountFilters(stock.getCount(), pageReqVO)) {
                     rows.add(stock);
                 }
                 continue;
@@ -460,7 +465,8 @@ public class ErpStockController {
                 ErpStockRespVO batchRow = buildBatchStockRow(stock, balance.getBatchNo(),
                         balance.getAvailableCount(), balance.getFirstInTime(), batchOccupiedMap,
                         batchPendingInMap, batchInTransitMap);
-                if (matchesBatchCountFilters(batchRow.getCount(), pageReqVO)) {
+                if (matchesBatchNoFilter(batchRow.getBatchNo(), pageReqVO)
+                        && matchesBatchCountFilters(batchRow.getCount(), pageReqVO)) {
                     rows.add(batchRow);
                 }
             }
@@ -469,13 +475,14 @@ public class ErpStockController {
             if (unassignedCount.signum() != 0 || namedBatchMap.isEmpty() || hasUnassignedQuantity) {
                 ErpStockRespVO unassignedRow = buildBatchStockRow(stock, null, unassignedCount, null,
                         batchOccupiedMap, batchPendingInMap, batchInTransitMap);
-                if (matchesBatchCountFilters(unassignedRow.getCount(), pageReqVO)) {
+                if (matchesBatchNoFilter(unassignedRow.getBatchNo(), pageReqVO)
+                        && matchesBatchCountFilters(unassignedRow.getCount(), pageReqVO)) {
                     rows.add(unassignedRow);
                 }
             }
         }
         sortBatchRowsIfNecessary(rows, pageReqVO);
-        if (!fullBatchPage) {
+        if (!requiresGlobalBatchRows) {
             return new PageResult<>(rows, stockPageResult.getTotal());
         }
         return paginateBatchRows(rows, pageReqVO);
@@ -486,6 +493,17 @@ public class ErpStockController {
         reqVO.setCountMax(null);
         reqVO.setCountFilter(null);
         reqVO.setPositiveCountOnly(null);
+    }
+
+    private boolean matchesBatchNoFilter(String batchNo, ErpStockPageReqVO reqVO) {
+        if (!StringUtils.hasText(reqVO.getBatchNo())) {
+            return true;
+        }
+        if (!StringUtils.hasText(batchNo)) {
+            return false;
+        }
+        String keyword = reqVO.getBatchNo().trim().replaceAll("\\s+", "").toLowerCase();
+        return batchNo.replaceAll("\\s+", "").toLowerCase().contains(keyword);
     }
 
     private ErpStockRespVO buildBatchStockRow(ErpStockRespVO stock, String batchNo, BigDecimal count,

@@ -3,6 +3,8 @@ package cn.iocoder.yudao.module.erp.controller.admin.stock;
 import cn.iocoder.yudao.framework.common.pojo.CommonResult;
 import cn.iocoder.yudao.framework.test.core.ut.BaseMockitoUnitTest;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.warehouse.ErpWarehouseRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.warehouse.ErpWarehouseSaleDeptPermissionRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.warehouse.ErpWarehouseSaleDeptPermissionSaveReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpWarehouseDO;
 import cn.iocoder.yudao.module.erp.service.stock.ErpStockFieldPermissionMasker;
 import cn.iocoder.yudao.module.erp.service.stock.ErpWarehouseService;
@@ -20,6 +22,7 @@ import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -27,6 +30,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static cn.iocoder.yudao.module.erp.enums.stock.ErpWarehouseSaleDeptScopeTypeEnum.ALL;
 
 public class ErpWarehouseControllerTest extends BaseMockitoUnitTest {
 
@@ -173,5 +177,41 @@ public class ErpWarehouseControllerTest extends BaseMockitoUnitTest {
         PreAuthorize annotation = method.getAnnotation(PreAuthorize.class);
 
         assertEquals("@ss.hasPermission('erp:stock:query')", annotation.value());
+    }
+
+    @Test
+    public void testGetWarehouseSaleDeptPermissions_returnsScopeAndSpecifiedDepts() {
+        when(warehouseService.getWarehouseSaleDeptScopeType(11L)).thenReturn(ALL.getType());
+        when(warehouseService.getWarehouseSaleDeptIds(11L)).thenReturn(Set.of(12L, 13L));
+
+        CommonResult<ErpWarehouseSaleDeptPermissionRespVO> result =
+                controller.getWarehouseSaleDeptPermissions(11L);
+
+        assertEquals(ALL.getType(), result.getData().getScopeType());
+        assertEquals(Set.of(12L, 13L), result.getData().getDeptIds());
+    }
+
+    @Test
+    public void testUpdateWarehouseSaleDeptPermissions_delegatesScope() {
+        ErpWarehouseSaleDeptPermissionSaveReqVO reqVO = new ErpWarehouseSaleDeptPermissionSaveReqVO()
+                .setWarehouseId(11L).setScopeType(ALL.getType()).setDeptIds(Collections.emptySet());
+
+        controller.updateWarehouseSaleDeptPermissions(reqVO);
+
+        verify(warehouseService).updateWarehouseSaleDeptPermissions(
+                11L, ALL.getType(), Collections.emptySet());
+    }
+
+    @Test
+    public void testGetWarehouseSaleDeptOptions_returnsAllStatuses() {
+        List<DeptRespDTO> depts = Arrays.asList(
+                new DeptRespDTO().setId(1L).setName("启用").setStatus(0),
+                new DeptRespDTO().setId(2L).setName("停用").setStatus(1));
+        when(deptApi.getDeptListByStatus(null)).thenReturn(depts);
+
+        CommonResult<List<DeptRespDTO>> result = controller.getWarehouseSaleDeptOptions();
+
+        assertEquals(depts, result.getData());
+        verify(deptApi).getDeptListByStatus(null);
     }
 }

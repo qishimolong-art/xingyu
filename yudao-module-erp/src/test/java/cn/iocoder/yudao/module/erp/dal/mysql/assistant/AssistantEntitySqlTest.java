@@ -49,6 +49,20 @@ class AssistantEntitySqlTest {
         assertTrue(query.getParameters().contains("X"));
     }
 
+    @Test void phoneticModeUsesBoundContainsMatchingAndStableRelevanceOrder() {
+        Map<String,Object> context=base("PRODUCT","PINYIN");
+        context.put("searchPinyin",true);context.put("entityAll",true);context.put("entityKeyword","JDBX");
+
+        AssistantEntitySql.Query query=AssistantEntitySql.select(context);String sql=query.getSql();
+
+        assertTrue(sql.contains("pinyin_code,'')) LIKE CONCAT('%',UPPER(?),'%')"));
+        assertTrue(sql.contains("CASE WHEN UPPER(COALESCE(e.pinyin_code,''))=UPPER(?) THEN 0"));
+        assertTrue(sql.contains("LOCATE(UPPER(?),UPPER(COALESCE(e.pinyin_code,'')))"));
+        assertTrue(sql.contains("CHAR_LENGTH(e.name),e.id"));
+        assertFalse(sql.contains("JDBX"));
+        assertEquals(4,Collections.frequency(query.getParameters(),"JDBX"));
+    }
+
     @Test void userKeywordIsAlwaysAParameter() {
         Map<String,Object> context=base("WAREHOUSE","EXACT_NAME");
         context.put("searchCode",true);context.put("showCode",true);context.put("entityAll",true);
@@ -120,6 +134,32 @@ class AssistantEntitySqlTest {
         assertTrue(sql.contains("FROM system_users e"));assertTrue(sql.contains("e.nickname LIKE CONCAT('%',?,'%')"));
         assertTrue(sql.contains("e.dept_id IN"));assertTrue(sql.contains("e.id=?"));
         assertFalse(sql.contains("e.code"));
+    }
+
+    @Test void purchaserSearchUsesSystemNicknameWithoutUserManagementFields() {
+        Map<String,Object> context=base("PURCHASER","FUZZY");context.put("entityAll",false);
+        AssistantEntitySql.Query query=AssistantEntitySql.select(context);String sql=query.getSql();
+        assertTrue(sql.contains("FROM system_users e"));
+        assertTrue(sql.contains("e.nickname LIKE CONCAT('%',?,'%')"));
+        assertTrue(sql.contains("'采购员' description"));
+        assertFalse(sql.contains("e.mobile"));assertFalse(sql.contains("e.password"));
+    }
+
+    @Test void userSearchUsesNicknameAndBothUserDepartmentRelationsWithoutSensitiveFields() {
+        Map<String,Object> context=base("USER","FUZZY");context.put("entityAll",false);
+        context.put("searchCode",false);
+
+        AssistantEntitySql.Query query=AssistantEntitySql.select(context);String sql=query.getSql();
+
+        assertTrue(sql.contains("FROM system_users e"));
+        assertTrue(sql.contains("e.nickname LIKE CONCAT('%',?,'%')"));
+        assertTrue(sql.contains("e.dept_id IN"));
+        assertTrue(sql.contains("FROM system_user_dept sud"));
+        assertTrue(sql.contains("sud.dept_id IN"));
+        assertTrue(sql.contains("e.id=?"));
+        assertFalse(sql.contains("e.mobile"));
+        assertFalse(sql.contains("e.avatar"));
+        assertFalse(sql.contains("e.username"));
     }
 
     private static Map<String,Object> base(String type,String match) {

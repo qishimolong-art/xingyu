@@ -8,10 +8,16 @@ import cn.iocoder.yudao.module.erp.controller.admin.cloudprint.vo.ErpCloudPrintD
 import cn.iocoder.yudao.module.erp.controller.admin.cloudprint.vo.ErpCloudPrintResumeQueueReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.cloudprint.vo.ErpCloudPrintSubmitSaleOutReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.cloudprint.vo.ErpCloudPrintTaskRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.cloudprint.vo.ErpCloudPrintPreviewFileReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.cloudprint.vo.ErpCloudPrintPreviewSaleOutReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.cloudprint.vo.ErpCloudPrintPreviewSaleOutRespVO;
 import cn.iocoder.yudao.module.erp.service.cloudprint.ErpCloudPrintService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.http.CacheControl;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -37,12 +43,31 @@ public class ErpCloudPrintController {
     @Resource
     private ErpCloudPrintService cloudPrintService;
 
+    @PostMapping("/task/preview-sale-out")
+    @Operation(summary = "生成销售出库单云打印预览")
+    @PreAuthorize("@ss.hasPermission('erp:sale-out:print')")
+    public CommonResult<ErpCloudPrintPreviewSaleOutRespVO> previewSaleOut(
+            @Valid @RequestBody ErpCloudPrintPreviewSaleOutReqVO reqVO) {
+        return success(cloudPrintService.previewSaleOut(reqVO.getSaleOutId(), reqVO.getCopies(), reqVO.getTemplateId()));
+    }
+
+    @PostMapping(value = "/task/preview-sale-out/file", produces = MediaType.APPLICATION_PDF_VALUE)
+    @Operation(summary = "获取销售出库单云打印预览 PDF")
+    @PreAuthorize("@ss.hasPermission('erp:sale-out:print')")
+    public ResponseEntity<byte[]> getSaleOutPreviewFile(
+            @Valid @RequestBody ErpCloudPrintPreviewFileReqVO reqVO) {
+        return ResponseEntity.ok()
+                .contentType(MediaType.APPLICATION_PDF)
+                .cacheControl(CacheControl.noStore())
+                .body(cloudPrintService.getSaleOutPreviewFile(reqVO.getPreviewToken(), reqVO.getPreviewItemId()));
+    }
+
     @PostMapping("/task/submit-sale-out")
-    @Operation(summary = "提交销售单云打印")
+    @Operation(summary = "确认销售出库单云打印预览")
     @PreAuthorize("@ss.hasPermission('erp:sale-out:print')")
     public CommonResult<List<ErpCloudPrintTaskRespVO>> submitSaleOut(
             @Valid @RequestBody ErpCloudPrintSubmitSaleOutReqVO reqVO) {
-        return success(cloudPrintService.submitSaleOut(reqVO.getSaleOutId(), reqVO.getCopies(), reqVO.getTemplateId()));
+        return success(cloudPrintService.submitSaleOut(reqVO.getPreviewToken()));
     }
 
     @GetMapping("/task/list-by-sale-out")
