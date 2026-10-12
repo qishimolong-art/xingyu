@@ -5,6 +5,7 @@ import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.mybatis.core.mapper.BaseMapperX;
 import cn.iocoder.yudao.framework.mybatis.core.query.LambdaQueryWrapperX;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartItemPageReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartItemMatchReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.stock.ErpStockOccupiedDetailRespVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleCartItemDO;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
@@ -55,6 +56,39 @@ public interface ErpSaleCartItemMapper extends BaseMapperX<ErpSaleCartItemDO> {
 
     default List<ErpSaleCartItemDO> selectListByCartIds(Collection<Long> cartIds) {
         return selectList(ErpSaleCartItemDO::getCartId, cartIds);
+    }
+
+    default List<ErpSaleCartItemDO> selectListByCartIdAndStockKeys(
+            Long cartId, Collection<ErpSaleCartItemMatchReqVO.Key> stockKeys) {
+        if (cartId == null || CollUtil.isEmpty(stockKeys)) {
+            return Collections.emptyList();
+        }
+        QueryWrapper<ErpSaleCartItemDO> query = new QueryWrapper<ErpSaleCartItemDO>()
+                .eq("cart_id", cartId);
+        query.and(group -> {
+            boolean first = true;
+            for (ErpSaleCartItemMatchReqVO.Key key : stockKeys) {
+                if (!first) {
+                    group.or();
+                }
+                group.nested(item -> item.eq("product_id", key.getProductId())
+                        .eq("warehouse_id", key.getWarehouseId())
+                        .apply("TRIM(COALESCE(batch_no, '')) = {0}",
+                                key.getBatchNo() == null ? "" : key.getBatchNo().trim())
+                        .apply("COALESCE(gift_flag, 0) = {0}", Boolean.TRUE.equals(key.getGiftFlag()) ? 1 : 0));
+                first = false;
+            }
+        }).orderByAsc("id");
+        return selectList(query);
+    }
+
+    default long selectDefaultRankByCartIdAndItemId(Long cartId, Long itemId) {
+        if (cartId == null || itemId == null) {
+            return 0L;
+        }
+        return selectCount(new LambdaQueryWrapperX<ErpSaleCartItemDO>()
+                .eq(ErpSaleCartItemDO::getCartId, cartId)
+                .le(ErpSaleCartItemDO::getId, itemId));
     }
 
     default Map<Long, Integer> selectItemCountMapByCartIds(Collection<Long> cartIds) {
@@ -174,6 +208,7 @@ public interface ErpSaleCartItemMapper extends BaseMapperX<ErpSaleCartItemDO> {
             "   <foreach collection='statuses' item='status' open='(' separator=',' close=')'>",
             "     #{status}",
             "   </foreach>",
+            "   AND (sc.status &lt;&gt; 20 OR sc.billing_confirm_time IS NULL)",
             " WHERE sci.deleted = 0",
             "   AND sci.product_id IN",
             "   <foreach collection='productIds' item='productId' open='(' separator=',' close=')'>",
@@ -223,6 +258,7 @@ public interface ErpSaleCartItemMapper extends BaseMapperX<ErpSaleCartItemDO> {
             "   <foreach collection='statuses' item='status' open='(' separator=',' close=')'>",
             "     #{status}",
             "   </foreach>",
+            "   AND (sc.status &lt;&gt; 20 OR sc.billing_confirm_time IS NULL)",
             "  LEFT JOIN erp_product p ON p.id = sci.product_id AND p.deleted = 0",
             "  LEFT JOIN erp_warehouse w ON w.id = sci.warehouse_id AND w.deleted = 0",
             " WHERE sci.deleted = 0",

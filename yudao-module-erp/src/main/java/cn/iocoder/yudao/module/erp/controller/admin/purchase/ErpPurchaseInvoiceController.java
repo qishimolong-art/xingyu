@@ -20,10 +20,14 @@ import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.invoice.ErpPurch
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.invoice.ErpPurchaseInvoiceExportRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.invoice.ErpPurchaseInvoiceImportExcelVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.invoice.ErpPurchaseInvoiceItemPageReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.invoice.ErpPurchaseInvoiceMixedSourceItemPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.invoice.ErpPurchaseInvoicePageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.invoice.ErpPurchaseInvoiceRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.invoice.ErpPurchaseInvoiceSaveReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.invoice.ErpPurchaseInvoiceSourceInItemPageReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.invoice.ErpPurchaseInvoiceSourceDocumentPageReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.invoice.ErpPurchaseInvoiceSourceDocumentRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.invoice.ErpPurchaseInvoiceSourceItemPageReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseInDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseInItemDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseInvoiceDO;
@@ -33,6 +37,7 @@ import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockDO;
 import cn.iocoder.yudao.module.erp.dal.mysql.purchase.ErpPurchaseInItemMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.purchase.ErpPurchaseInvoiceItemMapper;
 import cn.iocoder.yudao.module.erp.enums.ErpAuditStatus;
+import cn.iocoder.yudao.module.erp.enums.purchase.ErpPurchaseInvoiceSourceTypeEnum;
 import cn.iocoder.yudao.module.erp.enums.config.ErpFieldConfigModuleEnum;
 import cn.iocoder.yudao.module.erp.framework.excel.ErpExportFieldUtils;
 import cn.iocoder.yudao.module.erp.framework.excel.ErpImportTemplateRequiredFieldUtils;
@@ -43,6 +48,7 @@ import cn.iocoder.yudao.module.erp.service.product.ErpProductService;
 import cn.iocoder.yudao.module.erp.service.purchase.ErpPurchaseFieldPermissionMasker;
 import cn.iocoder.yudao.module.erp.service.purchase.ErpPurchaseItemPriceReferenceFiller;
 import cn.iocoder.yudao.module.erp.service.purchase.ErpPurchaseInvoiceService;
+import cn.iocoder.yudao.module.erp.service.purchase.ErpPurchaseInvoiceSourceService;
 import cn.iocoder.yudao.module.erp.service.purchase.ErpSupplierDeptPermissionService;
 import cn.iocoder.yudao.module.erp.service.purchase.ErpSupplierService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpStockService;
@@ -108,6 +114,8 @@ public class ErpPurchaseInvoiceController {
             "invoiceNo", "invoiceNo",
             "invoiceCount", "invoiceCount",
             "remark", "remark",
+            "sourceType", "sourceType",
+            "sourceDocNo", "sourceDocNo",
             "sourceInNo", "sourceInNo",
             "productId", "productCode",
             "productCode", "productCode",
@@ -121,11 +129,13 @@ public class ErpPurchaseInvoiceController {
             "item_remark", "itemRemark",
             "itemRemark", "itemRemark");
     private static final Set<String> IMPORT_TEMPLATE_FIELDS = new LinkedHashSet<>(Arrays.asList(
-            "supplierName", "invoiceType", "invoiceNo", "invoiceCount", "remark", "sourceInNo", "productCode", "productName", "factoryCode",
+            "supplierName", "invoiceType", "invoiceNo", "invoiceCount", "remark", "sourceType", "sourceDocNo", "sourceInNo", "productCode", "productName", "factoryCode",
             "count", "productPrice", "itemRemark"));
 
     @Resource
     private ErpPurchaseInvoiceService purchaseInvoiceService;
+    @Resource
+    private ErpPurchaseInvoiceSourceService purchaseInvoiceSourceService;
     @Resource
     private ErpSupplierDeptPermissionService supplierDeptPermissionService;
     @Resource
@@ -260,14 +270,16 @@ public class ErpPurchaseInvoiceController {
         example.setInvoiceNo("INV-20260702-001");
         example.setInvoiceCount(1);
         example.setRemark("整单备注");
-        example.setSourceInNo("CGRK202607020001");
+        example.setSourceType("采购入库");
+        example.setSourceDocNo("CGRK202607020001");
         example.setProductCode("P000001");
         example.setCount(BigDecimal.ONE);
         example.setProductPrice(new BigDecimal("10.00"));
         example.setItemRemark("明细备注");
 
         ErpPurchaseInvoiceImportExcelVO secondItem = new ErpPurchaseInvoiceImportExcelVO();
-        secondItem.setSourceInNo("CGRK202607020001");
+        secondItem.setSourceType("采购入库");
+        secondItem.setSourceDocNo("CGRK202607020001");
         secondItem.setProductCode("P000002");
         secondItem.setCount(new BigDecimal("2"));
         secondItem.setProductPrice(new BigDecimal("20.00"));
@@ -303,6 +315,9 @@ public class ErpPurchaseInvoiceController {
         if (Boolean.TRUE.equals(includeItems)) {
             List<ErpPurchaseInvoiceItemDO> itemList = purchaseInvoiceService.getPurchaseInvoiceItemListByInvoiceId(id);
             fillInvoiceRespItems(respVO, itemList);
+            fillInvoiceSourceRefs(respVO, itemList);
+        } else {
+            fillInvoiceSourceRefs(respVO, purchaseInvoiceService.getPurchaseInvoiceSourceRefList(id));
         }
         MapUtils.findAndThen(supplierMap, respVO.getSupplierId(), supplier -> {
             respVO.setSupplierName(supplier.getName());
@@ -317,6 +332,27 @@ public class ErpPurchaseInvoiceController {
             fieldPermissionMasker.mask("erp_purchase_invoice", respVO);
         }
         return success(respVO);
+    }
+
+    private void fillInvoiceSourceRefs(ErpPurchaseInvoiceRespVO respVO,
+                                       List<ErpPurchaseInvoiceItemDO> sourceRefItems) {
+        Map<String, ErpPurchaseInvoiceRespVO.SourceRef> refs = new LinkedHashMap<>();
+        for (ErpPurchaseInvoiceItemDO item : CollUtil.emptyIfNull(sourceRefItems)) {
+            Integer sourceType = item.getSourceType();
+            Long sourceDocId = item.getSourceDocId();
+            if (sourceDocId == null && item.getSourceInId() != null) {
+                sourceType = ErpPurchaseInvoiceSourceTypeEnum.PURCHASE_IN.getType();
+                sourceDocId = item.getSourceInId();
+            }
+            if (sourceType == null || sourceDocId == null) {
+                continue;
+            }
+            ErpPurchaseInvoiceRespVO.SourceRef ref = new ErpPurchaseInvoiceRespVO.SourceRef();
+            ref.setSourceType(sourceType);
+            ref.setSourceDocId(sourceDocId);
+            refs.put(sourceType + ":" + sourceDocId, ref);
+        }
+        respVO.setSourceRefs(new ArrayList<>(refs.values()));
     }
 
     @GetMapping("/item-page")
@@ -349,6 +385,49 @@ public class ErpPurchaseInvoiceController {
         return success(respResult);
     }
 
+    @GetMapping("/source-document-page")
+    @Operation(summary = "获得采购票据可选来源单据分页")
+    @PreAuthorize("@ss.hasPermission('erp:purchase-invoice:create') "
+            + "|| @ss.hasPermission('erp:purchase-invoice:update') "
+            + "|| @ss.hasPermission('erp:purchase-invoice:query')")
+    public CommonResult<PageResult<ErpPurchaseInvoiceSourceDocumentRespVO>> getPurchaseInvoiceSourceDocumentPage(
+            @Valid ErpPurchaseInvoiceSourceDocumentPageReqVO pageReqVO) {
+        return success(purchaseInvoiceSourceService.getSourceDocumentPage(pageReqVO));
+    }
+
+    @GetMapping("/source-item-page")
+    @Operation(summary = "获得采购票据可选来源明细分页")
+    @PreAuthorize("@ss.hasPermission('erp:purchase-invoice:create') "
+            + "|| @ss.hasPermission('erp:purchase-invoice:update') "
+            + "|| @ss.hasPermission('erp:purchase-invoice:query')")
+    public CommonResult<PageResult<ErpPurchaseInvoiceRespVO.Item>> getPurchaseInvoiceSourceItemPage(
+            @Valid ErpPurchaseInvoiceSourceItemPageReqVO pageReqVO) {
+        PageResult<ErpPurchaseInvoiceItemDO> pageResult = purchaseInvoiceSourceService.getSourceItemPage(pageReqVO);
+        PageResult<ErpPurchaseInvoiceRespVO.Item> respResult = new PageResult<>(
+                buildPurchaseInvoiceItemVOList(pageResult.getList()), pageResult.getTotal());
+        if (Boolean.TRUE.equals(pageReqVO.getMask())) {
+            fieldPermissionMasker.clearHiddenItemFields(FIELD_PERMISSION_MODULE, respResult.getList());
+        }
+        return success(respResult);
+    }
+
+    @PostMapping("/source-item-page/mixed")
+    @Operation(summary = "获得采购票据混合来源明细分页")
+    @PreAuthorize("@ss.hasPermission('erp:purchase-invoice:create') "
+            + "|| @ss.hasPermission('erp:purchase-invoice:update') "
+            + "|| @ss.hasPermission('erp:purchase-invoice:query')")
+    public CommonResult<PageResult<ErpPurchaseInvoiceRespVO.Item>> getPurchaseInvoiceMixedSourceItemPage(
+            @Valid @RequestBody ErpPurchaseInvoiceMixedSourceItemPageReqVO pageReqVO) {
+        PageResult<ErpPurchaseInvoiceItemDO> pageResult =
+                purchaseInvoiceSourceService.getMixedSourceItemPage(pageReqVO);
+        PageResult<ErpPurchaseInvoiceRespVO.Item> respResult = new PageResult<>(
+                buildPurchaseInvoiceItemVOList(pageResult.getList()), pageResult.getTotal());
+        if (Boolean.TRUE.equals(pageReqVO.getMask())) {
+            fieldPermissionMasker.clearHiddenItemFields(FIELD_PERMISSION_MODULE, respResult.getList());
+        }
+        return success(respResult);
+    }
+
     @GetMapping("/page")
     @Operation(summary = "获得采购票据分页")
     @PreAuthorize("@ss.hasPermission('erp:purchase-invoice:query')")
@@ -357,6 +436,24 @@ public class ErpPurchaseInvoiceController {
         return success(Boolean.FALSE.equals(pageReqVO.getIncludeItems())
                 ? buildPurchaseInvoiceVOPageResultWithoutItems(pageResult)
                 : buildPurchaseInvoiceVOPageResult(pageResult));
+    }
+
+    @GetMapping("/supplier-dept-simple-list")
+    @Operation(summary = "获得供应商对当前用户可用的采购票据部门精简列表")
+    @Parameter(name = "supplierId", description = "供应商编号", required = true, example = "1024")
+    @PreAuthorize("@ss.hasPermission('erp:purchase-invoice:query')")
+    public CommonResult<List<DeptSimpleRespVO>> getSupplierAvailableDeptSimpleList(
+            @RequestParam("supplierId") Long supplierId) {
+        return success(purchaseInvoiceService.getSupplierAvailableDeptSimpleList(supplierId));
+    }
+
+    @GetMapping("/supplier-dept-simple-page")
+    @Operation(summary = "获得供应商对当前用户可用的采购票据部门分页")
+    @Parameter(name = "supplierId", description = "供应商编号", required = true, example = "1024")
+    @PreAuthorize("@ss.hasPermission('erp:purchase-invoice:query')")
+    public CommonResult<PageResult<DeptSimpleRespVO>> getSupplierAvailableDeptSimplePage(
+            @RequestParam("supplierId") Long supplierId, @Valid PageParam pageReqVO) {
+        return success(purchaseInvoiceService.getSupplierAvailableDeptSimplePage(supplierId, pageReqVO));
     }
 
     @GetMapping("/dept-simple-list")
@@ -533,6 +630,7 @@ public class ErpPurchaseInvoiceController {
     }
 
     private void fillInvoiceRespItems(ErpPurchaseInvoiceRespVO invoice, List<ErpPurchaseInvoiceItemDO> itemList) {
+        purchaseInvoiceSourceService.fillSourceDisplayFields(itemList);
         Map<Long, ErpProductRespVO> productMap = DataPermissionUtils.executeIgnore(() ->
                 productService.getProductVOMap(convertSet(itemList, ErpPurchaseInvoiceItemDO::getProductId)));
         Map<Long, ErpPurchaseInItemDO> sourceInItemMap = getSourceInItemMap(itemList);
@@ -547,8 +645,8 @@ public class ErpPurchaseInvoiceController {
             items = new ArrayList<>();
         }
         for (ErpPurchaseInvoiceRespVO.Item item : items) {
-            Long resolvedWarehouseId = null;
-            Integer packageQty = null;
+            Long resolvedWarehouseId = item.getWarehouseId();
+            Integer packageQty = item.getPackageQty();
             if (item.getSourceInItemId() != null) {
                 ErpPurchaseInItemDO sourceInItem = sourceInItemMap.get(item.getSourceInItemId());
                 resolvedWarehouseId = sourceInItem == null ? null : sourceInItem.getWarehouseId();
@@ -556,6 +654,11 @@ public class ErpPurchaseInvoiceController {
             }
             item.setWarehouseId(resolvedWarehouseId);
             item.setPackageQty(packageQty);
+            ErpPurchaseInvoiceSourceTypeEnum sourceType =
+                    ErpPurchaseInvoiceSourceTypeEnum.valueOfType(item.getSourceType());
+            if (sourceType != null) {
+                item.setSourceTypeName(sourceType.getName());
+            }
             final Long warehouseId = resolvedWarehouseId;
             ErpStockDO stock = DataPermissionUtils.executeIgnore(() ->
                     stockService.getStock(item.getProductId(), warehouseId));
@@ -652,6 +755,11 @@ public class ErpPurchaseInvoiceController {
         if (item == null) {
             return row;
         }
+        row.setSourceTypeName(item.getSourceTypeName());
+        row.setSourceDocNo(item.getSourceDocNo());
+        row.setSourceItemId(item.getSourceItemId());
+        row.setAmountDirectionName(item.getAmountDirection() == null ? "手工"
+                : item.getAmountDirection() < 0 ? "负向/冲减" : "正向");
         row.setSourceInNo(item.getSourceInNo());
         row.setSourceInItemId(item.getSourceInItemId());
         row.setProductCode(item.getProductCode());
@@ -736,6 +844,10 @@ public class ErpPurchaseInvoiceController {
         map.put("updaterName", "system");
         map.put("updateTime", "system");
         map.put("remark", "main");
+        map.put("sourceTypeName", "detail");
+        map.put("sourceDocNo", "detail");
+        map.put("sourceItemId", "detail");
+        map.put("amountDirectionName", "detail");
         map.put("sourceInNo", "detail");
         map.put("sourceInItemId", "detail");
         map.put("productCode", "detail");

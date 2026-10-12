@@ -1,6 +1,7 @@
 package cn.iocoder.yudao.module.erp.service.purchase;
 
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
+import cn.iocoder.yudao.framework.common.pojo.PageParam;
 import cn.iocoder.yudao.framework.common.enums.CommonStatusEnum;
 import cn.iocoder.yudao.framework.test.core.ut.BaseMockitoUnitTest;
 import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpProductRespVO;
@@ -31,6 +32,7 @@ import cn.iocoder.yudao.module.erp.service.common.ErpOperateLogService;
 import cn.iocoder.yudao.module.erp.service.product.ErpProductService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpStockService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpWarehouseService;
+import cn.iocoder.yudao.module.system.controller.admin.dept.vo.dept.DeptSimpleRespVO;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -59,6 +61,7 @@ import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PURCHASE_PRIC
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PURCHASE_PRICE_ADJUST_NOT_EXISTS;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PURCHASE_PRICE_ADJUST_PROCESS_FAIL;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PURCHASE_PRICE_ADJUST_SUBMIT_SUPPLIER_REQUIRED;
+import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PURCHASE_PRICE_ADJUST_SUPPLIER_DEPT_NOT_ALLOWED;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PURCHASE_PRICE_ADJUST_TYPE_INVALID;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PURCHASE_PRICE_ADJUST_UPDATE_FAIL_APPROVE;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -69,6 +72,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -107,9 +111,13 @@ public class ErpPurchasePriceAdjustServiceImplTest extends BaseMockitoUnitTest {
     private ErpPurchaseFieldPermissionMasker fieldPermissionMasker;
     @Mock
     private ErpOperateLogService operateLogService;
+    @Mock
+    private ErpSupplierDeptPermissionService supplierDeptPermissionService;
 
     @BeforeEach
     public void setUp() {
+        lenient().when(supplierDeptPermissionService.hasAvailableDept(any(), any(), eq("system_dept")))
+                .thenReturn(true);
         // 替换 Redis 序号生成器（不连接真实 Redis）
         ReflectionTestUtils.setField(priceAdjustService, "noRedisDAO", new ErpNoRedisDAO() {
             @Override
@@ -176,6 +184,59 @@ public class ErpPurchasePriceAdjustServiceImplTest extends BaseMockitoUnitTest {
                 PURCHASE_PRICE_ADJUST_ITEM_EMPTY);
         verify(priceAdjustMapper, never()).insert(any(ErpPurchasePriceAdjustDO.class));
         verify(priceAdjustItemMapper, never()).insertBatch(anyList());
+    }
+
+    @Test
+    public void testCreatePurchasePriceAdjustDraft_rejectsUnavailableSupplierDept() {
+        ErpPurchasePriceAdjustDraftSaveReqVO reqVO = new ErpPurchasePriceAdjustDraftSaveReqVO();
+        reqVO.setSupplierId(100L);
+        reqVO.setDeptId(7L);
+        reqVO.setAdjustType(ErpPurchasePriceAdjustTypeEnum.BY_ITEM.getType());
+        ErpPurchasePriceAdjustSaveReqVO.Item item = buildVOItem(null, null, 200L, BigDecimal.TEN);
+        item.setCount(BigDecimal.ONE);
+        reqVO.setItems(Collections.singletonList(item));
+        ErpSupplierDO supplier = new ErpSupplierDO().setId(100L);
+        when(supplierService.validateSupplier(100L)).thenReturn(supplier);
+        when(supplierDeptPermissionService.hasAvailableDept(supplier, 7L, "system_dept"))
+                .thenReturn(false);
+
+        assertServiceException(() -> priceAdjustService.createPurchasePriceAdjustDraft(reqVO),
+                PURCHASE_PRICE_ADJUST_SUPPLIER_DEPT_NOT_ALLOWED);
+
+        verify(priceAdjustMapper, never()).insert(any(ErpPurchasePriceAdjustDO.class));
+    }
+
+    @Test
+    public void testGetSupplierAvailableDept_usesSystemDeptPermission() {
+        DeptSimpleRespVO dept = new DeptSimpleRespVO().setId(7L).setName("采购部");
+        PageParam pageParam = new PageParam().setPageNo(1).setPageSize(20);
+        PageResult<DeptSimpleRespVO> page = new PageResult<>(Collections.singletonList(dept), 1L);
+        when(supplierDeptPermissionService.getAvailableDeptSimpleList(100L, "system_dept"))
+                .thenReturn(Collections.singletonList(dept));
+        when(supplierDeptPermissionService.getAvailableDeptSimplePage(100L, "system_dept", pageParam))
+                .thenReturn(page);
+
+        assertEquals(1, priceAdjustService.getSupplierAvailableDeptSimpleList(100L).size());
+        assertSame(page, priceAdjustService.getSupplierAvailableDeptSimplePage(100L, pageParam));
+        verify(supplierDeptPermissionService).getAvailableDeptSimpleList(100L, "system_dept");
+        verify(supplierDeptPermissionService).getAvailableDeptSimplePage(100L, "system_dept", pageParam);
+    }
+
+    @Test
+    public void testUpdatePurchasePriceAdjustStatus_rejectsUnavailableSupplierDept() {
+        ErpPurchasePriceAdjustDO adjust = new ErpPurchasePriceAdjustDO()
+                .setId(10L).setNo("CGTJ10").setStatus(ErpAuditStatus.PROCESS.getStatus())
+                .setSupplierId(100L).setDeptId(7L);
+        ErpSupplierDO supplier = new ErpSupplierDO().setId(100L);
+        when(priceAdjustMapper.selectById(10L)).thenReturn(adjust);
+        when(supplierService.validateSupplier(100L)).thenReturn(supplier);
+        when(supplierDeptPermissionService.hasAvailableDept(supplier, 7L, "system_dept"))
+                .thenReturn(false);
+
+        assertServiceException(() -> priceAdjustService.updatePurchasePriceAdjustStatus(
+                10L, ErpAuditStatus.APPROVE.getStatus()), PURCHASE_PRICE_ADJUST_SUPPLIER_DEPT_NOT_ALLOWED);
+
+        verify(priceAdjustItemMapper, never()).selectListByAdjustId(10L);
     }
 
     @Test

@@ -303,6 +303,66 @@ public class ErpSalePickDeliveryServiceImpl implements ErpSalePickDeliveryServic
     }
 
     @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void rollbackUnstartedSaleCartFulfillment(Long saleCartId) {
+        if (saleCartId == null) {
+            return;
+        }
+        ErpSalePickDeliveryOrderDO order = orderMapper.selectBySourceForUpdate(
+                ErpSaleBizSourceTypeEnum.CART.getType(), saleCartId);
+        if (order == null) {
+            return;
+        }
+        List<ErpSalePickDeliverySubmitDO> submits = submitMapper.selectListByOrderId(order.getId());
+        List<ErpSalePickDeliveryPickTaskDO> tasks = pickTaskMapper.selectListByOrderId(order.getId());
+        List<ErpSalePickDeliveryItemDO> items = itemMapper.selectListByOrderId(order.getId());
+        if (!isUnstartedFulfillment(order, tasks, items, submits)) {
+            throw exception(SALE_CART_FULFILLMENT_TASK_STARTED);
+        }
+        // 子表先于主表逻辑删除；后续解锁任一步骤失败时由外层事务整体回滚。
+        itemMapper.deleteByOrderId(order.getId());
+        pickTaskMapper.deleteByOrderId(order.getId());
+        orderMapper.deleteById(order.getId());
+    }
+
+    private boolean isUnstartedFulfillment(ErpSalePickDeliveryOrderDO order,
+                                           List<ErpSalePickDeliveryPickTaskDO> tasks,
+                                           List<ErpSalePickDeliveryItemDO> items,
+                                           List<ErpSalePickDeliverySubmitDO> submits) {
+        if (order.getSaleOutId() != null || StringUtils.hasText(order.getSaleOutNo())
+                || !ErpSalePickStatusEnum.WAITING.getStatus().equals(order.getPickStatus())
+                || !ErpSaleDeliveryStatusEnum.NOT_READY.getStatus().equals(order.getDeliveryStatus())
+                || !isZeroOrNull(order.getPickedItemCount()) || !isZeroOrNull(order.getDeliveredItemCount())
+                || order.getLatestPickTime() != null || order.getLatestDeliveryTime() != null
+                || order.getPickCompleteTime() != null || order.getDeliveryCompleteTime() != null
+                || CollUtil.isNotEmpty(submits)) {
+            return false;
+        }
+        boolean taskStarted = tasks.stream().anyMatch(task -> task.getSaleOutId() != null
+                || StringUtils.hasText(task.getSaleOutNo())
+                || !ErpSalePickStatusEnum.WAITING.getStatus().equals(task.getStatus())
+                || !isZeroOrNull(task.getPickedItemCount())
+                || task.getLatestPickTime() != null || task.getCompleteTime() != null);
+        if (taskStarted) {
+            return false;
+        }
+        return items.stream().noneMatch(item -> item.getSaleOutId() != null || item.getSaleOutItemId() != null
+                || !ErpSalePickStatusEnum.WAITING.getStatus().equals(item.getPickStatus())
+                || !ErpSaleDeliveryStatusEnum.NOT_READY.getStatus().equals(item.getDeliveryStatus())
+                || !isZeroOrNull(item.getPickedCount()) || !isZeroOrNull(item.getDeliveredCount())
+                || item.getPickUserId() != null || item.getPickTime() != null
+                || item.getDeliveryUserId() != null || item.getDeliveryTime() != null);
+    }
+
+    private boolean isZeroOrNull(Integer value) {
+        return value == null || value == 0;
+    }
+
+    private boolean isZeroOrNull(BigDecimal value) {
+        return value == null || value.compareTo(BigDecimal.ZERO) == 0;
+    }
+
+    @Override
     public PageResult<ErpSalePickTaskRespVO> getPickPage(ErpSalePickPageReqVO reqVO, boolean mobile) {
         if (mobile) {
             fillCurrentUserWarehouseIds(reqVO);

@@ -8,6 +8,8 @@ import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartDraf
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartDraftUpdateReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartFirstApproveConfigRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartFirstApproveConfigSaveReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartItemMatchReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartItemMatchRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartSaveReqVO;
@@ -21,6 +23,7 @@ import cn.iocoder.yudao.module.erp.service.config.ErpFieldConfigService;
 import cn.iocoder.yudao.module.erp.service.product.ErpProductService;
 import cn.iocoder.yudao.module.erp.service.sale.ErpCustomerService;
 import cn.iocoder.yudao.module.erp.service.sale.ErpSaleCartService;
+import cn.iocoder.yudao.module.erp.service.sale.ErpSalePickDeliveryService;
 import cn.iocoder.yudao.module.erp.service.sale.ErpSaleFieldPermissionMasker;
 import cn.iocoder.yudao.module.erp.service.sale.ErpSaleItemPriceReferenceFiller;
 import cn.iocoder.yudao.module.erp.service.stock.ErpWarehouseService;
@@ -81,6 +84,8 @@ public class ErpSaleCartControllerTest extends BaseMockitoUnitTest {
     private DeptApi deptApi;
     @Mock
     private ErpFieldConfigService fieldConfigService;
+    @Mock
+    private ErpSalePickDeliveryService salePickDeliveryService;
 
     @BeforeEach
     public void setUp() {
@@ -181,6 +186,28 @@ public class ErpSaleCartControllerTest extends BaseMockitoUnitTest {
         PreAuthorize anno = method.getAnnotation(PreAuthorize.class);
         assertNotNull(anno);
         assertTrue(anno.value().contains("erp:sale-cart:submit"));
+    }
+
+    @Test
+    public void testConfirmSaleCart_paramPassThrough() {
+        ErpSaleCartSubmitRespVO respVO = new ErpSaleCartSubmitRespVO();
+        respVO.setId(31L);
+        respVO.setStatus(20);
+        when(saleCartService.confirmSaleCart(31L)).thenReturn(respVO);
+
+        CommonResult<ErpSaleCartSubmitRespVO> result = controller.confirmSaleCart(31L);
+
+        assertEquals(0, result.getCode());
+        assertEquals(respVO, result.getData());
+        verify(saleCartService).confirmSaleCart(31L);
+    }
+
+    @Test
+    public void testConfirmSaleCart_hasPreAuthorize() throws NoSuchMethodException {
+        Method method = ErpSaleCartController.class.getMethod("confirmSaleCart", Long.class);
+        PreAuthorize anno = method.getAnnotation(PreAuthorize.class);
+        assertNotNull(anno);
+        assertTrue(anno.value().contains("erp:sale-cart:confirm"));
     }
 
     // ==================== firstApproveSaleCart ====================
@@ -469,6 +496,36 @@ public class ErpSaleCartControllerTest extends BaseMockitoUnitTest {
     @Test
     public void testGetSaleCartPage_hasPreAuthorize() throws NoSuchMethodException {
         Method method = ErpSaleCartController.class.getMethod("getSaleCartPage", ErpSaleCartPageReqVO.class);
+        PreAuthorize anno = method.getAnnotation(PreAuthorize.class);
+        assertNotNull(anno);
+        assertTrue(anno.value().contains("erp:sale-cart:query"));
+    }
+
+    @Test
+    public void testGetSaleCartItemMatches_passThrough() {
+        ErpSaleCartItemMatchReqVO reqVO = new ErpSaleCartItemMatchReqVO();
+        reqVO.setCartId(93L);
+        reqVO.setPageSize(10);
+        ErpSaleCartItemMatchReqVO.Key key = new ErpSaleCartItemMatchReqVO.Key();
+        key.setProductId(10L);
+        key.setWarehouseId(20L);
+        reqVO.setKeys(Collections.singletonList(key));
+        ErpSaleCartItemMatchRespVO serviceResult = new ErpSaleCartItemMatchRespVO();
+        serviceResult.setMatches(Collections.emptyList());
+        when(saleCartService.getSaleCart(93L)).thenReturn(new ErpSaleCartDO().setId(93L));
+        when(saleCartService.getSaleCartItemMatches(reqVO)).thenReturn(serviceResult);
+
+        CommonResult<ErpSaleCartItemMatchRespVO> result = controller.getSaleCartItemMatches(reqVO);
+
+        assertEquals(0, result.getCode());
+        assertEquals(serviceResult, result.getData());
+        verify(saleCartService).getSaleCartItemMatches(reqVO);
+    }
+
+    @Test
+    public void testGetSaleCartItemMatches_hasQueryPermission() throws NoSuchMethodException {
+        Method method = ErpSaleCartController.class.getMethod(
+                "getSaleCartItemMatches", ErpSaleCartItemMatchReqVO.class);
         PreAuthorize anno = method.getAnnotation(PreAuthorize.class);
         assertNotNull(anno);
         assertTrue(anno.value().contains("erp:sale-cart:query"));

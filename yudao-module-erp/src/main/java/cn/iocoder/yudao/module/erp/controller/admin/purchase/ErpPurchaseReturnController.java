@@ -213,6 +213,24 @@ public class ErpPurchaseReturnController {
         return success(purchaseReturnService.getWarehouseAvailableDeptSimplePage(warehouseId, pageReqVO));
     }
 
+    @GetMapping("/supplier-dept-simple-list")
+    @Operation(summary = "获得供应商对当前用户可用的采购退货部门精简列表")
+    @Parameter(name = "supplierId", description = "供应商编号", required = true, example = "1024")
+    @PreAuthorize("@ss.hasPermission('erp:purchase-return:query')")
+    public CommonResult<List<DeptSimpleRespVO>> getSupplierAvailableDeptSimpleList(
+            @RequestParam("supplierId") Long supplierId) {
+        return success(purchaseReturnService.getSupplierAvailableDeptSimpleList(supplierId));
+    }
+
+    @GetMapping("/supplier-dept-simple-page")
+    @Operation(summary = "获得供应商对当前用户可用的采购退货部门分页")
+    @Parameter(name = "supplierId", description = "供应商编号", required = true, example = "1024")
+    @PreAuthorize("@ss.hasPermission('erp:purchase-return:query')")
+    public CommonResult<PageResult<DeptSimpleRespVO>> getSupplierAvailableDeptSimplePage(
+            @RequestParam("supplierId") Long supplierId, @Valid PageParam pageReqVO) {
+        return success(purchaseReturnService.getSupplierAvailableDeptSimplePage(supplierId, pageReqVO));
+    }
+
     @GetMapping("/dept-simple-list")
     @Operation(summary = "鑾峰緱褰撳墠鐢ㄦ埛鍙煡璇㈢殑閲囪喘閫€璐ч儴闂ㄧ簿绠€鍒楄〃")
     @PreAuthorize("@ss.hasPermission('erp:purchase-return:query')")

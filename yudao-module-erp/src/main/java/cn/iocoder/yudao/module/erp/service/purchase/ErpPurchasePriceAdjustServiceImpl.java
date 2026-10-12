@@ -3,6 +3,7 @@ package cn.iocoder.yudao.module.erp.service.purchase;
 import cn.hutool.core.collection.CollUtil;
 import cn.hutool.core.util.StrUtil;
 import cn.iocoder.yudao.framework.common.enums.CommonStatusEnum;
+import cn.iocoder.yudao.framework.common.pojo.PageParam;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.common.util.number.MoneyUtils;
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
@@ -44,6 +45,7 @@ import cn.iocoder.yudao.module.erp.service.product.ErpProductService;
 import cn.iocoder.yudao.module.erp.service.price.ErpPriceHistoryService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpStockService;
 import cn.iocoder.yudao.module.erp.service.stock.ErpWarehouseService;
+import cn.iocoder.yudao.module.system.controller.admin.dept.vo.dept.DeptSimpleRespVO;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -94,6 +96,7 @@ import static cn.iocoder.yudao.module.erp.enums.LogRecordConstants.ERP_PURCHASE_
 public class ErpPurchasePriceAdjustServiceImpl implements ErpPurchasePriceAdjustService {
 
     private static final String FIELD_PERMISSION_MODULE = "erp_purchase_price_adjust";
+    private static final String SUPPLIER_DEPT_PERMISSION_FORM_KEY = "system_dept";
     private static final Set<String> CREATE_EDIT_PRICE_FIELDS = new HashSet<String>() {{
         add("oldPrice");
         add("newPrice");
@@ -124,6 +127,8 @@ public class ErpPurchasePriceAdjustServiceImpl implements ErpPurchasePriceAdjust
 
     @Resource
     private ErpSupplierService supplierService;
+    @Resource
+    private ErpSupplierDeptPermissionService supplierDeptPermissionService;
     @Resource
     private ErpProductService productService;
     @Resource
@@ -169,6 +174,7 @@ public class ErpPurchasePriceAdjustServiceImpl implements ErpPurchasePriceAdjust
         adjustDO.setTotalAdjustPrice(totalAdjustPrice);
         fillDeptIdFromPurchaseIn(adjustDO, items);
         purchaseDocumentDefaultService.fillCreateDefaults(adjustDO);
+        validateOptionalPurchasePriceAdjustSupplierDept(adjustDO.getSupplierId(), adjustDO.getDeptId());
         purchaseDocumentDefaultService.fillCreateAuditDefaults(adjustDO);
         priceAdjustMapper.insert(adjustDO);
 
@@ -199,6 +205,7 @@ public class ErpPurchasePriceAdjustServiceImpl implements ErpPurchasePriceAdjust
         adjustDO.setTotalAdjustPrice(sumAdjustPrice(items));
         fillDeptIdFromPurchaseIn(adjustDO, items);
         purchaseDocumentDefaultService.fillCreateDefaults(adjustDO);
+        validateOptionalPurchasePriceAdjustSupplierDept(adjustDO.getSupplierId(), adjustDO.getDeptId());
         priceAdjustMapper.insert(adjustDO);
         insertDraftItems(adjustDO.getId(), items);
         operateLogService.recordCreate(ERP_PURCHASE_PRICE_ADJUST_TYPE, adjustDO.getId(), adjustDO.getNo());
@@ -259,7 +266,11 @@ public class ErpPurchasePriceAdjustServiceImpl implements ErpPurchasePriceAdjust
         if (updateDO.getDeptId() == null) {
             updateDO.setDeptId(existDO.getDeptId());
         }
+        if (updateDO.getSupplierId() == null) {
+            updateDO.setSupplierId(existDO.getSupplierId());
+        }
         purchaseDocumentDefaultService.fillCreateDefaults(updateDO);
+        validateOptionalPurchasePriceAdjustSupplierDept(updateDO.getSupplierId(), updateDO.getDeptId());
         priceAdjustMapper.updateById(updateDO);
 
         // 5. 更新子表
@@ -312,12 +323,17 @@ public class ErpPurchasePriceAdjustServiceImpl implements ErpPurchasePriceAdjust
             updateDO.setAdjustTime(existDO.getAdjustTime());
         }
         updateDO.setTotalAdjustPrice(sumAdjustPrice(items));
+        fillDeptIdFromPurchaseIn(updateDO, items);
         if (updateDO.getDeptId() == null) {
             updateDO.setDeptId(existDO.getDeptId());
+        }
+        if (updateDO.getSupplierId() == null) {
+            updateDO.setSupplierId(existDO.getSupplierId());
         }
         if (updateDO.getAdjuster() == null) {
             updateDO.setAdjuster(existDO.getAdjuster());
         }
+        validateOptionalPurchasePriceAdjustSupplierDept(updateDO.getSupplierId(), updateDO.getDeptId());
         if (priceAdjustMapper.updateByIdAndStatus(existDO.getId(),
                 ErpPurchasePriceAdjustStatusEnum.DRAFT.getStatus(), updateDO) == 0) {
             throw exception(PURCHASE_PRICE_ADJUST_DRAFT_UPDATE_FAIL, existDO.getNo());
@@ -352,6 +368,7 @@ public class ErpPurchasePriceAdjustServiceImpl implements ErpPurchasePriceAdjust
                 ErpPurchasePriceAdjustSaveReqVO.Item.class));
         validateMainForm(reqVO);
         List<ErpPurchasePriceAdjustItemDO> items = buildAndValidateItems(reqVO, id);
+        validateOptionalPurchasePriceAdjustSupplierDept(adjustDO.getSupplierId(), adjustDO.getDeptId());
         BigDecimal totalAdjustPrice = sumAdjustPrice(items);
         ErpPurchasePriceAdjustDO statusUpdate = new ErpPurchasePriceAdjustDO()
                 .setStatus(ErpPurchasePriceAdjustStatusEnum.PROCESS.getStatus())
@@ -456,6 +473,18 @@ public class ErpPurchasePriceAdjustServiceImpl implements ErpPurchasePriceAdjust
             return new ArrayList<>();
         }
         return priceAdjustItemMapper.selectListByAdjustIds(adjustIds);
+    }
+
+    @Override
+    public List<DeptSimpleRespVO> getSupplierAvailableDeptSimpleList(Long supplierId) {
+        return supplierDeptPermissionService.getAvailableDeptSimpleList(supplierId,
+                SUPPLIER_DEPT_PERMISSION_FORM_KEY);
+    }
+
+    @Override
+    public PageResult<DeptSimpleRespVO> getSupplierAvailableDeptSimplePage(Long supplierId, PageParam pageParam) {
+        return supplierDeptPermissionService.getAvailableDeptSimplePage(supplierId,
+                SUPPLIER_DEPT_PERMISSION_FORM_KEY, pageParam);
     }
 
     private void fillDeptIdFromPurchaseIn(ErpPurchasePriceAdjustDO adjustDO, List<ErpPurchasePriceAdjustItemDO> items) {
@@ -825,6 +854,20 @@ public class ErpPurchasePriceAdjustServiceImpl implements ErpPurchasePriceAdjust
                 || (!ErpPurchasePriceAdjustTypeEnum.isByInOrder(type)
                 && !ErpPurchasePriceAdjustTypeEnum.isByItem(type))) {
             throw exception(PURCHASE_PRICE_ADJUST_TYPE_INVALID);
+        }
+    }
+
+    private void validateOptionalPurchasePriceAdjustSupplierDept(Long supplierId, Long deptId) {
+        if (deptId == null) {
+            return;
+        }
+        if (supplierId == null) {
+            throw exception(PURCHASE_PRICE_ADJUST_SUPPLIER_DEPT_NOT_ALLOWED);
+        }
+        ErpSupplierDO supplier = supplierService.validateSupplier(supplierId);
+        if (!supplierDeptPermissionService.hasAvailableDept(supplier, deptId,
+                SUPPLIER_DEPT_PERMISSION_FORM_KEY)) {
+            throw exception(PURCHASE_PRICE_ADJUST_SUPPLIER_DEPT_NOT_ALLOWED);
         }
     }
 
@@ -1235,6 +1278,7 @@ public class ErpPurchasePriceAdjustServiceImpl implements ErpPurchasePriceAdjust
     }
 
     private void approveAdjust(ErpPurchasePriceAdjustDO adjustDO) {
+        validateOptionalPurchasePriceAdjustSupplierDept(adjustDO.getSupplierId(), adjustDO.getDeptId());
         // 1. 读子项
         List<ErpPurchasePriceAdjustItemDO> items = priceAdjustItemMapper.selectListByAdjustId(adjustDO.getId());
         if (CollUtil.isEmpty(items)) {

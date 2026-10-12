@@ -1,17 +1,22 @@
 package cn.iocoder.yudao.module.erp.controller.admin.purchase;
 
 import cn.iocoder.yudao.framework.test.core.ut.BaseMockitoUnitTest;
+import cn.iocoder.yudao.framework.common.pojo.PageParam;
+import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.priceadjust.ErpPurchasePriceAdjustSettlementSummaryRespVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchasePriceAdjustDO;
 import cn.iocoder.yudao.module.erp.dal.mysql.finance.ErpFinancePaymentItemMapper;
 import cn.iocoder.yudao.module.erp.enums.common.ErpBizTypeEnum;
 import cn.iocoder.yudao.module.erp.service.purchase.ErpPurchasePriceAdjustService;
+import cn.iocoder.yudao.module.system.controller.admin.dept.vo.dept.DeptSimpleRespVO;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 
 import java.math.BigDecimal;
+import java.util.Collections;
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -79,6 +84,27 @@ class ErpPurchasePriceAdjustControllerTest extends BaseMockitoUnitTest {
         assertEquals(0, new BigDecimal("-100").compareTo(data.getWrittenOffAmount()));
         assertEquals(0, BigDecimal.ZERO.compareTo(data.getUnwrittenOffAmount()));
         assertEquals(Integer.valueOf(2), data.getSettlementStatus());
+    }
+
+    @Test
+    void getSupplierAvailableDeptSimpleListDelegatesToPriceAdjustService() {
+        List<DeptSimpleRespVO> expected = Collections.singletonList(
+                new DeptSimpleRespVO(7L, "采购部", 1L));
+        when(priceAdjustService.getSupplierAvailableDeptSimpleList(100L)).thenReturn(expected);
+
+        assertEquals(expected, controller.getSupplierAvailableDeptSimpleList(100L).getData());
+        verify(priceAdjustService).getSupplierAvailableDeptSimpleList(100L);
+    }
+
+    @Test
+    void getSupplierAvailableDeptSimplePageDelegatesToPriceAdjustService() {
+        PageParam pageParam = new PageParam().setPageNo(1).setPageSize(20);
+        PageResult<DeptSimpleRespVO> expected = new PageResult<>(Collections.singletonList(
+                new DeptSimpleRespVO(7L, "采购部", 1L)), 1L);
+        when(priceAdjustService.getSupplierAvailableDeptSimplePage(100L, pageParam)).thenReturn(expected);
+
+        assertEquals(expected, controller.getSupplierAvailableDeptSimplePage(100L, pageParam).getData());
+        verify(priceAdjustService).getSupplierAvailableDeptSimplePage(100L, pageParam);
     }
 
 }

@@ -155,6 +155,20 @@ public interface ErpSaleCartMapper extends BaseMapperX<ErpSaleCartDO> {
     }
 
     /**
+     * 驳回到草稿，并显式清空本轮开单确认、初审信息。
+     */
+    default int rejectToProcess(Long id, Integer status) {
+        return update(null, new LambdaUpdateWrapper<ErpSaleCartDO>()
+                .eq(ErpSaleCartDO::getId, id)
+                .eq(ErpSaleCartDO::getStatus, status)
+                .set(ErpSaleCartDO::getStatus, ErpSaleCartStatusEnum.PROCESS.getStatus())
+                .set(ErpSaleCartDO::getBillingConfirmUserId, null)
+                .set(ErpSaleCartDO::getBillingConfirmTime, null)
+                .set(ErpSaleCartDO::getFirstAuditUserId, null)
+                .set(ErpSaleCartDO::getFirstAuditTime, null));
+    }
+
+    /**
      * 撤销初审，并显式清空初审信息。
      *
      * <p>使用 {@link LambdaUpdateWrapper#set} 设置 null，避免实体更新策略忽略 null 字段。</p>
@@ -164,6 +178,22 @@ public interface ErpSaleCartMapper extends BaseMapperX<ErpSaleCartDO> {
                 .eq(ErpSaleCartDO::getId, id)
                 .eq(ErpSaleCartDO::getStatus, ErpSaleCartStatusEnum.FIRST_APPROVE.getStatus())
                 .set(ErpSaleCartDO::getStatus, ErpSaleCartStatusEnum.SUBMITTED.getStatus())
+                .set(ErpSaleCartDO::getFirstAuditUserId, null)
+                .set(ErpSaleCartDO::getFirstAuditTime, null));
+    }
+
+    /**
+     * 解锁手推车后回退到待开单确认，并清空本轮开单确认、初审信息。
+     *
+     * <p>该逻辑与普通撤销初审分开，确保重新开单确认时会再次生成调拨、拣货和送货任务。</p>
+     */
+    default int rollbackToPendingBillingConfirmForUnlock(Long id) {
+        return update(null, new LambdaUpdateWrapper<ErpSaleCartDO>()
+                .eq(ErpSaleCartDO::getId, id)
+                .eq(ErpSaleCartDO::getStatus, ErpSaleCartStatusEnum.FIRST_APPROVE.getStatus())
+                .set(ErpSaleCartDO::getStatus, ErpSaleCartStatusEnum.PENDING_BILLING_CONFIRM.getStatus())
+                .set(ErpSaleCartDO::getBillingConfirmUserId, null)
+                .set(ErpSaleCartDO::getBillingConfirmTime, null)
                 .set(ErpSaleCartDO::getFirstAuditUserId, null)
                 .set(ErpSaleCartDO::getFirstAuditTime, null));
     }

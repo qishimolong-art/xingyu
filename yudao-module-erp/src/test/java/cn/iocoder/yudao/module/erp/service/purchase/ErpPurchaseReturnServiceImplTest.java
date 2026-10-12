@@ -1,5 +1,6 @@
 package cn.iocoder.yudao.module.erp.service.purchase;
 
+import cn.iocoder.yudao.framework.common.pojo.PageParam;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.common.biz.system.permission.dto.DeptDataPermissionRespDTO;
 import cn.iocoder.yudao.framework.common.enums.CommonStatusEnum;
@@ -88,6 +89,7 @@ import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PURCHASE_RETU
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PURCHASE_RETURN_PROCESS_FAIL_EXISTS_REFUND;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PURCHASE_RETURN_SOURCE_IN_ITEM_NOT_EXISTS;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PURCHASE_RETURN_SUPPLIER_REQUIRED;
+import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PURCHASE_RETURN_SUPPLIER_DEPT_NOT_ALLOWED;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PURCHASE_RETURN_SUBMIT_ITEMS_REQUIRED;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PURCHASE_RETURN_UPDATE_FAIL_NOT_DRAFT;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PURCHASE_RETURN_UPDATE_FAIL_APPROVE;
@@ -139,6 +141,8 @@ public class ErpPurchaseReturnServiceImplTest extends BaseMockitoUnitTest {
     @Mock
     private ErpSupplierService supplierService;
     @Mock
+    private ErpSupplierDeptPermissionService supplierDeptPermissionService;
+    @Mock
     private ErpAutoVoucherBuilder autoVoucherBuilder;
     @Mock
     private ErpVoucherService voucherService;
@@ -171,6 +175,8 @@ public class ErpPurchaseReturnServiceImplTest extends BaseMockitoUnitTest {
                 .thenAnswer(i -> purchaseReturnMapper.selectById((Long)i.getArgument(0)));
         org.mockito.Mockito.lenient().when(purchaseReturnItemMapper.selectListByReturnIdForUpdate(anyLong()))
                 .thenAnswer(i -> new java.util.ArrayList<>(purchaseReturnItemMapper.selectListByReturnId(i.getArgument(0))));
+        org.mockito.Mockito.lenient().when(supplierDeptPermissionService.hasAvailableDept(
+                any(), any(), eq("system_dept"))).thenReturn(true);
         // 替换 Redis 序号生成器（不连接真实 Redis）
         ReflectionTestUtils.setField(purchaseReturnService, "noRedisDAO", new ErpNoRedisDAO() {
             @Override
@@ -433,6 +439,63 @@ public class ErpPurchaseReturnServiceImplTest extends BaseMockitoUnitTest {
     }
 
     @Test
+    public void testCreatePurchaseReturn_supplierDeptNotAllowed_throwException() {
+        ErpPurchaseReturnSaveReqVO reqVO = buildByStockReqVO(
+                buildItem(200L, BigDecimal.ONE, BigDecimal.TEN));
+        reqVO.setDeptId(7L);
+        ErpSupplierDO supplier = new ErpSupplierDO().setId(100L);
+        when(supplierService.validateSupplier(100L)).thenReturn(supplier);
+        when(productService.validProductList(any())).thenReturn(Collections.singletonList(
+                new ErpProductDO().setId(200L).setUnitId(1L)));
+        when(warehouseService.getWarehouseMap(any())).thenReturn(Collections.emptyMap());
+        when(supplierDeptPermissionService.hasAvailableDept(supplier, 7L, "system_dept"))
+                .thenReturn(false);
+
+        assertServiceException(() -> purchaseReturnService.createPurchaseReturn(reqVO),
+                PURCHASE_RETURN_SUPPLIER_DEPT_NOT_ALLOWED);
+
+        verify(purchaseReturnMapper, never()).insert(any(ErpPurchaseReturnDO.class));
+    }
+
+    @Test
+    public void testCreatePurchaseReturnDraft_supplierDeptNotAllowed_throwException() {
+        ErpPurchaseReturnDraftCreateReqVO reqVO = new ErpPurchaseReturnDraftCreateReqVO();
+        reqVO.setReturnMode(ErpPurchaseReturnModeEnum.BY_STOCK.getMode());
+        reqVO.setSupplierId(100L);
+        reqVO.setDeptId(7L);
+        reqVO.setItems(Collections.singletonList(buildItem(200L, BigDecimal.ONE, BigDecimal.TEN)));
+        ErpSupplierDO supplier = new ErpSupplierDO().setId(100L);
+        when(supplierService.validateSupplier(100L)).thenReturn(supplier);
+        when(productService.validProductList(any())).thenReturn(Collections.singletonList(
+                new ErpProductDO().setId(200L).setUnitId(1L)));
+        when(warehouseService.getWarehouseMap(any())).thenReturn(Collections.emptyMap());
+        when(supplierDeptPermissionService.hasAvailableDept(supplier, 7L, "system_dept"))
+                .thenReturn(false);
+
+        assertServiceException(() -> purchaseReturnService.createPurchaseReturnDraft(reqVO),
+                PURCHASE_RETURN_SUPPLIER_DEPT_NOT_ALLOWED);
+
+        verify(purchaseReturnMapper, never()).insert(any(ErpPurchaseReturnDO.class));
+    }
+
+    @Test
+    public void testCreatePurchaseReturnDraft_deptWithoutSupplier_throwException() {
+        ErpPurchaseReturnDraftCreateReqVO reqVO = new ErpPurchaseReturnDraftCreateReqVO();
+        reqVO.setReturnMode(ErpPurchaseReturnModeEnum.BY_STOCK.getMode());
+        reqVO.setDeptId(7L);
+        reqVO.setItems(Collections.singletonList(buildItem(200L, BigDecimal.ONE, BigDecimal.TEN)));
+        when(productService.validProductList(any())).thenReturn(Collections.singletonList(
+                new ErpProductDO().setId(200L).setUnitId(1L)));
+        when(warehouseService.getWarehouseMap(any())).thenReturn(Collections.emptyMap());
+        when(purchaseReturnMapper.selectByNo(any())).thenReturn(null);
+
+        assertServiceException(() -> purchaseReturnService.createPurchaseReturnDraft(reqVO),
+                PURCHASE_RETURN_SUPPLIER_DEPT_NOT_ALLOWED);
+
+        verify(purchaseReturnMapper, never()).insert(any(ErpPurchaseReturnDO.class));
+    }
+
+    @Test
     @SuppressWarnings("unchecked")
     public void testCreatePurchaseReturnDraft_allowsSelectedStockZeroPrice() {
         ErpPurchaseReturnDraftCreateReqVO reqVO = new ErpPurchaseReturnDraftCreateReqVO();
@@ -495,6 +558,29 @@ public class ErpPurchaseReturnServiceImplTest extends BaseMockitoUnitTest {
     }
 
     @Test
+    public void testUpdatePurchaseReturnDraft_supplierDeptNotAllowed_throwException() {
+        ErpPurchaseReturnDraftUpdateReqVO reqVO = new ErpPurchaseReturnDraftUpdateReqVO();
+        reqVO.setId(10L);
+        reqVO.setReturnMode(ErpPurchaseReturnModeEnum.BY_STOCK.getMode());
+        reqVO.setSupplierId(100L);
+        reqVO.setDeptId(7L);
+        reqVO.setItems(Collections.emptyList());
+        when(purchaseReturnMapper.selectById(10L)).thenReturn(new ErpPurchaseReturnDO()
+                .setId(10L).setNo("CGTH001").setStatus(ErpPurchaseReturnStatusEnum.DRAFT.getStatus())
+                .setReturnMode(ErpPurchaseReturnModeEnum.BY_STOCK.getMode()));
+        when(purchaseReturnItemMapper.selectListByReturnId(10L)).thenReturn(Collections.emptyList());
+        ErpSupplierDO supplier = new ErpSupplierDO().setId(100L);
+        when(supplierService.validateSupplier(100L)).thenReturn(supplier);
+        when(supplierDeptPermissionService.hasAvailableDept(supplier, 7L, "system_dept"))
+                .thenReturn(false);
+
+        assertServiceException(() -> purchaseReturnService.updatePurchaseReturnDraft(reqVO),
+                PURCHASE_RETURN_SUPPLIER_DEPT_NOT_ALLOWED);
+
+        verify(purchaseReturnMapper, never()).updateById(any(ErpPurchaseReturnDO.class));
+    }
+
+    @Test
     public void testSubmitPurchaseReturnDraft_success() {
         ErpPurchaseReturnDO draft = new ErpPurchaseReturnDO()
                 .setId(10L).setNo("CGTH001").setStatus(ErpPurchaseReturnStatusEnum.DRAFT.getStatus())
@@ -530,6 +616,28 @@ public class ErpPurchaseReturnServiceImplTest extends BaseMockitoUnitTest {
 
         assertServiceException(() -> purchaseReturnService.submitPurchaseReturn(10L),
                 PURCHASE_RETURN_SUBMIT_ITEMS_REQUIRED);
+        verify(purchaseReturnMapper, never()).updateByIdAndStatus(anyLong(), any(), any());
+    }
+
+    @Test
+    public void testSubmitPurchaseReturnDraft_supplierDeptNotAllowed_throwException() {
+        ErpPurchaseReturnDO draft = new ErpPurchaseReturnDO()
+                .setId(10L).setNo("CGTH001").setStatus(ErpPurchaseReturnStatusEnum.DRAFT.getStatus())
+                .setReturnMode(ErpPurchaseReturnModeEnum.BY_STOCK.getMode()).setSupplierId(100L).setDeptId(7L)
+                .setReturnTime(LocalDateTime.of(2026, 7, 27, 10, 0));
+        ErpPurchaseReturnItemDO item = new ErpPurchaseReturnItemDO()
+                .setId(20L).setReturnId(10L).setProductId(200L).setWarehouseId(10L)
+                .setProductUnitId(1L).setCount(BigDecimal.ONE).setProductPrice(BigDecimal.TEN);
+        when(purchaseReturnMapper.selectById(10L)).thenReturn(draft);
+        when(purchaseReturnItemMapper.selectListByReturnId(10L)).thenReturn(Collections.singletonList(item));
+        ErpSupplierDO supplier = new ErpSupplierDO().setId(100L);
+        when(supplierService.validateSupplier(100L)).thenReturn(supplier);
+        when(supplierDeptPermissionService.hasAvailableDept(supplier, 7L, "system_dept"))
+                .thenReturn(false);
+
+        assertServiceException(() -> purchaseReturnService.submitPurchaseReturn(10L),
+                PURCHASE_RETURN_SUPPLIER_DEPT_NOT_ALLOWED);
+
         verify(purchaseReturnMapper, never()).updateByIdAndStatus(anyLong(), any(), any());
     }
 
@@ -776,6 +884,30 @@ public class ErpPurchaseReturnServiceImplTest extends BaseMockitoUnitTest {
     }
 
     @Test
+    public void testUpdatePurchaseReturn_supplierDeptNotAllowed_throwException() {
+        ErpPurchaseReturnDO existing = new ErpPurchaseReturnDO()
+                .setId(10L).setNo("CGTH001").setStatus(ErpAuditStatus.PROCESS.getStatus());
+        when(purchaseReturnMapper.selectById(10L)).thenReturn(existing);
+        when(purchaseReturnItemMapper.selectListByReturnId(10L)).thenReturn(Collections.emptyList());
+        ErpPurchaseReturnSaveReqVO reqVO = buildByStockReqVO(
+                buildItem(200L, BigDecimal.ONE, BigDecimal.TEN));
+        reqVO.setId(10L);
+        reqVO.setDeptId(7L);
+        when(productService.validProductList(any())).thenReturn(Collections.singletonList(
+                new ErpProductDO().setId(200L).setUnitId(1L)));
+        when(warehouseService.getWarehouseMap(any())).thenReturn(Collections.emptyMap());
+        ErpSupplierDO supplier = new ErpSupplierDO().setId(100L);
+        when(supplierService.validateSupplier(100L)).thenReturn(supplier);
+        when(supplierDeptPermissionService.hasAvailableDept(supplier, 7L, "system_dept"))
+                .thenReturn(false);
+
+        assertServiceException(() -> purchaseReturnService.updatePurchaseReturn(reqVO),
+                PURCHASE_RETURN_SUPPLIER_DEPT_NOT_ALLOWED);
+
+        verify(purchaseReturnMapper, never()).updateById(any(ErpPurchaseReturnDO.class));
+    }
+
+    @Test
     public void testUpdatePurchaseReturn_emptyItems_throwException() {
         ErpPurchaseReturnDO existing = new ErpPurchaseReturnDO()
                 .setId(10L).setNo("CGTH001").setStatus(ErpAuditStatus.PROCESS.getStatus());
@@ -910,6 +1042,26 @@ public class ErpPurchaseReturnServiceImplTest extends BaseMockitoUnitTest {
         assertEquals(0, stockCaptor.getValue().getCount().compareTo(new BigDecimal("-3")));
         // 审核不再直接生成凭证
         org.mockito.Mockito.verifyNoInteractions(voucherService);
+    }
+
+    @Test
+    public void testUpdatePurchaseReturnStatus_supplierDeptNotAllowed_throwException() {
+        ErpPurchaseReturnDO existing = new ErpPurchaseReturnDO()
+                .setId(10L).setNo("CGTH001").setSupplierId(100L).setDeptId(7L)
+                .setStatus(ErpAuditStatus.PROCESS.getStatus())
+                .setReturnMode(ErpPurchaseReturnModeEnum.BY_STOCK.getMode());
+        when(purchaseReturnMapper.selectById(10L)).thenReturn(existing);
+        when(purchaseReturnItemMapper.selectListByReturnId(10L)).thenReturn(Collections.emptyList());
+        ErpSupplierDO supplier = new ErpSupplierDO().setId(100L);
+        when(supplierService.validateSupplier(100L)).thenReturn(supplier);
+        when(supplierDeptPermissionService.hasAvailableDept(supplier, 7L, "system_dept"))
+                .thenReturn(false);
+
+        assertServiceException(
+                () -> purchaseReturnService.updatePurchaseReturnStatus(10L, ErpAuditStatus.APPROVE.getStatus()),
+                PURCHASE_RETURN_SUPPLIER_DEPT_NOT_ALLOWED);
+
+        verify(purchaseReturnMapper, never()).updateByIdAndStatus(anyLong(), any(), any());
     }
 
     @Test
@@ -1211,6 +1363,35 @@ public class ErpPurchaseReturnServiceImplTest extends BaseMockitoUnitTest {
         assertNotNull(result);
         assertEquals(Long.valueOf(10L), result.getId());
         assertEquals(ErpAuditStatus.APPROVE.getStatus(), result.getStatus());
+    }
+
+    @Test
+    public void testGetSupplierAvailableDeptSimpleList_usesSystemDeptPermissionKey() {
+        List<DeptSimpleRespVO> expected = Collections.singletonList(
+                new DeptSimpleRespVO(7L, "采购部", 1L));
+        when(supplierDeptPermissionService.getAvailableDeptSimpleList(100L, "system_dept"))
+                .thenReturn(expected);
+
+        List<DeptSimpleRespVO> result = purchaseReturnService.getSupplierAvailableDeptSimpleList(100L);
+
+        assertSame(expected, result);
+        verify(supplierDeptPermissionService).getAvailableDeptSimpleList(100L, "system_dept");
+    }
+
+    @Test
+    public void testGetSupplierAvailableDeptSimplePage_usesSystemDeptPermissionKey() {
+        PageParam pageParam = new PageParam();
+        PageResult<DeptSimpleRespVO> expected = new PageResult<>(Collections.singletonList(
+                new DeptSimpleRespVO(7L, "采购部", 1L)), 1L);
+        when(supplierDeptPermissionService.getAvailableDeptSimplePage(
+                100L, "system_dept", pageParam)).thenReturn(expected);
+
+        PageResult<DeptSimpleRespVO> result = purchaseReturnService.getSupplierAvailableDeptSimplePage(
+                100L, pageParam);
+
+        assertSame(expected, result);
+        verify(supplierDeptPermissionService).getAvailableDeptSimplePage(
+                100L, "system_dept", pageParam);
     }
 
     @Test

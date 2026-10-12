@@ -29,6 +29,7 @@ class ErpStockPendingChangeMapperTest {
 
         assertTrue(expression.contains("erp_sale_cart_items"));
         assertTrue(expression.contains("sc.status IN (20,30)"));
+        assertTrue(expression.contains("sc.status <> 20 OR sc.billing_confirm_time IS NULL"));
         assertFalse(expression.contains("sc.status IN (10,20,30)"));
         assertTrue(expression.contains("NOT EXISTS"));
         assertTrue(expression.contains("erp_sale_out_items"));

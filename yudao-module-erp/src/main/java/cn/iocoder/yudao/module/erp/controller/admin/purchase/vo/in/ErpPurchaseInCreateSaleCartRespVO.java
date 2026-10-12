@@ -17,7 +17,7 @@ public class ErpPurchaseInCreateSaleCartRespVO {
     @Schema(description = "Sale cart no", example = "XSST202607140001")
     private String no;
 
-    @Schema(description = "Sale cart status", example = "20")
+    @Schema(description = "销售手推车状态", example = "15")
     private Integer status;
 
 }

@@ -19,10 +19,14 @@ import cn.iocoder.yudao.module.erp.dal.mysql.sale.pickdelivery.ErpSalePickDelive
 import cn.iocoder.yudao.module.erp.dal.mysql.sale.pickdelivery.ErpSalePickDeliverySubmitFileMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.sale.pickdelivery.ErpSalePickDeliverySubmitMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.sale.pickdelivery.ErpSalePickDeliverySubmitItemMapper;
+import cn.iocoder.yudao.module.erp.enums.sale.ErpSaleBizSourceTypeEnum;
+import cn.iocoder.yudao.module.erp.enums.sale.ErpSaleDeliveryStatusEnum;
+import cn.iocoder.yudao.module.erp.enums.sale.ErpSalePickStatusEnum;
 import cn.iocoder.yudao.module.system.api.user.AdminUserApi;
 import cn.iocoder.yudao.module.system.api.user.dto.AdminUserRespDTO;
 import org.junit.jupiter.api.Test;
 import org.mockito.InjectMocks;
+import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.springframework.test.util.ReflectionTestUtils;
 
@@ -38,6 +42,8 @@ import java.util.Set;
 
 import static org.mockito.Mockito.*;
 
+import static cn.iocoder.yudao.framework.test.core.util.AssertUtils.assertServiceException;
+import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.SALE_CART_FULFILLMENT_TASK_STARTED;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -62,6 +68,110 @@ class ErpSalePickDeliveryServiceImplTest extends BaseMockitoUnitTest {
     private ErpSalePickDeliveryPickTaskMapper pickTaskMapper;
     @Mock
     private ErpSalePickDeliverySubmitFileMapper submitFileMapper;
+
+    @Test
+    void rollbackUnstartedSaleCartFulfillment_noOrder_noop() {
+        when(orderMapper.selectBySourceForUpdate(ErpSaleBizSourceTypeEnum.CART.getType(), 72L))
+                .thenReturn(null);
+
+        service.rollbackUnstartedSaleCartFulfillment(72L);
+
+        verify(orderMapper).selectBySourceForUpdate(ErpSaleBizSourceTypeEnum.CART.getType(), 72L);
+        verifyNoInteractions(submitMapper, pickTaskMapper, itemMapper);
+    }
+
+    @Test
+    void rollbackUnstartedSaleCartFulfillment_unstarted_deletesChildrenBeforeOrder() {
+        ErpSalePickDeliveryOrderDO order = unstartedOrder(88L, 72L);
+        ErpSalePickDeliveryPickTaskDO task = new ErpSalePickDeliveryPickTaskDO()
+                .setId(89L).setOrderId(88L)
+                .setStatus(ErpSalePickStatusEnum.WAITING.getStatus()).setPickedItemCount(0);
+        ErpSalePickDeliveryItemDO item = new ErpSalePickDeliveryItemDO()
+                .setId(90L).setOrderId(88L).setPickTaskId(89L)
+                .setPickedCount(BigDecimal.ZERO).setDeliveredCount(BigDecimal.ZERO)
+                .setPickStatus(ErpSalePickStatusEnum.WAITING.getStatus())
+                .setDeliveryStatus(ErpSaleDeliveryStatusEnum.NOT_READY.getStatus());
+        when(orderMapper.selectBySourceForUpdate(ErpSaleBizSourceTypeEnum.CART.getType(), 72L))
+                .thenReturn(order);
+        when(submitMapper.selectListByOrderId(88L)).thenReturn(List.of());
+        when(pickTaskMapper.selectListByOrderId(88L)).thenReturn(List.of(task));
+        when(itemMapper.selectListByOrderId(88L)).thenReturn(List.of(item));
+
+        service.rollbackUnstartedSaleCartFulfillment(72L);
+
+        InOrder deletionOrder = inOrder(itemMapper, pickTaskMapper, orderMapper);
+        deletionOrder.verify(itemMapper).deleteByOrderId(88L);
+        deletionOrder.verify(pickTaskMapper).deleteByOrderId(88L);
+        deletionOrder.verify(orderMapper).deleteById(88L);
+    }
+
+    @Test
+    void rollbackUnstartedSaleCartFulfillment_submitExists_rejectedWithoutDelete() {
+        ErpSalePickDeliveryOrderDO order = unstartedOrder(88L, 72L);
+        when(orderMapper.selectBySourceForUpdate(ErpSaleBizSourceTypeEnum.CART.getType(), 72L))
+                .thenReturn(order);
+        when(submitMapper.selectListByOrderId(88L))
+                .thenReturn(List.of(new ErpSalePickDeliverySubmitDO().setId(91L).setOrderId(88L)));
+        when(pickTaskMapper.selectListByOrderId(88L)).thenReturn(List.of());
+        when(itemMapper.selectListByOrderId(88L)).thenReturn(List.of());
+
+        assertServiceException(() -> service.rollbackUnstartedSaleCartFulfillment(72L),
+                SALE_CART_FULFILLMENT_TASK_STARTED);
+
+        verify(itemMapper, never()).deleteByOrderId(anyLong());
+        verify(pickTaskMapper, never()).deleteByOrderId(anyLong());
+        verify(orderMapper, never()).deleteById(anyLong());
+    }
+
+    @Test
+    void rollbackUnstartedSaleCartFulfillment_hiddenItemProgress_rejectedWithoutDelete() {
+        ErpSalePickDeliveryOrderDO order = unstartedOrder(88L, 72L);
+        ErpSalePickDeliveryItemDO progressedItem = new ErpSalePickDeliveryItemDO()
+                .setId(90L).setOrderId(88L)
+                .setPickedCount(BigDecimal.ONE).setDeliveredCount(BigDecimal.ZERO)
+                .setPickStatus(ErpSalePickStatusEnum.WAITING.getStatus())
+                .setDeliveryStatus(ErpSaleDeliveryStatusEnum.NOT_READY.getStatus());
+        when(orderMapper.selectBySourceForUpdate(ErpSaleBizSourceTypeEnum.CART.getType(), 72L))
+                .thenReturn(order);
+        when(submitMapper.selectListByOrderId(88L)).thenReturn(List.of());
+        when(pickTaskMapper.selectListByOrderId(88L)).thenReturn(List.of());
+        when(itemMapper.selectListByOrderId(88L)).thenReturn(List.of(progressedItem));
+
+        assertServiceException(() -> service.rollbackUnstartedSaleCartFulfillment(72L),
+                SALE_CART_FULFILLMENT_TASK_STARTED);
+
+        verify(itemMapper, never()).deleteByOrderId(anyLong());
+        verify(pickTaskMapper, never()).deleteByOrderId(anyLong());
+        verify(orderMapper, never()).deleteById(anyLong());
+    }
+
+    @Test
+    void rollbackUnstartedSaleCartFulfillment_hiddenTaskProgress_rejectedWithoutDelete() {
+        ErpSalePickDeliveryOrderDO order = unstartedOrder(88L, 72L);
+        ErpSalePickDeliveryPickTaskDO progressedTask = new ErpSalePickDeliveryPickTaskDO()
+                .setId(89L).setOrderId(88L)
+                .setStatus(ErpSalePickStatusEnum.PARTIAL.getStatus()).setPickedItemCount(1);
+        when(orderMapper.selectBySourceForUpdate(ErpSaleBizSourceTypeEnum.CART.getType(), 72L))
+                .thenReturn(order);
+        when(submitMapper.selectListByOrderId(88L)).thenReturn(List.of());
+        when(pickTaskMapper.selectListByOrderId(88L)).thenReturn(List.of(progressedTask));
+        when(itemMapper.selectListByOrderId(88L)).thenReturn(List.of());
+
+        assertServiceException(() -> service.rollbackUnstartedSaleCartFulfillment(72L),
+                SALE_CART_FULFILLMENT_TASK_STARTED);
+
+        verify(itemMapper, never()).deleteByOrderId(anyLong());
+        verify(pickTaskMapper, never()).deleteByOrderId(anyLong());
+        verify(orderMapper, never()).deleteById(anyLong());
+    }
+
+    private ErpSalePickDeliveryOrderDO unstartedOrder(Long orderId, Long saleCartId) {
+        return new ErpSalePickDeliveryOrderDO().setId(orderId)
+                .setSourceType(ErpSaleBizSourceTypeEnum.CART.getType()).setSourceId(saleCartId)
+                .setPickStatus(ErpSalePickStatusEnum.WAITING.getStatus())
+                .setDeliveryStatus(ErpSaleDeliveryStatusEnum.NOT_READY.getStatus())
+                .setPickedItemCount(0).setDeliveredItemCount(0);
+    }
 
     @Test
     void deliveryNames_shouldKeepEarlierBatchUsersAndAppendLegacyUsers() {

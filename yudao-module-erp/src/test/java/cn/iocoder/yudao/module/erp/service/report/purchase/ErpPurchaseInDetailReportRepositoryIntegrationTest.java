@@ -26,6 +26,25 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class ErpPurchaseInDetailReportRepositoryIntegrationTest {
 
     @Test
+    void reportSql_usesAllocationLedgerForAllThreeSourceTypes() {
+        ErpPurchaseInDetailReportRepository repository = new ErpPurchaseInDetailReportRepository();
+        ErpFinanceVisibleScope all = new ErpFinanceVisibleScope(true, List.of(), null);
+        ErpPurchaseInDetailReportRepository.Scope scope =
+                new ErpPurchaseInDetailReportRepository.Scope(1L, all, all, all, all);
+
+        Object sql = ReflectionTestUtils.invokeMethod(repository, "reportSql", new Filter(), scope);
+        String cte = (String) ReflectionTestUtils.getField(sql, "cte");
+
+        assertNotNull(cte);
+        assertTrue(cte.contains("GROUP BY pia.source_type,pia.source_item_id"));
+        assertTrue(cte.contains("inv.source_type=10 AND inv.source_item_id=ifi.id"));
+        assertTrue(cte.contains("inv.source_type=20 AND inv.source_item_id=pai.id"));
+        assertTrue(cte.contains("inv.source_type=30 AND inv.source_item_id=pri.id"));
+        assertFalse(cte.contains("inv.source_in_item_id"));
+        assertFalse(cte.contains("'不适用'"));
+    }
+
+    @Test
     void queryApprovedThreeDocumentTypesAndCalculatedFields() {
         String url = System.getenv("ERP_REPORT_DB_URL");
         String username = System.getenv("ERP_REPORT_DB_USER");

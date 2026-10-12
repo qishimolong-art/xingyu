@@ -111,6 +111,7 @@ import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Comparator;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -1879,11 +1880,13 @@ public class ErpPurchaseInServiceImpl implements ErpPurchaseInService {
                                                                       Map<Long, ErpPurchaseInItemDO> sourceItemMap,
                                                                       ErpSaleCartSubmitRespVO submitRespVO,
                                                                       List<ErpSaleCartItemDO> saleCartItems) {
-        Map<String, List<ErpSaleCartItemDO>> targetItemMap = saleCartItems.stream()
-                .collect(Collectors.groupingBy(this::buildSaleCartTargetItemKey, LinkedHashMap::new, Collectors.toList()));
+        Map<String, ErpSaleCartItemDO> targetItemMap = saleCartItems.stream()
+                .sorted(Comparator.comparing(ErpSaleCartItemDO::getId, Comparator.nullsLast(Long::compareTo)))
+                .collect(Collectors.toMap(this::buildSaleCartTargetItemKey, item -> item,
+                        (left, right) -> left, LinkedHashMap::new));
         return convertList(reqVO.getItems(), reqItem -> {
             ErpPurchaseInItemDO sourceItem = sourceItemMap.get(reqItem.getSourceInItemId());
-            ErpSaleCartItemDO targetItem = pollFirst(targetItemMap.get(buildSaleCartTargetItemKey(reqItem, sourceItem)));
+            ErpSaleCartItemDO targetItem = targetItemMap.get(buildSaleCartTargetItemKey(reqItem, sourceItem));
             return new ErpSaleConvertRecordDO()
                     .setConvertType(ErpSaleConvertTypeEnum.PURCHASE_IN_TO_CART.getType())
                     .setSourceType(ErpSaleBizSourceTypeEnum.PURCHASE_IN.getType())
@@ -1897,23 +1900,13 @@ public class ErpPurchaseInServiceImpl implements ErpPurchaseInService {
 
     private String buildSaleCartTargetItemKey(ErpSaleCartItemDO item) {
         return item.getProductId() + "|" + item.getWarehouseId() + "|" + Boolean.TRUE.equals(item.getGiftFlag())
-                + "|" + formatKeyCount(item.getCount()) + "|" + StrUtil.blankToDefault(item.getBatchNo(), "");
+                + "|" + StrUtil.trim(StrUtil.blankToDefault(item.getBatchNo(), ""));
     }
 
     private String buildSaleCartTargetItemKey(ErpPurchaseInCreateSaleCartReqVO.Item reqItem, ErpPurchaseInItemDO sourceItem) {
         return sourceItem.getProductId() + "|" + reqItem.getWarehouseId() + "|" + Boolean.TRUE.equals(reqItem.getGiftFlag())
-                + "|" + formatKeyCount(reqItem.getCount()) + "|" + StrUtil.blankToDefault(StrUtil.blankToDefault(reqItem.getBatchNo(), sourceItem.getBatchNo()), "");
-    }
-
-    private String formatKeyCount(BigDecimal count) {
-        return count == null ? "0" : count.stripTrailingZeros().toPlainString();
-    }
-
-    private ErpSaleCartItemDO pollFirst(List<ErpSaleCartItemDO> items) {
-        if (CollUtil.isEmpty(items)) {
-            return null;
-        }
-        return items.remove(0);
+                + "|" + StrUtil.trim(StrUtil.blankToDefault(
+                StrUtil.blankToDefault(reqItem.getBatchNo(), sourceItem.getBatchNo()), ""));
     }
 
     private BigDecimal resolveDefaultSalePrice(ErpProductDO product) {

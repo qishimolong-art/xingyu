@@ -22,6 +22,8 @@ import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartImpo
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartImportRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartItemBatchUpdateReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartItemPageReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartItemMatchReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartItemMatchRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartSaveReqVO;
@@ -203,6 +205,13 @@ public class ErpSaleCartController {
         return success(saleCartService.submitSaleCart(id));
     }
 
+    @PutMapping("/confirm")
+    @Operation(summary = "开单确认销售手推车")
+    @PreAuthorize("@ss.hasPermission('erp:sale-cart:confirm')")
+    public CommonResult<ErpSaleCartSubmitRespVO> confirmSaleCart(@RequestParam("id") Long id) {
+        return success(saleCartService.confirmSaleCart(id));
+    }
+
     @PutMapping("/first-approve")
     @Operation(summary = "初审销售手推车")
     @PreAuthorize("@ss.hasPermission('erp:sale-cart:first-approve')")
@@ -304,6 +313,28 @@ public class ErpSaleCartController {
             fieldPermissionMasker.clearSaleDetailHiddenItemFields(FIELD_PERMISSION_MODULE, respVO, respResult.getList());
         }
         return success(respResult);
+    }
+
+    @PostMapping("/item-match")
+    @Operation(summary = "匹配销售手推车整单中的相同库存明细")
+    @PreAuthorize("@ss.hasPermission('erp:sale-cart:query')")
+    public CommonResult<ErpSaleCartItemMatchRespVO> getSaleCartItemMatches(
+            @Valid @RequestBody ErpSaleCartItemMatchReqVO reqVO) {
+        ErpSaleCartDO cart = saleCartService.getSaleCart(reqVO.getCartId());
+        if (cart == null) {
+            return success(null);
+        }
+        ErpSaleCartItemMatchRespVO result = saleCartService.getSaleCartItemMatches(reqVO);
+        List<ErpSaleCartRespVO.Item> matchedItems = result.getMatches().stream()
+                .flatMap(match -> match.getItems().stream()).collect(java.util.stream.Collectors.toList());
+        if (CollUtil.isNotEmpty(matchedItems)) {
+            List<ErpSaleCartItemDO> itemDOs = BeanUtils.toBean(matchedItems, ErpSaleCartItemDO.class);
+            Map<Long, ErpSaleCartRespVO.Item> enrichedItemMap = convertMap(
+                    buildSaleCartRespVO(cart, itemDOs).getItems(), ErpSaleCartRespVO.Item::getId);
+            result.getMatches().forEach(match -> match.setItems(match.getItems().stream()
+                    .map(item -> enrichedItemMap.getOrDefault(item.getId(), item)).collect(java.util.stream.Collectors.toList())));
+        }
+        return success(result);
     }
 
     @GetMapping("/warehouse-dept-simple-list")
@@ -458,6 +489,7 @@ public class ErpSaleCartController {
         Set<Long> userIds = convertSet(pageResult.getList(), cart -> parseLongSafely(cart.getCreator()));
         userIds.addAll(convertSet(pageResult.getList(), cart -> parseLongSafely(cart.getUpdater())));
         userIds.addAll(convertSet(pageResult.getList(), ErpSaleCartDO::getSaleUserId));
+        userIds.addAll(convertSet(pageResult.getList(), ErpSaleCartDO::getBillingConfirmUserId));
         userIds.remove(null);
         Map<Long, AdminUserRespDTO> userMap = CollUtil.isNotEmpty(userIds)
                 ? adminUserApi.getUserMap(userIds) : Collections.emptyMap();
@@ -495,6 +527,7 @@ public class ErpSaleCartController {
         Set<Long> userIds = convertSet(pageResult.getList(), cart -> parseLongSafely(cart.getCreator()));
         userIds.addAll(convertSet(pageResult.getList(), cart -> parseLongSafely(cart.getUpdater())));
         userIds.addAll(convertSet(pageResult.getList(), ErpSaleCartDO::getSaleUserId));
+        userIds.addAll(convertSet(pageResult.getList(), ErpSaleCartDO::getBillingConfirmUserId));
         userIds.remove(null);
         Map<Long, AdminUserRespDTO> userMap = CollUtil.isNotEmpty(userIds)
                 ? adminUserApi.getUserMap(userIds) : Collections.emptyMap();
@@ -529,6 +562,7 @@ public class ErpSaleCartController {
         Set<Long> userIds = convertSet(Collections.singletonList(cart), item -> parseLongSafely(item.getCreator()));
         userIds.addAll(convertSet(Collections.singletonList(cart), item -> parseLongSafely(item.getUpdater())));
         userIds.add(cart.getSaleUserId());
+        userIds.add(cart.getBillingConfirmUserId());
         userIds.remove(null);
         Map<Long, AdminUserRespDTO> userMap = CollUtil.isNotEmpty(userIds)
                 ? adminUserApi.getUserMap(userIds) : Collections.emptyMap();
@@ -610,6 +644,10 @@ public class ErpSaleCartController {
         if (vo.getSaleUserId() != null) {
             MapUtils.findAndThen(userMap, vo.getSaleUserId(), user -> vo.setSaleUserName(user.getNickname()));
         }
+        if (vo.getBillingConfirmUserId() != null) {
+            MapUtils.findAndThen(userMap, vo.getBillingConfirmUserId(),
+                    user -> vo.setBillingConfirmUserName(user.getNickname()));
+        }
         if (vo.getDeptId() != null) {
             MapUtils.findAndThen(deptMap, vo.getDeptId(), dept -> vo.setDeptName(dept.getName()));
         }
@@ -648,6 +686,10 @@ public class ErpSaleCartController {
         }
         if (vo.getSaleUserId() != null) {
             MapUtils.findAndThen(userMap, vo.getSaleUserId(), user -> vo.setSaleUserName(user.getNickname()));
+        }
+        if (vo.getBillingConfirmUserId() != null) {
+            MapUtils.findAndThen(userMap, vo.getBillingConfirmUserId(),
+                    user -> vo.setBillingConfirmUserName(user.getNickname()));
         }
         if (vo.getDeptId() != null) {
             MapUtils.findAndThen(deptMap, vo.getDeptId(), dept -> vo.setDeptName(dept.getName()));

@@ -23,6 +23,8 @@ import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockMoveDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockMoveItemDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpWarehouseDO;
 import cn.iocoder.yudao.module.erp.enums.sale.ErpSaleBizSourceTypeEnum;
+import cn.iocoder.yudao.module.erp.enums.sale.ErpSaleDeliveryStatusEnum;
+import cn.iocoder.yudao.module.erp.enums.sale.ErpSalePickStatusEnum;
 import cn.iocoder.yudao.module.erp.enums.stock.ErpStockRecordBizTypeEnum;
 import cn.iocoder.yudao.module.erp.enums.stock.ErpStockTransferOutStatusEnum;
 import cn.iocoder.yudao.module.erp.service.common.ErpOperateLogService;
@@ -796,20 +798,42 @@ class ErpStockMoveServiceImplTest extends BaseMockitoUnitTest {
     }
 
     @Test
-    void getUnlockCartPermission_fulfillmentGenerated_denied() {
+    void getUnlockCartPermission_unstartedFulfillment_allowed() {
         ErpStockMoveDO stockMove = saleCartStockMove(100L)
                 .setSourceId(72L)
                 .setTransferDirection(10)
                 .setStatus(ErpAuditStatus.PROCESS.getStatus());
         when(salePickDeliveryOrderMapper.selectBySource(
                 ErpSaleBizSourceTypeEnum.CART.getType(), 72L))
-                .thenReturn(new ErpSalePickDeliveryOrderDO().setId(88L));
+                .thenReturn(new ErpSalePickDeliveryOrderDO().setId(88L)
+                        .setPickStatus(ErpSalePickStatusEnum.WAITING.getStatus())
+                        .setDeliveryStatus(ErpSaleDeliveryStatusEnum.NOT_READY.getStatus())
+                        .setPickedItemCount(0).setDeliveredItemCount(0));
+
+        ErpStockMoveOperationPermission permission = stockMoveService.getUnlockCartPermission(
+                stockMove, Collections.emptyList());
+
+        assertTrue(permission.getAllowed());
+    }
+
+    @Test
+    void getUnlockCartPermission_startedFulfillment_denied() {
+        ErpStockMoveDO stockMove = saleCartStockMove(100L)
+                .setSourceId(72L)
+                .setTransferDirection(10)
+                .setStatus(ErpAuditStatus.PROCESS.getStatus());
+        when(salePickDeliveryOrderMapper.selectBySource(
+                ErpSaleBizSourceTypeEnum.CART.getType(), 72L))
+                .thenReturn(new ErpSalePickDeliveryOrderDO().setId(88L)
+                        .setPickStatus(ErpSalePickStatusEnum.PARTIAL.getStatus())
+                        .setDeliveryStatus(ErpSaleDeliveryStatusEnum.NOT_READY.getStatus())
+                        .setPickedItemCount(1).setDeliveredItemCount(0));
 
         ErpStockMoveOperationPermission permission = stockMoveService.getUnlockCartPermission(
                 stockMove, Collections.emptyList());
 
         assertFalse(permission.getAllowed());
-        assertEquals("销售手推车已生成拣货送货任务，不能解锁手推车", permission.getDisabledReason());
+        assertEquals("销售手推车已开始拣货或送货，不能解锁手推车", permission.getDisabledReason());
     }
 
     @Test

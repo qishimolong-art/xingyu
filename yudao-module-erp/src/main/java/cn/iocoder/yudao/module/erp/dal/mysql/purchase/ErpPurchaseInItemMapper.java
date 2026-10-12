@@ -4,14 +4,17 @@ import cn.hutool.core.collection.CollUtil;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.mybatis.core.mapper.BaseMapperX;
 import cn.iocoder.yudao.framework.mybatis.core.query.LambdaQueryWrapperX;
+import cn.iocoder.yudao.framework.mybatis.core.query.MPJLambdaWrapperX;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.in.ErpPurchaseInAdjustableItemPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.in.ErpPurchaseInItemPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.in.ErpPurchaseInReturnableItemPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.in.ErpPurchaseInSaleCartableItemPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.in.ErpPurchaseInTransferOutableItemPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.invoice.ErpPurchaseInvoiceSourceInItemPageReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.invoice.ErpPurchaseInvoiceSourceItemPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.stock.ErpStockPendingInDetailRespVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseInItemDO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseInDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockDO;
 import cn.iocoder.yudao.module.erp.enums.ErpAuditStatus;
 import cn.iocoder.yudao.module.erp.enums.sale.ErpSaleBizSourceTypeEnum;
@@ -98,6 +101,46 @@ public interface ErpPurchaseInItemMapper extends BaseMapperX<ErpPurchaseInItemDO
             query.orderByAsc(ErpPurchaseInItemDO::getId);
         }
         return selectPage(reqVO, query);
+    }
+
+    default PageResult<ErpPurchaseInItemDO> selectInvoiceSourcePage(ErpPurchaseInvoiceSourceItemPageReqVO reqVO) {
+        if (CollUtil.isEmpty(reqVO.getSourceDocIds())) {
+            return PageResult.empty();
+        }
+        QueryWrapper<ErpPurchaseInItemDO> query = new QueryWrapper<ErpPurchaseInItemDO>()
+                .in("in_id", reqVO.getSourceDocIds())
+                .apply("COALESCE(count,0)>COALESCE((SELECT SUM(COALESCE(a.allocated_count,0)) "
+                        + "FROM erp_purchase_invoice_source_allocation a WHERE a.deleted=b'0' "
+                        + "AND a.tenant_id=erp_purchase_in_items.tenant_id AND a.source_type=10 "
+                        + "AND a.source_item_id=erp_purchase_in_items.id),0)")
+                .orderByAsc("id");
+        return selectPage(reqVO, query);
+    }
+
+    default PageResult<ErpPurchaseInItemDO> selectInvoiceMixedSourcePage(
+            ErpPurchaseInvoiceSourceItemPageReqVO reqVO) {
+        if (CollUtil.isEmpty(reqVO.getSourceDocIds())) {
+            return PageResult.empty();
+        }
+        MPJLambdaWrapperX<ErpPurchaseInItemDO> query = new MPJLambdaWrapperX<>();
+        query.selectAll(ErpPurchaseInItemDO.class)
+                .innerJoin(ErpPurchaseInDO.class, ErpPurchaseInDO::getId, ErpPurchaseInItemDO::getInId)
+                .in(ErpPurchaseInItemDO::getInId, reqVO.getSourceDocIds())
+                .apply("COALESCE(t.count,0)>COALESCE((SELECT SUM(COALESCE(a.allocated_count,0)) "
+                        + "FROM erp_purchase_invoice_source_allocation a WHERE a.deleted=b'0' "
+                        + "AND a.tenant_id=t.tenant_id AND a.source_type=10 AND a.source_item_id=t.id),0)")
+                .orderByDesc(ErpPurchaseInDO::getInTime)
+                .orderByDesc(ErpPurchaseInItemDO::getInId)
+                .orderByAsc(ErpPurchaseInItemDO::getId);
+        return selectJoinPage(reqVO, ErpPurchaseInItemDO.class, query);
+    }
+
+    default List<ErpPurchaseInItemDO> selectListByIdsForUpdate(Collection<Long> ids) {
+        if (CollUtil.isEmpty(ids)) {
+            return Collections.emptyList();
+        }
+        return selectList(new LambdaQueryWrapperX<ErpPurchaseInItemDO>()
+                .in(ErpPurchaseInItemDO::getId, ids).orderByAsc(ErpPurchaseInItemDO::getId).last("FOR UPDATE"));
     }
 
     default PageResult<ErpPurchaseInItemDO> selectSaleCartablePageByInId(

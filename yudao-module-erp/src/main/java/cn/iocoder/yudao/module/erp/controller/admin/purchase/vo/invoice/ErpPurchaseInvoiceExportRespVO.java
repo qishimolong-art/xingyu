@@ -66,7 +66,19 @@ public class ErpPurchaseInvoiceExportRespVO {
     @ExcelProperty("备注")
     private String remark;
 
-    @ExcelProperty("来源入库单")
+    @ExcelProperty("来源类型")
+    private String sourceTypeName;
+
+    @ExcelProperty("来源单号")
+    private String sourceDocNo;
+
+    @ExcelProperty("来源明细ID")
+    private Long sourceItemId;
+
+    @ExcelProperty("金额方向")
+    private String amountDirectionName;
+
+    @ExcelProperty("来源入库单（兼容）")
     private String sourceInNo;
 
     @ExcelProperty("来源入库明细ID")

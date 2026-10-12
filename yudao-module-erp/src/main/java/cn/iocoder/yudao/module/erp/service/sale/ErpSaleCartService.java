@@ -9,6 +9,8 @@ import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartFirs
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartImportExcelVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartImportRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartItemPageReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartItemMatchReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartItemMatchRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartItemBatchUpdateReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartSaveReqVO;
@@ -48,6 +50,8 @@ public interface ErpSaleCartService {
 
     ErpSaleCartSubmitRespVO submitSaleCart(Long id);
 
+    ErpSaleCartSubmitRespVO confirmSaleCart(Long id);
+
     void createCrossDeptTransferOutDraftByCartId(Long cartId);
 
     void firstApproveSaleCart(Long id);
@@ -77,6 +81,8 @@ public interface ErpSaleCartService {
     List<ErpSaleCartItemDO> getSaleCartItemListByCartId(Long cartId);
 
     PageResult<ErpSaleCartItemDO> getSaleCartItemPage(ErpSaleCartItemPageReqVO pageReqVO);
+
+    ErpSaleCartItemMatchRespVO getSaleCartItemMatches(@Valid ErpSaleCartItemMatchReqVO reqVO);
 
     List<ErpSaleCartItemDO> getSaleCartItemListByCartIds(Collection<Long> cartIds);
 

@@ -5,6 +5,7 @@ import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.mybatis.core.mapper.BaseMapperX;
 import cn.iocoder.yudao.framework.mybatis.core.query.MPJLambdaWrapperX;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.in.ErpPurchaseInPageReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.invoice.ErpPurchaseInvoiceSourceDocumentPageReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.product.ErpProductDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.product.ErpProductUnitDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseInDO;
@@ -29,6 +30,26 @@ import java.util.Objects;
  */
 @Mapper
 public interface ErpPurchaseInMapper extends BaseMapperX<ErpPurchaseInDO> {
+
+    default PageResult<ErpPurchaseInDO> selectInvoiceSourcePage(
+            ErpPurchaseInvoiceSourceDocumentPageReqVO reqVO) {
+        MPJLambdaWrapperX<ErpPurchaseInDO> query = new MPJLambdaWrapperX<>();
+        query.eq(ErpPurchaseInDO::getSupplierId, reqVO.getSupplierId())
+                .eq(ErpPurchaseInDO::getStatus, ErpAuditStatus.APPROVE.getStatus())
+                .likeIfPresent(ErpPurchaseInDO::getNo, reqVO.getKeyword())
+                .apply("EXISTS (SELECT 1 FROM erp_purchase_in_items invoice_source_item "
+                        + "WHERE invoice_source_item.deleted=b'0' AND invoice_source_item.tenant_id=t.tenant_id "
+                        + "AND invoice_source_item.in_id=t.id AND COALESCE(invoice_source_item.count,0)>COALESCE(("
+                        + "SELECT SUM(COALESCE(invoice_allocation.allocated_count,0)) "
+                        + "FROM erp_purchase_invoice_source_allocation invoice_allocation "
+                        + "WHERE invoice_allocation.deleted=b'0' "
+                        + "AND invoice_allocation.tenant_id=invoice_source_item.tenant_id "
+                        + "AND invoice_allocation.source_type=10 "
+                        + "AND invoice_allocation.source_item_id=invoice_source_item.id),0))")
+                .orderByDesc(ErpPurchaseInDO::getInTime)
+                .orderByDesc(ErpPurchaseInDO::getId);
+        return selectJoinPage(reqVO, ErpPurchaseInDO.class, query);
+    }
 
     /** 核算确认、编辑与审核共用主行锁；保留框架租户及单据部门权限。 */
     default ErpPurchaseInDO selectByIdForUpdate(Long id) {

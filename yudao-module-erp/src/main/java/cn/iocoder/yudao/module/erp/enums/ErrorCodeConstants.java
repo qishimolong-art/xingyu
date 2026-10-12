@@ -168,6 +168,8 @@ ErrorCode PURCHASE_ORDER_ITEM_RETURN_FAIL_IN_EXCEED = new ErrorCode(1_030_101_00
             "采购退货明细操作类型无效，请使用 insert、update 或 delete");
     ErrorCode PURCHASE_RETURN_ITEM_UPDATE_NOT_EXISTS = new ErrorCode(1_030_103_030,
             "采购退货明细不存在或不属于当前采购退货单");
+    ErrorCode PURCHASE_RETURN_SUPPLIER_DEPT_NOT_ALLOWED = new ErrorCode(1_030_103_031,
+            "当前采购退货部门不在该供应商可用部门范围内");
 
     // ========== ERP 采购票据（1-030-104-000） ==========
     ErrorCode PURCHASE_INVOICE_NOT_EXISTS = new ErrorCode(1_030_104_000, "采购票据不存在");
@@ -197,6 +199,24 @@ ErrorCode PURCHASE_ORDER_ITEM_RETURN_FAIL_IN_EXCEED = new ErrorCode(1_030_101_00
             "采购票据明细操作类型无效，请使用 insert、update 或 delete");
     ErrorCode PURCHASE_INVOICE_ITEM_UPDATE_NOT_EXISTS = new ErrorCode(1_030_104_019,
             "采购票据明细不存在或不属于当前采购票据");
+    ErrorCode PURCHASE_INVOICE_SOURCE_TYPE_INVALID = new ErrorCode(1_030_104_020,
+            "采购票据来源类型无效");
+    ErrorCode PURCHASE_INVOICE_SOURCE_DOCUMENT_NOT_EXISTS = new ErrorCode(1_030_104_021,
+            "采购票据来源单据不存在：{}");
+    ErrorCode PURCHASE_INVOICE_SOURCE_DOCUMENT_NOT_APPROVE = new ErrorCode(1_030_104_022,
+            "采购票据来源单据未审核：{}");
+    ErrorCode PURCHASE_INVOICE_SOURCE_SUPPLIER_MISMATCH = new ErrorCode(1_030_104_023,
+            "来源单据({})与采购票据供应商不一致");
+    ErrorCode PURCHASE_INVOICE_SOURCE_ITEM_NOT_EXISTS = new ErrorCode(1_030_104_024,
+            "采购票据来源明细不存在：{}");
+    ErrorCode PURCHASE_INVOICE_SOURCE_OVER_ALLOCATED = new ErrorCode(1_030_104_025,
+            "来源单据({})明细可开票数量不足，剩余 {}，本次 {}");
+    ErrorCode PURCHASE_INVOICE_TOTAL_ZERO = new ErrorCode(1_030_104_026,
+            "采购票据正负来源冲抵后金额不能为 0");
+    ErrorCode PURCHASE_INVOICE_SOURCE_ITEM_AMBIGUOUS = new ErrorCode(1_030_104_027,
+            "来源单据({})存在多个相同产品明细，无法自动匹配，请在页面选择来源明细");
+    ErrorCode PURCHASE_INVOICE_SUPPLIER_DEPT_NOT_ALLOWED = new ErrorCode(1_030_104_028,
+            "当前采购票据部门不在该供应商可用部门范围内");
     ErrorCode PURCHASE_INVOICE_OCR_BATCH_NOT_EXISTS = new ErrorCode(1_030_104_100,
             "采购发票识别批次不存在");
     ErrorCode PURCHASE_INVOICE_OCR_APP_CODE_NOT_CONFIGURED = new ErrorCode(1_030_104_101,
@@ -544,6 +564,8 @@ ErrorCode PURCHASE_ORDER_ITEM_RETURN_FAIL_IN_EXCEED = new ErrorCode(1_030_101_00
             "采购调价明细操作类型无效，请使用 insert、update 或 delete");
     ErrorCode PURCHASE_PRICE_ADJUST_ITEM_UPDATE_NOT_EXISTS = new ErrorCode(1_030_506_018,
             "采购调价明细不存在或不属于当前采购调价单");
+    ErrorCode PURCHASE_PRICE_ADJUST_SUPPLIER_DEPT_NOT_ALLOWED = new ErrorCode(1_030_506_019,
+            "当前采购调价部门不在该供应商可用部门范围内");
 
     // ========== ERP 库存占用 1-030-405-000 ==========
     ErrorCode STOCK_LOCK_NOT_EXISTS = new ErrorCode(1_030_405_000, "库存占用记录不存在");
@@ -664,11 +686,17 @@ ErrorCode PURCHASE_ORDER_ITEM_RETURN_FAIL_IN_EXCEED = new ErrorCode(1_030_101_00
     ErrorCode SALE_CART_FULFILLMENT_NOT_COMPLETED = new ErrorCode(1_030_206_037,
             "销售手推车尚未完成全部送货，无法终审");
     ErrorCode SALE_CART_FULFILLMENT_ROLLBACK_FORBIDDEN = new ErrorCode(1_030_206_038,
-            "销售手推车已生成拣货送货任务，不能撤销初审、驳回或解锁");
+            "销售手推车已生成拣货送货任务，不能撤销初审或驳回");
     ErrorCode SALE_CART_QUOTE_SOURCE_IDENTITY_MODIFY_FAIL = new ErrorCode(1_030_206_039,
             "报价来源手推车明细({})不能修改产品、仓库、批次或赠品标识");
     ErrorCode SALE_CART_QUOTE_SOURCE_COUNT_EXCEED = new ErrorCode(1_030_206_040,
             "报价订单项({})累计出库数量({})超过报价数量({})");
+    ErrorCode SALE_CART_CONFIRM_FAIL = new ErrorCode(1_030_206_041,
+            "开单确认失败，只有待开单确认状态的销售手推车才能确认");
+    ErrorCode SALE_CART_FULFILLMENT_TASK_STARTED = new ErrorCode(1_030_206_042,
+            "销售手推车已开始拣货或送货，不能解锁手推车");
+    ErrorCode SALE_CART_SOURCE_COUNT_BELOW_CONVERTED = new ErrorCode(1_030_206_043,
+            "销售手推车明细({})数量不能低于来源单据已转换数量({})");
     ErrorCode SALE_PICK_DELIVERY_CART_SOURCE_INVALID = new ErrorCode(1_030_208_017,
             "销售手推车跨部门明细与调拨出库明细不一致，无法生成拣货单");
 

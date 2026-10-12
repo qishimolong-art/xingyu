@@ -1,17 +1,22 @@
 package cn.iocoder.yudao.module.erp.controller.admin.purchase;
 
+import cn.iocoder.yudao.framework.common.pojo.PageParam;
+import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.test.core.ut.BaseMockitoUnitTest;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.returns.ErpPurchaseReturnRefundSummaryRespVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseReturnDO;
 import cn.iocoder.yudao.module.erp.dal.mysql.finance.ErpFinancePaymentItemMapper;
 import cn.iocoder.yudao.module.erp.enums.common.ErpBizTypeEnum;
 import cn.iocoder.yudao.module.erp.service.purchase.ErpPurchaseReturnService;
+import cn.iocoder.yudao.module.system.controller.admin.dept.vo.dept.DeptSimpleRespVO;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 
 import java.math.BigDecimal;
+import java.util.Collections;
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -77,6 +82,32 @@ class ErpPurchaseReturnControllerTest extends BaseMockitoUnitTest {
         assertEquals(0, new BigDecimal("100").compareTo(data.getRefundedAmount()));
         assertEquals(0, BigDecimal.ZERO.compareTo(data.getUnrefundedAmount()));
         assertEquals(Integer.valueOf(2), data.getRefundStatus());
+    }
+
+    @Test
+    void getSupplierAvailableDeptSimpleListDelegatesToPurchaseReturnService() {
+        List<DeptSimpleRespVO> expected = Collections.singletonList(
+                new DeptSimpleRespVO(7L, "采购部", 1L));
+        when(purchaseReturnService.getSupplierAvailableDeptSimpleList(100L)).thenReturn(expected);
+
+        List<DeptSimpleRespVO> result = controller.getSupplierAvailableDeptSimpleList(100L).getData();
+
+        assertEquals(expected, result);
+        verify(purchaseReturnService).getSupplierAvailableDeptSimpleList(100L);
+    }
+
+    @Test
+    void getSupplierAvailableDeptSimplePageDelegatesToPurchaseReturnService() {
+        PageParam pageParam = new PageParam();
+        PageResult<DeptSimpleRespVO> expected = new PageResult<>(Collections.singletonList(
+                new DeptSimpleRespVO(7L, "采购部", 1L)), 1L);
+        when(purchaseReturnService.getSupplierAvailableDeptSimplePage(100L, pageParam)).thenReturn(expected);
+
+        PageResult<DeptSimpleRespVO> result = controller
+                .getSupplierAvailableDeptSimplePage(100L, pageParam).getData();
+
+        assertEquals(expected, result);
+        verify(purchaseReturnService).getSupplierAvailableDeptSimplePage(100L, pageParam);
     }
 
 }

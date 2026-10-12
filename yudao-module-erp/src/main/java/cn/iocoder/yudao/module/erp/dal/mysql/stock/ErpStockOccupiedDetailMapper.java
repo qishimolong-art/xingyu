@@ -28,6 +28,7 @@ public interface ErpStockOccupiedDetailMapper {
             "   FROM erp_sale_cart_items sci INNER JOIN erp_sale_cart sc ON sc.id = sci.cart_id",
             "    AND sc.deleted = 0 AND sc.status IN",
             "    <foreach collection='cartStatuses' item='status' open='(' separator=',' close=')'>#{status}</foreach>",
+            "    AND (sc.status &lt;&gt; 20 OR sc.billing_confirm_time IS NULL)",
             "  WHERE sci.deleted = 0 AND sci.product_id = #{productId} AND sci.warehouse_id = #{warehouseId}",
             "    AND NOT EXISTS (SELECT 1 FROM erp_sale_out so WHERE so.deleted = 0 AND so.source_id = sc.id)",
             " UNION ALL",

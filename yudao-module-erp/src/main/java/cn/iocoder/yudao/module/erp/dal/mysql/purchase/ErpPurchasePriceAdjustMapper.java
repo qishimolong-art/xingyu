@@ -4,6 +4,7 @@ import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.mybatis.core.mapper.BaseMapperX;
 import cn.iocoder.yudao.framework.mybatis.core.query.MPJLambdaWrapperX;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.priceadjust.ErpPurchasePriceAdjustPageReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.invoice.ErpPurchaseInvoiceSourceDocumentPageReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.product.ErpProductDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.product.ErpProductUnitDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchasePriceAdjustDO;
@@ -25,6 +26,27 @@ import java.util.Objects;
  */
 @Mapper
 public interface ErpPurchasePriceAdjustMapper extends BaseMapperX<ErpPurchasePriceAdjustDO> {
+
+    default PageResult<ErpPurchasePriceAdjustDO> selectInvoiceSourcePage(
+            ErpPurchaseInvoiceSourceDocumentPageReqVO reqVO) {
+        MPJLambdaWrapperX<ErpPurchasePriceAdjustDO> query = new MPJLambdaWrapperX<>();
+        query.eq(ErpPurchasePriceAdjustDO::getSupplierId, reqVO.getSupplierId())
+                .eq(ErpPurchasePriceAdjustDO::getStatus, ErpAuditStatus.APPROVE.getStatus())
+                .likeIfPresent(ErpPurchasePriceAdjustDO::getNo, reqVO.getKeyword())
+                .apply("EXISTS (SELECT 1 FROM erp_purchase_price_adjust_item invoice_source_item "
+                        + "WHERE invoice_source_item.deleted=b'0' AND invoice_source_item.tenant_id=t.tenant_id "
+                        + "AND invoice_source_item.adjust_id=t.id AND COALESCE(invoice_source_item.adjust_price,0)<>0 "
+                        + "AND COALESCE(invoice_source_item.count,0)>COALESCE(("
+                        + "SELECT SUM(COALESCE(invoice_allocation.allocated_count,0)) "
+                        + "FROM erp_purchase_invoice_source_allocation invoice_allocation "
+                        + "WHERE invoice_allocation.deleted=b'0' "
+                        + "AND invoice_allocation.tenant_id=invoice_source_item.tenant_id "
+                        + "AND invoice_allocation.source_type=20 "
+                        + "AND invoice_allocation.source_item_id=invoice_source_item.id),0))")
+                .orderByDesc(ErpPurchasePriceAdjustDO::getAdjustTime)
+                .orderByDesc(ErpPurchasePriceAdjustDO::getId);
+        return selectJoinPage(reqVO, ErpPurchasePriceAdjustDO.class, query);
+    }
 
     default PageResult<ErpPurchasePriceAdjustDO> selectPage(ErpPurchasePriceAdjustPageReqVO reqVO) {
         MPJLambdaWrapperX<ErpPurchasePriceAdjustDO> query = new MPJLambdaWrapperX<ErpPurchasePriceAdjustDO>()

@@ -535,6 +535,59 @@ public class ErpSaleQuoteServiceImplTest extends BaseMockitoUnitTest {
     }
 
     @Test
+    public void testConvertToCart_sameStockDifferentSourceItems_shareMergedTargetItem() {
+        Long quoteId = 113L;
+        ErpSaleQuoteDO quote = new ErpSaleQuoteDO()
+                .setId(quoteId).setNo("BJ20261012000113").setCustomerId(23L)
+                .setStatus(ErpSaleQuoteStatusEnum.APPROVE.getStatus())
+                .setDiscountPercent(BigDecimal.ZERO).setOtherPrice(BigDecimal.ZERO);
+        ErpSaleQuoteItemDO first = new ErpSaleQuoteItemDO()
+                .setId(1003L).setQuoteId(quoteId).setProductId(203L).setProductUnitId(303L)
+                .setWarehouseId(403L).setBatchNo(" B1 ").setGiftFlag(false)
+                .setProductPrice(new BigDecimal("10")).setTaxPercent(BigDecimal.ZERO)
+                .setCount(new BigDecimal("2")).setConvertedCount(BigDecimal.ZERO);
+        ErpSaleQuoteItemDO second = new ErpSaleQuoteItemDO()
+                .setId(1004L).setQuoteId(quoteId).setProductId(203L).setProductUnitId(303L)
+                .setWarehouseId(403L).setBatchNo("B1").setGiftFlag(false)
+                .setProductPrice(new BigDecimal("12")).setTaxPercent(BigDecimal.ZERO)
+                .setCount(new BigDecimal("3")).setConvertedCount(BigDecimal.ZERO);
+        ErpSaleQuoteConvertCartReqVO reqVO = new ErpSaleQuoteConvertCartReqVO().setQuoteId(quoteId)
+                .setItems(Arrays.asList(
+                        new ErpSaleQuoteConvertCartReqVO.Item().setQuoteItemId(first.getId()).setCount(first.getCount()),
+                        new ErpSaleQuoteConvertCartReqVO.Item().setQuoteItemId(second.getId()).setCount(second.getCount())));
+        when(saleQuoteMapper.selectByIdForUpdate(quoteId)).thenReturn(quote);
+        when(saleQuoteItemMapper.selectListByQuoteIdForUpdate(quoteId)).thenReturn(Arrays.asList(first, second));
+        when(saleCartMapper.selectByNo(anyString())).thenReturn(null);
+        org.mockito.Mockito.doAnswer(invocation -> {
+            cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleCartDO cart = invocation.getArgument(0);
+            cart.setId(903L);
+            return null;
+        }).when(saleCartTransferLinkService).insertCart(any());
+        when(saleCartItemMapper.insertBatch(any())).thenAnswer(invocation -> {
+            Collection<cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleCartItemDO> items = invocation.getArgument(0);
+            items.iterator().next().setId(904L);
+            return true;
+        });
+
+        saleQuoteService.convertToCart(reqVO);
+
+        verify(saleCartItemMapper).insertBatch(argThat(items -> {
+            List<cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleCartItemDO> list = new ArrayList<>(items);
+            return list.size() == 1 && new BigDecimal("5").compareTo(list.get(0).getCount()) == 0
+                    && new BigDecimal("12").compareTo(list.get(0).getProductPrice()) == 0;
+        }));
+        verify(saleConvertRecordMapper).insertBatch(argThat(records -> {
+            List<cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleConvertRecordDO> list = new ArrayList<>(records);
+            return list.size() == 2
+                    && list.stream().allMatch(record -> Long.valueOf(904L).equals(record.getTargetItemId()))
+                    && list.stream().anyMatch(record -> first.getId().equals(record.getSourceItemId())
+                            && first.getCount().compareTo(record.getCount()) == 0)
+                    && list.stream().anyMatch(record -> second.getId().equals(record.getSourceItemId())
+                            && second.getCount().compareTo(record.getCount()) == 0);
+        }));
+    }
+
+    @Test
     public void testConvertToCart_crossDeptStockCountIgnoreDataPermission_success() {
         Long quoteId = 14L;
         ErpSaleQuoteDO quote = new ErpSaleQuoteDO()

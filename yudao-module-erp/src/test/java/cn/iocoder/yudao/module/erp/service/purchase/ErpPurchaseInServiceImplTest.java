@@ -36,6 +36,7 @@ import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseOrderDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseOrderItemDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpSupplierDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleCartItemDO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleConvertRecordDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockInBillItemDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpWarehouseDO;
@@ -85,6 +86,7 @@ import org.springframework.test.util.ReflectionTestUtils;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
@@ -135,6 +137,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.inOrder;
@@ -2064,6 +2067,48 @@ public class ErpPurchaseInServiceImplTest extends BaseMockitoUnitTest {
         verify(purchaseInItemMapper).selectBatchIds(any());
         verify(purchaseInItemMapper, never()).selectListByInId(eq(10L));
         verify(saleConvertRecordMapper).selectPurchaseInToCartCountMapBySourceItemIds(any());
+    }
+
+    @Test
+    public void testCreateSaleCartFromPurchaseIn_sameStockSources_shareMergedTargetItem() {
+        ErpPurchaseInDO purchaseIn = new ErpPurchaseInDO().setId(10L).setNo("CGRK001")
+                .setStatus(ErpAuditStatus.APPROVE.getStatus());
+        when(purchaseInMapper.selectById(10L)).thenReturn(purchaseIn);
+        ErpPurchaseInItemDO firstSource = new ErpPurchaseInItemDO()
+                .setId(100L).setInId(10L).setProductId(200L).setWarehouseId(6L)
+                .setCount(new BigDecimal("10")).setBatchNo(" B1 ");
+        ErpPurchaseInItemDO secondSource = new ErpPurchaseInItemDO()
+                .setId(101L).setInId(10L).setProductId(200L).setWarehouseId(6L)
+                .setCount(new BigDecimal("10")).setBatchNo("B1");
+        when(purchaseInItemMapper.selectBatchIds(any())).thenReturn(Arrays.asList(firstSource, secondSource));
+        when(saleConvertRecordMapper.selectPurchaseInToCartCountMapBySourceItemIds(any()))
+                .thenReturn(Collections.emptyMap());
+        ErpSaleCartSubmitRespVO submitRespVO = new ErpSaleCartSubmitRespVO()
+                .setId(500L).setNo("XSTC001").setStatus(10);
+        when(saleCartService.createAndSubmitSaleCartFromPurchaseIn(any())).thenReturn(submitRespVO);
+        when(saleCartService.getSaleCartItemListByCartId(500L)).thenReturn(Collections.singletonList(
+                new ErpSaleCartItemDO().setId(700L).setProductId(200L).setWarehouseId(6L)
+                        .setCount(new BigDecimal("5")).setGiftFlag(false).setBatchNo("B1")));
+        ErpPurchaseInCreateSaleCartReqVO reqVO = new ErpPurchaseInCreateSaleCartReqVO();
+        reqVO.setSourceInId(10L);
+        reqVO.setCustomerId(300L);
+        reqVO.setItems(Arrays.asList(
+                new ErpPurchaseInCreateSaleCartReqVO.Item().setSourceInItemId(100L).setWarehouseId(6L)
+                        .setCount(new BigDecimal("2")).setProductPrice(new BigDecimal("20")).setBatchNo(" B1 "),
+                new ErpPurchaseInCreateSaleCartReqVO.Item().setSourceInItemId(101L).setWarehouseId(6L)
+                        .setCount(new BigDecimal("3")).setProductPrice(new BigDecimal("21")).setBatchNo("B1")));
+
+        purchaseInService.createSaleCartFromPurchaseIn(reqVO);
+
+        verify(saleConvertRecordMapper).insertBatch(argThat(records -> {
+            List<ErpSaleConvertRecordDO> list = new ArrayList<>(records);
+            return list.size() == 2
+                    && list.stream().allMatch(record -> Long.valueOf(700L).equals(record.getTargetItemId()))
+                    && list.stream().anyMatch(record -> Long.valueOf(100L).equals(record.getSourceItemId())
+                            && new BigDecimal("2").compareTo(record.getCount()) == 0)
+                    && list.stream().anyMatch(record -> Long.valueOf(101L).equals(record.getSourceItemId())
+                            && new BigDecimal("3").compareTo(record.getCount()) == 0);
+        }));
     }
 
     @Test

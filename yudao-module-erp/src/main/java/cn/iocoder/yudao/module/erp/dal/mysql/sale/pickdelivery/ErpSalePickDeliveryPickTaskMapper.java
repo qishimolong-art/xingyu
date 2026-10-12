@@ -26,6 +26,11 @@ public interface ErpSalePickDeliveryPickTaskMapper extends BaseMapperX<ErpSalePi
         return selectList(ErpSalePickDeliveryPickTaskDO::getOrderId, orderId);
     }
 
+    default int deleteByOrderId(Long orderId) {
+        return delete(new LambdaQueryWrapperX<ErpSalePickDeliveryPickTaskDO>()
+                .eq(ErpSalePickDeliveryPickTaskDO::getOrderId, orderId));
+    }
+
     default PageResult<ErpSalePickDeliveryPickTaskDO> selectPage(ErpSalePickPageReqVO reqVO) {
         LambdaQueryWrapperX<ErpSalePickDeliveryPickTaskDO> wrapper = new LambdaQueryWrapperX<ErpSalePickDeliveryPickTaskDO>()
                 .inIfPresent(ErpSalePickDeliveryPickTaskDO::getId, reqVO.getIds())

@@ -3,6 +3,7 @@ package cn.iocoder.yudao.module.erp.service.purchase;
 import cn.iocoder.yudao.framework.test.core.ut.BaseMockitoUnitTest;
 import cn.iocoder.yudao.framework.common.enums.CommonStatusEnum;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
+import cn.iocoder.yudao.framework.common.pojo.PageParam;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.imports.ErpPurchaseImportResultRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.invoice.ErpPurchaseInvoiceDraftCreateReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.invoice.ErpPurchaseInvoiceDraftUpdateReqVO;
@@ -21,9 +22,11 @@ import cn.iocoder.yudao.module.erp.dal.mysql.purchase.ErpPurchaseInvoiceItemMapp
 import cn.iocoder.yudao.module.erp.dal.mysql.purchase.ErpPurchaseInvoiceMapper;
 import cn.iocoder.yudao.module.erp.dal.redis.no.ErpNoRedisDAO;
 import cn.iocoder.yudao.module.erp.enums.ErpAuditStatus;
+import cn.iocoder.yudao.module.erp.enums.purchase.ErpPurchaseInvoiceSourceTypeEnum;
 import cn.iocoder.yudao.module.erp.enums.purchase.ErpPurchaseInvoiceStatusEnum;
 import cn.iocoder.yudao.module.erp.service.common.ErpOperateLogService;
 import cn.iocoder.yudao.module.erp.service.product.ErpProductService;
+import cn.iocoder.yudao.module.system.controller.admin.dept.vo.dept.DeptSimpleRespVO;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -42,6 +45,8 @@ import static cn.iocoder.yudao.framework.test.core.util.AssertUtils.assertServic
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PURCHASE_INVOICE_ITEM_EMPTY;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PURCHASE_INVOICE_SUBMIT_FAIL;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PURCHASE_INVOICE_SUBMIT_NO_REQUIRED;
+import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PURCHASE_INVOICE_TOTAL_ZERO;
+import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PURCHASE_INVOICE_SUPPLIER_DEPT_NOT_ALLOWED;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PURCHASE_INVOICE_UPDATE_FAIL_NOT_DRAFT;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -52,6 +57,7 @@ import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.inOrder;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -83,9 +89,16 @@ public class ErpPurchaseInvoiceServiceImplTest extends BaseMockitoUnitTest {
     private ErpPurchaseFieldPermissionMasker fieldPermissionMasker;
     @Mock
     private ErpOperateLogService operateLogService;
+    @Mock
+    private ErpPurchaseInvoiceSourceService purchaseInvoiceSourceService;
+    @Mock
+    private ErpSupplierDeptPermissionService supplierDeptPermissionService;
 
     @BeforeEach
     public void setUp() {
+        lenient().doNothing().when(purchaseInvoiceSourceService).mergeSelectedSourceItems(any(), anyList());
+        lenient().when(supplierDeptPermissionService.hasAvailableDept(any(), anyLong(), eq("system_dept")))
+                .thenReturn(true);
         ReflectionTestUtils.setField(purchaseInvoiceService, "noRedisDAO", new ErpNoRedisDAO() {
             @Override
             public String generate(String prefix) {
@@ -131,7 +144,10 @@ public class ErpPurchaseInvoiceServiceImplTest extends BaseMockitoUnitTest {
         reqVO.setSourceInIds(Collections.singletonList(200L));
         reqVO.setExcludedSourceInItemIds(Collections.singletonList(1002L));
         ErpPurchaseInvoiceSaveReqVO.Item editedItem = new ErpPurchaseInvoiceSaveReqVO.Item();
+        editedItem.setSourceInId(200L);
+        editedItem.setSourceInNo("CGRK001");
         editedItem.setSourceInItemId(1001L);
+        editedItem.setProductId(300L);
         editedItem.setCount(new BigDecimal("2"));
         editedItem.setProductPrice(new BigDecimal("9"));
         editedItem.setRemark("分页改价");
@@ -140,11 +156,6 @@ public class ErpPurchaseInvoiceServiceImplTest extends BaseMockitoUnitTest {
         when(purchaseInMapper.selectBatchIds(Collections.singleton(200L))).thenReturn(Collections.singletonList(
                 new ErpPurchaseInDO().setId(200L).setNo("CGRK001")
                         .setStatus(ErpAuditStatus.APPROVE.getStatus()).setDeptId(88L)));
-        when(purchaseInItemMapper.selectListByInIds(Collections.singleton(200L))).thenReturn(Arrays.asList(
-                new ErpPurchaseInItemDO().setId(1001L).setInId(200L).setProductId(300L)
-                        .setCount(BigDecimal.ONE).setProductPrice(BigDecimal.TEN),
-                new ErpPurchaseInItemDO().setId(1002L).setInId(200L).setProductId(301L)
-                        .setCount(BigDecimal.ONE).setProductPrice(BigDecimal.TEN)));
         when(productService.validProductList(any())).thenReturn(Collections.singletonList(
                 new ErpProductDO().setId(300L)));
         when(productService.getProductVOMap(any())).thenReturn(Collections.emptyMap());
@@ -166,6 +177,48 @@ public class ErpPurchaseInvoiceServiceImplTest extends BaseMockitoUnitTest {
     }
 
     @Test
+    public void testCreatePurchaseInvoice_zeroTotal_throwException() {
+        ErpPurchaseInvoiceSaveReqVO reqVO = new ErpPurchaseInvoiceSaveReqVO();
+        reqVO.setSupplierId(100L);
+        reqVO.setInvoiceDate(LocalDate.of(2026, 7, 27));
+        reqVO.setInvoiceType("增值税专用发票");
+        reqVO.setInvoiceNo("INV-20260727-ZERO");
+        ErpPurchaseInvoiceSaveReqVO.Item item = new ErpPurchaseInvoiceSaveReqVO.Item();
+        item.setProductId(300L);
+        item.setCount(BigDecimal.ONE);
+        item.setProductPrice(BigDecimal.ZERO);
+        reqVO.setItems(Collections.singletonList(item));
+        when(productService.validProductList(any())).thenReturn(Collections.singletonList(
+                new ErpProductDO().setId(300L)));
+
+        assertServiceException(() -> purchaseInvoiceService.createPurchaseInvoice(reqVO),
+                PURCHASE_INVOICE_TOTAL_ZERO);
+
+        verify(purchaseInvoiceMapper, never()).insert(any(ErpPurchaseInvoiceDO.class));
+        verify(purchaseInvoiceItemMapper, never()).insertBatch(any());
+    }
+
+    @Test
+    public void testCreatePurchaseInvoiceDraft_zeroTotal_success() {
+        ErpPurchaseInvoiceDraftCreateReqVO reqVO = new ErpPurchaseInvoiceDraftCreateReqVO();
+        ErpPurchaseInvoiceSaveReqVO.Item item = new ErpPurchaseInvoiceSaveReqVO.Item();
+        item.setProductId(300L);
+        item.setCount(BigDecimal.ONE);
+        item.setProductPrice(BigDecimal.ZERO);
+        reqVO.setItems(Collections.singletonList(item));
+        when(productService.validProductList(any())).thenReturn(Collections.singletonList(
+                new ErpProductDO().setId(300L)));
+
+        purchaseInvoiceService.createPurchaseInvoiceDraft(reqVO);
+
+        ArgumentCaptor<ErpPurchaseInvoiceDO> captor = ArgumentCaptor.forClass(ErpPurchaseInvoiceDO.class);
+        verify(purchaseInvoiceMapper).insert(captor.capture());
+        assertEquals(0, BigDecimal.ZERO.compareTo(captor.getValue().getTotalAmount()));
+        assertEquals(ErpPurchaseInvoiceStatusEnum.DRAFT.getStatus(), captor.getValue().getStatus());
+        verify(purchaseInvoiceItemMapper).insertBatch(any());
+    }
+
+    @Test
     public void testCreatePurchaseInvoiceDraft_rejectsEmptyItems() {
         ErpPurchaseInvoiceDraftCreateReqVO reqVO = new ErpPurchaseInvoiceDraftCreateReqVO();
         reqVO.setItems(Collections.emptyList());
@@ -174,6 +227,62 @@ public class ErpPurchaseInvoiceServiceImplTest extends BaseMockitoUnitTest {
                 PURCHASE_INVOICE_ITEM_EMPTY);
         verify(purchaseInvoiceMapper, never()).insert(any(ErpPurchaseInvoiceDO.class));
         verify(purchaseInvoiceItemMapper, never()).insertBatch(any());
+    }
+
+    @Test
+    public void testCreatePurchaseInvoiceDraft_rejectsUnavailableSupplierDept() {
+        ErpPurchaseInvoiceDraftCreateReqVO reqVO = new ErpPurchaseInvoiceDraftCreateReqVO();
+        reqVO.setSupplierId(100L);
+        reqVO.setDeptId(7L);
+        ErpPurchaseInvoiceSaveReqVO.Item item = new ErpPurchaseInvoiceSaveReqVO.Item();
+        item.setProductId(300L);
+        item.setCount(BigDecimal.ONE);
+        item.setProductPrice(BigDecimal.TEN);
+        reqVO.setItems(Collections.singletonList(item));
+        when(productService.validProductList(any())).thenReturn(Collections.singletonList(
+                new ErpProductDO().setId(300L)));
+        ErpSupplierDO supplier = new ErpSupplierDO().setId(100L);
+        when(supplierService.validateSupplier(100L)).thenReturn(supplier);
+        when(supplierDeptPermissionService.hasAvailableDept(supplier, 7L, "system_dept"))
+                .thenReturn(false);
+
+        assertServiceException(() -> purchaseInvoiceService.createPurchaseInvoiceDraft(reqVO),
+                PURCHASE_INVOICE_SUPPLIER_DEPT_NOT_ALLOWED);
+
+        verify(purchaseInvoiceMapper, never()).insert(any(ErpPurchaseInvoiceDO.class));
+    }
+
+    @Test
+    public void testGetSupplierAvailableDept_usesSystemDeptPermission() {
+        DeptSimpleRespVO dept = new DeptSimpleRespVO().setId(7L).setName("采购部");
+        PageParam pageParam = new PageParam().setPageNo(1).setPageSize(20);
+        PageResult<DeptSimpleRespVO> page = new PageResult<>(Collections.singletonList(dept), 1L);
+        when(supplierDeptPermissionService.getAvailableDeptSimpleList(100L, "system_dept"))
+                .thenReturn(Collections.singletonList(dept));
+        when(supplierDeptPermissionService.getAvailableDeptSimplePage(100L, "system_dept", pageParam))
+                .thenReturn(page);
+
+        assertEquals(1, purchaseInvoiceService.getSupplierAvailableDeptSimpleList(100L).size());
+        assertTrue(page == purchaseInvoiceService.getSupplierAvailableDeptSimplePage(100L, pageParam));
+        verify(supplierDeptPermissionService).getAvailableDeptSimpleList(100L, "system_dept");
+        verify(supplierDeptPermissionService).getAvailableDeptSimplePage(100L, "system_dept", pageParam);
+    }
+
+    @Test
+    public void testUpdatePurchaseInvoiceStatus_rejectsUnavailableSupplierDept() {
+        ErpPurchaseInvoiceDO invoice = new ErpPurchaseInvoiceDO()
+                .setId(10L).setNo("CGPJ10").setStatus(ErpAuditStatus.PROCESS.getStatus())
+                .setSupplierId(100L).setDeptId(7L);
+        ErpSupplierDO supplier = new ErpSupplierDO().setId(100L);
+        when(purchaseInvoiceMapper.selectById(10L)).thenReturn(invoice);
+        when(supplierService.validateSupplier(100L)).thenReturn(supplier);
+        when(supplierDeptPermissionService.hasAvailableDept(supplier, 7L, "system_dept"))
+                .thenReturn(false);
+
+        assertServiceException(() -> purchaseInvoiceService.updatePurchaseInvoiceStatus(
+                10L, ErpAuditStatus.APPROVE.getStatus()), PURCHASE_INVOICE_SUPPLIER_DEPT_NOT_ALLOWED);
+
+        verify(purchaseInvoiceItemMapper, never()).selectListByInvoiceId(10L);
     }
 
     @Test
@@ -189,13 +298,13 @@ public class ErpPurchaseInvoiceServiceImplTest extends BaseMockitoUnitTest {
     }
 
     @Test
-    public void testUpdatePurchaseInvoiceDraft_replacesItemsAndKeepsDraftStatus() {
+    public void testUpdatePurchaseInvoiceDraft_emptyIncrementalItemsKeepsDraftStatus() {
         ErpPurchaseInvoiceDraftUpdateReqVO reqVO = new ErpPurchaseInvoiceDraftUpdateReqVO();
         reqVO.setId(10L);
         reqVO.setItems(Collections.emptyList());
         when(purchaseInvoiceMapper.selectById(10L)).thenReturn(new ErpPurchaseInvoiceDO()
                 .setId(10L).setNo("CGPJ001").setStatus(ErpPurchaseInvoiceStatusEnum.DRAFT.getStatus()));
-        when(purchaseInvoiceItemMapper.selectListByInvoiceId(10L)).thenReturn(Collections.emptyList());
+        when(purchaseInvoiceItemMapper.selectListByInvoiceIdForUpdate(10L)).thenReturn(Collections.emptyList());
         when(purchaseInvoiceMapper.updateDraftByIdAndStatus(eq(10L),
                 eq(ErpPurchaseInvoiceStatusEnum.DRAFT.getStatus()), any())).thenReturn(1);
 
@@ -206,7 +315,7 @@ public class ErpPurchaseInvoiceServiceImplTest extends BaseMockitoUnitTest {
                 eq(ErpPurchaseInvoiceStatusEnum.DRAFT.getStatus()), captor.capture());
         assertNull(captor.getValue().getStatus());
         assertEquals(BigDecimal.ZERO, captor.getValue().getTotalAmount());
-        verify(purchaseInvoiceItemMapper).deleteByInvoiceId(10L);
+        verify(purchaseInvoiceItemMapper, never()).deleteByInvoiceId(10L);
         verify(purchaseInvoiceItemMapper, never()).insertBatch(any());
     }
 
@@ -264,8 +373,8 @@ public class ErpPurchaseInvoiceServiceImplTest extends BaseMockitoUnitTest {
                 .setId(20L).setInvoiceId(10L).setProductId(300L)
                 .setCount(BigDecimal.ONE).setProductPrice(BigDecimal.TEN);
         when(purchaseInvoiceMapper.selectById(10L)).thenReturn(draft);
+        when(purchaseInvoiceItemMapper.selectListByInvoiceIdForUpdate(10L)).thenReturn(Collections.emptyList());
         when(purchaseInvoiceItemMapper.selectListByInvoiceId(10L))
-                .thenReturn(Collections.emptyList())
                 .thenReturn(Collections.singletonList(persistedItem));
         when(productService.validProductList(any())).thenReturn(Collections.singletonList(
                 new ErpProductDO().setId(300L)));
@@ -319,6 +428,27 @@ public class ErpPurchaseInvoiceServiceImplTest extends BaseMockitoUnitTest {
     }
 
     @Test
+    public void testSubmitPurchaseInvoice_zeroTotal_throwException() {
+        when(purchaseInvoiceMapper.selectById(10L)).thenReturn(new ErpPurchaseInvoiceDO()
+                .setId(10L).setNo("CGPJ001")
+                .setStatus(ErpPurchaseInvoiceStatusEnum.DRAFT.getStatus())
+                .setSupplierId(100L)
+                .setInvoiceDate(LocalDate.of(2026, 7, 27))
+                .setInvoiceType("增值税专用发票")
+                .setInvoiceNo("INV-20260727-ZERO"));
+        when(purchaseInvoiceItemMapper.selectListByInvoiceId(10L)).thenReturn(Collections.singletonList(
+                new ErpPurchaseInvoiceItemDO().setId(20L).setInvoiceId(10L).setProductId(300L)
+                        .setCount(BigDecimal.ONE).setProductPrice(BigDecimal.ZERO)));
+        when(productService.validProductList(any())).thenReturn(Collections.singletonList(
+                new ErpProductDO().setId(300L)));
+
+        assertServiceException(() -> purchaseInvoiceService.submitPurchaseInvoice(10L),
+                PURCHASE_INVOICE_TOTAL_ZERO);
+
+        verify(purchaseInvoiceMapper, never()).updateByIdAndStatus(anyLong(), any(), any());
+    }
+
+    @Test
     public void testSubmitPurchaseInvoice_rejectsNonDraft() {
         when(purchaseInvoiceMapper.selectById(10L)).thenReturn(new ErpPurchaseInvoiceDO()
                 .setId(10L).setNo("CGPJ001")
@@ -334,12 +464,13 @@ public class ErpPurchaseInvoiceServiceImplTest extends BaseMockitoUnitTest {
         ErpPurchaseInvoiceDO invoice = new ErpPurchaseInvoiceDO();
         invoice.setId(10L);
         invoice.setStatus(ErpAuditStatus.PROCESS.getStatus());
+        invoice.setTotalAmount(BigDecimal.TEN);
         when(purchaseInvoiceMapper.selectById(eq(10L))).thenReturn(invoice);
         when(purchaseInvoiceMapper.updateByIdAndStatus(eq(10L), eq(ErpAuditStatus.PROCESS.getStatus()), any()))
                 .thenReturn(1);
         when(purchaseInvoiceItemMapper.selectListByInvoiceId(eq(10L))).thenReturn(Arrays.asList(
-                new ErpPurchaseInvoiceItemDO().setSourceInId(100L),
-                new ErpPurchaseInvoiceItemDO().setSourceInId(101L)
+                new ErpPurchaseInvoiceItemDO().setSourceInId(100L).setTotalPrice(new BigDecimal("5")),
+                new ErpPurchaseInvoiceItemDO().setSourceInId(101L).setTotalPrice(new BigDecimal("5"))
         ));
         when(purchaseInMapper.selectBatchIds(any())).thenReturn(Arrays.asList(
                 new ErpPurchaseInDO().setId(100L),
@@ -355,6 +486,107 @@ public class ErpPurchaseInvoiceServiceImplTest extends BaseMockitoUnitTest {
         assertEquals(101L, captor.getAllValues().get(1).getId().longValue());
         assertEquals(Boolean.TRUE, captor.getAllValues().get(1).getHasInvoice());
         assertEquals(ErpAuditStatus.PROCESS.getStatus(), invoice.getStatus());
+    }
+
+    @Test
+    public void testUpdatePurchaseInvoiceStatus_recalculatesCanonicalSourceAmounts() {
+        ErpPurchaseInvoiceDO invoice = new ErpPurchaseInvoiceDO()
+                .setId(10L).setNo("CGPJ001")
+                .setSupplierId(100L)
+                .setStatus(ErpAuditStatus.PROCESS.getStatus())
+                .setTotalAmount(new BigDecimal("999"));
+        ErpPurchaseInvoiceItemDO returnItem = new ErpPurchaseInvoiceItemDO()
+                .setId(20L).setInvoiceId(10L)
+                .setSourceType(ErpPurchaseInvoiceSourceTypeEnum.PURCHASE_RETURN.getType())
+                .setSourceItemId(301L).setProductId(400L)
+                .setCount(new BigDecimal("2"))
+                .setProductPrice(new BigDecimal("999"))
+                .setTotalPrice(new BigDecimal("999"));
+        ErpPurchaseInvoiceItemDO manualItem = new ErpPurchaseInvoiceItemDO()
+                .setId(21L).setInvoiceId(10L).setProductId(401L)
+                .setCount(BigDecimal.ONE).setProductPrice(BigDecimal.TEN)
+                .setTotalPrice(BigDecimal.TEN);
+        List<ErpPurchaseInvoiceItemDO> items = Arrays.asList(returnItem, manualItem);
+        when(purchaseInvoiceMapper.selectById(10L)).thenReturn(invoice);
+        when(purchaseInvoiceItemMapper.selectListByInvoiceId(10L)).thenReturn(items);
+        when(purchaseInvoiceMapper.updateByIdAndStatus(eq(10L), eq(ErpAuditStatus.PROCESS.getStatus()), any()))
+                .thenReturn(1);
+        doAnswer(invocation -> {
+            @SuppressWarnings("unchecked")
+            List<ErpPurchaseInvoiceItemDO> sourceItems = invocation.getArgument(2);
+            sourceItems.get(0).setProductPrice(new BigDecimal("8"));
+            sourceItems.get(0).setTaxExclusivePrice(new BigDecimal("-16"));
+            sourceItems.get(0).setTaxPrice(BigDecimal.ZERO);
+            sourceItems.get(0).setTotalPrice(new BigDecimal("-16"));
+            return null;
+        }).when(purchaseInvoiceSourceService).createApprovedAllocations(eq(10L), eq(100L), anyList());
+
+        purchaseInvoiceService.updatePurchaseInvoiceStatus(10L, ErpAuditStatus.APPROVE.getStatus());
+
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<List<ErpPurchaseInvoiceItemDO>> itemCaptor = ArgumentCaptor.forClass(List.class);
+        verify(purchaseInvoiceItemMapper).updateBatch(itemCaptor.capture());
+        assertEquals(1, itemCaptor.getValue().size());
+        assertEquals(0, new BigDecimal("-16").compareTo(itemCaptor.getValue().get(0).getTotalPrice()));
+        ArgumentCaptor<ErpPurchaseInvoiceDO> mainCaptor = ArgumentCaptor.forClass(ErpPurchaseInvoiceDO.class);
+        verify(purchaseInvoiceMapper).updateByIdAndStatus(eq(10L), eq(ErpAuditStatus.PROCESS.getStatus()),
+                mainCaptor.capture());
+        assertEquals(0, new BigDecimal("-6").compareTo(mainCaptor.getValue().getTotalAmount()));
+        assertEquals(ErpAuditStatus.APPROVE.getStatus(), mainCaptor.getValue().getStatus());
+    }
+
+    @Test
+    public void testUpdatePurchaseInvoiceStatus_recalculatedZeroTotal_throwException() {
+        ErpPurchaseInvoiceDO invoice = new ErpPurchaseInvoiceDO()
+                .setId(10L).setNo("CGPJ001")
+                .setSupplierId(100L)
+                .setStatus(ErpAuditStatus.PROCESS.getStatus())
+                .setTotalAmount(new BigDecimal("999"));
+        ErpPurchaseInvoiceItemDO sourceItem = new ErpPurchaseInvoiceItemDO()
+                .setId(20L).setInvoiceId(10L)
+                .setSourceType(ErpPurchaseInvoiceSourceTypeEnum.PURCHASE_RETURN.getType())
+                .setSourceItemId(301L).setProductId(400L)
+                .setCount(BigDecimal.ONE)
+                .setProductPrice(new BigDecimal("999"))
+                .setTotalPrice(new BigDecimal("999"));
+        ErpPurchaseInvoiceItemDO manualItem = new ErpPurchaseInvoiceItemDO()
+                .setId(21L).setInvoiceId(10L).setProductId(401L)
+                .setCount(BigDecimal.ONE).setProductPrice(BigDecimal.TEN)
+                .setTotalPrice(BigDecimal.TEN);
+        when(purchaseInvoiceMapper.selectById(10L)).thenReturn(invoice);
+        when(purchaseInvoiceItemMapper.selectListByInvoiceId(10L))
+                .thenReturn(Arrays.asList(sourceItem, manualItem));
+        doAnswer(invocation -> {
+            @SuppressWarnings("unchecked")
+            List<ErpPurchaseInvoiceItemDO> sourceItems = invocation.getArgument(2);
+            sourceItems.get(0).setProductPrice(BigDecimal.TEN);
+            sourceItems.get(0).setTaxExclusivePrice(new BigDecimal("-10"));
+            sourceItems.get(0).setTaxPrice(BigDecimal.ZERO);
+            sourceItems.get(0).setTotalPrice(new BigDecimal("-10"));
+            return null;
+        }).when(purchaseInvoiceSourceService).createApprovedAllocations(eq(10L), eq(100L), anyList());
+
+        assertServiceException(() -> purchaseInvoiceService.updatePurchaseInvoiceStatus(
+                10L, ErpAuditStatus.APPROVE.getStatus()), PURCHASE_INVOICE_TOTAL_ZERO);
+
+        verify(purchaseInvoiceItemMapper, never()).updateBatch(anyList());
+        verify(purchaseInvoiceMapper, never()).updateByIdAndStatus(anyLong(), any(), any());
+    }
+
+    @Test
+    public void testUpdatePurchaseInvoiceStatus_zeroTotal_throwException() {
+        ErpPurchaseInvoiceDO invoice = new ErpPurchaseInvoiceDO()
+                .setId(10L).setNo("CGPJ001")
+                .setStatus(ErpAuditStatus.PROCESS.getStatus())
+                .setTotalAmount(BigDecimal.ZERO);
+        when(purchaseInvoiceMapper.selectById(10L)).thenReturn(invoice);
+        when(purchaseInvoiceItemMapper.selectListByInvoiceId(10L)).thenReturn(Collections.emptyList());
+
+        assertServiceException(() -> purchaseInvoiceService.updatePurchaseInvoiceStatus(
+                10L, ErpAuditStatus.APPROVE.getStatus()), PURCHASE_INVOICE_TOTAL_ZERO);
+
+        verify(purchaseInvoiceSourceService).createApprovedAllocations(eq(10L), any(), anyList());
+        verify(purchaseInvoiceMapper, never()).updateByIdAndStatus(anyLong(), any(), any());
     }
 
     @Test
@@ -394,6 +626,38 @@ public class ErpPurchaseInvoiceServiceImplTest extends BaseMockitoUnitTest {
         verify(purchaseInvoiceItemMapper).insertBatch(captor.capture());
         ErpPurchaseInvoiceItemDO item = (ErpPurchaseInvoiceItemDO) captor.getValue().get(0);
         assertEquals(Long.valueOf(300L), item.getProductId());
+    }
+
+    @Test
+    public void testImportPurchaseInvoice_priceAdjustSourceUsesCanonicalNegativeDifference() {
+        mockSuccessfulPurchaseInvoiceImport();
+        ErpPurchaseInvoiceImportExcelVO row = buildPurchaseInvoiceImportRow();
+        row.setSourceType("采购调价");
+        row.setSourceDocNo("CGTJ001");
+        row.setProductPrice(null);
+        ErpPurchaseInvoiceSaveReqVO.Item sourceItem = new ErpPurchaseInvoiceSaveReqVO.Item();
+        sourceItem.setSourceType(20);
+        sourceItem.setSourceDocId(200L);
+        sourceItem.setSourceDocNo("CGTJ001");
+        sourceItem.setSourceItemId(201L);
+        sourceItem.setProductId(300L);
+        sourceItem.setCount(BigDecimal.ONE);
+        sourceItem.setProductPrice(new BigDecimal("-2"));
+        when(purchaseInvoiceSourceService.resolveImportSourceItem(
+                eq(20), eq("CGTJ001"), eq(300L), eq(BigDecimal.ONE), eq(100L))).thenReturn(sourceItem);
+
+        ErpPurchaseImportResultRespVO result = purchaseInvoiceService.importPurchaseInvoiceList(
+                Collections.singletonList(row));
+
+        assertEquals(1, result.getSuccessCount());
+        assertEquals(0, result.getFailureCount());
+        ArgumentCaptor<List> captor = ArgumentCaptor.forClass(List.class);
+        verify(purchaseInvoiceItemMapper).insertBatch(captor.capture());
+        ErpPurchaseInvoiceItemDO item = (ErpPurchaseInvoiceItemDO) captor.getValue().get(0);
+        assertEquals(Integer.valueOf(20), item.getSourceType());
+        assertEquals("CGTJ001", item.getSourceDocNo());
+        assertEquals(0, new BigDecimal("-2").compareTo(item.getProductPrice()));
+        assertEquals(0, new BigDecimal("-2").compareTo(item.getTotalPrice()));
     }
 
     @Test

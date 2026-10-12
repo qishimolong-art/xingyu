@@ -20,6 +20,13 @@ public interface ErpSalePickDeliveryService {
 
     void generateForSaleCart(Long saleCartId);
 
+    /**
+     * 回退销售手推车尚未开始的拣货送货任务。
+     *
+     * <p>仅供调拨出库单“解锁手推车”使用；任务已经产生任何拣货或送货进度时拒绝回退。</p>
+     */
+    void rollbackUnstartedSaleCartFulfillment(Long saleCartId);
+
     /** 兼容旧调用名称；新流程按销售手推车整单生成。 */
     default void generateForSaleCartTransferOuts(Long saleCartId) {
         generateForSaleCart(saleCartId);

@@ -31,7 +31,13 @@ public class ErpPurchaseInvoiceImportExcelVO {
     @ExcelProperty("备注")
     private String remark;
 
-    @ExcelProperty("来源入库单号")
+    @ExcelProperty("来源类型")
+    private String sourceType;
+
+    @ExcelProperty("来源单号")
+    private String sourceDocNo;
+
+    @ExcelProperty("来源入库单号（兼容旧模板）")
     private String sourceInNo;
 
     @ExcelChoiceRequired

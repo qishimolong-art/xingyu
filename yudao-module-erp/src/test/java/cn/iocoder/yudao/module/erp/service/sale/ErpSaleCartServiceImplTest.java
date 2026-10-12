@@ -13,6 +13,8 @@ import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartFirs
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartImportExcelVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartImportRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartItemBatchUpdateReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartItemMatchReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartItemMatchRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartSaveReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartSubmitRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.pickdelivery.ErpSalePickDeliverySummaryRespVO;
@@ -61,6 +63,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentMatchers;
 import org.mockito.InjectMocks;
+import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.aop.framework.ProxyFactory;
@@ -81,11 +84,13 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.stream.Collectors;
 
 import static cn.iocoder.yudao.framework.test.core.util.AssertUtils.assertServiceException;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.CUSTOMER_NOT_EXISTS;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PRODUCT_NOT_EXISTS;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.SALE_CART_CONVERT_QUOTE_FAIL;
+import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.SALE_CART_CONFIRM_FAIL;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.SALE_CART_CANCEL_FIRST_APPROVE_FAIL;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.SALE_CART_DELETE_FAIL_NOT_DRAFT;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.SALE_CART_DRAFT_ITEMS_REQUIRED;
@@ -93,10 +98,12 @@ import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.SALE_CART_FIN
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.SALE_CART_FIRST_APPROVE_DEPT_EMPTY;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.SALE_CART_FIRST_APPROVE_DISABLED;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.SALE_CART_FIRST_APPROVE_FAIL;
+import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.SALE_CART_FULFILLMENT_TASK_STARTED;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.SALE_CART_ITEMS_EMPTY;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.SALE_CART_NOT_EXISTS;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.SALE_CART_REJECT_FAIL;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.SALE_CART_QUOTE_SOURCE_IDENTITY_MODIFY_FAIL;
+import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.SALE_CART_SOURCE_COUNT_BELOW_CONVERTED;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.SALE_CART_STATUS_CHANGED;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.SALE_CART_UPDATE_FAIL_NOT_PROCESS;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.SALE_CART_UNLOCK_STATUS_INVALID;
@@ -271,6 +278,13 @@ public class ErpSaleCartServiceImplTest extends BaseMockitoUnitTest {
         });
         lenient().when(warehouseService.resolveDirectWarehouseId(any())).thenReturn(888L);
         lenient().when(saleCartMapper.updateByIdAndStatus(any(), any(), any())).thenReturn(1);
+        lenient().when(productService.validProductList(anyCollection())).thenAnswer(invocation -> {
+            Collection<Long> ids = invocation.getArgument(0);
+            return ids.stream().filter(Objects::nonNull)
+                    .map(id -> new ErpProductDO().setId(id).setUnitId(1L)
+                            .setSalePrice(BigDecimal.ONE))
+                    .collect(Collectors.toList());
+        });
         lenient().when(stockService.getStock(any(), any()))
                 .thenReturn(new ErpStockDO().setCount(new BigDecimal("100")));
         lenient().when(stockService.getStockMap(anyCollection(), anyCollection())).thenAnswer(invocation -> {
@@ -710,8 +724,7 @@ public class ErpSaleCartServiceImplTest extends BaseMockitoUnitTest {
                 .setId(cartId)
                 .setNo("ST20260510000001")
                 .setStatus(ErpSaleCartStatusEnum.SUBMITTED.getStatus());
-        when(saleCartMapper.selectBatchIds(eq(Collections.singletonList(cartId))))
-                .thenReturn(Collections.singletonList(cart));
+        when(saleCartMapper.selectById(cartId)).thenReturn(cart);
 
         saleCartService.deleteSaleCart(Collections.singletonList(cartId));
 
@@ -719,6 +732,45 @@ public class ErpSaleCartServiceImplTest extends BaseMockitoUnitTest {
                 eq(ErpSaleBizSourceTypeEnum.CART.getType()), eq(cartId));
         verify(saleCartMapper).deleteBatchIds(eq(Collections.singletonList(cartId)));
         verify(saleCartItemMapper).deleteByCartId(eq(cartId));
+    }
+
+    @Test
+    public void testDeleteSaleCart_pendingBillingConfirm_success() {
+        Long cartId = 511L;
+        ErpSaleCartDO cart = new ErpSaleCartDO().setId(cartId).setNo("ST20261011000511")
+                .setStatus(ErpSaleCartStatusEnum.PENDING_BILLING_CONFIRM.getStatus());
+        when(saleCartMapper.selectById(cartId)).thenReturn(cart);
+
+        saleCartService.deleteSaleCart(Collections.singletonList(cartId));
+
+        verify(saleCartMapper).deleteBatchIds(Collections.singletonList(cartId));
+        verify(saleCartItemMapper).deleteByCartId(cartId);
+    }
+
+    @Test
+    public void testDeleteSaleCart_legacySubmittedWithoutConfirm_success() {
+        Long cartId = 512L;
+        ErpSaleCartDO cart = new ErpSaleCartDO().setId(cartId).setNo("ST20261011000512")
+                .setStatus(ErpSaleCartStatusEnum.SUBMITTED.getStatus());
+        when(saleCartMapper.selectById(cartId)).thenReturn(cart);
+
+        saleCartService.deleteSaleCart(Collections.singletonList(cartId));
+
+        verify(saleCartMapper).deleteBatchIds(Collections.singletonList(cartId));
+    }
+
+    @Test
+    public void testDeleteSaleCart_confirmedSubmitted_rejected() {
+        Long cartId = 513L;
+        ErpSaleCartDO cart = new ErpSaleCartDO().setId(cartId).setNo("ST20261011000513")
+                .setStatus(ErpSaleCartStatusEnum.SUBMITTED.getStatus())
+                .setBillingConfirmTime(LocalDateTime.now());
+        when(saleCartMapper.selectById(cartId)).thenReturn(cart);
+
+        assertServiceException(() -> saleCartService.deleteSaleCart(Collections.singletonList(cartId)),
+                SALE_CART_DELETE_FAIL_NOT_DRAFT, cart.getNo());
+
+        verify(saleCartMapper, never()).deleteBatchIds(anyCollection());
     }
 
     @Test
@@ -746,8 +798,7 @@ public class ErpSaleCartServiceImplTest extends BaseMockitoUnitTest {
                 .setId(cartId)
                 .setNo("ST20260510000002")
                 .setStatus(ErpSaleCartStatusEnum.GENERATED_SALE_OUT.getStatus());
-        when(saleCartMapper.selectBatchIds(eq(Collections.singletonList(cartId))))
-                .thenReturn(Collections.singletonList(cart));
+        when(saleCartMapper.selectById(cartId)).thenReturn(cart);
 
         assertServiceException(() -> saleCartService.deleteSaleCart(Collections.singletonList(cartId)),
                 SALE_CART_DELETE_FAIL_NOT_DRAFT, cart.getNo());
@@ -772,13 +823,13 @@ public class ErpSaleCartServiceImplTest extends BaseMockitoUnitTest {
         doAnswer(invocation -> {
             ErpSaleCartDO cart = invocation.getArgument(0);
             cart.setId(999L);
-            return 1;
-        }).when(saleCartMapper).insert(any(ErpSaleCartDO.class));
+            return null;
+        }).when(saleCartTransferLinkService).insertCart(any(ErpSaleCartDO.class));
 
         Long resultId = saleCartService.createSaleCart(reqVO);
 
         assertEquals(999L, resultId);
-        verify(saleCartMapper).insert(argThat((ErpSaleCartDO cart) ->
+        verify(saleCartTransferLinkService).insertCart(argThat((ErpSaleCartDO cart) ->
                 ErpSaleCartStatusEnum.PROCESS.getStatus().equals(cart.getStatus())
                         && reqVO.getCustomerId().equals(cart.getCustomerId())
                         && cart.getNo() != null && cart.getNo().startsWith(ErpNoRedisDAO.SALE_CART_NO_PREFIX)
@@ -788,6 +839,31 @@ public class ErpSaleCartServiceImplTest extends BaseMockitoUnitTest {
                 && items.get(0).getCartId().equals(999L)));
         verify(customerService).validateCustomerForSale(eq(21L), nullable(Long.class));
         verify(customerService, never()).validateCustomerForGeneratedSale(anyLong(), nullable(Long.class));
+    }
+
+    @Test
+    public void testCreateSaleCart_duplicateStock_mergesCountAndUsesLatestPrice() {
+        ErpSaleCartSaveReqVO reqVO = buildBaseSaveReq();
+        ErpSaleCartSaveReqVO.Item first = buildItemReq(new BigDecimal("10"), new BigDecimal("20"));
+        first.setBatchNo(" B1 ");
+        ErpSaleCartSaveReqVO.Item second = buildItemReq(new BigDecimal("10"), new BigDecimal("25"));
+        second.setBatchNo("B1");
+        reqVO.setItems(java.util.Arrays.asList(first, second));
+        when(productService.validProductList(anyCollection()))
+                .thenReturn(Collections.singletonList(new ErpProductDO().setId(201L).setUnitId(301L)));
+        when(saleCartMapper.selectByNo(anyString())).thenReturn(null);
+        doAnswer(invocation -> {
+            ((ErpSaleCartDO) invocation.getArgument(0)).setId(999L);
+            return null;
+        }).when(saleCartTransferLinkService).insertCart(any(ErpSaleCartDO.class));
+
+        saleCartService.createSaleCart(reqVO);
+
+        verify(saleCartItemMapper).insertBatch(argThat((List<ErpSaleCartItemDO> items) ->
+                items.size() == 1
+                        && new BigDecimal("20").compareTo(items.get(0).getCount()) == 0
+                        && new BigDecimal("25").compareTo(items.get(0).getProductPrice()) == 0
+                        && new BigDecimal("500").compareTo(items.get(0).getTotalPrice()) == 0));
     }
 
     @Test
@@ -810,15 +886,15 @@ public class ErpSaleCartServiceImplTest extends BaseMockitoUnitTest {
         doAnswer(invocation -> {
             ErpSaleCartDO cart = invocation.getArgument(0);
             cart.setId(999L);
-            return 1;
-        }).when(saleCartMapper).insert(any(ErpSaleCartDO.class));
+            return null;
+        }).when(saleCartTransferLinkService).insertCart(any(ErpSaleCartDO.class));
 
         Long resultId = saleCartService.createSaleCartDraftFromSource(reqVO);
 
         assertEquals(999L, resultId);
         verify(customerService).validateCustomerForGeneratedSale(eq(21L), eq(10L));
         verify(customerService, never()).validateCustomerForSale(anyLong(), nullable(Long.class));
-        verify(saleCartMapper).insert(argThat((ErpSaleCartDO cart) ->
+        verify(saleCartTransferLinkService).insertCart(argThat((ErpSaleCartDO cart) ->
                 ErpSaleBizSourceTypeEnum.MALL_ORDER.getType().equals(cart.getSourceType())
                         && Long.valueOf(501L).equals(cart.getSourceId())
                         && "MALL20260827000001".equals(cart.getSourceNo())
@@ -845,13 +921,13 @@ public class ErpSaleCartServiceImplTest extends BaseMockitoUnitTest {
         doAnswer(invocation -> {
             ErpSaleCartDO cart = invocation.getArgument(0);
             cart.setId(999L);
-            return 1;
-        }).when(saleCartMapper).insert(any(ErpSaleCartDO.class));
+            return null;
+        }).when(saleCartTransferLinkService).insertCart(any(ErpSaleCartDO.class));
 
         Long resultId = saleCartService.createSaleCart(reqVO);
 
         assertEquals(999L, resultId);
-        verify(saleCartMapper).insert(argThat((ErpSaleCartDO cart) ->
+        verify(saleCartTransferLinkService).insertCart(argThat((ErpSaleCartDO cart) ->
                 ErpSaleCartStatusEnum.PROCESS.getStatus().equals(cart.getStatus())
                         && BigDecimal.ZERO.compareTo(cart.getTotalProductPrice()) == 0
                         && BigDecimal.ONE.compareTo(cart.getTotalCount()) == 0));
@@ -862,6 +938,32 @@ public class ErpSaleCartServiceImplTest extends BaseMockitoUnitTest {
                 && BigDecimal.ZERO.compareTo(items.get(0).getProductPrice()) == 0
                 && BigDecimal.ZERO.compareTo(items.get(0).getTotalPrice()) == 0));
         verify(customerService, never()).validateCustomerForSale(anyLong(), nullable(Long.class));
+    }
+
+    @Test
+    public void testCreateSaleCart_clearsClientItemIdBeforeInsert() {
+        ErpSaleCartSaveReqVO reqVO = buildBaseSaveReq();
+        reqVO.setDeptId(10L);
+        ErpSaleCartSaveReqVO.Item item = buildItemReq(BigDecimal.ONE, BigDecimal.ZERO);
+        item.setId(777L);
+        reqVO.setItems(Collections.singletonList(item));
+
+        when(productService.validProductList(anyCollection()))
+                .thenReturn(Collections.singletonList(new ErpProductDO().setId(201L).setUnitId(301L)));
+        when(saleCartMapper.selectByNo(anyString())).thenReturn(null);
+        doAnswer(invocation -> {
+            ErpSaleCartDO cart = invocation.getArgument(0);
+            cart.setId(999L);
+            return null;
+        }).when(saleCartTransferLinkService).insertCart(any(ErpSaleCartDO.class));
+
+        Long resultId = saleCartService.createSaleCart(reqVO);
+
+        assertEquals(999L, resultId);
+        verify(saleCartItemMapper).insertBatch(argThat((List<ErpSaleCartItemDO> items) ->
+                items.size() == 1
+                        && items.get(0).getId() == null
+                        && Long.valueOf(999L).equals(items.get(0).getCartId())));
     }
 
     @Test
@@ -904,8 +1006,8 @@ public class ErpSaleCartServiceImplTest extends BaseMockitoUnitTest {
         doAnswer(invocation -> {
             ErpSaleCartDO cart = invocation.getArgument(0);
             cart.setId(999L);
-            return 1;
-        }).when(saleCartMapper).insert(any(ErpSaleCartDO.class));
+            return null;
+        }).when(saleCartTransferLinkService).insertCart(any(ErpSaleCartDO.class));
 
         Long resultId = saleCartService.createSaleCart(reqVO);
 
@@ -938,15 +1040,15 @@ public class ErpSaleCartServiceImplTest extends BaseMockitoUnitTest {
         doAnswer(invocation -> {
             ErpSaleCartDO cart = invocation.getArgument(0);
             cart.setId(999L);
-            return 1;
-        }).when(saleCartMapper).insert(any(ErpSaleCartDO.class));
+            return null;
+        }).when(saleCartTransferLinkService).insertCart(any(ErpSaleCartDO.class));
 
         ErpSaleCartSubmitRespVO result = saleCartService.createAndSubmitSaleCart(reqVO);
 
         assertEquals(999L, result.getId());
-        assertEquals(ErpSaleCartStatusEnum.SUBMITTED.getStatus(), result.getStatus());
-        verify(saleCartMapper).insert(argThat((ErpSaleCartDO cart) ->
-                ErpSaleCartStatusEnum.SUBMITTED.getStatus().equals(cart.getStatus())
+        assertEquals(ErpSaleCartStatusEnum.PENDING_BILLING_CONFIRM.getStatus(), result.getStatus());
+        verify(saleCartTransferLinkService).insertCart(argThat((ErpSaleCartDO cart) ->
+                ErpSaleCartStatusEnum.PENDING_BILLING_CONFIRM.getStatus().equals(cart.getStatus())
                         && reqVO.getCustomerId().equals(cart.getCustomerId())));
         verify(saleCartMapper, never()).selectById(eq(999L));
         verify(saleCartMapper, never()).updateByIdAndStatus(eq(999L), any(), any());
@@ -980,20 +1082,20 @@ public class ErpSaleCartServiceImplTest extends BaseMockitoUnitTest {
                 .thenReturn(new ErpStockDO().setCount(new BigDecimal("10")));
         // The occupied query already contains the 6 units of the newly inserted cart.
         when(stockService.getOccupiedCountMap(anyCollection(), anyCollection()))
-                .thenReturn(Collections.singletonMap("201_401", new BigDecimal("6")));
+                .thenReturn(Collections.emptyMap());
         when(customerService.validateCustomerForGeneratedSale(eq(21L), nullable(Long.class)))
                 .thenReturn(new ErpCustomerDO().setId(21L));
         when(saleCartMapper.selectByNo(anyString())).thenReturn(null);
         doAnswer(invocation -> {
             ErpSaleCartDO cart = invocation.getArgument(0);
             cart.setId(999L);
-            return 1;
-        }).when(saleCartMapper).insert(any(ErpSaleCartDO.class));
+            return null;
+        }).when(saleCartTransferLinkService).insertCart(any(ErpSaleCartDO.class));
 
         ErpSaleCartSubmitRespVO result = saleCartService.createAndSubmitSaleCartFromPurchaseIn(reqVO);
 
         assertEquals(999L, result.getId());
-        assertEquals(ErpSaleCartStatusEnum.SUBMITTED.getStatus(), result.getStatus());
+        assertEquals(ErpSaleCartStatusEnum.PENDING_BILLING_CONFIRM.getStatus(), result.getStatus());
         verify(customerService).validateCustomerForGeneratedSale(eq(21L), nullable(Long.class));
         verify(customerService, never()).validateCustomerForSale(anyLong(), nullable(Long.class));
     }
@@ -1004,7 +1106,6 @@ public class ErpSaleCartServiceImplTest extends BaseMockitoUnitTest {
         reqVO.setCustomerId(21L);
         reqVO.setItems(Collections.singletonList(buildItemReq(new BigDecimal("3"), new BigDecimal("15.00"))));
 
-        mockFirstApproveConfig(false, false, true);
         when(productService.validProductList(anyCollection()))
                 .thenReturn(Collections.singletonList(new ErpProductDO().setId(201L).setUnitId(301L)));
         when(stockService.getStock(eq(201L), eq(401L)))
@@ -1014,14 +1115,14 @@ public class ErpSaleCartServiceImplTest extends BaseMockitoUnitTest {
         doAnswer(invocation -> {
             ErpSaleCartDO cart = invocation.getArgument(0);
             cart.setId(999L);
-            return 1;
-        }).when(saleCartMapper).insert(any(ErpSaleCartDO.class));
+            return null;
+        }).when(saleCartTransferLinkService).insertCart(any(ErpSaleCartDO.class));
 
         ErpSaleCartSubmitRespVO result = saleCartService.createAndSubmitSaleCart(reqVO);
 
-        assertEquals(ErpSaleCartStatusEnum.FIRST_APPROVE.getStatus(), result.getStatus());
-        verify(saleCartMapper).insert(argThat((ErpSaleCartDO cart) ->
-                ErpSaleCartStatusEnum.FIRST_APPROVE.getStatus().equals(cart.getStatus())));
+        assertEquals(ErpSaleCartStatusEnum.PENDING_BILLING_CONFIRM.getStatus(), result.getStatus());
+        verify(saleCartTransferLinkService).insertCart(argThat((ErpSaleCartDO cart) ->
+                ErpSaleCartStatusEnum.PENDING_BILLING_CONFIRM.getStatus().equals(cart.getStatus())));
     }
 
     @Test
@@ -1033,7 +1134,6 @@ public class ErpSaleCartServiceImplTest extends BaseMockitoUnitTest {
         itemReq.setDeptId(null);
         reqVO.setItems(Collections.singletonList(itemReq));
 
-        mockFirstApproveConfig(false, false, true);
         when(productService.validProductList(anyCollection()))
                 .thenReturn(Collections.singletonList(new ErpProductDO().setId(201L).setUnitId(301L)));
         when(warehouseService.validSaleWarehouseList(anyCollection())).thenReturn(Collections.singletonList(
@@ -1051,21 +1151,15 @@ public class ErpSaleCartServiceImplTest extends BaseMockitoUnitTest {
         doAnswer(invocation -> {
             ErpSaleCartDO cart = invocation.getArgument(0);
             cart.setId(998L);
-            return 1;
-        }).when(saleCartMapper).insert(any(ErpSaleCartDO.class));
+            return null;
+        }).when(saleCartTransferLinkService).insertCart(any(ErpSaleCartDO.class));
 
         ErpSaleCartSubmitRespVO result = saleCartService.createAndSubmitSaleCart(reqVO);
 
-        assertEquals(ErpSaleCartStatusEnum.FIRST_APPROVE.getStatus(), result.getStatus());
-        verify(stockLockService).lockStock(eq(201L), eq(401L), eq(new BigDecimal("3")),
-                eq(ErpSaleBizSourceTypeEnum.CART.getType()), eq(998L), any(), anyString());
-        verify(stockMoveService).syncTransferOutDraftsBySource(
-                ArgumentMatchers.<List<ErpStockMoveSaveReqVO>>argThat(reqs -> reqs.size() == 1
-                        && Integer.valueOf(10).equals(reqs.get(0).getTransferDirection())
-                        && Long.valueOf(20L).equals(reqs.get(0).getFromDeptId())
-                        && Long.valueOf(998L).equals(reqs.get(0).getSourceId())
-                        && Long.valueOf(401L).equals(reqs.get(0).getItems().get(0).getFromWarehouseId())
-                        && Long.valueOf(888L).equals(reqs.get(0).getItems().get(0).getToWarehouseId())));
+        assertEquals(ErpSaleCartStatusEnum.PENDING_BILLING_CONFIRM.getStatus(), result.getStatus());
+        verify(stockLockService, never()).lockStock(any(), any(), any(), any(), any(), any(), any());
+        verify(stockMoveService, never()).syncTransferOutDraftsBySource(any());
+        verify(salePickDeliveryService, never()).generateForSaleCart(anyLong());
     }
 
     @Test
@@ -1093,8 +1187,8 @@ public class ErpSaleCartServiceImplTest extends BaseMockitoUnitTest {
         doAnswer(invocation -> {
             ErpSaleCartDO cart = invocation.getArgument(0);
             cart.setId(999L);
-            return 1;
-        }).when(saleCartMapper).insert(any(ErpSaleCartDO.class));
+            return null;
+        }).when(saleCartTransferLinkService).insertCart(any(ErpSaleCartDO.class));
 
         saleCartService.createAndSubmitSaleCart(reqVO);
 
@@ -1149,7 +1243,7 @@ public class ErpSaleCartServiceImplTest extends BaseMockitoUnitTest {
 
         verify(saleCartMapper).updateById(argThat((ErpSaleCartDO cart) -> reqVO.getId().equals(cart.getId())
                 && reqVO.getCustomerId().equals(cart.getCustomerId())));
-        verify(saleCartItemMapper).deleteByCartId(eq(reqVO.getId()));
+        verify(saleCartItemMapper, never()).deleteByCartId(anyLong());
         verify(saleCartItemMapper).insertBatch(argThat((java.util.List<ErpSaleCartItemDO> items) ->
                 items.size() == 1 && items.get(0).getCartId().equals(reqVO.getId())));
         verify(stockMoveService, never()).createOrUpdateTransferOutDraftBySource(any());
@@ -1287,6 +1381,279 @@ public class ErpSaleCartServiceImplTest extends BaseMockitoUnitTest {
     }
 
     @Test
+    public void testUpdateSaleCartDraft_updateExistingItem_preservesIdAndExactCount() {
+        Long cartId = 11L;
+        ErpSaleCartSaveReqVO reqVO = buildBaseSaveReq();
+        reqVO.setId(cartId);
+        ErpSaleCartSaveReqVO.Item updateItem = buildItemReq(BigDecimal.ONE, new BigDecimal("230.00"));
+        updateItem.setId(101L);
+        updateItem.setOperation("update");
+        reqVO.setItems(Collections.singletonList(updateItem));
+        ErpSaleCartItemDO oldItem = buildCartItem(cartId, 201L, 401L, new BigDecimal("20"))
+                .setId(101L);
+
+        when(saleCartMapper.selectById(cartId)).thenReturn(new ErpSaleCartDO()
+                .setId(cartId).setNo("XSST20261011000003").setDeptId(10L)
+                .setStatus(ErpSaleCartStatusEnum.PROCESS.getStatus()));
+        when(saleCartItemMapper.selectListByCartId(cartId)).thenReturn(Collections.singletonList(oldItem));
+        when(productService.validProductList(anyCollection()))
+                .thenReturn(Collections.singletonList(new ErpProductDO().setId(201L).setUnitId(301L)));
+
+        saleCartService.updateSaleCartDraft(reqVO);
+
+        verify(saleCartMapper).updateById(argThat((ErpSaleCartDO cart) ->
+                BigDecimal.ONE.compareTo(cart.getTotalCount()) == 0));
+        verify(saleCartItemMapper).updateBatch(argThat((List<ErpSaleCartItemDO> items) ->
+                items.size() == 1
+                        && Long.valueOf(101L).equals(items.get(0).getId())
+                        && BigDecimal.ONE.compareTo(items.get(0).getCount()) == 0));
+        verify(saleCartItemMapper, never()).insertBatch(anyCollection());
+        verify(saleCartItemMapper, never()).deleteByIds(anyCollection());
+    }
+
+    @Test
+    public void testUpdateSaleCartDraft_deleteItem_doesNotReinsertSurvivor() {
+        Long cartId = 11L;
+        ErpSaleCartSaveReqVO reqVO = buildBaseSaveReq();
+        reqVO.setId(cartId);
+        ErpSaleCartSaveReqVO.Item deleteItem = new ErpSaleCartSaveReqVO.Item();
+        deleteItem.setId(102L);
+        deleteItem.setOperation("delete");
+        reqVO.setItems(Collections.singletonList(deleteItem));
+        ErpSaleCartItemDO survivor = buildCartItem(cartId, 201L, 401L, BigDecimal.ONE).setId(101L);
+        ErpSaleCartItemDO deleted = buildCartItem(cartId, 202L, 402L, BigDecimal.ONE).setId(102L);
+
+        when(saleCartMapper.selectById(cartId)).thenReturn(new ErpSaleCartDO()
+                .setId(cartId).setNo("XSST20261011000003").setDeptId(10L)
+                .setStatus(ErpSaleCartStatusEnum.PROCESS.getStatus()));
+        when(saleCartItemMapper.selectListByCartId(cartId)).thenReturn(java.util.Arrays.asList(survivor, deleted));
+        when(productService.validProductList(anyCollection()))
+                .thenReturn(Collections.singletonList(new ErpProductDO().setId(201L).setUnitId(301L)));
+
+        saleCartService.updateSaleCartDraft(reqVO);
+
+        verify(saleCartMapper).updateById(argThat((ErpSaleCartDO cart) ->
+                BigDecimal.ONE.compareTo(cart.getTotalCount()) == 0));
+        verify(saleCartItemMapper).deleteByIds(argThat(ids ->
+                ids.size() == 1 && ids.contains(102L)));
+        verify(saleCartItemMapper, never()).insertBatch(anyCollection());
+        verify(saleCartItemMapper, never()).updateBatch(anyCollection());
+    }
+
+    @Test
+    public void testUpdateSaleCartDraft_emptyIncrementRepeated_doesNotWriteItems() {
+        Long cartId = 11L;
+        ErpSaleCartSaveReqVO reqVO = buildBaseSaveReq();
+        reqVO.setId(cartId);
+        reqVO.setItems(Collections.emptyList());
+        ErpSaleCartItemDO oldItem = buildCartItem(cartId, 201L, 401L, new BigDecimal("20"))
+                .setId(101L);
+
+        when(saleCartMapper.selectById(cartId)).thenReturn(new ErpSaleCartDO()
+                .setId(cartId).setNo("XSST20261011000003").setDeptId(10L)
+                .setStatus(ErpSaleCartStatusEnum.PROCESS.getStatus()));
+        when(saleCartItemMapper.selectListByCartId(cartId)).thenReturn(Collections.singletonList(oldItem));
+        when(productService.validProductList(anyCollection()))
+                .thenReturn(Collections.singletonList(new ErpProductDO().setId(201L).setUnitId(301L)));
+
+        saleCartService.updateSaleCartDraft(reqVO);
+        saleCartService.updateSaleCartDraft(reqVO);
+
+        verify(saleCartMapper, times(2)).updateById(argThat((ErpSaleCartDO cart) ->
+                new BigDecimal("20").compareTo(cart.getTotalCount()) == 0));
+        verify(saleCartItemMapper, never()).deleteByIds(anyCollection());
+        verify(saleCartItemMapper, never()).deleteByCartId(anyLong());
+        verify(saleCartItemMapper, never()).insertBatch(anyCollection());
+        verify(saleCartItemMapper, never()).updateBatch(anyCollection());
+    }
+
+    @Test
+    public void testUpdateSaleCartDraft_insertItem_onlyInsertsNewRow() {
+        Long cartId = 11L;
+        ErpSaleCartSaveReqVO reqVO = buildBaseSaveReq();
+        reqVO.setId(cartId);
+        ErpSaleCartSaveReqVO.Item insertItem = buildItemReq(new BigDecimal("2"), new BigDecimal("18.00"));
+        insertItem.setProductId(202L);
+        insertItem.setWarehouseId(402L);
+        insertItem.setOperation("insert");
+        reqVO.setItems(Collections.singletonList(insertItem));
+        ErpSaleCartItemDO oldItem = buildCartItem(cartId, 201L, 401L, BigDecimal.ONE).setId(101L);
+
+        when(saleCartMapper.selectById(cartId)).thenReturn(new ErpSaleCartDO()
+                .setId(cartId).setNo("XSST20261011000003").setDeptId(10L)
+                .setStatus(ErpSaleCartStatusEnum.PROCESS.getStatus()));
+        when(saleCartItemMapper.selectListByCartId(cartId)).thenReturn(Collections.singletonList(oldItem));
+        when(productService.validProductList(anyCollection())).thenReturn(java.util.Arrays.asList(
+                new ErpProductDO().setId(201L).setUnitId(301L),
+                new ErpProductDO().setId(202L).setUnitId(302L)));
+
+        saleCartService.updateSaleCartDraft(reqVO);
+
+        verify(saleCartMapper).updateById(argThat((ErpSaleCartDO cart) ->
+                new BigDecimal("3").compareTo(cart.getTotalCount()) == 0));
+        verify(saleCartItemMapper).insertBatch(argThat((List<ErpSaleCartItemDO> items) ->
+                items.size() == 1
+                        && items.get(0).getId() == null
+                        && Long.valueOf(cartId).equals(items.get(0).getCartId())
+                        && Long.valueOf(202L).equals(items.get(0).getProductId())
+                        && new BigDecimal("2").compareTo(items.get(0).getCount()) == 0));
+        verify(saleCartItemMapper, never()).deleteByIds(anyCollection());
+        verify(saleCartItemMapper, never()).updateBatch(anyCollection());
+    }
+
+    @Test
+    public void testUpdateSaleCartDraft_insertMatchingStock_updatesSurvivorWithoutInsert() {
+        Long cartId = 11L;
+        ErpSaleCartSaveReqVO reqVO = buildBaseSaveReq();
+        reqVO.setId(cartId);
+        ErpSaleCartSaveReqVO.Item insertItem = buildItemReq(new BigDecimal("10"), new BigDecimal("30"));
+        insertItem.setOperation("insert");
+        reqVO.setItems(Collections.singletonList(insertItem));
+        ErpSaleCartItemDO oldItem = buildCartItem(cartId, 201L, 401L, new BigDecimal("10"))
+                .setId(101L).setProductPrice(new BigDecimal("20"));
+
+        when(saleCartMapper.selectById(cartId)).thenReturn(new ErpSaleCartDO()
+                .setId(cartId).setNo("XSST20261011000003").setDeptId(10L)
+                .setStatus(ErpSaleCartStatusEnum.PROCESS.getStatus()));
+        when(saleCartItemMapper.selectListByCartId(cartId)).thenReturn(Collections.singletonList(oldItem));
+        when(productService.validProductList(anyCollection()))
+                .thenReturn(Collections.singletonList(new ErpProductDO().setId(201L).setUnitId(301L)));
+
+        saleCartService.updateSaleCartDraft(reqVO);
+
+        verify(saleCartItemMapper).updateBatch(argThat((List<ErpSaleCartItemDO> items) ->
+                items.size() == 1 && Long.valueOf(101L).equals(items.get(0).getId())
+                        && new BigDecimal("20").compareTo(items.get(0).getCount()) == 0
+                        && new BigDecimal("30").compareTo(items.get(0).getProductPrice()) == 0));
+        verify(saleCartItemMapper, never()).insertBatch(anyCollection());
+        verify(saleCartItemMapper, never()).deleteByIds(anyCollection());
+    }
+
+    @Test
+    public void testUpdateSaleCartDraft_touchHistoricalDuplicates_keepsSmallestId() {
+        Long cartId = 11L;
+        ErpSaleCartSaveReqVO reqVO = buildBaseSaveReq();
+        reqVO.setId(cartId);
+        ErpSaleCartSaveReqVO.Item updateItem = buildItemReq(new BigDecimal("10"), new BigDecimal("30"));
+        updateItem.setId(102L);
+        updateItem.setOperation("update");
+        reqVO.setItems(Collections.singletonList(updateItem));
+        ErpSaleCartItemDO first = buildCartItem(cartId, 201L, 401L, new BigDecimal("10"))
+                .setId(101L).setProductPrice(new BigDecimal("20"));
+        ErpSaleCartItemDO second = buildCartItem(cartId, 201L, 401L, new BigDecimal("5"))
+                .setId(102L).setProductPrice(new BigDecimal("21"));
+
+        when(saleCartMapper.selectById(cartId)).thenReturn(new ErpSaleCartDO()
+                .setId(cartId).setNo("XSST20261011000003").setDeptId(10L)
+                .setStatus(ErpSaleCartStatusEnum.PROCESS.getStatus()));
+        when(saleCartItemMapper.selectListByCartId(cartId)).thenReturn(java.util.Arrays.asList(first, second));
+        when(productService.validProductList(anyCollection()))
+                .thenReturn(Collections.singletonList(new ErpProductDO().setId(201L).setUnitId(301L)));
+
+        saleCartService.updateSaleCartDraft(reqVO);
+
+        verify(saleCartItemMapper).deleteByIds(argThat(ids -> ids.size() == 1 && ids.contains(102L)));
+        verify(saleCartItemMapper).updateBatch(argThat((List<ErpSaleCartItemDO> items) ->
+                items.size() == 1 && Long.valueOf(101L).equals(items.get(0).getId())
+                        && new BigDecimal("20").compareTo(items.get(0).getCount()) == 0
+                        && new BigDecimal("30").compareTo(items.get(0).getProductPrice()) == 0));
+        verify(saleCartItemMapper, never()).insertBatch(anyCollection());
+    }
+
+    @Test
+    public void testUpdateSaleCartDraft_legacyFullPayloadDeletion_consolidatesRemainingDuplicateGroup() {
+        Long cartId = 11L;
+        ErpSaleCartSaveReqVO reqVO = buildBaseSaveReq();
+        reqVO.setId(cartId);
+        ErpSaleCartSaveReqVO.Item firstRequest = buildItemReq(BigDecimal.ONE, new BigDecimal("15"));
+        firstRequest.setId(101L);
+        ErpSaleCartSaveReqVO.Item secondRequest = buildItemReq(new BigDecimal("2"), new BigDecimal("15"));
+        secondRequest.setId(102L);
+        reqVO.setItems(java.util.Arrays.asList(firstRequest, secondRequest));
+        ErpSaleCartItemDO first = buildCartItem(cartId, 201L, 401L, BigDecimal.ONE).setId(101L);
+        ErpSaleCartItemDO second = buildCartItem(cartId, 201L, 401L, new BigDecimal("2")).setId(102L);
+        ErpSaleCartItemDO deleted = buildCartItem(cartId, 201L, 401L, new BigDecimal("3")).setId(103L);
+
+        when(saleCartMapper.selectById(cartId)).thenReturn(new ErpSaleCartDO()
+                .setId(cartId).setNo("XSST20261011000003").setDeptId(10L)
+                .setStatus(ErpSaleCartStatusEnum.PROCESS.getStatus()));
+        when(saleCartItemMapper.selectListByCartId(cartId))
+                .thenReturn(java.util.Arrays.asList(first, second, deleted));
+        when(productService.validProductList(anyCollection()))
+                .thenReturn(Collections.singletonList(new ErpProductDO().setId(201L).setUnitId(301L)));
+
+        saleCartService.updateSaleCartDraft(reqVO);
+
+        verify(saleCartItemMapper).deleteByIds(argThat(ids ->
+                ids.size() == 2 && ids.contains(102L) && ids.contains(103L)));
+        verify(saleCartItemMapper).updateBatch(argThat((List<ErpSaleCartItemDO> items) ->
+                items.size() == 1 && Long.valueOf(101L).equals(items.get(0).getId())
+                        && new BigDecimal("3").compareTo(items.get(0).getCount()) == 0));
+        verify(saleCartItemMapper, never()).insertBatch(anyCollection());
+    }
+
+    @Test
+    public void testGetSaleCartItemMatches_returnsRawRowsAndSurvivorPage() {
+        Long cartId = 11L;
+        ErpSaleCartItemMatchReqVO.Key key = new ErpSaleCartItemMatchReqVO.Key();
+        key.setProductId(201L);
+        key.setWarehouseId(401L);
+        key.setBatchNo(" B1 ");
+        key.setGiftFlag(false);
+        ErpSaleCartItemMatchReqVO reqVO = new ErpSaleCartItemMatchReqVO();
+        reqVO.setCartId(cartId);
+        reqVO.setPageSize(10);
+        reqVO.setKeys(Collections.singletonList(key));
+        ErpSaleCartItemDO first = buildCartItem(cartId, 201L, 401L, BigDecimal.ONE)
+                .setId(101L).setBatchNo("B1");
+        ErpSaleCartItemDO second = buildCartItem(cartId, 201L, 401L, new BigDecimal("2"))
+                .setId(102L).setBatchNo(" B1 ");
+        when(saleCartMapper.selectById(cartId)).thenReturn(new ErpSaleCartDO().setId(cartId));
+        when(saleCartItemMapper.selectListByCartIdAndStockKeys(eq(cartId), anyCollection()))
+                .thenReturn(java.util.Arrays.asList(first, second));
+        when(saleCartItemMapper.selectDefaultRankByCartIdAndItemId(cartId, 101L)).thenReturn(11L);
+
+        ErpSaleCartItemMatchRespVO result = saleCartService.getSaleCartItemMatches(reqVO);
+
+        assertEquals(1, result.getMatches().size());
+        ErpSaleCartItemMatchRespVO.Match match = result.getMatches().get(0);
+        assertEquals(101L, match.getSurvivorId());
+        assertEquals(2, match.getTargetPageNo());
+        assertEquals(2, match.getItems().size());
+        assertEquals(101L, match.getItems().get(0).getId());
+        assertEquals(102L, match.getItems().get(1).getId());
+    }
+
+    @Test
+    public void testUpdateSourceCart_countBelowConverted_rejected() {
+        Long cartId = 11L;
+        ErpSaleCartSaveReqVO reqVO = buildBaseSaveReq();
+        reqVO.setId(cartId);
+        ErpSaleCartSaveReqVO.Item updateItem = buildItemReq(new BigDecimal("4"), new BigDecimal("20"));
+        updateItem.setId(101L);
+        updateItem.setOperation("update");
+        reqVO.setItems(Collections.singletonList(updateItem));
+        ErpSaleCartItemDO oldItem = buildCartItem(cartId, 201L, 401L, new BigDecimal("5")).setId(101L);
+        ErpSaleConvertRecordDO sourceRecord = new ErpSaleConvertRecordDO().setId(501L)
+                .setTargetId(cartId).setTargetItemId(101L).setCount(new BigDecimal("5"));
+        when(saleCartMapper.selectById(cartId)).thenReturn(new ErpSaleCartDO()
+                .setId(cartId).setNo("XSST20261011000003").setDeptId(10L)
+                .setSourceType(ErpSaleBizSourceTypeEnum.PURCHASE_IN.getType()).setSourceId(88L)
+                .setStatus(ErpSaleCartStatusEnum.PROCESS.getStatus()));
+        when(saleCartItemMapper.selectListByCartId(cartId)).thenReturn(Collections.singletonList(oldItem));
+        when(productService.validProductList(anyCollection()))
+                .thenReturn(Collections.singletonList(new ErpProductDO().setId(201L).setUnitId(301L)));
+        when(saleConvertRecordMapper.selectSourceToCartListByCartIds(Collections.singleton(cartId)))
+                .thenReturn(Collections.singletonList(sourceRecord));
+
+        assertServiceException(() -> saleCartService.updateSaleCartDraft(reqVO),
+                SALE_CART_SOURCE_COUNT_BELOW_CONVERTED, 101L, new BigDecimal("5"));
+
+        verify(saleCartMapper, never()).updateById(any(ErpSaleCartDO.class));
+        verify(saleCartItemMapper, never()).updateBatch(anyCollection());
+    }
+
+    @Test
     public void testUpdateSaleCartDraft_submitted_throwException() {
         ErpSaleCartSaveReqVO reqVO = new ErpSaleCartSaveReqVO();
         reqVO.setId(11L);
@@ -1320,15 +1687,17 @@ public class ErpSaleCartServiceImplTest extends BaseMockitoUnitTest {
                 .thenReturn(new ErpStockDO().setCount(new BigDecimal("10")));
         when(saleCartMapper.updateByIdAndStatus(eq(cartId),
                 eq(ErpSaleCartStatusEnum.PROCESS.getStatus()),
-                argThat(update -> ErpSaleCartStatusEnum.SUBMITTED.getStatus().equals(update.getStatus()))))
+                argThat(update -> ErpSaleCartStatusEnum.PENDING_BILLING_CONFIRM.getStatus().equals(update.getStatus()))))
                 .thenReturn(1);
 
         ErpSaleCartSubmitRespVO result = saleCartService.submitSaleCart(cartId);
 
-        assertEquals(ErpSaleCartStatusEnum.SUBMITTED.getStatus(), result.getStatus());
+        assertEquals(ErpSaleCartStatusEnum.PENDING_BILLING_CONFIRM.getStatus(), result.getStatus());
         verify(saleCartMapper).updateByIdAndStatus(eq(cartId),
                 eq(ErpSaleCartStatusEnum.PROCESS.getStatus()),
-                argThat(update -> ErpSaleCartStatusEnum.SUBMITTED.getStatus().equals(update.getStatus())));
+                argThat(update -> ErpSaleCartStatusEnum.PENDING_BILLING_CONFIRM.getStatus().equals(update.getStatus())));
+        verify(stockLockService, never()).lockStock(any(), any(), any(), any(), any(), any(), any());
+        verify(salePickDeliveryService, never()).generateForSaleCart(anyLong());
     }
 
     @Test
@@ -1337,7 +1706,6 @@ public class ErpSaleCartServiceImplTest extends BaseMockitoUnitTest {
         ErpSaleCartDO cart = new ErpSaleCartDO().setId(cartId).setNo("ST20260509000013")
                 .setStatus(ErpSaleCartStatusEnum.PROCESS.getStatus());
         ErpSaleCartItemDO item = buildCartItem(cartId, 201L, 401L, new BigDecimal("3"));
-        mockFirstApproveConfig(false, false, true);
         when(saleCartMapper.selectById(eq(cartId))).thenReturn(cart);
         when(saleCartItemMapper.selectListByCartId(eq(cartId))).thenReturn(Collections.singletonList(item));
         lenient().when(warehouseService.getWarehouseMap(anyCollection())).thenReturn(Collections.singletonMap(401L,
@@ -1346,16 +1714,16 @@ public class ErpSaleCartServiceImplTest extends BaseMockitoUnitTest {
                 .thenReturn(new ErpStockDO().setCount(new BigDecimal("10")));
         when(saleCartMapper.updateByIdAndStatus(eq(cartId),
                 eq(ErpSaleCartStatusEnum.PROCESS.getStatus()),
-                argThat(update -> ErpSaleCartStatusEnum.FIRST_APPROVE.getStatus().equals(update.getStatus()))))
+                argThat(update -> ErpSaleCartStatusEnum.PENDING_BILLING_CONFIRM.getStatus().equals(update.getStatus()))))
                 .thenReturn(1);
 
         ErpSaleCartSubmitRespVO result = saleCartService.submitSaleCart(cartId);
 
-        assertEquals(ErpSaleCartStatusEnum.FIRST_APPROVE.getStatus(), result.getStatus());
+        assertEquals(ErpSaleCartStatusEnum.PENDING_BILLING_CONFIRM.getStatus(), result.getStatus());
         verify(saleCartMapper).updateByIdAndStatus(eq(cartId),
                 eq(ErpSaleCartStatusEnum.PROCESS.getStatus()),
-                argThat(update -> ErpSaleCartStatusEnum.FIRST_APPROVE.getStatus().equals(update.getStatus())
-                        && update.getFirstAuditTime() == null && update.getFirstAuditUserId() == null));
+                argThat(update -> ErpSaleCartStatusEnum.PENDING_BILLING_CONFIRM.getStatus().equals(update.getStatus())));
+        verify(stockLockService, never()).lockStock(any(), any(), any(), any(), any(), any(), any());
     }
 
     @Test
@@ -1364,25 +1732,21 @@ public class ErpSaleCartServiceImplTest extends BaseMockitoUnitTest {
         ErpSaleCartDO cart = new ErpSaleCartDO().setId(cartId).setNo("ST20260509000019")
                 .setDeptId(99L).setStatus(ErpSaleCartStatusEnum.PROCESS.getStatus());
         ErpSaleCartItemDO item = buildCartItem(cartId, 201L, 401L, new BigDecimal("3"));
-        mockFirstApproveConfig(true, true, false);
-        when(saleConfigMapper.selectListByType(eq("SALE_CART_FIRST_APPROVE_DEPT")))
-                .thenReturn(Collections.singletonList(new ErpSaleConfigDO().setDeptId(10L)));
         when(saleCartMapper.selectById(eq(cartId))).thenReturn(cart);
         when(saleCartItemMapper.selectListByCartId(eq(cartId))).thenReturn(Collections.singletonList(item));
         when(stockService.getStock(eq(201L), eq(401L)))
                 .thenReturn(new ErpStockDO().setCount(new BigDecimal("10")));
         when(saleCartMapper.updateByIdAndStatus(eq(cartId),
                 eq(ErpSaleCartStatusEnum.PROCESS.getStatus()),
-                argThat(update -> ErpSaleCartStatusEnum.FIRST_APPROVE.getStatus().equals(update.getStatus()))))
+                argThat(update -> ErpSaleCartStatusEnum.PENDING_BILLING_CONFIRM.getStatus().equals(update.getStatus()))))
                 .thenReturn(1);
 
         ErpSaleCartSubmitRespVO result = saleCartService.submitSaleCart(cartId);
 
-        assertEquals(ErpSaleCartStatusEnum.FIRST_APPROVE.getStatus(), result.getStatus());
+        assertEquals(ErpSaleCartStatusEnum.PENDING_BILLING_CONFIRM.getStatus(), result.getStatus());
         verify(saleCartMapper).updateByIdAndStatus(eq(cartId),
                 eq(ErpSaleCartStatusEnum.PROCESS.getStatus()),
-                argThat(update -> ErpSaleCartStatusEnum.FIRST_APPROVE.getStatus().equals(update.getStatus())
-                        && update.getFirstAuditTime() == null && update.getFirstAuditUserId() == null));
+                argThat(update -> ErpSaleCartStatusEnum.PENDING_BILLING_CONFIRM.getStatus().equals(update.getStatus())));
     }
 
     @Test
@@ -1391,24 +1755,21 @@ public class ErpSaleCartServiceImplTest extends BaseMockitoUnitTest {
         ErpSaleCartDO cart = new ErpSaleCartDO().setId(cartId).setNo("ST20260509000020")
                 .setDeptId(10L).setStatus(ErpSaleCartStatusEnum.PROCESS.getStatus());
         ErpSaleCartItemDO item = buildCartItem(cartId, 201L, 401L, new BigDecimal("3"));
-        mockFirstApproveConfig(true, true, false);
-        when(saleConfigMapper.selectListByType(eq("SALE_CART_FIRST_APPROVE_DEPT")))
-                .thenReturn(Collections.singletonList(new ErpSaleConfigDO().setDeptId(10L)));
         when(saleCartMapper.selectById(eq(cartId))).thenReturn(cart);
         when(saleCartItemMapper.selectListByCartId(eq(cartId))).thenReturn(Collections.singletonList(item));
         when(stockService.getStock(eq(201L), eq(401L)))
                 .thenReturn(new ErpStockDO().setCount(new BigDecimal("10")));
         when(saleCartMapper.updateByIdAndStatus(eq(cartId),
                 eq(ErpSaleCartStatusEnum.PROCESS.getStatus()),
-                argThat(update -> ErpSaleCartStatusEnum.SUBMITTED.getStatus().equals(update.getStatus()))))
+                argThat(update -> ErpSaleCartStatusEnum.PENDING_BILLING_CONFIRM.getStatus().equals(update.getStatus()))))
                 .thenReturn(1);
 
         ErpSaleCartSubmitRespVO result = saleCartService.submitSaleCart(cartId);
 
-        assertEquals(ErpSaleCartStatusEnum.SUBMITTED.getStatus(), result.getStatus());
+        assertEquals(ErpSaleCartStatusEnum.PENDING_BILLING_CONFIRM.getStatus(), result.getStatus());
         verify(saleCartMapper).updateByIdAndStatus(eq(cartId),
                 eq(ErpSaleCartStatusEnum.PROCESS.getStatus()),
-                argThat(update -> ErpSaleCartStatusEnum.SUBMITTED.getStatus().equals(update.getStatus())));
+                argThat(update -> ErpSaleCartStatusEnum.PENDING_BILLING_CONFIRM.getStatus().equals(update.getStatus())));
     }
 
     @Test
@@ -1657,12 +2018,96 @@ public class ErpSaleCartServiceImplTest extends BaseMockitoUnitTest {
 
         ErpSaleCartSubmitRespVO result = saleCartService.submitSaleCart(cartId);
 
-        assertEquals(ErpSaleCartStatusEnum.SUBMITTED.getStatus(), result.getStatus());
+        assertEquals(ErpSaleCartStatusEnum.PENDING_BILLING_CONFIRM.getStatus(), result.getStatus());
         verify(stockMoveService, never()).createOrUpdateTransferOutDraftBySource(ArgumentMatchers.<ErpStockMoveSaveReqVO>argThat(req ->
                 cart.getDeptId().equals(req.getDeptId())
                         && cart.getId().equals(req.getSourceId())
                         && req.getItems().size() == 1
                         && item.getWarehouseId().equals(req.getItems().get(0).getFromWarehouseId())));
+    }
+
+    @Test
+    public void testConfirmSaleCart_requiredFirstApprove_entersSubmittedWithoutFulfillment() {
+        Long cartId = 278L;
+        ErpSaleCartDO cart = new ErpSaleCartDO().setId(cartId).setNo("ST20261011000278")
+                .setDeptId(10L).setStatus(ErpSaleCartStatusEnum.PENDING_BILLING_CONFIRM.getStatus());
+        ErpSaleCartItemDO item = buildCartItem(cartId, 201L, 401L, new BigDecimal("3")).setId(1001L);
+        mockFirstApproveConfig(true, false, true);
+        when(saleCartMapper.selectById(cartId)).thenReturn(cart);
+        when(saleCartItemMapper.selectListByCartId(cartId)).thenReturn(Collections.singletonList(item));
+        when(saleCartMapper.updateByIdAndStatus(eq(cartId),
+                eq(ErpSaleCartStatusEnum.PENDING_BILLING_CONFIRM.getStatus()),
+                argThat(update -> ErpSaleCartStatusEnum.SUBMITTED.getStatus().equals(update.getStatus())
+                        && update.getBillingConfirmTime() != null))).thenReturn(1);
+
+        ErpSaleCartSubmitRespVO result = saleCartService.confirmSaleCart(cartId);
+
+        assertEquals(ErpSaleCartStatusEnum.SUBMITTED.getStatus(), result.getStatus());
+        verify(stockLockService, never()).lockStock(any(), any(), any(), any(), any(), any(), any());
+        verify(stockMoveService, never()).syncTransferOutDraftsBySource(any());
+        verify(salePickDeliveryService, never()).generateForSaleCart(anyLong());
+    }
+
+    @Test
+    public void testConfirmSaleCart_firstApproveSkipped_locksAndCreatesFulfillment() {
+        Long cartId = 279L;
+        ErpSaleCartDO cart = new ErpSaleCartDO().setId(cartId).setNo("ST20261011000279")
+                .setDeptId(10L).setStatus(ErpSaleCartStatusEnum.PENDING_BILLING_CONFIRM.getStatus());
+        ErpSaleCartItemDO item = buildCartItem(cartId, 201L, 401L, new BigDecimal("3")).setId(1002L);
+        mockFirstApproveConfig(false, false, true);
+        when(saleCartMapper.selectById(cartId)).thenReturn(cart);
+        when(saleCartItemMapper.selectListByCartId(cartId)).thenReturn(Collections.singletonList(item));
+        when(saleCartMapper.updateByIdAndStatus(eq(cartId),
+                eq(ErpSaleCartStatusEnum.PENDING_BILLING_CONFIRM.getStatus()),
+                argThat(update -> ErpSaleCartStatusEnum.FIRST_APPROVE.getStatus().equals(update.getStatus())
+                        && update.getBillingConfirmTime() != null))).thenReturn(1);
+
+        ErpSaleCartSubmitRespVO result = saleCartService.confirmSaleCart(cartId);
+
+        assertEquals(ErpSaleCartStatusEnum.FIRST_APPROVE.getStatus(), result.getStatus());
+        verify(stockLockService).lockStock(eq(201L), eq(401L), eq(new BigDecimal("3")),
+                eq(ErpSaleBizSourceTypeEnum.CART.getType()), eq(cartId), any(), anyString());
+        verify(salePickDeliveryService).generateForSaleCart(cartId);
+    }
+
+    @Test
+    public void testConfirmSaleCart_stockInsufficient_keepsPendingWithoutFulfillment() {
+        Long cartId = 280L;
+        ErpSaleCartDO cart = new ErpSaleCartDO().setId(cartId).setNo("ST20261011000280")
+                .setDeptId(10L).setStatus(ErpSaleCartStatusEnum.PENDING_BILLING_CONFIRM.getStatus());
+        ErpSaleCartItemDO item = buildCartItem(cartId, 201L, 401L, new BigDecimal("3")).setId(1003L);
+        when(saleCartMapper.selectById(cartId)).thenReturn(cart);
+        when(saleCartItemMapper.selectListByCartId(cartId)).thenReturn(Collections.singletonList(item));
+        when(productService.getProductVOMap(anyCollection())).thenReturn(Collections.singletonMap(201L,
+                new ErpProductRespVO().setId(201L).setCode("P001").setName("Product1")));
+        when(stockService.getStock(201L, 401L)).thenReturn(new ErpStockDO().setCount(new BigDecimal("2")));
+
+        ServiceException exception = assertThrows(ServiceException.class,
+                () -> saleCartService.confirmSaleCart(cartId));
+
+        assertEquals(STOCK_COUNT_NEGATIVE2.getCode(), exception.getCode());
+        verify(saleCartMapper, never()).updateByIdAndStatus(eq(cartId), any(), any());
+        verify(stockLockService, never()).lockStock(any(), any(), any(), any(), any(), any(), any());
+        verify(salePickDeliveryService, never()).generateForSaleCart(anyLong());
+    }
+
+    @Test
+    public void testConfirmSaleCart_concurrentStatusChange_doesNotCreateFulfillment() {
+        Long cartId = 281L;
+        ErpSaleCartDO cart = new ErpSaleCartDO().setId(cartId).setNo("ST20261011000281")
+                .setDeptId(10L).setStatus(ErpSaleCartStatusEnum.PENDING_BILLING_CONFIRM.getStatus());
+        ErpSaleCartItemDO item = buildCartItem(cartId, 201L, 401L, BigDecimal.ONE).setId(1004L);
+        mockFirstApproveConfig(false, false, true);
+        when(saleCartMapper.selectById(cartId)).thenReturn(cart);
+        when(saleCartItemMapper.selectListByCartId(cartId)).thenReturn(Collections.singletonList(item));
+        when(saleCartMapper.updateByIdAndStatus(eq(cartId),
+                eq(ErpSaleCartStatusEnum.PENDING_BILLING_CONFIRM.getStatus()), any())).thenReturn(0);
+
+        assertServiceException(() -> saleCartService.confirmSaleCart(cartId), SALE_CART_CONFIRM_FAIL);
+
+        verify(stockLockService, never()).lockStock(any(), any(), any(), any(), any(), any(), any());
+        verify(stockMoveService, never()).syncTransferOutDraftsBySource(any());
+        verify(salePickDeliveryService, never()).generateForSaleCart(anyLong());
     }
 
     @Test
@@ -1760,6 +2205,7 @@ public class ErpSaleCartServiceImplTest extends BaseMockitoUnitTest {
                 ErpSaleBizSourceTypeEnum.CART.getType(), cartId);
         verify(stockLockService).unlockStock(ErpSaleBizSourceTypeEnum.CART.getType(), cartId);
         verify(saleCartMapper).cancelFirstApprove(cartId);
+        verify(saleCartMapper, never()).rollbackToPendingBillingConfirmForUnlock(cartId);
     }
 
     @Test
@@ -1823,14 +2269,39 @@ public class ErpSaleCartServiceImplTest extends BaseMockitoUnitTest {
         when(stockMoveService.getUnlockCartPermission(transferOut, Collections.singletonList(item)))
                 .thenReturn(ErpStockMoveOperationPermission.allowed());
         when(saleCartMapper.selectById(cartId)).thenReturn(cart);
-        when(saleCartMapper.cancelFirstApprove(cartId)).thenReturn(1);
+        when(saleCartMapper.rollbackToPendingBillingConfirmForUnlock(cartId)).thenReturn(1);
 
         saleCartService.unlockSaleCartByTransferOutId(transferOutId);
 
+        InOrder lockOrder = org.mockito.Mockito.inOrder(salePickDeliveryService, saleCartMapper);
+        lockOrder.verify(salePickDeliveryService).rollbackUnstartedSaleCartFulfillment(cartId);
+        lockOrder.verify(saleCartMapper).selectByIdForUpdate(cartId);
         verify(stockMoveService).deleteUnapprovedTransferOutBySource(
                 ErpSaleBizSourceTypeEnum.CART.getType(), cartId);
         verify(stockLockService).unlockStock(ErpSaleBizSourceTypeEnum.CART.getType(), cartId);
-        verify(saleCartMapper).cancelFirstApprove(cartId);
+        verify(saleCartMapper).rollbackToPendingBillingConfirmForUnlock(cartId);
+        verify(saleCartMapper, never()).cancelFirstApprove(cartId);
+    }
+
+    @Test
+    public void testUnlockSaleCartByTransferOutId_fulfillmentStarted_rejectedBeforeCartMutation() {
+        Long transferOutId = 314L;
+        Long cartId = 188L;
+        ErpStockMoveDO transferOut = buildUnlockTransferOut(transferOutId, cartId);
+        when(stockMoveService.getStockMoveForUpdate(transferOutId)).thenReturn(transferOut);
+        when(stockMoveService.getStockMoveItemListByMoveId(transferOutId)).thenReturn(Collections.emptyList());
+        when(stockMoveService.getUnlockCartPermission(transferOut, Collections.emptyList()))
+                .thenReturn(ErpStockMoveOperationPermission.allowed());
+        doThrow(new ServiceException(SALE_CART_FULFILLMENT_TASK_STARTED.getCode(),
+                SALE_CART_FULFILLMENT_TASK_STARTED.getMsg()))
+                .when(salePickDeliveryService).rollbackUnstartedSaleCartFulfillment(cartId);
+
+        assertServiceException(() -> saleCartService.unlockSaleCartByTransferOutId(transferOutId),
+                SALE_CART_FULFILLMENT_TASK_STARTED);
+
+        verify(saleCartMapper, never()).selectByIdForUpdate(anyLong());
+        verify(stockMoveService, never()).deleteUnapprovedTransferOutBySource(any(), any());
+        verify(stockLockService, never()).unlockStock(any(), any());
     }
 
     @Test
@@ -1845,7 +2316,7 @@ public class ErpSaleCartServiceImplTest extends BaseMockitoUnitTest {
         when(stockMoveService.getUnlockCartPermission(transferOut, Collections.emptyList()))
                 .thenReturn(ErpStockMoveOperationPermission.allowed());
         when(saleCartMapper.selectById(cartId)).thenReturn(cart);
-        when(saleCartMapper.cancelFirstApprove(cartId)).thenReturn(0);
+        when(saleCartMapper.rollbackToPendingBillingConfirmForUnlock(cartId)).thenReturn(0);
 
         assertServiceException(() -> saleCartService.unlockSaleCartByTransferOutId(transferOutId),
                 SALE_CART_STATUS_CHANGED);
@@ -1853,7 +2324,8 @@ public class ErpSaleCartServiceImplTest extends BaseMockitoUnitTest {
         verify(stockMoveService).deleteUnapprovedTransferOutBySource(
                 ErpSaleBizSourceTypeEnum.CART.getType(), cartId);
         verify(stockLockService).unlockStock(ErpSaleBizSourceTypeEnum.CART.getType(), cartId);
-        verify(saleCartMapper).cancelFirstApprove(cartId);
+        verify(saleCartMapper).rollbackToPendingBillingConfirmForUnlock(cartId);
+        verify(saleCartMapper, never()).cancelFirstApprove(cartId);
     }
 
     @Test
@@ -2071,17 +2543,41 @@ public class ErpSaleCartServiceImplTest extends BaseMockitoUnitTest {
     }
 
     @Test
+    public void testFirstApproveSaleCart_confirmedSubmittedDoesNotSubtractCurrentCartFromOccupied() {
+        Long cartId = 174L;
+        ErpSaleCartDO cart = new ErpSaleCartDO().setId(cartId).setNo("ST20261011000174")
+                .setDeptId(10L).setStatus(ErpSaleCartStatusEnum.SUBMITTED.getStatus())
+                .setBillingConfirmUserId(1L).setBillingConfirmTime(LocalDateTime.now());
+        ErpSaleCartItemDO item = buildCartItem(cartId, 201L, 401L, new BigDecimal("3")).setId(1005L);
+        mockFirstApproveConfig(true, true, true);
+        when(saleConfigMapper.selectListByType(eq("SALE_CART_FIRST_APPROVE_DEPT")))
+                .thenReturn(Collections.singletonList(new ErpSaleConfigDO().setDeptId(10L)));
+        when(saleCartMapper.selectById(eq(cartId))).thenReturn(cart);
+        when(saleCartItemMapper.selectListByCartId(eq(cartId))).thenReturn(Collections.singletonList(item));
+        when(stockService.getStock(eq(201L), eq(401L)))
+                .thenReturn(new ErpStockDO().setCount(new BigDecimal("10")));
+        when(stockService.getOccupiedCountMap(anyCollection(), anyCollection()))
+                .thenReturn(Collections.singletonMap("201_401", new BigDecimal("8")));
+
+        ServiceException exception = assertThrows(ServiceException.class,
+                () -> saleCartService.firstApproveSaleCart(cartId));
+
+        assertEquals(STOCK_COUNT_NEGATIVE2.getCode(), exception.getCode());
+        verify(stockLockService, never()).lockStock(any(), any(), any(), any(), any(), any(), any());
+        verify(saleCartMapper, never()).updateByIdAndStatus(eq(cartId), any(), any());
+    }
+
+    @Test
     public void testRejectSaleCart_resetToProcess_success() {
         Long cartId = 73L;
         ErpSaleCartDO cart = new ErpSaleCartDO().setId(cartId).setNo("ST20260509000005")
                 .setStatus(ErpSaleCartStatusEnum.SUBMITTED.getStatus());
         when(saleCartMapper.selectById(eq(cartId))).thenReturn(cart);
+        when(saleCartMapper.rejectToProcess(cartId, ErpSaleCartStatusEnum.SUBMITTED.getStatus())).thenReturn(1);
 
         saleCartService.rejectSaleCart(cartId);
 
-        verify(saleCartMapper).updateByIdAndStatus(eq(cartId),
-                eq(ErpSaleCartStatusEnum.SUBMITTED.getStatus()),
-                argThat(update -> ErpSaleCartStatusEnum.PROCESS.getStatus().equals(update.getStatus())));
+        verify(saleCartMapper).rejectToProcess(cartId, ErpSaleCartStatusEnum.SUBMITTED.getStatus());
     }
 
     @Test
@@ -2405,7 +2901,7 @@ public class ErpSaleCartServiceImplTest extends BaseMockitoUnitTest {
     public void testAutoFinalApproveAfterTransferOut_unapprovedTransferOutExists_noFinalApprove() {
         Long cartId = 279L;
         ErpSaleCartDO cart = buildFinalApproveCart(cartId, ErpSaleCartStatusEnum.FIRST_APPROVE.getStatus());
-        when(saleCartMapper.selectByIdForUpdate(eq(cartId))).thenReturn(cart);
+        when(saleCartMapper.selectById(cartId)).thenReturn(cart);
         when(stockMoveService.hasUnapprovedTransferOutBySource(
                 ErpSaleBizSourceTypeEnum.CART.getType(), cartId)).thenReturn(true);
 
@@ -2413,7 +2909,6 @@ public class ErpSaleCartServiceImplTest extends BaseMockitoUnitTest {
 
         verify(stockMoveService).hasUnapprovedTransferOutBySource(
                 ErpSaleBizSourceTypeEnum.CART.getType(), cartId);
-        verify(stockMoveService, never()).hasApprovedTransferOutBySource(any(), any());
         verify(saleOutService, never()).createGeneratedSaleOut(any(), any(), any(), any(), any());
     }
 
@@ -2490,7 +2985,6 @@ public class ErpSaleCartServiceImplTest extends BaseMockitoUnitTest {
         ErpSaleCartDO cart = buildFinalApproveCart(cartId, ErpSaleCartStatusEnum.FIRST_APPROVE.getStatus());
         ErpSaleCartItemDO item = buildCartItem(cartId, 201L, 401L, new BigDecimal("3"));
         mockCrossDeptFinalApproveContext(cart, item);
-        when(saleCartMapper.selectByIdForUpdate(eq(cartId))).thenReturn(cart);
         when(stockMoveService.hasUnapprovedTransferOutBySource(
                 ErpSaleBizSourceTypeEnum.CART.getType(), cartId)).thenReturn(true, false);
         when(stockMoveService.hasApprovedTransferOutBySource(
@@ -2501,7 +2995,7 @@ public class ErpSaleCartServiceImplTest extends BaseMockitoUnitTest {
         saleCartService.autoFinalApproveAfterTransferOut(cartId, 901L);
         saleCartService.autoFinalApproveAfterTransferOut(cartId, 902L);
 
-        verify(saleCartMapper, times(2)).selectByIdForUpdate(cartId);
+        verify(saleCartMapper, times(3)).selectByIdForUpdate(cartId);
         verify(saleOutService, times(1)).createGeneratedSaleOut(any(),
                 eq(ErpSaleBizSourceTypeEnum.CART.getType()), eq(cartId), eq(cart.getNo()), eq(false));
         verify(saleCartMapper).updateByIdAndStatus(eq(cartId),
@@ -2513,11 +3007,11 @@ public class ErpSaleCartServiceImplTest extends BaseMockitoUnitTest {
     public void testAutoFinalApproveAfterTransferOut_queryFails_restoresDataPermissionContext() {
         Long cartId = 281L;
         RuntimeException queryException = new RuntimeException("query failed");
-        when(saleCartMapper.selectByIdForUpdate(eq(cartId))).thenAnswer(invocation -> {
+        doAnswer(invocation -> {
             assertNotNull(DataPermissionContextHolder.get());
             assertFalse(DataPermissionContextHolder.get().enable());
             throw queryException;
-        });
+        }).when(saleCartMapper).selectByIdForUpdate(eq(cartId));
 
         RuntimeException actual = assertThrows(RuntimeException.class,
                 () -> saleCartService.autoFinalApproveAfterTransferOut(cartId, 900L));
@@ -2635,6 +3129,43 @@ public class ErpSaleCartServiceImplTest extends BaseMockitoUnitTest {
                 config.getConfigValue().contains("\"enabled\":false")
                         && config.getConfigValue().contains("\"deptAuthEnabled\":true")));
         verify(saleConfigMapper, never()).insertBatch(any());
+    }
+
+    @Test
+    public void testBatchUpdateSaleCartItems_warehouseCollision_mergesSourceAndTargetGroups() {
+        Long cartId = 18L;
+        ErpSaleCartDO cart = new ErpSaleCartDO().setId(cartId).setNo("XSST20261012000018")
+                .setDeptId(10L).setStatus(ErpSaleCartStatusEnum.PROCESS.getStatus())
+                .setDiscountPercent(BigDecimal.ZERO).setFeeAmount(BigDecimal.ZERO).setOtherPrice(BigDecimal.ZERO);
+        ErpSaleCartItemDO target = buildCartItem(cartId, 201L, 401L, new BigDecimal("10")).setId(101L);
+        ErpSaleCartItemDO moving = buildCartItem(cartId, 201L, 402L, new BigDecimal("5")).setId(102L);
+        ErpSaleCartItemDO sourceFirst = buildCartItem(cartId, 201L, 402L, new BigDecimal("2")).setId(103L);
+        ErpSaleCartItemDO sourceSecond = buildCartItem(cartId, 201L, 402L, new BigDecimal("3")).setId(104L);
+        ErpSaleCartItemBatchUpdateReqVO reqVO = new ErpSaleCartItemBatchUpdateReqVO();
+        reqVO.setCartId(cartId);
+        reqVO.setItemIds(Collections.singletonList(102L));
+        reqVO.setWarehouseId(401L);
+        when(saleCartMapper.selectById(cartId)).thenReturn(cart);
+        when(saleCartItemMapper.selectListByCartId(cartId))
+                .thenReturn(java.util.Arrays.asList(target, moving, sourceFirst, sourceSecond));
+        when(batchUpdateSupport.validateTargetWarehouse(401L))
+                .thenReturn(new ErpWarehouseDO().setId(401L).setDeptId(10L));
+        when(batchUpdateSupport.resolveTargetDeptId(any(), nullable(Long.class), anyString(), any()))
+                .thenReturn(10L);
+
+        saleCartService.batchUpdateSaleCartItems(reqVO);
+
+        verify(saleCartItemMapper).deleteByIds(argThat(ids ->
+                ids.size() == 2 && ids.contains(102L) && ids.contains(104L)));
+        verify(saleCartItemMapper).updateBatch(argThat((Collection<ErpSaleCartItemDO> items) -> {
+            Map<Long, ErpSaleCartItemDO> itemMap = items.stream()
+                    .collect(Collectors.toMap(ErpSaleCartItemDO::getId, item -> item));
+            return itemMap.size() == 2
+                    && new BigDecimal("15").compareTo(itemMap.get(101L).getCount()) == 0
+                    && new BigDecimal("5").compareTo(itemMap.get(103L).getCount()) == 0;
+        }));
+        verify(saleCartMapper).updateById(argThat((ErpSaleCartDO update) ->
+                new BigDecimal("20").compareTo(update.getTotalCount()) == 0));
     }
 
     @Test

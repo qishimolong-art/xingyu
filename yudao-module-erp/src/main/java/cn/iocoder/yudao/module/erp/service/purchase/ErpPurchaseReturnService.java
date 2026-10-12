@@ -118,6 +118,23 @@ public interface ErpPurchaseReturnService {
     ErpPurchaseReturnDO validatePurchaseReturn(Long id);
 
     /**
+     * 获得当前用户对指定供应商可用的采购退货部门列表
+     *
+     * @param supplierId 供应商编号
+     * @return 部门精简列表
+     */
+    List<DeptSimpleRespVO> getSupplierAvailableDeptSimpleList(Long supplierId);
+
+    /**
+     * 获得当前用户对指定供应商可用的采购退货部门分页
+     *
+     * @param supplierId 供应商编号
+     * @param pageParam 分页参数
+     * @return 部门分页
+     */
+    PageResult<DeptSimpleRespVO> getSupplierAvailableDeptSimplePage(Long supplierId, PageParam pageParam);
+
+    /**
      * 获得采购退货分页
      *
      * @param pageReqVO 分页查询

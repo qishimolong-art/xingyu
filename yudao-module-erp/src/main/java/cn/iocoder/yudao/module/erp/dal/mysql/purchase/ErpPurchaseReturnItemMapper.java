@@ -3,9 +3,12 @@ package cn.iocoder.yudao.module.erp.dal.mysql.purchase;
 import cn.hutool.core.collection.CollUtil;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.mybatis.core.mapper.BaseMapperX;
+import cn.iocoder.yudao.framework.mybatis.core.query.MPJLambdaWrapperX;
 import cn.iocoder.yudao.framework.mybatis.core.query.LambdaQueryWrapperX;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.returns.ErpPurchaseReturnItemPageReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.invoice.ErpPurchaseInvoiceSourceItemPageReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseReturnItemDO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseReturnDO;
 import cn.iocoder.yudao.module.erp.enums.ErpAuditStatus;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.toolkit.support.SFunction;
@@ -69,6 +72,49 @@ public interface ErpPurchaseReturnItemMapper extends BaseMapperX<ErpPurchaseRetu
 
     default List<ErpPurchaseReturnItemDO> selectListByReturnIds(Collection<Long> returnIds) {
         return selectList(ErpPurchaseReturnItemDO::getReturnId, returnIds);
+    }
+
+    default PageResult<ErpPurchaseReturnItemDO> selectInvoiceSourcePage(
+            ErpPurchaseInvoiceSourceItemPageReqVO reqVO) {
+        if (CollUtil.isEmpty(reqVO.getSourceDocIds())) {
+            return PageResult.empty();
+        }
+        QueryWrapper<ErpPurchaseReturnItemDO> query = new QueryWrapper<ErpPurchaseReturnItemDO>()
+                .in("return_id", reqVO.getSourceDocIds())
+                .apply("COALESCE(count,0)>COALESCE((SELECT SUM(COALESCE(a.allocated_count,0)) "
+                        + "FROM erp_purchase_invoice_source_allocation a WHERE a.deleted=b'0' "
+                        + "AND a.tenant_id=erp_purchase_return_items.tenant_id AND a.source_type=30 "
+                        + "AND a.source_item_id=erp_purchase_return_items.id),0)")
+                .orderByAsc("id");
+        return selectPage(reqVO, query);
+    }
+
+    default PageResult<ErpPurchaseReturnItemDO> selectInvoiceMixedSourcePage(
+            ErpPurchaseInvoiceSourceItemPageReqVO reqVO) {
+        if (CollUtil.isEmpty(reqVO.getSourceDocIds())) {
+            return PageResult.empty();
+        }
+        MPJLambdaWrapperX<ErpPurchaseReturnItemDO> query = new MPJLambdaWrapperX<>();
+        query.selectAll(ErpPurchaseReturnItemDO.class)
+                .innerJoin(ErpPurchaseReturnDO.class, ErpPurchaseReturnDO::getId,
+                        ErpPurchaseReturnItemDO::getReturnId)
+                .in(ErpPurchaseReturnItemDO::getReturnId, reqVO.getSourceDocIds())
+                .apply("COALESCE(t.count,0)>COALESCE((SELECT SUM(COALESCE(a.allocated_count,0)) "
+                        + "FROM erp_purchase_invoice_source_allocation a WHERE a.deleted=b'0' "
+                        + "AND a.tenant_id=t.tenant_id AND a.source_type=30 AND a.source_item_id=t.id),0)")
+                .orderByDesc(ErpPurchaseReturnDO::getReturnTime)
+                .orderByDesc(ErpPurchaseReturnItemDO::getReturnId)
+                .orderByAsc(ErpPurchaseReturnItemDO::getId);
+        return selectJoinPage(reqVO, ErpPurchaseReturnItemDO.class, query);
+    }
+
+    default List<ErpPurchaseReturnItemDO> selectListByIdsForUpdate(Collection<Long> ids) {
+        if (CollUtil.isEmpty(ids)) {
+            return Collections.emptyList();
+        }
+        return selectList(new LambdaQueryWrapperX<ErpPurchaseReturnItemDO>()
+                .in(ErpPurchaseReturnItemDO::getId, ids)
+                .orderByAsc(ErpPurchaseReturnItemDO::getId).last("FOR UPDATE"));
     }
 
     default Map<Long, Integer> selectItemCountMapByReturnIds(Collection<Long> returnIds) {

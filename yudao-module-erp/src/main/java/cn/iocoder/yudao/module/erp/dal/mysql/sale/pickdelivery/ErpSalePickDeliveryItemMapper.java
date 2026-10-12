@@ -25,6 +25,11 @@ public interface ErpSalePickDeliveryItemMapper extends BaseMapperX<ErpSalePickDe
         return selectList(buildWarehousePositionOrderWrapper().eq("order_id", orderId));
     }
 
+    default int deleteByOrderId(Long orderId) {
+        return delete(new LambdaQueryWrapperX<ErpSalePickDeliveryItemDO>()
+                .eq(ErpSalePickDeliveryItemDO::getOrderId, orderId));
+    }
+
     default List<ErpSalePickDeliveryItemDO> selectListByPickTaskId(Long pickTaskId) {
         return selectList(buildWarehousePositionOrderWrapper().eq("pick_task_id", pickTaskId));
     }

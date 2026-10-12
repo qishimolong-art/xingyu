@@ -2,14 +2,18 @@ package cn.iocoder.yudao.module.erp.dal.mysql.purchase;
 
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.mybatis.core.mapper.BaseMapperX;
+import cn.iocoder.yudao.framework.mybatis.core.query.MPJLambdaWrapperX;
 import cn.iocoder.yudao.framework.mybatis.core.query.LambdaQueryWrapperX;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.priceadjust.ErpPurchasePriceAdjustItemPageReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.invoice.ErpPurchaseInvoiceSourceItemPageReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchasePriceAdjustItemDO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchasePriceAdjustDO;
 import cn.hutool.core.collection.CollUtil;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.toolkit.support.SFunction;
 import org.apache.ibatis.annotations.Mapper;
 
+import java.math.BigDecimal;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
@@ -52,6 +56,51 @@ public interface ErpPurchasePriceAdjustItemMapper extends BaseMapperX<ErpPurchas
 
     default List<ErpPurchasePriceAdjustItemDO> selectListByAdjustIds(Collection<Long> adjustIds) {
         return selectList(ErpPurchasePriceAdjustItemDO::getAdjustId, adjustIds);
+    }
+
+    default PageResult<ErpPurchasePriceAdjustItemDO> selectInvoiceSourcePage(
+            ErpPurchaseInvoiceSourceItemPageReqVO reqVO) {
+        if (CollUtil.isEmpty(reqVO.getSourceDocIds())) {
+            return PageResult.empty();
+        }
+        QueryWrapper<ErpPurchasePriceAdjustItemDO> query = new QueryWrapper<ErpPurchasePriceAdjustItemDO>()
+                .in("adjust_id", reqVO.getSourceDocIds())
+                .ne("adjust_price", 0)
+                .apply("COALESCE(count,0)>COALESCE((SELECT SUM(COALESCE(a.allocated_count,0)) "
+                        + "FROM erp_purchase_invoice_source_allocation a WHERE a.deleted=b'0' "
+                        + "AND a.tenant_id=erp_purchase_price_adjust_item.tenant_id AND a.source_type=20 "
+                        + "AND a.source_item_id=erp_purchase_price_adjust_item.id),0)")
+                .orderByAsc("id");
+        return selectPage(reqVO, query);
+    }
+
+    default PageResult<ErpPurchasePriceAdjustItemDO> selectInvoiceMixedSourcePage(
+            ErpPurchaseInvoiceSourceItemPageReqVO reqVO) {
+        if (CollUtil.isEmpty(reqVO.getSourceDocIds())) {
+            return PageResult.empty();
+        }
+        MPJLambdaWrapperX<ErpPurchasePriceAdjustItemDO> query = new MPJLambdaWrapperX<>();
+        query.selectAll(ErpPurchasePriceAdjustItemDO.class)
+                .innerJoin(ErpPurchasePriceAdjustDO.class, ErpPurchasePriceAdjustDO::getId,
+                        ErpPurchasePriceAdjustItemDO::getAdjustId)
+                        .in(ErpPurchasePriceAdjustItemDO::getAdjustId, reqVO.getSourceDocIds())
+                        .ne(ErpPurchasePriceAdjustItemDO::getAdjustPrice, BigDecimal.ZERO)
+                        .apply("COALESCE(t.count,0)>COALESCE((SELECT SUM(COALESCE(a.allocated_count,0)) "
+                                + "FROM erp_purchase_invoice_source_allocation a WHERE a.deleted=b'0' "
+                                + "AND a.tenant_id=t.tenant_id AND a.source_type=20 AND a.source_item_id=t.id),0)")
+                        .orderByDesc(ErpPurchasePriceAdjustDO::getAdjustTime)
+                        .orderByDesc(ErpPurchasePriceAdjustItemDO::getAdjustId)
+                .orderByAsc(ErpPurchasePriceAdjustItemDO::getId);
+        return selectJoinPage(reqVO, ErpPurchasePriceAdjustItemDO.class, query);
+    }
+
+    default List<ErpPurchasePriceAdjustItemDO> selectListByIdsForUpdate(Collection<Long> ids) {
+        if (CollUtil.isEmpty(ids)) {
+            return Collections.emptyList();
+        }
+        return selectList(new LambdaQueryWrapperX<ErpPurchasePriceAdjustItemDO>()
+                .in(ErpPurchasePriceAdjustItemDO::getId, ids)
+                .orderByAsc(ErpPurchasePriceAdjustItemDO::getId).last("FOR UPDATE"));
     }
 
     default Map<Long, Integer> selectItemCountMapByAdjustIds(Collection<Long> adjustIds) {

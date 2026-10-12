@@ -33,6 +33,9 @@ public class ErpSaleCartRespVO {
     private String deptName;
     @ExcelProperty("开单时间")
     private LocalDateTime cartTime;
+    private Long billingConfirmUserId;
+    private String billingConfirmUserName;
+    private LocalDateTime billingConfirmTime;
     private Long firstAuditUserId;
     private LocalDateTime firstAuditTime;
     private Long finalAuditUserId;

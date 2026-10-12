@@ -451,6 +451,24 @@ public class ErpPurchasePriceAdjustController {
                 : buildVOPageResult(pageResult));
     }
 
+    @GetMapping("/supplier-dept-simple-list")
+    @Operation(summary = "获得供应商对当前用户可用的采购调价部门精简列表")
+    @Parameter(name = "supplierId", description = "供应商编号", required = true, example = "1024")
+    @PreAuthorize("@ss.hasPermission('erp:purchase-price-adjust:query')")
+    public CommonResult<List<DeptSimpleRespVO>> getSupplierAvailableDeptSimpleList(
+            @RequestParam("supplierId") Long supplierId) {
+        return success(priceAdjustService.getSupplierAvailableDeptSimpleList(supplierId));
+    }
+
+    @GetMapping("/supplier-dept-simple-page")
+    @Operation(summary = "获得供应商对当前用户可用的采购调价部门分页")
+    @Parameter(name = "supplierId", description = "供应商编号", required = true, example = "1024")
+    @PreAuthorize("@ss.hasPermission('erp:purchase-price-adjust:query')")
+    public CommonResult<PageResult<DeptSimpleRespVO>> getSupplierAvailableDeptSimplePage(
+            @RequestParam("supplierId") Long supplierId, @Valid PageParam pageReqVO) {
+        return success(priceAdjustService.getSupplierAvailableDeptSimplePage(supplierId, pageReqVO));
+    }
+
     @GetMapping("/dept-simple-list")
     @Operation(summary = "鑾峰緱褰撳墠鐢ㄦ埛鍙煡璇㈢殑閲囪喘璋冧环閮ㄩ棬绮剧畝鍒楄〃")
     @PreAuthorize("@ss.hasPermission('erp:purchase-price-adjust:query')")

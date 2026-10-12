@@ -598,6 +598,7 @@ public class ErpSaleQuoteServiceImpl implements ErpSaleQuoteService {
                             MoneyUtils.priceMultiply(productPrice, entry.getValue()),
                             quoteItem.getTaxPercent())));
         });
+        cartItems = mergeCartItemsByStockKey(cartItems);
         calculateCartTotalPrice(cart, cartItems);
         saleDocumentDefaultService.fillCreateDefaults(cart);
         saleCartTransferLinkService.insertCart(cart);
@@ -607,7 +608,7 @@ public class ErpSaleQuoteServiceImpl implements ErpSaleQuoteService {
         saleCartItemMapper.insertBatch(cartItems);
         saleConvertRecordMapper.insertBatch(buildQuoteToCartRecords(quote, quoteItemMap, cart, cartItems, convertCountMap));
         // 报价出库只负责生成来源可追溯的手推车，审核路由、库存校验/锁定及拣货送货
-        // 必须统一复用销售手推车的标准提交逻辑，不能直接写死为待初审状态。
+        // 必须统一复用销售手推车的标准提交逻辑，先进入待开单确认，不能绕过确认直接进入审核。
         saleCartService.submitSaleCart(cart.getId());
         if (saleQuoteProgressService != null) {
             saleQuoteProgressService.refreshQuoteProgress(quote.getId());
@@ -649,11 +650,12 @@ public class ErpSaleQuoteServiceImpl implements ErpSaleQuoteService {
                                                                  ErpSaleCartDO cart, List<ErpSaleCartItemDO> cartItems,
                                                                  Map<Long, BigDecimal> convertCountMap) {
         List<Map.Entry<Long, BigDecimal>> entries = new ArrayList<>(convertCountMap.entrySet());
+        Map<String, ErpSaleCartItemDO> targetItemMap = cartItems.stream().collect(Collectors.toMap(
+                this::buildCartStockKey, item -> item, (left, right) -> left, LinkedHashMap::new));
         List<ErpSaleConvertRecordDO> records = new ArrayList<>(entries.size());
-        for (int index = 0; index < entries.size(); index++) {
-            Map.Entry<Long, BigDecimal> entry = entries.get(index);
+        for (Map.Entry<Long, BigDecimal> entry : entries) {
             ErpSaleQuoteItemDO sourceItem = quoteItemMap.get(entry.getKey());
-            ErpSaleCartItemDO targetItem = cartItems.get(index);
+            ErpSaleCartItemDO targetItem = targetItemMap.get(buildQuoteStockKey(sourceItem));
             records.add(new ErpSaleConvertRecordDO()
                     .setConvertType(ErpSaleConvertTypeEnum.QUOTE_TO_CART.getType())
                     .setSourceType(ErpSaleBizSourceTypeEnum.QUOTE.getType())
@@ -663,6 +665,37 @@ public class ErpSaleQuoteServiceImpl implements ErpSaleQuoteService {
                     .setProductId(sourceItem.getProductId()).setWarehouseId(sourceItem.getWarehouseId()).setCount(entry.getValue()));
         }
         return records;
+    }
+
+    private List<ErpSaleCartItemDO> mergeCartItemsByStockKey(List<ErpSaleCartItemDO> items) {
+        Map<String, List<ErpSaleCartItemDO>> groupMap = items.stream().collect(Collectors.groupingBy(
+                this::buildCartStockKey, LinkedHashMap::new, Collectors.toList()));
+        List<ErpSaleCartItemDO> result = new ArrayList<>(groupMap.size());
+        groupMap.values().forEach(group -> {
+            ErpSaleCartItemDO survivor = group.get(0);
+            BigDecimal count = group.stream().map(ErpSaleCartItemDO::getCount)
+                    .filter(java.util.Objects::nonNull).reduce(BigDecimal.ZERO, BigDecimal::add);
+            ErpSaleCartItemDO latest = group.get(group.size() - 1);
+            survivor.setCount(count);
+            survivor.setProductPrice(latest.getProductPrice());
+            survivor.setTotalPrice(MoneyUtils.priceMultiply(survivor.getProductPrice(), count));
+            survivor.setTaxPrice(MoneyUtils.priceMultiplyPercent(survivor.getTotalPrice(), survivor.getTaxPercent()));
+            result.add(survivor);
+        });
+        return result;
+    }
+
+    private String buildCartStockKey(ErpSaleCartItemDO item) {
+        return buildStockKey(item.getProductId(), item.getWarehouseId(), item.getBatchNo(), item.getGiftFlag());
+    }
+
+    private String buildQuoteStockKey(ErpSaleQuoteItemDO item) {
+        return buildStockKey(item.getProductId(), item.getWarehouseId(), item.getBatchNo(), item.getGiftFlag());
+    }
+
+    private String buildStockKey(Long productId, Long warehouseId, String batchNo, Boolean giftFlag) {
+        return productId + "|" + warehouseId + "|" + (batchNo == null ? "" : batchNo.trim()) + "|"
+                + (Boolean.TRUE.equals(giftFlag) ? 1 : 0);
     }
 
     private void calculateCartTotalPrice(ErpSaleCartDO cart, List<ErpSaleCartItemDO> items) {

@@ -601,6 +601,8 @@ public interface ErpStockMapper extends BaseMapperX<ErpStockDO> {
                 + "    AND sc.deleted = 0 "
                 + "    AND sc.status IN (" + ErpSaleCartStatusEnum.SUBMITTED.getStatus() + ","
                 + ErpSaleCartStatusEnum.FIRST_APPROVE.getStatus() + ") "
+                + "    AND (sc.status <> " + ErpSaleCartStatusEnum.SUBMITTED.getStatus()
+                + " OR sc.billing_confirm_time IS NULL) "
                 + "    INNER JOIN " + candidateStockSql + " candidate_stock "
                 + "    ON candidate_stock.product_id = sci.product_id "
                 + "    AND candidate_stock.warehouse_id = sci.warehouse_id "
@@ -799,6 +801,8 @@ public interface ErpStockMapper extends BaseMapperX<ErpStockDO> {
                 + "AND sc.deleted = b'0' "
                 + "AND sc.status IN (" + ErpSaleCartStatusEnum.SUBMITTED.getStatus()
                 + "," + ErpSaleCartStatusEnum.FIRST_APPROVE.getStatus() + ") "
+                + "AND (sc.status <> " + ErpSaleCartStatusEnum.SUBMITTED.getStatus()
+                + " OR sc.billing_confirm_time IS NULL) "
                 + "WHERE sci.deleted = b'0' "
                 + "AND sci.product_id = erp_stock.product_id "
                 + "AND sci.warehouse_id = erp_stock.warehouse_id "

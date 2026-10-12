@@ -98,12 +98,12 @@ public class ErpPurchaseInDetailReportRepository {
                 + "in_final AS (SELECT ia.*,CASE WHEN ia.provisional_freight IS NULL THEN NULL "
                 + "WHEN ia.freight_tail_rank=1 THEN ia.total_freight1-(SUM(ia.provisional_freight) OVER(PARTITION BY ia.in_id)-ia.provisional_freight) "
                 + "ELSE ia.provisional_freight END AS allocated_freight FROM in_alloc ia),"
-                + "invoice_agg AS (SELECT pii.source_in_item_id,"
-                + "SUM(COALESCE(pii.count,0)) AS invoice_count,SUM(COALESCE(pii.total_price,0)) AS invoice_amount "
-                + "FROM erp_purchase_invoice_item pii INNER JOIN erp_purchase_invoice pinv ON pinv.id=pii.invoice_id "
-                + "AND pinv.tenant_id=pii.tenant_id AND pinv.deleted=b'0' AND pinv.status=20 "
-                + "WHERE pii.tenant_id=:tenant AND pii.deleted=b'0' AND pii.source_in_item_id IS NOT NULL "
-                + "GROUP BY pii.source_in_item_id),"
+                + "invoice_agg AS (SELECT pia.source_type,pia.source_item_id,"
+                + "SUM(COALESCE(pia.allocated_count,0)) AS invoice_count,"
+                + "SUM(COALESCE(pia.allocated_amount,0)) AS invoice_amount "
+                + "FROM erp_purchase_invoice_source_allocation pia "
+                + "WHERE pia.tenant_id=:tenant AND pia.deleted=b'0' "
+                + "GROUP BY pia.source_type,pia.source_item_id),"
                 + "report_union AS (" + inboundSelect(inScope, inSupplierScope)
                 + " UNION ALL " + returnSelect(returnScope, returnSupplierScope)
                 + " UNION ALL " + adjustSelect(adjustScope, adjustSupplierScope) + ") ";
@@ -132,7 +132,7 @@ public class ErpPurchaseInDetailReportRepository {
                 + "ifi.allocated_freight AS freight1,s.id AS supplier_id "
                 + "FROM in_final ifi INNER JOIN erp_purchase_in pi ON pi.id=ifi.in_id AND pi.tenant_id=ifi.tenant_id "
                 + "AND pi.deleted=b'0' AND pi.status=20 INNER JOIN erp_supplier s ON s.id=pi.supplier_id "
-                + "AND s.tenant_id=pi.tenant_id AND s.deleted=b'0' LEFT JOIN invoice_agg inv ON inv.source_in_item_id=ifi.id "
+                + "AND s.tenant_id=pi.tenant_id AND s.deleted=b'0' LEFT JOIN invoice_agg inv ON inv.source_type=10 AND inv.source_item_id=ifi.id "
                 + commonJoins("ifi") + " WHERE ifi.tenant_id=:tenant" + documentScope + supplierScope;
     }
 
@@ -143,13 +143,16 @@ public class ErpPurchaseInDetailReportRepository {
                 + "COALESCE(NULLIF(pri.part_code,''),p.code),COALESCE(NULLIF(pri.part_name,''),p.name),"
                 + "COALESCE(NULLIF(pri.vehicle_model,''),p.vehicle_model),p.feature_code,-COALESCE(pri.count,0),"
                 + "pri.product_price,pri.product_price,ROUND(-COALESCE(pri.count,0)*COALESCE(pri.product_price,0),2),"
-                + "NULL,'不适用',COALESCE(NULLIF(pri.origin_place,''),p.origin_place),pr.factory_order_no,"
+                + "COALESCE(inv.invoice_amount,0),"
+                + "CASE WHEN COALESCE(inv.invoice_count,0)<=0 THEN '未开票' WHEN inv.invoice_count>=pri.count THEN '已开票' ELSE '部分开票' END,"
+                + "COALESCE(NULLIF(pri.origin_place,''),p.origin_place),pr.factory_order_no,"
                 + "COALESCE(NULLIF(pri.brand,''),p.brand),s.name,s.code,w.name,pri.warehouse_position,pr.purchaser,p.standard,"
                 + "COALESCE(NULLIF(pri.drawing_no,''),p.drawing_no),u.name,cu.nickname,pri.remark,pr.remark,p.factory_code,"
                 + "NULL,NULL,s.region,NULL,NULL,s.id "
                 + "FROM erp_purchase_return_items pri INNER JOIN erp_purchase_return pr ON pr.id=pri.return_id "
                 + "AND pr.tenant_id=pri.tenant_id AND pr.deleted=b'0' AND pr.status=20 "
                 + "INNER JOIN erp_supplier s ON s.id=pr.supplier_id AND s.tenant_id=pr.tenant_id AND s.deleted=b'0' "
+                + "LEFT JOIN invoice_agg inv ON inv.source_type=30 AND inv.source_item_id=pri.id "
                 + commonJoins("pri") + " WHERE pri.tenant_id=:tenant AND pri.deleted=b'0'" + documentScope + supplierScope;
     }
 
@@ -163,7 +166,8 @@ public class ErpPurchaseInDetailReportRepository {
                 + "CONVERT(COALESCE(NULLIF(pai.product_name,''),p.name) USING utf8mb4) COLLATE utf8mb4_unicode_ci,"
                 + "CONVERT(COALESCE(NULLIF(pai.vehicle_model,''),p.vehicle_model) USING utf8mb4) COLLATE utf8mb4_unicode_ci,"
                 + "CONVERT(COALESCE(NULLIF(pai.feature_code,''),p.feature_code) USING utf8mb4) COLLATE utf8mb4_unicode_ci,"
-                + "0,pai.old_price,pai.old_price,ROUND(COALESCE(pai.adjust_price,0),2),NULL,'不适用',"
+                + "0,pai.old_price,pai.old_price,ROUND(COALESCE(pai.adjust_price,0),2),COALESCE(inv.invoice_amount,0),"
+                + "CASE WHEN COALESCE(inv.invoice_count,0)<=0 THEN '未开票' WHEN inv.invoice_count>=pai.count THEN '已开票' ELSE '部分开票' END,"
                 + "CONVERT(COALESCE(NULLIF(pai.origin_place,''),p.origin_place) USING utf8mb4) COLLATE utf8mb4_unicode_ci,"
                 + "source_in.factory_order_no,"
                 + "CONVERT(COALESCE(NULLIF(pai.brand,''),p.brand) USING utf8mb4) COLLATE utf8mb4_unicode_ci,"
@@ -176,6 +180,7 @@ public class ErpPurchaseInDetailReportRepository {
                 + "FROM erp_purchase_price_adjust_item pai INNER JOIN erp_purchase_price_adjust pa ON pa.id=pai.adjust_id "
                 + "AND pa.tenant_id=pai.tenant_id AND pa.deleted=b'0' AND pa.status=20 "
                 + "INNER JOIN erp_supplier s ON s.id=pa.supplier_id AND s.tenant_id=pa.tenant_id AND s.deleted=b'0' "
+                + "LEFT JOIN invoice_agg inv ON inv.source_type=20 AND inv.source_item_id=pai.id "
                 + "LEFT JOIN erp_purchase_in source_in ON source_in.id=pai.in_id AND source_in.tenant_id=pai.tenant_id AND source_in.deleted=b'0' "
                 + commonJoins("pai")
                 + " LEFT JOIN system_users au ON au.id=pa.adjuster AND au.tenant_id=pa.tenant_id AND au.deleted=b'0' "

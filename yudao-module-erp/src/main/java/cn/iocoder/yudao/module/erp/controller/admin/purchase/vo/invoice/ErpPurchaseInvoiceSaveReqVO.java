@@ -53,6 +53,12 @@ public class ErpPurchaseInvoiceSaveReqVO {
     @Schema(description = "排除的来源入库单明细编号列表，用于大单分页带入后删除明细")
     private List<Long> excludedSourceInItemIds;
 
+    @Schema(description = "来源单据引用列表")
+    private List<SourceRef> sourceRefs;
+
+    @Schema(description = "排除的通用来源明细键，格式为 来源类型:来源明细ID")
+    private List<String> excludedSourceItemKeys;
+
     @Schema(description = "票据明细", requiredMode = Schema.RequiredMode.REQUIRED)
     private List<Item> items;
 
@@ -73,6 +79,16 @@ public class ErpPurchaseInvoiceSaveReqVO {
 
         @Schema(description = "来源入库单明细编号", example = "200")
         private Long sourceInItemId;
+
+        @Schema(description = "来源类型：10 入库、20 调价、30 退货")
+        private Integer sourceType;
+
+        private Long sourceDocId;
+        private String sourceDocNo;
+        private Long sourceItemId;
+        private Integer amountDirection;
+        private BigDecimal sourceTotalCount;
+        private BigDecimal sourceRemainingCount;
 
         @Schema(description = "产品编号", requiredMode = Schema.RequiredMode.REQUIRED, example = "300")
         @NotNull(message = "产品不能为空")
@@ -103,6 +119,14 @@ public class ErpPurchaseInvoiceSaveReqVO {
 
         @Schema(description = "备注", example = "票据拆分")
         private String remark;
+    }
+
+    @Data
+    public static class SourceRef {
+        @NotNull(message = "来源类型不能为空")
+        private Integer sourceType;
+        @NotNull(message = "来源单据编号不能为空")
+        private Long sourceDocId;
     }
 
 }

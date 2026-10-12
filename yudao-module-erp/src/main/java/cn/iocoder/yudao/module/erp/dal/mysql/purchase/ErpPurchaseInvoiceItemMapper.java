@@ -29,6 +29,15 @@ public interface ErpPurchaseInvoiceItemMapper extends BaseMapperX<ErpPurchaseInv
                 .eq(ErpPurchaseInvoiceItemDO::getInvoiceId, invoiceId).last("FOR UPDATE"));
     }
 
+    default List<ErpPurchaseInvoiceItemDO> selectSourceRefListByInvoiceId(Long invoiceId) {
+        return selectList(new QueryWrapper<ErpPurchaseInvoiceItemDO>()
+                .select("source_type", "source_doc_id", "source_in_id")
+                .eq("invoice_id", invoiceId)
+                .and(query -> query.isNotNull("source_doc_id").or().isNotNull("source_in_id"))
+                .groupBy("source_type", "source_doc_id", "source_in_id")
+                .orderByAsc("source_type", "source_doc_id", "source_in_id"));
+    }
+
     default PageResult<ErpPurchaseInvoiceItemDO> selectPageByInvoiceId(ErpPurchaseInvoiceItemPageReqVO reqVO) {
         LambdaQueryWrapperX<ErpPurchaseInvoiceItemDO> query = new LambdaQueryWrapperX<ErpPurchaseInvoiceItemDO>()
                 .eq(ErpPurchaseInvoiceItemDO::getInvoiceId, reqVO.getInvoiceId());

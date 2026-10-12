@@ -31,6 +31,8 @@ public class ErpSaleCartDO extends BaseDO {
     private Long saleUserId;
     private Long deptId;
     private LocalDateTime cartTime;
+    private Long billingConfirmUserId;
+    private LocalDateTime billingConfirmTime;
     private Long firstAuditUserId;
     private LocalDateTime firstAuditTime;
     private Long finalAuditUserId;

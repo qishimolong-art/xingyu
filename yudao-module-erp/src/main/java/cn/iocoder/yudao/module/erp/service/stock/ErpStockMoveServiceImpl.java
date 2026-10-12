@@ -15,6 +15,7 @@ import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.move.ErpStockTransf
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.move.ErpStockTransferOutDraftUpdateReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseInItemDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.product.ErpProductDO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.sale.pickdelivery.ErpSalePickDeliveryOrderDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockMoveDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockMoveItemDO;
@@ -28,6 +29,8 @@ import cn.iocoder.yudao.module.erp.service.sale.ErpSaleCartTransferLinkService;
 import cn.iocoder.yudao.module.erp.dal.redis.no.ErpNoRedisDAO;
 import cn.iocoder.yudao.module.erp.enums.ErpAuditStatus;
 import cn.iocoder.yudao.module.erp.enums.sale.ErpSaleBizSourceTypeEnum;
+import cn.iocoder.yudao.module.erp.enums.sale.ErpSaleDeliveryStatusEnum;
+import cn.iocoder.yudao.module.erp.enums.sale.ErpSalePickStatusEnum;
 import cn.iocoder.yudao.module.erp.enums.stock.ErpStockRecordBizTypeEnum;
 import cn.iocoder.yudao.module.erp.enums.stock.ErpStockTransferOutStatusEnum;
 import cn.iocoder.yudao.module.erp.service.base.ErpDataPermissionDeptService;
@@ -44,6 +47,7 @@ import cn.iocoder.yudao.module.system.controller.admin.dept.vo.dept.DeptSimpleRe
 import org.springframework.stereotype.Service;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
 import org.springframework.validation.annotation.Validated;
 
 import javax.annotation.Resource;
@@ -475,13 +479,29 @@ public class ErpStockMoveServiceImpl implements ErpStockMoveService {
         if (!ErpAuditStatus.PROCESS.getStatus().equals(stockMove.getStatus())) {
             return ErpStockMoveOperationPermission.denied("调拨出库单已审核，不能解锁手推车");
         }
-        if (salePickDeliveryOrderMapper.selectBySource(ErpSaleBizSourceTypeEnum.CART.getType(),
-                stockMove.getSourceId()) != null) {
+        ErpSalePickDeliveryOrderDO fulfillmentOrder = salePickDeliveryOrderMapper.selectBySource(
+                ErpSaleBizSourceTypeEnum.CART.getType(), stockMove.getSourceId());
+        if (fulfillmentOrder != null && !isUnstartedFulfillmentOrder(fulfillmentOrder)) {
             return ErpStockMoveOperationPermission.denied(
-                    "销售手推车已生成拣货送货任务，不能解锁手推车");
+                    "销售手推车已开始拣货或送货，不能解锁手推车");
         }
         return getUnlockCartCrossDeptOperationPermission(stockMove, items,
                 "销售手推车跨部门调拨出库单只能由总公司解锁");
+    }
+
+    private boolean isUnstartedFulfillmentOrder(ErpSalePickDeliveryOrderDO order) {
+        return order.getSaleOutId() == null
+                && !StringUtils.hasText(order.getSaleOutNo())
+                && ErpSalePickStatusEnum.WAITING.getStatus().equals(order.getPickStatus())
+                && ErpSaleDeliveryStatusEnum.NOT_READY.getStatus().equals(order.getDeliveryStatus())
+                && isZeroOrNull(order.getPickedItemCount())
+                && isZeroOrNull(order.getDeliveredItemCount())
+                && order.getLatestPickTime() == null && order.getLatestDeliveryTime() == null
+                && order.getPickCompleteTime() == null && order.getDeliveryCompleteTime() == null;
+    }
+
+    private boolean isZeroOrNull(Integer value) {
+        return value == null || value == 0;
     }
 
     private ErpStockMoveOperationPermission getUnlockCartCrossDeptOperationPermission(ErpStockMoveDO stockMove,

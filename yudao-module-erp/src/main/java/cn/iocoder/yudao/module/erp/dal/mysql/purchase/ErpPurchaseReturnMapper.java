@@ -4,6 +4,7 @@ import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.mybatis.core.mapper.BaseMapperX;
 import cn.iocoder.yudao.framework.mybatis.core.query.MPJLambdaWrapperX;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.returns.ErpPurchaseReturnPageReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.invoice.ErpPurchaseInvoiceSourceDocumentPageReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.product.ErpProductDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.product.ErpProductUnitDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseReturnDO;
@@ -27,6 +28,26 @@ import java.util.Objects;
  */
 @Mapper
 public interface ErpPurchaseReturnMapper extends BaseMapperX<ErpPurchaseReturnDO> {
+
+    default PageResult<ErpPurchaseReturnDO> selectInvoiceSourcePage(
+            ErpPurchaseInvoiceSourceDocumentPageReqVO reqVO) {
+        MPJLambdaWrapperX<ErpPurchaseReturnDO> query = new MPJLambdaWrapperX<>();
+        query.eq(ErpPurchaseReturnDO::getSupplierId, reqVO.getSupplierId())
+                .eq(ErpPurchaseReturnDO::getStatus, ErpAuditStatus.APPROVE.getStatus())
+                .likeIfPresent(ErpPurchaseReturnDO::getNo, reqVO.getKeyword())
+                .apply("EXISTS (SELECT 1 FROM erp_purchase_return_items invoice_source_item "
+                        + "WHERE invoice_source_item.deleted=b'0' AND invoice_source_item.tenant_id=t.tenant_id "
+                        + "AND invoice_source_item.return_id=t.id AND COALESCE(invoice_source_item.count,0)>COALESCE(("
+                        + "SELECT SUM(COALESCE(invoice_allocation.allocated_count,0)) "
+                        + "FROM erp_purchase_invoice_source_allocation invoice_allocation "
+                        + "WHERE invoice_allocation.deleted=b'0' "
+                        + "AND invoice_allocation.tenant_id=invoice_source_item.tenant_id "
+                        + "AND invoice_allocation.source_type=30 "
+                        + "AND invoice_allocation.source_item_id=invoice_source_item.id),0))")
+                .orderByDesc(ErpPurchaseReturnDO::getReturnTime)
+                .orderByDesc(ErpPurchaseReturnDO::getId);
+        return selectJoinPage(reqVO, ErpPurchaseReturnDO.class, query);
+    }
 
     default ErpPurchaseReturnDO selectByIdForUpdate(Long id) {
         return selectOne(new cn.iocoder.yudao.framework.mybatis.core.query.LambdaQueryWrapperX<ErpPurchaseReturnDO>()

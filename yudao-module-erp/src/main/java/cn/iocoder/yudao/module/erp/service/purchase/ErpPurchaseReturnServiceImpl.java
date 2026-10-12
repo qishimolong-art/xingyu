@@ -28,6 +28,7 @@ import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseInItemDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseOrderDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseReturnDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseReturnItemDO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpSupplierDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpWarehouseDO;
 import cn.iocoder.yudao.module.erp.dal.mysql.product.ErpProductMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.finance.ErpFinancePaymentItemMapper;
@@ -99,6 +100,7 @@ public class ErpPurchaseReturnServiceImpl implements ErpPurchaseReturnService {
 
     private static final String FIELD_PERMISSION_MODULE = "erp_purchase_return";
     private static final String DEPT_SELECTION_PERMISSION_FORM_KEY = "system_dept";
+    private static final String SUPPLIER_DEPT_PERMISSION_FORM_KEY = "system_dept";
 
     @Resource
     private cn.iocoder.yudao.module.erp.service.purchase.returncost.ErpPurchaseReturnCostService purchaseReturnCostService;
@@ -129,6 +131,8 @@ public class ErpPurchaseReturnServiceImpl implements ErpPurchaseReturnService {
     private ErpWarehouseService warehouseService;
     @Resource
     private ErpSupplierService supplierService;
+    @Resource
+    private ErpSupplierDeptPermissionService supplierDeptPermissionService;
     @Resource
     private ErpVoucherService voucherService;
     @Resource
@@ -187,6 +191,8 @@ public class ErpPurchaseReturnServiceImpl implements ErpPurchaseReturnService {
         if (purchaseReturn.getSupplierId() == null) {
             throw exception(PURCHASE_RETURN_SUPPLIER_REQUIRED);
         }
+        validatePurchaseReturnSupplierDept(supplierService.validateSupplier(purchaseReturn.getSupplierId()),
+                purchaseReturn.getDeptId());
         calculateTotalPrice(purchaseReturn, purchaseReturnItems);
         purchaseReturnCostService.normalizeAndValidateSources(purchaseReturn, purchaseReturnItems, true);
         purchaseDocumentDefaultService.fillCreateAuditDefaults(purchaseReturn);
@@ -230,6 +236,7 @@ public class ErpPurchaseReturnServiceImpl implements ErpPurchaseReturnService {
                 ? createReqVO.getReturnTime() : LocalDateTime.now());
         fillDraftSource(createReqVO, purchaseReturn);
         purchaseDocumentDefaultService.fillCreateDefaults(purchaseReturn);
+        validateOptionalPurchaseReturnSupplierDept(purchaseReturn.getSupplierId(), purchaseReturn.getDeptId());
         calculateTotalPrice(purchaseReturn, items);
         purchaseReturnCostService.normalizeAndValidateSources(purchaseReturn, items, true);
         purchaseDocumentDefaultService.fillCreateAuditDefaults(purchaseReturn);
@@ -296,11 +303,16 @@ public class ErpPurchaseReturnServiceImpl implements ErpPurchaseReturnService {
         if (updateObj.getDeptId() == null) {
             updateObj.setDeptId(purchaseReturn.getDeptId());
         }
+        if (updateObj.getSupplierId() == null) {
+            updateObj.setSupplierId(purchaseReturn.getSupplierId());
+        }
         purchaseDocumentDefaultService.fillCreateDefaults(updateObj);
         // 兜底校验：supplierId 必填
         if (updateObj.getSupplierId() == null) {
             throw exception(PURCHASE_RETURN_SUPPLIER_REQUIRED);
         }
+        validatePurchaseReturnSupplierDept(supplierService.validateSupplier(updateObj.getSupplierId()),
+                updateObj.getDeptId());
         calculateTotalPrice(updateObj, purchaseReturnItems);
         purchaseReturnCostService.normalizeAndValidateSources(updateObj, purchaseReturnItems, true);
         purchaseReturnMapper.updateById(updateObj);
@@ -516,6 +528,7 @@ public class ErpPurchaseReturnServiceImpl implements ErpPurchaseReturnService {
         if (updateObj.getSupplierId() == null) {
             updateObj.setSupplierId(purchaseReturn.getSupplierId());
         }
+        validateOptionalPurchaseReturnSupplierDept(updateObj.getSupplierId(), updateObj.getDeptId());
         calculateTotalPrice(updateObj, items);
         purchaseReturnCostService.normalizeAndValidateSources(updateObj, items, true);
         purchaseReturnMapper.updateById(updateObj);
@@ -562,9 +575,9 @@ public class ErpPurchaseReturnServiceImpl implements ErpPurchaseReturnService {
         }
         if (purchaseReturn.getOrderId() != null) {
             purchaseOrderService.validatePurchaseOrder(purchaseReturn.getOrderId());
-        } else {
-            supplierService.validateSupplier(purchaseReturn.getSupplierId());
         }
+        validatePurchaseReturnSupplierDept(supplierService.validateSupplier(purchaseReturn.getSupplierId()),
+                purchaseReturn.getDeptId());
         List<ErpPurchaseReturnSaveReqVO.Item> itemReqs =
                 BeanUtils.toBean(items, ErpPurchaseReturnSaveReqVO.Item.class);
         if (ErpPurchaseReturnModeEnum.isByOrder(returnMode)) {
@@ -759,6 +772,8 @@ public class ErpPurchaseReturnServiceImpl implements ErpPurchaseReturnService {
         }
 
         List<ErpPurchaseReturnItemDO> purchaseReturnItems = purchaseReturnItemMapper.selectListByReturnIdForUpdate(id);
+        validatePurchaseReturnSupplierDept(supplierService.validateSupplier(purchaseReturn.getSupplierId()),
+                purchaseReturn.getDeptId());
         if (ErpPurchaseReturnModeEnum.isByOrder(purchaseReturn.getReturnMode())) {
             validateReturnableCountForByOrder(BeanUtils.toBean(purchaseReturnItems, ErpPurchaseReturnSaveReqVO.Item.class), id);
         }
@@ -1067,6 +1082,35 @@ public class ErpPurchaseReturnServiceImpl implements ErpPurchaseReturnService {
             throw exception(PURCHASE_RETURN_NOT_APPROVE);
         }
         return purchaseReturn;
+    }
+
+    @Override
+    public List<DeptSimpleRespVO> getSupplierAvailableDeptSimpleList(Long supplierId) {
+        return supplierDeptPermissionService.getAvailableDeptSimpleList(supplierId,
+                SUPPLIER_DEPT_PERMISSION_FORM_KEY);
+    }
+
+    @Override
+    public PageResult<DeptSimpleRespVO> getSupplierAvailableDeptSimplePage(Long supplierId, PageParam pageParam) {
+        return supplierDeptPermissionService.getAvailableDeptSimplePage(supplierId,
+                SUPPLIER_DEPT_PERMISSION_FORM_KEY, pageParam);
+    }
+
+    private void validateOptionalPurchaseReturnSupplierDept(Long supplierId, Long deptId) {
+        if (deptId == null) {
+            return;
+        }
+        if (supplierId == null) {
+            throw exception(PURCHASE_RETURN_SUPPLIER_DEPT_NOT_ALLOWED);
+        }
+        validatePurchaseReturnSupplierDept(supplierService.validateSupplier(supplierId), deptId);
+    }
+
+    private void validatePurchaseReturnSupplierDept(ErpSupplierDO supplier, Long deptId) {
+        if (!supplierDeptPermissionService.hasAvailableDept(supplier, deptId,
+                SUPPLIER_DEPT_PERMISSION_FORM_KEY)) {
+            throw exception(PURCHASE_RETURN_SUPPLIER_DEPT_NOT_ALLOWED);
+        }
     }
 
     @Override

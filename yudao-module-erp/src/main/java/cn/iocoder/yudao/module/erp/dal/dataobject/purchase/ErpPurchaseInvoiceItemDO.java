@@ -2,6 +2,7 @@ package cn.iocoder.yudao.module.erp.dal.dataobject.purchase;
 
 import cn.iocoder.yudao.framework.mybatis.core.dataobject.BaseDO;
 import com.baomidou.mybatisplus.annotation.KeySequence;
+import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.AllArgsConstructor;
@@ -48,6 +49,40 @@ public class ErpPurchaseInvoiceItemDO extends BaseDO {
      * 来源入库单明细编号
      */
     private Long sourceInItemId;
+
+    /**
+     * 通用来源类型：10 入库、20 调价、30 退货。
+     */
+    private Integer sourceType;
+
+    /**
+     * 通用来源单据编号、单号和明细编号。
+     */
+    private Long sourceDocId;
+    private String sourceDocNo;
+    private Long sourceItemId;
+
+    /**
+     * 金额方向：1 正向、-1 负向。
+     */
+    private Integer amountDirection;
+
+    /**
+     * 来源原始数量和当前剩余可开数量，仅用于接口展示。
+     */
+    @TableField(exist = false)
+    private BigDecimal sourceTotalCount;
+    @TableField(exist = false)
+    private BigDecimal sourceRemainingCount;
+
+    @TableField(exist = false)
+    private String sourceTypeName;
+
+    @TableField(exist = false)
+    private Long warehouseId;
+
+    @TableField(exist = false)
+    private Integer packageQty;
 
     /**
      * 产品编号

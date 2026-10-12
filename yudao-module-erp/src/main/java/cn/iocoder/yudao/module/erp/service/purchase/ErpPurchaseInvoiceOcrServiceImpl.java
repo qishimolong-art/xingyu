@@ -578,7 +578,9 @@ public class ErpPurchaseInvoiceOcrServiceImpl implements ErpPurchaseInvoiceOcrSe
         item.setSourceInItemId(purchaseInItem.getId());
         item.setProductId(purchaseInItem.getProductId());
         item.setCount(purchaseInItem.getCount());
-        item.setProductPrice(purchaseInItem.getProductPrice() == null ? BigDecimal.ZERO : purchaseInItem.getProductPrice());
+        BigDecimal originalPrice = purchaseInItem.getOriginalProductPrice() == null
+                ? purchaseInItem.getProductPrice() : purchaseInItem.getOriginalProductPrice();
+        item.setProductPrice(originalPrice == null ? BigDecimal.ZERO : originalPrice);
         item.setTaxPercent(null);
         item.setRemark(purchaseInItem.getRemark());
         return item;

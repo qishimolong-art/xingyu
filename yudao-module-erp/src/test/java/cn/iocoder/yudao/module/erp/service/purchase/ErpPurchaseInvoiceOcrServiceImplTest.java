@@ -1,9 +1,13 @@
 package cn.iocoder.yudao.module.erp.service.purchase;
 
 import cn.hutool.http.HttpRequest;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.invoice.ErpPurchaseInvoiceSaveReqVO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseInDO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseInItemDO;
 import org.junit.jupiter.api.Test;
 import org.springframework.test.util.ReflectionTestUtils;
 
+import java.math.BigDecimal;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -87,6 +91,25 @@ class ErpPurchaseInvoiceOcrServiceImplTest {
 
         assertEquals("APPCODE code", request.header("Authorization"));
         assertNull(request.header("X-Ca-Key"));
+    }
+
+    @Test
+    void buildPurchaseInvoiceItem_shouldUseOriginalInboundPriceAfterAdjustment() {
+        ErpPurchaseInItemDO purchaseInItem = new ErpPurchaseInItemDO()
+                .setId(11L)
+                .setInId(10L)
+                .setProductId(20L)
+                .setCount(new BigDecimal("3"))
+                .setOriginalProductPrice(new BigDecimal("8.50"))
+                .setProductPrice(new BigDecimal("9.75"));
+        ErpPurchaseInDO purchaseIn = new ErpPurchaseInDO().setId(10L).setNo("CGRK001");
+
+        ErpPurchaseInvoiceSaveReqVO.Item result = ReflectionTestUtils.invokeMethod(
+                service, "buildPurchaseInvoiceItem", purchaseInItem, purchaseIn);
+
+        assertNotNull(result);
+        assertEquals("CGRK001", result.getSourceInNo());
+        assertEquals(0, new BigDecimal("8.50").compareTo(result.getProductPrice()));
     }
 
 }

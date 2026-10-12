@@ -14,6 +14,7 @@ import java.util.Arrays;
 public enum ErpSaleCartStatusEnum implements ArrayValuable<Integer> {
 
     PROCESS(10, "草稿"),
+    PENDING_BILLING_CONFIRM(15, "待开单确认"),
     SUBMITTED(20, "待初审"),
     FIRST_APPROVE(30, "待终审"),
     FINAL_APPROVE(40, "终审通过"),

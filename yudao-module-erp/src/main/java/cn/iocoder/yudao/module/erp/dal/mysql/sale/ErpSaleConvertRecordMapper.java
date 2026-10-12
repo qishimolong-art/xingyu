@@ -94,4 +94,23 @@ public interface ErpSaleConvertRecordMapper extends BaseMapperX<ErpSaleConvertRe
                 .in(ErpSaleConvertRecordDO::getTargetId, cartIds));
     }
 
+    default List<ErpSaleConvertRecordDO> selectSourceToCartListByCartIds(Collection<Long> cartIds) {
+        if (CollUtil.isEmpty(cartIds)) {
+            return Collections.emptyList();
+        }
+        return selectList(new LambdaQueryWrapper<ErpSaleConvertRecordDO>()
+                .eq(ErpSaleConvertRecordDO::getTargetType, ErpSaleBizSourceTypeEnum.CART.getType())
+                .in(ErpSaleConvertRecordDO::getTargetId, cartIds));
+    }
+
+    default void redirectTargetItemIds(Long cartId, Map<Long, Long> redirects) {
+        if (cartId == null || CollUtil.isEmpty(redirects)) {
+            return;
+        }
+        List<ErpSaleConvertRecordDO> records = selectSourceToCartListByCartIds(Collections.singleton(cartId));
+        records.stream().filter(record -> redirects.containsKey(record.getTargetItemId())).forEach(record ->
+                updateById(new ErpSaleConvertRecordDO().setId(record.getId())
+                        .setTargetItemId(redirects.get(record.getTargetItemId()))));
+    }
+
 }

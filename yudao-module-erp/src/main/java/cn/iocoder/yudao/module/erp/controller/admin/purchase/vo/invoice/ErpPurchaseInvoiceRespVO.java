@@ -121,6 +121,16 @@ public class ErpPurchaseInvoiceRespVO {
     @Schema(description = "明细列表")
     private List<Item> items;
 
+    @Schema(description = "已保存来源单据引用")
+    private List<SourceRef> sourceRefs;
+
+    @Data
+    public static class SourceRef {
+
+        private Integer sourceType;
+        private Long sourceDocId;
+    }
+
     @Data
     public static class Item {
 
@@ -128,6 +138,14 @@ public class ErpPurchaseInvoiceRespVO {
         private Long sourceInId;
         private String sourceInNo;
         private Long sourceInItemId;
+        private Integer sourceType;
+        private String sourceTypeName;
+        private Long sourceDocId;
+        private String sourceDocNo;
+        private Long sourceItemId;
+        private Integer amountDirection;
+        private BigDecimal sourceTotalCount;
+        private BigDecimal sourceRemainingCount;
         private Long productId;
         private Long warehouseId;
         private String productCode;
