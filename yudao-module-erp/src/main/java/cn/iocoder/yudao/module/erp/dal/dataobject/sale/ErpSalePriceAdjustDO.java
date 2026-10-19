@@ -39,6 +39,8 @@ public class ErpSalePriceAdjustDO extends BaseDO {
      * 日期
      */
     private LocalDateTime adjustDate;
+    /** 审核通过时间。 */
+    private LocalDateTime approveTime;
     /**
      * 客户ID
      */

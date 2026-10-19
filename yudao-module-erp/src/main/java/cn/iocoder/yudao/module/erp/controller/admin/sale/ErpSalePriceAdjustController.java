@@ -1,6 +1,8 @@
 package cn.iocoder.yudao.module.erp.controller.admin.sale;
 
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.ErpSaleUpdateRemarkReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.ErpSaleItemMatchReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.ErpSaleItemMatchRespVO;
 import cn.hutool.core.collection.CollUtil;
 import cn.iocoder.yudao.framework.apilog.core.annotation.ApiAccessLog;
 import cn.iocoder.yudao.framework.common.enums.CommonStatusEnum;
@@ -22,6 +24,7 @@ import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.priceadjust.ErpSaleP
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.priceadjust.ErpSalePriceAdjustSettlementSummaryRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.priceadjust.ErpSalePriceAdjustRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.priceadjust.ErpSalePriceAdjustSaveReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.priceadjust.ErpSalePriceAdjustSummaryRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.priceadjust.ErpSalePriceAdjustDraftSaveReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpCustomerDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSalePriceAdjustDO;
@@ -71,6 +74,8 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.Comparator;
+import java.util.Objects;
 
 import static cn.iocoder.yudao.framework.apilog.core.enums.OperateTypeEnum.EXPORT;
 import static cn.iocoder.yudao.framework.common.pojo.CommonResult.success;
@@ -305,9 +310,7 @@ public class ErpSalePriceAdjustController {
                 }
             }
         }
-        if (Boolean.TRUE.equals(includeItems)) {
-            fillAdjustSummary(respVO, respVO.getItems());
-        }
+        fillDocumentSummary(respVO, salePriceAdjustItemMapper.selectDocumentSummaryByAdjustId(id));
         fieldPermissionMasker.maskSaleDetailFormWithItems(FIELD_PERMISSION_MODULE, respVO);
         return success(respVO);
     }
@@ -356,6 +359,18 @@ public class ErpSalePriceAdjustController {
         return value == null ? BigDecimal.ZERO : value;
     }
 
+    private void fillDocumentSummary(ErpSalePriceAdjustRespVO respVO, Map<String, Object> summary) {
+        respVO.setTotalOriginalPrice(summaryDecimal(summary, "totalOriginalPrice"));
+        respVO.setTotalAdjustedPrice(summaryDecimal(summary, "totalAdjustedPrice"));
+        respVO.setTotalAdjustPrice(summaryDecimal(summary, "totalAdjustPrice"));
+        respVO.setSourceNo(summary == null ? null : (String) summary.get("sourceNo"));
+    }
+
+    private BigDecimal summaryDecimal(Map<String, Object> summary, String key) {
+        Object value = summary == null ? null : summary.get(key);
+        return value == null ? BigDecimal.ZERO : new BigDecimal(value.toString());
+    }
+
     @GetMapping("/item-page")
     @Operation(summary = "获得销售调价明细分页")
     @PreAuthorize("@ss.hasPermission('erp:sale-price-adjust:query')")
@@ -377,6 +392,44 @@ public class ErpSalePriceAdjustController {
                     respResult.getList());
         }
         return success(respResult);
+    }
+
+    @PostMapping("/item-page")
+    @Operation(summary = "获得销售调价编辑态明细分页")
+    @PreAuthorize("@ss.hasPermission('erp:sale-price-adjust:query')")
+    public CommonResult<PageResult<ErpSalePriceAdjustRespVO.Item>> getSalePriceAdjustEditItemPage(
+            @Valid @RequestBody ErpSalePriceAdjustItemPageReqVO pageReqVO) {
+        return getSalePriceAdjustItemPage(pageReqVO);
+    }
+
+    @PostMapping("/item-match")
+    @Operation(summary = "匹配销售调价整单已有明细")
+    @PreAuthorize("@ss.hasPermission('erp:sale-price-adjust:query')")
+    public CommonResult<ErpSaleItemMatchRespVO> matchSalePriceAdjustItems(
+            @Valid @RequestBody ErpSaleItemMatchReqVO reqVO) {
+        if (salePriceAdjustService.getSalePriceAdjust(reqVO.getDocumentId()) == null) {
+            return success(new ErpSaleItemMatchRespVO());
+        }
+        Set<Long> excludedIds = new HashSet<>(reqVO.getExcludedItemIds() == null
+                ? Collections.emptyList() : reqVO.getExcludedItemIds());
+        List<ErpSalePriceAdjustItemDO> items = new ArrayList<>(
+                salePriceAdjustService.getSalePriceAdjustItemListByAdjustId(reqVO.getDocumentId()));
+        items.removeIf(item -> excludedIds.contains(item.getId()));
+        items.sort(Comparator.comparing(ErpSalePriceAdjustItemDO::getId));
+        ErpSaleItemMatchRespVO result = new ErpSaleItemMatchRespVO();
+        for (int keyIndex = 0; keyIndex < reqVO.getKeys().size(); keyIndex++) {
+            ErpSaleItemMatchReqVO.Key key = reqVO.getKeys().get(keyIndex);
+            for (int itemIndex = 0; itemIndex < items.size(); itemIndex++) {
+                ErpSalePriceAdjustItemDO item = items.get(itemIndex);
+                if (Objects.equals(item.getSaleOutId(), key.getSaleOutId())
+                        && Objects.equals(item.getSaleOutItemId(), key.getSaleOutItemId())) {
+                    result.getMatches().add(new ErpSaleItemMatchRespVO.Match(keyIndex, item.getId(),
+                            itemIndex / reqVO.getPageSize() + 1));
+                    break;
+                }
+            }
+        }
+        return success(result);
     }
 
     @GetMapping("/dept-simple-page")
@@ -411,6 +464,16 @@ public class ErpSalePriceAdjustController {
                 : buildSalePriceAdjustVOPageResult(pageResult);
         fieldPermissionMasker.maskSaleDetailFormsWithItems(FIELD_PERMISSION_MODULE, respResult.getList());
         return success(respResult);
+    }
+
+    @GetMapping("/summary")
+    @Operation(summary = "获得销售调价单查询汇总")
+    @PreAuthorize("@ss.hasPermission('erp:sale-price-adjust:query')")
+    public CommonResult<ErpSalePriceAdjustSummaryRespVO> getSalePriceAdjustSummary(
+            @Valid ErpSalePriceAdjustPageReqVO pageReqVO) {
+        ErpSalePriceAdjustSummaryRespVO summary = salePriceAdjustService.getSalePriceAdjustSummary(pageReqVO);
+        fieldPermissionMasker.clearSaleDetailHiddenFields(FIELD_PERMISSION_MODULE, summary);
+        return success(summary);
     }
 
     @GetMapping("/export-excel")

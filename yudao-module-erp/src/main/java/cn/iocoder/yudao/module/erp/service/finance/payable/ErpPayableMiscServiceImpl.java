@@ -222,6 +222,12 @@ public class ErpPayableMiscServiceImpl implements ErpPayableMiscService {
         return payableMiscMapper.selectPage(pageReqVO);
     }
 
+    @Override
+    public cn.iocoder.yudao.module.erp.controller.admin.finance.vo.ErpFinanceQuerySummaryRespVO getPayableMiscSummary(
+            ErpPayableMiscPageReqVO pageReqVO) {
+        return payableMiscMapper.selectSummary(pageReqVO);
+    }
+
     private String generateNo() {
         String no = noRedisDAO.generate(NO_PREFIX);
         if (payableMiscMapper.selectByNo(no) != null) {

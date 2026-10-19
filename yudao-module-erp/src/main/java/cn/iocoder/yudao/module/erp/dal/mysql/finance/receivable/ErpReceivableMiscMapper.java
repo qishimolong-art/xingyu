@@ -4,6 +4,8 @@ import cn.hutool.core.collection.CollUtil;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.mybatis.core.mapper.BaseMapperX;
 import cn.iocoder.yudao.framework.mybatis.core.query.LambdaQueryWrapperX;
+import cn.iocoder.yudao.framework.mybatis.core.query.MPJLambdaWrapperX;
+import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.ErpFinanceQuerySummaryRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.receivable.vo.misc.ErpReceivableMiscPageReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.receivable.ErpReceivableMiscDO;
 import cn.iocoder.yudao.module.erp.dal.mysql.common.ErpKeywordQuery;
@@ -45,7 +47,42 @@ public interface ErpReceivableMiscMapper extends BaseMapperX<ErpReceivableMiscDO
     Page<ErpMiscSettlementRespVO> selectSettlementPage(Page<ErpMiscSettlementRespVO> page, @Param("id") Long id);
 
     default PageResult<ErpReceivableMiscDO> selectPage(ErpReceivableMiscPageReqVO reqVO) {
-        LambdaQueryWrapperX<ErpReceivableMiscDO> wrapper = new LambdaQueryWrapperX<ErpReceivableMiscDO>()
+        MPJLambdaWrapperX<ErpReceivableMiscDO> wrapper = buildQuery(reqVO);
+        if (Boolean.TRUE.equals(reqVO.getReceiptEnable())) {
+            ErpFinanceSortUtils.applyWithIdAsc(wrapper, reqVO.getOrderField(), reqVO.getOrderDirection(),
+                    "no", "bizTime", "customerId", "accountId", "deptId", "handlerId", "amount", "status",
+                    "creator", "updater", "createTime", "updateTime", "remark");
+        } else {
+            ErpFinanceSortUtils.apply(wrapper, reqVO.getOrderField(), reqVO.getOrderDirection(),
+                    "erp_receivable_misc", "no", "bizTime", "customerId", "accountId", "deptId", "handlerId",
+                    "amount", "status", "creator", "updater", "createTime", "updateTime", "remark");
+        }
+        return selectJoinPage(reqVO, ErpReceivableMiscDO.class, wrapper);
+    }
+
+    default ErpFinanceQuerySummaryRespVO selectSummary(ErpReceivableMiscPageReqVO reqVO) {
+        String settled = ErpMiscSettlementSql.totalExpression(true, "t");
+        String pending = "COALESCE((SELECT SUM(f.receipt_price) FROM erp_finance_receipt f "
+                + "WHERE f.source_receivable_misc_id = t.id AND f.tenant_id = t.tenant_id "
+                + "AND f.deleted = b'0' AND f.status = 10), 0)";
+        String invalid = "EXISTS (SELECT 1 FROM erp_finance_receipt f "
+                + "WHERE f.source_receivable_misc_id = t.id AND f.tenant_id = t.tenant_id "
+                + "AND f.deleted = b'0' AND f.status = 10 "
+                + "AND (f.receipt_price IS NULL OR f.receipt_price = 0 OR SIGN(f.receipt_price) != SIGN(t.amount)))";
+        String available = "CASE WHEN " + invalid + " THEN 0 WHEN SIGN(t.amount - " + settled + " - " + pending
+                + ") = SIGN(t.amount) THEN t.amount - " + settled + " - " + pending + " ELSE 0 END";
+        MPJLambdaWrapperX<ErpReceivableMiscDO> wrapper = buildQuery(reqVO)
+                .selectAs("COUNT(*)", ErpFinanceQuerySummaryRespVO::getDocumentCount)
+                .selectAs("COALESCE(SUM(t.amount), 0)", ErpFinanceQuerySummaryRespVO::getAmount)
+                .selectAs("COALESCE(SUM(" + settled + "), 0)", ErpFinanceQuerySummaryRespVO::getSettledAmount)
+                .selectAs("COALESCE(SUM(t.amount - " + settled + "), 0)", ErpFinanceQuerySummaryRespVO::getBalanceAmount)
+                .selectAs("COALESCE(SUM(" + pending + "), 0)", ErpFinanceQuerySummaryRespVO::getPendingTransferAmount)
+                .selectAs("COALESCE(SUM(" + available + "), 0)", ErpFinanceQuerySummaryRespVO::getTransferAvailableAmount);
+        return selectJoinOne(ErpFinanceQuerySummaryRespVO.class, wrapper);
+    }
+
+    static MPJLambdaWrapperX<ErpReceivableMiscDO> buildQuery(ErpReceivableMiscPageReqVO reqVO) {
+        MPJLambdaWrapperX<ErpReceivableMiscDO> wrapper = new MPJLambdaWrapperX<ErpReceivableMiscDO>()
                 .inIfPresent(ErpReceivableMiscDO::getId, reqVO.getIds())
                 .likeIfPresent(ErpReceivableMiscDO::getNo, reqVO.getNo())
                 .betweenIfPresent(ErpReceivableMiscDO::getBizTime, reqVO.getBizTime())
@@ -58,13 +95,19 @@ public interface ErpReceivableMiscMapper extends BaseMapperX<ErpReceivableMiscDO
                 .likeIfPresent(ErpReceivableMiscDO::getRemark, reqVO.getRemark());
         wrapper.and(q -> q.isNull(ErpReceivableMiscDO::getSourceType).or().ne(ErpReceivableMiscDO::getSourceType,
                         cn.iocoder.yudao.module.erp.service.finance.ErpMiscTransferOffsetConstants.RECEIPT_OFFSET_SOURCE_TYPE));
-        ErpKeywordQuery.appendWithDeptNameAndCustomer(wrapper, reqVO.getKeyword(),
+        if (Boolean.TRUE.equals(reqVO.getReceiptEnable())) {
+            String settled = ErpMiscSettlementSql.totalExpression(true, "t");
+            String pending = "COALESCE((SELECT SUM(f.receipt_price) FROM erp_finance_receipt f "
+                    + "WHERE f.source_receivable_misc_id = t.id AND f.tenant_id = t.tenant_id "
+                    + "AND f.deleted = b'0' AND f.status = 10), 0)";
+            String occupied = "(" + settled + " + " + pending + ")";
+            wrapper.apply("((t.amount > 0 AND " + occupied + " >= 0 AND " + occupied + " < t.amount) OR "
+                    + "(t.amount < 0 AND " + occupied + " <= 0 AND " + occupied + " > t.amount))");
+        }
+        ErpKeywordQuery.appendWithDeptNameAndSaleCustomer(wrapper, reqVO.getKeyword(),
                 ErpReceivableMiscDO::getNo,
                 ErpReceivableMiscDO::getRemark);
-        ErpFinanceSortUtils.apply(wrapper, reqVO.getOrderField(), reqVO.getOrderDirection(), "erp_receivable_misc",
-                "no", "bizTime", "customerId", "accountId", "deptId", "handlerId", "amount", "status",
-                "creator", "updater", "createTime", "updateTime", "remark");
-        return selectPage(reqVO, wrapper);
+        return wrapper;
     }
 
     default ErpReceivableMiscDO selectBySourceItem(String sourceType, Long sourceItemId) {

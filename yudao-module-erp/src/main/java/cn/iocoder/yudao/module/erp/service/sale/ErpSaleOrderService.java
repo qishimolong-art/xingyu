@@ -105,6 +105,9 @@ public interface ErpSaleOrderService {
      */
     List<ErpSaleOrderItemDO> getSaleOrderItemListByOrderId(Long orderId);
 
+    List<ErpSaleOrderItemDO> getSaleOrderItemListByOrderId(Long orderId, String orderField,
+                                                            String orderDirection);
+
     PageResult<ErpSaleOrderItemDO> getSaleOrderItemPage(ErpSaleOrderItemPageReqVO pageReqVO);
 
     /**

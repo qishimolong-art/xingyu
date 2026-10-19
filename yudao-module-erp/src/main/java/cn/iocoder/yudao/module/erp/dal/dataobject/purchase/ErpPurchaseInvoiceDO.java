@@ -13,6 +13,7 @@ import lombok.ToString;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 
 /**
  * ERP 采购票据 DO
@@ -51,6 +52,11 @@ public class ErpPurchaseInvoiceDO extends BaseDO {
      * 开票日期
      */
     private LocalDate invoiceDate;
+
+    /**
+     * 审批通过时间。仅在审批事务成功时写入。
+     */
+    private LocalDateTime approveTime;
 
     /**
      * 票据类型

@@ -469,6 +469,12 @@ public class ErpSaleOrderServiceImpl implements ErpSaleOrderService {
     }
 
     @Override
+    public List<ErpSaleOrderItemDO> getSaleOrderItemListByOrderId(Long orderId, String orderField,
+                                                                  String orderDirection) {
+        return saleOrderItemMapper.selectListByOrderId(orderId, orderField, orderDirection);
+    }
+
+    @Override
     public PageResult<ErpSaleOrderItemDO> getSaleOrderItemPage(ErpSaleOrderItemPageReqVO pageReqVO) {
         validateSaleOrderExists(pageReqVO.getOrderId());
         return saleOrderItemMapper.selectPageByOrderId(pageReqVO);

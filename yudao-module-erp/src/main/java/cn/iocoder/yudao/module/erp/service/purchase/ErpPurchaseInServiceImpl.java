@@ -34,6 +34,7 @@ import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.in.ErpPurchaseIn
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.in.ErpPurchaseInCreateTransferOutReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.in.ErpPurchaseInCreateTransferOutRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.in.ErpPurchaseInPageReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.in.ErpPurchaseInSummaryRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.in.ErpPurchaseInSaleCartableItemPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.in.ErpPurchaseInSaleCartableItemRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.in.ErpPurchaseInSaveReqVO;
@@ -1340,6 +1341,11 @@ public class ErpPurchaseInServiceImpl implements ErpPurchaseInService {
     }
 
     @Override
+    public ErpPurchaseInSummaryRespVO getPurchaseInSummary(ErpPurchaseInPageReqVO pageReqVO) {
+        return purchaseInMapper.selectSummary(pageReqVO);
+    }
+
+    @Override
     public List<ErpPurchaseInDO> getPurchaseInList(Collection<Long> ids) {
         if (CollUtil.isEmpty(ids)) {
             return Collections.emptyList();
@@ -1363,8 +1369,18 @@ public class ErpPurchaseInServiceImpl implements ErpPurchaseInService {
     }
 
     @Override
+    public List<ErpPurchaseInItemDO> getPurchaseInItemListByInId(Long inId, String orderField,
+                                                                  String orderDirection) {
+        return purchaseInItemMapper.selectListByInId(inId, orderField, orderDirection);
+    }
+
+    @Override
     public PageResult<ErpPurchaseInItemDO> getPurchaseInItemPage(ErpPurchaseInItemPageReqVO pageReqVO) {
         validatePurchaseInExists(pageReqVO.getInId());
+        if (CollUtil.isNotEmpty(pageReqVO.getExcludedItemIds())) {
+            pageReqVO.setExcludedItemIds(pageReqVO.getExcludedItemIds().stream()
+                    .filter(id -> id != null && id > 0).distinct().collect(Collectors.toList()));
+        }
         return purchaseInItemMapper.selectPageByInId(pageReqVO);
     }
 

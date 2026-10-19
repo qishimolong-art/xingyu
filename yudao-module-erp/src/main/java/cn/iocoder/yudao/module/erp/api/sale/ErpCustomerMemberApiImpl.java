@@ -37,15 +37,16 @@ public class ErpCustomerMemberApiImpl implements ErpCustomerMemberApi {
         if (customerMember == null) {
             return ErpCustomerMemberAuthRespDTO.unauthorized().setMemberUserId(memberUserId);
         }
-        if (!isCustomerAvailable(customerMember.getCustomerId())) {
+        ErpCustomerDO customer = getAvailableCustomer(customerMember.getCustomerId());
+        if (customer == null) {
             return ErpCustomerMemberAuthRespDTO.unauthorized().setMemberUserId(memberUserId);
         }
-        ErpCustomerDO customer = customerService.getCustomer(customerMember.getCustomerId());
         return new ErpCustomerMemberAuthRespDTO()
                 .setAuthorized(true)
                 .setId(customerMember.getId())
                 .setCustomerId(customerMember.getCustomerId())
-                .setCustomerName(customer == null ? null : customer.getName())
+                .setCustomerName(customer.getName())
+                .setPriceLevel(customer.getPriceLevel())
                 .setMemberUserId(customerMember.getMemberUserId())
                 .setMobile(customerMember.getMobile())
                 .setPriceVisible(true)
@@ -78,12 +79,11 @@ public class ErpCustomerMemberApiImpl implements ErpCustomerMemberApi {
         return Boolean.TRUE.equals(getCustomerMemberAuth(memberUserId).getAuthorized());
     }
 
-    private boolean isCustomerAvailable(Long customerId) {
+    private ErpCustomerDO getAvailableCustomer(Long customerId) {
         try {
-            customerService.getCustomerSaleDeptIdsIgnoreDataPermission(customerId);
-            return true;
+            return customerService.validateCustomerForCustomerApp(customerId);
         } catch (ServiceException ex) {
-            return false;
+            return null;
         }
     }
 

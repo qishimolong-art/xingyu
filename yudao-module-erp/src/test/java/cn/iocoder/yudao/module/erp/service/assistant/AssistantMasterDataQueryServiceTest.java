@@ -92,8 +92,7 @@ class AssistantMasterDataQueryServiceTest {
 
     @Test
     void parsesProductCountKeywordWithoutDroppingBrandOrSeriesConstraint() {
-        for (String question : new String[]{"ERP中有多少个美孚产品", "美孚产品有多少个",
-                "ERP里美孚品牌的配件数量", "品牌为美孚的产品总数"}) {
+        for (String question : new String[]{"ERP中有多少个美孚产品", "美孚产品有多少个"}) {
             AssistantMasterDataQueryService.Query query = service.parse(question);
             assertNotNull(query, question);
             assertEquals(AssistantMasterDataQueryService.ArchiveType.PRODUCT, query.getArchiveType(), question);
@@ -102,6 +101,17 @@ class AssistantMasterDataQueryServiceTest {
         }
         assertNull(service.parse("ERP中有多少个产品").getProductKeyword());
         assertEquals("黑霸王", service.parse("黑霸王系列商品有几个").getProductKeyword());
+    }
+
+    @Test
+    void parsesExplicitProductBrandSeparatelyFromArchiveKeyword() {
+        for(String question:new String[]{"品牌为美孚的产品有多少个","美孚品牌配件有几个","美孚牌产品总数"}) {
+            AssistantMasterDataQueryService.Query query=service.parse(question);
+            assertNotNull(query,question);
+            assertEquals(AssistantMasterDataQueryService.ArchiveType.PRODUCT,query.getArchiveType(),question);
+            assertEquals("美孚",query.getProductBrand(),question);
+            assertNull(query.getProductKeyword(),question);
+        }
     }
 
     @Test
@@ -165,8 +175,35 @@ class AssistantMasterDataQueryServiceTest {
         ArgumentCaptor<ErpProductPageReqVO> captor = ArgumentCaptor.forClass(ErpProductPageReqVO.class);
         verify(products).getProductVOPage(captor.capture(), eq(false));
         assertEquals("美孚", captor.getValue().getKeyword());
+        assertEquals(ErpProductPageReqVO.KEYWORD_SEARCH_MODE_PRODUCT_ARCHIVE,
+                captor.getValue().getKeywordSearchMode());
         assertEquals(CommonStatusEnum.ENABLE.getStatus(), captor.getValue().getStatus());
         assertEquals(Boolean.TRUE, captor.getValue().getIncludeSaleDistributedArchive());
+    }
+
+    @Test
+    void explicitProductBrandUsesDedicatedFilterAndPermission() {
+        when(products.getProductVOPage(any(ErpProductPageReqVO.class),eq(false)))
+                .thenReturn(new PageResult<>(Collections.emptyList(),12L));
+
+        Map<String,Object> result=service.execute(service.parse("品牌为美孚的产品有多少个"));
+
+        assertEquals("当前账号可见范围内品牌“美孚”的共有 12 个启用配件档案。",result.get("answerText"));
+        ArgumentCaptor<ErpProductPageReqVO> captor=ArgumentCaptor.forClass(ErpProductPageReqVO.class);
+        verify(products).getProductVOPage(captor.capture(),eq(false));
+        assertEquals("美孚",captor.getValue().getBrand());
+        assertNull(captor.getValue().getKeyword());
+        assertEquals(ErpProductPageReqVO.KEYWORD_SEARCH_MODE_PRODUCT_ARCHIVE,
+                captor.getValue().getKeywordSearchMode());
+
+        reset(products);
+        when(products.hasCurrentUserProductArchiveVisibleScope()).thenReturn(true);
+        when(permissions.getCurrentUserHiddenFields("erp_product",null,false))
+                .thenReturn(Collections.singletonList("brand"));
+        AssistantFailure failure=assertThrows(AssistantFailure.class,
+                ()->service.execute(service.parse("美孚品牌产品有几个")));
+        assertEquals("FIELD_FORBIDDEN",failure.getCode());
+        verify(products,never()).getProductVOPage(any(ErpProductPageReqVO.class),anyBoolean());
     }
 
     @Test
@@ -174,7 +211,7 @@ class AssistantMasterDataQueryServiceTest {
         when(products.getProductVOPage(any(ErpProductPageReqVO.class), eq(false)))
                 .thenReturn(PageResult.empty());
 
-        Map<String, Object> result = service.execute(service.parse("未知品牌产品有多少个"));
+        Map<String, Object> result = service.execute(service.parse("未知系列产品有多少个"));
 
         assertEquals("EMPTY", result.get("status"));
         assertEquals("当前账号可见范围内没有关键词“未知”匹配的启用配件档案。", result.get("emptyText"));

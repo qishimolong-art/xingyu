@@ -5,6 +5,7 @@ import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.datapermission.core.util.DataPermissionUtils;
 import cn.iocoder.yudao.framework.mybatis.core.query.LambdaQueryWrapperX;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.payable.vo.account.ErpPayableAccountPageReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.finance.payable.vo.account.ErpPayableAccountSummaryRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.payable.vo.account.ErpPayableDetailReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.payable.vo.account.ErpPayableDetailRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.payable.vo.account.ErpPayableDrilldownReqVO;
@@ -47,6 +48,7 @@ import cn.iocoder.yudao.module.system.api.dept.dto.DeptRespDTO;
 import cn.iocoder.yudao.module.system.api.permission.PermissionApi;
 import cn.iocoder.yudao.module.system.api.user.AdminUserApi;
 import cn.iocoder.yudao.module.system.api.user.dto.AdminUserRespDTO;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import org.springframework.stereotype.Service;
 import org.springframework.validation.annotation.Validated;
 
@@ -74,6 +76,8 @@ import static cn.iocoder.yudao.module.erp.service.finance.payable.ErpPayableOthe
 @Service
 @Validated
 public class ErpPayableAccountServiceImpl implements ErpPayableAccountService {
+
+    private static final long SUMMARY_BATCH_SIZE = 500L;
 
     @Resource
     private ErpPayableAccountMapper payableAccountMapper;
@@ -121,6 +125,46 @@ public class ErpPayableAccountServiceImpl implements ErpPayableAccountService {
     }
 
     @Override
+    public ErpPayableAccountSummaryRespVO getPayableAccountSummary(ErpPayableAccountPageReqVO reqVO) {
+        SupplierVisibleScope scope = getSupplierVisibleScope();
+        ErpFinanceVisibleScope documentScope = getPayableVisibleScope();
+        if (scope == null || documentScope == null || !documentScope.hasAccess()) {
+            return new ErpPayableAccountSummaryRespVO();
+        }
+        return DataPermissionUtils.executeIgnore(() -> calculatePayableAccountSummary(reqVO, scope, documentScope));
+    }
+
+    private ErpPayableAccountSummaryRespVO calculatePayableAccountSummary(ErpPayableAccountPageReqVO reqVO,
+                                                                           SupplierVisibleScope scope,
+                                                                           ErpFinanceVisibleScope documentScope) {
+        ErpPayableAccountSummaryRespVO summary = new ErpPayableAccountSummaryRespVO();
+        long pageNo = 1L;
+        while (true) {
+            Page<ErpPayableAccountDO> page = new Page<>(pageNo, SUMMARY_BATCH_SIZE, false);
+            List<ErpPayableAccountDO> rows = payableAccountMapper.selectPageRows(page, reqVO,
+                    scope.getDeptIds(), scope.getSelfUserId(), scope.isAll(), documentScope.getDeptIds(),
+                    documentScope.getSelfUserId(), documentScope.isAll()).getRecords();
+            rows.forEach(row -> addSummaryRow(summary, row));
+            if (rows.size() < SUMMARY_BATCH_SIZE) {
+                return summary;
+            }
+            pageNo++;
+        }
+    }
+
+    private void addSummaryRow(ErpPayableAccountSummaryRespVO summary, ErpPayableAccountDO row) {
+        summary.setSupplierCount(summary.getSupplierCount() + 1);
+        summary.setPurchaseInAmount(summary.getPurchaseInAmount().add(defaultAmount(row.getPurchaseInAmount())));
+        summary.setPaymentAmount(summary.getPaymentAmount().add(defaultAmount(row.getPaymentAmount())));
+        summary.setBalance(summary.getBalance().add(defaultAmount(row.getBalance())));
+        summary.setOpeningPayableBalance(summary.getOpeningPayableBalance()
+                .add(defaultAmount(row.getOpeningPayableBalance())));
+        summary.setMiscPayableAmount(summary.getMiscPayableAmount().add(defaultAmount(row.getMiscPayableAmount())));
+        summary.setUnclearedPrepayment(summary.getUnclearedPrepayment()
+                .add(defaultAmount(row.getUnclearedPrepayment())));
+    }
+
+    @Override
     public List<ErpPayableAccountDO> getPayableAccountList(ErpPayableAccountPageReqVO reqVO) {
         SupplierVisibleScope scope = getSupplierVisibleScope();
         ErpFinanceVisibleScope documentScope = getPayableVisibleScope();
@@ -130,6 +174,18 @@ public class ErpPayableAccountServiceImpl implements ErpPayableAccountService {
         return DataPermissionUtils.executeIgnore(() ->
                 payableAccountMapper.selectList(reqVO, scope.getDeptIds(), scope.getSelfUserId(), scope.isAll(),
                         documentScope.getDeptIds(), documentScope.getSelfUserId(), documentScope.isAll()));
+    }
+
+    @Override
+    public List<ErpPayableAccountDO> getPayableAccountList(ErpPayableAccountPageReqVO reqVO,
+                                                            ErpFinanceVisibleScope documentScope) {
+        SupplierVisibleScope scope = getSupplierVisibleScope();
+        if (scope == null || documentScope == null || !documentScope.hasAccess()) {
+            return Collections.emptyList();
+        }
+        return DataPermissionUtils.executeIgnore(() -> payableAccountMapper.selectList(reqVO,
+                scope.getDeptIds(), scope.getSelfUserId(), scope.isAll(), documentScope.getDeptIds(),
+                documentScope.getSelfUserId(), documentScope.isAll()));
     }
 
     @Override
@@ -271,6 +327,7 @@ public class ErpPayableAccountServiceImpl implements ErpPayableAccountService {
             row.setRemark(item.getRemark());
             row.setIncreaseAmount(change.compareTo(BigDecimal.ZERO) > 0 ? change : BigDecimal.ZERO);
             row.setPaymentAmount(change.compareTo(BigDecimal.ZERO) < 0 ? change.abs() : BigDecimal.ZERO);
+            row.setPaymentDisplayAmount(row.getPaymentAmount());
             row.setWriteOffAmount(BigDecimal.ZERO);
             row.setChangeAmount(change);
             row.setPrevBalance(cumulative);
@@ -348,6 +405,7 @@ public class ErpPayableAccountServiceImpl implements ErpPayableAccountService {
             case "changeAmount": comparator = comparing(ErpPayableDetailRespVO::getChangeAmount); break;
             case "increaseAmount": comparator = comparing(ErpPayableDetailRespVO::getIncreaseAmount); break;
             case "paymentAmount": comparator = comparing(ErpPayableDetailRespVO::getPaymentAmount); break;
+            case "paymentDisplayAmount": comparator = comparing(ErpPayableDetailRespVO::getPaymentDisplayAmount); break;
             case "writeOffAmount": comparator = comparing(ErpPayableDetailRespVO::getWriteOffAmount); break;
             case "balance": comparator = comparing(ErpPayableDetailRespVO::getBalance); break;
             case "deptName": comparator = comparing(ErpPayableDetailRespVO::getDeptName); break;
@@ -572,6 +630,7 @@ public class ErpPayableAccountServiceImpl implements ErpPayableAccountService {
                     item.getPaymentTime(), item.getNo(), resolvePaymentDetailPaymentAmount(item, discountPaymentIds),
                     paymentAllocated.get(item.getId()),
                     item.getDeptId());
+            row.setPaymentDisplayAmount(resolvePaymentDisplayAmount(item, row.getPaymentAmount()));
             row.setBusinessUserId(item.getFinanceUserId());
             row.setRemark(item.getRemark());
             row.setVoucherSourceBizType(ErpVoucherSourceBizTypeEnum.PAYMENT.getType());
@@ -608,6 +667,11 @@ public class ErpPayableAccountServiceImpl implements ErpPayableAccountService {
                     rows.add(row);
                 });
 
+        rows.forEach(row -> {
+            if (row.getPaymentDisplayAmount() == null) {
+                row.setPaymentDisplayAmount(row.getPaymentAmount());
+            }
+        });
         rows.sort(Comparator.comparing(ErpPayableDetailRespVO::getDocDate, Comparator.nullsLast(Comparator.naturalOrder()))
                 .thenComparing(ErpPayableDetailRespVO::getDocType)
                 .thenComparing(ErpPayableDetailRespVO::getDocNo, Comparator.nullsLast(String::compareTo)));
@@ -653,6 +717,10 @@ public class ErpPayableAccountServiceImpl implements ErpPayableAccountService {
 
     private BigDecimal resolvePaymentDetailPaymentAmount(ErpFinancePaymentDO item, Set<Long> discountPaymentIds) {
         return discountPaymentIds.contains(item.getId()) ? item.getPaymentPrice() : item.getTotalPrice();
+    }
+
+    private BigDecimal resolvePaymentDisplayAmount(ErpFinancePaymentDO item, BigDecimal paymentAmount) {
+        return item.getTotalPrice() == null ? defaultAmount(paymentAmount) : item.getTotalPrice();
     }
 
     private ErpPayableDetailRespVO buildPurchaseInDetailRow(ErpPurchaseInDO purchaseIn, BigDecimal allocatedAmount,
@@ -751,6 +819,7 @@ public class ErpPayableAccountServiceImpl implements ErpPayableAccountService {
         ErpPayableDetailRespVO row = buildRow(docType, bizType, bizId, docDate, docNo, BigDecimal.ZERO, false,
                 deptId);
         row.setPaymentAmount(actualAmount);
+        row.setPaymentDisplayAmount(actualAmount);
         row.setAllocatedAmount(defaultAmount(allocatedAmount).abs());
         row.setWriteOffBaseAmount(actualAmount.abs());
         return row;

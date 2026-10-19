@@ -20,6 +20,7 @@ import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.in.ErpPurchaseIn
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.in.ErpPurchaseInCreateSaleCartReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.in.ErpPurchaseInCreateSaleCartRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.in.ErpPurchaseInPageReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.in.ErpPurchaseInSummaryRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.in.ErpPurchaseInSaveReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.in.ErpPurchaseInSaleCartableItemPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.in.ErpPurchaseInSaleCartableItemRespVO;
@@ -161,6 +162,8 @@ public interface ErpPurchaseInService {
      */
     PageResult<ErpPurchaseInDO> getPurchaseInPage(ErpPurchaseInPageReqVO pageReqVO);
 
+    ErpPurchaseInSummaryRespVO getPurchaseInSummary(ErpPurchaseInPageReqVO pageReqVO);
+
     List<ErpPurchaseInDO> getPurchaseInList(Collection<Long> ids);
 
     /**
@@ -180,6 +183,9 @@ public interface ErpPurchaseInService {
      * @return 采购入库项列表
      */
     List<ErpPurchaseInItemDO> getPurchaseInItemListByInId(Long inId);
+
+    List<ErpPurchaseInItemDO> getPurchaseInItemListByInId(Long inId, String orderField,
+                                                           String orderDirection);
 
     /**
      * 获得采购入库项分页

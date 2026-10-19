@@ -14,6 +14,8 @@ import cn.iocoder.yudao.module.erp.controller.admin.common.vo.ErpExportFieldResp
 import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpProductRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.imports.ErpSaleImportResultRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.ErpSaleUpdateRemarkReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.ErpSaleItemMatchReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.ErpSaleItemMatchRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.quote.ErpSaleQuoteExportRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.quote.ErpSaleQuoteDraftCreateReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.quote.ErpSaleQuoteDraftUpdateReqVO;
@@ -26,6 +28,7 @@ import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.quote.ErpSaleQuoteOr
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.quote.ErpSaleQuotePageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.quote.ErpSaleQuoteRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.quote.ErpSaleQuoteSaveReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.quote.ErpSaleQuoteSummaryRespVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpCustomerDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleOutDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleQuoteDO;
@@ -78,6 +81,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.Collection;
+import java.util.Comparator;
+import java.util.HashSet;
+import java.util.Objects;
 
 import static cn.iocoder.yudao.framework.apilog.core.enums.OperateTypeEnum.EXPORT;
 import static cn.iocoder.yudao.framework.common.pojo.CommonResult.success;
@@ -277,12 +283,58 @@ public class ErpSaleQuoteController {
             return success(PageResult.empty());
         }
         PageResult<ErpSaleQuoteItemDO> pageResult = saleQuoteService.getSaleQuoteItemPage(pageReqVO);
-        ErpSaleQuoteRespVO respVO = buildSaleQuoteRespVO(quote, pageResult.getList());
-        PageResult<ErpSaleQuoteRespVO.Item> respResult = new PageResult<>(respVO.getItems(), pageResult.getTotal());
+        ErpSaleQuoteRespVO respVO = BeanUtils.toBean(quote, ErpSaleQuoteRespVO.class);
+        PageResult<ErpSaleQuoteRespVO.Item> respResult = new PageResult<>(
+                buildSaleQuoteItemRespVOList(pageResult.getList()), pageResult.getTotal());
         if (Boolean.TRUE.equals(pageReqVO.getMask())) {
             fieldPermissionMasker.clearSaleDetailHiddenItemFields(FIELD_PERMISSION_MODULE, respVO, respResult.getList());
         }
         return success(respResult);
+    }
+
+    @PostMapping("/item-page")
+    @Operation(summary = "获得报价订单编辑态明细分页")
+    @PreAuthorize("@ss.hasPermission('erp:sale-quote:query')")
+    public CommonResult<PageResult<ErpSaleQuoteRespVO.Item>> getSaleQuoteEditItemPage(
+            @Valid @RequestBody ErpSaleQuoteItemPageReqVO pageReqVO) {
+        return getSaleQuoteItemPage(pageReqVO);
+    }
+
+    @PostMapping("/item-match")
+    @Operation(summary = "匹配报价订单整单已有明细")
+    @PreAuthorize("@ss.hasPermission('erp:sale-quote:query')")
+    public CommonResult<ErpSaleItemMatchRespVO> matchSaleQuoteItems(
+            @Valid @RequestBody ErpSaleItemMatchReqVO reqVO) {
+        if (saleQuoteService.getSaleQuote(reqVO.getDocumentId()) == null) {
+            return success(new ErpSaleItemMatchRespVO());
+        }
+        Set<Long> excludedIds = new HashSet<>(reqVO.getExcludedItemIds() == null
+                ? Collections.emptyList() : reqVO.getExcludedItemIds());
+        List<ErpSaleQuoteItemDO> items = new ArrayList<>(
+                saleQuoteService.getSaleQuoteItemListByQuoteId(reqVO.getDocumentId()));
+        items.removeIf(item -> excludedIds.contains(item.getId()));
+        items.sort(Comparator.comparing(ErpSaleQuoteItemDO::getId));
+        ErpSaleItemMatchRespVO result = new ErpSaleItemMatchRespVO();
+        for (int keyIndex = 0; keyIndex < reqVO.getKeys().size(); keyIndex++) {
+            ErpSaleItemMatchReqVO.Key key = reqVO.getKeys().get(keyIndex);
+            for (int itemIndex = 0; itemIndex < items.size(); itemIndex++) {
+                ErpSaleQuoteItemDO item = items.get(itemIndex);
+                if (Objects.equals(item.getProductId(), key.getProductId())
+                        && Objects.equals(item.getWarehouseId(), key.getWarehouseId())
+                        && Objects.equals(normalizeBatchNo(item.getBatchNo()), normalizeBatchNo(key.getBatchNo()))
+                        && Objects.equals(Boolean.TRUE.equals(item.getGiftFlag()),
+                                Boolean.TRUE.equals(key.getGiftFlag()))) {
+                    result.getMatches().add(new ErpSaleItemMatchRespVO.Match(keyIndex, item.getId(),
+                            itemIndex / reqVO.getPageSize() + 1));
+                    break;
+                }
+            }
+        }
+        return success(result);
+    }
+
+    private static String normalizeBatchNo(String batchNo) {
+        return batchNo == null ? "" : batchNo.trim();
     }
 
     @GetMapping("/warehouse-dept-simple-list")
@@ -344,6 +396,16 @@ public class ErpSaleQuoteController {
                 : buildSaleQuoteVOPageResult(pageResult);
         fieldPermissionMasker.maskSaleDetailFormsWithItems(FIELD_PERMISSION_MODULE, respResult.getList());
         return success(respResult);
+    }
+
+    @GetMapping("/summary")
+    @Operation(summary = "获得报价订单查询汇总")
+    @PreAuthorize("@ss.hasPermission('erp:sale-quote:query')")
+    public CommonResult<ErpSaleQuoteSummaryRespVO> getSaleQuoteSummary(
+            @Valid ErpSaleQuotePageReqVO pageReqVO) {
+        ErpSaleQuoteSummaryRespVO summary = saleQuoteService.getSaleQuoteSummary(pageReqVO);
+        fieldPermissionMasker.clearSaleDetailHiddenFields(FIELD_PERMISSION_MODULE, summary);
+        return success(summary);
     }
 
     @GetMapping("/export-excel")
@@ -551,6 +613,41 @@ public class ErpSaleQuoteController {
         ErpSaleQuoteRespVO result = BeanUtils.toBean(quote, ErpSaleQuoteRespVO.class,
                 vo -> fillRelation(vo, items, productMap, warehouseMap, customerMap, userMap, deptMap, finalSaleOutMap));
         applyProgress(Collections.singletonList(result));
+        return result;
+    }
+
+    private List<ErpSaleQuoteRespVO.Item> buildSaleQuoteItemRespVOList(List<ErpSaleQuoteItemDO> items) {
+        List<ErpSaleQuoteItemDO> safeItems = CollUtil.isEmpty(items) ? Collections.emptyList() : items;
+        Map<Long, ErpProductRespVO> productMap = getProductVOMapIgnoreDataPermission(
+                convertSet(safeItems, ErpSaleQuoteItemDO::getProductId));
+        Map<Long, ErpWarehouseDO> warehouseMap = getWarehouseMapIgnoreDataPermission(
+                convertSet(safeItems, ErpSaleQuoteItemDO::getWarehouseId));
+        Set<Long> deptIds = convertSet(safeItems, ErpSaleQuoteItemDO::getDeptId);
+        deptIds.addAll(convertSet(warehouseMap.values(), ErpWarehouseDO::getDeptId));
+        deptIds.remove(null);
+        Map<Long, DeptRespDTO> deptMap = CollUtil.isEmpty(deptIds)
+                ? Collections.emptyMap() : deptApi.getDeptMap(deptIds);
+        Set<Long> productIds = convertSet(safeItems, ErpSaleQuoteItemDO::getProductId);
+        Map<Long, BigDecimal> lastSalePriceMap = CollUtil.isEmpty(productIds)
+                ? Collections.emptyMap()
+                : DataPermissionUtils.executeIgnore(() -> saleOutItemMapper.selectLatestSalePriceMap(productIds));
+        List<ErpSaleQuoteRespVO.Item> result = BeanUtils.toBean(safeItems, ErpSaleQuoteRespVO.Item.class, item -> {
+            item.setLastSalePrice(lastSalePriceMap.get(item.getProductId()));
+            MapUtils.findAndThen(productMap, item.getProductId(), product -> item.setProductName(product.getName())
+                    .setProductCode(product.getCode()).setProductBarCode(product.getBarCode())
+                    .setProductUnitName(product.getUnitName()).setBatchNoEnabled(product.getBatchNoEnabled()));
+            MapUtils.findAndThen(warehouseMap, item.getWarehouseId(), warehouse -> {
+                item.setWarehouseName(warehouse.getName());
+                item.setWarehouseDeptId(warehouse.getDeptId());
+                MapUtils.findAndThen(deptMap, warehouse.getDeptId(), dept -> item.setWarehouseDeptName(dept.getName()));
+            });
+            MapUtils.findAndThen(deptMap, item.getDeptId(), dept -> item.setDeptName(dept.getName()));
+            item.setRemainingCount((item.getCount() != null ? item.getCount() : BigDecimal.ZERO)
+                    .subtract(item.getConvertedCount() != null ? item.getConvertedCount() : BigDecimal.ZERO)
+                    .max(BigDecimal.ZERO));
+        });
+        fillItemStock(result);
+        itemPriceReferenceFiller.fill(result);
         return result;
     }
 

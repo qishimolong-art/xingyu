@@ -36,6 +36,15 @@ public final class ErpOriginalSettlementAmountUtils {
                 firstNonNull(purchaseIn.getFeeAmount(), purchaseIn.getOtherPrice()));
     }
 
+    public static BigDecimal calculatePurchaseIn(ErpPurchaseInDO purchaseIn,
+                                                  BigDecimal originalProductPrice) {
+        if (originalProductPrice == null) {
+            return zeroIfNull(purchaseIn.getTotalPrice());
+        }
+        return calculateTotal(originalProductPrice, purchaseIn.getDiscountPercent(),
+                firstNonNull(purchaseIn.getFeeAmount(), purchaseIn.getOtherPrice()));
+    }
+
     public static BigDecimal calculateSaleOut(ErpSaleOutDO saleOut, List<ErpSaleOutItemDO> items) {
         if (!hasSaleOriginalPrice(items)) {
             return zeroIfNull(saleOut.getTotalPrice());
@@ -47,6 +56,14 @@ public final class ErpOriginalSettlementAmountUtils {
                 .filter(price -> price != null)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
         return calculateTotal(productPrice, saleOut.getDiscountPercent(),
+                firstNonNull(saleOut.getFeeAmount(), saleOut.getOtherPrice(), saleOut.getExtraFee()));
+    }
+
+    public static BigDecimal calculateSaleOut(ErpSaleOutDO saleOut, BigDecimal originalProductPrice) {
+        if (originalProductPrice == null) {
+            return zeroIfNull(saleOut.getTotalPrice());
+        }
+        return calculateTotal(originalProductPrice, saleOut.getDiscountPercent(),
                 firstNonNull(saleOut.getFeeAmount(), saleOut.getOtherPrice(), saleOut.getExtraFee()));
     }
 

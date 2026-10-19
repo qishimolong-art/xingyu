@@ -63,6 +63,8 @@ public final class ErpPurchaseInDetailReportModels {
         private Long warehouseId;
         private Long supplierId;
         private String documentTypeCode;
+        private Long sourceBusinessId;
+        private String sourceDocumentTypeCode;
 
         @ExcelProperty(value = "审核日期", index = 0)
         private LocalDateTime approveDate;

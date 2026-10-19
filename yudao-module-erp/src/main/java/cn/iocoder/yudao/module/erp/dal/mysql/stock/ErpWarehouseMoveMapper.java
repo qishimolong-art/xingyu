@@ -4,10 +4,12 @@ import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.mybatis.core.mapper.BaseMapperX;
 import cn.iocoder.yudao.framework.mybatis.core.query.MPJLambdaWrapperX;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.warehousemove.ErpWarehouseMovePageReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.warehousemove.ErpWarehouseMoveSummaryRespVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.product.ErpProductDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.product.ErpProductUnitDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpWarehouseMoveDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpWarehouseMoveItemDO;
+import cn.iocoder.yudao.module.erp.dal.mysql.common.ErpKeywordQuery;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.core.toolkit.support.SFunction;
 import com.github.yulichang.wrapper.MPJLambdaWrapper;
@@ -49,6 +51,19 @@ public interface ErpWarehouseMoveMapper extends BaseMapperX<ErpWarehouseMoveDO> 
         return selectJoinList(ErpWarehouseMoveDO.class, query);
     }
 
+    default ErpWarehouseMoveSummaryRespVO selectSummary(ErpWarehouseMovePageReqVO reqVO) {
+        MPJLambdaWrapperX<ErpWarehouseMoveDO> query = buildQuery(reqVO)
+                .selectAs("COUNT(t.id)", ErpWarehouseMoveSummaryRespVO::getTotalRows)
+                .selectAs("COALESCE(SUM((SELECT COUNT(*) FROM erp_warehouse_move_item i "
+                                + "WHERE i.move_id = t.id AND i.deleted = b'0' AND i.tenant_id = t.tenant_id)), 0)",
+                        ErpWarehouseMoveSummaryRespVO::getTotalItems)
+                .selectAs("COALESCE(SUM(t.total_count), 0)", ErpWarehouseMoveSummaryRespVO::getTotalCount)
+                .selectAs("COALESCE(SUM(t.total_cost_amount), 0)",
+                        ErpWarehouseMoveSummaryRespVO::getTotalCostAmount)
+                .selectAs("COALESCE(SUM(t.total_price), 0)", ErpWarehouseMoveSummaryRespVO::getTotalPrice);
+        return selectJoinOne(ErpWarehouseMoveSummaryRespVO.class, query);
+    }
+
     default MPJLambdaWrapperX<ErpWarehouseMoveDO> buildQuery(ErpWarehouseMovePageReqVO reqVO) {
         MPJLambdaWrapperX<ErpWarehouseMoveDO> query = new MPJLambdaWrapperX<ErpWarehouseMoveDO>()
                 .inIfPresent(ErpWarehouseMoveDO::getId, reqVO.getIds())
@@ -63,14 +78,9 @@ public interface ErpWarehouseMoveMapper extends BaseMapperX<ErpWarehouseMoveDO> 
                 .eqIfPresent(ErpWarehouseMoveDO::getToWarehouseId, reqVO.getToWarehouseId())
                 .likeIfPresent(ErpWarehouseMoveDO::getRemark, reqVO.getRemark())
                 .eqIfPresent(ErpWarehouseMoveDO::getCreator, reqVO.getCreator());
-        if (reqVO.getProductId() != null || StringUtils.hasText(reqVO.getProductKeyword())) {
-            query.leftJoin(ErpWarehouseMoveItemDO.class, ErpWarehouseMoveItemDO::getMoveId, ErpWarehouseMoveDO::getId)
-                    .leftJoin(ErpProductDO.class, ErpProductDO::getId, ErpWarehouseMoveItemDO::getProductId)
-                    .leftJoin(ErpProductUnitDO.class, ErpProductUnitDO::getId, ErpWarehouseMoveItemDO::getProductUnitId)
-                    .eq(reqVO.getProductId() != null, ErpWarehouseMoveItemDO::getProductId, reqVO.getProductId())
-                    .and(StringUtils.hasText(reqVO.getProductKeyword()), w -> appendProductKeyword(w, reqVO.getProductKeyword()))
-                    .groupBy(ErpWarehouseMoveDO::getId);
-        }
+        ErpKeywordQuery.appendProductItemFilter(query, "erp_warehouse_move_item", "move_id",
+                reqVO.getProductId(), null, null, null,
+                reqVO.getProductKeyword(), true);
         appendWarehouseMoveKeyword(query, reqVO.getKeyword());
         return query;
     }

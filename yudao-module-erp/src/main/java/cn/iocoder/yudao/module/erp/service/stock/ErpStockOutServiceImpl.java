@@ -2,6 +2,7 @@ package cn.iocoder.yudao.module.erp.service.stock;
 
 import cn.hutool.core.collection.CollUtil;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
+import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.ErpStockDocumentSummaryRespVO;
 import cn.iocoder.yudao.framework.common.util.number.MoneyUtils;
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
 import cn.iocoder.yudao.framework.datapermission.core.util.DataPermissionUtils;
@@ -37,6 +38,7 @@ import org.springframework.validation.annotation.Validated;
 
 import javax.annotation.Resource;
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashSet;
@@ -224,7 +226,7 @@ public class ErpStockOutServiceImpl implements ErpStockOutService {
 
         // 2. 更新状态
         int updateCount = stockOutMapper.updateByIdAndStatus(id, stockOut.getStatus(),
-                new ErpStockOutDO().setStatus(status));
+                new ErpStockOutDO().setStatus(status).setApproveTime(LocalDateTime.now()));
         if (updateCount == 0) {
             throw exception(STOCK_OUT_APPROVE_FAIL);
         }
@@ -396,11 +398,22 @@ public class ErpStockOutServiceImpl implements ErpStockOutService {
         return stockOutMapper.selectPage(pageReqVO);
     }
 
+    @Override
+    public ErpStockDocumentSummaryRespVO getStockOutSummary(ErpStockOutPageReqVO pageReqVO) {
+        return stockOutMapper.selectSummary(pageReqVO);
+    }
+
     // ==================== 出库项 ====================
 
     @Override
     public List<ErpStockOutItemDO> getStockOutItemListByOutId(Long outId) {
         return stockOutItemMapper.selectListByOutId(outId);
+    }
+
+    @Override
+    public List<ErpStockOutItemDO> getStockOutItemListByOutId(Long outId, String orderField,
+                                                              String orderDirection) {
+        return stockOutItemMapper.selectListByOutId(outId, orderField, orderDirection);
     }
 
     @Override

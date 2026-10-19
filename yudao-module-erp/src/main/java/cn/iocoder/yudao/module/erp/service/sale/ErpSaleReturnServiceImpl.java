@@ -21,6 +21,7 @@ import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleRetur
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnItemBatchUpdateReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnItemPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnPageReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnSummaryRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnPurchaseReturnableItemPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnPurchaseReturnableItemRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnRespVO;
@@ -741,6 +742,7 @@ public class ErpSaleReturnServiceImpl implements ErpSaleReturnService {
         if (updateCount == 0) {
             throw exception(SALE_RETURN_APPROVE_FAIL);
         }
+        saleReturnMapper.updateById(new ErpSaleReturnDO().setId(id).setApproveTime(LocalDateTime.now()));
 
         List<ErpSaleReturnItemDO> saleReturnItems = saleReturnItemMapper.selectListByReturnIdForUpdate(id);
         warehouseService.validSaleWarehouseList(convertList(saleReturnItems, ErpSaleReturnItemDO::getWarehouseId));
@@ -999,8 +1001,19 @@ public class ErpSaleReturnServiceImpl implements ErpSaleReturnService {
     }
 
     @Override
+    public ErpSaleReturnSummaryRespVO getSaleReturnSummary(ErpSaleReturnPageReqVO pageReqVO) {
+        return saleReturnMapper.selectSummary(pageReqVO);
+    }
+
+    @Override
     public List<ErpSaleReturnItemDO> getSaleReturnItemListByReturnId(Long returnId) {
         return saleReturnItemMapper.selectListByReturnId(returnId);
+    }
+
+    @Override
+    public List<ErpSaleReturnItemDO> getSaleReturnItemListByReturnId(Long returnId, String orderField,
+                                                                    String orderDirection) {
+        return saleReturnItemMapper.selectListByReturnId(returnId, orderField, orderDirection);
     }
 
     @Override

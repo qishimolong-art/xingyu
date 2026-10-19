@@ -5,6 +5,7 @@ import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.datapermission.core.util.DataPermissionUtils;
 import cn.iocoder.yudao.framework.mybatis.core.query.LambdaQueryWrapperX;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.receivable.vo.account.ErpReceivableAccountPageReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.finance.receivable.vo.account.ErpReceivableAccountSummaryRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.receivable.vo.account.ErpReceivableDetailReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.receivable.vo.account.ErpReceivableDetailRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.receivable.vo.account.ErpReceivableDrilldownReqVO;
@@ -44,6 +45,7 @@ import cn.iocoder.yudao.module.system.api.dept.dto.DeptRespDTO;
 import cn.iocoder.yudao.module.system.api.permission.PermissionApi;
 import cn.iocoder.yudao.module.system.api.user.AdminUserApi;
 import cn.iocoder.yudao.module.system.api.user.dto.AdminUserRespDTO;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import org.springframework.stereotype.Service;
 import org.springframework.validation.annotation.Validated;
 
@@ -54,6 +56,7 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Comparator;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -70,6 +73,8 @@ import static cn.iocoder.yudao.module.erp.service.finance.receivable.ErpReceivab
 @Service
 @Validated
 public class ErpReceivableAccountServiceImpl implements ErpReceivableAccountService {
+
+    private static final long SUMMARY_BATCH_SIZE = 500L;
 
     @Resource
     private ErpReceivableAccountMapper receivableAccountMapper;
@@ -118,6 +123,63 @@ public class ErpReceivableAccountServiceImpl implements ErpReceivableAccountServ
     }
 
     @Override
+    public ErpReceivableAccountSummaryRespVO getReceivableAccountSummary(ErpReceivableAccountPageReqVO reqVO) {
+        CustomerVisibleScope customerScope = getCustomerVisibleScope();
+        ReceivableVisibleScope documentScope = getReceivableVisibleScope();
+        if (customerScope == null || documentScope == null || !documentScope.hasAccess()) {
+            return new ErpReceivableAccountSummaryRespVO();
+        }
+        return DataPermissionUtils.executeIgnore(() ->
+                calculateReceivableAccountSummary(reqVO, customerScope, documentScope));
+    }
+
+    private ErpReceivableAccountSummaryRespVO calculateReceivableAccountSummary(
+            ErpReceivableAccountPageReqVO reqVO, CustomerVisibleScope customerScope,
+            ReceivableVisibleScope documentScope) {
+        ErpReceivableAccountSummaryRespVO summary = new ErpReceivableAccountSummaryRespVO();
+        Map<Long, BigDecimal> customerAdvanceAmounts = new HashMap<>();
+        long pageNo = 1L;
+        while (true) {
+            Page<ErpReceivableAccountDO> page = new Page<>(pageNo, SUMMARY_BATCH_SIZE, false);
+            List<ErpReceivableAccountDO> rows = receivableAccountMapper.selectPageRows(page, reqVO,
+                    customerScope.getDeptIds(), customerScope.getSelfUserId(), customerScope.isAll(),
+                    documentScope.getDeptIds(), documentScope.getSelfUserId(), documentScope.isAll()).getRecords();
+            rows.forEach(row -> addSummaryRow(summary, row, customerAdvanceAmounts));
+            if (rows.size() < SUMMARY_BATCH_SIZE) {
+                return summary;
+            }
+            pageNo++;
+        }
+    }
+
+    private void addSummaryRow(ErpReceivableAccountSummaryRespVO summary, ErpReceivableAccountDO row,
+                               Map<Long, BigDecimal> customerAdvanceAmounts) {
+        summary.setComboCount(summary.getComboCount() + 1);
+        summary.setReceivableBalance(summary.getReceivableBalance()
+                .add(defaultAmount(row.getReceivableBalance())));
+        summary.setOpeningReceivableBalance(summary.getOpeningReceivableBalance()
+                .add(defaultAmount(row.getOpeningReceivableBalance())));
+        summary.setReceiptAmount(summary.getReceiptAmount().add(defaultAmount(row.getReceiptAmount())));
+        summary.setMiscReceivableAmount(summary.getMiscReceivableAmount()
+                .add(defaultAmount(row.getMiscReceivableAmount())));
+        summary.setCreditBalance(summary.getCreditBalance().add(defaultAmount(row.getCreditBalance())));
+
+        Long customerId = row.getCustomerId();
+        if (customerId == null) {
+            return;
+        }
+        BigDecimal currentAdvance = defaultAmount(row.getPreAdvanceAmount());
+        BigDecimal previousAdvance = customerAdvanceAmounts.putIfAbsent(customerId, currentAdvance);
+        if (previousAdvance == null) {
+            summary.setCustomerCount(summary.getCustomerCount() + 1);
+            summary.setPreAdvanceAmount(summary.getPreAdvanceAmount().add(currentAdvance));
+        } else if (currentAdvance.compareTo(previousAdvance) > 0) {
+            customerAdvanceAmounts.put(customerId, currentAdvance);
+            summary.setPreAdvanceAmount(summary.getPreAdvanceAmount().add(currentAdvance.subtract(previousAdvance)));
+        }
+    }
+
+    @Override
     public List<ErpReceivableAccountDO> getReceivableAccountList(ErpReceivableAccountPageReqVO reqVO) {
         CustomerVisibleScope customerScope = getCustomerVisibleScope();
         ReceivableVisibleScope documentScope = getReceivableVisibleScope();
@@ -128,6 +190,18 @@ public class ErpReceivableAccountServiceImpl implements ErpReceivableAccountServ
                 receivableAccountMapper.selectList(reqVO, customerScope.getDeptIds(), customerScope.getSelfUserId(),
                         customerScope.isAll(), documentScope.getDeptIds(), documentScope.getSelfUserId(),
                         documentScope.isAll()));
+    }
+
+    @Override
+    public List<ErpReceivableAccountDO> getReceivableAccountList(ErpReceivableAccountPageReqVO reqVO,
+                                                                  ErpFinanceVisibleScope scope) {
+        CustomerVisibleScope customerScope = getCustomerVisibleScope();
+        if (customerScope == null || scope == null || !scope.hasAccess()) {
+            return Collections.emptyList();
+        }
+        return DataPermissionUtils.executeIgnore(() -> receivableAccountMapper.selectList(reqVO,
+                customerScope.getDeptIds(), customerScope.getSelfUserId(), customerScope.isAll(),
+                scope.getDeptIds(), scope.getSelfUserId(), scope.isAll()));
     }
 
     @Override
@@ -272,6 +346,7 @@ public class ErpReceivableAccountServiceImpl implements ErpReceivableAccountServ
             row.setRemark(item.getRemark());
             row.setIncreaseAmount(change.compareTo(BigDecimal.ZERO) > 0 ? change : BigDecimal.ZERO);
             row.setReceiptAmount(change.compareTo(BigDecimal.ZERO) < 0 ? change.abs() : BigDecimal.ZERO);
+            row.setReceiptDisplayAmount(row.getReceiptAmount());
             row.setChangeAmount(change);
             row.setPrevBalance(cumulative);
             cumulative = cumulative.add(change);
@@ -350,6 +425,7 @@ public class ErpReceivableAccountServiceImpl implements ErpReceivableAccountServ
             case "changeAmount": comparator = comparing(ErpReceivableDetailRespVO::getChangeAmount); break;
             case "increaseAmount": comparator = comparing(ErpReceivableDetailRespVO::getIncreaseAmount); break;
             case "receiptAmount": comparator = comparing(ErpReceivableDetailRespVO::getReceiptAmount); break;
+            case "receiptDisplayAmount": comparator = comparing(ErpReceivableDetailRespVO::getReceiptDisplayAmount); break;
             case "balance": comparator = comparing(ErpReceivableDetailRespVO::getBalance); break;
             case "deptName": comparator = comparing(ErpReceivableDetailRespVO::getDeptName); break;
             case "docDate": comparator = comparing(ErpReceivableDetailRespVO::getDocDate); break;
@@ -560,10 +636,14 @@ public class ErpReceivableAccountServiceImpl implements ErpReceivableAccountServ
                 .selectApprovedListBySourceIds(RECEIPT_DISCOUNT_SOURCE_TYPE,
                         receipts.stream().map(ErpFinanceReceiptDO::getId).collect(Collectors.toSet()))
                 .stream().map(ErpReceivableOtherDO::getSourceId).collect(Collectors.toSet());
-        receipts.forEach(item -> rows.add(buildReceiptAllocatedRow("收款单", null, item.getId(),
-                item.getReceiptTime(), item.getNo(),
-                discountReceiptIds.contains(item.getId()) ? item.getReceiptPrice() : item.getTotalPrice(),
-                receiptAllocated.get(item.getId()), item.getDeptId())));
+        receipts.forEach(item -> {
+            BigDecimal receiptAmount = resolveReceiptDetailReceiptAmount(item, discountReceiptIds);
+            ErpReceivableDetailRespVO row = buildReceiptAllocatedRow("收款单", null, item.getId(),
+                    item.getReceiptTime(), item.getNo(), receiptAmount,
+                    receiptAllocated.get(item.getId()), item.getDeptId());
+            row.setReceiptDisplayAmount(resolveReceiptDisplayAmount(item, receiptAmount));
+            rows.add(row);
+        });
 
         receivableWriteOffMapper.selectListByCustomerId(reqVO.getCustomerId(), reqVO.getStartTime(), reqVO.getEndTime(),
                         scope.getDeptIds(), scope.getSelfUserId(), scope.isAll(), reqVO.getDeptId(),
@@ -590,6 +670,11 @@ public class ErpReceivableAccountServiceImpl implements ErpReceivableAccountServ
                         resolveOtherReceivableDocDate(item, receiptDiscountTimeMap),
                         item.getNo(), item.getReceivableAmount(), item.getDeptId())));
 
+        rows.forEach(row -> {
+            if (row.getReceiptDisplayAmount() == null) {
+                row.setReceiptDisplayAmount(row.getReceiptAmount());
+            }
+        });
         rows.sort(Comparator.comparing(ErpReceivableDetailRespVO::getDocDate, Comparator.nullsLast(Comparator.naturalOrder()))
                 .thenComparing(ErpReceivableDetailRespVO::getDocType)
                 .thenComparing(ErpReceivableDetailRespVO::getDocNo, Comparator.nullsLast(String::compareTo)));
@@ -627,6 +712,15 @@ public class ErpReceivableAccountServiceImpl implements ErpReceivableAccountServ
         }
         // 兼容缺少创建时间的历史记录，不推测实际发生时间。
         return item.getBizTime() == null ? null : item.getBizTime().atStartOfDay();
+    }
+
+    private BigDecimal resolveReceiptDetailReceiptAmount(ErpFinanceReceiptDO item,
+                                                          Set<Long> discountReceiptIds) {
+        return discountReceiptIds.contains(item.getId()) ? item.getReceiptPrice() : item.getTotalPrice();
+    }
+
+    private BigDecimal resolveReceiptDisplayAmount(ErpFinanceReceiptDO item, BigDecimal receiptAmount) {
+        return item.getTotalPrice() == null ? defaultAmount(receiptAmount) : item.getTotalPrice();
     }
 
     private ErpReceivableDetailRespVO buildSaleOutDetailRow(ErpSaleOutDO saleOut, BigDecimal allocatedAmount,
@@ -736,6 +830,7 @@ public class ErpReceivableAccountServiceImpl implements ErpReceivableAccountServ
         ErpReceivableDetailRespVO row = buildRow(docType, bizType, bizId, docDate, docNo, BigDecimal.ZERO, false,
                 deptId);
         row.setReceiptAmount(actualAmount);
+        row.setReceiptDisplayAmount(actualAmount);
         row.setAllocatedAmount(allocatedAmount == null ? BigDecimal.ZERO : allocatedAmount.abs());
         row.setWriteOffBaseAmount(actualAmount.abs());
         return row;

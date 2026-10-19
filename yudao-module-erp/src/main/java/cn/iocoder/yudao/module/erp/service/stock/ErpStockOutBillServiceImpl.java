@@ -7,6 +7,7 @@ import cn.iocoder.yudao.framework.security.core.util.SecurityFrameworkUtils;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.outbill.ErpStockOutBillItemPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.outbill.ErpStockOutBillPickReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.outbill.ErpStockOutBillPageReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.outbill.ErpStockOutBillSummaryRespVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleOutDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleOutItemDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockOutBillDO;
@@ -75,6 +76,11 @@ public class ErpStockOutBillServiceImpl implements ErpStockOutBillService {
     @Override
     public PageResult<ErpStockOutBillDO> getStockOutBillPage(ErpStockOutBillPageReqVO pageReqVO) {
         return stockOutBillMapper.selectPage(pageReqVO);
+    }
+
+    @Override
+    public ErpStockOutBillSummaryRespVO getStockOutBillSummary(ErpStockOutBillPageReqVO pageReqVO) {
+        return stockOutBillMapper.selectSummary(pageReqVO);
     }
 
     @Override

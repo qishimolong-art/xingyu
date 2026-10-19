@@ -4,6 +4,7 @@ import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.mybatis.core.mapper.BaseMapperX;
 import cn.iocoder.yudao.framework.mybatis.core.query.MPJLambdaWrapperX;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.invoice.ErpPurchaseInvoicePageReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.invoice.ErpPurchaseInvoiceSummaryRespVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.product.ErpProductDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.product.ErpProductUnitDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseInvoiceDO;
@@ -19,6 +20,21 @@ import org.springframework.util.StringUtils;
 public interface ErpPurchaseInvoiceMapper extends BaseMapperX<ErpPurchaseInvoiceDO> {
 
     default PageResult<ErpPurchaseInvoiceDO> selectPage(ErpPurchaseInvoicePageReqVO reqVO) {
+        MPJLambdaWrapperX<ErpPurchaseInvoiceDO> query = buildQuery(reqVO);
+        orderByIfPresent(query, reqVO);
+        return selectJoinPage(reqVO, ErpPurchaseInvoiceDO.class, query);
+    }
+
+    default ErpPurchaseInvoiceSummaryRespVO selectSummary(ErpPurchaseInvoicePageReqVO reqVO) {
+        MPJLambdaWrapperX<ErpPurchaseInvoiceDO> query = buildQuery(reqVO)
+                .selectAs("COUNT(t.id)", ErpPurchaseInvoiceSummaryRespVO::getInvoiceCount)
+                .selectAs("COALESCE(SUM(t.total_amount), 0)", ErpPurchaseInvoiceSummaryRespVO::getTotalAmount)
+                .selectAs("COALESCE(SUM(t.tax_amount), 0)", ErpPurchaseInvoiceSummaryRespVO::getTaxAmount)
+                .selectAs("COALESCE(SUM(t.tax_exclusive_amount), 0)", ErpPurchaseInvoiceSummaryRespVO::getTaxExclusiveAmount);
+        return selectJoinOne(ErpPurchaseInvoiceSummaryRespVO.class, query);
+    }
+
+    static MPJLambdaWrapperX<ErpPurchaseInvoiceDO> buildQuery(ErpPurchaseInvoicePageReqVO reqVO) {
         MPJLambdaWrapperX<ErpPurchaseInvoiceDO> query = new MPJLambdaWrapperX<ErpPurchaseInvoiceDO>()
                 .likeIfPresent(ErpPurchaseInvoiceDO::getNo, reqVO.getNo())
                 .eqIfPresent(ErpPurchaseInvoiceDO::getSupplierId, reqVO.getSupplierId())
@@ -35,25 +51,14 @@ public interface ErpPurchaseInvoiceMapper extends BaseMapperX<ErpPurchaseInvoice
         } else if (Integer.valueOf(1).equals(reqVO.getInvoiceStatus())) {
             query.eq(ErpPurchaseInvoiceDO::getStatus, ErpAuditStatus.APPROVE.getStatus());
         }
-        if (reqVO.getProductId() != null || reqVO.getSourceInNo() != null
-                || StringUtils.hasText(reqVO.getProductKeyword())) {
-            query.leftJoin(ErpPurchaseInvoiceItemDO.class, ErpPurchaseInvoiceItemDO::getInvoiceId, ErpPurchaseInvoiceDO::getId)
-                    .leftJoin(ErpProductDO.class, ErpProductDO::getId, ErpPurchaseInvoiceItemDO::getProductId)
-                    .leftJoin(ErpProductUnitDO.class, ErpProductUnitDO::getId, ErpProductDO::getUnitId)
-                    .eq(reqVO.getProductId() != null, ErpPurchaseInvoiceItemDO::getProductId, reqVO.getProductId())
-                    .likeIfPresent(ErpPurchaseInvoiceItemDO::getSourceInNo, reqVO.getSourceInNo())
-                    .and(StringUtils.hasText(reqVO.getProductKeyword()),
-                            w -> ErpKeywordQuery.appendProductKeyword(w, reqVO.getProductKeyword(),
-                                    ErpKeywordQuery.productKeywordColumn(ErpPurchaseInvoiceItemDO::getProductBarCode),
-                                    ErpKeywordQuery.productKeywordColumn(ErpPurchaseInvoiceItemDO::getProductUnitName)))
-                    .groupBy(ErpPurchaseInvoiceDO::getId);
-        }
+        ErpKeywordQuery.appendProductItemFilter(query, "erp_purchase_invoice_item", "invoice_id",
+                reqVO.getProductId(), null, "source_in_no", reqVO.getSourceInNo(),
+                reqVO.getProductKeyword(), true, "product_bar_code", "product_unit_name");
         ErpKeywordQuery.appendWithDeptNameAndPurchaseSupplierAndProductItemTokensByProductUnit(query, reqVO.getKeyword(),
                 "erp_purchase_invoice_item", "invoice_id",
                 ErpPurchaseInvoiceDO::getNo, ErpPurchaseInvoiceDO::getInvoiceNo,
                 ErpPurchaseInvoiceDO::getInvoiceType, ErpPurchaseInvoiceDO::getRemark);
-        orderByIfPresent(query, reqVO);
-        return selectJoinPage(reqVO, ErpPurchaseInvoiceDO.class, query);
+        return query;
     }
 
     static void orderByIfPresent(MPJLambdaWrapperX<ErpPurchaseInvoiceDO> wrapper, ErpPurchaseInvoicePageReqVO reqVO) {

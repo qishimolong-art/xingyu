@@ -11,7 +11,12 @@ import java.util.List;
 
 public interface ErpCloudPrintService {
 
-    ErpCloudPrintPreviewSaleOutRespVO previewSaleOut(Long saleOutId, Integer copies, Long templateId);
+    default ErpCloudPrintPreviewSaleOutRespVO previewSaleOut(Long saleOutId, Integer copies, Long templateId) {
+        return previewSaleOut(saleOutId, copies, templateId, null, null);
+    }
+
+    ErpCloudPrintPreviewSaleOutRespVO previewSaleOut(Long saleOutId, Integer copies, Long templateId,
+                                                     String itemOrderField, String itemOrderDirection);
 
     byte[] getSaleOutPreviewFile(String previewToken, String previewItemId);
 

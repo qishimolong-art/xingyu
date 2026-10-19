@@ -2,6 +2,7 @@ package cn.iocoder.yudao.module.erp.service.sale;
 
 import cn.iocoder.yudao.framework.common.exception.ServiceException;
 import cn.iocoder.yudao.framework.common.enums.CommonStatusEnum;
+import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.common.util.json.JsonUtils;
 import cn.iocoder.yudao.framework.datapermission.core.aop.DataPermissionContextHolder;
 import cn.iocoder.yudao.framework.tenant.core.context.TenantContextHolder;
@@ -15,6 +16,7 @@ import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartImpo
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartItemBatchUpdateReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartItemMatchReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartItemMatchRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartItemPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartSaveReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartSubmitRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.pickdelivery.ErpSalePickDeliverySummaryRespVO;
@@ -812,6 +814,9 @@ public class ErpSaleCartServiceImplTest extends BaseMockitoUnitTest {
         reqVO.setCustomerId(21L);
         reqVO.setAccountId(31L);
         reqVO.setSaleUserId(41L);
+        reqVO.setSourceType(ErpSaleBizSourceTypeEnum.MALL_ORDER.getType());
+        reqVO.setSourceId(501L);
+        reqVO.setSourceNo("MALL-SPOOF-001");
         reqVO.setItems(Collections.singletonList(buildItemReq(new BigDecimal("3"), new BigDecimal("15.00"))));
 
         when(productService.validProductList(anyCollection()))
@@ -833,6 +838,9 @@ public class ErpSaleCartServiceImplTest extends BaseMockitoUnitTest {
                 ErpSaleCartStatusEnum.PROCESS.getStatus().equals(cart.getStatus())
                         && reqVO.getCustomerId().equals(cart.getCustomerId())
                         && cart.getNo() != null && cart.getNo().startsWith(ErpNoRedisDAO.SALE_CART_NO_PREFIX)
+                        && cart.getSourceType() == null
+                        && cart.getSourceId() == null
+                        && cart.getSourceNo() == null
                         && cart.getCreator() == null
                         && cart.getUpdater() == null));
         verify(saleCartItemMapper).insertBatch(argThat((java.util.List<ErpSaleCartItemDO> items) -> items.size() == 1
@@ -1247,6 +1255,36 @@ public class ErpSaleCartServiceImplTest extends BaseMockitoUnitTest {
         verify(saleCartItemMapper).insertBatch(argThat((java.util.List<ErpSaleCartItemDO> items) ->
                 items.size() == 1 && items.get(0).getCartId().equals(reqVO.getId())));
         verify(stockMoveService, never()).createOrUpdateTransferOutDraftBySource(any());
+    }
+
+    @Test
+    public void testUpdateSaleCart_preservesMallSource() {
+        ErpSaleCartSaveReqVO reqVO = buildBaseSaveReq();
+        reqVO.setId(11L);
+        reqVO.setCustomerId(21L);
+        reqVO.setSourceType(ErpSaleBizSourceTypeEnum.QUOTE.getType());
+        reqVO.setSourceId(999L);
+        reqVO.setSourceNo("FORGED-SOURCE");
+        reqVO.setItems(Collections.singletonList(buildItemReq(new BigDecimal("3"), new BigDecimal("15.00"))));
+        ErpSaleCartDO existing = new ErpSaleCartDO().setId(11L).setNo("ST20260509000001")
+                .setStatus(ErpSaleCartStatusEnum.PROCESS.getStatus())
+                .setSourceType(ErpSaleBizSourceTypeEnum.MALL_ORDER.getType())
+                .setSourceId(501L).setSourceNo("MALL20261015000001");
+
+        when(saleCartMapper.selectById(eq(11L))).thenReturn(existing);
+        when(productService.validProductList(anyCollection()))
+                .thenReturn(Collections.singletonList(new ErpProductDO().setId(201L).setUnitId(301L)));
+        when(stockService.getStock(eq(201L), eq(401L)))
+                .thenReturn(new ErpStockDO().setCount(new BigDecimal("100")));
+        when(customerService.validateCustomerForSale(eq(21L), nullable(Long.class)))
+                .thenReturn(new ErpCustomerDO().setId(21L));
+
+        saleCartService.updateSaleCart(reqVO);
+
+        verify(saleCartMapper).updateById(argThat((ErpSaleCartDO cart) ->
+                ErpSaleBizSourceTypeEnum.MALL_ORDER.getType().equals(cart.getSourceType())
+                        && Long.valueOf(501L).equals(cart.getSourceId())
+                        && "MALL20261015000001".equals(cart.getSourceNo())));
     }
 
     @Test
@@ -3266,6 +3304,23 @@ public class ErpSaleCartServiceImplTest extends BaseMockitoUnitTest {
 
         verify(priceLevelPricePicker, never()).pickProductPriceMap(anyCollection(), any());
         verify(saleCartItemMapper, never()).updateBatch(anyCollection());
+    }
+
+    @Test
+    public void testGetSaleCartItemPage_normalizesExcludedItemIdsBeforePaging() {
+        Long cartId = 19L;
+        ErpSaleCartItemPageReqVO reqVO = new ErpSaleCartItemPageReqVO();
+        reqVO.setCartId(cartId);
+        reqVO.setExcludedItemIds(List.of(101L, 101L, -1L, 0L));
+        PageResult<ErpSaleCartItemDO> expected = new PageResult<>(Collections.emptyList(), 0L);
+        when(saleCartMapper.selectById(eq(cartId))).thenReturn(new ErpSaleCartDO().setId(cartId));
+        when(saleCartItemMapper.selectPageByCartId(any())).thenReturn(expected);
+
+        PageResult<ErpSaleCartItemDO> result = saleCartService.getSaleCartItemPage(reqVO);
+
+        assertEquals(expected, result);
+        verify(saleCartItemMapper).selectPageByCartId(argThat(request ->
+                request.getExcludedItemIds().equals(List.of(101L))));
     }
 
     private ErpSaleCartSaveReqVO buildBaseSaveReq() {

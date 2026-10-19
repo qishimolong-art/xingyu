@@ -7,6 +7,7 @@ import lombok.EqualsAndHashCode;
 import lombok.ToString;
 
 import javax.validation.constraints.NotNull;
+import java.util.List;
 
 @Schema(description = "管理后台 - ERP 销售开单明细分页 Request VO")
 @Data
@@ -21,12 +22,16 @@ public class ErpSaleCartItemPageReqVO extends PageParam {
     @Schema(description = "是否按字段权限脱敏", example = "true")
     private Boolean mask = true;
 
-    @Schema(description = "排序字段，支持：id, giftFlag, productCode, productId, warehouseId, deptId, count, "
-            + "productPrice, totalPrice, taxPercent, taxPrice, vehicleModel, standard, productUnitName, weight, "
-            + "packageQty, warehousePosition, drawingNo, batchNo, brand, originPlace, remark")
+    @Schema(description = "排序字段，支持：id, giftFlag, productCode, productId, warehouseId, warehouseDeptName, "
+            + "deptId, count, productPrice, lastSalePrice, totalPrice, taxPercent, taxPrice, vehicleModel, standard, "
+            + "productUnitName, weight, packageQty, pieceCount, stockCount, warehousePosition, drawingNo, batchNo, "
+            + "brand, originPlace, remark")
     private String orderField;
 
     @Schema(description = "排序方向：asc 或 desc")
     private String orderDirection;
+
+    @Schema(description = "编辑态待删除的明细编号；在统计总数和分页前排除")
+    private List<Long> excludedItemIds;
 
 }

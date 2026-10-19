@@ -5,11 +5,9 @@ import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.mybatis.core.mapper.BaseMapperX;
 import cn.iocoder.yudao.framework.mybatis.core.query.MPJLambdaWrapperX;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnPageReqVO;
-import cn.iocoder.yudao.module.erp.dal.dataobject.product.ErpProductDO;
-import cn.iocoder.yudao.module.erp.dal.dataobject.product.ErpProductUnitDO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnSummaryRespVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleOutDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleReturnDO;
-import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleReturnItemDO;
 import cn.iocoder.yudao.module.erp.dal.mysql.common.ErpKeywordQuery;
 import cn.iocoder.yudao.module.erp.dal.mysql.finance.ErpFinanceReceiptItemMapper;
 import cn.iocoder.yudao.module.erp.enums.ErpAuditStatus;
@@ -17,7 +15,6 @@ import cn.iocoder.yudao.module.erp.enums.common.ErpBizTypeEnum;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.core.toolkit.support.SFunction;
 import org.apache.ibatis.annotations.Mapper;
-import org.springframework.util.StringUtils;
 
 import java.util.List;
 import java.util.Objects;
@@ -46,6 +43,21 @@ public interface ErpSaleReturnMapper extends BaseMapperX<ErpSaleReturnDO> {
             + ErpFinanceReceiptItemMapper.effectiveReceiptPriceSql(ErpBizTypeEnum.SALE_RETURN.getType()) + ")";
 
     default PageResult<ErpSaleReturnDO> selectPage(ErpSaleReturnPageReqVO reqVO) {
+        MPJLambdaWrapperX<ErpSaleReturnDO> query = buildQuery(reqVO);
+        orderByIfPresent(query, reqVO);
+        return selectJoinPage(reqVO, ErpSaleReturnDO.class, query);
+    }
+
+    default ErpSaleReturnSummaryRespVO selectSummary(ErpSaleReturnPageReqVO reqVO) {
+        MPJLambdaWrapperX<ErpSaleReturnDO> query = buildQuery(reqVO)
+                .selectAs("COALESCE(SUM(t.total_count), 0)", ErpSaleReturnSummaryRespVO::getTotalCount)
+                .selectAs("COALESCE(SUM(t.total_product_price), 0)", ErpSaleReturnSummaryRespVO::getTotalProductPrice)
+                .selectAs("COALESCE(SUM(t.discount_price), 0)", ErpSaleReturnSummaryRespVO::getDiscountPrice)
+                .selectAs("COALESCE(SUM(t.total_price), 0)", ErpSaleReturnSummaryRespVO::getTotalPrice);
+        return selectJoinOne(ErpSaleReturnSummaryRespVO.class, query);
+    }
+
+    static MPJLambdaWrapperX<ErpSaleReturnDO> buildQuery(ErpSaleReturnPageReqVO reqVO) {
         MPJLambdaWrapperX<ErpSaleReturnDO> query = new MPJLambdaWrapperX<ErpSaleReturnDO>()
                 .likeIfPresent(ErpSaleReturnDO::getNo, reqVO.getNo())
                 .eqIfPresent(ErpSaleReturnDO::getCustomerId, reqVO.getCustomerId())
@@ -71,17 +83,9 @@ public interface ErpSaleReturnMapper extends BaseMapperX<ErpSaleReturnDO> {
             query.eq(ErpSaleReturnDO::getStatus, ErpAuditStatus.APPROVE.getStatus())
                     .apply(EFFECTIVE_REFUND_PRICE_EXPRESSION + " < t.total_price");
         }
-        if (reqVO.getWarehouseId() != null || reqVO.getProductId() != null
-                || StringUtils.hasText(reqVO.getProductKeyword())) {
-            query.leftJoin(ErpSaleReturnItemDO.class, ErpSaleReturnItemDO::getReturnId, ErpSaleReturnDO::getId)
-                    .leftJoin(ErpProductDO.class, ErpProductDO::getId, ErpSaleReturnItemDO::getProductId)
-                    .leftJoin(ErpProductUnitDO.class, ErpProductUnitDO::getId, ErpSaleReturnItemDO::getProductUnitId)
-                    .eq(reqVO.getWarehouseId() != null, ErpSaleReturnItemDO::getWarehouseId, reqVO.getWarehouseId())
-                    .eq(reqVO.getProductId() != null, ErpSaleReturnItemDO::getProductId, reqVO.getProductId())
-                    .and(StringUtils.hasText(reqVO.getProductKeyword()),
-                            w -> ErpKeywordQuery.appendProductKeyword(w, reqVO.getProductKeyword()))
-                    .groupBy(ErpSaleReturnDO::getId); // 避免 1 对多查询，产生相同的 1
-        }
+        ErpKeywordQuery.appendProductItemFilter(query, "erp_sale_return_items", "return_id",
+                reqVO.getProductId(), reqVO.getWarehouseId(), null, null,
+                reqVO.getProductKeyword(), true);
         ErpKeywordQuery.appendWithDeptNameAndSaleCustomerAndProductItemTokens(query, reqVO.getKeyword(),
                 "erp_sale_return_items", "return_id",
                 ErpSaleReturnDO::getNo, ErpSaleReturnDO::getOrderNo,
@@ -92,8 +96,7 @@ public interface ErpSaleReturnMapper extends BaseMapperX<ErpSaleReturnDO> {
                 ErpSaleReturnDO::getLogisticsCompany, ErpSaleReturnDO::getVehicleNo,
                 ErpSaleReturnDO::getBranchStore, ErpSaleReturnDO::getPurchaseArea,
                 ErpSaleReturnDO::getBusinessType, ErpSaleReturnDO::getOrderMethod);
-        orderByIfPresent(query, reqVO);
-        return selectJoinPage(reqVO, ErpSaleReturnDO.class, query);
+        return query;
     }
 
     static void orderByIfPresent(MPJLambdaWrapperX<ErpSaleReturnDO> wrapper, ErpSaleReturnPageReqVO reqVO) {
@@ -104,7 +107,7 @@ public interface ErpSaleReturnMapper extends BaseMapperX<ErpSaleReturnDO> {
         }
         String expression = getOrderExpression(reqVO.getOrderField());
         if (expression != null) {
-            wrapper.last("ORDER BY " + expression + " " + direction + ", t.id DESC");
+            wrapper.last("ORDER BY " + expression + " " + direction + ", t.id ASC");
             return;
         }
         SFunction<ErpSaleReturnDO, ?> orderColumn = getOrderColumn(reqVO.getOrderField());
@@ -113,9 +116,9 @@ public interface ErpSaleReturnMapper extends BaseMapperX<ErpSaleReturnDO> {
             return;
         }
         if ("ASC".equals(direction)) {
-            wrapper.orderByAsc(orderColumn);
+            wrapper.orderByAsc(orderColumn).orderByAsc(ErpSaleReturnDO::getId);
         } else {
-            wrapper.orderByDesc(orderColumn);
+            wrapper.orderByDesc(orderColumn).orderByAsc(ErpSaleReturnDO::getId);
         }
     }
 
@@ -156,6 +159,8 @@ public interface ErpSaleReturnMapper extends BaseMapperX<ErpSaleReturnDO> {
                 return ErpSaleReturnDO::getNo;
             case "returnTime":
                 return ErpSaleReturnDO::getReturnTime;
+            case "createTime":
+                return ErpSaleReturnDO::getCreateTime;
             case "status":
                 return ErpSaleReturnDO::getStatus;
             case "customerId":

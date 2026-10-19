@@ -42,8 +42,63 @@ class AssistantWecomFaqFixtureTest {
     @Test
     void productSpecificationVariantsAreDeterministic() {
         assertTrue(AssistantSemanticKnowledge.productKeywordVariants("每日保护全合成530").contains("每日保护全合成5W-30"));
+        List<String> combined = AssistantSemanticKnowledge.productKeywordVariants("经典表现 530 4L");
+        assertTrue(combined.contains("经典表现 530 4L"));
+        assertTrue(combined.contains("经典表现 5W-30 4L"));
+        assertTrue(AssistantSemanticKnowledge.productKeywordVariants("经典表现 530 4升")
+                .contains("经典表现 5W-30 4升"));
         assertTrue(AssistantSemanticKnowledge.productKeywordVariants("225 55 18").contains("225/55R18"));
         assertTrue(AssistantSemanticKnowledge.productKeywordVariants("2255518").contains("225/55R18"));
+    }
+
+    @Test
+    void productUnitVariantsRequireNumericUnitsAndCoverConfiguredAliases() {
+        assertUnitAliases("4升", "4升", "4L");
+        assertUnitAliases("4 L", "4 L", "4升", "4L");
+        assertUnitAliases("500毫升", "500毫升", "500mL");
+        assertUnitAliases("500ML", "500毫升", "500mL");
+        assertUnitAliases("20千克", "20千克", "20公斤", "20kg");
+        assertUnitAliases("20公斤", "20千克", "20公斤", "20kg");
+        assertUnitAliases("20KG", "20千克", "20公斤", "20kg");
+        assertUnitAliases("500克", "500克", "500g");
+        assertUnitAliases("500G", "500克", "500g");
+        assertUnitAliases("30度", "30摄氏度", "30度", "30℃", "30°C");
+        assertUnitAliases("30摄氏度", "30摄氏度", "30度", "30℃", "30°C");
+        assertUnitAliases("30℃", "30摄氏度", "30度", "30℃", "30°C");
+        assertUnitAliases("30°C", "30摄氏度", "30度", "30℃", "30°C");
+        assertUnitAliases("4.5升", "4.5升", "4.5L");
+        assertUnitAliases("-30℃", "-30摄氏度", "-30度", "-30℃", "-30°C");
+        assertUnitAliases("零下30度", "零下30摄氏度", "零下30度", "零下30℃", "零下30°C");
+        assertUnitAliases("20公斤A款", "20kgA款");
+    }
+
+    @Test
+    void productUnitVariantsDoNotRewriteOrdinaryKeywordsOrViscosity() {
+        for (String keyword : Arrays.asList("abl", "型号L", "QTF60", "530", "5W-30", "4LUBE", "20kgA")) {
+            assertEquals(Collections.singletonList(keyword), AssistantSemanticKnowledge.productUnitVariants(keyword));
+        }
+        assertEquals("经典表现 530 4升",
+                AssistantSemanticKnowledge.compactProductUnitSpacing("经典表现 530 4 升"));
+        assertEquals("abl", AssistantSemanticKnowledge.compactProductUnitSpacing("abl"));
+    }
+
+    @Test
+    void convertedProductUnitAliasesStayAtomicInOrderedPatterns() {
+        assertEquals("1%8%升",
+                AssistantSemanticKnowledge.productUnitAwareOrderedPattern("18升", "18升"));
+        assertEquals("18L",
+                AssistantSemanticKnowledge.productUnitAwareOrderedPattern("18升", "18L"));
+        assertEquals("20kg",
+                AssistantSemanticKnowledge.productUnitAwareOrderedPattern("20千克", "20kg"));
+        assertEquals("1%8%L",
+                AssistantSemanticKnowledge.productUnitAwareOrderedPattern("18L", "18L"));
+        assertEquals("18升",
+                AssistantSemanticKnowledge.productUnitAwareOrderedPattern("18L", "18升"));
+    }
+
+    private static void assertUnitAliases(String keyword, String... expected) {
+        List<String> variants = AssistantSemanticKnowledge.productUnitVariants(keyword);
+        for (String value : expected) assertTrue(variants.contains(value), keyword + " missing " + value + ": " + variants);
     }
 
     @Test

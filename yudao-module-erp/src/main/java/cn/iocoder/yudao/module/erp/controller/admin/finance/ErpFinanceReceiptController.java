@@ -18,6 +18,8 @@ import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.receipt.ErpFinanc
 import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.receipt.ErpFinanceReceiptDraftSaveReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.receipt.ErpFinanceReceiptExportRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.receipt.ErpFinanceReceiptFormCandidateReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.receipt.ErpFinanceReceiptFormCandidatePageReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.receipt.ErpFinanceReceiptFormCandidatePageRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.receipt.ErpFinanceReceiptFormCandidateRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.receipt.ErpFinanceReceiptImportExcelVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.receipt.ErpFinanceReceiptItemPageReqVO;
@@ -46,6 +48,7 @@ import cn.iocoder.yudao.module.erp.service.sale.ErpCustomerDeptPermissionService
 import cn.iocoder.yudao.module.erp.service.sale.ErpCustomerService;
 import cn.iocoder.yudao.module.system.api.dept.DeptApi;
 import cn.iocoder.yudao.module.system.api.dept.dto.DeptRespDTO;
+import cn.iocoder.yudao.module.system.api.permission.PermissionApi;
 import cn.iocoder.yudao.module.system.api.user.AdminUserApi;
 import cn.iocoder.yudao.module.system.api.user.dto.AdminUserRespDTO;
 import cn.iocoder.yudao.module.system.controller.admin.dept.vo.dept.DeptSimpleRespVO;
@@ -76,6 +79,7 @@ import java.util.stream.Stream;
 import static cn.iocoder.yudao.framework.apilog.core.enums.OperateTypeEnum.EXPORT;
 import static cn.iocoder.yudao.framework.common.pojo.CommonResult.success;
 import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.*;
+import static cn.iocoder.yudao.framework.security.core.util.SecurityFrameworkUtils.getLoginUserId;
 import static cn.iocoder.yudao.module.erp.controller.admin.finance.vo.imports.ErpFinanceImportUtils.allBlank;
 import static cn.iocoder.yudao.module.erp.controller.admin.finance.vo.imports.ErpFinanceImportUtils.failureReason;
 
@@ -87,7 +91,7 @@ public class ErpFinanceReceiptController {
 
     public static final Set<String> RECEIPT_IMPORT_TEMPLATE_FIELDS = Collections.unmodifiableSet(new LinkedHashSet<>(
             Arrays.asList("financeUserName", "deptName", "customerName", "accountName",
-                    "discountPrice", "totalPrice", "receiptPrice", "remark", "bizType", "bizNo",
+                    "discountPrice", "totalPrice", "receiptPrice", "paymentVoucherNo", "remark", "bizType", "bizNo",
                     "receiptedPrice", "itemReceiptPrice", "itemRemark")));
 
     @Resource
@@ -104,6 +108,8 @@ public class ErpFinanceReceiptController {
     private ErpFinanceFieldPermissionMasker fieldPermissionMasker;
     @Resource
     private ErpVoucherMapper voucherMapper;
+    @Resource
+    private PermissionApi permissionApi;
     @Resource
     private ErpDataPermissionDeptService dataPermissionDeptService;
     @Resource
@@ -125,7 +131,7 @@ public class ErpFinanceReceiptController {
     @Operation(summary = "创建收款单草稿")
     @PreAuthorize("@ss.hasPermission('erp:finance-receipt:create')")
     public CommonResult<Long> createFinanceReceiptDraft(
-            @RequestBody ErpFinanceReceiptDraftSaveReqVO createReqVO) {
+            @Valid @RequestBody ErpFinanceReceiptDraftSaveReqVO createReqVO) {
         return success(financeReceiptService.createFinanceReceiptDraft(createReqVO));
     }
 
@@ -150,7 +156,7 @@ public class ErpFinanceReceiptController {
     @Operation(summary = "更新收款单草稿")
     @PreAuthorize("@ss.hasPermission('erp:finance-receipt:update')")
     public CommonResult<Boolean> updateFinanceReceiptDraft(
-            @RequestBody ErpFinanceReceiptDraftSaveReqVO updateReqVO) {
+            @Valid @RequestBody ErpFinanceReceiptDraftSaveReqVO updateReqVO) {
         financeReceiptService.updateFinanceReceiptDraft(updateReqVO);
         return success(true);
     }
@@ -206,6 +212,14 @@ public class ErpFinanceReceiptController {
     public CommonResult<List<ErpFinanceReceiptFormCandidateRespVO>> getFormCandidates(
             @Valid ErpFinanceReceiptFormCandidateReqVO reqVO) {
         return success(financeReceiptService.getFormCandidates(reqVO));
+    }
+
+    @PostMapping("/form-candidate-page")
+    @Operation(summary = "获得新增/编辑收款单候选业务单据分页")
+    @PreAuthorize("@ss.hasAnyPermissions('erp:finance-receipt:create', 'erp:finance-receipt:update')")
+    public CommonResult<ErpFinanceReceiptFormCandidatePageRespVO> getFormCandidatePage(
+            @Valid @RequestBody ErpFinanceReceiptFormCandidatePageReqVO reqVO) {
+        return success(financeReceiptService.getFormCandidatePage(reqVO));
     }
 
     @PostMapping("/writeoff")
@@ -300,10 +314,23 @@ public class ErpFinanceReceiptController {
     @Operation(summary = "获得收款单分页")
     @PreAuthorize("@ss.hasPermission('erp:finance-receipt:query')")
     public CommonResult<PageResult<ErpFinanceReceiptRespVO>> getFinanceReceiptPage(@Valid ErpFinanceReceiptPageReqVO pageReqVO) {
+        clearHiddenVoucherFilters(pageReqVO);
         PageResult<ErpFinanceReceiptDO> pageResult = financeReceiptService.getFinanceReceiptPage(pageReqVO);
         return success(Boolean.FALSE.equals(pageReqVO.getIncludeItems())
                 ? buildFinanceReceiptVOPageResultWithoutItems(pageResult)
                 : buildFinanceReceiptVOPageResult(pageResult));
+    }
+
+    @GetMapping("/summary")
+    @Operation(summary = "获得收款单查询汇总")
+    @PreAuthorize("@ss.hasPermission('erp:finance-receipt:query')")
+    public CommonResult<cn.iocoder.yudao.module.erp.controller.admin.finance.vo.ErpFinanceQuerySummaryRespVO>
+            getFinanceReceiptSummary(@Valid ErpFinanceReceiptPageReqVO pageReqVO) {
+        clearHiddenVoucherFilters(pageReqVO);
+        cn.iocoder.yudao.module.erp.controller.admin.finance.vo.ErpFinanceQuerySummaryRespVO summary =
+                financeReceiptService.getFinanceReceiptSummary(pageReqVO);
+        fieldPermissionMasker.maskForm("erp_finance_receipt", summary);
+        return success(summary);
     }
 
     @GetMapping("/dept-simple-list")
@@ -346,6 +373,7 @@ public class ErpFinanceReceiptController {
     @ApiAccessLog(operateType = EXPORT)
     public void exportFinanceReceiptExcel(@Valid ErpFinanceReceiptPageReqVO pageReqVO,
                                           HttpServletResponse response) throws IOException {
+        clearHiddenVoucherFilters(pageReqVO);
         List<ErpFinanceReceiptDO> exportList = getFinanceReceiptExportList(pageReqVO);
         List<ErpFinanceReceiptItemDO> receiptItemList = financeReceiptService.getFinanceReceiptItemListByReceiptIds(
                 convertSet(exportList, ErpFinanceReceiptDO::getId));
@@ -357,8 +385,10 @@ public class ErpFinanceReceiptController {
                 convertSet(exportList, ErpFinanceReceiptDO::getAccountId));
         Map<Long, AdminUserRespDTO> userMap = adminUserApi.getUserMap(convertListByFlatMap(exportList,
                 receipt -> Stream.of(NumberUtils.parseLong(receipt.getCreator()), receipt.getFinanceUserId())));
+        Map<Long, String> voucherNoMap = getVoucherNoMap(convertSet(exportList, ErpFinanceReceiptDO::getId));
         ExcelUtils.write(response, "收款单.xls", "数据", ErpFinanceReceiptExportRespVO.class,
-                buildFinanceReceiptExportList(exportList, financeReceiptItemMap, customerMap, accountMap, userMap));
+                buildFinanceReceiptExportList(exportList, financeReceiptItemMap, customerMap, accountMap, userMap,
+                        voucherNoMap));
     }
 
     @GetMapping("/get-import-template")
@@ -381,23 +411,55 @@ public class ErpFinanceReceiptController {
         ErpFinanceImportRespVO result = new ErpFinanceImportRespVO();
         ErpFinanceSettlementImportResolver.ReceiptImportContext importContext =
                 settlementImportResolver.buildReceiptContext();
+        List<ReceiptImportGroup> groups = new ArrayList<>();
+        ReceiptImportGroup currentGroup = null;
         for (int i = 0; i < list.size(); i++) {
             ErpFinanceReceiptImportExcelVO row = list.get(i);
-            if (row == null || allBlank(row.getFinanceUserName(), row.getFinanceUserId(),
+            if (row == null || allBlank(row.getReceiptTime(), row.getFinanceUserName(), row.getFinanceUserId(),
                     row.getDeptName(), row.getDeptId(), row.getCustomerName(), row.getCustomerId(),
-                    row.getAccountName(), row.getAccountId(), row.getTotalPrice(), row.getReceiptPrice(),
-                    row.getBizType(), row.getBizNo(), row.getBizId(), row.getItemReceiptPrice())) {
+                    row.getAccountName(), row.getAccountId(), row.getDiscountPrice(), row.getTotalPrice(),
+                    row.getReceiptPrice(), row.getRemark(),
+                    row.getPaymentVoucherNo(), row.getBizType(), row.getBizNo(), row.getBizId(),
+                    row.getReceiptedPrice(), row.getItemReceiptPrice(), row.getItemRemark())) {
                 continue;
             }
+            if (hasReceiptImportHeader(row)) {
+                currentGroup = new ReceiptImportGroup(i + 2, row);
+                groups.add(currentGroup);
+            } else if (currentGroup == null) {
+                result.addFailure(i + 2, row.getReceiptTime(), "明细行前必须先填写收款单主信息");
+            } else {
+                currentGroup.rows.add(row);
+            }
+        }
+        for (ReceiptImportGroup group : groups) {
             try {
                 financeReceiptService.createFinanceReceipt(
-                        settlementImportResolver.buildReceiptSaveReqVO(row, importContext));
+                        settlementImportResolver.buildReceiptSaveReqVO(group.rows, importContext));
                 result.addCreated();
             } catch (Exception ex) {
-                result.addFailure(i + 2, row.getReceiptTime(), failureReason(ex));
+                result.addFailure(group.startRowNo, group.rows.get(0).getReceiptTime(), failureReason(ex));
             }
         }
         return success(result);
+    }
+
+    private static boolean hasReceiptImportHeader(ErpFinanceReceiptImportExcelVO row) {
+        return !allBlank(row.getReceiptTime(), row.getFinanceUserName(), row.getFinanceUserId(),
+                row.getDeptName(), row.getDeptId(), row.getCustomerName(), row.getCustomerId(),
+                row.getAccountName(), row.getAccountId(), row.getDiscountPrice(), row.getTotalPrice(),
+                row.getReceiptPrice(), row.getRemark());
+    }
+
+    private static final class ReceiptImportGroup {
+
+        private final int startRowNo;
+        private final List<ErpFinanceReceiptImportExcelVO> rows = new ArrayList<>();
+
+        private ReceiptImportGroup(int startRowNo, ErpFinanceReceiptImportExcelVO header) {
+            this.startRowNo = startRowNo;
+            this.rows.add(header);
+        }
     }
 
     @GetMapping("/import-failure-details/download")
@@ -423,6 +485,7 @@ public class ErpFinanceReceiptController {
         });
         fillFinanceReceiptNames(result.getList());
         fillWriteOffSummary(result.getList());
+        maskReceiptListFields(result.getList());
         return result;
     }
 
@@ -434,6 +497,7 @@ public class ErpFinanceReceiptController {
                 ErpFinanceReceiptRespVO.class, receipt -> receipt.setItems(Collections.emptyList()));
         fillFinanceReceiptNames(result.getList());
         fillWriteOffSummaryByAggregate(result.getList());
+        maskReceiptListFields(result.getList());
         return result;
     }
 
@@ -530,14 +594,7 @@ public class ErpFinanceReceiptController {
         Map<Long, DeptRespDTO> deptMap = deptApi.getDeptMap(convertSet(rows, ErpFinanceReceiptRespVO::getDeptId));
         Map<Long, AdminUserRespDTO> userMap = adminUserApi.getUserMap(convertListByFlatMap(rows,
                 row -> Stream.of(parseUserId(row.getCreator()), parseUserId(row.getUpdater()), row.getFinanceUserId())));
-        Map<Long, String> voucherNoMap = new HashMap<>();
-        List<ErpVoucherDO> vouchers = voucherMapper.selectList(new LambdaQueryWrapperX<ErpVoucherDO>()
-                .eq(ErpVoucherDO::getSourceBizType, ErpVoucherSourceBizTypeEnum.RECEIPT.getType())
-                .in(ErpVoucherDO::getSourceBizId, convertSet(rows, ErpFinanceReceiptRespVO::getId))
-                .orderByDesc(ErpVoucherDO::getId));
-        for (ErpVoucherDO voucher : vouchers) {
-            voucherNoMap.putIfAbsent(voucher.getSourceBizId(), voucher.getVoucherNo());
-        }
+        Map<Long, String> voucherNoMap = getVoucherNoMap(convertSet(rows, ErpFinanceReceiptRespVO::getId));
         for (ErpFinanceReceiptRespVO row : rows) {
             MapUtils.findAndThen(customerMap, row.getCustomerId(), customer -> {
                 row.setCustomerName(customer.getName());
@@ -559,6 +616,53 @@ public class ErpFinanceReceiptController {
                 row.setAuditTime(row.getUpdateTime());
             }
             row.setVoucherNo(voucherNoMap.get(row.getId()));
+        }
+    }
+
+    private Map<Long, String> getVoucherNoMap(Set<Long> receiptIds) {
+        if (CollUtil.isEmpty(receiptIds) || !isVoucherVisible()) {
+            return Collections.emptyMap();
+        }
+        Map<Long, String> voucherNoMap = new HashMap<>();
+        List<ErpVoucherDO> vouchers = voucherMapper.selectList(new LambdaQueryWrapperX<ErpVoucherDO>()
+                .eq(ErpVoucherDO::getSourceBizType, ErpVoucherSourceBizTypeEnum.RECEIPT.getType())
+                .in(ErpVoucherDO::getSourceBizId, receiptIds)
+                .orderByDesc(ErpVoucherDO::getId));
+        for (ErpVoucherDO voucher : vouchers) {
+            voucherNoMap.putIfAbsent(voucher.getSourceBizId(), voucher.getVoucherNo());
+        }
+        return voucherNoMap;
+    }
+
+    private void maskReceiptListFields(List<ErpFinanceReceiptRespVO> rows) {
+        boolean hidePaymentVoucherNo = fieldPermissionMasker.isFieldHidden(
+                "erp_finance_receipt", "paymentVoucherNo");
+        boolean hideVoucherNo = !isVoucherVisible();
+        if (!hidePaymentVoucherNo && !hideVoucherNo) {
+            return;
+        }
+        rows.forEach(row -> {
+            if (hidePaymentVoucherNo) {
+                row.setPaymentVoucherNo(null);
+            }
+            if (hideVoucherNo) {
+                row.setVoucherNo(null);
+            }
+        });
+    }
+
+    private boolean isVoucherVisible() {
+        Long userId = getLoginUserId();
+        return userId != null && permissionApi.hasAnyPermissions(userId, "erp:voucher:query")
+                && !fieldPermissionMasker.isFieldHidden("erp_voucher", "voucherNo");
+    }
+
+    private void clearHiddenVoucherFilters(ErpFinanceReceiptPageReqVO pageReqVO) {
+        if (fieldPermissionMasker.isFieldHidden("erp_finance_receipt", "paymentVoucherNo")) {
+            pageReqVO.setPaymentVoucherNo(null);
+        }
+        if (!isVoucherVisible()) {
+            pageReqVO.setVoucherNo(null);
         }
     }
 
@@ -592,16 +696,19 @@ public class ErpFinanceReceiptController {
                                                                               Map<Long, List<ErpFinanceReceiptItemDO>> financeReceiptItemMap,
                                                                               Map<Long, ErpCustomerDO> customerMap,
                                                                               Map<Long, ErpAccountDO> accountMap,
-                                                                              Map<Long, AdminUserRespDTO> userMap) {
+                                                                              Map<Long, AdminUserRespDTO> userMap,
+                                                                              Map<Long, String> voucherNoMap) {
         List<ErpFinanceReceiptExportRespVO> rows = new ArrayList<>();
         for (ErpFinanceReceiptDO receipt : list) {
             List<ErpFinanceReceiptItemDO> items = financeReceiptItemMap.getOrDefault(receipt.getId(), Collections.emptyList());
             if (CollUtil.isEmpty(items)) {
-                rows.add(buildFinanceReceiptExportRow(receipt, null, true, customerMap, accountMap, userMap));
+                rows.add(buildFinanceReceiptExportRow(receipt, null, true, customerMap, accountMap, userMap,
+                        voucherNoMap));
                 continue;
             }
             for (int i = 0; i < items.size(); i++) {
-                rows.add(buildFinanceReceiptExportRow(receipt, items.get(i), i == 0, customerMap, accountMap, userMap));
+                rows.add(buildFinanceReceiptExportRow(receipt, items.get(i), i == 0, customerMap, accountMap, userMap,
+                        voucherNoMap));
             }
         }
         return rows;
@@ -612,7 +719,8 @@ public class ErpFinanceReceiptController {
                                                                        boolean fillMainFields,
                                                                        Map<Long, ErpCustomerDO> customerMap,
                                                                        Map<Long, ErpAccountDO> accountMap,
-                                                                       Map<Long, AdminUserRespDTO> userMap) {
+                                                                       Map<Long, AdminUserRespDTO> userMap,
+                                                                       Map<Long, String> voucherNoMap) {
         ErpFinanceReceiptExportRespVO row = fillMainFields
                 ? BeanUtils.toBean(receipt, ErpFinanceReceiptExportRespVO.class)
                 : new ErpFinanceReceiptExportRespVO();
@@ -621,6 +729,10 @@ public class ErpFinanceReceiptController {
             MapUtils.findAndThen(accountMap, receipt.getAccountId(), account -> row.setAccountName(account.getName()));
             MapUtils.findAndThen(userMap, receipt.getFinanceUserId(), user -> row.setFinanceUserName(user.getNickname()));
             MapUtils.findAndThen(userMap, parseUserId(receipt.getCreator()), user -> row.setCreatorName(user.getNickname()));
+            row.setVoucherNo(voucherNoMap.get(receipt.getId()));
+            if (fieldPermissionMasker.isFieldHidden("erp_finance_receipt", "paymentVoucherNo")) {
+                row.setPaymentVoucherNo(null);
+            }
         }
         if (item == null) {
             return row;

@@ -3,6 +3,7 @@ package cn.iocoder.yudao.module.erp.controller.admin.finance.vo.payment;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Data;
 
+import javax.validation.constraints.Size;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -43,6 +44,10 @@ public class ErpFinancePaymentDraftSaveReqVO {
 
     @Schema(description = "实际付款")
     private BigDecimal paymentPrice;
+
+    @Schema(description = "凭证号（供应商收款编号等业务侧手工凭据）")
+    @Size(max = 64, message = "凭证号长度不能超过 64 个字符")
+    private String paymentVoucherNo;
 
     @Schema(description = "备注")
     private String remark;

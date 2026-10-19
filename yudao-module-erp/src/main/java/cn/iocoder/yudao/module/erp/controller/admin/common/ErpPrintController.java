@@ -15,6 +15,7 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.annotation.Validated;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
@@ -106,8 +107,12 @@ public class ErpPrintController {
     @Operation(summary = "获取打印数据")
     @PreAuthorize(ANY_PRINT_PERMISSION)
     public CommonResult<Map<String, Object>> getPrintData(@RequestParam("moduleKey") String moduleKey,
-                                                          @RequestParam("businessId") Long businessId) {
-        return success(printService.getPrintData(moduleKey, businessId));
+                                                          @RequestParam("businessId") Long businessId,
+                                                          @RequestParam(value = "itemOrderField", required = false)
+                                                          String itemOrderField,
+                                                          @RequestParam(value = "itemOrderDirection", required = false)
+                                                          String itemOrderDirection) {
+        return success(printService.getPrintData(moduleKey, businessId, itemOrderField, itemOrderDirection));
     }
 
     @GetMapping("/font/file")
@@ -164,6 +169,14 @@ public class ErpPrintController {
     @PreAuthorize(ANY_TEMPLATE_PERMISSION)
     public CommonResult<Boolean> setDefaultTemplate(@RequestParam("id") Long id) {
         printService.setDefaultTemplate(id);
+        return success(true);
+    }
+
+    @DeleteMapping("/template/delete")
+    @Operation(summary = "删除打印模板")
+    @PreAuthorize("@ss.hasPermission('erp:print-template:delete')")
+    public CommonResult<Boolean> deleteTemplate(@RequestParam("id") Long id) {
+        printService.deleteTemplate(id);
         return success(true);
     }
 

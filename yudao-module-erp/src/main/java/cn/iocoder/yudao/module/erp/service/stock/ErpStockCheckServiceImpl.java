@@ -2,6 +2,7 @@ package cn.iocoder.yudao.module.erp.service.stock;
 
 import cn.hutool.core.collection.CollUtil;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
+import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.ErpStockDocumentSummaryRespVO;
 import cn.iocoder.yudao.framework.common.util.number.MoneyUtils;
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
 import cn.iocoder.yudao.framework.datapermission.core.util.DataPermissionUtils;
@@ -641,11 +642,22 @@ public class ErpStockCheckServiceImpl implements ErpStockCheckService {
         return stockCheckMapper.selectPage(pageReqVO);
     }
 
+    @Override
+    public ErpStockDocumentSummaryRespVO getStockCheckSummary(ErpStockCheckPageReqVO pageReqVO) {
+        return stockCheckMapper.selectSummary(pageReqVO);
+    }
+
     // ==================== 鐩樼偣椤?====================
 
     @Override
     public List<ErpStockCheckItemDO> getStockCheckItemListByCheckId(Long checkId) {
         return stockCheckItemMapper.selectListByCheckId(checkId);
+    }
+
+    @Override
+    public List<ErpStockCheckItemDO> getStockCheckItemListByCheckId(Long checkId, String orderField,
+                                                                    String orderDirection) {
+        return stockCheckItemMapper.selectListByCheckId(checkId, orderField, orderDirection);
     }
 
     @Override

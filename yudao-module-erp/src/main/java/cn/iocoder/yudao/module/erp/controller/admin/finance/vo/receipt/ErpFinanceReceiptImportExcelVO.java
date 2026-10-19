@@ -39,6 +39,9 @@ public class ErpFinanceReceiptImportExcelVO {
     @ExcelProperty("实际收款金额")
     private BigDecimal receiptPrice;
 
+    @ExcelProperty("凭证号")
+    private String paymentVoucherNo;
+
     @ExcelProperty("备注")
     private String remark;
 

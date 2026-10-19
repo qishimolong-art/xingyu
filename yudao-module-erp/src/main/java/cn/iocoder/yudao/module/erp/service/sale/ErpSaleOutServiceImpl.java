@@ -10,6 +10,7 @@ import cn.iocoder.yudao.framework.datapermission.core.util.DataPermissionUtils;
 import cn.iocoder.yudao.framework.common.util.number.MoneyUtils;
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.out.ErpSaleOutPageReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.out.ErpSaleOutSummaryRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.out.ErpSaleOutItemPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.out.ErpSaleOutReturnableItemPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.out.ErpSaleReturnableItemRespVO;
@@ -62,12 +63,9 @@ import org.springframework.validation.annotation.Validated;
 
 import javax.annotation.Resource;
 import java.math.BigDecimal;
-import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
-import java.util.HashSet;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
@@ -94,8 +92,6 @@ public class ErpSaleOutServiceImpl implements ErpSaleOutService {
     private static final String FIELD_PERMISSION_MODULE = "erp_sale_out";
     private static final String EXPRESS_FILE_DIRECTORY = "erp/sale-out/express";
     private static final long EXPRESS_FILE_MAX_SIZE = 5L * 1024 * 1024;
-    private static final Set<String> EXPRESS_FILE_EXTENSIONS = new HashSet<>(
-            Arrays.asList("jpg", "jpeg", "png"));
     private static final byte[] PNG_SIGNATURE = new byte[]{
             (byte) 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A};
 
@@ -343,9 +339,10 @@ public class ErpSaleOutServiceImpl implements ErpSaleOutService {
     @Transactional(rollbackFor = Exception.class)
     public String uploadSaleOutExpressFile(Long id, byte[] content, String fileName) {
         ErpSaleOutDO saleOut = validateSaleOutExists(id);
-        String extension = validateExpressFile(content, fileName);
+        String extension = validateExpressFile(content);
+        String normalizedFileName = normalizeExpressFileName(fileName, extension);
         String contentType = "png".equals(extension) ? "image/png" : "image/jpeg";
-        String fileUrl = fileApi.createFile(content, fileName,
+        String fileUrl = fileApi.createFile(content, normalizedFileName,
                 EXPRESS_FILE_DIRECTORY + "/" + id, contentType);
         saleOutMapper.updateById(new ErpSaleOutDO()
                 .setId(saleOut.getId())
@@ -354,39 +351,48 @@ public class ErpSaleOutServiceImpl implements ErpSaleOutService {
         return fileUrl;
     }
 
-    private String validateExpressFile(byte[] content, String fileName) {
+    private String validateExpressFile(byte[] content) {
         if (content == null || content.length == 0) {
             throw exception(SALE_OUT_EXPRESS_FILE_EMPTY);
         }
         if (content.length > EXPRESS_FILE_MAX_SIZE) {
             throw exception(SALE_OUT_EXPRESS_FILE_SIZE_EXCEEDED);
         }
-        String extension = FileUtil.extName(fileName);
-        extension = extension != null ? extension.toLowerCase(Locale.ROOT) : "";
-        if (!EXPRESS_FILE_EXTENSIONS.contains(extension)
-                || !isExpressFileSignatureValid(content, extension)) {
-            throw exception(SALE_OUT_EXPRESS_FILE_TYPE_INVALID);
+        if (hasPngSignature(content)) {
+            return "png";
         }
-        return extension;
+        if (hasJpegSignature(content)) {
+            return "jpg";
+        }
+        throw exception(SALE_OUT_EXPRESS_FILE_TYPE_INVALID);
     }
 
-    private boolean isExpressFileSignatureValid(byte[] content, String extension) {
-        if ("png".equals(extension)) {
-            if (content.length < PNG_SIGNATURE.length) {
+    private boolean hasPngSignature(byte[] content) {
+        if (content.length < PNG_SIGNATURE.length) {
+            return false;
+        }
+        for (int i = 0; i < PNG_SIGNATURE.length; i++) {
+            if (content[i] != PNG_SIGNATURE[i]) {
                 return false;
             }
-            for (int i = 0; i < PNG_SIGNATURE.length; i++) {
-                if (content[i] != PNG_SIGNATURE[i]) {
-                    return false;
-                }
-            }
-            return true;
         }
-        return content.length >= 4
-                && content[0] == (byte) 0xFF
-                && content[1] == (byte) 0xD8
-                && content[content.length - 2] == (byte) 0xFF
-                && content[content.length - 1] == (byte) 0xD9;
+        return true;
+    }
+
+    private boolean hasJpegSignature(byte[] content) {
+        return content.length >= 3
+                && (content[0] & 0xFF) == 0xFF
+                && (content[1] & 0xFF) == 0xD8
+                && (content[2] & 0xFF) == 0xFF;
+    }
+
+    private String normalizeExpressFileName(String fileName, String extension) {
+        String originalName = fileName != null ? FileUtil.getName(fileName) : "";
+        String baseName = FileUtil.mainName(originalName);
+        if (baseName == null || baseName.trim().isEmpty()) {
+            baseName = "express";
+        }
+        return baseName + "." + extension;
     }
 
     private void calculateTotalPrice(ErpSaleOutDO saleOut, List<ErpSaleOutItemDO> saleOutItems) {
@@ -446,8 +452,9 @@ public class ErpSaleOutServiceImpl implements ErpSaleOutService {
         saleDirectDeptPermissionService.validateSaleDocumentDeptAllowed(saleOut.getDeptId());
 
         // Update status.
+        java.time.LocalDateTime approveTime = java.time.LocalDateTime.now();
         int updateCount = saleOutMapper.updateByIdAndStatus(id, saleOut.getStatus(),
-                new ErpSaleOutDO().setStatus(ErpAuditStatus.APPROVE.getStatus()));
+                new ErpSaleOutDO().setStatus(ErpAuditStatus.APPROVE.getStatus()).setApproveTime(approveTime));
         if (updateCount == 0) {
             throw exception(SALE_OUT_APPROVE_FAIL);
         }
@@ -797,11 +804,22 @@ public class ErpSaleOutServiceImpl implements ErpSaleOutService {
         return pageResult;
     }
 
+    @Override
+    public ErpSaleOutSummaryRespVO getSaleOutSummary(ErpSaleOutPageReqVO pageReqVO) {
+        return saleOutMapper.selectSummary(pageReqVO);
+    }
+
     // ==================== 销售出库项 ====================
 
     @Override
     public List<ErpSaleOutItemDO> getSaleOutItemListByOutId(Long outId) {
         return saleOutItemMapper.selectListByOutId(outId);
+    }
+
+    @Override
+    public List<ErpSaleOutItemDO> getSaleOutItemListByOutId(Long outId, String orderField,
+                                                            String orderDirection) {
+        return saleOutItemMapper.selectListByOutId(outId, orderField, orderDirection);
     }
 
     @Override

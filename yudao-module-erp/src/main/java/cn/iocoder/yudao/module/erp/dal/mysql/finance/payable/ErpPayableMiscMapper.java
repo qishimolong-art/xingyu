@@ -4,6 +4,8 @@ import cn.hutool.core.collection.CollUtil;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.mybatis.core.mapper.BaseMapperX;
 import cn.iocoder.yudao.framework.mybatis.core.query.LambdaQueryWrapperX;
+import cn.iocoder.yudao.framework.mybatis.core.query.MPJLambdaWrapperX;
+import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.ErpFinanceQuerySummaryRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.payable.vo.misc.ErpPayableMiscPageReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.payable.ErpPayableMiscDO;
 import cn.iocoder.yudao.module.erp.dal.mysql.common.ErpKeywordQuery;
@@ -45,7 +47,42 @@ public interface ErpPayableMiscMapper extends BaseMapperX<ErpPayableMiscDO> {
     Page<ErpMiscSettlementRespVO> selectSettlementPage(Page<ErpMiscSettlementRespVO> page, @Param("id") Long id);
 
     default PageResult<ErpPayableMiscDO> selectPage(ErpPayableMiscPageReqVO reqVO) {
-        LambdaQueryWrapperX<ErpPayableMiscDO> wrapper = new LambdaQueryWrapperX<ErpPayableMiscDO>()
+        MPJLambdaWrapperX<ErpPayableMiscDO> wrapper = buildQuery(reqVO);
+        if (Boolean.TRUE.equals(reqVO.getPaymentEnable())) {
+            ErpFinanceSortUtils.applyWithIdAsc(wrapper, reqVO.getOrderField(), reqVO.getOrderDirection(),
+                    "no", "bizTime", "supplierId", "accountId", "deptId", "handlerId", "amount", "status",
+                    "creator", "updater", "createTime", "updateTime", "remark");
+        } else {
+            ErpFinanceSortUtils.apply(wrapper, reqVO.getOrderField(), reqVO.getOrderDirection(), "erp_payable_misc",
+                    "no", "bizTime", "supplierId", "accountId", "deptId", "handlerId", "amount", "status",
+                    "creator", "updater", "createTime", "updateTime", "remark");
+        }
+        return selectJoinPage(reqVO, ErpPayableMiscDO.class, wrapper);
+    }
+
+    default ErpFinanceQuerySummaryRespVO selectSummary(ErpPayableMiscPageReqVO reqVO) {
+        String settled = ErpMiscSettlementSql.totalExpression(false, "t");
+        String pending = "COALESCE((SELECT SUM(f.payment_price) FROM erp_finance_payment f "
+                + "WHERE f.source_payable_misc_id = t.id AND f.tenant_id = t.tenant_id "
+                + "AND f.deleted = b'0' AND f.status = 10), 0)";
+        String invalid = "EXISTS (SELECT 1 FROM erp_finance_payment f "
+                + "WHERE f.source_payable_misc_id = t.id AND f.tenant_id = t.tenant_id "
+                + "AND f.deleted = b'0' AND f.status = 10 "
+                + "AND (f.payment_price IS NULL OR f.payment_price = 0 OR SIGN(f.payment_price) != SIGN(t.amount)))";
+        String available = "CASE WHEN " + invalid + " THEN 0 WHEN SIGN(t.amount - " + settled + " - " + pending
+                + ") = SIGN(t.amount) THEN t.amount - " + settled + " - " + pending + " ELSE 0 END";
+        MPJLambdaWrapperX<ErpPayableMiscDO> wrapper = buildQuery(reqVO)
+                .selectAs("COUNT(*)", ErpFinanceQuerySummaryRespVO::getDocumentCount)
+                .selectAs("COALESCE(SUM(t.amount), 0)", ErpFinanceQuerySummaryRespVO::getAmount)
+                .selectAs("COALESCE(SUM(" + settled + "), 0)", ErpFinanceQuerySummaryRespVO::getSettledAmount)
+                .selectAs("COALESCE(SUM(t.amount - " + settled + "), 0)", ErpFinanceQuerySummaryRespVO::getBalanceAmount)
+                .selectAs("COALESCE(SUM(" + pending + "), 0)", ErpFinanceQuerySummaryRespVO::getPendingTransferAmount)
+                .selectAs("COALESCE(SUM(" + available + "), 0)", ErpFinanceQuerySummaryRespVO::getTransferAvailableAmount);
+        return selectJoinOne(ErpFinanceQuerySummaryRespVO.class, wrapper);
+    }
+
+    static MPJLambdaWrapperX<ErpPayableMiscDO> buildQuery(ErpPayableMiscPageReqVO reqVO) {
+        MPJLambdaWrapperX<ErpPayableMiscDO> wrapper = new MPJLambdaWrapperX<ErpPayableMiscDO>()
                 .inIfPresent(ErpPayableMiscDO::getId, reqVO.getIds())
                 .likeIfPresent(ErpPayableMiscDO::getNo, reqVO.getNo())
                 .betweenIfPresent(ErpPayableMiscDO::getBizTime, reqVO.getBizTime())
@@ -58,13 +95,19 @@ public interface ErpPayableMiscMapper extends BaseMapperX<ErpPayableMiscDO> {
                 .likeIfPresent(ErpPayableMiscDO::getRemark, reqVO.getRemark());
         wrapper.and(q -> q.isNull(ErpPayableMiscDO::getSourceType).or().ne(ErpPayableMiscDO::getSourceType,
                         cn.iocoder.yudao.module.erp.service.finance.ErpMiscTransferOffsetConstants.PAYMENT_OFFSET_SOURCE_TYPE));
-        ErpKeywordQuery.appendWithDeptNameAndSupplier(wrapper, reqVO.getKeyword(),
+        if (Boolean.TRUE.equals(reqVO.getPaymentEnable())) {
+            String settled = ErpMiscSettlementSql.totalExpression(false, "t");
+            String pending = "COALESCE((SELECT SUM(f.payment_price) FROM erp_finance_payment f "
+                    + "WHERE f.source_payable_misc_id = t.id AND f.tenant_id = t.tenant_id "
+                    + "AND f.deleted = b'0' AND f.status = 10), 0)";
+            String occupied = "(" + settled + " + " + pending + ")";
+            wrapper.apply("((t.amount > 0 AND " + occupied + " >= 0 AND " + occupied + " < t.amount) OR "
+                    + "(t.amount < 0 AND " + occupied + " <= 0 AND " + occupied + " > t.amount))");
+        }
+        ErpKeywordQuery.appendWithDeptNameAndPurchaseSupplier(wrapper, reqVO.getKeyword(),
                 ErpPayableMiscDO::getNo,
                 ErpPayableMiscDO::getRemark);
-        ErpFinanceSortUtils.apply(wrapper, reqVO.getOrderField(), reqVO.getOrderDirection(), "erp_payable_misc",
-                "no", "bizTime", "supplierId", "accountId", "deptId", "handlerId", "amount", "status",
-                "creator", "updater", "createTime", "updateTime", "remark");
-        return selectPage(reqVO, wrapper);
+        return wrapper;
     }
 
     default ErpPayableMiscDO selectBySourceItem(String sourceType, Long sourceItemId) {

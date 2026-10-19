@@ -15,7 +15,12 @@ public interface ErpPrintService {
 
     ErpPrintFieldRespVO getFields(String moduleKey);
 
-    Map<String, Object> getPrintData(String moduleKey, Long businessId);
+    default Map<String, Object> getPrintData(String moduleKey, Long businessId) {
+        return getPrintData(moduleKey, businessId, null, null);
+    }
+
+    Map<String, Object> getPrintData(String moduleKey, Long businessId,
+                                     String itemOrderField, String itemOrderDirection);
 
     ErpPrintTemplateRespVO getDefaultTemplate(String moduleKey);
 
@@ -28,6 +33,8 @@ public interface ErpPrintService {
     Long saveAsTemplate(@Valid ErpPrintTemplateSaveReqVO reqVO);
 
     void setDefaultTemplate(Long id);
+
+    void deleteTemplate(Long id);
 
     void recordPrint(@Valid ErpPrintRecordCreateReqVO reqVO);
 

@@ -21,6 +21,7 @@ import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartItem
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartRespVO;
 import cn.iocoder.yudao.framework.security.core.util.SecurityFrameworkUtils;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartPageReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartSummaryRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartConvertQuoteReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartSaveReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartSubmitRespVO;
@@ -255,6 +256,11 @@ public class ErpSaleCartServiceImpl implements ErpSaleCartService {
             cart.setSourceType(sourceType);
             cart.setSourceId(sourceId);
             cart.setSourceNo(sourceNo);
+        } else {
+            // 管理后台新增不能伪造商城、报价等结构化来源，来源只允许由可信内部转换入口写入。
+            cart.setSourceType(null);
+            cart.setSourceId(null);
+            cart.setSourceNo(null);
         }
         saleDocumentDefaultService.fillCreateDefaults(cart);
         saleDirectDeptPermissionService.validateSaleDocumentDeptAllowed(cart.getDeptId());
@@ -487,6 +493,10 @@ public class ErpSaleCartServiceImpl implements ErpSaleCartService {
         }
         ErpSaleCartDO updateObj = BeanUtils.toBean(updateReqVO, ErpSaleCartDO.class);
         updateObj.setCartTime(LocalDateTime.now());
+        // 来源是建单时的不可变追溯信息，编辑请求不得覆盖或清空，否则会破坏网上订单分栏。
+        updateObj.setSourceType(cart.getSourceType());
+        updateObj.setSourceId(cart.getSourceId());
+        updateObj.setSourceNo(cart.getSourceNo());
         Long saleDeptId = updateObj.getDeptId() != null ? updateObj.getDeptId() : cart.getDeptId();
         saleDirectDeptPermissionService.validateSaleDocumentDeptAllowed(saleDeptId);
         updateObj.setNo(cart.getNo());
@@ -2148,13 +2158,30 @@ public class ErpSaleCartServiceImpl implements ErpSaleCartService {
     }
 
     @Override
+    public ErpSaleCartSummaryRespVO getSaleCartSummary(ErpSaleCartPageReqVO pageReqVO) {
+        return saleCartMapper.selectSummary(pageReqVO);
+    }
+
+    @Override
     public List<ErpSaleCartItemDO> getSaleCartItemListByCartId(Long cartId) {
         return saleCartItemMapper.selectListByCartId(cartId);
     }
 
     @Override
+    public List<ErpSaleCartItemDO> getSaleCartItemListByCartId(Long cartId, String orderField,
+                                                               String orderDirection) {
+        return saleCartItemMapper.selectListByCartId(cartId, orderField, orderDirection);
+    }
+
+    @Override
     public PageResult<ErpSaleCartItemDO> getSaleCartItemPage(ErpSaleCartItemPageReqVO pageReqVO) {
         validateSaleCartExists(pageReqVO.getCartId());
+        if (CollUtil.isNotEmpty(pageReqVO.getExcludedItemIds())) {
+            pageReqVO.setExcludedItemIds(pageReqVO.getExcludedItemIds().stream()
+                    .filter(id -> id != null && id > 0)
+                    .distinct()
+                    .collect(Collectors.toList()));
+        }
         return saleCartItemMapper.selectPageByCartId(pageReqVO);
     }
 

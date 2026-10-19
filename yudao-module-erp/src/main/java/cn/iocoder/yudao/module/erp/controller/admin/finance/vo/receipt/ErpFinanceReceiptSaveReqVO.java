@@ -5,6 +5,7 @@ import lombok.Data;
 
 import javax.validation.Valid;
 import javax.validation.constraints.NotNull;
+import javax.validation.constraints.Size;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -51,6 +52,10 @@ public class ErpFinanceReceiptSaveReqVO {
     @Schema(description = "实际收款金额，单位：元", requiredMode = Schema.RequiredMode.REQUIRED, example = "10000")
     @NotNull(message = "实际收款金额不能为空")
     private BigDecimal receiptPrice;
+
+    @Schema(description = "凭证号（客户付款编号）", example = "PAY202610150001")
+    @Size(max = 64, message = "凭证号长度不能超过 64 个字符")
+    private String paymentVoucherNo;
 
     @Schema(description = "备注", example = "你猜")
     private String remark;

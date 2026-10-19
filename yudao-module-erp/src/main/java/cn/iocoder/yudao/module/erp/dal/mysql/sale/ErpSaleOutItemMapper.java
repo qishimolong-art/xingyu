@@ -55,24 +55,81 @@ public interface ErpSaleOutItemMapper extends BaseMapperX<ErpSaleOutItemDO> {
     }
 
     default List<ErpSaleOutItemDO> selectListByOutId(Long outId) {
-        return selectList(ErpSaleOutItemDO::getOutId, outId);
+        return selectList(buildSortedQuery(outId, null, null));
+    }
+
+    default List<ErpSaleOutItemDO> selectListByOutId(Long outId, String orderField,
+                                                     String orderDirection) {
+        return selectList(buildSortedQuery(outId, orderField, orderDirection));
     }
 
     default PageResult<ErpSaleOutItemDO> selectPageByOutId(ErpSaleOutItemPageReqVO reqVO) {
-        LambdaQueryWrapperX<ErpSaleOutItemDO> query = new LambdaQueryWrapperX<ErpSaleOutItemDO>()
-                .eq(ErpSaleOutItemDO::getOutId, reqVO.getOutId());
-        SFunction<ErpSaleOutItemDO, ?> orderColumn = getOrderColumn(reqVO.getOrderField());
-        if (orderColumn == null) {
-            query.orderByAsc(ErpSaleOutItemDO::getId);
-        } else if ("desc".equalsIgnoreCase(reqVO.getOrderDirection())) {
-            query.orderByDesc(orderColumn);
-        } else {
-            query.orderByAsc(orderColumn);
-        }
-        if (orderColumn != null && !"id".equals(reqVO.getOrderField().trim())) {
-            query.orderByAsc(ErpSaleOutItemDO::getId);
-        }
-        return selectPage(reqVO, query);
+        return selectPage(reqVO, buildSortedQuery(reqVO.getOutId(), reqVO.getOrderField(),
+                reqVO.getOrderDirection()));
+    }
+
+    static QueryWrapper<ErpSaleOutItemDO> buildSortedQuery(Long outId, String orderField,
+                                                            String orderDirection) {
+        QueryWrapper<ErpSaleOutItemDO> query = new QueryWrapper<ErpSaleOutItemDO>().eq("out_id", outId);
+        return ErpSaleItemSortUtils.applyOrder(query, "erp_sale_out_items", orderField, orderDirection,
+                getOrderSpec(orderField));
+    }
+
+    static boolean isSupportedOrderField(String orderField) {
+        return getOrderSpec(orderField) != null;
+    }
+
+    static ErpSaleItemSortUtils.OrderSpec getOrderSpec(String orderField) {
+        if (orderField == null) return null;
+        String item = "erp_sale_out_items";
+        return switch (orderField.trim()) {
+            case "id" -> new ErpSaleItemSortUtils.OrderSpec(item + ".id", false);
+            case "productId", "productName" -> new ErpSaleItemSortUtils.OrderSpec(
+                    ErpSaleItemSortUtils.productField(item, "name"), true);
+            case "productCode" -> new ErpSaleItemSortUtils.OrderSpec(
+                    ErpSaleItemSortUtils.productField(item, "code"), true);
+            case "productUnitName" -> new ErpSaleItemSortUtils.OrderSpec(
+                    ErpSaleItemSortUtils.productUnitName(item), true);
+            case "sourceWarehouseName" -> new ErpSaleItemSortUtils.OrderSpec(
+                    ErpSaleItemSortUtils.warehouseName(item, "source_warehouse_id"), true);
+            case "warehouseId", "warehouseName" -> new ErpSaleItemSortUtils.OrderSpec(
+                    ErpSaleItemSortUtils.warehouseName(item, "warehouse_id"), true);
+            case "deptId", "deptName" -> new ErpSaleItemSortUtils.OrderSpec(
+                    ErpSaleItemSortUtils.deptName(item, "dept_id"), true);
+            case "stockCount" -> new ErpSaleItemSortUtils.OrderSpec(ErpSaleItemSortUtils.stockCount(item), false);
+            case "pieceCount" -> new ErpSaleItemSortUtils.OrderSpec(
+                    ErpSaleItemSortUtils.pieceCount(item, "count"), false);
+            case "saleCostPrice" -> new ErpSaleItemSortUtils.OrderSpec(
+                    ErpSaleItemSortUtils.saleOutCostPrice(item), false);
+            case "saleCostAmount" -> new ErpSaleItemSortUtils.OrderSpec(
+                    ErpSaleItemSortUtils.saleOutCostAmount(item), false);
+            case "productPrice" -> new ErpSaleItemSortUtils.OrderSpec(item + ".product_price", false);
+            case "totalProductPrice", "totalPrice" -> new ErpSaleItemSortUtils.OrderSpec(
+                    item + ".total_price", false);
+            case "count" -> new ErpSaleItemSortUtils.OrderSpec(item + ".count", false);
+            case "giftFlag" -> new ErpSaleItemSortUtils.OrderSpec(item + ".gift_flag", false);
+            case "vehicleModel" -> new ErpSaleItemSortUtils.OrderSpec(item + ".vehicle_model", true);
+            case "standard" -> new ErpSaleItemSortUtils.OrderSpec(item + ".standard", true);
+            case "featureCode" -> new ErpSaleItemSortUtils.OrderSpec(item + ".feature_code", true);
+            case "brand" -> new ErpSaleItemSortUtils.OrderSpec(item + ".brand", true);
+            case "drawingNo" -> new ErpSaleItemSortUtils.OrderSpec(item + ".drawing_no", true);
+            case "batchNo" -> new ErpSaleItemSortUtils.OrderSpec(item + ".batch_no", true);
+            case "warehousePosition" -> new ErpSaleItemSortUtils.OrderSpec(item + ".warehouse_position", true);
+            case "unitWeight" -> new ErpSaleItemSortUtils.OrderSpec(item + ".unit_weight", false);
+            case "packageQty" -> new ErpSaleItemSortUtils.OrderSpec(item + ".package_qty", false);
+            case "totalWeight" -> new ErpSaleItemSortUtils.OrderSpec(item + ".total_weight", false);
+            case "afterReductionPrice" -> new ErpSaleItemSortUtils.OrderSpec(
+                    item + ".after_reduction_price", false);
+            case "afterReductionAmount" -> new ErpSaleItemSortUtils.OrderSpec(
+                    item + ".after_reduction_amount", false);
+            case "actualSaleAmount" -> new ErpSaleItemSortUtils.OrderSpec(
+                    item + ".actual_sale_amount", false);
+            case "originPlace" -> new ErpSaleItemSortUtils.OrderSpec(item + ".origin_place", true);
+            case "remark" -> new ErpSaleItemSortUtils.OrderSpec(item + ".remark", true);
+            case "originalProductPrice" -> new ErpSaleItemSortUtils.OrderSpec(
+                    item + ".original_product_price", false);
+            default -> null;
+        };
     }
 
     default PageResult<ErpSaleOutItemDO> selectAdjustableItemPage(
@@ -271,6 +328,28 @@ public interface ErpSaleOutItemMapper extends BaseMapperX<ErpSaleOutItemDO> {
                 .in("out_id", outIds));
         // 获得数量
         return convertMap(result, obj -> (Long) obj.get("order_item_id"), obj -> (BigDecimal) obj.get("sum_count"));
+    }
+
+    /**
+     * 批量汇总存在原始价格快照的销售出库商品金额。
+     *
+     * <p>仅返回至少一条明细存在 original_product_price 的出库单；未返回的出库单继续使用主单 total_price。
+     * 这样收款候选分页无需把全部出库明细加载到 JVM。</p>
+     */
+    default Map<Long, BigDecimal> selectOriginalSettlementProductPriceMap(Collection<Long> outIds) {
+        if (CollUtil.isEmpty(outIds)) {
+            return Collections.emptyMap();
+        }
+        List<Map<String, Object>> rows = selectMaps(new QueryWrapper<ErpSaleOutItemDO>()
+                .select("out_id AS out_id",
+                        "SUM(ROUND(COALESCE(original_product_price, product_price) * count, 2)) AS product_price")
+                .in("out_id", outIds)
+                .groupBy("out_id")
+                .having("SUM(CASE WHEN original_product_price IS NOT NULL THEN 1 ELSE 0 END) > 0"));
+        return convertMap(rows, row -> ((Number) row.get("out_id")).longValue(),
+                row -> row.get("product_price") instanceof BigDecimal
+                        ? (BigDecimal) row.get("product_price")
+                        : new BigDecimal(row.get("product_price").toString()));
     }
 
 }

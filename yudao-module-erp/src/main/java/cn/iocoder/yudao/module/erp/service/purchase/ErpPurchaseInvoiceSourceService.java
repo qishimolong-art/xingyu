@@ -153,7 +153,11 @@ public class ErpPurchaseInvoiceSourceService {
     public PageResult<ErpPurchaseInvoiceItemDO> getMixedSourceItemPage(
             ErpPurchaseInvoiceMixedSourceItemPageReqVO reqVO) {
         Map<Integer, Set<Long>> idsByType = normalizeMixedSourceRefs(reqVO.getSourceRefs());
-        int upperBound = pageUpperBound(reqVO.getPageNo(), reqVO.getPageSize());
+        Set<String> excludedKeys = CollUtil.emptyIfNull(reqVO.getExcludedSourceItemKeys()).stream()
+                .filter(StrUtil::isNotBlank).map(String::trim).filter(key -> key.matches("\\d+:\\d+"))
+                .collect(Collectors.toCollection(LinkedHashSet::new));
+        int upperBound = Math.toIntExact(Math.min(Integer.MAX_VALUE,
+                (long) pageUpperBound(reqVO.getPageNo(), reqVO.getPageSize()) + excludedKeys.size()));
         List<SourceSnapshot> snapshots = new ArrayList<>();
         long total = 0L;
 
@@ -198,12 +202,24 @@ public class ErpPurchaseInvoiceSourceService {
             total += page.getTotal();
         }
 
+        Map<String, Integer> sourceOrder = new LinkedHashMap<>();
+        int sourceIndex = 0;
+        for (ErpPurchaseInvoiceMixedSourceItemPageReqVO.SourceRef ref : reqVO.getSourceRefs()) {
+            sourceOrder.putIfAbsent(sourceKey(ref.getSourceType(), ref.getSourceDocId()), sourceIndex++);
+        }
+        long matchedExcludedCount = snapshots.stream().map(SourceSnapshot::key)
+                .filter(excludedKeys::contains).distinct().count();
+        Comparator<SourceSnapshot> requestedSourceOrder = Comparator
+                .comparingInt((SourceSnapshot snapshot) -> sourceOrder.getOrDefault(
+                        sourceKey(snapshot.getSourceType(), snapshot.getSourceDocId()), Integer.MAX_VALUE))
+                .thenComparing(SourceSnapshot::getSourceItemId);
         List<ErpPurchaseInvoiceItemDO> rows = pageSlice(snapshots.stream()
                 .filter(SourceSnapshot::hasRemaining)
-                .sorted(MIXED_SOURCE_ITEM_ORDER)
+                .filter(snapshot -> !excludedKeys.contains(snapshot.key()))
+                .sorted(requestedSourceOrder)
                 .map(SourceSnapshot::toInvoiceItem)
                 .collect(Collectors.toList()), reqVO.getPageNo(), reqVO.getPageSize());
-        return new PageResult<>(rows, total);
+        return new PageResult<>(rows, Math.max(0L, total - matchedExcludedCount));
     }
 
     public void mergeSelectedSourceItems(ErpPurchaseInvoiceSaveReqVO reqVO,

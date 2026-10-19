@@ -14,6 +14,9 @@ import cn.iocoder.yudao.framework.datapermission.core.util.DataPermissionUtils;
 import cn.iocoder.yudao.framework.excel.core.util.ExcelUtils;
 import cn.iocoder.yudao.module.erp.controller.admin.common.ErpAuditStatusRequestValidator;
 import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpProductRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.ErpStockDocumentSummaryRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.ErpStockItemMatchReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.ErpStockItemMatchRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.ErpStockUpdateRemarkReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.check.ErpStockCheckDraftCreateReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.check.ErpStockCheckDraftUpdateReqVO;
@@ -79,6 +82,7 @@ import static cn.iocoder.yudao.framework.common.exception.util.ServiceExceptionU
 import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.convertList;
 import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.convertMultiMap;
 import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.convertSet;
+import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.STOCK_CHECK_NOT_EXISTS;
 
 @Tag(name = "Admin - ERP stock check")
 @RestController
@@ -246,6 +250,7 @@ public class ErpStockCheckController {
             MapUtils.findAndThen(deptMap, vo.getDeptId(), dept -> vo.setDeptName(dept.getName()));
             fillUserNames(vo, userMap);
         });
+        fillSummary(respVO, stockCheckItemMapper.selectSummaryMapByCheckIds(Collections.singleton(id)).get(id));
         itemPriceReferenceFiller.fill(respVO.getItems());
         fieldPermissionMasker.maskFormWithItems(FIELD_PERMISSION_MODULE, respVO);
         return success(respVO);
@@ -266,6 +271,30 @@ public class ErpStockCheckController {
         return success(respResult);
     }
 
+    @PostMapping("/item-page")
+    @Operation(summary = "Get stock check item page for editing")
+    @PreAuthorize("@ss.hasPermission('erp:stock-check:query')")
+    public CommonResult<PageResult<ErpStockCheckRespVO.Item>> getStockCheckEditItemPage(
+            @Valid @RequestBody ErpStockCheckItemPageReqVO pageReqVO) {
+        return getStockCheckItemPage(pageReqVO);
+    }
+
+    @PostMapping("/item-match")
+    @Operation(summary = "Match stock check items across pages")
+    @PreAuthorize("@ss.hasPermission('erp:stock-check:query')")
+    public CommonResult<ErpStockItemMatchRespVO> matchStockCheckItems(
+            @Valid @RequestBody ErpStockItemMatchReqVO reqVO) {
+        if (stockCheckService.getStockCheck(reqVO.getDocumentId()) == null) {
+            throw exception(STOCK_CHECK_NOT_EXISTS);
+        }
+        List<ErpStockCheckItemDO> items = stockCheckService.getStockCheckItemListByCheckId(reqVO.getDocumentId());
+        return success(ErpStockItemMatchUtils.match(items, reqVO, ErpStockCheckItemDO::getId,
+                (item, key) -> java.util.Objects.equals(item.getProductId(), key.getProductId())
+                        && java.util.Objects.equals(item.getWarehouseId(), key.getWarehouseId())
+                        && ErpStockItemMatchUtils.normalizeText(item.getBatchNo())
+                        .equals(ErpStockItemMatchUtils.normalizeText(key.getBatchNo()))));
+    }
+
     @GetMapping("/page")
     @Operation(summary = "Get stock check page")
     @PreAuthorize("@ss.hasPermission('erp:stock-check:query')")
@@ -276,6 +305,19 @@ public class ErpStockCheckController {
         fieldPermissionMasker.maskListColumns(FIELD_PERMISSION_MODULE, respResult.getList());
         maskStockCheckListAmounts(respResult.getList());
         return success(respResult);
+    }
+
+    @GetMapping("/summary")
+    @Operation(summary = "Get stock check query summary")
+    @PreAuthorize("@ss.hasPermission('erp:stock-check:query')")
+    public CommonResult<ErpStockDocumentSummaryRespVO> getStockCheckSummary(
+            @Valid ErpStockCheckPageReqVO pageReqVO) {
+        ErpStockDocumentSummaryRespVO summary = stockCheckService.getStockCheckSummary(pageReqVO);
+        fieldPermissionMasker.maskListColumns(FIELD_PERMISSION_MODULE, summary);
+        if (fieldPermissionMasker.isFieldHidden(FIELD_PERMISSION_MODULE, "item_totalPrice")) {
+            summary.setTotalPrice(null);
+        }
+        return success(summary);
     }
 
     @GetMapping("/dept-simple-page")
@@ -426,6 +468,9 @@ public class ErpStockCheckController {
 
     private void fillSummary(ErpStockCheckRespVO vo, Map<String, Object> summary) {
         if (summary == null) {
+            vo.setTotalCount(BigDecimal.ZERO);
+            vo.setTotalPrice(BigDecimal.ZERO);
+            vo.setTotalWeight(BigDecimal.ZERO);
             return;
         }
         Object itemCount = summary.get("itemCount");
@@ -435,6 +480,13 @@ public class ErpStockCheckController {
         vo.setWarehouseNames((String) summary.get("warehouseNames"));
         vo.setProductNames((String) summary.get("productNames"));
         vo.setProductCodes((String) summary.get("productCodes"));
+        vo.setTotalCount(toBigDecimal(summary.get("totalCount")));
+        vo.setTotalPrice(toBigDecimal(summary.get("totalPrice")));
+        vo.setTotalWeight(toBigDecimal(summary.get("totalWeight")));
+    }
+
+    private BigDecimal toBigDecimal(Object value) {
+        return value == null ? BigDecimal.ZERO : new BigDecimal(value.toString());
     }
 
     private void maskStockCheckListAmounts(List<ErpStockCheckRespVO> list) {

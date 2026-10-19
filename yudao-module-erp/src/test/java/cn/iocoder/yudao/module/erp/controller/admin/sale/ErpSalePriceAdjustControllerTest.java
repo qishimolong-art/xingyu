@@ -7,6 +7,7 @@ import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.priceadjust.ErpSaleO
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.priceadjust.ErpSalePriceAdjustPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.priceadjust.ErpSalePriceAdjustRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.priceadjust.ErpSalePriceAdjustSaveReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.priceadjust.ErpSalePriceAdjustSummaryRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.priceadjust.ErpSalePriceAdjustSettlementSummaryRespVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSalePriceAdjustDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSalePriceAdjustItemDO;
@@ -33,6 +34,7 @@ import java.lang.reflect.Method;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 
 import static java.util.Collections.singletonList;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -195,6 +197,27 @@ public class ErpSalePriceAdjustControllerTest extends BaseMockitoUnitTest {
     }
 
     @Test
+    public void testGetSalePriceAdjust_withoutItems_usesWholeDocumentSummary() {
+        when(salePriceAdjustService.getSalePriceAdjust(eq(101L)))
+                .thenReturn(new ErpSalePriceAdjustDO().setId(101L));
+        when(salePriceAdjustItemMapper.selectDocumentSummaryByAdjustId(eq(101L))).thenReturn(Map.of(
+                "totalOriginalPrice", new BigDecimal("120"),
+                "totalAdjustedPrice", new BigDecimal("135"),
+                "totalAdjustPrice", new BigDecimal("15"),
+                "sourceNo", "XSCK001、XSCK002"));
+
+        ErpSalePriceAdjustRespVO data = controller.getSalePriceAdjust(101L, false).getData();
+
+        assertNotNull(data);
+        assertTrue(data.getItems().isEmpty());
+        assertEquals(0, new BigDecimal("120").compareTo(data.getTotalOriginalPrice()));
+        assertEquals(0, new BigDecimal("135").compareTo(data.getTotalAdjustedPrice()));
+        assertEquals(0, new BigDecimal("15").compareTo(data.getTotalAdjustPrice()));
+        assertEquals("XSCK001、XSCK002", data.getSourceNo());
+        verify(salePriceAdjustService, never()).getSalePriceAdjustItemListByAdjustId(any());
+    }
+
+    @Test
     public void testGetSalePriceAdjust_hasPreAuthorize() throws NoSuchMethodException {
         Method method = ErpSalePriceAdjustController.class.getMethod("getSalePriceAdjust", Long.class);
         PreAuthorize anno = method.getAnnotation(PreAuthorize.class);
@@ -256,6 +279,20 @@ public class ErpSalePriceAdjustControllerTest extends BaseMockitoUnitTest {
     }
 
     // ==================== getSalePriceAdjustPage ====================
+
+    @Test
+    public void testGetSalePriceAdjustSummary_passesFiltersAndMasksFields() {
+        ErpSalePriceAdjustPageReqVO reqVO = new ErpSalePriceAdjustPageReqVO();
+        ErpSalePriceAdjustSummaryRespVO summary = new ErpSalePriceAdjustSummaryRespVO();
+        summary.setTotalAdjustPrice(new BigDecimal("12.34"));
+        when(salePriceAdjustService.getSalePriceAdjustSummary(reqVO)).thenReturn(summary);
+
+        CommonResult<ErpSalePriceAdjustSummaryRespVO> result = controller.getSalePriceAdjustSummary(reqVO);
+
+        assertEquals(summary, result.getData());
+        verify(salePriceAdjustService).getSalePriceAdjustSummary(reqVO);
+        verify(fieldPermissionMasker).clearSaleDetailHiddenFields("erp_sale_price_adjust", summary);
+    }
 
     @Test
     public void testGetSalePriceAdjustPage_emptyResult() {

@@ -1,6 +1,7 @@
 package cn.iocoder.yudao.module.erp.service.stock;
 
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
+import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.ErpStockDocumentSummaryRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.ErpStockUpdateRemarkReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.check.ErpStockCheckDraftCreateReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.check.ErpStockCheckDraftUpdateReqVO;
@@ -93,6 +94,8 @@ public interface ErpStockCheckService {
      */
     PageResult<ErpStockCheckDO> getStockCheckPage(ErpStockCheckPageReqVO pageReqVO);
 
+    ErpStockDocumentSummaryRespVO getStockCheckSummary(ErpStockCheckPageReqVO pageReqVO);
+
     // ==================== 盘点项 ====================
 
     /**
@@ -102,6 +105,8 @@ public interface ErpStockCheckService {
      * @return 库存盘点单项列表
      */
     List<ErpStockCheckItemDO> getStockCheckItemListByCheckId(Long checkId);
+
+    List<ErpStockCheckItemDO> getStockCheckItemListByCheckId(Long checkId, String orderField, String orderDirection);
 
     PageResult<ErpStockCheckItemDO> getStockCheckItemPage(ErpStockCheckItemPageReqVO pageReqVO);
 

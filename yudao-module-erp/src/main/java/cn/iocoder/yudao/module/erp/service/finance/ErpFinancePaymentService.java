@@ -4,6 +4,8 @@ import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.ErpFinanceUpdateRemarkReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.payment.ErpFinancePaymentDraftSaveReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.payment.ErpFinancePaymentFormCandidateReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.payment.ErpFinancePaymentFormCandidatePageReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.payment.ErpFinancePaymentFormCandidatePageRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.payment.ErpFinancePaymentFormCandidateRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.payment.ErpFinancePaymentItemPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.payment.ErpFinancePaymentPageReqVO;
@@ -88,7 +90,13 @@ public interface ErpFinancePaymentService {
      */
     PageResult<ErpFinancePaymentDO> getFinancePaymentPage(ErpFinancePaymentPageReqVO pageReqVO);
 
+    cn.iocoder.yudao.module.erp.controller.admin.finance.vo.ErpFinanceQuerySummaryRespVO getFinancePaymentSummary(
+            ErpFinancePaymentPageReqVO pageReqVO);
+
     List<ErpFinancePaymentFormCandidateRespVO> getFormCandidates(ErpFinancePaymentFormCandidateReqVO reqVO);
+
+    ErpFinancePaymentFormCandidatePageRespVO getFormCandidatePage(
+            ErpFinancePaymentFormCandidatePageReqVO reqVO);
 
     List<ErpFinancePaymentWriteOffCandidateRespVO> getWriteOffCandidates(Long paymentId);
 

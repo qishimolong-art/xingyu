@@ -13,6 +13,8 @@ import cn.iocoder.yudao.framework.excel.core.util.ExcelUtils;
 import cn.iocoder.yudao.module.erp.controller.admin.common.ErpAuditStatusRequestValidator;
 import cn.iocoder.yudao.module.erp.controller.admin.common.vo.ErpExportFieldRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpProductRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.ErpPurchaseItemMatchReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.ErpPurchaseItemMatchRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.order.ErpPurchaseOrderDetailImportExcelVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.order.ErpPurchaseOrderDraftCreateReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.order.ErpPurchaseOrderDraftUpdateReqVO;
@@ -29,6 +31,7 @@ import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.order.ErpPurchas
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.order.ErpPurchaseOrderPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.order.ErpPurchaseOrderPrintDataRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.order.ErpPurchaseOrderRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.order.ErpPurchaseOrderSummaryRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.order.ErpPurchaseOrderSaveReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.order.ErpPurchaseOrderUpdateRemarkReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.ErpAccountDO;
@@ -325,6 +328,41 @@ public class ErpPurchaseOrderController {
         return success(respResult);
     }
 
+    @PostMapping("/item-page")
+    @Operation(summary = "获得采购订单明细分页（编辑态）")
+    @PreAuthorize("@ss.hasPermission('erp:purchase-order:query')")
+    public CommonResult<PageResult<ErpPurchaseOrderRespVO.Item>> getPurchaseOrderItemPageForEdit(
+            @Valid @RequestBody ErpPurchaseOrderItemPageReqVO pageReqVO) {
+        return getPurchaseOrderItemPage(pageReqVO);
+    }
+
+    @PostMapping("/item-match")
+    @Operation(summary = "匹配采购订单整单明细")
+    @PreAuthorize("@ss.hasPermission('erp:purchase-order:query')")
+    public CommonResult<ErpPurchaseItemMatchRespVO> matchPurchaseOrderItems(
+            @Valid @RequestBody ErpPurchaseItemMatchReqVO reqVO) {
+        purchaseOrderService.getPurchaseOrder(reqVO.getDocumentId());
+        Set<Long> excludedIds = new HashSet<>(CollUtil.emptyIfNull(reqVO.getExcludedItemIds()));
+        List<ErpPurchaseOrderItemDO> items = purchaseOrderService.getPurchaseOrderItemListByOrderId(reqVO.getDocumentId())
+                .stream().filter(item -> !excludedIds.contains(item.getId()))
+                .sorted(java.util.Comparator.comparing(ErpPurchaseOrderItemDO::getId)).collect(Collectors.toList());
+        ErpPurchaseItemMatchRespVO result = new ErpPurchaseItemMatchRespVO();
+        for (int keyIndex = 0; keyIndex < reqVO.getKeys().size(); keyIndex++) {
+            ErpPurchaseItemMatchReqVO.Key key = reqVO.getKeys().get(keyIndex);
+            for (int itemIndex = 0; itemIndex < items.size(); itemIndex++) {
+                ErpPurchaseOrderItemDO item = items.get(itemIndex);
+                if (java.util.Objects.equals(key.getProductId(), item.getProductId())
+                        && java.util.Objects.equals(key.getWarehouseId(), item.getWarehouseId())
+                        && java.util.Objects.equals(Boolean.TRUE.equals(key.getGift()), Boolean.TRUE.equals(item.getGift()))) {
+                    result.getMatches().add(new ErpPurchaseItemMatchRespVO.Match(keyIndex, item.getId(),
+                            itemIndex / reqVO.getPageSize() + 1));
+                    break;
+                }
+            }
+        }
+        return success(result);
+    }
+
     @GetMapping("/print-data")
     @Operation(summary = "获得采购订单打印数据")
     @Parameter(name = "id", description = "编号", required = true, example = "1024")
@@ -423,6 +461,16 @@ public class ErpPurchaseOrderController {
         return success(Boolean.FALSE.equals(pageReqVO.getIncludeItems())
                 ? buildPurchaseOrderVOPageResultWithoutItems(pageResult)
                 : buildPurchaseOrderVOPageResult(pageResult));
+    }
+
+    @GetMapping("/summary")
+    @Operation(summary = "获得采购订单查询汇总")
+    @PreAuthorize("@ss.hasPermission('erp:purchase-order:query')")
+    public CommonResult<ErpPurchaseOrderSummaryRespVO> getPurchaseOrderSummary(
+            @Valid ErpPurchaseOrderPageReqVO pageReqVO) {
+        ErpPurchaseOrderSummaryRespVO summary = purchaseOrderService.getPurchaseOrderSummary(pageReqVO);
+        fieldPermissionMasker.clearHiddenFields(FIELD_PERMISSION_MODULE, summary);
+        return success(summary);
     }
 
     @GetMapping("/export-excel")

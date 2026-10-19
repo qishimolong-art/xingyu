@@ -6,12 +6,16 @@ import cn.iocoder.yudao.framework.datapermission.core.util.DataPermissionUtils;
 import cn.iocoder.yudao.framework.security.core.util.SecurityFrameworkUtils;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.payable.vo.account.ErpPayableDetailReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.payable.vo.account.ErpPayableDetailRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.finance.payable.vo.account.ErpPayableAccountPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.receivable.vo.account.ErpReceivableDetailReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.receivable.vo.account.ErpReceivableDetailRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.finance.receivable.vo.account.ErpReceivableAccountPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.settlement.vo.ErpSettlementOffsetDetailReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.settlement.vo.ErpSettlementOffsetDetailRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.settlement.vo.ErpSettlementOffsetPageReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.settlement.ErpSettlementOffsetDO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.finance.receivable.ErpReceivableAccountDO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.finance.payable.ErpPayableAccountDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpSupplierDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpCustomerDO;
 import cn.iocoder.yudao.module.erp.dal.mysql.finance.settlement.ErpSettlementOffsetMapper;
@@ -29,6 +33,7 @@ import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -52,9 +57,33 @@ public class ErpSettlementOffsetServiceImpl implements ErpSettlementOffsetServic
 
     @Override
     public PageResult<ErpSettlementOffsetDO> getSettlementOffsetPage(ErpSettlementOffsetPageReqVO reqVO) {
+        List<ErpSettlementOffsetDO> visible = getVisibleRows(reqVO);
+        sort(visible, reqVO);
+        long total = visible.size();
+        int from = Math.max(0, (reqVO.getPageNo() - 1) * reqVO.getPageSize());
+        if (from >= visible.size()) return PageResult.empty(total);
+        return new PageResult<>(visible.subList(from, Math.min(visible.size(), from + reqVO.getPageSize())), total);
+    }
+
+    @Override
+    public cn.iocoder.yudao.module.erp.controller.admin.finance.vo.ErpFinanceQuerySummaryRespVO getSettlementOffsetSummary(
+            ErpSettlementOffsetPageReqVO reqVO) {
+        List<ErpSettlementOffsetDO> rows = getVisibleRows(reqVO);
+        cn.iocoder.yudao.module.erp.controller.admin.finance.vo.ErpFinanceQuerySummaryRespVO summary =
+                new cn.iocoder.yudao.module.erp.controller.admin.finance.vo.ErpFinanceQuerySummaryRespVO();
+        summary.setDocumentCount((long) rows.size());
+        summary.setReceivableBalance(rows.stream().map(ErpSettlementOffsetDO::getReceivableBalance)
+                .reduce(BigDecimal.ZERO, BigDecimal::add));
+        summary.setPayableBalance(rows.stream().map(ErpSettlementOffsetDO::getPayableBalance)
+                .reduce(BigDecimal.ZERO, BigDecimal::add));
+        summary.setOffsetBalance(summary.getReceivableBalance().subtract(summary.getPayableBalance()));
+        return summary;
+    }
+
+    private List<ErpSettlementOffsetDO> getVisibleRows(ErpSettlementOffsetPageReqVO reqVO) {
         ErpFinanceVisibleScope scope = getVisibleScope();
         if (scope == null || !scope.hasAccess()) {
-            return PageResult.empty();
+            return new ArrayList<>();
         }
         Boolean originalShowZero = reqVO.getShowZeroBalance();
         List<ErpSettlementOffsetDO> candidates;
@@ -70,36 +99,42 @@ public class ErpSettlementOffsetServiceImpl implements ErpSettlementOffsetServic
         Set<Long> visibleSupplierIds = supplierService.getSupplierList(candidates.stream()
                         .map(ErpSettlementOffsetDO::getSupplierId).collect(Collectors.toSet())).stream()
                 .map(ErpSupplierDO::getId).collect(Collectors.toSet());
+        List<ErpSettlementOffsetDO> accessibleCandidates = candidates.stream()
+                .filter(row -> visibleCustomerIds.contains(row.getCustomerId())
+                        && visibleSupplierIds.contains(row.getSupplierId()))
+                .collect(Collectors.toList());
+        if (accessibleCandidates.isEmpty()) {
+            return new ArrayList<>();
+        }
+
+        ErpReceivableAccountPageReqVO receivableReq = new ErpReceivableAccountPageReqVO();
+        receivableReq.setBizTime(reqVO.getBizTime());
+        receivableReq.setShowZeroBalance(true);
+        Map<Long, BigDecimal> receivableBalanceMap = receivableAccountService
+                .getReceivableAccountList(receivableReq, scope).stream()
+                .collect(Collectors.toMap(ErpReceivableAccountDO::getCustomerId,
+                        row -> defaultAmount(row.getReceivableBalance()), BigDecimal::add));
+        ErpPayableAccountPageReqVO payableReq = new ErpPayableAccountPageReqVO();
+        payableReq.setBizTime(reqVO.getBizTime());
+        payableReq.setShowZeroBalance(true);
+        Map<Long, BigDecimal> payableBalanceMap = payableAccountService
+                .getPayableAccountList(payableReq, scope).stream()
+                .collect(Collectors.toMap(ErpPayableAccountDO::getSupplierId,
+                        row -> defaultAmount(row.getBalance()), BigDecimal::add));
         List<ErpSettlementOffsetDO> visible = new ArrayList<>();
-        for (ErpSettlementOffsetDO row : candidates) {
-            if (!visibleCustomerIds.contains(row.getCustomerId())
-                    || !visibleSupplierIds.contains(row.getSupplierId())) {
+        for (ErpSettlementOffsetDO row : accessibleCandidates) {
+            if (!receivableBalanceMap.containsKey(row.getCustomerId())
+                    && !payableBalanceMap.containsKey(row.getSupplierId())) {
                 continue;
             }
-            ErpReceivableDetailReqVO receivableReq = new ErpReceivableDetailReqVO();
-            receivableReq.setCustomerId(row.getCustomerId());
-            receivableReq.setBizTime(reqVO.getBizTime());
-            List<ErpReceivableDetailRespVO> receivableDetails =
-                    receivableAccountService.getReceivableDetailList(receivableReq, scope);
-            ErpPayableDetailReqVO payableReq = new ErpPayableDetailReqVO();
-            payableReq.setSupplierId(row.getSupplierId());
-            payableReq.setBizTime(reqVO.getBizTime());
-            List<ErpPayableDetailRespVO> payableDetails = payableAccountService.getPayableDetailList(payableReq, scope);
-            if (receivableDetails.isEmpty() && payableDetails.isEmpty()) {
-                continue;
-            }
-            row.setReceivableBalance(sumReceivable(receivableDetails));
-            row.setPayableBalance(sumPayable(payableDetails));
+            row.setReceivableBalance(receivableBalanceMap.getOrDefault(row.getCustomerId(), BigDecimal.ZERO));
+            row.setPayableBalance(payableBalanceMap.getOrDefault(row.getSupplierId(), BigDecimal.ZERO));
             row.setOffsetBalance(row.getReceivableBalance().subtract(row.getPayableBalance()));
             if (Boolean.TRUE.equals(originalShowZero) || row.getOffsetBalance().compareTo(BigDecimal.ZERO) != 0) {
                 visible.add(row);
             }
         }
-        sort(visible, reqVO);
-        long total = visible.size();
-        int from = Math.max(0, (reqVO.getPageNo() - 1) * reqVO.getPageSize());
-        if (from >= visible.size()) return PageResult.empty(total);
-        return new PageResult<>(visible.subList(from, Math.min(visible.size(), from + reqVO.getPageSize())), total);
+        return visible;
     }
 
     @Override

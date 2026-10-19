@@ -1,6 +1,8 @@
 package cn.iocoder.yudao.module.erp.controller.admin.sale;
 
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.ErpSaleUpdateRemarkReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.ErpSaleItemMatchReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.ErpSaleItemMatchRespVO;
 import cn.hutool.core.collection.CollUtil;
 import cn.iocoder.yudao.framework.apilog.core.annotation.ApiAccessLog;
 import cn.iocoder.yudao.framework.common.enums.CommonStatusEnum;
@@ -71,6 +73,9 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.Comparator;
+import java.util.HashSet;
+import java.util.Objects;
 
 import static cn.iocoder.yudao.framework.apilog.core.enums.OperateTypeEnum.EXPORT;
 import static cn.iocoder.yudao.framework.common.pojo.CommonResult.success;
@@ -282,6 +287,51 @@ public class ErpSaleOrderController {
                     respResult.getList());
         }
         return success(respResult);
+    }
+
+    @PostMapping("/item-page")
+    @Operation(summary = "获得销售订单编辑态明细分页")
+    @PreAuthorize("@ss.hasPermission('erp:sale-order:query')")
+    public CommonResult<PageResult<ErpSaleOrderRespVO.Item>> getSaleOrderEditItemPage(
+            @Valid @RequestBody ErpSaleOrderItemPageReqVO pageReqVO) {
+        return getSaleOrderItemPage(pageReqVO);
+    }
+
+    @PostMapping("/item-match")
+    @Operation(summary = "匹配销售订单整单已有明细")
+    @PreAuthorize("@ss.hasPermission('erp:sale-order:query')")
+    public CommonResult<ErpSaleItemMatchRespVO> matchSaleOrderItems(
+            @Valid @RequestBody ErpSaleItemMatchReqVO reqVO) {
+        if (saleOrderService.getSaleOrder(reqVO.getDocumentId()) == null) {
+            return success(new ErpSaleItemMatchRespVO());
+        }
+        Set<Long> excludedIds = new HashSet<>(reqVO.getExcludedItemIds() == null
+                ? Collections.emptyList() : reqVO.getExcludedItemIds());
+        List<ErpSaleOrderItemDO> items = new ArrayList<>(
+                saleOrderService.getSaleOrderItemListByOrderId(reqVO.getDocumentId()));
+        items.removeIf(item -> excludedIds.contains(item.getId()));
+        items.sort(Comparator.comparing(ErpSaleOrderItemDO::getId));
+        ErpSaleItemMatchRespVO result = new ErpSaleItemMatchRespVO();
+        for (int keyIndex = 0; keyIndex < reqVO.getKeys().size(); keyIndex++) {
+            ErpSaleItemMatchReqVO.Key key = reqVO.getKeys().get(keyIndex);
+            for (int itemIndex = 0; itemIndex < items.size(); itemIndex++) {
+                ErpSaleOrderItemDO item = items.get(itemIndex);
+                if (Objects.equals(item.getProductId(), key.getProductId())
+                        && Objects.equals(item.getWarehouseId(), key.getWarehouseId())
+                        && Objects.equals(normalizeBatchNo(item.getBatchNo()), normalizeBatchNo(key.getBatchNo()))
+                        && Objects.equals(Boolean.TRUE.equals(item.getGiftFlag()),
+                                Boolean.TRUE.equals(key.getGiftFlag()))) {
+                    result.getMatches().add(new ErpSaleItemMatchRespVO.Match(keyIndex, item.getId(),
+                            itemIndex / reqVO.getPageSize() + 1));
+                    break;
+                }
+            }
+        }
+        return success(result);
+    }
+
+    private static String normalizeBatchNo(String batchNo) {
+        return batchNo == null ? "" : batchNo.trim();
     }
 
     @GetMapping("/dept-simple-page")

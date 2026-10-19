@@ -60,15 +60,15 @@ public class ErpCustomerMemberApiImplTest extends BaseMockitoUnitTest {
         assertFalse(auth.getPriceVisible());
         assertFalse(auth.getOrderEnabled());
         assertEquals(20L, auth.getMemberUserId());
-        verify(customerService, never()).getCustomer(eq(10L));
+        verify(customerService, never()).validateCustomerForCustomerApp(eq(10L));
     }
 
     @Test
     void getCustomerMemberAuth_authorized() {
         when(customerMemberService.getEnabledCustomerMemberByMemberUserId(eq(20L))).thenReturn(
                 new ErpCustomerMemberDO().setId(1L).setCustomerId(10L).setMemberUserId(20L).setMobile("13800000000"));
-        when(customerService.getCustomerSaleDeptIdsIgnoreDataPermission(eq(10L))).thenReturn(asList(1L, 2L));
-        when(customerService.getCustomer(eq(10L))).thenReturn(new ErpCustomerDO().setId(10L).setName("测试客户"));
+        when(customerService.validateCustomerForCustomerApp(eq(10L))).thenReturn(
+                new ErpCustomerDO().setId(10L).setName("测试客户").setPriceLevel(3));
 
         ErpCustomerMemberAuthRespDTO auth = customerMemberApi.getCustomerMemberAuth(20L);
 
@@ -78,15 +78,17 @@ public class ErpCustomerMemberApiImplTest extends BaseMockitoUnitTest {
         assertEquals(1L, auth.getId());
         assertEquals(10L, auth.getCustomerId());
         assertEquals("测试客户", auth.getCustomerName());
+        assertEquals(3, auth.getPriceLevel());
         assertEquals(20L, auth.getMemberUserId());
         assertEquals("13800000000", auth.getMobile());
+        verify(customerService, never()).getCustomer(eq(10L));
     }
 
     @Test
     void getCustomerMemberAuth_customerInvalid() {
         when(customerMemberService.getEnabledCustomerMemberByMemberUserId(eq(20L))).thenReturn(
                 new ErpCustomerMemberDO().setId(1L).setCustomerId(10L).setMemberUserId(20L).setMobile("13800000000"));
-        when(customerService.getCustomerSaleDeptIdsIgnoreDataPermission(eq(10L))).thenThrow(exception(CUSTOMER_NOT_EXISTS));
+        when(customerService.validateCustomerForCustomerApp(eq(10L))).thenThrow(exception(CUSTOMER_NOT_EXISTS));
 
         ErpCustomerMemberAuthRespDTO auth = customerMemberApi.getCustomerMemberAuth(20L);
 
@@ -108,7 +110,8 @@ public class ErpCustomerMemberApiImplTest extends BaseMockitoUnitTest {
     void validateCustomerMemberAuth_deptRequired() {
         when(customerMemberService.getEnabledCustomerMemberByMemberUserId(eq(20L))).thenReturn(
                 new ErpCustomerMemberDO().setId(1L).setCustomerId(10L).setMemberUserId(20L));
-        when(customerService.getCustomerSaleDeptIdsIgnoreDataPermission(eq(10L))).thenReturn(asList(1L, 2L));
+        when(customerService.validateCustomerForCustomerApp(eq(10L))).thenReturn(
+                new ErpCustomerDO().setId(10L).setName("测试客户"));
 
         assertServiceException(() -> customerMemberApi.validateCustomerMemberAuth(20L, null),
                 CUSTOMER_MEMBER_DEPT_REQUIRED);
@@ -118,6 +121,8 @@ public class ErpCustomerMemberApiImplTest extends BaseMockitoUnitTest {
     void validateCustomerMemberAuth_deptNotAllowed() {
         when(customerMemberService.getEnabledCustomerMemberByMemberUserId(eq(20L))).thenReturn(
                 new ErpCustomerMemberDO().setId(1L).setCustomerId(10L).setMemberUserId(20L));
+        when(customerService.validateCustomerForCustomerApp(eq(10L))).thenReturn(
+                new ErpCustomerDO().setId(10L).setName("测试客户"));
         when(customerService.getCustomerSaleDeptIdsIgnoreDataPermission(eq(10L))).thenReturn(asList(1L, 2L));
 
         assertServiceException(() -> customerMemberApi.validateCustomerMemberAuth(20L, 3L),
@@ -128,6 +133,8 @@ public class ErpCustomerMemberApiImplTest extends BaseMockitoUnitTest {
     void validateCustomerMemberAuth_deptAllowed() {
         when(customerMemberService.getEnabledCustomerMemberByMemberUserId(eq(20L))).thenReturn(
                 new ErpCustomerMemberDO().setId(1L).setCustomerId(10L).setMemberUserId(20L));
+        when(customerService.validateCustomerForCustomerApp(eq(10L))).thenReturn(
+                new ErpCustomerDO().setId(10L).setName("测试客户"));
         when(customerService.getCustomerSaleDeptIdsIgnoreDataPermission(eq(10L))).thenReturn(asList(1L, 2L));
 
         ErpCustomerMemberAuthRespDTO auth = customerMemberApi.validateCustomerMemberAuth(20L, 2L);
@@ -140,7 +147,8 @@ public class ErpCustomerMemberApiImplTest extends BaseMockitoUnitTest {
     void isCustomerMemberAuthorized_authorized() {
         when(customerMemberService.getEnabledCustomerMemberByMemberUserId(eq(20L))).thenReturn(
                 new ErpCustomerMemberDO().setId(1L).setCustomerId(10L).setMemberUserId(20L));
-        when(customerService.getCustomerSaleDeptIdsIgnoreDataPermission(eq(10L))).thenReturn(asList(1L, 2L));
+        when(customerService.validateCustomerForCustomerApp(eq(10L))).thenReturn(
+                new ErpCustomerDO().setId(10L).setName("测试客户"));
 
         assertTrue(customerMemberApi.isCustomerMemberAuthorized(20L));
     }

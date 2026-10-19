@@ -12,6 +12,7 @@ public class ErpReceivableOtherIncomeRespVO {
     private Long id;
     private String no;
     private Integer status;
+    private LocalDateTime approveTime;
     private LocalDateTime bizTime;
     private String settleMethod;
     private Long accountId;

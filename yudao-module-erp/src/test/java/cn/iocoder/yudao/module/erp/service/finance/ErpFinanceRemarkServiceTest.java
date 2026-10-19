@@ -127,6 +127,7 @@ public class ErpFinanceRemarkServiceTest extends BaseMockitoUnitTest {
         verify(expenseMapper).updateById(captor.capture());
         ErpPayableExpenseDO update = captor.getValue();
         assertPartial(update.getId(), update.getRemark(), update.getStatus(), update.getNo(), "审批后备注");
+        assertNull(update.getApproveTime(), "修改备注不得覆盖审批时间");
     }
 
     @Test

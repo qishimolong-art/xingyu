@@ -45,6 +45,10 @@ public class ErpFinanceReceiptDO extends BaseDO {
      */
     private LocalDateTime receiptTime;
     /**
+     * 审核时间
+     */
+    private LocalDateTime approveTime;
+    /**
      * 财务人员编号
      *
      * 关联 AdminUserDO 的 id 字段
@@ -89,6 +93,11 @@ public class ErpFinanceReceiptDO extends BaseDO {
      * receiptPrice = totalPrice - discountPrice
      */
     private BigDecimal receiptPrice;
+
+    /**
+     * 付款凭证号（客户付款编号）
+     */
+    private String paymentVoucherNo;
 
     /**
      * 备注

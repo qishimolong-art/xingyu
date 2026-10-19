@@ -13,6 +13,8 @@ import cn.iocoder.yudao.framework.excel.core.util.ExcelUtils;
 import cn.iocoder.yudao.module.erp.controller.admin.common.ErpAuditStatusRequestValidator;
 import cn.iocoder.yudao.module.erp.controller.admin.common.vo.ErpExportFieldRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpProductRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.ErpPurchaseItemMatchReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.ErpPurchaseItemMatchRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.ErpPurchaseUpdateRemarkReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.imports.ErpPurchaseImportResultRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.returns.ErpPurchaseReturnDraftCreateReqVO;
@@ -26,6 +28,7 @@ import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.returns.ErpPurch
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.returns.ErpPurchaseReturnPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.returns.ErpPurchaseReturnRefundSummaryRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.returns.ErpPurchaseReturnRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.returns.ErpPurchaseReturnSummaryRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.returns.ErpPurchaseReturnSaveReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseInItemDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseReturnDO;
@@ -79,6 +82,7 @@ import java.io.IOException;
 import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -469,6 +473,40 @@ public class ErpPurchaseReturnController {
         return success(respResult);
     }
 
+    @PostMapping("/item-page")
+    @Operation(summary = "获得采购退货明细分页（编辑态）")
+    @PreAuthorize("@ss.hasPermission('erp:purchase-return:query')")
+    public CommonResult<PageResult<ErpPurchaseReturnRespVO.Item>> getPurchaseReturnItemPageForEdit(
+            @Valid @RequestBody ErpPurchaseReturnItemPageReqVO pageReqVO) {
+        return getPurchaseReturnItemPage(pageReqVO);
+    }
+
+    @PostMapping("/item-match")
+    @Operation(summary = "匹配采购退货整单明细")
+    @PreAuthorize("@ss.hasPermission('erp:purchase-return:query')")
+    public CommonResult<ErpPurchaseItemMatchRespVO> matchPurchaseReturnItems(
+            @Valid @RequestBody ErpPurchaseItemMatchReqVO reqVO) {
+        purchaseReturnService.getPurchaseReturn(reqVO.getDocumentId());
+        Set<Long> excludedIds = new java.util.HashSet<>(CollUtil.emptyIfNull(reqVO.getExcludedItemIds()));
+        List<ErpPurchaseReturnItemDO> items = purchaseReturnService.getPurchaseReturnItemListByReturnId(reqVO.getDocumentId())
+                .stream().filter(item -> !excludedIds.contains(item.getId()))
+                .sorted(java.util.Comparator.comparing(ErpPurchaseReturnItemDO::getId)).collect(Collectors.toList());
+        ErpPurchaseItemMatchRespVO result = new ErpPurchaseItemMatchRespVO();
+        for (int keyIndex = 0; keyIndex < reqVO.getKeys().size(); keyIndex++) {
+            ErpPurchaseItemMatchReqVO.Key key = reqVO.getKeys().get(keyIndex);
+            for (int itemIndex = 0; itemIndex < items.size(); itemIndex++) {
+                ErpPurchaseReturnItemDO item = items.get(itemIndex);
+                if (java.util.Objects.equals(key.getProductId(), item.getProductId())
+                        && java.util.Objects.equals(key.getWarehouseId(), item.getWarehouseId())) {
+                    result.getMatches().add(new ErpPurchaseItemMatchRespVO.Match(keyIndex, item.getId(),
+                            itemIndex / reqVO.getPageSize() + 1));
+                    break;
+                }
+            }
+        }
+        return success(result);
+    }
+
     @GetMapping("/page")
     @Operation(summary = "获得采购退货分页")
     @PreAuthorize("@ss.hasPermission('erp:purchase-return:query')")
@@ -477,6 +515,16 @@ public class ErpPurchaseReturnController {
         return success(Boolean.FALSE.equals(pageReqVO.getIncludeItems())
                 ? buildPurchaseReturnVOPageResultWithoutItems(pageResult)
                 : buildPurchaseReturnVOPageResult(pageResult));
+    }
+
+    @GetMapping("/summary")
+    @Operation(summary = "获得采购退货查询汇总")
+    @PreAuthorize("@ss.hasPermission('erp:purchase-return:query')")
+    public CommonResult<ErpPurchaseReturnSummaryRespVO> getPurchaseReturnSummary(
+            @Valid ErpPurchaseReturnPageReqVO pageReqVO) {
+        ErpPurchaseReturnSummaryRespVO summary = purchaseReturnService.getPurchaseReturnSummary(pageReqVO);
+        fieldPermissionMasker.clearHiddenFields(FIELD_PERMISSION_MODULE, summary);
+        return success(summary);
     }
 
     @GetMapping("/export-excel")
@@ -586,6 +634,13 @@ public class ErpPurchaseReturnController {
         }
         Map<Long, ErpProductRespVO> productMap = DataPermissionUtils.executeIgnore(() ->
                 productService.getProductVOMap(convertSet(itemList, ErpPurchaseReturnItemDO::getProductId)));
+        Set<Long> productIds = convertSet(itemList, ErpPurchaseReturnItemDO::getProductId);
+        Set<Long> warehouseIds = convertSet(itemList, ErpPurchaseReturnItemDO::getWarehouseId);
+        productIds.remove(null);
+        warehouseIds.remove(null);
+        Map<String, ErpStockDO> stockMap = CollUtil.isEmpty(productIds) || CollUtil.isEmpty(warehouseIds)
+                ? Collections.emptyMap()
+                : DataPermissionUtils.executeIgnore(() -> stockService.getStockMap(productIds, warehouseIds));
         Map<Long, ErpPurchaseInItemDO> inItemMap = java.util.Collections.emptyMap();
         Map<Long, BigDecimal> returnedMap = java.util.Collections.emptyMap();
         Set<Long> sourceInItemIds = convertSet(itemList, ErpPurchaseReturnItemDO::getSourceInItemId);
@@ -600,8 +655,8 @@ public class ErpPurchaseReturnController {
         Map<Long, ErpPurchaseInItemDO> finalInItemMap = inItemMap;
         Map<Long, BigDecimal> finalReturnedMap = returnedMap;
         List<ErpPurchaseReturnRespVO.Item> respItems = BeanUtils.toBean(itemList, ErpPurchaseReturnRespVO.Item.class, item -> {
-            ErpStockDO stock = stockService.getStock(item.getProductId(), item.getWarehouseId());
-            item.setStockCount(stock != null ? stock.getCount() : BigDecimal.ZERO);
+            ErpStockDO stock = stockMap.get(item.getProductId() + "_" + item.getWarehouseId());
+            item.setStockCount(stock != null && stock.getCount() != null ? stock.getCount() : BigDecimal.ZERO);
             MapUtils.findAndThen(productMap, item.getProductId(), product -> item.setProductName(product.getName())
                     .setProductCode(product.getCode()).setProductBarCode(product.getBarCode())
                     .setProductUnitName(product.getUnitName()).setWeight(product.getWeight())

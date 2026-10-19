@@ -7,6 +7,7 @@ import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.common.exception.ErrorCode;
 import cn.iocoder.yudao.framework.excel.core.util.ExcelUtils;
 import cn.iocoder.yudao.module.erp.controller.admin.common.vo.ErpExportFieldRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.ErpStockDocumentSummaryRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.move.ErpStockMoveItemPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.move.ErpStockMovePageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.move.ErpStockMoveRespVO;
@@ -74,6 +75,17 @@ public class ErpStockTransferInController {
         return success(stockMoveController.buildStockMoveVOPageResult(
                 stockMoveService.getVisibleStockTransferInPage(pageReqVO), FIELD_PERMISSION_MODULE, null,
                 pageReqVO.getIncludeItems()));
+    }
+
+    @GetMapping("/summary")
+    @Operation(summary = "Get stock transfer-in query summary")
+    @PreAuthorize("@ss.hasPermission('erp:stock-transfer-in:query')")
+    public CommonResult<ErpStockDocumentSummaryRespVO> getStockTransferInSummary(
+            @Valid ErpStockMovePageReqVO pageReqVO) {
+        pageReqVO.setTransferDirection(TRANSFER_DIRECTION_IN);
+        ErpStockDocumentSummaryRespVO summary = stockMoveService.getVisibleStockTransferInSummary(pageReqVO);
+        fieldPermissionMasker.maskListColumns(FIELD_PERMISSION_MODULE, summary);
+        return success(summary);
     }
 
     @GetMapping("/get")

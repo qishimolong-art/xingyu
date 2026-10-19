@@ -95,6 +95,16 @@ public interface ErpCustomerService {
      */
     ErpCustomerDO validateCustomerForGeneratedSale(Long id, Long saleDeptId);
 
+    /**
+     * 校验小程序会员绑定的客户。
+     *
+     * <p>该校验不使用当前登录人的后台客户数据范围，但仍保留租户、逻辑删除、启用和合并状态校验。</p>
+     *
+     * @param id 客户编号
+     * @return 客户
+     */
+    ErpCustomerDO validateCustomerForCustomerApp(Long id);
+
     List<Long> getCustomerSaleDeptIds(Long customerId);
 
     /**

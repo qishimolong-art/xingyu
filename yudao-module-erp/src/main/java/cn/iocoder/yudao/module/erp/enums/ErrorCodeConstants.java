@@ -835,6 +835,8 @@ ErrorCode PURCHASE_ORDER_ITEM_RETURN_FAIL_IN_EXCEED = new ErrorCode(1_030_101_00
             "付款单明细操作类型无效，请使用 insert、update 或 delete");
     ErrorCode FINANCE_PAYMENT_ITEM_UPDATE_NOT_EXISTS = new ErrorCode(1_030_601_015,
             "付款单明细不存在或不属于当前付款单");
+    ErrorCode FINANCE_PAYMENT_PAYMENT_VOUCHER_NO_TOO_LONG = new ErrorCode(1_030_601_016,
+            "付款单凭证号长度不能超过 64 个字符");
 
     // ========== ERP 收款单 1-030-602-000 ==========
     ErrorCode FINANCE_RECEIPT_NOT_EXISTS = new ErrorCode(1_030_602_000, "收款单不存在");
@@ -856,6 +858,8 @@ ErrorCode PURCHASE_ORDER_ITEM_RETURN_FAIL_IN_EXCEED = new ErrorCode(1_030_101_00
             "收款单明细操作类型无效，请使用 insert、update 或 delete");
     ErrorCode FINANCE_RECEIPT_ITEM_UPDATE_NOT_EXISTS = new ErrorCode(1_030_602_016,
             "收款单明细不存在或不属于当前收款单");
+    ErrorCode FINANCE_RECEIPT_PAYMENT_VOUCHER_NO_TOO_LONG = new ErrorCode(1_030_602_017,
+            "收款单凭证号长度不能超过 64 个字符");
 
     // ========== ERP 银行转账 1-030-603-000 ==========
     ErrorCode FINANCE_TRANSFER_NOT_EXISTS = new ErrorCode(1_030_603_000, "银行转账单不存在");
@@ -915,6 +919,9 @@ ErrorCode PURCHASE_ORDER_ITEM_RETURN_FAIL_IN_EXCEED = new ErrorCode(1_030_101_00
     // ========== ERP 打印模板 1-030-615-100 ==========
     ErrorCode PRINT_TEMPLATE_NOT_EXISTS = new ErrorCode(1_030_615_100, "打印模板不存在");
     ErrorCode PRINT_MODULE_NOT_SUPPORTED = new ErrorCode(1_030_615_101, "打印模块不支持");
+    ErrorCode PRINT_TEMPLATE_DEFAULT_DELETE_FORBIDDEN = new ErrorCode(1_030_615_102,
+            "默认打印模板不能删除，请先将其他模板设为默认");
+    ErrorCode PRINT_ITEM_SORT_INVALID = new ErrorCode(1_030_615_103, "打印明细排序参数无效");
     ErrorCode CLOUD_PRINT_DEVICE_NOT_EXISTS = new ErrorCode(1_030_615_200, "云打印设备不存在");
     ErrorCode CLOUD_PRINT_DEVICE_DISABLED = new ErrorCode(1_030_615_201, "云打印设备【{}】已停用");
     ErrorCode CLOUD_PRINT_DEVICE_OFFLINE = new ErrorCode(1_030_615_202, "打印机【{}】当前离线，请检查设备电源与网络");

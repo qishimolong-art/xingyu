@@ -20,7 +20,6 @@ import cn.iocoder.yudao.module.erp.enums.ErpAuditStatus;
 import cn.iocoder.yudao.module.erp.enums.sale.ErpSaleBizSourceTypeEnum;
 import cn.iocoder.yudao.module.erp.enums.sale.ErpSaleConvertTypeEnum;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
-import com.baomidou.mybatisplus.core.toolkit.support.SFunction;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
@@ -63,43 +62,35 @@ public interface ErpPurchaseInItemMapper extends BaseMapperX<ErpPurchaseInItemDO
     }
 
     default List<ErpPurchaseInItemDO> selectListByInId(Long inId) {
-        return selectList(ErpPurchaseInItemDO::getInId, inId);
+        return selectList(buildSortedQuery(inId, null, null, null));
+    }
+
+    default List<ErpPurchaseInItemDO> selectListByInId(Long inId, String orderField, String orderDirection) {
+        return selectList(buildSortedQuery(inId, null, orderField, orderDirection));
     }
 
     default PageResult<ErpPurchaseInItemDO> selectPageByInId(ErpPurchaseInItemPageReqVO reqVO) {
-        LambdaQueryWrapperX<ErpPurchaseInItemDO> query = new LambdaQueryWrapperX<ErpPurchaseInItemDO>()
-                .eq(ErpPurchaseInItemDO::getInId, reqVO.getInId());
-        SFunction<ErpPurchaseInItemDO, ?> orderColumn = getOrderColumn(reqVO.getOrderField());
-        if (orderColumn == null) {
-            query.orderByAsc(ErpPurchaseInItemDO::getId);
-        } else if ("desc".equalsIgnoreCase(reqVO.getOrderDirection())) {
-            query.orderByDesc(orderColumn);
-        } else {
-            query.orderByAsc(orderColumn);
-        }
-        if (orderColumn != null && !"id".equals(reqVO.getOrderField().trim())) {
-            query.orderByAsc(ErpPurchaseInItemDO::getId);
-        }
-        return selectPage(reqVO, query);
+        return selectPage(reqVO, buildSortedQuery(reqVO.getInId(), reqVO.getExcludedItemIds(),
+                reqVO.getOrderField(), reqVO.getOrderDirection()));
+    }
+
+    static QueryWrapper<ErpPurchaseInItemDO> buildSortedQuery(Long inId, Collection<Long> excludedItemIds,
+                                                               String orderField, String orderDirection) {
+        QueryWrapper<ErpPurchaseInItemDO> query = new QueryWrapper<ErpPurchaseInItemDO>()
+                .eq("in_id", inId)
+                .notIn(CollUtil.isNotEmpty(excludedItemIds), "id", excludedItemIds);
+        return ErpPurchaseItemSortUtils.applyOrder(query, "erp_purchase_in_items", orderField, orderDirection,
+                getOrderSpec(orderField));
     }
 
     default PageResult<ErpPurchaseInItemDO> selectPageByInIds(ErpPurchaseInvoiceSourceInItemPageReqVO reqVO) {
         if (CollUtil.isEmpty(reqVO.getSourceInIds())) {
             return PageResult.empty();
         }
-        LambdaQueryWrapperX<ErpPurchaseInItemDO> query = new LambdaQueryWrapperX<ErpPurchaseInItemDO>()
-                .in(ErpPurchaseInItemDO::getInId, reqVO.getSourceInIds());
-        SFunction<ErpPurchaseInItemDO, ?> orderColumn = getOrderColumn(reqVO.getOrderField());
-        if (orderColumn == null) {
-            query.orderByAsc(ErpPurchaseInItemDO::getId);
-        } else if ("desc".equalsIgnoreCase(reqVO.getOrderDirection())) {
-            query.orderByDesc(orderColumn);
-        } else {
-            query.orderByAsc(orderColumn);
-        }
-        if (orderColumn != null && !"id".equals(reqVO.getOrderField().trim())) {
-            query.orderByAsc(ErpPurchaseInItemDO::getId);
-        }
+        QueryWrapper<ErpPurchaseInItemDO> query = new QueryWrapper<ErpPurchaseInItemDO>()
+                .in("in_id", reqVO.getSourceInIds());
+        ErpPurchaseItemSortUtils.applyOrder(query, "erp_purchase_in_items", reqVO.getOrderField(),
+                reqVO.getOrderDirection(), getOrderSpec(reqVO.getOrderField()));
         return selectPage(reqVO, query);
     }
 
@@ -269,55 +260,68 @@ public interface ErpPurchaseInItemMapper extends BaseMapperX<ErpPurchaseInItemDO
         return selectCount(new QueryWrapper<ErpPurchaseInItemDO>().in("order_item_id", orderItemIds));
     }
 
-    static SFunction<ErpPurchaseInItemDO, ?> getOrderColumn(String orderField) {
+    static boolean isSupportedOrderField(String orderField) {
+        return getOrderSpec(orderField) != null;
+    }
+
+    static ErpPurchaseItemSortUtils.OrderSpec getOrderSpec(String orderField) {
         if (orderField == null) {
             return null;
         }
-        switch (orderField.trim()) {
-            case "id":
-                return ErpPurchaseInItemDO::getId;
-            case "sourceInId":
-                return ErpPurchaseInItemDO::getInId;
-            case "gift":
-                return ErpPurchaseInItemDO::getGift;
-            case "productId":
-            case "productCode":
-            case "productName":
-            case "productUnitName":
-            case "weight":
-                return ErpPurchaseInItemDO::getProductId;
-            case "warehouseId":
-                return ErpPurchaseInItemDO::getWarehouseId;
-            case "deptId":
-                return ErpPurchaseInItemDO::getDeptId;
-            case "count":
-                return ErpPurchaseInItemDO::getCount;
-            case "productPrice":
-            case "totalProductPrice":
-                return ErpPurchaseInItemDO::getProductPrice;
-            case "totalPrice":
-                return ErpPurchaseInItemDO::getTotalPrice;
-            case "packageQty":
-                return ErpPurchaseInItemDO::getPackageQty;
-            case "wholeQty":
-                return ErpPurchaseInItemDO::getWholeQty;
-            case "vehicleModel":
-                return ErpPurchaseInItemDO::getVehicleModel;
-            case "warehousePosition":
-                return ErpPurchaseInItemDO::getWarehousePosition;
-            case "drawingNo":
-                return ErpPurchaseInItemDO::getDrawingNo;
-            case "batchNo":
-                return ErpPurchaseInItemDO::getBatchNo;
-            case "brand":
-                return ErpPurchaseInItemDO::getBrand;
-            case "remark":
-                return ErpPurchaseInItemDO::getRemark;
-            case "returnStatus":
-            case "stockInBillStatus":
-            default:
-                return null;
-        }
+        String item = "erp_purchase_in_items";
+        return switch (orderField.trim()) {
+            case "id" -> spec(item + ".id", false);
+            case "sourceInId" -> spec(item + ".in_id", false);
+            case "gift" -> spec(item + ".gift", false);
+            case "productId", "productName" -> spec(ErpPurchaseItemSortUtils.productField(item, "name"), true);
+            case "productCode" -> spec(ErpPurchaseItemSortUtils.productField(item, "code"), true);
+            case "productBarCode" -> spec(ErpPurchaseItemSortUtils.productField(item, "bar_code"), true);
+            case "productUnitName" -> spec(ErpPurchaseItemSortUtils.itemUnitName(item), true);
+            case "weight" -> spec(ErpPurchaseItemSortUtils.productField(item, "weight"), false);
+            case "lastPurchasePrice" -> spec(ErpPurchaseItemSortUtils.productField(item, "last_purchase_price"), false);
+            case "warehouseId" -> spec(ErpPurchaseItemSortUtils.warehouseName(item), true);
+            case "deptId" -> spec(ErpPurchaseItemSortUtils.deptName(item), true);
+            case "stockCount" -> spec(ErpPurchaseItemSortUtils.stockCount(item), false);
+            case "count" -> spec(item + ".count", false);
+            case "productPrice" -> spec(item + ".product_price", false);
+            case "totalProductPrice", "productCostAmount" -> spec(ErpPurchaseItemSortUtils.productAmount(item), false);
+            case "productCostPrice" -> spec(item + ".product_price", false);
+            case "taxPercent" -> spec(item + ".tax_percent", false);
+            case "taxPrice" -> spec(item + ".tax_price", false);
+            case "totalPrice" -> spec(item + ".total_price", false);
+            case "packageQty" -> spec(item + ".package_qty", false);
+            case "pieceCount" -> spec(ErpPurchaseItemSortUtils.pieceCount(item + ".count",
+                    item + ".package_qty"), false);
+            case "wholeQty" -> spec(item + ".whole_qty", false);
+            case "vehicleModel" -> spec(item + ".vehicle_model", true);
+            case "originPlace" -> spec(item + ".origin_place", true);
+            case "warehousePosition" -> spec(item + ".warehouse_position", true);
+            case "drawingNo" -> spec(item + ".drawing_no", true);
+            case "batchNo" -> spec(item + ".batch_no", true);
+            case "barCode" -> spec(item + ".bar_code", true);
+            case "brand" -> spec(item + ".brand", true);
+            case "remark" -> spec(item + ".remark", true);
+            case "adjustStatus" -> spec("(CASE WHEN " + item + ".adjusted = 1 THEN 1 ELSE 0 END)", false);
+            case "returnCount" -> spec(ErpPurchaseItemSortUtils.returnedCount(item, item + ".id"), false);
+            case "returnStatus" -> {
+                String returned = ErpPurchaseItemSortUtils.returnedCount(item, item + ".id");
+                yield spec("(CASE WHEN " + returned + " <= 0 THEN 0 WHEN " + returned + " >= COALESCE("
+                        + item + ".count, 0) THEN 2 ELSE 1 END)", false);
+            }
+            case "invoiceStatus" -> spec("(SELECT CASE WHEN COALESCE(SUM(a.allocated_count), 0) <= 0 THEN 0"
+                    + " WHEN COALESCE(SUM(a.allocated_count), 0) >= COALESCE(" + item + ".count, 0) THEN 2 ELSE 1 END"
+                    + " FROM erp_purchase_invoice_source_allocation a WHERE a.source_type = 10"
+                    + " AND a.source_item_id = " + item + ".id AND a.tenant_id = " + item
+                    + ".tenant_id AND a.deleted = 0)", false);
+            case "stockInBillStatus" -> spec("(SELECT COALESCE(MAX(sb.status), 0) FROM erp_stock_in_bill sb"
+                    + " WHERE sb.source_biz_type = 10 AND sb.source_id = " + item + ".in_id AND sb.tenant_id = "
+                    + item + ".tenant_id AND sb.deleted = 0)", false);
+            default -> null;
+        };
+    }
+
+    private static ErpPurchaseItemSortUtils.OrderSpec spec(String expression, boolean text) {
+        return new ErpPurchaseItemSortUtils.OrderSpec(expression, text);
     }
 
     static void appendProductKeyword(QueryWrapper<ErpPurchaseInItemDO> query, String keyword) {
@@ -377,6 +381,28 @@ public interface ErpPurchaseInItemMapper extends BaseMapperX<ErpPurchaseInItemDO
                 .in("in_id", inIds));
         // 获得数量
         return convertMap(result, obj -> (Long) obj.get("order_item_id"), obj -> (BigDecimal) obj.get("sum_count"));
+    }
+
+    /**
+     * 批量汇总存在原始价格快照的采购入库商品金额。
+     *
+     * <p>仅返回至少一条明细存在 original_product_price 的入库单；未返回的入库单继续使用主单 total_price。
+     * 这样付款候选分页无需把全部入库明细加载到 JVM。</p>
+     */
+    default Map<Long, BigDecimal> selectOriginalSettlementProductPriceMap(Collection<Long> inIds) {
+        if (CollUtil.isEmpty(inIds)) {
+            return Collections.emptyMap();
+        }
+        List<Map<String, Object>> rows = selectMaps(new QueryWrapper<ErpPurchaseInItemDO>()
+                .select("in_id AS in_id",
+                        "SUM(ROUND(COALESCE(original_product_price, product_price) * count, 2)) AS product_price")
+                .in("in_id", inIds)
+                .groupBy("in_id")
+                .having("SUM(CASE WHEN original_product_price IS NOT NULL THEN 1 ELSE 0 END) > 0"));
+        return convertMap(rows, row -> ((Number) row.get("in_id")).longValue(),
+                row -> row.get("product_price") instanceof BigDecimal
+                        ? (BigDecimal) row.get("product_price")
+                        : new BigDecimal(row.get("product_price").toString()));
     }
 
     default Map<String, BigDecimal> selectPendingInCountMap(Collection<Long> productIds,

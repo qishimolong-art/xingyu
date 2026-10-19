@@ -533,6 +533,7 @@ public class ErpPurchaseInvoiceServiceImplTest extends BaseMockitoUnitTest {
                 mainCaptor.capture());
         assertEquals(0, new BigDecimal("-6").compareTo(mainCaptor.getValue().getTotalAmount()));
         assertEquals(ErpAuditStatus.APPROVE.getStatus(), mainCaptor.getValue().getStatus());
+        assertNotNull(mainCaptor.getValue().getApproveTime());
     }
 
     @Test

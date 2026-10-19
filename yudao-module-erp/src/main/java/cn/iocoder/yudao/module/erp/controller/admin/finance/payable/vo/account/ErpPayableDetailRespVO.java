@@ -58,9 +58,12 @@ public class ErpPayableDetailRespVO {
     @ExcelProperty("应付款")
     private BigDecimal increaseAmount;
 
-    @Schema(description = "付款金额")
-    @ExcelProperty("付款金额")
+    @Schema(description = "实际付款金额，用于账户余额计算")
     private BigDecimal paymentAmount;
+
+    @Schema(description = "付款展示金额，付款单取优惠前总金额")
+    @ExcelProperty("付款金额")
+    private BigDecimal paymentDisplayAmount;
 
     @Schema(description = "核销金额")
     private BigDecimal writeOffAmount;

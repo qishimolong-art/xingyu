@@ -10,7 +10,6 @@ import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.stock.ErpStockInTra
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseOrderItemDO;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
-import com.baomidou.mybatisplus.core.toolkit.support.SFunction;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
@@ -48,7 +47,12 @@ public interface ErpPurchaseOrderItemMapper extends BaseMapperX<ErpPurchaseOrder
             + "OR erp_purchase_order_items.batch_no LIKE {0})";
 
     default List<ErpPurchaseOrderItemDO> selectListByOrderId(Long orderId) {
-        return selectList(ErpPurchaseOrderItemDO::getOrderId, orderId);
+        return selectList(buildSortedQuery(orderId, null, null, null));
+    }
+
+    default List<ErpPurchaseOrderItemDO> selectListByOrderId(Long orderId, String orderField,
+                                                             String orderDirection) {
+        return selectList(buildSortedQuery(orderId, null, orderField, orderDirection));
     }
 
     default PageResult<ErpPurchaseOrderItemDO> selectInableItemPage(ErpPurchaseOrderInableItemPageReqVO reqVO) {
@@ -66,20 +70,17 @@ public interface ErpPurchaseOrderItemMapper extends BaseMapperX<ErpPurchaseOrder
     }
 
     default PageResult<ErpPurchaseOrderItemDO> selectPageByOrderId(ErpPurchaseOrderItemPageReqVO reqVO) {
-        LambdaQueryWrapperX<ErpPurchaseOrderItemDO> query = new LambdaQueryWrapperX<ErpPurchaseOrderItemDO>()
-                .eq(ErpPurchaseOrderItemDO::getOrderId, reqVO.getOrderId());
-        SFunction<ErpPurchaseOrderItemDO, ?> orderColumn = getOrderColumn(reqVO.getOrderField());
-        if (orderColumn == null) {
-            query.orderByAsc(ErpPurchaseOrderItemDO::getId);
-        } else if ("desc".equalsIgnoreCase(reqVO.getOrderDirection())) {
-            query.orderByDesc(orderColumn);
-        } else {
-            query.orderByAsc(orderColumn);
-        }
-        if (orderColumn != null && !"id".equals(reqVO.getOrderField().trim())) {
-            query.orderByAsc(ErpPurchaseOrderItemDO::getId);
-        }
-        return selectPage(reqVO, query);
+        return selectPage(reqVO, buildSortedQuery(reqVO.getOrderId(), reqVO.getExcludedItemIds(),
+                reqVO.getOrderField(), reqVO.getOrderDirection()));
+    }
+
+    static QueryWrapper<ErpPurchaseOrderItemDO> buildSortedQuery(Long orderId, Collection<Long> excludedItemIds,
+                                                                  String orderField, String orderDirection) {
+        QueryWrapper<ErpPurchaseOrderItemDO> query = new QueryWrapper<ErpPurchaseOrderItemDO>()
+                .eq("order_id", orderId)
+                .notIn(CollUtil.isNotEmpty(excludedItemIds), "id", excludedItemIds);
+        return ErpPurchaseItemSortUtils.applyOrder(query, "erp_purchase_order_items", orderField, orderDirection,
+                getOrderSpec(orderField));
     }
 
     default List<ErpPurchaseOrderItemDO> selectListByOrderIds(Collection<Long> orderIds) {
@@ -109,57 +110,51 @@ public interface ErpPurchaseOrderItemMapper extends BaseMapperX<ErpPurchaseOrder
         return delete(ErpPurchaseOrderItemDO::getOrderId, orderId);
     }
 
-    static SFunction<ErpPurchaseOrderItemDO, ?> getOrderColumn(String orderField) {
+    static boolean isSupportedOrderField(String orderField) {
+        return getOrderSpec(orderField) != null;
+    }
+
+    static ErpPurchaseItemSortUtils.OrderSpec getOrderSpec(String orderField) {
         if (orderField == null) {
             return null;
         }
-        switch (orderField.trim()) {
-            case "id":
-                return ErpPurchaseOrderItemDO::getId;
-            case "gift":
-                return ErpPurchaseOrderItemDO::getGift;
-            case "productId":
-            case "productCode":
-            case "productName":
-            case "lastPurchasePrice":
-            case "productUnitName":
-            case "weight":
-            case "packageQty":
-                return ErpPurchaseOrderItemDO::getProductId;
-            case "warehouseId":
-                return ErpPurchaseOrderItemDO::getWarehouseId;
-            case "deptId":
-                return ErpPurchaseOrderItemDO::getDeptId;
-            case "count":
-                return ErpPurchaseOrderItemDO::getCount;
-            case "productPrice":
-            case "totalProductPrice":
-                return ErpPurchaseOrderItemDO::getProductPrice;
-            case "arrivalCount":
-                return ErpPurchaseOrderItemDO::getArrivalCount;
-            case "vehicleModel":
-                return ErpPurchaseOrderItemDO::getVehicleModel;
-            case "standard":
-                return ErpPurchaseOrderItemDO::getStandard;
-            case "featureCode":
-                return ErpPurchaseOrderItemDO::getFeatureCode;
-            case "warehousePosition":
-                return ErpPurchaseOrderItemDO::getWarehousePosition;
-            case "drawingNo":
-                return ErpPurchaseOrderItemDO::getDrawingNo;
-            case "batchNo":
-                return ErpPurchaseOrderItemDO::getBatchNo;
-            case "factoryCode":
-                return ErpPurchaseOrderItemDO::getFactoryCode;
-            case "brand":
-                return ErpPurchaseOrderItemDO::getBrand;
-            case "remark":
-                return ErpPurchaseOrderItemDO::getRemark;
-            case "inStatus":
-                return ErpPurchaseOrderItemDO::getInCount;
-            default:
-                return null;
-        }
+        String item = "erp_purchase_order_items";
+        return switch (orderField.trim()) {
+            case "id" -> spec(item + ".id", false);
+            case "gift" -> spec(item + ".gift", false);
+            case "productId", "productName" -> spec(ErpPurchaseItemSortUtils.productField(item, "name"), true);
+            case "productCode" -> spec(ErpPurchaseItemSortUtils.productField(item, "code"), true);
+            case "lastPurchasePrice" -> spec(ErpPurchaseItemSortUtils.productField(item, "last_purchase_price"), false);
+            case "productUnitName" -> spec(ErpPurchaseItemSortUtils.itemUnitName(item), true);
+            case "weight" -> spec(ErpPurchaseItemSortUtils.productField(item, "weight"), false);
+            case "packageQty" -> spec(ErpPurchaseItemSortUtils.productPackageQty(item), false);
+            case "pieceCount" -> spec(ErpPurchaseItemSortUtils.pieceCount(item + ".count",
+                    ErpPurchaseItemSortUtils.productPackageQty(item)), false);
+            case "stockCount" -> spec(ErpPurchaseItemSortUtils.stockCount(item), false);
+            case "warehouseId" -> spec(ErpPurchaseItemSortUtils.warehouseName(item), true);
+            case "deptId" -> spec(ErpPurchaseItemSortUtils.deptName(item), true);
+            case "count" -> spec(item + ".count", false);
+            case "productPrice" -> spec(item + ".product_price", false);
+            case "totalProductPrice" -> spec(ErpPurchaseItemSortUtils.productAmount(item), false);
+            case "arrivalCount" -> spec(item + ".arrival_count", false);
+            case "vehicleModel" -> spec(item + ".vehicle_model", true);
+            case "standard" -> spec(item + ".standard", true);
+            case "featureCode" -> spec(item + ".feature_code", true);
+            case "warehousePosition" -> spec(item + ".warehouse_position", true);
+            case "drawingNo" -> spec(item + ".drawing_no", true);
+            case "batchNo" -> spec(item + ".batch_no", true);
+            case "factoryCode" -> spec(item + ".factory_code", true);
+            case "brand" -> spec(item + ".brand", true);
+            case "remark" -> spec(item + ".remark", true);
+            case "inStatus" -> spec("(CASE WHEN COALESCE(" + item + ".in_count, 0) <= 0 THEN 0"
+                    + " WHEN COALESCE(" + item + ".in_count, 0) >= COALESCE(" + item
+                    + ".count, 0) THEN 2 ELSE 1 END)", false);
+            default -> null;
+        };
+    }
+
+    private static ErpPurchaseItemSortUtils.OrderSpec spec(String expression, boolean text) {
+        return new ErpPurchaseItemSortUtils.OrderSpec(expression, text);
     }
 
     default Long selectCountByProductId(Long productId) {

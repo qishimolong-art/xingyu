@@ -6,7 +6,7 @@ import cn.iocoder.yudao.framework.mybatis.core.query.LambdaQueryWrapperX;
 import cn.hutool.core.collection.CollUtil;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.warehousemove.ErpWarehouseMoveItemPageReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpWarehouseMoveItemDO;
-import com.baomidou.mybatisplus.core.toolkit.support.SFunction;
+import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
@@ -22,7 +22,12 @@ import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.
 public interface ErpWarehouseMoveItemMapper extends BaseMapperX<ErpWarehouseMoveItemDO> {
 
     default List<ErpWarehouseMoveItemDO> selectListByMoveId(Long moveId) {
-        return selectList(ErpWarehouseMoveItemDO::getMoveId, moveId);
+        return selectList(buildSortedQuery(moveId, null, null, null));
+    }
+
+    default List<ErpWarehouseMoveItemDO> selectListByMoveId(Long moveId, String orderField,
+                                                            String orderDirection) {
+        return selectList(buildSortedQuery(moveId, null, orderField, orderDirection));
     }
 
     default List<ErpWarehouseMoveItemDO> selectListByMoveIdForUpdate(Long moveId) {
@@ -31,20 +36,18 @@ public interface ErpWarehouseMoveItemMapper extends BaseMapperX<ErpWarehouseMove
     }
 
     default PageResult<ErpWarehouseMoveItemDO> selectPageByMoveId(ErpWarehouseMoveItemPageReqVO reqVO) {
-        LambdaQueryWrapperX<ErpWarehouseMoveItemDO> query = new LambdaQueryWrapperX<ErpWarehouseMoveItemDO>()
-                .eq(ErpWarehouseMoveItemDO::getMoveId, reqVO.getMoveId());
-        SFunction<ErpWarehouseMoveItemDO, ?> orderColumn = getOrderColumn(reqVO.getOrderField());
-        if (orderColumn == null) {
-            query.orderByAsc(ErpWarehouseMoveItemDO::getId);
-        } else if ("desc".equalsIgnoreCase(reqVO.getOrderDirection())) {
-            query.orderByDesc(orderColumn);
-        } else {
-            query.orderByAsc(orderColumn);
-        }
-        if (orderColumn != null && !"id".equals(reqVO.getOrderField().trim())) {
-            query.orderByAsc(ErpWarehouseMoveItemDO::getId);
-        }
-        return selectPage(reqVO, query);
+        return selectPage(reqVO, buildSortedQuery(reqVO.getMoveId(), reqVO.getExcludedItemIds(),
+                reqVO.getOrderField(), reqVO.getOrderDirection()));
+    }
+
+    static QueryWrapper<ErpWarehouseMoveItemDO> buildSortedQuery(Long moveId, Collection<Long> excludedItemIds,
+                                                                  String orderField, String orderDirection) {
+        String item = "erp_warehouse_move_item";
+        QueryWrapper<ErpWarehouseMoveItemDO> query = new QueryWrapper<ErpWarehouseMoveItemDO>()
+                .eq("move_id", moveId)
+                .notIn(CollUtil.isNotEmpty(excludedItemIds), "id", excludedItemIds);
+        return ErpStockItemSortUtils.applyOrder(query, item, orderField, orderDirection,
+                getOrderSpec(orderField));
     }
 
     default List<ErpWarehouseMoveItemDO> selectListByMoveIds(Collection<Long> moveIds) {
@@ -65,6 +68,10 @@ public interface ErpWarehouseMoveItemMapper extends BaseMapperX<ErpWarehouseMove
             "<script>",
             "SELECT wmi.move_id AS moveId,",
             "       COUNT(*) AS itemCount,",
+            "       COALESCE(SUM(wmi.count), 0) AS totalCount,",
+            "       COALESCE(SUM(wmi.total_price), 0) AS totalPrice,",
+            "       COALESCE(SUM(wmi.cost_amount), 0) AS totalCostAmount,",
+            "       COALESCE(SUM(wmi.total_weight), 0) AS totalWeight,",
             "       GROUP_CONCAT(DISTINCT p.name ORDER BY p.name SEPARATOR ', ') AS productNames,",
             "       GROUP_CONCAT(DISTINCT p.code ORDER BY p.code SEPARATOR ', ') AS productCodes,",
             "       GROUP_CONCAT(DISTINCT fw.name ORDER BY fw.name SEPARATOR '、') AS fromWarehouseNames,",
@@ -85,49 +92,52 @@ public interface ErpWarehouseMoveItemMapper extends BaseMapperX<ErpWarehouseMove
         return delete(ErpWarehouseMoveItemDO::getMoveId, moveId);
     }
 
-    static SFunction<ErpWarehouseMoveItemDO, ?> getOrderColumn(String orderField) {
+    static boolean isSupportedOrderField(String orderField) {
+        return getOrderSpec(orderField) != null;
+    }
+
+    static ErpStockItemSortUtils.OrderSpec getOrderSpec(String orderField) {
         if (orderField == null) {
             return null;
         }
-        switch (orderField.trim()) {
-            case "id":
-                return ErpWarehouseMoveItemDO::getId;
-            case "productId":
-            case "productCode":
-            case "productName":
-            case "productUnitName":
-                return ErpWarehouseMoveItemDO::getProductId;
-            case "fromWarehouseId":
-                return ErpWarehouseMoveItemDO::getFromWarehouseId;
-            case "toWarehouseId":
-                return ErpWarehouseMoveItemDO::getToWarehouseId;
-            case "count":
-                return ErpWarehouseMoveItemDO::getCount;
-            case "productPrice":
-                return ErpWarehouseMoveItemDO::getProductPrice;
-            case "totalPrice":
-                return ErpWarehouseMoveItemDO::getTotalPrice;
-            case "costPrice":
-                return ErpWarehouseMoveItemDO::getCostPrice;
-            case "costAmount":
-                return ErpWarehouseMoveItemDO::getCostAmount;
-            case "weight":
-                return ErpWarehouseMoveItemDO::getWeight;
-            case "packageQty":
-                return ErpWarehouseMoveItemDO::getPackageQty;
-            case "totalWeight":
-                return ErpWarehouseMoveItemDO::getTotalWeight;
-            case "batchNo":
-                return ErpWarehouseMoveItemDO::getBatchNo;
-            case "fromShelf":
-                return ErpWarehouseMoveItemDO::getFromShelf;
-            case "toShelf":
-                return ErpWarehouseMoveItemDO::getToShelf;
-            case "remark":
-                return ErpWarehouseMoveItemDO::getRemark;
-            default:
-                return null;
-        }
+        String item = "erp_warehouse_move_item";
+        return switch (orderField.trim()) {
+            case "id" -> spec(item + ".id", false);
+            case "productId", "productName" -> spec(ErpStockItemSortUtils.productField(item, "name"), true);
+            case "productCode" -> spec(ErpStockItemSortUtils.productField(item, "code"), true);
+            case "productBarCode" -> spec(ErpStockItemSortUtils.productField(item, "bar_code"), true);
+            case "productUnitName" -> spec(ErpStockItemSortUtils.itemUnitName(item), true);
+            case "vehicleModel" -> spec(ErpStockItemSortUtils.productField(item, "vehicle_model"), true);
+            case "originPlace" -> spec(ErpStockItemSortUtils.productField(item, "origin_place"), true);
+            case "standard" -> spec(ErpStockItemSortUtils.productField(item, "standard"), true);
+            case "featureCode" -> spec(ErpStockItemSortUtils.productField(item, "feature_code"), true);
+            case "brand" -> spec(ErpStockItemSortUtils.productField(item, "brand"), true);
+            case "drawingNo" -> spec(ErpStockItemSortUtils.productField(item, "drawing_no"), true);
+            case "fromWarehouseId", "fromWarehouseName" -> spec(
+                    ErpStockItemSortUtils.warehouseName(item, "from_warehouse_id"), true);
+            case "toWarehouseId", "toWarehouseName" -> spec(
+                    ErpStockItemSortUtils.warehouseName(item, "to_warehouse_id"), true);
+            case "fromStockCount" -> spec(ErpStockItemSortUtils.stockCount(item, "from_warehouse_id"), false);
+            case "toStockCount" -> spec(ErpStockItemSortUtils.stockCount(item, "to_warehouse_id"), false);
+            case "count" -> spec(item + ".count", false);
+            case "productPrice" -> spec(item + ".product_price", false);
+            case "totalPrice" -> spec(item + ".total_price", false);
+            case "costPrice" -> spec(item + ".cost_price", false);
+            case "costAmount" -> spec(item + ".cost_amount", false);
+            case "weight" -> spec(item + ".weight", false);
+            case "packageQty" -> spec(item + ".package_qty", false);
+            case "pieceCount" -> spec(ErpStockItemSortUtils.pieceCount(item), false);
+            case "totalWeight" -> spec(item + ".total_weight", false);
+            case "batchNo" -> spec(item + ".batch_no", true);
+            case "fromShelf" -> spec(item + ".from_shelf", true);
+            case "toShelf" -> spec(item + ".to_shelf", true);
+            case "remark" -> spec(item + ".remark", true);
+            default -> null;
+        };
+    }
+
+    private static ErpStockItemSortUtils.OrderSpec spec(String expression, boolean text) {
+        return new ErpStockItemSortUtils.OrderSpec(expression, text);
     }
 
     static Long toLong(Object value) {

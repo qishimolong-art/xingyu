@@ -3,6 +3,8 @@ server:
 
 erp:
   assistant:
+    customer-app:
+      enabled: true
     # 八项指标已完成正式只读库业务对账与核验，当前环境全部发布。
     published-metrics:
       - SALE

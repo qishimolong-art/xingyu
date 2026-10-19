@@ -3,11 +3,13 @@ package cn.iocoder.yudao.module.erp.dal.mysql.stock;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.mybatis.core.mapper.BaseMapperX;
 import cn.iocoder.yudao.framework.mybatis.core.query.MPJLambdaWrapperX;
+import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.ErpStockDocumentSummaryRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.check.ErpStockCheckPageReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.product.ErpProductDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.product.ErpProductUnitDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockCheckDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockCheckItemDO;
+import cn.iocoder.yudao.module.erp.dal.mysql.common.ErpKeywordQuery;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.core.toolkit.support.SFunction;
 import com.github.yulichang.wrapper.MPJLambdaWrapper;
@@ -43,6 +45,19 @@ public interface ErpStockCheckMapper extends BaseMapperX<ErpStockCheckDO> {
     String JOIN_CREATE_TIME_LIKE_SQL = "DATE_FORMAT(t.create_time, '%Y-%m-%d %H:%i:%s') LIKE {0}";
 
     default PageResult<ErpStockCheckDO> selectPage(ErpStockCheckPageReqVO reqVO) {
+        MPJLambdaWrapperX<ErpStockCheckDO> query = buildQuery(reqVO);
+        orderBy(query, reqVO);
+        return selectJoinPage(reqVO, ErpStockCheckDO.class, query);
+    }
+
+    default ErpStockDocumentSummaryRespVO selectSummary(ErpStockCheckPageReqVO reqVO) {
+        MPJLambdaWrapperX<ErpStockCheckDO> query = buildQuery(reqVO)
+                .selectAs("COALESCE(SUM(t.total_count), 0)", ErpStockDocumentSummaryRespVO::getTotalCount)
+                .selectAs("COALESCE(SUM(t.total_price), 0)", ErpStockDocumentSummaryRespVO::getTotalPrice);
+        return selectJoinOne(ErpStockDocumentSummaryRespVO.class, query);
+    }
+
+    static MPJLambdaWrapperX<ErpStockCheckDO> buildQuery(ErpStockCheckPageReqVO reqVO) {
         MPJLambdaWrapperX<ErpStockCheckDO> query = new MPJLambdaWrapperX<ErpStockCheckDO>()
                 .inIfPresent(ErpStockCheckDO::getId, reqVO.getIds())
                 .likeIfPresent(ErpStockCheckDO::getNo, reqVO.getNo())
@@ -52,18 +67,11 @@ public interface ErpStockCheckMapper extends BaseMapperX<ErpStockCheckDO> {
                 .eqIfPresent(ErpStockCheckDO::getDeptId, reqVO.getDeptId())
                 .likeIfPresent(ErpStockCheckDO::getRemark, reqVO.getRemark())
                 .eqIfPresent(ErpStockCheckDO::getCreator, reqVO.getCreator());
-        if (reqVO.getWarehouseId() != null || reqVO.getProductId() != null || StringUtils.hasText(reqVO.getProductKeyword())) {
-            query.leftJoin(ErpStockCheckItemDO.class, ErpStockCheckItemDO::getCheckId, ErpStockCheckDO::getId)
-                    .leftJoin(ErpProductDO.class, ErpProductDO::getId, ErpStockCheckItemDO::getProductId)
-                    .leftJoin(ErpProductUnitDO.class, ErpProductUnitDO::getId, ErpStockCheckItemDO::getProductUnitId)
-                    .eq(reqVO.getWarehouseId() != null, ErpStockCheckItemDO::getWarehouseId, reqVO.getWarehouseId())
-                    .eq(reqVO.getProductId() != null, ErpStockCheckItemDO::getProductId, reqVO.getProductId())
-                    .and(StringUtils.hasText(reqVO.getProductKeyword()), w -> appendProductKeyword(w, reqVO.getProductKeyword()))
-                    .groupBy(ErpStockCheckDO::getId); // 避免 1 对多查询，产生相同的 1
-        }
+        ErpKeywordQuery.appendProductItemFilter(query, "erp_stock_check_item", "check_id",
+                reqVO.getProductId(), reqVO.getWarehouseId(), null, null,
+                reqVO.getProductKeyword(), true);
         appendStockCheckKeyword(query, reqVO.getKeyword());
-        orderBy(query, reqVO);
-        return selectJoinPage(reqVO, ErpStockCheckDO.class, query);
+        return query;
     }
 
     static void orderBy(MPJLambdaWrapperX<ErpStockCheckDO> query, ErpStockCheckPageReqVO reqVO) {

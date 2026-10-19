@@ -6,7 +6,7 @@ import cn.iocoder.yudao.framework.mybatis.core.query.LambdaQueryWrapperX;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.out.ErpStockOutItemPageReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockOutItemDO;
 import cn.hutool.core.collection.CollUtil;
-import com.baomidou.mybatisplus.core.toolkit.support.SFunction;
+import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
@@ -27,7 +27,11 @@ import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.
 public interface ErpStockOutItemMapper extends BaseMapperX<ErpStockOutItemDO> {
 
     default List<ErpStockOutItemDO> selectListByOutId(Long outId) {
-        return selectList(ErpStockOutItemDO::getOutId, outId);
+        return selectList(buildSortedQuery(outId, null, null, null));
+    }
+
+    default List<ErpStockOutItemDO> selectListByOutId(Long outId, String orderField, String orderDirection) {
+        return selectList(buildSortedQuery(outId, null, orderField, orderDirection));
     }
 
     default List<ErpStockOutItemDO> selectListByOutIdForUpdate(Long outId) {
@@ -36,20 +40,18 @@ public interface ErpStockOutItemMapper extends BaseMapperX<ErpStockOutItemDO> {
     }
 
     default PageResult<ErpStockOutItemDO> selectPageByOutId(ErpStockOutItemPageReqVO reqVO) {
-        LambdaQueryWrapperX<ErpStockOutItemDO> query = new LambdaQueryWrapperX<ErpStockOutItemDO>()
-                .eq(ErpStockOutItemDO::getOutId, reqVO.getOutId());
-        SFunction<ErpStockOutItemDO, ?> orderColumn = getOrderColumn(reqVO.getOrderField());
-        if (orderColumn == null) {
-            query.orderByAsc(ErpStockOutItemDO::getId);
-        } else if ("desc".equalsIgnoreCase(reqVO.getOrderDirection())) {
-            query.orderByDesc(orderColumn);
-        } else {
-            query.orderByAsc(orderColumn);
-        }
-        if (orderColumn != null && !"id".equals(reqVO.getOrderField().trim())) {
-            query.orderByAsc(ErpStockOutItemDO::getId);
-        }
-        return selectPage(reqVO, query);
+        return selectPage(reqVO, buildSortedQuery(reqVO.getOutId(), reqVO.getExcludedItemIds(),
+                reqVO.getOrderField(), reqVO.getOrderDirection()));
+    }
+
+    static QueryWrapper<ErpStockOutItemDO> buildSortedQuery(Long outId, Collection<Long> excludedItemIds,
+                                                             String orderField, String orderDirection) {
+        String item = "erp_stock_out_item";
+        QueryWrapper<ErpStockOutItemDO> query = new QueryWrapper<ErpStockOutItemDO>()
+                .eq("out_id", outId)
+                .notIn(CollUtil.isNotEmpty(excludedItemIds), "id", excludedItemIds);
+        return ErpStockItemSortUtils.applyOrder(query, item, orderField, orderDirection,
+                getOrderSpec(orderField));
     }
 
     default List<ErpStockOutItemDO> selectListByOutIds(Collection<Long> outIds) {
@@ -67,6 +69,9 @@ public interface ErpStockOutItemMapper extends BaseMapperX<ErpStockOutItemDO> {
             "<script>",
             "SELECT soi.out_id AS outId,",
             "       COUNT(*) AS itemCount,",
+            "       COALESCE(SUM(soi.count), 0) AS totalCount,",
+            "       COALESCE(SUM(soi.total_price), 0) AS totalPrice,",
+            "       COALESCE(SUM(soi.total_weight), 0) AS totalWeight,",
             "       GROUP_CONCAT(DISTINCT p.name ORDER BY p.name SEPARATOR ', ') AS productNames,",
             "       GROUP_CONCAT(DISTINCT p.code ORDER BY p.code SEPARATOR ', ') AS productCodes,",
             "       GROUP_CONCAT(DISTINCT w.name ORDER BY w.name SEPARATOR ', ') AS warehouseNames",
@@ -97,39 +102,39 @@ public interface ErpStockOutItemMapper extends BaseMapperX<ErpStockOutItemDO> {
         return selectFirstOne(ErpStockOutItemDO::getWarehouseId, warehouseId);
     }
 
-    static SFunction<ErpStockOutItemDO, ?> getOrderColumn(String orderField) {
+    static boolean isSupportedOrderField(String orderField) {
+        return getOrderSpec(orderField) != null;
+    }
+
+    static ErpStockItemSortUtils.OrderSpec getOrderSpec(String orderField) {
         if (orderField == null) {
             return null;
         }
-        switch (orderField.trim()) {
-            case "id":
-                return ErpStockOutItemDO::getId;
-            case "productId":
-            case "productCode":
-            case "productName":
-            case "productUnitName":
-                return ErpStockOutItemDO::getProductId;
-            case "warehouseId":
-                return ErpStockOutItemDO::getWarehouseId;
-            case "count":
-                return ErpStockOutItemDO::getCount;
-            case "productPrice":
-                return ErpStockOutItemDO::getProductPrice;
-            case "totalPrice":
-                return ErpStockOutItemDO::getTotalPrice;
-            case "weight":
-                return ErpStockOutItemDO::getWeight;
-            case "packageQty":
-                return ErpStockOutItemDO::getPackageQty;
-            case "totalWeight":
-                return ErpStockOutItemDO::getTotalWeight;
-            case "batchNo":
-                return ErpStockOutItemDO::getBatchNo;
-            case "remark":
-                return ErpStockOutItemDO::getRemark;
-            default:
-                return null;
-        }
+        String item = "erp_stock_out_item";
+        return switch (orderField.trim()) {
+            case "id" -> spec(item + ".id", false);
+            case "productId", "productName" -> spec(ErpStockItemSortUtils.productField(item, "name"), true);
+            case "productCode" -> spec(ErpStockItemSortUtils.productField(item, "code"), true);
+            case "productBarCode" -> spec(ErpStockItemSortUtils.productField(item, "bar_code"), true);
+            case "productUnitName" -> spec(ErpStockItemSortUtils.itemUnitName(item), true);
+            case "warehouseId" -> spec(ErpStockItemSortUtils.warehouseName(item, "warehouse_id"), true);
+            case "warehouseDeptName" -> spec(ErpStockItemSortUtils.warehouseDeptName(item, "warehouse_id"), true);
+            case "stockCount" -> spec(ErpStockItemSortUtils.stockCount(item, "warehouse_id"), false);
+            case "count" -> spec(item + ".count", false);
+            case "productPrice" -> spec(item + ".product_price", false);
+            case "totalPrice" -> spec(item + ".total_price", false);
+            case "weight" -> spec(item + ".weight", false);
+            case "packageQty" -> spec(item + ".package_qty", false);
+            case "pieceCount" -> spec(ErpStockItemSortUtils.pieceCount(item), false);
+            case "totalWeight" -> spec(item + ".total_weight", false);
+            case "batchNo" -> spec(item + ".batch_no", true);
+            case "remark" -> spec(item + ".remark", true);
+            default -> null;
+        };
+    }
+
+    private static ErpStockItemSortUtils.OrderSpec spec(String expression, boolean text) {
+        return new ErpStockItemSortUtils.OrderSpec(expression, text);
     }
 
     static Long toLong(Object value) {

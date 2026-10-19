@@ -248,6 +248,12 @@ public class ErpFinanceTransferServiceImpl implements ErpFinanceTransferService 
         return financeTransferMapper.selectPage(pageReqVO);
     }
 
+    @Override
+    public cn.iocoder.yudao.module.erp.controller.admin.finance.vo.ErpFinanceQuerySummaryRespVO getFinanceTransferSummary(
+            ErpFinanceTransferPageReqVO pageReqVO) {
+        return financeTransferMapper.selectSummary(pageReqVO);
+    }
+
     private ErpFinanceTransferDO validateFinanceTransferExists(Long id) {
         ErpFinanceTransferDO transfer = financeTransferMapper.selectById(id);
         if (transfer == null) {

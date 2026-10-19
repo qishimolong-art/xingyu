@@ -84,6 +84,9 @@ public class ErpWarehouseMoveRespVO {
     @ExcelProperty("成本金额")
     private BigDecimal totalCostAmount;
 
+    @Schema(description = "整单总重")
+    private BigDecimal totalWeight;
+
     @Schema(description = "状态")
     @ExcelProperty(value = "状态", converter = DictConvert.class)
     @DictFormat(AUDIT_STATUS)

@@ -32,6 +32,9 @@ public class ErpStockPageReqVO extends PageParam {
     @Schema(description = "产品关键词，匹配编码、名称、拼音码、五笔码等")
     private String productKeyword;
 
+    @Schema(description = "配件名称组合关键词，仅匹配产品名称")
+    private String productNameKeyword;
+
     @Schema(description = "是否启用库存弹框跨产品、仓库、仓库部门和批次的分隔符组合搜索", example = "false")
     private Boolean crossDimensionKeyword;
 

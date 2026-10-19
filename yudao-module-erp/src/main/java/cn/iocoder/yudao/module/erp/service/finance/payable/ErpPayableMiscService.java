@@ -30,4 +30,7 @@ public interface ErpPayableMiscService {
 
     PageResult<ErpPayableMiscDO> getPayableMiscPage(ErpPayableMiscPageReqVO pageReqVO);
 
+    cn.iocoder.yudao.module.erp.controller.admin.finance.vo.ErpFinanceQuerySummaryRespVO getPayableMiscSummary(
+            ErpPayableMiscPageReqVO pageReqVO);
+
 }

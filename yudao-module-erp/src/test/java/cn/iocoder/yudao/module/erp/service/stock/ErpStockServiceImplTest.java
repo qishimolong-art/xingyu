@@ -142,6 +142,30 @@ public class ErpStockServiceImplTest extends BaseMockitoUnitTest {
     }
 
     @Test
+    public void testGetStockPage_productNameKeyword_usesProductIdFilterOnly() {
+        ErpStockPageReqVO reqVO = new ErpStockPageReqVO();
+        reqVO.setProductNameKeyword("经典表现 530");
+        List<Long> productIds = Arrays.asList(10L, 20L);
+        PageResult<ErpStockDO> pageResult = new PageResult<>(Collections.emptyList(), 0L);
+        when(warehouseService.getCurrentUserProductStockPermissionScope()).thenReturn(
+                new ErpProductStockPermissionScope(true,
+                        new LinkedHashSet<>(Arrays.asList(10L, 20L)), Collections.emptySet(), 1L));
+        when(productMapper.selectIdsByComplexQueryWithoutKeyword(eq(reqVO), isNull(), isNull()))
+                .thenReturn(productIds);
+        when(stockMapper.selectPage(eq(reqVO), eq(productIds),
+                eq(new LinkedHashSet<>(Arrays.asList(10L, 20L))), isNull(), isNull())).thenReturn(pageResult);
+
+        PageResult<ErpStockDO> result = stockService.getStockPage(reqVO);
+
+        assertSame(pageResult, result);
+        verify(productMapper).selectIdsByComplexQueryWithoutKeyword(eq(reqVO), isNull(), isNull());
+        verify(productMapper, never()).selectIdsByKeyword(any());
+        verify(productMapper, never()).selectIdsByStockProductKeyword(any());
+        verify(stockMapper).selectPage(eq(reqVO), eq(productIds),
+                eq(new LinkedHashSet<>(Arrays.asList(10L, 20L))), isNull(), isNull());
+    }
+
+    @Test
     public void testGetStockPage_blankProductName_doesNotUseProductIdFilter() {
         ErpStockPageReqVO reqVO = new ErpStockPageReqVO();
         reqVO.setProductName("   ");

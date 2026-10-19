@@ -467,6 +467,18 @@ public class ErpCustomerServiceImpl implements ErpCustomerService {
         return customer;
     }
 
+    @Override
+    public ErpCustomerDO validateCustomerForCustomerApp(Long id) {
+        ErpCustomerDO customer = validateCustomerExists(id);
+        if (Boolean.TRUE.equals(customer.getMergedFlag())) {
+            throw exception(CUSTOMER_MERGED, customer.getName());
+        }
+        if (CommonStatusEnum.isDisable(customer.getStatus())) {
+            throw exception(CUSTOMER_NOT_ENABLE, customer.getName());
+        }
+        return customer;
+    }
+
     private void validateCustomerCredit(ErpCustomerDO customer) {
         ErpCustomerCreditStatusBO creditStatus = buildCustomerCreditStatus(customer);
         if (Boolean.TRUE.equals(creditStatus.getBlocked())) {
@@ -502,10 +514,7 @@ public class ErpCustomerServiceImpl implements ErpCustomerService {
 
     @Override
     public List<Long> getCustomerSaleDeptIdsIgnoreDataPermission(Long customerId) {
-        ErpCustomerDO customer = validateCustomerExists(customerId);
-        if (CommonStatusEnum.isDisable(customer.getStatus())) {
-            throw exception(CUSTOMER_NOT_ENABLE, customer.getName());
-        }
+        ErpCustomerDO customer = validateCustomerForCustomerApp(customerId);
         return getCustomerSaleDeptIds(customer);
     }
 

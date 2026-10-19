@@ -112,7 +112,14 @@ public class ErpCloudPrintServiceImpl implements ErpCloudPrintService {
 
     @Override
     public ErpCloudPrintPreviewSaleOutRespVO previewSaleOut(Long saleOutId, Integer copies, Long templateId) {
-        SaleOutPreviewSource source = buildSaleOutPreviewSource(saleOutId, copies, templateId);
+        return previewSaleOut(saleOutId, copies, templateId, null, null);
+    }
+
+    @Override
+    public ErpCloudPrintPreviewSaleOutRespVO previewSaleOut(Long saleOutId, Integer copies, Long templateId,
+                                                            String itemOrderField, String itemOrderDirection) {
+        SaleOutPreviewSource source = buildSaleOutPreviewSource(saleOutId, copies, templateId,
+                itemOrderField, itemOrderDirection);
         String token = UUID.randomUUID().toString().replace("-", "");
         LocalDateTime expiresAt = LocalDateTime.now().plus(ErpCloudPrintPreviewCacheService.PREVIEW_TTL);
         List<ErpCloudPrintPreviewCacheService.PreviewItem> cachedItems = new ArrayList<>();
@@ -159,6 +166,8 @@ public class ErpCloudPrintServiceImpl implements ErpCloudPrintService {
                 .setSaleOutId(saleOutId)
                 .setTemplateId(templateId)
                 .setRequestedCopies(copies)
+                .setItemOrderField(itemOrderField)
+                .setItemOrderDirection(itemOrderDirection)
                 .setExpiresAt(expiresAt)
                 .setInputSha256(source.getInputSha256())
                 .setItems(cachedItems));
@@ -199,7 +208,8 @@ public class ErpCloudPrintServiceImpl implements ErpCloudPrintService {
             }
             ErpCloudPrintPreviewCacheService.PreviewRecord record = previewCacheService.getBound(previewToken);
             SaleOutPreviewSource source = buildSaleOutPreviewSource(record.getSaleOutId(),
-                    record.getRequestedCopies(), record.getTemplateId());
+                    record.getRequestedCopies(), record.getTemplateId(), record.getItemOrderField(),
+                    record.getItemOrderDirection());
             if (!Objects.equals(record.getInputSha256(), source.getInputSha256())) {
                 throw exception(CLOUD_PRINT_SUBMIT_FAILED, "销售出库单、模板或打印机配置已变化，请重新生成预览");
             }
@@ -273,13 +283,18 @@ public class ErpCloudPrintServiceImpl implements ErpCloudPrintService {
         return task;
     }
 
-    private SaleOutPreviewSource buildSaleOutPreviewSource(Long saleOutId, Integer copies, Long templateId) {
+    private SaleOutPreviewSource buildSaleOutPreviewSource(Long saleOutId, Integer copies, Long templateId,
+                                                            String itemOrderField, String itemOrderDirection) {
         ErpSaleOutDO saleOut = saleOutService.validateSaleOut(saleOutId);
         ErpPrintTemplateDO template = resolveSaleOutTemplate(templateId);
-        List<ErpSaleOutItemDO> saleOutItems = saleOutItemMapper.selectListByOutId(saleOutId);
+        List<ErpSaleOutItemDO> saleOutItems = itemOrderField == null
+                ? saleOutItemMapper.selectListByOutId(saleOutId)
+                : saleOutItemMapper.selectListByOutId(saleOutId, itemOrderField, itemOrderDirection);
         List<WarehousePrintGroup> groups = resolveWarehousePrintGroups(saleOutItems);
-        Map<String, Object> fullPrintData = printService.getPrintData(
-                ErpCloudPrintConstants.MODULE_KEY_SALE_OUT, saleOutId);
+        Map<String, Object> fullPrintData = itemOrderField == null
+                ? printService.getPrintData(ErpCloudPrintConstants.MODULE_KEY_SALE_OUT, saleOutId)
+                : printService.getPrintData(ErpCloudPrintConstants.MODULE_KEY_SALE_OUT, saleOutId,
+                        itemOrderField, itemOrderDirection);
         List<Map<String, Object>> fullItemRows = getPrintItemRows(fullPrintData);
         if (fullItemRows.size() != saleOutItems.size()) {
             throw exception(CLOUD_PRINT_SUBMIT_FAILED, "销售单打印数据与明细行数不一致");
@@ -310,6 +325,8 @@ public class ErpCloudPrintServiceImpl implements ErpCloudPrintService {
         fingerprint.put("templateId", template.getId());
         fingerprint.put("templateJson", template.getTemplateJson());
         fingerprint.put("paperConfig", template.getPaperConfig());
+        fingerprint.put("itemOrderField", itemOrderField);
+        fingerprint.put("itemOrderDirection", itemOrderDirection);
         fingerprint.put("groups", fingerprintGroups);
         return new SaleOutPreviewSource()
                 .setSaleOut(saleOut)

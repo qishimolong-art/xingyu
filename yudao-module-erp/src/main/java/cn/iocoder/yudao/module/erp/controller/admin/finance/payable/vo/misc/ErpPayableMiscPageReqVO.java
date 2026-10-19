@@ -57,4 +57,7 @@ public class ErpPayableMiscPageReqVO extends PageParam {
     @Schema(description = "排序方向（asc/desc）")
     private String orderDirection;
 
+    @Schema(description = "是否仅查询仍可付款/核销的单据", hidden = true)
+    private Boolean paymentEnable;
+
 }

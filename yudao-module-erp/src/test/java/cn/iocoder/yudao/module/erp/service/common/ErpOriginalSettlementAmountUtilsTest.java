@@ -120,4 +120,27 @@ class ErpOriginalSettlementAmountUtilsTest {
         assertThat(result).isEqualByComparingTo("0.91");
     }
 
+    @Test
+    void calculateFromAggregatedOriginalProductPrice_keepsLegacySettlementFormula() {
+        ErpPurchaseInDO purchaseIn = ErpPurchaseInDO.builder()
+                .totalPrice(new BigDecimal("200.00"))
+                .discountPercent(new BigDecimal("10"))
+                .feeAmount(new BigDecimal("5.00"))
+                .build();
+        ErpSaleOutDO saleOut = ErpSaleOutDO.builder()
+                .totalPrice(new BigDecimal("90.00"))
+                .discountPercent(new BigDecimal("12.5"))
+                .otherPrice(new BigDecimal("3.00"))
+                .build();
+
+        assertThat(ErpOriginalSettlementAmountUtils.calculatePurchaseIn(
+                purchaseIn, new BigDecimal("130.00"))).isEqualByComparingTo("122.00");
+        assertThat(ErpOriginalSettlementAmountUtils.calculateSaleOut(
+                saleOut, new BigDecimal("96.00"))).isEqualByComparingTo("87.00");
+        assertThat(ErpOriginalSettlementAmountUtils.calculatePurchaseIn(purchaseIn, (BigDecimal) null))
+                .isEqualByComparingTo("200.00");
+        assertThat(ErpOriginalSettlementAmountUtils.calculateSaleOut(saleOut, (BigDecimal) null))
+                .isEqualByComparingTo("90.00");
+    }
+
 }

@@ -7,6 +7,7 @@ import cn.iocoder.yudao.framework.security.core.util.SecurityFrameworkUtils;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.inbill.ErpStockInBillItemPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.inbill.ErpStockInBillPickupReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.inbill.ErpStockInBillPageReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.inbill.ErpStockInBillSummaryRespVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.product.ErpProductDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseInDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseInItemDO;
@@ -79,6 +80,11 @@ public class ErpStockInBillServiceImpl implements ErpStockInBillService {
     @Override
     public PageResult<ErpStockInBillDO> getStockInBillPage(ErpStockInBillPageReqVO pageReqVO) {
         return stockInBillMapper.selectPage(pageReqVO);
+    }
+
+    @Override
+    public ErpStockInBillSummaryRespVO getStockInBillSummary(ErpStockInBillPageReqVO pageReqVO) {
+        return stockInBillMapper.selectSummary(pageReqVO);
     }
 
     @Override

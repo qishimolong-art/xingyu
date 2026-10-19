@@ -49,6 +49,12 @@ public class ErpFinancePaymentPageReqVO extends PageParam {
     @Schema(description = "业务编号", example = "123")
     private String bizNo;
 
+    @Schema(description = "凭证号（手工凭据）", example = "PAY-20261015")
+    private String paymentVoucherNo;
+
+    @Schema(description = "会计凭证号", example = "记-202610")
+    private String voucherNo;
+
     @Schema(description = "勾选导出的付款单编号数组", example = "[1,2,3]")
     private List<Long> ids;
 

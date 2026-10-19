@@ -10,6 +10,7 @@ import cn.iocoder.yudao.framework.excel.core.util.ExcelUtils;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.payable.vo.account.ErpPayableAccountExportRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.payable.vo.account.ErpPayableAccountPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.payable.vo.account.ErpPayableAccountRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.finance.payable.vo.account.ErpPayableAccountSummaryRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.payable.vo.account.ErpPayableDetailReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.payable.vo.account.ErpPayableDetailRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.payable.vo.account.ErpPayableDrilldownReqVO;
@@ -66,6 +67,14 @@ public class ErpPayableAccountController {
             return success(PageResult.empty(pageResult.getTotal()));
         }
         return success(BeanUtils.toBean(pageResult, ErpPayableAccountRespVO.class));
+    }
+
+    @GetMapping("/summary")
+    @Operation(summary = "获取应付账款查询汇总")
+    @PreAuthorize("@ss.hasPermission('erp:payable-account:query')")
+    public CommonResult<ErpPayableAccountSummaryRespVO> getPayableAccountSummary(
+            @Valid ErpPayableAccountPageReqVO reqVO) {
+        return success(payableAccountService.getPayableAccountSummary(reqVO));
     }
 
     @GetMapping("/dept-simple-list")

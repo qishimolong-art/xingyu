@@ -8,6 +8,7 @@ import cn.iocoder.yudao.framework.excel.core.util.ExcelUtils;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.receivable.vo.account.ErpReceivableAccountExportRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.receivable.vo.account.ErpReceivableAccountPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.receivable.vo.account.ErpReceivableAccountRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.finance.receivable.vo.account.ErpReceivableAccountSummaryRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.receivable.vo.account.ErpReceivableDetailReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.receivable.vo.account.ErpReceivableDetailRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.receivable.vo.account.ErpReceivableDrilldownReqVO;
@@ -61,6 +62,14 @@ public class ErpReceivableAccountController {
     @PreAuthorize("@ss.hasPermission('erp:receivable-account:query')")
     public CommonResult<PageResult<ErpReceivableAccountRespVO>> getReceivableAccountPage(@Valid ErpReceivableAccountPageReqVO pageReqVO) {
         return success(BeanUtils.toBean(receivableAccountService.getReceivableAccountPage(pageReqVO), ErpReceivableAccountRespVO.class));
+    }
+
+    @GetMapping("/summary")
+    @Operation(summary = "获得应收账款查询汇总")
+    @PreAuthorize("@ss.hasPermission('erp:receivable-account:query')")
+    public CommonResult<ErpReceivableAccountSummaryRespVO> getReceivableAccountSummary(
+            @Valid ErpReceivableAccountPageReqVO pageReqVO) {
+        return success(receivableAccountService.getReceivableAccountSummary(pageReqVO));
     }
 
     @GetMapping("/dept-simple-list")

@@ -1,6 +1,7 @@
 package cn.iocoder.yudao.module.erp.dal.mysql.assistant;
 
 import cn.iocoder.yudao.module.erp.dal.mysql.common.ErpKeywordQuery;
+import cn.iocoder.yudao.module.erp.service.assistant.AssistantSemanticKnowledge;
 
 import java.util.*;
 
@@ -15,10 +16,6 @@ public final class AssistantEntitySql {
         switch(type) {
             case "PRODUCT":
                 table="erp_product e";name="e.name";code=flag(context,"showCode")?"e.code":"NULL";
-                if("FACTORY_CODE".equals(match) && flag(context,"searchFactoryCode"))
-                    description="CASE WHEN e.factory_code IS NOT NULL AND e.factory_code<>'' THEN CONCAT('厂家编码：',e.factory_code) ELSE NULL END";
-                else if("BAR_CODE".equals(match) && flag(context,"searchBarCode"))
-                    description="CASE WHEN e.bar_code IS NOT NULL AND e.bar_code<>'' THEN CONCAT('条码：',e.bar_code) ELSE NULL END";
                 base=" AND (e.merged_flag IS NULL OR e.merged_flag=0)";break;
             case "CUSTOMER":
                 table="erp_customer e";name="e.name";code=flag(context,"showCode")?"e.code":"NULL";
@@ -46,7 +43,7 @@ public final class AssistantEntitySql {
         List<Object> parameters=new ArrayList<>();parameters.add(context.get("tenantId"));
         String scope=scope(context,type,parameters);
         String predicate=predicate(context,type,match,parameters);
-        String order=order(context,match,name,parameters);
+        String order=order(context,type,match,name,parameters);
         int limit=Math.max(1,Math.min(21,number(context.get("rowLimit"),21)));
         String matchedBy="EXACT_NAME".equals(match)?"NAME":"FUZZY".equals(match)?"FUZZY_NAME":match;
         String sql="SELECT e.id,"+name+" name,"+code+" code,"+description+" description,'"+matchedBy+"' matchedBy FROM "+table
@@ -57,32 +54,48 @@ public final class AssistantEntitySql {
     private static String predicate(Map<String,Object> context,String type,String match,List<Object> parameters) {
         if("ID".equals(match)) {parameters.add(context.get("entityId"));return "e.id=?";}
         List<String> terms=new ArrayList<>();Object keyword=context.get("entityKeyword");
-        if("CODE".equals(match) && flag(context,"searchCode")) {
+        if("CODE".equals(match) && !"PRODUCT".equals(type) && flag(context,"searchCode")) {
             add(terms,parameters,"UPPER(COALESCE(e."+("WAREHOUSE".equals(type)?"warehouse_code":"code")+",''))=UPPER(?)",keyword);
-        } else if("FACTORY_CODE".equals(match) && "PRODUCT".equals(type) && flag(context,"searchFactoryCode")) {
-            add(terms,parameters,"UPPER(COALESCE(e.factory_code,''))=UPPER(?)",keyword);
-        } else if("BAR_CODE".equals(match) && "PRODUCT".equals(type) && flag(context,"searchBarCode")) {
-            add(terms,parameters,"UPPER(COALESCE(e.bar_code,''))=UPPER(?)",keyword);
         } else if("OLD_CODE".equals(match) && "SUPPLIER".equals(type) && flag(context,"searchOldCode")) {
             add(terms,parameters,"UPPER(COALESCE(e.old_code,''))=UPPER(?)",keyword);
         } else if("EXACT_NAME".equals(match)) {
             add(terms,parameters,userType(type)?"e.nickname=?":"e.name=?",keyword);
             if(flag(context,"searchShortName")) add(terms,parameters,"e.short_name=?",keyword);
+        } else if("BRAND".equals(match) && "PRODUCT".equals(type)) {
+            add(terms,parameters,"UPPER(COALESCE(e.name,'')) LIKE CONCAT('%',UPPER(?),'%')",keyword);
         } else if("TOKEN_FUZZY".equals(match) && "PRODUCT".equals(type)) {
             return productTokenPredicate(context,parameters);
-        } else if("PINYIN".equals(match) && flag(context,"searchPinyin")) {
+        } else if("PINYIN".equals(match) && !"PRODUCT".equals(type) && flag(context,"searchPinyin")) {
             add(terms,parameters,"UPPER(COALESCE(e.pinyin_code,'')) LIKE CONCAT('%',UPPER(?),'%')",keyword);
         } else if("FUZZY".equals(match)) {
             add(terms,parameters,userType(type)?"e.nickname LIKE CONCAT('%',?,'%')":"e.name LIKE CONCAT('%',?,'%')",keyword);
+            if("PRODUCT".equals(type)) {
+                String productKeyword=String.valueOf(keyword);
+                String compactKeyword=AssistantSemanticKnowledge.compactProductUnitSpacing(productKeyword);
+                ErpKeywordQuery.KeywordSearch parsed=ErpKeywordQuery.parseKeywordSearch(compactKeyword);
+                if(!ErpKeywordQuery.shouldAppendTokenProductItemCondition(parsed)) {
+                    Set<String> patterns=new LinkedHashSet<>();
+                    for(String variant:AssistantSemanticKnowledge.productUnitVariants(compactKeyword)) {
+                        if(!variant.equals(productKeyword.trim())) patterns.add("%"+variant+"%");
+                        String ordered=AssistantSemanticKnowledge.productUnitAwareOrderedPattern(compactKeyword,variant);
+                        if(ordered!=null && !ordered.equals(variant)) patterns.add("%"+ordered+"%");
+                    }
+                    for(String pattern:patterns)
+                        terms.add(likeAny(productNameColumn(),pattern,parameters));
+                }
+            }
             if(flag(context,"searchShortName")) add(terms,parameters,"e.short_name LIKE CONCAT('%',?,'%')",keyword);
-            if(flag(context,"searchPinyin")) add(terms,parameters,"e.pinyin_code LIKE CONCAT(?,'%')",keyword);
-            if(flag(context,"searchWubi")) add(terms,parameters,"e.wubi_code LIKE CONCAT(?,'%')",keyword);
+            if(!"PRODUCT".equals(type) && flag(context,"searchPinyin"))
+                add(terms,parameters,"e.pinyin_code LIKE CONCAT(?,'%')",keyword);
+            if(!"PRODUCT".equals(type) && flag(context,"searchWubi"))
+                add(terms,parameters,"e.wubi_code LIKE CONCAT(?,'%')",keyword);
         }
         return terms.isEmpty()?"1=0":String.join(" OR ",terms);
     }
 
-    private static String order(Map<String,Object> context,String match,String name,List<Object> parameters) {
-        if (!"PINYIN".equals(match) || !flag(context,"searchPinyin")) return "ORDER BY e.id";
+    private static String order(Map<String,Object> context,String type,String match,String name,List<Object> parameters) {
+        if ("PRODUCT".equals(type) || !"PINYIN".equals(match) || !flag(context,"searchPinyin"))
+            return "ORDER BY e.id";
         Object keyword=context.get("entityKeyword");
         parameters.add(keyword);parameters.add(keyword);parameters.add(keyword);
         return "ORDER BY CASE WHEN UPPER(COALESCE(e.pinyin_code,''))=UPPER(?) THEN 0 "
@@ -90,45 +103,57 @@ public final class AssistantEntitySql {
                 +"LOCATE(UPPER(?),UPPER(COALESCE(e.pinyin_code,''))),CHAR_LENGTH("+name+"),e.id";
     }
 
-    /** Mirrors the product page's ordered-wildcard OR token-AND search using only visible fields. */
+    /** Product name-only search that keeps both character order and cross-token order. */
     private static String productTokenPredicate(Map<String,Object> context,List<Object> parameters) {
-        String keyword=String.valueOf(context.get("entityKeyword"));
+        String rawKeyword=String.valueOf(context.get("entityKeyword"));
+        String keyword=AssistantSemanticKnowledge.compactProductUnitSpacing(rawKeyword);
         ErpKeywordQuery.KeywordSearch parsed=ErpKeywordQuery.parseKeywordSearch(keyword);
-        if(!ErpKeywordQuery.shouldAppendTokenProductItemCondition(parsed)) return "1=0";
-        List<String> columns=productKeywordColumns(context);
-        if(columns.isEmpty()) return "1=0";
-        List<String> alternatives=new ArrayList<>();
-        if(parsed.spaceDelimited()) {
-            String ordered="%"+keyword.trim().replaceAll("\\s+","%")+"%";
-            alternatives.add(likeAny(columns,ordered,parameters));
+        if(!ErpKeywordQuery.shouldAppendTokenProductItemCondition(parsed)) {
+            if(keyword.equals(rawKeyword.trim()) || keyword.isEmpty()) return "1=0";
         }
-        List<String> tokenGroups=new ArrayList<>();
-        for(String token:parsed.tokens()) tokenGroups.add("("+likeAny(columns,"%"+token+"%",parameters)+")");
-        if(!tokenGroups.isEmpty()) alternatives.add("("+String.join(" AND ",tokenGroups)+")");
+        List<String> columns=productNameColumn();
+        if(columns.isEmpty()) return "1=0";
+        Set<String> orderedPatterns=new LinkedHashSet<>();
+        List<String> sourceTokens=productKeywordTokens(keyword);
+        for(String variant:AssistantSemanticKnowledge.productUnitVariants(keyword)) {
+            List<String> tokens=productKeywordTokens(variant);
+            if(tokens.isEmpty()) continue;
+            String compact=String.join("",tokens);
+            orderedPatterns.add("%"+String.join("%",tokens)+"%");
+            String ordered=orderedProductTokenPattern(sourceTokens,tokens);
+            if(ordered!=null && !ordered.equals(compact)) orderedPatterns.add("%"+ordered+"%");
+        }
+        List<String> alternatives=new ArrayList<>();
+        for(String pattern:orderedPatterns) alternatives.add(likeAny(columns,pattern,parameters));
         return alternatives.isEmpty()?"1=0":"("+String.join(" OR ",alternatives)+")";
     }
 
-    private static List<String> productKeywordColumns(Map<String,Object> context) {
-        List<String> columns=new ArrayList<>();columns.add("e.name");
-        addColumn(columns,context,"searchCode","e.code");
-        addColumn(columns,context,"searchPinyin","e.pinyin_code");
-        addColumn(columns,context,"searchWubi","e.wubi_code");
-        addColumn(columns,context,"searchBarCode","e.bar_code");
-        addColumn(columns,context,"searchVehicleModel","e.vehicle_model");
-        addColumn(columns,context,"searchFactoryCode","e.factory_code");
-        addColumn(columns,context,"searchStandard","e.standard");
-        addColumn(columns,context,"searchRemark","e.remark");
-        addColumn(columns,context,"searchBrand","e.brand");
-        addColumn(columns,context,"searchOeNumber","e.oe_number");
-        addColumn(columns,context,"searchOriginPlace","e.origin_place");
-        addColumn(columns,context,"searchFeatureCode","e.feature_code");
-        addColumn(columns,context,"searchDrawingNo","e.drawing_no");
-        addColumn(columns,context,"searchShelf","e.shelf");
-        return columns;
+    private static String orderedProductTokenPattern(List<String> sourceTokens,List<String> candidateTokens) {
+        if(sourceTokens.size()!=candidateTokens.size())
+            return orderedCharacterPattern(String.join("",candidateTokens));
+        List<String> orderedTokens=new ArrayList<>();
+        for(int i=0;i<candidateTokens.size();i++) {
+            String ordered=AssistantSemanticKnowledge.productUnitAwareOrderedPattern(
+                    sourceTokens.get(i),candidateTokens.get(i));
+            if(ordered!=null && !ordered.isEmpty()) orderedTokens.add(ordered);
+        }
+        return String.join("%",orderedTokens);
     }
 
-    private static void addColumn(List<String> columns,Map<String,Object> context,String flag,String column) {
-        if(flag(context,flag)) columns.add(column);
+    private static List<String> productKeywordTokens(String keyword) {
+        ErpKeywordQuery.KeywordSearch parsed=ErpKeywordQuery.parseKeywordSearch(keyword);
+        if(ErpKeywordQuery.shouldAppendTokenProductItemCondition(parsed)) return parsed.tokens();
+        String value=keyword==null?"":keyword.trim();
+        return value.isEmpty()?Collections.emptyList():Collections.singletonList(value);
+    }
+
+    private static List<String> productNameColumn() {
+        return Collections.singletonList("e.name");
+    }
+
+    /** Every product-name term keeps the shared ordered-character compatibility, including 530 -> 5%3%0. */
+    private static String orderedCharacterPattern(String value) {
+        return value==null?null:ErpKeywordQuery.orderedCharactersPattern(value);
     }
 
     private static String likeAny(List<String> columns,String value,List<Object> parameters) {

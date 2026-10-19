@@ -1,0 +1,67 @@
+{
+  "id": null,
+  "name": "调拨出库单-无价",
+  "module": "stock_transfer_out",
+  "version": 2,
+  "columns": ["A", "B", "C", "D", "E", "F", "G", "H", "I"],
+  "columnWidths": {
+    "A": "45px", "B": "118px", "C": "227px", "D": "109px", "E": "82px",
+    "F": "91px", "G": "73px", "H": "73px", "I": "90px"
+  },
+  "rowHeights": {
+    "1": "42px", "2": "25px", "3": "25px", "4": "30px", "5": "36px", "6": "28px"
+  },
+  "rowCount": 6,
+  "paper": {
+    "size": "continuous_half",
+    "width": 241,
+    "height": 140,
+    "orientation": "portrait",
+    "margins": {"top": 0, "right": 0, "bottom": 0, "left": 0}
+  },
+  "detailTable": {
+    "id": "detail-table",
+    "dataSource": "items",
+    "startColumn": "A",
+    "endColumn": "I",
+    "headerRows": {"start": 1, "end": 4},
+    "bodyRows": {"start": 5, "end": 5},
+    "footerRows": {"start": 6, "end": 6},
+    "repeatHeader": true
+  },
+  "selectedCell": "A1",
+  "updatedAt": "2026-10-16T00:00:00+08:00",
+  "cells": [
+    {"cell":"A1","code":"","html":"四川路通源汽车服务有限公司调拨（出仓单）","classes":["bold"],"colspan":8,"rowspan":1,"fontSize":"24pt","fontFamily":"simhei","textAlign":"center","placeholderCodes":{}},
+    {"cell":"I1","code":"print.pageText","html":"<span class=\"token\">${页码}</span>","classes":[],"colspan":1,"rowspan":1,"fontSize":"10.5pt","fontFamily":"simhei","textAlign":"right","placeholderCodes":{"页码":"print.pageText"}},
+    {"cell":"A2","code":"toDept.name","html":"<strong>调入部门：</strong><span class=\"token\">${调入部门}</span>","classes":[],"colspan":9,"rowspan":1,"fontSize":"10.5pt","fontFamily":"simhei","textAlign":"left","placeholderCodes":{"调入部门":"toDept.name"}},
+    {"cell":"A3","code":"document.no","html":"<strong>调拨出库单号：</strong><span class=\"token\">${调拨出库单号}</span>","classes":[],"colspan":5,"rowspan":1,"fontSize":"10.5pt","fontFamily":"simhei","textAlign":"left","placeholderCodes":{"调拨出库单号":"document.no"}},
+    {"cell":"F3","code":"document.moveDateTime","html":"<strong>日期：</strong><span class=\"token\">${日期}</span>","classes":[],"colspan":4,"rowspan":1,"fontSize":"10.5pt","fontFamily":"simhei","textAlign":"right","placeholderCodes":{"日期":"document.moveDateTime"}},
+
+    {"cell":"A4","code":"","html":"ID","classes":["bold","table-border"],"colspan":1,"rowspan":1,"fontSize":"10.5pt","fontFamily":"simhei","textAlign":"center","placeholderCodes":{}},
+    {"cell":"B4","code":"","html":"零件编码","classes":["bold","table-border"],"colspan":1,"rowspan":1,"fontSize":"10.5pt","fontFamily":"simhei","textAlign":"center","placeholderCodes":{}},
+    {"cell":"C4","code":"","html":"零件名称","classes":["bold","table-border"],"colspan":1,"rowspan":1,"fontSize":"10.5pt","fontFamily":"simhei","textAlign":"center","placeholderCodes":{}},
+    {"cell":"D4","code":"","html":"适用车型","classes":["bold","table-border"],"colspan":1,"rowspan":1,"fontSize":"10.5pt","fontFamily":"simhei","textAlign":"center","placeholderCodes":{}},
+    {"cell":"E4","code":"","html":"产地","classes":["bold","table-border"],"colspan":1,"rowspan":1,"fontSize":"10.5pt","fontFamily":"simhei","textAlign":"center","placeholderCodes":{}},
+    {"cell":"F4","code":"","html":"仓库","classes":["bold","table-border"],"colspan":1,"rowspan":1,"fontSize":"10.5pt","fontFamily":"simhei","textAlign":"center","placeholderCodes":{}},
+    {"cell":"G4","code":"","html":"仓位","classes":["bold","table-border"],"colspan":1,"rowspan":1,"fontSize":"10.5pt","fontFamily":"simhei","textAlign":"center","placeholderCodes":{}},
+    {"cell":"H4","code":"","html":"件数","classes":["bold","table-border"],"colspan":1,"rowspan":1,"fontSize":"10.5pt","fontFamily":"simhei","textAlign":"center","placeholderCodes":{}},
+    {"cell":"I4","code":"","html":"数量","classes":["bold","table-border"],"colspan":1,"rowspan":1,"fontSize":"10.5pt","fontFamily":"simhei","textAlign":"center","placeholderCodes":{}},
+
+    {"cell":"A5","code":"items.seq","html":"<span class=\"token\">${ID}</span>","classes":["table-border"],"colspan":1,"rowspan":1,"fontSize":"10.5pt","fontFamily":"simhei","textAlign":"center","placeholderCodes":{"ID":"items.seq"}},
+    {"cell":"B5","code":"items.productCode","html":"<span class=\"token\">${零件编码}</span>","classes":["table-border"],"colspan":1,"rowspan":1,"fontSize":"10.5pt","fontFamily":"simhei","textAlign":"center","placeholderCodes":{"零件编码":"items.productCode"}},
+    {"cell":"C5","code":"items.productName","html":"<span class=\"token\">${零件名称}</span>","classes":["table-border"],"colspan":1,"rowspan":1,"fontSize":"10.5pt","fontFamily":"simhei","textAlign":"left","placeholderCodes":{"零件名称":"items.productName"}},
+    {"cell":"D5","code":"items.vehicleModel","html":"<span class=\"token\">${适用车型}</span>","classes":["table-border"],"colspan":1,"rowspan":1,"fontSize":"10.5pt","fontFamily":"simhei","textAlign":"center","placeholderCodes":{"适用车型":"items.vehicleModel"}},
+    {"cell":"E5","code":"items.originPlace","html":"<span class=\"token\">${产地}</span>","classes":["table-border"],"colspan":1,"rowspan":1,"fontSize":"10.5pt","fontFamily":"simhei","textAlign":"center","placeholderCodes":{"产地":"items.originPlace"}},
+    {"cell":"F5","code":"items.fromWarehouseName","html":"<span class=\"token\">${仓库}</span>","classes":["table-border"],"colspan":1,"rowspan":1,"fontSize":"10.5pt","fontFamily":"simhei","textAlign":"center","placeholderCodes":{"仓库":"items.fromWarehouseName"}},
+    {"cell":"G5","code":"items.fromShelf","html":"<span class=\"token\">${仓位}</span>","classes":["table-border"],"colspan":1,"rowspan":1,"fontSize":"10.5pt","fontFamily":"simhei","textAlign":"center","placeholderCodes":{"仓位":"items.fromShelf"}},
+    {"cell":"H5","code":"items.pieceCount","html":"<span class=\"token\">${件数}</span>","classes":["table-border"],"colspan":1,"rowspan":1,"fontSize":"10.5pt","fontFamily":"simhei","textAlign":"right","placeholderCodes":{"件数":"items.pieceCount"}},
+    {"cell":"I5","code":"items.count","html":"<span class=\"token\">${数量}</span>","classes":["table-border"],"colspan":1,"rowspan":1,"fontSize":"10.5pt","fontFamily":"simhei","textAlign":"right","placeholderCodes":{"数量":"items.count"}},
+
+    {"cell":"A6","code":"","html":"<strong>捡货人：</strong>____________","classes":[],"colspan":2,"rowspan":1,"fontSize":"10.5pt","fontFamily":"simhei","textAlign":"left","placeholderCodes":{}},
+    {"cell":"C6","code":"","html":"<strong>司机：</strong>____________","classes":[],"colspan":2,"rowspan":1,"fontSize":"10.5pt","fontFamily":"simhei","textAlign":"left","placeholderCodes":{}},
+    {"cell":"E6","code":"document.totalPieceCount","html":"<strong>调出件数：</strong><span class=\"token\">${调出件数}</span>","classes":[],"colspan":2,"rowspan":1,"fontSize":"10.5pt","fontFamily":"simhei","textAlign":"right","placeholderCodes":{"调出件数":"document.totalPieceCount"}},
+    {"cell":"G6","code":"document.totalCount","html":"<strong>调出数量：</strong><span class=\"token\">${调出数量}</span>","classes":[],"colspan":1,"rowspan":1,"fontSize":"10.5pt","fontFamily":"simhei","textAlign":"right","placeholderCodes":{"调出数量":"document.totalCount"}},
+    {"cell":"H6","code":"document.totalPriceFormatted","html":"<strong>合计金额：</strong><span class=\"token\">${合计金额}</span>","classes":[],"colspan":2,"rowspan":1,"fontSize":"10.5pt","fontFamily":"simhei","textAlign":"right","placeholderCodes":{"合计金额":"document.totalPriceFormatted"}}
+  ]
+}

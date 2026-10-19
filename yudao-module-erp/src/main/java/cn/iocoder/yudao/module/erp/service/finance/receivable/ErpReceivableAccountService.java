@@ -2,6 +2,7 @@ package cn.iocoder.yudao.module.erp.service.finance.receivable;
 
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.receivable.vo.account.ErpReceivableAccountPageReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.finance.receivable.vo.account.ErpReceivableAccountSummaryRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.receivable.vo.account.ErpReceivableDetailReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.receivable.vo.account.ErpReceivableDetailRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.receivable.vo.account.ErpReceivableDrilldownReqVO;
@@ -16,7 +17,12 @@ public interface ErpReceivableAccountService {
 
     PageResult<ErpReceivableAccountDO> getReceivableAccountPage(ErpReceivableAccountPageReqVO reqVO);
 
+    ErpReceivableAccountSummaryRespVO getReceivableAccountSummary(ErpReceivableAccountPageReqVO reqVO);
+
     List<ErpReceivableAccountDO> getReceivableAccountList(ErpReceivableAccountPageReqVO reqVO);
+
+    List<ErpReceivableAccountDO> getReceivableAccountList(ErpReceivableAccountPageReqVO reqVO,
+                                                           ErpFinanceVisibleScope scope);
 
     List<ErpReceivableDetailRespVO> getReceivableDetailList(ErpReceivableDetailReqVO reqVO);
 

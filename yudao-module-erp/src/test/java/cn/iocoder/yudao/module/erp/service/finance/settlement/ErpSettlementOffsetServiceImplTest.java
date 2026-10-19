@@ -6,12 +6,16 @@ import cn.iocoder.yudao.framework.security.core.util.SecurityFrameworkUtils;
 import cn.iocoder.yudao.framework.test.core.ut.BaseMockitoUnitTest;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.payable.vo.account.ErpPayableDetailReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.payable.vo.account.ErpPayableDetailRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.finance.payable.vo.account.ErpPayableAccountPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.receivable.vo.account.ErpReceivableDetailReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.receivable.vo.account.ErpReceivableDetailRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.finance.receivable.vo.account.ErpReceivableAccountPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.settlement.vo.ErpSettlementOffsetDetailReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.settlement.vo.ErpSettlementOffsetDetailRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.settlement.vo.ErpSettlementOffsetPageReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.settlement.ErpSettlementOffsetDO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.finance.payable.ErpPayableAccountDO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.finance.receivable.ErpReceivableAccountDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpSupplierDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpCustomerDO;
 import cn.iocoder.yudao.module.erp.dal.mysql.finance.settlement.ErpSettlementOffsetMapper;
@@ -103,19 +107,12 @@ class ErpSettlementOffsetServiceImplTest extends BaseMockitoUnitTest {
                 .thenReturn(Collections.singletonList(ErpCustomerDO.builder().id(3L).build()));
         when(supplierService.getSupplierList(eq(Collections.singleton(13L))))
                 .thenReturn(Collections.singletonList(ErpSupplierDO.builder().id(13L).build()));
-        ErpReceivableDetailRespVO receivable = new ErpReceivableDetailRespVO();
-        receivable.setIncreaseAmount(new BigDecimal("100"));
-        receivable.setOtherReceivableAmount(new BigDecimal("15"));
-        receivable.setReceiptAmount(new BigDecimal("20"));
-        receivable.setWriteOffAmount(new BigDecimal("10"));
-        when(receivableAccountService.getReceivableDetailList(any(ErpReceivableDetailReqVO.class),
-                any(ErpFinanceVisibleScope.class))).thenReturn(Collections.singletonList(receivable));
-        ErpPayableDetailRespVO payable = new ErpPayableDetailRespVO();
-        payable.setIncreaseAmount(new BigDecimal("50"));
-        payable.setPaymentAmount(new BigDecimal("5"));
-        payable.setWriteOffAmount(new BigDecimal("5"));
-        when(payableAccountService.getPayableDetailList(any(ErpPayableDetailReqVO.class),
-                any(ErpFinanceVisibleScope.class))).thenReturn(Collections.singletonList(payable));
+        when(receivableAccountService.getReceivableAccountList(any(ErpReceivableAccountPageReqVO.class),
+                any(ErpFinanceVisibleScope.class)))
+                .thenReturn(Collections.singletonList(createReceivableAccount(3L, "95")));
+        when(payableAccountService.getPayableAccountList(any(ErpPayableAccountPageReqVO.class),
+                any(ErpFinanceVisibleScope.class)))
+                .thenReturn(Collections.singletonList(createPayableAccount(13L, "45")));
 
         PageResult<ErpSettlementOffsetDO> result = invokeAsBranchUser(reqVO);
 
@@ -125,9 +122,9 @@ class ErpSettlementOffsetServiceImplTest extends BaseMockitoUnitTest {
         assertThat(candidate.getPayableBalance()).isEqualByComparingTo("45");
         assertThat(candidate.getOffsetBalance()).isEqualByComparingTo("50");
         assertThat(reqVO.getShowZeroBalance()).isFalse();
-        verify(receivableAccountService).getReceivableDetailList(any(ErpReceivableDetailReqVO.class),
+        verify(receivableAccountService).getReceivableAccountList(any(ErpReceivableAccountPageReqVO.class),
                 any(ErpFinanceVisibleScope.class));
-        verify(payableAccountService).getPayableDetailList(any(ErpPayableDetailReqVO.class),
+        verify(payableAccountService).getPayableAccountList(any(ErpPayableAccountPageReqVO.class),
                 any(ErpFinanceVisibleScope.class));
     }
 
@@ -145,13 +142,12 @@ class ErpSettlementOffsetServiceImplTest extends BaseMockitoUnitTest {
                 ErpCustomerDO.builder().id(4L).build(), ErpCustomerDO.builder().id(5L).build()));
         when(supplierService.getSupplierList(any())).thenReturn(Arrays.asList(
                 ErpSupplierDO.builder().id(14L).build(), ErpSupplierDO.builder().id(15L).build()));
-        ErpReceivableDetailRespVO receivable = createReceivableDetail(1L, "YS-1", "100");
-        when(receivableAccountService.getReceivableDetailList(any(ErpReceivableDetailReqVO.class),
-                any(ErpFinanceVisibleScope.class))).thenReturn(Collections.singletonList(receivable));
-        ErpPayableDetailRespVO payable = createPayableDetail(11L, "YF-1");
-        payable.setIncreaseAmount(BigDecimal.TEN);
-        when(payableAccountService.getPayableDetailList(any(ErpPayableDetailReqVO.class),
-                any(ErpFinanceVisibleScope.class))).thenReturn(Collections.singletonList(payable));
+        when(receivableAccountService.getReceivableAccountList(any(ErpReceivableAccountPageReqVO.class),
+                any(ErpFinanceVisibleScope.class))).thenReturn(Arrays.asList(
+                createReceivableAccount(4L, "100"), createReceivableAccount(5L, "100")));
+        when(payableAccountService.getPayableAccountList(any(ErpPayableAccountPageReqVO.class),
+                any(ErpFinanceVisibleScope.class))).thenReturn(Arrays.asList(
+                createPayableAccount(14L, "10"), createPayableAccount(15L, "10")));
 
         PageResult<ErpSettlementOffsetDO> result = invokeAsBranchUser(reqVO);
 
@@ -307,6 +303,20 @@ class ErpSettlementOffsetServiceImplTest extends BaseMockitoUnitTest {
         detail.setDocNo(docNo);
         detail.setIncreaseAmount(increaseAmount == null ? null : new BigDecimal(increaseAmount));
         return detail;
+    }
+
+    private ErpReceivableAccountDO createReceivableAccount(Long customerId, String balance) {
+        ErpReceivableAccountDO account = new ErpReceivableAccountDO();
+        account.setCustomerId(customerId);
+        account.setReceivableBalance(new BigDecimal(balance));
+        return account;
+    }
+
+    private ErpPayableAccountDO createPayableAccount(Long supplierId, String balance) {
+        ErpPayableAccountDO account = new ErpPayableAccountDO();
+        account.setSupplierId(supplierId);
+        account.setBalance(new BigDecimal(balance));
+        return account;
     }
 
     private ErpPayableDetailRespVO createPayableDetail(Long bizId, String docNo) {

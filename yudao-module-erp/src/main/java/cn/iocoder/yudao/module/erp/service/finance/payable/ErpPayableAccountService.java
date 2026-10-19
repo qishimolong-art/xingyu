@@ -2,6 +2,7 @@ package cn.iocoder.yudao.module.erp.service.finance.payable;
 
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.payable.vo.account.ErpPayableAccountPageReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.finance.payable.vo.account.ErpPayableAccountSummaryRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.payable.vo.account.ErpPayableDetailReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.payable.vo.account.ErpPayableDetailRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.payable.vo.account.ErpPayableDrilldownReqVO;
@@ -16,7 +17,12 @@ public interface ErpPayableAccountService {
 
     PageResult<ErpPayableAccountDO> getPayableAccountPage(ErpPayableAccountPageReqVO reqVO);
 
+    ErpPayableAccountSummaryRespVO getPayableAccountSummary(ErpPayableAccountPageReqVO reqVO);
+
     List<ErpPayableAccountDO> getPayableAccountList(ErpPayableAccountPageReqVO reqVO);
+
+    List<ErpPayableAccountDO> getPayableAccountList(ErpPayableAccountPageReqVO reqVO,
+                                                     ErpFinanceVisibleScope scope);
 
     List<ErpPayableDetailRespVO> getPayableDetailList(ErpPayableDetailReqVO reqVO);
 

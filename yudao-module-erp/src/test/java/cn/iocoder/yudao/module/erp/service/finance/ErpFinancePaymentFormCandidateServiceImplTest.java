@@ -1,9 +1,16 @@
 package cn.iocoder.yudao.module.erp.service.finance;
 
+import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.mybatis.core.query.LambdaQueryWrapperX;
 import cn.iocoder.yudao.framework.test.core.ut.BaseMockitoUnitTest;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.payment.ErpFinancePaymentFormCandidateReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.payment.ErpFinancePaymentFormCandidatePageReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.payment.ErpFinancePaymentFormCandidatePageRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.payment.ErpFinancePaymentFormCandidateRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.finance.payable.vo.misc.ErpPayableMiscPageReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.in.ErpPurchaseInPageReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.priceadjust.ErpPurchasePriceAdjustPageReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.returns.ErpPurchaseReturnPageReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.payable.ErpPayableMiscDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseInDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchasePriceAdjustDO;
@@ -12,11 +19,11 @@ import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpSupplierDO;
 import cn.iocoder.yudao.module.erp.dal.mysql.finance.ErpFinancePaymentItemMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.finance.payable.ErpPayableMiscMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.purchase.ErpPurchaseInMapper;
+import cn.iocoder.yudao.module.erp.dal.mysql.purchase.ErpPurchaseInItemMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.purchase.ErpPurchasePriceAdjustMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.purchase.ErpPurchaseReturnMapper;
 import cn.iocoder.yudao.module.erp.enums.ErpAuditStatus;
 import cn.iocoder.yudao.module.erp.enums.common.ErpBizTypeEnum;
-import cn.iocoder.yudao.module.erp.service.purchase.ErpPurchaseInService;
 import cn.iocoder.yudao.module.erp.service.purchase.ErpSupplierService;
 import cn.iocoder.yudao.module.system.api.dept.DeptApi;
 import cn.iocoder.yudao.module.system.api.dept.dto.DeptRespDTO;
@@ -34,7 +41,9 @@ import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
@@ -48,13 +57,13 @@ class ErpFinancePaymentFormCandidateServiceImplTest extends BaseMockitoUnitTest 
     @Mock
     private ErpPurchaseInMapper purchaseInMapper;
     @Mock
+    private ErpPurchaseInItemMapper purchaseInItemMapper;
+    @Mock
     private ErpPurchaseReturnMapper purchaseReturnMapper;
     @Mock
     private ErpPurchasePriceAdjustMapper purchasePriceAdjustMapper;
     @Mock
     private ErpPayableMiscMapper payableMiscMapper;
-    @Mock
-    private ErpPurchaseInService purchaseInService;
     @Mock
     private ErpSupplierService supplierService;
     @Mock
@@ -70,7 +79,7 @@ class ErpFinancePaymentFormCandidateServiceImplTest extends BaseMockitoUnitTest 
         when(purchaseInMapper.selectList(any(LambdaQueryWrapperX.class))).thenReturn(Arrays.asList(
                 purchaseIn(100L, "CGRK-100", createMiddle, new BigDecimal("300")),
                 purchaseIn(101L, "CGRK-101", createLate, new BigDecimal("50"))));
-        when(purchaseInService.getPurchaseInItemListByInIds(any())).thenReturn(Collections.emptyList());
+        when(purchaseInItemMapper.selectOriginalSettlementProductPriceMap(any())).thenReturn(Collections.emptyMap());
         when(purchaseReturnMapper.selectList(any(LambdaQueryWrapperX.class))).thenReturn(Collections.singletonList(
                 purchaseReturn(200L, "CGTH-200", createEarly, new BigDecimal("80"))));
         when(purchasePriceAdjustMapper.selectList(any(LambdaQueryWrapperX.class))).thenReturn(Collections.singletonList(
@@ -78,6 +87,16 @@ class ErpFinancePaymentFormCandidateServiceImplTest extends BaseMockitoUnitTest 
         when(payableMiscMapper.selectList(any(LambdaQueryWrapperX.class))).thenReturn(Arrays.asList(
                 payableMisc(400L, "CGQT-400", createLate, new BigDecimal("60")),
                 payableMisc(401L, "CGQT-401", createLate, new BigDecimal("20"))));
+        when(purchaseInMapper.selectPage(any(ErpPurchaseInPageReqVO.class))).thenReturn(new PageResult<>(
+                Collections.singletonList(purchaseIn(100L, "CGRK-100", createMiddle, new BigDecimal("300"))), 1L));
+        when(purchaseReturnMapper.selectPage(any(ErpPurchaseReturnPageReqVO.class))).thenReturn(new PageResult<>(
+                Collections.singletonList(purchaseReturn(200L, "CGTH-200", createEarly, new BigDecimal("80"))), 1L));
+        when(purchasePriceAdjustMapper.selectPage(any(ErpPurchasePriceAdjustPageReqVO.class))).thenReturn(new PageResult<>(
+                Collections.singletonList(purchasePriceAdjust(300L, "CGTJ-300", createLate,
+                        new BigDecimal("-30"))), 1L));
+        when(payableMiscMapper.selectPage(any(ErpPayableMiscPageReqVO.class))).thenReturn(new PageResult<>(
+                Collections.singletonList(payableMisc(400L, "CGQT-400", createLate,
+                        new BigDecimal("60"))), 1L));
         Map<Long, BigDecimal> inAllocated = new HashMap<>();
         inAllocated.put(100L, new BigDecimal("100"));
         inAllocated.put(101L, new BigDecimal("50"));
@@ -139,6 +158,31 @@ class ErpFinancePaymentFormCandidateServiceImplTest extends BaseMockitoUnitTest 
         assertThat(result).noneMatch(row -> row.getBizId().equals(101L));
         assertThat(result).noneMatch(row -> row.getBizId().equals(401L));
         verifyNoInteractions(fieldPermissionMasker);
+
+        ErpFinancePaymentFormCandidatePageReqVO pageReqVO = new ErpFinancePaymentFormCandidatePageReqVO();
+        pageReqVO.setSupplierId(4L);
+        pageReqVO.setDeptId(7L);
+        pageReqVO.setPageNo(1);
+        pageReqVO.setPageSize(2);
+        pageReqVO.setDocumentTotalPrice(new BigDecimal("250"));
+        ErpFinancePaymentFormCandidatePageReqVO.SelectedItem missingSelected =
+                new ErpFinancePaymentFormCandidatePageReqVO.SelectedItem();
+        missingSelected.setBizType(ErpBizTypeEnum.PURCHASE_IN.getType());
+        missingSelected.setBizId(101L);
+        missingSelected.setAmount(new BigDecimal("10"));
+        pageReqVO.setSelectedItems(Collections.singletonList(missingSelected));
+
+        ErpFinancePaymentFormCandidatePageRespVO page = service.getFormCandidatePage(pageReqVO);
+
+        assertThat(page.getTotal()).isEqualTo(4L);
+        assertThat(page.getList()).hasSize(2);
+        assertThat(page.getUnavailableSelectedItems()).extracting(
+                ErpFinancePaymentFormCandidatePageReqVO.SelectedItem::getBizId).containsExactly(101L);
+        assertThat(page.getList()).allMatch(row -> row.getAvailable() != null);
+        verify(purchaseInMapper).selectPage(argThat(source -> source.getPageNo() == 1
+                && source.getPageSize() == 2 && Boolean.TRUE.equals(source.getPaymentEnable())));
+        verify(purchaseInMapper).selectPage(argThat(source -> source.getPageNo() == 1
+                && source.getPageSize() == 200 && "inTime".equals(source.getOrderField())));
     }
 
     private ErpPurchaseInDO purchaseIn(Long id, String no, LocalDateTime createTime, BigDecimal totalPrice) {

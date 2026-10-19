@@ -105,6 +105,7 @@ public class AssistantOrchestrator {
                 arguments.put("question",question);arguments.put("archiveType",query.getArchiveType().name());
                 arguments.put("statusMode",query.getStatusMode().name());
                 if(query.getProductKeyword()!=null) arguments.put("keyword",query.getProductKeyword());
+                if(query.getProductBrand()!=null) arguments.put("brand",query.getProductBrand());
             } else if("resolve_business_entity".equals(deterministic)) arguments.put("keyword",bareEntityKeyword(question));
             else arguments.put("question",question);
             call.setArguments(arguments);
@@ -189,10 +190,15 @@ public class AssistantOrchestrator {
                     throw new AssistantFailure("MODEL_INVALID","基础档案统计问题或参数无效");
                 // 产品筛选词只信任确定性问题解析，避免模型遗漏或扩大档案统计范围。
                 masterQuery.setProductKeyword(parsedMasterQuery.getProductKeyword());
+                masterQuery.setProductBrand(parsedMasterQuery.getProductBrand());
                 envelope.getArguments().put("archiveType",masterQuery.getArchiveType().name());
                 envelope.getArguments().put("statusMode",masterQuery.getStatusMode().name());
                 if(masterQuery.getProductKeyword()!=null)
                     envelope.getArguments().put("keyword",masterQuery.getProductKeyword());
+                else envelope.getArguments().remove("keyword");
+                if(masterQuery.getProductBrand()!=null)
+                    envelope.getArguments().put("brand",masterQuery.getProductBrand());
+                else envelope.getArguments().remove("brand");
                 envelope.getSemanticResult().put("intentId","MASTER_DATA_STATS");
                 envelope.getSemanticResult().put("capabilityId","MASTER_DATA_STATS");
                 envelope.setRouteType(AssistantExecutionEnvelope.RouteType.BUSINESS_TOOL);
@@ -259,7 +265,8 @@ public class AssistantOrchestrator {
             case "resolve_business_entity":
                 String bareKeyword=stringValue(call.getArguments().get("keyword"));
                 if(bareKeyword==null) bareKeyword=bareEntityKeyword(question);
-                resolveEntityOrClarify(envelope,stringValue(call.getArguments().get("entityType")),bareKeyword,"BARE_DEFAULT");
+                if(primaryResolvedEntity(envelope)==null)
+                    resolveEntityOrClarify(envelope,stringValue(call.getArguments().get("entityType")),bareKeyword,"BARE_DEFAULT");
                 Map<String,Object> resolved=primaryResolvedEntity(envelope);
                 if(resolved!=null && "PRODUCT".equals(resolved.get("entityType"))) {
                     Map<String,Object> productArgument=new LinkedHashMap<>();productArgument.put("product",resolved.get("name"));
@@ -555,11 +562,25 @@ public class AssistantOrchestrator {
     }
 
     private void resolveEntityOrClarify(AssistantExecutionEnvelope envelope,String typeValue,String keyword,String mode,String slot,boolean primary) {
+        resolveEntityOrClarify(envelope,typeValue,keyword,mode,slot,primary,
+                AssistantEntityResolver.ProductMatchScope.KEYWORD);
+    }
+
+    private void resolveEntityOrClarify(AssistantExecutionEnvelope envelope,String typeValue,String keyword,String mode,
+                                        String slot,boolean primary,
+                                        AssistantEntityResolver.ProductMatchScope productMatchScope) {
         if(keyword==null || keyword.trim().isEmpty()) throw new AssistantFailure("CLARIFY","请提供要查找的对象关键词");
         List<Map<String,Object>> matches;
         try {
             if(typeValue==null) matches=entities.resolveAcrossTypes(keyword);
-            else matches=entities.resolveType(AssistantEntityResolver.EntityType.valueOf(typeValue.toUpperCase(Locale.ROOT)),keyword);
+            else {
+                AssistantEntityResolver.EntityType entityType=
+                        AssistantEntityResolver.EntityType.valueOf(typeValue.toUpperCase(Locale.ROOT));
+                matches=entityType==AssistantEntityResolver.EntityType.PRODUCT
+                        && productMatchScope==AssistantEntityResolver.ProductMatchScope.BRAND
+                        ?entities.resolveType(entityType,keyword,productMatchScope)
+                        :entities.resolveType(entityType,keyword);
+            }
         } catch(IllegalArgumentException e) {
             throw new AssistantFailure("MODEL_INVALID","模型返回了不支持的对象类型");
         } catch(AssistantFailure failure) {
@@ -633,7 +654,8 @@ public class AssistantOrchestrator {
             Map<String,Object> primary=resolvedEntityByType(envelope,reference.type.name());
             boolean replacePrimary=envelope.getArguments().get("resolvedEntity")==null
                     || primary!=null && reference.type.name().equals(((Map<?,?>)envelope.getArguments().get("resolvedEntity")).get("entityType"));
-            resolveEntityOrClarify(envelope,reference.type.name(),reference.keyword,"QUERY",reference.type.name(),replacePrimary);
+            resolveEntityOrClarify(envelope,reference.type.name(),reference.keyword,"QUERY",reference.type.name(),
+                    replacePrimary,reference.productMatchScope);
             Map<String,Object> resolved=resolvedEntityByType(envelope,reference.type.name());
             if(resolved!=null) {
                 resolved.put("source","CURRENT");resolved.put("keyword",reference.keyword);
@@ -903,6 +925,7 @@ public class AssistantOrchestrator {
 
     private static String currentIndependentEntityKeyword(String question) {
         if(question==null) return null;
+        if(AssistantSemanticExtractor.explicitProductBrand(question)!=null) return null;
         String text=question.trim().replaceAll("[？?。！!]+$","").replaceAll("\\s+"," ");
         String rolling="(?:最近|过去|近)\\s*[负+-]?[0-9零〇一二两三四五六七八九十百]+\\s*(?:个月|星期|天|填|周|月)";
         String fixed=AssistantRelativePeriod.FIXED_PERIOD_REGEX;

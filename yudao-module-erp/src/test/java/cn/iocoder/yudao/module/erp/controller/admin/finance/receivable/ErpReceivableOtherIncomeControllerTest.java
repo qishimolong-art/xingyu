@@ -27,6 +27,7 @@ import org.springframework.mock.web.MockMultipartFile;
 import java.io.ByteArrayOutputStream;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.Arrays;
 import java.util.Collections;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -105,6 +106,20 @@ class ErpReceivableOtherIncomeControllerTest extends BaseMockitoUnitTest {
         assertEquals(11L, result.getData().getList().get(0).getId());
         assertEquals("利息", result.getData().getList().get(0).getItemName());
         verify(fieldPermissionMasker).clearHiddenItemFields(eq("erp_finance_receivable_other_income"), any());
+    }
+
+    @Test
+    void itemPageForEdit_keepsExcludedItemIdsWhenDelegating() {
+        when(otherIncomeService.getOtherIncomeItemPage(any()))
+                .thenReturn(new PageResult<>(Collections.emptyList(), 0L));
+        ErpReceivableOtherIncomeItemPageReqVO reqVO = new ErpReceivableOtherIncomeItemPageReqVO()
+                .setIncomeId(7L).setExcludedItemIds(Arrays.asList(11L, 12L));
+        reqVO.setPageNo(1);
+        reqVO.setPageSize(10);
+
+        controller.itemPageForEdit(reqVO);
+
+        verify(otherIncomeService).getOtherIncomeItemPage(reqVO);
     }
 
     private MockMultipartFile excelFile(String[] headers, Object[] values) throws Exception {

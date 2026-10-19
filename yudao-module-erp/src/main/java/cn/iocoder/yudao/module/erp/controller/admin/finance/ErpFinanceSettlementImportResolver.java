@@ -45,6 +45,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
 import static cn.iocoder.yudao.module.erp.controller.admin.finance.vo.imports.ErpFinanceImportUtils.parseDateTime;
 import static cn.iocoder.yudao.module.erp.controller.admin.finance.vo.imports.ErpFinanceImportUtils.trimToNull;
@@ -118,11 +119,49 @@ public class ErpFinanceSettlementImportResolver {
         reqVO.setDiscountPrice(zeroIfNull(row.getDiscountPrice()));
         reqVO.setTotalPrice(row.getTotalPrice());
         reqVO.setPaymentPrice(row.getPaymentPrice());
+        reqVO.setPaymentVoucherNo(trimToNull(row.getPaymentVoucherNo()));
         reqVO.setRemark(row.getRemark());
 
+        ErpFinancePaymentSaveReqVO.Item item = buildPaymentItem(row);
+        reqVO.setItems(item == null ? Collections.emptyList() : Collections.singletonList(item));
+        return reqVO;
+    }
+
+    /**
+     * Builds one payment from consecutive Excel rows. The first row carries the payment header; later rows are
+     * detail continuations and may either leave the manual voucher number blank or repeat the same value.
+     */
+    public ErpFinancePaymentSaveReqVO buildPaymentSaveReqVO(List<ErpFinancePaymentImportExcelVO> rows,
+                                                            PaymentImportContext context) {
+        if (rows == null || rows.isEmpty()) {
+            throw new IllegalArgumentException("付款单导入分组不能为空");
+        }
+        ErpFinancePaymentImportExcelVO header = rows.get(0);
+        ErpFinancePaymentSaveReqVO reqVO = buildPaymentSaveReqVO(header, context);
+        List<ErpFinancePaymentSaveReqVO.Item> items = new ArrayList<>(reqVO.getItems());
+        String paymentVoucherNo = trimToNull(header.getPaymentVoucherNo());
+        for (int i = 1; i < rows.size(); i++) {
+            ErpFinancePaymentImportExcelVO row = rows.get(i);
+            String itemPaymentVoucherNo = trimToNull(row.getPaymentVoucherNo());
+            if (itemPaymentVoucherNo != null) {
+                if (paymentVoucherNo != null && !Objects.equals(paymentVoucherNo, itemPaymentVoucherNo)) {
+                    throw new IllegalArgumentException("同一付款单的多行明细凭证号必须保持一致");
+                }
+                paymentVoucherNo = itemPaymentVoucherNo;
+            }
+            ErpFinancePaymentSaveReqVO.Item item = buildPaymentItem(row);
+            if (item != null) {
+                items.add(item);
+            }
+        }
+        reqVO.setPaymentVoucherNo(paymentVoucherNo);
+        reqVO.setItems(items);
+        return reqVO;
+    }
+
+    private ErpFinancePaymentSaveReqVO.Item buildPaymentItem(ErpFinancePaymentImportExcelVO row) {
         if (!hasPaymentBizFields(row)) {
-            reqVO.setItems(Collections.emptyList());
-            return reqVO;
+            return null;
         }
         validatePaymentBizFields(row);
         Integer bizType = resolvePaymentBizType(row.getBizType());
@@ -133,8 +172,7 @@ public class ErpFinanceSettlementImportResolver {
         item.setPaidPrice(zeroIfNull(row.getPaidPrice()));
         item.setPaymentPrice(row.getItemPaymentPrice());
         item.setRemark(row.getItemRemark());
-        reqVO.setItems(Collections.singletonList(item));
-        return reqVO;
+        return item;
     }
 
     public ErpFinanceReceiptSaveReqVO buildReceiptSaveReqVO(ErpFinanceReceiptImportExcelVO row,
@@ -150,11 +188,49 @@ public class ErpFinanceSettlementImportResolver {
         reqVO.setDiscountPrice(zeroIfNull(row.getDiscountPrice()));
         reqVO.setTotalPrice(row.getTotalPrice());
         reqVO.setReceiptPrice(row.getReceiptPrice());
+        reqVO.setPaymentVoucherNo(trimToNull(row.getPaymentVoucherNo()));
         reqVO.setRemark(row.getRemark());
 
+        ErpFinanceReceiptSaveReqVO.Item item = buildReceiptItem(row);
+        reqVO.setItems(item == null ? Collections.emptyList() : Collections.singletonList(item));
+        return reqVO;
+    }
+
+    /**
+     * Builds one receipt from consecutive Excel rows. The first row carries the receipt header; later rows are
+     * detail continuations and may either leave the manual voucher number blank or repeat the same value.
+     */
+    public ErpFinanceReceiptSaveReqVO buildReceiptSaveReqVO(List<ErpFinanceReceiptImportExcelVO> rows,
+                                                            ReceiptImportContext context) {
+        if (rows == null || rows.isEmpty()) {
+            throw new IllegalArgumentException("收款单导入分组不能为空");
+        }
+        ErpFinanceReceiptImportExcelVO header = rows.get(0);
+        ErpFinanceReceiptSaveReqVO reqVO = buildReceiptSaveReqVO(header, context);
+        List<ErpFinanceReceiptSaveReqVO.Item> items = new ArrayList<>(reqVO.getItems());
+        String paymentVoucherNo = trimToNull(header.getPaymentVoucherNo());
+        for (int i = 1; i < rows.size(); i++) {
+            ErpFinanceReceiptImportExcelVO row = rows.get(i);
+            String itemPaymentVoucherNo = trimToNull(row.getPaymentVoucherNo());
+            if (itemPaymentVoucherNo != null) {
+                if (paymentVoucherNo != null && !Objects.equals(paymentVoucherNo, itemPaymentVoucherNo)) {
+                    throw new IllegalArgumentException("同一收款单的多行明细凭证号必须保持一致");
+                }
+                paymentVoucherNo = itemPaymentVoucherNo;
+            }
+            ErpFinanceReceiptSaveReqVO.Item item = buildReceiptItem(row);
+            if (item != null) {
+                items.add(item);
+            }
+        }
+        reqVO.setPaymentVoucherNo(paymentVoucherNo);
+        reqVO.setItems(items);
+        return reqVO;
+    }
+
+    private ErpFinanceReceiptSaveReqVO.Item buildReceiptItem(ErpFinanceReceiptImportExcelVO row) {
         if (!hasReceiptBizFields(row)) {
-            reqVO.setItems(Collections.emptyList());
-            return reqVO;
+            return null;
         }
         validateReceiptBizFields(row);
         Integer bizType = resolveReceiptBizType(row.getBizType());
@@ -165,8 +241,7 @@ public class ErpFinanceSettlementImportResolver {
         item.setReceiptedPrice(zeroIfNull(row.getReceiptedPrice()));
         item.setReceiptPrice(row.getItemReceiptPrice());
         item.setRemark(row.getItemRemark());
-        reqVO.setItems(Collections.singletonList(item));
-        return reqVO;
+        return item;
     }
 
     public ErpReceivableMiscSaveReqVO buildReceivableMiscSaveReqVO(ErpReceivableMiscImportExcelVO row,

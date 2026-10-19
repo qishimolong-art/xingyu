@@ -2,6 +2,7 @@ package cn.iocoder.yudao.module.erp.service.finance;
 
 import cn.hutool.core.collection.CollUtil;
 import cn.hutool.core.util.ObjectUtil;
+import cn.hutool.core.util.StrUtil;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.common.util.collection.MapUtils;
 import cn.iocoder.yudao.framework.mybatis.core.query.LambdaQueryWrapperX;
@@ -11,6 +12,8 @@ import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.ErpFinanceUpdateRemarkReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.payment.ErpFinancePaymentDraftSaveReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.payment.ErpFinancePaymentFormCandidateReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.payment.ErpFinancePaymentFormCandidatePageReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.payment.ErpFinancePaymentFormCandidatePageRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.payment.ErpFinancePaymentFormCandidateRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.payment.ErpFinancePaymentItemPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.payment.ErpFinancePaymentPageReqVO;
@@ -18,18 +21,22 @@ import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.payment.ErpFinanc
 import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.payment.ErpFinancePaymentWriteOffCandidateRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.payment.ErpFinancePaymentWriteOffReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.payment.ErpFinancePaymentWriteOffReverseReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.finance.payable.vo.misc.ErpPayableMiscPageReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.in.ErpPurchaseInPageReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.priceadjust.ErpPurchasePriceAdjustPageReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.returns.ErpPurchaseReturnPageReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.ErpFinancePaymentDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.ErpFinancePaymentItemDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.payable.ErpPayableMiscDO;
 import cn.iocoder.yudao.module.erp.dal.mysql.finance.payable.ErpPayableMiscMapper;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseInDO;
-import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseInItemDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchasePriceAdjustDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseReturnDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpSupplierDO;
 import cn.iocoder.yudao.module.erp.dal.mysql.finance.ErpFinancePaymentItemMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.finance.ErpFinancePaymentMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.purchase.ErpPurchaseInMapper;
+import cn.iocoder.yudao.module.erp.dal.mysql.purchase.ErpPurchaseInItemMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.purchase.ErpPurchasePriceAdjustMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.purchase.ErpPurchaseReturnMapper;
 import cn.iocoder.yudao.module.erp.dal.redis.no.ErpNoRedisDAO;
@@ -40,6 +47,7 @@ import cn.iocoder.yudao.module.erp.enums.finance.ErpFinanceWriteOffStatusEnum;
 import cn.iocoder.yudao.module.erp.service.common.ErpOperateLogService;
 import cn.iocoder.yudao.module.erp.service.common.ErpOriginalSettlementAmountUtils;
 import cn.iocoder.yudao.module.erp.service.finance.payable.ErpPayableOtherService;
+import cn.iocoder.yudao.module.erp.service.finance.receivable.ErpReceivableOtherIncomeService;
 import cn.iocoder.yudao.module.erp.service.purchase.ErpPurchaseInService;
 import cn.iocoder.yudao.module.erp.service.purchase.ErpPurchasePriceAdjustService;
 import cn.iocoder.yudao.module.erp.service.purchase.ErpPurchaseReturnService;
@@ -61,6 +69,7 @@ import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
@@ -84,6 +93,7 @@ import static cn.iocoder.yudao.module.erp.service.common.ErpFinanceAmountUtils.n
 public class ErpFinancePaymentServiceImpl implements ErpFinancePaymentService {
 
     private static final String FIELD_PERMISSION_MODULE = "erp_finance_payment";
+    private static final int FORM_CANDIDATE_PREVIEW_BATCH_SIZE = 200;
 
     @Resource
     private ErpFinancePaymentMapper financePaymentMapper;
@@ -91,6 +101,8 @@ public class ErpFinancePaymentServiceImpl implements ErpFinancePaymentService {
     private ErpFinancePaymentItemMapper financePaymentItemMapper;
     @Resource
     private ErpPurchaseInMapper purchaseInMapper;
+    @Resource
+    private ErpPurchaseInItemMapper purchaseInItemMapper;
     @Resource
     private ErpPurchaseReturnMapper purchaseReturnMapper;
     @Resource
@@ -127,6 +139,8 @@ public class ErpFinancePaymentServiceImpl implements ErpFinancePaymentService {
     private ErpFinanceAutoWriteOffService financeAutoWriteOffService;
     @Resource
     private ErpPayableOtherService payableOtherService;
+    @Resource
+    private ErpReceivableOtherIncomeService receivableOtherIncomeService;
 
     @Override
     @Transactional(rollbackFor = Exception.class, isolation = org.springframework.transaction.annotation.Isolation.READ_COMMITTED)
@@ -156,6 +170,7 @@ public class ErpFinancePaymentServiceImpl implements ErpFinancePaymentService {
         ErpFinancePaymentDO payment = BeanUtils.toBean(createReqVO, ErpFinancePaymentDO.class, in -> in
                 .setNo(no).setStatus(ErpAuditStatus.PROCESS.getStatus()));
         permissionFieldFiller.fillCreateFields(payment);
+        normalizePaymentVoucherNo(payment);
         fillDefaultAmount(payment);
         validateAndFillSourcePayableMisc(payment, true);
         preparePendingItems(payment, paymentItems);
@@ -191,6 +206,7 @@ public class ErpFinancePaymentServiceImpl implements ErpFinancePaymentService {
                 .setDiscountPrice(createReqVO.getDiscountPrice())
                 .setPaymentTime(createReqVO.getPaymentTime() != null
                         ? createReqVO.getPaymentTime() : LocalDateTime.now());
+        normalizePaymentVoucherNo(payment);
         fillDraftAmounts(payment, paymentItems);
         permissionFieldFiller.fillCreateFields(payment);
         validateAndFillSourcePayableMisc(payment, true);
@@ -259,6 +275,7 @@ public class ErpFinancePaymentServiceImpl implements ErpFinancePaymentService {
             updateObj.setDeptId(payment.getDeptId());
         }
         preserveSourcePayableMisc(updateObj, payment);
+        normalizePaymentVoucherNo(updateObj);
         fillDefaultAmount(updateObj);
         validateAndFillSourcePayableMisc(updateObj, true);
         preparePendingItems(updateObj, paymentItems);
@@ -313,6 +330,7 @@ public class ErpFinancePaymentServiceImpl implements ErpFinancePaymentService {
                 .setPaymentTime(updateReqVO.getPaymentTime() != null
                         ? updateReqVO.getPaymentTime() : payment.getPaymentTime());
         preserveSourcePayableMisc(updateObj, payment);
+        normalizePaymentVoucherNo(updateObj);
         fillDraftAmounts(updateObj, paymentItems);
         validateAndFillSourcePayableMisc(updateObj, true);
         if (financePaymentMapper.updateByIdAndStatus(payment.getId(),
@@ -395,6 +413,14 @@ public class ErpFinancePaymentServiceImpl implements ErpFinancePaymentService {
         payment.setTotalPrice(totalPrice).setPaymentPrice(normalize(paymentPrice));
     }
 
+    private void normalizePaymentVoucherNo(ErpFinancePaymentDO payment) {
+        String paymentVoucherNo = StrUtil.emptyToNull(StrUtil.trim(payment.getPaymentVoucherNo()));
+        if (paymentVoucherNo != null && paymentVoucherNo.length() > 64) {
+            throw exception(FINANCE_PAYMENT_PAYMENT_VOUCHER_NO_TOO_LONG);
+        }
+        payment.setPaymentVoucherNo(paymentVoucherNo);
+    }
+
     private void preserveSourcePayableMisc(ErpFinancePaymentDO target, ErpFinancePaymentDO source) {
         target.setSourcePayableMiscId(source.getSourcePayableMiscId())
                 .setSourcePayableMiscNo(source.getSourcePayableMiscNo());
@@ -464,6 +490,7 @@ public class ErpFinancePaymentServiceImpl implements ErpFinancePaymentService {
             updatePurchasePrice(pendingItems);
         }
         payableOtherService.createFromFinancePaymentDiscount(payment);
+        receivableOtherIncomeService.createApprovedFromFinancePaymentDiscount(payment, loginUserId);
         if (payment.getSourcePayableMiscId() == null) {
             financeAutoWriteOffService.autoWriteOffPayment(id, loginUserId);
         }
@@ -749,15 +776,13 @@ public class ErpFinancePaymentServiceImpl implements ErpFinancePaymentService {
             inQuery.eq(ErpPurchaseInDO::getDeptId, payment.getDeptId());
         }
         List<ErpPurchaseInDO> purchaseIns = purchaseInMapper.selectList(inQuery);
-        Map<Long, List<ErpPurchaseInItemDO>> purchaseInItemMap = CollUtil.isEmpty(purchaseIns)
-                ? Collections.emptyMap()
-                : convertMultiMap(purchaseInService.getPurchaseInItemListByInIds(
-                        convertSet(purchaseIns, ErpPurchaseInDO::getId)), ErpPurchaseInItemDO::getInId);
+        Map<Long, BigDecimal> purchaseInOriginalProductPriceMap = purchaseInItemMapper
+                .selectOriginalSettlementProductPriceMap(convertSet(purchaseIns, ErpPurchaseInDO::getId));
         Map<Long, BigDecimal> inAllocated = financePaymentItemMapper.selectPaymentPriceSumMapByBizIdsAndBizType(
                 convertSet(purchaseIns, ErpPurchaseInDO::getId), ErpBizTypeEnum.PURCHASE_IN.getType());
         purchaseIns.forEach(row -> addPaymentCandidate(result, ErpBizTypeEnum.PURCHASE_IN, row.getId(), row.getNo(),
                 row.getInTime(), ErpOriginalSettlementAmountUtils.calculatePurchaseIn(row,
-                        purchaseInItemMap.getOrDefault(row.getId(), Collections.emptyList())),
+                        purchaseInOriginalProductPriceMap.get(row.getId())),
                 inAllocated.getOrDefault(row.getId(), BigDecimal.ZERO)));
 
         LambdaQueryWrapperX<ErpPurchaseReturnDO> returnQuery = new LambdaQueryWrapperX<ErpPurchaseReturnDO>()
@@ -834,16 +859,14 @@ public class ErpFinancePaymentServiceImpl implements ErpFinancePaymentService {
                 .eq(ErpPurchaseInDO::getStatus, ErpAuditStatus.APPROVE.getStatus())
                 .likeIfPresent(ErpPurchaseInDO::getNo, reqVO.getNo());
         List<ErpPurchaseInDO> purchaseIns = purchaseInMapper.selectList(inQuery);
-        Map<Long, List<ErpPurchaseInItemDO>> purchaseInItemMap = CollUtil.isEmpty(purchaseIns)
-                ? Collections.emptyMap()
-                : convertMultiMap(purchaseInService.getPurchaseInItemListByInIds(
-                        convertSet(purchaseIns, ErpPurchaseInDO::getId)), ErpPurchaseInItemDO::getInId);
+        Map<Long, BigDecimal> purchaseInOriginalProductPriceMap = purchaseInItemMapper
+                .selectOriginalSettlementProductPriceMap(convertSet(purchaseIns, ErpPurchaseInDO::getId));
         Map<Long, BigDecimal> inAllocated = financePaymentItemMapper.selectPaymentPriceSumMapByBizIdsAndBizType(
                 convertSet(purchaseIns, ErpPurchaseInDO::getId), ErpBizTypeEnum.PURCHASE_IN.getType());
         purchaseIns.forEach(row -> addPaymentFormCandidate(result, ErpBizTypeEnum.PURCHASE_IN,
                 row.getId(), row.getNo(), row.getInTime(), row.getCreateTime(), row.getSupplierId(), row.getDeptId(),
                 ErpOriginalSettlementAmountUtils.calculatePurchaseIn(row,
-                        purchaseInItemMap.getOrDefault(row.getId(), Collections.emptyList())),
+                        purchaseInOriginalProductPriceMap.get(row.getId())),
                 inAllocated.getOrDefault(row.getId(), BigDecimal.ZERO)));
 
         LambdaQueryWrapperX<ErpPurchaseReturnDO> returnQuery = new LambdaQueryWrapperX<ErpPurchaseReturnDO>()
@@ -900,6 +923,402 @@ public class ErpFinancePaymentServiceImpl implements ErpFinancePaymentService {
         result.stream().filter(row -> ErpBizTypeEnum.PAYABLE_MISC.getType().equals(row.getBizType()))
                 .forEach(row -> row.setAllocatedPrice(miscSettled.getOrDefault(row.getBizId(), BigDecimal.ZERO)));
         return result;
+    }
+
+    @Override
+    public ErpFinancePaymentFormCandidatePageRespVO getFormCandidatePage(
+            ErpFinancePaymentFormCandidatePageReqVO reqVO) {
+        Map<String, ErpFinancePaymentFormCandidatePageReqVO.SelectedItem> selectedMap = new LinkedHashMap<>();
+        if (CollUtil.isNotEmpty(reqVO.getSelectedItems())) {
+            reqVO.getSelectedItems().forEach(item -> selectedMap.put(
+                    buildPaymentCandidateKey(item.getBizType(), item.getBizId()), item));
+        }
+        List<ErpFinancePaymentFormCandidateRespVO> selectedCandidates = loadSelectedPaymentCandidates(reqVO, selectedMap);
+        Map<String, ErpFinancePaymentFormCandidateRespVO> candidateMap = selectedCandidates.stream().collect(Collectors.toMap(
+                row -> buildPaymentCandidateKey(row.getBizType(), row.getBizId()), row -> row,
+                (first, second) -> first));
+        List<ErpFinancePaymentFormCandidatePageReqVO.SelectedItem> unavailableSelectedItems = new ArrayList<>();
+        Set<String> unavailableKeys = new HashSet<>();
+        selectedMap.forEach((key, selected) -> {
+            ErpFinancePaymentFormCandidateRespVO row = candidateMap.get(key);
+            BigDecimal amount = normalize(getZeroIfNull(selected.getAmount()));
+            if (row == null || !isPaymentCandidateAmountAvailable(row.getUnallocatedPrice(), amount)) {
+                unavailableSelectedItems.add(selected);
+                unavailableKeys.add(key);
+            }
+        });
+
+        String orderField = normalizePaymentCandidateOrderField(reqVO.getOrderField());
+        String orderDirection = normalizeCandidateOrderDirection(reqVO.getOrderDirection());
+        int pageNo = Math.max(1, reqVO.getPageNo());
+        int pageSize = Math.max(1, reqVO.getPageSize());
+        int fetchLimit = (int) Math.min(Integer.MAX_VALUE, (long) pageNo * pageSize);
+        PaymentCandidateSlice displaySlice = loadPaymentCandidateSlice(reqVO, reqVO.getNo(), fetchLimit,
+                orderField, orderDirection, true);
+        int fromIndex = Math.min((pageNo - 1) * pageSize, displaySlice.getRows().size());
+        int toIndex = Math.min(fromIndex + pageSize, displaySlice.getRows().size());
+        List<ErpFinancePaymentFormCandidateRespVO> pageRows = new ArrayList<>(
+                displaySlice.getRows().subList(fromIndex, toIndex));
+
+        List<ErpFinancePaymentFormCandidateRespVO> previewRows = Collections.emptyList();
+        BigDecimal autoWriteOffAmount = BigDecimal.ZERO;
+        BigDecimal selectedAmount = normalize(selectedMap.values().stream()
+                .map(ErpFinancePaymentFormCandidatePageReqVO.SelectedItem::getAmount)
+                .map(this::getZeroIfNull)
+                .reduce(BigDecimal.ZERO, BigDecimal::add));
+        BigDecimal documentAmount = normalize(getZeroIfNull(reqVO.getDocumentTotalPrice()));
+        if (isPaymentCandidateAmountAvailable(documentAmount, selectedAmount)) {
+            int previewLimit = FORM_CANDIDATE_PREVIEW_BATCH_SIZE;
+            while (true) {
+                PaymentCandidateSlice previewSlice = loadPaymentCandidateSlice(reqVO, null, previewLimit,
+                        "bizTime", "asc", false);
+                previewRows = previewSlice.getRows();
+                autoWriteOffAmount = calculatePaymentAutoWriteOffPreview(
+                        previewRows, selectedMap, reqVO.getDocumentTotalPrice());
+                BigDecimal remaining = normalize(documentAmount.subtract(selectedAmount).subtract(autoWriteOffAmount));
+                if (remaining.compareTo(BigDecimal.ZERO) == 0 || remaining.signum() != documentAmount.signum()
+                        || previewRows.size() >= previewSlice.getTotal()) {
+                    break;
+                }
+                previewLimit = (int) Math.min(previewSlice.getTotal(), (long) previewLimit * 2);
+            }
+        }
+        Map<String, BigDecimal> previewAmountMap = previewRows.stream()
+                .filter(row -> getZeroIfNull(row.getAutoWriteOffPreviewAmount()).compareTo(BigDecimal.ZERO) != 0)
+                .collect(Collectors.toMap(row -> buildPaymentCandidateKey(row.getBizType(), row.getBizId()),
+                        ErpFinancePaymentFormCandidateRespVO::getAutoWriteOffPreviewAmount,
+                        (first, second) -> first));
+        pageRows.forEach(row -> {
+            String key = buildPaymentCandidateKey(row.getBizType(), row.getBizId());
+            row.setAvailable(!unavailableKeys.contains(key));
+            row.setAutoWriteOffPreviewAmount(previewAmountMap.getOrDefault(key, BigDecimal.ZERO));
+        });
+        int autoWriteOffCount = (int) previewRows.stream()
+                .filter(row -> getZeroIfNull(row.getAutoWriteOffPreviewAmount()).compareTo(BigDecimal.ZERO) != 0)
+                .count();
+        ErpFinancePaymentFormCandidatePageRespVO response = new ErpFinancePaymentFormCandidatePageRespVO();
+        response.setList(pageRows);
+        response.setTotal(displaySlice.getTotal());
+        response.setAutoWriteOffCount(autoWriteOffCount);
+        response.setAutoWriteOffAmount(autoWriteOffAmount);
+        response.setUnavailableSelectedItems(unavailableSelectedItems);
+        return response;
+    }
+
+    private PaymentCandidateSlice loadPaymentCandidateSlice(ErpFinancePaymentFormCandidatePageReqVO reqVO,
+                                                             String no, int fetchLimit,
+                                                             String orderField, String orderDirection,
+                                                             boolean fillNames) {
+        int boundedLimit = Math.max(1, fetchLimit);
+
+        ErpPurchaseInPageReqVO inReqVO = new ErpPurchaseInPageReqVO();
+        fillPaymentSourcePageReq(inReqVO, no, boundedLimit,
+                mapPaymentSourceOrderField(orderField, "inTime"), orderDirection);
+        inReqVO.setSupplierId(reqVO.getSupplierId());
+        inReqVO.setDeptId(reqVO.getDeptId());
+        inReqVO.setStatus(ErpAuditStatus.APPROVE.getStatus());
+        inReqVO.setPaymentEnable(true);
+        PageResult<ErpPurchaseInDO> inPage = purchaseInMapper.selectPage(inReqVO);
+
+        ErpPurchaseReturnPageReqVO returnReqVO = new ErpPurchaseReturnPageReqVO();
+        fillPaymentSourcePageReq(returnReqVO, no, boundedLimit,
+                mapPaymentSourceOrderField(orderField, "returnTime"), orderDirection);
+        returnReqVO.setSupplierId(reqVO.getSupplierId());
+        returnReqVO.setDeptId(reqVO.getDeptId());
+        returnReqVO.setStatus(ErpAuditStatus.APPROVE.getStatus());
+        returnReqVO.setRefundEnable(true);
+        PageResult<ErpPurchaseReturnDO> returnPage = purchaseReturnMapper.selectPage(returnReqVO);
+
+        ErpPurchasePriceAdjustPageReqVO adjustReqVO = new ErpPurchasePriceAdjustPageReqVO();
+        fillPaymentSourcePageReq(adjustReqVO, no, boundedLimit,
+                mapPaymentSourceOrderField(orderField, "adjustTime"), orderDirection);
+        adjustReqVO.setSupplierId(reqVO.getSupplierId());
+        adjustReqVO.setDeptId(reqVO.getDeptId());
+        adjustReqVO.setStatus(ErpAuditStatus.APPROVE.getStatus());
+        adjustReqVO.setPaymentEnable(true);
+        PageResult<ErpPurchasePriceAdjustDO> adjustPage = purchasePriceAdjustMapper.selectPage(adjustReqVO);
+
+        ErpPayableMiscPageReqVO miscReqVO = new ErpPayableMiscPageReqVO();
+        fillPaymentSourcePageReq(miscReqVO, no, boundedLimit,
+                mapPaymentSourceOrderField(orderField, "bizTime"), orderDirection);
+        miscReqVO.setSupplierId(reqVO.getSupplierId());
+        miscReqVO.setDeptId(reqVO.getDeptId());
+        miscReqVO.setStatus(ErpAuditStatus.APPROVE.getStatus());
+        miscReqVO.setPaymentEnable(true);
+        PageResult<ErpPayableMiscDO> miscPage = payableMiscMapper.selectPage(miscReqVO);
+
+        List<ErpFinancePaymentFormCandidateRespVO> rows = buildPaymentCandidateRows(
+                inPage.getList(), returnPage.getList(), adjustPage.getList(), miscPage.getList(), fillNames);
+        rows.sort(buildPaymentCandidateComparator(orderField, orderDirection));
+        if (rows.size() > boundedLimit) {
+            rows = new ArrayList<>(rows.subList(0, boundedLimit));
+        }
+        long total = inPage.getTotal() + returnPage.getTotal() + adjustPage.getTotal() + miscPage.getTotal();
+        return new PaymentCandidateSlice(rows, total);
+    }
+
+    private void fillPaymentSourcePageReq(cn.iocoder.yudao.framework.common.pojo.PageParam pageReqVO,
+                                          String no, int pageSize, String orderField, String orderDirection) {
+        pageReqVO.setPageNo(1);
+        pageReqVO.setPageSize(pageSize);
+        if (pageReqVO instanceof ErpPurchaseInPageReqVO source) {
+            source.setNo(no);
+            source.setOrderField(orderField);
+            source.setOrderDirection(orderDirection);
+        } else if (pageReqVO instanceof ErpPurchaseReturnPageReqVO source) {
+            source.setNo(no);
+            source.setOrderField(orderField);
+            source.setOrderDirection(orderDirection);
+        } else if (pageReqVO instanceof ErpPurchasePriceAdjustPageReqVO source) {
+            source.setNo(no);
+            source.setOrderField(orderField);
+            source.setOrderDirection(orderDirection);
+        } else if (pageReqVO instanceof ErpPayableMiscPageReqVO source) {
+            source.setNo(no);
+            source.setOrderField(orderField);
+            source.setOrderDirection(orderDirection);
+        }
+    }
+
+    private String mapPaymentSourceOrderField(String orderField, String bizTimeField) {
+        if ("bizNo".equals(orderField)) {
+            return "no";
+        }
+        if ("bizTime".equals(orderField)) {
+            return bizTimeField;
+        }
+        return "createTime";
+    }
+
+    private List<ErpFinancePaymentFormCandidateRespVO> loadSelectedPaymentCandidates(
+            ErpFinancePaymentFormCandidatePageReqVO reqVO,
+            Map<String, ErpFinancePaymentFormCandidatePageReqVO.SelectedItem> selectedMap) {
+        if (selectedMap.isEmpty()) {
+            return Collections.emptyList();
+        }
+        Map<Integer, Set<Long>> idsByType = selectedMap.values().stream()
+                .filter(item -> item.getBizType() != null && item.getBizId() != null)
+                .collect(Collectors.groupingBy(ErpFinancePaymentFormCandidatePageReqVO.SelectedItem::getBizType,
+                        Collectors.mapping(ErpFinancePaymentFormCandidatePageReqVO.SelectedItem::getBizId,
+                                Collectors.toSet())));
+        List<ErpPurchaseInDO> purchaseIns = selectPaymentPurchaseIns(
+                reqVO, idsByType.get(ErpBizTypeEnum.PURCHASE_IN.getType()));
+        List<ErpPurchaseReturnDO> purchaseReturns = selectPaymentPurchaseReturns(
+                reqVO, idsByType.get(ErpBizTypeEnum.PURCHASE_RETURN.getType()));
+        List<ErpPurchasePriceAdjustDO> adjusts = selectPaymentPurchaseAdjusts(
+                reqVO, idsByType.get(ErpBizTypeEnum.PURCHASE_PRICE_ADJUST.getType()));
+        List<ErpPayableMiscDO> miscRows = selectPaymentMiscRows(
+                reqVO, idsByType.get(ErpBizTypeEnum.PAYABLE_MISC.getType()));
+        return buildPaymentCandidateRows(purchaseIns, purchaseReturns, adjusts, miscRows, false);
+    }
+
+    private List<ErpPurchaseInDO> selectPaymentPurchaseIns(
+            ErpFinancePaymentFormCandidatePageReqVO reqVO, Set<Long> ids) {
+        if (CollUtil.isEmpty(ids)) {
+            return Collections.emptyList();
+        }
+        return purchaseInMapper.selectList(new LambdaQueryWrapperX<ErpPurchaseInDO>()
+                .in(ErpPurchaseInDO::getId, ids)
+                .eq(ErpPurchaseInDO::getSupplierId, reqVO.getSupplierId())
+                .eqIfPresent(ErpPurchaseInDO::getDeptId, reqVO.getDeptId())
+                .eq(ErpPurchaseInDO::getStatus, ErpAuditStatus.APPROVE.getStatus()));
+    }
+
+    private List<ErpPurchaseReturnDO> selectPaymentPurchaseReturns(
+            ErpFinancePaymentFormCandidatePageReqVO reqVO, Set<Long> ids) {
+        if (CollUtil.isEmpty(ids)) {
+            return Collections.emptyList();
+        }
+        return purchaseReturnMapper.selectList(new LambdaQueryWrapperX<ErpPurchaseReturnDO>()
+                .in(ErpPurchaseReturnDO::getId, ids)
+                .eq(ErpPurchaseReturnDO::getSupplierId, reqVO.getSupplierId())
+                .eqIfPresent(ErpPurchaseReturnDO::getDeptId, reqVO.getDeptId())
+                .eq(ErpPurchaseReturnDO::getStatus, ErpAuditStatus.APPROVE.getStatus()));
+    }
+
+    private List<ErpPurchasePriceAdjustDO> selectPaymentPurchaseAdjusts(
+            ErpFinancePaymentFormCandidatePageReqVO reqVO, Set<Long> ids) {
+        if (CollUtil.isEmpty(ids)) {
+            return Collections.emptyList();
+        }
+        return purchasePriceAdjustMapper.selectList(new LambdaQueryWrapperX<ErpPurchasePriceAdjustDO>()
+                .in(ErpPurchasePriceAdjustDO::getId, ids)
+                .eq(ErpPurchasePriceAdjustDO::getSupplierId, reqVO.getSupplierId())
+                .eqIfPresent(ErpPurchasePriceAdjustDO::getDeptId, reqVO.getDeptId())
+                .eq(ErpPurchasePriceAdjustDO::getStatus, ErpAuditStatus.APPROVE.getStatus()));
+    }
+
+    private List<ErpPayableMiscDO> selectPaymentMiscRows(
+            ErpFinancePaymentFormCandidatePageReqVO reqVO, Set<Long> ids) {
+        if (CollUtil.isEmpty(ids)) {
+            return Collections.emptyList();
+        }
+        LambdaQueryWrapperX<ErpPayableMiscDO> query = new LambdaQueryWrapperX<ErpPayableMiscDO>()
+                .in(ErpPayableMiscDO::getId, ids)
+                .eq(ErpPayableMiscDO::getSupplierId, reqVO.getSupplierId())
+                .eqIfPresent(ErpPayableMiscDO::getDeptId, reqVO.getDeptId())
+                .eq(ErpPayableMiscDO::getStatus, ErpAuditStatus.APPROVE.getStatus());
+        query.and(condition -> condition.isNull(ErpPayableMiscDO::getSourceType)
+                .or().ne(ErpPayableMiscDO::getSourceType,
+                        ErpMiscTransferOffsetConstants.PAYMENT_OFFSET_SOURCE_TYPE));
+        return payableMiscMapper.selectList(query);
+    }
+
+    private List<ErpFinancePaymentFormCandidateRespVO> buildPaymentCandidateRows(
+            List<ErpPurchaseInDO> purchaseIns, List<ErpPurchaseReturnDO> purchaseReturns,
+            List<ErpPurchasePriceAdjustDO> adjusts, List<ErpPayableMiscDO> miscRows,
+            boolean fillNames) {
+        List<ErpFinancePaymentFormCandidateRespVO> result = new ArrayList<>();
+        Map<Long, BigDecimal> originalPriceMap = purchaseInItemMapper
+                .selectOriginalSettlementProductPriceMap(convertSet(purchaseIns, ErpPurchaseInDO::getId));
+        Map<Long, BigDecimal> inAllocated = financePaymentItemMapper.selectPaymentPriceSumMapByBizIdsAndBizType(
+                convertSet(purchaseIns, ErpPurchaseInDO::getId), ErpBizTypeEnum.PURCHASE_IN.getType());
+        purchaseIns.forEach(row -> addPaymentFormCandidate(result, ErpBizTypeEnum.PURCHASE_IN,
+                row.getId(), row.getNo(), row.getInTime(), row.getCreateTime(), row.getSupplierId(), row.getDeptId(),
+                ErpOriginalSettlementAmountUtils.calculatePurchaseIn(row, originalPriceMap.get(row.getId())),
+                inAllocated.getOrDefault(row.getId(), BigDecimal.ZERO)));
+        Map<Long, BigDecimal> returnAllocated = financePaymentItemMapper.selectPaymentPriceSumMapByBizIdsAndBizType(
+                convertSet(purchaseReturns, ErpPurchaseReturnDO::getId), ErpBizTypeEnum.PURCHASE_RETURN.getType());
+        purchaseReturns.forEach(row -> addPaymentFormCandidate(result, ErpBizTypeEnum.PURCHASE_RETURN,
+                row.getId(), row.getNo(), row.getReturnTime(), row.getCreateTime(), row.getSupplierId(), row.getDeptId(),
+                getZeroIfNull(row.getTotalPrice()).negate(),
+                returnAllocated.getOrDefault(row.getId(), BigDecimal.ZERO)));
+        Map<Long, BigDecimal> adjustAllocated = financePaymentItemMapper.selectPaymentPriceSumMapByBizIdsAndBizType(
+                convertSet(adjusts, ErpPurchasePriceAdjustDO::getId), ErpBizTypeEnum.PURCHASE_PRICE_ADJUST.getType());
+        adjusts.forEach(row -> addPaymentFormCandidate(result, ErpBizTypeEnum.PURCHASE_PRICE_ADJUST,
+                row.getId(), row.getNo(), row.getAdjustTime(), row.getCreateTime(), row.getSupplierId(), row.getDeptId(),
+                getZeroIfNull(row.getTotalAdjustPrice()),
+                adjustAllocated.getOrDefault(row.getId(), BigDecimal.ZERO)));
+        Map<Long, BigDecimal> miscAllocated = payableMiscMapper.selectOccupiedAmounts(
+                convertSet(miscRows, ErpPayableMiscDO::getId),
+                ErpMiscTransferOffsetConstants.PAYMENT_OFFSET_SOURCE_TYPE);
+        miscRows.forEach(row -> addPaymentFormCandidate(result, ErpBizTypeEnum.PAYABLE_MISC,
+                row.getId(), row.getNo(), row.getBizTime(), row.getCreateTime(), row.getSupplierId(), row.getDeptId(),
+                getZeroIfNull(row.getAmount()), miscAllocated.getOrDefault(row.getId(), BigDecimal.ZERO)));
+        Map<Long, BigDecimal> miscSettled = payableMiscMapper.selectSettlementAmountSumMapBySourceMiscIds(
+                convertSet(miscRows, ErpPayableMiscDO::getId),
+                ErpMiscTransferOffsetConstants.PAYMENT_OFFSET_SOURCE_TYPE);
+        result.stream().filter(row -> ErpBizTypeEnum.PAYABLE_MISC.getType().equals(row.getBizType()))
+                .forEach(row -> row.setAllocatedPrice(miscSettled.getOrDefault(row.getBizId(), BigDecimal.ZERO)));
+        result.forEach(row -> {
+            row.setAvailable(true);
+            row.setAutoWriteOffPreviewAmount(BigDecimal.ZERO);
+        });
+        if (fillNames) {
+            fillPaymentFormCandidateNames(result);
+        }
+        return result;
+    }
+
+    private String normalizePaymentCandidateOrderField(String orderField) {
+        return "bizNo".equals(orderField) || "bizTime".equals(orderField) ? orderField : "createTime";
+    }
+
+    private String normalizeCandidateOrderDirection(String orderDirection) {
+        return "desc".equalsIgnoreCase(orderDirection) ? "desc" : "asc";
+    }
+
+    private static final class PaymentCandidateSlice {
+        private final List<ErpFinancePaymentFormCandidateRespVO> rows;
+        private final long total;
+
+        private PaymentCandidateSlice(List<ErpFinancePaymentFormCandidateRespVO> rows, long total) {
+            this.rows = rows;
+            this.total = total;
+        }
+
+        private List<ErpFinancePaymentFormCandidateRespVO> getRows() {
+            return rows;
+        }
+
+        private long getTotal() {
+            return total;
+        }
+    }
+
+    private Comparator<ErpFinancePaymentFormCandidateRespVO> buildPaymentCandidateComparator(
+            String orderField, String orderDirection) {
+        Comparator<ErpFinancePaymentFormCandidateRespVO> primary;
+        if ("bizNo".equals(orderField)) {
+            primary = Comparator.comparing(ErpFinancePaymentFormCandidateRespVO::getBizNo,
+                    Comparator.nullsLast(Comparator.naturalOrder()));
+        } else if ("bizTime".equals(orderField)) {
+            primary = Comparator.comparing(ErpFinancePaymentFormCandidateRespVO::getBizTime,
+                    Comparator.nullsLast(Comparator.naturalOrder()));
+        } else if ("totalPrice".equals(orderField)) {
+            primary = Comparator.comparing(ErpFinancePaymentFormCandidateRespVO::getTotalPrice,
+                    Comparator.nullsLast(Comparator.naturalOrder()));
+        } else if ("allocatedPrice".equals(orderField) || "paidPrice".equals(orderField)) {
+            primary = Comparator.comparing(ErpFinancePaymentFormCandidateRespVO::getAllocatedPrice,
+                    Comparator.nullsLast(Comparator.naturalOrder()));
+        } else if ("unallocatedPrice".equals(orderField) || "unPaymentPrice".equals(orderField)) {
+            primary = Comparator.comparing(ErpFinancePaymentFormCandidateRespVO::getUnallocatedPrice,
+                    Comparator.nullsLast(Comparator.naturalOrder()));
+        } else {
+            primary = Comparator.comparing(ErpFinancePaymentFormCandidateRespVO::getCreateTime,
+                    Comparator.nullsLast(Comparator.naturalOrder()));
+        }
+        if ("desc".equalsIgnoreCase(orderDirection)) {
+            primary = primary.reversed();
+        }
+        return primary.thenComparing(ErpFinancePaymentFormCandidateRespVO::getBizType,
+                        Comparator.nullsLast(Comparator.naturalOrder()))
+                .thenComparing(ErpFinancePaymentFormCandidateRespVO::getBizId,
+                        Comparator.nullsLast(Comparator.naturalOrder()));
+    }
+
+    private BigDecimal calculatePaymentAutoWriteOffPreview(
+            List<ErpFinancePaymentFormCandidateRespVO> candidates,
+            Map<String, ErpFinancePaymentFormCandidatePageReqVO.SelectedItem> selectedMap,
+            BigDecimal documentTotalPrice) {
+        BigDecimal documentAmount = normalize(getZeroIfNull(documentTotalPrice));
+        BigDecimal allocatedAmount = normalize(selectedMap.values().stream()
+                .map(ErpFinancePaymentFormCandidatePageReqVO.SelectedItem::getAmount)
+                .map(this::getZeroIfNull)
+                .reduce(BigDecimal.ZERO, BigDecimal::add));
+        if (!isPaymentCandidateAmountAvailable(documentAmount, allocatedAmount)) {
+            return BigDecimal.ZERO;
+        }
+        List<ErpFinancePaymentFormCandidateRespVO> previewRows = new ArrayList<>(candidates);
+        previewRows.sort(Comparator.comparing(ErpFinancePaymentFormCandidateRespVO::getBizTime,
+                        Comparator.nullsLast(Comparator.naturalOrder()))
+                .thenComparing(ErpFinancePaymentFormCandidateRespVO::getBizNo,
+                        Comparator.nullsLast(Comparator.naturalOrder()))
+                .thenComparing(ErpFinancePaymentFormCandidateRespVO::getBizType,
+                        Comparator.nullsLast(Comparator.naturalOrder()))
+                .thenComparing(ErpFinancePaymentFormCandidateRespVO::getBizId,
+                        Comparator.nullsLast(Comparator.naturalOrder())));
+        BigDecimal previewTotal = BigDecimal.ZERO;
+        for (ErpFinancePaymentFormCandidateRespVO row : previewRows) {
+            BigDecimal remaining = normalize(documentAmount.subtract(allocatedAmount));
+            if (remaining.compareTo(BigDecimal.ZERO) == 0 || remaining.signum() != documentAmount.signum()) {
+                break;
+            }
+            ErpFinancePaymentFormCandidatePageReqVO.SelectedItem selected = selectedMap.get(
+                    buildPaymentCandidateKey(row.getBizType(), row.getBizId()));
+            BigDecimal selectedAmount = selected == null ? BigDecimal.ZERO : normalize(getZeroIfNull(selected.getAmount()));
+            BigDecimal candidateAmount = normalize(getZeroIfNull(row.getUnallocatedPrice()).subtract(selectedAmount));
+            if (candidateAmount.compareTo(BigDecimal.ZERO) == 0 || candidateAmount.signum() != remaining.signum()) {
+                continue;
+            }
+            BigDecimal previewAmount = candidateAmount.abs().compareTo(remaining.abs()) > 0 ? remaining : candidateAmount;
+            previewAmount = normalize(previewAmount);
+            row.setAutoWriteOffPreviewAmount(previewAmount);
+            allocatedAmount = normalize(allocatedAmount.add(previewAmount));
+            previewTotal = normalize(previewTotal.add(previewAmount));
+        }
+        return previewTotal;
+    }
+
+    private boolean isPaymentCandidateAmountAvailable(BigDecimal totalPrice, BigDecimal amount) {
+        BigDecimal total = normalize(getZeroIfNull(totalPrice));
+        BigDecimal value = normalize(getZeroIfNull(amount));
+        return value.compareTo(BigDecimal.ZERO) == 0 || total.compareTo(BigDecimal.ZERO) != 0
+                && value.signum() == total.signum() && value.abs().compareTo(total.abs()) <= 0;
+    }
+
+    private String buildPaymentCandidateKey(Integer bizType, Long bizId) {
+        return bizType + ":" + bizId;
     }
 
     @Override
@@ -1183,6 +1602,12 @@ public class ErpFinancePaymentServiceImpl implements ErpFinancePaymentService {
     @Override
     public PageResult<ErpFinancePaymentDO> getFinancePaymentPage(ErpFinancePaymentPageReqVO pageReqVO) {
         return financePaymentMapper.selectPage(pageReqVO);
+    }
+
+    @Override
+    public cn.iocoder.yudao.module.erp.controller.admin.finance.vo.ErpFinanceQuerySummaryRespVO getFinancePaymentSummary(
+            ErpFinancePaymentPageReqVO pageReqVO) {
+        return financePaymentMapper.selectSummary(pageReqVO);
     }
 
     // ==================== 付款单项 ====================

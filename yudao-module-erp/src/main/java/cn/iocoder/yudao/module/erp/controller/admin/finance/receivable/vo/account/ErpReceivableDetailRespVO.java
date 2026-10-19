@@ -28,8 +28,12 @@ public class ErpReceivableDetailRespVO {
     @ExcelProperty(value = "增加应收", index = 4)
     private BigDecimal increaseAmount;
 
-    @ExcelProperty(value = "收款金额", index = 5)
+    @Schema(description = "实际收款金额，用于账户余额计算")
     private BigDecimal receiptAmount;
+
+    @Schema(description = "收款展示金额，收款单取优惠前总金额")
+    @ExcelProperty(value = "收款金额", index = 5)
+    private BigDecimal receiptDisplayAmount;
 
     @ExcelProperty(value = "余额", index = 6)
     private BigDecimal balance;

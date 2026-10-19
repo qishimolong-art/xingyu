@@ -3,6 +3,7 @@ package cn.iocoder.yudao.module.erp.dal.mysql.product;
 import com.baomidou.mybatisplus.core.MybatisConfiguration;
 import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
 import cn.iocoder.yudao.framework.mybatis.core.query.LambdaQueryWrapperX;
+import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpProductPageReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.product.ErpProductDO;
 import org.apache.ibatis.builder.MapperBuilderAssistant;
 import org.junit.jupiter.api.BeforeAll;
@@ -34,6 +35,178 @@ class ErpProductMapperKeywordTest {
         String sql = wrapper.getCustomSqlSegment();
         assertTrue(sql.contains("pinyin_code"), sql);
         assertTrue(sql.contains("wubi_code"), sql);
+    }
+
+    @Test
+    void appendStockKeywordCondition_expandsCompactViscosity() {
+        LambdaQueryWrapperX<ErpProductDO> wrapper = new LambdaQueryWrapperX<>();
+
+        ErpProductMapper.appendStockKeywordCondition(wrapper, "530");
+
+        wrapper.getCustomSqlSegment();
+        Collection<Object> values = wrapper.getParamNameValuePairs().values();
+        assertTrue(values.contains("%530%"), values.toString());
+        assertTrue(values.contains("%5W-30%"), values.toString());
+        assertTrue(values.contains("%5%3%0%"), values.toString());
+    }
+
+    @Test
+    void appendStockProductNameKeywordCondition_combinesTokensButOnlySearchesName() {
+        LambdaQueryWrapperX<ErpProductDO> wrapper = new LambdaQueryWrapperX<>();
+
+        ErpProductMapper.appendStockProductNameKeywordCondition(wrapper, "经典表现 530");
+
+        String sql = wrapper.getCustomSqlSegment();
+        Collection<Object> values = wrapper.getParamNameValuePairs().values();
+        assertTrue(sql.contains("name"), sql);
+        assertTrue(sql.contains(" AND "), sql);
+        assertTrue(sql.contains(" OR "), sql);
+        assertFalse(sql.contains("code"), sql);
+        assertFalse(sql.contains("factory_code"), sql);
+        assertFalse(sql.contains("brand"), sql);
+        assertFalse(sql.contains("vehicle_model"), sql);
+        assertTrue(values.contains("%经典表现%"), values.toString());
+        assertTrue(values.contains("%经%典%表%现%"), values.toString());
+        assertTrue(values.contains("%530%"), values.toString());
+        assertTrue(values.contains("%5W-30%"), values.toString());
+        assertTrue(values.contains("%5W30%"), values.toString());
+        assertTrue(values.contains("%5-30%"), values.toString());
+        assertTrue(values.contains("%5%3%0%"), values.toString());
+    }
+
+    @Test
+    void appendStockProductNameKeywordCondition_keepsOrderedCharacterDirection() {
+        LambdaQueryWrapperX<ErpProductDO> wrapper = new LambdaQueryWrapperX<>();
+
+        ErpProductMapper.appendStockProductNameKeywordCondition(wrapper, "305");
+
+        wrapper.getCustomSqlSegment();
+        Collection<Object> values = wrapper.getParamNameValuePairs().values();
+        assertTrue(values.contains("%3%0%5%"), values.toString());
+        assertFalse(values.contains("%5%3%0%"), values.toString());
+        assertFalse(values.contains("%5W-30%"), values.toString());
+    }
+
+    @Test
+    void appendKeywordCondition_addsOrderedCharacterFallbackForSingleKeyword() {
+        LambdaQueryWrapperX<ErpProductDO> wrapper = new LambdaQueryWrapperX<>();
+
+        ErpProductMapper.appendKeywordCondition(wrapper, "QTF60",
+                Collections.singletonList(ErpProductMapper.KEYWORD_FIELD_NAME),
+                Collections.emptyList());
+
+        String sql = wrapper.getCustomSqlSegment();
+        Collection<Object> values = wrapper.getParamNameValuePairs().values();
+        assertTrue(sql.contains(" OR "), sql);
+        assertTrue(values.contains("%QTF60%"), values.toString());
+        assertTrue(values.contains("%Q%T%F%6%0%"), values.toString());
+        assertFalse(values.contains("%6%0%Q%T%F%"), values.toString());
+    }
+
+    @Test
+    void appendKeywordCondition_productArchivePureNumberDisablesOrderedCharacterFallback() {
+        LambdaQueryWrapperX<ErpProductDO> wrapper = new LambdaQueryWrapperX<>();
+
+        ErpProductMapper.appendKeywordCondition(wrapper, "145988",
+                Arrays.asList(
+                        ErpProductMapper.KEYWORD_FIELD_CODE,
+                        ErpProductMapper.KEYWORD_FIELD_NAME,
+                        ErpProductMapper.KEYWORD_FIELD_PINYIN_CODE,
+                        ErpProductMapper.KEYWORD_FIELD_WUBI_CODE,
+                        ErpProductMapper.KEYWORD_FIELD_VEHICLE_MODEL,
+                        ErpProductMapper.KEYWORD_FIELD_BAR_CODE,
+                        ErpProductMapper.KEYWORD_FIELD_FACTORY_CODE,
+                        ErpProductMapper.KEYWORD_FIELD_DRAWING_NO),
+                Collections.emptyList(), true);
+
+        String sql = wrapper.getCustomSqlSegment();
+        Collection<Object> values = wrapper.getParamNameValuePairs().values();
+        assertTrue(values.contains("%145988%"), values.toString());
+        assertFalse(values.contains("%1%4%5%9%8%8%"), values.toString());
+        assertTrue(sql.contains("code"), sql);
+        assertTrue(sql.contains("name"), sql);
+        assertTrue(sql.contains("pinyin_code"), sql);
+        assertTrue(sql.contains("wubi_code"), sql);
+        assertTrue(sql.contains("vehicle_model"), sql);
+        assertTrue(sql.contains("bar_code"), sql);
+        assertTrue(sql.contains("factory_code"), sql);
+        assertTrue(sql.contains("drawing_no"), sql);
+        assertFalse(sql.contains("standard"), sql);
+        assertFalse(sql.contains("brand"), sql);
+        assertFalse(sql.contains("erp_product_unit"), sql);
+    }
+
+    @Test
+    void appendKeywordCondition_productArchiveKeepsViscosityButNotNumericOrderedMatch() {
+        LambdaQueryWrapperX<ErpProductDO> wrapper = new LambdaQueryWrapperX<>();
+
+        ErpProductMapper.appendKeywordCondition(wrapper, "经典表现 530",
+                Collections.singletonList(ErpProductMapper.KEYWORD_FIELD_NAME),
+                Collections.emptyList(), true);
+
+        wrapper.getCustomSqlSegment();
+        Collection<Object> values = wrapper.getParamNameValuePairs().values();
+        assertTrue(values.contains("%经典表现%"), values.toString());
+        assertTrue(values.contains("%经%典%表%现%"), values.toString());
+        assertTrue(values.contains("%530%"), values.toString());
+        assertTrue(values.contains("%5W-30%"), values.toString());
+        assertTrue(values.contains("%5W30%"), values.toString());
+        assertTrue(values.contains("%5-30%"), values.toString());
+        assertFalse(values.contains("%5%3%0%"), values.toString());
+    }
+
+    @Test
+    void orderByIfPresent_productArchivePrioritizesExactCodeOnlyWithoutUserSort() {
+        ErpProductPageReqVO reqVO = new ErpProductPageReqVO();
+        reqVO.setKeyword("145988");
+        reqVO.setKeywordSearchMode(ErpProductPageReqVO.KEYWORD_SEARCH_MODE_PRODUCT_ARCHIVE);
+        LambdaQueryWrapperX<ErpProductDO> wrapper = new LambdaQueryWrapperX<>();
+
+        ErpProductMapper.orderByIfPresent(wrapper, reqVO,
+                Collections.singletonList(ErpProductMapper.KEYWORD_FIELD_CODE));
+
+        String sql = wrapper.getCustomSqlSegment();
+        assertTrue(sql.contains("CASE WHEN code = '145988' THEN 0 ELSE 1 END"), sql);
+
+        reqVO.setOrderField("name");
+        reqVO.setOrderDirection("asc");
+        LambdaQueryWrapperX<ErpProductDO> sortedWrapper = new LambdaQueryWrapperX<>();
+        ErpProductMapper.orderByIfPresent(sortedWrapper, reqVO,
+                Collections.singletonList(ErpProductMapper.KEYWORD_FIELD_CODE));
+        String sortedSql = sortedWrapper.getCustomSqlSegment();
+        assertFalse(sortedSql.contains("CASE WHEN"), sortedSql);
+        assertTrue(sortedSql.contains("name ASC"), sortedSql);
+    }
+
+    @Test
+    void orderByIfPresent_productArchiveDoesNotUseHiddenCodeForPriority() {
+        ErpProductPageReqVO reqVO = new ErpProductPageReqVO();
+        reqVO.setKeyword("145988");
+        reqVO.setKeywordSearchMode(ErpProductPageReqVO.KEYWORD_SEARCH_MODE_PRODUCT_ARCHIVE);
+        LambdaQueryWrapperX<ErpProductDO> wrapper = new LambdaQueryWrapperX<>();
+
+        ErpProductMapper.orderByIfPresent(wrapper, reqVO,
+                Collections.singletonList(ErpProductMapper.KEYWORD_FIELD_NAME));
+
+        String sql = wrapper.getCustomSqlSegment();
+        assertFalse(sql.contains("CASE WHEN"), sql);
+        assertTrue(sql.contains("id DESC"), sql);
+    }
+
+    @Test
+    void orderByIfPresent_productArchiveRejectsUnsafeExactCodeExpression() {
+        ErpProductPageReqVO reqVO = new ErpProductPageReqVO();
+        reqVO.setKeyword("A' OR 1=1");
+        reqVO.setKeywordSearchMode(ErpProductPageReqVO.KEYWORD_SEARCH_MODE_PRODUCT_ARCHIVE);
+        LambdaQueryWrapperX<ErpProductDO> wrapper = new LambdaQueryWrapperX<>();
+
+        ErpProductMapper.orderByIfPresent(wrapper, reqVO,
+                Collections.singletonList(ErpProductMapper.KEYWORD_FIELD_CODE));
+
+        String sql = wrapper.getCustomSqlSegment();
+        assertFalse(sql.contains("CASE WHEN"), sql);
+        assertFalse(sql.contains("OR 1=1"), sql);
+        assertTrue(sql.contains("id DESC"), sql);
     }
 
     @Test
@@ -156,6 +329,60 @@ class ErpProductMapperKeywordTest {
         String sql = wrapper.getCustomSqlSegment();
         assertTrue(sql.contains("name"), sql);
         assertFalse(sql.contains("brand"), sql);
+    }
+
+    @Test
+    void appendKeywordCondition_expandsCompactViscosityButKeepsOriginalKeyword() {
+        LambdaQueryWrapperX<ErpProductDO> wrapper = new LambdaQueryWrapperX<>();
+
+        ErpProductMapper.appendKeywordCondition(wrapper, "530",
+                Arrays.asList(
+                        ErpProductMapper.KEYWORD_FIELD_CODE,
+                        ErpProductMapper.KEYWORD_FIELD_NAME,
+                        ErpProductMapper.KEYWORD_FIELD_STANDARD),
+                Collections.emptyList());
+
+        wrapper.getCustomSqlSegment();
+        Collection<Object> values = wrapper.getParamNameValuePairs().values();
+        assertTrue(values.contains("%530%"), values.toString());
+        assertTrue(values.contains("%5W-30%"), values.toString());
+        assertTrue(values.contains("%5W30%"), values.toString());
+    }
+
+    @Test
+    void appendKeywordCondition_usesOrAcrossCompactViscosityVariants() {
+        LambdaQueryWrapperX<ErpProductDO> wrapper = new LambdaQueryWrapperX<>();
+
+        ErpProductMapper.appendKeywordCondition(wrapper, "530",
+                Collections.singletonList(ErpProductMapper.KEYWORD_FIELD_NAME),
+                Collections.emptyList());
+
+        String sql = wrapper.getCustomSqlSegment();
+        assertTrue(sql.contains(" OR "), sql);
+        assertFalse(sql.contains(" AND "), sql);
+    }
+
+    @Test
+    void appendKeywordCondition_expandsCompactViscosityInsideCombinedSearch() {
+        LambdaQueryWrapperX<ErpProductDO> wrapper = new LambdaQueryWrapperX<>();
+
+        ErpProductMapper.appendKeywordCondition(wrapper, "经典表现 530 4L",
+                Arrays.asList(
+                        ErpProductMapper.KEYWORD_FIELD_CODE,
+                        ErpProductMapper.KEYWORD_FIELD_NAME,
+                        ErpProductMapper.KEYWORD_FIELD_STANDARD),
+                Collections.emptyList());
+
+        wrapper.getCustomSqlSegment();
+        Collection<Object> values = wrapper.getParamNameValuePairs().values();
+        assertTrue(values.contains("%经典表现%530%4L%"), values.toString());
+        assertTrue(values.contains("%经典表现%5W-30%4L%"), values.toString());
+        assertTrue(values.contains("%530%"), values.toString());
+        assertTrue(values.contains("%5W-30%"), values.toString());
+        assertTrue(values.contains("%4L%"), values.toString());
+        assertTrue(values.contains("%经%典%表%现%"), values.toString());
+        assertTrue(values.contains("%5%3%0%"), values.toString());
+        assertTrue(values.contains("%4%L%"), values.toString());
     }
 
 }

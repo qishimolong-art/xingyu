@@ -15,6 +15,7 @@ import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.priceadjust.ErpSaleP
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.priceadjust.ErpSalePriceAdjustableItemPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.priceadjust.ErpSalePriceAdjustItemPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.priceadjust.ErpSalePriceAdjustPageReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.priceadjust.ErpSalePriceAdjustSummaryRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.priceadjust.ErpSalePriceAdjustSaveReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.priceadjust.ErpSalePriceAdjustDraftSaveReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.product.ErpProductDO;
@@ -363,8 +364,20 @@ public class ErpSalePriceAdjustServiceImpl implements ErpSalePriceAdjustService 
     }
 
     @Override
+    public ErpSalePriceAdjustSummaryRespVO getSalePriceAdjustSummary(ErpSalePriceAdjustPageReqVO pageReqVO) {
+        return salePriceAdjustMapper.selectSummary(pageReqVO);
+    }
+
+    @Override
     public List<ErpSalePriceAdjustItemDO> getSalePriceAdjustItemListByAdjustId(Long adjustId) {
         return salePriceAdjustItemMapper.selectListByAdjustId(adjustId);
+    }
+
+    @Override
+    public List<ErpSalePriceAdjustItemDO> getSalePriceAdjustItemListByAdjustId(Long adjustId,
+                                                                               String orderField,
+                                                                               String orderDirection) {
+        return salePriceAdjustItemMapper.selectListByAdjustId(adjustId, orderField, orderDirection);
     }
 
     @Override
@@ -658,7 +671,7 @@ public class ErpSalePriceAdjustServiceImpl implements ErpSalePriceAdjustService 
 
         // 更新调价单状态
         salePriceAdjustMapper.updateById(new ErpSalePriceAdjustDO().setId(adjustDO.getId())
-                .setStatus(ErpAuditStatus.APPROVE.getStatus()));
+                .setStatus(ErpAuditStatus.APPROVE.getStatus()).setApproveTime(approveTime));
     }
 
     private void validateSalePriceAdjustItemsNotAdjusted(List<ErpSalePriceAdjustItemDO> adjustItems, Long currentAdjustId) {

@@ -1,6 +1,7 @@
 package cn.iocoder.yudao.module.erp.service.stock;
 
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
+import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.ErpStockDocumentSummaryRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.ErpStockUpdateRemarkReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.move.ErpStockMoveItemPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.move.ErpStockMovePageReqVO;
@@ -173,6 +174,18 @@ public interface ErpStockMoveService {
                                                             List<ErpStockMoveItemDO> items);
 
     /**
+     * Batch gets whether current login user can unlock the sale carts related to stock transfer-outs.
+     * User departments, configured head departments and related organization context are loaded once
+     * for the whole list.
+     *
+     * @param stockMoves stock moves
+     * @param itemMap stock move items grouped by move id
+     * @return unlock permission state keyed by move id
+     */
+    Map<Long, ErpStockMoveOperationPermission> getUnlockCartPermissionMap(
+            List<ErpStockMoveDO> stockMoves, Map<Long, List<ErpStockMoveItemDO>> itemMap);
+
+    /**
      * 更新库存调拨单
      *
      * @param updateReqVO 更新信息
@@ -284,6 +297,8 @@ public interface ErpStockMoveService {
      */
     PageResult<ErpStockMoveDO> getStockMovePage(ErpStockMovePageReqVO pageReqVO);
 
+    ErpStockDocumentSummaryRespVO getStockMoveSummary(ErpStockMovePageReqVO pageReqVO);
+
     /**
      * 获得当前登录用户可见的调拨出库单分页。
      *
@@ -291,6 +306,9 @@ public interface ErpStockMoveService {
      * @return 调拨出库单分页
      */
     PageResult<ErpStockMoveDO> getVisibleStockTransferOutPage(ErpStockMovePageReqVO pageReqVO);
+
+    ErpStockDocumentSummaryRespVO getVisibleStockTransferOutSummary(ErpStockMovePageReqVO pageReqVO,
+                                                                    ErpStockTransferOutPermissionScope scope);
 
     /**
      * Gets the transfer-out permission scope for reuse in one query request.
@@ -322,6 +340,8 @@ public interface ErpStockMoveService {
      */
     PageResult<ErpStockMoveDO> getVisibleStockTransferInPage(ErpStockMovePageReqVO pageReqVO);
 
+    ErpStockDocumentSummaryRespVO getVisibleStockTransferInSummary(ErpStockMovePageReqVO pageReqVO);
+
     /**
      * Gets enabled transfer-in departments that appear in current user's visible transfer-out documents.
      */
@@ -341,6 +361,8 @@ public interface ErpStockMoveService {
      * @return 库存调拨单项列表
      */
     List<ErpStockMoveItemDO> getStockMoveItemListByMoveId(Long moveId);
+
+    List<ErpStockMoveItemDO> getStockMoveItemListByMoveId(Long moveId, String orderField, String orderDirection);
 
     PageResult<ErpStockMoveItemDO> getStockMoveItemPage(ErpStockMoveItemPageReqVO pageReqVO);
 

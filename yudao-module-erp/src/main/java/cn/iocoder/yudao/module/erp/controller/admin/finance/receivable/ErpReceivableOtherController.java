@@ -214,6 +214,21 @@ public class ErpReceivableOtherController {
         })));
     }
 
+    @GetMapping("/summary")
+    @Operation(summary = "获取应收调账查询汇总")
+    @PreAuthorize("@ss.hasPermission('erp:receivable-other:query')")
+    public CommonResult<cn.iocoder.yudao.module.erp.controller.admin.finance.vo.ErpFinanceQuerySummaryRespVO>
+            summary(@Valid ErpReceivableOtherPageReqVO reqVO) {
+        cn.iocoder.yudao.module.erp.controller.admin.finance.vo.ErpFinanceQuerySummaryRespVO summary =
+                receivableOtherService.getReceivableOtherSummary(reqVO);
+        fieldPermissionMasker.maskForm(FIELD_PERMISSION_MODULE, summary);
+        if (fieldPermissionMasker.isFieldHidden(FIELD_PERMISSION_MODULE, "receivableAmount")
+                || fieldPermissionMasker.isFieldHidden(FIELD_PERMISSION_MODULE, "settledAmount")) {
+            summary.setOutstandingAmount(null);
+        }
+        return success(summary);
+    }
+
     @GetMapping("/dept-simple-list")
     @Operation(summary = "Get receivable other data permission dept simple list")
     @PreAuthorize("@ss.hasPermission('erp:receivable-other:query')")

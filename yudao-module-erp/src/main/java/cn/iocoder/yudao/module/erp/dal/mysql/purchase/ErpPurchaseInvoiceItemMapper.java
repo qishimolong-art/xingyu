@@ -10,7 +10,6 @@ import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseInvoiceIte
 import cn.iocoder.yudao.module.erp.enums.ErpAuditStatus;
 import cn.hutool.core.collection.CollUtil;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
-import com.baomidou.mybatisplus.core.toolkit.support.SFunction;
 import org.apache.ibatis.annotations.Mapper;
 
 import java.util.Collections;
@@ -21,7 +20,12 @@ import java.util.List;
 public interface ErpPurchaseInvoiceItemMapper extends BaseMapperX<ErpPurchaseInvoiceItemDO> {
 
     default List<ErpPurchaseInvoiceItemDO> selectListByInvoiceId(Long invoiceId) {
-        return selectList(ErpPurchaseInvoiceItemDO::getInvoiceId, invoiceId);
+        return selectList(buildSortedQuery(invoiceId, null, null, null));
+    }
+
+    default List<ErpPurchaseInvoiceItemDO> selectListByInvoiceId(Long invoiceId, String orderField,
+                                                                 String orderDirection) {
+        return selectList(buildSortedQuery(invoiceId, null, orderField, orderDirection));
     }
 
     default List<ErpPurchaseInvoiceItemDO> selectListByInvoiceIdForUpdate(Long invoiceId) {
@@ -39,20 +43,17 @@ public interface ErpPurchaseInvoiceItemMapper extends BaseMapperX<ErpPurchaseInv
     }
 
     default PageResult<ErpPurchaseInvoiceItemDO> selectPageByInvoiceId(ErpPurchaseInvoiceItemPageReqVO reqVO) {
-        LambdaQueryWrapperX<ErpPurchaseInvoiceItemDO> query = new LambdaQueryWrapperX<ErpPurchaseInvoiceItemDO>()
-                .eq(ErpPurchaseInvoiceItemDO::getInvoiceId, reqVO.getInvoiceId());
-        SFunction<ErpPurchaseInvoiceItemDO, ?> orderColumn = getOrderColumn(reqVO.getOrderField());
-        if (orderColumn == null) {
-            query.orderByAsc(ErpPurchaseInvoiceItemDO::getId);
-        } else if ("desc".equalsIgnoreCase(reqVO.getOrderDirection())) {
-            query.orderByDesc(orderColumn);
-        } else {
-            query.orderByAsc(orderColumn);
-        }
-        if (orderColumn != null && !"id".equals(reqVO.getOrderField().trim())) {
-            query.orderByAsc(ErpPurchaseInvoiceItemDO::getId);
-        }
-        return selectPage(reqVO, query);
+        return selectPage(reqVO, buildSortedQuery(reqVO.getInvoiceId(), reqVO.getExcludedItemIds(),
+                reqVO.getOrderField(), reqVO.getOrderDirection()));
+    }
+
+    static QueryWrapper<ErpPurchaseInvoiceItemDO> buildSortedQuery(Long invoiceId, Collection<Long> excludedItemIds,
+                                                                    String orderField, String orderDirection) {
+        QueryWrapper<ErpPurchaseInvoiceItemDO> query = new QueryWrapper<ErpPurchaseInvoiceItemDO>()
+                .eq("invoice_id", invoiceId)
+                .notIn(CollUtil.isNotEmpty(excludedItemIds), "id", excludedItemIds);
+        return ErpPurchaseItemSortUtils.applyOrder(query, "erp_purchase_invoice_item", orderField, orderDirection,
+                getOrderSpec(orderField));
     }
 
     default List<ErpPurchaseInvoiceItemDO> selectListByInvoiceIds(Collection<Long> invoiceIds) {
@@ -93,34 +94,44 @@ public interface ErpPurchaseInvoiceItemMapper extends BaseMapperX<ErpPurchaseInv
         return selectCount(ErpPurchaseInvoiceItemDO::getProductId, productId);
     }
 
-    static SFunction<ErpPurchaseInvoiceItemDO, ?> getOrderColumn(String orderField) {
+    static boolean isSupportedOrderField(String orderField) {
+        return getOrderSpec(orderField) != null;
+    }
+
+    static ErpPurchaseItemSortUtils.OrderSpec getOrderSpec(String orderField) {
         if (orderField == null) {
             return null;
         }
-        switch (orderField.trim()) {
-            case "id":
-                return ErpPurchaseInvoiceItemDO::getId;
-            case "sourceInId":
-            case "sourceInNo":
-                return ErpPurchaseInvoiceItemDO::getSourceInId;
-            case "productId":
-            case "productCode":
-            case "productName":
-                return ErpPurchaseInvoiceItemDO::getProductId;
-            case "count":
-                return ErpPurchaseInvoiceItemDO::getCount;
-            case "productPrice":
-                return ErpPurchaseInvoiceItemDO::getProductPrice;
-            case "taxPercent":
-                return ErpPurchaseInvoiceItemDO::getTaxPercent;
-            case "taxPrice":
-                return ErpPurchaseInvoiceItemDO::getTaxPrice;
-            case "totalPrice":
-                return ErpPurchaseInvoiceItemDO::getTotalPrice;
-            case "remark":
-                return ErpPurchaseInvoiceItemDO::getRemark;
-            default:
-                return null;
-        }
+        String item = "erp_purchase_invoice_item";
+        return switch (orderField.trim()) {
+            case "id" -> spec(item + ".id", false);
+            case "sourceInId" -> spec(item + ".source_in_id", false);
+            case "sourceInNo" -> spec(item + ".source_in_no", true);
+            case "sourceType", "sourceTypeName" -> spec(item + ".source_type_name", true);
+            case "sourceDocNo" -> spec("COALESCE(" + item + ".source_doc_no, " + item + ".source_in_no)", true);
+            case "productId", "productName" -> spec(ErpPurchaseItemSortUtils.productField(item, "name"), true);
+            case "productCode" -> spec(ErpPurchaseItemSortUtils.productField(item, "code"), true);
+            case "productBarCode" -> spec("COALESCE(" + item + ".product_bar_code, "
+                    + ErpPurchaseItemSortUtils.productField(item, "bar_code") + ")", true);
+            case "productUnitName" -> spec(item + ".product_unit_name", true);
+            case "warehouseId" -> spec(ErpPurchaseItemSortUtils.warehouseName(item), true);
+            case "stockCount" -> spec(ErpPurchaseItemSortUtils.stockCount(item), false);
+            case "count" -> spec(item + ".count", false);
+            case "sourceRemainingCount" -> spec(item + ".source_remaining_count", false);
+            case "packageQty" -> spec(item + ".package_qty", false);
+            case "pieceCount" -> spec(ErpPurchaseItemSortUtils.pieceCount(item + ".count",
+                    item + ".package_qty"), false);
+            case "productPrice" -> spec(item + ".product_price", false);
+            case "taxExclusivePrice" -> spec(item + ".tax_exclusive_price", false);
+            case "taxPercent" -> spec(item + ".tax_percent", false);
+            case "taxPrice" -> spec(item + ".tax_price", false);
+            case "totalPrice" -> spec(item + ".total_price", false);
+            case "remark" -> spec(item + ".remark", true);
+            default -> null;
+        };
+    }
+
+    private static ErpPurchaseItemSortUtils.OrderSpec spec(String expression, boolean text) {
+        return new ErpPurchaseItemSortUtils.OrderSpec(expression, text);
     }
 }

@@ -66,7 +66,7 @@ class ErpPurchaseInvoiceOcrServiceImplTest {
     void buildAliyunApiGatewaySignatureHeaders_shouldUseAppKeySecretSignature() {
         Map<String, String> result = ErpPurchaseInvoiceOcrServiceImpl.buildAliyunApiGatewaySignatureHeaders(
                 "key", "secret", "POST",
-                "https://dgfp.market.alicloudapi.com/ocrservice/invoice?b=2&a=1",
+                "https://multcommon.market.alicloudapi.com/ocrservice/mixedMultiCommon?b=2&a=1",
                 "application/json; charset=utf-8", "application/json; charset=utf-8",
                 "1234567890", "nonce");
 
@@ -76,7 +76,7 @@ class ErpPurchaseInvoiceOcrServiceImplTest {
         assertEquals("1234567890", result.get("X-Ca-Timestamp"));
         assertEquals("x-ca-key,x-ca-nonce,x-ca-signature-method,x-ca-timestamp",
                 result.get("X-Ca-Signature-Headers"));
-        assertEquals("HWl6XISnQHQHxevQ1JxRAiYyZOE86OJAN/9k/x7/yB4=", result.get("X-Ca-Signature"));
+        assertEquals("Xa9bd3iNh/D2TG6IHa0SYdYGcVq/+UmbHmyNvQrk2rI=", result.get("X-Ca-Signature"));
     }
 
     @Test
@@ -84,13 +84,45 @@ class ErpPurchaseInvoiceOcrServiceImplTest {
         ReflectionTestUtils.setField(service, "appKey", "key");
         ReflectionTestUtils.setField(service, "appSecret", "secret");
         ReflectionTestUtils.setField(service, "appCode", "code");
-        ReflectionTestUtils.setField(service, "endpoint", "https://dgfp.market.alicloudapi.com/ocrservice/invoice");
-        HttpRequest request = HttpRequest.post("https://dgfp.market.alicloudapi.com/ocrservice/invoice");
+        ReflectionTestUtils.setField(service, "endpoint", "https://multcommon.market.alicloudapi.com/ocrservice/mixedMultiCommon");
+        HttpRequest request = HttpRequest.post("https://multcommon.market.alicloudapi.com/ocrservice/mixedMultiCommon");
 
         ReflectionTestUtils.invokeMethod(service, "applyInvoiceOcrAuth", request);
 
         assertEquals("APPCODE code", request.header("Authorization"));
         assertNull(request.header("X-Ca-Key"));
+    }
+
+    @Test
+    void parseOcrResponse_shouldSupportMixedMultiCommonNestedInvoiceResult() {
+        String response = "{\"sid\":\"sid-1\",\"count\":1,\"subMsgs\":[{\"type\":\"增值税发票\","
+                + "\"result\":{\"data\":{\"invoiceNumber\":\"12345678\","
+                + "\"invoiceDate\":\"2026年10月19日\",\"invoiceType\":\"增值税专用发票\","
+                + "\"totalAmount\":\"113.00\",\"invoiceAmountPreTax\":\"100.00\","
+                + "\"invoiceTax\":\"13.00\",\"remarks\":\"S261019001 采购入库\"}}}]}";
+
+        Object result = ReflectionTestUtils.invokeMethod(service, "parseOcrResponse", response);
+
+        assertNotNull(result);
+        assertEquals("12345678", ReflectionTestUtils.invokeGetterMethod(result, "invoiceNo"));
+        assertEquals("2026-10-19", String.valueOf(ReflectionTestUtils.invokeGetterMethod(result, "invoiceDate")));
+        assertEquals("增值税专用发票", ReflectionTestUtils.invokeGetterMethod(result, "invoiceType"));
+        assertEquals(0, new BigDecimal("113.00").compareTo(
+                (BigDecimal) ReflectionTestUtils.invokeGetterMethod(result, "totalAmount")));
+        assertEquals(0, new BigDecimal("100.00").compareTo(
+                (BigDecimal) ReflectionTestUtils.invokeGetterMethod(result, "taxExclusiveAmount")));
+        assertEquals(0, new BigDecimal("13.00").compareTo(
+                (BigDecimal) ReflectionTestUtils.invokeGetterMethod(result, "taxAmount")));
+        assertEquals("S261019001 采购入库", ReflectionTestUtils.invokeGetterMethod(result, "invoiceRemark"));
+    }
+
+    @Test
+    void buildInvoiceOcrHttpFailureDetail_shouldIncludeGatewayQuotaError() {
+        assertEquals("，网关错误：B403MQ（Api Market Subscription quota exhausted）",
+                service.buildInvoiceOcrHttpFailureDetail(
+                        "B403MQ", "Api Market Subscription quota exhausted", null));
+        assertEquals("，响应：Error request",
+                service.buildInvoiceOcrHttpFailureDetail(null, null, "Error request"));
     }
 
     @Test

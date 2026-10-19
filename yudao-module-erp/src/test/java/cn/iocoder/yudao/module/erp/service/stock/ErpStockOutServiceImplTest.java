@@ -14,6 +14,8 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 
+import java.math.BigDecimal;
+import java.time.LocalDateTime;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
@@ -23,6 +25,8 @@ import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.STOCK_OUT_ITE
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.STOCK_OUT_UPDATE_FAIL_APPROVE;
 import static cn.iocoder.yudao.module.erp.enums.LogRecordConstants.ERP_STOCK_OUT_TYPE;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -41,6 +45,31 @@ class ErpStockOutServiceImplTest extends BaseMockitoUnitTest {
     private ErpStockItemBatchUpdateSupport batchUpdateSupport;
     @Mock
     private ErpOperateLogService operateLogService;
+    @Mock
+    private ErpWarehouseService warehouseService;
+    @Mock
+    private ErpStockRecordService stockRecordService;
+
+    @Test
+    void updateStockOutStatus_writesApproveTimeWithStatus() {
+        ErpStockOutDO stockOut = new ErpStockOutDO().setId(1L).setNo("OUT001")
+                .setStatus(ErpAuditStatus.PROCESS.getStatus()).setOutTime(LocalDateTime.of(2026, 10, 15, 9, 0));
+        ErpStockOutItemDO item = new ErpStockOutItemDO().setId(11L).setOutId(1L).setProductId(100L)
+                .setWarehouseId(20L).setCount(BigDecimal.ONE);
+        when(stockOutMapper.selectById(1L)).thenReturn(stockOut);
+        when(stockOutMapper.updateByIdAndStatus(any(), any(), any())).thenReturn(1);
+        when(stockOutItemMapper.selectListByOutId(1L)).thenReturn(Collections.singletonList(item));
+
+        stockOutService.updateStockOutStatus(1L, ErpAuditStatus.APPROVE.getStatus());
+
+        ArgumentCaptor<ErpStockOutDO> updateCaptor = ArgumentCaptor.forClass(ErpStockOutDO.class);
+        verify(stockOutMapper).updateByIdAndStatus(
+                org.mockito.ArgumentMatchers.eq(1L),
+                org.mockito.ArgumentMatchers.eq(ErpAuditStatus.PROCESS.getStatus()), updateCaptor.capture());
+        assertEquals(ErpAuditStatus.APPROVE.getStatus(), updateCaptor.getValue().getStatus());
+        assertNotNull(updateCaptor.getValue().getApproveTime());
+        verify(stockRecordService).createStockRecord(any());
+    }
 
     @Test
     void batchUpdateStockOutItems_success() {

@@ -66,6 +66,8 @@ public class ErpSaleReturnDO extends BaseDO {
      * 退货时间
      */
     private LocalDateTime returnTime;
+    /** 审核通过时间。 */
+    private LocalDateTime approveTime;
 
     /**
      * 销售订单编号

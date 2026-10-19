@@ -40,6 +40,9 @@ class ErpPurchaseInDetailReportRepositoryIntegrationTest {
         assertTrue(cte.contains("inv.source_type=10 AND inv.source_item_id=ifi.id"));
         assertTrue(cte.contains("inv.source_type=20 AND inv.source_item_id=pai.id"));
         assertTrue(cte.contains("inv.source_type=30 AND inv.source_item_id=pri.id"));
+        assertTrue(cte.contains("pi.order_id AS source_business_id,'PURCHASE_ORDER' AS source_document_type_code"));
+        assertTrue(cte.contains("CASE WHEN pr.return_mode=10 THEN pri.source_in_id END,'PURCHASE_IN'"));
+        assertTrue(cte.contains("'PURCHASE_ADJUST',pai.in_id,'PURCHASE_IN'"));
         assertFalse(cte.contains("inv.source_in_item_id"));
         assertFalse(cte.contains("'不适用'"));
     }

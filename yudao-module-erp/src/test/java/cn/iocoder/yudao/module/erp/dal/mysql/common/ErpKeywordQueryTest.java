@@ -14,10 +14,19 @@ import org.apache.ibatis.builder.MapperBuilderAssistant;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ErpKeywordQueryTest {
+
+    @Test
+    void orderedCharactersPattern_keepsEveryCharacterInOrder() {
+        assertEquals("Q%T%F%6%0", ErpKeywordQuery.orderedCharactersPattern("QTF60"));
+        assertEquals("经%典%表%现", ErpKeywordQuery.orderedCharactersPattern("经典表现"));
+        assertEquals("5%3%0", ErpKeywordQuery.orderedCharactersPattern("530"));
+        assertEquals("6%0%Q%T%F", ErpKeywordQuery.orderedCharactersPattern("60QTF"));
+    }
 
     @BeforeAll
     static void initMybatisPlusCache() {

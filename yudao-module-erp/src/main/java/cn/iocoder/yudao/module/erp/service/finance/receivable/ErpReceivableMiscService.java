@@ -30,4 +30,7 @@ public interface ErpReceivableMiscService {
 
     PageResult<ErpReceivableMiscDO> getReceivableMiscPage(ErpReceivableMiscPageReqVO pageReqVO);
 
+    cn.iocoder.yudao.module.erp.controller.admin.finance.vo.ErpFinanceQuerySummaryRespVO getReceivableMiscSummary(
+            ErpReceivableMiscPageReqVO pageReqVO);
+
 }

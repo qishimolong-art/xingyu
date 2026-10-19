@@ -14,6 +14,7 @@ import lombok.experimental.Accessors;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 
 @TableName("erp_payable_expense")
 @KeySequence("erp_payable_expense_seq")
@@ -32,6 +33,8 @@ public class ErpPayableExpenseDO extends BaseDO {
     private String no;
 
     private Integer status;
+
+    private LocalDateTime approveTime;
 
     private LocalDate bizTime;
 

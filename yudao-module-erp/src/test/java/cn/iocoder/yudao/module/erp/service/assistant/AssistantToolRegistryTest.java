@@ -26,7 +26,7 @@ class AssistantToolRegistryTest {
         java.util.Map<String,Object> productArguments=new java.util.LinkedHashMap<>();
         productArguments.put("question","ERP中有多少个美孚产品");
         productArguments.put("archiveType","PRODUCT");productArguments.put("statusMode","ENABLED");
-        productArguments.put("keyword","美孚");filteredProductCount.setArguments(productArguments);
+        productArguments.put("brand","美孚");filteredProductCount.setArguments(productArguments);
         assertDoesNotThrow(()->registry.validate(filteredProductCount));
     }
 

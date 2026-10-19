@@ -1,9 +1,16 @@
 package cn.iocoder.yudao.module.erp.service.finance;
 
+import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.mybatis.core.query.LambdaQueryWrapperX;
 import cn.iocoder.yudao.framework.test.core.ut.BaseMockitoUnitTest;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.receipt.ErpFinanceReceiptFormCandidateReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.receipt.ErpFinanceReceiptFormCandidatePageReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.receipt.ErpFinanceReceiptFormCandidatePageRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.receipt.ErpFinanceReceiptFormCandidateRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.finance.receivable.vo.misc.ErpReceivableMiscPageReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.out.ErpSaleOutPageReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.priceadjust.ErpSalePriceAdjustPageReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnPageReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.receivable.ErpReceivableMiscDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpCustomerDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleOutDO;
@@ -12,12 +19,12 @@ import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleReturnDO;
 import cn.iocoder.yudao.module.erp.dal.mysql.finance.ErpFinanceReceiptItemMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.finance.receivable.ErpReceivableMiscMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpSaleOutMapper;
+import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpSaleOutItemMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpSalePriceAdjustMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpSaleReturnMapper;
 import cn.iocoder.yudao.module.erp.enums.ErpAuditStatus;
 import cn.iocoder.yudao.module.erp.enums.common.ErpBizTypeEnum;
 import cn.iocoder.yudao.module.erp.service.sale.ErpCustomerService;
-import cn.iocoder.yudao.module.erp.service.sale.ErpSaleOutService;
 import cn.iocoder.yudao.module.system.api.dept.DeptApi;
 import cn.iocoder.yudao.module.system.api.dept.dto.DeptRespDTO;
 import org.junit.jupiter.api.Test;
@@ -34,7 +41,9 @@ import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
@@ -48,13 +57,13 @@ class ErpFinanceReceiptFormCandidateServiceImplTest extends BaseMockitoUnitTest 
     @Mock
     private ErpSaleOutMapper saleOutMapper;
     @Mock
+    private ErpSaleOutItemMapper saleOutItemMapper;
+    @Mock
     private ErpSaleReturnMapper saleReturnMapper;
     @Mock
     private ErpSalePriceAdjustMapper salePriceAdjustMapper;
     @Mock
     private ErpReceivableMiscMapper receivableMiscMapper;
-    @Mock
-    private ErpSaleOutService saleOutService;
     @Mock
     private ErpCustomerService customerService;
     @Mock
@@ -70,7 +79,7 @@ class ErpFinanceReceiptFormCandidateServiceImplTest extends BaseMockitoUnitTest 
         when(saleOutMapper.selectList(any(LambdaQueryWrapperX.class))).thenReturn(Arrays.asList(
                 saleOut(100L, "XSCK-100", createMiddle, new BigDecimal("300")),
                 saleOut(101L, "XSCK-101", createLate, new BigDecimal("50"))));
-        when(saleOutService.getSaleOutItemListByOutIds(any())).thenReturn(Collections.emptyList());
+        when(saleOutItemMapper.selectOriginalSettlementProductPriceMap(any())).thenReturn(Collections.emptyMap());
         when(saleReturnMapper.selectList(any(LambdaQueryWrapperX.class))).thenReturn(Collections.singletonList(
                 saleReturn(200L, "XSTH-200", createEarly, new BigDecimal("80"))));
         when(salePriceAdjustMapper.selectList(any(LambdaQueryWrapperX.class))).thenReturn(Collections.singletonList(
@@ -78,6 +87,16 @@ class ErpFinanceReceiptFormCandidateServiceImplTest extends BaseMockitoUnitTest 
         when(receivableMiscMapper.selectList(any(LambdaQueryWrapperX.class))).thenReturn(Arrays.asList(
                 receivableMisc(400L, "XSQT-400", createLate, new BigDecimal("60")),
                 receivableMisc(401L, "XSQT-401", createLate, new BigDecimal("20"))));
+        when(saleOutMapper.selectPage(any(ErpSaleOutPageReqVO.class))).thenReturn(new PageResult<>(
+                Collections.singletonList(saleOut(100L, "XSCK-100", createMiddle, new BigDecimal("300"))), 1L));
+        when(saleReturnMapper.selectPage(any(ErpSaleReturnPageReqVO.class))).thenReturn(new PageResult<>(
+                Collections.singletonList(saleReturn(200L, "XSTH-200", createEarly, new BigDecimal("80"))), 1L));
+        when(salePriceAdjustMapper.selectPage(any(ErpSalePriceAdjustPageReqVO.class))).thenReturn(new PageResult<>(
+                Collections.singletonList(salePriceAdjust(300L, "XSTJ-300", createLate,
+                        new BigDecimal("-30"))), 1L));
+        when(receivableMiscMapper.selectPage(any(ErpReceivableMiscPageReqVO.class))).thenReturn(new PageResult<>(
+                Collections.singletonList(receivableMisc(400L, "XSQT-400", createLate,
+                        new BigDecimal("60"))), 1L));
         Map<Long, BigDecimal> outAllocated = new HashMap<>();
         outAllocated.put(100L, new BigDecimal("100"));
         outAllocated.put(101L, new BigDecimal("50"));
@@ -139,6 +158,31 @@ class ErpFinanceReceiptFormCandidateServiceImplTest extends BaseMockitoUnitTest 
         assertThat(result).noneMatch(row -> row.getBizId().equals(101L));
         assertThat(result).noneMatch(row -> row.getBizId().equals(401L));
         verifyNoInteractions(fieldPermissionMasker);
+
+        ErpFinanceReceiptFormCandidatePageReqVO pageReqVO = new ErpFinanceReceiptFormCandidatePageReqVO();
+        pageReqVO.setCustomerId(4L);
+        pageReqVO.setDeptId(7L);
+        pageReqVO.setPageNo(1);
+        pageReqVO.setPageSize(2);
+        pageReqVO.setDocumentTotalPrice(new BigDecimal("250"));
+        ErpFinanceReceiptFormCandidatePageReqVO.SelectedItem missingSelected =
+                new ErpFinanceReceiptFormCandidatePageReqVO.SelectedItem();
+        missingSelected.setBizType(ErpBizTypeEnum.SALE_OUT.getType());
+        missingSelected.setBizId(101L);
+        missingSelected.setAmount(new BigDecimal("10"));
+        pageReqVO.setSelectedItems(Collections.singletonList(missingSelected));
+
+        ErpFinanceReceiptFormCandidatePageRespVO page = service.getFormCandidatePage(pageReqVO);
+
+        assertThat(page.getTotal()).isEqualTo(4L);
+        assertThat(page.getList()).hasSize(2);
+        assertThat(page.getUnavailableSelectedItems()).extracting(
+                ErpFinanceReceiptFormCandidatePageReqVO.SelectedItem::getBizId).containsExactly(101L);
+        assertThat(page.getList()).allMatch(row -> row.getAvailable() != null);
+        verify(saleOutMapper).selectPage(argThat(source -> source.getPageNo() == 1
+                && source.getPageSize() == 2 && Boolean.TRUE.equals(source.getReceiptEnable())));
+        verify(saleOutMapper).selectPage(argThat(source -> source.getPageNo() == 1
+                && source.getPageSize() == 200 && "outTime".equals(source.getOrderField())));
     }
 
     private ErpSaleOutDO saleOut(Long id, String no, LocalDateTime createTime, BigDecimal totalPrice) {

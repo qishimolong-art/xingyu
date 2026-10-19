@@ -62,6 +62,10 @@ public class ErpStockOutDO extends BaseDO {
      */
     private Integer status;
     /**
+     * 审核时间
+     */
+    private LocalDateTime approveTime;
+    /**
      * 备注
      */
     private String remark;

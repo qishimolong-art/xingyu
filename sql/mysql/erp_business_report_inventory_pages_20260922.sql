@@ -89,7 +89,7 @@ BEGIN
     ('age', '库龄分析', 4, 'ErpBusinessReportInventoryAge'),
     ('turnover', '库存周转分析', 5, 'ErpBusinessReportInventoryTurnover'),
     ('trace', '商品追溯', 6, 'ErpBusinessReportInventoryTrace'),
-    ('check', '盘点损益', 7, 'ErpBusinessReportInventoryCheck'),
+    ('check', '配件盈亏明细表', 7, 'ErpBusinessReportInventoryCheck'),
     ('legacy', '历史口径', 8, 'ErpBusinessReportInventoryLegacy');
 
   IF EXISTS (SELECT 1 FROM system_menu m JOIN tmp_business_report_inventory_pages_20260922 p

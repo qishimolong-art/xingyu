@@ -20,6 +20,7 @@ import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.returns.ErpPurch
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.returns.ErpPurchaseReturnItemPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.returns.ErpPurchaseReturnOrderImportExcelVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.returns.ErpPurchaseReturnPageReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.returns.ErpPurchaseReturnSummaryRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.returns.ErpPurchaseReturnSaveReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.supplier.ErpSupplierPageReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.accounting.ErpVoucherItemDO;
@@ -1191,6 +1192,11 @@ public class ErpPurchaseReturnServiceImpl implements ErpPurchaseReturnService {
     }
 
     @Override
+    public ErpPurchaseReturnSummaryRespVO getPurchaseReturnSummary(ErpPurchaseReturnPageReqVO pageReqVO) {
+        return purchaseReturnMapper.selectSummary(pageReqVO);
+    }
+
+    @Override
     public List<ErpPurchaseReturnDO> getPurchaseReturnList(Collection<Long> ids) {
         if (CollUtil.isEmpty(ids)) {
             return Collections.emptyList();
@@ -1206,8 +1212,18 @@ public class ErpPurchaseReturnServiceImpl implements ErpPurchaseReturnService {
     }
 
     @Override
+    public List<ErpPurchaseReturnItemDO> getPurchaseReturnItemListByReturnId(Long returnId, String orderField,
+                                                                              String orderDirection) {
+        return purchaseReturnItemMapper.selectListByReturnId(returnId, orderField, orderDirection);
+    }
+
+    @Override
     public PageResult<ErpPurchaseReturnItemDO> getPurchaseReturnItemPage(ErpPurchaseReturnItemPageReqVO pageReqVO) {
         validatePurchaseReturnExists(pageReqVO.getReturnId());
+        if (CollUtil.isNotEmpty(pageReqVO.getExcludedItemIds())) {
+            pageReqVO.setExcludedItemIds(pageReqVO.getExcludedItemIds().stream()
+                    .filter(id -> id != null && id > 0).distinct().collect(Collectors.toList()));
+        }
         return purchaseReturnItemMapper.selectPageByReturnId(pageReqVO);
     }
 

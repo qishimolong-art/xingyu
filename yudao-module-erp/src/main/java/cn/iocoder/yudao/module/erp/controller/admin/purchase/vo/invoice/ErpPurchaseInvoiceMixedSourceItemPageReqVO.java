@@ -26,6 +26,9 @@ public class ErpPurchaseInvoiceMixedSourceItemPageReqVO extends PageParam {
     @NotEmpty(message = "来源单据不能为空")
     private List<SourceRef> sourceRefs;
 
+    @Schema(description = "编辑态待删除的来源明细键，格式为 来源类型:来源明细编号")
+    private List<String> excludedSourceItemKeys;
+
     @Schema(description = "是否按字段权限脱敏", example = "true")
     private Boolean mask = true;
 

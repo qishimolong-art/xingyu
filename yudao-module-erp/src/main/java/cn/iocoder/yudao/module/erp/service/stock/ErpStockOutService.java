@@ -1,6 +1,7 @@
 package cn.iocoder.yudao.module.erp.service.stock;
 
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
+import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.ErpStockDocumentSummaryRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.ErpStockUpdateRemarkReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.out.ErpStockOutItemBatchUpdateReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.out.ErpStockOutItemPageReqVO;
@@ -73,6 +74,8 @@ public interface ErpStockOutService {
      */
     PageResult<ErpStockOutDO> getStockOutPage(ErpStockOutPageReqVO pageReqVO);
 
+    ErpStockDocumentSummaryRespVO getStockOutSummary(ErpStockOutPageReqVO pageReqVO);
+
     // ==================== 出库项 ====================
 
     /**
@@ -82,6 +85,8 @@ public interface ErpStockOutService {
      * @return 其它出库单项列表
      */
     List<ErpStockOutItemDO> getStockOutItemListByOutId(Long outId);
+
+    List<ErpStockOutItemDO> getStockOutItemListByOutId(Long outId, String orderField, String orderDirection);
 
     PageResult<ErpStockOutItemDO> getStockOutItemPage(ErpStockOutItemPageReqVO pageReqVO);
 

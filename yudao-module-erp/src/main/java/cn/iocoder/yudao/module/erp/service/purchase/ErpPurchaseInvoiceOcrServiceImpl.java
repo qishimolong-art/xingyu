@@ -81,7 +81,7 @@ import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.PURCHASE_INVO
 public class ErpPurchaseInvoiceOcrServiceImpl implements ErpPurchaseInvoiceOcrService {
 
     private static final DateTimeFormatter BATCH_NO_DATE_FORMATTER = DateTimeFormatter.ofPattern("yyyyMMdd");
-    private static final String DEFAULT_ENDPOINT = "https://dgfp.market.alicloudapi.com/ocrservice/invoice";
+    private static final String DEFAULT_ENDPOINT = "https://multcommon.market.alicloudapi.com/ocrservice/mixedMultiCommon";
     private static final String OCR_ACCEPT = "application/json; charset=utf-8";
     private static final String OCR_CONTENT_TYPE = "application/json; charset=utf-8";
     private static final String ALIYUN_SIGNATURE_METHOD = "HmacSHA256";
@@ -798,7 +798,8 @@ public class ErpPurchaseInvoiceOcrServiceImpl implements ErpPurchaseInvoiceOcrSe
             String body = response.body();
             if (!response.isOk()) {
                 throw new IllegalStateException("HTTP " + response.getStatus()
-                        + buildInvoiceOcrHttpFailureDetail(body));
+                        + buildInvoiceOcrHttpFailureDetail(response.header("X-Ca-Error-Code"),
+                        response.header("X-Ca-Error-Message"), body));
             }
             if (StrUtil.isBlank(body)) {
                 throw new IllegalStateException("OCR 接口返回为空");
@@ -829,11 +830,21 @@ public class ErpPurchaseInvoiceOcrServiceImpl implements ErpPurchaseInvoiceOcrSe
         }
     }
 
-    private String buildInvoiceOcrHttpFailureDetail(String body) {
-        if (StrUtil.isBlank(body)) {
-            return "";
+    String buildInvoiceOcrHttpFailureDetail(String gatewayErrorCode, String gatewayErrorMessage, String body) {
+        List<String> details = new ArrayList<>();
+        if (StrUtil.isNotBlank(gatewayErrorCode)) {
+            String gatewayDetail = gatewayErrorCode;
+            if (StrUtil.isNotBlank(gatewayErrorMessage)) {
+                gatewayDetail += "（" + gatewayErrorMessage + "）";
+            }
+            details.add("网关错误：" + gatewayDetail);
+        } else if (StrUtil.isNotBlank(gatewayErrorMessage)) {
+            details.add("网关错误：" + gatewayErrorMessage);
         }
-        return "，响应：" + limitErrorMessage(body);
+        if (StrUtil.isNotBlank(body)) {
+            details.add("响应：" + limitErrorMessage(body));
+        }
+        return details.isEmpty() ? "" : "，" + String.join("，", details);
     }
 
     static Map<String, String> buildAliyunApiGatewaySignatureHeaders(String appKey, String appSecret,
@@ -905,14 +916,17 @@ public class ErpPurchaseInvoiceOcrServiceImpl implements ErpPurchaseInvoiceOcrSe
         validateOcrResponse(rawObject);
 
         OcrParseResult result = new OcrParseResult();
-        result.setInvoiceNo(toText(findFirstValue(rawObject, "invoiceNo", "invoice_no", "fphm", "发票号码", "发票号")));
+        result.setInvoiceNo(toText(findFirstValue(rawObject, "invoiceNo", "invoiceNumber", "invoice_no",
+                "fphm", "发票号码", "发票号")));
         result.setInvoiceDate(parseDate(findFirstValue(rawObject, "invoiceDate", "invoice_date", "kprq", "开票日期", "发票日期")));
         result.setInvoiceType(toText(findFirstValue(rawObject, "invoiceType", "invoice_type", "fplx", "发票类型", "发票种类")));
         result.setTotalAmount(parseAmount(findFirstValue(rawObject, "totalAmount", "total_amount", "invoiceAmount",
                 "amountWithTax", "amount_with_tax", "sumAmount", "价税合计", "小写金额", "合计金额", "发票金额", "总金额")));
         result.setTaxExclusiveAmount(parseAmount(findFirstValue(rawObject, "amountWithoutTax", "amount_without_tax",
-                "taxExclusiveAmount", "tax_exclusive_amount", "noTaxAmount", "不含税金额", "金额合计")));
-        result.setTaxAmount(parseAmount(findFirstValue(rawObject, "taxAmount", "tax_amount", "se", "税额合计", "税额")));
+                "taxExclusiveAmount", "tax_exclusive_amount", "invoiceAmountPreTax", "noTaxAmount",
+                "不含税金额", "金额合计")));
+        result.setTaxAmount(parseAmount(findFirstValue(rawObject, "taxAmount", "tax_amount", "invoiceTax", "se",
+                "税额合计", "税额")));
         result.setInvoiceRemark(toText(findFirstValue(rawObject, "remark", "remarks", "invoiceRemark",
                 "invoice_remark", "bz", "备注", "备注信息")));
 

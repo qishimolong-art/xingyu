@@ -48,7 +48,8 @@ public class ErpCloudPrintController {
     @PreAuthorize("@ss.hasPermission('erp:sale-out:print')")
     public CommonResult<ErpCloudPrintPreviewSaleOutRespVO> previewSaleOut(
             @Valid @RequestBody ErpCloudPrintPreviewSaleOutReqVO reqVO) {
-        return success(cloudPrintService.previewSaleOut(reqVO.getSaleOutId(), reqVO.getCopies(), reqVO.getTemplateId()));
+        return success(cloudPrintService.previewSaleOut(reqVO.getSaleOutId(), reqVO.getCopies(), reqVO.getTemplateId(),
+                reqVO.getItemOrderField(), reqVO.getItemOrderDirection()));
     }
 
     @PostMapping(value = "/task/preview-sale-out/file", produces = MediaType.APPLICATION_PDF_VALUE)

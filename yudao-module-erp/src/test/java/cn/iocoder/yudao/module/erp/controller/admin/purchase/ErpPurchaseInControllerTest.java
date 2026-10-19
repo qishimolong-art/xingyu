@@ -13,6 +13,7 @@ import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.in.ErpPurchaseIn
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.in.ErpPurchaseInTransferOutableItemRespVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseInDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseInItemDO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockDO;
 import cn.iocoder.yudao.module.erp.dal.mysql.finance.ErpFinancePaymentItemMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.purchase.ErpPurchaseInItemMapper;
 import cn.iocoder.yudao.module.erp.enums.common.ErpBizTypeEnum;
@@ -270,16 +271,18 @@ class ErpPurchaseInControllerTest extends BaseMockitoUnitTest {
     void getPurchaseInUsesAggregatedStockCountForItems() {
         when(purchaseInService.getTransferOutCountMapByInItemIds(any()))
                 .thenReturn(Collections.emptyMap());
-        when(stockService.getStockCount(1001L, 1L)).thenReturn(new BigDecimal("12"));
-        when(stockService.getStockCount(1002L, 1L)).thenReturn(new BigDecimal("8"));
+        when(stockService.getStockMap(any(), any())).thenReturn(Map.of(
+                "1001_1", new ErpStockDO().setProductId(1001L).setWarehouseId(1L).setCount(new BigDecimal("12")),
+                "1002_1", new ErpStockDO().setProductId(1002L).setWarehouseId(1L).setCount(new BigDecimal("8"))));
 
         ErpPurchaseInRespVO data = controller.getPurchaseIn(10L, true, true).getData();
 
         assertNotNull(data);
         assertEquals(0, new BigDecimal("12").compareTo(data.getItems().get(0).getStockCount()));
         assertEquals(0, new BigDecimal("8").compareTo(data.getItems().get(1).getStockCount()));
-        verify(stockService).getStockCount(1001L, 1L);
-        verify(stockService).getStockCount(1002L, 1L);
+        verify(stockService).getStockMap(any(), any());
+        verify(stockService, never()).getStockCount(eq(1001L), eq(1L));
+        verify(stockService, never()).getStockCount(eq(1002L), eq(1L));
         verify(stockService, never()).getStock(eq(1001L), eq(1L));
         verify(stockService, never()).getStock(eq(1002L), eq(1L));
     }
@@ -384,8 +387,9 @@ class ErpPurchaseInControllerTest extends BaseMockitoUnitTest {
     @Test
     void getPurchaseInItemPageBuildsPagedItemsAndMasksHiddenFields() {
         when(purchaseInService.getPurchaseInItemPage(any())).thenReturn(new PageResult<>(items, 2L));
-        when(stockService.getStockCount(1001L, 1L)).thenReturn(new BigDecimal("12"));
-        when(stockService.getStockCount(1002L, 1L)).thenReturn(new BigDecimal("8"));
+        when(stockService.getStockMap(any(), any())).thenReturn(Map.of(
+                "1001_1", new ErpStockDO().setProductId(1001L).setWarehouseId(1L).setCount(new BigDecimal("12")),
+                "1002_1", new ErpStockDO().setProductId(1002L).setWarehouseId(1L).setCount(new BigDecimal("8"))));
 
         ErpPurchaseInItemPageReqVO reqVO = new ErpPurchaseInItemPageReqVO();
         reqVO.setInId(10L);

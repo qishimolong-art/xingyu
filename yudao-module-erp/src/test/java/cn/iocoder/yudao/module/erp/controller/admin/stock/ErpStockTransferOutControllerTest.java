@@ -4,6 +4,7 @@ import cn.iocoder.yudao.framework.common.pojo.CommonResult;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.test.core.ut.BaseMockitoUnitTest;
 import cn.iocoder.yudao.module.erp.controller.admin.common.vo.ErpExportFieldRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.ErpStockDocumentSummaryRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.move.ErpStockMovePageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.move.ErpStockMoveItemPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.move.ErpStockMoveRespVO;
@@ -46,6 +47,23 @@ class ErpStockTransferOutControllerTest extends BaseMockitoUnitTest {
     private ErpStockMoveController stockMoveController;
     @Mock
     private ErpStockFieldPermissionMasker fieldPermissionMasker;
+
+    @Test
+    void getStockTransferOutSummary_reusesVisibleScopeAndMasksFields() {
+        ErpStockMovePageReqVO request = new ErpStockMovePageReqVO();
+        ErpStockTransferOutPermissionScope scope = new ErpStockTransferOutPermissionScope(
+                false, Collections.singleton(20L));
+        ErpStockDocumentSummaryRespVO summary = new ErpStockDocumentSummaryRespVO();
+        when(stockMoveService.getTransferOutPermissionScope()).thenReturn(scope);
+        when(stockMoveService.getVisibleStockTransferOutSummary(request, scope)).thenReturn(summary);
+
+        CommonResult<ErpStockDocumentSummaryRespVO> result = controller.getStockTransferOutSummary(request);
+
+        assertSame(summary, result.getData());
+        assertEquals(Integer.valueOf(10), request.getTransferDirection());
+        verify(stockMoveService).getVisibleStockTransferOutSummary(request, scope);
+        verify(fieldPermissionMasker).maskListColumns("erp_stock_transfer_out", summary);
+    }
 
     @Test
     void unlockSaleCart_passesTransferOutIdToDedicatedService() {

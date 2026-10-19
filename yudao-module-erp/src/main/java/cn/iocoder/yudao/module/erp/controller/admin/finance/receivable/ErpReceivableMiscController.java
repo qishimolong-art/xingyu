@@ -240,6 +240,24 @@ public class ErpReceivableMiscController {
         return success(buildPageResult(receivableMiscService.getReceivableMiscPage(reqVO)));
     }
 
+    @GetMapping("/summary")
+    @Operation(summary = "获取其他应收查询汇总")
+    @PreAuthorize("@ss.hasPermission('erp:receivable-misc:query')")
+    public CommonResult<cn.iocoder.yudao.module.erp.controller.admin.finance.vo.ErpFinanceQuerySummaryRespVO>
+            summary(@Valid ErpReceivableMiscPageReqVO reqVO) {
+        cn.iocoder.yudao.module.erp.controller.admin.finance.vo.ErpFinanceQuerySummaryRespVO summary =
+                receivableMiscService.getReceivableMiscSummary(reqVO);
+        fieldPermissionMasker.maskForm(FIELD_PERMISSION_MODULE, summary);
+        if (fieldPermissionMasker.isFieldHidden(FIELD_PERMISSION_MODULE, "amount")
+                || fieldPermissionMasker.isFieldHidden(FIELD_PERMISSION_MODULE, "settledAmount")) {
+            summary.setSettledAmount(null);
+            summary.setBalanceAmount(null);
+            summary.setPendingTransferAmount(null);
+            summary.setTransferAvailableAmount(null);
+        }
+        return success(summary);
+    }
+
     @GetMapping("/dept-simple-list")
     @Operation(summary = "获得其他应收可搜索部门精简信息列表")
     @PreAuthorize("@ss.hasPermission('erp:receivable-misc:query')")

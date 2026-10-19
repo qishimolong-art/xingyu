@@ -2,6 +2,7 @@ package cn.iocoder.yudao.module.erp.service.stock;
 
 import cn.hutool.core.collection.CollUtil;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
+import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.ErpStockDocumentSummaryRespVO;
 import cn.iocoder.yudao.framework.common.util.number.MoneyUtils;
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
 import cn.iocoder.yudao.framework.datapermission.core.util.DataPermissionUtils;
@@ -36,6 +37,7 @@ import org.springframework.validation.annotation.Validated;
 
 import javax.annotation.Resource;
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashSet;
@@ -228,8 +230,9 @@ public class ErpStockInServiceImpl implements ErpStockInService {
         }
 
         // 2. 更新状态
+        LocalDateTime approveTime = LocalDateTime.now();
         int updateCount = stockInMapper.updateByIdAndStatus(id, stockIn.getStatus(),
-                new ErpStockInDO().setStatus(status));
+                new ErpStockInDO().setStatus(status).setApproveTime(approveTime));
         if (updateCount == 0) {
             throw exception(STOCK_IN_APPROVE_FAIL);
         }
@@ -399,11 +402,22 @@ public class ErpStockInServiceImpl implements ErpStockInService {
         return stockInMapper.selectPage(pageReqVO);
     }
 
+    @Override
+    public ErpStockDocumentSummaryRespVO getStockInSummary(ErpStockInPageReqVO pageReqVO) {
+        return stockInMapper.selectSummary(pageReqVO);
+    }
+
     // ==================== 入库项 ====================
 
     @Override
     public List<ErpStockInItemDO> getStockInItemListByInId(Long inId) {
         return stockInItemMapper.selectListByInId(inId);
+    }
+
+    @Override
+    public List<ErpStockInItemDO> getStockInItemListByInId(Long inId, String orderField,
+                                                           String orderDirection) {
+        return stockInItemMapper.selectListByInId(inId, orderField, orderDirection);
     }
 
     @Override

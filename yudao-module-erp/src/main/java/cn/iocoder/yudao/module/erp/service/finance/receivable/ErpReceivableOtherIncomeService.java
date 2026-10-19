@@ -6,6 +6,7 @@ import cn.iocoder.yudao.module.erp.controller.admin.finance.receivable.vo.otheri
 import cn.iocoder.yudao.module.erp.controller.admin.finance.receivable.vo.otherincome.ErpReceivableOtherIncomeItemPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.receivable.vo.otherincome.ErpReceivableOtherIncomePageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.receivable.vo.otherincome.ErpReceivableOtherIncomeSaveReqVO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.finance.ErpFinancePaymentDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.receivable.ErpReceivableOtherIncomeDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.receivable.ErpReceivableOtherIncomeItemDO;
 
@@ -15,11 +16,15 @@ import java.util.List;
 
 public interface ErpReceivableOtherIncomeService {
 
+    String PAYMENT_DISCOUNT_SOURCE_TYPE = "付款单折让";
+
     Long createOtherIncome(ErpReceivableOtherIncomeSaveReqVO createReqVO);
 
     Long createOtherIncomeDraft(ErpReceivableOtherIncomeDraftSaveReqVO createReqVO);
 
     Long createOtherIncomeAndSubmit(ErpReceivableOtherIncomeSaveReqVO createReqVO);
+
+    Long createApprovedFromFinancePaymentDiscount(ErpFinancePaymentDO payment, Long approverId);
 
     void updateOtherIncome(ErpReceivableOtherIncomeSaveReqVO updateReqVO);
 
@@ -38,6 +43,9 @@ public interface ErpReceivableOtherIncomeService {
     ErpReceivableOtherIncomeDO getOtherIncome(Long id);
 
     PageResult<ErpReceivableOtherIncomeDO> getOtherIncomePage(ErpReceivableOtherIncomePageReqVO pageReqVO);
+
+    cn.iocoder.yudao.module.erp.controller.admin.finance.vo.ErpFinanceQuerySummaryRespVO getOtherIncomeSummary(
+            ErpReceivableOtherIncomePageReqVO pageReqVO);
 
     List<ErpReceivableOtherIncomeItemDO> getOtherIncomeItemListByIncomeId(Long incomeId);
 

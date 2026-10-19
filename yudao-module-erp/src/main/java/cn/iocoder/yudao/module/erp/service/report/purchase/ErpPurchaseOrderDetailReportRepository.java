@@ -53,7 +53,7 @@ public class ErpPurchaseOrderDetailReportRepository {
 
     private String selectFields() {
         return "SELECT poi.id AS item_id,po.id AS order_id,poi.product_id,poi.warehouse_id,"
-                + "po.order_date,po.factory_order_no,"
+                + "po.create_time AS order_date,po.factory_order_no,"
                 + "p.name AS product_name,s.name AS supplier_name,"
                 + "COALESCE(NULLIF(poi.vehicle_model,''),p.vehicle_model) AS vehicle_model,p.code AS product_code,"
                 + "w.name AS warehouse_name,poi.warehouse_position,"
@@ -85,11 +85,11 @@ public class ErpPurchaseOrderDetailReportRepository {
         appendScope(sql, scope.documentScope, "po.dept_id", "po.creator", "document");
         appendSupplierScope(sql, scope.supplierScope);
         if (filter.getOrderDateFrom() != null) {
-            sql.text += " AND po.order_date>=:dateFrom";
+            sql.text += " AND po.create_time>=:dateFrom";
             sql.params.put("dateFrom", filter.getOrderDateFrom());
         }
         if (filter.getOrderDateTo() != null) {
-            sql.text += " AND po.order_date<=:dateTo";
+            sql.text += " AND po.create_time<=:dateTo";
             sql.params.put("dateTo", filter.getOrderDateTo());
         }
         like(sql, "po.no", "orderNo", filter.getOrderNo());
@@ -152,7 +152,7 @@ public class ErpPurchaseOrderDetailReportRepository {
 
     private String orderBy(Filter filter) {
         Map<String, String> fields = new HashMap<>();
-        fields.put("orderDate", "po.order_date");
+        fields.put("orderDate", "po.create_time");
         fields.put("orderNo", "po.no");
         fields.put("factoryOrderNo", "po.factory_order_no");
         fields.put("productCode", "p.code");
@@ -163,7 +163,7 @@ public class ErpPurchaseOrderDetailReportRepository {
         fields.put("productPrice", "poi.product_price");
         fields.put("totalPrice", "COALESCE(poi.count,0)*COALESCE(poi.product_price,0)");
         fields.put("orderInTransitCount", "GREATEST(COALESCE(poi.count,0)-COALESCE(poi.in_count,0),0)");
-        String field = fields.getOrDefault(filter.getOrderField(), "po.order_date");
+        String field = fields.getOrDefault(filter.getOrderField(), "po.create_time");
         String direction = "asc".equalsIgnoreCase(filter.getOrderDirection()) ? " ASC" : " DESC";
         return " ORDER BY " + field + direction + ",po.no" + direction + ",poi.id" + direction;
     }

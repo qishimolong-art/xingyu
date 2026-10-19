@@ -29,6 +29,7 @@ import org.springframework.mock.web.MockMultipartFile;
 import java.io.ByteArrayOutputStream;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.Arrays;
 import java.util.Collections;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -104,6 +105,20 @@ class ErpPayableExpenseControllerTest extends BaseMockitoUnitTest {
         assertEquals(11L, result.getData().getList().get(0).getId());
         assertEquals("停车费", result.getData().getList().get(0).getItemName());
         verify(fieldPermissionMasker).clearHiddenItemFields(eq("erp_finance_payable_expense"), any());
+    }
+
+    @Test
+    void itemPageForEdit_keepsExcludedItemIdsWhenDelegating() {
+        when(payableExpenseService.getPayableExpenseItemPage(any()))
+                .thenReturn(new PageResult<>(Collections.emptyList(), 0L));
+        ErpPayableExpenseItemPageReqVO reqVO = new ErpPayableExpenseItemPageReqVO()
+                .setExpenseId(7L).setExcludedItemIds(Arrays.asList(11L, 12L));
+        reqVO.setPageNo(1);
+        reqVO.setPageSize(10);
+
+        controller.itemPageForEdit(reqVO);
+
+        verify(payableExpenseService).getPayableExpenseItemPage(reqVO);
     }
 
     @Test

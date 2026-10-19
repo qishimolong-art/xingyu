@@ -20,6 +20,11 @@ public class ErpCustomerMemberAuthRespDTO implements Serializable {
 
     private String customerName;
 
+    /**
+     * 客户价格级别，仅供后端建立小程序客户上下文使用。
+     */
+    private Integer priceLevel;
+
     private Long memberUserId;
 
     private String mobile;

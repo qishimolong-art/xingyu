@@ -12,6 +12,7 @@ import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.returns.ErpPurch
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.returns.ErpPurchaseReturnItemPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.returns.ErpPurchaseReturnOrderImportExcelVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.returns.ErpPurchaseReturnPageReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.returns.ErpPurchaseReturnSummaryRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.returns.ErpPurchaseReturnSaveReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseReturnDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseReturnItemDO;
@@ -142,6 +143,8 @@ public interface ErpPurchaseReturnService {
      */
     PageResult<ErpPurchaseReturnDO> getPurchaseReturnPage(ErpPurchaseReturnPageReqVO pageReqVO);
 
+    ErpPurchaseReturnSummaryRespVO getPurchaseReturnSummary(ErpPurchaseReturnPageReqVO pageReqVO);
+
     List<ErpPurchaseReturnDO> getPurchaseReturnList(Collection<Long> ids);
 
     // ==================== 采购退货项 ====================
@@ -153,6 +156,9 @@ public interface ErpPurchaseReturnService {
      * @return 采购退货项列表
      */
     List<ErpPurchaseReturnItemDO> getPurchaseReturnItemListByReturnId(Long returnId);
+
+    List<ErpPurchaseReturnItemDO> getPurchaseReturnItemListByReturnId(Long returnId, String orderField,
+                                                                       String orderDirection);
 
     PageResult<ErpPurchaseReturnItemDO> getPurchaseReturnItemPage(ErpPurchaseReturnItemPageReqVO pageReqVO);
 

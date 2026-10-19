@@ -11,6 +11,8 @@ import cn.iocoder.yudao.module.erp.dal.redis.no.ErpNoRedisDAO;
 import cn.iocoder.yudao.module.erp.enums.common.ErpBizTypeEnum;
 import cn.iocoder.yudao.module.erp.enums.finance.ErpFinancePaymentStatusEnum;
 import cn.iocoder.yudao.module.erp.service.common.ErpOperateLogService;
+import cn.iocoder.yudao.module.erp.service.finance.payable.ErpPayableOtherService;
+import cn.iocoder.yudao.module.erp.service.finance.receivable.ErpReceivableOtherIncomeService;
 import cn.iocoder.yudao.module.erp.service.purchase.ErpSupplierService;
 import cn.iocoder.yudao.module.system.api.user.AdminUserApi;
 import org.junit.jupiter.api.Test;
@@ -28,10 +30,13 @@ import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.FINANCE_PAYME
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.FINANCE_PAYMENT_DRAFT_ITEMS_REQUIRED;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.FINANCE_PAYMENT_DRAFT_SUBMIT_FAIL;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.FINANCE_PAYMENT_DRAFT_UPDATE_FAIL;
+import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.FINANCE_PAYMENT_PAYMENT_VOUCHER_NO_TOO_LONG;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.FINANCE_PAYMENT_WRITEOFF_AMOUNT_INVALID;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -59,6 +64,12 @@ class ErpFinancePaymentDraftServiceImplTest extends BaseMockitoUnitTest {
     private ErpAccountService accountService;
     @Mock
     private AdminUserApi adminUserApi;
+    @Mock
+    private ErpPayableOtherService payableOtherService;
+    @Mock
+    private ErpReceivableOtherIncomeService receivableOtherIncomeService;
+    @Mock
+    private ErpFinanceAutoWriteOffService financeAutoWriteOffService;
 
 
     @Mock
@@ -194,6 +205,40 @@ class ErpFinancePaymentDraftServiceImplTest extends BaseMockitoUnitTest {
         assertThat(captor.getValue().getTotalPrice()).isEqualByComparingTo("-20.00");
         assertThat(captor.getValue().getPaymentPrice()).isEqualByComparingTo("-20.00");
         assertThat(captor.getValue().getStatus()).isEqualTo(ErpFinancePaymentStatusEnum.PROCESS.getStatus());
+    }
+
+    @Test
+    void createFinancePayment_normalizesPaymentVoucherNo() {
+        when(noRedisDAO.generate(ErpNoRedisDAO.FINANCE_PAYMENT_NO_PREFIX)).thenReturn("FKD-VOUCHER-1");
+
+        service.createFinancePayment(new ErpFinancePaymentSaveReqVO()
+                .setPaymentTime(LocalDateTime.now())
+                .setSupplierId(1L)
+                .setAccountId(2L)
+                .setDiscountPrice(BigDecimal.ZERO)
+                .setTotalPrice(BigDecimal.ONE)
+                .setPaymentPrice(BigDecimal.ONE)
+                .setPaymentVoucherNo("  SUPPLIER-REF-001  "));
+
+        ArgumentCaptor<ErpFinancePaymentDO> captor = ArgumentCaptor.forClass(ErpFinancePaymentDO.class);
+        verify(paymentMapper).insert(captor.capture());
+        assertThat(captor.getValue().getPaymentVoucherNo()).isEqualTo("SUPPLIER-REF-001");
+    }
+
+    @Test
+    void createFinancePayment_rejectsTooLongPaymentVoucherNo() {
+        when(noRedisDAO.generate(ErpNoRedisDAO.FINANCE_PAYMENT_NO_PREFIX)).thenReturn("FKD-VOUCHER-2");
+
+        assertServiceException(() -> service.createFinancePayment(new ErpFinancePaymentSaveReqVO()
+                        .setPaymentTime(LocalDateTime.now())
+                        .setSupplierId(1L)
+                        .setAccountId(2L)
+                        .setDiscountPrice(BigDecimal.ZERO)
+                        .setTotalPrice(BigDecimal.ONE)
+                        .setPaymentPrice(BigDecimal.ONE)
+                        .setPaymentVoucherNo("X".repeat(65))),
+                FINANCE_PAYMENT_PAYMENT_VOUCHER_NO_TOO_LONG);
+        verify(paymentMapper, never()).insert(any(ErpFinancePaymentDO.class));
     }
 
     @Test
@@ -404,6 +449,48 @@ class ErpFinancePaymentDraftServiceImplTest extends BaseMockitoUnitTest {
 
         assertServiceException(() -> service.approveFinancePayment(10L), FINANCE_PAYMENT_APPROVE_FAIL);
         verify(paymentMapper, never()).updateByIdAndStatus(any(), any(), any());
+    }
+
+    @Test
+    void approvePayment_createsPayableAdjustmentThenApprovedOtherIncomeBeforeAutoWriteOff() {
+        ErpFinancePaymentDO payment = ErpFinancePaymentDO.builder()
+                .id(10L).no("FKD10").status(ErpFinancePaymentStatusEnum.PROCESS.getStatus())
+                .paymentTime(LocalDateTime.of(2026, 10, 15, 10, 0))
+                .supplierId(2L).accountId(3L).deptId(4L).financeUserId(5L)
+                .totalPrice(new BigDecimal("100")).discountPrice(new BigDecimal("10"))
+                .paymentPrice(new BigDecimal("90")).build();
+        when(paymentMapper.selectByIdForUpdate(10L)).thenReturn(payment);
+        when(paymentItemMapper.selectListByPaymentId(10L)).thenReturn(Collections.emptyList());
+        when(paymentMapper.updateByIdAndStatus(eq(10L),
+                eq(ErpFinancePaymentStatusEnum.PROCESS.getStatus()), any())).thenReturn(1);
+
+        service.approveFinancePayment(10L);
+
+        verify(payableOtherService).createFromFinancePaymentDiscount(payment);
+        verify(receivableOtherIncomeService).createApprovedFromFinancePaymentDiscount(payment, null);
+        verify(financeAutoWriteOffService).autoWriteOffPayment(10L, null);
+    }
+
+    @Test
+    void approvePayment_stopsFollowingStepsWhenOtherIncomeCreationFails() {
+        ErpFinancePaymentDO payment = ErpFinancePaymentDO.builder()
+                .id(10L).no("FKD10").status(ErpFinancePaymentStatusEnum.PROCESS.getStatus())
+                .paymentTime(LocalDateTime.of(2026, 10, 15, 10, 0))
+                .supplierId(2L).accountId(3L).deptId(4L).financeUserId(5L)
+                .totalPrice(new BigDecimal("100")).discountPrice(new BigDecimal("10"))
+                .paymentPrice(new BigDecimal("90")).build();
+        when(paymentMapper.selectByIdForUpdate(10L)).thenReturn(payment);
+        when(paymentItemMapper.selectListByPaymentId(10L)).thenReturn(Collections.emptyList());
+        when(paymentMapper.updateByIdAndStatus(eq(10L),
+                eq(ErpFinancePaymentStatusEnum.PROCESS.getStatus()), any())).thenReturn(1);
+        RuntimeException failure = new RuntimeException("模拟其他收入生成失败");
+        doThrow(failure).when(receivableOtherIncomeService)
+                .createApprovedFromFinancePaymentDiscount(payment, null);
+
+        assertThatThrownBy(() -> service.approveFinancePayment(10L)).isSameAs(failure);
+
+        verify(payableOtherService).createFromFinancePaymentDiscount(payment);
+        verify(financeAutoWriteOffService, never()).autoWriteOffPayment(any(), any());
     }
 
 }

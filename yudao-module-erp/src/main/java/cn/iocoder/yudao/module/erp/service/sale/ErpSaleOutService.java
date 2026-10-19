@@ -3,6 +3,7 @@ package cn.iocoder.yudao.module.erp.service.sale;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.ErpSaleUpdateRemarkReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.out.ErpSaleOutPageReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.out.ErpSaleOutSummaryRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.out.ErpSaleOutItemPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.out.ErpSaleOutReturnableItemPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.out.ErpSaleReturnableItemRespVO;
@@ -118,6 +119,8 @@ public interface ErpSaleOutService {
      */
     PageResult<ErpSaleOutDO> getSaleOutPage(ErpSaleOutPageReqVO pageReqVO);
 
+    ErpSaleOutSummaryRespVO getSaleOutSummary(ErpSaleOutPageReqVO pageReqVO);
+
     // ==================== 销售出库项 ====================
 
     /**
@@ -127,6 +130,9 @@ public interface ErpSaleOutService {
      * @return 销售出库项列表
      */
     List<ErpSaleOutItemDO> getSaleOutItemListByOutId(Long outId);
+
+    List<ErpSaleOutItemDO> getSaleOutItemListByOutId(Long outId, String orderField,
+                                                      String orderDirection);
 
     PageResult<ErpSaleOutItemDO> getSaleOutItemPage(ErpSaleOutItemPageReqVO pageReqVO);
 

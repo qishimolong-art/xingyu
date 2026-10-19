@@ -114,6 +114,37 @@ class ErpCloudPrintPreviewServiceTest {
     }
 
     @Test
+    void previewSaleOut_shouldKeepDetailSortInPreviewCacheAndDataRequest() {
+        ErpSaleOutItemDO item = new ErpSaleOutItemDO()
+                .setWarehouseId(20L)
+                .setCount(BigDecimal.ONE)
+                .setTotalPrice(new BigDecimal("12.34"))
+                .setTotalWeight(BigDecimal.ZERO);
+        Map<String, Object> printData = new LinkedHashMap<>();
+        printData.put("document", new LinkedHashMap<>());
+        printData.put("main", new LinkedHashMap<>());
+        printData.put("items", Collections.singletonList(
+                new LinkedHashMap<>(Map.of("items.productName", "测试配件"))));
+        when(itemMapper.selectListByOutId(1L, "productName", "desc")).thenReturn(List.of(item));
+        when(printService.getPrintData(ErpCloudPrintConstants.MODULE_KEY_SALE_OUT, 1L,
+                "productName", "desc")).thenReturn(printData);
+
+        try (MockedStatic<SecurityFrameworkUtils> security = mockStatic(SecurityFrameworkUtils.class)) {
+            security.when(SecurityFrameworkUtils::getLoginUserId).thenReturn(99L);
+            service.previewSaleOut(1L, 2, 10L, "productName", "desc");
+        }
+
+        ArgumentCaptor<ErpCloudPrintPreviewCacheService.PreviewRecord> captor =
+                ArgumentCaptor.forClass(ErpCloudPrintPreviewCacheService.PreviewRecord.class);
+        verify(cacheService).put(captor.capture());
+        assertEquals("productName", captor.getValue().getItemOrderField());
+        assertEquals("desc", captor.getValue().getItemOrderDirection());
+        verify(itemMapper).selectListByOutId(1L, "productName", "desc");
+        verify(printService).getPrintData(ErpCloudPrintConstants.MODULE_KEY_SALE_OUT, 1L,
+                "productName", "desc");
+    }
+
+    @Test
     void submitSaleOut_shouldUploadTheExactPreviewPdfAndCacheIdempotentResult() throws Exception {
         ErpCloudPrintPreviewCacheService.PreviewRecord record;
         try (MockedStatic<SecurityFrameworkUtils> security = mockStatic(SecurityFrameworkUtils.class)) {

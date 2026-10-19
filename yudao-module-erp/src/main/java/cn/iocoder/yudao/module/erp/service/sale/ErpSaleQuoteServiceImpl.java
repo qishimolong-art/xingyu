@@ -20,6 +20,7 @@ import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.quote.ErpSaleQuoteDr
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.quote.ErpSaleQuoteDraftUpdateReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.quote.ErpSaleQuoteConvertCartReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.quote.ErpSaleQuotePageReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.quote.ErpSaleQuoteSummaryRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.quote.ErpSaleQuoteSaveReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.product.ErpProductDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpCustomerDO;
@@ -68,6 +69,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -258,6 +260,7 @@ public class ErpSaleQuoteServiceImpl implements ErpSaleQuoteService {
         saleQuoteMapper.updateById(updateObj);
         if (incrementalItems) {
             applySaleQuoteItemChangeSet(updateReqVO.getId(), itemChangeSet, items);
+            clearChangedStockCountSnapshots(oldItems, items);
         } else {
             saleQuoteItemMapper.deleteByQuoteId(updateReqVO.getId());
             items.forEach(item -> item.setId(null).setQuoteId(updateReqVO.getId()));
@@ -409,6 +412,9 @@ public class ErpSaleQuoteServiceImpl implements ErpSaleQuoteService {
         Long finalTargetDeptId = targetDeptId;
         selectedItems.forEach(item -> {
             if (finalTargetWarehouse != null) {
+                if (!Objects.equals(item.getWarehouseId(), finalTargetWarehouse.getId())) {
+                    saleQuoteItemMapper.clearStockCountAtOrder(item.getId());
+                }
                 item.setWarehouseId(finalTargetWarehouse.getId());
                 item.setBatchNo(null);
             }
@@ -518,6 +524,7 @@ public class ErpSaleQuoteServiceImpl implements ErpSaleQuoteService {
             throw exception(SALE_QUOTE_APPROVE_FAIL);
         }
         saleDirectDeptPermissionService.validateSaleDocumentDeptAllowed(quote.getDeptId());
+        captureStockCountAtOrder(id);
         int updateCount = saleQuoteMapper.updateByIdAndStatus(id, ErpSaleQuoteStatusEnum.PROCESS.getStatus(),
                 new ErpSaleQuoteDO().setStatus(ErpSaleQuoteStatusEnum.APPROVE.getStatus()));
         if (updateCount == 0) {
@@ -525,6 +532,36 @@ public class ErpSaleQuoteServiceImpl implements ErpSaleQuoteService {
         }
         record(id, "下订", "报价订单下订，单据编号：" + quote.getNo(), quote.getNo());
         return id;
+    }
+
+    private void captureStockCountAtOrder(Long quoteId) {
+        List<ErpSaleQuoteItemDO> items = saleQuoteItemMapper.selectListByQuoteId(quoteId);
+        Set<Long> productIds = convertSet(items, ErpSaleQuoteItemDO::getProductId);
+        Set<Long> warehouseIds = convertSet(items, ErpSaleQuoteItemDO::getWarehouseId);
+        productIds.remove(null);
+        warehouseIds.remove(null);
+        Map<String, ErpStockDO> stockMap = CollUtil.isEmpty(productIds) || CollUtil.isEmpty(warehouseIds)
+                ? Collections.emptyMap() : DataPermissionUtils.executeIgnore(() ->
+                stockService.getStockMap(productIds, warehouseIds));
+        for (ErpSaleQuoteItemDO item : items) {
+            if (item.getStockCountAtOrder() != null) continue;
+            ErpStockDO stock = stockMap.get(item.getProductId() + "_" + item.getWarehouseId());
+            BigDecimal stockCount = stock == null || stock.getCount() == null ? BigDecimal.ZERO : stock.getCount();
+            saleQuoteItemMapper.updateStockCountAtOrderIfNull(item.getId(), stockCount);
+        }
+    }
+
+    private void clearChangedStockCountSnapshots(List<ErpSaleQuoteItemDO> oldItems,
+                                                  List<ErpSaleQuoteItemDO> newItems) {
+        Map<Long, ErpSaleQuoteItemDO> oldItemMap = convertMap(oldItems, ErpSaleQuoteItemDO::getId);
+        for (ErpSaleQuoteItemDO newItem : newItems) {
+            if (newItem.getId() == null) continue;
+            ErpSaleQuoteItemDO oldItem = oldItemMap.get(newItem.getId());
+            if (oldItem != null && (!Objects.equals(oldItem.getProductId(), newItem.getProductId())
+                    || !Objects.equals(oldItem.getWarehouseId(), newItem.getWarehouseId()))) {
+                saleQuoteItemMapper.clearStockCountAtOrder(newItem.getId());
+            }
+        }
     }
 
     @Override
@@ -971,8 +1008,19 @@ public class ErpSaleQuoteServiceImpl implements ErpSaleQuoteService {
     }
 
     @Override
+    public ErpSaleQuoteSummaryRespVO getSaleQuoteSummary(ErpSaleQuotePageReqVO pageReqVO) {
+        return saleQuoteMapper.selectSummary(pageReqVO);
+    }
+
+    @Override
     public List<ErpSaleQuoteItemDO> getSaleQuoteItemListByQuoteId(Long quoteId) {
         return saleQuoteItemMapper.selectListByQuoteId(quoteId);
+    }
+
+    @Override
+    public List<ErpSaleQuoteItemDO> getSaleQuoteItemListByQuoteId(Long quoteId, String orderField,
+                                                                  String orderDirection) {
+        return saleQuoteItemMapper.selectListByQuoteId(quoteId, orderField, orderDirection);
     }
 
     @Override

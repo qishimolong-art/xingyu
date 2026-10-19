@@ -23,6 +23,7 @@ import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.invoice.ErpPurch
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.invoice.ErpPurchaseInvoiceMixedSourceItemPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.invoice.ErpPurchaseInvoicePageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.invoice.ErpPurchaseInvoiceRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.invoice.ErpPurchaseInvoiceSummaryRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.invoice.ErpPurchaseInvoiceSaveReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.invoice.ErpPurchaseInvoiceSourceInItemPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.invoice.ErpPurchaseInvoiceSourceDocumentPageReqVO;
@@ -369,6 +370,14 @@ public class ErpPurchaseInvoiceController {
         return success(respResult);
     }
 
+    @PostMapping("/item-page")
+    @Operation(summary = "获得采购票据明细分页（编辑态）")
+    @PreAuthorize("@ss.hasPermission('erp:purchase-invoice:query')")
+    public CommonResult<PageResult<ErpPurchaseInvoiceRespVO.Item>> getPurchaseInvoiceItemPageForEdit(
+            @Valid @RequestBody ErpPurchaseInvoiceItemPageReqVO pageReqVO) {
+        return getPurchaseInvoiceItemPage(pageReqVO);
+    }
+
     @GetMapping("/source-in-item-page")
     @Operation(summary = "获得采购票据来源入库明细分页")
     @PreAuthorize("@ss.hasPermission('erp:purchase-invoice:create') "
@@ -436,6 +445,16 @@ public class ErpPurchaseInvoiceController {
         return success(Boolean.FALSE.equals(pageReqVO.getIncludeItems())
                 ? buildPurchaseInvoiceVOPageResultWithoutItems(pageResult)
                 : buildPurchaseInvoiceVOPageResult(pageResult));
+    }
+
+    @GetMapping("/summary")
+    @Operation(summary = "获得采购票据查询汇总")
+    @PreAuthorize("@ss.hasPermission('erp:purchase-invoice:query')")
+    public CommonResult<ErpPurchaseInvoiceSummaryRespVO> getPurchaseInvoiceSummary(
+            @Valid ErpPurchaseInvoicePageReqVO pageReqVO) {
+        ErpPurchaseInvoiceSummaryRespVO summary = purchaseInvoiceService.getPurchaseInvoiceSummary(pageReqVO);
+        fieldPermissionMasker.clearHiddenFields(FIELD_PERMISSION_MODULE, summary);
+        return success(summary);
     }
 
     @GetMapping("/supplier-dept-simple-list")
@@ -596,6 +615,13 @@ public class ErpPurchaseInvoiceController {
                 ErpPurchaseInDO::getId);
         Map<Long, ErpProductRespVO> productMap = DataPermissionUtils.executeIgnore(() ->
                 productService.getProductVOMap(convertSet(sourceItems, ErpPurchaseInItemDO::getProductId)));
+        Set<Long> productIds = convertSet(sourceItems, ErpPurchaseInItemDO::getProductId);
+        Set<Long> warehouseIds = convertSet(sourceItems, ErpPurchaseInItemDO::getWarehouseId);
+        productIds.remove(null);
+        warehouseIds.remove(null);
+        Map<String, ErpStockDO> stockMap = CollUtil.isEmpty(productIds) || CollUtil.isEmpty(warehouseIds)
+                ? Collections.emptyMap()
+                : DataPermissionUtils.executeIgnore(() -> stockService.getStockMap(productIds, warehouseIds));
         List<ErpPurchaseInvoiceRespVO.Item> result = new ArrayList<>();
         for (ErpPurchaseInItemDO sourceItem : sourceItems) {
             ErpPurchaseInDO purchaseIn = purchaseInMap.get(sourceItem.getInId());
@@ -615,8 +641,7 @@ public class ErpPurchaseInvoiceController {
             item.setTaxPercent(null);
             item.setTaxPrice(BigDecimal.ZERO);
             item.setTotalPrice(item.getTaxExclusivePrice());
-            ErpStockDO stock = DataPermissionUtils.executeIgnore(() ->
-                    stockService.getStock(sourceItem.getProductId(), sourceItem.getWarehouseId()));
+            ErpStockDO stock = stockMap.get(sourceItem.getProductId() + "_" + sourceItem.getWarehouseId());
             item.setStockCount(stock != null && stock.getCount() != null ? stock.getCount() : BigDecimal.ZERO);
             MapUtils.findAndThen(productMap, sourceItem.getProductId(), product -> item.setProductName(product.getName())
                     .setProductCode(product.getCode())
@@ -654,14 +679,21 @@ public class ErpPurchaseInvoiceController {
             }
             item.setWarehouseId(resolvedWarehouseId);
             item.setPackageQty(packageQty);
+        }
+        Set<Long> productIds = convertSet(items, ErpPurchaseInvoiceRespVO.Item::getProductId);
+        Set<Long> warehouseIds = convertSet(items, ErpPurchaseInvoiceRespVO.Item::getWarehouseId);
+        productIds.remove(null);
+        warehouseIds.remove(null);
+        Map<String, ErpStockDO> stockMap = CollUtil.isEmpty(productIds) || CollUtil.isEmpty(warehouseIds)
+                ? Collections.emptyMap()
+                : DataPermissionUtils.executeIgnore(() -> stockService.getStockMap(productIds, warehouseIds));
+        for (ErpPurchaseInvoiceRespVO.Item item : items) {
             ErpPurchaseInvoiceSourceTypeEnum sourceType =
                     ErpPurchaseInvoiceSourceTypeEnum.valueOfType(item.getSourceType());
             if (sourceType != null) {
                 item.setSourceTypeName(sourceType.getName());
             }
-            final Long warehouseId = resolvedWarehouseId;
-            ErpStockDO stock = DataPermissionUtils.executeIgnore(() ->
-                    stockService.getStock(item.getProductId(), warehouseId));
+            ErpStockDO stock = stockMap.get(item.getProductId() + "_" + item.getWarehouseId());
             item.setStockCount(stock != null && stock.getCount() != null ? stock.getCount() : BigDecimal.ZERO);
             ErpProductRespVO product = productMap.get(item.getProductId());
             if (product == null) {

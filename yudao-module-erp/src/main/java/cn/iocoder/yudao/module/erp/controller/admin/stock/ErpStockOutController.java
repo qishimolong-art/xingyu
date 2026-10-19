@@ -14,6 +14,9 @@ import cn.iocoder.yudao.framework.datapermission.core.util.DataPermissionUtils;
 import cn.iocoder.yudao.framework.excel.core.util.ExcelUtils;
 import cn.iocoder.yudao.module.erp.controller.admin.common.ErpAuditStatusRequestValidator;
 import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpProductRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.ErpStockDocumentSummaryRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.ErpStockItemMatchReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.ErpStockItemMatchRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.ErpStockUpdateRemarkReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.imports.ErpStockImportExcelVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.imports.ErpStockImportResultRespVO;
@@ -77,6 +80,7 @@ import static cn.iocoder.yudao.framework.common.exception.util.ServiceExceptionU
 import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.convertList;
 import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.convertMultiMap;
 import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.convertSet;
+import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.STOCK_OUT_NOT_EXISTS;
 
 @Tag(name = "Admin - ERP stock out")
 @RestController
@@ -211,6 +215,7 @@ public class ErpStockOutController {
             }
             fillUserNames(vo, userMap);
         });
+        fillSummary(respVO, stockOutItemMapper.selectSummaryMapByOutIds(Collections.singleton(id)).get(id));
         itemPriceReferenceFiller.fill(respVO.getItems());
         fieldPermissionMasker.maskFormWithItems(FIELD_PERMISSION_MODULE, respVO);
         return success(respVO);
@@ -231,6 +236,30 @@ public class ErpStockOutController {
         return success(respResult);
     }
 
+    @PostMapping("/item-page")
+    @Operation(summary = "Get stock out item page for editing")
+    @PreAuthorize("@ss.hasPermission('erp:stock-out:query')")
+    public CommonResult<PageResult<ErpStockOutRespVO.Item>> getStockOutEditItemPage(
+            @Valid @RequestBody ErpStockOutItemPageReqVO pageReqVO) {
+        return getStockOutItemPage(pageReqVO);
+    }
+
+    @PostMapping("/item-match")
+    @Operation(summary = "Match stock out items across pages")
+    @PreAuthorize("@ss.hasPermission('erp:stock-out:query')")
+    public CommonResult<ErpStockItemMatchRespVO> matchStockOutItems(
+            @Valid @RequestBody ErpStockItemMatchReqVO reqVO) {
+        if (stockOutService.getStockOut(reqVO.getDocumentId()) == null) {
+            throw exception(STOCK_OUT_NOT_EXISTS);
+        }
+        List<ErpStockOutItemDO> items = stockOutService.getStockOutItemListByOutId(reqVO.getDocumentId());
+        return success(ErpStockItemMatchUtils.match(items, reqVO, ErpStockOutItemDO::getId,
+                (item, key) -> java.util.Objects.equals(item.getProductId(), key.getProductId())
+                        && java.util.Objects.equals(item.getWarehouseId(), key.getWarehouseId())
+                        && ErpStockItemMatchUtils.normalizeText(item.getBatchNo())
+                        .equals(ErpStockItemMatchUtils.normalizeText(key.getBatchNo()))));
+    }
+
     @GetMapping("/page")
     @Operation(summary = "Get stock out page")
     @PreAuthorize("@ss.hasPermission('erp:stock-out:query')")
@@ -238,6 +267,15 @@ public class ErpStockOutController {
         PageResult<ErpStockOutDO> pageResult = stockOutService.getStockOutPage(pageReqVO);
         return success(Boolean.FALSE.equals(pageReqVO.getIncludeItems())
                 ? buildStockOutVOPageResultWithoutItems(pageResult) : buildStockOutVOPageResult(pageResult));
+    }
+
+    @GetMapping("/summary")
+    @Operation(summary = "Get stock out query summary")
+    @PreAuthorize("@ss.hasPermission('erp:stock-out:query')")
+    public CommonResult<ErpStockDocumentSummaryRespVO> getStockOutSummary(@Valid ErpStockOutPageReqVO pageReqVO) {
+        ErpStockDocumentSummaryRespVO summary = stockOutService.getStockOutSummary(pageReqVO);
+        fieldPermissionMasker.maskListColumns(FIELD_PERMISSION_MODULE, summary);
+        return success(summary);
     }
 
     @GetMapping("/dept-simple-page")
@@ -376,6 +414,9 @@ public class ErpStockOutController {
         if (summary == null) {
             vo.setWarehouseNames("");
             vo.setItemCount(0);
+            vo.setTotalCount(BigDecimal.ZERO);
+            vo.setTotalPrice(BigDecimal.ZERO);
+            vo.setTotalWeight(BigDecimal.ZERO);
             return;
         }
         vo.setProductNames((String) summary.get("productNames"));
@@ -383,6 +424,13 @@ public class ErpStockOutController {
         vo.setWarehouseNames((String) summary.get("warehouseNames"));
         Object count = summary.get("itemCount");
         vo.setItemCount(count instanceof Number ? ((Number) count).intValue() : 0);
+        vo.setTotalCount(toBigDecimal(summary.get("totalCount")));
+        vo.setTotalPrice(toBigDecimal(summary.get("totalPrice")));
+        vo.setTotalWeight(toBigDecimal(summary.get("totalWeight")));
+    }
+
+    private BigDecimal toBigDecimal(Object value) {
+        return value == null ? BigDecimal.ZERO : new BigDecimal(value.toString());
     }
 
     private PageResult<UserSimpleRespVO> buildUserSimplePage(PageParam pageReqVO) {
@@ -400,10 +448,14 @@ public class ErpStockOutController {
         }
         Map<Long, ErpProductRespVO> productMap = DataPermissionUtils.executeIgnore(() -> productService.getProductVOMap(
                 convertSet(itemList, ErpStockOutItemDO::getProductId)));
+        Map<String, ErpStockDO> stockMap = includeStockCount
+                ? DataPermissionUtils.executeIgnore(() -> stockService.getStockMap(
+                convertSet(itemList, ErpStockOutItemDO::getProductId),
+                convertSet(itemList, ErpStockOutItemDO::getWarehouseId)))
+                : Collections.emptyMap();
         return BeanUtils.toBean(itemList, ErpStockOutRespVO.Item.class, item -> {
             if (includeStockCount) {
-                ErpStockDO stock = DataPermissionUtils.executeIgnore(() ->
-                        stockService.getStock(item.getProductId(), item.getWarehouseId()));
+                ErpStockDO stock = stockMap.get(item.getProductId() + "_" + item.getWarehouseId());
                 item.setStockCount(stock != null ? stock.getCount() : BigDecimal.ZERO);
             }
             fillProduct(item, productMap.get(item.getProductId()));

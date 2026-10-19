@@ -13,6 +13,9 @@ import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
 import cn.iocoder.yudao.framework.datapermission.core.util.DataPermissionUtils;
 import cn.iocoder.yudao.framework.excel.core.util.ExcelUtils;
 import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpProductRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.ErpStockDocumentSummaryRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.ErpStockItemMatchReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.ErpStockItemMatchRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.ErpStockUpdateRemarkReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.imports.ErpStockImportResultRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.move.ErpStockMoveItemPageReqVO;
@@ -84,6 +87,7 @@ import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.
 import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.convertList;
 import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.convertSet;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.STOCK_MOVE_LEGACY_READ_ONLY;
+import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.STOCK_MOVE_NOT_EXISTS;
 
 @Tag(name = "Admin - ERP stock move")
 @RestController
@@ -194,7 +198,9 @@ public class ErpStockMoveController {
             return success(null);
         }
         Long id = stockMove.getId();
-        List<ErpStockMoveItemDO> itemList = stockMoveService.getStockMoveItemListByMoveId(id);
+        List<ErpStockMoveItemDO> itemList = Boolean.TRUE.equals(includeItems)
+                ? stockMoveService.getStockMoveItemListByMoveId(id)
+                : stockMoveItemMapper.selectLightListByMoveIds(Collections.singleton(id));
         Map<Long, ErpWarehouseDO> warehouseMap = Boolean.TRUE.equals(includeItems)
                 ? getWarehouseMapIgnoreDataPermission(collectWarehouseIds(itemList)) : Collections.emptyMap();
         Map<Long, DeptRespDTO> deptMap = getDeptMap(Collections.singletonList(stockMove), itemList, warehouseMap);
@@ -220,6 +226,7 @@ public class ErpStockMoveController {
             fillUnlockCartPermission(vo, stockMove, itemList);
             fillUserNames(vo, userMap);
         });
+        fillSummary(respVO, stockMoveItemMapper.selectSummaryMapByMoveIds(Collections.singleton(id)).get(id));
         fillDirectCustomerNamesIfStockTransferOut(fieldPermissionModule, Collections.singletonList(respVO));
         fillPrintInfoIfStockTransferOut(fieldPermissionModule, Collections.singletonList(respVO));
         itemPriceReferenceFiller.fill(respVO.getItems());
@@ -233,6 +240,33 @@ public class ErpStockMoveController {
     public CommonResult<PageResult<ErpStockMoveRespVO.Item>> getStockMoveItemPage(
             @Valid ErpStockMoveItemPageReqVO pageReqVO) {
         return getStockMoveItemPage(pageReqVO, FIELD_PERMISSION_MODULE);
+    }
+
+    @PostMapping("/item-page")
+    @Operation(summary = "Get stock move item page for editing")
+    @PreAuthorize("@ss.hasPermission('erp:stock-move:query')")
+    public CommonResult<PageResult<ErpStockMoveRespVO.Item>> getStockMoveEditItemPage(
+            @Valid @RequestBody ErpStockMoveItemPageReqVO pageReqVO) {
+        return getStockMoveItemPage(pageReqVO, FIELD_PERMISSION_MODULE);
+    }
+
+    @PostMapping("/item-match")
+    @Operation(summary = "Match stock move items across pages")
+    @PreAuthorize("@ss.hasPermission('erp:stock-move:query')")
+    public CommonResult<ErpStockItemMatchRespVO> matchStockMoveItems(
+            @Valid @RequestBody ErpStockItemMatchReqVO reqVO) {
+        if (stockMoveService.getStockMove(reqVO.getDocumentId()) == null) {
+            throw exception(STOCK_MOVE_NOT_EXISTS);
+        }
+        return success(matchStockMoveItemsAfterVisibleCheck(reqVO));
+    }
+
+    public ErpStockItemMatchRespVO matchStockMoveItemsAfterVisibleCheck(ErpStockItemMatchReqVO reqVO) {
+        List<ErpStockMoveItemDO> items = stockMoveService.getStockMoveItemListByMoveId(reqVO.getDocumentId());
+        return ErpStockItemMatchUtils.match(items, reqVO, ErpStockMoveItemDO::getId,
+                (item, key) -> java.util.Objects.equals(item.getProductId(), key.getProductId())
+                        && java.util.Objects.equals(item.getFromWarehouseId(), key.getFromWarehouseId())
+                        && java.util.Objects.equals(item.getToWarehouseId(), key.getToWarehouseId()));
     }
 
     public CommonResult<PageResult<ErpStockMoveRespVO.Item>> getStockMoveItemPage(
@@ -268,6 +302,15 @@ public class ErpStockMoveController {
         return success(Boolean.FALSE.equals(pageReqVO.getIncludeItems())
                 ? buildStockMoveVOPageResultWithoutItems(pageResult, FIELD_PERMISSION_MODULE, null, false)
                 : buildStockMoveVOPageResult(pageResult));
+    }
+
+    @GetMapping("/summary")
+    @Operation(summary = "Get stock move query summary")
+    @PreAuthorize("@ss.hasPermission('erp:stock-move:query')")
+    public CommonResult<ErpStockDocumentSummaryRespVO> getStockMoveSummary(@Valid ErpStockMovePageReqVO pageReqVO) {
+        ErpStockDocumentSummaryRespVO summary = stockMoveService.getStockMoveSummary(pageReqVO);
+        fieldPermissionMasker.maskListColumns(FIELD_PERMISSION_MODULE, summary);
+        return success(summary);
     }
 
     @GetMapping("/dept-simple-page")
@@ -364,6 +407,8 @@ public class ErpStockMoveController {
                 ? stockMoveService.getApprovePermissionMap(
                         pageResult.getList(), itemMap, transferOutPermissionScope)
                 : stockMoveService.getApprovePermissionMap(pageResult.getList(), itemMap);
+        Map<Long, ErpStockMoveOperationPermission> unlockCartPermissionMap =
+                stockMoveService.getUnlockCartPermissionMap(pageResult.getList(), itemMap);
         Set<Long> userIds = new HashSet<>();
         pageResult.getList().forEach(stockMove -> {
             addUserId(userIds, stockMove.getCreator());
@@ -389,6 +434,7 @@ public class ErpStockMoveController {
                 List<ErpStockMoveItemDO> stockMoveItems = itemMap.get(vo.getId());
                 fillApprovePermission(vo, approvePermissionMap.get(vo.getId()));
                 fillDeletePermission(vo, stockMove, stockMoveItems);
+                fillUnlockCartPermission(vo, unlockCartPermissionMap.get(vo.getId()));
             });
             fillMoveDeptNames(vo, deptMap);
             fillUserNames(vo, userMap);
@@ -416,6 +462,8 @@ public class ErpStockMoveController {
                 ? stockMoveService.getApprovePermissionMap(
                         pageResult.getList(), itemMap, transferOutPermissionScope)
                 : stockMoveService.getApprovePermissionMap(pageResult.getList(), itemMap);
+        Map<Long, ErpStockMoveOperationPermission> unlockCartPermissionMap =
+                stockMoveService.getUnlockCartPermissionMap(pageResult.getList(), itemMap);
         Set<Long> userIds = new HashSet<>();
         pageResult.getList().forEach(stockMove -> {
             addUserId(userIds, stockMove.getCreator());
@@ -432,7 +480,7 @@ public class ErpStockMoveController {
                 List<ErpStockMoveItemDO> stockMoveItems = itemMap.get(vo.getId());
                 fillApprovePermission(vo, approvePermissionMap.get(vo.getId()));
                 fillDeletePermission(vo, stockMove, stockMoveItems);
-                fillUnlockCartPermission(vo, stockMove, stockMoveItems);
+                fillUnlockCartPermission(vo, unlockCartPermissionMap.get(vo.getId()));
             });
             fillMoveDeptNames(vo, deptMap);
             fillUserNames(vo, userMap);
@@ -448,6 +496,9 @@ public class ErpStockMoveController {
             vo.setItemCount(0);
             vo.setFromWarehouseNames("");
             vo.setToWarehouseNames("");
+            vo.setTotalCount(BigDecimal.ZERO);
+            vo.setTotalPrice(BigDecimal.ZERO);
+            vo.setTotalWeight(BigDecimal.ZERO);
             return;
         }
         vo.setProductNames((String) summary.get("productNames"));
@@ -456,6 +507,13 @@ public class ErpStockMoveController {
         vo.setToWarehouseNames((String) summary.get("toWarehouseNames"));
         Object count = summary.get("itemCount");
         vo.setItemCount(count instanceof Number ? ((Number) count).intValue() : 0);
+        vo.setTotalCount(toBigDecimal(summary.get("totalCount")));
+        vo.setTotalPrice(toBigDecimal(summary.get("totalPrice")));
+        vo.setTotalWeight(toBigDecimal(summary.get("totalWeight")));
+    }
+
+    private BigDecimal toBigDecimal(Object value) {
+        return value == null ? BigDecimal.ZERO : new BigDecimal(value.toString());
     }
 
     public PageResult<UserSimpleRespVO> buildUserSimplePage(PageParam pageReqVO) {
@@ -524,10 +582,14 @@ public class ErpStockMoveController {
                 convertSet(itemList, ErpStockMoveItemDO::getProductId));
         Map<Long, ErpWarehouseDO> warehouseMap = getWarehouseMapIgnoreDataPermission(collectWarehouseIds(itemList));
         Map<Long, DeptRespDTO> deptMap = getDeptMap(Collections.emptyList(), itemList, warehouseMap);
+        Map<String, ErpStockDO> stockMap = includeStockCount
+                ? DataPermissionUtils.executeIgnore(() -> stockService.getStockMap(
+                convertSet(itemList, ErpStockMoveItemDO::getProductId),
+                convertSet(itemList, ErpStockMoveItemDO::getFromWarehouseId)))
+                : Collections.emptyMap();
         return BeanUtils.toBean(itemList, ErpStockMoveRespVO.Item.class, item -> {
             if (includeStockCount) {
-                ErpStockDO stock = DataPermissionUtils.executeIgnore(() ->
-                        stockService.getStock(item.getProductId(), item.getFromWarehouseId()));
+                ErpStockDO stock = stockMap.get(item.getProductId() + "_" + item.getFromWarehouseId());
                 item.setStockCount(stock != null ? stock.getCount() : BigDecimal.ZERO);
             }
             fillProduct(item, productMap.get(item.getProductId()));
@@ -617,6 +679,13 @@ public class ErpStockMoveController {
     private void fillUnlockCartPermission(ErpStockMoveRespVO vo, ErpStockMoveDO stockMove,
                                           List<ErpStockMoveItemDO> itemList) {
         ErpStockMoveOperationPermission permission = stockMoveService.getUnlockCartPermission(stockMove, itemList);
+        fillUnlockCartPermission(vo, permission);
+    }
+
+    private void fillUnlockCartPermission(ErpStockMoveRespVO vo, ErpStockMoveOperationPermission permission) {
+        if (permission == null) {
+            return;
+        }
         vo.setUnlockCartAllowed(permission.getAllowed());
         vo.setUnlockCartDisabledReason(permission.getDisabledReason());
     }

@@ -10,5 +10,8 @@ public interface ErpSettlementOffsetService {
 
     PageResult<ErpSettlementOffsetDO> getSettlementOffsetPage(ErpSettlementOffsetPageReqVO reqVO);
 
+    cn.iocoder.yudao.module.erp.controller.admin.finance.vo.ErpFinanceQuerySummaryRespVO getSettlementOffsetSummary(
+            ErpSettlementOffsetPageReqVO reqVO);
+
     ErpSettlementOffsetDetailRespVO getSettlementOffsetDetail(ErpSettlementOffsetDetailReqVO reqVO);
 }

@@ -5,6 +5,7 @@ import cn.iocoder.yudao.framework.mybatis.core.mapper.BaseMapperX;
 import cn.iocoder.yudao.framework.mybatis.core.query.MPJLambdaWrapperX;
 import cn.iocoder.yudao.framework.mybatis.core.query.LambdaQueryWrapperX;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.receipt.ErpFinanceReceiptPageReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.ErpFinanceQuerySummaryRespVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.ErpFinanceReceiptDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.ErpFinanceReceiptItemDO;
 import cn.iocoder.yudao.module.erp.dal.mysql.common.ErpKeywordQuery;
@@ -20,6 +21,21 @@ import org.apache.ibatis.annotations.Mapper;
 public interface ErpFinanceReceiptMapper extends BaseMapperX<ErpFinanceReceiptDO> {
 
     default PageResult<ErpFinanceReceiptDO> selectPage(ErpFinanceReceiptPageReqVO reqVO) {
+        MPJLambdaWrapperX<ErpFinanceReceiptDO> query = buildQuery(reqVO);
+        orderBy(query, reqVO);
+        return selectJoinPage(reqVO, ErpFinanceReceiptDO.class, query);
+    }
+
+    default ErpFinanceQuerySummaryRespVO selectSummary(ErpFinanceReceiptPageReqVO reqVO) {
+        MPJLambdaWrapperX<ErpFinanceReceiptDO> query = buildQuery(reqVO)
+                .selectAs("COUNT(*)", ErpFinanceQuerySummaryRespVO::getDocumentCount)
+                .selectAs("COALESCE(SUM(t.total_price), 0)", ErpFinanceQuerySummaryRespVO::getTotalPrice)
+                .selectAs("COALESCE(SUM(t.discount_price), 0)", ErpFinanceQuerySummaryRespVO::getDiscountPrice)
+                .selectAs("COALESCE(SUM(t.receipt_price), 0)", ErpFinanceQuerySummaryRespVO::getReceiptPrice);
+        return selectJoinOne(ErpFinanceQuerySummaryRespVO.class, query);
+    }
+
+    static MPJLambdaWrapperX<ErpFinanceReceiptDO> buildQuery(ErpFinanceReceiptPageReqVO reqVO) {
         MPJLambdaWrapperX<ErpFinanceReceiptDO> query = new MPJLambdaWrapperX<ErpFinanceReceiptDO>()
                 .likeIfPresent(ErpFinanceReceiptDO::getNo, reqVO.getNo())
                 .betweenIfPresent(ErpFinanceReceiptDO::getReceiptTime, reqVO.getReceiptTime())
@@ -29,17 +45,24 @@ public interface ErpFinanceReceiptMapper extends BaseMapperX<ErpFinanceReceiptDO
                 .eqIfPresent(ErpFinanceReceiptDO::getDeptId, reqVO.getDeptId())
                 .eqIfPresent(ErpFinanceReceiptDO::getAccountId, reqVO.getAccountId())
                 .eqIfPresent(ErpFinanceReceiptDO::getStatus, reqVO.getStatus())
-                .likeIfPresent(ErpFinanceReceiptDO::getRemark, reqVO.getRemark());
-        if (reqVO.getBizNo() != null) {
-            query.leftJoin(ErpFinanceReceiptItemDO.class, ErpFinanceReceiptItemDO::getReceiptId, ErpFinanceReceiptDO::getId)
-                    .eq(reqVO.getBizNo() != null, ErpFinanceReceiptItemDO::getBizNo, reqVO.getBizNo())
-                    .groupBy(ErpFinanceReceiptDO::getId); // 避免 1 对多查询，产生相同的 1
+                .likeIfPresent(ErpFinanceReceiptDO::getRemark, reqVO.getRemark())
+                .likeIfPresent(ErpFinanceReceiptDO::getPaymentVoucherNo, reqVO.getPaymentVoucherNo());
+        if (reqVO.getVoucherNo() != null && !reqVO.getVoucherNo().trim().isEmpty()) {
+            query.apply("EXISTS (SELECT 1 FROM erp_voucher v WHERE v.source_biz_type = 6 "
+                            + "AND v.source_biz_id = t.id AND v.tenant_id = t.tenant_id "
+                            + "AND v.deleted = b'0' AND v.voucher_no LIKE {0})",
+                    "%" + reqVO.getVoucherNo().trim() + "%");
+        }
+        if (reqVO.getBizNo() != null && !reqVO.getBizNo().trim().isEmpty()) {
+            query.apply("EXISTS (SELECT 1 FROM erp_finance_receipt_item i WHERE i.receipt_id = t.id "
+                            + "AND i.tenant_id = t.tenant_id AND i.deleted = b'0' AND i.biz_no = {0})",
+                    reqVO.getBizNo());
         }
         ErpKeywordQuery.appendWithDeptNameAndSaleCustomer(query, reqVO.getKeyword(),
                 ErpFinanceReceiptDO::getNo,
+                ErpFinanceReceiptDO::getPaymentVoucherNo,
                 ErpFinanceReceiptDO::getRemark);
-        orderBy(query, reqVO);
-        return selectJoinPage(reqVO, ErpFinanceReceiptDO.class, query);
+        return query;
     }
 
     static void orderBy(MPJLambdaWrapperX<ErpFinanceReceiptDO> query, ErpFinanceReceiptPageReqVO reqVO) {

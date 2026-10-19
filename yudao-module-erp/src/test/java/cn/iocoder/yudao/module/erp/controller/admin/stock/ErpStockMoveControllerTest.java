@@ -132,6 +132,11 @@ class ErpStockMoveControllerTest extends BaseMockitoUnitTest {
                 false, Arrays.asList(20L, 21L));
         when(stockMoveService.getApprovePermissionMap(
                 eq(stockMoves), anyMap(), eq(permissionScope))).thenReturn(approvePermissionMap);
+        Map<Long, ErpStockMoveOperationPermission> unlockPermissionMap = new HashMap<>();
+        unlockPermissionMap.put(1L, ErpStockMoveOperationPermission.allowed());
+        unlockPermissionMap.put(2L, ErpStockMoveOperationPermission.denied("仅总公司可解锁"));
+        when(stockMoveService.getUnlockCartPermissionMap(eq(stockMoves), anyMap()))
+                .thenReturn(unlockPermissionMap);
         when(stockMoveService.getDeletePermission(any(), any()))
                 .thenReturn(ErpStockMoveOperationPermission.allowed());
 
@@ -145,8 +150,12 @@ class ErpStockMoveControllerTest extends BaseMockitoUnitTest {
         assertEquals("dept-40", result.getList().get(0).getItems().get(0).getFromWarehouseDeptName());
         assertTrue(result.getList().get(0).getApproveAllowed());
         assertFalse(result.getList().get(1).getApproveAllowed());
+        assertTrue(result.getList().get(0).getUnlockCartAllowed());
+        assertFalse(result.getList().get(1).getUnlockCartAllowed());
+        assertEquals("仅总公司可解锁", result.getList().get(1).getUnlockCartDisabledReason());
         verify(stockMoveService, times(1)).getApprovePermissionMap(
                 eq(stockMoves), anyMap(), eq(permissionScope));
+        verify(stockMoveService, times(1)).getUnlockCartPermissionMap(eq(stockMoves), anyMap());
         verify(stockMoveService, never()).getApprovePermissionMap(anyList(), anyMap());
         verify(stockMoveService, never()).getApprovePermission(any(), anyList());
         verify(deptApi, times(1)).getDeptMap(argThat(deptIds -> deptIds.containsAll(Arrays.asList(

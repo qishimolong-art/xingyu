@@ -4,6 +4,8 @@ import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.ErpFinanceUpdateRemarkReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.receipt.ErpFinanceReceiptDraftSaveReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.receipt.ErpFinanceReceiptFormCandidateReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.receipt.ErpFinanceReceiptFormCandidatePageReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.receipt.ErpFinanceReceiptFormCandidatePageRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.receipt.ErpFinanceReceiptFormCandidateRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.receipt.ErpFinanceReceiptItemPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.receipt.ErpFinanceReceiptPageReqVO;
@@ -88,7 +90,13 @@ public interface ErpFinanceReceiptService {
      */
     PageResult<ErpFinanceReceiptDO> getFinanceReceiptPage(ErpFinanceReceiptPageReqVO pageReqVO);
 
+    cn.iocoder.yudao.module.erp.controller.admin.finance.vo.ErpFinanceQuerySummaryRespVO getFinanceReceiptSummary(
+            ErpFinanceReceiptPageReqVO pageReqVO);
+
     List<ErpFinanceReceiptFormCandidateRespVO> getFormCandidates(ErpFinanceReceiptFormCandidateReqVO reqVO);
+
+    ErpFinanceReceiptFormCandidatePageRespVO getFormCandidatePage(
+            ErpFinanceReceiptFormCandidatePageReqVO reqVO);
 
     List<ErpFinanceReceiptWriteOffCandidateRespVO> getWriteOffCandidates(Long receiptId);
 

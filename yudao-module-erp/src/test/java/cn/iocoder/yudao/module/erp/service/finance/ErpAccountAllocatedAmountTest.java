@@ -1,8 +1,14 @@
 package cn.iocoder.yudao.module.erp.service.finance;
 
+import cn.idev.excel.annotation.ExcelProperty;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.payable.vo.account.ErpPayableDetailRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.finance.payable.vo.account.ErpPayableAccountSummaryRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.receivable.vo.account.ErpReceivableDetailRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.finance.receivable.vo.account.ErpReceivableAccountSummaryRespVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.ErpFinancePaymentDO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.finance.ErpFinanceReceiptDO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.finance.payable.ErpPayableAccountDO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.finance.receivable.ErpReceivableAccountDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseInDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseInItemDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleOutDO;
@@ -20,6 +26,7 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashMap;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -33,6 +40,68 @@ class ErpAccountAllocatedAmountTest {
         Field field = ErpPayableAccountServiceImpl.class.getDeclaredField("payableOtherMapper");
 
         assertThat(field.getAnnotation(Resource.class)).isNotNull();
+    }
+
+    @Test
+    void payableSummaryAccumulatesEveryVisibleAmountAndTreatsNullAsZero() {
+        ErpPayableAccountServiceImpl service = new ErpPayableAccountServiceImpl();
+        ErpPayableAccountSummaryRespVO summary = new ErpPayableAccountSummaryRespVO();
+        ErpPayableAccountDO first = new ErpPayableAccountDO();
+        first.setPurchaseInAmount(new BigDecimal("100"));
+        first.setPaymentAmount(new BigDecimal("40"));
+        first.setBalance(new BigDecimal("60"));
+        first.setOpeningPayableBalance(new BigDecimal("10"));
+        first.setMiscPayableAmount(new BigDecimal("-5"));
+        first.setUnclearedPrepayment(new BigDecimal("20"));
+        ErpPayableAccountDO second = new ErpPayableAccountDO();
+        second.setBalance(new BigDecimal("-3"));
+
+        ReflectionTestUtils.invokeMethod(service, "addSummaryRow", summary, first);
+        ReflectionTestUtils.invokeMethod(service, "addSummaryRow", summary, second);
+
+        assertThat(summary.getSupplierCount()).isEqualTo(2L);
+        assertThat(summary.getPurchaseInAmount()).isEqualByComparingTo("100");
+        assertThat(summary.getPaymentAmount()).isEqualByComparingTo("40");
+        assertThat(summary.getBalance()).isEqualByComparingTo("57");
+        assertThat(summary.getOpeningPayableBalance()).isEqualByComparingTo("10");
+        assertThat(summary.getMiscPayableAmount()).isEqualByComparingTo("-5");
+        assertThat(summary.getUnclearedPrepayment()).isEqualByComparingTo("20");
+    }
+
+    @Test
+    void receivableSummaryAccumulatesRowsAndDeduplicatesCustomerAdvance() {
+        ErpReceivableAccountServiceImpl service = new ErpReceivableAccountServiceImpl();
+        ErpReceivableAccountSummaryRespVO summary = new ErpReceivableAccountSummaryRespVO();
+        ErpReceivableAccountDO firstDept = new ErpReceivableAccountDO();
+        firstDept.setCustomerId(1L);
+        firstDept.setReceivableBalance(new BigDecimal("100"));
+        firstDept.setOpeningReceivableBalance(new BigDecimal("10"));
+        firstDept.setReceiptAmount(new BigDecimal("30"));
+        firstDept.setMiscReceivableAmount(new BigDecimal("-5"));
+        firstDept.setCreditBalance(new BigDecimal("200"));
+        firstDept.setPreAdvanceAmount(new BigDecimal("50"));
+        ErpReceivableAccountDO secondDept = new ErpReceivableAccountDO();
+        secondDept.setCustomerId(1L);
+        secondDept.setReceivableBalance(new BigDecimal("20"));
+        secondDept.setPreAdvanceAmount(new BigDecimal("50"));
+        ErpReceivableAccountDO secondCustomer = new ErpReceivableAccountDO();
+        secondCustomer.setCustomerId(2L);
+        secondCustomer.setReceivableBalance(new BigDecimal("-3"));
+
+        HashMap<Long, BigDecimal> customerAdvanceAmounts = new HashMap<>();
+        ReflectionTestUtils.invokeMethod(service, "addSummaryRow", summary, firstDept, customerAdvanceAmounts);
+        ReflectionTestUtils.invokeMethod(service, "addSummaryRow", summary, secondDept, customerAdvanceAmounts);
+        ReflectionTestUtils.invokeMethod(service, "addSummaryRow", summary, secondCustomer,
+                customerAdvanceAmounts);
+
+        assertThat(summary.getComboCount()).isEqualTo(3L);
+        assertThat(summary.getCustomerCount()).isEqualTo(2L);
+        assertThat(summary.getReceivableBalance()).isEqualByComparingTo("117");
+        assertThat(summary.getOpeningReceivableBalance()).isEqualByComparingTo("10");
+        assertThat(summary.getReceiptAmount()).isEqualByComparingTo("30");
+        assertThat(summary.getMiscReceivableAmount()).isEqualByComparingTo("-5");
+        assertThat(summary.getCreditBalance()).isEqualByComparingTo("200");
+        assertThat(summary.getPreAdvanceAmount()).isEqualByComparingTo("50");
     }
 
     @Test
@@ -132,6 +201,7 @@ class ErpAccountAllocatedAmountTest {
         assertThat(row).isNotNull();
         assertThat(row.getIncreaseAmount()).isEqualByComparingTo("0");
         assertThat(row.getPaymentAmount()).isEqualByComparingTo("80");
+        assertThat(row.getPaymentDisplayAmount()).isEqualByComparingTo("80");
         assertThat(row.getAllocatedAmount()).isEqualByComparingTo("50");
         assertThat((BigDecimal) ReflectionTestUtils.invokeMethod(service, "getChangeAmount", row))
                 .isEqualByComparingTo("-80");
@@ -149,9 +219,32 @@ class ErpAccountAllocatedAmountTest {
                 "resolvePaymentDetailPaymentAmount", payment, Collections.singleton(1L));
         BigDecimal amountWithoutDiscountAdjustment = ReflectionTestUtils.invokeMethod(service,
                 "resolvePaymentDetailPaymentAmount", payment, Collections.emptySet());
+        BigDecimal displayAmount = ReflectionTestUtils.invokeMethod(service,
+                "resolvePaymentDisplayAmount", payment, amountWithDiscountAdjustment);
 
         assertThat(amountWithDiscountAdjustment).isEqualByComparingTo("90");
         assertThat(amountWithoutDiscountAdjustment).isEqualByComparingTo("100");
+        assertThat(displayAmount).isEqualByComparingTo("100");
+    }
+
+    @Test
+    void payableDiscountDisplayAmountDoesNotChangeBalanceTwice() {
+        ErpPayableAccountServiceImpl service = new ErpPayableAccountServiceImpl();
+        ErpPayableDetailRespVO paymentRow = ReflectionTestUtils.invokeMethod(service,
+                "buildPaymentAllocatedRow", "付款单", null, 1L, LocalDateTime.now(), "FK-1",
+                new BigDecimal("90"), BigDecimal.ZERO);
+        ErpPayableDetailRespVO discountRow = ReflectionTestUtils.invokeMethod(service,
+                "buildRow", "应付调账", null, 2L, LocalDateTime.now(), "YFTZ-1",
+                new BigDecimal("-10"), false);
+        paymentRow.setPaymentDisplayAmount(new BigDecimal("100"));
+
+        BigDecimal balanceChange = ((BigDecimal) ReflectionTestUtils.invokeMethod(service,
+                "getChangeAmount", paymentRow)).add(ReflectionTestUtils.invokeMethod(service,
+                "getChangeAmount", discountRow));
+
+        assertThat(paymentRow.getPaymentAmount()).isEqualByComparingTo("90");
+        assertThat(paymentRow.getPaymentDisplayAmount()).isEqualByComparingTo("100");
+        assertThat(balanceChange).isEqualByComparingTo("-100");
     }
 
     @Test
@@ -283,9 +376,60 @@ class ErpAccountAllocatedAmountTest {
         assertThat(row.getIncreaseAmount()).isEqualByComparingTo("0");
         assertThat(row.getOtherReceivableAmount()).isEqualByComparingTo("0");
         assertThat(row.getReceiptAmount()).isEqualByComparingTo("80");
+        assertThat(row.getReceiptDisplayAmount()).isEqualByComparingTo("80");
         assertThat(row.getAllocatedAmount()).isEqualByComparingTo("50");
         assertThat((BigDecimal) ReflectionTestUtils.invokeMethod(service, "getChangeAmount", row))
                 .isEqualByComparingTo("-80");
+    }
+
+    @Test
+    void receivableReceiptWithDiscountKeepsActualAmountAndDisplaysTotalPrice() {
+        ErpReceivableAccountServiceImpl service = new ErpReceivableAccountServiceImpl();
+        ErpFinanceReceiptDO receipt = new ErpFinanceReceiptDO()
+                .setId(2L)
+                .setTotalPrice(new BigDecimal("100"))
+                .setReceiptPrice(new BigDecimal("90"));
+
+        BigDecimal actualAmount = ReflectionTestUtils.invokeMethod(service,
+                "resolveReceiptDetailReceiptAmount", receipt, Collections.singleton(2L));
+        BigDecimal displayAmount = ReflectionTestUtils.invokeMethod(service,
+                "resolveReceiptDisplayAmount", receipt, actualAmount);
+
+        assertThat(actualAmount).isEqualByComparingTo("90");
+        assertThat(displayAmount).isEqualByComparingTo("100");
+    }
+
+    @Test
+    void receivableDiscountDisplayAmountDoesNotChangeBalanceTwice() {
+        ErpReceivableAccountServiceImpl service = new ErpReceivableAccountServiceImpl();
+        ErpReceivableDetailRespVO receiptRow = ReflectionTestUtils.invokeMethod(service,
+                "buildReceiptAllocatedRow", "收款单", null, 1L, LocalDateTime.now(), "SK-1",
+                new BigDecimal("90"), BigDecimal.ZERO);
+        ErpReceivableDetailRespVO discountRow = ReflectionTestUtils.invokeMethod(service,
+                "buildOtherReceivableRow", "应收调账", null, 2L, LocalDateTime.now(), "YSTZ-1",
+                new BigDecimal("-10"));
+        receiptRow.setReceiptDisplayAmount(new BigDecimal("100"));
+
+        BigDecimal balanceChange = ((BigDecimal) ReflectionTestUtils.invokeMethod(service,
+                "getChangeAmount", receiptRow)).add(ReflectionTestUtils.invokeMethod(service,
+                "getChangeAmount", discountRow));
+
+        assertThat(receiptRow.getReceiptAmount()).isEqualByComparingTo("90");
+        assertThat(receiptRow.getReceiptDisplayAmount()).isEqualByComparingTo("100");
+        assertThat(balanceChange).isEqualByComparingTo("-100");
+    }
+
+    @Test
+    void detailExcelExportsDisplayAmountsInsteadOfBalanceCalculationAmounts() throws NoSuchFieldException {
+        Field receiptAmount = ErpReceivableDetailRespVO.class.getDeclaredField("receiptAmount");
+        Field receiptDisplayAmount = ErpReceivableDetailRespVO.class.getDeclaredField("receiptDisplayAmount");
+        Field paymentAmount = ErpPayableDetailRespVO.class.getDeclaredField("paymentAmount");
+        Field paymentDisplayAmount = ErpPayableDetailRespVO.class.getDeclaredField("paymentDisplayAmount");
+
+        assertThat(receiptAmount.getAnnotation(ExcelProperty.class)).isNull();
+        assertThat(receiptDisplayAmount.getAnnotation(ExcelProperty.class)).isNotNull();
+        assertThat(paymentAmount.getAnnotation(ExcelProperty.class)).isNull();
+        assertThat(paymentDisplayAmount.getAnnotation(ExcelProperty.class)).isNotNull();
     }
 
     @Test

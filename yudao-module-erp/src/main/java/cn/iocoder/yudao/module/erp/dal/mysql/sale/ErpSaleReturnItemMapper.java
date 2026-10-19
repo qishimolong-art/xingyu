@@ -18,6 +18,8 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.stream.Collectors;
 
 import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.convertMap;
 
@@ -42,24 +44,71 @@ public interface ErpSaleReturnItemMapper extends BaseMapperX<ErpSaleReturnItemDO
     }
 
     default List<ErpSaleReturnItemDO> selectListByReturnId(Long returnId) {
-        return selectList(ErpSaleReturnItemDO::getReturnId, returnId);
+        return selectList(buildSortedQuery(returnId, null, null, null));
+    }
+
+    default List<ErpSaleReturnItemDO> selectListByReturnId(Long returnId, String orderField,
+                                                           String orderDirection) {
+        return selectList(buildSortedQuery(returnId, null, orderField, orderDirection));
     }
 
     default PageResult<ErpSaleReturnItemDO> selectPageByReturnId(ErpSaleReturnItemPageReqVO reqVO) {
-        LambdaQueryWrapperX<ErpSaleReturnItemDO> query = new LambdaQueryWrapperX<ErpSaleReturnItemDO>()
-                .eq(ErpSaleReturnItemDO::getReturnId, reqVO.getReturnId());
-        SFunction<ErpSaleReturnItemDO, ?> orderColumn = getOrderColumn(reqVO.getOrderField());
-        if (orderColumn == null) {
-            query.orderByAsc(ErpSaleReturnItemDO::getId);
-        } else if ("desc".equalsIgnoreCase(reqVO.getOrderDirection())) {
-            query.orderByDesc(orderColumn);
-        } else {
-            query.orderByAsc(orderColumn);
-        }
-        if (orderColumn != null && !"id".equals(reqVO.getOrderField().trim())) {
-            query.orderByAsc(ErpSaleReturnItemDO::getId);
-        }
-        return selectPage(reqVO, query);
+        return selectPage(reqVO, buildSortedQuery(reqVO.getReturnId(), reqVO.getExcludedItemIds(),
+                reqVO.getOrderField(), reqVO.getOrderDirection()));
+    }
+
+    static QueryWrapper<ErpSaleReturnItemDO> buildSortedQuery(Long returnId, Collection<Long> excludedItemIds,
+                                                               String orderField, String orderDirection) {
+        QueryWrapper<ErpSaleReturnItemDO> query = new QueryWrapper<ErpSaleReturnItemDO>()
+                .eq("return_id", returnId)
+                .notIn(CollUtil.isNotEmpty(excludedItemIds), "id", excludedItemIds);
+        return ErpSaleItemSortUtils.applyOrder(query, "erp_sale_return_items", orderField, orderDirection,
+                getOrderSpec(orderField));
+    }
+
+    static boolean isSupportedOrderField(String orderField) {
+        return getOrderSpec(orderField) != null;
+    }
+
+    static ErpSaleItemSortUtils.OrderSpec getOrderSpec(String orderField) {
+        if (orderField == null) return null;
+        String item = "erp_sale_return_items";
+        return switch (orderField.trim()) {
+            case "id" -> new ErpSaleItemSortUtils.OrderSpec(item + ".id", false);
+            case "productId", "productName" -> new ErpSaleItemSortUtils.OrderSpec(
+                    ErpSaleItemSortUtils.productField(item, "name"), true);
+            case "productCode" -> new ErpSaleItemSortUtils.OrderSpec(
+                    ErpSaleItemSortUtils.productField(item, "code"), true);
+            case "productBarCode" -> new ErpSaleItemSortUtils.OrderSpec(
+                    ErpSaleItemSortUtils.productField(item, "bar_code"), true);
+            case "productUnitName" -> new ErpSaleItemSortUtils.OrderSpec(
+                    ErpSaleItemSortUtils.productUnitName(item), true);
+            case "warehouseId" -> new ErpSaleItemSortUtils.OrderSpec(
+                    ErpSaleItemSortUtils.warehouseName(item, "warehouse_id"), true);
+            case "deptId" -> new ErpSaleItemSortUtils.OrderSpec(
+                    ErpSaleItemSortUtils.deptName(item, "dept_id"), true);
+            case "stockCount" -> new ErpSaleItemSortUtils.OrderSpec(ErpSaleItemSortUtils.stockCount(item), false);
+            case "pieceCount" -> new ErpSaleItemSortUtils.OrderSpec(
+                    ErpSaleItemSortUtils.pieceCount(item, "count"), false);
+            case "batchNo" -> new ErpSaleItemSortUtils.OrderSpec(item + ".batch_no", true);
+            case "count" -> new ErpSaleItemSortUtils.OrderSpec(item + ".count", false);
+            case "productPrice" -> new ErpSaleItemSortUtils.OrderSpec(item + ".product_price", false);
+            case "totalPrice", "totalProductPrice" -> new ErpSaleItemSortUtils.OrderSpec(
+                    item + ".total_price", false);
+            case "taxPercent" -> new ErpSaleItemSortUtils.OrderSpec(item + ".tax_percent", false);
+            case "taxPrice" -> new ErpSaleItemSortUtils.OrderSpec(item + ".tax_price", false);
+            case "weight" -> new ErpSaleItemSortUtils.OrderSpec(item + ".weight", false);
+            case "packageQty" -> new ErpSaleItemSortUtils.OrderSpec(item + ".package_qty", false);
+            case "returnReason" -> new ErpSaleItemSortUtils.OrderSpec(item + ".return_reason", true);
+            case "warehousePosition" -> new ErpSaleItemSortUtils.OrderSpec(item + ".warehouse_position", true);
+            case "remark" -> new ErpSaleItemSortUtils.OrderSpec(item + ".remark", true);
+            case "outCount" -> new ErpSaleItemSortUtils.OrderSpec(
+                    "(SELECT COALESCE(soi.count, 0) FROM erp_sale_out_items soi WHERE soi.id = "
+                            + item + ".source_out_item_id AND soi.tenant_id = " + item
+                            + ".tenant_id AND soi.deleted = 0 LIMIT 1)", false);
+            case "returnCount" -> new ErpSaleItemSortUtils.OrderSpec(item + ".count", false);
+            default -> null;
+        };
     }
 
     default List<ErpSaleReturnItemDO> selectListByReturnIds(Collection<Long> returnIds) {
@@ -115,6 +164,16 @@ public interface ErpSaleReturnItemMapper extends BaseMapperX<ErpSaleReturnItemDO
             "</script>"
     })
     List<Map<String, Object>> selectProductNamesRows(@Param("returnIds") Collection<Long> returnIds);
+
+    @Select({
+            "SELECT COALESCE(SUM(sri.count), 0) AS totalCount,",
+            "       COALESCE(SUM(sri.total_price), 0) AS totalProductPrice,",
+            "       COALESCE(SUM(sri.tax_price), 0) AS totalTaxPrice",
+            "  FROM erp_sale_return_items sri",
+            " WHERE sri.deleted = 0",
+            "   AND sri.return_id = #{returnId}"
+    })
+    Map<String, Object> selectDocumentSummaryByReturnId(@Param("returnId") Long returnId);
 
     default int deleteByReturnId(Long returnId) {
         return delete(ErpSaleReturnItemDO::getReturnId, returnId);

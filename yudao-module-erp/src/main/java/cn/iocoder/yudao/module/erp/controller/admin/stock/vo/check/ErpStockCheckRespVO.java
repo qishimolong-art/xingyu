@@ -51,6 +51,9 @@ public class ErpStockCheckRespVO {
     @ExcelProperty("合计金额")
     private BigDecimal totalPrice;
 
+    @Schema(description = "整单总重", example = "125.00")
+    private BigDecimal totalWeight;
+
     @Schema(description = "状态", requiredMode = Schema.RequiredMode.REQUIRED, example = "10")
     @ExcelProperty(value = "状态", converter = DictConvert.class)
     @DictFormat(AUDIT_STATUS)

@@ -3,16 +3,19 @@ package cn.iocoder.yudao.module.erp.controller.admin.sale;
 import cn.iocoder.yudao.framework.common.pojo.CommonResult;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.test.core.ut.BaseMockitoUnitTest;
+import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpProductRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartConvertQuoteReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartDraftCreateReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartDraftUpdateReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartFirstApproveConfigRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartFirstApproveConfigSaveReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartItemPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartItemMatchReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartItemMatchRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartSaveReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartSummaryRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartSubmitRespVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleCartDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleCartItemDO;
@@ -28,6 +31,7 @@ import cn.iocoder.yudao.module.erp.service.sale.ErpSaleFieldPermissionMasker;
 import cn.iocoder.yudao.module.erp.service.sale.ErpSaleItemPriceReferenceFiller;
 import cn.iocoder.yudao.module.erp.service.stock.ErpWarehouseService;
 import cn.iocoder.yudao.module.system.api.dept.DeptApi;
+import cn.iocoder.yudao.module.system.api.dept.dto.DeptRespDTO;
 import cn.iocoder.yudao.module.system.api.user.AdminUserApi;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -422,6 +426,20 @@ public class ErpSaleCartControllerTest extends BaseMockitoUnitTest {
     // ==================== getSaleCartPage ====================
 
     @Test
+    public void testGetSaleCartSummary_passesFiltersAndMasksFields() {
+        ErpSaleCartPageReqVO reqVO = new ErpSaleCartPageReqVO();
+        ErpSaleCartSummaryRespVO summary = new ErpSaleCartSummaryRespVO();
+        summary.setTotalPrice(new BigDecimal("12.34"));
+        when(saleCartService.getSaleCartSummary(reqVO)).thenReturn(summary);
+
+        CommonResult<ErpSaleCartSummaryRespVO> result = controller.getSaleCartSummary(reqVO);
+
+        assertEquals(summary, result.getData());
+        verify(saleCartService).getSaleCartSummary(reqVO);
+        verify(fieldPermissionMasker).clearSaleDetailHiddenFields("erp_sale_cart", summary);
+    }
+
+    @Test
     public void testGetSaleCartPage_emptyResult() {
         ErpSaleCartPageReqVO pageReqVO = new ErpSaleCartPageReqVO();
         when(saleCartService.getSaleCartPage(eq(pageReqVO)))
@@ -496,6 +514,96 @@ public class ErpSaleCartControllerTest extends BaseMockitoUnitTest {
     @Test
     public void testGetSaleCartPage_hasPreAuthorize() throws NoSuchMethodException {
         Method method = ErpSaleCartController.class.getMethod("getSaleCartPage", ErpSaleCartPageReqVO.class);
+        PreAuthorize anno = method.getAnnotation(PreAuthorize.class);
+        assertNotNull(anno);
+        assertTrue(anno.value().contains("erp:sale-cart:query"));
+    }
+
+    @Test
+    public void testGetSaleCartEditItemPage_passesExcludedIdsToService() {
+        ErpSaleCartItemPageReqVO reqVO = new ErpSaleCartItemPageReqVO();
+        reqVO.setCartId(92L);
+        reqVO.setExcludedItemIds(List.of(101L, 102L));
+        when(saleCartService.getSaleCart(92L)).thenReturn(new ErpSaleCartDO().setId(92L));
+        when(saleCartService.getSaleCartItemPage(reqVO))
+                .thenReturn(new PageResult<>(Collections.emptyList(), 0L));
+
+        CommonResult<PageResult<ErpSaleCartRespVO.Item>> result =
+                controller.getSaleCartEditItemPage(reqVO);
+
+        assertEquals(0, result.getCode());
+        assertEquals(0L, result.getData().getTotal());
+        verify(saleCartService).getSaleCartItemPage(argThat(request ->
+                request.getExcludedItemIds().equals(List.of(101L, 102L))));
+    }
+
+    @Test
+    public void testGetSaleCartItemPage_usesLightItemRelationsOnly() {
+        ErpSaleCartItemPageReqVO reqVO = new ErpSaleCartItemPageReqVO();
+        reqVO.setCartId(92L);
+        ErpSaleCartDO cart = new ErpSaleCartDO().setId(92L);
+        cart.setCustomerId(93L);
+        cart.setDeptId(94L);
+        cart.setSaleUserId(95L);
+        ErpSaleCartItemDO item = new ErpSaleCartItemDO();
+        item.setId(101L);
+        item.setCartId(92L);
+        item.setProductId(102L);
+        item.setWarehouseId(103L);
+        item.setCount(BigDecimal.ONE);
+        ErpProductRespVO product = new ErpProductRespVO();
+        product.setId(102L);
+        product.setName("测试配件");
+        product.setCode("P102");
+        product.setUnitName("个");
+        product.setBatchNoEnabled(true);
+        ErpWarehouseDO warehouse = ErpWarehouseDO.builder()
+                .id(103L).name("测试仓").deptId(104L).build();
+        DeptRespDTO warehouseDept = new DeptRespDTO();
+        warehouseDept.setId(104L);
+        warehouseDept.setName("仓库部门");
+        when(saleCartService.getSaleCart(92L)).thenReturn(cart);
+        when(saleCartService.getSaleCartItemPage(reqVO))
+                .thenReturn(new PageResult<>(singletonList(item), 1L));
+        when(productService.getProductVOMap(any())).thenReturn(Collections.singletonMap(102L, product));
+        when(warehouseService.getWarehouseMap(any())).thenReturn(Collections.singletonMap(103L, warehouse));
+        when(deptApi.getDeptMap(any())).thenReturn(Collections.singletonMap(104L, warehouseDept));
+
+        CommonResult<PageResult<ErpSaleCartRespVO.Item>> result = controller.getSaleCartItemPage(reqVO);
+
+        ErpSaleCartRespVO.Item resultItem = result.getData().getList().get(0);
+        assertEquals("测试配件", resultItem.getProductName());
+        assertEquals("P102", resultItem.getProductCode());
+        assertEquals("测试仓", resultItem.getWarehouseName());
+        assertEquals("仓库部门", resultItem.getWarehouseDeptName());
+        verify(itemPriceReferenceFiller).fill(result.getData().getList());
+        verify(customerService, never()).getCustomerMap(any());
+        verify(adminUserApi, never()).getUserMap(any());
+        verify(saleCartService, never()).isFirstApproveRequiredForDept(any());
+        verify(salePickDeliveryService, never()).getSummaryBySaleCartId(any());
+    }
+
+    @Test
+    public void testGetSaleCartItemPage_maskUsesCartAsPermissionContext() {
+        ErpSaleCartItemPageReqVO reqVO = new ErpSaleCartItemPageReqVO();
+        reqVO.setCartId(92L);
+        reqVO.setMask(true);
+        ErpSaleCartDO cart = new ErpSaleCartDO().setId(92L);
+        cart.setCustomerId(93L);
+        when(saleCartService.getSaleCart(92L)).thenReturn(cart);
+        when(saleCartService.getSaleCartItemPage(reqVO))
+                .thenReturn(new PageResult<>(Collections.emptyList(), 0L));
+
+        controller.getSaleCartItemPage(reqVO);
+
+        verify(fieldPermissionMasker).clearSaleDetailHiddenItemFields(
+                eq("erp_sale_cart"), eq(cart), eq(Collections.emptyList()));
+    }
+
+    @Test
+    public void testGetSaleCartEditItemPage_hasQueryPermission() throws NoSuchMethodException {
+        Method method = ErpSaleCartController.class.getMethod(
+                "getSaleCartEditItemPage", ErpSaleCartItemPageReqVO.class);
         PreAuthorize anno = method.getAnnotation(PreAuthorize.class);
         assertNotNull(anno);
         assertTrue(anno.value().contains("erp:sale-cart:query"));

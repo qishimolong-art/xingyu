@@ -35,6 +35,31 @@ class AssistantSemanticExtractorTest {
     }
 
     @Test
+    void extractsExplicitProductBrandAsAnIndependentMatchScope() {
+        for(String question:new String[]{"品牌为美孚的产品库存","美孚品牌产品有多少个","美孚牌配件价格"}) {
+            List<AssistantSemanticExtractor.Reference> references=AssistantSemanticExtractor.extract(
+                    question,"query_product_stock");
+            AssistantSemanticExtractor.Reference product=references.stream()
+                    .filter(item->item.type==AssistantEntityResolver.EntityType.PRODUCT)
+                    .findFirst().orElseThrow(AssertionError::new);
+            assertEquals("美孚",product.keyword,question);
+            assertEquals("EXPLICIT_BRAND",product.matchType,question);
+            assertEquals(AssistantEntityResolver.ProductMatchScope.BRAND,product.productMatchScope,question);
+        }
+    }
+
+    @Test
+    void explicitProductIdentifierStillWinsOverBrandText() {
+        List<AssistantSemanticExtractor.Reference> references=AssistantSemanticExtractor.extract(
+                "美孚品牌产品编码为145988的库存","query_product_stock");
+        AssistantSemanticExtractor.Reference product=references.stream()
+                .filter(item->item.type==AssistantEntityResolver.EntityType.PRODUCT)
+                .findFirst().orElseThrow(AssertionError::new);
+        assertEquals("145988",product.keyword);
+        assertEquals(AssistantEntityResolver.ProductMatchScope.KEYWORD,product.productMatchScope);
+    }
+
+    @Test
     void extractsCustomerSupplierAndLabelledProductRoles() {
         assertReference(AssistantSemanticExtractor.extract("不存在的客户本月收款情况","query_verified_metric"),
                 AssistantEntityResolver.EntityType.CUSTOMER,"不存在");

@@ -43,6 +43,9 @@ public interface ErpWarehouseMoveService {
 
     List<ErpWarehouseMoveItemDO> getWarehouseMoveItemListByMoveId(Long moveId);
 
+    List<ErpWarehouseMoveItemDO> getWarehouseMoveItemListByMoveId(Long moveId, String orderField,
+                                                                  String orderDirection);
+
     PageResult<ErpWarehouseMoveItemDO> getWarehouseMoveItemPage(ErpWarehouseMoveItemPageReqVO pageReqVO);
 
     List<ErpWarehouseMoveItemDO> getWarehouseMoveItemListByMoveIds(Collection<Long> moveIds);

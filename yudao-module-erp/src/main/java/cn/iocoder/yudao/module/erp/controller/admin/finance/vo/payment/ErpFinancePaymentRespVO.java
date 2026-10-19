@@ -82,10 +82,13 @@ public class ErpFinancePaymentRespVO {
     @Schema(description = "有效核销明细数")
     private Integer writeOffCount;
 
+    @Schema(description = "凭证号（供应商收款编号等业务侧手工凭据）", example = "PAY-20261015-001")
+    private String paymentVoucherNo;
+
     @Schema(description = "备注", example = "你猜")
     private String remark;
 
-    @Schema(description = "关联凭证号", example = "记-202607-000001")
+    @Schema(description = "会计凭证号", example = "记-202607-000001")
     private String voucherNo;
 
     @Schema(description = "创建人", example = "芋道")

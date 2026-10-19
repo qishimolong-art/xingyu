@@ -14,6 +14,7 @@ import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleRetur
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnDraftCreateReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnDraftUpdateReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnSaveReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnSummaryRespVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpCustomerDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleReturnDO;
 import cn.iocoder.yudao.module.erp.dal.mysql.finance.ErpFinanceReceiptItemMapper;
@@ -41,6 +42,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -290,6 +292,28 @@ public class ErpSaleReturnControllerTest extends BaseMockitoUnitTest {
     }
 
     @Test
+    public void testGetSaleReturn_withoutItems_usesWholeDocumentSummary() {
+        ErpSaleReturnDO saleReturn = new ErpSaleReturnDO().setId(1027L)
+                .setDiscountPercent(new BigDecimal("10"))
+                .setFeeAmount(new BigDecimal("5"));
+        when(saleReturnService.getSaleReturn(eq(1027L))).thenReturn(saleReturn);
+        when(saleReturnItemMapper.selectDocumentSummaryByReturnId(eq(1027L))).thenReturn(Map.of(
+                "totalCount", new BigDecimal("25"),
+                "totalProductPrice", new BigDecimal("200"),
+                "totalTaxPrice", BigDecimal.ZERO));
+
+        ErpSaleReturnRespVO data = controller.getSaleReturn(1027L, false).getData();
+
+        assertNotNull(data);
+        assertTrue(data.getItems().isEmpty());
+        assertEquals(0, new BigDecimal("25").compareTo(data.getTotalCount()));
+        assertEquals(0, new BigDecimal("200").compareTo(data.getTotalProductPrice()));
+        assertEquals(0, new BigDecimal("20").compareTo(data.getDiscountPrice()));
+        assertEquals(0, new BigDecimal("185").compareTo(data.getTotalPrice()));
+        verify(saleReturnService, never()).getSaleReturnItemListByReturnId(any());
+    }
+
+    @Test
     public void testGetSaleReturn_hasPreAuthorize() throws NoSuchMethodException {
         Method method = ErpSaleReturnController.class.getMethod("getSaleReturn", Long.class);
         PreAuthorize anno = method.getAnnotation(PreAuthorize.class);
@@ -346,6 +370,20 @@ public class ErpSaleReturnControllerTest extends BaseMockitoUnitTest {
     }
 
     // ========== getSaleReturnPage ==========
+
+    @Test
+    public void testGetSaleReturnSummary_passesFiltersAndMasksFields() {
+        ErpSaleReturnPageReqVO reqVO = new ErpSaleReturnPageReqVO();
+        ErpSaleReturnSummaryRespVO summary = new ErpSaleReturnSummaryRespVO();
+        summary.setTotalPrice(new BigDecimal("12.34"));
+        when(saleReturnService.getSaleReturnSummary(reqVO)).thenReturn(summary);
+
+        CommonResult<ErpSaleReturnSummaryRespVO> result = controller.getSaleReturnSummary(reqVO);
+
+        assertEquals(summary, result.getData());
+        verify(saleReturnService).getSaleReturnSummary(reqVO);
+        verify(fieldPermissionMasker).clearSaleDetailHiddenFields("erp_sale_return", summary);
+    }
 
     @Test
     public void testGetSaleReturnPage_emptyShortCircuit() {

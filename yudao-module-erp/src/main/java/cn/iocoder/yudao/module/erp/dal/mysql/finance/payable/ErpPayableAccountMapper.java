@@ -6,11 +6,13 @@ import cn.iocoder.yudao.module.erp.controller.admin.finance.payable.vo.account.E
 import cn.iocoder.yudao.module.erp.controller.admin.finance.payable.vo.account.ErpPayableDetailReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.payable.ErpPayableAccountDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.payable.ErpPayableDetailDO;
-import cn.iocoder.yudao.module.erp.dal.mysql.purchase.ErpPurchaseInMapper;
-import org.apache.ibatis.annotations.Mapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.finance.ErpMiscSettlementSql;
+import cn.iocoder.yudao.module.erp.dal.mysql.purchase.ErpPurchaseInMapper;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
+import org.apache.ibatis.annotations.SelectProvider;
 
 import java.util.Collection;
 import java.util.List;
@@ -329,6 +331,16 @@ public interface ErpPayableAccountMapper extends BaseMapperX<ErpPayableAccountDO
                                          @Param("documentSelfUserId") Long documentSelfUserId,
                                          @Param("documentAll") boolean documentAll);
 
+    @SelectProvider(type = SqlProvider.class, method = "selectList")
+    Page<ErpPayableAccountDO> selectPageRows(Page<ErpPayableAccountDO> page,
+                                             @Param("reqVO") ErpPayableAccountPageReqVO reqVO,
+                                             @Param("deptIds") Collection<Long> deptIds,
+                                             @Param("selfUserId") String selfUserId,
+                                             @Param("all") boolean all,
+                                             @Param("documentDeptIds") Collection<Long> documentDeptIds,
+                                             @Param("documentSelfUserId") Long documentSelfUserId,
+                                             @Param("documentAll") boolean documentAll);
+
     default PageResult<ErpPayableAccountDO> selectPage(ErpPayableAccountPageReqVO reqVO) {
         return selectPage(reqVO, null, null, true, null, null, true);
     }
@@ -338,15 +350,28 @@ public interface ErpPayableAccountMapper extends BaseMapperX<ErpPayableAccountDO
                                                        String selfUserId,
                                                        boolean all, Collection<Long> documentDeptIds,
                                                        Long documentSelfUserId, boolean documentAll) {
-        List<ErpPayableAccountDO> list = selectList(reqVO, deptIds, selfUserId, all,
+        Page<ErpPayableAccountDO> page = new Page<>(reqVO.getPageNo(), reqVO.getPageSize());
+        Page<ErpPayableAccountDO> result = selectPageRows(page, reqVO, deptIds, selfUserId, all,
                 documentDeptIds, documentSelfUserId, documentAll);
-        long total = list.size();
-        int fromIndex = Math.max(0, (reqVO.getPageNo() - 1) * reqVO.getPageSize());
-        int toIndex = Math.min(list.size(), fromIndex + reqVO.getPageSize());
-        if (fromIndex >= list.size()) {
-            return PageResult.empty(total);
+        return new PageResult<>(result.getRecords(), result.getTotal());
+    }
+
+    class SqlProvider {
+
+        public String selectList() {
+            return selectListSql();
         }
-        return new PageResult<>(list.subList(fromIndex, toIndex), total);
+
+        private String selectListSql() {
+            try {
+                Select select = ErpPayableAccountMapper.class.getMethod("selectList",
+                        ErpPayableAccountPageReqVO.class, Collection.class, String.class, boolean.class,
+                        Collection.class, Long.class, boolean.class).getAnnotation(Select.class);
+                return String.join("\n", select.value());
+            } catch (NoSuchMethodException exception) {
+                throw new IllegalStateException("Unable to locate payable account list SQL", exception);
+            }
+        }
     }
 
     @Select({
@@ -375,6 +400,33 @@ public interface ErpPayableAccountMapper extends BaseMapperX<ErpPayableAccountDO
             "</script>"
     })
     ErpPayableAccountDO selectBySupplierId(@Param("supplierId") Long supplierId);
+
+    @Select({
+            "<script>",
+            "SELECT s.id AS supplierId,",
+            "       s.name AS supplierName,",
+            "       #{deptId} AS deptId,",
+            "       IFNULL(pi.purchaseInAmount, 0) AS purchaseInAmount,",
+            "       IFNULL(pr.purchaseReturnAmount, 0) AS purchaseReturnAmount,",
+            "       IFNULL(pa.priceAdjustAmount, 0) AS priceAdjustAmount,",
+            "       IFNULL(po.otherPayableAmount, 0) AS otherPayableAmount,",
+            "       IFNULL(pm.miscPayableAmount, 0) AS miscPayableAmount,",
+            "       IFNULL(fp.paymentAmount, 0) AS paymentAmount,",
+            "       IFNULL(pwo.writeOffAmount, 0) AS writeOffAmount,",
+            "       IFNULL(pi.purchaseInAmount, 0) + IFNULL(pa.priceAdjustAmount, 0) + IFNULL(po.otherPayableAmount, 0) - IFNULL(pr.purchaseReturnAmount, 0) - IFNULL(fp.paymentAmount, 0) AS balance",
+            "  FROM erp_supplier s",
+            "  LEFT JOIN (SELECT t.supplier_id, SUM(" + ErpPurchaseInMapper.ORIGINAL_SETTLEMENT_TOTAL_EXPRESSION + ") AS purchaseInAmount FROM erp_purchase_in t WHERE t.deleted = 0 AND t.status = 20 AND t.supplier_id = #{supplierId} AND t.dept_id = #{deptId} GROUP BY t.supplier_id) pi ON pi.supplier_id = s.id",
+            "  LEFT JOIN (SELECT supplier_id, SUM(total_price) AS purchaseReturnAmount FROM erp_purchase_return WHERE deleted = 0 AND status = 20 AND supplier_id = #{supplierId} AND dept_id = #{deptId} GROUP BY supplier_id) pr ON pr.supplier_id = s.id",
+            "  LEFT JOIN (SELECT supplier_id, SUM(total_adjust_price) AS priceAdjustAmount FROM erp_purchase_price_adjust WHERE deleted = 0 AND status = 20 AND supplier_id = #{supplierId} AND dept_id = #{deptId} GROUP BY supplier_id) pa ON pa.supplier_id = s.id",
+            "  LEFT JOIN (SELECT supplier_id, SUM(payable_amount) AS otherPayableAmount FROM erp_payable_other WHERE deleted = 0 AND status = 20 AND supplier_id = #{supplierId} AND dept_id = #{deptId} GROUP BY supplier_id) po ON po.supplier_id = s.id",
+            "  LEFT JOIN (SELECT supplier_id, -SUM(amount) AS miscPayableAmount FROM " + ErpMiscSettlementSql.PAYABLE_LEDGER + " misc_ledger WHERE deleted = 0 AND status = 20 AND supplier_id = #{supplierId} AND dept_id = #{deptId} GROUP BY supplier_id) pm ON pm.supplier_id = s.id",
+            "  LEFT JOIN (SELECT fpay.supplier_id, SUM(CASE WHEN EXISTS (SELECT 1 FROM erp_payable_other dpo WHERE dpo.deleted = 0 AND dpo.status = 20 AND dpo.source_type = '付款单折让' AND dpo.source_id = fpay.id) THEN fpay.payment_price ELSE fpay.total_price END) AS paymentAmount FROM erp_finance_payment fpay WHERE fpay.deleted = 0 AND fpay.status = 20 AND fpay.supplier_id = #{supplierId} AND fpay.dept_id = #{deptId} GROUP BY fpay.supplier_id) fp ON fp.supplier_id = s.id",
+            "  LEFT JOIN (SELECT supplier_id, SUM(write_off_amount) AS writeOffAmount FROM erp_payable_writeoff WHERE deleted = 0 AND supplier_id = #{supplierId} AND dept_id = #{deptId} GROUP BY supplier_id) pwo ON pwo.supplier_id = s.id",
+            " WHERE s.deleted = 0 AND s.id = #{supplierId}",
+            "</script>"
+    })
+    ErpPayableAccountDO selectBySupplierIdAndDeptId(@Param("supplierId") Long supplierId,
+                                                     @Param("deptId") Long deptId);
 
     @Select({
             "<script>",

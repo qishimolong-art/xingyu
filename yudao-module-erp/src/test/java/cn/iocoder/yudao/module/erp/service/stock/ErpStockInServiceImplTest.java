@@ -40,6 +40,10 @@ class ErpStockInServiceImplTest extends BaseMockitoUnitTest {
     @Mock
     private ErpStockService stockService;
     @Mock
+    private ErpWarehouseService warehouseService;
+    @Mock
+    private ErpStockRecordService stockRecordService;
+    @Mock
     private ErpStockItemBatchUpdateSupport batchUpdateSupport;
     @Mock
     private ErpOperateLogService operateLogService;
@@ -87,6 +91,25 @@ class ErpStockInServiceImplTest extends BaseMockitoUnitTest {
         assertServiceException(() -> stockInService.batchUpdateStockInItems(buildReq(1L, 20L, 11L)),
                 STOCK_IN_ITEM_DUPLICATE, "100-20");
         verify(stockInItemMapper, never()).updateBatch(anyList());
+    }
+
+    @Test
+    void updateStockInStatus_recordsApproveTimeAtomically() {
+        ErpStockInDO stockIn = new ErpStockInDO().setId(1L).setNo("IN001")
+                .setStatus(ErpAuditStatus.PROCESS.getStatus());
+        when(stockInMapper.selectById(1L)).thenReturn(stockIn);
+        when(stockInMapper.updateByIdAndStatus(org.mockito.ArgumentMatchers.eq(1L),
+                org.mockito.ArgumentMatchers.eq(ErpAuditStatus.PROCESS.getStatus()),
+                org.mockito.ArgumentMatchers.any(ErpStockInDO.class))).thenReturn(1);
+        when(stockInItemMapper.selectListByInId(1L)).thenReturn(Collections.emptyList());
+
+        stockInService.updateStockInStatus(1L, ErpAuditStatus.APPROVE.getStatus());
+
+        ArgumentCaptor<ErpStockInDO> captor = ArgumentCaptor.forClass(ErpStockInDO.class);
+        verify(stockInMapper).updateByIdAndStatus(org.mockito.ArgumentMatchers.eq(1L),
+                org.mockito.ArgumentMatchers.eq(ErpAuditStatus.PROCESS.getStatus()), captor.capture());
+        assertEquals(ErpAuditStatus.APPROVE.getStatus(), captor.getValue().getStatus());
+        org.junit.jupiter.api.Assertions.assertNotNull(captor.getValue().getApproveTime());
     }
 
     private ErpStockInItemBatchUpdateReqVO buildReq(Long inId, Long warehouseId, Long... itemIds) {

@@ -506,20 +506,18 @@ public class ErpWarehouseMoveServiceImpl implements ErpWarehouseMoveService {
 
     @Override
     public ErpWarehouseMoveSummaryRespVO getWarehouseMoveSummary(ErpWarehouseMovePageReqVO pageReqVO) {
-        List<ErpWarehouseMoveDO> moves = warehouseMoveMapper.selectList(pageReqVO);
-        List<ErpWarehouseMoveItemDO> items = getWarehouseMoveItemListByMoveIds(convertSet(moves, ErpWarehouseMoveDO::getId));
-        ErpWarehouseMoveSummaryRespVO summary = new ErpWarehouseMoveSummaryRespVO();
-        summary.setTotalRows((long) moves.size());
-        summary.setTotalItems((long) items.size());
-        summary.setTotalCount(getSumValue(moves, ErpWarehouseMoveDO::getTotalCount, BigDecimal::add, BigDecimal.ZERO));
-        summary.setTotalPrice(getSumValue(moves, ErpWarehouseMoveDO::getTotalPrice, BigDecimal::add, BigDecimal.ZERO));
-        summary.setTotalCostAmount(getSumValue(moves, ErpWarehouseMoveDO::getTotalCostAmount, BigDecimal::add, BigDecimal.ZERO));
-        return summary;
+        return warehouseMoveMapper.selectSummary(pageReqVO);
     }
 
     @Override
     public List<ErpWarehouseMoveItemDO> getWarehouseMoveItemListByMoveId(Long moveId) {
         return warehouseMoveItemMapper.selectListByMoveId(moveId);
+    }
+
+    @Override
+    public List<ErpWarehouseMoveItemDO> getWarehouseMoveItemListByMoveId(Long moveId, String orderField,
+                                                                         String orderDirection) {
+        return warehouseMoveItemMapper.selectListByMoveId(moveId, orderField, orderDirection);
     }
 
     @Override

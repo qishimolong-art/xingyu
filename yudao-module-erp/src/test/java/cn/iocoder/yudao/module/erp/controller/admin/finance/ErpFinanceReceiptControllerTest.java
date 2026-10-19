@@ -4,6 +4,8 @@ import cn.iocoder.yudao.framework.common.pojo.CommonResult;
 import cn.iocoder.yudao.framework.test.core.ut.BaseMockitoUnitTest;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.receipt.ErpFinanceReceiptBizWriteOffItemRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.receipt.ErpFinanceReceiptFormCandidateReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.receipt.ErpFinanceReceiptFormCandidatePageReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.receipt.ErpFinanceReceiptFormCandidatePageRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.receipt.ErpFinanceReceiptFormCandidateRespVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.ErpAccountDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.ErpFinanceReceiptDO;
@@ -16,6 +18,7 @@ import cn.iocoder.yudao.module.erp.service.finance.ErpFinanceFieldPermissionMask
 import cn.iocoder.yudao.module.erp.service.finance.ErpFinanceReceiptService;
 import cn.iocoder.yudao.module.erp.service.sale.ErpCustomerService;
 import cn.iocoder.yudao.module.system.api.dept.DeptApi;
+import cn.iocoder.yudao.module.system.api.permission.PermissionApi;
 import cn.iocoder.yudao.module.system.api.user.AdminUserApi;
 import cn.iocoder.yudao.module.system.api.user.dto.AdminUserRespDTO;
 import org.junit.jupiter.api.BeforeEach;
@@ -56,6 +59,8 @@ class ErpFinanceReceiptControllerTest extends BaseMockitoUnitTest {
     private DeptApi deptApi;
     @Mock
     private ErpVoucherMapper voucherMapper;
+    @Mock
+    private PermissionApi permissionApi;
 
     @BeforeEach
     void setUp() {
@@ -86,6 +91,22 @@ class ErpFinanceReceiptControllerTest extends BaseMockitoUnitTest {
         assertEquals("XSCK20260902000001", result.getData().get(0).getBizNo());
         assertEquals(0, new BigDecimal("200").compareTo(result.getData().get(0).getUnallocatedPrice()));
         verify(financeReceiptService).getFormCandidates(reqVO);
+    }
+
+    @Test
+    void getFormCandidatePageDelegatesToFinanceReceiptService() {
+        ErpFinanceReceiptFormCandidatePageReqVO reqVO = new ErpFinanceReceiptFormCandidatePageReqVO();
+        reqVO.setCustomerId(4L);
+        ErpFinanceReceiptFormCandidatePageRespVO page = new ErpFinanceReceiptFormCandidatePageRespVO();
+        page.setList(Collections.emptyList());
+        page.setTotal(12L);
+        when(financeReceiptService.getFormCandidatePage(reqVO)).thenReturn(page);
+
+        CommonResult<ErpFinanceReceiptFormCandidatePageRespVO> result = controller.getFormCandidatePage(reqVO);
+
+        assertNotNull(result.getData());
+        assertEquals(12L, result.getData().getTotal());
+        verify(financeReceiptService).getFormCandidatePage(reqVO);
     }
 
     @Test

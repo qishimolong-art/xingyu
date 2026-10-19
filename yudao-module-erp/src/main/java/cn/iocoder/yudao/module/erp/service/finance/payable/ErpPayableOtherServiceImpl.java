@@ -291,6 +291,12 @@ public class ErpPayableOtherServiceImpl implements ErpPayableOtherService {
         return payableOtherMapper.selectPage(pageReqVO);
     }
 
+    @Override
+    public cn.iocoder.yudao.module.erp.controller.admin.finance.vo.ErpFinanceQuerySummaryRespVO getPayableOtherSummary(
+            ErpPayableOtherPageReqVO pageReqVO) {
+        return payableOtherMapper.selectSummary(pageReqVO);
+    }
+
     private ErpPayableOtherDO validatePayableOtherExists(Long id) {
         ErpPayableOtherDO db = payableOtherMapper.selectById(id);
         if (db == null) {

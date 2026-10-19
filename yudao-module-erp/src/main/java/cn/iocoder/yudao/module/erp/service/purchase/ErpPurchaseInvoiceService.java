@@ -9,6 +9,7 @@ import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.invoice.ErpPurch
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.invoice.ErpPurchaseInvoiceImportExcelVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.invoice.ErpPurchaseInvoiceItemPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.invoice.ErpPurchaseInvoicePageReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.invoice.ErpPurchaseInvoiceSummaryRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.invoice.ErpPurchaseInvoiceSaveReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseInDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseInvoiceDO;
@@ -45,11 +46,16 @@ public interface ErpPurchaseInvoiceService {
 
     PageResult<ErpPurchaseInvoiceDO> getPurchaseInvoicePage(ErpPurchaseInvoicePageReqVO pageReqVO);
 
+    ErpPurchaseInvoiceSummaryRespVO getPurchaseInvoiceSummary(ErpPurchaseInvoicePageReqVO pageReqVO);
+
     List<ErpPurchaseInvoiceDO> getPurchaseInvoiceList(Collection<Long> ids);
 
     List<ErpPurchaseInDO> getPurchaseInList(Collection<Long> ids);
 
     List<ErpPurchaseInvoiceItemDO> getPurchaseInvoiceItemListByInvoiceId(Long invoiceId);
+
+    List<ErpPurchaseInvoiceItemDO> getPurchaseInvoiceItemListByInvoiceId(Long invoiceId, String orderField,
+                                                                         String orderDirection);
 
     List<ErpPurchaseInvoiceItemDO> getPurchaseInvoiceSourceRefList(Long invoiceId);
 

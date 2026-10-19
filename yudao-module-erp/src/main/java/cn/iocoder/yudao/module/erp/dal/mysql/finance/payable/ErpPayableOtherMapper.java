@@ -3,6 +3,8 @@ package cn.iocoder.yudao.module.erp.dal.mysql.finance.payable;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.mybatis.core.mapper.BaseMapperX;
 import cn.iocoder.yudao.framework.mybatis.core.query.LambdaQueryWrapperX;
+import cn.iocoder.yudao.framework.mybatis.core.query.MPJLambdaWrapperX;
+import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.ErpFinanceQuerySummaryRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.payable.vo.other.ErpPayableOtherPageReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.payable.ErpPayableOtherDO;
 import cn.iocoder.yudao.module.erp.dal.mysql.common.ErpKeywordQuery;
@@ -19,7 +21,26 @@ import java.util.List;
 public interface ErpPayableOtherMapper extends BaseMapperX<ErpPayableOtherDO> {
 
     default PageResult<ErpPayableOtherDO> selectPage(ErpPayableOtherPageReqVO reqVO) {
-        LambdaQueryWrapperX<ErpPayableOtherDO> wrapper = new LambdaQueryWrapperX<ErpPayableOtherDO>()
+        MPJLambdaWrapperX<ErpPayableOtherDO> wrapper = buildQuery(reqVO);
+        ErpFinanceSortUtils.apply(wrapper, reqVO.getOrderField(), reqVO.getOrderDirection(), "erp_payable_other",
+                "no", "bizTime", "supplierId", "deptId", "handlerId", "payableAmount", "settledAmount",
+                "sourceType", "status", "voucherNo", "creator", "updater", "createTime", "updateTime",
+                "remark");
+        return selectJoinPage(reqVO, ErpPayableOtherDO.class, wrapper);
+    }
+
+    default ErpFinanceQuerySummaryRespVO selectSummary(ErpPayableOtherPageReqVO reqVO) {
+        MPJLambdaWrapperX<ErpPayableOtherDO> wrapper = buildQuery(reqVO)
+                .selectAs("COUNT(*)", ErpFinanceQuerySummaryRespVO::getDocumentCount)
+                .selectAs("COALESCE(SUM(t.payable_amount), 0)", ErpFinanceQuerySummaryRespVO::getPayableAmount)
+                .selectAs("COALESCE(SUM(t.settled_amount), 0)", ErpFinanceQuerySummaryRespVO::getSettledAmount)
+                .selectAs("COALESCE(SUM(t.payable_amount - COALESCE(t.settled_amount, 0)), 0)",
+                        ErpFinanceQuerySummaryRespVO::getOutstandingAmount);
+        return selectJoinOne(ErpFinanceQuerySummaryRespVO.class, wrapper);
+    }
+
+    static MPJLambdaWrapperX<ErpPayableOtherDO> buildQuery(ErpPayableOtherPageReqVO reqVO) {
+        MPJLambdaWrapperX<ErpPayableOtherDO> wrapper = new MPJLambdaWrapperX<ErpPayableOtherDO>()
                 .inIfPresent(ErpPayableOtherDO::getId, reqVO.getIds())
                 .likeIfPresent(ErpPayableOtherDO::getNo, reqVO.getNo())
                 .betweenIfPresent(ErpPayableOtherDO::getBizTime, reqVO.getBizTime())
@@ -29,18 +50,14 @@ public interface ErpPayableOtherMapper extends BaseMapperX<ErpPayableOtherDO> {
                 .eqIfPresent(ErpPayableOtherDO::getCreator, reqVO.getCreator())
                 .likeIfPresent(ErpPayableOtherDO::getRemark, reqVO.getRemark())
                 .eqIfPresent(ErpPayableOtherDO::getStatus, reqVO.getStatus());
-        ErpKeywordQuery.appendWithDeptNameAndSupplier(wrapper, reqVO.getKeyword(),
+        ErpKeywordQuery.appendWithDeptNameAndPurchaseSupplier(wrapper, reqVO.getKeyword(),
                 ErpPayableOtherDO::getNo,
                 ErpPayableOtherDO::getVoucherNo,
                 ErpPayableOtherDO::getProject,
                 ErpPayableOtherDO::getSourceType,
                 ErpPayableOtherDO::getSourceNo,
                 ErpPayableOtherDO::getRemark);
-        ErpFinanceSortUtils.apply(wrapper, reqVO.getOrderField(), reqVO.getOrderDirection(), "erp_payable_other",
-                "no", "bizTime", "supplierId", "deptId", "handlerId", "payableAmount", "settledAmount",
-                "sourceType", "status", "voucherNo", "creator", "updater", "createTime", "updateTime",
-                "remark");
-        return selectPage(reqVO, wrapper);
+        return wrapper;
     }
 
     default int updateByIdAndStatus(Long id, Integer status, ErpPayableOtherDO updateObj) {

@@ -22,6 +22,7 @@ import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.order.ErpPurchas
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.order.ErpPurchaseOrderItemBatchUpdateReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.order.ErpPurchaseOrderItemPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.order.ErpPurchaseOrderPageReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.order.ErpPurchaseOrderSummaryRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.order.ErpPurchaseOrderSaveReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.order.ErpPurchaseOrderUpdateRemarkReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.supplier.ErpSupplierPageReqVO;
@@ -1030,6 +1031,11 @@ public class ErpPurchaseOrderServiceImpl implements ErpPurchaseOrderService {
     }
 
     @Override
+    public ErpPurchaseOrderSummaryRespVO getPurchaseOrderSummary(ErpPurchaseOrderPageReqVO pageReqVO) {
+        return purchaseOrderMapper.selectSummary(pageReqVO);
+    }
+
+    @Override
     public List<ErpPurchaseOrderDO> getPurchaseOrderList(Collection<Long> ids) {
         if (CollUtil.isEmpty(ids)) {
             return Collections.emptyList();
@@ -1045,8 +1051,18 @@ public class ErpPurchaseOrderServiceImpl implements ErpPurchaseOrderService {
     }
 
     @Override
+    public List<ErpPurchaseOrderItemDO> getPurchaseOrderItemListByOrderId(Long orderId, String orderField,
+                                                                          String orderDirection) {
+        return purchaseOrderItemMapper.selectListByOrderId(orderId, orderField, orderDirection);
+    }
+
+    @Override
     public PageResult<ErpPurchaseOrderItemDO> getPurchaseOrderItemPage(ErpPurchaseOrderItemPageReqVO pageReqVO) {
         validatePurchaseOrderExists(pageReqVO.getOrderId());
+        if (CollUtil.isNotEmpty(pageReqVO.getExcludedItemIds())) {
+            pageReqVO.setExcludedItemIds(pageReqVO.getExcludedItemIds().stream()
+                    .filter(id -> id != null && id > 0).distinct().collect(Collectors.toList()));
+        }
         return purchaseOrderItemMapper.selectPageByOrderId(pageReqVO);
     }
 

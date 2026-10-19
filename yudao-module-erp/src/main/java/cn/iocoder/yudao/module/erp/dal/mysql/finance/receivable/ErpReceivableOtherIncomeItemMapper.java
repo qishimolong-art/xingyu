@@ -1,5 +1,6 @@
 package cn.iocoder.yudao.module.erp.dal.mysql.finance.receivable;
 
+import cn.hutool.core.collection.CollUtil;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.mybatis.core.mapper.BaseMapperX;
 import cn.iocoder.yudao.framework.mybatis.core.query.LambdaQueryWrapperX;
@@ -9,7 +10,10 @@ import com.baomidou.mybatisplus.core.toolkit.support.SFunction;
 import org.apache.ibatis.annotations.Mapper;
 
 import java.util.Collection;
+import java.util.Collections;
 import java.util.List;
+import java.util.Objects;
+import java.util.stream.Collectors;
 
 @Mapper
 public interface ErpReceivableOtherIncomeItemMapper extends BaseMapperX<ErpReceivableOtherIncomeItemDO> {
@@ -30,6 +34,9 @@ public interface ErpReceivableOtherIncomeItemMapper extends BaseMapperX<ErpRecei
     default PageResult<ErpReceivableOtherIncomeItemDO> selectPageByIncomeId(ErpReceivableOtherIncomeItemPageReqVO reqVO) {
         LambdaQueryWrapperX<ErpReceivableOtherIncomeItemDO> query = new LambdaQueryWrapperX<ErpReceivableOtherIncomeItemDO>()
                 .eq(ErpReceivableOtherIncomeItemDO::getIncomeId, reqVO.getIncomeId());
+        List<Long> excludedItemIds = reqVO.getExcludedItemIds() == null ? Collections.emptyList()
+                : reqVO.getExcludedItemIds().stream().filter(Objects::nonNull).distinct().collect(Collectors.toList());
+        query.notIn(CollUtil.isNotEmpty(excludedItemIds), ErpReceivableOtherIncomeItemDO::getId, excludedItemIds);
         SFunction<ErpReceivableOtherIncomeItemDO, ?> orderColumn = getOrderColumn(reqVO.getOrderField());
         if (orderColumn == null) {
             query.orderByAsc(ErpReceivableOtherIncomeItemDO::getId);

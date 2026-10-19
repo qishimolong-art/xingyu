@@ -14,6 +14,7 @@ import lombok.experimental.Accessors;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 
 @TableName("erp_receivable_other")
 @KeySequence("erp_receivable_other_seq")
@@ -34,6 +35,8 @@ public class ErpReceivableOtherDO extends BaseDO {
     private Integer status;
 
     private LocalDate bizTime;
+
+    private LocalDateTime approveTime;
 
     private Long customerId;
 

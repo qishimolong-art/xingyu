@@ -49,4 +49,10 @@ public class ErpFinancePaymentFormCandidateRespVO {
     @Schema(description = "未核销金额")
     private BigDecimal unallocatedPrice;
 
+    @Schema(description = "当前页预计自动核销金额")
+    private BigDecimal autoWriteOffPreviewAmount;
+
+    @Schema(description = "业务单据当前是否可用")
+    private Boolean available;
+
 }

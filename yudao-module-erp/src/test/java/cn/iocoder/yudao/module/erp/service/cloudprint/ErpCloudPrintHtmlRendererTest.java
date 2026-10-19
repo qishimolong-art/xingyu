@@ -17,6 +17,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -70,6 +71,42 @@ class ErpCloudPrintHtmlRendererTest {
         assertTrue(html.contains("前缀字段配件"));
         assertTrue(html.contains("前缀规格"));
         assertTrue(html.contains("246.8"));
+    }
+
+    @Test
+    void resolveCellHtml_shouldFormatAmountFieldsWithTwoDecimals() {
+        Map<String, Object> data = buildPrefixedItemPrintData();
+
+        String productPrice = org.springframework.test.util.ReflectionTestUtils.invokeMethod(
+                renderer, "resolveCellHtml",
+                Map.of("code", "items.productPrice", "html", ""), data, 0);
+        String totalPrice = org.springframework.test.util.ReflectionTestUtils.invokeMethod(
+                renderer, "resolveCellHtml",
+                Map.of("code", "items.totalPrice", "html", ""), data, 0);
+        String count = org.springframework.test.util.ReflectionTestUtils.invokeMethod(
+                renderer, "resolveCellHtml",
+                Map.of("code", "items.count", "html", ""), data, 0);
+        Map<String, Object> main = new HashMap<>();
+        main.put("document.totalFreight1", "12");
+        main.put("document.extraFee", "2.5");
+        main.put("document.grossProfitRate", "13");
+        data.put("main", main);
+        String freight = org.springframework.test.util.ReflectionTestUtils.invokeMethod(
+                renderer, "resolveCellHtml",
+                Map.of("code", "document.totalFreight1", "html", ""), data, 0);
+        String extraFee = org.springframework.test.util.ReflectionTestUtils.invokeMethod(
+                renderer, "resolveCellHtml",
+                Map.of("code", "document.extraFee", "html", ""), data, 0);
+        String grossProfitRate = org.springframework.test.util.ReflectionTestUtils.invokeMethod(
+                renderer, "resolveCellHtml",
+                Map.of("code", "document.grossProfitRate", "html", ""), data, 0);
+
+        assertEquals("123.40", productPrice);
+        assertEquals("246.80", totalPrice);
+        assertEquals("2", count);
+        assertEquals("12.00", freight);
+        assertEquals("2.50", extraFee);
+        assertEquals("13", grossProfitRate);
     }
 
     @Test
@@ -182,6 +219,120 @@ class ErpCloudPrintHtmlRendererTest {
     }
 
     @Test
+    void versionTwoTemplate_shouldRepeatOnlyExplicitMultiRowBody() {
+        Map<String, Object> template = buildVersionTwoTemplate();
+        Map<String, Object> data = buildManyItemsPrintData(2, "显式明细");
+
+        String html = org.springframework.test.util.ReflectionTestUtils.invokeMethod(
+                renderer, "buildTemplateHtml", template, data, versionTwoPaper());
+
+        assertEquals(1, occurrenceCount(html, "组件外备注"));
+        assertEquals(2, occurrenceCount(html, "每条第二行"));
+        assertEquals(1, occurrenceCount(html, "显式明细1"));
+        assertEquals(1, occurrenceCount(html, "显式明细2"));
+        assertEquals(1, occurrenceCount(html, "表尾唯一"));
+    }
+
+    @Test
+    void versionTwoTemplate_shouldOmitBodyWhenItemsAreEmpty() {
+        Map<String, Object> template = buildVersionTwoTemplate();
+        Map<String, Object> data = buildPrintData();
+        data.put("items", Collections.emptyList());
+
+        String html = org.springframework.test.util.ReflectionTestUtils.invokeMethod(
+                renderer, "buildTemplateHtml", template, data, versionTwoPaper());
+
+        assertEquals(1, occurrenceCount(html, "产品名称表头"));
+        assertEquals(0, occurrenceCount(html, "每条第二行"));
+        assertEquals(1, occurrenceCount(html, "表尾唯一"));
+    }
+
+    @Test
+    void versionTwoTemplate_shouldRenderCellsOutsideComponentOnceOnSameBodyRow() {
+        Map<String, Object> template = buildPartialWidthVersionTwoTemplate();
+
+        String html = org.springframework.test.util.ReflectionTestUtils.invokeMethod(
+                renderer, "buildTemplateHtml", template,
+                buildManyItemsPrintData(2, "局部组件明细"), versionTwoPaper());
+
+        assertEquals(1, occurrenceCount(html, "循环行外侧备注"));
+        assertEquals(1, occurrenceCount(html, "局部组件明细1"));
+        assertEquals(1, occurrenceCount(html, "局部组件明细2"));
+
+        Map<String, Object> emptyData = buildPrintData();
+        emptyData.put("items", Collections.emptyList());
+        String emptyHtml = org.springframework.test.util.ReflectionTestUtils.invokeMethod(
+                renderer, "buildTemplateHtml", template, emptyData, versionTwoPaper());
+        assertEquals(1, occurrenceCount(emptyHtml, "循环行外侧备注"));
+        assertEquals(0, occurrenceCount(emptyHtml, "${产品名称}"));
+    }
+
+    @Test
+    void versionTwoTemplatePdf_shouldRepeatHeaderAndRenderFooterOnce() throws IOException {
+        byte[] pdf = renderer.renderSaleOutTemplatePdf(JsonUtils.toJsonString(buildVersionTwoTemplate()),
+                JsonUtils.toJsonString(versionTwoPaper()),
+                buildManyItemsPrintData(80, "版本二分页明细"), 120, 60);
+
+        try (PDDocument document = PDDocument.load(pdf)) {
+            String text = new PDFTextStripper().getText(document);
+            assertTrue(document.getNumberOfPages() > 1);
+            assertEquals(document.getNumberOfPages(), occurrenceCount(text, "产品名称表头"));
+            assertEquals(1, occurrenceCount(text, "表尾唯一"));
+            assertEquals(1, occurrenceCount(text, "组件外备注"));
+        }
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void versionTwoTemplate_shouldRenderPageContextForEveryPage() {
+        Map<String, Object> template = buildVersionTwoTemplate();
+        List<Map<String, Object>> cells = new ArrayList<>((List<Map<String, Object>>) template.get("cells"));
+        cells.set(1, cell("A2", 2, 1,
+                "第${当前页}页/共${总页数}页·${页码}", "", Map.of(
+                        "当前页", "print.pageNo",
+                        "总页数", "print.pageCount",
+                        "页码", "print.pageText"), "right", "", "table-border"));
+        template.put("cells", cells);
+
+        String html = org.springframework.test.util.ReflectionTestUtils.invokeMethod(
+                renderer, "buildTemplateHtml", template,
+                buildManyItemsPrintData(80, "页码测试明细"), versionTwoPaper());
+
+        int pageCount = occurrenceCount(html, "<div class=\"print-page\">");
+        assertTrue(pageCount > 1);
+        for (int pageNo = 1; pageNo <= pageCount; pageNo++) {
+            String pageText = "第" + pageNo + "页/共" + pageCount + "页";
+            assertTrue(html.contains(pageText + "·" + pageText));
+        }
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void versionTwoTemplate_shouldKeepDocumentHeaderOnFirstPageAndPageContextOnContinuationPages() {
+        Map<String, Object> template = buildVersionTwoTemplate();
+        Map<String, Object> detailTable = new LinkedHashMap<>((Map<String, Object>) template.get("detailTable"));
+        detailTable.put("headerRows", Map.of("start", 1, "end", 2));
+        template.put("detailTable", detailTable);
+        List<Map<String, Object>> cells = new ArrayList<>((List<Map<String, Object>>) template.get("cells"));
+        cells.set(0, cell("A1", 1, 1, "仅第一页单据标题", "", Collections.emptyMap(), "left", "", ""));
+        cells.add(1, cell("B1", 1, 1, "${页码}", "print.pageText",
+                Map.of("页码", "print.pageText"), "right", "", ""));
+        template.put("cells", cells);
+
+        String html = org.springframework.test.util.ReflectionTestUtils.invokeMethod(
+                renderer, "buildTemplateHtml", template,
+                buildManyItemsPrintData(80, "续页抬头测试明细"), versionTwoPaper());
+
+        int pageCount = occurrenceCount(html, "<div class=\"print-page\">");
+        assertTrue(pageCount > 1);
+        assertEquals(1, occurrenceCount(html, "仅第一页单据标题"));
+        assertEquals(pageCount, occurrenceCount(html, "产品名称表头"));
+        for (int pageNo = 1; pageNo <= pageCount; pageNo++) {
+            assertTrue(html.contains("第" + pageNo + "页/共" + pageCount + "页"));
+        }
+    }
+
+    @Test
     void isDeviceOnline_shouldSupportSwAiotOnlineState() {
         DeviceInfo online = new DeviceInfo();
         online.setState("online");
@@ -276,6 +427,80 @@ class ErpCloudPrintHtmlRendererTest {
         }
         data.put("items", items);
         return data;
+    }
+
+    private Map<String, Object> buildVersionTwoTemplate() {
+        Map<String, Object> template = new LinkedHashMap<>();
+        template.put("version", 2);
+        template.put("columns", List.of("A", "B"));
+        template.put("rowCount", 5);
+        template.put("columnWidths", Map.of("A", "60px", "B", "150px"));
+        template.put("rowHeights", Map.of(
+                "1", "28px", "2", "28px", "3", "28px", "4", "28px", "5", "28px"));
+        template.put("paper", versionTwoPaper());
+        template.put("detailTable", Map.of(
+                "id", "detail-table",
+                "dataSource", "items",
+                "startColumn", "A",
+                "endColumn", "B",
+                "headerRows", Map.of("start", 2, "end", 2),
+                "bodyRows", Map.of("start", 3, "end", 4),
+                "footerRows", Map.of("start", 5, "end", 5),
+                "repeatHeader", true));
+        template.put("cells", List.of(
+                cell("A1", 2, 1, "组件外备注", "", Collections.emptyMap(), "left", "", ""),
+                cell("A2", 2, 1, "产品名称表头", "", Collections.emptyMap(), "center", "", "table-border"),
+                cell("A3", 2, 1, "${产品名称}", "items.productName",
+                        Map.of("产品名称", "items.productName"), "left", "", "table-border"),
+                cell("A4", 2, 1, "每条第二行", "", Collections.emptyMap(), "left", "", "table-border"),
+                cell("A5", 2, 1, "表尾唯一", "", Collections.emptyMap(), "left", "", "table-border")));
+        return template;
+    }
+
+    private Map<String, Object> buildPartialWidthVersionTwoTemplate() {
+        Map<String, Object> template = new LinkedHashMap<>();
+        template.put("version", 2);
+        template.put("columns", List.of("A", "B", "C"));
+        template.put("rowCount", 4);
+        template.put("columnWidths", Map.of("A", "60px", "B", "100px", "C", "100px"));
+        template.put("rowHeights", Map.of("1", "28px", "2", "28px", "3", "28px", "4", "28px"));
+        template.put("paper", versionTwoPaper());
+        template.put("detailTable", Map.of(
+                "id", "detail-table",
+                "dataSource", "items",
+                "startColumn", "A",
+                "endColumn", "B",
+                "headerRows", Map.of("start", 2, "end", 2),
+                "bodyRows", Map.of("start", 3, "end", 3),
+                "footerRows", Map.of("start", 4, "end", 4),
+                "repeatHeader", true));
+        template.put("cells", List.of(
+                cell("A1", 3, 1, "局部组件", "", Collections.emptyMap(), "left", ""),
+                cell("A2", 2, 1, "产品名称表头", "", Collections.emptyMap(), "center", "", "table-border"),
+                cell("A3", 2, 1, "${产品名称}", "items.productName",
+                        Map.of("产品名称", "items.productName"), "left", "", "table-border"),
+                cell("C3", 1, 1, "循环行外侧备注", "", Collections.emptyMap(), "left", ""),
+                cell("A4", 2, 1, "表尾唯一", "", Collections.emptyMap(), "left", "", "table-border")));
+        return template;
+    }
+
+    private Map<String, Object> versionTwoPaper() {
+        return Map.of(
+                "size", "custom",
+                "width", 120,
+                "height", 60,
+                "orientation", "portrait",
+                "margins", Map.of("top", 4, "right", 4, "bottom", 4, "left", 4));
+    }
+
+    private int occurrenceCount(String text, String needle) {
+        int count = 0;
+        int index = 0;
+        while ((index = text.indexOf(needle, index)) >= 0) {
+            count++;
+            index += needle.length();
+        }
+        return count;
     }
 
     private String buildTemplateJson() {

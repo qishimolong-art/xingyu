@@ -1,10 +1,15 @@
 package cn.iocoder.yudao.module.erp.controller.admin.finance;
 
 import cn.iocoder.yudao.framework.common.pojo.CommonResult;
+import cn.iocoder.yudao.framework.common.pojo.PageResult;
+import cn.iocoder.yudao.framework.security.core.util.SecurityFrameworkUtils;
 import cn.iocoder.yudao.framework.test.core.ut.BaseMockitoUnitTest;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.payment.ErpFinancePaymentBizWriteOffItemRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.payment.ErpFinancePaymentFormCandidateReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.payment.ErpFinancePaymentFormCandidatePageReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.payment.ErpFinancePaymentFormCandidatePageRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.payment.ErpFinancePaymentFormCandidateRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.payment.ErpFinancePaymentPageReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.ErpAccountDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.ErpFinancePaymentDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.ErpFinancePaymentItemDO;
@@ -16,11 +21,13 @@ import cn.iocoder.yudao.module.erp.service.finance.ErpFinanceFieldPermissionMask
 import cn.iocoder.yudao.module.erp.service.finance.ErpFinancePaymentService;
 import cn.iocoder.yudao.module.erp.service.purchase.ErpSupplierService;
 import cn.iocoder.yudao.module.system.api.dept.DeptApi;
+import cn.iocoder.yudao.module.system.api.permission.PermissionApi;
 import cn.iocoder.yudao.module.system.api.user.AdminUserApi;
 import cn.iocoder.yudao.module.system.api.user.dto.AdminUserRespDTO;
 import org.junit.jupiter.api.Test;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import org.mockito.MockedStatic;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -34,6 +41,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.mockStatic;
 
 class ErpFinancePaymentControllerTest extends BaseMockitoUnitTest {
 
@@ -54,6 +62,8 @@ class ErpFinancePaymentControllerTest extends BaseMockitoUnitTest {
     private ErpFinanceFieldPermissionMasker fieldPermissionMasker;
     @Mock
     private ErpVoucherMapper voucherMapper;
+    @Mock
+    private PermissionApi permissionApi;
 
     @Test
     void getFormCandidatesDelegatesToFinancePaymentService() {
@@ -75,6 +85,22 @@ class ErpFinancePaymentControllerTest extends BaseMockitoUnitTest {
         assertEquals("CGRK20260902000001", result.getData().get(0).getBizNo());
         assertEquals(0, new BigDecimal("200").compareTo(result.getData().get(0).getUnallocatedPrice()));
         verify(financePaymentService).getFormCandidates(reqVO);
+    }
+
+    @Test
+    void getFormCandidatePageDelegatesToFinancePaymentService() {
+        ErpFinancePaymentFormCandidatePageReqVO reqVO = new ErpFinancePaymentFormCandidatePageReqVO();
+        reqVO.setSupplierId(4L);
+        ErpFinancePaymentFormCandidatePageRespVO page = new ErpFinancePaymentFormCandidatePageRespVO();
+        page.setList(Collections.emptyList());
+        page.setTotal(12L);
+        when(financePaymentService.getFormCandidatePage(reqVO)).thenReturn(page);
+
+        CommonResult<ErpFinancePaymentFormCandidatePageRespVO> result = controller.getFormCandidatePage(reqVO);
+
+        assertNotNull(result.getData());
+        assertEquals(12L, result.getData().getTotal());
+        verify(financePaymentService).getFormCandidatePage(reqVO);
     }
 
     @Test
@@ -122,6 +148,41 @@ class ErpFinancePaymentControllerTest extends BaseMockitoUnitTest {
         assertEquals("首付款", first.getRemark());
         verify(financePaymentService).getFinancePaymentItemListByBiz(
                 eq(ErpBizTypeEnum.PURCHASE_IN.getType()), eq(10L));
+    }
+
+    @Test
+    void getFinancePaymentPageClearsVoucherFiltersWhenFieldsAreHidden() {
+        ErpFinancePaymentPageReqVO reqVO = new ErpFinancePaymentPageReqVO()
+                .setPaymentVoucherNo("SUPPLIER-REF")
+                .setVoucherNo("KJ-2026");
+        when(fieldPermissionMasker.isFieldHidden("erp_finance_payment", "paymentVoucherNo")).thenReturn(true);
+        when(financePaymentService.getFinancePaymentPage(reqVO))
+                .thenReturn(new PageResult<>(Collections.emptyList(), 0L));
+
+        controller.getFinancePaymentPage(reqVO);
+
+        assertEquals(null, reqVO.getPaymentVoucherNo());
+        assertEquals(null, reqVO.getVoucherNo());
+        verify(financePaymentService).getFinancePaymentPage(reqVO);
+    }
+
+    @Test
+    void getFinancePaymentPageKeepsVoucherFiltersWhenPermissionsAllowThem() {
+        ErpFinancePaymentPageReqVO reqVO = new ErpFinancePaymentPageReqVO()
+                .setPaymentVoucherNo("SUPPLIER-REF")
+                .setVoucherNo("KJ-2026");
+        when(permissionApi.hasAnyPermissions(99L, "erp:voucher:query")).thenReturn(true);
+        when(financePaymentService.getFinancePaymentPage(reqVO))
+                .thenReturn(new PageResult<>(Collections.emptyList(), 0L));
+
+        try (MockedStatic<SecurityFrameworkUtils> security = mockStatic(SecurityFrameworkUtils.class)) {
+            security.when(SecurityFrameworkUtils::getLoginUserId).thenReturn(99L);
+            controller.getFinancePaymentPage(reqVO);
+        }
+
+        assertEquals("SUPPLIER-REF", reqVO.getPaymentVoucherNo());
+        assertEquals("KJ-2026", reqVO.getVoucherNo());
+        verify(financePaymentService).getFinancePaymentPage(reqVO);
     }
 
 }

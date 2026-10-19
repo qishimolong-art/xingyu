@@ -13,6 +13,8 @@ import cn.iocoder.yudao.framework.excel.core.util.ExcelUtils;
 import cn.iocoder.yudao.module.erp.controller.admin.common.ErpAuditStatusRequestValidator;
 import cn.iocoder.yudao.module.erp.controller.admin.common.vo.ErpExportFieldRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpProductRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.ErpPurchaseItemMatchReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.ErpPurchaseItemMatchRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.ErpPurchaseUpdateRemarkReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.imports.ErpPurchaseImportResultRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.priceadjust.ErpPurchasePriceAdjustExportRespVO;
@@ -23,6 +25,7 @@ import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.priceadjust.ErpP
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.priceadjust.ErpPurchasePriceAdjustOrderImportExcelVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.priceadjust.ErpPurchasePriceAdjustPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.priceadjust.ErpPurchasePriceAdjustRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.priceadjust.ErpPurchasePriceAdjustSummaryRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.priceadjust.ErpPurchasePriceAdjustSaveReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.priceadjust.ErpPurchasePriceAdjustSettlementSummaryRespVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchasePriceAdjustDO;
@@ -440,6 +443,43 @@ public class ErpPurchasePriceAdjustController {
         return success(respResult);
     }
 
+    @PostMapping("/item-page")
+    @Operation(summary = "获得采购调价明细分页（编辑态）")
+    @PreAuthorize("@ss.hasPermission('erp:purchase-price-adjust:query')")
+    public CommonResult<PageResult<ErpPurchasePriceAdjustRespVO.Item>> getPurchasePriceAdjustItemPageForEdit(
+            @Valid @RequestBody ErpPurchasePriceAdjustItemPageReqVO pageReqVO) {
+        return getPurchasePriceAdjustItemPage(pageReqVO);
+    }
+
+    @PostMapping("/item-match")
+    @Operation(summary = "匹配采购调价整单明细")
+    @PreAuthorize("@ss.hasPermission('erp:purchase-price-adjust:query')")
+    public CommonResult<ErpPurchaseItemMatchRespVO> matchPurchasePriceAdjustItems(
+            @Valid @RequestBody ErpPurchaseItemMatchReqVO reqVO) {
+        priceAdjustService.getPurchasePriceAdjust(reqVO.getDocumentId());
+        Set<Long> excludedIds = new HashSet<>(CollUtil.emptyIfNull(reqVO.getExcludedItemIds()));
+        List<ErpPurchasePriceAdjustItemDO> items = priceAdjustService
+                .getPurchasePriceAdjustItemListByAdjustId(reqVO.getDocumentId()).stream()
+                .filter(item -> !excludedIds.contains(item.getId()))
+                .sorted(java.util.Comparator.comparing(ErpPurchasePriceAdjustItemDO::getId)).collect(Collectors.toList());
+        ErpPurchaseItemMatchRespVO result = new ErpPurchaseItemMatchRespVO();
+        for (int keyIndex = 0; keyIndex < reqVO.getKeys().size(); keyIndex++) {
+            ErpPurchaseItemMatchReqVO.Key key = reqVO.getKeys().get(keyIndex);
+            for (int itemIndex = 0; itemIndex < items.size(); itemIndex++) {
+                ErpPurchasePriceAdjustItemDO item = items.get(itemIndex);
+                boolean matched = key.getSourceItemId() != null
+                        ? java.util.Objects.equals(key.getSourceItemId(), item.getInItemId())
+                        : java.util.Objects.equals(key.getProductId(), item.getProductId());
+                if (matched) {
+                    result.getMatches().add(new ErpPurchaseItemMatchRespVO.Match(keyIndex, item.getId(),
+                            itemIndex / reqVO.getPageSize() + 1));
+                    break;
+                }
+            }
+        }
+        return success(result);
+    }
+
     @GetMapping("/page")
     @Operation(summary = "获得采购调价单分页")
     @PreAuthorize("@ss.hasPermission('erp:purchase-price-adjust:query')")
@@ -449,6 +489,16 @@ public class ErpPurchasePriceAdjustController {
         return success(Boolean.FALSE.equals(pageReqVO.getIncludeItems())
                 ? buildVOPageResultWithoutItems(pageResult)
                 : buildVOPageResult(pageResult));
+    }
+
+    @GetMapping("/summary")
+    @Operation(summary = "获得采购调价单查询汇总")
+    @PreAuthorize("@ss.hasPermission('erp:purchase-price-adjust:query')")
+    public CommonResult<ErpPurchasePriceAdjustSummaryRespVO> getPurchasePriceAdjustSummary(
+            @Valid ErpPurchasePriceAdjustPageReqVO pageReqVO) {
+        ErpPurchasePriceAdjustSummaryRespVO summary = priceAdjustService.getPurchasePriceAdjustSummary(pageReqVO);
+        fieldPermissionMasker.clearHiddenFields(FIELD_PERMISSION_MODULE, summary);
+        return success(summary);
     }
 
     @GetMapping("/supplier-dept-simple-list")

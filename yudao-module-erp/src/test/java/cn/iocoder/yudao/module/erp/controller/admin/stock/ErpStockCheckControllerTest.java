@@ -24,7 +24,10 @@ import org.mockito.Mock;
 
 import java.math.BigDecimal;
 import java.util.Collections;
+import java.util.HashMap;
+import java.util.Map;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyCollection;
@@ -61,6 +64,27 @@ class ErpStockCheckControllerTest extends BaseMockitoUnitTest {
     private ErpPrintService printService;
     @Mock
     private ErpStockCheckItemMapper stockCheckItemMapper;
+
+    @Test
+    void getStockCheck_withoutItems_usesWholeDocumentSummary() {
+        Long checkId = 10L;
+        when(stockCheckService.getStockCheck(checkId)).thenReturn(new ErpStockCheckDO().setId(checkId));
+        when(adminUserApi.getUserMap(anyCollection())).thenReturn(Collections.emptyMap());
+        Map<String, Object> summary = new HashMap<>();
+        summary.put("totalCount", new BigDecimal("25"));
+        summary.put("totalPrice", new BigDecimal("320.50"));
+        summary.put("totalWeight", new BigDecimal("81.25"));
+        when(stockCheckItemMapper.selectSummaryMapByCheckIds(Collections.singleton(checkId)))
+                .thenReturn(Collections.singletonMap(checkId, summary));
+
+        ErpStockCheckRespVO result = controller.getStockCheck(checkId, false).getData();
+
+        assertNull(result.getItems());
+        assertEquals(new BigDecimal("25"), result.getTotalCount());
+        assertEquals(new BigDecimal("320.50"), result.getTotalPrice());
+        assertEquals(new BigDecimal("81.25"), result.getTotalWeight());
+        verify(stockCheckItemMapper).selectSummaryMapByCheckIds(Collections.singleton(checkId));
+    }
 
     @Test
     void getStockCheckPage_masksLegacyListAmountWhenItemAmountHidden() {

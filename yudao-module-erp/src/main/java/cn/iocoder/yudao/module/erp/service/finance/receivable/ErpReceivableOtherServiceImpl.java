@@ -309,7 +309,7 @@ public class ErpReceivableOtherServiceImpl implements ErpReceivableOtherService 
         }
         validateCustomerDept(db.getCustomerId(), db.getDeptId(), false);
         int affected = receivableOtherMapper.updateByIdAndStatus(id, db.getStatus(),
-                ErpReceivableOtherDO.builder().status(status).build());
+                ErpReceivableOtherDO.builder().status(status).approveTime(java.time.LocalDateTime.now()).build());
         if (affected == 0) {
             throw exception(OTHER_RECEIVABLE_APPROVE_FAIL);
         }
@@ -335,6 +335,12 @@ public class ErpReceivableOtherServiceImpl implements ErpReceivableOtherService 
     @Override
     public PageResult<ErpReceivableOtherDO> getReceivableOtherPage(ErpReceivableOtherPageReqVO pageReqVO) {
         return receivableOtherMapper.selectPage(pageReqVO);
+    }
+
+    @Override
+    public cn.iocoder.yudao.module.erp.controller.admin.finance.vo.ErpFinanceQuerySummaryRespVO getReceivableOtherSummary(
+            ErpReceivableOtherPageReqVO pageReqVO) {
+        return receivableOtherMapper.selectSummary(pageReqVO);
     }
 
     private ErpReceivableOtherDO validateReceivableOtherExists(Long id) {

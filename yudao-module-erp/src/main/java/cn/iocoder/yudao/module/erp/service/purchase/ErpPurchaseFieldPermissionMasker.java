@@ -49,6 +49,13 @@ public class ErpPurchaseFieldPermissionMasker {
         add("newPrice");
         add("adjustPrice");
         add("totalAdjustPrice");
+        add("originalTotalPrice");
+        add("adjustedTotalPrice");
+        add("paymentPrice");
+        add("totalWithFreight");
+        add("feeAmount");
+        add("depositPrice");
+        add("totalFreight1");
         add("item_productPrice");
         add("item_productPurchasePrice");
         add("item_salePrice");

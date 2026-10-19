@@ -8,6 +8,9 @@ import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.excel.core.util.ExcelUtils;
 import cn.iocoder.yudao.module.erp.controller.admin.common.ErpAuditStatusRequestValidator;
 import cn.iocoder.yudao.module.erp.controller.admin.common.vo.ErpExportFieldRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.ErpStockDocumentSummaryRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.ErpStockItemMatchReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.ErpStockItemMatchRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.ErpStockUpdateRemarkReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.imports.ErpStockImportExcelVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.imports.ErpStockImportResultRespVO;
@@ -234,11 +237,36 @@ public class ErpStockTransferOutController {
     @PreAuthorize("@ss.hasPermission('erp:stock-transfer-out:query')")
     public CommonResult<PageResult<ErpStockMoveRespVO.Item>> getStockTransferOutItemPage(
             @Valid ErpStockMoveItemPageReqVO pageReqVO) {
+        return getStockTransferOutItemPageAfterVisibleCheck(pageReqVO);
+    }
+
+    @PostMapping("/item-page")
+    @Operation(summary = "Get stock transfer-out item page for editing")
+    @PreAuthorize("@ss.hasPermission('erp:stock-transfer-out:query')")
+    public CommonResult<PageResult<ErpStockMoveRespVO.Item>> getStockTransferOutEditItemPage(
+            @Valid @RequestBody ErpStockMoveItemPageReqVO pageReqVO) {
+        return getStockTransferOutItemPageAfterVisibleCheck(pageReqVO);
+    }
+
+    private CommonResult<PageResult<ErpStockMoveRespVO.Item>> getStockTransferOutItemPageAfterVisibleCheck(
+            ErpStockMoveItemPageReqVO pageReqVO) {
         ErpStockMoveDO stockMove = stockMoveService.getVisibleStockTransferOut(pageReqVO.getMoveId());
         if (stockMove == null || TRANSFER_DIRECTION_OUT != getTransferDirection(stockMove)) {
             throw exception(STOCK_MOVE_NOT_EXISTS);
         }
         return stockMoveController.getStockMoveItemPageAfterVisibleCheck(pageReqVO, FIELD_PERMISSION_MODULE);
+    }
+
+    @PostMapping("/item-match")
+    @Operation(summary = "Match stock transfer-out items across pages")
+    @PreAuthorize("@ss.hasPermission('erp:stock-transfer-out:query')")
+    public CommonResult<ErpStockItemMatchRespVO> matchStockTransferOutItems(
+            @Valid @RequestBody ErpStockItemMatchReqVO reqVO) {
+        ErpStockMoveDO stockMove = stockMoveService.getVisibleStockTransferOut(reqVO.getDocumentId());
+        if (stockMove == null || TRANSFER_DIRECTION_OUT != getTransferDirection(stockMove)) {
+            throw exception(STOCK_MOVE_NOT_EXISTS);
+        }
+        return success(stockMoveController.matchStockMoveItemsAfterVisibleCheck(reqVO));
     }
 
     @GetMapping("/page")
@@ -250,6 +278,19 @@ public class ErpStockTransferOutController {
         return success(stockMoveController.buildStockMoveVOPageResult(
                 stockMoveService.getVisibleStockTransferOutPage(pageReqVO, permissionScope),
                 FIELD_PERMISSION_MODULE, permissionScope, pageReqVO.getIncludeItems()));
+    }
+
+    @GetMapping("/summary")
+    @Operation(summary = "Get stock transfer-out query summary")
+    @PreAuthorize("@ss.hasPermission('erp:stock-transfer-out:query')")
+    public CommonResult<ErpStockDocumentSummaryRespVO> getStockTransferOutSummary(
+            @Valid ErpStockMovePageReqVO pageReqVO) {
+        pageReqVO.setTransferDirection(TRANSFER_DIRECTION_OUT);
+        ErpStockTransferOutPermissionScope permissionScope = stockMoveService.getTransferOutPermissionScope();
+        ErpStockDocumentSummaryRespVO summary = stockMoveService.getVisibleStockTransferOutSummary(
+                pageReqVO, permissionScope);
+        fieldPermissionMasker.maskListColumns(FIELD_PERMISSION_MODULE, summary);
+        return success(summary);
     }
 
     @GetMapping("/from-dept-simple-page")

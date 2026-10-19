@@ -1,7 +1,20 @@
 package cn.iocoder.yudao.module.erp.dal.mysql.finance.receivable;
 
+import cn.iocoder.yudao.module.erp.controller.admin.finance.receivable.vo.account.ErpReceivableAccountPageReqVO;
 import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpSaleOutMapper;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.baomidou.mybatisplus.extension.plugins.handler.TenantLineHandler;
+import com.baomidou.mybatisplus.extension.plugins.inner.TenantLineInnerInterceptor;
+import net.sf.jsqlparser.expression.Expression;
+import net.sf.jsqlparser.expression.LongValue;
+import org.apache.ibatis.mapping.BoundSql;
+import org.apache.ibatis.scripting.xmltags.XMLLanguageDriver;
+import org.apache.ibatis.session.Configuration;
 import org.junit.jupiter.api.Test;
+
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -116,6 +129,44 @@ class ErpReceivableAccountMapperSortTest {
         assertTrue(script.contains("IFNULL(so.saleOutAmount, 0) + IFNULL(pa.priceAdjustAmount, 0)"));
         assertFalse(script.contains("amountJoinSql(\"erp_sale_out\""));
         assertFalse(script.contains("SUM(so.total_price) AS saleOutAmount"));
+    }
+
+    @Test
+    void selectPageRows_usesMyBatisPlusDatabasePageAndStableOrder() throws Exception {
+        assertTrue(ErpReceivableAccountMapper.class.getMethod("selectPageRows", Page.class,
+                cn.iocoder.yudao.module.erp.controller.admin.finance.receivable.vo.account.ErpReceivableAccountPageReqVO.class,
+                java.util.Collection.class, String.class, boolean.class, java.util.Collection.class,
+                Long.class, boolean.class).getReturnType().equals(Page.class));
+
+        String script = new ErpReceivableAccountMapper.SqlProvider().selectPageRows();
+        assertTrue(script.contains("<otherwise>ORDER BY receivableBalance DESC, c.id DESC, accountKeys.deptId DESC</otherwise>"));
+        assertFalse(script.toLowerCase().contains(" limit "), "LIMIT/OFFSET is added by the MyBatis-Plus pagination interceptor");
+    }
+
+    @Test
+    void selectList_shouldBeCompatibleWithTenantSqlParser() {
+        ErpReceivableAccountPageReqVO reqVO = new ErpReceivableAccountPageReqVO();
+        Map<String, Object> params = new HashMap<>();
+        params.put("reqVO", reqVO);
+        params.put("deptIds", Collections.emptyList());
+        params.put("selfUserId", null);
+        params.put("all", true);
+        params.put("docDeptIds", Collections.emptyList());
+        params.put("docSelfUserId", null);
+        params.put("docAll", true);
+        BoundSql boundSql = new XMLLanguageDriver().createSqlSource(new Configuration(),
+                new ErpReceivableAccountMapper.SqlProvider().selectList(), Map.class).getBoundSql(params);
+        TenantLineInnerInterceptor tenant = new TenantLineInnerInterceptor(new TenantLineHandler() {
+            @Override
+            public Expression getTenantId() {
+                return new LongValue(1);
+            }
+        });
+
+        String tenantSql = tenant.parserSingle(boundSql.getSql(), null);
+
+        assertTrue(tenantSql.contains("tenant_id = 1"));
+        assertTrue(tenantSql.contains("FROM erp_customer c"));
     }
 
     private String getSelectListScript() {

@@ -206,6 +206,19 @@ public class ErpPayableExpenseController {
     @PreAuthorize("@ss.hasPermission('erp:payable-expense:query')")
     public CommonResult<PageResult<ErpPayableExpenseRespVO.Item>> itemPage(
             @Valid ErpPayableExpenseItemPageReqVO pageReqVO) {
+        return buildItemPage(pageReqVO);
+    }
+
+    @PostMapping("/item-page")
+    @Operation(summary = "获取费用支付编辑态明细分页")
+    @PreAuthorize("@ss.hasPermission('erp:payable-expense:update')")
+    public CommonResult<PageResult<ErpPayableExpenseRespVO.Item>> itemPageForEdit(
+            @Valid @RequestBody ErpPayableExpenseItemPageReqVO pageReqVO) {
+        return buildItemPage(pageReqVO);
+    }
+
+    private CommonResult<PageResult<ErpPayableExpenseRespVO.Item>> buildItemPage(
+            ErpPayableExpenseItemPageReqVO pageReqVO) {
         PageResult<ErpPayableExpenseItemDO> pageResult = payableExpenseService.getPayableExpenseItemPage(pageReqVO);
         PageResult<ErpPayableExpenseRespVO.Item> result = BeanUtils.toBean(pageResult,
                 ErpPayableExpenseRespVO.Item.class);
@@ -222,6 +235,17 @@ public class ErpPayableExpenseController {
     public CommonResult<PageResult<ErpPayableExpenseRespVO>> page(@Valid ErpPayableExpensePageReqVO reqVO) {
         PageResult<ErpPayableExpenseDO> pageResult = payableExpenseService.getPayableExpensePage(reqVO);
         return success(maskPageResult(buildPageResult(pageResult, !Boolean.FALSE.equals(reqVO.getIncludeItems()))));
+    }
+
+    @GetMapping("/summary")
+    @Operation(summary = "获取费用支付查询汇总")
+    @PreAuthorize("@ss.hasPermission('erp:payable-expense:query')")
+    public CommonResult<cn.iocoder.yudao.module.erp.controller.admin.finance.vo.ErpFinanceQuerySummaryRespVO>
+            summary(@Valid ErpPayableExpensePageReqVO reqVO) {
+        cn.iocoder.yudao.module.erp.controller.admin.finance.vo.ErpFinanceQuerySummaryRespVO summary =
+                payableExpenseService.getPayableExpenseSummary(reqVO);
+        fieldPermissionMasker.maskForm(FIELD_PERMISSION_MODULE, summary);
+        return success(summary);
     }
 
     @GetMapping("/dept-simple-list")

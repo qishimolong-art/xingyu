@@ -1965,6 +1965,8 @@ public class ErpProductServiceImpl implements ErpProductService {
     public PageResult<ErpProductRespVO> getProductVOPage(ErpProductPageReqVO pageReqVO,
                                                          boolean includeProductPricePermission) {
         Set<String> hiddenFieldSet = getHiddenFieldSet(includeProductPricePermission);
+        boolean productArchiveKeywordMode = ErpProductPageReqVO.KEYWORD_SEARCH_MODE_PRODUCT_ARCHIVE
+                .equals(pageReqVO.getKeywordSearchMode());
         boolean includeSaleDistributedArchive = Boolean.TRUE.equals(
                 pageReqVO.getIncludeSaleDistributedArchive());
         if (includeSaleDistributedArchive) {
@@ -1974,8 +1976,12 @@ public class ErpProductServiceImpl implements ErpProductService {
         }
         PageResult<ErpProductDO> pageResult = DataPermissionUtils.executeIgnore(() ->
                 productMapper.selectPage(pageReqVO,
-                        buildKeywordSearchFields(hiddenFieldSet),
-                        buildCustomKeywordSearchColumns(hiddenFieldSet)));
+                        productArchiveKeywordMode
+                                ? buildProductArchiveKeywordSearchFields(hiddenFieldSet)
+                                : buildKeywordSearchFields(hiddenFieldSet),
+                        productArchiveKeywordMode
+                                ? Collections.emptyList()
+                                : buildCustomKeywordSearchColumns(hiddenFieldSet)));
         List<ErpProductRespVO> result = buildProductVOList(
                 pageResult.getList(), includeSaleDistributedArchive);
         applyProductFieldPermissions(result, null, includeProductPricePermission);
@@ -2882,6 +2888,19 @@ public class ErpProductServiceImpl implements ErpProductService {
         addKeywordFieldIfVisible(fields, hiddenFieldSet, ErpProductMapper.KEYWORD_FIELD_DEPT_NAME, "deptId", "deptIds", "deptName");
         fields.add(ErpProductMapper.KEYWORD_FIELD_UNIVERSAL);
         addKeywordFieldIfVisible(fields, hiddenFieldSet, ErpProductMapper.KEYWORD_FIELD_CREATE_TIME, "createTime");
+        return fields;
+    }
+
+    private Set<String> buildProductArchiveKeywordSearchFields(Set<String> hiddenFieldSet) {
+        Set<String> fields = new LinkedHashSet<>();
+        addKeywordFieldIfVisible(fields, hiddenFieldSet, ErpProductMapper.KEYWORD_FIELD_CODE, "code");
+        addKeywordFieldIfVisible(fields, hiddenFieldSet, ErpProductMapper.KEYWORD_FIELD_NAME, "name");
+        addKeywordFieldIfVisible(fields, hiddenFieldSet, ErpProductMapper.KEYWORD_FIELD_PINYIN_CODE, "pinyinCode");
+        addKeywordFieldIfVisible(fields, hiddenFieldSet, ErpProductMapper.KEYWORD_FIELD_WUBI_CODE, "wubiCode");
+        addKeywordFieldIfVisible(fields, hiddenFieldSet, ErpProductMapper.KEYWORD_FIELD_VEHICLE_MODEL, "vehicleModel");
+        addKeywordFieldIfVisible(fields, hiddenFieldSet, ErpProductMapper.KEYWORD_FIELD_BAR_CODE, "barCode");
+        addKeywordFieldIfVisible(fields, hiddenFieldSet, ErpProductMapper.KEYWORD_FIELD_FACTORY_CODE, "factoryCode");
+        addKeywordFieldIfVisible(fields, hiddenFieldSet, ErpProductMapper.KEYWORD_FIELD_DRAWING_NO, "drawingNo");
         return fields;
     }
 

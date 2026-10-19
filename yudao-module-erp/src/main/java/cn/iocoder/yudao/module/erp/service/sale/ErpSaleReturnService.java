@@ -6,6 +6,7 @@ import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.ErpSaleUpdateRemarkR
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnImportExcelVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnImportRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnPageReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnSummaryRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnDraftCreateReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnDraftUpdateReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnCreatePurchaseReturnReqVO;
@@ -108,6 +109,8 @@ public interface ErpSaleReturnService {
      */
     PageResult<ErpSaleReturnDO> getSaleReturnPage(ErpSaleReturnPageReqVO pageReqVO);
 
+    ErpSaleReturnSummaryRespVO getSaleReturnSummary(ErpSaleReturnPageReqVO pageReqVO);
+
     // ==================== 销售退货项 ====================
 
     /**
@@ -117,6 +120,9 @@ public interface ErpSaleReturnService {
      * @return 销售退货项列表
      */
     List<ErpSaleReturnItemDO> getSaleReturnItemListByReturnId(Long returnId);
+
+    List<ErpSaleReturnItemDO> getSaleReturnItemListByReturnId(Long returnId, String orderField,
+                                                              String orderDirection);
 
     PageResult<ErpSaleReturnItemDO> getSaleReturnItemPage(ErpSaleReturnItemPageReqVO pageReqVO);
 

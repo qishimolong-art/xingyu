@@ -210,6 +210,17 @@ public class ErpFinanceTransferController {
         return success(buildFinanceTransferVOPageResult(pageResult));
     }
 
+    @GetMapping("/summary")
+    @Operation(summary = "获得银行转账查询汇总")
+    @PreAuthorize("@ss.hasPermission('erp:finance-transfer:query')")
+    public CommonResult<cn.iocoder.yudao.module.erp.controller.admin.finance.vo.ErpFinanceQuerySummaryRespVO>
+            getFinanceTransferSummary(@Valid ErpFinanceTransferPageReqVO pageReqVO) {
+        cn.iocoder.yudao.module.erp.controller.admin.finance.vo.ErpFinanceQuerySummaryRespVO summary =
+                financeTransferService.getFinanceTransferSummary(pageReqVO);
+        fieldPermissionMasker.maskForm("erp_finance_transfer", summary);
+        return success(summary);
+    }
+
     @GetMapping("/dept-simple-list")
     @Operation(summary = "Get finance transfer data permission dept simple list")
     @PreAuthorize("@ss.hasPermission('erp:finance-transfer:query')")

@@ -7,6 +7,7 @@ import cn.iocoder.yudao.framework.mybatis.core.query.LambdaQueryWrapperX;
 import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpProductPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.stock.ErpStockPageReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.product.ErpProductDO;
+import cn.iocoder.yudao.module.erp.dal.mysql.common.ErpKeywordQuery;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
@@ -19,8 +20,10 @@ import org.springframework.util.StringUtils;
 
 import java.util.Collection;
 import java.util.Collections;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
@@ -147,7 +150,9 @@ public interface ErpProductMapper extends BaseMapperX<ErpProductDO> {
                 .eqIfPresent(ErpProductDO::getStatus, reqVO.getStatus())
                 .eqIfPresent(ErpProductDO::getDefaultWarehouseId, reqVO.getWarehouseId())
                 .betweenIfPresent(ErpProductDO::getCreateTime, reqVO.getCreateTime());
-        appendKeywordCondition(wrapper, reqVO.getKeyword(), keywordFields, customKeywordColumns);
+        boolean productArchiveKeywordMode = isProductArchiveKeywordMode(reqVO);
+        appendKeywordCondition(wrapper, reqVO.getKeyword(), keywordFields, customKeywordColumns,
+                productArchiveKeywordMode);
         if (reqVO.getDeptId() != null) {
             wrapper.and(w -> w.eq(ErpProductDO::getDeptId, reqVO.getDeptId())
                     .or()
@@ -166,7 +171,7 @@ public interface ErpProductMapper extends BaseMapperX<ErpProductDO> {
         // 默认过滤掉已合并的配件
         // Filter merged products by default.
         wrapper.ne(ErpProductDO::getMergedFlag, Boolean.TRUE);
-        orderByIfPresent(wrapper, reqVO);
+        orderByIfPresent(wrapper, reqVO, keywordFields);
         return selectPage(reqVO, wrapper);
     }
 
@@ -174,22 +179,33 @@ public interface ErpProductMapper extends BaseMapperX<ErpProductDO> {
                                        String keyword,
                                        Collection<String> keywordFields,
                                        Collection<String> customKeywordColumns) {
+        appendKeywordCondition(wrapper, keyword, keywordFields, customKeywordColumns, false);
+    }
+
+    static void appendKeywordCondition(LambdaQueryWrapperX<ErpProductDO> wrapper,
+                                       String keyword,
+                                       Collection<String> keywordFields,
+                                       Collection<String> customKeywordColumns,
+                                       boolean disablePureNumericOrderedMatch) {
         if (!StringUtils.hasText(keyword)) {
             return;
         }
         KeywordSearch keywordSearch = parseKeywordSearch(keyword);
         if (keywordSearch.explicitDelimited()) {
-            appendKeywordTokensAndCondition(wrapper, keywordSearch.tokens(), keywordFields, customKeywordColumns);
+            appendKeywordTokensAndCondition(wrapper, keywordSearch.tokens(), keywordFields, customKeywordColumns,
+                    disablePureNumericOrderedMatch);
             return;
         }
         if (keywordSearch.spaceDelimited()) {
             wrapper.and(w -> {
-                appendKeywordMatchGroup(w, fuzzyKeyword(keyword), keywordFields, customKeywordColumns);
-                w.or(or -> appendKeywordTokensAndCondition(or, keywordSearch.tokens(), keywordFields, customKeywordColumns));
+                appendKeywordMatchGroupWithViscosityVariants(w, keyword, keywordFields, customKeywordColumns);
+                w.or(or -> appendKeywordTokensAndCondition(or, keywordSearch.tokens(), keywordFields,
+                        customKeywordColumns, disablePureNumericOrderedMatch));
             });
             return;
         }
-        wrapper.and(w -> appendKeywordMatchGroup(w, fuzzyKeyword(keyword), keywordFields, customKeywordColumns));
+        wrapper.and(w -> appendKeywordTokenMatchGroup(w, keyword,
+                keywordFields, customKeywordColumns, disablePureNumericOrderedMatch));
     }
 
     static KeywordSearch parseKeywordSearch(String keyword) {
@@ -228,8 +244,99 @@ public interface ErpProductMapper extends BaseMapperX<ErpProductDO> {
                                                 List<String> tokens,
                                                 Collection<String> keywordFields,
                                                 Collection<String> customKeywordColumns) {
-        tokens.forEach(token -> wrapper.and(w -> appendKeywordMatchGroup(w, fuzzyKeyword(token),
-                keywordFields, customKeywordColumns)));
+        appendKeywordTokensAndCondition(wrapper, tokens, keywordFields, customKeywordColumns, false);
+    }
+
+    static void appendKeywordTokensAndCondition(LambdaQueryWrapper<ErpProductDO> wrapper,
+                                                List<String> tokens,
+                                                Collection<String> keywordFields,
+                                                Collection<String> customKeywordColumns,
+                                                boolean disablePureNumericOrderedMatch) {
+        tokens.forEach(token -> wrapper.and(w -> appendKeywordTokenMatchGroup(w, token,
+                keywordFields, customKeywordColumns, disablePureNumericOrderedMatch)));
+    }
+
+    static void appendKeywordTokenMatchGroup(LambdaQueryWrapper<ErpProductDO> wrapper,
+                                             String keyword,
+                                             Collection<String> keywordFields,
+                                             Collection<String> customKeywordColumns) {
+        appendKeywordTokenMatchGroup(wrapper, keyword, keywordFields, customKeywordColumns, false);
+    }
+
+    static void appendKeywordTokenMatchGroup(LambdaQueryWrapper<ErpProductDO> wrapper,
+                                             String keyword,
+                                             Collection<String> keywordFields,
+                                             Collection<String> customKeywordColumns,
+                                             boolean disablePureNumericOrderedMatch) {
+        Set<String> patterns = new LinkedHashSet<>();
+        for (String variant : viscosityKeywordVariants(keyword)) {
+            patterns.add(fuzzyKeyword(variant));
+        }
+        if (!disablePureNumericOrderedMatch || !isPureNumericKeyword(keyword)) {
+            patterns.add(ErpKeywordQuery.orderedCharactersPattern(keyword));
+        }
+        appendKeywordPatternAlternatives(wrapper, patterns, keywordFields, customKeywordColumns);
+    }
+
+    static boolean isPureNumericKeyword(String keyword) {
+        return StringUtils.hasText(keyword) && keyword.trim().matches("\\d+");
+    }
+
+    static void appendKeywordMatchGroupWithViscosityVariants(LambdaQueryWrapper<ErpProductDO> wrapper,
+                                                               String keyword,
+                                                               Collection<String> keywordFields,
+                                                               Collection<String> customKeywordColumns) {
+        Set<String> patterns = viscosityKeywordVariants(keyword).stream()
+                .map(ErpProductMapper::fuzzyKeyword)
+                .collect(Collectors.toCollection(LinkedHashSet::new));
+        appendKeywordPatternAlternatives(wrapper, patterns, keywordFields, customKeywordColumns);
+    }
+
+    static void appendKeywordPatternAlternatives(LambdaQueryWrapper<ErpProductDO> wrapper,
+                                                 Collection<String> patterns,
+                                                 Collection<String> keywordFields,
+                                                 Collection<String> customKeywordColumns) {
+        List<String> values = patterns.stream().filter(StringUtils::hasText).distinct().collect(Collectors.toList());
+        if (values.size() == 1) {
+            appendKeywordMatchGroup(wrapper, values.get(0), keywordFields, customKeywordColumns);
+            return;
+        }
+        wrapper.and(variantGroup -> {
+            boolean first = true;
+            for (String pattern : values) {
+                if (first) {
+                    variantGroup.and(match -> appendKeywordMatchGroup(match, pattern,
+                            keywordFields, customKeywordColumns));
+                } else {
+                    variantGroup.or(match -> appendKeywordMatchGroup(match, pattern,
+                            keywordFields, customKeywordColumns));
+                }
+                first = false;
+            }
+        });
+    }
+
+    static List<String> viscosityKeywordVariants(String keyword) {
+        if (!StringUtils.hasText(keyword)) {
+            return Collections.emptyList();
+        }
+        String value = keyword.trim();
+        Set<String> variants = new LinkedHashSet<>();
+        variants.add(value);
+        java.util.regex.Matcher matcher = java.util.regex.Pattern.compile(
+                "^(.*?)(0|5|10|15|20)[W\\-]?(20|30|40|50|60)(.*)$",
+                java.util.regex.Pattern.CASE_INSENSITIVE).matcher(value);
+        if (matcher.matches()) {
+            String prefix = matcher.group(1);
+            String low = matcher.group(2);
+            String high = matcher.group(3);
+            String suffix = matcher.group(4);
+            variants.add(prefix + low + "W-" + high + suffix);
+            variants.add(prefix + low + "W" + high + suffix);
+            variants.add(prefix + low + "-" + high + suffix);
+            variants.add(prefix + low + high + suffix);
+        }
+        return new java.util.ArrayList<>(variants);
     }
 
     static void appendKeywordMatchGroup(LambdaQueryWrapper<ErpProductDO> wrapper,
@@ -395,8 +502,18 @@ public interface ErpProductMapper extends BaseMapperX<ErpProductDO> {
     }
 
     static void orderByIfPresent(LambdaQueryWrapperX<ErpProductDO> wrapper, ErpProductPageReqVO reqVO) {
+        orderByIfPresent(wrapper, reqVO, Collections.emptyList());
+    }
+
+    static void orderByIfPresent(LambdaQueryWrapperX<ErpProductDO> wrapper, ErpProductPageReqVO reqVO,
+                                 Collection<String> keywordFields) {
         SFunction<ErpProductDO, ?> orderColumn = getOrderColumn(reqVO.getOrderField());
         if (orderColumn == null) {
+            if (shouldPrioritizeExactProductCode(reqVO, keywordFields)) {
+                String keyword = reqVO.getKeyword().trim();
+                wrapper.last("ORDER BY CASE WHEN code = '" + keyword + "' THEN 0 ELSE 1 END, id DESC");
+                return;
+            }
             wrapper.orderByDesc(ErpProductDO::getId);
             return;
         }
@@ -409,6 +526,21 @@ public interface ErpProductMapper extends BaseMapperX<ErpProductDO> {
             return;
         }
         wrapper.orderByDesc(ErpProductDO::getId);
+    }
+
+    static boolean isProductArchiveKeywordMode(ErpProductPageReqVO reqVO) {
+        return ErpProductPageReqVO.KEYWORD_SEARCH_MODE_PRODUCT_ARCHIVE.equals(reqVO.getKeywordSearchMode());
+    }
+
+    static boolean shouldPrioritizeExactProductCode(ErpProductPageReqVO reqVO,
+                                                    Collection<String> keywordFields) {
+        if (!isProductArchiveKeywordMode(reqVO)
+                || !keywordFields.contains(KEYWORD_FIELD_CODE)
+                || !StringUtils.hasText(reqVO.getKeyword())
+                || StringUtils.hasText(reqVO.getOrderField())) {
+            return false;
+        }
+        return reqVO.getKeyword().trim().matches("[\\p{L}\\p{N}._-]+");
     }
 
     static SFunction<ErpProductDO, ?> getOrderColumn(String orderField) {
@@ -715,7 +847,7 @@ public interface ErpProductMapper extends BaseMapperX<ErpProductDO> {
     default List<Long> selectIdsByStockProductKeyword(String keyword) {
         LambdaQueryWrapper<ErpProductDO> w = new LambdaQueryWrapper<>();
         w.select(ErpProductDO::getId);
-        w.and(q -> appendKeywordMatchGroup(q, fuzzyKeyword(keyword),
+        w.and(q -> appendKeywordTokenMatchGroup(q, keyword,
                 STOCK_PRODUCT_KEYWORD_FIELDS, Collections.emptyList()));
         List<Map<String, Object>> rows = selectMaps(w);
         return rows.stream().map(m -> (Long) m.get("id")).collect(Collectors.toList());
@@ -733,6 +865,7 @@ public interface ErpProductMapper extends BaseMapperX<ErpProductDO> {
         if (StringUtils.hasText(reqVO.getProductName())) {
             w.like(ErpProductDO::getName, fuzzyKeyword(reqVO.getProductName()));
         }
+        appendStockProductNameKeywordCondition(w, reqVO.getProductNameKeyword());
         if (StringUtils.hasText(reqVO.getDrawingNo())) {
             w.like(ErpProductDO::getDrawingNo, fuzzyKeyword(reqVO.getDrawingNo()));
         }
@@ -808,16 +941,48 @@ public interface ErpProductMapper extends BaseMapperX<ErpProductDO> {
         }
         if (keywordSearch.spaceDelimited()) {
             w.and(q -> {
-                appendStockKeywordMatchGroup(q, fuzzyKeyword(keyword));
+                appendStockKeywordMatchGroupWithViscosityVariants(q, keyword);
                 q.or(or -> appendStockProductKeywordTokensAndCondition(or, keywordSearch.tokens()));
             });
             return;
         }
-        w.and(q -> appendStockKeywordMatchGroup(q, fuzzyKeyword(keyword)));
+        w.and(q -> appendStockKeywordTokenMatchGroup(q, keyword));
+    }
+
+    static void appendStockProductNameKeywordCondition(LambdaQueryWrapper<ErpProductDO> w, String keyword) {
+        if (!StringUtils.hasText(keyword)) {
+            return;
+        }
+        Collection<String> nameField = Collections.singletonList(KEYWORD_FIELD_NAME);
+        KeywordSearch keywordSearch = parseKeywordSearch(keyword);
+        if (keywordSearch.explicitDelimited()) {
+            appendKeywordTokensAndCondition(w, keywordSearch.tokens(), nameField, Collections.emptyList());
+            return;
+        }
+        if (keywordSearch.spaceDelimited()) {
+            w.and(q -> {
+                appendKeywordMatchGroupWithViscosityVariants(q, keyword, nameField, Collections.emptyList());
+                q.or(or -> appendKeywordTokensAndCondition(
+                        or, keywordSearch.tokens(), nameField, Collections.emptyList()));
+            });
+            return;
+        }
+        w.and(q -> appendKeywordTokenMatchGroup(q, keyword, nameField, Collections.emptyList()));
     }
 
     static void appendStockKeywordMatchGroup(LambdaQueryWrapper<ErpProductDO> wrapper, String keyword) {
         appendKeywordMatchGroup(wrapper, keyword, STOCK_KEYWORD_FIELDS, Collections.emptyList());
+    }
+
+    static void appendStockKeywordMatchGroupWithViscosityVariants(LambdaQueryWrapper<ErpProductDO> wrapper,
+                                                                   String keyword) {
+        appendKeywordMatchGroupWithViscosityVariants(wrapper, keyword,
+                STOCK_KEYWORD_FIELDS, Collections.emptyList());
+    }
+
+    static void appendStockKeywordTokenMatchGroup(LambdaQueryWrapper<ErpProductDO> wrapper,
+                                                   String keyword) {
+        appendKeywordTokenMatchGroup(wrapper, keyword, STOCK_KEYWORD_FIELDS, Collections.emptyList());
     }
 
     static void appendStockProductKeywordTokensAndCondition(LambdaQueryWrapper<ErpProductDO> wrapper,

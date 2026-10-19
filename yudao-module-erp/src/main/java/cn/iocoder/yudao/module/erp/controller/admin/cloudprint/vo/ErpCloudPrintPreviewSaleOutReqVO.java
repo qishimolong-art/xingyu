@@ -18,4 +18,8 @@ public class ErpCloudPrintPreviewSaleOutReqVO {
     @Min(value = 1, message = "打印份数不能小于 1")
     @Max(value = 99, message = "打印份数不能大于 99")
     private Integer copies;
+
+    private String itemOrderField;
+
+    private String itemOrderDirection;
 }

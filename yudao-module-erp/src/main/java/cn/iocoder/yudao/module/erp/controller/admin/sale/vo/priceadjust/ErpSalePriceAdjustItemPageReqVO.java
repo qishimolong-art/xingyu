@@ -7,6 +7,7 @@ import lombok.EqualsAndHashCode;
 import lombok.ToString;
 
 import javax.validation.constraints.NotNull;
+import java.util.List;
 
 @Schema(description = "管理后台 - ERP 销售调价明细分页 Request VO")
 @Data
@@ -17,6 +18,9 @@ public class ErpSalePriceAdjustItemPageReqVO extends PageParam {
     @Schema(description = "销售调价编号", requiredMode = Schema.RequiredMode.REQUIRED, example = "1024")
     @NotNull(message = "销售调价编号不能为空")
     private Long adjustId;
+
+    @Schema(description = "编辑态待删除明细编号")
+    private List<Long> excludedItemIds;
 
     @Schema(description = "是否按字段权限脱敏", example = "true")
     private Boolean mask = true;

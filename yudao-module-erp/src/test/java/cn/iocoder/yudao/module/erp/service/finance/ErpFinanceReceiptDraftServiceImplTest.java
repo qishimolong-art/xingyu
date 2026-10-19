@@ -11,6 +11,8 @@ import cn.iocoder.yudao.module.erp.enums.ErpAuditStatus;
 import cn.iocoder.yudao.module.erp.enums.common.ErpBizTypeEnum;
 import cn.iocoder.yudao.module.erp.enums.finance.ErpFinanceReceiptStatusEnum;
 import cn.iocoder.yudao.module.erp.service.common.ErpOperateLogService;
+import cn.iocoder.yudao.module.erp.service.finance.payable.ErpPayableExpenseService;
+import cn.iocoder.yudao.module.erp.service.finance.receivable.ErpReceivableOtherService;
 import cn.iocoder.yudao.module.erp.service.sale.ErpCustomerDeptPermissionService;
 import cn.iocoder.yudao.module.erp.service.sale.ErpCustomerService;
 import cn.iocoder.yudao.module.system.api.user.AdminUserApi;
@@ -30,11 +32,14 @@ import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.FINANCE_RECEI
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.FINANCE_RECEIPT_DRAFT_ITEMS_REQUIRED;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.FINANCE_RECEIPT_DRAFT_SUBMIT_FAIL;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.FINANCE_RECEIPT_DRAFT_UPDATE_FAIL;
+import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.FINANCE_RECEIPT_PAYMENT_VOUCHER_NO_TOO_LONG;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.FINANCE_RECEIPT_WRITEOFF_AMOUNT_INVALID;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -63,11 +68,53 @@ class ErpFinanceReceiptDraftServiceImplTest extends BaseMockitoUnitTest {
     @Mock
     private ErpAccountService accountService;
     @Mock
+    private ErpReceivableOtherService receivableOtherService;
+    @Mock
+    private ErpPayableExpenseService payableExpenseService;
+    @Mock
+    private ErpFinanceAutoWriteOffService financeAutoWriteOffService;
+    @Mock
     private AdminUserApi adminUserApi;
 
 
     @Mock
     private cn.iocoder.yudao.module.erp.dal.mysql.finance.receivable.ErpReceivableMiscMapper receivableMiscMapper;
+
+    @Test
+    void createDraft_trimsPaymentVoucherNoAndConvertsBlankToNull() {
+        when(noRedisDAO.generate(ErpNoRedisDAO.FINANCE_RECEIPT_NO_PREFIX)).thenReturn("SK001", "SK002");
+        ErpFinanceReceiptSaveReqVO.Item item = new ErpFinanceReceiptSaveReqVO.Item()
+                .setBizType(ErpBizTypeEnum.SALE_OUT.getType()).setBizId(10L)
+                .setBizNo("XS001").setTotalPrice(BigDecimal.TEN)
+                .setReceiptedPrice(BigDecimal.ZERO).setReceiptPrice(BigDecimal.TEN);
+
+        receiptService.createFinanceReceiptDraft(new ErpFinanceReceiptDraftSaveReqVO()
+                .setPaymentVoucherNo("  CUSTOMER-001  ").setItems(Collections.singletonList(item)));
+        receiptService.createFinanceReceiptDraft(new ErpFinanceReceiptDraftSaveReqVO()
+                .setPaymentVoucherNo("   ").setItems(Collections.singletonList(item)));
+
+        ArgumentCaptor<ErpFinanceReceiptDO> captor = ArgumentCaptor.forClass(ErpFinanceReceiptDO.class);
+        verify(receiptMapper, org.mockito.Mockito.times(2)).insert(captor.capture());
+        assertThat(captor.getAllValues().get(0).getPaymentVoucherNo()).isEqualTo("CUSTOMER-001");
+        assertThat(captor.getAllValues().get(1).getPaymentVoucherNo()).isNull();
+    }
+
+    @Test
+    void createDraft_rejectsPaymentVoucherNoLongerThan64Characters() {
+        when(noRedisDAO.generate(ErpNoRedisDAO.FINANCE_RECEIPT_NO_PREFIX)).thenReturn("SK001");
+        ErpFinanceReceiptSaveReqVO.Item item = new ErpFinanceReceiptSaveReqVO.Item()
+                .setBizType(ErpBizTypeEnum.SALE_OUT.getType()).setBizId(10L)
+                .setBizNo("XS001").setTotalPrice(BigDecimal.TEN)
+                .setReceiptedPrice(BigDecimal.ZERO).setReceiptPrice(BigDecimal.TEN);
+
+        assertServiceException(() -> receiptService.createFinanceReceiptDraft(
+                        new ErpFinanceReceiptDraftSaveReqVO()
+                                .setPaymentVoucherNo(String.join("", Collections.nCopies(65, "A")))
+                                .setItems(Collections.singletonList(item))),
+                FINANCE_RECEIPT_PAYMENT_VOUCHER_NO_TOO_LONG, 64);
+
+        verify(receiptMapper, never()).insert(any(ErpFinanceReceiptDO.class));
+    }
 
     @Test
     void sourceDraft_checksPendingLimitWithoutReserving() {
@@ -337,6 +384,48 @@ class ErpFinanceReceiptDraftServiceImplTest extends BaseMockitoUnitTest {
 
         verify(receiptItemMapper, never()).selectListByReceiptId(any());
         verify(receiptMapper, never()).updateByIdAndStatus(any(), any(), any());
+    }
+
+    @Test
+    void approveReceipt_createsReceivableAdjustmentAndApprovedDiscountExpense() {
+        ErpFinanceReceiptDO receipt = ErpFinanceReceiptDO.builder()
+                .id(1L).no("SK001").status(ErpFinanceReceiptStatusEnum.PROCESS.getStatus())
+                .receiptTime(LocalDateTime.of(2026, 10, 15, 10, 0))
+                .customerId(2L).accountId(3L).deptId(4L).financeUserId(5L)
+                .totalPrice(new BigDecimal("100")).discountPrice(new BigDecimal("10"))
+                .receiptPrice(new BigDecimal("90")).build();
+        when(receiptMapper.selectByIdForUpdate(1L)).thenReturn(receipt);
+        when(receiptItemMapper.selectListByReceiptId(1L)).thenReturn(Collections.emptyList());
+        when(receiptMapper.updateByIdAndStatus(eq(1L),
+                eq(ErpFinanceReceiptStatusEnum.PROCESS.getStatus()), any())).thenReturn(1);
+
+        receiptService.approveFinanceReceipt(1L);
+
+        verify(receivableOtherService).createFromFinanceReceiptDiscount(receipt);
+        verify(payableExpenseService).createApprovedFromFinanceReceiptDiscount(receipt, null);
+        verify(financeAutoWriteOffService).autoWriteOffReceipt(1L, null);
+    }
+
+    @Test
+    void approveReceipt_stopsFollowingStepsWhenDiscountExpenseCreationFails() {
+        ErpFinanceReceiptDO receipt = ErpFinanceReceiptDO.builder()
+                .id(1L).no("SK001").status(ErpFinanceReceiptStatusEnum.PROCESS.getStatus())
+                .receiptTime(LocalDateTime.of(2026, 10, 15, 10, 0))
+                .customerId(2L).accountId(3L).deptId(4L).financeUserId(5L)
+                .totalPrice(new BigDecimal("100")).discountPrice(new BigDecimal("10"))
+                .receiptPrice(new BigDecimal("90")).build();
+        when(receiptMapper.selectByIdForUpdate(1L)).thenReturn(receipt);
+        when(receiptItemMapper.selectListByReceiptId(1L)).thenReturn(Collections.emptyList());
+        when(receiptMapper.updateByIdAndStatus(eq(1L),
+                eq(ErpFinanceReceiptStatusEnum.PROCESS.getStatus()), any())).thenReturn(1);
+        RuntimeException failure = new RuntimeException("模拟费用支付生成失败");
+        doThrow(failure).when(payableExpenseService)
+                .createApprovedFromFinanceReceiptDiscount(receipt, null);
+
+        assertThatThrownBy(() -> receiptService.approveFinanceReceipt(1L)).isSameAs(failure);
+
+        verify(receivableOtherService).createFromFinanceReceiptDiscount(receipt);
+        verify(financeAutoWriteOffService, never()).autoWriteOffReceipt(any(), any());
     }
 
 }

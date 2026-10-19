@@ -4,6 +4,7 @@ import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.mybatis.core.mapper.BaseMapperX;
 import cn.iocoder.yudao.framework.mybatis.core.query.MPJLambdaWrapperX;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.order.ErpPurchaseOrderPageReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.order.ErpPurchaseOrderSummaryRespVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.product.ErpProductDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.product.ErpProductUnitDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseOrderDO;
@@ -26,6 +27,23 @@ import java.util.Objects;
 public interface ErpPurchaseOrderMapper extends BaseMapperX<ErpPurchaseOrderDO> {
 
     default PageResult<ErpPurchaseOrderDO> selectPage(ErpPurchaseOrderPageReqVO reqVO) {
+        MPJLambdaWrapperX<ErpPurchaseOrderDO> query = buildQuery(reqVO);
+        orderByIfPresent(query, reqVO);
+        return selectJoinPage(reqVO, ErpPurchaseOrderDO.class, query);
+    }
+
+    default ErpPurchaseOrderSummaryRespVO selectSummary(ErpPurchaseOrderPageReqVO reqVO) {
+        MPJLambdaWrapperX<ErpPurchaseOrderDO> query = buildQuery(reqVO)
+                .selectAs("COALESCE(SUM(t.total_count), 0)", ErpPurchaseOrderSummaryRespVO::getTotalCount)
+                .selectAs("COALESCE(SUM(t.total_product_price), 0)", ErpPurchaseOrderSummaryRespVO::getTotalProductPrice)
+                .selectAs("COALESCE(SUM(t.discount_price), 0)", ErpPurchaseOrderSummaryRespVO::getDiscountPrice)
+                .selectAs("COALESCE(SUM(t.fee_amount), 0)", ErpPurchaseOrderSummaryRespVO::getFeeAmount)
+                .selectAs("COALESCE(SUM(t.deposit_price), 0)", ErpPurchaseOrderSummaryRespVO::getDepositPrice)
+                .selectAs("COALESCE(SUM(t.total_price), 0)", ErpPurchaseOrderSummaryRespVO::getTotalPrice);
+        return selectJoinOne(ErpPurchaseOrderSummaryRespVO.class, query);
+    }
+
+    static MPJLambdaWrapperX<ErpPurchaseOrderDO> buildQuery(ErpPurchaseOrderPageReqVO reqVO) {
         MPJLambdaWrapperX<ErpPurchaseOrderDO> query = new MPJLambdaWrapperX<ErpPurchaseOrderDO>()
                 .likeIfPresent(ErpPurchaseOrderDO::getNo, normalizeLikeValue(reqVO.getNo()))
                 .likeIfPresent(ErpPurchaseOrderDO::getFactoryOrderNo, normalizeLikeValue(reqVO.getFactoryOrderNo()))
@@ -62,19 +80,9 @@ public interface ErpPurchaseOrderMapper extends BaseMapperX<ErpPurchaseOrderDO> 
             query.eq(ErpPurchaseOrderDO::getStatus, ErpAuditStatus.APPROVE.getStatus())
                     .apply("t.return_count < t.in_count");
         }
-        if (reqVO.getProductId() != null || StringUtils.hasText(reqVO.getProductKeyword())) {
-            query.leftJoin(ErpPurchaseOrderItemDO.class, ErpPurchaseOrderItemDO::getOrderId, ErpPurchaseOrderDO::getId)
-                    .leftJoin(ErpProductDO.class, ErpProductDO::getId, ErpPurchaseOrderItemDO::getProductId)
-                    .leftJoin(ErpProductUnitDO.class, ErpProductUnitDO::getId, ErpProductDO::getUnitId)
-                    .eq(reqVO.getProductId() != null, ErpPurchaseOrderItemDO::getProductId, reqVO.getProductId())
-                    .and(StringUtils.hasText(reqVO.getProductKeyword()),
-                            w -> ErpKeywordQuery.appendProductKeyword(w, reqVO.getProductKeyword(),
-                                    ErpKeywordQuery.productKeywordColumn(ErpPurchaseOrderItemDO::getVehicleModel),
-                                    ErpKeywordQuery.productKeywordColumn(ErpPurchaseOrderItemDO::getFactoryCode),
-                                    ErpKeywordQuery.productKeywordColumn(ErpPurchaseOrderItemDO::getDrawingNo),
-                                    ErpKeywordQuery.productKeywordColumn(ErpPurchaseOrderItemDO::getBrand)))
-                    .groupBy(ErpPurchaseOrderDO::getId); // 避免 1 对多查询，产生相同的 1
-        }
+        ErpKeywordQuery.appendProductItemFilter(query, "erp_purchase_order_items", "order_id",
+                reqVO.getProductId(), null, null, null, reqVO.getProductKeyword(), true,
+                "vehicle_model", "factory_code", "drawing_no", "brand");
         ErpKeywordQuery.appendWithDeptNameAndPurchaseSupplierAndProductItemTokens(query, reqVO.getKeyword(),
                 "erp_purchase_order_items", "order_id",
                 ErpPurchaseOrderDO::getNo, ErpPurchaseOrderDO::getFactoryOrderNo,
@@ -83,8 +91,7 @@ public interface ErpPurchaseOrderMapper extends BaseMapperX<ErpPurchaseOrderDO> 
                 ErpPurchaseOrderDO::getReceiveAddress, ErpPurchaseOrderDO::getInvoiceType,
                 ErpPurchaseOrderDO::getSettleMethod, ErpPurchaseOrderDO::getOrderCompany,
                 ErpPurchaseOrderDO::getDocumentType);
-        orderByIfPresent(query, reqVO);
-        return selectJoinPage(reqVO, ErpPurchaseOrderDO.class, query);
+        return query;
     }
 
     static void orderByIfPresent(MPJLambdaWrapperX<ErpPurchaseOrderDO> wrapper, ErpPurchaseOrderPageReqVO reqVO) {

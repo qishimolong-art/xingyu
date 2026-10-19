@@ -15,6 +15,8 @@ import cn.iocoder.yudao.module.erp.controller.admin.common.ErpAuditStatusRequest
 import cn.iocoder.yudao.module.erp.controller.admin.common.vo.ErpExportFieldRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpProductRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.ErpStockUpdateRemarkReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.ErpStockItemMatchReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.ErpStockItemMatchRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.warehousemove.ErpWarehouseMoveDraftCreateReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.warehousemove.ErpWarehouseMoveDraftUpdateReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.imports.ErpStockImportResultRespVO;
@@ -76,7 +78,9 @@ import java.util.Set;
 import static cn.iocoder.yudao.framework.apilog.core.enums.OperateTypeEnum.EXPORT;
 import static cn.iocoder.yudao.framework.apilog.core.enums.OperateTypeEnum.IMPORT;
 import static cn.iocoder.yudao.framework.common.pojo.CommonResult.success;
+import static cn.iocoder.yudao.framework.common.exception.util.ServiceExceptionUtil.exception;
 import static cn.iocoder.yudao.framework.common.util.collection.CollectionUtils.*;
+import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.WAREHOUSE_MOVE_NOT_EXISTS;
 
 @Tag(name = "Admin - ERP warehouse move")
 @RestController
@@ -222,6 +226,32 @@ public class ErpWarehouseMoveController {
             fieldPermissionMasker.clearHiddenItemFields(FIELD_PERMISSION_MODULE, respResult.getList());
         }
         return success(respResult);
+    }
+
+    @PostMapping("/item-page")
+    @Operation(summary = "Get warehouse move item page for editing")
+    @PreAuthorize("@ss.hasPermission('erp:warehouse-move:query')")
+    public CommonResult<PageResult<ErpWarehouseMoveRespVO.Item>> getWarehouseMoveEditItemPage(
+            @Valid @RequestBody ErpWarehouseMoveItemPageReqVO pageReqVO) {
+        return getWarehouseMoveItemPage(pageReqVO);
+    }
+
+    @PostMapping("/item-match")
+    @Operation(summary = "Match warehouse move items across pages")
+    @PreAuthorize("@ss.hasPermission('erp:warehouse-move:query')")
+    public CommonResult<ErpStockItemMatchRespVO> matchWarehouseMoveItems(
+            @Valid @RequestBody ErpStockItemMatchReqVO reqVO) {
+        if (warehouseMoveService.getWarehouseMove(reqVO.getDocumentId()) == null) {
+            throw exception(WAREHOUSE_MOVE_NOT_EXISTS);
+        }
+        List<ErpWarehouseMoveItemDO> items = warehouseMoveService.getWarehouseMoveItemListByMoveId(
+                reqVO.getDocumentId());
+        return success(ErpStockItemMatchUtils.match(items, reqVO, ErpWarehouseMoveItemDO::getId,
+                (item, key) -> java.util.Objects.equals(item.getProductId(), key.getProductId())
+                        && java.util.Objects.equals(item.getFromWarehouseId(), key.getFromWarehouseId())
+                        && java.util.Objects.equals(item.getToWarehouseId(), key.getToWarehouseId())
+                        && ErpStockItemMatchUtils.normalizeText(item.getFromShelf())
+                        .equals(ErpStockItemMatchUtils.normalizeText(key.getFromShelf()))));
     }
 
     @GetMapping("/page")
@@ -382,12 +412,24 @@ public class ErpWarehouseMoveController {
     private void fillSummary(ErpWarehouseMoveRespVO vo, Map<String, Object> summary) {
         if (summary == null) {
             vo.setItemCount(0);
+            vo.setTotalCount(BigDecimal.ZERO);
+            vo.setTotalPrice(BigDecimal.ZERO);
+            vo.setTotalCostAmount(BigDecimal.ZERO);
+            vo.setTotalWeight(BigDecimal.ZERO);
             return;
         }
         vo.setProductNames((String) summary.get("productNames"));
         vo.setProductCodes((String) summary.get("productCodes"));
         Object count = summary.get("itemCount");
         vo.setItemCount(count instanceof Number ? ((Number) count).intValue() : 0);
+        vo.setTotalCount(toBigDecimal(summary.get("totalCount")));
+        vo.setTotalPrice(toBigDecimal(summary.get("totalPrice")));
+        vo.setTotalCostAmount(toBigDecimal(summary.get("totalCostAmount")));
+        vo.setTotalWeight(toBigDecimal(summary.get("totalWeight")));
+    }
+
+    private BigDecimal toBigDecimal(Object value) {
+        return value == null ? BigDecimal.ZERO : new BigDecimal(value.toString());
     }
 
     private PageResult<UserSimpleRespVO> buildUserSimplePage(PageParam pageReqVO) {
@@ -403,6 +445,7 @@ public class ErpWarehouseMoveController {
         Map<Long, ErpProductRespVO> productMap = getProductVOMapIgnoreDataPermission(
                 convertSet(itemList, ErpWarehouseMoveItemDO::getProductId));
         Map<Long, ErpWarehouseDO> warehouseMap = getWarehouseMapIgnoreDataPermission(collectWarehouseIds(Collections.singletonList(warehouseMove)));
+        Map<String, ErpStockDO> stockMap = getStockMapIgnoreDataPermission(itemList);
         Set<String> userIds = new HashSet<>();
         addUserId(userIds, warehouseMove.getCreator());
         addUserId(userIds, warehouseMove.getUpdater());
@@ -418,7 +461,7 @@ public class ErpWarehouseMoveController {
             vo.setItems(BeanUtils.toBean(itemList, ErpWarehouseMoveRespVO.Item.class,
                     item -> {
                         fillItem(item, productMap.get(item.getProductId()), warehouseMap);
-                        fillStockCount(item);
+                        fillStockCount(item, stockMap);
                     }));
             vo.setItemCount(itemList == null ? 0 : itemList.size());
             vo.setProductNames(CollUtil.join(vo.getItems(), ", ", ErpWarehouseMoveRespVO.Item::getProductName));
@@ -429,6 +472,8 @@ public class ErpWarehouseMoveController {
             fillWarehouse(vo, warehouseMap);
             fillUserNames(vo, userMap);
         });
+        fillSummary(respVO, warehouseMoveItemMapper.selectSummaryMapByMoveIds(
+                Collections.singleton(warehouseMove.getId())).get(warehouseMove.getId()));
         itemPriceReferenceFiller.fill(respVO.getItems());
         fieldPermissionMasker.maskFormWithItems(FIELD_PERMISSION_MODULE, respVO);
         return respVO;
@@ -442,10 +487,12 @@ public class ErpWarehouseMoveController {
         Map<Long, ErpProductRespVO> productMap = getProductVOMapIgnoreDataPermission(
                 convertSet(itemList, ErpWarehouseMoveItemDO::getProductId));
         Map<Long, ErpWarehouseDO> warehouseMap = getWarehouseMapIgnoreDataPermission(collectWarehouseIdsFromItems(itemList));
+        Map<String, ErpStockDO> stockMap = includeStockCount
+                ? getStockMapIgnoreDataPermission(itemList) : Collections.emptyMap();
         return BeanUtils.toBean(itemList, ErpWarehouseMoveRespVO.Item.class, item -> {
             fillItem(item, productMap.get(item.getProductId()), warehouseMap);
             if (includeStockCount) {
-                fillStockCount(item);
+                fillStockCount(item, stockMap);
             }
         });
     }
@@ -470,13 +517,19 @@ public class ErpWarehouseMoveController {
                 warehouse -> item.setToWarehouseName(warehouse.getName()));
     }
 
-    private void fillStockCount(ErpWarehouseMoveRespVO.Item item) {
-        ErpStockDO fromStock = DataPermissionUtils.executeIgnore(() ->
-                stockService.getStock(item.getProductId(), item.getFromWarehouseId()));
+    private void fillStockCount(ErpWarehouseMoveRespVO.Item item, Map<String, ErpStockDO> stockMap) {
+        ErpStockDO fromStock = stockMap.get(item.getProductId() + "_" + item.getFromWarehouseId());
         item.setFromStockCount(fromStock != null ? fromStock.getCount() : BigDecimal.ZERO);
-        ErpStockDO toStock = DataPermissionUtils.executeIgnore(() ->
-                stockService.getStock(item.getProductId(), item.getToWarehouseId()));
+        ErpStockDO toStock = stockMap.get(item.getProductId() + "_" + item.getToWarehouseId());
         item.setToStockCount(toStock != null ? toStock.getCount() : BigDecimal.ZERO);
+    }
+
+    private Map<String, ErpStockDO> getStockMapIgnoreDataPermission(List<ErpWarehouseMoveItemDO> itemList) {
+        if (CollUtil.isEmpty(itemList)) {
+            return Collections.emptyMap();
+        }
+        return DataPermissionUtils.executeIgnore(() -> stockService.getStockMap(
+                convertSet(itemList, ErpWarehouseMoveItemDO::getProductId), collectWarehouseIdsFromItems(itemList)));
     }
 
     private void fillWarehouse(ErpWarehouseMoveRespVO vo, Map<Long, ErpWarehouseDO> warehouseMap) {

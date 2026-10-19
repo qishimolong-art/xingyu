@@ -30,6 +30,12 @@ public class ErpSaleCartPageReqVO extends PageParam {
     private Boolean includeItems;
     private Integer status;
     private Boolean includeCompleted;
+    /**
+     * 是否仅查询网上订单。
+     *
+     * <p>true：商城来源；false：非商城来源；null：不限制来源，兼容旧调用方。</p>
+     */
+    private Boolean onlineOrder;
     private String remark;
     private List<Long> ids;
     private String orderField;

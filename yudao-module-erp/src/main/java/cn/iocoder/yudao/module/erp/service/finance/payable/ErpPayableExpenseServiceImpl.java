@@ -10,8 +10,10 @@ import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.ErpFinanceUpdateR
 import cn.iocoder.yudao.module.erp.controller.admin.finance.payable.vo.expense.ErpPayableExpensePageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.payable.vo.expense.ErpPayableExpenseSaveReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.base.ErpBaseDataDO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.finance.ErpFinanceReceiptDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.payable.ErpPayableExpenseDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.payable.ErpPayableExpenseItemDO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpCustomerDO;
 import cn.iocoder.yudao.module.erp.dal.mysql.finance.payable.ErpPayableExpenseItemMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.finance.payable.ErpPayableExpenseMapper;
 import cn.iocoder.yudao.module.erp.dal.redis.no.ErpNoRedisDAO;
@@ -23,6 +25,7 @@ import cn.iocoder.yudao.module.erp.service.finance.ErpAccountService;
 import cn.iocoder.yudao.module.erp.service.finance.ErpFinanceFieldPermissionMasker;
 import cn.iocoder.yudao.module.erp.service.finance.ErpFinanceItemOperationHelper;
 import cn.iocoder.yudao.module.erp.service.finance.bo.ErpSaleCartFreightDraftCreateReqBO;
+import cn.iocoder.yudao.module.erp.service.sale.ErpCustomerService;
 import cn.iocoder.yudao.module.system.api.dept.DeptApi;
 import cn.iocoder.yudao.module.system.api.user.AdminUserApi;
 import cn.iocoder.yudao.module.system.api.user.dto.AdminUserRespDTO;
@@ -33,6 +36,8 @@ import org.springframework.validation.annotation.Validated;
 
 import javax.annotation.Resource;
 import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -73,6 +78,11 @@ public class ErpPayableExpenseServiceImpl implements ErpPayableExpenseService {
     private static final String PAYABLE_EXPENSE_DOC_TYPE = "payable_expense_doc_type";
     private static final String PAYABLE_EXPENSE_ITEM_PROJECT = "payable_expense_item_project";
     private static final String DEFAULT_EXPENSE_TYPE = "其他";
+    private static final String RECEIPT_DISCOUNT_SETTLE_METHOD = "挂账";
+    private static final String RECEIPT_DISCOUNT_EXPENSE_BIZ_TYPE = "一般费用";
+    private static final String RECEIPT_DISCOUNT_DOC_TYPE = "正常单据";
+    private static final String RECEIPT_DISCOUNT_ITEM_PROJECT = "销售减收";
+    private static final String RECEIPT_DISCOUNT_CATEGORY = "销售费用";
     private static final String SALE_CART_FREIGHT_ITEM_PROJECT = "销售产生运费";
     private static final String PURCHASE_IN_FREIGHT_ITEM_PROJECT = "采购运费";
 
@@ -84,6 +94,8 @@ public class ErpPayableExpenseServiceImpl implements ErpPayableExpenseService {
     private ErpNoRedisDAO noRedisDAO;
     @Resource
     private ErpAccountService accountService;
+    @Resource
+    private ErpCustomerService customerService;
     @Resource
     private ErpBaseDataService baseDataService;
     @Resource
@@ -170,6 +182,85 @@ public class ErpPayableExpenseServiceImpl implements ErpPayableExpenseService {
     @Transactional(rollbackFor = Exception.class)
     public Long createDraftFromSaleCartFreight(ErpSaleCartFreightDraftCreateReqBO createReqBO) {
         return createSaleCartFreightExpense(createReqBO, true);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public Long createApprovedFromFinanceReceiptDiscount(ErpFinanceReceiptDO receipt, Long approverId) {
+        BigDecimal discountPrice = receipt == null || receipt.getDiscountPrice() == null
+                ? BigDecimal.ZERO : receipt.getDiscountPrice();
+        if (receipt == null || receipt.getId() == null || discountPrice.compareTo(BigDecimal.ZERO) <= 0) {
+            return null;
+        }
+        ErpPayableExpenseDO existing = payableExpenseMapper.selectBySource(
+                RECEIPT_DISCOUNT_SOURCE_TYPE, receipt.getId());
+        if (existing != null) {
+            return existing.getId();
+        }
+
+        Long handlerId = receipt.getFinanceUserId() != null ? receipt.getFinanceUserId() : approverId;
+        validateFormalDeptId(receipt.getDeptId());
+        validateRequiredOption("结算方式", SETTLE_METHOD_TYPE, RECEIPT_DISCOUNT_SETTLE_METHOD);
+        validateRequiredOption("类型", PAYABLE_EXPENSE_BIZ_TYPE, RECEIPT_DISCOUNT_EXPENSE_BIZ_TYPE);
+        validateRequiredOption("支出类型", PAYABLE_EXPENSE_TYPE, DEFAULT_EXPENSE_TYPE);
+        validateRequiredOption("单据类型", PAYABLE_EXPENSE_DOC_TYPE, RECEIPT_DISCOUNT_DOC_TYPE);
+        validateRequiredOption("第 1 条明细的项目名称", PAYABLE_EXPENSE_ITEM_PROJECT,
+                RECEIPT_DISCOUNT_ITEM_PROJECT);
+        validateRefs(receipt.getAccountId(), handlerId, receipt.getDeptId());
+        customerService.validateCustomer(receipt.getCustomerId());
+        ErpCustomerDO customer = customerService.getCustomer(receipt.getCustomerId());
+
+        String no = noRedisDAO.generate("FYZF");
+        if (payableExpenseMapper.selectByNo(no) != null) {
+            throw exception(PAYABLE_EXPENSE_NO_EXISTS);
+        }
+        LocalDate bizDate = receipt.getReceiptTime() == null
+                ? LocalDate.now() : receipt.getReceiptTime().toLocalDate();
+        LocalDateTime approveTime = LocalDateTime.now();
+        String party = customer == null ? null : customer.getName();
+        ErpPayableExpenseDO db = new ErpPayableExpenseDO()
+                .setNo(no)
+                .setStatus(ErpAuditStatus.APPROVE.getStatus())
+                .setApproveTime(approveTime)
+                .setBizTime(bizDate)
+                .setSettleMethod(RECEIPT_DISCOUNT_SETTLE_METHOD)
+                .setAccountId(receipt.getAccountId())
+                .setExpenseBizType(RECEIPT_DISCOUNT_EXPENSE_BIZ_TYPE)
+                .setExpenseType(DEFAULT_EXPENSE_TYPE)
+                .setTotalAmount(discountPrice)
+                .setDeptId(receipt.getDeptId())
+                .setHandlerId(handlerId)
+                .setParty(party)
+                .setRelatedBiz("收款单：" + receipt.getNo())
+                .setSourceType(RECEIPT_DISCOUNT_SOURCE_TYPE)
+                .setSourceId(receipt.getId())
+                .setSourceNo(receipt.getNo())
+                .setDocType(RECEIPT_DISCOUNT_DOC_TYPE)
+                .setRemark("收款单优惠自动生成，来源单号：" + receipt.getNo());
+        normalizeMain(db);
+        payableExpenseMapper.insert(db);
+
+        ErpPayableExpenseItemDO item = new ErpPayableExpenseItemDO()
+                .setExpenseId(db.getId())
+                .setItemName(RECEIPT_DISCOUNT_ITEM_PROJECT)
+                .setAmount(discountPrice)
+                .setParty(party)
+                .setDeptId(receipt.getDeptId())
+                .setBizDate(bizDate)
+                .setHandlerId(handlerId)
+                .setQty(1)
+                .setExpenseCategory(RECEIPT_DISCOUNT_CATEGORY)
+                .setRemark("收款单：" + receipt.getNo());
+        normalizeItem(item);
+        payableExpenseItemMapper.insertBatch(Collections.singletonList(item));
+
+        ErpPayableExpenseDO beforeApprove = BeanUtils.toBean(db, ErpPayableExpenseDO.class)
+                .setStatus(ErpAuditStatus.PROCESS.getStatus())
+                .setApproveTime(null);
+        operateLogService.recordCreate(ERP_PAYABLE_EXPENSE_TYPE, db.getId(), beforeApprove, db.getNo());
+        operateLogService.recordStatus(ERP_PAYABLE_EXPENSE_TYPE, db.getId(), beforeApprove, db,
+                db.getNo(), true);
+        return db.getId();
     }
 
     private Long createSaleCartFreightExpense(ErpSaleCartFreightDraftCreateReqBO createReqBO, boolean draft) {
@@ -410,7 +501,7 @@ public class ErpPayableExpenseServiceImpl implements ErpPayableExpenseService {
             throw exception(PAYABLE_EXPENSE_APPROVE_FAIL);
         }
         if (payableExpenseMapper.updateByIdAndStatus(id, db.getStatus(),
-                ErpPayableExpenseDO.builder().status(status).build()) == 0) {
+                ErpPayableExpenseDO.builder().status(status).approveTime(LocalDateTime.now()).build()) == 0) {
             throw exception(PAYABLE_EXPENSE_APPROVE_FAIL);
         }
         operateLogService.recordStatus(ERP_PAYABLE_EXPENSE_TYPE, id, db.getNo(), true);
@@ -441,16 +532,13 @@ public class ErpPayableExpenseServiceImpl implements ErpPayableExpenseService {
 
     @Override
     public PageResult<ErpPayableExpenseDO> getPayableExpensePage(ErpPayableExpensePageReqVO pageReqVO) {
-        if (hasItemFilter(pageReqVO)) {
-            List<Long> expenseIds = convertList(
-                    payableExpenseItemMapper.selectListByItemNameOrInvoiceNo(pageReqVO.getItemName(), pageReqVO.getInvoiceNo()),
-                    ErpPayableExpenseItemDO::getExpenseId);
-            if (CollUtil.isEmpty(expenseIds)) {
-                return PageResult.empty();
-            }
-            pageReqVO.setIds(expenseIds);
-        }
         return payableExpenseMapper.selectPage(pageReqVO);
+    }
+
+    @Override
+    public cn.iocoder.yudao.module.erp.controller.admin.finance.vo.ErpFinanceQuerySummaryRespVO getPayableExpenseSummary(
+            ErpPayableExpensePageReqVO pageReqVO) {
+        return payableExpenseMapper.selectSummary(pageReqVO);
     }
 
     @Override
@@ -666,10 +754,6 @@ public class ErpPayableExpenseServiceImpl implements ErpPayableExpenseService {
     private void normalizeItem(ErpPayableExpenseItemDO item) {
         item.setQty(item.getQty() == null || item.getQty() <= 0 ? 1 : item.getQty());
         item.setAmount(item.getAmount() == null ? BigDecimal.ZERO : item.getAmount());
-    }
-
-    private boolean hasItemFilter(ErpPayableExpensePageReqVO pageReqVO) {
-        return StringUtils.hasText(pageReqVO.getItemName()) || StringUtils.hasText(pageReqVO.getInvoiceNo());
     }
 
     private void validateSaveOptions(ErpPayableExpenseSaveReqVO reqVO) {

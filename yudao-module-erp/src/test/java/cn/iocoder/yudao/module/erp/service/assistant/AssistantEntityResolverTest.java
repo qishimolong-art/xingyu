@@ -8,6 +8,8 @@ import cn.iocoder.yudao.framework.tenant.core.context.TenantContextHolder;
 import cn.iocoder.yudao.module.system.api.dept.DeptApi;
 import cn.iocoder.yudao.module.system.api.dept.dto.DeptRespDTO;
 import cn.iocoder.yudao.module.system.api.permission.PermissionApi;
+import cn.iocoder.yudao.module.erp.service.stock.ErpWarehouseService;
+import cn.iocoder.yudao.module.erp.service.stock.bo.ErpProductStockPermissionScope;
 import org.junit.jupiter.api.Test;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -40,6 +42,91 @@ class AssistantEntityResolverTest {
         Map<String,Object> supplier=AssistantEntityResolver.explicitReference("供应商旧编码 GYS-01 的付款情况");
         assertEquals("SUPPLIER",supplier.get("entityType"));assertEquals("GYS-01",supplier.get("keyword"));
         assertNull(AssistantEntityResolver.explicitReference("蛟龙港仓当前库存"));
+    }
+
+    @Test void explicitProductBrandScopeSearchesNameEvenWhenBrandFieldIsHidden() {
+        LoginUser login=new LoginUser();login.setId(101L);
+        SecurityContextHolder.getContext().setAuthentication(
+                new UsernamePasswordAuthenticationToken(login,"",Collections.emptyList()));
+        TenantContextHolder.setTenantId(1L);
+        try {
+            PermissionApi permissions=mock(PermissionApi.class);
+            when(permissions.hasAnyPermissions(101L,"erp:assistant:query")).thenReturn(true);
+            when(permissions.hasAnyPermissions(101L,"erp:stock:query","erp:sale-report:query",
+                    "erp:purchase-report:query","erp:sale-order:query")).thenReturn(true);
+            DeptDataPermissionRespDTO deptScope=new DeptDataPermissionRespDTO();deptScope.setAll(true);
+            when(permissions.getDeptDataPermission(101L,"erp_product")).thenReturn(deptScope);
+            when(permissions.getCurrentUserHiddenFields("erp_product")).thenReturn(Collections.emptyList());
+            ErpWarehouseService warehouses=mock(ErpWarehouseService.class);
+            when(warehouses.getCurrentUserProductStockPermissionScope()).thenReturn(
+                    new ErpProductStockPermissionScope(true,Collections.emptySet(),Collections.emptySet(),101L));
+            AssistantSemanticReadOnly reader=mock(AssistantSemanticReadOnly.class);
+            when(reader.query(argThat(sql->sql.contains("COALESCE(e.name,'')) LIKE")
+                            && !sql.contains("COALESCE(e.brand,'')) LIKE")),
+                    argThat(parameters->parameters.contains("美孚")),eq(21))).thenAnswer(call->{
+                Map<String,Object> row=new HashMap<>();row.put("id",9L);row.put("name","美孚经典表现");
+                row.put("code","P009");row.put("description",null);row.put("matchedBy","BRAND");
+                return Collections.singletonList(row);
+            });
+            AssistantEntityResolver resolver=resolver(mock(DeptApi.class));
+            ReflectionTestUtils.setField(resolver,"permissions",permissions);
+            ReflectionTestUtils.setField(resolver,"warehouses",warehouses);
+            ReflectionTestUtils.setField(resolver,"reader",reader);
+
+            List<Map<String,Object>> rows=resolver.resolveType(AssistantEntityResolver.EntityType.PRODUCT,"美孚",
+                    AssistantEntityResolver.ProductMatchScope.BRAND);
+
+            assertEquals(1,rows.size());assertEquals("BRAND",rows.get(0).get("matchType"));
+            verify(reader).query(argThat(sql->sql.contains("COALESCE(e.name,'')) LIKE")
+                            && !sql.contains("COALESCE(e.brand,'')) LIKE")),anyList(),eq(21));
+
+            when(permissions.getCurrentUserHiddenFields("erp_product"))
+                    .thenReturn(Collections.singletonList("brand"));
+            assertEquals(1,resolver.resolveType(AssistantEntityResolver.EntityType.PRODUCT,"美孚",
+                    AssistantEntityResolver.ProductMatchScope.BRAND).size());
+        } finally {
+            TenantContextHolder.clear();SecurityContextHolder.clearContext();
+        }
+    }
+
+    @Test void productKeywordResolverNeverSearchesAuxiliaryProductFields() {
+        LoginUser login=new LoginUser();login.setId(101L);
+        SecurityContextHolder.getContext().setAuthentication(
+                new UsernamePasswordAuthenticationToken(login,"",Collections.emptyList()));
+        TenantContextHolder.setTenantId(1L);
+        try {
+            PermissionApi permissions=mock(PermissionApi.class);
+            when(permissions.hasAnyPermissions(101L,"erp:assistant:query")).thenReturn(true);
+            when(permissions.hasAnyPermissions(101L,"erp:stock:query","erp:sale-report:query",
+                    "erp:purchase-report:query","erp:sale-order:query")).thenReturn(true);
+            DeptDataPermissionRespDTO deptScope=new DeptDataPermissionRespDTO();deptScope.setAll(true);
+            when(permissions.getDeptDataPermission(101L,"erp_product")).thenReturn(deptScope);
+            when(permissions.getCurrentUserHiddenFields("erp_product")).thenReturn(Collections.emptyList());
+            ErpWarehouseService warehouses=mock(ErpWarehouseService.class);
+            when(warehouses.getCurrentUserProductStockPermissionScope()).thenReturn(
+                    new ErpProductStockPermissionScope(true,Collections.emptySet(),Collections.emptySet(),101L));
+            AssistantSemanticReadOnly reader=mock(AssistantSemanticReadOnly.class);
+            when(reader.query(anyString(),anyList(),eq(21))).thenReturn(Collections.emptyList());
+            AssistantEntityResolver resolver=resolver(mock(DeptApi.class));
+            ReflectionTestUtils.setField(resolver,"permissions",permissions);
+            ReflectionTestUtils.setField(resolver,"warehouses",warehouses);
+            ReflectionTestUtils.setField(resolver,"reader",reader);
+
+            assertTrue(resolver.resolveType(AssistantEntityResolver.EntityType.PRODUCT,"k40 18").isEmpty());
+
+            verify(reader,atLeastOnce()).query(argThat(sql->sql.contains("erp_product e")
+                    && (sql.contains("e.name=?") || sql.contains("COALESCE(e.name,'')) LIKE"))),anyList(),eq(21));
+            verify(reader,never()).query(argThat(sql->sql.contains("COALESCE(e.code,''))")
+                    || sql.contains("COALESCE(e.factory_code,''))")
+                    || sql.contains("COALESCE(e.bar_code,''))")
+                    || sql.contains("COALESCE(e.pinyin_code,''))")
+                    || sql.contains("COALESCE(e.wubi_code,''))")
+                    || sql.contains("COALESCE(e.vehicle_model,''))")
+                    || sql.contains("COALESCE(e.drawing_no,''))")
+                    || sql.contains("COALESCE(e.brand,''))")),anyList(),anyInt());
+        } finally {
+            TenantContextHolder.clear();SecurityContextHolder.clearContext();
+        }
     }
 
     @Test void resolvesDepartmentFromAuthoritativeDepartmentApi() {

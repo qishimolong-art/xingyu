@@ -4,17 +4,15 @@ import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.mybatis.core.mapper.BaseMapperX;
 import cn.iocoder.yudao.framework.mybatis.core.query.MPJLambdaWrapperX;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartPageReqVO;
-import cn.iocoder.yudao.module.erp.dal.dataobject.product.ErpProductDO;
-import cn.iocoder.yudao.module.erp.dal.dataobject.product.ErpProductUnitDO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartSummaryRespVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleCartDO;
-import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleCartItemDO;
 import cn.iocoder.yudao.module.erp.dal.mysql.common.ErpKeywordQuery;
+import cn.iocoder.yudao.module.erp.enums.sale.ErpSaleBizSourceTypeEnum;
 import cn.iocoder.yudao.module.erp.enums.sale.ErpSaleCartStatusEnum;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.core.toolkit.support.SFunction;
 import org.apache.ibatis.annotations.Mapper;
-import org.springframework.util.StringUtils;
 
 /**
  * ERP 销售手推车 Mapper
@@ -23,6 +21,21 @@ import org.springframework.util.StringUtils;
 public interface ErpSaleCartMapper extends BaseMapperX<ErpSaleCartDO> {
 
     default PageResult<ErpSaleCartDO> selectPage(ErpSaleCartPageReqVO reqVO) {
+        MPJLambdaWrapperX<ErpSaleCartDO> queryWrapper = buildQuery(reqVO);
+        orderByIfPresent(queryWrapper, reqVO);
+        return selectJoinPage(reqVO, ErpSaleCartDO.class, queryWrapper);
+    }
+
+    default ErpSaleCartSummaryRespVO selectSummary(ErpSaleCartPageReqVO reqVO) {
+        MPJLambdaWrapperX<ErpSaleCartDO> query = buildQuery(reqVO)
+                .selectAs("COALESCE(SUM(t.total_product_price), 0)", ErpSaleCartSummaryRespVO::getTotalProductPrice)
+                .selectAs("COALESCE(SUM(t.discount_price), 0)", ErpSaleCartSummaryRespVO::getDiscountPrice)
+                .selectAs("COALESCE(SUM(t.fee_amount), 0)", ErpSaleCartSummaryRespVO::getFeeAmount)
+                .selectAs("COALESCE(SUM(t.total_price), 0)", ErpSaleCartSummaryRespVO::getTotalPrice);
+        return selectJoinOne(ErpSaleCartSummaryRespVO.class, query);
+    }
+
+    static MPJLambdaWrapperX<ErpSaleCartDO> buildQuery(ErpSaleCartPageReqVO reqVO) {
         MPJLambdaWrapperX<ErpSaleCartDO> queryWrapper = new MPJLambdaWrapperX<ErpSaleCartDO>()
                 .likeIfPresent(ErpSaleCartDO::getNo, reqVO.getNo())
                 .eqIfPresent(ErpSaleCartDO::getCustomerId, reqVO.getCustomerId())
@@ -33,6 +46,13 @@ public interface ErpSaleCartMapper extends BaseMapperX<ErpSaleCartDO> {
                 .eqIfPresent(ErpSaleCartDO::getStatus, reqVO.getStatus())
                 .likeIfPresent(ErpSaleCartDO::getRemark, reqVO.getRemark())
                 .inIfPresent(ErpSaleCartDO::getId, reqVO.getIds());
+        if (Boolean.TRUE.equals(reqVO.getOnlineOrder())) {
+            queryWrapper.eq(ErpSaleCartDO::getSourceType, ErpSaleBizSourceTypeEnum.MALL_ORDER.getType());
+        } else if (Boolean.FALSE.equals(reqVO.getOnlineOrder())) {
+            queryWrapper.and(wrapper -> wrapper
+                    .isNull(ErpSaleCartDO::getSourceType)
+                    .or().ne(ErpSaleCartDO::getSourceType, ErpSaleBizSourceTypeEnum.MALL_ORDER.getType()));
+        }
         if (reqVO.getStatus() == null && Boolean.TRUE.equals(reqVO.getIncludeCompleted())) {
             queryWrapper.in(ErpSaleCartDO::getStatus,
                     ErpSaleCartStatusEnum.FINAL_APPROVE.getStatus(),
@@ -42,15 +62,8 @@ public interface ErpSaleCartMapper extends BaseMapperX<ErpSaleCartDO> {
                     ErpSaleCartStatusEnum.FINAL_APPROVE.getStatus(),
                     ErpSaleCartStatusEnum.GENERATED_SALE_OUT.getStatus());
         }
-        if (reqVO.getProductId() != null || StringUtils.hasText(reqVO.getProductKeyword())) {
-            queryWrapper.leftJoin(ErpSaleCartItemDO.class, ErpSaleCartItemDO::getCartId, ErpSaleCartDO::getId)
-                    .leftJoin(ErpProductDO.class, ErpProductDO::getId, ErpSaleCartItemDO::getProductId)
-                    .leftJoin(ErpProductUnitDO.class, ErpProductUnitDO::getId, ErpSaleCartItemDO::getProductUnitId)
-                    .eq(reqVO.getProductId() != null, ErpSaleCartItemDO::getProductId, reqVO.getProductId())
-                    .and(StringUtils.hasText(reqVO.getProductKeyword()),
-                            w -> ErpKeywordQuery.appendProductKeyword(w, reqVO.getProductKeyword()))
-                    .groupBy(ErpSaleCartDO::getId);
-        }
+        ErpKeywordQuery.appendProductItemFilter(queryWrapper, "erp_sale_cart_items", "cart_id",
+                reqVO.getProductId(), null, null, null, reqVO.getProductKeyword(), true);
         ErpKeywordQuery.appendWithDeptNameAndSaleCustomerAndProductItemTokens(queryWrapper, reqVO.getKeyword(),
                 "erp_sale_cart_items", "cart_id",
                 ErpSaleCartDO::getNo, ErpSaleCartDO::getSourceNo,
@@ -64,8 +77,7 @@ public interface ErpSaleCartMapper extends BaseMapperX<ErpSaleCartDO> {
                 ErpSaleCartDO::getContactPhone, ErpSaleCartDO::getDeliveryAddress,
                 ErpSaleCartDO::getBusinessEntity, ErpSaleCartDO::getOrderMethod,
                 ErpSaleCartDO::getSourceType2, ErpSaleCartDO::getRemark2);
-        orderByIfPresent(queryWrapper, reqVO);
-        return selectJoinPage(reqVO, ErpSaleCartDO.class, queryWrapper);
+        return queryWrapper;
     }
 
     static void orderByIfPresent(MPJLambdaWrapperX<ErpSaleCartDO> wrapper, ErpSaleCartPageReqVO reqVO) {

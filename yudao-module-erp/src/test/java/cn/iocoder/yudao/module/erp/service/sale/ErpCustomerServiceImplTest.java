@@ -59,6 +59,7 @@ import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.CUSTOMER_CRED
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.CUSTOMER_DEPT_CREDIT_DEPT_NOT_ALLOWED;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.CUSTOMER_DEPT_CREDIT_DUPLICATE_DEPT;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.CUSTOMER_NAME_DUPLICATE;
+import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.CUSTOMER_MERGED;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.CUSTOMER_NOT_ENABLE;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.CUSTOMER_NOT_EXISTS;
 import static cn.iocoder.yudao.module.erp.enums.ErrorCodeConstants.CUSTOMER_SALE_DEPT_NOT_ALLOWED;
@@ -239,6 +240,36 @@ public class ErpCustomerServiceImplTest extends BaseMockitoUnitTest {
         when(customerMapper.selectById(15L)).thenReturn(disabled);
         assertServiceException(() -> customerService.getCustomerSaleDeptIdsIgnoreDataPermission(15L),
                 CUSTOMER_NOT_ENABLE, "停用客户");
+    }
+
+    @Test
+    public void testValidateCustomerForCustomerApp_enabled_successWithoutAdminDataPermission() {
+        ErpCustomerDO customer = new ErpCustomerDO().setId(14L).setName("小程序客户")
+                .setStatus(CommonStatusEnum.ENABLE.getStatus()).setMergedFlag(false).setPriceLevel(3);
+        when(customerMapper.selectById(14L)).thenReturn(customer);
+
+        assertSame(customer, customerService.validateCustomerForCustomerApp(14L));
+
+        verify(customerMapper).selectById(14L);
+        verify(permissionApi, never()).getDeptDataPermission(any(), any());
+    }
+
+    @Test
+    public void testValidateCustomerForCustomerApp_invalidCustomer_rejected() {
+        when(customerMapper.selectById(14L)).thenReturn(null);
+        assertServiceException(() -> customerService.validateCustomerForCustomerApp(14L), CUSTOMER_NOT_EXISTS);
+
+        ErpCustomerDO disabled = new ErpCustomerDO().setId(15L).setName("停用客户")
+                .setStatus(CommonStatusEnum.DISABLE.getStatus()).setMergedFlag(false);
+        when(customerMapper.selectById(15L)).thenReturn(disabled);
+        assertServiceException(() -> customerService.validateCustomerForCustomerApp(15L),
+                CUSTOMER_NOT_ENABLE, "停用客户");
+
+        ErpCustomerDO merged = new ErpCustomerDO().setId(16L).setName("已合并客户")
+                .setStatus(CommonStatusEnum.DISABLE.getStatus()).setMergedFlag(true);
+        when(customerMapper.selectById(16L)).thenReturn(merged);
+        assertServiceException(() -> customerService.validateCustomerForCustomerApp(16L),
+                CUSTOMER_MERGED, "已合并客户");
     }
 
     @Test

@@ -12,6 +12,7 @@ import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.quote.ErpSaleQuoteEx
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.quote.ErpSaleQuotePageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.quote.ErpSaleQuoteRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.quote.ErpSaleQuoteSaveReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.quote.ErpSaleQuoteSummaryRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpProductRespVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpCustomerDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleQuoteDO;
@@ -396,6 +397,20 @@ public class ErpSaleQuoteControllerTest extends BaseMockitoUnitTest {
     }
 
     // ==================== getSaleQuotePage ====================
+
+    @Test
+    public void testGetSaleQuoteSummary_passesFiltersAndMasksFields() {
+        ErpSaleQuotePageReqVO reqVO = new ErpSaleQuotePageReqVO();
+        ErpSaleQuoteSummaryRespVO summary = new ErpSaleQuoteSummaryRespVO();
+        summary.setTotalPrice(new BigDecimal("12.34"));
+        when(saleQuoteService.getSaleQuoteSummary(reqVO)).thenReturn(summary);
+
+        CommonResult<ErpSaleQuoteSummaryRespVO> result = controller.getSaleQuoteSummary(reqVO);
+
+        assertEquals(summary, result.getData());
+        verify(saleQuoteService).getSaleQuoteSummary(reqVO);
+        verify(fieldPermissionMasker).clearSaleDetailHiddenFields("erp_sale_quote", summary);
+    }
 
     @Test
     public void testGetSaleQuotePage_emptyResult() {

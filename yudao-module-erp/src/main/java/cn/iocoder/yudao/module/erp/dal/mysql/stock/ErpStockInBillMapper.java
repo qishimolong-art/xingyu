@@ -3,7 +3,9 @@ package cn.iocoder.yudao.module.erp.dal.mysql.stock;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.mybatis.core.mapper.BaseMapperX;
 import cn.iocoder.yudao.framework.mybatis.core.query.LambdaQueryWrapperX;
+import cn.iocoder.yudao.framework.mybatis.core.query.MPJLambdaWrapperX;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.inbill.ErpStockInBillPageReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.inbill.ErpStockInBillSummaryRespVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockInBillDO;
 import cn.iocoder.yudao.module.erp.dal.mysql.common.ErpKeywordQuery;
 import com.baomidou.mybatisplus.core.toolkit.support.SFunction;
@@ -16,7 +18,23 @@ import java.util.List;
 public interface ErpStockInBillMapper extends BaseMapperX<ErpStockInBillDO> {
 
     default PageResult<ErpStockInBillDO> selectPage(ErpStockInBillPageReqVO reqVO) {
-        LambdaQueryWrapperX<ErpStockInBillDO> wrapper = new LambdaQueryWrapperX<ErpStockInBillDO>()
+        MPJLambdaWrapperX<ErpStockInBillDO> wrapper = buildQuery(reqVO);
+        orderBy(wrapper, reqVO);
+        return selectJoinPage(reqVO, ErpStockInBillDO.class, wrapper);
+    }
+
+    default ErpStockInBillSummaryRespVO selectSummary(ErpStockInBillPageReqVO reqVO) {
+        MPJLambdaWrapperX<ErpStockInBillDO> wrapper = buildQuery(reqVO)
+                .selectAs("COUNT(t.id)", ErpStockInBillSummaryRespVO::getDocumentCount)
+                .selectAs("COALESCE(SUM(t.total_count), 0)", ErpStockInBillSummaryRespVO::getTotalCount)
+                .selectAs("COALESCE(SUM(t.picked_count), 0)", ErpStockInBillSummaryRespVO::getPickedCount)
+                .selectAs("GREATEST(COALESCE(SUM(t.total_count), 0) - COALESCE(SUM(t.picked_count), 0), 0)",
+                        ErpStockInBillSummaryRespVO::getRemainingCount);
+        return selectJoinOne(ErpStockInBillSummaryRespVO.class, wrapper);
+    }
+
+    static MPJLambdaWrapperX<ErpStockInBillDO> buildQuery(ErpStockInBillPageReqVO reqVO) {
+        MPJLambdaWrapperX<ErpStockInBillDO> wrapper = new MPJLambdaWrapperX<ErpStockInBillDO>()
                 .likeIfPresent(ErpStockInBillDO::getNo, reqVO.getNo())
                 .betweenIfPresent(ErpStockInBillDO::getBillDate, reqVO.getBillDate())
                 .eqIfPresent(ErpStockInBillDO::getWarehouseId, reqVO.getWarehouseId())
@@ -31,11 +49,10 @@ public interface ErpStockInBillMapper extends BaseMapperX<ErpStockInBillDO> {
                 ErpStockInBillDO::getSourceUnitName, ErpStockInBillDO::getPickupUserName,
                 ErpStockInBillDO::getAuditorName, ErpStockInBillDO::getPriority,
                 ErpStockInBillDO::getPickup, ErpStockInBillDO::getRemark);
-        orderBy(wrapper, reqVO);
-        return selectPage(reqVO, wrapper);
+        return wrapper;
     }
 
-    static void appendProductKeyword(LambdaQueryWrapperX<ErpStockInBillDO> wrapper, String productKeyword) {
+    static void appendProductKeyword(MPJLambdaWrapperX<ErpStockInBillDO> wrapper, String productKeyword) {
         String keyword = ErpKeywordQuery.normalize(productKeyword);
         if (!StringUtils.hasText(keyword)) {
             return;
@@ -43,9 +60,9 @@ public interface ErpStockInBillMapper extends BaseMapperX<ErpStockInBillDO> {
         String like = "%" + keyword + "%";
         wrapper.apply("EXISTS (SELECT 1 FROM erp_stock_in_bill_item i "
                 + "LEFT JOIN erp_product p ON p.id = i.product_id AND p.deleted = b'0' "
-                + "AND p.tenant_id = erp_stock_in_bill.tenant_id "
-                + "WHERE i.bill_id = erp_stock_in_bill.id "
-                + "AND i.deleted = b'0' AND i.tenant_id = erp_stock_in_bill.tenant_id "
+                + "AND p.tenant_id = t.tenant_id "
+                + "WHERE i.bill_id = t.id "
+                + "AND i.deleted = b'0' AND i.tenant_id = t.tenant_id "
                 + "AND (p.code LIKE {0} OR p.name LIKE {0} OR p.pinyin_code LIKE {0} "
                 + "OR p.wubi_code LIKE {0} OR p.bar_code LIKE {0} OR p.vehicle_model LIKE {0} "
                 + "OR p.factory_code LIKE {0} OR p.standard LIKE {0} OR p.brand LIKE {0} "
@@ -53,7 +70,7 @@ public interface ErpStockInBillMapper extends BaseMapperX<ErpStockInBillDO> {
                 + "OR i.drawing_no LIKE {0} OR i.bar_code LIKE {0}))", like);
     }
 
-    static void orderBy(LambdaQueryWrapperX<ErpStockInBillDO> wrapper, ErpStockInBillPageReqVO reqVO) {
+    static void orderBy(MPJLambdaWrapperX<ErpStockInBillDO> wrapper, ErpStockInBillPageReqVO reqVO) {
         SFunction<ErpStockInBillDO, ?> column = getOrderColumn(reqVO.getOrderField());
         boolean asc = "asc".equalsIgnoreCase(reqVO.getOrderDirection());
         boolean desc = "desc".equalsIgnoreCase(reqVO.getOrderDirection());

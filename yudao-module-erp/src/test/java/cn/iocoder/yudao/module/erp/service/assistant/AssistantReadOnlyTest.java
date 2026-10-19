@@ -51,9 +51,9 @@ class AssistantReadOnlyTest {
         cn.iocoder.yudao.framework.security.core.LoginUser user=new cn.iocoder.yudao.framework.security.core.LoginUser();user.setId(101L);
         org.springframework.security.core.context.SecurityContextHolder.getContext().setAuthentication(new org.springframework.security.authentication.UsernamePasswordAuthenticationToken(user,"",Collections.emptyList()));
         cn.iocoder.yudao.framework.tenant.core.context.TenantContextHolder.setTenantId(1L);
-        when(jdbc.queryForObject(anyString(),eq(Integer.class),any(),any(),any())).thenReturn(1);
+        when(jdbc.queryForObject(anyString(),eq(Integer.class),any(),any(),any(),any())).thenReturn(1);
         Map<String,Object> row=new HashMap<>();row.put("question","秘密客户余额");row.put("status","SUCCESS");row.put("plan_json","{\"metric\":\"RECEIVABLE\"}");
-        when(jdbc.queryForList(anyString(),eq("c1"),eq(1L),eq(101L),eq(0))).thenReturn(Collections.singletonList(row));
+        when(jdbc.queryForList(anyString(),eq("c1"),eq(1L),eq(101L),eq("ADMIN"),eq(0))).thenReturn(Collections.singletonList(row));
         doThrow(new AssistantFailure("FORBIDDEN","撤权")).when(orchestrator).validateAccess(any());
         try {Map<String,Object> result=store.messages("c1",1).get(0);assertFalse(result.get("question").toString().contains("秘密客户"));assertEquals(false,result.get("canRerun"));assertFalse(result.containsKey("plan_json"));}
         finally {org.springframework.security.core.context.SecurityContextHolder.clearContext();cn.iocoder.yudao.framework.tenant.core.context.TenantContextHolder.clear();}
@@ -78,12 +78,12 @@ class AssistantReadOnlyTest {
         Map<String,Object> revoked=new LinkedHashMap<>();revoked.put("id","c-revoked");revoked.put("title","秘密客户余额");
         Map<String,Object> knowledge=new LinkedHashMap<>();knowledge.put("id","c-knowledge");knowledge.put("title","公司知识");
         Map<String,Object> invalid=new LinkedHashMap<>();invalid.put("id","c-invalid");invalid.put("title","无效计划");
-        when(jdbc.queryForList(startsWith("SELECT id,title,update_time"),eq(1L),eq(101L),eq(10),eq(0))).thenReturn(Arrays.asList(fresh,visible,revoked,knowledge,invalid));
+        when(jdbc.queryForList(startsWith("SELECT id,title,update_time"),eq(1L),eq(101L),eq("ADMIN"),eq(10),eq(0))).thenReturn(Arrays.asList(fresh,visible,revoked,knowledge,invalid));
         Map<String,Object> visibleMessage=new LinkedHashMap<>();visibleMessage.put("conversation_id","c-visible");visibleMessage.put("question","本月销售情况");visibleMessage.put("status","SUCCESS");visibleMessage.put("plan_json","visible-plan");
         Map<String,Object> revokedMessage=new LinkedHashMap<>();revokedMessage.put("conversation_id","c-revoked");revokedMessage.put("question","秘密客户余额");revokedMessage.put("status","SUCCESS");revokedMessage.put("plan_json","revoked-plan");
         Map<String,Object> knowledgeMessage=new LinkedHashMap<>();knowledgeMessage.put("conversation_id","c-knowledge");knowledgeMessage.put("question","公司有哪些部门");knowledgeMessage.put("status","SUCCESS");knowledgeMessage.put("plan_json","knowledge-plan");
         Map<String,Object> invalidMessage=new LinkedHashMap<>();invalidMessage.put("conversation_id","c-invalid");invalidMessage.put("question","不应显示的问题");invalidMessage.put("status","SUCCESS");invalidMessage.put("plan_json","invalid-plan");
-        when(jdbc.queryForList(startsWith("SELECT m.conversation_id,m.question,m.status,m.plan_json"),eq("c-new"),eq("c-visible"),eq("c-revoked"),eq("c-knowledge"),eq("c-invalid"),eq(1L),eq(101L))).thenReturn(Arrays.asList(visibleMessage,revokedMessage,knowledgeMessage,invalidMessage));
+        when(jdbc.queryForList(startsWith("SELECT m.conversation_id,m.question,m.status,m.plan_json"),eq("c-new"),eq("c-visible"),eq("c-revoked"),eq("c-knowledge"),eq("c-invalid"),eq(1L),eq(101L),eq("ADMIN"))).thenReturn(Arrays.asList(visibleMessage,revokedMessage,knowledgeMessage,invalidMessage));
         when(codec.read("visible-plan",null)).thenReturn(visibleEnvelope);when(codec.read("revoked-plan",null)).thenReturn(revokedEnvelope);
         when(codec.read("knowledge-plan",null)).thenReturn(knowledgeEnvelope);when(codec.read("invalid-plan",null)).thenThrow(new IllegalArgumentException("无效计划"));
         when(visibleEnvelope.getLegacyPlan()).thenReturn(new AssistantPlan());when(revokedEnvelope.getLegacyPlan()).thenReturn(new AssistantPlan());
@@ -95,7 +95,7 @@ class AssistantReadOnlyTest {
             Map<String,Object> failedMessage=new LinkedHashMap<>();failedMessage.put("question","失败问题原文");failedMessage.put("status","FAILED");failedMessage.put("plan_json","visible-plan");
             assertEquals("历史会话",store.conversationTitle(failedMessage));
             assertThrows(IllegalArgumentException.class,()->store.list(1,0));assertThrows(IllegalArgumentException.class,()->store.list(1,51));
-            verify(jdbc).queryForList(contains("earlier.create_time=m.create_time AND earlier.id<m.id"),eq("c-new"),eq("c-visible"),eq("c-revoked"),eq("c-knowledge"),eq("c-invalid"),eq(1L),eq(101L));
+            verify(jdbc).queryForList(contains("earlier.create_time=m.create_time AND earlier.id<m.id"),eq("c-new"),eq("c-visible"),eq("c-revoked"),eq("c-knowledge"),eq("c-invalid"),eq(1L),eq(101L),eq("ADMIN"));
             verify(permissions).executeInReadSnapshot(any());verify(reader).snapshot(any());
         } finally {org.springframework.security.core.context.SecurityContextHolder.clearContext();cn.iocoder.yudao.framework.tenant.core.context.TenantContextHolder.clear();}
     }

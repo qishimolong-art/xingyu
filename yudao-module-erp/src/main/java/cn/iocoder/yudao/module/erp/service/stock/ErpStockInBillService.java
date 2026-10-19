@@ -4,6 +4,7 @@ import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.inbill.ErpStockInBillItemPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.inbill.ErpStockInBillPickupReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.inbill.ErpStockInBillPageReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.inbill.ErpStockInBillSummaryRespVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseInDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseInItemDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockInBillDO;
@@ -15,6 +16,8 @@ import java.util.List;
 public interface ErpStockInBillService {
 
     PageResult<ErpStockInBillDO> getStockInBillPage(ErpStockInBillPageReqVO pageReqVO);
+
+    ErpStockInBillSummaryRespVO getStockInBillSummary(ErpStockInBillPageReqVO pageReqVO);
 
     ErpStockInBillDO getStockInBill(Long id);
 

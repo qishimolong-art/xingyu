@@ -3,6 +3,8 @@ package cn.iocoder.yudao.module.erp.dal.mysql.finance.receivable;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.mybatis.core.mapper.BaseMapperX;
 import cn.iocoder.yudao.framework.mybatis.core.query.LambdaQueryWrapperX;
+import cn.iocoder.yudao.framework.mybatis.core.query.MPJLambdaWrapperX;
+import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.ErpFinanceQuerySummaryRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.receivable.vo.otherreceivable.ErpReceivableOtherPageReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.receivable.ErpReceivableOtherDO;
 import cn.iocoder.yudao.module.erp.dal.mysql.common.ErpKeywordQuery;
@@ -18,7 +20,26 @@ import java.util.List;
 public interface ErpReceivableOtherMapper extends BaseMapperX<ErpReceivableOtherDO> {
 
     default PageResult<ErpReceivableOtherDO> selectPage(ErpReceivableOtherPageReqVO reqVO) {
-        LambdaQueryWrapperX<ErpReceivableOtherDO> wrapper = new LambdaQueryWrapperX<ErpReceivableOtherDO>()
+        MPJLambdaWrapperX<ErpReceivableOtherDO> wrapper = buildQuery(reqVO);
+        ErpFinanceSortUtils.apply(wrapper, reqVO.getOrderField(), reqVO.getOrderDirection(), "erp_receivable_other",
+                "no", "bizTime", "customerId", "deptId", "handlerId", "receivableAmount", "settledAmount",
+                "sourceType", "status", "voucherNo", "creator", "updater", "createTime", "updateTime",
+                "remark", "project");
+        return selectJoinPage(reqVO, ErpReceivableOtherDO.class, wrapper);
+    }
+
+    default ErpFinanceQuerySummaryRespVO selectSummary(ErpReceivableOtherPageReqVO reqVO) {
+        MPJLambdaWrapperX<ErpReceivableOtherDO> wrapper = buildQuery(reqVO)
+                .selectAs("COUNT(*)", ErpFinanceQuerySummaryRespVO::getDocumentCount)
+                .selectAs("COALESCE(SUM(t.receivable_amount), 0)", ErpFinanceQuerySummaryRespVO::getReceivableAmount)
+                .selectAs("COALESCE(SUM(t.settled_amount), 0)", ErpFinanceQuerySummaryRespVO::getSettledAmount)
+                .selectAs("COALESCE(SUM(t.receivable_amount - COALESCE(t.settled_amount, 0)), 0)",
+                        ErpFinanceQuerySummaryRespVO::getOutstandingAmount);
+        return selectJoinOne(ErpFinanceQuerySummaryRespVO.class, wrapper);
+    }
+
+    static MPJLambdaWrapperX<ErpReceivableOtherDO> buildQuery(ErpReceivableOtherPageReqVO reqVO) {
+        MPJLambdaWrapperX<ErpReceivableOtherDO> wrapper = new MPJLambdaWrapperX<ErpReceivableOtherDO>()
                 .inIfPresent(ErpReceivableOtherDO::getId, reqVO.getIds())
                 .likeIfPresent(ErpReceivableOtherDO::getNo, reqVO.getNo())
                 .betweenIfPresent(ErpReceivableOtherDO::getBizTime, reqVO.getBizTime())
@@ -28,7 +49,7 @@ public interface ErpReceivableOtherMapper extends BaseMapperX<ErpReceivableOther
                 .eqIfPresent(ErpReceivableOtherDO::getCreator, reqVO.getCreator())
                 .eqIfPresent(ErpReceivableOtherDO::getStatus, reqVO.getStatus())
                 .likeIfPresent(ErpReceivableOtherDO::getRemark, reqVO.getRemark());
-        ErpKeywordQuery.appendWithDeptNameAndCustomer(wrapper, reqVO.getKeyword(),
+        ErpKeywordQuery.appendWithDeptNameAndSaleCustomer(wrapper, reqVO.getKeyword(),
                 ErpReceivableOtherDO::getNo,
                 ErpReceivableOtherDO::getVoucherNo,
                 ErpReceivableOtherDO::getProject,
@@ -37,11 +58,7 @@ public interface ErpReceivableOtherMapper extends BaseMapperX<ErpReceivableOther
                 ErpReceivableOtherDO::getRemark,
                 ErpReceivableOtherDO::getPaperNoteDesc,
                 ErpReceivableOtherDO::getSourceNo);
-        ErpFinanceSortUtils.apply(wrapper, reqVO.getOrderField(), reqVO.getOrderDirection(), "erp_receivable_other",
-                "no", "bizTime", "customerId", "deptId", "handlerId", "receivableAmount", "settledAmount",
-                "sourceType", "status", "voucherNo", "creator", "updater", "createTime", "updateTime",
-                "remark", "project");
-        return selectPage(reqVO, wrapper);
+        return wrapper;
     }
 
     default int updateByIdAndStatus(Long id, Integer status, ErpReceivableOtherDO updateObj) {

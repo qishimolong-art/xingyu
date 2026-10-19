@@ -4,9 +4,10 @@ import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.mybatis.core.mapper.BaseMapperX;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.receivable.vo.account.ErpReceivableAccountPageReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.receivable.ErpReceivableAccountDO;
-import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpSaleOutMapper;
-import org.apache.ibatis.annotations.Mapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.finance.ErpMiscSettlementSql;
+import cn.iocoder.yudao.module.erp.dal.mysql.sale.ErpSaleOutMapper;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
 import org.apache.ibatis.annotations.SelectProvider;
@@ -30,6 +31,16 @@ public interface ErpReceivableAccountMapper extends BaseMapperX<ErpReceivableAcc
                                             @Param("docSelfUserId") Long docSelfUserId,
                                             @Param("docAll") boolean docAll);
 
+    @SelectProvider(type = SqlProvider.class, method = "selectPageRows")
+    Page<ErpReceivableAccountDO> selectPageRows(Page<ErpReceivableAccountDO> page,
+                                                @Param("reqVO") ErpReceivableAccountPageReqVO reqVO,
+                                                @Param("deptIds") Collection<Long> deptIds,
+                                                @Param("selfUserId") String selfUserId,
+                                                @Param("all") boolean all,
+                                                @Param("docDeptIds") Collection<Long> docDeptIds,
+                                                @Param("docSelfUserId") Long docSelfUserId,
+                                                @Param("docAll") boolean docAll);
+
     default PageResult<ErpReceivableAccountDO> selectPage(ErpReceivableAccountPageReqVO reqVO) {
         return selectPage(reqVO, null, null, true, null, null, true);
     }
@@ -39,15 +50,10 @@ public interface ErpReceivableAccountMapper extends BaseMapperX<ErpReceivableAcc
                                                           String selfUserId,
                                                           boolean all, Collection<Long> docDeptIds,
                                                           Long docSelfUserId, boolean docAll) {
-        List<ErpReceivableAccountDO> list = selectList(reqVO, deptIds, selfUserId, all,
+        Page<ErpReceivableAccountDO> page = new Page<>(reqVO.getPageNo(), reqVO.getPageSize());
+        Page<ErpReceivableAccountDO> result = selectPageRows(page, reqVO, deptIds, selfUserId, all,
                 docDeptIds, docSelfUserId, docAll);
-        long total = list.size();
-        int fromIndex = Math.max(0, (reqVO.getPageNo() - 1) * reqVO.getPageSize());
-        int toIndex = Math.min(list.size(), fromIndex + reqVO.getPageSize());
-        if (fromIndex >= list.size()) {
-            return PageResult.empty((long) total);
-        }
-        return new PageResult<>(list.subList(fromIndex, toIndex), (long) total);
+        return new PageResult<>(result.getRecords(), result.getTotal());
     }
 
     @Select({
@@ -183,8 +189,19 @@ public interface ErpReceivableAccountMapper extends BaseMapperX<ErpReceivableAcc
                 + "+ IFNULL(wo.writeOffAmount, 0)";
 
         public String selectList() {
+            return pageSql();
+        }
+
+        public String selectPageRows() {
+            return pageSql();
+        }
+
+        private String pageSql() {
+            return String.join("\n", "<script>", baseSql(), orderBySql(), "</script>");
+        }
+
+        private String baseSql() {
             return String.join("\n",
-                    "<script>",
                     "SELECT CONCAT(c.id, ':', IFNULL(CAST(accountKeys.deptId AS CHAR), 'none')) AS accountKey,",
                     "       CASE WHEN accountKeys.deptId IS NULL THEN 'none' ELSE CAST(accountKeys.deptId AS CHAR) END AS deptKey,",
                     "       c.id AS customerId,",
@@ -283,9 +300,7 @@ public interface ErpReceivableAccountMapper extends BaseMapperX<ErpReceivableAcc
                     "        OR u.nickname LIKE CONCAT('%', #{reqVO.keyword}, '%')",
                     "        OR d.name LIKE CONCAT('%', #{reqVO.keyword}, '%')",
                     "        OR DATE_FORMAT(c.create_time, '%Y-%m-%d %H:%i:%s') LIKE CONCAT('%', #{reqVO.keyword}, '%'))",
-                    "   </if>",
-                    orderBySql(),
-                    "</script>");
+                    "   </if>");
         }
 
         private String sourceKeySql(String tableName, String alias, String timeColumn, String userColumn,

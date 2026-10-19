@@ -10,6 +10,7 @@ import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.priceadjust.ErpP
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.priceadjust.ErpPurchasePriceAdjustItemPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.priceadjust.ErpPurchasePriceAdjustOrderImportExcelVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.priceadjust.ErpPurchasePriceAdjustPageReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.priceadjust.ErpPurchasePriceAdjustSummaryRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.priceadjust.ErpPurchasePriceAdjustSaveReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchasePriceAdjustDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchasePriceAdjustItemDO;
@@ -98,6 +99,8 @@ public interface ErpPurchasePriceAdjustService {
      */
     PageResult<ErpPurchasePriceAdjustDO> getPurchasePriceAdjustPage(ErpPurchasePriceAdjustPageReqVO pageReqVO);
 
+    ErpPurchasePriceAdjustSummaryRespVO getPurchasePriceAdjustSummary(ErpPurchasePriceAdjustPageReqVO pageReqVO);
+
     List<ErpPurchasePriceAdjustDO> getPurchasePriceAdjustList(Collection<Long> ids);
 
     /**
@@ -107,6 +110,9 @@ public interface ErpPurchasePriceAdjustService {
      * @return 子项列表
      */
     List<ErpPurchasePriceAdjustItemDO> getPurchasePriceAdjustItemListByAdjustId(Long adjustId);
+
+    List<ErpPurchasePriceAdjustItemDO> getPurchasePriceAdjustItemListByAdjustId(Long adjustId, String orderField,
+                                                                                String orderDirection);
 
     PageResult<ErpPurchasePriceAdjustItemDO> getPurchasePriceAdjustItemPage(ErpPurchasePriceAdjustItemPageReqVO pageReqVO);
 

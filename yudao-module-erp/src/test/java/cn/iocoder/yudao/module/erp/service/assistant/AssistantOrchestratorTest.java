@@ -2129,6 +2129,26 @@ class AssistantOrchestratorTest {
     }
 
     @Test
+    void explicitProductBrandUsesDedicatedResolverScope() {
+        properties.getEntitySearch().setEnabled(true);when(entities.enabled()).thenReturn(true);
+        when(entities.resolveType(AssistantEntityResolver.EntityType.PRODUCT,"美孚",
+                AssistantEntityResolver.ProductMatchScope.BRAND))
+                .thenReturn(Arrays.asList(entity(4509L,"美孚黑霸王CF-4 15W-40 4L 6*4L","PRODUCT"),
+                        entity(12548L,"美孚黑霸王CF-4 20W-50 4L 6x4L","PRODUCT")));
+        when(queries.execute(any())).thenAnswer(invocation->legacyResult(invocation.getArgument(0)));
+
+        AssistantOrchestrator.Outcome outcome=orchestrator.execute("品牌为美孚的产品库存",null,Collections.emptyList());
+
+        AssistantPlan plan=outcome.getEnvelope().getLegacyPlan();
+        assertTrue(plan.isProductResultTable());
+        assertEquals(Arrays.asList(4509L,12548L),plan.getProductIds());
+        verify(entities).resolveType(AssistantEntityResolver.EntityType.PRODUCT,"美孚",
+                AssistantEntityResolver.ProductMatchScope.BRAND);
+        verify(entities,never()).resolveType(AssistantEntityResolver.EntityType.PRODUCT,"美孚");
+        verify(model,never()).parse(anyString(),any(),anyList());verify(queries).execute(any());
+    }
+
+    @Test
     void completeReceivableRankingDoesNotInheritPreviousCustomerEntity() {
         properties.getEntitySearch().setEnabled(true);when(entities.enabled()).thenReturn(true);
         AssistantPlan previousPlan=new AssistantPlan();previousPlan.setMetric(AssistantPlan.Metric.RECEIVABLE);

@@ -5,6 +5,7 @@ import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.mybatis.core.mapper.BaseMapperX;
 import cn.iocoder.yudao.framework.mybatis.core.query.LambdaQueryWrapperX;
 import cn.iocoder.yudao.framework.mybatis.core.query.MPJLambdaWrapperX;
+import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.ErpStockDocumentSummaryRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.move.ErpStockMovePageReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.product.ErpProductDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.product.ErpProductUnitDO;
@@ -19,7 +20,9 @@ import org.springframework.util.StringUtils;
 
 import java.util.Collection;
 import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.stream.Collectors;
 
@@ -35,6 +38,32 @@ public interface ErpStockMoveMapper extends BaseMapperX<ErpStockMoveDO> {
         MPJLambdaWrapperX<ErpStockMoveDO> query = buildPageQuery(reqVO);
         orderBy(query, reqVO);
         return selectJoinPage(reqVO, ErpStockMoveDO.class, query);
+    }
+
+    default ErpStockDocumentSummaryRespVO selectSummary(ErpStockMovePageReqVO reqVO) {
+        return selectSummary(buildPageQuery(reqVO));
+    }
+
+    default ErpStockDocumentSummaryRespVO selectTransferOutSummary(ErpStockMovePageReqVO reqVO,
+                                                                    Collection<Long> deptIds,
+                                                                    boolean all) {
+        MPJLambdaWrapperX<ErpStockMoveDO> query = buildPageQuery(reqVO);
+        applyTransferOutVisibleScope(query, deptIds, all);
+        return selectSummary(query);
+    }
+
+    default ErpStockDocumentSummaryRespVO selectTransferInSummary(ErpStockMovePageReqVO reqVO,
+                                                                   Collection<Long> deptIds,
+                                                                   boolean all) {
+        MPJLambdaWrapperX<ErpStockMoveDO> query = buildPageQuery(reqVO);
+        applyTransferInVisibleScope(query, deptIds, all);
+        return selectSummary(query);
+    }
+
+    default ErpStockDocumentSummaryRespVO selectSummary(MPJLambdaWrapperX<ErpStockMoveDO> query) {
+        query.selectAs("COALESCE(SUM(t.total_count), 0)", ErpStockDocumentSummaryRespVO::getTotalCount)
+                .selectAs("COALESCE(SUM(t.total_price), 0)", ErpStockDocumentSummaryRespVO::getTotalPrice);
+        return selectJoinOne(ErpStockDocumentSummaryRespVO.class, query);
     }
 
     default PageResult<ErpStockMoveDO> selectTransferOutPage(ErpStockMovePageReqVO reqVO,
@@ -175,17 +204,16 @@ public interface ErpStockMoveMapper extends BaseMapperX<ErpStockMoveDO> {
                 .likeIfPresent(ErpStockMoveDO::getRemark, reqVO.getRemark())
                 .eqIfPresent(ErpStockMoveDO::getCreator, reqVO.getCreator());
         appendTransferDirection(query, reqVO.getTransferDirection());
-        if (reqVO.getFromWarehouseId() != null || reqVO.getToWarehouseId() != null
-                || reqVO.getProductId() != null || StringUtils.hasText(reqVO.getProductKeyword())) {
-            query.leftJoin(ErpStockMoveItemDO.class, ErpStockMoveItemDO::getMoveId, ErpStockMoveDO::getId)
-                    .leftJoin(ErpProductDO.class, ErpProductDO::getId, ErpStockMoveItemDO::getProductId)
-                    .leftJoin(ErpProductUnitDO.class, ErpProductUnitDO::getId, ErpStockMoveItemDO::getProductUnitId)
-                    .eq(reqVO.getFromWarehouseId() != null, ErpStockMoveItemDO::getFromWarehouseId, reqVO.getFromWarehouseId())
-                    .eq(reqVO.getToWarehouseId() != null, ErpStockMoveItemDO::getToWarehouseId, reqVO.getToWarehouseId())
-                    .eq(reqVO.getProductId() != null, ErpStockMoveItemDO::getProductId, reqVO.getProductId())
-                    .and(StringUtils.hasText(reqVO.getProductKeyword()), w -> ErpKeywordQuery.appendProductKeyword(w, reqVO.getProductKeyword()))
-                    .groupBy(ErpStockMoveDO::getId); // 避免 1 对多查询，产生相同的 1
+        Map<String, Object> itemEquals = new LinkedHashMap<>();
+        if (reqVO.getFromWarehouseId() != null) {
+            itemEquals.put("from_warehouse_id", reqVO.getFromWarehouseId());
         }
+        if (reqVO.getToWarehouseId() != null) {
+            itemEquals.put("to_warehouse_id", reqVO.getToWarehouseId());
+        }
+        ErpKeywordQuery.appendProductItemFilterWithItemEquals(query, "erp_stock_move_item", "move_id",
+                reqVO.getProductId(), itemEquals, null, null,
+                reqVO.getProductKeyword(), true);
         appendStockMoveKeyword(query, reqVO.getKeyword());
         return query;
     }

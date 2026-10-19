@@ -3,6 +3,8 @@ package cn.iocoder.yudao.module.erp.dal.mysql.finance;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.mybatis.core.mapper.BaseMapperX;
 import cn.iocoder.yudao.framework.mybatis.core.query.LambdaQueryWrapperX;
+import cn.iocoder.yudao.framework.mybatis.core.query.MPJLambdaWrapperX;
+import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.ErpFinanceQuerySummaryRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.vo.transfer.ErpFinanceTransferPageReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.ErpFinanceTransferDO;
 import cn.iocoder.yudao.module.erp.dal.mysql.common.ErpKeywordQuery;
@@ -16,7 +18,29 @@ import org.apache.ibatis.annotations.Mapper;
 public interface ErpFinanceTransferMapper extends BaseMapperX<ErpFinanceTransferDO> {
 
     default PageResult<ErpFinanceTransferDO> selectPage(ErpFinanceTransferPageReqVO reqVO) {
-        LambdaQueryWrapperX<ErpFinanceTransferDO> wrapper = new LambdaQueryWrapperX<ErpFinanceTransferDO>()
+        MPJLambdaWrapperX<ErpFinanceTransferDO> wrapper = buildQuery(reqVO);
+        ErpFinanceSortUtils.apply(wrapper, reqVO.getOrderField(), reqVO.getOrderDirection(), "erp_finance_transfer",
+                "no", "transferTime", "outAccountId", "inAccountId", "financeUserId", "deptId",
+                "transferPrice", "status", "creator", "updater", "createTime", "updateTime", "remark");
+        return selectJoinPage(reqVO, ErpFinanceTransferDO.class, wrapper);
+    }
+
+    default ErpFinanceQuerySummaryRespVO selectSummary(ErpFinanceTransferPageReqVO reqVO) {
+        MPJLambdaWrapperX<ErpFinanceTransferDO> wrapper = buildQuery(reqVO)
+                .selectAs("COUNT(*)", ErpFinanceQuerySummaryRespVO::getDocumentCount)
+                .selectAs("COALESCE(SUM(CASE WHEN t.status = 0 THEN 1 ELSE 0 END), 0)",
+                        ErpFinanceQuerySummaryRespVO::getDraftCount)
+                .selectAs("COALESCE(SUM(CASE WHEN t.status = 10 THEN 1 ELSE 0 END), 0)",
+                        ErpFinanceQuerySummaryRespVO::getProcessCount)
+                .selectAs("COALESCE(SUM(CASE WHEN t.status = 20 THEN 1 ELSE 0 END), 0)",
+                        ErpFinanceQuerySummaryRespVO::getApproveCount)
+                .selectAs("COALESCE(SUM(t.transfer_price), 0)", ErpFinanceQuerySummaryRespVO::getTransferPrice);
+        return selectJoinOne(ErpFinanceQuerySummaryRespVO.class, wrapper);
+    }
+
+    static MPJLambdaWrapperX<ErpFinanceTransferDO> buildQuery(ErpFinanceTransferPageReqVO reqVO) {
+        MPJLambdaWrapperX<ErpFinanceTransferDO> wrapper = new MPJLambdaWrapperX<ErpFinanceTransferDO>()
+                .inIfPresent(ErpFinanceTransferDO::getId, reqVO.getIds())
                 .likeIfPresent(ErpFinanceTransferDO::getNo, reqVO.getNo())
                 .betweenIfPresent(ErpFinanceTransferDO::getTransferTime, reqVO.getTransferTime())
                 .eqIfPresent(ErpFinanceTransferDO::getOutAccountId, reqVO.getOutAccountId())
@@ -29,10 +53,7 @@ public interface ErpFinanceTransferMapper extends BaseMapperX<ErpFinanceTransfer
         ErpKeywordQuery.appendWithDeptName(wrapper, reqVO.getKeyword(),
                 ErpFinanceTransferDO::getNo,
                 ErpFinanceTransferDO::getRemark);
-        ErpFinanceSortUtils.apply(wrapper, reqVO.getOrderField(), reqVO.getOrderDirection(), "erp_finance_transfer",
-                "no", "transferTime", "outAccountId", "inAccountId", "financeUserId", "deptId",
-                "transferPrice", "status", "creator", "updater", "createTime", "updateTime", "remark");
-        return selectPage(reqVO, wrapper);
+        return wrapper;
     }
 
     default int updateByIdAndStatus(Long id, Integer status, ErpFinanceTransferDO updateObj) {

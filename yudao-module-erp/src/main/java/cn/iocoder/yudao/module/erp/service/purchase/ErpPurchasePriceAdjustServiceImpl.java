@@ -17,6 +17,7 @@ import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.priceadjust.ErpP
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.priceadjust.ErpPurchasePriceAdjustItemPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.priceadjust.ErpPurchasePriceAdjustOrderImportExcelVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.priceadjust.ErpPurchasePriceAdjustPageReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.priceadjust.ErpPurchasePriceAdjustSummaryRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.priceadjust.ErpPurchasePriceAdjustSaveReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.supplier.ErpSupplierPageReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.product.ErpProductDO;
@@ -449,6 +450,11 @@ public class ErpPurchasePriceAdjustServiceImpl implements ErpPurchasePriceAdjust
     }
 
     @Override
+    public ErpPurchasePriceAdjustSummaryRespVO getPurchasePriceAdjustSummary(ErpPurchasePriceAdjustPageReqVO pageReqVO) {
+        return priceAdjustMapper.selectSummary(pageReqVO);
+    }
+
+    @Override
     public List<ErpPurchasePriceAdjustDO> getPurchasePriceAdjustList(Collection<Long> ids) {
         if (CollUtil.isEmpty(ids)) {
             return new ArrayList<>();
@@ -462,8 +468,19 @@ public class ErpPurchasePriceAdjustServiceImpl implements ErpPurchasePriceAdjust
     }
 
     @Override
+    public List<ErpPurchasePriceAdjustItemDO> getPurchasePriceAdjustItemListByAdjustId(Long adjustId,
+                                                                                       String orderField,
+                                                                                       String orderDirection) {
+        return priceAdjustItemMapper.selectListByAdjustId(adjustId, orderField, orderDirection);
+    }
+
+    @Override
     public PageResult<ErpPurchasePriceAdjustItemDO> getPurchasePriceAdjustItemPage(ErpPurchasePriceAdjustItemPageReqVO pageReqVO) {
         validatePurchasePriceAdjust(pageReqVO.getAdjustId());
+        if (CollUtil.isNotEmpty(pageReqVO.getExcludedItemIds())) {
+            pageReqVO.setExcludedItemIds(pageReqVO.getExcludedItemIds().stream()
+                    .filter(id -> id != null && id > 0).distinct().collect(Collectors.toList()));
+        }
         return priceAdjustItemMapper.selectPageByAdjustId(pageReqVO);
     }
 

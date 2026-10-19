@@ -8,6 +8,7 @@ import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.out.ErpSaleOutPageRe
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.out.ErpSaleOutReceiptSummaryRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.out.ErpSaleOutRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.out.ErpSaleOutSaveReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.out.ErpSaleOutSummaryRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.out.ErpSaleOutUpdateExpressFileReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.out.ErpSaleReturnableItemRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.product.vo.product.ErpProductRespVO;
@@ -409,6 +410,20 @@ public class ErpSaleOutControllerTest extends BaseMockitoUnitTest {
     }
 
     // ========== getSaleOutPage ==========
+
+    @Test
+    public void testGetSaleOutSummary_passesFiltersAndMasksFields() {
+        ErpSaleOutPageReqVO reqVO = new ErpSaleOutPageReqVO();
+        ErpSaleOutSummaryRespVO summary = new ErpSaleOutSummaryRespVO();
+        summary.setAfterReductionAmount(new BigDecimal("12.34"));
+        when(saleOutService.getSaleOutSummary(reqVO)).thenReturn(summary);
+
+        CommonResult<ErpSaleOutSummaryRespVO> result = controller.getSaleOutSummary(reqVO);
+
+        assertEquals(summary, result.getData());
+        verify(saleOutService).getSaleOutSummary(reqVO);
+        verify(fieldPermissionMasker).clearSaleDetailHiddenFields("erp_sale_out", summary);
+    }
 
     @Test
     public void testGetSaleOutPage_emptyShortCircuit() {

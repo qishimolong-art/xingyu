@@ -27,6 +27,7 @@ import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.out.ErpSaleOutRespVO
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.out.ErpSaleOutReturnableItemPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.out.ErpSaleReturnableItemRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.out.ErpSaleOutSaveReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.out.ErpSaleOutSummaryRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.out.ErpSaleOutUpdateExpressFileReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.pickdelivery.ErpSalePickDeliveryItemRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.pickdelivery.ErpSalePickDeliverySummaryRespVO;
@@ -749,6 +750,16 @@ public class ErpSaleOutController {
                 : buildSaleOutVOPageResult(pageResult, useOriginalSettlementAmount);
         fieldPermissionMasker.maskSaleDetailFormsWithItems(FIELD_PERMISSION_MODULE, respResult.getList());
         return success(respResult);
+    }
+
+    @GetMapping("/summary")
+    @Operation(summary = "获得销售单查询汇总")
+    @PreAuthorize("@ss.hasPermission('erp:sale-out:query')")
+    public CommonResult<ErpSaleOutSummaryRespVO> getSaleOutSummary(
+            @Valid ErpSaleOutPageReqVO pageReqVO) {
+        ErpSaleOutSummaryRespVO summary = saleOutService.getSaleOutSummary(pageReqVO);
+        fieldPermissionMasker.clearSaleDetailHiddenFields(FIELD_PERMISSION_MODULE, summary);
+        return success(summary);
     }
 
     @GetMapping("/returnable-items")

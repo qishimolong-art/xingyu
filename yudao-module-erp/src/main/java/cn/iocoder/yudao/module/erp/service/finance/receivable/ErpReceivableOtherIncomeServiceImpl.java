@@ -9,8 +9,10 @@ import cn.iocoder.yudao.module.erp.controller.admin.finance.receivable.vo.otheri
 import cn.iocoder.yudao.module.erp.controller.admin.finance.receivable.vo.otherincome.ErpReceivableOtherIncomePageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.receivable.vo.otherincome.ErpReceivableOtherIncomeSaveReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.base.ErpBaseDataDO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.finance.ErpFinancePaymentDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.receivable.ErpReceivableOtherIncomeDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.receivable.ErpReceivableOtherIncomeItemDO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpSupplierDO;
 import cn.iocoder.yudao.module.erp.dal.mysql.finance.receivable.ErpReceivableOtherIncomeItemMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.finance.receivable.ErpReceivableOtherIncomeMapper;
 import cn.iocoder.yudao.module.erp.service.base.ErpBaseDataService;
@@ -21,6 +23,7 @@ import cn.iocoder.yudao.module.erp.service.common.ErpOperateLogService;
 import cn.iocoder.yudao.module.erp.service.finance.ErpAccountService;
 import cn.iocoder.yudao.module.erp.service.finance.ErpFinanceFieldPermissionMasker;
 import cn.iocoder.yudao.module.erp.service.finance.ErpFinanceItemOperationHelper;
+import cn.iocoder.yudao.module.erp.service.purchase.ErpSupplierService;
 import cn.iocoder.yudao.module.erp.service.sale.ErpCustomerService;
 import cn.iocoder.yudao.module.system.api.dept.DeptApi;
 import cn.iocoder.yudao.module.system.api.user.AdminUserApi;
@@ -70,6 +73,10 @@ public class ErpReceivableOtherIncomeServiceImpl implements ErpReceivableOtherIn
     private static final String OTHER_INCOME_TYPE = "receivable_other_income_type";
     private static final String OTHER_INCOME_DOC_TYPE = "receivable_other_income_doc_type";
     private static final String OTHER_INCOME_ITEM_PROJECT = "receivable_other_income_item_project";
+    private static final String PAYMENT_DISCOUNT_SETTLE_METHOD = "挂账";
+    private static final String PAYMENT_DISCOUNT_INCOME_TYPE = "其他";
+    private static final String PAYMENT_DISCOUNT_DOC_TYPE = "正常单据";
+    private static final String PAYMENT_DISCOUNT_ITEM_PROJECT = "采购减付";
 
     @Resource
     private ErpReceivableOtherIncomeMapper otherIncomeMapper;
@@ -83,6 +90,8 @@ public class ErpReceivableOtherIncomeServiceImpl implements ErpReceivableOtherIn
     private ErpBaseDataService baseDataService;
     @Resource
     private ErpCustomerService customerService;
+    @Resource
+    private ErpSupplierService supplierService;
     @Resource
     private AdminUserApi adminUserApi;
     @Resource
@@ -149,6 +158,73 @@ public class ErpReceivableOtherIncomeServiceImpl implements ErpReceivableOtherIn
     @Transactional(rollbackFor = Exception.class)
     public Long createOtherIncomeAndSubmit(ErpReceivableOtherIncomeSaveReqVO createReqVO) {
         return createOtherIncome(createReqVO);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public Long createApprovedFromFinancePaymentDiscount(ErpFinancePaymentDO payment, Long approverId) {
+        BigDecimal discountPrice = payment == null || payment.getDiscountPrice() == null
+                ? BigDecimal.ZERO : payment.getDiscountPrice();
+        if (payment == null || payment.getId() == null || discountPrice.compareTo(BigDecimal.ZERO) <= 0) {
+            return null;
+        }
+        ErpReceivableOtherIncomeDO existing = otherIncomeMapper.selectBySource(
+                PAYMENT_DISCOUNT_SOURCE_TYPE, payment.getId());
+        if (existing != null) {
+            return existing.getId();
+        }
+
+        Long handlerId = payment.getFinanceUserId() != null ? payment.getFinanceUserId() : approverId;
+        validateFormalDeptId(payment.getDeptId());
+        validateRequiredOption("结算方式", SETTLE_METHOD_TYPE, PAYMENT_DISCOUNT_SETTLE_METHOD);
+        validateRequiredOption("收入类型", OTHER_INCOME_TYPE, PAYMENT_DISCOUNT_INCOME_TYPE);
+        validateRequiredOption("单据类型", OTHER_INCOME_DOC_TYPE, PAYMENT_DISCOUNT_DOC_TYPE);
+        validateRequiredOption("第 1 条明细的项目名称", OTHER_INCOME_ITEM_PROJECT,
+                PAYMENT_DISCOUNT_ITEM_PROJECT);
+        validateRefs(payment.getAccountId(), handlerId, payment.getDeptId());
+        ErpSupplierDO supplier = supplierService.validateSupplier(payment.getSupplierId());
+
+        String no = noRedisDAO.generate(ErpNoRedisDAO.OTHER_INCOME_NO_PREFIX);
+        // 自动生成单据的业务日期、明细发生日期都以本张其他收入单的生成时间为准，
+        // 不能沿用来源付款单的付款时间，否则补录或跨期审核时会落到历史期间。
+        LocalDateTime generatedTime = LocalDateTime.now();
+        String party = supplier == null ? null : supplier.getName();
+        ErpReceivableOtherIncomeDO db = new ErpReceivableOtherIncomeDO()
+                .setNo(no)
+                .setStatus(ErpAuditStatus.APPROVE.getStatus())
+                .setApproveTime(generatedTime)
+                .setBizTime(generatedTime)
+                .setSettleMethod(PAYMENT_DISCOUNT_SETTLE_METHOD)
+                .setAccountId(payment.getAccountId())
+                .setIncomeType(PAYMENT_DISCOUNT_INCOME_TYPE)
+                .setTotalAmount(discountPrice)
+                .setDeptId(payment.getDeptId())
+                .setHandlerId(handlerId)
+                .setParty(party)
+                .setRelatedBiz("付款单：" + payment.getNo())
+                .setSourceType(PAYMENT_DISCOUNT_SOURCE_TYPE)
+                .setSourceId(payment.getId())
+                .setSourceNo(payment.getNo())
+                .setDocType(PAYMENT_DISCOUNT_DOC_TYPE)
+                .setRemark("付款单优惠自动生成，来源单号：" + payment.getNo());
+        db.setCreateTime(generatedTime);
+        otherIncomeMapper.insert(db);
+
+        ErpReceivableOtherIncomeItemDO item = new ErpReceivableOtherIncomeItemDO()
+                .setIncomeId(db.getId())
+                .setItemName(PAYMENT_DISCOUNT_ITEM_PROJECT)
+                .setAmount(discountPrice)
+                .setParty(party)
+                .setDeptId(payment.getDeptId())
+                .setBizDate(generatedTime)
+                .setHandlerId(handlerId)
+                .setQty(1)
+                .setRemark("付款单：" + payment.getNo());
+        otherIncomeItemMapper.insertBatch(Collections.singletonList(item));
+
+        operateLogService.recordCreate(ERP_RECEIVABLE_OTHER_INCOME_TYPE, db.getId(), db.getNo());
+        operateLogService.recordStatus(ERP_RECEIVABLE_OTHER_INCOME_TYPE, db.getId(), db.getNo(), true);
+        return db.getId();
     }
 
     @Override
@@ -321,7 +397,10 @@ public class ErpReceivableOtherIncomeServiceImpl implements ErpReceivableOtherIn
         }
         validateFormalDeptId(db.getDeptId());
         if (otherIncomeMapper.updateByIdAndStatus(id, db.getStatus(),
-                ErpReceivableOtherIncomeDO.builder().status(status).build()) == 0) {
+                ErpReceivableOtherIncomeDO.builder()
+                        .status(status)
+                        .approveTime(LocalDateTime.now())
+                        .build()) == 0) {
             throw exception(OTHER_RECEIVABLE_APPROVE_FAIL);
         }
         operateLogService.recordStatus(ERP_RECEIVABLE_OTHER_INCOME_TYPE, id, db.getNo(), true);
@@ -356,16 +435,13 @@ public class ErpReceivableOtherIncomeServiceImpl implements ErpReceivableOtherIn
 
     @Override
     public PageResult<ErpReceivableOtherIncomeDO> getOtherIncomePage(ErpReceivableOtherIncomePageReqVO pageReqVO) {
-        if (hasItemFilter(pageReqVO)) {
-            List<Long> incomeIds = convertList(
-                    otherIncomeItemMapper.selectListByItemNameOrInvoiceNo(pageReqVO.getItemName(), pageReqVO.getInvoiceNo()),
-                    ErpReceivableOtherIncomeItemDO::getIncomeId);
-            if (CollUtil.isEmpty(incomeIds)) {
-                return PageResult.empty();
-            }
-            pageReqVO.setIds(incomeIds);
-        }
         return otherIncomeMapper.selectPage(pageReqVO);
+    }
+
+    @Override
+    public cn.iocoder.yudao.module.erp.controller.admin.finance.vo.ErpFinanceQuerySummaryRespVO getOtherIncomeSummary(
+            ErpReceivableOtherIncomePageReqVO pageReqVO) {
+        return otherIncomeMapper.selectSummary(pageReqVO);
     }
 
     @Override
@@ -527,10 +603,6 @@ public class ErpReceivableOtherIncomeServiceImpl implements ErpReceivableOtherIn
         validateRefs(db.getAccountId(), db.getHandlerId(), db.getDeptId());
         validateSubmitOptions(db, items);
         items.forEach(this::validateDbItemRefs);
-    }
-
-    private boolean hasItemFilter(ErpReceivableOtherIncomePageReqVO pageReqVO) {
-        return StringUtils.hasText(pageReqVO.getItemName()) || StringUtils.hasText(pageReqVO.getInvoiceNo());
     }
 
     private void validateSaveOptions(ErpReceivableOtherIncomeSaveReqVO reqVO) {

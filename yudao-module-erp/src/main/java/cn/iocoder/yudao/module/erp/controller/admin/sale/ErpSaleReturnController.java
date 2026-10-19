@@ -1,6 +1,8 @@
 package cn.iocoder.yudao.module.erp.controller.admin.sale;
 
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.ErpSaleUpdateRemarkReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.ErpSaleItemMatchReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.ErpSaleItemMatchRespVO;
 import cn.hutool.core.collection.CollUtil;
 import cn.iocoder.yudao.framework.apilog.core.annotation.ApiAccessLog;
 import cn.iocoder.yudao.framework.common.enums.CommonStatusEnum;
@@ -9,6 +11,7 @@ import cn.iocoder.yudao.framework.common.pojo.PageParam;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.common.util.collection.MapUtils;
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
+import cn.iocoder.yudao.framework.common.util.number.MoneyUtils;
 import cn.iocoder.yudao.framework.datapermission.core.util.DataPermissionUtils;
 import cn.iocoder.yudao.framework.excel.core.util.ExcelUtils;
 import cn.iocoder.yudao.module.erp.controller.admin.common.ErpAuditStatusRequestValidator;
@@ -30,6 +33,7 @@ import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleRetur
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnRefundSummaryRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnSaveReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnSummaryRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnTransferOutableItemPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.returns.ErpSaleReturnTransferOutableItemRespVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpCustomerDO;
@@ -79,6 +83,9 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.Comparator;
+import java.util.HashSet;
+import java.util.Objects;
 
 import static cn.iocoder.yudao.framework.apilog.core.enums.OperateTypeEnum.EXPORT;
 import static cn.iocoder.yudao.framework.common.pojo.CommonResult.success;
@@ -322,6 +329,7 @@ public class ErpSaleReturnController {
             });
             saleReturnVO.setItems(emptyIfNull(items));
         });
+        fillDocumentSummary(respVO, saleReturnItemMapper.selectDocumentSummaryByReturnId(id));
         itemPriceReferenceFiller.fill(respVO.getItems());
         fieldPermissionMasker.maskSaleDetailFormWithItems(FIELD_PERMISSION_MODULE, respVO);
         return success(respVO);
@@ -370,6 +378,27 @@ public class ErpSaleReturnController {
         return value == null ? BigDecimal.ZERO : value;
     }
 
+    private void fillDocumentSummary(ErpSaleReturnRespVO respVO, Map<String, Object> summary) {
+        BigDecimal totalCount = summaryDecimal(summary, "totalCount");
+        BigDecimal totalProductPrice = summaryDecimal(summary, "totalProductPrice");
+        BigDecimal discountPercent = zeroIfNull(respVO.getDiscountPercent());
+        BigDecimal feeAmount = respVO.getFeeAmount() != null
+                ? respVO.getFeeAmount() : zeroIfNull(respVO.getOtherPrice());
+        BigDecimal discountPrice = MoneyUtils.priceMultiplyPercent(totalProductPrice, discountPercent);
+        respVO.setTotalCount(totalCount);
+        respVO.setTotalProductPrice(totalProductPrice);
+        respVO.setTotalTaxPrice(BigDecimal.ZERO);
+        respVO.setDiscountPrice(discountPrice);
+        respVO.setFeeAmount(feeAmount);
+        respVO.setOtherPrice(feeAmount);
+        respVO.setTotalPrice(totalProductPrice.subtract(discountPrice).add(feeAmount));
+    }
+
+    private BigDecimal summaryDecimal(Map<String, Object> summary, String key) {
+        Object value = summary == null ? null : summary.get(key);
+        return value == null ? BigDecimal.ZERO : new BigDecimal(value.toString());
+    }
+
     @GetMapping("/item-page")
     @Operation(summary = "获得销售退货明细分页")
     @PreAuthorize("@ss.hasPermission('erp:sale-return:query')")
@@ -392,8 +421,15 @@ public class ErpSaleReturnController {
         itemDeptIds.remove(null);
         Map<Long, DeptRespDTO> itemDeptMap = CollUtil.isEmpty(itemDeptIds)
                 ? Collections.emptyMap() : deptApi.getDeptMap(itemDeptIds);
+        Set<Long> productIds = convertSet(itemList, ErpSaleReturnItemDO::getProductId);
+        Set<Long> warehouseIds = convertSet(itemList, ErpSaleReturnItemDO::getWarehouseId);
+        productIds.remove(null);
+        warehouseIds.remove(null);
+        Map<String, ErpStockDO> stockMap = CollUtil.isEmpty(productIds) || CollUtil.isEmpty(warehouseIds)
+                ? Collections.emptyMap()
+                : DataPermissionUtils.executeIgnore(() -> stockService.getStockMap(productIds, warehouseIds));
         List<ErpSaleReturnRespVO.Item> items = BeanUtils.toBean(itemList, ErpSaleReturnRespVO.Item.class, item -> {
-            ErpStockDO stock = getStockIgnoreDataPermission(item.getProductId(), item.getWarehouseId());
+            ErpStockDO stock = stockMap.get(item.getProductId() + "_" + item.getWarehouseId());
             item.setStockCount(stock != null ? stock.getCount() : BigDecimal.ZERO);
             MapUtils.findAndThen(productMap, item.getProductId(), product -> item.setProductName(product.getName())
                     .setProductBarCode(product.getBarCode()).setProductUnitName(product.getUnitName())
@@ -413,6 +449,49 @@ public class ErpSaleReturnController {
                     respResult.getList());
         }
         return success(respResult);
+    }
+
+    @PostMapping("/item-page")
+    @Operation(summary = "获得销售退货编辑态明细分页")
+    @PreAuthorize("@ss.hasPermission('erp:sale-return:query')")
+    public CommonResult<PageResult<ErpSaleReturnRespVO.Item>> getSaleReturnEditItemPage(
+            @Valid @RequestBody ErpSaleReturnItemPageReqVO pageReqVO) {
+        return getSaleReturnItemPage(pageReqVO);
+    }
+
+    @PostMapping("/item-match")
+    @Operation(summary = "匹配销售退货整单已有明细")
+    @PreAuthorize("@ss.hasPermission('erp:sale-return:query')")
+    public CommonResult<ErpSaleItemMatchRespVO> matchSaleReturnItems(
+            @Valid @RequestBody ErpSaleItemMatchReqVO reqVO) {
+        if (saleReturnService.getSaleReturn(reqVO.getDocumentId()) == null) {
+            return success(new ErpSaleItemMatchRespVO());
+        }
+        Set<Long> excludedIds = new HashSet<>(reqVO.getExcludedItemIds() == null
+                ? Collections.emptyList() : reqVO.getExcludedItemIds());
+        List<ErpSaleReturnItemDO> items = new ArrayList<>(
+                saleReturnService.getSaleReturnItemListByReturnId(reqVO.getDocumentId()));
+        items.removeIf(item -> excludedIds.contains(item.getId()));
+        items.sort(Comparator.comparing(ErpSaleReturnItemDO::getId));
+        ErpSaleItemMatchRespVO result = new ErpSaleItemMatchRespVO();
+        for (int keyIndex = 0; keyIndex < reqVO.getKeys().size(); keyIndex++) {
+            ErpSaleItemMatchReqVO.Key key = reqVO.getKeys().get(keyIndex);
+            for (int itemIndex = 0; itemIndex < items.size(); itemIndex++) {
+                ErpSaleReturnItemDO item = items.get(itemIndex);
+                if (Objects.equals(item.getProductId(), key.getProductId())
+                        && Objects.equals(item.getWarehouseId(), key.getWarehouseId())
+                        && Objects.equals(normalizeBatchNo(item.getBatchNo()), normalizeBatchNo(key.getBatchNo()))) {
+                    result.getMatches().add(new ErpSaleItemMatchRespVO.Match(keyIndex, item.getId(),
+                            itemIndex / reqVO.getPageSize() + 1));
+                    break;
+                }
+            }
+        }
+        return success(result);
+    }
+
+    private static String normalizeBatchNo(String batchNo) {
+        return batchNo == null ? "" : batchNo.trim();
     }
 
     @GetMapping("/warehouse-dept-simple-list")
@@ -463,6 +542,16 @@ public class ErpSaleReturnController {
                 : buildSaleReturnVOPageResult(pageResult);
         fieldPermissionMasker.maskSaleDetailFormsWithItems(FIELD_PERMISSION_MODULE, respResult.getList());
         return success(respResult);
+    }
+
+    @GetMapping("/summary")
+    @Operation(summary = "获得销售退货查询汇总")
+    @PreAuthorize("@ss.hasPermission('erp:sale-return:query')")
+    public CommonResult<ErpSaleReturnSummaryRespVO> getSaleReturnSummary(
+            @Valid ErpSaleReturnPageReqVO pageReqVO) {
+        ErpSaleReturnSummaryRespVO summary = saleReturnService.getSaleReturnSummary(pageReqVO);
+        fieldPermissionMasker.clearSaleDetailHiddenFields(FIELD_PERMISSION_MODULE, summary);
+        return success(summary);
     }
 
     @GetMapping("/export-excel")

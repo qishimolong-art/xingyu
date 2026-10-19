@@ -11,10 +11,19 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.text.Normalizer;
 import java.util.*;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /** Versioned high-frequency intent/entity contracts compiled from the Obsidian vault. */
 @Component
 public class AssistantSemanticKnowledge {
+
+    private static final Pattern PRODUCT_UNIT_PATTERN = Pattern.compile(
+            "([+-]?(?:\\d+(?:\\.\\d+)?|\\.\\d+))\\s*"
+                    + "(摄氏度|毫升|千克|公斤|℃|升|克|度|"
+                    + "°C(?![A-Za-z])|mL(?![A-Za-z])|kg(?![A-Za-z])|L(?![A-Za-z])|g(?![A-Za-z]))",
+            Pattern.CASE_INSENSITIVE);
+    private static final int MAX_PRODUCT_UNIT_VARIANTS = 64;
 
     public static final class Match {
         private final String intentId;
@@ -173,7 +182,135 @@ public class AssistantSemanticKnowledge {
             result.add(tire.group(1) + "/" + tire.group(2) + "R" + tire.group(3) + tire.group(4));
             result.add(tire.group(1) + " " + tire.group(2) + " " + tire.group(3) + tire.group(4));
         }
-        java.util.regex.Matcher viscosity = java.util.regex.Pattern.compile("^(.*?)(0|5|10|15|20)[W\\-]?(20|30|40|50|60)(.*)$", java.util.regex.Pattern.CASE_INSENSITIVE).matcher(compact);
+        addViscosityVariants(result, value);
+        if (!compact.equals(value)) addViscosityVariants(result, compact);
+        return new ArrayList<>(result);
+    }
+
+    /**
+     * Returns assistant-only measurement-unit aliases while retaining the normalized original value.
+     * A unit is recognized only when it follows a numeric literal; ordinary text such as "abl" is
+     * therefore left untouched. Whitespace between the number and unit is accepted, and Latin units
+     * are not recognized when another Latin letter follows them.
+     */
+    public static List<String> productUnitVariants(String raw) {
+        if (raw == null) return Collections.emptyList();
+        String value = normalize(raw);
+        if (value.isEmpty()) return Collections.emptyList();
+        LinkedHashSet<String> result = new LinkedHashSet<>();
+        result.add(value);
+        appendProductUnitVariants(value, 0, new StringBuilder(value.length()), result);
+        return new ArrayList<>(result);
+    }
+
+    /** Removes only whitespace inside recognized numeric-unit expressions before keyword splitting. */
+    public static String compactProductUnitSpacing(String raw) {
+        if (raw == null) return "";
+        String value = normalize(raw);
+        Matcher matcher = PRODUCT_UNIT_PATTERN.matcher(value);
+        StringBuffer result = new StringBuffer(value.length());
+        while (matcher.find()) {
+            matcher.appendReplacement(result, Matcher.quoteReplacement(matcher.group(1) + matcher.group(2)));
+        }
+        matcher.appendTail(result);
+        return result.toString();
+    }
+
+    /**
+     * Builds an ordered-character pattern while keeping converted numeric-unit aliases atomic.
+     * For example, the token {@code 18升 -> 18L} remains {@code 18L}; when its caller joins it
+     * after an ordered {@code k40} token, the result is {@code k%4%0%18L}. The generated alias
+     * therefore cannot match a name where {@code 1}, {@code 8}, and {@code L} are separated.
+     * Numeric units unchanged from the user's input retain the existing character-order fallback.
+     */
+    public static String productUnitAwareOrderedPattern(String original, String variant) {
+        String source = compactProductUnitSpacing(original);
+        String candidate = compactProductUnitSpacing(variant);
+        if (candidate.isEmpty()) return null;
+
+        Matcher sourceMatcher = PRODUCT_UNIT_PATTERN.matcher(source);
+        Matcher candidateMatcher = PRODUCT_UNIT_PATTERN.matcher(candidate);
+        List<String> fragments = new ArrayList<>();
+        int sourceOffset = 0;
+        int candidateOffset = 0;
+        while (true) {
+            boolean sourceFound = sourceMatcher.find();
+            boolean candidateFound = candidateMatcher.find();
+            if (sourceFound != candidateFound) return orderedCharactersPattern(candidate);
+            if (!sourceFound) break;
+
+            String sourcePrefix = source.substring(sourceOffset, sourceMatcher.start());
+            String candidatePrefix = candidate.substring(candidateOffset, candidateMatcher.start());
+            if (!sourcePrefix.equals(candidatePrefix)
+                    || !sourceMatcher.group(1).equals(candidateMatcher.group(1))) {
+                return orderedCharactersPattern(candidate);
+            }
+            appendOrderedFragments(fragments, candidatePrefix);
+
+            String candidateUnitExpression = candidateMatcher.group(1) + candidateMatcher.group(2);
+            if (sourceMatcher.group(2).equals(candidateMatcher.group(2))) {
+                appendOrderedFragments(fragments, candidateUnitExpression);
+            } else {
+                fragments.add(candidateUnitExpression);
+            }
+            sourceOffset = sourceMatcher.end();
+            candidateOffset = candidateMatcher.end();
+        }
+        String sourceSuffix = source.substring(sourceOffset);
+        String candidateSuffix = candidate.substring(candidateOffset);
+        if (!sourceSuffix.equals(candidateSuffix)) return orderedCharactersPattern(candidate);
+        appendOrderedFragments(fragments, candidateSuffix);
+        return String.join("%", fragments);
+    }
+
+    private static String orderedCharactersPattern(String value) {
+        List<String> fragments = new ArrayList<>();
+        appendOrderedFragments(fragments, value);
+        return String.join("%", fragments);
+    }
+
+    private static void appendOrderedFragments(List<String> fragments, String value) {
+        value.codePoints().forEach(codePoint -> fragments.add(new String(Character.toChars(codePoint))));
+    }
+
+    private static void appendProductUnitVariants(String value, int offset, StringBuilder current,
+                                                  Set<String> result) {
+        if (result.size() >= MAX_PRODUCT_UNIT_VARIANTS) return;
+        Matcher matcher = PRODUCT_UNIT_PATTERN.matcher(value);
+        matcher.region(offset, value.length());
+        if (!matcher.find()) {
+            int length = current.length();
+            current.append(value, offset, value.length());
+            result.add(current.toString());
+            current.setLength(length);
+            return;
+        }
+        int length = current.length();
+        current.append(value, offset, matcher.start()).append(matcher.group(1));
+        int numberEnd = current.length();
+        for (String alias : productUnitAliases(matcher.group(2))) {
+            if (result.size() >= MAX_PRODUCT_UNIT_VARIANTS) break;
+            current.setLength(numberEnd);
+            current.append(alias);
+            appendProductUnitVariants(value, matcher.end(), current, result);
+        }
+        current.setLength(length);
+    }
+
+    private static List<String> productUnitAliases(String unit) {
+        String normalized = unit.toLowerCase(Locale.ROOT);
+        if ("升".equals(unit) || "l".equals(normalized)) return Arrays.asList("升", "L");
+        if ("毫升".equals(unit) || "ml".equals(normalized)) return Arrays.asList("毫升", "mL");
+        if ("千克".equals(unit) || "公斤".equals(unit) || "kg".equals(normalized))
+            return Arrays.asList("千克", "公斤", "kg");
+        if ("克".equals(unit) || "g".equals(normalized)) return Arrays.asList("克", "g");
+        if ("摄氏度".equals(unit) || "度".equals(unit) || "℃".equals(unit) || "°c".equals(normalized))
+            return Arrays.asList("摄氏度", "度", "℃", "°C");
+        return Collections.singletonList(unit);
+    }
+
+    private static void addViscosityVariants(Set<String> result, String keyword) {
+        java.util.regex.Matcher viscosity = java.util.regex.Pattern.compile("^(.*?)(0|5|10|15|20)[W\\-]?(20|30|40|50|60)(.*)$", java.util.regex.Pattern.CASE_INSENSITIVE).matcher(keyword);
         if (viscosity.matches()) {
             String prefix = viscosity.group(1), low = viscosity.group(2), high = viscosity.group(3), suffix = viscosity.group(4);
             result.add(prefix + low + "W-" + high + suffix);
@@ -181,7 +318,6 @@ public class AssistantSemanticKnowledge {
             result.add(prefix + low + "-" + high + suffix);
             result.add(prefix + low + high + suffix);
         }
-        return new ArrayList<>(result);
     }
 
     public static String normalize(String raw) {

@@ -1,16 +1,23 @@
 package cn.iocoder.yudao.module.erp.dal.mysql.sale;
 
+import cn.hutool.core.collection.CollUtil;
+
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.mybatis.core.mapper.BaseMapperX;
 import cn.iocoder.yudao.framework.mybatis.core.query.LambdaQueryWrapperX;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.quote.ErpSaleQuoteItemPageReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleQuoteItemDO;
+import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.core.toolkit.support.SFunction;
 import org.apache.ibatis.annotations.Mapper;
 
 import java.util.Collection;
+import java.util.Collections;
+import java.math.BigDecimal;
 import java.util.List;
+import java.util.Objects;
+import java.util.stream.Collectors;
 
 /**
  * ERP 报价订单项 Mapper
@@ -19,7 +26,12 @@ import java.util.List;
 public interface ErpSaleQuoteItemMapper extends BaseMapperX<ErpSaleQuoteItemDO> {
 
     default List<ErpSaleQuoteItemDO> selectListByQuoteId(Long quoteId) {
-        return selectList(ErpSaleQuoteItemDO::getQuoteId, quoteId);
+        return selectList(buildSortedQuery(quoteId, null, null, null));
+    }
+
+    default List<ErpSaleQuoteItemDO> selectListByQuoteId(Long quoteId, String orderField,
+                                                         String orderDirection) {
+        return selectList(buildSortedQuery(quoteId, null, orderField, orderDirection));
     }
 
     default List<ErpSaleQuoteItemDO> selectListByQuoteIdForUpdate(Long quoteId) {
@@ -28,20 +40,65 @@ public interface ErpSaleQuoteItemMapper extends BaseMapperX<ErpSaleQuoteItemDO> 
     }
 
     default PageResult<ErpSaleQuoteItemDO> selectPageByQuoteId(ErpSaleQuoteItemPageReqVO reqVO) {
-        LambdaQueryWrapperX<ErpSaleQuoteItemDO> query = new LambdaQueryWrapperX<ErpSaleQuoteItemDO>()
-                .eq(ErpSaleQuoteItemDO::getQuoteId, reqVO.getQuoteId());
-        SFunction<ErpSaleQuoteItemDO, ?> orderColumn = getOrderColumn(reqVO.getOrderField());
-        if (orderColumn == null) {
-            query.orderByAsc(ErpSaleQuoteItemDO::getId);
-        } else if ("desc".equalsIgnoreCase(reqVO.getOrderDirection())) {
-            query.orderByDesc(orderColumn);
-        } else {
-            query.orderByAsc(orderColumn);
-        }
-        if (orderColumn != null && !"id".equals(reqVO.getOrderField().trim())) {
-            query.orderByAsc(ErpSaleQuoteItemDO::getId);
-        }
-        return selectPage(reqVO, query);
+        return selectPage(reqVO, buildSortedQuery(reqVO.getQuoteId(), reqVO.getExcludedItemIds(),
+                reqVO.getOrderField(), reqVO.getOrderDirection()));
+    }
+
+    static QueryWrapper<ErpSaleQuoteItemDO> buildSortedQuery(Long quoteId, Collection<Long> excludedItemIds,
+                                                              String orderField, String orderDirection) {
+        QueryWrapper<ErpSaleQuoteItemDO> query = new QueryWrapper<ErpSaleQuoteItemDO>()
+                .eq("quote_id", quoteId)
+                .notIn(CollUtil.isNotEmpty(excludedItemIds), "id", excludedItemIds);
+        return ErpSaleItemSortUtils.applyOrder(query, "erp_sale_quote_items", orderField, orderDirection,
+                getOrderSpec(orderField));
+    }
+
+    static boolean isSupportedOrderField(String orderField) {
+        return getOrderSpec(orderField) != null;
+    }
+
+    static ErpSaleItemSortUtils.OrderSpec getOrderSpec(String orderField) {
+        if (orderField == null) return null;
+        String item = "erp_sale_quote_items";
+        return switch (orderField.trim()) {
+            case "id" -> new ErpSaleItemSortUtils.OrderSpec(item + ".id", false);
+            case "productId", "productName" -> new ErpSaleItemSortUtils.OrderSpec(
+                    ErpSaleItemSortUtils.productField(item, "name"), true);
+            case "productCode" -> new ErpSaleItemSortUtils.OrderSpec(
+                    ErpSaleItemSortUtils.productField(item, "code"), true);
+            case "productBarCode" -> new ErpSaleItemSortUtils.OrderSpec(
+                    ErpSaleItemSortUtils.productField(item, "bar_code"), true);
+            case "productUnitName" -> new ErpSaleItemSortUtils.OrderSpec(
+                    ErpSaleItemSortUtils.productUnitName(item), true);
+            case "warehouseId" -> new ErpSaleItemSortUtils.OrderSpec(
+                    ErpSaleItemSortUtils.warehouseName(item, "warehouse_id"), true);
+            case "deptId" -> new ErpSaleItemSortUtils.OrderSpec(
+                    ErpSaleItemSortUtils.deptName(item, "dept_id"), true);
+            case "stockCount" -> new ErpSaleItemSortUtils.OrderSpec(ErpSaleItemSortUtils.stockCount(item), false);
+            case "lastSalePrice" -> new ErpSaleItemSortUtils.OrderSpec(
+                    ErpSaleItemSortUtils.lastSalePrice(item), false);
+            case "pieceCount" -> new ErpSaleItemSortUtils.OrderSpec(
+                    ErpSaleItemSortUtils.pieceCount(item, "count"), false);
+            case "giftFlag" -> new ErpSaleItemSortUtils.OrderSpec(item + ".gift_flag", false);
+            case "batchNo" -> new ErpSaleItemSortUtils.OrderSpec(item + ".batch_no", true);
+            case "count" -> new ErpSaleItemSortUtils.OrderSpec(item + ".count", false);
+            case "convertedCount" -> new ErpSaleItemSortUtils.OrderSpec(item + ".converted_count", false);
+            case "productPrice", "salePrice" -> new ErpSaleItemSortUtils.OrderSpec(
+                    item + ".product_price", false);
+            case "totalPrice" -> new ErpSaleItemSortUtils.OrderSpec(item + ".total_price", false);
+            case "taxPercent" -> new ErpSaleItemSortUtils.OrderSpec(item + ".tax_percent", false);
+            case "taxPrice" -> new ErpSaleItemSortUtils.OrderSpec(item + ".tax_price", false);
+            case "vehicleModel" -> new ErpSaleItemSortUtils.OrderSpec(item + ".vehicle_model", true);
+            case "standard" -> new ErpSaleItemSortUtils.OrderSpec(item + ".standard", true);
+            case "weight" -> new ErpSaleItemSortUtils.OrderSpec(item + ".weight", false);
+            case "packageQty" -> new ErpSaleItemSortUtils.OrderSpec(item + ".package_qty", false);
+            case "warehousePosition" -> new ErpSaleItemSortUtils.OrderSpec(item + ".warehouse_position", true);
+            case "drawingNo" -> new ErpSaleItemSortUtils.OrderSpec(item + ".drawing_no", true);
+            case "brand" -> new ErpSaleItemSortUtils.OrderSpec(item + ".brand", true);
+            case "originPlace" -> new ErpSaleItemSortUtils.OrderSpec(item + ".origin_place", true);
+            case "remark" -> new ErpSaleItemSortUtils.OrderSpec(item + ".remark", true);
+            default -> null;
+        };
     }
 
     default List<ErpSaleQuoteItemDO> selectListByQuoteIds(Collection<Long> quoteIds) {
@@ -126,6 +183,19 @@ public interface ErpSaleQuoteItemMapper extends BaseMapperX<ErpSaleQuoteItemDO> 
             wrapper.set(ErpSaleQuoteItemDO::getBatchNo, null);
         }
         return update(null, wrapper);
+    }
+
+    default int updateStockCountAtOrderIfNull(Long id, BigDecimal stockCount) {
+        return update(null, new LambdaUpdateWrapper<ErpSaleQuoteItemDO>()
+                .eq(ErpSaleQuoteItemDO::getId, id)
+                .isNull(ErpSaleQuoteItemDO::getStockCountAtOrder)
+                .set(ErpSaleQuoteItemDO::getStockCountAtOrder, stockCount));
+    }
+
+    default int clearStockCountAtOrder(Long id) {
+        return update(null, new LambdaUpdateWrapper<ErpSaleQuoteItemDO>()
+                .eq(ErpSaleQuoteItemDO::getId, id)
+                .set(ErpSaleQuoteItemDO::getStockCountAtOrder, null));
     }
 
 }

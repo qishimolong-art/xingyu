@@ -85,7 +85,10 @@ public class ErpFinanceReceiptRespVO {
     @Schema(description = "备注", example = "你猜")
     private String remark;
 
-    @Schema(description = "关联凭证号", example = "记-202607-000001")
+    @Schema(description = "凭证号（客户付款编号）", example = "PAY202610150001")
+    private String paymentVoucherNo;
+
+    @Schema(description = "关联会计凭证号", example = "记-202607-000001")
     private String voucherNo;
 
     @Schema(description = "创建人", example = "芋道")

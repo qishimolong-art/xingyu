@@ -13,6 +13,7 @@ import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.quote.ErpSaleQuoteIt
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.quote.ErpSaleQuoteItemPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.quote.ErpSaleQuoteOrderImportExcelVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.quote.ErpSaleQuotePageReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.quote.ErpSaleQuoteSummaryRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.quote.ErpSaleQuoteSaveReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleQuoteDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleQuoteItemDO;
@@ -53,7 +54,12 @@ public interface ErpSaleQuoteService {
 
     PageResult<ErpSaleQuoteDO> getSaleQuotePage(ErpSaleQuotePageReqVO pageReqVO);
 
+    ErpSaleQuoteSummaryRespVO getSaleQuoteSummary(ErpSaleQuotePageReqVO pageReqVO);
+
     List<ErpSaleQuoteItemDO> getSaleQuoteItemListByQuoteId(Long quoteId);
+
+    List<ErpSaleQuoteItemDO> getSaleQuoteItemListByQuoteId(Long quoteId, String orderField,
+                                                            String orderDirection);
 
     PageResult<ErpSaleQuoteItemDO> getSaleQuoteItemPage(ErpSaleQuoteItemPageReqVO pageReqVO);
 

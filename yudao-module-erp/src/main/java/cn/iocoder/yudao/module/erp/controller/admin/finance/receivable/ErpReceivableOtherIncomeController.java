@@ -212,6 +212,19 @@ public class ErpReceivableOtherIncomeController {
     @PreAuthorize("@ss.hasPermission('erp:receivable-other-income:query')")
     public CommonResult<PageResult<ErpReceivableOtherIncomeRespVO.Item>> itemPage(
             @Valid ErpReceivableOtherIncomeItemPageReqVO pageReqVO) {
+        return buildItemPage(pageReqVO);
+    }
+
+    @PostMapping("/item-page")
+    @Operation(summary = "获取其他收入编辑态明细分页")
+    @PreAuthorize("@ss.hasPermission('erp:receivable-other-income:update')")
+    public CommonResult<PageResult<ErpReceivableOtherIncomeRespVO.Item>> itemPageForEdit(
+            @Valid @RequestBody ErpReceivableOtherIncomeItemPageReqVO pageReqVO) {
+        return buildItemPage(pageReqVO);
+    }
+
+    private CommonResult<PageResult<ErpReceivableOtherIncomeRespVO.Item>> buildItemPage(
+            ErpReceivableOtherIncomeItemPageReqVO pageReqVO) {
         PageResult<ErpReceivableOtherIncomeItemDO> pageResult = otherIncomeService.getOtherIncomeItemPage(pageReqVO);
         PageResult<ErpReceivableOtherIncomeRespVO.Item> result = BeanUtils.toBean(pageResult,
                 ErpReceivableOtherIncomeRespVO.Item.class);
@@ -228,6 +241,17 @@ public class ErpReceivableOtherIncomeController {
     public CommonResult<PageResult<ErpReceivableOtherIncomeRespVO>> page(@Valid ErpReceivableOtherIncomePageReqVO pageReqVO) {
         PageResult<ErpReceivableOtherIncomeDO> pageResult = otherIncomeService.getOtherIncomePage(pageReqVO);
         return success(buildPageResult(pageResult, !Boolean.FALSE.equals(pageReqVO.getIncludeItems())));
+    }
+
+    @GetMapping("/summary")
+    @Operation(summary = "获取其他收入查询汇总")
+    @PreAuthorize("@ss.hasPermission('erp:receivable-other-income:query')")
+    public CommonResult<cn.iocoder.yudao.module.erp.controller.admin.finance.vo.ErpFinanceQuerySummaryRespVO>
+            summary(@Valid ErpReceivableOtherIncomePageReqVO pageReqVO) {
+        cn.iocoder.yudao.module.erp.controller.admin.finance.vo.ErpFinanceQuerySummaryRespVO summary =
+                otherIncomeService.getOtherIncomeSummary(pageReqVO);
+        fieldPermissionMasker.maskForm(FIELD_PERMISSION_MODULE, summary);
+        return success(summary);
     }
 
     @GetMapping("/dept-simple-list")

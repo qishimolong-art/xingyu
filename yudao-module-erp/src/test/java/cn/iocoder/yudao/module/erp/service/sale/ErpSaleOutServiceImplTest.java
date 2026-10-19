@@ -52,6 +52,7 @@ import org.springframework.test.util.ReflectionTestUtils;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.Arrays;
+import java.util.Base64;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
@@ -469,8 +470,7 @@ public class ErpSaleOutServiceImplTest extends BaseMockitoUnitTest {
     public void testUploadSaleOutExpressFile_uploadsAndOnlyUpdatesExpressField() {
         ErpSaleOutDO saleOut = new ErpSaleOutDO().setId(10L).setNo("XSCK001");
         when(saleOutMapper.selectById(eq(10L))).thenReturn(saleOut);
-        byte[] content = new byte[]{
-                (byte) 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00};
+        byte[] content = validPngContent();
         when(fileApi.createFile(any(byte[].class), eq("express.png"),
                 eq("erp/sale-out/express/10"), eq("image/png")))
                 .thenReturn("https://example.com/express.png");
@@ -487,6 +487,38 @@ public class ErpSaleOutServiceImplTest extends BaseMockitoUnitTest {
                         && updateObj.getStatus() == null
                         && updateObj.getCustomerId() == null
                         && updateObj.getTotalPrice() == null));
+    }
+
+    @Test
+    public void testUploadSaleOutExpressFile_recognizesPngWhenMultipartFileNameHasNoExtension() {
+        ErpSaleOutDO saleOut = new ErpSaleOutDO().setId(10L).setNo("XSCK001");
+        when(saleOutMapper.selectById(eq(10L))).thenReturn(saleOut);
+        byte[] content = validPngContent();
+        when(fileApi.createFile(any(byte[].class), eq("blob.png"),
+                eq("erp/sale-out/express/10"), eq("image/png")))
+                .thenReturn("https://example.com/blob.png");
+
+        String result = saleOutService.uploadSaleOutExpressFile(10L, content, "blob");
+
+        assertEquals("https://example.com/blob.png", result);
+        verify(fileApi).createFile(argThat(bytes -> Arrays.equals(content, bytes)), eq("blob.png"),
+                eq("erp/sale-out/express/10"), eq("image/png"));
+    }
+
+    @Test
+    public void testUploadSaleOutExpressFile_normalizesExtensionToDetectedImageType() {
+        ErpSaleOutDO saleOut = new ErpSaleOutDO().setId(10L).setNo("XSCK001");
+        when(saleOutMapper.selectById(eq(10L))).thenReturn(saleOut);
+        byte[] content = new byte[]{(byte) 0xFF, (byte) 0xD8, (byte) 0xFF, 0x00};
+        when(fileApi.createFile(any(byte[].class), eq("express.jpg"),
+                eq("erp/sale-out/express/10"), eq("image/jpeg")))
+                .thenReturn("https://example.com/express.jpg");
+
+        String result = saleOutService.uploadSaleOutExpressFile(10L, content, "express.png");
+
+        assertEquals("https://example.com/express.jpg", result);
+        verify(fileApi).createFile(argThat(bytes -> Arrays.equals(content, bytes)), eq("express.jpg"),
+                eq("erp/sale-out/express/10"), eq("image/jpeg"));
     }
 
     @Test
@@ -710,6 +742,11 @@ public class ErpSaleOutServiceImplTest extends BaseMockitoUnitTest {
     }
 
     // ==================== 工具方法 ====================
+
+    private byte[] validPngContent() {
+        return Base64.getDecoder().decode(
+                "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=");
+    }
 
     private ErpSaleOutSaveReqVO buildBaseReq() {
         ErpSaleOutSaveReqVO reqVO = new ErpSaleOutSaveReqVO();

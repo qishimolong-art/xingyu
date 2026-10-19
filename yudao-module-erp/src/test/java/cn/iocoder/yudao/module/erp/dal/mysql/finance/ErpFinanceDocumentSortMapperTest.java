@@ -51,6 +51,17 @@ class ErpFinanceDocumentSortMapperTest {
     }
 
     @Test
+    void testMpjWrapper_candidateOrderUsesAscendingStableTieBreaker() {
+        MPJLambdaWrapperX<ErpFinanceReceiptDO> wrapper = new MPJLambdaWrapperX<>();
+        ErpFinanceSortUtils.applyWithIdAsc(wrapper, "createTime", "asc",
+                "no", "createTime");
+
+        String sql = wrapper.getSqlSegment();
+        assertTrue(sql.contains("t.create_time ASC"), sql);
+        assertTrue(sql.contains("t.id ASC"), sql);
+    }
+
+    @Test
     void testUnknownField_fallsBackWithoutLeakingInput() {
         LambdaQueryWrapperX<ErpAccountDO> wrapper = new LambdaQueryWrapperX<>();
         ErpFinanceSortUtils.apply(wrapper, "id desc; delete from erp_account", "asc", "erp_account",

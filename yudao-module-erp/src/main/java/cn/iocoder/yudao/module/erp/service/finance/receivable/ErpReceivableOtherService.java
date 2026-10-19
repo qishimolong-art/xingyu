@@ -42,4 +42,7 @@ public interface ErpReceivableOtherService {
     ErpReceivableOtherDO getReceivableOther(Long id);
 
     PageResult<ErpReceivableOtherDO> getReceivableOtherPage(ErpReceivableOtherPageReqVO pageReqVO);
+
+    cn.iocoder.yudao.module.erp.controller.admin.finance.vo.ErpFinanceQuerySummaryRespVO getReceivableOtherSummary(
+            ErpReceivableOtherPageReqVO pageReqVO);
 }

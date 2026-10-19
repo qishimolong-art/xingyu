@@ -71,4 +71,32 @@ class ErpKeywordQueryProductItemTest {
         assertTrue(values.contains("%桶%"), values.toString());
     }
 
+    @Test
+    void appendProductItemFilter_usesExistsAndKeepsAllItemConditionsInOneSubquery() {
+        MPJLambdaWrapperX<ErpStockInDO> wrapper = new MPJLambdaWrapperX<>();
+
+        ErpKeywordQuery.appendProductItemFilter(wrapper, "erp_purchase_in_items", "in_id",
+                11L, 22L, "source_in_no", "CGRK001", "ILK 7B11", true,
+                "bar_code", "vehicle_model");
+
+        String sql = wrapper.getCustomSqlSegment();
+        Collection<Object> values = wrapper.getParamNameValuePairs().values();
+        assertTrue(sql.contains("EXISTS (SELECT 1 FROM erp_purchase_in_items i"), sql);
+        assertTrue(sql.contains("i.in_id=t.id"), sql);
+        assertTrue(sql.contains("i.deleted=b'0'"), sql);
+        assertTrue(sql.contains("i.tenant_id=t.tenant_id"), sql);
+        assertTrue(sql.contains("i.product_id"), sql);
+        assertTrue(sql.contains("i.warehouse_id"), sql);
+        assertTrue(sql.contains("i.source_in_no LIKE"), sql);
+        assertTrue(sql.contains("i.bar_code LIKE"), sql);
+        assertTrue(sql.contains("u.id=i.product_unit_id"), sql);
+        assertTrue(sql.contains("u.name LIKE"), sql);
+        assertTrue(values.contains(11L), values.toString());
+        assertTrue(values.contains(22L), values.toString());
+        assertTrue(values.contains("%CGRK001%"), values.toString());
+        assertTrue(values.contains("%ILK%7B11%"), values.toString());
+        assertTrue(values.contains("%ILK%"), values.toString());
+        assertTrue(values.contains("%7B11%"), values.toString());
+    }
+
 }

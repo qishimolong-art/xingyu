@@ -5,10 +5,8 @@ import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.mybatis.core.mapper.BaseMapperX;
 import cn.iocoder.yudao.framework.mybatis.core.query.MPJLambdaWrapperX;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.out.ErpSaleOutPageReqVO;
-import cn.iocoder.yudao.module.erp.dal.dataobject.product.ErpProductDO;
-import cn.iocoder.yudao.module.erp.dal.dataobject.product.ErpProductUnitDO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.out.ErpSaleOutSummaryRespVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleOutDO;
-import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleOutItemDO;
 import cn.iocoder.yudao.module.erp.dal.mysql.common.ErpKeywordQuery;
 import cn.iocoder.yudao.module.erp.dal.mysql.finance.ErpFinanceReceiptItemMapper;
 import cn.iocoder.yudao.module.erp.enums.ErpAuditStatus;
@@ -18,7 +16,6 @@ import com.baomidou.mybatisplus.core.toolkit.support.SFunction;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Update;
-import org.springframework.util.StringUtils;
 
 import java.util.Collection;
 import java.util.Collections;
@@ -63,6 +60,25 @@ public interface ErpSaleOutMapper extends BaseMapperX<ErpSaleOutDO> {
             + "ELSE COALESCE(t.total_price, 0) - COALESCE(t.fee_amount, t.other_price, t.extra_fee, t.freight, 0) END)";
 
     default PageResult<ErpSaleOutDO> selectPage(ErpSaleOutPageReqVO reqVO) {
+        MPJLambdaWrapperX<ErpSaleOutDO> query = buildQuery(reqVO);
+        orderByIfPresent(query, reqVO);
+        return selectJoinPage(reqVO, ErpSaleOutDO.class, query);
+    }
+
+    default ErpSaleOutSummaryRespVO selectSummary(ErpSaleOutPageReqVO reqVO) {
+        MPJLambdaWrapperX<ErpSaleOutDO> query = buildQuery(reqVO)
+                .selectAs("COALESCE(SUM(t.total_count), 0)", ErpSaleOutSummaryRespVO::getTotalCount)
+                .selectAs("COALESCE(SUM(t.total_product_price), 0)", ErpSaleOutSummaryRespVO::getTotalProductPrice)
+                .selectAs("COALESCE(SUM(COALESCE(t.reduction_amount, t.discount_price, 0)), 0)",
+                        ErpSaleOutSummaryRespVO::getReductionAmount)
+                .selectAs("COALESCE(SUM(COALESCE(t.after_reduction_amount, t.total_price, 0)), 0)",
+                        ErpSaleOutSummaryRespVO::getAfterReductionAmount)
+                .selectAs("COALESCE(SUM(t.bill_amount), 0)", ErpSaleOutSummaryRespVO::getBillAmount)
+                .selectAs("COALESCE(SUM(t.freight), 0)", ErpSaleOutSummaryRespVO::getFreight);
+        return selectJoinOne(ErpSaleOutSummaryRespVO.class, query);
+    }
+
+    static MPJLambdaWrapperX<ErpSaleOutDO> buildQuery(ErpSaleOutPageReqVO reqVO) {
         MPJLambdaWrapperX<ErpSaleOutDO> query = new MPJLambdaWrapperX<ErpSaleOutDO>()
                 .likeIfPresent(ErpSaleOutDO::getNo, reqVO.getNo())
                 .eqIfPresent(ErpSaleOutDO::getCustomerId, reqVO.getCustomerId())
@@ -91,17 +107,9 @@ public interface ErpSaleOutMapper extends BaseMapperX<ErpSaleOutDO> {
             query.eq(ErpSaleOutDO::getStatus, ErpAuditStatus.APPROVE.getStatus())
                     .apply(EFFECTIVE_RECEIPT_PRICE_EXPRESSION + " < " + ORIGINAL_SETTLEMENT_TOTAL_EXPRESSION);
         }
-        if (reqVO.getWarehouseId() != null || reqVO.getProductId() != null
-                || StringUtils.hasText(reqVO.getProductKeyword())) {
-            query.leftJoin(ErpSaleOutItemDO.class, ErpSaleOutItemDO::getOutId, ErpSaleOutDO::getId)
-                    .leftJoin(ErpProductDO.class, ErpProductDO::getId, ErpSaleOutItemDO::getProductId)
-                    .leftJoin(ErpProductUnitDO.class, ErpProductUnitDO::getId, ErpSaleOutItemDO::getProductUnitId)
-                    .eq(reqVO.getWarehouseId() != null, ErpSaleOutItemDO::getWarehouseId, reqVO.getWarehouseId())
-                    .eq(reqVO.getProductId() != null, ErpSaleOutItemDO::getProductId, reqVO.getProductId())
-                    .and(StringUtils.hasText(reqVO.getProductKeyword()),
-                            w -> ErpKeywordQuery.appendProductKeyword(w, reqVO.getProductKeyword()))
-                    .groupBy(ErpSaleOutDO::getId); // 避免 1 对多查询，产生相同的 1
-        }
+        ErpKeywordQuery.appendProductItemFilter(query, "erp_sale_out_items", "out_id",
+                reqVO.getProductId(), reqVO.getWarehouseId(), null, null,
+                reqVO.getProductKeyword(), true);
         ErpKeywordQuery.appendWithDeptNameAndSaleCustomerAndProductItemTokens(query, reqVO.getKeyword(),
                 "erp_sale_out_items", "out_id",
                 ErpSaleOutDO::getNo, ErpSaleOutDO::getOrderNo,
@@ -115,8 +123,7 @@ public interface ErpSaleOutMapper extends BaseMapperX<ErpSaleOutDO> {
                 ErpSaleOutDO::getThirdPartyUpstreamNo, ErpSaleOutDO::getSettleMethod,
                 ErpSaleOutDO::getBillType, ErpSaleOutDO::getBillNo,
                 ErpSaleOutDO::getInternalNote, ErpSaleOutDO::getVin);
-        orderByIfPresent(query, reqVO);
-        return selectJoinPage(reqVO, ErpSaleOutDO.class, query);
+        return query;
     }
 
     static void orderByIfPresent(MPJLambdaWrapperX<ErpSaleOutDO> wrapper, ErpSaleOutPageReqVO reqVO) {
@@ -126,11 +133,11 @@ public interface ErpSaleOutMapper extends BaseMapperX<ErpSaleOutDO> {
             return;
         }
         if ("asc".equalsIgnoreCase(reqVO.getOrderDirection())) {
-            wrapper.orderByAsc(orderColumn);
+            wrapper.orderByAsc(orderColumn).orderByAsc(ErpSaleOutDO::getId);
             return;
         }
         if ("desc".equalsIgnoreCase(reqVO.getOrderDirection())) {
-            wrapper.orderByDesc(orderColumn);
+            wrapper.orderByDesc(orderColumn).orderByAsc(ErpSaleOutDO::getId);
             return;
         }
         wrapper.orderByDesc(ErpSaleOutDO::getId);
@@ -149,6 +156,8 @@ public interface ErpSaleOutMapper extends BaseMapperX<ErpSaleOutDO> {
                 return ErpSaleOutDO::getSettleStatus;
             case "outTime":
                 return ErpSaleOutDO::getOutTime;
+            case "createTime":
+                return ErpSaleOutDO::getCreateTime;
             case "status":
                 return ErpSaleOutDO::getStatus;
             case "customerId":

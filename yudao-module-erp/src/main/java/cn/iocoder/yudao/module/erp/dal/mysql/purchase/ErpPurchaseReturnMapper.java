@@ -4,6 +4,7 @@ import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.mybatis.core.mapper.BaseMapperX;
 import cn.iocoder.yudao.framework.mybatis.core.query.MPJLambdaWrapperX;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.returns.ErpPurchaseReturnPageReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.returns.ErpPurchaseReturnSummaryRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.invoice.ErpPurchaseInvoiceSourceDocumentPageReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.product.ErpProductDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.product.ErpProductUnitDO;
@@ -58,6 +59,23 @@ public interface ErpPurchaseReturnMapper extends BaseMapperX<ErpPurchaseReturnDO
             + ErpFinancePaymentItemMapper.effectivePaymentPriceSql(ErpBizTypeEnum.PURCHASE_RETURN.getType()) + ")";
 
     default PageResult<ErpPurchaseReturnDO> selectPage(ErpPurchaseReturnPageReqVO reqVO) {
+        MPJLambdaWrapperX<ErpPurchaseReturnDO> query = buildQuery(reqVO);
+        orderByIfPresent(query, reqVO);
+        return selectJoinPage(reqVO, ErpPurchaseReturnDO.class, query);
+    }
+
+    default ErpPurchaseReturnSummaryRespVO selectSummary(ErpPurchaseReturnPageReqVO reqVO) {
+        MPJLambdaWrapperX<ErpPurchaseReturnDO> query = buildQuery(reqVO)
+                .selectAs("COUNT(t.id)", ErpPurchaseReturnSummaryRespVO::getDocumentCount)
+                .selectAs("COALESCE(SUM((SELECT COUNT(1) FROM erp_purchase_return_items ri "
+                                + "WHERE ri.deleted=b'0' AND ri.tenant_id=t.tenant_id AND ri.return_id=t.id)), 0)",
+                        ErpPurchaseReturnSummaryRespVO::getItemCount)
+                .selectAs("COALESCE(SUM(t.total_count), 0)", ErpPurchaseReturnSummaryRespVO::getTotalCount)
+                .selectAs("COALESCE(SUM(t.total_price), 0)", ErpPurchaseReturnSummaryRespVO::getTotalPrice);
+        return selectJoinOne(ErpPurchaseReturnSummaryRespVO.class, query);
+    }
+
+    static MPJLambdaWrapperX<ErpPurchaseReturnDO> buildQuery(ErpPurchaseReturnPageReqVO reqVO) {
         MPJLambdaWrapperX<ErpPurchaseReturnDO> query = new MPJLambdaWrapperX<ErpPurchaseReturnDO>()
                 .likeIfPresent(ErpPurchaseReturnDO::getNo, reqVO.getNo())
                 .eqIfPresent(ErpPurchaseReturnDO::getSupplierId, reqVO.getSupplierId())
@@ -83,25 +101,10 @@ public interface ErpPurchaseReturnMapper extends BaseMapperX<ErpPurchaseReturnDO
             query.eq(ErpPurchaseReturnDO::getStatus, ErpAuditStatus.APPROVE.getStatus())
                     .apply(EFFECTIVE_REFUND_PRICE_EXPRESSION + " < t.total_price");
         }
-        boolean hasSourceInNo = reqVO.getSourceInNo() != null && !reqVO.getSourceInNo().trim().isEmpty();
-        if (reqVO.getWarehouseId() != null || reqVO.getProductId() != null || hasSourceInNo
-                || StringUtils.hasText(reqVO.getProductKeyword())) {
-            query.leftJoin(ErpPurchaseReturnItemDO.class, ErpPurchaseReturnItemDO::getReturnId, ErpPurchaseReturnDO::getId)
-                    .leftJoin(ErpProductDO.class, ErpProductDO::getId, ErpPurchaseReturnItemDO::getProductId)
-                    .leftJoin(ErpProductUnitDO.class, ErpProductUnitDO::getId, ErpProductDO::getUnitId)
-                    .eq(reqVO.getWarehouseId() != null, ErpPurchaseReturnItemDO::getWarehouseId, reqVO.getWarehouseId())
-                    .eq(reqVO.getProductId() != null, ErpPurchaseReturnItemDO::getProductId, reqVO.getProductId())
-                    .likeIfPresent(ErpPurchaseReturnItemDO::getSourceInNo, reqVO.getSourceInNo())
-                    .and(StringUtils.hasText(reqVO.getProductKeyword()),
-                            w -> ErpKeywordQuery.appendProductKeyword(w, reqVO.getProductKeyword(),
-                                    ErpKeywordQuery.productKeywordColumn(ErpPurchaseReturnItemDO::getPartCode),
-                                    ErpKeywordQuery.productKeywordColumn(ErpPurchaseReturnItemDO::getPartName),
-                                    ErpKeywordQuery.productKeywordColumn(ErpPurchaseReturnItemDO::getBarCode),
-                                    ErpKeywordQuery.productKeywordColumn(ErpPurchaseReturnItemDO::getVehicleModel),
-                                    ErpKeywordQuery.productKeywordColumn(ErpPurchaseReturnItemDO::getDrawingNo),
-                                    ErpKeywordQuery.productKeywordColumn(ErpPurchaseReturnItemDO::getBrand)))
-                    .groupBy(ErpPurchaseReturnDO::getId); // 避免 1 对多查询，产生相同的 1
-        }
+        ErpKeywordQuery.appendProductItemFilter(query, "erp_purchase_return_items", "return_id",
+                reqVO.getProductId(), reqVO.getWarehouseId(), "source_in_no", reqVO.getSourceInNo(),
+                reqVO.getProductKeyword(), true, "part_code", "part_name", "bar_code", "vehicle_model",
+                "drawing_no", "brand");
         ErpKeywordQuery.appendWithDeptNameAndPurchaseSupplierAndProductItemTokens(query, reqVO.getKeyword(),
                 "erp_purchase_return_items", "return_id",
                 ErpPurchaseReturnDO::getNo, ErpPurchaseReturnDO::getOrderNo,
@@ -114,8 +117,7 @@ public interface ErpPurchaseReturnMapper extends BaseMapperX<ErpPurchaseReturnDO
                 ErpPurchaseReturnDO::getWarehouseType, ErpPurchaseReturnDO::getFreightType,
                 ErpPurchaseReturnDO::getLogisticsNo, ErpPurchaseReturnDO::getPriority,
                 ErpPurchaseReturnDO::getOrderMethod);
-        orderByIfPresent(query, reqVO);
-        return selectJoinPage(reqVO, ErpPurchaseReturnDO.class, query);
+        return query;
     }
 
     static void orderByIfPresent(MPJLambdaWrapperX<ErpPurchaseReturnDO> wrapper, ErpPurchaseReturnPageReqVO reqVO) {
@@ -126,7 +128,7 @@ public interface ErpPurchaseReturnMapper extends BaseMapperX<ErpPurchaseReturnDO
         }
         String expression = getOrderExpression(reqVO.getOrderField());
         if (expression != null) {
-            wrapper.last("ORDER BY " + expression + " " + direction + ", t.id DESC");
+            wrapper.last("ORDER BY " + expression + " " + direction + ", t.id ASC");
             return;
         }
         SFunction<ErpPurchaseReturnDO, ?> orderColumn = getOrderColumn(reqVO.getOrderField());
@@ -135,9 +137,9 @@ public interface ErpPurchaseReturnMapper extends BaseMapperX<ErpPurchaseReturnDO
             return;
         }
         if ("ASC".equals(direction)) {
-            wrapper.orderByAsc(orderColumn);
+            wrapper.orderByAsc(orderColumn).orderByAsc(ErpPurchaseReturnDO::getId);
         } else {
-            wrapper.orderByDesc(orderColumn);
+            wrapper.orderByDesc(orderColumn).orderByAsc(ErpPurchaseReturnDO::getId);
         }
     }
 
@@ -181,6 +183,8 @@ public interface ErpPurchaseReturnMapper extends BaseMapperX<ErpPurchaseReturnDO
                 return ErpPurchaseReturnDO::getNo;
             case "returnTime":
                 return ErpPurchaseReturnDO::getReturnTime;
+            case "createTime":
+                return ErpPurchaseReturnDO::getCreateTime;
             case "supplierId":
             case "supplierName":
                 return ErpPurchaseReturnDO::getSupplierId;

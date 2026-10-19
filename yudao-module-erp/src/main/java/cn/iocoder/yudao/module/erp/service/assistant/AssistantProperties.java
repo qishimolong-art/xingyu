@@ -27,6 +27,7 @@ public class AssistantProperties {
     private EntitySearch entitySearch = new EntitySearch();
     private Phonetic phonetic = new Phonetic();
     private ReadOnly readOnly = new ReadOnly();
+    private CustomerApp customerApp = new CustomerApp();
     @Data public static class Orchestration {
         /** LEGACY, GRAY or NEW. Production keeps LEGACY until acceptance is complete. */
         private String mode = "LEGACY";
@@ -76,5 +77,13 @@ public class AssistantProperties {
         private boolean nearSoundEnabled = true;
         private int maxCorrections = 4;
         private int maxInitialVariants = 8;
+    }
+    @Data public static class CustomerApp {
+        /** Production remains disabled until customer-account acceptance is complete. */
+        private boolean enabled = false;
+        private int maxRows = 20;
+        private int orderDefaultDays = 90;
+        private List<String> allowedCapabilities = new ArrayList<>(java.util.Arrays.asList(
+                "CUSTOMER_PRICE", "MALL_STOCK", "CUSTOMER_ORDER", "CLARIFICATION"));
     }
 }

@@ -21,13 +21,18 @@ public class AssistantModelClient {
     public int takeTokens() { int value=tokens.get(); tokens.remove(); return value; }
 
     public AssistantToolCall chooseTool(String question,Map<String,Object> context,List<Map<String,Object>> tools) {
+        return chooseTool(question,context,tools,null);
+    }
+
+    public AssistantToolCall chooseTool(String question,Map<String,Object> context,List<Map<String,Object>> tools,
+                                        String systemInstruction) {
         tokens.set(0);
         Map<String,Object> input=new LinkedHashMap<>();input.put("question",redact(question));input.put("context",context==null?Collections.emptyMap():context);
         Map<String,Object> body=new LinkedHashMap<>();body.put("model",properties.getModel());body.put("thinking",Collections.singletonMap("type","disabled"));
         body.put("max_tokens",1200);body.put("tool_choice","required");body.put("tools",tools);
         List<Map<String,String>> messages=new ArrayList<>();
         Map<String,String> system=new LinkedHashMap<>();system.put("role","system");
-        system.put("content","你是兴宇ERP问数与公司知识工具路由器。先理解领域、操作和对象类别，不依赖固定语序。"
+        system.put("content",systemInstruction!=null?systemInstruction:"你是兴宇ERP问数与公司知识工具路由器。先理解领域、操作和对象类别，不依赖固定语序。"
                 +"有库存的产品或配件有多少种、多少个SKU等类别级去重计数选择query_verified_metric；哪些产品有库存、库存清单或明细选择query_inventory_details；"
                 +"query_product_stock只用于问题中明确出现具体产品名称、型号或编码的价格与库存查询，产品、配件、商品、SKU等类别词不是具体产品，禁止把整句问题作为product参数。"
                 +"实时数量、金额、价格、库存、单据问题优先选择query_verified_metric或专用业务工具；公司介绍、成立发展、核心优势、合作关系、组织人员、渠道模式、区域布局、品牌产品、客户类型、经营方法、规格标准、选型、销售话术和培训问题选择answer_company_knowledge。"

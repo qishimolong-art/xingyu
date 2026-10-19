@@ -38,6 +38,12 @@ public class ErpFinancePaymentExportRespVO {
     @ExcelProperty("实际付款金额")
     private BigDecimal paymentPrice;
 
+    @ExcelProperty("凭证号")
+    private String paymentVoucherNo;
+
+    @ExcelProperty("会计凭证号")
+    private String voucherNo;
+
     @ExcelProperty("备注")
     private String remark;
 

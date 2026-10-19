@@ -8,6 +8,7 @@ import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartItem
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartItemMatchReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.stock.ErpStockOccupiedDetailRespVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpSaleCartItemDO;
+import cn.iocoder.yudao.module.erp.enums.ErpAuditStatus;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.toolkit.support.SFunction;
 import org.apache.ibatis.annotations.Mapper;
@@ -28,7 +29,12 @@ import java.util.Map;
 public interface ErpSaleCartItemMapper extends BaseMapperX<ErpSaleCartItemDO> {
 
     default List<ErpSaleCartItemDO> selectListByCartId(Long cartId) {
-        return selectList(ErpSaleCartItemDO::getCartId, cartId);
+        return selectList(buildSortedQuery(cartId, null, null, null));
+    }
+
+    default List<ErpSaleCartItemDO> selectListByCartId(Long cartId, String orderField,
+                                                       String orderDirection) {
+        return selectList(buildSortedQuery(cartId, null, orderField, orderDirection));
     }
 
     /** 写入流程在父行锁后读取完整源行，不使用已有 RR 快照；排序由服务执行。 */
@@ -38,20 +44,94 @@ public interface ErpSaleCartItemMapper extends BaseMapperX<ErpSaleCartItemDO> {
     }
 
     default PageResult<ErpSaleCartItemDO> selectPageByCartId(ErpSaleCartItemPageReqVO reqVO) {
-        LambdaQueryWrapperX<ErpSaleCartItemDO> query = new LambdaQueryWrapperX<ErpSaleCartItemDO>()
-                .eq(ErpSaleCartItemDO::getCartId, reqVO.getCartId());
-        SFunction<ErpSaleCartItemDO, ?> orderColumn = getOrderColumn(reqVO.getOrderField());
-        if (orderColumn == null) {
-            query.orderByAsc(ErpSaleCartItemDO::getId);
-        } else if ("desc".equalsIgnoreCase(reqVO.getOrderDirection())) {
-            query.orderByDesc(orderColumn);
-        } else {
-            query.orderByAsc(orderColumn);
-        }
-        if (orderColumn != null && !"id".equals(reqVO.getOrderField().trim())) {
-            query.orderByAsc(ErpSaleCartItemDO::getId);
-        }
+        QueryWrapper<ErpSaleCartItemDO> query = buildSortedQuery(reqVO.getCartId(),
+                reqVO.getExcludedItemIds(), reqVO.getOrderField(), reqVO.getOrderDirection());
         return selectPage(reqVO, query);
+    }
+
+    static QueryWrapper<ErpSaleCartItemDO> buildSortedQuery(Long cartId, Collection<Long> excludedItemIds,
+                                                             String orderField, String orderDirection) {
+        QueryWrapper<ErpSaleCartItemDO> query = new QueryWrapper<ErpSaleCartItemDO>()
+                .eq("cart_id", cartId)
+                .notIn(CollUtil.isNotEmpty(excludedItemIds), "id", excludedItemIds);
+        OrderSpec orderSpec = getOrderSpec(orderField);
+        if (orderSpec == null) {
+            return query.orderByAsc("erp_sale_cart_items.id");
+        }
+        String blankOrder = "CASE WHEN " + orderSpec.expression() + " IS NULL"
+                + (orderSpec.text() ? " OR TRIM(" + orderSpec.expression() + ") = ''" : "")
+                + " THEN 1 ELSE 0 END";
+        query.orderByAsc(blankOrder)
+                .orderBy(true, !"desc".equalsIgnoreCase(orderDirection), orderSpec.expression());
+        if (!"id".equals(orderField == null ? null : orderField.trim())) {
+            query.orderByAsc("erp_sale_cart_items.id");
+        }
+        return query;
+    }
+
+    static boolean isSupportedOrderField(String orderField) {
+        return getOrderSpec(orderField) != null;
+    }
+
+    static OrderSpec getOrderSpec(String orderField) {
+        if (orderField == null) {
+            return null;
+        }
+        String item = "erp_sale_cart_items";
+        String productName = "(SELECT p.name FROM erp_product p WHERE p.id = " + item
+                + ".product_id AND p.tenant_id = " + item + ".tenant_id AND p.deleted = 0 LIMIT 1)";
+        String productCode = "(SELECT p.code FROM erp_product p WHERE p.id = " + item
+                + ".product_id AND p.tenant_id = " + item + ".tenant_id AND p.deleted = 0 LIMIT 1)";
+        String productUnitName = "(SELECT u.name FROM erp_product p LEFT JOIN erp_product_unit u"
+                + " ON u.id = p.unit_id AND u.tenant_id = p.tenant_id AND u.deleted = 0"
+                + " WHERE p.id = " + item + ".product_id AND p.tenant_id = " + item
+                + ".tenant_id AND p.deleted = 0 LIMIT 1)";
+        String warehouseName = "(SELECT w.name FROM erp_warehouse w WHERE w.id = " + item
+                + ".warehouse_id AND w.tenant_id = " + item + ".tenant_id AND w.deleted = 0 LIMIT 1)";
+        String warehouseDeptName = "(SELECT d.name FROM erp_warehouse w LEFT JOIN system_dept d"
+                + " ON d.id = w.dept_id AND d.tenant_id = w.tenant_id AND d.deleted = 0"
+                + " WHERE w.id = " + item + ".warehouse_id AND w.tenant_id = " + item
+                + ".tenant_id AND w.deleted = 0 LIMIT 1)";
+        String lastSalePrice = "(SELECT soi.product_price FROM erp_sale_out_items soi"
+                + " INNER JOIN erp_sale_out so ON so.id = soi.out_id AND so.tenant_id = soi.tenant_id"
+                + " AND so.deleted = 0 AND so.status = " + ErpAuditStatus.APPROVE.getStatus()
+                + " WHERE soi.product_id = " + item + ".product_id AND soi.tenant_id = " + item
+                + ".tenant_id AND soi.deleted = 0 AND soi.product_price IS NOT NULL"
+                + " ORDER BY so.out_time DESC, so.id DESC, soi.id DESC LIMIT 1)";
+        String pieceCount = "(CASE WHEN " + item + ".package_qty > 0 THEN " + item
+                + ".count / " + item + ".package_qty ELSE NULL END)";
+        return switch (orderField.trim()) {
+            case "id" -> new OrderSpec(item + ".id", false);
+            case "giftFlag" -> new OrderSpec(item + ".gift_flag", false);
+            case "productId", "productName" -> new OrderSpec(productName, true);
+            case "productCode" -> new OrderSpec(productCode, true);
+            case "productUnitName" -> new OrderSpec(productUnitName, true);
+            case "warehouseId" -> new OrderSpec(warehouseName, true);
+            case "warehouseDeptName" -> new OrderSpec(warehouseDeptName, true);
+            case "deptId" -> new OrderSpec(item + ".dept_id", false);
+            case "count" -> new OrderSpec(item + ".count", false);
+            case "productPrice" -> new OrderSpec(item + ".product_price", false);
+            case "lastSalePrice" -> new OrderSpec(lastSalePrice, false);
+            case "totalPrice" -> new OrderSpec(item + ".total_price", false);
+            case "taxPercent" -> new OrderSpec(item + ".tax_percent", false);
+            case "taxPrice" -> new OrderSpec(item + ".tax_price", false);
+            case "vehicleModel" -> new OrderSpec(item + ".vehicle_model", true);
+            case "standard" -> new OrderSpec(item + ".standard", true);
+            case "weight" -> new OrderSpec(item + ".weight", false);
+            case "packageQty" -> new OrderSpec(item + ".package_qty", false);
+            case "pieceCount" -> new OrderSpec(pieceCount, false);
+            case "stockCount" -> new OrderSpec(item + ".stock_count", false);
+            case "warehousePosition" -> new OrderSpec(item + ".warehouse_position", true);
+            case "drawingNo" -> new OrderSpec(item + ".drawing_no", true);
+            case "batchNo" -> new OrderSpec(item + ".batch_no", true);
+            case "brand" -> new OrderSpec(item + ".brand", true);
+            case "originPlace" -> new OrderSpec(item + ".origin_place", true);
+            case "remark" -> new OrderSpec(item + ".remark", true);
+            default -> null;
+        };
+    }
+
+    record OrderSpec(String expression, boolean text) {
     }
 
     default List<ErpSaleCartItemDO> selectListByCartIds(Collection<Long> cartIds) {

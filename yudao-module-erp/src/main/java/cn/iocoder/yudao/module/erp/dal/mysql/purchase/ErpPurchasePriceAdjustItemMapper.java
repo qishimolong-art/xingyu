@@ -10,7 +10,6 @@ import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchasePriceAdjus
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchasePriceAdjustDO;
 import cn.hutool.core.collection.CollUtil;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
-import com.baomidou.mybatisplus.core.toolkit.support.SFunction;
 import org.apache.ibatis.annotations.Mapper;
 
 import java.math.BigDecimal;
@@ -29,7 +28,12 @@ import java.util.Map;
 public interface ErpPurchasePriceAdjustItemMapper extends BaseMapperX<ErpPurchasePriceAdjustItemDO> {
 
     default List<ErpPurchasePriceAdjustItemDO> selectListByAdjustId(Long adjustId) {
-        return selectList(ErpPurchasePriceAdjustItemDO::getAdjustId, adjustId);
+        return selectList(buildSortedQuery(adjustId, null, null, null));
+    }
+
+    default List<ErpPurchasePriceAdjustItemDO> selectListByAdjustId(Long adjustId, String orderField,
+                                                                    String orderDirection) {
+        return selectList(buildSortedQuery(adjustId, null, orderField, orderDirection));
     }
 
     default List<ErpPurchasePriceAdjustItemDO> selectListByAdjustIdForUpdate(Long adjustId) {
@@ -38,20 +42,19 @@ public interface ErpPurchasePriceAdjustItemMapper extends BaseMapperX<ErpPurchas
     }
 
     default PageResult<ErpPurchasePriceAdjustItemDO> selectPageByAdjustId(ErpPurchasePriceAdjustItemPageReqVO reqVO) {
-        LambdaQueryWrapperX<ErpPurchasePriceAdjustItemDO> query = new LambdaQueryWrapperX<ErpPurchasePriceAdjustItemDO>()
-                .eq(ErpPurchasePriceAdjustItemDO::getAdjustId, reqVO.getAdjustId());
-        SFunction<ErpPurchasePriceAdjustItemDO, ?> orderColumn = getOrderColumn(reqVO.getOrderField());
-        if (orderColumn == null) {
-            query.orderByAsc(ErpPurchasePriceAdjustItemDO::getId);
-        } else if ("desc".equalsIgnoreCase(reqVO.getOrderDirection())) {
-            query.orderByDesc(orderColumn);
-        } else {
-            query.orderByAsc(orderColumn);
-        }
-        if (orderColumn != null && !"id".equals(reqVO.getOrderField().trim())) {
-            query.orderByAsc(ErpPurchasePriceAdjustItemDO::getId);
-        }
-        return selectPage(reqVO, query);
+        return selectPage(reqVO, buildSortedQuery(reqVO.getAdjustId(), reqVO.getExcludedItemIds(),
+                reqVO.getOrderField(), reqVO.getOrderDirection()));
+    }
+
+    static QueryWrapper<ErpPurchasePriceAdjustItemDO> buildSortedQuery(Long adjustId,
+                                                                        Collection<Long> excludedItemIds,
+                                                                        String orderField,
+                                                                        String orderDirection) {
+        QueryWrapper<ErpPurchasePriceAdjustItemDO> query = new QueryWrapper<ErpPurchasePriceAdjustItemDO>()
+                .eq("adjust_id", adjustId)
+                .notIn(CollUtil.isNotEmpty(excludedItemIds), "id", excludedItemIds);
+        return ErpPurchaseItemSortUtils.applyOrder(query, "erp_purchase_price_adjust_item", orderField,
+                orderDirection, getOrderSpec(orderField));
     }
 
     default List<ErpPurchasePriceAdjustItemDO> selectListByAdjustIds(Collection<Long> adjustIds) {
@@ -130,56 +133,51 @@ public interface ErpPurchasePriceAdjustItemMapper extends BaseMapperX<ErpPurchas
         return selectCount(ErpPurchasePriceAdjustItemDO::getWarehouseId, warehouseId);
     }
 
-    static SFunction<ErpPurchasePriceAdjustItemDO, ?> getOrderColumn(String orderField) {
+    static boolean isSupportedOrderField(String orderField) {
+        return getOrderSpec(orderField) != null;
+    }
+
+    static ErpPurchaseItemSortUtils.OrderSpec getOrderSpec(String orderField) {
         if (orderField == null) {
             return null;
         }
-        switch (orderField.trim()) {
-            case "id":
-                return ErpPurchasePriceAdjustItemDO::getId;
-            case "inId":
-            case "inNo":
-                return ErpPurchasePriceAdjustItemDO::getInId;
-            case "inItemId":
-                return ErpPurchasePriceAdjustItemDO::getInItemId;
-            case "productId":
-            case "productCode":
-            case "productName":
-            case "productUnitName":
-            case "weight":
-            case "packageQty":
-                return ErpPurchasePriceAdjustItemDO::getProductId;
-            case "warehouseId":
-                return ErpPurchasePriceAdjustItemDO::getWarehouseId;
-            case "deptId":
-                return ErpPurchasePriceAdjustItemDO::getDeptId;
-            case "oldPrice":
-                return ErpPurchasePriceAdjustItemDO::getOldPrice;
-            case "newPrice":
-                return ErpPurchasePriceAdjustItemDO::getNewPrice;
-            case "count":
-                return ErpPurchasePriceAdjustItemDO::getCount;
-            case "adjustRatio":
-                return ErpPurchasePriceAdjustItemDO::getAdjustRatio;
-            case "adjustPrice":
-                return ErpPurchasePriceAdjustItemDO::getAdjustPrice;
-            case "vehicleModel":
-                return ErpPurchasePriceAdjustItemDO::getVehicleModel;
-            case "standard":
-                return ErpPurchasePriceAdjustItemDO::getStandard;
-            case "featureCode":
-                return ErpPurchasePriceAdjustItemDO::getFeatureCode;
-            case "originPlace":
-                return ErpPurchasePriceAdjustItemDO::getOriginPlace;
-            case "brand":
-                return ErpPurchasePriceAdjustItemDO::getBrand;
-            case "drawingNo":
-                return ErpPurchasePriceAdjustItemDO::getDrawingNo;
-            case "warehousePosition":
-                return ErpPurchasePriceAdjustItemDO::getWarehousePosition;
-            default:
-                return null;
-        }
+        String item = "erp_purchase_price_adjust_item";
+        return switch (orderField.trim()) {
+            case "id" -> spec(item + ".id", false);
+            case "inId" -> spec(item + ".in_id", false);
+            case "inNo" -> spec(item + ".in_no", true);
+            case "inItemId" -> spec(item + ".in_item_id", false);
+            case "productId", "productName" -> spec("COALESCE(" + item + ".product_name, "
+                    + ErpPurchaseItemSortUtils.productField(item, "name") + ")", true);
+            case "productCode" -> spec("COALESCE(" + item + ".product_code, "
+                    + ErpPurchaseItemSortUtils.productField(item, "code") + ")", true);
+            case "batchNo" -> spec(item + ".batch_no", true);
+            case "productUnitName" -> spec(item + ".product_unit_name", true);
+            case "weight" -> spec(item + ".weight", false);
+            case "packageQty" -> spec(item + ".package_qty", false);
+            case "pieceCount" -> spec(ErpPurchaseItemSortUtils.pieceCount(item + ".count",
+                    item + ".package_qty"), false);
+            case "stockCount" -> spec(ErpPurchaseItemSortUtils.stockCount(item), false);
+            case "warehouseId" -> spec(ErpPurchaseItemSortUtils.warehouseName(item), true);
+            case "deptId" -> spec(ErpPurchaseItemSortUtils.deptName(item), true);
+            case "oldPrice" -> spec(item + ".old_price", false);
+            case "newPrice" -> spec(item + ".new_price", false);
+            case "count" -> spec(item + ".count", false);
+            case "adjustRatio" -> spec(item + ".adjust_ratio", false);
+            case "adjustPrice" -> spec(item + ".adjust_price", false);
+            case "vehicleModel" -> spec(item + ".vehicle_model", true);
+            case "standard" -> spec(item + ".standard", true);
+            case "featureCode" -> spec(item + ".feature_code", true);
+            case "originPlace" -> spec(item + ".origin_place", true);
+            case "brand" -> spec(item + ".brand", true);
+            case "drawingNo" -> spec(item + ".drawing_no", true);
+            case "warehousePosition" -> spec(item + ".warehouse_position", true);
+            default -> null;
+        };
+    }
+
+    private static ErpPurchaseItemSortUtils.OrderSpec spec(String expression, boolean text) {
+        return new ErpPurchaseItemSortUtils.OrderSpec(expression, text);
     }
 
     /**

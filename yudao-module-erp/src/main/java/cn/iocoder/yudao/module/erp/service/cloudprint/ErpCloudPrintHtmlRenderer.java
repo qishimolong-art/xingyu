@@ -1,6 +1,7 @@
 package cn.iocoder.yudao.module.erp.service.cloudprint;
 
 import cn.iocoder.yudao.framework.common.util.json.JsonUtils;
+import cn.iocoder.yudao.module.erp.service.common.ErpPrintTemplateJsonValidator;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.openhtmltopdf.pdfboxout.PdfRendererBuilder;
 import org.springframework.stereotype.Component;
@@ -8,6 +9,7 @@ import org.springframework.web.util.HtmlUtils;
 
 import java.io.ByteArrayOutputStream;
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -33,6 +35,12 @@ public class ErpCloudPrintHtmlRenderer {
     private static final double PAPER_PX_PER_MM = 96D / 25.4D;
     private static final Pattern CELL_PATTERN = Pattern.compile("^([A-Z]+)(\\d+)$");
     private static final Pattern FIELD_PLACEHOLDER_PATTERN = Pattern.compile("\\$\\{\\s*([^}]+?)\\s*}");
+    private static final Pattern AMOUNT_FIELD_CODE_PATTERN = Pattern.compile(
+            "(?:price|amount|cost|debt|receivable|payable|balance|advance|fee|freight|profit|fund|revenue"
+                    + "|settled|settlement|payment|receipt|income|expense|credit|debit|assets?)\\d*$",
+            Pattern.CASE_INSENSITIVE);
+    private static final Pattern NON_AMOUNT_DECIMAL_FIELD_CODE_PATTERN = Pattern.compile(
+            "(?:rate|ratio|percent|percentage|coefficient)\\d*$", Pattern.CASE_INSENSITIVE);
     private static final Pattern ENTITY_PATTERN = Pattern.compile("&(#\\d+|#x[0-9A-Fa-f]+|[A-Za-z][A-Za-z0-9]+);");
     private static final Pattern TOKEN_SPAN_PATTERN = Pattern.compile(
             "<span\\b([^>]*)class=([\"'])(?=[^\"']*\\btoken\\b)[^\"']*\\2([^>]*)>([\\s\\S]*?)</span>",
@@ -65,6 +73,7 @@ public class ErpCloudPrintHtmlRenderer {
             if (template == null || !(template.get("cells") instanceof List)) {
                 throw new IllegalArgumentException("销售单打印模板内容为空或格式不正确");
             }
+            ErpPrintTemplateJsonValidator.validate(template);
             Map<String, Object> paper = mergePaperConfig(template.get("paper"), paperConfig, pageWidth, pageHeight);
             String html = buildTemplateHtml(template, data, paper);
             PdfRendererBuilder builder = new PdfRendererBuilder()
@@ -92,9 +101,11 @@ public class ErpCloudPrintHtmlRenderer {
         Map<String, Object> rowHeights = mapValue(template.get("rowHeights"));
         RenderBounds bounds = renderBounds(cells, columns);
         List<String> renderColumns = columns.subList(bounds.minColumnIndex, bounds.maxColumnIndex + 1);
-        List<DetailBlock> detailBlocks = detailBlocks(cells);
-        List<RenderRow> renderRows = buildRenderRows(bounds.minRow, rowCount, detailBlocks, printData);
-        List<List<RenderRow>> pages = paginateRenderRows(cells, renderRows, detailBlocks, rowHeights, paper, printData);
+        boolean explicitDetail = isVersion2Detail(template);
+        List<DetailBlock> detailBlocks = detailBlocks(template, cells);
+        List<RenderRow> renderRows = buildRenderRows(bounds.minRow, rowCount, detailBlocks, printData, explicitDetail);
+        List<List<RenderRow>> pages = paginateRenderRows(template, cells, renderRows, detailBlocks,
+                rowHeights, paper, printData);
         Map<String, Map<String, Object>> cellMap = new LinkedHashMap<>();
         for (Map<String, Object> cell : cells) {
             String cellId = stringValue(cell.get("cell"));
@@ -102,21 +113,41 @@ public class ErpCloudPrintHtmlRenderer {
                 cellMap.put(cellId, cell);
             }
         }
+        Set<Integer> continuationPageRows = pageContextRows(cells);
+        if (!detailBlocks.isEmpty()) {
+            continuationPageRows.removeAll(detectDetailHeaderRows(template, cells, detailBlocks.get(0)));
+        }
 
         StringBuilder html = new StringBuilder(16384);
         html.append("<html xmlns=\"http://www.w3.org/1999/xhtml\"><head><meta charset=\"utf-8\"/><style>");
         appendTemplateStyle(html, paper);
         html.append("</style></head><body>");
         for (int pageIndex = 0; pageIndex < pages.size(); pageIndex++) {
-            appendTemplatePage(html, template, pages.get(pageIndex), renderColumns, rowHeights, cellMap, printData);
+            Map<String, Object> pagePrintData = withPrintPageContext(printData, pageIndex + 1, pages.size());
+            appendTemplatePage(html, template, pages.get(pageIndex), renderColumns, rowHeights, cellMap,
+                    pagePrintData, pageIndex > 0, continuationPageRows);
         }
         html.append("</body></html>");
         return html.toString();
     }
 
+    private Map<String, Object> withPrintPageContext(Map<String, Object> printData, int pageNo, int pageCount) {
+        Map<String, Object> result = new LinkedHashMap<>();
+        if (printData != null) {
+            result.putAll(printData);
+        }
+        Map<String, Object> system = new LinkedHashMap<>(mapValue(result.get("system")));
+        system.put("print.pageNo", pageNo);
+        system.put("print.pageCount", pageCount);
+        system.put("print.pageText", "第" + pageNo + "页/共" + pageCount + "页");
+        result.put("system", system);
+        return result;
+    }
+
     private void appendTemplatePage(StringBuilder html, Map<String, Object> template, List<RenderRow> pageRows,
                                     List<String> renderColumns, Map<String, Object> rowHeights,
-                                    Map<String, Map<String, Object>> cellMap, Map<String, Object> printData) {
+                                    Map<String, Map<String, Object>> cellMap, Map<String, Object> printData,
+                                    boolean continuationPage, Set<Integer> continuationPageRows) {
         html.append("<div class=\"print-page\"><table class=\"print-sheet\"><colgroup>");
         for (String column : renderColumns) {
             html.append("<col style=\"width:").append(escapeCssSize(columnWidth(template, column))).append(";\"/>");
@@ -140,7 +171,12 @@ public class ErpCloudPrintHtmlRenderer {
                 }
                 int colspan = Math.min(intValue(cell.get("colspan"), 1), renderColumns.size() - columnIndex);
                 int rowspan = intValue(cell.get("rowspan"), 1);
-                html.append("<td class=\"").append(escapeAttribute(cellClassName(cell))).append("\"");
+                boolean renderCell = shouldRenderCell(template, cell, renderRow)
+                        && (!continuationPage || !continuationPageRows.contains(renderRow.sourceRow)
+                        || isPageContextCell(cell));
+                html.append("<td class=\"")
+                        .append(renderCell ? escapeAttribute(cellClassName(cell)) : "print-cell print-cell-empty")
+                        .append("\"");
                 if (colspan > 1) {
                     html.append(" colspan=\"").append(colspan).append("\"");
                 }
@@ -148,17 +184,53 @@ public class ErpCloudPrintHtmlRenderer {
                 if (finalRowspan > 1) {
                     html.append(" rowspan=\"").append(finalRowspan).append("\"");
                 }
-                String style = cellStyle(cell);
+                String style = renderCell ? cellStyle(cell) : "";
                 if (!style.isEmpty()) {
                     html.append(" style=\"").append(escapeAttribute(style)).append("\"");
                 }
-                html.append(">")
-                        .append(resolveCellHtml(cell, printData, renderRow.itemIndex))
-                        .append("</td>");
+                html.append(">");
+                if (renderCell) {
+                    html.append(resolveCellHtml(cell, printData, renderRow.itemIndex));
+                }
+                html.append("</td>");
             }
             html.append("</tr>");
         }
         html.append("</tbody></table></div>");
+    }
+
+    /**
+     * 版本 2 只重复组件矩形内的循环体单元格。同一源行位于组件外的内容只在第一条明细上渲染；
+     * 零明细时则保留组件外内容，但隐藏组件循环体本身。
+     */
+    private boolean shouldRenderCell(Map<String, Object> template, Map<String, Object> cell, RenderRow renderRow) {
+        if (!isVersion2Detail(template) || !isDetailBodyRow(template, renderRow.sourceRow)) {
+            return true;
+        }
+        if (isInsideDetailBody(template, cell)) {
+            return renderRow.detail;
+        }
+        return !renderRow.detail || renderRow.itemIndex == 0;
+    }
+
+    private boolean isDetailBodyRow(Map<String, Object> template, int row) {
+        Map<String, Object> body = mapValue(mapValue(template.get("detailTable")).get("bodyRows"));
+        return row >= intValue(body.get("start"), 1) && row <= intValue(body.get("end"), 0);
+    }
+
+    private boolean isInsideDetailBody(Map<String, Object> template, Map<String, Object> cell) {
+        Map<String, Object> detailTable = mapValue(template.get("detailTable"));
+        List<String> columns = getColumns(template);
+        int left = columns.indexOf(stringValue(detailTable.get("startColumn")));
+        int right = columns.indexOf(stringValue(detailTable.get("endColumn")));
+        CellParts parts = cellParts(cell);
+        int cellLeft = columns.indexOf(parts.column);
+        int cellRight = cellLeft + Math.max(1, intValue(cell.get("colspan"), 1)) - 1;
+        CellRowRange rows = cellRowRange(cell);
+        Map<String, Object> body = mapValue(detailTable.get("bodyRows"));
+        return cellLeft >= left && cellRight <= right
+                && rows.start >= intValue(body.get("start"), 1)
+                && rows.end <= intValue(body.get("end"), 0);
     }
 
     @SuppressWarnings("unchecked")
@@ -265,21 +337,41 @@ public class ErpCloudPrintHtmlRenderer {
                     ? (List<Map<String, Object>>) printData.get("items") : Collections.emptyList();
             Map<String, Object> item = itemIndex >= 0 && itemIndex < items.size() ? items.get(itemIndex) : null;
             Object value = value(item, normalized);
-            return value != null ? value : value(item, normalized.substring("items.".length()));
+            Object resolvedValue = value != null ? value : value(item, normalized.substring("items.".length()));
+            return formatPrintValue(normalized, resolvedValue);
         }
         Object value = value(mapValue(printData.get("main")), normalized);
         if (value != null) {
-            return value;
+            return formatPrintValue(normalized, value);
         }
         value = value(mapValue(printData.get("system")), normalized);
         if (value != null) {
-            return value;
+            return formatPrintValue(normalized, value);
         }
         value = value(mapValue(printData.get("currentUser")), normalized);
         if (value != null) {
+            return formatPrintValue(normalized, value);
+        }
+        return formatPrintValue(normalized, value(mapValue(printData.get("print")), normalized));
+    }
+
+    private Object formatPrintValue(String code, Object value) {
+        if (value == null || "".equals(value)) {
             return value;
         }
-        return value(mapValue(printData.get("print")), normalized);
+        String normalized = normalizeFieldCode(code);
+        String fieldName = normalized.substring(normalized.lastIndexOf('.') + 1);
+        if (NON_AMOUNT_DECIMAL_FIELD_CODE_PATTERN.matcher(fieldName).find()
+                || !("tax".equalsIgnoreCase(fieldName) || AMOUNT_FIELD_CODE_PATTERN.matcher(fieldName).find())) {
+            return value;
+        }
+        try {
+            BigDecimal decimal = value instanceof BigDecimal
+                    ? (BigDecimal) value : new BigDecimal(String.valueOf(value).trim());
+            return decimal.setScale(2, RoundingMode.HALF_UP).toPlainString();
+        } catch (NumberFormatException ignored) {
+            return value;
+        }
     }
 
     private String resolvePlaceholderCode(String raw, Map<String, Object> placeholderCodes) {
@@ -306,7 +398,12 @@ public class ErpCloudPrintHtmlRenderer {
         return raw;
     }
 
-    private List<DetailBlock> detailBlocks(List<Map<String, Object>> cells) {
+    private List<DetailBlock> detailBlocks(Map<String, Object> template, List<Map<String, Object>> cells) {
+        if (isVersion2Detail(template)) {
+            Map<String, Object> bodyRows = mapValue(mapValue(template.get("detailTable")).get("bodyRows"));
+            return Collections.singletonList(new DetailBlock(
+                    intValue(bodyRows.get("start"), 1), intValue(bodyRows.get("end"), 1)));
+        }
         List<DetailBlock> blocks = new ArrayList<>();
         for (Map<String, Object> cell : cells) {
             if (!isItemFieldCell(cell)) {
@@ -345,13 +442,20 @@ public class ErpCloudPrintHtmlRenderer {
     }
 
     private List<RenderRow> buildRenderRows(int startRow, int rowCount, List<DetailBlock> blocks,
-                                            Map<String, Object> printData) {
-        int itemCount = printData != null && printData.get("items") instanceof List
-                ? Math.max(1, ((List<?>) printData.get("items")).size()) : 1;
+                                            Map<String, Object> printData, boolean explicitDetail) {
+        int rawItemCount = printItemCount(printData);
+        int itemCount = explicitDetail ? rawItemCount : Math.max(1, rawItemCount);
         List<RenderRow> rows = new ArrayList<>();
         for (int row = Math.max(1, startRow); row <= rowCount; row++) {
             DetailBlock block = findBlockStartingAt(blocks, row);
             if (block != null) {
+                if (explicitDetail && rawItemCount == 0) {
+                    for (int sourceRow = block.start; sourceRow <= block.end; sourceRow++) {
+                        rows.add(new RenderRow(sourceRow, 0, false));
+                    }
+                    row = block.end;
+                    continue;
+                }
                 for (int itemIndex = 0; itemIndex < itemCount; itemIndex++) {
                     for (int sourceRow = block.start; sourceRow <= block.end; sourceRow++) {
                         rows.add(new RenderRow(sourceRow, itemIndex, true));
@@ -365,7 +469,8 @@ public class ErpCloudPrintHtmlRenderer {
         return rows;
     }
 
-    private List<List<RenderRow>> paginateRenderRows(List<Map<String, Object>> cells, List<RenderRow> renderRows,
+    private List<List<RenderRow>> paginateRenderRows(Map<String, Object> template,
+                                                     List<Map<String, Object>> cells, List<RenderRow> renderRows,
                                                      List<DetailBlock> blocks, Map<String, Object> rowHeights,
                                                      Map<String, Object> paper, Map<String, Object> printData) {
         double capacity = paperContentHeightPx(paper);
@@ -376,7 +481,7 @@ public class ErpCloudPrintHtmlRenderer {
 
         DetailBlock firstBlock = blocks.get(0);
         DetailBlock lastBlock = blocks.get(blocks.size() - 1);
-        Set<Integer> headerRows = detectDetailHeaderRows(cells, firstBlock);
+        Set<Integer> headerRows = detectDetailHeaderRows(template, cells, firstBlock);
         List<RenderRow> headerPlans = filterRows(renderRows, false, headerRows, null, null);
         List<List<RenderRow>> detailPlansByItem = new ArrayList<>();
         for (int itemIndex = 0; itemIndex < itemCount; itemIndex++) {
@@ -385,6 +490,9 @@ public class ErpCloudPrintHtmlRenderer {
         int lastRenderableRow = lastRenderableSourceRow(cells);
         int topBoundary = headerRows.isEmpty() ? firstBlock.start : Collections.min(headerRows);
         List<RenderRow> topPlans = filterRows(renderRows, false, null, null, topBoundary - 1);
+        Set<Integer> contextRows = pageContextRows(cells);
+        contextRows.removeAll(headerRows);
+        List<RenderRow> continuationPagePlans = filterRows(topPlans, false, contextRows, null, null);
         List<RenderRow> bottomPlans = new ArrayList<>();
         for (RenderRow row : renderRows) {
             if (!row.detail && row.sourceRow > lastBlock.end && row.sourceRow <= lastRenderableRow) {
@@ -401,14 +509,21 @@ public class ErpCloudPrintHtmlRenderer {
         boolean bottomPlaced = first.bottomPlaced;
 
         while (nextItemIndex < detailPlansByItem.size()) {
-            PageBuildResult next = createDetailPage(Collections.emptyList(), headerPlans, detailPlansByItem,
+            PageBuildResult next = createDetailPage(continuationPagePlans, headerPlans, detailPlansByItem,
                     bottomPlans, nextItemIndex, rowHeights, capacity, true);
             pages.add(next.rows);
             nextItemIndex = next.nextItemIndex;
             bottomPlaced = next.bottomPlaced;
         }
         if (!bottomPlaced && !bottomPlans.isEmpty()) {
-            pages.addAll(splitRowsByHeight(bottomPlans, rowHeights, capacity));
+            List<RenderRow> continuationHeaderPlans = new ArrayList<>(continuationPagePlans);
+            continuationHeaderPlans.addAll(headerPlans);
+            double remainingCapacity = Math.max(1, capacity - planHeight(continuationHeaderPlans, rowHeights));
+            for (List<RenderRow> bottomPage : splitRowsByHeight(bottomPlans, rowHeights, remainingCapacity)) {
+                List<RenderRow> page = new ArrayList<>(continuationHeaderPlans);
+                page.addAll(bottomPage);
+                pages.add(page);
+            }
         }
         return nonEmptyPages(pages);
     }
@@ -510,9 +625,35 @@ public class ErpCloudPrintHtmlRenderer {
         return result;
     }
 
-    private Set<Integer> detectDetailHeaderRows(List<Map<String, Object>> cells, DetailBlock firstBlock) {
+    private Set<Integer> detectDetailHeaderRows(Map<String, Object> template,
+                                                List<Map<String, Object>> cells, DetailBlock firstBlock) {
         Set<Integer> rows = new HashSet<>();
         if (firstBlock == null) {
+            return rows;
+        }
+        if (isVersion2Detail(template)) {
+            Map<String, Object> detailTable = mapValue(template.get("detailTable"));
+            if (Boolean.FALSE.equals(detailTable.get("repeatHeader"))) {
+                return rows;
+            }
+            Map<String, Object> header = mapValue(detailTable.get("headerRows"));
+            if (header.isEmpty()) {
+                return rows;
+            }
+            int start = intValue(header.get("start"), 1);
+            int end = intValue(header.get("end"), start);
+            for (int row = end; row >= start; row--) {
+                if (!rowHasDetailHeaderBorder(template, cells, detailTable, row)) {
+                    if (!rows.isEmpty()) {
+                        break;
+                    }
+                    continue;
+                }
+                rows.add(row);
+            }
+            if (rows.isEmpty()) {
+                rows.add(end);
+            }
             return rows;
         }
         for (int row = firstBlock.start - 1; row >= 1; row--) {
@@ -533,6 +674,67 @@ public class ErpCloudPrintHtmlRenderer {
             rows.add(row);
         }
         return rows;
+    }
+
+    private boolean rowHasDetailHeaderBorder(Map<String, Object> template, List<Map<String, Object>> cells,
+                                             Map<String, Object> detailTable, int row) {
+        List<String> columns = getColumns(template);
+        int tableLeft = columns.indexOf(stringValue(detailTable.get("startColumn")));
+        int tableRight = columns.indexOf(stringValue(detailTable.get("endColumn")));
+        for (Map<String, Object> cell : cells) {
+            if (!isRenderableCell(cell) || !hasTableBorderClass(cell)) {
+                continue;
+            }
+            CellRowRange range = cellRowRange(cell);
+            if (row < range.start || row > range.end) {
+                continue;
+            }
+            CellParts parts = cellParts(cell);
+            int cellLeft = columns.indexOf(parts.column);
+            int cellRight = cellLeft + Math.max(1, intValue(cell.get("colspan"), 1)) - 1;
+            if (cellLeft <= tableRight && cellRight >= tableLeft) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private Set<Integer> pageContextRows(List<Map<String, Object>> cells) {
+        Set<Integer> rows = new LinkedHashSet<>();
+        for (Map<String, Object> cell : cells) {
+            if (isRenderableCell(cell) && isPageContextCell(cell)) {
+                rows.add(cellRowRange(cell).start);
+            }
+        }
+        return rows;
+    }
+
+    private boolean isPageContextCell(Map<String, Object> cell) {
+        Set<String> pageCodes = Set.of("print.pageNo", "print.pageCount", "print.pageText");
+        if (pageCodes.contains(normalizeFieldCode(stringValue(cell.get("code"))))) {
+            return true;
+        }
+        Matcher matcher = FIELD_PLACEHOLDER_PATTERN.matcher(stringValue(cell.get("html")));
+        while (matcher.find()) {
+            String fieldName = matcher.group(1).trim();
+            if (pageCodes.contains(normalizeFieldCode(fieldName))) {
+                return true;
+            }
+            String fieldCode = normalizeFieldCode(stringValue(mapValue(cell.get("placeholderCodes")).get(fieldName)));
+            if (pageCodes.contains(fieldCode)) {
+                return true;
+            }
+        }
+        for (Object value : mapValue(cell.get("placeholderCodes")).values()) {
+            if (pageCodes.contains(normalizeFieldCode(String.valueOf(value)))) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private boolean isVersion2Detail(Map<String, Object> template) {
+        return intValue(template.get("version"), 1) >= 2 && template.get("detailTable") instanceof Map;
     }
 
     private boolean hasTableBorderClass(Map<String, Object> cell) {
@@ -912,6 +1114,9 @@ public class ErpCloudPrintHtmlRenderer {
         map.put("大写金额", "document.totalAmountUpper");
         map.put("打印时间", "print.now");
         map.put("当前用户", "currentUser.nickname");
+        map.put("当前页", "print.pageNo");
+        map.put("总页数", "print.pageCount");
+        map.put("页码", "print.pageText");
         return map;
     }
 

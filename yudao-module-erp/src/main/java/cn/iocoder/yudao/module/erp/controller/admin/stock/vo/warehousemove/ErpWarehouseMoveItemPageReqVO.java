@@ -7,6 +7,7 @@ import lombok.EqualsAndHashCode;
 import lombok.ToString;
 
 import javax.validation.constraints.NotNull;
+import java.util.List;
 
 @Schema(description = "管理后台 - ERP 仓库移货明细分页 Request VO")
 @Data
@@ -28,5 +29,8 @@ public class ErpWarehouseMoveItemPageReqVO extends PageParam {
 
     @Schema(description = "排序方向：asc 或 desc")
     private String orderDirection;
+
+    @Schema(description = "编辑态待删除明细编号")
+    private List<Long> excludedItemIds;
 
 }

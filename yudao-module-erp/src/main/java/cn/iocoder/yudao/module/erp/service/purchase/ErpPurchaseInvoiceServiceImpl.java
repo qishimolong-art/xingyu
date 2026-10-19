@@ -18,6 +18,7 @@ import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.invoice.ErpPurch
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.invoice.ErpPurchaseInvoiceImportExcelVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.invoice.ErpPurchaseInvoiceItemPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.invoice.ErpPurchaseInvoicePageReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.invoice.ErpPurchaseInvoiceSummaryRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.invoice.ErpPurchaseInvoiceSaveReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.supplier.ErpSupplierPageReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.product.ErpProductDO;
@@ -45,6 +46,7 @@ import org.springframework.validation.annotation.Validated;
 import javax.annotation.Resource;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
@@ -358,7 +360,8 @@ public class ErpPurchaseInvoiceServiceImpl implements ErpPurchaseInvoiceService 
         List<ErpPurchaseInvoiceItemDO> invoiceItems = purchaseInvoiceItemMapper.selectListByInvoiceId(id);
         purchaseInvoiceSourceService.createApprovedAllocations(id, purchaseInvoice.getSupplierId(), invoiceItems);
         ErpPurchaseInvoiceDO updateObj = new ErpPurchaseInvoiceDO()
-                .setStatus(ErpAuditStatus.APPROVE.getStatus());
+                .setStatus(ErpAuditStatus.APPROVE.getStatus())
+                .setApproveTime(LocalDateTime.now());
         calculateTotalPrice(updateObj, invoiceItems);
         validateInvoiceTotalNotZero(updateObj);
         List<ErpPurchaseInvoiceItemDO> sourceItems = invoiceItems.stream()
@@ -417,6 +420,11 @@ public class ErpPurchaseInvoiceServiceImpl implements ErpPurchaseInvoiceService 
     }
 
     @Override
+    public ErpPurchaseInvoiceSummaryRespVO getPurchaseInvoiceSummary(ErpPurchaseInvoicePageReqVO pageReqVO) {
+        return purchaseInvoiceMapper.selectSummary(pageReqVO);
+    }
+
+    @Override
     public List<ErpPurchaseInvoiceDO> getPurchaseInvoiceList(Collection<Long> ids) {
         if (CollUtil.isEmpty(ids)) {
             return Collections.emptyList();
@@ -438,6 +446,12 @@ public class ErpPurchaseInvoiceServiceImpl implements ErpPurchaseInvoiceService 
     }
 
     @Override
+    public List<ErpPurchaseInvoiceItemDO> getPurchaseInvoiceItemListByInvoiceId(Long invoiceId, String orderField,
+                                                                                String orderDirection) {
+        return purchaseInvoiceItemMapper.selectListByInvoiceId(invoiceId, orderField, orderDirection);
+    }
+
+    @Override
     public List<ErpPurchaseInvoiceItemDO> getPurchaseInvoiceSourceRefList(Long invoiceId) {
         return purchaseInvoiceItemMapper.selectSourceRefListByInvoiceId(invoiceId);
     }
@@ -445,6 +459,10 @@ public class ErpPurchaseInvoiceServiceImpl implements ErpPurchaseInvoiceService 
     @Override
     public PageResult<ErpPurchaseInvoiceItemDO> getPurchaseInvoiceItemPage(ErpPurchaseInvoiceItemPageReqVO pageReqVO) {
         validatePurchaseInvoiceExists(pageReqVO.getInvoiceId());
+        if (CollUtil.isNotEmpty(pageReqVO.getExcludedItemIds())) {
+            pageReqVO.setExcludedItemIds(pageReqVO.getExcludedItemIds().stream()
+                    .filter(id -> id != null && id > 0).distinct().collect(Collectors.toList()));
+        }
         return purchaseInvoiceItemMapper.selectPageByInvoiceId(pageReqVO);
     }
 

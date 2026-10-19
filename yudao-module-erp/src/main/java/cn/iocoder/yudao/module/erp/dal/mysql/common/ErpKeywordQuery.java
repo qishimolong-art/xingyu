@@ -10,8 +10,11 @@ import com.github.yulichang.wrapper.MPJLambdaWrapper;
 import org.springframework.util.StringUtils;
 
 import java.util.Arrays;
+import java.util.ArrayList;
 import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 /**
@@ -289,6 +292,27 @@ public final class ErpKeywordQuery {
         return keyword.trim().replaceAll("\\s+", "%");
     }
 
+    /**
+     * Builds a SQL LIKE pattern that keeps the input character order while allowing arbitrary
+     * characters between adjacent code points. Leading and trailing wildcards remain the caller's
+     * responsibility so this helper can be reused by MyBatis-Plus {@code like} conditions and
+     * prepared SQL alike.
+     */
+    public static String orderedCharactersPattern(String keyword) {
+        if (!StringUtils.hasText(keyword)) {
+            return null;
+        }
+        int[] codePoints = keyword.trim().codePoints().toArray();
+        StringBuilder pattern = new StringBuilder(keyword.length() + Math.max(0, codePoints.length - 1));
+        for (int i = 0; i < codePoints.length; i++) {
+            if (i > 0) {
+                pattern.append('%');
+            }
+            pattern.appendCodePoint(codePoints[i]);
+        }
+        return pattern.toString();
+    }
+
     public static KeywordSearch parseKeywordSearch(String keyword) {
         if (!StringUtils.hasText(keyword)) {
             return new KeywordSearch(Collections.emptyList(), false, false);
@@ -322,6 +346,112 @@ public final class ErpKeywordQuery {
                                                     String outerQualifier, int tokenCount,
                                                     boolean includeUnit) {
         return new ProductItemKeyword(outerQualifier, itemTable, itemForeignKey, false, includeUnit).toSql(tokenCount);
+    }
+
+    /**
+     * Appends a parent-document item filter as an EXISTS predicate. Using EXISTS keeps list and
+     * aggregate queries on the parent table one-row-per-document and avoids duplicated totals.
+     */
+    public static <T> void appendProductItemFilter(MPJLambdaWrapperX<T> wrapper,
+                                                    String itemTable, String itemForeignKey,
+                                                    Long productId, Long warehouseId,
+                                                    String sourceNoColumn, String sourceNo,
+                                                    String productKeyword, boolean includeUnit,
+                                                    String... itemKeywordColumns) {
+        Map<String, Object> itemEquals = new LinkedHashMap<>();
+        if (warehouseId != null) {
+            itemEquals.put("warehouse_id", warehouseId);
+        }
+        appendProductItemFilterWithItemEquals(wrapper, itemTable, itemForeignKey, productId,
+                itemEquals, sourceNoColumn, sourceNo, productKeyword, includeUnit, itemKeywordColumns);
+    }
+
+    public static <T> void appendProductItemFilterWithItemEquals(MPJLambdaWrapperX<T> wrapper,
+                                                                  String itemTable, String itemForeignKey,
+                                                                  Long productId, Map<String, ?> itemEquals,
+                                                                  String sourceNoColumn, String sourceNo,
+                                                                  String productKeyword, boolean includeUnit,
+                                                                  String... itemKeywordColumns) {
+        if (productId == null && (itemEquals == null || itemEquals.isEmpty()) && !StringUtils.hasText(sourceNo)
+                && !StringUtils.hasText(productKeyword)) {
+            return;
+        }
+        String table = requireSqlIdentifier(itemTable);
+        String foreignKey = requireSqlIdentifier(itemForeignKey);
+        String sourceColumn = StringUtils.hasText(sourceNoColumn) ? requireSqlIdentifier(sourceNoColumn) : null;
+        List<String> keywordColumns = itemKeywordColumns == null ? Collections.emptyList()
+                : Arrays.stream(itemKeywordColumns).map(ErpKeywordQuery::requireSqlIdentifier).collect(Collectors.toList());
+        List<Object> params = new ArrayList<>();
+        StringBuilder sql = new StringBuilder("EXISTS (SELECT 1 FROM ").append(table).append(" i ")
+                .append("LEFT JOIN erp_product p ON p.id=i.product_id AND p.deleted=b'0' AND p.tenant_id=t.tenant_id ");
+        if (includeUnit) {
+            sql.append("LEFT JOIN erp_product_unit u ON u.id=i.product_unit_id "
+                    + "AND u.deleted=b'0' AND u.tenant_id=t.tenant_id ");
+        }
+        sql.append("WHERE i.").append(foreignKey).append("=t.id AND i.deleted=b'0' AND i.tenant_id=t.tenant_id ");
+        appendEquals(sql, params, "i.product_id", productId);
+        if (itemEquals != null) {
+            itemEquals.forEach((column, value) ->
+                    appendEquals(sql, params, "i." + requireSqlIdentifier(column), value));
+        }
+        if (StringUtils.hasText(sourceNo) && sourceColumn != null) {
+            sql.append("AND i.").append(sourceColumn).append(" LIKE {").append(params.size()).append("} ");
+            params.add("%" + normalize(sourceNo) + "%");
+        }
+        if (StringUtils.hasText(productKeyword)) {
+            KeywordSearch search = parseKeywordSearch(productKeyword);
+            String normalized = normalize(productKeyword);
+            if (search.explicitDelimited()) {
+                for (String token : search.tokens()) {
+                    appendItemKeywordCondition(sql, params, normalize(token), includeUnit, keywordColumns, "AND");
+                }
+            } else if (search.spaceDelimited()) {
+                sql.append("AND (");
+                appendItemKeywordCondition(sql, params, normalized, includeUnit, keywordColumns, "");
+                sql.append(" OR (");
+                boolean first = true;
+                for (String token : search.tokens()) {
+                    appendItemKeywordCondition(sql, params, normalize(token), includeUnit, keywordColumns,
+                            first ? "" : "AND");
+                    first = false;
+                }
+                sql.append(")) ");
+            } else {
+                appendItemKeywordCondition(sql, params, normalized, includeUnit, keywordColumns, "AND");
+            }
+        }
+        sql.append(')');
+        wrapper.apply(sql.toString(), params.toArray());
+    }
+
+    private static void appendEquals(StringBuilder sql, List<Object> params, String column, Object value) {
+        if (value == null) {
+            return;
+        }
+        sql.append("AND ").append(column).append("={").append(params.size()).append("} ");
+        params.add(value);
+    }
+
+    private static void appendItemKeywordCondition(StringBuilder sql, List<Object> params, String keyword,
+                                                   boolean includeUnit, List<String> itemColumns, String connector) {
+        if (StringUtils.hasText(connector)) {
+            sql.append(connector).append(' ');
+        }
+        int index = params.size();
+        String placeholder = "{" + index + "}";
+        sql.append("(p.code LIKE ").append(placeholder).append(" OR p.name LIKE ").append(placeholder)
+                .append(" OR p.pinyin_code LIKE ").append(placeholder).append(" OR p.wubi_code LIKE ").append(placeholder)
+                .append(" OR p.bar_code LIKE ").append(placeholder).append(" OR p.vehicle_model LIKE ").append(placeholder)
+                .append(" OR p.factory_code LIKE ").append(placeholder).append(" OR p.standard LIKE ").append(placeholder)
+                .append(" OR p.brand LIKE ").append(placeholder).append(" OR p.drawing_no LIKE ").append(placeholder);
+        for (String column : itemColumns) {
+            sql.append(" OR i.").append(column).append(" LIKE ").append(placeholder);
+        }
+        if (includeUnit) {
+            sql.append(" OR u.name LIKE ").append(placeholder);
+        }
+        sql.append(") ");
+        params.add("%" + keyword + "%");
     }
 
     @SafeVarargs

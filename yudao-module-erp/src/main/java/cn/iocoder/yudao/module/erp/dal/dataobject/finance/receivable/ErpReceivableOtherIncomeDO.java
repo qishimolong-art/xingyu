@@ -23,6 +23,7 @@ public class ErpReceivableOtherIncomeDO extends BaseDO {
     private Long id;
     private String no;
     private Integer status;
+    private LocalDateTime approveTime;
     private LocalDateTime bizTime;
     private String settleMethod;
     private Long accountId;
@@ -33,6 +34,9 @@ public class ErpReceivableOtherIncomeDO extends BaseDO {
     private Long handlerId;
     private String party;
     private String relatedBiz;
+    private String sourceType;
+    private Long sourceId;
+    private String sourceNo;
     private String docType;
     private String remark;
     private String fileUrl;

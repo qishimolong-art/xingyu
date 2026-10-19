@@ -53,6 +53,7 @@ import org.springframework.test.util.ReflectionTestUtils;
 
 import java.math.BigDecimal;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.LinkedHashSet;
@@ -639,6 +640,43 @@ class ErpProductServiceImplTest extends BaseMockitoUnitTest {
 
             verify(warehouseService, never()).getCurrentUserSaleDistributedVisibleWarehouseIds();
         }
+    }
+
+    @Test
+    void getProductVOPage_productArchiveKeywordModeUsesOnlyEightVisibleFields() {
+        mockProductPermission(104L, Collections.singleton(200L));
+        when(permissionApi.getCurrentUserHiddenFields("erp_product"))
+                .thenReturn(Arrays.asList("barCode", "remark"));
+        when(warehouseService.getCurrentUserAuthorizedWarehouseIds())
+                .thenReturn(new LinkedHashSet<>(Collections.singletonList(11L)));
+        when(productMapper.selectPage(any(ErpProductPageReqVO.class), anyCollection(), anyCollection()))
+                .thenReturn(new PageResult<>(Collections.emptyList(), 0L));
+
+        ErpProductPageReqVO reqVO = new ErpProductPageReqVO();
+        reqVO.setKeyword("145988");
+        reqVO.setKeywordSearchMode(ErpProductPageReqVO.KEYWORD_SEARCH_MODE_PRODUCT_ARCHIVE);
+
+        try (MockedStatic<SecurityFrameworkUtils> security = mockStatic(SecurityFrameworkUtils.class)) {
+            security.when(SecurityFrameworkUtils::getLoginUserId).thenReturn(104L);
+            productService.getProductVOPage(reqVO);
+        }
+
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<Collection<String>> keywordFieldsCaptor = ArgumentCaptor.forClass(Collection.class);
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<Collection<String>> customColumnsCaptor = ArgumentCaptor.forClass(Collection.class);
+        verify(productMapper).selectPage(eq(reqVO), keywordFieldsCaptor.capture(), customColumnsCaptor.capture());
+        assertEquals(new LinkedHashSet<>(Arrays.asList(
+                        ErpProductMapper.KEYWORD_FIELD_CODE,
+                        ErpProductMapper.KEYWORD_FIELD_NAME,
+                        ErpProductMapper.KEYWORD_FIELD_PINYIN_CODE,
+                        ErpProductMapper.KEYWORD_FIELD_WUBI_CODE,
+                        ErpProductMapper.KEYWORD_FIELD_VEHICLE_MODEL,
+                        ErpProductMapper.KEYWORD_FIELD_FACTORY_CODE,
+                        ErpProductMapper.KEYWORD_FIELD_DRAWING_NO)),
+                new LinkedHashSet<>(keywordFieldsCaptor.getValue()));
+        assertTrue(customColumnsCaptor.getValue().isEmpty());
+        verify(fieldConfigService, never()).getFieldConfigListByModule("erp_product");
     }
 
     @Test

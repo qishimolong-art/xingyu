@@ -3,6 +3,7 @@ package cn.iocoder.yudao.module.erp.dal.mysql.stock;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.mybatis.core.mapper.BaseMapperX;
 import cn.iocoder.yudao.framework.mybatis.core.query.MPJLambdaWrapperX;
+import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.ErpStockDocumentSummaryRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.out.ErpStockOutPageReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.product.ErpProductDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.product.ErpProductUnitDO;
@@ -23,6 +24,19 @@ import org.springframework.util.StringUtils;
 public interface ErpStockOutMapper extends BaseMapperX<ErpStockOutDO> {
 
     default PageResult<ErpStockOutDO> selectPage(ErpStockOutPageReqVO reqVO) {
+        MPJLambdaWrapperX<ErpStockOutDO> query = buildQuery(reqVO);
+        orderBy(query, reqVO);
+        return selectJoinPage(reqVO, ErpStockOutDO.class, query);
+    }
+
+    default ErpStockDocumentSummaryRespVO selectSummary(ErpStockOutPageReqVO reqVO) {
+        MPJLambdaWrapperX<ErpStockOutDO> query = buildQuery(reqVO)
+                .selectAs("COALESCE(SUM(t.total_count), 0)", ErpStockDocumentSummaryRespVO::getTotalCount)
+                .selectAs("COALESCE(SUM(t.total_price), 0)", ErpStockDocumentSummaryRespVO::getTotalPrice);
+        return selectJoinOne(ErpStockDocumentSummaryRespVO.class, query);
+    }
+
+    static MPJLambdaWrapperX<ErpStockOutDO> buildQuery(ErpStockOutPageReqVO reqVO) {
         MPJLambdaWrapperX<ErpStockOutDO> query = new MPJLambdaWrapperX<ErpStockOutDO>()
                 .likeIfPresent(ErpStockOutDO::getNo, reqVO.getNo())
                 .eqIfPresent(ErpStockOutDO::getCustomerId, reqVO.getCustomerId())
@@ -31,20 +45,13 @@ public interface ErpStockOutMapper extends BaseMapperX<ErpStockOutDO> {
                 .eqIfPresent(ErpStockOutDO::getDeptId, reqVO.getDeptId())
                 .likeIfPresent(ErpStockOutDO::getRemark, reqVO.getRemark())
                 .eqIfPresent(ErpStockOutDO::getCreator, reqVO.getCreator());
-        if (reqVO.getWarehouseId() != null || reqVO.getProductId() != null || StringUtils.hasText(reqVO.getProductKeyword())) {
-            query.leftJoin(ErpStockOutItemDO.class, ErpStockOutItemDO::getOutId, ErpStockOutDO::getId)
-                    .leftJoin(ErpProductDO.class, ErpProductDO::getId, ErpStockOutItemDO::getProductId)
-                    .leftJoin(ErpProductUnitDO.class, ErpProductUnitDO::getId, ErpStockOutItemDO::getProductUnitId)
-                    .eq(reqVO.getWarehouseId() != null, ErpStockOutItemDO::getWarehouseId, reqVO.getWarehouseId())
-                    .eq(reqVO.getProductId() != null, ErpStockOutItemDO::getProductId, reqVO.getProductId())
-                    .and(StringUtils.hasText(reqVO.getProductKeyword()), w -> ErpKeywordQuery.appendProductKeyword(w, reqVO.getProductKeyword()))
-                    .groupBy(ErpStockOutDO::getId); // 避免 1 对多查询，产生相同的 1
-        }
+        ErpKeywordQuery.appendProductItemFilter(query, "erp_stock_out_item", "out_id",
+                reqVO.getProductId(), reqVO.getWarehouseId(), null, null,
+                reqVO.getProductKeyword(), true);
         ErpKeywordQuery.appendWithDeptNameAndSaleCustomerAndProductItemTokens(query, reqVO.getKeyword(),
                 "erp_stock_out_item", "out_id",
                 ErpStockOutDO::getNo, ErpStockOutDO::getRemark);
-        orderBy(query, reqVO);
-        return selectJoinPage(reqVO, ErpStockOutDO.class, query);
+        return query;
     }
 
     static void orderBy(MPJLambdaWrapperX<ErpStockOutDO> query, ErpStockOutPageReqVO reqVO) {

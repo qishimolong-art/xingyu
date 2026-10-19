@@ -26,6 +26,7 @@ import java.util.regex.Pattern;
 public class AssistantEntityResolver {
 
     public enum EntityType { PRODUCT, CUSTOMER, SUPPLIER, WAREHOUSE, DEPARTMENT, SALESPERSON, PURCHASER, USER }
+    public enum ProductMatchScope { KEYWORD, BRAND }
 
     private static final Pattern WRAPPED_KEYWORD = Pattern.compile(
             "^(?:(?:产品|配件|客户|供应商|仓库|部门|业务员|销售员|采购员|用户|员工)\\s*)?(?:厂家编码|旧编码|名称|名字|编码|编号|代码|条码|型号)\\s*(?:为|是|[:：])?\\s*(.+)$",
@@ -64,7 +65,7 @@ public class AssistantEntityResolver {
         EntityType type = typeForPlan(plan, field);
         Map<String, Object> args = new HashMap<>(base);
         prepareScope(args, type, plan.getMetric());
-        return resolve(args, type, rawKeyword, selectedId);
+        return resolve(args, type, rawKeyword, selectedId, ProductMatchScope.KEYWORD);
     }
 
     /** Resolves every textual plan filter to a verified id before the legacy metric engine runs. */
@@ -134,7 +135,7 @@ public class AssistantEntityResolver {
             Map<String, Object> args = baseContext();
             try {
                 prepareScope(args, type, null);
-                result.addAll(resolve(args, type, keyword, null));
+                result.addAll(resolve(args, type, keyword, null, ProductMatchScope.KEYWORD));
             } catch (AssistantFailure failure) {
                 // An inaccessible entity type must be indistinguishable from no match. Connection and query
                 // failures must still surface instead of being reported as an absent business object.
@@ -147,13 +148,18 @@ public class AssistantEntityResolver {
 
     public List<Map<String, Object>> resolveType(EntityType type,String rawKeyword) {
         Map<String,Object> args=baseContext();prepareScope(args,type,null);
-        return resolve(args,type,rawKeyword,null);
+        return resolve(args,type,rawKeyword,null,ProductMatchScope.KEYWORD);
+    }
+
+    public List<Map<String, Object>> resolveType(EntityType type,String rawKeyword,ProductMatchScope productMatchScope) {
+        Map<String,Object> args=baseContext();prepareScope(args,type,null);
+        return resolve(args,type,rawKeyword,null,productMatchScope);
     }
 
     public Map<String,Object> validate(EntityType type,Long id) {
         if(id==null || id<=0) throw new AssistantFailure("INVALID_CHOICE","候选对象无效");
         Map<String,Object> args=baseContext();prepareScope(args,type,null);
-        List<Map<String,Object>> matches=resolve(args,type,null,id);
+        List<Map<String,Object>> matches=resolve(args,type,null,id,ProductMatchScope.KEYWORD);
         if(matches.size()!=1) throw new AssistantFailure("FORBIDDEN","该候选对象已不可访问，请重新查询");
         return matches.get(0);
     }
@@ -190,7 +196,8 @@ public class AssistantEntityResolver {
     }
 
     private List<Map<String, Object>> resolve(Map<String, Object> args, EntityType type,
-                                               String rawKeyword, Long selectedId) {
+                                               String rawKeyword, Long selectedId,
+                                               ProductMatchScope productMatchScope) {
         String keyword = normalizeKeyword(rawKeyword);
         if (selectedId == null && keyword == null) return Collections.emptyList();
         if(type==EntityType.DEPARTMENT) return resolveDepartment(args,keyword,selectedId);
@@ -204,8 +211,10 @@ public class AssistantEntityResolver {
             args.put("entityMatchMode", "ID");
             return decorate(select(args), type, "ID");
         }
+        ProductMatchScope effectiveScope=type==EntityType.PRODUCT && productMatchScope!=null
+                ?productMatchScope:ProductMatchScope.KEYWORD;
         List<String> variants=type==EntityType.PRODUCT?AssistantSemanticKnowledge.productKeywordVariants(keyword):Collections.singletonList(keyword);
-        for (String matchMode : matchModes(type, args, keyword)) {
+        for (String matchMode : matchModes(type, args, keyword, effectiveScope)) {
             List<Map<String,Object>> combined=new ArrayList<>();
             List<String> candidates=Arrays.asList("EXACT_NAME","FUZZY").contains(matchMode)?variants:Collections.singletonList(keyword);
             if("TOKEN_FUZZY".equals(matchMode)) candidates=variants;
@@ -227,7 +236,7 @@ public class AssistantEntityResolver {
 
     private List<Map<String,Object>> phoneticCandidates(Map<String,Object> args,EntityType type,String keyword) {
         if(phonetic==null || !phonetic.enabled()
-                || !Arrays.asList(EntityType.PRODUCT,EntityType.CUSTOMER,EntityType.SUPPLIER).contains(type)
+                || !Arrays.asList(EntityType.CUSTOMER,EntityType.SUPPLIER).contains(type)
                 || !Boolean.TRUE.equals(args.get("searchPinyin"))) return Collections.emptyList();
         List<String> codes=phonetic.searchInitialCodes(keyword);
         if(codes.isEmpty()) return Collections.emptyList();
@@ -452,7 +461,17 @@ public class AssistantEntityResolver {
         args.put("showCode", Boolean.TRUE.equals(args.get("searchCode")));
     }
 
-    private static List<String> matchModes(EntityType type,Map<String,Object> args,String keyword) {
+    private static List<String> matchModes(EntityType type,Map<String,Object> args,String keyword,
+                                           ProductMatchScope productMatchScope) {
+        if(type==EntityType.PRODUCT && productMatchScope==ProductMatchScope.BRAND)
+            return Collections.singletonList("BRAND");
+        if(type==EntityType.PRODUCT) {
+            List<String> result=new ArrayList<>();result.add("EXACT_NAME");
+            if(ErpKeywordQuery.shouldAppendTokenProductItemCondition(
+                    ErpKeywordQuery.parseKeywordSearch(keyword))) result.add("TOKEN_FUZZY");
+            result.add("FUZZY");
+            return result;
+        }
         List<String> result=new ArrayList<>();
         if(Boolean.TRUE.equals(args.get("searchCode"))) result.add("CODE");
         if(type==EntityType.PRODUCT && Boolean.TRUE.equals(args.get("searchFactoryCode"))) result.add("FACTORY_CODE");

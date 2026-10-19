@@ -701,6 +701,7 @@ public class ErpStockServiceImpl implements ErpStockService {
     private boolean hasProductCondition(ErpStockPageReqVO v) {
         return StringUtils.hasText(v.getKeyword())
                 || StringUtils.hasText(v.getProductKeyword())
+                || StringUtils.hasText(v.getProductNameKeyword())
                 || StringUtils.hasText(v.getProductCode()) || StringUtils.hasText(v.getProductName())
                 || StringUtils.hasText(v.getDrawingNo()) || StringUtils.hasText(v.getVehicleModel())
                 || StringUtils.hasText(v.getOriginPlace()) || StringUtils.hasText(v.getBrand())
@@ -715,6 +716,7 @@ public class ErpStockServiceImpl implements ErpStockService {
 
     private boolean hasProductConditionExceptKeyword(ErpStockPageReqVO v) {
         return StringUtils.hasText(v.getProductKeyword())
+                || StringUtils.hasText(v.getProductNameKeyword())
                 || StringUtils.hasText(v.getProductCode()) || StringUtils.hasText(v.getProductName())
                 || StringUtils.hasText(v.getDrawingNo()) || StringUtils.hasText(v.getVehicleModel())
                 || StringUtils.hasText(v.getOriginPlace()) || StringUtils.hasText(v.getBrand())

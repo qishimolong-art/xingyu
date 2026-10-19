@@ -2,7 +2,9 @@ package cn.iocoder.yudao.module.erp.service.stock;
 
 import cn.hutool.core.collection.CollUtil;
 import cn.iocoder.yudao.framework.common.biz.system.permission.dto.DeptDataPermissionRespDTO;
+import cn.iocoder.yudao.framework.common.enums.CommonStatusEnum;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
+import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.ErpStockDocumentSummaryRespVO;
 import cn.iocoder.yudao.framework.common.util.number.MoneyUtils;
 import cn.iocoder.yudao.framework.common.util.object.BeanUtils;
 import cn.iocoder.yudao.framework.datapermission.core.util.DataPermissionUtils;
@@ -464,6 +466,78 @@ public class ErpStockMoveServiceImpl implements ErpStockMoveService {
     @Override
     public ErpStockMoveOperationPermission getUnlockCartPermission(ErpStockMoveDO stockMove,
                                                                    List<ErpStockMoveItemDO> items) {
+        ErpStockMoveOperationPermission documentPermission = getUnlockCartDocumentPermission(stockMove);
+        if (documentPermission != null) {
+            return documentPermission;
+        }
+        ErpSalePickDeliveryOrderDO fulfillmentOrder = salePickDeliveryOrderMapper.selectBySource(
+                ErpSaleBizSourceTypeEnum.CART.getType(), stockMove.getSourceId());
+        ErpStockMoveOperationPermission fulfillmentPermission = getUnlockCartFulfillmentPermission(fulfillmentOrder);
+        if (fulfillmentPermission != null) {
+            return fulfillmentPermission;
+        }
+        Set<Long> fromWarehouseIds = collectFromWarehouseIds(items);
+        Map<Long, ErpWarehouseDO> warehouseMap = CollUtil.isEmpty(fromWarehouseIds)
+                ? Collections.emptyMap() : getWarehouseMap(fromWarehouseIds, true);
+        if (!isSaleCartCrossDeptMove(stockMove, items, warehouseMap)) {
+            return ErpStockMoveOperationPermission.allowed();
+        }
+        return getUnlockCartCrossDeptOperationPermission(stockMove, createUnlockCartPermissionContext(),
+                "销售手推车跨部门调拨出库单只能由总公司解锁");
+    }
+
+    @Override
+    public Map<Long, ErpStockMoveOperationPermission> getUnlockCartPermissionMap(
+            List<ErpStockMoveDO> stockMoves, Map<Long, List<ErpStockMoveItemDO>> itemMap) {
+        if (CollUtil.isEmpty(stockMoves)) {
+            return Collections.emptyMap();
+        }
+        Map<Long, List<ErpStockMoveItemDO>> safeItemMap = itemMap != null ? itemMap : Collections.emptyMap();
+        Set<Long> fromWarehouseIds = new HashSet<>();
+        Set<Long> sourceIds = new HashSet<>();
+        stockMoves.forEach(stockMove -> {
+            fromWarehouseIds.addAll(collectFromWarehouseIds(safeItemMap.get(stockMove.getId())));
+            if (stockMove != null && isSaleCartSource(stockMove.getSourceType()) && stockMove.getSourceId() != null) {
+                sourceIds.add(stockMove.getSourceId());
+            }
+        });
+        Map<Long, ErpWarehouseDO> warehouseMap = CollUtil.isEmpty(fromWarehouseIds)
+                ? Collections.emptyMap() : getWarehouseMap(fromWarehouseIds, true);
+        Map<Long, ErpSalePickDeliveryOrderDO> fulfillmentOrderMap = new HashMap<>();
+        salePickDeliveryOrderMapper.selectListBySourceIds(
+                ErpSaleBizSourceTypeEnum.CART.getType(), sourceIds)
+                .forEach(order -> fulfillmentOrderMap.put(order.getSourceId(), order));
+
+        boolean hasCrossDeptMove = stockMoves.stream().anyMatch(stockMove -> isSaleCartCrossDeptMove(
+                stockMove, safeItemMap.get(stockMove.getId()), warehouseMap));
+        UnlockCartPermissionContext context = hasCrossDeptMove ? createUnlockCartPermissionContext() : null;
+        Map<Long, ErpStockMoveOperationPermission> permissionMap = new LinkedHashMap<>();
+        stockMoves.forEach(stockMove -> permissionMap.put(stockMove.getId(), getUnlockCartPermission(
+                stockMove, safeItemMap.get(stockMove.getId()), fulfillmentOrderMap.get(stockMove.getSourceId()),
+                warehouseMap, context)));
+        return permissionMap;
+    }
+
+    private ErpStockMoveOperationPermission getUnlockCartPermission(
+            ErpStockMoveDO stockMove, List<ErpStockMoveItemDO> items,
+            ErpSalePickDeliveryOrderDO fulfillmentOrder, Map<Long, ErpWarehouseDO> warehouseMap,
+            UnlockCartPermissionContext context) {
+        ErpStockMoveOperationPermission documentPermission = getUnlockCartDocumentPermission(stockMove);
+        if (documentPermission != null) {
+            return documentPermission;
+        }
+        ErpStockMoveOperationPermission fulfillmentPermission = getUnlockCartFulfillmentPermission(fulfillmentOrder);
+        if (fulfillmentPermission != null) {
+            return fulfillmentPermission;
+        }
+        if (!isSaleCartCrossDeptMove(stockMove, items, warehouseMap)) {
+            return ErpStockMoveOperationPermission.allowed();
+        }
+        return getUnlockCartCrossDeptOperationPermission(stockMove, context,
+                "销售手推车跨部门调拨出库单只能由总公司解锁");
+    }
+
+    private ErpStockMoveOperationPermission getUnlockCartDocumentPermission(ErpStockMoveDO stockMove) {
         if (stockMove == null) {
             return ErpStockMoveOperationPermission.denied("调拨出库单不存在或已处理，请刷新后重试");
         }
@@ -479,14 +553,16 @@ public class ErpStockMoveServiceImpl implements ErpStockMoveService {
         if (!ErpAuditStatus.PROCESS.getStatus().equals(stockMove.getStatus())) {
             return ErpStockMoveOperationPermission.denied("调拨出库单已审核，不能解锁手推车");
         }
-        ErpSalePickDeliveryOrderDO fulfillmentOrder = salePickDeliveryOrderMapper.selectBySource(
-                ErpSaleBizSourceTypeEnum.CART.getType(), stockMove.getSourceId());
+        return null;
+    }
+
+    private ErpStockMoveOperationPermission getUnlockCartFulfillmentPermission(
+            ErpSalePickDeliveryOrderDO fulfillmentOrder) {
         if (fulfillmentOrder != null && !isUnstartedFulfillmentOrder(fulfillmentOrder)) {
             return ErpStockMoveOperationPermission.denied(
                     "销售手推车已开始拣货或送货，不能解锁手推车");
         }
-        return getUnlockCartCrossDeptOperationPermission(stockMove, items,
-                "销售手推车跨部门调拨出库单只能由总公司解锁");
+        return null;
     }
 
     private boolean isUnstartedFulfillmentOrder(ErpSalePickDeliveryOrderDO order) {
@@ -504,16 +580,18 @@ public class ErpStockMoveServiceImpl implements ErpStockMoveService {
         return value == null || value == 0;
     }
 
-    private ErpStockMoveOperationPermission getUnlockCartCrossDeptOperationPermission(ErpStockMoveDO stockMove,
-                                                                                     List<ErpStockMoveItemDO> items,
-                                                                                     String deniedReason) {
-        if (!isSaleCartCrossDeptMove(stockMove, items)) {
-            return ErpStockMoveOperationPermission.allowed();
-        }
-        Long loginDeptId = getLoginUserDeptId();
-        if (loginDeptId != null && (isAncestorDept(stockMove.getDeptId(), loginDeptId)
-                || isConfiguredUnlockCartHeadDept(loginDeptId))) {
-            return ErpStockMoveOperationPermission.allowed();
+    private ErpStockMoveOperationPermission getUnlockCartCrossDeptOperationPermission(
+            ErpStockMoveDO stockMove, UnlockCartPermissionContext context, String deniedReason) {
+        if (context != null) {
+            for (Long loginDeptId : context.getLoginDeptIds()) {
+                if (getDeptForUnlockCart(loginDeptId, context) == null) {
+                    continue;
+                }
+                if (isAncestorDept(stockMove.getDeptId(), loginDeptId, context)
+                        || isConfiguredUnlockCartHeadDept(loginDeptId, context)) {
+                    return ErpStockMoveOperationPermission.allowed();
+                }
+            }
         }
         return ErpStockMoveOperationPermission.denied(deniedReason);
     }
@@ -1607,25 +1685,79 @@ public class ErpStockMoveServiceImpl implements ErpStockMoveService {
         return false;
     }
 
-    private boolean isConfiguredUnlockCartHeadDept(Long loginDeptId) {
+    private UnlockCartPermissionContext createUnlockCartPermissionContext() {
+        Long loginUserId = getLoginUserId();
+        if (loginUserId == null) {
+            return new UnlockCartPermissionContext(Collections.emptySet(), Collections.emptySet());
+        }
+        Set<Long> userDeptIds = permissionApi.getDeptIdsByUserId(loginUserId);
+        Set<Long> validUserDeptIds = userDeptIds == null ? new HashSet<>() : userDeptIds.stream()
+                .filter(Objects::nonNull)
+                .filter(deptId -> deptId > 0)
+                .collect(Collectors.toSet());
+        if (CollUtil.isEmpty(validUserDeptIds)) {
+            return new UnlockCartPermissionContext(Collections.emptySet(), Collections.emptySet());
+        }
         Set<Long> headDeptIds = parsePositiveLongSet(configApi.getConfigValueByKey(
                 UNLOCK_CART_HEAD_DEPT_IDS_CONFIG_KEY));
-        if (CollUtil.isEmpty(headDeptIds)) {
+        return new UnlockCartPermissionContext(validUserDeptIds, headDeptIds);
+    }
+
+    private boolean isAncestorDept(Long childDeptId, Long possibleAncestorDeptId,
+                                   UnlockCartPermissionContext context) {
+        if (childDeptId == null || possibleAncestorDeptId == null
+                || Objects.equals(childDeptId, possibleAncestorDeptId)) {
+            return false;
+        }
+        Long currentId = childDeptId;
+        Set<Long> visited = new HashSet<>();
+        while (currentId != null && currentId > 0 && visited.add(currentId)) {
+            DeptRespDTO current = getDeptForUnlockCart(currentId, context);
+            if (current == null || current.getParentId() == null || current.getParentId() <= 0) {
+                return false;
+            }
+            Long parentId = current.getParentId();
+            if (Objects.equals(parentId, possibleAncestorDeptId)) {
+                return true;
+            }
+            currentId = parentId;
+        }
+        return false;
+    }
+
+    private boolean isConfiguredUnlockCartHeadDept(Long loginDeptId, UnlockCartPermissionContext context) {
+        if (loginDeptId == null || context == null || CollUtil.isEmpty(context.getHeadDeptIds())) {
             return false;
         }
         Long currentId = loginDeptId;
         Set<Long> visited = new HashSet<>();
         while (currentId != null && currentId > 0 && visited.add(currentId)) {
-            if (headDeptIds.contains(currentId)) {
+            DeptRespDTO current = getDeptForUnlockCart(currentId, context);
+            if (current == null) {
+                return false;
+            }
+            if (context.getHeadDeptIds().contains(currentId)) {
                 return true;
             }
-            DeptRespDTO current = deptApi.getDept(currentId);
-            if (current == null || current.getParentId() == null || current.getParentId() <= 0) {
+            if (current.getParentId() == null || current.getParentId() <= 0) {
                 return false;
             }
             currentId = current.getParentId();
         }
         return false;
+    }
+
+    private DeptRespDTO getDeptForUnlockCart(Long deptId, UnlockCartPermissionContext context) {
+        if (deptId == null || context == null) {
+            return null;
+        }
+        if (context.getLoadedDeptIds().add(deptId)) {
+            DeptRespDTO dept = deptApi.getDept(deptId);
+            if (dept != null && CommonStatusEnum.ENABLE.getStatus().equals(dept.getStatus())) {
+                context.getDeptMap().put(deptId, dept);
+            }
+        }
+        return context.getDeptMap().get(deptId);
     }
 
     private Set<Long> parsePositiveLongSet(String value) {
@@ -1866,6 +1998,14 @@ public class ErpStockMoveServiceImpl implements ErpStockMoveService {
     }
 
     @Override
+    public ErpStockDocumentSummaryRespVO getStockMoveSummary(ErpStockMovePageReqVO pageReqVO) {
+        if (pageReqVO.getTransferDirection() == null) {
+            pageReqVO.setTransferDirection(TRANSFER_DIRECTION_OUT);
+        }
+        return stockMoveMapper.selectSummary(pageReqVO);
+    }
+
+    @Override
     public PageResult<ErpStockMoveDO> getVisibleStockTransferOutPage(ErpStockMovePageReqVO pageReqVO) {
         return getVisibleStockTransferOutPage(pageReqVO, getTransferOutPermissionScope());
     }
@@ -1882,6 +2022,17 @@ public class ErpStockMoveServiceImpl implements ErpStockMoveService {
     }
 
     @Override
+    public ErpStockDocumentSummaryRespVO getVisibleStockTransferOutSummary(
+            ErpStockMovePageReqVO pageReqVO, ErpStockTransferOutPermissionScope scope) {
+        pageReqVO.setTransferDirection(TRANSFER_DIRECTION_OUT);
+        if (scope == null) {
+            return stockMoveMapper.selectSummary(pageReqVO);
+        }
+        return DataPermissionUtils.executeIgnore(() -> stockMoveMapper.selectTransferOutSummary(pageReqVO,
+                scope.getDeptIds(), scope.isAll()));
+    }
+
+    @Override
     public PageResult<ErpStockMoveDO> getVisibleStockTransferInPage(ErpStockMovePageReqVO pageReqVO) {
         pageReqVO.setTransferDirection(TRANSFER_DIRECTION_IN);
         ErpStockTransferOutPermissionScope scope = getTransferInPermissionScope();
@@ -1889,6 +2040,17 @@ public class ErpStockMoveServiceImpl implements ErpStockMoveService {
             return stockMoveMapper.selectPage(pageReqVO);
         }
         return DataPermissionUtils.executeIgnore(() -> stockMoveMapper.selectTransferInPage(pageReqVO,
+                scope.getDeptIds(), scope.isAll()));
+    }
+
+    @Override
+    public ErpStockDocumentSummaryRespVO getVisibleStockTransferInSummary(ErpStockMovePageReqVO pageReqVO) {
+        pageReqVO.setTransferDirection(TRANSFER_DIRECTION_IN);
+        ErpStockTransferOutPermissionScope scope = getTransferInPermissionScope();
+        if (scope == null) {
+            return stockMoveMapper.selectSummary(pageReqVO);
+        }
+        return DataPermissionUtils.executeIgnore(() -> stockMoveMapper.selectTransferInSummary(pageReqVO,
                 scope.getDeptIds(), scope.isAll()));
     }
 
@@ -1945,6 +2107,12 @@ public class ErpStockMoveServiceImpl implements ErpStockMoveService {
     }
 
     @Override
+    public List<ErpStockMoveItemDO> getStockMoveItemListByMoveId(Long moveId, String orderField,
+                                                                 String orderDirection) {
+        return stockMoveItemMapper.selectListByMoveId(moveId, orderField, orderDirection);
+    }
+
+    @Override
     public PageResult<ErpStockMoveItemDO> getStockMoveItemPage(ErpStockMoveItemPageReqVO pageReqVO) {
         validateStockMoveExists(pageReqVO.getMoveId());
         return getStockMoveItemPageWithoutMoveValidation(pageReqVO);
@@ -1962,6 +2130,35 @@ public class ErpStockMoveServiceImpl implements ErpStockMoveService {
             return Collections.emptyList();
         }
         return stockMoveItemMapper.selectListByMoveIds(moveIds);
+    }
+
+    private static final class UnlockCartPermissionContext {
+
+        private final Set<Long> loginDeptIds;
+        private final Set<Long> headDeptIds;
+        private final Map<Long, DeptRespDTO> deptMap = new HashMap<>();
+        private final Set<Long> loadedDeptIds = new HashSet<>();
+
+        private UnlockCartPermissionContext(Set<Long> loginDeptIds, Set<Long> headDeptIds) {
+            this.loginDeptIds = loginDeptIds;
+            this.headDeptIds = headDeptIds;
+        }
+
+        private Set<Long> getLoginDeptIds() {
+            return loginDeptIds;
+        }
+
+        private Set<Long> getHeadDeptIds() {
+            return headDeptIds;
+        }
+
+        private Map<Long, DeptRespDTO> getDeptMap() {
+            return deptMap;
+        }
+
+        private Set<Long> getLoadedDeptIds() {
+            return loadedDeptIds;
+        }
     }
 
     private static final class TransferOutApproveContext {

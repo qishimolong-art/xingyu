@@ -4,17 +4,21 @@ import cn.iocoder.yudao.framework.test.core.ut.BaseMockitoUnitTest;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.payable.vo.expense.ErpPayableExpenseDraftSaveReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.payable.vo.expense.ErpPayableExpenseSaveReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.base.ErpBaseDataDO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.finance.ErpFinanceReceiptDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.payable.ErpPayableExpenseDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.finance.payable.ErpPayableExpenseItemDO;
+import cn.iocoder.yudao.module.erp.dal.dataobject.sale.ErpCustomerDO;
 import cn.iocoder.yudao.module.erp.dal.mysql.finance.payable.ErpPayableExpenseItemMapper;
 import cn.iocoder.yudao.module.erp.dal.mysql.finance.payable.ErpPayableExpenseMapper;
 import cn.iocoder.yudao.module.erp.dal.redis.no.ErpNoRedisDAO;
 import cn.iocoder.yudao.module.erp.enums.finance.ErpPayableExpenseStatusEnum;
+import cn.iocoder.yudao.module.erp.enums.ErpAuditStatus;
 import cn.iocoder.yudao.module.erp.service.base.ErpBaseDataService;
 import cn.iocoder.yudao.module.erp.service.common.ErpOperateLogService;
 import cn.iocoder.yudao.module.erp.service.finance.ErpAccountService;
 import cn.iocoder.yudao.module.erp.service.finance.ErpFinanceFieldPermissionMasker;
 import cn.iocoder.yudao.module.erp.service.finance.bo.ErpSaleCartFreightDraftCreateReqBO;
+import cn.iocoder.yudao.module.erp.service.sale.ErpCustomerService;
 import cn.iocoder.yudao.module.system.api.dept.DeptApi;
 import cn.iocoder.yudao.module.system.api.dept.dto.DeptRespDTO;
 import cn.iocoder.yudao.module.system.api.user.AdminUserApi;
@@ -26,6 +30,7 @@ import org.mockito.Mock;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.Collections;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -58,6 +63,8 @@ class ErpPayableExpenseDraftServiceImplTest extends BaseMockitoUnitTest {
     private ErpNoRedisDAO noRedisDAO;
     @Mock
     private ErpAccountService accountService;
+    @Mock
+    private ErpCustomerService customerService;
     @Mock
     private ErpBaseDataService baseDataService;
     @Mock
@@ -123,6 +130,76 @@ class ErpPayableExpenseDraftServiceImplTest extends BaseMockitoUnitTest {
         assertThat(captor.getValue().getExpenseBizType()).isEqualTo("一般费用");
         assertThat(captor.getValue().getDeptId()).isEqualTo(4L);
         assertThat(captor.getValue().getTotalAmount()).isEqualByComparingTo("12.30");
+    }
+
+    @Test
+    void createApprovedFromReceiptDiscount_savesApprovedNonCashSaleReduction() {
+        when(expenseMapper.selectBySource(ErpPayableExpenseService.RECEIPT_DISCOUNT_SOURCE_TYPE, 21L))
+                .thenReturn(null);
+        when(noRedisDAO.generate("FYZF")).thenReturn("FYZF202610150001");
+        when(deptApi.getDept(4L)).thenReturn(new DeptRespDTO().setId(4L));
+        when(customerService.getCustomer(8L)).thenReturn(ErpCustomerDO.builder()
+                .id(8L).name("测试客户").build());
+        when(expenseMapper.insert(any(ErpPayableExpenseDO.class))).thenAnswer(invocation -> {
+            ((ErpPayableExpenseDO) invocation.getArgument(0)).setId(31L);
+            return 1;
+        });
+        ErpFinanceReceiptDO receipt = ErpFinanceReceiptDO.builder()
+                .id(21L).no("SKD202610150001").receiptTime(LocalDateTime.of(2026, 10, 15, 9, 30))
+                .customerId(8L).accountId(2L).deptId(4L).financeUserId(null)
+                .discountPrice(new BigDecimal("12.34")).build();
+
+        Long id = service.createApprovedFromFinanceReceiptDiscount(receipt, 77L);
+
+        assertThat(id).isEqualTo(31L);
+        ArgumentCaptor<ErpPayableExpenseDO> expenseCaptor =
+                ArgumentCaptor.forClass(ErpPayableExpenseDO.class);
+        verify(expenseMapper).insert(expenseCaptor.capture());
+        ErpPayableExpenseDO expense = expenseCaptor.getValue();
+        assertThat(expense.getStatus()).isEqualTo(ErpAuditStatus.APPROVE.getStatus());
+        assertThat(expense.getApproveTime()).isNotNull();
+        assertThat(expense.getBizTime()).isEqualTo(LocalDate.of(2026, 10, 15));
+        assertThat(expense.getSettleMethod()).isEqualTo("挂账");
+        assertThat(expense.getAccountId()).isEqualTo(2L);
+        assertThat(expense.getExpenseBizType()).isEqualTo("一般费用");
+        assertThat(expense.getExpenseType()).isEqualTo("其他");
+        assertThat(expense.getTotalAmount()).isEqualByComparingTo("12.34");
+        assertThat(expense.getDeptId()).isEqualTo(4L);
+        assertThat(expense.getHandlerId()).isEqualTo(77L);
+        assertThat(expense.getParty()).isEqualTo("测试客户");
+        assertThat(expense.getSourceType()).isEqualTo("收款单优惠");
+        assertThat(expense.getSourceId()).isEqualTo(21L);
+        assertThat(expense.getSourceNo()).isEqualTo("SKD202610150001");
+
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<List<ErpPayableExpenseItemDO>> itemCaptor = ArgumentCaptor.forClass(List.class);
+        verify(expenseItemMapper).insertBatch(itemCaptor.capture());
+        ErpPayableExpenseItemDO item = itemCaptor.getValue().get(0);
+        assertThat(item.getItemName()).isEqualTo("销售减收");
+        assertThat(item.getAmount()).isEqualByComparingTo("12.34");
+        assertThat(item.getQty()).isEqualTo(1);
+        assertThat(item.getExpenseCategory()).isEqualTo("销售费用");
+        assertThat(item.getHandlerId()).isEqualTo(77L);
+        verify(accountService).validateAccount(2L);
+        verify(adminUserApi).validateUser(77L);
+    }
+
+    @Test
+    void createApprovedFromReceiptDiscount_isIdempotentAndSkipsNonPositiveAmount() {
+        ErpPayableExpenseDO existing = new ErpPayableExpenseDO().setId(99L);
+        when(expenseMapper.selectBySource(ErpPayableExpenseService.RECEIPT_DISCOUNT_SOURCE_TYPE, 21L))
+                .thenReturn(existing);
+        ErpFinanceReceiptDO receipt = ErpFinanceReceiptDO.builder()
+                .id(21L).discountPrice(BigDecimal.TEN).build();
+
+        assertThat(service.createApprovedFromFinanceReceiptDiscount(receipt, 77L)).isEqualTo(99L);
+        assertThat(service.createApprovedFromFinanceReceiptDiscount(
+                ErpFinanceReceiptDO.builder().id(22L).discountPrice(BigDecimal.ZERO).build(), 77L)).isNull();
+        assertThat(service.createApprovedFromFinanceReceiptDiscount(
+                ErpFinanceReceiptDO.builder().id(23L).discountPrice(BigDecimal.ONE.negate()).build(), 77L)).isNull();
+
+        verify(expenseMapper, never()).insert(any(ErpPayableExpenseDO.class));
+        verify(expenseItemMapper, never()).insertBatch(any());
     }
 
     @Test
@@ -440,6 +517,25 @@ class ErpPayableExpenseDraftServiceImplTest extends BaseMockitoUnitTest {
         assertServiceException(() -> service.updatePayableExpenseStatus(10L, 20),
                 PAYABLE_EXPENSE_APPROVE_FAIL);
         verify(expenseMapper, never()).updateByIdAndStatus(any(), any(), any());
+    }
+
+    @Test
+    void approveProcess_writesApproveTimeOnlyWithConditionalStatusUpdate() {
+        ErpPayableExpenseDO process = new ErpPayableExpenseDO()
+                .setId(10L).setNo("FYZF10")
+                .setStatus(ErpPayableExpenseStatusEnum.PROCESS.getStatus());
+        when(expenseMapper.selectById(10L)).thenReturn(process);
+        when(expenseMapper.updateByIdAndStatus(eq(10L),
+                eq(ErpPayableExpenseStatusEnum.PROCESS.getStatus()), any())).thenReturn(1);
+        LocalDateTime before = LocalDateTime.now();
+
+        service.updatePayableExpenseStatus(10L, ErpPayableExpenseStatusEnum.APPROVE.getStatus());
+
+        ArgumentCaptor<ErpPayableExpenseDO> captor = ArgumentCaptor.forClass(ErpPayableExpenseDO.class);
+        verify(expenseMapper).updateByIdAndStatus(eq(10L),
+                eq(ErpPayableExpenseStatusEnum.PROCESS.getStatus()), captor.capture());
+        assertThat(captor.getValue().getStatus()).isEqualTo(ErpPayableExpenseStatusEnum.APPROVE.getStatus());
+        assertThat(captor.getValue().getApproveTime()).isBetween(before, LocalDateTime.now());
     }
 
     @Test

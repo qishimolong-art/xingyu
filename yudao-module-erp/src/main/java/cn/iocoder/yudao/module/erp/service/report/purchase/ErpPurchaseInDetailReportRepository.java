@@ -114,7 +114,8 @@ public class ErpPurchaseInDetailReportRepository {
 
     private String inboundSelect(String documentScope, String supplierScope) {
         return "SELECT CONCAT('IN-',ifi.id) AS row_key,ifi.id AS item_id,pi.id AS business_id,"
-                + "ifi.product_id,ifi.warehouse_id,'PURCHASE_IN' AS document_type_code,'采购入库' AS document_type,"
+                + "ifi.product_id,ifi.warehouse_id,'PURCHASE_IN' AS document_type_code,"
+                + "pi.order_id AS source_business_id,'PURCHASE_ORDER' AS source_document_type_code,'采购入库' AS document_type,"
                 + "pi.approve_time AS approve_date,pi.no AS document_no,pi.order_no AS source_no,"
                 + "p.code AS product_code,p.name AS product_name,COALESCE(NULLIF(ifi.vehicle_model,''),p.vehicle_model) AS vehicle_model,"
                 + "p.feature_code,COALESCE(ifi.count,0) AS count,COALESCE(ifi.original_product_price,ifi.product_price) AS product_price,"
@@ -138,7 +139,8 @@ public class ErpPurchaseInDetailReportRepository {
 
     private String returnSelect(String documentScope, String supplierScope) {
         return "SELECT CONCAT('RETURN-',pri.id),pri.id,pr.id,pri.product_id,pri.warehouse_id,"
-                + "'PURCHASE_RETURN','采购退货',pr.approve_time,pr.no,"
+                + "'PURCHASE_RETURN',CASE WHEN pr.return_mode=10 THEN pri.source_in_id END,'PURCHASE_IN',"
+                + "'采购退货',pr.approve_time,pr.no,"
                 + "CASE WHEN pr.return_mode=10 THEN pri.source_in_no END,"
                 + "COALESCE(NULLIF(pri.part_code,''),p.code),COALESCE(NULLIF(pri.part_name,''),p.name),"
                 + "COALESCE(NULLIF(pri.vehicle_model,''),p.vehicle_model),p.feature_code,-COALESCE(pri.count,0),"
@@ -159,7 +161,7 @@ public class ErpPurchaseInDetailReportRepository {
     private String adjustSelect(String documentScope, String supplierScope) {
         return "SELECT CONVERT(CONCAT('ADJUST-',pai.id) USING utf8mb4) COLLATE utf8mb4_unicode_ci,"
                 + "pai.id,pa.id,pai.product_id,pai.warehouse_id,"
-                + "'PURCHASE_ADJUST','采购调价',pa.approve_time,"
+                + "'PURCHASE_ADJUST',pai.in_id,'PURCHASE_IN','采购调价',pa.approve_time,"
                 + "CONVERT(pa.no USING utf8mb4) COLLATE utf8mb4_unicode_ci,"
                 + "CONVERT(pai.in_no USING utf8mb4) COLLATE utf8mb4_unicode_ci,"
                 + "CONVERT(COALESCE(NULLIF(pai.product_code,''),p.code) USING utf8mb4) COLLATE utf8mb4_unicode_ci,"

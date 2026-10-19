@@ -13,6 +13,7 @@ import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartItem
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartItemMatchRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartItemBatchUpdateReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartPageReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartSummaryRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartSaveReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartSubmitRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.sale.vo.cart.ErpSaleCartUpdateBasicReqVO;
@@ -78,7 +79,19 @@ public interface ErpSaleCartService {
 
     PageResult<ErpSaleCartDO> getSaleCartPage(ErpSaleCartPageReqVO pageReqVO);
 
+    ErpSaleCartSummaryRespVO getSaleCartSummary(ErpSaleCartPageReqVO pageReqVO);
+
     List<ErpSaleCartItemDO> getSaleCartItemListByCartId(Long cartId);
+
+    /**
+     * 获取销售手推车全部明细，并使用详情页相同的字段语义排序。
+     *
+     * @param cartId 销售手推车编号
+     * @param orderField 排序字段
+     * @param orderDirection 排序方向
+     * @return 全部明细
+     */
+    List<ErpSaleCartItemDO> getSaleCartItemListByCartId(Long cartId, String orderField, String orderDirection);
 
     PageResult<ErpSaleCartItemDO> getSaleCartItemPage(ErpSaleCartItemPageReqVO pageReqVO);
 

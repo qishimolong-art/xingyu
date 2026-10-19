@@ -277,7 +277,7 @@ yudao:
       app-code: ${ERP_BUSINESS_LICENSE_OCR_APP_CODE:b527ea29afc544feacbabdc6d8170edb}
       timeout: ${ERP_BUSINESS_LICENSE_OCR_TIMEOUT:8000}
     purchase-invoice-ocr:
-      endpoint: https://dgfp.market.alicloudapi.com/ocrservice/invoice
+      endpoint: https://multcommon.market.alicloudapi.com/ocrservice/mixedMultiCommon
       app-key: 205043684
       app-secret: SSJl5t5C7zL2yyeVaHEkcemXAbSaXg92
       app-code: b527ea29afc544feacbabdc6d8170edb
@@ -388,6 +388,16 @@ erp:
     model-timeout-seconds: 20
     conversation-days: 30
     audit-days: 90
+    # Customer mini-program channel stays closed in the shared/production baseline.
+    customer-app:
+      enabled: false
+      max-rows: 20
+      order-default-days: 90
+      allowed-capabilities:
+        - CUSTOMER_PRICE
+        - MALL_STOCK
+        - CUSTOMER_ORDER
+        - CLARIFICATION
     published-metrics:
       - SALE
       - PURCHASE

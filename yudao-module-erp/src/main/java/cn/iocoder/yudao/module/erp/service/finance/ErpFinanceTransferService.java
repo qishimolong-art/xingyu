@@ -42,4 +42,7 @@ public interface ErpFinanceTransferService {
 
     PageResult<ErpFinanceTransferDO> getFinanceTransferPage(ErpFinanceTransferPageReqVO pageReqVO);
 
+    cn.iocoder.yudao.module.erp.controller.admin.finance.vo.ErpFinanceQuerySummaryRespVO getFinanceTransferSummary(
+            ErpFinanceTransferPageReqVO pageReqVO);
+
 }

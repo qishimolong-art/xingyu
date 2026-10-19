@@ -108,7 +108,7 @@ public class AssistantToolRegistry {
         if(args==null) throw new AssistantFailure("MODEL_INVALID","模型工具参数为空");
         Set<String> allowed=new HashSet<>();
         switch(call.getName()) {
-            case "query_master_data_stats": allowed.addAll(Arrays.asList("question","archiveType","statusMode","keyword"));break;
+            case "query_master_data_stats": allowed.addAll(Arrays.asList("question","archiveType","statusMode","keyword","brand"));break;
             case AssistantCompanyKnowledge.TOOL_NAME: allowed.add("question");break;
             case CLARIFY_INTENT_TOOL:
                 allowed.addAll(Arrays.asList("question","choice1","choice2","choice3"));break;
@@ -136,9 +136,9 @@ public class AssistantToolRegistry {
         List<Map<String,Object>> result=new ArrayList<>();
         result.add(tool("query_verified_metric","查询已核验的销售、采购入库、库存、SKU、收款、付款、应收或应付指标",props(
                 "metric",enumProperty("SALE","PURCHASE","STOCK","STOCK_SKU","RECEIPT","PAYMENT","RECEIVABLE","PAYABLE"),"question",string()),"question"));
-        result.add(tool("query_master_data_stats","查询当前账号可见的客户、供应商、配件或当前租户员工数量及启停用状态统计；产品数量可按品牌、系列、名称、规格或编码关键词筛选",props(
+        result.add(tool("query_master_data_stats","查询当前账号可见的客户、供应商、配件或当前租户员工数量及启停用状态统计；配件普通关键词按档案八字段搜索，明确品牌问法使用独立品牌条件",props(
                 "question",string(),"archiveType",enumProperty("CUSTOMER","SUPPLIER","PRODUCT","EMPLOYEE"),
-                "statusMode",enumProperty("ENABLED","DISABLED","ALL","SPLIT"),"keyword",string()),"question","archiveType","statusMode"));
+                "statusMode",enumProperty("ENABLED","DISABLED","ALL","SPLIT"),"keyword",string(),"brand",string()),"question","archiveType","statusMode"));
         result.add(tool("resolve_business_entity","解析产品、仓库、部门、客户、供应商、业务员、采购员或系统用户候选对象",props("entityType",enumProperty("product","warehouse","department","customer","supplier","salesperson","purchaser","user"),"keyword",string()),"entityType","keyword"));
         result.add(tool("query_product_stock","查询指定产品价格、股份价、零售价、当前库存、有无货或逐仓库存数量；不用于销售额、采购额或客户欠款统计",props("product",string(),"warehouse",string(),"groupByWarehouse",bool(),"stockMode",enumProperty("ALL","POSITIVE","NEGATIVE","AVAILABLE")),"product"));
         result.add(tool("query_inventory_details","查询当前库存明细、负库存明细、库存产品或按仓库/产品汇总的账面库存数量；不回答历史库存或库存金额",questionProps(),"question"));

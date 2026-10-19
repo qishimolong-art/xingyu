@@ -12,6 +12,7 @@ import java.util.*;
 
 @Repository
 public class AssistantStore {
+    private static final String ADMIN_OWNER = "ADMIN";
     private static final Set<String> VISIBLE_HISTORY_STATUSES = new HashSet<>(Arrays.asList(
             "SUCCESS", "EMPTY", "PARTIAL_SUCCESS", "KNOWLEDGE_NOT_FOUND", "UNVERIFIED_KNOWLEDGE", "CLARIFY"));
     @Resource private JdbcTemplate jdbc;
@@ -28,24 +29,24 @@ public class AssistantStore {
     public void enabled() { if(!properties.isEnabled()) throw new AssistantFailure("DISABLED","智能问数尚未开放"); }
     public void owner(String id) {
         enabled();
-        Integer n=jdbc.queryForObject("SELECT COUNT(*) FROM erp_assistant_conversation WHERE id=? AND tenant_id=? AND user_id=? AND deleted=0",Integer.class,id,tenant(),user());
+        Integer n=jdbc.queryForObject("SELECT COUNT(*) FROM erp_assistant_conversation WHERE id=? AND tenant_id=? AND user_id=? AND owner_type=? AND customer_id IS NULL AND deleted=0",Integer.class,id,tenant(),user(),ADMIN_OWNER);
         if(n==null || n!=1) throw new AssistantFailure("NOT_FOUND","会话不存在或不可访问");
     }
     public String create() {
         enabled(); String id=UUID.randomUUID().toString();
-        jdbc.update("INSERT INTO erp_assistant_conversation(id,tenant_id,user_id,title) VALUES(?,?,?,?)",id,tenant(),user(),"新会话"); return id;
+        jdbc.update("INSERT INTO erp_assistant_conversation(id,tenant_id,user_id,owner_type,customer_id,entry,title) VALUES(?,?,?,?,?,?,?)",id,tenant(),user(),ADMIN_OWNER,null,"ADMIN_WEB","新会话"); return id;
     }
     public List<Map<String,Object>> list(int page) { return list(page,20); }
     public List<Map<String,Object>> list(int page,int pageSize) {
         enabled(); if(page<1 || page>10000 || pageSize<1 || pageSize>50) throw new IllegalArgumentException("分页无效");
         Long tenantId=tenant(),userId=user();
-        List<Map<String,Object>> rows=jdbc.queryForList("SELECT id,title,update_time FROM erp_assistant_conversation WHERE tenant_id=? AND user_id=? AND deleted=0 ORDER BY update_time DESC,id LIMIT ? OFFSET ?",tenantId,userId,pageSize,(page-1)*pageSize);
+        List<Map<String,Object>> rows=jdbc.queryForList("SELECT id,title,update_time FROM erp_assistant_conversation WHERE tenant_id=? AND user_id=? AND owner_type=? AND customer_id IS NULL AND deleted=0 ORDER BY update_time DESC,id LIMIT ? OFFSET ?",tenantId,userId,ADMIN_OWNER,pageSize,(page-1)*pageSize);
         if(rows.isEmpty()) return rows;
         List<String> ids=new ArrayList<>();for(Map<String,Object> row:rows) ids.add(String.valueOf(row.get("id")));
         String placeholders=String.join(",",Collections.nCopies(ids.size(),"?"));
-        List<Object> args=new ArrayList<>(ids);args.add(tenantId);args.add(userId);
+        List<Object> args=new ArrayList<>(ids);args.add(tenantId);args.add(userId);args.add(ADMIN_OWNER);
         List<Map<String,Object>> messages=jdbc.queryForList(
-                "SELECT m.conversation_id,m.question,m.status,m.plan_json FROM erp_assistant_message m WHERE m.conversation_id IN ("+placeholders+") AND m.tenant_id=? AND m.user_id=? AND m.deleted=0 AND NOT EXISTS (SELECT 1 FROM erp_assistant_message earlier WHERE earlier.conversation_id=m.conversation_id AND earlier.tenant_id=m.tenant_id AND earlier.user_id=m.user_id AND earlier.deleted=0 AND (earlier.create_time<m.create_time OR (earlier.create_time=m.create_time AND earlier.id<m.id)))",
+                "SELECT m.conversation_id,m.question,m.status,m.plan_json FROM erp_assistant_message m WHERE m.conversation_id IN ("+placeholders+") AND m.tenant_id=? AND m.user_id=? AND m.owner_type=? AND m.customer_id IS NULL AND m.deleted=0 AND NOT EXISTS (SELECT 1 FROM erp_assistant_message earlier WHERE earlier.conversation_id=m.conversation_id AND earlier.tenant_id=m.tenant_id AND earlier.user_id=m.user_id AND earlier.owner_type=m.owner_type AND earlier.customer_id IS NULL AND earlier.deleted=0 AND (earlier.create_time<m.create_time OR (earlier.create_time=m.create_time AND earlier.id<m.id)))",
                 args.toArray());
         Map<String,Map<String,Object>> firstByConversation=new HashMap<>();
         for(Map<String,Object> message:messages) firstByConversation.put(String.valueOf(message.get("conversation_id")),message);
@@ -101,7 +102,7 @@ public class AssistantStore {
     }
     public List<Map<String,Object>> messages(String id,int page) {
         owner(id); if(page<1 || page>10000) throw new IllegalArgumentException("分页无效");
-        List<Map<String,Object>> rows=jdbc.queryForList("SELECT id,question,status,create_time,plan_json FROM erp_assistant_message WHERE conversation_id=? AND tenant_id=? AND user_id=? AND deleted=0 ORDER BY create_time DESC,id DESC LIMIT 20 OFFSET ?",id,tenant(),user(),(page-1)*20);
+        List<Map<String,Object>> rows=jdbc.queryForList("SELECT id,question,status,create_time,plan_json FROM erp_assistant_message WHERE conversation_id=? AND tenant_id=? AND user_id=? AND owner_type=? AND customer_id IS NULL AND deleted=0 ORDER BY create_time DESC,id DESC LIMIT 20 OFFSET ?",id,tenant(),user(),ADMIN_OWNER,(page-1)*20);
         for(Map<String,Object> row:rows) {
             Object plan=row.remove("plan_json");
             boolean visible=visible(plan);
@@ -120,7 +121,7 @@ public class AssistantStore {
         // Only the immediately preceding message may contribute context.  Looking for the
         // newest successful row skips over a failed/new-object question and revives stale
         // entities from several turns earlier.
-        List<Map<String,Object>> rows=jdbc.queryForList("SELECT status,plan_json FROM erp_assistant_message WHERE conversation_id=? AND tenant_id=? AND user_id=? AND deleted=0 ORDER BY create_time DESC,id DESC LIMIT 1",id,tenant(),user());
+        List<Map<String,Object>> rows=jdbc.queryForList("SELECT status,plan_json FROM erp_assistant_message WHERE conversation_id=? AND tenant_id=? AND user_id=? AND owner_type=? AND customer_id IS NULL AND deleted=0 ORDER BY create_time DESC,id DESC LIMIT 1",id,tenant(),user(),ADMIN_OWNER);
         return previousContext(rows);
     }
 
@@ -144,9 +145,9 @@ public class AssistantStore {
     }
     public String begin(String id,String question) {
         owner(id); String message=UUID.randomUUID().toString();
-        jdbc.update("INSERT INTO erp_assistant_message(id,conversation_id,tenant_id,user_id,question,status) VALUES(?,?,?,?,?,'PROCESSING')",message,id,tenant(),user(),question);
+        jdbc.update("INSERT INTO erp_assistant_message(id,conversation_id,tenant_id,user_id,owner_type,customer_id,entry,question,status) VALUES(?,?,?,?,?,?,?,?,?)",message,id,tenant(),user(),ADMIN_OWNER,null,"ADMIN",question,"PROCESSING");
         String title=question.substring(0,question.offsetByCodePoints(0,Math.min(60,question.codePointCount(0,question.length()))));
-        jdbc.update("UPDATE erp_assistant_conversation SET title=CASE WHEN title IS NULL OR title='' OR title='新会话' THEN ? ELSE title END,update_time=NOW(6) WHERE id=? AND tenant_id=? AND user_id=? AND deleted=0",title,id,tenant(),user()); return message;
+        jdbc.update("UPDATE erp_assistant_conversation SET title=CASE WHEN title IS NULL OR title='' OR title='新会话' THEN ? ELSE title END,update_time=NOW(6) WHERE id=? AND tenant_id=? AND user_id=? AND owner_type=? AND customer_id IS NULL AND deleted=0",title,id,tenant(),user(),ADMIN_OWNER); return message;
     }
     @Transactional
     public void finish(String message,String plan,String metric,String version,String status,long elapsed,int tokens) {
@@ -154,16 +155,16 @@ public class AssistantStore {
     }
     @Transactional
     public void finish(String message,String plan,String metric,String version,String status,long elapsed,int tokens,AssistantExecutionEnvelope envelope) {
-        jdbc.update("UPDATE erp_assistant_message SET plan_json=?,status=? WHERE id=? AND tenant_id=? AND user_id=? AND deleted=0",plan,status,message,tenant(),user());
+        jdbc.update("UPDATE erp_assistant_message SET plan_json=?,status=? WHERE id=? AND tenant_id=? AND user_id=? AND owner_type=? AND customer_id IS NULL AND deleted=0",plan,status,message,tenant(),user(),ADMIN_OWNER);
         if(!hybridAuditSchemaReady()) {
-            jdbc.update("INSERT INTO erp_assistant_audit(id,message_id,tenant_id,user_id,metric,knowledge_version,status,condition_summary,elapsed_ms,tokens) VALUES(?,?,?,?,?,?,?,?,?,?)",
-                    UUID.randomUUID().toString(),message,tenant(),user(),metric,version,status,auditSummary(plan),elapsed,tokens);
+            jdbc.update("INSERT INTO erp_assistant_audit(id,message_id,tenant_id,user_id,owner_type,customer_id,entry,metric,knowledge_version,status,condition_summary,elapsed_ms,tokens) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                    UUID.randomUUID().toString(),message,tenant(),user(),ADMIN_OWNER,null,"ADMIN",metric,version,status,auditSummary(plan),elapsed,tokens);
             return;
         }
         Map<String,Object> trace=envelope==null?Collections.emptyMap():envelope.getResultMetadata();Object raw=trace.get("queryTrace");
         Map<?,?> queryTrace=raw instanceof Map?(Map<?,?>)raw:Collections.emptyMap();
-        jdbc.update("INSERT INTO erp_assistant_audit(id,message_id,tenant_id,user_id,metric,knowledge_version,status,condition_summary,elapsed_ms,tokens,route_type,tool_name,sql_fingerprint,query_trace,row_count) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-                UUID.randomUUID().toString(),message,tenant(),user(),metric,version,status,auditSummary(plan),elapsed,tokens,
+        jdbc.update("INSERT INTO erp_assistant_audit(id,message_id,tenant_id,user_id,owner_type,customer_id,entry,metric,knowledge_version,status,condition_summary,elapsed_ms,tokens,route_type,tool_name,sql_fingerprint,query_trace,row_count) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                UUID.randomUUID().toString(),message,tenant(),user(),ADMIN_OWNER,null,"ADMIN",metric,version,status,auditSummary(plan),elapsed,tokens,
                 envelope==null?"VERIFIED_METRIC":String.valueOf(envelope.getRouteType()),envelope==null?"query_verified_metric":envelope.getToolName(),
                 queryTrace.get("fingerprint"),safeTrace(queryTrace),number(queryTrace.get("rowCount")));
     }
@@ -195,19 +196,19 @@ public class AssistantStore {
         } catch(Exception ignored) { return "{\"invalidPlan\":true}"; }
     }
     public String queryPlan(String message) {
-        enabled(); List<Map<String,Object>> rows=jdbc.queryForList("SELECT m.plan_json,m.conversation_id FROM erp_assistant_message m JOIN erp_assistant_conversation c ON c.id=m.conversation_id AND c.tenant_id=m.tenant_id AND c.user_id=m.user_id AND c.deleted=0 WHERE m.id=? AND m.tenant_id=? AND m.user_id=? AND m.deleted=0 AND m.status IN ('SUCCESS','EMPTY','PARTIAL_SUCCESS','KNOWLEDGE_NOT_FOUND','UNVERIFIED_KNOWLEDGE')",message,tenant(),user());
+        enabled(); List<Map<String,Object>> rows=jdbc.queryForList("SELECT m.plan_json,m.conversation_id FROM erp_assistant_message m JOIN erp_assistant_conversation c ON c.id=m.conversation_id AND c.tenant_id=m.tenant_id AND c.user_id=m.user_id AND c.owner_type=m.owner_type AND c.customer_id IS NULL AND c.deleted=0 WHERE m.id=? AND m.tenant_id=? AND m.user_id=? AND m.owner_type=? AND m.customer_id IS NULL AND m.deleted=0 AND m.status IN ('SUCCESS','EMPTY','PARTIAL_SUCCESS','KNOWLEDGE_NOT_FOUND','UNVERIFIED_KNOWLEDGE')",message,tenant(),user(),ADMIN_OWNER);
         if(rows.size()!=1) throw new AssistantFailure("NOT_FOUND","查询记录不存在或不可访问");
         return (String)rows.get(0).get("plan_json");
     }
     public Map<String,Object> rerun(String message) {
         String plan=queryPlan(message);
         if(!visible(plan)) throw new AssistantFailure("FORBIDDEN","原查询条件已不可访问，请重新提问");
-        return jdbc.queryForMap("SELECT conversation_id,question,plan_json FROM erp_assistant_message WHERE id=? AND tenant_id=? AND user_id=? AND deleted=0",message,tenant(),user());
+        return jdbc.queryForMap("SELECT conversation_id,question,plan_json FROM erp_assistant_message WHERE id=? AND tenant_id=? AND user_id=? AND owner_type=? AND customer_id IS NULL AND deleted=0",message,tenant(),user(),ADMIN_OWNER);
     }
     public Map<String,Object> audit(String message) {
         if(!hybridAuditSchemaReady()) throw new AssistantFailure("MIGRATION_REQUIRED","查询审计扩展尚未完成数据库迁移");
         String plan=queryPlan(message);if(!visible(plan)) throw new AssistantFailure("FORBIDDEN","该查询记录已不可访问");
-        List<Map<String,Object>> rows=jdbc.queryForList("SELECT route_type,tool_name,sql_fingerprint,query_trace,row_count,status,elapsed_ms,tokens,create_time FROM erp_assistant_audit WHERE message_id=? AND tenant_id=? AND deleted=0 ORDER BY create_time DESC LIMIT 1",message,tenant());
+        List<Map<String,Object>> rows=jdbc.queryForList("SELECT route_type,tool_name,sql_fingerprint,query_trace,row_count,status,elapsed_ms,tokens,create_time FROM erp_assistant_audit WHERE message_id=? AND tenant_id=? AND owner_type=? AND customer_id IS NULL AND deleted=0 ORDER BY create_time DESC LIMIT 1",message,tenant(),ADMIN_OWNER);
         if(rows.isEmpty()) throw new AssistantFailure("NOT_FOUND","查询审计不存在");
         Map<String,Object> result=rows.get(0);
         AssistantExecutionEnvelope envelope=codec.read(plan,null);
@@ -244,7 +245,7 @@ public class AssistantStore {
         List<Map<String,Object>> rows=jdbc.queryForList(
                 "SELECT m.plan_json,a.status,a.elapsed_ms FROM erp_assistant_audit a " +
                         "JOIN erp_assistant_message m ON m.id=a.message_id AND m.tenant_id=a.tenant_id AND m.deleted=0 " +
-                        "WHERE a.tenant_id=? AND a.deleted=0 AND a.create_time>=DATE_SUB(NOW(),INTERVAL ? HOUR) " +
+                        "WHERE a.tenant_id=? AND a.owner_type='ADMIN' AND a.customer_id IS NULL AND a.deleted=0 AND a.create_time>=DATE_SUB(NOW(),INTERVAL ? HOUR) " +
                         "ORDER BY a.create_time DESC LIMIT 1000",tenant(),hours);
         Map<String,Object> result=summarizeRollout(rows);
         result.put("windowHours",hours);result.put("sampleLimit",1000);
@@ -307,8 +308,8 @@ public class AssistantStore {
     @Transactional
     public void delete(String id) {
         owner(id);
-        jdbc.update("UPDATE erp_assistant_message SET deleted=1,question='',plan_json=NULL WHERE conversation_id=? AND tenant_id=? AND user_id=? AND deleted=0",id,tenant(),user());
-        jdbc.update("UPDATE erp_assistant_conversation SET deleted=1,title='' WHERE id=? AND tenant_id=? AND user_id=? AND deleted=0",id,tenant(),user());
+        jdbc.update("UPDATE erp_assistant_message SET deleted=1,question='',plan_json=NULL WHERE conversation_id=? AND tenant_id=? AND user_id=? AND owner_type=? AND customer_id IS NULL AND deleted=0",id,tenant(),user(),ADMIN_OWNER);
+        jdbc.update("UPDATE erp_assistant_conversation SET deleted=1,title='' WHERE id=? AND tenant_id=? AND user_id=? AND owner_type=? AND customer_id IS NULL AND deleted=0",id,tenant(),user(),ADMIN_OWNER);
     }
     @Scheduled(cron="0 20 3 * * ?")
     public void expire() {

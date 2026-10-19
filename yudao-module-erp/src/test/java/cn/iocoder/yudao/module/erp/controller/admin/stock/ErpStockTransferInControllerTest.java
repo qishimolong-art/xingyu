@@ -4,6 +4,7 @@ import cn.iocoder.yudao.framework.common.pojo.CommonResult;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.test.core.ut.BaseMockitoUnitTest;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.move.ErpStockMoveItemPageReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.ErpStockDocumentSummaryRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.move.ErpStockMovePageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.move.ErpStockMoveRespVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockMoveDO;
@@ -36,6 +37,20 @@ class ErpStockTransferInControllerTest extends BaseMockitoUnitTest {
     private ErpStockMoveController stockMoveController;
     @Mock
     private ErpStockFieldPermissionMasker fieldPermissionMasker;
+
+    @Test
+    void getStockTransferInSummary_usesVisibleDirectionAndMasksFields() {
+        ErpStockMovePageReqVO request = new ErpStockMovePageReqVO();
+        ErpStockDocumentSummaryRespVO summary = new ErpStockDocumentSummaryRespVO();
+        when(stockMoveService.getVisibleStockTransferInSummary(request)).thenReturn(summary);
+
+        CommonResult<ErpStockDocumentSummaryRespVO> result = controller.getStockTransferInSummary(request);
+
+        assertSame(summary, result.getData());
+        assertEquals(Integer.valueOf(20), request.getTransferDirection());
+        verify(stockMoveService).getVisibleStockTransferInSummary(request);
+        verify(fieldPermissionMasker).maskListColumns("erp_stock_transfer_in", summary);
+    }
 
     @Test
     void getStockTransferInPage_usesVisibleTransferInService() {

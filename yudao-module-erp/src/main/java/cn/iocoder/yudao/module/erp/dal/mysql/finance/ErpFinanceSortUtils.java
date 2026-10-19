@@ -25,6 +25,12 @@ public final class ErpFinanceSortUtils {
         wrapper.last(buildOrderClause(orderField, orderDirection, MPJ_MAIN_TABLE_ALIAS, allowedFields));
     }
 
+    public static void applyWithIdAsc(MPJLambdaWrapper<?> wrapper, String orderField, String orderDirection,
+                                      String... allowedFields) {
+        wrapper.last(buildOrderClauseWithIdDirection(
+                orderField, orderDirection, MPJ_MAIN_TABLE_ALIAS, "ASC", allowedFields));
+    }
+
     private static String buildOrderClause(String orderField, String orderDirection,
                                            String tableName, String... allowedFields) {
         String expression = null;
@@ -37,6 +43,21 @@ public final class ErpFinanceSortUtils {
         }
         String direction = "asc".equalsIgnoreCase(orderDirection) ? "ASC" : "DESC";
         return "ORDER BY " + expression + " " + direction + ", " + tableName + ".id DESC";
+    }
+
+    private static String buildOrderClauseWithIdDirection(String orderField, String orderDirection,
+                                                          String tableName, String idDirection,
+                                                          String... allowedFields) {
+        String expression = null;
+        if (orderField != null && Arrays.asList(allowedFields).contains(orderField)) {
+            expression = tableName + "." + camelToUnderline(orderField);
+        }
+        boolean validDirection = "asc".equalsIgnoreCase(orderDirection) || "desc".equalsIgnoreCase(orderDirection);
+        if (expression == null || !validDirection) {
+            return "ORDER BY " + tableName + ".id " + idDirection;
+        }
+        String direction = "asc".equalsIgnoreCase(orderDirection) ? "ASC" : "DESC";
+        return "ORDER BY " + expression + " " + direction + ", " + tableName + ".id " + idDirection;
     }
 
     private static String camelToUnderline(String value) {

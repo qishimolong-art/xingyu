@@ -39,17 +39,24 @@ public class AssistantMasterDataQueryService {
     public static class Query {
         private ArchiveType archiveType;
         private StatusMode statusMode;
-        /** 产品档案关键词；仅 PRODUCT 使用，复用产品列表的名称、编码、品牌等模糊检索口径。 */
+        /** 产品档案普通关键词；仅 PRODUCT 使用，严格复用产品档案八字段检索口径。 */
         private String productKeyword;
+        /** 用户明确表达的产品品牌；不并入普通关键词模糊字段。 */
+        private String productBrand;
 
         public Query(ArchiveType archiveType, StatusMode statusMode) {
             this(archiveType, statusMode, null);
         }
 
         public Query(ArchiveType archiveType, StatusMode statusMode, String productKeyword) {
+            this(archiveType,statusMode,productKeyword,null);
+        }
+
+        public Query(ArchiveType archiveType, StatusMode statusMode, String productKeyword,String productBrand) {
             this.archiveType = archiveType;
             this.statusMode = statusMode;
             this.productKeyword = productKeyword;
+            this.productBrand = productBrand;
         }
     }
 
@@ -88,8 +95,11 @@ public class AssistantMasterDataQueryService {
             // 产品约定：未指定状态时只统计启用档案。
             statusMode = StatusMode.ENABLED;
         }
+        String productBrand=archiveType==ArchiveType.PRODUCT
+                ?AssistantSemanticExtractor.explicitProductBrand(question):null;
         return new Query(archiveType, statusMode,
-                archiveType == ArchiveType.PRODUCT ? extractProductKeyword(text) : null);
+                archiveType == ArchiveType.PRODUCT && productBrand==null ? extractProductKeyword(text) : null,
+                productBrand);
     }
 
     public Query parseArguments(Map<String, Object> arguments) {
@@ -100,8 +110,10 @@ public class AssistantMasterDataQueryService {
             ArchiveType type = ArchiveType.valueOf(String.valueOf(arguments.get("archiveType")));
             String productKeyword = type == ArchiveType.PRODUCT
                     ? boundedKeyword(arguments.get("keyword")) : null;
+            String productBrand = type == ArchiveType.PRODUCT
+                    ? boundedKeyword(arguments.get("brand")) : null;
             return new Query(type, StatusMode.valueOf(String.valueOf(arguments.get("statusMode"))),
-                    productKeyword);
+                    productKeyword,productBrand);
         } catch (Exception ignored) {
             return null;
         }
@@ -129,6 +141,8 @@ public class AssistantMasterDataQueryService {
             if (!productService.hasCurrentUserProductArchiveVisibleScope()) {
                 throw new AssistantFailure("FORBIDDEN", "当前账号没有可见的配件档案范围");
             }
+            if(query.getProductBrand()!=null && !productBrandVisible())
+                throw new AssistantFailure("FIELD_FORBIDDEN","当前账号没有产品品牌字段权限");
             return;
         }
         if (query.getArchiveType() == ArchiveType.EMPLOYEE) {
@@ -195,7 +209,8 @@ public class AssistantMasterDataQueryService {
         result.put("basis", Collections.singletonList(type == ArchiveType.EMPLOYEE
                 ? "ERP 系统用户档案；当前租户、启停用状态口径"
                 : archiveName(type) + "档案页面同权限、同状态"
-                + (query.getProductKeyword() == null ? "" : "、同关键词") + "口径"));
+                + (query.getProductBrand()!=null?"、同品牌"
+                :query.getProductKeyword()!=null?"、同关键词":"") + "口径"));
         result.put("traceId", UUID.randomUUID().toString());
         Map<String, Object> presentation = new LinkedHashMap<>();
         presentation.put("mode", "SUMMARY");
@@ -208,6 +223,7 @@ public class AssistantMasterDataQueryService {
         trace.put("archiveType", type.name());
         trace.put("statusMode", mode.name());
         if (query.getProductKeyword() != null) trace.put("productKeyword", query.getProductKeyword());
+        if (query.getProductBrand() != null) trace.put("productBrand", query.getProductBrand());
         trace.put("resultCount", total);
         result.put("queryTrace", trace);
         return result;
@@ -229,7 +245,7 @@ public class AssistantMasterDataQueryService {
                 return total(page);
             }
             case PRODUCT: {
-                ErpProductPageReqVO request = productRequest(status, query.getProductKeyword());
+                ErpProductPageReqVO request = productRequest(status, query.getProductKeyword(),query.getProductBrand());
                 return total(productService.getProductVOPage(request, false));
             }
             case EMPLOYEE: {
@@ -257,12 +273,14 @@ public class AssistantMasterDataQueryService {
         return request;
     }
 
-    private static ErpProductPageReqVO productRequest(Integer status, String keyword) {
+    private static ErpProductPageReqVO productRequest(Integer status, String keyword,String brand) {
         ErpProductPageReqVO request = new ErpProductPageReqVO();
         request.setPageNo(1);
         request.setPageSize(1);
         request.setStatus(status);
         request.setKeyword(keyword);
+        request.setKeywordSearchMode(ErpProductPageReqVO.KEYWORD_SEARCH_MODE_PRODUCT_ARCHIVE);
+        request.setBrand(brand);
         request.setIncludeSaleDistributedArchive(true);
         return request;
     }
@@ -284,8 +302,8 @@ public class AssistantMasterDataQueryService {
         StatusMode mode = query.getStatusMode();
         String name = archiveName(type);
         String scope = type == ArchiveType.EMPLOYEE ? "按 ERP 员工账号口径，当前租户内" : "当前账号可见范围内";
-        String filter = query.getProductKeyword() == null ? ""
-                : "关键词“" + query.getProductKeyword() + "”匹配的";
+        String filter = query.getProductBrand()!=null?"品牌“"+query.getProductBrand()+"”的"
+                :query.getProductKeyword()!=null?"关键词“"+query.getProductKeyword()+"”匹配的":"";
         if (total == 0L) {
             String status = mode == StatusMode.ENABLED ? "启用" : mode == StatusMode.DISABLED ? "停用" : "";
             return scope + "没有" + filter + status + name + "档案。";
@@ -302,14 +320,32 @@ public class AssistantMasterDataQueryService {
         ArchiveType type = query.getArchiveType();
         StatusMode mode = query.getStatusMode();
         String status = mode == StatusMode.ENABLED ? "启用" : mode == StatusMode.DISABLED ? "停用" : "";
-        return status + archiveName(type) + "数量" + (query.getProductKeyword() == null
-                ? "" : "（关键词：" + query.getProductKeyword() + "）");
+        return status + archiveName(type) + "数量" + productFilterText(query);
     }
 
     private static String queryScope(Query query) {
         if (query.getArchiveType() == ArchiveType.EMPLOYEE) return "当前租户内员工账号";
         String scope = "当前登录用户有权限查看的" + archiveName(query.getArchiveType()) + "档案";
+        if(query.getProductBrand()!=null) return scope+"；产品品牌："+query.getProductBrand();
         return query.getProductKeyword() == null ? scope : scope + "；产品关键词：" + query.getProductKeyword();
+    }
+
+    private boolean productBrandVisible() {
+        List<String> hidden=permissions.getCurrentUserHiddenFields("erp_product",null,false);
+        if(hidden==null) throw new AssistantFailure("FORBIDDEN","产品字段权限尚未确定");
+        for(String field:hidden) if("brand".equals(normalizeField(field))) return false;
+        return true;
+    }
+
+    private static String normalizeField(String value) {
+        return value==null?"":value.toLowerCase(Locale.ROOT)
+                .replaceFirst("^(col_|report_|item_)","").replace("_","");
+    }
+
+    private static String productFilterText(Query query) {
+        if(query.getProductBrand()!=null) return "（品牌："+query.getProductBrand()+"）";
+        if(query.getProductKeyword()!=null) return "（关键词："+query.getProductKeyword()+"）";
+        return "";
     }
 
     private static String permission(ArchiveType type) {

@@ -19,6 +19,7 @@ import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.outbill.ErpStockOut
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.outbill.ErpStockOutBillPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.outbill.ErpStockOutBillPickReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.outbill.ErpStockOutBillRespVO;
+import cn.iocoder.yudao.module.erp.controller.admin.stock.vo.outbill.ErpStockOutBillSummaryRespVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockOutBillDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpStockOutBillItemDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.stock.ErpWarehouseDO;
@@ -90,6 +91,16 @@ public class ErpStockOutBillController {
     public CommonResult<PageResult<ErpStockOutBillRespVO>> getStockOutBillPage(
             @Valid ErpStockOutBillPageReqVO pageReqVO) {
         return success(buildStockOutBillVOPageResult(stockOutBillService.getStockOutBillPage(pageReqVO)));
+    }
+
+    @GetMapping("/summary")
+    @Operation(summary = "获得出仓单查询汇总")
+    @PreAuthorize("@ss.hasPermission('erp:stock-out-bill:query')")
+    public CommonResult<ErpStockOutBillSummaryRespVO> getStockOutBillSummary(
+            @Valid ErpStockOutBillPageReqVO pageReqVO) {
+        ErpStockOutBillSummaryRespVO summary = stockOutBillService.getStockOutBillSummary(pageReqVO);
+        fieldPermissionMasker.maskListColumns(FIELD_PERMISSION_MODULE, summary);
+        return success(summary);
     }
 
     @GetMapping("/get")

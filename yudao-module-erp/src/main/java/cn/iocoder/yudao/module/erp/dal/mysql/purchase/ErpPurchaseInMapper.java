@@ -5,6 +5,7 @@ import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.mybatis.core.mapper.BaseMapperX;
 import cn.iocoder.yudao.framework.mybatis.core.query.MPJLambdaWrapperX;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.in.ErpPurchaseInPageReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.in.ErpPurchaseInSummaryRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.invoice.ErpPurchaseInvoiceSourceDocumentPageReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.product.ErpProductDO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.product.ErpProductUnitDO;
@@ -71,6 +72,24 @@ public interface ErpPurchaseInMapper extends BaseMapperX<ErpPurchaseInDO> {
             + "+ COALESCE(t.fee_amount, t.other_price, 0)) ELSE t.total_price END)";
 
     default PageResult<ErpPurchaseInDO> selectPage(ErpPurchaseInPageReqVO reqVO) {
+        MPJLambdaWrapperX<ErpPurchaseInDO> query = buildQuery(reqVO);
+        orderByIfPresent(query, reqVO);
+        return selectJoinPage(reqVO, ErpPurchaseInDO.class, query);
+    }
+
+    default ErpPurchaseInSummaryRespVO selectSummary(ErpPurchaseInPageReqVO reqVO) {
+        MPJLambdaWrapperX<ErpPurchaseInDO> query = buildQuery(reqVO)
+                .selectAs("COALESCE(SUM(t.total_count), 0)", ErpPurchaseInSummaryRespVO::getTotalCount)
+                .selectAs("COALESCE(SUM(t.total_product_price), 0)", ErpPurchaseInSummaryRespVO::getTotalProductPrice)
+                .selectAs("COALESCE(SUM(t.discount_price), 0)", ErpPurchaseInSummaryRespVO::getDiscountPrice)
+                .selectAs("COALESCE(SUM(t.total_freight1), 0)", ErpPurchaseInSummaryRespVO::getTotalFreight1)
+                .selectAs("COALESCE(SUM(t.total_price), 0)", ErpPurchaseInSummaryRespVO::getTotalPrice)
+                .selectAs("COALESCE(SUM(t.total_price + COALESCE(t.total_freight1, 0)), 0)",
+                        ErpPurchaseInSummaryRespVO::getTotalWithFreight);
+        return selectJoinOne(ErpPurchaseInSummaryRespVO.class, query);
+    }
+
+    static MPJLambdaWrapperX<ErpPurchaseInDO> buildQuery(ErpPurchaseInPageReqVO reqVO) {
         MPJLambdaWrapperX<ErpPurchaseInDO> query = new MPJLambdaWrapperX<ErpPurchaseInDO>()
                 .likeIfPresent(ErpPurchaseInDO::getNo, reqVO.getNo())
                 .likeIfPresent(ErpPurchaseInDO::getFactoryOrderNo, reqVO.getFactoryOrderNo())
@@ -108,21 +127,9 @@ public interface ErpPurchaseInMapper extends BaseMapperX<ErpPurchaseInDO> {
                             + "AND pii.source_in_id = t.id AND pi.status = {0})",
                             ErpAuditStatus.APPROVE.getStatus());
         }
-        if (reqVO.getWarehouseId() != null || reqVO.getProductId() != null
-                || StringUtils.hasText(reqVO.getProductKeyword())) {
-            query.leftJoin(ErpPurchaseInItemDO.class, ErpPurchaseInItemDO::getInId, ErpPurchaseInDO::getId)
-                    .leftJoin(ErpProductDO.class, ErpProductDO::getId, ErpPurchaseInItemDO::getProductId)
-                    .leftJoin(ErpProductUnitDO.class, ErpProductUnitDO::getId, ErpProductDO::getUnitId)
-                    .eq(reqVO.getWarehouseId() != null, ErpPurchaseInItemDO::getWarehouseId, reqVO.getWarehouseId())
-                    .eq(reqVO.getProductId() != null, ErpPurchaseInItemDO::getProductId, reqVO.getProductId())
-                    .and(StringUtils.hasText(reqVO.getProductKeyword()),
-                            w -> ErpKeywordQuery.appendProductKeyword(w, reqVO.getProductKeyword(),
-                                    ErpKeywordQuery.productKeywordColumn(ErpPurchaseInItemDO::getBarCode),
-                                    ErpKeywordQuery.productKeywordColumn(ErpPurchaseInItemDO::getVehicleModel),
-                                    ErpKeywordQuery.productKeywordColumn(ErpPurchaseInItemDO::getDrawingNo),
-                                    ErpKeywordQuery.productKeywordColumn(ErpPurchaseInItemDO::getBrand)))
-                    .groupBy(ErpPurchaseInDO::getId); // 避免 1 对多查询，产生相同的 1
-        }
+        ErpKeywordQuery.appendProductItemFilter(query, "erp_purchase_in_items", "in_id",
+                reqVO.getProductId(), reqVO.getWarehouseId(), null, null, reqVO.getProductKeyword(), true,
+                "bar_code", "vehicle_model", "drawing_no", "brand");
         ErpKeywordQuery.appendWithDeptNameAndPurchaseSupplierAndProductItemTokens(query, reqVO.getKeyword(),
                 "erp_purchase_in_items", "in_id",
                 ErpPurchaseInDO::getNo, ErpPurchaseInDO::getOrderNo,
@@ -136,8 +143,7 @@ public interface ErpPurchaseInMapper extends BaseMapperX<ErpPurchaseInDO> {
                 ErpPurchaseInDO::getHandler, ErpPurchaseInDO::getPriority,
                 ErpPurchaseInDO::getUnloader, ErpPurchaseInDO::getFloatRecord,
                 ErpPurchaseInDO::getReceiveUnit, ErpPurchaseInDO::getBusinessEntity);
-        orderByIfPresent(query, reqVO);
-        return selectJoinPage(reqVO, ErpPurchaseInDO.class, query);
+        return query;
     }
 
     static void orderByIfPresent(MPJLambdaWrapperX<ErpPurchaseInDO> wrapper, ErpPurchaseInPageReqVO reqVO) {
@@ -148,7 +154,7 @@ public interface ErpPurchaseInMapper extends BaseMapperX<ErpPurchaseInDO> {
         }
         String expression = getOrderExpression(reqVO.getOrderField());
         if (expression != null) {
-            wrapper.last("ORDER BY " + expression + " " + direction + ", t.id DESC");
+            wrapper.last("ORDER BY " + expression + " " + direction + ", t.id ASC");
             return;
         }
         SFunction<ErpPurchaseInDO, ?> orderColumn = getOrderColumn(reqVO.getOrderField());
@@ -157,9 +163,9 @@ public interface ErpPurchaseInMapper extends BaseMapperX<ErpPurchaseInDO> {
             return;
         }
         if ("ASC".equals(direction)) {
-            wrapper.orderByAsc(orderColumn);
+            wrapper.orderByAsc(orderColumn).orderByAsc(ErpPurchaseInDO::getId);
         } else {
-            wrapper.orderByDesc(orderColumn);
+            wrapper.orderByDesc(orderColumn).orderByAsc(ErpPurchaseInDO::getId);
         }
     }
 

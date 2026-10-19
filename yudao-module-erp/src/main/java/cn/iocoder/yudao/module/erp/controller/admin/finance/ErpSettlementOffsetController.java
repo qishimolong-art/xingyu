@@ -13,6 +13,7 @@ import cn.iocoder.yudao.module.erp.controller.admin.finance.settlement.vo.ErpSet
 import cn.iocoder.yudao.module.erp.controller.admin.finance.settlement.vo.ErpSettlementOffsetPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.finance.settlement.vo.ErpSettlementOffsetRespVO;
 import cn.iocoder.yudao.module.erp.service.finance.settlement.ErpSettlementOffsetService;
+import cn.iocoder.yudao.module.erp.service.finance.ErpFinanceFieldPermissionMasker;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -39,12 +40,25 @@ public class ErpSettlementOffsetController {
 
     @Resource
     private ErpSettlementOffsetService settlementOffsetService;
+    @Resource
+    private ErpFinanceFieldPermissionMasker fieldPermissionMasker;
 
     @GetMapping("/page")
     @Operation(summary = "获取应收冲应付分页")
     @PreAuthorize("@ss.hasPermission('erp:settlement-offset:query')")
     public CommonResult<PageResult<ErpSettlementOffsetRespVO>> getSettlementOffsetPage(@Valid ErpSettlementOffsetPageReqVO reqVO) {
         return success(BeanUtils.toBean(settlementOffsetService.getSettlementOffsetPage(reqVO), ErpSettlementOffsetRespVO.class));
+    }
+
+    @GetMapping("/summary")
+    @Operation(summary = "获取应收冲应付查询汇总")
+    @PreAuthorize("@ss.hasPermission('erp:settlement-offset:query')")
+    public CommonResult<cn.iocoder.yudao.module.erp.controller.admin.finance.vo.ErpFinanceQuerySummaryRespVO>
+            getSettlementOffsetSummary(@Valid ErpSettlementOffsetPageReqVO reqVO) {
+        cn.iocoder.yudao.module.erp.controller.admin.finance.vo.ErpFinanceQuerySummaryRespVO summary =
+                settlementOffsetService.getSettlementOffsetSummary(reqVO);
+        fieldPermissionMasker.maskForm("erp_finance_settlement_offset", summary);
+        return success(summary);
     }
 
     @GetMapping("/detail")

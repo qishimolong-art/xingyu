@@ -15,6 +15,8 @@ import static cn.iocoder.yudao.framework.common.util.date.DateUtils.FORMAT_YEAR_
 @ToString(callSuper = true)
 public class ErpProductPageReqVO extends PageParam {
 
+    public static final String KEYWORD_SEARCH_MODE_PRODUCT_ARCHIVE = "PRODUCT_ARCHIVE";
+
     @Schema(description = "产品名称", example = "刹车片")
     private String name;
 
@@ -41,6 +43,9 @@ public class ErpProductPageReqVO extends PageParam {
 
     @Schema(description = "Keyword for product fuzzy search", example = "P000001")
     private String keyword;
+
+    @Schema(description = "关键词搜索模式（内部使用）", example = "PRODUCT_ARCHIVE", hidden = true)
+    private String keywordSearchMode;
 
     @Schema(description = "状态 0=启用/1=停用", example = "0")
     private Integer status;

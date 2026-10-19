@@ -37,6 +37,8 @@ public class ErpSaleQuoteItemDO extends BaseDO {
      */
     private Boolean giftFlag;
     private BigDecimal convertedCount;
+    /** 首次下订时的产品仓库库存快照。 */
+    private BigDecimal stockCountAtOrder;
     private BigDecimal totalPrice;
     private BigDecimal taxPercent;
     private BigDecimal taxPrice;

@@ -13,6 +13,7 @@ import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.order.ErpPurchas
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.order.ErpPurchaseOrderItemBatchUpdateReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.order.ErpPurchaseOrderItemPageReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.order.ErpPurchaseOrderPageReqVO;
+import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.order.ErpPurchaseOrderSummaryRespVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.order.ErpPurchaseOrderSaveReqVO;
 import cn.iocoder.yudao.module.erp.controller.admin.purchase.vo.order.ErpPurchaseOrderUpdateRemarkReqVO;
 import cn.iocoder.yudao.module.erp.dal.dataobject.purchase.ErpPurchaseOrderDO;
@@ -160,6 +161,8 @@ public interface ErpPurchaseOrderService {
      */
     PageResult<ErpPurchaseOrderDO> getPurchaseOrderPage(ErpPurchaseOrderPageReqVO pageReqVO);
 
+    ErpPurchaseOrderSummaryRespVO getPurchaseOrderSummary(ErpPurchaseOrderPageReqVO pageReqVO);
+
     /**
      * 获得采购订单列表
      *
@@ -177,6 +180,9 @@ public interface ErpPurchaseOrderService {
      * @return 采购订单项列表
      */
     List<ErpPurchaseOrderItemDO> getPurchaseOrderItemListByOrderId(Long orderId);
+
+    List<ErpPurchaseOrderItemDO> getPurchaseOrderItemListByOrderId(Long orderId, String orderField,
+                                                                   String orderDirection);
 
     /**
      * 获得采购订单项分页

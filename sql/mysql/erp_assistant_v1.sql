@@ -2,27 +2,33 @@
 CREATE TABLE IF NOT EXISTS erp_assistant_conversation (
  id varchar(36) NOT NULL PRIMARY KEY,
  tenant_id bigint NOT NULL, user_id bigint NOT NULL,
+ owner_type varchar(16) NOT NULL DEFAULT 'ADMIN', customer_id bigint NULL, entry varchar(32) NULL,
  title varchar(80) NOT NULL, deleted bit NOT NULL DEFAULT b'0',
  create_time datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
  update_time datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
- KEY idx_owner (tenant_id,user_id,deleted,update_time)
+ KEY idx_owner (tenant_id,user_id,deleted,update_time),
+ KEY idx_subject_owner (tenant_id,owner_type,user_id,customer_id,deleted,update_time)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 CREATE TABLE IF NOT EXISTS erp_assistant_message (
  id varchar(36) NOT NULL PRIMARY KEY, conversation_id varchar(36) NOT NULL,
  tenant_id bigint NOT NULL, user_id bigint NOT NULL,
+ owner_type varchar(16) NOT NULL DEFAULT 'ADMIN', customer_id bigint NULL, entry varchar(32) NULL,
  question varchar(2000) NOT NULL, plan_json text NULL,
  status varchar(32) NOT NULL, deleted bit NOT NULL DEFAULT b'0',
  create_time datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
- KEY idx_conversation (tenant_id,user_id,conversation_id,deleted,create_time)
+ KEY idx_conversation (tenant_id,user_id,conversation_id,deleted,create_time),
+ KEY idx_subject_conversation (tenant_id,owner_type,user_id,customer_id,conversation_id,deleted,create_time)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 CREATE TABLE IF NOT EXISTS erp_assistant_audit (
  id varchar(36) NOT NULL PRIMARY KEY, message_id varchar(36) NOT NULL,
  tenant_id bigint NOT NULL, user_id bigint NOT NULL,
+ owner_type varchar(16) NOT NULL DEFAULT 'ADMIN', customer_id bigint NULL, entry varchar(32) NULL,
  metric varchar(32) NULL, knowledge_version varchar(80) NOT NULL,
  status varchar(32) NOT NULL, condition_summary varchar(1000) NULL, elapsed_ms bigint NOT NULL DEFAULT 0,
  tokens int NOT NULL DEFAULT 0, deleted bit NOT NULL DEFAULT b'0',
  create_time datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
- KEY idx_audit_owner (tenant_id,user_id,create_time)
+ KEY idx_audit_owner (tenant_id,user_id,create_time),
+ KEY idx_audit_subject (tenant_id,owner_type,user_id,customer_id,create_time)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- ERP child menu. Precheck exactly one enabled ERP root and at most one active

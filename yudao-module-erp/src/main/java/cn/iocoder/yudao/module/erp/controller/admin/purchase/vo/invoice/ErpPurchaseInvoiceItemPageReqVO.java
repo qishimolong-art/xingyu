@@ -7,6 +7,7 @@ import lombok.EqualsAndHashCode;
 import lombok.ToString;
 
 import javax.validation.constraints.NotNull;
+import java.util.List;
 
 @Schema(description = "管理后台 - ERP 采购票据明细分页 Request VO")
 @Data
@@ -21,11 +22,15 @@ public class ErpPurchaseInvoiceItemPageReqVO extends PageParam {
     @Schema(description = "是否按字段权限脱敏", example = "true")
     private Boolean mask = true;
 
-    @Schema(description = "排序字段，支持：id, sourceInId, sourceInNo, productId, productCode, productName, count, "
-            + "productPrice, taxPercent, taxPrice, totalPrice, remark")
+    @Schema(description = "排序字段，支持：id, sourceInId, sourceInNo, sourceType, sourceTypeName, sourceDocNo, "
+            + "productId, productCode, productName, productBarCode, productUnitName, warehouseId, stockCount, count, "
+            + "sourceRemainingCount, packageQty, pieceCount, productPrice, taxExclusivePrice, taxPercent, taxPrice, totalPrice, remark")
     private String orderField;
 
     @Schema(description = "排序方向：asc 或 desc")
     private String orderDirection;
+
+    @Schema(description = "编辑态待删除的采购票据明细编号")
+    private List<Long> excludedItemIds;
 
 }

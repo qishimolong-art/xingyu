@@ -1,6 +1,11 @@
 package cn.iocoder.yudao.module.erp.dal.mysql.finance.payable;
 
 import cn.iocoder.yudao.module.erp.controller.admin.finance.payable.vo.account.ErpPayableAccountPageReqVO;
+import com.baomidou.mybatisplus.extension.plugins.handler.TenantLineHandler;
+import com.baomidou.mybatisplus.extension.plugins.inner.TenantLineInnerInterceptor;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import net.sf.jsqlparser.expression.Expression;
+import net.sf.jsqlparser.expression.LongValue;
 import org.apache.ibatis.annotations.Select;
 import org.apache.ibatis.mapping.BoundSql;
 import org.apache.ibatis.scripting.xmltags.XMLLanguageDriver;
@@ -64,6 +69,60 @@ class ErpPayableAccountMapperSqlTest {
         assertTrue(sql.contains("original_product_price"));
         assertTrue(sql.contains("SUM((CASE WHEN EXISTS"));
         assertFalse(sql.contains("SUM(total_price) AS purchaseInAmount"));
+    }
+
+    @Test
+    void selectPageRows_usesMyBatisPlusDatabasePage() throws Exception {
+        assertTrue(ErpPayableAccountMapper.class.getMethod("selectPageRows", Page.class,
+                ErpPayableAccountPageReqVO.class, java.util.Collection.class, String.class,
+                boolean.class, java.util.Collection.class, Long.class, boolean.class)
+                .getReturnType().equals(Page.class));
+
+        String script = new ErpPayableAccountMapper.SqlProvider().selectList();
+        assertTrue(script.contains("<otherwise>ORDER BY balance DESC, s.id DESC</otherwise>"));
+        assertFalse(script.toLowerCase().contains(" limit "), "LIMIT/OFFSET is added by the MyBatis-Plus pagination interceptor");
+    }
+
+    @Test
+    void selectList_shouldBeCompatibleWithTenantSqlParser() throws Exception {
+        String sql = render(true, Collections.emptyList(), null);
+        TenantLineInnerInterceptor tenant = new TenantLineInnerInterceptor(new TenantLineHandler() {
+            @Override
+            public Expression getTenantId() {
+                return new LongValue(1);
+            }
+        });
+
+        String tenantSql = tenant.parserSingle(sql, null);
+
+        assertTrue(tenantSql.contains("tenant_id = 1"));
+        assertTrue(tenantSql.contains("FROM erp_supplier s"));
+    }
+
+    @Test
+    void selectBySupplierIdAndDeptId_shouldScopeEveryPayableSourceToDocumentDepartment() throws Exception {
+        Method method = ErpPayableAccountMapper.class.getMethod("selectBySupplierIdAndDeptId",
+                Long.class, Long.class);
+        Select select = method.getAnnotation(Select.class);
+        String script = String.join(" ", select.value());
+        Configuration configuration = new Configuration();
+        Map<String, Object> params = new HashMap<>();
+        params.put("supplierId", 10L);
+        params.put("deptId", 20L);
+        String sql = new XMLLanguageDriver().createSqlSource(configuration, script, Map.class)
+                .getBoundSql(params).getSql().replaceAll("\\s+", " ");
+
+        assertTrue(sql.contains("FROM erp_purchase_in t"));
+        assertTrue(sql.contains("FROM erp_purchase_return"));
+        assertTrue(sql.contains("FROM erp_purchase_price_adjust"));
+        assertTrue(sql.contains("FROM erp_payable_other"));
+        assertTrue(sql.contains("FROM erp_payable_misc"));
+        assertTrue(sql.contains("FROM erp_finance_payment fpay"));
+        assertTrue(sql.contains("FROM erp_payable_writeoff"));
+        assertTrue(sql.contains("t.dept_id = ?"));
+        assertTrue(sql.contains("fpay.dept_id = ?"));
+        assertTrue(sql.contains("dept_id = ?"));
+        assertFalse(sql.contains("IN ()"));
     }
 
     private String render(boolean all, java.util.Collection<Long> deptIds, Long selfUserId) throws Exception {

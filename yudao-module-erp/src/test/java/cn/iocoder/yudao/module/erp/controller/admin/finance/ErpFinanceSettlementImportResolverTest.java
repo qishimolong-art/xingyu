@@ -270,6 +270,76 @@ class ErpFinanceSettlementImportResolverTest extends BaseMockitoUnitTest {
     }
 
     @Test
+    void buildPaymentSaveReqVO_groupsDetailRowsAndAcceptsRepeatedPaymentVoucherNo() {
+        mockPaymentContext(singleSupplier(11L, "上海汽配"), singleAccount(21L, "工行基本户"),
+                Collections.emptyList());
+        when(purchaseInMapper.selectByNo("CGRK-001")).thenReturn(new ErpPurchaseInDO().setId(51L));
+        when(purchaseInMapper.selectByNo("CGRK-002")).thenReturn(new ErpPurchaseInDO().setId(52L));
+
+        ErpFinancePaymentImportExcelVO header = new ErpFinancePaymentImportExcelVO()
+                .setPaymentTime("2026-08-31")
+                .setSupplierName("上海汽配")
+                .setAccountName("工行基本户")
+                .setTotalPrice(new BigDecimal("100.00"))
+                .setPaymentPrice(new BigDecimal("100.00"))
+                .setPaymentVoucherNo(" SUPPLIER-REF-001 ")
+                .setBizType("采购入库")
+                .setBizNo("CGRK-001")
+                .setItemPaymentPrice(new BigDecimal("40.00"));
+        ErpFinancePaymentImportExcelVO continuation = new ErpFinancePaymentImportExcelVO()
+                .setPaymentVoucherNo("SUPPLIER-REF-001")
+                .setBizType("采购入库")
+                .setBizNo("CGRK-002")
+                .setItemPaymentPrice(new BigDecimal("60.00"));
+
+        ErpFinancePaymentSaveReqVO reqVO = resolver.buildPaymentSaveReqVO(
+                Arrays.asList(header, continuation), resolver.buildPaymentContext());
+
+        assertThat(reqVO.getPaymentVoucherNo()).isEqualTo("SUPPLIER-REF-001");
+        assertThat(reqVO.getItems()).extracting(ErpFinancePaymentSaveReqVO.Item::getBizId)
+                .containsExactly(51L, 52L);
+    }
+
+    @Test
+    void buildPaymentSaveReqVO_rejectsInconsistentPaymentVoucherNoAcrossDetailRows() {
+        mockPaymentContext(singleSupplier(11L, "上海汽配"), singleAccount(21L, "工行基本户"),
+                Collections.emptyList());
+        ErpFinancePaymentImportExcelVO header = new ErpFinancePaymentImportExcelVO()
+                .setPaymentTime("2026-08-31")
+                .setSupplierName("上海汽配")
+                .setAccountName("工行基本户")
+                .setTotalPrice(BigDecimal.ONE)
+                .setPaymentPrice(BigDecimal.ONE)
+                .setPaymentVoucherNo("SUPPLIER-REF-001");
+        ErpFinancePaymentImportExcelVO continuation = new ErpFinancePaymentImportExcelVO()
+                .setPaymentVoucherNo("SUPPLIER-REF-002");
+
+        assertThatThrownBy(() -> resolver.buildPaymentSaveReqVO(
+                Arrays.asList(header, continuation), resolver.buildPaymentContext()))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("同一付款单的多行明细凭证号必须保持一致");
+    }
+
+    @Test
+    void buildPaymentSaveReqVO_acceptsVoucherNoOnContinuationWhenHeaderIsBlank() {
+        mockPaymentContext(singleSupplier(11L, "上海汽配"), singleAccount(21L, "工行基本户"),
+                Collections.emptyList());
+        ErpFinancePaymentImportExcelVO header = new ErpFinancePaymentImportExcelVO()
+                .setPaymentTime("2026-08-31")
+                .setSupplierName("上海汽配")
+                .setAccountName("工行基本户")
+                .setTotalPrice(BigDecimal.ONE)
+                .setPaymentPrice(BigDecimal.ONE);
+        ErpFinancePaymentImportExcelVO continuation = new ErpFinancePaymentImportExcelVO()
+                .setPaymentVoucherNo(" SUPPLIER-REF-001 ");
+
+        ErpFinancePaymentSaveReqVO reqVO = resolver.buildPaymentSaveReqVO(
+                Arrays.asList(header, continuation), resolver.buildPaymentContext());
+
+        assertThat(reqVO.getPaymentVoucherNo()).isEqualTo("SUPPLIER-REF-001");
+    }
+
+    @Test
     void buildReceiptSaveReqVO_resolvesNamesAndBizNo() {
         mockReceiptContext(singleCustomer(11L, "杭州客户"), singleAccount(21L, "农行收款户"),
                 Collections.singletonList(new DeptSimpleRespVO(31L, "销售部", 0L)));
@@ -284,6 +354,7 @@ class ErpFinanceSettlementImportResolverTest extends BaseMockitoUnitTest {
                 .setAccountName("农行收款户")
                 .setTotalPrice(new BigDecimal("100.00"))
                 .setReceiptPrice(new BigDecimal("100.00"))
+                .setPaymentVoucherNo("  CUSTOMER-REF-001  ")
                 .setBizType("销售出库")
                 .setBizNo("XSCK-001")
                 .setItemReceiptPrice(new BigDecimal("100.00")),
@@ -293,10 +364,62 @@ class ErpFinanceSettlementImportResolverTest extends BaseMockitoUnitTest {
         assertThat(reqVO.getAccountId()).isEqualTo(21L);
         assertThat(reqVO.getDeptId()).isEqualTo(31L);
         assertThat(reqVO.getFinanceUserId()).isEqualTo(41L);
+        assertThat(reqVO.getPaymentVoucherNo()).isEqualTo("CUSTOMER-REF-001");
         assertThat(reqVO.getItems()).singleElement().satisfies(item -> {
             assertThat(item.getBizType()).isEqualTo(ErpBizTypeEnum.SALE_OUT.getType());
             assertThat(item.getBizId()).isEqualTo(51L);
         });
+    }
+
+    @Test
+    void buildReceiptSaveReqVO_groupsDetailRowsAndAcceptsRepeatedPaymentVoucherNo() {
+        mockReceiptContext(singleCustomer(11L, "杭州客户"), singleAccount(21L, "农行收款户"),
+                Collections.emptyList());
+        when(saleOutMapper.selectByNo("XSCK-001")).thenReturn(new ErpSaleOutDO().setId(51L));
+        when(saleOutMapper.selectByNo("XSCK-002")).thenReturn(new ErpSaleOutDO().setId(52L));
+
+        ErpFinanceReceiptImportExcelVO header = new ErpFinanceReceiptImportExcelVO()
+                .setReceiptTime("2026-08-31")
+                .setCustomerName("杭州客户")
+                .setAccountName("农行收款户")
+                .setTotalPrice(new BigDecimal("100.00"))
+                .setReceiptPrice(new BigDecimal("100.00"))
+                .setPaymentVoucherNo(" CUSTOMER-REF-001 ")
+                .setBizType("销售出库")
+                .setBizNo("XSCK-001")
+                .setItemReceiptPrice(new BigDecimal("40.00"));
+        ErpFinanceReceiptImportExcelVO continuation = new ErpFinanceReceiptImportExcelVO()
+                .setPaymentVoucherNo("CUSTOMER-REF-001")
+                .setBizType("销售出库")
+                .setBizNo("XSCK-002")
+                .setItemReceiptPrice(new BigDecimal("60.00"));
+
+        ErpFinanceReceiptSaveReqVO reqVO = resolver.buildReceiptSaveReqVO(
+                Arrays.asList(header, continuation), resolver.buildReceiptContext());
+
+        assertThat(reqVO.getPaymentVoucherNo()).isEqualTo("CUSTOMER-REF-001");
+        assertThat(reqVO.getItems()).extracting(ErpFinanceReceiptSaveReqVO.Item::getBizId)
+                .containsExactly(51L, 52L);
+    }
+
+    @Test
+    void buildReceiptSaveReqVO_rejectsInconsistentPaymentVoucherNoAcrossDetailRows() {
+        mockReceiptContext(singleCustomer(11L, "杭州客户"), singleAccount(21L, "农行收款户"),
+                Collections.emptyList());
+        ErpFinanceReceiptImportExcelVO header = new ErpFinanceReceiptImportExcelVO()
+                .setReceiptTime("2026-08-31")
+                .setCustomerName("杭州客户")
+                .setAccountName("农行收款户")
+                .setTotalPrice(BigDecimal.ONE)
+                .setReceiptPrice(BigDecimal.ONE)
+                .setPaymentVoucherNo("CUSTOMER-REF-001");
+        ErpFinanceReceiptImportExcelVO continuation = new ErpFinanceReceiptImportExcelVO()
+                .setPaymentVoucherNo("CUSTOMER-REF-002");
+
+        assertThatThrownBy(() -> resolver.buildReceiptSaveReqVO(
+                Arrays.asList(header, continuation), resolver.buildReceiptContext()))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("同一收款单的多行明细凭证号必须保持一致");
     }
 
     @Test

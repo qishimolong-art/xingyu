@@ -240,6 +240,24 @@ public class ErpPayableMiscController {
         return success(buildPageResult(payableMiscService.getPayableMiscPage(reqVO)));
     }
 
+    @GetMapping("/summary")
+    @Operation(summary = "获取其他应付查询汇总")
+    @PreAuthorize("@ss.hasPermission('erp:payable-misc:query')")
+    public CommonResult<cn.iocoder.yudao.module.erp.controller.admin.finance.vo.ErpFinanceQuerySummaryRespVO>
+            summary(@Valid ErpPayableMiscPageReqVO reqVO) {
+        cn.iocoder.yudao.module.erp.controller.admin.finance.vo.ErpFinanceQuerySummaryRespVO summary =
+                payableMiscService.getPayableMiscSummary(reqVO);
+        fieldPermissionMasker.maskForm(FIELD_PERMISSION_MODULE, summary);
+        if (fieldPermissionMasker.isFieldHidden(FIELD_PERMISSION_MODULE, "amount")
+                || fieldPermissionMasker.isFieldHidden(FIELD_PERMISSION_MODULE, "settledAmount")) {
+            summary.setSettledAmount(null);
+            summary.setBalanceAmount(null);
+            summary.setPendingTransferAmount(null);
+            summary.setTransferAvailableAmount(null);
+        }
+        return success(summary);
+    }
+
     @GetMapping("/dept-simple-list")
     @Operation(summary = "获得其他应付可搜索部门精简信息列表")
     @PreAuthorize("@ss.hasPermission('erp:payable-misc:query')")

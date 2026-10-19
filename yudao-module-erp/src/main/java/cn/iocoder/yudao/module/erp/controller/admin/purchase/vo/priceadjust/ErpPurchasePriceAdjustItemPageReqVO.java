@@ -7,6 +7,7 @@ import lombok.EqualsAndHashCode;
 import lombok.ToString;
 
 import javax.validation.constraints.NotNull;
+import java.util.List;
 
 @Schema(description = "管理后台 - ERP 采购调价明细分页 Request VO")
 @Data
@@ -23,10 +24,13 @@ public class ErpPurchasePriceAdjustItemPageReqVO extends PageParam {
 
     @Schema(description = "排序字段，支持：id, inId, inNo, inItemId, productId, productCode, productName, warehouseId, "
             + "deptId, oldPrice, newPrice, count, adjustRatio, adjustPrice, vehicleModel, standard, featureCode, "
-            + "originPlace, brand, drawingNo, warehousePosition")
+            + "originPlace, brand, drawingNo, warehousePosition, productUnitName, weight, packageQty, pieceCount, stockCount")
     private String orderField;
 
     @Schema(description = "排序方向：asc 或 desc")
     private String orderDirection;
+
+    @Schema(description = "编辑态待删除的采购调价明细编号")
+    private List<Long> excludedItemIds;
 
 }

@@ -15,12 +15,15 @@ final class AssistantSemanticExtractor {
         final String keyword;
         final String role;
         final String matchType;
+        final AssistantEntityResolver.ProductMatchScope productMatchScope;
 
-        Reference(AssistantEntityResolver.EntityType type, String keyword, String role, String matchType) {
+        Reference(AssistantEntityResolver.EntityType type, String keyword, String role, String matchType,
+                  AssistantEntityResolver.ProductMatchScope productMatchScope) {
             this.type = type;
             this.keyword = keyword;
             this.role = role;
             this.matchType = matchType;
+            this.productMatchScope = productMatchScope;
         }
     }
 
@@ -38,6 +41,8 @@ final class AssistantSemanticExtractor {
 
         String source = question.trim();
         String compact = compact(source);
+        put(result, AssistantEntityResolver.EntityType.PRODUCT, explicitProductBrand(source),
+                "PRODUCT_BRAND", "EXPLICIT_BRAND", AssistantEntityResolver.ProductMatchScope.BRAND);
         boolean stock = "query_stock_movements".equals(tool) || "query_product_stock".equals(tool)
                 || compact.matches(".*(?:库存|出入库|库存流水|库存变动|调拨记录|盘点记录).*");
         if (stock) {
@@ -84,9 +89,33 @@ final class AssistantSemanticExtractor {
 
     private static void put(Map<AssistantEntityResolver.EntityType, Reference> result,
                             AssistantEntityResolver.EntityType type, String keyword, String role, String matchType) {
+        put(result,type,keyword,role,matchType,AssistantEntityResolver.ProductMatchScope.KEYWORD);
+    }
+
+    private static void put(Map<AssistantEntityResolver.EntityType, Reference> result,
+                            AssistantEntityResolver.EntityType type, String keyword, String role, String matchType,
+                            AssistantEntityResolver.ProductMatchScope productMatchScope) {
         keyword = clean(keyword);
         if (keyword == null || result.containsKey(type) || generic(keyword, type)) return;
-        result.put(type, new Reference(type, keyword, role, matchType));
+        result.put(type, new Reference(type, keyword, role, matchType,productMatchScope));
+    }
+
+    static String explicitProductBrand(String question) {
+        if (question == null || question.trim().isEmpty()) return null;
+        String text = stripPunctuation(question).trim()
+                .replaceFirst("^(?:请问|帮我查一下|帮我查询|查询一下|查询|查看一下|查看|查一下)", "")
+                .replaceFirst("^(?i:ERP)(?:系统)?(?:中|里|内|里面)?", "");
+        String action = "(?:产品|配件|商品|库存|价格|售价|销量|销售|采购|入库|出库|流水|数量|总数|有多少|多少|查询|情况)";
+        String[] patterns = {
+                "(?:产品|配件|商品)?品牌(?:名称)?(?:为|是|[:：])[\\\"'“”‘’]?([^，,。；;？?\\\"'“”‘’]{1,40}?)[\\\"'“”‘’]?(?=(?:的)?" + action + "|$)",
+                "^([^，,。；;？?\\\"'“”‘’]{1,30}?)(?:品牌|牌)(?:的)?(?:产品|配件|商品)",
+                "^([^，,。；;？?\\\"'“”‘’]{1,30}?)(?:品牌|牌)(?=" + action + "|$)"
+        };
+        for (String pattern : patterns) {
+            Matcher matcher = Pattern.compile(pattern, Pattern.CASE_INSENSITIVE).matcher(text);
+            if (matcher.find()) return clean(matcher.group(1));
+        }
+        return null;
     }
 
     private static String extractStockProduct(String text) {

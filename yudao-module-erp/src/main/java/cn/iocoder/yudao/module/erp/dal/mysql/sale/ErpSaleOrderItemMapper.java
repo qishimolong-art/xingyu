@@ -18,6 +18,8 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.stream.Collectors;
 
 /**
  * ERP 销售订单明项目 Mapper
@@ -28,7 +30,12 @@ import java.util.Map;
 public interface ErpSaleOrderItemMapper extends BaseMapperX<ErpSaleOrderItemDO> {
 
     default List<ErpSaleOrderItemDO> selectListByOrderId(Long orderId) {
-        return selectList(ErpSaleOrderItemDO::getOrderId, orderId);
+        return selectList(buildSortedQuery(orderId, null, null, null));
+    }
+
+    default List<ErpSaleOrderItemDO> selectListByOrderId(Long orderId, String orderField,
+                                                         String orderDirection) {
+        return selectList(buildSortedQuery(orderId, null, orderField, orderDirection));
     }
 
     default List<ErpSaleOrderItemDO> selectListByOrderIdForUpdate(Long orderId) {
@@ -37,20 +44,73 @@ public interface ErpSaleOrderItemMapper extends BaseMapperX<ErpSaleOrderItemDO> 
     }
 
     default PageResult<ErpSaleOrderItemDO> selectPageByOrderId(ErpSaleOrderItemPageReqVO reqVO) {
-        LambdaQueryWrapperX<ErpSaleOrderItemDO> query = new LambdaQueryWrapperX<ErpSaleOrderItemDO>()
-                .eq(ErpSaleOrderItemDO::getOrderId, reqVO.getOrderId());
-        SFunction<ErpSaleOrderItemDO, ?> orderColumn = getOrderColumn(reqVO.getOrderField());
-        if (orderColumn == null) {
-            query.orderByAsc(ErpSaleOrderItemDO::getId);
-        } else if ("desc".equalsIgnoreCase(reqVO.getOrderDirection())) {
-            query.orderByDesc(orderColumn);
-        } else {
-            query.orderByAsc(orderColumn);
+        return selectPage(reqVO, buildSortedQuery(reqVO.getOrderId(), reqVO.getExcludedItemIds(),
+                reqVO.getOrderField(), reqVO.getOrderDirection()));
+    }
+
+    static QueryWrapper<ErpSaleOrderItemDO> buildSortedQuery(Long orderId, Collection<Long> excludedItemIds,
+                                                              String orderField, String orderDirection) {
+        QueryWrapper<ErpSaleOrderItemDO> query = new QueryWrapper<ErpSaleOrderItemDO>()
+                .eq("order_id", orderId)
+                .notIn(CollUtil.isNotEmpty(excludedItemIds), "id", excludedItemIds);
+        return ErpSaleItemSortUtils.applyOrder(query, "erp_sale_order_items", orderField, orderDirection,
+                getOrderSpec(orderField));
+    }
+
+    static boolean isSupportedOrderField(String orderField) {
+        return getOrderSpec(orderField) != null;
+    }
+
+    static ErpSaleItemSortUtils.OrderSpec getOrderSpec(String orderField) {
+        if (orderField == null) {
+            return null;
         }
-        if (orderColumn != null && !"id".equals(reqVO.getOrderField().trim())) {
-            query.orderByAsc(ErpSaleOrderItemDO::getId);
-        }
-        return selectPage(reqVO, query);
+        String item = "erp_sale_order_items";
+        return switch (orderField.trim()) {
+            case "id" -> new ErpSaleItemSortUtils.OrderSpec(item + ".id", false);
+            case "productId", "productName" -> new ErpSaleItemSortUtils.OrderSpec(
+                    ErpSaleItemSortUtils.productField(item, "name"), true);
+            case "productCode" -> new ErpSaleItemSortUtils.OrderSpec(
+                    ErpSaleItemSortUtils.productField(item, "code"), true);
+            case "productBarCode" -> new ErpSaleItemSortUtils.OrderSpec(
+                    ErpSaleItemSortUtils.productField(item, "bar_code"), true);
+            case "productUnitName" -> new ErpSaleItemSortUtils.OrderSpec(
+                    ErpSaleItemSortUtils.productUnitName(item), true);
+            case "warehouseId" -> new ErpSaleItemSortUtils.OrderSpec(
+                    ErpSaleItemSortUtils.warehouseName(item, "warehouse_id"), true);
+            case "deptId" -> new ErpSaleItemSortUtils.OrderSpec(
+                    ErpSaleItemSortUtils.deptName(item, "dept_id"), true);
+            case "stockCount" -> new ErpSaleItemSortUtils.OrderSpec(ErpSaleItemSortUtils.stockCount(item), false);
+            case "lastSalePrice" -> new ErpSaleItemSortUtils.OrderSpec(
+                    ErpSaleItemSortUtils.lastSalePrice(item), false);
+            case "pieceCount" -> new ErpSaleItemSortUtils.OrderSpec(
+                    ErpSaleItemSortUtils.pieceCount(item, "count"), false);
+            case "giftFlag" -> new ErpSaleItemSortUtils.OrderSpec(item + ".gift_flag", false);
+            case "batchNo" -> new ErpSaleItemSortUtils.OrderSpec(item + ".batch_no", true);
+            case "weight" -> new ErpSaleItemSortUtils.OrderSpec(item + ".weight", false);
+            case "packageQty" -> new ErpSaleItemSortUtils.OrderSpec(item + ".package_qty", false);
+            case "remark" -> new ErpSaleItemSortUtils.OrderSpec(item + ".remark", true);
+            case "count" -> new ErpSaleItemSortUtils.OrderSpec(item + ".count", false);
+            case "productPrice", "salePrice" -> new ErpSaleItemSortUtils.OrderSpec(
+                    item + ".product_price", false);
+            case "totalProductPrice" -> new ErpSaleItemSortUtils.OrderSpec(item + ".total_price", false);
+            case "saleCostPrice" -> new ErpSaleItemSortUtils.OrderSpec(
+                    "(SELECT CASE WHEN SUM(ABS(sr.count)) > 0 THEN SUM(ABS(sr.total_price)) / SUM(ABS(sr.count))"
+                            + " ELSE NULL END FROM erp_sale_out_items soi INNER JOIN erp_stock_record sr"
+                            + " ON sr.biz_item_id = soi.id AND sr.biz_type = 50 AND sr.tenant_id = soi.tenant_id"
+                            + " AND sr.deleted = 0 WHERE soi.order_item_id = " + item
+                            + ".id AND soi.tenant_id = " + item + ".tenant_id AND soi.deleted = 0)", false);
+            case "saleCostAmount" -> new ErpSaleItemSortUtils.OrderSpec(
+                    "(SELECT SUM(ABS(sr.total_price)) FROM erp_sale_out_items soi INNER JOIN erp_stock_record sr"
+                            + " ON sr.biz_item_id = soi.id AND sr.biz_type = 50 AND sr.tenant_id = soi.tenant_id"
+                            + " AND sr.deleted = 0 WHERE soi.order_item_id = " + item
+                            + ".id AND soi.tenant_id = " + item + ".tenant_id AND soi.deleted = 0)", false);
+            case "taxPercent" -> new ErpSaleItemSortUtils.OrderSpec(item + ".tax_percent", false);
+            case "taxPrice" -> new ErpSaleItemSortUtils.OrderSpec(item + ".tax_price", false);
+            case "totalPrice" -> new ErpSaleItemSortUtils.OrderSpec(
+                    item + ".total_price + COALESCE(" + item + ".tax_price, 0)", false);
+            default -> null;
+        };
     }
 
     default List<ErpSaleOrderItemDO> selectListByOrderIds(Collection<Long> orderIds) {

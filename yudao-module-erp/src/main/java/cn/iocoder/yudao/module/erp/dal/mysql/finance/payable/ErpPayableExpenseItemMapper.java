@@ -1,5 +1,6 @@
 package cn.iocoder.yudao.module.erp.dal.mysql.finance.payable;
 
+import cn.hutool.core.collection.CollUtil;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.mybatis.core.mapper.BaseMapperX;
 import cn.iocoder.yudao.framework.mybatis.core.query.LambdaQueryWrapperX;
@@ -9,7 +10,10 @@ import com.baomidou.mybatisplus.core.toolkit.support.SFunction;
 import org.apache.ibatis.annotations.Mapper;
 
 import java.util.Collection;
+import java.util.Collections;
 import java.util.List;
+import java.util.Objects;
+import java.util.stream.Collectors;
 
 @Mapper
 public interface ErpPayableExpenseItemMapper extends BaseMapperX<ErpPayableExpenseItemDO> {
@@ -30,6 +34,9 @@ public interface ErpPayableExpenseItemMapper extends BaseMapperX<ErpPayableExpen
     default PageResult<ErpPayableExpenseItemDO> selectPageByExpenseId(ErpPayableExpenseItemPageReqVO reqVO) {
         LambdaQueryWrapperX<ErpPayableExpenseItemDO> query = new LambdaQueryWrapperX<ErpPayableExpenseItemDO>()
                 .eq(ErpPayableExpenseItemDO::getExpenseId, reqVO.getExpenseId());
+        List<Long> excludedItemIds = reqVO.getExcludedItemIds() == null ? Collections.emptyList()
+                : reqVO.getExcludedItemIds().stream().filter(Objects::nonNull).distinct().collect(Collectors.toList());
+        query.notIn(CollUtil.isNotEmpty(excludedItemIds), ErpPayableExpenseItemDO::getId, excludedItemIds);
         SFunction<ErpPayableExpenseItemDO, ?> orderColumn = getOrderColumn(reqVO.getOrderField());
         if (orderColumn == null) {
             query.orderByAsc(ErpPayableExpenseItemDO::getId);

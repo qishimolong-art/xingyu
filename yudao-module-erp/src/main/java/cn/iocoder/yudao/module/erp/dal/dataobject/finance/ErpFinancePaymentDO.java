@@ -91,6 +91,11 @@ public class ErpFinancePaymentDO extends BaseDO {
     private BigDecimal paymentPrice;
 
     /**
+     * 凭证号（供应商收款编号等业务侧手工凭据）
+     */
+    private String paymentVoucherNo;
+
+    /**
      * 备注
      */
     private String remark;

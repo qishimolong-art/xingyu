@@ -78,6 +78,8 @@ public class ErpCloudPrintPreviewCacheService {
         private Long saleOutId;
         private Long templateId;
         private Integer requestedCopies;
+        private String itemOrderField;
+        private String itemOrderDirection;
         private LocalDateTime expiresAt;
         private String inputSha256;
         private List<PreviewItem> items;

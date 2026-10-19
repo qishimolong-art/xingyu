@@ -40,4 +40,7 @@ public interface ErpPayableOtherService {
 
     PageResult<ErpPayableOtherDO> getPayableOtherPage(ErpPayableOtherPageReqVO pageReqVO);
 
+    cn.iocoder.yudao.module.erp.controller.admin.finance.vo.ErpFinanceQuerySummaryRespVO getPayableOtherSummary(
+            ErpPayableOtherPageReqVO pageReqVO);
+
 }
